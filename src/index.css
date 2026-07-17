@@ -1,0 +1,1624 @@
+/* ==========================================================================
+   VICHAT - MODERN 4-COLUMN CHAT SYSTEM STYLESHEET
+   ========================================================================== */
+
+/* --- CSS Variables & Design System --- */
+:root {
+    --vichat-blue-dark: #0c3370;   /* Xanh dương đậm cho Sidebar 1 */
+    --vichat-blue: #0b57d0;        /* Xanh dương VICHAT thương hiệu */
+    --vichat-blue-light: #e8f0fe;  /* Xanh dương nhạt cho tin nhắn gửi đi & hover */
+    --vichat-blue-hover: #0842a0;
+    --vichat-red: #ea4335;         /* Đỏ cho các cảnh báo, rời nhóm */
+    --vichat-red-light: #fce8e6;
+    
+    --bg-app: #f8fafd;             /* Màu nền chính của app */
+    --bg-white: #ffffff;
+    --bg-gray: #f1f3f4;            /* Xám nhạt cho hover/active */
+    --bg-chat: #f5f6f7;            /* Màu nền khu vực chat */
+    
+    --text-main: #1f1f1f;          /* Chữ chính */
+    --text-body: #3c4043;          /* Chữ nội dung */
+    --text-muted: #70757a;         /* Chữ mô tả/phụ */
+    --text-white: #ffffff;
+    
+    --border-color: #eaebeb;       /* Đường viền mảnh */
+    --status-online: #34a853;      /* Chấm xanh online */
+    --status-offline: #9aa0a6;     /* Chấm xám offline */
+    
+    --shadow-sm: 0 1px 2px 0 rgba(60,64,67,0.1), 0 1px 3px 1px rgba(60,64,67,0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    
+    --transition-fast: 0.15s ease;
+    --transition-normal: 0.25s ease;
+}
+
+/* --- Reset & Base Styles --- */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg-app);
+    color: var(--text-body);
+    font-size: 14px;
+    line-height: 1.5;
+    height: 100vh;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* --- App Layout Grid (4 Columns) --- */
+.app-layout {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+    background-color: var(--bg-white);
+}
+
+/* Common scrollbar style */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-thumb {
+    background-color: rgba(0,0,0,0.08);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(0,0,0,0.15);
+}
+
+/* ==========================================================================
+   COL 1: SIDEBAR PRIMARY (Màu xanh dương đậm)
+   ========================================================================== */
+.sidebar-primary {
+    width: 200px;
+    background-color: var(--vichat-blue-dark);
+    color: var(--text-white);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 24px 12px;
+    flex-shrink: 0;
+    z-index: 10;
+}
+
+.brand-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 12px 24px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.brand-logo {
+    color: var(--text-white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.brand-name {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: var(--text-white);
+}
+
+.primary-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 20px;
+    flex: 1;
+}
+
+.primary-nav .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 16px;
+    color: rgba(255, 255, 255, 0.7);
+    border-radius: 12px;
+    text-decoration: none;
+    font-weight: 500;
+    transition: var(--transition-fast);
+}
+
+.primary-nav .nav-item i {
+    font-size: 18px;
+    width: 20px;
+    text-align: center;
+}
+
+.primary-nav .nav-item:hover {
+    color: var(--text-white);
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.primary-nav .nav-item.active {
+    color: var(--text-white);
+    background-color: rgba(255, 255, 255, 0.15);
+    font-weight: 600;
+}
+
+.icon-badge-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.badge-count {
+    position: absolute;
+    top: -6px;
+    right: -8px;
+    background-color: var(--vichat-red);
+    color: var(--text-white);
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    border: 1.5px solid var(--vichat-blue-dark);
+}
+
+.primary-footer {
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.btn-logout-footer {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 8px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition-fast);
+    margin-right: 4px;
+}
+
+.btn-logout-footer:hover {
+    color: var(--text-white);
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.user-profile {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 8px;
+}
+
+.user-avatar-img {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.user-info {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.user-name {
+    font-weight: 600;
+    font-size: 13.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.user-status {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.user-status.online::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background-color: var(--status-online);
+    border-radius: 50%;
+}
+
+/* ==========================================================================
+   COL 2: SIDEBAR SECONDARY (Danh sách chat)
+   ========================================================================== */
+.sidebar-secondary {
+    width: 300px;
+    border-right: 1px solid var(--border-color);
+    background-color: var(--bg-white);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+.sidebar-header {
+    padding: 20px 16px 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.header-top h2 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.btn-action {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background-color: var(--bg-gray);
+    color: var(--text-body);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.btn-action:hover {
+    background-color: var(--vichat-blue-light);
+    color: var(--vichat-blue);
+}
+
+.search-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.search-icon {
+    position: absolute;
+    left: 12px;
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.search-box input {
+    width: 100%;
+    padding: 10px 12px 10px 38px;
+    border-radius: 20px;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-app);
+    font-family: inherit;
+    font-size: 13.5px;
+    outline: none;
+    transition: var(--transition-normal);
+}
+
+.search-box input:focus {
+    background-color: var(--bg-white);
+    border-color: var(--vichat-blue);
+    box-shadow: 0 0 0 3px rgba(11, 87, 208, 0.1);
+}
+
+.conversations-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 8px 8px 8px;
+}
+
+.conversation-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 12px;
+    cursor: pointer;
+    margin-bottom: 2px;
+    transition: var(--transition-fast);
+}
+
+.conversation-item:hover {
+    background-color: var(--bg-gray);
+}
+
+.conversation-item.active {
+    background-color: var(--vichat-blue-light);
+}
+
+.conv-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-gray);
+    color: var(--text-muted);
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.conv-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.conv-avatar.group {
+    background-color: #e2ebf9;
+    color: var(--vichat-blue);
+}
+
+.conv-avatar.purple { background-color: #f3e5f5; color: #8e24aa; }
+.conv-avatar.orange { background-color: #fff3e0; color: #f57c00; }
+.conv-avatar.green { background-color: #e8f5e9; color: #2e7d32; }
+.conv-avatar.blue { background-color: #e1f5fe; color: #0288d1; }
+
+.conv-details {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.conv-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.conv-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.conversation-item.active .conv-name {
+    color: var(--vichat-blue-dark);
+}
+
+.conv-time {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.conv-message {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.conv-last-msg {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+}
+
+.conversation-item.active .conv-last-msg {
+    color: var(--text-body);
+}
+
+.conv-badge {
+    background-color: var(--vichat-red);
+    color: var(--text-white);
+    font-size: 10.5px;
+    font-weight: 700;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+}
+
+.text-green { color: var(--status-online); }
+
+/* ==========================================================================
+   COL 3: CHAT MAIN AREA (Khung chat chính)
+   ========================================================================== */
+.chat-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--bg-chat);
+    position: relative;
+    overflow: hidden;
+}
+
+.chat-main-header {
+    height: 64px;
+    background-color: var(--bg-white);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    flex-shrink: 0;
+    z-index: 5;
+}
+
+.chat-header-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.btn-back-mobile {
+    display: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: none;
+    cursor: pointer;
+}
+
+.chat-header-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-gray);
+    color: var(--text-muted);
+    font-size: 16px;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.chat-header-avatar.group {
+    background-color: #e2ebf9;
+    color: var(--vichat-blue);
+}
+
+.chat-header-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.chat-header-meta {
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-header-name {
+    font-size: 15.5px;
+    font-weight: 650;
+    color: var(--text-main);
+}
+
+.chat-header-status {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.chat-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-header-action {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    border: none;
+    background: none;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.btn-header-action:hover {
+    background-color: var(--bg-gray);
+    color: var(--text-main);
+}
+
+/* Chat Messages Display List */
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.date-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 12px 0;
+    position: relative;
+}
+
+.date-divider::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 1px;
+    background-color: rgba(0, 0, 0, 0.05);
+    z-index: 1;
+}
+
+.date-divider span {
+    background-color: var(--bg-chat);
+    padding: 4px 14px;
+    border-radius: 12px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    z-index: 2;
+    font-weight: 500;
+}
+
+.message-item {
+    display: flex;
+    gap: 12px;
+    max-width: 75%;
+    animation: fadeIn 0.25s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.message-item.incoming {
+    align-self: flex-start;
+}
+
+.message-item.outgoing {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+}
+
+.message-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+    align-self: flex-start;
+}
+
+.message-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.message-content-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.sender-name {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-left: 4px;
+}
+
+.message-bubble-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.message-bubble {
+    background-color: var(--bg-white);
+    color: var(--text-main);
+    padding: 10px 14px;
+    border-radius: 16px;
+    border-top-left-radius: 4px;
+    box-shadow: var(--shadow-sm);
+    font-size: 13.5px;
+    position: relative;
+    max-width: 100%;
+    word-break: break-word;
+}
+
+.message-item.outgoing .message-bubble {
+    background-color: var(--vichat-blue-light);
+    border-top-left-radius: 16px;
+    border-top-right-radius: 4px;
+}
+
+.message-time {
+    display: block;
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    text-align: right;
+}
+
+.message-item.outgoing .message-time {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+}
+
+.read-status {
+    color: var(--vichat-blue);
+    font-size: 11px;
+}
+
+/* File Attachment Bubble Styles */
+.file-bubble {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+    min-width: 240px;
+    border: 1px solid var(--border-color);
+}
+
+.file-icon-container {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.file-icon-container.pdf {
+    background-color: var(--vichat-red-light);
+    color: var(--vichat-red);
+}
+
+.file-ext-tag {
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.file-icon-container.excel {
+    background-color: #e8f7ed;
+    color: var(--status-online);
+}
+
+.excel-icon {
+    font-size: 20px;
+}
+
+.file-details {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+}
+
+.file-name {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-main);
+}
+
+.file-info {
+    font-size: 11.5px;
+    color: var(--text-muted);
+}
+
+.file-bubble.pdf {
+    background-color: var(--vichat-blue-light);
+}
+
+.file-bubble.excel {
+    background-color: #e8f7ed; /* Đồng bộ màu excel xanh lá */
+    border-color: #c8e6c9;
+}
+
+/* Image Attachment Bubble Styles */
+.img-bubble {
+    padding: 0;
+    overflow: hidden;
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
+    background-color: transparent;
+}
+
+.chat-attached-image {
+    max-width: 320px;
+    max-height: 200px;
+    display: block;
+    object-fit: cover;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+}
+
+.img-bubble .message-time {
+    position: absolute;
+    bottom: 8px;
+    right: 12px;
+    background-color: rgba(0, 0, 0, 0.5);
+    color: var(--text-white);
+    padding: 2px 6px;
+    border-radius: 8px;
+    font-size: 9px;
+    margin-top: 0;
+}
+
+/* Chat Input Controls */
+.chat-main-input {
+    background-color: var(--bg-white);
+    border-top: 1px solid var(--border-color);
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    z-index: 5;
+}
+
+.input-actions-left {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-input-action {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    border: none;
+    background: none;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.btn-input-action:hover {
+    background-color: var(--bg-gray);
+    color: var(--text-main);
+}
+
+.input-text-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+
+.input-text-container input {
+    width: 100%;
+    padding: 10px 16px;
+    border-radius: 20px;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-app);
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+    transition: var(--transition-normal);
+}
+
+.input-text-container input:focus {
+    background-color: var(--bg-white);
+    border-color: var(--vichat-blue);
+}
+
+.btn-send-message-sh {
+    background-color: var(--vichat-blue);
+    color: var(--text-white);
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 14px;
+    border: none;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.btn-send-message-sh:hover {
+    background-color: var(--vichat-blue-hover);
+    box-shadow: 0 2px 6px rgba(11, 87, 208, 0.2);
+}
+
+/* ==========================================================================
+   COL 4: SIDEBAR DETAIL (Thông tin nhóm)
+   ========================================================================== */
+.sidebar-detail {
+    width: 300px;
+    border-left: 1px solid var(--border-color);
+    background-color: var(--bg-white);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    transition: width var(--transition-normal), transform var(--transition-normal);
+}
+
+.sidebar-detail.collapsed {
+    width: 0;
+    overflow: hidden;
+    border-left: none;
+}
+
+.detail-header {
+    height: 64px;
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.detail-header h3 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.btn-close-detail {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.btn-close-detail:hover {
+    background-color: var(--bg-gray);
+    color: var(--text-main);
+}
+
+.detail-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.group-identity {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+}
+
+.group-avatar-large {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background-color: #e2ebf9;
+    color: var(--vichat-blue);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.group-avatar-large img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.group-name-large {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-top: 4px;
+}
+
+.group-members-count {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.detail-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.section-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.section-desc {
+    font-size: 13.5px;
+    color: var(--text-body);
+}
+
+.admin-name {
+    font-size: 13.5px;
+    color: var(--text-main);
+    font-weight: 500;
+}
+
+.members-section {
+    gap: 12px;
+}
+
+.members-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.member-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.member-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.member-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.member-name {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.member-status-text {
+    font-size: 11px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.status-dot.online { background-color: var(--status-online); }
+.status-dot.offline { background-color: var(--status-offline); }
+
+.detail-actions {
+    border-top: 1px solid var(--border-color);
+    padding-top: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.action-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.action-label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13.5px;
+    color: var(--text-body);
+    font-weight: 500;
+}
+
+.action-label i {
+    font-size: 16px;
+    color: var(--text-muted);
+}
+
+.btn-leave-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 12px;
+    border-radius: 12px;
+    color: var(--vichat-red);
+    background-color: var(--vichat-red-light);
+    border: none;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.btn-leave-group:hover {
+    background-color: #fadbd8;
+}
+
+/* Switch UI component (Toggle switch) */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 38px;
+    height: 20px;
+}
+
+.switch input { 
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+}
+
+input:checked + .slider {
+    background-color: var(--vichat-blue);
+}
+
+input:focus + .slider {
+    box-shadow: 0 0 1px var(--vichat-blue);
+}
+
+input:checked + .slider:before {
+    transform: translateX(18px);
+}
+
+.slider.round {
+    border-radius: 20px;
+}
+
+.slider.round:before {
+    border-radius: 50%;
+}
+
+/* ==========================================================================
+   CHATBOT UI BACKWARD COMPATIBILITY
+   ========================================================================== */
+.typing-indicator-wrapper {
+    align-self: flex-start;
+    display: flex;
+    gap: 12px;
+}
+
+.typing-bubble {
+    background-color: var(--bg-white);
+    padding: 10px 16px;
+    border-radius: 16px;
+    border-top-left-radius: 4px;
+    box-shadow: var(--shadow-sm);
+}
+
+.typing-dots {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    height: 12px;
+}
+
+.typing-dots span {
+    width: 6px;
+    height: 6px;
+    background-color: var(--vichat-blue);
+    border-radius: 50%;
+    display: inline-block;
+    animation: typing-bounce 1.4s infinite ease-in-out both;
+}
+
+.typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+.typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes typing-bounce {
+    0%, 80%, 100% { transform: scale(0); }
+    40% { transform: scale(1); }
+}
+
+.rich-card {
+    background: var(--bg-white);
+    border-radius: 12px;
+    border-left: 4px solid var(--vichat-blue);
+    padding: 14px;
+    margin: 8px 0;
+    box-shadow: var(--shadow-sm);
+    border-top: 1px solid var(--border-color);
+    border-right: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    animation: fadeIn 0.2s ease;
+}
+
+.rich-card-title {
+    font-weight: 700;
+    color: var(--vichat-blue-dark);
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+
+.rich-card-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+.rich-card-item:last-child {
+    border-bottom: none;
+}
+
+.rich-card-label {
+    color: var(--text-muted);
+}
+.rich-card-value {
+    font-weight: 600;
+}
+
+.rich-table-container {
+    width: 100%;
+    overflow-x: auto;
+    margin: 8px 0;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+.rich-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    background: var(--bg-white);
+}
+.rich-table th, .rich-table td {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    text-align: left;
+}
+.rich-table th {
+    background: #f1f3f4;
+    font-weight: 600;
+}
+
+.quick-action-buttons-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+.btn-quick-action {
+    background: var(--bg-white);
+    color: var(--vichat-blue);
+    border: 1px solid rgba(11,87,208,0.25);
+    padding: 8px 16px;
+    border-radius: 18px;
+    font-size: 13px;
+    font-weight: 600;
+}
+.btn-quick-action:hover {
+    background: var(--vichat-blue-light);
+    border-color: var(--vichat-blue);
+}
+
+/* ==========================================================================
+   RESPONSIVE DESIGN (Mobile & Tablet)
+   ========================================================================= */
+@media (max-width: 992px) {
+    .sidebar-detail {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 20;
+        box-shadow: -4px 0 12px rgba(0, 0, 0, 0.1);
+        transform: translateX(100%);
+    }
+    
+    .sidebar-detail.open {
+        transform: translateX(0);
+        width: 300px;
+    }
+    
+    .sidebar-detail.collapsed {
+        transform: translateX(100%);
+        width: 300px;
+    }
+}
+
+@media (max-width: 768px) {
+    .sidebar-primary {
+        width: 70px;
+        padding: 16px 6px;
+    }
+    
+    .brand-name, .primary-nav span, .user-info {
+        display: none;
+    }
+    
+    .brand-container {
+        padding: 0 0 16px 0;
+        justify-content: center;
+    }
+    
+    .primary-nav .nav-item {
+        padding: 12px 0;
+        justify-content: center;
+        border-radius: 10px;
+    }
+    
+    .user-profile {
+        justify-content: center;
+        padding: 0;
+    }
+}
+
+@media (max-width: 576px) {
+    .app-layout {
+        position: relative;
+    }
+    
+    .sidebar-primary {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        z-index: 15;
+        transform: translateX(-100%);
+        transition: transform var(--transition-normal);
+    }
+    
+    .sidebar-primary.open {
+        transform: translateX(0);
+    }
+    
+    .sidebar-secondary {
+        width: 100%;
+        flex-shrink: 0;
+    }
+    
+    .chat-main {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 10;
+        transform: translateX(100%);
+        transition: transform var(--transition-normal);
+    }
+    
+    /* Khi đang ở màn hình chat trên mobile */
+    .app-layout.mobile-active-chat .chat-main {
+        transform: translateX(0);
+    }
+    
+    .btn-back-mobile {
+        display: flex;
+    }
+}
+
+/* ==========================================================================
+   LOGIN SCREEN STYLES (Trang Đăng Nhập VICHAT)
+   ========================================================================= */
+.login-screen-container {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #e3eefc 0%, #f4f8fe 50%, #ffffff 100%);
+    overflow: hidden;
+    position: relative;
+}
+
+/* Decorative background circles */
+.login-bg-decor {
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(11, 87, 208, 0.08) 0%, rgba(255,255,255,0) 70%);
+    border-radius: 50%;
+    z-index: 1;
+}
+.login-bg-decor.decor-1 { top: -200px; left: -200px; }
+.login-bg-decor.decor-2 { bottom: -200px; right: -200px; }
+
+.login-card {
+    width: 100%;
+    max-width: 440px;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(11, 87, 208, 0.12);
+    border-radius: 24px;
+    padding: 40px;
+    box-shadow: 0 12px 30px rgba(60, 64, 67, 0.08);
+    z-index: 5;
+    animation: loginCardAppear 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes loginCardAppear {
+    from { opacity: 0; transform: scale(0.96) translateY(12px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.login-card-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.login-logo {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background-color: var(--vichat-blue);
+    color: var(--text-white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+    box-shadow: 0 4px 12px rgba(11, 87, 208, 0.3);
+}
+
+.login-logo svg {
+    width: 32px;
+    height: 32px;
+}
+
+.login-card-header h2 {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--vichat-blue-dark);
+    margin-bottom: 8px;
+}
+
+.login-card-header p {
+    font-size: 13.5px;
+    color: var(--text-muted);
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.login-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.login-form-group label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-body);
+}
+
+.login-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.login-input-icon {
+    position: absolute;
+    left: 16px;
+    color: var(--text-muted);
+    font-size: 15px;
+}
+
+.login-input-wrapper input {
+    width: 100%;
+    padding: 12px 16px 12px 44px;
+    border-radius: 12px;
+    border: 1.5px solid var(--border-color);
+    background-color: var(--bg-app);
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+    transition: var(--transition-normal);
+}
+
+.login-input-wrapper input:focus {
+    background-color: var(--bg-white);
+    border-color: var(--vichat-blue);
+    box-shadow: 0 0 0 3px rgba(11, 87, 208, 0.1);
+}
+
+.btn-toggle-password {
+    position: absolute;
+    right: 16px;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 15px;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-toggle-password:hover {
+    color: var(--text-main);
+}
+
+.login-error-message {
+    color: var(--vichat-red);
+    background-color: var(--vichat-red-light);
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: shakeError 0.3s ease;
+}
+
+@keyframes shakeError {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+}
+
+.btn-login-submit {
+    width: 100%;
+    padding: 12px;
+    border-radius: 12px;
+    background-color: var(--vichat-blue);
+    color: var(--text-white);
+    font-size: 15px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 4px 12px rgba(11, 87, 208, 0.2);
+    transition: var(--transition-fast);
+}
+
+.btn-login-submit:hover {
+    background-color: var(--vichat-blue-hover);
+    box-shadow: 0 6px 16px rgba(11, 87, 208, 0.3);
+}
+
+.btn-login-submit:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.login-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: loginSpin 0.8s linear infinite;
+}
+
+@keyframes loginSpin {
+    to { transform: rotate(360deg); }
+}
+
+/* Demo account box */
+.login-demo-accounts {
+    margin-top: 24px;
+    border-top: 1px dashed var(--border-color);
+    padding-top: 16px;
+}
+
+.login-demo-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+    display: block;
+}
+
+.demo-account-pill {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background-color: var(--bg-app);
+    border: 1.5px solid var(--border-color);
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.demo-account-pill:hover {
+    background-color: var(--vichat-blue-light);
+    border-color: rgba(11, 87, 208, 0.3);
+}
+
+.demo-account-pill span {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.demo-account-pill code {
+    font-family: monospace;
+    font-size: 12px;
+    background-color: rgba(0,0,0,0.05);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
