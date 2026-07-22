@@ -1,0 +1,22 @@
+{
+  "base": {
+    "code": "songhong-company",
+    "name": "SÔNG HỒNG - Dữ liệu nội bộ mặc định",
+    "description": "Bộ dữ liệu khởi đầu cho trợ lý SÔNG HỒNG. Có thể thay thế hoặc bổ sung bằng tài liệu doanh nghiệp.",
+    "access_scope": "COMPANY"
+  },
+  "documents": [
+    {
+      "title": "Giới thiệu trợ lý SÔNG HỒNG",
+      "content": "Trợ lý SÔNG HỒNG hỗ trợ tra cứu dữ liệu nội bộ đã được doanh nghiệp cung cấp. Khi không tìm thấy thông tin phù hợp, trợ lý phải nói rõ chưa có dữ liệu và không tự suy đoán. Người quản trị có thể bổ sung PDF, TXT, Markdown, CSV hoặc JSON vào kho tri thức."
+    },
+    {
+      "title": "Hướng dẫn sử dụng hệ thống chat",
+      "content": "Người dùng đăng nhập bằng tài khoản SÔNG HỒNG, có thể chat 1-1, chat nhóm, gửi tệp và tìm kiếm thành viên. Tin nhắn và tệp chat được lưu bởi Tinode. Chatbot là cuộc trò chuyện riêng có tên Trợ lý SÔNG HỒNG; lịch sử hiển thị theo từng tài khoản."
+    },
+    {
+      "title": "Nguyên tắc bảo mật dữ liệu",
+      "content": "Không đưa mật khẩu, token hoặc khóa API vào tin nhắn hay tài liệu công khai. Chat Service lưu tài liệu tri thức và nhật ký chatbot trong PostgreSQL; Tinode lưu tin nhắn chat. Môi trường production phải bật xác thực account-service, dùng HTTPS và sao lưu PostgreSQL định kỳ."
+    }
+  ]
+}

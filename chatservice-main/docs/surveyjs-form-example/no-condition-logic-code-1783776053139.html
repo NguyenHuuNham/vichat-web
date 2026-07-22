@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaaS Survey Editor (HubSpot Style)</title>
+    <!-- Tailwind CSS cho giao diện hiện đại -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .drag-over { border: 2px dashed #4f46e5; background-color: #f5f3ff; }
+        .draggable-item.dragging { opacity: 0.5; border: 2px dashed #6366f1; }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800 antialiased h-screen flex flex-col">
+
+    <!-- Topbar -->
+    <header class="bg-white border-b border-gray-200 px-6 py-3 flex justify-between items-center shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="bg-indigo-600 text-white p-2 rounded-lg"><i class="fa-solid fa-square-poll-vertical text-xl"></i></div>
+            <div>
+                <h1 class="text-md font-semibold text-gray-900">Trình thiết kế biểu mẫu</h1>
+                <p class="text-xs text-gray-500">Tự động đồng bộ với cấu trúc SurveyJS</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <button onclick="getJsonOutput()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 shadow-sm">
+                <i class="fa-solid fa-code"></i> Xuất JSON Schema
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="flex flex-1 overflow-hidden">
+        
+        <!-- Sidebar Trái: Panel Thêm câu hỏi (Kiểu HubSpot) -->
+        <aside class="w-80 bg-white border-r border-gray-200 p-5 flex flex-col gap-4 overflow-y-auto shrink-0">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400">Thành phần câu hỏi</h2>
+            <div class="grid grid-cols-1 gap-2">
+                <button onclick="addQuestion('text')" class="w-full flex items-center gap-3 p-3 text-left border border-gray-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50/30 transition group">
+                    <div class="bg-gray-100 text-gray-600 p-2.5 rounded-lg group-hover:bg-indigo-100 group-hover:text-indigo-600"><i class="fa-solid fa-font w-4 text-center"></i></div>
+                    <div>
+                        <div class="text-sm font-medium text-gray-800">Văn bản ngắn (Text)</div>
+                        <div class="text-xs text-gray-400">Họ tên, Email, Khẩu hiệu...</div>
+                    </div>
+                </button>
+                <button onclick="addQuestion('comment')" class="w-full flex items-center gap-3 p-3 text-left border border-gray-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50/30 transition group">
+                    <div class="bg-gray-100 text-gray-600 p-2.5 rounded-lg group-hover:bg-indigo-100 group-hover:text-indigo-600"><i class="fa-solid fa-paragraph w-4 text-center"></i></div>
+                    <div>
+                        <div class="text-sm font-medium text-gray-800">Đoạn văn dài (Comment)</div>
+                        <div class="text-xs text-gray-400">Ý kiến đóng góp, địa chỉ...</div>
+                    </div>
+                </button>
+                <button onclick="addQuestion('radiogroup')" class="w-full flex items-center gap-3 p-3 text-left border border-gray-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50/30 transition group">
+                    <div class="bg-gray-100 text-gray-600 p-2.5 rounded-lg group-hover:bg-indigo-100 group-hover:text-indigo-600"><i class="fa-solid fa-circle-dot w-4 text-center"></i></div>
+                    <div>
+                        <div class="text-sm font-medium text-gray-800">Trắc nghiệm (Radio)</div>
+                        <div class="text-xs text-gray-400">Chỉ chọn một đáp án độc nhất</div>
+                    </div>
+                </button>
+                <button onclick="addQuestion('checkbox')" class="w-full flex items-center gap-3 p-3 text-left border border-gray-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50/30 transition group">
+                    <div class="bg-gray-100 text-gray-600 p-2.5 rounded-lg group-hover:bg-indigo-100 group-hover:text-indigo-600"><i class="fa-solid fa-square-check w-4 text-center"></i></div>
+                    <div>
+                        <div class="text-sm font-medium text-gray-800">Nhiều lựa chọn (Checkbox)</div>
+                        <div class="text-xs text-gray-400">Chọn một hoặc nhiều đáp án</div>
+                    </div>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Canvas ở giữa: Vùng thiết kế (Kiểu Google Forms) -->
+        <main class="flex-1 bg-gray-50 p-8 overflow-y-auto flex justify-center items-start">
+            <div class="w-full max-w-2xl flex flex-col gap-4">
+                <!-- Header Form giả lập -->
+                <div class="bg-white rounded-2xl p-6 border-t-8 border-indigo-600 shadow-sm border border-gray-200">
+                    <input type="text" id="formTitle" value="Biểu mẫu không có tiêu đề" class="w-full text-2xl font-bold text-gray-900 border-b border-transparent hover:border-gray-200 focus:border-indigo-600 focus:outline-none pb-1 transition" placeholder="Nhập tiêu đề form...">
+                    <input type="text" id="formDesc" value="Mô tả ngắn gọn về mục đích của biểu mẫu này." class="w-full text-sm text-gray-500 border-b border-transparent hover:border-gray-200 focus:border-indigo-600 focus:outline-none mt-2 pb-1 transition" placeholder="Nhập mô tả biểu mẫu...">
+                </div>
+
+                <!-- Danh sách câu hỏi động -->
+                <div id="questionsContainer" class="flex flex-col gap-4">
+                    <!-- Các câu hỏi sẽ được render bằng JS vào đây -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal hiển thị kết quả JSON để Backend thu thập -->
+    <div id="jsonModal" class="fixed inset-0 bg-black/50 flex items-center justify-center hidden z-50 animate-fade-in">
+        <div class="bg-white rounded-2xl w-full max-w-xl shadow-xl flex flex-col overflow-hidden max-h-[80vh]">
+            <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <h3 class="font-semibold text-gray-900 flex items-center gap-2"><i class="fa-solid fa-code text-indigo-600"></i> SurveyJS Schema Output</h3>
+                <button onclick="toggleModal()" class="text-gray-400 hover:text-gray-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto flex-1">
+                <p class="text-xs text-gray-500 mb-2">Đoạn JSON này có cấu trúc tương thích 100% với <code class="bg-gray-100 px-1 py-0.5 rounded text-red-600">SurveyJS Form Library</code>. Hãy lấy data này lưu thẳng vào cột DB của bạn.</p>
+                <textarea id="jsonTextarea" readonly class="w-full h-80 font-mono text-xs p-4 bg-gray-900 text-green-400 rounded-xl focus:outline-none"></textarea>
+            </div>
+            <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-2">
+                <button onclick="navigator.clipboard.writeText(document.getElementById('jsonTextarea').value); alert('Đã sao chép vào clipboard!')" class="bg-gray-200 hover:bg-gray-300 text-gray-800 text-xs font-semibold px-4 py-2 rounded-lg transition">Sao chép</button>
+                <button onclick="toggleModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition">Đóng lại</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Logic Core Engine xử lý State -->
+    <script>
+        // State chính của bộ Editor lưu danh sách câu hỏi
+        let surveyQuestions = [
+            { id: "q1", type: "text", name: "customer_name", title: "Họ và tên của bạn là gì?", isRequired: true },
+            { id: "q2", type: "radiogroup", name: "satisfaction", title: "Bạn đánh giá thế nào về dịch vụ của chúng tôi?", isRequired: false, choices: ["Rất hài lòng", "Bình thường", "Không hài lòng"] }
+        ];
+
+        // Render toàn bộ câu hỏi ra Canvas
+        function renderEditor() {
+            const container = document.getElementById('questionsContainer');
+            container.innerHTML = '';
+
+            surveyQuestions.forEach((q, index) => {
+                const qBox = document.createElement('div');
+                qBox.className = "bg-white rounded-xl p-5 border border-gray-200 shadow-sm relative group draggable-item";
+                qBox.setAttribute('draggable', 'true');
+                qBox.setAttribute('data-id', q.id);
+                qBox.setAttribute('data-index', index);
+
+                // Gắn sự kiện Drag and Drop cho việc sắp xếp thứ tự câu hỏi
+                setupDragAndDropEvents(qBox);
+
+                // Phần Header điều khiển nhỏ gọn của câu hỏi
+                let choicesHtml = '';
+                if (['radiogroup', 'checkbox'].includes(q.type)) {
+                    choicesHtml = `<div class="mt-3 flex flex-col gap-2 pl-6">`;
+                    q.choices.forEach((choice, cIndex) => {
+                        choicesHtml += `
+                            <div class="flex items-center gap-2 group/choice">
+                                <i class="${q.type === 'radiogroup' ? 'fa-regular fa-circle' : 'fa-regular fa-square'} text-gray-300 text-sm"></i>
+                                <input type="text" value="${choice}" onchange="updateChoice(${index}, ${cIndex}, this.value)" class="text-sm text-gray-700 border-b border-transparent hover:border-gray-200 focus:border-indigo-500 focus:outline-none py-0.5 transition w-2/3">
+                                <button onclick="deleteChoice(${index}, ${cIndex})" class="text-gray-300 hover:text-red-500 transition opacity-0 group-hover/choice:opacity-100"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                            </div>`;
+                    });
+                    choicesHtml += `
+                        <button onclick="addChoice(${index})" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium mt-1 flex items-center gap-1"><i class="fa-solid fa-plus"></i> Thêm tùy chọn</button>
+                    </div>`;
+                }
+
+                qBox.innerHTML = `
+                    <!-- Nút kéo thả nằm góc trên -->
+                    <div class="absolute top-2 left-1/2 -translate-x-1/2 cursor-grab text-gray-300 hover:text-gray-500 active:cursor-grabbing px-2 py-0.5 rounded"><i class="fa-solid fa-ellipsis-vertical"></i><i class="fa-solid fa-ellipsis-vertical -ml-0.5"></i></div>
+                    
+                    <!-- Dòng tiêu đề câu hỏi -->
+                    <div class="flex items-start gap-3 mt-2">
+                        <span class="text-sm font-semibold text-gray-400 mt-1">Q${index + 1}.</span>
+                        <div class="flex-1">
+                            <input type="text" value="${q.title}" onchange="updateQuestionTitle(${index}, this.value)" class="w-full font-medium text-gray-900 border-b border-transparent hover:border-gray-200 focus:border-indigo-600 focus:outline-none pb-1 transition" placeholder="Nhập câu hỏi...">
+                        </div>
+                        <span class="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded-md font-mono">${q.type.toUpperCase()}</span>
+                    </div>
+
+                    <!-- Render vùng chứa các Option nếu là trắc nghiệm -->
+                    ${choicesHtml}
+
+                    <!-- Footer Toolbar của Khối câu hỏi (Kiểu Google Forms) -->
+                    <div class="mt-4 pt-3 border-t border-gray-100 flex justify-end items-center gap-4 text-gray-400 opacity-60 group-hover:opacity-100 transition-opacity">
+                        <label class="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+                            <input type="checkbox" ${q.isRequired ? 'checked' : ''} onchange="toggleRequired(${index})" class="accent-indigo-600"> Bắt buộc điền
+                        </label>
+                        <div class="h-4 w-px bg-gray-200"></div>
+                        <button onclick="deleteQuestion(${index})" class="text-gray-500 hover:text-red-500 transition text-sm flex items-center gap-1" title="Xóa câu hỏi"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>
+                `;
+                container.appendChild(qBox);
+            });
+        }
+
+        // --- Các hàm Logic xử lý State ---
+        function addQuestion(type) {
+            const id = 'q_' + Math.random().toString(36).substring(2, 9);
+            const newQ = { id, type, name: id, title: "Câu hỏi mới chưa đặt tiêu đề", isRequired: false };
+            if (['radiogroup', 'checkbox'].includes(type)) newQ.choices = ["Lựa chọn 1", "Lựa chọn 2"];
+            surveyQuestions.push(newQ);
+            renderEditor();
+            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        }
+        function deleteQuestion(index) { surveyQuestions.splice(index, 1); renderEditor(); }
+        function updateQuestionTitle(index, val) { surveyQuestions[index].title = val; }
+        function toggleRequired(index) { surveyQuestions[index].isRequired = !surveyQuestions[index].isRequired; }
+        function addChoice(index) { surveyQuestions[index].choices.push("Lựa chọn mới"); renderEditor(); }
+        function updateChoice(qIndex, cIndex, val) { surveyQuestions[qIndex].choices[cIndex] = val; }
+        function deleteChoice(qIndex, cIndex) {
+            if(surveyQuestions[qIndex].choices.length <= 1) return alert("Phải có ít nhất 1 đáp án!");
+            surveyQuestions[qIndex].choices.splice(cIndex, 1); renderEditor();
+        }
+
+        // --- Thuật toán Drag & Drop Sắp xếp Vị trí mượt mà ---
+        let dragSourceEl = null;
+        function setupDragAndDropEvents(el) {
+            el.addEventListener('dragstart', function(e) {
+                dragSourceEl = this;
+                this.classList.add('dragging');
+            });
+            el.addEventListener('dragend', function() {
+                this.classList.remove('dragging');
+                document.querySelectorAll('.draggable-item').forEach(item => item.classList.remove('drag-over'));
+            });
+            el.addEventListener('dragover', function(e) { e.preventDefault(); this.classList.add('drag-over'); });
+            el.addEventListener('dragleave', function() { this.classList.remove('drag-over'); });
+            el.addEventListener('drop', function(e) {
+                e.preventDefault();
+                if (dragSourceEl !== this) {
+                    const fromIndex = parseInt(dragSourceEl.getAttribute('data-index'));
+                    const toIndex = parseInt(this.getAttribute('data-index'));
+                    // Tráo đổi vị trí trong Array State
+                    const targetItem = surveyQuestions.splice(fromIndex, 1)[0];
+                    surveyQuestions.splice(toIndex, 0, targetItem);
+                    renderEditor();
+                }
+            });
+        }
+
+        // --- Khâu biên dịch & sinh JSON Schema khớp với SurveyJS ---
+        function getJsonOutput() {
+            const surveyJsSchema = {
+                title: document.getElementById('formTitle').value,
+                description: document.getElementById('formDesc').value,
+                pages: [{
+                    name: "page1",
+                    elements: surveyQuestions.map(q => {
+                        // Map chuẩn cấu trúc field sang cấu trúc SurveyJS quy định
+                        let element = { type: q.type, name: q.name, title: q.title, isRequired: q.isRequired };
+                        if (q.choices) element.choices = q.choices;
+                        return element;
+                    })
+                }]
+            };
+            document.getElementById('jsonTextarea').value = JSON.stringify(surveyJsSchema, null, 2);
+            toggleModal();
+        }
+        function toggleModal() { document.getElementById('jsonModal').classList.toggle('hidden'); }
+
+        // Khởi chạy ứng dụng ban đầu
+        renderEditor();
+    </script>
+</body>
+</html>

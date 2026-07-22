@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaaS Survey Editor + Conditional Logic</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .drag-over { border: 2px dashed #4f46e5; background-color: #f5f3ff; }
+        .draggable-item.dragging { opacity: 0.5; border: 2px dashed #6366f1; }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800 antialiased h-screen flex flex-col">
+
+    <!-- Topbar -->
+    <header class="bg-white border-b border-gray-200 px-6 py-3 flex justify-between items-center shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="bg-indigo-600 text-white p-2 rounded-lg"><i class="fa-solid fa-square-poll-vertical text-xl"></i></div>
+            <div>
+                <h1 class="text-md font-semibold text-gray-900">Form Editor + No-Code Logic</h1>
+                <p class="text-xs text-gray-500">Thiết kế vỏ & sinh cấu trúc Logic cho SurveyJS</p>
+            </div>
+        </div>
+        <button onclick="getJsonOutput()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 shadow-sm">
+            <i class="fa-solid fa-code"></i> Xuất JSON Schema
+        </button>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="flex flex-1 overflow-hidden">
+        
+        <!-- Sidebar Trái -->
+        <aside class="w-80 bg-white border-r border-gray-200 p-5 flex flex-col gap-4 overflow-y-auto shrink-0">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400">Thành phần câu hỏi</h2>
+            <div class="grid grid-cols-1 gap-2">
+                <button onclick="addQuestion('text')" class="w-full flex items-center gap-3 p-3 text-left border border-gray-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50/30 transition group">
+                    <div class="bg-gray-100 text-gray-600 p-2.5 rounded-lg group-hover:bg-indigo-100 group-hover:text-indigo-600"><i class="fa-solid fa-font w-4 text-center"></i></div>
+                    <div><div class="text-sm font-medium text-gray-800">Văn bản ngắn</div><div class="text-xs text-gray-400">Họ tên, Email...</div></div>
+                </button>
+                <button onclick="addQuestion('radiogroup')" class="w-full flex items-center gap-3 p-3 text-left border border-gray-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50/30 transition group">
+                    <div class="bg-gray-100 text-gray-600 p-2.5 rounded-lg group-hover:bg-indigo-100 group-hover:text-indigo-600"><i class="fa-solid fa-circle-dot w-4 text-center"></i></div>
+                    <div><div class="text-sm font-medium text-gray-800">Trắc nghiệm (Radio)</div><div class="text-xs text-gray-400">Chọn 1 đáp án duy nhất</div></div>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Canvas ở giữa -->
+        <main class="flex-1 bg-gray-50 p-8 overflow-y-auto flex justify-center items-start">
+            <div class="w-full max-w-2xl flex flex-col gap-4">
+                <!-- Header Form -->
+                <div class="bg-white rounded-2xl p-6 border-t-8 border-indigo-600 shadow-sm border border-gray-200">
+                    <input type="text" id="formTitle" value="Khảo sát Khách hàng" class="w-full text-2xl font-bold text-gray-900 border-b border-transparent focus:border-indigo-600 focus:outline-none pb-1 window-title">
+                </div>
+
+                <!-- Vùng chứa câu hỏi -->
+                <div id="questionsContainer" class="flex flex-col gap-4"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal JSON -->
+    <div id="jsonModal" class="fixed inset-0 bg-black/50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-2xl w-full max-w-xl shadow-xl flex flex-col overflow-hidden max-h-[80vh]">
+            <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                <h3 class="font-semibold text-gray-900">SurveyJS Schema (Gồm cả Logic)</h3>
+            </div>
+            <div class="p-6 overflow-y-auto flex-1">
+                <textarea id="jsonTextarea" readonly class="w-full h-80 font-mono text-xs p-4 bg-gray-900 text-green-400 rounded-xl"></textarea>
+            </div>
+            <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-2">
+                <button onclick="toggleModal()" class="bg-indigo-600 text-white text-xs font-semibold px-4 py-2 rounded-lg">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State chính. Câu hỏi q2 và q3 đang chứa logic phụ thuộc vào q1
+        let surveyQuestions = [
+            { id: "q1", type: "radiogroup", name: "know_coding", title: "Bạn có biết lập trình không?", isRequired: true, choices: ["Có chứ", "Không biết"] },
+            { id: "q2", type: "text", name: "fav_language", title: "Ngôn ngữ lập trình yêu thích của bạn?", isRequired: false, logicTarget: "q1", logicValue: "Có chứ" },
+            { id: "q3", type: "text", name: "reason_job", title: "Công việc hiện tại của bạn là gì?", isRequired: false, logicTarget: "q1", logicValue: "Không biết" }
+        ];
+
+        function renderEditor() {
+            const container = document.getElementById('questionsContainer');
+            container.innerHTML = '';
+
+            surveyQuestions.forEach((q, index) => {
+                const qBox = document.createElement('div');
+                qBox.className = "bg-white rounded-xl p-5 border border-gray-200 shadow-sm relative group draggable-item";
+                qBox.setAttribute('draggable', 'true');
+                qBox.setAttribute('data-index', index);
+                setupDragAndDropEvents(qBox);
+
+                // 1. Sinh HTML cho Choices (nếu có)
+                let choicesHtml = '';
+                if (q.type === 'radiogroup') {
+                    choicesHtml = `<div class="mt-3 flex flex-col gap-2 pl-6">`;
+                    q.choices.forEach((choice, cIndex) => {
+                        choicesHtml += `
+                            <div class="flex items-center gap-2">
+                                <i class="fa-regular fa-circle text-gray-300 text-sm"></i>
+                                <input type="text" value="${choice}" onchange="updateChoice(${index}, ${cIndex}, this.value)" class="text-sm border-b border-transparent focus:border-indigo-500 focus:outline-none w-1/2">
+                            </div>`;
+                    });
+                    choicesHtml += `</div>`;
+                }
+
+                // 2. Sinh HTML cho bộ cấu hình HubSpot Conditional Logic (Chỉ hiển thị với các câu hỏi nằm dưới câu hỏi số 1)
+                let logicHtml = '';
+                if (index > 0) {
+                    // Lấy danh sách các câu hỏi trắc nghiệm nằm trước nó để làm nguồn điều kiện
+                    const sourceQuestions = surveyQuestions.slice(0, index).filter(item => item.type === 'radiogroup');
+                    
+                    let targetOptions = `<option value="">-- Luôn luôn hiển thị --</option>`;
+                    let valueOptions = `<option value="">-- Chọn đáp án kích hoạt --</option>`;
+
+                    sourceQuestions.forEach(sq => {
+                        const selected = q.logicTarget === sq.id ? 'selected' : '';
+                        targetOptions += `<option value="${sq.id}" ${selected}>Câu ${surveyQuestions.indexOf(sq) + 1}: ${sq.title.substring(0,25)}...</option>`;
+                        
+                        if (q.logicTarget === sq.id) {
+                            sq.choices.forEach(ch => {
+                                const valSelected = q.logicValue === ch ? 'selected' : '';
+                                valueOptions += `<option value="${ch}" ${valSelected}>${ch}</option>`;
+                            });
+                        }
+                    });
+
+                    logicHtml = `
+                        <div class="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                            <span class="font-semibold text-indigo-600 flex items-center gap-1"><i class="fa-solid fa-code-branch"></i> Logic điều kiện:</span>
+                            <span>Chỉ hiện câu hỏi này nếu</span>
+                            <select onchange="updateLogicTarget(${index}, this.value)" class="bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-indigo-500">${targetOptions}</select>
+                            <span>bằng</span>
+                            <select onchange="updateLogicValue(${index}, this.value)" class="bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-indigo-500" ${!q.logicTarget ? 'disabled' : ''}>${valueOptions}</select>
+                        </div>`;
+                }
+
+                qBox.innerHTML = `
+                    <div class="absolute top-2 left-1/2 -translate-x-1/2 cursor-grab text-gray-300"><i class="fa-solid fa-ellipsis-vertical"></i><i class="fa-solid fa-ellipsis-vertical -ml-0.5"></i></div>
+                    <div class="flex items-start gap-3 mt-2">
+                        <span class="text-sm font-semibold text-gray-400 mt-1">Q${index + 1}.</span>
+                        <div class="flex-1">
+                            <input type="text" value="${q.title}" onchange="updateQuestionTitle(${index}, this.value)" class="w-full font-medium text-gray-900 border-b border-transparent focus:border-indigo-600 focus:outline-none pb-1">
+                        </div>
+                    </div>
+                    ${choicesHtml}
+                    ${logicHtml}
+                    <div class="mt-4 pt-2 border-t border-gray-100 flex justify-end items-center gap-4 text-gray-400">
+                        <label class="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer"><input type="checkbox" ${q.isRequired ? 'checked' : ''} onchange="toggleRequired(${index})"> Bắt buộc</label>
+                        <button onclick="deleteQuestion(${index})" class="text-gray-400 hover:text-red-500 text-sm"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>`;
+                container.appendChild(qBox);
+            });
+        }
+
+        // --- Hàm cập nhật Logic State ---
+        function updateLogicTarget(index, targetId) {
+            surveyQuestions[index].logicTarget = targetId || undefined;
+            surveyQuestions[index].logicValue = undefined; // Reset value khi đổi target câu hỏi
+            renderEditor();
+        }
+
+        document.addEventListener('change', function(e) {
+            // Đảm bảo cập nhật tên biến (name) đồng bộ theo Title câu hỏi để làm Key định danh chuẩn cho Logic
+            if(e.target.classList.contains('w-full') && e.target.placeholder === "Nhập câu hỏi...") {
+                let idx = e.target.closest('.draggable-item').getAttribute('data-index');
+                surveyQuestions[idx].name = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20);
+            }
+        });
+
+        function updateLogicValue(index, value) {
+            surveyQuestions[index].logicValue = value || undefined;
+        }
+
+        // --- Các hàm quản trị Core cơ bản ---
+        function addQuestion(type) {
+            const id = 'q_' + Math.random().toString(36).substring(2, 7);
+            const newQ = { id, type, name: id, title: "Câu hỏi mới chưa đặt tiêu đề", isRequired: false };
+            if (type === 'radiogroup') newQ.choices = ["Đáp án A", "Đáp án B"];
+            surveyQuestions.push(newQ); renderEditor();
+        }
+        function deleteQuestion(index) { surveyQuestions.splice(index, 1); renderEditor(); }
+        function updateQuestionTitle(index, val) { 
+            surveyQuestions[index].title = val;
+            // Tự động tạo 'name' sạch không dấu làm key định danh cho hệ thống logic toán học
+            surveyQuestions[index].name = val.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '_').replace(/__+/g, '_').substring(0, 25);
+        }
+        function toggleRequired(index) { surveyQuestions[index].isRequired = !surveyQuestions[index].isRequired; }
+        function updateChoice(qIndex, cIndex, val) { surveyQuestions[qIndex].choices[cIndex] = val; renderEditor(); }
+
+        // --- Drag & Drop Re-order ---
+        let dragSourceEl = null;
+        function setupDragAndDropEvents(el) {
+            el.addEventListener('dragstart', function() { dragSourceEl = this; this.classList.add('dragging'); });
+            el.addEventListener('dragend', function() { this.classList.remove('dragging'); document.querySelectorAll('.draggable-item').forEach(i => i.classList.remove('drag-over')); });
+            el.addEventListener('dragover', function(e) { e.preventDefault(); this.classList.add('drag-over'); });
+            el.addEventListener('dragleave', function() { this.classList.remove('drag-over'); });
+            el.addEventListener('drop', function(e) {
+                e.preventDefault();
+                if (dragSourceEl !== this) {
+                    const fromIndex = parseInt(dragSourceEl.getAttribute('data-index'));
+                    const toIndex = parseInt(this.getAttribute('data-index'));
+                    const targetItem = surveyQuestions.splice(fromIndex, 1)[0];
+                    surveyQuestions.splice(toIndex, 0, targetItem);
+                    renderEditor();
+                }
+            });
+        }
+
+        // --- Xuất Bản Bản Dịch Chuẩn SurveyJS Logic Engine ---
+        function getJsonOutput() {
+            const surveyJsSchema = {
+                title: document.getElementById('formTitle').value,
+                pages: [{
+                    name: "page1",
+                    elements: surveyQuestions.map(q => {
+                        let element = { type: q.type, name: q.name, title: q.title, isRequired: q.isRequired };
+                        if (q.choices) element.choices = q.choices;
+                        
+                        // ĐÂY LÀ CHÌA KHÓA: Chuyển đổi cấu hình UI sang cú pháp Engine logic "visibleIf" của SurveyJS
+                        if (q.logicTarget && q.logicValue) {
+                            const targetQuestion = surveyQuestions.find(item => item.id === q.logicTarget);
+                            if (targetQuestion) {
+                                // Trả về biểu thức chuẩn: {ten_bien} = 'Gia tri'
+                                element.visibleIf = `{${targetQuestion.name}} = '${q.logicValue}'`;
+                            }
+                        }
+                        return element;
+                    })
+                }]
+            };
+            document.getElementById('jsonTextarea').value = JSON.stringify(surveyJsSchema, null, 2);
+            toggleModal();
+        }
+        function toggleModal() { document.getElementById('jsonModal').classList.toggle('hidden'); }
+
+        renderEditor();
+    </script>
+</body>
+</html>

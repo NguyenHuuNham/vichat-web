@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HubSpot-Style Multi-Page Editor (Webhook Ready)</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .drag-over { border: 2px dashed #4f46e5; background-color: #f5f3ff; }
+        .draggable-item.dragging { opacity: 0.4; border: 2px dashed #6366f1; }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800 antialiased h-screen flex flex-col">
+
+    <!-- Topbar -->
+    <header class="bg-white border-b border-gray-200 px-6 py-3 flex justify-between items-center shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="bg-indigo-600 text-white p-2 rounded-lg"><i class="fa-solid fa-network-wired text-xl"></i></div>
+            <div>
+                <h1 class="text-md font-semibold text-gray-900">Multi-Page Editor (Webhook Map Key Enabled)</h1>
+                <p class="text-xs text-gray-500">Tự do cấu hình API Name phục vụ Webhook Sync & Tự động cập nhật đồ thị Logic</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            <button onclick="addPage()" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 shadow-sm">
+                <i class="fa-solid fa-folder-plus"></i> Thêm trang mới
+            </button>
+            <button onclick="getJsonOutput()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 shadow-sm">
+                <i class="fa-solid fa-code"></i> Xuất JSON Schema
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Sidebar Trái -->
+        <aside class="w-80 bg-white border-r border-gray-200 p-5 flex flex-col gap-4 overflow-y-auto shrink-0">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400">Thêm trường dữ liệu</h2>
+            <div class="grid grid-cols-1 gap-2">
+                <button onclick="addQuestion('text')" class="w-full flex items-center gap-3 p-3 text-left border border-gray-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50/30 transition group">
+                    <div class="bg-gray-100 text-gray-600 p-2.5 rounded-lg group-hover:bg-indigo-100 group-hover:text-indigo-600"><i class="fa-solid fa-font w-4 text-center"></i></div>
+                    <div><div class="text-sm font-medium text-gray-800">Văn bản ngắn (Text)</div></div>
+                </button>
+                <button onclick="addQuestion('radiogroup')" class="w-full flex items-center gap-3 p-3 text-left border border-gray-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50/30 transition group">
+                    <div class="bg-gray-100 text-gray-600 p-2.5 rounded-lg group-hover:bg-indigo-100 group-hover:text-indigo-600"><i class="fa-solid fa-circle-dot w-4 text-center"></i></div>
+                    <div><div class="text-sm font-medium text-gray-800">Trắc nghiệm (Radio)</div></div>
+                </button>
+                <button onclick="addQuestion('checkbox')" class="w-full flex items-center gap-3 p-3 text-left border border-gray-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50/30 transition group">
+                    <div class="bg-gray-100 text-gray-600 p-2.5 rounded-lg group-hover:bg-indigo-100 group-hover:text-indigo-600"><i class="fa-solid fa-square-check w-4 text-center"></i></div>
+                    <div><div class="text-sm font-medium text-gray-800">Chọn nhiều (Checkbox)</div></div>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Canvas -->
+        <main class="flex-1 bg-gray-50 p-8 overflow-y-auto flex justify-center items-start">
+            <div class="w-full max-w-2xl flex flex-col gap-6">
+                <div class="bg-white rounded-2xl p-6 border-t-8 border-indigo-600 shadow-sm border border-gray-200">
+                    <input type="text" id="formTitle" value="Khảo sát Đồng bộ Webhook Hệ thống" class="w-full text-2xl font-bold text-gray-900 focus:outline-none">
+                </div>
+                <div id="pagesWorkspace" class="flex flex-col gap-8"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal Output -->
+    <div id="jsonModal" class="fixed inset-0 bg-black/50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-2xl w-full max-w-2xl shadow-xl flex flex-col overflow-hidden max-h-[80vh]">
+            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+                <h3 class="font-semibold text-gray-900">SurveyJS Webhook-Ready JSON Output</h3>
+                <button onclick="toggleModal()" class="text-gray-400 hover:text-gray-600"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto flex-1">
+                <textarea id="jsonTextarea" readonly class="w-full h-96 font-mono text-xs p-4 bg-gray-900 text-green-400 rounded-xl focus:outline-none"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const operators = [
+            { value: "=", label: "Bằng (=)" },
+            { value: "!=", label: "Khác (!=)" },
+            { value: "contains", label: "Chứa lựa chọn" },
+            { value: "empty", label: "Chưa điền" },
+            { value: "notempty", label: "Đã điền" }
+        ];
+
+        let surveyData = [
+            {
+                name: "Trang 1: Lead Information",
+                elements: [
+                    { id: "q1", type: "radiogroup", name: "lead_source", title: "Bạn biết đến chúng tôi qua đâu?", isRequired: true, choices: ["Facebook", "Google", "Đối tác"] },
+                    { id: "q2", type: "text", name: "partner_name", title: "Tên đối tác giới thiệu?", isRequired: false }
+                ]
+            }
+        ];
+
+        function getAllQuestionsFlat() {
+            let flat = [];
+            surveyData.forEach(p => { flat = flat.concat(p.elements); });
+            return flat;
+        }
+
+        function renderEditor() {
+            const workspace = document.getElementById('pagesWorkspace');
+            workspace.innerHTML = '';
+
+            surveyData.forEach((page, pIndex) => {
+                const pageBlock = document.createElement('div');
+                pageBlock.className = "bg-gray-100/70 border border-gray-300 rounded-2xl p-4 flex flex-col gap-4 relative";
+                pageBlock.setAttribute('data-page-index', pIndex);
+
+                pageBlock.innerHTML = `
+                    <div class="flex justify-between items-center bg-white p-3 rounded-xl shadow-xs border border-gray-200">
+                        <div class="flex items-center gap-2 flex-1">
+                            <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md">PAGE ${pIndex + 1}</span>
+                            <input type="text" value="${page.name}" onchange="updatePageName(${pIndex}, this.value)" class="text-sm font-semibold text-gray-700 bg-transparent border-b border-transparent focus:border-indigo-500 focus:outline-none flex-1">
+                        </div>
+                        ${surveyData.length > 1 ? `<button onclick="deletePage(${pIndex})" class="text-gray-400 hover:text-red-500 text-xs transition ml-2"><i class="fa-solid fa-trash"></i> Xóa trang</button>` : ''}
+                    </div>
+                    <div class="questions-zone flex flex-col gap-4 min-h-[50px]" data-page="${pIndex}"></div>
+                `;
+                workspace.appendChild(pageBlock);
+
+                const qZone = pageBlock.querySelector('.questions-zone');
+                setupPageDropZone(qZone);
+
+                page.elements.forEach((q, qIndex) => {
+                    const qBox = document.createElement('div');
+                    qBox.className = "bg-white rounded-xl p-5 border border-gray-200 shadow-sm relative draggable-item";
+                    qBox.setAttribute('draggable', 'true');
+                    qBox.setAttribute('data-page', pIndex);
+                    qBox.setAttribute('data-qindex', qIndex);
+                    setupDragAndDropEvents(qBox);
+
+                    let choicesHtml = '';
+                    if (['radiogroup', 'checkbox'].includes(q.type)) {
+                        choicesHtml = `<div class="mt-3 flex flex-col gap-2 pl-6">`;
+                        q.choices.forEach((choice, cIndex) => {
+                            const icon = q.type === 'radiogroup' ? 'fa-regular fa-circle' : 'fa-regular fa-square';
+                            choicesHtml += `
+                                <div class="flex items-center gap-2 group/choice">
+                                    <i class="${icon} text-gray-300 text-sm"></i>
+                                    <input type="text" value="${choice}" onchange="updateChoice(${pIndex}, ${qIndex}, ${cIndex}, this.value)" class="text-sm border-b border-transparent focus:border-indigo-500 focus:outline-none w-1/2">
+                                    <button onclick="deleteChoice(${pIndex}, ${qIndex}, ${cIndex})" class="text-gray-300 hover:text-red-500 opacity-0 group-hover/choice:opacity-100 text-xs transition"><i class="fa-solid fa-trash-can"></i></button>
+                                </div>`;
+                        });
+                        choicesHtml += `<button onclick="addChoice(${pIndex}, ${qIndex})" class="text-xs text-indigo-600 font-medium mt-1"><i class="fa-solid fa-plus"></i> Thêm tùy chọn</button></div>`;
+                    }
+
+                    // Render Logic Panel
+                    let logicHtml = '';
+                    const allFlatQuestions = getAllQuestionsFlat();
+                    const currentFlatIdx = allFlatQuestions.findIndex(item => item.id === q.id);
+                    const prevQuestions = allFlatQuestions.slice(0, currentFlatIdx);
+
+                    if (currentFlatIdx > 0) {
+                        if (!q.conditions) q.conditions = [];
+                        let conditionRowsHtml = '';
+
+                        q.conditions.forEach((cond, condIdx) => {
+                            const selectedTarget = prevQuestions.find(item => item.id === cond.targetId);
+                            if (selectedTarget && selectedTarget.type === 'checkbox' && cond.operator !== 'empty' && cond.operator !== 'notempty') {
+                                cond.operator = 'contains';
+                            }
+
+                            let targetOptions = `<option value="">-- Chọn câu hỏi nguồn --</option>`;
+                            prevQuestions.forEach(pq => {
+                                // Hiển thị kèm theo API Field Name trong ngoặc vuông để dễ nhận diện khi làm logic
+                                targetOptions += `<option value="${pq.id}" ${cond.targetId === pq.id ? 'selected' : ''}>[${pq.name}] ${pq.title.substring(0,18)}...</option>`;
+                            });
+
+                            let operatorOptions = '';
+                            operators.forEach(op => {
+                                if (selectedTarget && selectedTarget.type === 'checkbox' && ['=', '!='].includes(op.value)) return;
+                                operatorOptions += `<option value="${op.value}" ${cond.operator === op.value ? 'selected' : ''}>${op.label}</option>`;
+                            });
+
+                            let valueInputHtml = '';
+                            if (['empty', 'notempty'].includes(cond.operator)) {
+                                valueInputHtml = `<input type="text" disabled value="N/A" class="bg-gray-100 text-gray-400 border border-gray-200 rounded px-2 py-1 w-32 text-center">`;
+                            } else if (selectedTarget && ['radiogroup', 'checkbox'].includes(selectedTarget.type)) {
+                                valueInputHtml = `<select onchange="updateConditionField(${pIndex}, ${qIndex}, ${condIdx}, 'value', this.value)" class="bg-white border border-gray-300 rounded px-2 py-1 w-36 focus:outline-none text-xs">`;
+                                valueInputHtml += `<option value="">-- Chọn --</option>`;
+                                selectedTarget.choices.forEach(ch => {
+                                    valueInputHtml += `<option value="${ch}" ${cond.value === ch ? 'selected' : ''}>${ch}</option>`;
+                                });
+                                valueInputHtml += `</select>`;
+                            } else {
+                                valueInputHtml = `<input type="text" value="${cond.value || ''}" placeholder="Giá trị..." onchange="updateConditionField(${pIndex}, ${qIndex}, ${condIdx}, 'value', this.value)" class="bg-white border border-gray-300 rounded px-2 py-1 w-36 text-xs focus:outline-none focus:border-indigo-500">`;
+                            }
+
+                            conditionRowsHtml += `
+                                <div class="flex items-center gap-2 mt-2 bg-white p-2 rounded-lg border border-gray-100 shadow-3xs">
+                                    <select onchange="updateConditionField(${pIndex}, ${qIndex}, ${condIdx}, 'targetId', this.value)" class="bg-white border border-gray-300 rounded px-2 py-1 max-w-[170px] focus:outline-none text-xs">${targetOptions}</select>
+                                    <select onchange="updateConditionField(${pIndex}, ${qIndex}, ${condIdx}, 'operator', this.value)" class="bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none text-xs">${operatorOptions}</select>
+                                    ${valueInputHtml}
+                                    <button onclick="removeCondition(${pIndex}, ${qIndex}, ${condIdx})" class="text-gray-400 hover:text-red-500 p-1"><i class="fa-solid fa-circle-minus"></i></button>
+                                </div>`;
+                        });
+
+                        logicHtml = `
+                            <div class="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                                <div class="flex justify-between items-center border-b border-slate-200 pb-2 mb-2">
+                                    <span class="font-bold text-indigo-600 flex items-center gap-1.5"><i class="fa-solid fa-code-branch"></i> Logic hiển thị nâng cao</span>
+                                    <button onclick="addCondition(${pIndex}, ${qIndex})" class="bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-600 px-2 py-1 rounded font-medium transition flex items-center gap-1"><i class="fa-solid fa-plus text-[10px]"></i> Thêm điều kiện</button>
+                                </div>
+                                ${q.conditions.length > 0 ? `
+                                    <div class="flex items-center gap-2 mb-2 font-medium text-gray-700">
+                                        <span>Khớp lệnh:</span>
+                                        <select onchange="updateLogicOperator(${pIndex}, ${qIndex}, this.value)" class="bg-white border border-gray-300 rounded px-1.5 py-0.5 focus:outline-none">
+                                            <option value="AND" ${q.logicOperator === 'AND'?'selected':''}>Thỏa mãn TẤT CẢ (AND)</option>
+                                            <option value="OR" ${q.logicOperator === 'OR'?'selected':''}>Chỉ cần MỘT điều kiện đúng (OR)</option>
+                                        </select>
+                                    </div>
+                                    <div class="flex flex-col gap-1">${conditionRowsHtml}</div>
+                                ` : `<p class="text-gray-400 italic">Mặc định câu hỏi này luôn hiển thị.</p>`}
+                            </div>`;
+                    }
+
+                    // GIAO DIỆN MỚI: Tách biệt dòng tiêu đề và input cấu hình API Name phục vụ Webhook
+                    qBox.innerHTML = `
+                        <div class="absolute top-2 left-1/2 -translate-x-1/2 cursor-grab text-gray-300"><i class="fa-solid fa-ellipsis-vertical"></i><i class="fa-solid fa-ellipsis-vertical -ml-0.5"></i></div>
+                        <div class="flex flex-col gap-2 mt-2">
+                            <!-- Hàng 1: Ô cấu hình API NAME (Key phục vụ webhook) -->
+                            <div class="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 self-start">
+                                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1"><i class="fa-solid fa-key"></i> API Name:</span>
+                                <input type="text" value="${q.name}" onchange="updateFieldName(${pIndex}, ${qIndex}, this.value)" placeholder="e.g. email_address" class="text-xs font-mono font-bold text-indigo-600 bg-transparent border-b border-transparent focus:border-indigo-500 focus:outline-none w-40">
+                            </div>
+
+                            <!-- Hàng 2: Tiêu đề hiển thị cho Client -->
+                            <div class="flex items-start gap-3">
+                                <span class="text-sm font-semibold text-gray-400 mt-1">Q${allFlatQuestions.indexOf(q) + 1}.</span>
+                                <div class="flex-1">
+                                    <input type="text" value="${q.title}" onchange="updateQuestionTitle(${pIndex}, ${qIndex}, this.value)" class="w-full font-medium text-gray-900 border-b border-transparent focus:border-indigo-600 focus:outline-none pb-1" placeholder="Nhập câu hỏi...">
+                                </div>
+                                <span class="text-[9px] bg-indigo-50 font-mono font-bold text-indigo-600 px-2 py-0.5 rounded border border-indigo-100 self-center">${q.type.toUpperCase()}</span>
+                            </div>
+                        </div>
+                        ${choicesHtml}
+                        ${logicHtml}
+                        <div class="mt-4 pt-2 border-t border-gray-100 flex justify-end items-center gap-4 text-gray-400">
+                            <label class="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer"><input type="checkbox" ${q.isRequired ? 'checked' : ''} onchange="toggleRequired(${pIndex}, ${qIndex})"> Bắt buộc</label>
+                            <button onclick="deleteQuestion(${pIndex}, ${qIndex})" class="text-gray-400 hover:text-red-500 text-sm transition"><i class="fa-solid fa-trash-can"></i></button>
+                        </div>`;
+                    qZone.appendChild(qBox);
+                });
+            });
+        }
+
+        // --- CHÌA KHÓA: ĐỔI API FIELD NAME VÀ KHÔNG LÀM HỎNG LOGIC CON ---
+        function updateFieldName(pIndex, qIndex, newVal) {
+            // Chuyển đổi ký tự lạ thành định dạng slug_snake_case chuẩn API
+            let safeName = newVal.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '_').replace(/__+/g, '_');
+            if(!safeName) safeName = 'field_' + Math.random().toString(36).substring(2, 5);
+
+            surveyData[pIndex].elements[qIndex].name = safeName;
+            // Chỉ cần render lại giao diện, bộ máy `getJsonOutput()` dựa vào ID cố định nên chuỗi visibleIf xuất ra cuối cùng sẽ luôn khớp 100% với tên mới.
+            renderEditor();
+        }
+
+        // --- Các hàm Core State khác ---
+        function addPage() { surveyData.push({ name: `Trang ${surveyData.length + 1}`, elements: [] }); renderEditor(); }
+        function deletePage(pIndex) {
+            const elements = surveyData[pIndex].elements;
+            if (pIndex > 0) surveyData[pIndex - 1].elements = surveyData[pIndex - 1].elements.concat(elements);
+            else if (surveyData[1]) surveyData[1].elements = elements.concat(surveyData[1].elements);
+            surveyData.splice(pIndex, 1); renderEditor();
+        }
+        function updatePageName(pIndex, val) { surveyData[pIndex].name = val; }
+
+        function addQuestion(type) {
+            const id = 'q_' + Math.random().toString(36).substring(2, 7);
+            // Default sinh ra key tạm giống ID, sau đó user tự gõ ghi đè lên tùy thích
+            const newQ = { id, type, name: id, title: "Câu hỏi chưa đặt tiêu đề", isRequired: false, conditions: [] };
+            if (['radiogroup', 'checkbox'].includes(type)) newQ.choices = ["Lựa chọn A", "Lựa chọn B"];
+            surveyData[surveyData.length - 1].elements.push(newQ);
+            renderEditor();
+        }
+
+        function deleteQuestion(pIndex, qIndex) {
+            const deletedId = surveyData[pIndex].elements[qIndex].id;
+            surveyData[pIndex].elements.splice(qIndex, 1);
+            surveyData.forEach(p => {
+                p.elements.forEach(q => {
+                    if (q.conditions) q.conditions = q.conditions.filter(cond => cond.targetId !== deletedId);
+                });
+            });
+            renderEditor();
+        }
+
+        function updateQuestionTitle(pIndex, qIndex, val) { surveyData[pIndex].elements[qIndex].title = val; }
+        function addChoice(pIndex, qIndex) { surveyData[pIndex].elements[qIndex].choices.push("Tùy chọn mới"); renderEditor(); }
+        function deleteChoice(pIndex, qIndex, cIndex) { surveyData[pIndex].elements[qIndex].choices.splice(cIndex, 1); renderEditor(); }
+        function updateChoice(pIndex, qIndex, cIndex, val) { surveyData[pIndex].elements[qIndex].choices[cIndex] = val; }
+        function toggleRequired(pIndex, qIndex) { surveyData[pIndex].elements[qIndex].isRequired = !surveyData[pIndex].elements[qIndex].isRequired; }
+
+        function addCondition(pIndex, qIndex) { surveyData[pIndex].elements[qIndex].conditions.push({ targetId: "", operator: "=", value: "" }); renderEditor(); }
+        function removeCondition(pIndex, qIndex, condIdx) { surveyData[pIndex].elements[qIndex].conditions.splice(condIdx, 1); renderEditor(); }
+        function updateConditionField(pIndex, qIndex, condIdx, field, val) {
+            surveyData[pIndex].elements[qIndex].conditions[condIdx][field] = val;
+            if (field === 'targetId' || field === 'operator') surveyData[pIndex].elements[qIndex].conditions[condIdx].value = "";
+            renderEditor();
+        }
+        function updateLogicOperator(pIndex, qIndex, op) { surveyData[pIndex].elements[qIndex].logicOperator = op; }
+
+        // --- Cross-Page Drag & Drop ---
+        let dragSourceEl = null;
+        function setupDragAndDropEvents(el) {
+            el.addEventListener('dragstart', function(e) { dragSourceEl = this; this.classList.add('dragging'); e.dataTransfer.setData('text/plain', ''); });
+            el.addEventListener('dragend', function() { this.classList.remove('dragging'); document.querySelectorAll('.questions-zone').forEach(z => z.classList.remove('drag-over')); });
+        }
+        function setupPageDropZone(zone) {
+            zone.addEventListener('dragover', function(e) { e.preventDefault(); this.classList.add('drag-over'); });
+            zone.addEventListener('dragleave', function() { this.classList.remove('drag-over'); });
+            zone.addEventListener('drop', function(e) {
+                e.preventDefault(); this.classList.remove('drag-over'); if (!dragSourceEl) return;
+                const fromPageIdx = parseInt(dragSourceEl.getAttribute('data-page'));
+                const fromQIdx = parseInt(dragSourceEl.getAttribute('data-qindex'));
+                const toPageIdx = parseInt(this.getAttribute('data-page'));
+                const item = surveyData[fromPageIdx].elements.splice(fromQIdx, 1)[0];
+                surveyData[toPageIdx].elements.push(item);
+                validateCrossPageLogic(); renderEditor();
+            });
+        }
+        function validateCrossPageLogic() {
+            const allFlat = getAllQuestionsFlat();
+            surveyData.forEach(p => {
+                p.elements.forEach(q => {
+                    if (q.conditions && q.conditions.length > 0) {
+                        const currentGlobalIdx = allFlat.indexOf(q);
+                        q.conditions = q.conditions.filter(cond => {
+                            const targetQ = allFlat.find(item => item.id === cond.targetId);
+                            if (!targetQ) return false;
+                            return allFlat.indexOf(targetQ) < currentGlobalIdx;
+                        });
+                    }
+                });
+            });
+        }
+
+        // --- ENGINE BIÊN DỊCH JSON (DÙNG NAME MỚI NHẤT) ---
+        function getJsonOutput() {
+            const allFlatQuestions = getAllQuestionsFlat();
+            const surveyJsSchema = {
+                title: document.getElementById('formTitle').value,
+                pages: surveyData.map((page, pIdx) => {
+                    return {
+                        name: `page_${pIdx + 1}`,
+                        title: page.name,
+                        elements: page.elements.map(q => {
+                            let element = { type: q.type, name: q.name, title: q.title, isRequired: q.isRequired };
+                            if (q.choices) element.choices = q.choices;
+                            
+                            if (q.conditions && q.conditions.length > 0) {
+                                let expressions = [];
+                                q.conditions.forEach(cond => {
+                                    const targetQ = allFlatQuestions.find(item => item.id === cond.targetId);
+                                    if (targetQ) {
+                                        // Sử dụng targetQ.name (đây chính là API name người dùng tự đặt) để build biểu thức logic
+                                        if (cond.operator === 'empty') expressions.push(`{${targetQ.name}} empty`);
+                                        else if (cond.operator === 'notempty') expressions.push(`{${targetQ.name}} notempty`);
+                                        else if (cond.operator === 'contains') expressions.push(`{${targetQ.name}} contains '${cond.value}'`);
+                                        else expressions.push(`{${targetQ.name}} ${cond.operator} '${cond.value}'`);
+                                    }
+                                });
+                                if (expressions.length > 0) {
+                                    element.visibleIf = expressions.join(` ${q.logicOperator || 'AND'} `);
+                                }
+                            }
+                            return element;
+                        })
+                    };
+                })
+            };
+            document.getElementById('jsonTextarea').value = JSON.stringify(surveyJsSchema, null, 2);
+            toggleModal();
+        }
+        function toggleModal() { document.getElementById('jsonModal').classList.toggle('hidden'); }
+
+        renderEditor();
+    </script>
+</body>
+</html>

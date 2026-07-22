@@ -1,0 +1,271 @@
+const env = import.meta.env || {};
+const apiBase = String(env.VITE_CHAT_MANAGEMENT_API_URL || '').replace(/\/$/, '');
+const remoteAuth = String(env.VITE_CHAT_MANAGEMENT_REMOTE_AUTH || '').toLowerCase() === 'true';
+const tenantId = env.VITE_CHAT_TENANT_ID || 'song-hong';
+const topicBindingsKey = 'vichat.management.topic-bindings.v1';
+
+let activeSession = null;
+
+function readStorage(key, fallback) {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    return JSON.parse(window.localStorage.getItem(key) || JSON.stringify(fallback));
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStorage(key, value) {
+  if (typeof window !== 'undefined') window.localStorage.setItem(key, JSON.stringify(value));
+  return value;
+}
+
+function accountTenant(account) {
+  return account?.tenantId || account?.tenant_id || tenantId;
+}
+
+function publicAccount(account) {
+  if (!account) return null;
+  const { password: _password, ...safe } = account;
+  return {
+    ...safe,
+    id: safe.id || safe.user_id || safe.uid,
+    uid: safe.uid || safe.tinode_uid || safe.tinodeUid,
+    username: safe.username || safe.user_name || safe.login,
+    name: safe.name || safe.full_name || safe.display_name || safe.username || safe.user_name,
+    avatar: safe.avatar || safe.photo || '',
+    tenantId: accountTenant(safe),
+    active: safe.active ?? safe.is_active ?? true,
+  };
+}
+
+function responseItems(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.objects)) return payload.objects;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+}
+
+async function apiRequest(path, options = {}) {
+  const response = await fetch(`${apiBase}${path}`, {
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload?.error_message || payload?.message || `Management service HTTP ${response.status}`);
+    error.code = payload?.error_code || `HTTP_${response.status}`;
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
+}
+
+function normalizeConversation(record) {
+  const properties = record?.properties || {};
+  const tinodeTopic = record?.tinodeTopic || record?.tinode_topic || record?.channel_thread_id || '';
+  const managementId = String(record?.managementId || record?.id || record?.conversation_no || tinodeTopic);
+  return {
+    id: managementId,
+    managementId,
+    tinodeTopic,
+    name: record?.name || record?.subject || properties.name || 'Cuoc tro chuyen',
+    isGroup: record?.isGroup ?? properties.isGroup ?? properties.is_group ?? false,
+    avatarHtml: record?.avatarHtml,
+    avatarUrl: record?.avatarUrl || record?.avatar || properties.avatar || '',
+    avatarClass: record?.avatarClass || (record?.isGroup ? 'group' : ''),
+    membersCount: record?.membersCount || properties.membersCount || '',
+    description: record?.description || properties.description || '',
+    admin: record?.admin || properties.admin || '',
+    adminId: record?.adminId || properties.adminId || '',
+    members: record?.members || properties.members || [],
+    participantIds: record?.participantIds || properties.participantIds || [],
+    messages: record?.messages || [],
+    lastMsg: record?.lastMsg || properties.lastMessage || '',
+    time: record?.time || properties.time || '',
+    updatedAt: record?.updatedAt || record?.last_message_at || properties.updatedAt,
+    badge: record?.badge || properties.unreadCount || 0,
+  };
+}
+
+function bindingKey(userId, conversationId) {
+  return `${tenantId}:${userId || 'anonymous'}:${conversationId}`;
+}
+
+export const chatManagementService = {
+  get tenantId() {
+    return tenantId;
+  },
+
+  get remote() {
+    return Boolean(apiBase && remoteAuth);
+  },
+
+  get chatEngine() {
+    return env.VITE_TINODE_HOST ? 'tinode' : 'demo';
+  },
+
+  async login({ identity, password }) {
+    const normalizedIdentity = String(identity || '').trim();
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const payload = await apiRequest('/login', {
+      method: 'POST',
+      body: JSON.stringify({ identity: normalizedIdentity, password, tenant_id: tenantId }),
+    });
+    const account = publicAccount(payload.user || payload.current_user || payload);
+    activeSession = {
+      user: account,
+      tinodeAuth: payload.tinode || payload.tinode_auth || {
+        username: account?.username || normalizedIdentity,
+        token: payload.tinode_token,
+      },
+    };
+    return account;
+  },
+
+  async logout() {
+    if (apiBase && remoteAuth) {
+      await apiRequest('/api/v1/auth/logout', { method: 'POST' }).catch(() => {});
+    }
+    activeSession = null;
+  },
+
+  async changePassword(currentPassword, newPassword) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    return apiRequest('/api/v1/auth/password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    });
+  },
+
+  getTinodeAuth() {
+    return activeSession?.tinodeAuth || null;
+  },
+
+  async listUsers() {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const payload = await apiRequest('/api/v1/chat/users?results_per_page=1000');
+    return responseItems(payload).map(publicAccount).filter(Boolean);
+  },
+
+  async searchUsers(query, { excludeUserId = '' } = {}) {
+    const value = String(query || '').trim();
+    if (!value) return [];
+    if (apiBase && remoteAuth) {
+      const params = new URLSearchParams({ q: value, results_per_page: '50' });
+      if (excludeUserId) params.set('exclude_user_id', excludeUserId);
+      const payload = await apiRequest(`/api/v1/chat/users?${params}`);
+      return responseItems(payload).map(publicAccount).filter(account => account?.id !== excludeUserId);
+    }
+    throw new Error('Management service authentication is not configured.');
+  },
+
+  async sendFriendRequest({ sender, recipient, note = '' }) {
+    if (!sender?.id || !recipient?.id) throw new Error('Thong tin loi moi ket ban khong hop le.');
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    return apiRequest('/api/v1/friend-request', {
+      method: 'POST',
+      body: JSON.stringify({
+        recipient_id: recipient.id,
+        note: String(note || '').trim().slice(0, 500),
+      }),
+    });
+  },
+
+  async respondFriendRequest({ request, responder, accepted }) {
+    if (!request?.requestId || !responder?.id) throw new Error('Loi moi ket ban khong hop le.');
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    return apiRequest(`/api/v1/friend-request/${encodeURIComponent(request.requestId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ accepted: Boolean(accepted) }),
+    });
+  },
+
+  async listFriendRequests(userId) {
+    if (!userId) return [];
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const payload = await apiRequest('/api/v1/friend-request');
+    return responseItems(payload);
+  },
+
+  async listConversations() {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const payload = await apiRequest('/api/v1/conversation');
+    const conversations = responseItems(payload).map(normalizeConversation);
+    return {
+      conversations,
+      groups: [],
+      directs: [],
+    };
+  },
+
+  async createConversation({ subject, isGroup = false, participantIds = [], tinodeTopic = '', properties = {} }) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const payload = await apiRequest('/api/v1/conversation', {
+      method: 'POST',
+      body: JSON.stringify({
+        subject,
+        is_group: isGroup,
+        participant_ids: participantIds,
+        tinode_topic: tinodeTopic,
+        properties,
+      }),
+    });
+    return normalizeConversation(payload);
+  },
+
+  getTinodeTopic(userId, conversationId) {
+    const bindings = readStorage(topicBindingsKey, {});
+    return bindings[bindingKey(userId, conversationId)] || '';
+  },
+
+  bindTinodeTopic(userId, conversationId, topicName) {
+    if (!conversationId || !topicName) return topicName;
+    if (apiBase && remoteAuth && /^[0-9a-f-]{36}$/i.test(String(conversationId))) {
+      apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/tinode-topic`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          tinode_topic: topicName,
+        }),
+      }).catch(() => {});
+    }
+    const bindings = readStorage(topicBindingsKey, {});
+    bindings[bindingKey(userId, conversationId)] = topicName;
+    writeStorage(topicBindingsKey, bindings);
+    return topicName;
+  },
+};
+
+function toLoginSession(account) {
+  const auth = chatManagementService.getTinodeAuth();
+  return {
+    uid: account.id,
+    login: account.username,
+    connection: 'tinode',
+    role: account.role,
+    email: account.email,
+    department: account.department,
+    tenantId: account.tenantId || account.tenant_id,
+    tinodeUid: account.tinodeUid,
+    tinodeAuth: auth,
+    profile: {
+      name: account.name,
+      title: account.title || '',
+      avatar: account.avatar || '',
+    },
+  };
+}
+
+export const managementAuthClient = {
+  enabled: Boolean(apiBase && remoteAuth),
+
+  async login({ username, password }) {
+    return toLoginSession(await chatManagementService.login({ identity: username, password }));
+  },
+};

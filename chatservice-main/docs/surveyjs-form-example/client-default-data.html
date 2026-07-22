@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Survey - Default Data Pack</title>
+
+    <link href="https://unpkg.com/survey-core/defaultV2.min.css" type="text/css" rel="stylesheet">
+    <script src="https://unpkg.com/survey-core/survey.core.min.js"></script>
+    <script src="https://unpkg.com/survey-js-ui/survey-js-ui.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        .sd-btn--action { background-color: #4f46e5 !important; }
+        .sd-btn--action:hover { background-color: #4338ca !important; }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800 antialiased min-h-screen flex flex-col justify-center items-center p-4">
+
+    <div class="w-full max-w-3xl bg-white rounded-2xl shadow-md border border-gray-200 p-2 md:p-6">
+        <div id="surveyContainer"></div>
+    </div>
+
+    <script>
+        // 1. DỮ LIỆU NGUỒN ĐIỀN SẴN (Giả lập lấy từ API / DB của bạn lên)
+        // Khi form load, các trường có name trùng với key trong object này sẽ tự động điền giá trị
+        const sourceData = {
+            "user_role": "Designer",              // Điền sẵn Radio là 'Designer' -> Kích hoạt ngay visibleIf của câu tiếp theo
+            "skills": ["Figma", "Jira"],         // Điền sẵn mảng Checkbox (Chọn nhiều)
+            "page_1_": "abc"                     // Điền sẵn Text -> Kích hoạt logic hiển thị của Page 3
+        };
+
+        // 2. JSON SCHEMA (Cấu trúc Form)
+        const surveyJson = {
+            "title": "Khảo sát Đa giai đoạn Doanh nghiệp",
+            "pages": [
+                {
+                    "name": "page_1",
+                    "title": "Trang 1: Thông tin chung",
+                    "elements": [
+                        {
+                            "type": "radiogroup",
+                            "name": "user_role",
+                            "title": "Vai trò của bạn là gì?",
+                            "isRequired": true,
+                            "choices": ["Developer", "Manager", "Designer"],
+                            // CÁCH BỔ SUNG 2: Đặt defaultValue cứng ngay trong Schema nếu muốn
+                            "defaultValue": "Developer" // (Lưu ý: sourceData truyền bên ngoài sẽ có độ ưu tiên cao hơn và ghi đè cái này)
+                        },
+                        {
+                            "type": "checkbox",
+                            "name": "skills",
+                            "title": "Công cụ bạn thành thạo?",
+                            "isRequired": false,
+                            "choices": ["Figma", "VS Code", "Jira"]
+                        },
+                        {
+                            "type": "text",
+                            "name": "page_1_",
+                            "title": "Page 1 ",
+                            "isRequired": false,
+                            "visibleIf": "{user_role} = 'Designer'"
+                        }
+                    ]
+                },
+                {
+                    "name": "page_2",
+                    "title": "Trang 2: Đánh giá chuyên sâu",
+                    "elements": [
+                        {
+                            "type": "text",
+                            "name": "portfolio_url",
+                            "title": "Link Portfolio của bạn là gì?",
+                            "isRequired": false,
+                            "visibleIf": "{user_role} = 'Designer' AND {skills} contains 'Figma'"
+                        },
+                        {
+                            "type": "text",
+                            "name": "q_znbqv",
+                            "title": "Câu hỏi chưa đặt tiêu đề",
+                            "isRequired": false
+                        }
+                    ]
+                },
+                {
+                    "name": "page_3",
+                    "title": "Trang 3",
+                    "elements": [
+                        {
+                            "type": "text",
+                            "name": "q_xh95v",
+                            "title": "Câu hỏi chưa đặt tiêu đề",
+                            "isRequired": false,
+                            "visibleIf": "{page_1_} = 'abc'"
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // 3. Khởi tạo Engine
+        const survey = new Survey.Model(surveyJson);
+
+        // --- ĐÂY LÀ ĐOẠN ĐỔ DATA NGUỒN VÀO ENGINE ---
+        // Gán object dữ liệu cũ vào form. Engine sẽ tự động trigger và tính toán lại toàn bộ ma trận 
+        // điều kiện (visibleIf) dựa trên đống dữ liệu đầu vào này ngay khi render.
+        survey.data = sourceData; 
+
+        // 4. Cấu hình giao diện mẫu
+        survey.applyTheme({
+            "cssVariables": {
+                "--sjs-general-dim-color": "#f9fafb",
+                "--sjs-primary-backcolor": "#4f46e5",
+                "--sjs-primary-backcolor-hover": "#4338ca",
+                "--sjs-font-family": "ui-sans-serif, system-ui, sans-serif"
+            },
+            "themeName": "default",
+            "colorPalette": "light"
+        });
+
+        // 5. Sự kiện khi nhấn Hoàn thành (Submit)
+        survey.onComplete.add((sender, options) => {
+            console.log("=== DATA CHUẨN BỊ SUBMIT LÊN BACKEND ===");
+            const payload = sender.data;
+            console.log(JSON.stringify(payload, null, 2));
+            console.log("=========================================");
+        });
+
+        // 6. Render UI
+        survey.render("surveyContainer");
+    </script>
+</body>
+</html>

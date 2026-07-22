@@ -1,0 +1,27 @@
+[Unit]
+Description=DataRoom Job Queue Worker
+After=syslog.target network.target
+
+[Service]
+PIDFile=/var/run/dataroom-worker.pid
+Type=simple
+User=ubuntu
+Group=ubuntu
+RuntimeDirectory=UpgoWorkspace
+WorkingDirectory=/opt/deploy/UpgoWorkspace/repo
+EnvironmentFile=/opt/deploy/UpgoWorkspace/repo/env/devenv
+ExecStart=/opt/deploy/UpgoWorkspace/bin/python worker.py
+Restart=always
+PrivateTmp=true
+RestartSec=5
+StandardOutput=syslog
+StandardError=syslog
+
+[Install]
+WantedBy=multi-user.target
+
+# Place this into /etc/systemd/system/dataroom-worker.service
+# Then run:
+# sudo systemctl daemon-reload
+# sudo systemctl enable dataroom-worker
+# sudo systemctl start dataroom-worker

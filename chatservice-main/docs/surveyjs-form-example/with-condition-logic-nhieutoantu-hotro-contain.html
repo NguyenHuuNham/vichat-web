@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Survey Editor - Checkbox Logic Pack</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .drag-over { border: 2px dashed #4f46e5; background-color: #f5f3ff; }
+        .draggable-item.dragging { opacity: 0.5; border: 2px dashed #6366f1; }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800 antialiased h-screen flex flex-col">
+
+    <!-- Topbar -->
+    <header class="bg-white border-b border-gray-200 px-6 py-3 flex justify-between items-center shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="bg-indigo-600 text-white p-2 rounded-lg"><i class="fa-solid fa-square-check text-xl"></i></div>
+            <div>
+                <h1 class="text-md font-semibold text-gray-900">Form Editor - Full Logic Pack</h1>
+                <p class="text-xs text-gray-500">Hỗ trợ đầy đủ Checkbox, Trắc nghiệm, Text và mảng điều kiện</p>
+            </div>
+        </div>
+        <button onclick="getJsonOutput()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 shadow-sm">
+            <i class="fa-solid fa-code"></i> Xem JSON Schema
+        </button>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Sidebar Trái -->
+        <aside class="w-80 bg-white border-r border-gray-200 p-5 flex flex-col gap-4 overflow-y-auto shrink-0">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400">Thêm trường dữ liệu</h2>
+            <div class="grid grid-cols-1 gap-2">
+                <button onclick="addQuestion('text')" class="w-full flex items-center gap-3 p-3 text-left border border-gray-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50/30 transition group">
+                    <div class="bg-gray-100 text-gray-600 p-2.5 rounded-lg group-hover:bg-indigo-100 group-hover:text-indigo-600"><i class="fa-solid fa-font w-4 text-center"></i></div>
+                    <div><div class="text-sm font-medium text-gray-800">Văn bản ngắn (Text)</div></div>
+                </button>
+                <button onclick="addQuestion('radiogroup')" class="w-full flex items-center gap-3 p-3 text-left border border-gray-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50/30 transition group">
+                    <div class="bg-gray-100 text-gray-600 p-2.5 rounded-lg group-hover:bg-indigo-100 group-hover:text-indigo-600"><i class="fa-solid fa-circle-dot w-4 text-center"></i></div>
+                    <div><div class="text-sm font-medium text-gray-800">Trắc nghiệm (Radio)</div></div>
+                </button>
+                <!-- Thêm nút bấm tạo loại câu hỏi CHECKBOX -->
+                <button onclick="addQuestion('checkbox')" class="w-full flex items-center gap-3 p-3 text-left border border-gray-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50/30 transition group">
+                    <div class="bg-gray-100 text-gray-600 p-2.5 rounded-lg group-hover:bg-indigo-100 group-hover:text-indigo-600"><i class="fa-solid fa-square-check w-4 text-center"></i></div>
+                    <div><div class="text-sm font-medium text-gray-800">Chọn nhiều (Checkbox)</div></div>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Canvas -->
+        <main class="flex-1 bg-gray-50 p-8 overflow-y-auto flex justify-center items-start">
+            <div class="w-full max-w-2xl flex flex-col gap-4">
+                <div class="bg-white rounded-2xl p-6 border-t-8 border-indigo-600 shadow-sm border border-gray-200">
+                    <input type="text" id="formTitle" value="Khảo sát Xu hướng Công nghệ" class="w-full text-2xl font-bold text-gray-900 focus:outline-none">
+                </div>
+                <div id="questionsContainer" class="flex flex-col gap-4"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal Output -->
+    <div id="jsonModal" class="fixed inset-0 bg-black/50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-2xl w-full max-w-2xl shadow-xl flex flex-col overflow-hidden max-h-[80vh]">
+            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+                <h3 class="font-semibold text-gray-900">SurveyJS Expression Engine Output</h3>
+                <button onclick="toggleModal()" class="text-gray-400 hover:text-gray-600"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto flex-1">
+                <textarea id="jsonTextarea" readonly class="w-full h-96 font-mono text-xs p-4 bg-gray-900 text-green-400 rounded-xl focus:outline-none"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Danh sách toán tử tiêu chuẩn
+        const operators = [
+            { value: "=", label: "Bằng (=)" },
+            { value: "!=", label: "Khác (!=)" },
+            { value: "contains", label: "Chứa lựa chọn (contains)" },
+            { value: "empty", label: "Chưa điền (Trống)" },
+            { value: "notempty", label: "Đã điền (Không trống)" }
+        ];
+
+        // Mảng dữ liệu giả lập cấu hình sẵn câu hỏi Checkbox (q1) để test
+        let surveyQuestions = [
+            { id: "q1", type: "checkbox", name: "tech_stack", title: "Hệ thống của bạn đang sử dụng những công nghệ nào?", isRequired: true, choices: ["CRM", "POS", "Chatbot", "Minigame"] },
+            { 
+                id: "q2", 
+                type: "text", 
+                name: "pos_brand", 
+                title: "Thương hiệu thiết bị POS bạn đang dùng là gì?", 
+                isRequired: false,
+                logicOperator: "AND",
+                conditions: [
+                    { targetId: "q1", operator: "contains", value: "POS" } // Nếu mảng q1 chứa phần tử 'POS'
+                ]
+            }
+        ];
+
+        function renderEditor() {
+            const container = document.getElementById('questionsContainer');
+            container.innerHTML = '';
+
+            surveyQuestions.forEach((q, index) => {
+                const qBox = document.createElement('div');
+                qBox.className = "bg-white rounded-xl p-5 border border-gray-200 shadow-sm relative group draggable-item";
+                qBox.setAttribute('draggable', 'true');
+                qBox.setAttribute('data-index', index);
+                setupDragAndDropEvents(qBox);
+
+                // Render giao diện danh sách các Option (Dành cho cả radiogroup và checkbox)
+                let choicesHtml = '';
+                if (['radiogroup', 'checkbox'].includes(q.type)) {
+                    choicesHtml = `<div class="mt-3 flex flex-col gap-2 pl-6">`;
+                    q.choices.forEach((choice, cIndex) => {
+                        const iconClass = q.type === 'radiogroup' ? 'fa-regular fa-circle' : 'fa-regular fa-square';
+                        choicesHtml += `
+                            <div class="flex items-center gap-2 group/choice">
+                                <i class="${iconClass} text-gray-300 text-sm"></i>
+                                <input type="text" value="${choice}" onchange="updateChoice(${index}, ${cIndex}, this.value)" class="text-sm border-b border-transparent focus:border-indigo-500 focus:outline-none w-1/2">
+                                <button onclick="deleteChoice(${index}, ${cIndex})" class="text-gray-300 hover:text-red-500 transition opacity-0 group-hover/choice:opacity-100 text-xs"><i class="fa-solid fa-trash-can"></i></button>
+                            </div>`;
+                    });
+                    choicesHtml += `<button onclick="addChoice(${index})" class="text-xs text-indigo-600 font-medium mt-1"><i class="fa-solid fa-plus"></i> Thêm tùy chọn</button></div>`;
+                }
+
+                // Render Panel thiết lập Logic điều kiện
+                let logicHtml = '';
+                if (index > 0) {
+                    const prevQuestions = surveyQuestions.slice(0, index);
+                    if (!q.conditions) q.conditions = [];
+
+                    let conditionRowsHtml = '';
+                    q.conditions.forEach((cond, condIdx) => {
+                        const selectedTarget = prevQuestions.find(item => item.id === cond.targetId);
+                        
+                        // ĐIỀU CHỈNH ĐẶC BIỆT: Nếu câu hỏi gốc là loại Checkbox, ta tự động ép toán tử thành 'contains' 
+                        if (selectedTarget && selectedTarget.type === 'checkbox' && cond.operator !== 'empty' && cond.operator !== 'notempty') {
+                            cond.operator = 'contains';
+                        }
+
+                        // Xây dựng Dropdown câu hỏi nguồn
+                        let targetOptions = `<option value="">-- Chọn câu hỏi --</option>`;
+                        prevQuestions.forEach(pq => {
+                            targetOptions += `<option value="${pq.id}" ${cond.targetId === pq.id ? 'selected' : ''}>Q${surveyQuestions.indexOf(pq)+1}: ${pq.title.substring(0,22)}...</option>`;
+                        });
+
+                        // Xây dựng Dropdown toán tử so sánh
+                        let operatorOptions = '';
+                        operators.forEach(op => {
+                            // Nếu câu hỏi nguồn là checkbox, ẩn các toán tử gây lỗi logic như "=", "!=" (chỉ giữ contains, empty, notempty)
+                            if (selectedTarget && selectedTarget.type === 'checkbox' && ['=', '!='].includes(op.value)) {
+                                return; 
+                            }
+                            operatorOptions += `<option value="${op.value}" ${cond.operator === op.value ? 'selected' : ''}>${op.label}</option>`;
+                        });
+
+                        // Xây dựng Vùng nhập/chọn giá trị đáp án kích hoạt
+                        let valueInputHtml = '';
+                        if (['empty', 'notempty'].includes(cond.operator)) {
+                            valueInputHtml = `<input type="text" disabled value="N/A" class="bg-gray-100 text-gray-400 border border-gray-200 rounded px-2 py-1 w-32 text-center">`;
+                        } else if (selectedTarget && ['radiogroup', 'checkbox'].includes(selectedTarget.type)) {
+                            valueInputHtml = `<select onchange="updateConditionField(${index}, ${condIdx}, 'value', this.value)" class="bg-white border border-gray-300 rounded px-2 py-1 w-36 focus:outline-none">`;
+                            valueInputHtml += `<option value="">-- Chọn --</option>`;
+                            selectedTarget.choices.forEach(ch => {
+                                valueInputHtml += `<option value="${ch}" ${cond.value === ch ? 'selected' : ''}>${ch}</option>`;
+                            });
+                            valueInputHtml += `</select>`;
+                        } else {
+                            valueInputHtml = `<input type="text" value="${cond.value || ''}" placeholder="Giá trị..." onchange="updateConditionField(${index}, ${condIdx}, 'value', this.value)" class="bg-white border border-gray-300 rounded px-2 py-1 w-36 focus:outline-none focus:border-indigo-500">`;
+                        }
+
+                        conditionRowsHtml += `
+                            <div class="flex items-center gap-2 mt-2 bg-white p-2 rounded-lg border border-gray-100 shadow-2xs">
+                                <select onchange="updateConditionField(${index}, ${condIdx}, 'targetId', this.value)" class="bg-white border border-gray-300 rounded px-2 py-1 max-w-[180px] focus:outline-none">${targetOptions}</select>
+                                <select onchange="updateConditionField(${index}, ${condIdx}, 'operator', this.value)" class="bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none">${operatorOptions}</select>
+                                ${valueInputHtml}
+                                <button onclick="removeCondition(${index}, ${condIdx})" class="text-gray-400 hover:text-red-500 p-1"><i class="fa-solid fa-circle-minus"></i></button>
+                            </div>`;
+                    });
+
+                    logicHtml = `
+                        <div class="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                            <div class="flex justify-between items-center border-b border-slate-200 pb-2 mb-2">
+                                <span class="font-bold text-indigo-600 flex items-center gap-1.5"><i class="fa-solid fa-code-branch"></i> Thiết lập hiển thị nâng cao</span>
+                                <button onclick="addCondition(${index})" class="bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-600 px-2 py-1 rounded font-medium transition flex items-center gap-1"><i class="fa-solid fa-plus text-[10px]"></i> Thêm điều kiện</button>
+                            </div>
+                            ${q.conditions.length > 0 ? `
+                                <div class="flex items-center gap-2 mb-2 font-medium text-gray-700">
+                                    <span>Khớp lệnh:</span>
+                                    <select onchange="updateLogicOperator(${index}, this.value)" class="bg-white border border-gray-300 rounded px-1.5 py-0.5 focus:outline-none">
+                                        <option value="AND" ${q.logicOperator === 'AND'?'selected':''}>Thỏa mãn TẤT CẢ (AND)</option>
+                                        <option value="OR" ${q.logicOperator === 'OR'?'selected':''}>Chỉ cần MỘT trong các điều kiện (OR)</option>
+                                    </select>
+                                </div>
+                                <div class="flex flex-col gap-1">${conditionRowsHtml}</div>
+                            ` : `<p class="text-gray-400 italic">Mặc định câu hỏi này luôn hiển thị.</p>`}
+                        </div>`;
+                }
+
+                qBox.innerHTML = `
+                    <div class="absolute top-2 left-1/2 -translate-x-1/2 cursor-grab text-gray-300"><i class="fa-solid fa-ellipsis-vertical"></i><i class="fa-solid fa-ellipsis-vertical -ml-0.5"></i></div>
+                    <div class="flex items-start gap-3 mt-2">
+                        <span class="text-sm font-semibold text-gray-400 mt-1">Q${index + 1}.</span>
+                        <div class="flex-1">
+                            <input type="text" value="${q.title}" onchange="updateQuestionTitle(${index}, this.value)" class="w-full font-medium text-gray-900 border-b border-transparent focus:border-indigo-600 focus:outline-none pb-1">
+                        </div>
+                        <span class="text-[10px] bg-slate-100 font-mono font-bold text-slate-500 px-2 py-0.5 rounded border border-slate-200">${q.type.toUpperCase()}</span>
+                    </div>
+                    ${choicesHtml}
+                    ${logicHtml}
+                    <div class="mt-4 pt-2 border-t border-gray-100 flex justify-end items-center gap-4 text-gray-400">
+                        <label class="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer"><input type="checkbox" ${q.isRequired ? 'checked' : ''} onchange="toggleRequired(${index})"> Bắt buộc</label>
+                        <button onclick="deleteQuestion(${index})" class="text-gray-400 hover:text-red-500 text-sm"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>`;
+                container.appendChild(qBox);
+            });
+        }
+
+        // --- Core Logic State ---
+        function addQuestion(type) {
+            const id = 'q_' + Math.random().toString(36).substring(2, 7);
+            const newQ = { id, type, name: id, title: "Câu hỏi chưa đặt tiêu đề", isRequired: false, conditions: [] };
+            if (['radiogroup', 'checkbox'].includes(type)) newQ.choices = ["Tùy chọn 1", "Tùy chọn 2"];
+            surveyQuestions.push(newQ); renderEditor();
+        }
+        function deleteQuestion(index) {
+            const deletedId = surveyQuestions[index].id;
+            surveyQuestions.splice(index, 1);
+            // Quy tắc tự dọn rác: Xóa bỏ điều kiện trỏ tới câu hỏi vừa biến mất
+            surveyQuestions.forEach(q => {
+                if (q.conditions) q.conditions = q.conditions.filter(cond => cond.targetId !== deletedId);
+            });
+            renderEditor();
+        }
+        function updateQuestionTitle(index, val) { 
+            surveyQuestions[index].title = val;
+            surveyQuestions[index].name = val.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '_').replace(/__+/g, '_').substring(0, 25);
+        }
+        function addChoice(index) { surveyQuestions[index].choices.push("Tùy chọn mới"); renderEditor(); }
+        function deleteChoice(qIndex, cIndex) { surveyQuestions[qIndex].choices.splice(cIndex, 1); renderEditor(); }
+        function updateChoice(qIndex, cIndex, val) { surveyQuestions[qIndex].choices[cIndex] = val; renderEditor(); }
+        function toggleRequired(index) { surveyQuestions[index].isRequired = !surveyQuestions[index].isRequired; }
+
+        function addCondition(qIndex) { surveyQuestions[qIndex].conditions.push({ targetId: "", operator: "=", value: "" }); renderEditor(); }
+        function removeCondition(qIndex, condIdx) { surveyQuestions[qIndex].conditions.splice(condIdx, 1); renderEditor(); }
+        function updateConditionField(qIndex, condIdx, field, val) {
+            surveyQuestions[qIndex].conditions[condIdx][field] = val;
+            if (field === 'targetId' || field === 'operator') surveyQuestions[qIndex].conditions[condIdx].value = "";
+            renderEditor();
+        }
+        function updateLogicOperator(qIndex, op) { surveyQuestions[qIndex].logicOperator = op; }
+
+        // --- Drag & Drop Mượt mà ---
+        let dragSourceEl = null;
+        function setupDragAndDropEvents(el) {
+            el.addEventListener('dragstart', function() { dragSourceEl = this; this.classList.add('dragging'); });
+            el.addEventListener('dragend', function() { this.classList.remove('dragging'); document.querySelectorAll('.draggable-item').forEach(i => i.classList.remove('drag-over')); });
+            el.addEventListener('dragover', function(e) { e.preventDefault(); this.classList.add('drag-over'); });
+            el.addEventListener('drop', function(e) {
+                e.preventDefault();
+                if (dragSourceEl !== this) {
+                    const fromIndex = parseInt(dragSourceEl.getAttribute('data-index'));
+                    const toIndex = parseInt(this.getAttribute('data-index'));
+                    const targetItem = surveyQuestions.splice(fromIndex, 1)[0];
+                    surveyQuestions.splice(toIndex, 0, targetItem);
+                    renderEditor();
+                }
+            });
+        }
+
+        // --- XUẤT BẢN FILE JSON CHUẨN ENGINE SURVEYJS ---
+        function getJsonOutput() {
+            const surveyJsSchema = {
+                title: document.getElementById('formTitle').value,
+                pages: [{
+                    name: "page1",
+                    elements: surveyQuestions.map(q => {
+                        let element = { type: q.type, name: q.name, title: q.title, isRequired: q.isRequired };
+                        if (q.choices) element.choices = q.choices;
+                        
+                        if (q.conditions && q.conditions.length > 0) {
+                            let expressions = [];
+                            q.conditions.forEach(cond => {
+                                const targetQ = surveyQuestions.find(item => item.id === cond.targetId);
+                                if (targetQ) {
+                                    if (cond.operator === 'empty') {
+                                        expressions.push(`{${targetQ.name}} empty`);
+                                    } else if (cond.operator === 'notempty') {
+                                        expressions.push(`{${targetQ.name}} notempty`);
+                                    } else if (cond.operator === 'contains') {
+                                        // Xuất cú pháp mảng chuẩn cho cả checkbox lẫn bài toán chuỗi chữ thường
+                                        expressions.push(`{${targetQ.name}} contains '${cond.value}'`);
+                                    } else {
+                                        expressions.push(`{${targetQ.name}} ${cond.operator} '${cond.value}'`);
+                                    }
+                                }
+                            });
+
+                            if (expressions.length > 0) {
+                                const joinOperator = ` ${q.logicOperator || 'AND'} `;
+                                element.visibleIf = expressions.join(joinOperator);
+                            }
+                        }
+                        return element;
+                    })
+                }]
+            };
+            document.getElementById('jsonTextarea').value = JSON.stringify(surveyJsSchema, null, 2);
+            toggleModal();
+        }
+        function toggleModal() { document.getElementById('jsonModal').classList.toggle('hidden'); }
+
+        renderEditor();
+    </script>
+</body>
+</html>

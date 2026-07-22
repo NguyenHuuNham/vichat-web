@@ -11,6 +11,10 @@ node_modules
 dist
 dist-ssr
 *.local
+infrastructure/tinode/.env
+infrastructure/tinode/.persistence-test.json
+infrastructure/chatservice/.env
+infrastructure/chatservice/data/
 
 # Editor directories and files
 .vscode/*

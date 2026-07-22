@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.env.local
+.codex-vite.*.log
+infrastructure/chatservice/.env
+infrastructure/chatservice/data
+infrastructure/tinode/.env
+infrastructure/production/.env
+chatservice-main/.env
+*.tar.gz

@@ -1,0 +1,135 @@
+name: songhong-production
+
+services:
+  tinode-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${TINODE_DB_PASSWORD:?TINODE_DB_PASSWORD is required}
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tinode"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - tinode_postgres_data:/var/lib/postgresql/data
+
+  tinode:
+    image: tinode/tinode-postgres:latest
+    restart: unless-stopped
+    depends_on:
+      tinode-postgres:
+        condition: service_healthy
+    expose:
+      - "6060"
+    environment:
+      POSTGRES_DSN: postgresql://postgres:${TINODE_DB_PASSWORD}@tinode-postgres:5432/tinode?sslmode=disable&connect_timeout=10
+      WAIT_FOR: tinode-postgres:5432
+      AUTH_TOKEN_KEY: ${TINODE_AUTH_TOKEN_KEY:?TINODE_AUTH_TOKEN_KEY is required}
+      UID_ENCRYPTION_KEY: ${TINODE_UID_ENCRYPTION_KEY:?TINODE_UID_ENCRYPTION_KEY is required}
+      SAMPLE_DATA: /data/songhong-data.json
+      UPGRADE_DB: "${TINODE_UPGRADE_DB:-false}"
+      ACC_GC_ENABLED: "true"
+      DEBUG_EMAIL_VERIFICATION_CODE: ""
+      FS_CORS_ORIGINS: '${TINODE_CORS_ORIGINS}'
+    volumes:
+      - ../tinode/config.template:/opt/tinode/config.template:ro
+      - ../tinode/songhong-data.json:/data/songhong-data.json:ro
+      - tinode_uploads:/opt/tinode/uploads
+      - tinode_botdata:/botdata
+
+  chat-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${CHATSERVICE_DB_NAME:-chatservice}
+      POSTGRES_USER: ${CHATSERVICE_DB_USER:-chatservice}
+      POSTGRES_PASSWORD: ${CHATSERVICE_DB_PASSWORD:?CHATSERVICE_DB_PASSWORD is required}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CHATSERVICE_DB_USER:-chatservice} -d ${CHATSERVICE_DB_NAME:-chatservice}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - chatservice_postgres_data:/var/lib/postgresql/data
+      - ../../chatservice-main/migrations:/docker-entrypoint-initdb.d:ro
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - chatservice_redis_data:/data
+
+  chatservice:
+    build:
+      context: ../../chatservice-main
+    restart: unless-stopped
+    depends_on:
+      chat-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      tinode:
+        condition: service_started
+    expose:
+      - "8093"
+    volumes:
+      - ../../chatservice-main/knowledge:/app/knowledge:ro
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8093
+      SQLALCHEMY_DATABASE_URI: postgresql://${CHATSERVICE_DB_USER:-chatservice}:${CHATSERVICE_DB_PASSWORD}@chat-postgres:5432/${CHATSERVICE_DB_NAME:-chatservice}
+      REDIS_ADDR: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      ACCOUNT_URL: ""
+      CHATBOT_ENABLED: ${CHATBOT_ENABLED:-true}
+      CHATBOT_PROVIDER: ${CHATBOT_PROVIDER:-local}
+      CHATBOT_REQUIRE_AUTH: ${CHATBOT_REQUIRE_AUTH:-true}
+      CHATBOT_API_URL: ${CHATBOT_API_URL:-https://api.openai.com/v1/chat/completions}
+      CHATBOT_API_KEY: ${CHATBOT_API_KEY:-}
+      CHATBOT_MODEL: ${CHATBOT_MODEL:-}
+      CHATBOT_KNOWLEDGE_ONLY: ${CHATBOT_KNOWLEDGE_ONLY:-true}
+      CHATBOT_DEFAULT_TENANT: ${CHATBOT_DEFAULT_TENANT:-song-hong}
+      CHAT_AUTH_JWT_SECRET: ${CHAT_AUTH_JWT_SECRET:?CHAT_AUTH_JWT_SECRET is required}
+      CHAT_AUTH_ACCESS_TTL: ${CHAT_AUTH_ACCESS_TTL:-28800}
+      CHAT_AUTH_COOKIE_SECURE: ${CHAT_AUTH_COOKIE_SECURE:-false}
+      CHAT_AUTH_MAX_FAILURES: ${CHAT_AUTH_MAX_FAILURES:-5}
+      CHAT_AUTH_FAILURE_WINDOW: ${CHAT_AUTH_FAILURE_WINDOW:-900}
+      TINODE_INTERNAL_WS_URL: ws://tinode:6060/v0/channels
+      TINODE_API_KEY: ${TINODE_API_KEY:?TINODE_API_KEY is required}
+      TINODE_AUTH_TIMEOUT: ${TINODE_AUTH_TIMEOUT:-10}
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infrastructure/production/Dockerfile
+      args:
+        VITE_TINODE_HOST: ${PUBLIC_HOST:?PUBLIC_HOST is required}
+        VITE_TINODE_API_KEY: ${TINODE_API_KEY:?TINODE_API_KEY is required}
+        VITE_TINODE_SECURE: ${PUBLIC_SECURE:-false}
+        VITE_TINODE_TRANSPORT: ws
+        VITE_TINODE_PERSIST: "true"
+        VITE_TINODE_APP_NAME: SONGHONG/1.0
+        VITE_CHATBOT_API_URL: /api/v1/chatbot/message
+        VITE_CHATBOT_WITH_CREDENTIALS: "true"
+        VITE_CHAT_MANAGEMENT_API_URL: /management-api
+        VITE_CHAT_MANAGEMENT_REMOTE_AUTH: "true"
+        VITE_CHAT_TENANT_ID: ${CHATBOT_DEFAULT_TENANT:-song-hong}
+    restart: unless-stopped
+    depends_on:
+      - chatservice
+      - tinode
+    ports:
+      - "${PUBLIC_HTTP_PORT:-80}:80"
+
+volumes:
+  tinode_postgres_data:
+  tinode_uploads:
+  tinode_botdata:
+  chatservice_postgres_data:
+  chatservice_redis_data:
+

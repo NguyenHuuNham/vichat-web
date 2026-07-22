@@ -1,0 +1,50 @@
+name: songhong-chat
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+    - "127.0.0.1:5433:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${TINODE_DB_PASSWORD:?TINODE_DB_PASSWORD is required}
+      # Tinode creates the application database itself on first startup.
+      # Keep the maintenance database as postgres to avoid a create-database race.
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tinode"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - tinode_postgres_data:/var/lib/postgresql/data
+
+  tinode:
+    image: tinode/tinode-postgres:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${TINODE_PORT:-6060}:6060"
+    environment:
+      POSTGRES_DSN: postgresql://postgres:${TINODE_DB_PASSWORD}@postgres:5432/tinode?sslmode=disable&connect_timeout=10
+      WAIT_FOR: postgres:5432
+      AUTH_TOKEN_KEY: ${TINODE_AUTH_TOKEN_KEY:?TINODE_AUTH_TOKEN_KEY is required}
+      UID_ENCRYPTION_KEY: ${TINODE_UID_ENCRYPTION_KEY:?TINODE_UID_ENCRYPTION_KEY is required}
+      SAMPLE_DATA: /data/songhong-data.json
+      UPGRADE_DB: "${TINODE_UPGRADE_DB:-false}"
+      ACC_GC_ENABLED: "true"
+      DEBUG_EMAIL_VERIFICATION_CODE: ""
+      FS_CORS_ORIGINS: '${TINODE_CORS_ORIGINS:-["http://127.0.0.1:5173"]}'
+    volumes:
+      - ./config.template:/opt/tinode/config.template:ro
+      - ./songhong-data.json:/data/songhong-data.json:ro
+      - tinode_uploads:/opt/tinode/uploads
+      - tinode_botdata:/botdata
+
+volumes:
+  tinode_postgres_data:
+  tinode_uploads:
+  tinode_botdata:

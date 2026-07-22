@@ -1,0 +1,71 @@
+{
+  "users": [
+    {
+      "username": "admin",
+      "passhash": "123456",
+      "email": "admin@vichat.vn",
+      "authLevel": "root",
+      "state": "ok",
+      "trusted": { "staff": true, "verified": true },
+      "public": { "fn": "Mai Thành Lâm", "note": "Quản trị viên · Ban điều hành" },
+      "private": { "comment": "usr-mai-thanh-lam" },
+      "tags": ["Mai Thành Lâm", "Ban điều hành", "admin", "user_admin", "name_mai_thanh_lam", "name_mai", "name_thanh", "name_lam"],
+      "addressBook": ["email:tuan@vichat.vn", "email:lan@vichat.vn", "email:huong@vichat.vn", "email:bao@vichat.vn", "email:quan@vichat.vn"]
+    },
+    {
+      "username": "tuan",
+      "passhash": "123456",
+      "email": "tuan@vichat.vn",
+      "state": "ok",
+      "public": { "fn": "Nguyễn Văn Tuấn", "note": "Trưởng phòng Điều hành" },
+      "private": { "comment": "usr-nguyen-van-tuan" },
+      "tags": ["Nguyễn Văn Tuấn", "Phòng Điều hành", "tuan", "user_tuan", "name_nguyen_van_tuan", "name_nguyen", "name_van", "name_tuan"],
+      "addressBook": ["email:admin@vichat.vn", "email:lan@vichat.vn", "email:huong@vichat.vn", "email:bao@vichat.vn", "email:quan@vichat.vn"]
+    },
+    {
+      "username": "lan",
+      "passhash": "123456",
+      "email": "lan@vichat.vn",
+      "state": "ok",
+      "public": { "fn": "Nguyễn Thị Lan", "note": "Phó phòng Điều hành" },
+      "private": { "comment": "usr-nguyen-thi-lan" },
+      "tags": ["Nguyễn Thị Lan", "Phòng Điều hành", "user_lan", "name_nguyen_thi_lan", "name_nguyen", "name_thi", "name_lan"],
+      "addressBook": ["email:admin@vichat.vn", "email:tuan@vichat.vn", "email:huong@vichat.vn", "email:bao@vichat.vn", "email:quan@vichat.vn"]
+    },
+    {
+      "username": "huong",
+      "passhash": "123456",
+      "email": "huong@vichat.vn",
+      "state": "ok",
+      "public": { "fn": "Phạm Thị Hương", "note": "Trưởng phòng HCNS" },
+      "private": { "comment": "usr-pham-thi-huong" },
+      "tags": ["Phạm Thị Hương", "Phòng HCNS", "huong", "user_huong", "name_pham_thi_huong", "name_pham", "name_thi", "name_huong"],
+      "addressBook": ["email:admin@vichat.vn", "email:tuan@vichat.vn", "email:lan@vichat.vn", "email:bao@vichat.vn", "email:quan@vichat.vn"]
+    },
+    {
+      "username": "bao",
+      "passhash": "123456",
+      "email": "bao@vichat.vn",
+      "state": "ok",
+      "public": { "fn": "Lê Quốc Bảo", "note": "Kế toán trưởng" },
+      "private": { "comment": "usr-le-quoc-bao" },
+      "tags": ["Lê Quốc Bảo", "Phòng Kế toán", "user_bao", "name_le_quoc_bao", "name_le", "name_quoc", "name_bao"],
+      "addressBook": ["email:admin@vichat.vn", "email:tuan@vichat.vn", "email:lan@vichat.vn", "email:huong@vichat.vn", "email:quan@vichat.vn"]
+    },
+    {
+      "username": "quan",
+      "passhash": "123456",
+      "email": "quan@vichat.vn",
+      "state": "ok",
+      "public": { "fn": "Đỗ Minh Quân", "note": "Trưởng phòng Kinh doanh" },
+      "private": { "comment": "usr-do-minh-quan" },
+      "tags": ["Đỗ Minh Quân", "Phòng Kinh doanh", "quan", "user_quan", "name_do_minh_quan", "name_do", "name_minh", "name_quan"],
+      "addressBook": ["email:admin@vichat.vn", "email:tuan@vichat.vn", "email:lan@vichat.vn", "email:huong@vichat.vn", "email:bao@vichat.vn"]
+    }
+  ],
+  "grouptopics": [],
+  "p2psubs": [],
+  "groupsubs": [],
+  "messages": [],
+  "forms": []
+}

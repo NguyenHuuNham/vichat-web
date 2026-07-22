@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="vi" xml:lang="vi" xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="" />
+  <meta name="author" content="UpGO.vn" />
+  <!-- <link rel="shortcut icon" href="{{static_url}}/images/icons/favicon.ico" /> -->
+  <link rel="shortcut icon" href="{{static_url}}/images/icons/favicon.ico">
+  <title>{{title}}</title>
+  <script>
+    const mode = null;
+    let title = "{{title}}";
+    const release_version = "{{release_version}}";
+    const host = "{{host}}";
+    const static_url = "{{static_url}}";
+    const account_url = "{{account_url}}";
+  </script>
+  <link rel="stylesheet" href="{{static_url}}/vendors/fontawesome-free-5.13.0/css/all.css" />
+
+  <!-- <link href="{{static_url}}/vendors/flaticon-uicons/css/all/all.css" rel="stylesheet" type="text/css"> -->
+  <!-- Bootstrap Core CSS -->
+  <link href="{{static_url}}/themes/pixel-admin-lite/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <!-- Menu CSS -->
+  <link href="{{static_url}}/themes/pixel-admin-lite/plugins/bower_components/sidebar-nav/dist/sidebar-nav.min.css"
+    rel="stylesheet" />
+  <!-- toast CSS -->
+  <link href="{{static_url}}/themes/pixel-admin-lite/plugins/bower_components/toast-master/css/jquery.toast.css"
+    rel="stylesheet" />
+  <!-- morris CSS -->
+  <link href="{{static_url}}/themes/pixel-admin-lite/plugins/bower_components/morrisjs/morris.css" rel="stylesheet" />
+  <!-- animation CSS -->
+  <link href="{{static_url}}/themes/pixel-admin-lite/css/animate.css" rel="stylesheet" />
+  <!-- Custom CSS -->
+  <link href="{{static_url}}/themes/pixel-admin-lite/css/style.css" rel="stylesheet" />
+  <!-- MinhDev Custom CSS -->
+  <link href="{{static_url}}/themes/pixel-admin-lite/css/salesorders.css" rel="stylesheet" />
+  <!-- color CSS -->
+  <link href="{{static_url}}/themes/pixel-admin-lite/css/colors/blue-dark.css" id="theme" rel="stylesheet" />
+
+  <link href="{{static_url}}/css/dms.css" id="theme" rel="stylesheet" />
+
+  <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
+  <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+  <!--[if lt IE 9]>
+      <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+      <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+    <![endif]-->
+
+  <link rel="stylesheet" href="{{static_url}}/vendors/jquery/jquery-confirm-3.3.0.min.css" />
+  <link rel="stylesheet" href="{{static_url}}/vendors/air-datepicker-master/css/datepicker.min.css" />
+  <!-- <link rel="stylesheet" href="{{static_url}}/vendors/GonrinUIBoostrap4/css/gonrin.datetimepicker.css"> -->
+  <link rel="stylesheet" href="{{static_url}}/vendors/GonrinUI/css/gonrin.editor.css" />
+  <link rel="stylesheet" href="{{static_url}}/vendors/GonrinUI/css/gonrin.pagination.css" />
+  <link rel="stylesheet" href="{{static_url}}/vendors/GonrinUI/css/gonrin.tokenfield.css" />
+  <link rel="stylesheet" href="{{static_url}}/vendors/GonrinUI/css/gonrin.ref.css" />
+  <link rel="stylesheet" href="{{static_url}}/vendors/GonrinUI/css/gonrin.radio.css" />
+  <link rel="stylesheet" href="{{static_url}}/vendors/GonrinUI/css/gonrin.grid.css" />
+  <!-- text-editor -->
+  <link rel="stylesheet" href="{{static_url}}/vendors/text-editor/editor.css" type="text/css" />
+  <!-- fullcalendar-5.7.0 -->
+  <link rel="stylesheet" href="{{static_url}}/vendors/fullcalendar-5.7.0/lib/main.min.css" type="text/css" />
+
+  <link rel="stylesheet" href="{{static_url}}/css/switch-ui.css" />
+  <link rel="stylesheet" href="{{static_url}}/css/timeline01.css" />
+  <link rel="stylesheet" href="{{static_url}}/vendors/timeline-horizontal-1/timeline.css" />
+  <link rel="stylesheet" href="{{static_url}}/vendors/chart-v2.9.3/Chart.min.css" />
+  <link rel="stylesheet" href="{{static_url}}/themes/pixel-admin-lite/css/custom.css" />
+  <link href="{{static_url}}/themes/pixel-admin-lite/css/style-1.css" rel="stylesheet" />
+  <link href="{{static_url}}/css/time-line.css" rel="stylesheet" />
+  <link href="{{static_url}}/css/custom.css" rel="stylesheet" />
+  <link href="{{static_url}}/css/row_col.css" rel="stylesheet" />
+
+
+  <!-- jQuery -->
+  <script src="{{static_url}}/themes/pixel-admin-lite/plugins/bower_components/jquery/dist/jquery.min.js"></script>
+  <!-- <script type="text/javascript" src="{{static_url}}/vendors/jquery/jquery-3.4.1.min.js"></script> -->
+  <script type="text/javascript" src="{{static_url}}/vendors/moment/moment.min.js"></script>
+  <script type="text/javascript" src="{{static_url}}/vendors/moment/moment-with-locales.min.js"></script>
+  <script type="text/javascript" src="{{static_url}}/vendors/moment/moment-timezone-with-data.js"></script>
+  <script type="text/javascript" src="{{static_url}}/vendors/jquery/jquery-confirm-3.3.0.min.js"></script>
+  <!-- <script
+      type="text/javascript"
+      src="{{static_url}}/vendors/lodash/lodash.js"
+    ></script> -->
+  <script type="text/javascript" src="{{static_url}}/vendors/helpers/clipboard.copy.js"></script>
+  <!-- <script
+      type="text/javascript"
+      src="{{static_url}}/vendors/fontawesome-free-5.13.0/js/all.js"
+    ></script> -->
+  <script type="text/javascript" src="{{static_url}}/vendors/chart-v2.9.3/Chart.min.js"></script>
+  <script type="text/javascript" src="{{static_url}}/vendors/chart-v2.9.3/chartjs-plugin-labels.js"></script>
+
+  <!-- Datepicker -->
+  <script type="text/javascript" src="{{static_url}}/vendors/air-datepicker-master/js/datepicker.min.js"
+    charset="utf-8"></script>
+  <!-- <script src="{{static_url}}/vendors/GonrinUIBoostrap4/js/gonrin.datetimepicker.js" type="text/javascript"></script> -->
+  <script type="text/javascript" src="{{static_url}}/vendors/air-datepicker-master/js/i18n/datepicker.en.js"
+    charset="utf-8"></script>
+  <script type="text/javascript" src="{{static_url}}/vendors/air-datepicker-master/js/i18n/datepicker.vi.js"
+    charset="utf-8"></script>
+  <!-- ckeditor -->
+  <!-- <script
+      type="text/javascript"
+      src="{{static_url}}/vendors/ckeditor/ckeditor.js"
+    ></script> -->
+  <!-- fullcalendar-5.7.0 -->
+  <script type="text/javascript" src="{{static_url}}/vendors/fullcalendar-5.7.0/lib/main.min.js"></script>
+
+  <script type="text/javascript" src="{{static_url}}/vendors/GonrinUI/js/gonrin.core.js"></script>
+  <script type="text/javascript" src="{{static_url}}/vendors/GonrinUI/js/gonrin.accounting.js"></script>
+  <script type="text/javascript" src="{{static_url}}/vendors/GonrinUI/js/gonrin.currency.js"></script>
+  <script type="text/javascript" src="{{static_url}}/vendors/GonrinUI/js/gonrin.notify.js"></script>
+  <script type="text/javascript" src="{{static_url}}/vendors/GonrinUI/js/gonrin.checkbox.js"></script>
+  <script type="text/javascript" src="{{static_url}}/vendors/GonrinUI/js/gonrin.textbox.js"></script>
+  <script type="text/javascript" src="{{static_url}}/vendors/GonrinUI/js/gonrin.radio.js"></script>
+
+  <script type="text/javascript" src="{{static_url}}/vendors/GonrinUI/js/gonrin.numeric.js"></script>
+  <script type="text/javascript" src="{{static_url}}/vendors/GonrinUI/js/gonrin.tokenfield.js"></script>
+  <script type="text/javascript" src="{{static_url}}/vendors/GonrinUI/js/gonrin.imagelink.js"></script>
+
+  <script type="text/javascript" src="{{static_url}}/vendors/GonrinUIBoostrap4/gonrin.grid.js"></script>
+  <script type="text/javascript" src="{{static_url}}/vendors/GonrinUIBoostrap4/gonrin.dialog.js"></script>
+  <script type="text/javascript" src="{{static_url}}/vendors/GonrinUIBoostrap4/gonrin.pagination.js"></script>
+  <script type="text/javascript" src="{{static_url}}/vendors/GonrinUIBoostrap4/gonrin.combobox.js"></script>
+  <script type="text/javascript" src="{{static_url}}/vendors/GonrinUIBoostrap4/gonrin.ref.js"></script>
+  <!-- text-editor -->
+
+  <!-- JQuery Autocomplete -->
+  <script src="{{static_url}}/vendors/jquery-autocomplete/jquery.autocomplete.min.js" type="text/javascript"></script>
+
+  <!-- Test api stringee -->
+  <!-- <script type="text/javascript" src="https://cdn.stringee.com/sdk/web/latest/stringee-web-sdk.min.js"></script> -->
+  <!-- <script
+      type="text/javascript"
+      src="{{static_url}}/vendors/stringee/StringeeSoftPhone-1.0.0.js"
+    ></script> -->
+  <!-- Gantt -->
+  <link rel="stylesheet" href="{{static_url}}/vendors/GonrinUI/css/gonrin.gantt.css">
+  <script src="{{static_url}}/vendors/GonrinUI/js/gonrin.gantt.js" type="text/javascript"></script>
+
+  <!--Selectize JS  -->
+  <link href="{{static_url}}/vendors/selectize/css/selectize.bootstrap4.css" rel="stylesheet" type="text/css">
+  <script src="{{static_url}}/vendors/selectize/js/standalone/selectize.min.js" type="text/javascript"></script>
+  <!-- <script src="{{static_url}}/vendors/ckeditor5-build-decoupled-document/ckeditor.js"></script> -->
+  <!-- <script src="{{static_url}}/vendors/ckeditor/ckeditor.js" type="text/javascript"></script> -->
+
+  <!-- https://github.com/dabeng/OrgChart?tab=readme-ov-file -->
+  <script src="{{static_url}}/vendors/orgchart/js/jquery.orgchart.min.js"></script>
+  <link rel="stylesheet" href="{{static_url}}/vendors/orgchart/css/jquery.orgchart.css" />
+
+  <script src="{{static_url}}/vendors/dropzone/dropzone-min.js" type="text/javascript"></script>
+
+  <link href="{{static_url}}/vendors/dropzone/dropzone.css" rel="stylesheet" type="text/css">
+
+  <link href="{{static_url}}/workflowenginefe/css/workflow.css" rel="stylesheet" type="text/css">
+</head>
+
+<body>
+  <!-- Preloader -->
+  <!-- <div class="preloader">
+      <div class="cssload-speeding-wheel"></div>
+      <span
+        style="position: absolute; top: calc(50% + 28px); left: calc(50% - 7px); width: 40px; text-align: center; color: rgba(97,100,193,0.98); font-weight: 440;"
+      ></span>
+    </div> -->
+  <div id="preloader" style="display: none;">
+    <div id="loader"></div>
+  </div>
+  <div id="wrapper"></div>
+  <!-- /#wrapper -->
+  <!-- Bootstrap Core JavaScript -->
+  <script src="{{static_url}}/themes/pixel-admin-lite/bootstrap/dist/js/bootstrap.min.js"></script>
+  <!-- Menu Plugin JavaScript -->
+  <script
+    src="{{static_url}}/themes/pixel-admin-lite/plugins/bower_components/sidebar-nav/dist/sidebar-nav.min.js"></script>
+  <!--slimscroll JavaScript -->
+  <script src="{{static_url}}/themes/pixel-admin-lite/js/jquery.slimscroll.js"></script>
+  <!--Wave Effects -->
+  <script src="{{static_url}}/themes/pixel-admin-lite/js/waves.js"></script>
+
+  <!--Counter js -->
+  <script
+    src="{{static_url}}/themes/pixel-admin-lite/plugins/bower_components/waypoints/lib/jquery.waypoints.js"></script>
+  <script
+    src="{{static_url}}/themes/pixel-admin-lite/plugins/bower_components/counterup/jquery.counterup.min.js"></script>
+  <!--Morris JavaScript -->
+  <script src="{{static_url}}/themes/pixel-admin-lite/plugins/bower_components/raphael/raphael-min.js"></script>
+  <script src="{{static_url}}/themes/pixel-admin-lite/plugins/bower_components/morrisjs/morris.js"></script>
+  <!-- Custom Theme JavaScript -->
+  <script src="{{static_url}}/themes/pixel-admin-lite/js/custom.min.js"></script>
+  <script
+    src="{{static_url}}/themes/pixel-admin-lite/plugins/bower_components/toast-master/js/jquery.toast.js"></script>
+  <script>
+    function getCookie(cname) {
+      let name = cname + "=";
+      let decodedCookie = decodeURIComponent(document.cookie);
+      let ca = decodedCookie.split(';');
+      for (let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) == ' ') {
+          c = c.substring(1);
+        }
+        if (c.indexOf(name) == 0) {
+          return c.substring(name.length, c.length);
+        }
+      }
+      return "";
+    }
+  </script>
+
+  <script data-main="{{static_url}}/app/app" src="{{static_url}}/app/require.js"></script>
+</body>
+
+</html>

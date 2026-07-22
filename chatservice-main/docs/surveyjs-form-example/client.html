@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Survey Preview - SurveyJS Engine</title>
+
+    <!-- Thư viện Style hệ thống của SurveyJS -->
+    <link href="https://unpkg.com/survey-core/defaultV2.min.css" type="text/css" rel="stylesheet">
+    
+    <!-- Bộ thư viện Core Engine xử lý Logic (visibleIf, contains, AND/OR) -->
+    <script src="https://unpkg.com/survey-core/survey.core.min.js"></script>
+    
+    <!-- Bộ thư viện kết xuất giao diện UI (Dùng bản Vanilla JS để tích hợp nhanh vào mọi project) -->
+    <script src="https://unpkg.com/survey-js-ui/survey-js-ui.min.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        /* Tùy biến nhẹ màu sắc nút bấm SurveyJS cho đồng bộ style HubSpot/SaaS */
+        .sd-btn--action { background-color: #4f46e5 !important; }
+        .sd-btn--action:hover { background-color: #4338ca !important; }
+        .sd-navigation__navigation { gap: 12px; }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800 antialiased min-h-screen flex flex-col justify-center items-center p-4">
+
+    <!-- Container Form -->
+    <div class="w-full max-w-3xl bg-white rounded-2xl shadow-md border border-gray-200 p-2 md:p-6">
+        <!-- Nơi SurveyJS sẽ inject toàn bộ UI vào đây -->
+        <div id="surveyContainer"></div>
+    </div>
+
+    <script>
+        // 1. Nhúng trực tiếp cục JSON Schema sinh ra từ Editor của bạn vào đây
+        const surveyJson = {
+            "title": "Khảo sát Đa giai đoạn Doanh nghiệp",
+            "pages": [
+                {
+                    "name": "page_1",
+                    "title": "Trang 1: Thông tin chung",
+                    "elements": [
+                        {
+                            "type": "radiogroup",
+                            "name": "user_role",
+                            "title": "Vai trò của bạn là gì?",
+                            "isRequired": true,
+                            "choices": ["Developer", "Manager", "Designer"]
+                        },
+                        {
+                            "type": "checkbox",
+                            "name": "skills",
+                            "title": "Công cụ bạn thành thạo?",
+                            "isRequired": false,
+                            "choices": ["Figma", "VS Code", "Jira"]
+                        },
+                        {
+                            "type": "text",
+                            "name": "page_1_",
+                            "title": "Page 1 ",
+                            "isRequired": false,
+                            "visibleIf": "{user_role} = 'Designer'"
+                        }
+                    ]
+                },
+                {
+                    "name": "page_2",
+                    "title": "Trang 2: Đánh giá chuyên sâu",
+                    "elements": [
+                        {
+                            "type": "text",
+                            "name": "portfolio_url",
+                            "title": "Link Portfolio của bạn là gì?",
+                            "isRequired": false,
+                            "visibleIf": "{user_role} = 'Designer' AND {skills} contains 'Figma'"
+                        },
+                        {
+                            "type": "text",
+                            "name": "q_znbqv",
+                            "title": "Câu hỏi chưa đặt tiêu đề",
+                            "isRequired": false
+                        }
+                    ]
+                },
+                {
+                    "name": "page_3",
+                    "title": "Trang 3",
+                    "elements": [
+                        {
+                            "type": "text",
+                            "name": "q_xh95v",
+                            "title": "Câu hỏi chưa đặt tiêu đề",
+                            "isRequired": false,
+                            "visibleIf": "{page_1_} = 'abc'"
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // 2. Khởi tạo thực thể Model của SurveyJS từ Schema
+        const survey = new Survey.Model(surveyJson);
+
+        // 3. Áp dụng Theme giao diện mặc định phiên bản 2 (Hiện đại, tối giản)
+        survey.applyTheme({
+            "cssVariables": {
+                "--sjs-general-dim-color": "#f9fafb",
+                "--sjs-primary-backcolor": "#4f46e5",
+                "--sjs-primary-backcolor-hover": "#4338ca",
+                "--sjs-primary-backcolor-light": "rgba(79, 70, 229, 0.1)",
+                "--sjs-font-family": "ui-sans-serif, system-ui, sans-serif"
+            },
+            "themeName": "default",
+            "colorPalette": "light"
+        });
+
+        // 4. ĐĂNG KÝ SỰ KIỆN SUBMIT (Khi người dùng bấm nút Hoàn thành ở trang cuối)
+        survey.onComplete.add((sender, options) => {
+            console.log("=== DATA CHUẨN BỊ SUBMIT LÊN BACKEND ===");
+            
+            // sender.data chứa toàn bộ key-value người dùng đã tương tác điền vào form
+            const payload = sender.data;
+            
+            console.log(JSON.stringify(payload, null, 2));
+            console.log("=========================================");
+
+            // Gợi ý đoạn AJAX để bạn gắn vào sau:
+            /*
+            fetch('/api/v1/survey-responses', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(res => res.json())
+            .then(data => alert('Lưu thành công!'))
+            .catch(err => console.error(err));
+            */
+        });
+
+        // 5. Render toàn bộ form vào thẻ div chỉ định
+        survey.render("surveyContainer");
+    </script>
+</body>
+</html>

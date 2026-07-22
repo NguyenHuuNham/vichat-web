@@ -1,0 +1,69 @@
+name: songhong-chatservice
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${CHATSERVICE_DB_PORT:-5434}:5432"
+    environment:
+      POSTGRES_DB: ${CHATSERVICE_DB_NAME:-chatservice}
+      POSTGRES_USER: ${CHATSERVICE_DB_USER:-chatservice}
+      POSTGRES_PASSWORD: ${CHATSERVICE_DB_PASSWORD:?CHATSERVICE_DB_PASSWORD is required}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CHATSERVICE_DB_USER:-chatservice} -d ${CHATSERVICE_DB_NAME:-chatservice}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ../../chatservice-main/migrations:/docker-entrypoint-initdb.d:ro
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${CHATSERVICE_REDIS_PORT:-6380}:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ./data/redis:/data
+
+  chatservice:
+    build:
+      context: ../../chatservice-main
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:${CHATSERVICE_APP_PORT:-8093}:8093"
+    volumes:
+      - ../../chatservice-main/knowledge:/app/knowledge:ro
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8093
+      SQLALCHEMY_DATABASE_URI: postgresql://${CHATSERVICE_DB_USER:-chatservice}:${CHATSERVICE_DB_PASSWORD}@postgres:5432/${CHATSERVICE_DB_NAME:-chatservice}
+      REDIS_ADDR: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      ACCOUNT_URL: ""
+      CHATBOT_ENABLED: ${CHATBOT_ENABLED:-true}
+      CHATBOT_PROVIDER: ${CHATBOT_PROVIDER:-local}
+      CHATBOT_REQUIRE_AUTH: ${CHATBOT_REQUIRE_AUTH:-true}
+      CHATBOT_API_URL: ${CHATBOT_API_URL:-https://api.openai.com/v1/chat/completions}
+      CHATBOT_API_KEY: ${CHATBOT_API_KEY:-}
+      CHATBOT_MODEL: ${CHATBOT_MODEL:-}
+      CHATBOT_KNOWLEDGE_ONLY: ${CHATBOT_KNOWLEDGE_ONLY:-true}
+      CHATBOT_DEFAULT_TENANT: ${CHATBOT_DEFAULT_TENANT:-songhong}
+      CHAT_AUTH_JWT_SECRET: ${CHAT_AUTH_JWT_SECRET:?CHAT_AUTH_JWT_SECRET is required}
+      CHAT_AUTH_ACCESS_TTL: ${CHAT_AUTH_ACCESS_TTL:-28800}
+      CHAT_AUTH_COOKIE_SECURE: ${CHAT_AUTH_COOKIE_SECURE:-false}
+      CHAT_AUTH_MAX_FAILURES: ${CHAT_AUTH_MAX_FAILURES:-5}
+      CHAT_AUTH_FAILURE_WINDOW: ${CHAT_AUTH_FAILURE_WINDOW:-900}
+      TINODE_INTERNAL_WS_URL: ${TINODE_INTERNAL_WS_URL:-ws://host.docker.internal:6060/v0/channels}
+      TINODE_API_KEY: ${TINODE_API_KEY:?TINODE_API_KEY is required}
+      TINODE_AUTH_TIMEOUT: ${TINODE_AUTH_TIMEOUT:-10}

@@ -1,0 +1,89 @@
+import os
+import json
+
+
+def env_bool(name, default=False):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+class Config(object):
+    ENVIRONMENT = os.getenv('ENVIRONMENT')  # production, staging, development,
+    SQLALCHEMY_DATABASE_URI = os.environ.get("SQLALCHEMY_DATABASE_URI")
+    APP_NAME = os.getenv('APP_NAME')
+    APP_PORT= int(os.getenv('APP_PORT', 8093))
+    HOST_URL = os.getenv('DATAROOM_URL')
+
+    STATIC_URL = os.environ.get('STATIC_URL', "static")
+
+    REQUEST_TIMEOUT = 86400
+    RESPONSE_TIMEOUT = 86400
+
+    AUTH_LOGIN_ENDPOINT = 'login'
+    AUTH_PASSWORD_HASH = 'sha512_crypt'
+    AUTH_PASSWORD_SALT = 'ruewhndjsa17heaw'
+    SECRET_KEY = 'e2q8dhaushdauwd7qye'
+    SESSION_COOKIE_SALT = 'dhuasud819wubadhysagd'
+
+    SESSION_COOKIE_DOMAIN = os.getenv('SESSION_COOKIE_DOMAIN')
+    REDIS_ADDR = os.getenv('REDIS_ADDR')
+    REDIS_PORT= int(os.getenv('REDIS_PORT'))
+    REDIS_DB= int(os.getenv('REDIS_DB'))
+
+    SESSION_REDIS_URI = "redis://" + \
+        str(REDIS_ADDR)+":" + \
+        str(REDIS_PORT)+"/"+str(REDIS_DB)
+
+    INTERNAL_ACCESS_TOKEN = os.getenv('INTERNAL_ACCESS_TOKEN')
+
+    CHAT_AUTH_JWT_SECRET = os.getenv("CHAT_AUTH_JWT_SECRET")
+    CHAT_AUTH_ACCESS_TTL = int(os.getenv("CHAT_AUTH_ACCESS_TTL", 28800))
+    CHAT_AUTH_COOKIE_SECURE = env_bool("CHAT_AUTH_COOKIE_SECURE", False)
+    CHAT_AUTH_MAX_FAILURES = int(os.getenv("CHAT_AUTH_MAX_FAILURES", 5))
+    CHAT_AUTH_FAILURE_WINDOW = int(os.getenv("CHAT_AUTH_FAILURE_WINDOW", 900))
+    TINODE_INTERNAL_WS_URL = os.getenv("TINODE_INTERNAL_WS_URL", "")
+    TINODE_API_KEY = os.getenv("TINODE_API_KEY", "")
+    TINODE_AUTH_TIMEOUT = int(os.getenv("TINODE_AUTH_TIMEOUT", 10))
+
+    ACCOUNT_URL = os.getenv('ACCOUNT_URL')
+    if ACCOUNT_URL and not ACCOUNT_URL.startswith("http://") and not ACCOUNT_URL.startswith("https://"):
+        ACCOUNT_URL = "http://" + ACCOUNT_URL
+
+    DATAROOM_URL = os.getenv('DATAROOM_URL')
+    if DATAROOM_URL and not DATAROOM_URL.startswith("http://") and not DATAROOM_URL.startswith("https://"):
+        DATAROOM_URL = "http://" + DATAROOM_URL
+
+    MINIO_URL = os.environ.get("MINIO_URL")
+    MINIO_ACCESS_KEY = os.environ.get("MINIO_ACCESS_KEY")
+    MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY")
+    MINIO_SECURE = env_bool("MINIO_SECURE", False)
+    MINIO_BUCKET_NAME = os.environ.get("MINIO_BUCKET_NAME")
+    MINIO_STORED = os.environ.get("MINIO_STORED")
+    S3_URL = os.getenv('S3_URL')
+
+    # Chatbot: OpenAI-compatible endpoint. Secrets stay in the server environment.
+    CHATBOT_ENABLED = env_bool("CHATBOT_ENABLED", False)
+    CHATBOT_REQUIRE_AUTH = env_bool("CHATBOT_REQUIRE_AUTH", True)
+    CHATBOT_PROVIDER = os.getenv("CHATBOT_PROVIDER", "openai-compatible")
+    CHATBOT_API_URL = os.getenv("CHATBOT_API_URL", "https://api.openai.com/v1/chat/completions")
+    CHATBOT_API_KEY = os.getenv("CHATBOT_API_KEY")
+    CHATBOT_MODEL = os.getenv("CHATBOT_MODEL")
+    CHATBOT_TIMEOUT = int(os.getenv("CHATBOT_TIMEOUT", 30))
+    CHATBOT_TEMPERATURE = float(os.getenv("CHATBOT_TEMPERATURE", 0.2))
+    CHATBOT_MAX_TOKENS = int(os.getenv("CHATBOT_MAX_TOKENS", 800))
+    CHATBOT_MAX_INPUT_LENGTH = int(os.getenv("CHATBOT_MAX_INPUT_LENGTH", 4000))
+    CHATBOT_DEFAULT_TENANT = os.getenv("CHATBOT_DEFAULT_TENANT", "songhong")
+    CHATBOT_KNOWLEDGE_ONLY = env_bool("CHATBOT_KNOWLEDGE_ONLY", True)
+    CHATBOT_KNOWLEDGE_REQUIRE_AUTH = env_bool("CHATBOT_KNOWLEDGE_REQUIRE_AUTH", True)
+    CHATBOT_RETRIEVAL_LIMIT = int(os.getenv("CHATBOT_RETRIEVAL_LIMIT", 6))
+    CHATBOT_RETRIEVAL_CANDIDATES = int(os.getenv("CHATBOT_RETRIEVAL_CANDIDATES", 500))
+    CHATBOT_CHUNK_SIZE = int(os.getenv("CHATBOT_CHUNK_SIZE", 1400))
+    CHATBOT_CHUNK_OVERLAP = int(os.getenv("CHATBOT_CHUNK_OVERLAP", 180))
+    CHATBOT_MAX_KNOWLEDGE_FILE_SIZE = int(os.getenv("CHATBOT_MAX_KNOWLEDGE_FILE_SIZE", 20971520))
+    CHATBOT_SYSTEM_PROMPT = os.getenv(
+        "CHATBOT_SYSTEM_PROMPT",
+        "Bạn là Trợ lý Sông Hồng. Trả lời bằng tiếng Việt, rõ ràng, ngắn gọn. "
+        "Không suy đoán dữ liệu nội bộ; nếu thiếu dữ liệu hãy nói chưa đủ thông tin. "
+        "Không tiết lộ mật khẩu, token, khóa API hoặc thông tin nhạy cảm.",
+    )
