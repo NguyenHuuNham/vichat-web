@@ -28,6 +28,18 @@ function waitFor(label, setup, timeout = 5000) {
   });
 }
 
+function waitUntil(label, predicate, timeout = 5000) {
+  return waitFor(label, done => {
+    const startedAt = Date.now();
+    const check = () => {
+      if (predicate()) return done(true);
+      if (Date.now() - startedAt >= timeout) return;
+      setTimeout(check, 50);
+    };
+    check();
+  }, timeout + 100);
+}
+
 async function connect(username) {
   const client = new Tinode({
     appName: 'SONGHONG-REALTIME-CHECK/1.0',
@@ -40,12 +52,17 @@ async function connect(username) {
   });
   await client.connect();
   await client.loginBasic(username, password);
+  const me = client.getMeTopic();
+  await me.subscribe(me.startMetaQuery().withSub().build());
   return client;
 }
 
 const first = await connect(firstUsername);
 const second = await connect(secondUsername);
+const secondUid = second.getCurrentUserID();
+await waitUntil('online presence', () => first.getMeTopic().getContact(secondUid)?.online === true);
 let publishedSeq = 0;
+let secondDisconnected = false;
 
 try {
   const firstTopic = first.getTopic(second.getCurrentUserID());
@@ -95,8 +112,14 @@ try {
   await recallReceived;
   await firstTopic.delMessagesList([publishedSeq], true).catch(() => {});
 
+  second.disconnect();
+  secondDisconnected = true;
+  await waitUntil('offline presence', () => first.getMeTopic().getContact(secondUid)?.online === false);
+
   console.log(JSON.stringify({
     realtime: true,
+    presenceOnline: true,
+    presenceOffline: true,
     typing: true,
     readReceipt: true,
     recall: true,
@@ -110,5 +133,5 @@ try {
     await topic.delMessagesList([publishedSeq], true).catch(() => {});
   }
   first.disconnect();
-  second.disconnect();
+  if (!secondDisconnected) second.disconnect();
 }

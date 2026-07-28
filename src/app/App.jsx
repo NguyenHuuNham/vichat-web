@@ -12,6 +12,27 @@ function tinodeTopicName(room) {
   return room?.tinodeTopic || room?.id || '';
 }
 
+function identityValues(entity) {
+  return [...new Set([
+    entity?.id,
+    entity?.uid,
+    entity?.tinodeUid,
+    entity?.tinode_uid,
+  ].filter(Boolean).map(value => String(value)))];
+}
+
+function identitiesOverlap(first, second) {
+  const secondValues = new Set(identityValues(second));
+  return identityValues(first).some(value => secondValues.has(value));
+}
+
+function snapshotPresence(entity, snapshot) {
+  for (const value of identityValues(entity)) {
+    if (Object.prototype.hasOwnProperty.call(snapshot || {}, value)) return Boolean(snapshot[value]);
+  }
+  return undefined;
+}
+
 // --- Initial Conversions Data ---
 const INITIAL_CHAT_DATA = {};
 
@@ -526,7 +547,9 @@ function App() {
     badge: 0,
   };
 
-  const isCurrentUserOnline = Boolean(isLoggedIn && currentUser);
+  const isCurrentUserOnline = Boolean(
+    isLoggedIn && currentUser && (chatMode !== 'tinode' || connectionStatus === 'online')
+  );
   const profileAccount = {
     ...(findAccount(directoryAccounts, currentUser?.id || currentUser?.uid) || {}),
     ...(currentUser || {}),
@@ -556,6 +579,46 @@ function App() {
   const viewerId = chatMode === 'tinode'
     ? (currentUser?.tinodeUid || currentUser?.uid || currentUser?.id)
     : (currentUser?.id || currentUser?.uid);
+
+  const applyPresenceSnapshot = useCallback(snapshot => {
+    const updateAccount = account => {
+      const online = identitiesOverlap(account, currentUser) ? undefined : snapshotPresence(account, snapshot);
+      return online === undefined || account?.online === online ? account : { ...account, online };
+    };
+
+    setDirectoryAccounts(previous => previous.map(updateAccount));
+    setWorkspaceResults(previous => previous.map(updateAccount));
+    setGroupSearchResults(previous => previous.map(updateAccount));
+    setConversations(previous => {
+      let changed = false;
+      const next = Object.fromEntries(Object.entries(previous).map(([id, room]) => {
+        let membersChanged = false;
+        const members = (room.members || []).map(member => {
+          const account = findAccount(directoryAccounts, member.id || member.uid || member.name);
+          const isCurrentAccount = identitiesOverlap(member, currentUser) || identitiesOverlap(account, currentUser);
+          const online = isCurrentAccount
+            ? undefined
+            : snapshotPresence(member, snapshot) ?? snapshotPresence(account, snapshot);
+          if (online === undefined || member.online === online) return member;
+          membersChanged = true;
+          return { ...member, online };
+        });
+        const peer = !room.isGroup && !room.isChatbot
+          ? members.find(member => !identitiesOverlap(member, currentUser)) || members[0]
+          : null;
+        const membersCount = peer ? (peer.online ? 'Online' : 'Offline') : room.membersCount;
+        if (!membersChanged && membersCount === room.membersCount) return [id, room];
+        changed = true;
+        return [id, { ...room, members, membersCount }];
+      }));
+      return changed ? next : previous;
+    });
+  }, [currentUser, directoryAccounts]);
+
+  const isAccountOnline = account => identitiesOverlap(account, currentUser)
+    ? isCurrentUserOnline
+    : Boolean(account?.online);
+
   useEffect(() => {
     if (!viewerId) return;
     try {
@@ -747,6 +810,14 @@ function App() {
         setChatError('Kết nối chat đã bị gián đoạn. Hệ thống sẽ tự kết nối lại.');
         return;
       }
+      if (event.type === 'presence') {
+        if (event.uid) applyPresenceSnapshot({ [event.uid]: Boolean(event.online) });
+        return;
+      }
+      if (event.type === 'presence-snapshot') {
+        applyPresenceSnapshot(event.snapshot || {});
+        return;
+      }
       if (event.type === 'contacts') {
         // A new invite or P2P topic is first reported through the `me` topic.
         // Subscribe it immediately so messages arrive without opening it.
@@ -878,7 +949,7 @@ function App() {
         return;
       }
     });
-  }, [isLoggedIn, chatMode, currentUser, directoryAccounts, queueMessageForKnowledge, showIncomingNotification, viewerId]);
+  }, [isLoggedIn, chatMode, currentUser, directoryAccounts, applyPresenceSnapshot, queueMessageForKnowledge, showIncomingNotification, viewerId]);
 
   // Keep every known Tinode topic subscribed after login. This is the piece
   // that makes unread badges and notifications realtime before a chat is opened.
@@ -888,7 +959,10 @@ function App() {
     ensureTinodeSession()
       .then(() => tinodeClient.listConversations())
       .then(() => {
-        if (!cancelled) setConnectionStatus('online');
+        if (!cancelled) {
+          setConnectionStatus('online');
+          applyPresenceSnapshot(tinodeClient.getPresenceSnapshot());
+        }
       })
       .catch(error => {
         if (!cancelled) {
@@ -897,7 +971,7 @@ function App() {
         }
       });
     return () => { cancelled = true; };
-  }, [isLoggedIn, chatMode, ensureTinodeSession]);
+  }, [isLoggedIn, chatMode, ensureTinodeSession, applyPresenceSnapshot]);
 
   const handleLoginSuccess = async (user) => {
     setDrafts({});
@@ -1383,7 +1457,7 @@ function App() {
           isGroup: false,
           avatarHtml: contact.avatar ? <img src={contact.avatar} alt={contact.name} /> : <span>{contact.name.slice(0, 1).toUpperCase()}</span>,
           avatarClass: '',
-          membersCount: contact.online ? 'Online' : 'Offline',
+          membersCount: isAccountOnline(contact) ? 'Online' : 'Offline',
           description: `Cuộc trò chuyện với ${contact.name}`,
           admin: '',
           members: [contact],
@@ -2811,8 +2885,8 @@ function App() {
                   <div className="member-info">
                     <span className="member-name">{member.name}</span>
                     <span className="member-status-text">
-                      <span className={`status-dot ${member.online ? 'online' : 'offline'}`}></span>
-                      {member.online ? 'Online' : 'Offline'}
+                      <span className={`status-dot ${isAccountOnline(member) ? 'online' : 'offline'}`}></span>
+                      {isAccountOnline(member) ? 'Online' : 'Offline'}
                     </span>
                   </div>
                   {isCurrentUserGroupAdmin && member.id && member.id !== viewerId && member.id !== activeAdminId && (
@@ -2867,7 +2941,6 @@ function App() {
           <section className="workspace-panel" role="dialog" aria-modal="true">
             <div className="workspace-panel-header">
               <div>
-                <span className="group-modal-kicker">SÔNG HỒNG WORKSPACE</span>
                 <h2>{workspacePanel === 'profile' ? 'Hồ sơ cá nhân' : workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'knowledge' ? 'Tri thức AI' : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : 'Cài đặt'}</h2>
               </div>
               <div className="workspace-panel-header-actions">
@@ -2939,7 +3012,7 @@ function App() {
                             <SafeAvatar src={contact.avatar} name={contact.name} className="workspace-avatar" />
                             <span className="workspace-list-copy">
                               <strong>{contact.name}</strong>
-                              <small>{contact.online ? 'Online' : 'Offline'}{contact.username ? ` · @${contact.username}` : ''}</small>
+                              <small>{isAccountOnline(contact) ? 'Online' : 'Offline'}{contact.username ? ` · @${contact.username}` : ''}</small>
                             </span>
                           </button>
                           <button type="button" className="btn-friend chat" onClick={() => handleStartDirectChat(contact)}>
@@ -2967,7 +3040,7 @@ function App() {
                       <div className="workspace-list-item contact-result" key={contact.id || contact.name}>
                         <button type="button" className="contact-result-main" onClick={() => handleStartDirectChat(contact)}>
                           <SafeAvatar src={contact.avatar} name={contact.name} className="workspace-avatar" />
-                          <span className="workspace-list-copy"><strong>{contact.name}</strong><small>{contact.online ? 'Online' : 'Offline'}{contact.id ? ` · ${contact.id}` : ''}</small></span>
+                          <span className="workspace-list-copy"><strong>{contact.name}</strong><small>{isAccountOnline(contact) ? 'Online' : 'Offline'}{contact.id ? ` · ${contact.id}` : ''}</small></span>
                         </button>
                         {friendshipStatus === 'pending-received' ? (
                           <button type="button" className="btn-friend secondary" onClick={() => openWorkspacePanel('notifications')}>Xem lời mời</button>
@@ -3189,7 +3262,7 @@ function App() {
                       <button type="button" key={memberId} className={`group-member-option ${selected ? 'selected' : ''}`} onClick={() => toggleGroupMember(member)}>
                         <span className="picker-check"><i className={`fa-solid ${selected ? 'fa-check' : 'fa-plus'}`}></i></span>
                         <span className="picker-name">{member.name}</span>
-                        <span className="picker-status">{member.online ? 'Online' : 'Offline'}</span>
+                        <span className="picker-status">{isAccountOnline(member) ? 'Online' : 'Offline'}</span>
                       </button>
                     );
                   })}
@@ -3238,7 +3311,7 @@ function App() {
                       <button type="button" key={memberId} className={`group-member-option ${selected ? 'selected' : ''}`} onClick={() => toggleGroupMember(member)}>
                         <span className="picker-check"><i className={`fa-solid ${selected ? 'fa-check' : 'fa-plus'}`}></i></span>
                         <span className="picker-name">{member.name}</span>
-                        <span className="picker-status">{member.username ? `@${member.username}` : member.online ? 'Online' : 'Offline'}</span>
+                        <span className="picker-status">{member.username ? `@${member.username}` : isAccountOnline(member) ? 'Online' : 'Offline'}</span>
                       </button>
                     );
                   })}

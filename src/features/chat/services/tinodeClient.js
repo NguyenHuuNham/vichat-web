@@ -539,13 +539,33 @@ function toConversation(topic, tinode) {
     }
   });
 
+  // Tinode stores P2P presence on the contact topic. Direct topics often have
+  // no subscriber list, so expose the peer from the topic itself.
+  if (!isGroup && topic.name) {
+    const cachedProfile = userProfileCache.get(topic.name) || {};
+    const directMember = {
+      id: topic.name,
+      name: usableProfileName(topic.public?.fn || topic.public?.name) || cachedProfile.name || publicName(topic),
+      avatar: normalizeAvatar(topic.public?.photo || topic.public?.avatar) || cachedProfile.avatar || avatarFromTopic(topic),
+      online: topic.online === true,
+      mode: topic.acs?.getMode?.() || '',
+    };
+    const existingIndex = members.findIndex(member => member.id === topic.name);
+    if (existingIndex >= 0) members[existingIndex] = { ...members[existingIndex], ...directMember };
+    else members.push(directMember);
+  }
+
+  const directPeer = !isGroup
+    ? members.find(member => member.id !== tinode.getCurrentUserID()) || members[0]
+    : null;
+
   return {
     id: topic.name,
     name: publicName(topic),
     isGroup,
     avatarUrl: avatarFromTopic(topic),
     avatarClass: isGroup ? 'group blue' : '',
-    membersCount: isGroup ? `${members.length || 1} thành viên` : 'Đang trò chuyện',
+    membersCount: isGroup ? `${members.length || 1} thành viên` : (directPeer?.online ? 'Online' : 'Offline'),
     description: topic.public?.note || topic.public?.fn || '',
     admin: members.find(member => member.mode?.includes?.('O'))?.name || '',
     adminId: members.find(member => member.mode?.includes?.('O'))?.id || '',
@@ -647,6 +667,30 @@ function emitConversation(topic) {
       const next = toConversation(topic, tinode);
       listeners.forEach(listener => listener({ type: 'conversation', conversation: next }));
     });
+}
+
+function presenceSnapshot(tinode = getClient()) {
+  const snapshot = {};
+  const me = tinode?.getMeTopic?.();
+  me?.contacts?.(contact => {
+    if (contact?.name && contact.isP2PType?.()) snapshot[contact.name] = contact.online === true;
+  });
+  return snapshot;
+}
+
+function emitContactPresence(contact) {
+  if (!contact?.name || !contact.isP2PType?.()) return;
+  listeners.forEach(listener => listener({
+    type: 'presence',
+    uid: contact.name,
+    online: contact.online === true,
+  }));
+  emitConversation(contact);
+}
+
+function emitPresenceSnapshot(tinode = getClient()) {
+  const snapshot = presenceSnapshot(tinode);
+  listeners.forEach(listener => listener({ type: 'presence-snapshot', snapshot }));
 }
 
 function emitContactsSoon() {
@@ -784,9 +828,15 @@ async function subscribeTopic(topicName, { historyLimit = 1000 } = {}) {
 
 async function initializeSession(tinode, fallbackLogin = '', preferredName = '') {
   meTopic = tinode.getMeTopic();
-  meTopic.onMetaSub = emitContactsSoon;
+  meTopic.onMetaSub = contact => {
+    emitContactsSoon();
+    emitContactPresence(contact);
+  };
   meTopic.onSubsUpdated = emitContactsSoon;
-  meTopic.onContactUpdate = emitContactsSoon;
+  meTopic.onContactUpdate = (_what, contact) => {
+    emitContactsSoon();
+    emitContactPresence(contact);
+  };
   const previousMetaDesc = meTopic.onMetaDesc;
   const previousSubsUpdated = meTopic.onSubsUpdated;
   let finishDescription;
@@ -822,6 +872,7 @@ async function initializeSession(tinode, fallbackLogin = '', preferredName = '')
   await Promise.all([descriptionReady, subscriptionsReady]);
   meTopic.onMetaDesc = previousMetaDesc;
   meTopic.onSubsUpdated = previousSubsUpdated;
+  emitPresenceSnapshot(tinode);
 
   let publicProfile = meTopic.public || {};
   const resolvedName = usableProfileName(publicProfile.fn || publicProfile.name)
@@ -869,6 +920,10 @@ export const tinodeClient = {
 
   get authenticated() {
     return Boolean(currentSession && client?.isConnected?.());
+  },
+
+  getPresenceSnapshot() {
+    return presenceSnapshot(getClient());
   },
 
   async ensureSession(auth = {}) {
