@@ -813,7 +813,7 @@ function App() {
         return;
       }
       if (event.type === 'reconnecting') {
-        setConnectionStatus('connecting');
+        setConnectionStatus(tinodeClient.authenticated ? 'online' : 'connecting');
         return;
       }
       if (event.type === 'reconnect') {
@@ -823,10 +823,11 @@ function App() {
         return;
       }
       if (event.type === 'reconnect-error') {
-        setConnectionStatus('offline');
+        setConnectionStatus(tinodeClient.authenticated ? 'online' : 'offline');
         setChatError(event.error?.message || 'Không thể khôi phục kết nối Tinode. Vui lòng đăng nhập lại.');
         return;
       }
+      if (tinodeClient.authenticated) setConnectionStatus('online');
       if (event.type === 'presence') {
         if (event.uid) applyPresenceSnapshot({ [event.uid]: Boolean(event.online) });
         return;
@@ -983,7 +984,7 @@ function App() {
       })
       .catch(error => {
         if (!cancelled) {
-          setConnectionStatus('offline');
+          setConnectionStatus(tinodeClient.authenticated ? 'online' : 'offline');
           setChatError(error?.message || 'Không thể đồng bộ chat realtime.');
         }
       });
@@ -1097,7 +1098,7 @@ function App() {
         }));
         await tinodeClient.markRead(topicName);
       } catch (err) {
-        setConnectionStatus('offline');
+        setConnectionStatus(tinodeClient.authenticated ? 'online' : 'offline');
         setChatError(err?.message || 'Không mở được cuộc trò chuyện.');
       }
     }
@@ -2454,6 +2455,9 @@ function App() {
   const activeRemoteTyping = chatMode === 'tinode' && !activeChat.isChatbot
     ? typingByTopic[tinodeTopicName(activeChat)]
     : null;
+  const showTinodeConnectionNotice = chatMode === 'tinode'
+    && ['connecting', 'offline'].includes(connectionStatus)
+    && !tinodeClient.authenticated;
 
   if (!isLoggedIn) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
@@ -2461,7 +2465,7 @@ function App() {
 
   return (
     <div className={`app-layout ${isMobileChatActive ? 'mobile-active-chat' : ''}`}>
-      {(chatError || chatMode === 'tinode' && ['connecting', 'offline'].includes(connectionStatus)) && (
+      {(chatError || showTinodeConnectionNotice) && (
         <div className={`chat-system-banner ${chatError ? 'error' : 'info'}`} role="status">
           <i className={`fa-solid ${chatError ? 'fa-triangle-exclamation' : 'fa-circle-info'}`}></i>
           <span>{chatError || 'Đang kết nối Tinode...'}</span>
