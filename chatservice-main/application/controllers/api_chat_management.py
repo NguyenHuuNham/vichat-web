@@ -84,6 +84,12 @@ def _public_account(account, tenant=None):
         "active": bool(account.active),
         "online": False,
         "mustChangePassword": bool(properties.get("must_change_password")),
+        "createdAt": _iso_timestamp(account.created_at),
+        "created_at": account.created_at,
+        "updatedAt": _iso_timestamp(account.updated_at),
+        "updated_at": account.updated_at,
+        "lastLoginAt": _iso_timestamp(account.last_login_at),
+        "last_login_at": account.last_login_at,
     }
 
 
@@ -573,10 +579,12 @@ async def management_users(request):
         return _auth_error()
     query_text = str(request.args.get("q") or "").strip().lower()
     exclude_user_id = str(request.args.get("exclude_user_id") or "")
-    query = ManagementAccount.query.filter(
-        ManagementAccount.tenant_id == tenant_id,
-        ManagementAccount.active.is_(True),
-    )
+    include_inactive = _is_admin(current_user) and str(
+        request.args.get("include_inactive") or ""
+    ).lower() in ("1", "true", "yes")
+    query = ManagementAccount.query.filter(ManagementAccount.tenant_id == tenant_id)
+    if not include_inactive:
+        query = query.filter(ManagementAccount.active.is_(True))
     if exclude_user_id:
         query = query.filter(ManagementAccount.id != exclude_user_id)
     if query_text:
@@ -665,15 +673,27 @@ async def management_user_update(request, account_id):
     if account is None:
         return json({"error_code": "NOT_FOUND", "error_message": "Account not found in this tenant."}, status=404)
     body = request.json or {}
+    was_active = bool(account.active)
     role = str(body.get("role") or account.role or "member").strip().lower()
     if role not in ("member", "admin"):
         return json({"error_code": "PARAM_ERROR", "error_message": "Role must be member or admin."}, status=400)
     if str(account.id) == _user_id(current_user) and body.get("active") is False:
         return json({"error_code": "PARAM_ERROR", "error_message": "You cannot disable your own account."}, status=400)
+    if str(account.id) == _user_id(current_user) and role != str(account.role or "member").lower():
+        return json({"error_code": "PARAM_ERROR", "error_message": "You cannot change your own administrator role."}, status=400)
     if "name" in body or "full_name" in body:
         account.full_name = str(body.get("name") or body.get("full_name") or "").strip() or account.full_name
     if "email" in body:
-        account.email = str(body.get("email") or "").strip().lower() or None
+        email = str(body.get("email") or "").strip().lower() or None
+        if email:
+            duplicate = ManagementAccount.query.filter(
+                ManagementAccount.tenant_id == tenant_id,
+                ManagementAccount.id != str(account.id),
+                func.lower(ManagementAccount.email) == email,
+            ).first()
+            if duplicate is not None:
+                return json({"error_code": "EMAIL_EXISTS", "error_message": "Email is already used by another account."}, status=409)
+        account.email = email
     if "department" in body:
         account.department = str(body.get("department") or "")
     if "title" in body:
@@ -682,6 +702,8 @@ async def management_user_update(request, account_id):
         account.avatar = str(body.get("avatar") or "")
     if "active" in body:
         account.active = bool(body.get("active"))
+    if was_active and not account.active:
+        _bump_auth_version(account)
     account.role = role
     account.updated_at = int(time.time())
     try:
@@ -691,6 +713,100 @@ async def management_user_update(request, account_id):
     except Exception:
         db.session.rollback()
         return json({"error_code": "ACCOUNT_UPDATE_FAILED", "error_message": "The account update conflicted with existing data."}, status=409)
+
+
+@app.route('/api/v1/chat/users/<account_id>/revoke-session', methods=['POST'])
+async def management_user_revoke_session(request, account_id):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    if not _is_admin(current_user):
+        return _forbidden_error()
+    if str(account_id) == _user_id(current_user):
+        return json({"error_code": "PARAM_ERROR", "error_message": "Use normal logout for your own account."}, status=400)
+    account = ManagementAccount.query.filter(
+        ManagementAccount.id == str(account_id),
+        ManagementAccount.tenant_id == tenant_id,
+    ).first()
+    if account is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Account not found in this tenant."}, status=404)
+    _bump_auth_version(account)
+    account.updated_at = int(time.time())
+    try:
+        db.session.commit()
+        _audit(request, "ACCOUNT_SESSION_REVOKED", True, tenant_id=tenant_id, user_id=_user_id(current_user), properties={"account_id": account.id})
+        return json({"revoked": True, "user": _public_account(account)})
+    except Exception:
+        db.session.rollback()
+        return json({"error_code": "SESSION_REVOKE_FAILED", "error_message": "Could not revoke the account sessions."}, status=500)
+
+
+@app.route('/api/v1/chat/users/<account_id>/reset-password', methods=['POST'])
+async def management_user_reset_password(request, account_id):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    if not _is_admin(current_user):
+        return _forbidden_error()
+    if str(account_id) == _user_id(current_user):
+        return json({"error_code": "PARAM_ERROR", "error_message": "Use the profile password form for your own account."}, status=400)
+    account = ManagementAccount.query.filter(
+        ManagementAccount.id == str(account_id),
+        ManagementAccount.tenant_id == tenant_id,
+    ).first()
+    if account is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Account not found in this tenant."}, status=404)
+    new_password = str((request.json or {}).get("new_password") or "")
+    try:
+        new_password_hash = hash_password(new_password)
+        await tinode_admin_reset_password(account.tinode_username, account.tinode_uid, new_password)
+        account.password_hash = new_password_hash
+        properties = _bump_auth_version(account)
+        properties["must_change_password"] = True
+        properties["password_reset_by_admin_at"] = int(time.time())
+        account.properties = properties
+        account.updated_at = int(time.time())
+        db.session.commit()
+        _audit(request, "ACCOUNT_PASSWORD_RESET_BY_ADMIN", True, tenant_id=tenant_id, user_id=_user_id(current_user), properties={"account_id": account.id})
+        return json({"reset": True, "user": _public_account(account)})
+    except AuthError as error:
+        db.session.rollback()
+        _audit(request, "ACCOUNT_PASSWORD_RESET_BY_ADMIN", False, tenant_id=tenant_id, user_id=_user_id(current_user), properties={"account_id": account.id})
+        return json({"error_code": "PASSWORD_RESET_FAILED", "error_message": str(error)}, status=error.status_code)
+    except Exception:
+        db.session.rollback()
+        return json({"error_code": "PASSWORD_RESET_FAILED", "error_message": "Could not reset the account password."}, status=500)
+
+
+@app.route('/api/v1/admin/audit-logs', methods=['GET'])
+async def management_audit_logs(request):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    if not _is_admin(current_user):
+        return _forbidden_error()
+    try:
+        limit = min(300, max(1, int(request.args.get("limit") or 100)))
+    except (TypeError, ValueError):
+        limit = 100
+    event_query = str(request.args.get("event") or "").strip().upper()
+    query = SecurityAuditLog.query.filter(
+        SecurityAuditLog.tenant_id == tenant_id,
+        SecurityAuditLog.deleted.is_(False),
+    )
+    if event_query:
+        query = query.filter(func.upper(SecurityAuditLog.event_name).like("%{}%".format(event_query)))
+    records = query.order_by(SecurityAuditLog.created_at.desc()).limit(limit).all()
+    return json({"objects": [{
+        "id": str(record.id),
+        "userId": record.user_id,
+        "eventName": record.event_name,
+        "success": bool(record.success),
+        "ipAddress": record.ip_address or "",
+        "userAgent": record.user_agent or "",
+        "properties": record.properties or {},
+        "createdAt": _iso_timestamp(record.created_at),
+    } for record in records]})
 
 
 @app.route('/api/v1/friend-request', methods=['GET'])

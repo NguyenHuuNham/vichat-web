@@ -65,7 +65,10 @@ services:
 
   chatmgt:
     build:
-      context: ../../chatservice-main
+      context: ../..
+      dockerfile: infrastructure/production/Dockerfile.chatmgt
+      args:
+        VITE_CHAT_TENANT_ID: ${CHATMGT_DEFAULT_TENANT:-song-hong}
     restart: unless-stopped
     depends_on:
       chat-postgres:
