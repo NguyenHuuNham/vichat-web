@@ -681,8 +681,10 @@ function App() {
           ...previous,
           tinodeUid: session.uid,
           tinodeSession: session,
-          name: session.profile?.name || previous?.name,
-          avatar: session.profile?.avatar || previous?.avatar || '',
+          name: previous?.name || auth.displayName || session.profile?.name,
+          avatar: previous?.avatar || auth.avatar || session.profile?.avatar || '',
+          tenantId: previous?.tenantId || auth.tenantId,
+          tenantName: previous?.tenantName || auth.tenantName,
         }));
         setConnectionStatus('online');
         return session;

@@ -52,6 +52,8 @@ function Login({ onLoginSuccess }) {
         role: session.role,
         department: session.department,
         tenantId: session.tenantId,
+        tenantName: session.tenantName,
+        tenant: session.tenant,
         tinodeUid: session.tinodeUid,
         tinodeAuth: session.tinodeAuth,
         title: session.profile?.title || '',

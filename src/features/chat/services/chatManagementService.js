@@ -120,21 +120,32 @@ export const chatManagementService = {
       body: JSON.stringify({ identity: normalizedIdentity, password, tenant_id: tenantId }),
     });
     const account = publicAccount(payload.user || payload.current_user || payload);
+    const tenant = payload.tenant || account?.tenant || null;
+    const rawTinodeAuth = payload.tinode || payload.tinode_auth || {};
     activeSession = {
       user: account,
-      tinodeAuth: payload.tinode || payload.tinode_auth || {
-        username: account?.username || normalizedIdentity,
-        token: payload.tinode_token,
+      tenant,
+      tinodeAuth: {
+        ...rawTinodeAuth,
+        username: rawTinodeAuth.username || account?.tinodeUsername || account?.tinode_username || account?.username || normalizedIdentity,
+        uid: rawTinodeAuth.uid || account?.tinodeUid || account?.tinode_uid,
+        token: rawTinodeAuth.token || payload.tinode_token,
+        displayName: account?.name || '',
+        avatar: account?.avatar || '',
+        tenantId: tenant?.id || account?.tenantId || account?.tenant_id || tenantId,
+        tenantName: tenant?.name || account?.tenantName || account?.tenant_name || '',
       },
     };
     return account;
   },
 
   async logout() {
+    let payload = null;
     if (apiBase && remoteAuth) {
-      await apiRequest('/api/v1/auth/logout', { method: 'POST' }).catch(() => {});
+      payload = await apiRequest('/api/v1/auth/logout', { method: 'POST' }).catch(() => null);
     }
     activeSession = null;
+    return payload;
   },
 
   async requestPasswordReset(identity) {
@@ -272,6 +283,7 @@ export const chatManagementService = {
 
 function toLoginSession(account) {
   const auth = chatManagementService.getTinodeAuth();
+  const tenant = account.tenant || null;
   return {
     uid: account.id,
     login: account.username,
@@ -280,6 +292,8 @@ function toLoginSession(account) {
     email: account.email,
     department: account.department,
     tenantId: account.tenantId || account.tenant_id,
+    tenantName: tenant?.name || account.tenantName || account.tenant_name || '',
+    tenant,
     tinodeUid: account.tinodeUid,
     tinodeAuth: auth,
     mustChangePassword: Boolean(account.mustChangePassword || account.must_change_password),
