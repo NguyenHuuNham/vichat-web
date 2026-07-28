@@ -783,14 +783,14 @@ function App() {
     const accountSession = accountSessionRef.current;
     const managementConversationId = room.managementId || room.id;
     if (room.accountSession !== accountSession || managementConversationSessionRef.current !== accountSession) {
-      throw new Error('Cuoc tro chuyen khong thuoc phien tai khoan hien tai.');
+      throw new Error('Cuộc trò chuyện không thuộc phiên tài khoản hiện tại.');
     }
     if (!isManagementConversationId(managementConversationId)) {
-      throw new Error('Service quan ly chua xac nhan cuoc tro chuyen nay.');
+      throw new Error('Chatmgt chưa xác nhận cuộc trò chuyện này.');
     }
     const managementUserId = currentUser?.id || currentUser?.uid;
     await ensureTinodeSession();
-    if (accountSessionRef.current !== accountSession) throw new Error('Phien tai khoan da thay doi.');
+    if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
     let topicName = room.tinodeTopic
       || chatManagementService.getTinodeTopic(managementUserId, managementConversationId);
 
@@ -816,9 +816,9 @@ function App() {
       topicName = await tinodeClient.resolveUserTopic(contact || { uid: room.participantIds?.find(id => id !== managementUserId) });
     }
 
-    if (!topicName) throw new Error('Service quan ly chua gan Tinode topic cho cuoc tro chuyen nay.');
+    if (!topicName) throw new Error('Chatmgt chưa gắn topic Tinode cho cuộc trò chuyện này.');
     await chatManagementService.bindTinodeTopic(managementUserId, managementConversationId, topicName);
-    if (accountSessionRef.current !== accountSession) throw new Error('Phien tai khoan da thay doi.');
+    if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
     const stateId = room.id || managementConversationId;
     const previousRooms = conversationsRef.current;
     const nextRooms = {
@@ -949,7 +949,7 @@ function App() {
               .then(() => tinodeClient.listConversations())
               .catch(error => {
                 if (accountSessionRef.current === accountSession) {
-                  setChatError(error?.message || 'Khong dong bo duoc danh sach cuoc tro chuyen.');
+                  setChatError(error?.message || 'Không đồng bộ được danh sách cuộc trò chuyện.');
                 }
               });
           }, 120);

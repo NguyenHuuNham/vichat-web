@@ -277,7 +277,7 @@ export const chatManagementService = {
     if (!conversationId || !topicName) return topicName;
     if (apiBase && remoteAuth) {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(conversationId))) {
-        throw new Error('Management conversation ID is invalid.');
+        throw new Error('Mã cuộc trò chuyện của chatmgt không hợp lệ.');
       }
       await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/tinode-topic`, {
         method: 'PUT',
