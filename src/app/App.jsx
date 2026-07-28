@@ -12,6 +12,10 @@ function tinodeTopicName(room) {
   return room?.tinodeTopic || room?.id || '';
 }
 
+function isManagementConversationId(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+}
+
 function identityValues(entity) {
   return [...new Set([
     entity?.id,
@@ -440,6 +444,47 @@ function demoDirectToConversation(direct, accounts, viewerId) {
   };
 }
 
+function managementRoomsForSession(managed, accounts, user, accountSession) {
+  const managementUserId = String(user?.id || user?.uid || '');
+  const savedGroups = (managed?.groups || [])
+    .map(group => demoGroupToConversation(group, accounts, managementUserId));
+  const savedDirects = (managed?.directs || [])
+    .map(direct => demoDirectToConversation(direct, accounts, managementUserId));
+  const savedDirectIds = new Set(savedDirects.map(room => room.id));
+  const remoteRooms = (managed?.conversations || [])
+    .filter(room => !room.isChatbot)
+    .filter(room => isManagementConversationId(room.managementId || room.id))
+    .filter(room => (room.participantIds || []).map(String).includes(managementUserId))
+    .filter(room => !isSelfDirectConversation(room, user, accounts))
+    .filter(room => {
+      if (room.isGroup) return true;
+      const contact = room.members?.map(member => findAccount(accounts, member.id || member.name)).find(Boolean);
+      return !contact || !savedDirectIds.has(directConversationId(managementUserId, contact.id));
+    })
+    .map(room => ({
+      ...room,
+      messages: [],
+      lastMsg: 'Chưa có tin nhắn',
+      time: '',
+      badge: 0,
+    }));
+  const rooms = {
+    ...Object.fromEntries(remoteRooms.map(room => [room.id, room])),
+    ...Object.fromEntries(savedGroups.map(group => [group.id, group])),
+    ...Object.fromEntries(savedDirects.map(direct => [direct.id, direct])),
+  };
+  return Object.fromEntries(Object.entries(rooms).map(([id, room]) => [id, {
+    ...room,
+    managementId: room.managementId || id,
+    tinodeTopic: room.tinodeTopic || chatManagementService.getTinodeTopic(managementUserId, room.managementId || id),
+    accountSession,
+  }]));
+}
+
+function managedTinodeTopics(rooms) {
+  return Object.values(rooms || {}).map(room => room.tinodeTopic).filter(Boolean);
+}
+
 function App() {
   const [currentChatId, setCurrentChatId] = useState(CHATBOT_ACCOUNT.id);
   const [conversations, setConversations] = useState(createInitialConversations);
@@ -456,6 +501,7 @@ function App() {
   const [chatMode, setChatMode] = useState('demo');
   const [connectionStatus, setConnectionStatus] = useState(isTinodeConfigured ? 'ready' : 'demo');
   const [chatError, setChatError] = useState('');
+  const [managementConversationSession, setManagementConversationSession] = useState(0);
 
   // Group creation state. The same modal works with Tinode and demo fallback.
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
@@ -532,6 +578,7 @@ function App() {
   const forcedLogoutRef = useRef(false);
   const isLoggingOutRef = useRef(false);
   const accountSessionRef = useRef(0);
+  const managementConversationSessionRef = useRef(0);
 
   // Event callbacks can run between React renders; keep the latest room map
   // available without forcing Tinode subscriptions to be recreated.
@@ -708,12 +755,44 @@ function App() {
     return tinodeSessionRequestRef.current;
   }, [chatMode]);
 
+  const refreshManagementConversations = useCallback(async accountSession => {
+    if (!accountSession || managementConversationSessionRef.current !== accountSession) return {};
+    const managementUserId = String(currentUser?.id || currentUser?.uid || '');
+    if (!managementUserId) return {};
+    const managed = await chatManagementService.listConversations();
+    if (accountSessionRef.current !== accountSession || managementConversationSessionRef.current !== accountSession) return {};
+    const managedRooms = managementRoomsForSession(managed, directoryAccounts, currentUser, accountSession);
+    const previousRooms = conversationsRef.current;
+    const nextRooms = Object.fromEntries(Object.entries(previousRooms).filter(([, room]) => room.isChatbot));
+    Object.entries(managedRooms).forEach(([id, room]) => {
+      const previousRoom = previousRooms[id] || Object.values(previousRooms)
+        .find(candidate => room.tinodeTopic && candidate.tinodeTopic === room.tinodeTopic);
+      nextRooms[id] = mergeTinodeConversation(previousRoom, room);
+    });
+    conversationsRef.current = nextRooms;
+    setConversations(nextRooms);
+    tinodeClient.setAllowedConversationTopics(managedTinodeTopics(managedRooms));
+    if (!nextRooms[currentChatIdRef.current]) {
+      setCurrentChatId(Object.keys(nextRooms)[0] || CHATBOT_ACCOUNT.id);
+    }
+    return managedRooms;
+  }, [currentUser, directoryAccounts]);
+
   const ensureTinodeConversationTopic = async room => {
     if (!room || room.isChatbot || chatMode !== 'tinode') return room?.id || '';
-    await ensureTinodeSession();
+    const accountSession = accountSessionRef.current;
+    const managementConversationId = room.managementId || room.id;
+    if (room.accountSession !== accountSession || managementConversationSessionRef.current !== accountSession) {
+      throw new Error('Cuoc tro chuyen khong thuoc phien tai khoan hien tai.');
+    }
+    if (!isManagementConversationId(managementConversationId)) {
+      throw new Error('Service quan ly chua xac nhan cuoc tro chuyen nay.');
+    }
     const managementUserId = currentUser?.id || currentUser?.uid;
+    await ensureTinodeSession();
+    if (accountSessionRef.current !== accountSession) throw new Error('Phien tai khoan da thay doi.');
     let topicName = room.tinodeTopic
-      || chatManagementService.getTinodeTopic(managementUserId, room.managementId || room.id);
+      || chatManagementService.getTinodeTopic(managementUserId, managementConversationId);
 
     if (!topicName && room.isGroup) {
       const memberAccounts = (room.members || [])
@@ -738,11 +817,23 @@ function App() {
     }
 
     if (!topicName) throw new Error('Service quan ly chua gan Tinode topic cho cuoc tro chuyen nay.');
-    chatManagementService.bindTinodeTopic(managementUserId, room.managementId || room.id, topicName);
-    setConversations(previous => previous[room.id] ? ({
-      ...previous,
-      [room.id]: { ...previous[room.id], tinodeTopic: topicName },
-    }) : previous);
+    await chatManagementService.bindTinodeTopic(managementUserId, managementConversationId, topicName);
+    if (accountSessionRef.current !== accountSession) throw new Error('Phien tai khoan da thay doi.');
+    const stateId = room.id || managementConversationId;
+    const previousRooms = conversationsRef.current;
+    const nextRooms = {
+      ...previousRooms,
+      [stateId]: {
+        ...(previousRooms[stateId] || room),
+        id: stateId,
+        managementId: managementConversationId,
+        tinodeTopic: topicName,
+        accountSession,
+      },
+    };
+    conversationsRef.current = nextRooms;
+    setConversations(nextRooms);
+    tinodeClient.allowConversationTopic(topicName);
     return topicName;
   };
 
@@ -815,8 +906,8 @@ function App() {
 
   // Keep the React view synchronized with Tinode's topic callbacks.
   useEffect(() => {
-    if (!isLoggedIn || chatMode !== 'tinode') return undefined;
-    const accountSession = accountSessionRef.current;
+    if (!isLoggedIn || chatMode !== 'tinode' || managementConversationSession !== accountSessionRef.current) return undefined;
+    const accountSession = managementConversationSession;
     return tinodeClient.onEvent(async event => {
       if (accountSessionRef.current !== accountSession) return;
       if (event.type === 'disconnect') {
@@ -854,7 +945,13 @@ function App() {
         if (!contactsSyncTimerRef.current) {
           contactsSyncTimerRef.current = setTimeout(() => {
             contactsSyncTimerRef.current = null;
-            tinodeClient.listConversations().catch(() => {});
+            refreshManagementConversations(accountSession)
+              .then(() => tinodeClient.listConversations())
+              .catch(error => {
+                if (accountSessionRef.current === accountSession) {
+                  setChatError(error?.message || 'Khong dong bo duoc danh sach cuoc tro chuyen.');
+                }
+              });
           }, 120);
         }
         return;
@@ -912,11 +1009,18 @@ function App() {
         const expectedTinodeUid = String(currentUser?.tinodeUid || '');
         if (expectedTinodeUid && String(event.sessionUid || '') !== expectedTinodeUid) return;
         const conversation = normalizeTinodeConversation(event.conversation);
-        if (deletedConversationIdsRef.current.has(conversation.id)) return;
+        const currentRooms = conversationsRef.current;
+        const managedEntry = Object.entries(currentRooms)
+          .filter(([, room]) => room.accountSession === accountSession)
+          .find(([, room]) => room.tinodeTopic === conversation.id);
+        if (!managedEntry) return;
+        const stateId = managedEntry[0];
+        if (deletedConversationIdsRef.current.has(stateId) || deletedConversationIdsRef.current.has(conversation.id)) return;
         if (isConversationHiddenAfterDelete(conversation)) {
           setConversations(prev => {
             const next = { ...prev };
-            delete next[conversation.id];
+            delete next[stateId];
+            conversationsRef.current = next;
             return next;
           });
           return;
@@ -926,23 +1030,14 @@ function App() {
           tinodeClient.deleteConversation(conversation.id, { unsubscribe: true }).catch(() => {});
           setConversations(prev => {
             const next = { ...prev };
-            delete next[conversation.id];
+            delete next[stateId];
+            conversationsRef.current = next;
             return next;
           });
-          if (currentChatIdRef.current === conversation.id) setCurrentChatId(CHATBOT_ACCOUNT.id);
+          if (currentChatIdRef.current === stateId) setCurrentChatId(CHATBOT_ACCOUNT.id);
           return;
         }
         (conversation.messages || []).forEach(message => queueMessageForKnowledge(conversation, message));
-        const currentRooms = conversationsRef.current;
-        const currentSessionRooms = Object.entries(currentRooms)
-          .filter(([, room]) => room.accountSession === accountSession);
-        const managedEntry = currentSessionRooms.find(([, room]) => tinodeTopicName(room) === conversation.id)
-          || currentSessionRooms.find(([, room]) => (
-            !room.tinodeTopic
-            && room.isGroup === conversation.isGroup
-            && String(room.name || '').localeCompare(String(conversation.name || ''), 'vi', { sensitivity: 'base' }) === 0
-          ));
-        const stateId = managedEntry?.[0] || conversation.id;
 
         // Establish a baseline during initial history sync. Only later sequence
         // numbers are live messages and should trigger desktop notifications.
@@ -969,27 +1064,30 @@ function App() {
         }
         setConversations(prev => {
           const previousRoom = prev[stateId];
+          if (!previousRoom || previousRoom.accountSession !== accountSession || previousRoom.tinodeTopic !== conversation.id) return prev;
           const incoming = {
             ...conversation,
             id: stateId,
-            managementId: previousRoom?.managementId || stateId,
+            managementId: previousRoom.managementId,
             tinodeTopic: conversation.id,
             accountSession,
           };
-          return {
+          const next = {
             ...prev,
             [stateId]: mergeTinodeConversation(previousRoom, incoming),
           };
+          conversationsRef.current = next;
+          return next;
         });
         return;
       }
     });
-  }, [isLoggedIn, chatMode, currentUser, directoryAccounts, applyPresenceSnapshot, queueMessageForKnowledge, showIncomingNotification, viewerId]);
+  }, [isLoggedIn, chatMode, managementConversationSession, currentUser, directoryAccounts, applyPresenceSnapshot, queueMessageForKnowledge, refreshManagementConversations, showIncomingNotification, viewerId]);
 
   // Keep every known Tinode topic subscribed after login. This is the piece
   // that makes unread badges and notifications realtime before a chat is opened.
   useEffect(() => {
-    if (!isLoggedIn || chatMode !== 'tinode') return undefined;
+    if (!isLoggedIn || chatMode !== 'tinode' || managementConversationSession !== accountSessionRef.current) return undefined;
     let cancelled = false;
     ensureTinodeSession()
       .then(() => tinodeClient.listConversations())
@@ -1006,11 +1104,13 @@ function App() {
         }
       });
     return () => { cancelled = true; };
-  }, [isLoggedIn, chatMode, ensureTinodeSession, applyPresenceSnapshot]);
+  }, [isLoggedIn, chatMode, managementConversationSession, ensureTinodeSession, applyPresenceSnapshot]);
 
   const handleLoginSuccess = async (user) => {
     await tinodeClient.logout();
     const accountSession = ++accountSessionRef.current;
+    managementConversationSessionRef.current = 0;
+    setManagementConversationSession(0);
     const managementUserId = String(user.id || user.uid || '');
     const initialChatbot = createChatbotConversation(loadChatbotMessages(managementUserId));
     const initialRooms = { [CHATBOT_ACCOUNT.id]: initialChatbot };
@@ -1047,55 +1147,16 @@ function App() {
           userId: managementUserId,
         });
         if (accountSessionRef.current !== accountSession) return;
-        const savedGroups = managed.groups
-          .map(group => demoGroupToConversation(group, accounts, managementUserId));
-        const savedDirects = managed.directs
-          .map(direct => demoDirectToConversation(direct, accounts, managementUserId));
-        const savedDirectIds = new Set(savedDirects.map(room => room.id));
-        const initialRooms = Object.fromEntries(managed.conversations
-          .filter(room => !room.isChatbot)
-          .filter(room => (room.participantIds || []).map(String).includes(managementUserId))
-          .filter(room => !isSelfDirectConversation(room, user, accounts))
-          .filter(room => {
-            if (room.isGroup) return true;
-            const contact = room.members?.map(member => findAccount(accounts, member.id || member.name)).find(Boolean);
-            return !contact || !savedDirectIds.has(directConversationId(managementUserId, contact.id));
-          })
-          .map(room => [room.id, {
-            ...room,
-            messages: [],
-            lastMsg: 'Chưa có tin nhắn',
-            time: '',
-            badge: 0,
-          }]));
+        const managedRooms = managementRoomsForSession(managed, accounts, user, accountSession);
         const next = {
-          ...initialRooms,
-          ...Object.fromEntries(savedGroups.map(group => [group.id, group])),
-          ...Object.fromEntries(savedDirects.map(direct => [direct.id, direct])),
+          ...managedRooms,
           [CHATBOT_ACCOUNT.id]: initialChatbot,
         };
-        const withTinodeBindings = Object.fromEntries(Object.entries(next).map(([id, room]) => [id, room.isChatbot ? room : {
-          ...room,
-          managementId: room.managementId || id,
-          tinodeTopic: room.tinodeTopic || chatManagementService.getTinodeTopic(managementUserId, room.managementId || id),
-          accountSession,
-        }]));
-        setConversations(previous => {
-          const combined = { ...withTinodeBindings };
-          if (user.tinodeUid && String(tinodeClient.currentUserId || '') !== String(user.tinodeUid)) return combined;
-          Object.entries(previous).forEach(([previousId, previousRoom]) => {
-            if (!previousRoom?.tinodeTopic || previousRoom.accountSession !== accountSession) return;
-            const managedEntry = Object.entries(combined)
-              .find(([, room]) => tinodeTopicName(room) === previousRoom.tinodeTopic);
-            const stateId = managedEntry?.[0] || previousId;
-            combined[stateId] = mergeTinodeConversation(combined[stateId], {
-              ...previousRoom,
-              id: stateId,
-              managementId: combined[stateId]?.managementId || previousRoom.managementId || stateId,
-            });
-          });
-          return combined;
-        });
+        conversationsRef.current = next;
+        setConversations(next);
+        tinodeClient.setAllowedConversationTopics(managedTinodeTopics(managedRooms));
+        managementConversationSessionRef.current = accountSession;
+        setManagementConversationSession(accountSession);
         setCurrentChatId(Object.keys(next)[0] || CHATBOT_ACCOUNT.id);
         const friendRequests = await chatManagementService.listFriendRequests(managementUserId);
         if (accountSessionRef.current !== accountSession) return;
@@ -1150,6 +1211,9 @@ function App() {
     if (isLoggingOutRef.current) return;
     isLoggingOutRef.current = true;
     accountSessionRef.current += 1;
+    managementConversationSessionRef.current = 0;
+    setManagementConversationSession(0);
+    tinodeClient.setAllowedConversationTopics([]);
     forcedLogoutRef.current = false;
     setForcedLogoutSeconds(null);
     if (chatMode === 'tinode') await tinodeClient.logout();
@@ -1543,10 +1607,18 @@ function App() {
       setChatError('Không thể mở cuộc trò chuyện với chính tài khoản đang đăng nhập.');
       return;
     }
-    const linkedRoom = Object.values(conversations).find(room => !room.isGroup && !room.isChatbot && (
-      room.name === contact.name || room.members?.some(member => findAccount(directoryAccounts, member.id || member.name)?.id === contact.id)
-    ));
     const viewerId = currentUser?.id || currentUser?.uid;
+    const accountSession = accountSessionRef.current;
+    const linkedRoom = Object.values(conversations).find(room => (
+      !room.isGroup
+      && !room.isChatbot
+      && room.accountSession === accountSession
+      && isManagementConversationId(room.managementId || room.id)
+      && (
+        (room.participantIds || []).map(String).includes(String(contact.id))
+        || room.members?.some(member => findAccount(directoryAccounts, member.id || member.name)?.id === contact.id)
+      )
+    ));
     const participantIds = contact.id ? [viewerId, contact.id] : [];
     const contactId = chatMode === 'demo' && participantIds.length === 2
       ? directConversationId(...participantIds)
@@ -1554,49 +1626,64 @@ function App() {
     try {
       let stateConversationId = contactId;
       deletedConversationIdsRef.current.delete(contactId);
+      let managedRoom = linkedRoom;
       let tinodeTopic = linkedRoom?.tinodeTopic
         || chatManagementService.getTinodeTopic(viewerId, linkedRoom?.managementId || contactId);
       if (chatMode === 'tinode' && contact.id) {
-        await ensureTinodeSession();
-        tinodeTopic = tinodeTopic || await tinodeClient.resolveUserTopic(contact);
-        chatManagementService.bindTinodeTopic(viewerId, linkedRoom?.managementId || contactId, tinodeTopic);
-        await tinodeClient.restoreConversation(tinodeTopic);
-        if (!linkedRoom) {
-          const managedRoom = await chatManagementService.createConversation({
+        if (managementConversationSessionRef.current !== accountSession) {
+          throw new Error('Danh sách cuộc trò chuyện chưa được chatmgt xác nhận.');
+        }
+        if (!managedRoom) {
+          managedRoom = await chatManagementService.createConversation({
             userId: viewerId,
             subject: contact.name,
             participantIds: [contact.id],
-            tinodeTopic,
             properties: { members: [currentUser, contact] },
-          }).catch(() => null);
-          stateConversationId = managedRoom?.id || contactId;
+          });
+          if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
         }
-      }
-      const existing = conversations[contactId] || linkedRoom;
-      setConversations(prev => {
-        const next = { ...prev };
-        if (linkedRoom && linkedRoom.id !== contactId) delete next[linkedRoom.id];
-        next[stateConversationId] = {
+        stateConversationId = managedRoom.id;
+        const roomForTinode = {
+          ...managedRoom,
           id: stateConversationId,
-          managementId: linkedRoom?.managementId || stateConversationId,
+          managementId: managedRoom.managementId || stateConversationId,
           tinodeTopic,
           name: contact.name,
           isGroup: false,
-          avatarHtml: contact.avatar ? <img src={contact.avatar} alt={contact.name} /> : <span>{contact.name.slice(0, 1).toUpperCase()}</span>,
-          avatarClass: '',
-          membersCount: isAccountOnline(contact) ? 'Online' : 'Offline',
-          description: `Cuộc trò chuyện với ${contact.name}`,
-          admin: '',
-          members: [contact],
-          participantIds: participantIds.length === 2 ? participantIds : existing?.participantIds,
-          messages: existing?.messages || [],
-          lastMsg: existing?.lastMsg || 'Bắt đầu cuộc trò chuyện',
-          time: existing?.time || getTimeString(),
-          updatedAt: existing?.updatedAt || new Date().toISOString(),
-          badge: existing?.badge || 0,
+          members: [currentUser, contact],
+          participantIds,
+          accountSession,
         };
-        return next;
-      });
+        tinodeTopic = await ensureTinodeConversationTopic(roomForTinode);
+        await tinodeClient.restoreConversation(tinodeTopic);
+      }
+      const previousRooms = conversationsRef.current;
+      const existing = previousRooms[stateConversationId] || previousRooms[contactId] || managedRoom || linkedRoom;
+      const next = { ...previousRooms };
+      if (linkedRoom && linkedRoom.id !== stateConversationId) delete next[linkedRoom.id];
+      next[stateConversationId] = {
+        ...existing,
+        id: stateConversationId,
+        managementId: managedRoom?.managementId || linkedRoom?.managementId || stateConversationId,
+        tinodeTopic,
+        name: contact.name,
+        isGroup: false,
+        avatarHtml: contact.avatar ? <img src={contact.avatar} alt={contact.name} /> : <span>{contact.name.slice(0, 1).toUpperCase()}</span>,
+        avatarClass: '',
+        membersCount: isAccountOnline(contact) ? 'Online' : 'Offline',
+        description: `Cuộc trò chuyện với ${contact.name}`,
+        admin: '',
+        members: [contact],
+        participantIds: participantIds.length === 2 ? participantIds : existing?.participantIds,
+        messages: existing?.messages || [],
+        lastMsg: existing?.lastMsg || 'Bắt đầu cuộc trò chuyện',
+        time: existing?.time || getTimeString(),
+        updatedAt: existing?.updatedAt || new Date().toISOString(),
+        badge: existing?.badge || 0,
+        ...(chatMode === 'tinode' ? { accountSession } : {}),
+      };
+      conversationsRef.current = next;
+      setConversations(next);
       setCurrentChatId(stateConversationId);
       setInputText(drafts[stateConversationId] || '');
       setWorkspacePanel(null);
@@ -1735,35 +1822,57 @@ function App() {
         createdAt: new Date().toISOString(),
       };
       if (chatMode === 'tinode') {
-        await ensureTinodeSession();
-        const resolvedMemberIds = await Promise.all(groupMemberIds.map(memberId => tinodeClient.resolveUserTopic(
-          groupMemberProfiles[memberId] || findAccount(directoryAccounts, memberId) || { uid: memberId },
-        )));
-        room = await tinodeClient.createGroup({
-          name,
-          description: groupDescription.trim(),
-          memberIds: resolvedMemberIds,
-          avatarFile: groupAvatarFile,
-        });
-        await tinodeClient.sendSystemEvent(room.id, {
-          action: addedNames.length > 0 ? 'member_added' : 'group_created',
-          actorId,
-          actorName: currentUser?.name,
-          targets: resolvedMemberIds.map((id, index) => ({ id, name: addedNames[index] })),
-        });
-        const tinodeTopic = room.id;
+        const accountSession = accountSessionRef.current;
+        if (managementConversationSessionRef.current !== accountSession) {
+          throw new Error('Danh sách cuộc trò chuyện chưa được chatmgt xác nhận.');
+        }
+        const memberProfiles = groupMemberIds
+          .map(id => groupMemberProfiles[id] || findAccount(directoryAccounts, id))
+          .filter(Boolean);
         const managedRoom = await chatManagementService.createConversation({
           userId: actorId,
           subject: name,
           isGroup: true,
           participantIds: groupMemberIds,
-          tinodeTopic,
           properties: {
             description: groupDescription.trim(),
-            members: [currentUser, ...groupMemberIds.map(id => groupMemberProfiles[id] || findAccount(directoryAccounts, id)).filter(Boolean)],
+            members: [currentUser, ...memberProfiles],
           },
-        }).catch(() => null);
-        if (managedRoom) room = { ...room, ...managedRoom, tinodeTopic, messages: room.messages || [] };
+        });
+        if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
+        await ensureTinodeSession();
+        const resolvedMemberIds = await Promise.all(groupMemberIds.map(memberId => tinodeClient.resolveUserTopic(
+          groupMemberProfiles[memberId] || findAccount(directoryAccounts, memberId) || { uid: memberId },
+        )));
+        const realtimeRoom = await tinodeClient.createGroup({
+          name,
+          description: groupDescription.trim(),
+          memberIds: resolvedMemberIds,
+          avatarFile: groupAvatarFile,
+        });
+        const tinodeTopic = realtimeRoom.id;
+        await chatManagementService.bindTinodeTopic(actorId, managedRoom.managementId || managedRoom.id, tinodeTopic);
+        if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
+        room = {
+          ...realtimeRoom,
+          ...managedRoom,
+          id: managedRoom.id,
+          managementId: managedRoom.managementId || managedRoom.id,
+          tinodeTopic,
+          accountSession,
+          messages: realtimeRoom.messages || [],
+        };
+        const provisionalRoom = normalizeTinodeConversation(room);
+        const provisionalRooms = { ...conversationsRef.current, [provisionalRoom.id]: provisionalRoom };
+        conversationsRef.current = provisionalRooms;
+        setConversations(provisionalRooms);
+        tinodeClient.allowConversationTopic(tinodeTopic);
+        await tinodeClient.sendSystemEvent(tinodeTopic, {
+          action: addedNames.length > 0 ? 'member_added' : 'group_created',
+          actorId,
+          actorName: currentUser?.name,
+          targets: resolvedMemberIds.map((id, index) => ({ id, name: addedNames[index] })),
+        });
       } else {
         let group = saveDemoGroup({
           name,
@@ -1775,7 +1884,9 @@ function App() {
         room = demoGroupToConversation(group, directoryAccounts, actorId);
       }
       const safeRoom = normalizeTinodeConversation(room);
-      setConversations(prev => ({ ...prev, [safeRoom.id]: safeRoom }));
+      const nextRooms = { ...conversationsRef.current, [safeRoom.id]: safeRoom };
+      conversationsRef.current = nextRooms;
+      setConversations(nextRooms);
       setCurrentChatId(safeRoom.id);
       setInputText('');
       setIsCreateGroupOpen(false);

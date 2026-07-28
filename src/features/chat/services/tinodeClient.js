@@ -42,6 +42,7 @@ const privateGroupTopics = new Set();
 const conversationEmitTimers = new Map();
 let conversationListRequest = null;
 let contactsEventQueued = false;
+let allowedConversationTopics = new Set();
 const SYSTEM_EVENT_PREFIX = '__VICHAT_SYSTEM_EVENT__:';
 const FRIEND_EVENT_PREFIX = '__SONGHONG_FRIEND_EVENT__:';
 const REACTION_EVENT_PREFIX = '__VICHAT_REACTION_EVENT__:';
@@ -683,7 +684,7 @@ async function enrichConversationProfiles(conversation, tinode = getClient()) {
 }
 
 function emitConversation(topic, tinode = topic?._tinode || getClient()) {
-  if (!topic || tinode !== client) return;
+  if (!topic || tinode !== client || !allowedConversationTopics.has(topic.name)) return;
   const sessionUid = tinode.getCurrentUserID();
   const eventKey = `${sessionUid}:${topic.name}`;
   const pendingTimer = conversationEmitTimers.get(eventKey);
@@ -935,6 +936,7 @@ function resetSessionState({ clearEventListeners = false } = {}) {
   conversationEmitTimers.clear();
   conversationListRequest = null;
   contactsEventQueued = false;
+  allowedConversationTopics = new Set();
   sessionRequest = null;
   reconnectRequest = null;
   if (clearEventListeners) listeners.clear();
@@ -969,7 +971,7 @@ async function registerSession(tinode, { username, password, name }) {
 async function resubscribeAfterReconnect(tinode) {
   const topics = [];
   meTopic?.contacts(topic => {
-    if (topic?.isCommType?.()) topics.push(topic);
+    if (topic?.isCommType?.() && allowedConversationTopics.has(topic.name)) topics.push(topic);
   });
   await Promise.allSettled(topics.map(topic => subscribeTopic(topic.name, {
     historyLimit: RECONNECT_HISTORY_LIMIT,
@@ -1007,7 +1009,10 @@ async function initializeSession(tinode, fallbackLogin = '', preferredName = '')
   meTopic.onContactUpdate = (_what, contact) => {
     emitContactPresence(contact);
     if (_what === 'msg' && contact?.isCommType?.()) {
-      subscribeTopic(contact.name, { historyLimit: BACKGROUND_HISTORY_LIMIT, newerOnly: true }).catch(() => {});
+      emitContactsSoon();
+      if (allowedConversationTopics.has(contact.name)) {
+        subscribeTopic(contact.name, { historyLimit: BACKGROUND_HISTORY_LIMIT, newerOnly: true }).catch(() => {});
+      }
     } else if (['acs', 'gone', 'upd'].includes(_what)) {
       emitContactsSoon();
     }
@@ -1178,6 +1183,16 @@ export const tinodeClient = {
     return profile;
   },
 
+  setAllowedConversationTopics(topicNames = []) {
+    allowedConversationTopics = new Set((topicNames || []).filter(Boolean).map(String));
+    conversationListRequest = null;
+  },
+
+  allowConversationTopic(topicName) {
+    if (topicName) allowedConversationTopics.add(String(topicName));
+    conversationListRequest = null;
+  },
+
   async listConversations() {
     if (!meTopic) return [];
     if (!conversationListRequest) {
@@ -1186,7 +1201,7 @@ export const tinodeClient = {
       const request = (async () => {
         const topics = [];
         activeMeTopic.contacts(topic => {
-          if (topic?.isCommType?.()) topics.push(topic);
+          if (topic?.isCommType?.() && allowedConversationTopics.has(topic.name)) topics.push(topic);
         });
         await Promise.allSettled(topics.map(topic => subscribeTopic(topic.name, {
           historyLimit: BACKGROUND_HISTORY_LIMIT,

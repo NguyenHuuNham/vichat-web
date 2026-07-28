@@ -266,19 +266,25 @@ export const chatManagementService = {
   },
 
   getTinodeTopic(userId, conversationId) {
+    // In remote mode chatmgt is authoritative. Old browser bindings may point
+    // at a topic created before the management conversation was persisted.
+    if (apiBase && remoteAuth) return '';
     const bindings = readStorage(topicBindingsKey, {});
     return bindings[bindingKey(userId, conversationId)] || '';
   },
 
-  bindTinodeTopic(userId, conversationId, topicName) {
+  async bindTinodeTopic(userId, conversationId, topicName) {
     if (!conversationId || !topicName) return topicName;
-    if (apiBase && remoteAuth && /^[0-9a-f-]{36}$/i.test(String(conversationId))) {
-      apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/tinode-topic`, {
+    if (apiBase && remoteAuth) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(conversationId))) {
+        throw new Error('Management conversation ID is invalid.');
+      }
+      await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/tinode-topic`, {
         method: 'PUT',
         body: JSON.stringify({
           tinode_topic: topicName,
         }),
-      }).catch(() => {});
+      });
     }
     const bindings = readStorage(topicBindingsKey, {});
     bindings[bindingKey(userId, conversationId)] = topicName;
