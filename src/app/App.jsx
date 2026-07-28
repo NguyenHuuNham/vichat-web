@@ -496,6 +496,7 @@ function App() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileNotice, setProfileNotice] = useState('');
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
+  const [forcedLogoutSeconds, setForcedLogoutSeconds] = useState(null);
 
   // Mobile navigation state
   const [isMobileChatActive, setIsMobileChatActive] = useState(false);
@@ -527,6 +528,9 @@ function App() {
   const notificationAudioContextRef = useRef(null);
   const contactsSyncTimerRef = useRef(null);
   const logoutHandlerRef = useRef(null);
+  const forcedLogoutRef = useRef(false);
+  const isLoggingOutRef = useRef(false);
+  const accountSessionRef = useRef(0);
 
   // Event callbacks can run between React renders; keep the latest room map
   // available without forcing Tinode subscriptions to be recreated.
@@ -662,8 +666,11 @@ function App() {
       setDirectoryAccounts([]);
       return undefined;
     }
-    chatManagementService.listUsers().then(setDirectoryAccounts).catch(err => setChatError(err.message));
-    return undefined;
+    let cancelled = false;
+    chatManagementService.listUsers()
+      .then(accounts => { if (!cancelled) setDirectoryAccounts(accounts); })
+      .catch(err => { if (!cancelled) setChatError(err.message); });
+    return () => { cancelled = true; };
   }, [isLoggedIn]);
 
   useEffect(() => () => {
@@ -898,6 +905,8 @@ function App() {
         return;
       }
       if (event.type === 'conversation' && event.conversation) {
+        const expectedTinodeUid = String(currentUser?.tinodeUid || '');
+        if (expectedTinodeUid && String(event.sessionUid || '') !== expectedTinodeUid) return;
         const conversation = normalizeTinodeConversation(event.conversation);
         if (deletedConversationIdsRef.current.has(conversation.id)) return;
         if (isConversationHiddenAfterDelete(conversation)) {
@@ -993,8 +1002,24 @@ function App() {
   }, [isLoggedIn, chatMode, ensureTinodeSession, applyPresenceSnapshot]);
 
   const handleLoginSuccess = async (user) => {
+    await tinodeClient.logout();
+    const accountSession = ++accountSessionRef.current;
+    const managementUserId = String(user.id || user.uid || '');
+    const initialChatbot = createChatbotConversation(loadChatbotMessages(managementUserId));
+    forcedLogoutRef.current = false;
+    isLoggingOutRef.current = false;
+    setForcedLogoutSeconds(null);
     setDrafts({});
     setInputText('');
+    setDirectoryAccounts([]);
+    setWorkspaceResults([]);
+    setGroupSearchResults([]);
+    setConversations({ [CHATBOT_ACCOUNT.id]: initialChatbot });
+    setCurrentChatId(CHATBOT_ACCOUNT.id);
+    deletedConversationIdsRef.current.clear();
+    notificationBaselineRef.current.clear();
+    learnedKnowledgeKeysRef.current.clear();
+    tinodeSessionRequestRef.current = null;
     setCurrentUser(user);
     setChatMode(user.connection || 'demo');
     setConnectionStatus(user.connection === 'tinode' ? 'ready' : 'demo');
@@ -1007,22 +1032,25 @@ function App() {
 
     try {
         const accounts = await chatManagementService.listUsers();
+        if (accountSessionRef.current !== accountSession) return;
         setDirectoryAccounts(accounts);
         const managed = await chatManagementService.listConversations({
-          userId: user.id || user.uid,
+          userId: managementUserId,
         });
+        if (accountSessionRef.current !== accountSession) return;
         const savedGroups = managed.groups
-          .map(group => demoGroupToConversation(group, accounts, user.id || user.uid));
+          .map(group => demoGroupToConversation(group, accounts, managementUserId));
         const savedDirects = managed.directs
-          .map(direct => demoDirectToConversation(direct, accounts, user.id || user.uid));
+          .map(direct => demoDirectToConversation(direct, accounts, managementUserId));
         const savedDirectIds = new Set(savedDirects.map(room => room.id));
         const initialRooms = Object.fromEntries(managed.conversations
           .filter(room => !room.isChatbot)
+          .filter(room => (room.participantIds || []).map(String).includes(managementUserId))
           .filter(room => !isSelfDirectConversation(room, user, accounts))
           .filter(room => {
             if (room.isGroup) return true;
             const contact = room.members?.map(member => findAccount(accounts, member.id || member.name)).find(Boolean);
-            return !contact || !savedDirectIds.has(directConversationId(user.id || user.uid, contact.id));
+            return !contact || !savedDirectIds.has(directConversationId(managementUserId, contact.id));
           })
           .map(room => [room.id, {
             ...room,
@@ -1035,15 +1063,16 @@ function App() {
           ...initialRooms,
           ...Object.fromEntries(savedGroups.map(group => [group.id, group])),
           ...Object.fromEntries(savedDirects.map(direct => [direct.id, direct])),
-          [CHATBOT_ACCOUNT.id]: createChatbotConversation(loadChatbotMessages(user.id || user.uid)),
+          [CHATBOT_ACCOUNT.id]: initialChatbot,
         };
         const withTinodeBindings = Object.fromEntries(Object.entries(next).map(([id, room]) => [id, room.isChatbot ? room : {
           ...room,
           managementId: room.managementId || id,
-          tinodeTopic: room.tinodeTopic || chatManagementService.getTinodeTopic(user.id || user.uid, room.managementId || id),
+          tinodeTopic: room.tinodeTopic || chatManagementService.getTinodeTopic(managementUserId, room.managementId || id),
         }]));
         setConversations(previous => {
           const combined = { ...withTinodeBindings };
+          if (user.tinodeUid && String(tinodeClient.currentUserId || '') !== String(user.tinodeUid)) return combined;
           Object.entries(previous).forEach(([previousId, previousRoom]) => {
             if (!previousRoom?.tinodeTopic) return;
             const managedEntry = Object.entries(combined)
@@ -1058,12 +1087,14 @@ function App() {
           return combined;
         });
         setCurrentChatId(Object.keys(next)[0] || CHATBOT_ACCOUNT.id);
-        const friendRequests = await chatManagementService.listFriendRequests(user.id || user.uid);
+        const friendRequests = await chatManagementService.listFriendRequests(managementUserId);
+        if (accountSessionRef.current !== accountSession) return;
         friendRequests.forEach(request => {
-          const contactId = request.requesterId === (user.id || user.uid) ? request.recipientId : request.requesterId;
+          const contactId = request.requesterId === managementUserId ? request.recipientId : request.requesterId;
           appendLocalFriendEvent(contactId, findAccount(accounts, contactId), request);
         });
         loadChatbotMessagesFromServer(user).then(messages => {
+          if (accountSessionRef.current !== accountSession) return;
           setConversations(previous => ({
             ...previous,
             [CHATBOT_ACCOUNT.id]: createChatbotConversation(messages),
@@ -1106,6 +1137,11 @@ function App() {
   };
 
   const handleLogout = async () => {
+    if (isLoggingOutRef.current) return;
+    isLoggingOutRef.current = true;
+    accountSessionRef.current += 1;
+    forcedLogoutRef.current = false;
+    setForcedLogoutSeconds(null);
     if (chatMode === 'tinode') await tinodeClient.logout();
     await chatManagementService.logout();
     if (chatMode === 'demo') {
@@ -1135,6 +1171,7 @@ function App() {
     setTypingByTopic({});
     setConversations(createInitialConversations());
     setCurrentChatId(CHATBOT_ACCOUNT.id);
+    isLoggingOutRef.current = false;
   };
 
   logoutHandlerRef.current = handleLogout;
@@ -1145,12 +1182,18 @@ function App() {
     let checking = false;
     const validateSession = async () => {
       if (checking) return;
+      if (forcedLogoutRef.current) return;
       checking = true;
       try {
         await chatManagementService.currentSession();
       } catch (error) {
         if (!cancelled && error?.status === 401) {
-          await logoutHandlerRef.current?.();
+          if (error?.code === 'SESSION_REVOKED') {
+            forcedLogoutRef.current = true;
+            setForcedLogoutSeconds(5);
+          } else {
+            await logoutHandlerRef.current?.();
+          }
         }
       } finally {
         checking = false;
@@ -1159,7 +1202,7 @@ function App() {
     const validateVisibleSession = () => {
       if (document.visibilityState !== 'hidden') validateSession();
     };
-    const timer = window.setInterval(validateSession, 10000);
+    const timer = window.setInterval(validateSession, 2000);
     window.addEventListener('focus', validateSession);
     document.addEventListener('visibilitychange', validateVisibleSession);
     return () => {
@@ -1169,6 +1212,18 @@ function App() {
       document.removeEventListener('visibilitychange', validateVisibleSession);
     };
   }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (forcedLogoutSeconds === null) return undefined;
+    if (forcedLogoutSeconds <= 0) {
+      logoutHandlerRef.current?.();
+      return undefined;
+    }
+    const timer = window.setTimeout(() => {
+      setForcedLogoutSeconds(previous => previous === null ? null : Math.max(0, previous - 1));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [forcedLogoutSeconds]);
 
   const toggleGroupMember = (member) => {
     const memberId = member?.id || member?.name;
@@ -2499,6 +2554,17 @@ function App() {
 
   return (
     <div className={`app-layout ${isMobileChatActive ? 'mobile-active-chat' : ''}`}>
+      {forcedLogoutSeconds !== null && (
+        <div className="forced-logout-backdrop" role="presentation">
+          <section className="forced-logout-modal" role="alertdialog" aria-modal="true" aria-labelledby="forced-logout-title">
+            <div className="forced-logout-icon"><i className="fa-solid fa-user-lock"></i></div>
+            <h2 id="forced-logout-title">Bạn bị buộc phải đăng xuất</h2>
+            <p>Quản trị viên đã kết thúc phiên đăng nhập của bạn.</p>
+            <p className="forced-logout-countdown">Hệ thống sẽ tự động đưa bạn về trang đăng nhập sau <strong>{forcedLogoutSeconds} giây</strong>.</p>
+            <button type="button" className="btn-primary forced-logout-confirm" onClick={() => handleLogout()}>OK</button>
+          </section>
+        </div>
+      )}
       {(chatError || showTinodeConnectionNotice) && (
         <div className={`chat-system-banner ${chatError ? 'error' : 'info'}`} role="status">
           <i className={`fa-solid ${chatError ? 'fa-triangle-exclamation' : 'fa-circle-info'}`}></i>

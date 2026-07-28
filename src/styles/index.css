@@ -2160,6 +2160,59 @@ input:checked + .slider:before {
     backdrop-filter: blur(3px);
 }
 
+.forced-logout-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: rgba(10, 30, 29, .62);
+    backdrop-filter: blur(6px);
+}
+
+.forced-logout-modal {
+    width: min(430px, 100%);
+    padding: 30px;
+    border: 1px solid rgba(244, 81, 30, .2);
+    border-radius: 22px;
+    background: var(--bg-white);
+    box-shadow: 0 28px 80px rgba(8, 38, 35, .3);
+    color: var(--text-body);
+    text-align: center;
+}
+
+.forced-logout-icon {
+    display: grid;
+    width: 58px;
+    height: 58px;
+    margin: 0 auto 18px;
+    place-items: center;
+    border-radius: 18px;
+    background: var(--vichat-red-light);
+    color: var(--vichat-red);
+    font-size: 24px;
+}
+
+.forced-logout-modal h2 {
+    margin: 0 0 10px;
+    color: var(--text-main);
+    font-size: 22px;
+}
+
+.forced-logout-modal p {
+    margin: 0;
+    font-size: 14px;
+}
+
+.forced-logout-countdown {
+    margin-top: 10px !important;
+    color: var(--text-muted);
+}
+
+.forced-logout-countdown strong { color: var(--vichat-red); }
+.forced-logout-confirm { min-width: 120px; margin-top: 22px; }
+
 .group-modal {
     width: min(520px, 100%);
     max-height: min(720px, calc(100vh - 40px));

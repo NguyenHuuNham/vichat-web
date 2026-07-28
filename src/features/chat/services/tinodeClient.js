@@ -678,14 +678,18 @@ async function enrichConversationProfiles(conversation, tinode = getClient()) {
   };
 }
 
-function emitConversation(topic) {
-  if (!topic) return;
-  const tinode = getClient();
+function emitConversation(topic, tinode = topic?._tinode || getClient()) {
+  if (!topic || tinode !== client) return;
+  const sessionUid = tinode.getCurrentUserID();
   enrichConversationProfiles(toConversation(topic, tinode), tinode)
-    .then(next => listeners.forEach(listener => listener({ type: 'conversation', conversation: next })))
+    .then(next => {
+      if (tinode !== client || sessionUid !== currentSession?.uid) return;
+      listeners.forEach(listener => listener({ type: 'conversation', conversation: next, sessionUid }));
+    })
     .catch(() => {
+      if (tinode !== client || sessionUid !== currentSession?.uid) return;
       const next = toConversation(topic, tinode);
-      listeners.forEach(listener => listener({ type: 'conversation', conversation: next }));
+      listeners.forEach(listener => listener({ type: 'conversation', conversation: next, sessionUid }));
     });
 }
 
@@ -723,13 +727,14 @@ function emitContactsSoon() {
 }
 
 function wireTopic(topic) {
-  topic.onData = () => emitConversation(topic);
-  topic.onMetaDesc = () => emitConversation(topic);
-  topic.onMetaSub = () => emitConversation(topic);
-  topic.onSubsUpdated = () => emitConversation(topic);
-  topic.onPres = () => emitConversation(topic);
+  const topicClient = topic?._tinode || getClient();
+  topic.onData = () => emitConversation(topic, topicClient);
+  topic.onMetaDesc = () => emitConversation(topic, topicClient);
+  topic.onMetaSub = () => emitConversation(topic, topicClient);
+  topic.onSubsUpdated = () => emitConversation(topic, topicClient);
+  topic.onPres = () => emitConversation(topic, topicClient);
   topic.onInfo = info => {
-    if (!info?.what) return;
+    if (topicClient !== client || !info?.what) return;
     if (['kp', 'kpa', 'kpv'].includes(info.what)) {
       const subscriber = topic.subscriber?.(info.from);
       const profile = subscriber?.public || userProfileCache.get(info.from) || {};
@@ -744,7 +749,7 @@ function wireTopic(topic) {
     }
     // Read/received receipts update Tinode's per-message status. Re-emit the
     // conversation so the React view can replace its check mark immediately.
-    if (['read', 'recv'].includes(info.what)) emitConversation(topic);
+    if (['read', 'recv'].includes(info.what)) emitConversation(topic, topicClient);
   };
   return topic;
 }
@@ -873,6 +878,33 @@ function rememberSessionAuth(session, fallback = {}) {
     token: sessionToken(session?.token) || sessionToken(fallback.token),
     displayName: session?.profile?.name || fallback.displayName || '',
   };
+}
+
+function resetSessionState({ clearEventListeners = false } = {}) {
+  intentionalDisconnect = true;
+  restoreAfterDisconnect = false;
+  sessionAuth = null;
+  currentSession = null;
+  meTopic = null;
+  const activeClient = client;
+  client = null;
+  activeClient?.disconnect?.();
+  for (const request of mediaObjectUrlCache.values()) {
+    Promise.resolve(request).then(url => URL.revokeObjectURL(url)).catch(() => {});
+  }
+  mediaObjectUrlCache.clear();
+  userProfileCache.clear();
+  userProfileRequests.clear();
+  userProfilesLoaded.clear();
+  topicSubscriptionRequests.clear();
+  fullHistoryRequests.clear();
+  fullHistoryTopics.clear();
+  groupPermissionMigrationRequests.clear();
+  contactsEventQueued = false;
+  sessionRequest = null;
+  reconnectRequest = null;
+  if (clearEventListeners) listeners.clear();
+  intentionalDisconnect = false;
 }
 
 async function loginSession(tinode, { username, password, token, displayName = '' }) {
@@ -1027,15 +1059,23 @@ export const tinodeClient = {
     return Boolean(currentSession && client?.isConnected?.() && client?.isAuthenticated?.());
   },
 
+  get currentUserId() {
+    return currentSession?.uid || '';
+  },
+
   getPresenceSnapshot() {
     return presenceSnapshot(getClient());
   },
 
   async ensureSession(auth = {}) {
-    if (this.authenticated) return currentSession;
+    const expectedUid = String(auth.uid || '');
+    if (this.authenticated) {
+      if (!expectedUid || String(currentSession?.uid || '') === expectedUid) return currentSession;
+      resetSessionState();
+    }
     const token = auth.token?.token || auth.token;
     intentionalDisconnect = false;
-    return runSessionRequest(() => auth.createAccount
+    const session = await runSessionRequest(() => auth.createAccount
       ? registerSession(getClient(), { username: auth.username, password: auth.password, name: auth.name })
       : loginSession(getClient(), {
           username: auth.username,
@@ -1043,6 +1083,11 @@ export const tinodeClient = {
           token,
           displayName: auth.displayName || auth.name || '',
         }));
+    if (expectedUid && String(session?.uid || '') !== expectedUid) {
+      resetSessionState();
+      throw new Error('Phiên Tinode không khớp với tài khoản quản lý hiện tại.');
+    }
+    return session;
   },
 
   async login({ username, password, token, displayName = '' }) {
@@ -1474,30 +1519,7 @@ export const tinodeClient = {
   },
 
   async logout() {
-    intentionalDisconnect = true;
-    restoreAfterDisconnect = false;
-    sessionAuth = null;
-    currentSession = null;
-    meTopic = null;
-    const activeClient = client;
-    client = null;
-    activeClient?.disconnect?.();
-    for (const request of mediaObjectUrlCache.values()) {
-      Promise.resolve(request).then(url => URL.revokeObjectURL(url)).catch(() => {});
-    }
-    mediaObjectUrlCache.clear();
-    userProfileCache.clear();
-    userProfileRequests.clear();
-    userProfilesLoaded.clear();
-    topicSubscriptionRequests.clear();
-    fullHistoryRequests.clear();
-    fullHistoryTopics.clear();
-    groupPermissionMigrationRequests.clear();
-    contactsEventQueued = false;
-    sessionRequest = null;
-    reconnectRequest = null;
-    listeners.clear();
-    intentionalDisconnect = false;
+    resetSessionState({ clearEventListeners: true });
   },
 };
 

@@ -148,6 +148,27 @@ def _auth_error():
     return json({"error_code": "SESSION_EXPIRED", "error_message": "Authentication is required."}, status=401)
 
 
+def _current_session_error(request):
+    try:
+        token_user = current_jwt_user(request)
+    except Exception:
+        token_user = None
+    if token_user is not None:
+        tenant_id = str(token_user.get("current_tenant_id") or token_user.get("tenant_id") or "")
+        account = ManagementAccount.query.filter(
+            ManagementAccount.id == _user_id(token_user),
+            ManagementAccount.tenant_id == tenant_id,
+        ).first()
+        token_auth_version = int(token_user.get("auth_version") or 0)
+        account_auth_version = int(((account.properties if account else {}) or {}).get("auth_version") or 0)
+        if account is None or not account.active or token_auth_version != account_auth_version:
+            return clear_auth_cookie(json({
+                "error_code": "SESSION_REVOKED",
+                "error_message": "The session was revoked by an administrator.",
+            }, status=401))
+    return _auth_error()
+
+
 def _forbidden_error():
     return json({"error_code": "FORBIDDEN", "error_message": "Administrator permission is required."}, status=403)
 
@@ -314,7 +335,7 @@ async def management_login(request):
 async def management_current_user(request):
     current_user, tenant_id = _identity(request)
     if current_user is None:
-        return _auth_error()
+        return _current_session_error(request)
     account = _account_by_id(tenant_id, _user_id(current_user))
     if account is None:
         return _auth_error()
