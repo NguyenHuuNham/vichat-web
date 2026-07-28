@@ -11,6 +11,7 @@ from application.models.models import (
     ConversationParticipant,
     FriendRequest,
     ManagementAccount,
+    ManagementTenant,
     PasswordResetToken,
     SecurityAuditLog,
 )
@@ -40,24 +41,57 @@ from application.services.auth_service import (
 )
 
 
-def _public_account(account):
+def _public_tenant(tenant):
+    if tenant is None:
+        return None
+    return {
+        "id": str(tenant.id),
+        "name": tenant.name,
+        "active": bool(tenant.active),
+        "properties": tenant.properties or {},
+    }
+
+
+def _public_account(account, tenant=None):
     properties = account.properties or {}
+    full_name = account.full_name or account.username
+    tenant_payload = _public_tenant(tenant)
     return {
         "id": str(account.id),
+        "uid": str(account.id),
+        "userId": str(account.id),
+        "user_id": str(account.id),
         "username": account.username,
         "email": account.email or "",
-        "name": account.full_name,
+        "name": full_name,
+        "fullName": full_name,
+        "full_name": full_name,
+        "displayName": full_name,
+        "display_name": full_name,
         "role": account.role or "member",
         "department": account.department or "",
         "title": account.title or "",
         "avatar": account.avatar or "",
         "tenantId": account.tenant_id,
         "tenant_id": account.tenant_id,
+        "tenantName": tenant_payload.get("name") if tenant_payload else "",
+        "tenant_name": tenant_payload.get("name") if tenant_payload else "",
+        "tenant": tenant_payload,
+        "tinodeUsername": account.tinode_username,
+        "tinode_username": account.tinode_username,
         "tinodeUid": account.tinode_uid,
+        "tinode_uid": account.tinode_uid,
         "active": bool(account.active),
         "online": False,
         "mustChangePassword": bool(properties.get("must_change_password")),
     }
+
+
+def _tenant_by_id(tenant_id):
+    return ManagementTenant.query.filter(
+        ManagementTenant.id == str(tenant_id),
+        ManagementTenant.active.is_(True),
+    ).first()
 
 
 def _identity(request):
@@ -70,6 +104,9 @@ def _identity(request):
     tenant_id = current_user.get("current_tenant_id") or current_user.get("tenant_id")
     tenant_id = str(tenant_id or "") or None
     if tenant_id is None:
+        return None, None
+    tenant = _tenant_by_id(tenant_id)
+    if tenant is None:
         return None, None
     account = ManagementAccount.query.filter(
         ManagementAccount.id == _user_id(current_user),
@@ -212,6 +249,7 @@ async def management_login(request):
     if login_rate_limited(tenant_id, identity, ip_address):
         return json({"error_code": "LOGIN_RATE_LIMITED", "error_message": "Too many failed login attempts. Try again later."}, status=429)
     try:
+        tenant = _tenant_by_id(tenant_id)
         account = ManagementAccount.query.filter(
             ManagementAccount.tenant_id == tenant_id,
             ManagementAccount.active.is_(True),
@@ -219,7 +257,7 @@ async def management_login(request):
                 func.lower(ManagementAccount.username) == identity,
                 func.lower(ManagementAccount.email) == identity,
             ),
-        ).first()
+        ).first() if tenant is not None else None
     except Exception as error:
         db.session.rollback()
         app.logger.exception("Management account lookup failed: %s", error)
@@ -240,7 +278,9 @@ async def management_login(request):
         db.session.commit()
         token = issue_access_token(account)
         response = json({
-            "user": _public_account(account),
+            "user": _public_account(account, tenant),
+            "tenant": _public_tenant(tenant),
+            "tenant_id": account.tenant_id,
             "tinode_auth": {
                 "username": account.tinode_username,
                 "uid": account.tinode_uid,
@@ -272,16 +312,30 @@ async def management_current_user(request):
     account = _account_by_id(tenant_id, _user_id(current_user))
     if account is None:
         return _auth_error()
-    return json({"user": _public_account(account)})
+    tenant = _tenant_by_id(tenant_id)
+    if tenant is None:
+        return _auth_error()
+    return json({
+        "user": _public_account(account, tenant),
+        "tenant": _public_tenant(tenant),
+        "tenant_id": tenant_id,
+    })
 
 
 @app.route('/api/v1/auth/logout', methods=['POST'])
 async def management_logout(request):
     current_user, tenant_id = _identity(request)
+    account = _account_by_id(tenant_id, _user_id(current_user)) if current_user is not None else None
+    tenant = _tenant_by_id(tenant_id) if tenant_id else None
     if current_user is not None:
         _audit(request, "AUTH_LOGOUT", True, tenant_id=tenant_id, user_id=_user_id(current_user))
     revoke_request_token(request)
-    return clear_auth_cookie(json({"logged_out": True}))
+    return clear_auth_cookie(json({
+        "logged_out": True,
+        "user": _public_account(account, tenant) if account is not None else None,
+        "tenant": _public_tenant(tenant),
+        "tenant_id": tenant_id,
+    }))
 
 
 @app.route('/api/v1/auth/health', methods=['GET'])
