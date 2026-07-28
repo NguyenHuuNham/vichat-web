@@ -37,6 +37,8 @@ const topicSubscriptionRequests = new Map();
 const fullHistoryRequests = new Map();
 const fullHistoryTopics = new Set();
 const groupPermissionMigrationRequests = new Map();
+const groupPrivacyMigrationRequests = new Map();
+const privateGroupTopics = new Set();
 const conversationEmitTimers = new Map();
 let conversationListRequest = null;
 let contactsEventQueued = false;
@@ -49,6 +51,7 @@ const MEDIA_PROXY_PREFIX = '/tinode-media';
 const MAX_DISCOVERY_TAGS = 13;
 const MAX_TAG_LENGTH = 24;
 const GROUP_MEMBER_MODE = 'JRWAS';
+const GROUP_DEFAULT_AUTH_MODE = 'N';
 const BACKGROUND_HISTORY_LIMIT = 100;
 const RECONNECT_HISTORY_LIMIT = 100;
 const OPEN_HISTORY_LIMIT = 1000;
@@ -773,6 +776,32 @@ function modeWithInvitePermissions(mode = '') {
   return 'JRWPASDO'.split('').filter(permission => permissions.has(permission)).join('');
 }
 
+async function ensurePrivateGroupDefaults(topic) {
+  if (!topic?.isGroupType?.() || privateGroupTopics.has(topic.name)) return true;
+  const access = topic.getAccessMode?.() || topic.acs;
+  if (!String(access?.getMode?.() || '').includes('O')) return true;
+  if (!groupPrivacyMigrationRequests.has(topic.name)) {
+    const request = (async () => {
+      const authMode = String(topic.defacs?.auth || GROUP_DEFAULT_AUTH_MODE);
+      const anonMode = String(topic.defacs?.anon || GROUP_DEFAULT_AUTH_MODE);
+      if (authMode !== GROUP_DEFAULT_AUTH_MODE || anonMode !== GROUP_DEFAULT_AUTH_MODE) {
+        await topic.setMeta({
+          desc: {
+            defacs: {
+              auth: GROUP_DEFAULT_AUTH_MODE,
+              anon: GROUP_DEFAULT_AUTH_MODE,
+            },
+          },
+        });
+      }
+      privateGroupTopics.add(topic.name);
+      return true;
+    })().finally(() => groupPrivacyMigrationRequests.delete(topic.name));
+    groupPrivacyMigrationRequests.set(topic.name, request);
+  }
+  return groupPrivacyMigrationRequests.get(topic.name);
+}
+
 async function ensureGroupInvitePermissions(topic) {
   if (!topic?.isGroupType?.()) return true;
   if (!groupPermissionMigrationRequests.has(topic.name)) {
@@ -780,21 +809,10 @@ async function ensureGroupInvitePermissions(topic) {
       let access = topic.getAccessMode?.() || topic.acs;
       const initialMode = access?.getMode?.() || '';
 
-      // The owner upgrades the group's defaults and the permissions granted to
-      // existing members. Tinode requires both Approve (A) and Share (S) for a
-      // regular member to invite another account.
+      // Keep discovery private and grant invite permissions only to explicit
+      // members. Public JRWAS defaults let any authenticated user self-join.
       if (initialMode.includes('O')) {
-        const currentDefault = topic.defacs?.auth || '';
-        if (!currentDefault.includes('A') || !currentDefault.includes('S')) {
-          await topic.setMeta({
-            desc: {
-              defacs: {
-                auth: modeWithInvitePermissions(currentDefault || GROUP_MEMBER_MODE),
-                anon: topic.defacs?.anon || 'N',
-              },
-            },
-          });
-        }
+        await ensurePrivateGroupDefaults(topic);
         const updates = [];
         topic.subscribers?.(sub => {
           if (!sub?.user || sub.user === getClient().getCurrentUserID()) return;
@@ -848,6 +866,10 @@ async function subscribeTopic(topicName, { historyLimit = BACKGROUND_HISTORY_LIM
     }
     await topicSubscriptionRequests.get(topicName);
   }
+
+  // Existing owners migrate legacy public groups once per session. A failed
+  // hardening request must not make an otherwise valid conversation unusable.
+  await ensurePrivateGroupDefaults(topic).catch(() => false);
 
   if (!newerOnly && historyLimit >= 1000 && !fullHistoryTopics.has(topicName)) {
     if (!fullHistoryRequests.has(topicName)) {
@@ -911,6 +933,8 @@ function resetSessionState({ clearEventListeners = false } = {}) {
   fullHistoryRequests.clear();
   fullHistoryTopics.clear();
   groupPermissionMigrationRequests.clear();
+  groupPrivacyMigrationRequests.clear();
+  privateGroupTopics.clear();
   conversationEmitTimers.forEach(timer => clearTimeout(timer));
   conversationEmitTimers.clear();
   conversationListRequest = null;
@@ -1465,7 +1489,7 @@ export const tinodeClient = {
       {
         desc: {
           public: { fn: name, note: description },
-          defacs: { auth: GROUP_MEMBER_MODE, anon: 'N' },
+          defacs: { auth: GROUP_DEFAULT_AUTH_MODE, anon: GROUP_DEFAULT_AUTH_MODE },
         },
       },
     );
