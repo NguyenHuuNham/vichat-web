@@ -29,6 +29,7 @@ from application.services.auth_service import (
     record_password_reset_request,
     revoke_request_token,
     login_rate_limited,
+    management_session_requested,
     record_login_failure,
     send_password_reset_email,
     set_auth_cookie,
@@ -36,6 +37,7 @@ from application.services.auth_service import (
     tinode_change_password,
     tinode_create_account,
     tinode_login,
+    token_from_request,
     verify_password,
     current_user as current_jwt_user,
 )
@@ -165,7 +167,7 @@ def _current_session_error(request):
             return clear_auth_cookie(json({
                 "error_code": "SESSION_REVOKED",
                 "error_message": "The session was revoked by an administrator.",
-            }, status=401))
+            }, status=401), request)
     return _auth_error()
 
 
@@ -316,7 +318,7 @@ async def management_login(request):
             },
         })
         _audit(request, "AUTH_LOGIN", True, tenant_id=tenant_id, user_id=str(account.id))
-        return set_auth_cookie(response, token)
+        return set_auth_cookie(response, token, request)
     except AuthError as error:
         db.session.rollback()
         _audit(request, "AUTH_LOGIN_TINODE", False, tenant_id=tenant_id, user_id=str(account.id))
@@ -342,11 +344,14 @@ async def management_current_user(request):
     tenant = _tenant_by_id(tenant_id)
     if tenant is None:
         return _auth_error()
-    return json({
+    response = json({
         "user": _public_account(account, tenant),
         "tenant": _public_tenant(tenant),
         "tenant_id": tenant_id,
     })
+    if management_session_requested(request):
+        return set_auth_cookie(response, token_from_request(request), request)
+    return response
 
 
 @app.route('/api/v1/auth/logout', methods=['POST'])
@@ -362,7 +367,7 @@ async def management_logout(request):
         "user": _public_account(account, tenant) if account is not None else None,
         "tenant": _public_tenant(tenant),
         "tenant_id": tenant_id,
-    }))
+    }), request)
 
 
 @app.route('/api/v1/auth/health', methods=['GET'])
@@ -501,7 +506,7 @@ async def management_reset_password(request):
         ).update({PasswordResetToken.used_at: now}, synchronize_session=False)
         db.session.commit()
         _audit(request, "AUTH_PASSWORD_RESET", True, tenant_id=account.tenant_id, user_id=str(account.id))
-        return clear_auth_cookie(json({"changed": True}))
+        return clear_auth_cookie(json({"changed": True}), request)
     except AuthError as error:
         db.session.rollback()
         _audit(request, "AUTH_PASSWORD_RESET_TINODE", False, tenant_id=account.tenant_id, user_id=str(account.id))
@@ -544,7 +549,7 @@ async def management_change_password(request):
         revoke_request_token(request)
         db.session.commit()
         _audit(request, "AUTH_PASSWORD_CHANGE", True, tenant_id=tenant_id, user_id=str(account.id))
-        return clear_auth_cookie(json({"changed": True}))
+        return clear_auth_cookie(json({"changed": True}), request)
     except AuthError as error:
         db.session.rollback()
         _audit(request, "AUTH_PASSWORD_CHANGE_TINODE", False, tenant_id=tenant_id, user_id=str(account.id))

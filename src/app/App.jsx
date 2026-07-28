@@ -815,7 +815,9 @@ function App() {
   // Keep the React view synchronized with Tinode's topic callbacks.
   useEffect(() => {
     if (!isLoggedIn || chatMode !== 'tinode') return undefined;
+    const accountSession = accountSessionRef.current;
     return tinodeClient.onEvent(async event => {
+      if (accountSessionRef.current !== accountSession) return;
       if (event.type === 'disconnect') {
         setConnectionStatus('offline');
         setChatError('Kết nối chat đã bị gián đoạn. Hệ thống sẽ tự kết nối lại.');
@@ -931,8 +933,10 @@ function App() {
         }
         (conversation.messages || []).forEach(message => queueMessageForKnowledge(conversation, message));
         const currentRooms = conversationsRef.current;
-        const managedEntry = Object.entries(currentRooms).find(([, room]) => tinodeTopicName(room) === conversation.id)
-          || Object.entries(currentRooms).find(([, room]) => (
+        const currentSessionRooms = Object.entries(currentRooms)
+          .filter(([, room]) => room.accountSession === accountSession);
+        const managedEntry = currentSessionRooms.find(([, room]) => tinodeTopicName(room) === conversation.id)
+          || currentSessionRooms.find(([, room]) => (
             !room.tinodeTopic
             && room.isGroup === conversation.isGroup
             && String(room.name || '').localeCompare(String(conversation.name || ''), 'vi', { sensitivity: 'base' }) === 0
@@ -969,6 +973,7 @@ function App() {
             id: stateId,
             managementId: previousRoom?.managementId || stateId,
             tinodeTopic: conversation.id,
+            accountSession,
           };
           return {
             ...prev,
@@ -1070,12 +1075,13 @@ function App() {
           ...room,
           managementId: room.managementId || id,
           tinodeTopic: room.tinodeTopic || chatManagementService.getTinodeTopic(managementUserId, room.managementId || id),
+          accountSession,
         }]));
         setConversations(previous => {
           const combined = { ...withTinodeBindings };
           if (user.tinodeUid && String(tinodeClient.currentUserId || '') !== String(user.tinodeUid)) return combined;
           Object.entries(previous).forEach(([previousId, previousRoom]) => {
-            if (!previousRoom?.tinodeTopic) return;
+            if (!previousRoom?.tinodeTopic || previousRoom.accountSession !== accountSession) return;
             const managedEntry = Object.entries(combined)
               .find(([, room]) => tinodeTopicName(room) === previousRoom.tinodeTopic);
             const stateId = managedEntry?.[0] || previousId;

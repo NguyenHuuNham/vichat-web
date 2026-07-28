@@ -299,18 +299,14 @@ async function loadUserProfile(uid, tinode = getClient()) {
   if (userProfileRequests.has(uid)) return userProfileRequests.get(uid);
 
   const request = (async () => {
-    let publicProfile = {};
+    let publicProfile = cached || {};
     if (uid === tinode.getCurrentUserID()) {
       publicProfile = meTopic?.public || {};
     } else {
-      try {
-        const userTopic = tinode.getTopic(uid);
-        await userTopic.getMeta(userTopic.startMetaQuery().withDesc().build());
-        publicProfile = userTopic.public || {};
-      } catch {
-        // Group subscriptions normally include public data. If a server does
-        // not allow an extra user description query, retain the cached data.
-      }
+      // A metadata request against a usr topic creates a P2P subscription in
+      // Tinode. Profiles must come from existing subscription snapshots or the
+      // management directory, never from a side-effecting lookup.
+      publicProfile = tinode.cacheGetTopic?.(uid)?.public || publicProfile;
     }
     const profile = cacheUserProfile(uid, publicProfile) || cached || null;
     userProfilesLoaded.add(uid);

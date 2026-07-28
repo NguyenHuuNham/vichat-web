@@ -51,6 +51,7 @@ async function apiRequest(path, options = {}) {
     credentials: 'include',
     headers: {
       Accept: 'application/json',
+      'X-Vichat-Session-Scope': 'management',
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
       ...(options.headers || {}),
     },

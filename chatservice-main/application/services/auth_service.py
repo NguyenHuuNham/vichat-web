@@ -18,6 +18,8 @@ from application.server import app
 
 
 ACCESS_COOKIE = "vichat_access_token"
+MANAGEMENT_ACCESS_COOKIE = "vichat_management_access_token"
+MANAGEMENT_SESSION_HEADER = "X-Vichat-Session-Scope"
 JWT_ISSUER = "vichat-management"
 
 
@@ -175,14 +177,11 @@ def decode_access_token(token):
         return None
 
 
-def token_from_request(request):
-    authorization = request.headers.get("Authorization") or ""
-    if authorization.lower().startswith("bearer "):
-        return authorization[7:].strip()
-    header_token = request.headers.get("X-USER-TOKEN")
-    if header_token:
-        return header_token
+def management_session_requested(request):
+    return str(request.headers.get(MANAGEMENT_SESSION_HEADER) or "").strip().lower() == "management"
 
+
+def _cookie_token_from_request(request, cookie_name):
     # Browsers can retain both an old domain cookie and a newer host cookie
     # with the same name. Select the newest valid token instead of trusting
     # whichever duplicate the cookie parser happens to return.
@@ -190,9 +189,9 @@ def token_from_request(request):
     raw_cookie = str(request.headers.get("Cookie") or "")
     for item in raw_cookie.split(";"):
         name, separator, value = item.strip().partition("=")
-        if separator and name == ACCESS_COOKIE and value and value not in cookie_tokens:
+        if separator and name == cookie_name and value and value not in cookie_tokens:
             cookie_tokens.append(value)
-    parsed_cookie = request.cookies.get(ACCESS_COOKIE)
+    parsed_cookie = request.cookies.get(cookie_name)
     if parsed_cookie and parsed_cookie not in cookie_tokens:
         cookie_tokens.append(parsed_cookie)
 
@@ -204,6 +203,23 @@ def token_from_request(request):
     if valid_tokens:
         return max(valid_tokens, key=lambda item: (item[0], item[1]))[2]
     return parsed_cookie
+
+
+def token_from_request(request):
+    authorization = request.headers.get("Authorization") or ""
+    if authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
+    header_token = request.headers.get("X-USER-TOKEN")
+    if header_token:
+        return header_token
+
+    cookie_name = MANAGEMENT_ACCESS_COOKIE if management_session_requested(request) else ACCESS_COOKIE
+    token = _cookie_token_from_request(request, cookie_name)
+    if token or cookie_name == ACCESS_COOKIE:
+        return token
+    # Migrate an existing administrator session on the first management-page
+    # request after deploying separate cookies.
+    return _cookie_token_from_request(request, ACCESS_COOKIE)
 
 
 def current_user(request):
@@ -292,21 +308,23 @@ def revoke_request_token(request):
     database.redisdb.setex("auth:revoked:{}".format(payload.get("jti")), ttl, "1")
 
 
-def set_auth_cookie(response, token):
-    response.cookies[ACCESS_COOKIE] = token
-    response.cookies[ACCESS_COOKIE]["path"] = "/"
-    response.cookies[ACCESS_COOKIE]["httponly"] = True
-    response.cookies[ACCESS_COOKIE]["samesite"] = "Strict"
-    response.cookies[ACCESS_COOKIE]["secure"] = bool(app.config.get("CHAT_AUTH_COOKIE_SECURE", False))
-    response.cookies[ACCESS_COOKIE]["max-age"] = int(app.config.get("CHAT_AUTH_ACCESS_TTL", 28800))
+def set_auth_cookie(response, token, request=None):
+    cookie_name = MANAGEMENT_ACCESS_COOKIE if request and management_session_requested(request) else ACCESS_COOKIE
+    response.cookies[cookie_name] = token
+    response.cookies[cookie_name]["path"] = "/"
+    response.cookies[cookie_name]["httponly"] = True
+    response.cookies[cookie_name]["samesite"] = "Strict"
+    response.cookies[cookie_name]["secure"] = bool(app.config.get("CHAT_AUTH_COOKIE_SECURE", False))
+    response.cookies[cookie_name]["max-age"] = int(app.config.get("CHAT_AUTH_ACCESS_TTL", 28800))
     return response
 
 
-def clear_auth_cookie(response):
+def clear_auth_cookie(response, request=None):
     # Gatco's cookie jar can raise when an empty cookie is assigned. Emit a
     # standards-compliant deletion header instead.
+    cookie_name = MANAGEMENT_ACCESS_COOKIE if request and management_session_requested(request) else ACCESS_COOKIE
     attributes = [
-        "{}=".format(ACCESS_COOKIE),
+        "{}=".format(cookie_name),
         "Path=/",
         "Max-Age=0",
         "Expires=Thu, 01 Jan 1970 00:00:00 GMT",
