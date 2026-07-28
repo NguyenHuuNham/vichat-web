@@ -127,9 +127,9 @@ function Login({ onLoginSuccess }) {
       <div className="login-card">
         <div className="login-card-header">
           <div className="login-logo"><img src="/chat-logo.svg" className="brand-mark-image" alt="CHAT" /></div>
-          <h2>{mode === 'login' ? 'Chào mừng đến SÔNG HỒNG CHAT' : mode === 'forgot' ? 'Khôi phục tài khoản' : 'Tạo mật khẩu mới'}</h2>
+          <h2>{mode === 'login' ? 'Chat - Power by Gon Platform' : mode === 'forgot' ? 'Khôi phục tài khoản' : 'Tạo mật khẩu mới'}</h2>
           <p>{mode === 'login'
-            ? 'Đăng nhập vào tài khoản SÔNG HỒNG Enterprise của bạn'
+            ? 'Đăng nhập vào tài khoản của bạn'
             : mode === 'forgot'
               ? 'Nhập tài khoản để nhận liên kết đặt lại mật khẩu'
               : 'Liên kết chỉ sử dụng một lần và sẽ hết hạn sau thời gian ngắn'}</p>

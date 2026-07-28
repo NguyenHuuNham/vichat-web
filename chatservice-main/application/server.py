@@ -9,7 +9,12 @@ app = Gatco(name=__name__)
 app.config.from_object(Config)
 app.session_interface = RedisSessionInterface()
 
-cors = CORS(app, automatic_options=True)
+cors = CORS(
+    app,
+    automatic_options=True,
+    origins=app.config.get("CHAT_CORS_ORIGINS"),
+    supports_credentials=True,
+)
 
 
 from application.database import init_database

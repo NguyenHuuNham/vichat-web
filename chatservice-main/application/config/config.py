@@ -8,6 +8,19 @@ def env_bool(name, default=False):
         return default
     return value.strip().lower() in ("1", "true", "yes", "on")
 
+
+def env_list(name, default):
+    value = os.getenv(name)
+    if not value:
+        return default
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        parsed = [item.strip() for item in value.split(",") if item.strip()]
+    if isinstance(parsed, list):
+        return [str(item) for item in parsed if str(item)]
+    return [str(parsed)]
+
 class Config(object):
     ENVIRONMENT = os.getenv('ENVIRONMENT')  # production, staging, development,
     SQLALCHEMY_DATABASE_URI = os.environ.get("SQLALCHEMY_DATABASE_URI")
@@ -38,6 +51,10 @@ class Config(object):
     INTERNAL_ACCESS_TOKEN = os.getenv('INTERNAL_ACCESS_TOKEN')
 
     CHAT_AUTH_JWT_SECRET = os.getenv("CHAT_AUTH_JWT_SECRET")
+    CHAT_CORS_ORIGINS = env_list(
+        "CHAT_CORS_ORIGINS",
+        ["http://127.0.0.1:5173"],
+    )
     CHAT_AUTH_ACCESS_TTL = int(os.getenv("CHAT_AUTH_ACCESS_TTL", 28800))
     CHAT_AUTH_COOKIE_SECURE = env_bool("CHAT_AUTH_COOKIE_SECURE", False)
     CHAT_AUTH_MAX_FAILURES = int(os.getenv("CHAT_AUTH_MAX_FAILURES", 5))

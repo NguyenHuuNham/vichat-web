@@ -76,6 +76,8 @@ services:
         condition: service_started
     expose:
       - "8093"
+    ports:
+      - "${CHATMGT_BIND_HOST:-0.0.0.0}:${CHATMGT_PUBLIC_PORT:-8081}:8093"
     volumes:
       - ../../chatservice-main/knowledge:/app/knowledge:ro
     environment:
@@ -88,6 +90,7 @@ services:
       ACCOUNT_URL: ""
       CHATMGT_DEFAULT_TENANT: ${CHATMGT_DEFAULT_TENANT:-song-hong}
       CHAT_AUTH_JWT_SECRET: ${CHAT_AUTH_JWT_SECRET:?CHAT_AUTH_JWT_SECRET is required}
+      CHAT_CORS_ORIGINS: '${CHAT_CORS_ORIGINS:-["http://127.0.0.1:5173"]}'
       CHAT_AUTH_ACCESS_TTL: ${CHAT_AUTH_ACCESS_TTL:-28800}
       CHAT_AUTH_COOKIE_SECURE: ${CHAT_AUTH_COOKIE_SECURE:-false}
       CHAT_AUTH_MAX_FAILURES: ${CHAT_AUTH_MAX_FAILURES:-5}
@@ -104,11 +107,11 @@ services:
       CHAT_SMTP_FROM: ${CHAT_SMTP_FROM:-}
       CHAT_SMTP_STARTTLS: ${CHAT_SMTP_STARTTLS:-true}
       CHAT_SMTP_SSL: ${CHAT_SMTP_SSL:-false}
-      TINODE_INTERNAL_WS_URL: ws://chatapi:6060/v0/channels
+      TINODE_INTERNAL_WS_URL: ${TINODE_INTERNAL_WS_URL:-ws://chatapi:6060/v0/channels}
       TINODE_API_KEY: ${TINODE_API_KEY:?TINODE_API_KEY is required}
       TINODE_AUTH_TIMEOUT: ${TINODE_AUTH_TIMEOUT:-10}
-      TINODE_ADMIN_USERNAME: ${TINODE_ADMIN_USERNAME:?TINODE_ADMIN_USERNAME is required}
-      TINODE_ADMIN_PASSWORD: ${TINODE_ADMIN_PASSWORD:?TINODE_ADMIN_PASSWORD is required}
+      TINODE_ADMIN_USERNAME: ${TINODE_ADMIN_USERNAME:-}
+      TINODE_ADMIN_PASSWORD: ${TINODE_ADMIN_PASSWORD:-}
 
   chat:
     build:
@@ -121,7 +124,7 @@ services:
         VITE_TINODE_TRANSPORT: ws
         VITE_TINODE_PERSIST: "true"
         VITE_TINODE_APP_NAME: SONGHONG/1.0
-        VITE_CHAT_MANAGEMENT_API_URL: /chatmgt-api
+        VITE_CHAT_MANAGEMENT_API_URL: ${CHAT_MANAGEMENT_PUBLIC_URL:-/chatmgt-api}
         VITE_CHAT_MANAGEMENT_REMOTE_AUTH: "true"
         VITE_CHAT_TENANT_ID: ${CHATMGT_DEFAULT_TENANT:-song-hong}
     restart: unless-stopped

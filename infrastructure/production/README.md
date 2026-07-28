@@ -55,8 +55,12 @@ For the current IP-only deployment, keep:
 PUBLIC_HOST=103.74.122.206:8094
 PUBLIC_HTTP_PORT=8094
 PUBLIC_SECURE=false
+CHATMGT_BIND_HOST=192.168.80.160
+CHATMGT_PUBLIC_PORT=8081
+CHAT_MANAGEMENT_PUBLIC_URL=https://chatmgt.upgo.vn
 TINODE_CORS_ORIGINS=["http://103.74.122.206:8094"]
 CHAT_AUTH_COOKIE_SECURE=false
+CHAT_CORS_ORIGINS=["https://chat.upgo.vn"]
 CHAT_PASSWORD_RESET_URL=http://103.74.122.206:8094/?reset_token={token}
 CHAT_PASSWORD_RESET_DEBUG=false
 TINODE_ADMIN_USERNAME=admin
@@ -67,6 +71,11 @@ Configure `CHAT_SMTP_*` with a real mail provider before testing forgot password
 Reset links are delivered only by email and are never returned to the browser.
 
 Then open `http://103.74.122.206:8094`.
+
+The management API is published only on the server's private address at
+`192.168.80.160:8081`. Point `chatmgt.upgo.vn` or the upstream HAProxy backend
+to that address; do not expose the management container directly on the public
+interface.
 
 ## Production security
 
