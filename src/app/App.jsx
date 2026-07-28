@@ -551,6 +551,7 @@ function App() {
     time: '',
     badge: 0,
   };
+  const activeMessageCount = activeChat.messages?.length || 0;
 
   const isCurrentUserOnline = Boolean(
     isLoggedIn && currentUser && (chatMode !== 'tinode' || connectionStatus === 'online')
@@ -649,7 +650,7 @@ function App() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [conversations, currentChatId, isTyping]);
+  }, [activeMessageCount, currentChatId, isTyping]);
 
   useEffect(() => {
     const closeMenu = () => setMessageMenu(null);
@@ -1202,7 +1203,7 @@ function App() {
     const validateVisibleSession = () => {
       if (document.visibilityState !== 'hidden') validateSession();
     };
-    const timer = window.setInterval(validateSession, 2000);
+    const timer = window.setInterval(validateSession, 5000);
     window.addEventListener('focus', validateSession);
     document.addEventListener('visibilitychange', validateVisibleSession);
     return () => {

@@ -17,7 +17,7 @@ const config = {
   secure: env.VITE_TINODE_SECURE !== 'false',
   transport: env.VITE_TINODE_TRANSPORT || 'ws',
   appName: env.VITE_TINODE_APP_NAME || 'VICHAT/1.0',
-  persist: env.VITE_TINODE_PERSIST !== 'false',
+  persist: env.VITE_TINODE_PERSIST === 'true',
 };
 
 const listeners = new Set();
@@ -37,6 +37,8 @@ const topicSubscriptionRequests = new Map();
 const fullHistoryRequests = new Map();
 const fullHistoryTopics = new Set();
 const groupPermissionMigrationRequests = new Map();
+const conversationEmitTimers = new Map();
+let conversationListRequest = null;
 let contactsEventQueued = false;
 const SYSTEM_EVENT_PREFIX = '__VICHAT_SYSTEM_EVENT__:';
 const FRIEND_EVENT_PREFIX = '__SONGHONG_FRIEND_EVENT__:';
@@ -47,6 +49,9 @@ const MEDIA_PROXY_PREFIX = '/tinode-media';
 const MAX_DISCOVERY_TAGS = 13;
 const MAX_TAG_LENGTH = 24;
 const GROUP_MEMBER_MODE = 'JRWAS';
+const BACKGROUND_HISTORY_LIMIT = 100;
+const RECONNECT_HISTORY_LIMIT = 100;
+const OPEN_HISTORY_LIMIT = 1000;
 
 // A host is enough to opt into Tinode mode; assertConfigured below provides a
 // useful error when the API key is missing instead of silently using demo mode.
@@ -681,16 +686,23 @@ async function enrichConversationProfiles(conversation, tinode = getClient()) {
 function emitConversation(topic, tinode = topic?._tinode || getClient()) {
   if (!topic || tinode !== client) return;
   const sessionUid = tinode.getCurrentUserID();
-  enrichConversationProfiles(toConversation(topic, tinode), tinode)
-    .then(next => {
-      if (tinode !== client || sessionUid !== currentSession?.uid) return;
-      listeners.forEach(listener => listener({ type: 'conversation', conversation: next, sessionUid }));
-    })
-    .catch(() => {
-      if (tinode !== client || sessionUid !== currentSession?.uid) return;
-      const next = toConversation(topic, tinode);
-      listeners.forEach(listener => listener({ type: 'conversation', conversation: next, sessionUid }));
-    });
+  const eventKey = `${sessionUid}:${topic.name}`;
+  const pendingTimer = conversationEmitTimers.get(eventKey);
+  if (pendingTimer) clearTimeout(pendingTimer);
+  conversationEmitTimers.set(eventKey, setTimeout(() => {
+    conversationEmitTimers.delete(eventKey);
+    if (tinode !== client || sessionUid !== currentSession?.uid) return;
+    enrichConversationProfiles(toConversation(topic, tinode), tinode)
+      .then(next => {
+        if (tinode !== client || sessionUid !== currentSession?.uid) return;
+        listeners.forEach(listener => listener({ type: 'conversation', conversation: next, sessionUid }));
+      })
+      .catch(() => {
+        if (tinode !== client || sessionUid !== currentSession?.uid) return;
+        const next = toConversation(topic, tinode);
+        listeners.forEach(listener => listener({ type: 'conversation', conversation: next, sessionUid }));
+      });
+  }, 20));
 }
 
 function presenceSnapshot(tinode = getClient()) {
@@ -812,7 +824,7 @@ async function ensureGroupInvitePermissions(topic) {
   return groupPermissionMigrationRequests.get(topic.name);
 }
 
-async function subscribeTopic(topicName, { historyLimit = 1000, newerOnly = false } = {}) {
+async function subscribeTopic(topicName, { historyLimit = BACKGROUND_HISTORY_LIMIT, newerOnly = false } = {}) {
   const tinode = getClient();
   const topic = wireTopic(tinode.getTopic(topicName));
   if (!topic.isSubscribed?.()) {
@@ -851,7 +863,6 @@ async function subscribeTopic(topicName, { historyLimit = 1000, newerOnly = fals
     }
     await fullHistoryRequests.get(topicName);
   }
-  await ensureGroupInvitePermissions(topic);
   emitConversation(topic);
   return topic;
 }
@@ -900,6 +911,9 @@ function resetSessionState({ clearEventListeners = false } = {}) {
   fullHistoryRequests.clear();
   fullHistoryTopics.clear();
   groupPermissionMigrationRequests.clear();
+  conversationEmitTimers.forEach(timer => clearTimeout(timer));
+  conversationEmitTimers.clear();
+  conversationListRequest = null;
   contactsEventQueued = false;
   sessionRequest = null;
   reconnectRequest = null;
@@ -938,7 +952,7 @@ async function resubscribeAfterReconnect(tinode) {
     if (topic?.isCommType?.()) topics.push(topic);
   });
   await Promise.allSettled(topics.map(topic => subscribeTopic(topic.name, {
-    historyLimit: 1000,
+    historyLimit: RECONNECT_HISTORY_LIMIT,
     newerOnly: true,
   })));
   emitPresenceSnapshot(tinode);
@@ -971,8 +985,12 @@ async function initializeSession(tinode, fallbackLogin = '', preferredName = '')
   };
   meTopic.onSubsUpdated = emitContactsSoon;
   meTopic.onContactUpdate = (_what, contact) => {
-    emitContactsSoon();
     emitContactPresence(contact);
+    if (_what === 'msg' && contact?.isCommType?.()) {
+      subscribeTopic(contact.name, { historyLimit: BACKGROUND_HISTORY_LIMIT, newerOnly: true }).catch(() => {});
+    } else if (['acs', 'gone', 'upd'].includes(_what)) {
+      emitContactsSoon();
+    }
   };
   const previousMetaDesc = meTopic.onMetaDesc;
   const previousSubsUpdated = meTopic.onSubsUpdated;
@@ -1142,15 +1160,28 @@ export const tinodeClient = {
 
   async listConversations() {
     if (!meTopic) return [];
-    const tinode = getClient();
-    const topics = [];
-    meTopic.contacts(topic => {
-      if (topic?.isCommType?.()) topics.push(topic);
-    });
-    // Match the opened-room history depth so background sync also restores files.
-    await Promise.allSettled(topics.map(topic => subscribeTopic(topic.name, { historyLimit: 1000 })));
-    const result = topics.map(topic => toConversation(topic, tinode));
-    return Promise.all(result.map(conversation => enrichConversationProfiles(conversation, tinode)));
+    if (!conversationListRequest) {
+      const tinode = getClient();
+      const activeMeTopic = meTopic;
+      const request = (async () => {
+        const topics = [];
+        activeMeTopic.contacts(topic => {
+          if (topic?.isCommType?.()) topics.push(topic);
+        });
+        await Promise.allSettled(topics.map(topic => subscribeTopic(topic.name, {
+          historyLimit: BACKGROUND_HISTORY_LIMIT,
+        })));
+        if (tinode !== client || activeMeTopic !== meTopic) return [];
+        const result = topics.map(topic => toConversation(topic, tinode));
+        return Promise.all(result.map(conversation => enrichConversationProfiles(conversation, tinode)));
+      })();
+      conversationListRequest = request;
+      const clearRequest = () => {
+        if (conversationListRequest === request) conversationListRequest = null;
+      };
+      request.then(clearRequest, clearRequest);
+    }
+    return conversationListRequest;
   },
 
   async searchUsers(query, directoryAccounts = []) {
@@ -1216,12 +1247,12 @@ export const tinodeClient = {
   },
 
   async openConversation(topicName) {
-    const topic = await subscribeTopic(topicName);
+    const topic = await subscribeTopic(topicName, { historyLimit: OPEN_HISTORY_LIMIT });
     return enrichConversationProfiles(toConversation(topic, getClient()), getClient());
   },
 
   async restoreConversation(topicName) {
-    const topic = await subscribeTopic(topicName);
+    const topic = await subscribeTopic(topicName, { historyLimit: OPEN_HISTORY_LIMIT });
     return enrichConversationProfiles(toConversation(topic, getClient()), getClient());
   },
 

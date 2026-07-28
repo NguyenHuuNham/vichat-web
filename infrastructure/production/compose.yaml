@@ -144,7 +144,7 @@ services:
         VITE_TINODE_API_KEY: ${TINODE_API_KEY:?TINODE_API_KEY is required}
         VITE_TINODE_SECURE: ${PUBLIC_SECURE:-false}
         VITE_TINODE_TRANSPORT: ws
-        VITE_TINODE_PERSIST: "true"
+        VITE_TINODE_PERSIST: "false"
         VITE_TINODE_APP_NAME: SONGHONG/1.0
         VITE_CHATBOT_API_URL: "${CHAT_MANAGEMENT_PUBLIC_URL:-/chatmgt-api}/api/v1/chatbot/message"
         VITE_CHATBOT_WITH_CREDENTIALS: "true"
