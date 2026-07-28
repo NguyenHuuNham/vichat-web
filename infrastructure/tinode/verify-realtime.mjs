@@ -3,6 +3,7 @@ import tinodeSdk from 'tinode-sdk';
 const { Tinode } = tinodeSdk;
 const apiKey = process.env.TINODE_API_KEY || 'AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K';
 const host = process.env.TINODE_HOST || '127.0.0.1:6060';
+const secure = process.env.TINODE_SECURE === 'true';
 const password = process.env.TINODE_TEST_PASSWORD || '123456';
 const firstUsername = process.env.TINODE_TEST_USER || 'admin';
 const secondUsername = process.env.TINODE_TEST_PEER || 'tuan';
@@ -33,7 +34,7 @@ async function connect(username) {
     host,
     apiKey,
     transport: 'ws',
-    secure: false,
+    secure,
     platform: 'web',
     persist: false,
   });

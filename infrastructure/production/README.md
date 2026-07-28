@@ -86,3 +86,8 @@ proxy, set `PUBLIC_HOST` to the domain, set `PUBLIC_SECURE=true`, set
 origin. Rotate all bootstrap account passwords immediately after first login.
 
 Do not run `docker compose down -v`: `-v` deletes the chat databases and files.
+
+Install `nginx-host-chat.conf` as `/etc/nginx/sites-enabled/chat` on the
+application server. It serves the frontend from `chat.upgo.vn` and forwards
+`/v0/` WebSockets plus `/tinode-media/` file traffic to port `8094`. Validate
+and reload nginx after every update.
