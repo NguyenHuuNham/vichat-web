@@ -528,6 +528,7 @@ function App() {
   const notificationAudioContextRef = useRef(null);
   const contactsSyncTimerRef = useRef(null);
   const logoutHandlerRef = useRef(null);
+  const forcedLogoutHandlerRef = useRef(null);
   const forcedLogoutRef = useRef(false);
   const isLoggingOutRef = useRef(false);
   const accountSessionRef = useRef(0);
@@ -1012,6 +1013,7 @@ function App() {
     const accountSession = ++accountSessionRef.current;
     const managementUserId = String(user.id || user.uid || '');
     const initialChatbot = createChatbotConversation(loadChatbotMessages(managementUserId));
+    const initialRooms = { [CHATBOT_ACCOUNT.id]: initialChatbot };
     forcedLogoutRef.current = false;
     isLoggingOutRef.current = false;
     setForcedLogoutSeconds(null);
@@ -1020,7 +1022,8 @@ function App() {
     setDirectoryAccounts([]);
     setWorkspaceResults([]);
     setGroupSearchResults([]);
-    setConversations({ [CHATBOT_ACCOUNT.id]: initialChatbot });
+    conversationsRef.current = initialRooms;
+    setConversations(initialRooms);
     setCurrentChatId(CHATBOT_ACCOUNT.id);
     deletedConversationIdsRef.current.clear();
     notificationBaselineRef.current.clear();
@@ -1176,12 +1179,22 @@ function App() {
     if (contactsSyncTimerRef.current) clearTimeout(contactsSyncTimerRef.current);
     contactsSyncTimerRef.current = null;
     setTypingByTopic({});
-    setConversations(createInitialConversations());
+    const initialRooms = createInitialConversations();
+    conversationsRef.current = initialRooms;
+    setConversations(initialRooms);
     setCurrentChatId(CHATBOT_ACCOUNT.id);
     isLoggingOutRef.current = false;
   };
 
+  const handleForcedLogout = async () => {
+    await handleLogout();
+    // Reload so a revoked tab cannot carry an old bundle or room state into
+    // the next account.
+    if (typeof window !== 'undefined') window.location.reload();
+  };
+
   logoutHandlerRef.current = handleLogout;
+  forcedLogoutHandlerRef.current = handleForcedLogout;
 
   useEffect(() => {
     if (!isLoggedIn || !chatManagementService.remote) return undefined;
@@ -1223,7 +1236,7 @@ function App() {
   useEffect(() => {
     if (forcedLogoutSeconds === null) return undefined;
     if (forcedLogoutSeconds <= 0) {
-      logoutHandlerRef.current?.();
+      forcedLogoutHandlerRef.current?.();
       return undefined;
     }
     const timer = window.setTimeout(() => {
@@ -2433,14 +2446,41 @@ function App() {
     setIsTyping(false);
 
     if (chatMode === 'tinode') {
+      const roomId = currentChatId;
       ensureTinodeConversationTopic(conversations[currentChatId])
         .then(async topicName => {
-          await tinodeClient.sendText(topicName, text, newMsg.id, replyMeta ? { replyTo: replyMeta } : {});
+          const result = await tinodeClient.sendText(topicName, text, newMsg.id, replyMeta ? { replyTo: replyMeta } : {});
+          setConversations(previous => {
+            const currentRoom = previous[roomId];
+            if (!currentRoom) return previous;
+            return {
+              ...previous,
+              [roomId]: {
+                ...currentRoom,
+                messages: (currentRoom.messages || []).map(message => message.id === newMsg.id
+                  ? { ...message, pending: false, failed: false, seq: message.seq || result?.params?.seq }
+                  : message),
+              },
+            };
+          });
           queueMessageForKnowledge(conversations[currentChatId], newMsg);
         })
         .catch(err => {
-        setChatError(err?.message || 'Không thể gửi tin nhắn.');
-      });
+          setConversations(previous => {
+            const currentRoom = previous[roomId];
+            if (!currentRoom) return previous;
+            return {
+              ...previous,
+              [roomId]: {
+                ...currentRoom,
+                messages: (currentRoom.messages || []).map(message => message.id === newMsg.id
+                  ? { ...message, pending: false, failed: true }
+                  : message),
+              },
+            };
+          });
+          setChatError(err?.message || 'Không thể gửi tin nhắn.');
+        });
     }
   };
 
@@ -2568,7 +2608,7 @@ function App() {
             <h2 id="forced-logout-title">Bạn bị buộc phải đăng xuất</h2>
             <p>Quản trị viên đã kết thúc phiên đăng nhập của bạn.</p>
             <p className="forced-logout-countdown">Hệ thống sẽ tự động đưa bạn về trang đăng nhập sau <strong>{forcedLogoutSeconds} giây</strong>.</p>
-            <button type="button" className="btn-primary forced-logout-confirm" onClick={() => handleLogout()}>OK</button>
+            <button type="button" className="btn-primary forced-logout-confirm" onClick={handleForcedLogout}>OK</button>
           </section>
         </div>
       )}
