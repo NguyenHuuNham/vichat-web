@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { managementAdminService } from './services/managementAdminService.js';
 import './management.css';
 
@@ -61,6 +61,14 @@ function auditLabel(eventName) {
   return labels[eventName] || String(eventName || 'Sự kiện hệ thống').replaceAll('_', ' ');
 }
 
+function BrandLogo() {
+  return (
+    <span className="management-brand-mark">
+      <img src="/chat-logo.svg" alt="ACSI" />
+    </span>
+  );
+}
+
 function LoginScreen({ onLogin, error, loading }) {
   const [identity, setIdentity] = useState('');
   const [password, setPassword] = useState('');
@@ -75,7 +83,7 @@ function LoginScreen({ onLogin, error, loading }) {
       <section className="management-login-story" aria-hidden="true">
         <div className="management-login-grid"></div>
         <div className="management-brand-lockup">
-          <span className="management-brand-mark">AC</span>
+          <BrandLogo />
           <span>ACSI</span>
         </div>
         <div className="management-story-copy">
@@ -271,34 +279,35 @@ export default function ManagementApp() {
     return () => { cancelled = true; };
   }, []);
 
-  const loadData = async () => {
-    setLoadingData(true);
-    try {
-      const [nextUsers, nextAudit, nextHealth] = await Promise.all([
-        managementAdminService.listUsers(),
-        managementAdminService.listAuditLogs(),
-        managementAdminService.health(),
-      ]);
-      setUsers(nextUsers);
-      setAuditLogs(nextAudit);
-      setHealth(nextHealth);
-    } catch (error) {
-      if (error.status === 401) {
-        setSession(null);
-        setAuthState('anonymous');
-      } else {
-        setNotice({ type: 'error', text: error.message || 'Không tải được dữ liệu quản trị.' });
-      }
-    } finally {
-      setLoadingData(false);
+  const loadData = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoadingData(true);
+    const results = await Promise.allSettled([
+      managementAdminService.listUsers(),
+      managementAdminService.listAuditLogs(),
+      managementAdminService.health(),
+    ]);
+    const [usersResult, auditResult, healthResult] = results;
+    if (usersResult.status === 'fulfilled') setUsers(usersResult.value);
+    if (auditResult.status === 'fulfilled') setAuditLogs(auditResult.value);
+    if (healthResult.status === 'fulfilled') setHealth(healthResult.value);
+    const firstError = results.find(result => result.status === 'rejected')?.reason;
+    if (firstError && !silent) {
+      setNotice({ type: 'error', text: firstError.message || 'Không đồng bộ được toàn bộ dữ liệu quản trị.' });
     }
-  };
+    if (!silent) setLoadingData(false);
+  }, []);
 
   useEffect(() => {
-    if (authState === 'authenticated') loadData();
-  // loadData intentionally runs only when a management session becomes active.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authState]);
+    if (authState !== 'authenticated') return undefined;
+    loadData();
+    const refresh = () => loadData({ silent: true });
+    const timer = window.setInterval(refresh, 20000);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [authState, loadData]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -442,7 +451,7 @@ export default function ManagementApp() {
       await managementAdminService.resetPassword(resetUser.id, password);
       setResetUser(null);
       setNotice({ type: 'success', text: `Đã đặt lại mật khẩu cho ${resetUser.username}.` });
-      await loadData();
+      await loadData({ silent: true });
     } catch (error) {
       setNotice({ type: 'error', text: error.message || 'Không đặt lại được mật khẩu.' });
     } finally {
@@ -451,7 +460,7 @@ export default function ManagementApp() {
   };
 
   if (authState === 'loading') {
-    return <div className="management-boot"><span className="management-brand-mark">AC</span><i className="fa-solid fa-spinner fa-spin"></i></div>;
+    return <div className="management-boot"><BrandLogo /><i className="fa-solid fa-spinner fa-spin"></i></div>;
   }
   if (authState === 'anonymous') {
     return <LoginScreen onLogin={handleLogin} error={loginError} loading={loginLoading} />;
@@ -479,7 +488,7 @@ export default function ManagementApp() {
     <div className="management-root">
       <aside className={`management-sidebar ${mobileNavOpen ? 'open' : ''}`}>
         <div className="management-sidebar-brand">
-          <span className="management-brand-mark">AC</span>
+          <BrandLogo />
           <div><strong>ACSI</strong><span>Chat - Power by Gon Platform</span></div>
         </div>
         <nav className="management-nav" aria-label="Điều hướng quản trị">
@@ -514,8 +523,8 @@ export default function ManagementApp() {
             <h1>{navItems.find(item => item.id === activeView)?.label}</h1>
           </div>
           <div className="management-topbar-actions">
-            <button type="button" className="management-icon-button" onClick={loadData} title="Làm mới" disabled={loadingData}><i className={`fa-solid fa-rotate ${loadingData ? 'fa-spin' : ''}`}></i></button>
-            <a className="management-chat-link" href="https://chat.upgo.vn/">Mở web chat <i className="fa-solid fa-arrow-up-right-from-square"></i></a>
+            <button type="button" className="management-icon-button" onClick={() => loadData()} title="Đồng bộ dữ liệu" disabled={loadingData}><i className={`fa-solid fa-rotate ${loadingData ? 'fa-spin' : ''}`}></i></button>
+            <a className="management-chat-link" href="https://chat.upgo.vn/" target="_blank" rel="noreferrer">Mở web chat <i className="fa-solid fa-arrow-up-right-from-square"></i></a>
           </div>
         </header>
 
