@@ -17,10 +17,10 @@ If you are developing a production application, we recommend using TypeScript wi
 
 ## Tinode chat integration
 
-The realtime chat engine uses the official `tinode-sdk` package. Tinode owns topic
-subscription, message history, publishing, attachments, reactions, and read state.
-It is connected lazily when a user opens a chat detail; login, logout, tenant user
-search, and conversation lists do not query Tinode.
+The realtime chat engine uses the official `tinode-sdk` package. Chatapi/Tinode
+owns topic subscriptions, message history, publishing, attachments, reactions,
+typing, and read state. Chatmgt owns only management metadata and issues the
+short-lived Tinode token used by the UI.
 
 `chatManagementService` is the company-owned boundary for authentication,
 tenant-scoped users, and conversation metadata. Configure
@@ -35,14 +35,15 @@ environment variables.
 ## Internal accounts
 
 Accounts, password hashes, tenant membership and audit events are stored in the
-Chatservice PostgreSQL database. Administrators create and disable accounts; public
+chatmgt PostgreSQL database. Administrators create and disable accounts; public
 self-registration and browser-shipped credentials are disabled.
 
 ## Chatbot
 
 The demo app includes a separate **Trợ lý Sông Hồng** conversation. Its history is isolated per logged-in account and stored locally for testing.
 
-To use the real backend, set:
+The chatbot backend is intentionally not routed through chatmgt. If it is enabled
+later, it must be deployed as a separate service and configured explicitly:
 
 ```env
 VITE_CHATBOT_API_URL=https://your-chatservice.example/api/v1/chatbot/message

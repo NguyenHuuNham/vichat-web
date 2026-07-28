@@ -1,11 +1,10 @@
 from application.extensions import jinja
 
 def init_controllers(app):
-    # APP API
-    import application.controllers.api_user
-    import application.controllers.api_organization
-    import application.controllers.api_chatbot
+    # Chatmgt exposes only management APIs. Realtime chat stays in Tinode.
     import application.controllers.api_chat_management
+    if app.config.get("CHATBOT_ENABLED", False):
+        import application.controllers.api_chatbot
 
 
     @app.route('/')

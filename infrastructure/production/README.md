@@ -18,7 +18,7 @@ Open the required firewall ports:
 
 ```bash
 sudo ufw allow OpenSSH
-sudo ufw allow 8093/tcp
+sudo ufw allow 8094/tcp
 sudo ufw enable
 ```
 
@@ -52,14 +52,21 @@ chmod +x infrastructure/production/start.sh
 For the current IP-only deployment, keep:
 
 ```dotenv
-PUBLIC_HOST=103.74.122.206:8093
-PUBLIC_HTTP_PORT=8093
+PUBLIC_HOST=103.74.122.206:8094
+PUBLIC_HTTP_PORT=8094
 PUBLIC_SECURE=false
-TINODE_CORS_ORIGINS=["http://103.74.122.206:8093"]
+TINODE_CORS_ORIGINS=["http://103.74.122.206:8094"]
 CHAT_AUTH_COOKIE_SECURE=false
+CHAT_PASSWORD_RESET_URL=http://103.74.122.206:8094/?reset_token={token}
+CHAT_PASSWORD_RESET_DEBUG=false
+TINODE_ADMIN_USERNAME=admin
+TINODE_ADMIN_PASSWORD=replace-with-the-tinode-root-password
 ```
 
-Then open `http://103.74.122.206:8093`.
+Configure `CHAT_SMTP_*` with a real mail provider before testing forgot password.
+Reset links are delivered only by email and are never returned to the browser.
+
+Then open `http://103.74.122.206:8094`.
 
 ## Production security
 

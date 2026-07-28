@@ -6,24 +6,24 @@ $envPath = Join-Path $infraDir ".env"
 $examplePath = Join-Path $infraDir ".env.example"
 $composePath = Join-Path $infraDir "compose.yaml"
 
-function Invoke-ChatserviceCompose {
+function Invoke-ChatmgtCompose {
     & docker compose --env-file $envPath -f $composePath @args
     if ($LASTEXITCODE -ne 0) {
         throw "Docker Compose failed with exit code $LASTEXITCODE."
     }
 }
 
-function Wait-Chatservice {
+function Wait-Chatmgt {
     for ($attempt = 0; $attempt -lt 60; $attempt++) {
         try {
-            $response = Invoke-WebRequest -Uri "http://127.0.0.1:8093/api/v1/chatbot/health" -UseBasicParsing -TimeoutSec 2
+            $response = Invoke-WebRequest -Uri "http://127.0.0.1:8093/api/v1/auth/health" -UseBasicParsing -TimeoutSec 2
             if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) { return }
         } catch {
             # The process may still be loading Python dependencies after restart.
         }
         Start-Sleep -Seconds 1
     }
-    throw "Chatservice did not become reachable on port 8093."
+    throw "Chatmgt did not become reachable on port 8093."
 }
 
 if (-not (Test-Path -LiteralPath $envPath)) {
@@ -58,14 +58,14 @@ if ([string]::IsNullOrWhiteSpace($composeDbPassword)) {
     throw "CHATSERVICE_DB_PASSWORD is missing from infrastructure/chatservice/.env."
 }
 
-Invoke-ChatserviceCompose up -d --build
+Invoke-ChatmgtCompose up -d --build
 
 # Existing PostgreSQL volumes keep the password from their first initialization.
-# Synchronize the role so Chatservice and pgAdmin use the current private .env value.
+# Synchronize the role so chatmgt and pgAdmin use the current private .env value.
 $sqlUser = $composeDbUser.Replace('"', '""')
 $sqlPassword = $composeDbPassword.Replace("'", "''")
 $alterRoleSql = "ALTER ROLE `"$sqlUser`" WITH PASSWORD '$sqlPassword';"
-Invoke-ChatserviceCompose exec -T postgres `
+Invoke-ChatmgtCompose exec -T postgres `
     psql -v ON_ERROR_STOP=1 -U $composeDbUser -d $composeDbName `
     -c $alterRoleSql
 
@@ -73,10 +73,10 @@ Get-ChildItem -LiteralPath (Join-Path $repoDir "chatservice-main\migrations") -F
     Sort-Object Name |
     ForEach-Object {
         $containerMigration = "/docker-entrypoint-initdb.d/$($_.Name)"
-        Invoke-ChatserviceCompose exec -T postgres `
+        Invoke-ChatmgtCompose exec -T postgres `
             psql -v ON_ERROR_STOP=1 -U $composeDbUser -d $composeDbName `
             -f $containerMigration
     }
-Invoke-ChatserviceCompose restart chatservice
-Wait-Chatservice
-Invoke-ChatserviceCompose ps
+Invoke-ChatmgtCompose restart chatmgt
+Wait-Chatmgt
+Invoke-ChatmgtCompose ps

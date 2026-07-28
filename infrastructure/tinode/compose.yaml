@@ -20,7 +20,7 @@ services:
     volumes:
       - tinode_postgres_data:/var/lib/postgresql/data
 
-  tinode:
+  chatapi:
     image: tinode/tinode-postgres:latest
     restart: unless-stopped
     depends_on:

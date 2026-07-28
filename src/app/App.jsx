@@ -471,11 +471,22 @@ function App() {
   const [settings, setSettings] = useState({ desktopNotifications: true, sounds: true, compactMode: false });
   const [directoryAccounts, setDirectoryAccounts] = useState([]);
   const [isUpdatingProfileAvatar, setIsUpdatingProfileAvatar] = useState(false);
+  const [profileForm, setProfileForm] = useState({ name: '', email: '', title: '', department: '' });
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileNotice, setProfileNotice] = useState('');
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
 
   // Mobile navigation state
   const [isMobileChatActive, setIsMobileChatActive] = useState(false);
   const [isMobileSidebarOpen, _setIsMobileSidebarOpen] = useState(false);
+  const [isPrimarySidebarCollapsed, setIsPrimarySidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.localStorage.getItem('songhong.primary-sidebar-collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   // References
   const chatMessagesEndRef = useRef(null);
@@ -515,12 +526,33 @@ function App() {
     badge: 0,
   };
 
+  const isCurrentUserOnline = Boolean(isLoggedIn && currentUser);
   const profileAccount = {
     ...(findAccount(directoryAccounts, currentUser?.id || currentUser?.uid) || {}),
     ...(currentUser || {}),
+    online: isCurrentUserOnline,
   };
   const isKnowledgeAdmin = ['admin', 'superadmin', 'owner', 'administrator']
     .includes(String(profileAccount.role || '').toLowerCase());
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('songhong.primary-sidebar-collapsed', String(isPrimarySidebarCollapsed));
+    } catch {
+      // The layout still works when browser storage is unavailable.
+    }
+  }, [isPrimarySidebarCollapsed]);
+
+  useEffect(() => {
+    if (workspacePanel !== 'profile') return;
+    setProfileForm({
+      name: profileAccount.name || '',
+      email: profileAccount.email || '',
+      title: profileAccount.title || '',
+      department: profileAccount.department || '',
+    });
+    setProfileNotice('');
+  }, [workspacePanel, profileAccount.name, profileAccount.email, profileAccount.title, profileAccount.department]);
   const viewerId = chatMode === 'tinode'
     ? (currentUser?.tinodeUid || currentUser?.uid || currentUser?.id)
     : (currentUser?.id || currentUser?.uid);
@@ -1069,6 +1101,67 @@ function App() {
     setSettings(previous => ({ ...previous, desktopNotifications: enabled }));
   };
 
+  const handleProfileSave = async event => {
+    event.preventDefault();
+    setChatError('');
+    setProfileNotice('');
+    if (!profileForm.name.trim()) {
+      setChatError('Vui lòng nhập họ tên hiển thị.');
+      return;
+    }
+    setIsSavingProfile(true);
+    try {
+      const updated = await chatManagementService.updateProfile({
+        name: profileForm.name.trim(),
+        email: profileForm.email.trim(),
+        title: profileForm.title.trim(),
+        department: profileForm.department.trim(),
+      });
+      const viewerIds = new Set([
+        currentUser?.id,
+        currentUser?.uid,
+        currentUser?.tinodeUid,
+      ].filter(Boolean));
+      setCurrentUser(previous => ({
+        ...previous,
+        ...updated,
+        uid: previous?.uid,
+        tinodeUid: previous?.tinodeUid,
+      }));
+      setDirectoryAccounts(previous => previous.map(account => (
+        account.id === updated.id ? { ...account, ...updated } : account
+      )));
+      setConversations(previous => Object.fromEntries(Object.entries(previous).map(([id, room]) => [id, {
+        ...room,
+        members: (room.members || []).map(member => viewerIds.has(member.id)
+          ? { ...member, name: updated.name, avatar: updated.avatar || member.avatar }
+          : member),
+        messages: (room.messages || []).map(message => viewerIds.has(message.senderId)
+          ? { ...message, senderName: updated.name, avatar: updated.avatar || message.avatar }
+          : message),
+      }])));
+      setProfileForm({
+        name: updated.name || '',
+        email: updated.email || '',
+        title: updated.title || '',
+        department: updated.department || '',
+      });
+      if (chatMode === 'tinode') {
+        try {
+          await ensureTinodeSession();
+          await tinodeClient.updateCurrentProfile({ name: updated.name });
+        } catch (tinodeError) {
+          setChatError(tinodeError?.message || 'Hồ sơ đã lưu nhưng tên hiển thị Tinode chưa đồng bộ.');
+        }
+      }
+      setProfileNotice('Thông tin hồ sơ đã được lưu trên service quản lý.');
+    } catch (error) {
+      setChatError(error?.message || 'Không thể cập nhật hồ sơ.');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
   const handleProfileAvatarChange = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -1102,13 +1195,23 @@ function App() {
         });
       }
       if (!avatar) throw new Error('Máy chủ không trả về ảnh đại diện mới.');
-      const viewerId = currentUser?.id || currentUser?.uid;
-      setCurrentUser(previous => ({ ...previous, avatar }));
+      const updated = await chatManagementService.updateProfile({ avatar });
+      const viewerIds = new Set([
+        currentUser?.id,
+        currentUser?.uid,
+        currentUser?.tinodeUid,
+      ].filter(Boolean));
+      const nextAvatar = updated.avatar || avatar;
+      setCurrentUser(previous => ({ ...previous, avatar: nextAvatar }));
+      setDirectoryAccounts(previous => previous.map(account => (
+        account.id === updated.id ? { ...account, avatar: nextAvatar } : account
+      )));
       setConversations(previous => Object.fromEntries(Object.entries(previous).map(([id, room]) => [id, {
         ...room,
-        members: (room.members || []).map(member => member.id === viewerId ? { ...member, avatar } : member),
-        messages: (room.messages || []).map(message => message.senderId === viewerId ? { ...message, avatar } : message),
+        members: (room.members || []).map(member => viewerIds.has(member.id) ? { ...member, avatar: nextAvatar } : member),
+        messages: (room.messages || []).map(message => viewerIds.has(message.senderId) ? { ...message, avatar: nextAvatar } : message),
       }])));
+      setProfileNotice('Ảnh đại diện đã được cập nhật.');
     } catch (error) {
       setChatError(error?.message || 'Không thể cập nhật ảnh đại diện.');
     } finally {
@@ -2278,50 +2381,60 @@ function App() {
       {/* ==========================================================================
          CỘT 1: SIDEBAR PRIMARY (Màu xanh dương đậm)
          ========================================================================== */}
-      <aside className={`sidebar-primary ${isMobileSidebarOpen ? 'open' : ''}`}>
+      <aside className={`sidebar-primary ${isPrimarySidebarCollapsed ? 'collapsed' : ''} ${isMobileSidebarOpen ? 'open' : ''}`}>
+        <button
+          type="button"
+          className="sidebar-collapse-toggle"
+          onClick={() => setIsPrimarySidebarCollapsed(previous => !previous)}
+          aria-label={isPrimarySidebarCollapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'}
+          aria-pressed={isPrimarySidebarCollapsed}
+          title={isPrimarySidebarCollapsed ? 'Mở rộng menu' : 'Thu gọn menu'}
+        >
+          <i className={`fa-solid ${isPrimarySidebarCollapsed ? 'fa-angle-right' : 'fa-angle-left'}`}></i>
+        </button>
         <div className="brand-container">
           <div className="brand-logo">
-            <span className="brand-mark" aria-hidden="true">SH</span>
+            <img src="/chat-logo.svg" className="brand-mark-image" alt="" aria-hidden="true" />
           </div>
-          <h1 className="brand-name">SÔNG HỒNG</h1>
+          <h1 className="brand-name">CHAT</h1>
         </div>
 
         <nav className="primary-nav">
-          <a href="#" className={`nav-item ${!workspacePanel ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setWorkspacePanel(null); }}>
+          <a href="#" className={`nav-item ${!workspacePanel ? 'active' : ''}`} data-tooltip="Chat" onClick={(e) => { e.preventDefault(); setWorkspacePanel(null); }}>
             <i className="fa-solid fa-comment-dots"></i>
             <span>Chat</span>
           </a>
-          <a href="#" className={`nav-item ${workspacePanel === 'contacts' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); openWorkspacePanel('contacts'); }}>
+          <a href="#" className={`nav-item ${workspacePanel === 'contacts' ? 'active' : ''}`} data-tooltip="Danh bạ" onClick={(e) => { e.preventDefault(); openWorkspacePanel('contacts'); }}>
             <i className="fa-solid fa-address-book"></i>
             <span>Danh bạ</span>
           </a>
-          <a href="#" className="nav-item" onClick={(e) => { e.preventDefault(); setIsCreateGroupOpen(true); }}>
+          <a href="#" className="nav-item" data-tooltip="Nhóm" onClick={(e) => { e.preventDefault(); setIsCreateGroupOpen(true); }}>
             <i className="fa-solid fa-users"></i>
             <span>Nhóm</span>
           </a>
-          <a href="#" className={`nav-item ${workspacePanel === 'files' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); openWorkspacePanel('files'); }}>
+          <a href="#" className={`nav-item ${workspacePanel === 'files' ? 'active' : ''}`} data-tooltip="File dùng chung" onClick={(e) => { e.preventDefault(); openWorkspacePanel('files'); }}>
             <i className="fa-solid fa-folder-open"></i>
             <span>File dùng chung</span>
           </a>
-          {isKnowledgeAdmin && <a href="#" className={`nav-item ${workspacePanel === 'knowledge' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); openWorkspacePanel('knowledge'); }}>
+          {isKnowledgeAdmin && <a href="#" className={`nav-item ${workspacePanel === 'knowledge' ? 'active' : ''}`} data-tooltip="Tri thức AI" onClick={(e) => { e.preventDefault(); openWorkspacePanel('knowledge'); }}>
             <i className="fa-solid fa-brain"></i>
             <span>Tri thức AI</span>
           </a>}
-          <a href="#" className={`nav-item ${workspacePanel === 'notifications' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); openWorkspacePanel('notifications'); }}>
+          <a href="#" className={`nav-item ${workspacePanel === 'notifications' ? 'active' : ''}`} data-tooltip="Thông báo" onClick={(e) => { e.preventDefault(); openWorkspacePanel('notifications'); }}>
             <div className="icon-badge-wrapper">
               <i className="fa-solid fa-bell"></i>
               {notificationBadgeCount > 0 && <span className="badge-count">{notificationBadgeCount}</span>}
             </div>
             <span>Thông báo</span>
           </a>
-          <a href="#" className={`nav-item ${workspacePanel === 'settings' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); openWorkspacePanel('settings'); }}>
+          <a href="#" className={`nav-item ${workspacePanel === 'settings' ? 'active' : ''}`} data-tooltip="Cài đặt" onClick={(e) => { e.preventDefault(); openWorkspacePanel('settings'); }}>
             <i className="fa-solid fa-gear"></i>
             <span>Cài đặt</span>
           </a>
         </nav>
 
         <div className="primary-footer">
-          <div className="user-profile" role="button" tabIndex="0" onClick={() => openWorkspacePanel('profile')} onKeyDown={(event) => {
+          <div className="user-profile" data-tooltip="Hồ sơ cá nhân" role="button" tabIndex="0" onClick={() => openWorkspacePanel('profile')} onKeyDown={(event) => {
             if (event.key === 'Enter' || event.key === ' ') openWorkspacePanel('profile');
           }}>
             <SafeAvatar src={currentUser?.avatar} name={currentUser?.name} className="user-avatar-img" />
@@ -2330,13 +2443,6 @@ function App() {
               <span className="user-status online">Online</span>
             </div>
           </div>
-          <button className="btn-logout-footer" onClick={() => {
-            if (window.confirm("Bạn có chắc chắn muốn đăng xuất khỏi SÔNG HỒNG?")) {
-              handleLogout();
-            }
-          }} title="Đăng xuất">
-            <i className="fa-solid fa-arrow-right-from-bracket"></i>
-          </button>
         </div>
       </aside>
 
@@ -2762,9 +2868,22 @@ function App() {
             <div className="workspace-panel-header">
               <div>
                 <span className="group-modal-kicker">SÔNG HỒNG WORKSPACE</span>
-                <h2>{workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'knowledge' ? 'Tri thức AI' : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : 'Cài đặt'}</h2>
+                <h2>{workspacePanel === 'profile' ? 'Hồ sơ cá nhân' : workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'knowledge' ? 'Tri thức AI' : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : 'Cài đặt'}</h2>
               </div>
-              <button type="button" className="btn-close-detail" onClick={() => setWorkspacePanel(null)} aria-label="Đóng"><i className="fa-solid fa-xmark"></i></button>
+              <div className="workspace-panel-header-actions">
+                {workspacePanel === 'profile' && (
+                  <button type="button" className="workspace-logout-button" onClick={() => {
+                    if (window.confirm("Bạn có chắc chắn muốn đăng xuất khỏi SÔNG HỒNG?")) {
+                      setWorkspacePanel(null);
+                      handleLogout();
+                    }
+                  }}>
+                    <i className="fa-solid fa-arrow-right-from-bracket"></i>
+                    <span>Đăng xuất</span>
+                  </button>
+                )}
+                <button type="button" className="btn-close-detail" onClick={() => setWorkspacePanel(null)} aria-label="Đóng"><i className="fa-solid fa-xmark"></i></button>
+              </div>
             </div>
 
             {workspacePanel === 'profile' && (
@@ -2778,16 +2897,23 @@ function App() {
                     </label>
                   </div>
                   <h3>{profileAccount.name || 'Tài khoản hiện tại'}</h3>
-                  <span className={`profile-status ${profileAccount.online === false ? 'offline' : ''}`}><i className="fa-solid fa-circle"></i> {profileAccount.online === false ? 'Ngoại tuyến' : 'Đang hoạt động'}</span>
+                  <span className={`profile-status ${isCurrentUserOnline ? '' : 'offline'}`}><i className="fa-solid fa-circle"></i> {isCurrentUserOnline ? 'Đang hoạt động' : 'Ngoại tuyến'}</span>
                 </div>
-                <div className="profile-details">
+                <div className="profile-details profile-readonly-details">
                   <div className="profile-detail-row"><i className="fa-solid fa-at"></i><div><small>Username</small><strong>{profileAccount.username || 'Chưa cập nhật'}</strong></div></div>
-                  <div className="profile-detail-row"><i className="fa-regular fa-envelope"></i><div><small>Email</small><strong>{profileAccount.email || 'Chưa cập nhật'}</strong></div></div>
-                  <div className="profile-detail-row"><i className="fa-solid fa-briefcase"></i><div><small>Chức vụ</small><strong>{profileAccount.title || 'Chưa cập nhật'}</strong></div></div>
-                  <div className="profile-detail-row"><i className="fa-solid fa-building"></i><div><small>Phòng ban</small><strong>{profileAccount.department || 'Chưa cập nhật'}</strong></div></div>
                   <div className="profile-detail-row"><i className="fa-solid fa-shield-halved"></i><div><small>Vai trò</small><strong>{profileAccount.role || 'Thành viên'}</strong></div></div>
-                  <div className="profile-detail-row"><i className="fa-regular fa-id-card"></i><div><small>Mã tài khoản</small><strong>{profileAccount.id || profileAccount.uid || 'Chưa cập nhật'}</strong></div></div>
                 </div>
+                <form className="profile-edit-form" onSubmit={handleProfileSave}>
+                  <label><span>Họ và tên</span><input value={profileForm.name} onChange={event => setProfileForm(previous => ({ ...previous, name: event.target.value }))} maxLength="255" required /></label>
+                  <label><span>Email</span><input type="email" value={profileForm.email} onChange={event => setProfileForm(previous => ({ ...previous, email: event.target.value }))} maxLength="255" /></label>
+                  <label><span>Chức vụ</span><input value={profileForm.title} onChange={event => setProfileForm(previous => ({ ...previous, title: event.target.value }))} maxLength="255" /></label>
+                  <label><span>Phòng ban</span><input value={profileForm.department} onChange={event => setProfileForm(previous => ({ ...previous, department: event.target.value }))} maxLength="255" /></label>
+                  {profileNotice && <div className="profile-save-notice"><i className="fa-solid fa-circle-check"></i>{profileNotice}</div>}
+                  <button type="submit" className="btn-primary profile-save-button" disabled={isSavingProfile}>
+                    <i className={`fa-solid ${isSavingProfile ? 'fa-spinner fa-spin' : 'fa-floppy-disk'}`}></i>
+                    {isSavingProfile ? 'Đang lưu...' : 'Lưu hồ sơ'}
+                  </button>
+                </form>
               </div>
             )}
 

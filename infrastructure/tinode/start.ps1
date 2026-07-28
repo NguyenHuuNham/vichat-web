@@ -96,7 +96,7 @@ for ($attempt = 0; $attempt -lt 60; $attempt++) {
 }
 
 if (-not $ready) {
-  & $dockerExe compose --env-file $secretFile -f $composeFile logs --tail 100 tinode
+  & $dockerExe compose --env-file $secretFile -f $composeFile logs --tail 100 chatapi
   throw 'Tinode was not ready after 120 seconds. Recent logs are shown above.'
 }
 

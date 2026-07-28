@@ -43,18 +43,27 @@ function Assert-Status($Result, [int]$Expected, [string]$Name) {
 }
 
 $anonymous = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+Assert-Status (Invoke-Json $anonymous 'GET' '/api/v1/auth/health' $null) 200 'Authentication health endpoint'
 Assert-Status (Invoke-Json $anonymous 'GET' '/api/v1/chat/users' $null) 401 'Anonymous users are rejected'
+Assert-Status (Invoke-Json $anonymous 'POST' '/api/v1/auth/forgot-password' @{ tenant_id = $Tenant; identity = 'missing-account' }) 202 'Forgot password hides account existence'
+Assert-Status (Invoke-Json $anonymous 'POST' '/api/v1/auth/reset-password' @{ token = 'invalid-token'; new_password = 'ValidPass#2026' }) 400 'Invalid reset token is rejected'
 
 $admin = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 Assert-Status (Invoke-Json $admin 'POST' '/login' @{ tenant_id = $Tenant; identity = $AdminUser; password = $AdminPassword }) 200 'Admin login'
+$adminProfile = Invoke-Json $admin 'GET' '/api/v1/auth/me' $null
+Assert-Status $adminProfile 200 'Current profile access'
+Assert-Status (Invoke-Json $admin 'PUT' '/api/v1/auth/profile' @{
+  name = $adminProfile.Body.user.name
+  email = $adminProfile.Body.user.email
+  title = $adminProfile.Body.user.title
+  department = $adminProfile.Body.user.department
+}) 200 'Current profile update'
 Assert-Status (Invoke-Json $admin 'GET' '/api/v1/chat/users' $null) 200 'Admin directory access'
-Assert-Status (Invoke-Json $admin 'GET' '/api/v1/chatbot/knowledge/bases' $null) 200 'Admin knowledge access'
+Assert-Status (Invoke-Json $admin 'GET' '/api/v1/chat/threads?limit=10' $null) 200 'Tenant thread list access'
 Assert-Status (Invoke-Json $admin 'POST' '/api/v1/auth/logout' @{}) 200 'Admin logout'
 Assert-Status (Invoke-Json $admin 'GET' '/api/v1/chat/users' $null) 401 'Logged-out admin is rejected'
 
 $member = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 Assert-Status (Invoke-Json $member 'POST' '/login' @{ tenant_id = $Tenant; identity = $MemberUser; password = $MemberPassword }) 200 'Member login'
 Assert-Status (Invoke-Json $member 'GET' '/api/v1/chat/users' $null) 200 'Member directory access'
-Assert-Status (Invoke-Json $member 'GET' '/api/v1/chatbot/knowledge/bases' $null) 403 'Member knowledge administration denied'
-
 Write-Host 'Security checks passed.' -ForegroundColor Green

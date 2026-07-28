@@ -14,23 +14,17 @@ export default defineConfig(({ mode }) => {
       rewrite: path => path.replace(/^\/tinode-media/, ''),
     },
   }
-  const chatbotProxy = {
-    '/api': {
-      target: 'http://127.0.0.1:8093',
-      changeOrigin: true,
-    },
-  }
   const managementProxy = {
-    '/management-api': {
+    '/chatmgt-api': {
       target: 'http://127.0.0.1:8093',
       changeOrigin: true,
-      rewrite: path => path.replace(/^\/management-api/, ''),
+      rewrite: path => path.replace(/^\/chatmgt-api/, ''),
     },
   }
 
   return {
     plugins: [react()],
-    server: { proxy: { ...mediaProxy, ...chatbotProxy, ...managementProxy } },
-    preview: { proxy: { ...mediaProxy, ...chatbotProxy, ...managementProxy } },
+    server: { proxy: { ...mediaProxy, ...managementProxy } },
+    preview: { proxy: { ...mediaProxy, ...managementProxy } },
   }
 })

@@ -58,8 +58,7 @@ for migration in "$REPO_DIR"/chatservice-main/migrations/*.sql; do
     -f "/docker-entrypoint-initdb.d/$(basename "$migration")"
 done
 
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" restart chatservice
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" restart chatmgt
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
 
 echo "Deployment is available at http://$(sed -n 's/^PUBLIC_HOST=//p' "$ENV_FILE" | tail -n 1)"
-

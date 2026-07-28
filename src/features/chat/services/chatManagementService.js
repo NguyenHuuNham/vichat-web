@@ -86,7 +86,8 @@ function normalizeConversation(record) {
     adminId: record?.adminId || properties.adminId || '',
     members: record?.members || properties.members || [],
     participantIds: record?.participantIds || properties.participantIds || [],
-    messages: record?.messages || [],
+    // Message history is loaded exclusively from Tinode/chatapi.
+    messages: [],
     lastMsg: record?.lastMsg || properties.lastMessage || '',
     time: record?.time || properties.time || '',
     updatedAt: record?.updatedAt || record?.last_message_at || properties.updatedAt,
@@ -136,12 +137,39 @@ export const chatManagementService = {
     activeSession = null;
   },
 
+  async requestPasswordReset(identity) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    return apiRequest('/api/v1/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ identity: String(identity || '').trim(), tenant_id: tenantId }),
+    });
+  },
+
+  async resetPassword(token, newPassword) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    return apiRequest('/api/v1/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, new_password: newPassword }),
+    });
+  },
+
   async changePassword(currentPassword, newPassword) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     return apiRequest('/api/v1/auth/password', {
       method: 'POST',
       body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
     });
+  },
+
+  async updateProfile(profile) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const payload = await apiRequest('/api/v1/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify(profile || {}),
+    });
+    const account = publicAccount(payload.user || payload);
+    if (activeSession && account) activeSession.user = account;
+    return account;
   },
 
   getTinodeAuth() {
@@ -254,6 +282,7 @@ function toLoginSession(account) {
     tenantId: account.tenantId || account.tenant_id,
     tinodeUid: account.tinodeUid,
     tinodeAuth: auth,
+    mustChangePassword: Boolean(account.mustChangePassword || account.must_change_password),
     profile: {
       name: account.name,
       title: account.title || '',
@@ -267,5 +296,13 @@ export const managementAuthClient = {
 
   async login({ username, password }) {
     return toLoginSession(await chatManagementService.login({ identity: username, password }));
+  },
+
+  async requestPasswordReset(identity) {
+    return chatManagementService.requestPasswordReset(identity);
+  },
+
+  async resetPassword(token, newPassword) {
+    return chatManagementService.resetPassword(token, newPassword);
   },
 };

@@ -8,9 +8,9 @@ ARG VITE_TINODE_SECURE=true
 ARG VITE_TINODE_TRANSPORT=ws
 ARG VITE_TINODE_PERSIST=true
 ARG VITE_TINODE_APP_NAME=SONGHONG/1.0
-ARG VITE_CHATBOT_API_URL=/api/v1/chatbot/message
+ARG VITE_CHATBOT_API_URL=
 ARG VITE_CHATBOT_WITH_CREDENTIALS=true
-ARG VITE_CHAT_MANAGEMENT_API_URL=/management-api
+ARG VITE_CHAT_MANAGEMENT_API_URL=/chatmgt-api
 ARG VITE_CHAT_MANAGEMENT_REMOTE_AUTH=true
 ARG VITE_CHAT_TENANT_ID=song-hong
 
@@ -38,4 +38,3 @@ COPY infrastructure/production/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80
-

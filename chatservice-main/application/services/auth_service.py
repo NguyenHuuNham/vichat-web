@@ -1,10 +1,14 @@
+import asyncio
 import base64
 import hashlib
 import hmac
 import json
+import secrets
+import smtplib
 import time
 import uuid
-from urllib.parse import quote
+from email.message import EmailMessage
+from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 
 import aiohttp
 import bcrypt
@@ -95,9 +99,38 @@ def clear_login_failures(tenant_id, identity, ip_address):
         return
 
 
+def _password_reset_attempt_key(tenant_id, identity, ip_address):
+    digest = hashlib.sha256("{}|{}|{}".format(tenant_id, identity, ip_address).encode("utf-8")).hexdigest()
+    return "auth:password-reset:{}".format(digest)
+
+
+def password_reset_rate_limited(tenant_id, identity, ip_address):
+    if database.redisdb is None:
+        return False
+    try:
+        key = _password_reset_attempt_key(tenant_id, identity, ip_address)
+        attempts = int(database.redisdb.get(key) or 0)
+        return attempts >= int(app.config.get("CHAT_PASSWORD_RESET_MAX_REQUESTS", 3))
+    except Exception:
+        return False
+
+
+def record_password_reset_request(tenant_id, identity, ip_address):
+    if database.redisdb is None:
+        return
+    try:
+        key = _password_reset_attempt_key(tenant_id, identity, ip_address)
+        attempts = database.redisdb.incr(key)
+        if attempts == 1:
+            database.redisdb.expire(key, int(app.config.get("CHAT_PASSWORD_RESET_WINDOW", 900)))
+    except Exception:
+        return
+
+
 def issue_access_token(account):
     now = int(time.time())
     ttl = int(app.config.get("CHAT_AUTH_ACCESS_TTL", 28800))
+    properties = account.properties or {}
     payload = {
         "iss": JWT_ISSUER,
         "sub": str(account.id),
@@ -108,6 +141,7 @@ def issue_access_token(account):
         "exp": now + ttl,
         "jti": str(uuid.uuid4()),
         "typ": "access",
+        "av": int(properties.get("auth_version") or 0),
     }
     header = {"alg": "HS256", "typ": "JWT"}
     encoded_header = _encode_part(json.dumps(header, separators=(",", ":")).encode("utf-8"))
@@ -160,7 +194,70 @@ def current_user(request):
         "role": payload.get("role"),
         "tenant_id": payload.get("tid"),
         "current_tenant_id": payload.get("tid"),
+        "auth_version": int(payload.get("av") or 0),
+        "issued_at": int(payload.get("iat") or 0),
     }
+
+
+def password_reset_token_hash(token):
+    return hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()
+
+
+def create_password_reset_token():
+    return secrets.token_urlsafe(48)
+
+
+def build_password_reset_url(token):
+    template = str(app.config.get("CHAT_PASSWORD_RESET_URL") or "").strip()
+    if not template:
+        return ""
+    if "{token}" in template:
+        return template.replace("{token}", quote(token, safe=""))
+    parsed = urlparse(template)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query["reset_token"] = token
+    return urlunparse(parsed._replace(query=urlencode(query)))
+
+
+def _send_password_reset_email(account, reset_url):
+    host = str(app.config.get("CHAT_SMTP_HOST") or "").strip()
+    sender = str(app.config.get("CHAT_SMTP_FROM") or "").strip()
+    if not host or not sender or not account.email:
+        return False
+
+    message = EmailMessage()
+    message["Subject"] = "Dat lai mat khau VICHAT"
+    message["From"] = sender
+    message["To"] = account.email
+    message.set_content(
+        "Xin chao {},\n\n"
+        "Ban da yeu cau dat lai mat khau VICHAT. Mo lien ket sau de tao mat khau moi:\n{}\n\n"
+        "Lien ket se het han sau {} phut. Neu ban khong yeu cau, hay bo qua email nay.\n".format(
+            account.full_name,
+            reset_url,
+            max(1, int(app.config.get("CHAT_PASSWORD_RESET_TTL", 1800)) // 60),
+        )
+    )
+
+    port = int(app.config.get("CHAT_SMTP_PORT", 587))
+    username = str(app.config.get("CHAT_SMTP_USERNAME") or "")
+    password = str(app.config.get("CHAT_SMTP_PASSWORD") or "")
+    if username and not password:
+        return False
+    use_ssl = bool(app.config.get("CHAT_SMTP_SSL", False))
+    smtp_class = smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
+    with smtp_class(host, port, timeout=15) as smtp:
+        if not use_ssl and bool(app.config.get("CHAT_SMTP_STARTTLS", True)):
+            smtp.starttls()
+        if username:
+            smtp.login(username, password)
+        smtp.send_message(message)
+    return True
+
+
+async def send_password_reset_email(account, reset_url):
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _send_password_reset_email, account, reset_url)
 
 
 def revoke_request_token(request):
@@ -298,4 +395,52 @@ async def tinode_change_password(username, current_password, new_password):
             ctrl = changed.get("ctrl") or {}
             if ctrl.get("code", 500) >= 300:
                 raise AuthError(ctrl.get("text") or "Tinode password change failed.", 400)
+
+
+async def tinode_admin_reset_password(username, uid, new_password):
+    base_url = str(app.config.get("TINODE_INTERNAL_WS_URL") or "").rstrip("?")
+    api_key = str(app.config.get("TINODE_API_KEY") or "")
+    admin_username = str(app.config.get("TINODE_ADMIN_USERNAME") or "")
+    admin_password = str(app.config.get("TINODE_ADMIN_PASSWORD") or "")
+    if not base_url or not api_key:
+        raise AuthError("Tinode authentication is not configured.", 503)
+    if not admin_username or not admin_password:
+        raise AuthError("Tinode administrator credentials are not configured.", 503)
+    target_user = str(uid or username or "").strip()
+    if not target_user:
+        raise AuthError("The account has no Tinode user mapping.", 409)
+
+    separator = "&" if "?" in base_url else "?"
+    url = "{}{}apikey={}".format(base_url, separator, quote(api_key, safe=""))
+    timeout = aiohttp.ClientTimeout(total=int(app.config.get("TINODE_AUTH_TIMEOUT", 10)))
+    admin_secret = base64.b64encode(
+        "{}:{}".format(admin_username, admin_password).encode("utf-8")
+    ).decode("ascii")
+    new_secret = base64.b64encode(
+        "{}:{}".format(username, new_password).encode("utf-8")
+    ).decode("ascii")
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.ws_connect(url) as socket:
+            await socket.send_json({"hi": {"id": "1", "ver": "0.25", "ua": "VICHAT-CHAT-SERVICE", "platf": "server", "lang": "vi"}})
+            hi = await socket.receive_json()
+            if hi.get("ctrl", {}).get("code", 500) >= 300:
+                raise AuthError("Tinode handshake failed.", 502)
+            await socket.send_json({"login": {"id": "2", "scheme": "basic", "secret": admin_secret}})
+            login = await socket.receive_json()
+            login_ctrl = login.get("ctrl") or {}
+            if login_ctrl.get("code", 500) >= 300:
+                raise AuthError("Tinode administrator login failed.", 502)
+            await socket.send_json({
+                "acc": {
+                    "id": "3",
+                    "user": target_user,
+                    "scheme": "basic",
+                    "secret": new_secret,
+                    "login": False,
+                },
+            })
+            updated = await socket.receive_json()
+            ctrl = updated.get("ctrl") or {}
+            if ctrl.get("code", 500) >= 300:
+                raise AuthError(ctrl.get("text") or "Tinode password reset failed.", 400)
             return {"uid": uid}

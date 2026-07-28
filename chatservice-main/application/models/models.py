@@ -463,6 +463,23 @@ class ManagementAccount(db.Model):
     )
 
 
+class PasswordResetToken(db.Model):
+    __tablename__ = "password_reset_token"
+    id = db.Column(String(100), primary_key=True)
+    tenant_id = db.Column(String(50), nullable=False, index=True)
+    account_id = db.Column(
+        String(100),
+        ForeignKey("management_account.id"),
+        nullable=False,
+        index=True,
+    )
+    token_hash = db.Column(String(64), nullable=False, unique=True, index=True)
+    expires_at = db.Column(BigInteger(), nullable=False, index=True)
+    used_at = db.Column(BigInteger(), index=True)
+    requested_ip = db.Column(String(100))
+    created_at = db.Column(BigInteger(), nullable=False, index=True)
+
+
 class SecurityAuditLog(CommonModel):
     __tablename__ = "security_audit_log"
     tenant_id = db.Column(String(50), index=True)
