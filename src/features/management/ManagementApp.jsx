@@ -75,8 +75,8 @@ function LoginScreen({ onLogin, error, loading }) {
       <section className="management-login-story" aria-hidden="true">
         <div className="management-login-grid"></div>
         <div className="management-brand-lockup">
-          <span className="management-brand-mark">SH</span>
-          <span>Sông Hồng Control Room</span>
+          <span className="management-brand-mark">AC</span>
+          <span>ACSI</span>
         </div>
         <div className="management-story-copy">
           <span className="management-kicker">Hệ thống quản trị nội bộ</span>
@@ -94,7 +94,7 @@ function LoginScreen({ onLogin, error, loading }) {
           <div className="management-login-heading">
             <span className="management-eyebrow">chatmgt.upgo.vn</span>
             <h2>Đăng nhập quản trị</h2>
-            <p>Dùng tài khoản có quyền admin của tenant Sông Hồng.</p>
+            <p>Dùng tài khoản có quyền admin của ACSI.</p>
           </div>
           <label className="management-field">
             <span>Tài khoản hoặc email</span>
@@ -104,7 +104,6 @@ function LoginScreen({ onLogin, error, loading }) {
                 value={identity}
                 onChange={event => setIdentity(event.target.value)}
                 autoComplete="username"
-                placeholder="admin hoặc admin@company.vn"
                 required
               />
             </div>
@@ -118,7 +117,6 @@ function LoginScreen({ onLogin, error, loading }) {
                 value={password}
                 onChange={event => setPassword(event.target.value)}
                 autoComplete="current-password"
-                placeholder="Nhập mật khẩu"
                 required
               />
             </div>
@@ -259,7 +257,7 @@ export default function ManagementApp() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
-    document.title = 'Sông Hồng Control Room';
+    document.title = 'Chat - Power by Gon Platform';
     let cancelled = false;
     managementAdminService.currentSession()
       .then(current => {
@@ -453,7 +451,7 @@ export default function ManagementApp() {
   };
 
   if (authState === 'loading') {
-    return <div className="management-boot"><span className="management-brand-mark">SH</span><i className="fa-solid fa-spinner fa-spin"></i></div>;
+    return <div className="management-boot"><span className="management-brand-mark">AC</span><i className="fa-solid fa-spinner fa-spin"></i></div>;
   }
   if (authState === 'anonymous') {
     return <LoginScreen onLogin={handleLogin} error={loginError} loading={loginLoading} />;
@@ -481,8 +479,8 @@ export default function ManagementApp() {
     <div className="management-root">
       <aside className={`management-sidebar ${mobileNavOpen ? 'open' : ''}`}>
         <div className="management-sidebar-brand">
-          <span className="management-brand-mark">SH</span>
-          <div><strong>Control Room</strong><span>Sông Hồng Chat</span></div>
+          <span className="management-brand-mark">AC</span>
+          <div><strong>ACSI</strong><span>Chat - Power by Gon Platform</span></div>
         </div>
         <nav className="management-nav" aria-label="Điều hướng quản trị">
           <span className="management-nav-label">Workspace</span>
@@ -512,7 +510,7 @@ export default function ManagementApp() {
         <header className="management-topbar">
           <button className="management-mobile-menu" type="button" onClick={() => setMobileNavOpen(true)} aria-label="Mở menu"><i className="fa-solid fa-bars"></i></button>
           <div>
-            <span className="management-eyebrow">{session.tenant?.name || session.user.tenantName || 'Sông Hồng'}</span>
+            <span className="management-eyebrow">ACSI</span>
             <h1>{navItems.find(item => item.id === activeView)?.label}</h1>
           </div>
           <div className="management-topbar-actions">

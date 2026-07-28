@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap');
+
 .management-root,
 .management-login,
 .management-denied,
@@ -14,7 +16,7 @@
   --mgmt-green: #16845d;
   --mgmt-red: #c94c3c;
   color: var(--mgmt-ink);
-  font-family: Inter, sans-serif;
+  font-family: 'Be Vietnam Pro', sans-serif;
 }
 
 .management-root button,
@@ -88,7 +90,7 @@
   color: #fff;
   background: var(--mgmt-orange);
   box-shadow: 0 9px 24px rgba(241, 90, 36, .28);
-  font-family: Georgia, serif;
+  font-family: 'Be Vietnam Pro', sans-serif;
   font-size: 17px;
   font-weight: 700;
   letter-spacing: -.06em;
@@ -102,7 +104,7 @@
 }
 
 .management-sidebar-brand strong {
-  font-family: Georgia, serif;
+  font-family: 'Be Vietnam Pro', sans-serif;
   font-size: 19px;
   letter-spacing: -.02em;
 }
@@ -252,7 +254,7 @@
 .management-topbar h1 {
   margin-top: 2px;
   color: var(--mgmt-ink);
-  font-family: Georgia, serif;
+  font-family: 'Be Vietnam Pro', sans-serif;
   font-size: 26px;
   font-weight: 600;
   letter-spacing: -.035em;
@@ -368,7 +370,7 @@
 .management-hero-card h2 {
   max-width: 760px;
   margin-top: 11px;
-  font-family: Georgia, serif;
+  font-family: 'Be Vietnam Pro', sans-serif;
   font-size: clamp(28px, 4vw, 47px);
   font-weight: 500;
   line-height: 1.08;
@@ -411,7 +413,7 @@
 }
 
 .management-hero-orbit span {
-  font-family: Georgia, serif;
+  font-family: 'Be Vietnam Pro', sans-serif;
   font-size: 48px;
 }
 
@@ -460,7 +462,7 @@
 }
 
 .management-metric strong {
-  font-family: Georgia, serif;
+  font-family: 'Be Vietnam Pro', sans-serif;
   font-size: 30px;
   line-height: 1;
 }
@@ -510,7 +512,7 @@
 
 .management-panel h3 {
   margin-top: 5px;
-  font-family: Georgia, serif;
+  font-family: 'Be Vietnam Pro', sans-serif;
   font-size: 20px;
   font-weight: 600;
 }
@@ -604,7 +606,7 @@
   border-radius: 13px;
   color: var(--mgmt-ink-soft);
   background: #eaf4ef;
-  font-family: Georgia, serif;
+  font-family: 'Be Vietnam Pro', sans-serif;
   font-size: 11px;
   font-weight: 700;
 }
@@ -641,9 +643,9 @@
 
 .management-section-heading h2 {
   margin-top: 8px;
-  font-family: Georgia, serif;
+  font-family: 'Be Vietnam Pro', sans-serif;
   font-size: clamp(29px, 4vw, 42px);
-  font-weight: 500;
+  font-weight: 700;
   letter-spacing: -.04em;
 }
 
@@ -834,7 +836,7 @@
 }
 
 .management-empty-state i { color: #a8bab4; font-size: 27px; }
-.management-empty-state strong { color: var(--mgmt-ink-soft); font-family: Georgia, serif; font-size: 17px; }
+.management-empty-state strong { color: var(--mgmt-ink-soft); font-family: 'Be Vietnam Pro', sans-serif; font-size: 17px; }
 .management-empty-state span { font-size: 10px; }
 .management-empty-line { padding: 25px 0; color: var(--mgmt-muted); font-size: 10px; text-align: center; }
 
@@ -899,7 +901,7 @@
 
 .management-system-card.warning > span { color: #b06127; background: #fff0df; }
 .management-system-card small { color: var(--mgmt-muted); font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
-.management-system-card h3 { margin-top: 7px; font-family: Georgia, serif; font-size: 23px; font-weight: 600; }
+.management-system-card h3 { margin-top: 7px; font-family: 'Be Vietnam Pro', sans-serif; font-size: 23px; font-weight: 600; }
 .management-system-card p { max-width: 450px; margin-top: 9px; color: var(--mgmt-muted); font-size: 10px; line-height: 1.6; }
 .management-system-card em { position: absolute; right: 18px; bottom: 18px; color: var(--mgmt-green); font-size: 9px; font-style: normal; font-weight: 800; text-transform: uppercase; }
 .management-system-card.warning em { color: #b06127; }
@@ -972,7 +974,7 @@
 
 .management-modal-header h2 {
   margin-top: 5px;
-  font-family: Georgia, serif;
+  font-family: 'Be Vietnam Pro', sans-serif;
   font-size: 27px;
   font-weight: 600;
   letter-spacing: -.035em;
@@ -1085,7 +1087,7 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  font-family: Georgia, serif;
+  font-family: 'Be Vietnam Pro', sans-serif;
   font-size: 19px;
 }
 
@@ -1096,7 +1098,7 @@
 }
 
 .management-story-copy .management-kicker { color: #ff936b; }
-.management-story-copy h1 { margin-top: 15px; font-family: Georgia, serif; font-size: clamp(39px, 5.8vw, 76px); font-weight: 500; line-height: .98; letter-spacing: -.055em; }
+.management-story-copy h1 { margin-top: 15px; font-family: 'Be Vietnam Pro', sans-serif; font-size: clamp(39px, 5.8vw, 76px); font-weight: 700; line-height: 1.02; letter-spacing: -.04em; }
 .management-story-copy p { max-width: 590px; margin-top: 25px; color: rgba(255, 255, 255, .58); font-size: 14px; line-height: 1.75; }
 
 .management-story-status {
@@ -1140,7 +1142,7 @@
 }
 
 .management-login-heading { margin-bottom: 28px; }
-.management-login-heading h2 { margin-top: 9px; font-family: Georgia, serif; font-size: 34px; font-weight: 600; letter-spacing: -.04em; }
+.management-login-heading h2 { margin-top: 9px; font-family: 'Be Vietnam Pro', sans-serif; font-size: 34px; font-weight: 700; letter-spacing: -.035em; }
 .management-login-heading p { margin-top: 8px; color: var(--mgmt-muted); font-size: 11px; }
 .management-login-card .management-field { margin-top: 17px; }
 
@@ -1212,7 +1214,7 @@
 
 .management-boot i { color: var(--mgmt-orange); font-size: 19px; }
 .management-denied-icon { display: grid; width: 75px; height: 75px; place-items: center; border-radius: 24px; color: var(--mgmt-orange-deep); background: #ffe6dc; font-size: 28px; }
-.management-denied h1 { max-width: 560px; font-family: Georgia, serif; font-size: 39px; font-weight: 600; letter-spacing: -.04em; }
+.management-denied h1 { max-width: 560px; font-family: 'Be Vietnam Pro', sans-serif; font-size: 39px; font-weight: 700; letter-spacing: -.035em; }
 .management-denied p { color: var(--mgmt-muted); font-size: 12px; }
 
 @media (max-width: 1180px) {
