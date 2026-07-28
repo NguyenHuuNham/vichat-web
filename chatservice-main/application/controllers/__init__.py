@@ -1,4 +1,4 @@
-from application.extensions import jinja
+from gatco.response import json
 
 def init_controllers(app):
     # Chatmgt exposes only management APIs. Realtime chat stays in Tinode.
@@ -9,4 +9,13 @@ def init_controllers(app):
 
     @app.route('/')
     def index(request):
-        return jinja.render('pixel-index.html', request)
+        return json({
+            "service": "chatmgt",
+            "status": "ok",
+            "health": "/api/v1/auth/health",
+            "authentication": {
+                "login": "/login",
+                "current_user": "/api/v1/auth/me",
+                "logout": "/api/v1/auth/logout",
+            },
+        })

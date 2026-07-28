@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:production": "node scripts/build-production.mjs",
     "lint": "oxlint",
     "preview": "vite preview"
   },
