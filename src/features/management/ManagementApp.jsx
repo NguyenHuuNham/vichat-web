@@ -19,6 +19,10 @@ function isAdmin(user) {
   return ADMIN_ROLES.includes(String(user?.role || '').toLowerCase());
 }
 
+function roleLabel(user) {
+  return isAdmin(user) ? 'Quản trị viên' : 'Thành viên';
+}
+
 function initials(value) {
   return String(value || '?')
     .trim()
@@ -92,8 +96,8 @@ function LoginScreen({ onLogin, error, loading }) {
           <p>Quản lý tài khoản, quyền truy cập và các phiên đăng nhập mà không đi vào dữ liệu hội thoại.</p>
         </div>
         <div className="management-story-status">
-          <span><i className="fa-solid fa-shield-halved"></i> Tenant-scoped</span>
-          <span><i className="fa-solid fa-wave-square"></i> Audit enabled</span>
+          <span><i className="fa-solid fa-shield-halved"></i> Theo phạm vi đơn vị</span>
+          <span><i className="fa-solid fa-wave-square"></i> Đã bật nhật ký</span>
         </div>
       </section>
 
@@ -102,7 +106,7 @@ function LoginScreen({ onLogin, error, loading }) {
           <div className="management-login-heading">
             <span className="management-eyebrow">chatmgt.upgo.vn</span>
             <h2>Đăng nhập quản trị</h2>
-            <p>Dùng tài khoản có quyền admin của ACSI.</p>
+            <p>Dùng tài khoản có quyền quản trị viên của ACSI.</p>
           </div>
           <label className="management-field">
             <span>Tài khoản hoặc email</span>
@@ -172,7 +176,7 @@ function UserEditor({ mode, form, setForm, onClose, onSubmit, saving, lockRole }
             <input value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} required />
           </label>
           <label className="management-field">
-            <span>Username</span>
+            <span>Tên đăng nhập</span>
             <input value={form.username} onChange={event => setForm({ ...form, username: event.target.value })} disabled={!creating} required />
           </label>
           <label className="management-field">
@@ -197,7 +201,8 @@ function UserEditor({ mode, form, setForm, onClose, onSubmit, saving, lockRole }
           {creating && (
             <label className="management-field">
               <span>Mật khẩu ban đầu</span>
-              <input type="password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} autoComplete="new-password" required />
+              <input type="password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} autoComplete="new-password" minLength={8} required />
+              <small>Mật khẩu phải có ít nhất 8 ký tự.</small>
             </label>
           )}
         </div>
@@ -228,11 +233,12 @@ function ResetPasswordDialog({ user, onClose, onSubmit, saving }) {
         <p className="management-modal-copy">Đặt mật khẩu tạm thời cho <strong>{user.name}</strong>. Tất cả phiên hiện tại sẽ bị thu hồi.</p>
         <label className="management-field">
           <span>Mật khẩu mới</span>
-          <input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="new-password" required autoFocus />
+          <input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="new-password" minLength={8} required autoFocus />
+          <small>Mật khẩu phải có ít nhất 8 ký tự.</small>
         </label>
         <footer className="management-modal-footer">
           <button type="button" className="management-button ghost" onClick={onClose}>Hủy</button>
-          <button type="submit" className="management-button danger" disabled={saving || !password}>
+          <button type="submit" className="management-button danger" disabled={saving || password.length < 8}>
             {saving && <i className="fa-solid fa-spinner fa-spin"></i>} Đặt lại mật khẩu
           </button>
         </footer>
@@ -263,6 +269,7 @@ export default function ManagementApp() {
   const [actionUserId, setActionUserId] = useState('');
   const [notice, setNotice] = useState(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     document.title = 'Chat - Power by Gon Platform';
@@ -485,20 +492,31 @@ export default function ManagementApp() {
   ];
 
   return (
-    <div className="management-root">
+    <div className={`management-root ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <aside className={`management-sidebar ${mobileNavOpen ? 'open' : ''}`}>
         <div className="management-sidebar-brand">
           <BrandLogo />
           <div><strong>ACSI</strong><span>Chat - Power by Gon Platform</span></div>
         </div>
+        <button
+          type="button"
+          className="management-sidebar-toggle"
+          onClick={() => setSidebarCollapsed(previous => !previous)}
+          title={sidebarCollapsed ? 'Mở rộng thanh quản lý' : 'Thu gọn thanh quản lý'}
+          aria-label={sidebarCollapsed ? 'Mở rộng thanh quản lý' : 'Thu gọn thanh quản lý'}
+          aria-pressed={sidebarCollapsed}
+        >
+          <i className={`fa-solid ${sidebarCollapsed ? 'fa-chevron-right' : 'fa-chevron-left'}`}></i>
+        </button>
         <nav className="management-nav" aria-label="Điều hướng quản trị">
-          <span className="management-nav-label">Workspace</span>
+          <span className="management-nav-label">Quản trị</span>
           {navItems.map(item => (
             <button
               type="button"
               key={item.id}
               className={activeView === item.id ? 'active' : ''}
               onClick={() => { setActiveView(item.id); setMobileNavOpen(false); }}
+              title={sidebarCollapsed ? item.label : undefined}
             >
               <i className={item.icon}></i><span>{item.label}</span>{item.count !== undefined && <em>{item.count}</em>}
             </button>
@@ -507,7 +525,7 @@ export default function ManagementApp() {
         <div className="management-sidebar-footer">
           <div className="management-sidebar-user">
             <span className="management-avatar small">{initials(session.user.name)}</span>
-            <div><strong>{session.user.name}</strong><span>{session.user.role}</span></div>
+            <div><strong>{session.user.name}</strong><span>{roleLabel(session.user)}</span></div>
           </div>
           <button type="button" className="management-logout" onClick={handleLogout} title="Đăng xuất"><i className="fa-solid fa-arrow-right-from-bracket"></i></button>
         </div>
@@ -535,15 +553,15 @@ export default function ManagementApp() {
             <section className="management-view management-overview">
               <div className="management-hero-card">
                 <div>
-                  <span className="management-kicker">Operations snapshot</span>
+                  <span className="management-kicker">Tổng quan vận hành</span>
                   <h2>Chào {session.user.name.split(' ').at(-1)}, hệ thống đang trong tầm kiểm soát.</h2>
-                  <p>Theo dõi tài khoản, quyền truy cập và các tín hiệu bảo mật của tenant từ một màn hình.</p>
+                  <p>Theo dõi tài khoản, quyền truy cập và tín hiệu bảo mật của đơn vị trên cùng một màn hình.</p>
                 </div>
                 <div className="management-hero-orbit" aria-hidden="true"><span>{stats.active}</span><small>tài khoản hoạt động</small></div>
               </div>
               <div className="management-metrics-grid">
                 <MetricCard icon="fa-solid fa-users" value={stats.total} label="Tổng tài khoản" detail={`${stats.active} đang hoạt động`} />
-                <MetricCard icon="fa-solid fa-user-shield" value={stats.admins} label="Quản trị viên" detail="Có quyền quản lý tenant" tone="ink" />
+                <MetricCard icon="fa-solid fa-user-shield" value={stats.admins} label="Quản trị viên" detail="Có quyền quản lý đơn vị" tone="ink" />
                 <MetricCard icon="fa-solid fa-door-open" value={stats.recent} label="Đăng nhập 7 ngày" detail="Dựa trên lần đăng nhập gần nhất" tone="green" />
                 <MetricCard icon="fa-solid fa-user-lock" value={stats.inactive} label="Đang bị khóa" detail="Không thể đăng nhập" tone="orange" />
               </div>
@@ -562,7 +580,7 @@ export default function ManagementApp() {
                   </div>
                 </article>
                 <article className="management-panel management-security-panel">
-                  <header><div><span className="management-eyebrow">Security pulse</span><h3>Tín hiệu bảo mật</h3></div><span className="management-live-dot">Live</span></header>
+                  <header><div><span className="management-eyebrow">An toàn tài khoản</span><h3>Tín hiệu bảo mật</h3></div><span className="management-live-dot">Trực tiếp</span></header>
                   <div className="management-audit-mini">
                     {auditLogs.slice(0, 6).map(log => (
                       <div key={log.id}>
@@ -580,7 +598,7 @@ export default function ManagementApp() {
           {activeView === 'users' && (
             <section className="management-view">
               <div className="management-section-heading">
-                <div><span className="management-kicker">Identity directory</span><h2>Quản lý tài khoản</h2><p>Tạo hồ sơ, phân quyền và kiểm soát phiên đăng nhập theo tenant.</p></div>
+                <div><span className="management-kicker">Danh sách tài khoản</span><h2>Quản lý tài khoản</h2><p>Tạo hồ sơ, phân quyền và kiểm soát phiên đăng nhập trong đơn vị.</p></div>
                 <button className="management-button primary" onClick={openCreate}><i className="fa-solid fa-user-plus"></i> Thêm tài khoản</button>
               </div>
               <div className="management-toolbar">
@@ -603,7 +621,7 @@ export default function ManagementApp() {
                       return (
                         <tr key={user.id} className={!user.active ? 'inactive' : ''}>
                           <td><div className="management-user-cell"><span className="management-avatar">{initials(user.name)}</span><div><strong>{user.name}</strong><span>@{user.username}{user.email ? ` · ${user.email}` : ''}</span><small>{user.department || 'Chưa có phòng ban'}{user.title ? ` / ${user.title}` : ''}</small></div></div></td>
-                          <td><span className={`management-role role-${String(user.role).toLowerCase()}`}><i className={`fa-solid ${isAdmin(user) ? 'fa-shield' : 'fa-user'}`}></i>{isAdmin(user) ? 'Admin' : 'Member'}</span></td>
+                          <td><span className={`management-role role-${String(user.role).toLowerCase()}`}><i className={`fa-solid ${isAdmin(user) ? 'fa-shield' : 'fa-user'}`}></i>{roleLabel(user)}</span></td>
                           <td><span className={`management-status ${user.active ? 'active' : 'inactive'}`}><i></i>{user.active ? 'Hoạt động' : 'Đã khóa'}</span></td>
                           <td><span className="management-date">{formatDate(user.lastLoginAt)}</span></td>
                           <td><code>{user.tinodeUid || '—'}</code></td>
@@ -611,7 +629,7 @@ export default function ManagementApp() {
                             <div className="management-row-actions">
                               <button type="button" onClick={() => openEdit(user)} title="Chỉnh sửa"><i className="fa-solid fa-pen"></i></button>
                               <button type="button" onClick={() => revokeSessions(user)} title="Ép đăng xuất" disabled={self || busy}><i className={`fa-solid ${busy ? 'fa-spinner fa-spin' : 'fa-right-from-bracket'}`}></i></button>
-                              <button type="button" onClick={() => setResetUser(user)} title={health?.password_reset?.tinode_admin_configured ? 'Đặt lại mật khẩu' : 'Chưa cấu hình Tinode admin'} disabled={self || !health?.password_reset?.tinode_admin_configured}><i className="fa-solid fa-key"></i></button>
+                              <button type="button" onClick={() => setResetUser(user)} title={health?.password_reset?.tinode_admin_configured ? 'Đặt lại mật khẩu' : 'Chưa cấu hình quản trị Tinode'} disabled={self || !health?.password_reset?.tinode_admin_configured}><i className="fa-solid fa-key"></i></button>
                               <button type="button" className={user.active ? 'warn' : 'good'} onClick={() => toggleUser(user)} title={user.active ? 'Khóa tài khoản' : 'Mở khóa'} disabled={self || busy}><i className={`fa-solid ${user.active ? 'fa-user-lock' : 'fa-lock-open'}`}></i></button>
                             </div>
                           </td>
@@ -628,7 +646,7 @@ export default function ManagementApp() {
           {activeView === 'audit' && (
             <section className="management-view">
               <div className="management-section-heading">
-                <div><span className="management-kicker">Security ledger</span><h2>Nhật ký bảo mật</h2><p>Dòng thời gian đăng nhập, đăng xuất và các thay đổi quản trị.</p></div>
+                <div><span className="management-kicker">Lịch sử bảo mật</span><h2>Nhật ký bảo mật</h2><p>Dòng thời gian đăng nhập, đăng xuất và các thay đổi quản trị.</p></div>
               </div>
               <div className="management-toolbar audit-toolbar">
                 <label className="management-search"><i className="fa-solid fa-magnifying-glass"></i><input value={auditSearch} onChange={event => setAuditSearch(event.target.value)} placeholder="Tìm sự kiện, người dùng hoặc IP..." /></label>
@@ -655,12 +673,12 @@ export default function ManagementApp() {
 
           {activeView === 'system' && (
             <section className="management-view">
-              <div className="management-section-heading"><div><span className="management-kicker">Service health</span><h2>Trạng thái hệ thống</h2><p>Kiểm tra các năng lực quản trị đang sẵn sàng trên backend.</p></div></div>
+              <div className="management-section-heading"><div><span className="management-kicker">Tình trạng dịch vụ</span><h2>Trạng thái hệ thống</h2><p>Kiểm tra các chức năng quản trị đang sẵn sàng trên máy chủ.</p></div></div>
               <div className="management-system-grid">
-                <article className="management-system-card ready"><span><i className="fa-solid fa-server"></i></span><div><small>Chat management API</small><h3>Đang hoạt động</h3><p>Đăng nhập, tenant và user directory sẵn sàng.</p></div><em>Operational</em></article>
-                <article className={`management-system-card ${health?.password_reset?.tinode_admin_configured ? 'ready' : 'warning'}`}><span><i className="fa-solid fa-key"></i></span><div><small>Tinode administrator</small><h3>{health?.password_reset?.tinode_admin_configured ? 'Đã cấu hình' : 'Chưa cấu hình'}</h3><p>Dùng cho thao tác đặt lại mật khẩu từ trang quản trị.</p></div><em>{health?.password_reset?.tinode_admin_configured ? 'Ready' : 'Action needed'}</em></article>
-                <article className={`management-system-card ${health?.password_reset?.delivery_configured ? 'ready' : 'warning'}`}><span><i className="fa-solid fa-envelope"></i></span><div><small>Password reset email</small><h3>{health?.password_reset?.delivery_configured ? 'Đã cấu hình' : 'Chưa cấu hình'}</h3><p>Kênh gửi liên kết quên mật khẩu cho người dùng.</p></div><em>{health?.password_reset?.delivery_configured ? 'Ready' : 'Action needed'}</em></article>
-                <article className="management-system-card ready"><span><i className="fa-solid fa-cookie-bite"></i></span><div><small>Session security</small><h3>Cookie bảo mật</h3><p>Phiên được tenant-scope và có thể thu hồi bằng auth version.</p></div><em>Protected</em></article>
+                <article className="management-system-card ready"><span><i className="fa-solid fa-server"></i></span><div><small>API quản trị chat</small><h3>Đang hoạt động</h3><p>Đăng nhập và danh sách tài khoản đã sẵn sàng.</p></div><em>Hoạt động</em></article>
+                <article className={`management-system-card ${health?.password_reset?.tinode_admin_configured ? 'ready' : 'warning'}`}><span><i className="fa-solid fa-key"></i></span><div><small>Quản trị Tinode</small><h3>{health?.password_reset?.tinode_admin_configured ? 'Đã cấu hình' : 'Chưa cấu hình'}</h3><p>Dùng cho thao tác đặt lại mật khẩu từ trang quản trị.</p></div><em>{health?.password_reset?.tinode_admin_configured ? 'Sẵn sàng' : 'Cần cấu hình'}</em></article>
+                <article className={`management-system-card ${health?.password_reset?.delivery_configured ? 'ready' : 'warning'}`}><span><i className="fa-solid fa-envelope"></i></span><div><small>Email khôi phục mật khẩu</small><h3>{health?.password_reset?.delivery_configured ? 'Đã cấu hình' : 'Chưa cấu hình'}</h3><p>Kênh gửi liên kết khôi phục mật khẩu cho người dùng.</p></div><em>{health?.password_reset?.delivery_configured ? 'Sẵn sàng' : 'Cần cấu hình'}</em></article>
+                <article className="management-system-card ready"><span><i className="fa-solid fa-cookie-bite"></i></span><div><small>Bảo mật phiên đăng nhập</small><h3>Cookie bảo mật</h3><p>Phiên đăng nhập được giới hạn theo đơn vị và có thể thu hồi từ xa.</p></div><em>Được bảo vệ</em></article>
               </div>
             </section>
           )}

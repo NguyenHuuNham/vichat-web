@@ -526,6 +526,7 @@ function App() {
   const notificationBaselineRef = useRef(new Map());
   const notificationAudioContextRef = useRef(null);
   const contactsSyncTimerRef = useRef(null);
+  const logoutHandlerRef = useRef(null);
 
   // Event callbacks can run between React renders; keep the latest room map
   // available without forcing Tinode subscriptions to be recreated.
@@ -1135,6 +1136,39 @@ function App() {
     setConversations(createInitialConversations());
     setCurrentChatId(CHATBOT_ACCOUNT.id);
   };
+
+  logoutHandlerRef.current = handleLogout;
+
+  useEffect(() => {
+    if (!isLoggedIn || !chatManagementService.remote) return undefined;
+    let cancelled = false;
+    let checking = false;
+    const validateSession = async () => {
+      if (checking) return;
+      checking = true;
+      try {
+        await chatManagementService.currentSession();
+      } catch (error) {
+        if (!cancelled && error?.status === 401) {
+          await logoutHandlerRef.current?.();
+        }
+      } finally {
+        checking = false;
+      }
+    };
+    const validateVisibleSession = () => {
+      if (document.visibilityState !== 'hidden') validateSession();
+    };
+    const timer = window.setInterval(validateSession, 10000);
+    window.addEventListener('focus', validateSession);
+    document.addEventListener('visibilitychange', validateVisibleSession);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', validateSession);
+      document.removeEventListener('visibilitychange', validateVisibleSession);
+    };
+  }, [isLoggedIn]);
 
   const toggleGroupMember = (member) => {
     const memberId = member?.id || member?.name;

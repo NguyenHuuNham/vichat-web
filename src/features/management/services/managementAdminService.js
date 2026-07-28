@@ -2,6 +2,22 @@ const env = import.meta.env || {};
 const configuredBase = String(env.VITE_CHAT_MANAGEMENT_API_URL || '').replace(/\/$/, '');
 const tenantId = env.VITE_CHAT_TENANT_ID || 'song-hong';
 
+const errorMessages = {
+  ACCOUNT_CREATE_FAILED: 'Không thể tạo tài khoản. Vui lòng kiểm tra tên đăng nhập, mật khẩu và kết nối Tinode.',
+  ACCOUNT_EXISTS: 'Tên đăng nhập hoặc email đã được sử dụng.',
+  ACCOUNT_UPDATE_FAILED: 'Không thể cập nhật tài khoản do dữ liệu bị xung đột.',
+  EMAIL_EXISTS: 'Email đã được sử dụng bởi tài khoản khác.',
+  FORBIDDEN: 'Phiên hiện tại chưa có quyền quản trị. Vui lòng đăng nhập lại.',
+  LOGIN_FAILED: 'Tên đăng nhập hoặc mật khẩu không đúng.',
+  LOGIN_RATE_LIMITED: 'Bạn đã thử đăng nhập quá nhiều lần. Vui lòng thử lại sau.',
+  NOT_FOUND: 'Không tìm thấy tài khoản trong đơn vị này.',
+  PARAM_ERROR: 'Thông tin chưa hợp lệ. Vui lòng kiểm tra lại các trường đã nhập.',
+  PASSWORD_INVALID: 'Mật khẩu chưa đáp ứng yêu cầu bảo mật.',
+  PASSWORD_RESET_FAILED: 'Không thể đặt lại mật khẩu cho tài khoản này.',
+  SESSION_EXPIRED: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
+  SESSION_REVOKE_FAILED: 'Không thể thu hồi phiên đăng nhập của tài khoản này.',
+};
+
 function managementBaseUrl() {
   if (typeof window !== 'undefined' && window.location.hostname === 'chatmgt.upgo.vn') return '';
   return configuredBase;
@@ -42,8 +58,9 @@ async function apiRequest(path, options = {}) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(payload?.error_message || payload?.message || `HTTP ${response.status}`);
-    error.code = payload?.error_code || `HTTP_${response.status}`;
+    const errorCode = payload?.error_code || `HTTP_${response.status}`;
+    const error = new Error(errorMessages[errorCode] || payload?.error_message || payload?.message || `Lỗi HTTP ${response.status}`);
+    error.code = errorCode;
     error.status = response.status;
     throw error;
   }

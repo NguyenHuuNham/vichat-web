@@ -139,6 +139,12 @@ export const chatManagementService = {
     return account;
   },
 
+  async currentSession() {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const payload = await apiRequest('/api/v1/auth/me');
+    return publicAccount(payload.user || payload.current_user || payload);
+  },
+
   async logout() {
     let payload = null;
     if (apiBase && remoteAuth) {

@@ -179,7 +179,31 @@ def token_from_request(request):
     authorization = request.headers.get("Authorization") or ""
     if authorization.lower().startswith("bearer "):
         return authorization[7:].strip()
-    return request.cookies.get(ACCESS_COOKIE) or request.headers.get("X-USER-TOKEN")
+    header_token = request.headers.get("X-USER-TOKEN")
+    if header_token:
+        return header_token
+
+    # Browsers can retain both an old domain cookie and a newer host cookie
+    # with the same name. Select the newest valid token instead of trusting
+    # whichever duplicate the cookie parser happens to return.
+    cookie_tokens = []
+    raw_cookie = str(request.headers.get("Cookie") or "")
+    for item in raw_cookie.split(";"):
+        name, separator, value = item.strip().partition("=")
+        if separator and name == ACCESS_COOKIE and value and value not in cookie_tokens:
+            cookie_tokens.append(value)
+    parsed_cookie = request.cookies.get(ACCESS_COOKIE)
+    if parsed_cookie and parsed_cookie not in cookie_tokens:
+        cookie_tokens.append(parsed_cookie)
+
+    valid_tokens = []
+    for index, token in enumerate(cookie_tokens):
+        payload = decode_access_token(token)
+        if payload:
+            valid_tokens.append((int(payload.get("iat") or 0), index, token))
+    if valid_tokens:
+        return max(valid_tokens, key=lambda item: (item[0], item[1]))[2]
+    return parsed_cookie
 
 
 def current_user(request):
