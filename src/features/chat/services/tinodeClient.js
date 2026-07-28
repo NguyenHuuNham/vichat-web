@@ -24,6 +24,11 @@ const listeners = new Set();
 let client = null;
 let meTopic = null;
 let currentSession = null;
+let sessionAuth = null;
+let sessionRequest = null;
+let reconnectRequest = null;
+let restoreAfterDisconnect = false;
+let intentionalDisconnect = false;
 const mediaObjectUrlCache = new Map();
 const userProfileCache = new Map();
 const userProfileRequests = new Map();
@@ -46,6 +51,10 @@ const GROUP_MEMBER_MODE = 'JRWAS';
 // A host is enough to opt into Tinode mode; assertConfigured below provides a
 // useful error when the API key is missing instead of silently using demo mode.
 export const isTinodeConfigured = Boolean(config.host);
+
+function emitEvent(event) {
+  listeners.forEach(listener => listener(event));
+}
 
 function getTinodeConstructor() {
   return Tinode || null;
@@ -184,7 +193,7 @@ function getClient() {
   assertConfigured();
   if (!client) {
     const Tinode = getTinodeConstructor();
-    client = new Tinode({
+    const nextClient = new Tinode({
       appName: config.appName,
       host: config.host,
       apiKey: config.apiKey,
@@ -193,8 +202,19 @@ function getClient() {
       platform: 'web',
       persist: config.persist,
     });
-    client.onDisconnect = (err) => {
-      listeners.forEach(listener => listener({ type: 'disconnect', error: err }));
+    client = nextClient;
+    nextClient.onDisconnect = (err) => {
+      if (client !== nextClient || intentionalDisconnect || !sessionAuth) return;
+      restoreAfterDisconnect = true;
+      emitEvent({ type: 'disconnect', error: err });
+    };
+    nextClient.onAutoreconnectIteration = timeout => {
+      if (client !== nextClient || !restoreAfterDisconnect || timeout < 0) return;
+      emitEvent({ type: 'reconnecting', timeout });
+    };
+    nextClient.onConnect = () => {
+      if (client !== nextClient || !restoreAfterDisconnect || intentionalDisconnect || !sessionAuth) return;
+      restoreSessionAfterReconnect(nextClient).catch(() => {});
     };
   }
   return client;
@@ -787,27 +807,32 @@ async function ensureGroupInvitePermissions(topic) {
   return groupPermissionMigrationRequests.get(topic.name);
 }
 
-async function subscribeTopic(topicName, { historyLimit = 1000 } = {}) {
+async function subscribeTopic(topicName, { historyLimit = 1000, newerOnly = false } = {}) {
   const tinode = getClient();
   const topic = wireTopic(tinode.getTopic(topicName));
   if (!topic.isSubscribed?.()) {
     if (!topicSubscriptionRequests.has(topicName)) {
       const request = (async () => {
-        const query = topic.startMetaQuery()
+        const queryBuilder = topic.startMetaQuery()
           .withDesc()
-          .withSub()
-          .withEarlierData(historyLimit)
-          .withDel(undefined, historyLimit)
-          .build();
+          .withSub();
+        if (historyLimit > 0) {
+          if (newerOnly) {
+            queryBuilder.withLaterData(historyLimit).withLaterDel(historyLimit);
+          } else {
+            queryBuilder.withEarlierData(historyLimit).withDel(undefined, historyLimit);
+          }
+        }
+        const query = queryBuilder.build();
         await topic.subscribe(query);
-        if (historyLimit >= 1000) fullHistoryTopics.add(topicName);
+        if (!newerOnly && historyLimit >= 1000) fullHistoryTopics.add(topicName);
       })().finally(() => topicSubscriptionRequests.delete(topicName));
       topicSubscriptionRequests.set(topicName, request);
     }
     await topicSubscriptionRequests.get(topicName);
   }
 
-  if (historyLimit >= 1000 && !fullHistoryTopics.has(topicName)) {
+  if (!newerOnly && historyLimit >= 1000 && !fullHistoryTopics.has(topicName)) {
     if (!fullHistoryRequests.has(topicName)) {
       const request = (async () => {
         const query = topic.startMetaQuery()
@@ -824,6 +849,86 @@ async function subscribeTopic(topicName, { historyLimit = 1000 } = {}) {
   await ensureGroupInvitePermissions(topic);
   emitConversation(topic);
   return topic;
+}
+
+function sessionToken(value) {
+  return value?.token || value || '';
+}
+
+function runSessionRequest(factory) {
+  if (!sessionRequest) {
+    sessionRequest = Promise.resolve().then(factory);
+    const activeRequest = sessionRequest;
+    const clearRequest = () => {
+      if (sessionRequest === activeRequest) sessionRequest = null;
+    };
+    activeRequest.then(clearRequest, clearRequest);
+  }
+  return sessionRequest;
+}
+
+function rememberSessionAuth(session, fallback = {}) {
+  sessionAuth = {
+    username: session?.login || fallback.username || '',
+    token: sessionToken(session?.token) || sessionToken(fallback.token),
+    displayName: session?.profile?.name || fallback.displayName || '',
+  };
+}
+
+async function loginSession(tinode, { username, password, token, displayName = '' }) {
+  if (!tinode.isConnected()) await tinode.connect();
+  const normalizedToken = sessionToken(token);
+  if (normalizedToken) {
+    await tinode.loginToken(normalizedToken);
+  } else {
+    if (!username || !password) throw new Error('Thiếu thông tin xác thực Tinode.');
+    await tinode.loginBasic(username, password);
+  }
+  const session = await initializeSession(tinode, username, displayName);
+  rememberSessionAuth(session, { username, token: normalizedToken, displayName });
+  return session;
+}
+
+async function registerSession(tinode, { username, password, name }) {
+  if (!tinode.isConnected()) await tinode.connect();
+  await tinode.createAccountBasic(username, password, {
+    public: { fn: name },
+    tags: buildDiscoveryTags(username, name),
+  });
+  const session = await initializeSession(tinode, username, name);
+  rememberSessionAuth(session, { username, displayName: name });
+  return session;
+}
+
+async function resubscribeAfterReconnect(tinode) {
+  const topics = [];
+  meTopic?.contacts(topic => {
+    if (topic?.isCommType?.()) topics.push(topic);
+  });
+  await Promise.allSettled(topics.map(topic => subscribeTopic(topic.name, {
+    historyLimit: 1000,
+    newerOnly: true,
+  })));
+  emitPresenceSnapshot(tinode);
+}
+
+function restoreSessionAfterReconnect(tinode) {
+  if (reconnectRequest || !restoreAfterDisconnect || intentionalDisconnect || !sessionAuth) {
+    return reconnectRequest || Promise.resolve(currentSession);
+  }
+  const authenticationRequest = sessionRequest || runSessionRequest(() => loginSession(tinode, sessionAuth));
+  reconnectRequest = authenticationRequest.then(async session => {
+    await resubscribeAfterReconnect(tinode);
+    restoreAfterDisconnect = false;
+    emitEvent({ type: 'reconnect', session });
+    return session;
+  }).catch(error => {
+    emitEvent({ type: 'reconnect-error', error });
+    throw error;
+  }).finally(() => {
+    reconnectRequest = null;
+  });
+  return reconnectRequest;
 }
 
 async function initializeSession(tinode, fallbackLogin = '', preferredName = '') {
@@ -919,7 +1024,7 @@ export const tinodeClient = {
   },
 
   get authenticated() {
-    return Boolean(currentSession && client?.isConnected?.());
+    return Boolean(currentSession && client?.isConnected?.() && client?.isAuthenticated?.());
   },
 
   getPresenceSnapshot() {
@@ -929,41 +1034,30 @@ export const tinodeClient = {
   async ensureSession(auth = {}) {
     if (this.authenticated) return currentSession;
     const token = auth.token?.token || auth.token;
-    if (auth.createAccount) {
-      return this.register({ username: auth.username, password: auth.password, name: auth.name });
-    }
-    return this.login({
-      username: auth.username,
-      password: auth.password,
-      token,
-      displayName: auth.displayName || auth.name || '',
-    });
+    intentionalDisconnect = false;
+    return runSessionRequest(() => auth.createAccount
+      ? registerSession(getClient(), { username: auth.username, password: auth.password, name: auth.name })
+      : loginSession(getClient(), {
+          username: auth.username,
+          password: auth.password,
+          token,
+          displayName: auth.displayName || auth.name || '',
+        }));
   },
 
   async login({ username, password, token, displayName = '' }) {
-    const tinode = getClient();
-    if (!tinode.isConnected()) {
-      await tinode.connect();
-    }
-    if (token) {
-      await tinode.loginToken(token);
-    } else {
-      await tinode.loginBasic(username, password);
-    }
-
-    return initializeSession(tinode, username, displayName);
+    intentionalDisconnect = false;
+    return runSessionRequest(() => loginSession(getClient(), {
+      username,
+      password,
+      token,
+      displayName,
+    }));
   },
 
   async register({ username, password, name }) {
-    const tinode = getClient();
-    if (!tinode.isConnected()) {
-      await tinode.connect();
-    }
-    await tinode.createAccountBasic(username, password, {
-      public: { fn: name },
-      tags: buildDiscoveryTags(username, name),
-    });
-    return initializeSession(tinode, username, name);
+    intentionalDisconnect = false;
+    return runSessionRequest(() => registerSession(getClient(), { username, password, name }));
   },
 
   async resolveAvatarUrl(value) {
@@ -1380,7 +1474,14 @@ export const tinodeClient = {
   },
 
   async logout() {
-    if (client?.isConnected?.()) client.disconnect();
+    intentionalDisconnect = true;
+    restoreAfterDisconnect = false;
+    sessionAuth = null;
+    currentSession = null;
+    meTopic = null;
+    const activeClient = client;
+    client = null;
+    activeClient?.disconnect?.();
     for (const request of mediaObjectUrlCache.values()) {
       Promise.resolve(request).then(url => URL.revokeObjectURL(url)).catch(() => {});
     }
@@ -1393,10 +1494,10 @@ export const tinodeClient = {
     fullHistoryTopics.clear();
     groupPermissionMigrationRequests.clear();
     contactsEventQueued = false;
-    client = null;
-    meTopic = null;
-    currentSession = null;
+    sessionRequest = null;
+    reconnectRequest = null;
     listeners.clear();
+    intentionalDisconnect = false;
   },
 };
 

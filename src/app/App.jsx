@@ -812,6 +812,21 @@ function App() {
         setChatError('Kết nối chat đã bị gián đoạn. Hệ thống sẽ tự kết nối lại.');
         return;
       }
+      if (event.type === 'reconnecting') {
+        setConnectionStatus('connecting');
+        return;
+      }
+      if (event.type === 'reconnect') {
+        setConnectionStatus('online');
+        setChatError('');
+        applyPresenceSnapshot(tinodeClient.getPresenceSnapshot());
+        return;
+      }
+      if (event.type === 'reconnect-error') {
+        setConnectionStatus('offline');
+        setChatError(event.error?.message || 'Không thể khôi phục kết nối Tinode. Vui lòng đăng nhập lại.');
+        return;
+      }
       if (event.type === 'presence') {
         if (event.uid) applyPresenceSnapshot({ [event.uid]: Boolean(event.online) });
         return;
@@ -1089,7 +1104,7 @@ function App() {
   };
 
   const handleLogout = async () => {
-    if (tinodeClient.authenticated) await tinodeClient.logout();
+    if (chatMode === 'tinode') await tinodeClient.logout();
     await chatManagementService.logout();
     if (chatMode === 'demo') {
       Object.values(conversations)
