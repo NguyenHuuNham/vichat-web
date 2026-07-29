@@ -96,7 +96,8 @@ function normalizeConversation(record) {
 }
 
 function bindingKey(userId, conversationId) {
-  return `${tenantId}:${userId || 'anonymous'}:${conversationId}`;
+  const sessionTenantId = activeSession?.tenant?.id || activeSession?.user?.tenantId || tenantId;
+  return `${sessionTenantId}:${userId || 'anonymous'}:${conversationId}`;
 }
 
 export const chatManagementService = {
@@ -115,9 +116,13 @@ export const chatManagementService = {
   async login({ identity, password }) {
     const normalizedIdentity = String(identity || '').trim();
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
-    const payload = await apiRequest('/login', {
+    const payload = await apiRequest('/api/v1/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ identity: normalizedIdentity, password, tenant_id: tenantId }),
+      body: JSON.stringify({
+        identity: normalizedIdentity,
+        password,
+        tenant_id: tenantId,
+      }),
     });
     const account = publicAccount(payload.user || payload.current_user || payload);
     const tenant = payload.tenant || account?.tenant || null;
@@ -145,12 +150,27 @@ export const chatManagementService = {
     return publicAccount(payload.user || payload.current_user || payload);
   },
 
-  async logout() {
+  async refreshTinodeToken() {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const payload = await apiRequest('/api/v1/auth/tinode-token', { method: 'POST' });
+    const tinodeAuth = payload.tinode_auth || payload.tinode || {};
+    if (!tinodeAuth.token) throw new Error('Chatmgt did not return a Tinode token.');
+    if (activeSession) activeSession.tinodeAuth = { ...(activeSession.tinodeAuth || {}), ...tinodeAuth };
+    return activeSession?.tinodeAuth || tinodeAuth;
+  },
+
+  async logout({ throwOnError = false } = {}) {
     let payload = null;
+    let logoutError = null;
     if (apiBase && remoteAuth) {
-      payload = await apiRequest('/api/v1/auth/logout', { method: 'POST' }).catch(() => null);
+      try {
+        payload = await apiRequest('/api/v1/auth/logout', { method: 'POST' });
+      } catch (error) {
+        logoutError = error;
+      }
     }
     activeSession = null;
+    if (logoutError && throwOnError) throw logoutError;
     return payload;
   },
 
@@ -250,7 +270,7 @@ export const chatManagementService = {
     };
   },
 
-  async createConversation({ subject, isGroup = false, participantIds = [], tinodeTopic = '', properties = {} }) {
+  async createConversation({ subject, isGroup = false, participantIds = [], properties = {} }) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const payload = await apiRequest('/api/v1/conversation', {
       method: 'POST',
@@ -258,9 +278,25 @@ export const chatManagementService = {
         subject,
         is_group: isGroup,
         participant_ids: participantIds,
-        tinode_topic: tinodeTopic,
         properties,
       }),
+    });
+    return normalizeConversation(payload);
+  },
+
+  async addConversationParticipants(conversationId, participantIds = []) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/participants`, {
+      method: 'POST',
+      body: JSON.stringify({ participant_ids: participantIds }),
+    });
+    return normalizeConversation(payload);
+  },
+
+  async removeConversationParticipant(conversationId, participantId) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/participants/${encodeURIComponent(participantId)}`, {
+      method: 'DELETE',
     });
     return normalizeConversation(payload);
   },
@@ -283,6 +319,7 @@ export const chatManagementService = {
         method: 'PUT',
         body: JSON.stringify({
           tinode_topic: topicName,
+          tinode_token: activeSession?.tinodeAuth?.token || '',
         }),
       });
     }
@@ -320,8 +357,12 @@ function toLoginSession(account) {
 export const managementAuthClient = {
   enabled: Boolean(apiBase && remoteAuth),
 
-  async login({ username, password }) {
-    return toLoginSession(await chatManagementService.login({ identity: username, password }));
+  async login(credentials) {
+    return toLoginSession(await chatManagementService.login(credentials || {}));
+  },
+
+  async logout() {
+    return chatManagementService.logout({ throwOnError: true });
   },
 
   async requestPasswordReset(identity) {

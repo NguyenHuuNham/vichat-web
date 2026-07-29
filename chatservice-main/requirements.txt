@@ -1,9 +1,9 @@
-git+https://github.com/gonrin/gatco.git
-git+https://github.com/gonrin/gatco_auth.git
-git+https://github.com/gonrin/gatco_jinja2.git
-git+https://github.com/gonrin/gatco_sqlalchemy.git
-git+https://github.com/gonrin/gatco_apimanager.git
-git+https://github.com/gonrin/gatco_acl.git
+git+https://github.com/gonrin/gatco.git@fb9f0ebc32485f288e4ed03f4219af5a2cf90be8
+git+https://github.com/gonrin/gatco_auth.git@5edc26201c4899b7811776d2dfe6cf289d878e27
+git+https://github.com/gonrin/gatco_jinja2.git@aa685f089169a0511004759ecab4fd96c99c5669
+git+https://github.com/gonrin/gatco_sqlalchemy.git@fe138685355e1e73d0f320e1f49f06b427153b2b
+git+https://github.com/gonrin/gatco_apimanager.git@55e331f0d1b52f429c5b9ad2c9eaec299bd7930c
+git+https://github.com/gonrin/gatco_acl.git@3b9462a35bf8920893bec92df90b87e58657dff4
 aiofiles
 alembic
 click

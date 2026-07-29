@@ -71,6 +71,7 @@ if (-not (Test-Path -LiteralPath $secretFile)) {
     "TINODE_DB_PASSWORD=$(New-RandomHex 24)",
     "TINODE_AUTH_TOKEN_KEY=$(New-RandomBase64 32)",
     "TINODE_UID_ENCRYPTION_KEY=$(New-RandomBase64 16)",
+    'TINODE_TOKEN_EXPIRE_IN=300',
     'TINODE_PORT=6060',
     'TINODE_UPGRADE_DB=false',
     'TINODE_CORS_ORIGINS=["http://127.0.0.1:5173"]'

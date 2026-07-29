@@ -35,9 +35,9 @@ class Config(object):
 
     AUTH_LOGIN_ENDPOINT = 'login'
     AUTH_PASSWORD_HASH = 'sha512_crypt'
-    AUTH_PASSWORD_SALT = 'ruewhndjsa17heaw'
-    SECRET_KEY = 'e2q8dhaushdauwd7qye'
-    SESSION_COOKIE_SALT = 'dhuasud819wubadhysagd'
+    AUTH_PASSWORD_SALT = os.getenv('AUTH_PASSWORD_SALT', '')
+    SECRET_KEY = os.getenv('APP_SECRET_KEY', '')
+    SESSION_COOKIE_SALT = os.getenv('SESSION_COOKIE_SALT', '')
 
     SESSION_COOKIE_DOMAIN = os.getenv('SESSION_COOKIE_DOMAIN')
     REDIS_ADDR = os.getenv('REDIS_ADDR')
@@ -79,10 +79,18 @@ class Config(object):
     TINODE_AUTH_TIMEOUT = int(os.getenv("TINODE_AUTH_TIMEOUT", 10))
     TINODE_ADMIN_USERNAME = os.getenv("TINODE_ADMIN_USERNAME", "")
     TINODE_ADMIN_PASSWORD = os.getenv("TINODE_ADMIN_PASSWORD", "")
+    TINODE_SSO_SECRET = os.getenv("TINODE_SSO_SECRET", "")
+    CHAT_ACCOUNT_SSO_ENABLED = env_bool("CHAT_ACCOUNT_SSO_ENABLED", False)
 
     ACCOUNT_URL = os.getenv('ACCOUNT_URL')
     if ACCOUNT_URL and not ACCOUNT_URL.startswith("http://") and not ACCOUNT_URL.startswith("https://"):
         ACCOUNT_URL = "http://" + ACCOUNT_URL
+    ACCOUNT_SSO_PROFILE_PATH = os.getenv("ACCOUNT_SSO_PROFILE_PATH", "/current_user")
+    ACCOUNT_SSO_LOGOUT_PATH = os.getenv("ACCOUNT_SSO_LOGOUT_PATH", "/logout")
+    ACCOUNT_SSO_TIMEOUT = int(os.getenv("ACCOUNT_SSO_TIMEOUT", 10))
+    ACCOUNT_SESSION_COOKIE_NAME = os.getenv("ACCOUNT_SESSION_COOKIE_NAME", "session")
+    ACCOUNT_SESSION_COOKIE_DOMAIN = os.getenv("ACCOUNT_SESSION_COOKIE_DOMAIN", ".upgo.vn")
+    ACCOUNT_SESSION_COOKIE_SECURE = env_bool("ACCOUNT_SESSION_COOKIE_SECURE", True)
 
     DATAROOM_URL = os.getenv('DATAROOM_URL')
     if DATAROOM_URL and not DATAROOM_URL.startswith("http://") and not DATAROOM_URL.startswith("https://"):

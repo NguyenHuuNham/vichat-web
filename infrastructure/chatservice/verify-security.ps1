@@ -3,9 +3,11 @@ param(
   [string]$BaseUrl = 'http://127.0.0.1:8093',
   [string]$Tenant = 'song-hong',
   [string]$AdminUser = 'admin',
-  [string]$AdminPassword = '123456',
+  [Parameter(Mandatory = $true)]
+  [string]$AdminPassword,
   [string]$MemberUser = 'tuan',
-  [string]$MemberPassword = '123456'
+  [Parameter(Mandatory = $true)]
+  [string]$MemberPassword
 )
 
 $ErrorActionPreference = 'Stop'

@@ -498,6 +498,7 @@ function App() {
   // Trạng thái xác thực (Auth State)
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [loginNotice, setLoginNotice] = useState('');
   const [chatMode, setChatMode] = useState('demo');
   const [connectionStatus, setConnectionStatus] = useState(isTinodeConfigured ? 'ready' : 'demo');
   const [chatError, setChatError] = useState('');
@@ -684,8 +685,10 @@ function App() {
   const activeAdminId = activeChat.adminId
     || activeChat.members?.find(member => member.mode?.includes?.('O'))?.id
     || '';
+  const activeAdminAccount = findAccount(directoryAccounts, activeAdminId);
   const isCurrentUserGroupAdmin = Boolean(activeChat.isGroup && (
-    activeAdminId === viewerId
+    identitiesOverlap(activeAdminAccount, currentUser)
+    || identityValues(currentUser).includes(String(activeAdminId))
     || (!activeAdminId && activeChat.admin === currentUser?.name)
   ));
 
@@ -732,6 +735,7 @@ function App() {
       tinodeSessionRequestRef.current = (async () => {
         const auth = chatManagementService.getTinodeAuth();
         if (!auth) throw new Error('Phien quan ly khong co thong tin ket noi Tinode.');
+        tinodeClient.setTokenProvider(null);
         setConnectionStatus('connecting');
         const session = await tinodeClient.ensureSession(auth);
         setCurrentUser(previous => ({
@@ -1108,6 +1112,7 @@ function App() {
 
   const handleLoginSuccess = async (user) => {
     await tinodeClient.logout();
+    setLoginNotice('');
     const accountSession = ++accountSessionRef.current;
     managementConversationSessionRef.current = 0;
     setManagementConversationSession(0);
@@ -1216,13 +1221,27 @@ function App() {
     tinodeClient.setAllowedConversationTopics([]);
     forcedLogoutRef.current = false;
     setForcedLogoutSeconds(null);
-    if (chatMode === 'tinode') await tinodeClient.logout();
-    await chatManagementService.logout();
+    if (chatMode === 'tinode') {
+      try {
+        await tinodeClient.logout();
+      } catch {
+        // Local state is still cleared below so a network failure cannot trap the user.
+      }
+    }
+    let chatLogoutFailed = false;
+    try {
+      await chatManagementService.logout({ throwOnError: true });
+    } catch {
+      chatLogoutFailed = true;
+    }
     if (chatMode === 'demo') {
       Object.values(conversations)
         .filter(room => !room.isGroup && !room.isChatbot && room.messages?.length > 0)
         .forEach(room => persistDemoDirectMessage(room, null));
     }
+    setLoginNotice(chatLogoutFailed
+      ? 'Dữ liệu Chat trên thiết bị đã được đóng, nhưng máy chủ chưa xác nhận việc thu hồi phiên. Vui lòng đăng nhập lại sau khi kiểm tra kết nối.'
+      : 'Bạn đã đăng xuất khỏi Chat.');
     setIsLoggedIn(false);
     setCurrentUser(null);
     setDrafts({});
@@ -1248,6 +1267,12 @@ function App() {
     setConversations(initialRooms);
     setCurrentChatId(CHATBOT_ACCOUNT.id);
     isLoggingOutRef.current = false;
+  };
+
+  const requestLogout = () => {
+    if (!window.confirm('Bạn có chắc chắn muốn đăng xuất khỏi Chat?')) return;
+    setWorkspacePanel(null);
+    handleLogout();
   };
 
   const handleForcedLogout = async () => {
@@ -1638,7 +1663,7 @@ function App() {
             userId: viewerId,
             subject: contact.name,
             participantIds: [contact.id],
-            properties: { members: [currentUser, contact] },
+            properties: {},
           });
           if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
         }
@@ -1717,6 +1742,10 @@ function App() {
           actorName: currentUser?.name,
         });
         await tinodeClient.leave(topicName);
+        await chatManagementService.removeConversationParticipant(
+          activeChat.managementId || activeChat.id,
+          actorId,
+        );
       }
       if (chatMode === 'demo') {
         persistDemoGroupMessage(activeChat, systemMessage);
@@ -1761,6 +1790,10 @@ function App() {
           });
         }
         await tinodeClient.deleteConversation(topicName, { isGroup: activeChat.isGroup });
+        await chatManagementService.removeConversationParticipant(
+          activeChat.managementId || activeChat.id,
+          viewerId,
+        );
       } else if (activeChat.isGroup) {
         deleteDemoGroupForUser(conversationId, viewerId, currentUser?.name);
       } else {
@@ -1826,18 +1859,12 @@ function App() {
         if (managementConversationSessionRef.current !== accountSession) {
           throw new Error('Danh sách cuộc trò chuyện chưa được chatmgt xác nhận.');
         }
-        const memberProfiles = groupMemberIds
-          .map(id => groupMemberProfiles[id] || findAccount(directoryAccounts, id))
-          .filter(Boolean);
         const managedRoom = await chatManagementService.createConversation({
           userId: actorId,
           subject: name,
           isGroup: true,
           participantIds: groupMemberIds,
-          properties: {
-            description: groupDescription.trim(),
-            members: [currentUser, ...memberProfiles],
-          },
+          properties: { description: groupDescription.trim() },
         });
         if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
         await ensureTinodeSession();
@@ -1977,6 +2004,15 @@ function App() {
         for (const uid of resolvedMemberIds) {
           updatedRoom = await tinodeClient.addMember(topicName, uid);
         }
+        try {
+          await chatManagementService.addConversationParticipants(
+            activeChat.managementId || activeChat.id,
+            groupMemberIds,
+          );
+        } catch (managementError) {
+          await Promise.allSettled(resolvedMemberIds.map(uid => tinodeClient.removeMember(topicName, uid)));
+          throw managementError;
+        }
         await tinodeClient.sendSystemEvent(topicName, {
           action: 'member_added',
           actorId,
@@ -2035,7 +2071,7 @@ function App() {
 
   const handleRemoveGroupMember = async (member) => {
     if (!activeChat.isGroup || !member?.id || !isCurrentUserGroupAdmin || removingMemberId) return;
-    if (member.id === viewerId || member.id === activeAdminId) return;
+    if (identitiesOverlap(member, currentUser) || identitiesOverlap(member, activeAdminAccount)) return;
     if (!window.confirm(`Bạn có chắc muốn xóa ${member.name} khỏi nhóm "${activeChat.name}"?`)) return;
 
     setRemovingMemberId(member.id);
@@ -2050,7 +2086,19 @@ function App() {
       let updatedRoom;
       if (chatMode === 'tinode') {
         const topicName = await ensureTinodeConversationTopic(activeChat);
-        await tinodeClient.removeMember(topicName, member.id);
+        const memberAccount = findAccount(directoryAccounts, member.id || member.uid || member.name);
+        if (!memberAccount?.id) throw new Error('Chatmgt không xác định được thành viên cần xóa.');
+        const tinodeMemberId = memberAccount.tinodeUid || memberAccount.tinode_uid || member.id;
+        await tinodeClient.removeMember(topicName, tinodeMemberId);
+        try {
+          await chatManagementService.removeConversationParticipant(
+            activeChat.managementId || activeChat.id,
+            memberAccount.id,
+          );
+        } catch (managementError) {
+          await tinodeClient.addMember(topicName, tinodeMemberId).catch(() => null);
+          throw managementError;
+        }
         await tinodeClient.sendSystemEvent(topicName, event);
         updatedRoom = {
           ...normalizeTinodeConversation(await tinodeClient.openConversation(topicName)),
@@ -2707,7 +2755,7 @@ function App() {
     && !tinodeClient.authenticated;
 
   if (!isLoggedIn) {
-    return <Login onLoginSuccess={handleLoginSuccess} />;
+    return <Login onLoginSuccess={handleLoginSuccess} initialNotice={loginNotice} />;
   }
 
   return (
@@ -2796,6 +2844,9 @@ function App() {
               <span className="user-status online">Online</span>
             </div>
           </div>
+          <button type="button" className="btn-logout-footer" data-tooltip="Đăng xuất" onClick={requestLogout} aria-label="Đăng xuất khỏi Chat">
+            <i className="fa-solid fa-arrow-right-from-bracket"></i>
+          </button>
         </div>
       </aside>
 
@@ -3168,7 +3219,9 @@ function App() {
                       {isAccountOnline(member) ? 'Online' : 'Offline'}
                     </span>
                   </div>
-                  {isCurrentUserGroupAdmin && member.id && member.id !== viewerId && member.id !== activeAdminId && (
+                  {isCurrentUserGroupAdmin && member.id
+                    && !identitiesOverlap(member, currentUser)
+                    && !identitiesOverlap(member, activeAdminAccount) && (
                     <button
                       type="button"
                       className="btn-remove-member"
@@ -3224,12 +3277,7 @@ function App() {
               </div>
               <div className="workspace-panel-header-actions">
                 {workspacePanel === 'profile' && (
-                  <button type="button" className="workspace-logout-button" onClick={() => {
-                    if (window.confirm("Bạn có chắc chắn muốn đăng xuất khỏi SÔNG HỒNG?")) {
-                      setWorkspacePanel(null);
-                      handleLogout();
-                    }
-                  }}>
+                  <button type="button" className="workspace-logout-button" onClick={requestLogout}>
                     <i className="fa-solid fa-arrow-right-from-bracket"></i>
                     <span>Đăng xuất</span>
                   </button>

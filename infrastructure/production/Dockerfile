@@ -1,4 +1,4 @@
-FROM node:22-alpine AS build
+FROM node:22.22.0-alpine3.23@sha256:e4bf2a82ad0a4037d28035ae71529873c069b13eb0455466ae0bc13363826e34 AS build
 
 WORKDIR /app
 
@@ -32,7 +32,7 @@ RUN npm ci
 COPY . .
 RUN npm run build:production
 
-FROM nginx:1.27-alpine
+FROM nginx:1.28.1-alpine@sha256:52e3ada4d978443601f286cc2f9e7b95c82aa3ad5a78ce9c6b94ce00258e68cc
 
 COPY infrastructure/production/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html

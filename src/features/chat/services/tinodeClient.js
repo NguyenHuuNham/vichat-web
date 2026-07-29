@@ -25,6 +25,7 @@ let client = null;
 let meTopic = null;
 let currentSession = null;
 let sessionAuth = null;
+let sessionTokenProvider = null;
 let sessionRequest = null;
 let reconnectRequest = null;
 let restoreAfterDisconnect = false;
@@ -939,7 +940,10 @@ function resetSessionState({ clearEventListeners = false } = {}) {
   allowedConversationTopics = new Set();
   sessionRequest = null;
   reconnectRequest = null;
-  if (clearEventListeners) listeners.clear();
+  if (clearEventListeners) {
+    listeners.clear();
+    sessionTokenProvider = null;
+  }
   intentionalDisconnect = false;
 }
 
@@ -984,7 +988,14 @@ function restoreSessionAfterReconnect(tinode) {
   if (reconnectRequest || !restoreAfterDisconnect || intentionalDisconnect || !sessionAuth) {
     return reconnectRequest || Promise.resolve(currentSession);
   }
-  const authenticationRequest = sessionRequest || runSessionRequest(() => loginSession(tinode, sessionAuth));
+  const authenticationRequest = sessionRequest || runSessionRequest(async () => {
+    let reconnectAuth = sessionAuth;
+    if (sessionTokenProvider) {
+      const refreshedAuth = await sessionTokenProvider();
+      reconnectAuth = { ...sessionAuth, ...refreshedAuth };
+    }
+    return loginSession(tinode, reconnectAuth);
+  });
   reconnectRequest = authenticationRequest.then(async session => {
     await resubscribeAfterReconnect(tinode);
     restoreAfterDisconnect = false;
@@ -1096,6 +1107,10 @@ export const tinodeClient = {
   onEvent(listener) {
     listeners.add(listener);
     return () => listeners.delete(listener);
+  },
+
+  setTokenProvider(provider) {
+    sessionTokenProvider = typeof provider === 'function' ? provider : null;
   },
 
   get authenticated() {

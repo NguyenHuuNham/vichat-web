@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from gatco.response import json
@@ -13,6 +14,9 @@ from application.services import (
     KnowledgeService,
     KnowledgeServiceError,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 chatbot_service = ChatbotService(app)
@@ -45,7 +49,7 @@ def _current_user(request):
             "tinodeUid": account.tinode_uid,
         }
     except Exception as error:
-        app.logger.warning("Could not resolve current chatbot user: %s", error)
+        logger.warning("Could not resolve current chatbot user: %s", error)
         return None
 
 

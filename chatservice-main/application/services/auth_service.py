@@ -15,6 +15,7 @@ import bcrypt
 
 from application import database
 from application.server import app
+from application.services.sso_identity import SSOIdentityError, derive_tinode_password
 
 
 ACCESS_COOKIE = "vichat_access_token"
@@ -129,7 +130,7 @@ def record_password_reset_request(tenant_id, identity, ip_address):
         return
 
 
-def issue_access_token(account):
+def issue_access_token(account, auth_method="password"):
     now = int(time.time())
     ttl = int(app.config.get("CHAT_AUTH_ACCESS_TTL", 28800))
     properties = account.properties or {}
@@ -144,6 +145,7 @@ def issue_access_token(account):
         "jti": str(uuid.uuid4()),
         "typ": "access",
         "av": int(properties.get("auth_version") or 0),
+        "amr": str(auth_method or "password"),
     }
     header = {"alg": "HS256", "typ": "JWT"}
     encoded_header = _encode_part(json.dumps(header, separators=(",", ":")).encode("utf-8"))
@@ -168,6 +170,8 @@ def decode_access_token(token):
         if header.get("alg") != "HS256" or payload.get("iss") != JWT_ISSUER:
             return None
         if payload.get("typ") != "access" or int(payload.get("exp", 0)) <= int(time.time()):
+            return None
+        if payload.get("amr") not in ("password", "account_sso"):
             return None
         revoked_key = "auth:revoked:{}".format(payload.get("jti"))
         if database.redisdb is not None and database.redisdb.exists(revoked_key):
@@ -235,6 +239,7 @@ def current_user(request):
         "tenant_id": payload.get("tid"),
         "current_tenant_id": payload.get("tid"),
         "auth_version": int(payload.get("av") or 0),
+        "auth_method": payload.get("amr"),
         "issued_at": int(payload.get("iat") or 0),
     }
 
@@ -399,6 +404,91 @@ async def tinode_create_account(username, password, full_name):
                 "expires": ctrl.get("params", {}).get("expires"),
                 "uid": ctrl.get("params", {}).get("user"),
             }
+
+
+def tinode_sso_password(identity, tinode_username):
+    try:
+        return derive_tinode_password(
+            app.config.get("TINODE_SSO_SECRET"),
+            identity.get("tenant_id"),
+            identity.get("account_user_id"),
+            tinode_username,
+        )
+    except SSOIdentityError as error:
+        raise AuthError(str(error), 503) from error
+
+
+async def tinode_sso_login(identity, tinode_username, tinode_uid=None, ensure_credential=True):
+    password = tinode_sso_password(identity, tinode_username)
+    if tinode_uid and ensure_credential:
+        await tinode_admin_reset_password(tinode_username, tinode_uid, password)
+        return await tinode_login(tinode_username, password)
+
+    try:
+        return await tinode_login(tinode_username, password)
+    except AuthError as login_error:
+        if login_error.status_code != 401:
+            raise
+        if tinode_uid:
+            await tinode_admin_reset_password(tinode_username, tinode_uid, password)
+            return await tinode_login(tinode_username, password)
+
+    try:
+        return await tinode_create_account(tinode_username, password, identity.get("full_name") or tinode_username)
+    except AuthError as create_error:
+        if create_error.status_code != 409:
+            raise
+        # A concurrent first login may have created the deterministic Tinode account.
+        return await tinode_login(tinode_username, password)
+
+
+async def tinode_verify_topic_access(token, expected_uid, topic_name):
+    base_url = str(app.config.get("TINODE_INTERNAL_WS_URL") or "").rstrip("?")
+    api_key = str(app.config.get("TINODE_API_KEY") or "")
+    if not base_url or not api_key or not token:
+        raise AuthError("Tinode topic verification is not configured.", 503)
+    separator = "&" if "?" in base_url else "?"
+    url = "{}{}apikey={}".format(base_url, separator, quote(api_key, safe=""))
+    timeout = aiohttp.ClientTimeout(total=int(app.config.get("TINODE_AUTH_TIMEOUT", 10)))
+
+    async def receive_ctrl(socket, request_id):
+        for _attempt in range(30):
+            packet = await socket.receive_json()
+            ctrl = packet.get("ctrl") or {}
+            if str(ctrl.get("id") or "") != str(request_id):
+                continue
+            if int(ctrl.get("code") or 500) >= 300:
+                raise AuthError("Tinode rejected access to the requested topic.", 409)
+            return ctrl
+        raise AuthError("Tinode did not confirm topic access.", 502)
+
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.ws_connect(url) as socket:
+            await socket.send_json({
+                "hi": {
+                    "id": "1",
+                    "ver": "0.25",
+                    "ua": "VICHAT-CHAT-SERVICE",
+                    "platf": "server",
+                    "lang": "vi",
+                },
+            })
+            await receive_ctrl(socket, "1")
+            await socket.send_json({
+                "login": {"id": "2", "scheme": "token", "secret": token},
+            })
+            login_ctrl = await receive_ctrl(socket, "2")
+            authenticated_uid = str((login_ctrl.get("params") or {}).get("user") or "")
+            if expected_uid and authenticated_uid != str(expected_uid):
+                raise AuthError("Tinode authenticated a different user.", 409)
+            await socket.send_json({
+                "sub": {
+                    "id": "3",
+                    "topic": topic_name,
+                    "get": {"what": "desc sub"},
+                },
+            })
+            await receive_ctrl(socket, "3")
 
 
 async def tinode_change_password(username, current_password, new_password):

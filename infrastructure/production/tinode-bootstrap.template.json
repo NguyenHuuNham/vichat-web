@@ -1,0 +1,31 @@
+{
+  "users": [
+    {
+      "username": "__TINODE_ADMIN_USERNAME__",
+      "passhash": "__TINODE_ADMIN_PASSWORD__",
+      "email": "__TINODE_ADMIN_EMAIL__",
+      "authLevel": "root",
+      "state": "ok",
+      "trusted": {
+        "staff": true,
+        "verified": true
+      },
+      "public": {
+        "fn": "__TINODE_ADMIN_FULL_NAME__",
+        "note": "Bootstrap administrator"
+      },
+      "private": {
+        "comment": "production-bootstrap-admin"
+      },
+      "tags": [
+        "__TINODE_ADMIN_USERNAME__",
+        "bootstrap_admin"
+      ]
+    }
+  ],
+  "grouptopics": [],
+  "p2psubs": [],
+  "groupsubs": [],
+  "messages": [],
+  "forms": []
+}

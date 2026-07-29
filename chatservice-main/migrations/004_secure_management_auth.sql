@@ -58,17 +58,4 @@ INSERT INTO management_tenant(id, name, active, created_at, updated_at, properti
 VALUES ('song-hong', 'SONG HONG', true, EXTRACT(EPOCH FROM NOW())::bigint, EXTRACT(EPOCH FROM NOW())::bigint, '{}'::jsonb)
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO management_account(
-    id, tenant_id, username, email, password_hash, full_name, role,
-    department, title, avatar, tinode_username, active, created_at, updated_at, properties
-)
-VALUES
-    ('usr-mai-thanh-lam', 'song-hong', 'admin', 'admin@vichat.vn', crypt('123456', gen_salt('bf', 12)), 'Mai Thanh Lam', 'admin', 'Ban dieu hanh', 'Quan tri vien', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&h=100&q=80', 'admin', true, EXTRACT(EPOCH FROM NOW())::bigint, EXTRACT(EPOCH FROM NOW())::bigint, '{}'::jsonb),
-    ('usr-nguyen-van-tuan', 'song-hong', 'tuan', 'tuan@vichat.vn', crypt('123456', gen_salt('bf', 12)), 'Nguyen Van Tuan', 'member', 'Phong Dieu hanh', 'Truong phong Dieu hanh', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&h=100&q=80', 'tuan', true, EXTRACT(EPOCH FROM NOW())::bigint, EXTRACT(EPOCH FROM NOW())::bigint, '{}'::jsonb),
-    ('usr-nguyen-thi-lan', 'song-hong', 'lan', 'lan@vichat.vn', crypt('123456', gen_salt('bf', 12)), 'Nguyen Thi Lan', 'member', 'Phong Dieu hanh', 'Pho phong Dieu hanh', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&h=100&q=80', 'lan', true, EXTRACT(EPOCH FROM NOW())::bigint, EXTRACT(EPOCH FROM NOW())::bigint, '{}'::jsonb),
-    ('usr-pham-thi-huong', 'song-hong', 'huong', 'huong@vichat.vn', crypt('123456', gen_salt('bf', 12)), 'Pham Thi Huong', 'member', 'Phong HCNS', 'Truong phong HCNS', 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=100&h=100&q=80', 'huong', true, EXTRACT(EPOCH FROM NOW())::bigint, EXTRACT(EPOCH FROM NOW())::bigint, '{}'::jsonb),
-    ('usr-le-quoc-bao', 'song-hong', 'bao', 'bao@vichat.vn', crypt('123456', gen_salt('bf', 12)), 'Le Quoc Bao', 'member', 'Phong Ke toan', 'Ke toan truong', 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=100&h=100&q=80', 'bao', true, EXTRACT(EPOCH FROM NOW())::bigint, EXTRACT(EPOCH FROM NOW())::bigint, '{}'::jsonb),
-    ('usr-do-minh-quan', 'song-hong', 'quan', 'quan@vichat.vn', crypt('123456', gen_salt('bf', 12)), 'Do Minh Quan', 'member', 'Phong Kinh doanh', 'Truong phong Kinh doanh', 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=100&h=100&q=80', 'quan', true, EXTRACT(EPOCH FROM NOW())::bigint, EXTRACT(EPOCH FROM NOW())::bigint, '{}'::jsonb)
-ON CONFLICT (id) DO NOTHING;
-
 COMMIT;

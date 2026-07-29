@@ -48,11 +48,15 @@ def init_extensions(app):
         they.can("DELETE", 'Page', lambda a: a.author == "CDE")
     
     global minioclient
-    try:
-        minioclient = Minio(app.config['MINIO_URL'],
-                            access_key=app.config['MINIO_ACCESS_KEY'],
-                            secret_key=app.config['MINIO_SECRET_KEY'],
-                            secure=app.config['MINIO_SECURE'])
-    except Exception as e:
-        print(e)
-        pass
+    minio_url = app.config.get('MINIO_URL')
+    minio_access_key = app.config.get('MINIO_ACCESS_KEY')
+    minio_secret_key = app.config.get('MINIO_SECRET_KEY')
+    if any((minio_url, minio_access_key, minio_secret_key)):
+        if not all((minio_url, minio_access_key, minio_secret_key)):
+            raise RuntimeError('MINIO_URL, MINIO_ACCESS_KEY, and MINIO_SECRET_KEY must be configured together.')
+        minioclient = Minio(
+            minio_url,
+            access_key=minio_access_key,
+            secret_key=minio_secret_key,
+            secure=app.config['MINIO_SECURE'],
+        )

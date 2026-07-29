@@ -2,9 +2,7 @@ static/js/lib
 static/js/lib1
 static/vendor/GonrinUI
 alembic/**/__pycache__
-alembic/env.py
 alembic_.ini
-alembic.ini
 application/**/__pycache__
 /**/*.DS_Store
 static/output/**
@@ -16,12 +14,7 @@ static/upload/**
 /static/vendor/GonrinUIBoostrap4/
 /.vscode/extensions.json
 log_job/**/*
-alembic/env.py
 alembic_.ini
-alembic.ini
-
-/alembic/env.py
-/alembic.ini
 static/
 env/
 venv/

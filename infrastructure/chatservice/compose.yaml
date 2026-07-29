@@ -2,7 +2,7 @@ name: songhong-chatmgt
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     restart: unless-stopped
     ports:
       - "127.0.0.1:${CHATSERVICE_DB_PORT:-5434}:5432"
@@ -17,10 +17,9 @@ services:
       retries: 20
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
-      - ../../chatservice-main/migrations:/docker-entrypoint-initdb.d:ro
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.10-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
     restart: unless-stopped
     ports:
       - "127.0.0.1:${CHATSERVICE_REDIS_PORT:-6380}:6379"
@@ -43,9 +42,18 @@ services:
       - "127.0.0.1:${CHATSERVICE_APP_PORT:-8093}:8093"
     volumes:
       - ../../chatservice-main/knowledge:/app/knowledge:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8093/api/v1/auth/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     environment:
       APP_HOST: 0.0.0.0
       APP_PORT: 8093
+      APP_SECRET_KEY: ${APP_SECRET_KEY:?APP_SECRET_KEY is required}
+      AUTH_PASSWORD_SALT: ${AUTH_PASSWORD_SALT:?AUTH_PASSWORD_SALT is required}
+      SESSION_COOKIE_SALT: ${SESSION_COOKIE_SALT:?SESSION_COOKIE_SALT is required}
       SQLALCHEMY_DATABASE_URI: postgresql://${CHATSERVICE_DB_USER:-chatservice}:${CHATSERVICE_DB_PASSWORD}@postgres:5432/${CHATSERVICE_DB_NAME:-chatservice}
       REDIS_ADDR: redis
       REDIS_PORT: 6379

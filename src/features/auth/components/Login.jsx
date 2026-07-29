@@ -6,7 +6,7 @@ function resetTokenFromUrl() {
   return new URLSearchParams(window.location.search).get('reset_token') || '';
 }
 
-function Login({ onLoginSuccess }) {
+function Login({ onLoginSuccess, initialNotice = '' }) {
   const initialResetToken = resetTokenFromUrl();
   const [mode, setMode] = useState(initialResetToken ? 'reset' : 'login');
   const [identity, setIdentity] = useState('');
@@ -15,7 +15,7 @@ function Login({ onLoginSuccess }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [resetToken, setResetToken] = useState(initialResetToken);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useState(initialNotice);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -31,19 +31,20 @@ function Login({ onLoginSuccess }) {
   const handleLogin = async event => {
     event.preventDefault();
     setError('');
+    setNotice('');
     if (!identity.trim() || !password) {
       setError('Vui lòng điền tên đăng nhập và mật khẩu.');
       return;
     }
     if (!managementAuthClient.enabled) {
-      setError('Chưa cấu hình dịch vụ quản lý tài khoản nội bộ.');
+      setError('Chưa cấu hình dịch vụ quản lý tài khoản Chatmgt.');
       return;
     }
 
     setIsLoading(true);
     try {
-      const session = await managementAuthClient.login({ username: identity.trim(), password });
-      onLoginSuccess({
+      const session = await managementAuthClient.login({ identity: identity.trim(), password });
+      await onLoginSuccess({
         id: session.uid,
         uid: session.uid,
         username: session.login,
@@ -62,8 +63,8 @@ function Login({ onLoginSuccess }) {
         avatar: session.profile?.avatar || '',
         mustChangePassword: session.mustChangePassword,
       });
-    } catch (err) {
-      setError(err?.message || 'Đăng nhập thất bại. Vui lòng kiểm tra tài khoản và thử lại.');
+    } catch (loginError) {
+      setError(loginError?.message || 'Đăng nhập thất bại. Vui lòng kiểm tra tài khoản và thử lại.');
     } finally {
       setIsLoading(false);
     }
@@ -81,8 +82,8 @@ function Login({ onLoginSuccess }) {
     try {
       await managementAuthClient.requestPasswordReset(identity.trim());
       setNotice('Nếu tài khoản tồn tại, hướng dẫn đặt lại mật khẩu sẽ được gửi tới email đã đăng ký.');
-    } catch (err) {
-      setError(err?.message || 'Chưa thể gửi yêu cầu đặt lại mật khẩu.');
+    } catch (resetError) {
+      setError(resetError?.message || 'Chưa thể gửi yêu cầu đặt lại mật khẩu.');
     } finally {
       setIsLoading(false);
     }
@@ -115,8 +116,8 @@ function Login({ onLoginSuccess }) {
       setMode('login');
       setNewPassword('');
       setConfirmPassword('');
-    } catch (err) {
-      setError(err?.message || 'Không thể đặt lại mật khẩu.');
+    } catch (resetError) {
+      setError(resetError?.message || 'Không thể đặt lại mật khẩu.');
     } finally {
       setIsLoading(false);
     }
@@ -131,7 +132,7 @@ function Login({ onLoginSuccess }) {
           <div className="login-logo"><img src="/chat-logo.svg" className="brand-mark-image" alt="CHAT" /></div>
           <h2>{mode === 'login' ? 'Chat - Power by Gon Platform' : mode === 'forgot' ? 'Khôi phục tài khoản' : 'Tạo mật khẩu mới'}</h2>
           <p>{mode === 'login'
-            ? 'Đăng nhập vào tài khoản của bạn'
+            ? 'Đăng nhập bằng tài khoản nội bộ do quản trị viên cấp'
             : mode === 'forgot'
               ? 'Nhập tài khoản để nhận liên kết đặt lại mật khẩu'
               : 'Liên kết chỉ sử dụng một lần và sẽ hết hạn sau thời gian ngắn'}</p>
@@ -145,8 +146,8 @@ function Login({ onLoginSuccess }) {
             <div className="login-form-group">
               <label htmlFor="identity">Tên đăng nhập / Email</label>
               <div className="login-input-wrapper">
-                <i className="fa-regular fa-envelope login-input-icon"></i>
-                <input id="identity" name="username" type="text" autoComplete="username" placeholder="Nhập tên đăng nhập hoặc email..." value={identity} onChange={event => setIdentity(event.target.value)} disabled={isLoading} />
+                <i className="fa-regular fa-user login-input-icon"></i>
+                <input id="identity" name="username" type="text" autoComplete="username" placeholder="Nhập tên đăng nhập hoặc email..." value={identity} onChange={event => setIdentity(event.target.value)} disabled={isLoading} autoFocus />
               </div>
             </div>
             <div className="login-form-group">
@@ -171,7 +172,7 @@ function Login({ onLoginSuccess }) {
             <div className="login-form-group">
               <label htmlFor="forgot-identity">Tên đăng nhập / Email</label>
               <div className="login-input-wrapper">
-                <i className="fa-regular fa-envelope login-input-icon"></i>
+                <i className="fa-regular fa-user login-input-icon"></i>
                 <input id="forgot-identity" type="text" autoComplete="username" placeholder="Nhập tài khoản cần khôi phục..." value={identity} onChange={event => setIdentity(event.target.value)} disabled={isLoading} autoFocus />
               </div>
             </div>

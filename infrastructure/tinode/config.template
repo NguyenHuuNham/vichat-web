@@ -57,7 +57,7 @@
 			"min_password_length": 6
 		},
 		"token": {
-			"expire_in": 1209600,
+			"expire_in": $AUTH_TOKEN_EXPIRE_IN,
 			"serial_num": 1,
 			"key": "$AUTH_TOKEN_KEY"
 		},

@@ -7,5 +7,7 @@ infrastructure/chatservice/.env
 infrastructure/chatservice/data
 infrastructure/tinode/.env
 infrastructure/production/.env
+infrastructure/production/runtime
+infrastructure/production/backups
 chatservice-main/.env
 *.tar.gz

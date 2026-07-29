@@ -149,6 +149,11 @@ body {
     justify-content: center;
 }
 
+.sidebar-primary.collapsed .primary-footer {
+    flex-direction: column;
+    gap: 8px;
+}
+
 .sidebar-primary.collapsed .user-profile {
     padding-right: 0;
     padding-left: 0;
@@ -282,7 +287,32 @@ body {
     border-top: 1px solid rgba(255, 255, 255, 0.1);
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.btn-logout-footer {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    place-items: center;
+    border: 0;
+    border-radius: 10px;
+    color: rgba(255, 255, 255, .68);
+    background: transparent;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.btn-logout-footer:hover {
+    color: var(--text-white);
+    background: rgba(255, 255, 255, .1);
+}
+
+.btn-logout-footer:focus-visible {
+    outline: 3px solid rgba(255, 255, 255, .28);
+    outline-offset: 2px;
 }
 
 .user-profile {
@@ -1578,6 +1608,11 @@ input:checked + .slider:before {
         justify-content: center;
         padding: 0;
     }
+
+    .primary-footer {
+        flex-direction: column;
+        gap: 8px;
+    }
 }
 
 @media (max-width: 576px) {
@@ -2034,6 +2069,39 @@ input:checked + .slider:before {
 
 .login-back-button:hover,
 .login-inline-action:hover { color: var(--vichat-red); }
+
+.login-secondary-button {
+    display: flex;
+    width: 100%;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 11px 14px;
+    border-radius: 12px;
+    background: var(--bg-white);
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.login-secondary-button {
+    border: 1px solid var(--border-color);
+    color: var(--text-body);
+}
+
+.login-secondary-button:hover {
+    border-color: rgba(244, 81, 30, .32);
+    color: var(--vichat-blue-hover);
+    background: var(--vichat-blue-light);
+}
+
+.login-secondary-button:focus-visible {
+    outline: 3px solid rgba(244, 81, 30, .14);
+    outline-offset: 2px;
+}
 
 @keyframes shakeError {
     0%, 100% { transform: translateX(0); }

@@ -1,4 +1,6 @@
 import datetime
+import logging
+import secrets
 import time
 import uuid
 
@@ -16,6 +18,11 @@ from application.models.models import (
     SecurityAuditLog,
 )
 from application.server import app
+from application.services.account_sso_service import (
+    AccountSSOError,
+    account_sso_configured,
+    current_account_session,
+)
 from application.services.auth_service import (
     AuthError,
     build_password_reset_url,
@@ -37,10 +44,23 @@ from application.services.auth_service import (
     tinode_change_password,
     tinode_create_account,
     tinode_login,
+    tinode_sso_login,
+    tinode_verify_topic_access,
     token_from_request,
     verify_password,
     current_user as current_jwt_user,
 )
+from application.services.sso_identity import (
+    account_properties_match,
+    account_session_matches,
+    protected_tinode_account,
+    stable_account_id,
+    stable_tinode_username,
+    valid_tinode_topic,
+)
+
+
+logger = logging.getLogger(__name__)
 
 
 def _public_tenant(tenant):
@@ -57,14 +77,16 @@ def _public_tenant(tenant):
 def _public_account(account, tenant=None):
     properties = account.properties or {}
     full_name = account.full_name or account.username
+    public_username = properties.get("account_username") or account.username
+    public_email = properties.get("account_email") or account.email or ""
     tenant_payload = _public_tenant(tenant)
     return {
         "id": str(account.id),
         "uid": str(account.id),
         "userId": str(account.id),
         "user_id": str(account.id),
-        "username": account.username,
-        "email": account.email or "",
+        "username": public_username,
+        "email": public_email,
         "name": full_name,
         "fullName": full_name,
         "full_name": full_name,
@@ -190,6 +212,173 @@ def _bump_auth_version(account):
     return properties
 
 
+def _account_sso_error(error):
+    return json({
+        "error_code": error.error_code,
+        "error_message": str(error),
+    }, status=error.status_code)
+
+
+def _sso_account(identity):
+    identity = dict(identity)
+    account_username = identity["username"]
+    account_email = identity.get("email")
+    tenant_id = identity["tenant_id"]
+    linked_properties = {
+        "auth_source": "account",
+        "account_user_id": identity["account_user_id"],
+        "account_tenant_id": tenant_id,
+    }
+    account = ManagementAccount.query.filter(
+        ManagementAccount.tenant_id == tenant_id,
+        ManagementAccount.properties.contains(linked_properties),
+    ).first()
+
+    if account is None:
+        identity_filters = [func.lower(ManagementAccount.username) == identity["username"]]
+        if identity.get("email"):
+            identity_filters.append(func.lower(ManagementAccount.email) == identity["email"])
+        candidate = ManagementAccount.query.filter(
+            ManagementAccount.tenant_id == tenant_id,
+            or_(*identity_filters),
+        ).first()
+        if candidate is not None:
+            candidate_properties = candidate.properties or {}
+            protected_bootstrap = protected_tinode_account(
+                candidate_properties,
+                candidate.tinode_username,
+                app.config.get("TINODE_ADMIN_USERNAME"),
+            )
+            if protected_bootstrap:
+                if str(candidate.username or "").lower() == identity["username"]:
+                    identity["username"] = "sso_{}".format(
+                        stable_account_id(tenant_id, identity["account_user_id"])[5:37]
+                    )
+                if identity.get("email") and str(candidate.email or "").lower() == identity["email"]:
+                    identity["email"] = None
+                candidate = None
+                candidate_properties = {}
+            if candidate_properties.get("auth_source") == "account" and not account_properties_match(
+                candidate_properties,
+                identity,
+            ):
+                raise AccountSSOError(
+                    "The Account identity conflicts with an existing Chatmgt account.",
+                    409,
+                    "ACCOUNT_IDENTITY_CONFLICT",
+                )
+            account = candidate
+
+    duplicate_query = ManagementAccount.query.filter(
+        ManagementAccount.tenant_id == tenant_id,
+        func.lower(ManagementAccount.username) == identity["username"],
+    )
+    if account is not None:
+        duplicate_query = duplicate_query.filter(ManagementAccount.id != str(account.id))
+    if duplicate_query.first() is not None:
+        raise AccountSSOError(
+            "The Account username is already mapped inside this tenant.",
+            409,
+            "ACCOUNT_USERNAME_CONFLICT",
+        )
+    if identity.get("email"):
+        email_query = ManagementAccount.query.filter(
+            ManagementAccount.tenant_id == tenant_id,
+            func.lower(ManagementAccount.email) == identity["email"],
+        )
+        if account is not None:
+            email_query = email_query.filter(ManagementAccount.id != str(account.id))
+        if email_query.first() is not None:
+            raise AccountSSOError(
+                "The Account email is already mapped inside this tenant.",
+                409,
+                "ACCOUNT_EMAIL_CONFLICT",
+            )
+
+    now = int(time.time())
+    tenant = ManagementTenant.query.filter(ManagementTenant.id == tenant_id).first()
+    if tenant is None:
+        tenant = ManagementTenant(
+            id=tenant_id,
+            name=identity["tenant_name"],
+            active=True,
+            created_at=now,
+            updated_at=now,
+            properties={"auth_source": "account"},
+        )
+        db.session.add(tenant)
+        db.session.flush()
+    else:
+        tenant.name = identity["tenant_name"]
+        tenant.active = True
+        tenant.updated_at = now
+        tenant_properties = dict(tenant.properties or {})
+        tenant_properties["auth_source"] = "account"
+        tenant.properties = tenant_properties
+
+    if account is None:
+        account = ManagementAccount(
+            id=stable_account_id(tenant_id, identity["account_user_id"]),
+            tenant_id=tenant_id,
+            username=identity["username"],
+            email=identity.get("email"),
+            password_hash=hash_password(secrets.token_urlsafe(48)),
+            full_name=identity["full_name"],
+            role=identity["role"],
+            department=identity.get("department") or "",
+            title=identity.get("title") or "",
+            avatar=identity.get("avatar") or "",
+            tinode_username=stable_tinode_username(tenant_id, identity["account_user_id"]),
+            active=True,
+            created_at=now,
+            updated_at=now,
+            properties={},
+        )
+        db.session.add(account)
+
+    account.username = identity["username"]
+    account.email = identity.get("email")
+    account.full_name = identity["full_name"]
+    account.role = identity["role"]
+    account.department = identity.get("department") or ""
+    account.title = identity.get("title") or ""
+    account.avatar = identity.get("avatar") or ""
+    account.active = True
+    account.updated_at = now
+    account.last_login_at = now
+    properties = dict(account.properties or {})
+    properties.update(linked_properties)
+    properties["account_role"] = identity.get("account_role") or "member"
+    properties["account_username"] = account_username or ""
+    properties["account_email"] = account_email or ""
+    properties.setdefault("auth_version", 0)
+    account.properties = properties
+    return tenant, account
+
+
+async def _validated_account_identity(request, account):
+    identity = await current_account_session(request)
+    if not account_session_matches(account.properties, identity):
+        raise AccountSSOError(
+            "The Account session does not match the Chatmgt session.",
+            401,
+            "ACCOUNT_SESSION_MISMATCH",
+        )
+    if str(account.role or "member") != identity["role"]:
+        account.role = identity["role"]
+        properties = _bump_auth_version(account)
+        properties["account_role"] = identity.get("account_role") or "member"
+        account.properties = properties
+        account.updated_at = int(time.time())
+        db.session.commit()
+        raise AccountSSOError(
+            "Account permissions changed; sign in again.",
+            401,
+            "ACCOUNT_ROLE_CHANGED",
+        )
+    return identity
+
+
 def _audit(request, event_name, success=True, tenant_id=None, user_id=None, properties=None):
     try:
         db.session.add(SecurityAuditLog(
@@ -204,15 +393,24 @@ def _audit(request, event_name, success=True, tenant_id=None, user_id=None, prop
         db.session.commit()
     except Exception as error:
         db.session.rollback()
-        app.logger.warning("Could not write security audit event %s: %s", event_name, error)
+        logger.warning("Could not write security audit event %s: %s", event_name, error)
 
 
 def _serialize_conversation(item):
     participants = ConversationParticipant.query.filter(
+        ConversationParticipant.tenant_id == item.tenant_id,
         ConversationParticipant.conversation_id == item.id,
         ConversationParticipant.deleted.is_(False),
         ConversationParticipant.active.is_(True),
-    ).all()
+    ).order_by(ConversationParticipant.created_at.asc()).all()
+    participant_ids = [participant.participant_id for participant in participants]
+    accounts = ManagementAccount.query.filter(
+        ManagementAccount.tenant_id == item.tenant_id,
+        ManagementAccount.id.in_(participant_ids),
+        ManagementAccount.active.is_(True),
+    ).all() if participant_ids else []
+    accounts_by_id = {str(account.id): account for account in accounts}
+    owner = next((participant for participant in participants if participant.role == "OWNER"), None)
     properties = item.properties or {}
     return {
         "id": str(item.id),
@@ -226,9 +424,32 @@ def _serialize_conversation(item):
         "updated_at": item.updated_at,
         "properties": properties,
         "isGroup": bool(properties.get("is_group")),
-        "participantIds": [participant.participant_id for participant in participants],
-        "members": properties.get("members") or [],
+        "participantIds": participant_ids,
+        "members": [
+            _public_account(accounts_by_id[participant_id])
+            for participant_id in participant_ids
+            if participant_id in accounts_by_id
+        ],
+        "adminId": owner.participant_id if owner is not None else "",
     }
+
+
+def _conversation_and_membership(tenant_id, conversation_id, user_id):
+    item = Conversation.query.filter(
+        Conversation.id == conversation_id,
+        Conversation.tenant_id == tenant_id,
+        Conversation.deleted.is_(False),
+    ).first()
+    if item is None:
+        return None, None
+    membership = ConversationParticipant.query.filter(
+        ConversationParticipant.tenant_id == tenant_id,
+        ConversationParticipant.conversation_id == item.id,
+        ConversationParticipant.participant_id == user_id,
+        ConversationParticipant.active.is_(True),
+        ConversationParticipant.deleted.is_(False),
+    ).first()
+    return item, membership
 
 
 def _iso_timestamp(value):
@@ -268,7 +489,59 @@ def _friend_response_event(item):
     }
 
 
+@app.route('/api/v1/auth/sso', methods=['POST'])
+async def management_sso_login(request):
+    if not bool(app.config.get("CHAT_ACCOUNT_SSO_ENABLED", False)):
+        return json({
+            "error_code": "AUTH_METHOD_DISABLED",
+            "error_message": "Account SSO is not enabled for employee Chat login.",
+        }, status=403)
+    try:
+        identity = await current_account_session(request)
+        tenant, account = _sso_account(identity)
+        tinode_auth = await tinode_sso_login(
+            identity,
+            account.tinode_username,
+            account.tinode_uid,
+            ensure_credential=True,
+        )
+        account.tinode_uid = tinode_auth.get("uid") or account.tinode_uid
+        db.session.commit()
+        revoke_request_token(request)
+        token = issue_access_token(account, auth_method="account_sso")
+        response = json({
+            "user": _public_account(account, tenant),
+            "tenant": _public_tenant(tenant),
+            "tenant_id": account.tenant_id,
+            "tinode_auth": {
+                "username": account.tinode_username,
+                "uid": account.tinode_uid,
+                "token": tinode_auth.get("token"),
+                "expires": tinode_auth.get("expires"),
+            },
+        })
+        _audit(request, "AUTH_SSO_LOGIN", True, tenant_id=account.tenant_id, user_id=str(account.id))
+        return set_auth_cookie(response, token, request)
+    except AccountSSOError as error:
+        db.session.rollback()
+        _audit(request, "AUTH_SSO_LOGIN", False, properties={"error_code": error.error_code})
+        return _account_sso_error(error)
+    except AuthError as error:
+        db.session.rollback()
+        _audit(request, "AUTH_SSO_TINODE", False)
+        return json({"error_code": "TINODE_AUTH_FAILED", "error_message": str(error)}, status=error.status_code)
+    except Exception as error:
+        db.session.rollback()
+        logger.exception("Account SSO login failed: %s", error)
+        _audit(request, "AUTH_SSO_SERVICE", False)
+        return json({
+            "error_code": "AUTH_SERVICE_ERROR",
+            "error_message": "The SSO authentication service is temporarily unavailable.",
+        }, status=503)
+
+
 @app.route('/login', methods=['POST'])
+@app.route('/api/v1/auth/login', methods=['POST'])
 async def management_login(request):
     body = request.json or {}
     identity = str(body.get("identity") or body.get("username") or "").strip().lower()
@@ -289,7 +562,7 @@ async def management_login(request):
         ).first() if tenant is not None else None
     except Exception as error:
         db.session.rollback()
-        app.logger.exception("Management account lookup failed: %s", error)
+        logger.exception("Management account lookup failed: %s", error)
         return json({
             "error_code": "AUTH_STORAGE_ERROR",
             "error_message": "The account database is temporarily unavailable.",
@@ -325,7 +598,7 @@ async def management_login(request):
         return json({"error_code": "TINODE_AUTH_FAILED", "error_message": str(error)}, status=error.status_code)
     except Exception as error:
         db.session.rollback()
-        app.logger.exception("Management login failed after account verification: %s", error)
+        logger.exception("Management login failed after account verification: %s", error)
         _audit(request, "AUTH_LOGIN_SERVICE", False, tenant_id=tenant_id, user_id=str(account.id))
         return json({
             "error_code": "AUTH_SERVICE_ERROR",
@@ -354,6 +627,52 @@ async def management_current_user(request):
     return response
 
 
+@app.route('/api/v1/auth/tinode-token', methods=['POST'])
+async def management_tinode_token(request):
+    current_user, tenant_id = _identity(request)
+    if current_user is None or management_session_requested(request):
+        return _auth_error()
+    account = _account_by_id(tenant_id, _user_id(current_user))
+    if account is None or (account.properties or {}).get("auth_source") != "account":
+        return _auth_error()
+    try:
+        identity = await _validated_account_identity(request, account)
+        tinode_auth = await tinode_sso_login(
+            identity,
+            account.tinode_username,
+            account.tinode_uid,
+            ensure_credential=False,
+        )
+        account.tinode_uid = tinode_auth.get("uid") or account.tinode_uid
+        account.updated_at = int(time.time())
+        db.session.commit()
+        return json({
+            "tinode_auth": {
+                "username": account.tinode_username,
+                "uid": account.tinode_uid,
+                "token": tinode_auth.get("token"),
+                "expires": tinode_auth.get("expires"),
+            },
+        })
+    except AccountSSOError as error:
+        db.session.rollback()
+        if error.status_code != 503:
+            revoke_request_token(request)
+            revoked_error = AccountSSOError(str(error), 401, error.error_code)
+            return clear_auth_cookie(_account_sso_error(revoked_error), request)
+        return _account_sso_error(error)
+    except AuthError as error:
+        db.session.rollback()
+        return json({"error_code": "TINODE_AUTH_FAILED", "error_message": str(error)}, status=error.status_code)
+    except Exception as error:
+        db.session.rollback()
+        logger.exception("Tinode SSO token refresh failed: %s", error)
+        return json({
+            "error_code": "TINODE_TOKEN_FAILED",
+            "error_message": "Tinode token refresh is temporarily unavailable.",
+        }, status=503)
+
+
 @app.route('/api/v1/auth/logout', methods=['POST'])
 async def management_logout(request):
     current_user, tenant_id = _identity(request)
@@ -362,12 +681,13 @@ async def management_logout(request):
     if current_user is not None:
         _audit(request, "AUTH_LOGOUT", True, tenant_id=tenant_id, user_id=_user_id(current_user))
     revoke_request_token(request)
-    return clear_auth_cookie(json({
+    response = clear_auth_cookie(json({
         "logged_out": True,
         "user": _public_account(account, tenant) if account is not None else None,
         "tenant": _public_tenant(tenant),
         "tenant_id": tenant_id,
     }), request)
+    return response
 
 
 @app.route('/api/v1/auth/health', methods=['GET'])
@@ -383,8 +703,29 @@ async def management_auth_health(request):
         str(app.config.get("TINODE_ADMIN_USERNAME") or "").strip()
         and str(app.config.get("TINODE_ADMIN_PASSWORD") or "").strip()
     )
+    account_sso_enabled = bool(app.config.get("CHAT_ACCOUNT_SSO_ENABLED", False))
+    account_configured = account_sso_enabled and account_sso_configured()
+    tinode_sso_configured = bool(
+        len(str(app.config.get("TINODE_SSO_SECRET") or "")) >= 32
+        and tinode_admin_configured
+    )
+    employee_auth_configured = bool(
+        len(str(app.config.get("CHAT_AUTH_JWT_SECRET") or "")) >= 32
+        and str(app.config.get("CHATMGT_DEFAULT_TENANT") or "").strip()
+        and str(app.config.get("TINODE_INTERNAL_WS_URL") or "").strip()
+        and str(app.config.get("TINODE_API_KEY") or "").strip()
+    )
     return json({
         "status": "ok",
+        "employee_auth": {
+            "configured": employee_auth_configured,
+            "login_endpoint": "/api/v1/auth/login",
+        },
+        "account_sso": {
+            "enabled": account_sso_enabled,
+            "configured": account_configured,
+            "tinode_bridge_configured": account_sso_enabled and tinode_sso_configured,
+        },
         "password_reset": {
             "delivery_configured": smtp_configured or bool(app.config.get("CHAT_PASSWORD_RESET_DEBUG", False)),
             "tinode_admin_configured": tinode_admin_configured,
@@ -445,7 +786,7 @@ async def management_forgot_password(request):
             try:
                 email_sent = await send_password_reset_email(account, reset_url)
             except Exception as error:
-                app.logger.warning("Password reset email failed for %s: %s", account.id, error)
+                logger.warning("Password reset email failed for %s: %s", account.id, error)
         _audit(
             request,
             "AUTH_PASSWORD_RESET_REQUEST",
@@ -459,7 +800,7 @@ async def management_forgot_password(request):
         return json(generic_response, status=202)
     except Exception as error:
         db.session.rollback()
-        app.logger.exception("Password reset request failed: %s", error)
+        logger.exception("Password reset request failed: %s", error)
         _audit(request, "AUTH_PASSWORD_RESET_REQUEST", False, tenant_id=tenant_id, user_id=str(account.id))
         return json(generic_response, status=202)
 
@@ -513,7 +854,7 @@ async def management_reset_password(request):
         return json({"error_code": "TINODE_PASSWORD_RESET_FAILED", "error_message": str(error)}, status=error.status_code)
     except Exception as error:
         db.session.rollback()
-        app.logger.exception("Password reset failed: %s", error)
+        logger.exception("Password reset failed: %s", error)
         _audit(request, "AUTH_PASSWORD_RESET", False, tenant_id=account.tenant_id, user_id=str(account.id))
         return json({"error_code": "PASSWORD_RESET_FAILED", "error_message": "Password reset is temporarily unavailable."}, status=503)
 
@@ -967,17 +1308,22 @@ async def conversation_create(request):
     }
     if set(participant_ids) != valid_ids:
         return json({"error_code": "TENANT_VIOLATION", "error_message": "All participants must belong to the same tenant."}, status=400)
-    properties = body.get("properties") if isinstance(body.get("properties"), dict) else {}
+    requested_properties = body.get("properties") if isinstance(body.get("properties"), dict) else {}
+    properties = {
+        "is_group": bool(body.get("is_group", requested_properties.get("is_group", False))),
+        "description": str(requested_properties.get("description") or "")[:2000],
+        "avatar": str(requested_properties.get("avatar") or "")[:8192],
+    }
     item = Conversation(
         tenant_id=tenant_id,
         conversation_no="conv-{}".format(uuid.uuid4().hex),
-        tinode_topic=body.get("tinode_topic"),
+        tinode_topic=None,
         subject=str(body.get("subject") or body.get("name") or "Conversation").strip(),
         source="internal",
         status="OPEN",
         priority="NORMAL",
         last_message_at=int(time.time()),
-        properties={**properties, "is_group": bool(body.get("is_group", properties.get("is_group", False)))},
+        properties=properties,
     )
     try:
         db.session.add(item)
@@ -1010,22 +1356,179 @@ async def conversation_bind_tinode(request, conversation_id):
     except (ValueError, TypeError, AttributeError):
         return json({"error_code": "NOT_FOUND", "error_message": "Invalid conversation."}, status=404)
     user_id = _user_id(current_user)
-    item = Conversation.query.join(
-        ConversationParticipant,
-        ConversationParticipant.conversation_id == Conversation.id,
-    ).filter(
-        Conversation.id == conversation_uuid,
-        Conversation.tenant_id == tenant_id,
-        Conversation.deleted.is_(False),
-        ConversationParticipant.tenant_id == tenant_id,
-        ConversationParticipant.participant_id == user_id,
-        ConversationParticipant.active.is_(True),
-    ).first()
-    if item is None:
+    item, membership = _conversation_and_membership(tenant_id, conversation_uuid, user_id)
+    if item is None or membership is None:
         return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
     topic_name = str((request.json or {}).get("tinode_topic") or "").strip()
     if not topic_name:
         return json({"error_code": "PARAM_ERROR", "error_message": "Tinode topic is required."}, status=400)
-    item.tinode_topic = topic_name
+    is_group = bool((item.properties or {}).get("is_group"))
+    if not valid_tinode_topic(topic_name, is_group):
+        return json({"error_code": "TINODE_TOPIC_INVALID", "error_message": "Tinode topic type is invalid for this conversation."}, status=400)
+    if item.tinode_topic and item.tinode_topic != topic_name:
+        return json({"error_code": "TINODE_TOPIC_ALREADY_BOUND", "error_message": "The conversation is already bound to another Tinode topic."}, status=409)
+    conflict = Conversation.query.filter(
+        Conversation.id != item.id,
+        Conversation.tinode_topic == topic_name,
+        Conversation.deleted.is_(False),
+    ).first()
+    if conflict is not None:
+        return json({"error_code": "TINODE_TOPIC_CONFLICT", "error_message": "The Tinode topic is already bound to another conversation."}, status=409)
+    if management_session_requested(request):
+        return json({"error_code": "CHAT_SESSION_REQUIRED", "error_message": "Tinode topics can only be bound from a Chat user session."}, status=403)
+
+    account = _account_by_id(tenant_id, user_id)
+    if account is None:
+        return _auth_error()
+    if not is_group:
+        participants = ConversationParticipant.query.filter(
+            ConversationParticipant.tenant_id == tenant_id,
+            ConversationParticipant.conversation_id == item.id,
+            ConversationParticipant.active.is_(True),
+            ConversationParticipant.deleted.is_(False),
+        ).all()
+        peer_ids = [
+            participant.participant_id for participant in participants
+            if participant.participant_id != user_id
+        ]
+        if len(participants) != 2 or len(peer_ids) != 1:
+            return json({"error_code": "DIRECT_PARTICIPANTS_INVALID", "error_message": "A direct conversation must contain exactly two participants."}, status=409)
+        peer = _account_by_id(tenant_id, peer_ids[0])
+        if peer is None or not peer.tinode_uid or str(peer.tinode_uid) != topic_name:
+            return json({"error_code": "TINODE_TOPIC_MISMATCH", "error_message": "The Tinode direct topic does not match the Chatmgt participant."}, status=409)
+
+    tinode_token = str((request.json or {}).get("tinode_token") or "").strip()
+    if not tinode_token:
+        return json({"error_code": "TINODE_TOKEN_REQUIRED", "error_message": "Tinode authentication is required."}, status=400)
+
+    try:
+        await tinode_verify_topic_access(
+            tinode_token,
+            account.tinode_uid,
+            topic_name,
+        )
+        item.tinode_topic = topic_name
+        db.session.commit()
+        return json(_serialize_conversation(item))
+    except AuthError as error:
+        db.session.rollback()
+        return json({"error_code": "TINODE_TOPIC_REJECTED", "error_message": str(error)}, status=error.status_code)
+    except Exception:
+        db.session.rollback()
+        return json({"error_code": "TINODE_TOPIC_CONFLICT", "error_message": "Could not bind the Tinode topic."}, status=409)
+
+
+@app.route('/api/v1/conversation/<conversation_id>/participants', methods=['POST'])
+@app.route('/api/v1/chat/threads/<conversation_id>/participants', methods=['POST'])
+async def conversation_participant_add(request, conversation_id):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    try:
+        conversation_uuid = uuid.UUID(str(conversation_id))
+    except (ValueError, TypeError, AttributeError):
+        return json({"error_code": "NOT_FOUND", "error_message": "Invalid conversation."}, status=404)
+
+    user_id = _user_id(current_user)
+    item, membership = _conversation_and_membership(tenant_id, conversation_uuid, user_id)
+    if item is None or membership is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
+    if not bool((item.properties or {}).get("is_group")):
+        return json({"error_code": "PARAM_ERROR", "error_message": "Participants can only be added to a group."}, status=400)
+    if membership.role != "OWNER":
+        return _forbidden_error()
+
+    requested_ids = list(dict.fromkeys(
+        str(value) for value in ((request.json or {}).get("participant_ids") or []) if value
+    ))
+    requested_ids = [participant_id for participant_id in requested_ids if participant_id != user_id]
+    if not requested_ids:
+        return json({"error_code": "PARAM_ERROR", "error_message": "At least one participant is required."}, status=400)
+    valid_ids = {
+        str(account.id) for account in ManagementAccount.query.filter(
+            ManagementAccount.tenant_id == tenant_id,
+            ManagementAccount.active.is_(True),
+            ManagementAccount.id.in_(requested_ids),
+        ).all()
+    }
+    if set(requested_ids) != valid_ids:
+        return json({"error_code": "TENANT_VIOLATION", "error_message": "All participants must belong to the same tenant."}, status=400)
+
+    now = int(time.time())
+    existing = ConversationParticipant.query.filter(
+        ConversationParticipant.tenant_id == tenant_id,
+        ConversationParticipant.conversation_id == item.id,
+        ConversationParticipant.participant_id.in_(requested_ids),
+        ConversationParticipant.deleted.is_(False),
+    ).all()
+    existing_by_id = {participant.participant_id: participant for participant in existing}
+    for participant_id in requested_ids:
+        participant = existing_by_id.get(participant_id)
+        if participant is None:
+            participant = ConversationParticipant(
+                tenant_id=tenant_id,
+                conversation_id=item.id,
+                participant_type="USER",
+                participant_id=participant_id,
+                role="MEMBER",
+                joined_at=now,
+                active=True,
+            )
+            db.session.add(participant)
+        else:
+            participant.active = True
+            participant.left_at = None
+            participant.joined_at = now
+            participant.role = "MEMBER"
+    item.updated_at = now
+    db.session.commit()
+    return json(_serialize_conversation(item))
+
+
+@app.route('/api/v1/conversation/<conversation_id>/participants/<participant_id>', methods=['DELETE'])
+@app.route('/api/v1/chat/threads/<conversation_id>/participants/<participant_id>', methods=['DELETE'])
+async def conversation_participant_remove(request, conversation_id, participant_id):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    try:
+        conversation_uuid = uuid.UUID(str(conversation_id))
+    except (ValueError, TypeError, AttributeError):
+        return json({"error_code": "NOT_FOUND", "error_message": "Invalid conversation."}, status=404)
+
+    user_id = _user_id(current_user)
+    item, membership = _conversation_and_membership(tenant_id, conversation_uuid, user_id)
+    if item is None or membership is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
+    participant_id = str(participant_id)
+    if participant_id != user_id and membership.role != "OWNER":
+        return _forbidden_error()
+
+    target = ConversationParticipant.query.filter(
+        ConversationParticipant.tenant_id == tenant_id,
+        ConversationParticipant.conversation_id == item.id,
+        ConversationParticipant.participant_id == participant_id,
+        ConversationParticipant.active.is_(True),
+        ConversationParticipant.deleted.is_(False),
+    ).first()
+    if target is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Participant not found."}, status=404)
+    if target.role == "OWNER" and participant_id != user_id:
+        return json({"error_code": "OWNER_REQUIRED", "error_message": "The group owner cannot be removed."}, status=409)
+
+    now = int(time.time())
+    target.active = False
+    target.left_at = now
+    if target.role == "OWNER":
+        replacement = ConversationParticipant.query.filter(
+            ConversationParticipant.tenant_id == tenant_id,
+            ConversationParticipant.conversation_id == item.id,
+            ConversationParticipant.participant_id != participant_id,
+            ConversationParticipant.active.is_(True),
+            ConversationParticipant.deleted.is_(False),
+        ).order_by(ConversationParticipant.joined_at.asc()).first()
+        if replacement is not None:
+            replacement.role = "OWNER"
+    item.updated_at = now
     db.session.commit()
     return json(_serialize_conversation(item))

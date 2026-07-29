@@ -1,71 +1,30 @@
-# Workflow Engine
+# Native development install
 
-```
-cd /opt/deploy/
-python3.8 -m venv dataroom-workflow
-cd dataroom-workflow/
-source bin/activate
-pip install -r repo/requirements.txt
-```
+The supported deployment path is Docker. For targeted backend development on
+Ubuntu/WSL, use Python 3.9 and a project virtual environment.
 
-#### Tao file env
+From the repository root:
 
-```
-nano ./liveenv
-ENVIRONMENT=development
-APP_PORT=15003
-SQLALCHEMY_DATABASE_URI=postgresql://dataroomworkflowuser:dsaj8saasdnajsGABChjasdhUACVA@localhost:5432/dataroomworkflowdb
-AUTH_SECRET_KEY=acndef
-JWT_SIGNATURE=0FXnnDPOjVxJyYwsc4ESLaLV8ombQSuw
-REDIS_ADDRESS_URI=localhost
-SESSION_REDIS_DB=0
-INTERNAL_ACCESS_TOKEN=MhZBy93zMUa5UwpLB3G2qYxFNdasjkdn29ijdnja921dskngaBo1jtLrbeuNqWDaKlsrkwuLefDXNH1O8dDiwfxxhP9vBCwaLOrT9JvbOWWstN4sQv
-ACCOUNT_URL=https://account.gonapp.net
+```bash
+python3.9 -m venv .venv-chatmgt
+source .venv-chatmgt/bin/activate
+sudo apt-get install -y build-essential git libpq-dev
+python -m pip install -r chatservice-main/requirements.lock
+cd chatservice-main
 ```
 
-#### SQL create database 
-```
-create database dataroomworkflowdb encoding = 'UTF-8';
-create user dataroomworkflowuser with password 'dsaj8saasdnajsGABChjasdhUACVA';
-ALTER DATABASE dataroomworkflowdb OWNER TO dataroomworkflowuser;
-GRANT ALL PRIVILEGES ON DATABASE dataroomworkflowdb TO dataroomworkflowuser;
+Configure the database, Redis, Tinode, and all secret environment variables in
+an ignored environment file. Do not copy credentials from documentation into a
+real installation.
 
-```
+Before changing schema, create a PostgreSQL backup. Then run:
 
-```
-cd repo
-set -o allexport; source ../liveenv; set +o allexport
-alembic upgrade head
-
+```bash
+alembic -c alembic.ini current
+alembic -c alembic.ini upgrade head
+alembic -c alembic.ini current
+python manage.py run
 ```
 
-```
-sudo nano /etc/systemd/system/dataroom_workflow.service
-
-[Unit]
-Description=workflow-engine
-After=network.target
-
-[Service]
-PIDFile=/var/run/workflow-engine.pid
-User=ubuntu
-Group=ubuntu
-RuntimeDirectory=workflow
-WorkingDirectory=/opt/deploy/dataroom-workflow/repo/
-EnvironmentFile=/opt/deploy/dataroom-workflow/liveenv
-ExecStart=/opt/deploy/dataroom-workflow/bin/python manage.py run
-ExecReload=/bin/kill -s HUP $MAINPID
-ExecStop=/bin/kill -s TERM $MAINPID
-PrivateTmp=true
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-#place in to /etc/systemd/system
-```
-
-```
-sudo systemctl enable dataroom_workflow.service
-sudo service dataroom_workflow restart
-sudo journalctl -u dataroom_workflow.service -f
-```
+Expected startup port is `8093`. Verify behavior with
+`GET /api/v1/auth/health`; a running process alone is not sufficient.

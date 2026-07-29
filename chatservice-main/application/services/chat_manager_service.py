@@ -1,9 +1,13 @@
+import logging
 import time
 
 from application.database import db
 from application.models.models import ChatbotRun
 from application.services.chatbot_service import ChatbotServiceError
 from application.services.knowledge_service import normalize_search_text
+
+
+logger = logging.getLogger(__name__)
 
 
 class ChatManagerService(object):
@@ -29,7 +33,7 @@ class ChatManagerService(object):
             db.session.commit()
         except Exception as error:
             db.session.rollback()
-            self.app.logger.warning("Could not record chatbot run: %s", error)
+            logger.warning("Could not record chatbot run: %s", error)
 
     @staticmethod
     def _is_small_talk(message):
