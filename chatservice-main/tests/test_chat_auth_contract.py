@@ -66,7 +66,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("CHAT_ACCOUNT_SSO_ENABLED: ${CHAT_ACCOUNT_SSO_ENABLED:-true}", compose_source)
         self.assertIn("CHAT_ACCOUNT_SSO_ENABLED=true", env_source)
         self.assertIn("ACCOUNT_URL=https://account.upgo.vn", env_source)
-        self.assertIn("ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/user", env_source)
+        self.assertIn("ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user", env_source)
         self.assertIn("TINODE_SSO_SECRET: ${TINODE_SSO_SECRET:?TINODE_SSO_SECRET is required}", compose_source)
 
     def test_account_sso_login_does_not_provision_or_login_to_tinode(self):

@@ -128,7 +128,7 @@ def _directory_items(payload):
 
 
 def _directory_path():
-    configured_path = app.config.get("ACCOUNT_SSO_DIRECTORY_PATH") or "/api/v1/user"
+    configured_path = app.config.get("ACCOUNT_SSO_DIRECTORY_PATH") or "/api/v1/tenant_user"
     parts = urlsplit(str(configured_path))
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
     query.setdefault("page", "1")

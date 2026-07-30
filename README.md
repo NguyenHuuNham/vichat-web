@@ -38,7 +38,7 @@ directory, friendship, and conversation metadata:
 
 1. Chatmgt validates that the Account session still matches the Chatmgt JWT.
 2. Chatmgt loads the current tenant directory from
-   `GET https://account.upgo.vn/api/v1/user` and upserts passwordless local
+   `GET https://account.upgo.vn/api/v1/tenant_user` and upserts passwordless local
    projections keyed by Account user ID plus tenant ID.
 3. ChatUI loads `/api/v1/chat/users`, `/api/v1/friend-request`, and
    `/api/v1/conversation` with the Chatmgt HttpOnly session.

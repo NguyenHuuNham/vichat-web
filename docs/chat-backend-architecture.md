@@ -103,7 +103,7 @@ authoritative employee identity system. For an Account-backed Chat session:
 1. `GET /api/v1/chat/users` revalidates `/current_user` so the Account tenant
    still matches the Chatmgt JWT.
 2. Chatmgt forwards the shared Account cookie server-to-server to the configured
-   directory path, default `GET /api/v1/user?page=1&results_per_page=1000`.
+   tenant directory path, default `GET /api/v1/tenant_user?page=1&results_per_page=1000`.
 3. Each returned employee is normalized and upserted as a tenant-scoped
    `management_account` projection using the same deterministic ID as Step 2.
    Missing optional fields do not erase a previously synchronized role or
@@ -204,7 +204,7 @@ expired token.
 CHAT_ACCOUNT_SSO_ENABLED=true
 ACCOUNT_URL=https://account.upgo.vn
 ACCOUNT_SSO_PROFILE_PATH=/current_user
-ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/user
+ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user
 ACCOUNT_SSO_LOGOUT_PATH=/logout
 ACCOUNT_SESSION_COOKIE_NAME=session
 ACCOUNT_SESSION_COOKIE_DOMAIN=.upgo.vn

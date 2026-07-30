@@ -86,7 +86,7 @@ class Config(object):
     if ACCOUNT_URL and not ACCOUNT_URL.startswith("http://") and not ACCOUNT_URL.startswith("https://"):
         ACCOUNT_URL = "http://" + ACCOUNT_URL
     ACCOUNT_SSO_PROFILE_PATH = os.getenv("ACCOUNT_SSO_PROFILE_PATH", "/current_user")
-    ACCOUNT_SSO_DIRECTORY_PATH = os.getenv("ACCOUNT_SSO_DIRECTORY_PATH", "/api/v1/user")
+    ACCOUNT_SSO_DIRECTORY_PATH = os.getenv("ACCOUNT_SSO_DIRECTORY_PATH", "/api/v1/tenant_user")
     ACCOUNT_SSO_LOGOUT_PATH = os.getenv("ACCOUNT_SSO_LOGOUT_PATH", "/logout")
     ACCOUNT_SSO_TIMEOUT = int(os.getenv("ACCOUNT_SSO_TIMEOUT", 10))
     ACCOUNT_SESSION_COOKIE_NAME = os.getenv("ACCOUNT_SESSION_COOKIE_NAME", "session")

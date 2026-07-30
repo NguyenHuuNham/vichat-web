@@ -74,7 +74,7 @@ not modify an already deployed file:
 CHAT_ACCOUNT_SSO_ENABLED=true
 ACCOUNT_URL=https://account.upgo.vn
 ACCOUNT_SSO_PROFILE_PATH=/current_user
-ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/user
+ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user
 ACCOUNT_SSO_LOGOUT_PATH=/logout
 ACCOUNT_SESSION_COOKIE_NAME=session
 ACCOUNT_SESSION_COOKIE_DOMAIN=.upgo.vn

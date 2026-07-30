@@ -14,10 +14,14 @@ if HAS_AIOHTTP:
     if str(PROJECT_ROOT) not in sys.path:
         sys.path.insert(0, str(PROJECT_ROOT))
 
+    application_module = types.ModuleType("application")
+    application_module.__path__ = [str(PROJECT_ROOT / "application")]
+    services_module = types.ModuleType("application.services")
+    services_module.__path__ = [str(PROJECT_ROOT / "application" / "services")]
     fake_app = types.SimpleNamespace(config={
         "ACCOUNT_URL": "https://account.upgo.vn",
         "ACCOUNT_SSO_PROFILE_PATH": "/current_user",
-        "ACCOUNT_SSO_DIRECTORY_PATH": "/api/v1/user",
+        "ACCOUNT_SSO_DIRECTORY_PATH": "/api/v1/tenant_user",
         "ACCOUNT_SSO_LOGOUT_PATH": "/logout",
         "ACCOUNT_SESSION_COOKIE_NAME": "session",
         "ACCOUNT_SESSION_COOKIE_DOMAIN": ".upgo.vn",
@@ -25,17 +29,35 @@ if HAS_AIOHTTP:
     })
     server_module = types.ModuleType("application.server")
     server_module.app = fake_app
-    previous_server_module = sys.modules.get("application.server")
+    module_names = (
+        "application",
+        "application.services",
+        "application.server",
+        "application.services.sso_identity",
+    )
+    previous_modules = {name: sys.modules.get(name) for name in module_names}
+    sys.modules["application"] = application_module
+    sys.modules["application.services"] = services_module
     sys.modules["application.server"] = server_module
     try:
+        identity_path = PROJECT_ROOT / "application" / "services" / "sso_identity.py"
+        identity_spec = importlib.util.spec_from_file_location(
+            "application.services.sso_identity",
+            identity_path,
+        )
+        identity_module = importlib.util.module_from_spec(identity_spec)
+        sys.modules["application.services.sso_identity"] = identity_module
+        identity_spec.loader.exec_module(identity_module)
+
         spec = importlib.util.spec_from_file_location("account_sso_service", MODULE_PATH)
         account_sso_service = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(account_sso_service)
     finally:
-        if previous_server_module is None:
-            sys.modules.pop("application.server", None)
-        else:
-            sys.modules["application.server"] = previous_server_module
+        for name, previous_module in previous_modules.items():
+            if previous_module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = previous_module
 
 
 def account_payload(status="active"):
@@ -95,8 +117,32 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
         account_request.assert_awaited_once_with(
             request,
             "GET",
-            "/api/v1/user?page=1&results_per_page=1000",
+            "/api/v1/tenant_user?page=1&results_per_page=1000",
         )
+
+    async def test_directory_accepts_the_tenant_user_email_identity(self):
+        identity = {
+            "account_user_id": "account-user-2",
+            "tenant_id": "tenant-a",
+            "tenant_name": "Tenant A",
+        }
+        payload = {"objects": [{
+            "id": "account-user-2",
+            "display_name": "Test User",
+            "email": "test.user@example.vn",
+            "role": "member",
+            "status": "active",
+        }]}
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(200, payload)),
+        ):
+            users = await account_sso_service.account_directory(types.SimpleNamespace(), identity)
+
+        self.assertEqual(users[0]["username"], "test.user@example.vn")
+        self.assertEqual(users[0]["full_name"], "Test User")
+        self.assertTrue(users[0]["active"])
 
     async def test_directory_session_expiry_requires_account_login(self):
         with patch.object(
