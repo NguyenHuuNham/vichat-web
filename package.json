@@ -8,6 +8,7 @@
     "build": "vite build",
     "build:production": "node scripts/build-production.mjs",
     "lint": "oxlint",
+    "test:frontend": "node --test src/features/contacts/services/accountDirectory.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -3,7 +3,7 @@ import Login from '../features/auth/components/Login';
 import KnowledgeManager from '../features/chatbot/components/KnowledgeManager';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation } from '../features/chat/services/tinodeClient';
 import { chatManagementService } from '../features/chat/services/chatManagementService';
-import { findAccount } from '../features/contacts/services/accountDirectory';
+import { findAccount, identitiesOverlap, snapshotPresence, updateAccountPresence } from '../features/contacts/services/accountDirectory';
 import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
 import { CHATBOT_ACCOUNT, learnFromChatFile, learnFromChatMessage, loadChatbotMessages, loadChatbotMessagesFromServer, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
@@ -14,27 +14,6 @@ function tinodeTopicName(room) {
 
 function isManagementConversationId(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
-}
-
-function identityValues(entity) {
-  return [...new Set([
-    entity?.id,
-    entity?.uid,
-    entity?.tinodeUid,
-    entity?.tinode_uid,
-  ].filter(Boolean).map(value => String(value)))];
-}
-
-function identitiesOverlap(first, second) {
-  const secondValues = new Set(identityValues(second));
-  return identityValues(first).some(value => secondValues.has(value));
-}
-
-function snapshotPresence(entity, snapshot) {
-  for (const value of identityValues(entity)) {
-    if (Object.prototype.hasOwnProperty.call(snapshot || {}, value)) return Boolean(snapshot[value]);
-  }
-  return undefined;
 }
 
 // --- Initial Conversions Data ---
@@ -587,6 +566,8 @@ function App() {
   const tinodeSessionRequestRef = useRef(null);
   const learnedKnowledgeKeysRef = useRef(new Set());
   const conversationsRef = useRef(conversations);
+  const currentUserRef = useRef(currentUser);
+  const directoryAccountsRef = useRef(directoryAccounts);
   const typingNoticeAtRef = useRef(new Map());
   const typingClearTimersRef = useRef(new Map());
   const notificationBaselineRef = useRef(new Map());
@@ -602,6 +583,8 @@ function App() {
   // Event callbacks can run between React renders; keep the latest room map
   // available without forcing Tinode subscriptions to be recreated.
   conversationsRef.current = conversations;
+  currentUserRef.current = currentUser;
+  directoryAccountsRef.current = directoryAccounts;
 
   const activeChat = conversations[currentChatId] || Object.values(conversations)[0] || {
     id: 'empty',
@@ -666,21 +649,22 @@ function App() {
     : (currentUser?.id || currentUser?.uid);
 
   const applyPresenceSnapshot = useCallback(snapshot => {
-    const updateAccount = account => {
-      const online = identitiesOverlap(account, currentUser) ? undefined : snapshotPresence(account, snapshot);
-      return online === undefined || account?.online === online ? account : { ...account, online };
-    };
-
-    setDirectoryAccounts(previous => previous.map(updateAccount));
-    setWorkspaceResults(previous => previous.map(updateAccount));
-    setGroupSearchResults(previous => previous.map(updateAccount));
+    const currentAccount = currentUserRef.current;
+    const accounts = directoryAccountsRef.current;
+    setDirectoryAccounts(previous => {
+      const next = updateAccountPresence(previous, snapshot, currentAccount);
+      directoryAccountsRef.current = next;
+      return next;
+    });
+    setWorkspaceResults(previous => updateAccountPresence(previous, snapshot, currentAccount));
+    setGroupSearchResults(previous => updateAccountPresence(previous, snapshot, currentAccount));
     setConversations(previous => {
       let changed = false;
       const next = Object.fromEntries(Object.entries(previous).map(([id, room]) => {
         let membersChanged = false;
         const members = (room.members || []).map(member => {
-          const account = findAccount(directoryAccounts, member.id || member.uid || member.name);
-          const isCurrentAccount = identitiesOverlap(member, currentUser) || identitiesOverlap(account, currentUser);
+          const account = findAccount(accounts, member.id || member.uid || member.name);
+          const isCurrentAccount = identitiesOverlap(member, currentAccount) || identitiesOverlap(account, currentAccount);
           const online = isCurrentAccount
             ? undefined
             : snapshotPresence(member, snapshot) ?? snapshotPresence(account, snapshot);
@@ -689,7 +673,7 @@ function App() {
           return { ...member, online };
         });
         const peer = !room.isGroup && !room.isChatbot
-          ? members.find(member => !identitiesOverlap(member, currentUser)) || members[0]
+          ? members.find(member => !identitiesOverlap(member, currentAccount)) || members[0]
           : null;
         const membersCount = peer ? (peer.online ? 'Online' : 'Offline') : room.membersCount;
         if (!membersChanged && membersCount === room.membersCount) return [id, room];
@@ -698,7 +682,7 @@ function App() {
       }));
       return changed ? next : previous;
     });
-  }, [currentUser, directoryAccounts]);
+  }, []);
 
   const isAccountOnline = account => identitiesOverlap(account, currentUser)
     ? isCurrentUserOnline

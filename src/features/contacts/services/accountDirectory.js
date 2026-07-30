@@ -8,6 +8,38 @@ export async function authenticateDemoAccount() {
   throw new Error('Public account login is disabled.');
 }
 
+export function identityValues(entity) {
+  return [...new Set([
+    entity?.id,
+    entity?.uid,
+    entity?.tinodeUid,
+    entity?.tinode_uid,
+  ].filter(Boolean).map(value => String(value)))];
+}
+
+export function identitiesOverlap(first, second) {
+  const secondValues = new Set(identityValues(second));
+  return identityValues(first).some(value => secondValues.has(value));
+}
+
+export function snapshotPresence(entity, snapshot) {
+  for (const value of identityValues(entity)) {
+    if (Object.prototype.hasOwnProperty.call(snapshot || {}, value)) return Boolean(snapshot[value]);
+  }
+  return undefined;
+}
+
+export function updateAccountPresence(accounts, snapshot, currentUser) {
+  let changed = false;
+  const next = (accounts || []).map(account => {
+    const online = identitiesOverlap(account, currentUser) ? undefined : snapshotPresence(account, snapshot);
+    if (online === undefined || account?.online === online) return account;
+    changed = true;
+    return { ...account, online };
+  });
+  return changed ? next : accounts;
+}
+
 export function findAccount(accounts, identity) {
   if (!identity || !Array.isArray(accounts)) return null;
   const normalized = String(identity).trim().toLowerCase();
