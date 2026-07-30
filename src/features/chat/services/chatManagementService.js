@@ -2,6 +2,7 @@ const env = import.meta.env || {};
 const apiBase = String(env.VITE_CHAT_MANAGEMENT_API_URL || '').replace(/\/$/, '');
 const remoteAuth = String(env.VITE_CHAT_MANAGEMENT_REMOTE_AUTH || '').toLowerCase() === 'true';
 const tenantId = env.VITE_CHAT_TENANT_ID || 'song-hong';
+const accountUrl = String(env.VITE_ACCOUNT_URL || 'https://account.upgo.vn').replace(/\/+$/, '');
 const topicBindingsKey = 'vichat.management.topic-bindings.v1';
 
 let activeSession = null;
@@ -113,35 +114,32 @@ export const chatManagementService = {
     return env.VITE_TINODE_HOST ? 'tinode' : 'demo';
   },
 
-  async login({ identity, password }) {
-    const normalizedIdentity = String(identity || '').trim();
+  async login() {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
-    const payload = await apiRequest('/api/v1/auth/login', {
+    const payload = await apiRequest('/api/v1/auth/sso', {
       method: 'POST',
-      body: JSON.stringify({
-        identity: normalizedIdentity,
-        password,
-        tenant_id: tenantId,
-      }),
     });
     const account = publicAccount(payload.user || payload.current_user || payload);
     const tenant = payload.tenant || account?.tenant || null;
     const rawTinodeAuth = payload.tinode || payload.tinode_auth || {};
+    const hasTinodeToken = Boolean(rawTinodeAuth.token || payload.tinode_token);
+    const connection = payload.connection || (hasTinodeToken ? 'tinode' : 'management');
     activeSession = {
       user: account,
       tenant,
-      tinodeAuth: {
+      connection,
+      tinodeAuth: hasTinodeToken ? {
         ...rawTinodeAuth,
-        username: rawTinodeAuth.username || account?.tinodeUsername || account?.tinode_username || account?.username || normalizedIdentity,
+        username: rawTinodeAuth.username || account?.tinodeUsername || account?.tinode_username || account?.username,
         uid: rawTinodeAuth.uid || account?.tinodeUid || account?.tinode_uid,
         token: rawTinodeAuth.token || payload.tinode_token,
         displayName: account?.name || '',
         avatar: account?.avatar || '',
         tenantId: tenant?.id || account?.tenantId || account?.tenant_id || tenantId,
         tenantName: tenant?.name || account?.tenantName || account?.tenant_name || '',
-      },
+      } : null,
     };
-    return account;
+    return { ...account, tenant, connection };
   },
 
   async currentSession() {
@@ -336,14 +334,14 @@ function toLoginSession(account) {
   return {
     uid: account.id,
     login: account.username,
-    connection: 'tinode',
+    connection: account.connection || (auth?.token ? 'tinode' : 'management'),
     role: account.role,
     email: account.email,
     department: account.department,
     tenantId: account.tenantId || account.tenant_id,
     tenantName: tenant?.name || account.tenantName || account.tenant_name || '',
     tenant,
-    tinodeUid: account.tinodeUid,
+    tinodeUid: account.tinodeUid || auth?.uid,
     tinodeAuth: auth,
     mustChangePassword: Boolean(account.mustChangePassword || account.must_change_password),
     profile: {
@@ -356,9 +354,19 @@ function toLoginSession(account) {
 
 export const managementAuthClient = {
   enabled: Boolean(apiBase && remoteAuth),
+  accountUrl,
 
-  async login(credentials) {
-    return toLoginSession(await chatManagementService.login(credentials || {}));
+  accountLoginUrl() {
+    if (typeof window === 'undefined') return accountUrl;
+    const continueUrl = new URL(window.location.href);
+    continueUrl.searchParams.set('account_sso', '1');
+    const loginUrl = new URL(`${accountUrl}/`);
+    loginUrl.searchParams.set('continue', continueUrl.toString());
+    return loginUrl.toString();
+  },
+
+  async login() {
+    return toLoginSession(await chatManagementService.login());
   },
 
   async logout() {

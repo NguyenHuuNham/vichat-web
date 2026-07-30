@@ -58,9 +58,12 @@ async def _account_request(request, method, path):
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.request(method, _account_url(path), headers=headers) as response:
-                payload = await response.json(content_type=None)
+                try:
+                    payload = await response.json(content_type=None)
+                except (aiohttp.ContentTypeError, ValueError):
+                    payload = {}
                 return response.status, payload
-    except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as error:
+    except (aiohttp.ClientError, asyncio.TimeoutError) as error:
         raise AccountSSOError(
             "Account service is temporarily unavailable.",
             503,

@@ -96,7 +96,7 @@ def normalize_account_session(payload):
         "account_role": str(account_role or "member").strip().lower(),
         "department": str(payload.get("department") or "").strip()[:255],
         "title": str(payload.get("title") or "").strip()[:255],
-        "avatar": str(_first(payload, "avatar", "photo") or "").strip(),
+        "avatar": str(_first(payload, "avatar_url", "avatar", "photo") or "").strip(),
     }
 
 

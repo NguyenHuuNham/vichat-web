@@ -1,6 +1,5 @@
 import datetime
 import logging
-import secrets
 import time
 import uuid
 
@@ -21,7 +20,9 @@ from application.server import app
 from application.services.account_sso_service import (
     AccountSSOError,
     account_sso_configured,
+    clear_account_cookie,
     current_account_session,
+    logout_account_session,
 )
 from application.services.auth_service import (
     AuthError,
@@ -61,6 +62,7 @@ from application.services.sso_identity import (
 
 
 logger = logging.getLogger(__name__)
+ACCOUNT_SSO_PASSWORD_MARKER = "!account-sso-only"
 
 
 def _public_tenant(tenant):
@@ -258,9 +260,14 @@ def _sso_account(identity):
                     identity["email"] = None
                 candidate = None
                 candidate_properties = {}
+            if candidate is not None and candidate_properties.get("auth_source") != "account":
+                raise AccountSSOError(
+                    "The Account identity conflicts with an existing local Chatmgt account.",
+                    409,
+                    "ACCOUNT_IDENTITY_CONFLICT",
+                )
             if candidate_properties.get("auth_source") == "account" and not account_properties_match(
-                candidate_properties,
-                identity,
+                candidate_properties, identity
             ):
                 raise AccountSSOError(
                     "The Account identity conflicts with an existing Chatmgt account.",
@@ -322,7 +329,7 @@ def _sso_account(identity):
             tenant_id=tenant_id,
             username=identity["username"],
             email=identity.get("email"),
-            password_hash=hash_password(secrets.token_urlsafe(48)),
+            password_hash=ACCOUNT_SSO_PASSWORD_MARKER,
             full_name=identity["full_name"],
             role=identity["role"],
             department=identity.get("department") or "",
@@ -343,6 +350,7 @@ def _sso_account(identity):
     account.department = identity.get("department") or ""
     account.title = identity.get("title") or ""
     account.avatar = identity.get("avatar") or ""
+    account.password_hash = ACCOUNT_SSO_PASSWORD_MARKER
     account.active = True
     account.updated_at = now
     account.last_login_at = now
@@ -499,13 +507,6 @@ async def management_sso_login(request):
     try:
         identity = await current_account_session(request)
         tenant, account = _sso_account(identity)
-        tinode_auth = await tinode_sso_login(
-            identity,
-            account.tinode_username,
-            account.tinode_uid,
-            ensure_credential=True,
-        )
-        account.tinode_uid = tinode_auth.get("uid") or account.tinode_uid
         db.session.commit()
         revoke_request_token(request)
         token = issue_access_token(account, auth_method="account_sso")
@@ -513,12 +514,7 @@ async def management_sso_login(request):
             "user": _public_account(account, tenant),
             "tenant": _public_tenant(tenant),
             "tenant_id": account.tenant_id,
-            "tinode_auth": {
-                "username": account.tinode_username,
-                "uid": account.tinode_uid,
-                "token": tinode_auth.get("token"),
-                "expires": tinode_auth.get("expires"),
-            },
+            "connection": "management",
         })
         _audit(request, "AUTH_SSO_LOGIN", True, tenant_id=account.tenant_id, user_id=str(account.id))
         return set_auth_cookie(response, token, request)
@@ -526,10 +522,6 @@ async def management_sso_login(request):
         db.session.rollback()
         _audit(request, "AUTH_SSO_LOGIN", False, properties={"error_code": error.error_code})
         return _account_sso_error(error)
-    except AuthError as error:
-        db.session.rollback()
-        _audit(request, "AUTH_SSO_TINODE", False)
-        return json({"error_code": "TINODE_AUTH_FAILED", "error_message": str(error)}, status=error.status_code)
     except Exception as error:
         db.session.rollback()
         logger.exception("Account SSO login failed: %s", error)
@@ -540,9 +532,7 @@ async def management_sso_login(request):
         }, status=503)
 
 
-@app.route('/login', methods=['POST'])
-@app.route('/api/v1/auth/login', methods=['POST'])
-async def management_login(request):
+async def _password_login(request, include_tinode=True):
     body = request.json or {}
     identity = str(body.get("identity") or body.get("username") or "").strip().lower()
     password = str(body.get("password") or "")
@@ -567,29 +557,39 @@ async def management_login(request):
             "error_code": "AUTH_STORAGE_ERROR",
             "error_message": "The account database is temporarily unavailable.",
         }, status=503)
+    if account is not None and (account.properties or {}).get("auth_source") == "account":
+        return json({
+            "error_code": "AUTH_METHOD_DISABLED",
+            "error_message": "This user must sign in through UpGO Account.",
+        }, status=403)
     if account is None or not verify_password(password, account.password_hash):
         record_login_failure(tenant_id, identity, ip_address)
         _audit(request, "AUTH_LOGIN", False, tenant_id=tenant_id, properties={"identity": identity})
         return json({"error_code": "LOGIN_FAILED", "error_message": "Invalid username or password."}, status=401)
     try:
         clear_login_failures(tenant_id, identity, ip_address)
-        tinode_auth = await tinode_login(account.tinode_username, password)
-        account.tinode_uid = tinode_auth.get("uid") or account.tinode_uid
+        tinode_auth = None
+        if include_tinode:
+            tinode_auth = await tinode_login(account.tinode_username, password)
+            account.tinode_uid = tinode_auth.get("uid") or account.tinode_uid
         account.last_login_at = int(time.time())
         account.updated_at = int(time.time())
         db.session.commit()
         token = issue_access_token(account)
-        response = json({
+        response_payload = {
             "user": _public_account(account, tenant),
             "tenant": _public_tenant(tenant),
             "tenant_id": account.tenant_id,
-            "tinode_auth": {
+            "connection": "tinode" if include_tinode else "management",
+        }
+        if tinode_auth is not None:
+            response_payload["tinode_auth"] = {
                 "username": account.tinode_username,
                 "uid": account.tinode_uid,
                 "token": tinode_auth.get("token"),
                 "expires": tinode_auth.get("expires"),
-            },
-        })
+            }
+        response = json(response_payload)
         _audit(request, "AUTH_LOGIN", True, tenant_id=tenant_id, user_id=str(account.id))
         return set_auth_cookie(response, token, request)
     except AuthError as error:
@@ -606,6 +606,26 @@ async def management_login(request):
         }, status=503)
 
 
+@app.route('/login', methods=['POST'])
+async def management_login(request):
+    if not management_session_requested(request):
+        return json({
+            "error_code": "FORBIDDEN",
+            "error_message": "The management session scope is required.",
+        }, status=403)
+    return await _password_login(request, include_tinode=False)
+
+
+@app.route('/api/v1/auth/login', methods=['POST'])
+async def employee_password_login(request):
+    if bool(app.config.get("CHAT_ACCOUNT_SSO_ENABLED", False)):
+        return json({
+            "error_code": "AUTH_METHOD_DISABLED",
+            "error_message": "Employee password login is disabled. Use UpGO Account.",
+        }, status=403)
+    return await _password_login(request)
+
+
 @app.route('/api/v1/auth/me', methods=['GET'])
 async def management_current_user(request):
     current_user, tenant_id = _identity(request)
@@ -617,10 +637,24 @@ async def management_current_user(request):
     tenant = _tenant_by_id(tenant_id)
     if tenant is None:
         return _auth_error()
+    if current_user.get("auth_method") == "account_sso":
+        try:
+            await _validated_account_identity(request, account)
+        except AccountSSOError as error:
+            if error.status_code != 503:
+                revoke_request_token(request)
+                revoked_error = AccountSSOError(str(error), 401, error.error_code)
+                response = clear_auth_cookie(_account_sso_error(revoked_error), request)
+                return clear_account_cookie(response)
+            return _account_sso_error(error)
     response = json({
         "user": _public_account(account, tenant),
         "tenant": _public_tenant(tenant),
         "tenant_id": tenant_id,
+        "connection": "management" if (
+            management_session_requested(request)
+            or current_user.get("auth_method") == "account_sso"
+        ) else "tinode",
     })
     if management_session_requested(request):
         return set_auth_cookie(response, token_from_request(request), request)
@@ -675,9 +709,35 @@ async def management_tinode_token(request):
 
 @app.route('/api/v1/auth/logout', methods=['POST'])
 async def management_logout(request):
+    try:
+        token_user = current_jwt_user(request)
+    except Exception:
+        token_user = None
     current_user, tenant_id = _identity(request)
+    logout_user = current_user or token_user
     account = _account_by_id(tenant_id, _user_id(current_user)) if current_user is not None else None
     tenant = _tenant_by_id(tenant_id) if tenant_id else None
+    account_sso_session = bool(
+        logout_user is not None
+        and logout_user.get("auth_method") == "account_sso"
+        and not management_session_requested(request)
+    )
+    account_logout_confirmed = False
+    if account_sso_session:
+        try:
+            await logout_account_session(request)
+            account_logout_confirmed = True
+        except AccountSSOError as error:
+            if error.error_code != "ACCOUNT_LOGIN_REQUIRED":
+                logger.warning("Account logout was not confirmed: %s", error.error_code)
+                _audit(
+                    request,
+                    "AUTH_ACCOUNT_LOGOUT",
+                    False,
+                    tenant_id=tenant_id,
+                    user_id=_user_id(logout_user),
+                    properties={"error_code": error.error_code},
+                )
     if current_user is not None:
         _audit(request, "AUTH_LOGOUT", True, tenant_id=tenant_id, user_id=_user_id(current_user))
     revoke_request_token(request)
@@ -686,7 +746,10 @@ async def management_logout(request):
         "user": _public_account(account, tenant) if account is not None else None,
         "tenant": _public_tenant(tenant),
         "tenant_id": tenant_id,
+        "account_logout_confirmed": account_logout_confirmed,
     }), request)
+    if account_sso_session:
+        response = clear_account_cookie(response)
     return response
 
 
@@ -711,15 +774,21 @@ async def management_auth_health(request):
     )
     employee_auth_configured = bool(
         len(str(app.config.get("CHAT_AUTH_JWT_SECRET") or "")) >= 32
-        and str(app.config.get("CHATMGT_DEFAULT_TENANT") or "").strip()
-        and str(app.config.get("TINODE_INTERNAL_WS_URL") or "").strip()
-        and str(app.config.get("TINODE_API_KEY") or "").strip()
+        and (
+            account_configured
+            if account_sso_enabled
+            else (
+                str(app.config.get("CHATMGT_DEFAULT_TENANT") or "").strip()
+                and str(app.config.get("TINODE_INTERNAL_WS_URL") or "").strip()
+                and str(app.config.get("TINODE_API_KEY") or "").strip()
+            )
+        )
     )
     return json({
         "status": "ok",
         "employee_auth": {
             "configured": employee_auth_configured,
-            "login_endpoint": "/api/v1/auth/login",
+            "login_endpoint": "/api/v1/auth/sso" if account_sso_enabled else "/api/v1/auth/login",
         },
         "account_sso": {
             "enabled": account_sso_enabled,
@@ -758,7 +827,7 @@ async def management_forgot_password(request):
             func.lower(ManagementAccount.email) == identity,
         ),
     ).first()
-    if account is None or not account.email:
+    if account is None or not account.email or (account.properties or {}).get("auth_source") == "account":
         _audit(request, "AUTH_PASSWORD_RESET_REQUEST", True, tenant_id=tenant_id, properties={"matched": False})
         return json(generic_response, status=202)
 
@@ -832,6 +901,11 @@ async def management_reset_password(request):
     ).first()
     if account is None:
         return json({"error_code": "RESET_TOKEN_INVALID", "error_message": "The reset link is invalid or has expired."}, status=400)
+    if (account.properties or {}).get("auth_source") == "account":
+        return json({
+            "error_code": "AUTH_METHOD_DISABLED",
+            "error_message": "Password changes are managed by UpGO Account.",
+        }, status=403)
     try:
         await tinode_admin_reset_password(account.tinode_username, account.tinode_uid, new_password)
         account.password_hash = new_password_hash
@@ -876,6 +950,11 @@ async def management_change_password(request):
     except AuthError as error:
         return json({"error_code": "PASSWORD_INVALID", "error_message": str(error)}, status=error.status_code)
     account = _account_by_id(tenant_id, _user_id(current_user))
+    if account is not None and (account.properties or {}).get("auth_source") == "account":
+        return json({
+            "error_code": "AUTH_METHOD_DISABLED",
+            "error_message": "Password changes are managed by UpGO Account.",
+        }, status=403)
     if account is None or not verify_password(current_password, account.password_hash):
         _audit(request, "AUTH_PASSWORD_CHANGE", False, tenant_id=tenant_id, user_id=_user_id(current_user))
         return json({"error_code": "PASSWORD_INVALID", "error_message": "Current password is invalid."}, status=401)
@@ -905,6 +984,11 @@ async def management_update_profile(request):
     account = _account_by_id(tenant_id, _user_id(current_user))
     if account is None:
         return _auth_error()
+    if (account.properties or {}).get("auth_source") == "account":
+        return json({
+            "error_code": "ACCOUNT_PROFILE_READ_ONLY",
+            "error_message": "Profile fields are synchronized from UpGO Account.",
+        }, status=403)
     body = request.json or {}
     full_name = str(body.get("name") or body.get("full_name") or account.full_name or "").strip()
     email = str(body.get("email") if "email" in body else account.email or "").strip().lower() or None
@@ -973,6 +1057,11 @@ async def management_user_create(request):
         return _auth_error()
     if not _is_admin(current_user):
         return _forbidden_error()
+    if bool(app.config.get("CHAT_ACCOUNT_SSO_ENABLED", False)):
+        return json({
+            "error_code": "ACCOUNT_DIRECTORY_READ_ONLY",
+            "error_message": "Employee accounts are managed by UpGO Account.",
+        }, status=403)
     body = request.json or {}
     username = str(body.get("username") or "").strip().lower()
     password = str(body.get("password") or "")
@@ -1039,6 +1128,11 @@ async def management_user_update(request, account_id):
     ).first()
     if account is None:
         return json({"error_code": "NOT_FOUND", "error_message": "Account not found in this tenant."}, status=404)
+    if (account.properties or {}).get("auth_source") == "account":
+        return json({
+            "error_code": "ACCOUNT_PROFILE_READ_ONLY",
+            "error_message": "Account-backed users are synchronized from UpGO Account.",
+        }, status=403)
     body = request.json or {}
     was_active = bool(account.active)
     role = str(body.get("role") or account.role or "member").strip().lower()
@@ -1123,6 +1217,11 @@ async def management_user_reset_password(request, account_id):
     ).first()
     if account is None:
         return json({"error_code": "NOT_FOUND", "error_message": "Account not found in this tenant."}, status=404)
+    if (account.properties or {}).get("auth_source") == "account":
+        return json({
+            "error_code": "AUTH_METHOD_DISABLED",
+            "error_message": "Password changes are managed by UpGO Account.",
+        }, status=403)
     new_password = str((request.json or {}).get("new_password") or "")
     try:
         new_password_hash = hash_password(new_password)

@@ -286,6 +286,10 @@ def verify_http(base_url, origin):
     employee_auth = health_payload.get("employee_auth") or {}
     if not employee_auth.get("configured"):
         raise RuntimeError("Chatmgt employee authentication is not fully configured.")
+    account_sso = health_payload.get("account_sso") or {}
+    account_sso_enabled = bool(account_sso.get("enabled"))
+    if account_sso_enabled and not account_sso.get("configured"):
+        raise RuntimeError("UpGO Account SSO is enabled but not fully configured.")
 
     username = str(os.getenv("TINODE_ADMIN_USERNAME") or "").strip()
     password = str(os.getenv("TINODE_ADMIN_PASSWORD") or "")
@@ -296,10 +300,14 @@ def verify_http(base_url, origin):
         headers={"Origin": origin},
         timeout=20,
     )
-    if rejected_login.status_code != 401:
-        raise RuntimeError("Invalid employee credentials returned HTTP {}.".format(
-            rejected_login.status_code
+    expected_rejected_status = 403 if account_sso_enabled else 401
+    if rejected_login.status_code != expected_rejected_status:
+        raise RuntimeError("Employee password rejection returned HTTP {}; expected {}.".format(
+            rejected_login.status_code,
+            expected_rejected_status,
         ))
+    if account_sso_enabled and str((rejected_login.json() or {}).get("error_code") or "") != "AUTH_METHOD_DISABLED":
+        raise RuntimeError("Employee password login was not rejected with AUTH_METHOD_DISABLED.")
 
     management_login = requests.post(
         base_url + "/login",
@@ -324,6 +332,39 @@ def verify_http(base_url, origin):
     )
     if management_profile.status_code != 200:
         raise RuntimeError("Management profile check returned HTTP {}.".format(management_profile.status_code))
+
+    if account_sso_enabled:
+        sso_challenge = requests.post(
+            base_url + "/api/v1/auth/sso",
+            headers={"Origin": origin},
+            timeout=20,
+        )
+        challenge_payload = sso_challenge.json() if sso_challenge.content else {}
+        if sso_challenge.status_code != 401 or challenge_payload.get("error_code") != "ACCOUNT_LOGIN_REQUIRED":
+            raise RuntimeError("Account SSO without a session did not return ACCOUNT_LOGIN_REQUIRED.")
+
+        management_headers = dict(
+            MANAGEMENT_HEADER,
+            Origin=origin,
+            Cookie="vichat_management_access_token={}".format(management_token),
+        )
+        management_logout = requests.post(
+            base_url + "/api/v1/auth/logout",
+            headers=management_headers,
+            timeout=10,
+        )
+        if management_logout.status_code != 200:
+            raise RuntimeError("Management logout returned HTTP {}.".format(management_logout.status_code))
+        management_after_logout = requests.get(
+            base_url + "/api/v1/auth/me",
+            headers=management_headers,
+            timeout=10,
+        )
+        if management_after_logout.status_code not in (401, 403):
+            raise RuntimeError("The management token remained usable after logout.")
+
+        print("Health, CORS, Account SSO challenge, employee password rejection, and management login/logout checks passed.")
+        return
 
     login = requests.post(
         base_url + "/api/v1/auth/login",

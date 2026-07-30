@@ -156,6 +156,14 @@ class SSOIdentityTests(unittest.TestCase):
         self.assertNotIn("password", identity)
         self.assertNotIn("token", identity)
 
+    def test_avatar_url_is_used_as_the_account_profile_image(self):
+        payload = account_payload("tenant-a", "Tenant A")
+        payload["avatar_url"] = "https://account.upgo.vn/avatar/user-shared-001.png"
+
+        identity = normalize_account_session(payload)
+
+        self.assertEqual(identity["avatar"], payload["avatar_url"])
+
     def test_tinode_root_account_is_never_reused_for_sso(self):
         self.assertTrue(protected_tinode_account({"bootstrap": True}, "admin", "root"))
         self.assertTrue(protected_tinode_account({}, "admin", "ADMIN"))

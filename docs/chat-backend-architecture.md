@@ -1,87 +1,126 @@
 # Chat backend architecture
 
+## Delivery stages
+
+| Stage | Scope | Completion rule |
+| --- | --- | --- |
+| 1 | Chatmgt deployment, Alembic, domains, HTTPS | Service is healthy, database is at Alembic head, and public URLs use HTTPS |
+| 2 | UpGO Account login/logout | Employees authenticate from `account.upgo.vn`; Chatmgt never receives an Account password |
+| 3 | ChatUI data from Chatmgt | Directory, friends, and conversation metadata are tenant-scoped and loaded from Chatmgt |
+| 4 | Chatmgt and Tinode/ChatAPI | Realtime tokens, topics, messages, files, presence, and receipts pass their own acceptance tests |
+
+Stages must be tested independently. In particular, Step 2 must not provision a
+Tinode account or request a Tinode token.
+
 ## Service boundaries
 
-- `chat` (this React app): renders UI and keeps the Tinode access token in memory.
-- `chatmgt` (currently stored in the legacy `chatservice-main` folder): owns login sessions, tenants, accounts, profiles,
-  password reset tokens, friend requests, and conversation metadata.
-- `chatapi` (Tinode): owns realtime presence, topics, messages, receipts, and files.
+- `account.upgo.vn`: authoritative employee identity, password, current tenant,
+  tenant memberships, tenant role, email, display name, and avatar.
+- `chat` (React ChatUI): starts the Account login redirect and holds only the
+  public profile returned by Chatmgt. It never renders or submits an employee
+  password form.
+- `chatmgt` (`chatservice-main`): validates the Account session, maintains a
+  tenant-scoped profile projection needed by chat metadata, and issues/revokes
+  the Chatmgt HttpOnly session.
+- `chatapi` (Tinode): owns realtime topics, messages, files, presence, typing,
+  reactions, and receipts. This boundary belongs to Step 4.
 
-Runtime names are `chat` for the Nginx-hosted React UI, `chatmgt` for the
-management API, and `chatapi` for the unmodified Tinode service. Chatmgt does not
-expose chatbot, realtime-message, receipt, or file APIs.
+The local `management_account` row created during SSO is a projection, not a new
+user-facing account. It preserves the authoritative Account user ID and tenant ID
+in `properties`, uses a deterministic tenant-scoped internal ID, and stores
+`!account-sso-only` as an unusable password marker. Passwords, Account tokens,
+cookies, and other secrets are never copied into this row.
 
-| Operation | Owner |
-| --- | --- |
-| Render screens and hold the short-lived Tinode token | `chat` |
-| Login, logout, forgot/reset password, profile, directory, friends | `chatmgt` |
-| Thread metadata and Tinode topic binding | `chatmgt` |
-| Topics, messages, files, typing, presence, reactions, receipts | `chatapi` |
+## Step 2 login flow
 
-Chatmgt may call chatapi server-to-server only for account provisioning, login
-token issuance, and credential synchronization. It never stores Tinode messages.
+1. ChatUI sends `POST /api/v1/auth/sso` with browser credentials enabled and no body.
+2. Chatmgt reads only the configured Account cookie (default `session`) from the request.
+3. Chatmgt forwards that cookie server-to-server to `GET /current_user` on `ACCOUNT_URL`.
+4. Chatmgt rejects an expired session, missing Account user ID, missing or ambiguous
+   tenant selection, inactive membership, or an identity collision with a local account.
+5. Chatmgt synchronizes the tenant/profile projection and issues a JWT with
+   `amr=account_sso` in the `vichat_access_token` HttpOnly cookie.
+6. The response contains the public user, tenant, and `connection: management`.
+   It contains no password and no Tinode token.
 
-The browser authenticates only through `chatmgt`. A successful login returns an
-HttpOnly management cookie and a short-lived Tinode token. The browser then uses
-that Tinode token for realtime chat; it never receives the Tinode root password.
+When Account returns `SESSION_EXPIRED` (currently HTTP 520), Chatmgt normalizes
+it to HTTP 401 with `ACCOUNT_LOGIN_REQUIRED`. ChatUI redirects to:
 
-## Main API contract
+```text
+https://account.upgo.vn/?continue=<URL-encoded ChatUI callback URL>
+```
+
+The callback URL includes a short-lived query marker so ChatUI retries SSO once
+after Account redirects back. It removes the marker before rendering the app.
+
+## Step 2 logout flow
+
+For a JWT issued with `amr=account_sso`, `POST /api/v1/auth/logout`:
+
+1. Calls Account `POST /logout` with the shared Account cookie when available.
+2. Revokes the current Chatmgt JWT through Redis.
+3. Clears `vichat_access_token`.
+4. Clears the configured Account cookie for `.upgo.vn`.
+
+Cookie clearing still happens if Account already considers the session expired or
+its logout response cannot be confirmed. A logout failure must not trap the user
+inside ChatUI.
+
+## Administrator isolation
+
+`POST /login` is reserved for the Chatmgt management page and requires
+`X-Vichat-Session-Scope: management`. It verifies the local administrator and
+issues `vichat_management_access_token`; it does not call Tinode.
+
+When `CHAT_ACCOUNT_SSO_ENABLED=true`:
+
+- `POST /api/v1/auth/login` rejects employee password login.
+- Password reset/change endpoints reject Account-backed projections.
+- Account-backed profile fields are read-only in Chatmgt.
+- Creating employee credentials in Chatmgt is disabled; employees must already
+  exist in UpGO Account.
+- Revoking a Chatmgt session remains available because it is Chatmgt-owned state.
+
+## Step 2 API contract
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `POST` | `/login` | Login and return the current account plus Tinode token |
-| `GET` | `/api/v1/auth/me` | Read the authenticated profile |
-| `POST` | `/api/v1/auth/logout` | Revoke the current session |
-| `GET` | `/api/v1/auth/health` | Report password-reset configuration readiness |
-| `POST` | `/api/v1/auth/forgot-password` | Create a one-time reset token and send email |
-| `POST` | `/api/v1/auth/reset-password` | Reset management and Tinode passwords together |
-| `POST` | `/api/v1/auth/password` | Change password while authenticated |
-| `PUT` | `/api/v1/auth/profile` | Update the current user's profile |
-| `GET/POST` | `/api/v1/chat/threads` | List or create tenant-scoped chat threads |
-| `PUT` | `/api/v1/chat/threads/{id}/tinode-topic` | Bind metadata to a Tinode topic |
+| `POST` | `/api/v1/auth/sso` | Validate Account session and issue Chatmgt session |
+| `GET` | `/api/v1/auth/me` | Validate/read the current Chatmgt and Account-backed profile |
+| `POST` | `/api/v1/auth/logout` | Revoke Chatmgt and end/clear Account session |
+| `GET` | `/api/v1/auth/health` | Report employee auth and Account SSO readiness |
+| `POST` | `/login` | Separate local Chatmgt administrator login |
+| `POST` | `/api/v1/auth/login` | Legacy employee password login; disabled in Account SSO mode |
 
-The older `/api/v1/conversation` routes remain available for compatibility.
-
-## Password reset security
-
-- Only the SHA-256 hash of a reset token is stored.
-- A new request invalidates older unused tokens for the same account.
-- Tokens are single-use, expire by default after 30 minutes, and requests are
-  rate-limited through Redis.
-- Responses do not reveal whether an account exists.
-- Password changes increment `auth_version`, invalidating all older JWT sessions.
-- Tinode is updated first; the management database commits only after Tinode
-  confirms the password update.
+The existing Tinode token/topic endpoints remain Step 4 code paths and are not
+called by the Step 2 ChatUI session.
 
 ## Required production configuration
 
-Set these values in `infrastructure/chatservice/.env`:
-
 ```dotenv
+CHAT_ACCOUNT_SSO_ENABLED=true
+ACCOUNT_URL=https://account.upgo.vn
+ACCOUNT_SSO_PROFILE_PATH=/current_user
+ACCOUNT_SSO_LOGOUT_PATH=/logout
+ACCOUNT_SESSION_COOKIE_NAME=session
+ACCOUNT_SESSION_COOKIE_DOMAIN=.upgo.vn
+ACCOUNT_SESSION_COOKIE_SECURE=true
 CHAT_AUTH_JWT_SECRET=<at-least-32-random-characters>
-CHAT_PASSWORD_RESET_URL=https://chat.example.com/?reset_token={token}
-CHAT_PASSWORD_RESET_DEBUG=false
-CHAT_SMTP_HOST=smtp.example.com
-CHAT_SMTP_PORT=587
-CHAT_SMTP_USERNAME=<smtp-user>
-CHAT_SMTP_PASSWORD=<smtp-password>
-CHAT_SMTP_FROM=no-reply@example.com
-TINODE_ADMIN_USERNAME=<dedicated-tinode-root-account>
-TINODE_ADMIN_PASSWORD=<tinode-root-password>
+CHAT_AUTH_COOKIE_SECURE=true
 ```
 
-Use a dedicated Tinode root account for server-to-server operations. Do not put
-these credentials in Vite variables or expose them to the browser.
+The real `infrastructure/production/.env` is intentionally not modified by code
+changes. Operators must update it explicitly before rebuilding Chatmgt.
 
-## Local startup
+## Step 2 acceptance
 
-Start Tinode first, then chat management, then Vite:
+- Existing active Account user can enter Chat without submitting a password to Chatmgt.
+- Missing/expired Account cookie produces `ACCOUNT_LOGIN_REQUIRED` and the correct redirect.
+- Inactive, missing, cross-tenant, or ambiguous membership is rejected.
+- `/api/v1/auth/sso` does not call Tinode and returns no Tinode token.
+- Employee password login is disabled while management administrator login remains isolated.
+- Logout revokes Chatmgt, calls Account logout, and clears both cookie scopes.
+- Refresh after logout cannot reopen `/api/v1/auth/me`.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\infrastructure\tinode\start.ps1
-powershell -ExecutionPolicy Bypass -File .\infrastructure\chatservice\start.ps1
-npm run dev
-```
-
-Migration `006_password_reset_tokens.sql` is rerunnable and is applied by the
-chatservice startup script.
+Directory/conversation correctness is accepted in Step 3; realtime messaging is
+accepted in Step 4.

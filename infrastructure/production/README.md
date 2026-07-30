@@ -5,7 +5,7 @@ Redis, and the container Nginx. Production is ready only after all four stages
 pass:
 
 1. Infrastructure, Alembic, domains, HTTPS, WSS, CORS, backup, and rollback.
-2. Chatmgt employee login/logout, server-scoped tenant identity, and revoked-session rejection.
+2. Chatmgt employee login/logout through existing `account.upgo.vn` sessions, tenant identity, and revoked-session rejection.
 3. ChatUI directory/conversation data from Chatmgt with two-tenant isolation.
 4. Chatmgt-to-Tinode token bridge, topic validation, internal WebSocket, and public WSS publish/delete.
 
@@ -41,7 +41,7 @@ The checked-in host configuration uses:
 
 - ChatUI: `https://chat.upgo.vn`
 - Chatmgt: `https://chatmgt.upgo.vn`
-- Account administration platform (not employee Chat login): `https://account.upgo.vn`
+- Employee identity and login platform: `https://account.upgo.vn`
 - ChatUI upstream: `127.0.0.1:8094`
 - Chatmgt upstream: the configured private bind address on port `8081`
 
@@ -58,7 +58,7 @@ proxy, obtain TLS certificates, run `sudo nginx -t`, then reload Nginx.
 4. Builds pinned images and creates timestamped `pg_dump -Fc` backups before Alembic.
 5. Runs `alembic upgrade head`, bootstrapping the first administrator only when the database is empty.
 6. Validates Nginx, starts the services, and waits for health checks.
-7. Verifies Chatmgt login/profile/logout/revocation, tenant-scoped data, Tinode token TTL, internal WebSocket, public WSS, and temporary topic publish/delete.
+7. In Account SSO mode, verifies health/CORS, the missing-session SSO challenge, employee password rejection, and isolated management login/logout. Later-stage Tinode checks run only in the legacy employee-password path.
 8. Runs an isolated two-tenant API test and removes its temporary records.
 9. Optionally verifies the public domains when `VERIFY_PUBLIC_URLS=true`.
 
@@ -67,10 +67,32 @@ Tinode uploads, UID encryption keys, and backup files together.
 
 ## Employee login acceptance test
 
-After deployment, open `chat.upgo.vn` and sign in with an active employee
-account created by the Chatmgt administrator. Verify the displayed user and
-tenant, then log out and confirm refresh cannot reopen the protected UI and
-`/api/v1/auth/me` returns `401` or `403`.
+Before rebuilding, update the existing real `.env`; copying a new example does
+not modify an already deployed file:
+
+```dotenv
+CHAT_ACCOUNT_SSO_ENABLED=true
+ACCOUNT_URL=https://account.upgo.vn
+ACCOUNT_SSO_PROFILE_PATH=/current_user
+ACCOUNT_SSO_LOGOUT_PATH=/logout
+ACCOUNT_SESSION_COOKIE_NAME=session
+ACCOUNT_SESSION_COOKIE_DOMAIN=.upgo.vn
+ACCOUNT_SESSION_COOKIE_SECURE=true
+```
+
+After deployment, first sign in at `account.upgo.vn` with an existing active
+employee and select the intended tenant. Open `chat.upgo.vn`, click **Đăng nhập
+bằng UpGO Account**, and verify that Chat displays the Account user and tenant.
+The `/api/v1/auth/sso` request must have no username/password body and its response
+must contain `connection: management` without a Tinode token.
+
+Log out from Chat and confirm that refresh cannot reopen the protected UI,
+`/api/v1/auth/me` returns `401` or `403`, and Account also requires login again.
+Repeat with an inactive membership and with two different tenants to confirm
+rejection/isolation behavior.
+
+This is the Step 2 acceptance test only. Directory/conversation loading is Step
+3, and realtime Tinode messaging is Step 4.
 
 Repeat with users from two tenants before declaring tenant acceptance complete.
 
@@ -87,6 +109,6 @@ The final checks include:
 
 ```text
 Database revision and credential policy are valid.
-Health, CORS, directory, conversations, Tinode WebSocket, login, and logout checks passed.
+Health, CORS, Account SSO challenge, employee password rejection, and management login/logout checks passed.
 Two-tenant user, conversation, friend, and participant checks passed.
 ```
