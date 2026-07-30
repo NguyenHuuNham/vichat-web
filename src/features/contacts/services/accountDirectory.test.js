@@ -1,7 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { updateAccountPresence } from './accountDirectory.js';
+import { identitiesOverlap, identityValues, updateAccountPresence } from './accountDirectory.js';
+
+test('account identities include both management and Tinode identifiers', () => {
+  const account = { id: 'account-1', uid: 'account-alias', tinodeUid: 'usr-one' };
+
+  assert.deepEqual(identityValues(account), ['account-1', 'account-alias', 'usr-one']);
+  assert.equal(identitiesOverlap(account, { id: 'usr-one' }), true);
+});
 
 test('presence update preserves the account array when nothing changes', () => {
   const accounts = [
