@@ -119,6 +119,7 @@ class ChatAuthContractTests(unittest.TestCase):
         )
 
         self.assertIn("_validated_account_identity", token_source)
+        self.assertIn("_repair_unprovisioned_tinode_username", token_source)
         self.assertIn("tinode_sso_login", token_source)
         self.assertIn('"connection": "tinode"', token_source)
 

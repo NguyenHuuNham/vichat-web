@@ -84,7 +84,8 @@ class SSOIdentityTests(unittest.TestCase):
         self.assertNotEqual(tinode_a, tinode_b)
         self.assertTrue(valid_tinode_username(tinode_a))
         self.assertTrue(valid_tinode_username(tinode_b))
-        self.assertLessEqual(len(tinode_a), 32)
+        self.assertLessEqual(len(tinode_a), 26)
+        self.assertLessEqual(len("basic:" + tinode_a), 32)
         self.assertEqual(tenant_a["role"], "admin")
         self.assertEqual(tenant_b["role"], "member")
 

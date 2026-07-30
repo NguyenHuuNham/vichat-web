@@ -363,6 +363,7 @@ def _sso_account(identity, mark_login=True):
     account.password_hash = ACCOUNT_SSO_PASSWORD_MARKER
     account.active = bool(identity.get("active", True))
     account.updated_at = now
+    _repair_unprovisioned_tinode_username(account, identity)
     if mark_login:
         account.last_login_at = now
     properties = dict(account.properties or {})
@@ -416,15 +417,23 @@ def _tinode_projection_identity(account):
     }
 
 
+def _repair_unprovisioned_tinode_username(account, identity):
+    if account.tinode_uid:
+        return account.tinode_username
+    expected_username = stable_tinode_username(
+        identity.get("tenant_id"),
+        identity.get("account_user_id"),
+    )
+    if account.tinode_username != expected_username:
+        account.tinode_username = expected_username
+    return expected_username
+
+
 async def _ensure_tinode_account(account):
     if account.tinode_uid:
         return str(account.tinode_uid)
     identity = _tinode_projection_identity(account)
-    if not account.tinode_username:
-        account.tinode_username = stable_tinode_username(
-            identity["tenant_id"],
-            identity["account_user_id"],
-        )
+    _repair_unprovisioned_tinode_username(account, identity)
     tinode_auth = await tinode_sso_login(
         identity,
         account.tinode_username,
@@ -753,6 +762,7 @@ async def management_tinode_token(request):
         return _auth_error()
     try:
         identity = await _validated_account_identity(request, account)
+        _repair_unprovisioned_tinode_username(account, identity)
         tinode_auth = await tinode_sso_login(
             identity,
             account.tinode_username,

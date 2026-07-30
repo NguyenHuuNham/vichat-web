@@ -204,6 +204,26 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
             "unsub": True,
         })
 
+    async def test_account_creation_preserves_server_failure_instead_of_retrying_as_conflict(self):
+        socket = FakeSocket([
+            {"ctrl": {"id": "1", "code": 201}},
+            {"ctrl": {"id": "2", "code": 500, "text": "database value is too long"}},
+        ])
+        with self.config(), patch.object(
+            auth_service.aiohttp,
+            "ClientSession",
+            self.client_session(socket),
+        ):
+            with self.assertRaises(auth_service.AuthError) as raised:
+                await auth_service.tinode_create_account(
+                    "upgo_short_login",
+                    "derived-password",
+                    "Account User",
+                )
+
+        self.assertEqual(raised.exception.status_code, 502)
+        self.assertEqual(str(raised.exception), "database value is too long")
+
 
 if __name__ == "__main__":
     unittest.main()

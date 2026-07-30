@@ -150,6 +150,12 @@ tenant-scoped Tinode credential on the server, provisions or repairs the Tinode
 account, and returns only a short-lived Tinode token. The Account password and
 the derived Tinode credential are never returned to ChatUI.
 
+The deterministic Tinode basic username is limited to 26 characters because
+Tinode persists the composite `basic:<username>` identity in a 32-character
+column. Account projections which failed before Tinode provisioning are repaired
+to the current deterministic username on their next SSO/token request; an
+already provisioned Tinode UID is never renamed automatically.
+
 For a conversation without a Tinode topic, ChatUI calls
 `POST /api/v1/conversation/<id>/tinode-prepare`. Chatmgt verifies current
 membership and prepares missing Tinode user mappings for the active Chatmgt

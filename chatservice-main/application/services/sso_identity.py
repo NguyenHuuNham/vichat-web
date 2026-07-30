@@ -177,7 +177,8 @@ def stable_account_id(tenant_id, account_user_id):
 
 def stable_tinode_username(tenant_id, account_user_id):
     digest = hashlib.sha256("{}\x00{}".format(tenant_id, account_user_id).encode("utf-8")).hexdigest()
-    return "upgo_{}".format(digest[:27])
+    # Tinode stores basic logins as "basic:<username>" in a VARCHAR(32).
+    return "upgo_{}".format(digest[:21])
 
 
 def derive_tinode_password(secret, tenant_id, account_user_id, tinode_username):
@@ -214,7 +215,10 @@ def protected_tinode_account(properties, tinode_username, admin_username):
 
 
 def valid_tinode_username(value):
-    return bool(re.match(r"^[A-Za-z0-9][A-Za-z0-9_.]{1,30}[A-Za-z0-9]$", str(value or "")))
+    username = str(value or "")
+    return len(username) <= 26 and bool(
+        re.match(r"^[A-Za-z0-9][A-Za-z0-9_.]{1,24}[A-Za-z0-9]$", username)
+    )
 
 
 def valid_tinode_topic(value, is_group):

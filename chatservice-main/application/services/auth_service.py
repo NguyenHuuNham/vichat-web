@@ -397,8 +397,10 @@ async def tinode_create_account(username, password, full_name):
             })
             created = await socket.receive_json()
             ctrl = created.get("ctrl") or {}
-            if ctrl.get("code", 500) >= 300:
-                raise AuthError(ctrl.get("text") or "Tinode account creation failed.", 409)
+            code = int(ctrl.get("code", 500))
+            if code >= 300:
+                status_code = 409 if code == 409 else (400 if code < 500 else 502)
+                raise AuthError(ctrl.get("text") or "Tinode account creation failed.", status_code)
             return {
                 "token": ctrl.get("params", {}).get("token"),
                 "expires": ctrl.get("params", {}).get("expires"),
