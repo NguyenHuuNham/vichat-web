@@ -987,6 +987,22 @@ body {
 }
 
 /* Chat Input Controls */
+.management-realtime-notice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    border-top: 1px solid #f0c36a;
+    background: linear-gradient(90deg, #fff7df 0%, #fffdf7 100%);
+    color: #744c00;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.management-realtime-notice i {
+    color: #b97800;
+}
+
 .chat-main-input {
     background-color: var(--bg-white);
     border-top: 1px solid var(--border-color);
@@ -1310,6 +1326,7 @@ body {
 
 .status-dot.online { background-color: var(--status-online); }
 .status-dot.offline { background-color: var(--status-offline); }
+.status-dot.managed { background-color: #d58b00; }
 
 .detail-actions {
     border-top: 1px solid var(--border-color);

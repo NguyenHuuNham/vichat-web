@@ -95,12 +95,58 @@ When `CHAT_ACCOUNT_SSO_ENABLED=true`:
 The existing Tinode token/topic endpoints remain Step 4 code paths and are not
 called by the Step 2 ChatUI session.
 
+## Step 3 directory and conversation flow
+
+Chatmgt is the API source consumed by ChatUI, but it does not become the
+authoritative employee identity system. For an Account-backed Chat session:
+
+1. `GET /api/v1/chat/users` revalidates `/current_user` so the Account tenant
+   still matches the Chatmgt JWT.
+2. Chatmgt forwards the shared Account cookie server-to-server to the configured
+   directory path, default `GET /api/v1/user?page=1&results_per_page=1000`.
+3. Each returned employee is normalized and upserted as a tenant-scoped
+   `management_account` projection using the same deterministic ID as Step 2.
+   Missing optional fields do not erase a previously synchronized role or
+   profile field. Invalid/conflicting records are skipped and counted without
+   exposing secrets. A fresh directory snapshot must contain the authenticated
+   user; Account-backed projections absent from that verified snapshot are
+   deactivated instead of remaining visible indefinitely.
+4. ChatUI reads directory/search, friend requests, conversations, and
+   participants only from Chatmgt. It never calls the Account directory from the
+   browser.
+5. ChatUI persists direct conversations and groups to Chatmgt before displaying
+   them. A deterministic participant key reuses an existing direct conversation
+   and reactivates a participant who previously removed it.
+
+If Account directory refresh is temporarily unavailable, Chatmgt serves the
+last valid tenant-scoped projections with `directory_sync.status=stale`. Login,
+tenant mismatch, or revoked Account sessions are never converted into a stale
+success response.
+
+The `management` UI mode is not demo mode. It permits directory, friendship,
+conversation, and membership operations, while disabling employee-to-employee
+messages and files with an explicit Step 4 notice. The chatbot remains a
+separate Chatmgt API flow.
+
+### Step 3 API contract
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/chat/users` | Refresh/cache the Account tenant directory and return Chatmgt projections |
+| `GET` | `/api/v1/chat/users?q=...` | Search the cached tenant directory without another upstream refresh |
+| `GET/POST` | `/api/v1/friend-request` | List or create tenant-scoped friend requests |
+| `PUT` | `/api/v1/friend-request/<id>` | Accept or reject an incoming request |
+| `GET/POST` | `/api/v1/conversation` | List member conversations or create/reopen direct/group metadata |
+| `POST` | `/api/v1/conversation/<id>/participants` | Add group participants as the owner |
+| `DELETE` | `/api/v1/conversation/<id>/participants/<user-id>` | Remove a member or remove the current user from the list |
+
 ## Required production configuration
 
 ```dotenv
 CHAT_ACCOUNT_SSO_ENABLED=true
 ACCOUNT_URL=https://account.upgo.vn
 ACCOUNT_SSO_PROFILE_PATH=/current_user
+ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/user
 ACCOUNT_SSO_LOGOUT_PATH=/logout
 ACCOUNT_SESSION_COOKIE_NAME=session
 ACCOUNT_SESSION_COOKIE_DOMAIN=.upgo.vn
@@ -124,3 +170,17 @@ changes. Operators must update it explicitly before rebuilding Chatmgt.
 
 Directory/conversation correctness is accepted in Step 3; realtime messaging is
 accepted in Step 4.
+
+## Step 3 acceptance
+
+- An active Account user sees all valid current-tenant employees returned by
+  Account, while foreign-tenant and inactive projections are not exposed.
+- Search, friend request send/accept/reject, direct conversation, group creation,
+  add/remove member, leave, and per-user removal persist through refresh.
+- Reopening the same direct pair reuses one Chatmgt conversation instead of
+  producing duplicates.
+- `connection: management` is labeled as Chatmgt data mode, never demo mode.
+- Employee messages/files are disabled with an explicit Step 4 notice and are
+  not written to local browser demo storage.
+- Account profile fields remain read-only in ChatUI and are synchronized only
+  from Account.

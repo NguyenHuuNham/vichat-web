@@ -28,6 +28,76 @@ def _chat_role(role):
     return "member"
 
 
+def _directory_active(payload):
+    status = str((payload or {}).get("status") or "").strip().lower()
+    if status in ("disabled", "inactive", "deleted", "suspended", "blocked"):
+        return False
+    for name in ("active", "is_active", "enabled"):
+        if name not in payload:
+            continue
+        value = payload.get(name)
+        if isinstance(value, bool):
+            return value
+        return str(value or "").strip().lower() not in ("0", "false", "no", "off", "disabled")
+    return True
+
+
+def _directory_text(value):
+    if isinstance(value, dict):
+        value = _first(value, "name", "full_name", "display_name", "title", "code")
+    return str(value or "").strip()
+
+
+def normalize_account_directory_record(payload, tenant_id, tenant_name=""):
+    if not isinstance(payload, dict):
+        raise SSOIdentityError("Account directory returned an invalid user record.")
+
+    account_user_id = str(_first(payload, "id", "uid", "user_id") or "").strip()
+    if not account_user_id:
+        raise SSOIdentityError("Account directory user has no ID.")
+
+    tenant_id = str(tenant_id or "").strip()
+    if not tenant_id or len(tenant_id) > 50:
+        raise SSOIdentityError("Account directory tenant is invalid.")
+
+    username = str(_first(payload, "user_name", "username", "email", "phone") or "").strip().lower()
+    if not username:
+        raise SSOIdentityError("Account directory user has no usable username.")
+    if len(username) > 100:
+        username = "user_{}".format(hashlib.sha256(username.encode("utf-8")).hexdigest()[:32])
+
+    email = str(payload.get("email") or "").strip().lower() or None
+    if email and len(email) > 255:
+        raise SSOIdentityError("Account directory email exceeds the Chatmgt limit.")
+
+    full_name = str(
+        _first(payload, "full_name", "display_name", "name", "user_name", "username")
+        or username
+    ).strip()[:255]
+    raw_role = _first(payload, "current_tenant_role", "tenant_role", "role")
+
+    return {
+        "account_user_id": account_user_id,
+        "tenant_id": tenant_id,
+        "tenant_name": str(tenant_name or tenant_id).strip()[:255],
+        "username": username,
+        "email": email,
+        "full_name": full_name,
+        "role": _chat_role(raw_role),
+        "account_role": str(raw_role or "member").strip().lower(),
+        "department": _directory_text(payload.get("department"))[:255],
+        "title": _directory_text(payload.get("title"))[:255],
+        "avatar": str(_first(payload, "avatar_url", "avatar", "photo") or "").strip(),
+        "active": _directory_active(payload),
+        "directory_projection": True,
+        "role_present": raw_role is not None,
+        "email_present": "email" in payload,
+        "department_present": "department" in payload,
+        "title_present": "title" in payload,
+        "avatar_present": any(name in payload for name in ("avatar_url", "avatar", "photo")),
+    }
+
+
 def normalize_account_session(payload):
     if not isinstance(payload, dict):
         raise SSOIdentityError("Account returned an invalid session payload.")

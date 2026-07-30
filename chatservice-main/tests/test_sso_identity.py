@@ -13,6 +13,7 @@ SSOIdentityError = SSO_IDENTITY.SSOIdentityError
 account_session_matches = SSO_IDENTITY.account_session_matches
 derive_tinode_password = SSO_IDENTITY.derive_tinode_password
 normalize_account_session = SSO_IDENTITY.normalize_account_session
+normalize_account_directory_record = SSO_IDENTITY.normalize_account_directory_record
 protected_tinode_account = SSO_IDENTITY.protected_tinode_account
 stable_account_id = SSO_IDENTITY.stable_account_id
 stable_tinode_username = SSO_IDENTITY.stable_tinode_username
@@ -42,6 +43,34 @@ def account_payload(tenant_id, tenant_name, role="member", status="active"):
 
 
 class SSOIdentityTests(unittest.TestCase):
+    def test_directory_user_is_scoped_to_the_verified_tenant(self):
+        identity = normalize_account_directory_record({
+            "id": "account-user-2",
+            "user_name": "lan.tran",
+            "display_name": "Tran Thi Lan",
+            "email": "lan@example.vn",
+            "department": {"name": "Kinh doanh"},
+            "role": "admin",
+            "avatar_url": "https://account.upgo.vn/avatar/account-user-2.png",
+        }, "tenant-a", "Tenant A")
+
+        self.assertEqual(identity["tenant_id"], "tenant-a")
+        self.assertEqual(identity["account_user_id"], "account-user-2")
+        self.assertEqual(identity["department"], "Kinh doanh")
+        self.assertEqual(identity["role"], "admin")
+        self.assertTrue(identity["active"])
+        self.assertNotIn("password", identity)
+        self.assertNotIn("token", identity)
+
+    def test_directory_user_preserves_inactive_status(self):
+        identity = normalize_account_directory_record({
+            "id": "account-user-disabled",
+            "user_name": "disabled.user",
+            "status": "disabled",
+        }, "tenant-a", "Tenant A")
+
+        self.assertFalse(identity["active"])
+
     def test_two_tenants_get_distinct_chat_and_tinode_identities(self):
         tenant_a = normalize_account_session(account_payload("tenant-a", "Tenant A", role="admin"))
         tenant_b = normalize_account_session(account_payload("tenant-b", "Tenant B"))

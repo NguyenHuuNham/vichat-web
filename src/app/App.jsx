@@ -153,6 +153,7 @@ function conversationTimestamp(room) {
 function shouldShowInConversationList(room) {
   if (!room) return false;
   if (room.isGroup || room.isChatbot) return true;
+  if (isManagementConversationId(room.managementId || room.id)) return true;
   // Tinode may create an empty P2P topic while searching for a user or opening
   // their profile. It becomes a real conversation only after the first message.
   return Array.isArray(room.messages) && room.messages.length > 0;
@@ -601,6 +602,16 @@ function App() {
     badge: 0,
   };
   const activeMessageCount = activeChat.messages?.length || 0;
+  const usesManagementData = chatManagementService.remote && chatMode !== 'demo';
+  const realtimeMessagingPending = usesManagementData && chatMode !== 'tinode' && !activeChat.isChatbot;
+  const accountProfileReadOnly = usesManagementData;
+  const chatModeLabel = chatMode === 'tinode'
+    ? 'Tinode realtime'
+    : usesManagementData ? 'Dữ liệu Chatmgt' : 'Demo mode';
+  const chatModeIcon = chatMode === 'tinode' ? 'fa-bolt' : usesManagementData ? 'fa-database' : 'fa-flask';
+  const accountPresenceLabel = account => chatMode === 'tinode'
+    ? (isAccountOnline(account) ? 'Online' : 'Offline')
+    : usesManagementData ? 'Danh bạ Chatmgt' : (isAccountOnline(account) ? 'Online' : 'Offline');
 
   const isCurrentUserOnline = Boolean(
     isLoggedIn && currentUser && (chatMode !== 'tinode' || connectionStatus === 'online')
@@ -712,18 +723,6 @@ function App() {
   useEffect(() => {
     currentChatIdRef.current = currentChatId;
   }, [currentChatId]);
-
-  useEffect(() => {
-    if (!isLoggedIn) {
-      setDirectoryAccounts([]);
-      return undefined;
-    }
-    let cancelled = false;
-    chatManagementService.listUsers()
-      .then(accounts => { if (!cancelled) setDirectoryAccounts(accounts); })
-      .catch(err => { if (!cancelled) setChatError(err.message); });
-    return () => { cancelled = true; };
-  }, [isLoggedIn]);
 
   useEffect(() => () => {
     if (groupAvatarPreview) URL.revokeObjectURL(groupAvatarPreview);
@@ -1136,7 +1135,7 @@ function App() {
     tinodeSessionRequestRef.current = null;
     setCurrentUser(user);
     setChatMode(user.connection || 'demo');
-    setConnectionStatus(user.connection === 'tinode' ? 'ready' : 'demo');
+    setConnectionStatus(user.connection === 'tinode' ? 'ready' : user.connection === 'management' ? 'managed' : 'demo');
     setChatError('');
     setIsLoggedIn(true);
     if (user.connection === 'tinode' && settings.desktopNotifications && typeof window !== 'undefined'
@@ -1148,6 +1147,9 @@ function App() {
         const accounts = await chatManagementService.listUsers();
         if (accountSessionRef.current !== accountSession) return;
         setDirectoryAccounts(accounts);
+        if (chatManagementService.directorySync?.status === 'stale') {
+          setChatError('Account đang tạm thời không trả được danh bạ mới; Chatmgt đang hiển thị dữ liệu đồng bộ gần nhất.');
+        }
         const managed = await chatManagementService.listConversations({
           userId: managementUserId,
         });
@@ -1395,6 +1397,10 @@ function App() {
     event.preventDefault();
     setChatError('');
     setProfileNotice('');
+    if (accountProfileReadOnly) {
+      setChatError('Hồ sơ nhân sự được quản lý tại account.upgo.vn và chỉ được đồng bộ sang Chatmgt.');
+      return;
+    }
     if (!profileForm.name.trim()) {
       setChatError('Vui lòng nhập họ tên hiển thị.');
       return;
@@ -1456,6 +1462,10 @@ function App() {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
+    if (accountProfileReadOnly) {
+      setChatError('Ảnh đại diện được quản lý tại account.upgo.vn.');
+      return;
+    }
     if (!file.type.startsWith('image/')) {
       setChatError('Vui lòng chọn đúng tệp hình ảnh.');
       return;
@@ -1571,8 +1581,8 @@ function App() {
   };
 
   const openFriendRequest = (contact) => {
-    if (chatMode !== 'tinode') {
-      setChatError('Kết bạn chỉ khả dụng khi hệ thống đang kết nối Tinode.');
+    if (!usesManagementData) {
+      setChatError('Kết bạn chỉ khả dụng khi Chat đang kết nối Chatmgt.');
       return;
     }
     setFriendRequestTarget(contact);
@@ -1654,7 +1664,7 @@ function App() {
       let managedRoom = linkedRoom;
       let tinodeTopic = linkedRoom?.tinodeTopic
         || chatManagementService.getTinodeTopic(viewerId, linkedRoom?.managementId || contactId);
-      if (chatMode === 'tinode' && contact.id) {
+      if (usesManagementData && contact.id) {
         if (managementConversationSessionRef.current !== accountSession) {
           throw new Error('Danh sách cuộc trò chuyện chưa được chatmgt xác nhận.');
         }
@@ -1668,7 +1678,7 @@ function App() {
           if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
         }
         stateConversationId = managedRoom.id;
-        const roomForTinode = {
+        const managedStateRoom = {
           ...managedRoom,
           id: stateConversationId,
           managementId: managedRoom.managementId || stateConversationId,
@@ -1679,8 +1689,10 @@ function App() {
           participantIds,
           accountSession,
         };
-        tinodeTopic = await ensureTinodeConversationTopic(roomForTinode);
-        await tinodeClient.restoreConversation(tinodeTopic);
+        if (chatMode === 'tinode') {
+          tinodeTopic = await ensureTinodeConversationTopic(managedStateRoom);
+          await tinodeClient.restoreConversation(tinodeTopic);
+        }
       }
       const previousRooms = conversationsRef.current;
       const existing = previousRooms[stateConversationId] || previousRooms[contactId] || managedRoom || linkedRoom;
@@ -1695,7 +1707,7 @@ function App() {
         isGroup: false,
         avatarHtml: contact.avatar ? <img src={contact.avatar} alt={contact.name} /> : <span>{contact.name.slice(0, 1).toUpperCase()}</span>,
         avatarClass: '',
-        membersCount: isAccountOnline(contact) ? 'Online' : 'Offline',
+        membersCount: accountPresenceLabel(contact),
         description: `Cuộc trò chuyện với ${contact.name}`,
         admin: '',
         members: [contact],
@@ -1705,7 +1717,7 @@ function App() {
         time: existing?.time || getTimeString(),
         updatedAt: existing?.updatedAt || new Date().toISOString(),
         badge: existing?.badge || 0,
-        ...(chatMode === 'tinode' ? { accountSession } : {}),
+        ...(usesManagementData ? { accountSession } : {}),
       };
       conversationsRef.current = next;
       setConversations(next);
@@ -1742,12 +1754,13 @@ function App() {
           actorName: currentUser?.name,
         });
         await tinodeClient.leave(topicName);
+      }
+      if (usesManagementData) {
         await chatManagementService.removeConversationParticipant(
           activeChat.managementId || activeChat.id,
           actorId,
         );
-      }
-      if (chatMode === 'demo') {
+      } else {
         persistDemoGroupMessage(activeChat, systemMessage);
         leaveDemoGroup(activeChat.id, actorId);
       }
@@ -1769,8 +1782,11 @@ function App() {
   const handleDeleteConversation = async () => {
     if (!activeChat?.id || activeChat.isChatbot || isDeletingConversation) return;
     const kind = activeChat.isGroup ? 'nhóm' : 'cuộc trò chuyện';
+    const deleteEffect = usesManagementData
+      ? `${kind} sẽ được gỡ khỏi danh sách của bạn trên Chatmgt. Nội dung realtime chưa thuộc bước này.`
+      : `Toàn bộ tin nhắn và tệp trong ${kind} này sẽ bị xóa khỏi tài khoản của bạn và không thể khôi phục.`;
     const confirmed = window.confirm(
-      `Bạn có chắc muốn xóa ${kind} "${activeChat.name}"?\n\nToàn bộ tin nhắn và tệp trong ${kind} này sẽ bị xóa khỏi tài khoản của bạn và không thể khôi phục.`,
+      `Bạn có chắc muốn xóa ${kind} "${activeChat.name}"?\n\n${deleteEffect}`,
     );
     if (!confirmed) return;
 
@@ -1790,6 +1806,8 @@ function App() {
           });
         }
         await tinodeClient.deleteConversation(topicName, { isGroup: activeChat.isGroup });
+      }
+      if (usesManagementData) {
         await chatManagementService.removeConversationParticipant(
           activeChat.managementId || activeChat.id,
           viewerId,
@@ -1854,7 +1872,7 @@ function App() {
         time: getTimeString(),
         createdAt: new Date().toISOString(),
       };
-      if (chatMode === 'tinode') {
+      if (usesManagementData) {
         const accountSession = accountSessionRef.current;
         if (managementConversationSessionRef.current !== accountSession) {
           throw new Error('Danh sách cuộc trò chuyện chưa được chatmgt xác nhận.');
@@ -1867,39 +1885,45 @@ function App() {
           properties: { description: groupDescription.trim() },
         });
         if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
-        await ensureTinodeSession();
-        const resolvedMemberIds = await Promise.all(groupMemberIds.map(memberId => tinodeClient.resolveUserTopic(
-          groupMemberProfiles[memberId] || findAccount(directoryAccounts, memberId) || { uid: memberId },
-        )));
-        const realtimeRoom = await tinodeClient.createGroup({
-          name,
-          description: groupDescription.trim(),
-          memberIds: resolvedMemberIds,
-          avatarFile: groupAvatarFile,
-        });
-        const tinodeTopic = realtimeRoom.id;
-        await chatManagementService.bindTinodeTopic(actorId, managedRoom.managementId || managedRoom.id, tinodeTopic);
-        if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
         room = {
-          ...realtimeRoom,
           ...managedRoom,
           id: managedRoom.id,
           managementId: managedRoom.managementId || managedRoom.id,
-          tinodeTopic,
           accountSession,
-          messages: realtimeRoom.messages || [],
+          messages: [],
         };
-        const provisionalRoom = normalizeTinodeConversation(room);
-        const provisionalRooms = { ...conversationsRef.current, [provisionalRoom.id]: provisionalRoom };
-        conversationsRef.current = provisionalRooms;
-        setConversations(provisionalRooms);
-        tinodeClient.allowConversationTopic(tinodeTopic);
-        await tinodeClient.sendSystemEvent(tinodeTopic, {
-          action: addedNames.length > 0 ? 'member_added' : 'group_created',
-          actorId,
-          actorName: currentUser?.name,
-          targets: resolvedMemberIds.map((id, index) => ({ id, name: addedNames[index] })),
-        });
+        if (chatMode === 'tinode') {
+          await ensureTinodeSession();
+          const resolvedMemberIds = await Promise.all(groupMemberIds.map(memberId => tinodeClient.resolveUserTopic(
+            groupMemberProfiles[memberId] || findAccount(directoryAccounts, memberId) || { uid: memberId },
+          )));
+          const realtimeRoom = await tinodeClient.createGroup({
+            name,
+            description: groupDescription.trim(),
+            memberIds: resolvedMemberIds,
+            avatarFile: groupAvatarFile,
+          });
+          const tinodeTopic = realtimeRoom.id;
+          await chatManagementService.bindTinodeTopic(actorId, managedRoom.managementId || managedRoom.id, tinodeTopic);
+          if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
+          room = {
+            ...realtimeRoom,
+            ...room,
+            tinodeTopic,
+            messages: realtimeRoom.messages || [],
+          };
+          const provisionalRoom = normalizeTinodeConversation(room);
+          const provisionalRooms = { ...conversationsRef.current, [provisionalRoom.id]: provisionalRoom };
+          conversationsRef.current = provisionalRooms;
+          setConversations(provisionalRooms);
+          tinodeClient.allowConversationTopic(tinodeTopic);
+          await tinodeClient.sendSystemEvent(tinodeTopic, {
+            action: addedNames.length > 0 ? 'member_added' : 'group_created',
+            actorId,
+            actorName: currentUser?.name,
+            targets: resolvedMemberIds.map((id, index) => ({ id, name: addedNames[index] })),
+          });
+        }
       } else {
         let group = saveDemoGroup({
           name,
@@ -1996,39 +2020,51 @@ function App() {
         createdAt: new Date().toISOString(),
       };
       let updatedRoom;
-      if (chatMode === 'tinode') {
-        const topicName = await ensureTinodeConversationTopic(activeChat);
-        const resolvedMemberIds = await Promise.all(groupMemberIds.map(memberId => tinodeClient.resolveUserTopic(
-          groupMemberProfiles[memberId] || findAccount(directoryAccounts, memberId) || { uid: memberId },
-        )));
-        for (const uid of resolvedMemberIds) {
-          updatedRoom = await tinodeClient.addMember(topicName, uid);
-        }
-        try {
-          await chatManagementService.addConversationParticipants(
+      if (usesManagementData) {
+        if (chatMode === 'tinode') {
+          const topicName = await ensureTinodeConversationTopic(activeChat);
+          const resolvedMemberIds = await Promise.all(groupMemberIds.map(memberId => tinodeClient.resolveUserTopic(
+            groupMemberProfiles[memberId] || findAccount(directoryAccounts, memberId) || { uid: memberId },
+          )));
+          for (const uid of resolvedMemberIds) {
+            updatedRoom = await tinodeClient.addMember(topicName, uid);
+          }
+          try {
+            await chatManagementService.addConversationParticipants(
+              activeChat.managementId || activeChat.id,
+              groupMemberIds,
+            );
+          } catch (managementError) {
+            await Promise.allSettled(resolvedMemberIds.map(uid => tinodeClient.removeMember(topicName, uid)));
+            throw managementError;
+          }
+          await tinodeClient.sendSystemEvent(topicName, {
+            action: 'member_added',
+            actorId,
+            actorName: currentUser?.name,
+            targets: resolvedMemberIds.map((id, index) => ({ id, name: addedNames[index] })),
+          });
+          updatedRoom = {
+            ...normalizeTinodeConversation(updatedRoom || activeChat),
+            id: activeChat.id,
+            managementId: activeChat.managementId || activeChat.id,
+            tinodeTopic: topicName,
+          };
+          const mergedMessages = [...(activeChat.messages || []), ...(updatedRoom.messages || [])]
+            .filter((message, index, all) => all.findIndex(item => item.id === message.id) === index)
+            .sort((a, b) => (a.seq || 0) - (b.seq || 0));
+          updatedRoom = { ...updatedRoom, messages: mergedMessages };
+        } else {
+          const managedRoom = await chatManagementService.addConversationParticipants(
             activeChat.managementId || activeChat.id,
             groupMemberIds,
           );
-        } catch (managementError) {
-          await Promise.allSettled(resolvedMemberIds.map(uid => tinodeClient.removeMember(topicName, uid)));
-          throw managementError;
+          updatedRoom = {
+            ...normalizeTinodeConversation(managedRoom),
+            accountSession: accountSessionRef.current,
+            messages: activeChat.messages || [],
+          };
         }
-        await tinodeClient.sendSystemEvent(topicName, {
-          action: 'member_added',
-          actorId,
-          actorName: currentUser?.name,
-          targets: resolvedMemberIds.map((id, index) => ({ id, name: addedNames[index] })),
-        });
-        updatedRoom = {
-          ...normalizeTinodeConversation(updatedRoom || activeChat),
-          id: activeChat.id,
-          managementId: activeChat.managementId || activeChat.id,
-          tinodeTopic: topicName,
-        };
-        const mergedMessages = [...(activeChat.messages || []), ...(updatedRoom.messages || [])]
-          .filter((message, index, all) => all.findIndex(item => item.id === message.id) === index)
-          .sort((a, b) => (a.seq || 0) - (b.seq || 0));
-        updatedRoom = { ...updatedRoom, messages: mergedMessages };
       } else {
         const existingIds = activeChat.members
           .map(member => findAccount(directoryAccounts, member.id || member.name)?.id)
@@ -2084,28 +2120,40 @@ function App() {
         targets: [{ id: member.id, name: member.name }],
       };
       let updatedRoom;
-      if (chatMode === 'tinode') {
-        const topicName = await ensureTinodeConversationTopic(activeChat);
+      if (usesManagementData) {
         const memberAccount = findAccount(directoryAccounts, member.id || member.uid || member.name);
         if (!memberAccount?.id) throw new Error('Chatmgt không xác định được thành viên cần xóa.');
-        const tinodeMemberId = memberAccount.tinodeUid || memberAccount.tinode_uid || member.id;
-        await tinodeClient.removeMember(topicName, tinodeMemberId);
-        try {
-          await chatManagementService.removeConversationParticipant(
+        if (chatMode === 'tinode') {
+          const topicName = await ensureTinodeConversationTopic(activeChat);
+          const tinodeMemberId = memberAccount.tinodeUid || memberAccount.tinode_uid || member.id;
+          await tinodeClient.removeMember(topicName, tinodeMemberId);
+          try {
+            await chatManagementService.removeConversationParticipant(
+              activeChat.managementId || activeChat.id,
+              memberAccount.id,
+            );
+          } catch (managementError) {
+            await tinodeClient.addMember(topicName, tinodeMemberId).catch(() => null);
+            throw managementError;
+          }
+          await tinodeClient.sendSystemEvent(topicName, event);
+          updatedRoom = {
+            ...normalizeTinodeConversation(await tinodeClient.openConversation(topicName)),
+            id: activeChat.id,
+            managementId: activeChat.managementId || activeChat.id,
+            tinodeTopic: topicName,
+          };
+        } else {
+          const managedRoom = await chatManagementService.removeConversationParticipant(
             activeChat.managementId || activeChat.id,
             memberAccount.id,
           );
-        } catch (managementError) {
-          await tinodeClient.addMember(topicName, tinodeMemberId).catch(() => null);
-          throw managementError;
+          updatedRoom = {
+            ...normalizeTinodeConversation(managedRoom),
+            accountSession: accountSessionRef.current,
+            messages: activeChat.messages || [],
+          };
         }
-        await tinodeClient.sendSystemEvent(topicName, event);
-        updatedRoom = {
-          ...normalizeTinodeConversation(await tinodeClient.openConversation(topicName)),
-          id: activeChat.id,
-          managementId: activeChat.managementId || activeChat.id,
-          tinodeTopic: topicName,
-        };
       } else {
         const systemMessage = {
           id: `system-remove-${Date.now()}`,
@@ -2195,12 +2243,21 @@ function App() {
       setChatError('Trợ lý AI hiện chỉ nhận tin nhắn văn bản.');
       return;
     }
+    if (realtimeMessagingPending) {
+      setChatError('Tin nhắn và tệp realtime sẽ được kích hoạt ở bước 4 sau khi tích hợp Tinode.');
+      return;
+    }
     if (fileInputRef.current) {
       fileInputRef.current.click();
     }
   };
 
   const handleFileChange = (e) => {
+    if (realtimeMessagingPending) {
+      e.target.value = '';
+      setChatError('Tin nhắn và tệp realtime sẽ được kích hoạt ở bước 4 sau khi tích hợp Tinode.');
+      return;
+    }
     const file = e.target.files[0];
     if (!file) return;
 
@@ -2473,6 +2530,11 @@ function App() {
 
   const shareMessageTo = async target => {
     if (!shareMessage || !target || target.id === activeChat.id) return;
+    if (usesManagementData && chatMode !== 'tinode') {
+      setShareMessage(null);
+      setChatError('Chia sẻ tin nhắn cần kết nối Tinode ở bước 4.');
+      return;
+    }
     const text = `↪ ${shareMessage.senderName || (shareMessage.sender === 'outgoing' ? 'Bạn' : 'Thành viên')}: ${shareMessage.text || shareMessage.file?.name || 'Tệp đính kèm'}`;
     const shared = {
       id: `shared-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -2497,6 +2559,10 @@ function App() {
   const handleSendMessage = async (textToSend = null) => {
     const text = textToSend !== null ? textToSend : inputText.trim();
     if (!text || (activeChat.isChatbot && isTyping)) return;
+    if (realtimeMessagingPending) {
+      setChatError('Danh bạ và cuộc trò chuyện đã được lưu ở Chatmgt. Gửi tin nhắn sẽ được kích hoạt ở bước 4.');
+      return;
+    }
 
     const timeStr = getTimeString();
     const createdAt = new Date().toISOString();
@@ -3097,6 +3163,12 @@ function App() {
         </div>
 
         {/* Vùng gõ tin nhắn */}
+        {realtimeMessagingPending && (
+          <div className="management-realtime-notice" role="status">
+            <i className="fa-solid fa-database"></i>
+            <span>Danh bạ, bạn bè và cuộc trò chuyện đang dùng dữ liệu Chatmgt. Tin nhắn realtime sẽ được bật ở bước 4.</span>
+          </div>
+        )}
         <div className="chat-main-input">
           {replyingTo && (
             <div className="replying-banner">
@@ -3105,7 +3177,7 @@ function App() {
             </div>
           )}
           <div className="input-actions-left">
-            <button className="btn-input-action" title="Đính kèm tệp" onClick={handleAttachClick}>
+            <button className="btn-input-action" title={realtimeMessagingPending ? 'Cần tích hợp Tinode ở bước 4' : 'Đính kèm tệp'} onClick={handleAttachClick} disabled={realtimeMessagingPending}>
               <i className="fa-solid fa-paperclip"></i>
             </button>
             <input 
@@ -3114,7 +3186,7 @@ function App() {
               style={{ display: "none" }} 
               onChange={handleFileChange} 
             />
-            <button className="btn-input-action" title="Biểu cảm" onClick={() => setShowEmojiPicker(prev => !prev)}>
+            <button className="btn-input-action" title="Biểu cảm" onClick={() => setShowEmojiPicker(prev => !prev)} disabled={realtimeMessagingPending}>
               <i className="fa-regular fa-smile"></i>
             </button>
             {showEmojiPicker && (
@@ -3126,9 +3198,9 @@ function App() {
           <div className="input-text-container">
             <input
               type="text"
-              placeholder="Nhập tin nhắn..."
+              placeholder={realtimeMessagingPending ? 'Tin nhắn realtime sẽ được bật ở bước 4' : 'Nhập tin nhắn...'}
               value={inputText}
-              disabled={activeChat.isChatbot && isTyping}
+              disabled={realtimeMessagingPending || (activeChat.isChatbot && isTyping)}
               onChange={(e) => updateCurrentDraft(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -3138,7 +3210,7 @@ function App() {
               }}
             />
           </div>
-          <button className="btn-send-message-sh" disabled={activeChat.isChatbot && isTyping} onClick={() => handleSendMessage()}>{activeChat.isChatbot && isTyping ? 'Đang trả lời...' : 'Gửi'}</button>
+          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || (activeChat.isChatbot && isTyping)} onClick={() => handleSendMessage()}>{activeChat.isChatbot && isTyping ? 'Đang trả lời...' : 'Gửi'}</button>
         </div>
         {messageDetails && (
           <div className="message-details-modal" role="dialog">
@@ -3215,8 +3287,8 @@ function App() {
                   <div className="member-info">
                     <span className="member-name">{member.name}</span>
                     <span className="member-status-text">
-                      <span className={`status-dot ${isAccountOnline(member) ? 'online' : 'offline'}`}></span>
-                      {isAccountOnline(member) ? 'Online' : 'Offline'}
+                      <span className={`status-dot ${chatMode === 'tinode' ? (isAccountOnline(member) ? 'online' : 'offline') : 'managed'}`}></span>
+                      {accountPresenceLabel(member)}
                     </span>
                   </div>
                   {isCurrentUserGroupAdmin && member.id
@@ -3291,9 +3363,9 @@ function App() {
                 <div className="profile-hero">
                   <div className="profile-avatar-editor">
                     <SafeAvatar src={profileAccount.avatar} name={profileAccount.name} className="profile-avatar-large" />
-                    <label className={`profile-avatar-edit-button ${isUpdatingProfileAvatar ? 'loading' : ''}`} title="Đổi ảnh đại diện">
+                    <label className={`profile-avatar-edit-button ${isUpdatingProfileAvatar ? 'loading' : ''}`} title={accountProfileReadOnly ? 'Ảnh được đồng bộ từ UpGO Account' : 'Đổi ảnh đại diện'}>
                       <i className={`fa-solid ${isUpdatingProfileAvatar ? 'fa-spinner fa-spin' : 'fa-camera'}`}></i>
-                      <input type="file" accept="image/*" onChange={handleProfileAvatarChange} disabled={isUpdatingProfileAvatar} />
+                      <input type="file" accept="image/*" onChange={handleProfileAvatarChange} disabled={accountProfileReadOnly || isUpdatingProfileAvatar} />
                     </label>
                   </div>
                   <h3>{profileAccount.name || 'Tài khoản hiện tại'}</h3>
@@ -3304,12 +3376,13 @@ function App() {
                   <div className="profile-detail-row"><i className="fa-solid fa-shield-halved"></i><div><small>Vai trò</small><strong>{profileAccount.role || 'Thành viên'}</strong></div></div>
                 </div>
                 <form className="profile-edit-form" onSubmit={handleProfileSave}>
-                  <label><span>Họ và tên</span><input value={profileForm.name} onChange={event => setProfileForm(previous => ({ ...previous, name: event.target.value }))} maxLength="255" required /></label>
-                  <label><span>Email</span><input type="email" value={profileForm.email} onChange={event => setProfileForm(previous => ({ ...previous, email: event.target.value }))} maxLength="255" /></label>
-                  <label><span>Chức vụ</span><input value={profileForm.title} onChange={event => setProfileForm(previous => ({ ...previous, title: event.target.value }))} maxLength="255" /></label>
-                  <label><span>Phòng ban</span><input value={profileForm.department} onChange={event => setProfileForm(previous => ({ ...previous, department: event.target.value }))} maxLength="255" /></label>
+                  <label><span>Họ và tên</span><input value={profileForm.name} onChange={event => setProfileForm(previous => ({ ...previous, name: event.target.value }))} maxLength="255" required disabled={accountProfileReadOnly} /></label>
+                  <label><span>Email</span><input type="email" value={profileForm.email} onChange={event => setProfileForm(previous => ({ ...previous, email: event.target.value }))} maxLength="255" disabled={accountProfileReadOnly} /></label>
+                  <label><span>Chức vụ</span><input value={profileForm.title} onChange={event => setProfileForm(previous => ({ ...previous, title: event.target.value }))} maxLength="255" disabled={accountProfileReadOnly} /></label>
+                  <label><span>Phòng ban</span><input value={profileForm.department} onChange={event => setProfileForm(previous => ({ ...previous, department: event.target.value }))} maxLength="255" disabled={accountProfileReadOnly} /></label>
+                  {accountProfileReadOnly && <div className="profile-save-notice"><i className="fa-solid fa-building-shield"></i>Hồ sơ được đồng bộ từ account.upgo.vn.</div>}
                   {profileNotice && <div className="profile-save-notice"><i className="fa-solid fa-circle-check"></i>{profileNotice}</div>}
-                  <button type="submit" className="btn-primary profile-save-button" disabled={isSavingProfile}>
+                  <button type="submit" className="btn-primary profile-save-button" disabled={accountProfileReadOnly || isSavingProfile}>
                     <i className={`fa-solid ${isSavingProfile ? 'fa-spinner fa-spin' : 'fa-floppy-disk'}`}></i>
                     {isSavingProfile ? 'Đang lưu...' : 'Lưu hồ sơ'}
                   </button>
@@ -3339,7 +3412,7 @@ function App() {
                             <SafeAvatar src={contact.avatar} name={contact.name} className="workspace-avatar" />
                             <span className="workspace-list-copy">
                               <strong>{contact.name}</strong>
-                              <small>{isAccountOnline(contact) ? 'Online' : 'Offline'}{contact.username ? ` · @${contact.username}` : ''}</small>
+                              <small>{accountPresenceLabel(contact)}{contact.username ? ` · @${contact.username}` : ''}</small>
                             </span>
                           </button>
                           <button type="button" className="btn-friend chat" onClick={() => handleStartDirectChat(contact)}>
@@ -3367,7 +3440,7 @@ function App() {
                       <div className="workspace-list-item contact-result" key={contact.id || contact.name}>
                         <button type="button" className="contact-result-main" onClick={() => handleStartDirectChat(contact)}>
                           <SafeAvatar src={contact.avatar} name={contact.name} className="workspace-avatar" />
-                          <span className="workspace-list-copy"><strong>{contact.name}</strong><small>{isAccountOnline(contact) ? 'Online' : 'Offline'}{contact.id ? ` · ${contact.id}` : ''}</small></span>
+                          <span className="workspace-list-copy"><strong>{contact.name}</strong><small>{accountPresenceLabel(contact)}{contact.id ? ` · ${contact.id}` : ''}</small></span>
                         </button>
                         {friendshipStatus === 'pending-received' ? (
                           <button type="button" className="btn-friend secondary" onClick={() => openWorkspacePanel('notifications')}>Xem lời mời</button>
@@ -3473,7 +3546,7 @@ function App() {
                 <label className="workspace-setting-row"><span><strong>Thông báo desktop</strong><small>Nhận thông báo khi có tin nhắn mới</small></span><input type="checkbox" checked={settings.desktopNotifications} onChange={handleDesktopNotificationsToggle} /></label>
                 <label className="workspace-setting-row"><span><strong>Âm thanh tin nhắn</strong><small>Phát âm thanh khi nhận tin mới</small></span><input type="checkbox" checked={settings.sounds} onChange={event => setSettings(prev => ({ ...prev, sounds: event.target.checked }))} /></label>
                 <label className="workspace-setting-row"><span><strong>Giao diện gọn</strong><small>Giảm khoảng cách giữa các tin nhắn</small></span><input type="checkbox" checked={settings.compactMode} onChange={event => setSettings(prev => ({ ...prev, compactMode: event.target.checked }))} /></label>
-                <div className="workspace-account-card"><i className="fa-solid fa-shield-halved"></i><div><strong>{currentUser?.name || 'Tài khoản hiện tại'}</strong><small>{currentUser?.email || 'Phiên đăng nhập SÔNG HỒNG'} · {chatMode === 'tinode' ? 'Tinode realtime' : 'Demo mode'}</small></div></div>
+                <div className="workspace-account-card"><i className="fa-solid fa-shield-halved"></i><div><strong>{currentUser?.name || 'Tài khoản hiện tại'}</strong><small>{currentUser?.email || 'Phiên đăng nhập SÔNG HỒNG'} · {chatModeLabel}</small></div></div>
               </div>
             )}
           </section>
@@ -3556,9 +3629,10 @@ function App() {
                 <label className="btn-group-avatar-upload">
                   <i className="fa-solid fa-camera"></i>
                   <span>{groupAvatarFile ? 'Đổi ảnh' : 'Tải ảnh lên'}</span>
-                  <input type="file" accept="image/*" onChange={handleGroupAvatarChange} disabled={isCreatingGroup} />
+                  <input type="file" accept="image/*" onChange={handleGroupAvatarChange} disabled={isCreatingGroup || chatMode !== 'tinode'} />
                 </label>
               </div>
+              {chatMode !== 'tinode' && <small>Ảnh nhóm sẽ được lưu khi tích hợp kho tệp Tinode ở bước 4.</small>}
               {groupAvatarFile && (
                 <button type="button" className="btn-remove-group-avatar" onClick={() => { setGroupAvatarFile(null); setGroupAvatarPreview(''); }} aria-label="Xóa ảnh đã chọn">
                   <i className="fa-solid fa-xmark"></i>
@@ -3577,7 +3651,7 @@ function App() {
 
             <div className="group-form-field">
               <span>Thêm thành viên</span>
-              <input value={groupMemberSearch} onChange={handleSearchGroupMembers} placeholder={chatMode === 'tinode' ? 'Tìm theo tên, email hoặc username...' : 'Tìm trong danh sách mẫu...'} />
+              <input value={groupMemberSearch} onChange={handleSearchGroupMembers} placeholder={usesManagementData ? 'Tìm theo tên, email, username hoặc phòng ban...' : 'Tìm trong danh sách mẫu...'} />
               <p className="group-form-hint">Tài khoản của bạn ({currentUser?.name}) được tự động thêm làm quản trị viên nhóm.</p>
               {isSearchingMembers && <p className="group-form-hint">Đang tìm thành viên...</p>}
               {groupCandidates.length > 0 ? (
@@ -3589,18 +3663,18 @@ function App() {
                       <button type="button" key={memberId} className={`group-member-option ${selected ? 'selected' : ''}`} onClick={() => toggleGroupMember(member)}>
                         <span className="picker-check"><i className={`fa-solid ${selected ? 'fa-check' : 'fa-plus'}`}></i></span>
                         <span className="picker-name">{member.name}</span>
-                        <span className="picker-status">{isAccountOnline(member) ? 'Online' : 'Offline'}</span>
+                        <span className="picker-status">{accountPresenceLabel(member)}</span>
                       </button>
                     );
                   })}
                 </div>
               ) : (
-                <p className="group-form-hint">{chatMode === 'tinode' ? 'Hãy nhập ít nhất 2 ký tự để tìm trong danh bạ Tinode.' : 'Không tìm thấy tài khoản phù hợp trong danh ba noi bo.'}</p>
+                <p className="group-form-hint">{usesManagementData ? 'Nhập ít nhất 2 ký tự để tìm trong danh bạ Chatmgt.' : 'Không tìm thấy tài khoản phù hợp trong danh bạ nội bộ.'}</p>
               )}
             </div>
 
             <div className="group-modal-footer">
-              <span className="group-mode-label"><i className={`fa-solid ${chatMode === 'tinode' ? 'fa-bolt' : 'fa-flask'}`}></i>{chatMode === 'tinode' ? 'Tinode realtime' : 'Demo mode'}</span>
+              <span className="group-mode-label"><i className={`fa-solid ${chatModeIcon}`}></i>{chatModeLabel}</span>
               <div className="group-modal-actions">
                 <button type="button" className="btn-secondary" onClick={closeCreateGroupModal} disabled={isCreatingGroup}>Hủy</button>
                 <button type="submit" className="btn-primary" disabled={!groupName.trim() || isCreatingGroup}>{isCreatingGroup ? 'Đang tạo...' : 'Tạo nhóm'}</button>
@@ -3627,7 +3701,7 @@ function App() {
 
             <div className="group-form-field">
               <span>Tìm tài khoản</span>
-              <input value={groupMemberSearch} onChange={handleSearchGroupMembers} autoFocus placeholder={chatMode === 'tinode' ? 'Nhập ít nhất 2 ký tự để tìm trên Tinode...' : 'Tìm theo tên, username, email hoặc phòng ban...'} />
+              <input value={groupMemberSearch} onChange={handleSearchGroupMembers} autoFocus placeholder={usesManagementData ? 'Tìm trong danh bạ Chatmgt...' : 'Tìm theo tên, username, email hoặc phòng ban...'} />
               {isSearchingMembers && <p className="group-form-hint">Đang tìm thành viên...</p>}
               {groupCandidates.length > 0 ? (
                 <div className="group-member-picker">
@@ -3638,13 +3712,13 @@ function App() {
                       <button type="button" key={memberId} className={`group-member-option ${selected ? 'selected' : ''}`} onClick={() => toggleGroupMember(member)}>
                         <span className="picker-check"><i className={`fa-solid ${selected ? 'fa-check' : 'fa-plus'}`}></i></span>
                         <span className="picker-name">{member.name}</span>
-                        <span className="picker-status">{member.username ? `@${member.username}` : isAccountOnline(member) ? 'Online' : 'Offline'}</span>
+                        <span className="picker-status">{member.username ? `@${member.username}` : accountPresenceLabel(member)}</span>
                       </button>
                     );
                   })}
                 </div>
               ) : (
-                <p className="group-form-hint">{chatMode === 'tinode' ? 'Nhập ít nhất 2 ký tự để tìm UID thật trên Tinode.' : 'Tất cả tài khoản phù hợp đã ở trong nhóm hoặc không tồn tại.'}</p>
+                <p className="group-form-hint">{usesManagementData ? 'Nhập ít nhất 2 ký tự để tìm tài khoản trong Chatmgt.' : 'Tất cả tài khoản phù hợp đã ở trong nhóm hoặc không tồn tại.'}</p>
               )}
             </div>
 

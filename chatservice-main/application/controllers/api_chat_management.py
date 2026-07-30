@@ -19,6 +19,7 @@ from application.models.models import (
 from application.server import app
 from application.services.account_sso_service import (
     AccountSSOError,
+    account_directory,
     account_sso_configured,
     clear_account_cookie,
     current_account_session,
@@ -221,7 +222,7 @@ def _account_sso_error(error):
     }, status=error.status_code)
 
 
-def _sso_account(identity):
+def _sso_account(identity, mark_login=True):
     identity = dict(identity)
     account_username = identity["username"]
     account_email = identity.get("email")
@@ -343,22 +344,32 @@ def _sso_account(identity):
         )
         db.session.add(account)
 
+    directory_projection = bool(identity.get("directory_projection"))
     account.username = identity["username"]
-    account.email = identity.get("email")
+    if not directory_projection or identity.get("email_present"):
+        account.email = identity.get("email")
     account.full_name = identity["full_name"]
-    account.role = identity["role"]
-    account.department = identity.get("department") or ""
-    account.title = identity.get("title") or ""
-    account.avatar = identity.get("avatar") or ""
+    if not directory_projection or identity.get("role_present"):
+        account.role = identity["role"]
+    if not directory_projection or identity.get("department_present"):
+        account.department = identity.get("department") or ""
+    if not directory_projection or identity.get("title_present"):
+        account.title = identity.get("title") or ""
+    if not directory_projection or identity.get("avatar_present"):
+        account.avatar = identity.get("avatar") or ""
     account.password_hash = ACCOUNT_SSO_PASSWORD_MARKER
-    account.active = True
+    account.active = bool(identity.get("active", True))
     account.updated_at = now
-    account.last_login_at = now
+    if mark_login:
+        account.last_login_at = now
     properties = dict(account.properties or {})
     properties.update(linked_properties)
-    properties["account_role"] = identity.get("account_role") or "member"
+    if not directory_projection or identity.get("role_present"):
+        properties["account_role"] = identity.get("account_role") or "member"
     properties["account_username"] = account_username or ""
     properties["account_email"] = account_email or ""
+    if identity.get("directory_projection"):
+        properties["directory_synced_at"] = now
     properties.setdefault("auth_version", 0)
     account.properties = properties
     return tenant, account
@@ -768,6 +779,10 @@ async def management_auth_health(request):
     )
     account_sso_enabled = bool(app.config.get("CHAT_ACCOUNT_SSO_ENABLED", False))
     account_configured = account_sso_enabled and account_sso_configured()
+    account_directory_configured = bool(
+        account_configured
+        and str(app.config.get("ACCOUNT_SSO_DIRECTORY_PATH") or "").strip()
+    )
     tinode_sso_configured = bool(
         len(str(app.config.get("TINODE_SSO_SECRET") or "")) >= 32
         and tinode_admin_configured
@@ -793,7 +808,14 @@ async def management_auth_health(request):
         "account_sso": {
             "enabled": account_sso_enabled,
             "configured": account_configured,
+            "directory_configured": account_directory_configured,
             "tinode_bridge_configured": account_sso_enabled and tinode_sso_configured,
+        },
+        "management_data": {
+            "configured": account_directory_configured if account_sso_enabled else employee_auth_configured,
+            "directory_endpoint": "/api/v1/chat/users",
+            "conversation_endpoint": "/api/v1/conversation",
+            "friend_request_endpoint": "/api/v1/friend-request",
         },
         "password_reset": {
             "delivery_configured": smtp_configured or bool(app.config.get("CHAT_PASSWORD_RESET_DEBUG", False)),
@@ -1029,6 +1051,72 @@ async def management_users(request):
     if current_user is None:
         return _auth_error()
     query_text = str(request.args.get("q") or "").strip().lower()
+    sync_status = "cached" if current_user.get("auth_method") == "account_sso" else "local"
+    synced_count = 0
+    skipped_count = 0
+    deactivated_count = 0
+    if current_user.get("auth_method") == "account_sso" and not query_text:
+        account = _account_by_id(tenant_id, _user_id(current_user))
+        if account is None:
+            return _auth_error()
+        try:
+            identity = await _validated_account_identity(request, account)
+            identities = await account_directory(request, identity)
+            # Recheck after the directory request so a concurrent Account tenant
+            # switch cannot project the new tenant's users into the old JWT tenant.
+            await _validated_account_identity(request, account)
+            synced_account_ids = set()
+            for directory_identity in identities:
+                try:
+                    _tenant, synced_account = _sso_account(directory_identity, mark_login=False)
+                    synced_account_ids.add(str(synced_account.id))
+                    synced_count += 1
+                except AccountSSOError as error:
+                    skipped_count += 1
+                    logger.warning(
+                        "Skipped Account directory projection for tenant %s: %s",
+                        tenant_id,
+                        error,
+                    )
+            if synced_account_ids:
+                missing_accounts = ManagementAccount.query.filter(
+                    ManagementAccount.tenant_id == tenant_id,
+                    ManagementAccount.active.is_(True),
+                    ManagementAccount.properties.contains({"auth_source": "account"}),
+                    ~ManagementAccount.id.in_(synced_account_ids),
+                ).all()
+                now = int(time.time())
+                for missing_account in missing_accounts:
+                    missing_account.active = False
+                    missing_account.updated_at = now
+                    missing_properties = dict(missing_account.properties or {})
+                    missing_properties["directory_removed_at"] = now
+                    missing_account.properties = missing_properties
+                    deactivated_count += 1
+            db.session.commit()
+            sync_status = "fresh"
+        except AccountSSOError as error:
+            db.session.rollback()
+            synced_count = 0
+            skipped_count = 0
+            deactivated_count = 0
+            if error.error_code in (
+                "ACCOUNT_LOGIN_REQUIRED",
+                "ACCOUNT_SESSION_INVALID",
+                "ACCOUNT_SESSION_MISMATCH",
+                "ACCOUNT_TENANT_INVALID",
+                "ACCOUNT_ROLE_CHANGED",
+            ):
+                return _account_sso_error(error)
+            sync_status = "stale"
+            logger.warning("Account directory sync failed for tenant %s: %s", tenant_id, error)
+        except Exception as error:
+            db.session.rollback()
+            synced_count = 0
+            skipped_count = 0
+            deactivated_count = 0
+            sync_status = "stale"
+            logger.exception("Account directory sync failed for tenant %s: %s", tenant_id, error)
     exclude_user_id = str(request.args.get("exclude_user_id") or "")
     include_inactive = _is_admin(current_user) and str(
         request.args.get("include_inactive") or ""
@@ -1047,7 +1135,16 @@ async def management_users(request):
             func.lower(ManagementAccount.department).like(pattern),
         ))
     accounts = query.order_by(ManagementAccount.full_name.asc()).limit(1000).all()
-    return json({"objects": [_public_account(account) for account in accounts]})
+    return json({
+        "objects": [_public_account(account) for account in accounts],
+        "directory_sync": {
+            "source": "account" if current_user.get("auth_method") == "account_sso" else "local",
+            "status": sync_status,
+            "synced": synced_count,
+            "skipped": skipped_count,
+            "deactivated": deactivated_count,
+        },
+    })
 
 
 @app.route('/api/v1/chat/users', methods=['POST'])
@@ -1408,11 +1505,48 @@ async def conversation_create(request):
     if set(participant_ids) != valid_ids:
         return json({"error_code": "TENANT_VIOLATION", "error_message": "All participants must belong to the same tenant."}, status=400)
     requested_properties = body.get("properties") if isinstance(body.get("properties"), dict) else {}
+    is_group = bool(body.get("is_group", requested_properties.get("is_group", False)))
+    direct_key = ":".join(sorted(participant_ids)) if not is_group and len(participant_ids) == 2 else ""
     properties = {
-        "is_group": bool(body.get("is_group", requested_properties.get("is_group", False))),
+        "is_group": is_group,
         "description": str(requested_properties.get("description") or "")[:2000],
         "avatar": str(requested_properties.get("avatar") or "")[:8192],
     }
+    if direct_key:
+        properties["direct_key"] = direct_key
+        existing = Conversation.query.filter(
+            Conversation.tenant_id == tenant_id,
+            Conversation.deleted.is_(False),
+            Conversation.properties.contains({"direct_key": direct_key}),
+        ).first()
+        if existing is not None:
+            now = int(time.time())
+            memberships = ConversationParticipant.query.filter(
+                ConversationParticipant.tenant_id == tenant_id,
+                ConversationParticipant.conversation_id == existing.id,
+                ConversationParticipant.participant_id.in_(participant_ids),
+                ConversationParticipant.deleted.is_(False),
+            ).all()
+            memberships_by_id = {membership.participant_id: membership for membership in memberships}
+            for index, participant_id in enumerate(participant_ids):
+                membership = memberships_by_id.get(participant_id)
+                if membership is None:
+                    membership = ConversationParticipant(
+                        tenant_id=tenant_id,
+                        conversation_id=existing.id,
+                        participant_type="USER",
+                        participant_id=participant_id,
+                        role="OWNER" if index == 0 else "MEMBER",
+                        joined_at=now,
+                        active=True,
+                    )
+                    db.session.add(membership)
+                else:
+                    membership.active = True
+                    membership.left_at = None
+            existing.updated_at = now
+            db.session.commit()
+            return json(_serialize_conversation(existing))
     item = Conversation(
         tenant_id=tenant_id,
         conversation_no="conv-{}".format(uuid.uuid4().hex),

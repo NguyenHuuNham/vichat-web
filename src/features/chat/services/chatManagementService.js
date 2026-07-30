@@ -6,6 +6,7 @@ const accountUrl = String(env.VITE_ACCOUNT_URL || 'https://account.upgo.vn').rep
 const topicBindingsKey = 'vichat.management.topic-bindings.v1';
 
 let activeSession = null;
+let lastDirectorySync = null;
 
 function readStorage(key, fallback) {
   if (typeof window === 'undefined') return fallback;
@@ -114,6 +115,10 @@ export const chatManagementService = {
     return env.VITE_TINODE_HOST ? 'tinode' : 'demo';
   },
 
+  get directorySync() {
+    return lastDirectorySync;
+  },
+
   async login() {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const payload = await apiRequest('/api/v1/auth/sso', {
@@ -168,6 +173,7 @@ export const chatManagementService = {
       }
     }
     activeSession = null;
+    lastDirectorySync = null;
     if (logoutError && throwOnError) throw logoutError;
     return payload;
   },
@@ -214,6 +220,7 @@ export const chatManagementService = {
   async listUsers() {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const payload = await apiRequest('/api/v1/chat/users?results_per_page=1000');
+    lastDirectorySync = payload?.directory_sync || null;
     return responseItems(payload).map(publicAccount).filter(Boolean);
   },
 

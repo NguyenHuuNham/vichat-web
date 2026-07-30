@@ -290,6 +290,11 @@ def verify_http(base_url, origin):
     account_sso_enabled = bool(account_sso.get("enabled"))
     if account_sso_enabled and not account_sso.get("configured"):
         raise RuntimeError("UpGO Account SSO is enabled but not fully configured.")
+    if account_sso_enabled and not account_sso.get("directory_configured"):
+        raise RuntimeError("UpGO Account directory sync is not fully configured.")
+    management_data = health_payload.get("management_data") or {}
+    if not management_data.get("configured"):
+        raise RuntimeError("Chatmgt management data APIs are not fully configured.")
 
     username = str(os.getenv("TINODE_ADMIN_USERNAME") or "").strip()
     password = str(os.getenv("TINODE_ADMIN_PASSWORD") or "")

@@ -17,6 +17,7 @@ if HAS_AIOHTTP:
     fake_app = types.SimpleNamespace(config={
         "ACCOUNT_URL": "https://account.upgo.vn",
         "ACCOUNT_SSO_PROFILE_PATH": "/current_user",
+        "ACCOUNT_SSO_DIRECTORY_PATH": "/api/v1/user",
         "ACCOUNT_SSO_LOGOUT_PATH": "/logout",
         "ACCOUNT_SESSION_COOKIE_NAME": "session",
         "ACCOUNT_SESSION_COOKIE_DOMAIN": ".upgo.vn",
@@ -70,6 +71,72 @@ class FakeResponse:
 
 @unittest.skipUnless(HAS_AIOHTTP, "aiohttp is installed in the Chatmgt runtime image")
 class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_directory_is_loaded_from_the_account_tenant_scope(self):
+        request = types.SimpleNamespace()
+        identity = {
+            "account_user_id": "account-user-2",
+            "tenant_id": "tenant-a",
+            "tenant_name": "Tenant A",
+        }
+        payload = {"objects": [{
+            "id": "account-user-2",
+            "user_name": "lan.tran",
+            "display_name": "Tran Thi Lan",
+        }]}
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(200, payload)),
+        ) as account_request:
+            users = await account_sso_service.account_directory(request, identity)
+
+        self.assertEqual(users[0]["account_user_id"], "account-user-2")
+        self.assertEqual(users[0]["tenant_id"], "tenant-a")
+        account_request.assert_awaited_once_with(
+            request,
+            "GET",
+            "/api/v1/user?page=1&results_per_page=1000",
+        )
+
+    async def test_directory_session_expiry_requires_account_login(self):
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(520, {"error_code": "SESSION_EXPIRED"})),
+        ):
+            with self.assertRaises(account_sso_service.AccountSSOError) as error:
+                await account_sso_service.account_directory(
+                    types.SimpleNamespace(),
+                    {
+                        "account_user_id": "account-user-1",
+                        "tenant_id": "tenant-a",
+                        "tenant_name": "Tenant A",
+                    },
+                )
+
+        self.assertEqual(error.exception.error_code, "ACCOUNT_LOGIN_REQUIRED")
+
+    async def test_directory_must_include_the_authenticated_user(self):
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(200, {"objects": [{
+                "id": "someone-else",
+                "user_name": "someone.else",
+            }]})),
+        ):
+            with self.assertRaises(account_sso_service.AccountSSOError) as error:
+                await account_sso_service.account_directory(
+                    types.SimpleNamespace(),
+                    {
+                        "account_user_id": "account-user-1",
+                        "tenant_id": "tenant-a",
+                        "tenant_name": "Tenant A",
+                    },
+                )
+
+        self.assertEqual(error.exception.error_code, "ACCOUNT_DIRECTORY_INVALID")
+
     async def test_valid_account_session_is_normalized(self):
         request = types.SimpleNamespace()
         with patch.object(

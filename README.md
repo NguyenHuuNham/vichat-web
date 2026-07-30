@@ -31,6 +31,26 @@ outside Step 2.
 Steps 3 and 4 remain separate acceptance gates. Successful Step 2 login does
 not mean directory/conversation loading or Tinode realtime messaging is complete.
 
+## Step 3 management data flow
+
+After Account SSO succeeds, ChatUI uses Chatmgt as its only source for chat
+directory, friendship, and conversation metadata:
+
+1. Chatmgt validates that the Account session still matches the Chatmgt JWT.
+2. Chatmgt loads the current tenant directory from
+   `GET https://account.upgo.vn/api/v1/user` and upserts passwordless local
+   projections keyed by Account user ID plus tenant ID.
+3. ChatUI loads `/api/v1/chat/users`, `/api/v1/friend-request`, and
+   `/api/v1/conversation` with the Chatmgt HttpOnly session.
+4. Direct conversations, groups, membership changes, and per-user removal are
+   persisted in Chatmgt and survive refresh or a new login.
+5. While the session has `connection: management`, ChatUI clearly disables
+   realtime messages and files. Tinode topics, tokens, messages, presence, and
+   receipts remain Step 4 and are not replaced with browser demo data.
+
+Account remains authoritative for employee profile fields. Chatmgt never copies
+an Account password, token, or session cookie into its database.
+
 ## Local checks
 
 Run from the repository root:

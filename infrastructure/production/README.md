@@ -74,6 +74,7 @@ not modify an already deployed file:
 CHAT_ACCOUNT_SSO_ENABLED=true
 ACCOUNT_URL=https://account.upgo.vn
 ACCOUNT_SSO_PROFILE_PATH=/current_user
+ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/user
 ACCOUNT_SSO_LOGOUT_PATH=/logout
 ACCOUNT_SESSION_COOKIE_NAME=session
 ACCOUNT_SESSION_COOKIE_DOMAIN=.upgo.vn
@@ -95,6 +96,29 @@ This is the Step 2 acceptance test only. Directory/conversation loading is Step
 3, and realtime Tinode messaging is Step 4.
 
 Repeat with users from two tenants before declaring tenant acceptance complete.
+
+## Chatmgt data acceptance test
+
+Step 3 uses the Account directory endpoint only from Chatmgt. After rebuilding,
+sign in with two active users in the same tenant and verify:
+
+1. `GET /api/v1/auth/health` reports
+   `account_sso.directory_configured=true` and
+   `management_data.configured=true`.
+2. `GET /api/v1/chat/users` returns both users with the same `tenant_id`; its
+   `directory_sync.status` is `fresh` or an explicitly understood `stale` cache.
+3. Searching by name/email/username returns only that tenant.
+4. Friend request send, accept, and reject survive browser refresh.
+5. Direct chat and group creation survive refresh; adding/removing/leaving a
+   group updates both users' lists.
+6. Opening the same direct pair twice returns the same Chatmgt conversation ID.
+7. The UI displays **Dữ liệu Chatmgt** and disables employee message/file input
+   with the Step 4 notice instead of saving demo messages.
+
+Repeat the directory and conversation checks with a second tenant. No response
+may contain an employee, participant, friend request, or conversation from the
+other tenant. This acceptance does not require a Tinode token or realtime
+message.
 
 ## Rollback
 
