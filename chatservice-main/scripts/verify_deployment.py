@@ -19,6 +19,7 @@ from sqlalchemy import create_engine, text
 
 DEFAULT_PASSWORDS = ("123456", "password", "admin")
 MANAGEMENT_HEADER = {"X-Vichat-Session-Scope": "management"}
+ACCOUNT_SSO_PASSWORD_MARKER = "!account-sso-only"
 
 
 def require_secret(name, minimum=32):
@@ -36,6 +37,44 @@ def configured_origin():
     if not isinstance(values, list) or not values:
         raise RuntimeError("CHAT_CORS_ORIGINS must contain at least one origin.")
     return str(values[0])
+
+
+def is_account_projection(row):
+    properties = row.properties if isinstance(row.properties, dict) else {}
+    return properties.get("auth_source") == "account"
+
+
+def verify_account_password_policy(accounts):
+    if not accounts:
+        raise RuntimeError("Chatmgt has no administrator account.")
+    if not any(
+        row.role == "admin" and row.active and not is_account_projection(row)
+        for row in accounts
+    ):
+        raise RuntimeError("Chatmgt has no active local administrator account.")
+
+    insecure_users = []
+    for row in accounts:
+        password_hash = str(row.password_hash or "")
+        if is_account_projection(row):
+            if password_hash != ACCOUNT_SSO_PASSWORD_MARKER:
+                raise RuntimeError(
+                    "Account projection {} has an unexpected password state.".format(row.username)
+                )
+            continue
+
+        encoded_hash = password_hash.encode("ascii", errors="ignore")
+        for password in DEFAULT_PASSWORDS:
+            try:
+                if bcrypt.checkpw(password.encode("utf-8"), encoded_hash):
+                    insecure_users.append(row.username)
+                    break
+            except ValueError:
+                raise RuntimeError("Account {} has an invalid password hash.".format(row.username))
+    if insecure_users:
+        raise RuntimeError(
+            "Default passwords are still active for: {}.".format(", ".join(sorted(insecure_users)))
+        )
 
 
 def verify_database(alembic_ini):
@@ -70,30 +109,12 @@ def verify_database(alembic_ini):
                 )
 
             accounts = list(connection.execute(text(
-                "SELECT username, password_hash, role, active FROM management_account"
+                "SELECT username, password_hash, role, active, properties FROM management_account"
             )))
     finally:
         engine.dispose()
 
-    if not accounts:
-        raise RuntimeError("Chatmgt has no administrator account.")
-    if not any(row.role == "admin" and row.active for row in accounts):
-        raise RuntimeError("Chatmgt has no active administrator account.")
-
-    insecure_users = []
-    for row in accounts:
-        encoded_hash = str(row.password_hash or "").encode("ascii", errors="ignore")
-        for password in DEFAULT_PASSWORDS:
-            try:
-                if bcrypt.checkpw(password.encode("utf-8"), encoded_hash):
-                    insecure_users.append(row.username)
-                    break
-            except ValueError:
-                raise RuntimeError("Account {} has an invalid password hash.".format(row.username))
-    if insecure_users:
-        raise RuntimeError(
-            "Default passwords are still active for: {}.".format(", ".join(sorted(insecure_users)))
-        )
+    verify_account_password_policy(accounts)
 
     if str(os.getenv("ENVIRONMENT") or "").lower() == "production":
         if str(os.getenv("CHAT_AUTH_COOKIE_SECURE") or "").lower() != "true":
