@@ -7,6 +7,17 @@ const topicBindingsKey = 'vichat.management.topic-bindings.v1';
 
 let activeSession = null;
 let lastDirectorySync = null;
+let tinodeTokenRequest = null;
+
+function tinodeTokenExpiresSoon(auth, skewSeconds = 30) {
+  if (!auth?.token) return true;
+  if (!auth.expires) return false;
+  const expiresAt = typeof auth.expires === 'number'
+    ? auth.expires * 1000
+    : Date.parse(auth.expires);
+  if (!Number.isFinite(expiresAt)) return true;
+  return expiresAt <= Date.now() + (skewSeconds * 1000);
+}
 
 function readStorage(key, fallback) {
   if (typeof window === 'undefined') return fallback;
@@ -129,6 +140,7 @@ export const chatManagementService = {
     const rawTinodeAuth = payload.tinode || payload.tinode_auth || {};
     const hasTinodeToken = Boolean(rawTinodeAuth.token || payload.tinode_token);
     const connection = payload.connection || (hasTinodeToken ? 'tinode' : 'management');
+    tinodeTokenRequest = null;
     activeSession = {
       user: account,
       tenant,
@@ -155,11 +167,40 @@ export const chatManagementService = {
 
   async refreshTinodeToken() {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
-    const payload = await apiRequest('/api/v1/auth/tinode-token', { method: 'POST' });
-    const tinodeAuth = payload.tinode_auth || payload.tinode || {};
-    if (!tinodeAuth.token) throw new Error('Chatmgt did not return a Tinode token.');
-    if (activeSession) activeSession.tinodeAuth = { ...(activeSession.tinodeAuth || {}), ...tinodeAuth };
-    return activeSession?.tinodeAuth || tinodeAuth;
+    if (!activeSession) throw new Error('Phiên Chatmgt chưa sẵn sàng.');
+    if (!tinodeTokenRequest) {
+      const requestedSession = activeSession;
+      const request = apiRequest('/api/v1/auth/tinode-token', { method: 'POST' })
+        .then(payload => {
+          if (!requestedSession || activeSession !== requestedSession) {
+            throw new Error('Phiên tài khoản đã thay đổi trong khi kết nối Tinode.');
+          }
+          const tinodeAuth = payload.tinode_auth || payload.tinode || {};
+          if (!tinodeAuth.token) throw new Error('Chatmgt did not return a Tinode token.');
+          const mergedAuth = {
+            ...(requestedSession.tinodeAuth || {}),
+            ...tinodeAuth,
+            displayName: requestedSession.user?.name || '',
+            avatar: requestedSession.user?.avatar || '',
+            tenantId: requestedSession.tenant?.id || requestedSession.user?.tenantId || tenantId,
+            tenantName: requestedSession.tenant?.name || requestedSession.user?.tenantName || '',
+          };
+          requestedSession.tinodeAuth = mergedAuth;
+          requestedSession.connection = payload.connection || 'tinode';
+          return mergedAuth;
+        })
+        .finally(() => {
+          if (tinodeTokenRequest === request) tinodeTokenRequest = null;
+        });
+      tinodeTokenRequest = request;
+    }
+    return tinodeTokenRequest;
+  },
+
+  async getFreshTinodeAuth({ force = false } = {}) {
+    const current = activeSession?.tinodeAuth || null;
+    if (!force && current && !tinodeTokenExpiresSoon(current)) return current;
+    return this.refreshTinodeToken();
   },
 
   async logout({ throwOnError = false } = {}) {
@@ -174,6 +215,7 @@ export const chatManagementService = {
     }
     activeSession = null;
     lastDirectorySync = null;
+    tinodeTokenRequest = null;
     if (logoutError && throwOnError) throw logoutError;
     return payload;
   },
@@ -291,17 +333,35 @@ export const chatManagementService = {
 
   async addConversationParticipants(conversationId, participantIds = []) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const tinodeAuth = activeSession?.connection === 'tinode'
+      ? await this.getFreshTinodeAuth()
+      : null;
     const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/participants`, {
       method: 'POST',
-      body: JSON.stringify({ participant_ids: participantIds }),
+      body: JSON.stringify({
+        participant_ids: participantIds,
+        tinode_token: tinodeAuth?.token || '',
+      }),
     });
     return normalizeConversation(payload);
   },
 
   async removeConversationParticipant(conversationId, participantId) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const tinodeAuth = activeSession?.connection === 'tinode'
+      ? await this.getFreshTinodeAuth()
+      : null;
     const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/participants/${encodeURIComponent(participantId)}`, {
       method: 'DELETE',
+      body: JSON.stringify({ tinode_token: tinodeAuth?.token || '' }),
+    });
+    return normalizeConversation(payload);
+  },
+
+  async prepareTinodeConversation(conversationId) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/tinode-prepare`, {
+      method: 'POST',
     });
     return normalizeConversation(payload);
   },
@@ -314,17 +374,19 @@ export const chatManagementService = {
     return bindings[bindingKey(userId, conversationId)] || '';
   },
 
-  async bindTinodeTopic(userId, conversationId, topicName) {
+  async bindTinodeTopic(userId, conversationId, topicName, { avatarUrl = '' } = {}) {
     if (!conversationId || !topicName) return topicName;
     if (apiBase && remoteAuth) {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(conversationId))) {
         throw new Error('Mã cuộc trò chuyện của chatmgt không hợp lệ.');
       }
+      const tinodeAuth = await this.getFreshTinodeAuth();
       await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/tinode-topic`, {
         method: 'PUT',
         body: JSON.stringify({
           tinode_topic: topicName,
-          tinode_token: activeSession?.tinodeAuth?.token || '',
+          tinode_token: tinodeAuth?.token || '',
+          avatar: avatarUrl || '',
         }),
       });
     }

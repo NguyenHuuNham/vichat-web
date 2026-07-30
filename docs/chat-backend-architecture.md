@@ -140,6 +140,58 @@ separate Chatmgt API flow.
 | `POST` | `/api/v1/conversation/<id>/participants` | Add group participants as the owner |
 | `DELETE` | `/api/v1/conversation/<id>/participants/<user-id>` | Remove a member or remove the current user from the list |
 
+## Step 4 realtime bridge
+
+Step 4 upgrades a valid Step 2/3 session; it does not change the Account login
+contract. After ChatUI has loaded the tenant directory and conversations from
+Chatmgt, it explicitly calls `POST /api/v1/auth/tinode-token`. Chatmgt
+revalidates the current Account cookie and tenant, derives a deterministic
+tenant-scoped Tinode credential on the server, provisions or repairs the Tinode
+account, and returns only a short-lived Tinode token. The Account password and
+the derived Tinode credential are never returned to ChatUI.
+
+For a conversation without a Tinode topic, ChatUI calls
+`POST /api/v1/conversation/<id>/tinode-prepare`. Chatmgt verifies current
+membership and prepares missing Tinode user mappings for the active Chatmgt
+participants. Direct topics must match the peer's prepared Tinode UID. New
+group topics are created with exactly the prepared Chatmgt participants, then
+`PUT /api/v1/conversation/<id>/tinode-topic` verifies the caller's fresh token,
+authenticated Tinode UID, topic type, and complete subscriber set before
+persisting the binding.
+
+Once a group is bound, participant changes are orchestrated by Chatmgt:
+
+1. ChatUI sends the normal Chatmgt participant API request with a fresh
+   short-lived Tinode token.
+2. Chatmgt revalidates Account when the session uses `amr=account_sso`, enforces
+   tenant membership and owner rules, and prepares any missing target UID.
+3. Chatmgt updates the Tinode subscription first and commits the matching
+   Chatmgt membership only after Tinode confirms the operation.
+4. Removing oneself unsubscribes the current Tinode user. When the group owner
+   leaves, the next active Chatmgt owner is granted Tinode owner mode before the
+   old owner is unsubscribed.
+
+Chatmgt remains authoritative for directory, friendship, conversation metadata,
+and membership. Tinode remains authoritative for messages, files, presence,
+typing, reactions, and delivery/read receipts. ChatUI filters all Tinode topic
+events through the currently allowed Chatmgt topic bindings.
+
+If token provisioning or the Tinode socket is unavailable, ChatUI stays in
+`management` mode: Step 3 data remains usable, realtime inputs remain disabled,
+and the failure is shown instead of falling back to demo/localStorage data.
+Reconnects request a new Tinode token through Chatmgt instead of retaining an
+expired token.
+
+### Step 4 API contract
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/v1/auth/tinode-token` | Revalidate Account and issue a short-lived Tinode token |
+| `POST` | `/api/v1/conversation/<id>/tinode-prepare` | Prepare participant UID mappings from current Chatmgt membership |
+| `PUT` | `/api/v1/conversation/<id>/tinode-topic` | Validate and bind the direct/group Tinode topic |
+| `POST` | `/api/v1/conversation/<id>/participants` | Add both the Tinode subscription and Chatmgt membership |
+| `DELETE` | `/api/v1/conversation/<id>/participants/<user-id>` | Remove both the Tinode subscription and Chatmgt membership |
+
 ## Required production configuration
 
 ```dotenv
@@ -153,6 +205,12 @@ ACCOUNT_SESSION_COOKIE_DOMAIN=.upgo.vn
 ACCOUNT_SESSION_COOKIE_SECURE=true
 CHAT_AUTH_JWT_SECRET=<at-least-32-random-characters>
 CHAT_AUTH_COOKIE_SECURE=true
+TINODE_INTERNAL_WS_URL=ws://chatapi:6060/v0/channels
+TINODE_API_KEY=<matching-chatapi-api-key>
+TINODE_ADMIN_USERNAME=admin
+TINODE_ADMIN_PASSWORD=<current-tinode-root-password>
+TINODE_SSO_SECRET=<at-least-32-random-characters>
+TINODE_TOKEN_EXPIRE_IN=300
 ```
 
 The real `infrastructure/production/.env` is intentionally not modified by code
@@ -184,3 +242,23 @@ accepted in Step 4.
   not written to local browser demo storage.
 - Account profile fields remain read-only in ChatUI and are synchronized only
   from Account.
+
+## Step 4 acceptance
+
+- `/api/v1/auth/sso` still returns `connection: management` and no Tinode token;
+  ChatUI requests `/api/v1/auth/tinode-token` only after Step 3 data is ready.
+- `/api/v1/auth/health` reports
+  `account_sso.tinode_bridge_configured=true`; a management administrator cannot
+  request an employee Tinode token.
+- Two Account users in one tenant can open the same direct conversation, send
+  text and files, observe presence/typing, and see delivery/read receipts after
+  refresh and reconnect.
+- Group creation binds exactly the active Chatmgt members. Add, remove, leave,
+  and owner transfer update both Chatmgt and Tinode and survive refresh.
+- A different tenant, a non-member, a mismatched direct UID, a group with extra
+  subscribers, an expired token, and a revoked Account session are rejected.
+- If Tinode is stopped, ChatUI continues showing Chatmgt directory and
+  conversation metadata without enabling demo messages. Restarting Tinode
+  reconnects with a refreshed token.
+- Logout disconnects and clears the browser Tinode session. Issued Tinode tokens
+  remain bounded by the configured short lifetime (recommended 300 seconds).

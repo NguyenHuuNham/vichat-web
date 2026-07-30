@@ -122,6 +122,7 @@ wait_frontend() {
 ensure_secret TINODE_DB_PASSWORD hex 32
 ensure_secret TINODE_AUTH_TOKEN_KEY base64 32
 ensure_secret TINODE_UID_ENCRYPTION_KEY base64 16
+ensure_secret TINODE_SSO_SECRET base64 48
 ensure_secret CHATSERVICE_DB_PASSWORD hex 32
 ensure_secret APP_SECRET_KEY base64 48
 ensure_secret AUTH_PASSWORD_SALT base64 32

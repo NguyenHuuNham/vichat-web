@@ -43,6 +43,8 @@ def verify_database(alembic_ini):
     require_secret("AUTH_PASSWORD_SALT", minimum=16)
     require_secret("SESSION_COOKIE_SALT")
     require_secret("CHAT_AUTH_JWT_SECRET")
+    if str(os.getenv("CHAT_ACCOUNT_SSO_ENABLED") or "").lower() == "true":
+        require_secret("TINODE_SSO_SECRET")
     tinode_token_ttl = int(os.getenv("TINODE_TOKEN_EXPIRE_IN", 300))
     if tinode_token_ttl < 60 or tinode_token_ttl > 900:
         raise RuntimeError("TINODE_TOKEN_EXPIRE_IN must be between 60 and 900 seconds.")
@@ -292,6 +294,8 @@ def verify_http(base_url, origin):
         raise RuntimeError("UpGO Account SSO is enabled but not fully configured.")
     if account_sso_enabled and not account_sso.get("directory_configured"):
         raise RuntimeError("UpGO Account directory sync is not fully configured.")
+    if account_sso_enabled and not account_sso.get("tinode_bridge_configured"):
+        raise RuntimeError("Chatmgt-to-Tinode realtime bridge is not fully configured.")
     management_data = health_payload.get("management_data") or {}
     if not management_data.get("configured"):
         raise RuntimeError("Chatmgt management data APIs are not fully configured.")
@@ -353,6 +357,13 @@ def verify_http(base_url, origin):
             Origin=origin,
             Cookie="vichat_management_access_token={}".format(management_token),
         )
+        management_tinode = requests.post(
+            base_url + "/api/v1/auth/tinode-token",
+            headers=management_headers,
+            timeout=10,
+        )
+        if management_tinode.status_code not in (401, 403):
+            raise RuntimeError("A management administrator received a Chat Tinode token.")
         management_logout = requests.post(
             base_url + "/api/v1/auth/logout",
             headers=management_headers,
@@ -368,7 +379,7 @@ def verify_http(base_url, origin):
         if management_after_logout.status_code not in (401, 403):
             raise RuntimeError("The management token remained usable after logout.")
 
-        print("Health, CORS, Account SSO challenge, employee password rejection, and management login/logout checks passed.")
+        print("Health, CORS, Account SSO challenge, Tinode bridge configuration, employee password rejection, and management isolation checks passed.")
         return
 
     login = requests.post(

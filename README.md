@@ -51,6 +51,25 @@ directory, friendship, and conversation metadata:
 Account remains authoritative for employee profile fields. Chatmgt never copies
 an Account password, token, or session cookie into its database.
 
+## Step 4 realtime flow
+
+After Step 3 data is loaded, ChatUI explicitly upgrades the session through
+`POST /api/v1/auth/tinode-token`. Chatmgt revalidates the Account session and
+returns only a short-lived Tinode token; the deterministic Tinode credential
+stays server-side. ChatUI then connects to ChatAPI for messages, files,
+presence, typing, reactions, and receipts.
+
+Chatmgt prepares participant Tinode UID mappings and validates every topic
+binding against the current tenant conversation. Group add/remove/leave actions
+are sent to Chatmgt, which updates the Tinode subscription and Chatmgt membership
+as one controlled bridge operation. The browser does not independently invent
+or persist membership state.
+
+If Tinode is unavailable, ChatUI remains in `management` mode with the Step 3
+directory and conversations available; realtime inputs stay disabled instead
+of falling back to demo/localStorage messages. Reconnects obtain a fresh token
+from Chatmgt.
+
 ## Local checks
 
 Run from the repository root:

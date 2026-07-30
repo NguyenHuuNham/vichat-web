@@ -58,7 +58,7 @@ proxy, obtain TLS certificates, run `sudo nginx -t`, then reload Nginx.
 4. Builds pinned images and creates timestamped `pg_dump -Fc` backups before Alembic.
 5. Runs `alembic upgrade head`, bootstrapping the first administrator only when the database is empty.
 6. Validates Nginx, starts the services, and waits for health checks.
-7. In Account SSO mode, verifies health/CORS, the missing-session SSO challenge, employee password rejection, and isolated management login/logout. Later-stage Tinode checks run only in the legacy employee-password path.
+7. In Account SSO mode, verifies health/CORS, the missing-session SSO challenge, employee password rejection, Tinode bridge configuration, and management-session isolation. Real employee realtime behavior is verified separately with Account sessions.
 8. Runs an isolated two-tenant API test and removes its temporary records.
 9. Optionally verifies the public domains when `VERIFY_PUBLIC_URLS=true`.
 
@@ -79,7 +79,12 @@ ACCOUNT_SSO_LOGOUT_PATH=/logout
 ACCOUNT_SESSION_COOKIE_NAME=session
 ACCOUNT_SESSION_COOKIE_DOMAIN=.upgo.vn
 ACCOUNT_SESSION_COOKIE_SECURE=true
+TINODE_SSO_SECRET=
 ```
+
+Leave `TINODE_SSO_SECRET` empty only for the first `start.sh` run so it is
+generated securely, or set an independently generated value of at least 32
+characters. Never use a documentation placeholder as the real secret.
 
 After deployment, first sign in at `account.upgo.vn` with an existing active
 employee and select the intended tenant. Open `chat.upgo.vn`, click **Đăng nhập
@@ -113,12 +118,52 @@ sign in with two active users in the same tenant and verify:
    group updates both users' lists.
 6. Opening the same direct pair twice returns the same Chatmgt conversation ID.
 7. The UI displays **Dữ liệu Chatmgt** and disables employee message/file input
-   with the Step 4 notice instead of saving demo messages.
+   with a realtime-unavailable notice instead of saving demo messages.
 
 Repeat the directory and conversation checks with a second tenant. No response
 may contain an employee, participant, friend request, or conversation from the
 other tenant. This acceptance does not require a Tinode token or realtime
 message.
+
+## Chatmgt-to-Tinode acceptance test
+
+Do not start this gate until the Step 3 server commit and acceptance checks are
+confirmed. `start.sh` generates `TINODE_SSO_SECRET` when the existing `.env`
+value is empty; preserve that value with the Chatmgt database and never print or
+commit it. `TINODE_ADMIN_PASSWORD` must remain the current Tinode root password.
+
+After rebuilding, first check:
+
+```bash
+curl -fsS https://chatmgt.upgo.vn/api/v1/auth/health
+```
+
+The response must contain
+`account_sso.tinode_bridge_configured=true`. Then use two existing active UpGO
+Account users from the same tenant in separate browser profiles:
+
+1. Sign in to Account, open Chat, and confirm `/api/v1/auth/sso` returns
+   `connection: management` without `tinode_auth`.
+2. Confirm ChatUI next calls `/api/v1/auth/tinode-token`, receives
+   `connection: tinode`, and connects to
+   `wss://chat.upgo.vn/v0/channels` without sending an Account password.
+3. Open a direct conversation before the peer has previously used Chat. Confirm
+   Chatmgt prepares the peer UID, both users see the same Chatmgt conversation,
+   and text/file/presence/typing/read state works after refresh.
+4. Create a group, add and remove a member, let one member leave, and let the
+   owner leave. Refresh every browser and confirm Chatmgt participants and
+   Tinode subscribers stay aligned and the replacement owner can manage members.
+5. Stop only `chatapi` temporarily. ChatUI must keep directory/conversation data
+   in **Dữ liệu Chatmgt** mode with realtime controls disabled, not freeze or
+   write demo messages. Start `chatapi` and confirm reconnect uses a fresh token.
+6. Repeat with a second tenant and attempt a copied topic ID from the first
+   tenant. Binding/access must be rejected.
+7. Log out and confirm ChatUI disconnects Tinode, clears local state, revokes the
+   Chatmgt session, and cannot reopen protected data after refresh.
+
+The automated verifier checks configuration and management isolation but cannot
+fabricate a real Account cookie. The two-user/two-tenant browser checks are
+therefore mandatory before Step 4 is marked complete.
 
 ## Rollback
 
@@ -133,6 +178,6 @@ The final checks include:
 
 ```text
 Database revision and credential policy are valid.
-Health, CORS, Account SSO challenge, employee password rejection, and management login/logout checks passed.
+Health, CORS, Account SSO challenge, Tinode bridge configuration, employee password rejection, and management isolation checks passed.
 Two-tenant user, conversation, friend, and participant checks passed.
 ```

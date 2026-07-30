@@ -8,6 +8,7 @@ REPOSITORY_ROOT = PROJECT_ROOT.parent
 CONTROLLER_PATH = PROJECT_ROOT / "application" / "controllers" / "api_chat_management.py"
 LOGIN_PATH = REPOSITORY_ROOT / "src" / "features" / "auth" / "components" / "Login.jsx"
 CHAT_SERVICE_PATH = REPOSITORY_ROOT / "src" / "features" / "chat" / "services" / "chatManagementService.js"
+CHAT_APP_PATH = REPOSITORY_ROOT / "src" / "app" / "App.jsx"
 PRODUCTION_COMPOSE_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / "compose.yaml"
 PRODUCTION_ENV_EXAMPLE_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / ".env.example"
 HAS_REPOSITORY_SOURCES = all(path.is_file() for path in (
@@ -66,6 +67,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("CHAT_ACCOUNT_SSO_ENABLED=true", env_source)
         self.assertIn("ACCOUNT_URL=https://account.upgo.vn", env_source)
         self.assertIn("ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/user", env_source)
+        self.assertIn("TINODE_SSO_SECRET: ${TINODE_SSO_SECRET:?TINODE_SSO_SECRET is required}", compose_source)
 
     def test_account_sso_login_does_not_provision_or_login_to_tinode(self):
         controller_source, sso_source = function_source(CONTROLLER_PATH, "management_sso_login")
@@ -108,6 +110,42 @@ class ChatAuthContractTests(unittest.TestCase):
         )
         self.assertIn("TINODE_TOKEN_REQUIRED", binding_source)
         self.assertIn("tinode_verify_topic_access", binding_source)
+        self.assertIn("expected_member_uids", binding_source)
+
+    def test_tinode_bridge_is_explicitly_requested_after_account_login(self):
+        _controller_source, token_source = function_source(
+            CONTROLLER_PATH,
+            "management_tinode_token",
+        )
+
+        self.assertIn("_validated_account_identity", token_source)
+        self.assertIn("tinode_sso_login", token_source)
+        self.assertIn('"connection": "tinode"', token_source)
+
+    def test_tinode_participants_are_prepared_from_chatmgt_membership(self):
+        _controller_source, prepare_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_prepare_tinode",
+        )
+
+        self.assertIn("_conversation_and_membership", prepare_source)
+        self.assertIn("_active_conversation_accounts", prepare_source)
+        self.assertIn("_ensure_tinode_account", prepare_source)
+
+    def test_group_membership_updates_are_bridged_by_chatmgt(self):
+        _controller_source, add_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_participant_add",
+        )
+        _controller_source, remove_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_participant_remove",
+        )
+
+        self.assertIn("tinode_add_topic_members", add_source)
+        self.assertIn("tinode_remove_topic_member", remove_source)
+        self.assertIn("TINODE_TOKEN_REQUIRED", add_source)
+        self.assertIn("TINODE_TOKEN_REQUIRED", remove_source)
 
     def test_direct_conversations_are_reused_by_participant_pair(self):
         _controller_source, create_source = function_source(
@@ -132,16 +170,28 @@ class ChatAuthContractTests(unittest.TestCase):
     @repository_source_test
     def test_chatui_forwards_the_current_tinode_token_when_binding(self):
         service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")
-        self.assertIn("tinode_token: activeSession?.tinodeAuth?.token", service_source)
+        self.assertIn("getFreshTinodeAuth", service_source)
+        self.assertIn("tinode_token: tinodeAuth?.token", service_source)
+
+    @repository_source_test
+    def test_chatui_promotes_management_data_to_tinode_realtime(self):
+        app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
+        service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("chatManagementService.refreshTinodeToken()", app_source)
+        self.assertIn("setChatMode('tinode')", app_source)
+        self.assertIn("prepareTinodeConversation", app_source)
+        self.assertIn("/tinode-prepare", service_source)
+        self.assertIn("setTokenProvider", app_source)
 
     @repository_source_test
     def test_chatui_management_mode_uses_chatmgt_without_fake_messages(self):
-        app_source = (REPOSITORY_ROOT / "src" / "app" / "App.jsx").read_text(encoding="utf-8")
+        app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
         service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")
 
         self.assertIn("usesManagementData", app_source)
         self.assertIn("realtimeMessagingPending", app_source)
-        self.assertIn("Tin nhắn realtime sẽ được bật ở bước 4", app_source)
+        self.assertIn("Dữ liệu Chatmgt vẫn sẵn sàng", app_source)
         self.assertIn("/api/v1/chat/users", service_source)
         self.assertIn("/api/v1/friend-request", service_source)
         self.assertIn("/api/v1/conversation", service_source)

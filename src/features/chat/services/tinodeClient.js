@@ -1208,6 +1208,11 @@ export const tinodeClient = {
     conversationListRequest = null;
   },
 
+  disallowConversationTopic(topicName) {
+    if (topicName) allowedConversationTopics.delete(String(topicName));
+    conversationListRequest = null;
+  },
+
   async listConversations() {
     if (!meTopic) return [];
     if (!conversationListRequest) {
@@ -1538,6 +1543,19 @@ export const tinodeClient = {
     await Promise.all(memberIds.filter(Boolean).map(uid => topic.invite(uid, GROUP_MEMBER_MODE)));
     emitConversation(topic);
     return enrichConversationProfiles(toConversation(topic, tinode), tinode);
+  },
+
+  async discardGroupTopic(topicName) {
+    if (!String(topicName || '').startsWith('grp')) return;
+    const tinode = getClient();
+    const topic = tinode.getTopic(topicName);
+    if (topic) await topic.delTopic(true);
+    tinode.cacheRemTopic?.(topicName);
+    allowedConversationTopics.delete(String(topicName));
+    topicSubscriptionRequests.delete(topicName);
+    fullHistoryRequests.delete(topicName);
+    fullHistoryTopics.delete(topicName);
+    conversationListRequest = null;
   },
 
   async addMember(topicName, uid, mode = GROUP_MEMBER_MODE) {

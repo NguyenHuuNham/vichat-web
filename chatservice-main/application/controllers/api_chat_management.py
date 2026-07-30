@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import logging
 import time
@@ -45,7 +46,9 @@ from application.services.auth_service import (
     tinode_admin_reset_password,
     tinode_change_password,
     tinode_create_account,
+    tinode_add_topic_members,
     tinode_login,
+    tinode_remove_topic_member,
     tinode_sso_login,
     tinode_verify_topic_access,
     token_from_request,
@@ -398,6 +401,74 @@ async def _validated_account_identity(request, account):
     return identity
 
 
+def _tinode_projection_identity(account):
+    properties = account.properties or {}
+    account_user_id = str(properties.get("account_user_id") or "").strip()
+    account_tenant_id = str(properties.get("account_tenant_id") or "").strip()
+    if properties.get("auth_source") != "account" or not account_user_id:
+        raise AuthError("The Chatmgt account is not linked to UpGO Account.", 409)
+    if account_tenant_id != str(account.tenant_id):
+        raise AuthError("The Account tenant mapping is invalid.", 409)
+    return {
+        "account_user_id": account_user_id,
+        "tenant_id": str(account.tenant_id),
+        "full_name": account.full_name or account.username,
+    }
+
+
+async def _ensure_tinode_account(account):
+    if account.tinode_uid:
+        return str(account.tinode_uid)
+    identity = _tinode_projection_identity(account)
+    if not account.tinode_username:
+        account.tinode_username = stable_tinode_username(
+            identity["tenant_id"],
+            identity["account_user_id"],
+        )
+    tinode_auth = await tinode_sso_login(
+        identity,
+        account.tinode_username,
+        ensure_credential=False,
+    )
+    tinode_uid = str(tinode_auth.get("uid") or "").strip()
+    if not tinode_uid:
+        raise AuthError("Tinode did not return a user mapping.", 502)
+    account.tinode_uid = tinode_uid
+    account.updated_at = int(time.time())
+    return tinode_uid
+
+
+async def _ensure_tinode_accounts(accounts, concurrency=8):
+    account_list = list(accounts)
+    semaphore = asyncio.Semaphore(max(1, int(concurrency)))
+
+    async def prepare(account):
+        async with semaphore:
+            return str(account.id), await _ensure_tinode_account(account)
+
+    prepared = await asyncio.gather(*(prepare(account) for account in account_list))
+    return dict(prepared)
+
+
+def _active_conversation_accounts(item):
+    participants = ConversationParticipant.query.filter(
+        ConversationParticipant.tenant_id == item.tenant_id,
+        ConversationParticipant.conversation_id == item.id,
+        ConversationParticipant.active.is_(True),
+        ConversationParticipant.deleted.is_(False),
+    ).all()
+    participant_ids = [participant.participant_id for participant in participants]
+    accounts = ManagementAccount.query.filter(
+        ManagementAccount.tenant_id == item.tenant_id,
+        ManagementAccount.id.in_(participant_ids),
+        ManagementAccount.active.is_(True),
+    ).all() if participant_ids else []
+    accounts_by_id = {str(account.id): account for account in accounts}
+    if set(participant_ids) != set(accounts_by_id):
+        raise AuthError("A Chatmgt participant is no longer active in this tenant.", 409)
+    return participants, accounts_by_id
+
+
 def _audit(request, event_name, success=True, tenant_id=None, user_id=None, properties=None):
     try:
         db.session.add(SecurityAuditLog(
@@ -692,6 +763,7 @@ async def management_tinode_token(request):
         account.updated_at = int(time.time())
         db.session.commit()
         return json({
+            "connection": "tinode",
             "tinode_auth": {
                 "username": account.tinode_username,
                 "uid": account.tinode_uid,
@@ -786,6 +858,8 @@ async def management_auth_health(request):
     tinode_sso_configured = bool(
         len(str(app.config.get("TINODE_SSO_SECRET") or "")) >= 32
         and tinode_admin_configured
+        and str(app.config.get("TINODE_INTERNAL_WS_URL") or "").strip()
+        and str(app.config.get("TINODE_API_KEY") or "").strip()
     )
     employee_auth_configured = bool(
         len(str(app.config.get("CHAT_AUTH_JWT_SECRET") or "")) >= 32
@@ -1578,6 +1652,56 @@ async def conversation_create(request):
         return json({"error_code": "CONVERSATION_ERROR", "error_message": str(error)}, status=500)
 
 
+@app.route('/api/v1/conversation/<conversation_id>/tinode-prepare', methods=['POST'])
+@app.route('/api/v1/chat/threads/<conversation_id>/tinode-prepare', methods=['POST'])
+async def conversation_prepare_tinode(request, conversation_id):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    if management_session_requested(request):
+        return json({
+            "error_code": "CHAT_SESSION_REQUIRED",
+            "error_message": "Tinode accounts can only be prepared from a Chat user session.",
+        }, status=403)
+    try:
+        conversation_uuid = uuid.UUID(str(conversation_id))
+    except (ValueError, TypeError, AttributeError):
+        return json({"error_code": "NOT_FOUND", "error_message": "Invalid conversation."}, status=404)
+
+    user_id = _user_id(current_user)
+    item, membership = _conversation_and_membership(tenant_id, conversation_uuid, user_id)
+    if item is None or membership is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
+    account = _account_by_id(tenant_id, user_id)
+    if account is None:
+        return _auth_error()
+    try:
+        if current_user.get("auth_method") == "account_sso":
+            await _validated_account_identity(request, account)
+        _participants, accounts_by_id = _active_conversation_accounts(item)
+        await _ensure_tinode_accounts(accounts_by_id.values())
+        db.session.commit()
+        return json(_serialize_conversation(item))
+    except AccountSSOError as error:
+        db.session.rollback()
+        if error.status_code != 503:
+            revoke_request_token(request)
+            revoked_error = AccountSSOError(str(error), 401, error.error_code)
+            response = clear_auth_cookie(_account_sso_error(revoked_error), request)
+            return clear_account_cookie(response)
+        return _account_sso_error(error)
+    except AuthError as error:
+        db.session.rollback()
+        return json({"error_code": "TINODE_PREPARE_FAILED", "error_message": str(error)}, status=error.status_code)
+    except Exception as error:
+        db.session.rollback()
+        logger.exception("Tinode participant preparation failed: %s", error)
+        return json({
+            "error_code": "TINODE_PREPARE_FAILED",
+            "error_message": "Could not prepare the realtime participants.",
+        }, status=503)
+
+
 @app.route('/api/v1/conversation/<conversation_id>/tinode-topic', methods=['PUT'])
 @app.route('/api/v1/chat/threads/<conversation_id>/tinode-topic', methods=['PUT'])
 async def conversation_bind_tinode(request, conversation_id):
@@ -1592,7 +1716,8 @@ async def conversation_bind_tinode(request, conversation_id):
     item, membership = _conversation_and_membership(tenant_id, conversation_uuid, user_id)
     if item is None or membership is None:
         return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
-    topic_name = str((request.json or {}).get("tinode_topic") or "").strip()
+    body = request.json or {}
+    topic_name = str(body.get("tinode_topic") or "").strip()
     if not topic_name:
         return json({"error_code": "PARAM_ERROR", "error_message": "Tinode topic is required."}, status=400)
     is_group = bool((item.properties or {}).get("is_group"))
@@ -1613,24 +1738,48 @@ async def conversation_bind_tinode(request, conversation_id):
     account = _account_by_id(tenant_id, user_id)
     if account is None:
         return _auth_error()
+    if current_user.get("auth_method") == "account_sso":
+        try:
+            await _validated_account_identity(request, account)
+        except AccountSSOError as error:
+            db.session.rollback()
+            if error.status_code != 503:
+                revoke_request_token(request)
+                revoked_error = AccountSSOError(str(error), 401, error.error_code)
+                response = clear_auth_cookie(_account_sso_error(revoked_error), request)
+                return clear_account_cookie(response)
+            return _account_sso_error(error)
+    expected_member_uids = None
     if not is_group:
-        participants = ConversationParticipant.query.filter(
-            ConversationParticipant.tenant_id == tenant_id,
-            ConversationParticipant.conversation_id == item.id,
-            ConversationParticipant.active.is_(True),
-            ConversationParticipant.deleted.is_(False),
-        ).all()
+        try:
+            participants, accounts_by_id = _active_conversation_accounts(item)
+        except AuthError as error:
+            return json({"error_code": "TINODE_PARTICIPANTS_INVALID", "error_message": str(error)}, status=error.status_code)
         peer_ids = [
             participant.participant_id for participant in participants
             if participant.participant_id != user_id
         ]
         if len(participants) != 2 or len(peer_ids) != 1:
             return json({"error_code": "DIRECT_PARTICIPANTS_INVALID", "error_message": "A direct conversation must contain exactly two participants."}, status=409)
-        peer = _account_by_id(tenant_id, peer_ids[0])
+        peer = accounts_by_id.get(peer_ids[0])
         if peer is None or not peer.tinode_uid or str(peer.tinode_uid) != topic_name:
             return json({"error_code": "TINODE_TOPIC_MISMATCH", "error_message": "The Tinode direct topic does not match the Chatmgt participant."}, status=409)
+    else:
+        try:
+            participants, accounts_by_id = _active_conversation_accounts(item)
+            expected_member_uids = {
+                str(accounts_by_id[participant.participant_id].tinode_uid or "")
+                for participant in participants
+            }
+        except AuthError as error:
+            return json({"error_code": "TINODE_PARTICIPANTS_INVALID", "error_message": str(error)}, status=error.status_code)
+        if not expected_member_uids or "" in expected_member_uids:
+            return json({
+                "error_code": "TINODE_PARTICIPANTS_UNPREPARED",
+                "error_message": "Prepare all Chatmgt participants before binding the Tinode group.",
+            }, status=409)
 
-    tinode_token = str((request.json or {}).get("tinode_token") or "").strip()
+    tinode_token = str(body.get("tinode_token") or "").strip()
     if not tinode_token:
         return json({"error_code": "TINODE_TOKEN_REQUIRED", "error_message": "Tinode authentication is required."}, status=400)
 
@@ -1639,7 +1788,12 @@ async def conversation_bind_tinode(request, conversation_id):
             tinode_token,
             account.tinode_uid,
             topic_name,
+            expected_member_uids=expected_member_uids,
         )
+        if is_group and body.get("avatar"):
+            properties = dict(item.properties or {})
+            properties["avatar"] = str(body.get("avatar") or "")[:8192]
+            item.properties = properties
         item.tinode_topic = topic_name
         db.session.commit()
         return json(_serialize_conversation(item))
@@ -1677,13 +1831,13 @@ async def conversation_participant_add(request, conversation_id):
     requested_ids = [participant_id for participant_id in requested_ids if participant_id != user_id]
     if not requested_ids:
         return json({"error_code": "PARAM_ERROR", "error_message": "At least one participant is required."}, status=400)
-    valid_ids = {
-        str(account.id) for account in ManagementAccount.query.filter(
-            ManagementAccount.tenant_id == tenant_id,
-            ManagementAccount.active.is_(True),
-            ManagementAccount.id.in_(requested_ids),
-        ).all()
-    }
+    requested_accounts = ManagementAccount.query.filter(
+        ManagementAccount.tenant_id == tenant_id,
+        ManagementAccount.active.is_(True),
+        ManagementAccount.id.in_(requested_ids),
+    ).all()
+    requested_accounts_by_id = {str(account.id): account for account in requested_accounts}
+    valid_ids = set(requested_accounts_by_id)
     if set(requested_ids) != valid_ids:
         return json({"error_code": "TENANT_VIOLATION", "error_message": "All participants must belong to the same tenant."}, status=400)
 
@@ -1695,27 +1849,90 @@ async def conversation_participant_add(request, conversation_id):
         ConversationParticipant.deleted.is_(False),
     ).all()
     existing_by_id = {participant.participant_id: participant for participant in existing}
-    for participant_id in requested_ids:
-        participant = existing_by_id.get(participant_id)
-        if participant is None:
-            participant = ConversationParticipant(
-                tenant_id=tenant_id,
-                conversation_id=item.id,
-                participant_type="USER",
-                participant_id=participant_id,
-                role="MEMBER",
-                joined_at=now,
-                active=True,
+    activated_ids = [
+        requested_id for requested_id in requested_ids
+        if existing_by_id.get(requested_id) is None or not existing_by_id[requested_id].active
+    ]
+    try:
+        tinode_token = ""
+        actor_account = None
+        added_tinode_uids = []
+        tinode_members_added = False
+        database_committed = False
+        if item.tinode_topic and activated_ids:
+            tinode_token = str((request.json or {}).get("tinode_token") or "").strip()
+            if not tinode_token:
+                return json({"error_code": "TINODE_TOKEN_REQUIRED", "error_message": "Tinode authentication is required."}, status=400)
+            actor_account = _account_by_id(tenant_id, user_id)
+            if actor_account is None or not actor_account.tinode_uid:
+                return json({"error_code": "TINODE_ACCOUNT_UNPREPARED", "error_message": "The current Tinode account is not prepared."}, status=409)
+            if current_user.get("auth_method") == "account_sso":
+                await _validated_account_identity(request, actor_account)
+            prepared_uids = await _ensure_tinode_accounts(
+                requested_accounts_by_id[requested_id] for requested_id in activated_ids
             )
-            db.session.add(participant)
-        else:
-            participant.active = True
-            participant.left_at = None
-            participant.joined_at = now
-            participant.role = "MEMBER"
-    item.updated_at = now
-    db.session.commit()
-    return json(_serialize_conversation(item))
+            added_tinode_uids = [prepared_uids[requested_id] for requested_id in activated_ids]
+
+        for requested_id in requested_ids:
+            participant = existing_by_id.get(requested_id)
+            if participant is None:
+                participant = ConversationParticipant(
+                    tenant_id=tenant_id,
+                    conversation_id=item.id,
+                    participant_type="USER",
+                    participant_id=requested_id,
+                    role="MEMBER",
+                    joined_at=now,
+                    active=True,
+                )
+                db.session.add(participant)
+            else:
+                participant.active = True
+                participant.left_at = None
+                participant.joined_at = now
+                participant.role = "MEMBER"
+        item.updated_at = now
+        db.session.flush()
+        if item.tinode_topic and added_tinode_uids:
+            await tinode_add_topic_members(
+                tinode_token,
+                actor_account.tinode_uid,
+                item.tinode_topic,
+                added_tinode_uids,
+            )
+            tinode_members_added = True
+        db.session.commit()
+        database_committed = True
+        return json(_serialize_conversation(item))
+    except AccountSSOError as error:
+        db.session.rollback()
+        if error.status_code != 503:
+            revoke_request_token(request)
+            revoked_error = AccountSSOError(str(error), 401, error.error_code)
+            response = clear_auth_cookie(_account_sso_error(revoked_error), request)
+            return clear_account_cookie(response)
+        return _account_sso_error(error)
+    except AuthError as error:
+        db.session.rollback()
+        return json({"error_code": "TINODE_MEMBERSHIP_FAILED", "error_message": str(error)}, status=error.status_code)
+    except Exception as error:
+        db.session.rollback()
+        if tinode_members_added and not database_committed:
+            for added_uid in reversed(added_tinode_uids):
+                try:
+                    await tinode_remove_topic_member(
+                        tinode_token,
+                        actor_account.tinode_uid,
+                        item.tinode_topic,
+                        added_uid,
+                    )
+                except AuthError:
+                    logger.warning("Could not roll back Tinode member %s after database failure.", added_uid)
+        logger.exception("Could not add Chatmgt/Tinode participants: %s", error)
+        return json({
+            "error_code": "CONVERSATION_PARTICIPANT_ERROR",
+            "error_message": "Could not add the conversation participants.",
+        }, status=503)
 
 
 @app.route('/api/v1/conversation/<conversation_id>/participants/<participant_id>', methods=['DELETE'])
@@ -1748,10 +1965,15 @@ async def conversation_participant_remove(request, conversation_id, participant_
         return json({"error_code": "NOT_FOUND", "error_message": "Participant not found."}, status=404)
     if target.role == "OWNER" and participant_id != user_id:
         return json({"error_code": "OWNER_REQUIRED", "error_message": "The group owner cannot be removed."}, status=409)
+    is_group = bool((item.properties or {}).get("is_group"))
+    if not is_group and participant_id != user_id:
+        return json({
+            "error_code": "DIRECT_PARTICIPANTS_INVALID",
+            "error_message": "A direct conversation can only be removed from the current user's list.",
+        }, status=409)
 
     now = int(time.time())
-    target.active = False
-    target.left_at = now
+    replacement = None
     if target.role == "OWNER":
         replacement = ConversationParticipant.query.filter(
             ConversationParticipant.tenant_id == tenant_id,
@@ -1760,8 +1982,77 @@ async def conversation_participant_remove(request, conversation_id, participant_
             ConversationParticipant.active.is_(True),
             ConversationParticipant.deleted.is_(False),
         ).order_by(ConversationParticipant.joined_at.asc()).first()
+    try:
+        tinode_token = ""
+        actor_account = None
+        target_account = None
+        replacement_uid = ""
+        if item.tinode_topic:
+            tinode_token = str((request.json or {}).get("tinode_token") or "").strip()
+            if not tinode_token:
+                return json({"error_code": "TINODE_TOKEN_REQUIRED", "error_message": "Tinode authentication is required."}, status=400)
+            actor_account = _account_by_id(tenant_id, user_id)
+            target_account = _account_by_id(tenant_id, participant_id)
+            if actor_account is None or not actor_account.tinode_uid:
+                return json({"error_code": "TINODE_ACCOUNT_UNPREPARED", "error_message": "The current Tinode account is not prepared."}, status=409)
+            if target_account is None or not target_account.tinode_uid:
+                return json({"error_code": "TINODE_ACCOUNT_UNPREPARED", "error_message": "The target Tinode account is not prepared."}, status=409)
+            if current_user.get("auth_method") == "account_sso":
+                await _validated_account_identity(request, actor_account)
+            if is_group and replacement is not None:
+                replacement_account = _account_by_id(tenant_id, replacement.participant_id)
+                replacement_uid = await _ensure_tinode_account(replacement_account)
+
+        target.active = False
+        target.left_at = now
         if replacement is not None:
             replacement.role = "OWNER"
-    item.updated_at = now
-    db.session.commit()
-    return json(_serialize_conversation(item))
+        item.updated_at = now
+        db.session.flush()
+
+        if item.tinode_topic:
+            if replacement_uid:
+                await tinode_add_topic_members(
+                    tinode_token,
+                    actor_account.tinode_uid,
+                    item.tinode_topic,
+                    [replacement_uid],
+                    mode="JRWASO",
+                )
+            await tinode_remove_topic_member(
+                tinode_token,
+                actor_account.tinode_uid,
+                item.tinode_topic,
+                target_account.tinode_uid,
+            )
+        db.session.commit()
+        return json(_serialize_conversation(item))
+    except AccountSSOError as error:
+        db.session.rollback()
+        if error.status_code != 503:
+            revoke_request_token(request)
+            revoked_error = AccountSSOError(str(error), 401, error.error_code)
+            response = clear_auth_cookie(_account_sso_error(revoked_error), request)
+            return clear_account_cookie(response)
+        return _account_sso_error(error)
+    except AuthError as error:
+        db.session.rollback()
+        if replacement_uid and actor_account is not None and tinode_token:
+            try:
+                await tinode_add_topic_members(
+                    tinode_token,
+                    actor_account.tinode_uid,
+                    item.tinode_topic,
+                    [replacement_uid],
+                    mode="JRWAS",
+                )
+            except AuthError:
+                logger.warning("Could not roll back the Tinode owner transfer.")
+        return json({"error_code": "TINODE_MEMBERSHIP_FAILED", "error_message": str(error)}, status=error.status_code)
+    except Exception as error:
+        db.session.rollback()
+        logger.exception("Could not remove Chatmgt/Tinode participant: %s", error)
+        return json({
+            "error_code": "CONVERSATION_PARTICIPANT_ERROR",
+            "error_message": "Could not remove the conversation participant.",
+        }, status=503)
