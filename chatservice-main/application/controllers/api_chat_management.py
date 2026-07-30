@@ -58,6 +58,7 @@ from application.services.auth_service import (
 from application.services.sso_identity import (
     account_properties_match,
     account_session_matches,
+    direct_peer_tinode_uid,
     protected_tinode_account,
     stable_account_id,
     stable_tinode_username,
@@ -495,7 +496,7 @@ def _audit(request, event_name, success=True, tenant_id=None, user_id=None, prop
         logger.warning("Could not write security audit event %s: %s", event_name, error)
 
 
-def _serialize_conversation(item):
+def _serialize_conversation(item, viewer_id):
     participants = ConversationParticipant.query.filter(
         ConversationParticipant.tenant_id == item.tenant_id,
         ConversationParticipant.conversation_id == item.id,
@@ -511,18 +512,28 @@ def _serialize_conversation(item):
     accounts_by_id = {str(account.id): account for account in accounts}
     owner = next((participant for participant in participants if participant.role == "OWNER"), None)
     properties = item.properties or {}
+    is_group = bool(properties.get("is_group"))
+    tinode_topic = item.tinode_topic if is_group else direct_peer_tinode_uid(
+        viewer_id,
+        participant_ids,
+        {
+            participant_id: accounts_by_id[participant_id].tinode_uid
+            for participant_id in participant_ids
+            if participant_id in accounts_by_id
+        },
+    )
     return {
         "id": str(item.id),
         "conversation_no": item.conversation_no,
         "tenant_id": item.tenant_id,
-        "tinode_topic": item.tinode_topic,
+        "tinode_topic": tinode_topic,
         "subject": item.subject,
         "status": item.status,
         "priority": item.priority,
         "last_message_at": item.last_message_at,
         "updated_at": item.updated_at,
         "properties": properties,
-        "isGroup": bool(properties.get("is_group")),
+        "isGroup": is_group,
         "participantIds": participant_ids,
         "members": [
             _public_account(accounts_by_id[participant_id])
@@ -1566,7 +1577,7 @@ async def conversation_list(request):
         ConversationParticipant.active.is_(True),
         ConversationParticipant.deleted.is_(False),
     ).order_by(Conversation.updated_at.desc())
-    return json({"objects": [_serialize_conversation(item) for item in query.limit(limit).all()]})
+    return json({"objects": [_serialize_conversation(item, user_id) for item in query.limit(limit).all()]})
 
 
 @app.route('/api/v1/conversation', methods=['POST'])
@@ -1630,7 +1641,7 @@ async def conversation_create(request):
                     membership.left_at = None
             existing.updated_at = now
             db.session.commit()
-            return json(_serialize_conversation(existing))
+            return json(_serialize_conversation(existing, owner_id))
     item = Conversation(
         tenant_id=tenant_id,
         conversation_no="conv-{}".format(uuid.uuid4().hex),
@@ -1656,7 +1667,7 @@ async def conversation_create(request):
                 active=True,
             ))
         db.session.commit()
-        return json(_serialize_conversation(item), status=201)
+        return json(_serialize_conversation(item, owner_id), status=201)
     except Exception as error:
         db.session.rollback()
         return json({"error_code": "CONVERSATION_ERROR", "error_message": str(error)}, status=500)
@@ -1691,7 +1702,7 @@ async def conversation_prepare_tinode(request, conversation_id):
         _participants, accounts_by_id = _active_conversation_accounts(item)
         await _ensure_tinode_accounts(accounts_by_id.values())
         db.session.commit()
-        return json(_serialize_conversation(item))
+        return json(_serialize_conversation(item, user_id))
     except AccountSSOError as error:
         db.session.rollback()
         if error.status_code != 503:
@@ -1733,15 +1744,16 @@ async def conversation_bind_tinode(request, conversation_id):
     is_group = bool((item.properties or {}).get("is_group"))
     if not valid_tinode_topic(topic_name, is_group):
         return json({"error_code": "TINODE_TOPIC_INVALID", "error_message": "Tinode topic type is invalid for this conversation."}, status=400)
-    if item.tinode_topic and item.tinode_topic != topic_name:
+    if is_group and item.tinode_topic and item.tinode_topic != topic_name:
         return json({"error_code": "TINODE_TOPIC_ALREADY_BOUND", "error_message": "The conversation is already bound to another Tinode topic."}, status=409)
-    conflict = Conversation.query.filter(
-        Conversation.id != item.id,
-        Conversation.tinode_topic == topic_name,
-        Conversation.deleted.is_(False),
-    ).first()
-    if conflict is not None:
-        return json({"error_code": "TINODE_TOPIC_CONFLICT", "error_message": "The Tinode topic is already bound to another conversation."}, status=409)
+    if is_group:
+        conflict = Conversation.query.filter(
+            Conversation.id != item.id,
+            Conversation.tinode_topic == topic_name,
+            Conversation.deleted.is_(False),
+        ).first()
+        if conflict is not None:
+            return json({"error_code": "TINODE_TOPIC_CONFLICT", "error_message": "The Tinode topic is already bound to another conversation."}, status=409)
     if management_session_requested(request):
         return json({"error_code": "CHAT_SESSION_REQUIRED", "error_message": "Tinode topics can only be bound from a Chat user session."}, status=403)
 
@@ -1804,9 +1816,11 @@ async def conversation_bind_tinode(request, conversation_id):
             properties = dict(item.properties or {})
             properties["avatar"] = str(body.get("avatar") or "")[:8192]
             item.properties = properties
-        item.tinode_topic = topic_name
+        # A Tinode direct topic is the other participant's UID, so it differs
+        # for each viewer and must not be persisted as one shared binding.
+        item.tinode_topic = topic_name if is_group else None
         db.session.commit()
-        return json(_serialize_conversation(item))
+        return json(_serialize_conversation(item, user_id))
     except AuthError as error:
         db.session.rollback()
         return json({"error_code": "TINODE_TOPIC_REJECTED", "error_message": str(error)}, status=error.status_code)
@@ -1913,7 +1927,7 @@ async def conversation_participant_add(request, conversation_id):
             tinode_members_added = True
         db.session.commit()
         database_committed = True
-        return json(_serialize_conversation(item))
+        return json(_serialize_conversation(item, user_id))
     except AccountSSOError as error:
         db.session.rollback()
         if error.status_code != 503:
@@ -2036,7 +2050,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 target_account.tinode_uid,
             )
         db.session.commit()
-        return json(_serialize_conversation(item))
+        return json(_serialize_conversation(item, user_id))
     except AccountSSOError as error:
         db.session.rollback()
         if error.status_code != 503:

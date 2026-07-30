@@ -112,6 +112,36 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("tinode_verify_topic_access", binding_source)
         self.assertIn("expected_member_uids", binding_source)
 
+    def test_direct_tinode_topics_are_viewer_relative_and_not_persisted(self):
+        _controller_source, serialize_source = function_source(
+            CONTROLLER_PATH,
+            "_serialize_conversation",
+        )
+        _controller_source, binding_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_bind_tinode",
+        )
+
+        self.assertIn("direct_peer_tinode_uid", serialize_source)
+        self.assertIn("item.tinode_topic if is_group", serialize_source)
+        self.assertIn("item.tinode_topic = topic_name if is_group else None", binding_source)
+        self.assertIn("if is_group:", binding_source)
+
+    @repository_source_test
+    def test_typing_does_not_reprovision_or_disable_the_composer(self):
+        app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
+        draft_source = app_source.split("const updateCurrentDraft =", 1)[1].split(
+            "const messageActionKey",
+            1,
+        )[0]
+
+        self.assertIn("readyTinodeTypingTopic", draft_source)
+        self.assertIn("tinodeClient.authenticated", draft_source)
+        self.assertNotIn("ensureTinodeConversationTopic", draft_source)
+        self.assertEqual(app_source.count("ref={messageInputRef}"), 1)
+        composer_source = app_source.split('<div className="input-text-container">', 1)[1]
+        self.assertIn("ref={messageInputRef}", composer_source)
+
     def test_tinode_bridge_is_explicitly_requested_after_account_login(self):
         _controller_source, token_source = function_source(
             CONTROLLER_PATH,

@@ -227,3 +227,12 @@ def valid_tinode_topic(value, is_group):
         r"^{}[A-Za-z0-9_-]{{6,252}}$".format(prefix),
         str(value or ""),
     ))
+
+
+def direct_peer_tinode_uid(viewer_id, participant_ids, tinode_uids_by_id):
+    viewer_id = str(viewer_id or "")
+    participants = [str(participant_id or "") for participant_id in participant_ids]
+    if len(participants) != 2 or len(set(participants)) != 2 or viewer_id not in participants:
+        return ""
+    peer_id = next(participant_id for participant_id in participants if participant_id != viewer_id)
+    return str((tinode_uids_by_id or {}).get(peer_id) or "").strip()

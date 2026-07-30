@@ -12,6 +12,7 @@ SPEC.loader.exec_module(SSO_IDENTITY)
 SSOIdentityError = SSO_IDENTITY.SSOIdentityError
 account_session_matches = SSO_IDENTITY.account_session_matches
 derive_tinode_password = SSO_IDENTITY.derive_tinode_password
+direct_peer_tinode_uid = SSO_IDENTITY.direct_peer_tinode_uid
 normalize_account_session = SSO_IDENTITY.normalize_account_session
 normalize_account_directory_record = SSO_IDENTITY.normalize_account_directory_record
 protected_tinode_account = SSO_IDENTITY.protected_tinode_account
@@ -205,6 +206,30 @@ class SSOIdentityTests(unittest.TestCase):
         self.assertFalse(valid_tinode_topic("usrAbcdef123456", is_group=True))
         self.assertFalse(valid_tinode_topic("grpAbcdef123456", is_group=False))
         self.assertFalse(valid_tinode_topic("newAbcdef123456", is_group=True))
+
+    def test_direct_topic_is_the_other_participant_for_each_viewer(self):
+        participants = ["account-a", "account-b"]
+        tinode_uids = {"account-a": "usrAccountA", "account-b": "usrAccountB"}
+
+        self.assertEqual(
+            direct_peer_tinode_uid("account-a", participants, tinode_uids),
+            "usrAccountB",
+        )
+        self.assertEqual(
+            direct_peer_tinode_uid("account-b", participants, tinode_uids),
+            "usrAccountA",
+        )
+
+    def test_direct_topic_requires_two_participants_and_a_prepared_peer(self):
+        self.assertEqual(direct_peer_tinode_uid("account-a", ["account-a"], {}), "")
+        self.assertEqual(
+            direct_peer_tinode_uid(
+                "account-a",
+                ["account-a", "account-b"],
+                {"account-a": "usrAccountA"},
+            ),
+            "",
+        )
 
 
 if __name__ == "__main__":

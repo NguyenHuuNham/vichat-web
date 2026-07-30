@@ -3,6 +3,7 @@ import Login from '../features/auth/components/Login';
 import KnowledgeManager from '../features/chatbot/components/KnowledgeManager';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation } from '../features/chat/services/tinodeClient';
 import { chatManagementService } from '../features/chat/services/chatManagementService';
+import { readyTinodeTypingTopic } from '../features/chat/services/chatRealtime';
 import { findAccount, identitiesOverlap, identityValues, snapshotPresence, updateAccountPresence } from '../features/contacts/services/accountDirectory';
 import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
@@ -751,6 +752,7 @@ function App() {
           }
           return chatManagementService.getFreshTinodeAuth({ force: true });
         });
+        if (tinodeClient.authenticated) return tinodeClient.ensureSession(auth);
         setConnectionStatus('connecting');
         let session;
         try {
@@ -2467,15 +2469,14 @@ function App() {
       return next;
     });
     const room = conversations[currentChatId];
-    if (chatMode === 'tinode' && value.trim() && room && !room.isChatbot) {
-      const topicKey = tinodeTopicName(room);
+    if (chatMode === 'tinode' && value.trim()) {
+      const topicKey = readyTinodeTypingTopic(room, tinodeClient.authenticated);
+      if (!topicKey) return;
       const now = Date.now();
       const lastNotice = typingNoticeAtRef.current.get(topicKey) || 0;
       if (now - lastNotice >= 1200) {
         typingNoticeAtRef.current.set(topicKey, now);
-        ensureTinodeConversationTopic(room)
-          .then(topicName => tinodeClient.sendTyping(topicName))
-          .catch(() => {});
+        tinodeClient.sendTyping(topicKey).catch(() => {});
       }
     }
   };
@@ -2993,7 +2994,6 @@ function App() {
             <i className="fa-solid fa-magnifying-glass search-icon"></i>
             <input
               type="text"
-              ref={messageInputRef}
               placeholder="Tìm kiếm"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -3260,6 +3260,7 @@ function App() {
           <div className="input-text-container">
             <input
               type="text"
+              ref={messageInputRef}
               placeholder={realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Nhập tin nhắn...'}
               value={inputText}
               disabled={realtimeMessagingPending || (activeChat.isChatbot && isTyping)}

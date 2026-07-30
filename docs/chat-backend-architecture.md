@@ -159,11 +159,15 @@ already provisioned Tinode UID is never renamed automatically.
 For a conversation without a Tinode topic, ChatUI calls
 `POST /api/v1/conversation/<id>/tinode-prepare`. Chatmgt verifies current
 membership and prepares missing Tinode user mappings for the active Chatmgt
-participants. Direct topics must match the peer's prepared Tinode UID. New
-group topics are created with exactly the prepared Chatmgt participants, then
-`PUT /api/v1/conversation/<id>/tinode-topic` verifies the caller's fresh token,
-authenticated Tinode UID, topic type, and complete subscriber set before
-persisting the binding.
+participants. A Tinode direct topic is viewer-relative: user A addresses the
+conversation as user B's prepared UID, while user B addresses the same Chatmgt
+conversation as user A's UID. Chatmgt therefore derives `tinode_topic` for each
+authenticated viewer and never persists one shared direct UID on the
+conversation row. New group topics are created with exactly the prepared
+Chatmgt participants, then `PUT /api/v1/conversation/<id>/tinode-topic`
+verifies the caller's fresh token, authenticated Tinode UID, topic type, and
+complete subscriber set. Only group bindings are persisted and globally
+checked for topic conflicts.
 
 Once a group is bound, participant changes are orchestrated by Chatmgt:
 
@@ -194,7 +198,7 @@ expired token.
 | --- | --- | --- |
 | `POST` | `/api/v1/auth/tinode-token` | Revalidate Account and issue a short-lived Tinode token |
 | `POST` | `/api/v1/conversation/<id>/tinode-prepare` | Prepare participant UID mappings from current Chatmgt membership |
-| `PUT` | `/api/v1/conversation/<id>/tinode-topic` | Validate and bind the direct/group Tinode topic |
+| `PUT` | `/api/v1/conversation/<id>/tinode-topic` | Validate a viewer-relative direct topic or bind a shared group topic |
 | `POST` | `/api/v1/conversation/<id>/participants` | Add both the Tinode subscription and Chatmgt membership |
 | `DELETE` | `/api/v1/conversation/<id>/participants/<user-id>` | Remove both the Tinode subscription and Chatmgt membership |
 
