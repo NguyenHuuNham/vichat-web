@@ -1,4 +1,5 @@
 import tinodeSdk from 'tinode-sdk';
+import { resolveTinodePresenceOnline } from './chatRealtime';
 
 /*
  * Thin integration layer around the Tinode browser SDK.
@@ -715,13 +716,18 @@ function presenceSnapshot(tinode = getClient()) {
   return snapshot;
 }
 
-function emitContactPresence(contact) {
-  if (!contact?.name || !contact.isP2PType?.()) return;
+function emitPresence(uid, online) {
+  if (!uid) return;
   listeners.forEach(listener => listener({
     type: 'presence',
-    uid: contact.name,
-    online: contact.online === true,
+    uid,
+    online: Boolean(online),
   }));
+}
+
+function emitContactPresence(contact, eventType = '') {
+  if (!contact?.name || !contact.isP2PType?.()) return;
+  emitPresence(contact.name, resolveTinodePresenceOnline(eventType, contact.online));
   emitConversation(contact);
 }
 
@@ -1017,15 +1023,20 @@ async function initializeSession(tinode, fallbackLogin = '', preferredName = '')
     emitContactPresence(contact);
   };
   meTopic.onSubsUpdated = emitContactsSoon;
-  meTopic.onContactUpdate = (_what, contact) => {
-    emitContactPresence(contact);
-    if (_what === 'msg' && contact?.isCommType?.()) {
+  meTopic.onContactUpdate = (what, contact) => {
+    emitContactPresence(contact, what);
+    if (what === 'msg' && contact?.isCommType?.()) {
       emitContactsSoon();
       if (allowedConversationTopics.has(contact.name)) {
         subscribeTopic(contact.name, { historyLimit: BACKGROUND_HISTORY_LIMIT, newerOnly: true }).catch(() => {});
       }
-    } else if (['acs', 'gone', 'upd'].includes(_what)) {
+    } else if (['acs', 'gone', 'upd'].includes(what)) {
       emitContactsSoon();
+    }
+  };
+  meTopic.onPres = presence => {
+    if (presence?.src && (presence.what === 'on' || presence.what === 'off')) {
+      emitPresence(presence.src, presence.what === 'on');
     }
   };
   const previousMetaDesc = meTopic.onMetaDesc;

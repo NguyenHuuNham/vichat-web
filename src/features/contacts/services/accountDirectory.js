@@ -40,6 +40,18 @@ export function updateAccountPresence(accounts, snapshot, currentUser) {
   return changed ? next : accounts;
 }
 
+export function findDirectPeer(room, accounts, currentUser) {
+  const members = (room?.members || []).map(member => (
+    findAccount(accounts, member?.id || member?.uid || member?.tinodeUid || member?.tinode_uid || member?.name)
+    || member
+  ));
+  const participants = (room?.participantIds || [])
+    .map(identity => findAccount(accounts, identity))
+    .filter(Boolean);
+  return [...members, ...participants]
+    .find(account => account && !identitiesOverlap(account, currentUser)) || null;
+}
+
 export function findAccount(accounts, identity) {
   if (!identity || !Array.isArray(accounts)) return null;
   const normalized = String(identity).trim().toLowerCase();

@@ -118,6 +118,11 @@ authoritative employee identity system. For an Account-backed Chat session:
    them. A deterministic participant key reuses an existing direct conversation
    and reactivates a participant who previously removed it.
 
+For a direct conversation, ChatUI derives the displayed name, avatar, personal
+detail card, and presence label from the active participant other than the
+current Account user. It does not use the shared conversation subject as the
+peer identity and does not render the current user as their own contact.
+
 If Account directory refresh is temporarily unavailable, Chatmgt serves the
 last valid tenant-scoped projections with `directory_sync.status=stale`. Login,
 tenant mismatch, or revoked Account sessions are never converted into a stale
@@ -184,7 +189,10 @@ Once a group is bound, participant changes are orchestrated by Chatmgt:
 Chatmgt remains authoritative for directory, friendship, conversation metadata,
 and membership. Tinode remains authoritative for messages, files, presence,
 typing, reactions, and delivery/read receipts. ChatUI filters all Tinode topic
-events through the currently allowed Chatmgt topic bindings.
+events through the currently allowed Chatmgt topic bindings. Tinode `on` and
+`off` events from the authenticated user's `me` topic update the corresponding
+directory account and direct conversation immediately; the periodic/contact
+snapshot is only reconciliation, not the primary presence signal.
 
 If token provisioning or the Tinode socket is unavailable, ChatUI stays in
 `management` mode: Step 3 data remains usable, realtime inputs remain disabled,

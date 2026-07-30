@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { identitiesOverlap, identityValues, updateAccountPresence } from './accountDirectory.js';
+import { findDirectPeer, identitiesOverlap, identityValues, updateAccountPresence } from './accountDirectory.js';
 
 test('account identities include both management and Tinode identifiers', () => {
   const account = { id: 'account-1', uid: 'account-alias', tinodeUid: 'usr-one' };
@@ -48,4 +48,17 @@ test('presence update never overwrites the current account state', () => {
 
   assert.strictEqual(result, accounts);
   assert.strictEqual(result[0], viewer);
+});
+
+test('direct conversations resolve the other account for the current viewer', () => {
+  const viewer = { id: 'account-a', tinodeUid: 'usr-a', name: 'Nguyen Huu Nham' };
+  const peer = { id: 'account-b', tinodeUid: 'usr-b', name: 'minhne' };
+  const accounts = [viewer, peer];
+
+  assert.strictEqual(findDirectPeer({
+    participantIds: ['account-a', 'account-b'],
+    members: [viewer, peer],
+    name: viewer.name,
+  }, accounts, viewer), peer);
+  assert.strictEqual(findDirectPeer({ members: [{ id: 'usr-b' }] }, accounts, viewer), peer);
 });

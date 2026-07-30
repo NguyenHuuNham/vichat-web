@@ -4,7 +4,7 @@ import KnowledgeManager from '../features/chatbot/components/KnowledgeManager';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation } from '../features/chat/services/tinodeClient';
 import { chatManagementService } from '../features/chat/services/chatManagementService';
 import { readyTinodeTypingTopic } from '../features/chat/services/chatRealtime';
-import { findAccount, identitiesOverlap, identityValues, snapshotPresence, updateAccountPresence } from '../features/contacts/services/accountDirectory';
+import { findAccount, findDirectPeer, identitiesOverlap, identityValues, snapshotPresence, updateAccountPresence } from '../features/contacts/services/accountDirectory';
 import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
 import { CHATBOT_ACCOUNT, learnFromChatFile, learnFromChatMessage, loadChatbotMessages, loadChatbotMessagesFromServer, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
@@ -415,7 +415,7 @@ function demoGroupToConversation(group, accounts, viewerId) {
 }
 
 function demoDirectToConversation(direct, accounts, viewerId) {
-  const other = (direct.participantIds || []).map(id => findAccount(accounts, id)).find(account => account && account.id !== viewerId);
+  const other = findDirectPeer(direct, accounts, { id: viewerId });
   const deletedBefore = Date.parse(direct.deletedAtByUser?.[viewerId] || '') || 0;
   const messages = (direct.messages || [])
     .filter(message => (Date.parse(message.createdAt || '') || 0) > deletedBefore)
@@ -463,16 +463,27 @@ function managementRoomsForSession(managed, accounts, user, accountSession) {
     .filter(room => !isSelfDirectConversation(room, user, accounts))
     .filter(room => {
       if (room.isGroup) return true;
-      const contact = room.members?.map(member => findAccount(accounts, member.id || member.name)).find(Boolean);
+      const contact = findDirectPeer(room, accounts, user);
       return !contact || !savedDirectIds.has(directConversationId(managementUserId, contact.id));
     })
-    .map(room => ({
-      ...room,
-      messages: [],
-      lastMsg: 'Chưa có tin nhắn',
-      time: '',
-      badge: 0,
-    }));
+    .map(room => {
+      const peer = room.isGroup ? null : findDirectPeer(room, accounts, user);
+      return {
+        ...room,
+        ...(peer ? {
+          name: peer.name || room.name,
+          avatarHtml: undefined,
+          avatarUrl: peer.avatar || '',
+          membersCount: peer.online ? 'Online' : 'Offline',
+          description: `Cuộc trò chuyện với ${peer.name || 'thành viên'}`,
+          members: [{ ...peer }],
+        } : {}),
+        messages: [],
+        lastMsg: 'Chưa có tin nhắn',
+        time: '',
+        badge: 0,
+      };
+    });
   const rooms = {
     ...Object.fromEntries(remoteRooms.map(room => [room.id, room])),
     ...Object.fromEntries(savedGroups.map(group => [group.id, group])),

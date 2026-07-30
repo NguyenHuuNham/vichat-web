@@ -142,6 +142,18 @@ class ChatAuthContractTests(unittest.TestCase):
         composer_source = app_source.split('<div className="input-text-container">', 1)[1]
         self.assertIn("ref={messageInputRef}", composer_source)
 
+    @repository_source_test
+    def test_direct_identity_and_presence_are_viewer_relative_and_realtime(self):
+        app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
+        tinode_source = (
+            REPOSITORY_ROOT / "src" / "features" / "chat" / "services" / "tinodeClient.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("findDirectPeer(room, accounts, user)", app_source)
+        self.assertIn("members: [{ ...peer }]", app_source)
+        self.assertIn("resolveTinodePresenceOnline", tinode_source)
+        self.assertIn("meTopic.onPres = presence =>", tinode_source)
+
     def test_tinode_bridge_is_explicitly_requested_after_account_login(self):
         _controller_source, token_source = function_source(
             CONTROLLER_PATH,
