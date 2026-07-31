@@ -6,10 +6,12 @@ import json
 import os
 import re
 import secrets
+import sys
 import time
 import uuid
 from datetime import datetime, timezone
 from http.cookies import SimpleCookie
+from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import quote, urlparse, urlunparse
 
@@ -19,6 +21,11 @@ import requests
 from alembic.config import Config as AlembicConfig
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from application.services.auth_service import issue_access_token
 

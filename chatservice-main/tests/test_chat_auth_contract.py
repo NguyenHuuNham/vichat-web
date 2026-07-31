@@ -305,6 +305,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("AUTH_MANAGEMENT_PASSWORD_CHANGE", password_source)
 
     def test_deployment_verifier_does_not_depend_on_the_tinode_admin_password(self):
+        verifier_source = VERIFIER_PATH.read_text(encoding="utf-8")
         _verifier_source, verify_source = function_source(VERIFIER_PATH, "verify_http")
         _verifier_source, runtime_verify_source = function_source(
             VERIFIER_PATH,
@@ -322,6 +323,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("create_management_verifier_account", verify_source)
         self.assertIn("finally", verify_source)
         self.assertIn("delete_management_verifier_account", verify_source)
+        self.assertIn("sys.path.insert(0, str(PROJECT_ROOT))", verifier_source)
         self.assertIn("deployment_verifier", create_source)
         self.assertIn("issue_access_token", create_source)
         self.assertIn('session_scope="management"', create_source)
