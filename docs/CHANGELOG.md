@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-07-31-11 - Trien khai giao dien operations console Chatmgt
+
+- Thoi gian: 2026-07-31 11:50 (Asia/Saigon)
+- Loai: Trien khai | Giao dien | Van hanh
+- Trang thai: Can xac nhan
+- Muc tieu: Dua giao dien Chatmgt chuyen nghiep cua commit `3387b0c` len production `.206`, chi thay service `chatmgt` va bao toan toan bo chuc nang/API dang hoat dong.
+- Pham vi: Release/image/container rieng Chatmgt va public asset `chatmgt.upgo.vn`; khong recreate ChatUI, ChatAPI, hai PostgreSQL, Redis, khong migration va khong sua `.env` production hay worktree server dang co thay doi cuc bo.
+- File da thay doi: `docs/CHANGELOG.md`; source runtime trien khai tu commit `3387b0c` trong release bat bien `/opt/deploy/chat/releases/3387b0c`.
+- Noi dung: Archive sach co SHA-256 `702136585ca9f9a0b7be1144e03b0e155453f60da7c2342e1d58897bf1444b94`; image moi la `sha256:74eb589b22b3684b87698a4e805e7bf9b7290375a6d0fae9667310fa174a0cee`, container healthy la `5ab17fc3446f23dccffe9a5a7246d5b9329e076a8c9c1fe2ef4df7d23a29cd4b`. Public entry la `index-B82_WaDG.js`, ManagementApp la `ManagementApp-Bzuvg9hB.js` va stylesheet la `ManagementApp-Bsom-K14.css`; bundle cong khai co marker cua operations console moi.
+- Quyet dinh ky thuat: Build va chay test trong image truoc khi recreate; tag image cu lam rollback va dung release bat bien thay vi pull/reset worktree server. Hai lan acceptance dau tu rollback an toan do script shell doc tiep stdin va `pipefail` nhan ma `SIGPIPE` khi tach ten asset; verifier ung dung deu dat, nen lan cuoi tach public asset check sang PowerShell va khong thay doi code/image.
+- Database/API/cau hinh: Khong thay doi. Runtime Tinode bootstrap duoc sao chep vao release moi voi mode `0600`; archive tam da duoc xoa sau deploy. Image rollback truoc deploy giu nguyen SHA `f5607fbf24568b7b62081810758da77d94a6739c3fdcc63f024dc0bde9368225`.
+- Kiem thu: Local lint dat voi warning legacy co san, frontend test dat 10/10 va build dat. Image production dat 69 test voi 9 source-only skip. `verify_deployment.py` dat database/credential policy, health/CORS, Account admin SSO, Tinode bridge, employee/local-password rejection, management scope va conversation overview; `verify_tenant_isolation.py` dat. Public health HTTP 200; public JS/CSS co marker giao dien moi; Chatmgt healthy; log 10 phut co 0 `traceback/panic/fatal/critical`. ID ChatUI, ChatAPI, hai PostgreSQL va Redis khong doi.
+- Rui ro con lai: Moi truong Codex khong co browser/phien Account admin de nghiem thu truc quan, nen can hard refresh va xem bo cuc bang trinh duyet that tren desktop/mobile. Khong co rui ro da biet voi backend, API, database hay realtime vi cac phan nay khong doi.
+- Viec tiep theo: Hard refresh `chatmgt.upgo.vn`, dang nhap bang UpGO Account admin va xac nhan sidebar, dashboard, danh ba, conversation, audit, system va drawer mobile hien thi dung.
+- Commit/PR: Code `3387b0c`; commit ghi nhan trien khai chua muc nay (xem `git log`).
+
 ## 2026-07-31-10 - Nang cap giao dien dieu hanh Chatmgt
 
 - Thoi gian: 2026-07-31 11:37 (Asia/Saigon)
@@ -19,8 +35,8 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong thay doi.
 - Kiem thu: `npm run lint` dat, chi con warning legacy co san trong `src/App.jsx` va Tinode widget ngoai pham vi; `npm run test:frontend` dat 10/10; `npm run build -- --outDir .codex-build-chatmgt-ui --emptyOutDir` dat voi bundle `ManagementApp-bCtzlVA2.js` va stylesheet `ManagementApp-Bsom-K14.css`. Browser skill da duoc ap dung nhung moi truong khong cung cap browser session, nen chua thao tac truc quan bang phien Account admin that.
 - Rui ro con lai: Can nghiem thu truc quan tren desktop/mobile sau deploy, dac biet ten tenant dai, bang co nhieu ban ghi va drawer mobile; khong co rui ro da biet voi API/chuc nang vi logic nghiep vu khong doi.
-- Viec tiep theo: Ra soat diff, commit/push, build va recreate rieng service `chatmgt`; sau do hard refresh `chatmgt.upgo.vn` va xac nhan bo cuc bang tai khoan Account admin.
-- Commit/PR: Commit chua muc nay (xem `git log`).
+- Viec tiep theo: Hard refresh `chatmgt.upgo.vn` va xac nhan bo cuc bang tai khoan Account admin; ket qua trien khai tu dong duoc ghi tai muc `2026-07-31-11`.
+- Commit/PR: `3387b0c`.
 
 ## 2026-07-31-09 - Trien khai Account admin SSO cho Chatmgt
 
