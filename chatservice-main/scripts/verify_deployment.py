@@ -5,6 +5,9 @@ import asyncio
 import json
 import os
 import re
+import secrets
+import time
+import uuid
 from datetime import datetime, timezone
 from http.cookies import SimpleCookie
 from urllib.parse import quote, urlparse, urlunparse
@@ -292,7 +295,81 @@ def verify_tinode_websocket(login_payload, origin):
     ))
 
 
-def verify_http(base_url, origin):
+def create_management_verifier_account():
+    database_uri = str(os.getenv("SQLALCHEMY_DATABASE_URI") or "")
+    tenant_id = str(os.getenv("CHATMGT_DEFAULT_TENANT") or "").strip()
+    if not database_uri or not tenant_id:
+        raise RuntimeError("Management verifier database settings are missing.")
+    account_id = "usr-verifier-{}".format(uuid.uuid4().hex)
+    username = "verify_admin_{}".format(uuid.uuid4().hex[:16])
+    password = secrets.token_urlsafe(24)
+    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("ascii")
+    now = int(time.time())
+    engine = create_engine(database_uri)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("""
+                INSERT INTO management_account (
+                    id, tenant_id, username, email, password_hash, full_name,
+                    role, department, title, avatar, tinode_username, tinode_uid,
+                    active, created_at, updated_at, last_login_at, properties
+                ) VALUES (
+                    :id, :tenant_id, :username, NULL, :password_hash, :full_name,
+                    'admin', '', 'Deployment verifier', '', :tinode_username, NULL,
+                    TRUE, :created_at, :updated_at, NULL,
+                    CAST(:properties AS jsonb)
+                )
+            """), {
+                "id": account_id,
+                "tenant_id": tenant_id,
+                "username": username,
+                "password_hash": password_hash,
+                "full_name": "Chatmgt deployment verifier",
+                "tinode_username": username,
+                "created_at": now,
+                "updated_at": now,
+                "properties": json.dumps({"deployment_verifier": True, "auth_version": 0}),
+            })
+    finally:
+        engine.dispose()
+    return {
+        "id": account_id,
+        "tenant_id": tenant_id,
+        "username": username,
+        "password": password,
+    }
+
+
+def delete_management_verifier_account(account):
+    if not account:
+        return
+    database_uri = str(os.getenv("SQLALCHEMY_DATABASE_URI") or "")
+    if not database_uri:
+        return
+    engine = create_engine(database_uri)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("""
+                DELETE FROM security_audit_log
+                WHERE tenant_id = :tenant_id AND user_id = :account_id
+            """), {
+                "tenant_id": account["tenant_id"],
+                "account_id": account["id"],
+            })
+            connection.execute(text("""
+                DELETE FROM management_account
+                WHERE id = :account_id
+                  AND tenant_id = :tenant_id
+                  AND properties ->> 'deployment_verifier' = 'true'
+            """), {
+                "tenant_id": account["tenant_id"],
+                "account_id": account["id"],
+            })
+    finally:
+        engine.dispose()
+
+
+def _verify_http(base_url, origin, management_account):
     base_url = base_url.rstrip("/")
     health = requests.get(
         base_url + "/api/v1/auth/health",
@@ -346,7 +423,11 @@ def verify_http(base_url, origin):
 
     management_login = requests.post(
         base_url + "/login",
-        json={"identity": username, "password": password, "tenant_id": tenant_id},
+        json={
+            "identity": management_account["username"],
+            "password": management_account["password"],
+            "tenant_id": management_account["tenant_id"],
+        },
         headers=dict(MANAGEMENT_HEADER, Origin=origin),
         timeout=20,
     )
@@ -527,6 +608,14 @@ def verify_http(base_url, origin):
         raise RuntimeError("The management token remained usable after logout.")
 
     print("Health, CORS, directory, conversations, Tinode WebSocket, login, and logout checks passed.")
+
+
+def verify_http(base_url, origin):
+    management_account = create_management_verifier_account()
+    try:
+        return _verify_http(base_url, origin, management_account)
+    finally:
+        delete_management_verifier_account(management_account)
 
 
 def main():

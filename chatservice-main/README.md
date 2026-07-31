@@ -56,6 +56,11 @@ Tinode token lifetime, internal WebSocket login, public WSS login, temporary
 topic publish/delete, secure cookies, logout, and rejection of the revoked
 credential.
 
+The verifier creates a uniquely named local Chatmgt administrator only for its
+management login/logout checks and removes that account plus its audit events in
+`finally`. It never reads or changes the real administrator password and does
+not depend on the Tinode root password for Chatmgt management authentication.
+
 Run the destructive-safe two-tenant verifier after the service is healthy:
 
 ```bash

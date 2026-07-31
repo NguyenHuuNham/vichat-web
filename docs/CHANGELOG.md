@@ -6,6 +6,38 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-07-31-04 - Tach verifier khoi mat khau admin Tinode
+
+- Thoi gian: 2026-07-31 09:09 (Asia/Saigon)
+- Loai: Sua loi | Bao mat | Van hanh
+- Trang thai: Can xac nhan
+- Muc tieu: Bao dam admin co the doi mat khau rieng cua Chatmgt ma verifier va lan trien khai sau khong phu thuoc vao `TINODE_ADMIN_PASSWORD`; dong thoi khong de admin cuc bo/xac minh tam xuat hien trong danh ba nhan vien.
+- Pham vi: Verifier production, bo loc projection Account cua directory API, test hop dong va tai lieu van hanh; khong doi ChatUI/Tinode message flow.
+- File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/scripts/verify_deployment.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `chatservice-main/README.md`, `infrastructure/production/README.md`, va `docs/CHANGELOG.md`.
+- Noi dung: Verifier tao mot admin Chatmgt cuc bo ten ngau nhien voi mat khau manh chi trong thoi gian kiem tra login/logout, sau do xoa tai khoan va audit event trong `finally`; khong doc, doi hay can biet mat khau admin that/Tinode root. Directory cua phien Account SSO chi tra ban ghi `auth_source=account`, nen admin cuc bo va verifier account khong the lo vao danh ba ChatUI.
+- Quyet dinh ky thuat: Dung tai khoan verifier tam thay vi dong bo plaintext credential giua database va `.env`. Ban ghi tam duoc danh dau `properties.deployment_verifier=true`, loc dung tenant, ten/ID ngau nhien va cleanup co dieu kien de khong xoa nham du lieu that.
+- Database/API/cau hinh: Khong migration, khong them bien moi truong va khong doi hop dong response. Verifier tam thoi INSERT/DELETE mot local admin va audit event trong database hien tai; cleanup chay ca khi kiem tra loi.
+- Kiem thu: `python -m unittest chatservice-main.tests.test_chat_auth_contract -v` dat 22/22; `python -m unittest discover -s chatservice-main/tests -v` dat 60 test voi 22 test runtime skip local; `python -m py_compile ...` va `git diff --check` dat.
+- Rui ro con lai: Chua chay SQL tao/xoa verifier account trong image production va chua xac nhan database khong con ban ghi `deployment_verifier` sau khi verifier ket thuc.
+- Viec tiep theo: Commit/push, build/recreate rieng Chatmgt, chay full suite va verifier hai lan neu can, sau do kiem tra so ban ghi verifier bang 0 va cac service khac khong bi recreate.
+- Commit/PR: Chua tao.
+
+## 2026-07-31-03 - Trien khai trung tam quan tri Chatmgt
+
+- Thoi gian: 2026-07-31 08:34 (Asia/Saigon)
+- Loai: Van hanh | Bao mat | Giao dien
+- Trang thai: Can xac nhan
+- Muc tieu: Dua ban chuan hoa web Chatmgt cua commit `8cc92ac` len `chatmgt.upgo.vn` bang release bat bien, chi thay service Chatmgt va bao toan ChatUI/Tinode/database/worktree server.
+- Pham vi: Image, container va public bundle cua `chatmgt`; full runtime test, verifier, tenant isolation, Nginx va public health/asset.
+- File da thay doi: `docs/CHANGELOG.md`.
+- Noi dung: Archive commit `8cc92ac` duoc kiem SHA-256 va giai nen tai `/opt/deploy/chat/releases/8cc92ac`; runtime Tinode bootstrap duoc sao chep voi mode `0600`, image cu duoc gan tag rollback `songhong-production-chatmgt:rollback-7cda29e`. Build va recreate rieng `chatmgt`; bundle public moi la `ManagementApp-repbL3ZI.js`. Worktree server van o `1b3de22` va giu nguyen cac thay doi cuc bo co san.
+- Quyet dinh ky thuat: Tiep tuc dung release directory bat bien thay vi pull/reset worktree production. Compose active cua Chatmgt tro den release `8cc92ac`; ID container ChatUI, ChatAPI, hai PostgreSQL va Redis duoc so sanh truoc/sau va khong doi.
+- Database/API/cau hinh: Khong migration, khong sua `.env`, khong xoa volume va khong reload Nginx. Health public xac nhan Account SSO, danh ba, Tinode bridge va management session secure/isolated deu configured; admin conversation endpoint khong co session tra HTTP 401.
+- Kiem thu: Build production dat voi `ManagementApp-repbL3ZI.js`; full suite trong image dat 59 test voi 8 test source-only skip; `verify_deployment.py` dat database/credential/CORS/Account SSO/Tinode bridge/management isolation/read-only conversation overview; `verify_tenant_isolation.py` dat. `nginx -t`, container health, public health, public bundle HTTP 200, active Compose label va log 5 phut khong co traceback/panic/fatal/exception/critical deu dat.
+- Rui ro con lai: Moi truong Codex khong khoi tao duoc Browser runtime va khong co thao tac UI bang phien admin production, nen can dang nhap truc quan de xac nhan bo cuc desktop/mobile, cac tab danh ba/conversation/system va hop thoai doi mat khau. Khong thay doi mat khau trong buoc acceptance neu chua co ke hoach cap nhat quy trinh verifier van hanh.
+- Viec tiep theo: Hard refresh `chatmgt.upgo.vn`, dang nhap admin va kiem tra cac man hinh moi; xac nhan khong con nut tao/sua/khoa/reset mat khau nhan vien, conversation chi hien metadata va link Account mo dung trang.
+- Commit/PR: Code `8cc92ac`; commit ghi nhan trien khai chua muc nay (xem `git log`).
+
 ## 2026-07-31-02 - Chuan hoa trung tam quan tri Chatmgt
 
 - Thoi gian: 2026-07-31 08:25 (Asia/Saigon)

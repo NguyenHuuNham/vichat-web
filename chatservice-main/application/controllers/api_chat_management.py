@@ -1273,6 +1273,8 @@ async def management_users(request):
         request.args.get("include_inactive") or ""
     ).lower() in ("1", "true", "yes")
     query = ManagementAccount.query.filter(ManagementAccount.tenant_id == tenant_id)
+    if current_user.get("auth_method") == "account_sso":
+        query = query.filter(ManagementAccount.properties.contains({"auth_source": "account"}))
     if not include_inactive:
         query = query.filter(ManagementAccount.active.is_(True))
     if exclude_user_id:

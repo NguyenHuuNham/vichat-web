@@ -6,6 +6,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = PROJECT_ROOT.parent
 CONTROLLER_PATH = PROJECT_ROOT / "application" / "controllers" / "api_chat_management.py"
+VERIFIER_PATH = PROJECT_ROOT / "scripts" / "verify_deployment.py"
 LOGIN_PATH = REPOSITORY_ROOT / "src" / "features" / "auth" / "components" / "Login.jsx"
 CHAT_SERVICE_PATH = REPOSITORY_ROOT / "src" / "features" / "chat" / "services" / "chatManagementService.js"
 CHAT_APP_PATH = REPOSITORY_ROOT / "src" / "app" / "App.jsx"
@@ -211,6 +212,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertGreaterEqual(directory_source.count("_validated_account_identity"), 2)
         self.assertIn("account_directory", directory_source)
         self.assertIn("directory_removed_at", directory_source)
+        self.assertIn('ManagementAccount.properties.contains({"auth_source": "account"})', directory_source)
 
     def test_management_admin_conversation_overview_is_read_only_and_tenant_scoped(self):
         _controller_source, endpoint_source = function_source(
@@ -240,6 +242,23 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("if not management_scope", password_source)
         self.assertIn("tinode_change_password", password_source)
         self.assertIn("AUTH_MANAGEMENT_PASSWORD_CHANGE", password_source)
+
+    def test_deployment_verifier_does_not_depend_on_the_tinode_admin_password(self):
+        _verifier_source, verify_source = function_source(VERIFIER_PATH, "verify_http")
+        _verifier_source, create_source = function_source(
+            VERIFIER_PATH,
+            "create_management_verifier_account",
+        )
+        _verifier_source, delete_source = function_source(
+            VERIFIER_PATH,
+            "delete_management_verifier_account",
+        )
+
+        self.assertIn("create_management_verifier_account", verify_source)
+        self.assertIn("finally", verify_source)
+        self.assertIn("delete_management_verifier_account", verify_source)
+        self.assertIn("deployment_verifier", create_source)
+        self.assertIn("deployment_verifier", delete_source)
 
     @repository_source_test
     def test_management_web_matches_chatmgt_service_boundaries(self):

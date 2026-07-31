@@ -65,6 +65,10 @@ proxy, obtain TLS certificates, run `sudo nginx -t`, then reload Nginx.
 The script never removes old backups. Preserve `.env`, database volumes,
 Tinode uploads, UID encryption keys, and backup files together.
 
+The management login verifier uses a unique temporary local Chatmgt
+administrator and removes it in `finally`. This keeps verification independent
+from both the real Chatmgt administrator password and the Tinode root password.
+
 ## Employee login acceptance test
 
 Before rebuilding, update the existing real `.env`; copying a new example does
