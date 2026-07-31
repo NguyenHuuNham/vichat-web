@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-07-31-07 - Trien khai logout profile va avatar Account
+
+- Thoi gian: 2026-07-31 10:13 (Asia/Saigon)
+- Loai: Trien khai | Sua loi | Tich hop
+- Trang thai: Can xac nhan
+- Muc tieu: Dua ban sua logout/avatar `bc89b97` len production ma khong thay doi ChatAPI, PostgreSQL, Redis, volume hoac worktree dang van hanh tren server.
+- Pham vi: Build va recreate rieng `chatmgt` va `chat` tu release bat bien `/opt/deploy/chat/releases/bc89b97`; kiem tra image, API, CORS, public bundle, tenant isolation va container boundary. Khong migration, khong sua `.env`, khong reload cau hinh Nginx va khong tao avatar thu tren Account that.
+- File da thay doi: `docs/CHANGELOG.md`; source runtime duoc trien khai tu commit `bc89b97`.
+- Noi dung: Archive commit co SHA-256 `e835e66833ec3e3ba24b810d2d939723524152abd963d10b56ed796e2f07f522`; image Chatmgt va ChatUI duoc build tu archive sach. Lan chay dau dung an toan truoc khi recreate vi Docker khong con resolve image digest cu de gan tag rollback; sau khi xac nhan cac container cu van healthy, trien khai tiep bang release cu lam diem rollback. Chatmgt duoc recreate va qua verifier truoc khi recreate ChatUI.
+- Quyet dinh ky thuat: Giu cac Account avatar URL/path theo production default trong Compose, khong ghi them vao `.env`. Nghiem thu bundle truc tiep vi moi truong Codex khong co browser/phien Account dang nhap; `/me` khong cookie tra `523` voi loi profile cua upstream nhung DNS/HTTPS reachable, con media endpoint tra `405 Allow: POST`, dung hop dong anonymous check.
+- Database/API/cau hinh: Khong migration, khong thay secret hay cookie. `POST /api/v1/auth/avatar` public khong co phien tra `401`; preflight tu `https://chat.upgo.vn` co allow-origin va allow-credentials. ChatUI public phuc vu `/assets/App-DqfInuzH.js` chua endpoint avatar va `workspace-logout-button`, khong con `btn-logout-footer`.
+- Kiem thu: Full suite trong image Python 3.9 dat 63 test voi 9 source-only skip; `nginx -t` trong image va tren host dat; `verify_deployment.py` dat; `verify_tenant_isolation.py` dat; local/public ChatUI health va public Chatmgt health deu HTTP 200; route avatar unauthenticated HTTP 401; CORS dat; hai service moi healthy; log 10 phut co 0 `traceback/panic/fatal/critical`.
+- Rui ro con lai: Chua upload avatar bang cookie cua mot Account production that, nen can nguoi dung nghiem thu thao tac camera, refresh trang va xac nhan anh moi hien tren Account/Chat/Tinode. Neu media upload thanh cong nhung Account PUT that bai, file upload co the khong duoc tham chieu do upstream khong co API rollback.
+- Viec tiep theo: Nguoi dung hard refresh `chat.upgo.vn`, mo Ho so ca nhan, doi mot anh nho hon 10 MB va xac nhan sau refresh; neu that bai, gui error code cua request `/api/v1/auth/avatar` de doi chieu log.
+- Commit/PR: Code `bc89b97`; commit ghi nhan trien khai chua muc nay (xem `git log`).
+
 ## 2026-07-31-06 - Sua dieu khien dang xuat va avatar Account
 
 - Thoi gian: 2026-07-31 09:56 (Asia/Saigon)
@@ -20,7 +36,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: Da doc ma frontend dang chay cua `account.upgo.vn` de xac nhan `/me`, media upload va `PUT /api/v1/user/<id>`; OPTIONS xac nhan origin `https://chat.upgo.vn` duoc cho phep. `python -m py_compile ...` dat; test muc tieu dat 34/34 voi `aiohttp 3.10.11` tam; full backend local dat 63 test voi 12 runtime skip; `npm run lint` dat voi warning co san ngoai pham vi; `npm run test:frontend` dat 9/9; `npm run build -- --outDir .codex-build-avatar --emptyOutDir` dat voi `App-CZEci0lr.js`; Compose config dat khi cung cap secret kiem tra chi trong process; `git diff --check` dat. Browser skill khong co browser kha dung nen chua thao tac phien Account that.
 - Rui ro con lai: Chua build/test trong image Python 3.9 production va chua ghi avatar bang Account user that. Neu media upload thanh cong nhung Account PUT that bai, file upload co the tro thanh file khong duoc tham chieu vi upstream khong cung cap API rollback.
 - Viec tiep theo: Commit/push, deploy bat bien ca `chat` va `chatmgt` ma khong restart ChatAPI/database/Redis, sau do nghiem thu avatar bang phien Account production va hard refresh.
-- Commit/PR: Chua tao.
+- Commit/PR: `bc89b97`.
 
 ## 2026-07-31-05 - Trien khai verifier Chatmgt doc lap credential
 
