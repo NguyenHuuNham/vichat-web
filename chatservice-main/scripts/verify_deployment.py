@@ -352,16 +352,22 @@ def create_management_verifier_account():
             })
     finally:
         engine.dispose()
+    account_projection = SimpleNamespace(
+        id=account_id,
+        tenant_id=tenant_id,
+        username=username,
+        role="admin",
+        properties={"deployment_verifier": True, "auth_version": 0},
+    )
     token = issue_access_token(
-        SimpleNamespace(
-            id=account_id,
-            tenant_id=tenant_id,
-            username=username,
-            role="admin",
-            properties={"deployment_verifier": True, "auth_version": 0},
-        ),
+        account_projection,
         auth_method="password",
         session_scope="management",
+    )
+    chat_token = issue_access_token(
+        account_projection,
+        auth_method="password",
+        session_scope="chat",
     )
     return {
         "id": account_id,
@@ -369,6 +375,7 @@ def create_management_verifier_account():
         "username": username,
         "password": password,
         "token": token,
+        "chat_token": chat_token,
     }
 
 
@@ -505,6 +512,17 @@ def _verify_http(base_url, origin, management_account):
     )
     if crossed_scope_profile.status_code not in (401, 403):
         raise RuntimeError("A management token was accepted as a Chat user session.")
+
+    crossed_scope_admin = requests.get(
+        base_url + "/api/v1/admin/conversations",
+        headers={
+            "Origin": origin,
+            "Cookie": "vichat_access_token={}".format(management_account["chat_token"]),
+        },
+        timeout=10,
+    )
+    if crossed_scope_admin.status_code != 403:
+        raise RuntimeError("A Chat token was accepted by the management control plane.")
 
     management_headers = dict(
         MANAGEMENT_HEADER,
