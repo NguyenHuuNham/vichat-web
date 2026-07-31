@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-07-31-05 - Trien khai verifier Chatmgt doc lap credential
+
+- Thoi gian: 2026-07-31 09:24 (Asia/Saigon)
+- Loai: Van hanh | Bao mat
+- Trang thai: Hoan tat
+- Muc tieu: Dua ban lam cung verifier `5a647fa` len production, xac nhan viec nghiem thu Chatmgt khong phu thuoc mat khau admin that/Tinode root va khong de lai tai khoan kiem tra tam.
+- Pham vi: Image, container va verifier production cua rieng `chatmgt`; khong thay ChatUI, ChatAPI, PostgreSQL, Redis hay worktree server.
+- File da thay doi: `docs/CHANGELOG.md`; source runtime duoc trien khai tu commit `5a647fa`.
+- Noi dung: Archive co SHA-256 `4a384cb08ad5daca9a8730e60875122961f003b9f23fd51c95cbeb5199b6d94a` duoc giai nen thanh release bat bien `/opt/deploy/chat/releases/5a647fa`. Image Chatmgt moi duoc build va recreate rieng; verifier chay hai lan bang admin cuc bo tam, moi lan tu cleanup tai khoan va audit event trong `finally`; truy van doc lap sau cung xac nhan so ban ghi `deployment_verifier` bang 0.
+- Quyet dinh ky thuat: Tiep tuc trien khai bang release directory bat bien, giu `.env` production va runtime Tinode bootstrap ben ngoai Git, gan image cu tag rollback `songhong-production-chatmgt:rollback-8cc92ac`, va so sanh container ID truoc/sau de ngan thay doi lan sang dich vu khac.
+- Database/API/cau hinh: Khong migration, khong doi API, khong sua `.env`, khong xoa volume va khong reload Nginx. Verifier chi INSERT/DELETE mot local admin tam trong transaction van hanh; database sau hai lan verifier khong con ban ghi danh dau kiem tra.
+- Kiem thu: `bash -n /tmp/vichat-deploy-5a647fa.sh` dat; build image dat voi bundle `ManagementApp-repbL3ZI.js`; full suite trong image dat 60 test voi 8 test source-only skip; `verify_deployment.py` chay hai lan deu dat; `verify_tenant_isolation.py` dat; cleanup verifier bang 0; `nginx -t` dat; public health va bundle deu HTTP 200; Chatmgt healthy, Compose label tro dung release `5a647fa`, log 10 phut co 0 `traceback/panic/fatal/exception/critical`; ID ChatUI, ChatAPI, hai PostgreSQL va Redis khong doi.
+- Rui ro con lai: Moi truong Codex khong co phien admin production trong Browser de thao tac truc quan; phan nghiem thu tu dong, API, database, tenant va public asset trong pham vi ban lam cung deu da dat.
+- Viec tiep theo: Hard refresh `chatmgt.upgo.vn` va kiem tra dang nhap admin/bo cuc neu can nghiem thu giao dien bang nguoi dung cuoi; khong can doi lai mat khau admin de chay verifier.
+- Commit/PR: Code `5a647fa`; commit ghi nhan trien khai chua muc nay (xem `git log`).
+
 ## 2026-07-31-04 - Tach verifier khoi mat khau admin Tinode
 
 - Thoi gian: 2026-07-31 09:09 (Asia/Saigon)
