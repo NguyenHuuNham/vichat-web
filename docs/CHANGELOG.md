@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-07-31-06 - Sua dieu khien dang xuat va avatar Account
+
+- Thoi gian: 2026-07-31 09:56 (Asia/Saigon)
+- Loai: Sua loi | Giao dien | Bao mat | Tich hop
+- Trang thai: Can xac nhan
+- Muc tieu: Chi hien thao tac dang xuat trong Ho so ca nhan va cho phep nhan vien Account SSO doi anh dai dien ma van giu UpGO Account la nguon du lieu chuan.
+- Pham vi: ChatUI profile/sidebar; Chatmgt Account SSO bridge; dong bo projection/Tinode; cau hinh production, test va tai lieu. Khong doi message/topic, database schema, admin Chatmgt hay cac truong ho so nhan su khac.
+- File da thay doi: `README.md`, `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/tinodeClient.js`, `chatservice-main/application/config/config.py`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/services/account_sso_service.py`, `chatservice-main/tests/test_account_sso_service.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `chatservice-main/README.md`, `docs/chat-backend-architecture.md`, `infrastructure/production/.env.example`, `infrastructure/production/compose.yaml`, `infrastructure/production/README.md`, va `docs/CHANGELOG.md`.
+- Noi dung: Xoa nut logout doc lap o footer sidebar, giu nut `Dang xuat` trong panel Ho so ca nhan. Nut camera truoc day bi disable boi `accountProfileReadOnly`, trong khi endpoint profile Chatmgt cung tu choi projection Account 403; ban sua them endpoint multipart `POST /api/v1/auth/avatar`. Chatmgt xac minh JWT, Account cookie, user va tenant hien tai; lay self profile `/me`, upload anh theo hop dong UpGO media, PUT dung Account user, doc lai `/current_user`, cap nhat projection, sau do ChatUI dong bo URL Account sang Tinode public profile va cac state dang hien thi.
+- Quyet dinh ky thuat: Khong bat lai luong `PUT /api/v1/auth/profile` cho Account va khong luu preview/data URL lam nguon chuan. Avatar la write-through duy nhat: browser khong gui target user ID; backend suy ra user/tenant tu hai phien da xac minh, loc payload theo schema profile cong khai va khong forward password/token/secret. Cac truong ten, email, vai tro, chuc vu va phong ban van chi doc trong ChatUI.
+- Database/API/cau hinh: Khong migration. Them `POST /api/v1/auth/avatar`; them cac bien co production default `ACCOUNT_SSO_SELF_PROFILE_PATH`, `ACCOUNT_SSO_USER_UPDATE_PATH`, `ACCOUNT_AVATAR_UPLOAD_URL`. `.env` that khong bi sua va khong can them bien neu UpGO giu hop dong hien tai. Upload toi da 10 MB va chi nhan MIME `image/*`.
+- Kiem thu: Da doc ma frontend dang chay cua `account.upgo.vn` de xac nhan `/me`, media upload va `PUT /api/v1/user/<id>`; OPTIONS xac nhan origin `https://chat.upgo.vn` duoc cho phep. `python -m py_compile ...` dat; test muc tieu dat 34/34 voi `aiohttp 3.10.11` tam; full backend local dat 63 test voi 12 runtime skip; `npm run lint` dat voi warning co san ngoai pham vi; `npm run test:frontend` dat 9/9; `npm run build -- --outDir .codex-build-avatar --emptyOutDir` dat voi `App-CZEci0lr.js`; Compose config dat khi cung cap secret kiem tra chi trong process; `git diff --check` dat. Browser skill khong co browser kha dung nen chua thao tac phien Account that.
+- Rui ro con lai: Chua build/test trong image Python 3.9 production va chua ghi avatar bang Account user that. Neu media upload thanh cong nhung Account PUT that bai, file upload co the tro thanh file khong duoc tham chieu vi upstream khong cung cap API rollback.
+- Viec tiep theo: Commit/push, deploy bat bien ca `chat` va `chatmgt` ma khong restart ChatAPI/database/Redis, sau do nghiem thu avatar bang phien Account production va hard refresh.
+- Commit/PR: Chua tao.
+
 ## 2026-07-31-05 - Trien khai verifier Chatmgt doc lap credential
 
 - Thoi gian: 2026-07-31 09:24 (Asia/Saigon)

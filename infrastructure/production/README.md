@@ -80,6 +80,9 @@ ACCOUNT_URL=https://account.upgo.vn
 ACCOUNT_SSO_PROFILE_PATH=/current_user
 ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user
 ACCOUNT_SSO_LOGOUT_PATH=/logout
+ACCOUNT_SSO_SELF_PROFILE_PATH=/me
+ACCOUNT_SSO_USER_UPDATE_PATH=/api/v1/user
+ACCOUNT_AVATAR_UPLOAD_URL=https://service.upgo.vn/api/image/upload?path=accounts
 ACCOUNT_SESSION_COOKIE_NAME=session
 ACCOUNT_SESSION_COOKIE_DOMAIN=.upgo.vn
 ACCOUNT_SESSION_COOKIE_SECURE=true
@@ -100,6 +103,11 @@ Log out from Chat and confirm that refresh cannot reopen the protected UI,
 `/api/v1/auth/me` returns `401` or `403`, and Account also requires login again.
 Repeat with an inactive membership and with two different tenants to confirm
 rejection/isolation behavior.
+
+Open the Chat personal profile and change the avatar. The request must use
+`POST /api/v1/auth/avatar`; after refresh, both Account and Chat must show the
+new Account-hosted URL. The endpoint never accepts a target user ID and must
+reject an expired Account session or a tenant mismatch.
 
 This is the Step 2 acceptance test only. Directory/conversation loading is Step
 3, and realtime Tinode messaging is Step 4.

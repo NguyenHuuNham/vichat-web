@@ -13,6 +13,10 @@ validates the active tenant membership, synchronizes a local tenant-scoped
 profile projection, and issues only its own HttpOnly session. The projection has
 an unusable password marker; Account remains authoritative for identity,
 password, tenant membership, role, email, display name, and avatar.
+ChatUI may change the current employee avatar through Chatmgt, but Chatmgt
+uploads and writes the image to UpGO Account first, then refreshes its local
+projection and Tinode public profile. It never treats a browser preview or a
+Chatmgt-only avatar value as authoritative.
 
 The separate Chatmgt administration page keeps local administrator login on
 `POST /login` with the management-session header. It neither replaces nor acts
@@ -51,8 +55,10 @@ directory, friendship, and conversation metadata:
    realtime messages and files. Tinode topics, tokens, messages, presence, and
    receipts remain Step 4 and are not replaced with browser demo data.
 
-Account remains authoritative for employee profile fields. Chatmgt never copies
-an Account password, token, or session cookie into its database.
+Account remains authoritative for employee profile fields. The avatar control
+is a write-through bridge to Account; all other Account-backed profile fields
+remain read-only in ChatUI. Chatmgt never copies an Account password, token, or
+session cookie into its database.
 
 ## Step 4 realtime flow
 

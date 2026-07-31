@@ -5,6 +5,12 @@ events, organization data, and chatbot knowledge in its own PostgreSQL
 database. Tinode remains the source of realtime messages and uploaded chat
 files.
 
+For Account SSO employees, identity fields remain read-only projections. The
+authenticated `POST /api/v1/auth/avatar` endpoint is the narrow exception: it
+validates the Account user and tenant, uploads the image through the configured
+UpGO media endpoint, updates that same Account user, and only then refreshes the
+Chatmgt projection. It never accepts a target user ID from the browser.
+
 Container builds install `requirements.lock`, generated and verified from the
 pinned Python 3.9 Linux image. `requirements.txt` remains the direct dependency
 input; update the lock only after a clean Linux image build succeeds.

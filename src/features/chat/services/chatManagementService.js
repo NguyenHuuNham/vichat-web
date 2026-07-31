@@ -61,11 +61,12 @@ function responseItems(payload) {
 }
 
 async function apiRequest(path, options = {}) {
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const response = await fetch(`${apiBase}${path}`, {
     credentials: 'include',
     headers: {
       Accept: 'application/json',
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}),
       ...(options.headers || {}),
     },
     ...options,
@@ -249,6 +250,20 @@ export const chatManagementService = {
     const payload = await apiRequest('/api/v1/auth/profile', {
       method: 'PUT',
       body: JSON.stringify(profile || {}),
+    });
+    const account = publicAccount(payload.user || payload);
+    if (activeSession && account) activeSession.user = account;
+    return account;
+  },
+
+  async updateAvatar(file) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    if (!file) throw new Error('Vui lòng chọn ảnh đại diện.');
+    const form = new FormData();
+    form.append('avatar', file, file.name || 'avatar');
+    const payload = await apiRequest('/api/v1/auth/avatar', {
+      method: 'POST',
+      body: form,
     });
     const account = publicAccount(payload.user || payload);
     if (activeSession && account) activeSession.user = account;

@@ -1178,7 +1178,7 @@ export const tinodeClient = {
     return resolveProtectedMedia(value);
   },
 
-  async updateCurrentProfile({ name = '', avatarFile = null } = {}) {
+  async updateCurrentProfile({ name = '', avatarFile = null, avatarUrl = '' } = {}) {
     const tinode = getClient();
     if (!meTopic) throw new Error('Phiên đăng nhập chưa sẵn sàng.');
     const currentPublic = meTopic.public || {};
@@ -1188,12 +1188,14 @@ export const tinodeClient = {
       || 'Người dùng';
     let photo = currentPublic.photo || currentPublic.avatar || null;
     if (avatarFile) {
-      const avatarUrl = await uploadFile(tinode, avatarFile, 'me');
+      const uploadedAvatarUrl = await uploadFile(tinode, avatarFile, 'me');
       photo = {
-        ref: avatarUrl,
+        ref: uploadedAvatarUrl,
         mime: avatarFile.type || 'image/jpeg',
         size: avatarFile.size || 0,
       };
+    } else if (avatarUrl) {
+      photo = { ref: avatarUrl };
     }
     await meTopic.setMeta({
       desc: {

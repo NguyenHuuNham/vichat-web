@@ -1555,10 +1555,6 @@ function App() {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
-    if (accountProfileReadOnly) {
-      setChatError('Ảnh đại diện được quản lý tại account.upgo.vn.');
-      return;
-    }
     if (!file.type.startsWith('image/')) {
       setChatError('Vui lòng chọn đúng tệp hình ảnh.');
       return;
@@ -1572,23 +1568,40 @@ function App() {
     setChatError('');
     try {
       let avatar;
-      if (chatMode === 'tinode') {
-        await ensureTinodeSession();
-        const profile = await tinodeClient.updateCurrentProfile({
-          name: currentUser?.name,
-          avatarFile: file,
-        });
-        avatar = profile?.avatar;
+      let updated;
+      if (accountProfileReadOnly) {
+        updated = await chatManagementService.updateAvatar(file);
+        avatar = updated?.avatar;
+        if (chatMode === 'tinode' && avatar) {
+          try {
+            await ensureTinodeSession();
+            await tinodeClient.updateCurrentProfile({
+              name: currentUser?.name,
+              avatarUrl: avatar,
+            });
+          } catch (tinodeError) {
+            setChatError(tinodeError?.message || 'Ảnh đã lưu trên Account nhưng Tinode chưa đồng bộ ngay.');
+          }
+        }
       } else {
-        avatar = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = () => reject(new Error('Không thể đọc ảnh đại diện.'));
-          reader.readAsDataURL(file);
-        });
+        if (chatMode === 'tinode') {
+          await ensureTinodeSession();
+          const profile = await tinodeClient.updateCurrentProfile({
+            name: currentUser?.name,
+            avatarFile: file,
+          });
+          avatar = profile?.avatar;
+        } else {
+          avatar = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(new Error('Không thể đọc ảnh đại diện.'));
+            reader.readAsDataURL(file);
+          });
+        }
+        updated = await chatManagementService.updateProfile({ avatar });
       }
       if (!avatar) throw new Error('Máy chủ không trả về ảnh đại diện mới.');
-      const updated = await chatManagementService.updateProfile({ avatar });
       const viewerIds = new Set([
         currentUser?.id,
         currentUser?.uid,
@@ -2984,9 +2997,6 @@ function App() {
               <span className="user-status online">Online</span>
             </div>
           </div>
-          <button type="button" className="btn-logout-footer" data-tooltip="Đăng xuất" onClick={requestLogout} aria-label="Đăng xuất khỏi Chat">
-            <i className="fa-solid fa-arrow-right-from-bracket"></i>
-          </button>
         </div>
       </aside>
 
@@ -3437,9 +3447,9 @@ function App() {
                 <div className="profile-hero">
                   <div className="profile-avatar-editor">
                     <SafeAvatar src={profileAccount.avatar} name={profileAccount.name} className="profile-avatar-large" />
-                    <label className={`profile-avatar-edit-button ${isUpdatingProfileAvatar ? 'loading' : ''}`} title={accountProfileReadOnly ? 'Ảnh được đồng bộ từ UpGO Account' : 'Đổi ảnh đại diện'}>
+                    <label className={`profile-avatar-edit-button ${isUpdatingProfileAvatar ? 'loading' : ''}`} title="Đổi ảnh đại diện">
                       <i className={`fa-solid ${isUpdatingProfileAvatar ? 'fa-spinner fa-spin' : 'fa-camera'}`}></i>
-                      <input type="file" accept="image/*" onChange={handleProfileAvatarChange} disabled={accountProfileReadOnly || isUpdatingProfileAvatar} />
+                      <input type="file" accept="image/*" onChange={handleProfileAvatarChange} disabled={isUpdatingProfileAvatar} />
                     </label>
                   </div>
                   <h3>{profileAccount.name || 'Tài khoản hiện tại'}</h3>
@@ -3454,7 +3464,7 @@ function App() {
                   <label><span>Email</span><input type="email" value={profileForm.email} onChange={event => setProfileForm(previous => ({ ...previous, email: event.target.value }))} maxLength="255" disabled={accountProfileReadOnly} /></label>
                   <label><span>Chức vụ</span><input value={profileForm.title} onChange={event => setProfileForm(previous => ({ ...previous, title: event.target.value }))} maxLength="255" disabled={accountProfileReadOnly} /></label>
                   <label><span>Phòng ban</span><input value={profileForm.department} onChange={event => setProfileForm(previous => ({ ...previous, department: event.target.value }))} maxLength="255" disabled={accountProfileReadOnly} /></label>
-                  {accountProfileReadOnly && <div className="profile-save-notice"><i className="fa-solid fa-building-shield"></i>Hồ sơ được đồng bộ từ account.upgo.vn.</div>}
+                  {accountProfileReadOnly && <div className="profile-save-notice"><i className="fa-solid fa-building-shield"></i>Thông tin nhân sự được đồng bộ từ account.upgo.vn; ảnh đại diện có thể đổi tại đây.</div>}
                   {profileNotice && <div className="profile-save-notice"><i className="fa-solid fa-circle-check"></i>{profileNotice}</div>}
                   <button type="submit" className="btn-primary profile-save-button" disabled={accountProfileReadOnly || isSavingProfile}>
                     <i className={`fa-solid ${isSavingProfile ? 'fa-spinner fa-spin' : 'fa-floppy-disk'}`}></i>

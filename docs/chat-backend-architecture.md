@@ -96,7 +96,10 @@ When `CHAT_ACCOUNT_SSO_ENABLED=true`:
 
 - `POST /api/v1/auth/login` rejects employee password login.
 - Password reset/change endpoints reject Account-backed projections.
-- Account-backed profile fields are read-only in Chatmgt.
+- Account-backed identity/profile fields are read-only in Chatmgt. The current
+  employee avatar is the only write-through exception: Chatmgt validates the
+  Account session and tenant, uploads the image using the Account media
+  contract, updates the matching Account user, then refreshes its projection.
 - Creating employee credentials in Chatmgt is disabled; employees must already
   exist in UpGO Account.
 - Revoking a Chatmgt session remains available because it is Chatmgt-owned state.
@@ -107,6 +110,7 @@ When `CHAT_ACCOUNT_SSO_ENABLED=true`:
 | --- | --- | --- |
 | `POST` | `/api/v1/auth/sso` | Validate Account session and issue Chatmgt session |
 | `GET` | `/api/v1/auth/me` | Validate/read the current Chatmgt and Account-backed profile |
+| `POST` | `/api/v1/auth/avatar` | Validate the Account session, update the current Account avatar, and refresh Chatmgt projection |
 | `POST` | `/api/v1/auth/logout` | Revoke Chatmgt and end/clear Account session |
 | `GET` | `/api/v1/auth/health` | Report employee auth and Account SSO readiness |
 | `POST` | `/login` | Separate local Chatmgt administrator login |
@@ -238,6 +242,9 @@ ACCOUNT_URL=https://account.upgo.vn
 ACCOUNT_SSO_PROFILE_PATH=/current_user
 ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user
 ACCOUNT_SSO_LOGOUT_PATH=/logout
+ACCOUNT_SSO_SELF_PROFILE_PATH=/me
+ACCOUNT_SSO_USER_UPDATE_PATH=/api/v1/user
+ACCOUNT_AVATAR_UPLOAD_URL=https://service.upgo.vn/api/image/upload?path=accounts
 ACCOUNT_SESSION_COOKIE_NAME=session
 ACCOUNT_SESSION_COOKIE_DOMAIN=.upgo.vn
 ACCOUNT_SESSION_COOKIE_SECURE=true
@@ -252,7 +259,8 @@ TINODE_TOKEN_EXPIRE_IN=300
 ```
 
 The real `infrastructure/production/.env` is intentionally not modified by code
-changes. Operators must update it explicitly before rebuilding Chatmgt.
+changes. The Account avatar paths use the production defaults shown here; an
+operator only needs to add overrides when the upstream Account contract differs.
 
 ## Step 2 acceptance
 
@@ -263,6 +271,9 @@ changes. Operators must update it explicitly before rebuilding Chatmgt.
 - Employee password login is disabled while management administrator login remains isolated.
 - Logout revokes Chatmgt, calls Account logout, and clears both cookie scopes.
 - Refresh after logout cannot reopen `/api/v1/auth/me`.
+- Changing the avatar updates the matching UpGO Account user, refreshes the
+  tenant-scoped Chatmgt projection, and propagates the Account URL to Tinode;
+  another Account user or tenant cannot be targeted by the request.
 
 Directory/conversation correctness is accepted in Step 3; realtime messaging is
 accepted in Step 4.
@@ -278,8 +289,9 @@ accepted in Step 4.
 - `connection: management` is labeled as Chatmgt data mode, never demo mode.
 - Employee messages/files are disabled with an explicit Step 4 notice and are
   not written to local browser demo storage.
-- Account profile fields remain read-only in ChatUI and are synchronized only
-  from Account.
+- Account identity/profile fields remain read-only in ChatUI. The avatar control
+  writes through to Account and then resynchronizes Chatmgt/Tinode; it does not
+  create a Chatmgt-only profile value.
 
 ## Step 4 acceptance
 

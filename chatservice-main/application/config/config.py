@@ -88,6 +88,12 @@ class Config(object):
     ACCOUNT_SSO_PROFILE_PATH = os.getenv("ACCOUNT_SSO_PROFILE_PATH", "/current_user")
     ACCOUNT_SSO_DIRECTORY_PATH = os.getenv("ACCOUNT_SSO_DIRECTORY_PATH", "/api/v1/tenant_user")
     ACCOUNT_SSO_LOGOUT_PATH = os.getenv("ACCOUNT_SSO_LOGOUT_PATH", "/logout")
+    ACCOUNT_SSO_SELF_PROFILE_PATH = os.getenv("ACCOUNT_SSO_SELF_PROFILE_PATH", "/me")
+    ACCOUNT_SSO_USER_UPDATE_PATH = os.getenv("ACCOUNT_SSO_USER_UPDATE_PATH", "/api/v1/user")
+    ACCOUNT_AVATAR_UPLOAD_URL = os.getenv(
+        "ACCOUNT_AVATAR_UPLOAD_URL",
+        "https://service.upgo.vn/api/image/upload?path=accounts",
+    )
     ACCOUNT_SSO_TIMEOUT = int(os.getenv("ACCOUNT_SSO_TIMEOUT", 10))
     ACCOUNT_SESSION_COOKIE_NAME = os.getenv("ACCOUNT_SESSION_COOKIE_NAME", "session")
     ACCOUNT_SESSION_COOKIE_DOMAIN = os.getenv("ACCOUNT_SESSION_COOKIE_DOMAIN", ".upgo.vn")

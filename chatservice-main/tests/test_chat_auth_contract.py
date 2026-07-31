@@ -70,6 +70,9 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("CHAT_ACCOUNT_SSO_ENABLED=true", env_source)
         self.assertIn("ACCOUNT_URL=https://account.upgo.vn", env_source)
         self.assertIn("ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user", env_source)
+        self.assertIn("ACCOUNT_SSO_SELF_PROFILE_PATH=/me", env_source)
+        self.assertIn("ACCOUNT_SSO_USER_UPDATE_PATH=/api/v1/user", env_source)
+        self.assertIn("ACCOUNT_AVATAR_UPLOAD_URL=https://service.upgo.vn/api/image/upload?path=accounts", env_source)
         self.assertIn("TINODE_SSO_SECRET: ${TINODE_SSO_SECRET:?TINODE_SSO_SECRET is required}", compose_source)
 
     def test_account_sso_login_does_not_provision_or_login_to_tinode(self):
@@ -91,6 +94,28 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("logout_account_session", logout_source)
         self.assertIn("clear_account_cookie", logout_source)
         self.assertIn('logout_user.get("auth_method") == "account_sso"', logout_source)
+
+    @repository_source_test
+    def test_account_avatar_update_keeps_account_authoritative_and_logout_in_profile(self):
+        _controller_source, avatar_source = function_source(
+            CONTROLLER_PATH,
+            "management_update_avatar",
+        )
+        service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")
+        app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
+        profile_source = app_source.split("workspacePanel === 'profile'", 1)[1]
+
+        self.assertIn('request.files.get("avatar")', avatar_source)
+        self.assertIn("_validated_account_identity", avatar_source)
+        self.assertIn("update_account_avatar", avatar_source)
+        self.assertIn("_sso_account(updated_identity", avatar_source)
+        self.assertIn("/api/v1/auth/avatar", service_source)
+        self.assertIn("FormData", service_source)
+        self.assertIn("chatManagementService.updateAvatar(file)", app_source)
+        self.assertIn("avatarUrl: avatar", app_source)
+        self.assertNotIn('className="btn-logout-footer"', app_source)
+        self.assertIn('className="workspace-logout-button"', profile_source)
+        self.assertIn('disabled={isUpdatingProfileAvatar}', profile_source)
 
     @repository_source_test
     def test_chatui_uses_account_sso_without_employee_password_fields(self):

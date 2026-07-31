@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, urlencode, urljoin, urlsplit, urlunsplit
 
 import aiohttp
 
@@ -13,6 +13,31 @@ from application.services.sso_identity import (
 
 
 logger = logging.getLogger(__name__)
+
+ACCOUNT_PROFILE_UPDATE_FIELDS = (
+    "id",
+    "created_by_name",
+    "updated_by_name",
+    "deleted_by_name",
+    "display_name",
+    "full_name",
+    "user_name",
+    "phone",
+    "phone_country_prefix",
+    "phone_national_number",
+    "email",
+    "avatar_url",
+    "gender",
+    "birthday",
+    "address",
+    "address_district",
+    "address_city",
+    "address_country",
+    "confirmed_at",
+    "active",
+    "last_login_tenant",
+    "tenants",
+)
 
 
 class AccountSSOError(Exception):
@@ -55,7 +80,7 @@ def _account_cookie(request):
     return cookie_name, values[0]
 
 
-async def _account_request(request, method, path):
+async def _account_request(request, method, path, json_body=None):
     cookie_name, cookie_value = _account_cookie(request)
     timeout = aiohttp.ClientTimeout(total=int(app.config.get("ACCOUNT_SSO_TIMEOUT", 10)))
     headers = {
@@ -63,9 +88,17 @@ async def _account_request(request, method, path):
         "Cookie": "{}={}".format(cookie_name, cookie_value),
         "User-Agent": "VICHAT-CHATMGT-SSO/1.0",
     }
+    request_kwargs = {}
+    if json_body is not None:
+        request_kwargs["json"] = json_body
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.request(method, _account_url(path), headers=headers) as response:
+            async with session.request(
+                method,
+                _account_url(path),
+                headers=headers,
+                **request_kwargs
+            ) as response:
                 try:
                     payload = await response.json(content_type=None)
                 except (aiohttp.ContentTypeError, ValueError):
@@ -77,6 +110,154 @@ async def _account_request(request, method, path):
             503,
             "ACCOUNT_SERVICE_UNAVAILABLE",
         ) from error
+
+
+def _account_profile_update_payload(profile, avatar_url):
+    if not isinstance(profile, dict):
+        raise AccountSSOError(
+            "Account returned an invalid self profile.",
+            502,
+            "ACCOUNT_PROFILE_INVALID",
+        )
+    payload = {
+        field: profile.get(field)
+        for field in ACCOUNT_PROFILE_UPDATE_FIELDS
+        if field in profile
+    }
+    payload["avatar_url"] = avatar_url
+    return payload
+
+
+async def _upload_account_avatar(upload):
+    upload_url = str(app.config.get("ACCOUNT_AVATAR_UPLOAD_URL") or "").strip()
+    if not upload_url.startswith(("http://", "https://")):
+        raise AccountSSOError(
+            "Account avatar upload is not configured.",
+            503,
+            "ACCOUNT_AVATAR_UPLOAD_NOT_CONFIGURED",
+        )
+    timeout = aiohttp.ClientTimeout(total=int(app.config.get("ACCOUNT_SSO_TIMEOUT", 10)))
+    form = aiohttp.FormData()
+    form.add_field(
+        "image",
+        upload.body,
+        filename=str(upload.name or "avatar"),
+        content_type=str(upload.type or "application/octet-stream"),
+    )
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "VICHAT-CHATMGT-SSO/1.0",
+    }
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(upload_url, headers=headers, data=form) as response:
+                try:
+                    payload = await response.json(content_type=None)
+                except (aiohttp.ContentTypeError, ValueError):
+                    payload = {}
+                if response.status >= 500:
+                    raise AccountSSOError(
+                        "Account avatar upload is temporarily unavailable.",
+                        503,
+                        "ACCOUNT_AVATAR_UPLOAD_UNAVAILABLE",
+                    )
+                if response.status >= 300:
+                    raise AccountSSOError(
+                        "Account rejected the avatar upload.",
+                        502,
+                        "ACCOUNT_AVATAR_UPLOAD_FAILED",
+                    )
+    except AccountSSOError:
+        raise
+    except (aiohttp.ClientError, asyncio.TimeoutError) as error:
+        raise AccountSSOError(
+            "Account avatar upload is temporarily unavailable.",
+            503,
+            "ACCOUNT_AVATAR_UPLOAD_UNAVAILABLE",
+        ) from error
+
+    avatar_url = str((payload or {}).get("link") or "").strip()
+    if not avatar_url.startswith(("http://", "https://")) or len(avatar_url) > 255:
+        raise AccountSSOError(
+            "Account avatar upload returned an invalid URL.",
+            502,
+            "ACCOUNT_AVATAR_UPLOAD_INVALID",
+        )
+    return avatar_url
+
+
+async def update_account_avatar(request, identity, upload):
+    status, profile = await _account_request(
+        request,
+        "GET",
+        app.config.get("ACCOUNT_SSO_SELF_PROFILE_PATH") or "/me",
+    )
+    if status in (401, 403, 520):
+        raise AccountSSOError("Account login is required.", 401, "ACCOUNT_LOGIN_REQUIRED")
+    if status >= 500:
+        raise AccountSSOError(
+            "Account profile is temporarily unavailable.",
+            503,
+            "ACCOUNT_PROFILE_UNAVAILABLE",
+        )
+    if status >= 300 or not isinstance(profile, dict):
+        raise AccountSSOError(
+            "Account rejected the profile request.",
+            502,
+            "ACCOUNT_PROFILE_FAILED",
+        )
+
+    account_user_id = str(identity.get("account_user_id") or "")
+    if str(profile.get("id") or "") != account_user_id:
+        raise AccountSSOError(
+            "The Account profile does not match the Chatmgt session.",
+            401,
+            "ACCOUNT_SESSION_MISMATCH",
+        )
+
+    avatar_url = await _upload_account_avatar(upload)
+    update_path = "{}/{}".format(
+        str(app.config.get("ACCOUNT_SSO_USER_UPDATE_PATH") or "/api/v1/user").rstrip("/"),
+        quote(account_user_id, safe=""),
+    )
+    status, _payload = await _account_request(
+        request,
+        "PUT",
+        update_path,
+        json_body=_account_profile_update_payload(profile, avatar_url),
+    )
+    if status in (401, 403, 520):
+        raise AccountSSOError("Account login is required.", 401, "ACCOUNT_LOGIN_REQUIRED")
+    if status >= 500:
+        raise AccountSSOError(
+            "Account avatar update is temporarily unavailable.",
+            503,
+            "ACCOUNT_AVATAR_UPDATE_UNAVAILABLE",
+        )
+    if status >= 300:
+        raise AccountSSOError(
+            "Account rejected the avatar update.",
+            502,
+            "ACCOUNT_AVATAR_UPDATE_FAILED",
+        )
+
+    updated_identity = await current_account_session(request)
+    if (
+        str(updated_identity.get("account_user_id") or "") != account_user_id
+        or str(updated_identity.get("tenant_id") or "") != str(identity.get("tenant_id") or "")
+    ):
+        raise AccountSSOError(
+            "The Account session changed during the avatar update.",
+            401,
+            "ACCOUNT_SESSION_MISMATCH",
+        )
+    if not str(updated_identity.get("avatar") or "").strip():
+        raise AccountSSOError(
+            "Account did not confirm the new avatar.",
+            502,
+            "ACCOUNT_AVATAR_UPDATE_UNCONFIRMED",
+        )
+    return updated_identity
 
 
 async def current_account_session(request):

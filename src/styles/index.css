@@ -291,30 +291,6 @@ body {
     gap: 6px;
 }
 
-.btn-logout-footer {
-    display: grid;
-    width: 36px;
-    height: 36px;
-    flex: 0 0 36px;
-    place-items: center;
-    border: 0;
-    border-radius: 10px;
-    color: rgba(255, 255, 255, .68);
-    background: transparent;
-    cursor: pointer;
-    transition: var(--transition-fast);
-}
-
-.btn-logout-footer:hover {
-    color: var(--text-white);
-    background: rgba(255, 255, 255, .1);
-}
-
-.btn-logout-footer:focus-visible {
-    outline: 3px solid rgba(255, 255, 255, .28);
-    outline-offset: 2px;
-}
-
 .user-profile {
     display: flex;
     align-items: center;

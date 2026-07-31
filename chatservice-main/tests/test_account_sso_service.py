@@ -3,7 +3,7 @@ import sys
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +23,9 @@ if HAS_AIOHTTP:
         "ACCOUNT_SSO_PROFILE_PATH": "/current_user",
         "ACCOUNT_SSO_DIRECTORY_PATH": "/api/v1/tenant_user",
         "ACCOUNT_SSO_LOGOUT_PATH": "/logout",
+        "ACCOUNT_SSO_SELF_PROFILE_PATH": "/me",
+        "ACCOUNT_SSO_USER_UPDATE_PATH": "/api/v1/user",
+        "ACCOUNT_AVATAR_UPLOAD_URL": "https://service.upgo.vn/api/image/upload?path=accounts",
         "ACCOUNT_SESSION_COOKIE_NAME": "session",
         "ACCOUNT_SESSION_COOKIE_DOMAIN": ".upgo.vn",
         "ACCOUNT_SESSION_COOKIE_SECURE": True,
@@ -230,6 +233,82 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(payload, {})
         account_request.assert_awaited_once_with(request, "POST", "/logout")
+
+    async def test_avatar_update_uses_account_profile_and_excludes_password(self):
+        request = types.SimpleNamespace()
+        identity = {
+            "account_user_id": "account-user-1",
+            "tenant_id": "tenant-a",
+        }
+        profile = {
+            "id": "account-user-1",
+            "display_name": "Nguyen Huu Nham",
+            "email": "nham@example.vn",
+            "avatar_url": "https://old.example/avatar.png",
+            "password": "must-not-be-forwarded",
+        }
+        refreshed = account_payload()
+        refreshed["avatar_url"] = "https://service.upgo.vn/accounts/new-avatar.png"
+        upload = types.SimpleNamespace(
+            name="avatar.png",
+            type="image/png",
+            body=b"avatar-bytes",
+        )
+        with patch.object(
+            account_sso_service,
+            "_upload_account_avatar",
+            AsyncMock(return_value=refreshed["avatar_url"]),
+        ), patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(side_effect=[
+                (200, profile),
+                (200, {"updated": True}),
+                (200, refreshed),
+            ]),
+        ) as account_request:
+            result = await account_sso_service.update_account_avatar(
+                request,
+                identity,
+                upload,
+            )
+
+        self.assertEqual(result["avatar"], refreshed["avatar_url"])
+        self.assertEqual(account_request.await_args_list[0], call(request, "GET", "/me"))
+        update_call = account_request.await_args_list[1]
+        self.assertEqual(update_call.args[:3], (request, "PUT", "/api/v1/user/account-user-1"))
+        self.assertEqual(update_call.kwargs["json_body"]["avatar_url"], refreshed["avatar_url"])
+        self.assertNotIn("password", update_call.kwargs["json_body"])
+        self.assertEqual(account_request.await_args_list[2], call(request, "GET", "/current_user"))
+
+    async def test_avatar_update_rejects_a_different_account_profile_before_upload(self):
+        request = types.SimpleNamespace()
+        upload = types.SimpleNamespace(
+            name="avatar.png",
+            type="image/png",
+            body=b"avatar-bytes",
+        )
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(200, {"id": "different-account"})),
+        ), patch.object(
+            account_sso_service,
+            "_upload_account_avatar",
+            AsyncMock(),
+        ) as avatar_upload:
+            with self.assertRaises(account_sso_service.AccountSSOError) as error:
+                await account_sso_service.update_account_avatar(
+                    request,
+                    {
+                        "account_user_id": "account-user-1",
+                        "tenant_id": "tenant-a",
+                    },
+                    upload,
+                )
+
+        self.assertEqual(error.exception.error_code, "ACCOUNT_SESSION_MISMATCH")
+        avatar_upload.assert_not_awaited()
 
     def test_missing_or_duplicate_account_cookie_is_rejected(self):
         missing = types.SimpleNamespace(headers={"Cookie": "other=value"})

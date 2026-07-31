@@ -25,6 +25,7 @@ from application.services.account_sso_service import (
     clear_account_cookie,
     current_account_session,
     logout_account_session,
+    update_account_avatar,
 )
 from application.services.auth_service import (
     AuthError,
@@ -1194,6 +1195,76 @@ async def management_update_profile(request):
     except Exception:
         db.session.rollback()
         return json({"error_code": "PROFILE_UPDATE_FAILED", "error_message": "The profile update conflicted with existing data."}, status=409)
+
+
+@app.route('/api/v1/auth/avatar', methods=['POST'])
+async def management_update_avatar(request):
+    current_user, tenant_id = _identity(request)
+    if current_user is None or management_session_requested(request):
+        return _auth_error()
+    account = _account_by_id(tenant_id, _user_id(current_user))
+    if account is None or (account.properties or {}).get("auth_source") != "account":
+        return json({
+            "error_code": "ACCOUNT_AVATAR_UNSUPPORTED",
+            "error_message": "Avatar updates through this endpoint require UpGO Account SSO.",
+        }, status=403)
+    upload = request.files.get("avatar") if request.files else None
+    if upload is None or not upload.body:
+        return json({
+            "error_code": "AVATAR_REQUIRED",
+            "error_message": "An avatar image is required.",
+        }, status=400)
+    content_type = str(upload.type or "").split(";", 1)[0].strip().lower()
+    if not content_type.startswith("image/"):
+        return json({
+            "error_code": "AVATAR_TYPE_INVALID",
+            "error_message": "The avatar must be an image file.",
+        }, status=400)
+    if len(upload.body) > 10 * 1024 * 1024:
+        return json({
+            "error_code": "AVATAR_TOO_LARGE",
+            "error_message": "The avatar must not exceed 10 MB.",
+        }, status=400)
+
+    try:
+        identity = await _validated_account_identity(request, account)
+        updated_identity = await update_account_avatar(request, identity, upload)
+        tenant, updated_account = _sso_account(updated_identity, mark_login=False)
+        db.session.commit()
+        _audit(
+            request,
+            "AUTH_ACCOUNT_AVATAR_UPDATED",
+            True,
+            tenant_id=tenant_id,
+            user_id=str(updated_account.id),
+        )
+        return json({"user": _public_account(updated_account, tenant)})
+    except AccountSSOError as error:
+        db.session.rollback()
+        _audit(
+            request,
+            "AUTH_ACCOUNT_AVATAR_UPDATED",
+            False,
+            tenant_id=tenant_id,
+            user_id=str(account.id),
+            properties={"error_code": error.error_code},
+        )
+        if error.error_code in (
+            "ACCOUNT_LOGIN_REQUIRED",
+            "ACCOUNT_SESSION_MISMATCH",
+            "ACCOUNT_TENANT_INVALID",
+        ):
+            revoke_request_token(request)
+            response = clear_auth_cookie(_account_sso_error(error), request)
+            return clear_account_cookie(response)
+        return _account_sso_error(error)
+    except Exception as error:
+        db.session.rollback()
+        logger.exception("Account avatar update failed: %s", error)
+        return json({
+            "error_code": "ACCOUNT_AVATAR_UPDATE_FAILED",
+            "error_message": "Avatar update failed.",
+        }, status=500)
 
 
 @app.route('/api/v1/chat/users', methods=['GET'])
