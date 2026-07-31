@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-07-31-13 - Trien khai font Inter cho Chatmgt
+
+- Thoi gian: 2026-07-31 12:00 (Asia/Saigon)
+- Loai: Trien khai | Sua loi | Giao dien
+- Trang thai: Can xac nhan
+- Muc tieu: Dua ban sua font tieng Viet cua commit `4058086` len production, chi thay stylesheet Chatmgt va giu nguyen toan bo giao dien/chuc nang con lai.
+- Pham vi: Release/image/container rieng `chatmgt` va public CSS; khong recreate ChatUI, ChatAPI, hai PostgreSQL, Redis, khong migration va khong sua `.env` hay worktree server.
+- File da thay doi: `docs/CHANGELOG.md`; source runtime trien khai tu release bat bien `/opt/deploy/chat/releases/4058086`.
+- Noi dung: Archive sach co SHA-256 `498adbecdc295c594ae1d86fdaaca2ef92241d7b6fa863ebb7bc8a60f9e42f2c`; image moi la `sha256:c39f265796c010e8f0867e949b3e11755fe48162f82797ab039595e87ee24226`, container healthy la `368646cb95af7d95e254161cd1fddbef8db6b4f038def45f98423d803d79b8e9`. Public entry la `index-BUE-5UrA.js`, ManagementApp la `ManagementApp-C6q6Uml_.js` va stylesheet la `ManagementApp-B9TL3Tr_.css`.
+- Quyet dinh ky thuat: Build/test image truoc khi recreate, giu image `3387b0c` lam rollback va chi thay Chatmgt sau khi full test dat. Public CSS duoc kiem tra truc tiep: body/display co `Inter, "Segoe UI", sans-serif`, khong con `Aptos` hoac `Bahnschrift`.
+- Database/API/cau hinh: Khong thay doi. Runtime Tinode bootstrap duoc bao toan voi mode `0600`; archive tam da duoc xoa.
+- Kiem thu: Image production dat 69 test voi 9 source-only skip; `verify_deployment.py` va `verify_tenant_isolation.py` deu dat. Public health HTTP 200, public font marker dat; Chatmgt healthy; log 10 phut co 0 `traceback/panic/fatal/critical`. ID ChatUI, ChatAPI, hai PostgreSQL va Redis khong doi.
+- Rui ro con lai: Trinh duyet nguoi dung co the con cache CSS cu; can hard refresh de thay font moi. Khong co rui ro da biet voi logic, API, database hay realtime.
+- Viec tiep theo: Hard refresh `chatmgt.upgo.vn` bang `Ctrl + F5` va xac nhan dau tieng Viet hien thi dong nhat.
+- Commit/PR: Code `4058086`; commit ghi nhan trien khai chua muc nay (xem `git log`).
+
 ## 2026-07-31-12 - Sua font tieng Viet cua Chatmgt
 
 - Thoi gian: 2026-07-31 11:56 (Asia/Saigon)
@@ -19,8 +35,8 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong thay doi.
 - Kiem thu: `npm run lint` dat, chi con warning legacy co san ngoai pham vi; `npm run test:frontend` dat 10/10; `npm run build -- --outDir .codex-build-chatmgt-font --emptyOutDir` dat voi stylesheet `ManagementApp-B9TL3Tr_.css`; `git diff --check` dat. Build tam da duoc xoa sau khi kiem tra.
 - Rui ro con lai: Can hard refresh tren trinh duyet that de xac nhan cache stylesheet cu da het; khong co rui ro da biet voi chuc nang vi logic khong thay doi.
-- Viec tiep theo: Commit/push, build va recreate rieng service `chatmgt`, sau do xac nhan public stylesheet dung font `Inter`.
-- Commit/PR: Commit chua muc nay (xem `git log`).
+- Viec tiep theo: Hard refresh de nghiem thu; ket qua trien khai tu dong duoc ghi tai muc `2026-07-31-13`.
+- Commit/PR: `4058086`.
 
 ## 2026-07-31-11 - Trien khai giao dien operations console Chatmgt
 
