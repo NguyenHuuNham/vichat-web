@@ -320,6 +320,11 @@ def verify_http(base_url, origin):
     management_data = health_payload.get("management_data") or {}
     if not management_data.get("configured"):
         raise RuntimeError("Chatmgt management data APIs are not fully configured.")
+    management_session = health_payload.get("management_session") or {}
+    if not management_session.get("isolated"):
+        raise RuntimeError("Chatmgt management sessions are not isolated.")
+    if not management_session.get("cookie_secure"):
+        raise RuntimeError("Chatmgt management cookies are not secure.")
 
     username = str(os.getenv("TINODE_ADMIN_USERNAME") or "").strip()
     password = str(os.getenv("TINODE_ADMIN_PASSWORD") or "")
@@ -363,6 +368,24 @@ def verify_http(base_url, origin):
     if management_profile.status_code != 200:
         raise RuntimeError("Management profile check returned HTTP {}.".format(management_profile.status_code))
 
+    management_headers = dict(
+        MANAGEMENT_HEADER,
+        Origin=origin,
+        Cookie="vichat_management_access_token={}".format(management_token),
+    )
+    management_conversations = requests.get(
+        base_url + "/api/v1/admin/conversations",
+        headers=management_headers,
+        timeout=10,
+    )
+    if management_conversations.status_code != 200:
+        raise RuntimeError("Management conversation overview returned HTTP {}.".format(
+            management_conversations.status_code,
+        ))
+    for conversation in management_conversations.json().get("objects") or []:
+        if any(key in conversation for key in ("messages", "files", "content")):
+            raise RuntimeError("Management conversation overview exposed realtime content.")
+
     if account_sso_enabled:
         sso_challenge = requests.post(
             base_url + "/api/v1/auth/sso",
@@ -373,11 +396,6 @@ def verify_http(base_url, origin):
         if sso_challenge.status_code != 401 or challenge_payload.get("error_code") != "ACCOUNT_LOGIN_REQUIRED":
             raise RuntimeError("Account SSO without a session did not return ACCOUNT_LOGIN_REQUIRED.")
 
-        management_headers = dict(
-            MANAGEMENT_HEADER,
-            Origin=origin,
-            Cookie="vichat_management_access_token={}".format(management_token),
-        )
         management_tinode = requests.post(
             base_url + "/api/v1/auth/tinode-token",
             headers=management_headers,
@@ -400,7 +418,7 @@ def verify_http(base_url, origin):
         if management_after_logout.status_code not in (401, 403):
             raise RuntimeError("The management token remained usable after logout.")
 
-        print("Health, CORS, Account SSO challenge, Tinode bridge configuration, employee password rejection, and management isolation checks passed.")
+        print("Health, CORS, Account SSO challenge, Tinode bridge configuration, employee password rejection, management isolation, and read-only conversation overview checks passed.")
         return
 
     login = requests.post(

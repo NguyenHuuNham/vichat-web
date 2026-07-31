@@ -16,8 +16,11 @@ password, tenant membership, role, email, display name, and avatar.
 
 The separate Chatmgt administration page keeps local administrator login on
 `POST /login` with the management-session header. It neither replaces nor acts
-as employee Account login. Tinode provisioning/token issuance is intentionally
-outside Step 2.
+as employee Account login. Its employee directory is read-only, Account profile
+changes link back to `account.upgo.vn`, and its operational views are limited to
+tenant-scoped Chatmgt sessions, friendship/conversation/group metadata, audit
+events, and bridge health. It never displays Tinode message or file content.
+Tinode provisioning/token issuance is intentionally outside Step 2.
 
 ## Production data flow
 

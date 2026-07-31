@@ -83,6 +83,7 @@ def _public_tenant(tenant):
 
 def _public_account(account, tenant=None):
     properties = account.properties or {}
+    auth_source = str(properties.get("auth_source") or "local")
     full_name = account.full_name or account.username
     public_username = properties.get("account_username") or account.username
     public_email = properties.get("account_email") or account.email or ""
@@ -121,6 +122,10 @@ def _public_account(account, tenant=None):
         "updated_at": account.updated_at,
         "lastLoginAt": _iso_timestamp(account.last_login_at),
         "last_login_at": account.last_login_at,
+        "authSource": auth_source,
+        "auth_source": auth_source,
+        "accountManaged": auth_source == "account",
+        "account_managed": auth_source == "account",
     }
 
 
@@ -544,6 +549,44 @@ def _serialize_conversation(item, viewer_id):
     }
 
 
+def _admin_conversation_record(item, participants, accounts_by_id):
+    participant_ids = [str(participant.participant_id) for participant in participants]
+    properties = item.properties or {}
+    is_group = bool(properties.get("is_group"))
+    owner = next((participant for participant in participants if participant.role == "OWNER"), None)
+    provisioned_count = sum(
+        1 for participant_id in participant_ids
+        if accounts_by_id.get(participant_id) is not None
+        and accounts_by_id[participant_id].tinode_uid
+    )
+    realtime_ready = bool(item.tinode_topic) if is_group else (
+        len(participant_ids) == 2 and provisioned_count == 2
+    )
+    return {
+        "id": str(item.id),
+        "conversationNo": item.conversation_no,
+        "subject": item.subject or "Conversation",
+        "status": item.status or "OPEN",
+        "isGroup": is_group,
+        "kind": "group" if is_group else "direct",
+        "participantCount": len(participant_ids),
+        "participantIds": participant_ids,
+        "members": [
+            _public_account(accounts_by_id[participant_id])
+            for participant_id in participant_ids
+            if participant_id in accounts_by_id
+        ],
+        "ownerId": str(owner.participant_id) if owner is not None else "",
+        "realtime": {
+            "ready": realtime_ready,
+            "binding": "shared-group" if is_group else "viewer-relative-direct",
+            "provisionedParticipants": provisioned_count,
+        },
+        "createdAt": _iso_timestamp(item.created_at),
+        "updatedAt": _iso_timestamp(item.updated_at),
+    }
+
+
 def _conversation_and_membership(tenant_id, conversation_id, user_id):
     item = Conversation.query.filter(
         Conversation.id == conversation_id,
@@ -912,6 +955,11 @@ async def management_auth_health(request):
             "conversation_endpoint": "/api/v1/conversation",
             "friend_request_endpoint": "/api/v1/friend-request",
         },
+        "management_session": {
+            "isolated": True,
+            "cookie_secure": bool(app.config.get("CHAT_AUTH_COOKIE_SECURE", False)),
+            "password_owner": "chatmgt",
+        },
         "password_reset": {
             "delivery_configured": smtp_configured or bool(app.config.get("CHAT_PASSWORD_RESET_DEBUG", False)),
             "tinode_admin_configured": tinode_admin_configured,
@@ -1076,7 +1124,9 @@ async def management_change_password(request):
         _audit(request, "AUTH_PASSWORD_CHANGE", False, tenant_id=tenant_id, user_id=_user_id(current_user))
         return json({"error_code": "PASSWORD_INVALID", "error_message": "Current password is invalid."}, status=401)
     try:
-        await tinode_change_password(account.tinode_username, current_password, new_password)
+        management_scope = management_session_requested(request)
+        if not management_scope:
+            await tinode_change_password(account.tinode_username, current_password, new_password)
         account.password_hash = new_password_hash
         properties = _bump_auth_version(account)
         properties["must_change_password"] = False
@@ -1085,7 +1135,13 @@ async def management_change_password(request):
         account.updated_at = int(time.time())
         revoke_request_token(request)
         db.session.commit()
-        _audit(request, "AUTH_PASSWORD_CHANGE", True, tenant_id=tenant_id, user_id=str(account.id))
+        _audit(
+            request,
+            "AUTH_MANAGEMENT_PASSWORD_CHANGE" if management_scope else "AUTH_PASSWORD_CHANGE",
+            True,
+            tenant_id=tenant_id,
+            user_id=str(account.id),
+        )
         return clear_auth_cookie(json({"changed": True}), request)
     except AuthError as error:
         db.session.rollback()
@@ -1465,6 +1521,74 @@ async def management_audit_logs(request):
         "properties": record.properties or {},
         "createdAt": _iso_timestamp(record.created_at),
     } for record in records]})
+
+
+@app.route('/api/v1/admin/conversations', methods=['GET'])
+async def management_admin_conversations(request):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    if not _is_admin(current_user):
+        return _forbidden_error()
+    try:
+        limit = min(300, max(1, int(request.args.get("limit") or 200)))
+    except (TypeError, ValueError):
+        limit = 200
+
+    base_query = Conversation.query.filter(
+        Conversation.tenant_id == tenant_id,
+        Conversation.deleted.is_(False),
+    )
+    records = base_query.order_by(Conversation.updated_at.desc()).limit(limit).all()
+    conversation_ids = [record.id for record in records]
+    participants = ConversationParticipant.query.filter(
+        ConversationParticipant.tenant_id == tenant_id,
+        ConversationParticipant.conversation_id.in_(conversation_ids),
+        ConversationParticipant.active.is_(True),
+        ConversationParticipant.deleted.is_(False),
+    ).order_by(ConversationParticipant.created_at.asc()).all() if conversation_ids else []
+    participant_ids = list({str(participant.participant_id) for participant in participants})
+    accounts = ManagementAccount.query.filter(
+        ManagementAccount.tenant_id == tenant_id,
+        ManagementAccount.id.in_(participant_ids),
+    ).all() if participant_ids else []
+    accounts_by_id = {str(account.id): account for account in accounts}
+    participants_by_conversation = {}
+    for participant in participants:
+        participants_by_conversation.setdefault(str(participant.conversation_id), []).append(participant)
+
+    facts = base_query.with_entities(Conversation.properties, Conversation.tinode_topic).all()
+    group_count = sum(1 for properties, _topic in facts if bool((properties or {}).get("is_group")))
+    group_bound_count = sum(
+        1 for properties, topic in facts
+        if bool((properties or {}).get("is_group")) and bool(topic)
+    )
+    friend_status_rows = db.session.query(
+        FriendRequest.status,
+        func.count(FriendRequest.id),
+    ).filter(
+        FriendRequest.tenant_id == tenant_id,
+        FriendRequest.deleted.is_(False),
+    ).group_by(FriendRequest.status).all()
+    friend_status = {str(status or "UNKNOWN").lower(): int(count) for status, count in friend_status_rows}
+
+    return json({
+        "objects": [
+            _admin_conversation_record(
+                record,
+                participants_by_conversation.get(str(record.id), []),
+                accounts_by_id,
+            )
+            for record in records
+        ],
+        "summary": {
+            "total": len(facts),
+            "direct": len(facts) - group_count,
+            "group": group_count,
+            "groupBound": group_bound_count,
+            "friendRequests": friend_status,
+        },
+    })
 
 
 @app.route('/api/v1/friend-request', methods=['GET'])

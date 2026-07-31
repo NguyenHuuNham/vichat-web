@@ -9,6 +9,8 @@ CONTROLLER_PATH = PROJECT_ROOT / "application" / "controllers" / "api_chat_manag
 LOGIN_PATH = REPOSITORY_ROOT / "src" / "features" / "auth" / "components" / "Login.jsx"
 CHAT_SERVICE_PATH = REPOSITORY_ROOT / "src" / "features" / "chat" / "services" / "chatManagementService.js"
 CHAT_APP_PATH = REPOSITORY_ROOT / "src" / "app" / "App.jsx"
+MANAGEMENT_APP_PATH = REPOSITORY_ROOT / "src" / "features" / "management" / "ManagementApp.jsx"
+MANAGEMENT_SERVICE_PATH = REPOSITORY_ROOT / "src" / "features" / "management" / "services" / "managementAdminService.js"
 PRODUCTION_COMPOSE_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / "compose.yaml"
 PRODUCTION_ENV_EXAMPLE_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / ".env.example"
 HAS_REPOSITORY_SOURCES = all(path.is_file() for path in (
@@ -209,6 +211,50 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertGreaterEqual(directory_source.count("_validated_account_identity"), 2)
         self.assertIn("account_directory", directory_source)
         self.assertIn("directory_removed_at", directory_source)
+
+    def test_management_admin_conversation_overview_is_read_only_and_tenant_scoped(self):
+        _controller_source, endpoint_source = function_source(
+            CONTROLLER_PATH,
+            "management_admin_conversations",
+        )
+        _controller_source, serializer_source = function_source(
+            CONTROLLER_PATH,
+            "_admin_conversation_record",
+        )
+
+        self.assertIn("_is_admin", endpoint_source)
+        self.assertIn("Conversation.tenant_id == tenant_id", endpoint_source)
+        self.assertIn("ConversationParticipant.tenant_id == tenant_id", endpoint_source)
+        self.assertIn("ManagementAccount.tenant_id == tenant_id", endpoint_source)
+        self.assertIn("_admin_conversation_record", endpoint_source)
+        self.assertIn('"realtime"', serializer_source)
+        self.assertNotIn("ChatMessage", serializer_source)
+
+    def test_management_password_change_does_not_change_tinode_credentials(self):
+        _controller_source, password_source = function_source(
+            CONTROLLER_PATH,
+            "management_change_password",
+        )
+
+        self.assertIn("management_session_requested(request)", password_source)
+        self.assertIn("if not management_scope", password_source)
+        self.assertIn("tinode_change_password", password_source)
+        self.assertIn("AUTH_MANAGEMENT_PASSWORD_CHANGE", password_source)
+
+    @repository_source_test
+    def test_management_web_matches_chatmgt_service_boundaries(self):
+        app_source = MANAGEMENT_APP_PATH.read_text(encoding="utf-8")
+        service_source = MANAGEMENT_SERVICE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("Danh bạ nhân viên chỉ đọc", app_source)
+        self.assertIn("Conversation và nhóm", app_source)
+        self.assertIn("Không có API đọc lịch sử tin nhắn Tinode", app_source)
+        self.assertIn("listConversations", service_source)
+        self.assertIn("revokeSessions", service_source)
+        self.assertIn("changePassword", service_source)
+        self.assertNotIn("createUser", service_source)
+        self.assertNotIn("updateUser", service_source)
+        self.assertNotIn("resetPassword", service_source)
 
     @repository_source_test
     def test_chatui_forwards_the_current_tinode_token_when_binding(self):

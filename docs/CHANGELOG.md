@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-07-31-02 - Chuan hoa trung tam quan tri Chatmgt
+
+- Thoi gian: 2026-07-31 08:25 (Asia/Saigon)
+- Loai: Tinh nang | Tai cau truc | Bao mat | Giao dien
+- Trang thai: Can xac nhan
+- Muc tieu: Dua web Chatmgt ve dung vai tro quan tri metadata va cau noi chat: danh ba Account chi doc, thu hoi phien Chatmgt, theo doi conversation/nhom va trang thai Account SSO - Tinode; loai bo cac thao tac tao/sua/khoa/reset mat khau nhan vien khong thuoc Chatmgt.
+- Pham vi: Rieng giao dien quan tri Chatmgt, API quan tri tenant-scoped va kiem thu hop dong; khong thay doi ChatUI, noi dung tin nhan Tinode, file, presence, typing hay receipt.
+- File da thay doi: `README.md`, `package.json`, `src/features/management/ManagementApp.jsx`, `src/features/management/management.css`, `src/features/management/services/managementAdminService.js`, `src/features/management/services/managementAdminService.test.js`, `chatservice-main/README.md`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/scripts/verify_deployment.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`, `infrastructure/production/README.md`, va `docs/CHANGELOG.md`.
+- Noi dung: Web Chatmgt bo hoan toan luong tao/sua/khoa/reset mat khau nhan vien von bi Account SSO tu choi; danh ba chi hien projection Account va chi cho thu hoi phien Chatmgt. Them man hinh conversation/nhom tenant-scoped voi subject, thanh vien, owner va readiness Tinode nhung khong co message/file content; tong quan va trang thai he thong trinh bay ro luong Account -> Chatmgt -> Tinode. Them doi mat khau rieng cho admin Chatmgt va tu dong thu hoi phien cu. Verifier production kiem secure/isolated management cookie va overview conversation chi doc.
+- Quyet dinh ky thuat: Account tiep tuc la nguon chuan cua nhan vien; Chatmgt chi hien projection va metadata, khong cung cap thao tac thay doi credential/ho so nhan vien. Endpoint admin conversation dung truy van loc tenant va tra metadata tong hop, khong tai lich su Tinode. Doi mat khau trong management scope chi cap nhat credential Chatmgt, khong goi Tinode va khong thay doi credential Account/Tinode root.
+- Database/API/cau hinh: Khong migration va khong them bien moi truong. Them API chi doc `GET /api/v1/admin/conversations`; health them `management_session`; response account them `authSource/accountManaged` an toan de giao dien phan biet projection Account voi admin cuc bo. Hop dong cu cua ChatUI khong bi thay doi.
+- Kiem thu: `npm run lint` dat, chi con warning co san trong frontend cu/Tinode vendor; `npm run test:frontend` dat 9/9; `python -m unittest chatservice-main.tests.test_chat_auth_contract -v` dat 21/21; `python -m unittest discover -s chatservice-main/tests -v` dat 59 test voi 22 test runtime skip local; `python -m py_compile ...` dat cho controller, verifier va test; `npm run build -- --outDir .codex-build-check-final` dat voi `ManagementApp-BiFVEf7E.js`; `git diff --check` dat. Da thu dung Browser skill de nghiem thu giao dien nhung runtime trinh duyet cua moi truong khong khoi tao duoc, nen chua thao tac UI co phien admin that.
+- Rui ro con lai: Chua build/deploy image Chatmgt moi va chua dang nhap production de nghiem thu truc quan cac man hinh danh ba/conversation/system. Full test co dependency runtime va verifier moi can chay trong image production sau deploy.
+- Viec tiep theo: Commit/push, tao release bat bien tren server `.206`, build/recreate rieng `chatmgt`, chay full suite/verifier va kiem tra public bundle/health; khong restart ChatUI, ChatAPI, database hay Redis.
+- Commit/PR: Chua tao.
+
 ## 2026-07-31-01 - Sua dinh danh direct va presence realtime
 
 - Thoi gian: 2026-07-31 00:18 (Asia/Saigon)

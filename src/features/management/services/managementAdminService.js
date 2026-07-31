@@ -3,17 +3,12 @@ const configuredBase = String(env.VITE_CHAT_MANAGEMENT_API_URL || '').replace(/\
 const tenantId = env.VITE_CHAT_TENANT_ID || 'song-hong';
 
 const errorMessages = {
-  ACCOUNT_CREATE_FAILED: 'Không thể tạo tài khoản. Vui lòng kiểm tra tên đăng nhập, mật khẩu và kết nối Tinode.',
-  ACCOUNT_EXISTS: 'Tên đăng nhập hoặc email đã được sử dụng.',
-  ACCOUNT_UPDATE_FAILED: 'Không thể cập nhật tài khoản do dữ liệu bị xung đột.',
-  EMAIL_EXISTS: 'Email đã được sử dụng bởi tài khoản khác.',
   FORBIDDEN: 'Phiên hiện tại chưa có quyền quản trị. Vui lòng đăng nhập lại.',
   LOGIN_FAILED: 'Tên đăng nhập hoặc mật khẩu không đúng.',
   LOGIN_RATE_LIMITED: 'Bạn đã thử đăng nhập quá nhiều lần. Vui lòng thử lại sau.',
   NOT_FOUND: 'Không tìm thấy tài khoản trong đơn vị này.',
   PARAM_ERROR: 'Thông tin chưa hợp lệ. Vui lòng kiểm tra lại các trường đã nhập.',
   PASSWORD_INVALID: 'Mật khẩu chưa đáp ứng yêu cầu bảo mật.',
-  PASSWORD_RESET_FAILED: 'Không thể đặt lại mật khẩu cho tài khoản này.',
   SESSION_EXPIRED: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
   SESSION_REVOKE_FAILED: 'Không thể thu hồi phiên đăng nhập của tài khoản này.',
 };
@@ -30,8 +25,9 @@ function responseItems(payload) {
   return [];
 }
 
-function normalizeUser(account) {
+export function normalizeManagementUser(account) {
   if (!account) return null;
+  const authSource = account.authSource || account.auth_source || 'local';
   return {
     ...account,
     id: account.id || account.user_id || account.uid,
@@ -40,9 +36,33 @@ function normalizeUser(account) {
     tenantId: account.tenantId || account.tenant_id || tenantId,
     tenantName: account.tenantName || account.tenant_name || account.tenant?.name || '',
     tinodeUid: account.tinodeUid || account.tinode_uid || '',
+    authSource,
+    accountManaged: account.accountManaged ?? account.account_managed ?? authSource === 'account',
     active: account.active ?? account.is_active ?? true,
     lastLoginAt: account.lastLoginAt || account.last_login_at || null,
     createdAt: account.createdAt || account.created_at || null,
+    updatedAt: account.updatedAt || account.updated_at || null,
+  };
+}
+
+export function normalizeAdminConversation(conversation) {
+  if (!conversation) return null;
+  const realtime = conversation.realtime || {};
+  return {
+    ...conversation,
+    id: conversation.id || conversation.conversation_id,
+    subject: conversation.subject || 'Cuộc trò chuyện',
+    isGroup: conversation.isGroup ?? conversation.is_group ?? conversation.kind === 'group',
+    participantCount: conversation.participantCount ?? conversation.participant_count ?? (conversation.members || []).length,
+    members: (conversation.members || []).map(normalizeManagementUser).filter(Boolean),
+    ownerId: conversation.ownerId || conversation.owner_id || '',
+    realtime: {
+      ready: Boolean(realtime.ready),
+      binding: realtime.binding || '',
+      provisionedParticipants: realtime.provisionedParticipants ?? realtime.provisioned_participants ?? 0,
+    },
+    createdAt: conversation.createdAt || conversation.created_at || null,
+    updatedAt: conversation.updatedAt || conversation.updated_at || null,
   };
 }
 
@@ -75,7 +95,7 @@ export const managementAdminService = {
       body: JSON.stringify({ identity: String(identity || '').trim(), password, tenant_id: tenantId }),
     });
     return {
-      user: normalizeUser(payload.user || payload.current_user || payload),
+      user: normalizeManagementUser(payload.user || payload.current_user || payload),
       tenant: payload.tenant || null,
     };
   },
@@ -83,7 +103,7 @@ export const managementAdminService = {
   async currentSession() {
     const payload = await apiRequest('/api/v1/auth/me');
     return {
-      user: normalizeUser(payload.user || payload.current_user || payload),
+      user: normalizeManagementUser(payload.user || payload.current_user || payload),
       tenant: payload.tenant || null,
     };
   },
@@ -100,31 +120,29 @@ export const managementAdminService = {
     const params = new URLSearchParams({ include_inactive: 'true', results_per_page: '1000' });
     if (query.trim()) params.set('q', query.trim());
     const payload = await apiRequest(`/api/v1/chat/users?${params}`);
-    return responseItems(payload).map(normalizeUser).filter(Boolean);
+    return responseItems(payload).map(normalizeManagementUser).filter(Boolean);
   },
 
-  async createUser(user) {
-    return normalizeUser(await apiRequest('/api/v1/chat/users', {
-      method: 'POST',
-      body: JSON.stringify(user),
-    }));
-  },
-
-  async updateUser(userId, changes) {
-    return normalizeUser(await apiRequest(`/api/v1/chat/users/${encodeURIComponent(userId)}`, {
-      method: 'PUT',
-      body: JSON.stringify(changes),
-    }));
+  async listConversations({ limit = 200 } = {}) {
+    const params = new URLSearchParams({ limit: String(limit) });
+    const payload = await apiRequest(`/api/v1/admin/conversations?${params}`);
+    return {
+      items: responseItems(payload).map(normalizeAdminConversation).filter(Boolean),
+      summary: payload.summary || {},
+    };
   },
 
   async revokeSessions(userId) {
     return apiRequest(`/api/v1/chat/users/${encodeURIComponent(userId)}/revoke-session`, { method: 'POST' });
   },
 
-  async resetPassword(userId, newPassword) {
-    return apiRequest(`/api/v1/chat/users/${encodeURIComponent(userId)}/reset-password`, {
+  async changePassword(currentPassword, newPassword) {
+    return apiRequest('/api/v1/auth/password', {
       method: 'POST',
-      body: JSON.stringify({ new_password: newPassword }),
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
     });
   },
 

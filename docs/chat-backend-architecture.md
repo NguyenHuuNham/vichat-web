@@ -72,6 +72,26 @@ inside ChatUI.
 `X-Vichat-Session-Scope: management`. It verifies the local administrator and
 issues `vichat_management_access_token`; it does not call Tinode.
 
+The management page is a tenant-scoped control plane, not another employee
+account system and not a message viewer. It may display Account-backed profile
+projections, revoke Chatmgt-owned sessions, inspect friend/conversation/group
+metadata, review security audit events, and report Account SSO/Tinode bridge
+readiness. It must not create, edit, disable, or reset passwords for Account
+employees, and it never loads Tinode messages, files, presence, typing, or
+receipts. Employee identity changes link back to `account.upgo.vn`.
+
+Changing the local Chatmgt administrator password updates only the Chatmgt
+credential and revokes the existing management session. It does not change the
+Tinode root credential or any employee Account credential.
+
+| Method | Path | Management-page purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/chat/users?include_inactive=true` | Read tenant-scoped Account projections; no employee credential/profile mutation |
+| `POST` | `/api/v1/chat/users/<id>/revoke-session` | Revoke Chatmgt-owned employee sessions |
+| `GET` | `/api/v1/admin/conversations` | Read tenant conversation/group membership and bridge readiness without message content |
+| `GET` | `/api/v1/admin/audit-logs` | Review tenant-scoped security events |
+| `POST` | `/api/v1/auth/password` | Change the local administrator password in management scope and revoke the old session |
+
 When `CHAT_ACCOUNT_SSO_ENABLED=true`:
 
 - `POST /api/v1/auth/login` rejects employee password login.

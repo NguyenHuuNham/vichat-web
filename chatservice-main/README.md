@@ -51,9 +51,10 @@ python scripts/verify_deployment.py --base-url http://127.0.0.1:8093
 
 This checks the Alembic head, application-secret policy, active administrator,
 known default passwords, Chatmgt login/logout, tenant-scoped directory and
-conversation responses, the Tinode token lifetime, internal WebSocket login,
-public WSS login, temporary topic publish/delete, secure cookies, logout, and
-rejection of the revoked credential.
+conversation responses, the read-only management conversation overview, the
+Tinode token lifetime, internal WebSocket login, public WSS login, temporary
+topic publish/delete, secure cookies, logout, and rejection of the revoked
+credential.
 
 Run the destructive-safe two-tenant verifier after the service is healthy:
 

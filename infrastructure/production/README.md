@@ -58,7 +58,7 @@ proxy, obtain TLS certificates, run `sudo nginx -t`, then reload Nginx.
 4. Builds pinned images and creates timestamped `pg_dump -Fc` backups before Alembic.
 5. Runs `alembic upgrade head`, bootstrapping the first administrator only when the database is empty.
 6. Validates Nginx, starts the services, and waits for health checks.
-7. In Account SSO mode, verifies health/CORS, the missing-session SSO challenge, employee password rejection, Tinode bridge configuration, and management-session isolation. Real employee realtime behavior is verified separately with Account sessions.
+7. In Account SSO mode, verifies health/CORS, the missing-session SSO challenge, employee password rejection, Tinode bridge configuration, management-session isolation, and the read-only admin conversation overview. Real employee realtime behavior is verified separately with Account sessions.
 8. Runs an isolated two-tenant API test and removes its temporary records.
 9. Optionally verifies the public domains when `VERIFY_PUBLIC_URLS=true`.
 
