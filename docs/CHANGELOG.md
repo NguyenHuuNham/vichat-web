@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-07-31-12 - Sua font tieng Viet cua Chatmgt
+
+- Thoi gian: 2026-07-31 11:56 (Asia/Saigon)
+- Loai: Sua loi | Giao dien
+- Trang thai: Can xac nhan
+- Muc tieu: Khac phuc font fallback hien thi dau tieng Viet khong dong nhat tren giao dien operations console, dong thoi giu nguyen toan bo bo cuc, mau sac va chuc nang Chatmgt.
+- Pham vi: Chi hai bien font body/display trong stylesheet rieng cua Chatmgt; khong sua JSX, state, handler, Account admin SSO, API, database, Tinode, ChatUI hay cau hinh production.
+- File da thay doi: `src/features/management/management.css` va `docs/CHANGELOG.md`.
+- Noi dung: Thay stack `IBM Plex Sans/Aptos/Trebuchet MS` va `Aptos Display/Bahnschrift/Trebuchet MS` bang `Inter` voi `Segoe UI` fallback. `Inter` da duoc tai san trong `index.html` voi weight 300-700 va ho tro glyph tieng Viet, nen khong them dependency hoac request font moi.
+- Quyet dinh ky thuat: Khong thay font-size, font-weight, line-height, letter-spacing, spacing, breakpoint hay component style; chi thay family de tranh phat sinh regression bo cuc.
+- Database/API/cau hinh: Khong thay doi.
+- Kiem thu: `npm run lint` dat, chi con warning legacy co san ngoai pham vi; `npm run test:frontend` dat 10/10; `npm run build -- --outDir .codex-build-chatmgt-font --emptyOutDir` dat voi stylesheet `ManagementApp-B9TL3Tr_.css`; `git diff --check` dat. Build tam da duoc xoa sau khi kiem tra.
+- Rui ro con lai: Can hard refresh tren trinh duyet that de xac nhan cache stylesheet cu da het; khong co rui ro da biet voi chuc nang vi logic khong thay doi.
+- Viec tiep theo: Commit/push, build va recreate rieng service `chatmgt`, sau do xac nhan public stylesheet dung font `Inter`.
+- Commit/PR: Commit chua muc nay (xem `git log`).
+
 ## 2026-07-31-11 - Trien khai giao dien operations console Chatmgt
 
 - Thoi gian: 2026-07-31 11:50 (Asia/Saigon)
