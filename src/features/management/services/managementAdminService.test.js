@@ -2,9 +2,25 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  accountAdminLoginUrl,
+  consumeAccountAdminCallback,
   normalizeAdminConversation,
   normalizeManagementUser,
 } from './managementAdminService.js';
+
+test('builds and consumes the Account admin SSO callback without credentials', () => {
+  const loginUrl = new URL(accountAdminLoginUrl('https://chatmgt.upgo.vn/?view=system'));
+  const callbackUrl = new URL(loginUrl.searchParams.get('continue'));
+
+  assert.equal(loginUrl.origin, 'https://account.upgo.vn');
+  assert.equal(callbackUrl.origin, 'https://chatmgt.upgo.vn');
+  assert.equal(callbackUrl.searchParams.get('view'), 'system');
+  assert.equal(callbackUrl.searchParams.get('vichat_admin_sso'), '1');
+
+  const consumed = consumeAccountAdminCallback(callbackUrl.toString());
+  assert.equal(consumed.shouldRetry, true);
+  assert.equal(new URL(consumed.cleanUrl).searchParams.has('vichat_admin_sso'), false);
+});
 
 test('normalizes Account projections as read-only management users', () => {
   const user = normalizeManagementUser({

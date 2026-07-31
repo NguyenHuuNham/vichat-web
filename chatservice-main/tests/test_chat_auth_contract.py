@@ -37,7 +37,7 @@ def function_source(path, function_name):
 
 
 class ChatAuthContractTests(unittest.TestCase):
-    def test_employee_password_login_is_disabled_when_account_sso_is_enabled(self):
+    def test_employee_and_local_admin_password_login_are_disabled_in_production_sso(self):
         _controller_source, employee_login_source = function_source(
             CONTROLLER_PATH,
             "employee_password_login",
@@ -50,8 +50,21 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("CHAT_ACCOUNT_SSO_ENABLED", employee_login_source)
         self.assertIn("AUTH_METHOD_DISABLED", employee_login_source)
         self.assertIn("management_session_requested", management_login_source)
-        self.assertIn("_password_login", management_login_source)
-        self.assertIn("include_tinode=False", management_login_source)
+        self.assertIn("_admin_account_sso_enabled", management_login_source)
+        self.assertIn("AUTH_METHOD_DISABLED", management_login_source)
+
+    def test_management_account_sso_requires_an_account_admin_and_management_scope(self):
+        _controller_source, admin_sso_source = function_source(
+            CONTROLLER_PATH,
+            "management_admin_sso_login",
+        )
+
+        self.assertIn("management_session_requested", admin_sso_source)
+        self.assertIn("current_account_session", admin_sso_source)
+        self.assertIn("_is_admin(identity)", admin_sso_source)
+        self.assertIn("ACCOUNT_ADMIN_REQUIRED", admin_sso_source)
+        self.assertIn("MANAGEMENT_SESSION_SCOPE", admin_sso_source)
+        self.assertNotIn("tinode_sso_login", admin_sso_source)
 
     def test_account_sso_tokens_record_the_authentication_method(self):
         auth_source = (
@@ -59,7 +72,10 @@ class ChatAuthContractTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn('"amr": str(auth_method or "password")', auth_source)
+        self.assertIn('"scp": session_scope', auth_source)
         self.assertIn('payload.get("amr") not in ("password", "account_sso")', auth_source)
+        self.assertIn('payload.get("scp") != expected_scope', auth_source)
+        self.assertNotIn("Migrate an existing administrator session", auth_source)
 
     @repository_source_test
     def test_account_sso_is_enabled_by_the_production_contract(self):
@@ -67,7 +83,9 @@ class ChatAuthContractTests(unittest.TestCase):
         env_source = PRODUCTION_ENV_EXAMPLE_PATH.read_text(encoding="utf-8")
 
         self.assertIn("CHAT_ACCOUNT_SSO_ENABLED: ${CHAT_ACCOUNT_SSO_ENABLED:-true}", compose_source)
+        self.assertIn("CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED: ${CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED:-true}", compose_source)
         self.assertIn("CHAT_ACCOUNT_SSO_ENABLED=true", env_source)
+        self.assertIn("CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true", env_source)
         self.assertIn("ACCOUNT_URL=https://account.upgo.vn", env_source)
         self.assertIn("ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user", env_source)
         self.assertIn("ACCOUNT_SSO_SELF_PROFILE_PATH=/me", env_source)
@@ -249,6 +267,8 @@ class ChatAuthContractTests(unittest.TestCase):
             "_admin_conversation_record",
         )
 
+        self.assertIn("management_session_requested(request)", endpoint_source)
+        self.assertIn("_management_scope_error", endpoint_source)
         self.assertIn("_is_admin", endpoint_source)
         self.assertIn("Conversation.tenant_id == tenant_id", endpoint_source)
         self.assertIn("ConversationParticipant.tenant_id == tenant_id", endpoint_source)
@@ -256,6 +276,22 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("_admin_conversation_record", endpoint_source)
         self.assertIn('"realtime"', serializer_source)
         self.assertNotIn("ChatMessage", serializer_source)
+
+    def test_management_mutations_and_audit_require_the_management_scope(self):
+        for function_name in (
+            "management_user_create",
+            "management_user_update",
+            "management_user_revoke_session",
+            "management_user_reset_password",
+            "management_audit_logs",
+        ):
+            with self.subTest(function_name=function_name):
+                _controller_source, endpoint_source = function_source(
+                    CONTROLLER_PATH,
+                    function_name,
+                )
+                self.assertIn("management_session_requested(request)", endpoint_source)
+                self.assertIn("_management_scope_error", endpoint_source)
 
     def test_management_password_change_does_not_change_tinode_credentials(self):
         _controller_source, password_source = function_source(
@@ -283,6 +319,8 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("finally", verify_source)
         self.assertIn("delete_management_verifier_account", verify_source)
         self.assertIn("deployment_verifier", create_source)
+        self.assertIn("issue_access_token", create_source)
+        self.assertIn('session_scope="management"', create_source)
         self.assertIn("deployment_verifier", delete_source)
 
     @repository_source_test
@@ -295,7 +333,11 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("Không có API đọc lịch sử tin nhắn Tinode", app_source)
         self.assertIn("listConversations", service_source)
         self.assertIn("revokeSessions", service_source)
-        self.assertIn("changePassword", service_source)
+        self.assertIn("/api/v1/admin/sso", service_source)
+        self.assertIn("startAccountLogin", service_source)
+        self.assertNotIn("changePassword", service_source)
+        self.assertNotIn("ChangePasswordDialog", app_source)
+        self.assertNotIn("Mật khẩu Chatmgt", app_source)
         self.assertNotIn("createUser", service_source)
         self.assertNotIn("updateUser", service_source)
         self.assertNotIn("resetPassword", service_source)

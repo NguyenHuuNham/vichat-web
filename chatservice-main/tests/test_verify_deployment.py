@@ -64,21 +64,43 @@ class AccountPasswordPolicyTests(unittest.TestCase):
     def password_hash(password):
         return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("ascii")
 
-    def test_accepts_account_projection_marker_and_secure_local_admin(self):
+    def test_accepts_account_projection_marker_and_secure_local_admin_when_sso_is_off(self):
         accounts = [
             self.account("admin", self.password_hash("strong-local-password"), role="admin"),
             self.account("employee", "!account-sso-only", auth_source="account"),
         ]
 
-        verify_account_password_policy(accounts)
+        verify_account_password_policy(accounts, admin_account_sso_enabled=False)
 
-    def test_account_projection_cannot_satisfy_local_admin_requirement(self):
+    def test_accepts_account_admin_and_inactive_local_admin_when_sso_is_on(self):
         accounts = [
             self.account("employee-admin", "!account-sso-only", role="admin", auth_source="account"),
+            self.account(
+                "retired-local-admin",
+                self.password_hash("strong-local-password"),
+                role="admin",
+                active=False,
+            ),
+        ]
+
+        verify_account_password_policy(accounts, admin_account_sso_enabled=True)
+
+    def test_admin_sso_requires_an_active_account_admin(self):
+        accounts = [
+            self.account("employee", "!account-sso-only", auth_source="account"),
+        ]
+
+        with self.assertRaisesRegex(RuntimeError, "UpGO Account administrator"):
+            verify_account_password_policy(accounts, admin_account_sso_enabled=True)
+
+    def test_admin_sso_rejects_an_active_local_admin(self):
+        accounts = [
+            self.account("employee-admin", "!account-sso-only", role="admin", auth_source="account"),
+            self.account("local-admin", self.password_hash("strong-local-password"), role="admin"),
         ]
 
         with self.assertRaisesRegex(RuntimeError, "active local administrator"):
-            verify_account_password_policy(accounts)
+            verify_account_password_policy(accounts, admin_account_sso_enabled=True)
 
     def test_rejects_account_projection_with_a_login_password(self):
         accounts = [
@@ -87,13 +109,13 @@ class AccountPasswordPolicyTests(unittest.TestCase):
         ]
 
         with self.assertRaisesRegex(RuntimeError, "unexpected password state"):
-            verify_account_password_policy(accounts)
+            verify_account_password_policy(accounts, admin_account_sso_enabled=False)
 
     def test_rejects_invalid_local_password_hash(self):
         accounts = [self.account("admin", "not-a-bcrypt-hash", role="admin")]
 
         with self.assertRaisesRegex(RuntimeError, "invalid password hash"):
-            verify_account_password_policy(accounts)
+            verify_account_password_policy(accounts, admin_account_sso_enabled=False)
 
 
 if __name__ == "__main__":

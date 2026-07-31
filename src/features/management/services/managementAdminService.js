@@ -1,8 +1,13 @@
 const env = import.meta.env || {};
 const configuredBase = String(env.VITE_CHAT_MANAGEMENT_API_URL || '').replace(/\/$/, '');
 const tenantId = env.VITE_CHAT_TENANT_ID || 'song-hong';
+const accountUrl = String(env.VITE_ACCOUNT_URL || 'https://account.upgo.vn').replace(/\/+$/, '');
+const accountAdminCallbackMarker = 'vichat_admin_sso';
 
 const errorMessages = {
+  ACCOUNT_ADMIN_REQUIRED: 'Tài khoản UpGO Account hiện tại không có quyền quản trị tenant này.',
+  ACCOUNT_LOGIN_REQUIRED: 'Bạn cần đăng nhập UpGO Account trước khi vào trang quản trị.',
+  AUTH_METHOD_DISABLED: 'Trang quản trị chỉ chấp nhận đăng nhập bằng UpGO Account.',
   FORBIDDEN: 'Phiên hiện tại chưa có quyền quản trị. Vui lòng đăng nhập lại.',
   LOGIN_FAILED: 'Tên đăng nhập hoặc mật khẩu không đúng.',
   LOGIN_RATE_LIMITED: 'Bạn đã thử đăng nhập quá nhiều lần. Vui lòng thử lại sau.',
@@ -12,6 +17,21 @@ const errorMessages = {
   SESSION_EXPIRED: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
   SESSION_REVOKE_FAILED: 'Không thể thu hồi phiên đăng nhập của tài khoản này.',
 };
+
+export function accountAdminLoginUrl(returnUrl) {
+  const callback = new URL(returnUrl || window.location.href);
+  callback.searchParams.set(accountAdminCallbackMarker, '1');
+  const target = new URL(`${accountUrl}/`);
+  target.searchParams.set('continue', callback.toString());
+  return target.toString();
+}
+
+export function consumeAccountAdminCallback(currentUrl) {
+  const url = new URL(currentUrl || window.location.href);
+  const shouldRetry = url.searchParams.get(accountAdminCallbackMarker) === '1';
+  if (shouldRetry) url.searchParams.delete(accountAdminCallbackMarker);
+  return { shouldRetry, cleanUrl: url.toString() };
+}
 
 function managementBaseUrl() {
   if (typeof window !== 'undefined' && window.location.hostname === 'chatmgt.upgo.vn') return '';
@@ -89,10 +109,9 @@ async function apiRequest(path, options = {}) {
 }
 
 export const managementAdminService = {
-  async login({ identity, password }) {
-    const payload = await apiRequest('/login', {
+  async login() {
+    const payload = await apiRequest('/api/v1/admin/sso', {
       method: 'POST',
-      body: JSON.stringify({ identity: String(identity || '').trim(), password, tenant_id: tenantId }),
     });
     return {
       user: normalizeManagementUser(payload.user || payload.current_user || payload),
@@ -110,6 +129,17 @@ export const managementAdminService = {
 
   async logout() {
     return apiRequest('/api/v1/auth/logout', { method: 'POST' });
+  },
+
+  startAccountLogin() {
+    if (typeof window !== 'undefined') window.location.assign(accountAdminLoginUrl(window.location.href));
+  },
+
+  consumeAccountLoginCallback() {
+    if (typeof window === 'undefined') return false;
+    const callback = consumeAccountAdminCallback(window.location.href);
+    if (callback.shouldRetry) window.history.replaceState({}, '', callback.cleanUrl);
+    return callback.shouldRetry;
   },
 
   async health() {
@@ -134,16 +164,6 @@ export const managementAdminService = {
 
   async revokeSessions(userId) {
     return apiRequest(`/api/v1/chat/users/${encodeURIComponent(userId)}/revoke-session`, { method: 'POST' });
-  },
-
-  async changePassword(currentPassword, newPassword) {
-    return apiRequest('/api/v1/auth/password', {
-      method: 'POST',
-      body: JSON.stringify({
-        current_password: currentPassword,
-        new_password: newPassword,
-      }),
-    });
   },
 
   async listAuditLogs({ event = '', limit = 150 } = {}) {

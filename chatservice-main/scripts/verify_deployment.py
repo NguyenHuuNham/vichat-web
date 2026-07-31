@@ -10,6 +10,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from http.cookies import SimpleCookie
+from types import SimpleNamespace
 from urllib.parse import quote, urlparse, urlunparse
 
 import aiohttp
@@ -18,6 +19,8 @@ import requests
 from alembic.config import Config as AlembicConfig
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
+
+from application.services.auth_service import issue_access_token
 
 
 DEFAULT_PASSWORDS = ("123456", "password", "admin")
@@ -47,13 +50,23 @@ def is_account_projection(row):
     return properties.get("auth_source") == "account"
 
 
-def verify_account_password_policy(accounts):
+def verify_account_password_policy(accounts, admin_account_sso_enabled=False):
     if not accounts:
         raise RuntimeError("Chatmgt has no administrator account.")
-    if not any(
-        row.role == "admin" and row.active and not is_account_projection(row)
-        for row in accounts
-    ):
+    active_account_admins = [
+        row for row in accounts
+        if row.role == "admin" and row.active and is_account_projection(row)
+    ]
+    active_local_admins = [
+        row for row in accounts
+        if row.role == "admin" and row.active and not is_account_projection(row)
+    ]
+    if admin_account_sso_enabled:
+        if not active_account_admins:
+            raise RuntimeError("Chatmgt has no active UpGO Account administrator projection.")
+        if active_local_admins:
+            raise RuntimeError("Chatmgt still has an active local administrator account.")
+    elif not active_local_admins:
         raise RuntimeError("Chatmgt has no active local administrator account.")
 
     insecure_users = []
@@ -64,6 +77,8 @@ def verify_account_password_policy(accounts):
                 raise RuntimeError(
                     "Account projection {} has an unexpected password state.".format(row.username)
                 )
+            continue
+        if not row.active:
             continue
 
         encoded_hash = password_hash.encode("ascii", errors="ignore")
@@ -117,7 +132,12 @@ def verify_database(alembic_ini):
     finally:
         engine.dispose()
 
-    verify_account_password_policy(accounts)
+    verify_account_password_policy(
+        accounts,
+        admin_account_sso_enabled=(
+            str(os.getenv("CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED") or "").lower() == "true"
+        ),
+    )
 
     if str(os.getenv("ENVIRONMENT") or "").lower() == "production":
         if str(os.getenv("CHAT_AUTH_COOKIE_SECURE") or "").lower() != "true":
@@ -332,11 +352,23 @@ def create_management_verifier_account():
             })
     finally:
         engine.dispose()
+    token = issue_access_token(
+        SimpleNamespace(
+            id=account_id,
+            tenant_id=tenant_id,
+            username=username,
+            role="admin",
+            properties={"deployment_verifier": True, "auth_version": 0},
+        ),
+        auth_method="password",
+        session_scope="management",
+    )
     return {
         "id": account_id,
         "tenant_id": tenant_id,
         "username": username,
         "password": password,
+        "token": token,
     }
 
 
@@ -402,6 +434,16 @@ def _verify_http(base_url, origin, management_account):
         raise RuntimeError("Chatmgt management sessions are not isolated.")
     if not management_session.get("cookie_secure"):
         raise RuntimeError("Chatmgt management cookies are not secure.")
+    admin_account_sso_enabled = bool(management_session.get("account_sso_enabled"))
+    if not management_session.get("configured"):
+        raise RuntimeError("Chatmgt management authentication is not fully configured.")
+    if admin_account_sso_enabled:
+        if management_session.get("login_endpoint") != "/api/v1/admin/sso":
+            raise RuntimeError("Chatmgt management Account SSO endpoint is incorrect.")
+        if management_session.get("local_password_login_enabled"):
+            raise RuntimeError("Chatmgt local administrator password login is still enabled.")
+        if management_session.get("password_owner") != "account":
+            raise RuntimeError("UpGO Account is not reported as the administrator password owner.")
 
     username = str(os.getenv("TINODE_ADMIN_USERNAME") or "").strip()
     password = str(os.getenv("TINODE_ADMIN_PASSWORD") or "")
@@ -431,12 +473,16 @@ def _verify_http(base_url, origin, management_account):
         headers=dict(MANAGEMENT_HEADER, Origin=origin),
         timeout=20,
     )
-    if management_login.status_code != 200:
+    if admin_account_sso_enabled:
+        management_login_payload = management_login.json() if management_login.content else {}
+        if (
+            management_login.status_code != 403
+            or management_login_payload.get("error_code") != "AUTH_METHOD_DISABLED"
+        ):
+            raise RuntimeError("Local management administrator login was not disabled.")
+    elif management_login.status_code != 200:
         raise RuntimeError("Management administrator login returned HTTP {}.".format(management_login.status_code))
-    management_token, _management_cookie = cookie_from_response(
-        management_login,
-        "vichat_management_access_token",
-    )
+    management_token = management_account["token"]
     management_profile = requests.get(
         base_url + "/api/v1/auth/me",
         headers=dict(
@@ -448,6 +494,17 @@ def _verify_http(base_url, origin, management_account):
     )
     if management_profile.status_code != 200:
         raise RuntimeError("Management profile check returned HTTP {}.".format(management_profile.status_code))
+
+    crossed_scope_profile = requests.get(
+        base_url + "/api/v1/auth/me",
+        headers={
+            "Origin": origin,
+            "Cookie": "vichat_access_token={}".format(management_token),
+        },
+        timeout=10,
+    )
+    if crossed_scope_profile.status_code not in (401, 403):
+        raise RuntimeError("A management token was accepted as a Chat user session.")
 
     management_headers = dict(
         MANAGEMENT_HEADER,
@@ -477,6 +534,23 @@ def _verify_http(base_url, origin, management_account):
         if sso_challenge.status_code != 401 or challenge_payload.get("error_code") != "ACCOUNT_LOGIN_REQUIRED":
             raise RuntimeError("Account SSO without a session did not return ACCOUNT_LOGIN_REQUIRED.")
 
+        if admin_account_sso_enabled:
+            admin_sso_challenge = requests.post(
+                base_url + "/api/v1/admin/sso",
+                headers=dict(MANAGEMENT_HEADER, Origin=origin),
+                timeout=20,
+            )
+            admin_challenge_payload = (
+                admin_sso_challenge.json() if admin_sso_challenge.content else {}
+            )
+            if (
+                admin_sso_challenge.status_code != 401
+                or admin_challenge_payload.get("error_code") != "ACCOUNT_LOGIN_REQUIRED"
+            ):
+                raise RuntimeError(
+                    "Management Account SSO without a session did not require Account login."
+                )
+
         management_tinode = requests.post(
             base_url + "/api/v1/auth/tinode-token",
             headers=management_headers,
@@ -499,7 +573,7 @@ def _verify_http(base_url, origin, management_account):
         if management_after_logout.status_code not in (401, 403):
             raise RuntimeError("The management token remained usable after logout.")
 
-        print("Health, CORS, Account SSO challenge, Tinode bridge configuration, employee password rejection, management isolation, and read-only conversation overview checks passed.")
+        print("Health, CORS, Account SSO challenges, Tinode bridge configuration, employee/local password rejection, management scope isolation, and read-only conversation overview checks passed.")
         return
 
     login = requests.post(

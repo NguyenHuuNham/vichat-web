@@ -42,6 +42,7 @@ function formatDate(value, fallback = 'Chưa ghi nhận') {
 function auditLabel(eventName) {
   const labels = {
     AUTH_LOGIN: 'Đăng nhập quản trị',
+    AUTH_ADMIN_SSO_LOGIN: 'Admin đăng nhập qua UpGO Account',
     AUTH_LOGOUT: 'Đăng xuất',
     AUTH_SSO_LOGIN: 'Nhân viên đăng nhập qua Account',
     AUTH_ACCOUNT_LOGOUT: 'Đăng xuất UpGO Account',
@@ -61,12 +62,9 @@ function BrandLogo() {
 }
 
 function LoginScreen({ onLogin, error, loading }) {
-  const [identity, setIdentity] = useState('');
-  const [password, setPassword] = useState('');
-
   const submit = event => {
     event.preventDefault();
-    onLogin({ identity, password });
+    onLogin();
   };
 
   return (
@@ -90,28 +88,15 @@ function LoginScreen({ onLogin, error, loading }) {
           <div className="management-login-heading">
             <span className="management-eyebrow">chatmgt.upgo.vn</span>
             <h2>Đăng nhập quản trị</h2>
-            <p>Dùng tài khoản quản trị cục bộ của Chatmgt, tách biệt với tài khoản nhân viên UpGO Account.</p>
+            <p>Dùng tài khoản UpGO Account đang giữ vai trò admin, owner hoặc superadmin trong tenant hiện tại.</p>
           </div>
-          <label className="management-field">
-            <span>Tài khoản hoặc email quản trị</span>
-            <div className="management-input-wrap">
-              <i className="fa-regular fa-user"></i>
-              <input value={identity} onChange={event => setIdentity(event.target.value)} autoComplete="username" required />
-            </div>
-          </label>
-          <label className="management-field">
-            <span>Mật khẩu Chatmgt</span>
-            <div className="management-input-wrap">
-              <i className="fa-solid fa-key"></i>
-              <input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" required />
-            </div>
-          </label>
           {error && <div className="management-inline-error" role="alert"><i className="fa-solid fa-circle-exclamation"></i>{error}</div>}
           <button className="management-login-button" type="submit" disabled={loading}>
-            {loading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-arrow-right-to-bracket"></i>}
-            {loading ? 'Đang xác thực...' : 'Vào trung tâm quản trị'}
+            {loading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-building-shield"></i>}
+            {loading ? 'Đang xác thực...' : 'Đăng nhập bằng UpGO Account'}
           </button>
-          <p className="management-login-note"><i className="fa-solid fa-lock"></i> Phiên quản trị dùng cookie riêng và không cấp token chat Tinode.</p>
+          <p className="management-login-note"><i className="fa-solid fa-lock"></i> Nhân viên không có quyền admin sẽ bị backend từ chối, kể cả khi đã đăng nhập Account.</p>
+          <a className="management-account-switch" href={ACCOUNT_ADMIN_URL} target="_blank" rel="noreferrer">Mở UpGO Account để kiểm tra tài khoản/tenant <i className="fa-solid fa-arrow-up-right-from-square"></i></a>
         </form>
       </section>
     </main>
@@ -125,43 +110,6 @@ function MetricCard({ icon, value, label, detail, tone = 'default' }) {
       <div><strong>{value}</strong><span>{label}</span></div>
       <small>{detail}</small>
     </article>
-  );
-}
-
-function ChangePasswordDialog({ onClose, onSubmit, saving }) {
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmation, setConfirmation] = useState('');
-  const mismatch = confirmation && newPassword !== confirmation;
-
-  return (
-    <div className="management-modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <form
-        className="management-modal compact"
-        onSubmit={event => {
-          event.preventDefault();
-          if (!mismatch) onSubmit(currentPassword, newPassword);
-        }}
-        onMouseDown={event => event.stopPropagation()}
-      >
-        <header className="management-modal-header">
-          <div><span className="management-eyebrow">Bảo mật quản trị</span><h2>Đổi mật khẩu Chatmgt</h2></div>
-          <button type="button" className="management-icon-button" onClick={onClose} aria-label="Đóng"><i className="fa-solid fa-xmark"></i></button>
-        </header>
-        <p className="management-modal-copy">Thao tác này chỉ đổi mật khẩu của quản trị viên Chatmgt, không đổi mật khẩu nhân viên UpGO Account hoặc mật khẩu quản trị Tinode. Sau khi đổi, phiên hiện tại sẽ đăng xuất.</p>
-        <div className="management-password-fields">
-          <label className="management-field"><span>Mật khẩu hiện tại</span><input type="password" value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} autoComplete="current-password" required autoFocus /></label>
-          <label className="management-field"><span>Mật khẩu mới</span><input type="password" value={newPassword} onChange={event => setNewPassword(event.target.value)} autoComplete="new-password" minLength={8} maxLength={72} required /><small>Từ 8 đến 72 byte và phải khác mật khẩu hiện tại.</small></label>
-          <label className="management-field"><span>Nhập lại mật khẩu mới</span><input type="password" value={confirmation} onChange={event => setConfirmation(event.target.value)} autoComplete="new-password" minLength={8} maxLength={72} required />{mismatch && <small className="management-field-error">Mật khẩu nhập lại chưa khớp.</small>}</label>
-        </div>
-        <footer className="management-modal-footer">
-          <button type="button" className="management-button ghost" onClick={onClose}>Hủy</button>
-          <button type="submit" className="management-button primary" disabled={saving || Boolean(mismatch) || newPassword.length < 8}>
-            {saving && <i className="fa-solid fa-spinner fa-spin"></i>} Đổi mật khẩu
-          </button>
-        </footer>
-      </form>
-    </div>
   );
 }
 
@@ -197,20 +145,24 @@ export default function ManagementApp() {
   const [notice, setNotice] = useState(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
-  const [savingPassword, setSavingPassword] = useState(false);
 
   useEffect(() => {
     document.title = 'Trung tâm quản trị Chatmgt';
     let cancelled = false;
-    managementAdminService.currentSession()
+    const completingAccountLogin = managementAdminService.consumeAccountLoginCallback();
+    const sessionRequest = completingAccountLogin
+      ? managementAdminService.login()
+      : managementAdminService.currentSession();
+    sessionRequest
       .then(current => {
         if (cancelled) return;
         setSession(current);
         setAuthState(isAdmin(current.user) ? 'authenticated' : 'forbidden');
       })
-      .catch(() => {
-        if (!cancelled) setAuthState('anonymous');
+      .catch(error => {
+        if (cancelled) return;
+        setLoginError(error?.message || 'Không thể xác thực quyền quản trị.');
+        setAuthState('anonymous');
       });
     return () => { cancelled = true; };
   }, []);
@@ -289,14 +241,18 @@ export default function ManagementApp() {
     pendingFriendRequests: Number(conversationSummary.friendRequests?.pending || 0),
   }), [employees, conversations, conversationSummary]);
 
-  const handleLogin = async credentials => {
+  const handleLogin = async () => {
     setLoginLoading(true);
     setLoginError('');
     try {
-      const current = await managementAdminService.login(credentials);
+      const current = await managementAdminService.login();
       setSession(current);
       setAuthState(isAdmin(current.user) ? 'authenticated' : 'forbidden');
     } catch (error) {
+      if (error?.code === 'ACCOUNT_LOGIN_REQUIRED') {
+        managementAdminService.startAccountLogin();
+        return;
+      }
       setLoginError(error.message || 'Không thể đăng nhập.');
     } finally {
       setLoginLoading(false);
@@ -326,23 +282,6 @@ export default function ManagementApp() {
     }
   };
 
-  const changeManagementPassword = async (currentPassword, newPassword) => {
-    setSavingPassword(true);
-    try {
-      await managementAdminService.changePassword(currentPassword, newPassword);
-      setPasswordDialogOpen(false);
-      setNotice({ type: 'success', text: 'Đã đổi mật khẩu quản trị. Đang kết thúc phiên cũ...' });
-      window.setTimeout(() => {
-        setSession(null);
-        setAuthState('anonymous');
-      }, 700);
-    } catch (error) {
-      setNotice({ type: 'error', text: error.message || 'Không đổi được mật khẩu quản trị.' });
-    } finally {
-      setSavingPassword(false);
-    }
-  };
-
   if (authState === 'loading') return <div className="management-boot"><BrandLogo /><i className="fa-solid fa-spinner fa-spin"></i></div>;
   if (authState === 'anonymous') return <LoginScreen onLogin={handleLogin} error={loginError} loading={loginLoading} />;
   if (authState === 'forbidden') {
@@ -350,9 +289,9 @@ export default function ManagementApp() {
       <main className="management-denied">
         <span className="management-denied-icon"><i className="fa-solid fa-user-lock"></i></span>
         <span className="management-eyebrow">Không đủ quyền truy cập</span>
-        <h1>Cổng này chỉ dành cho quản trị viên cục bộ của Chatmgt.</h1>
-        <p>Tài khoản nhân viên UpGO Account sử dụng tại <strong>chat.upgo.vn</strong>, không đăng nhập vào đây.</p>
-        <button className="management-button primary" onClick={handleLogout}>Đăng xuất</button>
+        <h1>Cổng này chỉ dành cho quản trị viên của tenant trên UpGO Account.</h1>
+        <p>Hãy chọn đúng tenant và bảo đảm tài khoản có role admin, owner hoặc superadmin trước khi thử lại.</p>
+        <a className="management-button primary" href={ACCOUNT_ADMIN_URL}>Mở UpGO Account</a>
       </main>
     );
   }
@@ -379,7 +318,7 @@ export default function ManagementApp() {
           ))}
         </nav>
         <div className="management-sidebar-footer">
-          <div className="management-sidebar-user"><span className="management-avatar small">{initials(session.user.name)}</span><div><strong>{session.user.name}</strong><span>Admin Chatmgt cục bộ</span></div></div>
+          <div className="management-sidebar-user"><span className="management-avatar small">{initials(session.user.name)}</span><div><strong>{session.user.name}</strong><span>Admin từ UpGO Account</span></div></div>
           <button type="button" className="management-logout" onClick={handleLogout} title="Đăng xuất"><i className="fa-solid fa-arrow-right-from-bracket"></i></button>
         </div>
       </aside>
@@ -391,7 +330,6 @@ export default function ManagementApp() {
           <button className="management-mobile-menu" type="button" onClick={() => setMobileNavOpen(true)} aria-label="Mở menu"><i className="fa-solid fa-bars"></i></button>
           <div><span className="management-eyebrow">{session.tenant?.name || session.user.tenantName || 'Tenant hiện tại'}</span><h1>{navItems.find(item => item.id === activeView)?.label}</h1></div>
           <div className="management-topbar-actions">
-            <button type="button" className="management-icon-button" onClick={() => setPasswordDialogOpen(true)} title="Đổi mật khẩu quản trị"><i className="fa-solid fa-key"></i></button>
             <button type="button" className="management-icon-button" onClick={() => loadData()} title="Làm mới dữ liệu hiển thị" disabled={loadingData}><i className={`fa-solid fa-rotate ${loadingData ? 'fa-spin' : ''}`}></i></button>
             <a className="management-chat-link" href="https://chat.upgo.vn/" target="_blank" rel="noreferrer">Mở ChatUI <i className="fa-solid fa-arrow-up-right-from-square"></i></a>
           </div>
@@ -526,7 +464,7 @@ export default function ManagementApp() {
 
           {activeView === 'system' && (
             <section className="management-view">
-              <div className="management-section-heading"><div><span className="management-kicker">Luồng triển khai bốn bước</span><h2>Trạng thái Account → Chatmgt → Tinode</h2><p>Các thẻ phản ánh đúng cấu hình backend; không dùng trạng thái giả từ trình duyệt.</p></div><button className="management-button ghost" onClick={() => setPasswordDialogOpen(true)}><i className="fa-solid fa-key"></i> Đổi mật khẩu admin</button></div>
+              <div className="management-section-heading"><div><span className="management-kicker">Luồng triển khai bốn bước</span><h2>Trạng thái Account → Chatmgt → Tinode</h2><p>Các thẻ phản ánh đúng cấu hình backend; không dùng trạng thái giả từ trình duyệt.</p></div><a className="management-button ghost" href={ACCOUNT_ADMIN_URL} target="_blank" rel="noreferrer"><i className="fa-solid fa-building-shield"></i> Quản lý quyền tại Account</a></div>
               <div className="management-system-grid">
                 <SystemCard icon="fa-solid fa-server" label="Chatmgt API" ready={health?.status === 'ok'} title={health?.status === 'ok' ? 'Đang hoạt động' : 'Không xác định'} description="Phiên quản trị, projection, metadata conversation và audit log thuộc dịch vụ này." />
                 <SystemCard icon="fa-solid fa-id-card" label="UpGO Account SSO" ready={Boolean(health?.account_sso?.configured)} title={health?.account_sso?.configured ? 'Đã kết nối' : 'Chưa hoàn chỉnh'} description="Account là nguồn chuẩn của danh tính, mật khẩu, tenant membership và hồ sơ nhân viên." />
@@ -540,7 +478,6 @@ export default function ManagementApp() {
         </div>
       </main>
 
-      {passwordDialogOpen && <ChangePasswordDialog onClose={() => setPasswordDialogOpen(false)} onSubmit={changeManagementPassword} saving={savingPassword} />}
     </div>
   );
 }

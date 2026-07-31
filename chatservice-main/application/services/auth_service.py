@@ -21,6 +21,8 @@ from application.services.sso_identity import SSOIdentityError, derive_tinode_pa
 ACCESS_COOKIE = "vichat_access_token"
 MANAGEMENT_ACCESS_COOKIE = "vichat_management_access_token"
 MANAGEMENT_SESSION_HEADER = "X-Vichat-Session-Scope"
+CHAT_SESSION_SCOPE = "chat"
+MANAGEMENT_SESSION_SCOPE = "management"
 JWT_ISSUER = "vichat-management"
 
 
@@ -130,10 +132,13 @@ def record_password_reset_request(tenant_id, identity, ip_address):
         return
 
 
-def issue_access_token(account, auth_method="password"):
+def issue_access_token(account, auth_method="password", session_scope=CHAT_SESSION_SCOPE):
     now = int(time.time())
     ttl = int(app.config.get("CHAT_AUTH_ACCESS_TTL", 28800))
     properties = account.properties or {}
+    session_scope = str(session_scope or CHAT_SESSION_SCOPE).strip().lower()
+    if session_scope not in (CHAT_SESSION_SCOPE, MANAGEMENT_SESSION_SCOPE):
+        raise AuthError("Session scope is invalid.", 500)
     payload = {
         "iss": JWT_ISSUER,
         "sub": str(account.id),
@@ -146,6 +151,7 @@ def issue_access_token(account, auth_method="password"):
         "typ": "access",
         "av": int(properties.get("auth_version") or 0),
         "amr": str(auth_method or "password"),
+        "scp": session_scope,
     }
     header = {"alg": "HS256", "typ": "JWT"}
     encoded_header = _encode_part(json.dumps(header, separators=(",", ":")).encode("utf-8"))
@@ -173,6 +179,10 @@ def decode_access_token(token):
             return None
         if payload.get("amr") not in ("password", "account_sso"):
             return None
+        session_scope = str(payload.get("scp") or CHAT_SESSION_SCOPE).strip().lower()
+        if session_scope not in (CHAT_SESSION_SCOPE, MANAGEMENT_SESSION_SCOPE):
+            return None
+        payload["scp"] = session_scope
         revoked_key = "auth:revoked:{}".format(payload.get("jti"))
         if database.redisdb is not None and database.redisdb.exists(revoked_key):
             return None
@@ -218,17 +228,19 @@ def token_from_request(request):
         return header_token
 
     cookie_name = MANAGEMENT_ACCESS_COOKIE if management_session_requested(request) else ACCESS_COOKIE
-    token = _cookie_token_from_request(request, cookie_name)
-    if token or cookie_name == ACCESS_COOKIE:
-        return token
-    # Migrate an existing administrator session on the first management-page
-    # request after deploying separate cookies.
-    return _cookie_token_from_request(request, ACCESS_COOKIE)
+    return _cookie_token_from_request(request, cookie_name)
 
 
 def current_user(request):
     payload = decode_access_token(token_from_request(request))
     if not payload:
+        return None
+    expected_scope = (
+        MANAGEMENT_SESSION_SCOPE
+        if management_session_requested(request)
+        else CHAT_SESSION_SCOPE
+    )
+    if payload.get("scp") != expected_scope:
         return None
     return {
         "id": payload.get("sub"),
@@ -240,6 +252,7 @@ def current_user(request):
         "current_tenant_id": payload.get("tid"),
         "auth_version": int(payload.get("av") or 0),
         "auth_method": payload.get("amr"),
+        "session_scope": payload.get("scp"),
         "issued_at": int(payload.get("iat") or 0),
     }
 

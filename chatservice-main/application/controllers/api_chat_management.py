@@ -29,6 +29,8 @@ from application.services.account_sso_service import (
 )
 from application.services.auth_service import (
     AuthError,
+    CHAT_SESSION_SCOPE,
+    MANAGEMENT_SESSION_SCOPE,
     build_password_reset_url,
     clear_auth_cookie,
     clear_login_failures,
@@ -69,6 +71,10 @@ from application.services.sso_identity import (
 
 logger = logging.getLogger(__name__)
 ACCOUNT_SSO_PASSWORD_MARKER = "!account-sso-only"
+
+
+def _admin_account_sso_enabled():
+    return bool(app.config.get("CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED", False))
 
 
 def _public_tenant(tenant):
@@ -169,6 +175,8 @@ def _identity(request):
         "tenant_id": account.tenant_id,
         "current_tenant_id": account.tenant_id,
     }
+    if management_session_requested(request) and not _is_admin(resolved_user):
+        return None, None
     return resolved_user, tenant_id
 
 
@@ -208,6 +216,13 @@ def _current_session_error(request):
 
 def _forbidden_error():
     return json({"error_code": "FORBIDDEN", "error_message": "Administrator permission is required."}, status=403)
+
+
+def _management_scope_error():
+    return json({
+        "error_code": "FORBIDDEN",
+        "error_message": "The management session scope is required.",
+    }, status=403)
 
 
 def _account_by_id(tenant_id, user_id):
@@ -721,7 +736,12 @@ async def _password_login(request, include_tinode=True):
         account.last_login_at = int(time.time())
         account.updated_at = int(time.time())
         db.session.commit()
-        token = issue_access_token(account)
+        token = issue_access_token(
+            account,
+            session_scope=(
+                MANAGEMENT_SESSION_SCOPE if not include_tinode else CHAT_SESSION_SCOPE
+            ),
+        )
         response_payload = {
             "user": _public_account(account, tenant),
             "tenant": _public_tenant(tenant),
@@ -759,7 +779,84 @@ async def management_login(request):
             "error_code": "FORBIDDEN",
             "error_message": "The management session scope is required.",
         }, status=403)
+    if _admin_account_sso_enabled():
+        return json({
+            "error_code": "AUTH_METHOD_DISABLED",
+            "error_message": "Chatmgt administrators must sign in through UpGO Account.",
+        }, status=403)
     return await _password_login(request, include_tinode=False)
+
+
+@app.route('/api/v1/admin/sso', methods=['POST'])
+async def management_admin_sso_login(request):
+    if not management_session_requested(request):
+        return json({
+            "error_code": "FORBIDDEN",
+            "error_message": "The management session scope is required.",
+        }, status=403)
+    if not _admin_account_sso_enabled() or not bool(
+        app.config.get("CHAT_ACCOUNT_SSO_ENABLED", False)
+    ):
+        return json({
+            "error_code": "AUTH_METHOD_DISABLED",
+            "error_message": "Account SSO is not enabled for Chatmgt administrators.",
+        }, status=403)
+    try:
+        identity = await current_account_session(request)
+        if not _is_admin(identity):
+            _audit(
+                request,
+                "AUTH_ADMIN_SSO_LOGIN",
+                False,
+                tenant_id=identity.get("tenant_id"),
+                properties={
+                    "account_user_id": identity.get("account_user_id"),
+                    "error_code": "ACCOUNT_ADMIN_REQUIRED",
+                },
+            )
+            return json({
+                "error_code": "ACCOUNT_ADMIN_REQUIRED",
+                "error_message": "The current UpGO Account user is not a tenant administrator.",
+            }, status=403)
+        tenant, account = _sso_account(identity)
+        db.session.commit()
+        revoke_request_token(request)
+        token = issue_access_token(
+            account,
+            auth_method="account_sso",
+            session_scope=MANAGEMENT_SESSION_SCOPE,
+        )
+        response = json({
+            "user": _public_account(account, tenant),
+            "tenant": _public_tenant(tenant),
+            "tenant_id": account.tenant_id,
+            "connection": "management",
+        })
+        _audit(
+            request,
+            "AUTH_ADMIN_SSO_LOGIN",
+            True,
+            tenant_id=account.tenant_id,
+            user_id=str(account.id),
+        )
+        return set_auth_cookie(response, token, request)
+    except AccountSSOError as error:
+        db.session.rollback()
+        _audit(
+            request,
+            "AUTH_ADMIN_SSO_LOGIN",
+            False,
+            properties={"error_code": error.error_code},
+        )
+        return _account_sso_error(error)
+    except Exception as error:
+        db.session.rollback()
+        logger.exception("Account administrator SSO login failed: %s", error)
+        _audit(request, "AUTH_ADMIN_SSO_SERVICE", False)
+        return json({
+            "error_code": "AUTH_SERVICE_ERROR",
+            "error_message": "The administrator SSO service is temporarily unavailable.",
+        }, status=503)
 
 
 @app.route('/api/v1/auth/login', methods=['POST'])
@@ -868,7 +965,6 @@ async def management_logout(request):
     account_sso_session = bool(
         logout_user is not None
         and logout_user.get("auth_method") == "account_sso"
-        and not management_session_requested(request)
     )
     account_logout_confirmed = False
     if account_sso_session:
@@ -915,6 +1011,7 @@ async def management_auth_health(request):
         and str(app.config.get("TINODE_ADMIN_PASSWORD") or "").strip()
     )
     account_sso_enabled = bool(app.config.get("CHAT_ACCOUNT_SSO_ENABLED", False))
+    admin_account_sso_enabled = _admin_account_sso_enabled()
     account_configured = account_sso_enabled and account_sso_configured()
     account_directory_configured = bool(
         account_configured
@@ -959,7 +1056,14 @@ async def management_auth_health(request):
         "management_session": {
             "isolated": True,
             "cookie_secure": bool(app.config.get("CHAT_AUTH_COOKIE_SECURE", False)),
-            "password_owner": "chatmgt",
+            "account_sso_enabled": admin_account_sso_enabled,
+            "configured": bool(
+                len(str(app.config.get("CHAT_AUTH_JWT_SECRET") or "")) >= 32
+                and (account_configured if admin_account_sso_enabled else True)
+            ),
+            "login_endpoint": "/api/v1/admin/sso" if admin_account_sso_enabled else "/login",
+            "local_password_login_enabled": not admin_account_sso_enabled,
+            "password_owner": "account" if admin_account_sso_enabled else "chatmgt",
         },
         "password_reset": {
             "delivery_configured": smtp_configured or bool(app.config.get("CHAT_PASSWORD_RESET_DEBUG", False)),
@@ -1373,6 +1477,8 @@ async def management_users(request):
 
 @app.route('/api/v1/chat/users', methods=['POST'])
 async def management_user_create(request):
+    if not management_session_requested(request):
+        return _management_scope_error()
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _auth_error()
@@ -1438,6 +1544,8 @@ async def management_user_create(request):
 
 @app.route('/api/v1/chat/users/<account_id>', methods=['PUT'])
 async def management_user_update(request, account_id):
+    if not management_session_requested(request):
+        return _management_scope_error()
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _auth_error()
@@ -1499,6 +1607,8 @@ async def management_user_update(request, account_id):
 
 @app.route('/api/v1/chat/users/<account_id>/revoke-session', methods=['POST'])
 async def management_user_revoke_session(request, account_id):
+    if not management_session_requested(request):
+        return _management_scope_error()
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _auth_error()
@@ -1525,6 +1635,8 @@ async def management_user_revoke_session(request, account_id):
 
 @app.route('/api/v1/chat/users/<account_id>/reset-password', methods=['POST'])
 async def management_user_reset_password(request, account_id):
+    if not management_session_requested(request):
+        return _management_scope_error()
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _auth_error()
@@ -1567,6 +1679,8 @@ async def management_user_reset_password(request, account_id):
 
 @app.route('/api/v1/admin/audit-logs', methods=['GET'])
 async def management_audit_logs(request):
+    if not management_session_requested(request):
+        return _management_scope_error()
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _auth_error()
@@ -1598,6 +1712,8 @@ async def management_audit_logs(request):
 
 @app.route('/api/v1/admin/conversations', methods=['GET'])
 async def management_admin_conversations(request):
+    if not management_session_requested(request):
+        return _management_scope_error()
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _auth_error()

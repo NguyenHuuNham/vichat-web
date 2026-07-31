@@ -81,6 +81,10 @@ class Config(object):
     TINODE_ADMIN_PASSWORD = os.getenv("TINODE_ADMIN_PASSWORD", "")
     TINODE_SSO_SECRET = os.getenv("TINODE_SSO_SECRET", "")
     CHAT_ACCOUNT_SSO_ENABLED = env_bool("CHAT_ACCOUNT_SSO_ENABLED", False)
+    CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED = env_bool(
+        "CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED",
+        False,
+    )
 
     ACCOUNT_URL = os.getenv('ACCOUNT_URL')
     if ACCOUNT_URL and not ACCOUNT_URL.startswith("http://") and not ACCOUNT_URL.startswith("https://"):

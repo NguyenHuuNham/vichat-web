@@ -68,9 +68,24 @@ inside ChatUI.
 
 ## Administrator isolation
 
-`POST /login` is reserved for the Chatmgt management page and requires
-`X-Vichat-Session-Scope: management`. It verifies the local administrator and
-issues `vichat_management_access_token`; it does not call Tinode.
+`POST /api/v1/admin/sso` is reserved for the Chatmgt management page and
+requires `X-Vichat-Session-Scope: management`. Chatmgt validates the shared
+Account cookie through `/current_user`, selects the current active tenant, and
+accepts only normalized roles `admin`, `owner`, or `superadmin`. It then issues
+the separate `vichat_management_access_token`; it does not call Tinode.
+
+Access JWTs carry an explicit `scp=chat` or `scp=management` claim. The backend
+selects the cookie by request surface and rejects a token whose scope does not
+match, including Authorization-header tokens. Production enables
+`CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true`, which disables public local password
+login on `/login`. An internal deployment verifier may still mint a short-lived
+management token directly from the server secret for its temporary admin row;
+there is no public endpoint for this operation.
+
+Privileged management mutations, audit access, and the management conversation
+overview also require `X-Vichat-Session-Scope: management`. An Account admin's
+normal ChatUI token therefore cannot be reused against the management control
+plane even though both sessions project the same Account identity.
 
 The management page is a tenant-scoped control plane, not another employee
 account system and not a message viewer. It may display Account-backed profile
@@ -80,9 +95,10 @@ readiness. It must not create, edit, disable, or reset passwords for Account
 employees, and it never loads Tinode messages, files, presence, typing, or
 receipts. Employee identity changes link back to `account.upgo.vn`.
 
-Changing the local Chatmgt administrator password updates only the Chatmgt
-credential and revokes the existing management session. It does not change the
-Tinode root credential or any employee Account credential.
+Administrator identity, password, tenant membership, and role are owned by
+UpGO Account. A role downgrade is detected on the next management request and
+revokes access. Management logout revokes the Chatmgt management token and ends
+the shared Account session.
 
 | Method | Path | Management-page purpose |
 | --- | --- | --- |
@@ -90,7 +106,8 @@ Tinode root credential or any employee Account credential.
 | `POST` | `/api/v1/chat/users/<id>/revoke-session` | Revoke Chatmgt-owned employee sessions |
 | `GET` | `/api/v1/admin/conversations` | Read tenant conversation/group membership and bridge readiness without message content |
 | `GET` | `/api/v1/admin/audit-logs` | Review tenant-scoped security events |
-| `POST` | `/api/v1/auth/password` | Change the local administrator password in management scope and revoke the old session |
+| `POST` | `/api/v1/admin/sso` | Exchange an active Account admin session for the isolated management cookie |
+| `POST` | `/api/v1/auth/logout` | Revoke management state and end the Account session |
 
 When `CHAT_ACCOUNT_SSO_ENABLED=true`:
 
@@ -113,7 +130,8 @@ When `CHAT_ACCOUNT_SSO_ENABLED=true`:
 | `POST` | `/api/v1/auth/avatar` | Validate the Account session, update the current Account avatar, and refresh Chatmgt projection |
 | `POST` | `/api/v1/auth/logout` | Revoke Chatmgt and end/clear Account session |
 | `GET` | `/api/v1/auth/health` | Report employee auth and Account SSO readiness |
-| `POST` | `/login` | Separate local Chatmgt administrator login |
+| `POST` | `/api/v1/admin/sso` | Account SSO login for current-tenant administrators only |
+| `POST` | `/login` | Legacy local administrator login; disabled in production Account-admin mode |
 | `POST` | `/api/v1/auth/login` | Legacy employee password login; disabled in Account SSO mode |
 
 The existing Tinode token/topic endpoints remain Step 4 code paths and are not
@@ -238,6 +256,7 @@ expired token.
 
 ```dotenv
 CHAT_ACCOUNT_SSO_ENABLED=true
+CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true
 ACCOUNT_URL=https://account.upgo.vn
 ACCOUNT_SSO_PROFILE_PATH=/current_user
 ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user
@@ -268,7 +287,9 @@ operator only needs to add overrides when the upstream Account contract differs.
 - Missing/expired Account cookie produces `ACCOUNT_LOGIN_REQUIRED` and the correct redirect.
 - Inactive, missing, cross-tenant, or ambiguous membership is rejected.
 - `/api/v1/auth/sso` does not call Tinode and returns no Tinode token.
-- Employee password login is disabled while management administrator login remains isolated.
+- Employee and local administrator password login are disabled; only an active
+  current-tenant Account administrator can obtain the isolated management session.
+- Chat and management JWT scopes cannot be exchanged or used on the other surface.
 - Logout revokes Chatmgt, calls Account logout, and clears both cookie scopes.
 - Refresh after logout cannot reopen `/api/v1/auth/me`.
 - Changing the avatar updates the matching UpGO Account user, refreshes the

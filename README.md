@@ -18,13 +18,14 @@ uploads and writes the image to UpGO Account first, then refreshes its local
 projection and Tinode public profile. It never treats a browser preview or a
 Chatmgt-only avatar value as authoritative.
 
-The separate Chatmgt administration page keeps local administrator login on
-`POST /login` with the management-session header. It neither replaces nor acts
-as employee Account login. Its employee directory is read-only, Account profile
-changes link back to `account.upgo.vn`, and its operational views are limited to
-tenant-scoped Chatmgt sessions, friendship/conversation/group metadata, audit
-events, and bridge health. It never displays Tinode message or file content.
-Tinode provisioning/token issuance is intentionally outside Step 2.
+The separate Chatmgt administration page also uses UpGO Account, but only the
+current tenant's `admin`, `owner`, or `superadmin` may exchange the Account
+session for the isolated management cookie through `POST /api/v1/admin/sso`.
+Production disables the local `/login` password flow. Chat and management JWTs
+carry different scopes and cannot be used across the two surfaces. The employee
+directory remains read-only, Account profile/role changes stay authoritative at
+`account.upgo.vn`, and the management page never displays Tinode message or file
+content.
 
 ## Production data flow
 

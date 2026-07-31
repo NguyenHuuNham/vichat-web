@@ -65,9 +65,11 @@ proxy, obtain TLS certificates, run `sudo nginx -t`, then reload Nginx.
 The script never removes old backups. Preserve `.env`, database volumes,
 Tinode uploads, UID encryption keys, and backup files together.
 
-The management login verifier uses a unique temporary local Chatmgt
-administrator and removes it in `finally`. This keeps verification independent
-from both the real Chatmgt administrator password and the Tinode root password.
+The management verifier creates a unique temporary admin row, mints an internal
+management-scoped token directly inside the trusted runtime, and removes the row
+plus audit events in `finally`. Public `/login` remains disabled; the verifier
+does not need a real Account cookie, Account password, local administrator
+password, or Tinode root password.
 
 ## Employee login acceptance test
 
@@ -76,6 +78,7 @@ not modify an already deployed file:
 
 ```dotenv
 CHAT_ACCOUNT_SSO_ENABLED=true
+CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true
 ACCOUNT_URL=https://account.upgo.vn
 ACCOUNT_SSO_PROFILE_PATH=/current_user
 ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user
@@ -111,6 +114,13 @@ reject an expired Account session or a tenant mismatch.
 
 This is the Step 2 acceptance test only. Directory/conversation loading is Step
 3, and realtime Tinode messaging is Step 4.
+
+For the management page, sign in at `account.upgo.vn`, select the intended
+tenant, then open `chatmgt.upgo.vn` and click **Dang nhap bang UpGO Account**.
+An Account role `admin`, `owner`, or `superadmin` must receive a separate
+`vichat_management_access_token`; a member must receive
+`ACCOUNT_ADMIN_REQUIRED`. `POST /login` must return `AUTH_METHOD_DISABLED`, and
+a Chat token must not work when sent as a management token (or conversely).
 
 Repeat with users from two tenants before declaring tenant acceptance complete.
 
@@ -190,6 +200,6 @@ The final checks include:
 
 ```text
 Database revision and credential policy are valid.
-Health, CORS, Account SSO challenge, Tinode bridge configuration, employee password rejection, and management isolation checks passed.
+Health, CORS, Account SSO challenges, Tinode bridge configuration, employee/local password rejection, and management scope isolation checks passed.
 Two-tenant user, conversation, friend, and participant checks passed.
 ```
