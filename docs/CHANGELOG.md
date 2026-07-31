@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-07-31-10 - Nang cap giao dien dieu hanh Chatmgt
+
+- Thoi gian: 2026-07-31 11:37 (Asia/Saigon)
+- Loai: Giao dien | Trai nghiem quan tri | Kha nang truy cap
+- Trang thai: Can xac nhan
+- Muc tieu: Lam moi frontend `chatmgt.upgo.vn` theo phong cach operations console chuyen nghiep, ro cap bac thong tin va de theo doi tren desktop/mobile ma khong anh huong den chuc nang, API hay luong xac thuc dang hoat dong.
+- Pham vi: Chi `ManagementApp` va stylesheet rieng cua Chatmgt; giu nguyen service request, Account admin SSO, role check, session management, bo loc, refresh 30 giay, thu hoi phien, ChatUI va Tinode. Khong migration, khong doi backend, database, Compose hay bien moi truong.
+- File da thay doi: `src/features/management/ManagementApp.jsx`, `src/features/management/management.css`, va `docs/CHANGELOG.md`.
+- Noi dung: Chuyen sidebar thanh control rail co cap bac va active state ro hon; bo sung breadcrumb tenant, health capsule lay tu health response that va context trang thai trong hero. Chuan hoa typography, mau thuong hieu xanh/cam, background grid, shadow, focus state, metric/panel/table/system card, login gateway va responsive layout. Bang co sticky header, cac thanh phan co focus-visible, motion duoc tat khi he dieu hanh yeu cau `prefers-reduced-motion`; khong them dashboard gia hay doc noi dung tin nhan.
+- Quyet dinh ky thuat: Chi them wrapper/class trinh bay va su dung cac gia tri `health`, `session`, `stats` da co; khong sua state, handler, endpoint hoac hop dong du lieu. Font dung stack local co fallback, khong them dependency hay tai font runtime moi de tranh anh huong toc do va kha nang trien khai.
+- Database/API/cau hinh: Khong thay doi.
+- Kiem thu: `npm run lint` dat, chi con warning legacy co san trong `src/App.jsx` va Tinode widget ngoai pham vi; `npm run test:frontend` dat 10/10; `npm run build -- --outDir .codex-build-chatmgt-ui --emptyOutDir` dat voi bundle `ManagementApp-bCtzlVA2.js` va stylesheet `ManagementApp-Bsom-K14.css`. Browser skill da duoc ap dung nhung moi truong khong cung cap browser session, nen chua thao tac truc quan bang phien Account admin that.
+- Rui ro con lai: Can nghiem thu truc quan tren desktop/mobile sau deploy, dac biet ten tenant dai, bang co nhieu ban ghi va drawer mobile; khong co rui ro da biet voi API/chuc nang vi logic nghiep vu khong doi.
+- Viec tiep theo: Ra soat diff, commit/push, build va recreate rieng service `chatmgt`; sau do hard refresh `chatmgt.upgo.vn` va xac nhan bo cuc bang tai khoan Account admin.
+- Commit/PR: Commit chua muc nay (xem `git log`).
+
 ## 2026-07-31-09 - Trien khai Account admin SSO cho Chatmgt
 
 - Thoi gian: 2026-07-31 11:09 (Asia/Saigon)

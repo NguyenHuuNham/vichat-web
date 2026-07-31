@@ -71,7 +71,7 @@ function LoginScreen({ onLogin, error, loading }) {
     <main className="management-login">
       <section className="management-login-story" aria-hidden="true">
         <div className="management-login-grid"></div>
-        <div className="management-brand-lockup"><BrandLogo /><span>ACSI</span></div>
+        <div className="management-brand-lockup"><BrandLogo /><div><strong>ACSI</strong><span>Chat operations</span></div></div>
         <div className="management-story-copy">
           <span className="management-kicker">Trung tâm điều phối Chatmgt</span>
           <h1>Quản lý đúng luồng, không đi vào nội dung hội thoại.</h1>
@@ -307,7 +307,7 @@ export default function ManagementApp() {
   return (
     <div className={`management-root ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <aside className={`management-sidebar ${mobileNavOpen ? 'open' : ''}`}>
-        <div className="management-sidebar-brand"><BrandLogo /><div><strong>ACSI</strong><span>Chatmgt control plane</span></div></div>
+        <div className="management-sidebar-brand"><BrandLogo /><div><strong>ACSI</strong><span>Operations console</span></div></div>
         <button type="button" className="management-sidebar-toggle" onClick={() => setSidebarCollapsed(previous => !previous)} title={sidebarCollapsed ? 'Mở rộng thanh quản lý' : 'Thu gọn thanh quản lý'} aria-label={sidebarCollapsed ? 'Mở rộng thanh quản lý' : 'Thu gọn thanh quản lý'} aria-pressed={sidebarCollapsed}><i className={`fa-solid ${sidebarCollapsed ? 'fa-chevron-right' : 'fa-chevron-left'}`}></i></button>
         <nav className="management-nav" aria-label="Điều hướng quản trị">
           <span className="management-nav-label">Quản trị Chatmgt</span>
@@ -328,8 +328,12 @@ export default function ManagementApp() {
       <main className="management-main">
         <header className="management-topbar">
           <button className="management-mobile-menu" type="button" onClick={() => setMobileNavOpen(true)} aria-label="Mở menu"><i className="fa-solid fa-bars"></i></button>
-          <div><span className="management-eyebrow">{session.tenant?.name || session.user.tenantName || 'Tenant hiện tại'}</span><h1>{navItems.find(item => item.id === activeView)?.label}</h1></div>
+          <div className="management-topbar-heading">
+            <span className="management-eyebrow"><i className="fa-solid fa-building"></i>{session.tenant?.name || session.user.tenantName || 'Tenant hiện tại'}</span>
+            <div className="management-topbar-title"><h1>{navItems.find(item => item.id === activeView)?.label}</h1><span>Control plane</span></div>
+          </div>
           <div className="management-topbar-actions">
+            <span className={`management-health-pill ${health?.status === 'ok' ? 'online' : ''}`} aria-live="polite"><i></i>{health?.status === 'ok' ? 'Hệ thống ổn định' : 'Đang đồng bộ'}</span>
             <button type="button" className="management-icon-button" onClick={() => loadData()} title="Làm mới dữ liệu hiển thị" disabled={loadingData}><i className={`fa-solid fa-rotate ${loadingData ? 'fa-spin' : ''}`}></i></button>
             <a className="management-chat-link" href="https://chat.upgo.vn/" target="_blank" rel="noreferrer">Mở ChatUI <i className="fa-solid fa-arrow-up-right-from-square"></i></a>
           </div>
@@ -348,7 +352,7 @@ export default function ManagementApp() {
                 <span><i className="fa-solid fa-bolt"></i><strong>Tinode</strong><small>Tin nhắn, file và realtime</small></span>
               </div>
               <div className="management-hero-card">
-                <div><span className="management-kicker">Tổng quan vận hành</span><h2>Chatmgt đang giữ đúng ranh giới quản trị.</h2><p>Trang này không tạo tài khoản nhân viên, không đổi mật khẩu Account và không xem nội dung tin nhắn. Mọi số liệu bên dưới chỉ là projection và metadata theo tenant.</p></div>
+                <div className="management-hero-copy"><span className="management-kicker">Tổng quan vận hành</span><h2>Chatmgt đang giữ đúng ranh giới quản trị.</h2><p>Trang này không tạo tài khoản nhân viên, không đổi mật khẩu Account và không xem nội dung tin nhắn. Mọi số liệu bên dưới chỉ là projection và metadata theo tenant.</p><div className="management-hero-context"><span><i className="fa-solid fa-shield-halved"></i>Tenant-scoped</span><span><i className="fa-solid fa-arrows-rotate"></i>Tự đồng bộ 30 giây</span><span className={health?.account_sso?.tinode_bridge_configured ? 'ready' : 'pending'}><i className="fa-solid fa-bolt"></i>{health?.account_sso?.tinode_bridge_configured ? 'Tinode sẵn sàng' : 'Đang kiểm tra Tinode'}</span></div></div>
                 <div className="management-hero-orbit" aria-hidden="true"><span>{stats.activeEmployees}</span><small>nhân viên active</small></div>
               </div>
               <div className="management-metrics-grid">
