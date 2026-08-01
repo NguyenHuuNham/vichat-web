@@ -6,11 +6,27 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-01-03 - Trien khai visual refresh premium Chatmgt
+
+- Thoi gian: 2026-08-01 11:51 (Asia/Saigon)
+- Loai: Trien khai | Giao dien | Van hanh
+- Trang thai: Hoan tat
+- Muc tieu: Dua visual refresh va avatar Account cua commit `6627477` len `chatmgt.upgo.vn`, chi thay service Chatmgt va bao toan toan bo luong chuc nang dang chay.
+- Pham vi: Release/image/container rieng `chatmgt` va public management bundle; khong recreate ChatUI, ChatAPI, hai PostgreSQL, Redis, khong migration va khong sua `.env` hay worktree server.
+- File da thay doi: `docs/CHANGELOG.md`; source runtime trien khai tu release bat bien `/opt/deploy/chat/releases/6627477`.
+- Noi dung: Archive sach co SHA-256 `9f216e8a53e57621cea6e50941a48d3001c48a33a11406776203647411492138`; image moi la `sha256:38ad1ea6a8e63b0457f52a62934736f8fef5811e72c489d1b185fb5cec6f6a26`, container healthy la `3f860d4735181a6f288a1464193dc96e8537e59064b997082acbd6f77b0a685e`. Public stylesheet la `ManagementApp-4vutcfcs.css` va co marker cua sidebar 300px, topbar premium va hero bo 30px.
+- Quyet dinh ky thuat: Dung archive/release sach de khong lay cac thay doi cuc bo trong worktree server; private Tinode bootstrap duoc sao chep voi mode `0600`; image cu duoc giu bang tag rollback `songhong-production-chatmgt:rollback-4058086-before-6627477`. Lan acceptance dau rollback dung thiet ke vi marker CSS qua chat, trong khi hai verifier da dat; sau khi doi marker theo output Vite thuc te, deploy lai cung image va moi nghiem thu thanh cong.
+- Database/API/cau hinh: Khong thay doi. Khong migration, khong sua secret, domain, reverse proxy, Account SSO, Tinode hay database volume.
+- Kiem thu: Local lint dat voi warning legacy co san, frontend test dat 10/10 va build dat. Image production dat 69 test voi 9 source-only skip; `verify_deployment.py` va `verify_tenant_isolation.py` deu dat. Public health HTTP 200 va CSS premium dat; Compose label tro dung release `6627477`; log khong co `traceback/panic/fatal/critical`; ID ChatUI, ChatAPI, hai PostgreSQL va Redis khong doi.
+- Rui ro con lai: Runtime khong co browser session nen chua chup anh QA sau deploy; nguoi dung can `Ctrl + F5` de bo cache va nghiem thu truc quan desktop/mobile. Khong co rui ro da biet voi chuc nang vi logic, API va database khong doi.
+- Viec tiep theo: Hard refresh `chatmgt.upgo.vn`, dang nhap bang UpGO Account admin va xac nhan topbar noi, active nav cam, card/table premium va avatar dong bo.
+- Commit/PR: Code `6627477`; commit ghi nhan trien khai chua muc nay (xem `git log`).
+
 ## 2026-08-01-02 - Visual refresh premium cho Chatmgt
 
 - Thoi gian: 2026-08-01 11:42 (Asia/Saigon)
 - Loai: Giao dien | Kha nang truy cap
-- Trang thai: Can trien khai
+- Trang thai: Hoan tat
 - Muc tieu: Lam giao dien Chatmgt thay doi ro rang va chuyen nghiep hon tren desktop/mobile trong khi giu nguyen toan bo chuc nang dang hoat dong.
 - Pham vi: Chi `src/features/management/management.css`; khong sua JSX logic, state, handler, endpoint, Account SSO, database, Tinode, ChatUI hay ChatAPI.
 - Noi dung: Them visual layer theo huong enterprise command center: sidebar xanh sau co ambient glow va active state cam ro, topbar dang glass panel noi, nen grid/radial, hero va metric card co chieu sau, panel/table/audit/system card phan cap lai, hover/focus va responsive spacing duoc lam ro hon. Khong them nut, luong thao tac hay du lieu gia.
