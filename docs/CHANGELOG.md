@@ -6,11 +6,27 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-01-05 - Trien khai hotfix man hinh trang Chatmgt
+
+- Thoi gian: 2026-08-01 12:00 (Asia/Saigon)
+- Loai: Trien khai | Sua loi | Giao dien
+- Trang thai: Hoan tat
+- Muc tieu: Dua guard bootstrap cua commit `64d755b` len production, khoi phuc giao dien premium ma khong thay doi chuc nang.
+- Pham vi: Release/image/container rieng `chatmgt` va public management JavaScript; khong recreate ChatUI, ChatAPI, hai PostgreSQL, Redis, khong migration va khong sua `.env` hay worktree server.
+- File da thay doi: `docs/CHANGELOG.md`; source runtime trien khai tu release bat bien `/opt/deploy/chat/releases/64d755b`.
+- Noi dung: Archive sach co SHA-256 `d0846af9bfe39d8e9b5fd08d21d7260798aa04cbb6491745e7b3788134b100b8`; image moi la `sha256:d3e3f7c758d8d83c95217f8f28e17d09f3b749d4fc6d1a7cccdc36809d6d46be`, container healthy la `e2c6c7c651ee9776453e8e343e1161d9e3e128fdb6f881e4e70393a42b84cf15`. Public entry tham chieu `ManagementApp-DZWoO5LZ.js`; bundle co guard session rong va van dung `ManagementApp-4vutcfcs.css`.
+- Quyet dinh ky thuat: Chi deploy lai Chatmgt tu release sach; giu image premium truoc hotfix bang tag rollback `songhong-production-chatmgt:rollback-6627477-before-64d755b`. Khong thay auth bootstrap de tranh regression, chi ngan property access tren `null` trong pha loading.
+- Database/API/cau hinh: Khong thay doi. Private Tinode bootstrap duoc bao toan mode `0600`; khong sua secret, domain, reverse proxy hay volume.
+- Kiem thu: Local lint dat voi warning legacy, frontend test dat 10/10, build va SSR initial render dat. Image production dat 69 test voi 9 source-only skip; `verify_deployment.py` va `verify_tenant_isolation.py` deu dat. Public health, hotfix JavaScript va CSS premium deu dat; ID ChatUI, ChatAPI, hai PostgreSQL va Redis khong doi; log khong co `traceback/panic/fatal/critical`.
+- Rui ro con lai: Runtime khong co browser session de chup anh; can `Ctrl + F5` tren tab Chatmgt de bo cache entry cu. Khong co rui ro da biet voi chuc nang.
+- Viec tiep theo: Hard refresh `chatmgt.upgo.vn` va xac nhan loading chuyen sang trang dang nhap/quan tri thay vi man hinh trang.
+- Commit/PR: Code `64d755b`; commit ghi nhan trien khai chua muc nay (xem `git log`).
+
 ## 2026-08-01-04 - Sua man hinh trang khi Chatmgt bootstrap
 
 - Thoi gian: 2026-08-01 11:56 (Asia/Saigon)
 - Loai: Sua loi | Giao dien
-- Trang thai: Can trien khai
+- Trang thai: Hoan tat
 - Muc tieu: Khoi phuc render Chatmgt sau visual refresh ma khong thay doi chuc nang, API, SSO, database hay Tinode.
 - Pham vi: Mot guard hien thi trong `src/features/management/ManagementApp.jsx` va changelog; khong sua state transition, handler, service request, role policy hay stylesheet premium.
 - Noi dung: `session` khoi tao bang `null` trong luc bootstrap, nhung fallback avatar admin moi doc truc tiep `session.user` truoc khi nhanh loading duoc render, lam React nem loi va trang chi con nen trang. Doi fallback thanh optional access va profile rong chi trong pha chua co session.
