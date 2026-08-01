@@ -332,8 +332,8 @@
   color: var(--mgmt-ink);
   font-family: var(--mgmt-font-display);
   font-size: 28px;
-  font-weight: 650;
-  letter-spacing: -.025em;
+  font-weight: 600;
+  letter-spacing: -.015em;
 }
 
 .management-topbar-heading {
@@ -394,7 +394,7 @@
   color: #8a5c45;
   background: rgba(255, 247, 242, .82);
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -452,7 +452,7 @@
   color: #fff;
   background: linear-gradient(135deg, var(--mgmt-ink-soft), var(--mgmt-ink-deep));
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 700;
   text-decoration: none;
   transition: .18s ease;
 }
@@ -524,9 +524,9 @@
   margin-top: 11px;
   font-family: var(--mgmt-font-display);
   font-size: clamp(31px, 4vw, 52px);
-  font-weight: 560;
+  font-weight: 600;
   line-height: 1.06;
-  letter-spacing: -.035em;
+  letter-spacing: -.025em;
 }
 
 .management-hero-card p {
@@ -558,8 +558,8 @@
   border-radius: 8px;
   color: rgba(255, 255, 255, .72);
   background: rgba(255, 255, 255, .055);
-  font-size: 10px;
-  font-weight: 750;
+  font-size: 11px;
+  font-weight: 700;
   letter-spacing: .025em;
 }
 
@@ -601,8 +601,8 @@
 .management-hero-orbit span {
   font-family: var(--mgmt-font-display);
   font-size: 56px;
-  font-weight: 650;
-  letter-spacing: -.05em;
+  font-weight: 600;
+  letter-spacing: -.035em;
 }
 
 .management-hero-orbit small {
@@ -726,8 +726,8 @@
   margin-top: 5px;
   font-family: var(--mgmt-font-display);
   font-size: 21px;
-  font-weight: 650;
-  letter-spacing: -.02em;
+  font-weight: 600;
+  letter-spacing: -.015em;
 }
 
 .management-panel > header button {
@@ -812,25 +812,70 @@
 
 .management-avatar {
   display: inline-grid;
-  width: 38px;
-  height: 38px;
+  width: 42px;
+  height: 42px;
   flex: 0 0 auto;
   place-items: center;
+  overflow: hidden;
   border: 1px solid #cfe0d8;
-  border-radius: 11px;
+  border-radius: 50%;
   color: var(--mgmt-ink-soft);
-  background: #eaf4ef;
+  background: linear-gradient(145deg, #eff8f3, #dcece4);
+  box-shadow: 0 5px 13px rgba(7, 31, 30, .08);
   font-family: var(--mgmt-font-display);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
+.management-avatar.has-image {
+  background: #fff;
+}
+
+.management-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .management-avatar.small {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-color: rgba(255, 255, 255, .1);
   color: #fff;
   background: rgba(255, 255, 255, .09);
+  box-shadow: none;
+}
+
+.management-avatar.mini {
+  width: 25px;
+  height: 25px;
+  border-color: #fff;
+  font-size: 8px;
+  box-shadow: 0 3px 9px rgba(7, 31, 30, .12);
+}
+
+.management-avatar-cluster {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(2, 20px);
+  grid-auto-rows: 20px;
+  place-content: center;
+  gap: 2px;
+  overflow: hidden;
+  border: 1px solid #cfe0d8;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 5px 13px rgba(7, 31, 30, .08);
+}
+
+.management-avatar-cluster .management-avatar.mini {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  box-shadow: none;
 }
 
 .management-event-icon {
@@ -859,8 +904,8 @@
   margin-top: 8px;
   font-family: var(--mgmt-font-display);
   font-size: clamp(31px, 4vw, 44px);
-  font-weight: 650;
-  letter-spacing: -.035em;
+  font-weight: 600;
+  letter-spacing: -.025em;
 }
 
 .management-section-heading p {
@@ -1002,8 +1047,58 @@
 .management-user-cell span,
 .management-user-cell small { display: block; }
 .management-user-cell strong { color: var(--mgmt-ink); font-size: 13px; }
-.management-user-cell span { margin-top: 2px; color: var(--mgmt-muted); font-size: 11px; }
-.management-user-cell small { margin-top: 4px; color: #899792; font-size: 10px; }
+.management-user-cell span { margin-top: 2px; color: var(--mgmt-muted); font-size: 12px; }
+.management-user-cell small { margin-top: 4px; color: #899792; font-size: 11px; }
+
+.management-member-cell,
+.management-owner-cell,
+.management-audit-actor {
+  display: flex;
+  align-items: center;
+}
+
+.management-member-cell {
+  gap: 10px;
+}
+
+.management-member-preview {
+  display: flex;
+  min-width: 45px;
+  align-items: center;
+  padding-left: 6px;
+}
+
+.management-member-preview .management-avatar,
+.management-member-more {
+  margin-left: -6px;
+}
+
+.management-member-preview .management-avatar:first-child {
+  margin-left: 0;
+}
+
+.management-member-more {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  color: var(--mgmt-ink-soft);
+  background: #dfeae5;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.management-owner-cell,
+.management-audit-actor {
+  gap: 8px;
+}
+
+.management-audit-actor > div {
+  min-width: 0;
+}
 
 .management-role,
 .management-status {
@@ -1150,7 +1245,7 @@
 
 .management-system-card.warning > span { color: #b06127; background: #fff0df; }
 .management-system-card small { color: var(--mgmt-muted); font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
-.management-system-card h3 { margin-top: 7px; font-family: var(--mgmt-font-display); font-size: 24px; font-weight: 650; letter-spacing: -.025em; }
+.management-system-card h3 { margin-top: 7px; font-family: var(--mgmt-font-display); font-size: 24px; font-weight: 600; letter-spacing: -.015em; }
 .management-system-card p { max-width: 450px; margin-top: 9px; color: var(--mgmt-muted); font-size: 13px; line-height: 1.65; }
 .management-system-card em { position: absolute; right: 18px; bottom: 18px; color: var(--mgmt-green); font-size: 11px; font-style: normal; font-weight: 800; text-transform: uppercase; }
 .management-system-card.warning em { color: #b06127; }
@@ -1409,7 +1504,7 @@
   margin-top: 4px;
   overflow: hidden;
   color: var(--mgmt-muted);
-  font-size: 11px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1499,7 +1594,7 @@
 }
 
 .management-story-copy .management-kicker { color: #ff936b; }
-.management-story-copy h1 { margin-top: 15px; font-family: var(--mgmt-font-display); font-size: clamp(39px, 5.8vw, 76px); font-weight: 600; line-height: 1.02; letter-spacing: -.045em; }
+.management-story-copy h1 { margin-top: 15px; font-family: var(--mgmt-font-display); font-size: clamp(39px, 5.8vw, 76px); font-weight: 600; line-height: 1.02; letter-spacing: -.03em; }
 .management-story-copy p { max-width: 590px; margin-top: 25px; color: rgba(255, 255, 255, .58); font-size: 14px; line-height: 1.75; }
 
 .management-story-status {
@@ -1544,7 +1639,7 @@
 }
 
 .management-login-heading { margin-bottom: 28px; }
-.management-login-heading h2 { margin-top: 9px; font-family: var(--mgmt-font-display); font-size: 36px; font-weight: 650; letter-spacing: -.035em; }
+.management-login-heading h2 { margin-top: 9px; font-family: var(--mgmt-font-display); font-size: 36px; font-weight: 600; letter-spacing: -.025em; }
 .management-login-heading p { margin-top: 8px; color: var(--mgmt-muted); font-size: 13px; }
 .management-login-card .management-field { margin-top: 17px; }
 
@@ -1585,7 +1680,7 @@
 .management-login-button:disabled { cursor: wait; opacity: .7; transform: none; }
 .management-login-note { margin-top: 17px; color: var(--mgmt-muted); font-size: 11px; text-align: center; }
 .management-login-note i { margin-right: 5px; }
-.management-account-switch { display: flex; width: fit-content; margin: 14px auto 0; align-items: center; gap: 7px; color: var(--mgmt-muted); font-size: 11px; font-weight: 650; text-decoration: none; }
+.management-account-switch { display: flex; width: fit-content; margin: 14px auto 0; align-items: center; gap: 7px; color: var(--mgmt-muted); font-size: 12px; font-weight: 600; text-decoration: none; }
 .management-account-switch:hover { color: var(--mgmt-orange-deep); }
 
 .management-inline-error {
@@ -1618,7 +1713,7 @@
 
 .management-boot i { color: var(--mgmt-orange); font-size: 19px; }
 .management-denied-icon { display: grid; width: 75px; height: 75px; place-items: center; border-radius: 24px; color: var(--mgmt-orange-deep); background: #ffe6dc; font-size: 28px; }
-.management-denied h1 { max-width: 560px; font-family: var(--mgmt-font-display); font-size: 39px; font-weight: 650; letter-spacing: -.035em; }
+.management-denied h1 { max-width: 560px; font-family: var(--mgmt-font-display); font-size: 39px; font-weight: 600; letter-spacing: -.025em; }
 .management-denied p { color: var(--mgmt-muted); font-size: 12px; }
 
 @media (max-width: 1180px) {

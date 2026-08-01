@@ -26,12 +26,14 @@ test('normalizes Account projections as read-only management users', () => {
   const user = normalizeManagementUser({
     id: 'account-user-1',
     display_name: 'Nguyen Van A',
+    avatar_url: 'https://service.upgo.vn/accounts/avatar-a.jpg',
     auth_source: 'account',
     tinode_uid: 'usrTinodeA',
     updated_at: '2026-07-31T00:00:00Z',
   });
 
   assert.equal(user.name, 'Nguyen Van A');
+  assert.equal(user.avatar, 'https://service.upgo.vn/accounts/avatar-a.jpg');
   assert.equal(user.accountManaged, true);
   assert.equal(user.authSource, 'account');
   assert.equal(user.tinodeUid, 'usrTinodeA');

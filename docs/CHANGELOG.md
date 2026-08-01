@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-01-01 - Hoan thien giao dien va dong bo avatar Chatmgt
+
+- Thoi gian: 2026-08-01 11:29 (Asia/Saigon)
+- Loai: Giao dien | Du lieu hien thi | Kha nang truy cap
+- Trang thai: Hoan tat
+- Muc tieu: Lam giao dien quan tri de doc va chuyen nghiep hon, dong thoi hien thi avatar nhan vien nhat quan voi ChatUI ma khong thay doi chuc nang, API, SSO, database hay Tinode.
+- Pham vi: Chi component, stylesheet va bo chuan hoa response frontend cua Chatmgt; khong sua backend, handler thao tac, endpoint, session, Account role, conversation metadata, ChatUI hay ha tang production.
+- File da thay doi: `src/features/management/ManagementApp.jsx`, `src/features/management/management.css`, `src/features/management/services/managementAdminService.js`, `src/features/management/services/managementAdminService.test.js` va `docs/CHANGELOG.md`.
+- Noi dung: Them avatar component dung anh that va fallback initials khi anh loi; hien avatar o sidebar, danh ba, conversation, danh sach thanh vien, chu so huu va audit actor. Direct chat hien avatar nguoi doi dien, group hien cum toi da bon thanh vien. Chuan hoa cac ten truong `avatar`, `avatarUrl`, `avatar_url`, `photo`; tang kich thuoc chu phu quan trong va dung cac weight Inter 600/700 de font tieng Viet ro, on dinh hon.
+- Quyet dinh ky thuat: Tiep tuc dung projection Account da duoc Chatmgt tra trong `_public_account()` lam nguon avatar, cung nguon ma ChatUI dang dung; khong tao kho anh, endpoint dong bo, database field hay Tinode profile flow moi. Avatar tu cap nhat theo chu ky refresh 30 giay san co cua trang quan tri va fallback cuc bo neu URL anh khong tai duoc.
+- Database/API/cau hinh: Khong thay doi. Khong migration, khong bien moi truong moi va khong thay hop dong API; frontend chi chap nhan them cac alias avatar de tuong thich response.
+- Kiem thu: `npm run lint` dat, chi con warning legacy co san trong `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run test:frontend` dat 10/10; `npm run build -- --outDir .codex-build-chatmgt-avatar --emptyOutDir` dat voi `ManagementApp-D_LXP_7m.js` va `ManagementApp-xgJCVpIv.css`; bundle co marker avatar image, cluster va member preview; `git diff --check` dat. Browser skill da duoc ap dung nhung runtime khong co browser session, nen chua nghiem thu truc quan bang Account admin that.
+- Rui ro con lai: URL avatar bi chan boi CSP/CORS hoac khong con ton tai se hien initials thay the; can nghiem thu truc quan sau deploy tren desktop/mobile va hard refresh de loai cache CSS cu. Khong co rui ro da biet voi luong chuc nang vi state, handler va endpoint khong doi.
+- Viec tiep theo: Commit/push ban thay doi, trien khai rieng service `chatmgt`, chay verifier production va hard refresh `chatmgt.upgo.vn` de nghiem thu avatar Account tren desktop/mobile.
+- Commit/PR: Commit giao dien/avatar duoc tao trong cung lan lam viec nay (xem `git log`).
+
 ## 2026-07-31-13 - Trien khai font Inter cho Chatmgt
 
 - Thoi gian: 2026-07-31 12:00 (Asia/Saigon)

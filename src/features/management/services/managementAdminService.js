@@ -53,6 +53,7 @@ export function normalizeManagementUser(account) {
     id: account.id || account.user_id || account.uid,
     username: account.username || account.user_name || '',
     name: account.name || account.full_name || account.display_name || account.username || '',
+    avatar: account.avatar || account.avatarUrl || account.avatar_url || account.photo || '',
     tenantId: account.tenantId || account.tenant_id || tenantId,
     tenantName: account.tenantName || account.tenant_name || account.tenant?.name || '',
     tinodeUid: account.tinodeUid || account.tinode_uid || '',

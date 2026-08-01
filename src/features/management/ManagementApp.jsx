@@ -61,6 +61,46 @@ function BrandLogo() {
   );
 }
 
+function avatarSource(user) {
+  return String(user?.avatar || user?.avatarUrl || user?.avatar_url || user?.photo || '').trim();
+}
+
+function ManagementAvatar({ user, name, icon = '', size = 'default', eager = false }) {
+  const source = avatarSource(user);
+  const displayName = name || user?.name || user?.username || 'Avatar';
+  const [failedSource, setFailedSource] = useState('');
+  const showImage = source && source !== failedSource;
+
+  return (
+    <span className={`management-avatar ${size !== 'default' ? size : ''} ${showImage ? 'has-image' : ''}`} aria-label={displayName}>
+      {showImage
+        ? <img src={source} alt={displayName} loading={eager ? 'eager' : 'lazy'} decoding="async" onError={() => setFailedSource(source)} />
+        : icon
+          ? <i className={icon}></i>
+          : initials(displayName)}
+    </span>
+  );
+}
+
+function ManagementConversationAvatar({ conversation, viewerId }) {
+  const members = conversation?.members || [];
+  const viewer = members.find(member => String(member.id) === String(viewerId));
+  const peer = !conversation?.isGroup && viewer
+    ? members.find(member => String(member.id) !== String(viewerId))
+    : null;
+
+  if (peer) return <ManagementAvatar user={peer} />;
+  if (members.length === 1) return <ManagementAvatar user={members[0]} />;
+  if (members.length > 1) {
+    return (
+      <span className="management-avatar-cluster" aria-label={`Avatar thành viên ${conversation.subject}`}>
+        {members.slice(0, 4).map(member => <ManagementAvatar key={member.id} user={member} size="mini" />)}
+      </span>
+    );
+  }
+  return <ManagementAvatar name={conversation?.subject} icon={`fa-solid ${conversation?.isGroup ? 'fa-users' : 'fa-user'}`} />;
+}
+
 function LoginScreen({ onLogin, error, loading }) {
   const submit = event => {
     event.preventDefault();
@@ -241,6 +281,11 @@ export default function ManagementApp() {
     pendingFriendRequests: Number(conversationSummary.friendRequests?.pending || 0),
   }), [employees, conversations, conversationSummary]);
 
+  const currentAdmin = useMemo(() => {
+    const currentId = String(session?.user?.id || '');
+    return users.find(user => String(user.id) === currentId) || session.user;
+  }, [session, users]);
+
   const handleLogin = async () => {
     setLoginLoading(true);
     setLoginError('');
@@ -318,7 +363,7 @@ export default function ManagementApp() {
           ))}
         </nav>
         <div className="management-sidebar-footer">
-          <div className="management-sidebar-user"><span className="management-avatar small">{initials(session.user.name)}</span><div><strong>{session.user.name}</strong><span>Admin từ UpGO Account</span></div></div>
+          <div className="management-sidebar-user"><ManagementAvatar user={currentAdmin} size="small" eager /><div><strong>{currentAdmin.name}</strong><span>Admin từ UpGO Account</span></div></div>
           <button type="button" className="management-logout" onClick={handleLogout} title="Đăng xuất"><i className="fa-solid fa-arrow-right-from-bracket"></i></button>
         </div>
       </aside>
@@ -366,7 +411,7 @@ export default function ManagementApp() {
                   <header><div><span className="management-eyebrow">Metadata gần đây</span><h3>Conversation được cập nhật</h3></div><button onClick={() => setActiveView('conversations')}>Xem tất cả</button></header>
                   <div className="management-people-list">
                     {conversations.slice(0, 5).map(conversation => (
-                      <div key={conversation.id}><span className="management-avatar"><i className={`fa-solid ${conversation.isGroup ? 'fa-users' : 'fa-user'}`}></i></span><div><strong>{conversation.subject}</strong><span>{conversation.isGroup ? 'Nhóm' : 'Trực tiếp'} · {conversation.participantCount} thành viên · {conversation.realtime.ready ? 'Realtime sẵn sàng' : 'Chờ Tinode'}</span></div><time>{formatDate(conversation.updatedAt)}</time></div>
+                      <div key={conversation.id}><ManagementConversationAvatar conversation={conversation} viewerId={currentAdmin.id} /><div><strong>{conversation.subject}</strong><span>{conversation.isGroup ? 'Nhóm' : 'Trực tiếp'} · {conversation.participantCount} thành viên · {conversation.realtime.ready ? 'Realtime sẵn sàng' : 'Chờ Tinode'}</span></div><time>{formatDate(conversation.updatedAt)}</time></div>
                     ))}
                     {conversations.length === 0 && <p className="management-empty-line">Chưa có conversation trong tenant.</p>}
                   </div>
@@ -403,7 +448,7 @@ export default function ManagementApp() {
                       const busy = actionUserId === user.id;
                       return (
                         <tr key={user.id} className={!user.active ? 'inactive' : ''}>
-                          <td><div className="management-user-cell"><span className="management-avatar">{initials(user.name)}</span><div><strong>{user.name}</strong><span>@{user.username}{user.email ? ` · ${user.email}` : ''}</span><small>{user.department || 'Chưa có phòng ban'}{user.title ? ` / ${user.title}` : ''}</small></div></div></td>
+                          <td><div className="management-user-cell"><ManagementAvatar user={user} /><div><strong>{user.name}</strong><span>@{user.username}{user.email ? ` · ${user.email}` : ''}</span><small>{user.department || 'Chưa có phòng ban'}{user.title ? ` / ${user.title}` : ''}</small></div></div></td>
                           <td><span className={`management-role role-${isAdmin(user) ? 'admin' : 'member'}`}><i className={`fa-solid ${isAdmin(user) ? 'fa-shield' : 'fa-user'}`}></i>{roleLabel(user)}</span></td>
                           <td><span className={`management-status ${user.active ? 'active' : 'inactive'}`}><i></i>{user.active ? 'Đang đồng bộ' : 'Đã ngừng'}</span></td>
                           <td><span className="management-date">{formatDate(user.updatedAt || user.lastLoginAt)}</span></td>
@@ -433,12 +478,12 @@ export default function ManagementApp() {
                   <thead><tr><th>Conversation</th><th>Thành viên</th><th>Chủ sở hữu</th><th>Realtime Tinode</th><th>Cập nhật</th></tr></thead>
                   <tbody>
                     {visibleConversations.map(conversation => {
-                      const owner = conversation.members.find(member => member.id === conversation.ownerId);
+                      const owner = conversation.members.find(member => String(member.id) === String(conversation.ownerId));
                       return (
                         <tr key={conversation.id}>
-                          <td><div className="management-user-cell"><span className="management-avatar"><i className={`fa-solid ${conversation.isGroup ? 'fa-users' : 'fa-user'}`}></i></span><div><strong>{conversation.subject}</strong><span>{conversation.isGroup ? 'Nhóm dùng topic chung' : 'Direct dùng topic theo người xem'}</span><small>{conversation.id}</small></div></div></td>
-                          <td><div className="management-member-stack"><strong>{conversation.participantCount} thành viên</strong><span>{conversation.members.map(member => member.name).join(', ') || 'Chưa có projection hợp lệ'}</span></div></td>
-                          <td><span className="management-date">{owner?.name || 'Chưa xác định'}</span></td>
+                          <td><div className="management-user-cell"><ManagementConversationAvatar conversation={conversation} viewerId={currentAdmin.id} /><div><strong>{conversation.subject}</strong><span>{conversation.isGroup ? 'Nhóm dùng topic chung' : 'Direct dùng topic theo người xem'}</span><small>{conversation.id}</small></div></div></td>
+                          <td><div className="management-member-cell"><div className="management-member-preview">{conversation.members.slice(0, 3).map(member => <ManagementAvatar key={member.id} user={member} size="mini" />)}{conversation.members.length > 3 && <span className="management-member-more">+{conversation.members.length - 3}</span>}</div><div className="management-member-stack"><strong>{conversation.participantCount} thành viên</strong><span>{conversation.members.map(member => member.name).join(', ') || 'Chưa có projection hợp lệ'}</span></div></div></td>
+                          <td>{owner ? <div className="management-owner-cell"><ManagementAvatar user={owner} size="mini" /><span className="management-date">{owner.name}</span></div> : <span className="management-date">Chưa xác định</span>}</td>
                           <td><span className={`management-status ${conversation.realtime.ready ? 'active' : 'inactive'}`}><i></i>{conversation.realtime.ready ? 'Sẵn sàng' : `Chờ UID (${conversation.realtime.provisionedParticipants}/${conversation.participantCount})`}</span></td>
                           <td><span className="management-date">{formatDate(conversation.updatedAt)}</span></td>
                         </tr>
@@ -458,8 +503,8 @@ export default function ManagementApp() {
               <div className="management-audit-list">
                 {visibleAuditLogs.map(log => {
                   const targetId = log.properties?.account_id || log.userId;
-                  const actor = users.find(user => user.id === targetId);
-                  return <article key={log.id}><span className={`management-event-icon large ${log.success ? 'success' : 'failed'}`}><i className={`fa-solid ${log.success ? 'fa-check' : 'fa-xmark'}`}></i></span><div className="management-audit-copy"><strong>{auditLabel(log.eventName)}</strong><span>{actor ? `${actor.name} (@${actor.username})` : targetId || log.properties?.identity || 'Hệ thống'}</span></div><code>{log.eventName}</code><span className="management-audit-ip">{log.ipAddress || 'Nội bộ'}</span><time>{formatDate(log.createdAt)}</time></article>;
+                  const actor = users.find(user => String(user.id) === String(targetId));
+                  return <article key={log.id}><span className={`management-event-icon large ${log.success ? 'success' : 'failed'}`}><i className={`fa-solid ${log.success ? 'fa-check' : 'fa-xmark'}`}></i></span><div className="management-audit-copy"><div className="management-audit-actor">{actor && <ManagementAvatar user={actor} size="mini" />}<div><strong>{auditLabel(log.eventName)}</strong><span>{actor ? `${actor.name} (@${actor.username})` : targetId || log.properties?.identity || 'Hệ thống'}</span></div></div></div><code>{log.eventName}</code><span className="management-audit-ip">{log.ipAddress || 'Nội bộ'}</span><time>{formatDate(log.createdAt)}</time></article>;
                 })}
                 {visibleAuditLogs.length === 0 && <div className="management-empty-state"><i className="fa-solid fa-shield"></i><strong>Chưa có sự kiện phù hợp</strong></div>}
               </div>
