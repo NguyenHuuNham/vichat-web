@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-01-11 - Trien khai realtime presence nhom tren ChatUI
+
+- Thoi gian: 2026-08-01 14:12 (Asia/Saigon)
+- Loai: Trien khai | Sua loi | Realtime | Van hanh
+- Trang thai: Can xac nhan
+- Muc tieu: Dua hotfix `ef8f47e` len `chat.upgo.vn` de Online/Offline lay dung tu Tinode va nhom hien tong thanh vien cung so nguoi dang online.
+- Pham vi: Release/image/container rieng service `chat`; khong recreate Chatmgt, ChatAPI, hai PostgreSQL, Redis, khong migration va khong sua `.env` hay worktree server.
+- File da thay doi: `docs/CHANGELOG.md`; source runtime tu release bat bien `/opt/deploy/chat/releases/ef8f47e`.
+- Noi dung: Archive sach SHA-256 `f62d0d4a9a629d92f6bd5c25827dfc746cc2b9874052d00c1b639b0350e33614` duoc build thanh image `sha256:bc558b6970cc320b2ab075f86723e3c074331cfa603a64254bbc88098f66a455`; container healthy la `82a46a9bac5a8e91a14ab615dd67150ae2abec0d7e5ca6759354e9fdfee69e53`. Public entry la `index-BJYafli6.js`, bundle ChatUI la `App-CPtdJXTx.js` va co marker `group-presence` cua hotfix.
+- Quyet dinh ky thuat: Build tu archive cua dung commit de khong lay cac sua doi cuc bo o may local/server; tag image cu thanh `songhong-production-chat:rollback-00af039-before-ef8f47e`; acceptance co rollback tu dong neu image, health, public asset hoac container boundary khong dat.
+- Database/API/cau hinh: Khong thay doi. Private Tinode bootstrap giu mode `0600`; archive tam da xoa; khong sua secret, domain, reverse proxy, volume hay backend service.
+- Kiem thu: Local test dat 15/15, lint dat voi warning legacy va production build dat. Image Nginx syntax dat; local/public health HTTP 200; public entry va App bundle dung asset moi; Chatmgt health HTTP 200; log ChatUI khong co `panic/fatal/exception/critical`. ID Chatmgt `e2c6c7c651ee9776453e8e343e1161d9e3e128fdb6f881e4e70393a42b84cf15`, ChatAPI `0be211d4f08a3f583dae199391b3fa273b28ef3a7252f4ea045c9e688719e738`, hai PostgreSQL va Redis khong doi.
+- Rui ro con lai: Kiem tra tu dong khong mo duoc hai phien Account that de quan sat Tinode presence. Can hard refresh hai trinh duyet va xac nhan bo dem thay doi khi mot thanh vien online/offline.
+- Viec tiep theo: Hai tai khoan cung tenant mo cung mot nhom; xac nhan nhan `N thanh vien - M dang online`, sau do dong/mat ket noi mot tai khoan va kiem tra `M` cap nhat realtime; thu lai gui/nhan tin de bao dam cac luong cu van on dinh.
+- Commit/PR: Code `ef8f47e`; commit ghi nhan trien khai duoc tao sau muc nay.
+
 ## 2026-08-01-10 - Sua realtime online va thong ke presence nhom
 
 - Thoi gian: 2026-08-01 14:05 (Asia/Saigon)
