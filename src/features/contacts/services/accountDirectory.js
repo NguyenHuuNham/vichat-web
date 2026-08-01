@@ -40,6 +40,32 @@ export function updateAccountPresence(accounts, snapshot, currentUser) {
   return changed ? next : accounts;
 }
 
+export function mergeRealtimeMemberPresence(members, realtimeMembers) {
+  if (!Array.isArray(members) || !Array.isArray(realtimeMembers) || realtimeMembers.length === 0) {
+    return members;
+  }
+  let changed = false;
+  const next = members.map(member => {
+    const realtimeMember = realtimeMembers.find(candidate => identitiesOverlap(member, candidate));
+    if (!realtimeMember || typeof realtimeMember.online !== 'boolean' || member.online === realtimeMember.online) {
+      return member;
+    }
+    changed = true;
+    return { ...member, online: realtimeMember.online };
+  });
+  return changed ? next : members;
+}
+
+export function countGroupPresence(members, currentUser, currentUserOnline) {
+  const groupMembers = Array.isArray(members) ? members : [];
+  return {
+    memberCount: groupMembers.length,
+    onlineCount: groupMembers.filter(member => (
+      identitiesOverlap(member, currentUser) ? currentUserOnline === true : member?.online === true
+    )).length,
+  };
+}
+
 export function findDirectPeer(room, accounts, currentUser) {
   const members = (room?.members || []).map(member => (
     findAccount(accounts, member?.id || member?.uid || member?.tinodeUid || member?.tinode_uid || member?.name)

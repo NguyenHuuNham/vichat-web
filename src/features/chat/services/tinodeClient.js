@@ -560,7 +560,7 @@ function toConversation(topic, tinode) {
         id: sub.user,
         name: usableProfileName(sub.public?.fn || sub.public?.name) || cachedProfile.name || 'Thành viên',
         avatar: normalizeAvatar(sub.public?.photo || sub.public?.avatar) || cachedProfile.avatar || '',
-        online: sub.online !== false,
+        online: sub.online === true,
         mode: sub.acs?.getMode?.() || sub.mode,
       });
     }
@@ -1288,7 +1288,7 @@ export const tinodeClient = {
             id: uid,
             name: profile.name || 'Người dùng',
             avatar: profile.avatar || '',
-            online: sub.online !== false,
+            online: sub.online === true,
           });
         }
       });

@@ -339,6 +339,15 @@ body {
     border-radius: 50%;
 }
 
+.user-status.offline::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background-color: var(--status-offline);
+    border-radius: 50%;
+}
+
 /* ==========================================================================
    COL 2: SIDEBAR SECONDARY (Danh sách chat)
    ========================================================================== */
@@ -635,6 +644,11 @@ body {
 .chat-header-status {
     font-size: 11px;
     color: var(--text-muted);
+}
+
+.chat-header-status.group-presence {
+    color: #0b8f63;
+    font-weight: 600;
 }
 
 .chat-header-actions {

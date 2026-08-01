@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-01-10 - Sua realtime online va thong ke presence nhom
+
+- Thoi gian: 2026-08-01 14:05 (Asia/Saigon)
+- Loai: Sua loi | Realtime | Giao dien
+- Trang thai: Can xac nhan
+- Muc tieu: Cap nhat Online/Offline theo Tinode va hien tieu de nhom theo mau `N thanh vien - M dang online`, giu nguyen cac luong chat, thong bao, Account SSO va quan tri dang hoat dong.
+- Pham vi: Chi ChatUI, gom chuyen doi presence tu subscriber Tinode, hop nhat presence vao thanh vien do Chatmgt quan ly, dem thanh vien online va mau chu thong ke nhom; khong sua Chatmgt, ChatAPI, database, API, SSO hay handler gui/nhan tin.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `src/styles/index.css` va `docs/CHANGELOG.md`.
+- Noi dung: Chi coi subscriber la online khi Tinode tra ve `online === true`; giu identity, ten va avatar tu Chatmgt nhung phu presence realtime tu Tinode; bao toan presence cua thanh vien khong doi khi Chatmgt refresh danh sach; header va bang thong tin nhom cung hien tong thanh vien va so nguoi dang online; trang thai cua tai khoan hien tai phan anh ket noi realtime thay vi hardcode Online.
+- Quyet dinh ky thuat: Chatmgt tiep tuc la nguon chuan ve membership/profile, Tinode la nguon chuan ve presence. Thanh vien moi khong duoc suy dien online, thanh vien da bi xoa khong duoc giu lai, va trang thai cua chinh nguoi dang dung duoc tinh theo phien Tinode hien tai.
+- Database/API/cau hinh: Khong thay doi. Khong migration, dependency, bien moi truong, secret, domain hay reverse proxy moi.
+- Kiem thu: `npm run test:frontend` dat 15/15; `npm run lint` dat voi warning legacy co san trong `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build -- --outDir .codex-build-group-presence --emptyOutDir` dat; `git diff --check` dat. Thu muc build tam da xoa sau khi kiem tra.
+- Rui ro con lai: Runtime khong co hai phien Account production de UAT presence thuc te. Sau deploy can hard refresh hai trinh duyet, mo cung mot nhom va kiem tra so online thay doi khi mot tai khoan ket noi/ngat ket noi.
+- Viec tiep theo: Commit/push, deploy rieng service `chat` len `.206`, xac minh health/public asset/container boundary va UAT bang hai tai khoan that.
+- Commit/PR: Commit hotfix duoc tao trong cung lan lam viec nay (xem `git log`).
+
 ## 2026-08-01-09 - Trien khai hotfix dong bo nhom Tinode
 
 - Thoi gian: 2026-08-01 13:41 (Asia/Saigon)

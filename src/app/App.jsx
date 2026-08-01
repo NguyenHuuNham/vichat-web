@@ -8,7 +8,16 @@ import {
   resolvePreparedTinodeTopic,
   tinodeContactsSyncDelay,
 } from '../features/chat/services/chatRealtime';
-import { findAccount, findDirectPeer, identitiesOverlap, identityValues, snapshotPresence, updateAccountPresence } from '../features/contacts/services/accountDirectory';
+import {
+  countGroupPresence,
+  findAccount,
+  findDirectPeer,
+  identitiesOverlap,
+  identityValues,
+  mergeRealtimeMemberPresence,
+  snapshotPresence,
+  updateAccountPresence,
+} from '../features/contacts/services/accountDirectory';
 import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
 import { CHATBOT_ACCOUNT, learnFromChatFile, learnFromChatMessage, loadChatbotMessages, loadChatbotMessagesFromServer, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
@@ -296,6 +305,12 @@ function mergeTinodeConversation(existing, incoming) {
     existing.accountSession && isManagementConversationId(existing.managementId || existing.id),
   );
   const incomingManagementSnapshot = managementOwned && Array.isArray(incoming.participantIds);
+  const snapshotMembers = incoming.members?.length ? incoming.members : (existing.members || []);
+  const members = incomingManagementSnapshot
+    ? mergeRealtimeMemberPresence(snapshotMembers, existing.members || [])
+    : managementOwned
+      ? mergeRealtimeMemberPresence(existing.members || [], incoming.members || [])
+      : snapshotMembers;
   return {
     ...existing,
     ...incoming,
@@ -315,9 +330,7 @@ function mergeTinodeConversation(existing, incoming) {
     adminId: managementOwned && !incomingManagementSnapshot
       ? existing.adminId
       : (incoming.adminId || existing.adminId),
-    members: managementOwned && !incomingManagementSnapshot
-      ? (existing.members || [])
-      : (incoming.members?.length ? incoming.members : (existing.members || [])),
+    members,
     participantIds: incomingManagementSnapshot ? incoming.participantIds : existing.participantIds,
     messages,
     friendEvents,
@@ -642,6 +655,12 @@ function App() {
   const isCurrentUserOnline = Boolean(
     isLoggedIn && currentUser && (chatMode !== 'tinode' || connectionStatus === 'online')
   );
+  const activeGroupPresence = activeChat.isGroup
+    ? countGroupPresence(activeChat.members, currentUser, isCurrentUserOnline)
+    : null;
+  const activeChatPresenceLabel = activeGroupPresence
+    ? `${activeGroupPresence.memberCount} thành viên • ${activeGroupPresence.onlineCount} đang online`
+    : activeChat.membersCount;
   const profileAccount = {
     ...(findAccount(directoryAccounts, currentUser?.id || currentUser?.uid) || {}),
     ...(currentUser || {}),
@@ -3031,7 +3050,9 @@ function App() {
             <SafeAvatar src={currentUser?.avatar} name={currentUser?.name} className="user-avatar-img" />
             <div className="user-info">
               <span className="user-name">{currentUser?.name || "Mai Thành Lâm"}</span>
-              <span className="user-status online">Online</span>
+              <span className={`user-status ${isCurrentUserOnline ? 'online' : 'offline'}`}>
+                {isCurrentUserOnline ? 'Online' : 'Offline'}
+              </span>
             </div>
           </div>
         </div>
@@ -3107,7 +3128,9 @@ function App() {
             </div>
             <div className="chat-header-meta">
               <h2 className="chat-header-name">{activeChat.name}</h2>
-              <span className="chat-header-status">{activeChat.membersCount}</span>
+              <span className={`chat-header-status ${activeChat.isGroup ? 'group-presence' : ''}`}>
+                {activeChatPresenceLabel}
+              </span>
             </div>
           </div>
           <div className="chat-header-actions">
@@ -3374,7 +3397,7 @@ function App() {
               <ConversationAvatar room={activeChat} />
             </div>
             <h3 className="group-name-large">{activeChat.name}</h3>
-            <span className="group-members-count">{activeChat.membersCount}</span>
+            <span className="group-members-count">{activeChatPresenceLabel}</span>
           </div>
 
           {activeChat.isGroup && (
