@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-01-09 - Trien khai hotfix dong bo nhom Tinode
+
+- Thoi gian: 2026-08-01 13:41 (Asia/Saigon)
+- Loai: Trien khai | Sua loi | Realtime | Van hanh
+- Trang thai: Can xac nhan
+- Muc tieu: Dua hotfix group invite/binding cua commit `00af039` len `chat.upgo.vn` de nguoi dung kiem tra nhom moi noi len dau, badge/thong bao va khong con binding conflict.
+- Pham vi: Release/image/container rieng service `chat`; khong recreate Chatmgt, ChatAPI, hai PostgreSQL, Redis, khong migration va khong sua `.env` hay worktree server.
+- File da thay doi: `docs/CHANGELOG.md`; source runtime tu release bat bien `/opt/deploy/chat/releases/00af039`.
+- Noi dung: Archive sach SHA-256 `d89b1da7fa1fff8dec3150c90c1214650e52ad389ad9cdaa0ef1122aac16e0b9` duoc build thanh image `sha256:72d713fa98cede424d68180c48a7c6c02d6fe8a734d818e7510dcb53465ba9d9`; container healthy la `7b560cd8d93d14612ab93b2e869d0f7d4cd71082abff317c8d376ab2840d8f16`. Public entry la `index-C5OmRS5W.js`, bundle ChatUI la `App-BXlqrkTj.js` va co marker `getPendingConversationTopics` cua hotfix.
+- Quyet dinh ky thuat: Dung release/archive sach de bao toan cac sua doi cuc bo tren server va tag image cu thanh `songhong-production-chat:rollback-bc89b97-before-00af039`. Ba acceptance script dau dung/rollback an toan do lan luot doc nham image ID cua container, test Nginx ngoai Docker network, va dung cu phap GNU `find`/regex asset khong tuong thich BusyBox; lan cuoi lay asset truc tiep tu image va chi giu container moi sau khi toan bo health/public/boundary check dat.
+- Database/API/cau hinh: Khong thay doi. Archive tam tren server da xoa; private Tinode bootstrap duoc bao toan mode `0600`; khong sua secret, domain, reverse proxy hay volume.
+- Kiem thu: Local `npm run test:frontend` dat 12/12, lint dat voi warning legacy va production build dat. Server build tao dung asset moi; Nginx syntax trong image va tren host dat; local/public `/healthz`, public ChatUI bundle va Chatmgt health deu dat; ChatUI log 10 phut co 0 `panic/fatal/exception/critical`. ID Chatmgt `e2c6c7c651ee9776453e8e343e1161d9e3e128fdb6f881e4e70393a42b84cf15`, ChatAPI `0be211d4f08a3f583dae199391b3fa273b28ef3a7252f4ea045c9e688719e738`, hai PostgreSQL va Redis khong doi.
+- Rui ro con lai: Chua co hai phien Account production trong browser runtime de UAT nhom that. Can hard refresh de loai cache bundle cu va thu truong hop nguoi khac tao nhom/gui tin ngay sau khi moi.
+- Viec tiep theo: Dung hai tai khoan cung tenant, hard refresh ca hai; tai khoan A tao nhom va gui tin ngay, tai khoan B xac nhan nhom tu noi len dau, co badge/thong bao, mo duoc khong bao conflict; sau do thu lai chat 1-1.
+- Commit/PR: Code `00af039`; commit ghi nhan trien khai chua muc nay.
+
 ## 2026-08-01-08 - Sua dong bo topic va thong bao nhom Tinode
 
 - Thoi gian: 2026-08-01 13:21 (Asia/Saigon)
@@ -19,8 +35,8 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong thay doi. Them mot phuong thuc doc noi bo `getPendingConversationTopics()` tren client Tinode de phat hien topic realtime chua duoc allow.
 - Kiem thu: `npm run test:frontend` dat 12/12; `npm run lint` dat voi warning legacy san co trong `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build -- --outDir .codex-build-group-sync --emptyOutDir` dat; `git diff --check` dat. Browser runtime khong co browser session nen chua test UI production truc tiep.
 - Rui ro con lai: Can build/deploy service ChatUI va thu UAT bang hai tai khoan that de xac nhan moi nhom moi, tin nhan dau tien, badge, thong bao va thu tu danh sach tren trinh duyet desktop/mobile.
-- Viec tiep theo: Review diff, commit/push va deploy rieng ChatUI sau khi duoc phe duyet; khong recreate Chatmgt, ChatAPI, PostgreSQL hay Redis.
-- Commit/PR: Chua tao.
+- Viec tiep theo: UAT production bang hai tai khoan that theo muc trien khai `2026-08-01-09`.
+- Commit/PR: `00af039`.
 
 ## 2026-08-01-05 - Trien khai hotfix man hinh trang Chatmgt
 
