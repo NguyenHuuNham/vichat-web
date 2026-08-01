@@ -1136,6 +1136,16 @@ export const tinodeClient = {
     return presenceSnapshot(getClient());
   },
 
+  getPendingConversationTopics() {
+    const pendingTopics = [];
+    meTopic?.contacts(topic => {
+      if (topic?.isCommType?.() && topic.name && !allowedConversationTopics.has(topic.name)) {
+        pendingTopics.push(String(topic.name));
+      }
+    });
+    return pendingTopics;
+  },
+
   async ensureSession(auth = {}) {
     const expectedUid = String(auth.uid || '');
     if (this.authenticated) {

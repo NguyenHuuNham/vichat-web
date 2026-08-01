@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-01-08 - Sua dong bo topic va thong bao nhom Tinode
+
+- Thoi gian: 2026-08-01 13:21 (Asia/Saigon)
+- Loai: Sua loi | Tich hop | Realtime
+- Trang thai: Can xac nhan
+- Muc tieu: Bao dam thanh vien nhan duoc nhom Tinode moi sau khi duoc moi, khong tao topic trung, co realtime badge/thu tu danh sach va giu nguyen chat 1-1.
+- Pham vi: Chi luong ChatUI buoc 4 giua Chatmgt va Tinode; khong sua backend binding guard, Account SSO, Chatmgt UI, database hay ChatAPI.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/tinodeClient.js`, va `docs/CHANGELOG.md`.
+- Noi dung: ChatUI su dung `tinodeTopic` vua duoc `tinode-prepare` tra ve truoc khi tao group; them retry co gioi han 120/600/1800 ms cho contacts sync khi Tinode invite den truoc commit binding Chatmgt; chi retry khi con topic Tinode chua duoc Chatmgt cho phep va dung ngay khi phien thay doi. Khi topic dung duoc subscribe, event hien co tiep tuc cap nhat badge, `updatedAt`, thu tu va thong bao.
+- Quyet dinh ky thuat: Giu nguyen HTTP 409 `TINODE_TOPIC_ALREADY_BOUND` de ngan rebind sai; khong cho phep topic Tinode tu do vao danh sach neu Chatmgt chua xac nhan. Trich logic topic va chinh sach retry thanh helper thuan de test ma khong thay doi state/handler chat 1-1.
+- Database/API/cau hinh: Khong thay doi. Them mot phuong thuc doc noi bo `getPendingConversationTopics()` tren client Tinode de phat hien topic realtime chua duoc allow.
+- Kiem thu: `npm run test:frontend` dat 12/12; `npm run lint` dat voi warning legacy san co trong `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build -- --outDir .codex-build-group-sync --emptyOutDir` dat; `git diff --check` dat. Browser runtime khong co browser session nen chua test UI production truc tiep.
+- Rui ro con lai: Can build/deploy service ChatUI va thu UAT bang hai tai khoan that de xac nhan moi nhom moi, tin nhan dau tien, badge, thong bao va thu tu danh sach tren trinh duyet desktop/mobile.
+- Viec tiep theo: Review diff, commit/push va deploy rieng ChatUI sau khi duoc phe duyet; khong recreate Chatmgt, ChatAPI, PostgreSQL hay Redis.
+- Commit/PR: Chua tao.
+
 ## 2026-08-01-05 - Trien khai hotfix man hinh trang Chatmgt
 
 - Thoi gian: 2026-08-01 12:00 (Asia/Saigon)

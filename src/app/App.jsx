@@ -3,7 +3,11 @@ import Login from '../features/auth/components/Login';
 import KnowledgeManager from '../features/chatbot/components/KnowledgeManager';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation } from '../features/chat/services/tinodeClient';
 import { chatManagementService } from '../features/chat/services/chatManagementService';
-import { readyTinodeTypingTopic } from '../features/chat/services/chatRealtime';
+import {
+  readyTinodeTypingTopic,
+  resolvePreparedTinodeTopic,
+  tinodeContactsSyncDelay,
+} from '../features/chat/services/chatRealtime';
 import { findAccount, findDirectPeer, identitiesOverlap, identityValues, snapshotPresence, updateAccountPresence } from '../features/contacts/services/accountDirectory';
 import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
@@ -592,6 +596,7 @@ function App() {
   const notificationBaselineRef = useRef(new Map());
   const notificationAudioContextRef = useRef(null);
   const contactsSyncTimerRef = useRef(null);
+  const contactsSyncRequestRef = useRef(0);
   const logoutHandlerRef = useRef(null);
   const forcedLogoutHandlerRef = useRef(null);
   const forcedLogoutRef = useRef(false);
@@ -830,8 +835,11 @@ function App() {
     const managementUserId = currentUser?.id || currentUser?.uid;
     await ensureTinodeSession();
     if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
-    let topicName = room.tinodeTopic
-      || chatManagementService.getTinodeTopic(managementUserId, managementConversationId);
+    let topicName = resolvePreparedTinodeTopic(
+      room,
+      null,
+      chatManagementService.getTinodeTopic(managementUserId, managementConversationId),
+    );
     let preparedRoom = room;
     let createdGroupTopic = false;
     let createdGroupAvatar = '';
@@ -839,6 +847,11 @@ function App() {
     if (!topicName) {
       preparedRoom = await chatManagementService.prepareTinodeConversation(managementConversationId);
       if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
+      topicName = resolvePreparedTinodeTopic(
+        room,
+        preparedRoom,
+        chatManagementService.getTinodeTopic(managementUserId, managementConversationId),
+      );
     }
 
     if (!topicName && preparedRoom.isGroup) {
@@ -1004,18 +1017,38 @@ function App() {
       }
       if (event.type === 'contacts') {
         // A new invite or P2P topic is first reported through the `me` topic.
-        // Subscribe it immediately so messages arrive without opening it.
-        if (!contactsSyncTimerRef.current) {
+        // Chatmgt binding can commit just after the Tinode invite, so retry
+        // only while Tinode still has a topic which Chatmgt has not allowed.
+        const scheduleContactsSync = attempt => {
+          const sessionActive = accountSessionRef.current === accountSession;
+          const pendingTopicNames = attempt === 0 ? [] : tinodeClient.getPendingConversationTopics();
+          const delay = tinodeContactsSyncDelay(attempt, { sessionActive, pendingTopicNames });
+          if (delay === null) return false;
           contactsSyncTimerRef.current = setTimeout(() => {
             contactsSyncTimerRef.current = null;
+            if (accountSessionRef.current !== accountSession) return;
+            contactsSyncRequestRef.current = accountSession;
             refreshManagementConversations(accountSession)
-              .then(() => tinodeClient.listConversations())
+              .then(() => (
+                accountSessionRef.current === accountSession
+                  ? tinodeClient.listConversations()
+                  : []
+              ))
+              .then(() => {
+                if (contactsSyncRequestRef.current === accountSession) contactsSyncRequestRef.current = 0;
+                if (accountSessionRef.current === accountSession) scheduleContactsSync(attempt + 1);
+              })
               .catch(error => {
-                if (accountSessionRef.current === accountSession) {
+                if (contactsSyncRequestRef.current === accountSession) contactsSyncRequestRef.current = 0;
+                if (accountSessionRef.current === accountSession && !scheduleContactsSync(attempt + 1)) {
                   setChatError(error?.message || 'Không đồng bộ được danh sách cuộc trò chuyện.');
                 }
               });
-          }, 120);
+          }, delay);
+          return true;
+        };
+        if (!contactsSyncTimerRef.current && contactsSyncRequestRef.current !== accountSession) {
+          scheduleContactsSync(0);
         }
         return;
       }
@@ -1193,6 +1226,9 @@ function App() {
     notificationBaselineRef.current.clear();
     learnedKnowledgeKeysRef.current.clear();
     tinodeSessionRequestRef.current = null;
+    if (contactsSyncTimerRef.current) clearTimeout(contactsSyncTimerRef.current);
+    contactsSyncTimerRef.current = null;
+    contactsSyncRequestRef.current = 0;
     setCurrentUser(user);
     setChatMode(user.connection || 'demo');
     setConnectionStatus(user.connection === 'tinode' ? 'ready' : user.connection === 'management' ? 'managed' : 'demo');
@@ -1356,6 +1392,7 @@ function App() {
     typingClearTimersRef.current.clear();
     if (contactsSyncTimerRef.current) clearTimeout(contactsSyncTimerRef.current);
     contactsSyncTimerRef.current = null;
+    contactsSyncRequestRef.current = 0;
     setTypingByTopic({});
     const initialRooms = createInitialConversations();
     conversationsRef.current = initialRooms;
