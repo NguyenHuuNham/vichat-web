@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-01-13 - Trien khai presence nhom va receipt nen
+
+- Thoi gian: 2026-08-01 14:47 (Asia/Saigon)
+- Loai: Trien khai | Sua loi | Realtime | Van hanh
+- Trang thai: Can xac nhan
+- Muc tieu: Dua hotfix `4d1ed91` len production de bang thanh vien nhom nhan dung Tinode presence va tin nhan chuyen sang da nhan ngay khi nguoi nhan dang nhap.
+- Pham vi: Release/image/container rieng `chatmgt` va `chat`; khong recreate ChatAPI, hai PostgreSQL, Redis, khong migration va khong sua `.env` hay worktree server.
+- File da thay doi: `docs/CHANGELOG.md`; source runtime tu release bat bien `/opt/deploy/chat/releases/4d1ed91`.
+- Noi dung: Archive sach SHA-256 `5cecc6c8892e72a9ed8f1ed88872fe94b1e562a6cf93e06c53ae2545886e7c50` duoc build thanh Chatmgt image `sha256:67dcb24300fe1258e606fce22c787a639f3bfd1f6d626e954ad4fb26ec460e9b` va ChatUI image `sha256:b865fba4322e2adcbfe96bd06005897f3fb5f6ad4a20fd1150f110da33ee4128`. Container healthy lan luot la `9eb2247056a3b88a19577d968165873d5dffda8fec67800b3d6fc770690afcaf` va `3197af75915e319c7921cd3dc17e2a66dd93175a3a0fbfab6994148d07ea9850`; public entry `index-A7zaVCil.js`, App bundle `App-CtMnwmhX.js` co ca marker `JRWPAS` va `noteRecv`.
+- Quyet dinh ky thuat: Giu image cu bang tag `songhong-production-chatmgt:rollback-d3e3f7c-before-4d1ed91` va `songhong-production-chat:rollback-bc558b6-before-4d1ed91`. Cac luot acceptance dau rollback an toan do harness kiem tra tra exit code khong chinh xac sau HTTP 200 va `curl` gap pipefail 23 khi `grep -q` dong pipe som; lan cuoi dung `docker exec` cho verifier va tai public asset vao file tam truoc khi doi chieu marker.
+- Database/API/cau hinh: Khong thay doi. Tinode bootstrap goc va ban trong release deu giu mode `0600`; archive tam local/server da xoa; khong sua secret, domain, reverse proxy hay volume.
+- Kiem thu: Local frontend dat 17/17, lint dat voi warning legacy, production build dat va contract Python dat 25 test chay truc tiep. Image Chatmgt dat 69 test voi 9 source-only skip; `verify_deployment.py` va `verify_tenant_isolation.py` deu dat. Chatmgt/ChatUI local va public health dat; public bundle co mode/receipt moi; log khong co `traceback/panic/fatal/critical`. ID ChatAPI `0be211d4f08a3f583dae199391b3fa273b28ef3a7252f4ea045c9e688719e738`, hai PostgreSQL va Redis khong doi.
+- Rui ro con lai: Runtime khong co hai phien Account that de UAT granted/wanted mode cua nhom cu va receipt realtime tu hai phia. Chu nhom va thanh vien can hard refresh de ca hai tai bundle moi.
+- Viec tiep theo: Tai khoan A gui tin khi B offline; B chi dang nhap, khong mo chat, A phai thay hai dau tich da nhan. Sau do mo cung nhom, xac nhan tung thanh vien Online; dong/ngat mot phien va xac nhan Offline cung bo dem nhom cap nhat realtime.
+- Commit/PR: Code `4d1ed91`; commit ghi nhan trien khai duoc tao sau muc nay.
+
 ## 2026-08-01-12 - Sua presence thanh vien nhom va receipt khi dang nhap
 
 - Thoi gian: 2026-08-01 14:34 (Asia/Saigon)
