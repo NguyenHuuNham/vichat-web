@@ -235,6 +235,8 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("tinode_remove_topic_member", remove_source)
         self.assertIn("TINODE_TOKEN_REQUIRED", add_source)
         self.assertIn("TINODE_TOKEN_REQUIRED", remove_source)
+        self.assertIn('mode="JRWPASO"', remove_source)
+        self.assertIn('mode="JRWPAS"', remove_source)
 
     def test_direct_conversations_are_reused_by_participant_pair(self):
         _controller_source, create_source = function_source(

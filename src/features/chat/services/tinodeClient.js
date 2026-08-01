@@ -1,5 +1,9 @@
 import tinodeSdk from 'tinode-sdk';
-import { resolveTinodePresenceOnline } from './chatRealtime';
+import {
+  acknowledgeTopicReceived,
+  modeWithRealtimePresence,
+  resolveTinodePresenceOnline,
+} from './chatRealtime';
 
 /*
  * Thin integration layer around the Tinode browser SDK.
@@ -53,7 +57,7 @@ const MEDIA_PROXY_PREFIX = '/tinode-media';
 // Keep room for Tinode's restricted auth/email/tel tags (server maximum is 16).
 const MAX_DISCOVERY_TAGS = 13;
 const MAX_TAG_LENGTH = 24;
-const GROUP_MEMBER_MODE = 'JRWAS';
+const GROUP_MEMBER_MODE = 'JRWPAS';
 const GROUP_DEFAULT_AUTH_MODE = 'N';
 const BACKGROUND_HISTORY_LIMIT = 100;
 const RECONNECT_HISTORY_LIMIT = 100;
@@ -751,7 +755,12 @@ function wireTopic(topic) {
   topic.onMetaDesc = () => emitConversation(topic, topicClient);
   topic.onMetaSub = () => emitConversation(topic, topicClient);
   topic.onSubsUpdated = () => emitConversation(topic, topicClient);
-  topic.onPres = () => emitConversation(topic, topicClient);
+  topic.onPres = presence => {
+    if (presence?.src && (presence.what === 'on' || presence.what === 'off')) {
+      emitPresence(presence.src, presence.what === 'on');
+    }
+    emitConversation(topic, topicClient);
+  };
   topic.onInfo = info => {
     if (topicClient !== client || !info?.what) return;
     if (['kp', 'kpa', 'kpv'].includes(info.what)) {
@@ -774,10 +783,7 @@ function wireTopic(topic) {
 }
 
 function modeWithInvitePermissions(mode = '') {
-  const permissions = new Set(String(mode).split(''));
-  permissions.add('A');
-  permissions.add('S');
-  return 'JRWPASDO'.split('').filter(permission => permissions.has(permission)).join('');
+  return modeWithRealtimePresence(mode);
 }
 
 async function ensurePrivateGroupDefaults(topic) {
@@ -812,16 +818,18 @@ async function ensureGroupInvitePermissions(topic) {
     const request = (async () => {
       let access = topic.getAccessMode?.() || topic.acs;
       const initialMode = access?.getMode?.() || '';
+      let presenceChanged = false;
 
       // Keep discovery private and grant invite permissions only to explicit
-      // members. Public JRWAS defaults let any authenticated user self-join.
+      // members. Public JRWPAS defaults let any authenticated user self-join.
       if (initialMode.includes('O')) {
         await ensurePrivateGroupDefaults(topic);
         const updates = [];
         topic.subscribers?.(sub => {
           if (!sub?.user || sub.user === getClient().getCurrentUserID()) return;
           const memberMode = sub.acs?.getMode?.() || sub.mode || '';
-          if (!memberMode.includes('A') || !memberMode.includes('S')) {
+          if (!memberMode.includes('A') || !memberMode.includes('S') || !memberMode.includes('P')) {
+            presenceChanged = true;
             updates.push(topic.invite(sub.user, modeWithInvitePermissions(memberMode || GROUP_MEMBER_MODE)));
           }
         });
@@ -829,15 +837,19 @@ async function ensureGroupInvitePermissions(topic) {
       }
 
       // Access is the intersection of what the owner grants and what the member
-      // requests. Legacy members still request JRWS even after the owner grants
-      // JRWAS, so update their complete wanted mode instead of applying "+AS".
+      // requests. Legacy members may still omit presence even after the owner
+      // grants invite rights, so update their complete wanted mode at once.
       access = topic.getAccessMode?.() || topic.acs;
       let effectiveMode = access?.getMode?.() || '';
-      if (!effectiveMode.includes('A') || !effectiveMode.includes('S')) {
+      if (!effectiveMode.includes('A') || !effectiveMode.includes('S') || !effectiveMode.includes('P')) {
         const wantedMode = access?.getWant?.() || effectiveMode || GROUP_MEMBER_MODE;
+        presenceChanged = true;
         await topic.updateMode(null, modeWithInvitePermissions(wantedMode));
         access = topic.getAccessMode?.() || topic.acs;
         effectiveMode = access?.getMode?.() || '';
+      }
+      if (presenceChanged) {
+        await topic.getMeta(topic.startMetaQuery().withSub().build());
       }
       return effectiveMode.includes('A') && effectiveMode.includes('S');
     })().finally(() => groupPermissionMigrationRequests.delete(topic.name));
@@ -874,6 +886,8 @@ async function subscribeTopic(topicName, { historyLimit = BACKGROUND_HISTORY_LIM
   // Existing owners migrate legacy public groups once per session. A failed
   // hardening request must not make an otherwise valid conversation unusable.
   await ensurePrivateGroupDefaults(topic).catch(() => false);
+  await ensureGroupInvitePermissions(topic).catch(() => false);
+  acknowledgeTopicReceived(topic);
 
   if (!newerOnly && historyLimit >= 1000 && !fullHistoryTopics.has(topicName)) {
     if (!fullHistoryRequests.has(topicName)) {

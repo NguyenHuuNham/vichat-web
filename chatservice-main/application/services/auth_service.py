@@ -546,7 +546,7 @@ async def tinode_verify_topic_access(token, expected_uid, topic_name, expected_m
             return actual_member_uids
 
 
-async def tinode_add_topic_members(token, expected_uid, topic_name, member_uids, mode="JRWAS"):
+async def tinode_add_topic_members(token, expected_uid, topic_name, member_uids, mode="JRWPAS"):
     base_url = str(app.config.get("TINODE_INTERNAL_WS_URL") or "").rstrip("?")
     api_key = str(app.config.get("TINODE_API_KEY") or "")
     members = list(dict.fromkeys(str(uid) for uid in member_uids if uid))

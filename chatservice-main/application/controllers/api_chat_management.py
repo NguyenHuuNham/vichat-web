@@ -2354,7 +2354,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
                     actor_account.tinode_uid,
                     item.tinode_topic,
                     [replacement_uid],
-                    mode="JRWASO",
+                    mode="JRWPASO",
                 )
             await tinode_remove_topic_member(
                 tinode_token,
@@ -2381,7 +2381,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
                     actor_account.tinode_uid,
                     item.tinode_topic,
                     [replacement_uid],
-                    mode="JRWAS",
+                    mode="JRWPAS",
                 )
             except AuthError:
                 logger.warning("Could not roll back the Tinode owner transfer.")

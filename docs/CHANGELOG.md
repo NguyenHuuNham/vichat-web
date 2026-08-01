@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-01-12 - Sua presence thanh vien nhom va receipt khi dang nhap
+
+- Thoi gian: 2026-08-01 14:34 (Asia/Saigon)
+- Loai: Sua loi | Realtime | Tinode bridge
+- Trang thai: Can xac nhan
+- Muc tieu: Bao dam bang thong tin nhom hien dung Online/Offline cua tung thanh vien va tin nhan da gui chuyen sang trang thai da nhan ngay khi nguoi nhan dang nhap, khong doi cac luong dang on dinh.
+- Pham vi: Chi presence/receipt Tinode trong ChatUI va mode subscription do Chatmgt cap khi them/chuyen chu nhom; khong sua Account SSO, noi dung tin nhan, API contract, database, membership, thong bao, typing, file hay cac thao tac nhom khac.
+- File da thay doi: `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/tinodeClient.js`, `chatservice-main/application/services/auth_service.py`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_tinode_bridge_service.py`, `chatservice-main/tests/test_chat_auth_contract.py` va `docs/CHANGELOG.md`.
+- Noi dung: Them quyen `P` vao mode thanh vien Tinode (`JRWPAS`, chu nhom thay the `JRWPASO`) o ca ChatUI va Chatmgt; tu nang mode nhom cu khi topic duoc subscribe va tai lai subscriber metadata; phat su kien `on/off` cua group vao snapshot presence chung de danh ba, header va bang thanh vien cap nhat cung luc. Moi topic Chatmgt cho phep van duoc subscribe nen sau khi dang nhap ChatUI chu dong gui `recv` toi sequence moi nhat, giup phia gui nhan hai dau tich ma khong doi thanh `read` cho den khi nguoi nhan mo cuoc tro chuyen.
+- Quyet dinh ky thuat: Chatmgt tiep tuc la nguon chuan membership/UID va chi cap them quyen presence; Tinode van la nguon chuan Online/Offline va delivery/read receipt. Online co the dao chieu khi co `on/off`; receipt da nhan/da doc la don dieu va khong lui ve mot dau tich khi nguoi dung offline.
+- Database/API/cau hinh: Khong thay doi. Khong migration, endpoint, payload, dependency, secret hay bien moi truong moi.
+- Kiem thu: `npm run test:frontend` dat 17/17; `npm run lint` dat voi warning legacy co san; production build dat; `git diff --check` dat. `python -m unittest tests.test_tinode_bridge_service tests.test_chat_auth_contract -v` dat 25 test chay truc tiep va skip 5 test bridge do may local khong co dependency runtime; 5 test nay phai chay trong image Chatmgt truoc khi deploy.
+- Rui ro con lai: Nhom cu can chu nhom va thanh vien tai bundle moi de hai phia granted/wanted mode cung co `P`; sau deploy can hard refresh hai tai khoan va UAT ca group presence lan receipt nen.
+- Viec tiep theo: Build image tu commit sach, chay full test Chatmgt trong image, deploy rieng `chatmgt` va `chat`, giu nguyen ChatAPI/PostgreSQL/Redis, sau do thu hai tai khoan that.
+- Commit/PR: Commit hotfix duoc tao trong cung lan lam viec nay (xem `git log`).
+
 ## 2026-08-01-11 - Trien khai realtime presence nhom tren ChatUI
 
 - Thoi gian: 2026-08-01 14:12 (Asia/Saigon)

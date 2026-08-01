@@ -176,7 +176,7 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(added, ["usrMember"])
         self.assertEqual(socket.sent[-1]["set"]["sub"], {
             "user": "usrMember",
-            "mode": "JRWAS",
+            "mode": "JRWPAS",
         })
 
     async def test_self_removal_unsubscribes_the_current_tinode_user(self):

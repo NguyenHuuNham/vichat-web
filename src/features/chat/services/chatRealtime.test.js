@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  acknowledgeTopicReceived,
+  modeWithRealtimePresence,
   readyTinodeTypingTopic,
   resolvePreparedTinodeTopic,
   resolveTinodePresenceOnline,
+  topicReceiptSequence,
   tinodeContactsSyncDelay,
 } from './chatRealtime.js';
 
@@ -43,4 +46,23 @@ test('Tinode on and off events override stale contact presence immediately', () 
   assert.equal(resolveTinodePresenceOnline('off', true), false);
   assert.equal(resolveTinodePresenceOnline('msg', true), true);
   assert.equal(resolveTinodePresenceOnline('msg', false), false);
+});
+
+test('group permissions include presence for existing and new members', () => {
+  assert.equal(modeWithRealtimePresence('JRWAS'), 'JRWPAS');
+  assert.equal(modeWithRealtimePresence('JRWPASDO'), 'JRWPASDO');
+});
+
+test('background receipt acknowledgement uses the latest topic sequence', () => {
+  let acknowledged = 0;
+  const topic = {
+    maxMsgSeq: () => 12,
+    latestMessage: () => ({ seq: 8 }),
+    noteRecv: sequence => { acknowledged = sequence; },
+  };
+
+  assert.equal(acknowledgeTopicReceived(topic), 12);
+  assert.equal(acknowledged, 12);
+  assert.equal(topicReceiptSequence({ maxMsgSeq: () => 0, latestMessage: () => ({ seq: 8 }) }), 8);
+  assert.equal(topicReceiptSequence({ maxMsgSeq: () => 0, latestMessage: () => null }), 0);
 });

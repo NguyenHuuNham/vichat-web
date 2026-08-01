@@ -24,3 +24,25 @@ export function resolveTinodePresenceOnline(eventType, currentOnline = false) {
   if (eventType === 'off' || eventType === 'gone' || eventType === 'term') return false;
   return currentOnline === true;
 }
+
+export function modeWithRealtimePresence(mode = '') {
+  const permissions = new Set(String(mode).split(''));
+  permissions.add('A');
+  permissions.add('S');
+  permissions.add('P');
+  return 'JRWPASDO'.split('').filter(permission => permissions.has(permission)).join('');
+}
+
+export function topicReceiptSequence(topic) {
+  const maxSequence = Number(topic?.maxMsgSeq?.());
+  if (Number.isFinite(maxSequence) && maxSequence > 0) return maxSequence;
+  const latestSequence = Number(topic?.latestMessage?.()?.seq);
+  return Number.isFinite(latestSequence) && latestSequence > 0 ? latestSequence : 0;
+}
+
+export function acknowledgeTopicReceived(topic) {
+  const sequence = topicReceiptSequence(topic);
+  if (sequence <= 0 || typeof topic?.noteRecv !== 'function') return 0;
+  topic.noteRecv(sequence);
+  return sequence;
+}
