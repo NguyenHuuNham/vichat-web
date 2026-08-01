@@ -6,6 +6,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-01-04 - Sua man hinh trang khi Chatmgt bootstrap
+
+- Thoi gian: 2026-08-01 11:56 (Asia/Saigon)
+- Loai: Sua loi | Giao dien
+- Trang thai: Can trien khai
+- Muc tieu: Khoi phuc render Chatmgt sau visual refresh ma khong thay doi chuc nang, API, SSO, database hay Tinode.
+- Pham vi: Mot guard hien thi trong `src/features/management/ManagementApp.jsx` va changelog; khong sua state transition, handler, service request, role policy hay stylesheet premium.
+- Noi dung: `session` khoi tao bang `null` trong luc bootstrap, nhung fallback avatar admin moi doc truc tiep `session.user` truoc khi nhanh loading duoc render, lam React nem loi va trang chi con nen trang. Doi fallback thanh optional access va profile rong chi trong pha chua co session.
+- Quyet dinh ky thuat: Sua tai diem doc du lieu presentation thay vi thay doi thu tu auth bootstrap; khi session hop le, admin van duoc lay tu projection Account moi nhat hoac chinh `session.user` nhu cu.
+- Database/API/cau hinh: Khong thay doi. Khong migration, dependency hay bien moi truong moi.
+- Kiem thu: `npm run lint` dat voi warning legacy co san; frontend test dat 10/10; production build dat voi `ManagementApp-GaZazErR.js`; SSR initial render qua Vite dat marker `MANAGEMENT_INITIAL_RENDER_OK`; `git diff --check` dat.
+- Rui ro con lai: Runtime khong co browser session de chup anh sau hotfix; can hard refresh sau deploy. Khong co rui ro da biet voi chuc nang vi thay doi chi ngan truy cap property cua gia tri `null` trong pha loading.
+- Viec tiep theo: Commit/push, deploy rieng `chatmgt`, chay verifier va kiem tra public JavaScript hotfix.
+- Commit/PR: Commit hotfix duoc tao trong cung lan lam viec nay (xem `git log`).
+
 ## 2026-08-01-03 - Trien khai visual refresh premium Chatmgt
 
 - Thoi gian: 2026-08-01 11:51 (Asia/Saigon)

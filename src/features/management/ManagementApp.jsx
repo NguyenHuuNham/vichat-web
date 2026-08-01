@@ -283,7 +283,7 @@ export default function ManagementApp() {
 
   const currentAdmin = useMemo(() => {
     const currentId = String(session?.user?.id || '');
-    return users.find(user => String(user.id) === currentId) || session.user;
+    return users.find(user => String(user.id) === currentId) || session?.user || { id: '', name: '' };
   }, [session, users]);
 
   const handleLogin = async () => {
