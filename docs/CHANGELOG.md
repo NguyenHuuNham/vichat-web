@@ -6,6 +6,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-01-02 - Visual refresh premium cho Chatmgt
+
+- Thoi gian: 2026-08-01 11:42 (Asia/Saigon)
+- Loai: Giao dien | Kha nang truy cap
+- Trang thai: Can trien khai
+- Muc tieu: Lam giao dien Chatmgt thay doi ro rang va chuyen nghiep hon tren desktop/mobile trong khi giu nguyen toan bo chuc nang dang hoat dong.
+- Pham vi: Chi `src/features/management/management.css`; khong sua JSX logic, state, handler, endpoint, Account SSO, database, Tinode, ChatUI hay ChatAPI.
+- Noi dung: Them visual layer theo huong enterprise command center: sidebar xanh sau co ambient glow va active state cam ro, topbar dang glass panel noi, nen grid/radial, hero va metric card co chieu sau, panel/table/audit/system card phan cap lai, hover/focus va responsive spacing duoc lam ro hon. Khong them nut, luong thao tac hay du lieu gia.
+- Quyet dinh ky thuat: Dung CSS override co pham vi trong stylesheet rieng de tach presentation khoi nghiep vu; giu nguyen cac class va DOM dang co de khong lam thay doi event binding. Breakpoint mobile hien co duoc bao toan va chi dieu chinh margin topbar cho layout moi.
+- Database/API/cau hinh: Khong thay doi. Khong migration, bien moi truong, dependency hay tai nguyen runtime moi.
+- Kiem thu: `npm run lint` dat voi warning legacy co san ngoai pham vi; `npm run test:frontend` dat 10/10; `npm run build -- --outDir .codex-build-chatmgt-premium --emptyOutDir` dat voi stylesheet `ManagementApp-4vutcfcs.css`; `git diff --check` dat. Browser skill da duoc ap dung nhung runtime tra ve khong co browser session, nen chua co screenshot QA truc tiep.
+- Rui ro con lai: Chua the xac nhan pixel tren trinh duyet production trong runtime hien tai; can hard refresh sau deploy va kiem tra lai desktop/mobile. Logic va hop dong du lieu khong doi.
+- Viec tiep theo: Commit/push, build image release sach, recreate rieng `chatmgt` tren `.206`, chay verifier va kiem tra bundle public.
+- Commit/PR: Commit visual refresh duoc tao trong cung lan lam viec nay (xem `git log`).
+
 ## 2026-08-01-01 - Hoan thien giao dien va dong bo avatar Chatmgt
 
 - Thoi gian: 2026-08-01 11:29 (Asia/Saigon)
