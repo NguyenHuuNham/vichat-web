@@ -6,6 +6,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-03-10 - Trien khai giao dien nhom gon va thanh goi lai
+
+- Thoi gian: 2026-08-03 22:44 (Asia/Saigon)
+- Loai: Trien khai | Giao dien | Kha dung
+- Trang thai: Hoan tat trien khai, cho UAT truc quan
+- Muc tieu: Dua giao dien tao nhom/them thanh vien da toi gian va the lich su cuoc goi gon hon len `chat.upgo.vn`, chi thay ChatUI va bao toan cac service backend dang on dinh.
+- Pham vi: Release bat bien `/opt/deploy/chat/releases/1b903b3`, image va container `chat`; khong recreate Chatmgt, ChatAPI, hai PostgreSQL, Redis, Coturn, khong migration va khong sua worktree server dang co 6 thay doi cuc bo.
+- Noi dung: Archive sach SHA-256 `23c4c7ad6e4d24340f2898bd718cd64a97a74dfa7802a56b0eba672517a4cc19` duoc build thanh image `sha256:704f7ec9afd2667921c8b44269067619c53fd47493c961b9bc789dd264c93c9d`; container healthy la `61bfb54c89f43d7c3c836cf351412a7700efa6d0bcf49f557406de433aa99b87`. Public entry la `index-CL4q_Url.js`, App bundle `App-xScM63rx.js` va CSS `index-ByWh0Xhh.css`.
+- Quyet dinh ky thuat: Tiep tuc deploy tu archive/release sach thay vi pull/reset worktree production. Sao chep `.env` va runtime mode `0600` tu release dang chay, gan image cu thanh `songhong-production-chat:rollback-before-1b903b3`, build va force-recreate rieng `chat`. Checkpoint marker dau tien bao thieu sai vi regex bat nham `ManagementApp` thanh `App`; regex duoc sua de doc dung ChatUI bundle truoc khi nghiem thu.
+- Database/API/cau hinh: Khong thay doi database, API, secret, domain, reverse proxy, Tinode, WebRTC hay bien moi truong. Chatmgt, ChatAPI, chat PostgreSQL, Tinode PostgreSQL va Redis giu nguyen container ID truoc/sau deploy.
+- Kiem thu: Snapshot commit dat frontend test 27/27, lint voi warning legacy va build Vite. Production dat Nginx syntax, local/public health HTTP `200`, container `chat` healthy, public bundle co `Goi lai`, `Cuoc goi nho`, `create-group-modal`, `group-members-modal`, ten/placeholder ngan gon; khong con `CHAT GROUP`, mo ta nhom, huong dan dinh dang anh va huong dan tim kiem dai. Log ChatUI khong co `panic/fatal/traceback/exception/critical`.
+- Rui ro con lai: Chua UAT truc quan tren desktop/mobile co phien Account that; nguoi dung can hard refresh de bo asset cache va kiem tra kich thuoc modal/the cuoc goi.
+- Viec tiep theo: Hard refresh `chat.upgo.vn`, mo tao nhom/them thanh vien va xem lai lich su voice/video; neu hien thi dung thi tiep tuc thiet ke luong dang nhap Chatmgt username/password theo tenant trong mot thay doi backend rieng.
+- Commit/PR: Tinh nang `1b903b3`; commit ghi nhan trien khai duoc tao trong cung lan lam viec nay.
+
 ## 2026-08-03-09 - Thu gon giao dien tao nhom va lich su cuoc goi
 
 - Thoi gian: 2026-08-03 (Asia/Saigon)
