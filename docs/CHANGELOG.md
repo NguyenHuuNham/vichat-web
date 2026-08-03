@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-03-05 - Trien khai goi thoai va video Tinode WebRTC
+
+- Thoi gian: 2026-08-03 14:24 (Asia/Saigon)
+- Loai: Trien khai | Realtime | Ha tang | Giao dien
+- Trang thai: Hoan tat trien khai, cho UAT media hai tai khoan
+- Muc tieu: Dua tinh nang goi thoai/video 1-1 cua commit `62be0e2` len `chat.upgo.vn`, bat ICE/TURN cho Tinode va bao toan cac service, volume va luong Chatmgt dang on dinh.
+- Pham vi: Release bat bien `/opt/deploy/chat/releases/62be0e2`, Coturn, ChatAPI va ChatUI; khong recreate Chatmgt, hai PostgreSQL, Redis, khong migration va khong sua worktree server dang co thay doi cuc bo.
+- File da thay doi: `docs/CHANGELOG.md`; runtime production dung source commit `62be0e2`, `.env` va `runtime/ice-servers.json` rieng cua release.
+- Noi dung: Archive SHA-256 `0d84bd1fb441aab7f556c4a9000d614cb893c99fd1c3f9226bcb16d6f0bc641a` duoc giai nen vao release moi. UFW mo TCP/UDP `3478` va UDP `49160-49200`; Coturn pin checksum lang nghe tai `192.168.80.160:3478`. ChatAPI duoc recreate voi `WEBRTC_ENABLED=true` va mount `/data/runtime`; ChatUI image moi la `sha256:c8a0b0fbc4f143405d4c6a824de52c891146930edeeb7144896e43942d93e5af`, public entry `index-CRMiKokq.js` va App bundle `App-B5OfzHjX.js`.
+- Quyet dinh ky thuat: Dung release directory thay vi pull/reset worktree server; copy private `.env` va Tinode bootstrap voi mode `0600`, render ICE file mode `0600`, giu ChatUI cu bang tag `songhong-production-chat:rollback-before-62be0e2`. Ba lan acceptance dau rollback an toan do harness lan luot gap quoting Docker label va cu phap BusyBox/public marker, khong do health ung dung; lan cuoi tach tung checkpoint va chi giu release moi sau khi tat ca dau ra dat.
+- Database/API/cau hinh: Khong migration va khong doi Chatmgt API. Them WebRTC/TURN vao `.env` cua release, khong ghi secret vao Git/nhat ky. Chatmgt van chay tu release `d24c4af`; worktree server van o `1b3de22` voi dung 6 thay doi cuc bo nhu truoc trien khai.
+- Kiem thu: Local staged clean dat `npm run test:frontend` 27/27, `npm run lint` voi warning legacy, build Vite internal/external, `bash -n`, hai Compose config va `git diff --check`. Production xac nhan Nginx syntax trong dung Compose network; ChatUI va ChatAPI healthy; Coturn running; Tinode hello tra `TINODE_ICE_SERVERS_COUNT=2`; local/public health dat; public App bundle co marker `ice-candidate`; Tinode PostgreSQL, Chatservice PostgreSQL, Redis va Chatmgt giu nguyen container ID; log khong co `emerg/fatal/panic/critical`.
+- Rui ro con lai: Chua UAT micro/camera bang hai Account user that tren hai mang khac nhau va khong co quyen doc firewall ngoai cua nha cung cap. UFW tren may chu da mo dung cong, nhung can xac nhan provider firewall cho UDP relay neu nha cung cap co lop loc rieng.
+- Viec tiep theo: Hai nguoi dung hard refresh, thu voice/video tren hai mang khac nhau, reject, timeout, hang-up, bat/tat micro-camera; sau do regression chat 1-1/nhom, presence, receipt va notification.
+- Commit/PR: Code `62be0e2`; commit ghi nhan trien khai chua muc nay (xem `git log`).
+
 ## 2026-08-03-04 - Them goi thoai va video P2P qua Tinode WebRTC
 
 - Thoi gian: 2026-08-03 11:09 (Asia/Saigon)
