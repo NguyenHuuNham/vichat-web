@@ -48,6 +48,57 @@ The checked-in host configuration uses:
 Install `nginx-host-chat.conf` and `nginx-host-chatmgt.conf` on the reverse
 proxy, obtain TLS certificates, run `sudo nginx -t`, then reload Nginx.
 
+## Voice and video calls
+
+Tinode 0.25.3 provides signaling for direct WebRTC calls only. Group calls are
+not enabled. Production uses the pinned Coturn service in `compose.yaml` so a
+call still works when both browsers are behind NAT or on different networks.
+
+Set these values in the existing mode-`0600` production `.env`:
+
+```dotenv
+WEBRTC_ENABLED=true
+TURN_HOST=103.74.122.206
+TURN_PORT=3478
+TURN_REALM=chat.upgo.vn
+TURN_USERNAME=vichat
+TURN_PASSWORD=replace-with-a-long-random-password
+TURN_EXTERNAL_IP=103.74.122.206/192.168.80.160
+TURN_PRIVATE_IP=192.168.80.160
+TURN_RELAY_MIN_PORT=49160
+TURN_RELAY_MAX_PORT=49200
+```
+
+`start.sh` replaces the password placeholder with a random hexadecimal secret,
+renders the ignored `runtime/ice-servers.json` with mode `0600`, starts Coturn
+on the host network, and then starts ChatAPI with `WEBRTC_ENABLED=true`. Never
+commit either the real `.env` or the rendered ICE file.
+
+`TURN_HOST` must resolve directly to the machine running Coturn. At the time of
+this release `chat.upgo.vn` resolves to the separate `.218` web entry, so the
+TURN endpoint on this deployment must use `103.74.122.206` (or a dedicated DNS
+record which resolves to that address), not the ChatUI hostname.
+
+Open the matching host and provider firewalls before enabling the service:
+
+```bash
+sudo ufw allow 3478/tcp
+sudo ufw allow 3478/udp
+sudo ufw allow 49160:49200/udp
+sudo ufw status
+```
+
+If UFW is inactive, keep it inactive and configure the equivalent rules in the
+server provider firewall instead of changing the host firewall policy during a
+release. TCP and UDP `3478` are the TURN listener; UDP `49160-49200` is the
+restricted relay range.
+
+After ChatAPI is recreated, its Tinode hello response must contain at least one
+`iceServers` entry. Complete acceptance with two employee accounts on separate
+networks: voice call, video call, reject, unanswered timeout, hang-up, camera
+and microphone toggles, then verify ordinary direct/group messages and external
+chatbot mode still behave as before.
+
 ## Startup guarantees
 
 `start.sh` runs in this order:

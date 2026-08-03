@@ -7,7 +7,7 @@
 | 1 | Chatmgt deployment, Alembic, domains, HTTPS | Service is healthy, database is at Alembic head, and public URLs use HTTPS |
 | 2 | UpGO Account login/logout | Employees authenticate from `account.upgo.vn`; Chatmgt never receives an Account password |
 | 3 | ChatUI data from Chatmgt | Directory, friends, and conversation metadata are tenant-scoped and loaded from Chatmgt |
-| 4 | Chatmgt and Tinode/ChatAPI | Realtime tokens, topics, messages, files, presence, and receipts pass their own acceptance tests |
+| 4 | Chatmgt and Tinode/ChatAPI | Realtime tokens, topics, messages, files, presence, receipts, and direct calls pass their own acceptance tests |
 
 Stages must be tested independently. In particular, Step 2 must not provision a
 Tinode account or request a Tinode token.
@@ -23,7 +23,8 @@ Tinode account or request a Tinode token.
   tenant-scoped profile projection needed by chat metadata, and issues/revokes
   the Chatmgt HttpOnly session.
 - `chatapi` (Tinode): owns realtime topics, messages, files, presence, typing,
-  reactions, and receipts. This boundary belongs to Step 4.
+  reactions, receipts, and direct-call signaling. WebRTC media flows between
+  browsers directly or through Coturn; this boundary belongs to Step 4.
 
 The local `management_account` row created during SSO is a projection, not a new
 user-facing account. It preserves the authoritative Account user ID and tenant ID
@@ -246,6 +247,21 @@ events through the currently allowed Chatmgt topic bindings. Tinode `on` and
 directory account and direct conversation immediately; the periodic/contact
 snapshot is only reconciliation, not the primary presence signal.
 
+Direct voice and video calls reuse Tinode 0.25.3 call signaling on an allowed
+P2P topic. The initial Drafty `VC` message and `webrtc` header create the call;
+`ringing`, `accept`, `offer`, `answer`, `ice-candidate`, and `hang-up` travel as
+Tinode call info events. ChatUI never invents a signaling endpoint in Chatmgt.
+Tinode also replaces the call message with its accepted/finished/missed state,
+which is rendered as call history in the same conversation.
+
+Calls are available only when the authenticated Tinode hello response contains
+validated ICE servers. Production runs a pinned Coturn service on the host
+network and gives Tinode an ignored mode-`0600` ICE JSON file containing STUN
+and authenticated TURN URLs. Group calls are deliberately unavailable because
+Tinode 0.25.3 supports P2P calls only. Disconnect, logout, session replacement,
+chatbot mode, invalid topic bindings, and concurrent calls close or reject the
+call without changing ordinary message or membership flows.
+
 If token provisioning or the Tinode socket is unavailable, ChatUI stays in
 `management` mode: Step 3 data remains usable, realtime inputs remain disabled,
 and the failure is shown instead of falling back to demo/localStorage data.
@@ -285,6 +301,16 @@ TINODE_ADMIN_USERNAME=admin
 TINODE_ADMIN_PASSWORD=<current-tinode-root-password>
 TINODE_SSO_SECRET=<at-least-32-random-characters>
 TINODE_TOKEN_EXPIRE_IN=300
+WEBRTC_ENABLED=true
+TURN_HOST=<hostname-or-public-ip-routed-directly-to-coturn>
+TURN_PORT=3478
+TURN_REALM=chat.upgo.vn
+TURN_USERNAME=vichat
+TURN_PASSWORD=<generated-random-hex-secret>
+TURN_EXTERNAL_IP=<public-ip/private-interface-ip>
+TURN_PRIVATE_IP=<private-interface-ip>
+TURN_RELAY_MIN_PORT=49160
+TURN_RELAY_MAX_PORT=49200
 ```
 
 The real `infrastructure/production/.env` is intentionally not modified by code

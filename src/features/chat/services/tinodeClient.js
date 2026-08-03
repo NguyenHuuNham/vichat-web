@@ -4,6 +4,15 @@ import {
   modeWithRealtimePresence,
   resolveTinodePresenceOnline,
 } from './chatRealtime';
+import {
+  CALL_HEAD_STARTED,
+  CALL_SIGNAL_EVENTS,
+  callCapability,
+  callHistoryLabel,
+  extractCallInvite,
+  normalizeIceServers,
+  parseCallMessage,
+} from './callSignaling';
 
 /*
  * Thin integration layer around the Tinode browser SDK.
@@ -45,6 +54,7 @@ const fullHistoryTopics = new Set();
 const groupPermissionMigrationRequests = new Map();
 const groupPrivacyMigrationRequests = new Map();
 const privateGroupTopics = new Set();
+const callInviteKeys = new Set();
 const conversationEmitTimers = new Map();
 let conversationListRequest = null;
 let contactsEventQueued = false;
@@ -379,6 +389,7 @@ function toMessage(msg, tinode, topic = null) {
   // id in a private header when publishing and use it as a safe fallback.
   const messageSenderId = msg.from || msg.head?.['x-sender-id'] || '';
   const isOutgoing = messageSenderId ? tinode.isMe(messageSenderId) : false;
+  const call = parseCallMessage(msg.content, msg.head, !isOutgoing);
   const attachment = draftyAttachment(msg.content);
   const content = typeof msg.content === 'string' ? msg.content : (msg.content?.txt || '');
   let systemEvent = null;
@@ -432,7 +443,7 @@ function toMessage(msg, tinode, topic = null) {
       ? `friend-${friendEvent.action}-${friendEvent.requestId}`
       : clientId || `${msg.from || 'system'}-${msg.seq || msg.ts || Date.now()}`,
     seq: msg.seq,
-    type: friendEvent ? 'friend_event' : reactionEvent ? 'reaction_event' : recallEvent ? 'recall_event' : systemEvent ? 'system' : attachment ? (attachment.tp === 'IM' ? 'image' : 'file') : 'text',
+    type: call ? 'call' : friendEvent ? 'friend_event' : reactionEvent ? 'reaction_event' : recallEvent ? 'recall_event' : systemEvent ? 'system' : attachment ? (attachment.tp === 'IM' ? 'image' : 'file') : 'text',
     action: friendEvent?.action || systemEvent?.action,
     sender: isOutgoing ? 'outgoing' : 'incoming',
     senderId: friendActorId || systemEvent?.actorId || messageSenderId || (isOutgoing ? tinode.getCurrentUserID() : undefined),
@@ -442,8 +453,9 @@ function toMessage(msg, tinode, topic = null) {
     friendEvent,
     reactionEvent,
     recallEvent,
+    call,
     replyTo,
-    text: friendEvent ? (friendEvent.note || '') : systemEvent ? formatSystemEvent(systemEvent, tinode.getCurrentUserID()) : content,
+    text: call ? callHistoryLabel(call, isOutgoing) : friendEvent ? (friendEvent.note || '') : systemEvent ? formatSystemEvent(systemEvent, tinode.getCurrentUserID()) : content,
     image: attachment?.tp === 'IM' ? attachmentUrl : undefined,
     file: attachment?.tp === 'EX' ? {
       name: attachmentName,
@@ -711,6 +723,21 @@ function emitConversation(topic, tinode = topic?._tinode || getClient()) {
   }, 20));
 }
 
+function emitCallInvite(topic, data, tinode) {
+  if (!topic || !data || tinode !== client || !allowedConversationTopics.has(topic.name)) return;
+  const latest = topic.latestMsgVersion?.(data.seq) || data;
+  const invite = extractCallInvite(
+    { ...data, topic: data.topic || topic.name },
+    tinode.getCurrentUserID(),
+    latest,
+  );
+  if (!invite) return;
+  const key = `${invite.topic}:${invite.seq}`;
+  if (callInviteKeys.has(key)) return;
+  callInviteKeys.add(key);
+  listeners.forEach(listener => listener({ type: 'call-invite', ...invite }));
+}
+
 function presenceSnapshot(tinode = getClient()) {
   const snapshot = {};
   const me = tinode?.getMeTopic?.();
@@ -751,7 +778,10 @@ function emitContactsSoon() {
 
 function wireTopic(topic) {
   const topicClient = topic?._tinode || getClient();
-  topic.onData = () => emitConversation(topic, topicClient);
+  topic.onData = data => {
+    emitCallInvite(topic, data, topicClient);
+    emitConversation(topic, topicClient);
+  };
   topic.onMetaDesc = () => emitConversation(topic, topicClient);
   topic.onMetaSub = () => emitConversation(topic, topicClient);
   topic.onSubsUpdated = () => emitConversation(topic, topicClient);
@@ -763,6 +793,17 @@ function wireTopic(topic) {
   };
   topic.onInfo = info => {
     if (topicClient !== client || !info?.what) return;
+    if (info.what === 'call') {
+      listeners.forEach(listener => listener({
+        type: 'call-signal',
+        topic: topic.name,
+        seq: Number(info.seq) || 0,
+        event: info.event,
+        payload: info.payload,
+        from: info.from,
+      }));
+      return;
+    }
     if (['kp', 'kpa', 'kpv'].includes(info.what)) {
       const subscriber = topic.subscriber?.(info.from);
       const profile = subscriber?.public || userProfileCache.get(info.from) || {};
@@ -953,6 +994,7 @@ function resetSessionState({ clearEventListeners = false } = {}) {
   groupPermissionMigrationRequests.clear();
   groupPrivacyMigrationRequests.clear();
   privateGroupTopics.clear();
+  callInviteKeys.clear();
   conversationEmitTimers.forEach(timer => clearTimeout(timer));
   conversationEmitTimers.clear();
   conversationListRequest = null;
@@ -1052,6 +1094,20 @@ async function initializeSession(tinode, fallbackLogin = '', preferredName = '')
     if (presence?.src && (presence.what === 'on' || presence.what === 'off')) {
       emitPresence(presence.src, presence.what === 'on');
     }
+  };
+  const previousInfo = meTopic.onInfo;
+  meTopic.onInfo = info => {
+    previousInfo?.(info);
+    if (info?.what !== 'call' || !info.src) return;
+    listeners.forEach(listener => listener({
+      type: 'call-signal',
+      topic: info.src,
+      seq: Number(info.seq) || 0,
+      event: info.event,
+      payload: info.payload,
+      from: info.from,
+      viaMe: true,
+    }));
   };
   const previousMetaDesc = meTopic.onMetaDesc;
   const previousSubsUpdated = meTopic.onSubsUpdated;
@@ -1158,6 +1214,50 @@ export const tinodeClient = {
       }
     });
     return pendingTopics;
+  },
+
+  getCallIceServers() {
+    return normalizeIceServers(client?.getServerParam?.('iceServers', []));
+  },
+
+  getCallCapability(topicName, options = {}) {
+    return callCapability({
+      authenticated: this.authenticated,
+      topicName,
+      isGroup: Boolean(options.isGroup),
+      isChatbot: Boolean(options.isChatbot),
+      iceServers: this.getCallIceServers(),
+    });
+  },
+
+  async startCall(topicName, audioOnly = false) {
+    const capability = this.getCallCapability(topicName);
+    if (!capability.available) throw new Error(capability.reason);
+    const tinode = getClient();
+    const topic = await subscribeTopic(topicName, { historyLimit: 0 });
+    const Drafty = getDrafty();
+    if (!Drafty?.videoCall) throw new Error('Tinode SDK khong ho tro goi WebRTC.');
+    const draft = topic.createMessage(Drafty.videoCall(Boolean(audioOnly)), false);
+    draft.head = {
+      ...(draft.head || {}),
+      webrtc: CALL_HEAD_STARTED,
+      aonly: Boolean(audioOnly),
+      'x-sender-id': tinode.getCurrentUserID(),
+    };
+    const ctrl = await topic.publishMessage(draft);
+    const seq = Number(ctrl?.params?.seq || draft.seq || 0);
+    if (!seq) throw new Error('Tinode khong tra ve ma cuoc goi.');
+    return { seq, topic: topicName, audioOnly: Boolean(audioOnly) };
+  },
+
+  async sendCallSignal(topicName, seq, event, payload) {
+    if (!Object.values(CALL_SIGNAL_EVENTS).includes(event)) {
+      throw new Error('Tin hieu cuoc goi khong hop le.');
+    }
+    const callSeq = Number(seq);
+    if (!callSeq) throw new Error('Cuoc goi chua co ma tin nhan.');
+    const topic = await subscribeTopic(topicName, { historyLimit: 0 });
+    await topic.videoCall(event, callSeq, payload);
   },
 
   async ensureSession(auth = {}) {

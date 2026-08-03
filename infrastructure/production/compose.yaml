@@ -35,11 +35,35 @@ services:
       ACC_GC_ENABLED: "true"
       DEBUG_EMAIL_VERIFICATION_CODE: ""
       FS_CORS_ORIGINS: '${TINODE_CORS_ORIGINS}'
+      WEBRTC_ENABLED: "${WEBRTC_ENABLED:-false}"
+      ICE_SERVERS_FILE: /data/runtime/ice-servers.json
     volumes:
       - ../tinode/config.template:/opt/tinode/config.template:ro
       - ./runtime/tinode-bootstrap.json:/data/tinode-bootstrap.json:ro
+      - ./runtime:/data/runtime:ro
       - tinode_uploads:/opt/tinode/uploads
       - tinode_botdata:/botdata
+
+  coturn:
+    image: coturn/coturn:4.16.0@sha256:01fc8655e7c262fa4ccfb8dca74ff80fb372b0ee021e80370a4d3e3dd01a951e
+    profiles: [webrtc]
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - --no-tls
+      - --no-dtls
+      - --fingerprint
+      - --lt-cred-mech
+      - --realm=${TURN_REALM:-chat.upgo.vn}
+      - --user=${TURN_USERNAME:-vichat}:${TURN_PASSWORD:-disabled}
+      - --external-ip=${TURN_EXTERNAL_IP:-127.0.0.1}
+      - --listening-ip=${TURN_PRIVATE_IP:-127.0.0.1}
+      - --listening-port=${TURN_PORT:-3478}
+      - --min-port=${TURN_RELAY_MIN_PORT:-49160}
+      - --max-port=${TURN_RELAY_MAX_PORT:-49200}
+      - --relay-ip=${TURN_PRIVATE_IP:-127.0.0.1}
+      - --no-multicast-peers
+      - --log-file=stdout
 
   chat-postgres:
     image: postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777

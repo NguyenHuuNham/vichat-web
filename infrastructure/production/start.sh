@@ -70,7 +70,37 @@ ensure_secret() {
 }
 
 compose() {
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+  local profile_args=()
+  if [[ "$(env_value WEBRTC_ENABLED)" == "true" ]]; then
+    profile_args=(--profile webrtc)
+  fi
+  docker compose "${profile_args[@]}" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+}
+
+render_ice_servers() {
+  local target="$RUNTIME_DIR/ice-servers.json"
+  local temp_file
+  if [[ -d "$target" ]]; then
+    echo "$target is a directory; remove the empty Docker-created directory before retrying." >&2
+    return 1
+  fi
+  temp_file="$(mktemp "$RUNTIME_DIR/ice-servers.json.tmp.XXXXXX")"
+  if [[ "$(env_value WEBRTC_ENABLED)" == "true" ]]; then
+    local turn_host turn_port turn_username turn_password
+    turn_host="$(env_value TURN_HOST)"
+    turn_port="$(env_value TURN_PORT)"
+    turn_port="${turn_port:-3478}"
+    turn_username="$(env_value TURN_USERNAME)"
+    turn_username="${turn_username:-vichat}"
+    turn_password="$(env_value TURN_PASSWORD)"
+    printf '[\n  {"urls":["stun:%s:%s"]},\n  {"username":"%s","credential":"%s","urls":["turn:%s:%s?transport=udp","turn:%s:%s?transport=tcp"]}\n]\n' \
+      "$turn_host" "$turn_port" "$turn_username" "$turn_password" \
+      "$turn_host" "$turn_port" "$turn_host" "$turn_port" > "$temp_file"
+  else
+    printf '[]\n' > "$temp_file"
+  fi
+  chmod 600 "$temp_file"
+  mv -f -- "$temp_file" "$target"
 }
 
 wait_postgres() {
@@ -128,6 +158,52 @@ ensure_secret APP_SECRET_KEY base64 48
 ensure_secret AUTH_PASSWORD_SALT base64 32
 ensure_secret SESSION_COOKIE_SALT base64 48
 ensure_secret CHAT_AUTH_JWT_SECRET base64 48
+
+webrtc_enabled="$(env_value WEBRTC_ENABLED)"
+webrtc_enabled="${webrtc_enabled:-false}"
+webrtc_enabled="${webrtc_enabled,,}"
+if [[ "$webrtc_enabled" != "true" && "$webrtc_enabled" != "false" ]]; then
+  echo "WEBRTC_ENABLED must be true or false." >&2
+  exit 1
+fi
+set_env WEBRTC_ENABLED "$webrtc_enabled"
+
+if [[ "$webrtc_enabled" == "true" ]]; then
+  turn_host="$(env_value TURN_HOST)"
+  turn_port="$(env_value TURN_PORT)"
+  turn_port="${turn_port:-3478}"
+  turn_realm="$(env_value TURN_REALM)"
+  turn_realm="${turn_realm:-$turn_host}"
+  turn_username="$(env_value TURN_USERNAME)"
+  turn_username="${turn_username:-vichat}"
+  turn_external_ip="$(env_value TURN_EXTERNAL_IP)"
+  turn_private_ip="$(env_value TURN_PRIVATE_IP)"
+  turn_relay_min="$(env_value TURN_RELAY_MIN_PORT)"
+  turn_relay_min="${turn_relay_min:-49160}"
+  turn_relay_max="$(env_value TURN_RELAY_MAX_PORT)"
+  turn_relay_max="${turn_relay_max:-49200}"
+
+  ! is_placeholder "$turn_host" || { echo "TURN_HOST must resolve directly to this Coturn server." >&2; exit 1; }
+  [[ "$turn_host" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "TURN_HOST is invalid." >&2; exit 1; }
+  [[ "$turn_realm" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "TURN_REALM is invalid." >&2; exit 1; }
+  [[ "$turn_username" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "TURN_USERNAME is invalid." >&2; exit 1; }
+  [[ "$turn_external_ip" =~ ^[A-Fa-f0-9:.]+(/[A-Fa-f0-9:.]+)?$ ]] || { echo "TURN_EXTERNAL_IP must be public-ip/private-ip when the server is behind NAT." >&2; exit 1; }
+  [[ "$turn_private_ip" =~ ^[A-Fa-f0-9:.]+$ ]] || { echo "TURN_PRIVATE_IP is invalid." >&2; exit 1; }
+  [[ "$turn_port" =~ ^[0-9]+$ ]] && (( turn_port >= 1 && turn_port <= 65535 )) || { echo "TURN_PORT is invalid." >&2; exit 1; }
+  [[ "$turn_relay_min" =~ ^[0-9]+$ && "$turn_relay_max" =~ ^[0-9]+$ ]] || { echo "TURN relay ports must be numeric." >&2; exit 1; }
+  (( turn_relay_min >= 1024 && turn_relay_max <= 65535 && turn_relay_min <= turn_relay_max )) || { echo "TURN relay port range is invalid." >&2; exit 1; }
+
+  ensure_secret TURN_PASSWORD hex 24
+  turn_password="$(env_value TURN_PASSWORD)"
+  [[ "$turn_password" =~ ^[A-Fa-f0-9]{32,128}$ ]] || { echo "TURN_PASSWORD must be a generated hexadecimal secret." >&2; exit 1; }
+
+  set_env TURN_HOST "$turn_host"
+  set_env TURN_PORT "$turn_port"
+  set_env TURN_REALM "$turn_realm"
+  set_env TURN_USERNAME "$turn_username"
+  set_env TURN_RELAY_MIN_PORT "$turn_relay_min"
+  set_env TURN_RELAY_MAX_PORT "$turn_relay_max"
+fi
 
 tinode_token_expire="$(env_value TINODE_TOKEN_EXPIRE_IN)"
 tinode_token_expire="${tinode_token_expire:-300}"
@@ -216,12 +292,16 @@ fi
 
 mkdir -p "$RUNTIME_DIR" "$BACKUP_DIR"
 chmod 700 "$RUNTIME_DIR" "$BACKUP_DIR"
+render_ice_servers
 
 compose build chatmgt chat
 compose run --rm --no-deps --user "$(id -u):$(id -g)" chatmgt \
   python scripts/render_tinode_bootstrap.py
 chmod 600 "$RUNTIME_DIR/tinode-bootstrap.json"
 
+if [[ "$webrtc_enabled" == "true" ]]; then
+  compose up -d coturn
+fi
 compose up -d chatapi
 
 backup_file="$(mktemp "$BACKUP_DIR/chatservice-$(date -u +%Y%m%dT%H%M%SZ)-XXXXXX.dump")"

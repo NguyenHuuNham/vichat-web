@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Login from '../features/auth/components/Login';
 import KnowledgeManager from '../features/chatbot/components/KnowledgeManager';
+import CallOverlay from '../features/chat/components/CallOverlay';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation } from '../features/chat/services/tinodeClient';
 import { chatManagementService } from '../features/chat/services/chatManagementService';
 import {
@@ -525,6 +526,16 @@ function managedTinodeTopics(rooms) {
   return Object.values(rooms || {}).map(room => room.tinodeTopic).filter(Boolean);
 }
 
+function callPeerDetails(room, currentUser) {
+  const peer = room?.members?.find(member => !identitiesOverlap(member, currentUser))
+    || room?.members?.[0]
+    || {};
+  return {
+    peerName: peer.name || room?.name || 'Người dùng',
+    peerAvatar: peer.avatar || room?.avatarUrl || '',
+  };
+}
+
 function App() {
   const [currentChatId, setCurrentChatId] = useState(CHATBOT_ACCOUNT.id);
   const [conversations, setConversations] = useState(createInitialConversations);
@@ -587,6 +598,7 @@ function App() {
   const [profileNotice, setProfileNotice] = useState('');
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const [forcedLogoutSeconds, setForcedLogoutSeconds] = useState(null);
+  const [activeCall, setActiveCall] = useState(null);
 
   // Mobile navigation state
   const [isMobileChatActive, setIsMobileChatActive] = useState(false);
@@ -626,12 +638,18 @@ function App() {
   const isLoggingOutRef = useRef(false);
   const accountSessionRef = useRef(0);
   const managementConversationSessionRef = useRef(0);
+  const activeCallRef = useRef(null);
 
   // Event callbacks can run between React renders; keep the latest room map
   // available without forcing Tinode subscriptions to be recreated.
   conversationsRef.current = conversations;
   currentUserRef.current = currentUser;
   directoryAccountsRef.current = directoryAccounts;
+
+  const clearActiveCall = useCallback(() => {
+    activeCallRef.current = null;
+    setActiveCall(null);
+  }, []);
 
   const activeChat = conversations[currentChatId] || Object.values(conversations)[0] || {
     id: 'empty',
@@ -673,6 +691,18 @@ function App() {
   const activeChatPresenceLabel = activeGroupPresence
     ? `${activeGroupPresence.memberCount} thành viên • ${activeGroupPresence.onlineCount} đang online`
     : activeChat.membersCount;
+  const callActionCapability = (() => {
+    if (chatMode !== 'tinode') return { available: false, reason: 'Cuộc gọi chỉ khả dụng khi đã kết nối Tinode realtime.' };
+    if (activeCall) return { available: false, reason: 'Bạn đang có một cuộc gọi khác.' };
+    if (activeChat.isChatbot) return { available: false, reason: 'Không thể gọi trợ lý chatbot.' };
+    if (activeChat.isGroup) return { available: false, reason: 'Tinode 0.25.3 chỉ hỗ trợ cuộc gọi 1-1.' };
+    if (!activeChat.members?.length) return { available: false, reason: 'Cuộc trò chuyện chưa có người nhận.' };
+    const topicName = tinodeTopicName(activeChat);
+    return tinodeClient.getCallCapability(
+      /^usr[a-z0-9_-]+$/i.test(String(topicName || '')) ? topicName : 'usrpending',
+      { isGroup: false, isChatbot: false },
+    );
+  })();
   const profileAccount = {
     ...(findAccount(directoryAccounts, currentUser?.id || currentUser?.uid) || {}),
     ...(currentUser || {}),
@@ -955,6 +985,45 @@ function App() {
     return topicName;
   };
 
+  const handleCallError = useCallback(error => {
+    if (error) setChatError(error);
+  }, []);
+
+  const handleCallClosed = useCallback(reason => {
+    clearActiveCall();
+    if (reason === 'timeout') setChatError('Cuộc gọi không được trả lời.');
+    if (reason === 'disconnected') setChatError('Cuộc gọi bị gián đoạn do mất kết nối.');
+  }, [clearActiveCall]);
+
+  const handleStartCall = async audioOnly => {
+    if (!callActionCapability.available) {
+      setChatError(callActionCapability.reason);
+      return;
+    }
+    const room = conversationsRef.current[currentChatIdRef.current] || activeChat;
+    try {
+      setChatError('');
+      await ensureTinodeSession();
+      const topic = await ensureTinodeConversationTopic(room);
+      const capability = tinodeClient.getCallCapability(topic, {
+        isGroup: Boolean(room?.isGroup),
+        isChatbot: Boolean(room?.isChatbot),
+      });
+      if (!capability.available) throw new Error(capability.reason);
+      const nextCall = {
+        id: `${topic}:outgoing:${Date.now()}`,
+        topic,
+        direction: 'outgoing',
+        audioOnly: Boolean(audioOnly),
+        ...callPeerDetails(room, currentUserRef.current),
+      };
+      activeCallRef.current = nextCall;
+      setActiveCall(nextCall);
+    } catch (error) {
+      setChatError(error?.message || 'Không thể bắt đầu cuộc gọi.');
+    }
+  };
+
   const queueMessageForKnowledge = useCallback((room, message, originalFile = null) => {
     if (!room || room.isChatbot || !message?.id || message.recalled || !currentUser) return;
     const key = `${room.managementId || room.id}:${message.id}`;
@@ -1011,6 +1080,7 @@ function App() {
     return tinodeClient.onEvent(async event => {
       if (accountSessionRef.current !== accountSession) return;
       if (event.type === 'disconnect') {
+        clearActiveCall();
         setConnectionStatus('offline');
         setChatError('Kết nối chat đã bị gián đoạn. Hệ thống sẽ tự kết nối lại.');
         return;
@@ -1093,6 +1163,33 @@ function App() {
           typingClearTimersRef.current.delete(event.topic);
         }, 2600);
         typingClearTimersRef.current.set(event.topic, timer);
+        return;
+      }
+      if (event.type === 'call-invite') {
+        const currentRooms = conversationsRef.current;
+        const managedEntry = Object.entries(currentRooms)
+          .filter(([, room]) => room.accountSession === accountSession)
+          .find(([, room]) => room.tinodeTopic === event.topic);
+        const room = managedEntry?.[1];
+        const capability = tinodeClient.getCallCapability(event.topic, {
+          isGroup: Boolean(room?.isGroup),
+          isChatbot: Boolean(room?.isChatbot),
+        });
+        if (activeCallRef.current || !room || !capability.available) {
+          tinodeClient.sendCallSignal(event.topic, event.seq, 'hang-up').catch(() => {});
+          if (!activeCallRef.current && !capability.available) setChatError(capability.reason);
+          return;
+        }
+        const nextCall = {
+          id: `${event.topic}:${event.seq}`,
+          topic: event.topic,
+          seq: event.seq,
+          direction: 'incoming',
+          audioOnly: Boolean(event.audioOnly),
+          ...callPeerDetails(room, currentUser),
+        };
+        activeCallRef.current = nextCall;
+        setActiveCall(nextCall);
         return;
       }
       if ((event.type === 'profile' || event.type === 'user-profile') && event.profile?.id) {
@@ -1202,7 +1299,7 @@ function App() {
         return;
       }
     });
-  }, [isLoggedIn, chatMode, managementConversationSession, currentUser, directoryAccounts, applyPresenceSnapshot, queueMessageForKnowledge, refreshManagementConversations, showIncomingNotification, viewerId]);
+  }, [isLoggedIn, chatMode, managementConversationSession, currentUser, directoryAccounts, applyPresenceSnapshot, clearActiveCall, queueMessageForKnowledge, refreshManagementConversations, showIncomingNotification, viewerId]);
 
   // Keep every known Tinode topic subscribed after login. This is the piece
   // that makes unread badges and notifications realtime before a chat is opened.
@@ -1227,6 +1324,7 @@ function App() {
   }, [isLoggedIn, chatMode, managementConversationSession, ensureTinodeSession, applyPresenceSnapshot]);
 
   const handleLoginSuccess = async (user) => {
+    clearActiveCall();
     await tinodeClient.logout();
     setLoginNotice('');
     const accountSession = ++accountSessionRef.current;
@@ -1368,6 +1466,7 @@ function App() {
     managementConversationSessionRef.current = 0;
     setManagementConversationSession(0);
     tinodeClient.setAllowedConversationTopics([]);
+    clearActiveCall();
     forcedLogoutRef.current = false;
     setForcedLogoutSeconds(null);
     if (chatMode === 'tinode') {
@@ -3028,6 +3127,14 @@ function App() {
           {chatError && <button type="button" onClick={() => setChatError('')} aria-label="Đóng thông báo"><i className="fa-solid fa-xmark"></i></button>}
         </div>
       )}
+      {activeCall && (
+        <CallOverlay
+          key={activeCall.id}
+          call={activeCall}
+          onClose={handleCallClosed}
+          onError={handleCallError}
+        />
+      )}
 
       {/* ==========================================================================
          CỘT 1: SIDEBAR PRIMARY (Màu xanh dương đậm)
@@ -3186,10 +3293,22 @@ function App() {
             <button className="btn-header-action" title="Tìm kiếm" onClick={() => openWorkspacePanel('search')}>
               <i className="fa-solid fa-magnifying-glass"></i>
             </button>
-            <button className="btn-header-action" title="Gọi điện" onClick={() => setChatError('Gọi thoại cần bật WebRTC signaling trên Tinode/server. UI chat đã sẵn sàng để nối luồng gọi.')}>
+            <button
+              type="button"
+              className="btn-header-action"
+              title={callActionCapability.available ? 'Gọi thoại' : callActionCapability.reason}
+              onClick={() => handleStartCall(true)}
+              disabled={!callActionCapability.available}
+            >
               <i className="fa-solid fa-phone"></i>
             </button>
-            <button className="btn-header-action" title="Gọi video" onClick={() => setChatError('Gọi video cần bật WebRTC signaling trên Tinode/server. UI chat đã sẵn sàng để nối luồng gọi.')}>
+            <button
+              type="button"
+              className="btn-header-action"
+              title={callActionCapability.available ? 'Gọi video' : callActionCapability.reason}
+              onClick={() => handleStartCall(false)}
+              disabled={!callActionCapability.available}
+            >
               <i className="fa-solid fa-video"></i>
             </button>
             <button className="btn-header-action" title="Thông tin nhóm" onClick={() => setIsDetailOpen(!isDetailOpen)}>
@@ -3238,6 +3357,20 @@ function App() {
 
                   <div className="message-interactive" onContextMenu={event => openMessageMenu(event, msg)}>
                     <div className="message-bubble-group">
+                    {msg.type === 'call' && msg.call && (
+                      <div className="message-bubble call-history-bubble">
+                        <span className="call-history-icon">
+                          <i className={`fa-solid ${msg.call.audioOnly ? 'fa-phone' : 'fa-video'}`}></i>
+                        </span>
+                        <span className="call-history-copy">
+                          <strong>{msg.text}</strong>
+                          <span>{msg.call.audioOnly ? 'Cuộc gọi thoại' : 'Cuộc gọi video'}</span>
+                        </span>
+                        <span className="message-time">
+                          {msg.time} {isOutgoing && deliveryStatusIcon(msg)}
+                        </span>
+                      </div>
+                    )}
                     {/* Tin nhắn chữ thường */}
                     {msg.type === "text" && msg.text && (
                       <div className="message-bubble">

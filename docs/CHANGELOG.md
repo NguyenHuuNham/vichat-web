@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-03-04 - Them goi thoai va video P2P qua Tinode WebRTC
+
+- Thoi gian: 2026-08-03 11:09 (Asia/Saigon)
+- Loai: Tinh nang | Realtime | Ha tang | Giao dien
+- Trang thai: Hoan tat code, cho trien khai va UAT hai tai khoan
+- Muc tieu: Them cuoc goi thoai va video 1-1 tren ChatUI bang signaling WebRTC chinh thuc cua Tinode, giu nguyen cac luong chat, Account SSO, nhom, presence, receipt, thong bao va external chatbot dang co.
+- Pham vi: Tinode client event bridge, call overlay ChatUI, lich su cuoc goi, cau hinh WebRTC/ICE/TURN production, test va tai lieu; khong thay doi database, Chatmgt auth/API nghiep vu hoac noi dung tin nhan hien co.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/components/CallOverlay.jsx`, `src/features/chat/services/callSignaling.js`, `src/features/chat/services/callSignaling.test.js`, `src/features/chat/services/tinodeClient.js`, `package.json`, `infrastructure/production/.env.example`, `infrastructure/production/compose.yaml`, `infrastructure/production/start.sh`, `infrastructure/production/README.md`, `docs/chat-backend-architecture.md` va `docs/CHANGELOG.md`.
+- Noi dung: Them nut goi thoai/video cho hoi thoai truc tiep da bind Tinode, man hinh nhan/tu choi/ket thuc, bat tat micro-camera, dong ho thoi luong, avatar an toan, lich su cuoc goi va cleanup media khi logout/mat ket noi. Signaling dung Drafty `VC` va cac Tinode info event chinh thuc; loc topic theo binding Chatmgt, tu choi cuoc goi khi dang ban, vo hieu hoa nhom/chatbot/trinh duyet khong ho tro va xu ly tab khac da nhan cuoc goi. ICE server duoc loc truoc khi tao `RTCPeerConnection`.
+- Quyet dinh ky thuat: Chi ho tro P2P theo kha nang Tinode 0.25.3; khong gia lap group call va khong tao signaling API trong Chatmgt. Coturn dung host network, long-term credential va day relay UDP gioi han. `TURN_HOST` bat buoc tro truc tiep toi Coturn; `chat.upgo.vn` hien phan giai ra `.218`, nen deployment `.206` dung IP `103.74.122.206` hoac DNS rieng tro ve `.206`. External chatbot mode khong khoi tao Tinode va khong hien thi kha nang goi.
+- Database/API/cau hinh: Khong migration, khong doi Chatmgt API. Them `WEBRTC_ENABLED`, `TURN_*`, file runtime `ice-servers.json` mode `0600` va Coturn profile; ChatAPI chi duoc recreate sau khi TURN/firewall san sang. Tinode/PostgreSQL/Redis volume, bootstrap va credential cu phai duoc bao toan.
+- Kiem thu: `npm run test:frontend` dat 27/27; `npm run lint` dat, chi con warning legacy ngoai pham vi; build Vite tam voi `VITE_CHAT_MODE=internal` va `external` deu dat; `bash -n infrastructure/production/start.sh`, render ICE bat/tat va mode `0600`, Compose config khi tat/bat profile, `git diff --check` deu dat. Image Coturn pin dung checksum khoi dong thanh cong tren server `.206`, lang nghe va relay dung `192.168.80.160`; hai tuy chon khong duoc image ho tro da duoc loai bo truoc trien khai.
+- Rui ro con lai: Chua UAT media bang hai Account user that tren hai mang khac nhau va chua xac minh firewall cua nha cung cap. Can thu permission micro/camera, voice, video, reject, timeout, hang-up, toggle, sau do regression chat 1-1/nhom, presence, receipt, notification va external chatbot.
+- Viec tiep theo: Tao commit/push rieng cho call, mo TCP/UDP `3478` va UDP `49160-49200` tren `.206`, deploy Coturn + recreate rieng ChatAPI/ChatUI co rollback, xac nhan Tinode hello co ICE server roi UAT hai tai khoan.
+- Commit/PR: Commit chua muc nay (xem `git log`).
+
 ## 2026-08-03-01 - Hoan thien tat thong bao theo hoi thoai
 
 - Thoi gian: 2026-08-03 09:43 (Asia/Saigon)
