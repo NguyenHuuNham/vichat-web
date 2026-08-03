@@ -9,6 +9,13 @@ import {
   tinodeContactsSyncDelay,
 } from '../features/chat/services/chatRealtime';
 import {
+  NOTIFICATION_MUTE_OPTIONS,
+  isConversationMuted,
+  nextNotificationMuteExpiry,
+  notificationMuteLabel,
+  resolveNotificationMuteUntil,
+} from '../features/chat/services/conversationNotifications';
+import {
   countGroupPresence,
   findAccount,
   findDirectPeer,
@@ -568,8 +575,11 @@ function App() {
   const [messageDetails, setMessageDetails] = useState(null);
   const [shareMessage, setShareMessage] = useState(null);
   const [messageActions, setMessageActions] = useState({});
-  const [mutedConversations, setMutedConversations] = useState({});
-  const [settings, setSettings] = useState({ desktopNotifications: true, sounds: true, compactMode: false });
+  const [notificationMuteDialog, setNotificationMuteDialog] = useState(null);
+  const [notificationMuteOption, setNotificationMuteOption] = useState(NOTIFICATION_MUTE_OPTIONS.ONE_HOUR);
+  const [isUpdatingNotificationMute, setIsUpdatingNotificationMute] = useState(false);
+  const [notificationClock, setNotificationClock] = useState(() => Date.now());
+  const [settings, setSettings] = useState({ sounds: true, compactMode: false });
   const [directoryAccounts, setDirectoryAccounts] = useState([]);
   const [isUpdatingProfileAvatar, setIsUpdatingProfileAvatar] = useState(false);
   const [profileForm, setProfileForm] = useState({ name: '', email: '', title: '', department: '' });
@@ -638,6 +648,8 @@ function App() {
     time: '',
     badge: 0,
   };
+  const activeChatMuted = isConversationMuted(activeChat.notificationMutedUntil, notificationClock);
+  const activeChatMuteLabel = notificationMuteLabel(activeChat.notificationMutedUntil, notificationClock);
   const activeMessageCount = activeChat.messages?.length || 0;
   const usesManagementData = chatManagementService.remote && chatMode !== 'demo';
   const realtimeMessagingPending = usesManagementData
@@ -769,6 +781,17 @@ function App() {
   useEffect(() => {
     currentChatIdRef.current = currentChatId;
   }, [currentChatId]);
+
+  useEffect(() => {
+    const now = Date.now();
+    const nextExpiry = nextNotificationMuteExpiry(Object.values(conversations), now);
+    if (nextExpiry === null) return undefined;
+    const timer = window.setTimeout(
+      () => setNotificationClock(Date.now()),
+      Math.max(0, Math.min(nextExpiry - now + 50, 2_147_483_647)),
+    );
+    return () => window.clearTimeout(timer);
+  }, [conversations, notificationClock]);
 
   useEffect(() => () => {
     if (groupAvatarPreview) URL.revokeObjectURL(groupAvatarPreview);
@@ -955,6 +978,8 @@ function App() {
     if (!message || message.senderId === viewerId || typeof window === 'undefined') return;
     const shouldAlert = document.visibilityState === 'hidden' || currentChatIdRef.current !== stateId;
     if (!shouldAlert) return;
+    const notificationRoom = conversationsRef.current[stateId] || conversation;
+    if (isConversationMuted(notificationRoom?.notificationMutedUntil)) return;
 
     if (settings.sounds) {
       try {
@@ -977,27 +1002,7 @@ function App() {
         // Browsers may block sound until the page has received user input.
       }
     }
-
-    if (!settings.desktopNotifications || !('Notification' in window) || window.Notification.permission !== 'granted') return;
-    const body = message.text || message.file?.name || (message.image ? 'Đã gửi một hình ảnh' : 'Có tin nhắn mới');
-    const notification = new window.Notification(conversation.name || 'VICHAT', {
-      body: `${message.senderName ? `${message.senderName}: ` : ''}${body}`,
-      icon: '/favicon.svg',
-      tag: `vichat-${conversation.id}`,
-    });
-    notification.onclick = () => {
-      window.focus();
-      setWorkspacePanel(null);
-      setCurrentChatId(stateId);
-      setIsMobileChatActive(true);
-      setConversations(previous => previous[stateId] ? ({
-        ...previous,
-        [stateId]: { ...previous[stateId], badge: 0 },
-      }) : previous);
-      tinodeClient.markRead(conversation.id).catch(() => {});
-      notification.close();
-    };
-  }, [settings.desktopNotifications, settings.sounds, viewerId]);
+  }, [settings.sounds, viewerId]);
 
   // Keep the React view synchronized with Tinode's topic callbacks.
   useEffect(() => {
@@ -1235,6 +1240,9 @@ function App() {
     setForcedLogoutSeconds(null);
     setDrafts({});
     setInputText('');
+    setNotificationMuteDialog(null);
+    setIsUpdatingNotificationMute(false);
+    setNotificationClock(Date.now());
     setDirectoryAccounts([]);
     setWorkspaceResults([]);
     setGroupSearchResults([]);
@@ -1253,11 +1261,6 @@ function App() {
     setConnectionStatus(user.connection === 'tinode' ? 'ready' : user.connection === 'management' ? 'managed' : 'demo');
     setChatError('');
     setIsLoggedIn(true);
-    if (user.connection === 'tinode' && settings.desktopNotifications && typeof window !== 'undefined'
-      && 'Notification' in window && window.Notification.permission === 'default') {
-      window.Notification.requestPermission().catch(() => {});
-    }
-
     try {
         const accounts = await chatManagementService.listUsers();
         if (accountSessionRef.current !== accountSession) return;
@@ -1305,10 +1308,6 @@ function App() {
             }));
             setChatMode('tinode');
             setConnectionStatus('ready');
-            if (settings.desktopNotifications && typeof window !== 'undefined'
-              && 'Notification' in window && window.Notification.permission === 'default') {
-              window.Notification.requestPermission().catch(() => {});
-            }
           } catch (realtimeError) {
             if (accountSessionRef.current !== accountSession) return;
             setChatMode('management');
@@ -1403,6 +1402,9 @@ function App() {
     setFriendRequestNote('');
     setFriendNotice('');
     setWorkspacePanel(null);
+    setNotificationMuteDialog(null);
+    setIsUpdatingNotificationMute(false);
+    setNotificationClock(Date.now());
     tinodeSessionRequestRef.current = null;
     deletedConversationIdsRef.current.clear();
     notificationBaselineRef.current.clear();
@@ -1526,20 +1528,6 @@ function App() {
     setWorkspaceQuery('');
     setWorkspaceResults([]);
     setChatError('');
-  };
-
-  const handleDesktopNotificationsToggle = async event => {
-    const enabled = event.target.checked;
-    if (enabled && typeof window !== 'undefined' && 'Notification' in window
-      && window.Notification.permission === 'default') {
-      const permission = await window.Notification.requestPermission().catch(() => 'denied');
-      if (permission !== 'granted') {
-        setSettings(previous => ({ ...previous, desktopNotifications: false }));
-        setChatError('Trình duyệt chưa cho phép thông báo desktop. Bạn có thể bật lại trong cài đặt trình duyệt.');
-        return;
-      }
-    }
-    setSettings(previous => ({ ...previous, desktopNotifications: enabled }));
   };
 
   const handleProfileSave = async event => {
@@ -2005,8 +1993,61 @@ function App() {
     }
   };
 
-  const toggleConversationMute = (muted) => {
-    setMutedConversations(prev => ({ ...prev, [activeChat.id]: muted }));
+  const updateConversationMute = async (conversationId, mutedUntil) => {
+    const room = conversationsRef.current[conversationId];
+    if (!room || room.isChatbot || room.id === 'empty') return false;
+    setIsUpdatingNotificationMute(true);
+    setChatError('');
+    try {
+      let persistedMuteUntil = mutedUntil;
+      const managementConversationId = room.managementId || room.id;
+      if (chatManagementService.remote && chatMode !== 'demo') {
+        if (!isManagementConversationId(managementConversationId)) {
+          throw new Error('Chatmgt chưa xác nhận cuộc trò chuyện này.');
+        }
+        const updated = await chatManagementService.updateConversationNotifications(
+          managementConversationId,
+          mutedUntil,
+        );
+        persistedMuteUntil = updated.notificationMutedUntil;
+      }
+      setConversations(previous => {
+        if (!previous[conversationId]) return previous;
+        const next = {
+          ...previous,
+          [conversationId]: {
+            ...previous[conversationId],
+            notificationMutedUntil: persistedMuteUntil,
+          },
+        };
+        conversationsRef.current = next;
+        return next;
+      });
+      setNotificationClock(Date.now());
+      return true;
+    } catch (error) {
+      setChatError(error?.message || 'Không thể cập nhật thiết lập thông báo của cuộc trò chuyện.');
+      return false;
+    } finally {
+      setIsUpdatingNotificationMute(false);
+    }
+  };
+
+  const handleConversationMuteToggle = event => {
+    if (event.target.checked) {
+      setNotificationMuteOption(NOTIFICATION_MUTE_OPTIONS.ONE_HOUR);
+      setNotificationMuteDialog({ id: activeChat.id, name: activeChat.name });
+      return;
+    }
+    void updateConversationMute(activeChat.id, null);
+  };
+
+  const handleNotificationMuteSubmit = async event => {
+    event.preventDefault();
+    if (!notificationMuteDialog) return;
+    const mutedUntil = resolveNotificationMuteUntil(notificationMuteOption, Date.now());
+    const updated = await updateConversationMute(notificationMuteDialog.id, mutedUntil);
+    if (updated) setNotificationMuteDialog(null);
   };
 
   const handleCreateGroup = async (event) => {
@@ -3086,6 +3127,7 @@ function App() {
             const isActive = currentChatId === id;
             const draft = drafts[id] || '';
             const hasDraft = Boolean(draft.trim());
+            const roomMuted = isConversationMuted(room.notificationMutedUntil, notificationClock);
             return (
               <div
                 key={id}
@@ -3104,6 +3146,13 @@ function App() {
                   </div>
                   <div className="conv-message">
                     <span className={`conv-last-msg ${hasDraft ? 'draft' : ''}`}>{hasDraft ? draft : room.lastMsg}</span>
+                    {roomMuted && (
+                      <i
+                        className="fa-solid fa-bell-slash conv-muted-icon"
+                        title={notificationMuteLabel(room.notificationMutedUntil, notificationClock)}
+                        aria-label="Đã tắt thông báo"
+                      ></i>
+                    )}
                     {room.badge > 0 && <span className="conv-badge">{room.badge}</span>}
                   </div>
                 </div>
@@ -3455,16 +3504,26 @@ function App() {
           </div>
 
           <div className="detail-actions">
-            <div className="action-row">
-              <div className="action-label">
-                <i className="fa-regular fa-bell"></i>
-                <span>Tắt thông báo</span>
+            {!activeChat.isChatbot && activeChat.id !== 'empty' && (
+              <div className="action-row">
+                <div className="action-label">
+                  <i className={`fa-regular ${activeChatMuted ? 'fa-bell-slash' : 'fa-bell'}`}></i>
+                  <span className="action-label-copy">
+                    <strong>Tắt thông báo</strong>
+                    {activeChatMuteLabel && <small>{activeChatMuteLabel}</small>}
+                  </span>
+                </div>
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={activeChatMuted}
+                    onChange={handleConversationMuteToggle}
+                    disabled={isUpdatingNotificationMute}
+                  />
+                  <span className="slider round"></span>
+                </label>
               </div>
-              <label className="switch">
-                <input type="checkbox" checked={Boolean(mutedConversations[activeChat.id])} onChange={event => toggleConversationMute(event.target.checked)} />
-                <span className="slider round"></span>
-              </label>
-            </div>
+            )}
 
             {activeChat.isGroup && (
               <button className="btn-leave-group" onClick={handleLeaveGroup}>
@@ -3687,13 +3746,70 @@ function App() {
 
             {workspacePanel === 'settings' && (
               <div className="workspace-settings">
-                <label className="workspace-setting-row"><span><strong>Thông báo desktop</strong><small>Nhận thông báo khi có tin nhắn mới</small></span><input type="checkbox" checked={settings.desktopNotifications} onChange={handleDesktopNotificationsToggle} /></label>
                 <label className="workspace-setting-row"><span><strong>Âm thanh tin nhắn</strong><small>Phát âm thanh khi nhận tin mới</small></span><input type="checkbox" checked={settings.sounds} onChange={event => setSettings(prev => ({ ...prev, sounds: event.target.checked }))} /></label>
                 <label className="workspace-setting-row"><span><strong>Giao diện gọn</strong><small>Giảm khoảng cách giữa các tin nhắn</small></span><input type="checkbox" checked={settings.compactMode} onChange={event => setSettings(prev => ({ ...prev, compactMode: event.target.checked }))} /></label>
                 <div className="workspace-account-card"><i className="fa-solid fa-shield-halved"></i><div><strong>{currentUser?.name || 'Tài khoản hiện tại'}</strong><small>{currentUser?.email || 'Phiên đăng nhập SÔNG HỒNG'} · {chatModeLabel}</small></div></div>
               </div>
             )}
           </section>
+        </div>
+      )}
+
+      {notificationMuteDialog && (
+        <div className="modal-backdrop notification-mute-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !isUpdatingNotificationMute) setNotificationMuteDialog(null);
+        }}>
+          <form
+            className="group-modal notification-mute-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="notification-mute-title"
+            onSubmit={handleNotificationMuteSubmit}
+          >
+            <div className="group-modal-header">
+              <div>
+                <span className="group-modal-kicker">THÔNG BÁO HỘI THOẠI</span>
+                <h2 id="notification-mute-title">Tắt thông báo</h2>
+              </div>
+              <button type="button" className="btn-close-detail" onClick={() => setNotificationMuteDialog(null)} aria-label="Đóng" disabled={isUpdatingNotificationMute}>
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <p className="notification-mute-question">
+              Chọn thời gian tắt âm báo cho <strong>{notificationMuteDialog.name}</strong>. Số tin chưa đọc và nội dung mới nhất vẫn cập nhật realtime.
+            </p>
+            <div className="notification-mute-options">
+              {[
+                [NOTIFICATION_MUTE_OPTIONS.ONE_HOUR, 'Trong 1 giờ'],
+                [NOTIFICATION_MUTE_OPTIONS.FOUR_HOURS, 'Trong 4 giờ'],
+                [NOTIFICATION_MUTE_OPTIONS.UNTIL_EIGHT, 'Cho đến 8:00 sáng'],
+                [NOTIFICATION_MUTE_OPTIONS.UNTIL_MANUAL, 'Cho đến khi được mở lại'],
+              ].map(([value, label]) => (
+                <label className="notification-mute-option" key={value}>
+                  <input
+                    type="radio"
+                    name="notification-mute-duration"
+                    value={value}
+                    checked={notificationMuteOption === value}
+                    onChange={() => setNotificationMuteOption(value)}
+                    disabled={isUpdatingNotificationMute}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+
+            <div className="group-modal-footer notification-mute-footer">
+              <span className="group-mode-label"><i className="fa-solid fa-bell-slash"></i> Không hiện thông báo desktop</span>
+              <div className="group-modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setNotificationMuteDialog(null)} disabled={isUpdatingNotificationMute}>Hủy</button>
+                <button type="submit" className="btn-primary" disabled={isUpdatingNotificationMute}>
+                  {isUpdatingNotificationMute ? <i className="fa-solid fa-spinner fa-spin"></i> : 'Đồng ý'}
+                </button>
+              </div>
+            </div>
+          </form>
         </div>
       )}
 

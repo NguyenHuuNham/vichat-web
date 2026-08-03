@@ -50,8 +50,9 @@ directory, friendship, and conversation metadata:
    projections keyed by Account user ID plus tenant ID.
 3. ChatUI loads `/api/v1/chat/users`, `/api/v1/friend-request`, and
    `/api/v1/conversation` with the Chatmgt HttpOnly session.
-4. Direct conversations, groups, membership changes, and per-user removal are
-   persisted in Chatmgt and survive refresh or a new login.
+4. Direct conversations, groups, membership changes, per-user removal, and
+   per-user notification mute deadlines are persisted in Chatmgt and survive
+   refresh or a new login.
 5. While the session has `connection: management`, ChatUI clearly disables
    realtime messages and files. Tinode topics, tokens, messages, presence, and
    receipts remain Step 4 and are not replaced with browser demo data.
@@ -74,6 +75,11 @@ binding against the current tenant conversation. Group add/remove/leave actions
 are sent to Chatmgt, which updates the Tinode subscription and Chatmgt membership
 as one controlled bridge operation. The browser does not independently invent
 or persist membership state.
+
+Unread counts and the latest message preview still come from Tinode while a
+conversation is muted. Chatmgt stores only the current employee's mute deadline;
+ChatUI suppresses the sound until that deadline and automatically re-enables it.
+ChatUI does not request or display browser desktop notifications.
 
 If Tinode is unavailable, ChatUI remains in `management` mode with the Step 3
 directory and conversations available; realtime inputs stay disabled instead

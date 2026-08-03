@@ -532,6 +532,16 @@ def _serialize_conversation(item, viewer_id):
     ).all() if participant_ids else []
     accounts_by_id = {str(account.id): account for account in accounts}
     owner = next((participant for participant in participants if participant.role == "OWNER"), None)
+    viewer_membership = next(
+        (participant for participant in participants if participant.participant_id == viewer_id),
+        None,
+    )
+    notification_muted_until = (
+        viewer_membership.notification_muted_until if viewer_membership is not None else None
+    )
+    notifications_muted = notification_muted_until == 0 or (
+        notification_muted_until is not None and notification_muted_until > int(time.time())
+    )
     properties = item.properties or {}
     is_group = bool(properties.get("is_group"))
     tinode_topic = item.tinode_topic if is_group else direct_peer_tinode_uid(
@@ -562,6 +572,8 @@ def _serialize_conversation(item, viewer_id):
             if participant_id in accounts_by_id
         ],
         "adminId": owner.participant_id if owner is not None else "",
+        "notificationMutedUntil": notification_muted_until,
+        "notificationsMuted": notifications_muted,
     }
 
 
@@ -1891,6 +1903,56 @@ async def conversation_list(request):
         ConversationParticipant.deleted.is_(False),
     ).order_by(Conversation.updated_at.desc())
     return json({"objects": [_serialize_conversation(item, user_id) for item in query.limit(limit).all()]})
+
+
+@app.route('/api/v1/conversation/<conversation_id>/notification-settings', methods=['PUT'])
+@app.route('/api/v1/chat/threads/<conversation_id>/notification-settings', methods=['PUT'])
+async def conversation_notification_settings(request, conversation_id):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    if management_session_requested(request):
+        return json({
+            "error_code": "CHAT_SESSION_REQUIRED",
+            "error_message": "Notification settings can only be changed from a Chat user session.",
+        }, status=403)
+    try:
+        conversation_uuid = uuid.UUID(str(conversation_id))
+    except (ValueError, TypeError, AttributeError):
+        return json({"error_code": "NOT_FOUND", "error_message": "Invalid conversation."}, status=404)
+
+    user_id = _user_id(current_user)
+    item, membership = _conversation_and_membership(tenant_id, conversation_uuid, user_id)
+    if item is None or membership is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
+
+    body = request.json or {}
+    if "muted_until" not in body:
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "The notification mute deadline is required.",
+        }, status=400)
+
+    raw_mute_until = body.get("muted_until")
+    if raw_mute_until is None:
+        mute_until = None
+    elif isinstance(raw_mute_until, bool):
+        return json({"error_code": "PARAM_ERROR", "error_message": "Invalid notification mute deadline."}, status=400)
+    else:
+        try:
+            mute_until = int(raw_mute_until)
+        except (TypeError, ValueError):
+            return json({"error_code": "PARAM_ERROR", "error_message": "Invalid notification mute deadline."}, status=400)
+        now = int(time.time())
+        if mute_until < 0 or mute_until > now + (366 * 24 * 60 * 60):
+            return json({"error_code": "PARAM_ERROR", "error_message": "Invalid notification mute deadline."}, status=400)
+        if mute_until != 0 and mute_until <= now:
+            mute_until = None
+
+    membership.notification_muted_until = mute_until
+    membership.updated_at = int(time.time())
+    db.session.commit()
+    return json(_serialize_conversation(item, user_id))
 
 
 @app.route('/api/v1/conversation', methods=['POST'])

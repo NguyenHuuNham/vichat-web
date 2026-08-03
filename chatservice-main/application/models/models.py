@@ -161,6 +161,8 @@ class ConversationParticipant(CommonModel):
     joined_at = db.Column(BigInteger())
     left_at = db.Column(BigInteger())
     active = db.Column(Boolean(), default=True)
+    # NULL means enabled, 0 means muted until manually enabled, otherwise Unix seconds.
+    notification_muted_until = db.Column(BigInteger())
 
 class ChatAgent(CommonModel):
     __tablename__ = "chat_agent"

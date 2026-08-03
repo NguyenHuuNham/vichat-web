@@ -248,6 +248,39 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("sorted(participant_ids)", create_source)
         self.assertIn("Conversation.properties.contains", create_source)
 
+    def test_conversation_notification_mutes_are_viewer_scoped_chatmgt_metadata(self):
+        _controller_source, serializer_source = function_source(
+            CONTROLLER_PATH,
+            "_serialize_conversation",
+        )
+        _controller_source, endpoint_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_notification_settings",
+        )
+        model_source = (
+            PROJECT_ROOT / "application" / "models" / "models.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("notification_muted_until = db.Column(BigInteger())", model_source)
+        self.assertIn("participant.participant_id == viewer_id", serializer_source)
+        self.assertIn('"notificationMutedUntil"', serializer_source)
+        self.assertIn("_conversation_and_membership", endpoint_source)
+        self.assertIn("membership.notification_muted_until = mute_until", endpoint_source)
+        self.assertIn("management_session_requested", endpoint_source)
+        self.assertNotIn("tinode_", endpoint_source)
+
+    @repository_source_test
+    def test_chatui_keeps_muted_notifications_in_app_without_desktop_popups(self):
+        app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
+        service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("/notification-settings", service_source)
+        self.assertIn("notificationMutedUntil", service_source)
+        self.assertIn("isConversationMuted", app_source)
+        self.assertIn("fa-bell-slash conv-muted-icon", app_source)
+        self.assertNotIn("new window.Notification", app_source)
+        self.assertNotIn("Notification.requestPermission", app_source)
+
     def test_directory_sync_revalidates_tenant_and_deactivates_missing_accounts(self):
         _controller_source, directory_source = function_source(
             CONTROLLER_PATH,

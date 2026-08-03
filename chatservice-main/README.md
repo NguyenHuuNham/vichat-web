@@ -5,6 +5,12 @@ events, organization data, and chatbot knowledge in its own PostgreSQL
 database. Tinode remains the source of realtime messages and uploaded chat
 files.
 
+Per-user conversation notification preferences are also Chatmgt metadata. The
+authenticated participant may set an absolute mute deadline, clear it, or use
+the indefinite sentinel through the conversation notification-settings API.
+Chatmgt never suppresses Tinode messages or unread receipts; ChatUI applies the
+preference only to the local alert sound.
+
 For Account SSO employees, identity fields remain read-only projections. The
 authenticated `POST /api/v1/auth/avatar` endpoint is the narrow exception: it
 validates the Account user and tenant, uploads the image through the configured

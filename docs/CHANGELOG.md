@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-03-01 - Hoan thien tat thong bao theo hoi thoai
+
+- Thoi gian: 2026-08-03 09:43 (Asia/Saigon)
+- Loai: Sua loi | Thong bao | Chatmgt metadata | Giao dien
+- Trang thai: Hoan tat, cho trien khai
+- Muc tieu: Sua duy nhat luong tat thong bao theo tung hoi thoai: van cap nhat badge va noi dung tin moi nhat, khong hien popup desktop, co chuong gach cheo, chon 1 gio/4 gio/den 8:00 sang/den khi mo lai va tu dong het mute dung deadline.
+- Pham vi: ChatUI notification state/UI, Chatmgt participant metadata, mot endpoint preference va migration; khong sua noi dung tin nhan, Tinode topic/subscription, gui/nhan, receipt, presence, typing, file, group membership, Account SSO, Chatmgt admin UI hay cac luong dang on dinh khac.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/conversationNotifications.js`, `src/features/chat/services/conversationNotifications.test.js`, `package.json`, `chatservice-main/application/models/models.py`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/migrations/009_conversation_notification_preferences.sql`, `chatservice-main/alembic/versions/20260803_09_conversation_notification_preferences.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `README.md`, `chatservice-main/README.md`, `docs/chat-backend-architecture.md` va `docs/CHANGELOG.md`.
+- Noi dung: Luu `notification_muted_until` rieng tren membership cua nguoi dang nhap; `NULL` la dang bat, `0` la tat den khi mo thu cong, timestamp duong la deadline. ChatUI dat timer toi deadline gan nhat de bo chuong gach cheo va mo lai am bao khong can refresh. Tin nhan cua hoi thoai dang mute van cap nhat `badge`, `lastMsg`, thu tu va panel thong bao; chi am bao bi chan. Loai bo hoan toan viec xin quyen va tao `window.Notification` desktop.
+- Quyet dinh ky thuat: Chatmgt tiep tuc lam nguon chuan metadata theo nguoi dung; Tinode van lam nguon chuan message/unread/realtime. Khong dat mute vao conversation chung de tranh mot thanh vien tat thong bao cho ca nhom. Endpoint `PUT /api/v1/conversation/<id>/notification-settings` chi sua membership da duoc tenant/auth guard xac nhan va khong goi Tinode.
+- Database/API/cau hinh: Them Alembic head `20260803_09` va cot nullable `conversation_participant.notification_muted_until`; can chay `alembic -c alembic.ini upgrade head` truoc khi recreate Chatmgt. Them endpoint notification-settings; khong them dependency, secret, domain, reverse proxy hay bien moi truong.
+- Kiem thu: `npm run test:frontend` dat 22/22; `npm run lint` dat voi warning legacy co san; `npm run build:production` dat; `python -m unittest tests.test_chat_auth_contract -v` dat 27/27; full backend `python -m unittest discover -s tests -v` dat 71 test voi 28 skip do dependency chi co trong image; `python -m compileall application tests` dat; `python -m alembic -c alembic.ini heads` tra `20260803_09 (head)`; production bundle co marker UI/API/CSS moi.
+- Rui ro con lai: Browser skill khong co browser session kha dung nen chua QA bang thao tac/anh chup desktop-mobile. Full test runtime, migration tren PostgreSQL that va hai phien Account that can chay trong image/production truoc khi nghiem thu.
+- Viec tiep theo: Build image release sach, chay Alembic va verifier trong Chatmgt image, deploy rieng `chatmgt` va `chat`, sau do UAT mute/unmute va deadline bang hai tai khoan.
+- Commit/PR: Commit tinh nang duoc tao trong cung lan lam viec nay (xem `git log`).
+
 ## 2026-08-01-13 - Trien khai presence nhom va receipt nen
 
 - Thoi gian: 2026-08-01 14:47 (Asia/Saigon)

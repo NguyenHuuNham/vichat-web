@@ -165,6 +165,15 @@ detail card, and presence label from the active participant other than the
 current Account user. It does not use the shared conversation subject as the
 peer identity and does not render the current user as their own contact.
 
+Notification mute state is viewer-specific Chatmgt metadata on the authenticated
+`conversation_participant` row. `NULL` means notifications are enabled, `0`
+means muted until manually enabled, and a positive value is an absolute Unix
+deadline. Muting never changes the Tinode subscription, unread count, latest
+message preview, receipt, presence, or message delivery. ChatUI suppresses only
+the alert sound, does not request browser desktop-notification permission, and
+uses the stored deadline to re-enable alerts automatically in every ChatUI
+session which has loaded that preference from Chatmgt.
+
 If Account directory refresh is temporarily unavailable, Chatmgt serves the
 last valid tenant-scoped projections with `directory_sync.status=stale`. Login,
 tenant mismatch, or revoked Account sessions are never converted into a stale
@@ -184,6 +193,7 @@ separate Chatmgt API flow.
 | `GET/POST` | `/api/v1/friend-request` | List or create tenant-scoped friend requests |
 | `PUT` | `/api/v1/friend-request/<id>` | Accept or reject an incoming request |
 | `GET/POST` | `/api/v1/conversation` | List member conversations or create/reopen direct/group metadata |
+| `PUT` | `/api/v1/conversation/<id>/notification-settings` | Set or clear the authenticated participant's notification mute deadline |
 | `POST` | `/api/v1/conversation/<id>/participants` | Add group participants as the owner |
 | `DELETE` | `/api/v1/conversation/<id>/participants/<user-id>` | Remove a member or remove the current user from the list |
 

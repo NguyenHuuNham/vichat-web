@@ -1,3 +1,5 @@
+import { normalizeNotificationMuteUntil } from './conversationNotifications';
+
 const env = import.meta.env || {};
 const apiBase = String(env.VITE_CHAT_MANAGEMENT_API_URL || '').replace(/\/$/, '');
 const remoteAuth = String(env.VITE_CHAT_MANAGEMENT_REMOTE_AUTH || '').toLowerCase() === 'true';
@@ -85,6 +87,9 @@ function normalizeConversation(record) {
   const properties = record?.properties || {};
   const tinodeTopic = record?.tinodeTopic || record?.tinode_topic || record?.channel_thread_id || '';
   const managementId = String(record?.managementId || record?.id || record?.conversation_no || tinodeTopic);
+  const notificationMutedUntil = normalizeNotificationMuteUntil(
+    record?.notificationMutedUntil ?? record?.notification_muted_until,
+  );
   return {
     id: managementId,
     managementId,
@@ -106,6 +111,7 @@ function normalizeConversation(record) {
     time: record?.time || properties.time || '',
     updatedAt: record?.updatedAt || record?.last_message_at || properties.updatedAt,
     badge: record?.badge || properties.unreadCount || 0,
+    notificationMutedUntil,
   };
 }
 
@@ -369,6 +375,15 @@ export const chatManagementService = {
     const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/participants/${encodeURIComponent(participantId)}`, {
       method: 'DELETE',
       body: JSON.stringify({ tinode_token: tinodeAuth?.token || '' }),
+    });
+    return normalizeConversation(payload);
+  },
+
+  async updateConversationNotifications(conversationId, mutedUntil) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/notification-settings`, {
+      method: 'PUT',
+      body: JSON.stringify({ muted_until: mutedUntil }),
     });
     return normalizeConversation(payload);
   },
