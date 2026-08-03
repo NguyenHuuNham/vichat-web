@@ -6,11 +6,27 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-04-01 - Trien khai dong bo avatar realtime len production
+
+- Thoi gian: 2026-08-04 00:13 (Asia/Saigon)
+- Loai: Trien khai | Sua loi | Realtime | Van hanh
+- Trang thai: Hoan tat trien khai, cho UAT hai phien nguoi dung that
+- Muc tieu: Dua hotfix avatar `0a42a42` len `chat.upgo.vn` de profile moi cap nhat trong hoi thoai, typing va lich su tin nhan/cuoc goi ma khong thay doi cac luong dang on dinh.
+- Pham vi: Release bat bien `/opt/deploy/chat/releases/0a42a42`, image/container rieng service `chat`; khong recreate Chatmgt, ChatAPI, hai PostgreSQL, Redis, Coturn, khong migration va khong sua cau hinh production.
+- File da thay doi: `docs/CHANGELOG.md`; source runtime production la commit `0a42a42`.
+- Noi dung: Archive sach SHA-256 `38b6d36fcbea4e8ed1ac81a54e61ee27aeaa974ac07057fba84899a160088650` duoc build thanh image `sha256:127e62877605e51de42cb0907939a3727210c7abcef720a2f1a5e59f7acb4913`; container healthy la `453b20cb98c722177706ddde08d5d6c93940dae6e99c0d0043796375ee903422`. Public entry la `assets/index-BSYqbSc3.js` va ChatUI bundle la `App-uriIdy9w.js`.
+- Quyet dinh ky thuat: Tiep tuc deploy tu archive commit sach, sao chep private `.env`/runtime mode an toan tu release cu va chi force-recreate ChatUI. Hai lan acceptance dau rollback dung image cu: lan mot do script truyen CRLF lam `head` nhan tham so `1\\r`, lan hai do regex bat nham `ManagementApp-*.js` thanh ChatUI `App-*.js`; ca hai la loi harness nghiem thu, khong phai loi runtime. Regex cuoi cung doi chieu dung `App-*.js` va moi cho phep cap nhat symlink `current`.
+- Database/API/cau hinh: Khong thay doi. Giu `CHAT_ACCOUNT_SSO_ENABLED=false`, `CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true`, `VITE_CHAT_AUTH_MODE=password`, tenant, secret, domain, reverse proxy va volume hien co.
+- Kiem thu: Snapshot commit sach dat frontend 31/31, lint chi co warning legacy va production build dat. Production dat Nginx syntax, local/public health HTTP `200`, Chatmgt/ChatAPI healthy, public bundle co marker profile moi, log ChatUI khong co `emerg/fatal/panic/critical`; ID Chatmgt, ChatAPI, hai PostgreSQL, Redis va Coturn khong doi.
+- Rui ro con lai: Chua co hai phien nguoi dung that de thay avatar doi truc tiep tren browser ben kia. Nguoi dung dang mo trang can hard refresh mot lan de nap bundle moi; cac lan doi avatar sau do phai cap nhat realtime.
+- Viec tiep theo: Dang nhap hai tai khoan cung tenant, doi avatar tai mot phien va xac nhan phien con lai cap nhat ngay trong direct/group, typing indicator va lich su call ma khong reload.
+- Commit/PR: Code `0a42a42`; commit ghi nhan trien khai duoc tao sau muc nay.
+
 ## 2026-08-03-14 - Dong bo avatar Tinode theo danh tinh Chatmgt
 
 - Thoi gian: 2026-08-03 23:59 (Asia/Saigon)
 - Loai: Sua loi | Realtime | Giao dien
-- Trang thai: Hoan tat code va kiem thu local, cho commit/push/trien khai production
+- Trang thai: Hoan tat va da trien khai production, cho UAT hai phien nguoi dung that
 - Muc tieu: Avatar moi cua nhan vien phai cap nhat realtime trong danh ba, header hoi thoai, danh sach thanh vien, typing indicator va lich su tin nhan/cuoc goi ma khong can tai lai trang.
 - Pham vi: Chi luong profile/avatar giua ChatUI va Tinode; khong sua message content, call signaling, presence, receipt, notification, membership, Chatmgt API, database, authentication hoac chatbot.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `docs/chat-backend-architecture.md` va file nay.
@@ -19,8 +35,8 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong thay doi. Khong migration, endpoint, payload, dependency, secret hoac bien moi truong moi.
 - Kiem thu: `npm run test:frontend` dat 31/31; `npm run lint` dat voi warning legacy co san; `npm run build:production` dat; `git diff --check` se duoc chay lai tren diff staged truoc commit.
 - Rui ro con lai: Chua UAT hai phien nguoi dung that de quan sat avatar doi ngay tren trinh duyet ben kia; can hard refresh mot lan sau deploy de nap bundle moi, sau do avatar thay doi tiep theo phai cap nhat realtime.
-- Viec tiep theo: Stage chon loc, commit/push, deploy rieng ChatUI tu release bat bien va UAT avatar trong direct/group, typing va lich su cuoc goi.
-- Commit/PR: Chua tao.
+- Viec tiep theo: UAT avatar trong direct/group, typing va lich su cuoc goi bang hai phien nguoi dung that.
+- Commit/PR: `0a42a42`.
 
 ## 2026-08-03-13 - Sua tenant ChatUI production theo doanh nghiep dang van hanh
 
