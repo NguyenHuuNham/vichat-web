@@ -16,6 +16,10 @@ const errorMessages = {
   PASSWORD_INVALID: 'Mật khẩu chưa đáp ứng yêu cầu bảo mật.',
   SESSION_EXPIRED: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
   SESSION_REVOKE_FAILED: 'Không thể thu hồi phiên đăng nhập của tài khoản này.',
+  ACCOUNT_EXISTS: 'Tên đăng nhập hoặc email đã tồn tại trong doanh nghiệp này.',
+  ACCOUNT_CREATE_FAILED: 'Không thể tạo tài khoản nhân viên.',
+  ACCOUNT_UPDATE_FAILED: 'Không thể cập nhật tài khoản nhân viên.',
+  PASSWORD_RESET_FAILED: 'Không thể cấp lại mật khẩu cho tài khoản này.',
 };
 
 export function accountAdminLoginUrl(returnUrl) {
@@ -160,6 +164,33 @@ export const managementAdminService = {
     return {
       items: responseItems(payload).map(normalizeAdminConversation).filter(Boolean),
       summary: payload.summary || {},
+    };
+  },
+
+  async createUser(user) {
+    const payload = await apiRequest('/api/v1/chat/users', {
+      method: 'POST',
+      body: JSON.stringify(user || {}),
+    });
+    return normalizeManagementUser(payload.user || payload);
+  },
+
+  async updateUser(userId, changes) {
+    const payload = await apiRequest(`/api/v1/chat/users/${encodeURIComponent(userId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(changes || {}),
+    });
+    return normalizeManagementUser(payload.user || payload);
+  },
+
+  async resetPassword(userId, newPassword) {
+    const payload = await apiRequest(`/api/v1/chat/users/${encodeURIComponent(userId)}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ new_password: newPassword }),
+    });
+    return {
+      ...payload,
+      user: normalizeManagementUser(payload.user),
     };
   },
 

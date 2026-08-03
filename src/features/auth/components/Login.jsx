@@ -16,12 +16,16 @@ function clearAccountReturnMarker() {
 }
 
 function Login({ onLoginSuccess, initialNotice = '' }) {
+  const passwordMode = managementAuthClient.mode === 'password';
+  const [identity, setIdentity] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [notice] = useState(initialNotice);
   const [isLoading, setIsLoading] = useState(false);
   const accountReturnHandled = useRef(false);
 
-  const finishLogin = useCallback(async ({ redirectWhenRequired }) => {
+  const finishLogin = useCallback(async ({ redirectWhenRequired, credentials }) => {
     setError('');
     if (!managementAuthClient.enabled) {
       setError('Chưa cấu hình dịch vụ xác thực Chatmgt.');
@@ -30,7 +34,7 @@ function Login({ onLoginSuccess, initialNotice = '' }) {
 
     setIsLoading(true);
     try {
-      const session = await managementAuthClient.login();
+      const session = await managementAuthClient.login(credentials);
       await onLoginSuccess({
         id: session.uid,
         uid: session.uid,
@@ -48,7 +52,7 @@ function Login({ onLoginSuccess, initialNotice = '' }) {
         tinodeSession: session,
         connection: session.connection,
         avatar: session.profile?.avatar || '',
-        mustChangePassword: false,
+        mustChangePassword: Boolean(session.mustChangePassword),
       });
     } catch (loginError) {
       if (loginError?.code === 'ACCOUNT_LOGIN_REQUIRED' && redirectWhenRequired) {
@@ -59,8 +63,12 @@ function Login({ onLoginSuccess, initialNotice = '' }) {
         setError('Account chưa trả về phiên đăng nhập hợp lệ. Vui lòng đăng nhập lại tại account.upgo.vn.');
       } else if (loginError?.code === 'ACCOUNT_TENANT_INVALID') {
         setError('Tài khoản chưa có đơn vị đang hoạt động hoặc chưa chọn đơn vị trên UpGO Account.');
+      } else if (loginError?.code === 'LOGIN_FAILED') {
+        setError('Tên đăng nhập hoặc mật khẩu không đúng.');
+      } else if (loginError?.code === 'LOGIN_RATE_LIMITED') {
+        setError('Bạn đã thử đăng nhập quá nhiều lần. Vui lòng thử lại sau.');
       } else {
-        setError(loginError?.message || 'Không thể xác thực với UpGO Account. Vui lòng thử lại.');
+        setError(loginError?.message || 'Không thể đăng nhập. Vui lòng thử lại.');
       }
     } finally {
       setIsLoading(false);
@@ -68,15 +76,22 @@ function Login({ onLoginSuccess, initialNotice = '' }) {
   }, [onLoginSuccess]);
 
   useEffect(() => {
-    if (!isAccountReturn() || accountReturnHandled.current) return;
+    if (passwordMode || !isAccountReturn() || accountReturnHandled.current) return;
     accountReturnHandled.current = true;
     clearAccountReturnMarker();
     finishLogin({ redirectWhenRequired: false });
-  }, [finishLogin]);
+  }, [finishLogin, passwordMode]);
 
   const handleLogin = event => {
     event.preventDefault();
-    finishLogin({ redirectWhenRequired: true });
+    if (passwordMode && (!identity.trim() || !password)) {
+      setError('Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.');
+      return;
+    }
+    finishLogin({
+      redirectWhenRequired: true,
+      credentials: passwordMode ? { identity: identity.trim(), password } : undefined,
+    });
   };
 
   return (
@@ -87,21 +102,44 @@ function Login({ onLoginSuccess, initialNotice = '' }) {
         <div className="login-card-header">
           <div className="login-logo"><img src="/chat-logo.svg" className="brand-mark-image" alt="CHAT" /></div>
           <h2>Chat - Power by Gon Platform</h2>
-          <p>Chat sử dụng tài khoản và đơn vị đang hoạt động trên UpGO Account.</p>
+          <p>{passwordMode
+            ? 'Đăng nhập bằng tài khoản do quản trị viên doanh nghiệp cấp trên Chatmgt.'
+            : 'Chat sử dụng tài khoản và đơn vị đang hoạt động trên UpGO Account.'}</p>
         </div>
 
         {error && <div className="login-error-message"><i className="fa-solid fa-triangle-exclamation"></i><span>{error}</span></div>}
         {notice && <div className="login-success-message"><i className="fa-solid fa-circle-check"></i><span>{notice}</span></div>}
 
         <form onSubmit={handleLogin} className="login-form">
+          {passwordMode && (
+            <>
+              <div className="login-form-group">
+                <label htmlFor="chat-identity">Tên đăng nhập hoặc email</label>
+                <div className="login-input-wrapper">
+                  <i className="fa-regular fa-user login-input-icon"></i>
+                  <input id="chat-identity" name="username" type="text" autoComplete="username" value={identity} onChange={event => setIdentity(event.target.value)} disabled={isLoading} placeholder="Nhập tài khoản được cấp..." autoFocus />
+                </div>
+              </div>
+              <div className="login-form-group">
+                <label htmlFor="chat-password">Mật khẩu</label>
+                <div className="login-input-wrapper">
+                  <i className="fa-solid fa-lock login-input-icon"></i>
+                  <input id="chat-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} disabled={isLoading} placeholder="Nhập mật khẩu..." />
+                  <button type="button" className="btn-toggle-password" onClick={() => setShowPassword(previous => !previous)} disabled={isLoading} aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}><i className={`fa-regular ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i></button>
+                </div>
+              </div>
+            </>
+          )}
           <button type="submit" className="btn-login-submit" disabled={isLoading}>
             {isLoading
               ? <><div className="login-spinner"></div><span>Đang xác thực...</span></>
-              : <><i className="fa-solid fa-arrow-right-to-bracket"></i><span>Đăng nhập bằng UpGO Account</span></>}
+              : <><i className="fa-solid fa-arrow-right-to-bracket"></i><span>{passwordMode ? 'Đăng nhập' : 'Đăng nhập bằng UpGO Account'}</span></>}
           </button>
         </form>
 
-        <p className="login-security-note">Chatmgt không nhận hoặc lưu mật khẩu UpGO Account.</p>
+        <p className="login-security-note">{passwordMode
+          ? 'Phiên đăng nhập chỉ có hiệu lực trong doanh nghiệp được cấu hình; Tinode dùng token ngắn hạn do Chatmgt cấp.'
+          : 'Chatmgt không nhận hoặc lưu mật khẩu UpGO Account.'}</p>
       </div>
     </div>
   );

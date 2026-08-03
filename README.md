@@ -3,51 +3,46 @@
 VICHAT is delivered in four explicit stages:
 
 - Step 1: deploy Chatmgt, apply Alembic, publish the domains, and enable HTTPS.
-- Step 2: authenticate Chat employees with existing accounts from `account.upgo.vn`.
+- Step 2: authenticate Chat employees with tenant-scoped credentials created in Chatmgt.
 - Step 3: make Chatmgt the source used by ChatUI for directory and conversation metadata.
 - Step 4: integrate Chatmgt with Tinode/ChatAPI for realtime chat.
 
-Step 2 does not collect an employee username/password in ChatUI. Chatmgt
-forwards the shared `session` cookie to `GET https://account.upgo.vn/current_user`,
-validates the active tenant membership, synchronizes a local tenant-scoped
-profile projection, and issues only its own HttpOnly session. The projection has
-an unusable password marker; Account remains authoritative for identity,
-password, tenant membership, role, email, display name, and avatar.
-ChatUI may change the current employee avatar through Chatmgt, but Chatmgt
-uploads and writes the image to UpGO Account first, then refreshes its local
-projection and Tinode public profile. It never treats a browser preview or a
-Chatmgt-only avatar value as authoritative.
+Step 2 collects only the username/password issued by the current company's
+Chatmgt administrator. The configured ChatUI tenant is sent with the login
+request, Chatmgt verifies the bcrypt password inside that tenant, and the JWT
+tenant becomes authoritative for all later directory, friendship, conversation,
+group, profile, and administration queries. Company A cannot enumerate or
+mutate Company B through a query parameter.
 
 The separate Chatmgt administration page also uses UpGO Account, but only the
 current tenant's `admin`, `owner`, or `superadmin` may exchange the Account
 session for the isolated management cookie through `POST /api/v1/admin/sso`.
-Production disables the local `/login` password flow. Chat and management JWTs
-carry different scopes and cannot be used across the two surfaces. The employee
-directory remains read-only, Account profile/role changes stay authoritative at
-`account.upgo.vn`, and the management page never displays Tinode message or file
-content.
+Production disables only the local administrator `/login` flow. Chat and
+management JWTs carry different scopes and cannot be used across the two
+surfaces. The tenant administrator creates, updates, disables, resets, and
+revokes employee accounts in Chatmgt. The management page never displays Tinode
+message or file content.
 
 ## Production data flow
 
-1. ChatUI calls `POST /api/v1/auth/sso` without a password.
-2. If the shared Account cookie is missing or expired, ChatUI redirects to `https://account.upgo.vn/?continue=<ChatUI URL>`.
-3. Account returns the browser to ChatUI; ChatUI retries `/api/v1/auth/sso`.
-4. Chatmgt validates `/current_user`, the selected active tenant, and synchronizes the Account profile projection.
-5. Chatmgt returns the employee profile plus `connection: management` and sets the Chatmgt HttpOnly cookie.
-6. Logout revokes the Chatmgt session, calls `POST https://account.upgo.vn/logout`, and clears both Chatmgt and `.upgo.vn` Account cookies.
+1. A tenant admin enters `chatmgt.upgo.vn` through UpGO Account SSO.
+2. Chatmgt accepts only Account roles `admin`, `owner`, or `superadmin` and issues a separate management cookie for the active tenant.
+3. The admin creates an employee username/password or converts a legacy Account projection by assigning a ChatUI password.
+4. ChatUI calls `POST /api/v1/auth/login` with the credentials and its configured tenant ID.
+5. Chatmgt verifies the local password and issues a tenant-scoped HttpOnly chat session.
+6. Chatmgt derives/provisions the employee's Tinode credential server-side and returns only a short-lived Tinode token.
+7. Logout revokes the Chatmgt session and clears the ChatUI cookie. Admin logout also ends the Account administrator session.
 
 Steps 3 and 4 remain separate acceptance gates. Successful Step 2 login does
 not mean directory/conversation loading or Tinode realtime messaging is complete.
 
 ## Step 3 management data flow
 
-After Account SSO succeeds, ChatUI uses Chatmgt as its only source for chat
+After local employee login succeeds, ChatUI uses Chatmgt as its only source for
 directory, friendship, and conversation metadata:
 
-1. Chatmgt validates that the Account session still matches the Chatmgt JWT.
-2. Chatmgt loads the current tenant directory from
-   `GET https://account.upgo.vn/api/v1/tenant_user` and upserts passwordless local
-   projections keyed by Account user ID plus tenant ID.
+1. Chatmgt reloads the active local account using the user ID and tenant carried by the verified JWT.
+2. Every backend query includes that tenant; client-provided tenant query parameters are ignored after login.
 3. ChatUI loads `/api/v1/chat/users`, `/api/v1/friend-request`, and
    `/api/v1/conversation` with the Chatmgt HttpOnly session.
 4. Direct conversations, groups, membership changes, per-user removal, and
@@ -57,18 +52,19 @@ directory, friendship, and conversation metadata:
    realtime messages and files. Tinode topics, tokens, messages, presence, and
    receipts remain Step 4 and are not replaced with browser demo data.
 
-Account remains authoritative for employee profile fields. The avatar control
-is a write-through bridge to Account; all other Account-backed profile fields
-remain read-only in ChatUI. Chatmgt never copies an Account password, token, or
-session cookie into its database.
+Chatmgt is authoritative for employee identity, password hash, role, status,
+profile, and avatar inside each tenant. It stores only bcrypt hashes, never
+plaintext passwords. UpGO Account remains authoritative only for the separate
+administrator SSO session.
 
 ## Step 4 realtime flow
 
-After Step 3 data is loaded, ChatUI explicitly upgrades the session through
-`POST /api/v1/auth/tinode-token`. Chatmgt revalidates the Account session and
-returns only a short-lived Tinode token; the deterministic Tinode credential
-stays server-side. ChatUI then connects to ChatAPI for messages, files,
-presence, typing, reactions, and receipts.
+Chatmgt derives a deterministic Tinode basic credential from a server secret,
+tenant ID, Chatmgt account ID, and tenant-scoped Tinode username. Employee
+password changes therefore never rotate or expose the Tinode credential.
+`POST /api/v1/auth/tinode-token` validates the Chatmgt session/account state and
+returns only a short-lived Tinode token. ChatUI then connects to ChatAPI for
+messages, files, presence, typing, reactions, receipts, and direct calls.
 
 Chatmgt prepares participant Tinode UID mappings and validates every topic
 binding against the current tenant conversation. Group add/remove/leave actions

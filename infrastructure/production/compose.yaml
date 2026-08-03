@@ -93,6 +93,7 @@ services:
       dockerfile: infrastructure/production/Dockerfile.chatmgt
       args:
         VITE_CHAT_TENANT_ID: ${CHATMGT_DEFAULT_TENANT:-song-hong}
+        VITE_CHAT_AUTH_MODE: ${VITE_CHAT_AUTH_MODE:-password}
     restart: unless-stopped
     depends_on:
       chat-postgres:
@@ -163,7 +164,7 @@ services:
       TINODE_ADMIN_USERNAME: ${TINODE_ADMIN_USERNAME:-}
       TINODE_ADMIN_PASSWORD: ${TINODE_ADMIN_PASSWORD:-}
       TINODE_SSO_SECRET: ${TINODE_SSO_SECRET:?TINODE_SSO_SECRET is required}
-      CHAT_ACCOUNT_SSO_ENABLED: ${CHAT_ACCOUNT_SSO_ENABLED:-true}
+      CHAT_ACCOUNT_SSO_ENABLED: ${CHAT_ACCOUNT_SSO_ENABLED:-false}
       CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED: ${CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED:-true}
       CHATMGT_BOOTSTRAP_ADMIN_FULL_NAME: ${CHATMGT_BOOTSTRAP_ADMIN_FULL_NAME:-VICHAT Administrator}
       CHATMGT_BOOTSTRAP_ADMIN_EMAIL: ${CHATMGT_BOOTSTRAP_ADMIN_EMAIL:-admin@chat.upgo.vn}
@@ -202,6 +203,7 @@ services:
         VITE_CHAT_MANAGEMENT_API_URL: ${CHAT_MANAGEMENT_PUBLIC_URL:-/chatmgt-api}
         VITE_CHAT_MANAGEMENT_REMOTE_AUTH: "true"
         VITE_CHAT_TENANT_ID: ${CHATMGT_DEFAULT_TENANT:-song-hong}
+        VITE_CHAT_AUTH_MODE: ${VITE_CHAT_AUTH_MODE:-password}
     restart: unless-stopped
     depends_on:
       - chatmgt

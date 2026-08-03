@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-03-11 - Chuyen nhan vien sang dang nhap Chatmgt theo tenant
+
+- Thoi gian: 2026-08-03 23:17 (Asia/Saigon)
+- Loai: Kien truc | Bao mat | Tinh nang | Xac thuc | Realtime
+- Trang thai: Hoan tat code va kiem thu local, cho commit/push/trien khai production
+- Muc tieu: Bo UpGO Account khoi luong dang nhap ChatUI; admin tung doanh nghiep cap username/password trong Chatmgt; tat ca danh ba, metadata va quan tri bi gioi han theo tenant; Tinode tiep tuc giu noi dung va realtime bang token ngan han.
+- Pham vi: Chatmgt employee auth, Account admin SSO rieng, quan ly nhan vien, Tinode credential bridge, ChatUI login, production config, verifier, tai lieu va test. Khong sua noi dung tin nhan, topic/call signaling, notification, chatbot provider, database schema hay migration.
+- File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/services/sso_identity.py`, `chatservice-main/scripts/verify_deployment.py`, `chatservice-main/scripts/verify_tenant_isolation.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `chatservice-main/tests/test_sso_identity.py`, `src/features/auth/components/Login.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/management/ManagementApp.jsx`, `src/features/management/services/managementAdminService.js`, `src/features/management/services/managementAdminService.test.js`, `package.json`, `.env.example`, `infrastructure/production/.env.example`, `infrastructure/production/Dockerfile`, `infrastructure/production/compose.yaml`, `scripts/build-production.mjs`, `README.md`, `docs/chat-backend-architecture.md`, `infrastructure/production/README.md` va file nay.
+- Noi dung: ChatUI dung `VITE_CHAT_AUTH_MODE=password` va goi `/api/v1/auth/login` voi tenant build-time. Chatmgt xac thuc bcrypt, tra phien `scp=chat` o che do management, sau do `/api/v1/auth/tinode-token` moi derive/provision Tinode credential phia server. Trang quan tri Account SSO co form tao/sua/khoa/reset nhan vien; projection Account cu co the duoc cap mat khau local trong khi giu nguyen Chatmgt ID va Tinode UID.
+- Quyet dinh ky thuat: Mat khau nhan vien khong con la mat khau Tinode. Tinode username va password duoc dan xuat tu tenant + Chatmgt account ID + `TINODE_SSO_SECRET`; thay doi/reset mat khau chi cap nhat bcrypt va `auth_version`. Moi management mutation tai xac minh Account admin hien hanh va scope tenant. Cung username o hai tenant co account ID, Tinode username va credential khac nhau.
+- Database/API/cau hinh: Khong migration. Production doi `CHAT_ACCOUNT_SSO_ENABLED=false`, giu `CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true`, them `VITE_CHAT_AUTH_MODE=password`. API nhan vien hien co `/api/v1/auth/login`, `/api/v1/chat/users`, user update/reset/revoke duoc dua thanh luong production; `/api/v1/auth/tinode-token` ho tro local account. `.env` that chua duoc sua trong buoc local.
+- Kiem thu: `python -m unittest discover -s chatservice-main/tests -v` dat 81 test, 28 skip do Windows khong co runtime dependency cua image; `npm run test:frontend` dat 29/29; `npm run lint` dat voi warning legacy co san; `npm run build:production` dat; `python -m py_compile ...` dat; Compose `config -q` dat khi truyen secret tam thoi khong in gia tri; `git diff --check` dat. Khong chay duoc test backend trong image local vi Docker Desktop daemon khong hoat dong (`dockerDesktopLinuxEngine` khong ton tai); se chay lai trong image tren production release truoc nghiem thu.
+- Rui ro con lai: Chua chay verifier HTTP/Tinode va UAT hai tai khoan that tren server; projection Account cua chinh admin khong duoc tu reset de tranh tu khoa phien quan tri; admin muon dung ChatUI can mot local employee rieng hoac mot quyet dinh mapping sau.
+- Viec tiep theo: Review diff rieng auth, commit/push, tao release bat bien, backup Chatmgt PostgreSQL, cap nhat `.env` an toan, rebuild/recreate chi `chatmgt` va `chat`, chay full test/verifier/two-tenant/public health va UAT tao/chuyen doi mot employee.
+- Commit/PR: Chua tao.
+
 ## 2026-08-03-10 - Trien khai giao dien nhom gon va thanh goi lai
 
 - Thoi gian: 2026-08-03 22:44 (Asia/Saigon)

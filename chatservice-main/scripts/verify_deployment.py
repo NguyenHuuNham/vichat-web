@@ -8,7 +8,6 @@ import re
 import secrets
 import sys
 import time
-import uuid
 from datetime import datetime, timezone
 from http.cookies import SimpleCookie
 from pathlib import Path
@@ -28,6 +27,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from application.services.auth_service import issue_access_token
+from application.services.sso_identity import stable_local_account_id, stable_tinode_username
 
 
 DEFAULT_PASSWORDS = ("123456", "password", "admin")
@@ -107,8 +107,7 @@ def verify_database(alembic_ini):
     require_secret("AUTH_PASSWORD_SALT", minimum=16)
     require_secret("SESSION_COOKIE_SALT")
     require_secret("CHAT_AUTH_JWT_SECRET")
-    if str(os.getenv("CHAT_ACCOUNT_SSO_ENABLED") or "").lower() == "true":
-        require_secret("TINODE_SSO_SECRET")
+    require_secret("TINODE_SSO_SECRET")
     tinode_token_ttl = int(os.getenv("TINODE_TOKEN_EXPIRE_IN", 300))
     if tinode_token_ttl < 60 or tinode_token_ttl > 900:
         raise RuntimeError("TINODE_TOKEN_EXPIRE_IN must be between 60 and 900 seconds.")
@@ -327,14 +326,25 @@ def create_management_verifier_account():
     tenant_id = str(os.getenv("CHATMGT_DEFAULT_TENANT") or "").strip()
     if not database_uri or not tenant_id:
         raise RuntimeError("Management verifier database settings are missing.")
-    account_id = "usr-verifier-{}".format(uuid.uuid4().hex)
-    username = "verify_admin_{}".format(uuid.uuid4().hex[:16])
+    username = "deployment_verifier"
+    account_id = stable_local_account_id(tenant_id, username)
+    tinode_username = stable_tinode_username(tenant_id, account_id)
     password = secrets.token_urlsafe(24)
     password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("ascii")
     now = int(time.time())
     engine = create_engine(database_uri)
     try:
         with engine.begin() as connection:
+            connection.execute(text("""
+                DELETE FROM security_audit_log
+                WHERE tenant_id = :tenant_id AND user_id = :id
+            """), {"tenant_id": tenant_id, "id": account_id})
+            connection.execute(text("""
+                DELETE FROM management_account
+                WHERE id = :id
+                  AND tenant_id = :tenant_id
+                  AND properties ->> 'deployment_verifier' = 'true'
+            """), {"id": account_id, "tenant_id": tenant_id})
             connection.execute(text("""
                 INSERT INTO management_account (
                     id, tenant_id, username, email, password_hash, full_name,
@@ -352,10 +362,14 @@ def create_management_verifier_account():
                 "username": username,
                 "password_hash": password_hash,
                 "full_name": "Chatmgt deployment verifier",
-                "tinode_username": username,
+                "tinode_username": tinode_username,
                 "created_at": now,
                 "updated_at": now,
-                "properties": json.dumps({"deployment_verifier": True, "auth_version": 0}),
+                "properties": json.dumps({
+                    "deployment_verifier": True,
+                    "auth_source": "local",
+                    "auth_version": 0,
+                }),
             })
     finally:
         engine.dispose()
@@ -364,7 +378,7 @@ def create_management_verifier_account():
         tenant_id=tenant_id,
         username=username,
         role="admin",
-        properties={"deployment_verifier": True, "auth_version": 0},
+        properties={"deployment_verifier": True, "auth_source": "local", "auth_version": 0},
     )
     token = issue_access_token(
         account_projection,
@@ -459,8 +473,8 @@ def _verify_http(base_url, origin, management_account):
         if management_session.get("password_owner") != "account":
             raise RuntimeError("UpGO Account is not reported as the administrator password owner.")
 
-    username = str(os.getenv("TINODE_ADMIN_USERNAME") or "").strip()
-    password = str(os.getenv("TINODE_ADMIN_PASSWORD") or "")
+    username = management_account["username"]
+    password = management_account["password"]
     tenant_id = str(os.getenv("CHATMGT_DEFAULT_TENANT") or "").strip()
     rejected_login = requests.post(
         base_url + "/api/v1/auth/login",
@@ -559,47 +573,32 @@ def _verify_http(base_url, origin, management_account):
         if sso_challenge.status_code != 401 or challenge_payload.get("error_code") != "ACCOUNT_LOGIN_REQUIRED":
             raise RuntimeError("Account SSO without a session did not return ACCOUNT_LOGIN_REQUIRED.")
 
-        if admin_account_sso_enabled:
-            admin_sso_challenge = requests.post(
-                base_url + "/api/v1/admin/sso",
-                headers=dict(MANAGEMENT_HEADER, Origin=origin),
-                timeout=20,
-            )
-            admin_challenge_payload = (
-                admin_sso_challenge.json() if admin_sso_challenge.content else {}
-            )
-            if (
-                admin_sso_challenge.status_code != 401
-                or admin_challenge_payload.get("error_code") != "ACCOUNT_LOGIN_REQUIRED"
-            ):
-                raise RuntimeError(
-                    "Management Account SSO without a session did not require Account login."
-                )
+        raise RuntimeError("Production employee authentication must use Chatmgt passwords, not Account SSO.")
 
-        management_tinode = requests.post(
-            base_url + "/api/v1/auth/tinode-token",
-            headers=management_headers,
-            timeout=10,
+    if admin_account_sso_enabled:
+        admin_sso_challenge = requests.post(
+            base_url + "/api/v1/admin/sso",
+            headers=dict(MANAGEMENT_HEADER, Origin=origin),
+            timeout=20,
         )
-        if management_tinode.status_code not in (401, 403):
-            raise RuntimeError("A management administrator received a Chat Tinode token.")
-        management_logout = requests.post(
-            base_url + "/api/v1/auth/logout",
-            headers=management_headers,
-            timeout=10,
+        admin_challenge_payload = (
+            admin_sso_challenge.json() if admin_sso_challenge.content else {}
         )
-        if management_logout.status_code != 200:
-            raise RuntimeError("Management logout returned HTTP {}.".format(management_logout.status_code))
-        management_after_logout = requests.get(
-            base_url + "/api/v1/auth/me",
-            headers=management_headers,
-            timeout=10,
-        )
-        if management_after_logout.status_code not in (401, 403):
-            raise RuntimeError("The management token remained usable after logout.")
+        if (
+            admin_sso_challenge.status_code != 401
+            or admin_challenge_payload.get("error_code") != "ACCOUNT_LOGIN_REQUIRED"
+        ):
+            raise RuntimeError(
+                "Management Account SSO without a session did not require Account login."
+            )
 
-        print("Health, CORS, Account SSO challenges, Tinode bridge configuration, employee/local password rejection, management scope isolation, and read-only conversation overview checks passed.")
-        return
+    management_tinode = requests.post(
+        base_url + "/api/v1/auth/tinode-token",
+        headers=management_headers,
+        timeout=10,
+    )
+    if management_tinode.status_code not in (401, 403):
+        raise RuntimeError("A management administrator received a Chat Tinode token.")
 
     login = requests.post(
         base_url + "/api/v1/auth/login",
@@ -613,7 +612,6 @@ def _verify_http(base_url, origin, management_account):
     serialized_login = json.dumps(login_payload, separators=(",", ":")).lower()
     if '"password"' in serialized_login or '"password_hash"' in serialized_login:
         raise RuntimeError("Chat employee login exposed password material.")
-    verify_tinode_token_expiry(login_payload)
     token, cookie_header = cookie_from_response(login, "vichat_access_token")
     if str(os.getenv("CHAT_AUTH_COOKIE_SECURE") or "").lower() == "true":
         if "secure" not in cookie_header.lower():
@@ -630,6 +628,18 @@ def _verify_http(base_url, origin, management_account):
     )
     if profile.status_code != 200:
         raise RuntimeError("Authenticated profile check returned HTTP {}.".format(profile.status_code))
+
+    tinode_token_response = requests.post(
+        base_url + "/api/v1/auth/tinode-token",
+        headers=authenticated_headers,
+        timeout=20,
+    )
+    if tinode_token_response.status_code != 200:
+        raise RuntimeError("Chat employee Tinode token refresh returned HTTP {}.".format(
+            tinode_token_response.status_code,
+        ))
+    login_payload["tinode_auth"] = tinode_token_response.json().get("tinode_auth")
+    verify_tinode_token_expiry(login_payload)
 
     expected_user_id = str(((login_payload.get("user") or {}).get("id")) or "")
     expected_tenant_id = str(

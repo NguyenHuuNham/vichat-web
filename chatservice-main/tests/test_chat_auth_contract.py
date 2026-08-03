@@ -37,7 +37,7 @@ def function_source(path, function_name):
 
 
 class ChatAuthContractTests(unittest.TestCase):
-    def test_employee_and_local_admin_password_login_are_disabled_in_production_sso(self):
+    def test_employee_password_login_and_isolated_admin_sso_are_separate(self):
         _controller_source, employee_login_source = function_source(
             CONTROLLER_PATH,
             "employee_password_login",
@@ -47,8 +47,9 @@ class ChatAuthContractTests(unittest.TestCase):
             "management_login",
         )
 
-        self.assertIn("CHAT_ACCOUNT_SSO_ENABLED", employee_login_source)
+        self.assertIn("_employee_account_sso_enabled", employee_login_source)
         self.assertIn("AUTH_METHOD_DISABLED", employee_login_source)
+        self.assertIn("_password_login", employee_login_source)
         self.assertIn("management_session_requested", management_login_source)
         self.assertIn("_admin_account_sso_enabled", management_login_source)
         self.assertIn("AUTH_METHOD_DISABLED", management_login_source)
@@ -78,14 +79,15 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertNotIn("Migrate an existing administrator session", auth_source)
 
     @repository_source_test
-    def test_account_sso_is_enabled_by_the_production_contract(self):
+    def test_password_employee_auth_is_enabled_by_the_production_contract(self):
         compose_source = PRODUCTION_COMPOSE_PATH.read_text(encoding="utf-8")
         env_source = PRODUCTION_ENV_EXAMPLE_PATH.read_text(encoding="utf-8")
 
-        self.assertIn("CHAT_ACCOUNT_SSO_ENABLED: ${CHAT_ACCOUNT_SSO_ENABLED:-true}", compose_source)
+        self.assertIn("CHAT_ACCOUNT_SSO_ENABLED: ${CHAT_ACCOUNT_SSO_ENABLED:-false}", compose_source)
         self.assertIn("CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED: ${CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED:-true}", compose_source)
-        self.assertIn("CHAT_ACCOUNT_SSO_ENABLED=true", env_source)
+        self.assertIn("CHAT_ACCOUNT_SSO_ENABLED=false", env_source)
         self.assertIn("CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true", env_source)
+        self.assertIn("VITE_CHAT_AUTH_MODE=password", env_source)
         self.assertIn("ACCOUNT_URL=https://account.upgo.vn", env_source)
         self.assertIn("ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user", env_source)
         self.assertIn("ACCOUNT_SSO_SELF_PROFILE_PATH=/me", env_source)
@@ -103,6 +105,34 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertNotIn("tinode_auth", sso_source)
         self.assertIn('ACCOUNT_SSO_PASSWORD_MARKER = "!account-sso-only"', controller_source)
         self.assertIn("password_hash=ACCOUNT_SSO_PASSWORD_MARKER", projection_source)
+
+    def test_employee_password_is_never_used_as_a_tinode_credential(self):
+        _controller_source, login_source = function_source(CONTROLLER_PATH, "_password_login")
+        _controller_source, create_source = function_source(CONTROLLER_PATH, "management_user_create")
+        _controller_source, reset_source = function_source(CONTROLLER_PATH, "management_user_reset_password")
+        _controller_source, change_source = function_source(CONTROLLER_PATH, "management_change_password")
+
+        self.assertIn("verify_password(password, account.password_hash)", login_source)
+        self.assertNotIn("tinode_login(account.tinode_username, password)", login_source)
+        self.assertNotIn("tinode_sso_login", login_source)
+        self.assertIn("stable_local_account_id", create_source)
+        self.assertIn("stable_tinode_username", create_source)
+        self.assertIn("tinode_sso_login", create_source)
+        self.assertNotIn("tinode_create_account(username, password", create_source)
+        self.assertNotIn("tinode_", reset_source)
+        self.assertNotIn("tinode_", change_source)
+
+    def test_account_projection_can_be_converted_without_changing_tinode_identity(self):
+        _controller_source, reset_source = function_source(
+            CONTROLLER_PATH,
+            "management_user_reset_password",
+        )
+
+        self.assertIn("converted_from_account", reset_source)
+        self.assertIn('properties["auth_source"] = "local"', reset_source)
+        self.assertIn('properties["legacy_account_user_id"]', reset_source)
+        self.assertNotIn("account.tinode_username =", reset_source)
+        self.assertNotIn("account.tinode_uid =", reset_source)
 
     def test_account_logout_revokes_chatmgt_and_clears_both_cookies(self):
         _controller_source, logout_source = function_source(CONTROLLER_PATH, "management_logout")
@@ -136,18 +166,18 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('disabled={isUpdatingProfileAvatar}', profile_source)
 
     @repository_source_test
-    def test_chatui_uses_account_sso_without_employee_password_fields(self):
+    def test_chatui_uses_tenant_scoped_employee_password_login(self):
         login_source = LOGIN_PATH.read_text(encoding="utf-8")
         service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")
 
-        self.assertNotIn('name="username"', login_source)
-        self.assertNotIn('name="password"', login_source)
-        self.assertNotIn("requestPasswordReset", login_source)
-        self.assertIn("Đăng nhập bằng UpGO Account", login_source)
-        self.assertIn("/api/v1/auth/sso", service_source)
-        self.assertNotIn("/api/v1/auth/login", service_source)
-        self.assertIn("VITE_ACCOUNT_URL", service_source)
-        self.assertIn("searchParams.set('continue'", service_source)
+        self.assertIn('name="username"', login_source)
+        self.assertIn('name="password"', login_source)
+        self.assertIn("Đăng nhập", login_source)
+        self.assertIn("VITE_CHAT_AUTH_MODE", service_source)
+        self.assertIn("/api/v1/auth/login", service_source)
+        self.assertIn("tenant_id: tenantId", service_source)
+        self.assertIn("identity:", service_source)
+        self.assertIn("password:", service_source)
 
     def test_tinode_topic_binding_requires_the_current_chat_token(self):
         _controller_source, binding_source = function_source(
@@ -200,13 +230,15 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("resolveTinodePresenceOnline", tinode_source)
         self.assertIn("meTopic.onPres = presence =>", tinode_source)
 
-    def test_tinode_bridge_is_explicitly_requested_after_account_login(self):
+    def test_tinode_token_refresh_supports_local_and_account_sessions(self):
         _controller_source, token_source = function_source(
             CONTROLLER_PATH,
             "management_tinode_token",
         )
 
+        self.assertIn('current_user.get("auth_method") == "account_sso"', token_source)
         self.assertIn("_validated_account_identity", token_source)
+        self.assertIn("_tinode_account_identity", token_source)
         self.assertIn("_repair_unprovisioned_tinode_username", token_source)
         self.assertIn("tinode_sso_login", token_source)
         self.assertIn('"connection": "tinode"', token_source)
@@ -304,6 +336,7 @@ class ChatAuthContractTests(unittest.TestCase):
 
         self.assertIn("management_session_requested(request)", endpoint_source)
         self.assertIn("_management_scope_error", endpoint_source)
+        self.assertIn("_management_account_sso_guard", endpoint_source)
         self.assertIn("_is_admin", endpoint_source)
         self.assertIn("Conversation.tenant_id == tenant_id", endpoint_source)
         self.assertIn("ConversationParticipant.tenant_id == tenant_id", endpoint_source)
@@ -327,16 +360,18 @@ class ChatAuthContractTests(unittest.TestCase):
                 )
                 self.assertIn("management_session_requested(request)", endpoint_source)
                 self.assertIn("_management_scope_error", endpoint_source)
+                self.assertIn("_management_account_sso_guard", endpoint_source)
 
-    def test_management_password_change_does_not_change_tinode_credentials(self):
+    def test_local_password_change_does_not_change_tinode_credentials(self):
         _controller_source, password_source = function_source(
             CONTROLLER_PATH,
             "management_change_password",
         )
 
-        self.assertIn("management_session_requested(request)", password_source)
-        self.assertIn("if not management_scope", password_source)
-        self.assertIn("tinode_change_password", password_source)
+        self.assertIn("verify_password", password_source)
+        self.assertIn("account.password_hash = new_password_hash", password_source)
+        self.assertNotIn("tinode_change_password", password_source)
+        self.assertNotIn("tinode_admin_reset_password", password_source)
         self.assertIn("AUTH_MANAGEMENT_PASSWORD_CHANGE", password_source)
 
     def test_deployment_verifier_does_not_depend_on_the_tinode_admin_password(self):
@@ -367,11 +402,12 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("deployment_verifier", delete_source)
 
     @repository_source_test
-    def test_management_web_matches_chatmgt_service_boundaries(self):
+    def test_management_web_manages_tenant_local_employees_without_message_content(self):
         app_source = MANAGEMENT_APP_PATH.read_text(encoding="utf-8")
         service_source = MANAGEMENT_SERVICE_PATH.read_text(encoding="utf-8")
 
-        self.assertIn("Danh bạ nhân viên chỉ đọc", app_source)
+        self.assertIn("Tài khoản nhân viên doanh nghiệp", app_source)
+        self.assertIn("Thêm nhân viên", app_source)
         self.assertIn("Conversation và nhóm", app_source)
         self.assertIn("Không có API đọc lịch sử tin nhắn Tinode", app_source)
         self.assertIn("listConversations", service_source)
@@ -379,11 +415,9 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("/api/v1/admin/sso", service_source)
         self.assertIn("startAccountLogin", service_source)
         self.assertNotIn("changePassword", service_source)
-        self.assertNotIn("ChangePasswordDialog", app_source)
-        self.assertNotIn("Mật khẩu Chatmgt", app_source)
-        self.assertNotIn("createUser", service_source)
-        self.assertNotIn("updateUser", service_source)
-        self.assertNotIn("resetPassword", service_source)
+        self.assertIn("createUser", service_source)
+        self.assertIn("updateUser", service_source)
+        self.assertIn("resetPassword", service_source)
 
     @repository_source_test
     def test_chatui_forwards_the_current_tinode_token_when_binding(self):

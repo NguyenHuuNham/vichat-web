@@ -175,6 +175,14 @@ def stable_account_id(tenant_id, account_user_id):
     return "acct_{}".format(digest[:48])
 
 
+def stable_local_account_id(tenant_id, username):
+    normalized_username = str(username or "").strip().lower()
+    digest = hashlib.sha256(
+        "{}\x00local\x00{}".format(tenant_id, normalized_username).encode("utf-8")
+    ).hexdigest()
+    return "usr_{}".format(digest[:48])
+
+
 def stable_tinode_username(tenant_id, account_user_id):
     digest = hashlib.sha256("{}\x00{}".format(tenant_id, account_user_id).encode("utf-8")).hexdigest()
     # Tinode stores basic logins as "basic:<username>" in a VARCHAR(32).

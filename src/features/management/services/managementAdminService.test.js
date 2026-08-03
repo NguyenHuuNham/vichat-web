@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   accountAdminLoginUrl,
   consumeAccountAdminCallback,
+  managementAdminService,
   normalizeAdminConversation,
   normalizeManagementUser,
 } from './managementAdminService.js';
@@ -20,6 +21,37 @@ test('builds and consumes the Account admin SSO callback without credentials', (
   const consumed = consumeAccountAdminCallback(callbackUrl.toString());
   assert.equal(consumed.shouldRetry, true);
   assert.equal(new URL(consumed.cleanUrl).searchParams.has('vichat_admin_sso'), false);
+});
+
+test('sends tenant-admin employee create, update, and password reset requests', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options = {}) => {
+    requests.push({ url, options });
+    const user = { id: 'employee-1', username: 'employee', name: 'Employee One', auth_source: 'local' };
+    return {
+      ok: true,
+      status: 200,
+      json: async () => url.endsWith('/reset-password') ? { reset: true, user } : user,
+    };
+  };
+
+  try {
+    await managementAdminService.createUser({ username: 'employee', password: 'StrongPassword!2026', name: 'Employee One' });
+    await managementAdminService.updateUser('employee-1', { title: 'Sales' });
+    await managementAdminService.resetPassword('employee-1', 'AnotherPassword!2026');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(requests[0].url, '/api/v1/chat/users');
+  assert.equal(requests[0].options.method, 'POST');
+  assert.equal(JSON.parse(requests[0].options.body).username, 'employee');
+  assert.equal(requests[1].url, '/api/v1/chat/users/employee-1');
+  assert.equal(requests[1].options.method, 'PUT');
+  assert.equal(requests[2].url, '/api/v1/chat/users/employee-1/reset-password');
+  assert.deepEqual(JSON.parse(requests[2].options.body), { new_password: 'AnotherPassword!2026' });
+  assert.equal(requests.every(request => request.options.headers['X-Vichat-Session-Scope'] === 'management'), true);
 });
 
 test('normalizes Account projections as read-only management users', () => {

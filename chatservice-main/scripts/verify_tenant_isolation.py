@@ -24,6 +24,7 @@ from application.models.models import (
     ManagementTenant,
 )
 from application.services.auth_service import hash_password, issue_access_token
+from application.services.sso_identity import stable_tinode_username
 from application.server import app  # noqa: F401 - initializes application config
 
 
@@ -62,48 +63,49 @@ def verify(base_url):
             updated_at=now,
             properties={"verification": True},
         )
-        password_hash = hash_password(secrets.token_urlsafe(48))
+        password_a = "A!{}a9".format(secrets.token_urlsafe(32))
+        password_b = "B!{}b8".format(secrets.token_urlsafe(32))
         account_a = ManagementAccount(
             id=account_a_id,
             tenant_id=tenant_a_id,
-            username="verify-a-{}".format(suffix),
+            username="shared.employee",
             email="verify-a-{}@invalid.local".format(suffix),
-            password_hash=password_hash,
+            password_hash=hash_password(password_a),
             full_name="Verification A",
             role="member",
-            tinode_username="verifya{}".format(suffix),
+            tinode_username=stable_tinode_username(tenant_a_id, account_a_id),
             active=True,
             created_at=now,
             updated_at=now,
-            properties={"auth_version": 0, "verification": True},
+            properties={"auth_source": "local", "auth_version": 0, "verification": True},
         )
         account_a2 = ManagementAccount(
             id=account_a2_id,
             tenant_id=tenant_a_id,
             username="verify-a-peer-{}".format(suffix),
             email="verify-a-peer-{}@invalid.local".format(suffix),
-            password_hash=password_hash,
+            password_hash=hash_password(password_a),
             full_name="Verification A peer",
             role="member",
-            tinode_username="verifyapeer{}".format(suffix),
+            tinode_username=stable_tinode_username(tenant_a_id, account_a2_id),
             active=True,
             created_at=now,
             updated_at=now,
-            properties={"auth_version": 0, "verification": True},
+            properties={"auth_source": "local", "auth_version": 0, "verification": True},
         )
         account_b = ManagementAccount(
             id=account_b_id,
             tenant_id=tenant_b_id,
-            username="verify-b-{}".format(suffix),
+            username="shared.employee",
             email="verify-b-{}@invalid.local".format(suffix),
-            password_hash=password_hash,
+            password_hash=hash_password(password_b),
             full_name="Verification B",
             role="member",
-            tinode_username="verifyb{}".format(suffix),
+            tinode_username=stable_tinode_username(tenant_b_id, account_b_id),
             active=True,
             created_at=now,
             updated_at=now,
-            properties={"auth_version": 0, "verification": True},
+            properties={"auth_source": "local", "auth_version": 0, "verification": True},
         )
         db.session.add_all([tenant_a, tenant_b])
         db.session.flush()
@@ -194,6 +196,38 @@ def verify(base_url):
         headers_a = {"Authorization": "Bearer {}".format(issue_access_token(account_a))}
         headers_a2 = {"Authorization": "Bearer {}".format(issue_access_token(account_a2))}
         base_url = base_url.rstrip("/")
+
+        login_a = require_status(
+            requests.post(
+                base_url + "/api/v1/auth/login",
+                json={"identity": "shared.employee", "password": password_a, "tenant_id": tenant_a_id},
+                timeout=10,
+            ),
+            200,
+            "Tenant A employee login",
+        )
+        login_b = require_status(
+            requests.post(
+                base_url + "/api/v1/auth/login",
+                json={"identity": "shared.employee", "password": password_b, "tenant_id": tenant_b_id},
+                timeout=10,
+            ),
+            200,
+            "Tenant B employee login",
+        )
+        if login_a.get("tenant_id") != tenant_a_id or login_b.get("tenant_id") != tenant_b_id:
+            raise RuntimeError("Same-username employee login resolved the wrong tenant.")
+        require_status(
+            requests.post(
+                base_url + "/api/v1/auth/login",
+                json={"identity": "shared.employee", "password": password_a, "tenant_id": tenant_b_id},
+                timeout=10,
+            ),
+            401,
+            "Cross-tenant employee password",
+        )
+        if account_a.tinode_username == account_b.tinode_username:
+            raise RuntimeError("Same-username tenants received the same Tinode username.")
 
         users = require_status(
             requests.get(

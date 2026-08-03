@@ -1,9 +1,10 @@
-import { normalizeNotificationMuteUntil } from './conversationNotifications';
+import { normalizeNotificationMuteUntil } from './conversationNotifications.js';
 
 const env = import.meta.env || {};
 const apiBase = String(env.VITE_CHAT_MANAGEMENT_API_URL || '').replace(/\/$/, '');
 const remoteAuth = String(env.VITE_CHAT_MANAGEMENT_REMOTE_AUTH || '').toLowerCase() === 'true';
 const tenantId = env.VITE_CHAT_TENANT_ID || 'song-hong';
+const authMode = String(env.VITE_CHAT_AUTH_MODE || 'password').trim().toLowerCase();
 const accountUrl = String(env.VITE_ACCOUNT_URL || 'https://account.upgo.vn').replace(/\/+$/, '');
 const topicBindingsKey = 'vichat.management.topic-bindings.v1';
 
@@ -39,9 +40,23 @@ function accountTenant(account) {
   return account?.tenantId || account?.tenant_id || tenantId;
 }
 
+export function employeeLoginPayload(credentials = {}) {
+  return {
+    identity: String(credentials.identity || credentials.username || '').trim(),
+    password: String(credentials.password || ''),
+    tenant_id: tenantId,
+  };
+}
+
 function publicAccount(account) {
   if (!account) return null;
-  const { password: _password, ...safe } = account;
+  const {
+    password: _password,
+    password_hash: _passwordHash,
+    passwordHash: _passwordHashCamel,
+    secret: _secret,
+    ...safe
+  } = account;
   return {
     ...safe,
     id: safe.id || safe.user_id || safe.uid,
@@ -137,11 +152,18 @@ export const chatManagementService = {
     return lastDirectorySync;
   },
 
-  async login() {
+  async login(credentials = {}) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
-    const payload = await apiRequest('/api/v1/auth/sso', {
-      method: 'POST',
-    });
+    const passwordLogin = authMode === 'password';
+    const payload = await apiRequest(
+      passwordLogin ? '/api/v1/auth/login' : '/api/v1/auth/sso',
+      {
+        method: 'POST',
+        ...(passwordLogin ? {
+          body: JSON.stringify(employeeLoginPayload(credentials)),
+        } : {}),
+      },
+    );
     const account = publicAccount(payload.user || payload.current_user || payload);
     const tenant = payload.tenant || account?.tenant || null;
     const rawTinodeAuth = payload.tinode || payload.tinode_auth || {};
@@ -454,6 +476,7 @@ function toLoginSession(account) {
 export const managementAuthClient = {
   enabled: Boolean(apiBase && remoteAuth),
   accountUrl,
+  mode: authMode,
 
   accountLoginUrl() {
     if (typeof window === 'undefined') return accountUrl;
@@ -464,8 +487,8 @@ export const managementAuthClient = {
     return loginUrl.toString();
   },
 
-  async login() {
-    return toLoginSession(await chatManagementService.login());
+  async login(credentials) {
+    return toLoginSession(await chatManagementService.login(credentials));
   },
 
   async logout() {

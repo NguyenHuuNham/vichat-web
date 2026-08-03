@@ -17,6 +17,7 @@ normalize_account_session = SSO_IDENTITY.normalize_account_session
 normalize_account_directory_record = SSO_IDENTITY.normalize_account_directory_record
 protected_tinode_account = SSO_IDENTITY.protected_tinode_account
 stable_account_id = SSO_IDENTITY.stable_account_id
+stable_local_account_id = SSO_IDENTITY.stable_local_account_id
 stable_tinode_username = SSO_IDENTITY.stable_tinode_username
 valid_tinode_username = SSO_IDENTITY.valid_tinode_username
 valid_tinode_topic = SSO_IDENTITY.valid_tinode_topic
@@ -107,6 +108,19 @@ class SSOIdentityTests(unittest.TestCase):
             derive_tinode_password(secret, "tenant-b", identity_b["account_user_id"], username_b),
         )
         self.assertNotIn(identity_a["username"], password_a)
+
+    def test_same_local_username_is_isolated_between_tenants(self):
+        account_a = stable_local_account_id("tenant-a", "nhanvien")
+        account_b = stable_local_account_id("tenant-b", "nhanvien")
+        tinode_a = stable_tinode_username("tenant-a", account_a)
+        tinode_b = stable_tinode_username("tenant-b", account_b)
+
+        self.assertNotEqual(account_a, account_b)
+        self.assertNotEqual(tinode_a, tinode_b)
+        self.assertNotEqual(
+            derive_tinode_password("s" * 48, "tenant-a", account_a, tinode_a),
+            derive_tinode_password("s" * 48, "tenant-b", account_b, tinode_b),
+        )
 
     def test_account_mapping_rejects_cross_tenant_session(self):
         identity_a = normalize_account_session(account_payload("tenant-a", "Tenant A"))
