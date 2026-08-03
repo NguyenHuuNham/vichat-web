@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-03-12 - Trien khai dang nhap nhan vien Chatmgt theo tenant
+
+- Thoi gian: 2026-08-03 23:34 (Asia/Saigon)
+- Loai: Trien khai | Bao mat | Xac thuc | Realtime | Van hanh
+- Trang thai: Hoan tat trien khai, cho UAT bang tai khoan doanh nghiep that
+- Muc tieu: Dua luong ChatUI dang nhap username/password do admin tenant cap len production; giu Account SSO chi cho trang quan tri Chatmgt; bao toan metadata tenant va Tinode realtime bang token ngan han.
+- Pham vi: Release bat bien `/opt/deploy/chat/releases/c4d2a68`, image/container `chatmgt` va `chat`, cau hinh auth production, backup Chatmgt PostgreSQL va bo verifier. Khong recreate ChatAPI, hai PostgreSQL, Redis, Coturn; khong sua noi dung tin nhan, topic, call, notification hoac worktree production dang co thay doi cuc bo.
+- File da thay doi: `docs/CHANGELOG.md`; source production la commit `c3cdc5f` va tai lieu commit `c4d2a68`. File `.env` that chi duoc cap nhat tren release server, khong dua vao Git.
+- Noi dung: Tao archive sach SHA-256 `f6200b0611d4f900a6dc52fa7445c863231ebf4c2516090c325bb9ad47808314`, sao chep `.env`/Tinode bootstrap tu release dang chay, dat `CHAT_ACCOUNT_SSO_ENABLED=false`, `CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true`, `VITE_CHAT_AUTH_MODE=password`, build va force-recreate rieng `chatmgt`/`chat`. Ca hai container hien doc Compose tu release `c4d2a68` va healthy.
+- Quyet dinh ky thuat: Khong pull/reset worktree server `1b3de22` dang co thay doi cuc bo. Dung release archive de dam bao source dung commit; giu nguyen secret, volume, database, Tinode admin credential, upload va runtime. ChatUI nhan vien dung Chatmgt local credential; admin Chatmgt van dung UpGO Account SSO; Tinode credential duoc derive phia server va browser chi nhan token ngan han.
+- Database/API/cau hinh: Da tao `pg_dump -Fc` mode `0600` tai `backups/chatservice-before-c4d2a68-20260803T162953Z.dump` va kiem tra duoc bang `pg_restore -l`; Alembic `upgrade head` chay thanh cong, khong co migration moi. Public health bao employee endpoint `/api/v1/auth/login`, admin Account SSO va management data da configured.
+- Kiem thu: Local dat backend 81 test (28 skip runtime), frontend 29/29 va lint khong loi. Image production dat 74 test, 10 skip do runtime image khong chua source frontend. `verify_deployment.py` dat database/credential, health, CORS, directory, conversation, Tinode WebSocket, login/logout; `verify_tenant_isolation.py` dat user/conversation/friend/participant hai tenant. `chat.upgo.vn/healthz` va `chatmgt.upgo.vn/api/v1/auth/health` tra HTTP 200; probe sai mat khau tra 401 `LOGIN_FAILED`; bundle ChatUI co form `chat-password`.
+- Rui ro con lai: Chua UAT bang Account admin that va hai local employee that tren trinh duyet. Can xac nhan admin tao user/cap mat khau cho projection cu, login/logout, danh ba dung tenant, nhan tin hai chieu, presence/receipt/call va khong thay du lieu tenant khac.
+- Viec tiep theo: Admin doanh nghiep hard refresh `chatmgt.upgo.vn`, dang nhap bang UpGO Account, tao mot local employee hoac chon `Cap mat khau ChatUI`; sau do dung hai profile trinh duyet dang nhap `chat.upgo.vn` va chay UAT tenant/realtime. Rollback dung release truoc va backup tren, khong `down -v`.
+- Commit/PR: Code `c3cdc5f`, tai lieu `c4d2a68`; commit ghi nhan trien khai duoc tao trong cung lan lam viec nay (xem `git log`).
+
 ## 2026-08-03-11 - Chuyen nhan vien sang dang nhap Chatmgt theo tenant
 
 - Thoi gian: 2026-08-03 23:17 (Asia/Saigon)
