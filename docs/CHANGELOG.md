@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `python -m unittest discover -s chatservice-main/tests -v` dat 81 test, 28 skip do Windows khong co runtime dependency cua image; `npm run test:frontend` dat 29/29; `npm run lint` dat voi warning legacy co san; `npm run build:production` dat; `python -m py_compile ...` dat; Compose `config -q` dat khi truyen secret tam thoi khong in gia tri; `git diff --check` dat. Khong chay duoc test backend trong image local vi Docker Desktop daemon khong hoat dong (`dockerDesktopLinuxEngine` khong ton tai); se chay lai trong image tren production release truoc nghiem thu.
 - Rui ro con lai: Chua chay verifier HTTP/Tinode va UAT hai tai khoan that tren server; projection Account cua chinh admin khong duoc tu reset de tranh tu khoa phien quan tri; admin muon dung ChatUI can mot local employee rieng hoac mot quyet dinh mapping sau.
 - Viec tiep theo: Review diff rieng auth, commit/push, tao release bat bien, backup Chatmgt PostgreSQL, cap nhat `.env` an toan, rebuild/recreate chi `chatmgt` va `chat`, chay full test/verifier/two-tenant/public health va UAT tao/chuyen doi mot employee.
-- Commit/PR: Chua tao.
+- Commit/PR: `c3cdc5f`.
 
 ## 2026-08-03-10 - Trien khai giao dien nhom gon va thanh goi lai
 
