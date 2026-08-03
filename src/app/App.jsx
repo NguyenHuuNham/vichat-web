@@ -677,7 +677,6 @@ function App() {
   const chatModeLabel = chatMode === 'tinode'
     ? 'Tinode realtime'
     : usesManagementData ? 'Dữ liệu Chatmgt' : 'Demo mode';
-  const chatModeIcon = chatMode === 'tinode' ? 'fa-bolt' : usesManagementData ? 'fa-database' : 'fa-flask';
   const accountPresenceLabel = account => chatMode === 'tinode'
     ? (isAccountOnline(account) ? 'Online' : 'Offline')
     : usesManagementData ? 'Danh bạ Chatmgt' : (isAccountOnline(account) ? 'Online' : 'Offline');
@@ -4010,12 +4009,9 @@ function App() {
         <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
           if (event.target === event.currentTarget) closeCreateGroupModal();
         }}>
-          <form className="group-modal" onSubmit={handleCreateGroup}>
+          <form className="group-modal create-group-modal" onSubmit={handleCreateGroup}>
             <div className="group-modal-header">
-              <div>
-                <span className="group-modal-kicker">CHAT GROUP</span>
-                <h2>Tạo nhóm trò chuyện</h2>
-              </div>
+              <h2>Tạo nhóm trò chuyện</h2>
               <button type="button" className="btn-close-detail" onClick={closeCreateGroupModal} aria-label="Đóng" disabled={isCreatingGroup}>
                 <i className="fa-solid fa-xmark"></i>
               </button>
@@ -4029,14 +4025,12 @@ function App() {
               </div>
               <div className="group-avatar-picker-copy">
                 <strong>Ảnh đại diện nhóm</strong>
-                <span>JPG, PNG hoặc WebP · tối đa 10 MB</span>
                 <label className="btn-group-avatar-upload">
                   <i className="fa-solid fa-camera"></i>
                   <span>{groupAvatarFile ? 'Đổi ảnh' : 'Tải ảnh lên'}</span>
                   <input type="file" accept="image/*" onChange={handleGroupAvatarChange} disabled={isCreatingGroup || chatMode !== 'tinode'} />
                 </label>
               </div>
-              {chatMode !== 'tinode' && <small>Ảnh nhóm cần kết nối kho tệp realtime Tinode.</small>}
               {groupAvatarFile && (
                 <button type="button" className="btn-remove-group-avatar" onClick={() => { setGroupAvatarFile(null); setGroupAvatarPreview(''); }} aria-label="Xóa ảnh đã chọn">
                   <i className="fa-solid fa-xmark"></i>
@@ -4046,17 +4040,12 @@ function App() {
 
             <label className="group-form-field">
               <span>Tên nhóm</span>
-              <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder="Ví dụ: Dự án Sông Hồng" required autoFocus />
-            </label>
-            <label className="group-form-field">
-              <span>Mô tả</span>
-              <textarea value={groupDescription} onChange={(event) => setGroupDescription(event.target.value)} placeholder="Mục đích của nhóm (không bắt buộc)" rows="3" />
+              <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder="Nhập tên nhóm" required autoFocus />
             </label>
 
             <div className="group-form-field">
               <span>Thêm thành viên</span>
-              <input value={groupMemberSearch} onChange={handleSearchGroupMembers} placeholder={usesManagementData ? 'Tìm theo tên, email, username hoặc phòng ban...' : 'Tìm trong danh sách mẫu...'} />
-              <p className="group-form-hint">Tài khoản của bạn ({currentUser?.name}) được tự động thêm làm quản trị viên nhóm.</p>
+              <input value={groupMemberSearch} onChange={handleSearchGroupMembers} placeholder="Tìm thành viên" />
               {isSearchingMembers && <p className="group-form-hint">Đang tìm thành viên...</p>}
               {groupCandidates.length > 0 ? (
                 <div className="group-member-picker">
@@ -4072,13 +4061,12 @@ function App() {
                     );
                   })}
                 </div>
-              ) : (
-                <p className="group-form-hint">{usesManagementData ? 'Nhập ít nhất 2 ký tự để tìm trong danh bạ Chatmgt.' : 'Không tìm thấy tài khoản phù hợp trong danh bạ nội bộ.'}</p>
-              )}
+              ) : groupMemberSearch.trim().length >= 2 && !isSearchingMembers
+                ? <p className="group-form-hint">Không tìm thấy thành viên.</p>
+                : null}
             </div>
 
-            <div className="group-modal-footer">
-              <span className="group-mode-label"><i className={`fa-solid ${chatModeIcon}`}></i>{chatModeLabel}</span>
+            <div className="group-modal-footer actions-only">
               <div className="group-modal-actions">
                 <button type="button" className="btn-secondary" onClick={closeCreateGroupModal} disabled={isCreatingGroup}>Hủy</button>
                 <button type="submit" className="btn-primary" disabled={!groupName.trim() || isCreatingGroup}>{isCreatingGroup ? 'Đang tạo...' : 'Tạo nhóm'}</button>
@@ -4092,12 +4080,9 @@ function App() {
         <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setIsAddMembersOpen(false);
         }}>
-          <form className="group-modal" onSubmit={handleAddMembers}>
+          <form className="group-modal group-members-modal" onSubmit={handleAddMembers}>
             <div className="group-modal-header">
-              <div>
-                <span className="group-modal-kicker">GROUP MEMBERS</span>
-                <h2>Thêm thành viên vào {activeChat.name}</h2>
-              </div>
+              <h2>Thêm thành viên vào {activeChat.name}</h2>
               <button type="button" className="btn-close-detail" onClick={() => setIsAddMembersOpen(false)} aria-label="Đóng">
                 <i className="fa-solid fa-xmark"></i>
               </button>
@@ -4105,7 +4090,7 @@ function App() {
 
             <div className="group-form-field">
               <span>Tìm tài khoản</span>
-              <input value={groupMemberSearch} onChange={handleSearchGroupMembers} autoFocus placeholder={usesManagementData ? 'Tìm trong danh bạ Chatmgt...' : 'Tìm theo tên, username, email hoặc phòng ban...'} />
+              <input value={groupMemberSearch} onChange={handleSearchGroupMembers} autoFocus placeholder="Tìm thành viên" />
               {isSearchingMembers && <p className="group-form-hint">Đang tìm thành viên...</p>}
               {groupCandidates.length > 0 ? (
                 <div className="group-member-picker">
@@ -4121,9 +4106,9 @@ function App() {
                     );
                   })}
                 </div>
-              ) : (
-                <p className="group-form-hint">{usesManagementData ? 'Nhập ít nhất 2 ký tự để tìm tài khoản trong Chatmgt.' : 'Tất cả tài khoản phù hợp đã ở trong nhóm hoặc không tồn tại.'}</p>
-              )}
+              ) : groupMemberSearch.trim().length >= 2 && !isSearchingMembers
+                ? <p className="group-form-hint">Không tìm thấy thành viên.</p>
+                : null}
             </div>
 
             <div className="group-modal-footer">

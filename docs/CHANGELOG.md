@@ -6,6 +6,19 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-03-09 - Thu gon giao dien tao nhom va lich su cuoc goi
+
+- Thoi gian: 2026-08-03 (Asia/Saigon)
+- Loai: Giao dien | Kha dung
+- Trang thai: Hoan tat code va kiem thu local, chua commit/deploy
+- Muc tieu: Lam thanh `Goi lai` vua phai hon va don gian hoa cac form tao nhom/them thanh vien de chi giu thong tin can thiet, khong anh huong cac luong dang on dinh.
+- Pham vi: Chi cap nhat JSX/CSS cua ChatUI; form tao nhom chi con anh dai dien, ten nhom va them thanh vien; form them thanh vien dung cung cach gon; khong sua API, Tinode, Chatmgt, database, presence, receipt, notification hay signaling.
+- Noi dung: Bo kicker, mo ta nhom, huong dan dinh dang anh, ghi chu tu dong gan admin, nhan che do realtime va cac huong dan tim kiem dai; giu lai thong bao dang tim/khong tim thay o muc ngan gon. Thu gon kich thuoc, khoang cach, icon va nut `Goi lai` cua the lich su cuoc goi tren desktop/mobile.
+- Quyet dinh ky thuat: Chi an/bot thanh phan hien thi va dieu chinh layout; giu nguyen state `groupDescription` va payload hien co de khong thay doi hop dong du lieu/API.
+- Kiem thu: `npm run test:frontend` dat 27/27; `npm run lint` hoan tat voi cac warning legacy co san; `npx vite build --outDir .codex-build-ui-trim --emptyOutDir` dat; bundle co marker `Goi lai`, `Cuoc goi nho`, `call-history-redial` va khong con cac chuoi huong dan da loai bo; build tam da duoc xoa.
+- Rui ro con lai: Chua UAT truc quan sau khi deploy; can kiem tra kich thuoc modal va the lich su tren desktop/mobile truoc khi phat hanh.
+- Viec tiep theo: Review diff, commit/push va deploy ChatUI rieng neu phe duyet; khong recreate Chatmgt, ChatAPI, PostgreSQL, Redis hoac Coturn.
+
 ## 2026-08-03-08 - Trien khai giao dien lich su cuoc goi len production
 
 - Thoi gian: 2026-08-03 22:08 (Asia/Saigon)
