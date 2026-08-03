@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-03-13 - Sua tenant ChatUI production theo doanh nghiep dang van hanh
+
+- Thoi gian: 2026-08-03 23:43 (Asia/Saigon)
+- Loai: Sua loi | Trien khai | Xac thuc | Bao mat | Van hanh
+- Trang thai: Hoan tat trien khai, cho nguoi dung dang nhap lai
+- Muc tieu: Sua loi nhan vien vua tao trong Chatmgt bi bao sai thong tin khi dang nhap ChatUI do frontend gui nham tenant production.
+- Pham vi: Cau hinh private `.env`, build arg tenant va recreate rieng `chatmgt`/`chat` cua release `/opt/deploy/chat/releases/c4d2a68`. Khong sua code, database, mat khau, Tinode topic/message, ChatAPI, PostgreSQL, Redis, Coturn hoac cac luong chat khac.
+- File da thay doi: `docs/CHANGELOG.md`; `.env` production duoc sao luu va cap nhat tren server, khong dua vao Git.
+- Noi dung: Audit production cho thay local employee moi nam trong tenant `tn6913580727957397` (`CTY NHAM`) voi trang thai active, `auth_source=local` va bcrypt hash hop le, nhung ChatUI cu gui `tenant_id=song-hong`. Cap nhat `CHATMGT_DEFAULT_TENANT=tn6913580727957397`, build lai frontend/management UI va force-recreate `chatmgt`/`chat`; bundle moi chua dung tenant target.
+- Quyet dinh ky thuat: Giu mo hinh mot ChatUI domain co tenant co dinh de khong lo tenant selector va khong cho doanh nghiep nay do tim doanh nghiep khac. Khong reset mat khau nhan vien vi hash da hop le va khong co quyen thay doi mat khau nguoi dung neu chua duoc yeu cau.
+- Database/API/cau hinh: Khong migration va khong sua du lieu tai khoan. Tao ban sao `.env.backup-before-tenant-*` mode `0600`; giu `CHAT_ACCOUNT_SSO_ENABLED=false`, `CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true`, `VITE_CHAT_AUTH_MODE=password`.
+- Kiem thu: Hai container healthy; public health ChatUI/Chatmgt dat; bundle `App` va `ManagementApp` co `tn6913580727957397`; `verify_deployment.py` dat database/credential, health, CORS, directory, conversation, Tinode WebSocket, local password login va logout trong tenant moi.
+- Rui ro con lai: Trinh duyet co the dang giu HTML/bundle cu; can hard refresh. Neu van sai sau khi bundle moi da tai, nguyen nhan con lai la mat khau nguoi dung nhap khong trung hash da tao va admin can dung chuc nang dat lai mat khau, khong xem/khong khoi phuc mat khau cu.
+- Viec tiep theo: Hard refresh `chat.upgo.vn`, dang nhap bang username hoac email cua local employee va dung mat khau da cap. Neu can, admin mo `chatmgt.upgo.vn` va chon dat lai mat khau cho dung employee.
+- Commit/PR: Commit ghi nhan hotfix production duoc tao trong cung lan lam viec nay (xem `git log`).
+
 ## 2026-08-03-12 - Trien khai dang nhap nhan vien Chatmgt theo tenant
 
 - Thoi gian: 2026-08-03 23:34 (Asia/Saigon)
