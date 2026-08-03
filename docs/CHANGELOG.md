@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-03-08 - Trien khai giao dien lich su cuoc goi len production
+
+- Thoi gian: 2026-08-03 22:08 (Asia/Saigon)
+- Loai: Trien khai | Giao dien | WebRTC
+- Trang thai: Hoan tat trien khai, cho UAT hai tai khoan
+- Muc tieu: Dua ban dia hoa tieng Viet va nut `Goi lai` cua lich su voice/video call len `chat.upgo.vn` ma khong recreate cac service backend dang on dinh.
+- Pham vi: Chi build va force-recreate service `chat` tu release bat bien `/opt/deploy/chat/releases/da9f3f6`; khong sua database, migration, Chatmgt, ChatAPI, PostgreSQL, Redis, Coturn, Account SSO hay worktree server dang co thay doi cuc bo.
+- File da thay doi: `docs/CHANGELOG.md`; runtime production dung source commit `da9f3f6` va private `.env`/runtime duoc sao chep mode `0600` tu release WebRTC truoc.
+- Noi dung: Tao archive sach cua commit `da9f3f6`, xac minh SHA-256 `13227f3b3edf839274e02020bc2bfb6168de5583a026a978bc309ec79c171190`, validate Compose, build image ChatUI moi va recreate rieng container `songhong-production-chat-1`. Release moi phuc vu bundle `index-Ckr47Mme.js`, `App-pMbbICIK.js` va CSS co `call-history-redial`.
+- Quyet dinh ky thuat: Tiep tuc dung release directory thay vi pull/reset worktree server o `1b3de22` dang co 6 thay doi cuc bo. Gan image cu thanh `songhong-production-chat:rollback-before-da9f3f6`; script chi rollback ChatUI neu build, health, Nginx, marker bundle hoac bao toan container ID that bai.
+- Database/API/cau hinh: Khong thay doi. Khong migration, secret, API, port, firewall, Tinode ICE/TURN hoac bien moi truong moi.
+- Kiem thu: Commit sach dat frontend test 27/27, lint voi warning legacy va build production. Production xac nhan ChatUI image `sha256:7b61d30ad7695d96244daa6eb167f7e3a924bde1a39bde87cfa13a7b804f90ff`, container healthy, Nginx syntax dat, local/public health HTTP `200`, public App bundle co `Goi lai`, `Cuoc goi nho` va thong bao Tinode co dau. Chatmgt, ChatAPI, hai PostgreSQL, Redis va Coturn giu nguyen container ID; log ChatUI khong co `emerg/fatal/panic/critical`.
+- Rui ro con lai: Chua UAT thao tac goi lai bang hai Account user that tren desktop/mobile va hai mang khac nhau; provider firewall TURN van can duoc xac nhan nhu muc `2026-08-03-06`.
+- Viec tiep theo: Hai user hard refresh, tao cuoc goi nho va cuoc goi da nghe, bam `Goi lai` cho ca voice/video, sau do regression tin nhan 1-1/nhom, presence, receipt va thong bao.
+- Commit/PR: Code `da9f3f6`; commit ghi nhan trien khai duoc tao trong cung lan lam viec nay (xem `git log`).
+
 ## 2026-08-03-07 - Hoan thien giao dien lich su cuoc goi
 
 - Thoi gian: 2026-08-03 21:52 (Asia/Saigon)
