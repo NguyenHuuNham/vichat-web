@@ -3369,6 +3369,17 @@ function App() {
                         <span className="message-time">
                           {msg.time} {isOutgoing && deliveryStatusIcon(msg)}
                         </span>
+                        <button
+                          type="button"
+                          className="call-history-redial"
+                          title={callActionCapability.available ? 'Gọi lại' : callActionCapability.reason}
+                          aria-label={msg.call.audioOnly ? 'Gọi lại bằng cuộc gọi thoại' : 'Gọi lại bằng cuộc gọi video'}
+                          onClick={() => handleStartCall(msg.call.audioOnly)}
+                          disabled={!callActionCapability.available}
+                        >
+                          <i className={`fa-solid ${msg.call.audioOnly ? 'fa-phone' : 'fa-video'}`}></i>
+                          Gọi lại
+                        </button>
                       </div>
                     )}
                     {/* Tin nhắn chữ thường */}

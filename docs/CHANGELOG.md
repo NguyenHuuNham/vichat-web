@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-03-07 - Hoan thien giao dien lich su cuoc goi
+
+- Thoi gian: 2026-08-03 21:52 (Asia/Saigon)
+- Loai: Giao dien | WebRTC | Kha dung
+- Trang thai: Hoan tat code va kiem thu local, chua commit/deploy
+- Muc tieu: Hien thi tieng Viet co dau tren toan bo giao dien cuoc goi va them hanh dong `Goi lai` ngay duoi moi ban ghi cuoc goi nho/da nghe ma khong thay doi signaling hay cac luong chat dang on dinh.
+- Pham vi: Nhan lich su cuoc goi, man hinh voice/video call, nut goi lai va CSS cua the lich su; khong sua Tinode topic, WebRTC signaling, Chatmgt, Account SSO, database, presence, receipt, nhom, thong bao hoac chatbot.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/components/CallOverlay.jsx`, `src/features/chat/services/callSignaling.js`, `src/features/chat/services/callSignaling.test.js`, `src/features/chat/services/tinodeClient.js` va `docs/CHANGELOG.md`.
+- Noi dung: Chuyen cac nhan trang thai/loi/aria cua cuoc goi, ke ca thong bao loi Tinode co the hien tren ChatUI, sang tieng Viet co dau; giu dinh dang `Cuoc goi nho` va `Cuoc goi den - mm:ss`; them hang `Goi lai` co bieu tuong ben duoi the lich su cho ca voice va video. Nut dung lai `handleStartCall` hien co, lay dung `audioOnly` cua ban ghi va tu vo hieu hoa theo call capability hien tai.
+- Quyet dinh ky thuat: Khong tao signaling hoac API moi; hanh dong goi lai chi khoi dong lai luong goi 1-1 da duoc nghiem thu. Khong cap nhat tai lieu kien truc vi ranh gioi dich vu va luong du lieu khong thay doi.
+- Database/API/cau hinh: Khong thay doi, khong migration, khong dependency va khong them bien moi truong.
+- Kiem thu: `npm run test:frontend` dat 27/27; `npm run lint` dat voi cac warning legacy co san; build Vite voi `VITE_CHAT_MODE=internal` dat va bundle co cac marker `Goi lai`, `Cuoc goi nho`, `call-history-redial`; build tam da duoc xoa.
+- Rui ro con lai: Chua UAT truc quan bang hai Account user that tren desktop/mobile; can xac nhan nut goi lai tu lich su voice/video va quyen micro/camera sau khi deploy.
+- Viec tiep theo: Review diff rieng phan call, commit/push va deploy ChatUI bang release bat bien, sau do UAT missed/answered/redial voi hai tai khoan.
+- Commit/PR: Commit tinh nang duoc tao trong cung lan lam viec nay (xem `git log`).
+
 ## 2026-08-03-06 - Ghi nhan firewall nha cung cap cho TURN
 
 - Thoi gian: 2026-08-03 14:27 (Asia/Saigon)

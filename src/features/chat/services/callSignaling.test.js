@@ -71,16 +71,16 @@ test('parses call history and formats duration without changing normal messages'
     incoming: true,
   });
   assert.equal(formatCallDuration(65000), '01:05');
-  assert.equal(callHistoryLabel(call, false), 'Cuoc goi den - 01:05');
+  assert.equal(callHistoryLabel(call, false), 'Cuộc gọi đến - 01:05');
   assert.equal(parseCallMessage({ txt: 'hello' }), null);
 });
 
 test('renders terminal and unanswered call states consistently', () => {
-  assert.equal(callHistoryLabel({ state: 'busy' }, true), 'Cuoc goi di - May ban');
-  assert.equal(callHistoryLabel({ state: 'declined' }, false), 'Cuoc goi den - Da tu choi');
-  assert.equal(callHistoryLabel({ state: 'missed' }, false), 'Cuoc goi nho');
-  assert.equal(callHistoryLabel({ state: 'missed' }, true), 'Cuoc goi da huy');
-  assert.equal(callHistoryLabel({ state: 'disconnected' }, true), 'Cuoc goi di - Mat ket noi');
+  assert.equal(callHistoryLabel({ state: 'busy' }, true), 'Cuộc gọi đi - Máy bận');
+  assert.equal(callHistoryLabel({ state: 'declined' }, false), 'Cuộc gọi đến - Đã từ chối');
+  assert.equal(callHistoryLabel({ state: 'missed' }, false), 'Cuộc gọi nhỡ');
+  assert.equal(callHistoryLabel({ state: 'missed' }, true), 'Cuộc gọi đã hủy');
+  assert.equal(callHistoryLabel({ state: 'disconnected' }, true), 'Cuộc gọi đi - Mất kết nối');
   assert.deepEqual(parseCallMessage({ ent: [{ tp: 'VC', data: { aonly: true, state: 'finished' } }] }, { 'webrtc-duration': 1250 }), {
     audioOnly: true,
     state: 'finished',

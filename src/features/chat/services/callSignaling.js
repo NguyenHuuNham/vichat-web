@@ -47,15 +47,15 @@ export function callCapability({
   iceServers = [],
   browserSupported = browserCallSupported(),
 } = {}) {
-  if (isChatbot) return { available: false, reason: 'Khong the goi tro ly chatbot.' };
-  if (isGroup) return { available: false, reason: 'Tinode 0.25.3 chi ho tro cuoc goi 1-1.' };
-  if (!authenticated) return { available: false, reason: 'Ket noi Tinode realtime chua san sang.' };
+  if (isChatbot) return { available: false, reason: 'Không thể gọi trợ lý chatbot.' };
+  if (isGroup) return { available: false, reason: 'Tinode 0.25.3 chỉ hỗ trợ cuộc gọi 1-1.' };
+  if (!authenticated) return { available: false, reason: 'Kết nối Tinode realtime chưa sẵn sàng.' };
   if (!/^usr[a-z0-9_-]+$/i.test(String(topicName || ''))) {
-    return { available: false, reason: 'Cuoc tro chuyen chua co topic Tinode 1-1 hop le.' };
+    return { available: false, reason: 'Cuộc trò chuyện chưa có topic Tinode 1-1 hợp lệ.' };
   }
-  if (!browserSupported) return { available: false, reason: 'Trinh duyet nay khong ho tro WebRTC.' };
+  if (!browserSupported) return { available: false, reason: 'Trình duyệt này không hỗ trợ WebRTC.' };
   if (normalizeIceServers(iceServers).length === 0) {
-    return { available: false, reason: 'May chu chua cau hinh ICE/TURN cho cuoc goi.' };
+    return { available: false, reason: 'Máy chủ chưa cấu hình ICE/TURN cho cuộc gọi.' };
   }
   return { available: true, reason: '' };
 }
@@ -97,12 +97,12 @@ export function formatCallDuration(durationMs = 0) {
 
 export function callHistoryLabel(call, outgoing = false) {
   if (!call) return '';
-  const direction = outgoing ? 'Cuoc goi di' : 'Cuoc goi den';
-  if (call.state === 'busy') return `${direction} - May ban`;
-  if (call.state === 'declined') return `${direction} - Da tu choi`;
-  if (call.state === 'missed') return outgoing ? 'Cuoc goi da huy' : 'Cuoc goi nho';
-  if (call.state === 'disconnected') return `${direction} - Mat ket noi`;
+  const direction = outgoing ? 'Cuộc gọi đi' : 'Cuộc gọi đến';
+  if (call.state === 'busy') return `${direction} - Máy bận`;
+  if (call.state === 'declined') return `${direction} - Đã từ chối`;
+  if (call.state === 'missed') return outgoing ? 'Cuộc gọi đã hủy' : 'Cuộc gọi nhỡ';
+  if (call.state === 'disconnected') return `${direction} - Mất kết nối`;
   if (call.duration > 0) return `${direction} - ${formatCallDuration(call.duration)}`;
-  if (call.state === 'accepted') return `${direction} - Dang dien ra`;
+  if (call.state === 'accepted') return `${direction} - Đang diễn ra`;
   return direction;
 }

@@ -1246,16 +1246,16 @@ export const tinodeClient = {
     };
     const ctrl = await topic.publishMessage(draft);
     const seq = Number(ctrl?.params?.seq || draft.seq || 0);
-    if (!seq) throw new Error('Tinode khong tra ve ma cuoc goi.');
+    if (!seq) throw new Error('Tinode không trả về mã cuộc gọi.');
     return { seq, topic: topicName, audioOnly: Boolean(audioOnly) };
   },
 
   async sendCallSignal(topicName, seq, event, payload) {
     if (!Object.values(CALL_SIGNAL_EVENTS).includes(event)) {
-      throw new Error('Tin hieu cuoc goi khong hop le.');
+      throw new Error('Tín hiệu cuộc gọi không hợp lệ.');
     }
     const callSeq = Number(seq);
-    if (!callSeq) throw new Error('Cuoc goi chua co ma tin nhan.');
+    if (!callSeq) throw new Error('Cuộc gọi chưa có mã tin nhắn.');
     const topic = await subscribeTopic(topicName, { historyLimit: 0 });
     await topic.videoCall(event, callSeq, payload);
   },

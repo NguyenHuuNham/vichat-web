@@ -8,11 +8,11 @@ const CALL_DISCONNECT_TIMEOUT_MS = 10000;
 
 function mediaErrorMessage(error) {
   if (error?.name === 'NotAllowedError' || error?.name === 'SecurityError') {
-    return 'Can cho phep trinh duyet su dung micro va camera de bat dau cuoc goi.';
+    return 'Cần cho phép trình duyệt sử dụng micro và camera để bắt đầu cuộc gọi.';
   }
-  if (error?.name === 'NotFoundError') return 'Khong tim thay micro hoac camera phu hop.';
-  if (error?.name === 'NotReadableError') return 'Micro hoac camera dang duoc ung dung khac su dung.';
-  return error?.message || 'Khong the khoi tao cuoc goi WebRTC.';
+  if (error?.name === 'NotFoundError') return 'Không tìm thấy micro hoặc camera phù hợp.';
+  if (error?.name === 'NotReadableError') return 'Micro hoặc camera đang được ứng dụng khác sử dụng.';
+  return error?.message || 'Không thể khởi tạo cuộc gọi WebRTC.';
 }
 
 function stopStream(stream) {
@@ -49,7 +49,7 @@ function CallAvatar({ src, name }) {
   }, [src]);
 
   if (!resolvedSrc || failed) return <span className="call-avatar-fallback">{initials || 'VC'}</span>;
-  return <img src={resolvedSrc} alt={name || 'Nguoi tham gia'} onError={() => setFailed(true)} />;
+  return <img src={resolvedSrc} alt={name || 'Người tham gia'} onError={() => setFailed(true)} />;
 }
 
 export default function CallOverlay({ call, onClose, onError }) {
@@ -139,7 +139,7 @@ export default function CallOverlay({ call, onClose, onError }) {
     });
     if (!mountedRef.current || endingRef.current) {
       stopStream(stream);
-      throw new Error('Cuoc goi da ket thuc.');
+      throw new Error('Cuộc gọi đã kết thúc.');
     }
     localStreamRef.current = stream;
     if (localMediaRef.current) localMediaRef.current.srcObject = stream;
@@ -154,7 +154,7 @@ export default function CallOverlay({ call, onClose, onError }) {
     const candidates = remoteCandidatesRef.current.splice(0);
     for (const candidate of candidates) {
       await pc.addIceCandidate(candidate).catch(error => {
-        if (candidate.candidate) onError(error?.message || 'Khong the them ICE candidate.');
+        if (candidate.candidate) onError(error?.message || 'Không thể thêm ICE candidate.');
       });
     }
   }, [onError]);
@@ -185,7 +185,7 @@ export default function CallOverlay({ call, onClose, onError }) {
         sequenceRef.current,
         CALL_SIGNAL_EVENTS.ICE_CANDIDATE,
         event.candidate.toJSON(),
-      ).catch(error => onError(error?.message || 'Khong the gui ICE candidate.'));
+      ).catch(error => onError(error?.message || 'Không thể gửi ICE candidate.'));
     };
     pc.ontrack = event => {
       const stream = event.streams?.[0];
@@ -297,10 +297,10 @@ export default function CallOverlay({ call, onClose, onError }) {
         return;
       }
       await pc.addIceCandidate(candidate).catch(error => {
-        if (candidate.candidate) onError(error?.message || 'Khong the them ICE candidate.');
+        if (candidate.candidate) onError(error?.message || 'Không thể thêm ICE candidate.');
       });
     } catch (error) {
-      onError(error?.message || 'ICE candidate khong hop le.');
+      onError(error?.message || 'ICE candidate không hợp lệ.');
     }
   }, [onError]);
 
@@ -397,17 +397,17 @@ export default function CallOverlay({ call, onClose, onError }) {
   };
 
   const statusLabel = phase === 'incoming'
-    ? `${call.audioOnly ? 'Cuoc goi thoai' : 'Cuoc goi video'} den`
-    : phase === 'preparing' ? 'Dang mo thiet bi...'
-      : phase === 'calling' ? 'Dang goi...'
-        : phase === 'ringing' ? 'Dang do chuong...'
-          : phase === 'connecting' ? 'Dang ket noi...'
-            : phase === 'reconnecting' ? 'Dang khoi phuc ket noi...'
+    ? `${call.audioOnly ? 'Cuộc gọi thoại' : 'Cuộc gọi video'} đến`
+    : phase === 'preparing' ? 'Đang mở thiết bị...'
+      : phase === 'calling' ? 'Đang gọi...'
+        : phase === 'ringing' ? 'Đang đổ chuông...'
+          : phase === 'connecting' ? 'Đang kết nối...'
+            : phase === 'reconnecting' ? 'Đang khôi phục kết nối...'
               : formatCallDuration(elapsedMs);
   const showActiveControls = !['incoming', 'preparing'].includes(phase) || call.direction === 'outgoing';
 
   return (
-    <div className="call-overlay" role="dialog" aria-modal="true" aria-label={call.audioOnly ? 'Cuoc goi thoai' : 'Cuoc goi video'}>
+    <div className="call-overlay" role="dialog" aria-modal="true" aria-label={call.audioOnly ? 'Cuộc gọi thoại' : 'Cuộc gọi video'}>
       <section className={`call-shell ${call.audioOnly ? 'audio-only' : 'video-call'}`}>
         <div className="call-remote-stage">
           <video
@@ -419,7 +419,7 @@ export default function CallOverlay({ call, onClose, onError }) {
           {(!remoteVideoAvailable || call.audioOnly) && (
             <div className="call-peer-card">
               <div className="call-peer-avatar"><CallAvatar src={call.peerAvatar} name={call.peerName} /></div>
-              <h2>{call.peerName || 'Nguoi dung'}</h2>
+              <h2>{call.peerName || 'Người dùng'}</h2>
               <p>{statusLabel}</p>
             </div>
           )}
@@ -429,36 +429,36 @@ export default function CallOverlay({ call, onClose, onError }) {
           <div className={`call-local-preview ${cameraEnabled ? '' : 'camera-off'}`}>
             <video ref={localMediaRef} autoPlay muted playsInline />
             {!cameraEnabled && <i className="fa-solid fa-video-slash"></i>}
-            <span>Ban</span>
+            <span>Bạn</span>
           </div>
         )}
 
         <div className="call-topline">
-          <span><i className={`fa-solid ${call.audioOnly ? 'fa-phone' : 'fa-video'}`}></i>{call.audioOnly ? 'Goi thoai' : 'Goi video'}</span>
+          <span><i className={`fa-solid ${call.audioOnly ? 'fa-phone' : 'fa-video'}`}></i>{call.audioOnly ? 'Gọi thoại' : 'Gọi video'}</span>
           {phase === 'connected' && <time>{formatCallDuration(elapsedMs)}</time>}
         </div>
 
         <div className="call-controls">
           {phase === 'incoming' ? (
             <>
-              <button type="button" className="call-control danger" onClick={() => closeCall({ notifyRemote: true, reason: 'declined' })} aria-label="Tu choi cuoc goi">
+              <button type="button" className="call-control danger" onClick={() => closeCall({ notifyRemote: true, reason: 'declined' })} aria-label="Từ chối cuộc gọi">
                 <i className="fa-solid fa-phone-slash"></i>
               </button>
-              <button type="button" className="call-control accept" onClick={acceptIncomingCall} aria-label="Nhan cuoc goi">
+              <button type="button" className="call-control accept" onClick={acceptIncomingCall} aria-label="Nhận cuộc gọi">
                 <i className={`fa-solid ${call.audioOnly ? 'fa-phone' : 'fa-video'}`}></i>
               </button>
             </>
           ) : (
             <>
-              <button type="button" className={`call-control ${microphoneEnabled ? '' : 'disabled'}`} onClick={toggleMicrophone} disabled={!showActiveControls} aria-label={microphoneEnabled ? 'Tat micro' : 'Bat micro'}>
+              <button type="button" className={`call-control ${microphoneEnabled ? '' : 'disabled'}`} onClick={toggleMicrophone} disabled={!showActiveControls} aria-label={microphoneEnabled ? 'Tắt micro' : 'Bật micro'}>
                 <i className={`fa-solid ${microphoneEnabled ? 'fa-microphone' : 'fa-microphone-slash'}`}></i>
               </button>
               {!call.audioOnly && (
-                <button type="button" className={`call-control ${cameraEnabled ? '' : 'disabled'}`} onClick={toggleCamera} disabled={!showActiveControls} aria-label={cameraEnabled ? 'Tat camera' : 'Bat camera'}>
+                <button type="button" className={`call-control ${cameraEnabled ? '' : 'disabled'}`} onClick={toggleCamera} disabled={!showActiveControls} aria-label={cameraEnabled ? 'Tắt camera' : 'Bật camera'}>
                   <i className={`fa-solid ${cameraEnabled ? 'fa-video' : 'fa-video-slash'}`}></i>
                 </button>
               )}
-              <button type="button" className="call-control danger" onClick={() => closeCall({ notifyRemote: true, reason: 'local' })} aria-label="Ket thuc cuoc goi">
+              <button type="button" className="call-control danger" onClick={() => closeCall({ notifyRemote: true, reason: 'local' })} aria-label="Kết thúc cuộc gọi">
                 <i className="fa-solid fa-phone-slash"></i>
               </button>
             </>

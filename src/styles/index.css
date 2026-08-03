@@ -2706,6 +2706,27 @@ input:checked + .slider:before {
 .call-history-copy strong { overflow: hidden; color: var(--text-main); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .call-history-copy > span { color: var(--text-muted); font-size: 11px; }
 .call-history-bubble .message-time { margin: 0; white-space: nowrap; }
+.call-history-redial {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 7px -14px -10px;
+  padding: 9px 14px 10px;
+  border: 0;
+  border-top: 1px solid rgba(43, 166, 111, .16);
+  border-radius: 0 0 16px 16px;
+  color: var(--vichat-blue);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+.call-history-redial:hover:not(:disabled) { background: rgba(43, 166, 111, .08); }
+.call-history-redial:focus-visible { outline: 2px solid var(--vichat-blue); outline-offset: -3px; }
+.call-history-redial:disabled { cursor: not-allowed; opacity: .5; }
 
 @keyframes call-pulse {
   0%, 100% { opacity: .62; transform: scale(.92); }
