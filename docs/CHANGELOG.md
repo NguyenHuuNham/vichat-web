@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-03-06 - Ghi nhan firewall nha cung cap cho TURN
+
+- Thoi gian: 2026-08-03 14:27 (Asia/Saigon)
+- Loai: Van hanh | Bao mat | Trien khai
+- Trang thai: Can xac nhan
+- Muc tieu: Xac dinh kha nang truy cap TURN tu mang ngoai sau khi release WebRTC da healthy tren server `.206`.
+- Pham vi: Chi kiem tra ket noi den cong TURN production; khong sua code, database, container hay cac luong chat dang on dinh.
+- File da thay doi: `docs/CHANGELOG.md`.
+- Noi dung: UFW tren server da co rule TCP/UDP `3478` va UDP `49160-49200`; probe TCP tu may phat trien den `103.74.122.206:3478` timeout sau 5 giay. HTTP public, ChatUI, ChatAPI, Tinode hello va Coturn local van dat.
+- Quyet dinh ky thuat: Khong rollback release chi vi probe ngoai bi chan; TURN la lop ha tang ngoai server va release van co rollback image/tag. Khong tu dong thay doi provider firewall khi chua co quyen quan tri tuong ung.
+- Database/API/cau hinh: Khong thay doi source hay database. Can mo inbound TCP/UDP `3478` va UDP `49160-49200` tai firewall nha cung cap cho IP `103.74.122.206`.
+- Kiem thu: `Test-NetConnection 103.74.122.206 -Port 3478` timeout; probe socket 5 giay cung timeout; `ss`, UFW, public health, bundle marker va Tinode `iceServers` count 2 da dat tren server.
+- Rui ro con lai: Cuoc goi giua hai mang khac nhau co the khong relay duoc cho den khi provider firewall mo dung cong; chua UAT micro/camera voi hai Account user that.
+- Viec tiep theo: Mo rule provider firewall, chay lai probe TCP/UDP tu mang ngoai, sau do UAT voice/video/reject/timeout/hang-up/toggle va regression chat.
+- Commit/PR: Commit chua muc nay (xem `git log`).
+
 ## 2026-08-03-05 - Trien khai goi thoai va video Tinode WebRTC
 
 - Thoi gian: 2026-08-03 14:24 (Asia/Saigon)
