@@ -22,8 +22,10 @@ import {
   findDirectPeer,
   identitiesOverlap,
   identityValues,
+  mergeRealtimeAccountProfile,
   mergeRealtimeMemberPresence,
   snapshotPresence,
+  updateAccountProfiles,
   updateAccountPresence,
 } from '../features/contacts/services/accountDirectory';
 import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
@@ -673,7 +675,7 @@ function App() {
   const realtimeMessagingPending = usesManagementData
     && !activeChat.isChatbot
     && (chatMode !== 'tinode' || connectionStatus !== 'online');
-  const accountProfileReadOnly = usesManagementData;
+  const accountProfileReadOnly = Boolean(currentUser?.accountManaged || currentUser?.account_managed);
   const chatModeLabel = chatMode === 'tinode'
     ? 'Tinode realtime'
     : usesManagementData ? 'Dữ liệu Chatmgt' : 'Demo mode';
@@ -1192,29 +1194,34 @@ function App() {
         return;
       }
       if ((event.type === 'profile' || event.type === 'user-profile') && event.profile?.id) {
-        const profile = event.profile;
-        const viewerId = currentUser?.id || currentUser?.uid;
-        if (profile.id === viewerId) {
+        const profileAccount = findAccount(directoryAccountsRef.current, event.profile.id);
+        const profile = profileAccount
+          ? {
+            ...event.profile,
+            id: profileAccount.id,
+            uid: profileAccount.uid || profileAccount.id,
+            tinodeUid: profileAccount.tinodeUid || profileAccount.tinode_uid || event.profile.id,
+          }
+          : event.profile;
+        if (identitiesOverlap(currentUser, profile)) {
           setCurrentUser(previous => ({
             ...previous,
             name: profile.name || previous?.name,
             avatar: profile.avatar || '',
           }));
         }
-        const updateAccount = account => account.id === profile.id
-          ? { ...account, name: profile.name || account.name, avatar: profile.avatar || '' }
-          : account;
-        setDirectoryAccounts(previous => previous.map(updateAccount));
-        setWorkspaceResults(previous => previous.map(updateAccount));
-        setGroupSearchResults(previous => previous.map(updateAccount));
+        const updateAccount = account => mergeRealtimeAccountProfile(account, profile);
+        setDirectoryAccounts(previous => updateAccountProfiles(previous, profile));
+        setWorkspaceResults(previous => updateAccountProfiles(previous, profile));
+        setGroupSearchResults(previous => updateAccountProfiles(previous, profile));
         setConversations(previous => Object.fromEntries(Object.entries(previous).map(([id, room]) => {
           const members = (room.members || []).map(updateAccount);
-          const peer = !room.isGroup ? members.find(member => member.id === profile.id) : null;
+          const peer = !room.isGroup ? members.find(member => identitiesOverlap(member, profile)) : null;
           return [id, {
             ...room,
             ...(peer ? { name: profile.name || room.name, avatarUrl: profile.avatar || '' } : {}),
             members,
-            messages: (room.messages || []).map(message => message.senderId === profile.id
+            messages: (room.messages || []).map(message => identitiesOverlap({ id: message.senderId }, profile)
               ? { ...message, senderName: profile.name || message.senderName, avatar: profile.avatar || '' }
               : message),
           }];
@@ -3472,7 +3479,7 @@ function App() {
 
           {activeRemoteTyping && (
             <div className="message-item incoming remote-typing-indicator">
-              <div className="message-avatar"><SafeAvatar src={activeChat.members?.find(member => member.id === activeRemoteTyping.uid)?.avatar || ''} name={activeRemoteTyping.name} /></div>
+              <div className="message-avatar"><SafeAvatar src={activeChat.members?.find(member => identitiesOverlap(member, { id: activeRemoteTyping.uid }))?.avatar || ''} name={activeRemoteTyping.name} /></div>
               <div className="message-content-wrapper">
                 <span className="sender-name">{activeRemoteTyping.name}</span>
                 <div className="message-bubble chatbot-typing-bubble" aria-label={`${activeRemoteTyping.name} đang nhập`}>

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-03-14 - Dong bo avatar Tinode theo danh tinh Chatmgt
+
+- Thoi gian: 2026-08-03 23:59 (Asia/Saigon)
+- Loai: Sua loi | Realtime | Giao dien
+- Trang thai: Hoan tat code va kiem thu local, cho commit/push/trien khai production
+- Muc tieu: Avatar moi cua nhan vien phai cap nhat realtime trong danh ba, header hoi thoai, danh sach thanh vien, typing indicator va lich su tin nhan/cuoc goi ma khong can tai lai trang.
+- Pham vi: Chi luong profile/avatar giua ChatUI va Tinode; khong sua message content, call signaling, presence, receipt, notification, membership, Chatmgt API, database, authentication hoac chatbot.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `docs/chat-backend-architecture.md` va file nay.
+- Noi dung: Tinode phat profile bang Tinode UID trong khi ChatUI giu account ID cua Chatmgt, nen avatar cu khong duoc thay trong room va message history. ChatUI nay doi chieu tat ca ID quan ly/Tinode, cache profile tu metadata topic truoc moi lan phat snapshot, cap nhat cac ban sao dang render va tim avatar typing bang cung phep doi chieu danh tinh. Tai khoan Chatmgt local khong con bi gan nham la profile Account chi-doc.
+- Quyet dinh ky thuat: Giu Chatmgt la nguon danh tinh tenant va Tinode la kenh profile realtime; chi merge `name`/`avatar` vao entity trung danh tinh, bao toan ID va cac truong nghiep vu khac de tranh tao lai conversation hoac anh huong luong chat/call.
+- Database/API/cau hinh: Khong thay doi. Khong migration, endpoint, payload, dependency, secret hoac bien moi truong moi.
+- Kiem thu: `npm run test:frontend` dat 31/31; `npm run lint` dat voi warning legacy co san; `npm run build:production` dat; `git diff --check` se duoc chay lai tren diff staged truoc commit.
+- Rui ro con lai: Chua UAT hai phien nguoi dung that de quan sat avatar doi ngay tren trinh duyet ben kia; can hard refresh mot lan sau deploy de nap bundle moi, sau do avatar thay doi tiep theo phai cap nhat realtime.
+- Viec tiep theo: Stage chon loc, commit/push, deploy rieng ChatUI tu release bat bien va UAT avatar trong direct/group, typing va lich su cuoc goi.
+- Commit/PR: Chua tao.
+
 ## 2026-08-03-13 - Sua tenant ChatUI production theo doanh nghiep dang van hanh
 
 - Thoi gian: 2026-08-03 23:43 (Asia/Saigon)

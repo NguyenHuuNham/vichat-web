@@ -40,6 +40,26 @@ export function updateAccountPresence(accounts, snapshot, currentUser) {
   return changed ? next : accounts;
 }
 
+export function mergeRealtimeAccountProfile(entity, profile) {
+  if (!entity || !profile || !identitiesOverlap(entity, profile)) return entity;
+  const nextName = profile.name || entity.name;
+  const nextAvatar = Object.prototype.hasOwnProperty.call(profile, 'avatar')
+    ? (profile.avatar || '')
+    : entity.avatar;
+  if (nextName === entity.name && nextAvatar === entity.avatar) return entity;
+  return { ...entity, name: nextName, avatar: nextAvatar };
+}
+
+export function updateAccountProfiles(accounts, profile) {
+  let changed = false;
+  const next = (accounts || []).map(account => {
+    const updated = mergeRealtimeAccountProfile(account, profile);
+    if (updated !== account) changed = true;
+    return updated;
+  });
+  return changed ? next : accounts;
+}
+
 export function mergeRealtimeMemberPresence(members, realtimeMembers) {
   if (!Array.isArray(members) || !Array.isArray(realtimeMembers) || realtimeMembers.length === 0) {
     return members;

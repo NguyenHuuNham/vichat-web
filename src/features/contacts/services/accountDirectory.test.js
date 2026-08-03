@@ -6,7 +6,9 @@ import {
   findDirectPeer,
   identitiesOverlap,
   identityValues,
+  mergeRealtimeAccountProfile,
   mergeRealtimeMemberPresence,
+  updateAccountProfiles,
   updateAccountPresence,
 } from './accountDirectory.js';
 
@@ -55,6 +57,40 @@ test('presence update never overwrites the current account state', () => {
 
   assert.strictEqual(result, accounts);
   assert.strictEqual(result[0], viewer);
+});
+
+test('Tinode profile updates the matching Chatmgt account and preserves its identity', () => {
+  const account = {
+    id: 'account-1',
+    uid: 'account-1',
+    tinodeUid: 'usr-one',
+    name: 'Old name',
+    avatar: '/old-avatar.jpg',
+  };
+
+  const updated = mergeRealtimeAccountProfile(account, {
+    id: 'usr-one',
+    name: 'New name',
+    avatar: '/new-avatar.jpg',
+  });
+
+  assert.notStrictEqual(updated, account);
+  assert.equal(updated.id, 'account-1');
+  assert.equal(updated.tinodeUid, 'usr-one');
+  assert.equal(updated.name, 'New name');
+  assert.equal(updated.avatar, '/new-avatar.jpg');
+});
+
+test('realtime profile refresh changes only the matching directory account', () => {
+  const first = { id: 'account-1', tinodeUid: 'usr-one', avatar: '/old.jpg' };
+  const second = { id: 'account-2', tinodeUid: 'usr-two', avatar: '/two.jpg' };
+  const accounts = [first, second];
+
+  const result = updateAccountProfiles(accounts, { id: 'usr-one', avatar: '/new.jpg' });
+
+  assert.notStrictEqual(result, accounts);
+  assert.equal(result[0].avatar, '/new.jpg');
+  assert.strictEqual(result[1], second);
 });
 
 test('realtime group presence overlays Chatmgt members without replacing their identities', () => {

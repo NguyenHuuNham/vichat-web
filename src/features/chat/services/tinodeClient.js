@@ -307,6 +307,16 @@ function cacheUserProfile(uid, publicProfile = {}) {
   return next;
 }
 
+function cacheTopicProfiles(topic) {
+  if (!topic) return;
+  if (topic.name && topic.isP2PType?.()) {
+    cacheUserProfile(topic.name, topic.public || {});
+  }
+  topic.subscribers?.(subscriber => {
+    if (subscriber?.user) cacheUserProfile(subscriber.user, subscriber.public || {});
+  });
+}
+
 async function loadUserProfile(uid, tinode = getClient()) {
   if (!uid) return null;
   const cached = userProfileCache.get(uid);
@@ -703,6 +713,7 @@ async function enrichConversationProfiles(conversation, tinode = getClient()) {
 
 function emitConversation(topic, tinode = topic?._tinode || getClient()) {
   if (!topic || tinode !== client || !allowedConversationTopics.has(topic.name)) return;
+  cacheTopicProfiles(topic);
   const sessionUid = tinode.getCurrentUserID();
   const eventKey = `${sessionUid}:${topic.name}`;
   const pendingTimer = conversationEmitTimers.get(eventKey);

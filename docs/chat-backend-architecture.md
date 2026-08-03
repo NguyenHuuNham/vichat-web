@@ -112,6 +112,11 @@ operations verify the fresh Tinode token and exact tenant member set before
 committing Chatmgt metadata. Tinode remains authoritative for message content,
 files, presence, typing, reactions, receipts and call signaling.
 
+Tinode profile metadata is correlated through both the Chatmgt account ID and
+Tinode UID. A profile metadata update refreshes the matching directory entry,
+conversation header, members, typing indicator and rendered message/call
+history without changing tenant ownership or message content.
+
 ## API contract
 
 | Method | Path | Purpose |
