@@ -9,6 +9,11 @@ export const CALL_SIGNAL_EVENTS = Object.freeze({
   HANG_UP: 'hang-up',
 });
 
+export function resolveCallsEnabled(value) {
+  if (value === true) return true;
+  return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
+}
+
 function callEntity(content) {
   return content?.ent?.find?.(entity => entity?.tp === 'VC')?.data || null;
 }

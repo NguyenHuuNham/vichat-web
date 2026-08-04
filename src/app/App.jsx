@@ -16,6 +16,7 @@ import {
   notificationMuteLabel,
   resolveNotificationMuteUntil,
 } from '../features/chat/services/conversationNotifications';
+import { resolveCallsEnabled } from '../features/chat/services/callSignaling';
 import {
   countGroupPresence,
   findAccount,
@@ -31,6 +32,8 @@ import {
 import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
 import { CHATBOT_ACCOUNT, learnFromChatFile, learnFromChatMessage, loadChatbotMessages, loadChatbotMessagesFromServer, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
+
+const CALLS_ENABLED = resolveCallsEnabled(import.meta.env.VITE_CALLS_ENABLED);
 
 function tinodeTopicName(room) {
   return room?.tinodeTopic || room?.id || '';
@@ -693,6 +696,7 @@ function App() {
     ? `${activeGroupPresence.memberCount} thành viên • ${activeGroupPresence.onlineCount} đang online`
     : activeChat.membersCount;
   const callActionCapability = (() => {
+    if (!CALLS_ENABLED) return { available: false, reason: 'Tính năng cuộc gọi đang tạm ẩn theo cấu hình doanh nghiệp.' };
     if (chatMode !== 'tinode') return { available: false, reason: 'Cuộc gọi chỉ khả dụng khi đã kết nối Tinode realtime.' };
     if (activeCall) return { available: false, reason: 'Bạn đang có một cuộc gọi khác.' };
     if (activeChat.isChatbot) return { available: false, reason: 'Không thể gọi trợ lý chatbot.' };
@@ -1167,6 +1171,10 @@ function App() {
         return;
       }
       if (event.type === 'call-invite') {
+        if (!CALLS_ENABLED) {
+          tinodeClient.sendCallSignal(event.topic, event.seq, 'hang-up').catch(() => {});
+          return;
+        }
         const currentRooms = conversationsRef.current;
         const managedEntry = Object.entries(currentRooms)
           .filter(([, room]) => room.accountSession === accountSession)
@@ -3133,7 +3141,7 @@ function App() {
           {chatError && <button type="button" onClick={() => setChatError('')} aria-label="Đóng thông báo"><i className="fa-solid fa-xmark"></i></button>}
         </div>
       )}
-      {activeCall && (
+      {CALLS_ENABLED && activeCall && (
         <CallOverlay
           key={activeCall.id}
           call={activeCall}
@@ -3299,24 +3307,28 @@ function App() {
             <button className="btn-header-action" title="Tìm kiếm" onClick={() => openWorkspacePanel('search')}>
               <i className="fa-solid fa-magnifying-glass"></i>
             </button>
-            <button
-              type="button"
-              className="btn-header-action"
-              title={callActionCapability.available ? 'Gọi thoại' : callActionCapability.reason}
-              onClick={() => handleStartCall(true)}
-              disabled={!callActionCapability.available}
-            >
-              <i className="fa-solid fa-phone"></i>
-            </button>
-            <button
-              type="button"
-              className="btn-header-action"
-              title={callActionCapability.available ? 'Gọi video' : callActionCapability.reason}
-              onClick={() => handleStartCall(false)}
-              disabled={!callActionCapability.available}
-            >
-              <i className="fa-solid fa-video"></i>
-            </button>
+            {CALLS_ENABLED && (
+              <>
+                <button
+                  type="button"
+                  className="btn-header-action"
+                  title={callActionCapability.available ? 'Gọi thoại' : callActionCapability.reason}
+                  onClick={() => handleStartCall(true)}
+                  disabled={!callActionCapability.available}
+                >
+                  <i className="fa-solid fa-phone"></i>
+                </button>
+                <button
+                  type="button"
+                  className="btn-header-action"
+                  title={callActionCapability.available ? 'Gọi video' : callActionCapability.reason}
+                  onClick={() => handleStartCall(false)}
+                  disabled={!callActionCapability.available}
+                >
+                  <i className="fa-solid fa-video"></i>
+                </button>
+              </>
+            )}
             <button className="btn-header-action" title="Thông tin nhóm" onClick={() => setIsDetailOpen(!isDetailOpen)}>
               <i className="fa-solid fa-ellipsis-vertical"></i>
             </button>
@@ -3375,17 +3387,19 @@ function App() {
                         <span className="message-time">
                           {msg.time} {isOutgoing && deliveryStatusIcon(msg)}
                         </span>
-                        <button
-                          type="button"
-                          className="call-history-redial"
-                          title={callActionCapability.available ? 'Gọi lại' : callActionCapability.reason}
-                          aria-label={msg.call.audioOnly ? 'Gọi lại bằng cuộc gọi thoại' : 'Gọi lại bằng cuộc gọi video'}
-                          onClick={() => handleStartCall(msg.call.audioOnly)}
-                          disabled={!callActionCapability.available}
-                        >
-                          <i className={`fa-solid ${msg.call.audioOnly ? 'fa-phone' : 'fa-video'}`}></i>
-                          Gọi lại
-                        </button>
+                        {CALLS_ENABLED && (
+                          <button
+                            type="button"
+                            className="call-history-redial"
+                            title={callActionCapability.available ? 'Gọi lại' : callActionCapability.reason}
+                            aria-label={msg.call.audioOnly ? 'Gọi lại bằng cuộc gọi thoại' : 'Gọi lại bằng cuộc gọi video'}
+                            onClick={() => handleStartCall(msg.call.audioOnly)}
+                            disabled={!callActionCapability.available}
+                          >
+                            <i className={`fa-solid ${msg.call.audioOnly ? 'fa-phone' : 'fa-video'}`}></i>
+                            Gọi lại
+                          </button>
+                        )}
                       </div>
                     )}
                     {/* Tin nhắn chữ thường */}

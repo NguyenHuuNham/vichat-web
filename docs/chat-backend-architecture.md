@@ -117,6 +117,21 @@ Tinode UID. A profile metadata update refreshes the matching directory entry,
 conversation header, members, typing indicator and rendered message/call
 history without changing tenant ownership or message content.
 
+## Runtime call visibility and chatbot webhook
+
+`VITE_CALLS_ENABLED=false` hides voice/video call entry points, redial actions
+and incoming call UI in ChatUI while keeping the Tinode/WebRTC implementation
+available for a later rebuild. Disabled clients reject incoming call invites
+without changing message, presence, receipt or group behavior.
+
+ChatUI always sends chatbot messages to Chatmgt's authenticated
+`POST /api/v1/chatbot/message`. With `CHATBOT_PROVIDER=external-webhook`,
+Chatmgt sends a bounded server-to-server payload to the fixed
+`CHATBOT_API_URL`, currently `https://knowledge.gonapp.net/api/v1/chat`.
+Employee credentials, cookies and secrets are never sent to that provider; only
+the message, conversation reference, bounded history, approved public identity
+fields and retrieved context may cross the boundary.
+
 ## API contract
 
 | Method | Path | Purpose |

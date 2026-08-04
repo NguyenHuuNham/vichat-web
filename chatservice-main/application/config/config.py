@@ -122,6 +122,8 @@ class Config(object):
     CHATBOT_API_URL = os.getenv("CHATBOT_API_URL", "https://api.openai.com/v1/chat/completions")
     CHATBOT_API_KEY = os.getenv("CHATBOT_API_KEY")
     CHATBOT_MODEL = os.getenv("CHATBOT_MODEL")
+    CHATBOT_EXTERNAL_AUTH_HEADER = os.getenv("CHATBOT_EXTERNAL_AUTH_HEADER", "Authorization")
+    CHATBOT_EXTERNAL_AUTH_SCHEME = os.getenv("CHATBOT_EXTERNAL_AUTH_SCHEME", "Bearer")
     CHATBOT_TIMEOUT = int(os.getenv("CHATBOT_TIMEOUT", 30))
     CHATBOT_TEMPERATURE = float(os.getenv("CHATBOT_TEMPERATURE", 0.2))
     CHATBOT_MAX_TOKENS = int(os.getenv("CHATBOT_MAX_TOKENS", 800))

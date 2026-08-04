@@ -8,7 +8,15 @@ import {
   formatCallDuration,
   normalizeIceServers,
   parseCallMessage,
+  resolveCallsEnabled,
 } from './callSignaling.js';
+
+test('call feature stays hidden unless explicitly enabled', () => {
+  assert.equal(resolveCallsEnabled(undefined), false);
+  assert.equal(resolveCallsEnabled('false'), false);
+  assert.equal(resolveCallsEnabled('true'), true);
+  assert.equal(resolveCallsEnabled('ON'), true);
+});
 
 test('call capability requires authenticated P2P Tinode and ICE servers', () => {
   const iceServers = [{ urls: ['stun:chat.example:3478', 'turn:chat.example:3478'] }];

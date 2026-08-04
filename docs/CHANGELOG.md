@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-04-02 - Tam an cuoc goi va ket noi chatbot webhook doanh nghiep
+
+- Thoi gian: 2026-08-04 10:29 (Asia/Saigon)
+- Loai: Tinh nang | Cau hinh | Bao mat | Giao dien | API
+- Trang thai: Hoan tat code va kiem thu local, cho commit/push/trien khai production
+- Muc tieu: Tam an toan bo diem vao goi thoai/video tren ChatUI va chuyen tro ly hien co sang API `https://knowledge.gonapp.net/api/v1/chat` ma khong thay doi chat noi bo, Tinode realtime, tenant, dang nhap hay cac chuc nang dang on dinh.
+- Pham vi: Feature flag ChatUI cho call, adapter outbound Chatmgt-chatbot, cau hinh Docker/Compose/env, tai lieu kien truc va kiem thu; khong migration, khong sua Tinode/ChatAPI, database, Account SSO, danh ba, tin nhan, nhom, presence, receipt hay notification.
+- File da thay doi: `.env.example`, `chatservice-main/.env.chatbot.example`, `chatservice-main/application/config/config.py`, `chatservice-main/application/services/chat_manager_service.py`, `chatservice-main/application/services/chatbot_service.py`, `chatservice-main/tests/test_chatbot_webhook_provider.py`, `docs/chat-backend-architecture.md`, `infrastructure/chatservice/.env.example`, `infrastructure/chatservice/compose.yaml`, `infrastructure/production/.env.example`, `infrastructure/production/Dockerfile`, `infrastructure/production/compose.yaml`, `scripts/build-production.mjs`, `src/app/App.jsx`, `src/features/chat/services/callSignaling.js`, `src/features/chat/services/callSignaling.test.js` va file nay.
+- Noi dung: `VITE_CALLS_ENABLED=false` an nut goi thoai, goi video, goi lai va overlay cuoc goi; client bi tat tu choi call invite den de khong treo giao dien. ChatUI tiep tuc goi endpoint co xac thuc cua Chatmgt; provider `external-webhook` gui payload gioi han gom cau hoi, conversation ID, toi da 10 muc history, identity cong khai da loc va context duoc phep, dong thoi chap nhan cac response shape webhook thong dung.
+- Quyet dinh ky thuat: Giu che do ChatUI noi bo hien tai, khong bat `VITE_CHAT_MODE=external` va khong de browser goi thang dich vu doi tac. API key neu co chi nam o Chatmgt; cookie, mat khau, token va secret khong di qua bien doi tac. Provider ngoai bo qua fallback small-talk/no-context noi bo de moi cau hoi duoc chuyen dung endpoint.
+- Database/API/cau hinh: Khong migration va khong doi API ChatUI-Chatmgt. Them `VITE_CALLS_ENABLED`, `CHATBOT_PROVIDER=external-webhook`, `CHATBOT_API_URL`, `CHATBOT_EXTERNAL_AUTH_HEADER`, `CHATBOT_EXTERNAL_AUTH_SCHEME`; `CHATBOT_API_KEY` la tuy chon va `CHATBOT_KNOWLEDGE_ONLY=false` cho outbound webhook.
+- Kiem thu: Snapshot sach tu Git index dat `npm run test:frontend` 32/32; `npm run lint` khong co error, chi warning legacy; `VITE_CHAT_MODE=internal npm run build:production` dat; `python -m unittest tests.test_chatbot_webhook_provider -v` dat 5/5; full backend dat 79 test, 28 skip do dependency runtime chi co trong image; `python -m compileall application tests`, Compose config local/production va `git diff --cached --check` deu dat. Probe `POST https://knowledge.gonapp.net/api/v1/chat` tra HTTP 404 tai thoi diem 10:20.
+- Rui ro con lai: Endpoint doi tac dang 404 va chua co OpenAPI/API key/schema chinh thuc, nen chua the xac nhan chatbot tra loi end-to-end; can probe lai tu production va phoi hop ben dich vu neu route van chua duoc mo.
+- Viec tiep theo: Commit/push snapshot sach, cap nhat `.env` production, rebuild/recreate rieng `chatmgt` va `chat`, sau do chay verifier, health check va probe chatbot tu server `.206`.
+- Commit/PR: Commit chua muc nay (xem `git log`).
+
 ## 2026-08-04-01 - Trien khai dong bo avatar realtime len production
 
 - Thoi gian: 2026-08-04 00:13 (Asia/Saigon)

@@ -11,6 +11,7 @@ const productionDefaults = {
   VITE_CHAT_MANAGEMENT_REMOTE_AUTH: 'true',
   VITE_CHAT_TENANT_ID: 'song-hong',
   VITE_CHAT_AUTH_MODE: 'password',
+  VITE_CALLS_ENABLED: 'false',
   VITE_CHATBOT_API_URL: 'https://chatmgt.upgo.vn/api/v1/chatbot/message',
   VITE_CHATBOT_WITH_CREDENTIALS: 'true',
 };

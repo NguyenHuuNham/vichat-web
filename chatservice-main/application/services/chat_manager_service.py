@@ -52,7 +52,9 @@ class ChatManagerService(object):
             user_ids = [user.get(name) for name in (
                 "id", "uid", "tinodeUid", "tinode_uid", "user_name", "username", "email",
             ) if user.get(name)]
-        small_talk = self._is_small_talk(message)
+        provider = str(self.app.config.get("CHATBOT_PROVIDER") or "").lower()
+        external_provider = provider in ("external", "external-webhook", "webhook")
+        small_talk = self._is_small_talk(message) and not external_provider
         matches = [] if small_talk else self.knowledge_service.retrieve(
             message,
             tenant_id=tenant_id,
@@ -88,7 +90,7 @@ class ChatManagerService(object):
             )
             return result
 
-        if self.app.config.get("CHATBOT_KNOWLEDGE_ONLY", True) and not matches:
+        if self.app.config.get("CHATBOT_KNOWLEDGE_ONLY", True) and not matches and not external_provider:
             result = {
                 "reply": "Dữ liệu nội bộ cho câu hỏi này chưa được cập nhật.",
                 "provider": "knowledge-base",
