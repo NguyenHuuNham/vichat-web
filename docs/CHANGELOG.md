@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-04-05 - Trien khai Enterprise Workspace len production
+
+- Thoi gian: 2026-08-04 21:15 (Asia/Saigon)
+- Loai: Trien khai | Van hanh | Du lieu | Tinh nang
+- Trang thai: Hoan tat trien khai production, cho UAT hai tai khoan nhan vien that
+- Muc tieu: Dua Enterprise Workspace theo tenant cua commit `9f91e17` len `chat.upgo.vn`/`chatmgt.upgo.vn` voi backup va rollback day du, khong lam gian doan hoac recreate cac service Tinode/du lieu dang on dinh.
+- Pham vi: Release bat bien `/opt/deploy/chat/releases/9f91e17`, migration Chatmgt PostgreSQL `20260804_10`, image/container `chatmgt` va `chat`; khong recreate `chatapi`, hai PostgreSQL, Redis hoac Coturn.
+- File da thay doi: `docs/CHANGELOG.md`; source production la commit `9f91e17`. Private `.env`, Tinode bootstrap va backup chi nam tren server, khong dua vao Git.
+- Noi dung: Xac minh backup tong the cu tai `/opt/deploy/chat/backups/pre-enterprise-suite-20260804T132212Z`; tao them backup sat migration tai `/opt/deploy/chat/backups/before-9f91e17-20260804T140855Z` gom Chatmgt dump, `.env`, checksum va container/image ID mode `0600`; gan tag rollback cho hai image cu. Build image moi, chay test trong image, nang Alembic, recreate rieng Chatmgt/ChatUI, nghiem thu API Workspace va chuyen symlink `current` sang release moi sau khi tat ca gate dat.
+- Quyet dinh ky thuat: Migration chi duoc chay sau khi dump doc duoc bang `pg_restore` PostgreSQL 16; symlink chi doi sau verifier, tenant isolation, Workspace smoke test, public bundle va health check. Tinode tiep tuc giu message/presence/receipt/realtime; Workspace chi them business metadata theo tenant.
+- Database/API/cau hinh: Alembic tu `20260803_09` len `20260804_10 (head)`; them ba bang `enterprise_item`, `enterprise_item_participant`, `enterprise_activity` va API `/api/v1/workspace/*`. Khong them/chinh secret, domain, port hay bien moi truong production.
+- Kiem thu: Image production chay `python -m unittest discover -s tests -v` dat 90 test, 11 skip frontend-only; `verify_deployment.py` dat database/credential, health, CORS, directory, conversation, Tinode WebSocket, login/logout; `verify_tenant_isolation.py` dat user/conversation/friend/participant hai tenant. Workspace smoke test dat create/search/action/archive, tenant isolation va admin-only guard; public `App-KlOtrVEZ.js` co `/api/v1/workspace/items`; Nginx syntax, public health ChatUI/Chatmgt va container integrity deu dat, log khong co panic/fatal/traceback/critical/emerg.
+- Rui ro con lai: Chua UAT truc quan bang hai nhan vien that cho responsive UI, polling 15 giay, phan quyen approval/announcement va luong `Giao viec tu tin nhan`; integration registry moi luu metadata an toan, chua tu dong goi he thong ngoai.
+- Viec tiep theo: Hai user hard refresh, kiem tra task/ticket/wiki/event, admin publish announcement/integration, approval dung vai tro, message-to-task va regression tin nhan 1-1/nhom, presence, receipt, notification; lap lai bang tenant thu hai neu dua vao nghiem thu chinh thuc.
+- Commit/PR: Tinh nang `9f91e17`; commit ghi nhan trien khai duoc tao trong cung lan lam viec nay.
+
 ## 2026-08-04-04 - Bo sung Enterprise Workspace theo tenant
 
 - Thoi gian: 2026-08-04 16:00 (Asia/Saigon)
