@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-04-03 - Trien khai an cuoc goi va chatbot webhook len production
+
+- Thoi gian: 2026-08-04 10:39 (Asia/Saigon)
+- Loai: Trien khai | Van hanh | Cau hinh | API
+- Trang thai: Hoan tat trien khai; chatbot doi tac cho mo endpoint de UAT end-to-end
+- Muc tieu: Dua commit `0849061` len `chat.upgo.vn`/`chatmgt.upgo.vn`, tam an call va nap cau hinh outbound chatbot ma khong gian doan hoac recreate cac service du lieu/realtime khac.
+- Pham vi: Release bat bien `/opt/deploy/chat/releases/0849061`, image/container `chatmgt` va `chat`, private `.env`, runtime Tinode bootstrap va nghiem thu production; khong recreate ChatAPI, hai PostgreSQL, Redis, Coturn va khong migration.
+- File da thay doi: `docs/CHANGELOG.md`; source runtime production la commit `0849061`. Private `.env`/runtime chi duoc sao chep va cap nhat tren server, khong dua vao Git.
+- Noi dung: Archive sach SHA-256 `47fce3e3b73729410bcfd66d5cb03abf736b3522b33419e8a54aa2d48d4455cb` duoc build thanh image ChatUI `sha256:8ff7eacf50152dee13e2a678e98d59f05bda11755f7ce08af9d274572cdde8fa` va Chatmgt `sha256:c1cfe7a39857a13e9358480de2dc0c80f6338c33a4587fa0eb3c6e25fd0b022a`. Bundle production la `App-CI7j_rYa.js`; symlink `current` da chuyen sang release moi.
+- Quyet dinh ky thuat: Sao luu `.env` mode `0600`, giu runtime private va tenant `tn6913580727957397`; tag hai image cu thanh rollback `0a42a42` truoc build. Chi force-recreate `chatmgt`/`chat`; container ID ChatAPI, PostgreSQL, Redis va Coturn duoc doi chieu khong thay doi.
+- Database/API/cau hinh: Khong migration. Production dat `VITE_CALLS_ENABLED=false`, `CHATBOT_ENABLED=true`, `CHATBOT_PROVIDER=external-webhook`, `CHATBOT_API_URL=https://knowledge.gonapp.net/api/v1/chat`, auth header/scheme mac dinh va `CHATBOT_KNOWLEDGE_ONLY=false`; `CHATBOT_API_KEY` van rong theo thong tin hien co.
+- Kiem thu: Image Chatmgt dat 79 test, 10 skip do source frontend khong nam trong runtime image; `verify_deployment.py` dat database/credential, health, CORS, directory, conversation, Tinode WebSocket, login/logout. ChatUI/Chatmgt local va public deu HTTP 200; chatbot health public bao enabled/provider `external-webhook`; bundle co marker Tinode/password login, call-disabled va khong co external-only label; log khong co emerg/fatal/panic/critical. Probe tu server toi endpoint doi tac van tra HTTP 404 `Requested URL /api/v1/chat not found`.
+- Rui ro con lai: Chua the UAT chatbot tra loi vi route doi tac dang 404 va chua co schema/API key chinh thuc. Runtime browser QA cua agent khong khoi tao duoc, nen UI duoc nghiem thu bang build, bundle marker va HTTP; nguoi dung can hard refresh de nap bundle moi.
+- Viec tiep theo: Ben chatbot mo/xac nhan dung route va contract, sau do dang nhap mot tai khoan nhan vien de gui cau hoi UAT; khong can deploy lai neu URL va auth hien tai la dung.
+- Commit/PR: Code `0849061`; commit ghi nhan trien khai duoc tao sau muc nay.
+
 ## 2026-08-04-02 - Tam an cuoc goi va ket noi chatbot webhook doanh nghiep
 
 - Thoi gian: 2026-08-04 10:29 (Asia/Saigon)
