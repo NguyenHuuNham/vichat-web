@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-04-04 - Bo sung Enterprise Workspace theo tenant
+
+- Thoi gian: 2026-08-04 16:00 (Asia/Saigon)
+- Loai: Dang thuc hien
+- Trang thai: Hoan tat code va kiem thu local, cho commit/push/trien khai production
+- Muc tieu: Bo sung cac module giao viec, thong bao bat buoc, phe duyet, ticket, wiki, lich, tim kiem va audit cho ChatUI ma khong thay doi luong Tinode/chat dang on dinh.
+- Pham vi: Chatmgt metadata/API, migration PostgreSQL, Enterprise Workspace ChatUI, phan quyen tenant va tai lieu; khong doc/ghi noi dung tin nhan Tinode.
+- File da thay doi: `chatservice-main/application/models/models.py`, `chatservice-main/application/services/enterprise_workspace_service.py`, `chatservice-main/application/controllers/api_enterprise_workspace.py`, `chatservice-main/application/controllers/__init__.py`, `chatservice-main/migrations/010_enterprise_workspace.sql`, `chatservice-main/alembic/versions/20260804_10_enterprise_workspace.py`, `chatservice-main/scripts/verify_deployment.py`, `chatservice-main/tests/test_enterprise_workspace.py`, `src/features/workspace/components/EnterpriseWorkspace.jsx`, `src/features/workspace/components/enterpriseWorkspace.css`, `src/features/workspace/services/enterpriseWorkspaceService.js`, `src/features/workspace/services/enterpriseWorkspaceService.test.js`, `src/app/App.jsx`, `package.json`, `README.md`, `docs/chat-backend-architecture.md`, `infrastructure/production/README.md` va file nay.
+- Noi dung: Them ba bang enterprise rieng voi participant/activity, API CRUD/search/stats/meta/action co tenant guard, allow-list property va audit; ChatUI co Workspace tong quan, task, announcement, approval, ticket, wiki, event, integration registry, tim kiem, activity timeline, polling 15 giay va nut giao viec tu tin nhan. Khong sua Tinode client, topic, message, presence, receipt, notification hay composer.
+- Quyet dinh ky thuat: Tinode tiep tuc la nguon chuan cho message, presence, receipt va realtime; Workspace chi luu business metadata. Integration registry khong nhan/luu API key, token hay password. Message-to-task chi gui snapshot bounded do nguoi dung chon va message reference.
+- Database/API/cau hinh: Them Alembic head `20260804_10` va SQL migration; verifier bat buoc ba bang Workspace va unique participant index; khong them secret/domain/env moi.
+- Kiem thu: `python -m unittest discover -s tests -v` dat 90 test, 28 skip do dependency runtime chi co trong image; `python -m unittest tests.test_enterprise_workspace -v` dat 11/11; `python -m py_compile ...` dat; `npm run test:frontend` dat 34/34; `npm run lint` khong co error, chi warning legacy; `VITE_CHAT_MODE=internal npm run build:production` dat; local Vite HTTP root/source tra 200. Browser skill khong khoi tao duoc do moi truong kernel asset thieu, nen chua co screenshot UAT.
+- Rui ro con lai: Chua chay migration/verifier tren PostgreSQL production va chua UAT hai tai khoan that cho Workspace; polling phu thuoc session Chatmgt va co the tre toi 15 giay. Integration registry moi la metadata, chua tu dong goi dich vu ngoai.
+- Viec tiep theo: Review diff, commit/push snapshot sach, backup va upgrade Alembic tren release moi, deploy rieng Chatmgt/ChatUI, chay verifier va UAT tenant/role/action/realtime regression.
+- Commit/PR: Chua tao.
+
 ## 2026-08-04-03 - Trien khai an cuoc goi va chatbot webhook len production
 
 - Thoi gian: 2026-08-04 10:39 (Asia/Saigon)

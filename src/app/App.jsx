@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Login from '../features/auth/components/Login';
 import KnowledgeManager from '../features/chatbot/components/KnowledgeManager';
+import EnterpriseWorkspace from '../features/workspace/components/EnterpriseWorkspace';
 import CallOverlay from '../features/chat/components/CallOverlay';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation } from '../features/chat/services/tinodeClient';
 import { chatManagementService } from '../features/chat/services/chatManagementService';
@@ -576,6 +577,7 @@ function App() {
   const [isAddingMembers, setIsAddingMembers] = useState(false);
   const [removingMemberId, setRemovingMemberId] = useState('');
   const [workspacePanel, setWorkspacePanel] = useState(null);
+  const [enterpriseTaskSeed, setEnterpriseTaskSeed] = useState(null);
   const [workspaceQuery, setWorkspaceQuery] = useState('');
   const [workspaceResults, setWorkspaceResults] = useState([]);
   const [isWorkspaceLoading, setIsWorkspaceLoading] = useState(false);
@@ -1357,6 +1359,7 @@ function App() {
     setNotificationClock(Date.now());
     setDirectoryAccounts([]);
     setWorkspaceResults([]);
+    setEnterpriseTaskSeed(null);
     setGroupSearchResults([]);
     conversationsRef.current = initialRooms;
     setConversations(initialRooms);
@@ -1515,6 +1518,7 @@ function App() {
     setFriendRequestNote('');
     setFriendNotice('');
     setWorkspacePanel(null);
+    setEnterpriseTaskSeed(null);
     setNotificationMuteDialog(null);
     setIsUpdatingNotificationMute(false);
     setNotificationClock(Date.now());
@@ -2771,6 +2775,23 @@ function App() {
     if (!message) return;
     const isOwnMessage = message.senderId === viewerId || message.sender === 'outgoing';
     try {
+      if (action === 'create-task') {
+        const conversationId = activeChat.managementId || activeChat.id;
+        if (!isManagementConversationId(conversationId)) {
+          setChatError('Chỉ có thể giao việc từ cuộc trò chuyện đã được Chatmgt quản lý.');
+          return;
+        }
+        const preview = String(message.text || message.file?.name || 'Nội dung đính kèm').trim().slice(0, 2000);
+        setEnterpriseTaskSeed({
+          title: `Theo dõi: ${activeChat.name || 'cuộc trò chuyện'}`,
+          preview,
+          conversationName: activeChat.name || '',
+          conversationId,
+          messageRef: String(message.id || message.seq || ''),
+        });
+        openWorkspacePanel('enterprise');
+        return;
+      }
       if (action === 'copy') {
         await navigator.clipboard?.writeText(message.text || message.file?.name || '');
         return;
@@ -3188,6 +3209,10 @@ function App() {
             <i className="fa-solid fa-folder-open"></i>
             <span>File dùng chung</span>
           </a>
+          <a href="#" className={`nav-item ${workspacePanel === 'enterprise' ? 'active' : ''}`} data-tooltip="Workspace doanh nghiệp" onClick={(e) => { e.preventDefault(); openWorkspacePanel('enterprise'); }}>
+            <i className="fa-solid fa-briefcase"></i>
+            <span>Workspace</span>
+          </a>
           {isKnowledgeAdmin && <a href="#" className={`nav-item ${workspacePanel === 'knowledge' ? 'active' : ''}`} data-tooltip="Tri thức AI" onClick={(e) => { e.preventDefault(); openWorkspacePanel('knowledge'); }}>
             <i className="fa-solid fa-brain"></i>
             <span>Tri thức AI</span>
@@ -3480,6 +3505,7 @@ function App() {
                 {!menuMessage.recalled && <button type="button" onClick={() => handleMessageAction('reply', menuMessage)}><i className="fa-solid fa-reply"></i>Trả lời tin nhắn</button>}
                 <button type="button" onClick={() => handleMessageAction('copy', menuMessage)}><i className="fa-regular fa-copy"></i>Copy tin nhắn</button>
                 <button type="button" onClick={() => handleMessageAction('mark', menuMessage)}><i className={`fa-${marked ? 'solid' : 'regular'} fa-star`}></i>{marked ? 'Bỏ đánh dấu' : 'Đánh dấu tin nhắn'}</button>
+                {!activeChat.isChatbot && isManagementConversationId(activeChat.managementId || activeChat.id) && <button type="button" onClick={() => handleMessageAction('create-task', menuMessage)}><i className="fa-solid fa-list-check"></i>Giao việc từ tin nhắn</button>}
                 <button type="button" onClick={() => handleMessageAction('detail', menuMessage)}><i className="fa-solid fa-circle-info"></i>Xem chi tiết</button>
                 <button type="button" onClick={() => handleMessageAction('share', menuMessage)}><i className="fa-solid fa-share"></i>Chia sẻ tin nhắn</button>
                 <div className="message-reaction-row" aria-label="Thêm biểu cảm">
@@ -3709,10 +3735,10 @@ function App() {
         <div className="workspace-overlay" role="presentation" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setWorkspacePanel(null);
         }}>
-          <section className="workspace-panel" role="dialog" aria-modal="true">
+          <section className={`workspace-panel ${workspacePanel === 'enterprise' ? 'enterprise-shell-panel' : ''}`} role="dialog" aria-modal="true">
             <div className="workspace-panel-header">
               <div>
-                <h2>{workspacePanel === 'profile' ? 'Hồ sơ cá nhân' : workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'knowledge' ? 'Tri thức AI' : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : 'Cài đặt'}</h2>
+                <h2>{workspacePanel === 'profile' ? 'Hồ sơ cá nhân' : workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'enterprise' ? 'Enterprise Workspace' : workspacePanel === 'knowledge' ? 'Tri thức AI' : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : 'Cài đặt'}</h2>
               </div>
               <div className="workspace-panel-header-actions">
                 {workspacePanel === 'profile' && (
@@ -3724,6 +3750,16 @@ function App() {
                 <button type="button" className="btn-close-detail" onClick={() => setWorkspacePanel(null)} aria-label="Đóng"><i className="fa-solid fa-xmark"></i></button>
               </div>
             </div>
+
+            {workspacePanel === 'enterprise' && (
+              <EnterpriseWorkspace
+                user={currentUser}
+                accounts={directoryAccounts}
+                taskSeed={enterpriseTaskSeed}
+                onTaskSeedConsumed={() => setEnterpriseTaskSeed(null)}
+                onError={setChatError}
+              />
+            )}
 
             {workspacePanel === 'profile' && (
               <div className="profile-panel">

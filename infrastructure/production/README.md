@@ -220,6 +220,29 @@ The automated verifier checks configuration and management isolation but cannot
 fabricate a real Account cookie. The two-user/two-tenant browser checks are
 therefore mandatory before Step 4 is marked complete.
 
+## Enterprise Workspace acceptance test
+
+Revision `20260804_10` creates the Workspace item, participant and activity
+tables. The production verifier now rejects a deployment when those tables or
+the active participant uniqueness index are missing. After Alembic and before
+switching the `current` release symlink:
+
+1. Sign in as a normal employee and create a task, ticket, wiki draft and event;
+   refresh and confirm they remain visible only in the configured tenant.
+2. Assign another employee, apply task/ticket/RSVP actions from that account and
+   confirm the activity timeline updates within the 15-second refresh window.
+3. Create an approval with an approver; a watcher or unrelated employee must not
+   approve or reject it.
+4. Sign in as a tenant administrator, publish a mandatory announcement and
+   create an integration registry entry. A normal employee must receive `403`
+   for both mutations. Never enter an API key or token in the registry.
+5. Use **Giao việc từ tin nhắn** on a managed conversation and confirm only the
+   selected bounded preview/reference becomes task metadata; ordinary Tinode
+   messaging, presence, receipts, notifications and composer focus remain
+   unchanged.
+6. Repeat list/search/detail/action calls with a second tenant. No item,
+   participant, activity or aggregate count from the first tenant may appear.
+
 ## Rollback
 
 Every migration release requires a pre-migration `pg_dump -Fc` and tagged prior

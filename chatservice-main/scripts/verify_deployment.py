@@ -132,6 +132,16 @@ def verify_database(alembic_ini):
                     )
                 )
 
+            workspace_schema = connection.execute(text(
+                "SELECT "
+                "to_regclass('public.enterprise_item'), "
+                "to_regclass('public.enterprise_item_participant'), "
+                "to_regclass('public.enterprise_activity'), "
+                "to_regclass('public.uq_enterprise_item_participant_active')"
+            )).first()
+            if workspace_schema is None or any(value is None for value in workspace_schema):
+                raise RuntimeError("Enterprise Workspace schema or tenant participant index is missing.")
+
             accounts = list(connection.execute(text(
                 "SELECT username, password_hash, role, active, properties FROM management_account"
             )))

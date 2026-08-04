@@ -82,6 +82,17 @@ directory and conversations available; realtime inputs stay disabled instead
 of falling back to demo/localStorage messages. Reconnects obtain a fresh token
 from Chatmgt.
 
+## Enterprise Workspace
+
+The ChatUI Workspace panel adds tenant-scoped tasks, mandatory announcements,
+approvals, support tickets, wiki/procedure pages, company events, integration
+registry records, search, summary metrics and an auditable activity timeline.
+Chatmgt stores only these business metadata records; Tinode remains the source
+of message content, presence and receipts. Apply Alembic revision
+`20260804_10` before deploying the new Chatmgt image. See
+`docs/chat-backend-architecture.md` for the authorization matrix and API
+contract.
+
 ## Local checks
 
 Run from the repository root:

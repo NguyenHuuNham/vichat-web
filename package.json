@@ -8,7 +8,7 @@
     "build": "vite build",
     "build:production": "node scripts/build-production.mjs",
     "lint": "oxlint",
-    "test:frontend": "node --test src/features/contacts/services/accountDirectory.test.js src/features/chat/services/chatManagementService.test.js src/features/chat/services/chatRealtime.test.js src/features/chat/services/conversationNotifications.test.js src/features/chat/services/callSignaling.test.js src/features/management/services/managementAdminService.test.js",
+    "test:frontend": "node --test src/features/contacts/services/accountDirectory.test.js src/features/chat/services/chatManagementService.test.js src/features/chat/services/chatRealtime.test.js src/features/chat/services/conversationNotifications.test.js src/features/chat/services/callSignaling.test.js src/features/management/services/managementAdminService.test.js src/features/workspace/services/enterpriseWorkspaceService.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

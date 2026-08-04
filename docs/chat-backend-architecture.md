@@ -132,6 +132,32 @@ Employee credentials, cookies and secrets are never sent to that provider; only
 the message, conversation reference, bounded history, approved public identity
 fields and retrieved context may cross the boundary.
 
+## Enterprise Workspace
+
+Enterprise Workspace is a tenant-scoped business metadata layer in Chatmgt. It
+does not replace Tinode and does not read Tinode history. The tables
+`enterprise_item`, `enterprise_item_participant` and `enterprise_activity` own
+tasks, mandatory announcements, approvals, tickets, wiki pages, events and
+integration registry entries. The `properties` object is type-validated and
+allow-listed; API keys, passwords, cookies and tokens are rejected and are not
+stored. A user may explicitly create a task from a message, in which case the
+browser sends only the selected bounded preview and message reference as a
+business snapshot; Chatmgt still never queries Tinode content.
+
+Every Workspace query includes the JWT tenant and filters participants by that
+same tenant. `COMPANY` items are visible to active employees in the tenant;
+`PARTICIPANTS` items are visible only to the creator, owner or listed
+participants. Announcements and integration registry mutations require a
+tenant administrator. Other types use creator/owner/participant roles for
+editing and state transitions. Every create, update, archive, action and
+comment writes an `enterprise_activity` row and a security audit event.
+
+ChatUI opens Workspace as an isolated panel and refreshes metadata every 15
+seconds while visible. This polling deliberately does not touch the Tinode
+socket, topic subscriptions, message composer, presence, receipts or mute
+state. The panel provides overview metrics, type tabs, tenant search, detail
+history, role-aware actions and a message-to-task shortcut.
+
 ## API contract
 
 | Method | Path | Purpose |
@@ -148,6 +174,14 @@ fields and retrieved context may cross the boundary.
 | `GET/POST` | `/api/v1/conversation` | Tenant-scoped conversation metadata |
 | `POST` | `/api/v1/conversation/<id>/tinode-prepare` | Prepare Tinode participant mappings |
 | `PUT` | `/api/v1/conversation/<id>/tinode-topic` | Verify/bind the topic to exact membership |
+| `GET` | `/api/v1/workspace/items` | List tenant-visible Workspace items and summary |
+| `POST` | `/api/v1/workspace/items` | Create a validated task, announcement, approval, ticket, wiki, event or integration entry |
+| `GET/PUT/DELETE` | `/api/v1/workspace/items/<id>` | Read, update or archive one tenant-scoped item |
+| `POST` | `/api/v1/workspace/items/<id>/actions` | Apply a role-checked transition, acknowledgement, RSVP or comment |
+| `GET` | `/api/v1/workspace/items/<id>/activity` | Read tenant-scoped audit/activity history |
+| `GET` | `/api/v1/workspace/search` | Search visible Workspace metadata |
+| `GET` | `/api/v1/workspace/stats` | Return visible counts, due-soon and overdue metrics |
+| `GET` | `/api/v1/workspace/meta` | Return supported types/statuses and current tenant identity |
 
 The management overview intentionally has no message-content, file-content or
 Tinode history API.
@@ -166,6 +200,12 @@ TINODE_ADMIN_PASSWORD=<server-side-tinode-admin-password>
 TINODE_INTERNAL_WS_URL=ws://chatapi:6060/v0/channels
 TINODE_TOKEN_EXPIRE_IN=300
 ```
+
+The Workspace migration is `20260804_10` and must be applied after
+`20260803_09` before recreating Chatmgt. Rollback uses the existing release and
+database backup procedure; the migration is intentionally marked irreversible
+because production data must be restored from the verified PostgreSQL backup
+when a rollback requires removing Workspace rows.
 
 The real production `.env` is never committed or printed. For another company,
 deploy a separate fixed tenant configuration/domain or an explicitly approved
@@ -190,3 +230,10 @@ tenant-routing layer; do not expose a global tenant selector in ChatUI.
 - Tinode stopped: Chatmgt directory/conversation metadata remains available,
   realtime input is disabled, and reconnect requests a fresh token.
 - Management overview shows metadata only and never message/file content.
+- Tenant-A Workspace items, participants, search results, activities and stats
+  are never returned to a tenant-B session.
+- Announcement/integration mutations require an administrator; task,
+  approval, ticket, wiki and event actions follow creator/owner/participant
+  roles and reject invalid transitions.
+- Workspace polling and failures do not reconnect Tinode, change topic
+  subscriptions or disable the message composer.
