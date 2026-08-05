@@ -23,7 +23,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
   env/compose examples, README va tai lieu architecture; khong sua message,
   topic, presence, receipt, call hay Workspace.
 - Kiem thu: `python -m py_compile ...` dat; `python -m unittest discover -s
-  chatservice-main/tests -v` dat 104 test, 37 skip do local thieu dependency
+  chatservice-main/tests -v` dat 105 test, 37 skip do local thieu dependency
   runtime; `npm run test:frontend` dat 35/35; `npm run lint` khong co error,
   chi warning legacy; `npm run build:production` dat; Compose config validation
   va `git diff --check` dat. Docker runtime/UAT production chua chay.
@@ -35,6 +35,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Viec con lai: Push release, backup `.env`/PostgreSQL, bat flag tren production,
   chi recreate `chatmgt` va `chat`, sau do chay verifier va UAT cung credential
   tren ChatUI/Tinode Web.
+- Commit/PR: `ceb59e9`; chua deploy production.
 
 ## 2026-08-05-02 - Trien khai relay Tinode trung tam len production
 
