@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-05-04 - Chuan hoa release Tinode mirror dang chay
+
+- Thoi gian: 2026-08-05 16:24 (Asia/Saigon)
+- Loai: Van hanh | Trien khai | Realtime | Xac thuc
+- Trang thai: Hoan tat va da nghiem thu production
+- Muc tieu: Bao dam cac lenh van hanh tiep theo su dung dung release da trien khai cho luong Chatmgt username/password va Tinode Web.
+- Pham vi: Symlink release production, Chatmgt/ChatUI dang chay, verifier noi bo va public HTTPS; khong thay doi source, database, secret hay service du lieu/realtime.
+- File da thay doi: `docs/CHANGELOG.md`; tren server chi chuyen symlink `/opt/deploy/chat/current` sang release `/opt/deploy/chat/releases/e1aa969`.
+- Noi dung: Xac nhan container Chatmgt `e1aa969` va ChatUI dang chay san; chuan hoa `current` tu release cu `f58919a` sang `e1aa969` de tranh cac lenh restart ve code cu. PostgreSQL, Redis, ChatAPI va Coturn duoc giu nguyen, khong recreate.
+- Quyet dinh ky thuat: Khong rebuild hoac reset du lieu vi image da duoc kiem thu va verifier da pass; chi cap nhat con tro release bat bien sau khi doi chieu file private mode `0600`.
+- Database/API/cau hinh: Khong migration, khong doi `.env`; giu `TINODE_MIRROR_LOCAL_CREDENTIALS=true`, tenant production va relay central Tinode hien tai.
+- Kiem thu: `python scripts/verify_deployment.py --base-url http://127.0.0.1:8093` dat; verifier public voi `--base-url https://chatmgt.upgo.vn --origin https://chat.upgo.vn` dat; `/healthz` ChatUI va `/api/v1/auth/health` Chatmgt tra HTTP 200; credential basic Tinode mo dung UID; cac container du lieu/realtime khong doi ID.
+- Rui ro con lai: UAT trinh duyet voi tai khoan nhan vien that van can nguoi van hanh dang nhap ChatUI va Tinode Web bang cung username/password; cert/TTL trung tam Tinode van la hardening rieng.
+- Viec tiep theo: Hard refresh hai tai khoan, dang nhap bang username/password vua cap trong Chatmgt, doi chieu UID/nhom/lich su va nhan tin hai chieu tren `web.vichat.net`.
+- Commit/PR: Commit ghi nhan van hanh chua muc nay (xem `git log`).
+
 ## 2026-08-05-03 - Dong bo dang nhap nhan vien Chatmgt voi Tinode Web
 
 - Thoi gian: 2026-08-05 16:13 (Asia/Saigon)
