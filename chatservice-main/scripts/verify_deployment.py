@@ -114,6 +114,11 @@ def verify_database(alembic_ini):
     tinode_token_ttl = int(os.getenv("TINODE_TOKEN_EXPIRE_IN", 300))
     if tinode_token_ttl < 60 or tinode_token_ttl > 900:
         raise RuntimeError("TINODE_TOKEN_EXPIRE_IN must be between 60 and 900 seconds.")
+    central_token_max_ttl = int(os.getenv("TINODE_CENTRAL_TOKEN_MAX_TTL", tinode_token_ttl))
+    if central_token_max_ttl < 60 or central_token_max_ttl > 2592000:
+        raise RuntimeError(
+            "TINODE_CENTRAL_TOKEN_MAX_TTL must be between 60 and 2592000 seconds."
+        )
 
     database_uri = str(os.getenv("SQLALCHEMY_DATABASE_URI") or "")
     if not database_uri:
@@ -204,7 +209,9 @@ def verify_tinode_token_expiry(login_payload):
         remaining = (expires_at - datetime.now(timezone.utc)).total_seconds()
     except (TypeError, ValueError, OverflowError) as error:
         raise RuntimeError("Tinode returned an invalid token expiration time.") from error
-    configured_ttl = int(os.getenv("TINODE_TOKEN_EXPIRE_IN", 300))
+    configured_ttl = int(
+        os.getenv("TINODE_CENTRAL_TOKEN_MAX_TTL", os.getenv("TINODE_TOKEN_EXPIRE_IN", 300))
+    )
     if remaining < 30 or remaining > configured_ttl + 30:
         raise RuntimeError(
             "Tinode token lifetime is outside the configured short-lived window."

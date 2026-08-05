@@ -26,15 +26,20 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
   chatservice-main/tests -v` dat 105 test, 37 skip do local thieu dependency
   runtime; `npm run test:frontend` dat 35/35; `npm run lint` khong co error,
   chi warning legacy; `npm run build:production` dat; Compose config validation
-  va `git diff --check` dat. Docker runtime/UAT production chua chay.
-- Rui ro con lai: Chua xac minh voi Tinode trung tam trong image production;
-  admin Tinode reset/revoke van can credential server hop le neu legacy
+  va `git diff --check` dat. Docker image production dat 105 test, 14 skip do
+  image khong dong goi source frontend/infrastructure. UAT production dang
+  chay; verifier lan dau dung vi Tinode trung tam tra TTL khoang 14 ngay trong
+  khi verifier cu ep 60-900 giay.
+- Rui ro con lai: Provider trung tam dang tra token TTL dai; da them
+  `TINODE_CENTRAL_TOKEN_MAX_TTL` de verifier khong nham TTL local ChatAPI voi
+  TTL trung tam, nhung can ben van hanh Tinode giam TTL neu muon hardening day
+  du. Admin Tinode reset/revoke van can credential server hop le neu legacy
   credential khong con dung. Username Chatmgt khong tuong thich Tinode bi chan
   khi tao moi; tai khoan legacy dang dung username email can doi ten truoc khi
   dang nhap truc tiep Tinode Web.
-- Viec con lai: Push release, backup `.env`/PostgreSQL, bat flag tren production,
-  chi recreate `chatmgt` va `chat`, sau do chay verifier va UAT cung credential
-  tren ChatUI/Tinode Web.
+- Viec con lai: Dat ceiling TTL trung tam dung voi provider, chay verifier lai
+  va UAT tai khoan moi tren ChatUI/Tinode Web; khong recreate PostgreSQL/Redis/
+  ChatAPI/Coturn.
 - Commit/PR: `ceb59e9`; chua deploy production.
 
 ## 2026-08-05-02 - Trien khai relay Tinode trung tam len production

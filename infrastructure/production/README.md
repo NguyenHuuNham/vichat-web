@@ -184,6 +184,7 @@ CHAT_ACCOUNT_SSO_ENABLED=false
 CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true
 VITE_CHAT_AUTH_MODE=password
 TINODE_MIRROR_LOCAL_CREDENTIALS=true
+TINODE_CENTRAL_TOKEN_MAX_TTL=900
 CHATMGT_DEFAULT_TENANT=song-hong
 TINODE_SSO_SECRET=
 ```
@@ -207,6 +208,10 @@ fresh token is returned from the signed Chatmgt session without resending the
 password. A page reload or missing password intentionally requires the
 employee to sign in again; no password is persisted in browser storage or
 Chatmgt.
+
+`TINODE_CENTRAL_TOKEN_MAX_TTL` is the acceptance ceiling for the expiry
+returned by the central Tinode provider. Keep it equal to the provider policy;
+the local rollback ChatAPI default remains separate.
 
 Use an Account projection left from the previous deployment and choose **Cấp
 mật khẩu ChatUI**. Confirm its Chatmgt ID and Tinode UID stay unchanged while

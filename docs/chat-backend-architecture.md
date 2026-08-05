@@ -45,7 +45,7 @@ The administrator page uses `POST /api/v1/admin/sso` and the separate
    and issues the Chatmgt HttpOnly chat cookie.
 4. Chatmgt verifies the bcrypt password and synchronizes the same local
    username/password to the mapped Tinode basic credential. The response
-   contains the short-lived Tinode token, never the password or hash.
+   contains the Tinode token and provider expiry, never the password or hash.
 5. The signed Chatmgt chat cookie carries that Tinode token for reconnects.
    ChatUI retains the password only in volatile tab memory and sends it back
    over the authenticated renewal request when the Tinode token is expiring;
