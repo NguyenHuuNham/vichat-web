@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `npm run test:frontend` dat 34/34; `npm run lint` dat, chi con warning legacy trong `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `python -m unittest discover -s chatservice-main/tests -v` dat 97 test, 30 skip do dependency runtime chi co trong image; test central switch dat 5/5; `python -m py_compile` dat; Compose config dat voi secret tam khong nhat vao source; DNS/handshake/provision/delete probe toi `web.vichat.net` dat.
 - Rui ro con lai: Chung chi public cua `web.vichat.net` van het han; proxy la bien phap tam thoi. Probe cho thay Tinode trung tam cap token khoang 14 ngay, chua phu hop cua so 60-900 giay hien tai; can ben van hanh Tinode dat `AUTH_TOKEN_EXPIRE_IN` <= 900 va renew certificate truoc khi nghiem thu bao mat. Chua backup/reset/deploy production.
 - Viec tiep theo: Cap nhat cau hinh Tinode trung tam, commit/push, backup production, kiem tra proxy/provisioning, reset mapping va deploy rieng ChatUI/Chatmgt; chi reset sau khi TTL va cert dat.
-- Commit/PR: Chua tao.
+- Commit/PR: `7090d34`.
 
 ## 2026-08-04-05 - Trien khai Enterprise Workspace len production
 
