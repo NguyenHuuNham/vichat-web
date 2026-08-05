@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-05-05 - Bo sung browser security headers cho ChatUI production
+
+- Thoi gian: 2026-08-05 17:00 (Asia/Saigon)
+- Loai: Bao mat | Van hanh
+- Trang thai: Hoan tat phan ViChat; con blocker tu Tinode trung tam
+- Muc tieu: Them lop hardening HTTP cho ChatUI ma khong thay doi luong dang nhap, Tinode, Chatmgt, API hay noi dung chat.
+- Pham vi: Nginx production cua ChatUI va test cau hinh; khong thay doi Tinode trung tam, database, Redis, ChatAPI, Coturn hay employee flow.
+- File da thay doi: `infrastructure/production/nginx.conf`, `chatservice-main/tests/test_tinode_central_switch.py`, `docs/CHANGELOG.md`.
+- Noi dung: Them CSP tuong thich voi SPA, Font Awesome/Google Fonts, Tinode WebSocket va media; them `Referrer-Policy`, `X-Content-Type-Options` va `X-Frame-Options` cho ca response thanh cong va loi.
+- Quyet dinh ky thuat: Dung `always` de header khong mat tren response loi; khong bat TLS verification upstream Tinode trong thay doi nay vi chung chi `web.vichat.net` dang het han va can ben quan tri Tinode gia han truoc.
+- Database/API/cau hinh: Khong migration; thay doi chi o Nginx response headers.
+- Kiem thu: `python -m unittest discover -s chatservice-main/tests -v` dat 106 test, 37 skip; `npm run test:frontend` dat 35/35; `npm run lint` khong co error, chi warning legacy; Compose config va Nginx syntax test dat; chua deploy bundle moi.
+- Rui ro con lai: Credential quan tri Tinode trung tam dang bi tu choi va certificate upstream het han; can quyen ben `103.74.122.215` de xu ly doc lap.
+- Viec tiep theo: Deploy rieng ChatUI; sau khi Tinode operator cap credential/certificate thi chay lai admin reset va bat `proxy_ssl_verify on`.
+- Commit/PR: Chua tao.
+
 ## 2026-08-05-04 - Chuan hoa release Tinode mirror dang chay
 
 - Thoi gian: 2026-08-05 16:24 (Asia/Saigon)

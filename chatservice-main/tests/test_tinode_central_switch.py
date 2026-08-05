@@ -82,6 +82,15 @@ class TinodeCentralSwitchTests(unittest.TestCase):
         self.assertIn("proxy_set_header Origin https://web.vichat.net", nginx_source)
         self.assertIn("ws://chat:80/v0/channels", compose_source)
 
+    @unittest.skipUnless(NGINX_PATH.is_file(), "production infrastructure is not included in the runtime image")
+    def test_production_sets_browser_security_headers(self):
+        nginx_source = NGINX_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("add_header Content-Security-Policy", nginx_source)
+        self.assertIn("add_header Referrer-Policy", nginx_source)
+        self.assertIn("add_header X-Content-Type-Options \"nosniff\"", nginx_source)
+        self.assertIn("add_header X-Frame-Options \"SAMEORIGIN\"", nginx_source)
+
 
 if __name__ == "__main__":
     unittest.main()
