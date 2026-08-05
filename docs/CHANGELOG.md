@@ -8,9 +8,9 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-05-03 - Dong bo dang nhap nhan vien Chatmgt voi Tinode Web
 
-- Thoi gian: 2026-08-05 15:36 (Asia/Saigon)
+- Thoi gian: 2026-08-05 16:13 (Asia/Saigon)
 - Loai: Xac thuc | API | Realtime | Tai lieu
-- Trang thai: Dang thuc hien; chua deploy production
+- Trang thai: Hoan tat code va deploy production; cho UAT trinh duyet hai tai khoan
 - Muc tieu: Khi admin tao/reset nhan vien trong Chatmgt, nhan vien dung cung
   username/password trong ChatUI va Tinode Web; UID, nhom va lich su Tinode
   van duoc giu nguyen.
@@ -27,9 +27,10 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
   runtime; `npm run test:frontend` dat 35/35; `npm run lint` khong co error,
   chi warning legacy; `npm run build:production` dat; Compose config validation
   va `git diff --check` dat. Docker image production dat 105 test, 14 skip do
-  image khong dong goi source frontend/infrastructure. UAT production dang
-  chay; verifier lan dau dung vi Tinode trung tam tra TTL khoang 14 ngay trong
-  khi verifier cu ep 60-900 giay.
+  image khong dong goi source frontend/infrastructure. Release
+  `/opt/deploy/chat/releases/e1aa969` da build/recreate rieng `chatmgt` va
+  `chat`; verifier production dat database, health, CORS, directory,
+  conversation, Tinode WebSocket, login/logout va cung credential basic.
 - Rui ro con lai: Provider trung tam dang tra token TTL dai; da them
   `TINODE_CENTRAL_TOKEN_MAX_TTL` de verifier khong nham TTL local ChatAPI voi
   TTL trung tam, nhung can ben van hanh Tinode giam TTL neu muon hardening day
@@ -37,10 +38,11 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
   credential khong con dung. Username Chatmgt khong tuong thich Tinode bi chan
   khi tao moi; tai khoan legacy dang dung username email can doi ten truoc khi
   dang nhap truc tiep Tinode Web.
-- Viec con lai: Dat ceiling TTL trung tam dung voi provider, chay verifier lai
-  va UAT tai khoan moi tren ChatUI/Tinode Web; khong recreate PostgreSQL/Redis/
-  ChatAPI/Coturn.
-- Commit/PR: `ceb59e9`; chua deploy production.
+- Viec con lai: UAT tren trinh duyet voi tai khoan moi: dang nhap ChatUI va
+  Tinode Web bang cung username/password, kiem tra UID/nhom/lich su; ben van
+  hanh Tinode nen giam TTL 14 ngay neu can hardening. Khong recreate
+  PostgreSQL/Redis/ChatAPI/Coturn.
+- Commit/PR: release code `e1aa969`; docs record tiep theo.
 
 ## 2026-08-05-02 - Trien khai relay Tinode trung tam len production
 
