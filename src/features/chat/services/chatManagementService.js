@@ -9,6 +9,7 @@ const accountUrl = String(env.VITE_ACCOUNT_URL || 'https://account.upgo.vn').rep
 const topicBindingsKey = 'vichat.management.topic-bindings.v1';
 
 let activeSession = null;
+let activeTinodePassword = '';
 let lastDirectorySync = null;
 let tinodeTokenRequest = null;
 
@@ -20,6 +21,11 @@ function tinodeTokenExpiresSoon(auth, skewSeconds = 30) {
     : Date.parse(auth.expires);
   if (!Number.isFinite(expiresAt)) return true;
   return expiresAt <= Date.now() + (skewSeconds * 1000);
+}
+
+export function tinodeRefreshPayload(auth, password) {
+  if (!tinodeTokenExpiresSoon(auth) || !password) return {};
+  return { password: String(password) };
 }
 
 function readStorage(key, fallback) {
@@ -155,6 +161,7 @@ export const chatManagementService = {
   async login(credentials = {}) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const passwordLogin = authMode === 'password';
+    activeTinodePassword = '';
     const payload = await apiRequest(
       passwordLogin ? '/api/v1/auth/login' : '/api/v1/auth/sso',
       {
@@ -170,6 +177,7 @@ export const chatManagementService = {
     const hasTinodeToken = Boolean(rawTinodeAuth.token || payload.tinode_token);
     const connection = payload.connection || (hasTinodeToken ? 'tinode' : 'management');
     tinodeTokenRequest = null;
+    activeTinodePassword = passwordLogin ? String(credentials.password || '') : '';
     activeSession = {
       user: account,
       tenant,
@@ -199,7 +207,13 @@ export const chatManagementService = {
     if (!activeSession) throw new Error('Phiên Chatmgt chưa sẵn sàng.');
     if (!tinodeTokenRequest) {
       const requestedSession = activeSession;
-      const request = apiRequest('/api/v1/auth/tinode-token', { method: 'POST' })
+      const request = apiRequest('/api/v1/auth/tinode-token', {
+        method: 'POST',
+        body: JSON.stringify(tinodeRefreshPayload(
+          requestedSession.tinodeAuth,
+          activeTinodePassword,
+        )),
+      })
         .then(payload => {
           if (!requestedSession || activeSession !== requestedSession) {
             throw new Error('Phiên tài khoản đã thay đổi trong khi kết nối Tinode.');
@@ -243,6 +257,7 @@ export const chatManagementService = {
       }
     }
     activeSession = null;
+    activeTinodePassword = '';
     lastDirectorySync = null;
     tinodeTokenRequest = null;
     if (logoutError && throwOnError) throw logoutError;

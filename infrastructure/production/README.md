@@ -183,6 +183,7 @@ not modify an already deployed file:
 CHAT_ACCOUNT_SSO_ENABLED=false
 CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true
 VITE_CHAT_AUTH_MODE=password
+TINODE_MIRROR_LOCAL_CREDENTIALS=true
 CHATMGT_DEFAULT_TENANT=song-hong
 TINODE_SSO_SECRET=
 ```
@@ -194,9 +195,18 @@ characters. Never use a documentation placeholder as the real secret.
 In `chatmgt.upgo.vn`, sign in with an Account `admin`, `owner` or `superadmin`,
 open **Nhân viên**, and create a local employee. Use that username/password in
 `chat.upgo.vn`; the browser must call `/api/v1/auth/login`, receive a Chatmgt
-cookie with the configured tenant, and receive no password/hash/Tinode token in
-the response. Then confirm `/api/v1/auth/tinode-token` returns a short-lived
-token and the Tinode socket connects.
+cookie with the configured tenant and a short-lived Tinode token, and receive
+no password/hash in the response. The same employee username/password must
+also authenticate in Tinode Web and open the mapped UID. Mirroring requires a
+Tinode-compatible username (letters, numbers, dot and underscore, maximum 32
+characters); keep it disabled only during rollback.
+
+During an active ChatUI tab, the password remains only in volatile browser
+memory so `/api/v1/auth/tinode-token` can renew an expiring Tinode token. A
+fresh token is returned from the signed Chatmgt session without resending the
+password. A page reload or missing password intentionally requires the
+employee to sign in again; no password is persisted in browser storage or
+Chatmgt.
 
 Use an Account projection left from the previous deployment and choose **Cấp
 mật khẩu ChatUI**. Confirm its Chatmgt ID and Tinode UID stay unchanged while
@@ -250,10 +260,11 @@ The response must contain
 from the same tenant in separate browser profiles:
 
 1. Sign in to ChatUI with the Chatmgt username/password and confirm
-   `/api/v1/auth/login` returns `connection: management` without `tinode_auth`.
-2. Confirm ChatUI next calls `/api/v1/auth/tinode-token`, receives
-   `connection: tinode`, and connects to
-   `wss://chat.upgo.vn/v0/channels` without sending an Account password.
+   `/api/v1/auth/login` returns `connection: tinode` and a short-lived
+   `tinode_auth` object without exposing a password/hash.
+2. Connect to `wss://chat.upgo.vn/v0/channels` and sign in to a compatible
+   Tinode Web client with the same username/password; both surfaces must show
+   the mapped UID's groups and message history.
 3. Open a direct conversation before the peer has previously used Chat. Confirm
    Chatmgt prepares the peer UID, both users see the same Chatmgt conversation,
    and text/file/presence/typing/read state works after refresh.

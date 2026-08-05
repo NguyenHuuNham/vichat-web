@@ -6,6 +6,36 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-05-03 - Dong bo dang nhap nhan vien Chatmgt voi Tinode Web
+
+- Thoi gian: 2026-08-05 15:36 (Asia/Saigon)
+- Loai: Xac thuc | API | Realtime | Tai lieu
+- Trang thai: Dang thuc hien; chua deploy production
+- Muc tieu: Khi admin tao/reset nhan vien trong Chatmgt, nhan vien dung cung
+  username/password trong ChatUI va Tinode Web; UID, nhom va lich su Tinode
+  van duoc giu nguyen.
+- Quyet dinh ky thuat: Bat `TINODE_MIRROR_LOCAL_CREDENTIALS` cho local employee.
+  Chatmgt chi luu bcrypt; ChatUI giu mat khau trong volatile tab memory de
+  renew token khi can, khong ghi vao storage/cookie/log. Tinode UID duoc kiem
+  tra truoc khi adopt/migrate; duplicate UID khac tenant bi tu choi, khong tu
+  dong bo nham. Account SSO quan tri van tach rieng.
+- Pham vi: Chatmgt auth bridge, login/reset/change/revoke/deactivate, production
+  env/compose examples, README va tai lieu architecture; khong sua message,
+  topic, presence, receipt, call hay Workspace.
+- Kiem thu: `python -m py_compile ...` dat; `python -m unittest discover -s
+  chatservice-main/tests -v` dat 104 test, 37 skip do local thieu dependency
+  runtime; `npm run test:frontend` dat 35/35; `npm run lint` khong co error,
+  chi warning legacy; `npm run build:production` dat; Compose config validation
+  va `git diff --check` dat. Docker runtime/UAT production chua chay.
+- Rui ro con lai: Chua xac minh voi Tinode trung tam trong image production;
+  admin Tinode reset/revoke van can credential server hop le neu legacy
+  credential khong con dung. Username Chatmgt khong tuong thich Tinode bi chan
+  khi tao moi; tai khoan legacy dang dung username email can doi ten truoc khi
+  dang nhap truc tiep Tinode Web.
+- Viec con lai: Push release, backup `.env`/PostgreSQL, bat flag tren production,
+  chi recreate `chatmgt` va `chat`, sau do chay verifier va UAT cung credential
+  tren ChatUI/Tinode Web.
+
 ## 2026-08-05-02 - Trien khai relay Tinode trung tam len production
 
 - Thoi gian: 2026-08-05 12:38 (Asia/Saigon)

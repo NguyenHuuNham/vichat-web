@@ -30,7 +30,11 @@ message or file content.
 3. The admin creates an employee username/password or converts a legacy Account projection by assigning a ChatUI password.
 4. ChatUI calls `POST /api/v1/auth/login` with the credentials and its configured tenant ID.
 5. Chatmgt verifies the local password and issues a tenant-scoped HttpOnly chat session.
-6. Chatmgt derives/provisions the employee's credential on the central Tinode at `web.vichat.net` and returns only a short-lived Tinode token.
+6. Chatmgt provisions the same employee credential on the central Tinode at
+   `web.vichat.net` and returns only a short-lived Tinode token. While the tab
+   remains open, ChatUI keeps the password in volatile memory only so an
+   expiring Tinode token can be renewed; it is never written to storage,
+   cookies, logs or Chatmgt.
 7. Logout revokes the Chatmgt session and clears the ChatUI cookie. Admin logout also ends the Account administrator session.
 
 Steps 3 and 4 remain separate acceptance gates. Successful Step 2 login does
@@ -48,9 +52,10 @@ directory, friendship, and conversation metadata:
 4. Direct conversations, groups, membership changes, per-user removal, and
    per-user notification mute deadlines are persisted in Chatmgt and survive
    refresh or a new login.
-5. While the session has `connection: management`, ChatUI clearly disables
-   realtime messages and files. Tinode topics, tokens, messages, presence, and
-   receipts remain Step 4 and are not replaced with browser demo data.
+5. Chatmgt returns a short-lived Tinode token after verifying the employee
+   password. If the relay is unavailable, ChatUI keeps the directory and
+   conversation metadata visible while disabling realtime inputs; it never
+   falls back to browser demo data.
 
 Chatmgt is authoritative for employee identity, password hash, role, status,
 profile, and avatar inside each tenant. It stores only bcrypt hashes, never
@@ -59,11 +64,14 @@ administrator SSO session.
 
 ## Step 4 realtime flow
 
-Chatmgt derives a deterministic Tinode basic credential from a server secret,
-tenant ID, Chatmgt account ID, and tenant-scoped Tinode username. Employee
-password changes therefore never rotate or expose the Tinode credential.
-`POST /api/v1/auth/tinode-token` validates the Chatmgt session/account state and
-returns only a short-lived Tinode token. ChatUI and Chatmgt both reach the
+With `TINODE_MIRROR_LOCAL_CREDENTIALS=true`, Chatmgt provisions the same local
+employee username/password as the Tinode basic credential. Chatmgt stores only
+the bcrypt hash; ChatUI keeps the password in volatile tab memory only while
+the active session can renew an expiring Tinode token. Existing deterministic
+identities are migrated in place by UID on the next login.
+`POST /api/v1/auth/tinode-token` returns the token bound to that session when a
+reconnect needs it and re-verifies that volatile password when renewal is
+required. ChatUI and Chatmgt both reach the
 central `web.vichat.net` Tinode through the `chat.upgo.vn` Nginx relay for
 messages, files, presence, typing, reactions, receipts, and direct calls.
 

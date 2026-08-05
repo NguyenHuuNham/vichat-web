@@ -43,9 +43,13 @@ The administrator page uses `POST /api/v1/admin/sso` and the separate
 3. Chatmgt looks up an active `management_account` by username/email and the
    requested tenant, verifies bcrypt, records tenant-scoped rate-limit state,
    and issues the Chatmgt HttpOnly chat cookie.
-4. The response contains only public user/tenant fields and
-   `connection: management`; it contains no password, hash or Tinode token.
-5. ChatUI loads Step 3 metadata, then calls `POST /api/v1/auth/tinode-token`.
+4. Chatmgt verifies the bcrypt password and synchronizes the same local
+   username/password to the mapped Tinode basic credential. The response
+   contains the short-lived Tinode token, never the password or hash.
+5. The signed Chatmgt chat cookie carries that Tinode token for reconnects.
+   ChatUI retains the password only in volatile tab memory and sends it back
+   over the authenticated renewal request when the Tinode token is expiring;
+   it never writes the password to storage, cookies or logs.
 6. Logout revokes the Chatmgt token and clears the ChatUI cookie. A later API
    call receives `401`/`403`.
 
@@ -71,9 +75,9 @@ Inside **Nhân viên**, a tenant admin can:
 For a legacy Account projection in a production migration, reset-password is a
 deliberate “Cấp mật khẩu ChatUI” action. It changes only the authentication
 source to `local`, preserves the existing management account ID and Tinode UID,
-keeps a non-sensitive legacy Account audit marker, and never copies the Account
-password. A reset/change changes the Chatmgt bcrypt hash and auth version only;
-the next Tinode login repairs the server-derived credential if needed.
+keeps a non-sensitive legacy Account audit marker, and synchronizes the new
+local password to the mapped Tinode basic credential. The plaintext password
+is used only in memory for the Tinode request and is never stored.
 
 Management account mutations require both the management cookie and
 `X-Vichat-Session-Scope: management`. Every target query includes
@@ -94,21 +98,30 @@ realtime message/file inputs stay disabled and show the connection state.
 
 ## Step 4 Tinode bridge
 
-Tinode credentials are never the employee password. For a local account Chatmgt
-uses:
+When `TINODE_MIRROR_LOCAL_CREDENTIALS=true`, a local employee uses the same
+Chatmgt username/password in Tinode Web. Chatmgt uses:
 
 ```text
-tinode_username = stable_tinode_username(tenant_id, management_account.id)
-tinode_password = HMAC-SHA256(TINODE_SSO_SECRET,
-                              tenant_id + account_id + tinode_username)
+tinode_username = management_account.username
+tinode_password = employee password (Chatmgt request memory; ChatUI tab memory
+                 only during the active session)
 ```
 
-The derived credential stays in Chatmgt memory. Chatmgt provisions or repairs
-the Tinode identity server-side, then returns only the short-lived Tinode token
-and expiry from `POST /api/v1/auth/tinode-token`. Two tenants with the same
-employee username still receive different management IDs, Tinode usernames and
-derived credentials. Token refresh does not ask the browser to resubmit the
-employee password.
+Tinode basic usernames are global per Tinode server and must satisfy Tinode's
+letters/numbers/dot/underscore policy (maximum 32 characters). A production
+deployment therefore uses one fixed tenant per Tinode server/domain, and
+Chatmgt rejects a duplicate username across tenants when mirroring is enabled.
+Existing deterministic `upgo_*` identities are migrated in place by UID on the
+employee's next password login; group subscriptions and message history stay
+on that UID. The signed Chatmgt JWT carries only the short-lived Tinode token
+for reconnects; no reversible employee password is persisted. A renewed token
+is issued only after Chatmgt re-verifies bcrypt. Disabling or
+revoking a local account replaces its Tinode credential with an unusable
+server-derived value until the employee is re-enabled and logs in again.
+
+Set `TINODE_MIRROR_LOCAL_CREDENTIALS=false` only for rollback; that mode keeps
+deterministic server-side Tinode credentials and does not support direct
+employee-password login in Tinode Web.
 
 `POST /api/v1/conversation/<id>/tinode-prepare` prepares missing UID mappings
 from current Chatmgt membership. Group topic binding and add/remove/leave
@@ -201,6 +214,7 @@ VITE_CHAT_AUTH_MODE=password
 CHATMGT_DEFAULT_TENANT=song-hong
 CHAT_AUTH_JWT_SECRET=<at-least-32-random-characters>
 TINODE_SSO_SECRET=<at-least-32-random-characters>
+TINODE_MIRROR_LOCAL_CREDENTIALS=true
 TINODE_ADMIN_USERNAME=<server-side-tinode-admin>
 TINODE_ADMIN_PASSWORD=<server-side-tinode-admin-password>
 TINODE_INTERNAL_WS_URL=ws://chat:80/v0/channels
@@ -230,18 +244,19 @@ tenant-routing layer; do not expose a global tenant selector in ChatUI.
 
 ## Acceptance requirements
 
-- A tenant-A username/password authenticates only an active tenant-A account;
-  the same username in tenant B is a different account and Tinode identity.
+- A fixed-tenant username/password authenticates only an active account; when
+  Tinode credential mirroring is enabled, the username is globally unique on
+  that Tinode server and opens the same UID in Tinode Web.
 - A tenant-A session cannot list, search, open, add, update or remove tenant-B
   users, conversations, groups, participants or audit records.
 - Invalid credentials return `401`; rate limits are scoped by tenant, identity
   and IP; successful responses contain no password/hash/secret.
 - Admin Account SSO creates only a management-scope session and cannot request
   an employee Tinode token.
-- Token refresh works after the original employee password is no longer
-  available to the browser.
-- Password reset/change updates bcrypt and auth version only; Tinode credential
-  remains server-derived.
+- Token reconnect works from the signed Chatmgt session without recovering the
+  original employee password.
+- Password reset/change updates bcrypt, auth version and the mapped Tinode
+  basic credential together; no plaintext password is persisted.
 - Logout invalidates the session and all protected endpoints reject the old
   token.
 - Central Tinode stopped: Chatmgt directory/conversation metadata remains available,
