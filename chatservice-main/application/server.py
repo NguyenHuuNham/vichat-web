@@ -16,6 +16,24 @@ cors = CORS(
     supports_credentials=True,
 )
 
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; base-uri 'self'; object-src 'none'; "
+    "frame-ancestors 'self'; form-action 'self' https://account.upgo.vn; "
+    "script-src 'self'; style-src 'self' 'unsafe-inline' "
+    "https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
+    "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
+    "img-src 'self' data: blob: https:; media-src 'self' blob: https:; "
+    "connect-src 'self' https: wss:; worker-src 'self' blob:"
+)
+
+
+@app.middleware("response")
+async def add_browser_security_headers(request, response):
+    response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+
 
 from application.database import init_database
 from application.extensions import init_extensions

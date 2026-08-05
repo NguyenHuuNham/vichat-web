@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-05-06 - Hardening response truc tiep tu Chatmgt
+
+- Thoi gian: 2026-08-05 18:00 (Asia/Saigon)
+- Loai: Bao mat | Van hanh
+- Trang thai: Hoan tat code va kiem thu, cho deploy rieng Chatmgt
+- Muc tieu: Bao dam `chatmgt.upgo.vn` tra security header ngay ca khi chua co quyen sua reverse proxy host `.218`.
+- Pham vi: Response middleware Chatmgt va test cau hinh; khong thay doi auth, tenant, database, Tinode token/topic/message, Workspace hay chatbot.
+- File da thay doi: `chatservice-main/application/server.py`, `chatservice-main/tests/test_tinode_central_switch.py`, `docs/CHANGELOG.md`.
+- Noi dung: Chatmgt them CSP, `Referrer-Policy`, `X-Content-Type-Options` va `X-Frame-Options` vao moi response, bao gom static management UI va API.
+- Quyet dinh ky thuat: Dat header tai ung dung de khong phu thuoc quyen SSH `.218`; giu CSP cung contract voi ChatUI va khong sua CORS/cookie/session.
+- Database/API/cau hinh: Khong migration, endpoint, payload, secret hay bien moi truong moi.
+- Kiem thu: `python -m py_compile chatservice-main/application/server.py` dat; backend local dat 107 test, 37 skip dependency runtime; E2E production voi hai verifier account dat direct receive, group receive, typing va receipt qua Tinode public WSS, sau do xoa sach account Chatmgt tam.
+- Rui ro con lai: Credential admin Tinode trung tam bi tu choi va certificate `web.vichat.net` het han; hai muc nay can quyen tren `103.74.122.215`.
+- Viec tiep theo: Build image, deploy rieng Chatmgt, kiem tra header public va chay verifier hoi quy.
+- Commit/PR: Chua tao.
+
 ## 2026-08-05-05 - Bo sung browser security headers cho ChatUI production
 
 - Thoi gian: 2026-08-05 17:00 (Asia/Saigon)

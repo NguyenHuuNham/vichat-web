@@ -6,6 +6,7 @@ from pathlib import Path
 CHATMGT_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = CHATMGT_ROOT.parent
 AUTH_SERVICE_PATH = CHATMGT_ROOT / "application" / "services" / "auth_service.py"
+SERVER_PATH = CHATMGT_ROOT / "application" / "server.py"
 CHATBOT_CONTROLLER_PATH = CHATMGT_ROOT / "application" / "controllers" / "api_chatbot.py"
 SWITCH_SCRIPT_PATH = CHATMGT_ROOT / "scripts" / "switch_tinode_central.py"
 APP_PATH = REPOSITORY_ROOT / "src" / "app" / "App.jsx"
@@ -90,6 +91,15 @@ class TinodeCentralSwitchTests(unittest.TestCase):
         self.assertIn("add_header Referrer-Policy", nginx_source)
         self.assertIn("add_header X-Content-Type-Options \"nosniff\"", nginx_source)
         self.assertIn("add_header X-Frame-Options \"SAMEORIGIN\"", nginx_source)
+
+    def test_chatmgt_sets_browser_security_headers_before_the_host_proxy(self):
+        server_source = SERVER_PATH.read_text(encoding="utf-8")
+
+        self.assertIn('@app.middleware("response")', server_source)
+        self.assertIn('response.headers["Content-Security-Policy"]', server_source)
+        self.assertIn('response.headers["Referrer-Policy"]', server_source)
+        self.assertIn('response.headers["X-Content-Type-Options"]', server_source)
+        self.assertIn('response.headers["X-Frame-Options"]', server_source)
 
 
 if __name__ == "__main__":
