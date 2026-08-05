@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-05-02 - Trien khai relay Tinode trung tam len production
+
+- Thoi gian: 2026-08-05 12:38 (Asia/Saigon)
+- Loai: Trien khai | Van hanh | Du lieu | Realtime
+- Trang thai: Hoan tat functional deployment, can khac phuc TTL/TLS de nghiem thu bao mat
+- Muc tieu: Chuyen ChatUI va Chatmgt production sang Tinode trung tam `web.vichat.net` ma khong recreate ChatAPI, PostgreSQL, Redis hoac Coturn.
+- Pham vi: Release `/opt/deploy/chat/releases/f58919a`, private `.env`, runtime Tinode bootstrap, proxy WSS, ChatUI, Chatmgt va mapping Tinode cua tenant `song-hong`.
+- File da thay doi: `docs/CHANGELOG.md`; source runtime production la commit `f58919a`. Private `.env`, runtime va backup chi nam tren server.
+- Noi dung: Tao archive sach SHA-256 `3fbe839f164989dd5afb78a2d2911ad3c2985f9aa9b938fc108b08b846bba240`, build image ChatUI/Chatmgt moi, gan rollback tag `rollback-before-f58919a`, cap nhat `TINODE_INTERNAL_WS_URL=ws://chat:80/v0/channels`, chuyen symlink `current` va giu `chatapi` cu cho rollback.
+- Quyet dinh ky thuat: Theo chap thuan tam thoi cua nguoi dung, Nginx giu `proxy_ssl_verify off` de upstream Tinode het han van ket noi duoc; khong sua verifier de che giau TTL, functional verifier chi bypass rieng buoc expiry.
+- Database/API/cau hinh: Tao backup Chatmgt PostgreSQL tai `/opt/deploy/chat/backups/pre-central-20260805T053143Z`; reset mapping song-hong gom 9 UID, 5 topic, xoa 91 chat-derived documents/chunks; khong migration schema.
+- Kiem thu: Compose config, build, container health, public `chat.upgo.vn`/`chatmgt.upgo.vn` health, relay env va Nginx central proxy dat; functional verifier voi duy nhat TTL check bypass dat CORS, login/logout, directory, conversations, Tinode internal/public WebSocket va publish/delete. Official verifier chua dat vi Tinode trung tam cap token khoang 14 ngay.
+- Rui ro con lai: Chung chi `web.vichat.net` da het han va `AUTH_TOKEN_EXPIRE_IN` trung tam chua nam trong cua so 60-900 giay; token/browser co the dai hon chinh sach. Can gia han cert va dat TTL <= 900 truoc khi goi la hoan tat bao mat.
+- Viec tiep theo: Hard refresh hai tai khoan nhan vien, kiem tra login, tin nhan 1-1/nhom, file, presence, receipt va reconnect; sau khi ben van hanh Tinode sua cert/TTL thi chay lai verifier chinh thuc.
+- Commit/PR: Commit ghi nhan trien khai duoc tao trong cung lan lam viec nay (xem git log).
+
 ## 2026-08-05-01 - Chuyen Tinode trung tam sang web.vichat.net
 
 - Thoi gian: 2026-08-05 10:20 (Asia/Saigon)
