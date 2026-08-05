@@ -486,7 +486,6 @@ async def _ensure_tinode_account(account):
     tinode_auth = await tinode_sso_login(
         identity,
         account.tinode_username,
-        ensure_credential=False,
     )
     tinode_uid = str(tinode_auth.get("uid") or "").strip()
     if not tinode_uid:
@@ -940,7 +939,6 @@ async def management_tinode_token(request):
             identity,
             account.tinode_username,
             account.tinode_uid,
-            ensure_credential=False,
         )
         account.tinode_uid = tinode_auth.get("uid") or account.tinode_uid
         account.updated_at = int(time.time())
@@ -1547,7 +1545,6 @@ async def management_user_create(request):
         tinode_auth = await tinode_sso_login(
             tinode_identity,
             tinode_username,
-            ensure_credential=False,
         )
         now = int(time.time())
         account = ManagementAccount(

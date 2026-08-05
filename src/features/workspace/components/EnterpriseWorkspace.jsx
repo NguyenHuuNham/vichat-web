@@ -72,7 +72,6 @@ function propertiesForForm(form) {
   if (form.type === 'TASK') return {
     progress: 0,
     source_conversation_name: form.sourceConversationName,
-    source_message_preview: form.sourceMessagePreview,
   };
   if (form.type === 'ANNOUNCEMENT') return { pinned: form.pinned, requires_ack: form.requiresAck };
   if (form.type === 'APPROVAL') return { request_kind: form.requestKind };

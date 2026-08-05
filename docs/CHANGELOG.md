@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-05-01 - Chuyen Tinode trung tam sang web.vichat.net
+
+- Thoi gian: 2026-08-05 10:20 (Asia/Saigon)
+- Loai: Tai cau truc | Bao mat | Van hanh | Du lieu
+- Trang thai: Hoan tat code va kiem thu local, cho cau hinh trung tam va deploy
+- Muc tieu: Dua Tinode tai `web.vichat.net` thanh nguon trung tam cho token, noi dung tin nhan, tep va realtime cua ChatUI; giu nguyen tai khoan, tenant, nhom va metadata Chatmgt, chap nhan reset lich su Tinode cu.
+- Pham vi: Nginx ChatUI proxy, Chatmgt Tinode bridge, ChatUI ingestion, script reset mapping va tai lieu trien khai; khong thay doi luong dang nhap, directory, phan quyen tenant hay Workspace ngoai viec loai bo ban sao noi dung chat.
+- File da thay doi: `README.md`, `chatservice-main/README.md`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/controllers/api_chatbot.py`, `chatservice-main/application/services/auth_service.py`, `chatservice-main/application/services/enterprise_workspace_service.py`, `chatservice-main/scripts/verify_deployment.py`, `chatservice-main/scripts/switch_tinode_central.py`, `chatservice-main/tests/test_tinode_bridge_service.py`, `chatservice-main/tests/test_tinode_central_switch.py`, `docs/chat-backend-architecture.md`, `infrastructure/production/.env.example`, `infrastructure/production/README.md`, `infrastructure/production/compose.yaml`, `infrastructure/production/nginx.conf`, `infrastructure/production/start.sh`, `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/chatbot/services/chatbotService.js`, `src/features/workspace/components/EnterpriseWorkspace.jsx` va bundle `dist/`.
+- Noi dung: Ket noi noi bo Chatmgt va WebSocket public cua ChatUI se di qua Nginx toi `web.vichat.net`; Chatmgt uu tien dang nhap credential xac dinh va chi dung admin reset khi credential bi tu choi; tin nhan/tep Tinode khong con tu dong sao chep vao kho tri thuc Chatmgt; script rieng reset UID/topic va xoa du lieu chat-derived sau khi da backup.
+- Quyet dinh ky thuat: Giu `chatapi` cu chay de rollback nhung khong con la endpoint duoc su dung. Proxy tat verify TLS upstream vi chung chi dich vu dich het han; SNI/Host van co dinh `web.vichat.net`. Khong reset mapping truoc khi proxy va provisioning moi duoc kiem tra.
+- Database/API/cau hinh: Doi `TINODE_INTERNAL_WS_URL` sang `ws://chat:80/v0/channels`; them lenh mot lan de dat `tinode_uid`/`tinode_topic` ve NULL va xoa document/chunk co `CHAT_*`; khong migration schema.
+- Kiem thu: `npm run test:frontend` dat 34/34; `npm run lint` dat, chi con warning legacy trong `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `python -m unittest discover -s chatservice-main/tests -v` dat 97 test, 30 skip do dependency runtime chi co trong image; test central switch dat 5/5; `python -m py_compile` dat; Compose config dat voi secret tam khong nhat vao source; DNS/handshake/provision/delete probe toi `web.vichat.net` dat.
+- Rui ro con lai: Chung chi public cua `web.vichat.net` van het han; proxy la bien phap tam thoi. Probe cho thay Tinode trung tam cap token khoang 14 ngay, chua phu hop cua so 60-900 giay hien tai; can ben van hanh Tinode dat `AUTH_TOKEN_EXPIRE_IN` <= 900 va renew certificate truoc khi nghiem thu bao mat. Chua backup/reset/deploy production.
+- Viec tiep theo: Cap nhat cau hinh Tinode trung tam, commit/push, backup production, kiem tra proxy/provisioning, reset mapping va deploy rieng ChatUI/Chatmgt; chi reset sau khi TTL va cert dat.
+- Commit/PR: Chua tao.
+
 ## 2026-08-04-05 - Trien khai Enterprise Workspace len production
 
 - Thoi gian: 2026-08-04 21:15 (Asia/Saigon)

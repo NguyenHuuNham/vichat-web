@@ -48,7 +48,7 @@ DEFAULT_PARTICIPANT_ROLE = {
 }
 
 PROPERTY_FIELDS = {
-    "TASK": ("checklist", "progress", "source_conversation_name", "source_message_preview"),
+    "TASK": ("checklist", "progress", "source_conversation_name"),
     "ANNOUNCEMENT": ("pinned", "requires_ack", "audience_label"),
     "APPROVAL": ("request_kind", "amount", "currency", "reference_code"),
     "TICKET": ("category", "sla_minutes", "requester_contact", "reference_code"),

@@ -72,6 +72,7 @@ const GROUP_DEFAULT_AUTH_MODE = 'N';
 const BACKGROUND_HISTORY_LIMIT = 100;
 const RECONNECT_HISTORY_LIMIT = 100;
 const OPEN_HISTORY_LIMIT = 1000;
+const CENTRAL_MESSAGE_TEXT_LIMIT = 120 * 1024;
 
 // A host is enough to opt into Tinode mode; assertConfigured below provides a
 // useful error when the API key is missing instead of silently using demo mode.
@@ -1471,6 +1472,9 @@ export const tinodeClient = {
   },
 
   async sendText(topicName, text, clientId, metadata = {}) {
+    if (new TextEncoder().encode(String(text || '')).length > CENTRAL_MESSAGE_TEXT_LIMIT) {
+      throw new Error('Tin nhắn vượt quá giới hạn 120 KB của máy chủ Tinode.');
+    }
     const topic = await subscribeTopic(topicName);
     const draft = topic.createMessage(text, false);
     const head = { ...(draft.head || {}) };

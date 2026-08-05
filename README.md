@@ -30,7 +30,7 @@ message or file content.
 3. The admin creates an employee username/password or converts a legacy Account projection by assigning a ChatUI password.
 4. ChatUI calls `POST /api/v1/auth/login` with the credentials and its configured tenant ID.
 5. Chatmgt verifies the local password and issues a tenant-scoped HttpOnly chat session.
-6. Chatmgt derives/provisions the employee's Tinode credential server-side and returns only a short-lived Tinode token.
+6. Chatmgt derives/provisions the employee's credential on the central Tinode at `web.vichat.net` and returns only a short-lived Tinode token.
 7. Logout revokes the Chatmgt session and clears the ChatUI cookie. Admin logout also ends the Account administrator session.
 
 Steps 3 and 4 remain separate acceptance gates. Successful Step 2 login does
@@ -63,7 +63,8 @@ Chatmgt derives a deterministic Tinode basic credential from a server secret,
 tenant ID, Chatmgt account ID, and tenant-scoped Tinode username. Employee
 password changes therefore never rotate or expose the Tinode credential.
 `POST /api/v1/auth/tinode-token` validates the Chatmgt session/account state and
-returns only a short-lived Tinode token. ChatUI then connects to ChatAPI for
+returns only a short-lived Tinode token. ChatUI and Chatmgt both reach the
+central `web.vichat.net` Tinode through the `chat.upgo.vn` Nginx relay for
 messages, files, presence, typing, reactions, receipts, and direct calls.
 
 Chatmgt prepares participant Tinode UID mappings and validates every topic
@@ -71,6 +72,10 @@ binding against the current tenant conversation. Group add/remove/leave actions
 are sent to Chatmgt, which updates the Tinode subscription and Chatmgt membership
 as one controlled bridge operation. The browser does not independently invent
 or persist membership state.
+
+Normal Tinode messages and uploaded chat files are not copied into Chatmgt
+knowledge or Workspace previews. A Workspace task created from a message keeps
+only the Chatmgt conversation ID/name and Tinode message reference.
 
 Unread counts and the latest message preview still come from Tinode while a
 conversation is muted. Chatmgt stores only the current employee's mute deadline;

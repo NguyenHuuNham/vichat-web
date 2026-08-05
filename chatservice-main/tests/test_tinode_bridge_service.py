@@ -3,7 +3,7 @@ import sys
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 
 HAS_RUNTIME_DEPENDENCIES = all(
@@ -102,6 +102,73 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
             "TINODE_API_KEY": "test-api-key",
             "TINODE_AUTH_TIMEOUT": 10,
         })
+
+    async def test_sso_login_does_not_require_admin_when_credential_is_valid(self):
+        identity = {
+            "tenant_id": "tenant-a",
+            "account_user_id": "account-a",
+            "full_name": "Account A",
+        }
+        expected = {"uid": "usrAccountA", "token": "short-token"}
+        with patch.object(
+            auth_service,
+            "tinode_sso_password",
+            return_value="derived-password",
+        ), patch.object(
+            auth_service,
+            "tinode_login",
+            AsyncMock(return_value=expected),
+        ) as login, patch.object(
+            auth_service,
+            "tinode_admin_reset_password",
+            AsyncMock(),
+        ) as reset:
+            result = await auth_service.tinode_sso_login(
+                identity,
+                "vichat_account_a",
+                "usrAccountA",
+            )
+
+        self.assertEqual(result, expected)
+        login.assert_awaited_once_with("vichat_account_a", "derived-password")
+        reset.assert_not_awaited()
+
+    async def test_sso_login_uses_admin_only_to_repair_rejected_credential(self):
+        identity = {
+            "tenant_id": "tenant-a",
+            "account_user_id": "account-a",
+            "full_name": "Account A",
+        }
+        expected = {"uid": "usrAccountA", "token": "short-token"}
+        with patch.object(
+            auth_service,
+            "tinode_sso_password",
+            return_value="derived-password",
+        ), patch.object(
+            auth_service,
+            "tinode_login",
+            AsyncMock(side_effect=[
+                auth_service.AuthError("rejected", 401),
+                expected,
+            ]),
+        ) as login, patch.object(
+            auth_service,
+            "tinode_admin_reset_password",
+            AsyncMock(),
+        ) as reset:
+            result = await auth_service.tinode_sso_login(
+                identity,
+                "vichat_account_a",
+                "usrAccountA",
+            )
+
+        self.assertEqual(result, expected)
+        self.assertEqual(login.await_count, 2)
+        reset.assert_awaited_once_with(
+            "vichat_account_a",
+            "usrAccountA",
+            "derived-password",
+        )
 
     async def test_group_binding_requires_exact_chatmgt_members(self):
         socket = FakeSocket([

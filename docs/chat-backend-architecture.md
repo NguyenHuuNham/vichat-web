@@ -22,9 +22,13 @@ tenant, role, or user IDs supplied after the session is issued.
 - `chatmgt` (`chatservice-main`): owns tenant accounts, bcrypt password hashes,
   roles, active status, avatars, directory/friend/conversation metadata, tenant
   authorization, audit records and the HttpOnly chat/management sessions.
-- `chatapi` (Tinode): owns message/file content, topics, presence, typing,
-  reactions, delivery/read receipts and call signaling. WebRTC media remains
-  browser-to-browser or Coturn; Chatmgt never reads Tinode content.
+- `web.vichat.net` (central Tinode): owns message/file content, topics,
+  presence, typing, reactions, delivery/read receipts and call signaling.
+  ChatUI reaches it through the TLS-safe `chat.upgo.vn` Nginx relay, while
+  Chatmgt reaches the same relay at `ws://chat:80/v0/channels`. The old local
+  `chatapi` container remains only for rollback until migration acceptance is
+  complete. WebRTC media remains browser-to-browser or Coturn; Chatmgt never
+  reads Tinode content.
 
 The administrator page uses `POST /api/v1/admin/sso` and the separate
 `vichat_management_access_token`. It accepts only Account `admin`, `owner` or
@@ -109,8 +113,10 @@ employee password.
 `POST /api/v1/conversation/<id>/tinode-prepare` prepares missing UID mappings
 from current Chatmgt membership. Group topic binding and add/remove/leave
 operations verify the fresh Tinode token and exact tenant member set before
-committing Chatmgt metadata. Tinode remains authoritative for message content,
-files, presence, typing, reactions, receipts and call signaling.
+committing Chatmgt metadata. The central Tinode remains authoritative for
+message content, files, presence, typing, reactions, receipts and call
+signaling. ChatUI does not post normal messages/files to Chatmgt knowledge;
+legacy chat-ingestion routes return `410 TINODE_CONTENT_ONLY`.
 
 Tinode profile metadata is correlated through both the Chatmgt account ID and
 Tinode UID. A profile metadata update refreshes the matching directory entry,
@@ -140,9 +146,9 @@ does not replace Tinode and does not read Tinode history. The tables
 tasks, mandatory announcements, approvals, tickets, wiki pages, events and
 integration registry entries. The `properties` object is type-validated and
 allow-listed; API keys, passwords, cookies and tokens are rejected and are not
-stored. A user may explicitly create a task from a message, in which case the
-browser sends only the selected bounded preview and message reference as a
-business snapshot; Chatmgt still never queries Tinode content.
+stored. A user may explicitly create a task from a message, but Chatmgt keeps
+only the conversation ID/name and Tinode message reference. The message body
+remains exclusively in Tinode.
 
 Every Workspace query includes the JWT tenant and filters participants by that
 same tenant. `COMPANY` items are visible to active employees in the tenant;
@@ -197,9 +203,20 @@ CHAT_AUTH_JWT_SECRET=<at-least-32-random-characters>
 TINODE_SSO_SECRET=<at-least-32-random-characters>
 TINODE_ADMIN_USERNAME=<server-side-tinode-admin>
 TINODE_ADMIN_PASSWORD=<server-side-tinode-admin-password>
-TINODE_INTERNAL_WS_URL=ws://chatapi:6060/v0/channels
+TINODE_INTERNAL_WS_URL=ws://chat:80/v0/channels
 TINODE_TOKEN_EXPIRE_IN=300
 ```
+
+The ChatUI Nginx proxies `/v0/` and `/tinode-media/` to
+`https://web.vichat.net`. Upstream certificate verification is temporarily
+disabled because that endpoint's certificate is expired; SNI and `Host` remain
+pinned to `web.vichat.net`. Renewing the upstream certificate and re-enabling
+verification is a required follow-up.
+
+The one-time switch runs `scripts/switch_tinode_central.py` only after a
+verified Chatmgt backup and a successful proxy/provisioning probe. It clears
+only Tinode UID/topic mappings and automatic `CHAT_*` knowledge copies; account,
+tenant, conversation and membership IDs are preserved.
 
 The Workspace migration is `20260804_10` and must be applied after
 `20260803_09` before recreating Chatmgt. Rollback uses the existing release and
@@ -227,7 +244,7 @@ tenant-routing layer; do not expose a global tenant selector in ChatUI.
   remains server-derived.
 - Logout invalidates the session and all protected endpoints reject the old
   token.
-- Tinode stopped: Chatmgt directory/conversation metadata remains available,
+- Central Tinode stopped: Chatmgt directory/conversation metadata remains available,
   realtime input is disabled, and reconnect requests a fresh token.
 - Management overview shows metadata only and never message/file content.
 - Tenant-A Workspace items, participants, search results, activities and stats

@@ -56,18 +56,6 @@ function query(extra = {}) {
   return new URLSearchParams(extra);
 }
 
-function chatParticipants(room, user) {
-  return [...new Set([
-    user?.id,
-    user?.uid,
-    user?.tinodeUid,
-    user?.username,
-    user?.email,
-    ...(room?.participantIds || []),
-    ...(room?.members || []).flatMap(member => [member.id, member.uid, member.username, member.email]),
-  ].filter(Boolean).map(String))];
-}
-
 export async function loadChatbotMessagesFromServer(user, conversationId = CHATBOT_ACCOUNT.id) {
   if (!API_ROOT) return loadChatbotMessages(user?.id || user?.uid);
   try {
@@ -90,49 +78,6 @@ export async function loadChatbotMessagesFromServer(user, conversationId = CHATB
     }));
   } catch {
     return loadChatbotMessages(user?.id || user?.uid);
-  }
-}
-
-export async function learnFromChatMessage({ room, message, user }) {
-  if (!API_ROOT || !room || !message?.text || room.isChatbot || message.type !== 'text') return null;
-  try {
-    const response = await fetch(`${API_ROOT}/knowledge/chat-events`, {
-      method: 'POST',
-      credentials: WITH_CREDENTIALS ? 'include' : 'omit',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        conversation_id: room.managementId || room.id,
-        message_id: message.id,
-        sender_id: message.senderId,
-        participant_ids: chatParticipants(room, user),
-        content: message.text,
-      }),
-    });
-    return response.ok ? response.json() : null;
-  } catch {
-    return null;
-  }
-}
-
-export async function learnFromChatFile({ room, message, file, user }) {
-  if (!API_ROOT || !room || !message || !file || room.isChatbot) return null;
-  const extension = `.${String(file.name || '').split('.').pop()?.toLowerCase()}`;
-  if (!['.pdf', '.docx', '.xls', '.xlsx', '.txt', '.md', '.markdown', '.csv', '.json'].includes(extension)) return null;
-  const form = new FormData();
-  form.set('file', file, file.name);
-  form.set('title', file.name);
-  form.set('conversation_id', room.managementId || room.id);
-  form.set('message_id', message.id || '');
-  form.set('participant_ids', JSON.stringify(chatParticipants(room, user)));
-  try {
-    const response = await fetch(`${API_ROOT}/knowledge/chat-files`, {
-      method: 'POST',
-      credentials: WITH_CREDENTIALS ? 'include' : 'omit',
-      body: form,
-    });
-    return response.ok ? response.json() : null;
-  } catch {
-    return null;
   }
 }
 

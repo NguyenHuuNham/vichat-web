@@ -433,18 +433,16 @@ def tinode_sso_password(identity, tinode_username):
         raise AuthError(str(error), 503) from error
 
 
-async def tinode_sso_login(identity, tinode_username, tinode_uid=None, ensure_credential=True):
+async def tinode_sso_login(identity, tinode_username, tinode_uid=None):
     password = tinode_sso_password(identity, tinode_username)
-    if tinode_uid and ensure_credential:
-        await tinode_admin_reset_password(tinode_username, tinode_uid, password)
-        return await tinode_login(tinode_username, password)
-
     try:
         return await tinode_login(tinode_username, password)
     except AuthError as login_error:
         if login_error.status_code != 401:
             raise
         if tinode_uid:
+            # Existing deterministic credentials normally work without Tinode
+            # administrator access. Use the administrator only as a repair path.
             await tinode_admin_reset_password(tinode_username, tinode_uid, password)
             return await tinode_login(tinode_username, password)
 

@@ -1,9 +1,10 @@
 # Chatmgt service
 
 Chatmgt stores management accounts, tenant-scoped metadata, security audit
-events, organization data, and chatbot knowledge in its own PostgreSQL
-database. Tinode remains the source of realtime messages and uploaded chat
-files.
+events, organization data, and explicitly uploaded chatbot knowledge in its own
+PostgreSQL database. The central Tinode at `web.vichat.net` remains the sole
+source of normal realtime messages and uploaded chat files; legacy automatic
+chat-ingestion routes return `410 TINODE_CONTENT_ONLY`.
 
 Per-user conversation notification preferences are also Chatmgt metadata. The
 authenticated participant may set an absolute mute deadline, clear it, or use

@@ -32,7 +32,7 @@ import {
 } from '../features/contacts/services/accountDirectory';
 import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
-import { CHATBOT_ACCOUNT, learnFromChatFile, learnFromChatMessage, loadChatbotMessages, loadChatbotMessagesFromServer, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
+import { CHATBOT_ACCOUNT, loadChatbotMessages, loadChatbotMessagesFromServer, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
 
 const CALLS_ENABLED = resolveCallsEnabled(import.meta.env.VITE_CALLS_ENABLED);
 
@@ -629,7 +629,6 @@ function App() {
   const createGroupRequestRef = useRef(false);
   const addMembersRequestRef = useRef(false);
   const tinodeSessionRequestRef = useRef(null);
-  const learnedKnowledgeKeysRef = useRef(new Set());
   const conversationsRef = useRef(conversations);
   const currentUserRef = useRef(currentUser);
   const directoryAccountsRef = useRef(directoryAccounts);
@@ -1031,25 +1030,6 @@ function App() {
     }
   };
 
-  const queueMessageForKnowledge = useCallback((room, message, originalFile = null) => {
-    if (!room || room.isChatbot || !message?.id || message.recalled || !currentUser) return;
-    const key = `${room.managementId || room.id}:${message.id}`;
-    if (learnedKnowledgeKeysRef.current.has(key)) return;
-    learnedKnowledgeKeysRef.current.add(key);
-    if (message.type === 'text' && message.text) {
-      learnFromChatMessage({ room, message, user: currentUser })
-        .then(result => { if (!result) learnedKnowledgeKeysRef.current.delete(key); });
-      return;
-    }
-    if (message.type === 'file' && (originalFile || message.file?.url)) {
-      const fileRequest = originalFile ? Promise.resolve(originalFile) : tinodeClient.fetchFile(message.file);
-      fileRequest
-        .then(file => learnFromChatFile({ room, message, file, user: currentUser }))
-        .then(result => { if (!result) learnedKnowledgeKeysRef.current.delete(key); })
-        .catch(() => learnedKnowledgeKeysRef.current.delete(key));
-    }
-  }, [currentUser]);
-
   const showIncomingNotification = useCallback((conversation, message, stateId) => {
     if (!message || message.senderId === viewerId || typeof window === 'undefined') return;
     const shouldAlert = document.visibilityState === 'hidden' || currentChatIdRef.current !== stateId;
@@ -1270,8 +1250,6 @@ function App() {
           if (currentChatIdRef.current === stateId) setCurrentChatId(CHATBOT_ACCOUNT.id);
           return;
         }
-        (conversation.messages || []).forEach(message => queueMessageForKnowledge(conversation, message));
-
         // Establish a baseline during initial history sync. Only later sequence
         // numbers are live messages and should trigger desktop notifications.
         const latestIncoming = (conversation.messages || [])
@@ -1315,7 +1293,7 @@ function App() {
         return;
       }
     });
-  }, [isLoggedIn, chatMode, managementConversationSession, currentUser, directoryAccounts, applyPresenceSnapshot, clearActiveCall, queueMessageForKnowledge, refreshManagementConversations, showIncomingNotification, viewerId]);
+  }, [isLoggedIn, chatMode, managementConversationSession, currentUser, directoryAccounts, applyPresenceSnapshot, clearActiveCall, refreshManagementConversations, showIncomingNotification, viewerId]);
 
   // Keep every known Tinode topic subscribed after login. This is the piece
   // that makes unread badges and notifications realtime before a chat is opened.
@@ -1366,7 +1344,6 @@ function App() {
     setCurrentChatId(CHATBOT_ACCOUNT.id);
     deletedConversationIdsRef.current.clear();
     notificationBaselineRef.current.clear();
-    learnedKnowledgeKeysRef.current.clear();
     tinodeSessionRequestRef.current = null;
     if (contactsSyncTimerRef.current) clearTimeout(contactsSyncTimerRef.current);
     contactsSyncTimerRef.current = null;
@@ -2282,8 +2259,8 @@ function App() {
       setChatError('Ảnh nhóm phải là file hình ảnh.');
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      setChatError('Ảnh nhóm không được vượt quá 10 MB.');
+    if (file.size > 8 * 1024 * 1024) {
+      setChatError('Ảnh nhóm không được vượt quá 8 MB.');
       return;
     }
     setChatError('');
@@ -2571,6 +2548,11 @@ function App() {
     }
     const file = e.target.files[0];
     if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      e.target.value = '';
+      setChatError('Tệp gửi qua Tinode không được vượt quá 8 MB.');
+      return;
+    }
 
     const fileName = file.name;
     const fileSize = file.size;
@@ -2665,7 +2647,6 @@ function App() {
               },
             };
           });
-          queueMessageForKnowledge(room, confirmedMessage, file);
         })
         .catch(err => {
           setConversations(previous => {
@@ -2781,10 +2762,11 @@ function App() {
           setChatError('Chỉ có thể giao việc từ cuộc trò chuyện đã được Chatmgt quản lý.');
           return;
         }
-        const preview = String(message.text || message.file?.name || 'Nội dung đính kèm').trim().slice(0, 2000);
         setEnterpriseTaskSeed({
           title: `Theo dõi: ${activeChat.name || 'cuộc trò chuyện'}`,
-          preview,
+          // The message body remains exclusively in Tinode. Workspace keeps
+          // only a reference so the user can reopen the source conversation.
+          preview: '',
           conversationName: activeChat.name || '',
           conversationId,
           messageRef: String(message.id || message.seq || ''),
@@ -3006,7 +2988,6 @@ function App() {
               },
             };
           });
-          queueMessageForKnowledge(conversations[currentChatId], newMsg);
         })
         .catch(err => {
           setConversations(previous => {

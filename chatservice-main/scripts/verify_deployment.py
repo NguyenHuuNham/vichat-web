@@ -304,6 +304,10 @@ def verify_tinode_websocket(login_payload, origin):
     internal_url = str(os.getenv("TINODE_INTERNAL_WS_URL") or "")
     if not token or not expected_uid or not api_key or not internal_url:
         raise RuntimeError("Tinode WebSocket verification is not configured.")
+    if internal_url != "ws://chat:80/v0/channels":
+        raise RuntimeError(
+            "Tinode WebSocket is not routed through the central web.vichat.net relay."
+        )
 
     asyncio.run(_verify_tinode_socket(
         internal_url,
