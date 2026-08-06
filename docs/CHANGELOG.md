@@ -5,6 +5,21 @@ Day la bo nho ky thuat theo thu tu moi nhat truoc. Moi lan sua code, cau hinh, d
 Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat vao file nay.
 
 ## Lich su thay doi
+## 2026-08-06-19 - Them nut khoa tai khoan trong Chatmgt
+
+- Thoi gian: 2026-08-06 15:52 (Asia/Saigon)
+- Loai: Tinh nang | Bao mat | Chatmgt
+- Trang thai: Hoan tat code; chua deploy production
+- Muc tieu: Cho phep admin tenant khoa/mo khoa tai khoan nhan vien ngay tai cot thao tac cua Chatmgt.
+- Pham vi: Bang Nhan vien trong `src/features/management`; khong doi ChatUI, Tinode, chatbot, database hoac cau hinh.
+- File da thay doi: `src/features/management/ManagementApp.jsx`, `src/features/management/management.css`, `src/features/management/services/managementAdminService.js`, `src/features/management/services/managementAdminService.test.js`, va `docs/CHANGELOG.md`.
+- Noi dung: Them nut khoa/mo khoa voi xac nhan, cap nhat lai trang thai tren bang va tai audit log. Khoa tai khoan su dung API cap nhat `active` da co; backend tang `auth_version` khi khoa nen phien cu bi tu choi. Khong cho admin tu khoa chinh minh va giu projection UpGO Account o che do chi doc.
+- Quyet dinh ky thuat: Tai su dung `PUT /api/v1/chat/users/<id>` thay vi them endpoint/migration moi, chi gui truong `active` de tranh thay doi ngoai y muon.
+- Database/API/cau hinh: Khong co migration; khong them hop dong API. Tai khoan projection Account van phai quan ly o UpGO Account theo kien truc hien tai.
+- Kiem thu: `npm run test:frontend` dat 38/38; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` dat; `git diff --check` dat. `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -v` chua dat do test hien tai doi chu mo ta da bi xoa trong thay doi co san cua `ManagementApp.jsx`, khong lien quan nut khoa.
+- Rui ro con lai: Bundle build da tao nhung chua deploy production; chua UAT tai khoan production.
+- Viec tiep theo: Deploy bundle Chatmgt moi, hard refresh, thu khoa/mo khoa tai khoan nhan vien va xac nhan phien cu bi dang xuat.
+- Commit/PR: Chua tao.
 
 ## 2026-08-04-03 - Trien khai an cuoc goi va chatbot webhook len production
 

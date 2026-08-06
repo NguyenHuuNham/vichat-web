@@ -1143,6 +1143,7 @@
 .management-row-actions button:hover { color: var(--mgmt-orange-deep); border-color: rgba(241, 90, 36, .4); }
 .management-row-actions button.warn:hover { color: var(--mgmt-red); border-color: rgba(201, 76, 60, .4); background: #fff4f1; }
 .management-row-actions button.good:hover { color: var(--mgmt-green); border-color: rgba(22, 132, 93, .35); background: #f0faf5; }
+.management-row-actions button.lock:hover { color: #9b6a20; border-color: rgba(155, 106, 32, .35); background: #fff8e8; }
 .management-row-actions button:disabled { cursor: not-allowed; opacity: .3; }
 
 .management-empty-state {

@@ -39,6 +39,7 @@ test('sends tenant-admin employee create, update, and password reset requests', 
   try {
     await managementAdminService.createUser({ username: 'employee', password: 'StrongPassword!2026', name: 'Employee One' });
     await managementAdminService.updateUser('employee-1', { title: 'Sales' });
+    await managementAdminService.setUserActive('employee-1', false);
     await managementAdminService.resetPassword('employee-1', 'AnotherPassword!2026');
   } finally {
     globalThis.fetch = originalFetch;
@@ -49,8 +50,10 @@ test('sends tenant-admin employee create, update, and password reset requests', 
   assert.equal(JSON.parse(requests[0].options.body).username, 'employee');
   assert.equal(requests[1].url, '/api/v1/chat/users/employee-1');
   assert.equal(requests[1].options.method, 'PUT');
-  assert.equal(requests[2].url, '/api/v1/chat/users/employee-1/reset-password');
-  assert.deepEqual(JSON.parse(requests[2].options.body), { new_password: 'AnotherPassword!2026' });
+  assert.equal(requests[2].url, '/api/v1/chat/users/employee-1');
+  assert.deepEqual(JSON.parse(requests[2].options.body), { active: false });
+  assert.equal(requests[3].url, '/api/v1/chat/users/employee-1/reset-password');
+  assert.deepEqual(JSON.parse(requests[3].options.body), { new_password: 'AnotherPassword!2026' });
   assert.equal(requests.every(request => request.options.headers['X-Vichat-Session-Scope'] === 'management'), true);
 });
 

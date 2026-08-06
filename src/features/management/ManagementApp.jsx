@@ -391,6 +391,25 @@ export default function ManagementApp() {
     }
   };
 
+  const setUserActive = async user => {
+    if (user.accountManaged || String(user.id) === String(currentAdmin.id)) return;
+    const active = !user.active;
+    const action = active ? 'mở khóa' : 'khóa';
+    const detail = active ? '' : ' Người dùng sẽ phải đăng nhập lại.';
+    if (!window.confirm(`Bạn có chắc muốn ${action} tài khoản ${user.name}?${detail}`)) return;
+    setActionUserId(user.id);
+    try {
+      const saved = await managementAdminService.setUserActive(user.id, active);
+      setUsers(previous => previous.map(item => item.id === saved.id ? saved : item));
+      setNotice({ type: 'success', text: `${active ? 'Đã mở khóa' : 'Đã khóa'} tài khoản ${user.name}.` });
+      setAuditLogs(await managementAdminService.listAuditLogs());
+    } catch (error) {
+      setNotice({ type: 'error', text: error.message || `Không thể ${action} tài khoản.` });
+    } finally {
+      setActionUserId('');
+    }
+  };
+
   const saveUser = async form => {
     setModalBusy(true);
     setModalError('');
@@ -553,7 +572,7 @@ export default function ManagementApp() {
                           <td><span className={`management-status ${user.active ? 'active' : 'inactive'}`}><i></i>{user.active ? 'Đang hoạt động' : 'Đã khóa'}</span></td>
                           <td><span className={`management-status ${user.accountManaged ? 'inactive' : 'active'}`}><i></i>{user.accountManaged ? 'Projection Account' : 'Chatmgt local'}</span></td>
                           <td><span className={`management-status ${user.tinodeUid ? 'active' : 'inactive'}`}><i></i>{user.tinodeUid ? 'Đã provision' : 'Chưa provision'}</span></td>
-                          <td><div className="management-row-actions"><button type="button" onClick={() => { setModalError(''); setUserEditor({ mode: 'edit', user }); }} title="Sửa hồ sơ" disabled={busy || user.accountManaged}><i className="fa-solid fa-pen"></i></button><button type="button" className="good" onClick={() => { setModalError(''); setPasswordUser(user); }} title={user.accountManaged ? 'Cấp mật khẩu ChatUI' : 'Đặt lại mật khẩu'} disabled={busy || String(user.id) === String(currentAdmin.id)}><i className="fa-solid fa-key"></i></button><button type="button" className="warn" onClick={() => revokeSessions(user)} title="Thu hồi phiên Chatmgt" disabled={busy || !user.active || String(user.id) === String(currentAdmin.id)}><i className={`fa-solid ${busy ? 'fa-spinner fa-spin' : 'fa-right-from-bracket'}`}></i></button></div></td>
+                          <td><div className="management-row-actions"><button type="button" onClick={() => { setModalError(''); setUserEditor({ mode: 'edit', user }); }} title="Sửa hồ sơ" disabled={busy || user.accountManaged}><i className="fa-solid fa-pen"></i></button><button type="button" className="good" onClick={() => { setModalError(''); setPasswordUser(user); }} title={user.accountManaged ? 'Cấp mật khẩu ChatUI' : 'Đặt lại mật khẩu'} disabled={busy || String(user.id) === String(currentAdmin.id)}><i className="fa-solid fa-key"></i></button><button type="button" className="lock" onClick={() => setUserActive(user)} title={user.accountManaged ? 'Tài khoản do UpGO Account quản lý' : (user.active ? 'Khóa tài khoản' : 'Mở khóa tài khoản')} disabled={busy || user.accountManaged || String(user.id) === String(currentAdmin.id)}><i className={`fa-solid ${busy ? 'fa-spinner fa-spin' : (user.active ? 'fa-lock' : 'fa-lock-open')}`}></i></button><button type="button" className="warn" onClick={() => revokeSessions(user)} title="Thu hồi phiên Chatmgt" disabled={busy || !user.active || String(user.id) === String(currentAdmin.id)}><i className={`fa-solid ${busy ? 'fa-spinner fa-spin' : 'fa-right-from-bracket'}`}></i></button></div></td>
                         </tr>
                       );
                     })}

@@ -183,6 +183,14 @@ export const managementAdminService = {
     return normalizeManagementUser(payload.user || payload);
   },
 
+  async setUserActive(userId, active) {
+    const payload = await apiRequest(`/api/v1/chat/users/${encodeURIComponent(userId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ active: Boolean(active) }),
+    });
+    return normalizeManagementUser(payload.user || payload);
+  },
+
   async resetPassword(userId, newPassword) {
     const payload = await apiRequest(`/api/v1/chat/users/${encodeURIComponent(userId)}/reset-password`, {
       method: 'POST',
