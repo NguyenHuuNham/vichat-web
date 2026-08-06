@@ -1,6 +1,8 @@
 import tinodeSdk from 'tinode-sdk';
 import {
   acknowledgeTopicReceived,
+  deliveryStatusFromReceiptCursor,
+  messageForDeliveryStatus,
   modeWithRealtimePresence,
   resolveTinodePresenceOnline,
 } from './chatRealtime';
@@ -56,6 +58,7 @@ const groupPrivacyMigrationRequests = new Map();
 const privateGroupTopics = new Set();
 const callInviteKeys = new Set();
 const conversationEmitTimers = new Map();
+const topicReceiptCursors = new Map();
 let conversationListRequest = null;
 let contactsEventQueued = false;
 let allowedConversationTopics = new Set();
@@ -390,6 +393,15 @@ function deliveryStatusName(status) {
   return 'none';
 }
 
+function rememberTopicReceipt(topicName, what, sequence) {
+  const seq = Number(sequence);
+  if (!topicName || !Number.isFinite(seq) || seq <= 0 || !['recv', 'read'].includes(what)) return;
+  const current = topicReceiptCursors.get(topicName) || { receivedSeq: 0, readSeq: 0 };
+  const key = what === 'read' ? 'readSeq' : 'receivedSeq';
+  const next = Math.max(current[key] || 0, seq);
+  if (next !== current[key]) topicReceiptCursors.set(topicName, { ...current, [key]: next });
+}
+
 function toMessage(msg, tinode, topic = null) {
   if (!msg || msg._deleted) return null;
   // Locally acknowledged messages may not have `from` yet; Tinode treats
@@ -447,7 +459,20 @@ function toMessage(msg, tinode, topic = null) {
   }
   const friendActorId = friendEvent?.action === 'request' ? friendEvent.requesterId : friendEvent?.responderId;
   const friendActorName = friendEvent?.action === 'request' ? friendEvent.requesterName : friendEvent?.responderName;
-  const deliveryStatus = topic?.msgStatus ? deliveryStatusName(topic.msgStatus(msg)) : 'none';
+  // Attachment echoes can omit `from` while retaining our stamped sender
+  // header. Tinode's msgStatus uses `from` to count delivery receipts.
+  const statusMessage = messageForDeliveryStatus(msg);
+  const baseDeliveryStatus = topic?.msgStatus ? deliveryStatusName(topic.msgStatus(statusMessage)) : 'none';
+  const receiptCursor = topicReceiptCursors.get(topic?.name) || {};
+  const deliveryStatus = deliveryStatusFromReceiptCursor(
+    { ...msg, sender: isOutgoing ? 'outgoing' : 'incoming', senderId: messageSenderId },
+    {
+      receivedSeq: receiptCursor.receivedSeq,
+      readSeq: receiptCursor.readSeq,
+      viewerId: tinode.getCurrentUserID(),
+      currentStatus: baseDeliveryStatus,
+    },
+  );
   return {
     id: friendEvent?.requestId
       ? `friend-${friendEvent.action}-${friendEvent.requestId}`
@@ -829,7 +854,17 @@ function wireTopic(topic) {
     }
     // Read/received receipts update Tinode's per-message status. Re-emit the
     // conversation so the React view can replace its check mark immediately.
-    if (['read', 'recv'].includes(info.what)) emitConversation(topic, topicClient);
+    if (['read', 'recv'].includes(info.what)) {
+      rememberTopicReceipt(topic.name, info.what, info.seq);
+      listeners.forEach(listener => listener({
+        type: 'receipt',
+        topic: topic.name,
+        what: info.what,
+        from: info.from,
+        seq: Number(info.seq) || 0,
+      }));
+      emitConversation(topic, topicClient);
+    }
   };
   return topic;
 }
@@ -1008,6 +1043,7 @@ function resetSessionState({ clearEventListeners = false } = {}) {
   callInviteKeys.clear();
   conversationEmitTimers.forEach(timer => clearTimeout(timer));
   conversationEmitTimers.clear();
+  topicReceiptCursors.clear();
   conversationListRequest = null;
   contactsEventQueued = false;
   allowedConversationTopics = new Set();

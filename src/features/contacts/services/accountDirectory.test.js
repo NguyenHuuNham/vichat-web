@@ -6,6 +6,7 @@ import {
   findDirectPeer,
   identitiesOverlap,
   identityValues,
+  mergeDirectoryAccountSnapshots,
   mergeRealtimeAccountProfile,
   mergeRealtimeMemberPresence,
   updateAccountProfiles,
@@ -91,6 +92,16 @@ test('realtime profile refresh changes only the matching directory account', () 
   assert.notStrictEqual(result, accounts);
   assert.equal(result[0].avatar, '/new.jpg');
   assert.strictEqual(result[1], second);
+});
+
+test('directory polling keeps the latest known avatar when the server snapshot is stale', () => {
+  const previous = [{ id: 'account-1', tinodeUid: 'usr-one', name: 'One', avatar: '/new.jpg' }];
+  const incoming = [{ id: 'account-1', tinodeUid: 'usr-one', name: 'One updated', avatar: '' }];
+
+  const result = mergeDirectoryAccountSnapshots(previous, incoming);
+
+  assert.equal(result[0].name, 'One updated');
+  assert.equal(result[0].avatar, '/new.jpg');
 });
 
 test('realtime group presence overlays Chatmgt members without replacing their identities', () => {

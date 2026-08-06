@@ -43,9 +43,7 @@ export function updateAccountPresence(accounts, snapshot, currentUser) {
 export function mergeRealtimeAccountProfile(entity, profile) {
   if (!entity || !profile || !identitiesOverlap(entity, profile)) return entity;
   const nextName = profile.name || entity.name;
-  const nextAvatar = Object.prototype.hasOwnProperty.call(profile, 'avatar')
-    ? (profile.avatar || '')
-    : entity.avatar;
+  const nextAvatar = profile.avatar || entity.avatar || '';
   if (nextName === entity.name && nextAvatar === entity.avatar) return entity;
   return { ...entity, name: nextName, avatar: nextAvatar };
 }
@@ -58,6 +56,28 @@ export function updateAccountProfiles(accounts, profile) {
     return updated;
   });
   return changed ? next : accounts;
+}
+
+export function mergeDirectoryAccountSnapshots(previousAccounts = [], incomingAccounts = []) {
+  const previous = Array.isArray(previousAccounts) ? previousAccounts : [];
+  const incoming = Array.isArray(incomingAccounts) ? incomingAccounts : [];
+  let changed = false;
+  const next = incoming.map(account => {
+    const previousAccount = findAccount(previous, account?.id || account?.uid || account?.tinodeUid || account?.tinode_uid);
+    if (!previousAccount) return account;
+    const avatar = account.avatar || previousAccount.avatar || '';
+    const name = account.name || previousAccount.name || '';
+    const merged = {
+      ...account,
+      name,
+      // Directory polling may briefly return an old/empty avatar after upload.
+      avatar,
+    };
+    const accountChanged = name !== account.name || avatar !== account.avatar;
+    if (accountChanged) changed = true;
+    return accountChanged ? merged : account;
+  });
+  return changed ? next : incoming;
 }
 
 export function mergeRealtimeMemberPresence(members, realtimeMembers) {

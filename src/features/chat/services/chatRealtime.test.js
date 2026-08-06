@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   acknowledgeTopicReceived,
+  applyReceiptToMessages,
+  deliveryStatusFromReceiptCursor,
+  mergeDeliveryStatus,
+  messageForDeliveryStatus,
   modeWithRealtimePresence,
   readyTinodeTypingTopic,
   resolvePreparedTinodeTopic,
@@ -65,4 +69,55 @@ test('background receipt acknowledgement uses the latest topic sequence', () => 
   assert.equal(acknowledged, 12);
   assert.equal(topicReceiptSequence({ maxMsgSeq: () => 0, latestMessage: () => ({ seq: 8 }) }), 8);
   assert.equal(topicReceiptSequence({ maxMsgSeq: () => 0, latestMessage: () => null }), 0);
+});
+
+test('delivery status can identify attachment echoes without a from field', () => {
+  const stamped = messageForDeliveryStatus({ head: { 'x-sender-id': 'usrSender' }, seq: 42 });
+  assert.equal(stamped.from, 'usrSender');
+  const existing = { from: 'usrExisting', head: { 'x-sender-id': 'usrOther' } };
+  assert.equal(messageForDeliveryStatus(existing), existing);
+});
+
+test('receipt updates older outgoing messages without downgrading a read status', () => {
+  const messages = [
+    { id: 'old', seq: 4, sender: 'outgoing', deliveryStatus: 'sent' },
+    { id: 'new', seq: 8, sender: 'outgoing', deliveryStatus: 'sent' },
+    { id: 'read', seq: 3, sender: 'outgoing', deliveryStatus: 'read' },
+    { id: 'incoming', seq: 2, sender: 'incoming', deliveryStatus: 'none' },
+  ];
+  const received = applyReceiptToMessages(messages, { seq: 8, what: 'recv' });
+  assert.equal(received.find(message => message.id === 'old').deliveryStatus, 'received');
+  assert.equal(received.find(message => message.id === 'new').deliveryStatus, 'received');
+  assert.equal(received.find(message => message.id === 'read').deliveryStatus, 'read');
+  assert.equal(received.find(message => message.id === 'incoming').deliveryStatus, 'none');
+  assert.equal(applyReceiptToMessages(received, { seq: 8, what: 'read' }).find(message => message.id === 'old').deliveryStatus, 'read');
+});
+
+test('conversation refresh does not downgrade a receipt already shown in the UI', () => {
+  assert.equal(mergeDeliveryStatus('received', 'sent'), 'received');
+  assert.equal(mergeDeliveryStatus('read', 'received'), 'read');
+  assert.equal(mergeDeliveryStatus('sent', 'received'), 'received');
+});
+
+test('receipt cursor keeps outgoing messages at two checks after a snapshot refresh', () => {
+  const message = {
+    seq: 12,
+    sender: 'outgoing',
+    senderId: 'usr-me',
+    deliveryStatus: 'sent',
+  };
+
+  assert.equal(deliveryStatusFromReceiptCursor(message, {
+    receivedSeq: 12,
+    viewerId: 'usr-me',
+  }), 'received');
+  assert.equal(deliveryStatusFromReceiptCursor({ ...message, deliveryStatus: 'received' }, {
+    receivedSeq: 12,
+    readSeq: 12,
+    viewerId: 'usr-me',
+  }), 'read');
+  assert.equal(deliveryStatusFromReceiptCursor({ ...message, sender: 'incoming', senderId: 'usr-peer' }, {
+    receivedSeq: 12,
+    viewerId: 'usr-me',
+  }), 'sent');
 });

@@ -5,6 +5,8 @@ import CallOverlay from '../features/chat/components/CallOverlay';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation } from '../features/chat/services/tinodeClient';
 import { chatManagementService } from '../features/chat/services/chatManagementService';
 import {
+  applyReceiptToMessages,
+  mergeDeliveryStatus,
   readyTinodeTypingTopic,
   resolvePreparedTinodeTopic,
   tinodeContactsSyncDelay,
@@ -272,9 +274,16 @@ function mergeTinodeMessages(existingMessages = [], incomingMessages = []) {
     if (index !== undefined && index >= 0) {
       const previousKey = merged[index]?.id;
       const previous = merged[index];
+      const isOutgoing = previous.sender === 'outgoing' || message.sender === 'outgoing';
       merged[index] = {
         ...previous,
         ...message,
+        type: message.type,
+        ...(isOutgoing ? {
+          // A receipt update can arrive just before Tinode emits its refreshed
+          // conversation. Keep the highest known status from that snapshot.
+          deliveryStatus: mergeDeliveryStatus(previous.deliveryStatus, message.deliveryStatus),
+        } : {}),
         // Reconcile Tinode's server echo with the optimistic message that was
         // already rendered locally. The echo can arrive without `from`; do
         // not let that overwrite the sender side while replacing pending UI.
@@ -631,6 +640,7 @@ function App() {
   const conversationsRef = useRef(conversations);
   const currentUserRef = useRef(currentUser);
   const directoryAccountsRef = useRef(directoryAccounts);
+  const avatarOverridesRef = useRef(new Map());
   const typingNoticeAtRef = useRef(new Map());
   const typingClearTimersRef = useRef(new Map());
   const notificationBaselineRef = useRef(new Map());
@@ -650,6 +660,16 @@ function App() {
   conversationsRef.current = conversations;
   currentUserRef.current = currentUser;
   directoryAccountsRef.current = directoryAccounts;
+
+  const rememberAvatarOverride = (entity, avatar) => {
+    const value = String(avatar || '').trim();
+    if (!value) return;
+    identityValues(entity).forEach(identity => avatarOverridesRef.current.set(identity, value));
+  };
+
+  const avatarOverrideFor = account => identityValues(account)
+    .map(identity => avatarOverridesRef.current.get(identity))
+    .find(Boolean) || '';
 
   const clearActiveCall = useCallback(() => {
     activeCallRef.current = null;
@@ -1114,6 +1134,27 @@ function App() {
         applyPresenceSnapshot(event.snapshot || {});
         return;
       }
+      if (event.type === 'receipt') {
+        const receiptSequence = Number(event.seq);
+        if (!event.topic || !Number.isFinite(receiptSequence) || receiptSequence <= 0) return;
+        setConversations(previous => {
+          let changed = false;
+          const next = Object.fromEntries(Object.entries(previous).map(([id, room]) => {
+            if (room.accountSession !== accountSession || room.tinodeTopic !== event.topic) return [id, room];
+            const messages = applyReceiptToMessages(room.messages || [], {
+              seq: receiptSequence,
+              what: event.what,
+              viewerId,
+            });
+            if (messages === room.messages) return [id, room];
+            changed = true;
+            return [id, { ...room, messages }];
+          }));
+          if (changed) conversationsRef.current = next;
+          return changed ? next : previous;
+        });
+        return;
+      }
       if (event.type === 'contacts') {
         // A new invite or P2P topic is first reported through the `me` topic.
         // Chatmgt binding can commit just after the Tinode invite, so retry
@@ -1211,11 +1252,12 @@ function App() {
             tinodeUid: profileAccount.tinodeUid || profileAccount.tinode_uid || event.profile.id,
           }
           : event.profile;
+        rememberAvatarOverride(profile, profile.avatar);
         if (identitiesOverlap(currentUser, profile)) {
           setCurrentUser(previous => ({
             ...previous,
             name: profile.name || previous?.name,
-            avatar: profile.avatar || '',
+            avatar: profile.avatar || previous?.avatar || '',
           }));
         }
         const updateAccount = account => mergeRealtimeAccountProfile(account, profile);
@@ -1227,10 +1269,10 @@ function App() {
           const peer = !room.isGroup ? members.find(member => identitiesOverlap(member, profile)) : null;
           return [id, {
             ...room,
-            ...(peer ? { name: profile.name || room.name, avatarUrl: profile.avatar || '' } : {}),
+            ...(peer ? { name: profile.name || room.name, avatarUrl: profile.avatar || room.avatarUrl || '' } : {}),
             members,
             messages: (room.messages || []).map(message => identitiesOverlap({ id: message.senderId }, profile)
-              ? { ...message, senderName: profile.name || message.senderName, avatar: profile.avatar || '' }
+              ? { ...message, senderName: profile.name || message.senderName, avatar: profile.avatar || message.avatar || '' }
               : message),
           }];
         })));
@@ -1356,6 +1398,7 @@ function App() {
     setIsUpdatingNotificationMute(false);
     setNotificationClock(Date.now());
     setDirectoryAccounts([]);
+    avatarOverridesRef.current.clear();
     setWorkspaceResults([]);
     setGroupSearchResults([]);
     conversationsRef.current = initialRooms;
@@ -1759,20 +1802,20 @@ function App() {
         updated = await chatManagementService.updateProfile({ avatar });
       }
       if (!avatar) throw new Error('Máy chủ không trả về ảnh đại diện mới.');
-      const viewerIds = new Set([
-        currentUser?.id,
-        currentUser?.uid,
-        currentUser?.tinodeUid,
-      ].filter(Boolean));
       const nextAvatar = updated.avatar || avatar;
+      rememberAvatarOverride(updated || currentUser, nextAvatar);
       setCurrentUser(previous => ({ ...previous, avatar: nextAvatar }));
-      setDirectoryAccounts(previous => previous.map(account => (
-        account.id === updated.id ? { ...account, avatar: nextAvatar } : account
-      )));
+      setDirectoryAccounts(previous => {
+        const next = previous.map(account => (
+          identitiesOverlap(account, updated || currentUser) ? { ...account, avatar: nextAvatar } : account
+        ));
+        directoryAccountsRef.current = next;
+        return next;
+      });
       setConversations(previous => Object.fromEntries(Object.entries(previous).map(([id, room]) => [id, {
         ...room,
-        members: (room.members || []).map(member => viewerIds.has(member.id) ? { ...member, avatar: nextAvatar } : member),
-        messages: (room.messages || []).map(message => viewerIds.has(message.senderId) ? { ...message, avatar: nextAvatar } : message),
+        members: (room.members || []).map(member => identitiesOverlap(member, currentUser) ? { ...member, avatar: nextAvatar } : member),
+        messages: (room.messages || []).map(message => identitiesOverlap(message, currentUser) ? { ...message, avatar: nextAvatar } : message),
       }])));
       setProfileNotice('Ảnh đại diện đã được cập nhật.');
     } catch (error) {

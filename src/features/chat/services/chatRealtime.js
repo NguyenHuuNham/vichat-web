@@ -40,6 +40,81 @@ export function topicReceiptSequence(topic) {
   return Number.isFinite(latestSequence) && latestSequence > 0 ? latestSequence : 0;
 }
 
+export function messageForDeliveryStatus(message) {
+  const senderId = message?.from || message?.head?.['x-sender-id'] || '';
+  return message?.from || !senderId ? message : { ...message, from: senderId };
+}
+
+export function applyReceiptToMessages(messages = [], { seq = 0, what = '', viewerId = '' } = {}) {
+  const receiptSequence = Number(seq);
+  if (!Number.isFinite(receiptSequence) || receiptSequence <= 0 || !['recv', 'read'].includes(what)) return messages;
+  let changed = false;
+
+  const nextMessages = messages.map(message => {
+    const messageSequence = Number(message?.seq || message?.raw?.seq);
+    const senderId = message?.senderId || message?.raw?.from || message?.raw?.head?.['x-sender-id'] || '';
+    const outgoing = message?.sender === 'outgoing' || Boolean(viewerId && senderId === viewerId);
+    if (!outgoing || !Number.isFinite(messageSequence) || messageSequence <= 0 || messageSequence > receiptSequence) return message;
+
+    const nextStatus = deliveryStatusForReceipt(message, { seq: receiptSequence, what, viewerId });
+    if (nextStatus === (message.deliveryStatus || 'none') && !message.pending) return message;
+    changed = true;
+    return {
+      ...message,
+      pending: false,
+      failed: false,
+      deliveryStatus: nextStatus,
+    };
+  });
+
+  return changed ? nextMessages : messages;
+}
+
+export function deliveryStatusForReceipt(message, {
+  seq = 0,
+  what = '',
+  viewerId = '',
+  currentStatus = message?.deliveryStatus || 'none',
+} = {}) {
+  const receiptSequence = Number(seq);
+  const messageSequence = Number(message?.seq || message?.raw?.seq);
+  if (!Number.isFinite(receiptSequence) || receiptSequence <= 0 || !['recv', 'read'].includes(what)) {
+    return currentStatus;
+  }
+  if (!Number.isFinite(messageSequence) || messageSequence <= 0 || messageSequence > receiptSequence) return currentStatus;
+  const senderId = message?.senderId || message?.raw?.from || message?.raw?.head?.['x-sender-id'] || '';
+  const outgoing = message?.sender === 'outgoing' || Boolean(viewerId && String(senderId) === String(viewerId));
+  if (!outgoing) return currentStatus;
+  return mergeDeliveryStatus(currentStatus, what === 'read' ? 'read' : 'received');
+}
+
+export function deliveryStatusFromReceiptCursor(message, {
+  receivedSeq = 0,
+  readSeq = 0,
+  viewerId = '',
+  currentStatus = message?.deliveryStatus || 'none',
+} = {}) {
+  const received = deliveryStatusForReceipt(message, {
+    seq: receivedSeq,
+    what: 'recv',
+    viewerId,
+    currentStatus,
+  });
+  return deliveryStatusForReceipt(message, {
+    seq: readSeq,
+    what: 'read',
+    viewerId,
+    currentStatus: received,
+  });
+}
+
+export function mergeDeliveryStatus(previousStatus = 'none', incomingStatus = 'none') {
+  const statusRank = { none: 0, sending: 1, sent: 2, received: 3, read: 4 };
+  const previousRank = statusRank[previousStatus] || 0;
+  const incomingRank = statusRank[incomingStatus] || 0;
+  return previousRank > incomingRank ? previousStatus : incomingStatus;
+}
+
 export function acknowledgeTopicReceived(topic) {
   const sequence = topicReceiptSequence(topic);
   if (sequence <= 0 || typeof topic?.noteRecv !== 'function') return 0;
