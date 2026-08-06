@@ -5,6 +5,23 @@ Day la bo nho ky thuat theo thu tu moi nhat truoc. Moi lan sua code, cau hinh, d
 Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat vao file nay.
 
 ## Lich su thay doi
+
+## 2026-08-06-20 - Dong bo avatar va receipt ChatUI
+
+- Thoi gian: 2026-08-06 (Asia/Saigon)
+- Loai: Sua loi | Giao dien | Realtime | Chatmgt | Tinode
+- Trang thai: Hoan tat code va build; chua deploy production
+- Muc tieu: Avatar moi khong bi snapshot cu ghi de o cac man hinh; tin nhan da nhan hien hai dau tich on dinh.
+- Pham vi: Luong directory/profile avatar trong `src/app/App.jsx` va `src/features/contacts`; luong receipt trong `src/features/chat/services`; khong doi database, API, auth, upload, group hay chatbot.
+- File da thay doi: `src/app/App.jsx`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/tinodeClient.js`, va `docs/CHANGELOG.md`.
+- Noi dung: Giu avatar da biet khi profile/snapshot Chatmgt hoac Tinode rong/stale va cap nhat theo ca identity Chatmgt/Tinode cho directory, room, member va message. Ghi nho cursor `recv/read` theo topic va merge receipt theo thu tu tang dan de snapshot Tinode khong lam tut hai dau tich ve mot dau.
+- Quyet dinh ky thuat: Chatmgt/Tinode van la nguon du lieu hien co; chi them lop merge client-side va cursor receipt, khong thay doi hop dong server.
+- Database/API/cau hinh: Khong co.
+- Kiem thu: `npm run test:frontend` dat 40/40; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` dat; `git diff --check` dat.
+- Rui ro con lai: Chua UAT hai browser production va chua deploy bundle moi.
+- Viec tiep theo: Deploy rieng ChatUI, hard refresh, doi avatar tren tai khoan A va gui tin tu A sang B de xac nhan avatar va hai dau tich trong direct/group.
+- Commit/PR: b01db58.
+
 ## 2026-08-06-19 - Them nut khoa tai khoan trong Chatmgt
 
 - Thoi gian: 2026-08-06 15:52 (Asia/Saigon)
