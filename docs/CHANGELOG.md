@@ -19,7 +19,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `npm run test:frontend` dat 38/38; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` dat; `git diff --check` dat. `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -v` chua dat do test hien tai doi chu mo ta da bi xoa trong thay doi co san cua `ManagementApp.jsx`, khong lien quan nut khoa.
 - Rui ro con lai: Bundle build da tao nhung chua deploy production; chua UAT tai khoan production.
 - Viec tiep theo: Deploy bundle Chatmgt moi, hard refresh, thu khoa/mo khoa tai khoan nhan vien va xac nhan phien cu bi dang xuat.
-- Commit/PR: Chua tao.
+- Commit/PR: 8199183.
 
 ## 2026-08-04-03 - Trien khai an cuoc goi va chatbot webhook len production
 
