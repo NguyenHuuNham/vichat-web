@@ -139,10 +139,11 @@ short-lived Tinode token for reconnects; no reversible employee password is
 persisted.
 
 The standalone Tinode Web client connects to `wss://chat.upgo.vn/v0/channels`.
-Production serves the stock Tinode Web UI at `https://chat.upgo.vn/tinode-web/`
-so its hostname-derived default server is the bridge. The upstream
-`https://web.vichat.net/#` UI can use the same flow after its Settings > Server
-value is changed to `chat.upgo.vn`.
+The single Tinode Web UI remains `https://web.vichat.net/#`; its Settings >
+Server value must be `chat.upgo.vn` so the login reaches the Account bridge.
+ChatUI does not import a browser token from Tinode Web. It requests its own
+short-lived token for the same deterministic Tinode UID, which keeps topics and
+message history shared while keeping browser sessions isolated.
 The Nginx relay sends that path to `tinode-account-bridge`: token login packets
 from ChatUI pass through unchanged, while Tinode Web `scheme=basic` packets are
 decoded only at the trusted bridge, authenticated against Chatmgt's Account

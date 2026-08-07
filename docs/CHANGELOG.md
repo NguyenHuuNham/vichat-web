@@ -6,6 +6,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-07-07 - Giu Tinode Web trung tam lam giao dien kiem tra duy nhat
+
+- Thoi gian: 2026-08-07 (Asia/Saigon)
+- Loai: Sua loi | Tinode | Realtime | Cau hinh
+- Trang thai: Dang thuc hien
+- Muc tieu: Dung `https://web.vichat.net/#` lam giao dien Tinode duy nhat; khong tao hoac huong dan dung mot Tinode Web proxy khac.
+- Noi dung: Go route `/tinode-web/` proxy khoi Nginx va tai lieu. `web.vichat.net` van dung Server `chat.upgo.vn` de basic login di qua Account bridge; ChatUI va Tinode Web lay token rieng cho cung UID deterministic, cung topic va kho tin nhan.
+- Quyet dinh ky thuat: Khong truyen browser token truc tiep giua hai giao dien; token ngan han rieng giup tach session nhung van dong bo UID/topic/message tren Tinode trung tam.
+- Kiem thu: Chua deploy ban bo route; test/build se chay truoc release.
+- Viec tiep theo: Deploy Nginx moi, giu bridge cookie fix, sau do UAT lai truc tiep tren `web.vichat.net/#` voi Server `chat.upgo.vn`.
+- Commit/PR: Chua tao.
+
 ## 2026-08-07-06 - Sua loi 401 cookie khi Tinode Web doi Tinode token
 
 - Thoi gian: 2026-08-07 (Asia/Saigon)

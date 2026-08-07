@@ -299,11 +299,10 @@ from the same tenant in separate browser profiles:
 2. Confirm ChatUI next calls `/api/v1/auth/tinode-token`, receives
    `connection: tinode`, and connects to
    `wss://chat.upgo.vn/v0/channels` without sending an Account password.
-3. Open `https://chat.upgo.vn/tinode-web/` and sign in with the same invited
-   UpGO email/password. This proxied Tinode Web UI defaults to the bridge. The
-   upstream `https://web.vichat.net/#` UI also works after setting Server to
-   `chat.upgo.vn`; both must open the same Tinode UID and show the same
-   conversations/messages as ChatUI.
+3. Open the single Tinode Web UI at `https://web.vichat.net/#`, set Server to
+   `chat.upgo.vn`, and sign in with the same invited UpGO email/password. The
+   login is translated by the relay bridge; it must open the same Tinode UID
+   and show the same conversations/messages as ChatUI.
 4. Open a direct conversation before the peer has previously used Chat. Confirm
    Chatmgt prepares the peer UID, both users see the same Chatmgt conversation,
    and text/file/presence/typing/read state works after refresh.
