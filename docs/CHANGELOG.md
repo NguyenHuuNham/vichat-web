@@ -10,33 +10,35 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-07 (Asia/Saigon)
 - Loai: Sua loi | Cau hinh | Van hanh
-- Trang thai: Dang thuc hien
+- Trang thai: Hoan tat production; cho UAT lai
 - Muc tieu: Bao dam verifier va lan khoi dong production chap nhan dung TTL token do `web.vichat.net` tra ve.
 - Pham vi: Compose production, env example, huong dan acceptance va release dang chay.
 - File da thay doi: `infrastructure/production/.env.example`, `infrastructure/production/compose.yaml`, `infrastructure/production/README.md`.
 - Noi dung: Do token central thuc te con khoang 14 ngay (`1209599s` tai thoi diem kiem tra), cap ceiling tu `900` len `1209600`; day la ceiling kiem tra expiry, khong thay doi UID, token issuance hay database.
 - Quyet dinh ky thuat: Giu ceiling bang policy cua Tinode trung tam thay vi dung default ngan hon lam verifier bao loi gia; token van do central Tinode phat hanh.
-- Database/API/cau hinh: Khong migration. Production release se them `TINODE_CENTRAL_TOKEN_MAX_TTL=1209600` vao env da bao ve; khong ghi secret.
-- Kiem thu: Da do token central `1209599s`; verifier voi override `2592000` da dat, dang chay lai voi env production explicit.
+- Database/API/cau hinh: Khong migration. Production release da them `TINODE_CENTRAL_TOKEN_MAX_TTL=1209600` vao env da bao ve; khong ghi secret.
+- Kiem thu: Da do token central `1209599s`; test contract 32/32; Compose config validation dat; verifier production voi env that, khong override, dat day du health/CORS/directory/conversation/Tinode WebSocket/login/logout.
+- Trien khai: Da push commit `918f736`; active release `/opt/deploy/chat/releases/918f736`; recreate Chatmgt va xac nhan bridge healthy; current da tro release moi; khong migration, khong reset database/volume Tinode.
 - Rui ro con lai: UAT bang tai khoan employee that va doi chieu lich su Tinode van can thuc hien.
-- Viec tiep theo: Commit/push release cau hinh, recreate Chatmgt/bridge neu can, chay verifier khong override va cap nhat `current`.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Mo `https://web.vichat.net/#`, dat Server `chat.upgo.vn`, dang nhap tai khoan UpGO employee va doi chieu UID/topic/lich su voi ChatUI.
+- Commit/PR: `918f736` (production config release).
 
 ## 2026-08-07-08 - Sua loi 401 khi bridge Tinode Web doi token
 
 - Thoi gian: 2026-08-07 (Asia/Saigon)
 - Loai: Sua loi | Xac thuc | Tinode | Van hanh
-- Trang thai: Dang thuc hien
+- Trang thai: Hoan tat production; cho UAT lai
 - Muc tieu: Loai bo loi `Account login is required (401)` sau khi Tinode Web da dang nhap UpGO Account thanh cong.
 - Pham vi: Chatmgt token exchange, WebSocket Account bridge, hop dong kiem thu va tai lieu kien truc.
 - File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/scripts/tinode_account_bridge.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`.
 - Noi dung: Them endpoint noi bo `POST /api/v1/auth/tinode-token-bridge`, yeu cau JWT Chatmgt scope chat va header key noi bo. Bridge lay `vichat_access_token` tu response `account-login` va gui Bearer token cho endpoint nay, khong con phu thuoc Account browser cookie khi doi Tinode token.
 - Quyet dinh ky thuat: Giay phep endpoint bang `TINODE_BRIDGE_INTERNAL_KEY` va `hmac.compare_digest`; van giu Account password chi trong request login va khong ghi token/password vao log. UID deterministic va Tinode token flow khong thay doi.
 - Database/API/cau hinh: Khong migration. Them route noi bo va su dung bien da co `TINODE_BRIDGE_INTERNAL_KEY`; Compose da yeu cau cung key cho Chatmgt va bridge.
-- Kiem thu: `python -m unittest discover -s chatservice-main/tests -p 'test_chat_auth_contract.py' -v` dat 32/32; `npm run test:frontend` dat 43/43; `python -m py_compile ...` dat; Compose config validation dat; `git diff --check` dat. Chua deploy production.
+- Kiem thu: `python -m unittest discover -s chatservice-main/tests -p 'test_chat_auth_contract.py' -v` dat 32/32; `npm run test:frontend` dat 43/43; `python -m unittest discover -s chatservice-main/tests -v` dat 118 tests, skip 38 do local thieu dependency runtime; `python -m py_compile ...` dat; `npm run build:production` dat; Compose config validation va `git diff --check` dat. Production bridge endpoint test tra `200 connection=tinode` voi UID/token; verifier sau deploy dat health/CORS/directory/conversation/Tinode WebSocket/login/logout; public ChatUI/Chatmgt health `200`; log service khong co severe error.
+- Trien khai: Da push commit `a8e95bd`; build/recreate `chatmgt` va `tinode-account-bridge`; active code release `/opt/deploy/chat/releases/a8e95bd` truoc release config `918f736`; khong migration, khong reset database/volume Tinode.
 - Rui ro con lai: Chua xac nhan UAT bang tai khoan UpGO employee that sau khi deploy; can doi chieu UID/topic/lich su tren `https://web.vichat.net/#` va ChatUI.
-- Viec tiep theo: Commit, push, build/recreate `chatmgt` va `tinode-account-bridge`, kiem tra health/log, sau do UAT lai Tinode Web goc voi Server `chat.upgo.vn`.
-- Commit/PR: Chua tao.
+- Viec tiep theo: UAT lai Tinode Web goc voi Server `chat.upgo.vn` bang cung tai khoan employee va hard refresh ChatUI.
+- Commit/PR: `a8e95bd` (bridge 401 fix; production code release).
 
 ## 2026-08-07-07 - Giu Tinode Web trung tam lam giao dien kiem tra duy nhat
 
