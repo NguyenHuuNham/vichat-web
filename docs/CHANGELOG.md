@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-07-09 - Dong bo ceiling TTL voi Tinode trung tam
+
+- Thoi gian: 2026-08-07 (Asia/Saigon)
+- Loai: Sua loi | Cau hinh | Van hanh
+- Trang thai: Dang thuc hien
+- Muc tieu: Bao dam verifier va lan khoi dong production chap nhan dung TTL token do `web.vichat.net` tra ve.
+- Pham vi: Compose production, env example, huong dan acceptance va release dang chay.
+- File da thay doi: `infrastructure/production/.env.example`, `infrastructure/production/compose.yaml`, `infrastructure/production/README.md`.
+- Noi dung: Do token central thuc te con khoang 14 ngay (`1209599s` tai thoi diem kiem tra), cap ceiling tu `900` len `1209600`; day la ceiling kiem tra expiry, khong thay doi UID, token issuance hay database.
+- Quyet dinh ky thuat: Giu ceiling bang policy cua Tinode trung tam thay vi dung default ngan hon lam verifier bao loi gia; token van do central Tinode phat hanh.
+- Database/API/cau hinh: Khong migration. Production release se them `TINODE_CENTRAL_TOKEN_MAX_TTL=1209600` vao env da bao ve; khong ghi secret.
+- Kiem thu: Da do token central `1209599s`; verifier voi override `2592000` da dat, dang chay lai voi env production explicit.
+- Rui ro con lai: UAT bang tai khoan employee that va doi chieu lich su Tinode van can thuc hien.
+- Viec tiep theo: Commit/push release cau hinh, recreate Chatmgt/bridge neu can, chay verifier khong override va cap nhat `current`.
+- Commit/PR: Chua tao.
+
 ## 2026-08-07-08 - Sua loi 401 khi bridge Tinode Web doi token
 
 - Thoi gian: 2026-08-07 (Asia/Saigon)
