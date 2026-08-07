@@ -16,6 +16,7 @@ function clearAccountReturnMarker() {
 }
 
 function Login({ onLoginSuccess, initialNotice = '' }) {
+  const credentialMode = ['password', 'account_password'].includes(managementAuthClient.mode);
   const passwordMode = managementAuthClient.mode === 'password';
   const [identity, setIdentity] = useState('');
   const [password, setPassword] = useState('');
@@ -84,13 +85,13 @@ function Login({ onLoginSuccess, initialNotice = '' }) {
 
   const handleLogin = event => {
     event.preventDefault();
-    if (passwordMode && (!identity.trim() || !password)) {
+    if (credentialMode && (!identity.trim() || !password)) {
       setError('Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.');
       return;
     }
     finishLogin({
       redirectWhenRequired: true,
-      credentials: passwordMode ? { identity: identity.trim(), password } : undefined,
+      credentials: credentialMode ? { identity: identity.trim(), password } : undefined,
     });
   };
 
@@ -108,7 +109,7 @@ function Login({ onLoginSuccess, initialNotice = '' }) {
         {notice && <div className="login-success-message"><i className="fa-solid fa-circle-check"></i><span>{notice}</span></div>}
 
         <form onSubmit={handleLogin} className="login-form">
-          {passwordMode && (
+          {credentialMode && (
             <>
               <div className="login-form-group">
                 <label htmlFor="chat-identity">Tên đăng nhập hoặc email</label>
@@ -130,7 +131,7 @@ function Login({ onLoginSuccess, initialNotice = '' }) {
           <button type="submit" className="btn-login-submit" disabled={isLoading}>
             {isLoading
               ? <><div className="login-spinner"></div><span>Đang xác thực...</span></>
-              : <><i className="fa-solid fa-arrow-right-to-bracket"></i><span>{passwordMode ? 'Đăng nhập' : 'Đăng nhập bằng UpGO Account'}</span></>}
+              : <><i className="fa-solid fa-arrow-right-to-bracket"></i><span>{managementAuthClient.mode === 'password' ? 'Đăng nhập' : 'Đăng nhập bằng UpGO Account'}</span></>}
           </button>
         </form>
 

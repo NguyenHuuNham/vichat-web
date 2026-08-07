@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-07-04 - Dang nhap employee bang credential UpGO Account va dong bo Tinode
+
+- Thoi gian: 2026-08-07 (Asia/Saigon)
+- Loai: Tinh nang | Xac thuc | Tinode | Cau hinh | Van hanh
+- Trang thai: Dang thuc hien
+- Muc tieu: Cho employee duoc admin moi trong UpGO Account dang nhap ChatUI bang email/mat khau UpGO va dung ngay tai khoan Tinode trung tam.
+- Pham vi: ChatUI login, Chatmgt Account credential exchange, projection tenant, Tinode provisioning/token bridge, production config va verifier.
+- File da thay doi: `chatservice-main/application/config/config.py`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/services/account_sso_service.py`, `chatservice-main/scripts/verify_deployment.py`, `chatservice-main/tests/test_account_sso_service.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/features/auth/components/Login.jsx`, `src/features/chat/services/chatManagementService.js`, `scripts/build-production.mjs`, `infrastructure/production/compose.yaml`, `infrastructure/production/.env.example`, `infrastructure/production/README.md`, `README.md`, `docs/chat-backend-architecture.md`.
+- Noi dung: Them `POST /api/v1/auth/account-login`; Chatmgt gui credential chi den Account `POST /login`, lay session cookie, xac minh `/current_user`, tenant membership va projection. Tinode dung UID/credential deterministic derive tu `TINODE_SSO_SECRET`; mat khau UpGO khong duoc luu, tra ve hoac gui sang Tinode. ChatUI mac dinh hien form email/mat khau va khong dung luong local password trong production.
+- Quyet dinh ky thuat: Giữ `POST /api/v1/auth/sso` cho client tuong thich, nhung production build dung `account_password`; session cookie Account duoc forward HttpOnly tren shared domain de Chatmgt tiep tuc kiem tra directory, revoke va membership.
+- Database/API/cau hinh: Khong migration. Them `CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED` va `ACCOUNT_SSO_LOGIN_PATH`; health verifier kiem tra endpoint employee va request credential rong.
+- Kiem thu: `python -m unittest discover -s chatservice-main/tests -v` dat 117 tests, skip 38 do thieu dependency runtime; `npm run test:frontend` dat 43/43; `python -m py_compile chatservice-main/application/config/config.py chatservice-main/application/controllers/api_chat_management.py chatservice-main/application/services/account_sso_service.py chatservice-main/scripts/verify_deployment.py` dat; `npm run lint` exit 0 voi warning legacy/vendor/worktree co san; `npm run build:production` dat; Compose config validation dat voi secret gia lap chi trong process; `git diff --check` dat.
+- Trien khai: Chua deploy trong muc nay; release chi duoc cap nhat sau khi commit, push va health/acceptance verification thanh cong.
+- Rui ro con lai: UAT credential that van can tai khoan employee duoc admin moi; OTP/account policy neu bat se tra `ACCOUNT_OTP_REQUIRED` va can luong xac minh rieng.
+- Viec tiep theo: Chay test frontend/backend, build release, deploy Chatmgt va ChatUI, verify health/legacy login/empty credential, sau do UAT nhan vien va tin nhan tren `web.vichat.net`.
+- Commit/PR: Chua tao.
+
 ## 2026-08-07-03 - Sua verifier cho credential Tinode dan xuat trong Account SSO
 
 - Thoi gian: 2026-08-07 21:32 (Asia/Saigon)

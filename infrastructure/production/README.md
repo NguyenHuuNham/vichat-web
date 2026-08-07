@@ -210,8 +210,10 @@ not modify an already deployed file:
 
 ```dotenv
 CHAT_ACCOUNT_SSO_ENABLED=true
+CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED=true
 CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true
-VITE_CHAT_AUTH_MODE=account_sso
+VITE_CHAT_AUTH_MODE=account_password
+ACCOUNT_SSO_LOGIN_PATH=/login
 CHATMGT_DEFAULT_TENANT=tn6913580727957397
 TINODE_CENTRAL_TOKEN_MAX_TTL=900
 TINODE_SSO_SECRET=
@@ -225,10 +227,12 @@ In `chatmgt.upgo.vn`, sign in with an Account `admin`, `owner` or `superadmin`,
 then invite employees from UpGO Account. Chatmgt must show the read-only Account
 directory projection, provision a deterministic Tinode UID for each active
 employee, and never offer local create/reset-password actions. In `chat.upgo.vn`,
-the employee uses **Đăng nhập bằng UpGO Account**; the browser redirects to
-Account, returns to ChatUI, calls `/api/v1/auth/sso`, then receives a short-lived
-Tinode token from `/api/v1/auth/tinode-token`. No Account password or Tinode
-secret is sent to the browser.
+the employee enters the email and password of the invited UpGO Account user.
+Chatmgt forwards those credentials only to Account `POST /login`, validates the
+returned session and tenant membership, then returns a Chatmgt session. The
+employee password is never stored, returned to the browser, or sent to Tinode.
+Chatmgt provisions or repairs the deterministic Tinode identity server-side and
+ChatUI receives only a short-lived token from `/api/v1/auth/tinode-token`.
 `TINODE_CENTRAL_TOKEN_MAX_TTL` is the acceptance ceiling for the expiry
 returned by the central Tinode provider. Keep it equal to the provider policy;
 the local rollback ChatAPI default remains separate.
@@ -251,7 +255,8 @@ Step 3 uses the UpGO Account directory projected by Chatmgt. After rebuilding,
 sign in with two invited users in the same tenant and verify:
 
 1. `GET /api/v1/auth/health` reports
-   `employee_auth.login_endpoint=/api/v1/auth/sso` and
+   `employee_auth.login_endpoint=/api/v1/auth/account-login` and
+   `account_sso.credential_login_enabled=true`, with
    `management_data.configured=true`.
 2. `GET /api/v1/chat/users` returns both users with the same `tenant_id` and
    `directory_sync.source=account`, with `tinode_provisioned` reported for new

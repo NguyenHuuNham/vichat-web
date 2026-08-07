@@ -84,11 +84,14 @@ class ChatAuthContractTests(unittest.TestCase):
         env_source = PRODUCTION_ENV_EXAMPLE_PATH.read_text(encoding="utf-8")
 
         self.assertIn("CHAT_ACCOUNT_SSO_ENABLED: ${CHAT_ACCOUNT_SSO_ENABLED:-true}", compose_source)
+        self.assertIn("CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED: ${CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED:-true}", compose_source)
         self.assertIn("CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED: ${CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED:-true}", compose_source)
         self.assertIn("CHAT_ACCOUNT_SSO_ENABLED=true", env_source)
+        self.assertIn("CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED=true", env_source)
         self.assertIn("CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true", env_source)
-        self.assertIn("VITE_CHAT_AUTH_MODE=account_sso", env_source)
+        self.assertIn("VITE_CHAT_AUTH_MODE=account_password", env_source)
         self.assertIn("ACCOUNT_URL=https://account.upgo.vn", env_source)
+        self.assertIn("ACCOUNT_SSO_LOGIN_PATH=/login", env_source)
         self.assertIn("ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user", env_source)
         self.assertIn("ACCOUNT_SSO_DIRECTORY_SYNC_TTL=10", env_source)
         self.assertIn("ACCOUNT_SSO_SELF_PROFILE_PATH=/me", env_source)
@@ -108,6 +111,24 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertNotIn("tinode_auth", sso_source)
         self.assertIn('ACCOUNT_SSO_PASSWORD_MARKER = "!account-sso-only"', controller_source)
         self.assertIn("password_hash=ACCOUNT_SSO_PASSWORD_MARKER", projection_source)
+
+    def test_account_credential_login_uses_account_and_keeps_tinode_server_side(self):
+        _controller_source, login_source = function_source(
+            CONTROLLER_PATH,
+            "employee_account_credential_login",
+        )
+        service_source = (
+            PROJECT_ROOT / "application" / "services" / "account_sso_service.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("login_account_with_credentials", login_source)
+        self.assertIn("_sso_account(identity)", login_source)
+        self.assertIn('issue_access_token(account, auth_method="account_sso")', login_source)
+        self.assertIn("set_account_cookie(response, account_cookie)", login_source)
+        self.assertIn('json={"username": username, "password": password}', service_source)
+        self.assertIn("ACCOUNT_SSO_LOGIN_PATH", service_source)
+        self.assertIn("normalize_account_session(profile)", service_source)
+        self.assertNotIn("password_hash", login_source)
 
     def test_local_employee_password_is_mirrored_to_tinode_basic_auth(self):
         _controller_source, login_source = function_source(CONTROLLER_PATH, "_password_login")

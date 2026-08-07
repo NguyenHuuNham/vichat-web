@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from http.cookies import SimpleCookie
 from urllib.parse import parse_qsl, quote, urlencode, urljoin, urlsplit, urlunsplit
 
 import aiohttp
@@ -80,8 +81,11 @@ def _account_cookie(request):
     return cookie_name, values[0]
 
 
-async def _account_request(request, method, path, json_body=None):
-    cookie_name, cookie_value = _account_cookie(request)
+async def _account_request(request, method, path, json_body=None, account_cookie=None):
+    if account_cookie is None:
+        cookie_name, cookie_value = _account_cookie(request)
+    else:
+        cookie_name, cookie_value = account_cookie
     timeout = aiohttp.ClientTimeout(total=int(app.config.get("ACCOUNT_SSO_TIMEOUT", 10)))
     headers = {
         "Accept": "application/json",
@@ -110,6 +114,102 @@ async def _account_request(request, method, path, json_body=None):
             503,
             "ACCOUNT_SERVICE_UNAVAILABLE",
         ) from error
+
+
+def _account_login_cookie(response, cookie_name):
+    cookie = SimpleCookie()
+    for header in response.headers.getall("Set-Cookie", []):
+        cookie.load(header)
+    morsel = cookie.get(cookie_name)
+    if morsel is None or not morsel.value or morsel.value.lower() == "none":
+        return None
+    return {
+        "name": cookie_name,
+        "value": morsel.value,
+        "max_age": morsel["max-age"],
+        "expires": morsel["expires"],
+    }
+
+
+async def login_account_with_credentials(username, password):
+    """Authenticate against Account without storing or mirroring its password."""
+    username = str(username or "").strip()
+    password = str(password or "")
+    if not username or not password:
+        raise AccountSSOError(
+            "Email and password are required.",
+            400,
+            "ACCOUNT_CREDENTIALS_REQUIRED",
+        )
+
+    cookie_name = str(app.config.get("ACCOUNT_SESSION_COOKIE_NAME") or "session").strip()
+    timeout = aiohttp.ClientTimeout(total=int(app.config.get("ACCOUNT_SSO_TIMEOUT", 10)))
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(
+                _account_url(app.config.get("ACCOUNT_SSO_LOGIN_PATH") or "/login"),
+                headers={
+                    "Accept": "application/json",
+                    "User-Agent": "VICHAT-CHATMGT-ACCOUNT-LOGIN/1.0",
+                },
+                json={"username": username, "password": password},
+                allow_redirects=False,
+            ) as response:
+                try:
+                    payload = await response.json(content_type=None)
+                except (aiohttp.ContentTypeError, ValueError):
+                    payload = {}
+                account_cookie = _account_login_cookie(response, cookie_name)
+                if response.status >= 500:
+                    raise AccountSSOError(
+                        "Account service is temporarily unavailable.",
+                        503,
+                        "ACCOUNT_SERVICE_UNAVAILABLE",
+                    )
+                if response.status >= 300 or not account_cookie:
+                    error_code = (
+                        "ACCOUNT_OTP_REQUIRED"
+                        if isinstance(payload, dict) and payload.get("otp_key")
+                        else "ACCOUNT_LOGIN_FAILED"
+                    )
+                    raise AccountSSOError(
+                        "Invalid UpGO Account email or password."
+                        if error_code == "ACCOUNT_LOGIN_FAILED"
+                        else "UpGO Account requires an additional verification step.",
+                        401,
+                        error_code,
+                    )
+    except AccountSSOError:
+        raise
+    except (aiohttp.ClientError, asyncio.TimeoutError) as error:
+        raise AccountSSOError(
+            "Account service is temporarily unavailable.",
+            503,
+            "ACCOUNT_SERVICE_UNAVAILABLE",
+        ) from error
+    password = ""
+
+    status, profile = await _account_request(
+        None,
+        "GET",
+        app.config.get("ACCOUNT_SSO_PROFILE_PATH") or "/current_user",
+        account_cookie=(account_cookie["name"], account_cookie["value"]),
+    )
+    if status in (401, 403, 520):
+        raise AccountSSOError("Account login is required.", 401, "ACCOUNT_LOGIN_FAILED")
+    if status >= 500:
+        raise AccountSSOError(
+            "Account profile is temporarily unavailable.",
+            503,
+            "ACCOUNT_SERVICE_UNAVAILABLE",
+        )
+    if status >= 300:
+        raise AccountSSOError("Account rejected the login session.", 401, "ACCOUNT_LOGIN_FAILED")
+    try:
+        identity = normalize_account_session(profile)
+    except SSOIdentityError as error:
+        raise AccountSSOError(str(error), 403, "ACCOUNT_TENANT_INVALID") from error
+    return identity, account_cookie
 
 
 def _account_profile_update_payload(profile, avatar_url):
@@ -392,6 +492,30 @@ def clear_account_cookie(response):
         "SameSite=Lax",
     ]
     cookie_domain = str(app.config.get("ACCOUNT_SESSION_COOKIE_DOMAIN") or "").strip()
+    if cookie_domain:
+        attributes.append("Domain={}".format(cookie_domain))
+    if bool(app.config.get("ACCOUNT_SESSION_COOKIE_SECURE", True)):
+        attributes.append("Secure")
+    response.headers.add("Set-Cookie", "; ".join(attributes))
+    return response
+
+
+def set_account_cookie(response, account_cookie):
+    if not account_cookie:
+        return response
+    attributes = [
+        "{}={}".format(account_cookie["name"], account_cookie["value"]),
+        "Path=/",
+        "HttpOnly",
+        "SameSite=Lax",
+    ]
+    max_age = str(account_cookie.get("max_age") or "").strip()
+    expires = str(account_cookie.get("expires") or "").strip()
+    cookie_domain = str(app.config.get("ACCOUNT_SESSION_COOKIE_DOMAIN") or "").strip()
+    if max_age:
+        attributes.append("Max-Age={}".format(max_age))
+    if expires:
+        attributes.append("Expires={}".format(expires))
     if cookie_domain:
         attributes.append("Domain={}".format(cookie_domain))
     if bool(app.config.get("ACCOUNT_SESSION_COOKIE_SECURE", True)):

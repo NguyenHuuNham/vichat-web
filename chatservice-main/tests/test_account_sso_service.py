@@ -332,6 +332,23 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Max-Age=0", header[1])
         self.assertIn("Secure", header[1])
 
+    def test_account_cookie_can_be_forwarded_after_direct_account_login(self):
+        response = FakeResponse()
+        account_sso_service.set_account_cookie(response, {
+            "name": "session",
+            "value": "account-session-value",
+            "max_age": "3600",
+            "expires": "Wed, 01 Jan 2030 00:00:00 GMT",
+        })
+        header = response.headers.values[0]
+
+        self.assertEqual(header[0], "Set-Cookie")
+        self.assertIn("session=account-session-value", header[1])
+        self.assertIn("Max-Age=3600", header[1])
+        self.assertIn("Domain=.upgo.vn", header[1])
+        self.assertIn("HttpOnly", header[1])
+        self.assertIn("Secure", header[1])
+
 
 if __name__ == "__main__":
     unittest.main()

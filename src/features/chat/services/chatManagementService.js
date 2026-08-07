@@ -161,12 +161,16 @@ export const chatManagementService = {
   async login(credentials = {}) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const passwordLogin = authMode === 'password';
+    const accountCredentialLogin = authMode === 'account_password';
+    const credentialLogin = passwordLogin || accountCredentialLogin;
     activeTinodePassword = '';
     const payload = await apiRequest(
-      passwordLogin ? '/api/v1/auth/login' : '/api/v1/auth/sso',
+      accountCredentialLogin
+        ? '/api/v1/auth/account-login'
+        : (passwordLogin ? '/api/v1/auth/login' : '/api/v1/auth/sso'),
       {
         method: 'POST',
-        ...(passwordLogin ? {
+        ...(credentialLogin ? {
           body: JSON.stringify(employeeLoginPayload(credentials)),
         } : {}),
       },

@@ -7,11 +7,13 @@ VICHAT is delivered in four explicit stages:
 - Step 3: make Chatmgt the source used by ChatUI for directory and conversation metadata.
 - Step 4: integrate Chatmgt with Tinode/ChatAPI for realtime chat.
 
-Step 2 uses the signed-in UpGO Account session of the current company's
-employee. Chatmgt verifies the Account session and current tenant membership,
-projects that identity into its tenant-scoped metadata store, and issues an
-HttpOnly Chatmgt session. The JWT tenant becomes authoritative for all later
-directory, friendship, conversation, group, profile, and administration queries.
+Step 2 uses the UpGO Account credentials of an employee invited to the current
+company. Chatmgt forwards the email/password only to the official Account
+`/login` endpoint, verifies the returned Account session and current tenant
+membership, projects that identity into its tenant-scoped metadata store, and
+issues an HttpOnly Chatmgt session. The password is never stored, returned to
+the browser, or sent to Tinode. The JWT tenant becomes authoritative for all
+later directory, friendship, conversation, group, profile, and administration queries.
 Company A cannot enumerate or mutate Company B through a query parameter.
 
 The separate Chatmgt administration page also uses UpGO Account, but only the
@@ -28,7 +30,7 @@ message or file content.
 1. A tenant admin enters `chatmgt.upgo.vn` through UpGO Account SSO.
 2. Chatmgt accepts only Account roles `admin`, `owner`, or `superadmin` and issues a separate management cookie for the active tenant.
 3. The admin invites or removes employees in UpGO Account; Chatmgt reads the tenant directory as a read-only source.
-4. ChatUI redirects the employee to UpGO Account and calls `POST /api/v1/auth/sso` after the Account session returns.
+4. ChatUI shows an email/password form; Chatmgt calls UpGO Account `POST /login`, validates the invited tenant membership, and exposes `POST /api/v1/auth/account-login` as the employee login contract.
 5. Chatmgt projects the Account identity, derives/provisions the employee's Tinode identity server-side, and issues a tenant-scoped HttpOnly chat session.
 6. Chatmgt returns only public identity fields; ChatUI requests a short-lived Tinode token through `POST /api/v1/auth/tinode-token`.
 7. Logout revokes the Chatmgt session and clears the ChatUI cookie. Admin logout also ends the Account administrator session.
@@ -48,8 +50,8 @@ directory, friendship, and conversation metadata:
 4. Direct conversations, groups, membership changes, per-user removal, and
    per-user notification mute deadlines are persisted in Chatmgt and survive
    refresh or a new login.
-5. Chatmgt returns a short-lived Tinode token after verifying the employee
-   password. If the relay is unavailable, ChatUI keeps the directory and
+5. Chatmgt returns a short-lived Tinode token after validating the Account
+   session. If the relay is unavailable, ChatUI keeps the directory and
    conversation metadata visible while disabling realtime inputs; it never
    falls back to browser demo data.
 
@@ -61,11 +63,12 @@ password.
 
 ## Step 4 realtime flow
 
-With `TINODE_MIRROR_LOCAL_CREDENTIALS=true`, Chatmgt provisions the same local
-employee username/password as the Tinode basic credential. Chatmgt stores only
-the bcrypt hash; ChatUI keeps the password in volatile tab memory only while
-the active session can renew an expiring Tinode token. Existing deterministic
-identities are migrated in place by UID on the next login.
+For explicit local/recovery accounts, `TINODE_MIRROR_LOCAL_CREDENTIALS=true`
+provisions the local Chatmgt credential into Tinode. Active UpGO Account
+employees use a deterministic Tinode credential derived server-side from
+`TINODE_SSO_SECRET`; the Account password is accepted only by the Account
+`/login` endpoint and is discarded immediately after authentication. Existing
+deterministic identities are migrated in place by UID on the next login.
 `POST /api/v1/auth/tinode-token` returns the token bound to that session when a
 reconnect needs it and re-verifies that volatile password when renewal is
 required. ChatUI and Chatmgt both reach the

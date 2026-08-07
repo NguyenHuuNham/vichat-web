@@ -24,7 +24,9 @@ from application.services.account_sso_service import (
     account_sso_configured,
     clear_account_cookie,
     current_account_session,
+    login_account_with_credentials,
     logout_account_session,
+    set_account_cookie,
     update_account_avatar,
 )
 from application.services.auth_service import (
@@ -85,6 +87,13 @@ def _admin_account_sso_enabled():
 
 def _employee_account_sso_enabled():
     return bool(app.config.get("CHAT_ACCOUNT_SSO_ENABLED", False))
+
+
+def _employee_account_credential_login_enabled():
+    return bool(
+        _employee_account_sso_enabled()
+        and app.config.get("CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED", False)
+    )
 
 
 def _local_tinode_mirror_enabled():
@@ -864,6 +873,86 @@ async def management_sso_login(request):
         }, status=503)
 
 
+@app.route('/api/v1/auth/account-login', methods=['POST'])
+async def employee_account_credential_login(request):
+    if not _employee_account_credential_login_enabled():
+        return json({
+            "error_code": "AUTH_METHOD_DISABLED",
+            "error_message": "UpGO Account email/password login is disabled.",
+        }, status=403)
+
+    body = request.json or {}
+    identity_input = str(body.get("identity") or body.get("username") or body.get("email") or "").strip()
+    tenant_id = str(body.get("tenant_id") or app.config.get("CHATMGT_DEFAULT_TENANT") or "").strip()
+    ip_address = str(getattr(request, "ip", "") or "")[:100]
+    if login_rate_limited(tenant_id, identity_input.lower(), ip_address):
+        return json({
+            "error_code": "LOGIN_RATE_LIMITED",
+            "error_message": "Too many failed login attempts. Try again later.",
+        }, status=429)
+
+    try:
+        identity, account_cookie = await login_account_with_credentials(
+            identity_input,
+            body.get("password"),
+        )
+        if str(identity.get("tenant_id") or "") != tenant_id:
+            raise AccountSSOError(
+                "The UpGO Account is not active in this company.",
+                403,
+                "ACCOUNT_TENANT_INVALID",
+            )
+        tenant, account = _sso_account(identity)
+        try:
+            await _ensure_tinode_account(account)
+        except Exception as error:
+            logger.warning(
+                "Tinode provisioning deferred for Account user %s: %s",
+                identity.get("account_user_id"),
+                error,
+            )
+        db.session.commit()
+        clear_login_failures(tenant_id, identity_input.lower(), ip_address)
+        revoke_request_token(request)
+        token = issue_access_token(account, auth_method="account_sso")
+        response = json({
+            "user": _public_account(account, tenant),
+            "tenant": _public_tenant(tenant),
+            "tenant_id": account.tenant_id,
+            "connection": "management",
+        })
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        set_account_cookie(response, account_cookie)
+        _audit(
+            request,
+            "AUTH_ACCOUNT_CREDENTIAL_LOGIN",
+            True,
+            tenant_id=account.tenant_id,
+            user_id=str(account.id),
+        )
+        return set_auth_cookie(response, token, request)
+    except AccountSSOError as error:
+        db.session.rollback()
+        record_login_failure(tenant_id, identity_input.lower(), ip_address)
+        _audit(
+            request,
+            "AUTH_ACCOUNT_CREDENTIAL_LOGIN",
+            False,
+            tenant_id=tenant_id,
+            properties={"error_code": error.error_code, "identity": identity_input.lower()},
+        )
+        return _account_sso_error(error)
+    except Exception as error:
+        db.session.rollback()
+        logger.exception("UpGO Account credential login failed: %s", error)
+        _audit(request, "AUTH_ACCOUNT_CREDENTIAL_SERVICE", False, tenant_id=tenant_id)
+        return json({
+            "error_code": "AUTH_SERVICE_ERROR",
+            "error_message": "The Account authentication service is temporarily unavailable.",
+        }, status=503)
+
+
 async def _password_login(request, session_scope=CHAT_SESSION_SCOPE):
     body = request.json or {}
     identity = str(body.get("identity") or body.get("username") or "").strip().lower()
@@ -1243,6 +1332,7 @@ async def management_auth_health(request):
     admin_account_sso_enabled = _admin_account_sso_enabled()
     account_service_configured = account_sso_configured()
     account_configured = account_sso_enabled and account_service_configured
+    account_credential_login_enabled = _employee_account_credential_login_enabled()
     account_directory_configured = bool(
         account_configured
         and str(app.config.get("ACCOUNT_SSO_DIRECTORY_PATH") or "").strip()
@@ -1268,11 +1358,16 @@ async def management_auth_health(request):
         "status": "ok",
         "employee_auth": {
             "configured": employee_auth_configured,
-            "login_endpoint": "/api/v1/auth/sso" if account_sso_enabled else "/api/v1/auth/login",
+            "login_endpoint": (
+                "/api/v1/auth/account-login"
+                if account_credential_login_enabled
+                else ("/api/v1/auth/sso" if account_sso_enabled else "/api/v1/auth/login")
+            ),
         },
         "account_sso": {
             "enabled": account_sso_enabled,
             "configured": account_configured,
+            "credential_login_enabled": account_credential_login_enabled,
             "admin_configured": bool(
                 admin_account_sso_enabled and account_service_configured
             ),

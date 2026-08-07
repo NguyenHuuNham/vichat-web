@@ -85,6 +85,10 @@ class Config(object):
         False,
     )
     CHAT_ACCOUNT_SSO_ENABLED = env_bool("CHAT_ACCOUNT_SSO_ENABLED", False)
+    CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED = env_bool(
+        "CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED",
+        False,
+    )
     CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED = env_bool(
         "CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED",
         False,
@@ -93,6 +97,7 @@ class Config(object):
     ACCOUNT_URL = os.getenv('ACCOUNT_URL')
     if ACCOUNT_URL and not ACCOUNT_URL.startswith("http://") and not ACCOUNT_URL.startswith("https://"):
         ACCOUNT_URL = "http://" + ACCOUNT_URL
+    ACCOUNT_SSO_LOGIN_PATH = os.getenv("ACCOUNT_SSO_LOGIN_PATH", "/login")
     ACCOUNT_SSO_PROFILE_PATH = os.getenv("ACCOUNT_SSO_PROFILE_PATH", "/current_user")
     ACCOUNT_SSO_DIRECTORY_PATH = os.getenv("ACCOUNT_SSO_DIRECTORY_PATH", "/api/v1/tenant_user")
     ACCOUNT_SSO_LOGOUT_PATH = os.getenv("ACCOUNT_SSO_LOGOUT_PATH", "/logout")

@@ -481,12 +481,20 @@ def _verify_http(base_url, origin, management_account):
         raise RuntimeError("Chatmgt employee authentication is not fully configured.")
     account_sso = health_payload.get("account_sso") or {}
     account_sso_enabled = bool(account_sso.get("enabled"))
+    credential_login_enabled = bool(account_sso.get("credential_login_enabled"))
     if account_sso_enabled and not account_sso.get("configured"):
         raise RuntimeError("UpGO Account SSO is enabled but not fully configured.")
     if account_sso_enabled and not account_sso.get("directory_configured"):
         raise RuntimeError("UpGO Account directory sync is not fully configured.")
     if account_sso_enabled and not account_sso.get("tinode_bridge_configured"):
         raise RuntimeError("Chatmgt-to-Tinode realtime bridge is not fully configured.")
+    expected_employee_login_endpoint = (
+        "/api/v1/auth/account-login"
+        if credential_login_enabled
+        else ("/api/v1/auth/sso" if account_sso_enabled else "/api/v1/auth/login")
+    )
+    if employee_auth.get("login_endpoint") != expected_employee_login_endpoint:
+        raise RuntimeError("Chatmgt employee login endpoint does not match its Account mode.")
     mirror_enabled = str(
         os.getenv("TINODE_MIRROR_LOCAL_CREDENTIALS") or ""
     ).lower() == "true"
@@ -610,6 +618,24 @@ def _verify_http(base_url, origin, management_account):
         challenge_payload = sso_challenge.json() if sso_challenge.content else {}
         if sso_challenge.status_code != 401 or challenge_payload.get("error_code") != "ACCOUNT_LOGIN_REQUIRED":
             raise RuntimeError("Account SSO without a session did not return ACCOUNT_LOGIN_REQUIRED.")
+
+    if credential_login_enabled:
+        account_credential_challenge = requests.post(
+            base_url + "/api/v1/auth/account-login",
+            json={},
+            headers={"Origin": origin},
+            timeout=20,
+        )
+        credential_payload = (
+            account_credential_challenge.json()
+            if account_credential_challenge.content
+            else {}
+        )
+        if (
+            account_credential_challenge.status_code != 400
+            or credential_payload.get("error_code") != "ACCOUNT_CREDENTIALS_REQUIRED"
+        ):
+            raise RuntimeError("Account credential login did not validate empty credentials locally.")
 
     if admin_account_sso_enabled:
         admin_sso_challenge = requests.post(

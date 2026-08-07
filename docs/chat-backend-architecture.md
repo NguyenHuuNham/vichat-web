@@ -5,7 +5,7 @@
 | Stage | Scope | Completion rule |
 | --- | --- | --- |
 | 1 | Chatmgt deployment, Alembic, domains, HTTPS | Service healthy, database at Alembic head, public URLs use HTTPS |
-| 2 | Tenant employee login/logout | ChatUI uses UpGO Account SSO for invited tenant members; Chatmgt keeps a read-only projection |
+| 2 | Tenant employee login/logout | ChatUI validates invited employee credentials through UpGO Account; Chatmgt keeps a read-only projection |
 | 3 | ChatUI data from Chatmgt | Directory, friends, conversations, groups, profile and notification metadata are tenant-scoped |
 | 4 | Chatmgt and Tinode/ChatAPI | Short-lived Tinode tokens, messages, files, presence, receipts, typing and calls pass acceptance tests |
 
@@ -16,9 +16,9 @@ tenant, role, or user IDs supplied after the session is issued.
 
 - `account.upgo.vn`: authoritative identity, invitation, membership, profile,
   role, status, and password for every employee and administrator.
-- `chat` (React ChatUI): redirects employees to UpGO Account, stores only the
-  public profile/session result, and uses Tinode only with a short-lived token
-  returned by Chatmgt.
+- `chat` (React ChatUI): submits employee email/password to Chatmgt over HTTPS,
+  stores only the public profile/session result, and uses Tinode only with a
+  short-lived token returned by Chatmgt.
 - `chatmgt` (`chatservice-main`): owns the read-only employee projection,
   deterministic Tinode mappings, directory/friend/conversation metadata, tenant
   authorization, audit records and the HttpOnly chat/management sessions.
@@ -39,18 +39,22 @@ The administrator page uses `POST /api/v1/admin/sso` and the separate
 
 1. The company build fixes `VITE_CHAT_TENANT_ID`; the login page does not offer a
    tenant browser or allow a user to enumerate companies.
-2. ChatUI redirects to UpGO Account and returns with the shared Account session
-   cookie.
-3. ChatUI sends `POST /api/v1/auth/sso`. Chatmgt verifies the Account session,
-   current tenant membership, and active status, then projects the identity to
-   a stable tenant-scoped `management_account` row.
+2. ChatUI sends the employee email/password to `POST /api/v1/auth/account-login`
+   over HTTPS. Chatmgt forwards those credentials only to UpGO Account's
+   official `POST /login` endpoint and never logs or stores the password.
+3. Chatmgt verifies the returned Account session, current tenant membership,
+   and active status, then projects the identity to a stable tenant-scoped
+   `management_account` row. It forwards the Account session cookie to later
+   server-side Account checks.
 4. Chatmgt issues the HttpOnly chat cookie and returns only public user/tenant
    fields; it never returns an Account password or Tinode secret.
 5. ChatUI loads Step 3 metadata, then calls `POST /api/v1/auth/tinode-token`.
 6. Logout revokes the Chatmgt token and clears the ChatUI cookie. A later API
    call receives `401`/`403`.
 
-Production uses `CHAT_ACCOUNT_SSO_ENABLED=true`. The legacy
+Production uses `CHAT_ACCOUNT_SSO_ENABLED=true` and
+`CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED=true`. The cookie-based
+`POST /api/v1/auth/sso` endpoint remains available for compatible clients. The legacy
 `POST /api/v1/auth/login` local-password endpoint remains only as an explicit
 development/recovery compatibility mode and is disabled by the production
 configuration.
@@ -192,6 +196,7 @@ history, role-aware actions and a message-to-task shortcut.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/api/v1/auth/sso` | UpGO Account employee login and projection |
+| `POST` | `/api/v1/auth/account-login` | UpGO Account email/password exchange and employee projection |
 | `POST` | `/api/v1/auth/login` | Legacy local-password login for explicit recovery mode |
 | `GET` | `/api/v1/auth/me` | Read the current Chatmgt session |
 | `POST` | `/api/v1/auth/logout` | Revoke the current Chatmgt session |
@@ -219,8 +224,9 @@ Tinode history API.
 
 ```dotenv
 CHAT_ACCOUNT_SSO_ENABLED=true
+CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED=true
 CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true
-VITE_CHAT_AUTH_MODE=account_sso
+VITE_CHAT_AUTH_MODE=account_password
 CHATMGT_DEFAULT_TENANT=tn6913580727957397
 CHAT_AUTH_JWT_SECRET=<at-least-32-random-characters>
 TINODE_SSO_SECRET=<at-least-32-random-characters>
@@ -231,6 +237,7 @@ TINODE_INTERNAL_WS_URL=ws://chat:80/v0/channels
 TINODE_TOKEN_EXPIRE_IN=300
 ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user
 ACCOUNT_SSO_DIRECTORY_SYNC_TTL=10
+ACCOUNT_SSO_LOGIN_PATH=/login
 ```
 
 The ChatUI Nginx proxies `/v0/` and `/tinode-media/` to
