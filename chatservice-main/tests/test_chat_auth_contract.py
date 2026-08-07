@@ -127,6 +127,8 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("TINODE_CENTRAL_WS_URL", compose_source)
         self.assertIn("location = /v0/channels", nginx_source)
         self.assertIn("proxy_pass http://tinode-account-bridge:8095/v0/channels", nginx_source)
+        self.assertIn("location = /tinode-web", nginx_source)
+        self.assertIn("location /tinode-web/", nginx_source)
         self.assertIn('"/api/v1/auth/account-login"', bridge_source)
         self.assertIn('"/api/v1/auth/tinode-token"', bridge_source)
         self.assertIn('rewritten_login["scheme"] = "token"', bridge_source)

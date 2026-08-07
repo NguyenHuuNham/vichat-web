@@ -74,10 +74,11 @@ reconnect needs it and re-verifies that volatile password when renewal is
 required. ChatUI and Chatmgt both reach the
 central `web.vichat.net` Tinode through the `chat.upgo.vn` Nginx relay for
 messages, files, presence, typing, reactions, receipts, and direct calls.
-Tinode Web at `web.vichat.net` also connects through the same relay: its basic
+Tinode Web is available at `https://chat.upgo.vn/tinode-web/` (or at
+`https://web.vichat.net/#` after setting Server to `chat.upgo.vn`). Its basic
 login packet is translated server-side from UpGO Account credentials to the
-short-lived Tinode token, so the standalone Tinode Web UI sees the same UID,
-topics, and message history without receiving an UpGO password.
+short-lived Tinode token, so the Tinode Web UI sees the same UID, topics, and
+message history without sending an UpGO password to central Tinode.
 
 Chatmgt prepares participant Tinode UID mappings and validates every topic
 binding against the current tenant conversation. Group add/remove/leave actions
