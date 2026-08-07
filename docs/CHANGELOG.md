@@ -8,18 +8,19 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-07-03 - Sua verifier cho credential Tinode dan xuat trong Account SSO
 
-- Thoi gian: 2026-08-07 21:35 (Asia/Saigon)
+- Thoi gian: 2026-08-07 21:32 (Asia/Saigon)
 - Loai: Sua loi | Van hanh | Xac thuc | Tinode
-- Trang thai: Dang thuc hien
+- Trang thai: Hoan tat production; cho UAT tai khoan that
 - Muc tieu: Bao dam acceptance verifier phan anh dung luong production: employee dang nhap Account SSO, Chatmgt cap token Tinode bang credential dan xuat, va tenant isolation khong goi password login.
 - Pham vi: `chatservice-main/scripts/verify_deployment.py`, `chatservice-main/scripts/verify_tenant_isolation.py` va release production.
 - Noi dung: Verifier deployment khong bat buoc local credential mirroring khi Account SSO dang bat; verifier tenant isolation tao projection Account va dung JWT noi bo tin cay de test tenant filter ma khong gia mao Account cookie, trong khi van giu nhanh password cho che do recovery/local.
 - Quyet dinh ky thuat: Khong bat `TINODE_MIRROR_LOCAL_CREDENTIALS` de phu hop voi nguyen tac khong sao chep mat khau UpGO Account sang Tinode; chi kiem tra Tinode token bridge va UID mapping.
 - Database/API/cau hinh: Khong doi schema, API hoac gia tri secret; chi thay doi logic verifier.
-- Kiem thu: `python -m py_compile chatservice-main/scripts/verify_deployment.py chatservice-main/scripts/verify_tenant_isolation.py` dat; full backend unittest dat 115 tests, skip 37 do dependency runtime; verifier production cu da xac nhan loi expectation mirror truoc khi sua.
-- Rui ro con lai: Can build release moi, chay lai ca hai verifier tren production va UAT voi tai khoan Account duoc moi that.
-- Viec tiep theo: Commit/push, deploy release verifier, chay acceptance tenant/Tinode va cap nhat trang thai muc nay.
-- Commit/PR: Chua tao.
+- Kiem thu: `python -m py_compile chatservice-main/scripts/verify_deployment.py chatservice-main/scripts/verify_tenant_isolation.py` dat; `python -m unittest discover -s chatservice-main/tests -v` dat 115 tests, skip 37 do dependency runtime; `npm run test:frontend` dat 43/43; `npm run lint` exit 0 voi warning legacy/vendor/worktree; `npm run build:production` dat; `git diff --check` dat. Production `verify_deployment.py` dat health/CORS/directory/conversation/Tinode WebSocket/login/logout; `verify_tenant_isolation.py` dat user/conversation/friend/participant hai tenant; public ChatUI/Chatmgt tra HTTP 200; SSO khong co Account cookie tra `401 ACCOUNT_LOGIN_REQUIRED`; local employee password tra `403 AUTH_METHOD_DISABLED`; public bundle la `index-CHxBvhp1.js`; container healthy va log 10 phut khong co traceback/panic/fatal/critical/exception/emerg.
+- Trien khai: Da push cac commit `90a9745`, `14368c5`, `d132e2b`; active release `/opt/deploy/chat/releases/d132e2b`; Chatmgt va ChatUI da build/recreate, khong migration/reset database va khong thay doi Tinode volume. Full `start.sh` van can current Tinode root password neu chay lai bootstrap; lan nay deploy compose build/up khong dung lai password do.
+- Rui ro con lai: Chua hoan tat UAT voi tai khoan UpGO Account duoc admin moi trong hai browser va chua xac nhan thao tac UI sau redirect; browser automation cua moi truong khong khoi tao duoc. Verifier noi bo da xac nhan bridge/token/WebSocket va tenant isolation.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, dang nhap bang tai khoan UpGO Account da duoc moi vao cong ty, xac nhan nut SSO redirect, directory, Tinode token va gui tin 1-1/nhom; khong dung form user/password.
+- Commit/PR: `d132e2b` (production release); changelog cap nhat tiep theo.
 
 ## 2026-08-07-02 - Sua verifier production sau khi bat UpGo Account SSO
 
