@@ -10,13 +10,15 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-07 (Asia/Saigon)
 - Loai: Sua loi | Xac thuc | Tinode | Van hanh
-- Trang thai: Dang thuc hien
+- Trang thai: Hoan tat production; cho UAT lai
 - Muc tieu: Khong de Tinode Web bi `Account login is required (401)` sau khi UpGO Account da chap nhan email/mat khau.
 - Noi dung: Bridge doc ca cookie da parse boi aiohttp va `Set-Cookie` header thu cong tu Chatmgt, uu tien gui ro cookie Account `session` cung cookie phien Chatmgt khi goi `POST /api/v1/auth/tinode-token`.
 - Quyet dinh ky thuat: Khong log gia tri cookie, token hoac mat khau; chi bo sung fallback parse cookie va cau hinh ten cookie khong nhay cam.
-- Kiem thu: Test contract 32/32, py_compile bridge, Compose config validation va git diff check dat. Chua deploy ban sua nay.
-- Viec tiep theo: Build/recreate bridge, dang nhap lai bang tai khoan UAT va xac nhan Tinode tra UID/topic thay vi 401.
-- Commit/PR: Chua tao.
+- Kiem thu: Test contract 32/32, py_compile bridge, Compose config validation va git diff check dat. Production bridge healthy; public WebSocket hello tra `201`; Basic credential gia van tra `401 Invalid UpGO Account email or password.`; log khong ghi gia tri cookie/token/mat khau.
+- Trien khai: Da push commit `7022e5a`; active release `/opt/deploy/chat/releases/7022e5a`; build va recreate rieng `tinode-account-bridge`, `current` da tro release moi. Khong migration, khong reset database hoac volume Tinode.
+- Rui ro con lai: Can UAT lai bang tai khoan employee that sau khi xoa session cu/nhan `Ctrl+F5`; neu van 401 thi doi chieu log cua lan thu moi.
+- Viec tiep theo: Dang nhap lai tai `https://chat.upgo.vn/tinode-web/` hoac Server `chat.upgo.vn`, xac nhan Tinode tra UID/topic va lich su tin nhan.
+- Commit/PR: `7022e5a` (cookie bridge fix, production release).
 
 ## 2026-08-07-05 - Ket noi Tinode Web voi UpGO Account va cung kho tin nhan
 
