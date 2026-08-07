@@ -6,6 +6,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-07-02 - Sua verifier production sau khi bat UpGo Account SSO
+
+- Thoi gian: 2026-08-07 21:09 (Asia/Saigon)
+- Loai: Sua loi | Van hanh | Xac thuc
+- Trang thai: Dang thuc hien
+- Muc tieu: Cho phep verifier chay tron ven sau khi ChatUI dang nhap UpGo Account va Chatmgt provision Tinode cho employee.
+- Pham vi: `chatservice-main/scripts/verify_deployment.py` va release production `eee1253`.
+- Noi dung: Bo sung import `secrets` bi thieu, loi nay chi lo ra khi verifier production tao tai khoan kiem tra sau khi SSO da bat.
+- Quyet dinh ky thuat: Khong bo qua verifier; giu migration, health check va Tinode contract lam dieu kien chuyen release.
+- Database/API/cau hinh: Khong doi schema/API; release production da dung `CHAT_ACCOUNT_SSO_ENABLED=true` va `VITE_CHAT_AUTH_MODE=account_sso`.
+- Kiem thu: `python -m py_compile chatservice-main/scripts/verify_deployment.py` dat; `python -m unittest discover -s chatservice-main/tests -v` dat 115 tests, skip 37 do thieu dependency runtime. Verifier tren release `eee1253` da chay den buoc tao deployment verifier va dung tai loi thieu import.
+- Rui ro con lai: Can chay lai verifier sau khi build release chua loi va can UAT employee UpGo Account -> Tinode tren hai browser.
+- Viec tiep theo: Commit/push ban sua, build release moi, chay verifier va cap nhat symlink `current` sau khi tat ca gate dat.
+- Commit/PR: Chua tao.
+
 ## 2026-08-07-01 - Chuyen employee auth sang UpGo Account va provision Tinode theo directory
 
 - Thoi gian: 2026-08-07 13:41 (Asia/Saigon)
