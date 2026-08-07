@@ -35,7 +35,7 @@ import {
   updateAccountProfiles,
   updateAccountPresence,
 } from '../features/contacts/services/accountDirectory';
-import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
+import { appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
 import { CHATBOT_ACCOUNT, EXTERNAL_CHAT_ONLY, loadChatbotMessages, loadChatbotMessagesFromServer, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
 
@@ -685,8 +685,6 @@ function App() {
   const [groupMemberSearch, setGroupMemberSearch] = useState('');
   const [groupSearchResults, setGroupSearchResults] = useState([]);
   const [isSearchingMembers, setIsSearchingMembers] = useState(false);
-  const [isAddMembersOpen, setIsAddMembersOpen] = useState(false);
-  const [isAddingMembers, setIsAddingMembers] = useState(false);
   const [removingMemberId, setRemovingMemberId] = useState('');
   const [workspacePanel, setWorkspacePanel] = useState(null);
   const [enterpriseTaskSeed, setEnterpriseTaskSeed] = useState(null);
@@ -737,7 +735,6 @@ function App() {
   const deletedConversationIdsRef = useRef(new Set());
   const memberSearchRequestRef = useRef(0);
   const createGroupRequestRef = useRef(false);
-  const addMembersRequestRef = useRef(false);
   const tinodeSessionRequestRef = useRef(null);
   const conversationsRef = useRef(conversations);
   const currentUserRef = useRef(currentUser);
@@ -2554,121 +2551,6 @@ function App() {
     setGroupSearchResults([]);
   };
 
-  const openAddMembers = () => {
-    setGroupMemberIds([]);
-    setGroupMemberProfiles({});
-    setGroupMemberSearch('');
-    setGroupSearchResults([]);
-    setChatError('');
-    setIsAddMembersOpen(true);
-  };
-
-  const handleAddMembers = async (event) => {
-    event.preventDefault();
-    if (!activeChat.isGroup || groupMemberIds.length === 0 || addMembersRequestRef.current) return;
-    addMembersRequestRef.current = true;
-    setIsAddingMembers(true);
-    setChatError('');
-    try {
-      const actorId = currentUser?.id || currentUser?.uid;
-      const addedNames = groupMemberIds.map(memberId =>
-        groupMemberProfiles[memberId]?.name || findAccount(directoryAccounts, memberId)?.name || memberId
-      );
-      const systemText = `${currentUser?.name || 'Quản trị viên'} đã thêm ${addedNames.join(', ')} vào nhóm`;
-      const systemMessage = {
-        id: `system-add-${Date.now()}`,
-        type: 'system',
-        action: 'member_added',
-        senderId: actorId,
-        senderName: currentUser?.name,
-        targetIds: groupMemberIds,
-        text: systemText,
-        time: getTimeString(),
-        createdAt: new Date().toISOString(),
-      };
-      let updatedRoom;
-      if (usesManagementData) {
-        if (chatMode === 'tinode') {
-          const topicName = await ensureTinodeConversationTopic(activeChat);
-          const managedRoom = await chatManagementService.addConversationParticipants(
-            activeChat.managementId || activeChat.id,
-            groupMemberIds,
-          );
-          const realtimeRoom = await tinodeClient.openConversation(topicName);
-          const resolvedMemberIds = (managedRoom.members || [])
-            .filter(member => groupMemberIds.map(String).includes(String(member.id)))
-            .map(member => member.tinodeUid || member.tinode_uid)
-            .filter(Boolean);
-          await tinodeClient.sendSystemEvent(topicName, {
-            action: 'member_added',
-            actorId,
-            actorName: currentUser?.name,
-            targets: resolvedMemberIds.map((id, index) => ({ id, name: addedNames[index] })),
-          });
-          updatedRoom = {
-            ...normalizeTinodeConversation(realtimeRoom),
-            ...managedRoom,
-            id: activeChat.id,
-            managementId: activeChat.managementId || activeChat.id,
-            tinodeTopic: topicName,
-            accountSession: accountSessionRef.current,
-            messages: realtimeRoom.messages || [],
-          };
-          const mergedMessages = [...(activeChat.messages || []), ...(updatedRoom.messages || [])]
-            .filter((message, index, all) => all.findIndex(item => item.id === message.id) === index)
-            .sort((a, b) => (a.seq || 0) - (b.seq || 0));
-          updatedRoom = { ...updatedRoom, messages: mergedMessages };
-        } else {
-          const managedRoom = await chatManagementService.addConversationParticipants(
-            activeChat.managementId || activeChat.id,
-            groupMemberIds,
-          );
-          updatedRoom = {
-            ...normalizeTinodeConversation(managedRoom),
-            accountSession: accountSessionRef.current,
-            messages: activeChat.messages || [],
-          };
-        }
-      } else {
-        const existingIds = activeChat.members
-          .map(member => findAccount(directoryAccounts, member.id || member.name)?.id)
-          .filter(Boolean);
-        const storedMessages = (activeChat.messages || []).map(message => {
-          const sender = findAccount(directoryAccounts, message.senderId || message.senderName);
-          return {
-            ...message,
-            senderId: message.senderId || sender?.id || (message.sender === 'outgoing' ? actorId : undefined),
-            senderName: sender?.name || message.senderName,
-            avatar: sender?.avatar || message.avatar,
-            createdAt: message.createdAt || new Date().toISOString(),
-          };
-        });
-        saveDemoGroup({
-          id: activeChat.id,
-          name: activeChat.name,
-          description: activeChat.description,
-          ownerId: findAccount(directoryAccounts, activeChat.admin)?.id || currentUser?.id || currentUser?.uid,
-          memberIds: existingIds,
-          messages: storedMessages,
-        });
-        const group = addDemoGroupMembers(activeChat.id, groupMemberIds);
-        const groupWithEvent = appendDemoGroupMessage(group.id, systemMessage);
-        updatedRoom = demoGroupToConversation(groupWithEvent, directoryAccounts, actorId);
-      }
-      setConversations(prev => ({ ...prev, [updatedRoom.id]: { ...prev[updatedRoom.id], ...updatedRoom } }));
-      setIsAddMembersOpen(false);
-      setGroupMemberIds([]);
-      setGroupMemberProfiles({});
-      setGroupMemberSearch('');
-      setGroupSearchResults([]);
-    } catch (err) {
-      setChatError(err?.message || 'Không thể thêm thành viên vào nhóm.');
-    } finally {
-      addMembersRequestRef.current = false;
-      setIsAddingMembers(false);
-    }
-  };
-
   const handleRemoveGroupMember = async (member) => {
     if (!activeChat.isGroup || !member?.id || !isCurrentUserGroupAdmin || removingMemberId) return;
     if (identitiesOverlap(member, currentUser) || identitiesOverlap(member, activeAdminAccount)) return;
@@ -3404,12 +3286,7 @@ function App() {
   const candidateSource = chatMode === 'tinode'
     ? groupSearchResults
     : groupMemberSearch.trim().length >= 2 ? groupSearchResults : availableMembers;
-  const existingMemberIds = isAddMembersOpen
-    ? activeChat.members.flatMap(member => {
-      const account = findAccount(directoryAccounts, member.id || member.name);
-      return [member.id, member.name, account?.id].filter(Boolean);
-    })
-    : [];
+  const existingMemberIds = [];
   const groupCandidates = candidateSource
     .filter((member, index, all) => member?.name && all.findIndex(item => (item.id || item.name) === (member.id || member.name)) === index)
     .filter(member => !existingMemberIds.includes(member.id) && !existingMemberIds.includes(member.name));
@@ -4026,12 +3903,6 @@ function App() {
           <div className="detail-section members-section">
             <div className="members-section-heading">
               <h4 className="section-title">{activeChat.isGroup ? `Thành viên (${activeChat.members.length})` : "Thông tin cá nhân"}</h4>
-              {activeChat.isGroup && (
-                <button type="button" className="btn-add-member" onClick={openAddMembers}>
-                  <i className="fa-solid fa-user-plus"></i>
-                  <span>Thêm</span>
-                </button>
-              )}
             </div>
             <div className="members-list">
               {activeChat.members.map((member, idx) => (
@@ -4454,52 +4325,6 @@ function App() {
               <div className="group-modal-actions">
                 <button type="button" className="btn-secondary" onClick={closeCreateGroupModal} disabled={isCreatingGroup}>Hủy</button>
                 <button type="submit" className="btn-primary" disabled={!groupName.trim() || isCreatingGroup}>{isCreatingGroup ? 'Đang tạo...' : 'Tạo nhóm'}</button>
-              </div>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {isAddMembersOpen && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
-          if (event.target === event.currentTarget) setIsAddMembersOpen(false);
-        }}>
-          <form className="group-modal group-members-modal" onSubmit={handleAddMembers}>
-            <div className="group-modal-header">
-              <h2>Thêm thành viên vào {activeChat.name}</h2>
-              <button type="button" className="btn-close-detail" onClick={() => setIsAddMembersOpen(false)} aria-label="Đóng">
-                <i className="fa-solid fa-xmark"></i>
-              </button>
-            </div>
-
-            <div className="group-form-field">
-              <span>Tìm tài khoản</span>
-              <input value={groupMemberSearch} onChange={handleSearchGroupMembers} autoFocus placeholder="Tìm thành viên" />
-              {isSearchingMembers && <p className="group-form-hint">Đang tìm thành viên...</p>}
-              {groupCandidates.length > 0 ? (
-                <div className="group-member-picker">
-                  {groupCandidates.map(member => {
-                    const memberId = member.id || member.name;
-                    const selected = groupMemberIds.includes(memberId);
-                    return (
-                      <button type="button" key={memberId} className={`group-member-option ${selected ? 'selected' : ''}`} onClick={() => toggleGroupMember(member)}>
-                        <span className="picker-check"><i className={`fa-solid ${selected ? 'fa-check' : 'fa-plus'}`}></i></span>
-                        <span className="picker-name">{member.name}</span>
-                        <span className="picker-status">{member.username ? `@${member.username}` : accountPresenceLabel(member)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : groupMemberSearch.trim().length >= 2 && !isSearchingMembers
-                ? <p className="group-form-hint">Không tìm thấy thành viên.</p>
-                : null}
-            </div>
-
-            <div className="group-modal-footer">
-              <span className="group-mode-label"><i className="fa-solid fa-users"></i>Đã chọn {groupMemberIds.length} tài khoản</span>
-              <div className="group-modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setIsAddMembersOpen(false)} disabled={isAddingMembers}>Hủy</button>
-                <button type="submit" className="btn-primary" disabled={groupMemberIds.length === 0 || isAddingMembers}>{isAddingMembers ? 'Đang thêm...' : 'Thêm vào nhóm'}</button>
               </div>
             </div>
           </form>

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-08-04 - Bo them thanh vien khoi chi tiet nhom ChatUI
+
+- Thoi gian: 2026-08-08 01:36 (Asia/Saigon)
+- Loai: Sua loi | Giao dien | Tai lieu
+- Trang thai: Hoan tat local; chua deploy
+- Muc tieu: Khong con hien thi hoac thuc thi luong `Them thanh vien` tu group detail panel vi viec moi nhan vien vao tenant duoc quan ly qua UpGO Account.
+- Pham vi: Duy nhat group detail/add-member flow trong `src/app/App.jsx`, contract test frontend va nhat ky thay doi; khong sua backend Chatmgt, Tinode, tao nhom, xoa thanh vien, roi nhom, xoa cuoc tro chuyen, tin nhan, mute hay demo group con lai.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, va `docs/CHANGELOG.md`.
+- Noi dung: Xoa nut `Them`, modal them thanh vien, state/ref, `openAddMembers()` va `handleAddMembers()` cung import demo khong con dung. Candidate list cua modal tao nhom tiep tuc dung `existingMemberIds = []`, nen tim/chon thanh vien khi tao nhom khong bi loc theo nhom dang mo.
+- Quyet dinh ky thuat: Chi bo entry point UI va logic cuc bo trong ChatUI. Giu nguyen `chatManagementService.addConversationParticipants()` va `tinodeClient.addMember()` de bao toan hop dong backend/utility cho use case khac. Contract test xac nhan cac binding add-member da bien mat trong khi create/remove/leave/delete group flow van ton tai.
+- Database/API/cau hinh: Khong migration, khong doi API, khong doi bien moi truong va khong sua CSS cu.
+- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js` dat 3/3; `npm run test:frontend` dat 45/45; `npm run build:production` dat voi bundle ChatUI `App-CkWsVoVO.js`; `npm run lint` exit 0, chi con warning legacy/vendor/worktree co san va khong co warning trong file pham vi; source checks xac nhan add-member bindings khong con, cac handler create/remove/leave/delete va hai service API van con; `git diff --check` dat.
+- Rui ro con lai: Chua thao tac UAT group detail va modal tao nhom tren trinh duyet that.
+- Viec tiep theo: Mo mot nhom production sau khi phat hanh de xac nhan khong con nut/modal `Them`, sau do tao nhom, xoa mot thanh vien, roi nhom va xoa conversation de doi chieu cac luong giu nguyen.
+- Commit/PR: Chua tao.
+
 ## 2026-08-08-03 - Fallback tenant active khi dang nhap UpGO Account
 
 - Thoi gian: 2026-08-08 01:03 (Asia/Saigon)

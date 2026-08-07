@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { employeeLoginPayload, tinodeRefreshPayload } from './chatManagementService.js';
+import { chatManagementService, employeeLoginPayload, tinodeRefreshPayload } from './chatManagementService.js';
+
+const appSource = readFileSync(new URL('../../../app/App.jsx', import.meta.url), 'utf8');
 
 test('builds a tenant-scoped employee login payload', () => {
   const payload = employeeLoginPayload({
@@ -33,4 +36,30 @@ test('resends the employee password only when the volatile Tinode token needs re
     token: 'expired-token',
     expires: Date.now() / 1000 - 10,
   }, ''), {});
+});
+
+test('group detail removes add-member UI without removing other group actions or the backend API', () => {
+  for (const removedBinding of [
+    'isAddMembersOpen',
+    'isAddingMembers',
+    'addMembersRequestRef',
+    'openAddMembers',
+    'handleAddMembers',
+    'btn-add-member',
+    'group-members-modal',
+  ]) {
+    assert.equal(appSource.includes(removedBinding), false, removedBinding);
+  }
+
+  for (const retainedBinding of [
+    'isCreateGroupOpen',
+    'handleSearchGroupMembers',
+    'handleRemoveGroupMember',
+    'handleLeaveGroup',
+    'handleDeleteConversation',
+  ]) {
+    assert.equal(appSource.includes(retainedBinding), true, retainedBinding);
+  }
+
+  assert.equal(typeof chatManagementService.addConversationParticipants, 'function');
 });
