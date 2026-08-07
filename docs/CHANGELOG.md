@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-08-02 - Bo thuong hieu Song Hong khoi preview link ChatUI
+
+- Thoi gian: 2026-08-08 00:24 (Asia/Saigon)
+- Loai: Sua loi | Thuong hieu | Giao dien
+- Trang thai: Hoan tat code; chua deploy production
+- Muc tieu: Link `chat.upgo.vn` khi chia se khong con hien dong `SONG HONG`; metadata phai ghi ro san pham do Gon Platform phat trien.
+- Pham vi: Duy nhat the mo ta HTML dung cho preview link ChatUI va nhat ky thay doi; khong sua component, auth, danh ba, conversation, Tinode, chatbot, API, database, cau hinh hay du lieu.
+- File da thay doi: `index.html` va `docs/CHANGELOG.md`.
+- Noi dung: Doi `meta description` tu mo ta thuong hieu Song Hong sang `Nen tang chat va cong tac noi bo doanh nghiep do Gon Platform phat trien.`; giu nguyen title `Chat - Power by Gon Platform` va toan bo runtime.
+- Quyet dinh ky thuat: Sua dung nguon ma cac trinh tao link preview dang doc, khong tim/thay the cac chuoi Song Hong o Tinode app name, chatbot, CSS hoac du lieu demo vi cac chuoi do thuoc luong khac va khong tao dong preview trong anh bao loi.
+- Database/API/cau hinh: Khong co.
+- Kiem thu: `npm run build:production` dat; `npm run test:frontend` dat 44/44; `dist/index.html` sau build co description Gon Platform moi va khong con chuoi Song Hong trong the description; `git diff --check` se duoc chay lai truoc commit.
+- Rui ro con lai: Dich vu/ung dung nhan link co the cache preview cu; sau khi production cap nhat co the can gui URL moi kem query vo hai hoac doi cache het han de thay metadata moi ngay.
+- Viec tiep theo: Commit/push dung hai file trong pham vi, sau do deploy rieng ChatUI de metadata public cap nhat ma khong recreate backend/database.
+- Commit/PR: Chua tao.
+
 ## 2026-08-08-01 - Hien toan bo nhan vien trong danh ba noi bo
 
 - Thoi gian: 2026-08-08 00:14 (Asia/Saigon)
