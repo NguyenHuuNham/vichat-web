@@ -170,6 +170,7 @@ services:
       TINODE_ADMIN_USERNAME: ${TINODE_ADMIN_USERNAME:-}
       TINODE_ADMIN_PASSWORD: ${TINODE_ADMIN_PASSWORD:-}
       TINODE_SSO_SECRET: ${TINODE_SSO_SECRET:?TINODE_SSO_SECRET is required}
+      TINODE_BRIDGE_INTERNAL_KEY: ${TINODE_BRIDGE_INTERNAL_KEY:?TINODE_BRIDGE_INTERNAL_KEY is required}
       CHAT_ACCOUNT_SSO_ENABLED: ${CHAT_ACCOUNT_SSO_ENABLED:-true}
       CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED: ${CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED:-true}
       ACCOUNT_SSO_DIRECTORY_SYNC_TTL: ${ACCOUNT_SSO_DIRECTORY_SYNC_TTL:-10}
@@ -201,6 +202,35 @@ services:
       CHATBOT_CHUNK_OVERLAP: ${CHATBOT_CHUNK_OVERLAP:-180}
       CHATBOT_MAX_KNOWLEDGE_FILE_SIZE: ${CHATBOT_MAX_KNOWLEDGE_FILE_SIZE:-20971520}
 
+  tinode-account-bridge:
+    build:
+      context: ../..
+      dockerfile: infrastructure/production/Dockerfile.chatmgt
+      args:
+        VITE_CHAT_TENANT_ID: ${CHATMGT_DEFAULT_TENANT:-tn6913580727957397}
+    restart: unless-stopped
+    depends_on:
+      chatmgt:
+        condition: service_healthy
+    expose:
+      - "8095"
+    command: ["python", "scripts/tinode_account_bridge.py"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8095/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    environment:
+      TINODE_BRIDGE_HOST: 0.0.0.0
+      TINODE_BRIDGE_PORT: 8095
+      TINODE_BRIDGE_TIMEOUT: ${TINODE_BRIDGE_TIMEOUT:-15}
+      CHATMGT_INTERNAL_URL: http://chatmgt:8093
+      CHATMGT_DEFAULT_TENANT: ${CHATMGT_DEFAULT_TENANT:-tn6913580727957397}
+      TINODE_API_KEY: ${TINODE_API_KEY:?TINODE_API_KEY is required}
+      TINODE_CENTRAL_WS_URL: ${TINODE_CENTRAL_WS_URL:-wss://web.vichat.net/v0/channels}
+      TINODE_BRIDGE_INTERNAL_KEY: ${TINODE_BRIDGE_INTERNAL_KEY:?TINODE_BRIDGE_INTERNAL_KEY is required}
+
   chat:
     build:
       context: ../..
@@ -228,7 +258,8 @@ services:
         VITE_CHAT_MODE: ${VITE_CHAT_MODE:-internal}
     restart: unless-stopped
     depends_on:
-      - chatmgt
+      tinode-account-bridge:
+        condition: service_healthy
     ports:
       - "${PUBLIC_HTTP_PORT:-80}:80"
     healthcheck:

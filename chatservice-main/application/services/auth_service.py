@@ -44,6 +44,11 @@ def _secret():
     return value.encode("utf-8")
 
 
+def _tinode_bridge_headers():
+    bridge_key = str(app.config.get("TINODE_BRIDGE_INTERNAL_KEY") or "").strip()
+    return {"X-Vichat-Tinode-Internal": bridge_key} if bridge_key else {}
+
+
 def _encode_part(value):
     return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
 
@@ -425,7 +430,7 @@ async def tinode_login(username, password):
     timeout = aiohttp.ClientTimeout(total=int(app.config.get("TINODE_AUTH_TIMEOUT", 10)))
     secret = base64.b64encode("{}:{}".format(username, password).encode("utf-8")).decode("ascii")
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.ws_connect(url) as socket:
+        async with session.ws_connect(url, headers=_tinode_bridge_headers()) as socket:
             await socket.send_json({"hi": {"id": "1", "ver": "0.25", "ua": "VICHAT-CHAT-SERVICE", "platf": "server", "lang": "vi"}})
             hi = await socket.receive_json()
             if hi.get("ctrl", {}).get("code", 500) >= 300:
@@ -452,7 +457,7 @@ async def tinode_create_account(username, password, full_name):
     timeout = aiohttp.ClientTimeout(total=int(app.config.get("TINODE_AUTH_TIMEOUT", 10)))
     secret = base64.b64encode("{}:{}".format(username, password).encode("utf-8")).decode("ascii")
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.ws_connect(url) as socket:
+        async with session.ws_connect(url, headers=_tinode_bridge_headers()) as socket:
             await socket.send_json({"hi": {"id": "1", "ver": "0.25", "ua": "VICHAT-CHAT-SERVICE", "platf": "server", "lang": "vi"}})
             hi = await socket.receive_json()
             if hi.get("ctrl", {}).get("code", 500) >= 300:
@@ -688,7 +693,7 @@ async def tinode_verify_topic_access(token, expected_uid, topic_name, expected_m
         raise AuthError("Tinode did not confirm topic access.", 502)
 
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.ws_connect(url) as socket:
+        async with session.ws_connect(url, headers=_tinode_bridge_headers()) as socket:
             await socket.send_json({
                 "hi": {
                     "id": "1",
@@ -780,7 +785,7 @@ async def tinode_add_topic_members(token, expected_uid, topic_name, member_uids,
         raise AuthError("Tinode did not confirm the group membership update.", 502)
 
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.ws_connect(url) as socket:
+        async with session.ws_connect(url, headers=_tinode_bridge_headers()) as socket:
             await socket.send_json({"hi": {"id": "1", "ver": "0.25", "ua": "VICHAT-CHAT-SERVICE", "platf": "server", "lang": "vi"}})
             await receive_ctrl(socket, "1")
             await socket.send_json({"login": {"id": "2", "scheme": "token", "secret": token}})
@@ -844,7 +849,7 @@ async def tinode_remove_topic_member(token, expected_uid, topic_name, member_uid
         raise AuthError("Tinode did not confirm the group membership update.", 502)
 
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.ws_connect(url) as socket:
+        async with session.ws_connect(url, headers=_tinode_bridge_headers()) as socket:
             await socket.send_json({"hi": {"id": "1", "ver": "0.25", "ua": "VICHAT-CHAT-SERVICE", "platf": "server", "lang": "vi"}})
             await receive_ctrl(socket, "1")
             await socket.send_json({"login": {"id": "2", "scheme": "token", "secret": token}})
@@ -889,7 +894,7 @@ async def tinode_change_password(username, current_password, new_password, new_u
         "{}:{}".format(new_username or username, new_password).encode("utf-8")
     ).decode("ascii")
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.ws_connect(url) as socket:
+        async with session.ws_connect(url, headers=_tinode_bridge_headers()) as socket:
             await socket.send_json({"hi": {"id": "1", "ver": "0.25", "ua": "VICHAT-CHAT-SERVICE", "platf": "server", "lang": "vi"}})
             hi = await socket.receive_json()
             if hi.get("ctrl", {}).get("code", 500) >= 300:
@@ -942,7 +947,7 @@ async def tinode_admin_reset_password(username, uid, new_password):
         "{}:{}".format(username, new_password).encode("utf-8")
     ).decode("ascii")
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.ws_connect(url) as socket:
+        async with session.ws_connect(url, headers=_tinode_bridge_headers()) as socket:
             await socket.send_json({"hi": {"id": "1", "ver": "0.25", "ua": "VICHAT-CHAT-SERVICE", "platf": "server", "lang": "vi"}})
             hi = await socket.receive_json()
             if hi.get("ctrl", {}).get("code", 500) >= 300:

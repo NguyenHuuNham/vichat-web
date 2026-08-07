@@ -153,6 +153,7 @@ ensure_secret TINODE_DB_PASSWORD hex 32
 ensure_secret TINODE_AUTH_TOKEN_KEY base64 32
 ensure_secret TINODE_UID_ENCRYPTION_KEY base64 16
 ensure_secret TINODE_SSO_SECRET base64 48
+ensure_secret TINODE_BRIDGE_INTERNAL_KEY base64 48
 ensure_secret CHATSERVICE_DB_PASSWORD hex 32
 ensure_secret APP_SECRET_KEY base64 48
 ensure_secret AUTH_PASSWORD_SALT base64 32
@@ -300,7 +301,7 @@ mkdir -p "$RUNTIME_DIR" "$BACKUP_DIR"
 chmod 700 "$RUNTIME_DIR" "$BACKUP_DIR"
 render_ice_servers
 
-compose build chatmgt chat
+compose build chatmgt tinode-account-bridge chat
 compose run --rm --no-deps --user "$(id -u):$(id -g)" chatmgt \
   python scripts/render_tinode_bootstrap.py
 chmod 600 "$RUNTIME_DIR/tinode-bootstrap.json"

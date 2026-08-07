@@ -63,6 +63,8 @@ secrets:
 
 ```dotenv
 TINODE_INTERNAL_WS_URL=ws://chat:80/v0/channels
+TINODE_CENTRAL_WS_URL=wss://web.vichat.net/v0/channels
+TINODE_BRIDGE_TIMEOUT=15
 ```
 
 Then follow this order. Do not reset mappings before the new proxy and account
@@ -297,20 +299,24 @@ from the same tenant in separate browser profiles:
 2. Confirm ChatUI next calls `/api/v1/auth/tinode-token`, receives
    `connection: tinode`, and connects to
    `wss://chat.upgo.vn/v0/channels` without sending an Account password.
-3. Open a direct conversation before the peer has previously used Chat. Confirm
+3. Open `https://web.vichat.net/#`, set Server to `chat.upgo.vn`, and sign in
+   with the same invited UpGO email/password. The Tinode Web basic login is
+   translated by the relay bridge; it must open the same Tinode UID and show
+   the same conversations/messages as ChatUI.
+4. Open a direct conversation before the peer has previously used Chat. Confirm
    Chatmgt prepares the peer UID, both users see the same Chatmgt conversation,
    and text/file/presence/typing/read state works after refresh.
-4. Create a group, add and remove a member, let one member leave, and let the
+5. Create a group, add and remove a member, let one member leave, and let the
    owner leave. Refresh every browser and confirm Chatmgt participants and
    Tinode subscribers stay aligned and the replacement owner can manage members.
-5. Stop only the central relay path temporarily (for example, recreate `chat`
+6. Stop only the central relay path temporarily (for example, recreate `chat`
    without changing Chatmgt/PostgreSQL). ChatUI must keep directory/conversation data
    in **Dữ liệu Chatmgt** mode with realtime controls disabled, not freeze or
    write demo messages. Restore `chat` and confirm reconnect uses a fresh token;
    the old local `chatapi` is not this test path.
-6. Repeat with a second tenant and attempt a copied topic ID from the first
+7. Repeat with a second tenant and attempt a copied topic ID from the first
    tenant. Binding/access must be rejected.
-7. Log out and confirm ChatUI disconnects Tinode, clears local state, revokes the
+8. Log out and confirm ChatUI disconnects Tinode, clears local state, revokes the
    Chatmgt session, and cannot reopen protected data after refresh.
 
 The automated verifier checks configuration and management isolation but cannot

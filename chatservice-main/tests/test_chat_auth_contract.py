@@ -13,6 +13,8 @@ CHAT_APP_PATH = REPOSITORY_ROOT / "src" / "app" / "App.jsx"
 MANAGEMENT_APP_PATH = REPOSITORY_ROOT / "src" / "features" / "management" / "ManagementApp.jsx"
 MANAGEMENT_SERVICE_PATH = REPOSITORY_ROOT / "src" / "features" / "management" / "services" / "managementAdminService.js"
 PRODUCTION_COMPOSE_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / "compose.yaml"
+PRODUCTION_NGINX_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / "nginx.conf"
+TINODE_BRIDGE_PATH = PROJECT_ROOT / "scripts" / "tinode_account_bridge.py"
 PRODUCTION_ENV_EXAMPLE_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / ".env.example"
 HAS_REPOSITORY_SOURCES = all(path.is_file() for path in (
     LOGIN_PATH,
@@ -98,6 +100,9 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("ACCOUNT_SSO_USER_UPDATE_PATH=/api/v1/user", env_source)
         self.assertIn("ACCOUNT_AVATAR_UPLOAD_URL=https://service.upgo.vn/api/image/upload?path=accounts", env_source)
         self.assertIn("TINODE_SSO_SECRET: ${TINODE_SSO_SECRET:?TINODE_SSO_SECRET is required}", compose_source)
+        self.assertIn("TINODE_BRIDGE_INTERNAL_KEY: ${TINODE_BRIDGE_INTERNAL_KEY:?TINODE_BRIDGE_INTERNAL_KEY is required}", compose_source)
+        self.assertIn("TINODE_CENTRAL_WS_URL=wss://web.vichat.net/v0/channels", env_source)
+        self.assertIn("TINODE_BRIDGE_INTERNAL_KEY=", env_source)
         self.assertIn("TINODE_MIRROR_LOCAL_CREDENTIALS: ${TINODE_MIRROR_LOCAL_CREDENTIALS:-true}", compose_source)
         self.assertIn("TINODE_MIRROR_LOCAL_CREDENTIALS=true", env_source)
 
@@ -111,6 +116,22 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertNotIn("tinode_auth", sso_source)
         self.assertIn('ACCOUNT_SSO_PASSWORD_MARKER = "!account-sso-only"', controller_source)
         self.assertIn("password_hash=ACCOUNT_SSO_PASSWORD_MARKER", projection_source)
+
+    @repository_source_test
+    def test_tinode_web_basic_login_uses_the_account_bridge(self):
+        compose_source = PRODUCTION_COMPOSE_PATH.read_text(encoding="utf-8")
+        nginx_source = PRODUCTION_NGINX_PATH.read_text(encoding="utf-8")
+        bridge_source = TINODE_BRIDGE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("tinode-account-bridge:", compose_source)
+        self.assertIn("TINODE_CENTRAL_WS_URL", compose_source)
+        self.assertIn("location = /v0/channels", nginx_source)
+        self.assertIn("proxy_pass http://tinode-account-bridge:8095/v0/channels", nginx_source)
+        self.assertIn('"/api/v1/auth/account-login"', bridge_source)
+        self.assertIn('"/api/v1/auth/tinode-token"', bridge_source)
+        self.assertIn('rewritten_login["scheme"] = "token"', bridge_source)
+        self.assertIn('rewritten_login["secret"] = token', bridge_source)
+        self.assertNotIn('"scheme": "basic", "secret": password', bridge_source)
 
     def test_account_credential_login_uses_account_and_keeps_tinode_server_side(self):
         _controller_source, login_source = function_source(

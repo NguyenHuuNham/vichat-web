@@ -27,8 +27,9 @@ tenant, role, or user IDs supplied after the session is issued.
   ChatUI reaches it through the TLS-safe `chat.upgo.vn` Nginx relay, while
   Chatmgt reaches the same relay at `ws://chat:80/v0/channels`. The old local
   `chatapi` container remains only for rollback until migration acceptance is
-  complete. WebRTC media remains browser-to-browser or Coturn; Chatmgt never
-  reads Tinode content.
+  complete. Tinode Web basic login is translated by the internal relay bridge
+  through Chatmgt/UpGO Account before it reaches the central server. WebRTC
+  media remains browser-to-browser or Coturn; Chatmgt never reads Tinode content.
 
 The administrator page uses `POST /api/v1/admin/sso` and the separate
 `vichat_management_access_token`. It accepts only Account `admin`, `owner` or
@@ -108,7 +109,7 @@ the UpGO Account password is never copied to Tinode. Chatmgt usernames remain
 tenant-scoped while Tinode basic usernames are global: a same-tenant duplicate
 is rejected, but a username already used by another tenant is provisioned under
 `stable_tinode_username(tenant_id, account_id)` and stored in
-`management_account.tinode_username`. The Chatmgt username shown to the
+  `management_account.tinode_username`. The Chatmgt username shown to the
 employee does not change.
 
 When local credential mirroring is disabled, Chatmgt uses the derived
@@ -136,6 +137,14 @@ the same UID stable across Account profile changes; group subscriptions and
 message history remain on that UID. The signed Chatmgt JWT carries only the
 short-lived Tinode token for reconnects; no reversible employee password is
 persisted.
+
+The standalone Tinode Web client connects to `wss://chat.upgo.vn/v0/channels`.
+The Nginx relay sends that path to `tinode-account-bridge`: token login packets
+from ChatUI pass through unchanged, while Tinode Web `scheme=basic` packets are
+decoded only at the trusted bridge, authenticated against Chatmgt's Account
+login endpoint, and replaced with `scheme=token`. The UpGO password is not sent
+to the central Tinode server or logged by the bridge. This keeps Tinode Web and
+ChatUI on the same central UID/topic/message store.
 
 `POST /api/v1/conversation/<id>/tinode-prepare` prepares missing UID mappings
 from current Chatmgt membership. Group topic binding and add/remove/leave
@@ -234,6 +243,8 @@ TINODE_MIRROR_LOCAL_CREDENTIALS=true
 TINODE_ADMIN_USERNAME=<server-side-tinode-admin>
 TINODE_ADMIN_PASSWORD=<server-side-tinode-admin-password>
 TINODE_INTERNAL_WS_URL=ws://chat:80/v0/channels
+TINODE_CENTRAL_WS_URL=wss://web.vichat.net/v0/channels
+TINODE_BRIDGE_TIMEOUT=15
 TINODE_TOKEN_EXPIRE_IN=300
 ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user
 ACCOUNT_SSO_DIRECTORY_SYNC_TTL=10
