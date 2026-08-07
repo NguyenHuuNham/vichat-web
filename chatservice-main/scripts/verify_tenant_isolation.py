@@ -227,7 +227,9 @@ def verify(base_url):
         ])
         db.session.commit()
 
-        auth_method = "account_sso" if account_sso_enabled else "password"
+        # A container verifier cannot fabricate the browser's Account cookie.
+        # Keep Account-backed rows while using a trusted internal JWT to test isolation.
+        auth_method = "password"
         headers_a = {
             "Authorization": "Bearer {}".format(
                 issue_access_token(account_a, auth_method=auth_method)

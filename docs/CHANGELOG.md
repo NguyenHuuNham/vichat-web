@@ -13,7 +13,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Trang thai: Dang thuc hien
 - Muc tieu: Bao dam acceptance verifier phan anh dung luong production: employee dang nhap Account SSO, Chatmgt cap token Tinode bang credential dan xuat, va tenant isolation khong goi password login.
 - Pham vi: `chatservice-main/scripts/verify_deployment.py`, `chatservice-main/scripts/verify_tenant_isolation.py` va release production.
-- Noi dung: Verifier deployment khong bat buoc local credential mirroring khi Account SSO dang bat; verifier tenant isolation tao projection Account va dung token noi bo `account_sso`, trong khi van giu nhanh password cho che do recovery/local.
+- Noi dung: Verifier deployment khong bat buoc local credential mirroring khi Account SSO dang bat; verifier tenant isolation tao projection Account va dung JWT noi bo tin cay de test tenant filter ma khong gia mao Account cookie, trong khi van giu nhanh password cho che do recovery/local.
 - Quyet dinh ky thuat: Khong bat `TINODE_MIRROR_LOCAL_CREDENTIALS` de phu hop voi nguyen tac khong sao chep mat khau UpGO Account sang Tinode; chi kiem tra Tinode token bridge va UID mapping.
 - Database/API/cau hinh: Khong doi schema, API hoac gia tri secret; chi thay doi logic verifier.
 - Kiem thu: `python -m py_compile chatservice-main/scripts/verify_deployment.py chatservice-main/scripts/verify_tenant_isolation.py` dat; full backend unittest dat 115 tests, skip 37 do dependency runtime; verifier production cu da xac nhan loi expectation mirror truoc khi sua.
