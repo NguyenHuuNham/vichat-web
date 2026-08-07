@@ -10,18 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-07 (Asia/Saigon)
 - Loai: Sua loi | Xac thuc | Realtime | Tinode | Van hanh
-- Trang thai: Dang thuc hien
+- Trang thai: Hoan tat production; cho UAT tai khoan that
 - Muc tieu: Cho Tinode Web dang nhap bang email/mat khau UpGO cua employee duoc moi va xem dung UID/topic/lich su tin nhan trung tam.
 - Pham vi: WebSocket relay `chat.upgo.vn/v0/channels`, Chatmgt Account login/Tinode token bridge, ChatUI token login, production Compose/Nginx va verifier.
 - File da thay doi: `chatservice-main/scripts/tinode_account_bridge.py`, `chatservice-main/application/config/config.py`, `chatservice-main/application/services/auth_service.py`, `infrastructure/production/compose.yaml`, `infrastructure/production/nginx.conf`, `infrastructure/production/start.sh`, `infrastructure/production/.env.example`, `chatservice-main/tests/test_chat_auth_contract.py`, `README.md`, `docs/chat-backend-architecture.md`, `infrastructure/production/README.md`.
 - Noi dung: Them `tinode-account-bridge` chi nhan WebSocket noi bo. Basic login packet tu Tinode Web duoc decode tai bridge, xac thuc qua `POST /api/v1/auth/account-login`, lay `POST /api/v1/auth/tinode-token`, thay bang `scheme=token`, roi relay cac packet con lai den `web.vichat.net`. Token login tu ChatUI va basic login noi bo cua Chatmgt duoc giu nguyen. Them `https://chat.upgo.vn/tinode-web/` proxy de giao dien Tinode Web tu dong dung bridge; giao dien goc `web.vichat.net` van can dat Server la `chat.upgo.vn`.
 - Quyet dinh ky thuat: Dung internal key rieng de phan biet basic credential deterministic cua Chatmgt voi basic credential UpGO tu Tinode Web; khong gui mat khau UpGO sang Tinode, khong log password. Khong sua static Tinode Web tren may `103.74.122.215`; thay vao do phuc vu cung giao dien qua hostname ChatUI de hostname mac dinh tro dung bridge.
 - Database/API/cau hinh: Khong migration. Them service/route WebSocket, `TINODE_CENTRAL_WS_URL`, `TINODE_BRIDGE_TIMEOUT`, `TINODE_BRIDGE_INTERNAL_KEY`; key duoc generate tren production va khong ghi vao log/changelog.
-- Kiem thu local: `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -v` dat 32/32; `npm run test:frontend` dat 43/43; `npm run build:production` dat; Compose config validation dat voi `TINODE_SSO_SECRET` va `TINODE_BRIDGE_INTERNAL_KEY` gia lap chi trong process; `git diff --check` dat. Nginx syntax se xac nhan trong image production sau deploy.
-- Trien khai: Chua deploy trong muc nay.
-- Rui ro con lai: UAT can tai khoan employee UpGO that; certificate `web.vichat.net` van dang duoc bridge bo qua xac minh TLS giong relay hien tai.
-- Viec tiep theo: Chay test, build bridge, deploy Compose/Nginx, verify ChatUI token/basic server-side flow va dang nhap Tinode Web bang tai khoan duoc moi.
-- Commit/PR: Chua tao.
+- Kiem thu: Local `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -v` dat 32/32; `npm run test:frontend` dat 43/43; `npm run build:production` dat; Compose config validation dat voi secret gia lap chi trong process; `git diff --check` dat. Production Nginx `-t` dat; `https://chat.upgo.vn/healthz` va `https://chatmgt.upgo.vn/api/v1/auth/health` deu HTTP 200; Tinode Web proxy HTML va asset deu HTTP 200; public WebSocket hello tra `201`; Basic credential gia tra `401 Invalid UpGO Account email or password.`; log bridge/chatmgt/chat khong co traceback/panic/fatal/critical/emerg/exception.
+- Trien khai: Da push commit `980421e`; active release `/opt/deploy/chat/releases/980421e`; build va recreate rieng service `chat`; `current` da tro release moi. Khong migration, khong reset database, khong thay doi volume Tinode, Chatmgt, PostgreSQL, Redis hoac Coturn.
+- Rui ro con lai: Chua UAT bang tai khoan employee UpGO that de doi chieu UID/topic/lich su tin nhan hai chieu. `https://web.vichat.net/#` nguyen ban van mac dinh tro vao hostname rieng; dung `https://chat.upgo.vn/tinode-web/` hoac vao Settings va dat Server la `chat.upgo.vn`. Relay van bo qua xac minh certificate upstream `web.vichat.net` do certificate trung tam chua hop le.
+- Viec tiep theo: Mo `https://chat.upgo.vn/tinode-web/`, dang nhap email/mat khau UpGO cua employee duoc moi, roi doi chieu cung UID/topic/lich su voi ChatUI. Neu can dung link goc `web.vichat.net`, dat Server la `chat.upgo.vn` truoc khi dang nhap.
+- Commit/PR: `980421e` (production release).
 
 ## 2026-08-07-04 - Dang nhap employee bang credential UpGO Account va dong bo Tinode
 
