@@ -133,6 +133,9 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('"/api/v1/auth/tinode-token"', bridge_source)
         self.assertIn('rewritten_login["scheme"] = "token"', bridge_source)
         self.assertIn('rewritten_login["secret"] = token', bridge_source)
+        self.assertIn('getattr(response, "cookies", None)', bridge_source)
+        self.assertIn("ACCOUNT_SESSION_COOKIE_NAME", bridge_source)
+        self.assertIn("CHAT_ACCESS_COOKIE_NAME", bridge_source)
         self.assertNotIn('"scheme": "basic", "secret": password', bridge_source)
 
     def test_account_credential_login_uses_account_and_keeps_tinode_server_side(self):

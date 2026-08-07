@@ -30,6 +30,8 @@ REQUEST_TIMEOUT = max(5, int(os.getenv("TINODE_BRIDGE_TIMEOUT", "15")))
 LISTEN_HOST = str(os.getenv("TINODE_BRIDGE_HOST", "0.0.0.0"))
 LISTEN_PORT = int(os.getenv("TINODE_BRIDGE_PORT", "8095"))
 INTERNAL_KEY = str(os.getenv("TINODE_BRIDGE_INTERNAL_KEY", "")).strip()
+ACCOUNT_SESSION_COOKIE_NAME = str(os.getenv("ACCOUNT_SESSION_COOKIE_NAME", "session")).strip() or "session"
+CHAT_ACCESS_COOKIE_NAME = str(os.getenv("CHAT_ACCESS_COOKIE_NAME", "vichat_access_token")).strip() or "vichat_access_token"
 
 
 class BridgeError(Exception):
@@ -46,14 +48,33 @@ def _tinode_url():
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
-def _cookie_header(response):
+def _response_cookies(response):
     cookies = SimpleCookie()
     for header in response.headers.getall("Set-Cookie", []):
-        cookies.load(header)
-    return "; ".join(
-        "{}={}".format(name, morsel.value)
+        if isinstance(header, str):
+            cookies.load(header)
+    # aiohttp parses normal headers into .cookies, while some Sanic/Gatco
+    # responses serialize one cookie through the raw Set-Cookie header.
+    parsed = getattr(response, "cookies", None)
+    if parsed:
+        for name, morsel in parsed.items():
+            if morsel.value and morsel.value.lower() != "none":
+                cookies[name] = morsel.value
+    return {
+        name: morsel.value
         for name, morsel in cookies.items()
         if morsel.value and morsel.value.lower() != "none"
+    }
+
+
+def _cookie_header(response):
+    cookies = _response_cookies(response)
+    ordered_names = [ACCOUNT_SESSION_COOKIE_NAME, CHAT_ACCESS_COOKIE_NAME]
+    ordered_names.extend(name for name in cookies if name not in ordered_names)
+    return "; ".join(
+        "{}={}".format(name, cookies[name])
+        for name in ordered_names
+        if cookies.get(name)
     )
 
 

@@ -6,6 +6,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-07-06 - Sua loi 401 cookie khi Tinode Web doi Tinode token
+
+- Thoi gian: 2026-08-07 (Asia/Saigon)
+- Loai: Sua loi | Xac thuc | Tinode | Van hanh
+- Trang thai: Dang thuc hien
+- Muc tieu: Khong de Tinode Web bi `Account login is required (401)` sau khi UpGO Account da chap nhan email/mat khau.
+- Noi dung: Bridge doc ca cookie da parse boi aiohttp va `Set-Cookie` header thu cong tu Chatmgt, uu tien gui ro cookie Account `session` cung cookie phien Chatmgt khi goi `POST /api/v1/auth/tinode-token`.
+- Quyet dinh ky thuat: Khong log gia tri cookie, token hoac mat khau; chi bo sung fallback parse cookie va cau hinh ten cookie khong nhay cam.
+- Kiem thu: Test contract 32/32, py_compile bridge, Compose config validation va git diff check dat. Chua deploy ban sua nay.
+- Viec tiep theo: Build/recreate bridge, dang nhap lai bang tai khoan UAT va xac nhan Tinode tra UID/topic thay vi 401.
+- Commit/PR: Chua tao.
+
 ## 2026-08-07-05 - Ket noi Tinode Web voi UpGO Account va cung kho tin nhan
 
 - Thoi gian: 2026-08-07 (Asia/Saigon)
