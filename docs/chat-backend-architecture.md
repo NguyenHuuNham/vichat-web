@@ -22,9 +22,13 @@ tenant, role, or user IDs supplied after the session is issued.
 - `chatmgt` (`chatservice-main`): owns the read-only employee projection,
   deterministic Tinode mappings, directory/friend/conversation metadata, tenant
   authorization, audit records and the HttpOnly chat/management sessions.
-- `chatapi` (Tinode): owns message/file content, topics, presence, typing,
-  reactions, delivery/read receipts and call signaling. WebRTC media remains
-  browser-to-browser or Coturn; Chatmgt never reads Tinode content.
+- `web.vichat.net` (central Tinode): owns message/file content, topics,
+  presence, typing, reactions, delivery/read receipts and call signaling.
+  ChatUI reaches it through the TLS-safe `chat.upgo.vn` Nginx relay, while
+  Chatmgt reaches the same relay at `ws://chat:80/v0/channels`. The old local
+  `chatapi` container remains only for rollback until migration acceptance is
+  complete. WebRTC media remains browser-to-browser or Coturn; Chatmgt never
+  reads Tinode content.
 
 The administrator page uses `POST /api/v1/admin/sso` and the separate
 `vichat_management_access_token`. It accepts only Account `admin`, `owner` or
@@ -67,6 +71,12 @@ Inside **Nhân viên**, a tenant admin can:
 Chatmgt does not create employee accounts or reset employee passwords in the
 production SSO mode. The projection remains in Chatmgt so conversation,
 friendship, audit, and Tinode mappings keep stable internal IDs.
+For a legacy Account projection in a production migration, reset-password is a
+deliberate “Cấp mật khẩu ChatUI” action. It changes only the authentication
+source to `local`, preserves the existing management account ID and Tinode UID,
+keeps a non-sensitive legacy Account audit marker, and synchronizes the new
+local password to the mapped Tinode basic credential. The plaintext password
+is used only in memory for the Tinode request and is never stored.
 
 Management account mutations require both the management cookie and
 `X-Vichat-Session-Scope: management`. Every target query includes
@@ -100,8 +110,12 @@ employee does not change.
 When local credential mirroring is disabled, Chatmgt uses the derived
 credential flow:
 
+The optional `TINODE_MIRROR_LOCAL_CREDENTIALS=true` setting applies only to
+explicit local/recovery sessions. It is not used by active UpGO Account SSO
+employees, whose Account password is never copied to Tinode.
+
 ```text
-tinode_username = stable_tinode_username(tenant_id, management_account.id)
+tinode_username = stable_tinode_username(tenant_id, account_id)
 tinode_password = HMAC-SHA256(TINODE_SSO_SECRET,
                               tenant_id + account_id + tinode_username)
 ```
@@ -112,12 +126,20 @@ the Account directory or logs in for the first time, then returns only the
 short-lived Tinode token and expiry from `POST /api/v1/auth/tinode-token`. Two tenants with
 the same employee username receive different management IDs and Tinode
 identities.
+Tinode basic usernames are global per Tinode server and must satisfy Tinode's
+letters/numbers/dot/underscore policy. The deterministic `upgo_*` mapping keeps
+the same UID stable across Account profile changes; group subscriptions and
+message history remain on that UID. The signed Chatmgt JWT carries only the
+short-lived Tinode token for reconnects; no reversible employee password is
+persisted.
 
 `POST /api/v1/conversation/<id>/tinode-prepare` prepares missing UID mappings
 from current Chatmgt membership. Group topic binding and add/remove/leave
 operations verify the fresh Tinode token and exact tenant member set before
-committing Chatmgt metadata. Tinode remains authoritative for message content,
-files, presence, typing, reactions, receipts and call signaling.
+committing Chatmgt metadata. The central Tinode remains authoritative for
+message content, files, presence, typing, reactions, receipts and call
+signaling. ChatUI does not post normal messages/files to Chatmgt knowledge;
+legacy chat-ingestion routes return `410 TINODE_CONTENT_ONLY`.
 
 Tinode profile metadata is correlated through both the Chatmgt account ID and
 Tinode UID. A profile metadata update refreshes the matching directory entry,
@@ -139,6 +161,32 @@ Employee credentials, cookies and secrets are never sent to that provider; only
 the message, conversation reference, bounded history, approved public identity
 fields and retrieved context may cross the boundary.
 
+## Enterprise Workspace
+
+Enterprise Workspace is a tenant-scoped business metadata layer in Chatmgt. It
+does not replace Tinode and does not read Tinode history. The tables
+`enterprise_item`, `enterprise_item_participant` and `enterprise_activity` own
+tasks, mandatory announcements, approvals, tickets, wiki pages, events and
+integration registry entries. The `properties` object is type-validated and
+allow-listed; API keys, passwords, cookies and tokens are rejected and are not
+stored. A user may explicitly create a task from a message, but Chatmgt keeps
+only the conversation ID/name and Tinode message reference. The message body
+remains exclusively in Tinode.
+
+Every Workspace query includes the JWT tenant and filters participants by that
+same tenant. `COMPANY` items are visible to active employees in the tenant;
+`PARTICIPANTS` items are visible only to the creator, owner or listed
+participants. Announcements and integration registry mutations require a
+tenant administrator. Other types use creator/owner/participant roles for
+editing and state transitions. Every create, update, archive, action and
+comment writes an `enterprise_activity` row and a security audit event.
+
+ChatUI opens Workspace as an isolated panel and refreshes metadata every 15
+seconds while visible. This polling deliberately does not touch the Tinode
+socket, topic subscriptions, message composer, presence, receipts or mute
+state. The panel provides overview metrics, type tabs, tenant search, detail
+history, role-aware actions and a message-to-task shortcut.
+
 ## API contract
 
 | Method | Path | Purpose |
@@ -155,6 +203,14 @@ fields and retrieved context may cross the boundary.
 | `GET/POST` | `/api/v1/conversation` | Tenant-scoped conversation metadata |
 | `POST` | `/api/v1/conversation/<id>/tinode-prepare` | Prepare Tinode participant mappings |
 | `PUT` | `/api/v1/conversation/<id>/tinode-topic` | Verify/bind the topic to exact membership |
+| `GET` | `/api/v1/workspace/items` | List tenant-visible Workspace items and summary |
+| `POST` | `/api/v1/workspace/items` | Create a validated task, announcement, approval, ticket, wiki, event or integration entry |
+| `GET/PUT/DELETE` | `/api/v1/workspace/items/<id>` | Read, update or archive one tenant-scoped item |
+| `POST` | `/api/v1/workspace/items/<id>/actions` | Apply a role-checked transition, acknowledgement, RSVP or comment |
+| `GET` | `/api/v1/workspace/items/<id>/activity` | Read tenant-scoped audit/activity history |
+| `GET` | `/api/v1/workspace/search` | Search visible Workspace metadata |
+| `GET` | `/api/v1/workspace/stats` | Return visible counts, due-soon and overdue metrics |
+| `GET` | `/api/v1/workspace/meta` | Return supported types/statuses and current tenant identity |
 
 The management overview intentionally has no message-content, file-content or
 Tinode history API.
@@ -168,13 +224,31 @@ VITE_CHAT_AUTH_MODE=account_sso
 CHATMGT_DEFAULT_TENANT=tn6913580727957397
 CHAT_AUTH_JWT_SECRET=<at-least-32-random-characters>
 TINODE_SSO_SECRET=<at-least-32-random-characters>
+TINODE_MIRROR_LOCAL_CREDENTIALS=true
 TINODE_ADMIN_USERNAME=<server-side-tinode-admin>
 TINODE_ADMIN_PASSWORD=<server-side-tinode-admin-password>
-TINODE_INTERNAL_WS_URL=ws://chatapi:6060/v0/channels
+TINODE_INTERNAL_WS_URL=ws://chat:80/v0/channels
 TINODE_TOKEN_EXPIRE_IN=300
 ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user
 ACCOUNT_SSO_DIRECTORY_SYNC_TTL=10
 ```
+
+The ChatUI Nginx proxies `/v0/` and `/tinode-media/` to
+`https://web.vichat.net`. Upstream certificate verification is temporarily
+disabled because that endpoint's certificate is expired; SNI and `Host` remain
+pinned to `web.vichat.net`. Renewing the upstream certificate and re-enabling
+verification is a required follow-up.
+
+The one-time switch runs `scripts/switch_tinode_central.py` only after a
+verified Chatmgt backup and a successful proxy/provisioning probe. It clears
+only Tinode UID/topic mappings and automatic `CHAT_*` knowledge copies; account,
+tenant, conversation and membership IDs are preserved.
+
+The Workspace migration is `20260804_10` and must be applied after
+`20260803_09` before recreating Chatmgt. Rollback uses the existing release and
+database backup procedure; the migration is intentionally marked irreversible
+because production data must be restored from the verified PostgreSQL backup
+when a rollback requires removing Workspace rows.
 
 The real production `.env` is never committed or printed. For another company,
 deploy a separate fixed tenant configuration/domain or an explicitly approved
@@ -194,12 +268,13 @@ tenant-routing layer; do not expose a global tenant selector in ChatUI.
   available to the browser.
 - Removing or disabling an UpGO Account membership deactivates the projection,
   revokes the old Chatmgt session, and prevents new Tinode tokens.
+- Token reconnect works from the signed Chatmgt session without recovering the
+  original employee password.
 - Logout invalidates the session and all protected endpoints reject the old
   token.
-- Tinode stopped: Chatmgt directory/conversation metadata remains available,
+- Central Tinode stopped: Chatmgt directory/conversation metadata remains available,
   realtime input is disabled, and reconnect requests a fresh token.
 - Management overview shows metadata only and never message/file content.
-
 ## External chatbot mode
 
 Production ChatUI can run with `VITE_CHAT_MODE=external`. In this mode the
@@ -226,3 +301,11 @@ are fixed server-side and cannot be selected by the caller.
 
 See `infrastructure/production/README.md` and `docs/DEVELOPMENT_WORKFLOW.md` for
 deployment, rollback and verification commands.
+
+- Tenant-A Workspace items, participants, search results, activities and stats
+  are never returned to a tenant-B session.
+- Announcement/integration mutations require an administrator; task,
+  approval, ticket, wiki and event actions follow creator/owner/participant
+  roles and reject invalid transitions.
+- Workspace polling and failures do not reconnect Tinode, change topic
+  subscriptions or disable the message composer.

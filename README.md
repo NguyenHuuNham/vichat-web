@@ -48,9 +48,10 @@ directory, friendship, and conversation metadata:
 4. Direct conversations, groups, membership changes, per-user removal, and
    per-user notification mute deadlines are persisted in Chatmgt and survive
    refresh or a new login.
-5. While the session has `connection: management`, ChatUI clearly disables
-   realtime messages and files. Tinode topics, tokens, messages, presence, and
-   receipts remain Step 4 and are not replaced with browser demo data.
+5. Chatmgt returns a short-lived Tinode token after verifying the employee
+   password. If the relay is unavailable, ChatUI keeps the directory and
+   conversation metadata visible while disabling realtime inputs; it never
+   falls back to browser demo data.
 
 Chatmgt is authoritative for tenant-scoped conversation metadata and the
 deterministic Tinode mapping. UpGO Account is authoritative for employee
@@ -60,11 +61,15 @@ password.
 
 ## Step 4 realtime flow
 
-Chatmgt derives a deterministic Tinode basic credential from a server secret,
-tenant ID, Chatmgt account ID, and tenant-scoped Tinode username. Employee
-password changes therefore never rotate or expose the Tinode credential.
-`POST /api/v1/auth/tinode-token` validates the Chatmgt session/account state and
-returns only a short-lived Tinode token. ChatUI then connects to ChatAPI for
+With `TINODE_MIRROR_LOCAL_CREDENTIALS=true`, Chatmgt provisions the same local
+employee username/password as the Tinode basic credential. Chatmgt stores only
+the bcrypt hash; ChatUI keeps the password in volatile tab memory only while
+the active session can renew an expiring Tinode token. Existing deterministic
+identities are migrated in place by UID on the next login.
+`POST /api/v1/auth/tinode-token` returns the token bound to that session when a
+reconnect needs it and re-verifies that volatile password when renewal is
+required. ChatUI and Chatmgt both reach the
+central `web.vichat.net` Tinode through the `chat.upgo.vn` Nginx relay for
 messages, files, presence, typing, reactions, receipts, and direct calls.
 
 Chatmgt prepares participant Tinode UID mappings and validates every topic
@@ -72,6 +77,10 @@ binding against the current tenant conversation. Group add/remove/leave actions
 are sent to Chatmgt, which updates the Tinode subscription and Chatmgt membership
 as one controlled bridge operation. The browser does not independently invent
 or persist membership state.
+
+Normal Tinode messages and uploaded chat files are not copied into Chatmgt
+knowledge or Workspace previews. A Workspace task created from a message keeps
+only the Chatmgt conversation ID/name and Tinode message reference.
 
 Unread counts and the latest message preview still come from Tinode while a
 conversation is muted. Chatmgt stores only the current employee's mute deadline;
@@ -99,6 +108,17 @@ dedicated API key and a server-fixed tenant/optional knowledge base; it never
 exports knowledge derived from employee conversations. See
 `docs/external-chatbot-api.md` for the request contract and deployment
 variables.
+
+## Enterprise Workspace
+
+The ChatUI Workspace panel adds tenant-scoped tasks, mandatory announcements,
+approvals, support tickets, wiki/procedure pages, company events, integration
+registry records, search, summary metrics and an auditable activity timeline.
+Chatmgt stores only these business metadata records; Tinode remains the source
+of message content, presence and receipts. Apply Alembic revision
+`20260804_10` before deploying the new Chatmgt image. See
+`docs/chat-backend-architecture.md` for the authorization matrix and API
+contract.
 
 ## Local checks
 

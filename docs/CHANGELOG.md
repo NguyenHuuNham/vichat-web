@@ -10,14 +10,14 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-07 13:41 (Asia/Saigon)
 - Loai: Tinh nang | Xac thuc | Tinode | Chatmgt | Cau hinh
-- Trang thai: Hoan tat code; chua deploy production
+- Trang thai: Hoan tat code; cho push va deploy production
 - Muc tieu: Chatmgt khong con tao tai khoan nhan vien trong production; ChatUI dang nhap nhanh bang UpGo Account da duoc tenant admin moi va moi identity active duoc tao mapping Tinode on dinh.
-- Quyet dinh ky thuat: UpGo Account la nguon chuan cho invitation, membership, profile, role, status va password. Chatmgt chi giu projection tenant-scoped va mapping Tinode deterministic de khong mat conversation/friendship khi Account thay doi. Directory sync provision Tinode best-effort, co retry tu dong qua lan sync/login sau neu Tinode tam thoi khong san sang.
+- Quyet dinh ky thuat: UpGo Account la nguon chuan cho invitation, membership, profile, role, status va password. Chatmgt chi giu projection tenant-scoped va mapping Tinode deterministic de khong mat conversation/friendship khi Account thay doi. Directory sync provision Tinode best-effort, co retry tu dong qua lan sync/login sau neu Tinode tam thoi khong san sang. Sau khi merge Enterprise Workspace va Tinode central, ChatUI khong day normal message/file tu Tinode vao Chatmgt knowledge; Workspace chi luu tham chieu message.
 - Pham vi: Chatmgt Account SSO employee, directory sync, Tinode bridge, ChatUI login mac dinh, giao dien quan tri nhan vien, production config, verifier, tai lieu va test; khong migration database.
 - File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/services/sso_identity.py`, `chatservice-main/application/config/config.py`, `src/features/chat/services/chatManagementService.js`, `src/features/management/ManagementApp.jsx`, `scripts/build-production.mjs`, `infrastructure/production/`, `chatservice-main/tests/`, `README.md`, `docs/chat-backend-architecture.md`, va `docs/CHANGELOG.md`.
-- Kiem thu: `python -m unittest discover -s chatservice-main/tests -v` dat 87 tests, skip 28 do thieu dependency runtime; `npm run test:frontend` dat 40/40; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` dat; `docker compose --env-file infrastructure/production/.env.example -f infrastructure/production/compose.yaml config -q` dat voi `TINODE_SSO_SECRET` gia lap chi trong process; `git diff --check` dat.
+- Kiem thu: `python -m unittest discover -s chatservice-main/tests -v` dat 115 tests, skip 37 do thieu dependency runtime; `npm run test:frontend` dat 43/43; `npm run lint` exit 0 voi warning legacy/vendor va worktree tam; `npm run build:production` dat; `docker compose --env-file infrastructure/production/.env.example -f infrastructure/production/compose.yaml config -q` dat voi `TINODE_SSO_SECRET` gia lap chi trong process; `git diff --check` dat.
 - Rui ro con lai: Chua co webhook truc tiep tu UpGo Account nen provision cho thanh vien moi xay ra khi directory duoc sync hoac employee dang nhap; can UAT payload that cua `/api/v1/tenant_user`, tai khoan duoc moi that tren UpGo Account va hai browser; khong ghi credential vao log.
-- Viec tiep theo: Cap nhat `.env` production that sang `CHAT_ACCOUNT_SSO_ENABLED=true`, `VITE_CHAT_AUTH_MODE=account_sso`, `ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user`, `ACCOUNT_SSO_DIRECTORY_SYNC_TTL=10`; deploy Chatmgt/ChatUI, hard refresh va UAT invite -> directory -> Tinode UID -> login -> remove/disable.
+- Viec tiep theo: Cap nhat `.env` production that sang `CHAT_ACCOUNT_SSO_ENABLED=true`, `VITE_CHAT_AUTH_MODE=account_sso`, `ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user`, `ACCOUNT_SSO_DIRECTORY_SYNC_TTL=10`; apply Alembic `20260804_10`; deploy Chatmgt/ChatUI, hard refresh va UAT invite -> directory -> Tinode UID -> login -> remove/disable.
 - Commit/PR: Chua tao.
 
 ## 2026-08-06-20 - Dong bo avatar va receipt ChatUI
@@ -344,6 +344,154 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: Local `npm run lint` dat exit 0, chi con warning legacy trong `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run test:frontend` dat 32/32; `npm run build -- --outDir .codex-build-ui-guidance --emptyOutDir` dat; `git diff --check` dat. Production build ca hai image dat; ChatUI/Chatmgt healthy; Nginx syntax dat; local va public health deu HTTP 200; bundle public co chu ngan gon moi va khong con cac helper marker da xoa; log 10 phut khong co emerg/fatal/panic/critical/traceback/exception. ChatAPI, hai PostgreSQL, Redis va Coturn giu nguyen container ID truoc/sau.
 - Rui ro con lai: Moi truong Codex khong co browser session kha dung de UAT truc quan desktop/mobile; can hard refresh va xem lai cac modal/panel bang tai khoan that.
 - Viec tiep theo: Hard refresh `chat.upgo.vn` va `chatmgt.upgo.vn`, sau do UAT login, workspace, chatbot, form ket ban/tat thong bao va cac man hinh Chatmgt; rollback bang hai image tag neu phat hien loi giao dien.
+## 2026-08-05-06 - Hardening response truc tiep tu Chatmgt
+
+- Thoi gian: 2026-08-05 18:00 (Asia/Saigon)
+- Loai: Bao mat | Van hanh
+- Trang thai: Hoan tat va da deploy production
+- Muc tieu: Bao dam `chatmgt.upgo.vn` tra security header ngay ca khi chua co quyen sua reverse proxy host `.218`.
+- Pham vi: Response middleware Chatmgt va test cau hinh; khong thay doi auth, tenant, database, Tinode token/topic/message, Workspace hay chatbot.
+- File da thay doi: `chatservice-main/application/server.py`, `chatservice-main/tests/test_tinode_central_switch.py`, `docs/CHANGELOG.md`.
+- Noi dung: Chatmgt them CSP, `Referrer-Policy`, `X-Content-Type-Options` va `X-Frame-Options` vao moi response, bao gom static management UI va API.
+- Quyet dinh ky thuat: Dat header tai ung dung de khong phu thuoc quyen SSH `.218`; giu CSP cung contract voi ChatUI va khong sua CORS/cookie/session.
+- Database/API/cau hinh: Khong migration, endpoint, payload, secret hay bien moi truong moi.
+- Kiem thu: `python -m py_compile chatservice-main/application/server.py` dat; backend local dat 107 test, 37 skip dependency runtime; image production dat 107 test, 15 skip source frontend/infrastructure; E2E production voi hai verifier account dat direct receive, group receive, typing va receipt qua Tinode public WSS; public header/CORS/health va verifier dat; account verifier da xoa sach, database count khong doi va log khong co severe match.
+- Rui ro con lai: Credential admin Tinode trung tam bi tu choi va certificate `web.vichat.net` het han; hai muc nay can quyen tren `103.74.122.215`.
+- Viec tiep theo: Tinode operator cap credential admin hop le va gia han certificate tren `103.74.122.215`; sau do bat lai upstream TLS verification.
+- Commit/PR: `211ad40`.
+
+## 2026-08-05-05 - Bo sung browser security headers cho ChatUI production
+
+- Thoi gian: 2026-08-05 17:00 (Asia/Saigon)
+- Loai: Bao mat | Van hanh
+- Trang thai: Hoan tat phan ViChat va da deploy production; con blocker tu Tinode trung tam
+- Muc tieu: Them lop hardening HTTP cho ChatUI ma khong thay doi luong dang nhap, Tinode, Chatmgt, API hay noi dung chat.
+- Pham vi: Nginx production cua ChatUI va test cau hinh; khong thay doi Tinode trung tam, database, Redis, ChatAPI, Coturn hay employee flow.
+- File da thay doi: `infrastructure/production/nginx.conf`, `chatservice-main/tests/test_tinode_central_switch.py`, `docs/CHANGELOG.md`.
+- Noi dung: Them CSP tuong thich voi SPA, Font Awesome/Google Fonts, Tinode WebSocket va media; them `Referrer-Policy`, `X-Content-Type-Options` va `X-Frame-Options` cho ca response thanh cong va loi.
+- Quyet dinh ky thuat: Dung `always` de header khong mat tren response loi; khong bat TLS verification upstream Tinode trong thay doi nay vi chung chi `web.vichat.net` dang het han va can ben quan tri Tinode gia han truoc.
+- Database/API/cau hinh: Khong migration; thay doi chi o Nginx response headers.
+- Kiem thu: `python -m unittest discover -s chatservice-main/tests -v` dat 106 test, 37 skip; `npm run test:frontend` dat 35/35; `npm run lint` khong co error, chi warning legacy; Compose config va Nginx syntax test dat; public verifier dat login/logout, CORS, directory, conversation va Tinode WebSocket; asset/health/header production tra HTTP 200; container du lieu/realtime khong doi ID va log khong co severe match.
+- Rui ro con lai: Credential quan tri Tinode trung tam dang bi tu choi va certificate upstream het han; can quyen ben `103.74.122.215` de xu ly doc lap.
+- Viec tiep theo: Tinode operator cap credential admin hop le va gia han certificate tren `103.74.122.215`; sau do chay lai admin reset va bat `proxy_ssl_verify on`.
+- Commit/PR: `ad528bf`, `e2a77a1`.
+
+## 2026-08-05-04 - Chuan hoa release Tinode mirror dang chay
+
+- Thoi gian: 2026-08-05 16:24 (Asia/Saigon)
+- Loai: Van hanh | Trien khai | Realtime | Xac thuc
+- Trang thai: Hoan tat va da nghiem thu production
+- Muc tieu: Bao dam cac lenh van hanh tiep theo su dung dung release da trien khai cho luong Chatmgt username/password va Tinode Web.
+- Pham vi: Symlink release production, Chatmgt/ChatUI dang chay, verifier noi bo va public HTTPS; khong thay doi source, database, secret hay service du lieu/realtime.
+- File da thay doi: `docs/CHANGELOG.md`; tren server chi chuyen symlink `/opt/deploy/chat/current` sang release `/opt/deploy/chat/releases/e1aa969`.
+- Noi dung: Xac nhan container Chatmgt `e1aa969` va ChatUI dang chay san; chuan hoa `current` tu release cu `f58919a` sang `e1aa969` de tranh cac lenh restart ve code cu. PostgreSQL, Redis, ChatAPI va Coturn duoc giu nguyen, khong recreate.
+- Quyet dinh ky thuat: Khong rebuild hoac reset du lieu vi image da duoc kiem thu va verifier da pass; chi cap nhat con tro release bat bien sau khi doi chieu file private mode `0600`.
+- Database/API/cau hinh: Khong migration, khong doi `.env`; giu `TINODE_MIRROR_LOCAL_CREDENTIALS=true`, tenant production va relay central Tinode hien tai.
+- Kiem thu: `python scripts/verify_deployment.py --base-url http://127.0.0.1:8093` dat; verifier public voi `--base-url https://chatmgt.upgo.vn --origin https://chat.upgo.vn` dat; `/healthz` ChatUI va `/api/v1/auth/health` Chatmgt tra HTTP 200; credential basic Tinode mo dung UID; cac container du lieu/realtime khong doi ID.
+- Rui ro con lai: UAT trinh duyet voi tai khoan nhan vien that van can nguoi van hanh dang nhap ChatUI va Tinode Web bang cung username/password; cert/TTL trung tam Tinode van la hardening rieng.
+- Viec tiep theo: Hard refresh hai tai khoan, dang nhap bang username/password vua cap trong Chatmgt, doi chieu UID/nhom/lich su va nhan tin hai chieu tren `web.vichat.net`.
+- Commit/PR: Commit ghi nhan van hanh chua muc nay (xem `git log`).
+
+## 2026-08-05-03 - Dong bo dang nhap nhan vien Chatmgt voi Tinode Web
+
+- Thoi gian: 2026-08-05 16:13 (Asia/Saigon)
+- Loai: Xac thuc | API | Realtime | Tai lieu
+- Trang thai: Hoan tat code va deploy production; cho UAT trinh duyet hai tai khoan
+- Muc tieu: Khi admin tao/reset nhan vien trong Chatmgt, nhan vien dung cung
+  username/password trong ChatUI va Tinode Web; UID, nhom va lich su Tinode
+  van duoc giu nguyen.
+- Quyet dinh ky thuat: Bat `TINODE_MIRROR_LOCAL_CREDENTIALS` cho local employee.
+  Chatmgt chi luu bcrypt; ChatUI giu mat khau trong volatile tab memory de
+  renew token khi can, khong ghi vao storage/cookie/log. Tinode UID duoc kiem
+  tra truoc khi adopt/migrate; duplicate UID khac tenant bi tu choi, khong tu
+  dong bo nham. Account SSO quan tri van tach rieng.
+- Pham vi: Chatmgt auth bridge, login/reset/change/revoke/deactivate, production
+  env/compose examples, README va tai lieu architecture; khong sua message,
+  topic, presence, receipt, call hay Workspace.
+- Kiem thu: `python -m py_compile ...` dat; `python -m unittest discover -s
+  chatservice-main/tests -v` dat 105 test, 37 skip do local thieu dependency
+  runtime; `npm run test:frontend` dat 35/35; `npm run lint` khong co error,
+  chi warning legacy; `npm run build:production` dat; Compose config validation
+  va `git diff --check` dat. Docker image production dat 105 test, 14 skip do
+  image khong dong goi source frontend/infrastructure. Release
+  `/opt/deploy/chat/releases/e1aa969` da build/recreate rieng `chatmgt` va
+  `chat`; verifier production dat database, health, CORS, directory,
+  conversation, Tinode WebSocket, login/logout va cung credential basic.
+- Rui ro con lai: Provider trung tam dang tra token TTL dai; da them
+  `TINODE_CENTRAL_TOKEN_MAX_TTL` de verifier khong nham TTL local ChatAPI voi
+  TTL trung tam, nhung can ben van hanh Tinode giam TTL neu muon hardening day
+  du. Admin Tinode reset/revoke van can credential server hop le neu legacy
+  credential khong con dung. Username Chatmgt khong tuong thich Tinode bi chan
+  khi tao moi; tai khoan legacy dang dung username email can doi ten truoc khi
+  dang nhap truc tiep Tinode Web.
+- Viec con lai: UAT tren trinh duyet voi tai khoan moi: dang nhap ChatUI va
+  Tinode Web bang cung username/password, kiem tra UID/nhom/lich su; ben van
+  hanh Tinode nen giam TTL 14 ngay neu can hardening. Khong recreate
+  PostgreSQL/Redis/ChatAPI/Coturn.
+- Commit/PR: release code `e1aa969`; docs record tiep theo.
+
+## 2026-08-05-02 - Trien khai relay Tinode trung tam len production
+
+- Thoi gian: 2026-08-05 12:38 (Asia/Saigon)
+- Loai: Trien khai | Van hanh | Du lieu | Realtime
+- Trang thai: Hoan tat functional deployment, can khac phuc TTL/TLS de nghiem thu bao mat
+- Muc tieu: Chuyen ChatUI va Chatmgt production sang Tinode trung tam `web.vichat.net` ma khong recreate ChatAPI, PostgreSQL, Redis hoac Coturn.
+- Pham vi: Release `/opt/deploy/chat/releases/f58919a`, private `.env`, runtime Tinode bootstrap, proxy WSS, ChatUI, Chatmgt va mapping Tinode cua tenant `song-hong`.
+- File da thay doi: `docs/CHANGELOG.md`; source runtime production la commit `f58919a`. Private `.env`, runtime va backup chi nam tren server.
+- Noi dung: Tao archive sach SHA-256 `3fbe839f164989dd5afb78a2d2911ad3c2985f9aa9b938fc108b08b846bba240`, build image ChatUI/Chatmgt moi, gan rollback tag `rollback-before-f58919a`, cap nhat `TINODE_INTERNAL_WS_URL=ws://chat:80/v0/channels`, chuyen symlink `current` va giu `chatapi` cu cho rollback.
+- Quyet dinh ky thuat: Theo chap thuan tam thoi cua nguoi dung, Nginx giu `proxy_ssl_verify off` de upstream Tinode het han van ket noi duoc; khong sua verifier de che giau TTL, functional verifier chi bypass rieng buoc expiry.
+- Database/API/cau hinh: Tao backup Chatmgt PostgreSQL tai `/opt/deploy/chat/backups/pre-central-20260805T053143Z`; reset mapping song-hong gom 9 UID, 5 topic, xoa 91 chat-derived documents/chunks; khong migration schema.
+- Kiem thu: Compose config, build, container health, public `chat.upgo.vn`/`chatmgt.upgo.vn` health, relay env va Nginx central proxy dat; functional verifier voi duy nhat TTL check bypass dat CORS, login/logout, directory, conversations, Tinode internal/public WebSocket va publish/delete. Official verifier chua dat vi Tinode trung tam cap token khoang 14 ngay.
+- Rui ro con lai: Chung chi `web.vichat.net` da het han va `AUTH_TOKEN_EXPIRE_IN` trung tam chua nam trong cua so 60-900 giay; token/browser co the dai hon chinh sach. Can gia han cert va dat TTL <= 900 truoc khi goi la hoan tat bao mat.
+- Viec tiep theo: Hard refresh hai tai khoan nhan vien, kiem tra login, tin nhan 1-1/nhom, file, presence, receipt va reconnect; sau khi ben van hanh Tinode sua cert/TTL thi chay lai verifier chinh thuc.
+- Commit/PR: Commit ghi nhan trien khai duoc tao trong cung lan lam viec nay (xem git log).
+
+## 2026-08-05-01 - Chuyen Tinode trung tam sang web.vichat.net
+
+- Thoi gian: 2026-08-05 10:20 (Asia/Saigon)
+- Loai: Tai cau truc | Bao mat | Van hanh | Du lieu
+- Trang thai: Hoan tat code va kiem thu local, cho cau hinh trung tam va deploy
+- Muc tieu: Dua Tinode tai `web.vichat.net` thanh nguon trung tam cho token, noi dung tin nhan, tep va realtime cua ChatUI; giu nguyen tai khoan, tenant, nhom va metadata Chatmgt, chap nhan reset lich su Tinode cu.
+- Pham vi: Nginx ChatUI proxy, Chatmgt Tinode bridge, ChatUI ingestion, script reset mapping va tai lieu trien khai; khong thay doi luong dang nhap, directory, phan quyen tenant hay Workspace ngoai viec loai bo ban sao noi dung chat.
+- File da thay doi: `README.md`, `chatservice-main/README.md`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/controllers/api_chatbot.py`, `chatservice-main/application/services/auth_service.py`, `chatservice-main/application/services/enterprise_workspace_service.py`, `chatservice-main/scripts/verify_deployment.py`, `chatservice-main/scripts/switch_tinode_central.py`, `chatservice-main/tests/test_tinode_bridge_service.py`, `chatservice-main/tests/test_tinode_central_switch.py`, `docs/chat-backend-architecture.md`, `infrastructure/production/.env.example`, `infrastructure/production/README.md`, `infrastructure/production/compose.yaml`, `infrastructure/production/nginx.conf`, `infrastructure/production/start.sh`, `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/chatbot/services/chatbotService.js`, `src/features/workspace/components/EnterpriseWorkspace.jsx` va bundle `dist/`.
+- Noi dung: Ket noi noi bo Chatmgt va WebSocket public cua ChatUI se di qua Nginx toi `web.vichat.net`; Chatmgt uu tien dang nhap credential xac dinh va chi dung admin reset khi credential bi tu choi; tin nhan/tep Tinode khong con tu dong sao chep vao kho tri thuc Chatmgt; script rieng reset UID/topic va xoa du lieu chat-derived sau khi da backup.
+- Quyet dinh ky thuat: Giu `chatapi` cu chay de rollback nhung khong con la endpoint duoc su dung. Proxy tat verify TLS upstream vi chung chi dich vu dich het han; SNI/Host van co dinh `web.vichat.net`. Khong reset mapping truoc khi proxy va provisioning moi duoc kiem tra.
+- Database/API/cau hinh: Doi `TINODE_INTERNAL_WS_URL` sang `ws://chat:80/v0/channels`; them lenh mot lan de dat `tinode_uid`/`tinode_topic` ve NULL va xoa document/chunk co `CHAT_*`; khong migration schema.
+- Kiem thu: `npm run test:frontend` dat 34/34; `npm run lint` dat, chi con warning legacy trong `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `python -m unittest discover -s chatservice-main/tests -v` dat 97 test, 30 skip do dependency runtime chi co trong image; test central switch dat 5/5; `python -m py_compile` dat; Compose config dat voi secret tam khong nhat vao source; DNS/handshake/provision/delete probe toi `web.vichat.net` dat.
+- Rui ro con lai: Chung chi public cua `web.vichat.net` van het han; proxy la bien phap tam thoi. Probe cho thay Tinode trung tam cap token khoang 14 ngay, chua phu hop cua so 60-900 giay hien tai; can ben van hanh Tinode dat `AUTH_TOKEN_EXPIRE_IN` <= 900 va renew certificate truoc khi nghiem thu bao mat. Chua backup/reset/deploy production.
+- Viec tiep theo: Cap nhat cau hinh Tinode trung tam, commit/push, backup production, kiem tra proxy/provisioning, reset mapping va deploy rieng ChatUI/Chatmgt; chi reset sau khi TTL va cert dat.
+- Commit/PR: `7090d34`.
+
+## 2026-08-04-05 - Trien khai Enterprise Workspace len production
+
+- Thoi gian: 2026-08-04 21:15 (Asia/Saigon)
+- Loai: Trien khai | Van hanh | Du lieu | Tinh nang
+- Trang thai: Hoan tat trien khai production, cho UAT hai tai khoan nhan vien that
+- Muc tieu: Dua Enterprise Workspace theo tenant cua commit `9f91e17` len `chat.upgo.vn`/`chatmgt.upgo.vn` voi backup va rollback day du, khong lam gian doan hoac recreate cac service Tinode/du lieu dang on dinh.
+- Pham vi: Release bat bien `/opt/deploy/chat/releases/9f91e17`, migration Chatmgt PostgreSQL `20260804_10`, image/container `chatmgt` va `chat`; khong recreate `chatapi`, hai PostgreSQL, Redis hoac Coturn.
+- File da thay doi: `docs/CHANGELOG.md`; source production la commit `9f91e17`. Private `.env`, Tinode bootstrap va backup chi nam tren server, khong dua vao Git.
+- Noi dung: Xac minh backup tong the cu tai `/opt/deploy/chat/backups/pre-enterprise-suite-20260804T132212Z`; tao them backup sat migration tai `/opt/deploy/chat/backups/before-9f91e17-20260804T140855Z` gom Chatmgt dump, `.env`, checksum va container/image ID mode `0600`; gan tag rollback cho hai image cu. Build image moi, chay test trong image, nang Alembic, recreate rieng Chatmgt/ChatUI, nghiem thu API Workspace va chuyen symlink `current` sang release moi sau khi tat ca gate dat.
+- Quyet dinh ky thuat: Migration chi duoc chay sau khi dump doc duoc bang `pg_restore` PostgreSQL 16; symlink chi doi sau verifier, tenant isolation, Workspace smoke test, public bundle va health check. Tinode tiep tuc giu message/presence/receipt/realtime; Workspace chi them business metadata theo tenant.
+- Database/API/cau hinh: Alembic tu `20260803_09` len `20260804_10 (head)`; them ba bang `enterprise_item`, `enterprise_item_participant`, `enterprise_activity` va API `/api/v1/workspace/*`. Khong them/chinh secret, domain, port hay bien moi truong production.
+- Kiem thu: Image production chay `python -m unittest discover -s tests -v` dat 90 test, 11 skip frontend-only; `verify_deployment.py` dat database/credential, health, CORS, directory, conversation, Tinode WebSocket, login/logout; `verify_tenant_isolation.py` dat user/conversation/friend/participant hai tenant. Workspace smoke test dat create/search/action/archive, tenant isolation va admin-only guard; public `App-KlOtrVEZ.js` co `/api/v1/workspace/items`; Nginx syntax, public health ChatUI/Chatmgt va container integrity deu dat, log khong co panic/fatal/traceback/critical/emerg.
+- Rui ro con lai: Chua UAT truc quan bang hai nhan vien that cho responsive UI, polling 15 giay, phan quyen approval/announcement va luong `Giao viec tu tin nhan`; integration registry moi luu metadata an toan, chua tu dong goi he thong ngoai.
+- Viec tiep theo: Hai user hard refresh, kiem tra task/ticket/wiki/event, admin publish announcement/integration, approval dung vai tro, message-to-task va regression tin nhan 1-1/nhom, presence, receipt, notification; lap lai bang tenant thu hai neu dua vao nghiem thu chinh thuc.
+- Commit/PR: Tinh nang `9f91e17`; commit ghi nhan trien khai duoc tao trong cung lan lam viec nay.
+
+## 2026-08-04-04 - Bo sung Enterprise Workspace theo tenant
+
+- Thoi gian: 2026-08-04 16:00 (Asia/Saigon)
+- Loai: Dang thuc hien
+- Trang thai: Hoan tat code va kiem thu local, cho commit/push/trien khai production
+- Muc tieu: Bo sung cac module giao viec, thong bao bat buoc, phe duyet, ticket, wiki, lich, tim kiem va audit cho ChatUI ma khong thay doi luong Tinode/chat dang on dinh.
+- Pham vi: Chatmgt metadata/API, migration PostgreSQL, Enterprise Workspace ChatUI, phan quyen tenant va tai lieu; khong doc/ghi noi dung tin nhan Tinode.
+- File da thay doi: `chatservice-main/application/models/models.py`, `chatservice-main/application/services/enterprise_workspace_service.py`, `chatservice-main/application/controllers/api_enterprise_workspace.py`, `chatservice-main/application/controllers/__init__.py`, `chatservice-main/migrations/010_enterprise_workspace.sql`, `chatservice-main/alembic/versions/20260804_10_enterprise_workspace.py`, `chatservice-main/scripts/verify_deployment.py`, `chatservice-main/tests/test_enterprise_workspace.py`, `src/features/workspace/components/EnterpriseWorkspace.jsx`, `src/features/workspace/components/enterpriseWorkspace.css`, `src/features/workspace/services/enterpriseWorkspaceService.js`, `src/features/workspace/services/enterpriseWorkspaceService.test.js`, `src/app/App.jsx`, `package.json`, `README.md`, `docs/chat-backend-architecture.md`, `infrastructure/production/README.md` va file nay.
+- Noi dung: Them ba bang enterprise rieng voi participant/activity, API CRUD/search/stats/meta/action co tenant guard, allow-list property va audit; ChatUI co Workspace tong quan, task, announcement, approval, ticket, wiki, event, integration registry, tim kiem, activity timeline, polling 15 giay va nut giao viec tu tin nhan. Khong sua Tinode client, topic, message, presence, receipt, notification hay composer.
+- Quyet dinh ky thuat: Tinode tiep tuc la nguon chuan cho message, presence, receipt va realtime; Workspace chi luu business metadata. Integration registry khong nhan/luu API key, token hay password. Message-to-task chi gui snapshot bounded do nguoi dung chon va message reference.
+- Database/API/cau hinh: Them Alembic head `20260804_10` va SQL migration; verifier bat buoc ba bang Workspace va unique participant index; khong them secret/domain/env moi.
+- Kiem thu: `python -m unittest discover -s tests -v` dat 90 test, 28 skip do dependency runtime chi co trong image; `python -m unittest tests.test_enterprise_workspace -v` dat 11/11; `python -m py_compile ...` dat; `npm run test:frontend` dat 34/34; `npm run lint` khong co error, chi warning legacy; `VITE_CHAT_MODE=internal npm run build:production` dat; local Vite HTTP root/source tra 200. Browser skill khong khoi tao duoc do moi truong kernel asset thieu, nen chua co screenshot UAT.
+- Rui ro con lai: Chua chay migration/verifier tren PostgreSQL production va chua UAT hai tai khoan that cho Workspace; polling phu thuoc session Chatmgt va co the tre toi 15 giay. Integration registry moi la metadata, chua tu dong goi dich vu ngoai.
+- Viec tiep theo: Review diff, commit/push snapshot sach, backup va upgrade Alembic tren release moi, deploy rieng Chatmgt/ChatUI, chay verifier va UAT tenant/role/action/realtime regression.
 - Commit/PR: Chua tao.
 
 ## 2026-08-04-03 - Trien khai an cuoc goi va chatbot webhook len production

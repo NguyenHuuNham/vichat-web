@@ -159,14 +159,19 @@ services:
       CHAT_SMTP_FROM: ${CHAT_SMTP_FROM:-}
       CHAT_SMTP_STARTTLS: ${CHAT_SMTP_STARTTLS:-true}
       CHAT_SMTP_SSL: ${CHAT_SMTP_SSL:-false}
-      TINODE_INTERNAL_WS_URL: ${TINODE_INTERNAL_WS_URL:-ws://chatapi:6060/v0/channels}
+      # Chatmgt reaches the central Tinode through the ChatUI Nginx relay.
+      # This keeps the browser and server-side bridge on one authoritative
+      # Tinode endpoint while the old ChatAPI remains available for rollback.
+      TINODE_INTERNAL_WS_URL: ${TINODE_INTERNAL_WS_URL:-ws://chat:80/v0/channels}
       TINODE_API_KEY: ${TINODE_API_KEY:?TINODE_API_KEY is required}
       TINODE_AUTH_TIMEOUT: ${TINODE_AUTH_TIMEOUT:-10}
+      TINODE_CENTRAL_TOKEN_MAX_TTL: ${TINODE_CENTRAL_TOKEN_MAX_TTL:-900}
       TINODE_ADMIN_USERNAME: ${TINODE_ADMIN_USERNAME:-}
       TINODE_ADMIN_PASSWORD: ${TINODE_ADMIN_PASSWORD:-}
       TINODE_SSO_SECRET: ${TINODE_SSO_SECRET:?TINODE_SSO_SECRET is required}
       CHAT_ACCOUNT_SSO_ENABLED: ${CHAT_ACCOUNT_SSO_ENABLED:-true}
       ACCOUNT_SSO_DIRECTORY_SYNC_TTL: ${ACCOUNT_SSO_DIRECTORY_SYNC_TTL:-10}
+      TINODE_MIRROR_LOCAL_CREDENTIALS: ${TINODE_MIRROR_LOCAL_CREDENTIALS:-true}
       CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED: ${CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED:-true}
       CHATMGT_BOOTSTRAP_ADMIN_FULL_NAME: ${CHATMGT_BOOTSTRAP_ADMIN_FULL_NAME:-VICHAT Administrator}
       CHATMGT_BOOTSTRAP_ADMIN_EMAIL: ${CHATMGT_BOOTSTRAP_ADMIN_EMAIL:-admin@chat.upgo.vn}
@@ -222,7 +227,6 @@ services:
     restart: unless-stopped
     depends_on:
       - chatmgt
-      - chatapi
     ports:
       - "${PUBLIC_HTTP_PORT:-80}:80"
     healthcheck:

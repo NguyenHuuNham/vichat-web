@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Login from '../features/auth/components/Login';
 import KnowledgeManager from '../features/chatbot/components/KnowledgeManager';
+import EnterpriseWorkspace from '../features/workspace/components/EnterpriseWorkspace';
 import CallOverlay from '../features/chat/components/CallOverlay';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation } from '../features/chat/services/tinodeClient';
 import { chatManagementService } from '../features/chat/services/chatManagementService';
@@ -35,7 +36,7 @@ import {
 } from '../features/contacts/services/accountDirectory';
 import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
-import { CHATBOT_ACCOUNT, EXTERNAL_CHAT_ONLY, learnFromChatFile, learnFromChatMessage, loadChatbotMessages, loadChatbotMessagesFromServer, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
+import { CHATBOT_ACCOUNT, EXTERNAL_CHAT_ONLY, loadChatbotMessages, loadChatbotMessagesFromServer, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
 
 const CALLS_ENABLED = resolveCallsEnabled(import.meta.env.VITE_CALLS_ENABLED);
 
@@ -731,6 +732,7 @@ function App() {
   const [isAddingMembers, setIsAddingMembers] = useState(false);
   const [removingMemberId, setRemovingMemberId] = useState('');
   const [workspacePanel, setWorkspacePanel] = useState(null);
+  const [enterpriseTaskSeed, setEnterpriseTaskSeed] = useState(null);
   const [workspaceQuery, setWorkspaceQuery] = useState('');
   const [workspaceResults, setWorkspaceResults] = useState([]);
   const [isWorkspaceLoading, setIsWorkspaceLoading] = useState(false);
@@ -783,7 +785,6 @@ function App() {
   const createGroupRequestRef = useRef(false);
   const addMembersRequestRef = useRef(false);
   const tinodeSessionRequestRef = useRef(null);
-  const learnedKnowledgeKeysRef = useRef(new Set());
   const conversationsRef = useRef(conversations);
   const currentUserRef = useRef(currentUser);
   const directoryAccountsRef = useRef(directoryAccounts);
@@ -1203,25 +1204,6 @@ function App() {
     }
   };
 
-  const queueMessageForKnowledge = useCallback((room, message, originalFile = null) => {
-    if (!room || room.isChatbot || !message?.id || message.recalled || !currentUser) return;
-    const key = `${room.managementId || room.id}:${message.id}`;
-    if (learnedKnowledgeKeysRef.current.has(key)) return;
-    learnedKnowledgeKeysRef.current.add(key);
-    if (message.type === 'text' && message.text) {
-      learnFromChatMessage({ room, message, user: currentUser })
-        .then(result => { if (!result) learnedKnowledgeKeysRef.current.delete(key); });
-      return;
-    }
-    if (message.type === 'file' && (originalFile || message.file?.url)) {
-      const fileRequest = originalFile ? Promise.resolve(originalFile) : tinodeClient.fetchFile(message.file);
-      fileRequest
-        .then(file => learnFromChatFile({ room, message, file, user: currentUser }))
-        .then(result => { if (!result) learnedKnowledgeKeysRef.current.delete(key); })
-        .catch(() => learnedKnowledgeKeysRef.current.delete(key));
-    }
-  }, [currentUser]);
-
   const showIncomingNotification = useCallback((conversation, message, stateId) => {
     if (!message || message.senderId === viewerId || typeof window === 'undefined') return;
     const shouldAlert = document.visibilityState === 'hidden' || currentChatIdRef.current !== stateId;
@@ -1464,8 +1446,6 @@ function App() {
           if (currentChatIdRef.current === stateId) setCurrentChatId(CHATBOT_ACCOUNT.id);
           return;
         }
-        (conversation.messages || []).forEach(message => queueMessageForKnowledge(conversation, message));
-
         // Establish a baseline during initial history sync. Only later sequence
         // numbers are live messages and should trigger desktop notifications.
         const latestIncoming = (conversation.messages || [])
@@ -1509,7 +1489,7 @@ function App() {
         return;
       }
     });
-  }, [isLoggedIn, chatMode, managementConversationSession, currentUser, directoryAccounts, applyPresenceSnapshot, clearActiveCall, queueMessageForKnowledge, refreshManagementConversations, showIncomingNotification, viewerId]);
+  }, [isLoggedIn, chatMode, managementConversationSession, currentUser, directoryAccounts, applyPresenceSnapshot, clearActiveCall, refreshManagementConversations, showIncomingNotification, viewerId]);
 
   // Keep every known Tinode topic subscribed after login. This is the piece
   // that makes unread badges and notifications realtime before a chat is opened.
@@ -1554,13 +1534,13 @@ function App() {
     setDirectoryAccounts([]);
     avatarOverridesRef.current.clear();
     setWorkspaceResults([]);
+    setEnterpriseTaskSeed(null);
     setGroupSearchResults([]);
     conversationsRef.current = initialRooms;
     setConversations(initialRooms);
     setCurrentChatId(CHATBOT_ACCOUNT.id);
     deletedConversationIdsRef.current.clear();
     notificationBaselineRef.current.clear();
-    learnedKnowledgeKeysRef.current.clear();
     tinodeSessionRequestRef.current = null;
     if (contactsSyncTimerRef.current) clearTimeout(contactsSyncTimerRef.current);
     contactsSyncTimerRef.current = null;
@@ -1727,6 +1707,7 @@ function App() {
     setFriendRequestNote('');
     setFriendNotice('');
     setWorkspacePanel(null);
+    setEnterpriseTaskSeed(null);
     setNotificationMuteDialog(null);
     setIsUpdatingNotificationMute(false);
     setNotificationClock(Date.now());
@@ -2631,8 +2612,8 @@ function App() {
       setChatError('Ảnh nhóm phải là file hình ảnh.');
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      setChatError('Ảnh nhóm không được vượt quá 10 MB.');
+    if (file.size > 8 * 1024 * 1024) {
+      setChatError('Ảnh nhóm không được vượt quá 8 MB.');
       return;
     }
     setChatError('');
@@ -3028,7 +3009,6 @@ function App() {
             };
           });
           if (previewUrl) URL.revokeObjectURL(previewUrl);
-          queueMessageForKnowledge(room, confirmedMessage, uploadFile);
         })
         .catch(err => {
           if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -3205,6 +3185,24 @@ function App() {
     if (!message) return;
     const isOwnMessage = message.senderId === viewerId || message.sender === 'outgoing';
     try {
+      if (action === 'create-task') {
+        const conversationId = activeChat.managementId || activeChat.id;
+        if (!isManagementConversationId(conversationId)) {
+          setChatError('Chỉ có thể giao việc từ cuộc trò chuyện đã được Chatmgt quản lý.');
+          return;
+        }
+        setEnterpriseTaskSeed({
+          title: `Theo dõi: ${activeChat.name || 'cuộc trò chuyện'}`,
+          // The message body remains exclusively in Tinode. Workspace keeps
+          // only a reference so the user can reopen the source conversation.
+          preview: '',
+          conversationName: activeChat.name || '',
+          conversationId,
+          messageRef: String(message.id || message.seq || ''),
+        });
+        openWorkspacePanel('enterprise');
+        return;
+      }
       if (action === 'copy') {
         await copyTextToClipboard(message.text || message.file?.name || '');
         return;
@@ -3419,7 +3417,6 @@ function App() {
               },
             };
           });
-          queueMessageForKnowledge(conversations[currentChatId], newMsg);
         })
         .catch(err => {
           setConversations(previous => {
@@ -3627,6 +3624,10 @@ function App() {
           <a href="#" className={`nav-item ${workspacePanel === 'files' ? 'active' : ''}`} data-tooltip="File dùng chung" onClick={(e) => { e.preventDefault(); openWorkspacePanel('files'); }}>
             <i className="fa-solid fa-folder-open"></i>
             <span>File dùng chung</span>
+          </a>
+          <a href="#" className={`nav-item ${workspacePanel === 'enterprise' ? 'active' : ''}`} data-tooltip="Workspace doanh nghiệp" onClick={(e) => { e.preventDefault(); openWorkspacePanel('enterprise'); }}>
+            <i className="fa-solid fa-briefcase"></i>
+            <span>Workspace</span>
           </a>
           {isKnowledgeAdmin && <a href="#" className={`nav-item ${workspacePanel === 'knowledge' ? 'active' : ''}`} data-tooltip="Tri thức AI" onClick={(e) => { e.preventDefault(); openWorkspacePanel('knowledge'); }}>
             <i className="fa-solid fa-brain"></i>
@@ -3953,6 +3954,7 @@ function App() {
                 {!menuMessage.recalled && <button type="button" onClick={() => handleMessageAction('reply', menuMessage)}><i className="fa-solid fa-reply"></i>Trả lời tin nhắn</button>}
                 <button type="button" onClick={() => handleMessageAction('copy', menuMessage)}><i className="fa-regular fa-copy"></i>Copy tin nhắn</button>
                 <button type="button" onClick={() => handleMessageAction('mark', menuMessage)}><i className={`fa-${marked ? 'solid' : 'regular'} fa-star`}></i>{marked ? 'Bỏ đánh dấu' : 'Đánh dấu tin nhắn'}</button>
+                {!activeChat.isChatbot && isManagementConversationId(activeChat.managementId || activeChat.id) && <button type="button" onClick={() => handleMessageAction('create-task', menuMessage)}><i className="fa-solid fa-list-check"></i>Giao việc từ tin nhắn</button>}
                 <button type="button" onClick={() => handleMessageAction('detail', menuMessage)}><i className="fa-solid fa-circle-info"></i>Xem chi tiết</button>
                 <button type="button" onClick={() => handleMessageAction('share', menuMessage)}><i className="fa-solid fa-share"></i>Chia sẻ tin nhắn</button>
                 <div className="message-reaction-row" aria-label="Thêm biểu cảm">
@@ -4183,10 +4185,10 @@ function App() {
         <div className="workspace-overlay" role="presentation" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setWorkspacePanel(null);
         }}>
-          <section className="workspace-panel" role="dialog" aria-modal="true">
+          <section className={`workspace-panel ${workspacePanel === 'enterprise' ? 'enterprise-shell-panel' : ''}`} role="dialog" aria-modal="true">
             <div className="workspace-panel-header">
               <div>
-                <h2>{workspacePanel === 'profile' ? 'Hồ sơ cá nhân' : workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'knowledge' ? 'Tri thức AI' : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : 'Cài đặt'}</h2>
+                <h2>{workspacePanel === 'profile' ? 'Hồ sơ cá nhân' : workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'enterprise' ? 'Enterprise Workspace' : workspacePanel === 'knowledge' ? 'Tri thức AI' : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : 'Cài đặt'}</h2>
               </div>
               <div className="workspace-panel-header-actions">
                 {workspacePanel === 'profile' && (
@@ -4198,6 +4200,16 @@ function App() {
                 <button type="button" className="btn-close-detail" onClick={() => setWorkspacePanel(null)} aria-label="Đóng"><i className="fa-solid fa-xmark"></i></button>
               </div>
             </div>
+
+            {workspacePanel === 'enterprise' && (
+              <EnterpriseWorkspace
+                user={currentUser}
+                accounts={directoryAccounts}
+                taskSeed={enterpriseTaskSeed}
+                onTaskSeedConsumed={() => setEnterpriseTaskSeed(null)}
+                onError={setChatError}
+              />
+            )}
 
             {workspacePanel === 'profile' && (
               <div className="profile-panel">

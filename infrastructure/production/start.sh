@@ -212,6 +212,12 @@ if ! [[ "$tinode_token_expire" =~ ^[0-9]+$ ]] || (( tinode_token_expire < 60 || 
   exit 1
 fi
 
+tinode_internal_ws_url="$(env_value TINODE_INTERNAL_WS_URL)"
+if [[ "$tinode_internal_ws_url" != "ws://chat:80/v0/channels" ]]; then
+  echo "TINODE_INTERNAL_WS_URL must be ws://chat:80/v0/channels for the central web.vichat.net relay." >&2
+  exit 1
+fi
+
 allow_insecure="$(env_value ALLOW_INSECURE_HTTP)"
 if [[ "${allow_insecure,,}" != "true" ]]; then
   public_secure="$(env_value PUBLIC_SECURE)"

@@ -1,8 +1,9 @@
 # Production deployment
 
-This stack deploys ChatUI, Chatmgt, Tinode/ChatAPI, two PostgreSQL databases,
-Redis, and the container Nginx. Production is ready only after all four stages
-pass:
+This stack deploys ChatUI, Chatmgt, a rollback Tinode/ChatAPI, two PostgreSQL
+databases, Redis, and the container Nginx. The authoritative Tinode is
+`web.vichat.net`, reached by both ChatUI and Chatmgt through the ChatUI Nginx
+relay. Production is ready only after all four stages pass:
 
 1. Infrastructure, Alembic, domains, HTTPS, WSS, CORS, backup, and rollback.
 2. UpGO Account employee SSO/login/logout, tenant identity, Tinode projection, and revoked-session rejection; the same Account SSO also protects tenant administration.
@@ -47,6 +48,57 @@ The checked-in host configuration uses:
 
 Install `nginx-host-chat.conf` and `nginx-host-chatmgt.conf` on the reverse
 proxy, obtain TLS certificates, run `sudo nginx -t`, then reload Nginx.
+
+## One-time central Tinode switch
+
+The central endpoint currently presents an expired TLS certificate. Browsers
+must not connect to it directly. The container Nginx keeps the valid public
+`chat.upgo.vn` certificate and proxies `/v0/` plus `/tinode-media/` to
+`https://web.vichat.net` with SNI/Host pinned to that hostname. Upstream verify
+is temporarily disabled only for this relay and must be re-enabled after the
+central certificate is renewed.
+
+Before the switch, update the private mode-`0600` `.env` without printing its
+secrets:
+
+```dotenv
+TINODE_INTERNAL_WS_URL=ws://chat:80/v0/channels
+```
+
+Then follow this order. Do not reset mappings before the new proxy and account
+provisioning work:
+
+1. Back up Chatmgt PostgreSQL and the old Tinode PostgreSQL with `pg_dump -Fc`;
+   copy `.env`, runtime bootstrap files and image IDs into the same protected
+   rollback directory.
+2. Build the new `chat` and `chatmgt` images, start `chat`, and verify a Tinode
+   hello plus a temporary new account through `ws://chat:80/v0/channels`.
+3. Preview the destructive reset:
+
+   ```bash
+   docker compose --env-file infrastructure/production/.env \
+     -f infrastructure/production/compose.yaml run --rm --no-deps chatmgt \
+     python scripts/switch_tinode_central.py
+   ```
+
+4. After the counts and backup are verified, apply it once:
+
+   ```bash
+   docker compose --env-file infrastructure/production/.env \
+     -f infrastructure/production/compose.yaml run --rm --no-deps chatmgt \
+     python scripts/switch_tinode_central.py --apply --confirm web.vichat.net
+   ```
+
+The command sets only `management_account.tinode_uid` and
+`conversation.tinode_topic` to `NULL`, deletes automatic `CHAT_*` knowledge
+documents/chunks, and removes stored message previews from Workspace tasks. It
+does not change account IDs, passwords, tenant IDs, conversation IDs, group
+membership, Workspace ownership or chatbot history. New Tinode users/topics
+are created lazily on the central server after login/open.
+
+Keep the old `chatapi` and Tinode PostgreSQL running during acceptance for a
+fast rollback, but no ChatUI or Chatmgt request should reach them after the
+switch.
 
 ## Voice and video calls
 
@@ -161,6 +213,7 @@ CHAT_ACCOUNT_SSO_ENABLED=true
 CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true
 VITE_CHAT_AUTH_MODE=account_sso
 CHATMGT_DEFAULT_TENANT=tn6913580727957397
+TINODE_CENTRAL_TOKEN_MAX_TTL=900
 TINODE_SSO_SECRET=
 ```
 
@@ -176,6 +229,9 @@ the employee uses **Đăng nhập bằng UpGO Account**; the browser redirects t
 Account, returns to ChatUI, calls `/api/v1/auth/sso`, then receives a short-lived
 Tinode token from `/api/v1/auth/tinode-token`. No Account password or Tinode
 secret is sent to the browser.
+`TINODE_CENTRAL_TOKEN_MAX_TTL` is the acceptance ceiling for the expiry
+returned by the central Tinode provider. Keep it equal to the provider policy;
+the local rollback ChatAPI default remains separate.
 
 Remove an employee from the tenant in UpGO Account and wait for the directory
 sync interval. Chatmgt must mark the projection inactive and the next Chatmgt
@@ -242,9 +298,11 @@ from the same tenant in separate browser profiles:
 4. Create a group, add and remove a member, let one member leave, and let the
    owner leave. Refresh every browser and confirm Chatmgt participants and
    Tinode subscribers stay aligned and the replacement owner can manage members.
-5. Stop only `chatapi` temporarily. ChatUI must keep directory/conversation data
+5. Stop only the central relay path temporarily (for example, recreate `chat`
+   without changing Chatmgt/PostgreSQL). ChatUI must keep directory/conversation data
    in **Dữ liệu Chatmgt** mode with realtime controls disabled, not freeze or
-   write demo messages. Start `chatapi` and confirm reconnect uses a fresh token.
+   write demo messages. Restore `chat` and confirm reconnect uses a fresh token;
+   the old local `chatapi` is not this test path.
 6. Repeat with a second tenant and attempt a copied topic ID from the first
    tenant. Binding/access must be rejected.
 7. Log out and confirm ChatUI disconnects Tinode, clears local state, revokes the
@@ -253,6 +311,29 @@ from the same tenant in separate browser profiles:
 The automated verifier checks configuration and management isolation but cannot
 fabricate a real Account cookie. The two-user/two-tenant browser checks are
 therefore mandatory before Step 4 is marked complete.
+
+## Enterprise Workspace acceptance test
+
+Revision `20260804_10` creates the Workspace item, participant and activity
+tables. The production verifier now rejects a deployment when those tables or
+the active participant uniqueness index are missing. After Alembic and before
+switching the `current` release symlink:
+
+1. Sign in as a normal employee and create a task, ticket, wiki draft and event;
+   refresh and confirm they remain visible only in the configured tenant.
+2. Assign another employee, apply task/ticket/RSVP actions from that account and
+   confirm the activity timeline updates within the 15-second refresh window.
+3. Create an approval with an approver; a watcher or unrelated employee must not
+   approve or reject it.
+4. Sign in as a tenant administrator, publish a mandatory announcement and
+   create an integration registry entry. A normal employee must receive `403`
+   for both mutations. Never enter an API key or token in the registry.
+5. Use **Giao việc từ tin nhắn** on a managed conversation and confirm only the
+   conversation/name and Tinode message reference become task metadata; ordinary Tinode
+   messaging, presence, receipts, notifications and composer focus remain
+   unchanged.
+6. Repeat list/search/detail/action calls with a second tenant. No item,
+   participant, activity or aggregate count from the first tenant may appear.
 
 ## Rollback
 

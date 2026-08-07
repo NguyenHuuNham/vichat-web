@@ -47,8 +47,16 @@ from application.services.auth_service import (
     send_password_reset_email,
     set_auth_cookie,
     tinode_add_topic_members,
+    tinode_admin_reset_password,
+    tinode_auth_expired,
+    tinode_auth_from_request,
+    tinode_disabled_password,
+    tinode_mirror_enabled,
+    tinode_mirror_login,
     tinode_remove_topic_member,
+    tinode_sso_password,
     tinode_sso_login,
+    tinode_username_compatible,
     tinode_verify_topic_access,
     token_from_request,
     verify_password,
@@ -77,6 +85,13 @@ def _admin_account_sso_enabled():
 
 def _employee_account_sso_enabled():
     return bool(app.config.get("CHAT_ACCOUNT_SSO_ENABLED", False))
+
+
+def _local_tinode_mirror_enabled():
+    return bool(
+        tinode_mirror_enabled()
+        and not _employee_account_sso_enabled()
+    )
 
 
 def _public_tenant(tenant):
@@ -479,6 +494,94 @@ def _repair_unprovisioned_tinode_username(account, identity):
     return expected_username
 
 
+async def _local_tinode_login(account, password):
+    identity = _tinode_account_identity(account)
+    if not _local_tinode_mirror_enabled():
+        return await tinode_sso_login(
+            identity,
+            account.tinode_username,
+            account.tinode_uid,
+        )
+    legacy_username = account.tinode_username or account.username
+    legacy_password = tinode_sso_password(identity, legacy_username)
+    disabled_password = tinode_disabled_password(
+        account.tenant_id,
+        account.id,
+        legacy_username,
+    )
+    try:
+        return await tinode_mirror_login(
+            account.username,
+            password,
+            account.full_name or account.username,
+            tinode_uid=account.tinode_uid,
+            legacy_username=legacy_username,
+            legacy_password=legacy_password,
+            recovery_passwords=[disabled_password],
+        )
+    except AuthError as error:
+        # Keep existing email-style accounts usable while they are migrated to
+        # a Tinode-compatible short username by an administrator.
+        if error.status_code == 400 and "cannot be used as a Tinode login" in str(error):
+            return await tinode_sso_login(
+                identity,
+                account.tinode_username,
+                account.tinode_uid,
+            )
+        raise
+
+
+async def _local_tinode_password_reset(account, new_password, current_password=None):
+    if not _local_tinode_mirror_enabled():
+        return None
+    identity = _tinode_account_identity(account)
+    legacy_username = account.tinode_username or account.username
+    legacy_password = tinode_sso_password(identity, legacy_username)
+    disabled_password = tinode_disabled_password(
+        account.tenant_id,
+        account.id,
+        legacy_username,
+    )
+    try:
+        return await tinode_mirror_login(
+            account.username,
+            new_password,
+            account.full_name or account.username,
+            tinode_uid=account.tinode_uid,
+            legacy_username=legacy_username,
+            legacy_password=legacy_password,
+            recovery_passwords=[current_password, disabled_password],
+        )
+    except AuthError as error:
+        if error.status_code == 400 and "cannot be used as a Tinode login" in str(error):
+            return None
+        raise
+
+
+async def _disable_local_tinode_login(account):
+    if not _local_tinode_mirror_enabled() or not account.tinode_uid:
+        return None
+    tinode_username = (
+        account.username
+        if tinode_username_compatible(account.username)
+        else account.tinode_username
+    )
+    disabled_password = tinode_disabled_password(
+        account.tenant_id,
+        account.id,
+        tinode_username,
+    )
+    await tinode_admin_reset_password(
+        tinode_username,
+        account.tinode_uid,
+        disabled_password,
+    )
+    return {
+        "username": tinode_username,
+        "uid": account.tinode_uid,
+    }
+
+
 async def _ensure_tinode_account(account):
     if account.tinode_uid:
         return str(account.tinode_uid)
@@ -487,7 +590,6 @@ async def _ensure_tinode_account(account):
     tinode_auth = await tinode_sso_login(
         identity,
         account.tinode_username,
-        ensure_credential=False,
     )
     tinode_uid = str(tinode_auth.get("uid") or "").strip()
     if not tinode_uid:
@@ -799,20 +901,50 @@ async def _password_login(request, session_scope=CHAT_SESSION_SCOPE):
         clear_login_failures(tenant_id, identity, ip_address)
         account.last_login_at = int(time.time())
         account.updated_at = int(time.time())
+        tinode_auth = (
+            await _local_tinode_login(account, password)
+            if session_scope == CHAT_SESSION_SCOPE
+            else None
+        )
+        if tinode_auth:
+            account.tinode_username = str(tinode_auth.get("username") or account.username)
+            account.tinode_uid = tinode_auth.get("uid") or account.tinode_uid
         db.session.commit()
         token = issue_access_token(
             account,
             session_scope=session_scope,
+            tinode_auth=tinode_auth if session_scope == CHAT_SESSION_SCOPE else None,
         )
         response_payload = {
             "user": _public_account(account, tenant),
             "tenant": _public_tenant(tenant),
             "tenant_id": account.tenant_id,
-            "connection": "management",
+            "connection": "tinode" if tinode_auth else "management",
         }
+        if tinode_auth:
+            response_payload["tinode_auth"] = {
+                "username": account.tinode_username,
+                "uid": account.tinode_uid,
+                "token": tinode_auth.get("token"),
+                "expires": tinode_auth.get("expires"),
+            }
         response = json(response_payload)
         _audit(request, "AUTH_LOGIN", True, tenant_id=tenant_id, user_id=str(account.id))
         return set_auth_cookie(response, token, request)
+    except AuthError as error:
+        db.session.rollback()
+        _audit(
+            request,
+            "AUTH_LOGIN_TINODE",
+            False,
+            tenant_id=tenant_id,
+            user_id=str(account.id),
+            properties={"status_code": error.status_code},
+        )
+        return json({
+            "error_code": "TINODE_AUTH_FAILED",
+            "error_message": str(error),
+        }, status=error.status_code)
     except Exception as error:
         db.session.rollback()
         logger.exception("Management login failed after account verification: %s", error)
@@ -962,28 +1094,74 @@ async def management_tinode_token(request):
     if account is None:
         return _auth_error()
     try:
+        refreshed_session = False
         if current_user.get("auth_method") == "account_sso":
             await _validated_account_identity(request, account)
-        identity = _tinode_account_identity(account)
-        _repair_unprovisioned_tinode_username(account, identity)
-        tinode_auth = await tinode_sso_login(
-            identity,
-            account.tinode_username,
-            account.tinode_uid,
-            ensure_credential=False,
-        )
-        account.tinode_uid = tinode_auth.get("uid") or account.tinode_uid
-        account.updated_at = int(time.time())
-        db.session.commit()
-        return json({
+        if _local_tinode_mirror_enabled() and current_user.get("auth_method") != "account_sso":
+            tinode_auth = tinode_auth_from_request(request)
+            mapping_matches = bool(
+                tinode_auth
+                and tinode_auth.get("username") == str(account.tinode_username or account.username or "").lower()
+                and (
+                    not account.tinode_uid
+                    or tinode_auth.get("uid") == str(account.tinode_uid)
+                )
+            )
+            if not mapping_matches or tinode_auth_expired(tinode_auth):
+                password = str((request.json or {}).get("password") or "")
+                if not password or not verify_password(password, account.password_hash):
+                    return json({
+                        "error_code": "TINODE_REAUTH_REQUIRED",
+                        "error_message": "Enter the employee password again to renew the Tinode connection.",
+                    }, status=401)
+                tinode_auth = await _local_tinode_login(account, password)
+                account.tinode_username = str(tinode_auth.get("username") or account.username)
+                account.tinode_uid = tinode_auth.get("uid") or account.tinode_uid
+                account.updated_at = int(time.time())
+                db.session.commit()
+                refreshed_session = True
+            if (
+                not tinode_auth
+                or tinode_auth.get("username") != str(account.tinode_username or account.username or "").lower()
+                or (
+                    account.tinode_uid
+                    and tinode_auth.get("uid") != str(account.tinode_uid)
+                )
+            ):
+                return json({
+                    "error_code": "TINODE_REAUTH_REQUIRED",
+                    "error_message": "The Chatmgt session must be renewed before Tinode can reconnect.",
+                }, status=401)
+        else:
+            identity = _tinode_account_identity(account)
+            _repair_unprovisioned_tinode_username(account, identity)
+            tinode_auth = await tinode_sso_login(
+                identity,
+                account.tinode_username,
+                account.tinode_uid,
+            )
+            account.tinode_uid = tinode_auth.get("uid") or account.tinode_uid
+            account.updated_at = int(time.time())
+            db.session.commit()
+        response = json({
             "connection": "tinode",
             "tinode_auth": {
-                "username": account.tinode_username,
-                "uid": account.tinode_uid,
+                "username": tinode_auth.get("username") or account.tinode_username,
+                "uid": tinode_auth.get("uid") or account.tinode_uid,
                 "token": tinode_auth.get("token"),
                 "expires": tinode_auth.get("expires"),
             },
         })
+        if refreshed_session:
+            refreshed_token = issue_access_token(
+                account,
+                auth_method=current_user.get("auth_method") or "password",
+                session_scope=CHAT_SESSION_SCOPE,
+                tinode_auth=tinode_auth,
+            )
+            revoke_request_token(request)
+            return set_auth_cookie(response, refreshed_token, request)
+        return response
     except AccountSSOError as error:
         db.session.rollback()
         if error.status_code != 503:
@@ -1100,6 +1278,7 @@ async def management_auth_health(request):
             ),
             "directory_configured": account_directory_configured,
             "tinode_bridge_configured": tinode_sso_configured,
+            "local_credentials_mirrored": _local_tinode_mirror_enabled(),
         },
         "management_data": {
             "configured": account_directory_configured if account_sso_enabled else employee_auth_configured,
@@ -1231,7 +1410,11 @@ async def management_reset_password(request):
             "error_message": "Password changes are managed by UpGO Account.",
         }, status=403)
     try:
+        tinode_auth = await _local_tinode_password_reset(account, new_password)
         account.password_hash = new_password_hash
+        if tinode_auth:
+            account.tinode_username = tinode_auth.get("username") or account.tinode_username
+            account.tinode_uid = tinode_auth.get("uid") or account.tinode_uid
         properties = _bump_auth_version(account)
         properties["must_change_password"] = False
         properties["password_changed_at"] = now
@@ -1245,6 +1428,10 @@ async def management_reset_password(request):
         db.session.commit()
         _audit(request, "AUTH_PASSWORD_RESET", True, tenant_id=account.tenant_id, user_id=str(account.id))
         return clear_auth_cookie(json({"changed": True}), request)
+    except AuthError as error:
+        db.session.rollback()
+        _audit(request, "AUTH_PASSWORD_RESET", False, tenant_id=account.tenant_id, user_id=str(account.id))
+        return json({"error_code": "TINODE_PASSWORD_SYNC_FAILED", "error_message": str(error)}, status=error.status_code)
     except Exception as error:
         db.session.rollback()
         logger.exception("Password reset failed: %s", error)
@@ -1279,7 +1466,15 @@ async def management_change_password(request):
         return json({"error_code": "PASSWORD_INVALID", "error_message": "Current password is invalid."}, status=401)
     try:
         management_scope = management_session_requested(request)
+        tinode_auth = await _local_tinode_password_reset(
+            account,
+            new_password,
+            current_password=current_password,
+        )
         account.password_hash = new_password_hash
+        if tinode_auth:
+            account.tinode_username = tinode_auth.get("username") or account.tinode_username
+            account.tinode_uid = tinode_auth.get("uid") or account.tinode_uid
         properties = _bump_auth_version(account)
         properties["must_change_password"] = False
         properties["password_changed_at"] = int(time.time())
@@ -1295,6 +1490,10 @@ async def management_change_password(request):
             user_id=str(account.id),
         )
         return clear_auth_cookie(json({"changed": True}), request)
+    except AuthError as error:
+        db.session.rollback()
+        _audit(request, "AUTH_PASSWORD_CHANGE", False, tenant_id=tenant_id, user_id=_user_id(current_user))
+        return json({"error_code": "TINODE_PASSWORD_SYNC_FAILED", "error_message": str(error)}, status=error.status_code)
     except Exception as error:
         db.session.rollback()
         logger.exception("Password change failed for account %s: %s", account.id, error)
@@ -1580,6 +1779,11 @@ async def management_user_create(request):
     role = str(body.get("role") or "member").strip().lower()
     if not username or not full_name:
         return json({"error_code": "PARAM_ERROR", "error_message": "Username and full name are required."}, status=400)
+    if _local_tinode_mirror_enabled() and not tinode_username_compatible(username):
+        return json({
+            "error_code": "TINODE_USERNAME_INVALID",
+            "error_message": "Username must use letters, numbers, dot or underscore and contain at most 32 characters.",
+        }, status=400)
     if role not in ("member", "admin"):
         return json({"error_code": "PARAM_ERROR", "error_message": "Role must be member or admin."}, status=400)
     duplicate_filter = ManagementAccount.username == username
@@ -1594,17 +1798,35 @@ async def management_user_create(request):
     try:
         password_hash = hash_password(password)
         account_id = stable_local_account_id(tenant_id, username)
-        tinode_identity = {
-            "account_user_id": account_id,
-            "tenant_id": tenant_id,
-            "full_name": full_name,
-        }
-        tinode_username = stable_tinode_username(tenant_id, account_id)
-        tinode_auth = await tinode_sso_login(
-            tinode_identity,
-            tinode_username,
-            ensure_credential=False,
-        )
+        if _local_tinode_mirror_enabled():
+            # Stock Tinode basic logins are global within one Tinode server;
+            # reject a cross-tenant duplicate instead of linking two companies
+            # to the same Tinode UID.
+            global_duplicate = ManagementAccount.query.filter(
+                func.lower(ManagementAccount.username) == username,
+            ).first() if tinode_username_compatible(username) else None
+            if global_duplicate is not None:
+                return json({
+                    "error_code": "TINODE_USERNAME_EXISTS",
+                    "error_message": "The username is already used by another tenant on this Tinode server.",
+                }, status=409)
+            tinode_username = username
+            tinode_auth = await tinode_mirror_login(
+                username,
+                password,
+                full_name,
+            )
+        else:
+            tinode_identity = {
+                "account_user_id": account_id,
+                "tenant_id": tenant_id,
+                "full_name": full_name,
+            }
+            tinode_username = stable_tinode_username(tenant_id, account_id)
+            tinode_auth = await tinode_sso_login(
+                tinode_identity,
+                tinode_username,
+            )
         now = int(time.time())
         account = ManagementAccount(
             id=account_id,
@@ -1697,9 +1919,17 @@ async def management_user_update(request, account_id):
     account.role = role
     account.updated_at = int(time.time())
     try:
+        if was_active and not account.active:
+            disabled_auth = await _disable_local_tinode_login(account)
+            if disabled_auth:
+                account.tinode_username = disabled_auth.get("username") or account.tinode_username
+                account.tinode_uid = disabled_auth.get("uid") or account.tinode_uid
         db.session.commit()
         _audit(request, "ACCOUNT_UPDATED", True, tenant_id=tenant_id, user_id=_user_id(current_user), properties={"account_id": account.id})
         return json(_public_account(account))
+    except AuthError as error:
+        db.session.rollback()
+        return json({"error_code": "TINODE_ACCOUNT_SYNC_FAILED", "error_message": str(error)}, status=error.status_code)
     except Exception:
         db.session.rollback()
         return json({"error_code": "ACCOUNT_UPDATE_FAILED", "error_message": "The account update conflicted with existing data."}, status=409)
@@ -1728,9 +1958,16 @@ async def management_user_revoke_session(request, account_id):
     _bump_auth_version(account)
     account.updated_at = int(time.time())
     try:
+        disabled_auth = await _disable_local_tinode_login(account)
+        if disabled_auth:
+            account.tinode_username = disabled_auth.get("username") or account.tinode_username
+            account.tinode_uid = disabled_auth.get("uid") or account.tinode_uid
         db.session.commit()
         _audit(request, "ACCOUNT_SESSION_REVOKED", True, tenant_id=tenant_id, user_id=_user_id(current_user), properties={"account_id": account.id})
         return json({"revoked": True, "user": _public_account(account)})
+    except AuthError as error:
+        db.session.rollback()
+        return json({"error_code": "TINODE_ACCOUNT_SYNC_FAILED", "error_message": str(error)}, status=error.status_code)
     except Exception:
         db.session.rollback()
         return json({"error_code": "SESSION_REVOKE_FAILED", "error_message": "Could not revoke the account sessions."}, status=500)
@@ -1767,8 +2004,12 @@ async def management_user_reset_password(request, account_id):
     new_password = str((request.json or {}).get("new_password") or "")
     try:
         new_password_hash = hash_password(new_password)
+        tinode_auth = await _local_tinode_password_reset(account, new_password)
         converted_from_account = (account.properties or {}).get("auth_source") == "account"
         account.password_hash = new_password_hash
+        if tinode_auth:
+            account.tinode_username = tinode_auth.get("username") or account.tinode_username
+            account.tinode_uid = tinode_auth.get("uid") or account.tinode_uid
         properties = _bump_auth_version(account)
         if converted_from_account:
             properties["legacy_account_user_id"] = properties.pop("account_user_id", "")

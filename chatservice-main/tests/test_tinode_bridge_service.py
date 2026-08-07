@@ -1,9 +1,10 @@
 import importlib.util
+import base64
 import sys
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 
 HAS_RUNTIME_DEPENDENCIES = all(
@@ -102,6 +103,208 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
             "TINODE_API_KEY": "test-api-key",
             "TINODE_AUTH_TIMEOUT": 10,
         })
+
+    async def test_sso_login_does_not_require_admin_when_credential_is_valid(self):
+        identity = {
+            "tenant_id": "tenant-a",
+            "account_user_id": "account-a",
+            "full_name": "Account A",
+        }
+        expected = {"uid": "usrAccountA", "token": "short-token"}
+        with patch.object(
+            auth_service,
+            "tinode_sso_password",
+            return_value="derived-password",
+        ), patch.object(
+            auth_service,
+            "tinode_login",
+            AsyncMock(return_value=expected),
+        ) as login, patch.object(
+            auth_service,
+            "tinode_admin_reset_password",
+            AsyncMock(),
+        ) as reset:
+            result = await auth_service.tinode_sso_login(
+                identity,
+                "vichat_account_a",
+                "usrAccountA",
+            )
+
+        self.assertEqual(result, expected)
+        login.assert_awaited_once_with("vichat_account_a", "derived-password")
+        reset.assert_not_awaited()
+
+    async def test_mirror_login_uses_the_chatmgt_password_for_an_existing_uid(self):
+        expected = {"uid": "usrAccountA", "token": "short-token", "expires": "2099-01-01T00:00:00Z"}
+        with patch.dict(auth_service.app.config, {"TINODE_MIRROR_LOCAL_CREDENTIALS": True}), patch.object(
+            auth_service,
+            "tinode_login",
+            AsyncMock(return_value=expected),
+        ) as login, patch.object(
+            auth_service,
+            "tinode_admin_reset_password",
+            AsyncMock(),
+        ) as reset:
+            result = await auth_service.tinode_mirror_login(
+                "nham",
+                "employee-password",
+                "Nham",
+                tinode_uid="usrAccountA",
+                legacy_username="nham",
+            )
+
+        self.assertEqual(result["username"], "nham")
+        login.assert_awaited_once_with("nham", "employee-password")
+        reset.assert_not_awaited()
+
+    async def test_mirror_login_repairs_a_legacy_uid_in_place(self):
+        expected = {"uid": "usrAccountA", "token": "short-token"}
+        with patch.dict(auth_service.app.config, {"TINODE_MIRROR_LOCAL_CREDENTIALS": True}), patch.object(
+            auth_service,
+            "tinode_admin_reset_password",
+            AsyncMock(),
+        ) as reset, patch.object(
+            auth_service,
+            "tinode_login",
+            AsyncMock(side_effect=[
+                auth_service.AuthError("rejected", 401),
+                expected,
+            ]),
+        ) as login, patch.object(
+            auth_service,
+            "tinode_change_password",
+            AsyncMock(return_value={"uid": "usrAccountA", "username": "nham"}),
+        ) as change:
+            result = await auth_service.tinode_mirror_login(
+                "nham",
+                "employee-password",
+                "Nham",
+                tinode_uid="usrAccountA",
+                legacy_username="upgo_legacy",
+                legacy_password="derived-password",
+            )
+
+        self.assertEqual(result["uid"], "usrAccountA")
+        self.assertEqual(login.await_count, 2)
+        change.assert_awaited_once_with(
+            "upgo_legacy",
+            "derived-password",
+            "employee-password",
+            new_username="nham",
+        )
+        reset.assert_not_awaited()
+
+    async def test_mirror_login_adopts_an_existing_basic_account_without_a_mapping(self):
+        expected = {"uid": "usrExisting", "token": "short-token"}
+        with patch.object(
+            auth_service,
+            "tinode_login",
+            AsyncMock(return_value=expected),
+        ) as login, patch.object(
+            auth_service,
+            "tinode_create_account",
+            AsyncMock(),
+        ) as create:
+            result = await auth_service.tinode_mirror_login(
+                "nham",
+                "employee-password",
+                "Nham",
+            )
+
+        self.assertEqual(result["uid"], "usrExisting")
+        self.assertEqual(result["username"], "nham")
+        login.assert_awaited_once_with("nham", "employee-password")
+        create.assert_not_awaited()
+
+    async def test_mirror_login_rejects_a_duplicate_basic_account_for_another_uid(self):
+        with patch.object(
+            auth_service,
+            "tinode_login",
+            AsyncMock(return_value={"uid": "usrDuplicate", "token": "short-token"}),
+        ), patch.object(
+            auth_service,
+            "tinode_change_password",
+            AsyncMock(),
+        ) as change, patch.object(
+            auth_service,
+            "tinode_admin_reset_password",
+            AsyncMock(),
+        ) as reset:
+            with self.assertRaises(auth_service.AuthError) as raised:
+                await auth_service.tinode_mirror_login(
+                    "nham",
+                    "employee-password",
+                    "Nham",
+                    tinode_uid="usrMapped",
+                    legacy_username="upgo_legacy",
+                    legacy_password="derived-password",
+                )
+
+        self.assertEqual(raised.exception.status_code, 409)
+        change.assert_not_awaited()
+        reset.assert_not_awaited()
+
+    async def test_change_password_can_replace_the_basic_login_on_the_same_uid(self):
+        socket = FakeSocket([
+            {"ctrl": {"id": "1", "code": 201}},
+            {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrAccountA"}}},
+            {"ctrl": {"id": "3", "code": 200}},
+        ])
+        with self.config(), patch.object(
+            auth_service.aiohttp,
+            "ClientSession",
+            self.client_session(socket),
+        ):
+            result = await auth_service.tinode_change_password(
+                "upgo_legacy",
+                "derived-password",
+                "employee-password",
+                new_username="nham",
+            )
+
+        self.assertEqual(result, {"uid": "usrAccountA", "username": "nham"})
+        encoded_secret = socket.sent[2]["acc"]["secret"]
+        self.assertEqual(
+            base64.b64decode(encoded_secret).decode("utf-8"),
+            "nham:employee-password",
+        )
+
+    async def test_sso_login_uses_admin_only_to_repair_rejected_credential(self):
+        identity = {
+            "tenant_id": "tenant-a",
+            "account_user_id": "account-a",
+            "full_name": "Account A",
+        }
+        expected = {"uid": "usrAccountA", "token": "short-token"}
+        with patch.object(
+            auth_service,
+            "tinode_sso_password",
+            return_value="derived-password",
+        ), patch.object(
+            auth_service,
+            "tinode_login",
+            AsyncMock(side_effect=[
+                auth_service.AuthError("rejected", 401),
+                expected,
+            ]),
+        ) as login, patch.object(
+            auth_service,
+            "tinode_admin_reset_password",
+            AsyncMock(),
+        ) as reset:
+            result = await auth_service.tinode_sso_login(
+                identity,
+                "vichat_account_a",
+                "usrAccountA",
+            )
+
+        self.assertEqual(result, expected)
+        self.assertEqual(login.await_count, 2)
+        reset.assert_awaited_once_with(
+            "vichat_account_a",
+            "usrAccountA",
+            "derived-password",
+        )
 
     async def test_group_binding_requires_exact_chatmgt_members(self):
         socket = FakeSocket([

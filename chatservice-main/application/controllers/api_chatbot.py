@@ -486,73 +486,18 @@ async def chatbot_history_delete(request):
 
 @app.route('/api/v1/chatbot/knowledge/chat-events', methods=['POST'])
 async def knowledge_chat_event(request):
-    body = request.json or {}
-    current_user, tenant_id = _chatbot_identity(request, body)
-    if current_user is None:
-        return json({"error_code": "SESSION_EXPIRED", "error_message": "Phiên làm việc hết hạn"}, status=401)
-    content = str(body.get("content") or body.get("message") or "").strip()
-    if not content:
-        return json({"error_code": "PARAM_ERROR", "error_message": "Nội dung chat đang trống."}, status=400)
-    try:
-        participant_ids = _conversation_participants(
-            tenant_id,
-            body.get("conversation_id"),
-            current_user,
-        )
-        result = knowledge_service.ingest_chat_message(
-            tenant_id,
-            body.get("conversation_id"),
-            body.get("message_id"),
-            body.get("sender_id") or _user_ref(current_user),
-            content,
-            participant_ids=participant_ids,
-        )
-        return json(result, status=201)
-    except Exception as error:
-        return _error_response(error)
+    return json({
+        "error_code": "TINODE_CONTENT_ONLY",
+        "error_message": "Tin nhan va tep chat chi duoc luu tai Tinode.",
+    }, status=410)
 
 
 @app.route('/api/v1/chatbot/knowledge/chat-files', methods=['POST'])
 async def knowledge_chat_file(request):
-    current_user, tenant_id = _chatbot_identity(request, request.form or {})
-    if current_user is None:
-        return json({"error_code": "SESSION_EXPIRED", "error_message": "Phiên làm việc hết hạn"}, status=401)
-    try:
-        upload = request.files.get("file") if request.files else None
-        if upload is None:
-            raise KnowledgeServiceError("Vui lòng chọn tệp chat cần lập chỉ mục.")
-        participant_ids = _conversation_participants(
-            tenant_id,
-            request.form.get("conversation_id"),
-            current_user,
-        )
-        content, mime_type = knowledge_service.extract_file(upload.name, upload.type, upload.body)
-        knowledge_base = knowledge_service.get_or_create_base(
-            tenant_id,
-            "chat-derived",
-            "Kiến thức từ hội thoại",
-            "Tin nhắn và tệp chat được lập chỉ mục tự động theo quyền thành viên cuộc trò chuyện.",
-            properties={"managed": True, "source": "chat"},
-        )
-        result = knowledge_service.ingest_text(
-            tenant_id,
-            knowledge_base.id,
-            request.form.get("title") or upload.name,
-            content,
-            file_name=upload.name,
-            mime_type=mime_type,
-            source_type="CHAT_FILE",
-            source_url=request.form.get("source_url"),
-            uploaded_by=_user_ref(current_user),
-            properties={
-                "conversation_id": str(request.form.get("conversation_id") or ""),
-                "message_id": str(request.form.get("message_id") or ""),
-                "allowed_user_ids": participant_ids,
-            },
-        )
-        return json(result, status=201)
-    except Exception as error:
-        return _error_response(error)
+    return json({
+        "error_code": "TINODE_CONTENT_ONLY",
+        "error_message": "Tin nhan va tep chat chi duoc luu tai Tinode.",
+    }, status=410)
 
 
 @app.route('/api/v1/chatbot/knowledge/bases', methods=['GET'])

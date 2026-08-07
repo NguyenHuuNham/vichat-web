@@ -1,4 +1,5 @@
 import importlib.util
+import time
 from types import SimpleNamespace
 import unittest
 
@@ -17,6 +18,8 @@ if HAS_RUNTIME_DEPENDENCIES:
         current_user,
         decode_access_token,
         issue_access_token,
+        tinode_auth_expired,
+        tinode_auth_from_request,
         token_from_request,
     )
 
@@ -68,6 +71,33 @@ class AuthSessionScopeTests(unittest.TestCase):
 
         self.assertIsNone(token_from_request(request))
         self.assertIsNone(current_user(request))
+
+    def test_chat_token_can_carry_tinode_auth_without_password_material(self):
+        tinode_auth = {
+            "username": "nham",
+            "uid": "usrTinodeNham",
+            "token": "tinode-short-token",
+            "expires": "2099-01-01T00:00:00Z",
+        }
+        token = issue_access_token(self.account, session_scope="chat", tinode_auth=tinode_auth)
+        request = self.request(ACCESS_COOKIE, token)
+
+        self.assertEqual(tinode_auth_from_request(request), tinode_auth)
+        self.assertNotIn("password", decode_access_token(token))
+
+    def test_tinode_auth_expiry_rejects_stale_or_invalid_tokens(self):
+        self.assertFalse(tinode_auth_expired({
+            "token": "fresh-token",
+            "expires": time.time() + 120,
+        }))
+        self.assertTrue(tinode_auth_expired({
+            "token": "stale-token",
+            "expires": time.time() + 10,
+        }))
+        self.assertTrue(tinode_auth_expired({
+            "token": "invalid-token",
+            "expires": "not-a-timestamp",
+        }))
 
 
 if __name__ == "__main__":

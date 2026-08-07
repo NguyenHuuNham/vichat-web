@@ -465,6 +465,73 @@ class ManagementAccount(db.Model):
     )
 
 
+class EnterpriseItem(CommonModel):
+    __tablename__ = "enterprise_item"
+    tenant_id = db.Column(String(50), nullable=False, index=True)
+    item_type = db.Column(String(30), nullable=False, index=True)
+    title = db.Column(String(500), nullable=False)
+    description = db.Column(Text())
+    status = db.Column(String(30), nullable=False, index=True)
+    priority = db.Column(String(20), nullable=False, default="NORMAL", index=True)
+    visibility = db.Column(String(20), nullable=False, default="COMPANY", index=True)
+    created_by = db.Column(String(100), nullable=False, index=True)
+    owner_id = db.Column(String(100), index=True)
+    conversation_id = db.Column(UUID(as_uuid=True), index=True)
+    source_message_ref = db.Column(String(255), index=True)
+    due_at = db.Column(BigInteger(), index=True)
+    starts_at = db.Column(BigInteger(), index=True)
+    ends_at = db.Column(BigInteger(), index=True)
+    published_at = db.Column(BigInteger(), index=True)
+    closed_at = db.Column(BigInteger(), index=True)
+    version = db.Column(Integer(), nullable=False, default=1)
+    search_text = db.Column(Text(), nullable=False, default="")
+    properties = db.Column(JSONB)
+    __table_args__ = (
+        Index("ix_enterprise_item_tenant_type_updated", "tenant_id", "item_type", "updated_at"),
+        Index("ix_enterprise_item_tenant_status_due", "tenant_id", "status", "due_at"),
+    )
+
+
+class EnterpriseItemParticipant(CommonModel):
+    __tablename__ = "enterprise_item_participant"
+    tenant_id = db.Column(String(50), nullable=False, index=True)
+    item_id = db.Column(
+        UUID(as_uuid=True),
+        ForeignKey("enterprise_item.id"),
+        nullable=False,
+        index=True,
+    )
+    account_id = db.Column(String(100), nullable=False, index=True)
+    role = db.Column(String(30), nullable=False, index=True)
+    state = db.Column(String(30), nullable=False, default="PENDING", index=True)
+    responded_at = db.Column(BigInteger(), index=True)
+    acknowledged_at = db.Column(BigInteger(), index=True)
+    properties = db.Column(JSONB)
+    __table_args__ = (
+        Index("ix_enterprise_participant_account", "tenant_id", "account_id", "item_id"),
+    )
+
+
+class EnterpriseActivity(CommonModel):
+    __tablename__ = "enterprise_activity"
+    tenant_id = db.Column(String(50), nullable=False, index=True)
+    item_id = db.Column(
+        UUID(as_uuid=True),
+        ForeignKey("enterprise_item.id"),
+        nullable=False,
+        index=True,
+    )
+    actor_id = db.Column(String(100), nullable=False, index=True)
+    action = db.Column(String(50), nullable=False, index=True)
+    from_status = db.Column(String(30))
+    to_status = db.Column(String(30))
+    comment = db.Column(Text())
+    data = db.Column(JSONB)
+    __table_args__ = (
+        Index("ix_enterprise_activity_item_created", "tenant_id", "item_id", "created_at"),
+    )
+
+
 class PasswordResetToken(db.Model):
     __tablename__ = "password_reset_token"
     id = db.Column(String(100), primary_key=True)

@@ -5,7 +5,6 @@ import asyncio
 import json
 import os
 import re
-import secrets
 import sys
 import time
 from datetime import datetime, timezone
@@ -26,8 +25,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from application.services.auth_service import issue_access_token
-from application.services.sso_identity import stable_local_account_id, stable_tinode_username
+from application.services.auth_service import issue_access_token, tinode_login
+from application.services.sso_identity import (
+    derive_tinode_password,
+    stable_local_account_id,
+    stable_tinode_username,
+)
 
 
 DEFAULT_PASSWORDS = ("123456", "password", "admin")
@@ -111,6 +114,11 @@ def verify_database(alembic_ini):
     tinode_token_ttl = int(os.getenv("TINODE_TOKEN_EXPIRE_IN", 300))
     if tinode_token_ttl < 60 or tinode_token_ttl > 900:
         raise RuntimeError("TINODE_TOKEN_EXPIRE_IN must be between 60 and 900 seconds.")
+    central_token_max_ttl = int(os.getenv("TINODE_CENTRAL_TOKEN_MAX_TTL", tinode_token_ttl))
+    if central_token_max_ttl < 60 or central_token_max_ttl > 2592000:
+        raise RuntimeError(
+            "TINODE_CENTRAL_TOKEN_MAX_TTL must be between 60 and 2592000 seconds."
+        )
 
     database_uri = str(os.getenv("SQLALCHEMY_DATABASE_URI") or "")
     if not database_uri:
@@ -131,6 +139,16 @@ def verify_database(alembic_ini):
                         sorted(current_heads), sorted(expected_heads)
                     )
                 )
+
+            workspace_schema = connection.execute(text(
+                "SELECT "
+                "to_regclass('public.enterprise_item'), "
+                "to_regclass('public.enterprise_item_participant'), "
+                "to_regclass('public.enterprise_activity'), "
+                "to_regclass('public.uq_enterprise_item_participant_active')"
+            )).first()
+            if workspace_schema is None or any(value is None for value in workspace_schema):
+                raise RuntimeError("Enterprise Workspace schema or tenant participant index is missing.")
 
             accounts = list(connection.execute(text(
                 "SELECT username, password_hash, role, active, properties FROM management_account"
@@ -191,7 +209,9 @@ def verify_tinode_token_expiry(login_payload):
         remaining = (expires_at - datetime.now(timezone.utc)).total_seconds()
     except (TypeError, ValueError, OverflowError) as error:
         raise RuntimeError("Tinode returned an invalid token expiration time.") from error
-    configured_ttl = int(os.getenv("TINODE_TOKEN_EXPIRE_IN", 300))
+    configured_ttl = int(
+        os.getenv("TINODE_CENTRAL_TOKEN_MAX_TTL", os.getenv("TINODE_TOKEN_EXPIRE_IN", 300))
+    )
     if remaining < 30 or remaining > configured_ttl + 30:
         raise RuntimeError(
             "Tinode token lifetime is outside the configured short-lived window."
@@ -294,6 +314,10 @@ def verify_tinode_websocket(login_payload, origin):
     internal_url = str(os.getenv("TINODE_INTERNAL_WS_URL") or "")
     if not token or not expected_uid or not api_key or not internal_url:
         raise RuntimeError("Tinode WebSocket verification is not configured.")
+    if internal_url != "ws://chat:80/v0/channels":
+        raise RuntimeError(
+            "Tinode WebSocket is not routed through the central web.vichat.net relay."
+        )
 
     asyncio.run(_verify_tinode_socket(
         internal_url,
@@ -462,6 +486,11 @@ def _verify_http(base_url, origin, management_account):
         raise RuntimeError("UpGO Account directory sync is not fully configured.")
     if account_sso_enabled and not account_sso.get("tinode_bridge_configured"):
         raise RuntimeError("Chatmgt-to-Tinode realtime bridge is not fully configured.")
+    mirror_enabled = str(
+        os.getenv("TINODE_MIRROR_LOCAL_CREDENTIALS") or ""
+    ).lower() == "true"
+    if mirror_enabled and not account_sso.get("local_credentials_mirrored"):
+        raise RuntimeError("Chatmgt did not enable local Tinode credential mirroring.")
     management_data = health_payload.get("management_data") or {}
     if not management_data.get("configured"):
         raise RuntimeError("Chatmgt management data APIs are not fully configured.")
@@ -657,6 +686,13 @@ def _verify_http(base_url, origin, management_account):
         ))
     login_payload["tinode_auth"] = tinode_token_response.json().get("tinode_auth")
     verify_tinode_token_expiry(login_payload)
+    if mirror_enabled:
+        basic_auth = asyncio.run(tinode_login(username, password))
+        expected_uid = str((login_payload.get("tinode_auth") or {}).get("uid") or "")
+        if not expected_uid or str(basic_auth.get("uid") or "") != expected_uid:
+            raise RuntimeError(
+                "The Chatmgt employee credential did not open the mapped Tinode UID."
+            )
 
     expected_user_id = str(((login_payload.get("user") or {}).get("id")) or "")
     expected_tenant_id = str(

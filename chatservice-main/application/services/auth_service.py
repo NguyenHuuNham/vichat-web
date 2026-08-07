@@ -3,10 +3,12 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import smtplib
 import time
 import uuid
+from datetime import datetime, timezone
 from email.message import EmailMessage
 from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 
@@ -15,7 +17,10 @@ import bcrypt
 
 from application import database
 from application.server import app
-from application.services.sso_identity import SSOIdentityError, derive_tinode_password
+from application.services.sso_identity import (
+    SSOIdentityError,
+    derive_tinode_password,
+)
 
 
 ACCESS_COOKIE = "vichat_access_token"
@@ -132,7 +137,7 @@ def record_password_reset_request(tenant_id, identity, ip_address):
         return
 
 
-def issue_access_token(account, auth_method="password", session_scope=CHAT_SESSION_SCOPE):
+def issue_access_token(account, auth_method="password", session_scope=CHAT_SESSION_SCOPE, tinode_auth=None):
     now = int(time.time())
     ttl = int(app.config.get("CHAT_AUTH_ACCESS_TTL", 28800))
     properties = account.properties or {}
@@ -153,6 +158,16 @@ def issue_access_token(account, auth_method="password", session_scope=CHAT_SESSI
         "amr": str(auth_method or "password"),
         "scp": session_scope,
     }
+    # Keep the short-lived Tinode bearer token inside the signed Chatmgt
+    # session so a page refresh can reconnect without storing or recovering
+    # the employee's plaintext password.
+    if session_scope == CHAT_SESSION_SCOPE and tinode_auth and tinode_auth.get("token"):
+        payload["tinode"] = {
+            "username": str(tinode_auth.get("username") or ""),
+            "uid": str(tinode_auth.get("uid") or ""),
+            "token": str(tinode_auth.get("token") or ""),
+            "expires": tinode_auth.get("expires"),
+        }
     header = {"alg": "HS256", "typ": "JWT"}
     encoded_header = _encode_part(json.dumps(header, separators=(",", ":")).encode("utf-8"))
     encoded_payload = _encode_part(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
@@ -255,6 +270,51 @@ def current_user(request):
         "session_scope": payload.get("scp"),
         "issued_at": int(payload.get("iat") or 0),
     }
+
+
+def tinode_auth_from_request(request):
+    """Return the Tinode token bound to the current Chatmgt JWT, if present."""
+    payload = decode_access_token(token_from_request(request))
+    if not payload or payload.get("scp") != CHAT_SESSION_SCOPE:
+        return None
+    auth = payload.get("tinode") or {}
+    if not isinstance(auth, dict) or not auth.get("token"):
+        return None
+    return {
+        "username": str(auth.get("username") or ""),
+        "uid": str(auth.get("uid") or ""),
+        "token": str(auth.get("token") or ""),
+        "expires": auth.get("expires"),
+    }
+
+
+def tinode_auth_expired(auth, skew_seconds=30):
+    """Return True when a session-bound Tinode token cannot be reused safely."""
+    if not isinstance(auth, dict) or not auth.get("token") or not auth.get("expires"):
+        return True
+    try:
+        expires = auth.get("expires")
+        if isinstance(expires, (int, float)):
+            expires_at = float(expires)
+        else:
+            value = str(expires).strip()
+            fractional = re.match(r"^(.*:\d{2})\.(\d+)(Z|[+-]\d{2}:\d{2})$", value)
+            if fractional:
+                fraction = (fractional.group(2) + "000000")[:6]
+                value = "{}.{}{}".format(
+                    fractional.group(1),
+                    fraction,
+                    fractional.group(3),
+                )
+            if value.endswith("Z"):
+                value = value[:-1] + "+00:00"
+            parsed = datetime.fromisoformat(value)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            expires_at = parsed.timestamp()
+        return expires_at <= time.time() + max(0, int(skew_seconds))
+    except (TypeError, ValueError, OverflowError):
+        return True
 
 
 def password_reset_token_hash(token):
@@ -433,18 +493,168 @@ def tinode_sso_password(identity, tinode_username):
         raise AuthError(str(error), 503) from error
 
 
-async def tinode_sso_login(identity, tinode_username, tinode_uid=None, ensure_credential=True):
-    password = tinode_sso_password(identity, tinode_username)
-    if tinode_uid and ensure_credential:
-        await tinode_admin_reset_password(tinode_username, tinode_uid, password)
-        return await tinode_login(tinode_username, password)
+def tinode_mirror_enabled():
+    return bool(app.config.get("TINODE_MIRROR_LOCAL_CREDENTIALS", False))
 
+
+def _tinode_login_name(username):
+    value = str(username or "").strip().lower()
+    # Tinode's stock basic authenticator only accepts letters, numbers, dot and
+    # underscore, with a maximum of 32 characters.
+    if not value or len(value) > 32 or not value[0].isalnum() or not value[-1].isalnum():
+        raise AuthError("The Chatmgt username cannot be used as a Tinode login.", 400)
+    if any(not (char.isalnum() or char in "._") for char in value):
+        raise AuthError("The Chatmgt username cannot be used as a Tinode login.", 400)
+    return value
+
+
+def tinode_username_compatible(username):
+    try:
+        _tinode_login_name(username)
+        return True
+    except AuthError:
+        return False
+
+
+async def tinode_mirror_login(
+    username,
+    password,
+    full_name,
+    tinode_uid=None,
+    legacy_username=None,
+    legacy_password=None,
+    recovery_passwords=None,
+):
+    """Synchronize a local Chatmgt credential with a Tinode basic identity."""
+    desired_username = _tinode_login_name(username)
+    current_uid = str(tinode_uid or "").strip()
+    current_username = str(legacy_username or "").strip().lower()
+    recovery_passwords = [
+        str(value)
+        for value in ([legacy_password] + list(recovery_passwords or []))
+        if value
+    ]
+
+    if current_uid:
+        try:
+            direct_auth = await tinode_login(desired_username, password)
+            if str(direct_auth.get("uid") or "") != current_uid:
+                raise AuthError(
+                    "The Tinode login already belongs to a different user. Remove the duplicate Tinode Web account first.",
+                    409,
+                )
+            return {**direct_auth, "username": desired_username}
+        except AuthError as error:
+            if error.status_code != 401:
+                raise
+
+        if current_username:
+            for recovery_password in recovery_passwords:
+                try:
+                    await tinode_change_password(
+                        current_username,
+                        recovery_password,
+                        password,
+                        new_username=desired_username,
+                    )
+                    repaired = await tinode_login(desired_username, password)
+                    if str(repaired.get("uid") or "") != current_uid:
+                        raise AuthError("Tinode authenticated a different user.", 409)
+                    return {**repaired, "username": desired_username}
+                except AuthError as error:
+                    if error.status_code != 401:
+                        raise
+
+        # The central Tinode administrator is a last-resort recovery path. A
+        # normal migration succeeds with the existing deterministic credential
+        # and does not require root access.
+        await tinode_admin_reset_password(desired_username, current_uid, password)
+        repaired = await tinode_login(desired_username, password)
+        if str(repaired.get("uid") or "") != current_uid:
+            raise AuthError("Tinode authenticated a different user.", 409)
+        return {**repaired, "username": desired_username}
+
+    # A user may have created the matching Tinode Web account before Chatmgt
+    # mirroring was enabled. Possession of the exact basic credential is enough
+    # to adopt its UID when Chatmgt does not have an existing UID to preserve.
+    try:
+        direct_auth = await tinode_login(desired_username, password)
+        return {**direct_auth, "username": desired_username}
+    except AuthError as error:
+        if error.status_code != 401:
+            raise
+
+    # Legacy releases may have a deterministic Tinode username but no UID in
+    # Chatmgt. Recover that UID before replacing its credential so topics stay
+    # attached to the same Tinode user.
+    if current_username and recovery_passwords and current_username != desired_username:
+        for recovery_password in recovery_passwords:
+            try:
+                legacy_auth = await tinode_login(current_username, recovery_password)
+                await tinode_change_password(
+                    current_username,
+                    recovery_password,
+                    password,
+                    new_username=desired_username,
+                )
+                repaired = await tinode_login(desired_username, password)
+                if str(repaired.get("uid") or "") != str(legacy_auth.get("uid") or ""):
+                    raise AuthError("Tinode authenticated a different user.", 409)
+                return {
+                    **repaired,
+                    "username": desired_username,
+                    "uid": legacy_auth.get("uid"),
+                }
+            except AuthError as error:
+                if error.status_code != 401:
+                    raise
+
+    created = await tinode_create_account(desired_username, password, full_name or desired_username)
+    return {
+        **created,
+        "username": desired_username,
+    }
+
+
+async def tinode_mirror_reset_password(username, password, full_name, tinode_uid=None):
+    """Set the Tinode basic credential without persisting the plaintext password."""
+    desired_username = _tinode_login_name(username)
+    if tinode_uid:
+        await tinode_admin_reset_password(desired_username, tinode_uid, password)
+        auth = await tinode_login(desired_username, password)
+        if str(auth.get("uid") or "") != str(tinode_uid):
+            raise AuthError("Tinode authenticated a different user.", 409)
+        return {**auth, "username": desired_username}
+    return await tinode_mirror_login(
+        desired_username,
+        password,
+        full_name or desired_username,
+    )
+
+
+def tinode_disabled_password(tenant_id, account_id, tinode_username):
+    """Derive an unusable credential used while a Chatmgt account is disabled."""
+    try:
+        return derive_tinode_password(
+            app.config.get("TINODE_SSO_SECRET"),
+            "disabled:{}".format(tenant_id),
+            account_id,
+            "disabled:{}".format(tinode_username),
+        )
+    except SSOIdentityError as error:
+        raise AuthError(str(error), 503) from error
+
+
+async def tinode_sso_login(identity, tinode_username, tinode_uid=None):
+    password = tinode_sso_password(identity, tinode_username)
     try:
         return await tinode_login(tinode_username, password)
     except AuthError as login_error:
         if login_error.status_code != 401:
             raise
         if tinode_uid:
+            # Existing deterministic credentials normally work without Tinode
+            # administrator access. Use the administrator only as a repair path.
             await tinode_admin_reset_password(tinode_username, tinode_uid, password)
             return await tinode_login(tinode_username, password)
 
@@ -665,7 +875,7 @@ async def tinode_remove_topic_member(token, expected_uid, topic_name, member_uid
             return target_uid
 
 
-async def tinode_change_password(username, current_password, new_password):
+async def tinode_change_password(username, current_password, new_password, new_username=None):
     """Rotate a Tinode basic credential without exposing either secret to the client."""
     base_url = str(app.config.get("TINODE_INTERNAL_WS_URL") or "").rstrip("?")
     api_key = str(app.config.get("TINODE_API_KEY") or "")
@@ -675,7 +885,9 @@ async def tinode_change_password(username, current_password, new_password):
     url = "{}{}apikey={}".format(base_url, separator, quote(api_key, safe=""))
     timeout = aiohttp.ClientTimeout(total=int(app.config.get("TINODE_AUTH_TIMEOUT", 10)))
     current_secret = base64.b64encode("{}:{}".format(username, current_password).encode("utf-8")).decode("ascii")
-    new_secret = base64.b64encode("{}:{}".format(username, new_password).encode("utf-8")).decode("ascii")
+    new_secret = base64.b64encode(
+        "{}:{}".format(new_username or username, new_password).encode("utf-8")
+    ).decode("ascii")
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.ws_connect(url) as socket:
             await socket.send_json({"hi": {"id": "1", "ver": "0.25", "ua": "VICHAT-CHAT-SERVICE", "platf": "server", "lang": "vi"}})
@@ -701,6 +913,10 @@ async def tinode_change_password(username, current_password, new_password):
             ctrl = changed.get("ctrl") or {}
             if ctrl.get("code", 500) >= 300:
                 raise AuthError(ctrl.get("text") or "Tinode password change failed.", 400)
+            return {
+                "uid": uid,
+                "username": str(new_username or username),
+            }
 
 
 async def tinode_admin_reset_password(username, uid, new_password):
