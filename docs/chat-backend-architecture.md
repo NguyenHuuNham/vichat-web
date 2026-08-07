@@ -43,10 +43,14 @@ The administrator page uses `POST /api/v1/admin/sso` and the separate
 2. ChatUI sends the employee email/password to `POST /api/v1/auth/account-login`
    over HTTPS. Chatmgt forwards those credentials only to UpGO Account's
    official `POST /login` endpoint and never logs or stores the password.
-3. Chatmgt verifies the returned Account session, current tenant membership,
-   and active status, then projects the identity to a stable tenant-scoped
-   `management_account` row. It forwards the Account session cookie to later
-   server-side Account checks.
+3. Chatmgt verifies the returned Account session and active tenant memberships.
+   A valid Account `current_tenant_id` remains authoritative. If that explicit
+   tenant is stale or inactive, Chatmgt selects the first active membership in
+   Account order and uses that membership's role; it rejects the session only
+   when no active membership exists. The fixed ChatUI/Chatmgt tenant comparison
+   still rejects a membership from another company. Chatmgt then projects the
+   identity to a stable tenant-scoped `management_account` row and forwards the
+   Account session cookie to later server-side Account checks.
 4. Chatmgt issues the HttpOnly chat cookie and returns only public user/tenant
    fields; it never returns an Account password or Tinode secret.
 5. ChatUI loads Step 3 metadata, then calls `POST /api/v1/auth/tinode-token`.

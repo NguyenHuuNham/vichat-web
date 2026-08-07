@@ -94,6 +94,41 @@ class FakeResponse:
         self.headers = FakeHeaders()
 
 
+class FakeAccountLoginHeaders:
+    def getall(self, name, default=None):
+        if name == "Set-Cookie":
+            return ["session=test-account-session; Path=/; HttpOnly"]
+        return default or []
+
+
+class FakeAccountLoginResponse:
+    status = 200
+    headers = FakeAccountLoginHeaders()
+
+    async def json(self, content_type=None):
+        return {}
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        return False
+
+
+class FakeAccountClientSession:
+    def __init__(self, **kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        return False
+
+    def post(self, *args, **kwargs):
+        return FakeAccountLoginResponse()
+
+
 @unittest.skipUnless(HAS_AIOHTTP, "aiohttp is installed in the Chatmgt runtime image")
 class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_directory_is_loaded_from_the_account_tenant_scope(self):
@@ -211,16 +246,54 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(error.exception.error_code, "ACCOUNT_LOGIN_REQUIRED")
 
+    async def test_credential_login_logs_invalid_tenant_profile_details(self):
+        profile = account_payload(status="disabled")
+        with patch.object(
+            account_sso_service.aiohttp,
+            "ClientSession",
+            FakeAccountClientSession,
+        ), patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(200, profile)),
+        ), patch.object(account_sso_service.logger, "warning") as warning:
+            with self.assertRaises(account_sso_service.AccountSSOError) as error:
+                await account_sso_service.login_account_with_credentials(
+                    "nham@example.vn",
+                    "test-password",
+                )
+
+        self.assertEqual(error.exception.error_code, "ACCOUNT_TENANT_INVALID")
+        warning.assert_called_once_with(
+            "Account credential login tenant normalization failed: "
+            "user_id=%s user_name=%s current_tenant_id=%s tenant_ids=%s error=%s",
+            "account-user-1",
+            "nham.nguyen",
+            "tenant-a",
+            ["tenant-a"],
+            error.exception.__cause__,
+        )
+
     async def test_inactive_tenant_membership_is_rejected(self):
+        profile = account_payload(status="disabled")
         with patch.object(
             account_sso_service,
             "_account_request",
-            AsyncMock(return_value=(200, account_payload(status="disabled"))),
-        ):
+            AsyncMock(return_value=(200, profile)),
+        ), patch.object(account_sso_service.logger, "warning") as warning:
             with self.assertRaises(account_sso_service.AccountSSOError) as error:
                 await account_sso_service.current_account_session(types.SimpleNamespace())
 
         self.assertEqual(error.exception.error_code, "ACCOUNT_TENANT_INVALID")
+        warning.assert_called_once_with(
+            "Current Account session tenant normalization failed: "
+            "user_id=%s user_name=%s current_tenant_id=%s tenant_ids=%s error=%s",
+            "account-user-1",
+            "nham.nguyen",
+            "tenant-a",
+            ["tenant-a"],
+            error.exception.__cause__,
+        )
 
     async def test_logout_uses_the_verified_account_endpoint(self):
         request = types.SimpleNamespace()

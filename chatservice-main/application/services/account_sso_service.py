@@ -131,6 +131,30 @@ def _account_login_cookie(response, cookie_name):
     }
 
 
+def _account_session_log_fields(payload):
+    if not isinstance(payload, dict):
+        return "", "", "", []
+
+    def clean(value, limit=255):
+        return str(value or "").replace("\r", " ").replace("\n", " ").strip()[:limit]
+
+    memberships = payload.get("tenants")
+    tenant_ids = []
+    if isinstance(memberships, list):
+        tenant_ids = [
+            clean(item.get("id"), 50)
+            for item in memberships
+            if isinstance(item, dict) and clean(item.get("id"), 50)
+        ]
+
+    return (
+        clean(payload.get("id") or payload.get("uid") or payload.get("user_id")),
+        clean(payload.get("user_name") or payload.get("username") or payload.get("email")),
+        clean(payload.get("current_tenant_id") or payload.get("tenant_id"), 50),
+        tenant_ids,
+    )
+
+
 async def login_account_with_credentials(username, password):
     """Authenticate against Account without storing or mirroring its password."""
     username = str(username or "").strip()
@@ -208,6 +232,16 @@ async def login_account_with_credentials(username, password):
     try:
         identity = normalize_account_session(profile)
     except SSOIdentityError as error:
+        user_id, user_name, current_tenant_id, tenant_ids = _account_session_log_fields(profile)
+        logger.warning(
+            "Account credential login tenant normalization failed: "
+            "user_id=%s user_name=%s current_tenant_id=%s tenant_ids=%s error=%s",
+            user_id,
+            user_name,
+            current_tenant_id,
+            tenant_ids,
+            error,
+        )
         raise AccountSSOError(str(error), 403, "ACCOUNT_TENANT_INVALID") from error
     return identity, account_cookie
 
@@ -380,6 +414,16 @@ async def current_account_session(request):
     try:
         return normalize_account_session(payload)
     except SSOIdentityError as error:
+        user_id, user_name, current_tenant_id, tenant_ids = _account_session_log_fields(payload)
+        logger.warning(
+            "Current Account session tenant normalization failed: "
+            "user_id=%s user_name=%s current_tenant_id=%s tenant_ids=%s error=%s",
+            user_id,
+            user_name,
+            current_tenant_id,
+            tenant_ids,
+            error,
+        )
         raise AccountSSOError(str(error), 403, "ACCOUNT_TENANT_INVALID") from error
 
 

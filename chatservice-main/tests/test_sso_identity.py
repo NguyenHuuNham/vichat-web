@@ -143,13 +143,49 @@ class SSOIdentityTests(unittest.TestCase):
         self.assertTrue(account_session_matches(properties_a, identity_a))
         self.assertFalse(account_session_matches(properties_a, identity_b))
 
-    def test_current_tenant_must_exist_and_be_active(self):
-        missing = account_payload("tenant-a", "Tenant A")
-        missing["tenants"] = account_payload("tenant-b", "Tenant B")["tenants"]
-        with self.assertRaises(SSOIdentityError):
-            normalize_account_session(missing)
+    def test_unknown_current_tenant_falls_back_to_first_active_membership(self):
+        payload = account_payload("tenant-a", "Tenant A", role="admin")
+        payload["tenants"] = account_payload("tenant-b", "Tenant B", role="member")["tenants"]
 
-        with self.assertRaises(SSOIdentityError):
+        identity = normalize_account_session(payload)
+
+        self.assertEqual(identity["tenant_id"], "tenant-b")
+        self.assertEqual(identity["tenant_name"], "Tenant B")
+        self.assertEqual(identity["role"], "member")
+        self.assertEqual(identity["account_role"], "member")
+
+    def test_inactive_current_tenant_falls_back_to_first_active_membership(self):
+        payload = account_payload("tenant-a", "Tenant A", role="admin", status="pending")
+        payload["tenants"].append({
+            "id": "tenant-b",
+            "tenant_name": "Tenant B",
+            "role": "member",
+            "status": "active",
+        })
+
+        identity = normalize_account_session(payload)
+
+        self.assertEqual(identity["tenant_id"], "tenant-b")
+        self.assertEqual(identity["role"], "member")
+        self.assertEqual(identity["account_role"], "member")
+
+    def test_active_current_tenant_remains_authoritative(self):
+        payload = account_payload("tenant-a", "Tenant A", role="admin")
+        payload["tenants"].insert(0, {
+            "id": "tenant-b",
+            "tenant_name": "Tenant B",
+            "role": "member",
+            "status": "active",
+        })
+
+        identity = normalize_account_session(payload)
+
+        self.assertEqual(identity["tenant_id"], "tenant-a")
+        self.assertEqual(identity["tenant_name"], "Tenant A")
+        self.assertEqual(identity["role"], "admin")
+
+    def test_explicit_tenant_without_active_memberships_is_rejected(self):
+        with self.assertRaisesRegex(SSOIdentityError, "no active tenant membership"):
             normalize_account_session(account_payload("tenant-a", "Tenant A", status="disabled"))
 
     def test_single_active_membership_is_used_when_current_tenant_is_missing(self):

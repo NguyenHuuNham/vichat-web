@@ -147,6 +147,11 @@ def normalize_account_session(payload):
             raise SSOIdentityError("Account session has no current tenant; select a tenant in Account.")
     else:
         membership = active_memberships.get(tenant_id)
+        if membership is None or not _membership_active(membership):
+            if not active_memberships:
+                raise SSOIdentityError("Account session has no active tenant membership.")
+            tenant_id, membership = next(iter(active_memberships.items()))
+            has_explicit_tenant = False
 
     if len(tenant_id) > 50:
         raise SSOIdentityError("Account tenant ID exceeds the Chatmgt limit.")

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-08-03 - Fallback tenant active khi dang nhap UpGO Account
+
+- Thoi gian: 2026-08-08 00:49 (Asia/Saigon)
+- Loai: Sua loi | Xac thuc | Tai lieu
+- Trang thai: Hoan tat local; chua deploy
+- Muc tieu: Khong tra `ACCOUNT_TENANT_INVALID` khi UpGO Account con it nhat mot membership active nhung `current_tenant_id` dang cu, khong con trong danh sach active, hoac dang o trang thai inactive/invited/pending.
+- Pham vi: Chuan hoa Account session trong Chatmgt, log chan doan tai hai luong credential login/current session, unit test lien quan va mo ta kien truc Step 2; khong sua controller tenant boundary, ChatUI, danh ba, conversation, Tinode, database hay cau hinh production.
+- File da thay doi: `chatservice-main/application/services/sso_identity.py`, `chatservice-main/application/services/account_sso_service.py`, `chatservice-main/tests/test_sso_identity.py`, `chatservice-main/tests/test_account_sso_service.py`, `docs/chat-backend-architecture.md`, va `docs/CHANGELOG.md`.
+- Noi dung: Giu nguyen tenant hien tai khi membership do active. Neu tenant hien tai khong hop le, chon membership active dau tien theo thu tu UpGO tra ve va dung role cua membership duoc chon thay vi `current_tenant_role` cu. Chi bao loi membership trong truong hop khong co membership active. Hai diem bat `SSOIdentityError` ghi warning gom user ID, user name, current tenant ID, danh sach tenant ID va noi dung loi; khong ghi password, cookie, token hay profile day du.
+- Quyet dinh ky thuat: Dat fallback ngay trong `normalize_account_session()` de moi consumer nhan cung identity da chuan hoa. Sau fallback dat lai co tenant explicit de role duoc lay tu membership moi. Giu nguyen phep so sanh tenant co dinh tai bien controller, nen membership active cua cong ty khac van bi tu choi.
+- Database/API/cau hinh: Khong co migration, khong doi hop dong API va khong them bien moi truong.
+- Kiem thu: `python -m unittest chatservice-main/tests/test_sso_identity.py -v` dat 21/21; `uv run --with aiohttp==3.13.5 python -m unittest chatservice-main/tests/test_account_sso_service.py -v` dat 14/14; `python -m unittest discover -s chatservice-main/tests -v` dat 122 test, skip 39 test can dependency runtime; `python -m py_compile chatservice-main/application/services/sso_identity.py chatservice-main/application/services/account_sso_service.py chatservice-main/tests/test_sso_identity.py chatservice-main/tests/test_account_sso_service.py` dat; `git diff --check` dat. Khong chay duoc test qua production Compose vi may local thieu `infrastructure/production/.env` va Docker daemon khong hoat dong.
+- Rui ro con lai: Chua UAT bang response UpGO Account that co current tenant stale/inactive va membership cong ty active; chua verify production.
+- Viec tiep theo: Khi phat hanh, build/deploy Chatmgt theo release bat bien, kiem tra health va dang nhap lai bang tai khoan employee bi loi de xac nhan tenant fallback dung cong ty.
+- Commit/PR: Chua tao.
+
 ## 2026-08-08-02 - Bo thuong hieu Song Hong khoi preview link ChatUI
 
 - Thoi gian: 2026-08-08 00:27 (Asia/Saigon)
