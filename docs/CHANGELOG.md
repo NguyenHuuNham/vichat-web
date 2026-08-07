@@ -6,6 +6,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-07-03 - Sua verifier cho credential Tinode dan xuat trong Account SSO
+
+- Thoi gian: 2026-08-07 21:35 (Asia/Saigon)
+- Loai: Sua loi | Van hanh | Xac thuc | Tinode
+- Trang thai: Dang thuc hien
+- Muc tieu: Bao dam acceptance verifier phan anh dung luong production: employee dang nhap Account SSO, Chatmgt cap token Tinode bang credential dan xuat, va tenant isolation khong goi password login.
+- Pham vi: `chatservice-main/scripts/verify_deployment.py`, `chatservice-main/scripts/verify_tenant_isolation.py` va release production.
+- Noi dung: Verifier deployment khong bat buoc local credential mirroring khi Account SSO dang bat; verifier tenant isolation tao projection Account va dung token noi bo `account_sso`, trong khi van giu nhanh password cho che do recovery/local.
+- Quyet dinh ky thuat: Khong bat `TINODE_MIRROR_LOCAL_CREDENTIALS` de phu hop voi nguyen tac khong sao chep mat khau UpGO Account sang Tinode; chi kiem tra Tinode token bridge va UID mapping.
+- Database/API/cau hinh: Khong doi schema, API hoac gia tri secret; chi thay doi logic verifier.
+- Kiem thu: `python -m py_compile chatservice-main/scripts/verify_deployment.py chatservice-main/scripts/verify_tenant_isolation.py` dat; full backend unittest dat 115 tests, skip 37 do dependency runtime; verifier production cu da xac nhan loi expectation mirror truoc khi sua.
+- Rui ro con lai: Can build release moi, chay lai ca hai verifier tren production va UAT voi tai khoan Account duoc moi that.
+- Viec tiep theo: Commit/push, deploy release verifier, chay acceptance tenant/Tinode va cap nhat trang thai muc nay.
+- Commit/PR: Chua tao.
+
 ## 2026-08-07-02 - Sua verifier production sau khi bat UpGo Account SSO
 
 - Thoi gian: 2026-08-07 21:09 (Asia/Saigon)

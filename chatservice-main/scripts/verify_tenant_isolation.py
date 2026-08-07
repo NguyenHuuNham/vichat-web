@@ -28,6 +28,9 @@ from application.services.sso_identity import stable_tinode_username
 from application.server import app  # noqa: F401 - initializes application config
 
 
+ACCOUNT_SSO_PASSWORD_MARKER = "!account-sso-only"
+
+
 def require_status(response, expected, action):
     if response.status_code != expected:
         raise RuntimeError("{} returned HTTP {} instead of {}.".format(
@@ -37,6 +40,7 @@ def require_status(response, expected, action):
 
 
 def verify(base_url):
+    account_sso_enabled = str(os.getenv("CHAT_ACCOUNT_SSO_ENABLED") or "").lower() == "true"
     suffix = uuid.uuid4().hex[:12]
     tenant_a_id = "verify-a-{}".format(suffix)
     tenant_b_id = "verify-b-{}".format(suffix)
@@ -70,42 +74,72 @@ def verify(base_url):
             tenant_id=tenant_a_id,
             username="shared.employee",
             email="verify-a-{}@invalid.local".format(suffix),
-            password_hash=hash_password(password_a),
+            password_hash=(
+                ACCOUNT_SSO_PASSWORD_MARKER
+                if account_sso_enabled
+                else hash_password(password_a)
+            ),
             full_name="Verification A",
             role="member",
             tinode_username=stable_tinode_username(tenant_a_id, account_a_id),
             active=True,
             created_at=now,
             updated_at=now,
-            properties={"auth_source": "local", "auth_version": 0, "verification": True},
+            properties={
+                "auth_source": "account" if account_sso_enabled else "local",
+                "account_user_id": account_a_id if account_sso_enabled else None,
+                "account_tenant_id": tenant_a_id if account_sso_enabled else None,
+                "auth_version": 0,
+                "verification": True,
+            },
         )
         account_a2 = ManagementAccount(
             id=account_a2_id,
             tenant_id=tenant_a_id,
             username="verify-a-peer-{}".format(suffix),
             email="verify-a-peer-{}@invalid.local".format(suffix),
-            password_hash=hash_password(password_a),
+            password_hash=(
+                ACCOUNT_SSO_PASSWORD_MARKER
+                if account_sso_enabled
+                else hash_password(password_a)
+            ),
             full_name="Verification A peer",
             role="member",
             tinode_username=stable_tinode_username(tenant_a_id, account_a2_id),
             active=True,
             created_at=now,
             updated_at=now,
-            properties={"auth_source": "local", "auth_version": 0, "verification": True},
+            properties={
+                "auth_source": "account" if account_sso_enabled else "local",
+                "account_user_id": account_a2_id if account_sso_enabled else None,
+                "account_tenant_id": tenant_a_id if account_sso_enabled else None,
+                "auth_version": 0,
+                "verification": True,
+            },
         )
         account_b = ManagementAccount(
             id=account_b_id,
             tenant_id=tenant_b_id,
             username="shared.employee",
             email="verify-b-{}@invalid.local".format(suffix),
-            password_hash=hash_password(password_b),
+            password_hash=(
+                ACCOUNT_SSO_PASSWORD_MARKER
+                if account_sso_enabled
+                else hash_password(password_b)
+            ),
             full_name="Verification B",
             role="member",
             tinode_username=stable_tinode_username(tenant_b_id, account_b_id),
             active=True,
             created_at=now,
             updated_at=now,
-            properties={"auth_source": "local", "auth_version": 0, "verification": True},
+            properties={
+                "auth_source": "account" if account_sso_enabled else "local",
+                "account_user_id": account_b_id if account_sso_enabled else None,
+                "account_tenant_id": tenant_b_id if account_sso_enabled else None,
+                "auth_version": 0,
+                "verification": True,
+            },
         )
         db.session.add_all([tenant_a, tenant_b])
         db.session.flush()
@@ -193,39 +227,63 @@ def verify(base_url):
         ])
         db.session.commit()
 
-        headers_a = {"Authorization": "Bearer {}".format(issue_access_token(account_a))}
-        headers_a2 = {"Authorization": "Bearer {}".format(issue_access_token(account_a2))}
+        auth_method = "account_sso" if account_sso_enabled else "password"
+        headers_a = {
+            "Authorization": "Bearer {}".format(
+                issue_access_token(account_a, auth_method=auth_method)
+            )
+        }
+        headers_a2 = {
+            "Authorization": "Bearer {}".format(
+                issue_access_token(account_a2, auth_method=auth_method)
+            )
+        }
         base_url = base_url.rstrip("/")
 
-        login_a = require_status(
-            requests.post(
-                base_url + "/api/v1/auth/login",
-                json={"identity": "shared.employee", "password": password_a, "tenant_id": tenant_a_id},
-                timeout=10,
-            ),
-            200,
-            "Tenant A employee login",
-        )
-        login_b = require_status(
-            requests.post(
-                base_url + "/api/v1/auth/login",
-                json={"identity": "shared.employee", "password": password_b, "tenant_id": tenant_b_id},
-                timeout=10,
-            ),
-            200,
-            "Tenant B employee login",
-        )
-        if login_a.get("tenant_id") != tenant_a_id or login_b.get("tenant_id") != tenant_b_id:
-            raise RuntimeError("Same-username employee login resolved the wrong tenant.")
-        require_status(
-            requests.post(
+        if account_sso_enabled:
+            cross_tenant_login = requests.post(
                 base_url + "/api/v1/auth/login",
                 json={"identity": "shared.employee", "password": password_a, "tenant_id": tenant_b_id},
                 timeout=10,
-            ),
-            401,
-            "Cross-tenant employee password",
-        )
+            )
+            if cross_tenant_login.status_code != 403:
+                raise RuntimeError(
+                    "Cross-tenant employee password returned HTTP {} instead of 403.".format(
+                        cross_tenant_login.status_code
+                    )
+                )
+            if (cross_tenant_login.json() or {}).get("error_code") != "AUTH_METHOD_DISABLED":
+                raise RuntimeError("Account SSO did not reject the employee password endpoint.")
+        else:
+            login_a = require_status(
+                requests.post(
+                    base_url + "/api/v1/auth/login",
+                    json={"identity": "shared.employee", "password": password_a, "tenant_id": tenant_a_id},
+                    timeout=10,
+                ),
+                200,
+                "Tenant A employee login",
+            )
+            login_b = require_status(
+                requests.post(
+                    base_url + "/api/v1/auth/login",
+                    json={"identity": "shared.employee", "password": password_b, "tenant_id": tenant_b_id},
+                    timeout=10,
+                ),
+                200,
+                "Tenant B employee login",
+            )
+            if login_a.get("tenant_id") != tenant_a_id or login_b.get("tenant_id") != tenant_b_id:
+                raise RuntimeError("Same-username employee login resolved the wrong tenant.")
+            require_status(
+                requests.post(
+                    base_url + "/api/v1/auth/login",
+                    json={"identity": "shared.employee", "password": password_a, "tenant_id": tenant_b_id},
+                    timeout=10,
+                ),
+                401,
+                "Cross-tenant employee password",
+            )
         if account_a.tinode_username == account_b.tinode_username:
             raise RuntimeError("Same-username tenants received the same Tinode username.")
 

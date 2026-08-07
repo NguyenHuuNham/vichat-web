@@ -490,7 +490,7 @@ def _verify_http(base_url, origin, management_account):
     mirror_enabled = str(
         os.getenv("TINODE_MIRROR_LOCAL_CREDENTIALS") or ""
     ).lower() == "true"
-    if mirror_enabled and not account_sso.get("local_credentials_mirrored"):
+    if mirror_enabled and not account_sso_enabled and not account_sso.get("local_credentials_mirrored"):
         raise RuntimeError("Chatmgt did not enable local Tinode credential mirroring.")
     management_data = health_payload.get("management_data") or {}
     if not management_data.get("configured"):
@@ -687,7 +687,7 @@ def _verify_http(base_url, origin, management_account):
         ))
     login_payload["tinode_auth"] = tinode_token_response.json().get("tinode_auth")
     verify_tinode_token_expiry(login_payload)
-    if mirror_enabled:
+    if mirror_enabled and not account_sso_enabled:
         basic_auth = asyncio.run(tinode_login(username, password))
         expected_uid = str((login_payload.get("tinode_auth") or {}).get("uid") or "")
         if not expected_uid or str(basic_auth.get("uid") or "") != expected_uid:
