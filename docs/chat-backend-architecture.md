@@ -146,10 +146,14 @@ short-lived token for the same deterministic Tinode UID, which keeps topics and
 message history shared while keeping browser sessions isolated.
 The Nginx relay sends that path to `tinode-account-bridge`: token login packets
 from ChatUI pass through unchanged, while Tinode Web `scheme=basic` packets are
-decoded only at the trusted bridge, authenticated against Chatmgt's Account
-login endpoint, and replaced with `scheme=token`. The UpGO password is not sent
-to the central Tinode server or logged by the bridge. This keeps Tinode Web and
-ChatUI on the same central UID/topic/message store.
+decoded only at the trusted bridge. The bridge first calls
+`POST /api/v1/auth/account-login`, then exchanges the returned Chatmgt bearer
+session through the internal, key-protected
+`POST /api/v1/auth/tinode-token-bridge` endpoint. This second exchange does not
+depend on the Account browser `session` cookie being forwarded between
+containers. The UpGO password is not sent to the central Tinode server or
+logged by the bridge. This keeps Tinode Web and ChatUI on the same central
+UID/topic/message store.
 
 `POST /api/v1/conversation/<id>/tinode-prepare` prepares missing UID mappings
 from current Chatmgt membership. Group topic binding and add/remove/leave

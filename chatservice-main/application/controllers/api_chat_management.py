@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import hmac
 import logging
 import time
 import uuid
@@ -271,6 +272,12 @@ def _account_sso_error(error):
         "error_code": error.error_code,
         "error_message": str(error),
     }, status=error.status_code)
+
+
+def _tinode_bridge_request(request):
+    expected = str(app.config.get("TINODE_BRIDGE_INTERNAL_KEY") or "").strip()
+    supplied = str(request.headers.get("X-Vichat-Tinode-Internal") or "").strip()
+    return bool(expected and supplied and hmac.compare_digest(expected, supplied))
 
 
 def _sso_account(identity, mark_login=True):
@@ -1267,6 +1274,59 @@ async def management_tinode_token(request):
         return json({
             "error_code": "TINODE_TOKEN_FAILED",
             "error_message": "Tinode token refresh is temporarily unavailable.",
+        }, status=503)
+
+
+@app.route('/api/v1/auth/tinode-token-bridge', methods=['POST'])
+async def bridge_tinode_token(request):
+    """Issue Tinode auth for the trusted bridge after Account login succeeds."""
+    if not _tinode_bridge_request(request):
+        return json({
+            "error_code": "FORBIDDEN",
+            "error_message": "Tinode bridge authentication is required.",
+        }, status=403)
+    current_user, tenant_id = _identity(request)
+    if current_user is None or management_session_requested(request):
+        return _auth_error()
+    if current_user.get("auth_method") != "account_sso":
+        return json({
+            "error_code": "FORBIDDEN",
+            "error_message": "An UpGO Account session is required.",
+        }, status=403)
+    account = _account_by_id(tenant_id, _user_id(current_user))
+    if account is None:
+        return _auth_error()
+    try:
+        identity = _tinode_account_identity(account)
+        _repair_unprovisioned_tinode_username(account, identity)
+        tinode_auth = await tinode_sso_login(
+            identity,
+            account.tinode_username,
+            account.tinode_uid,
+        )
+        account.tinode_uid = tinode_auth.get("uid") or account.tinode_uid
+        account.updated_at = int(time.time())
+        db.session.commit()
+        response = json({
+            "connection": "tinode",
+            "tinode_auth": {
+                "username": tinode_auth.get("username") or account.tinode_username,
+                "uid": tinode_auth.get("uid") or account.tinode_uid,
+                "token": tinode_auth.get("token"),
+                "expires": tinode_auth.get("expires"),
+            },
+        })
+        response.headers["Cache-Control"] = "no-store"
+        return response
+    except AuthError as error:
+        db.session.rollback()
+        return json({"error_code": "TINODE_AUTH_FAILED", "error_message": str(error)}, status=error.status_code)
+    except Exception as error:
+        db.session.rollback()
+        logger.exception("Tinode bridge token exchange failed: %s", error)
+        return json({
+            "error_code": "TINODE_TOKEN_FAILED",
+            "error_message": "Tinode token exchange is temporarily unavailable.",
         }, status=503)
 
 

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-07-08 - Sua loi 401 khi bridge Tinode Web doi token
+
+- Thoi gian: 2026-08-07 (Asia/Saigon)
+- Loai: Sua loi | Xac thuc | Tinode | Van hanh
+- Trang thai: Dang thuc hien
+- Muc tieu: Loai bo loi `Account login is required (401)` sau khi Tinode Web da dang nhap UpGO Account thanh cong.
+- Pham vi: Chatmgt token exchange, WebSocket Account bridge, hop dong kiem thu va tai lieu kien truc.
+- File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/scripts/tinode_account_bridge.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`.
+- Noi dung: Them endpoint noi bo `POST /api/v1/auth/tinode-token-bridge`, yeu cau JWT Chatmgt scope chat va header key noi bo. Bridge lay `vichat_access_token` tu response `account-login` va gui Bearer token cho endpoint nay, khong con phu thuoc Account browser cookie khi doi Tinode token.
+- Quyet dinh ky thuat: Giay phep endpoint bang `TINODE_BRIDGE_INTERNAL_KEY` va `hmac.compare_digest`; van giu Account password chi trong request login va khong ghi token/password vao log. UID deterministic va Tinode token flow khong thay doi.
+- Database/API/cau hinh: Khong migration. Them route noi bo va su dung bien da co `TINODE_BRIDGE_INTERNAL_KEY`; Compose da yeu cau cung key cho Chatmgt va bridge.
+- Kiem thu: `python -m unittest discover -s chatservice-main/tests -p 'test_chat_auth_contract.py' -v` dat 32/32; `npm run test:frontend` dat 43/43; `python -m py_compile ...` dat; Compose config validation dat; `git diff --check` dat. Chua deploy production.
+- Rui ro con lai: Chua xac nhan UAT bang tai khoan UpGO employee that sau khi deploy; can doi chieu UID/topic/lich su tren `https://web.vichat.net/#` va ChatUI.
+- Viec tiep theo: Commit, push, build/recreate `chatmgt` va `tinode-account-bridge`, kiem tra health/log, sau do UAT lai Tinode Web goc voi Server `chat.upgo.vn`.
+- Commit/PR: Chua tao.
+
 ## 2026-08-07-07 - Giu Tinode Web trung tam lam giao dien kiem tra duy nhat
 
 - Thoi gian: 2026-08-07 (Asia/Saigon)

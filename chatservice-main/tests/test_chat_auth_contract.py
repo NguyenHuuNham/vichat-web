@@ -128,13 +128,18 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("location = /v0/channels", nginx_source)
         self.assertIn("proxy_pass http://tinode-account-bridge:8095/v0/channels", nginx_source)
         self.assertIn('"/api/v1/auth/account-login"', bridge_source)
-        self.assertIn('"/api/v1/auth/tinode-token"', bridge_source)
+        self.assertIn('"/api/v1/auth/tinode-token-bridge"', bridge_source)
+        self.assertIn('"X-Vichat-Tinode-Internal"', bridge_source)
         self.assertIn('rewritten_login["scheme"] = "token"', bridge_source)
         self.assertIn('rewritten_login["secret"] = token', bridge_source)
         self.assertIn('getattr(response, "cookies", None)', bridge_source)
         self.assertIn("ACCOUNT_SESSION_COOKIE_NAME", bridge_source)
         self.assertIn("CHAT_ACCESS_COOKIE_NAME", bridge_source)
         self.assertNotIn('"scheme": "basic", "secret": password', bridge_source)
+
+        controller_source = CONTROLLER_PATH.read_text(encoding="utf-8")
+        self.assertIn("/api/v1/auth/tinode-token-bridge", controller_source)
+        self.assertIn("_tinode_bridge_request(request)", controller_source)
 
     def test_account_credential_login_uses_account_and_keeps_tinode_server_side(self):
         _controller_source, login_source = function_source(
