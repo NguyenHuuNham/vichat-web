@@ -35,7 +35,16 @@ Chon kiem tra theo pham vi thay doi, vi du:
 
 Chi ghi ket qua da quan sat. Neu mot buoc khong chay duoc, ghi `Chua chay` kem ly do.
 
-## 5. Cap nhat nhat ky
+## 5. Phat hanh production
+
+Sau khi kiem tra local dat, luong phat hanh mac dinh la `test -> commit -> push -> deploy -> verify`:
+
+- Tao commit khong amend commit cu, push dung nhanh da thong nhat va ghi ma commit vao changelog.
+- Deploy tu release bat bien theo `infrastructure/production/README.md`; khong coi `git push` la deploy thanh cong.
+- Chay migration, health check, kiem tra bundle/public API va acceptance phu hop truoc khi bao da deploy.
+- Neu thieu quyen SSH, credential, webhook hoac bien production, ghi ro `Chua deploy` cung blocker; khong tuyen bo web that da cap nhat.
+
+## 6. Cap nhat nhat ky
 
 Them muc moi nhat len dau phan `Lich su thay doi` cua `docs/CHANGELOG.md` theo mau sau:
 
@@ -59,7 +68,7 @@ Them muc moi nhat len dau phan `Lich su thay doi` cua `docs/CHANGELOG.md` theo m
 
 Khong xoa hoac viet lai lich su cu de lam dep nhat ky. Neu thong tin cu sai, them mot muc moi giai thich viec dinh chinh.
 
-## 6. Ban giao
+## 7. Ban giao
 
 Khi ket thuc, thong bao ngan gon:
 
