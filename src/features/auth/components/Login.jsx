@@ -102,9 +102,6 @@ function Login({ onLoginSuccess, initialNotice = '' }) {
         <div className="login-card-header">
           <div className="login-logo"><img src="/chat-logo.svg" className="brand-mark-image" alt="CHAT" /></div>
           <h2>Chat - Power by Gon Platform</h2>
-          <p>{passwordMode
-            ? 'Đăng nhập bằng tài khoản do quản trị viên doanh nghiệp cấp trên Chatmgt.'
-            : 'Chat sử dụng tài khoản và đơn vị đang hoạt động trên UpGO Account.'}</p>
         </div>
 
         {error && <div className="login-error-message"><i className="fa-solid fa-triangle-exclamation"></i><span>{error}</span></div>}
@@ -137,9 +134,6 @@ function Login({ onLoginSuccess, initialNotice = '' }) {
           </button>
         </form>
 
-        <p className="login-security-note">{passwordMode
-          ? 'Phiên đăng nhập chỉ có hiệu lực trong doanh nghiệp được cấu hình; Tinode dùng token ngắn hạn do Chatmgt cấp.'
-          : 'Chatmgt không nhận hoặc lưu mật khẩu UpGO Account.'}</p>
       </div>
     </div>
   );

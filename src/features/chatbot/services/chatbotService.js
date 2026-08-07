@@ -1,5 +1,7 @@
 const env = import.meta.env || {};
 
+export const EXTERNAL_CHAT_ONLY = String(env.VITE_CHAT_MODE || 'internal').toLowerCase() === 'external';
+
 export const CHATBOT_ACCOUNT = {
   id: 'bot-songhong',
   username: 'songhong_bot',
@@ -13,11 +15,23 @@ export const CHATBOT_ACCOUNT = {
   type: 'bot',
 };
 
+if (EXTERNAL_CHAT_ONLY) {
+  Object.assign(CHATBOT_ACCOUNT, {
+    id: String(env.VITE_CHATBOT_ID || 'external-chatbot'),
+    username: String(env.VITE_CHATBOT_USERNAME || 'external_bot'),
+    email: '',
+    name: String(env.VITE_CHATBOT_DISPLAY_NAME || 'External AI'),
+    title: String(env.VITE_CHATBOT_DISPLAY_TITLE || 'External chatbot'),
+    department: String(env.VITE_CHATBOT_DISPLAY_ORGANIZATION || 'Connected service'),
+    avatar: String(env.VITE_CHATBOT_DISPLAY_AVATAR || CHATBOT_ACCOUNT.avatar),
+  });
+}
+
 const API_URL = String(env.VITE_CHATBOT_API_URL || '/api/v1/chatbot/message').trim();
 const API_ROOT = API_URL.replace(/\/message\/?$/, '');
 const WITH_CREDENTIALS = String(env.VITE_CHATBOT_WITH_CREDENTIALS || 'true').toLowerCase() === 'true';
 const KNOWLEDGE_BASE_ID = String(env.VITE_CHATBOT_KNOWLEDGE_BASE_ID || '').trim();
-const STORAGE_PREFIX = 'songhong.chatbot.messages.';
+const STORAGE_PREFIX = `vichat.chatbot.${CHATBOT_ACCOUNT.id}.messages.`;
 
 function unavailableReply() {
   return {

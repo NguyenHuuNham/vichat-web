@@ -1,5 +1,8 @@
 # Chatmgt local storage
 
+Partner-owned chatbot webhook and inbound RAG API configuration is documented
+in `docs/external-chatbot-api.md`.
+
 The local stack publishes PostgreSQL, Redis, and Chatmgt on loopback only.
 Run from the repository root in PowerShell:
 

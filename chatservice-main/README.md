@@ -11,8 +11,10 @@ the indefinite sentinel through the conversation notification-settings API.
 Chatmgt never suppresses Tinode messages or unread receipts; ChatUI applies the
 preference only to the local alert sound.
 
-For Account SSO employees, identity fields remain read-only projections. The
-authenticated `POST /api/v1/auth/avatar` endpoint is the narrow exception: it
+For Account SSO employees, identity fields remain read-only projections. UpGO
+Account invitations and profile changes are the source of truth; Chatmgt does
+not create employee accounts in production. The authenticated
+`POST /api/v1/auth/avatar` endpoint is the narrow exception: it
 validates the Account user and tenant, uploads the image through the configured
 UpGO media endpoint, updates that same Account user, and only then refreshes the
 Chatmgt projection. It never accepts a target user ID from the browser.

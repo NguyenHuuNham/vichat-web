@@ -43,7 +43,17 @@ class ChatManagerService(object):
             "xin chao ban", "cam on", "thanks", "thank you", "ok", "oke",
         }
 
-    async def reply(self, message, user, conversation_id, tenant_id, knowledge_base_id=None, history=None):
+    async def reply(
+        self,
+        message,
+        user,
+        conversation_id,
+        tenant_id,
+        knowledge_base_id=None,
+        history=None,
+        exclude_source_prefixes=None,
+        retrieved_matches=None,
+    ):
         started_at = time.time()
         department_id = self._user_value(user, "department_id", "organization_id")
         user_ref = self._user_value(user, "id", "uid", "user_name", "username")
@@ -55,13 +65,19 @@ class ChatManagerService(object):
         provider = str(self.app.config.get("CHATBOT_PROVIDER") or "").lower()
         external_provider = provider in ("external", "external-webhook", "webhook")
         small_talk = self._is_small_talk(message) and not external_provider
-        matches = [] if small_talk else self.knowledge_service.retrieve(
-            message,
-            tenant_id=tenant_id,
-            knowledge_base_id=knowledge_base_id,
-            department_id=department_id,
-            user_ids=user_ids,
-        )
+        if small_talk:
+            matches = []
+        elif retrieved_matches is not None:
+            matches = list(retrieved_matches)
+        else:
+            matches = self.knowledge_service.retrieve(
+                message,
+                tenant_id=tenant_id,
+                knowledge_base_id=knowledge_base_id,
+                department_id=department_id,
+                user_ids=user_ids,
+                exclude_source_prefixes=exclude_source_prefixes,
+            )
         sources = [{
             "document_id": item["document_id"],
             "title": item["title"],

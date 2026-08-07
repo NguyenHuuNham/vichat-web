@@ -330,7 +330,7 @@ def create_management_verifier_account():
     account_id = stable_local_account_id(tenant_id, username)
     tinode_username = stable_tinode_username(tenant_id, account_id)
     password = secrets.token_urlsafe(24)
-    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("ascii")
+    password_hash = ACCOUNT_SSO_PASSWORD_MARKER
     now = int(time.time())
     engine = create_engine(database_uri)
     try:
@@ -367,7 +367,9 @@ def create_management_verifier_account():
                 "updated_at": now,
                 "properties": json.dumps({
                     "deployment_verifier": True,
-                    "auth_source": "local",
+                    "auth_source": "account",
+                    "account_user_id": account_id,
+                    "account_tenant_id": tenant_id,
                     "auth_version": 0,
                 }),
             })
@@ -378,7 +380,13 @@ def create_management_verifier_account():
         tenant_id=tenant_id,
         username=username,
         role="admin",
-        properties={"deployment_verifier": True, "auth_source": "local", "auth_version": 0},
+        properties={
+            "deployment_verifier": True,
+            "auth_source": "account",
+            "account_user_id": account_id,
+            "account_tenant_id": tenant_id,
+            "auth_version": 0,
+        },
     )
     token = issue_access_token(
         account_projection,
@@ -573,8 +581,6 @@ def _verify_http(base_url, origin, management_account):
         if sso_challenge.status_code != 401 or challenge_payload.get("error_code") != "ACCOUNT_LOGIN_REQUIRED":
             raise RuntimeError("Account SSO without a session did not return ACCOUNT_LOGIN_REQUIRED.")
 
-        raise RuntimeError("Production employee authentication must use Chatmgt passwords, not Account SSO.")
-
     if admin_account_sso_enabled:
         admin_sso_challenge = requests.post(
             base_url + "/api/v1/admin/sso",
@@ -600,22 +606,33 @@ def _verify_http(base_url, origin, management_account):
     if management_tinode.status_code not in (401, 403):
         raise RuntimeError("A management administrator received a Chat Tinode token.")
 
-    login = requests.post(
-        base_url + "/api/v1/auth/login",
-        json={"identity": username, "password": password, "tenant_id": tenant_id},
-        headers={"Origin": origin},
-        timeout=20,
-    )
-    if login.status_code != 200:
-        raise RuntimeError("Chat employee login returned HTTP {}.".format(login.status_code))
-    login_payload = login.json()
-    serialized_login = json.dumps(login_payload, separators=(",", ":")).lower()
-    if '"password"' in serialized_login or '"password_hash"' in serialized_login:
-        raise RuntimeError("Chat employee login exposed password material.")
-    token, cookie_header = cookie_from_response(login, "vichat_access_token")
-    if str(os.getenv("CHAT_AUTH_COOKIE_SECURE") or "").lower() == "true":
-        if "secure" not in cookie_header.lower():
-            raise RuntimeError("Production login cookie is missing the Secure attribute.")
+    if account_sso_enabled:
+        # A real Account cookie cannot be fabricated by this container-only verifier.
+        # Use the short-lived internal chat token to validate the protected contract.
+        login_payload = {
+            "user": {"id": management_account["id"]},
+            "tenant_id": tenant_id,
+            "tenant": {"id": tenant_id},
+        }
+        token = management_account["chat_token"]
+        cookie_header = ""
+    else:
+        login = requests.post(
+            base_url + "/api/v1/auth/login",
+            json={"identity": username, "password": password, "tenant_id": tenant_id},
+            headers={"Origin": origin},
+            timeout=20,
+        )
+        if login.status_code != 200:
+            raise RuntimeError("Chat employee login returned HTTP {}.".format(login.status_code))
+        login_payload = login.json()
+        serialized_login = json.dumps(login_payload, separators=(",", ":")).lower()
+        if '"password"' in serialized_login or '"password_hash"' in serialized_login:
+            raise RuntimeError("Chat employee login exposed password material.")
+        token, cookie_header = cookie_from_response(login, "vichat_access_token")
+        if str(os.getenv("CHAT_AUTH_COOKIE_SECURE") or "").lower() == "true":
+            if "secure" not in cookie_header.lower():
+                raise RuntimeError("Production login cookie is missing the Secure attribute.")
 
     authenticated_headers = {
         "Origin": origin,

@@ -119,7 +119,7 @@ function LoginScreen({ onLogin, error, loading }) {
         <div className="management-story-copy">
           <span className="management-kicker">Trung tâm điều phối Chatmgt</span>
           <h1>Quản lý đúng luồng, không đi vào nội dung hội thoại.</h1>
-          <p>Chatmgt theo dõi projection nhân sự, metadata cuộc trò chuyện, phiên truy cập và cầu nối Tinode trong phạm vi từng đơn vị.</p>
+
         </div>
         <div className="management-story-status">
           <span><i className="fa-solid fa-building-shield"></i> Cách ly theo tenant</span>
@@ -132,15 +132,14 @@ function LoginScreen({ onLogin, error, loading }) {
           <div className="management-login-heading">
             <span className="management-eyebrow">chatmgt.upgo.vn</span>
             <h2>Đăng nhập quản trị</h2>
-            <p>Dùng tài khoản UpGO Account đang giữ vai trò admin, owner hoặc superadmin trong tenant hiện tại.</p>
+
           </div>
           {error && <div className="management-inline-error" role="alert"><i className="fa-solid fa-circle-exclamation"></i>{error}</div>}
           <button className="management-login-button" type="submit" disabled={loading}>
             {loading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-building-shield"></i>}
             {loading ? 'Đang xác thực...' : 'Đăng nhập bằng UpGO Account'}
           </button>
-          <p className="management-login-note"><i className="fa-solid fa-lock"></i> Nhân viên không có quyền admin sẽ bị backend từ chối, kể cả khi đã đăng nhập Account.</p>
-          <a className="management-account-switch" href={ACCOUNT_ADMIN_URL} target="_blank" rel="noreferrer">Mở UpGO Account để kiểm tra tài khoản/tenant <i className="fa-solid fa-arrow-up-right-from-square"></i></a>
+          <a className="management-account-switch" href={ACCOUNT_ADMIN_URL} target="_blank" rel="noreferrer">UpGO Account <i className="fa-solid fa-arrow-up-right-from-square"></i></a>
         </form>
       </section>
     </main>
@@ -157,11 +156,11 @@ function MetricCard({ icon, value, label, detail, tone = 'default' }) {
   );
 }
 
-function SystemCard({ icon, label, ready, title, description, readyText = 'Sẵn sàng', warningText = 'Cần cấu hình' }) {
+function SystemCard({ icon, label, ready, title, readyText = 'Sẵn sàng', warningText = 'Cần cấu hình' }) {
   return (
     <article className={`management-system-card ${ready ? 'ready' : 'warning'}`}>
       <span><i className={icon}></i></span>
-      <div><small>{label}</small><h3>{title}</h3><p>{description}</p></div>
+      <div><small>{label}</small><h3>{title}</h3></div>
       <em>{ready ? readyText : warningText}</em>
     </article>
   );
@@ -192,15 +191,15 @@ function UserEditorDialog({ mode, user, busy, error, onClose, onSubmit }) {
         <header className="management-modal-header"><div><span className="management-eyebrow">{creating ? 'Tài khoản mới' : 'Hồ sơ nhân viên'}</span><h2>{creating ? 'Thêm nhân viên' : `Cập nhật ${user.name}`}</h2></div><button type="button" className="management-icon-button" onClick={onClose} disabled={busy} aria-label="Đóng"><i className="fa-solid fa-xmark"></i></button></header>
         {error && <div className="management-inline-error" role="alert"><i className="fa-solid fa-circle-exclamation"></i>{error}</div>}
         <div className="management-form-grid">
-          <label className="management-field"><span>Tên đăng nhập</span><input name="username" value={form.username} onChange={change} disabled={!creating || busy} required autoComplete="off" /><small>Có thể dùng cùng username ở công ty khác; tenant được backend cách ly.</small></label>
-          {creating && <label className="management-field"><span>Mật khẩu ban đầu</span><input name="password" type="password" value={form.password} onChange={change} disabled={busy} required minLength="8" autoComplete="new-password" /><small>Tối thiểu 8 ký tự; nên dùng cụm mật khẩu dài và riêng cho ChatUI.</small></label>}
+          <label className="management-field"><span>Tên đăng nhập</span><input name="username" value={form.username} onChange={change} disabled={!creating || busy} required autoComplete="off" /></label>
+          {creating && <label className="management-field"><span>Mật khẩu ban đầu</span><input name="password" type="password" value={form.password} onChange={change} disabled={busy} required minLength="8" autoComplete="new-password" /></label>}
           <label className="management-field"><span>Họ tên</span><input name="name" value={form.name} onChange={change} disabled={busy} required /></label>
           <label className="management-field"><span>Email</span><input name="email" type="email" value={form.email} onChange={change} disabled={busy} /></label>
           <label className="management-field"><span>Vai trò</span><select name="role" value={form.role} onChange={change} disabled={busy}><option value="member">Nhân viên</option><option value="admin">Quản trị nội bộ</option></select></label>
           <label className="management-field"><span>Trạng thái</span><select name="active" value={form.active ? 'true' : 'false'} onChange={event => setForm(previous => ({ ...previous, active: event.target.value === 'true' }))} disabled={creating || busy}><option value="true">Đang hoạt động</option><option value="false">Ngừng hoạt động</option></select></label>
           <label className="management-field"><span>Phòng ban</span><input name="department" value={form.department} onChange={change} disabled={busy} /></label>
           <label className="management-field"><span>Chức danh</span><input name="title" value={form.title} onChange={change} disabled={busy} /></label>
-          <label className="management-field wide"><span>URL ảnh đại diện</span><input name="avatar" type="url" value={form.avatar} onChange={change} disabled={busy} placeholder="https://..." /><small>ChatUI đọc ảnh từ hồ sơ Chatmgt của đúng tenant.</small></label>
+          <label className="management-field wide"><span>URL ảnh đại diện</span><input name="avatar" type="url" value={form.avatar} onChange={change} disabled={busy} placeholder="https://..." /></label>
         </div>
         <footer className="management-modal-footer"><button type="button" className="management-button ghost" onClick={onClose} disabled={busy}>Hủy</button><button type="submit" className="management-button primary" disabled={busy}>{busy && <i className="fa-solid fa-spinner fa-spin"></i>} {creating ? 'Tạo nhân viên' : 'Lưu thay đổi'}</button></footer>
       </form>
@@ -216,7 +215,7 @@ function PasswordDialog({ user, busy, error, onClose, onSubmit }) {
         <header className="management-modal-header"><div><span className="management-eyebrow">Quyền truy cập ChatUI</span><h2>{user.accountManaged ? 'Cấp mật khẩu ChatUI' : 'Đặt lại mật khẩu'}</h2></div><button type="button" className="management-icon-button" onClick={onClose} disabled={busy} aria-label="Đóng"><i className="fa-solid fa-xmark"></i></button></header>
         <p className="management-modal-copy">{user.accountManaged ? `Tài khoản ${user.name} sẽ chuyển từ projection Account sang nhân viên do Chatmgt quản lý, đồng thời giữ nguyên định danh và lịch sử Tinode hiện có.` : `Mật khẩu hiện tại của ${user.name} sẽ bị thu hồi. Người dùng phải đăng nhập lại bằng mật khẩu mới.`}</p>
         {error && <div className="management-inline-error" role="alert"><i className="fa-solid fa-circle-exclamation"></i>{error}</div>}
-        <label className="management-field"><span>Mật khẩu mới</span><input type="password" value={password} onChange={event => setPassword(event.target.value)} disabled={busy} required minLength="8" autoComplete="new-password" /><small>Tối thiểu 8 ký tự; nên dùng cụm mật khẩu dài và riêng cho ChatUI.</small></label>
+        <label className="management-field"><span>Mật khẩu mới</span><input type="password" value={password} onChange={event => setPassword(event.target.value)} disabled={busy} required minLength="8" autoComplete="new-password" /></label>
         <footer className="management-modal-footer"><button type="button" className="management-button ghost" onClick={onClose} disabled={busy}>Hủy</button><button type="submit" className="management-button primary" disabled={busy}>{busy && <i className="fa-solid fa-spinner fa-spin"></i>} Xác nhận</button></footer>
       </form>
     </div>
@@ -345,6 +344,8 @@ export default function ManagementApp() {
     pendingFriendRequests: Number(conversationSummary.friendRequests?.pending || 0),
   }), [employees, conversations, conversationSummary]);
 
+  const employeeAccountSso = health?.employee_auth?.login_endpoint === '/api/v1/auth/sso';
+
   const currentAdmin = useMemo(() => {
     const currentId = String(session?.user?.id || '');
     return users.find(user => String(user.id) === currentId) || session?.user || { id: '', name: '' };
@@ -454,7 +455,7 @@ export default function ManagementApp() {
         <span className="management-denied-icon"><i className="fa-solid fa-user-lock"></i></span>
         <span className="management-eyebrow">Không đủ quyền truy cập</span>
         <h1>Cổng này chỉ dành cho quản trị viên của tenant trên UpGO Account.</h1>
-        <p>Hãy chọn đúng tenant và bảo đảm tài khoản có role admin, owner hoặc superadmin trước khi thử lại.</p>
+
         <a className="management-button primary" href={ACCOUNT_ADMIN_URL}>Mở UpGO Account</a>
       </main>
     );
@@ -509,14 +510,14 @@ export default function ManagementApp() {
           {activeView === 'overview' && (
             <section className="management-view management-overview">
               <div className="management-flow-boundary">
-                <span><i className="fa-solid fa-building-shield"></i><strong>Admin doanh nghiệp</strong><small>Account SSO chỉ mở cổng quản trị tenant</small></span>
+                <span><i className="fa-solid fa-building-shield"></i><strong>Admin doanh nghiệp</strong></span>
                 <i className="fa-solid fa-arrow-right-long"></i>
-                <span className="active"><i className="fa-solid fa-diagram-project"></i><strong>Chatmgt</strong><small>Tài khoản nhân viên, tenant, metadata, session</small></span>
+                <span className="active"><i className="fa-solid fa-diagram-project"></i><strong>Chatmgt</strong></span>
                 <i className="fa-solid fa-arrow-right-long"></i>
-                <span><i className="fa-solid fa-bolt"></i><strong>Tinode</strong><small>Tin nhắn, file và realtime</small></span>
+                <span><i className="fa-solid fa-bolt"></i><strong>Tinode</strong></span>
               </div>
               <div className="management-hero-card">
-                <div className="management-hero-copy"><span className="management-kicker">Tổng quan vận hành</span><h2>Chatmgt đang giữ đúng ranh giới quản trị.</h2><p>Admin tenant cấp tài khoản ChatUI cho nhân viên của chính doanh nghiệp mình. Trang quản trị không tải nội dung tin nhắn hoặc file từ Tinode.</p><div className="management-hero-context"><span><i className="fa-solid fa-shield-halved"></i>Tenant-scoped</span><span><i className="fa-solid fa-arrows-rotate"></i>Tự đồng bộ 30 giây</span><span className={health?.account_sso?.tinode_bridge_configured ? 'ready' : 'pending'}><i className="fa-solid fa-bolt"></i>{health?.account_sso?.tinode_bridge_configured ? 'Tinode sẵn sàng' : 'Đang kiểm tra Tinode'}</span></div></div>
+                <div className="management-hero-copy"><span className="management-kicker">Tổng quan vận hành</span><h2>Chatmgt đang giữ đúng ranh giới quản trị.</h2><div className="management-hero-context"><span><i className="fa-solid fa-shield-halved"></i>Tenant-scoped</span><span><i className="fa-solid fa-arrows-rotate"></i>Tự đồng bộ 30 giây</span><span className={health?.account_sso?.tinode_bridge_configured ? 'ready' : 'pending'}><i className="fa-solid fa-bolt"></i>{health?.account_sso?.tinode_bridge_configured ? 'Tinode sẵn sàng' : 'Đang kiểm tra Tinode'}</span></div></div>
                 <div className="management-hero-orbit" aria-hidden="true"><span>{stats.activeEmployees}</span><small>nhân viên active</small></div>
               </div>
               <div className="management-metrics-grid">
@@ -549,10 +550,12 @@ export default function ManagementApp() {
           {activeView === 'directory' && (
             <section className="management-view">
               <div className="management-section-heading">
-                <div><span className="management-kicker">Nguồn chuẩn: Chatmgt theo tenant</span><h2>Tài khoản nhân viên doanh nghiệp</h2><p>Tạo, cập nhật, khóa và cấp lại mật khẩu ChatUI tại đây. Backend luôn lấy tenant từ phiên quản trị, không nhận tenant tùy ý từ form.</p></div>
-                <button className="management-button primary" type="button" onClick={() => { setModalError(''); setUserEditor({ mode: 'create', user: null }); }}><i className="fa-solid fa-user-plus"></i> Thêm nhân viên</button>
+                <div><span className="management-kicker">Nguồn chuẩn: UpGO Account theo tenant</span><h2>Tài khoản nhân viên doanh nghiệp</h2></div>
+                {employeeAccountSso
+                  ? <a className="management-button primary" href={ACCOUNT_ADMIN_URL} target="_blank" rel="noreferrer"><i className="fa-solid fa-user-plus"></i> Mời nhân viên trên UpGO</a>
+                  : <button className="management-button primary" type="button" onClick={() => { setModalError(''); setUserEditor({ mode: 'create', user: null }); }}><i className="fa-solid fa-user-plus"></i> Thêm nhân viên</button>}
               </div>
-              <div className="management-source-note"><i className="fa-solid fa-circle-info"></i><span>Projection Account cũ có thể được cấp mật khẩu ChatUI để chuyển sang Chatmgt mà vẫn giữ ID và Tinode UID hiện tại.</span></div>
+
               <div className="management-toolbar">
                 <label className="management-search"><i className="fa-solid fa-magnifying-glass"></i><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Tìm tên, username, email, phòng ban..." /></label>
                 <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} aria-label="Lọc trạng thái"><option value="all">Mọi trạng thái</option><option value="active">Đang hoạt động</option><option value="inactive">Ngừng hoạt động</option></select>
@@ -570,23 +573,23 @@ export default function ManagementApp() {
                           <td><div className="management-user-cell"><ManagementAvatar user={user} /><div><strong>{user.name}</strong><span>@{user.username}{user.email ? ` · ${user.email}` : ''}</span><small>{user.department || 'Chưa có phòng ban'}{user.title ? ` / ${user.title}` : ''}</small></div></div></td>
                           <td><span className={`management-role role-${isAdmin(user) ? 'admin' : 'member'}`}><i className={`fa-solid ${isAdmin(user) ? 'fa-shield' : 'fa-user'}`}></i>{roleLabel(user)}</span></td>
                           <td><span className={`management-status ${user.active ? 'active' : 'inactive'}`}><i></i>{user.active ? 'Đang hoạt động' : 'Đã khóa'}</span></td>
-                          <td><span className={`management-status ${user.accountManaged ? 'inactive' : 'active'}`}><i></i>{user.accountManaged ? 'Projection Account' : 'Chatmgt local'}</span></td>
-                          <td><span className={`management-status ${user.tinodeUid ? 'active' : 'inactive'}`}><i></i>{user.tinodeUid ? 'Đã provision' : 'Chưa provision'}</span></td>
-                          <td><div className="management-row-actions"><button type="button" onClick={() => { setModalError(''); setUserEditor({ mode: 'edit', user }); }} title="Sửa hồ sơ" disabled={busy || user.accountManaged}><i className="fa-solid fa-pen"></i></button><button type="button" className="good" onClick={() => { setModalError(''); setPasswordUser(user); }} title={user.accountManaged ? 'Cấp mật khẩu ChatUI' : 'Đặt lại mật khẩu'} disabled={busy || String(user.id) === String(currentAdmin.id)}><i className="fa-solid fa-key"></i></button><button type="button" className="lock" onClick={() => setUserActive(user)} title={user.accountManaged ? 'Tài khoản do UpGO Account quản lý' : (user.active ? 'Khóa tài khoản' : 'Mở khóa tài khoản')} disabled={busy || user.accountManaged || String(user.id) === String(currentAdmin.id)}><i className={`fa-solid ${busy ? 'fa-spinner fa-spin' : (user.active ? 'fa-lock' : 'fa-lock-open')}`}></i></button><button type="button" className="warn" onClick={() => revokeSessions(user)} title="Thu hồi phiên Chatmgt" disabled={busy || !user.active || String(user.id) === String(currentAdmin.id)}><i className={`fa-solid ${busy ? 'fa-spinner fa-spin' : 'fa-right-from-bracket'}`}></i></button></div></td>
+                          <td><span className={`management-status ${user.accountManaged ? 'inactive' : 'active'}`}><i></i>{user.accountManaged ? (employeeAccountSso ? 'UpGO Account' : 'Projection Account') : 'Chatmgt local'}</span></td>
+                          <td><div className="management-tinode-account"><span className={`management-status ${user.tinodeUid ? 'active' : 'inactive'}`}><i></i>{user.tinodeUid ? 'Đã provision' : 'Chưa provision'}</span>{user.tinodeUid && user.tinodeUsername ? <code>{user.tinodeUsername}</code> : null}</div></td>
+                          <td><div className="management-row-actions">{!employeeAccountSso && <><button type="button" onClick={() => { setModalError(''); setUserEditor({ mode: 'edit', user }); }} title="Sửa hồ sơ" disabled={busy || user.accountManaged}><i className="fa-solid fa-pen"></i></button><button type="button" className="good" onClick={() => { setModalError(''); setPasswordUser(user); }} title={user.accountManaged ? 'Cấp mật khẩu ChatUI' : 'Đặt lại mật khẩu'} disabled={busy || String(user.id) === String(currentAdmin.id)}><i className="fa-solid fa-key"></i></button><button type="button" className="lock" onClick={() => setUserActive(user)} title={user.accountManaged ? 'Tài khoản do UpGO Account quản lý' : (user.active ? 'Khóa tài khoản' : 'Mở khóa tài khoản')} disabled={busy || user.accountManaged || String(user.id) === String(currentAdmin.id)}><i className={`fa-solid ${busy ? 'fa-spinner fa-spin' : (user.active ? 'fa-lock' : 'fa-lock-open')}`}></i></button></>}<button type="button" className="warn" onClick={() => revokeSessions(user)} title="Thu hồi phiên Chatmgt" disabled={busy || !user.active || String(user.id) === String(currentAdmin.id)}><i className={`fa-solid ${busy ? 'fa-spinner fa-spin' : 'fa-right-from-bracket'}`}></i></button></div></td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
-                {visibleUsers.length === 0 && <div className="management-empty-state"><i className="fa-solid fa-address-book"></i><strong>Chưa có nhân viên phù hợp</strong><span>Thêm tài khoản đầu tiên cho tenant hiện tại để nhân viên đăng nhập ChatUI.</span></div>}
+                {visibleUsers.length === 0 && <div className="management-empty-state"><i className="fa-solid fa-address-book"></i><strong>Chưa có nhân viên phù hợp</strong></div>}
               </div>
             </section>
           )}
 
           {activeView === 'conversations' && (
             <section className="management-view">
-              <div className="management-section-heading"><div><span className="management-kicker">Chatmgt là nguồn metadata</span><h2>Conversation và nhóm</h2><p>Theo dõi subject, thành viên, chủ nhóm và trạng thái binding Tinode. Nội dung tin nhắn, file, typing và receipt không được tải vào trang quản trị.</p></div></div>
-              <div className="management-source-note secure"><i className="fa-solid fa-eye-slash"></i><span>Không có API đọc lịch sử tin nhắn Tinode trên bề mặt quản trị này.</span></div>
+              <div className="management-section-heading"><div><span className="management-kicker">Chatmgt là nguồn metadata</span><h2>Conversation và nhóm</h2></div></div>
+
               <div className="management-toolbar">
                 <label className="management-search"><i className="fa-solid fa-magnifying-glass"></i><input value={conversationSearch} onChange={event => setConversationSearch(event.target.value)} placeholder="Tìm subject hoặc thành viên..." /></label>
                 <select value={conversationType} onChange={event => setConversationType(event.target.value)} aria-label="Lọc loại conversation"><option value="all">Tất cả loại</option><option value="direct">Chat trực tiếp</option><option value="group">Nhóm</option></select>
@@ -610,14 +613,14 @@ export default function ManagementApp() {
                     })}
                   </tbody>
                 </table>
-                {visibleConversations.length === 0 && <div className="management-empty-state"><i className="fa-solid fa-comments"></i><strong>Chưa có conversation phù hợp</strong><span>ChatUI sẽ tạo metadata conversation qua Chatmgt trước khi dùng Tinode realtime.</span></div>}
+                {visibleConversations.length === 0 && <div className="management-empty-state"><i className="fa-solid fa-comments"></i><strong>Chưa có conversation phù hợp</strong></div>}
               </div>
             </section>
           )}
 
           {activeView === 'audit' && (
             <section className="management-view">
-              <div className="management-section-heading"><div><span className="management-kicker">Lịch sử bảo mật</span><h2>Nhật ký Chatmgt</h2><p>Theo dõi đăng nhập, đăng xuất, SSO và thao tác thu hồi phiên trong đúng tenant.</p></div></div>
+              <div className="management-section-heading"><div><span className="management-kicker">Lịch sử bảo mật</span><h2>Nhật ký Chatmgt</h2></div></div>
               <div className="management-toolbar audit-toolbar"><label className="management-search"><i className="fa-solid fa-magnifying-glass"></i><input value={auditSearch} onChange={event => setAuditSearch(event.target.value)} placeholder="Tìm sự kiện, người dùng hoặc IP..." /></label><span className="management-result-count">{visibleAuditLogs.length} sự kiện gần nhất</span></div>
               <div className="management-audit-list">
                 {visibleAuditLogs.map(log => {
@@ -632,14 +635,14 @@ export default function ManagementApp() {
 
           {activeView === 'system' && (
             <section className="management-view">
-              <div className="management-section-heading"><div><span className="management-kicker">Luồng triển khai bốn bước</span><h2>Trạng thái Admin SSO → Chatmgt → Tinode</h2><p>Các thẻ phản ánh đúng cấu hình backend; không dùng trạng thái giả từ trình duyệt.</p></div><a className="management-button ghost" href={ACCOUNT_ADMIN_URL} target="_blank" rel="noreferrer"><i className="fa-solid fa-building-shield"></i> Quản lý admin tại Account</a></div>
+              <div className="management-section-heading"><div><span className="management-kicker">Luồng triển khai bốn bước</span><h2>Trạng thái Admin SSO → Chatmgt → Tinode</h2></div><a className="management-button ghost" href={ACCOUNT_ADMIN_URL} target="_blank" rel="noreferrer"><i className="fa-solid fa-building-shield"></i> Quản lý admin tại Account</a></div>
               <div className="management-system-grid">
-                <SystemCard icon="fa-solid fa-server" label="Chatmgt API" ready={health?.status === 'ok'} title={health?.status === 'ok' ? 'Đang hoạt động' : 'Không xác định'} description="Phiên quản trị, projection, metadata conversation và audit log thuộc dịch vụ này." />
-                <SystemCard icon="fa-solid fa-id-card" label="UpGO Account Admin SSO" ready={Boolean(health?.account_sso?.admin_configured)} title={health?.account_sso?.admin_configured ? 'Đã kết nối' : 'Chưa hoàn chỉnh'} description="Account chỉ xác thực admin/owner/superadmin để mở control plane của tenant hiện tại." />
-                <SystemCard icon="fa-solid fa-address-book" label="Tài khoản nhân viên" ready={health?.employee_auth?.login_endpoint === '/api/v1/auth/login'} title={health?.employee_auth?.login_endpoint === '/api/v1/auth/login' ? 'Chatmgt local' : 'Đang dùng SSO'} description="Nhân viên đăng nhập bằng username/password do admin tenant cấp; directory lấy từ Chatmgt." />
-                <SystemCard icon="fa-solid fa-bolt" label="Cầu nối Tinode" ready={Boolean(health?.account_sso?.tinode_bridge_configured)} title={health?.account_sso?.tinode_bridge_configured ? 'Sẵn sàng realtime' : 'Chưa sẵn sàng'} description="Chatmgt provision UID và cấp token ngắn hạn; Tinode tiếp tục giữ tin nhắn và trạng thái realtime." />
-                <SystemCard icon="fa-solid fa-cookie-bite" label="Phiên quản trị riêng" ready={Boolean(health?.management_session?.isolated && health?.management_session?.cookie_secure)} title={health?.management_session?.isolated ? 'Đã cách ly' : 'Cần kiểm tra'} description="Admin Chatmgt dùng cookie riêng, không nhận Tinode token và không đăng nhập thay nhân viên." readyText="Được bảo vệ" warningText="Cần kiểm tra" />
-                <SystemCard icon="fa-solid fa-eye-slash" label="Ranh giới dữ liệu" ready title="Không đọc nội dung chat" description="Trang quản trị chỉ đọc metadata conversation; message, file, presence, typing và receipt ở Tinode/ChatAPI." readyText="Đúng kiến trúc" />
+                <SystemCard icon="fa-solid fa-server" label="Chatmgt API" ready={health?.status === 'ok'} title={health?.status === 'ok' ? 'Đang hoạt động' : 'Không xác định'} />
+                <SystemCard icon="fa-solid fa-id-card" label="UpGO Account Admin SSO" ready={Boolean(health?.account_sso?.admin_configured)} title={health?.account_sso?.admin_configured ? 'Đã kết nối' : 'Chưa hoàn chỉnh'} />
+                <SystemCard icon="fa-solid fa-address-book" label="Tài khoản nhân viên" ready={health?.employee_auth?.login_endpoint === '/api/v1/auth/sso'} title={health?.employee_auth?.login_endpoint === '/api/v1/auth/sso' ? 'Đang dùng UpGO Account SSO' : 'Chatmgt local'} />
+                <SystemCard icon="fa-solid fa-bolt" label="Cầu nối Tinode" ready={Boolean(health?.account_sso?.tinode_bridge_configured)} title={health?.account_sso?.tinode_bridge_configured ? 'Sẵn sàng realtime' : 'Chưa sẵn sàng'} />
+                <SystemCard icon="fa-solid fa-cookie-bite" label="Phiên quản trị riêng" ready={Boolean(health?.management_session?.isolated && health?.management_session?.cookie_secure)} title={health?.management_session?.isolated ? 'Đã cách ly' : 'Cần kiểm tra'} readyText="Được bảo vệ" warningText="Cần kiểm tra" />
+                <SystemCard icon="fa-solid fa-eye-slash" label="Ranh giới dữ liệu" ready title="Không đọc nội dung chat" readyText="Đúng kiến trúc" />
               </div>
             </section>
           )}

@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import logging
 import uuid
 
@@ -70,6 +72,116 @@ def _internal_request(request):
     expected = app.config.get("INTERNAL_ACCESS_TOKEN")
     supplied = request.headers.get("X-INTERNAL-TOKEN") or request.headers.get("access-token")
     return bool(expected and supplied and supplied == expected)
+
+
+def _external_api_configured():
+    return bool(
+        str(app.config.get("CHATBOT_EXTERNAL_API_KEY") or "").strip()
+        and str(app.config.get("CHATBOT_EXTERNAL_TENANT") or "").strip()
+    )
+
+
+def _external_request(request):
+    expected = str(app.config.get("CHATBOT_EXTERNAL_API_KEY") or "").strip()
+    supplied = str(request.headers.get("X-Chatbot-Api-Key") or "").strip()
+    authorization = str(request.headers.get("Authorization") or "").strip()
+    if authorization.lower().startswith("bearer "):
+        supplied = authorization[7:].strip()
+    return bool(expected and supplied and hmac.compare_digest(expected, supplied))
+
+
+def _external_api_error(request):
+    if not _external_api_configured():
+        return json({
+            "error_code": "EXTERNAL_CHATBOT_NOT_CONFIGURED",
+            "error_message": "External chatbot data API is not configured.",
+        }, status=503)
+    if not _external_request(request):
+        return json({
+            "error_code": "UNAUTHORIZED",
+            "error_message": "A valid external chatbot API key is required.",
+        }, status=401)
+    return None
+
+
+def _external_tenant_id():
+    return str(app.config.get("CHATBOT_EXTERNAL_TENANT") or "").strip()
+
+
+def _external_knowledge_base_id(body):
+    configured = str(app.config.get("CHATBOT_EXTERNAL_KNOWLEDGE_BASE_ID") or "").strip()
+    requested = str((body or {}).get("knowledge_base_id") or "").strip()
+    if configured and requested and not hmac.compare_digest(configured, requested):
+        raise KnowledgeServiceError("Knowledge base is not available to this integration.", 403)
+    selected = configured or requested
+    return _valid_uuid(selected, "knowledge_base_id") if selected else None
+
+
+def _external_user_ref(body):
+    external_id = str(
+        (body or {}).get("external_user_id")
+        or (body or {}).get("user_id")
+        or "anonymous"
+    ).strip()[:500]
+    secret = str(app.config.get("CHATBOT_EXTERNAL_API_KEY") or "").encode("utf-8")
+    digest = hmac.new(secret, external_id.encode("utf-8"), hashlib.sha256).hexdigest()[:40]
+    return "external:{}".format(digest)
+
+
+def _external_user(body, tenant_id):
+    supplied = (body or {}).get("user")
+    supplied = supplied if isinstance(supplied, dict) else {}
+    allowed = {}
+    for key in ("id", "uid", "name", "full_name", "user_name", "username"):
+        value = str(supplied.get(key) or "").strip()[:255]
+        if value:
+            allowed[key] = value
+    allowed["tenant_id"] = tenant_id
+    return allowed
+
+
+def _external_matches(body):
+    query_text = str((body or {}).get("query") or (body or {}).get("message") or "").strip()
+    if not query_text:
+        raise KnowledgeServiceError("Query must not be empty.")
+    max_length = app.config.get("CHATBOT_MAX_INPUT_LENGTH", 4000)
+    if len(query_text) > max_length:
+        raise KnowledgeServiceError("Query exceeds {} characters.".format(max_length))
+    tenant_id = _external_tenant_id()
+    base_id = _external_knowledge_base_id(body)
+    if base_id:
+        knowledge_service.get_base(tenant_id, base_id)
+    requested_limit = (body or {}).get("limit")
+    try:
+        limit = min(max(int(requested_limit or app.config.get("CHATBOT_RETRIEVAL_LIMIT", 6)), 1), 20)
+    except (TypeError, ValueError):
+        raise KnowledgeServiceError("limit must be an integer between 1 and 20.")
+    matches = knowledge_service.retrieve(
+        query_text,
+        tenant_id,
+        knowledge_base_id=base_id,
+        user_ids=[],
+        limit=limit,
+        exclude_source_prefixes=("CHAT_",),
+    )
+    return query_text, tenant_id, base_id, matches
+
+
+def _external_sources(matches, include_content=False):
+    objects = []
+    for item in matches:
+        source = {
+            "document_id": item.get("document_id"),
+            "knowledge_base_id": item.get("knowledge_base_id"),
+            "title": item.get("title"),
+            "file_name": item.get("file_name"),
+            "page_number": item.get("page_number"),
+            "score": item.get("score"),
+        }
+        if include_content:
+            source["content"] = item.get("content")
+        objects.append(source)
+    return objects
 
 
 def _knowledge_identity(request, body=None):
@@ -195,7 +307,90 @@ async def chatbot_health(request):
         "model": app.config.get("CHATBOT_MODEL"),
         "knowledge_enabled": True,
         "knowledge_only": app.config.get("CHATBOT_KNOWLEDGE_ONLY", True),
+        "external_data_api": {
+            "configured": _external_api_configured(),
+            "tenant_configured": bool(_external_tenant_id()),
+            "knowledge_base_restricted": bool(
+                str(app.config.get("CHATBOT_EXTERNAL_KNOWLEDGE_BASE_ID") or "").strip()
+            ),
+        },
     })
+
+
+@app.route('/api/v1/chatbot/external/context', methods=['POST'])
+async def chatbot_external_context(request):
+    auth_error = _external_api_error(request)
+    if auth_error is not None:
+        return auth_error
+    body = request.json if isinstance(request.json, dict) else {}
+    try:
+        query_text, tenant_id, base_id, matches = _external_matches(body)
+        return json({
+            "query": query_text,
+            "tenant_id": tenant_id,
+            "knowledge_base_id": base_id,
+            "grounded": bool(matches),
+            "context": knowledge_service.format_context(matches),
+            "sources": _external_sources(matches, include_content=True),
+        })
+    except Exception as error:
+        return _error_response(error, "EXTERNAL_CONTEXT_ERROR")
+
+
+@app.route('/api/v1/chatbot/external/message', methods=['POST'])
+async def chatbot_external_message(request):
+    auth_error = _external_api_error(request)
+    if auth_error is not None:
+        return auth_error
+    body = request.json if isinstance(request.json, dict) else {}
+    try:
+        message, tenant_id, base_id, matches = _external_matches(body)
+        conversation_ref = str(body.get("conversation_id") or "external-chatbot")[:255]
+        message_ref = str(body.get("message_id") or "").strip()[:255] or None
+        user_ref = _external_user_ref(body)
+        user = _external_user(body, tenant_id)
+        _store_history_message(
+            tenant_id,
+            conversation_ref,
+            user_ref,
+            "user",
+            message,
+            message_ref=message_ref,
+            properties={"source": "external-api"},
+        )
+        result = await chat_manager_service.reply(
+            message=message,
+            user=user,
+            conversation_id=conversation_ref,
+            tenant_id=tenant_id,
+            knowledge_base_id=base_id,
+            history=body.get("history") if isinstance(body.get("history"), list) else [],
+            exclude_source_prefixes=("CHAT_",),
+            retrieved_matches=matches,
+        )
+        result["sources"] = _external_sources(matches)
+        result["grounded"] = bool(matches)
+        _store_history_message(
+            tenant_id,
+            conversation_ref,
+            user_ref,
+            "assistant",
+            result.get("reply") or "",
+            message_ref="{}:assistant".format(message_ref or uuid.uuid4()),
+            properties={
+                "source": "external-api",
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+            },
+        )
+        return json(result)
+    except KnowledgeServiceError as error:
+        return _error_response(error, "EXTERNAL_CHATBOT_ERROR")
+    except ChatbotServiceError as error:
+        return _error_response(error, "EXTERNAL_CHATBOT_ERROR")
+    except Exception as error:
+        logger.exception("External chatbot message failed")
+        return _error_response(error, "EXTERNAL_CHATBOT_ERROR")
 
 
 @app.route('/api/v1/chatbot/message', methods=['POST'])

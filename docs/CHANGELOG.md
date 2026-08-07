@@ -6,6 +6,20 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-07-01 - Chuyen employee auth sang UpGo Account va provision Tinode theo directory
+
+- Thoi gian: 2026-08-07 13:41 (Asia/Saigon)
+- Loai: Tinh nang | Xac thuc | Tinode | Chatmgt | Cau hinh
+- Trang thai: Hoan tat code; chua deploy production
+- Muc tieu: Chatmgt khong con tao tai khoan nhan vien trong production; ChatUI dang nhap nhanh bang UpGo Account da duoc tenant admin moi va moi identity active duoc tao mapping Tinode on dinh.
+- Quyet dinh ky thuat: UpGo Account la nguon chuan cho invitation, membership, profile, role, status va password. Chatmgt chi giu projection tenant-scoped va mapping Tinode deterministic de khong mat conversation/friendship khi Account thay doi. Directory sync provision Tinode best-effort, co retry tu dong qua lan sync/login sau neu Tinode tam thoi khong san sang.
+- Pham vi: Chatmgt Account SSO employee, directory sync, Tinode bridge, ChatUI login mac dinh, giao dien quan tri nhan vien, production config, verifier, tai lieu va test; khong migration database.
+- File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/services/sso_identity.py`, `chatservice-main/application/config/config.py`, `src/features/chat/services/chatManagementService.js`, `src/features/management/ManagementApp.jsx`, `scripts/build-production.mjs`, `infrastructure/production/`, `chatservice-main/tests/`, `README.md`, `docs/chat-backend-architecture.md`, va `docs/CHANGELOG.md`.
+- Kiem thu: `python -m unittest discover -s chatservice-main/tests -v` dat 87 tests, skip 28 do thieu dependency runtime; `npm run test:frontend` dat 40/40; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` dat; `docker compose --env-file infrastructure/production/.env.example -f infrastructure/production/compose.yaml config -q` dat voi `TINODE_SSO_SECRET` gia lap chi trong process; `git diff --check` dat.
+- Rui ro con lai: Chua co webhook truc tiep tu UpGo Account nen provision cho thanh vien moi xay ra khi directory duoc sync hoac employee dang nhap; can UAT payload that cua `/api/v1/tenant_user`, tai khoan duoc moi that tren UpGo Account va hai browser; khong ghi credential vao log.
+- Viec tiep theo: Cap nhat `.env` production that sang `CHAT_ACCOUNT_SSO_ENABLED=true`, `VITE_CHAT_AUTH_MODE=account_sso`, `ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user`, `ACCOUNT_SSO_DIRECTORY_SYNC_TTL=10`; deploy Chatmgt/ChatUI, hard refresh va UAT invite -> directory -> Tinode UID -> login -> remove/disable.
+- Commit/PR: Chua tao.
+
 ## 2026-08-06-20 - Dong bo avatar va receipt ChatUI
 
 - Thoi gian: 2026-08-06 (Asia/Saigon)
@@ -37,6 +51,300 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Rui ro con lai: Bundle build da tao nhung chua deploy production; chua UAT tai khoan production.
 - Viec tiep theo: Deploy bundle Chatmgt moi, hard refresh, thu khoa/mo khoa tai khoan nhan vien va xac nhan phien cu bi dang xuat.
 - Commit/PR: 8199183.
+
+## 2026-08-06-18 - Xac minh web that dang phuc vu bundle cu
+
+- Thoi gian: 2026-08-06 (Asia/Saigon)
+- Loai: Van hanh | Sua loi | ChatUI
+- Trang thai: Can deploy production
+- Muc tieu: Xac dinh vi sao luong ket ban da co trong source nhung nguoi dung van khong thao tac duoc tren web that.
+- Pham vi: Chi kiem tra bundle public ChatUI; khong sua Tinode, Chatmgt, database, chat, file hoac avatar.
+- Noi dung: `https://chat.upgo.vn` tra `index-DWzHceAX.js`; bundle nay khong co `friend-request`, `Chấp nhận`, `Kết bạn`, `image-preview-button` hoac `onPasteCapture`. Bundle local moi da build co cac marker nay, nen web that dang chay release cu.
+- Quyet dinh ky thuat: Khong tiep tuc sua source ngoai pham vi khi nguyen nhan la release chua duoc cap nhat; deploy dung bundle moi roi hard refresh truoc khi UAT.
+- Database/API/cau hinh: Khong co thay doi.
+- Kiem thu: `Invoke-WebRequest -UseBasicParsing https://chat.upgo.vn/` tra HTTP 200; kiem tra asset public va `npm run build:production` local dat.
+- Rui ro con lai: Web that van khong co luong ket ban cho den khi deploy; phien nay chua co quyen SSH de deploy.
+- Viec tiep theo: Deploy bundle `dist` moi, hard refresh, sau do test hai tai khoan theo thu tu gui -> nhan thong bao -> chap nhan/tu choi -> danh ba.
+- Commit/PR: Chua tao.
+
+## 2026-08-06-17 - Khoa renderer anh khong hien ten file
+
+- Thoi gian: 2026-08-06 (Asia/Saigon)
+- Loai: Sua loi | Giao dien | ChatUI
+- Trang thai: Hoan tat code va build; chua deploy production trong phien nay
+- Muc tieu: Anh gui trong chat chi hien preview anh, khong hien ten file ben duoi nhu file dinh kem.
+- Pham vi: Renderer attachment anh trong `src/app/App.jsx`; file thuong van giu ten, kich thuoc va nut mo/tai.
+- Noi dung: Uu tien nhanh hien thi anh va dat `alt` chung `Anh dinh kem`; ten file khong duoc render trong nhanh image. Ghi invariant nay de khong tai su dung card file cho anh o lan sua sau.
+- Quyet dinh ky thuat: Phan biet anh bang MIME/duoi file; chi nhanh file thuong moi duoc render `.file-name`.
+- Database/API/cau hinh: Khong co.
+- Kiem thu: `npm run test:frontend` dat 38/38; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` dat; `git diff --check` dat.
+- Trien khai: Chua deploy production trong phien nay; can deploy bundle moi va hard refresh de UAT.
+- Rui ro con lai: Web dang phuc vu bundle cu se van con tieu de cho den khi deploy va xoa cache.
+- Viec tiep theo: Deploy rieng ChatUI, hard refresh, gui lai mot anh va xac nhan chi con preview anh.
+- Commit/PR: Chua tao.
+
+## 2026-08-06-16 - Dong bo loi moi ket ban va avatar realtime
+
+- Thoi gian: 2026-08-06 15:17 (Asia/Saigon)
+- Loai: Sua loi | Giao dien | Realtime | Chatmgt
+- Trang thai: Hoan tat code va build; chua deploy production trong phien nay
+- Muc tieu: Clipboard copy/paste hoat dong on dinh; loi moi ket ban hien dung o ben nhan; chap nhan them vao danh ba, tu choi khong them va co the gui lai; avatar ca nhan cap nhat tren cac man hinh ma khong can reload.
+- Pham vi: `src/app/App.jsx`; khong doi Tinode message, receipt, upload, dang nhap hay database.
+- Noi dung: Tach identity Chatmgt cho friendship thay vi dung Tinode UID; them nut `Chap nhan`/`Tu choi` cho request pending; dong bo danh ba, request va avatar moi 5 giay qua service da co, cap nhat ca ket qua tim kiem, room, member va message; giu room request khi refresh danh sach Tinode; them fallback `document.execCommand('copy')` va bat paste o capture phase; doi chieu avatar theo ca id/uid/Tinode UID va hien avatar room neu notification chua co avatar message; ghi ro invariant renderer: anh chi hien preview va thoi gian, tuyet doi khong hien ten file ben duoi.
+- Quyet dinh ky thuat: Chatmgt van la nguon chuan cua friendship/avatar; polling ngan duoc dung lam cau noi realtime vi API hien tai chua co kenh push cho hai loai du lieu nay. Luong Tinode chat khong bi thay doi.
+- Database/API/cau hinh: Khong co migration hay thay doi hop dong API.
+- Kiem thu: `npm run test:frontend` dat 38/38; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` dat; `git diff --check` dat.
+- Trien khai: Chua deploy production trong phien nay; SSH production chua duoc cap quyen.
+- Rui ro con lai: Chua UAT bang hai tai khoan production; dong bo nen phu thuoc cookie Chatmgt con han va cap nhat trong toi da 5 giay.
+- Viec tiep theo: Deploy rieng ChatUI, hard refresh, gui request tu tai khoan A sang B, thu ca chap nhan/tu choi/gui lai va doi avatar tren ca hai phien.
+- Commit/PR: Chua tao.
+
+## 2026-08-06-15 - Hoan thien clipboard va receipt realtime
+
+- Thoi gian: 2026-08-06 14:58 (Asia/Saigon)
+- Loai: Sua loi | Giao dien | Realtime | Tinode
+- Trang thai: Hoan tat code va build; chua deploy production trong phien nay
+- Muc tieu: Ctrl+V anh chup gui thang anh, Ctrl+V tep gui thang tep, Ctrl+V text gui thang tin nhan; receipt cua tin nhan cu khong bi quay lai mot dau tich.
+- Pham vi: ChatUI composer, Tinode attachment, receipt cua topic 1-1/nhom va test frontend; khong doi dang nhap, danh ba, upload API hay luong nhom.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/tinodeClient.js`.
+- Noi dung: Xu ly clipboard file co/khong ten, chan paste tep vao chatbot, giu text paste gui truc tiep; giu trang thai receipt cao nhat khi snapshot conversation realtime ve sau ghi de state vua cap nhat.
+- Quyet dinh ky thuat: Tinode van la nguon receipt chuan; UI chi bo sung cap nhat theo cursor `seq` va khong suy dien hai dau tich tu presence online.
+- Database/API/cau hinh: Khong co.
+- Kiem thu: `npm run test:frontend` dat 38/38; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` dat; `git diff --check` dat.
+- Trien khai: Chua deploy production trong phien nay; SSH production chua duoc cap quyen.
+- Rui ro con lai: Chua UAT bang hai tai khoan that voi screenshot, tep clipboard va receipt cua tin nhan cu.
+- Viec tiep theo: Chay bo kiem tra local, sau do deploy rieng bundle ChatUI khi co quyen va hard refresh de UAT.
+- Commit/PR: Chua tao.
+
+## 2026-08-06-14 - Rut gon anh va gui nhanh bang Ctrl+V
+
+- Thoi gian: 2026-08-06 14:40 (Asia/Saigon)
+- Loai: Sua loi | Giao dien | ChatUI | Tien ich soan tin
+- Trang thai: Hoan tat code va build; chua deploy production trong phien nay
+- Muc tieu: Anh trong phong chat chi hien preview, khong lap lai ten file; nut bieu cam mo va chon duoc; anh chup hoac noi dung copy co the gui truc tiep bang `Ctrl+V`.
+- Pham vi: `src/app/App.jsx` va `src/styles/index.css`; khong doi receipt, Tinode topic, upload API, file thuong hay luong dang nhap.
+- Noi dung: An dong ten file/caption tren image bubble va image viewer; neo emoji picker vao cum nut de khong bi lech va them focus/accessibility; tach handler gui file dung chung cho file picker va clipboard; clipboard uu tien anh, neu khong co anh thi gui text ngay.
+- Quyet dinh ky thuat: Anh clipboard khong co ten duoc gan ten tam thoi truoc khi upload de Tinode nhan dang dung; paste text duoc `preventDefault` de khong chen lai vao input sau khi da gui.
+- Database/API/cau hinh: Khong co.
+- Kiem thu: `npm run test:frontend` dat 36/36; `npm run lint` exit 0 voi warning legacy; `npm run build:production` dat; `git diff --check` dat.
+- Trien khai: Chua thuc hien vi phien nay khong co khoa/quyen SSH toi host production; khong bao cao la web that da cap nhat.
+- Rui ro con lai: Chua UAT bang browser that voi paste PNG va paste text, cung nhu click nut emoji tren production. Can deploy rieng ChatUI va hard refresh sau deploy.
+- Viec tiep theo: Deploy bundle ChatUI moi, nhan `Ctrl + F5`, thu chon emoji, paste mot anh chup man hinh va paste mot cau text trong ca chat 1-1/nhom.
+- Commit/PR: Chua tao.
+
+## 2026-08-06-13 - Sua receipt anh Tinode bi dung mot dau tich
+
+- Thoi gian: 2026-08-06 14:11 (Asia/Saigon)
+- Loai: Sua loi | Realtime | Tinode | Trien khai
+- Trang thai: Hoan tat deploy production; cho UAT anh realtime
+- Muc tieu: Anh da gui phai chuyen sang hai dau tich khi Tinode da ghi nhan nguoi nhan da nhan, giong file va text.
+- Pham vi: Chi cach ChatUI tinh `deliveryStatus` cho message echo cua Tinode; khong doi upload, media preview, noi dung tin nhan, presence hay read flow.
+- Nguyen nhan: Mot so message anh echo thieu truong `from` nhung van co header `x-sender-id`; UI nhan dien outgoing dung nhung `topic.msgStatus()` khong nhan dien sender nen tra trang thai rong va renderer roi ve mot dau tich.
+- Noi dung: Khi tinh receipt, bo sung `from` tam thoi tu `x-sender-id` neu message thieu `from`; receipt `recv/read` cua Tinode tiep tuc la nguon chuan.
+- Quyet dinh ky thuat: Chi bo sung fallback cho viec tinh trang thai, khong tu dong gan hai dau tich theo presence de tranh hien sai khi nguoi dung online nhung chua nhan message.
+- Database/API/cau hinh: Khong co.
+- Kiem thu: `npm run test:frontend` dat 36/36; `npm run lint` exit 0 voi warning legacy; `npm run build:production` dat; `git diff --check` dat. Public `https://chat.upgo.vn/healthz` tra `200 ok`; bundle public co `x-sender-id` va `msgStatus`; log ChatUI 5 phut khong co loi nghiem trong.
+- Trien khai: Release `/opt/deploy/chat/releases/chatui-image-receipt-fallback-20260806-071600`; image `sha256:eca6d533c779` va rollback `songhong-production-chat:rollback-before-image-receipt-fallback-20260806` (image cu `sha256:b4e05940b73f`). Container ChatUI moi `e16e39f57d5f`; Chatmgt `23a55b61fa98`, ChatAPI `1cccca891456`, Chat PostgreSQL `78a434b49404`, Tinode PostgreSQL `9f6e4dcc9c2f`, Redis `ceef7df23feb` va Coturn `aa680d35fdc0` giu nguyen.
+- Rui ro con lai: Chua co hai browser session production trong moi truong agent de replay anh voi tai khoan that.
+- Viec tiep theo: Deploy rieng ChatUI, hard refresh va gui lai mot anh khi tai khoan nhan dang Online.
+- Commit/PR: Chua tao.
+
+## 2026-08-06-12 - Hien thi nguoi gui anh va tep trong preview cuoc tro chuyen
+
+- Thoi gian: 2026-08-06 13:55 (Asia/Saigon)
+- Loai: Sua loi | Giao dien | Kha dung
+- Trang thai: Hoan tat deploy production; cho UAT phong chat
+- Muc tieu: Khi chua mo phong chat, preview o danh sach cuoc tro chuyen phai noi ro ai vua gui anh hoac tep.
+- Pham vi: Chat 1-1, nhom, snapshot Tinode va cap nhat optimistic luc gui tep; tin nhan text va renderer trong phong chat giu nguyen.
+- Noi dung: Doi preview ten file thanh dang `Phuong da gui 1 anh`, `Phuong da gui 1 tep` hoac `Ban da gui 1 anh`; ten file van duoc giu trong noi dung tin nhan khi mo phong chat.
+- Quyet dinh ky thuat: Dung formatter attachment dung chung de khong lech hanh vi giua du lieu demo, Tinode va danh sach cap nhat realtime.
+- Database/API/cau hinh: Khong co.
+- Kiem thu: `npm run test:frontend` dat 35/35; `npm run lint` exit 0 voi warning legacy; `npm run build:production` dat; `git diff --check` dat.
+- Trien khai: Release `/opt/deploy/chat/releases/chatui-attachment-preview-20260806-065600`; image `sha256:5c24472bc270` va rollback `songhong-production-chat:rollback-before-attachment-preview-20260806` (image cu `sha256:abada310da18`). Container ChatUI moi `99ae6cb4666a`; Chatmgt `23a55b61fa98`, ChatAPI `1cccca891456`, Chat PostgreSQL `78a434b49404`, Tinode PostgreSQL `9f6e4dcc9c2f`, Redis `ceef7df23feb` va Coturn `aa680d35fdc0` giu nguyen. Public health `200 ok`, bundle co chuoi `1 anh` va `1 tep`, log 5 phut khong co loi nghiem trong.
+- Rui ro con lai: Chua UAT click qua browser production voi hai tai khoan; can xac nhan preview anh/tep cua nguoi khac trong nhom sau deploy.
+- Viec tiep theo: Nhan `Ctrl + F5`, kiem tra chat 1-1 va nhom; gui anh/tep tu tai khoan khac de xac nhan hien ten nguoi gui.
+- Commit/PR: Chua tao.
+
+## 2026-08-06-11 - Can bang vi tri preview anh trong nhom
+
+- Thoi gian: 2026-08-06 13:42 (Asia/Saigon)
+- Loai: Sua loi | Giao dien | Van hanh
+- Trang thai: Hoan tat deploy production; cho UAT hai tai khoan trong nhom
+- Muc tieu: Anh do ca nguoi gui lan nguoi nhan hien thi cung mot khung, khong bi thut vao khi xem trong nhom.
+- Pham vi: Rieng renderer tin nhan anh trong `src/app/App.jsx` va layout message trong `src/styles/index.css`; khong doi luong file thuong, text, nhom, auth hay Tinode.
+- Noi dung: Gan khung kich thuoc co dinh theo viewport cho image message, cho anh va bubble dung cung chieu rong, dua nut tuy chon ra khoi flow layout; ap dung cho ca incoming va outgoing dua tren cung mot nhanh render.
+- Quyet dinh ky thuat: Khong chen margin/padding rieng theo tai khoan; dung class image-only tren wrapper de hai nguoi dung trong nhom nhan cung mot layout.
+- Database/API/cau hinh: Khong co.
+- Kiem thu: `npm run test:frontend` dat 32/32; `npm run lint` exit 0 voi warning legacy; `npm run build:production` dat; `git diff --check` dat. Public `https://chat.upgo.vn/healthz` tra `200 ok`; bundle public co `image-message-content` trong JS/CSS; log ChatUI 5 phut khong co loi nghiem trong.
+- Trien khai: Release `/opt/deploy/chat/releases/chatui-image-layout-20260806-064300`; image `sha256:abada310da18` va rollback `songhong-production-chat:rollback-before-image-layout-20260806` (image cu `sha256:9473a1f370d9`). Container ChatUI moi `d91fba1c50db`; Chatmgt `23a55b61fa98`, ChatAPI `1cccca891456`, Chat PostgreSQL `78a434b49404`, Tinode PostgreSQL `9f6e4dcc9c2f`, Redis `ceef7df23feb` va Coturn `aa680d35fdc0` giu nguyen.
+- Rui ro con lai: Moi truong nay khong co browser session production de click anh that bang hai tai khoan; can UAT mot anh gui tu moi tai khoan trong nhom.
+- Viec tiep theo: Nhan `Ctrl + F5` tai `https://chat.upgo.vn`, mo cung mot nhom bang hai tai khoan, gui anh theo ca hai chieu va xac nhan khong con thut vao.
+- Commit/PR: Chua tao.
+
+## 2026-08-06-10 - Mo anh trong ChatUI voi nut dong quay lai chat
+
+- Thoi gian: 2026-08-06 (Asia/Saigon)
+- Loai: Giao dien | Kha dung | Trien khai
+- Trang thai: Hoan tat deploy production; cho UAT thao tac
+- Muc tieu: Khi bam thumbnail anh, nguoi dung xem anh ngay trong ChatUI va co nut `X` o goc trai de quay lai trang nhan tin, khong mo tab moi.
+- Noi dung: Them image viewer overlay toan man hinh, nut dong co the bam/nhan `Escape`, click vung nen de dong, khoa scroll nen khi viewer mo; file thuong van giu nut mo/tai xuong hien tai.
+- Kiem thu: `npm run test:frontend` dat 32/32; `npm run lint` exit 0 voi warning legacy; `npm run build:production` dat; `git diff --check` dat. Public health tra HTTP 200; bundle va CSS public co `image-viewer-overlay`, `image-viewer-close`, `image-viewer-image`; ChatUI log 5 phut khong co loi nghiem trong.
+- Trien khai: Release `/opt/deploy/chat/releases/chatui-image-viewer-20260806-060728`; image `sha256:9473a1f370d9` va rollback `songhong-production-chat:rollback-before-image-viewer-20260806` (`sha256:33234a7aaef0`). Container `chat` moi `ad87e9d01db6`; Chatmgt `23a55b61fa98`, ChatAPI `1cccca891456`, hai PostgreSQL, Redis va Coturn giu nguyen.
+- Viec tiep theo: Nhan `Ctrl + F5` tai `https://chat.upgo.vn`, bam mot anh, kiem tra nut `X` goc trai va phim `Escape`; khong can UAT lai luong dang nhap.
+
+## 2026-08-06-09 - Sua preview va mo anh Tinode co xac thuc
+
+- Thoi gian: 2026-08-06 (Asia/Saigon)
+- Loai: Sua loi | Giao dien | Realtime | Trien khai
+- Trang thai: Hoan tat deploy production; cho UAT anh that
+- Muc tieu: Anh Tinode hien preview trong ChatUI va bam vao anh mo duoc, ke ca anh trong lich su, thay vi hien icon anh hong.
+- Nguyen nhan: Tinode tra URL `/v0/file/...` nhung the `img` va `window.open` khong tu gui `X-Tinode-APIKey`/token. Code da co proxy media cho upload/download nhung chua dung proxy co xac thuc cho renderer anh.
+- Quyet dinh ky thuat: Chuan hoa URL media ve `/tinode-media`, tai blob bang header Tinode trong `resolveMediaUrl`, cache object URL cho preview va dung `openFile` de mo blob sau click; file thuong tiep tuc download qua fetch co xac thuc. Them fallback trang thai thay cho broken-image icon.
+- Kiem thu: `npm run test:frontend` dat 32/32; `npm run lint` exit 0 voi warning legacy; `npm run build:production` dat; `git diff --check` dat. Public health tra HTTP 200; route media khong token tra HTTP 403 (route da toi ChatAPI); bundle public co `resolveMediaUrl`, `openFile`, `/tinode-media` va `image-preview-button`; log ChatUI 5 phut khong co loi nghiem trong.
+- Trien khai: Release `/opt/deploy/chat/releases/chatui-tinode-media-preview-20260806-060200`; image `sha256:33234a7aaef0` va rollback `songhong-production-chat:rollback-before-tinode-media-preview-20260806` (`sha256:dd7517812ff0`). Container `chat` moi `34a94d2c76b4`; Chatmgt `23a55b61fa98`, ChatAPI `1cccca891456`, hai PostgreSQL, Redis va Coturn giu nguyen.
+- Rui ro con lai: Chua co browser session production de click anh bang tai khoan that; neu media URL cu da het han hoac bi thu hoi, fallback se bao loi thay vi hien anh. Can UAT anh moi va anh lich su sau hard refresh.
+- Viec tiep theo: Nhan `Ctrl + F5` tai `https://chat.upgo.vn`, mo lai hoi thoai co anh, bam thumbnail va thu gui mot anh moi tu tai khoan khac.
+
+## 2026-08-06-08 - Khoi phuc day du dieu huong ChatUI production
+
+- Thoi gian: 2026-08-06 (Asia/Saigon)
+- Loai: Sua loi | Giao dien | Cau hinh | Trien khai
+- Trang thai: Hoan tat deploy production; cho UAT nguoi dung
+- Muc tieu: Khoi phuc cac muc Chat, Danh ba, Nhom, File dung chung, Thong bao, tim kiem va thao tac workspace tren ChatUI thay vi de production chay che do external chatbot-only.
+- Pham vi: Mac dinh `VITE_CHAT_MODE` cua build production, Dockerfile, Compose va file mau cau hinh; giu nguyen tenant `tn6913580727957397`, auth, Tinode va preview anh/file.
+- Ly do va quyet dinh ky thuat: `external` an cac nhanh directory/Tinode va cac muc dieu huong bang ca logic React lan CSS. Dat mac dinh ve `internal` de luong ChatUI chinh hien lai day du; external chatbot van co the bat lai bang bien moi truong khi can.
+- Kiem thu: `npm run test:frontend` dat 32/32; `npm run lint` exit 0 voi warning legacy; `npm run build:production` dat; Compose `config -q` dat voi `TINODE_SSO_SECRET` dummy chi trong process; `git diff --check` dat. Public `https://chat.upgo.vn/healthz` tra HTTP 200 `ok`; bundle public co `VITE_CHAT_MODE=internal`, tenant `tn6913580727957397`, marker `image-preview-button`, khong co `127.0.0.1:6060`; log ChatUI 5 phut sau deploy khong co emerg/alert/crit/error/fatal/panic/traceback.
+- Trien khai: Release `/opt/deploy/chat/releases/chatui-internal-navigation-20260806-050250`; image ChatUI `sha256:dd7517812ff0` duoc build tu image cu va chi thay `dist`; rollback `songhong-production-chat:rollback-before-internal-navigation-20260806` (`sha256:f614bb8d2166`). Container `chat` moi `b87c5414ee0b`; `chatmgt` `23a55b61fa98`, ChatAPI `1cccca891456`, Chat PostgreSQL `78a434b49404`, Tinode PostgreSQL `9f6e4dcc9c2f`, Redis `ceef7df23feb` va Coturn `aa680d35fdc0` giu nguyen.
+- Rui ro con lai: Moi truong nay khong co browser session de UAT pixel desktop/mobile; can hard refresh de loai bundle cache, sau do dang nhap va xac nhan cac muc Danh ba, Nhom, File dung chung, Thong bao, tim kiem va preview anh.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, dang nhap lai va xac nhan day du dieu huong; neu trinh duyet van hien giao dien cu, mo tab an danh hoac xoa cache site.
+
+## 2026-08-06-07 - Sua tenant build production lam dang nhap that bai
+
+- Thoi gian: 2026-08-06 (Asia/Saigon)
+- Loai: Sua loi | Xac thuc | Cau hinh | Trien khai
+- Trang thai: Hoan tat khoi phuc production; cho UAT tai khoan that
+- Muc tieu: Khoi phuc dang nhap ChatUI va tranh build production vo tinh gui sai tenant doanh nghiep.
+- Pham vi: Tenant build-time cua ChatUI, Dockerfile/Compose production, tai lieu cau hinh; khong migration, khong doi password, cookie, Tinode database, Chatmgt database hay service du lieu.
+- Noi dung: Production dang phuc vu bundle tao bang `npm run build`, nen Vite lay `.env.local` va gui `tenant_id=song-hong`. Audit production xac nhan tai khoan that nam trong tenant `tn6913580727957397`; log `POST /api/v1/auth/login` tra `401` roi `429`. Cap nhat cac mac dinh production sang tenant that va yeu cau build lai bang `npm run build:production`.
+- Quyet dinh ky thuat: Giu tenant co dinh cho domain `chat.upgo.vn`, khong them tenant selector tren trinh duyet. Local/demo `.env.local` van co the dung tenant rieng; production defaults khong duoc im lang roi ve tenant local.
+- Kiem thu: `npm run test:frontend` dat 32/32; `npm run lint` exit 0 voi warning legacy; `npm run build:production` dat; `docker compose --env-file infrastructure/production/.env.example -f infrastructure/production/compose.yaml config -q` dat voi `TINODE_SSO_SECRET` dummy chi trong process; `git diff --check` dat. Production `verify_deployment.py` dat database/credential, health, CORS, directory, conversation, Tinode WebSocket, login/logout; `verify_tenant_isolation.py` dat. Public ChatUI/Chatmgt health `200`, preflight CORS cho `https://chat.upgo.vn` dat, probe sai credential voi tenant that tra `401`; bundle public `App-DzD7eZWy.js` co tenant `tn6913580727957397` va `image-preview-button`, khong co `127.0.0.1:6060`.
+- Trien khai: Release `/opt/deploy/chat/releases/tenant-auth-image-preview-20260806-1230`; image ChatUI `sha256:f614bb8d2166` duoc tao tu image rollback cu va chi thay `dist`; rollback `songhong-production-chat:rollback-before-tenant-auth-20260806` (`sha256:435965f52e2b`). Container `chat` moi `e8ed61d62ad1` healthy; `chatmgt`, ChatAPI, hai PostgreSQL, Redis va Coturn giu nguyen ID.
+- Rui ro con lai: Chua replay tao employee/reset password bang phien Account admin that trong moi truong nay; log truoc deploy co mot request tao user `400` va reset password `502`, can UAT lai voi du lieu/luong admin that, khong ghi mat khau vao log. Neu UAT van loi, lay error code va thoi diem moi de doi chieu.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, dang nhap bang tai khoan employee trong tenant `tn6913580727957397`, sau do thu tao employee va reset password tren `https://chatmgt.upgo.vn`; khong can migration.
+
+## 2026-08-06-06 - Dang trien khai preview anh len ChatUI production
+
+- Thoi gian: 2026-08-06 11:18 (Asia/Saigon)
+- Loai: Van hanh | Giao dien
+- Trang thai: Hoan tat deploy production, cho UAT Tinode
+- Muc tieu: Dua bundle ChatUI co preview anh vao `https://chat.upgo.vn` thay cho asset cu dang duoc phuc vu.
+- Pham vi: Rieng service `chat` va image Nginx frontend; khong recreate Chatmgt, Tinode/ChatAPI, PostgreSQL, Redis, Coturn, database hay API.
+- File da thay doi: `dist/index.html`, `dist/assets/*`, `docs/CHANGELOG.md`; source UI da duoc cap nhat truoc do tai `src/app/App.jsx` va `src/styles/index.css`.
+- Noi dung: Da xac nhan public web van tra asset cu, remote deploy host co quyen SSH, service `chat` dang healthy va release hien tai co the gan tag rollback truoc khi thay image. Da build image `songhong-production-chat:image-preview-20260806` tu image ChatUI cu, gan tag rollback `songhong-production-chat:rollback-before-image-preview-20260806`, tao release `/opt/deploy/chat/releases/image-preview-20260806-1120` va recreate rieng service `chat`.
+- Quyet dinh ky thuat: Tao image frontend moi tu image ChatUI production hien tai va chi thay cac file `dist` da build; khong dua worktree backend dang dirty len production.
+- Database/API/cau hinh: Khong co thay doi.
+- Kiem thu truoc deploy: `npm run test:frontend` 32/32, `npm run build` exit 0, `npm run lint` exit 0 voi warning legacy, `git diff --check` exit 0; public `https://chat.upgo.vn` truoc deploy da xac nhan asset cu. Sau deploy, container `chat` ID `7612225ba732` healthy, `http://127.0.0.1:8094/healthz` va `https://chat.upgo.vn/healthz` tra 200, public index tro den `index-Doxh_obU.js`/`index-DzLBjWaQ.css`, lazy chunk `App-v-WWPVzG.js` co marker `image-preview-button`; Chatmgt/Tinode/database/Redis/Coturn khong bi recreate.
+- Rui ro con lai: Chua UAT bang tai khoan Tinode that de xac nhan anh tu tai khoan khac hien preview va mo duoc tren desktop/mobile; local temp archive da duoc xoa, release va rollback tag tren server duoc giu lai.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, gui anh tu tai khoan khac va bam thumbnail; rollback bang tag `songhong-production-chat:rollback-before-image-preview-20260806` neu UAT phat hien loi.
+- Commit/PR: Chua tao.
+
+## 2026-08-06-05 - Hien thi anh gui den ngay trong hoi thoai
+
+- Thoi gian: 2026-08-06 11:07 (Asia/Saigon)
+- Loai: Giao dien | Kha dung
+- Trang thai: Hoan tat code va kiem thu local, cho UAT Tinode
+- Muc tieu: Anh PNG/JPG nguoi khac gui den phai hien thi ngay trong chat de nguoi dung xem va bam mo anh, khong bi coi nhu file tai xuong.
+- Pham vi: Renderer attachment anh trong chat; PDF, audio, Excel va file thuong tiep tuc dung card tai/mo; khong doi database, API public, auth, Tinode protocol hay backend Chatmgt.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css` va file nay.
+- Noi dung: Tach nhanh anh khoi nhanh file; anh co thumbnail that, nhan dien loi anh theo MIME/duoi file, hien goi y `Xem anh` khi hover/focus va bam vao anh de mo URL media. Anh pending van dung preview local, con file thuong van co nut mo/tai xuong. Build lai bundle `dist` de surface dang phuc vu khong con dung asset cu.
+- Quyet dinh ky thuat: Dung mot nguon preview uu tien URL attachment, sau do fallback `msg.image` cho Tinode/optimistic message; khong goi ham tai file khi click vao anh.
+- Database/API/cau hinh: Khong co thay doi.
+- Kiem thu: `npm run test:frontend` exit 0, 32/32; `npm run build` exit 0 va `dist/index.html` tro den asset moi; `npx vite build --outDir .codex-build-attachment --emptyOutDir` exit 0 va da xoa build tam; `npm run lint` exit 0 voi warning legacy; `git diff --check` exit 0.
+- Rui ro con lai: Can hard refresh bundle va UAT bang anh tu tai khoan Tinode khac de xac nhan media URL hien truc tiep va bam mo anh tren desktop/mobile.
+- Viec tiep theo: Build/deploy bundle moi, hard refresh trinh duyet, gui anh tu tai khoan khac va bam thumbnail de xac nhan khong bi tai xuong.
+- Commit/PR: Chua tao.
+
+## 2026-08-06-04 - Lam lai card anh va file dinh kem
+
+- Thoi gian: 2026-08-06 11:01 (Asia/Saigon)
+- Loai: Giao dien | Kha dung
+- Trang thai: Hoan tat code va kiem thu local, cho UAT giao dien
+- Muc tieu: Bo cach hien thi anh/file cu, kho, va khong dong nhat voi mau card mong muon; anh PNG/JPG cung hien compact attachment card nhu file.
+- Pham vi: Renderer attachment trong chat, panel File dung chung va responsive CSS; khong doi database, API public, auth, Tinode protocol hay backend Chatmgt.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css` va file nay.
+- Noi dung: Anh khong con bung thanh preview lon; moi attachment co icon theo loai, ten file, dung luong, trang thai `Da co tren Cloud`, nut mo file va nut tai xuong. Card gui di dung nen xanh dam, card nhan dung nen sang; panel File dung chung dung cung layout va thao tac.
+- Quyet dinh ky thuat: Dung mot renderer duy nhat cho `image` va `file`, tach nut noi dung tai file khoi nhom action de tranh nested button; giu fallback metadata cho message anh cu va khong can migration du lieu.
+- Database/API/cau hinh: Khong co thay doi.
+- Kiem thu: `npm run test:frontend` exit 0, 32/32; `npx vite build --outDir .codex-build-attachment --emptyOutDir` exit 0 va da xoa build tam; `npm run lint` exit 0 voi warning legacy; `git diff --check` exit 0. Browser local khong kha dung trong moi truong nen chua co screenshot UAT desktop/mobile.
+- Rui ro con lai: Can hard refresh bundle va UAT bang anh PNG/JPG, file PDF/Excel/audio va file dung chung tren Tinode that; can xac nhan nut mo/tai xuong tren mobile.
+- Viec tiep theo: Build/deploy bundle moi, hard refresh trinh duyet, gui lai anh va file, mo panel File dung chung de xac nhan card khong con nen cam cu.
+- Commit/PR: Chua tao.
+
+## 2026-08-06-03 - Sua nhan dien anh trong attachment Tinode
+
+- Thoi gian: 2026-08-06 10:42 (Asia/Saigon)
+- Loai: Sua loi | Giao dien | Realtime
+- Trang thai: Hoan tat code va kiem thu local, cho UAT Tinode
+- Muc tieu: Khong de anh PNG/JPG bi hien thi nhu the file khi Tinode tra ve attachment dang `EX` hoac echo ghi de message preview.
+- Pham vi: Chuan hoa message Tinode, merge message trong ChatUI va renderer attachment; khong doi database, API public, auth hay backend Chatmgt.
+- File da thay doi: `src/features/chat/services/tinodeClient.js`, `src/app/App.jsx` va file nay.
+- Noi dung: Nhan dien anh theo `IM`, MIME va duoi file; gan lai `image`, metadata va type `image` cho ca attachment cu; merge echo uu tien type image khi message optimistic da co preview.
+- Quyet dinh ky thuat: Bao tuong thich voi anh da gui bang luong `EX`, vi vay khong can migration hay gui lai du lieu Tinode.
+- Database/API/cau hinh: Khong co thay doi.
+- Kiem thu: `npm run lint` exit 0 voi warning legacy; `npm run test:frontend` dat 32/32; `npx vite build --outDir .codex-build-attachment --emptyOutDir` dat; `git diff --check` dat.
+- Rui ro con lai: Can hard refresh bundle va UAT mot anh moi/anh cu bang tai khoan Tinode that de xac nhan URL media qua proxy.
+- Viec tiep theo: Build/deploy bundle moi, hard refresh trinh duyet, sau do gui lai mot PNG va mo lai hoi thoai co anh cu.
+- Commit/PR: Chua tao.
+
+## 2026-08-06-02 - Hien thi anh va file dinh kem theo dung loai
+
+- Thoi gian: 2026-08-06 10:31 (Asia/Saigon)
+- Loai: Giao dien | Tinh nang | Realtime
+- Trang thai: Hoan tat code va kiem thu local, cho UAT Tinode
+- Muc tieu: Hien thi anh nhu anh xem truoc va file nhu the tai lieu gon, de ten, dung luong, thoi gian va trang thai de doc hon.
+- Pham vi: ChatUI va luong gui attachment Tinode; khong sua backend Chatmgt, database, API public, auth, notification hay call.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/styles/index.css` va file nay.
+- Noi dung: Anh duoc preview ngay khi chon, giu dung ty le thay vi bi crop; sau khi upload thanh cong preview doi sang URL Tinode. File dung layout grid voi bieu tuong, ten ellipsis, dung luong va thoi gian; card van bam de tai xuong va hien trang thai dang gui/loi.
+- Quyet dinh ky thuat: Phan biet anh bang MIME/duoi file; Tinode dong goi anh bang Drafty `IM`/`appendImage`, file thuong bang `EX`/`attachFile`, de thiet bi nhan cung nhan dung loai attachment. Object URL preview duoc thu hoi sau upload thanh cong.
+- Database/API/cau hinh: Khong migration, khong doi request/response Chatmgt, khong them bien moi truong.
+- Kiem thu: `npm run lint` exit 0, chi con warning legacy; `npm run test:frontend` dat 32/32; `npx vite build --outDir .codex-build-attachment --emptyOutDir` dat; `git diff --check` dat. Build tam da duoc xoa.
+- Rui ro con lai: Chua UAT bang hai tai khoan Tinode that de xac nhan anh hien dung o phia nguoi nhan va tai file tren mobile.
+- Viec tiep theo: Gui thu mot anh va mot file trong direct/group chat, xac nhan preview anh, card file, download va hard refresh khong loi.
+- Commit/PR: Chua tao.
+
+## 2026-08-06-01 - Sua tao employee Chatmgt khi trung username Tinode
+
+- Thoi gian: 2026-08-06 09:20-09:34 (Asia/Saigon)
+- Loai: Sua loi | Xac thuc | Trien khai
+- Trang thai: Hoan tat va da trien khai production
+- Muc tieu: Cho phep admin tao employee Chatmgt va provision san tai khoan Tinode ngay ca khi cung username da ton tai o tenant khac, khong anh huong cac luong ChatUI, ChatAPI va nguon du lieu khac.
+- Pham vi: Rieng nhanh `management_user_create` khi `TINODE_MIRROR_LOCAL_CREDENTIALS=true`, tai lieu kien truc va release Chatmgt production; khong doi API, database, migration, UI, conversation, message, chatbot, Account SSO hoac Tinode server.
+- File da thay doi: Runtime release `chatservice-main/application/controllers/api_chat_management.py`, `docs/chat-backend-architecture.md` va file nay.
+- Noi dung: Giu kiem tra trung username/email trong tenant nhu cu. Neu raw username da duoc tenant khac dung tren Tinode, Chatmgt van luu username employee da nhap nhung provision Tinode basic account bang `stable_tinode_username(tenant_id, account_id)` va luu mapping vao `tinode_username`; mat khau employee tiep tuc duoc mirror server-side de tai khoan co the dang nhap va nhan Tinode token.
+- Quyet dinh ky thuat: Khong bo tenant isolation va khong tai su dung Tinode UID cua tai khoan trung ten. Raw Tinode username van duoc giu cho tai khoan dau tien de tuong thich; chi collision cross-tenant moi dung ten `upgo_<hash>` on dinh. Hotfix duoc ap dung tren snapshot production hien tai vi backend local dang o revision cu hon va worktree co thay doi nguoi dung khong thuoc pham vi.
+- Database/API/cau hinh: Khong migration, khong doi contract request/response va khong doi bien moi truong. Release moi la `/opt/deploy/chat/releases/chatmgt-tinode-username-fix-20260806-092916`; chi image/service `chatmgt` duoc build va force-recreate.
+- Kiem thu: Production `docker compose config -q` dat; `python -m py_compile` controller dat; image build dat; focused unittest mirror credential dat 1/1 va full `tests.test_chat_auth_contract` dat 31 test, 12 skip do runtime image khong kem source frontend/deployment; source assertion xac nhan co fallback stable username va khong con `TINODE_USERNAME_EXISTS`; Chatmgt healthy; public `https://chatmgt.upgo.vn/api/v1/auth/health` HTTP 200 va bao `tinode_bridge_configured=true`, `local_credentials_mirrored=true`; log 10 phut khong co emerg/fatal/panic/critical/traceback/exception. ChatUI, ChatAPI, hai PostgreSQL, Redis va Coturn giu nguyen container ID.
+- Trien khai: Image Chatmgt moi `sha256:707e8e95619fa8d3ed4f8bf3c9d0de61bc4e4ce1e453d21728d0a4a33eeee22b`, container `23a55b61fa98`; image cu `sha256:b5b8dad0dfafc8349c6b050e58e31ea851afb19965e53ec9bc033e576463f8f9` duoc gan tag `rollback-before-account-create-20260806`; symlink `current` da chuyen sang release moi.
+- Rui ro con lai: Chua gui lai request tao employee bang phien admin that de tranh tu y tao du lieu production; can admin thu lai username bi loi va xac nhan employee dang nhap ChatUI/Tinode binh thuong.
+- Viec tiep theo: Thu tao lai employee bi loi tren `chatmgt.upgo.vn`; neu van gap loi, ghi lai error code/thoi gian de doi chieu log ma khong gui mat khau.
+- Commit/PR: Chua tao.
+
+## 2026-08-05-01 - Don giao dien, bo chu huong dan va trien khai production
+
+- Thoi gian: 2026-08-05 22:52-23:18 (Asia/Saigon)
+- Loai: Giao dien | Kha dung | Trien khai
+- Trang thai: Hoan tat va da trien khai production
+- Muc tieu: Xoa cac doan helper va huong dan du thua tren ChatUI/Chatmgt theo yeu cau, giu giao dien va luong nghiep vu con lai.
+- Pham vi: Man hinh dang nhap ChatUI, chatbot/kho tri thuc, cac panel workspace, form thong bao/nhom va man hinh quan tri Chatmgt. Khong doi API, database, auth, Tinode, validation, handler hoac quyen.
+- File da thay doi: src/app/App.jsx, src/features/auth/components/Login.jsx, src/features/chatbot/components/KnowledgeManager.jsx, src/features/management/ManagementApp.jsx va file nay.
+- Noi dung: Bo subtitle/security note dang nhap, helper text trong panel/form, mo ta he thong trong the Chatmgt, thong diep empty-state mang tinh chi dan va mo ta tu sinh cua direct chat. Giu nhan truong, nut, loi, loading, ket qua tim kiem, trang thai va canh bao reset mat khau; footer modal duoc can lai sau khi bo ghi chu. Production phuc vu ChatUI bundle `App-UjR8gkXN.js` va Chatmgt bundle `ManagementApp-BpfM6UqB.js`.
+- Quyet dinh ky thuat: Chi thay doi JSX text va layout phu tro; khong thay doi state, payload, dieu kien, service call hay luong dang nhap/chat/quan tri. Mo ta nhom do nguoi dung luu van duoc giu nguyen. Do worktree local con cac thay doi luong external-chat chua thuoc pham vi, release bat bien `/opt/deploy/chat/releases/ui-clean-20260805-2312` duoc sao chep tu snapshot production `/opt/deploy/chat/releases/211ad40` va patch exact-match rieng bon file UI. Chi build/recreate `chatmgt` va `chat`; symlink `current` da chuyen sang release moi.
+- Database/API/cau hinh: Khong co thay doi.
+- Trien khai: `docker compose config -q` dat; image moi la ChatUI `sha256:8f767d832609fb13f7a65b50eec0097aa544196fc4d7015d3a255ae5b6f0b6e7` va Chatmgt `sha256:b5b8dad0dfafc8349c6b050e58e31ea851afb19965e53ec9bc033e576463f8f9`. Container moi la `chat` `2eb84324ecd7` va `chatmgt` `a5537f1636ad`. Image cu duoc gan tag `rollback-before-ui-clean-20260805` voi ID ChatUI `sha256:5fc2fad15561a87e84b2c28696ba163cc091912914377e456139aa385df04fe3` va Chatmgt `sha256:8256b6077a66d01c079d356bcf98737b24ccfce2118b15b045d3a5c2c2f5788d`.
+- Kiem thu: Local `npm run lint` dat exit 0, chi con warning legacy trong `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run test:frontend` dat 32/32; `npm run build -- --outDir .codex-build-ui-guidance --emptyOutDir` dat; `git diff --check` dat. Production build ca hai image dat; ChatUI/Chatmgt healthy; Nginx syntax dat; local va public health deu HTTP 200; bundle public co chu ngan gon moi va khong con cac helper marker da xoa; log 10 phut khong co emerg/fatal/panic/critical/traceback/exception. ChatAPI, hai PostgreSQL, Redis va Coturn giu nguyen container ID truoc/sau.
+- Rui ro con lai: Moi truong Codex khong co browser session kha dung de UAT truc quan desktop/mobile; can hard refresh va xem lai cac modal/panel bang tai khoan that.
+- Viec tiep theo: Hard refresh `chat.upgo.vn` va `chatmgt.upgo.vn`, sau do UAT login, workspace, chatbot, form ket ban/tat thong bao va cac man hinh Chatmgt; rollback bang hai image tag neu phat hien loi giao dien.
+- Commit/PR: Chua tao.
 
 ## 2026-08-04-03 - Trien khai an cuoc goi va chatbot webhook len production
 
@@ -148,7 +456,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `python -m unittest discover -s chatservice-main/tests -v` dat 81 test, 28 skip do Windows khong co runtime dependency cua image; `npm run test:frontend` dat 29/29; `npm run lint` dat voi warning legacy co san; `npm run build:production` dat; `python -m py_compile ...` dat; Compose `config -q` dat khi truyen secret tam thoi khong in gia tri; `git diff --check` dat. Khong chay duoc test backend trong image local vi Docker Desktop daemon khong hoat dong (`dockerDesktopLinuxEngine` khong ton tai); se chay lai trong image tren production release truoc nghiem thu.
 - Rui ro con lai: Chua chay verifier HTTP/Tinode va UAT hai tai khoan that tren server; projection Account cua chinh admin khong duoc tu reset de tranh tu khoa phien quan tri; admin muon dung ChatUI can mot local employee rieng hoac mot quyet dinh mapping sau.
 - Viec tiep theo: Review diff rieng auth, commit/push, tao release bat bien, backup Chatmgt PostgreSQL, cap nhat `.env` an toan, rebuild/recreate chi `chatmgt` va `chat`, chay full test/verifier/two-tenant/public health va UAT tao/chuyen doi mot employee.
-- Commit/PR: `c3cdc5f`.
+- Commit/PR: Chua tao.
 
 ## 2026-08-03-10 - Trien khai giao dien nhom gon va thanh goi lai
 
@@ -257,6 +565,38 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Rui ro con lai: Chua UAT media bang hai Account user that tren hai mang khac nhau va chua xac minh firewall cua nha cung cap. Can thu permission micro/camera, voice, video, reject, timeout, hang-up, toggle, sau do regression chat 1-1/nhom, presence, receipt, notification va external chatbot.
 - Viec tiep theo: Tao commit/push rieng cho call, mo TCP/UDP `3478` va UDP `49160-49200` tren `.206`, deploy Coturn + recreate rieng ChatAPI/ChatUI co rollback, xac nhan Tinode hello co ICE server roi UAT hai tai khoan.
 - Commit/PR: Commit chua muc nay (xem `git log`).
+
+## 2026-08-03-03 - Gan endpoint chatbot localhost vao Chatmgt
+
+- Thoi gian: 2026-08-03 11:03 (Asia/Saigon)
+- Loai: Cau hinh | Tich hop API | Van hanh
+- Trang thai: Hoan tat cau hinh, cho chatbot cong 8000 khoi dong de kiem thu runtime
+- Muc tieu: Dung API chatbot do nguoi dung cung cap tai `http://localhost:8000/api/v1/chat` thay cho URL doi tac mau, trong khi ChatUI van goi qua Chatmgt va bo qua chat nhan vien noi bo.
+- Pham vi: Cau hinh local truc tiep, local Docker, production Compose/env example, tai lieu tich hop; khong sua database, Account SSO, API ChatUI-Chatmgt hay cac chuc nang on dinh khac.
+- File da thay doi: `.env.local`, `.env.example`, `chatservice-main/.env`, `chatservice-main/.env.chatbot.example`, `infrastructure/chatservice/.env`, `infrastructure/chatservice/.env.example`, `infrastructure/chatservice/compose.yaml`, `infrastructure/production/.env.example`, `infrastructure/production/compose.yaml`, `infrastructure/production/README.md`, `docs/external-chatbot-api.md`, `docs/chat-backend-architecture.md` va `docs/CHANGELOG.md`.
+- Noi dung: Chatmgt chay truc tiep gui webhook toi `localhost:8000/api/v1/chat`; Chatmgt trong container dung `host.docker.internal:8000/api/v1/chat`. ChatUI local bat `VITE_CHAT_MODE=external` va gui tin toi `/chatmgt-api/api/v1/chatbot/message`, khong goi truc tiep chatbot cong 8000.
+- Quyet dinh ky thuat: Giu proxy server-to-server de bao toan Account session, RAG context va kha nang them khoa API ma khong lo cau hinh ra browser. Them host-gateway cho production Compose vi `localhost` ben trong container khong phai deployment host.
+- Database/API/cau hinh: Khong migration. Outbound endpoint khong co API key theo thong tin hien co; `CHATBOT_API_KEY` de trong va co the dien sau neu dich vu bat xac thuc. API nhan/truyen hien tai dung payload webhook gom `message`, `conversation_id`, `history`, `user`, `context`.
+- Kiem thu: `python -m unittest tests.test_external_chatbot_contract -v` dat 7/7; doi chieu cau hinh xac nhan dung URL cho direct/Docker va ChatUI external mode; `docker compose ... config --quiet` dat cho local va production khi cap cac gia tri validation tam cho nhung secret bat buoc khong duoc commit; `git diff --check` dat. Probe `GET http://localhost:8000/openapi.json`, `GET http://localhost:8000/api/v1/chat` va health Chatmgt cong 8093 chua ket noi duoc vi hai dich vu local chua chay tai thoi diem cau hinh.
+- Rui ro con lai: Chua xac minh schema request/response thuc te cua API cong 8000. Neu endpoint khong nhan truong `message` hoac khong tra mot trong `reply`, `answer`, `text`, `message`, `content`, `data.answer`, OpenAI `choices`, can them adapter theo contract cua dich vu.
+- Viec tiep theo: Khoi dong chatbot cong 8000, recreate Chatmgt de nap env, sau do gui tin UAT va xac nhan log khong co loi 4xx/5xx.
+- Commit/PR: Chua tao.
+
+## 2026-08-03-02 - Ket noi chatbot ben ngoai va tat luong chat nhan vien trong ChatUI production
+
+- Thoi gian: 2026-08-03 10:28 (Asia/Saigon)
+- Loai: Tinh nang | Bao mat | API | Cau hinh | Giao dien
+- Trang thai: Hoan tat code, cho cau hinh doi tac va UAT
+- Muc tieu: Cho phep Chatmgt ket noi chatbot do he thong khac so huu, cung cap RAG context co kiem soat cho chatbot doi tac, va chuyen ChatUI production sang chi dung tro ly ben ngoai ma khong khoi tao danh ba/conversation/Tinode noi bo.
+- Pham vi: ChatbotService/ChatManagerService, knowledge retrieval, API chatbot external, ChatUI mode external, Compose/Docker/env example, tai lieu kien truc-trien khai va test hop dong; khong sua database migration, Account SSO, trang quan tri hoac du lieu Tinode hien co.
+- File da thay doi: `.env.example`, `README.md`, `chatservice-main/.env.chatbot.example`, `chatservice-main/application/config/config.py`, `chatservice-main/application/controllers/api_chatbot.py`, `chatservice-main/application/services/chat_manager_service.py`, `chatservice-main/application/services/chatbot_service.py`, `chatservice-main/application/services/knowledge_service.py`, `chatservice-main/tests/test_external_chatbot_contract.py`, `docs/chat-backend-architecture.md`, `docs/external-chatbot-api.md`, `infrastructure/chatservice/.env.example`, `infrastructure/chatservice/README.md`, `infrastructure/chatservice/compose.yaml`, `infrastructure/production/.env.example`, `infrastructure/production/Dockerfile`, `infrastructure/production/README.md`, `infrastructure/production/compose.yaml`, `scripts/build-production.mjs`, `src/app/App.jsx`, `src/features/chatbot/services/chatbotService.js`, `src/styles/index.css` va `docs/CHANGELOG.md`.
+- Noi dung: Them `POST /api/v1/chatbot/external/context` va `POST /api/v1/chatbot/external/message` voi API key rieng, tenant bat buoc tu cau hinh server, tuy chon pin knowledge base, gioi han query/limit, HMAC reference cho external user va loai tru source `CHAT_*`. Them provider `external-webhook` gui payload trung lap gom message, history, user da loc va context; parser chap nhan reply/answer/text/message/data.answer/OpenAI choices. ChatUI nhan `VITE_CHAT_MODE=external`, chi tai chatbot history sau SSO va bo qua listUsers/listConversations/friend/Tinode; che do `internal` van la duong lui bang build config.
+- Quyet dinh ky thuat: Tach `CHATBOT_EXTERNAL_API_KEY` (inbound) khoi `CHATBOT_API_KEY` (outbound); khong tin tenant/department do caller tu gui; tenant va knowledge base duoc co dinh hoac kiem tra phia server. External provider luon nhan ca cau hoi khong co context voi context rong, tranh fallback ve tro ly noi bo cu. Khong dua secret vao frontend hoac repository.
+- Database/API/cau hinh: Khong co migration. Them `CHATBOT_EXTERNAL_AUTH_HEADER`, `CHATBOT_EXTERNAL_AUTH_SCHEME`, `CHATBOT_EXTERNAL_API_KEY`, `CHATBOT_EXTERNAL_TENANT`, `CHATBOT_EXTERNAL_KNOWLEDGE_BASE_ID`, `VITE_CHAT_MODE` va cac bien hien thi chatbot. Production `.env` that phai tu bo sung URL/keys/tenant/base ID; khong tu dong sua file dang bi ignore.
+- Kiem thu: `npm run test:frontend` dat 22/22; `npm run lint` dat voi warning legacy co san; `npm run build -- --outDir .codex-build-external --emptyOutDir` dat va da xoa build tam; `python -m unittest tests.test_external_chatbot_contract -v` dat 7/7; full `python -m unittest discover -s tests -v` dat 78 test, 28 test runtime duoc skip vi may local thieu dependency trong image; `python -m py_compile ...`, `python -m compileall application tests`, hai lenh `docker compose ... config --quiet` va `git diff --check` deu dat. Browser runtime khong co browser kha dung nen chua QA thao tac UI.
+- Rui ro con lai: Chua co URL/schema thuc te cua chatbot doi tac, API key production, knowledge base da phe duyet hoac phien Account that de UAT; chua chay nhom test phu thuoc aiohttp/bcrypt/Tinode trong production image. Khi `VITE_CHAT_MODE=external`, ChatUI khong con chat nhan vien trong browser nhung cac service Tinode/metadata van con trong source de rollback.
+- Viec tiep theo: Dien gia tri that trong `infrastructure/production/.env`, nap tai lieu vao knowledge base, cap API key cho doi tac, goi thu context/message bang tenant dung, build/recreate rieng `chatmgt` va `chat`, sau do UAT login va chat ngoai tren desktop/mobile. Rollback bang `VITE_CHAT_MODE=internal` va rebuild ChatUI, khong can migration.
+- Commit/PR: Chua tao.
 
 ## 2026-08-03-01 - Hoan thien tat thong bao theo hoi thoai
 
@@ -369,6 +709,38 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Rui ro con lai: Can build/deploy service ChatUI va thu UAT bang hai tai khoan that de xac nhan moi nhom moi, tin nhan dau tien, badge, thong bao va thu tu danh sach tren trinh duyet desktop/mobile.
 - Viec tiep theo: UAT production bang hai tai khoan that theo muc trien khai `2026-08-01-09`.
 - Commit/PR: `00af039`.
+
+## 2026-08-01-07 - Dinh chinh bo slide ViChat theo thuong hieu GonStack
+
+- Thoi gian: 2026-08-01 12:59 (Asia/Saigon)
+- Loai: Tai lieu | Thuyet trinh | Dinh vi san pham
+- Trang thai: Hoan tat
+- Muc tieu: Sua dinh vi bo thuyet trinh de ViChat duoc gioi thieu la san pham do GonStack phat trien cho nhieu doanh nghiep, khong phai san pham rieng cua Song Hong.
+- Pham vi: Viet lai noi dung va nhan dien cua bo PowerPoint 15 slide; khong sua code, API, database, cau hinh, ha tang hay hanh vi nguoi dung.
+- File da thay doi: `outputs/vichat-gonstack-gioi-thieu-san-pham-doanh-nghiep.pptx` va `docs/CHANGELOG.md`. Ban PPTX cu duoc giu nguyen vi dang bi PowerPoint khoa khi xuat ban moi.
+- Noi dung: Xoa anh va moi ten goi Song Hong khoi ban moi; dat ro `VICHAT` la san pham phat trien boi `GONSTACK`; doi tro ly thanh `ViChat AI`; viet lai bai toan, gia tri, kien truc va loi keu goi pilot theo huong quang ba san pham cho thi truong doanh nghiep. Them slide dinh vi ViChat va Zalo theo muc tieu su dung: Zalo la kenh lien lac pho thong, con ViChat tap trung vao van hanh noi bo, SSO, tenant, quan tri, audit, realtime, tich hop va tri thuc doanh nghiep.
+- Quyet dinh ky thuat: Giu visual system 16:9, mau cam `#F4511E` va bo cuc editorial cua ban truoc de khong tao lai deck tu dau. So sanh Zalo duoc viet trung lap theo dinh huong su dung, khong tuyen bo day la bang doi chieu day du tinh nang. Xuat thanh ten file moi vi file cu dang mo va khong the ghi de an toan.
+- Database/API/cau hinh: Khong thay doi. Khong migration, dependency runtime, secret hoac gia tri moi truong moi.
+- Kiem thu: Tao lai bang `@oai/artifact-tool`; render va kiem tra rieng ca 15 slide o kich thuoc day du; khong con chu/anh Song Hong trong inspect cua ban moi; cac nhan `GonStack`, `ViChat AI` va slide dinh vi Zalo hien thi dung. `slides_test.py outputs/vichat-gonstack-gioi-thieu-san-pham-doanh-nghiep.pptx` dat voi ket qua `Test passed. No overflow detected.`
+- Rui ro con lai: Ban cu `outputs/vichat-gioi-thieu-du-an-doanh-nghiep.pptx` van ton tai vi dang duoc mo trong PowerPoint; can dung ban co ten `vichat-gonstack-*` de thuyet trinh. Neu can thay the dung ten file cu, dong PowerPoint roi ghi de trong lan tiep theo.
+- Viec tiep theo: Bo sung logo GonStack chinh thuc, thong tin lien he, goi pilot va bang gia neu doanh nghiep da co bo nhan dien/thuong mai duoc phe duyet.
+- Commit/PR: Chua tao.
+
+## 2026-08-01-06 - Tao bo slide gioi thieu ViChat cho doanh nghiep
+
+- Thoi gian: 2026-08-01 12:40 (Asia/Saigon)
+- Loai: Tai lieu | Thuyet trinh | Kiem thu truc quan
+- Trang thai: Hoan tat
+- Muc tieu: Tao bo thuyet trinh 15 slide bang tieng Viet de gioi thieu bai toan, gia tri, trai nghiem, kien truc, bao mat, muc san sang va de xuat pilot cua ViChat truoc doanh nghiep.
+- Pham vi: Chi tao artifact PowerPoint va cap nhat changelog; khong sua code, API, database, cau hinh, ha tang hay hanh vi nguoi dung.
+- File da thay doi: `outputs/vichat-gioi-thieu-du-an-doanh-nghiep.pptx` va `docs/CHANGELOG.md`.
+- Noi dung: Bo slide trinh bay nhu cau giao tiep noi bo, gia tri cho nhan vien/IT/lanh dao, ChatUI, Tro ly Song Hong, ranh gioi UpGO Account - Chatmgt - Tinode/ChatAPI - Chatbot/RAG, SSO, quyen so huu du lieu, cach ly trang quan tri, realtime, bon cong nghiem thu, bang chung production, rui ro con lai va lo trinh pilot/UAT.
+- Quyet dinh ky thuat: Dung ty le 16:9 va phong cach editorial doanh nghiep voi mau cam du an `#F4511E`; tai su dung logo va anh thuoc repository. Khong suy dien KPI kinh doanh; cac so lieu 69 backend test, 10/10 frontend test, HTTP 200 va verifier lay tu changelog. Man hinh ChatUI la mockup theo capability va duoc gan nhan ro, khong dung du lieu production.
+- Database/API/cau hinh: Khong thay doi. Khong migration, dependency runtime, secret hoac gia tri moi truong moi.
+- Kiem thu: Render ban cuoi bang `@oai/artifact-tool` thanh 15 anh PNG va da kiem tra rieng tung slide; khong thay chu bi cat, phan tu chong lap hoac noi dung tran khung. `slides_test.py outputs/vichat-gioi-thieu-du-an-doanh-nghiep.pptx` dat voi ket qua `Test passed. No overflow detected.` Browser skill da duoc thu dung nhung runtime khong co browser backend, nen QA duoc thuc hien tren ban render cua artifact-tool.
+- Rui ro con lai: Slide minh hoa giao dien khong phai anh chup production; truoc buoi hop chinh thuc nen thay ten nguoi trinh bay, thoi luong pilot va tieu chi nghiem thu theo doanh nghiep cu the neu can.
+- Viec tiep theo: Mo file PowerPoint de rehearse, thong nhat pham vi pilot, dau moi UAT, tieu chi nghiem thu va thoi diem rollout.
+- Commit/PR: Chua commit.
 
 ## 2026-08-01-05 - Trien khai hotfix man hinh trang Chatmgt
 

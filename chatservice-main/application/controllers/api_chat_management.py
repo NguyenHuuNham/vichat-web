@@ -68,6 +68,7 @@ from application.services.sso_identity import (
 
 logger = logging.getLogger(__name__)
 ACCOUNT_SSO_PASSWORD_MARKER = "!account-sso-only"
+_ACCOUNT_DIRECTORY_SYNC_CACHE = {}
 
 
 def _admin_account_sso_enabled():
@@ -508,6 +509,24 @@ async def _ensure_tinode_accounts(accounts, concurrency=8):
     return dict(prepared)
 
 
+async def _ensure_tinode_accounts_best_effort(accounts, concurrency=8):
+    """Provision newly discovered Account users without blocking directory reads."""
+    account_list = [account for account in accounts if account.active and not account.tinode_uid]
+    semaphore = asyncio.Semaphore(max(1, int(concurrency)))
+
+    async def prepare(account):
+        async with semaphore:
+            try:
+                return str(account.id), await _ensure_tinode_account(account), None
+            except Exception as error:
+                return str(account.id), "", error
+
+    results = await asyncio.gather(*(prepare(account) for account in account_list))
+    prepared = {account_id: uid for account_id, uid, error in results if uid}
+    errors = [(account_id, error) for account_id, uid, error in results if error]
+    return prepared, errors
+
+
 def _active_conversation_accounts(item):
     participants = ConversationParticipant.query.filter(
         ConversationParticipant.tenant_id == item.tenant_id,
@@ -707,6 +726,17 @@ async def management_sso_login(request):
     try:
         identity = await current_account_session(request)
         tenant, account = _sso_account(identity)
+        # Create the deterministic Tinode identity during the first SSO login.
+        # A temporary Tinode outage must not prevent the Account session from
+        # reaching ChatUI; the token endpoint will retry the same mapping.
+        try:
+            await _ensure_tinode_account(account)
+        except Exception as error:
+            logger.warning(
+                "Tinode provisioning deferred for Account user %s: %s",
+                identity.get("account_user_id"),
+                error,
+            )
         db.session.commit()
         revoke_request_token(request)
         token = issue_access_token(account, auth_method="account_sso")
@@ -1405,51 +1435,73 @@ async def management_users(request):
     synced_count = 0
     skipped_count = 0
     deactivated_count = 0
+    tinode_provisioned = 0
+    tinode_failed = 0
     if employee_account_directory and not query_text:
         account = _account_by_id(tenant_id, _user_id(current_user))
         if account is None:
             return _auth_error()
+        sync_ttl = max(0, int(app.config.get("ACCOUNT_SSO_DIRECTORY_SYNC_TTL", 10)))
+        last_sync = float(_ACCOUNT_DIRECTORY_SYNC_CACHE.get(tenant_id) or 0)
+        should_sync = sync_ttl == 0 or time.time() - last_sync >= sync_ttl
         try:
-            identity = await _validated_account_identity(request, account)
-            identities = await account_directory(request, identity)
-            # Recheck after the directory request so a concurrent Account tenant
-            # switch cannot project the new tenant's users into the old JWT tenant.
-            await _validated_account_identity(request, account)
-            synced_account_ids = set()
-            for directory_identity in identities:
-                try:
-                    _tenant, synced_account = _sso_account(directory_identity, mark_login=False)
-                    synced_account_ids.add(str(synced_account.id))
-                    synced_count += 1
-                except AccountSSOError as error:
-                    skipped_count += 1
+            if not should_sync:
+                sync_status = "cached"
+            else:
+                identity = await _validated_account_identity(request, account)
+                identities = await account_directory(request, identity)
+                # Recheck after the directory request so a concurrent Account tenant
+                # switch cannot project the new tenant's users into the old JWT tenant.
+                await _validated_account_identity(request, account)
+                synced_account_ids = set()
+                tinode_candidates = []
+                for directory_identity in identities:
+                    try:
+                        _tenant, synced_account = _sso_account(directory_identity, mark_login=False)
+                        synced_account_ids.add(str(synced_account.id))
+                        tinode_candidates.append(synced_account)
+                        synced_count += 1
+                    except AccountSSOError as error:
+                        skipped_count += 1
+                        logger.warning(
+                            "Skipped Account directory projection for tenant %s: %s",
+                            tenant_id,
+                            error,
+                        )
+                _prepared, tinode_errors = await _ensure_tinode_accounts_best_effort(tinode_candidates)
+                tinode_provisioned = len(_prepared)
+                tinode_failed = len(tinode_errors)
+                for account_id, error in tinode_errors:
                     logger.warning(
-                        "Skipped Account directory projection for tenant %s: %s",
-                        tenant_id,
+                        "Deferred Tinode provisioning for Account projection %s: %s",
+                        account_id,
                         error,
                     )
-            if synced_account_ids:
-                missing_accounts = ManagementAccount.query.filter(
-                    ManagementAccount.tenant_id == tenant_id,
-                    ManagementAccount.active.is_(True),
-                    ManagementAccount.properties.contains({"auth_source": "account"}),
-                    ~ManagementAccount.id.in_(synced_account_ids),
-                ).all()
-                now = int(time.time())
-                for missing_account in missing_accounts:
-                    missing_account.active = False
-                    missing_account.updated_at = now
-                    missing_properties = dict(missing_account.properties or {})
-                    missing_properties["directory_removed_at"] = now
-                    missing_account.properties = missing_properties
-                    deactivated_count += 1
-            db.session.commit()
-            sync_status = "fresh"
+                if synced_account_ids:
+                    missing_accounts = ManagementAccount.query.filter(
+                        ManagementAccount.tenant_id == tenant_id,
+                        ManagementAccount.active.is_(True),
+                        ManagementAccount.properties.contains({"auth_source": "account"}),
+                        ~ManagementAccount.id.in_(synced_account_ids),
+                    ).all()
+                    now = int(time.time())
+                    for missing_account in missing_accounts:
+                        missing_account.active = False
+                        missing_account.updated_at = now
+                        missing_properties = dict(missing_account.properties or {})
+                        missing_properties["directory_removed_at"] = now
+                        missing_account.properties = missing_properties
+                        deactivated_count += 1
+                db.session.commit()
+                _ACCOUNT_DIRECTORY_SYNC_CACHE[tenant_id] = time.time()
+                sync_status = "partial" if tinode_failed else "fresh"
         except AccountSSOError as error:
             db.session.rollback()
             synced_count = 0
             skipped_count = 0
             deactivated_count = 0
+            tinode_provisioned = 0
+            tinode_failed = 0
             if error.error_code in (
                 "ACCOUNT_LOGIN_REQUIRED",
                 "ACCOUNT_SESSION_INVALID",
@@ -1465,6 +1517,8 @@ async def management_users(request):
             synced_count = 0
             skipped_count = 0
             deactivated_count = 0
+            tinode_provisioned = 0
+            tinode_failed = 0
             sync_status = "stale"
             logger.exception("Account directory sync failed for tenant %s: %s", tenant_id, error)
     exclude_user_id = str(request.args.get("exclude_user_id") or "")
@@ -1495,6 +1549,8 @@ async def management_users(request):
             "synced": synced_count,
             "skipped": skipped_count,
             "deactivated": deactivated_count,
+            "tinode_provisioned": tinode_provisioned,
+            "tinode_failed": tinode_failed,
         },
     })
 

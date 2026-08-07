@@ -107,7 +107,7 @@ if (-not $SkipWebConfig) {
     VITE_TINODE_API_KEY = 'AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K'
     VITE_TINODE_SECURE = 'false'
     VITE_TINODE_TRANSPORT = 'ws'
-    VITE_TINODE_PERSIST = 'true'
+    VITE_TINODE_PERSIST = 'false'
     VITE_TINODE_APP_NAME = 'SONGHONG/1.0'
   })
   Write-Host 'Configured .env.local for the web app to connect to Tinode.' -ForegroundColor Green

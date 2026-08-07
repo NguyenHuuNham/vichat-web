@@ -79,29 +79,30 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertNotIn("Migrate an existing administrator session", auth_source)
 
     @repository_source_test
-    def test_password_employee_auth_is_enabled_by_the_production_contract(self):
+    def test_upgo_account_employee_auth_is_enabled_by_the_production_contract(self):
         compose_source = PRODUCTION_COMPOSE_PATH.read_text(encoding="utf-8")
         env_source = PRODUCTION_ENV_EXAMPLE_PATH.read_text(encoding="utf-8")
 
-        self.assertIn("CHAT_ACCOUNT_SSO_ENABLED: ${CHAT_ACCOUNT_SSO_ENABLED:-false}", compose_source)
+        self.assertIn("CHAT_ACCOUNT_SSO_ENABLED: ${CHAT_ACCOUNT_SSO_ENABLED:-true}", compose_source)
         self.assertIn("CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED: ${CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED:-true}", compose_source)
-        self.assertIn("CHAT_ACCOUNT_SSO_ENABLED=false", env_source)
+        self.assertIn("CHAT_ACCOUNT_SSO_ENABLED=true", env_source)
         self.assertIn("CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true", env_source)
-        self.assertIn("VITE_CHAT_AUTH_MODE=password", env_source)
+        self.assertIn("VITE_CHAT_AUTH_MODE=account_sso", env_source)
         self.assertIn("ACCOUNT_URL=https://account.upgo.vn", env_source)
         self.assertIn("ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user", env_source)
+        self.assertIn("ACCOUNT_SSO_DIRECTORY_SYNC_TTL=10", env_source)
         self.assertIn("ACCOUNT_SSO_SELF_PROFILE_PATH=/me", env_source)
         self.assertIn("ACCOUNT_SSO_USER_UPDATE_PATH=/api/v1/user", env_source)
         self.assertIn("ACCOUNT_AVATAR_UPLOAD_URL=https://service.upgo.vn/api/image/upload?path=accounts", env_source)
         self.assertIn("TINODE_SSO_SECRET: ${TINODE_SSO_SECRET:?TINODE_SSO_SECRET is required}", compose_source)
 
-    def test_account_sso_login_does_not_provision_or_login_to_tinode(self):
+    def test_account_sso_login_prepares_the_tinode_projection_without_returning_a_secret(self):
         controller_source, sso_source = function_source(CONTROLLER_PATH, "management_sso_login")
         _controller_source, projection_source = function_source(CONTROLLER_PATH, "_sso_account")
 
         self.assertIn("current_account_session", sso_source)
         self.assertIn('"connection": "management"', sso_source)
-        self.assertNotIn("tinode_sso_login", sso_source)
+        self.assertIn("_ensure_tinode_account", sso_source)
         self.assertNotIn("tinode_auth", sso_source)
         self.assertIn('ACCOUNT_SSO_PASSWORD_MARKER = "!account-sso-only"', controller_source)
         self.assertIn("password_hash=ACCOUNT_SSO_PASSWORD_MARKER", projection_source)
@@ -166,7 +167,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('disabled={isUpdatingProfileAvatar}', profile_source)
 
     @repository_source_test
-    def test_chatui_uses_tenant_scoped_employee_password_login(self):
+    def test_chatui_uses_upgo_account_employee_login_by_default(self):
         login_source = LOGIN_PATH.read_text(encoding="utf-8")
         service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")
 
@@ -174,6 +175,9 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('name="password"', login_source)
         self.assertIn("Đăng nhập", login_source)
         self.assertIn("VITE_CHAT_AUTH_MODE", service_source)
+        self.assertIn("account_sso", service_source)
+        self.assertIn("accountLoginUrl", service_source)
+        self.assertIn("/api/v1/auth/sso", service_source)
         self.assertIn("/api/v1/auth/login", service_source)
         self.assertIn("tenant_id: tenantId", service_source)
         self.assertIn("identity:", service_source)
@@ -321,6 +325,10 @@ class ChatAuthContractTests(unittest.TestCase):
 
         self.assertGreaterEqual(directory_source.count("_validated_account_identity"), 2)
         self.assertIn("account_directory", directory_source)
+        self.assertIn("_ensure_tinode_accounts_best_effort", directory_source)
+        self.assertIn('"tinode_provisioned"', directory_source)
+        self.assertIn('sync_status = "partial"', directory_source)
+        self.assertIn('sync_status = "cached"', directory_source)
         self.assertIn("directory_removed_at", directory_source)
         self.assertIn('ManagementAccount.properties.contains({"auth_source": "account"})', directory_source)
 
@@ -402,14 +410,15 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("deployment_verifier", delete_source)
 
     @repository_source_test
-    def test_management_web_manages_tenant_local_employees_without_message_content(self):
+    def test_management_web_links_employee_invites_to_upgo_without_message_content(self):
         app_source = MANAGEMENT_APP_PATH.read_text(encoding="utf-8")
         service_source = MANAGEMENT_SERVICE_PATH.read_text(encoding="utf-8")
 
         self.assertIn("Tài khoản nhân viên doanh nghiệp", app_source)
-        self.assertIn("Thêm nhân viên", app_source)
+        self.assertIn("Mời nhân viên trên UpGO", app_source)
+        self.assertIn("employeeAccountSso", app_source)
         self.assertIn("Conversation và nhóm", app_source)
-        self.assertIn("Không có API đọc lịch sử tin nhắn Tinode", app_source)
+        self.assertIn("Không đọc nội dung chat", app_source)
         self.assertIn("listConversations", service_source)
         self.assertIn("revokeSessions", service_source)
         self.assertIn("/api/v1/admin/sso", service_source)

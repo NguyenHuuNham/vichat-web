@@ -15,6 +15,7 @@ import {
   normalizeIceServers,
   parseCallMessage,
 } from './callSignaling';
+import { attachmentConversationPreview } from './messagePreview';
 
 /*
  * Thin integration layer around the Tinode browser SDK.
@@ -92,10 +93,32 @@ function getDrafty() {
   return Drafty || null;
 }
 
+function tinodeMediaPath(value) {
+  const path = String(value || '');
+  if (!path || /^(?:data:|blob:)/i.test(path)) return '';
+  if (path.startsWith('/v0/file/')) return path;
+  try {
+    const parsed = new URL(path, 'https://tinode.invalid');
+    return parsed.pathname.startsWith('/v0/file/')
+      ? `${parsed.pathname}${parsed.search}`
+      : '';
+  } catch {
+    return '';
+  }
+}
+
+function isTinodeMediaUrl(value) {
+  const path = String(value || '');
+  return path.startsWith(MEDIA_PROXY_PREFIX) || Boolean(tinodeMediaPath(path));
+}
+
 function mediaProxyUrl(relativeUrl) {
   const path = String(relativeUrl || '');
-  if (/^(?:https?:|data:|blob:)/i.test(path)) return path;
+  if (/^(?:data:|blob:)/i.test(path)) return path;
   if (path.startsWith(MEDIA_PROXY_PREFIX)) return path;
+  const mediaPath = tinodeMediaPath(path);
+  if (mediaPath) return `${MEDIA_PROXY_PREFIX}${mediaPath}`;
+  if (/^https?:/i.test(path)) return path;
   return `${MEDIA_PROXY_PREFIX}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
@@ -255,7 +278,7 @@ function publicName(topic) {
 function normalizeAvatar(value) {
   if (!value) return '';
   if (typeof value === 'string') {
-    return value.startsWith('/v0/file/') ? mediaProxyUrl(value) : value;
+    return isTinodeMediaUrl(value) ? mediaProxyUrl(value) : value;
   }
   if (typeof value.ref === 'string') return normalizeAvatar(value.ref);
   if (typeof value.url === 'string') return normalizeAvatar(value.url);
@@ -446,10 +469,18 @@ function toMessage(msg, tinode, topic = null) {
   const attachmentData = attachment?.data;
   const attachmentName = attachmentData?.name || 'Tệp đính kèm';
   const attachmentMime = attachmentData?.mime || 'application/octet-stream';
-  const attachmentUrl = attachmentData?.ref
+  const rawAttachmentUrl = attachmentData?.ref
     || attachmentData?.url
     || (attachmentData?.val ? Drafty?.getDownloadUrl?.(attachmentData) : '');
-  const attachmentExt = attachmentMime.includes('pdf') || /\.pdf$/i.test(attachmentName)
+  const attachmentUrl = rawAttachmentUrl ? mediaProxyUrl(rawAttachmentUrl) : '';
+  const isImageAttachment = Boolean(attachment && (
+    attachment.tp === 'IM'
+    || /^image\//i.test(attachmentMime)
+    || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(attachmentName)
+  ));
+  const attachmentExt = isImageAttachment
+    ? 'image'
+    : attachmentMime.includes('pdf') || /\.pdf$/i.test(attachmentName)
     ? 'pdf'
     : (/(spreadsheet|excel|csv)/i.test(attachmentMime) || /\.(xlsx?|csv)$/i.test(attachmentName) ? 'excel' : 'file');
   const clientId = msg.head?.['x-client-id'] || msg.head?.clientId;
@@ -478,7 +509,7 @@ function toMessage(msg, tinode, topic = null) {
       ? `friend-${friendEvent.action}-${friendEvent.requestId}`
       : clientId || `${msg.from || 'system'}-${msg.seq || msg.ts || Date.now()}`,
     seq: msg.seq,
-    type: call ? 'call' : friendEvent ? 'friend_event' : reactionEvent ? 'reaction_event' : recallEvent ? 'recall_event' : systemEvent ? 'system' : attachment ? (attachment.tp === 'IM' ? 'image' : 'file') : 'text',
+    type: call ? 'call' : friendEvent ? 'friend_event' : reactionEvent ? 'reaction_event' : recallEvent ? 'recall_event' : systemEvent ? 'system' : attachment ? (isImageAttachment ? 'image' : 'file') : 'text',
     action: friendEvent?.action || systemEvent?.action,
     sender: isOutgoing ? 'outgoing' : 'incoming',
     senderId: friendActorId || systemEvent?.actorId || messageSenderId || (isOutgoing ? tinode.getCurrentUserID() : undefined),
@@ -491,8 +522,8 @@ function toMessage(msg, tinode, topic = null) {
     call,
     replyTo,
     text: call ? callHistoryLabel(call, isOutgoing) : friendEvent ? (friendEvent.note || '') : systemEvent ? formatSystemEvent(systemEvent, tinode.getCurrentUserID()) : content,
-    image: attachment?.tp === 'IM' ? attachmentUrl : undefined,
-    file: attachment?.tp === 'EX' ? {
+    image: isImageAttachment ? attachmentUrl : undefined,
+    file: attachment ? {
       name: attachmentName,
       ext: attachmentExt,
       size: attachmentData?.size ? `${Math.round(attachmentData.size / 1024)} KB` : 'Tinode attachment',
@@ -650,7 +681,7 @@ function toConversation(topic, tinode) {
     members,
     messages,
     friendEvents,
-    lastMsg: latestMapped?.text || latestMapped?.file?.name || (latestMapped?.image ? 'Image' : ''),
+    lastMsg: attachmentConversationPreview(latestMapped) || latestMapped?.text || '',
     time: latestMapped?.time || '',
     updatedAt: latestMapped?.createdAt || (topic.touched ? new Date(topic.touched).toISOString() : undefined),
     badge: messages.length > 0 ? Math.max(0, topic.unread || ((topic.seq || 0) - (topic.read || 0))) : 0,
@@ -1349,6 +1380,10 @@ export const tinodeClient = {
     return resolveProtectedMedia(value);
   },
 
+  async resolveMediaUrl(value) {
+    return resolveProtectedMedia(value);
+  },
+
   async updateCurrentProfile({ name = '', avatarFile = null, avatarUrl = '' } = {}) {
     const tinode = getClient();
     if (!meTopic) throw new Error('Phiên đăng nhập chưa sẵn sàng.');
@@ -1636,18 +1671,21 @@ export const tinodeClient = {
     const topic = await subscribeTopic(topicName);
     const url = await uploadFile(tinode, file);
     const Drafty = getDrafty();
-    if (!Drafty?.attachFile) {
+    const isImage = /^image\//i.test(file.type || '') || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(file.name || '');
+    if (!Drafty || (isImage ? !Drafty.appendImage : !Drafty.attachFile)) {
       throw new Error('Không tải được bộ đóng gói file của Tinode.');
     }
-    // Tinode only forwards an uploaded file when its URL is embedded in a
-    // Drafty EX entity. Passing the URL as a second argument to Topic's
-    // publishMessage is ignored by the SDK and produces an empty message.
-    const content = Drafty.attachFile(null, {
+    const attachment = {
       mime: file.type || 'application/octet-stream',
       filename: file.name || 'Tệp đính kèm',
       refurl: url,
       size: file.size || 0,
-    });
+    };
+    // Use Tinode's image entity so recipients render an image preview instead
+    // of receiving a generic EX/file attachment.
+    const content = isImage
+      ? Drafty.appendImage(null, attachment)
+      : Drafty.attachFile(null, attachment);
     const draft = topic.createMessage(content, false);
     draft.head = { ...(draft.head || {}), 'x-sender-id': tinode.getCurrentUserID() };
     if (clientId) draft.head['x-client-id'] = clientId;
@@ -1681,6 +1719,24 @@ export const tinodeClient = {
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  },
+
+  async openFile(file) {
+    if (!file?.url) throw new Error('File này chưa có đường dẫn mở.');
+    const popup = typeof window !== 'undefined' ? window.open('', '_blank') : null;
+    try {
+      const objectUrl = await resolveProtectedMedia(file.url);
+      if (popup) {
+        popup.location.href = objectUrl;
+      } else if (typeof window !== 'undefined') {
+        const opened = window.open(objectUrl, '_blank', 'noopener,noreferrer');
+        if (!opened) window.location.href = objectUrl;
+      }
+      return objectUrl;
+    } catch (error) {
+      popup?.close();
+      throw error;
+    }
   },
 
   async fetchFile(file) {

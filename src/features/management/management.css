@@ -1122,6 +1122,20 @@
 .management-table code,
 .management-audit-list code { color: #41615e; font-family: var(--mgmt-font-mono); font-size: 10px; }
 
+.management-tinode-account {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.management-tinode-account code {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .management-row-actions {
   display: flex;
   justify-content: flex-end;

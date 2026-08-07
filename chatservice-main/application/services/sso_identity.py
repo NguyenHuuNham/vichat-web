@@ -18,7 +18,16 @@ def _first(payload, *names):
 
 def _membership_active(membership):
     status = str((membership or {}).get("status") or "").strip().lower()
-    return status in ("", "active", "confirmed", "enabled")
+    return status not in (
+        "disabled",
+        "inactive",
+        "deleted",
+        "suspended",
+        "blocked",
+        "pending",
+        "invited",
+        "invitation_pending",
+    )
 
 
 def _chat_role(role):
@@ -30,8 +39,20 @@ def _chat_role(role):
 
 def _directory_active(payload):
     status = str((payload or {}).get("status") or "").strip().lower()
-    if status in ("disabled", "inactive", "deleted", "suspended", "blocked"):
+    if status in (
+        "disabled",
+        "inactive",
+        "deleted",
+        "suspended",
+        "blocked",
+        "pending",
+        "invited",
+        "invitation_pending",
+    ):
         return False
+    for name in ("deleted", "is_deleted"):
+        if name in payload and bool(payload.get(name)):
+            return False
     for name in ("active", "is_active", "enabled"):
         if name not in payload:
             continue

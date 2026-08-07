@@ -42,9 +42,13 @@ VITE_TINODE_HOST=chat-api.ten-mien-cua-ban.vn
 VITE_TINODE_API_KEY=AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K
 VITE_TINODE_SECURE=true
 VITE_TINODE_TRANSPORT=ws
-VITE_TINODE_PERSIST=true
+VITE_TINODE_PERSIST=false
 VITE_TINODE_APP_NAME=SONGHONG/1.0
 ```
+
+Giữ cache IndexedDB của trình duyệt ở trạng thái tắt. Tinode/chatapi vẫn là
+nguồn dữ liệu chuẩn và giao diện tải lại lịch sử từ máy chủ; bật cache với
+phiên bản SDK hiện tại có thể tạo lỗi khóa tin nhắn trùng và làm treo giao diện.
 
 Cáº­p nháº­t `TINODE_CORS_ORIGINS` trong `infrastructure/tinode/.env` thÃ nh JSON chá»©a domain frontend rá»“i cháº¡y láº¡i `docker compose up -d`.
 

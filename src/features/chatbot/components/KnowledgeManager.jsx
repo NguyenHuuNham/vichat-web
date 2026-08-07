@@ -86,7 +86,7 @@ function KnowledgeManager({ user, onError }) {
         </label>
       </div>
 
-      <p className="workspace-hint">Chatbot tự học tin nhắn và file chat theo quyền thành viên. Tài liệu tải ở đây áp dụng theo phạm vi của kho đã chọn.</p>
+
       {loading ? (
         <div className="workspace-empty"><i className="fa-solid fa-spinner fa-spin"></i><span>Đang tải tài liệu...</span></div>
       ) : documents.length === 0 ? (

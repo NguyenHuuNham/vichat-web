@@ -4,7 +4,7 @@ const env = import.meta.env || {};
 const apiBase = String(env.VITE_CHAT_MANAGEMENT_API_URL || '').replace(/\/$/, '');
 const remoteAuth = String(env.VITE_CHAT_MANAGEMENT_REMOTE_AUTH || '').toLowerCase() === 'true';
 const tenantId = env.VITE_CHAT_TENANT_ID || 'song-hong';
-const authMode = String(env.VITE_CHAT_AUTH_MODE || 'password').trim().toLowerCase();
+const authMode = String(env.VITE_CHAT_AUTH_MODE || 'account_sso').trim().toLowerCase();
 const accountUrl = String(env.VITE_ACCOUNT_URL || 'https://account.upgo.vn').replace(/\/+$/, '');
 const topicBindingsKey = 'vichat.management.topic-bindings.v1';
 

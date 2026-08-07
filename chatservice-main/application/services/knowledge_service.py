@@ -366,7 +366,16 @@ class KnowledgeService(object):
             chunk.deleted = True
         db.session.commit()
 
-    def retrieve(self, query_text, tenant_id, knowledge_base_id=None, department_id=None, user_ids=None, limit=None):
+    def retrieve(
+        self,
+        query_text,
+        tenant_id,
+        knowledge_base_id=None,
+        department_id=None,
+        user_ids=None,
+        limit=None,
+        exclude_source_prefixes=None,
+    ):
         normalized_query = normalize_search_text(query_text)
         terms = [term for term in normalized_query.split() if len(term) > 1]
         if not terms:
@@ -391,14 +400,22 @@ class KnowledgeService(object):
         results = []
         unique_terms = set(terms)
         viewer_ids = {str(value) for value in (user_ids or []) if value}
+        excluded_prefixes = tuple(
+            str(value).upper()
+            for value in (exclude_source_prefixes or [])
+            if str(value).strip()
+        )
         for chunk, document, knowledge_base in candidates:
+            source_type = str(document.source_type or "").upper()
+            if excluded_prefixes and source_type.startswith(excluded_prefixes):
+                continue
             scope = str(knowledge_base.access_scope or "COMPANY").upper()
             allowed_departments = [str(value) for value in (knowledge_base.allowed_department_ids or [])]
             if scope == "DEPARTMENT" and (not department_id or str(department_id) not in allowed_departments):
                 continue
             document_properties = document.properties or {}
             allowed_users = {str(value) for value in (document_properties.get("allowed_user_ids") or []) if value}
-            if str(document.source_type or "").upper().startswith("CHAT_") and allowed_users and not viewer_ids.intersection(allowed_users):
+            if source_type.startswith("CHAT_") and allowed_users and not viewer_ids.intersection(allowed_users):
                 continue
             searchable = chunk.content_search or normalize_search_text(chunk.content)
             matched = [term for term in unique_terms if term in searchable]

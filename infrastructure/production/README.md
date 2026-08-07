@@ -5,7 +5,7 @@ Redis, and the container Nginx. Production is ready only after all four stages
 pass:
 
 1. Infrastructure, Alembic, domains, HTTPS, WSS, CORS, backup, and rollback.
-2. Chatmgt employee username/password login/logout, tenant identity, and revoked-session rejection; Account SSO is only for tenant administrators.
+2. UpGO Account employee SSO/login/logout, tenant identity, Tinode projection, and revoked-session rejection; the same Account SSO also protects tenant administration.
 3. ChatUI directory/conversation data from Chatmgt with two-tenant isolation.
 4. Chatmgt-to-Tinode token bridge, topic validation, internal WebSocket, and public WSS publish/delete.
 
@@ -41,7 +41,7 @@ The checked-in host configuration uses:
 
 - ChatUI: `https://chat.upgo.vn`
 - Chatmgt: `https://chatmgt.upgo.vn`
-- Employee login platform: Chatmgt local credentials; administrator SSO: `https://account.upgo.vn`
+- Employee and administrator login platform: UpGO Account at `https://account.upgo.vn`
 - ChatUI upstream: `127.0.0.1:8094`
 - Chatmgt upstream: the configured private bind address on port `8081`
 
@@ -99,6 +99,35 @@ networks: voice call, video call, reject, unanswered timeout, hang-up, camera
 and microphone toggles, then verify ordinary direct/group messages and external
 chatbot mode still behave as before.
 
+## External chatbot configuration
+
+Before rebuilding the frontend, set `VITE_CHAT_MODE=external`. Configure the
+partner webhook and the inbound data API with different keys:
+
+```dotenv
+CHATBOT_ENABLED=true
+CHATBOT_PROVIDER=external-webhook
+CHATBOT_API_URL=https://knowledge.gonapp.net/api/v1/chat
+CHATBOT_API_KEY=
+CHATBOT_EXTERNAL_AUTH_HEADER=Authorization
+CHATBOT_EXTERNAL_AUTH_SCHEME=Bearer
+CHATBOT_KNOWLEDGE_ONLY=false
+CHATBOT_EXTERNAL_API_KEY=<separate-inbound-key>
+CHATBOT_EXTERNAL_TENANT=tn6913580727957397
+CHATBOT_EXTERNAL_KNOWLEDGE_BASE_ID=<optional-approved-base-uuid>
+```
+
+Chatmgt calls `https://knowledge.gonapp.net/api/v1/chat` server-side. Set
+`CHATBOT_API_KEY` only if that endpoint is later protected; the browser must
+continue to call Chatmgt instead of the partner service directly.
+
+Do not copy the example placeholders into production. After deployment, verify
+`GET /api/v1/chatbot/health`, call the external context endpoint once with the
+inbound key, and confirm the browser does not request `/api/v1/chat/users`,
+`/api/v1/conversation`, `/api/v1/auth/tinode-token`, or a Tinode WebSocket.
+Rollback requires only `VITE_CHAT_MODE=internal` and a ChatUI rebuild; no
+database migration is involved.
+
 ## Startup guarantees
 
 `start.sh` runs in this order:
@@ -109,18 +138,18 @@ chatbot mode still behave as before.
 4. Builds pinned images and creates timestamped `pg_dump -Fc` backups before Alembic.
 5. Runs `alembic upgrade head`, bootstrapping the first administrator only when the database is empty.
 6. Validates Nginx, starts the services, and waits for health checks.
-7. Verifies health/CORS, local employee password login, local Tinode token refresh, management Account SSO challenge, scope isolation, tenant filters, and the read-only admin conversation overview. Real employee realtime behavior is verified separately with two tenant users.
+7. Verifies health/CORS, disabled local employee password login, internal Tinode token refresh, management Account SSO challenge, scope isolation, tenant filters, and the read-only admin conversation overview. Real employee realtime behavior is verified separately with two tenant users.
 8. Runs an isolated two-tenant API test and removes its temporary records.
 9. Optionally verifies the public domains when `VERIFY_PUBLIC_URLS=true`.
 
 The script never removes old backups. Preserve `.env`, database volumes,
 Tinode uploads, UID encryption keys, and backup files together.
 
-The management verifier creates a temporary local employee row, mints internal
-chat and management tokens directly inside the trusted runtime, exercises the
-local employee login and Tinode refresh, and removes the row plus audit events in
-`finally`. Public `/login` remains disabled because administrator access uses
-Account SSO. The verifier never prints passwords or secrets.
+The management verifier creates a temporary Account-backed projection row,
+mints internal chat and management tokens directly inside the trusted runtime,
+exercises the protected employee endpoints and Tinode refresh, and removes the
+row plus audit events in `finally`. It does not pretend to be an UpGO Account
+browser session and never prints passwords or secrets.
 
 ## Employee login acceptance test
 
@@ -128,10 +157,10 @@ Before rebuilding, update the existing real `.env`; copying a new example does
 not modify an already deployed file:
 
 ```dotenv
-CHAT_ACCOUNT_SSO_ENABLED=false
+CHAT_ACCOUNT_SSO_ENABLED=true
 CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true
-VITE_CHAT_AUTH_MODE=password
-CHATMGT_DEFAULT_TENANT=song-hong
+VITE_CHAT_AUTH_MODE=account_sso
+CHATMGT_DEFAULT_TENANT=tn6913580727957397
 TINODE_SSO_SECRET=
 ```
 
@@ -140,16 +169,19 @@ generated securely, or set an independently generated value of at least 32
 characters. Never use a documentation placeholder as the real secret.
 
 In `chatmgt.upgo.vn`, sign in with an Account `admin`, `owner` or `superadmin`,
-open **Nhân viên**, and create a local employee. Use that username/password in
-`chat.upgo.vn`; the browser must call `/api/v1/auth/login`, receive a Chatmgt
-cookie with the configured tenant, and receive no password/hash/Tinode token in
-the response. Then confirm `/api/v1/auth/tinode-token` returns a short-lived
-token and the Tinode socket connects.
+then invite employees from UpGO Account. Chatmgt must show the read-only Account
+directory projection, provision a deterministic Tinode UID for each active
+employee, and never offer local create/reset-password actions. In `chat.upgo.vn`,
+the employee uses **Đăng nhập bằng UpGO Account**; the browser redirects to
+Account, returns to ChatUI, calls `/api/v1/auth/sso`, then receives a short-lived
+Tinode token from `/api/v1/auth/tinode-token`. No Account password or Tinode
+secret is sent to the browser.
 
-Use an Account projection left from the previous deployment and choose **Cấp
-mật khẩu ChatUI**. Confirm its Chatmgt ID and Tinode UID stay unchanged while
-`auth_source` becomes local. Account administrator login remains at
-`chatmgt.upgo.vn`; a normal employee cannot obtain the management scope.
+Remove an employee from the tenant in UpGO Account and wait for the directory
+sync interval. Chatmgt must mark the projection inactive and the next Chatmgt
+or Tinode request must reject the old session. Account administrator login
+remains at `chatmgt.upgo.vn`; a normal employee cannot obtain the management
+scope.
 
 Log out and confirm refresh cannot reopen the protected UI and
 `/api/v1/auth/me` returns `401` or `403`. Repeat with two companies using the
@@ -159,14 +191,15 @@ the result.
 
 ## Chatmgt data acceptance test
 
-Step 3 uses the Chatmgt local directory. After rebuilding, sign in with two
-local users in the same tenant and verify:
+Step 3 uses the UpGO Account directory projected by Chatmgt. After rebuilding,
+sign in with two invited users in the same tenant and verify:
 
 1. `GET /api/v1/auth/health` reports
-   `employee_auth.login_endpoint=/api/v1/auth/login` and
+   `employee_auth.login_endpoint=/api/v1/auth/sso` and
    `management_data.configured=true`.
 2. `GET /api/v1/chat/users` returns both users with the same `tenant_id` and
-   `directory_sync.source=local`.
+   `directory_sync.source=account`, with `tinode_provisioned` reported for new
+   active employees.
 3. Searching by name/email/username returns only that tenant.
 4. Friend request send, accept, and reject survive browser refresh.
 5. Direct chat and group creation survive refresh; adding/removing/leaving a
@@ -194,11 +227,12 @@ curl -fsS https://chatmgt.upgo.vn/api/v1/auth/health
 ```
 
 The response must contain
-`account_sso.tinode_bridge_configured=true`. Then use two local Chatmgt users
+`account_sso.tinode_bridge_configured=true`. Then use two invited Account users
 from the same tenant in separate browser profiles:
 
-1. Sign in to ChatUI with the Chatmgt username/password and confirm
-   `/api/v1/auth/login` returns `connection: management` without `tinode_auth`.
+1. Sign in to ChatUI through UpGO Account and confirm `/api/v1/auth/sso`
+   returns a tenant-scoped Chatmgt session without Account credentials or
+   Tinode secrets.
 2. Confirm ChatUI next calls `/api/v1/auth/tinode-token`, receives
    `connection: tinode`, and connects to
    `wss://chat.upgo.vn/v0/channels` without sending an Account password.
@@ -233,6 +267,6 @@ The final checks include:
 
 ```text
 Database revision and credential policy are valid.
-Health, CORS, local employee login, Tinode token refresh, administrator Account SSO challenge, tenant filters, and management scope isolation checks passed.
+Health, CORS, Account employee SSO challenge, Tinode token refresh, administrator Account SSO challenge, tenant filters, and management scope isolation checks passed.
 Two-tenant user, conversation, friend, and participant checks passed.
 ```

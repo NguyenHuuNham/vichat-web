@@ -19,12 +19,14 @@ import {
   resolveNotificationMuteUntil,
 } from '../features/chat/services/conversationNotifications';
 import { resolveCallsEnabled } from '../features/chat/services/callSignaling';
+import { attachmentConversationPreview } from '../features/chat/services/messagePreview';
 import {
   countGroupPresence,
   findAccount,
   findDirectPeer,
   identitiesOverlap,
   identityValues,
+  mergeDirectoryAccountSnapshots,
   mergeRealtimeAccountProfile,
   mergeRealtimeMemberPresence,
   snapshotPresence,
@@ -33,7 +35,7 @@ import {
 } from '../features/contacts/services/accountDirectory';
 import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
-import { CHATBOT_ACCOUNT, learnFromChatFile, learnFromChatMessage, loadChatbotMessages, loadChatbotMessagesFromServer, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
+import { CHATBOT_ACCOUNT, EXTERNAL_CHAT_ONLY, learnFromChatFile, learnFromChatMessage, loadChatbotMessages, loadChatbotMessagesFromServer, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
 
 const CALLS_ENABLED = resolveCallsEnabled(import.meta.env.VITE_CALLS_ENABLED);
 
@@ -52,6 +54,144 @@ function getTimeString() {
   return `${hours}:${minutes}`;
 }
 
+async function copyTextToClipboard(value) {
+  const text = String(value || '');
+  if (!text) return;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch {
+    // Fall back for non-secure contexts and browsers without permission.
+  }
+  if (typeof document === 'undefined') throw new Error('Trinh duyet khong ho tro sao chep.');
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand('copy');
+  textarea.remove();
+  if (!copied) throw new Error('Khong the sao chep noi dung.');
+}
+
+function attachmentSizeLabel(file) {
+  const value = String(file?.size || file?.sizeLabel || '').trim();
+  if (value.includes('•')) return value.split('•').pop().trim();
+  if (value.includes('·')) return value.split('·').pop().trim();
+  return value || (file?.mime?.startsWith('image/') ? 'Hình ảnh' : 'Tệp đính kèm');
+}
+
+function attachmentIconClass(file, type = '') {
+  const name = String(file?.name || '').toLowerCase();
+  const mime = String(file?.mime || '').toLowerCase();
+  if (type === 'image' || mime.startsWith('image/') || /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/.test(name)) return 'fa-file-image';
+  if (mime.startsWith('audio/') || /\.(m4a|mp3|ogg|wav|flac)$/.test(name)) return 'fa-file-audio';
+  if (mime.startsWith('video/') || /\.(avi|mov|mkv|mp4|webm)$/.test(name)) return 'fa-file-video';
+  if (file?.ext === 'pdf' || mime.includes('pdf') || name.endsWith('.pdf')) return 'fa-file-pdf';
+  if (file?.ext === 'excel' || /(spreadsheet|excel|csv)/i.test(mime) || /\.(xlsx?|csv)$/.test(name)) return 'fa-file-excel';
+  return 'fa-file-lines';
+}
+
+function isImageAttachment(file, type = '') {
+  const name = String(file?.name || '').toLowerCase();
+  const mime = String(file?.mime || '').toLowerCase();
+  return type === 'image'
+    || mime.startsWith('image/')
+    || /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/.test(name);
+}
+
+function TinodeImagePreview({ source, alt, className = '' }) {
+  const [resolvedSource, setResolvedSource] = useState('');
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setResolvedSource('');
+    setFailed(false);
+    if (!source) {
+      setFailed(true);
+      return () => { cancelled = true; };
+    }
+
+    tinodeClient.resolveMediaUrl(source)
+      .then(url => {
+        if (!cancelled) setResolvedSource(url);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+
+    return () => { cancelled = true; };
+  }, [source]);
+
+  if (failed) {
+    return (
+      <span className="image-preview-placeholder image-preview-error" role="img" aria-label={alt}>
+        <i className="fa-regular fa-image" aria-hidden="true"></i>
+        <span>Không tải được ảnh xem trước</span>
+      </span>
+    );
+  }
+
+  if (!resolvedSource) {
+    return (
+      <span className="image-preview-placeholder" role="status" aria-label="Đang tải ảnh">
+        <i className="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+        <span>Đang tải ảnh...</span>
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={resolvedSource}
+      alt={alt}
+      className={`chat-attached-image ${className}`.trim()}
+      loading="lazy"
+      draggable="false"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function ImageViewer({ source, onClose }) {
+  useEffect(() => {
+    const handleKeyDown = event => {
+      if (event.key === 'Escape') onClose();
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="image-viewer-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Xem ảnh"
+      onMouseDown={event => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <button type="button" className="image-viewer-close" onClick={onClose} aria-label="Đóng ảnh" title="Đóng ảnh">
+        <i className="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
+      <div className="image-viewer-content" onMouseDown={event => event.stopPropagation()}>
+        <TinodeImagePreview source={source} alt="Ảnh đính kèm" className="image-viewer-image" />
+      </div>
+    </div>
+  );
+}
+
 // --- Initial Conversions Data ---
 const INITIAL_CHAT_DATA = {};
 
@@ -63,9 +203,12 @@ function createChatbotConversation(messages = []) {
     senderId: CHATBOT_ACCOUNT.id,
     senderName: CHATBOT_ACCOUNT.name,
     avatar: CHATBOT_ACCOUNT.avatar,
-    text: 'Chào bạn! Mình là Trợ lý Sông Hồng. Bạn có thể hỏi về quy trình nội bộ, hỗ trợ sử dụng hệ thống hoặc yêu cầu chuyển cho nhân viên.',
+    text: 'Chào bạn! Mình là Trợ lý Sông Hồng.',
     time: '',
   };
+  if (EXTERNAL_CHAT_ONLY) {
+    welcomeMessage.text = 'Xin chào! Trợ lý bên ngoài đã sẵn sàng.';
+  }
   const conversationMessages = [welcomeMessage, ...messages.filter(message => message.id !== welcomeMessage.id)];
   const lastMessage = messages[messages.length - 1] || welcomeMessage;
   const lastContent = lastMessage?.text || 'Hỏi đáp và hỗ trợ nội bộ bằng AI';
@@ -77,7 +220,7 @@ function createChatbotConversation(messages = []) {
     avatarHtml: <img src={CHATBOT_ACCOUNT.avatar} alt={CHATBOT_ACCOUNT.name} />,
     avatarClass: 'chatbot-avatar',
     membersCount: 'Trợ lý AI · Online',
-    description: 'Trợ lý AI hỗ trợ tra cứu và giải đáp thông tin nội bộ SÔNG HỒNG.',
+    description: '',
     admin: '',
     members: [CHATBOT_ACCOUNT],
     participantIds: [CHATBOT_ACCOUNT.id],
@@ -278,7 +421,7 @@ function mergeTinodeMessages(existingMessages = [], incomingMessages = []) {
       merged[index] = {
         ...previous,
         ...message,
-        type: message.type,
+        type: previous.type === 'image' || message.type === 'image' ? 'image' : message.type,
         ...(isOutgoing ? {
           // A receipt update can arrive just before Tinode emits its refreshed
           // conversation. Keep the highest known status from that snapshot.
@@ -323,6 +466,7 @@ function mergeTinodeConversation(existing, incoming) {
   if (!existing) return incoming;
   const messages = mergeTinodeMessages(existing.messages, incoming.messages);
   const friendEvents = mergeTinodeMessages(existing.friendEvents, incoming.friendEvents);
+  const latestAttachmentPreview = attachmentConversationPreview(messages.at(-1));
   const managementOwned = Boolean(
     existing.accountSession && isManagementConversationId(existing.managementId || existing.id),
   );
@@ -356,7 +500,7 @@ function mergeTinodeConversation(existing, incoming) {
     participantIds: incomingManagementSnapshot ? incoming.participantIds : existing.participantIds,
     messages,
     friendEvents,
-    lastMsg: incoming.lastMsg || existing.lastMsg,
+    lastMsg: latestAttachmentPreview || incoming.lastMsg || existing.lastMsg,
     time: incoming.time || existing.time,
     updatedAt: incoming.updatedAt || existing.updatedAt || messages[messages.length - 1]?.createdAt,
   };
@@ -433,7 +577,8 @@ function demoGroupToConversation(group, accounts, viewerId) {
     };
   });
   const lastMessage = messages[messages.length - 1];
-  const lastContent = lastMessage?.text || lastMessage?.file?.name || 'Nhóm mới được tạo';
+  const lastAttachmentPreview = attachmentConversationPreview(lastMessage);
+  const lastContent = lastMessage?.text || 'Nhóm mới được tạo';
   return {
     id: group.id,
     name: group.name,
@@ -446,7 +591,7 @@ function demoGroupToConversation(group, accounts, viewerId) {
     adminId: owner?.id || group.ownerId || '',
     members,
     messages,
-    lastMsg: lastMessage ? (lastMessage.type === 'system' ? lastContent : `${lastMessage.sender === 'outgoing' ? 'Bạn' : lastMessage.senderName}: ${lastContent}`) : 'Nhóm mới được tạo',
+    lastMsg: lastMessage ? (lastMessage.type === 'system' ? lastContent : lastAttachmentPreview || `${lastMessage.sender === 'outgoing' ? 'Bạn' : lastMessage.senderName}: ${lastContent}`) : 'Nhóm mới được tạo',
     time: lastMessage?.time || (group.updatedAt ? new Date(group.updatedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : getTimeString()),
     updatedAt: group.updatedAt,
     badge: unreadMessageCount(group.messages, group.readBy, viewerId),
@@ -468,7 +613,8 @@ function demoDirectToConversation(direct, accounts, viewerId) {
     };
   });
   const lastMessage = messages[messages.length - 1];
-  const lastContent = lastMessage?.text || lastMessage?.file?.name || 'Bắt đầu cuộc trò chuyện';
+  const lastAttachmentPreview = attachmentConversationPreview(lastMessage);
+  const lastContent = lastMessage?.text || 'Bắt đầu cuộc trò chuyện';
   return {
     id: direct.id,
     name: other?.name || 'Cuộc trò chuyện cá nhân',
@@ -476,12 +622,12 @@ function demoDirectToConversation(direct, accounts, viewerId) {
     avatarHtml: other?.avatar ? <img src={other.avatar} alt={other.name} /> : <span>{other?.name?.slice(0, 1).toUpperCase() || '?'}</span>,
     avatarClass: '',
     membersCount: other?.online ? 'Online' : 'Offline',
-    description: `Cuộc trò chuyện với ${other?.name || 'thành viên'}`,
+    description: '',
     admin: '',
     members: other ? [{ ...other }] : [],
     participantIds: direct.participantIds,
     messages,
-    lastMsg: lastMessage ? `${lastMessage.sender === 'outgoing' ? 'Bạn' : lastMessage.senderName}: ${lastContent}` : 'Bắt đầu cuộc trò chuyện',
+    lastMsg: lastMessage ? (lastAttachmentPreview || `${lastMessage.sender === 'outgoing' ? 'Bạn' : lastMessage.senderName}: ${lastContent}`) : 'Bắt đầu cuộc trò chuyện',
     time: lastMessage?.time || (direct.updatedAt ? new Date(direct.updatedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''),
     updatedAt: lastMessage?.createdAt || direct.updatedAt,
     badge: unreadMessageCount(direct.messages, direct.readBy, viewerId),
@@ -514,7 +660,7 @@ function managementRoomsForSession(managed, accounts, user, accountSession) {
           avatarHtml: undefined,
           avatarUrl: peer.avatar || '',
           membersCount: peer.online ? 'Online' : 'Offline',
-          description: `Cuộc trò chuyện với ${peer.name || 'thành viên'}`,
+          description: '',
           members: [{ ...peer }],
         } : {}),
         messages: [],
@@ -613,6 +759,7 @@ function App() {
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const [forcedLogoutSeconds, setForcedLogoutSeconds] = useState(null);
   const [activeCall, setActiveCall] = useState(null);
+  const [imageViewer, setImageViewer] = useState(null);
 
   // Mobile navigation state
   const [isMobileChatActive, setIsMobileChatActive] = useState(false);
@@ -682,7 +829,7 @@ function App() {
     isGroup: false,
     avatarHtml: <i className="fa-regular fa-comments"></i>,
     avatarClass: 'group',
-    membersCount: 'Hãy bắt đầu một cuộc trò chuyện mới',
+    membersCount: '',
     description: '',
     admin: '',
     members: [],
@@ -699,7 +846,9 @@ function App() {
     && !activeChat.isChatbot
     && (chatMode !== 'tinode' || connectionStatus !== 'online');
   const accountProfileReadOnly = Boolean(currentUser?.accountManaged || currentUser?.account_managed);
-  const chatModeLabel = chatMode === 'tinode'
+  const chatModeLabel = chatMode === 'external'
+    ? 'External chatbot'
+    : chatMode === 'tinode'
     ? 'Tinode realtime'
     : usesManagementData ? 'Dữ liệu Chatmgt' : 'Demo mode';
   const accountPresenceLabel = account => chatMode === 'tinode'
@@ -757,6 +906,8 @@ function App() {
   const viewerId = chatMode === 'tinode'
     ? (currentUser?.tinodeUid || currentUser?.uid || currentUser?.id)
     : (currentUser?.id || currentUser?.uid);
+  // Friend requests use Chatmgt account IDs, not Tinode topic UIDs.
+  const managementViewerId = currentUser?.id || currentUser?.uid || '';
 
   const applyPresenceSnapshot = useCallback(snapshot => {
     const currentAccount = currentUserRef.current;
@@ -904,7 +1055,10 @@ function App() {
     if (accountSessionRef.current !== accountSession || managementConversationSessionRef.current !== accountSession) return {};
     const managedRooms = managementRoomsForSession(managed, directoryAccounts, currentUser, accountSession);
     const previousRooms = conversationsRef.current;
-    const nextRooms = Object.fromEntries(Object.entries(previousRooms).filter(([, room]) => room.isChatbot));
+    const nextRooms = Object.fromEntries(Object.entries(previousRooms).filter(([, room]) => (
+      room.isChatbot
+      || (!room.managementId && !room.tinodeTopic && (room.friendEvents || []).length > 0)
+    )));
     Object.entries(managedRooms).forEach(([id, room]) => {
       const previousRoom = previousRooms[id] || Object.values(previousRooms)
         .find(candidate => room.tinodeTopic && candidate.tinodeTopic === room.tinodeTopic);
@@ -1381,7 +1535,7 @@ function App() {
 
   const handleLoginSuccess = async (user) => {
     clearActiveCall();
-    await tinodeClient.logout();
+    if (!EXTERNAL_CHAT_ONLY) await tinodeClient.logout();
     setLoginNotice('');
     const accountSession = ++accountSessionRef.current;
     managementConversationSessionRef.current = 0;
@@ -1412,12 +1566,27 @@ function App() {
     contactsSyncTimerRef.current = null;
     contactsSyncRequestRef.current = 0;
     setCurrentUser(user);
-    setChatMode(user.connection || 'demo');
-    setConnectionStatus(user.connection === 'tinode' ? 'ready' : user.connection === 'management' ? 'managed' : 'demo');
+    setChatMode(EXTERNAL_CHAT_ONLY ? 'external' : (user.connection || 'demo'));
+    setConnectionStatus(EXTERNAL_CHAT_ONLY
+      ? 'external'
+      : user.connection === 'tinode' ? 'ready' : user.connection === 'management' ? 'managed' : 'demo');
     setChatError('');
     setIsLoggedIn(true);
+    if (EXTERNAL_CHAT_ONLY) {
+      managementConversationSessionRef.current = accountSession;
+      setManagementConversationSession(accountSession);
+      loadChatbotMessagesFromServer(user).then(messages => {
+        if (accountSessionRef.current !== accountSession) return;
+        const nextRooms = { [CHATBOT_ACCOUNT.id]: createChatbotConversation(messages) };
+        conversationsRef.current = nextRooms;
+        setConversations(nextRooms);
+      }).catch(() => {});
+      return;
+    }
     try {
-        const accounts = await chatManagementService.listUsers();
+        rememberAvatarOverride(user, user.avatar);
+        const accounts = mergeDirectoryAccountSnapshots([user], await chatManagementService.listUsers())
+          .map(account => ({ ...account, avatar: avatarOverrideFor(account) || account.avatar || '' }));
         if (accountSessionRef.current !== accountSession) return;
         setDirectoryAccounts(accounts);
         if (chatManagementService.directorySync?.status === 'stale') {
@@ -1706,11 +1875,6 @@ function App() {
         title: profileForm.title.trim(),
         department: profileForm.department.trim(),
       });
-      const viewerIds = new Set([
-        currentUser?.id,
-        currentUser?.uid,
-        currentUser?.tinodeUid,
-      ].filter(Boolean));
       setCurrentUser(previous => ({
         ...previous,
         ...updated,
@@ -1722,10 +1886,10 @@ function App() {
       )));
       setConversations(previous => Object.fromEntries(Object.entries(previous).map(([id, room]) => [id, {
         ...room,
-        members: (room.members || []).map(member => viewerIds.has(member.id)
+        members: (room.members || []).map(member => identitiesOverlap(member, currentUser)
           ? { ...member, name: updated.name, avatar: updated.avatar || member.avatar }
           : member),
-        messages: (room.messages || []).map(message => viewerIds.has(message.senderId)
+        messages: (room.messages || []).map(message => identitiesOverlap(message, currentUser)
           ? { ...message, senderName: updated.name, avatar: updated.avatar || message.avatar }
           : message),
       }])));
@@ -1844,7 +2008,8 @@ function App() {
     }
   };
 
-  const appendLocalFriendEvent = (roomId, contact, event) => {
+  const appendLocalFriendEvent = useCallback((roomId, contact, event) => {
+    if (!event?.requestId) return;
     const friendActorId = event.action === 'request' ? event.requesterId : event.responderId;
     const friendActorName = event.action === 'request' ? event.requesterName : event.responderName;
     const message = {
@@ -1880,11 +2045,152 @@ function App() {
         ...previous,
         [roomId]: {
           ...room,
+          name: contact?.name || room.name,
+          avatarUrl: contact?.avatar || room.avatarUrl || '',
+          members: contact ? [contact] : room.members,
           friendEvents: mergeTinodeMessages(room.friendEvents || [], [message]),
         },
       };
     });
-  };
+  }, []);
+
+  // Chatmgt currently exposes friend requests and directory profiles through
+  // HTTP, so keep those UI surfaces realtime without requiring a reload.
+  useEffect(() => {
+    if (!isLoggedIn || !chatManagementService.remote || !managementViewerId) return undefined;
+    const accountSession = accountSessionRef.current;
+    let cancelled = false;
+    let syncing = false;
+
+    const syncManagementDirectory = async () => {
+      if (cancelled || syncing || accountSessionRef.current !== accountSession) return;
+      syncing = true;
+      try {
+        const [accounts, requests] = await Promise.all([
+          chatManagementService.listUsers(),
+          chatManagementService.listFriendRequests(managementViewerId),
+        ]);
+        if (cancelled || accountSessionRef.current !== accountSession) return;
+
+        const previousAccounts = directoryAccountsRef.current;
+        const mergedAccounts = mergeDirectoryAccountSnapshots(previousAccounts, accounts);
+        const nextAccounts = mergedAccounts.map(account => {
+          const previous = findAccount(previousAccounts, account.id || account.uid || account.tinodeUid);
+          const override = avatarOverrideFor(account);
+          const next = override ? { ...account, avatar: override } : account;
+          return previous && typeof previous.online === 'boolean'
+            ? { ...next, online: previous.online }
+            : next;
+        });
+        const accountsChanged = previousAccounts.length !== nextAccounts.length
+          || nextAccounts.some(account => {
+            const previous = findAccount(previousAccounts, account.id || account.uid || account.tinodeUid);
+            return !previous || ['id', 'uid', 'tinodeUid', 'username', 'name', 'avatar', 'email', 'title', 'department', 'active', 'online']
+              .some(key => previous[key] !== account[key]);
+          });
+        const effectiveAccounts = accountsChanged ? nextAccounts : previousAccounts;
+        if (accountsChanged) {
+          directoryAccountsRef.current = nextAccounts;
+          setDirectoryAccounts(nextAccounts);
+        }
+        const refreshResultList = results => (results || []).map(result => {
+          const account = findAccount(effectiveAccounts, result.id || result.uid || result.tinodeUid || result.name);
+          if (!account) return result;
+          const next = { ...result, ...account, online: result.online };
+          return ['name', 'avatar', 'email', 'title', 'department', 'active'].some(key => result[key] !== next[key])
+            ? next
+            : result;
+        });
+        setWorkspaceResults(previous => {
+          const next = refreshResultList(previous);
+          return next.length === previous.length && next.every((item, index) => item === previous[index]) ? previous : next;
+        });
+        setGroupSearchResults(previous => {
+          const next = refreshResultList(previous);
+          return next.length === previous.length && next.every((item, index) => item === previous[index]) ? previous : next;
+        });
+
+        const self = findAccount(effectiveAccounts, managementViewerId);
+        if (self) {
+          setCurrentUser(previous => {
+            const next = {
+              ...previous,
+              name: self.name || previous?.name,
+              avatar: self.avatar || previous?.avatar || '',
+              email: self.email || previous?.email,
+              title: self.title || previous?.title,
+              department: self.department || previous?.department,
+            };
+            return ['name', 'avatar', 'email', 'title', 'department'].some(key => next[key] !== previous?.[key])
+              ? next
+              : previous;
+          });
+        }
+
+        setConversations(previous => {
+          let changed = false;
+          const nextConversations = Object.fromEntries(Object.entries(previous).map(([id, room]) => {
+          const members = (room.members || []).map(member => {
+            const account = findAccount(effectiveAccounts, member.id || member.uid || member.tinodeUid || member.name);
+            if (!account) return member;
+            const updated = { ...member, name: account.name || member.name, avatar: account.avatar || member.avatar || '', online: member.online };
+            return updated.name === member.name && updated.avatar === member.avatar ? member : updated;
+          });
+          const peer = !room.isGroup
+            ? members.find(member => !identitiesOverlap(member, currentUser))
+            : null;
+          const messages = (room.messages || []).map(message => {
+            const account = findAccount(effectiveAccounts, message.senderId || message.senderName);
+            if (!account) return message;
+            const updated = { ...message, senderName: account.name || message.senderName, avatar: account.avatar || message.avatar || '' };
+            return updated.senderName === message.senderName && updated.avatar === message.avatar ? message : updated;
+          });
+          const friendEvents = (room.friendEvents || []).map(message => {
+            const event = message.friendEvent || {};
+            const account = findAccount(effectiveAccounts, event.action === 'request' ? event.requesterId : event.responderId);
+            if (!account) return message;
+            const updated = { ...message, senderName: account.name || message.senderName, avatar: account.avatar || message.avatar || '' };
+            return updated.senderName === message.senderName && updated.avatar === message.avatar ? message : updated;
+          });
+          const nextRoom = {
+            ...room,
+            members,
+            messages,
+            friendEvents,
+            ...(peer ? { name: peer.name || room.name, avatarUrl: peer.avatar || room.avatarUrl || '' } : {}),
+          };
+          const membersChanged = members.length !== (room.members || []).length
+            || members.some((member, index) => member !== room.members?.[index]);
+          const messagesChanged = messages.length !== (room.messages || []).length
+            || messages.some((message, index) => message !== room.messages?.[index]);
+          const friendEventsChanged = friendEvents.length !== (room.friendEvents || []).length
+            || friendEvents.some((message, index) => message !== room.friendEvents?.[index]);
+          const roomChanged = membersChanged || messagesChanged || friendEventsChanged
+            || nextRoom.name !== room.name || nextRoom.avatarUrl !== room.avatarUrl;
+          if (roomChanged) changed = true;
+          return [id, roomChanged ? nextRoom : room];
+          }));
+          return changed ? nextConversations : previous;
+        });
+
+        requests.forEach(request => {
+          const contactId = request.requesterId === managementViewerId ? request.recipientId : request.requesterId;
+          appendLocalFriendEvent(contactId, findAccount(effectiveAccounts, contactId), request);
+        });
+      } catch {
+        // A background management sync failure must not interrupt chat.
+      } finally {
+        syncing = false;
+      }
+    };
+
+    void syncManagementDirectory();
+    const timer = window.setInterval(syncManagementDirectory, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isLoggedIn, managementViewerId, currentUser, appendLocalFriendEvent]);
 
   const openFriendRequest = (contact) => {
     if (!usesManagementData) {
@@ -1928,11 +2234,15 @@ function App() {
         responder: currentUser,
         accepted,
       });
-      appendLocalFriendEvent(record.roomId, {
-        id: record.event.requesterId,
-        name: record.event.requesterName,
-        avatar: record.message.avatar,
-      }, response);
+      appendLocalFriendEvent(
+        record.roomId,
+        findAccount(directoryAccountsRef.current, record.event.requesterId) || {
+          id: record.event.requesterId,
+          name: record.event.requesterName,
+          avatar: record.message.avatar,
+        },
+        response,
+      );
       setFriendNotice(accepted
         ? `Bạn và ${record.event.requesterName || 'người gửi'} đã trở thành bạn bè.`
         : `Đã từ chối lời mời của ${record.event.requesterName || 'người gửi'}.`);
@@ -2014,7 +2324,7 @@ function App() {
         avatarHtml: contact.avatar ? <img src={contact.avatar} alt={contact.name} /> : <span>{contact.name.slice(0, 1).toUpperCase()}</span>,
         avatarClass: '',
         membersCount: accountPresenceLabel(contact),
-        description: `Cuộc trò chuyện với ${contact.name}`,
+        description: '',
         admin: '',
         members: [contact],
         participantIds: participantIds.length === 2 ? participantIds : existing?.participantIds,
@@ -2602,18 +2912,28 @@ function App() {
     }
   };
 
-  const handleFileChange = (e) => {
+  const handleSendFile = (file) => {
+    if (!file) return;
+    if (activeChat?.isChatbot) {
+      setChatError('Trợ lý AI hiện chỉ nhận tin nhắn văn bản.');
+      return;
+    }
     if (realtimeMessagingPending) {
-      e.target.value = '';
       setChatError('Kết nối realtime Tinode chưa sẵn sàng; dữ liệu Chatmgt vẫn đang hoạt động.');
       return;
     }
-    const file = e.target.files[0];
-    if (!file) return;
 
-    const fileName = file.name;
+    const mime = file.type || 'application/octet-stream';
+    const isUnnamedClipboardFile = !String(file.name || '').trim();
+    const fallbackExtension = mime.split('/')[1]?.split('+')[0] || 'png';
+    const fileName = file.name || `${/^image\//i.test(mime) ? 'pasted-image' : 'pasted-file'}-${Date.now()}.${fallbackExtension}`;
+    const uploadFile = isUnnamedClipboardFile && typeof File === 'function'
+      ? new File([file], fileName, { type: mime, lastModified: Date.now() })
+      : file;
     const fileSize = file.size;
-    
+    const isImage = /^image\//i.test(mime) || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(fileName);
+    const previewUrl = isImage && typeof URL !== 'undefined' ? URL.createObjectURL(file) : '';
+
     // Định dạng kích thước tệp
     let sizeStr = "";
     if (fileSize > 1024 * 1024) {
@@ -2636,16 +2956,18 @@ function App() {
     const createdAt = new Date().toISOString();
     const newMsg = {
       id: `me-file-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      type: "file",
+      type: isImage ? "image" : "file",
       sender: "outgoing",
       senderId: currentUser?.id || currentUser?.uid,
       senderName: currentUser?.name,
       avatar: currentUser?.avatar,
       file: {
         name: fileName,
-        ext: extType,
+        mime,
+        ext: isImage ? "image" : extType,
         size: `${displayExt} • ${sizeStr}`
       },
+      image: previewUrl || undefined,
       time: timeStr,
       createdAt,
       pending: chatMode === 'tinode',
@@ -2659,7 +2981,7 @@ function App() {
         [currentChatId]: {
           ...room,
           messages: [...room.messages, newMsg],
-          lastMsg: `Bạn: <đính kèm ${fileName}>`,
+          lastMsg: attachmentConversationPreview(newMsg),
           time: timeStr,
           updatedAt: createdAt,
         }
@@ -2674,21 +2996,22 @@ function App() {
       setChatError(err?.message || 'Không thể lưu tệp trong lịch sử nhóm.');
     }
 
-    // Reset file input
-    e.target.value = "";
-
     if (chatMode === 'tinode') {
       const roomId = currentChatId;
       const room = conversations[roomId];
       ensureTinodeConversationTopic(room)
         .then(async topicName => {
-          const result = await tinodeClient.sendFile(topicName, file, newMsg.id);
+          const result = await tinodeClient.sendFile(topicName, uploadFile, newMsg.id);
+          const confirmedIsImage = /^image\//i.test(result.file.mime || '') || isImage;
           const confirmedMessage = {
             ...newMsg,
+            type: confirmedIsImage ? 'image' : 'file',
             pending: false,
             failed: false,
+            image: confirmedIsImage ? result.file.url : undefined,
             file: {
               ...newMsg.file,
+              ext: confirmedIsImage ? 'image' : newMsg.file.ext,
               url: result.file.url,
               mime: result.file.mime,
             },
@@ -2704,9 +3027,11 @@ function App() {
               },
             };
           });
-          queueMessageForKnowledge(room, confirmedMessage, file);
+          if (previewUrl) URL.revokeObjectURL(previewUrl);
+          queueMessageForKnowledge(room, confirmedMessage, uploadFile);
         })
         .catch(err => {
+          if (previewUrl) URL.revokeObjectURL(previewUrl);
           setConversations(previous => {
             const currentRoom = previous[roomId];
             if (!currentRoom) return previous;
@@ -2725,6 +3050,50 @@ function App() {
     }
   };
 
+  const handleFileChange = event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    handleSendFile(file);
+  };
+
+  const handleMessagePaste = event => {
+    if (event.defaultPrevented) return;
+    const target = event.target;
+    const isEditableTarget = target?.matches?.('input, textarea, [contenteditable="true"]');
+    if (target !== messageInputRef.current && isEditableTarget) return;
+    const clipboard = event.clipboardData;
+    if (!clipboard) return;
+
+    const clipboardItems = Array.from(clipboard.items || []);
+    const fileItem = clipboardItems.find(item => item.kind === 'file');
+    const clipboardFile = fileItem?.getAsFile?.() || clipboard.files?.[0];
+    if (clipboardFile) {
+      event.preventDefault();
+      handleSendFile(clipboardFile);
+      return;
+    }
+
+    const pastedText = clipboard.getData?.('text/plain') || '';
+    if (!pastedText.trim()) {
+      if (!navigator.clipboard?.read) return;
+      event.preventDefault();
+      void navigator.clipboard.read().then(async clipboardEntries => {
+        for (const entry of clipboardEntries) {
+          const fileType = entry.types?.find(type => !['text/plain', 'text/html'].includes(type));
+          if (!fileType) continue;
+          const blob = await entry.getType(fileType);
+          handleSendFile(blob);
+          break;
+        }
+      }).catch(() => {});
+      return;
+    }
+    if (activeChat.isChatbot && isTyping) return;
+    event.preventDefault();
+    const nextText = `${inputText}${pastedText}`.trim();
+    void handleSendMessage(nextText);
+  };
+
   const handleFileDownload = async (file) => {
     if (!file?.url) return;
     try {
@@ -2737,6 +3106,22 @@ function App() {
       setChatError(err?.message || 'Không thể tải file đính kèm.');
     }
   };
+  const handleFileOpen = file => {
+    if (!file?.url) return;
+    if (chatMode === 'tinode') {
+      tinodeClient.openFile(file).catch(err => {
+        setChatError(err?.message || 'Không thể mở file đính kèm.');
+      });
+      return;
+    }
+    window.open(file.url, '_blank', 'noopener,noreferrer');
+  };
+
+  const openImageViewer = file => {
+    if (!file?.url) return;
+    setImageViewer({ source: file.url });
+  };
+
   const updateCurrentDraft = (value) => {
     setInputText(value);
     setDrafts(prev => {
@@ -2756,6 +3141,12 @@ function App() {
         tinodeClient.sendTyping(topicKey).catch(() => {});
       }
     }
+  };
+
+  const insertEmoji = emoji => {
+    updateCurrentDraft(`${inputText}${emoji}`);
+    setShowEmojiPicker(false);
+    requestAnimationFrame(() => messageInputRef.current?.focus());
   };
 
   const messageActionKey = (roomId, messageId) => `${roomId}:${messageId}`;
@@ -2815,7 +3206,7 @@ function App() {
     const isOwnMessage = message.senderId === viewerId || message.sender === 'outgoing';
     try {
       if (action === 'copy') {
-        await navigator.clipboard?.writeText(message.text || message.file?.name || '');
+        await copyTextToClipboard(message.text || message.file?.name || '');
         return;
       }
       if (action === 'reply') {
@@ -3120,14 +3511,14 @@ function App() {
     .sort((a, b) => conversationTimestamp(b) - conversationTimestamp(a))
     .slice(0, 20);
 
-  const friendshipRecords = collectFriendshipRecords(conversations, viewerId);
-  const friendContacts = acceptedFriendContacts(friendshipRecords, viewerId, directoryAccounts);
+  const friendshipRecords = collectFriendshipRecords(conversations, managementViewerId);
+  const friendContacts = acceptedFriendContacts(friendshipRecords, managementViewerId, directoryAccounts);
   const friendNotifications = friendshipRecords.filter(record => (
-    record.event.recipientId === viewerId
-    || (record.event.requesterId === viewerId && Boolean(record.response))
+    record.event.recipientId === managementViewerId
+    || (record.event.requesterId === managementViewerId && Boolean(record.response))
   ));
   const pendingIncomingFriendRequests = friendNotifications.filter(record => (
-    record.event.recipientId === viewerId && !record.response
+    record.event.recipientId === managementViewerId && !record.response
   ));
   const notificationBadgeCount = Object.values(conversations).filter(room => room.badge > 0 && shouldShowInConversationList(room)).length
     + pendingIncomingFriendRequests.length;
@@ -3165,7 +3556,7 @@ function App() {
   }
 
   return (
-    <div className={`app-layout ${isMobileChatActive ? 'mobile-active-chat' : ''}`}>
+    <div className={`app-layout ${EXTERNAL_CHAT_ONLY ? 'external-chat-mode' : ''} ${isMobileChatActive ? 'mobile-active-chat' : ''}`}>
       {forcedLogoutSeconds !== null && (
         <div className="forced-logout-backdrop" role="presentation">
           <section className="forced-logout-modal" role="alertdialog" aria-modal="true" aria-labelledby="forced-logout-title">
@@ -3190,6 +3581,12 @@ function App() {
           call={activeCall}
           onClose={handleCallClosed}
           onError={handleCallError}
+        />
+      )}
+      {imageViewer && (
+        <ImageViewer
+          source={imageViewer.source}
+          onClose={() => setImageViewer(null)}
         />
       )}
 
@@ -3329,7 +3726,7 @@ function App() {
       {/* ==========================================================================
          CỘT 3: CHAT MAIN AREA (Khung chat chính)
          ========================================================================== */}
-      <section className="chat-main">
+      <section className="chat-main" onPasteCapture={handleMessagePaste} onPaste={handleMessagePaste}>
         {/* Header khung chat */}
         <div className="chat-main-header">
           <div className="chat-header-info">
@@ -3405,6 +3802,23 @@ function App() {
               || Boolean(msg.pending && msg.senderId && msg.senderId === viewerId);
             const messageState = messageActions[messageActionKey(activeChat.id, msg.id)] || {};
             const reactions = { ...(msg.reactions || {}), ...(messageState.reactions || {}) };
+            const attachmentFile = msg.file || (msg.type === 'image' && msg.image ? {
+              name: 'Hình ảnh',
+              mime: 'image/*',
+              size: 'Hình ảnh',
+              url: msg.image,
+            } : null);
+            const attachmentIcon = attachmentIconClass(attachmentFile, msg.type);
+            const attachmentTone = attachmentIcon.replace('fa-file-', '');
+            const imagePreviewSource = isImageAttachment(attachmentFile, msg.type)
+              ? attachmentFile?.url || msg.image || ''
+              : '';
+            const imagePreviewFile = imagePreviewSource && attachmentFile
+              ? { ...attachmentFile, url: imagePreviewSource }
+              : attachmentFile;
+            const attachmentStatus = msg.pending
+              ? 'Đang tải lên...'
+              : attachmentFile?.url ? 'Đã có trên Cloud' : 'Có sẵn trên máy';
             return (
               <div key={msg.id} className={`message-item ${isOutgoing ? 'outgoing' : 'incoming'}`}>
                 {!isOutgoing && (
@@ -3413,7 +3827,7 @@ function App() {
                   </div>
                 )}
 
-                <div className="message-content-wrapper">
+                <div className={`message-content-wrapper ${imagePreviewSource ? 'image-message-content' : ''}`}>
                   {!isOutgoing && msg.senderName && <span className="sender-name">{msg.senderName}</span>}
 
                   <div className="message-interactive" onContextMenu={event => openMessageMenu(event, msg)}>
@@ -3472,38 +3886,54 @@ function App() {
                     )}
 
                     {/* Tin nhắn file đính kèm */}
-                    {msg.type === "file" && msg.file && (
-                      <div
-                        className={`message-bubble file-bubble ${msg.file.ext}`}
-                        role={msg.file.url ? 'button' : undefined}
-                        tabIndex={msg.file.url ? 0 : undefined}
-                        title={msg.file.url ? 'Bấm để tải file' : undefined}
-                        onClick={() => handleFileDownload(msg.file)}
-                        onKeyDown={event => {
-                          if (msg.file.url && (event.key === 'Enter' || event.key === ' ')) {
-                            event.preventDefault();
-                            handleFileDownload(msg.file);
-                          }
-                        }}
-                      >
-                        <div className={`file-icon-container ${msg.file.ext}`}>
-                          {msg.file.ext === "pdf" ? <span className="file-ext-tag">PDF</span> : msg.file.ext === "excel" ? <i className="fa-solid fa-file-excel excel-icon"></i> : <i className="fa-solid fa-file-lines"></i>}
+                    {/* Image attachments are visual-only; do not render their filename. */}
+                    {imagePreviewSource ? (
+                      <div className={`message-bubble image-bubble ${msg.pending ? 'pending' : ''} ${msg.failed ? 'failed' : ''}`}>
+                        <button
+                          type="button"
+                          className="image-preview-button"
+                          title="Bấm để xem ảnh"
+                          onClick={() => openImageViewer(imagePreviewFile)}
+                        >
+                          <TinodeImagePreview
+                            source={imagePreviewSource}
+                              alt="Ảnh đính kèm"
+                          />
+                          <span className="image-view-hint"><i className="fa-solid fa-expand"></i>Xem ảnh</span>
+                        </button>
+                        <div className="image-bubble-footer">
+                          <span className="message-time">{msg.time} {isOutgoing && deliveryStatusIcon(msg)}</span>
                         </div>
-                        <div className="file-details">
-                          <span className="file-name">{msg.file.name}</span>
-                          <span className="file-info">{msg.file.size}</span>
-                        </div>
-                        <span className="message-time">
-                          {msg.time} {isOutgoing && deliveryStatusIcon(msg)}
-                        </span>
                       </div>
-                    )}
-
-                    {/* Tin nhắn hình ảnh */}
-                    {msg.type === "image" && msg.image && (
-                      <div className="message-bubble img-bubble">
-                        <img src={msg.image} alt="Đính kèm" className="chat-attached-image" />
-                        <span className="message-time">{msg.time} {isOutgoing && deliveryStatusIcon(msg)}</span>
+                    ) : attachmentFile && (
+                      <div className={`message-bubble file-bubble ${msg.type} ${attachmentTone} ${attachmentFile.ext || ''} ${msg.pending ? 'pending' : ''} ${msg.failed ? 'failed' : ''}`}>
+                        <button
+                          type="button"
+                          className="file-card-main"
+                          title={attachmentFile.url ? 'Tải file' : undefined}
+                          disabled={!attachmentFile.url}
+                          onClick={() => handleFileDownload(attachmentFile)}
+                        >
+                          <span className={`file-icon-container ${msg.type} ${attachmentTone} ${attachmentFile.ext || ''}`}>
+                            <i className={`fa-solid ${attachmentIcon}`} aria-hidden="true"></i>
+                          </span>
+                          <span className="file-details">
+                            <span className="file-name" title={attachmentFile.name}>{attachmentFile.name}</span>
+                            <span className="file-meta-row">
+                              <span className="file-info">{attachmentSizeLabel(attachmentFile)}</span>
+                              <span className="file-cloud-status"><i className="fa-solid fa-cloud-check" aria-hidden="true"></i>{attachmentStatus}</span>
+                            </span>
+                          </span>
+                        </button>
+                        <span className="file-card-side">
+                          <span className="file-actions">
+                            <button type="button" className="file-action" title="Mở file" aria-label="Mở file" disabled={!attachmentFile.url} onClick={() => handleFileOpen(attachmentFile)}><i className="fa-regular fa-folder-open"></i></button>
+                            <button type="button" className="file-action" title="Tải xuống" aria-label="Tải xuống" disabled={!attachmentFile.url} onClick={() => handleFileDownload(attachmentFile)}><i className="fa-solid fa-download"></i></button>
+                          </span>
+                          <span className="message-time">
+                            {msg.time} {isOutgoing && deliveryStatusIcon(msg)}
+                          </span>
+                        </span>
                       </div>
                     )}
                     </div>
@@ -3585,12 +4015,12 @@ function App() {
               style={{ display: "none" }} 
               onChange={handleFileChange} 
             />
-            <button className="btn-input-action" title="Biểu cảm" onClick={() => setShowEmojiPicker(prev => !prev)} disabled={realtimeMessagingPending}>
+            <button type="button" className="btn-input-action" title="Biểu cảm" aria-label="Mở biểu cảm" aria-expanded={showEmojiPicker} onClick={() => setShowEmojiPicker(prev => !prev)} disabled={realtimeMessagingPending}>
               <i className="fa-regular fa-smile"></i>
             </button>
             {showEmojiPicker && (
-              <div className="emoji-picker" role="listbox">
-                {['😀', '😂', '😍', '👍', '👏', '🎉', '🙏', '🔥', '✅', '❤️'].map(emoji => <button type="button" key={emoji} onClick={() => { updateCurrentDraft(`${inputText}${emoji}`); setShowEmojiPicker(false); }}>{emoji}</button>)}
+              <div className="emoji-picker" role="listbox" aria-label="Chọn biểu cảm">
+                {['😀', '😂', '😍', '👍', '👏', '🎉', '🙏', '🔥', '✅', '❤️'].map(emoji => <button type="button" role="option" key={emoji} aria-label={emoji} onMouseDown={event => event.preventDefault()} onClick={() => insertEmoji(emoji)}>{emoji}</button>)}
               </div>
             )}
           </div>
@@ -3602,6 +4032,7 @@ function App() {
               value={inputText}
               disabled={realtimeMessagingPending || (activeChat.isChatbot && isTyping)}
               onChange={(e) => updateCurrentDraft(e.target.value)}
+              onPaste={handleMessagePaste}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
@@ -3806,7 +4237,7 @@ function App() {
                   <i className="fa-solid fa-magnifying-glass"></i>
                   <input value={workspaceQuery} onChange={handleWorkspaceSearch} placeholder="Tìm theo tên, email hoặc username..." autoFocus />
                 </div>
-                <p className="workspace-hint">Chọn một người để mở chat 1-1 hoặc gửi lời mời kết bạn kèm lời nhắn.</p>
+
                 {isWorkspaceLoading && <div className="workspace-empty"><i className="fa-solid fa-spinner fa-spin"></i> Đang tìm...</div>}
                 {friendNotice && <div className="friend-notice"><i className="fa-solid fa-circle-check"></i><span>{friendNotice}</span></div>}
                 {!isWorkspaceLoading && workspaceQuery.trim().length < 2 && friendContacts.length > 0 && (
@@ -3835,7 +4266,7 @@ function App() {
                   </div>
                 )}
                 {!isWorkspaceLoading && workspaceQuery.trim().length < 2 && friendContacts.length === 0 && (
-                  <div className="workspace-empty"><i className="fa-solid fa-user-group"></i><span>Chưa có bạn bè. Hãy tìm một người và gửi lời mời kết bạn.</span></div>
+                  <div className="workspace-empty"><i className="fa-solid fa-user-group"></i><span>Chưa có bạn bè.</span></div>
                 )}
                 {!isWorkspaceLoading && workspaceQuery.trim().length >= 2 && workspaceResults.length === 0 && (
                   <div className="workspace-empty"><i className="fa-regular fa-address-book"></i><span>Không tìm thấy tài khoản phù hợp.</span></div>
@@ -3845,7 +4276,7 @@ function App() {
                 )}
                 <div className="workspace-list">
                   {workspaceResults.map(contact => {
-                    const friendshipStatus = friendshipStatusFor(friendshipRecords, viewerId, contact.id);
+                    const friendshipStatus = friendshipStatusFor(friendshipRecords, managementViewerId, contact.id);
                     return (
                       <div className="workspace-list-item contact-result" key={contact.id || contact.name}>
                         <button type="button" className="contact-result-main" onClick={() => handleStartDirectChat(contact)}>
@@ -3874,16 +4305,38 @@ function App() {
 
             {workspacePanel === 'files' && (
               <>
-                <p className="workspace-hint">Tệp và hình ảnh đã gửi trong các cuộc trò chuyện của bạn.</p>
+
                 {sharedFiles.length === 0 ? <div className="workspace-empty"><i className="fa-regular fa-folder-open"></i><span>Chưa có file dùng chung.</span></div> : (
                   <div className="workspace-list">
-                    {sharedFiles.map(file => (
-                      <button type="button" className="workspace-list-item" key={`${file.roomId}-${file.id}`} onClick={() => { setWorkspacePanel(null); handleConversationSelect(file.roomId); }}>
-                        <span className="workspace-file-icon"><i className={`fa-solid ${file.type === 'image' ? 'fa-image' : 'fa-file-lines'}`}></i></span>
-                        <span className="workspace-list-copy"><strong>{file.file?.name || (file.type === 'image' ? 'Hình ảnh' : 'Tệp đính kèm')}</strong><small>{file.roomName} · {file.time}</small></span>
-                        <i className="fa-solid fa-chevron-right"></i>
-                      </button>
-                    ))}
+                    {sharedFiles.map(file => {
+                      const sharedAttachment = file.file || (file.type === 'image' && file.image ? {
+                        name: 'Hình ảnh',
+                        mime: 'image/*',
+                        size: 'Hình ảnh',
+                        url: file.image,
+                      } : null);
+                      const sharedIcon = attachmentIconClass(sharedAttachment, file.type);
+                      const sharedTone = sharedIcon.replace('fa-file-', '');
+                      const sharedStatus = sharedAttachment?.url ? 'Đã có trên Cloud' : 'Có sẵn trên máy';
+                      return (
+                        <article className="workspace-file-card" key={`${file.roomId}-${file.id}`}>
+                          <button type="button" className="workspace-file-main" onClick={() => { setWorkspacePanel(null); handleConversationSelect(file.roomId); }}>
+                            <span className={`workspace-file-icon ${file.type} ${sharedTone} ${sharedAttachment?.ext || ''}`}><i className={`fa-solid ${sharedIcon}`}></i></span>
+                            <span className="workspace-file-copy">
+                              <strong title={sharedAttachment?.name || 'Tệp đính kèm'}>{sharedAttachment?.name || (file.type === 'image' ? 'Hình ảnh' : 'Tệp đính kèm')}</strong>
+                              <span className="workspace-file-meta">
+                                <small>{file.roomName} · {attachmentSizeLabel(sharedAttachment)} · {file.time}</small>
+                                <small className="workspace-cloud-status"><i className="fa-solid fa-cloud-check" aria-hidden="true"></i>{sharedStatus}</small>
+                              </span>
+                            </span>
+                          </button>
+                          <span className="workspace-file-actions">
+                            <button type="button" className="workspace-file-action" title="Mở file" aria-label="Mở file" disabled={!sharedAttachment?.url} onClick={() => handleFileOpen(sharedAttachment)}><i className="fa-regular fa-folder-open"></i></button>
+                            <button type="button" className="workspace-file-action" title="Tải xuống" aria-label="Tải xuống" disabled={!sharedAttachment?.url} onClick={() => handleFileDownload(sharedAttachment)}><i className="fa-solid fa-download"></i></button>
+                          </span>
+                        </article>
+                      );
+                    })}
                   </div>
                 )}
               </>
@@ -3895,19 +4348,19 @@ function App() {
 
             {workspacePanel === 'notifications' && (
               <>
-                <p className="workspace-hint">Lời mời kết bạn, tin nhắn mới và hoạt động gần đây.</p>
+
                 {friendNotice && <div className="friend-notice"><i className="fa-solid fa-circle-check"></i><span>{friendNotice}</span></div>}
                 {friendNotifications.length > 0 && (
                   <div className="friend-request-list">
                     {friendNotifications.map(record => {
-                      const incoming = record.event.recipientId === viewerId;
+                      const incoming = record.event.recipientId === managementViewerId;
                       const status = record.response?.event?.action || 'pending';
                       const displayName = incoming
                         ? (record.event.requesterName || record.message.senderName || 'Người dùng')
                         : (record.response?.event?.responderName || record.room.name || 'Người dùng');
                       return (
                         <article className="friend-request-card" key={record.event.requestId}>
-                          <SafeAvatar src={incoming ? record.message.avatar : record.room.avatarUrl} name={displayName} className="workspace-avatar" />
+                          <SafeAvatar src={incoming ? (record.message.avatar || record.room.avatarUrl) : record.room.avatarUrl} name={displayName} className="workspace-avatar" />
                           <div className="friend-request-copy">
                             <strong>{displayName}</strong>
                             <span>{incoming ? 'đã gửi cho bạn lời mời kết bạn.' : status === 'accepted' ? 'đã chấp nhận lời mời kết bạn.' : 'đã từ chối lời mời kết bạn.'}</span>
@@ -3944,7 +4397,7 @@ function App() {
             {workspacePanel === 'search' && (
               <>
                 <div className="workspace-search-row"><i className="fa-solid fa-magnifying-glass"></i><input value={messageSearchQuery} onChange={event => setMessageSearchQuery(event.target.value)} placeholder="Tìm nội dung hoặc người gửi..." autoFocus /></div>
-                <p className="workspace-hint">{messageSearchQuery ? `${visibleMessages.length} kết quả trong ${activeChat.name}` : 'Nhập từ khóa để lọc tin nhắn hiện tại.'}</p>
+                {messageSearchQuery && <p className="workspace-hint">{visibleMessages.length} kết quả trong {activeChat.name}</p>}
                 <div className="workspace-list">
                   {messageSearchQuery && visibleMessages.map(message => <button type="button" className="workspace-list-item" key={message.id} onClick={() => setWorkspacePanel(null)}><span className="workspace-file-icon"><i className="fa-solid fa-message"></i></span><span className="workspace-list-copy"><strong>{message.senderName || 'Bạn'}</strong><small>{message.text || message.file?.name || 'Nội dung đính kèm'} · {message.time}</small></span></button>)}
                 </div>
@@ -3953,8 +4406,8 @@ function App() {
 
             {workspacePanel === 'settings' && (
               <div className="workspace-settings">
-                <label className="workspace-setting-row"><span><strong>Âm thanh tin nhắn</strong><small>Phát âm thanh khi nhận tin mới</small></span><input type="checkbox" checked={settings.sounds} onChange={event => setSettings(prev => ({ ...prev, sounds: event.target.checked }))} /></label>
-                <label className="workspace-setting-row"><span><strong>Giao diện gọn</strong><small>Giảm khoảng cách giữa các tin nhắn</small></span><input type="checkbox" checked={settings.compactMode} onChange={event => setSettings(prev => ({ ...prev, compactMode: event.target.checked }))} /></label>
+                <label className="workspace-setting-row"><span><strong>Âm thanh tin nhắn</strong></span><input type="checkbox" checked={settings.sounds} onChange={event => setSettings(prev => ({ ...prev, sounds: event.target.checked }))} /></label>
+                <label className="workspace-setting-row"><span><strong>Giao diện gọn</strong></span><input type="checkbox" checked={settings.compactMode} onChange={event => setSettings(prev => ({ ...prev, compactMode: event.target.checked }))} /></label>
                 <div className="workspace-account-card"><i className="fa-solid fa-shield-halved"></i><div><strong>{currentUser?.name || 'Tài khoản hiện tại'}</strong><small>{currentUser?.email || 'Phiên đăng nhập SÔNG HỒNG'} · {chatModeLabel}</small></div></div>
               </div>
             )}
@@ -3983,9 +4436,6 @@ function App() {
               </button>
             </div>
 
-            <p className="notification-mute-question">
-              Chọn thời gian tắt âm báo cho <strong>{notificationMuteDialog.name}</strong>. Số tin chưa đọc và nội dung mới nhất vẫn cập nhật realtime.
-            </p>
             <div className="notification-mute-options">
               {[
                 [NOTIFICATION_MUTE_OPTIONS.ONE_HOUR, 'Trong 1 giờ'],
@@ -4007,8 +4457,8 @@ function App() {
               ))}
             </div>
 
-            <div className="group-modal-footer notification-mute-footer">
-              <span className="group-mode-label"><i className="fa-solid fa-bell-slash"></i> Không hiện thông báo desktop</span>
+            <div className="group-modal-footer notification-mute-footer actions-only">
+
               <div className="group-modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setNotificationMuteDialog(null)} disabled={isUpdatingNotificationMute}>Hủy</button>
                 <button type="submit" className="btn-primary" disabled={isUpdatingNotificationMute}>
@@ -4056,8 +4506,7 @@ function App() {
               <small className="friend-request-counter">{friendRequestNote.length}/500</small>
             </label>
 
-            <div className="group-modal-footer">
-              <span className="group-mode-label"><i className="fa-solid fa-shield-halved"></i>Lưu tại service quản lý</span>
+            <div className="group-modal-footer actions-only">
               <div className="group-modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setFriendRequestTarget(null)} disabled={isSendingFriendRequest}>Hủy</button>
                 <button type="submit" className="btn-primary" disabled={isSendingFriendRequest}>

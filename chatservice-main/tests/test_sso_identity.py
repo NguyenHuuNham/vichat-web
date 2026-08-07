@@ -73,6 +73,15 @@ class SSOIdentityTests(unittest.TestCase):
 
         self.assertFalse(identity["active"])
 
+    def test_pending_invitation_is_not_projected_as_an_active_chat_user(self):
+        identity = normalize_account_directory_record({
+            "id": "account-user-pending",
+            "user_name": "pending.user",
+            "status": "pending",
+        }, "tenant-a", "Tenant A")
+
+        self.assertFalse(identity["active"])
+
     def test_two_tenants_get_distinct_chat_and_tinode_identities(self):
         tenant_a = normalize_account_session(account_payload("tenant-a", "Tenant A", role="admin"))
         tenant_b = normalize_account_session(account_payload("tenant-b", "Tenant B"))
