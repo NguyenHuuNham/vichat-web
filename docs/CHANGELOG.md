@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-08 01:36 (Asia/Saigon)
 - Loai: Sua loi | Giao dien | Tai lieu
-- Trang thai: Hoan tat local; chua deploy
+- Trang thai: Hoan tat production; cho UAT group detail
 - Muc tieu: Khong con hien thi hoac thuc thi luong `Them thanh vien` tu group detail panel vi viec moi nhan vien vao tenant duoc quan ly qua UpGO Account.
 - Pham vi: Duy nhat group detail/add-member flow trong `src/app/App.jsx`, contract test frontend va nhat ky thay doi; khong sua backend Chatmgt, Tinode, tao nhom, xoa thanh vien, roi nhom, xoa cuoc tro chuyen, tin nhan, mute hay demo group con lai.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, va `docs/CHANGELOG.md`.
 - Noi dung: Xoa nut `Them`, modal them thanh vien, state/ref, `openAddMembers()` va `handleAddMembers()` cung import demo khong con dung. Candidate list cua modal tao nhom tiep tuc dung `existingMemberIds = []`, nen tim/chon thanh vien khi tao nhom khong bi loc theo nhom dang mo.
 - Quyet dinh ky thuat: Chi bo entry point UI va logic cuc bo trong ChatUI. Giu nguyen `chatManagementService.addConversationParticipants()` va `tinodeClient.addMember()` de bao toan hop dong backend/utility cho use case khac. Contract test xac nhan cac binding add-member da bien mat trong khi create/remove/leave/delete group flow van ton tai.
 - Database/API/cau hinh: Khong migration, khong doi API, khong doi bien moi truong va khong sua CSS cu.
-- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js` dat 3/3; `npm run test:frontend` dat 45/45; `npm run build:production` dat voi bundle ChatUI `App-CkWsVoVO.js`; `npm run lint` exit 0, chi con warning legacy/vendor/worktree co san va khong co warning trong file pham vi; source checks xac nhan add-member bindings khong con, cac handler create/remove/leave/delete va hai service API van con; `git diff --check` dat.
-- Rui ro con lai: Chua thao tac UAT group detail va modal tao nhom tren trinh duyet that.
-- Viec tiep theo: Mo mot nhom production sau khi phat hanh de xac nhan khong con nut/modal `Them`, sau do tao nhom, xoa mot thanh vien, roi nhom va xoa conversation de doi chieu cac luong giu nguyen.
-- Commit/PR: Chua tao.
+- Kiem thu: Local `node --test src/features/chat/services/chatManagementService.test.js` dat 3/3; `npm run test:frontend` dat 45/45; `npm run build:production` dat voi bundle ChatUI `App-CkWsVoVO.js`; `npm run lint` exit 0, chi con warning legacy/vendor/worktree co san va khong co warning trong file pham vi; source checks xac nhan add-member bindings khong con, cac handler create/remove/leave/delete va hai service API van con; `git diff --check` dat. Production archive SHA-256 `66c0efdaaa4754b2715dfe1370f157d2ded1dbd6c0ed61f262ce63da2382bf54`; Compose config va Nginx syntax dat; container/image/release label dat; public `/healthz`, entry bundle `index-BfFx2XEk.js`, chunk `App-JYOtruUZ.js` va Chatmgt auth health deu HTTP 200. Entry bundle tham chieu dung chunk App; chunk khong con `btn-add-member`/`group-members-modal` va van co `btn-remove-member`, `btn-leave-group`, `btn-delete-conversation`, `create-group-modal`; log ChatUI sau deploy khong co `panic|fatal|critical|emerg|error`.
+- Trien khai: Commit `72a6013` da push `origin/master`; release bat bien `/opt/deploy/chat/releases/72a6013`; image ChatUI `sha256:9144b3529ddf6a985073010bb5d358c67a2feeff80fed396b35569dfcc080734`, container `7a0622e99013` healthy va rollback tag `songhong-production-chat:rollback-before-72a6013` giu image cu `sha256:dad77a148c3b5cbd403c5d80fa9d412211f92fdecd4c590feef85bd08214f153`. Chi service `chat` duoc recreate va symlink `current` da tro release moi; ID Chatmgt `04b6fa6d175d`, bridge `0919575eb188`, ChatAPI `8476615ad4ac`, hai PostgreSQL, Redis va Coturn khong doi; khong migration, reset volume, topic hay message.
+- Rui ro con lai: Chua thao tac UAT group detail va modal tao nhom bang tai khoan that tren trinh duyet.
+- Viec tiep theo: Hard refresh ChatUI, mo mot nhom de xac nhan khong con nut/modal `Them`, sau do tao nhom, xoa mot thanh vien, roi nhom va xoa conversation de doi chieu cac luong giu nguyen.
+- Commit/PR: Code `72a6013`; commit ghi nhan trien khai xem `git log`.
 
 ## 2026-08-08-03 - Fallback tenant active khi dang nhap UpGO Account
 
