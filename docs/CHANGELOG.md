@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-07-10 - Sua tenant production khi dang nhap UpGO employee
+
+- Thoi gian: 2026-08-07 (Asia/Saigon)
+- Loai: Sua loi | Xac thuc | Cau hinh | Van hanh
+- Trang thai: Dang thuc hien
+- Muc tieu: Khong de employee hop le bi tu choi voi loi `The UpGO Account is not active in this company. (401)` khi Tinode Web bridge dang nhap.
+- Pham vi: Production tenant config, ChatUI build-time tenant, Chatmgt account-login va Tinode Account bridge.
+- File da thay doi: `docs/CHANGELOG.md`; production `.env` se cap nhat rieng, khong commit secret.
+- Noi dung: Log cho thay production dang dung `CHATMGT_DEFAULT_TENANT=song-hong`, trong khi database co tenant cong ty `tn6913580727957397` (`CTY NHAM`). Bridge gui tenant sai cho `account-login` nen Account user cua cong ty dung bi tu choi.
+- Quyet dinh ky thuat: Dung duy nhat tenant `tn6913580727957397` cho production va rebuild ChatUI de `VITE_CHAT_TENANT_ID`, Chatmgt va bridge cung mot tenant; khong cho client tu chon tenant khac.
+- Database/API/cau hinh: Khong migration. Cap nhat env production, recreate `chatmgt`, `tinode-account-bridge`, `chat`; khong reset database/volume Tinode.
+- Kiem thu: Da xac nhan DB co tenant `tn6913580727957397` active va production env hien tai dang la `song-hong`; chua deploy ban sua.
+- Rui ro con lai: Can dang nhap lai bang tai khoan employee that sau khi hard refresh va doi chieu UID/lich su Tinode.
+- Viec tiep theo: Build release moi voi tenant dung, deploy, chay verifier/health va UAT lai Tinode Web goc.
+- Commit/PR: Chua tao.
+
 ## 2026-08-07-09 - Dong bo ceiling TTL voi Tinode trung tam
 
 - Thoi gian: 2026-08-07 (Asia/Saigon)
