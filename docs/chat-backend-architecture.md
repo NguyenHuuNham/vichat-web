@@ -96,6 +96,13 @@ participants, notification mute deadlines and profile/avatar changes are all
 stored under the JWT tenant. Foreign tenant IDs sent in query strings are
 ignored; the authenticated JWT and membership rows remain authoritative.
 
+The default ChatUI contact list is the active UpGO Account employee directory
+for the authenticated tenant, excluding the current employee. Employees do not
+need an accepted friendship record to discover or start a direct conversation
+with coworkers. Friendship records remain compatibility metadata only; direct
+conversation creation still validates that every participant is active in the
+same tenant before Chatmgt prepares the Tinode pair.
+
 Chatmgt never uses browser localStorage as a fallback message store. If Tinode
 is unavailable, the directory and conversation metadata remain visible while
 realtime message/file inputs stay disabled and show the connection state.

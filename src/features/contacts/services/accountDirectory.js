@@ -22,6 +22,19 @@ export function identitiesOverlap(first, second) {
   return identityValues(first).some(value => secondValues.has(value));
 }
 
+export function companyDirectoryContacts(accounts, currentUser) {
+  const contacts = [];
+  (Array.isArray(accounts) ? accounts : []).forEach(account => {
+    if (!account || account.active === false || identitiesOverlap(account, currentUser)) return;
+    if (contacts.some(contact => identitiesOverlap(contact, account))) return;
+    contacts.push(account);
+  });
+  return contacts.sort((first, second) => (
+    String(first.name || first.username || first.email || '')
+      .localeCompare(String(second.name || second.username || second.email || ''), 'vi', { sensitivity: 'base' })
+  ));
+}
+
 export function snapshotPresence(entity, snapshot) {
   for (const value of identityValues(entity)) {
     if (Object.prototype.hasOwnProperty.call(snapshot || {}, value)) return Boolean(snapshot[value]);

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-08-01 - Hien toan bo nhan vien trong danh ba noi bo
+
+- Thoi gian: 2026-08-08 00:04 (Asia/Saigon)
+- Loai: Tinh nang | Giao dien
+- Trang thai: Hoan tat code; chua deploy production
+- Muc tieu: Moi tai khoan duoc admin moi lam nhan vien trong UpGO Account tu dong xuat hien trong danh ba cong ty va co the nhan tin truc tiep, khong can gui hoac chap nhan loi moi ket ban.
+- Pham vi: Danh ba va tim kiem nhan vien cua ChatUI, bo loc projection Account cung tenant, kiem thu frontend va tai lieu kien truc; khong thay doi Tinode, database hay API backend.
+- File da thay doi: `src/app/App.jsx`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `docs/chat-backend-architecture.md`, va `docs/CHANGELOG.md`.
+- Noi dung: Danh ba mac dinh dung toan bo projection nhan vien active do `/api/v1/chat/users` tra ve, loai tai khoan dang dang nhap va ban ghi trung lap. Tieu de duoc doi thanh `Nhan vien cong ty`; ca danh sach mac dinh va ket qua tim kiem deu co nut `Nhan tin` mo chat 1-1 ngay. ChatUI khong con hien nut/modal gui loi moi ket ban trong luong danh ba.
+- Quyet dinh ky thuat: Giu UpGO Account/Chatmgt lam nguon danh ba va giu rang buoc backend chi cho tao direct conversation giua cac tai khoan active cung tenant. Khong tu tao truoc conversation hoac Tinode topic cho toan bo cong ty; chi tao/tai su dung khi nguoi dung bam nhan tin de tranh phat sinh du lieu va subscription khong can thiet. API friendship cu van duoc giu lam metadata tuong thich cho du lieu da co, nhung khong con la dieu kien de thay hoac nhan tin cho dong nghiep.
+- Database/API/cau hinh: Khong co migration, khong doi hop dong API va khong them bien moi truong.
+- Kiem thu: `npm run test:frontend` dat 44/44; `npm run build:production` dat; `npm run lint` exit 0, con 140 warning legacy/worktree co san va khong co warning trong `src/app/App.jsx` hoac `src/features/contacts/services/accountDirectory*`; `git diff --check` exit 0.
+- Rui ro con lai: Chua UAT tren production bang admin moi mot employee moi va hai phien employee that. Loi moi ket ban cu co the van xuat hien trong muc Thong bao de tuong thich du lieu lich su, nhung khong can xu ly de su dung danh ba hoac chat 1-1.
+- Viec tiep theo: Deploy ChatUI, hard refresh, moi/them mot employee trong UpGO Account, dang nhap hai tai khoan va xac nhan danh ba cap nhat, bam `Nhan tin` tao/tai su dung dung direct conversation va gui tin qua Tinode.
+- Commit/PR: Chua tao.
+
 ## 2026-08-07-10 - Sua tenant production khi dang nhap UpGO employee
 
 - Thoi gian: 2026-08-07 (Asia/Saigon)

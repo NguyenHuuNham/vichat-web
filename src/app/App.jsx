@@ -22,6 +22,7 @@ import {
 import { resolveCallsEnabled } from '../features/chat/services/callSignaling';
 import { attachmentConversationPreview } from '../features/chat/services/messagePreview';
 import {
+  companyDirectoryContacts,
   countGroupPresence,
   findAccount,
   findDirectPeer,
@@ -338,50 +339,6 @@ function collectFriendshipRecords(conversations, viewerId) {
       const secondTime = Date.parse(second.response?.event?.createdAt || second.event.createdAt || second.message.createdAt || '') || 0;
       return secondTime - firstTime;
     });
-}
-
-function friendshipStatusFor(records, viewerId, contactId) {
-  const latest = records.find(record => (
-    record.event.requesterId === viewerId && record.event.recipientId === contactId
-  ) || (
-    record.event.requesterId === contactId && record.event.recipientId === viewerId
-  ));
-  if (!latest) return 'none';
-  if (latest.response?.event?.action === 'accepted') return 'friends';
-  if (latest.response?.event?.action === 'rejected') return 'none';
-  return latest.event.requesterId === viewerId ? 'pending-sent' : 'pending-received';
-}
-
-function acceptedFriendContacts(records, viewerId, accounts = []) {
-  const latestByContact = new Map();
-  records.forEach(record => {
-    const contactId = record.event.requesterId === viewerId
-      ? record.event.recipientId
-      : record.event.requesterId;
-    if (!contactId || latestByContact.has(contactId)) return;
-    latestByContact.set(contactId, record);
-  });
-
-  return [...latestByContact.entries()]
-    .filter(([, record]) => record.response?.event?.action === 'accepted')
-    .map(([contactId, record]) => {
-      const account = findAccount(accounts, contactId);
-      const member = record.room.members?.find(item => item.id === contactId);
-      const requesterIsViewer = record.event.requesterId === viewerId;
-      return {
-        ...member,
-        ...account,
-        id: contactId,
-        name: account?.name
-          || member?.name
-          || (requesterIsViewer ? record.response?.event?.responderName : record.event.requesterName)
-          || record.room.name
-          || 'Người dùng',
-        avatar: account?.avatar || member?.avatar || record.room.avatarUrl || record.message.avatar || '',
-        online: member?.online ?? account?.online ?? false,
-      };
-    })
-    .sort((first, second) => first.name.localeCompare(second.name, 'vi'));
 }
 
 function messageTimestamp(message) {
@@ -736,9 +693,6 @@ function App() {
   const [workspaceQuery, setWorkspaceQuery] = useState('');
   const [workspaceResults, setWorkspaceResults] = useState([]);
   const [isWorkspaceLoading, setIsWorkspaceLoading] = useState(false);
-  const [friendRequestTarget, setFriendRequestTarget] = useState(null);
-  const [friendRequestNote, setFriendRequestNote] = useState('');
-  const [isSendingFriendRequest, setIsSendingFriendRequest] = useState(false);
   const [respondingFriendRequestId, setRespondingFriendRequestId] = useState('');
   const [friendNotice, setFriendNotice] = useState('');
   const [messageSearchQuery, setMessageSearchQuery] = useState('');
@@ -1703,8 +1657,6 @@ function App() {
     setChatMode('demo');
     setConnectionStatus(isTinodeConfigured ? 'ready' : 'demo');
     setChatError('');
-    setFriendRequestTarget(null);
-    setFriendRequestNote('');
     setFriendNotice('');
     setWorkspacePanel(null);
     setEnterpriseTaskSeed(null);
@@ -2172,38 +2124,6 @@ function App() {
       window.clearInterval(timer);
     };
   }, [isLoggedIn, managementViewerId, currentUser, appendLocalFriendEvent]);
-
-  const openFriendRequest = (contact) => {
-    if (!usesManagementData) {
-      setChatError('Kết bạn chỉ khả dụng khi Chat đang kết nối Chatmgt.');
-      return;
-    }
-    setFriendRequestTarget(contact);
-    setFriendRequestNote('');
-    setFriendNotice('');
-  };
-
-  const handleSendFriendRequest = async (event) => {
-    event.preventDefault();
-    if (!friendRequestTarget?.id || isSendingFriendRequest) return;
-    setIsSendingFriendRequest(true);
-    setChatError('');
-    try {
-      const request = await chatManagementService.sendFriendRequest({
-        sender: currentUser,
-        recipient: friendRequestTarget,
-        note: friendRequestNote,
-      });
-      appendLocalFriendEvent(friendRequestTarget.id, friendRequestTarget, request);
-      setFriendRequestTarget(null);
-      setFriendRequestNote('');
-      setFriendNotice(`Đã gửi lời mời kết bạn tới ${friendRequestTarget.name}.`);
-    } catch (error) {
-      setChatError(error?.message || 'Không thể gửi lời mời kết bạn.');
-    } finally {
-      setIsSendingFriendRequest(false);
-    }
-  };
 
   const handleFriendRequestResponse = async (record, accepted) => {
     if (!record?.event?.requestId || respondingFriendRequestId) return;
@@ -3509,7 +3429,7 @@ function App() {
     .slice(0, 20);
 
   const friendshipRecords = collectFriendshipRecords(conversations, managementViewerId);
-  const friendContacts = acceptedFriendContacts(friendshipRecords, managementViewerId, directoryAccounts);
+  const companyContacts = companyDirectoryContacts(directoryAccounts, currentUser);
   const friendNotifications = friendshipRecords.filter(record => (
     record.event.recipientId === managementViewerId
     || (record.event.requesterId === managementViewerId && Boolean(record.response))
@@ -4251,15 +4171,14 @@ function App() {
                 </div>
 
                 {isWorkspaceLoading && <div className="workspace-empty"><i className="fa-solid fa-spinner fa-spin"></i> Đang tìm...</div>}
-                {friendNotice && <div className="friend-notice"><i className="fa-solid fa-circle-check"></i><span>{friendNotice}</span></div>}
-                {!isWorkspaceLoading && workspaceQuery.trim().length < 2 && friendContacts.length > 0 && (
+                {!isWorkspaceLoading && workspaceQuery.trim().length < 2 && companyContacts.length > 0 && (
                   <div className="friend-directory">
                     <div className="workspace-section-heading">
-                      <strong>Bạn bè</strong>
-                      <span>{friendContacts.length}</span>
+                      <strong>Nhân viên công ty</strong>
+                      <span>{companyContacts.length}</span>
                     </div>
                     <div className="workspace-list">
-                      {friendContacts.map(contact => (
+                      {companyContacts.map(contact => (
                         <div className="workspace-list-item contact-result" key={contact.id}>
                           <button type="button" className="contact-result-main" onClick={() => handleStartDirectChat(contact)}>
                             <SafeAvatar src={contact.avatar} name={contact.name} className="workspace-avatar" />
@@ -4277,8 +4196,8 @@ function App() {
                     </div>
                   </div>
                 )}
-                {!isWorkspaceLoading && workspaceQuery.trim().length < 2 && friendContacts.length === 0 && (
-                  <div className="workspace-empty"><i className="fa-solid fa-user-group"></i><span>Chưa có bạn bè.</span></div>
+                {!isWorkspaceLoading && workspaceQuery.trim().length < 2 && companyContacts.length === 0 && (
+                  <div className="workspace-empty"><i className="fa-solid fa-user-group"></i><span>Chưa có nhân viên nào khác trong công ty.</span></div>
                 )}
                 {!isWorkspaceLoading && workspaceQuery.trim().length >= 2 && workspaceResults.length === 0 && (
                   <div className="workspace-empty"><i className="fa-regular fa-address-book"></i><span>Không tìm thấy tài khoản phù hợp.</span></div>
@@ -4287,30 +4206,18 @@ function App() {
                   <div className="workspace-section-heading search-results-heading"><strong>Kết quả tìm kiếm</strong><span>{workspaceResults.length}</span></div>
                 )}
                 <div className="workspace-list">
-                  {workspaceResults.map(contact => {
-                    const friendshipStatus = friendshipStatusFor(friendshipRecords, managementViewerId, contact.id);
-                    return (
+                  {workspaceResults.map(contact => (
                       <div className="workspace-list-item contact-result" key={contact.id || contact.name}>
                         <button type="button" className="contact-result-main" onClick={() => handleStartDirectChat(contact)}>
                           <SafeAvatar src={contact.avatar} name={contact.name} className="workspace-avatar" />
                           <span className="workspace-list-copy"><strong>{contact.name}</strong><small>{accountPresenceLabel(contact)}{contact.id ? ` · ${contact.id}` : ''}</small></span>
                         </button>
-                        {friendshipStatus === 'pending-received' ? (
-                          <button type="button" className="btn-friend secondary" onClick={() => openWorkspacePanel('notifications')}>Xem lời mời</button>
-                        ) : (
-                          <button
-                            type="button"
-                            className={`btn-friend ${friendshipStatus === 'friends' ? 'friends' : ''}`}
-                            onClick={() => openFriendRequest(contact)}
-                            disabled={friendshipStatus === 'friends' || friendshipStatus === 'pending-sent'}
-                          >
-                            <i className={`fa-solid ${friendshipStatus === 'friends' ? 'fa-user-check' : friendshipStatus === 'pending-sent' ? 'fa-clock' : 'fa-user-plus'}`}></i>
-                            {friendshipStatus === 'friends' ? 'Bạn bè' : friendshipStatus === 'pending-sent' ? 'Đã gửi' : 'Kết bạn'}
-                          </button>
-                        )}
+                        <button type="button" className="btn-friend chat" onClick={() => handleStartDirectChat(contact)}>
+                          <i className="fa-solid fa-message"></i>
+                          Nhắn tin
+                        </button>
                       </div>
-                    );
-                  })}
+                  ))}
                 </div>
               </>
             )}
@@ -4475,54 +4382,6 @@ function App() {
                 <button type="button" className="btn-secondary" onClick={() => setNotificationMuteDialog(null)} disabled={isUpdatingNotificationMute}>Hủy</button>
                 <button type="submit" className="btn-primary" disabled={isUpdatingNotificationMute}>
                   {isUpdatingNotificationMute ? <i className="fa-solid fa-spinner fa-spin"></i> : 'Đồng ý'}
-                </button>
-              </div>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {friendRequestTarget && (
-        <div className="modal-backdrop friend-request-backdrop" role="presentation" onMouseDown={(event) => {
-          if (event.target === event.currentTarget && !isSendingFriendRequest) setFriendRequestTarget(null);
-        }}>
-          <form className="group-modal friend-request-modal" onSubmit={handleSendFriendRequest}>
-            <div className="group-modal-header">
-              <div>
-                <span className="group-modal-kicker">KẾT NỐI ĐỒNG NGHIỆP</span>
-                <h2>Gửi lời mời kết bạn</h2>
-              </div>
-              <button type="button" className="btn-close-detail" onClick={() => setFriendRequestTarget(null)} aria-label="Đóng" disabled={isSendingFriendRequest}>
-                <i className="fa-solid fa-xmark"></i>
-              </button>
-            </div>
-
-            <div className="friend-request-target">
-              <SafeAvatar src={friendRequestTarget.avatar} name={friendRequestTarget.name} className="workspace-avatar" />
-              <div>
-                <strong>{friendRequestTarget.name}</strong>
-                <small>{friendRequestTarget.username ? `@${friendRequestTarget.username}` : friendRequestTarget.email || friendRequestTarget.id}</small>
-              </div>
-            </div>
-
-            <label className="group-form-field">
-              <span>Lời nhắn giới thiệu <small>(không bắt buộc)</small></span>
-              <textarea
-                value={friendRequestNote}
-                onChange={(event) => setFriendRequestNote(event.target.value)}
-                placeholder="Ví dụ: Chào bạn, mình là Lâm ở phòng Kinh doanh..."
-                rows="4"
-                maxLength="500"
-                autoFocus
-              />
-              <small className="friend-request-counter">{friendRequestNote.length}/500</small>
-            </label>
-
-            <div className="group-modal-footer actions-only">
-              <div className="group-modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setFriendRequestTarget(null)} disabled={isSendingFriendRequest}>Hủy</button>
-                <button type="submit" className="btn-primary" disabled={isSendingFriendRequest}>
-                  {isSendingFriendRequest ? 'Đang gửi...' : 'Gửi lời mời'}
                 </button>
               </div>
             </div>

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  companyDirectoryContacts,
   countGroupPresence,
   findDirectPeer,
   identitiesOverlap,
@@ -12,6 +13,21 @@ import {
   updateAccountProfiles,
   updateAccountPresence,
 } from './accountDirectory.js';
+
+test('company directory lists every other active employee without friendship data', () => {
+  const viewer = { id: 'account-viewer', tinodeUid: 'usr-viewer', name: 'Viewer' };
+  const accounts = [
+    { id: 'account-z', tinodeUid: 'usr-z', name: 'Zeta', active: true },
+    viewer,
+    { id: 'account-a', tinodeUid: 'usr-a', name: 'An', active: true },
+    { id: 'account-disabled', name: 'Disabled', active: false },
+    { id: 'account-a', tinodeUid: 'usr-a', name: 'An duplicate', active: true },
+  ];
+
+  const result = companyDirectoryContacts(accounts, { id: 'usr-viewer' });
+
+  assert.deepEqual(result.map(account => account.id), ['account-a', 'account-z']);
+});
 
 test('account identities include both management and Tinode identifiers', () => {
   const account = { id: 'account-1', uid: 'account-alias', tinodeUid: 'usr-one' };
