@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   companyDirectoryContacts,
+  companyDirectoryHeading,
   countGroupPresence,
   findDirectPeer,
   identitiesOverlap,
@@ -27,6 +28,28 @@ test('company directory lists every other active employee without friendship dat
   const result = companyDirectoryContacts(accounts, { id: 'usr-viewer' });
 
   assert.deepEqual(result.map(account => account.id), ['account-a', 'account-z']);
+});
+
+test('company directory heading uses the current UpGO tenant name', () => {
+  assert.equal(
+    companyDirectoryHeading({ tenantName: 'Gon Platform' }),
+    'Nhân viên · Gon Platform',
+  );
+  assert.equal(companyDirectoryHeading({}), 'Nhân viên công ty');
+});
+
+test('company directory excludes accounts from another tenant', () => {
+  const viewer = { id: 'viewer', tenantId: 'tenant-a' };
+  const accounts = [
+    { id: 'same-company', tenantId: 'tenant-a', name: 'Nhân viên A', active: true },
+    { id: 'other-company', tenantId: 'tenant-b', name: 'Nhân viên B', active: true },
+    { id: 'missing-tenant', name: 'Không rõ công ty', active: true },
+  ];
+
+  assert.deepEqual(
+    companyDirectoryContacts(accounts, viewer).map(account => account.id),
+    ['same-company'],
+  );
 });
 
 test('account identities include both management and Tinode identifiers', () => {

@@ -22,10 +22,24 @@ export function identitiesOverlap(first, second) {
   return identityValues(first).some(value => secondValues.has(value));
 }
 
+function tenantId(entity) {
+  return String(entity?.tenantId || entity?.tenant_id || entity?.tenant?.id || '').trim();
+}
+
+export function companyDirectoryHeading(currentUser) {
+  const companyName = String(
+    currentUser?.tenantName || currentUser?.tenant_name || currentUser?.tenant?.name || '',
+  ).trim();
+  return companyName ? `Nhân viên · ${companyName}` : 'Nhân viên công ty';
+}
+
 export function companyDirectoryContacts(accounts, currentUser) {
   const contacts = [];
+  const currentTenantId = tenantId(currentUser);
   (Array.isArray(accounts) ? accounts : []).forEach(account => {
     if (!account || account.active === false || identitiesOverlap(account, currentUser)) return;
+    const accountTenantId = tenantId(account);
+    if (currentTenantId && accountTenantId !== currentTenantId) return;
     if (contacts.some(contact => identitiesOverlap(contact, account))) return;
     contacts.push(account);
   });

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-11-01 - Hien thi ten cong ty UpGO trong danh ba ChatUI
+
+- Thoi gian: 2026-08-11 00:33 (Asia/Saigon)
+- Loai: Giao dien | Bao mat | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; chua deploy
+- Muc tieu: Thay tieu de danh ba chung bang ten cong ty cua tenant UpGO hien tai va bo sung lop phong thu frontend de danh ba/ket qua tim kiem khong hien thi tai khoan thuoc cong ty khac.
+- Pham vi: Tieu de va tap du lieu hien thi trong panel `Danh ba` cua ChatUI, helper/test danh ba va nhat ky thay doi; khong sua API backend, login, Account session, friendship, conversation/group, Tinode, database, cau hinh hay cac man hinh khac.
+- File da thay doi: `src/app/App.jsx`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, va `docs/CHANGELOG.md`.
+- Noi dung: Tieu de danh sach mac dinh hien `Nhan vien · <ten cong ty>` tu `tenantName` trong phien UpGO da xac thuc, fallback ve `Nhan vien cong ty` neu ten trong. Danh sach mac dinh va ket qua tim kiem cung dung mot bo loc chi chap nhan tai khoan active co `tenantId` trung voi current user; khi current user co tenant thi ban ghi thieu tenant cung khong duoc hien thi.
+- Quyet dinh ky thuat: Chi dung tenant ID/tenant name da tra ve trong phien Chatmgt, khong cho browser chon hoac truyen tenant moi. Lop frontend nay la phong thu bo sung; backend `/api/v1/chat/users` van lay tenant tu JWT va loc `ManagementAccount.tenant_id == tenant_id` nhu cu, nen khong thay doi nguon du lieu chuan hay luong dang hoat dong.
+- Database/API/cau hinh: Khong migration, khong doi request/response API va khong them bien moi truong.
+- Kiem thu: `node --test src/features/contacts/services/accountDirectory.test.js` dat 14/14; `npm run test:frontend` dat 46/46; `npm run build:production` dat voi `App-DlJa3EoV.js`, `index-DDvaCTYS.js`, `ManagementApp-BGNQ4fYT.js` va cac CSS tuong ung; `npm run lint` exit 0, chi con warning legacy/vendor/worktree co san va khong co warning trong pham vi; `git diff --check` dat. Browser skill khong co browser session kha dung, nen chua UAT truc quan bang phien UpGO production.
+- Rui ro con lai: Chua xac nhan truc quan ten cong ty that co do dai lon trong panel nho va chua nghiem thu bang hai tenant UpGO production.
+- Viec tiep theo: Hard refresh ChatUI sau khi deploy, mo `Danh ba` bang hai cong ty khac nhau va xac nhan moi phien hien dung ten cong ty cung chi cac nhan vien cung tenant.
+- Commit/PR: Chua tao.
+
 ## 2026-08-10-01 - Gioi han Chatmgt chi quan ly van hanh user
 
 - Thoi gian: 2026-08-10 17:02 (Asia/Saigon)

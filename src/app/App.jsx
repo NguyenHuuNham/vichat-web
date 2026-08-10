@@ -23,6 +23,7 @@ import { resolveCallsEnabled } from '../features/chat/services/callSignaling';
 import { attachmentConversationPreview } from '../features/chat/services/messagePreview';
 import {
   companyDirectoryContacts,
+  companyDirectoryHeading,
   countGroupPresence,
   findAccount,
   findDirectPeer,
@@ -3307,6 +3308,8 @@ function App() {
 
   const friendshipRecords = collectFriendshipRecords(conversations, managementViewerId);
   const companyContacts = companyDirectoryContacts(directoryAccounts, currentUser);
+  const companySearchResults = companyDirectoryContacts(workspaceResults, currentUser);
+  const companyDirectoryTitle = companyDirectoryHeading(currentUser);
   const friendNotifications = friendshipRecords.filter(record => (
     record.event.recipientId === managementViewerId
     || (record.event.requesterId === managementViewerId && Boolean(record.response))
@@ -4045,7 +4048,7 @@ function App() {
                 {!isWorkspaceLoading && workspaceQuery.trim().length < 2 && companyContacts.length > 0 && (
                   <div className="friend-directory">
                     <div className="workspace-section-heading">
-                      <strong>Nhân viên công ty</strong>
+                      <strong title={companyDirectoryTitle}>{companyDirectoryTitle}</strong>
                       <span>{companyContacts.length}</span>
                     </div>
                     <div className="workspace-list">
@@ -4070,14 +4073,14 @@ function App() {
                 {!isWorkspaceLoading && workspaceQuery.trim().length < 2 && companyContacts.length === 0 && (
                   <div className="workspace-empty"><i className="fa-solid fa-user-group"></i><span>Chưa có nhân viên nào khác trong công ty.</span></div>
                 )}
-                {!isWorkspaceLoading && workspaceQuery.trim().length >= 2 && workspaceResults.length === 0 && (
+                {!isWorkspaceLoading && workspaceQuery.trim().length >= 2 && companySearchResults.length === 0 && (
                   <div className="workspace-empty"><i className="fa-regular fa-address-book"></i><span>Không tìm thấy tài khoản phù hợp.</span></div>
                 )}
-                {workspaceQuery.trim().length >= 2 && workspaceResults.length > 0 && (
-                  <div className="workspace-section-heading search-results-heading"><strong>Kết quả tìm kiếm</strong><span>{workspaceResults.length}</span></div>
+                {workspaceQuery.trim().length >= 2 && companySearchResults.length > 0 && (
+                  <div className="workspace-section-heading search-results-heading"><strong>Kết quả tìm kiếm</strong><span>{companySearchResults.length}</span></div>
                 )}
                 <div className="workspace-list">
-                  {workspaceResults.map(contact => (
+                  {companySearchResults.map(contact => (
                       <div className="workspace-list-item contact-result" key={contact.id || contact.name}>
                         <button type="button" className="contact-result-main" onClick={() => handleStartDirectChat(contact)}>
                           <SafeAvatar src={contact.avatar} name={contact.name} className="workspace-avatar" />
