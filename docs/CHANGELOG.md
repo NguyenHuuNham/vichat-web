@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-11 00:33 (Asia/Saigon)
 - Loai: Giao dien | Bao mat | Kiem thu | Tai lieu
-- Trang thai: Hoan tat local; chua deploy
+- Trang thai: Hoan tat production; cho UAT hai tenant UpGO that
 - Muc tieu: Thay tieu de danh ba chung bang ten cong ty cua tenant UpGO hien tai va bo sung lop phong thu frontend de danh ba/ket qua tim kiem khong hien thi tai khoan thuoc cong ty khac.
 - Pham vi: Tieu de va tap du lieu hien thi trong panel `Danh ba` cua ChatUI, helper/test danh ba va nhat ky thay doi; khong sua API backend, login, Account session, friendship, conversation/group, Tinode, database, cau hinh hay cac man hinh khac.
 - File da thay doi: `src/app/App.jsx`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, va `docs/CHANGELOG.md`.
 - Noi dung: Tieu de danh sach mac dinh hien `Nhan vien · <ten cong ty>` tu `tenantName` trong phien UpGO da xac thuc, fallback ve `Nhan vien cong ty` neu ten trong. Danh sach mac dinh va ket qua tim kiem cung dung mot bo loc chi chap nhan tai khoan active co `tenantId` trung voi current user; khi current user co tenant thi ban ghi thieu tenant cung khong duoc hien thi.
 - Quyet dinh ky thuat: Chi dung tenant ID/tenant name da tra ve trong phien Chatmgt, khong cho browser chon hoac truyen tenant moi. Lop frontend nay la phong thu bo sung; backend `/api/v1/chat/users` van lay tenant tu JWT va loc `ManagementAccount.tenant_id == tenant_id` nhu cu, nen khong thay doi nguon du lieu chuan hay luong dang hoat dong.
 - Database/API/cau hinh: Khong migration, khong doi request/response API va khong them bien moi truong.
-- Kiem thu: `node --test src/features/contacts/services/accountDirectory.test.js` dat 14/14; `npm run test:frontend` dat 46/46; `npm run build:production` dat voi `App-DlJa3EoV.js`, `index-DDvaCTYS.js`, `ManagementApp-BGNQ4fYT.js` va cac CSS tuong ung; `npm run lint` exit 0, chi con warning legacy/vendor/worktree co san va khong co warning trong pham vi; `git diff --check` dat. Browser skill khong co browser session kha dung, nen chua UAT truc quan bang phien UpGO production.
+- Kiem thu: `node --test src/features/contacts/services/accountDirectory.test.js` dat 14/14; `npm run test:frontend` dat 46/46; `npm run build:production` dat voi `App-DlJa3EoV.js`, `index-DDvaCTYS.js`, `ManagementApp-BGNQ4fYT.js` va cac CSS tuong ung; `npm run lint` exit 0, chi con warning legacy/vendor/worktree co san va khong co warning trong pham vi; `git diff --check` dat. Production archive SHA-256 `11ece709165b866b69cbdb0a62b79c842f826a539ed9eeaaedacce75a38af317`; Compose config va Nginx syntax dat; image marker xac nhan co ca tieu de dong `Nhan vien ·` va fallback; public `/healthz` va Chatmgt auth health deu HTTP 200; public entry `index-CTORNgBh.js` tham chieu chunk `App-D1T_OTh4.js` co marker ten cong ty; ChatUI healthy va log khong co `traceback|panic|fatal|critical|emerg`. Browser skill khong co browser session kha dung, nen chua UAT truc quan bang phien UpGO production.
+- Trien khai: Commit `ccab56d` da push `origin/master`; release bat bien `/opt/deploy/chat/releases/ccab56d`; image ChatUI `sha256:94569b6c8807330996ad008e2a47a3b836456fa80d13e1d28acdec7ff8febd8e`, container `21485a095879` healthy va rollback tag `songhong-production-chat:rollback-before-ccab56d` giu image cu `sha256:d41131e98feeb251e503aef14e096d1a68fdffb3217e9b155f45a93aaa9e0644`. Chi service `chat` duoc force-recreate; Chatmgt `8724737473f3`, bridge `0919575eb188`, ChatAPI `8476615ad4ac`, Chat PostgreSQL `78a434b49404`, Tinode PostgreSQL `9f6e4dcc9c2f`, Redis `ceef7df23feb` va Coturn `aa680d35fdc0` khong doi; symlink `current` da tro release moi; khong migration, reset volume, topic hay message.
 - Rui ro con lai: Chua xac nhan truc quan ten cong ty that co do dai lon trong panel nho va chua nghiem thu bang hai tenant UpGO production.
-- Viec tiep theo: Hard refresh ChatUI sau khi deploy, mo `Danh ba` bang hai cong ty khac nhau va xac nhan moi phien hien dung ten cong ty cung chi cac nhan vien cung tenant.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh ChatUI, mo `Danh ba` bang hai cong ty khac nhau va xac nhan moi phien hien dung ten cong ty cung chi cac nhan vien cung tenant.
+- Commit/PR: Code `ccab56d`; commit ghi nhan trien khai xem `git log`.
 
 ## 2026-08-10-01 - Gioi han Chatmgt chi quan ly van hanh user
 
