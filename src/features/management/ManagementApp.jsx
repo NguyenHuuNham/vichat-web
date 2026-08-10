@@ -52,7 +52,7 @@ function auditLabel(eventName) {
     ACCOUNT_UPDATED: 'Cập nhật tài khoản nhân viên',
     ACCOUNT_PASSWORD_RESET_BY_ADMIN: 'Đặt lại mật khẩu nhân viên',
     ACCOUNT_LOCAL_ACCESS_PROVISIONED: 'Cấp quyền đăng nhập ChatUI',
-    ACCOUNT_SESSION_REVOKED: 'Thu hồi phiên Chatmgt',
+    ACCOUNT_SESSION_REVOKED: 'Bắt đăng xuất khỏi Chat',
   };
   return labels[eventName] || String(eventName || 'Sự kiện hệ thống').replaceAll('_', ' ');
 }
@@ -86,25 +86,6 @@ function ManagementAvatar({ user, name, icon = '', size = 'default', eager = fal
   );
 }
 
-function ManagementConversationAvatar({ conversation, viewerId }) {
-  const members = conversation?.members || [];
-  const viewer = members.find(member => String(member.id) === String(viewerId));
-  const peer = !conversation?.isGroup && viewer
-    ? members.find(member => String(member.id) !== String(viewerId))
-    : null;
-
-  if (peer) return <ManagementAvatar user={peer} />;
-  if (members.length === 1) return <ManagementAvatar user={members[0]} />;
-  if (members.length > 1) {
-    return (
-      <span className="management-avatar-cluster" aria-label={`Avatar thành viên ${conversation.subject}`}>
-        {members.slice(0, 4).map(member => <ManagementAvatar key={member.id} user={member} size="mini" />)}
-      </span>
-    );
-  }
-  return <ManagementAvatar name={conversation?.subject} icon={`fa-solid ${conversation?.isGroup ? 'fa-users' : 'fa-user'}`} />;
-}
-
 function LoginScreen({ onLogin, error, loading }) {
   const submit = event => {
     event.preventDefault();
@@ -118,7 +99,7 @@ function LoginScreen({ onLogin, error, loading }) {
         <div className="management-brand-lockup"><BrandLogo /><div><strong>ACSI</strong><span>Chat operations</span></div></div>
         <div className="management-story-copy">
           <span className="management-kicker">Trung tâm điều phối Chatmgt</span>
-          <h1>Quản lý đúng luồng, không đi vào nội dung hội thoại.</h1>
+          <h1>Quản lý vận hành mà không hiển thị thông tin hay nội dung hội thoại.</h1>
 
         </div>
         <div className="management-story-status">
@@ -166,62 +147,6 @@ function SystemCard({ icon, label, ready, title, readyText = 'Sẵn sàng', warn
   );
 }
 
-function UserEditorDialog({ mode, user, busy, error, onClose, onSubmit }) {
-  const creating = mode === 'create';
-  const [form, setForm] = useState({
-    username: user?.username || '',
-    password: '',
-    name: user?.name || '',
-    email: user?.email || '',
-    role: isAdmin(user) ? 'admin' : 'member',
-    department: user?.department || '',
-    title: user?.title || '',
-    avatar: user?.avatar || '',
-    active: user?.active ?? true,
-  });
-
-  const change = event => {
-    const { name, type, checked, value } = event.target;
-    setForm(previous => ({ ...previous, [name]: type === 'checkbox' ? checked : value }));
-  };
-
-  return (
-    <div className="management-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
-      <form className="management-modal" onSubmit={event => { event.preventDefault(); onSubmit(form); }}>
-        <header className="management-modal-header"><div><span className="management-eyebrow">{creating ? 'Tài khoản mới' : 'Hồ sơ nhân viên'}</span><h2>{creating ? 'Thêm nhân viên' : `Cập nhật ${user.name}`}</h2></div><button type="button" className="management-icon-button" onClick={onClose} disabled={busy} aria-label="Đóng"><i className="fa-solid fa-xmark"></i></button></header>
-        {error && <div className="management-inline-error" role="alert"><i className="fa-solid fa-circle-exclamation"></i>{error}</div>}
-        <div className="management-form-grid">
-          <label className="management-field"><span>Tên đăng nhập</span><input name="username" value={form.username} onChange={change} disabled={!creating || busy} required autoComplete="off" /></label>
-          {creating && <label className="management-field"><span>Mật khẩu ban đầu</span><input name="password" type="password" value={form.password} onChange={change} disabled={busy} required minLength="8" autoComplete="new-password" /></label>}
-          <label className="management-field"><span>Họ tên</span><input name="name" value={form.name} onChange={change} disabled={busy} required /></label>
-          <label className="management-field"><span>Email</span><input name="email" type="email" value={form.email} onChange={change} disabled={busy} /></label>
-          <label className="management-field"><span>Vai trò</span><select name="role" value={form.role} onChange={change} disabled={busy}><option value="member">Nhân viên</option><option value="admin">Quản trị nội bộ</option></select></label>
-          <label className="management-field"><span>Trạng thái</span><select name="active" value={form.active ? 'true' : 'false'} onChange={event => setForm(previous => ({ ...previous, active: event.target.value === 'true' }))} disabled={creating || busy}><option value="true">Đang hoạt động</option><option value="false">Ngừng hoạt động</option></select></label>
-          <label className="management-field"><span>Phòng ban</span><input name="department" value={form.department} onChange={change} disabled={busy} /></label>
-          <label className="management-field"><span>Chức danh</span><input name="title" value={form.title} onChange={change} disabled={busy} /></label>
-          <label className="management-field wide"><span>URL ảnh đại diện</span><input name="avatar" type="url" value={form.avatar} onChange={change} disabled={busy} placeholder="https://..." /></label>
-        </div>
-        <footer className="management-modal-footer"><button type="button" className="management-button ghost" onClick={onClose} disabled={busy}>Hủy</button><button type="submit" className="management-button primary" disabled={busy}>{busy && <i className="fa-solid fa-spinner fa-spin"></i>} {creating ? 'Tạo nhân viên' : 'Lưu thay đổi'}</button></footer>
-      </form>
-    </div>
-  );
-}
-
-function PasswordDialog({ user, busy, error, onClose, onSubmit }) {
-  const [password, setPassword] = useState('');
-  return (
-    <div className="management-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
-      <form className="management-modal compact" onSubmit={event => { event.preventDefault(); onSubmit(password); }}>
-        <header className="management-modal-header"><div><span className="management-eyebrow">Quyền truy cập ChatUI</span><h2>{user.accountManaged ? 'Cấp mật khẩu ChatUI' : 'Đặt lại mật khẩu'}</h2></div><button type="button" className="management-icon-button" onClick={onClose} disabled={busy} aria-label="Đóng"><i className="fa-solid fa-xmark"></i></button></header>
-        <p className="management-modal-copy">{user.accountManaged ? `Tài khoản ${user.name} sẽ chuyển từ projection Account sang nhân viên do Chatmgt quản lý, đồng thời giữ nguyên định danh và lịch sử Tinode hiện có.` : `Mật khẩu hiện tại của ${user.name} sẽ bị thu hồi. Người dùng phải đăng nhập lại bằng mật khẩu mới.`}</p>
-        {error && <div className="management-inline-error" role="alert"><i className="fa-solid fa-circle-exclamation"></i>{error}</div>}
-        <label className="management-field"><span>Mật khẩu mới</span><input type="password" value={password} onChange={event => setPassword(event.target.value)} disabled={busy} required minLength="8" autoComplete="new-password" /></label>
-        <footer className="management-modal-footer"><button type="button" className="management-button ghost" onClick={onClose} disabled={busy}>Hủy</button><button type="submit" className="management-button primary" disabled={busy}>{busy && <i className="fa-solid fa-spinner fa-spin"></i>} Xác nhận</button></footer>
-      </form>
-    </div>
-  );
-}
-
 export default function ManagementApp() {
   const [authState, setAuthState] = useState('loading');
   const [session, setSession] = useState(null);
@@ -229,25 +154,17 @@ export default function ManagementApp() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [activeView, setActiveView] = useState('overview');
   const [users, setUsers] = useState([]);
-  const [conversations, setConversations] = useState([]);
-  const [conversationSummary, setConversationSummary] = useState({});
   const [auditLogs, setAuditLogs] = useState([]);
   const [health, setHealth] = useState(null);
   const [loadingData, setLoadingData] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [roleFilter, setRoleFilter] = useState('all');
-  const [conversationSearch, setConversationSearch] = useState('');
-  const [conversationType, setConversationType] = useState('all');
   const [auditSearch, setAuditSearch] = useState('');
   const [actionUserId, setActionUserId] = useState('');
   const [notice, setNotice] = useState(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [userEditor, setUserEditor] = useState(null);
-  const [passwordUser, setPasswordUser] = useState(null);
-  const [modalBusy, setModalBusy] = useState(false);
-  const [modalError, setModalError] = useState('');
 
   useEffect(() => {
     document.title = 'Trung tâm quản trị Chatmgt';
@@ -274,16 +191,11 @@ export default function ManagementApp() {
     if (!silent) setLoadingData(true);
     const results = await Promise.allSettled([
       managementAdminService.listUsers(),
-      managementAdminService.listConversations(),
       managementAdminService.listAuditLogs(),
       managementAdminService.health(),
     ]);
-    const [usersResult, conversationResult, auditResult, healthResult] = results;
+    const [usersResult, auditResult, healthResult] = results;
     if (usersResult.status === 'fulfilled') setUsers(usersResult.value);
-    if (conversationResult.status === 'fulfilled') {
-      setConversations(conversationResult.value.items);
-      setConversationSummary(conversationResult.value.summary);
-    }
     if (auditResult.status === 'fulfilled') setAuditLogs(auditResult.value);
     if (healthResult.status === 'fulfilled') setHealth(healthResult.value);
     const firstError = results.find(result => result.status === 'rejected')?.reason;
@@ -320,15 +232,6 @@ export default function ManagementApp() {
     return true;
   }), [employees, search, statusFilter, roleFilter]);
 
-  const visibleConversations = useMemo(() => conversations.filter(conversation => {
-    const memberNames = conversation.members.map(member => `${member.name} ${member.username}`).join(' ');
-    const haystack = `${conversation.subject} ${memberNames}`.toLowerCase();
-    if (conversationSearch.trim() && !haystack.includes(conversationSearch.trim().toLowerCase())) return false;
-    if (conversationType === 'group' && !conversation.isGroup) return false;
-    if (conversationType === 'direct' && conversation.isGroup) return false;
-    return true;
-  }), [conversations, conversationSearch, conversationType]);
-
   const visibleAuditLogs = useMemo(() => auditLogs.filter(log => {
     if (!auditSearch.trim()) return true;
     const account = users.find(user => user.id === log.userId || user.id === log.properties?.account_id);
@@ -339,12 +242,7 @@ export default function ManagementApp() {
     employees: employees.length,
     activeEmployees: employees.filter(user => user.active).length,
     provisioned: employees.filter(user => user.tinodeUid).length,
-    conversations: Number(conversationSummary.total ?? conversations.length),
-    groups: Number(conversationSummary.group ?? conversations.filter(item => item.isGroup).length),
-    pendingFriendRequests: Number(conversationSummary.friendRequests?.pending || 0),
-  }), [employees, conversations, conversationSummary]);
-
-  const employeeAccountSso = health?.employee_auth?.login_endpoint === '/api/v1/auth/sso';
+  }), [employees]);
 
   const currentAdmin = useMemo(() => {
     const currentId = String(session?.user?.id || '');
@@ -373,77 +271,21 @@ export default function ManagementApp() {
     await managementAdminService.logout().catch(() => {});
     setSession(null);
     setUsers([]);
-    setConversations([]);
     setAuditLogs([]);
     setAuthState('anonymous');
   };
 
   const revokeSessions = async user => {
-    if (!window.confirm(`Thu hồi toàn bộ phiên Chatmgt hiện tại của ${user.name}? Người dùng sẽ phải đăng nhập lại.`)) return;
+    if (!window.confirm(`Bắt ${user.name} đăng xuất khỏi Chat? Toàn bộ phiên Chatmgt hiện tại sẽ bị thu hồi và người dùng phải đăng nhập lại.`)) return;
     setActionUserId(user.id);
     try {
       await managementAdminService.revokeSessions(user.id);
-      setNotice({ type: 'success', text: `Đã thu hồi phiên Chatmgt của ${user.name}.` });
+      setNotice({ type: 'success', text: `Đã bắt ${user.name} đăng xuất khỏi Chat.` });
       setAuditLogs(await managementAdminService.listAuditLogs());
     } catch (error) {
-      setNotice({ type: 'error', text: error.message || 'Không thu hồi được phiên Chatmgt.' });
+      setNotice({ type: 'error', text: error.message || 'Không thể bắt tài khoản đăng xuất khỏi Chat.' });
     } finally {
       setActionUserId('');
-    }
-  };
-
-  const setUserActive = async user => {
-    if (user.accountManaged || String(user.id) === String(currentAdmin.id)) return;
-    const active = !user.active;
-    const action = active ? 'mở khóa' : 'khóa';
-    const detail = active ? '' : ' Người dùng sẽ phải đăng nhập lại.';
-    if (!window.confirm(`Bạn có chắc muốn ${action} tài khoản ${user.name}?${detail}`)) return;
-    setActionUserId(user.id);
-    try {
-      const saved = await managementAdminService.setUserActive(user.id, active);
-      setUsers(previous => previous.map(item => item.id === saved.id ? saved : item));
-      setNotice({ type: 'success', text: `${active ? 'Đã mở khóa' : 'Đã khóa'} tài khoản ${user.name}.` });
-      setAuditLogs(await managementAdminService.listAuditLogs());
-    } catch (error) {
-      setNotice({ type: 'error', text: error.message || `Không thể ${action} tài khoản.` });
-    } finally {
-      setActionUserId('');
-    }
-  };
-
-  const saveUser = async form => {
-    setModalBusy(true);
-    setModalError('');
-    try {
-      const saved = userEditor.mode === 'create'
-        ? await managementAdminService.createUser(form)
-        : await managementAdminService.updateUser(userEditor.user.id, form);
-      setUsers(previous => userEditor.mode === 'create'
-        ? [...previous, saved]
-        : previous.map(item => item.id === saved.id ? saved : item));
-      setNotice({ type: 'success', text: userEditor.mode === 'create' ? `Đã tạo tài khoản cho ${saved.name}.` : `Đã cập nhật ${saved.name}.` });
-      setUserEditor(null);
-      setAuditLogs(await managementAdminService.listAuditLogs());
-    } catch (error) {
-      setModalError(error.message || 'Không lưu được tài khoản nhân viên.');
-    } finally {
-      setModalBusy(false);
-    }
-  };
-
-  const resetUserPassword = async newPassword => {
-    setModalBusy(true);
-    setModalError('');
-    try {
-      const result = await managementAdminService.resetPassword(passwordUser.id, newPassword);
-      if (result.user) setUsers(previous => previous.map(item => item.id === result.user.id ? result.user : item));
-      setNotice({ type: 'success', text: `Đã cấp mật khẩu mới cho ${passwordUser.name}.` });
-      setPasswordUser(null);
-      setAuditLogs(await managementAdminService.listAuditLogs());
-    } catch (error) {
-      setModalError(error.message || 'Không đặt lại được mật khẩu.');
-    } finally {
-      setModalBusy(false);
     }
   };
 
@@ -464,7 +306,6 @@ export default function ManagementApp() {
   const navItems = [
     { id: 'overview', label: 'Tổng quan', icon: 'fa-solid fa-chart-pie' },
     { id: 'directory', label: 'Nhân viên', icon: 'fa-solid fa-address-book', count: stats.employees },
-    { id: 'conversations', label: 'Conversation & nhóm', icon: 'fa-solid fa-comments', count: stats.conversations },
     { id: 'audit', label: 'Nhật ký bảo mật', icon: 'fa-solid fa-shield-halved' },
     { id: 'system', label: 'Luồng hệ thống', icon: 'fa-solid fa-diagram-project' },
   ];
@@ -500,7 +341,6 @@ export default function ManagementApp() {
           <div className="management-topbar-actions">
             <span className={`management-health-pill ${health?.status === 'ok' ? 'online' : ''}`} aria-live="polite"><i></i>{health?.status === 'ok' ? 'Hệ thống ổn định' : 'Đang đồng bộ'}</span>
             <button type="button" className="management-icon-button" onClick={() => loadData()} title="Làm mới dữ liệu hiển thị" disabled={loadingData}><i className={`fa-solid fa-rotate ${loadingData ? 'fa-spin' : ''}`}></i></button>
-            <a className="management-chat-link" href="https://chat.upgo.vn/" target="_blank" rel="noreferrer">Mở ChatUI <i className="fa-solid fa-arrow-up-right-from-square"></i></a>
           </div>
         </header>
 
@@ -522,20 +362,10 @@ export default function ManagementApp() {
               </div>
               <div className="management-metrics-grid">
                 <MetricCard icon="fa-solid fa-address-book" value={stats.employees} label="Tài khoản trong tenant" detail={`${stats.activeEmployees} đang hoạt động`} />
-                <MetricCard icon="fa-solid fa-comments" value={stats.conversations} label="Conversation metadata" detail={`${stats.groups} cuộc trò chuyện nhóm`} tone="ink" />
                 <MetricCard icon="fa-solid fa-link" value={stats.provisioned} label="Đã có Tinode UID" detail="Sẵn sàng nâng lên realtime" tone="green" />
-                <MetricCard icon="fa-solid fa-user-group" value={stats.pendingFriendRequests} label="Lời mời đang chờ" detail="Dữ liệu quan hệ do Chatmgt giữ" tone="orange" />
+                <MetricCard icon="fa-solid fa-right-from-bracket" value="Duy nhất" label="Thao tác trên tài khoản" detail="Bắt đăng xuất khỏi Chat" tone="orange" />
               </div>
               <div className="management-overview-grid">
-                <article className="management-panel">
-                  <header><div><span className="management-eyebrow">Metadata gần đây</span><h3>Conversation được cập nhật</h3></div><button onClick={() => setActiveView('conversations')}>Xem tất cả</button></header>
-                  <div className="management-people-list">
-                    {conversations.slice(0, 5).map(conversation => (
-                      <div key={conversation.id}><ManagementConversationAvatar conversation={conversation} viewerId={currentAdmin.id} /><div><strong>{conversation.subject}</strong><span>{conversation.isGroup ? 'Nhóm' : 'Trực tiếp'} · {conversation.participantCount} thành viên · {conversation.realtime.ready ? 'Realtime sẵn sàng' : 'Chờ Tinode'}</span></div><time>{formatDate(conversation.updatedAt)}</time></div>
-                    ))}
-                    {conversations.length === 0 && <p className="management-empty-line">Chưa có conversation trong tenant.</p>}
-                  </div>
-                </article>
                 <article className="management-panel management-security-panel">
                   <header><div><span className="management-eyebrow">An toàn truy cập</span><h3>Nhật ký gần nhất</h3></div><span className="management-live-dot">Tự làm mới</span></header>
                   <div className="management-audit-mini">
@@ -550,10 +380,7 @@ export default function ManagementApp() {
           {activeView === 'directory' && (
             <section className="management-view">
               <div className="management-section-heading">
-                <div><span className="management-kicker">Nguồn chuẩn: UpGO Account theo tenant</span><h2>Tài khoản nhân viên doanh nghiệp</h2></div>
-                {employeeAccountSso
-                  ? <a className="management-button primary" href={ACCOUNT_ADMIN_URL} target="_blank" rel="noreferrer"><i className="fa-solid fa-user-plus"></i> Mời nhân viên trên UpGO</a>
-                  : <button className="management-button primary" type="button" onClick={() => { setModalError(''); setUserEditor({ mode: 'create', user: null }); }}><i className="fa-solid fa-user-plus"></i> Thêm nhân viên</button>}
+                <div><span className="management-kicker">Nguồn chuẩn: UpGO Account theo tenant</span><h2>Tài khoản nhân viên doanh nghiệp</h2><p>Chatmgt chỉ hiển thị thông tin vận hành và cho phép bắt đăng xuất. Mọi thay đổi nhân sự được thực hiện trực tiếp tại UpGO Account.</p></div>
               </div>
 
               <div className="management-toolbar">
@@ -573,47 +400,15 @@ export default function ManagementApp() {
                           <td><div className="management-user-cell"><ManagementAvatar user={user} /><div><strong>{user.name}</strong><span>@{user.username}{user.email ? ` · ${user.email}` : ''}</span><small>{user.department || 'Chưa có phòng ban'}{user.title ? ` / ${user.title}` : ''}</small></div></div></td>
                           <td><span className={`management-role role-${isAdmin(user) ? 'admin' : 'member'}`}><i className={`fa-solid ${isAdmin(user) ? 'fa-shield' : 'fa-user'}`}></i>{roleLabel(user)}</span></td>
                           <td><span className={`management-status ${user.active ? 'active' : 'inactive'}`}><i></i>{user.active ? 'Đang hoạt động' : 'Đã khóa'}</span></td>
-                          <td><span className={`management-status ${user.accountManaged ? 'inactive' : 'active'}`}><i></i>{user.accountManaged ? (employeeAccountSso ? 'UpGO Account' : 'Projection Account') : 'Chatmgt local'}</span></td>
+                          <td><span className={`management-status ${user.accountManaged ? 'inactive' : 'active'}`}><i></i>{user.accountManaged ? 'UpGO Account' : 'Chatmgt local'}</span></td>
                           <td><div className="management-tinode-account"><span className={`management-status ${user.tinodeUid ? 'active' : 'inactive'}`}><i></i>{user.tinodeUid ? 'Đã provision' : 'Chưa provision'}</span>{user.tinodeUid && user.tinodeUsername ? <code>{user.tinodeUsername}</code> : null}</div></td>
-                          <td><div className="management-row-actions">{!employeeAccountSso && <><button type="button" onClick={() => { setModalError(''); setUserEditor({ mode: 'edit', user }); }} title="Sửa hồ sơ" disabled={busy || user.accountManaged}><i className="fa-solid fa-pen"></i></button><button type="button" className="good" onClick={() => { setModalError(''); setPasswordUser(user); }} title={user.accountManaged ? 'Cấp mật khẩu ChatUI' : 'Đặt lại mật khẩu'} disabled={busy || String(user.id) === String(currentAdmin.id)}><i className="fa-solid fa-key"></i></button><button type="button" className="lock" onClick={() => setUserActive(user)} title={user.accountManaged ? 'Tài khoản do UpGO Account quản lý' : (user.active ? 'Khóa tài khoản' : 'Mở khóa tài khoản')} disabled={busy || user.accountManaged || String(user.id) === String(currentAdmin.id)}><i className={`fa-solid ${busy ? 'fa-spinner fa-spin' : (user.active ? 'fa-lock' : 'fa-lock-open')}`}></i></button></>}<button type="button" className="warn" onClick={() => revokeSessions(user)} title="Thu hồi phiên Chatmgt" disabled={busy || !user.active || String(user.id) === String(currentAdmin.id)}><i className={`fa-solid ${busy ? 'fa-spinner fa-spin' : 'fa-right-from-bracket'}`}></i></button></div></td>
+                          <td><div className="management-row-actions"><button type="button" className="warn" onClick={() => revokeSessions(user)} title="Bắt đăng xuất khỏi Chat" disabled={busy || !user.active || String(user.id) === String(currentAdmin.id)}><i className={`fa-solid ${busy ? 'fa-spinner fa-spin' : 'fa-right-from-bracket'}`}></i></button></div></td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
                 {visibleUsers.length === 0 && <div className="management-empty-state"><i className="fa-solid fa-address-book"></i><strong>Chưa có nhân viên phù hợp</strong></div>}
-              </div>
-            </section>
-          )}
-
-          {activeView === 'conversations' && (
-            <section className="management-view">
-              <div className="management-section-heading"><div><span className="management-kicker">Chatmgt là nguồn metadata</span><h2>Conversation và nhóm</h2></div></div>
-
-              <div className="management-toolbar">
-                <label className="management-search"><i className="fa-solid fa-magnifying-glass"></i><input value={conversationSearch} onChange={event => setConversationSearch(event.target.value)} placeholder="Tìm subject hoặc thành viên..." /></label>
-                <select value={conversationType} onChange={event => setConversationType(event.target.value)} aria-label="Lọc loại conversation"><option value="all">Tất cả loại</option><option value="direct">Chat trực tiếp</option><option value="group">Nhóm</option></select>
-                <span className="management-result-count">{visibleConversations.length} conversation</span>
-              </div>
-              <div className="management-table-wrap">
-                <table className="management-table management-conversation-table">
-                  <thead><tr><th>Conversation</th><th>Thành viên</th><th>Chủ sở hữu</th><th>Realtime Tinode</th><th>Cập nhật</th></tr></thead>
-                  <tbody>
-                    {visibleConversations.map(conversation => {
-                      const owner = conversation.members.find(member => String(member.id) === String(conversation.ownerId));
-                      return (
-                        <tr key={conversation.id}>
-                          <td><div className="management-user-cell"><ManagementConversationAvatar conversation={conversation} viewerId={currentAdmin.id} /><div><strong>{conversation.subject}</strong><span>{conversation.isGroup ? 'Nhóm dùng topic chung' : 'Direct dùng topic theo người xem'}</span><small>{conversation.id}</small></div></div></td>
-                          <td><div className="management-member-cell"><div className="management-member-preview">{conversation.members.slice(0, 3).map(member => <ManagementAvatar key={member.id} user={member} size="mini" />)}{conversation.members.length > 3 && <span className="management-member-more">+{conversation.members.length - 3}</span>}</div><div className="management-member-stack"><strong>{conversation.participantCount} thành viên</strong><span>{conversation.members.map(member => member.name).join(', ') || 'Chưa có projection hợp lệ'}</span></div></div></td>
-                          <td>{owner ? <div className="management-owner-cell"><ManagementAvatar user={owner} size="mini" /><span className="management-date">{owner.name}</span></div> : <span className="management-date">Chưa xác định</span>}</td>
-                          <td><span className={`management-status ${conversation.realtime.ready ? 'active' : 'inactive'}`}><i></i>{conversation.realtime.ready ? 'Sẵn sàng' : `Chờ UID (${conversation.realtime.provisionedParticipants}/${conversation.participantCount})`}</span></td>
-                          <td><span className="management-date">{formatDate(conversation.updatedAt)}</span></td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {visibleConversations.length === 0 && <div className="management-empty-state"><i className="fa-solid fa-comments"></i><strong>Chưa có conversation phù hợp</strong></div>}
               </div>
             </section>
           )}
@@ -642,15 +437,12 @@ export default function ManagementApp() {
                 <SystemCard icon="fa-solid fa-address-book" label="Tài khoản nhân viên" ready={health?.employee_auth?.login_endpoint === '/api/v1/auth/sso'} title={health?.employee_auth?.login_endpoint === '/api/v1/auth/sso' ? 'Đang dùng UpGO Account SSO' : 'Chatmgt local'} />
                 <SystemCard icon="fa-solid fa-bolt" label="Cầu nối Tinode" ready={Boolean(health?.account_sso?.tinode_bridge_configured)} title={health?.account_sso?.tinode_bridge_configured ? 'Sẵn sàng realtime' : 'Chưa sẵn sàng'} />
                 <SystemCard icon="fa-solid fa-cookie-bite" label="Phiên quản trị riêng" ready={Boolean(health?.management_session?.isolated && health?.management_session?.cookie_secure)} title={health?.management_session?.isolated ? 'Đã cách ly' : 'Cần kiểm tra'} readyText="Được bảo vệ" warningText="Cần kiểm tra" />
-                <SystemCard icon="fa-solid fa-eye-slash" label="Ranh giới dữ liệu" ready title="Không đọc nội dung chat" readyText="Đúng kiến trúc" />
+                <SystemCard icon="fa-solid fa-eye-slash" label="Ranh giới dữ liệu" ready title="Không hiển thị thông tin hội thoại" readyText="Đúng kiến trúc" />
               </div>
             </section>
           )}
         </div>
       </main>
-
-      {userEditor && <UserEditorDialog mode={userEditor.mode} user={userEditor.user} busy={modalBusy} error={modalError} onClose={() => { if (!modalBusy) setUserEditor(null); }} onSubmit={saveUser} />}
-      {passwordUser && <PasswordDialog user={passwordUser} busy={modalBusy} error={modalError} onClose={() => { if (!modalBusy) setPasswordUser(null); }} onSubmit={resetUserPassword} />}
 
     </div>
   );

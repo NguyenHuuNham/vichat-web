@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-10-01 - Gioi han Chatmgt chi quan ly van hanh user
+
+- Thoi gian: 2026-08-10 17:02 (Asia/Saigon)
+- Loai: Bao mat | Sua loi | Giao dien | API | Tai lieu
+- Trang thai: Hoan tat local; chua deploy
+- Muc tieu: Chi cho `admin`, `owner` hoac `superadmin` cua dung cong ty dang nhap Chatmgt qua UpGO Account; khong hien thi thong tin conversation/nhom va chi cho phep thao tac bat tai khoan khac dang xuat khoi Chat.
+- Pham vi: Management UI, management-only API create/update/reset/conversation metadata, deployment verifier va tai lieu ranh gioi dich vu; khong sua ChatUI cua nhan vien, API conversation/group/friendship dung boi ChatUI, Tinode message/topic, Account credential login, database hay du lieu dang chay.
+- File da thay doi: `src/features/management/ManagementApp.jsx`, `src/features/management/management.css`, `src/features/management/services/managementAdminService.js`, `src/features/management/services/managementAdminService.test.js`, `chatservice-main/application/config/config.py`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/scripts/verify_deployment.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `README.md`, `docs/chat-backend-architecture.md`, `infrastructure/production/README.md`, va `docs/CHANGELOG.md`.
+- Noi dung: Go menu, metric, danh sach va request metadata conversation khoi Chatmgt; go nut/link them hoac moi nhan vien, sua ho so, khoa/mo khoa va reset mat khau. Danh ba quan tri tiep tuc hien projection user cung tenant, trang thai Account/Tinode, health va audit; thao tac tren tung user chi con `Bat dang xuat khoi Chat`. Backend tu choi management create/update/reset bang `403 MANAGEMENT_USER_ACTION_DISABLED` va tu choi `/api/v1/admin/conversations` bang `403 MANAGEMENT_CHAT_METADATA_HIDDEN`; revoke-session giu nguyen auth-version, tenant filter va audit hien tai.
+- Quyet dinh ky thuat: Bao ve hai lop UI va API de khong the goi truc tiep cac chuc nang da an. Giu code local-recovery cu nhung khoa mac dinh bang `CHATMGT_MANAGEMENT_USER_MUTATIONS_ENABLED = False`; khong them bien moi truong production de tranh vo tinh bat lai. Giu UpGO Account la nguon chuan cho membership/profile/role/status va giu Chatmgt/Tinode lien ket nhu cu cho luong nhan vien.
+- Database/API/cau hinh: Khong migration va khong doi schema. API doc user, audit, health va revoke-session giu hop dong; ba mutation management va admin conversation overview doi thanh `403` theo policy moi. Khong sua Compose runtime hay secret.
+- Kiem thu: `node --test src/features/management/services/managementAdminService.test.js` dat 3/3; `npm run test:frontend` dat 44/44; `npm run build:production` dat voi `ManagementApp-DBA9xoFv.js`, `ManagementApp-9vxvFDdJ.css`, `App-DdAT4C8N.js` va `index-GUQaBgZW.js`; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -v` dat 32/32; `python -m unittest discover -s chatservice-main/tests -q` dat 122 test, skip 39 test can dependency runtime; `python -m py_compile ...` dat; `npm run lint` exit 0, chi con warning legacy/vendor/worktree co san; `git diff --check` dat.
+- Rui ro con lai: Chua UAT bang UpGO employee thuong, admin dung tenant, admin tenant khac va thao tac bat dang xuat tren trinh duyet that; chua chay verifier trong image production co day du dependency.
+- Viec tiep theo: Build image production, xac minh employee bi tu choi Chatmgt, admin dung tenant chi thay danh sach user/audit/health, admin conversation va mutation API tra dung `403`, sau do thu bat dang xuat mot tai khoan test va doi chieu ChatUI nhan `SESSION_REVOKED`.
+- Commit/PR: Chua tao.
+
 ## 2026-08-08-04 - Bo them thanh vien khoi chi tiet nhom ChatUI
 
 - Thoi gian: 2026-08-08 01:36 (Asia/Saigon)

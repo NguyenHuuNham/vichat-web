@@ -21,9 +21,11 @@ current tenant's `admin`, `owner`, or `superadmin` may exchange the Account
 session for the isolated management cookie through `POST /api/v1/admin/sso`.
 Production disables only the local administrator `/login` flow. Chat and
 management JWTs carry different scopes and cannot be used across the two
-surfaces. The tenant administrator creates, updates, disables, resets, and
-revokes employee accounts in Chatmgt. The management page never displays Tinode
-message or file content.
+surfaces. The tenant administrator can view the tenant-scoped employee
+projection and force another employee's Chatmgt sessions to log out. Chatmgt
+does not expose add, edit, disable, password-reset, conversation metadata,
+Tinode message, or file controls on the management surface; employee membership
+and profile changes remain exclusively in UpGO Account.
 
 ## Production data flow
 

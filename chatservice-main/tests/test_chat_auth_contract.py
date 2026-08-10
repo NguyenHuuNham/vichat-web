@@ -392,26 +392,19 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("directory_removed_at", directory_source)
         self.assertIn('ManagementAccount.properties.contains({"auth_source": "account"})', directory_source)
 
-    def test_management_admin_conversation_overview_is_read_only_and_tenant_scoped(self):
+    def test_management_admin_conversation_metadata_is_hidden(self):
         _controller_source, endpoint_source = function_source(
             CONTROLLER_PATH,
             "management_admin_conversations",
-        )
-        _controller_source, serializer_source = function_source(
-            CONTROLLER_PATH,
-            "_admin_conversation_record",
         )
 
         self.assertIn("management_session_requested(request)", endpoint_source)
         self.assertIn("_management_scope_error", endpoint_source)
         self.assertIn("_management_account_sso_guard", endpoint_source)
         self.assertIn("_is_admin", endpoint_source)
-        self.assertIn("Conversation.tenant_id == tenant_id", endpoint_source)
-        self.assertIn("ConversationParticipant.tenant_id == tenant_id", endpoint_source)
-        self.assertIn("ManagementAccount.tenant_id == tenant_id", endpoint_source)
-        self.assertIn("_admin_conversation_record", endpoint_source)
-        self.assertIn('"realtime"', serializer_source)
-        self.assertNotIn("ChatMessage", serializer_source)
+        self.assertIn("_management_chat_metadata_error", endpoint_source)
+        self.assertNotIn("Conversation.query", endpoint_source)
+        self.assertNotIn("_admin_conversation_record", endpoint_source)
 
     def test_management_mutations_and_audit_require_the_management_scope(self):
         for function_name in (
@@ -429,6 +422,34 @@ class ChatAuthContractTests(unittest.TestCase):
                 self.assertIn("management_session_requested(request)", endpoint_source)
                 self.assertIn("_management_scope_error", endpoint_source)
                 self.assertIn("_management_account_sso_guard", endpoint_source)
+
+        for function_name in (
+            "management_user_create",
+            "management_user_update",
+            "management_user_reset_password",
+        ):
+            with self.subTest(function_name=function_name):
+                _controller_source, endpoint_source = function_source(
+                    CONTROLLER_PATH,
+                    function_name,
+                )
+                self.assertIn("_management_user_mutations_enabled", endpoint_source)
+                self.assertIn("_management_user_action_error", endpoint_source)
+
+        _controller_source, revoke_source = function_source(
+            CONTROLLER_PATH,
+            "management_user_revoke_session",
+        )
+        self.assertNotIn("_management_user_action_error", revoke_source)
+
+        for function_name in ("management_change_password", "management_update_profile"):
+            with self.subTest(function_name=function_name):
+                _controller_source, endpoint_source = function_source(
+                    CONTROLLER_PATH,
+                    function_name,
+                )
+                self.assertIn("management_session_requested(request)", endpoint_source)
+                self.assertIn("_management_user_action_error", endpoint_source)
 
     def test_local_password_change_updates_the_mirrored_tinode_credential(self):
         _controller_source, password_source = function_source(
@@ -469,23 +490,27 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("deployment_verifier", delete_source)
 
     @repository_source_test
-    def test_management_web_links_employee_invites_to_upgo_without_message_content(self):
+    def test_management_web_only_lists_users_and_revokes_sessions(self):
         app_source = MANAGEMENT_APP_PATH.read_text(encoding="utf-8")
         service_source = MANAGEMENT_SERVICE_PATH.read_text(encoding="utf-8")
 
         self.assertIn("Tài khoản nhân viên doanh nghiệp", app_source)
-        self.assertIn("Mời nhân viên trên UpGO", app_source)
-        self.assertIn("employeeAccountSso", app_source)
-        self.assertIn("Conversation và nhóm", app_source)
-        self.assertIn("Không đọc nội dung chat", app_source)
-        self.assertIn("listConversations", service_source)
+        self.assertIn("Chatmgt chỉ hiển thị thông tin vận hành", app_source)
+        self.assertIn("Bắt đăng xuất khỏi Chat", app_source)
+        self.assertIn("Không hiển thị thông tin hội thoại", app_source)
         self.assertIn("revokeSessions", service_source)
         self.assertIn("/api/v1/admin/sso", service_source)
         self.assertIn("startAccountLogin", service_source)
         self.assertNotIn("changePassword", service_source)
-        self.assertIn("createUser", service_source)
-        self.assertIn("updateUser", service_source)
-        self.assertIn("resetPassword", service_source)
+        self.assertNotIn("listConversations", service_source)
+        self.assertNotIn("/api/v1/admin/conversations", service_source)
+        self.assertNotIn("createUser", service_source)
+        self.assertNotIn("updateUser", service_source)
+        self.assertNotIn("setUserActive", service_source)
+        self.assertNotIn("resetPassword", service_source)
+        self.assertNotIn("Mời nhân viên trên UpGO", app_source)
+        self.assertNotIn("Thêm nhân viên", app_source)
+        self.assertNotIn("Conversation và nhóm", app_source)
 
     @repository_source_test
     def test_chatui_forwards_the_current_tinode_token_when_binding(self):

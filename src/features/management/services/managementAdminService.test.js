@@ -5,7 +5,6 @@ import {
   accountAdminLoginUrl,
   consumeAccountAdminCallback,
   managementAdminService,
-  normalizeAdminConversation,
   normalizeManagementUser,
 } from './managementAdminService.js';
 
@@ -23,7 +22,7 @@ test('builds and consumes the Account admin SSO callback without credentials', (
   assert.equal(new URL(consumed.cleanUrl).searchParams.has('vichat_admin_sso'), false);
 });
 
-test('sends tenant-admin employee create, update, and password reset requests', async () => {
+test('keeps the management user surface read-only except session revocation', async () => {
   const originalFetch = globalThis.fetch;
   const requests = [];
   globalThis.fetch = async (url, options = {}) => {
@@ -32,29 +31,26 @@ test('sends tenant-admin employee create, update, and password reset requests', 
     return {
       ok: true,
       status: 200,
-      json: async () => url.endsWith('/reset-password') ? { reset: true, user } : user,
+      json: async () => url.includes('/revoke-session') ? { revoked: true, user } : { objects: [user] },
     };
   };
 
   try {
-    await managementAdminService.createUser({ username: 'employee', password: 'StrongPassword!2026', name: 'Employee One' });
-    await managementAdminService.updateUser('employee-1', { title: 'Sales' });
-    await managementAdminService.setUserActive('employee-1', false);
-    await managementAdminService.resetPassword('employee-1', 'AnotherPassword!2026');
+    await managementAdminService.listUsers();
+    await managementAdminService.revokeSessions('employee-1');
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requests[0].url, '/api/v1/chat/users');
-  assert.equal(requests[0].options.method, 'POST');
-  assert.equal(JSON.parse(requests[0].options.body).username, 'employee');
-  assert.equal(requests[1].url, '/api/v1/chat/users/employee-1');
-  assert.equal(requests[1].options.method, 'PUT');
-  assert.equal(requests[2].url, '/api/v1/chat/users/employee-1');
-  assert.deepEqual(JSON.parse(requests[2].options.body), { active: false });
-  assert.equal(requests[3].url, '/api/v1/chat/users/employee-1/reset-password');
-  assert.deepEqual(JSON.parse(requests[3].options.body), { new_password: 'AnotherPassword!2026' });
+  assert.match(requests[0].url, /^\/api\/v1\/chat\/users\?/);
+  assert.equal(requests[1].url, '/api/v1/chat/users/employee-1/revoke-session');
+  assert.equal(requests[1].options.method, 'POST');
   assert.equal(requests.every(request => request.options.headers['X-Vichat-Session-Scope'] === 'management'), true);
+  assert.equal(typeof managementAdminService.listConversations, 'undefined');
+  assert.equal(typeof managementAdminService.createUser, 'undefined');
+  assert.equal(typeof managementAdminService.updateUser, 'undefined');
+  assert.equal(typeof managementAdminService.setUserActive, 'undefined');
+  assert.equal(typeof managementAdminService.resetPassword, 'undefined');
 });
 
 test('normalizes Account projections as read-only management users', () => {
@@ -73,28 +69,4 @@ test('normalizes Account projections as read-only management users', () => {
   assert.equal(user.authSource, 'account');
   assert.equal(user.tinodeUid, 'usrTinodeA');
   assert.equal(user.updatedAt, '2026-07-31T00:00:00Z');
-});
-
-test('normalizes conversation metadata without requiring message content', () => {
-  const conversation = normalizeAdminConversation({
-    id: 'conversation-1',
-    subject: 'Nhom van hanh',
-    isGroup: true,
-    members: [{ id: 'account-user-1', name: 'Nguyen Van A', authSource: 'account' }],
-    realtime: {
-      ready: true,
-      binding: 'shared-group',
-      provisionedParticipants: 1,
-    },
-  });
-
-  assert.equal(conversation.isGroup, true);
-  assert.equal(conversation.participantCount, 1);
-  assert.equal(conversation.members[0].accountManaged, true);
-  assert.deepEqual(conversation.realtime, {
-    ready: true,
-    binding: 'shared-group',
-    provisionedParticipants: 1,
-  });
-  assert.equal('messages' in conversation, false);
 });

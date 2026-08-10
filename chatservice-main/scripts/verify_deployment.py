@@ -601,13 +601,14 @@ def _verify_http(base_url, origin, management_account):
         headers=management_headers,
         timeout=10,
     )
-    if management_conversations.status_code != 200:
-        raise RuntimeError("Management conversation overview returned HTTP {}.".format(
-            management_conversations.status_code,
-        ))
-    for conversation in management_conversations.json().get("objects") or []:
-        if any(key in conversation for key in ("messages", "files", "content")):
-            raise RuntimeError("Management conversation overview exposed realtime content.")
+    management_conversation_payload = (
+        management_conversations.json() if management_conversations.content else {}
+    )
+    if (
+        management_conversations.status_code != 403
+        or management_conversation_payload.get("error_code") != "MANAGEMENT_CHAT_METADATA_HIDDEN"
+    ):
+        raise RuntimeError("Management control plane exposed conversation metadata.")
 
     if account_sso_enabled:
         sso_challenge = requests.post(

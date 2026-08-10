@@ -192,7 +192,7 @@ database migration is involved.
 4. Builds pinned images and creates timestamped `pg_dump -Fc` backups before Alembic.
 5. Runs `alembic upgrade head`, bootstrapping the first administrator only when the database is empty.
 6. Validates Nginx, starts the services, and waits for health checks.
-7. Verifies health/CORS, disabled local employee password login, internal Tinode token refresh, management Account SSO challenge, scope isolation, tenant filters, and the read-only admin conversation overview. Real employee realtime behavior is verified separately with two tenant users.
+7. Verifies health/CORS, disabled local employee password login, internal Tinode token refresh, management Account SSO challenge, scope isolation, tenant filters, and that the management control plane rejects conversation metadata. Real employee realtime behavior is verified separately with two tenant users.
 8. Runs an isolated two-tenant API test and removes its temporary records.
 9. Optionally verifies the public domains when `VERIFY_PUBLIC_URLS=true`.
 

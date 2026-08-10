@@ -73,22 +73,26 @@ issues only the management-scope cookie. It does not call Tinode.
 
 Inside **Nhân viên**, a tenant admin can:
 
-- open UpGO Account to invite, remove, or update an employee;
 - view the tenant-scoped read-only Account projection and Tinode readiness; and
-- revoke an employee's Chatmgt sessions.
+- force an employee's Chatmgt sessions to log out.
 
-Chatmgt does not create employee accounts or reset employee passwords in the
-production SSO mode. The projection remains in Chatmgt so conversation,
-friendship, audit, and Tinode mappings keep stable internal IDs.
+The management surface does not expose an add-member link, account creation,
+profile/role/status changes, password reset, or conversation/group metadata.
+Those user changes are made directly in UpGO Account, outside Chatmgt. The
+projection remains in Chatmgt so conversation, friendship, audit, and Tinode
+mappings keep stable internal IDs for ChatUI without exposing them to the
+administrator console.
 For a legacy Account projection in a production migration, reset-password is a
 deliberate “Cấp mật khẩu ChatUI” action. It changes only the authentication
 source to `local`, preserves the existing management account ID and Tinode UID,
 keeps a non-sensitive legacy Account audit marker, and synchronizes the new
-local password to the mapped Tinode basic credential. The plaintext password
-is used only in memory for the Tinode request and is never stored.
+local password to the mapped Tinode basic credential. This recovery code remains
+disabled by default through `CHATMGT_MANAGEMENT_USER_MUTATIONS_ENABLED`; the
+production administrator console does not expose it. The plaintext password is
+used only in memory for the Tinode request and is never stored.
 
-Management account mutations require both the management cookie and
-`X-Vichat-Session-Scope: management`. Every target query includes
+The session-revocation action requires both the management cookie and
+`X-Vichat-Session-Scope: management`. The target query includes
 `ManagementAccount.tenant_id == current_tenant`; an admin cannot target a user
 from another tenant by ID or query parameter.
 

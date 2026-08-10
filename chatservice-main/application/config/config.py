@@ -94,6 +94,8 @@ class Config(object):
         "CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED",
         False,
     )
+    # Recovery-only account mutations are not exposed by the management console.
+    CHATMGT_MANAGEMENT_USER_MUTATIONS_ENABLED = False
 
     ACCOUNT_URL = os.getenv('ACCOUNT_URL')
     if ACCOUNT_URL and not ACCOUNT_URL.startswith("http://") and not ACCOUNT_URL.startswith("https://"):

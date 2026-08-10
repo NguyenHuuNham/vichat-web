@@ -252,6 +252,24 @@ def _management_scope_error():
     }, status=403)
 
 
+def _management_user_action_error():
+    return json({
+        "error_code": "MANAGEMENT_USER_ACTION_DISABLED",
+        "error_message": "Chatmgt administrators may only revoke user sessions.",
+    }, status=403)
+
+
+def _management_chat_metadata_error():
+    return json({
+        "error_code": "MANAGEMENT_CHAT_METADATA_HIDDEN",
+        "error_message": "Chat metadata is not available in the management control plane.",
+    }, status=403)
+
+
+def _management_user_mutations_enabled():
+    return bool(app.config.get("CHATMGT_MANAGEMENT_USER_MUTATIONS_ENABLED", False))
+
+
 def _account_by_id(tenant_id, user_id):
     return ManagementAccount.query.filter(
         ManagementAccount.tenant_id == tenant_id,
@@ -738,44 +756,6 @@ def _serialize_conversation(item, viewer_id):
         "adminId": owner.participant_id if owner is not None else "",
         "notificationMutedUntil": notification_muted_until,
         "notificationsMuted": notifications_muted,
-    }
-
-
-def _admin_conversation_record(item, participants, accounts_by_id):
-    participant_ids = [str(participant.participant_id) for participant in participants]
-    properties = item.properties or {}
-    is_group = bool(properties.get("is_group"))
-    owner = next((participant for participant in participants if participant.role == "OWNER"), None)
-    provisioned_count = sum(
-        1 for participant_id in participant_ids
-        if accounts_by_id.get(participant_id) is not None
-        and accounts_by_id[participant_id].tinode_uid
-    )
-    realtime_ready = bool(item.tinode_topic) if is_group else (
-        len(participant_ids) == 2 and provisioned_count == 2
-    )
-    return {
-        "id": str(item.id),
-        "conversationNo": item.conversation_no,
-        "subject": item.subject or "Conversation",
-        "status": item.status or "OPEN",
-        "isGroup": is_group,
-        "kind": "group" if is_group else "direct",
-        "participantCount": len(participant_ids),
-        "participantIds": participant_ids,
-        "members": [
-            _public_account(accounts_by_id[participant_id])
-            for participant_id in participant_ids
-            if participant_id in accounts_by_id
-        ],
-        "ownerId": str(owner.participant_id) if owner is not None else "",
-        "realtime": {
-            "ready": realtime_ready,
-            "binding": "shared-group" if is_group else "viewer-relative-direct",
-            "provisionedParticipants": provisioned_count,
-        },
-        "createdAt": _iso_timestamp(item.created_at),
-        "updatedAt": _iso_timestamp(item.updated_at),
     }
 
 
@@ -1596,6 +1576,8 @@ async def management_reset_password(request):
 
 @app.route('/api/v1/auth/password', methods=['POST'])
 async def management_change_password(request):
+    if management_session_requested(request):
+        return _management_user_action_error()
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _auth_error()
@@ -1657,6 +1639,8 @@ async def management_change_password(request):
 
 @app.route('/api/v1/auth/profile', methods=['PUT'])
 async def management_update_profile(request):
+    if management_session_requested(request):
+        return _management_user_action_error()
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _auth_error()
@@ -1921,6 +1905,8 @@ async def management_user_create(request):
         return management_guard
     if not _is_admin(current_user):
         return _forbidden_error()
+    if not _management_user_mutations_enabled():
+        return _management_user_action_error()
     if _employee_account_sso_enabled():
         return json({
             "error_code": "ACCOUNT_DIRECTORY_READ_ONLY",
@@ -2025,6 +2011,8 @@ async def management_user_update(request, account_id):
         return management_guard
     if not _is_admin(current_user):
         return _forbidden_error()
+    if not _management_user_mutations_enabled():
+        return _management_user_action_error()
     account = ManagementAccount.query.filter(
         ManagementAccount.id == str(account_id),
         ManagementAccount.tenant_id == tenant_id,
@@ -2140,6 +2128,8 @@ async def management_user_reset_password(request, account_id):
         return management_guard
     if not _is_admin(current_user):
         return _forbidden_error()
+    if not _management_user_mutations_enabled():
+        return _management_user_action_error()
     if str(account_id) == _user_id(current_user):
         return json({"error_code": "PARAM_ERROR", "error_message": "Use the profile password form for your own account."}, status=400)
     account = ManagementAccount.query.filter(
@@ -2242,65 +2232,7 @@ async def management_admin_conversations(request):
         return management_guard
     if not _is_admin(current_user):
         return _forbidden_error()
-    try:
-        limit = min(300, max(1, int(request.args.get("limit") or 200)))
-    except (TypeError, ValueError):
-        limit = 200
-
-    base_query = Conversation.query.filter(
-        Conversation.tenant_id == tenant_id,
-        Conversation.deleted.is_(False),
-    )
-    records = base_query.order_by(Conversation.updated_at.desc()).limit(limit).all()
-    conversation_ids = [record.id for record in records]
-    participants = ConversationParticipant.query.filter(
-        ConversationParticipant.tenant_id == tenant_id,
-        ConversationParticipant.conversation_id.in_(conversation_ids),
-        ConversationParticipant.active.is_(True),
-        ConversationParticipant.deleted.is_(False),
-    ).order_by(ConversationParticipant.created_at.asc()).all() if conversation_ids else []
-    participant_ids = list({str(participant.participant_id) for participant in participants})
-    accounts = ManagementAccount.query.filter(
-        ManagementAccount.tenant_id == tenant_id,
-        ManagementAccount.id.in_(participant_ids),
-    ).all() if participant_ids else []
-    accounts_by_id = {str(account.id): account for account in accounts}
-    participants_by_conversation = {}
-    for participant in participants:
-        participants_by_conversation.setdefault(str(participant.conversation_id), []).append(participant)
-
-    facts = base_query.with_entities(Conversation.properties, Conversation.tinode_topic).all()
-    group_count = sum(1 for properties, _topic in facts if bool((properties or {}).get("is_group")))
-    group_bound_count = sum(
-        1 for properties, topic in facts
-        if bool((properties or {}).get("is_group")) and bool(topic)
-    )
-    friend_status_rows = db.session.query(
-        FriendRequest.status,
-        func.count(FriendRequest.id),
-    ).filter(
-        FriendRequest.tenant_id == tenant_id,
-        FriendRequest.deleted.is_(False),
-    ).group_by(FriendRequest.status).all()
-    friend_status = {str(status or "UNKNOWN").lower(): int(count) for status, count in friend_status_rows}
-
-    return json({
-        "objects": [
-            _admin_conversation_record(
-                record,
-                participants_by_conversation.get(str(record.id), []),
-                accounts_by_id,
-            )
-            for record in records
-        ],
-        "summary": {
-            "total": len(facts),
-            "direct": len(facts) - group_count,
-            "group": group_count,
-            "groupBound": group_bound_count,
-            "friendRequests": friend_status,
-        },
-    })
+    return _management_chat_metadata_error()
 
 
 @app.route('/api/v1/friend-request', methods=['GET'])
