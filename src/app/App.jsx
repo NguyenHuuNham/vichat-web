@@ -25,6 +25,7 @@ import {
   companyDirectoryContacts,
   companyDirectoryHeading,
   countGroupPresence,
+  directoryUsernameMeta,
   findAccount,
   findDirectPeer,
   identitiesOverlap,
@@ -4058,7 +4059,7 @@ function App() {
                             <SafeAvatar src={contact.avatar} name={contact.name} className="workspace-avatar" />
                             <span className="workspace-list-copy">
                               <strong>{contact.name}</strong>
-                              <small>{accountPresenceLabel(contact)}{contact.username ? ` · @${contact.username}` : ''}</small>
+                              <small>{accountPresenceLabel(contact)}{directoryUsernameMeta(contact)}</small>
                             </span>
                           </button>
                           <button type="button" className="btn-friend chat" onClick={() => handleStartDirectChat(contact)}>

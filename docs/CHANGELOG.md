@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-11-02 - Rut gon username email trong danh ba ChatUI
+
+- Thoi gian: 2026-08-11 00:45 (Asia/Saigon)
+- Loai: Giao dien | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; chua deploy
+- Muc tieu: Bo phan domain email dai dong trong username phu cua danh ba, giu giao dien gon ma khong thay doi danh tinh hay du lieu tai khoan.
+- Pham vi: Duy nhat dong username ben duoi ten nhan vien trong danh sach mac dinh cua panel `Danh ba`, helper/test hien thi va nhat ky thay doi; khong sua ten nhan vien, trang thai, tenant filter, tim kiem, nut nhan tin, backend, Account, Tinode, database hay cau hinh.
+- File da thay doi: `src/app/App.jsx`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, va `docs/CHANGELOG.md`.
+- Noi dung: Username dang email nhu `nhanvien@gmail.com` hien thanh `@nhanvien`; username khong phai email nhu `nhanvien.noibo` van hien `@nhanvien.noibo`; username trong thi khong them metadata phu.
+- Quyet dinh ky thuat: Chi dinh dang chuoi khi render bang cach bo cac dau `@` dau chuoi va lay phan truoc dau `@` domain dau tien. Gia tri username goc tu API khong bi sua va tiep tuc duoc dung cho xac thuc/anh xa nhu cu.
+- Database/API/cau hinh: Khong migration, khong doi API va khong them bien moi truong.
+- Kiem thu: `node --test src/features/contacts/services/accountDirectory.test.js` dat 15/15; `npm run test:frontend` dat 47/47; `npm run build:production` dat voi `App-C_iWggvc.js`, `index-2ufs2t9s.js`, `ManagementApp-ClHfwRxc.js` va cac CSS tuong ung; `npm run lint` exit 0, chi con warning legacy/vendor/worktree co san; `git diff --check` dat.
+- Rui ro con lai: Chua UAT truc quan bang danh ba production sau hard refresh.
+- Viec tiep theo: Commit, push, deploy rieng ChatUI va xac nhan public bundle/health; khong recreate Chatmgt hay service du lieu.
+- Commit/PR: Chua tao.
+
 ## 2026-08-11-01 - Hien thi ten cong ty UpGO trong danh ba ChatUI
 
 - Thoi gian: 2026-08-11 00:33 (Asia/Saigon)

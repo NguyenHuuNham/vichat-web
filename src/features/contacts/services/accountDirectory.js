@@ -33,6 +33,12 @@ export function companyDirectoryHeading(currentUser) {
   return companyName ? `Nhân viên · ${companyName}` : 'Nhân viên công ty';
 }
 
+export function directoryUsernameMeta(account) {
+  const username = String(account?.username || '').trim().replace(/^@+/, '');
+  if (!username) return '';
+  return ` · @${username.split('@')[0]}`;
+}
+
 export function companyDirectoryContacts(accounts, currentUser) {
   const contacts = [];
   const currentTenantId = tenantId(currentUser);

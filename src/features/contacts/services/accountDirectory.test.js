@@ -5,6 +5,7 @@ import {
   companyDirectoryContacts,
   companyDirectoryHeading,
   countGroupPresence,
+  directoryUsernameMeta,
   findDirectPeer,
   identitiesOverlap,
   identityValues,
@@ -50,6 +51,12 @@ test('company directory excludes accounts from another tenant', () => {
     companyDirectoryContacts(accounts, viewer).map(account => account.id),
     ['same-company'],
   );
+});
+
+test('directory username removes an email domain without changing plain usernames', () => {
+  assert.equal(directoryUsernameMeta({ username: 'nhanvien@gmail.com' }), ' · @nhanvien');
+  assert.equal(directoryUsernameMeta({ username: 'nhanvien.noibo' }), ' · @nhanvien.noibo');
+  assert.equal(directoryUsernameMeta({ username: '' }), '');
 });
 
 test('account identities include both management and Tinode identifiers', () => {
