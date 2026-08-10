@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-11 00:45 (Asia/Saigon)
 - Loai: Giao dien | Kiem thu | Tai lieu
-- Trang thai: Hoan tat local; chua deploy
+- Trang thai: Hoan tat production; cho UAT danh ba that
 - Muc tieu: Bo phan domain email dai dong trong username phu cua danh ba, giu giao dien gon ma khong thay doi danh tinh hay du lieu tai khoan.
 - Pham vi: Duy nhat dong username ben duoi ten nhan vien trong danh sach mac dinh cua panel `Danh ba`, helper/test hien thi va nhat ky thay doi; khong sua ten nhan vien, trang thai, tenant filter, tim kiem, nut nhan tin, backend, Account, Tinode, database hay cau hinh.
 - File da thay doi: `src/app/App.jsx`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, va `docs/CHANGELOG.md`.
 - Noi dung: Username dang email nhu `nhanvien@gmail.com` hien thanh `@nhanvien`; username khong phai email nhu `nhanvien.noibo` van hien `@nhanvien.noibo`; username trong thi khong them metadata phu.
 - Quyet dinh ky thuat: Chi dinh dang chuoi khi render bang cach bo cac dau `@` dau chuoi va lay phan truoc dau `@` domain dau tien. Gia tri username goc tu API khong bi sua va tiep tuc duoc dung cho xac thuc/anh xa nhu cu.
 - Database/API/cau hinh: Khong migration, khong doi API va khong them bien moi truong.
-- Kiem thu: `node --test src/features/contacts/services/accountDirectory.test.js` dat 15/15; `npm run test:frontend` dat 47/47; `npm run build:production` dat voi `App-C_iWggvc.js`, `index-2ufs2t9s.js`, `ManagementApp-ClHfwRxc.js` va cac CSS tuong ung; `npm run lint` exit 0, chi con warning legacy/vendor/worktree co san; `git diff --check` dat.
+- Kiem thu: `node --test src/features/contacts/services/accountDirectory.test.js` dat 15/15; `npm run test:frontend` dat 47/47; `npm run build:production` dat voi `App-C_iWggvc.js`, `index-2ufs2t9s.js`, `ManagementApp-ClHfwRxc.js` va cac CSS tuong ung; `npm run lint` exit 0, chi con warning legacy/vendor/worktree co san; `git diff --check` dat. Production archive SHA-256 `f90ef6e496630beb9a7b5a4c71302a8158fdef68f35440211beced3f2bc225a0`; Compose config va Nginx syntax dat; source/image/public bundle deu co logic `split('@')[0]`; public `/healthz` va Chatmgt auth health deu HTTP 200; public entry `index-A9KGAcA9.js` tham chieu chunk `App-CSOrRsxL.js`; ChatUI healthy va log khong co `traceback|panic|fatal|critical|emerg`.
+- Trien khai: Commit `28215e2` da push `origin/master`; release bat bien `/opt/deploy/chat/releases/28215e2`; image ChatUI `sha256:de36338e0ee20bc9dd75c0ef6477cf63ad2d45414b605b8c0861562f2e2f41fe`, container `1b2fd1fc50c6` healthy va rollback tag `songhong-production-chat:rollback-before-28215e2` giu image cu `sha256:94569b6c8807330996ad008e2a47a3b836456fa80d13e1d28acdec7ff8febd8e`. Chi service `chat` duoc force-recreate; Chatmgt `8724737473f3`, bridge `0919575eb188`, ChatAPI `8476615ad4ac`, Chat PostgreSQL `78a434b49404`, Tinode PostgreSQL `9f6e4dcc9c2f`, Redis `ceef7df23feb` va Coturn `aa680d35fdc0` khong doi; symlink `current` da tro release moi; khong migration, reset volume, topic hay message.
 - Rui ro con lai: Chua UAT truc quan bang danh ba production sau hard refresh.
-- Viec tiep theo: Commit, push, deploy rieng ChatUI va xac nhan public bundle/health; khong recreate Chatmgt hay service du lieu.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh ChatUI va mo `Danh ba` de xac nhan username email chi con phan dau, vi du `@nhanvien`.
+- Commit/PR: Code `28215e2`; commit ghi nhan trien khai xem `git log`.
 
 ## 2026-08-11-01 - Hien thi ten cong ty UpGO trong danh ba ChatUI
 
