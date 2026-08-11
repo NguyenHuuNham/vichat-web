@@ -7,7 +7,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = PROJECT_ROOT.parent
-PROTOCOL_PATH = PROJECT_ROOT / "application" / "services" / "tinode_chatbot_protocol.py"
+PROTOCOL_PATH = PROJECT_ROOT / "scripts" / "tinode_chatbot_protocol.py"
 spec = importlib.util.spec_from_file_location("tinode_chatbot_protocol", PROTOCOL_PATH)
 protocol = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(protocol)
@@ -75,7 +75,8 @@ class TinodeChatbotContractTests(unittest.TestCase):
         app = (REPOSITORY_ROOT / "src" / "app" / "App.jsx").read_text(encoding="utf-8")
         compose = (REPOSITORY_ROOT / "infrastructure" / "production" / "compose.yaml").read_text(encoding="utf-8")
 
-        self.assertIn("sys.path.insert(0, str(Path(__file__).resolve().parents[1]))", worker)
+        self.assertNotIn("from application", worker)
+        self.assertIn("def ensure_tinode_chatbot_auth(force=False):", worker)
         self.assertIn('topic.startswith("usr")', worker)
         self.assertIn('X-Vichat-Chatbot-Webhook', controller)
         self.assertIn('ManagementAccount.tinode_uid == sender_uid', controller)

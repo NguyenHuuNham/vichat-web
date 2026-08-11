@@ -6,27 +6,21 @@ to the same Tinode topic. Normal employee and group topics are not inspected.
 """
 
 import asyncio
+import base64
 import itertools
 import json
 import logging
 import os
-from pathlib import Path
-import sys
 
 import aiohttp
 from aiohttp import web
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from application.server import app
-from application.services.auth_service import _tinode_bridge_headers
-from application.services.tinode_chatbot_protocol import (
+from tinode_chatbot_protocol import (
     CursorStore,
     tinode_contact_topics,
     tinode_message_text,
     tinode_websocket_url,
 )
-from application.services.tinode_chatbot_service import ensure_tinode_chatbot_auth
 
 
 LOGGER = logging.getLogger("tinode-chatbot-webhook")
@@ -39,24 +33,172 @@ SPECIAL_MESSAGE_PREFIXES = (
     "__VICHAT_REACTION_EVENT__:",
     "__VICHAT_RECALL_EVENT__:",
 )
+CONFIG = {
+    "TINODE_INTERNAL_WS_URL": str(os.getenv("TINODE_INTERNAL_WS_URL", "")),
+    "TINODE_API_KEY": str(os.getenv("TINODE_API_KEY", "")),
+    "TINODE_AUTH_TIMEOUT": int(os.getenv("TINODE_AUTH_TIMEOUT", "10")),
+    "TINODE_BRIDGE_INTERNAL_KEY": str(os.getenv("TINODE_BRIDGE_INTERNAL_KEY", "")),
+    "TINODE_CHATBOT_ENABLED": str(os.getenv("TINODE_CHATBOT_ENABLED", "false")).lower()
+    in ("1", "true", "yes", "on"),
+    "TINODE_CHATBOT_USERNAME": str(os.getenv("TINODE_CHATBOT_USERNAME", "upgo_chatbot")),
+    "TINODE_CHATBOT_PASSWORD": str(os.getenv("TINODE_CHATBOT_PASSWORD", "")),
+    "TINODE_CHATBOT_WEBHOOK_KEY": str(os.getenv("TINODE_CHATBOT_WEBHOOK_KEY", "")),
+    "TINODE_CHATBOT_WEBHOOK_URL": str(
+        os.getenv(
+            "TINODE_CHATBOT_WEBHOOK_URL",
+            "http://chatmgt:8093/api/v1/chatbot/tinode-webhook",
+        )
+    ),
+    "TINODE_CHATBOT_WEBHOOK_TIMEOUT": int(
+        os.getenv("TINODE_CHATBOT_WEBHOOK_TIMEOUT", "40")
+    ),
+    "TINODE_CHATBOT_HISTORY_LIMIT": int(os.getenv("TINODE_CHATBOT_HISTORY_LIMIT", "100")),
+    "TINODE_CHATBOT_STATE_FILE": str(
+        os.getenv("TINODE_CHATBOT_STATE_FILE", "/var/lib/vichat-chatbot/state.json")
+    ),
+    "TINODE_CHATBOT_FAILURE_REPLY": str(
+        os.getenv(
+            "TINODE_CHATBOT_FAILURE_REPLY",
+            "Tro ly AI dang tam thoi khong phan hoi. Vui long thu lai sau.",
+        )
+    ),
+}
+_auth_cache = None
+_auth_lock = None
+
+
+class TinodeBotAuthError(Exception):
+    def __init__(self, message, status_code=502):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def _bridge_headers():
+    key = CONFIG["TINODE_BRIDGE_INTERNAL_KEY"].strip()
+    return {"X-Vichat-Tinode-Internal": key} if key else {}
+
+
+def _auth_lock_for_current_loop():
+    global _auth_lock
+    if _auth_lock is None:
+        _auth_lock = asyncio.Lock()
+    return _auth_lock
+
+
+def _chatbot_enabled():
+    return bool(
+        CONFIG["TINODE_CHATBOT_ENABLED"]
+        and CONFIG["TINODE_INTERNAL_WS_URL"].strip()
+        and CONFIG["TINODE_API_KEY"].strip()
+        and CONFIG["TINODE_CHATBOT_USERNAME"].strip()
+        and CONFIG["TINODE_CHATBOT_PASSWORD"]
+        and CONFIG["TINODE_CHATBOT_WEBHOOK_KEY"].strip()
+    )
+
+
+async def _auth_ctrl(packet):
+    url = tinode_websocket_url(
+        CONFIG["TINODE_INTERNAL_WS_URL"],
+        CONFIG["TINODE_API_KEY"],
+    )
+    timeout = aiohttp.ClientTimeout(total=max(5, CONFIG["TINODE_AUTH_TIMEOUT"]))
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.ws_connect(url, headers=_bridge_headers()) as socket:
+            await socket.send_json({
+                "hi": {
+                    "id": "1",
+                    "ver": "0.25",
+                    "ua": "VICHAT-TINODE-CHATBOT/1.0",
+                    "platf": "server",
+                    "lang": "vi",
+                },
+            })
+            hello = (await socket.receive_json()).get("ctrl") or {}
+            if int(hello.get("code") or 500) >= 300:
+                raise TinodeBotAuthError("Tinode chatbot handshake failed.")
+            await socket.send_json(packet)
+            return (await socket.receive_json()).get("ctrl") or {}
+
+
+async def _login_chatbot(username, password):
+    secret = base64.b64encode(
+        "{}:{}".format(username, password).encode("utf-8")
+    ).decode("ascii")
+    ctrl = await _auth_ctrl({
+        "login": {"id": "2", "scheme": "basic", "secret": secret},
+    })
+    if int(ctrl.get("code") or 500) >= 300 or not (ctrl.get("params") or {}).get("token"):
+        raise TinodeBotAuthError("Tinode rejected the chatbot credentials.", 401)
+    return ctrl.get("params") or {}
+
+
+async def _create_chatbot(username, password):
+    secret = base64.b64encode(
+        "{}:{}".format(username, password).encode("utf-8")
+    ).decode("ascii")
+    ctrl = await _auth_ctrl({
+        "acc": {
+            "id": "2",
+            "user": "new",
+            "scheme": "basic",
+            "secret": secret,
+            "login": True,
+            "desc": {"public": {"fn": "ViChat AI"}},
+            "tags": [username],
+        },
+    })
+    code = int(ctrl.get("code") or 500)
+    if code >= 300:
+        raise TinodeBotAuthError(
+            ctrl.get("text") or "Tinode chatbot account creation failed.",
+            409 if code == 409 else (400 if code < 500 else 502),
+        )
+    return ctrl.get("params") or {}
+
+
+async def ensure_tinode_chatbot_auth(force=False):
+    global _auth_cache
+    if not _chatbot_enabled():
+        raise TinodeBotAuthError("Tinode chatbot worker is not configured.", 503)
+    if _auth_cache is not None and not force:
+        return dict(_auth_cache)
+    async with _auth_lock_for_current_loop():
+        if _auth_cache is not None and not force:
+            return dict(_auth_cache)
+        username = CONFIG["TINODE_CHATBOT_USERNAME"].strip()
+        password = CONFIG["TINODE_CHATBOT_PASSWORD"]
+        try:
+            params = await _login_chatbot(username, password)
+        except TinodeBotAuthError as login_error:
+            if login_error.status_code != 401:
+                raise
+            try:
+                params = await _create_chatbot(username, password)
+            except TinodeBotAuthError as create_error:
+                if create_error.status_code != 409:
+                    raise
+                params = await _login_chatbot(username, password)
+        uid = str(params.get("user") or "").strip()
+        token = str(params.get("token") or "").strip()
+        if not uid or not token:
+            raise TinodeBotAuthError("Tinode chatbot authentication returned no UID/token.")
+        _auth_cache = {"uid": uid, "token": token, "expires": params.get("expires")}
+        return dict(_auth_cache)
 
 class TinodeChatbotWorker(object):
     def __init__(self):
         self.ws_url = tinode_websocket_url(
-            app.config.get("TINODE_INTERNAL_WS_URL"),
-            app.config.get("TINODE_API_KEY"),
+            CONFIG["TINODE_INTERNAL_WS_URL"],
+            CONFIG["TINODE_API_KEY"],
         )
-        self.webhook_url = str(app.config.get("TINODE_CHATBOT_WEBHOOK_URL") or "").strip()
-        self.webhook_key = str(app.config.get("TINODE_CHATBOT_WEBHOOK_KEY") or "").strip()
+        self.webhook_url = CONFIG["TINODE_CHATBOT_WEBHOOK_URL"].strip()
+        self.webhook_key = CONFIG["TINODE_CHATBOT_WEBHOOK_KEY"].strip()
         self.webhook_timeout = max(
-            5, int(app.config.get("TINODE_CHATBOT_WEBHOOK_TIMEOUT", 40))
+            5, CONFIG["TINODE_CHATBOT_WEBHOOK_TIMEOUT"]
         )
-        self.history_limit = max(1, int(app.config.get("TINODE_CHATBOT_HISTORY_LIMIT", 100)))
-        self.failure_reply = str(
-            app.config.get("TINODE_CHATBOT_FAILURE_REPLY")
-            or "Tro ly AI dang tam thoi khong phan hoi. Vui long thu lai sau."
-        )
-        self.cursor = CursorStore(app.config.get("TINODE_CHATBOT_STATE_FILE"))
+        self.history_limit = max(1, CONFIG["TINODE_CHATBOT_HISTORY_LIMIT"])
+        self.failure_reply = CONFIG["TINODE_CHATBOT_FAILURE_REPLY"]
+        self.cursor = CursorStore(CONFIG["TINODE_CHATBOT_STATE_FILE"])
         self.connected = False
         self.bot_uid = ""
         self.last_error = ""
@@ -216,12 +358,12 @@ class TinodeChatbotWorker(object):
             self._track_message(packet)
 
     async def _connect_once(self):
-        auth = await ensure_tinode_chatbot_auth(app, force=True)
+        auth = await ensure_tinode_chatbot_auth(force=True)
         self.bot_uid = str(auth.get("uid") or "")
         self.subscribed_topics.clear()
         async with self.http.ws_connect(
             self.ws_url,
-            headers=_tinode_bridge_headers(),
+            headers=_bridge_headers(),
             heartbeat=30,
             timeout=aiohttp.ClientTimeout(total=None, sock_read=None),
             max_msg_size=16 * 1024 * 1024,
