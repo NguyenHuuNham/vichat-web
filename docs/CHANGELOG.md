@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu thiet bi: `adb install -r` dat tren Xiaomi `M2104K10AC` serial `z5lfxgnf8dw4ucjj`; cold start bang `am start -W` tra `Status: ok`, process `vn.upgo.vichat` con PID `11581`, activity duoc focus la `vn.upgo.vichat/.MainActivity`, log khong co `FATAL EXCEPTION`, `ReactNativeJS TypeError` hay crash marker. UI dump hien receipt `✓✓`; khi mo ban phim composer van nam tren ban phim tren man hinh 1080x2400.
 - Rui ro con lai: APK chi co ABI `arm64-v8a` va debug/test signer, phu hop UAT noi bo chua phai Play Store; chua gui them tin nhan test de khong lam ban chat that thay doi.
 - Viec tiep theo: UAT tai khoan that tren dien thoai voi login, gui text/file, doi receipt/presence va chatbot; neu can phat hanh store thi tao AAB voi release credential.
-- Commit/PR: Chua tao.
+- Commit/PR: `382ed83`.
 
 ## 2026-08-11-09 - Sua crash khoi dong ViChat Mobile tren Android 11
 
