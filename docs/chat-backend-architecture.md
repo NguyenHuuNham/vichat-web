@@ -57,6 +57,23 @@ The administrator page uses `POST /api/v1/admin/sso` and the separate
 6. Logout revokes the Chatmgt token and clears the ChatUI cookie. A later API
    call receives `401`/`403`.
 
+### Mobile client session
+
+The `mobile/` Expo client uses the same employee credential endpoint but sends
+`X-Vichat-Client: mobile`. With `CHAT_MOBILE_BEARER_ENABLED=true`, only that
+explicit client marker adds `access_token`, `token_type` and `expires_in` to
+the otherwise unchanged cookie response. Web login responses remain
+cookie-only. Mobile stores the Chatmgt token in SecureStore and sends it as
+`Authorization: Bearer`; native fetch also retains the UpGO Account `session`
+cookie set by the login response, because Account SSO validation remains
+server-to-server and is not replaced by a bearer-only identity assertion.
+
+The token is still tenant-scoped (`scp=chat`), subject to auth-version
+revocation and the same active membership checks. Mobile does not store or send
+the UpGO password to Tinode. If Tinode is unavailable, mobile keeps
+Chatmgt directory/conversation metadata visible and disables only realtime
+message/file actions, matching ChatUI's management-mode fallback.
+
 Production uses `CHAT_ACCOUNT_SSO_ENABLED=true` and
 `CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED=true`. The cookie-based
 `POST /api/v1/auth/sso` endpoint remains available for compatible clients. The legacy

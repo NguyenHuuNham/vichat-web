@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "ViChat",
+    "slug": "vichat-mobile",
+    "scheme": "vichat",
+    "description": "ViChat doanh nghiệp - kết nối nội bộ an toàn",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#F7F5F0",
+    "primaryColor": "#F4511E",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "vn.upgo.vichat",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false
+        }
+      }
+    },
+    "android": {
+      "package": "vn.upgo.vichat",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-font",
+      "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "ViChat cần truy cập ảnh để gửi trong cuộc trò chuyện.",
+          "cameraPermission": "ViChat cần camera để chụp ảnh gửi trong cuộc trò chuyện.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#F4511E"
+        }
+      ]
+    ]
+  }
+}

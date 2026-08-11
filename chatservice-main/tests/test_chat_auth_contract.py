@@ -154,10 +154,15 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("_sso_account(identity)", login_source)
         self.assertIn('issue_access_token(account, auth_method="account_sso")', login_source)
         self.assertIn("set_account_cookie(response, account_cookie)", login_source)
+        self.assertIn("mobile_access_token_payload(request, token)", login_source)
         self.assertIn('json={"username": username, "password": password}', service_source)
         self.assertIn("ACCOUNT_SSO_LOGIN_PATH", service_source)
         self.assertIn("normalize_account_session(profile)", service_source)
         self.assertNotIn("password_hash", login_source)
+
+        auth_source = (PROJECT_ROOT / "application" / "services" / "auth_service.py").read_text(encoding="utf-8")
+        self.assertIn('client != "mobile"', auth_source)
+        self.assertIn('CHAT_MOBILE_BEARER_ENABLED', auth_source)
 
     def test_local_employee_password_is_mirrored_to_tinode_basic_auth(self):
         _controller_source, login_source = function_source(CONTROLLER_PATH, "_password_login")

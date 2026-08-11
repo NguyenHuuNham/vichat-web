@@ -37,6 +37,25 @@ and profile changes remain exclusively in UpGO Account.
 6. Chatmgt returns only public identity fields; ChatUI requests a short-lived Tinode token through `POST /api/v1/auth/tinode-token`.
 7. Logout revokes the Chatmgt session and clears the ChatUI cookie. Admin logout also ends the Account administrator session.
 
+## ViChat Mobile
+
+The isolated `mobile/` Expo SDK 57 project is a first-party Android/iOS client
+for the same tenant-scoped Chatmgt and Tinode services. It sends
+`X-Vichat-Client: mobile` on the Account credential login and stores only the
+short-lived Chatmgt bearer token in SecureStore; Chatmgt exposes that token
+only when `CHAT_MOBILE_BEARER_ENABLED=true`. The native HTTP cookie jar keeps
+the UpGO Account `session` cookie so server-side SSO validation remains
+authoritative on `/auth/me`, directory, profile and Tinode-token requests.
+
+Mobile conversation metadata and Workspace records remain in Chatmgt. Tinode
+continues to own realtime messages, files, presence, receipts and reactions;
+both web and mobile therefore see the same topics and history. The mobile
+directory is the active employee projection for the authenticated tenant and
+does not require friendship acceptance. Calls and push are capability-gated
+until native credentials are configured, and the removed knowledge manager is
+not exposed. Run mobile checks from `mobile/`; signed Android/iOS builds need
+JDK/SDK or EAS plus store credentials.
+
 Steps 3 and 4 remain separate acceptance gates. Successful Step 2 login does
 not mean directory/conversation loading or Tinode realtime messaging is complete.
 

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-11-07 - Xay dung ViChat Mobile dung chung Chatmgt va Tinode
+
+- Thoi gian: 2026-08-11 16:15 (Asia/Saigon)
+- Loai: Tinh nang | Bao mat | API | Mobile | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code; cho xac nhan binary native va UAT tai khoan that
+- Muc tieu: Xay dung ung dung React Native/Expo cho Android/iOS dung chung tai khoan UpGO, danh ba tenant, conversation, Tinode message/file, chatbot va Workspace voi ChatUI production.
+- Pham vi: Du an mobile tach biet tai `mobile/`; hop dong bearer opt-in cho mobile; tai lieu kien truc, Compose/env va kiem thu. Khong thay doi hanh vi dang nhap web, quyen management, message store, group membership, call production hay luong RAG da loai bo.
+- File da thay doi: `mobile/` (Expo SDK 57, React Navigation, Zustand, Tinode SDK, SecureStore, picker, Workspace, chatbot topic, theme va test); `chatservice-main/application/config/config.py`; `chatservice-main/application/services/auth_service.py`; `chatservice-main/application/controllers/api_chat_management.py`; `chatservice-main/tests/test_auth_session_scope.py`; `chatservice-main/tests/test_chat_auth_contract.py`; `infrastructure/production/compose.yaml`; `infrastructure/production/.env.example`; `infrastructure/chatservice/compose.yaml`; `infrastructure/chatservice/.env.example`; `README.md`; `docs/chat-backend-architecture.md`; `infrastructure/production/README.md`; `docs/CHANGELOG.md`.
+- Noi dung: Mobile dung chung Chatmgt va Tinode theo tenant hien tai, luu Chatmgt bearer JWT trong SecureStore, giu Account session cookie cho SSO revalidation, dong bo realtime text/file/presence/typing/receipt/reaction/recall, danh ba nhan vien active khong can ket ban, tao direct/group conversation, Workspace va topic chatbot Tinode. Calls/push la capability-gated; khong hien Tri thuc AI. Bo sung typing throttle va chup anh native; file vuot 500 MB bi chan truoc upload.
+- Quyet dinh ky thuat: Bearer token chi tra khi request co `X-Vichat-Client: mobile` va server bat `CHAT_MOBILE_BEARER_ENABLED`; web van cookie-only. Tinode va Chatmgt tiep tuc la nguon du lieu chuan, khong luu password, khong gui password sang Tinode. Mobile giu metadata khi Tinode tam gian doan va chi vo hieu hoa thao tac realtime.
+- Database/API/cau hinh: Khong migration. Them `CHAT_MOBILE_BEARER_ENABLED` (production mac dinh `true`, chatservice local mac dinh `false`) va response auth mobile gom `access_token`, `token_type`, `expires_in`; API web khong doi.
+- Kiem thu: `mobile/npm run typecheck` dat; `mobile/npm test` dat 3 file/5 test; `mobile/npm run lint` dat; `mobile/npx expo-doctor` dat 20/20; `mobile/npm run export` dat; `npm run test:frontend` dat 56/56; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -v` dat 32/32; `python -m py_compile ...` dat; Compose config va `git diff --check` dat. `npm audit --omit=dev` con 19 advisory transitive (8 moderate, 11 high) tu Expo 57/RN 0.86/Metro, khong ha Expo/RN xuong major cu de tranh pha SDK.
+- Rui ro con lai: Chua co JDK/Android SDK, Apple/Google signing credential hoac EAS session tren may nay, nen chua tao APK/AAB/IPA ky va chua UAT WebSocket/upload tren thiet bi that; push dang tat mac dinh vi chua co endpoint dang ky device token. Browser skill khong chay duoc visual QA do runtime khong tao duoc kernel assets.
+- Viec tiep theo: Push va deploy backend sau khi commit; tao development build/EAS voi credential that, dang nhap hai tai khoan trong cung tenant va UAT direct/group/file/chatbot/Workspace tren Android/iOS.
+- Commit/PR: Chua tao.
+
 ## 2026-08-11-06 - ViChat AI goi provider truc tiep, bo RAG khoi luong chat
 
 - Thoi gian: 2026-08-11 12:48-13:06 (Asia/Saigon)

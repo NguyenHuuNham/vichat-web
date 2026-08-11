@@ -29,6 +29,7 @@ MANAGEMENT_SESSION_HEADER = "X-Vichat-Session-Scope"
 CHAT_SESSION_SCOPE = "chat"
 MANAGEMENT_SESSION_SCOPE = "management"
 JWT_ISSUER = "vichat-management"
+MOBILE_CLIENT_HEADER = "X-Vichat-Client"
 
 
 class AuthError(Exception):
@@ -213,6 +214,18 @@ def decode_access_token(token):
 
 def management_session_requested(request):
     return str(request.headers.get(MANAGEMENT_SESSION_HEADER) or "").strip().lower() == "management"
+
+
+def mobile_access_token_payload(request, token):
+    """Expose the chat JWT only to explicitly enabled first-party mobile clients."""
+    client = str(request.headers.get(MOBILE_CLIENT_HEADER) or "").strip().lower()
+    if not app.config.get("CHAT_MOBILE_BEARER_ENABLED", False) or client != "mobile":
+        return {}
+    return {
+        "access_token": token,
+        "token_type": "Bearer",
+        "expires_in": int(app.config.get("CHAT_AUTH_ACCESS_TTL", 28800)),
+    }
 
 
 def _cookie_token_from_request(request, cookie_name):

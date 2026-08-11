@@ -90,6 +90,7 @@ class Config(object):
         "CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED",
         False,
     )
+    CHAT_MOBILE_BEARER_ENABLED = env_bool("CHAT_MOBILE_BEARER_ENABLED", False)
     CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED = env_bool(
         "CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED",
         False,

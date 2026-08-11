@@ -46,6 +46,7 @@ from application.services.auth_service import (
     revoke_request_token,
     login_rate_limited,
     management_session_requested,
+    mobile_access_token_payload,
     record_login_failure,
     send_password_reset_email,
     set_auth_cookie,
@@ -902,12 +903,14 @@ async def employee_account_credential_login(request):
         clear_login_failures(tenant_id, identity_input.lower(), ip_address)
         revoke_request_token(request)
         token = issue_access_token(account, auth_method="account_sso")
-        response = json({
+        response_payload = {
             "user": _public_account(account, tenant),
             "tenant": _public_tenant(tenant),
             "tenant_id": account.tenant_id,
             "connection": "management",
-        })
+        }
+        response_payload.update(mobile_access_token_payload(request, token))
+        response = json(response_payload)
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
         set_account_cookie(response, account_cookie)

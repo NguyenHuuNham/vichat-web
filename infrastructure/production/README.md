@@ -229,6 +229,7 @@ not modify an already deployed file:
 ```dotenv
 CHAT_ACCOUNT_SSO_ENABLED=true
 CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED=true
+CHAT_MOBILE_BEARER_ENABLED=true
 CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true
 VITE_CHAT_AUTH_MODE=account_password
 ACCOUNT_SSO_LOGIN_PATH=/login
@@ -266,6 +267,14 @@ Log out and confirm refresh cannot reopen the protected UI and
 same username: each configured tenant must return only its own account and
 conversation metadata. A copied foreign tenant query parameter must not change
 the result.
+
+The mobile build uses the same credential endpoint with
+`X-Vichat-Client: mobile`. With `CHAT_MOBILE_BEARER_ENABLED=true`, the response
+also contains the short-lived Chatmgt `access_token`; web requests without the
+marker remain cookie-only. Verify one Android/iOS development build can call
+`/api/v1/auth/me` with `Authorization: Bearer`, while the native cookie jar
+still forwards the Account `session` cookie for SSO revalidation. Do not put an
+UpGO password, Tinode secret, or real `.env` in the mobile bundle.
 
 ## Chatmgt data acceptance test
 

@@ -18,6 +18,7 @@ if HAS_RUNTIME_DEPENDENCIES:
         current_user,
         decode_access_token,
         issue_access_token,
+        mobile_access_token_payload,
         tinode_auth_expired,
         tinode_auth_from_request,
         token_from_request,
@@ -98,6 +99,24 @@ class AuthSessionScopeTests(unittest.TestCase):
             "token": "invalid-token",
             "expires": "not-a-timestamp",
         }))
+
+    def test_mobile_bearer_response_is_opt_in_and_web_remains_cookie_only(self):
+        original = app.config.get("CHAT_MOBILE_BEARER_ENABLED")
+        app.config["CHAT_MOBILE_BEARER_ENABLED"] = True
+        try:
+            web_request = SimpleNamespace(headers={})
+            mobile_request = SimpleNamespace(headers={"X-Vichat-Client": "mobile"})
+
+            self.assertEqual(mobile_access_token_payload(web_request, "chat-token"), {})
+            self.assertEqual(mobile_access_token_payload(mobile_request, "chat-token"), {
+                "access_token": "chat-token",
+                "token_type": "Bearer",
+                "expires_in": int(app.config.get("CHAT_AUTH_ACCESS_TTL", 28800)),
+            })
+            app.config["CHAT_MOBILE_BEARER_ENABLED"] = False
+            self.assertEqual(mobile_access_token_payload(mobile_request, "chat-token"), {})
+        finally:
+            app.config["CHAT_MOBILE_BEARER_ENABLED"] = original
 
 
 if __name__ == "__main__":
