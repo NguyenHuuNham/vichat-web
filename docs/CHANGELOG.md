@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-11-08 - Phat hanh APK Android test ViChat Mobile
+
+- Thoi gian: 2026-08-11 17:03 (Asia/Saigon)
+- Loai: Phat hanh | Mobile | Kiem thu | Tai lieu
+- Trang thai: Hoan tat; san sang UAT tren thiet bi Android that
+- Muc tieu: Tao binary Android de kiem thu ViChat Mobile tren dien thoai that ma khong thay doi luong web, Chatmgt, Tinode hoac du lieu production.
+- Pham vi: Native project sinh tai `mobile/android/` (generated/ignored) va artifact giao den tai `outputs/vichat-mobile/`; khong sua source runtime/backend va khong recreate service production.
+- File da thay doi: `docs/CHANGELOG.md`; artifact khong commit `outputs/vichat-mobile/ViChat-1.0.0-arm64.apk`.
+- Noi dung: Build release APK cho `arm64-v8a`, package `vn.upgo.vichat`, version `1.0.0` (versionCode `1`), min SDK 24 (Android 7+) va target/compile SDK 36. APK da nhung production JavaScript bundle cua mobile app.
+- Quyet dinh ky thuat: Dung test/debug signer `CN=Android Debug` de co the cai dat ngay cho UAT noi bo; day khong phai artifact Play Store ky bang release credential.
+- Database/API/cau hinh: Khong co; khong thay doi production config hay service runtime.
+- Kiem thu: Gradle release build truoc do dat `BUILD SUCCESSFUL` (17m42s); `apksigner verify --verbose --print-certs` dat voi APK Signature Scheme v2; `zipalign -c -v 4` dat; `aapt dump badging` xac nhan package/version/minSdk/targetSdk/arm64; SHA-256 `D786157960EE81BA6E96AF917AEC57FB1BCE27147E54CA70567ED4CCD8D988E4`.
+- Rui ro con lai: Chi co ABI `arm64-v8a`; may Android qua cu hoac ABI 32-bit khong cai duoc. Test signer phu hop UAT, khong dung de phat hanh store.
+- Viec tiep theo: Cai APK tren dien thoai Android bat USB debugging bang `adb install -r outputs\\vichat-mobile\\ViChat-1.0.0-arm64.apk`, sau do UAT dang nhap, danh ba, chat Tinode, file va chatbot.
+- Commit/PR: Commit chua muc nay (xem `git log`).
+
 ## 2026-08-11-07 - Xay dung ViChat Mobile dung chung Chatmgt va Tinode
 
 - Thoi gian: 2026-08-11 16:15-16:31 (Asia/Saigon)
