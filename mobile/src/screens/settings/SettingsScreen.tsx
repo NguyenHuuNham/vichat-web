@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Bell, ChevronRight, LockKeyhole, LogOut, Pencil, ShieldCheck, Wifi } from 'lucide-react-native';
+import { Bell, ChevronRight, LockKeyhole, LogOut, Pencil, ShieldCheck, Smartphone, Wifi } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { MainTabParamList } from '../../navigation/types';
@@ -43,7 +43,8 @@ export function SettingsScreen({ navigation }: Props) {
 
         <Text style={styles.section}>Bảo mật thiết bị</Text>
         <View style={styles.menu}>
-          <SettingRow icon={LockKeyhole} label="Mã PIN khi mở ViChat" detail={pinConfigured ? 'Đang bật · nhấn để đổi hoặc tắt' : 'Chưa bật · nhấn để thiết lập'} color={pinConfigured ? colors.online : colors.accent} onPress={() => setPinSettingsOpen(true)} last />
+          <SettingRow icon={LockKeyhole} label="Mã PIN khi mở ViChat" detail={pinConfigured ? 'Đang bật · nhấn để đổi hoặc tắt' : 'Chưa bật · nhấn để thiết lập'} color={pinConfigured ? colors.online : colors.accent} onPress={() => setPinSettingsOpen(true)} />
+          <SettingRow icon={Smartphone} label="Thiết bị liên kết" detail="Web và các thiết bị đang đăng nhập" onPress={() => navigation.navigate('LinkedDevices')} last />
         </View>
 
         <View style={styles.dangerCard}>

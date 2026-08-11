@@ -11,6 +11,7 @@ import { NewGroupScreen } from '../screens/chat/NewGroupScreen';
 import { UserProfileScreen } from '../screens/contacts/UserProfileScreen';
 import { WorkspaceDetailScreen } from '../screens/workspace/WorkspaceDetailScreen';
 import { EditProfileScreen } from '../screens/settings/EditProfileScreen';
+import { LinkedDevicesScreen } from '../screens/settings/LinkedDevicesScreen';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { GonLogo } from '../components/GonLogo';
@@ -63,6 +64,7 @@ export function AppNavigator() {
       <RootStack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Hồ sơ nhân viên' }} />
       <RootStack.Screen name="WorkspaceDetail" component={WorkspaceDetailScreen} options={{ title: 'Chi tiết công việc' }} />
       <RootStack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: 'Cập nhật hồ sơ' }} />
+      <RootStack.Screen name="LinkedDevices" component={LinkedDevicesScreen} options={{ headerShown: false, animation: 'slide_from_right' }} />
     </RootStack.Navigator>
   );
 }

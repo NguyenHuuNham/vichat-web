@@ -1,6 +1,6 @@
 import { apiRequest, setAccessToken } from './apiClient';
 import { config } from '../constants/config';
-import { Session, TinodeAuth, User } from '../types';
+import { LinkedDevice, Session, TinodeAuth, User } from '../types';
 import { storageService } from './storageService';
 
 function normalizeUser(account: any): User {
@@ -31,7 +31,22 @@ function normalizeSession(payload: any): Session {
     } : null,
     connection: String(payload?.connection || 'management'),
     tinodeAuth: normalizeTinodeAuth(payload?.tinode_auth || payload?.tinode),
+    linkedDevices: normalizeLinkedDevices(payload?.linked_devices || payload?.linkedDevices || payload?.sessions),
   };
+}
+
+function normalizeLinkedDevices(value: any): LinkedDevice[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item: any, index: number) => ({
+    id: String(item?.id || item?.jti || `linked-device-${index}`),
+    kind: ['web', 'mobile', 'tablet', 'desktop'].includes(String(item?.kind || item?.type || item?.client || '').toLowerCase())
+      ? String(item?.kind || item?.type || item?.client).toLowerCase() as LinkedDevice['kind']
+      : 'unknown',
+    name: String(item?.name || item?.device_name || item?.device || item?.user_agent || 'Thiết bị không xác định'),
+    platform: String(item?.platform || item?.os || item?.client || ''),
+    lastActiveAt: item?.last_active_at || item?.lastActiveAt || item?.updated_at || item?.updatedAt || item?.created_at || item?.createdAt,
+    current: Boolean(item?.current || item?.is_current),
+  }));
 }
 
 function normalizeTinodeAuth(value: any): TinodeAuth | null {
@@ -48,6 +63,7 @@ export const authService = {
   async restoreToken() {
     const token = await storageService.loadAccessToken();
     setAccessToken(token);
+    if (token && !(await storageService.loadSessionStartedAt())) await storageService.saveSessionStartedAt(new Date().toISOString());
     return token;
   },
 
@@ -62,6 +78,7 @@ export const authService = {
     }
     setAccessToken(payload.access_token);
     await storageService.saveAccessToken(payload.access_token);
+    await storageService.saveSessionStartedAt(new Date().toISOString());
     const session = normalizeSession(payload);
     await storageService.savePublicSession(session);
     return session;

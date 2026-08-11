@@ -7,6 +7,7 @@ export type RootStackParamList = {
   UserProfile: { user: User };
   WorkspaceDetail: { item: WorkspaceItem };
   EditProfile: undefined;
+  LinkedDevices: undefined;
 };
 
 export type AuthStackParamList = {

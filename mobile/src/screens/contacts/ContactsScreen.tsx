@@ -46,7 +46,7 @@ export function ContactsScreen({ navigation }: Props) {
           <Avatar name={session?.user.name} uri={session?.user.avatar} size={46} online />
           <View style={styles.identityText}>
             <Text style={styles.eyebrow}>DANH BẠ NỘI BỘ</Text>
-            <Text style={styles.title}>Danh bạ Công ty</Text>
+            <Text style={styles.title}>Danh bạ</Text>
           </View>
         </View>
         <View style={styles.headerActions}>

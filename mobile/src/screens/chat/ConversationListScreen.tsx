@@ -9,7 +9,6 @@ import { colors, shadow } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import { Avatar } from '../../components/Avatar';
 import { SearchField } from '../../components/SearchField';
-import { ConnectionPill } from '../../components/ConnectionPill';
 import { ConversationRow } from '../../components/ConversationRow';
 import { EmptyState } from '../../components/EmptyState';
 import { MessageCircleMore } from 'lucide-react-native';
@@ -54,11 +53,10 @@ export function ConversationListScreen({ navigation }: Props) {
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <View style={styles.identity}>
-          <Avatar name={session?.user.name} uri={session?.user.avatar} size={48} online />
+          <Avatar name={session?.user.name} uri={session?.user.avatar} size={48} online={connection === 'connected'} />
           <View style={styles.identityText}>
             <Text style={styles.eyebrow}>{session?.tenant?.name || 'Không gian công ty'}</Text>
             <Text style={styles.title}>Tin nhắn</Text>
-            <ConnectionPill state={connection} />
           </View>
         </View>
         <Pressable

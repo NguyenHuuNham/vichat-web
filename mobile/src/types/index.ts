@@ -30,11 +30,21 @@ export interface TinodeAuth {
   expires?: string | number;
 }
 
+export interface LinkedDevice {
+  id: string;
+  kind: 'web' | 'mobile' | 'tablet' | 'desktop' | 'unknown';
+  name: string;
+  platform?: string;
+  lastActiveAt?: string;
+  current?: boolean;
+}
+
 export interface Session {
   user: User;
   tenant: Tenant | null;
   connection: string;
   tinodeAuth?: TinodeAuth | null;
+  linkedDevices?: LinkedDevice[];
 }
 
 export interface FileAttachment {

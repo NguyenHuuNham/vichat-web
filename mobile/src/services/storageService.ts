@@ -4,6 +4,7 @@ import { Session } from '../types';
 
 const TOKEN_KEY = 'vichat.mobile.chatmgt-token.v1';
 const SESSION_KEY = 'vichat.mobile.public-session.v1';
+const SESSION_STARTED_KEY = 'vichat.mobile.session-started-at.v1';
 
 export const storageService = {
   async saveAccessToken(token: string) {
@@ -22,6 +23,14 @@ export const storageService = {
     return AsyncStorage.setItem(SESSION_KEY, JSON.stringify(session));
   },
 
+  saveSessionStartedAt(value: string) {
+    return AsyncStorage.setItem(SESSION_STARTED_KEY, value);
+  },
+
+  loadSessionStartedAt() {
+    return AsyncStorage.getItem(SESSION_STARTED_KEY);
+  },
+
   async loadPublicSession(): Promise<Session | null> {
     try {
       const value = await AsyncStorage.getItem(SESSION_KEY);
@@ -35,6 +44,7 @@ export const storageService = {
     await Promise.all([
       SecureStore.deleteItemAsync(TOKEN_KEY),
       AsyncStorage.removeItem(SESSION_KEY),
+      AsyncStorage.removeItem(SESSION_STARTED_KEY),
     ]);
   },
 };

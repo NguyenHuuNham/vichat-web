@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-12-02 - Tinh chinh header va them thiet bi lien ket cho ViChat Mobile
+
+- Thoi gian: 2026-08-12 00:35 (Asia/Saigon)
+- Loai: Giao dien | Tinh nang | Mobile | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code va build APK arm64; cho UAT tren thiet bi Android
+- Muc tieu: Can lai avatar/header va nut tim kiem theo bo cuc mobile moi, bo chu `Realtime` o header nhung giu dau online tren avatar; rut gon ten Danh ba, bo dong ghi chu ho so va them muc xem thiet bi dang lien ket.
+- Pham vi: Chi `mobile/` va nhat ky; khong sua web `src/`/`dist/`, API, database, Tinode, realtime message flow, recall, receipt, presence, file, push hay app lock.
+- File da thay doi: `mobile/src/screens/chat/ConversationListScreen.tsx`, `mobile/src/screens/contacts/ContactsScreen.tsx`, `mobile/src/screens/contacts/UserProfileScreen.tsx`, `mobile/src/screens/settings/SettingsScreen.tsx`, `mobile/src/screens/settings/LinkedDevicesScreen.tsx`, `mobile/src/navigation/AppNavigator.tsx`, `mobile/src/navigation/types.ts`, `mobile/src/services/authService.ts`, `mobile/src/services/storageService.ts`, `mobile/src/types/index.ts`, va `docs/CHANGELOG.md`.
+- Noi dung: Header hien avatar can giua hai dong ten khong gian va Tin nhan, nut tim kiem can theo hang; trang Cai dat co muc Thiet bi lien ket voi icon web/mobile/desktop va thoi gian phien; auth normalize du lieu `linked_devices`/`linkedDevices`/`sessions` neu backend tra ve va luu thoi diem dang nhap hien tai tren may.
+- Quyet dinh ky thuat: Khong tao session gia cho web hay may khac. Backend hien chi tra thong tin tai khoan va phien hien tai, chua co endpoint liet ke cac session; man hinh hien chinh xac thiet bi mobile hien tai va tu dong hien cac phien xa neu auth payload sau nay cung cap du lieu.
+- Database/API/cau hinh: Khong migration, khong them endpoint, khong doi bien moi truong, khong doi giao dien web va khong doi luong chuc nang dang hoat dong.
+- Kiem thu: `mobile/npm run typecheck` dat; `mobile/npm run lint` dat; `mobile/npm test` dat 8 file/18 test; `mobile/npm run export` dat; Gradle `app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon` dat; `aapt dump badging` xac nhan package `vn.upgo.vichat`, version `1.0.5`/code `6`; `apksigner verify --verbose` dat v2; `git diff --check` dat. APK `outputs/vichat-mobile/ViChat-1.0.5-header-linked-devices-arm64.apk`, SHA-256 `7BD6A6301459A9D1964F519A279072310D1CBE3C631953483166BBFE9A8FADC9`.
+- Rui ro con lai: Chua co thiet bi ADB trong moi truong de UAT truc quan. Danh sach web/thiet bi khac chi hien khi backend bo sung du lieu linked session; hien tai khong bao cao nham la da theo doi duoc cac phien xa.
+- Viec tiep theo: Cai APK tren Android arm64, mo header/Danh ba/Cai dat > Thiet bi lien ket va kiem tra lai cac luong nhan tin/realtime cu.
+- Commit/PR: Tao commit mobile sau khi ra soat staged diff; khong deploy web.
+
 ## 2026-08-12-01 - Tai bo cuc Lumina cho ViChat Mobile
 
 - Thoi gian: 2026-08-12 00:10 (Asia/Saigon)
