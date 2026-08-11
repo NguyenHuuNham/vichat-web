@@ -61,6 +61,14 @@ class TinodeChatbotProtocolTests(unittest.TestCase):
 
 
 class TinodeChatbotContractTests(unittest.TestCase):
+    def test_chatmgt_does_not_create_asyncio_lock_during_module_import(self):
+        service = (
+            PROJECT_ROOT / "application" / "services" / "tinode_chatbot_service.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("def _auth_lock_for_current_loop():", service)
+        self.assertNotIn("_auth_lock = asyncio.Lock()\n", service.split("def _auth_lock_for_current_loop", 1)[0])
+
     def test_worker_and_chatui_keep_chatbot_isolated_from_other_topics(self):
         worker = (PROJECT_ROOT / "scripts" / "tinode_chatbot_webhook.py").read_text(encoding="utf-8")
         controller = (PROJECT_ROOT / "application" / "controllers" / "api_chatbot.py").read_text(encoding="utf-8")

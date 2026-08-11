@@ -4,7 +4,14 @@ from application.services.auth_service import AuthError, tinode_create_account, 
 
 
 _auth_cache = None
-_auth_lock = asyncio.Lock()
+_auth_lock = None
+
+
+def _auth_lock_for_current_loop():
+    global _auth_lock
+    if _auth_lock is None:
+        _auth_lock = asyncio.Lock()
+    return _auth_lock
 
 
 def tinode_chatbot_enabled(app):
@@ -24,7 +31,7 @@ async def ensure_tinode_chatbot_auth(app, force=False):
     if _auth_cache is not None and not force:
         return dict(_auth_cache)
 
-    async with _auth_lock:
+    async with _auth_lock_for_current_loop():
         if _auth_cache is not None and not force:
             return dict(_auth_cache)
 
