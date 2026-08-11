@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu thiet bi: `adb install -r` dat va giu phien cu; cold-start sau 12 giay con PID `31757`, `FocusedApp` la `vn.upgo.vichat/.MainActivity`, package tren may la versionCode `2`/versionName `1.0.1`, UI da tai danh sach va hien `Realtime`; log theo PID khong con `JavascriptException`, `undefined cannot be used as a constructor` hoac `SIGABRT` cua ViChat.
 - Rui ro con lai: APK van dung test/debug signer va chi co `arm64-v8a`, phu hop UAT noi bo nhung chua phai artifact Play Store. Log ROM co crash lap lai cua `/vendor/bin/soterd`, day la service he thong Xiaomi va khong lam tien trinh ViChat thoat.
 - Viec tiep theo: UAT mo/dong app nhieu lan, chat 1-1/nhom, gui file va chatbot tren dien thoai; neu dat moi tao AAB/release-signed cho store.
-- Commit/PR: Chua tao.
+- Commit/PR: `33c20e5`.
 
 ## 2026-08-11-08 - Phat hanh APK Android test ViChat Mobile
 
