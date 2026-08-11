@@ -2,6 +2,7 @@ import { Conversation, User, TinodeChatbotConfig } from '../types';
 import { apiRequest, responseItems } from './apiClient';
 import { normalizeUser } from './authService';
 import { normalizeMuteUntil } from '../utils/conversationNotifications';
+import { normalizeMediaUrl } from '../utils/mediaUrl';
 
 function normalizeConversation(record: any): Conversation {
   const properties = record?.properties || {};
@@ -13,7 +14,7 @@ function normalizeConversation(record: any): Conversation {
     tinodeTopic: topic,
     name: String(record?.name || record?.subject || properties.name || 'Cuộc trò chuyện'),
     isGroup: Boolean(record?.isGroup ?? record?.is_group ?? properties.isGroup ?? properties.is_group),
-    avatarUrl: String(record?.avatarUrl || record?.avatar || properties.avatar || ''),
+    avatarUrl: normalizeMediaUrl(record?.avatarUrl || record?.avatar || properties.avatar || ''),
     description: String(record?.description || properties.description || ''),
     membersCount: String(record?.membersCount || properties.membersCount || ''),
     members: Array.isArray(record?.members) ? record.members.map(normalizeUser) : [],

@@ -38,6 +38,7 @@ from application.services.auth_service import (
     clear_auth_cookie,
     clear_login_failures,
     create_password_reset_token,
+    decode_access_token,
     hash_password,
     issue_access_token,
     password_reset_rate_limited,
@@ -84,6 +85,12 @@ from application.services.sso_identity import (
 logger = logging.getLogger(__name__)
 ACCOUNT_SSO_PASSWORD_MARKER = "!account-sso-only"
 _ACCOUNT_DIRECTORY_SYNC_CACHE = {}
+
+
+def _mobile_linked_devices(request, token):
+    if str(request.headers.get("X-Vichat-Client") or "").strip().lower() != "mobile":
+        return None
+    return linked_session_devices(request, decode_access_token(token) or {})
 
 
 def _admin_account_sso_enabled():
@@ -916,6 +923,9 @@ async def employee_account_credential_login(request):
             "connection": "management",
         }
         response_payload.update(mobile_access_token_payload(request, token))
+        linked_devices = _mobile_linked_devices(request, token)
+        if linked_devices is not None:
+            response_payload["linked_devices"] = linked_devices
         response = json(response_payload)
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
@@ -1014,6 +1024,9 @@ async def _password_login(request, session_scope=CHAT_SESSION_SCOPE):
                 "token": tinode_auth.get("token"),
                 "expires": tinode_auth.get("expires"),
             }
+        linked_devices = _mobile_linked_devices(request, token)
+        if linked_devices is not None:
+            response_payload["linked_devices"] = linked_devices
         response = json(response_payload)
         _audit(request, "AUTH_LOGIN", True, tenant_id=tenant_id, user_id=str(account.id))
         return set_auth_cookie(response, token, request)
@@ -1244,7 +1257,7 @@ async def management_tinode_token(request):
             account.tinode_uid = tinode_auth.get("uid") or account.tinode_uid
             account.updated_at = int(time.time())
             db.session.commit()
-        response = json({
+        response_payload = {
             "connection": "tinode",
             "tinode_auth": {
                 "username": tinode_auth.get("username") or account.tinode_username,
@@ -1252,7 +1265,7 @@ async def management_tinode_token(request):
                 "token": tinode_auth.get("token"),
                 "expires": tinode_auth.get("expires"),
             },
-        })
+        }
         if refreshed_session:
             refreshed_token = issue_access_token(
                 account,
@@ -1262,6 +1275,9 @@ async def management_tinode_token(request):
             )
             revoke_request_token(request)
             register_linked_session(request, refreshed_token)
+            response_payload.update(mobile_access_token_payload(request, refreshed_token))
+        response = json(response_payload)
+        if refreshed_session:
             return set_auth_cookie(response, refreshed_token, request)
         return response
     except AccountSSOError as error:

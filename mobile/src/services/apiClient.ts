@@ -43,7 +43,7 @@ export async function apiRequest<T = any>(path: string, options: RequestOptions 
     Accept: 'application/json',
     ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}),
     ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    ...(options.mobileLogin ? { 'X-Vichat-Client': 'mobile' } : {}),
+    ...(options.mobileLogin || Platform.OS !== 'web' ? { 'X-Vichat-Client': 'mobile' } : {}),
     ...((options.headers || {}) as Record<string, string>),
   };
   if (Platform.OS !== 'web') {

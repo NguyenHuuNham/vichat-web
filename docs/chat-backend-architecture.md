@@ -79,15 +79,18 @@ record keyed by tenant, account and JWT `jti`. The record keeps only device kind
 device name, platform, login time and last activity time. Authenticated requests
 touch the record, logout removes it, and `GET /api/v1/auth/devices` returns the
 current account's web/mobile/device sessions without exposing tokens. The mobile
-screen polls this endpoint while focused so a login from another client appears
-without inventing a local-only device record.
+login response also includes the current mobile snapshot, and the mobile screen
+polls this endpoint while focused so a login from another client appears without
+inventing a local-only device record. When Chatmgt rotates a bearer during
+Tinode-token refresh, the replacement bearer is returned to mobile before the old
+session is revoked.
 
 Tinode media URLs from the central host are normalized to the authenticated
-`chat.upgo.vn/tinode-media` relay. The native client downloads protected images
-with its short-lived Tinode token into the OS cache before rendering, so an
-expired central certificate, redirect, or missing `Image` request header cannot
-leave a blank message bubble. The cache is disposable and is not a second
-message store.
+`chat.upgo.vn/tinode-media` relay. The native client downloads protected message
+and avatar images with its short-lived Tinode token into the OS cache and passes
+the same auth headers to native image rendering, so an expired central
+certificate, redirect, or missing `Image` request header cannot leave a blank
+media surface. The cache is disposable and is not a second message store.
 
 The optional mobile app lock is device-local. It stores a random salt and the
 SHA-256 hash of a four-digit PIN in SecureStore, never sends the PIN to Chatmgt,
@@ -115,12 +118,12 @@ downgrade a two-check status. Opening a conversation still sends `read` through
 the existing topic API.
 
 Recall is an event overlay shared by mobile and ChatUI. `mode=all` hides the
-original content and attachment for every participant, attempts Tinode hard
-delete as cleanup, and keeps a `Tin nhan da duoc thu hoi` placeholder when the
-original packet is no longer cached. `mode=self` is applied only when the viewer
-is the authenticated actor, so the sender loses the message while other
-participants continue to see the original. A recalled message has no reply,
-reaction or message-action affordances; replies render without quoting a
+original content and attachment for every participant and keeps a
+`Tin nhan da duoc thu hoi` placeholder while retaining the original Tinode
+packet for deterministic cross-client matching. `mode=self` is applied only when
+the viewer is the authenticated actor, so the sender loses the message while
+other participants continue to see the original. A recalled message has no
+reply, reaction or message-action affordances; replies render without quoting a
 recalled target. Missing `mode` is treated as `all` for legacy clients.
 
 Production uses `CHAT_ACCOUNT_SSO_ENABLED=true` and

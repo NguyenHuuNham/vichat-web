@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-12-04 - Sua dong bo recall, avatar, phien thiet bi va presence tren Mobile
+
+- Thoi gian: 2026-08-12 01:50 (Asia/Saigon)
+- Loai: Sua loi | API | Mobile | Tinode | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code, build APK arm64 va kiem thu local; can UAT hai tai khoan that
+- Muc tieu: Khac phuc recall `all` khong den thiet bi nhan, avatar nhom khong hien tren native, danh sach thiet bi lien ket rong va hien thi nham trang thai online.
+- Pham vi: Mobile Tinode control event, media avatar, auth session registry/API va direct-chat presence; khong sua giao dien web hoac luong gui tin nhan.
+- File da thay doi: `mobile/src/services/tinodeClient.ts`, `mobile/src/components/Avatar.tsx`, `mobile/src/services/apiClient.ts`, `mobile/src/services/authService.ts`, `mobile/src/services/chatManagementService.ts`, `mobile/src/screens/chat/ChatDetailScreen.tsx`, `mobile/src/screens/settings/LinkedDevicesScreen.tsx`, `mobile/src/utils/tinodeState.ts`, `mobile/src/utils/tinodeState.test.ts`, `chatservice-main/application/controllers/api_chat_management.py`, `docs/chat-backend-architecture.md`, va `docs/CHANGELOG.md`.
+- Noi dung: Recall publish bang `publishMessage` co client id va kiem tra ctrl, khong hard-delete message goc de materializer cua moi client luon tao placeholder; avatar native tai qua cache/relay co header Tinode; moi API native gui marker mobile, tu dong nhan bearer moi khi Chatmgt rotate session va fallback `/auth/me`; login mobile tra linked devices ngay; header direct chat chi hien Online khi peer co presence that.
+- Quyet dinh ky thuat: Receipt mot/two check chi la delivery state, khong duoc dung lam presence; recall la event overlay ben vung, khong phu thuoc quyen hard-delete Tinode. Du lieu linked session van luu Redis theo JWT `jti`, khong tao thiet bi gia o local.
+- Database/API/cau hinh: Khong migration; bo sung `linked_devices` trong response login mobile va bearer rollover trong `POST /api/v1/auth/tinode-token`; backend Chatmgt phai duoc deploy cung release de danh sach phien hien tren production.
+- Kiem thu: `mobile/npm run typecheck` dat; `mobile/npm run lint` dat; `mobile/npx vitest run src/utils/tinodeState.test.ts src/utils/messagePolicy.test.ts src/utils/mediaUrl.test.ts` dat 3 file/10 test; `python -m unittest discover -s chatservice-main/tests -q` dat 131 test, skip 40; `mobile/npm run export` dat; Gradle assemble release arm64 tao APK package `vn.upgo.vichat`, version `1.0.7`/code `8`; `apksigner` v2 va `zipalign -c -v 4` dat; SHA-256 `B5892A398951D85C86607A820140A13561D35DB4C4EA1FBF897E65FCD7D9188F`; `adb install` chua chay vi khong co thiet bi/emulator.
+- Rui ro con lai: Chua UAT hai tai khoan that cho recall/avatar/presence; linked devices van rong neu production chua chay code Chatmgt co Redis registry; push khi app bi kill van phu thuoc credential Firebase/APNs va Tinode provider.
+- Viec tiep theo: Cai APK tren hai thiet bi, UAT recall/avatar/presence va deploy rieng Chatmgt backend; khong deploy lai ChatUI web.
+- Commit/PR: Chua tao.
+
 ## 2026-08-12-03 - Dong bo recall, group, avatar va linked devices cho Mobile
 
 - Thoi gian: 2026-08-12 01:09 (Asia/Saigon)

@@ -81,6 +81,18 @@ function parseEvent(content: string, prefix: string) {
   try { return JSON.parse(content.slice(prefix.length)); } catch { return null; }
 }
 
+async function publishControlEvent(topic: any, content: string, clientId: string, senderId: string) {
+  const draft = topic.createMessage(content, false);
+  draft.head = {
+    ...(draft.head || {}),
+    'x-client-id': clientId,
+    'x-sender-id': senderId,
+  };
+  const result = await topic.publishMessage(draft);
+  if (!result) throw new Error('Tinode khong xac nhan su kien realtime.');
+  return result;
+}
+
 function messageReply(raw: any) {
   const value = raw?.head?.['x-reply-to'];
   if (!value) return undefined;
@@ -330,7 +342,7 @@ export class TinodeMobileClient {
     if (eventType && !['on', 'off', 'gone', 'term'].includes(eventType)) return;
     const online = eventType === 'on' ? true : eventType === 'off' || eventType === 'gone' || eventType === 'term'
       ? false
-      : contact.online === true;
+      : typeof contact.online === 'boolean' ? contact.online : this.getPresenceStatus(uid, false);
     this.updatePresence({ src: uid, what: online ? 'on' : 'off' });
   }
 
@@ -338,6 +350,7 @@ export class TinodeMobileClient {
     this.meTopic?.contacts?.((contact: any) => {
       const uid = String(contact?.name || '');
       if (!uid || !contact?.isP2PType?.()) return;
+      if (typeof contact.online !== 'boolean' && this.presenceByUid.has(uid)) return;
       const online = contact.online === true;
       const changed = this.presenceByUid.get(uid) !== online;
       this.presenceByUid.set(uid, online);
@@ -623,11 +636,13 @@ export class TinodeMobileClient {
     await this.subscribeTopic(topicName, 0);
     const topic = this.getTopic(topicName);
     const event = buildRecallEvent(message, this.currentUserId, mode);
-    await topic.publish(`${RECALL_EVENT_PREFIX}${JSON.stringify(event)}`);
-    if (mode === 'all' && Number(event.targetSeq) > 0) {
-      const deletion = topic.delMessagesList?.([Number(event.targetSeq)], true);
-      if (deletion) await deletion.catch(() => null);
-    }
+    const target = String(event.targetSeq || event.targetId || Date.now());
+    await publishControlEvent(
+      topic,
+      `${RECALL_EVENT_PREFIX}${JSON.stringify(event)}`,
+      `mobile-recall-${target}-${Date.now()}`,
+      this.currentUserId,
+    );
   }
 
   getAuthTokenValue() {

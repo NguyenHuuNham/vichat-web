@@ -90,8 +90,18 @@ export const authService = {
   },
 
   async listLinkedDevices() {
-    const payload = await apiRequest<any>('/api/v1/auth/devices');
-    return normalizeLinkedDevices(payload?.linked_devices || payload?.linkedDevices || payload?.sessions);
+    try {
+      const payload = await apiRequest<any>('/api/v1/auth/devices');
+      return normalizeLinkedDevices(payload?.linked_devices || payload?.linkedDevices || payload?.sessions);
+    } catch (error) {
+      // Older Chatmgt releases expose the same snapshot through /auth/me.
+      try {
+        const payload = await apiRequest<any>('/api/v1/auth/me');
+        return normalizeLinkedDevices(payload?.linked_devices || payload?.linkedDevices || payload?.sessions);
+      } catch {
+        throw error;
+      }
+    }
   },
 
   async refreshTinodeToken() {
@@ -99,6 +109,10 @@ export const authService = {
       method: 'POST',
       body: JSON.stringify({}),
     });
+    if (payload?.access_token) {
+      setAccessToken(payload.access_token);
+      await storageService.saveAccessToken(payload.access_token);
+    }
     const auth = normalizeTinodeAuth(payload?.tinode_auth || payload?.tinode);
     if (!auth) throw new Error('Chatmgt không trả về Tinode token hợp lệ.');
     return auth;

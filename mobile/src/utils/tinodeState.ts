@@ -5,6 +5,12 @@ export interface ReceiptCursor {
   readSeq?: number;
 }
 
+export function directPeerOnline(conversation: Conversation, currentUid: string) {
+  if (conversation.isGroup) return false;
+  const peer = (conversation.members || []).find(member => member.uid !== currentUid && member.id !== currentUid);
+  return peer?.online === true;
+}
+
 function deliveryRank(status: DeliveryStatus) {
   return { none: 0, sending: 1, sent: 2, received: 3, read: 4, failed: 0 }[status] || 0;
 }

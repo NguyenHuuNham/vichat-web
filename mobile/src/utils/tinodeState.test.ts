@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPresenceToConversation, mapTinodeDeliveryStatus } from './tinodeState';
+import { applyPresenceToConversation, directPeerOnline, mapTinodeDeliveryStatus } from './tinodeState';
 
 describe('mapTinodeDeliveryStatus', () => {
   it('maps Tinode receipt thresholds for outgoing messages', () => {
@@ -31,5 +31,18 @@ describe('applyPresenceToConversation', () => {
 
     expect(applyPresenceToConversation(conversation, 'usr-peer', true).membersCount).toBe('Đang hoạt động');
     expect(applyPresenceToConversation(conversation, 'usr-other', true)).toBe(conversation);
+  });
+
+  it('does not use the mobile connection or receipt state as peer presence', () => {
+    const conversation: any = {
+      id: 'usr-peer', tinodeTopic: 'usr-peer', managementId: '1', name: 'Peer', isGroup: false,
+      members: [
+        { id: 'usr-me', uid: 'usr-me', online: true },
+        { id: 'usr-peer', uid: 'usr-peer', online: false },
+      ], messages: [], badge: 0,
+    };
+
+    expect(directPeerOnline(conversation, 'usr-me')).toBe(false);
+    expect(directPeerOnline({ ...conversation, members: conversation.members.map((member: any) => ({ ...member, online: true })) }, 'usr-me')).toBe(true);
   });
 });

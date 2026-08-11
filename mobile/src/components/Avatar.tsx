@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../theme/colors';
+import { tinodeClient } from '../services/tinodeClient';
 
 interface Props { name?: string; uri?: string; size?: number; online?: boolean; rounded?: boolean }
 
@@ -9,11 +11,25 @@ function initials(name = '') {
 }
 
 export function Avatar({ name = '', uri = '', size = 48, online = false, rounded = true }: Props) {
+  const [sourceUri, setSourceUri] = useState('');
   const radius = rounded ? size / 2 : Math.round(size * 0.3);
+  useEffect(() => {
+    let active = true;
+    if (!uri) {
+      setSourceUri('');
+      return () => { active = false; };
+    }
+    void tinodeClient.cacheImage(uri).then(value => {
+      if (active) setSourceUri(value);
+    }).catch(() => {
+      if (active) setSourceUri(uri);
+    });
+    return () => { active = false; };
+  }, [uri]);
   return (
     <View style={{ width: size, height: size }}>
-      {uri ? (
-        <Image source={{ uri }} style={{ width: size, height: size, borderRadius: radius, backgroundColor: colors.accentWash }} />
+      {sourceUri ? (
+        <Image source={{ uri: sourceUri, headers: tinodeClient.getMediaHeaders() }} style={{ width: size, height: size, borderRadius: radius, backgroundColor: colors.accentWash }} />
       ) : (
         <View style={[styles.fallback, { width: size, height: size, borderRadius: radius }]}>
           <Text style={[styles.initials, { fontSize: Math.max(13, size * 0.32) }]}>{initials(name)}</Text>

@@ -16,6 +16,7 @@ import { MessageActionSheet } from '../../components/MessageActionSheet';
 import { TypingIndicator } from '../../components/TypingIndicator';
 import { ChatMessage, PickerFile, RecallMode } from '../../types';
 import { attachmentValidationError, canInteractWithMessage } from '../../utils/messagePolicy';
+import { directPeerOnline } from '../../utils/tinodeState';
 import { formatMessageDateLabel } from '../../utils/timeFormatting';
 import { beginTrustedExternalActivity } from '../../services/appLifecycleService';
 import { tinodeClient } from '../../services/tinodeClient';
@@ -152,8 +153,8 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']}>
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} style={styles.back}><ChevronLeft color={colors.ink} size={27} /></Pressable>
-        <Avatar name={conversation.name} uri={conversation.avatarUrl} size={42} rounded={!conversation.isGroup} online={!conversation.isGroup && conversation.members?.some(member => member.online)} />
-        <View style={styles.headerTitle}><Text numberOfLines={1} style={styles.name}>{conversation.name}</Text><Text style={styles.status}>{conversation.isChatbot ? 'Trợ lý AI nội bộ' : conversation.membersCount || (connection === 'connected' ? 'Đang hoạt động' : 'Offline')}</Text></View>
+        <Avatar name={conversation.name} uri={conversation.avatarUrl} size={42} rounded={!conversation.isGroup} online={!conversation.isGroup && directPeerOnline(conversation, tinodeClient.currentUserId)} />
+        <View style={styles.headerTitle}><Text numberOfLines={1} style={styles.name}>{conversation.name}</Text><Text style={styles.status}>{conversation.isChatbot ? 'Trợ lý AI nội bộ' : conversation.isGroup ? conversation.membersCount : (directPeerOnline(conversation, tinodeClient.currentUserId) ? 'Đang hoạt động' : 'Offline')}</Text></View>
         <Pressable accessibilityLabel="Thông tin cuộc trò chuyện" onPress={() => Alert.alert('Thông tin', conversation.description || (conversation.isGroup ? `${conversation.members?.length || 0} thành viên` : 'Cuộc trò chuyện nội bộ'))} style={styles.more}><Info color={colors.inkSoft} size={21} /></Pressable>
       </View>
       {connection !== 'connected' ? <View style={styles.offline}><WifiOff color={colors.warning} size={15} /><Text style={styles.offlineText}>Realtime đang gián đoạn. Tin nhắn sẽ gửi lại khi kết nối ổn định.</Text></View> : null}

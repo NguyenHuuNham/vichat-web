@@ -35,7 +35,7 @@ export function LinkedDevicesScreen({ navigation }: Props) {
       </View>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.intro}><Text style={styles.introTitle}>Phiên đăng nhập</Text><Text style={styles.introText}>Theo dõi nơi tài khoản đang được sử dụng trên ViChat.</Text></View>
-        {devices.map(device => <DeviceCard key={device.id} device={device} />)}
+        {devices.length ? devices.map(device => <DeviceCard key={device.id} device={device} />) : <Text style={styles.empty}>Chưa có phiên đăng nhập nào được máy chủ ghi nhận.</Text>}
       </ScrollView>
     </SafeAreaView>
   );
@@ -63,6 +63,7 @@ const styles = StyleSheet.create({
   intro: { marginBottom: 17 },
   introTitle: { ...typography.heading, color: colors.ink },
   introText: { ...typography.body, color: colors.inkSoft, marginTop: 4 },
+  empty: { ...typography.body, color: colors.muted, paddingVertical: 24, textAlign: 'center' },
   deviceCard: { minHeight: 86, marginBottom: 12, padding: 14, borderRadius: 19, backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.line, flexDirection: 'row', alignItems: 'center', gap: 12, ...shadow },
   deviceIcon: { width: 44, height: 44, borderRadius: 15, backgroundColor: colors.accentWash, alignItems: 'center', justifyContent: 'center' },
   deviceBody: { flex: 1, minWidth: 0 },
