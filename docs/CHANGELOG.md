@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: Gradle release build truoc do dat `BUILD SUCCESSFUL` (17m42s); `apksigner verify --verbose --print-certs` dat voi APK Signature Scheme v2; `zipalign -c -v 4` dat; `aapt dump badging` xac nhan package/version/minSdk/targetSdk/arm64; SHA-256 `D786157960EE81BA6E96AF917AEC57FB1BCE27147E54CA70567ED4CCD8D988E4`.
 - Rui ro con lai: Chi co ABI `arm64-v8a`; may Android qua cu hoac ABI 32-bit khong cai duoc. Test signer phu hop UAT, khong dung de phat hanh store.
 - Viec tiep theo: Cai APK tren dien thoai Android bat USB debugging bang `adb install -r outputs\\vichat-mobile\\ViChat-1.0.0-arm64.apk`, sau do UAT dang nhap, danh ba, chat Tinode, file va chatbot.
-- Commit/PR: Commit chua muc nay (xem `git log`).
+- Commit/PR: `6c62cc4`.
 
 ## 2026-08-11-07 - Xay dung ViChat Mobile dung chung Chatmgt va Tinode
 
