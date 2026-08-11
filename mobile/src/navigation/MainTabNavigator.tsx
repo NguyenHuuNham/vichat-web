@@ -1,11 +1,12 @@
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { BottomTabBarButtonProps, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MessageCircleMore, ContactRound, Blocks, Settings } from 'lucide-react-native';
 import { MainTabParamList } from './types';
 import { ConversationListScreen } from '../screens/chat/ConversationListScreen';
 import { ContactsScreen } from '../screens/contacts/ContactsScreen';
 import { WorkspaceScreen } from '../screens/workspace/WorkspaceScreen';
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
-import { colors } from '../theme/colors';
+import { colors, shadow } from '../theme/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -20,11 +21,13 @@ export function MainTabNavigator() {
       return {
         headerShown: false,
         tabBarHideOnKeyboard: true,
-        tabBarActiveTintColor: colors.accent,
+        tabBarActiveTintColor: colors.accentDeep,
         tabBarInactiveTintColor: colors.muted,
-        tabBarStyle: { height: 62 + insets.bottom, paddingTop: 8, paddingBottom: Math.max(8, insets.bottom), borderTopColor: colors.line, backgroundColor: colors.paper },
-        tabBarLabelStyle: { fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 11 },
-        tabBarIcon: ({ color, size }) => <Icon color={color} size={size} strokeWidth={2.2} />,
+        tabBarStyle: { position: 'absolute', left: 14, right: 14, bottom: Math.max(10, insets.bottom), height: 72, paddingHorizontal: 5, paddingTop: 5, paddingBottom: 5, borderWidth: 1, borderColor: colors.line, borderRadius: 36, backgroundColor: colors.paper, ...shadow },
+        tabBarItemStyle: { borderRadius: 28, marginHorizontal: 2 },
+        tabBarLabelStyle: { fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 11, marginBottom: 3 },
+        tabBarButton: props => <FloatingTabButton {...props} />,
+        tabBarIcon: ({ color, size, focused }) => <View style={[styles.iconWrap, focused && styles.iconWrapActive]}><Icon color={color} size={size} strokeWidth={2.2} /></View>,
       };
     }}>
       <Tab.Screen name="Chats" component={ConversationListScreen} options={{ title: 'Tin nhắn' }} />
@@ -34,3 +37,15 @@ export function MainTabNavigator() {
     </Tab.Navigator>
   );
 }
+
+function FloatingTabButton({ children, style, onPress, onLongPress, accessibilityState, accessibilityLabel, testID }: BottomTabBarButtonProps) {
+  const active = accessibilityState?.selected;
+  return <Pressable onPress={onPress} onLongPress={onLongPress} accessibilityRole="button" accessibilityState={accessibilityState} accessibilityLabel={accessibilityLabel} testID={testID} style={[styles.tabButton, active && styles.tabButtonActive, style]}>{children}</Pressable>;
+}
+
+const styles = StyleSheet.create({
+  tabButton: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  tabButtonActive: { backgroundColor: colors.accentWash },
+  iconWrap: { minWidth: 32, minHeight: 28, alignItems: 'center', justifyContent: 'center' },
+  iconWrapActive: { transform: [{ translateY: -1 }] },
+});

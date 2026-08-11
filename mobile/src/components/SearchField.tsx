@@ -13,6 +13,6 @@ export function SearchField({ value, onChangeText, placeholder = 'Tìm kiếm' }
 }
 
 const styles = StyleSheet.create({
-  wrap: { height: 48, borderRadius: 18, backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.line, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, gap: 10 },
+  wrap: { height: 50, borderRadius: 17, backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.line, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, gap: 10 },
   input: { flex: 1, color: colors.ink, fontFamily: 'BeVietnamPro_400Regular', fontSize: 14, paddingVertical: 0 },
 });

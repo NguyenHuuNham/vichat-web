@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-12-01 - Tai bo cuc Lumina cho ViChat Mobile
+
+- Thoi gian: 2026-08-12 00:10 (Asia/Saigon)
+- Loai: Giao dien | Mobile | Kiem thu | Tai lieu
+- Trang thai: Hoan tat layout va build APK; chua UAT truc tiep vi may khong co thiet bi ADB
+- Muc tieu: Dua bo cuc mobile theo ZIP `stitch_internal_enterprise_messenger.zip` (header lon, filter chips, card hoi thoai, danh ba theo phong ban, ho so dang card, tab bar noi va composer moi) nhung giu nguyen mau hien tai cua ViChat va toan bo luong chuc nang.
+- Pham vi: Chi `mobile/` va nhat ky; khong sua web `src/`/`dist/`, API, database, Tinode topic, auth, receipt, presence, recall, file, push hay app lock.
+- File da thay doi: `mobile/src/screens/chat/ConversationListScreen.tsx`, `mobile/src/components/ConversationRow.tsx`, `mobile/src/screens/chat/ChatDetailScreen.tsx`, `mobile/src/components/MessageBubble.tsx`, `mobile/src/screens/contacts/ContactsScreen.tsx`, `mobile/src/screens/settings/SettingsScreen.tsx`, `mobile/src/screens/workspace/WorkspaceScreen.tsx`, `mobile/src/navigation/MainTabNavigator.tsx`, `mobile/src/components/SearchField.tsx`, va `docs/CHANGELOG.md`.
+- Noi dung: Danh sach chat co header avatar, tim kiem bat/tat, bo loc Tat ca/Chua doc/Nhom, card hoi thoai va nut mo Danh ba; Danh ba gom theo phong ban va giu tao nhom/tao direct chat; Ho so & Cai dat dung profile card va cac nhom cai dat; chat detail giu thao tac attach/reply/reaction/recall nhung doi header, bubble va composer; tab bar dung dang pill noi de khong che list.
+- Quyet dinh ky thuat: Chi thay StyleSheet va presentation component, them filter local tu state hien co, khong tao data demo va khong thay doi handler store/service. Mau van dung `mobile/src/theme/colors.ts`, khong copy palette Midnight Navy/Indigo cua ZIP.
+- Database/API/cau hinh: Khong migration, khong doi API, secret, version app hay native credential.
+- Kiem thu: `mobile/npm run typecheck` dat; `mobile/npm run lint` dat; `mobile/npm test` dat 8 file/18 test; `mobile/npm run export` dat; Gradle `app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon` dat; `aapt dump badging` xac nhan package `vn.upgo.vichat`, version `1.0.5`/code `6`; `apksigner verify --verbose` dat v2. APK `outputs/vichat-mobile/ViChat-1.0.5-layout-arm64.apk`, SHA-256 `096D9D384543B4A5FBDB6C34D32A89BC6C58D99E8986988B16FCB0967A1BC56E`.
+- Rui ro con lai: `adb devices` khong co thiet bi nen chua xac minh screenshot native, tab bar khi cuon, composer khi mo ban phim va tap tren man hinh that; can cai APK tren Android arm64 de UAT layout.
+- Viec tiep theo: Cai `outputs/vichat-mobile/ViChat-1.0.5-layout-arm64.apk` tren thiet bi Android, kiem tra 4 man hinh theo ZIP va xac nhan cac luong chat/realtime cu van hoat dong.
+- Commit/PR: Chua tao.
+
 ## 2026-08-11-13 - Sua realtime presence receipt va recall cho ViChat Mobile
 
 - Thoi gian: 2026-08-11 23:11 (Asia/Saigon)

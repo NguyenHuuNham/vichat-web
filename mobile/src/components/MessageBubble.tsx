@@ -79,16 +79,16 @@ function openAttachment(file: FileAttachment) {
 }
 
 const styles = StyleSheet.create({
-  line: { marginBottom: 9, paddingHorizontal: 14 },
+  line: { marginBottom: 12, paddingHorizontal: 16 },
   outgoingLine: { alignItems: 'flex-end' },
   incomingLine: { alignItems: 'flex-start' },
-  bubble: { maxWidth: '86%', minWidth: 70, borderRadius: 20, paddingHorizontal: 13, paddingTop: 10, paddingBottom: 7, shadowColor: '#17212B', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 },
+  bubble: { maxWidth: '86%', minWidth: 70, borderRadius: 21, paddingHorizontal: 15, paddingTop: 12, paddingBottom: 8, shadowColor: '#17212B', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   outgoing: { backgroundColor: colors.bubbleOutgoing, borderBottomRightRadius: 6 },
   incoming: { backgroundColor: colors.bubbleIncoming, borderBottomLeftRadius: 6 },
   mediaBubble: { padding: 2, backgroundColor: 'transparent', minWidth: 0, overflow: 'hidden' },
   pending: { opacity: 0.65 },
   failed: { borderWidth: 1, borderColor: colors.danger },
-  text: { ...typography.body, color: colors.ink, paddingBottom: 2 },
+  text: { ...typography.body, color: colors.ink, paddingBottom: 3 },
   outgoingText: { color: '#fff' },
   image: { width: 250, borderRadius: 17, backgroundColor: colors.accentWash },
   imageState: { width: 250, height: 176, borderRadius: 17, backgroundColor: 'rgba(244,81,30,0.12)', alignItems: 'center', justifyContent: 'center', gap: 9, padding: 20 },
