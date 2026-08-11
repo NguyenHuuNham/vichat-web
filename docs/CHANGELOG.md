@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `mobile/npm run typecheck` dat; `mobile/npm run lint` dat; focused `npx vitest run ...` dat 7 file/17 test; `mobile/npm run export` dat; `npm run test:frontend` dat 57/57; `node --test src/features/chat/services/messagePolicy.test.js` dat 4/4; `python -m unittest discover -s chatservice-main/tests -q` dat 131 test, skip 40; Gradle `app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon` dat; `aapt` xac nhan package `vn.upgo.vichat`, version `1.0.6`/code `7`; `apksigner` truc tiep xac nhan v2; `zipalign -c -v 4` dat; `adb install -r` dat va `MainActivity` resumed, PID `11952`, khong co crash marker trong logcat; hash SHA-256 `06844B8E28A248DA21657CB56D3DCA3C752E9851F4692B81BFCF6F0D549530BF`.
 - Rui ro con lai: `mobile/npm test` full con fail rieng `src/services/workspaceService.test.ts` vi Rolldown khong parse Flow trong `react-native/index.js`; focused suite van dat. Chua UAT hai tai khoan that cho recall/group/avatar/linked devices va chua xac nhan push khi app bi suspend/kill tren binary co credential Firebase/APNs.
 - Viec tiep theo: Cai APK cho nguoi dung test hai tai khoan trong cung tenant; neu dua linked devices len production thi deploy Chatmgt/backend release tuong ung, khong deploy lai ChatUI web.
-- Commit/PR: Chua tao.
+- Commit/PR: `173e870` (commit mobile/backend/docs; khong deploy ChatUI web).
 
 ## 2026-08-12-02 - Tinh chinh header va them thiet bi lien ket cho ViChat Mobile
 
