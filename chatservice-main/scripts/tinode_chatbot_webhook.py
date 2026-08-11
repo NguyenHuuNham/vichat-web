@@ -10,9 +10,13 @@ import itertools
 import json
 import logging
 import os
+from pathlib import Path
+import sys
 
 import aiohttp
 from aiohttp import web
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from application.server import app
 from application.services.auth_service import _tinode_bridge_headers

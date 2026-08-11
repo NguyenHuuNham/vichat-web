@@ -75,6 +75,7 @@ class TinodeChatbotContractTests(unittest.TestCase):
         app = (REPOSITORY_ROOT / "src" / "app" / "App.jsx").read_text(encoding="utf-8")
         compose = (REPOSITORY_ROOT / "infrastructure" / "production" / "compose.yaml").read_text(encoding="utf-8")
 
+        self.assertIn("sys.path.insert(0, str(Path(__file__).resolve().parents[1]))", worker)
         self.assertIn('topic.startswith("usr")', worker)
         self.assertIn('X-Vichat-Chatbot-Webhook', controller)
         self.assertIn('ManagementAccount.tinode_uid == sender_uid', controller)
