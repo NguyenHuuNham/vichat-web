@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `mobile/npm run typecheck` dat; `mobile/npm run lint` dat; `mobile/npx vitest run src/utils/tinodeState.test.ts src/utils/messagePolicy.test.ts src/utils/mediaUrl.test.ts` dat 3 file/10 test; `python -m unittest discover -s chatservice-main/tests -q` dat 131 test, skip 40; `mobile/npm run export` dat; Gradle assemble release arm64 tao APK package `vn.upgo.vichat`, version `1.0.7`/code `8`; `apksigner` v2 va `zipalign -c -v 4` dat; SHA-256 `B5892A398951D85C86607A820140A13561D35DB4C4EA1FBF897E65FCD7D9188F`; `adb install` chua chay vi khong co thiet bi/emulator.
 - Rui ro con lai: Chua UAT hai tai khoan that cho recall/avatar/presence; linked devices van rong neu production chua chay code Chatmgt co Redis registry; push khi app bi kill van phu thuoc credential Firebase/APNs va Tinode provider.
 - Viec tiep theo: Cai APK tren hai thiet bi, UAT recall/avatar/presence va deploy rieng Chatmgt backend; khong deploy lai ChatUI web.
-- Commit/PR: Chua tao.
+- Commit/PR: `18f70c7`.
 
 ## 2026-08-12-03 - Dong bo recall, group, avatar va linked devices cho Mobile
 
