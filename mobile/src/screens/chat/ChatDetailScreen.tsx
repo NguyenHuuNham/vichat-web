@@ -77,6 +77,8 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     try {
       let file: PickerFile | null = null;
       if (imageOnly) {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) throw new Error('ViChat cần quyền truy cập ảnh để gửi hình từ thư viện.');
         const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'] as any, quality: 0.9, allowsEditing: false });
         const asset: any = !result.canceled ? result.assets?.[0] : null;
         if (asset) file = { uri: asset.uri, name: asset.fileName || `anh-${Date.now()}.jpg`, type: asset.mimeType || 'image/jpeg', size: asset.fileSize };
@@ -92,6 +94,8 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   };
   const takePhoto = async () => {
     try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) throw new Error('ViChat cần quyền camera để chụp và gửi ảnh.');
       const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'] as any, quality: 0.9, allowsEditing: false });
       const asset: any = !result.canceled ? result.assets?.[0] : null;
       await submitFile(asset ? { uri: asset.uri, name: asset.fileName || `anh-${Date.now()}.jpg`, type: asset.mimeType || 'image/jpeg', size: asset.fileSize } : null);

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-11-11 - Dong bo lai ViChat Mobile va sua gui media
+
+- Thoi gian: 2026-08-11 18:58 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Mobile | Kiem thu | Phat hanh
+- Trang thai: Hoan tat code va build APK; cho UAT thiet bi Android that
+- Muc tieu: Loai cac doan chat khong co topic Tinode, nhan du tin nhan sau khi mat mang, gui duoc file/anh/camera va hien thong bao ung dung ma khong thay doi ChatUI web, Chatmgt hay Tinode server.
+- Pham vi: `mobile/` va asset logo; khong sua API, database, tenant, backend hay service production.
+- File da thay doi: `mobile/src/services/tinodeClient.ts`, `mobile/src/store/appStore.ts`, `mobile/src/services/notificationService.ts`, `mobile/src/screens/chat/ChatDetailScreen.tsx`, `mobile/src/utils/conversationSync.ts`, `mobile/src/utils/conversationSync.test.ts`, `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`, `mobile/assets/`, va `docs/CHANGELOG.md`.
+- Noi dung: Chi giu hoi thoai co topic subscribe thanh cong khi Tinode dang online; reconnect resubscribe cac topic da theo doi va lay data sau sequence cu; dung Expo native multipart upload de tranh loi `FormData` voi file lon; xin quyen thu vien/camera; tao channel `messages` va local notification khi co tin nhan moi luc app o nen; thay icon chu V bang logo web cam tren nen kem.
+- Quyet dinh ky thuat: Khong xoa record Chatmgt; neu Tinode khong xac minh duoc topic nao thi giu metadata de khong lam mat du lieu khi relay tam thoi loi. Push token van khong dang ky backend vi chua co endpoint trong pham vi; notification local chi bao dam khi JS/Tinode dang chay o nen.
+- Database/API/cau hinh: Khong migration, khong doi API/backend; tang mobile version `1.0.3`, Android `versionCode=4`.
+- Kiem thu: `mobile/npm run typecheck` dat; `mobile/npm test` dat 13/13 test; `mobile/npm run lint` dat; `git diff --check` dat; `npx expo config --type public` nhan icon/logo va version; `npx expo prebuild --platform android --no-install` dat; Gradle `app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon` dat; `aapt` xac nhan package/version va quyen camera/notification; `apksigner` v2 dat; `zipalign -c -v 4` dat; APK arm64 SHA-256 `02CC88F78FCCB036B6BDC24084DD5427F3ECA7750D168D73C3DA2AE568642143`.
+- Rui ro con lai: `adb devices` hien khong co thiet bi nen chua cai/UAT cold-start, upload, reconnect va notification tren Android that; thong bao khi app bi kill hoan toan can FCM/APNs backend rieng.
+- Viec tiep theo: Cai `outputs/vichat-mobile/ViChat-1.0.3-arm64.apk` tren thiet bi ADB, chay cold-start/UI/logcat va UAT cac luong topic stale/reconnect/file/anh/camera/notification; khong can thay doi backend.
+- Commit/PR: Chua tao.
+
 ## 2026-08-11-10 - Sua receipt, presence va giao dien ViChat Mobile
 
 - Thoi gian: 2026-08-11 18:06-18:30 (Asia/Saigon)

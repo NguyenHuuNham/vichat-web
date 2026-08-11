@@ -5,7 +5,9 @@ import { tinodeClient, TinodeEvent } from '../services/tinodeClient';
 import { workspaceService } from '../services/workspaceService';
 import { Conversation, ChatMessage, ConnectionState, Session, User, WorkspaceItem } from '../types';
 import { storageService } from '../services/storageService';
+import { notifyIncomingMessage } from '../services/notificationService';
 import { applyPresenceToConversation } from '../utils/tinodeState';
+import { retainAvailableConversations } from '../utils/conversationSync';
 
 interface AppStore {
   status: 'booting' | 'signed_out' | 'loading' | 'ready' | 'error';
@@ -42,6 +44,7 @@ interface AppStore {
 
 let tinodeUnsubscribe: (() => void) | null = null;
 let bootstrapRequest: Promise<void> | null = null;
+let reconnectRequest: Promise<void> | null = null;
 
 function mergeConversation(previous: Conversation[], incoming: Conversation) {
   const index = previous.findIndex(item => item.id === incoming.id || (incoming.tinodeTopic && item.tinodeTopic === incoming.tinodeTopic));
@@ -50,6 +53,7 @@ function mergeConversation(previous: Conversation[], incoming: Conversation) {
   next[index] = {
     ...next[index],
     ...incoming,
+    id: incoming.managementId === incoming.tinodeTopic ? next[index].id : incoming.id,
     messages: incoming.messages.length ? incoming.messages : next[index].messages,
     name: incoming.name || next[index].name,
     avatarUrl: incoming.avatarUrl || next[index].avatarUrl,
@@ -82,7 +86,10 @@ async function loadRemoteData(set: any, get: () => AppStore) {
     : prepared;
   set({ conversations: withBot, directory, workspaceItems: workspace.items, workspaceSummary: workspace.summary });
   if (get().session?.tinodeAuth?.token) {
-    await tinodeClient.syncTopics(withBot.map(item => item.tinodeTopic).filter(Boolean));
+    const availableTopics = await tinodeClient.syncTopics(withBot.map(item => item.tinodeTopic).filter(Boolean));
+    set((current: AppStore) => ({
+      conversations: retainAvailableConversations(current.conversations, availableTopics),
+    }));
   }
 }
 
@@ -109,6 +116,9 @@ async function bootstrapAuthenticated(set: any, get: () => AppStore) {
         set({ connection: state });
       } else if (event.type === 'conversation') {
         set({ conversations: mergeConversation(current.conversations, event.conversation) });
+      } else if (event.type === 'incoming-message') {
+        const notificationConversation = conversationForId(current.conversations, event.conversation.tinodeTopic) || event.conversation;
+        void notifyIncomingMessage(notificationConversation, event.message);
       } else if (event.type === 'typing') {
         set({ typingByTopic: { ...current.typingByTopic, [event.topic]: event.active ? event.uid : '' } });
         setTimeout(() => set((latest: AppStore) => ({ typingByTopic: { ...latest.typingByTopic, [event.topic]: '' } })), 1800);
@@ -182,8 +192,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   async reconnect() {
     if (get().status !== 'ready') return;
-    await tinodeClient.reconnect();
-    if (!get().conversations.length || !get().directory.length) await get().refreshData();
+    if (reconnectRequest) return reconnectRequest;
+    reconnectRequest = (async () => {
+      const sessionUserId = get().session?.user.id;
+      const availableTopics = await tinodeClient.reconnect();
+      if (get().status !== 'ready' || get().session?.user.id !== sessionUserId) return;
+      set({ conversations: retainAvailableConversations(get().conversations, availableTopics) });
+      if (!get().conversations.length || !get().directory.length) await get().refreshData();
+    })().finally(() => { reconnectRequest = null; });
+    return reconnectRequest;
   },
 
   async refreshData() {

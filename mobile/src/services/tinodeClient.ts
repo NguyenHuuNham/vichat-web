@@ -34,6 +34,7 @@ type Listener = (event: TinodeEvent) => void;
 export type TinodeEvent =
   | { type: 'connection'; state: 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error'; error?: unknown }
   | { type: 'conversation'; conversation: Conversation }
+  | { type: 'incoming-message'; conversation: Conversation; message: ChatMessage }
   | { type: 'typing'; topic: string; uid: string; active: boolean }
   | { type: 'presence'; uid: string; online: boolean };
 
@@ -211,6 +212,7 @@ export class TinodeMobileClient {
   private tokenProvider: (() => Promise<TinodeAuth>) | null = null;
   private topics = new Map<string, any>();
   private presenceByUid = new Map<string, boolean>();
+  private notifiedSeqByTopic = new Map<string, number>();
 
   onEvent(listener: Listener) {
     this.listeners.add(listener);
@@ -227,6 +229,16 @@ export class TinodeMobileClient {
 
   private materialize(topic: any) {
     return materializeConversation(topic, this.client, (uid, fallback) => this.getPresenceStatus(uid, fallback));
+  }
+
+  private emitIncomingMessage(topic: any, raw: any, conversation?: Conversation) {
+    const message = normalizeMessage(raw, this.client, topic);
+    if (!message || message.sender !== 'incoming' || ['reaction', 'recall', 'system'].includes(message.type)) return;
+    const seq = Number(message.seq || 0);
+    const notifiedSeq = this.notifiedSeqByTopic.get(topic.name) || 0;
+    if (seq > 0 && seq <= notifiedSeq) return;
+    if (seq > 0) this.notifiedSeqByTopic.set(topic.name, seq);
+    this.emit({ type: 'incoming-message', conversation: conversation || this.materialize(topic), message });
   }
 
   getPresenceStatus(uid: string, fallback = false) {
@@ -269,7 +281,11 @@ export class TinodeMobileClient {
   private wireTopic(topic: any) {
     if (!topic || topic.__vichatMobileWired) return topic;
     topic.__vichatMobileWired = true;
-    topic.onData = () => this.emit({ type: 'conversation', conversation: this.materialize(topic) });
+    topic.onData = (raw: any) => {
+      const conversation = this.materialize(topic);
+      this.emit({ type: 'conversation', conversation });
+      if (!topic.__vichatMobileSyncing) this.emitIncomingMessage(topic, raw, conversation);
+    };
     topic.onMetaSub = () => this.emit({ type: 'conversation', conversation: this.materialize(topic) });
     topic.onSubsUpdated = () => this.emit({ type: 'conversation', conversation: this.materialize(topic) });
     topic.onPres = (presence: any) => {
@@ -331,12 +347,15 @@ export class TinodeMobileClient {
   }
 
   async reconnect() {
-    if (!this.auth || this.intentionalDisconnect) return;
+    if (!this.auth || this.intentionalDisconnect) return new Set<string>();
+    const trackedTopics = [...this.topics.keys()];
     try {
       const auth = this.tokenProvider ? await this.tokenProvider() : this.auth;
       await this.connect(auth, this.tokenProvider || (async () => auth));
+      return await this.syncTopics(trackedTopics);
     } catch (error) {
       this.emit({ type: 'connection', state: 'error', error });
+      return new Set<string>();
     }
   }
 
@@ -346,6 +365,7 @@ export class TinodeMobileClient {
     this.meTopic = null;
     this.topics.clear();
     this.presenceByUid.clear();
+    this.notifiedSeqByTopic.clear();
     this.client?.disconnect?.();
     this.client = null;
     this.emit({ type: 'connection', state: 'disconnected' });
@@ -354,19 +374,48 @@ export class TinodeMobileClient {
   async subscribeTopic(name: string, historyLimit = 100) {
     if (!this.client || !name) throw new Error('Tinode chưa kết nối.');
     const topic = this.getTopic(name);
-    if (!topic.isSubscribed?.()) {
-      await topic.subscribe(topic.startMetaQuery().withDesc().withSub().withEarlierData(historyLimit).withDel(undefined, historyLimit).build());
-    } else if (historyLimit > 0 && !topic.__vichatMobileHistoryLoaded) {
-      await topic.getMeta(topic.startMetaQuery().withEarlierData(historyLimit).withDel(undefined, historyLimit).build());
+    const historyLoaded = Boolean(topic.__vichatMobileHistoryLoaded);
+    const previousMaxSeq = Number(topic.maxMsgSeq?.() || 0);
+    topic.__vichatMobileSyncing = true;
+    try {
+      if (!topic.isSubscribed?.()) {
+        const query = topic.startMetaQuery().withDesc().withSub();
+        if (historyLimit > 0) {
+          if (historyLoaded && previousMaxSeq > 0) query.withLaterData(historyLimit).withLaterDel(historyLimit);
+          else query.withEarlierData(historyLimit).withDel(undefined, historyLimit);
+        }
+        await topic.subscribe(query.build());
+      } else if (historyLimit > 0 && !historyLoaded) {
+        await topic.getMeta(topic.startMetaQuery().withEarlierData(historyLimit).withDel(undefined, historyLimit).build());
+      }
+    } finally {
+      topic.__vichatMobileSyncing = false;
     }
-    topic.__vichatMobileHistoryLoaded = true;
+    if (historyLimit > 0) topic.__vichatMobileHistoryLoaded = true;
     const conversation = this.materialize(topic);
     this.emit({ type: 'conversation', conversation });
+    const latestSeq = Number(topic.maxMsgSeq?.() || 0);
+    if (!historyLoaded) {
+      this.notifiedSeqByTopic.set(name, latestSeq);
+    } else if (latestSeq > previousMaxSeq) {
+      const missed = conversation.messages.filter(message =>
+        message.sender === 'incoming'
+        && !['reaction', 'recall', 'system'].includes(message.type)
+        && Number(message.seq || 0) > previousMaxSeq,
+      ).at(-1);
+      if (missed) this.emitIncomingMessage(topic, missed.raw, conversation);
+      else this.notifiedSeqByTopic.set(name, latestSeq);
+    }
     return conversation;
   }
 
   async syncTopics(names: string[]) {
-    await Promise.allSettled([...new Set(names.filter(Boolean))].map(name => this.subscribeTopic(name, 40)));
+    const uniqueNames = [...new Set(names.filter(Boolean))];
+    const results = await Promise.allSettled(uniqueNames.map(async name => {
+      await this.subscribeTopic(name, 40);
+      return name;
+    }));
+    return new Set(results.flatMap(result => result.status === 'fulfilled' ? [result.value] : []));
   }
 
   openConversation(name: string) { return this.subscribeTopic(name, 100); }
@@ -417,17 +466,49 @@ export class TinodeMobileClient {
     if (Number(file.size) > config.maxAttachmentBytes) throw new Error('File hoặc ảnh không được lớn hơn 500 MB.');
     await this.subscribeTopic(topicName, 0);
     const topic = this.getTopic(topicName);
-    const form = new FormData();
-    form.append('file', { uri: file.uri, name: file.name || 'tep-dinh-kem', type: file.type || 'application/octet-stream' } as any);
-    form.append('id', `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    const response = await fetch(`${config.mediaBase}/v0/file/u/`, {
-      method: 'POST',
-      headers: tinodeHeaders(this.client.getAuthToken?.()?.token || ''),
-      body: form,
-    });
-    const payload = await response.json().catch(() => ({}));
+    const uploadUrl = `${config.mediaBase}/v0/file/u/`;
+    const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const headers = tinodeHeaders(this.client.getAuthToken?.()?.token || '');
+    let uploadResponse: { status: number; body: string };
+    try {
+      const fileSystem: any = require('expo-file-system');
+      if (fileSystem.File && fileSystem.UploadType?.MULTIPART !== undefined) {
+        const localFile = new fileSystem.File(file.uri);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+        try {
+          const result = await localFile.upload(uploadUrl, {
+            httpMethod: 'POST',
+            uploadType: fileSystem.UploadType.MULTIPART,
+            fieldName: 'file',
+            mimeType: file.type || 'application/octet-stream',
+            parameters: { id: uploadId },
+            headers,
+            signal: controller.signal,
+          });
+          uploadResponse = { status: Number(result.status || 0), body: String(result.body || '') };
+        } finally {
+          clearTimeout(timeout);
+        }
+      } else {
+        const form = new FormData();
+        form.append('file', { uri: file.uri, name: file.name || 'tep-dinh-kem', type: file.type || 'application/octet-stream' } as any);
+        form.append('id', uploadId);
+        const response = await fetch(uploadUrl, { method: 'POST', headers, body: form });
+        uploadResponse = { status: response.status, body: await response.text() };
+      }
+    } catch (error) {
+      const detail = error instanceof Error && error.name === 'AbortError'
+        ? 'Upload quá thời gian cho phép.'
+        : error instanceof Error ? error.message : 'lỗi mạng';
+      throw new Error(`Không kết nối được máy chủ upload: ${detail}`, { cause: error });
+    }
+    const status = uploadResponse.status;
+    const payload = (() => {
+      try { return JSON.parse(uploadResponse.body); } catch { return {}; }
+    })();
     const url = payload?.ctrl?.params?.url;
-    if (!response.ok || !url) throw new Error(payload?.ctrl?.text || `Tinode từ chối file (HTTP ${response.status}).`);
+    if (status < 200 || status >= 300 || !url) throw new Error(payload?.ctrl?.text || `Tinode từ chối file (HTTP ${status || 'không xác định'}).`);
     const attachment = { mime: file.type || 'application/octet-stream', filename: file.name || 'Tệp đính kèm', refurl: url, size: file.size || 0 };
     const isImage = /^image\//i.test(attachment.mime) || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(attachment.filename);
     if (!Drafty || (isImage ? !Drafty.appendImage : !Drafty.attachFile)) throw new Error('Tinode SDK không hỗ trợ file trên thiết bị này.');
