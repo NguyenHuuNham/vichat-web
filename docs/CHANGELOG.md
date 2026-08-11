@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-11-09 - Sua crash khoi dong ViChat Mobile tren Android 11
+
+- Thoi gian: 2026-08-11 17:18-17:38 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Kiem thu | Phat hanh
+- Trang thai: Hoan tat; da cai va xac minh tren thiet bi Android that
+- Muc tieu: Khac phuc APK mo len roi tu thoat, phat hanh ban test moi ma khong thay doi ChatUI, Chatmgt, Tinode server hay cac service production.
+- Pham vi: Thu tu khoi tao polyfill/Tinode SDK, lazy-load module notification, version Android va APK test arm64; khong doi API, auth, tenant, database, message/file flow hoac ha tang production.
+- File da thay doi: `mobile/app.json`, `mobile/index.ts`, `mobile/src/polyfills/intlSegmenter.ts`, `mobile/src/polyfills/intlSegmenter.test.ts`, `mobile/src/services/notificationService.ts`, `mobile/src/services/tinodeClient.ts`, va `docs/CHANGELOG.md`.
+- Noi dung: ADB log tren Redmi `M2104K10AC` xac nhan `tinode-sdk` goi `new Intl.Segmenter` trong luc module duoc danh gia, trong khi Hermes tren Android 11 chua co constructor nay; React Native nem `JavascriptException` roi tien trinh bi `SIGABRT`. Tinode SDK nay duoc nap dong sau khi cai fallback `Intl.Segmenter`; notification native cung chi nap khi push duoc bat. Tang app version len `1.0.1`, Android versionCode len `2`.
+- Quyet dinh ky thuat: Khong sua hoac fork `tinode-sdk`; giu SDK va chat contract hien tai, chi doi thoi diem import de fallback duoc cai truoc code UMD cua SDK. Kiem tra constructor sau import de tra loi co kiem soat neu binary SDK khong hop le.
+- Database/API/cau hinh: Khong co migration, API hoac bien production moi. Khong deploy/recreate bat ky service production nao.
+- Kiem thu: Symbolicate source map anh xa loi bundle toi `tinode-sdk/umd/tinode.prod.js` dong khoi tao `Intl.Segmenter`; `npm run typecheck`, `npm test` dat 4 file/8 test va `npm run lint` dat. `expo prebuild --platform android --no-install` dat; Gradle `app:assembleRelease` dat; `aapt` xac nhan `vn.upgo.vichat` version `1.0.1`/code `2`, min SDK 24, target SDK 36, ABI `arm64-v8a`; `apksigner` v2 dat va SHA-256 APK la `A048F6AE8D9DC7FB8F849A02109E212E6F2A52C7FE7094AF595EADC951F99F3F`.
+- Kiem thu thiet bi: `adb install -r` dat va giu phien cu; cold-start sau 12 giay con PID `31757`, `FocusedApp` la `vn.upgo.vichat/.MainActivity`, package tren may la versionCode `2`/versionName `1.0.1`, UI da tai danh sach va hien `Realtime`; log theo PID khong con `JavascriptException`, `undefined cannot be used as a constructor` hoac `SIGABRT` cua ViChat.
+- Rui ro con lai: APK van dung test/debug signer va chi co `arm64-v8a`, phu hop UAT noi bo nhung chua phai artifact Play Store. Log ROM co crash lap lai cua `/vendor/bin/soterd`, day la service he thong Xiaomi va khong lam tien trinh ViChat thoat.
+- Viec tiep theo: UAT mo/dong app nhieu lan, chat 1-1/nhom, gui file va chatbot tren dien thoai; neu dat moi tao AAB/release-signed cho store.
+- Commit/PR: Chua tao.
+
 ## 2026-08-11-08 - Phat hanh APK Android test ViChat Mobile
 
 - Thoi gian: 2026-08-11 17:03 (Asia/Saigon)

@@ -1,7 +1,7 @@
-import tinodeSdk from 'tinode-sdk';
 import { Platform } from 'react-native';
 import { config } from '../constants/config';
 import { ChatMessage, Conversation, FileAttachment, PickerFile, TinodeAuth } from '../types';
+import { installIntlSegmenterPolyfill } from '../polyfills/intlSegmenter';
 import {
   REACTION_EVENT_PREFIX,
   RECALL_EVENT_PREFIX,
@@ -11,8 +11,23 @@ import {
 } from '../utils/messagePolicy';
 import { formatMessageTime } from '../utils/timeFormatting';
 
-const Tinode = (tinodeSdk as any).Tinode;
-const Drafty = (tinodeSdk as any).Drafty;
+let TinodeConstructor: any = null;
+let Drafty: any = null;
+
+async function loadTinodeSdk() {
+  if (TinodeConstructor && Drafty) return;
+
+  // tinode-sdk constructs Intl.Segmenter during module evaluation. Hermes on
+  // older Android versions needs the fallback installed before importing it.
+  installIntlSegmenterPolyfill();
+  const module = await import('tinode-sdk');
+  const sdk = (module as any).default || module;
+  TinodeConstructor = sdk.Tinode;
+  Drafty = sdk.Drafty;
+  if (typeof TinodeConstructor !== 'function') {
+    throw new Error('Tinode SDK khong san sang tren thiet bi nay.');
+  }
+}
 
 type Listener = (event: TinodeEvent) => void;
 export type TinodeEvent =
@@ -257,11 +272,12 @@ export class TinodeMobileClient {
 
   async connect(auth: TinodeAuth, tokenProvider: () => Promise<TinodeAuth>) {
     if (this.connected && this.auth?.uid === auth.uid) return;
+    await loadTinodeSdk();
     this.intentionalDisconnect = false;
     this.auth = auth;
     this.tokenProvider = tokenProvider;
     if (!this.client) {
-      this.client = new Tinode({
+      this.client = new TinodeConstructor({
         appName: config.appName,
         host: config.tinodeHost,
         apiKey: config.tinodeApiKey,

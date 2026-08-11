@@ -4,7 +4,7 @@
     "slug": "vichat-mobile",
     "scheme": "vichat",
     "description": "ViChat doanh nghiệp - kết nối nội bộ an toàn",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -21,6 +21,7 @@
     },
     "android": {
       "package": "vn.upgo.vichat",
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
