@@ -110,7 +110,8 @@ Production keeps `VITE_CHAT_MODE=internal`, so the assistant is a normal Tinode
 P2P conversation alongside employee chats. ChatUI obtains the bot UID from
 Chatmgt, while the isolated `tinode-chatbot-webhook` worker receives only direct
 `usr*` messages, calls `https://knowledge.gonapp.net/api/v1/chat` through
-Chatmgt's tenant-checked webhook, and publishes the reply back to Tinode.
+Chatmgt's tenant-checked webhook without knowledge retrieval or RAG context,
+and publishes the reply back to Tinode.
 Normal employee/group/file flows never pass through the worker. Configure the
 bot credentials and shared webhook key in the private production `.env`; see
 `infrastructure/production/.env.example` and
@@ -118,9 +119,10 @@ bot credentials and shared webhook key in the private production `.env`; see
 
 `CHATBOT_PROVIDER=external-webhook` remains the server-side provider setting and
 the existing authenticated `/api/v1/chatbot/message` endpoint remains a
-fallback for clients without a Tinode bot topic. Approved RAG data can still be
-exposed through `POST /api/v1/chatbot/external/context`; it is tenant-fixed and
-never includes employee conversation content.
+direct-provider fallback for clients without a Tinode bot topic. ChatUI no
+longer exposes the knowledge manager or sends a knowledge-base selection.
+Legacy approved RAG APIs remain isolated integration endpoints; they are not
+used by the ViChat AI conversation and never include employee chat content.
 
 ## Enterprise Workspace
 

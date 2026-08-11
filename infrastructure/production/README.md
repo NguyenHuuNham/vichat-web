@@ -180,9 +180,13 @@ TINODE_CHATBOT_WEBHOOK_URL=http://chatmgt:8093/api/v1/chatbot/tinode-webhook
 Chatmgt calls `https://knowledge.gonapp.net/api/v1/chat` server-side. Set
 `CHATBOT_API_KEY` only if that endpoint is later protected; the browser and the
 Tinode worker must continue to call Chatmgt instead of the partner service
-directly. The worker is started as `tinode-chatbot-webhook`, persists its cursor
-in the named `tinode_chatbot_state` volume, and subscribes only to direct
-employee topics.
+directly. The tenant-checked Tinode webhook and authenticated HTTP fallback call
+the provider without knowledge retrieval, knowledge-base selection or a RAG
+context field. The legacy knowledge APIs and related server variables remain
+only for separate compatibility integrations and are not exposed in ChatUI.
+The worker is started as `tinode-chatbot-webhook`, persists its cursor in the
+named `tinode_chatbot_state` volume, and subscribes only to direct employee
+topics.
 
 Do not copy the example placeholders into production. After deployment, verify
 `GET /api/v1/chatbot/health`, `GET /api/v1/chatbot/tinode-config` with an

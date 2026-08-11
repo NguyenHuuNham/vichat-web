@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 SERVICE_PATH = Path(__file__).resolve().parents[1] / "application" / "services" / "chatbot_service.py"
 MANAGER_PATH = Path(__file__).resolve().parents[1] / "application" / "services" / "chat_manager_service.py"
+CONTROLLER_PATH = Path(__file__).resolve().parents[1] / "application" / "controllers" / "api_chatbot.py"
 
 
 has_aiohttp = importlib.util.find_spec("aiohttp") is not None
@@ -62,6 +63,18 @@ class ChatbotWebhookProviderTests(unittest.TestCase):
         self.assertEqual(payload["history"], [{"role": "user", "content": "Earlier question"}])
         self.assertEqual(payload["user"], {"id": "account-1", "name": "Nhan vien"})
 
+    def test_direct_provider_payload_omits_rag_context(self):
+        payload = self.service()._external_payload(
+            message="Xin chao",
+            conversation_id="conversation-1",
+            context="Must not be forwarded",
+            history=[],
+            user={"id": "account-1"},
+            include_context=False,
+        )
+
+        self.assertNotIn("context", payload)
+
     def test_response_parser_accepts_common_webhook_shapes(self):
         service = self.service()
 
@@ -87,6 +100,21 @@ class ChatbotWebhookProviderTests(unittest.TestCase):
 
         self.assertIn("small_talk = self._is_small_talk(message) and not external_provider", manager_source)
         self.assertIn("and not matches and not external_provider", manager_source)
+
+    def test_vichat_chat_routes_call_provider_without_knowledge_retrieval(self):
+        controller = CONTROLLER_PATH.read_text(encoding="utf-8")
+        tinode_route = controller.split("async def chatbot_tinode_webhook", 1)[1].split(
+            "async def chatbot_external_context", 1
+        )[0]
+        employee_route = controller.split("async def chatbot_message", 1)[1].split(
+            "async def chatbot_history", 1
+        )[0]
+
+        for route in (tinode_route, employee_route):
+            self.assertIn("await chatbot_service.reply(", route)
+            self.assertIn("include_context=False", route)
+            self.assertNotIn("chat_manager_service.reply(", route)
+            self.assertNotIn("knowledge_service.retrieve(", route)
 
 
 if __name__ == "__main__":

@@ -197,15 +197,19 @@ the bot Tinode session, subscribes only to direct `usr*` topics, and forwards a
 bounded message envelope to `POST /api/v1/chatbot/tinode-webhook`. Chatmgt
 resolves the sender UID to an active `ManagementAccount` and its authenticated
 tenant before calling the fixed `CHATBOT_API_URL`, currently
-`https://knowledge.gonapp.net/api/v1/chat`. The worker publishes the reply back
-to the same Tinode topic and persists a cursor/idempotency key so reconnects do
-not duplicate replies.
+`https://knowledge.gonapp.net/api/v1/chat`. This route calls the provider
+directly with the bounded message, conversation ID, public user identity and
+history; it does not run `KnowledgeService.retrieve()` or send a RAG `context`
+field. The worker publishes the reply back to the same Tinode topic and
+persists a cursor/idempotency key so reconnects do not duplicate replies.
 
 Employee credentials, Tinode tokens, cookies and webhook keys never leave the
 trusted Chatmgt/worker boundary. A missing bot configuration or provider outage
 returns a bounded temporary reply and leaves normal employee/group/file topics
 untouched. The existing authenticated `POST /api/v1/chatbot/message` remains a
-fallback for clients that cannot use the Tinode bot topic.
+direct-provider fallback for clients that cannot use the Tinode bot topic.
+ChatUI does not expose the legacy knowledge manager or send a knowledge-base
+selector in either route.
 
 ## Enterprise Workspace
 
@@ -332,17 +336,19 @@ Production ChatUI can run with `VITE_CHAT_MODE=external`. In this mode the
 tenant employee login/session flow remains unchanged, but ChatUI initializes
 only the configured assistant and does not load internal directory,
 conversation metadata, Tinode topics or realtime chat. Chatmgt can call a
-partner chatbot with `CHATBOT_PROVIDER=external-webhook`, or expose approved
-tenant-fixed RAG context through `POST /api/v1/chatbot/external/context` using a
-dedicated inbound API key. Sources derived from employee conversations remain
-excluded from the external boundary.
+partner chatbot directly with `CHATBOT_PROVIDER=external-webhook`. Separately,
+Chatmgt can expose approved tenant-fixed RAG context through
+`POST /api/v1/chatbot/external/context` using a dedicated inbound API key for a
+legacy integration. Sources derived from employee conversations remain
+excluded from that external boundary.
 
-The outbound webhook receives a neutral payload containing the bounded user
-message, conversation ID, sanitized public user, bounded history and retrieved
-context. Provider credentials remain in Chatmgt. A third-party integration may
-use the following inbound endpoints with `Authorization: Bearer <key>` or
-`X-Chatbot-Api-Key`; `CHATBOT_EXTERNAL_TENANT` and an optional knowledge base ID
-are fixed server-side and cannot be selected by the caller.
+The ViChat AI outbound webhook receives a neutral payload containing the
+bounded user message, conversation ID, sanitized public user and bounded
+history, with no retrieved context. Provider credentials remain in Chatmgt. A
+third-party legacy integration may use the following inbound endpoints with
+`Authorization: Bearer <key>` or `X-Chatbot-Api-Key`;
+`CHATBOT_EXTERNAL_TENANT` and an optional knowledge base ID are fixed
+server-side and cannot be selected by the caller.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -350,7 +356,7 @@ are fixed server-side and cannot be selected by the caller.
 | `POST` | `/api/v1/chatbot/external/message` | Run the configured chatbot flow without an employee browser session |
 | `GET` | `/api/v1/chatbot/health` | Report provider and external data API readiness |
 | `GET` | `/api/v1/chatbot/tinode-config` | Return the runtime bot UID/display metadata for the authenticated employee |
-| `POST` | `/api/v1/chatbot/tinode-webhook` | Tenant-check a Tinode bot message and return the provider reply |
+| `POST` | `/api/v1/chatbot/tinode-webhook` | Tenant-check a Tinode bot message and call the provider directly without RAG |
 
 See `infrastructure/production/README.md` and `docs/DEVELOPMENT_WORKFLOW.md` for
 deployment, rollback and verification commands.

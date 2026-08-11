@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-11-06 - ViChat AI goi provider truc tiep, bo RAG khoi luong chat
+
+- Thoi gian: 2026-08-11 12:48-13:06 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Giao dien | API | Kiem thu | Tai lieu
+- Trang thai: Da kiem thu local; cho commit va trien khai
+- Muc tieu: Dua ca luong Tinode chatbot va HTTP fallback cua ViChat AI goi thang API chatbot doi tac, khong truy xuat kho tri thuc/noi dung RAG, dong thoi bo muc `Tri thuc AI` khong con duoc su dung tren ChatUI.
+- Pham vi: `POST /api/v1/chatbot/tinode-webhook`, `POST /api/v1/chatbot/message`, payload provider external, menu ChatUI, regression test va tai lieu; khong sua worker Tinode, mapping tenant/UID, history/idempotency, conversation nhan vien/nhom, file, call, auth, database hay cac external knowledge API tuong thich.
+- File da thay doi: `chatservice-main/application/controllers/api_chatbot.py`, `chatservice-main/application/services/chatbot_service.py`, `chatservice-main/tests/test_chatbot_webhook_provider.py`, `chatservice-main/tests/test_external_chatbot_contract.py`, `src/app/App.jsx`, `src/features/chatbot/services/chatbotService.js`, `src/features/chatbot/services/chatbotService.test.js`, `README.md`, `docs/chat-backend-architecture.md`, `infrastructure/production/README.md`, va `docs/CHANGELOG.md`.
+- Noi dung: Webhook Tinode va endpoint fallback da bo `ChatManagerService.reply()` khoi duong di ViChat AI, goi truc tiep `ChatbotService.reply()` va dat `include_context=False`; payload outbound khong con truong `context`, frontend khong gui `knowledge_base_id`. Xoa import, role guard, menu, title va panel `Tri thuc AI` khoi `App.jsx`. Backend knowledge/external APIs cu van duoc giu de tranh pha integration khac nhung khong con duoc ChatUI hoac ViChat AI su dung.
+- Quyet dinh ky thuat: Giu tenant lookup, UID mapping, bounded history, idempotency va worker topic filter nhu cu; chi tach provider call ra khoi retrieval. Tham so `include_context` mac dinh `true` de bao toan contract cua external compatibility endpoint, trong khi hai route ViChat AI truyen `false` de khong gui RAG.
+- Database/API/cau hinh: Khong migration, khong doi URL/secret production va khong doi schema request bat buoc. `knowledge_base_id` tu client duoc bo khoi luong `/message`; API chatbot doi tac van cau hinh tai `https://knowledge.gonapp.net/api/v1/chat`.
+- Kiem thu: Probe thuc te xac nhan `GET` va `POST https://knowledge.gonapp.net/api/v1/chat` deu tra `404`; `/docs`, `/openapi.json`, cac route chat pho bien cung khong ton tai. Static UI cua doi tac chi su dung CRUD `/api/v1/question_answer_history` va ghi AI auto-answer dang phat trien; ban ghi probe tam da duoc xoa ngay. `python -m unittest chatservice-main/tests/test_chatbot_webhook_provider.py -v` dat 7/7; `npm run test:frontend` dat 56/56; `python -m unittest discover -s chatservice-main/tests -q` dat 130 test, skip 39 test runtime; `python -m py_compile ...` dat; `npm run lint` exit 0 voi warning legacy/vendor/worktree co san; `npm run build:production` dat voi `App-BacIH4Gr.js`; Compose `config --no-interpolate -q` va `git diff --check` dat.
+- Rui ro con lai: API doi tac hien van tra 404 nen chua the nhan cau tra loi AI that du backend ViChat da goi dung luong truc tiep. Can don vi van hanh `knowledge.gonapp.net` mo `POST /api/v1/chat` hoac cung cap route/contract dang chay; khong co cach tao noi dung AI tu CRUD history hien tai.
+- Viec tiep theo: Commit/push, deploy rieng `chat` va `chatmgt`, giu nguyen worker va cac service khac; sau do xac minh health, bundle khong con `Tri thuc AI`, log provider va chatbot topic production.
+- Commit/PR: Chua tao.
+
 ## 2026-08-11-05 - Tich hop Chatbot qua Tinode webhook
 
 - Thoi gian: 2026-08-11 10:33-11:02 (Asia/Saigon)

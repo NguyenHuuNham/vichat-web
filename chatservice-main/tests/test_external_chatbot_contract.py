@@ -68,7 +68,8 @@ class ExternalChatbotContractTests(unittest.TestCase):
 
         self.assertIn('provider in ("external", "external-webhook", "webhook")', service)
         self.assertIn('"history": self._history_messages(history)', service)
-        self.assertIn('"context": str(context or "")', service)
+        self.assertIn('payload["context"] = str(context or "")', service)
+        self.assertIn("include_context=True", service)
         self.assertIn("CHATBOT_EXTERNAL_AUTH_HEADER", service)
         self.assertIn("small_talk = self._is_small_talk(message) and not external_provider", manager)
         self.assertIn("and not matches and not external_provider", manager)

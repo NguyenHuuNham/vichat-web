@@ -47,7 +47,6 @@ const API_URL = String(env.VITE_CHATBOT_API_URL || '/api/v1/chatbot/message').tr
 const API_ROOT = API_URL.replace(/\/message\/?$/, '');
 const TINODE_CHATBOT_CONFIG_URL = API_ROOT ? `${API_ROOT}/tinode-config` : '';
 const WITH_CREDENTIALS = String(env.VITE_CHATBOT_WITH_CREDENTIALS || 'true').toLowerCase() === 'true';
-const KNOWLEDGE_BASE_ID = String(env.VITE_CHATBOT_KNOWLEDGE_BASE_ID || '').trim();
 const STORAGE_PREFIX = `vichat.chatbot.${CHATBOT_ACCOUNT.id}.messages.`;
 
 function unavailableReply() {
@@ -175,7 +174,6 @@ export async function requestChatbotReply({ message, messageId, conversationId, 
         message,
         message_id: messageId,
         conversation_id: conversationId,
-        knowledge_base_id: KNOWLEDGE_BASE_ID || undefined,
         history,
       }),
     });

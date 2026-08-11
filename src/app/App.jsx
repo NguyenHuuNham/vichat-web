@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Login from '../features/auth/components/Login';
-import KnowledgeManager from '../features/chatbot/components/KnowledgeManager';
 import EnterpriseWorkspace from '../features/workspace/components/EnterpriseWorkspace';
 import CallOverlay from '../features/chat/components/CallOverlay';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation } from '../features/chat/services/tinodeClient';
@@ -849,9 +848,6 @@ function App() {
     ...(currentUser || {}),
     online: isCurrentUserOnline,
   };
-  const isKnowledgeAdmin = ['admin', 'superadmin', 'owner', 'administrator']
-    .includes(String(profileAccount.role || '').toLowerCase());
-
   useEffect(() => {
     try {
       window.localStorage.setItem('songhong.primary-sidebar-collapsed', String(isPrimarySidebarCollapsed));
@@ -1821,7 +1817,6 @@ function App() {
   };
 
   const openWorkspacePanel = (panel) => {
-    if (panel === 'knowledge' && !isKnowledgeAdmin) return;
     setWorkspacePanel(panel);
     setWorkspaceQuery('');
     setWorkspaceResults([]);
@@ -3519,10 +3514,6 @@ function App() {
             <i className="fa-solid fa-briefcase"></i>
             <span>Workspace</span>
           </a>
-          {isKnowledgeAdmin && <a href="#" className={`nav-item ${workspacePanel === 'knowledge' ? 'active' : ''}`} data-tooltip="Tri thức AI" onClick={(e) => { e.preventDefault(); openWorkspacePanel('knowledge'); }}>
-            <i className="fa-solid fa-brain"></i>
-            <span>Tri thức AI</span>
-          </a>}
           <a href="#" className={`nav-item ${workspacePanel === 'notifications' ? 'active' : ''}`} data-tooltip="Thông báo" onClick={(e) => { e.preventDefault(); openWorkspacePanel('notifications'); }}>
             <div className="icon-badge-wrapper">
               <i className="fa-solid fa-bell"></i>
@@ -4085,7 +4076,7 @@ function App() {
           <section className={`workspace-panel ${workspacePanel === 'enterprise' ? 'enterprise-shell-panel' : ''}`} role="dialog" aria-modal="true">
             <div className="workspace-panel-header">
               <div>
-                <h2>{workspacePanel === 'profile' ? 'Hồ sơ cá nhân' : workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'enterprise' ? 'Enterprise Workspace' : workspacePanel === 'knowledge' ? 'Tri thức AI' : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : 'Cài đặt'}</h2>
+                <h2>{workspacePanel === 'profile' ? 'Hồ sơ cá nhân' : workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'enterprise' ? 'Enterprise Workspace' : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : 'Cài đặt'}</h2>
               </div>
               <div className="workspace-panel-header-actions">
                 {workspacePanel === 'profile' && (
@@ -4236,10 +4227,6 @@ function App() {
                   </div>
                 )}
               </>
-            )}
-
-            {workspacePanel === 'knowledge' && isKnowledgeAdmin && (
-              <KnowledgeManager user={currentUser} onError={setChatError} />
             )}
 
             {workspacePanel === 'notifications' && (

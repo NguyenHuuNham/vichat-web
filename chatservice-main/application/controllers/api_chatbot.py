@@ -450,12 +450,12 @@ async def chatbot_tinode_webhook(request):
             message_ref=message_ref,
             properties={"source": "tinode-webhook", "topic": topic, "seq": sequence},
         )
-        result = await chat_manager_service.reply(
+        result = await chatbot_service.reply(
             message=message,
             user=user,
             conversation_id=conversation_ref,
-            tenant_id=account.tenant_id,
             history=history,
+            include_context=False,
         )
         _store_history_message(
             account.tenant_id,
@@ -479,7 +479,7 @@ async def chatbot_tinode_webhook(request):
             "provider": result.get("provider"),
             "grounded": bool(result.get("grounded")),
         })
-    except (KnowledgeServiceError, ChatbotServiceError) as error:
+    except ChatbotServiceError as error:
         return _error_response(error, "TINODE_CHATBOT_ERROR")
     except Exception as error:
         db.session.rollback()
@@ -580,7 +580,6 @@ async def chatbot_message(request):
             "error_message": "Tin nhắn vượt quá {} ký tự.".format(max_length),
         }, status=400)
 
-    knowledge_base_id = body.get("knowledge_base_id")
     conversation_ref = str(body.get("conversation_id") or "bot-songhong")
     user_ref = _user_ref(current_user)
     message_ref = str(body.get("message_id") or "") or None
@@ -593,15 +592,12 @@ async def chatbot_message(request):
             message,
             message_ref=message_ref,
         )
-        if knowledge_base_id:
-            knowledge_base_id = _valid_uuid(knowledge_base_id, "knowledge_base_id")
-        result = await chat_manager_service.reply(
+        result = await chatbot_service.reply(
             message=message,
             user=current_user or body.get("user") or {},
             conversation_id=conversation_ref,
-            tenant_id=tenant_id,
-            knowledge_base_id=knowledge_base_id,
             history=body.get("history") if isinstance(body.get("history"), list) else [],
+            include_context=False,
         )
         _store_history_message(
             tenant_id,
@@ -613,8 +609,6 @@ async def chatbot_message(request):
             properties={"provider": result.get("provider"), "model": result.get("model")},
         )
         return json(result)
-    except KnowledgeServiceError as error:
-        return _error_response(error)
     except ChatbotServiceError as error:
         return _error_response(error, "CHATBOT_ERROR")
 

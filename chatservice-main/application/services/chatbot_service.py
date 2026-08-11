@@ -115,7 +115,15 @@ class ChatbotService(object):
         headers[header_name] = "{} {}".format(scheme, api_key).strip()
         return headers
 
-    def _external_payload(self, message, user=None, conversation_id=None, context=None, history=None):
+    def _external_payload(
+        self,
+        message,
+        user=None,
+        conversation_id=None,
+        context=None,
+        history=None,
+        include_context=True,
+    ):
         safe_user = {}
         if isinstance(user, dict):
             for key in (
@@ -126,15 +134,25 @@ class ChatbotService(object):
                 if value:
                     safe_user[key] = value
 
-        return {
+        payload = {
             "message": message,
             "conversation_id": str(conversation_id or ""),
             "history": self._history_messages(history),
             "user": safe_user,
-            "context": str(context or ""),
         }
+        if include_context:
+            payload["context"] = str(context or "")
+        return payload
 
-    async def _external_reply(self, message, user=None, conversation_id=None, context=None, history=None):
+    async def _external_reply(
+        self,
+        message,
+        user=None,
+        conversation_id=None,
+        context=None,
+        history=None,
+        include_context=True,
+    ):
         api_url = self.app.config.get("CHATBOT_API_URL")
         timeout_seconds = self.app.config.get("CHATBOT_TIMEOUT", 30)
         payload = self._external_payload(
@@ -143,6 +161,7 @@ class ChatbotService(object):
             conversation_id=conversation_id,
             context=context,
             history=history,
+            include_context=include_context,
         )
         timeout = aiohttp.ClientTimeout(total=timeout_seconds)
         try:
@@ -183,7 +202,16 @@ class ChatbotService(object):
         except Exception as error:
             raise ChatbotServiceError("External chatbot request failed: {}".format(error))
 
-    async def reply(self, message, user=None, conversation_id=None, context=None, history=None, system_prompt=None):
+    async def reply(
+        self,
+        message,
+        user=None,
+        conversation_id=None,
+        context=None,
+        history=None,
+        system_prompt=None,
+        include_context=True,
+    ):
         if not self.enabled:
             raise ChatbotServiceError("Chatbot chưa được cấu hình trên server.", status_code=503)
 
@@ -197,6 +225,7 @@ class ChatbotService(object):
                 conversation_id=conversation_id,
                 context=context,
                 history=history,
+                include_context=include_context,
             )
 
         api_url = self.app.config.get("CHATBOT_API_URL")
