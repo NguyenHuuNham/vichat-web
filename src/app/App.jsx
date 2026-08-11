@@ -22,6 +22,16 @@ import {
 import { resolveCallsEnabled } from '../features/chat/services/callSignaling';
 import { attachmentConversationPreview } from '../features/chat/services/messagePreview';
 import {
+  canRecallDeliveredMessage,
+  chatAttachmentValidationError,
+} from '../features/chat/services/messagePolicy';
+import {
+  formatConversationListTime,
+  formatFullMessageDateTime,
+  formatMessageDateLabel,
+  formatMessageTime,
+} from '../features/chat/services/timeFormatting';
+import {
   companyDirectoryContacts,
   companyDirectoryHeading,
   countGroupPresence,
@@ -706,6 +716,7 @@ function App() {
   const [notificationMuteOption, setNotificationMuteOption] = useState(NOTIFICATION_MUTE_OPTIONS.ONE_HOUR);
   const [isUpdatingNotificationMute, setIsUpdatingNotificationMute] = useState(false);
   const [notificationClock, setNotificationClock] = useState(() => Date.now());
+  const [displayClock, setDisplayClock] = useState(() => Date.now());
   const [settings, setSettings] = useState({ sounds: true, compactMode: false });
   const [directoryAccounts, setDirectoryAccounts] = useState([]);
   const [isUpdatingProfileAvatar, setIsUpdatingProfileAvatar] = useState(false);
@@ -952,6 +963,11 @@ function App() {
     );
     return () => window.clearTimeout(timer);
   }, [conversations, notificationClock]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setDisplayClock(Date.now()), 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => () => {
     if (groupAvatarPreview) URL.revokeObjectURL(groupAvatarPreview);
@@ -2707,6 +2723,12 @@ function App() {
       setChatError('Kết nối realtime Tinode chưa sẵn sàng; dữ liệu Chatmgt vẫn đang hoạt động.');
       return;
     }
+    const validationError = chatAttachmentValidationError(file);
+    if (validationError) {
+      setChatError(validationError);
+      return;
+    }
+    setChatError('');
 
     const mime = file.type || 'application/octet-stream';
     const isUnnamedClipboardFile = !String(file.name || '').trim();
@@ -2793,6 +2815,7 @@ function App() {
             type: confirmedIsImage ? 'image' : 'file',
             pending: false,
             failed: false,
+            seq: newMsg.seq || result.ctrl?.params?.seq,
             image: confirmedIsImage ? result.file.url : undefined,
             file: {
               ...newMsg.file,
@@ -3045,6 +3068,10 @@ function App() {
       }
       if (action === 'recall') {
         if (!isOwnMessage) return;
+        if (!canRecallDeliveredMessage(message)) {
+          setChatError('Chỉ có thể thu hồi sau khi tin nhắn hoặc tệp đã được gửi thành công.');
+          return;
+        }
         if (chatMode === 'tinode') {
           const topicName = await ensureTinodeConversationTopic(activeChat);
           await tinodeClient.recallMessage(topicName, message);
@@ -3326,6 +3353,7 @@ function App() {
     if (!messageSearchQuery.trim()) return true;
     return `${message.text || ''} ${message.senderName || ''}`.toLowerCase().includes(messageSearchQuery.toLowerCase());
   });
+  const hasDatedMessages = visibleMessages.some(message => formatMessageDateLabel(message, displayClock));
 
   const deliveryStatusIcon = message => {
     if (message.failed || message.deliveryStatus === 'failed') {
@@ -3505,7 +3533,12 @@ function App() {
                 <div className="conv-details">
                   <div className="conv-header">
                     <span className="conv-name">{room.name}</span>
-                    <span className={hasDraft ? 'conv-draft-status' : 'conv-time'}>{hasDraft ? 'Chưa gửi' : room.time}</span>
+                    <span
+                      className={hasDraft ? 'conv-draft-status' : 'conv-time'}
+                      title={hasDraft ? undefined : formatFullMessageDateTime(room, room.time)}
+                    >
+                      {hasDraft ? 'Chưa gửi' : formatConversationListTime(room, displayClock)}
+                    </span>
                   </div>
                   <div className="conv-message">
                     <span className={`conv-last-msg ${hasDraft ? 'draft' : ''}`}>{hasDraft ? draft : room.lastMsg}</span>
@@ -3579,20 +3612,24 @@ function App() {
 
         {/* Khu vực hiển thị tin nhắn */}
         <div className="chat-messages">
-          {currentChatId === "dieu-hanh" ? (
-            <div className="date-divider"><span>Hôm nay, 11/07/2026</span></div>
-          ) : (
-            <div className="date-divider"><span>Hội thoại trực tuyến</span></div>
+          {!hasDatedMessages && (
+            <div className="date-divider"><span>{currentChatId === 'dieu-hanh' ? 'Hôm nay' : 'Hội thoại trực tuyến'}</span></div>
           )}
 
-          {visibleMessages.map((msg) => {
+          {visibleMessages.map((msg, messageIndex) => {
+            const dateLabel = formatMessageDateLabel(msg, displayClock);
+            const previousDateLabel = formatMessageDateLabel(visibleMessages[messageIndex - 1], displayClock);
+            const showDateDivider = Boolean(dateLabel && dateLabel !== previousDateLabel);
             if (msg.type === 'system') {
               return (
-                <div key={msg.id} className="group-system-message">
-                  <i className={`fa-solid ${msg.action === 'member_left' ? 'fa-arrow-right-from-bracket' : msg.action === 'member_removed' ? 'fa-user-minus' : msg.action === 'group_created' ? 'fa-people-group' : 'fa-user-plus'}`}></i>
-                  <span>{msg.text}</span>
-                  <time>{msg.time}</time>
-                </div>
+                <React.Fragment key={msg.id}>
+                  {showDateDivider && <div className="date-divider"><span>{dateLabel}</span></div>}
+                  <div className="group-system-message">
+                    <i className={`fa-solid ${msg.action === 'member_left' ? 'fa-arrow-right-from-bracket' : msg.action === 'member_removed' ? 'fa-user-minus' : msg.action === 'group_created' ? 'fa-people-group' : 'fa-user-plus'}`}></i>
+                    <span>{msg.text}</span>
+                    <time>{formatMessageTime(msg, msg.time)}</time>
+                  </div>
+                </React.Fragment>
               );
             }
             // Tinode can deliver an echo without the legacy `sender` field. In
@@ -3622,7 +3659,9 @@ function App() {
               ? 'Đang tải lên...'
               : attachmentFile?.url ? 'Đã có trên Cloud' : 'Có sẵn trên máy';
             return (
-              <div key={msg.id} className={`message-item ${isOutgoing ? 'outgoing' : 'incoming'}`}>
+              <React.Fragment key={msg.id}>
+                {showDateDivider && <div className="date-divider"><span>{dateLabel}</span></div>}
+                <div className={`message-item ${isOutgoing ? 'outgoing' : 'incoming'}`}>
                 {!isOutgoing && (
                   <div className="message-avatar">
                     <SafeAvatar src={msg.avatar || ''} name={msg.senderName} />
@@ -3644,7 +3683,7 @@ function App() {
                           <span>{msg.call.audioOnly ? 'Cuộc gọi thoại' : 'Cuộc gọi video'}</span>
                         </span>
                         <span className="message-time">
-                          {msg.time} {isOutgoing && deliveryStatusIcon(msg)}
+                          {formatMessageTime(msg, msg.time)} {isOutgoing && deliveryStatusIcon(msg)}
                         </span>
                         {CALLS_ENABLED && (
                           <button
@@ -3682,7 +3721,7 @@ function App() {
                           </div>
                         )}
                         <span className="message-time">
-                          {messageState.marked && <i className="fa-solid fa-star message-marked" title="Đã đánh dấu"></i>} {msg.time} {isOutgoing && deliveryStatusIcon(msg)}
+                          {messageState.marked && <i className="fa-solid fa-star message-marked" title="Đã đánh dấu"></i>} {formatMessageTime(msg, msg.time)} {isOutgoing && deliveryStatusIcon(msg)}
                         </span>
                       </div>
                     )}
@@ -3704,7 +3743,7 @@ function App() {
                           <span className="image-view-hint"><i className="fa-solid fa-expand"></i>Xem ảnh</span>
                         </button>
                         <div className="image-bubble-footer">
-                          <span className="message-time">{msg.time} {isOutgoing && deliveryStatusIcon(msg)}</span>
+                          <span className="message-time">{formatMessageTime(msg, msg.time)} {isOutgoing && deliveryStatusIcon(msg)}</span>
                         </div>
                       </div>
                     ) : attachmentFile && (
@@ -3733,7 +3772,7 @@ function App() {
                             <button type="button" className="file-action" title="Tải xuống" aria-label="Tải xuống" disabled={!attachmentFile.url} onClick={() => handleFileDownload(attachmentFile)}><i className="fa-solid fa-download"></i></button>
                           </span>
                           <span className="message-time">
-                            {msg.time} {isOutgoing && deliveryStatusIcon(msg)}
+                            {formatMessageTime(msg, msg.time)} {isOutgoing && deliveryStatusIcon(msg)}
                           </span>
                         </span>
                       </div>
@@ -3742,13 +3781,15 @@ function App() {
                     <button type="button" className="message-more-action" onClick={event => { event.stopPropagation(); openMessageMenu(event, msg); }} aria-label="Tùy chọn tin nhắn"><i className="fa-solid fa-ellipsis"></i></button>
                   </div>
                 </div>
-              </div>
+                </div>
+              </React.Fragment>
             );
           })}
 
           {messageMenu && (() => {
             const menuMessage = messageMenu.message;
             const isOwnMessage = menuMessage.senderId === viewerId || menuMessage.sender === 'outgoing';
+            const canRecallMessage = isOwnMessage && canRecallDeliveredMessage(menuMessage);
             const marked = messageActions[messageActionKey(activeChat.id, menuMessage.id)]?.marked;
             return (
               <div className="message-context-menu" style={{ left: messageMenu.left, top: messageMenu.top }} onClick={event => event.stopPropagation()}>
@@ -3762,7 +3803,7 @@ function App() {
                   {['👍', '❤️', '😂', '😮', '😢'].map(emoji => <button type="button" key={emoji} onClick={() => handleMessageAction('reaction', menuMessage, emoji)}>{emoji}</button>)}
                 </div>
                 <button type="button" onClick={() => handleMessageAction('hide', menuMessage)}><i className="fa-solid fa-trash"></i>Xóa chỉ ở phía tôi</button>
-                {isOwnMessage && <button type="button" className="danger" onClick={() => handleMessageAction('recall', menuMessage)}><i className="fa-solid fa-rotate-left"></i>Thu hồi tin nhắn</button>}
+                {canRecallMessage && <button type="button" className="danger" onClick={() => handleMessageAction('recall', menuMessage)}><i className="fa-solid fa-rotate-left"></i>Thu hồi tin nhắn</button>}
               </div>
             );
           })()}
@@ -4159,7 +4200,7 @@ function App() {
                             <strong>{displayName}</strong>
                             <span>{incoming ? 'đã gửi cho bạn lời mời kết bạn.' : status === 'accepted' ? 'đã chấp nhận lời mời kết bạn.' : 'đã từ chối lời mời kết bạn.'}</span>
                             {record.event.note && <small>“{record.event.note}”</small>}
-                            <time>{record.message.time}</time>
+                            <time>{formatMessageTime(record.message, record.message.time)}</time>
                           </div>
                           {incoming && status === 'pending' ? (
                             <div className="friend-request-actions">
@@ -4179,7 +4220,7 @@ function App() {
                     {notifications.map(room => (
                       <button type="button" className="workspace-list-item" key={room.id} onClick={() => { setWorkspacePanel(null); handleConversationSelect(room.id); }}>
                         <span className="workspace-file-icon"><i className="fa-solid fa-message"></i></span>
-                        <span className="workspace-list-copy"><strong>{room.name}</strong><small>{room.lastMsg || 'Có cập nhật mới'} · {room.time}</small></span>
+                        <span className="workspace-list-copy"><strong>{room.name}</strong><small>{room.lastMsg || 'Có cập nhật mới'} · {formatConversationListTime(room, displayClock)}</small></span>
                         {room.badge > 0 && <span className="workspace-unread">{room.badge}</span>}
                       </button>
                     ))}
@@ -4193,7 +4234,7 @@ function App() {
                 <div className="workspace-search-row"><i className="fa-solid fa-magnifying-glass"></i><input value={messageSearchQuery} onChange={event => setMessageSearchQuery(event.target.value)} placeholder="Tìm nội dung hoặc người gửi..." autoFocus /></div>
                 {messageSearchQuery && <p className="workspace-hint">{visibleMessages.length} kết quả trong {activeChat.name}</p>}
                 <div className="workspace-list">
-                  {messageSearchQuery && visibleMessages.map(message => <button type="button" className="workspace-list-item" key={message.id} onClick={() => setWorkspacePanel(null)}><span className="workspace-file-icon"><i className="fa-solid fa-message"></i></span><span className="workspace-list-copy"><strong>{message.senderName || 'Bạn'}</strong><small>{message.text || message.file?.name || 'Nội dung đính kèm'} · {message.time}</small></span></button>)}
+                  {messageSearchQuery && visibleMessages.map(message => <button type="button" className="workspace-list-item" key={message.id} onClick={() => setWorkspacePanel(null)}><span className="workspace-file-icon"><i className="fa-solid fa-message"></i></span><span className="workspace-list-copy"><strong>{message.senderName || 'Bạn'}</strong><small>{message.text || message.file?.name || 'Nội dung đính kèm'} · {formatMessageTime(message, message.time)}</small></span></button>)}
                 </div>
               </>
             )}

@@ -6,6 +6,38 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-11-04 - Mo rong upload va sua vi tri tin nhan thu hoi
+
+- Thoi gian: 2026-08-11 09:33 (Asia/Saigon)
+- Loai: Sua loi | Giao dien | Cau hinh | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; chua deploy
+- Muc tieu: Cho phep gui file/anh lon nhu file 161 MB trong gioi han an toan, khong cho thu hoi khi noi dung chua gui xong va giu placeholder thu hoi o dung phia nguoi gui.
+- Pham vi: Upload media ChatUI qua Nginx/Tinode, policy thao tac tin nhan, recall event va regression test; khong sua auth, tenant, danh ba, Chatmgt API, database, topic, noi dung tin nhan khac hay cac luong realtime ngoai gui/thu hoi.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/messagePolicy.js`, `src/features/chat/services/messagePolicy.test.js`, `infrastructure/production/nginx.conf`, `infrastructure/production/nginx-host-chat.conf`, `package.json`, va `docs/CHANGELOG.md`.
+- Noi dung: Tang body limit cua ca Nginx public va Nginx trong image tu muc 9/50 MB len 600 MB de du multipart overhead cho file toi da 500 MB; ChatUI chan ngay file vuot 500 MB truoc khi tao bubble. Nut thu hoi bi an khi message dang `pending`/`sending`, da loi hoac da thu hoi; handler va Tinode client tiep tuc tu choi neu bi goi truc tiep. File sau publish luu them sequence server de hard-delete dung packet. Recall event dung Tinode UID da xac thuc cua actor va placeholder legacy uu tien actor UID, nen ben nguoi gui van render outgoing thay vi nhay sang phia nguoi nhan.
+- Quyet dinh ky thuat: Nguon tac gia cua recall la Tinode session hien tai vi optimistic message co the con mang Chatmgt account ID; chi noi dung da duoc Tinode xac nhan moi duoc thu hoi. Gioi han UI 500 MB thap hon Nginx 600 MB de chua multipart overhead va thap hon media limit 512 MiB cua Tinode. Probe `Content-Length` 161 MB xac nhan `chat.upgo.vn` production tra `413` ngay tai Nginx host, con `web.vichat.net` khong tu choi kich thuoc truoc khi nhan body.
+- Database/API/cau hinh: Khong migration, khong doi API va khong them bien moi truong. Doi duy nhat `client_max_body_size` cua hai lop Nginx lien quan upload; can rebuild ChatUI image va reload host Nginx khi deploy.
+- Kiem thu: `npm run test:frontend` dat 54/54, gom policy file/recall va formatter UI; `npm run lint` exit 0 voi warning legacy/vendor/worktree co san; `npm run build:production` dat voi `App-DpBLu8xt.js`; Compose `config --no-interpolate -q` dat; `git diff --check` dat. Chua chay `nginx -t` local vi Docker daemon/Nginx khong kha dung; test contract da xac nhan ca hai config dung `600m`.
+- Rui ro con lai: Chua UAT bang file 11-50 MB va hai tai khoan Tinode that; chua xac nhan truc quan recall sau hard refresh vi moi truong khong co browser session.
+- Viec tiep theo: Gui lai file 161 MB va mot file tren 500 MB, sau do thu hoi mot tin text/anh/file da gui thanh cong tu hai tai khoan; neu dat thi commit/push va deploy rieng ChatUI kem reload host Nginx.
+- Commit/PR: Chua tao.
+
+## 2026-08-11-03 - Lam gon nut thao tac va hien thi moc thoi gian ChatUI
+
+- Thoi gian: 2026-08-11 01:29 (Asia/Saigon)
+- Loai: Giao dien | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; chua deploy
+- Muc tieu: Lam gon nut trong chi tiet cuoc tro chuyen va hien thi tuoi tin nhan ngan gon, de doc nhanh hon ma khong doi luong du lieu hay thao tac.
+- Pham vi: Chi ChatUI detail actions, dong thoi gian danh sach hoi thoai, nhan thoi gian trong bong chat va moc ngay trong lich su; khong sua auth, danh ba, tenant, Tinode, Chatmgt, API, database hay noi dung tin nhan.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/timeFormatting.js`, `src/features/chat/services/timeFormatting.test.js`, va `docs/CHANGELOG.md`.
+- Noi dung: Nut tat thong bao duoc dat trong the bo tron co vien/hover, nut roi nhom va xoa hoi thoai dung radius 16px voi trang thai hover/focus ro rang; danh sach hien `Vua xong`, phut, gio, `Hom qua`, so ngay, sau 7 ngay chuyen `dd/mm`; tooltip van giu ngay gio day du. Lich su chat hien moc `Hom nay`, `Hom qua` hoac ngay cu the va moi tin van hien gio `HH:mm`.
+- Quyet dinh ky thuat: Formatter thuần duoc tach rieng de test, lay `createdAt`/`updatedAt` lam nguon chuan va chi fallback ve chuoi gio cu; clock giao dien cap nhat moi phut de tuoi tin nhan tu thay doi, khong sua payload hoac state realtime.
+- Database/API/cau hinh: Khong migration, khong doi API, khong them bien moi truong va khong doi cau hinh deploy.
+- Kiem thu: `node --test src/features/chat/services/timeFormatting.test.js` dat 4/4; `npm run test:frontend` dat 47/47; `npm run lint` exit 0 voi warning legacy/vendor/worktree co san; `npm run build:production` dat; `git diff --check` dat. Browser skill da thu ket noi nhung moi truong khong co browser kha dung, nen chua UAT truc quan desktop/mobile.
+- Rui ro con lai: Chua UAT truc quan tren tai khoan production; can hard refresh de xac nhan style va moc thoi gian voi du lieu Tinode that.
+- Viec tiep theo: Review screenshot production, sau do commit/push va deploy rieng ChatUI neu duyet.
+- Commit/PR: Chua tao.
+
 ## 2026-08-11-02 - Rut gon username email trong danh ba ChatUI
 
 - Thoi gian: 2026-08-11 00:45 (Asia/Saigon)

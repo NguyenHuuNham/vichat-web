@@ -16,6 +16,11 @@ import {
   parseCallMessage,
 } from './callSignaling';
 import { attachmentConversationPreview } from './messagePreview';
+import {
+  buildRecallEvent,
+  canRecallDeliveredMessage,
+  recallPlaceholderSenderId,
+} from './messagePolicy';
 
 /*
  * Thin integration layer around the Tinode browser SDK.
@@ -608,7 +613,7 @@ function toConversation(topic, tinode) {
     if (appliedRecallEvents.has(message.id)) return;
     const event = message.recallEvent || {};
     const originalCreatedAt = event.originalCreatedAt || message.createdAt;
-    const originalSenderId = event.originalSenderId || event.actorId || message.senderId;
+    const originalSenderId = recallPlaceholderSenderId(event, message.senderId);
     const targetSeq = Number(event.targetSeq) || undefined;
     chatMessages.push({
       id: event.targetId || `recalled-${targetSeq || message.seq}`,
@@ -1570,24 +1575,22 @@ export const tinodeClient = {
   },
 
   async recallMessage(topicName, message = {}) {
+    if (!canRecallDeliveredMessage(message)) {
+      throw new Error('Chỉ có thể thu hồi sau khi tin nhắn hoặc tệp đã được gửi thành công.');
+    }
+    const tinode = getClient();
+    if (message.sender !== 'outgoing' && !tinode.isMe(message.senderId)) {
+      throw new Error('Chỉ người gửi mới có thể thu hồi tin nhắn này.');
+    }
     const topic = await subscribeTopic(topicName);
-    const targetSeq = Number(message.seq) || 0;
-    const targetId = String(message.id || '').trim();
-    if (!targetId && !targetSeq) throw new Error('Tin nhắn không có định danh để thu hồi.');
-    const actorId = getClient().getCurrentUserID();
-    const event = {
-      targetId,
-      targetSeq,
-      actorId,
-      originalSenderId: message.senderId || actorId,
-      originalCreatedAt: message.createdAt || message.raw?.ts || new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-    };
+    const actorId = tinode.getCurrentUserID();
+    const event = buildRecallEvent(message, actorId);
+    if (!event.targetId && !event.targetSeq) throw new Error('Tin nhắn không có định danh để thu hồi.');
     await topic.publish(`${RECALL_EVENT_PREFIX}${JSON.stringify(event)}`);
     // Some legacy topics do not grant hard-delete permission to regular
     // members. The persisted recall event still hides the original for all
     // subscribers; hard deletion is attempted as an additional safeguard.
-    if (targetSeq) await topic.delMessagesList([targetSeq], true).catch(() => null);
+    if (event.targetSeq) await topic.delMessagesList([event.targetSeq], true).catch(() => null);
     emitConversation(topic);
     return event;
   },
