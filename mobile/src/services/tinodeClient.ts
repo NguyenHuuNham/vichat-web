@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import { config } from '../constants/config';
-import { ChatMessage, Conversation, FileAttachment, PickerFile, TinodeAuth } from '../types';
+import { ChatMessage, Conversation, FileAttachment, PickerFile, RecallMode, TinodeAuth } from '../types';
 import { installIntlSegmenterPolyfill } from '../polyfills/intlSegmenter';
 import {
   REACTION_EVENT_PREFIX,
@@ -37,6 +37,7 @@ type Listener = (event: TinodeEvent) => void;
 export type TinodeEvent =
   | { type: 'connection'; state: 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error'; error?: unknown }
   | { type: 'conversation'; conversation: Conversation }
+  | { type: 'profile'; uid: string; name?: string; avatar?: string }
   | { type: 'incoming-message'; conversation: Conversation; message: ChatMessage }
   | { type: 'typing'; topic: string; uid: string; active: boolean }
   | { type: 'presence'; uid: string; online: boolean };
@@ -150,7 +151,11 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
     state[`${event.actorId || message.senderId}:${event.emoji}`] = event.active !== false;
     reactionState.set(String(event.targetId), state);
   });
-  loaded.filter(message => message.type === 'recall').forEach(message => {
+  const visibleRecallMessages = loaded.filter(message => message.type === 'recall').filter(message => {
+    const event = message.raw?.recallEvent;
+    return event?.mode !== 'self' || client.isMe?.(event.actorId);
+  });
+  visibleRecallMessages.forEach(message => {
     const event = message.raw?.recallEvent;
     if (event?.targetId) recalls.set(String(event.targetId), event);
     if (event?.targetSeq) recalls.set(`seq:${event.targetSeq}`, event);
@@ -170,6 +175,7 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
       if (recall) {
         const recallMessage = loaded.find(item => item.type === 'recall' && item.raw?.recallEvent === recall);
         if (recallMessage) appliedRecallIds.add(recallMessage.id);
+        if (recall.mode === 'self' && client.isMe?.(recall.actorId)) return null;
         return {
           ...message,
           type: 'text' as const,
@@ -185,8 +191,9 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
       return message.replyTo && (recalls.has(String(message.replyTo.id)) || recalls.has(`seq:${message.replyTo.id}`))
         ? { ...message, replyTo: undefined, reactions }
         : { ...message, reactions };
-    });
-  loaded.filter(message => message.type === 'recall').forEach(message => {
+    })
+    .filter(Boolean) as ChatMessage[];
+  visibleRecallMessages.forEach(message => {
     if (appliedRecallIds.has(message.id)) return;
     const event = message.raw?.recallEvent || {};
     const targetSeq = Number(event.targetSeq) || undefined;
@@ -300,6 +307,21 @@ export class TinodeMobileClient {
     const online = presence.what === 'on';
     this.presenceByUid.set(uid, online);
     this.emit({ type: 'presence', uid, online });
+  }
+
+  private emitContactProfile(contact: any) {
+    const uid = String(contact?.name || contact?.user || '');
+    if (!uid) return;
+    const publicData = contact?.public || {};
+    const name = String(publicData.fn || publicData.name || contact?.fn || '').trim();
+    const avatar = normalizeMediaUrl(
+      publicData.photo?.ref
+      || publicData.photo?.url
+      || publicData.avatar
+      || contact?.avatar
+      || '',
+    );
+    if (name || avatar) this.emit({ type: 'profile', uid, name, avatar });
   }
 
   private updateContactPresence(contact: any, eventType = '') {
@@ -461,12 +483,14 @@ export class TinodeMobileClient {
     if (this.deviceToken) this.client.setDeviceToken?.(this.deviceToken);
     this.meTopic = this.client.getMeTopic();
     this.meTopic.onMetaSub = (contact: any) => {
+      this.emitContactProfile(contact);
       this.updateContactPresence(contact);
       const topic = this.topics.get(String(contact?.name || ''));
       if (topic) this.emit({ type: 'conversation', conversation: this.materialize(topic) });
     };
     this.meTopic.onSubsUpdated = () => this.syncPresenceSnapshot();
     this.meTopic.onContactUpdate = (what: string, contact: any) => {
+      this.emitContactProfile(contact);
       this.updateContactPresence(contact, what);
       const topic = this.topics.get(String(contact?.name || ''));
       if (topic) this.emit({ type: 'conversation', conversation: this.materialize(topic) });
@@ -593,24 +617,32 @@ export class TinodeMobileClient {
     })}`);
   }
 
-  async recallMessage(topicName: string, message: ChatMessage) {
+  async recallMessage(topicName: string, message: ChatMessage, mode: RecallMode = 'all') {
     if (!canRecallMessage(message)) throw new Error('Chỉ có thể thu hồi sau khi tin nhắn đã gửi thành công.');
     if (message.sender !== 'outgoing' || !this.client.isMe?.(message.senderId)) throw new Error('Chỉ người gửi mới có thể thu hồi tin nhắn này.');
     await this.subscribeTopic(topicName, 0);
     const topic = this.getTopic(topicName);
-    await topic.publish(`${RECALL_EVENT_PREFIX}${JSON.stringify(buildRecallEvent(message, this.currentUserId))}`);
+    const event = buildRecallEvent(message, this.currentUserId, mode);
+    await topic.publish(`${RECALL_EVENT_PREFIX}${JSON.stringify(event)}`);
+    if (mode === 'all' && Number(event.targetSeq) > 0) {
+      const deletion = topic.delMessagesList?.([Number(event.targetSeq)], true);
+      if (deletion) await deletion.catch(() => null);
+    }
   }
 
-  async sendFile(topicName: string, file: PickerFile, clientId: string) {
+  getAuthTokenValue() {
+    return String(this.client?.getAuthToken?.()?.token || '');
+  }
+
+  private async uploadFile(file: PickerFile, topicName = '') {
     if (Number(file.size) > config.maxAttachmentBytes) throw new Error('File hoặc ảnh không được lớn hơn 500 MB.');
-    await this.subscribeTopic(topicName, 0);
-    const topic = this.getTopic(topicName);
     const uploadUrl = `${config.mediaBase}/v0/file/u/`;
     const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const headers = tinodeHeaders(this.client.getAuthToken?.()?.token || '');
+    const headers = tinodeHeaders(this.getAuthTokenValue());
     let uploadResponse: { status: number; body: string };
     try {
       const fileSystem: any = require('expo-file-system');
+      const parameters = { id: uploadId, ...(topicName ? { topic: topicName } : {}) };
       if (fileSystem.File && fileSystem.UploadType?.MULTIPART !== undefined) {
         const localFile = new fileSystem.File(file.uri);
         const controller = new AbortController();
@@ -621,7 +653,7 @@ export class TinodeMobileClient {
             uploadType: fileSystem.UploadType.MULTIPART,
             fieldName: 'file',
             mimeType: file.type || 'application/octet-stream',
-            parameters: { id: uploadId },
+            parameters,
             headers,
             signal: controller.signal,
           });
@@ -633,6 +665,7 @@ export class TinodeMobileClient {
         const form = new FormData();
         form.append('file', { uri: file.uri, name: file.name || 'tep-dinh-kem', type: file.type || 'application/octet-stream' } as any);
         form.append('id', uploadId);
+        if (topicName) form.append('topic', topicName);
         const response = await fetch(uploadUrl, { method: 'POST', headers, body: form });
         uploadResponse = { status: response.status, body: await response.text() };
       }
@@ -642,12 +675,85 @@ export class TinodeMobileClient {
         : error instanceof Error ? error.message : 'lỗi mạng';
       throw new Error(`Không kết nối được máy chủ upload: ${detail}`, { cause: error });
     }
-    const status = uploadResponse.status;
     const payload = (() => {
       try { return JSON.parse(uploadResponse.body); } catch { return {}; }
     })();
     const url = payload?.ctrl?.params?.url;
-    if (status < 200 || status >= 300 || !url) throw new Error(payload?.ctrl?.text || `Tinode từ chối file (HTTP ${status || 'không xác định'}).`);
+    if (uploadResponse.status < 200 || uploadResponse.status >= 300 || !url) {
+      throw new Error(payload?.ctrl?.text || `Tinode từ chối file (HTTP ${uploadResponse.status || 'không xác định'}).`);
+    }
+    return normalizeMediaUrl(url);
+  }
+
+  async updateCurrentProfile({ name = '', avatarFile = null as PickerFile | null, avatarUrl = '' } = {}) {
+    if (!this.meTopic) throw new Error('Phiên đăng nhập Tinode chưa sẵn sàng.');
+    const currentPublic = this.meTopic.public || {};
+    const resolvedName = String(name || currentPublic.fn || currentPublic.name || 'Người dùng').trim();
+    let photo = currentPublic.photo || currentPublic.avatar || null;
+    if (avatarFile) {
+      const uploadedUrl = await this.uploadFile(avatarFile, 'me');
+      photo = { ref: uploadedUrl, mime: avatarFile.type || 'image/jpeg', size: avatarFile.size || 0 };
+    } else if (avatarUrl) {
+      photo = { ref: avatarUrl };
+    }
+    await this.meTopic.setMeta({
+      desc: {
+        public: {
+          ...currentPublic,
+          fn: resolvedName,
+          ...(photo ? { photo } : {}),
+        },
+      },
+    });
+    const avatar = normalizeMediaUrl(photo?.ref || photo?.url || '');
+    this.emit({ type: 'profile', uid: this.currentUserId, name: resolvedName, avatar });
+    return { id: this.currentUserId, name: resolvedName, avatar };
+  }
+
+  async createGroup({
+    name,
+    description = '',
+    memberIds = [],
+    avatarFile = null,
+  }: {
+    name: string;
+    description?: string;
+    memberIds?: string[];
+    avatarFile?: PickerFile | null;
+  }) {
+    if (!this.client) throw new Error('Tinode chưa kết nối.');
+    const topic = this.wireTopic(this.client.getTopic(this.client.newGroupTopicName(false)));
+    await topic.subscribe(
+      topic.startMetaQuery().withDesc().withSub().build(),
+      { desc: { public: { fn: name, note: description }, defacs: { auth: 'N', anon: 'N' } } },
+    );
+    let avatarUrl = '';
+    if (avatarFile) {
+      avatarUrl = await this.uploadFile(avatarFile, topic.name);
+      await topic.setMeta({ desc: { public: {
+        fn: name,
+        note: description,
+        photo: { ref: avatarUrl, mime: avatarFile.type || 'image/jpeg', size: avatarFile.size || 0 },
+      } } });
+    }
+    await Promise.all([...new Set(memberIds.filter(Boolean))].map(uid => topic.invite(uid, 'JRWPAS')));
+    const conversation = this.materialize(topic);
+    return { ...conversation, avatarUrl: avatarUrl || conversation.avatarUrl };
+  }
+
+  async discardGroupTopic(topicName: string) {
+    if (!String(topicName || '').startsWith('grp')) return;
+    const topic = this.client?.getTopic?.(topicName);
+    if (topic) await topic.delTopic?.(true);
+    this.client?.cacheRemTopic?.(topicName);
+    this.topics.delete(topicName);
+  }
+
+  async sendFile(topicName: string, file: PickerFile, clientId: string) {
+    if (Number(file.size) > config.maxAttachmentBytes) throw new Error('File hoặc ảnh không được lớn hơn 500 MB.');
+    await this.subscribeTopic(topicName, 0);
+    const topic = this.getTopic(topicName);
+    const url = await this.uploadFile(file, topicName);
     const attachment = { mime: file.type || 'application/octet-stream', filename: file.name || 'Tệp đính kèm', refurl: url, size: file.size || 0 };
     const isImage = /^image\//i.test(attachment.mime) || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(attachment.filename);
     if (!Drafty || (isImage ? !Drafty.appendImage : !Drafty.attachFile)) throw new Error('Tinode SDK không hỗ trợ file trên thiết bị này.');

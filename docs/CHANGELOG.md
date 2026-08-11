@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-12-03 - Dong bo recall, group, avatar va linked devices cho Mobile
+
+- Thoi gian: 2026-08-12 01:09 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | API | Mobile | Tinode | Tai lieu | Kiem thu | Phat hanh
+- Trang thai: Hoan tat code va build APK arm64; cho UAT hai tai khoan that
+- Muc tieu: Hoan thien cac luong mobile tren cung backend/Tinode ma khong thay doi luong gui nhan tin dang on dinh.
+- Pham vi: Recall self/all, tao nhom kem avatar, linked devices tu server, cap nhat avatar ca nhan realtime va tuong thich event recall toi thieu cho ChatUI web.
+- File da thay doi: `mobile/`, `chatservice-main/application/services/auth_service.py`, `chatservice-main/application/controllers/api_chat_management.py`, `src/features/chat/services/messagePolicy.js`, `src/features/chat/services/messagePolicy.test.js`, `src/features/chat/services/tinodeClient.js`, `docs/chat-backend-architecture.md`, va `docs/CHANGELOG.md`.
+- Noi dung: Recall `self` chi an tin o phia nguoi gui, `all` an va hien placeholder cho moi nguoi; group tao topic Tinode sau khi Chatmgt prepare UID va upload avatar; Redis luu session theo JWT `jti` va API `/api/v1/auth/devices` tra thiet bi/nen tang/thoi diem; avatar duoc publish lai vao Tinode public profile de dong bo directory, member va message history.
+- Quyet dinh ky thuat: Khong thay doi message publish/subscribe; recall la event overlay, chi hard-delete bo sung cho `all`; ChatUI chi them parser de khong ap dung recall `self` len nguoi nhan.
+- Database/API/cau hinh: Khong migration; them `GET /api/v1/auth/devices`; session registry dung Redis TTL theo JWT, khong luu token vao record.
+- Kiem thu: `mobile/npm run typecheck` dat; `mobile/npm run lint` dat; focused `npx vitest run ...` dat 7 file/17 test; `mobile/npm run export` dat; `npm run test:frontend` dat 57/57; `node --test src/features/chat/services/messagePolicy.test.js` dat 4/4; `python -m unittest discover -s chatservice-main/tests -q` dat 131 test, skip 40; Gradle `app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon` dat; `aapt` xac nhan package `vn.upgo.vichat`, version `1.0.6`/code `7`; `apksigner` truc tiep xac nhan v2; `zipalign -c -v 4` dat; `adb install -r` dat va `MainActivity` resumed, PID `11952`, khong co crash marker trong logcat; hash SHA-256 `06844B8E28A248DA21657CB56D3DCA3C752E9851F4692B81BFCF6F0D549530BF`.
+- Rui ro con lai: `mobile/npm test` full con fail rieng `src/services/workspaceService.test.ts` vi Rolldown khong parse Flow trong `react-native/index.js`; focused suite van dat. Chua UAT hai tai khoan that cho recall/group/avatar/linked devices va chua xac nhan push khi app bi suspend/kill tren binary co credential Firebase/APNs.
+- Viec tiep theo: Cai APK cho nguoi dung test hai tai khoan trong cung tenant; neu dua linked devices len production thi deploy Chatmgt/backend release tuong ung, khong deploy lai ChatUI web.
+- Commit/PR: Chua tao.
+
 ## 2026-08-12-02 - Tinh chinh header va them thiet bi lien ket cho ViChat Mobile
 
 - Thoi gian: 2026-08-12 00:35 (Asia/Saigon)

@@ -45,11 +45,13 @@ from application.services.auth_service import (
     record_password_reset_request,
     revoke_request_token,
     login_rate_limited,
+    linked_session_devices,
     management_session_requested,
     mobile_access_token_payload,
     record_login_failure,
     send_password_reset_email,
     set_auth_cookie,
+    register_linked_session,
     tinode_add_topic_members,
     tinode_admin_reset_password,
     tinode_auth_expired,
@@ -63,6 +65,7 @@ from application.services.auth_service import (
     tinode_username_compatible,
     tinode_verify_topic_access,
     token_from_request,
+    touch_linked_session,
     verify_password,
     current_user as current_jwt_user,
 )
@@ -205,6 +208,7 @@ def _identity(request):
     }
     if management_session_requested(request) and not _is_admin(resolved_user):
         return None, None
+    touch_linked_session(request, resolved_user)
     return resolved_user, tenant_id
 
 
@@ -839,6 +843,7 @@ async def management_sso_login(request):
         db.session.commit()
         revoke_request_token(request)
         token = issue_access_token(account, auth_method="account_sso")
+        register_linked_session(request, token)
         response = json({
             "user": _public_account(account, tenant),
             "tenant": _public_tenant(tenant),
@@ -903,6 +908,7 @@ async def employee_account_credential_login(request):
         clear_login_failures(tenant_id, identity_input.lower(), ip_address)
         revoke_request_token(request)
         token = issue_access_token(account, auth_method="account_sso")
+        register_linked_session(request, token)
         response_payload = {
             "user": _public_account(account, tenant),
             "tenant": _public_tenant(tenant),
@@ -994,6 +1000,7 @@ async def _password_login(request, session_scope=CHAT_SESSION_SCOPE):
             session_scope=session_scope,
             tinode_auth=tinode_auth if session_scope == CHAT_SESSION_SCOPE else None,
         )
+        register_linked_session(request, token)
         response_payload = {
             "user": _public_account(account, tenant),
             "tenant": _public_tenant(tenant),
@@ -1089,6 +1096,7 @@ async def management_admin_sso_login(request):
             auth_method="account_sso",
             session_scope=MANAGEMENT_SESSION_SCOPE,
         )
+        register_linked_session(request, token)
         response = json({
             "user": _public_account(account, tenant),
             "tenant": _public_tenant(tenant),
@@ -1158,10 +1166,24 @@ async def management_current_user(request):
         "tenant": _public_tenant(tenant),
         "tenant_id": tenant_id,
         "connection": "management",
+        "linked_devices": linked_session_devices(request, current_user),
     })
     if management_session_requested(request):
         return set_auth_cookie(response, token_from_request(request), request)
     return response
+
+
+@app.route('/api/v1/auth/devices', methods=['GET'])
+async def management_linked_devices(request):
+    if management_session_requested(request):
+        return _auth_error()
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    return json({
+        "linked_devices": linked_session_devices(request, current_user),
+        "tenant_id": tenant_id,
+    })
 
 
 @app.route('/api/v1/auth/tinode-token', methods=['POST'])
@@ -1239,6 +1261,7 @@ async def management_tinode_token(request):
                 tinode_auth=tinode_auth,
             )
             revoke_request_token(request)
+            register_linked_session(request, refreshed_token)
             return set_auth_cookie(response, refreshed_token, request)
         return response
     except AccountSSOError as error:

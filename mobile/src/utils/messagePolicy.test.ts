@@ -8,6 +8,7 @@ describe('message policy', () => {
   });
   it('binds recall to the Tinode actor', () => {
     expect(buildRecallEvent({ id: 'a', seq: 9, type: 'text', sender: 'outgoing', senderId: 'legacy', senderName: 'Bạn', text: 'x' }, 'usr-real').actorId).toBe('usr-real');
+    expect(buildRecallEvent({ id: 'a', seq: 9, type: 'text', sender: 'outgoing', senderId: 'legacy', senderName: 'Bạn', text: 'x' }, 'usr-real', 'self').mode).toBe('self');
   });
   it('blocks every message action after recall', () => {
     expect(canInteractWithMessage({ recalled: true } as any)).toBe(false);

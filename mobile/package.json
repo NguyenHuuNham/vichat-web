@@ -1,6 +1,6 @@
 {
   "name": "vichat-mobile",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "main": "index.ts",
   "dependencies": {
     "@expo-google-fonts/be-vietnam-pro": "^0.4.1",

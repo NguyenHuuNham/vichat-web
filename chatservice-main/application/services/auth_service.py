@@ -30,6 +30,7 @@ CHAT_SESSION_SCOPE = "chat"
 MANAGEMENT_SESSION_SCOPE = "management"
 JWT_ISSUER = "vichat-management"
 MOBILE_CLIENT_HEADER = "X-Vichat-Client"
+LINKED_SESSION_PREFIX = "auth:linked-session:"
 
 
 class AuthError(Exception):
@@ -287,6 +288,7 @@ def current_user(request):
         "auth_method": payload.get("amr"),
         "session_scope": payload.get("scp"),
         "issued_at": int(payload.get("iat") or 0),
+        "jti": payload.get("jti"),
     }
 
 
@@ -396,12 +398,139 @@ async def send_password_reset_email(account, reset_url):
     return await loop.run_in_executor(None, _send_password_reset_email, account, reset_url)
 
 
+def _linked_session_key(payload):
+    return "{}{}:{}:{}".format(
+        LINKED_SESSION_PREFIX,
+        payload.get("tid") or payload.get("tenant_id"),
+        payload.get("sub") or payload.get("id"),
+        payload.get("jti"),
+    )
+
+
+def _linked_session_time(value):
+    return datetime.fromtimestamp(int(value), timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _linked_session_device(request):
+    headers = getattr(request, "headers", {}) or {}
+    client = str(headers.get(MOBILE_CLIENT_HEADER) or "").strip().lower()
+    kind = client if client in ("mobile", "tablet", "desktop", "web") else "web"
+    platform = str(headers.get("X-Vichat-Platform") or "").strip()[:120]
+    user_agent = str(headers.get("User-Agent") or "").strip()[:240]
+    name = str(headers.get("X-Vichat-Device-Name") or "").strip()[:160]
+    if not name:
+        name = "ViChat Mobile" if kind == "mobile" else (user_agent or "ViChat Web")
+    return {"kind": kind, "name": name, "platform": platform or user_agent}
+
+
+def _linked_session_record(payload, request, existing=None, now=None):
+    current_time = int(now or time.time())
+    device = _linked_session_device(request)
+    existing = existing or {}
+    return {
+        "id": str(payload.get("jti") or ""),
+        "tenant_id": str(payload.get("tid") or payload.get("tenant_id") or ""),
+        "user_id": str(payload.get("sub") or payload.get("id") or ""),
+        "scope": str(payload.get("scp") or CHAT_SESSION_SCOPE),
+        "kind": device["kind"] if not existing.get("kind") else existing["kind"],
+        "name": device["name"] if not existing.get("name") else existing["name"],
+        "platform": device["platform"] if not existing.get("platform") else existing["platform"],
+        "created_at": existing.get("created_at") or _linked_session_time(payload.get("iat") or payload.get("issued_at") or current_time),
+        "last_active_at": _linked_session_time(current_time),
+    }
+
+
+def register_linked_session(request, token):
+    payload = decode_access_token(token)
+    if not payload or database.redisdb is None or not payload.get("jti"):
+        return None
+    key = _linked_session_key(payload)
+    existing = {}
+    try:
+        raw = database.redisdb.get(key)
+        if raw:
+            existing = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
+    except (TypeError, ValueError, UnicodeError, json.JSONDecodeError):
+        existing = {}
+    record = _linked_session_record(payload, request, existing=existing)
+    ttl = max(1, int(payload.get("exp", 0)) - int(time.time()))
+    try:
+        database.redisdb.setex(key, ttl, json.dumps(record, separators=(",", ":")))
+    except Exception:
+        return None
+    return record
+
+
+def touch_linked_session(request, current_user=None):
+    token_payload = current_user
+    if not token_payload:
+        token_payload = decode_access_token(token_from_request(request))
+    if not token_payload or not token_payload.get("jti"):
+        return None
+    if database.redisdb is None:
+        return _linked_session_record(token_payload, request)
+    key = _linked_session_key(token_payload)
+    existing = {}
+    try:
+        raw = database.redisdb.get(key)
+        if raw:
+            existing = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
+    except (TypeError, ValueError, UnicodeError, json.JSONDecodeError):
+        existing = {}
+    record = _linked_session_record(token_payload, request, existing=existing)
+    issued_at = int(token_payload.get("iat") or token_payload.get("issued_at") or time.time())
+    ttl = max(1, issued_at + int(app.config.get("CHAT_AUTH_ACCESS_TTL", 28800)) - int(time.time()))
+    try:
+        database.redisdb.setex(key, ttl, json.dumps(record, separators=(",", ":")))
+    except Exception:
+        return None
+    return record
+
+
+def linked_session_devices(request, current_user):
+    current = touch_linked_session(request, current_user)
+    if current is None:
+        return []
+    records = {current["id"]: current}
+    scanner = getattr(database.redisdb, "scan_iter", None) if database.redisdb is not None else None
+    if callable(scanner):
+        pattern = "{}{}:{}:*".format(
+            LINKED_SESSION_PREFIX,
+            current["tenant_id"],
+            current["user_id"],
+        )
+        try:
+            for key in scanner(match=pattern):
+                raw = database.redisdb.get(key)
+                if not raw:
+                    continue
+                value = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
+                if value.get("id"):
+                    records[str(value["id"])] = value
+        except (TypeError, ValueError, UnicodeError, json.JSONDecodeError):
+            pass
+    current_id = str(current_user.get("jti") or "")
+    devices = []
+    for record in records.values():
+        devices.append({
+            "id": record.get("id"),
+            "kind": record.get("kind") or "web",
+            "name": record.get("name") or "ViChat Web",
+            "platform": record.get("platform") or "",
+            "created_at": record.get("created_at"),
+            "last_active_at": record.get("last_active_at"),
+            "current": str(record.get("id")) == current_id,
+        })
+    return sorted(devices, key=lambda item: item.get("last_active_at") or "", reverse=True)
+
+
 def revoke_request_token(request):
     payload = decode_access_token(token_from_request(request))
     if not payload or database.redisdb is None:
         return
     ttl = max(1, int(payload.get("exp", 0)) - int(time.time()))
     database.redisdb.setex("auth:revoked:{}".format(payload.get("jti")), ttl, "1")
+    database.redisdb.delete(_linked_session_key(payload))
 
 
 def set_auth_cookie(response, token, request=None):

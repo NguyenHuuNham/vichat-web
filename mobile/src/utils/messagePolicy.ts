@@ -1,4 +1,4 @@
-import { ChatMessage, PickerFile } from '../types';
+import { ChatMessage, PickerFile, RecallMode } from '../types';
 import { config } from '../constants/config';
 
 export const REACTION_EVENT_PREFIX = '__VICHAT_REACTION_EVENT__:';
@@ -25,7 +25,7 @@ export function canInteractWithMessage(message?: ChatMessage | null) {
   return Boolean(message && !message.recalled);
 }
 
-export function buildRecallEvent(message: ChatMessage, actorId: string) {
+export function buildRecallEvent(message: ChatMessage, actorId: string, mode: RecallMode = 'all') {
   return {
     targetId: String(message.id || ''),
     targetSeq: Number(message.seq) || 0,
@@ -33,5 +33,6 @@ export function buildRecallEvent(message: ChatMessage, actorId: string) {
     originalSenderId: actorId,
     originalCreatedAt: message.createdAt || new Date().toISOString(),
     createdAt: new Date().toISOString(),
+    mode,
   };
 }

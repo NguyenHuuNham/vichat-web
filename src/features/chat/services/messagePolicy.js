@@ -18,7 +18,7 @@ export function canRecallDeliveredMessage(message) {
   );
 }
 
-export function buildRecallEvent(message, actorId, createdAt = new Date().toISOString()) {
+export function buildRecallEvent(message, actorId, createdAt = new Date().toISOString(), mode = 'all') {
   return {
     targetId: String(message?.id || '').trim(),
     targetSeq: Number(message?.seq) || 0,
@@ -28,7 +28,14 @@ export function buildRecallEvent(message, actorId, createdAt = new Date().toISOS
     originalSenderId: actorId,
     originalCreatedAt: message?.createdAt || message?.raw?.ts || createdAt,
     createdAt,
+    mode,
   };
+}
+
+export function recallAppliesToViewer(event, tinode) {
+  if (event?.mode !== 'self') return true;
+  const actorId = event?.actorId || event?.originalSenderId;
+  return Boolean(actorId && tinode?.isMe?.(actorId));
 }
 
 export function recallPlaceholderSenderId(event, fallbackSenderId = '') {

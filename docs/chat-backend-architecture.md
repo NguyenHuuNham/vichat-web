@@ -74,6 +74,14 @@ the UpGO password to Tinode. If Tinode is unavailable, mobile keeps
 Chatmgt directory/conversation metadata visible and disables only realtime
 message/file actions, matching ChatUI's management-mode fallback.
 
+Chatmgt registers each issued chat JWT as a short-lived Redis linked-session
+record keyed by tenant, account and JWT `jti`. The record keeps only device kind,
+device name, platform, login time and last activity time. Authenticated requests
+touch the record, logout removes it, and `GET /api/v1/auth/devices` returns the
+current account's web/mobile/device sessions without exposing tokens. The mobile
+screen polls this endpoint while focused so a login from another client appears
+without inventing a local-only device record.
+
 Tinode media URLs from the central host are normalized to the authenticated
 `chat.upgo.vn/tinode-media` relay. The native client downloads protected images
 with its short-lived Tinode token into the OS cache before rendering, so an
@@ -106,12 +114,14 @@ and keeps monotonic `recv/read` cursors so an older metadata snapshot cannot
 downgrade a two-check status. Opening a conversation still sends `read` through
 the existing topic API.
 
-Recall is an event overlay in the mobile renderer. The client does not hard
-delete the original Tinode packet, hides its content and attachment, removes
-quotes/reactions, and disables the message action menu. Legacy recall events
-whose original packet is no longer cached produce the same placeholder at the
-original sequence/time, so participants do not see the original content or
-lose the conversation position.
+Recall is an event overlay shared by mobile and ChatUI. `mode=all` hides the
+original content and attachment for every participant, attempts Tinode hard
+delete as cleanup, and keeps a `Tin nhan da duoc thu hoi` placeholder when the
+original packet is no longer cached. `mode=self` is applied only when the viewer
+is the authenticated actor, so the sender loses the message while other
+participants continue to see the original. A recalled message has no reply,
+reaction or message-action affordances; replies render without quoting a
+recalled target. Missing `mode` is treated as `all` for legacy clients.
 
 Production uses `CHAT_ACCOUNT_SSO_ENABLED=true` and
 `CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED=true`. The cookie-based
@@ -234,10 +244,21 @@ message content, files, presence, typing, reactions, receipts and call
 signaling. ChatUI does not post normal messages/files to Chatmgt knowledge;
 legacy chat-ingestion routes return `410 TINODE_CONTENT_ONLY`.
 
+Mobile group creation first creates the tenant-scoped Chatmgt conversation,
+prepares every participant's Tinode UID, creates a Tinode `grp` topic, uploads
+the optional group avatar through the authenticated Tinode file relay, invites
+the prepared members, and binds the topic back through Chatmgt. If binding
+fails, the newly created Tinode topic is discarded and the Chatmgt record is
+not presented as a ready realtime conversation.
+
 Tinode profile metadata is correlated through both the Chatmgt account ID and
 Tinode UID. A profile metadata update refreshes the matching directory entry,
 conversation header, members, typing indicator and rendered message/call
-history without changing tenant ownership or message content.
+history without changing tenant ownership or message content. Account-backed
+avatar updates use UpGO Account as the canonical profile source and then publish
+the canonical avatar to Tinode public metadata so web and mobile subscribers
+receive the change in realtime. Local/recovery accounts use the authenticated
+Tinode profile path.
 
 ## Runtime call visibility and chatbot webhook
 
@@ -301,6 +322,7 @@ history, role-aware actions and a message-to-task shortcut.
 | `POST` | `/api/v1/auth/account-login` | UpGO Account email/password exchange and employee projection |
 | `POST` | `/api/v1/auth/login` | Legacy local-password login for explicit recovery mode |
 | `GET` | `/api/v1/auth/me` | Read the current Chatmgt session |
+| `GET` | `/api/v1/auth/devices` | Read current account's linked web/mobile/device sessions |
 | `POST` | `/api/v1/auth/logout` | Revoke the current Chatmgt session |
 | `POST` | `/api/v1/auth/tinode-token` | Issue/refresh a short-lived Tinode token |
 | `POST` | `/api/v1/admin/sso` | Account SSO for current-tenant administrators |

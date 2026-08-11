@@ -44,6 +44,7 @@ function normalizeLinkedDevices(value: any): LinkedDevice[] {
       : 'unknown',
     name: String(item?.name || item?.device_name || item?.device || item?.user_agent || 'Thiết bị không xác định'),
     platform: String(item?.platform || item?.os || item?.client || ''),
+    createdAt: item?.created_at || item?.createdAt,
     lastActiveAt: item?.last_active_at || item?.lastActiveAt || item?.updated_at || item?.updatedAt || item?.created_at || item?.createdAt,
     current: Boolean(item?.current || item?.is_current),
   }));
@@ -86,6 +87,11 @@ export const authService = {
 
   async currentSession() {
     return normalizeSession(await apiRequest('/api/v1/auth/me'));
+  },
+
+  async listLinkedDevices() {
+    const payload = await apiRequest<any>('/api/v1/auth/devices');
+    return normalizeLinkedDevices(payload?.linked_devices || payload?.linkedDevices || payload?.sessions);
   },
 
   async refreshTinodeToken() {

@@ -19,6 +19,7 @@ import { attachmentConversationPreview } from './messagePreview';
 import {
   buildRecallEvent,
   canRecallDeliveredMessage,
+  recallAppliesToViewer,
   recallPlaceholderSenderId,
 } from './messagePolicy';
 
@@ -556,6 +557,7 @@ function toConversation(topic, tinode) {
   const friendEvents = loadedMessages.filter(message => message.type === 'friend_event');
   const reactionEvents = loadedMessages.filter(message => message.type === 'reaction_event');
   const recallEvents = loadedMessages.filter(message => message.type === 'recall_event');
+  const visibleRecallEvents = recallEvents.filter(message => recallAppliesToViewer(message.recallEvent, tinode));
   const reactionState = new Map();
   reactionEvents.forEach(event => {
     const targetId = event.reactionEvent?.targetId;
@@ -577,7 +579,7 @@ function toConversation(topic, tinode) {
   }));
   const recallsById = new Map();
   const recallsBySeq = new Map();
-  recallEvents.forEach(message => {
+  visibleRecallEvents.forEach(message => {
     const event = message.recallEvent || {};
     if (event.targetId) recallsById.set(String(event.targetId), message);
     if (Number(event.targetSeq) > 0) recallsBySeq.set(Number(event.targetSeq), message);
@@ -609,9 +611,10 @@ function toConversation(topic, tinode) {
   // A successful hard delete removes the original packet from Tinode's cache.
   // Keep a synthetic placeholder from the recall event so every participant
   // still sees where the recalled message was in the conversation.
-  recallEvents.forEach(message => {
+  visibleRecallEvents.forEach(message => {
     if (appliedRecallEvents.has(message.id)) return;
     const event = message.recallEvent || {};
+    if (event.mode === 'self' && tinode.isMe?.(event.actorId || event.originalSenderId)) return;
     const originalCreatedAt = event.originalCreatedAt || message.createdAt;
     const originalSenderId = recallPlaceholderSenderId(event, message.senderId);
     const targetSeq = Number(event.targetSeq) || undefined;

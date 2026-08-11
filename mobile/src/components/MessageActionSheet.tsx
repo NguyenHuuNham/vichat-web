@@ -1,6 +1,7 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Copy, Download, Info, Reply, RotateCcw, Share2, X } from 'lucide-react-native';
 import { ChatMessage } from '../types';
+import { RecallMode } from '../types';
 import { canInteractWithMessage, canRecallMessage } from '../utils/messagePolicy';
 import { colors, shadow } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -16,7 +17,7 @@ interface Props {
   onDownload: (message: ChatMessage) => void;
   onDetails: (message: ChatMessage) => void;
   onReaction: (message: ChatMessage, emoji: string) => void;
-  onRecall: (message: ChatMessage) => void;
+  onRecall: (message: ChatMessage, mode: RecallMode) => void;
 }
 
 export function MessageActionSheet({ message, onClose, onReply, onCopy, onShare, onDownload, onDetails, onReaction, onRecall }: Props) {
@@ -38,7 +39,7 @@ export function MessageActionSheet({ message, onClose, onReply, onCopy, onShare,
             {hasAttachment ? <Action icon={Download} label={message.image ? 'Mở / lưu hình ảnh' : 'Mở / tải tệp'} onPress={() => run(() => onDownload(message))} /> : null}
             {actionable ? <Action icon={Share2} label="Chia sẻ" onPress={() => run(() => onShare(message))} /> : null}
             <Action icon={Info} label="Xem chi tiết" onPress={() => run(() => onDetails(message))} />
-            {message.sender === 'outgoing' && canRecallMessage(message) ? <Action icon={RotateCcw} label="Thu hồi tin nhắn" danger onPress={() => run(() => onRecall(message))} /> : null}
+            {message.sender === 'outgoing' && canRecallMessage(message) ? <Action icon={RotateCcw} label="Thu hồi tin nhắn" danger onPress={() => run(() => onRecall(message, 'all'))} /> : null}
           </View>
         </View>
       </View>

@@ -14,7 +14,7 @@ import { Avatar } from '../../components/Avatar';
 import { MessageBubble } from '../../components/MessageBubble';
 import { MessageActionSheet } from '../../components/MessageActionSheet';
 import { TypingIndicator } from '../../components/TypingIndicator';
-import { ChatMessage, PickerFile } from '../../types';
+import { ChatMessage, PickerFile, RecallMode } from '../../types';
 import { attachmentValidationError, canInteractWithMessage } from '../../utils/messagePolicy';
 import { formatMessageDateLabel } from '../../utils/timeFormatting';
 import { beginTrustedExternalActivity } from '../../services/appLifecycleService';
@@ -136,6 +136,16 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     'Chi tiết tin nhắn',
     [`Người gửi: ${message.sender === 'outgoing' ? 'Bạn' : message.senderName || 'Thành viên'}`, `Thời gian: ${new Date(message.createdAt || Date.now()).toLocaleString('vi-VN')}`, `Trạng thái: ${message.recalled ? 'Đã thu hồi' : message.deliveryStatus || 'Đã gửi'}`].join('\n'),
   );
+  const recallWithMode = (message: ChatMessage, mode: RecallMode) => void recallMessage(conversation?.id || '', message, mode).catch(value => setError(value instanceof Error ? value.message : 'Không thu hồi được tin nhắn.'));
+  const requestRecall = (message: ChatMessage) => Alert.alert(
+    'Thu hồi tin nhắn',
+    'Chọn phạm vi thu hồi cho tin nhắn này.',
+    [
+      { text: 'Hủy', style: 'cancel' },
+      { text: 'Chỉ phía tôi', onPress: () => recallWithMode(message, 'self') },
+      { text: 'Thu hồi tất cả', style: 'destructive', onPress: () => recallWithMode(message, 'all') },
+    ],
+  );
   if (!conversation) return <SafeAreaView style={styles.screen}><Text style={styles.missing}>Cuộc trò chuyện không còn khả dụng.</Text></SafeAreaView>;
 
   return (
@@ -187,7 +197,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         onDownload={downloadMessage}
         onDetails={showMessageDetails}
         onReaction={(message, emoji) => void sendReaction(conversation.id, message, emoji).catch(value => setError(value instanceof Error ? value.message : 'Không thêm được biểu cảm.'))}
-        onRecall={message => void recallMessage(conversation.id, message).catch(value => setError(value instanceof Error ? value.message : 'Không thu hồi được tin nhắn.'))}
+        onRecall={message => requestRecall(message)}
       />
     </SafeAreaView>
   );

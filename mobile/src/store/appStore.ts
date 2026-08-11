@@ -3,7 +3,7 @@ import { authService } from '../services/authService';
 import { chatManagementService } from '../services/chatManagementService';
 import { tinodeClient, TinodeEvent } from '../services/tinodeClient';
 import { workspaceService } from '../services/workspaceService';
-import { Conversation, ChatMessage, ConnectionState, Session, User, WorkspaceItem } from '../types';
+import { Conversation, ChatMessage, ConnectionState, LinkedDevice, PickerFile, RecallMode, Session, User, WorkspaceItem } from '../types';
 import { storageService } from '../services/storageService';
 import { notifyIncomingMessage, resetPushNotificationRegistration } from '../services/notificationService';
 import { applyPresenceToConversation } from '../utils/tinodeState';
@@ -27,17 +27,18 @@ interface AppStore {
   refreshData: () => Promise<void>;
   openConversation: (conversationId: string) => Promise<Conversation | null>;
   createDirectConversation: (user: User) => Promise<Conversation>;
-  createGroupConversation: (subject: string, participantIds: string[]) => Promise<Conversation>;
+  createGroupConversation: (subject: string, participantIds: string[], avatarFile?: PickerFile | null) => Promise<Conversation>;
   sendText: (conversationId: string, text: string, replyTo?: ChatMessage['replyTo']) => Promise<void>;
   sendFile: (conversationId: string, file: any) => Promise<void>;
   sendReaction: (conversationId: string, message: ChatMessage, emoji: string) => Promise<void>;
-  recallMessage: (conversationId: string, message: ChatMessage) => Promise<void>;
+  recallMessage: (conversationId: string, message: ChatMessage, mode?: RecallMode) => Promise<void>;
   sendTyping: (conversationId: string) => Promise<void>;
   markRead: (conversationId: string) => Promise<void>;
   muteConversation: (conversationId: string, until: number | null) => Promise<void>;
   applyWorkspaceAction: (itemId: string, action: string) => Promise<void>;
   updateProfile: (profile: Partial<User>) => Promise<void>;
   updateAvatar: (file: { uri: string; name: string; type: string }) => Promise<void>;
+  updateLinkedDevices: (devices: LinkedDevice[]) => void;
   setActiveConversation: (conversationId: string) => void;
   clearError: () => void;
 }
@@ -120,6 +121,23 @@ async function bootstrapAuthenticated(set: any, get: () => AppStore) {
         set({ connection: state });
       } else if (event.type === 'conversation') {
         set({ conversations: mergeConversation(current.conversations, event.conversation) });
+      } else if (event.type === 'profile') {
+        const matches = (value: User) => value.id === event.uid || value.uid === event.uid;
+        const patch = { ...(event.name ? { name: event.name } : {}), ...(event.avatar ? { avatar: event.avatar } : {}) };
+        const session = current.session && matches(current.session.user)
+          ? { ...current.session, user: { ...current.session.user, ...patch } }
+          : current.session;
+        const directory = current.directory.map(user => matches(user) ? { ...user, ...patch } : user);
+        const conversations = current.conversations.map(conversation => ({
+          ...conversation,
+          avatarUrl: !conversation.isGroup && conversation.members?.some(matches) ? (event.avatar || conversation.avatarUrl) : conversation.avatarUrl,
+          name: !conversation.isGroup && conversation.members?.some(matches) && event.name ? event.name : conversation.name,
+          members: conversation.members?.map(member => matches(member) ? { ...member, ...patch } : member),
+          messages: conversation.messages.map(message => matches({ id: message.senderId, uid: message.senderId } as User)
+            ? { ...message, ...patch, senderName: event.name || message.senderName }
+            : message),
+        }));
+        set({ session, directory, conversations });
       } else if (event.type === 'incoming-message') {
         const notificationConversation = conversationForId(current.conversations, event.conversation.tinodeTopic) || event.conversation;
         void notifyIncomingMessage(notificationConversation, event.message);
@@ -248,10 +266,40 @@ export const useAppStore = create<AppStore>((set, get) => ({
     return created;
   },
 
-  async createGroupConversation(subject, participantIds) {
+  async createGroupConversation(subject, participantIds, avatarFile) {
     const created = await chatManagementService.createConversation({ subject, isGroup: true, participantIds });
-    set({ conversations: mergeConversation(get().conversations, created) });
-    return created;
+    let topicName = '';
+    try {
+      const prepared = await chatManagementService.prepareTinodeConversation(created.managementId);
+      const currentUid = tinodeClient.currentUserId;
+      const memberIds = [...new Set((prepared.members || [])
+        .map(member => String(member.uid || (member as any).tinodeUid || (member as any).tinode_uid || ''))
+        .filter(uid => uid && uid !== currentUid))];
+      if (memberIds.length !== participantIds.length) throw new Error('Chatmgt chưa chuẩn bị đủ thành viên Tinode cho nhóm.');
+      const realtimeGroup = await tinodeClient.createGroup({ name: subject, memberIds, avatarFile: avatarFile || null });
+      topicName = realtimeGroup.tinodeTopic || realtimeGroup.id;
+      const bound = await chatManagementService.bindTinodeTopic(
+        created.managementId,
+        topicName,
+        tinodeClient.getAuthTokenValue(),
+        realtimeGroup.avatarUrl || '',
+      );
+      const ready = {
+        ...created,
+        ...realtimeGroup,
+        ...bound,
+        id: created.id,
+        managementId: created.managementId,
+        tinodeTopic: topicName,
+        avatarUrl: realtimeGroup.avatarUrl || bound.avatarUrl || created.avatarUrl || '',
+      };
+      set({ conversations: mergeConversation(get().conversations, ready) });
+      await get().openConversation(created.id);
+      return ready;
+    } catch (error) {
+      if (topicName) await tinodeClient.discardGroupTopic(topicName).catch(() => {});
+      throw error;
+    }
   },
 
   async sendText(conversationId, text, replyTo) {
@@ -284,10 +332,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
     await get().openConversation(conversationId);
   },
 
-  async recallMessage(conversationId, message) {
+  async recallMessage(conversationId, message, mode = 'all') {
     const conversation = conversationForId(get().conversations, conversationId);
     if (!conversation?.tinodeTopic) return;
-    await tinodeClient.recallMessage(conversation.tinodeTopic, message);
+    await tinodeClient.recallMessage(conversation.tinodeTopic, message, mode);
     await get().openConversation(conversationId);
   },
 
@@ -322,10 +370,37 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   async updateAvatar(file) {
-    const user = await authService.updateAvatar(file);
-    const session = get().session ? { ...get().session!, user: { ...get().session!.user, ...user } } : null;
-    set({ session });
+    let user: User;
+    try {
+      user = await authService.updateAvatar(file);
+    } catch (error: any) {
+      if (error?.status !== 403 || error?.code !== 'ACCOUNT_AVATAR_UNSUPPORTED' || !tinodeClient.connected) throw error;
+      const current = get().session?.user;
+      const profile = await tinodeClient.updateCurrentProfile({ name: current?.name, avatarFile: file as PickerFile });
+      user = await authService.updateProfile({ avatar: profile.avatar });
+    }
+    if (user.avatar && tinodeClient.connected) {
+      await tinodeClient.updateCurrentProfile({ name: user.name, avatarUrl: user.avatar });
+    }
+    const currentUser = get().session?.user;
+    const matchesCurrent = (value: User) => value.id === currentUser?.id || value.uid === currentUser?.uid;
+    const updatedUser = { ...currentUser, ...user } as User;
+    const session = get().session ? { ...get().session!, user: updatedUser } : null;
+    const directory = get().directory.map(item => matchesCurrent(item) ? { ...item, ...user } : item);
+    const conversations = get().conversations.map(item => ({
+      ...item,
+      avatarUrl: !item.isGroup && item.members?.some(matchesCurrent) ? user.avatar : item.avatarUrl,
+      members: item.members?.map(member => matchesCurrent(member) ? { ...member, ...user } : member),
+      messages: item.messages.map(message => matchesCurrent({ id: message.senderId, uid: message.senderId } as User) ? { ...message, avatar: user.avatar, senderName: user.name } : message),
+    }));
+    set({ session, directory, conversations });
     await storageService.savePublicSession(session);
+  },
+
+  updateLinkedDevices(devices) {
+    const session = get().session ? { ...get().session!, linkedDevices: devices } : null;
+    set({ session });
+    void storageService.savePublicSession(session);
   },
 
   setActiveConversation(conversationId) { set({ activeConversationId: conversationId }); },

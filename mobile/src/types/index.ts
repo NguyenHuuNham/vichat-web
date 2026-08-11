@@ -35,6 +35,7 @@ export interface LinkedDevice {
   kind: 'web' | 'mobile' | 'tablet' | 'desktop' | 'unknown';
   name: string;
   platform?: string;
+  createdAt?: string;
   lastActiveAt?: string;
   current?: boolean;
 }
@@ -57,6 +58,7 @@ export interface FileAttachment {
 
 export type MessageType = 'text' | 'image' | 'file' | 'system' | 'reaction' | 'recall' | 'call';
 export type DeliveryStatus = 'none' | 'sending' | 'sent' | 'received' | 'read' | 'failed';
+export type RecallMode = 'self' | 'all';
 
 export interface ChatMessage {
   id: string;

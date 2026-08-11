@@ -6,6 +6,7 @@ import {
   buildRecallEvent,
   canRecallDeliveredMessage,
   chatAttachmentValidationError,
+  recallAppliesToViewer,
   recallPlaceholderSenderId,
 } from './messagePolicy.js';
 
@@ -49,4 +50,12 @@ test('recall events use the authenticated Tinode author instead of an optimistic
     actorId: 'usrTinodeAuthor',
     originalSenderId: 'management-account-id',
   }), 'usrTinodeAuthor');
+});
+
+test('self recall applies only to the author while all recall applies to everyone', () => {
+  const author = { isMe: value => value === 'usr-author' };
+  const other = { isMe: value => value === 'usr-other' };
+  assert.equal(recallAppliesToViewer({ mode: 'self', actorId: 'usr-author' }, author), true);
+  assert.equal(recallAppliesToViewer({ mode: 'self', actorId: 'usr-author' }, other), false);
+  assert.equal(recallAppliesToViewer({ mode: 'all', actorId: 'usr-author' }, other), true);
 });

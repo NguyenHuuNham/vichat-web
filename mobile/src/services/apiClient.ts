@@ -1,4 +1,6 @@
 import { config } from '../constants/config';
+import { Platform } from 'react-native';
+import * as Device from 'expo-device';
 
 let accessToken = '';
 
@@ -44,6 +46,10 @@ export async function apiRequest<T = any>(path: string, options: RequestOptions 
     ...(options.mobileLogin ? { 'X-Vichat-Client': 'mobile' } : {}),
     ...((options.headers || {}) as Record<string, string>),
   };
+  if (Platform.OS !== 'web') {
+    headers['X-Vichat-Platform'] = `${Device.osName || Platform.OS} ${Device.osVersion || ''}`.trim();
+    headers['X-Vichat-Device-Name'] = Device.modelName || 'ViChat Mobile';
+  }
 
   try {
     const response = await fetch(`${config.apiBase}${path}`, {

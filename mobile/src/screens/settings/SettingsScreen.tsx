@@ -52,7 +52,7 @@ export function SettingsScreen({ navigation }: Props) {
           <Text style={styles.dangerHint}>Đăng xuất khỏi tài khoản trên thiết bị này.</Text>
           <Pressable disabled={busy} onPress={confirmLogout} style={[styles.logout, busy && { opacity: 0.5 }]}><Text style={styles.logoutText}>{busy ? 'Đang đăng xuất...' : 'Đăng xuất'}</Text></Pressable>
         </View>
-        <Text style={styles.version}>ViChat Mobile 1.0.5 · Gon Platform</Text>
+        <Text style={styles.version}>ViChat Mobile 1.0.6 · Gon Platform</Text>
       </ScrollView>
       <PinSettingsModal visible={pinSettingsOpen} onClose={() => setPinSettingsOpen(false)} />
     </SafeAreaView>

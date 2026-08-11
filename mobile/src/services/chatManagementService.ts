@@ -67,6 +67,14 @@ export const chatManagementService = {
     return normalizeConversation(payload);
   },
 
+  async bindTinodeTopic(conversationId: string, topicName: string, tinodeToken: string, avatarUrl = '') {
+    const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/tinode-topic`, {
+      method: 'PUT',
+      body: JSON.stringify({ tinode_topic: topicName, tinode_token: tinodeToken, avatar: avatarUrl }),
+    });
+    return normalizeConversation(payload);
+  },
+
   async updateConversationNotifications(conversationId: string, mutedUntil: number | null) {
     const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/notification-settings`, {
       method: 'PUT',
