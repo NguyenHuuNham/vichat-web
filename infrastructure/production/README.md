@@ -153,10 +153,11 @@ networks: voice call, video call, reject, unanswered timeout, hang-up, camera
 and microphone toggles, then verify ordinary direct/group messages and external
 chatbot mode still behave as before.
 
-## External chatbot configuration
+## Tinode chatbot configuration
 
-Before rebuilding the frontend, set `VITE_CHAT_MODE=external`. Configure the
-partner webhook and the inbound data API with different keys:
+Production keeps the regular internal ChatUI/Tinode flow and adds one isolated
+worker for the bot. Configure the provider and two bot-only secrets in the
+private mode-`0600` `.env`:
 
 ```dotenv
 CHATBOT_ENABLED=true
@@ -169,18 +170,29 @@ CHATBOT_KNOWLEDGE_ONLY=false
 CHATBOT_EXTERNAL_API_KEY=<separate-inbound-key>
 CHATBOT_EXTERNAL_TENANT=tn6913580727957397
 CHATBOT_EXTERNAL_KNOWLEDGE_BASE_ID=<optional-approved-base-uuid>
+TINODE_CHATBOT_ENABLED=true
+TINODE_CHATBOT_USERNAME=upgo_chatbot
+TINODE_CHATBOT_PASSWORD=<random-tinode-bot-password>
+TINODE_CHATBOT_WEBHOOK_KEY=<separate-random-webhook-key>
+TINODE_CHATBOT_WEBHOOK_URL=http://chatmgt:8093/api/v1/chatbot/tinode-webhook
 ```
 
 Chatmgt calls `https://knowledge.gonapp.net/api/v1/chat` server-side. Set
-`CHATBOT_API_KEY` only if that endpoint is later protected; the browser must
-continue to call Chatmgt instead of the partner service directly.
+`CHATBOT_API_KEY` only if that endpoint is later protected; the browser and the
+Tinode worker must continue to call Chatmgt instead of the partner service
+directly. The worker is started as `tinode-chatbot-webhook`, persists its cursor
+in the named `tinode_chatbot_state` volume, and subscribes only to direct
+employee topics.
 
 Do not copy the example placeholders into production. After deployment, verify
-`GET /api/v1/chatbot/health`, call the external context endpoint once with the
-inbound key, and confirm the browser does not request `/api/v1/chat/users`,
-`/api/v1/conversation`, `/api/v1/auth/tinode-token`, or a Tinode WebSocket.
-Rollback requires only `VITE_CHAT_MODE=internal` and a ChatUI rebuild; no
-database migration is involved.
+`GET /api/v1/chatbot/health`, `GET /api/v1/chatbot/tinode-config` with an
+authenticated employee session, and `tinode-chatbot-webhook/healthz`. Send a
+test message to the bot and confirm the response appears in the same Tinode
+topic. If the provider route is unavailable, the worker emits its temporary
+failure reply while ordinary employee/group/file messages continue unchanged.
+Rollback only disables `TINODE_CHATBOT_ENABLED` and recreates
+`chatmgt`/`tinode-chatbot-webhook`; no database migration or Tinode topic reset
+is involved.
 
 ## Startup guarantees
 

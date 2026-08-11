@@ -15,6 +15,22 @@ export const CHATBOT_ACCOUNT = {
   type: 'bot',
 };
 
+export function applyTinodeChatbotConfig(config = {}) {
+  const uid = String(config.tinodeUid || config.uid || '').trim();
+  const enabled = Boolean(config.enabled && uid);
+  CHATBOT_ACCOUNT.tinodeUid = enabled ? uid : '';
+  if (enabled) {
+    Object.assign(CHATBOT_ACCOUNT, {
+      name: String(config.name || CHATBOT_ACCOUNT.name),
+      title: String(config.title || CHATBOT_ACCOUNT.title),
+      department: String(config.organization || CHATBOT_ACCOUNT.department),
+      avatar: String(config.avatar || CHATBOT_ACCOUNT.avatar),
+      online: true,
+    });
+  }
+  return enabled;
+}
+
 if (EXTERNAL_CHAT_ONLY) {
   Object.assign(CHATBOT_ACCOUNT, {
     id: String(env.VITE_CHATBOT_ID || 'external-chatbot'),
@@ -29,6 +45,7 @@ if (EXTERNAL_CHAT_ONLY) {
 
 const API_URL = String(env.VITE_CHATBOT_API_URL || '/api/v1/chatbot/message').trim();
 const API_ROOT = API_URL.replace(/\/message\/?$/, '');
+const TINODE_CHATBOT_CONFIG_URL = API_ROOT ? `${API_ROOT}/tinode-config` : '';
 const WITH_CREDENTIALS = String(env.VITE_CHATBOT_WITH_CREDENTIALS || 'true').toLowerCase() === 'true';
 const KNOWLEDGE_BASE_ID = String(env.VITE_CHATBOT_KNOWLEDGE_BASE_ID || '').trim();
 const STORAGE_PREFIX = `vichat.chatbot.${CHATBOT_ACCOUNT.id}.messages.`;
@@ -68,6 +85,21 @@ export function saveChatbotMessage(userId, message) {
 
 function query(extra = {}) {
   return new URLSearchParams(extra);
+}
+
+export async function loadTinodeChatbotConfig() {
+  if (!TINODE_CHATBOT_CONFIG_URL) return { enabled: false };
+  try {
+    const response = await fetch(TINODE_CHATBOT_CONFIG_URL, {
+      credentials: WITH_CREDENTIALS ? 'include' : 'omit',
+      headers: { Accept: 'application/json' },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return { enabled: false, error_code: `HTTP_${response.status}` };
+    return payload && typeof payload === 'object' ? payload : { enabled: false };
+  } catch {
+    return { enabled: false, error_code: 'NETWORK_ERROR' };
+  }
 }
 
 export async function loadChatbotMessagesFromServer(user, conversationId = CHATBOT_ACCOUNT.id) {

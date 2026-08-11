@@ -9,6 +9,11 @@ from application.database import db
 from application.models.models import ChatbotMessage, Conversation, ConversationParticipant, ManagementAccount
 from application.server import app
 from application.services.auth_service import current_user as current_jwt_user
+from application.services.tinode_chatbot_service import (
+    ensure_tinode_chatbot_auth,
+    tinode_chatbot_enabled,
+    tinode_chatbot_public_config,
+)
 from application.services import (
     ChatbotService,
     ChatbotServiceError,
@@ -24,6 +29,32 @@ logger = logging.getLogger(__name__)
 chatbot_service = ChatbotService(app)
 knowledge_service = KnowledgeService(app)
 chat_manager_service = ChatManagerService(app, chatbot_service, knowledge_service)
+
+
+def _tinode_webhook_request(request):
+    expected = str(app.config.get("TINODE_CHATBOT_WEBHOOK_KEY") or "").strip()
+    supplied = str(request.headers.get("X-Vichat-Chatbot-Webhook") or "").strip()
+    return bool(expected and supplied and hmac.compare_digest(expected, supplied))
+
+
+def _tinode_message_ref(topic, sequence):
+    topic_digest = hashlib.sha256(str(topic or "").encode("utf-8")).hexdigest()[:32]
+    return "tinode:{}:{}".format(topic_digest, int(sequence))
+
+
+def _tinode_chatbot_user(account):
+    return {
+        "id": str(account.id),
+        "uid": str(account.id),
+        "name": account.full_name,
+        "full_name": account.full_name,
+        "user_name": account.username,
+        "username": account.username,
+        "department": account.department or "",
+        "department_id": "",
+        "tenant_id": account.tenant_id,
+        "tinodeUid": account.tinode_uid,
+    }
 
 
 def _current_user(request):
@@ -307,6 +338,10 @@ async def chatbot_health(request):
         "model": app.config.get("CHATBOT_MODEL"),
         "knowledge_enabled": True,
         "knowledge_only": app.config.get("CHATBOT_KNOWLEDGE_ONLY", True),
+        "tinode_webhook": {
+            "configured": tinode_chatbot_enabled(app),
+            "webhook_url": bool(str(app.config.get("TINODE_CHATBOT_WEBHOOK_URL") or "").strip()),
+        },
         "external_data_api": {
             "configured": _external_api_configured(),
             "tenant_configured": bool(_external_tenant_id()),
@@ -315,6 +350,141 @@ async def chatbot_health(request):
             ),
         },
     })
+
+
+@app.route('/api/v1/chatbot/tinode-config', methods=['GET'])
+async def chatbot_tinode_config(request):
+    if _current_user(request) is None:
+        return json({
+            "error_code": "SESSION_EXPIRED",
+            "error_message": "Phien lam viec het han.",
+        }, status=401)
+    if not tinode_chatbot_enabled(app):
+        return json(tinode_chatbot_public_config(app), status=200)
+    try:
+        auth = await ensure_tinode_chatbot_auth(app)
+        return json(tinode_chatbot_public_config(app, auth.get("uid")))
+    except Exception as error:
+        logger.warning("Tinode chatbot account is unavailable: %s", error)
+        return json({
+            **tinode_chatbot_public_config(app),
+            "error_code": "TINODE_CHATBOT_UNAVAILABLE",
+        }, status=200)
+
+
+@app.route('/api/v1/chatbot/tinode-webhook', methods=['POST'])
+async def chatbot_tinode_webhook(request):
+    if not _tinode_webhook_request(request):
+        return json({
+            "error_code": "UNAUTHORIZED",
+            "error_message": "Tinode chatbot webhook key is invalid.",
+        }, status=401)
+    body = request.json if isinstance(request.json, dict) else {}
+    sender_uid = str(body.get("sender_uid") or body.get("from") or "").strip()
+    topic = str(body.get("topic") or "").strip()
+    message = str(body.get("message") or "").strip()
+    try:
+        sequence = int(body.get("seq") or 0)
+    except (TypeError, ValueError):
+        sequence = 0
+    if not sender_uid or not topic or not message or sequence <= 0:
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "Tinode webhook requires sender_uid, topic, seq and message.",
+        }, status=400)
+    max_length = app.config.get("CHATBOT_MAX_INPUT_LENGTH", 4000)
+    if len(message) > max_length:
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "Tin nhan vuot qua {} ky tu.".format(max_length),
+        }, status=400)
+
+    account = ManagementAccount.query.filter(
+        ManagementAccount.tinode_uid == sender_uid,
+        ManagementAccount.active.is_(True),
+    ).first()
+    if account is None:
+        return json({
+            "error_code": "TINODE_SENDER_NOT_ALLOWED",
+            "error_message": "Tinode sender is not an active Chat account.",
+        }, status=403)
+
+    conversation_ref = "tinode-chatbot:{}".format(topic)[:255]
+    user_ref = str(account.id)
+    message_ref = _tinode_message_ref(topic, sequence)
+    existing_reply = ChatbotMessage.query.filter(
+        ChatbotMessage.tenant_id == account.tenant_id,
+        ChatbotMessage.conversation_ref == conversation_ref,
+        ChatbotMessage.user_ref == user_ref,
+        ChatbotMessage.message_ref == message_ref + ":assistant",
+        ChatbotMessage.deleted.is_(False),
+    ).first()
+    if existing_reply is not None:
+        return json({
+            "reply": existing_reply.content,
+            "message_ref": message_ref,
+            "duplicate": True,
+            "tenant_id": account.tenant_id,
+        })
+
+    history_rows = ChatbotMessage.query.filter(
+        ChatbotMessage.tenant_id == account.tenant_id,
+        ChatbotMessage.conversation_ref == conversation_ref,
+        ChatbotMessage.user_ref == user_ref,
+        ChatbotMessage.deleted.is_(False),
+    ).order_by(ChatbotMessage.created_at.desc()).limit(
+        max(1, int(app.config.get("TINODE_CHATBOT_HISTORY_LIMIT", 100)))
+    ).all()
+    history = [
+        {"role": item.role, "content": item.content}
+        for item in reversed(history_rows)
+    ]
+    user = _tinode_chatbot_user(account)
+    try:
+        _store_history_message(
+            account.tenant_id,
+            conversation_ref,
+            user_ref,
+            "user",
+            message,
+            message_ref=message_ref,
+            properties={"source": "tinode-webhook", "topic": topic, "seq": sequence},
+        )
+        result = await chat_manager_service.reply(
+            message=message,
+            user=user,
+            conversation_id=conversation_ref,
+            tenant_id=account.tenant_id,
+            history=history,
+        )
+        _store_history_message(
+            account.tenant_id,
+            conversation_ref,
+            user_ref,
+            "assistant",
+            result.get("reply") or "",
+            message_ref=message_ref + ":assistant",
+            properties={
+                "source": "tinode-webhook",
+                "topic": topic,
+                "seq": sequence,
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+            },
+        )
+        return json({
+            "reply": result.get("reply") or "",
+            "message_ref": message_ref,
+            "tenant_id": account.tenant_id,
+            "provider": result.get("provider"),
+            "grounded": bool(result.get("grounded")),
+        })
+    except (KnowledgeServiceError, ChatbotServiceError) as error:
+        return _error_response(error, "TINODE_CHATBOT_ERROR")
+    except Exception as error:
+        db.session.rollback()
+        logger.exception("Tinode chatbot webhook failed")
+        return _error_response(error, "TINODE_CHATBOT_ERROR")
 
 
 @app.route('/api/v1/chatbot/external/context', methods=['POST'])

@@ -104,22 +104,23 @@ directory and conversations available; realtime inputs stay disabled instead
 of falling back to demo/localStorage messages. Reconnects obtain a fresh token
 from Chatmgt.
 
-## External chatbot deployment
+## Chatbot deployment
 
-The current production build defaults to `VITE_CHAT_MODE=external`. Employees
-still authenticate through tenant-scoped Chatmgt credentials, but ChatUI initializes only the
-configured assistant and does not request the internal directory,
-conversations, friend requests, Tinode token, or realtime topics. Profile,
-session validation, settings, knowledge administration, and the isolated
-Chatmgt management page remain unchanged.
+Production keeps `VITE_CHAT_MODE=internal`, so the assistant is a normal Tinode
+P2P conversation alongside employee chats. ChatUI obtains the bot UID from
+Chatmgt, while the isolated `tinode-chatbot-webhook` worker receives only direct
+`usr*` messages, calls `https://knowledge.gonapp.net/api/v1/chat` through
+Chatmgt's tenant-checked webhook, and publishes the reply back to Tinode.
+Normal employee/group/file flows never pass through the worker. Configure the
+bot credentials and shared webhook key in the private production `.env`; see
+`infrastructure/production/.env.example` and
+`infrastructure/production/README.md`.
 
-Chatmgt can call a partner chatbot with
-`CHATBOT_PROVIDER=external-webhook`, or expose approved RAG data to a partner
-through `POST /api/v1/chatbot/external/context`. The external data API uses a
-dedicated API key and a server-fixed tenant/optional knowledge base; it never
-exports knowledge derived from employee conversations. See
-`docs/external-chatbot-api.md` for the request contract and deployment
-variables.
+`CHATBOT_PROVIDER=external-webhook` remains the server-side provider setting and
+the existing authenticated `/api/v1/chatbot/message` endpoint remains a
+fallback for clients without a Tinode bot topic. Approved RAG data can still be
+exposed through `POST /api/v1/chatbot/external/context`; it is tenant-fixed and
+never includes employee conversation content.
 
 ## Enterprise Workspace
 

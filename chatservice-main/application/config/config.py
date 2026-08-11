@@ -140,6 +140,31 @@ class Config(object):
     CHATBOT_EXTERNAL_API_KEY = os.getenv("CHATBOT_EXTERNAL_API_KEY", "")
     CHATBOT_EXTERNAL_TENANT = os.getenv("CHATBOT_EXTERNAL_TENANT", "")
     CHATBOT_EXTERNAL_KNOWLEDGE_BASE_ID = os.getenv("CHATBOT_EXTERNAL_KNOWLEDGE_BASE_ID", "")
+    TINODE_CHATBOT_ENABLED = env_bool("TINODE_CHATBOT_ENABLED", False)
+    TINODE_CHATBOT_USERNAME = os.getenv("TINODE_CHATBOT_USERNAME", "upgo_chatbot")
+    TINODE_CHATBOT_PASSWORD = os.getenv("TINODE_CHATBOT_PASSWORD", "")
+    TINODE_CHATBOT_DISPLAY_NAME = os.getenv("TINODE_CHATBOT_DISPLAY_NAME", "ViChat AI")
+    TINODE_CHATBOT_DISPLAY_TITLE = os.getenv("TINODE_CHATBOT_DISPLAY_TITLE", "Tro ly AI")
+    TINODE_CHATBOT_DISPLAY_ORGANIZATION = os.getenv(
+        "TINODE_CHATBOT_DISPLAY_ORGANIZATION", "GON Platform"
+    )
+    TINODE_CHATBOT_DISPLAY_AVATAR = os.getenv(
+        "TINODE_CHATBOT_DISPLAY_AVATAR", "/favicon.svg"
+    )
+    TINODE_CHATBOT_WEBHOOK_KEY = os.getenv("TINODE_CHATBOT_WEBHOOK_KEY", "")
+    TINODE_CHATBOT_WEBHOOK_URL = os.getenv(
+        "TINODE_CHATBOT_WEBHOOK_URL",
+        "http://chatmgt:8093/api/v1/chatbot/tinode-webhook",
+    )
+    TINODE_CHATBOT_WEBHOOK_TIMEOUT = int(os.getenv("TINODE_CHATBOT_WEBHOOK_TIMEOUT", 40))
+    TINODE_CHATBOT_HISTORY_LIMIT = int(os.getenv("TINODE_CHATBOT_HISTORY_LIMIT", 100))
+    TINODE_CHATBOT_STATE_FILE = os.getenv(
+        "TINODE_CHATBOT_STATE_FILE", "/var/lib/vichat-chatbot/state.json"
+    )
+    TINODE_CHATBOT_FAILURE_REPLY = os.getenv(
+        "TINODE_CHATBOT_FAILURE_REPLY",
+        "Tro ly AI dang tam thoi khong phan hoi. Vui long thu lai sau.",
+    )
     CHATBOT_TIMEOUT = int(os.getenv("CHATBOT_TIMEOUT", 30))
     CHATBOT_TEMPERATURE = float(os.getenv("CHATBOT_TEMPERATURE", 0.2))
     CHATBOT_MAX_TOKENS = int(os.getenv("CHATBOT_MAX_TOKENS", 800))

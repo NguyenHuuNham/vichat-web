@@ -189,6 +189,18 @@ services:
       CHATBOT_EXTERNAL_API_KEY: ${CHATBOT_EXTERNAL_API_KEY:-}
       CHATBOT_EXTERNAL_TENANT: ${CHATBOT_EXTERNAL_TENANT:-}
       CHATBOT_EXTERNAL_KNOWLEDGE_BASE_ID: ${CHATBOT_EXTERNAL_KNOWLEDGE_BASE_ID:-}
+      TINODE_CHATBOT_ENABLED: ${TINODE_CHATBOT_ENABLED:-false}
+      TINODE_CHATBOT_USERNAME: ${TINODE_CHATBOT_USERNAME:-upgo_chatbot}
+      TINODE_CHATBOT_PASSWORD: ${TINODE_CHATBOT_PASSWORD:-}
+      TINODE_CHATBOT_DISPLAY_NAME: ${TINODE_CHATBOT_DISPLAY_NAME:-ViChat AI}
+      TINODE_CHATBOT_DISPLAY_TITLE: ${TINODE_CHATBOT_DISPLAY_TITLE:-Tro ly AI}
+      TINODE_CHATBOT_DISPLAY_ORGANIZATION: ${TINODE_CHATBOT_DISPLAY_ORGANIZATION:-GON Platform}
+      TINODE_CHATBOT_DISPLAY_AVATAR: ${TINODE_CHATBOT_DISPLAY_AVATAR:-/favicon.svg}
+      TINODE_CHATBOT_WEBHOOK_KEY: ${TINODE_CHATBOT_WEBHOOK_KEY:-}
+      TINODE_CHATBOT_WEBHOOK_URL: ${TINODE_CHATBOT_WEBHOOK_URL:-http://chatmgt:8093/api/v1/chatbot/tinode-webhook}
+      TINODE_CHATBOT_WEBHOOK_TIMEOUT: ${TINODE_CHATBOT_WEBHOOK_TIMEOUT:-40}
+      TINODE_CHATBOT_HISTORY_LIMIT: ${TINODE_CHATBOT_HISTORY_LIMIT:-100}
+      TINODE_CHATBOT_FAILURE_REPLY: ${TINODE_CHATBOT_FAILURE_REPLY:-Tro ly AI dang tam thoi khong phan hoi. Vui long thu lai sau.}
       CHATBOT_TIMEOUT: ${CHATBOT_TIMEOUT:-30}
       CHATBOT_TEMPERATURE: ${CHATBOT_TEMPERATURE:-0.2}
       CHATBOT_MAX_TOKENS: ${CHATBOT_MAX_TOKENS:-800}
@@ -231,6 +243,47 @@ services:
       CHAT_ACCESS_COOKIE_NAME: vichat_access_token
       TINODE_API_KEY: ${TINODE_API_KEY:?TINODE_API_KEY is required}
       TINODE_CENTRAL_WS_URL: ${TINODE_CENTRAL_WS_URL:-wss://web.vichat.net/v0/channels}
+      TINODE_BRIDGE_INTERNAL_KEY: ${TINODE_BRIDGE_INTERNAL_KEY:?TINODE_BRIDGE_INTERNAL_KEY is required}
+
+  tinode-chatbot-webhook:
+    build:
+      context: ../..
+      dockerfile: infrastructure/production/Dockerfile.chatmgt
+      args:
+        VITE_CHAT_TENANT_ID: ${CHATMGT_DEFAULT_TENANT:-tn6913580727957397}
+    restart: unless-stopped
+    depends_on:
+      chatmgt:
+        condition: service_healthy
+      chat:
+        condition: service_healthy
+    expose:
+      - "8096"
+    command: ["python", "scripts/tinode_chatbot_webhook.py"]
+    volumes:
+      - tinode_chatbot_state:/var/lib/vichat-chatbot
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8096/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 20s
+    environment:
+      ENVIRONMENT: production
+      TINODE_CHATBOT_HOST: 0.0.0.0
+      TINODE_CHATBOT_PORT: 8096
+      TINODE_CHATBOT_ENABLED: ${TINODE_CHATBOT_ENABLED:-false}
+      TINODE_CHATBOT_USERNAME: ${TINODE_CHATBOT_USERNAME:-upgo_chatbot}
+      TINODE_CHATBOT_PASSWORD: ${TINODE_CHATBOT_PASSWORD:-}
+      TINODE_CHATBOT_WEBHOOK_KEY: ${TINODE_CHATBOT_WEBHOOK_KEY:-}
+      TINODE_CHATBOT_WEBHOOK_URL: ${TINODE_CHATBOT_WEBHOOK_URL:-http://chatmgt:8093/api/v1/chatbot/tinode-webhook}
+      TINODE_CHATBOT_WEBHOOK_TIMEOUT: ${TINODE_CHATBOT_WEBHOOK_TIMEOUT:-40}
+      TINODE_CHATBOT_HISTORY_LIMIT: ${TINODE_CHATBOT_HISTORY_LIMIT:-100}
+      TINODE_CHATBOT_STATE_FILE: /var/lib/vichat-chatbot/state.json
+      TINODE_CHATBOT_FAILURE_REPLY: ${TINODE_CHATBOT_FAILURE_REPLY:-Tro ly AI dang tam thoi khong phan hoi. Vui long thu lai sau.}
+      TINODE_INTERNAL_WS_URL: ${TINODE_INTERNAL_WS_URL:-ws://chat:80/v0/channels}
+      TINODE_API_KEY: ${TINODE_API_KEY:?TINODE_API_KEY is required}
+      TINODE_AUTH_TIMEOUT: ${TINODE_AUTH_TIMEOUT:-10}
       TINODE_BRIDGE_INTERNAL_KEY: ${TINODE_BRIDGE_INTERNAL_KEY:?TINODE_BRIDGE_INTERNAL_KEY is required}
 
   chat:
@@ -277,3 +330,4 @@ volumes:
   tinode_botdata:
   chatservice_postgres_data:
   chatservice_redis_data:
+  tinode_chatbot_state:

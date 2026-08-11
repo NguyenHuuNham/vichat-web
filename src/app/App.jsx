@@ -49,7 +49,7 @@ import {
 } from '../features/contacts/services/accountDirectory';
 import { appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
-import { CHATBOT_ACCOUNT, EXTERNAL_CHAT_ONLY, loadChatbotMessages, loadChatbotMessagesFromServer, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
+import { CHATBOT_ACCOUNT, EXTERNAL_CHAT_ONLY, applyTinodeChatbotConfig, loadChatbotMessages, loadChatbotMessagesFromServer, loadTinodeChatbotConfig, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
 
 const CALLS_ENABLED = resolveCallsEnabled(import.meta.env.VITE_CALLS_ENABLED);
 
@@ -209,7 +209,7 @@ function ImageViewer({ source, onClose }) {
 // --- Initial Conversions Data ---
 const INITIAL_CHAT_DATA = {};
 
-function createChatbotConversation(messages = []) {
+function createChatbotConversation(messages = [], { accountSession = 0, useTinode = false } = {}) {
   const welcomeMessage = {
     id: 'bot-welcome',
     type: 'text',
@@ -237,7 +237,9 @@ function createChatbotConversation(messages = []) {
     description: '',
     admin: '',
     members: [CHATBOT_ACCOUNT],
-    participantIds: [CHATBOT_ACCOUNT.id],
+    participantIds: [CHATBOT_ACCOUNT.id, useTinode ? CHATBOT_ACCOUNT.tinodeUid : ''].filter(Boolean),
+    tinodeTopic: useTinode ? CHATBOT_ACCOUNT.tinodeUid : '',
+    accountSession: useTinode ? accountSession : undefined,
     messages: conversationMessages,
     lastMsg: lastMessage ? `${lastMessage.sender === 'outgoing' ? 'Bạn' : CHATBOT_ACCOUNT.name}: ${lastContent}` : lastContent,
     time: lastMessage?.time || '',
@@ -1036,7 +1038,7 @@ function App() {
     });
     conversationsRef.current = nextRooms;
     setConversations(nextRooms);
-    tinodeClient.setAllowedConversationTopics(managedTinodeTopics(managedRooms));
+    tinodeClient.setAllowedConversationTopics(managedTinodeTopics(nextRooms));
     if (!nextRooms[currentChatIdRef.current]) {
       setCurrentChatId(Object.keys(nextRooms)[0] || CHATBOT_ACCOUNT.id);
     }
@@ -1534,7 +1536,16 @@ function App() {
     }
     try {
         rememberAvatarOverride(user, user.avatar);
-        const accounts = mergeDirectoryAccountSnapshots([user], await chatManagementService.listUsers())
+        const [directoryUsers, tinodeChatbotConfig] = await Promise.all([
+          chatManagementService.listUsers(),
+          loadTinodeChatbotConfig(),
+        ]);
+        const tinodeChatbotEnabled = applyTinodeChatbotConfig(tinodeChatbotConfig);
+        const chatbotRoom = createChatbotConversation(
+          tinodeChatbotEnabled ? [] : loadChatbotMessages(managementUserId),
+          { accountSession, useTinode: tinodeChatbotEnabled },
+        );
+        const accounts = mergeDirectoryAccountSnapshots([user], directoryUsers)
           .map(account => ({ ...account, avatar: avatarOverrideFor(account) || account.avatar || '' }));
         if (accountSessionRef.current !== accountSession) return;
         setDirectoryAccounts(accounts);
@@ -1548,11 +1559,11 @@ function App() {
         const managedRooms = managementRoomsForSession(managed, accounts, user, accountSession);
         const next = {
           ...managedRooms,
-          [CHATBOT_ACCOUNT.id]: initialChatbot,
+          [CHATBOT_ACCOUNT.id]: chatbotRoom,
         };
         conversationsRef.current = next;
         setConversations(next);
-        tinodeClient.setAllowedConversationTopics(managedTinodeTopics(managedRooms));
+        tinodeClient.setAllowedConversationTopics(managedTinodeTopics(next));
         managementConversationSessionRef.current = accountSession;
         setManagementConversationSession(accountSession);
         setCurrentChatId(Object.keys(next)[0] || CHATBOT_ACCOUNT.id);
@@ -1591,13 +1602,15 @@ function App() {
             ));
           }
         }
-        loadChatbotMessagesFromServer(user).then(messages => {
-          if (accountSessionRef.current !== accountSession) return;
-          setConversations(previous => ({
-            ...previous,
-            [CHATBOT_ACCOUNT.id]: createChatbotConversation(messages),
-          }));
-        }).catch(() => {});
+        if (!tinodeChatbotEnabled) {
+          loadChatbotMessagesFromServer(user).then(messages => {
+            if (accountSessionRef.current !== accountSession) return;
+            setConversations(previous => ({
+              ...previous,
+              [CHATBOT_ACCOUNT.id]: createChatbotConversation(messages),
+            }));
+          }).catch(() => {});
+        }
     } catch (err) {
       setChatError(err?.message || 'Không tải được danh sách cuộc trò chuyện.');
     }
@@ -1617,11 +1630,23 @@ function App() {
         else markDemoDirectRead(id, userId);
       }
     }
-    if (chatMode === 'tinode' && !room?.isChatbot) {
+    if (chatMode === 'tinode' && (!room?.isChatbot || room?.tinodeTopic)) {
       try {
-        const topicName = await ensureTinodeConversationTopic(room);
+        const topicName = room.isChatbot
+          ? room.tinodeTopic
+          : await ensureTinodeConversationTopic(room);
         const openedRoom = normalizeTinodeConversation(await tinodeClient.openConversation(topicName));
-        const managedRoom = { ...openedRoom, id, managementId: room.managementId || id, tinodeTopic: topicName };
+        const managedRoom = room.isChatbot
+          ? {
+            ...openedRoom,
+            id,
+            isChatbot: true,
+            name: CHATBOT_ACCOUNT.name,
+            avatarHtml: <img src={CHATBOT_ACCOUNT.avatar} alt={CHATBOT_ACCOUNT.name} />,
+            tinodeTopic: topicName,
+            accountSession: room.accountSession,
+          }
+          : { ...openedRoom, id, managementId: room.managementId || id, tinodeTopic: topicName };
         setConversations(prev => ({
           ...prev,
           [id]: mergeTinodeConversation(prev[id], managedRoom),
@@ -3158,7 +3183,11 @@ function App() {
 
     try {
       const room = conversations[currentChatId];
-      if (room?.isChatbot) saveChatbotMessage(currentUser?.id || currentUser?.uid, newMsg);
+      if (room?.isChatbot) {
+        if (!(chatMode === 'tinode' && room.tinodeTopic)) {
+          saveChatbotMessage(currentUser?.id || currentUser?.uid, newMsg);
+        }
+      }
       else if (room?.isGroup) persistDemoGroupMessage(room, newMsg);
       else persistDemoDirectMessage(room, newMsg);
     } catch (err) {
@@ -3173,6 +3202,38 @@ function App() {
       return next;
     });
     const room = conversations[currentChatId];
+    if (room?.isChatbot && chatMode === 'tinode' && room.tinodeTopic) {
+      setIsTyping(false);
+      try {
+        const result = await tinodeClient.sendText(
+          room.tinodeTopic,
+          text,
+          newMsg.id,
+          replyMeta ? { replyTo: replyMeta } : {},
+        );
+        setConversations(previous => ({
+          ...previous,
+          [room.id]: {
+            ...previous[room.id],
+            messages: (previous[room.id]?.messages || []).map(message => message.id === newMsg.id
+              ? { ...message, pending: false, failed: false, seq: message.seq || result?.params?.seq }
+              : message),
+          },
+        }));
+      } catch (err) {
+        setConversations(previous => ({
+          ...previous,
+          [room.id]: {
+            ...previous[room.id],
+            messages: (previous[room.id]?.messages || []).map(message => message.id === newMsg.id
+              ? { ...message, pending: false, failed: true }
+              : message),
+          },
+        }));
+        setChatError(err?.message || 'KhÃ´ng thá»ƒ gá»­i tin nháº¯n cho trá»£ lÃ½ AI.');
+      }
+      return;
+    }
     if (room?.isChatbot) {
       setIsTyping(true);
       try {

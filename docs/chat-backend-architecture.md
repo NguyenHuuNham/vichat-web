@@ -190,13 +190,22 @@ and incoming call UI in ChatUI while keeping the Tinode/WebRTC implementation
 available for a later rebuild. Disabled clients reject incoming call invites
 without changing message, presence, receipt or group behavior.
 
-ChatUI always sends chatbot messages to Chatmgt's authenticated
-`POST /api/v1/chatbot/message`. With `CHATBOT_PROVIDER=external-webhook`,
-Chatmgt sends a bounded server-to-server payload to the fixed
-`CHATBOT_API_URL`, currently `https://knowledge.gonapp.net/api/v1/chat`.
-Employee credentials, cookies and secrets are never sent to that provider; only
-the message, conversation reference, bounded history, approved public identity
-fields and retrieved context may cross the boundary.
+In the internal production mode, ChatUI obtains the tenant-independent bot UID
+from `GET /api/v1/chatbot/tinode-config`, then sends the chatbot message to the
+bot's normal Tinode P2P topic. The isolated `tinode-chatbot-webhook` worker owns
+the bot Tinode session, subscribes only to direct `usr*` topics, and forwards a
+bounded message envelope to `POST /api/v1/chatbot/tinode-webhook`. Chatmgt
+resolves the sender UID to an active `ManagementAccount` and its authenticated
+tenant before calling the fixed `CHATBOT_API_URL`, currently
+`https://knowledge.gonapp.net/api/v1/chat`. The worker publishes the reply back
+to the same Tinode topic and persists a cursor/idempotency key so reconnects do
+not duplicate replies.
+
+Employee credentials, Tinode tokens, cookies and webhook keys never leave the
+trusted Chatmgt/worker boundary. A missing bot configuration or provider outage
+returns a bounded temporary reply and leaves normal employee/group/file topics
+untouched. The existing authenticated `POST /api/v1/chatbot/message` remains a
+fallback for clients that cannot use the Tinode bot topic.
 
 ## Enterprise Workspace
 
@@ -340,6 +349,8 @@ are fixed server-side and cannot be selected by the caller.
 | `POST` | `/api/v1/chatbot/external/context` | Return bounded approved RAG context/snippets |
 | `POST` | `/api/v1/chatbot/external/message` | Run the configured chatbot flow without an employee browser session |
 | `GET` | `/api/v1/chatbot/health` | Report provider and external data API readiness |
+| `GET` | `/api/v1/chatbot/tinode-config` | Return the runtime bot UID/display metadata for the authenticated employee |
+| `POST` | `/api/v1/chatbot/tinode-webhook` | Tenant-check a Tinode bot message and return the provider reply |
 
 See `infrastructure/production/README.md` and `docs/DEVELOPMENT_WORKFLOW.md` for
 deployment, rollback and verification commands.
