@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, ArrowRight, MailCheck } from 'lucide-react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../navigation/types';
@@ -20,24 +21,30 @@ export function ForgotPasswordScreen({ navigation }: Props) {
     try { await authService.requestPasswordReset(identity); setDone(true); } catch (value) { setError(value instanceof Error ? value.message : 'Không gửi được yêu cầu.'); } finally { setBusy(false); }
   };
   return (
-    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Pressable onPress={() => navigation.goBack()} style={styles.back}><ArrowLeft color={colors.ink} size={20} /><Text style={styles.backText}>Đăng nhập</Text></Pressable>
-      <View style={styles.content}>
-        <View style={styles.icon}><MailCheck color={colors.accent} size={28} /></View>
-        <Text style={styles.title}>Lấy lại quyền truy cập</Text>
-        <Text style={styles.description}>Nhập email UpGO Account. Nếu tài khoản hợp lệ, hệ thống sẽ gửi link đặt lại mật khẩu.</Text>
-        {done ? <View style={styles.success}><Text style={styles.successText}>Yêu cầu đã được tiếp nhận. Kiểm tra email công ty của bạn.</Text></View> : <>
-          <TextInput value={identity} onChangeText={setIdentity} placeholder="Email công ty" placeholderTextColor={colors.muted} autoCapitalize="none" keyboardType="email-address" style={styles.input} />
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Pressable onPress={submit} disabled={busy} style={[styles.button, busy && { opacity: 0.6 }]}><Text style={styles.buttonText}>{busy ? 'Đang gửi...' : 'Gửi hướng dẫn'}</Text><ArrowRight color="#fff" size={19} /></Pressable>
-        </>}
-      </View>
-    </KeyboardAvoidingView>
+    <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <Pressable onPress={() => navigation.goBack()} style={styles.back}><ArrowLeft color={colors.ink} size={20} /><Text style={styles.backText}>Đăng nhập</Text></Pressable>
+          <View style={styles.content}>
+            <View style={styles.icon}><MailCheck color={colors.accent} size={28} /></View>
+            <Text style={styles.title}>Lấy lại quyền truy cập</Text>
+            <Text style={styles.description}>Nhập email UpGO Account. Nếu tài khoản hợp lệ, hệ thống sẽ gửi link đặt lại mật khẩu.</Text>
+            {done ? <View style={styles.success}><Text style={styles.successText}>Yêu cầu đã được tiếp nhận. Kiểm tra email công ty của bạn.</Text></View> : <>
+              <TextInput value={identity} onChangeText={setIdentity} placeholder="Email công ty" placeholderTextColor={colors.muted} autoCapitalize="none" keyboardType="email-address" style={styles.input} />
+              {error ? <Text style={styles.error}>{error}</Text> : null}
+              <Pressable onPress={submit} disabled={busy} style={[styles.button, busy && { opacity: 0.6 }]}><Text style={styles.buttonText}>{busy ? 'Đang gửi...' : 'Gửi hướng dẫn'}</Text><ArrowRight color="#fff" size={19} /></Pressable>
+            </>}
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.canvas, padding: 24 },
+  flex: { flex: 1 },
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  scroll: { flexGrow: 1, padding: 24 },
   back: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 12, paddingBottom: 24 },
   backText: { ...typography.bodyMedium, color: colors.ink },
   content: { paddingTop: 55 },

@@ -4,6 +4,7 @@ import { AppState, View } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { useColorScheme } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAppStore } from './src/store/appStore';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { registerPushNotifications } from './src/services/notificationService';
@@ -42,11 +43,13 @@ export default function App() {
     : { ...DefaultTheme, colors: { ...DefaultTheme.colors, primary: colors.accent, background: colors.canvas } };
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.canvas }}>
-      <NavigationContainer theme={navigationTheme}>
-        <AppNavigator />
-      </NavigationContainer>
-      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-    </View>
+    <SafeAreaProvider>
+      <View style={{ flex: 1, backgroundColor: colors.canvas }}>
+        <NavigationContainer theme={navigationTheme}>
+          <AppNavigator />
+        </NavigationContainer>
+        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+      </View>
+    </SafeAreaProvider>
   );
 }

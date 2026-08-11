@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { BellRing, Plus } from 'lucide-react-native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { MainTabParamList } from '../../navigation/types';
@@ -28,7 +29,7 @@ export function ConversationListScreen({ navigation }: Props) {
   const filtered = useMemo(() => conversations.filter(item => item.name.toLowerCase().includes(query.trim().toLowerCase())), [conversations, query]);
   const refresh = useCallback(async () => { setRefreshing(true); try { await refreshData(); } finally { setRefreshing(false); } }, [refreshData]);
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <View style={styles.identity}><Avatar name={session?.user.name} uri={session?.user.avatar} size={48} online /><View><Text style={styles.eyebrow}>{session?.tenant?.name || 'Không gian công ty'}</Text><Text style={styles.title}>Tin nhắn</Text></View></View>
         <View style={styles.headerActions}><Pressable style={styles.iconButton} onPress={() => {}}><BellRing color={colors.inkSoft} size={19} /></Pressable><Pressable style={[styles.iconButton, styles.addButton]} onPress={() => navigation.navigate('Contacts')}><Plus color="#fff" size={21} /></Pressable></View>

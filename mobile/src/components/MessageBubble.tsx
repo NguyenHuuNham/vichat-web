@@ -16,6 +16,9 @@ interface Props {
 export function MessageBubble({ message, onRecall: _onRecall, onReaction: _onReaction, onLongPress }: Props) {
   if (message.type === 'system') return <Text style={styles.system}>{message.text}</Text>;
   const outgoing = message.sender === 'outgoing';
+  const receipt = message.pending || message.deliveryStatus === 'sending'
+    ? '…'
+    : ['received', 'read'].includes(message.deliveryStatus || '') ? '✓✓' : '✓';
   return (
     <View style={[styles.line, outgoing ? styles.outgoingLine : styles.incomingLine]}>
       <Pressable onLongPress={onLongPress} delayLongPress={350} style={[styles.bubble, outgoing ? styles.outgoing : styles.incoming, message.pending && styles.pending, message.failed && styles.failed]}>
@@ -28,7 +31,7 @@ export function MessageBubble({ message, onRecall: _onRecall, onReaction: _onRea
         ) : null}
         {message.text && !message.recalled ? <Text style={[styles.text, outgoing && styles.outgoingText]}>{message.text}</Text> : null}
         {message.recalled ? <View style={styles.recalled}><RotateCcw color={outgoing ? '#fff' : colors.muted} size={14} /><Text style={[styles.recalledText, outgoing && styles.outgoingText]}>Tin nhắn đã được thu hồi</Text></View> : null}
-        <View style={styles.meta}><Text style={[styles.time, outgoing && styles.outgoingSub]}>{formatMessageTime(message.createdAt || message.time)}</Text>{outgoing ? <Text style={[styles.receipt, message.deliveryStatus === 'read' && styles.receiptRead]}>{message.deliveryStatus === 'read' ? '✓✓' : message.pending ? '…' : '✓'}</Text> : null}</View>
+        <View style={styles.meta}><Text style={[styles.time, outgoing && styles.outgoingSub]}>{formatMessageTime(message.createdAt || message.time)}</Text>{outgoing ? <Text style={[styles.receipt, message.deliveryStatus === 'read' && styles.receiptRead]}>{receipt}</Text> : null}</View>
       </Pressable>
       {message.reactions && Object.keys(message.reactions).length > 0 ? <View style={[styles.reactions, outgoing && styles.reactionsOut]}><Text style={styles.reactionText}>{Object.entries(message.reactions).map(([emoji, count]) => `${emoji} ${count}`).join('  ')}</Text></View> : null}
       {message.failed ? <Text style={styles.failedText}>Chưa gửi · chạm để thử lại</Text> : null}

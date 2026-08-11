@@ -5,6 +5,7 @@ import { tinodeClient, TinodeEvent } from '../services/tinodeClient';
 import { workspaceService } from '../services/workspaceService';
 import { Conversation, ChatMessage, ConnectionState, Session, User, WorkspaceItem } from '../types';
 import { storageService } from '../services/storageService';
+import { applyPresenceToConversation } from '../utils/tinodeState';
 
 interface AppStore {
   status: 'booting' | 'signed_out' | 'loading' | 'ready' | 'error';
@@ -112,7 +113,10 @@ async function bootstrapAuthenticated(set: any, get: () => AppStore) {
         set({ typingByTopic: { ...current.typingByTopic, [event.topic]: event.active ? event.uid : '' } });
         setTimeout(() => set((latest: AppStore) => ({ typingByTopic: { ...latest.typingByTopic, [event.topic]: '' } })), 1800);
       } else if (event.type === 'presence') {
-        set({ directory: current.directory.map(user => user.uid === event.uid || user.id === event.uid ? { ...user, online: event.online } : user) });
+        set({
+          directory: current.directory.map(user => user.uid === event.uid || user.id === event.uid ? { ...user, online: event.online } : user),
+          conversations: current.conversations.map(conversation => applyPresenceToConversation(conversation, event.uid, event.online)),
+        });
       }
     });
     await tinodeClient.connect(tinodeAuth, () => authService.refreshTinodeToken());

@@ -13,6 +13,7 @@ import { WorkspaceDetailScreen } from '../screens/workspace/WorkspaceDetailScree
 import { EditProfileScreen } from '../screens/settings/EditProfileScreen';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+import { GonLogo } from '../components/GonLogo';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -20,9 +21,8 @@ const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 function LaunchScreen() {
   return (
     <View style={styles.launch}>
-      <View style={styles.mark}><Text style={styles.markText}>V</Text></View>
-      <Text style={styles.brand}>ViChat</Text>
-      <Text style={styles.tagline}>Một nhịp làm việc. Một luồng trò chuyện.</Text>
+      <View style={styles.mark}><GonLogo size={68} /></View>
+      <Text style={styles.brand}>GON PLATFORM</Text>
       <ActivityIndicator color={colors.accent} style={{ marginTop: 28 }} />
     </View>
   );
@@ -69,8 +69,6 @@ export function AppNavigator() {
 
 const styles = StyleSheet.create({
   launch: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.canvas, padding: 32 },
-  mark: { width: 82, height: 82, borderRadius: 26, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: '-6deg' }] },
-  markText: { color: '#fff', fontFamily: 'BeVietnamPro_800ExtraBold', fontSize: 42, transform: [{ rotate: '6deg' }] },
-  brand: { ...typography.display, color: colors.ink, marginTop: 20 },
-  tagline: { ...typography.body, color: colors.inkSoft, textAlign: 'center', marginTop: 8 },
+  mark: { width: 92, height: 92, borderRadius: 28, backgroundColor: colors.paper, alignItems: 'center', justifyContent: 'center' },
+  brand: { ...typography.heading, color: colors.ink, letterSpacing: 1.7, marginTop: 18 },
 });

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Building2, Check, MessageSquarePlus, UserRoundSearch, UsersRound } from 'lucide-react-native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { MainTabParamList } from '../../navigation/types';
@@ -26,7 +27,7 @@ export function ContactsScreen({ navigation }: Props) {
     return !keyword || [user.name, user.department, user.title].filter(Boolean).join(' ').toLowerCase().includes(keyword);
   }), [directory, query, session?.user.id]);
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <View style={styles.header}><View><Text style={styles.eyebrow}>DANH BẠ NỘI BỘ</Text><Text style={styles.title}>{session?.tenant?.name || 'Công ty của bạn'}</Text></View><Pressable onPress={() => navigation.navigate('NewGroup')} style={styles.groupButton}><UsersRound color="#fff" size={19} /><Text style={styles.groupButtonText}>Tạo nhóm</Text></Pressable></View>
       <View style={styles.tenantCard}><View style={styles.tenantIcon}><Building2 color={colors.accent} size={22} /></View><View style={{ flex: 1 }}><Text style={styles.tenantTitle}>{contacts.length} đồng nghiệp</Text><Text style={styles.tenantHint}>Chỉ hiển thị nhân viên đang hoạt động trong đúng công ty.</Text></View><Check color={colors.online} size={20} /></View>
       <View style={styles.search}><SearchField value={query} onChangeText={setQuery} placeholder="Tên, phòng ban, chức vụ" /></View>

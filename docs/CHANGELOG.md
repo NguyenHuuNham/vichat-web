@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-11-10 - Sua receipt, presence va giao dien ViChat Mobile
+
+- Thoi gian: 2026-08-11 18:06-18:30 (Asia/Saigon)
+- Loai: Sua loi | Giao dien | Mobile | Kiem thu | Phat hanh
+- Trang thai: Hoan tat; da build va cai xac minh tren thiet bi Android that
+- Muc tieu: Dong bo trang thai gui/nhan/doc va online/offline tren mobile, khong de ban phim che o nhap, khong de status bar/tab bar che noi dung, va dua thuong hieu GON PLATFORM dung logo web vao luong dang nhap.
+- Pham vi: Chi `mobile/` va nhat ky thay doi; khong sua ChatUI web, Chatmgt, Tinode server, chatbot, API, database, tenant, file, recall hay service production.
+- File da thay doi: `mobile/App.tsx`, `mobile/app.json`, `mobile/src/components/GonLogo.tsx`, `mobile/src/components/MessageBubble.tsx`, `mobile/src/navigation/AppNavigator.tsx`, `mobile/src/navigation/MainTabNavigator.tsx`, `mobile/src/screens/auth/ForgotPasswordScreen.tsx`, `mobile/src/screens/auth/LoginScreen.tsx`, `mobile/src/screens/chat/ChatDetailScreen.tsx`, `mobile/src/screens/chat/ConversationListScreen.tsx`, `mobile/src/screens/chat/NewGroupScreen.tsx`, `mobile/src/screens/contacts/ContactsScreen.tsx`, `mobile/src/screens/contacts/UserProfileScreen.tsx`, `mobile/src/screens/settings/EditProfileScreen.tsx`, `mobile/src/screens/settings/SettingsScreen.tsx`, `mobile/src/screens/workspace/WorkspaceDetailScreen.tsx`, `mobile/src/screens/workspace/WorkspaceScreen.tsx`, `mobile/src/services/tinodeClient.ts`, `mobile/src/store/appStore.ts`, `mobile/src/utils/tinodeState.ts`, `mobile/src/utils/tinodeState.test.ts`, va `docs/CHANGELOG.md`.
+- Noi dung: Map `topic.msgStatus()` cua Tinode theo cac moc sent/received/read `50/60/70`, hien thi `...`, `✓` va `✓✓`; luu presence theo UID va cap nhat dong thoi danh ba, member va header direct conversation. Them resolver presence dung wrapper mobile trong `materializeConversation`; ban APK dau tien phat hien crash do goi nham method tren raw SDK, da sua va build lai truoc khi cai ban cuoi. Them `SafeAreaProvider`, safe-area cho tab/man hinh phu, Android `softwareKeyboardLayoutMode=resize`, KeyboardAvoidingView va thao tac ban phim cho composer. Rut gon login chi con logo web `public/chat-logo.svg`/`GON PLATFORM`, email, mat khau, dang nhap va quen mat khau.
+- Quyet dinh ky thuat: Receipt/presence chi duoc tinh tu Tinode SDK va state mobile, khong tao store tin nhan thay the hay thay doi hop dong publish/subscribe; safe-area chi bao quanh layout, khong chen vao auth/message/file flow.
+- Database/API/cau hinh: Khong migration, API, secret hay bien production moi. Tang mobile version `1.0.2`, Android `versionCode=3`; native `mobile/android/` la generated/ignored.
+- Kiem thu: Trong `mobile/`, `npm run typecheck` dat; `npm test` dat 5 file/11 test; `npm run lint` dat; `git diff --check` dat. `npx expo prebuild --platform android --no-install` dat; Gradle `app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon` dat. `aapt` xac nhan package `vn.upgo.vichat`, version `1.0.2`/code `3`, min SDK 24, target SDK 36; `apksigner verify` v2 dat; `zipalign -c -v 4` dat; APK arm64 SHA-256 `124F88EE18BD6C518CA50A7F22832D576304055E913642D3E73BED56E9A60F08`.
+- Kiem thu thiet bi: `adb install -r` dat tren Xiaomi `M2104K10AC` serial `z5lfxgnf8dw4ucjj`; cold start bang `am start -W` tra `Status: ok`, process `vn.upgo.vichat` con PID `11581`, activity duoc focus la `vn.upgo.vichat/.MainActivity`, log khong co `FATAL EXCEPTION`, `ReactNativeJS TypeError` hay crash marker. UI dump hien receipt `✓✓`; khi mo ban phim composer van nam tren ban phim tren man hinh 1080x2400.
+- Rui ro con lai: APK chi co ABI `arm64-v8a` va debug/test signer, phu hop UAT noi bo chua phai Play Store; chua gui them tin nhan test de khong lam ban chat that thay doi.
+- Viec tiep theo: UAT tai khoan that tren dien thoai voi login, gui text/file, doi receipt/presence va chatbot; neu can phat hanh store thi tao AAB voi release credential.
+- Commit/PR: Chua tao.
+
 ## 2026-08-11-09 - Sua crash khoi dong ViChat Mobile tren Android 11
 
 - Thoi gian: 2026-08-11 17:18-17:38 (Asia/Saigon)

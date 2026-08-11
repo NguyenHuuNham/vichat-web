@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
@@ -110,7 +111,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   if (!conversation) return <SafeAreaView style={styles.screen}><Text style={styles.missing}>Cuộc trò chuyện không còn khả dụng.</Text></SafeAreaView>;
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']}>
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} style={styles.back}><ChevronLeft color={colors.ink} size={27} /></Pressable>
         <Avatar name={conversation.name} uri={conversation.avatarUrl} size={42} rounded={!conversation.isGroup} online={!conversation.isGroup && conversation.members?.some(member => member.online)} />
@@ -118,7 +119,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         <Pressable onPress={() => Alert.alert('Thông tin', conversation.description || (conversation.isGroup ? `${conversation.members?.length || 0} thành viên` : 'Cuộc trò chuyện nội bộ'))} style={styles.more}><MoreVertical color={colors.inkSoft} size={21} /></Pressable>
       </View>
       {connection !== 'connected' ? <View style={styles.offline}><WifiOff color={colors.warning} size={15} /><Text style={styles.offlineText}>Realtime đang gián đoạn. Tin nhắn sẽ gửi lại khi kết nối ổn định.</Text></View> : null}
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}>
         <FlatList
           ref={listRef}
           data={messages}
@@ -132,6 +133,8 @@ export function ChatDetailScreen({ route, navigation }: Props) {
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
           onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
           showsVerticalScrollIndicator={false}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
           ListEmptyComponent={<View style={styles.empty}><Text style={styles.emptyTitle}>Bắt đầu cuộc trò chuyện</Text><Text style={styles.emptyText}>Tin nhắn và tệp được đồng bộ realtime giữa mobile và web.</Text></View>}
         />
         <TypingIndicator visible={Boolean(typing)} />

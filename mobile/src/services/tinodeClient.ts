@@ -10,6 +10,7 @@ import {
   canRecallMessage,
 } from '../utils/messagePolicy';
 import { formatMessageTime } from '../utils/timeFormatting';
+import { mapTinodeDeliveryStatus } from '../utils/tinodeState';
 
 let TinodeConstructor: any = null;
 let Drafty: any = null;
@@ -82,7 +83,7 @@ function parseEvent(content: string, prefix: string) {
   try { return JSON.parse(content.slice(prefix.length)); } catch { return null; }
 }
 
-function normalizeMessage(raw: any, client: any, _topic: any): ChatMessage | null {
+function normalizeMessage(raw: any, client: any, topic: any): ChatMessage | null {
   if (!raw || raw._deleted) return null;
   const senderId = String(raw.from || raw.head?.['x-sender-id'] || '');
   const outgoing = Boolean(senderId && client.isMe?.(senderId));
@@ -114,12 +115,12 @@ function normalizeMessage(raw: any, client: any, _topic: any): ChatMessage | nul
     file: attachment?.file,
     createdAt: raw.ts ? new Date(raw.ts).toISOString() : undefined,
     time: formatMessageTime(raw.ts),
-    deliveryStatus: outgoing ? 'sent' : 'received',
+    deliveryStatus: mapTinodeDeliveryStatus(topic?.msgStatus?.(raw, false) ?? raw._status, outgoing, raw.seq),
     raw,
   };
 }
 
-function materializeConversation(topic: any, client: any): Conversation {
+function materializeConversation(topic: any, client: any, presenceResolver: (uid: string, fallback: boolean) => boolean): Conversation {
   const isGroup = Boolean(topic.isGroupType?.() || String(topic.name || '').startsWith('grp'));
   const loaded: ChatMessage[] = [];
   topic.messages?.((raw: any) => {
@@ -171,13 +172,13 @@ function materializeConversation(topic: any, client: any): Conversation {
       avatar: mediaUrl(sub.public?.photo?.ref || sub.public?.avatar || ''),
       active: true,
       tenantId: config.tenantId,
-      online: sub.online === true,
+      online: presenceResolver(sub.user, sub.online === true),
       mode: sub.acs?.getMode?.() || sub.mode || '',
     });
   });
   if (!isGroup && topic.name) {
     const peer = members.find(item => item.id !== client.getCurrentUserID?.());
-    if (!peer) members.push({ id: topic.name, uid: topic.name, username: topic.name, name: topic.public?.fn || topic.name, active: true, tenantId: config.tenantId, online: topic.online === true });
+    if (!peer) members.push({ id: topic.name, uid: topic.name, username: topic.name, name: topic.public?.fn || topic.name, active: true, tenantId: config.tenantId, online: presenceResolver(topic.name, topic.online === true) });
   }
   messages.sort((a, b) => (Number(a.seq || 0) - Number(b.seq || 0)) || ((Date.parse(a.createdAt || '') || 0) - (Date.parse(b.createdAt || '') || 0)));
   const latest = messages[messages.length - 1];
@@ -190,7 +191,7 @@ function materializeConversation(topic: any, client: any): Conversation {
     isGroup,
     avatarUrl: mediaUrl(topic.public?.photo?.ref || topic.public?.avatar || directPeer?.avatar || ''),
     description: String(topic.public?.note || ''),
-    membersCount: isGroup ? `${members.length} thành viên` : (directPeer?.online ? 'Online' : 'Offline'),
+    membersCount: isGroup ? `${members.length} thành viên` : (directPeer?.online ? 'Đang hoạt động' : 'Offline'),
     members,
     participantIds: members.map(member => member.id),
     messages,
@@ -209,6 +210,7 @@ export class TinodeMobileClient {
   private auth: TinodeAuth | null = null;
   private tokenProvider: (() => Promise<TinodeAuth>) | null = null;
   private topics = new Map<string, any>();
+  private presenceByUid = new Map<string, boolean>();
 
   onEvent(listener: Listener) {
     this.listeners.add(listener);
@@ -221,6 +223,23 @@ export class TinodeMobileClient {
 
   private emit(event: TinodeEvent) {
     this.listeners.forEach(listener => listener(event));
+  }
+
+  private materialize(topic: any) {
+    return materializeConversation(topic, this.client, (uid, fallback) => this.getPresenceStatus(uid, fallback));
+  }
+
+  getPresenceStatus(uid: string, fallback = false) {
+    const key = String(uid || '');
+    return key && this.presenceByUid.has(key) ? Boolean(this.presenceByUid.get(key)) : fallback;
+  }
+
+  private updatePresence(presence: any) {
+    const uid = String(presence?.src || '');
+    if (!uid || !['on', 'off'].includes(presence?.what)) return;
+    const online = presence.what === 'on';
+    this.presenceByUid.set(uid, online);
+    this.emit({ type: 'presence', uid, online });
   }
 
   get connected() {
@@ -250,16 +269,16 @@ export class TinodeMobileClient {
   private wireTopic(topic: any) {
     if (!topic || topic.__vichatMobileWired) return topic;
     topic.__vichatMobileWired = true;
-    topic.onData = () => this.emit({ type: 'conversation', conversation: materializeConversation(topic, this.client) });
-    topic.onMetaSub = () => this.emit({ type: 'conversation', conversation: materializeConversation(topic, this.client) });
-    topic.onSubsUpdated = () => this.emit({ type: 'conversation', conversation: materializeConversation(topic, this.client) });
+    topic.onData = () => this.emit({ type: 'conversation', conversation: this.materialize(topic) });
+    topic.onMetaSub = () => this.emit({ type: 'conversation', conversation: this.materialize(topic) });
+    topic.onSubsUpdated = () => this.emit({ type: 'conversation', conversation: this.materialize(topic) });
     topic.onPres = (presence: any) => {
-      if (presence?.src && ['on', 'off'].includes(presence.what)) this.emit({ type: 'presence', uid: presence.src, online: presence.what === 'on' });
-      this.emit({ type: 'conversation', conversation: materializeConversation(topic, this.client) });
+      this.updatePresence(presence);
+      this.emit({ type: 'conversation', conversation: this.materialize(topic) });
     };
     topic.onInfo = (info: any) => {
       if (['kp', 'kpa', 'kpv'].includes(info?.what)) this.emit({ type: 'typing', topic: topic.name, uid: info.from, active: true });
-      if (['read', 'recv'].includes(info?.what)) this.emit({ type: 'conversation', conversation: materializeConversation(topic, this.client) });
+      if (['read', 'recv'].includes(info?.what)) this.emit({ type: 'conversation', conversation: this.materialize(topic) });
     };
     return topic;
   }
@@ -303,7 +322,7 @@ export class TinodeMobileClient {
     this.auth = { ...auth, token: fresh };
     this.meTopic = this.client.getMeTopic();
     this.meTopic.onPres = (presence: any) => {
-      if (presence?.src && ['on', 'off'].includes(presence.what)) this.emit({ type: 'presence', uid: presence.src, online: presence.what === 'on' });
+      this.updatePresence(presence);
     };
     if (!this.meTopic.isSubscribed?.()) {
       await this.meTopic.subscribe(this.meTopic.startMetaQuery().withDesc().withSub().build());
@@ -326,6 +345,7 @@ export class TinodeMobileClient {
     this.auth = null;
     this.meTopic = null;
     this.topics.clear();
+    this.presenceByUid.clear();
     this.client?.disconnect?.();
     this.client = null;
     this.emit({ type: 'connection', state: 'disconnected' });
@@ -340,7 +360,7 @@ export class TinodeMobileClient {
       await topic.getMeta(topic.startMetaQuery().withEarlierData(historyLimit).withDel(undefined, historyLimit).build());
     }
     topic.__vichatMobileHistoryLoaded = true;
-    const conversation = materializeConversation(topic, this.client);
+    const conversation = this.materialize(topic);
     this.emit({ type: 'conversation', conversation });
     return conversation;
   }

@@ -6,11 +6,14 @@ import { ContactsScreen } from '../screens/contacts/ContactsScreen';
 import { WorkspaceScreen } from '../screens/workspace/WorkspaceScreen';
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
 import { colors } from '../theme/colors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 const icons = { Chats: MessageCircleMore, Contacts: ContactRound, Workspace: Blocks, Settings };
 
 export function MainTabNavigator() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tab.Navigator screenOptions={({ route }) => {
       const Icon = icons[route.name];
@@ -19,7 +22,7 @@ export function MainTabNavigator() {
         tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.muted,
-        tabBarStyle: { height: 74, paddingTop: 9, paddingBottom: 10, borderTopColor: colors.line, backgroundColor: colors.paper },
+        tabBarStyle: { height: 62 + insets.bottom, paddingTop: 8, paddingBottom: Math.max(8, insets.bottom), borderTopColor: colors.line, backgroundColor: colors.paper },
         tabBarLabelStyle: { fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 11 },
         tabBarIcon: ({ color, size }) => <Icon color={color} size={size} strokeWidth={2.2} />,
       };
