@@ -1,14 +1,33 @@
 import type { Conversation, DeliveryStatus } from '../types';
 
-export function mapTinodeDeliveryStatus(status: unknown, outgoing: boolean, seq?: number): DeliveryStatus {
+export interface ReceiptCursor {
+  receivedSeq?: number;
+  readSeq?: number;
+}
+
+function deliveryRank(status: DeliveryStatus) {
+  return { none: 0, sending: 1, sent: 2, received: 3, read: 4, failed: 0 }[status] || 0;
+}
+
+export function mapTinodeDeliveryStatus(status: unknown, outgoing: boolean, seq?: number, cursor?: ReceiptCursor): DeliveryStatus {
   if (!outgoing) return 'received';
   const value = Number(status) || 0;
-  if (value >= 70) return 'read';
-  if (value >= 60) return 'received';
-  if (value >= 50) return 'sent';
-  if (value === 10 || value === 20) return 'sending';
-  if (value === 30 || value === 40) return 'failed';
-  return Number(seq) > 0 ? 'sent' : 'none';
+  const sequence = Number(seq) || 0;
+  let mapped: DeliveryStatus;
+  if (value >= 70) mapped = 'read';
+  else if (value >= 60) mapped = 'received';
+  else if (value >= 50) mapped = 'sent';
+  else if (value === 10 || value === 20) mapped = 'sending';
+  else if (value === 30 || value === 40) mapped = 'failed';
+  else mapped = sequence > 0 ? 'sent' : 'none';
+
+  if (sequence > 0 && Number(cursor?.receivedSeq) >= sequence && deliveryRank(mapped) < deliveryRank('received')) {
+    mapped = 'received';
+  }
+  if (sequence > 0 && Number(cursor?.readSeq) >= sequence && deliveryRank(mapped) < deliveryRank('read')) {
+    mapped = 'read';
+  }
+  return mapped;
 }
 
 export function applyPresenceToConversation(conversation: Conversation, uid: string, online: boolean): Conversation {

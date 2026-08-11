@@ -21,6 +21,10 @@ export function canRecallMessage(message?: ChatMessage | null) {
   );
 }
 
+export function canInteractWithMessage(message?: ChatMessage | null) {
+  return Boolean(message && !message.recalled);
+}
+
 export function buildRecallEvent(message: ChatMessage, actorId: string) {
   return {
     targetId: String(message.id || ''),

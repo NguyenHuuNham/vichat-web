@@ -66,6 +66,7 @@ export interface ChatMessage {
   recalled?: boolean;
   deliveryStatus?: DeliveryStatus;
   reactions?: Record<string, number>;
+  replyTo?: { id: string; text: string; senderName: string };
   raw?: any;
 }
 

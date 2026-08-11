@@ -1,21 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, ChevronLeft, FilePlus2, ImagePlus, MoreVertical, Send, WifiOff } from 'lucide-react-native';
+import { Camera, ChevronLeft, FilePlus2, ImagePlus, MoreVertical, Send, WifiOff, X } from 'lucide-react-native';
 import { RootStackParamList } from '../../navigation/types';
 import { useAppStore, getConversation } from '../../store/appStore';
 import { colors } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import { Avatar } from '../../components/Avatar';
 import { MessageBubble } from '../../components/MessageBubble';
+import { MessageActionSheet } from '../../components/MessageActionSheet';
 import { TypingIndicator } from '../../components/TypingIndicator';
 import { ChatMessage, PickerFile } from '../../types';
-import { attachmentValidationError, canRecallMessage } from '../../utils/messagePolicy';
+import { attachmentValidationError, canInteractWithMessage } from '../../utils/messagePolicy';
 import { formatMessageDateLabel } from '../../utils/timeFormatting';
+import { beginTrustedExternalActivity } from '../../services/appLifecycleService';
+import { tinodeClient } from '../../services/tinodeClient';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ChatDetail'>;
 
@@ -32,6 +35,8 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [selectedMessage, setSelectedMessage] = useState<ChatMessage | null>(null);
+  const [replyingTo, setReplyingTo] = useState<ChatMessage['replyTo']>();
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingAt = useRef(0);
@@ -64,7 +69,11 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     const value = text.trim();
     if (!value || busy || !conversation) return;
     setText(''); setBusy(true); setError('');
-    try { await sendText(conversation.id, value); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không gửi được tin nhắn.'); setText(value); } finally { setBusy(false); }
+    const reply = replyingTo && conversation.messages.some(message => message.id === replyingTo.id && !message.recalled)
+      ? replyingTo
+      : undefined;
+    setReplyingTo(undefined);
+    try { await sendText(conversation.id, value, reply); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không gửi được tin nhắn.'); setText(value); setReplyingTo(reply); } finally { setBusy(false); }
   };
   const submitFile = async (file: PickerFile | null) => {
     if (!file || !conversation) return;
@@ -79,10 +88,12 @@ export function ChatDetailScreen({ route, navigation }: Props) {
       if (imageOnly) {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permission.granted) throw new Error('ViChat cần quyền truy cập ảnh để gửi hình từ thư viện.');
+        beginTrustedExternalActivity();
         const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'] as any, quality: 0.9, allowsEditing: false });
         const asset: any = !result.canceled ? result.assets?.[0] : null;
         if (asset) file = { uri: asset.uri, name: asset.fileName || `anh-${Date.now()}.jpg`, type: asset.mimeType || 'image/jpeg', size: asset.fileSize };
       } else {
+        beginTrustedExternalActivity();
         const result: any = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, multiple: false });
         const asset = !result.canceled ? result.assets?.[0] : null;
         if (asset) file = { uri: asset.uri, name: asset.name || 'tep-dinh-kem', type: asset.mimeType || 'application/octet-stream', size: asset.size };
@@ -96,6 +107,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) throw new Error('ViChat cần quyền camera để chụp và gửi ảnh.');
+      beginTrustedExternalActivity();
       const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'] as any, quality: 0.9, allowsEditing: false });
       const asset: any = !result.canceled ? result.assets?.[0] : null;
       await submitFile(asset ? { uri: asset.uri, name: asset.fileName || `anh-${Date.now()}.jpg`, type: asset.mimeType || 'image/jpeg', size: asset.fileSize } : null);
@@ -103,15 +115,27 @@ export function ChatDetailScreen({ route, navigation }: Props) {
       setError(valueError instanceof Error ? valueError.message : 'Không chụp được ảnh.');
     }
   };
-  const onLongPress = (message: ChatMessage) => {
-    const buttons: any[] = [
-      { text: 'Sao chép', onPress: () => { if (message.text) void Clipboard.setStringAsync(message.text); } },
-      { text: '👍 Thích', onPress: () => void sendReaction(route.params.conversationId, message, '👍').catch(value => setError(value instanceof Error ? value.message : 'Không thêm được reaction.')) },
-    ];
-    if (message.sender === 'outgoing' && canRecallMessage(message)) buttons.push({ text: 'Thu hồi', style: 'destructive', onPress: () => void recallMessage(route.params.conversationId, message).catch(value => setError(value instanceof Error ? value.message : 'Không thu hồi được tin nhắn.')) });
-    buttons.push({ text: 'Hủy', style: 'cancel' });
-    Alert.alert('Thao tác tin nhắn', message.recalled ? 'Tin nhắn đã được thu hồi.' : 'Chọn thao tác', buttons);
+  const replyMessage = (message: ChatMessage) => {
+    if (!canInteractWithMessage(message)) return;
+    setReplyingTo({ id: message.id, text: message.text || message.file?.name || 'Hình ảnh', senderName: message.senderName || (message.sender === 'outgoing' ? 'Bạn' : 'Thành viên') });
   };
+  const copyMessage = (message: ChatMessage) => { if (canInteractWithMessage(message) && message.text) void Clipboard.setStringAsync(message.text); };
+  const downloadMessage = (message: ChatMessage) => {
+    if (!canInteractWithMessage(message)) return;
+    const file = message.file || (message.image ? { name: 'hinh-anh.jpg', mime: 'image/jpeg', size: 0, url: message.image } : null);
+    if (!file) return;
+    beginTrustedExternalActivity();
+    void tinodeClient.downloadFile(file).catch(value => setError(value instanceof Error ? value.message : 'Không mở được tệp.'));
+  };
+  const shareMessage = (message: ChatMessage) => {
+    if (!canInteractWithMessage(message)) return;
+    if (message.image || message.file) { downloadMessage(message); return; }
+    void Share.share({ message: message.text || 'Tin nhắn ViChat' }).catch(() => {});
+  };
+  const showMessageDetails = (message: ChatMessage) => Alert.alert(
+    'Chi tiết tin nhắn',
+    [`Người gửi: ${message.sender === 'outgoing' ? 'Bạn' : message.senderName || 'Thành viên'}`, `Thời gian: ${new Date(message.createdAt || Date.now()).toLocaleString('vi-VN')}`, `Trạng thái: ${message.recalled ? 'Đã thu hồi' : message.deliveryStatus || 'Đã gửi'}`].join('\n'),
+  );
   if (!conversation) return <SafeAreaView style={styles.screen}><Text style={styles.missing}>Cuộc trò chuyện không còn khả dụng.</Text></SafeAreaView>;
 
   return (
@@ -131,7 +155,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
           renderItem={({ item, index }) => {
             const currentDay = formatMessageDateLabel(item.createdAt);
             const previousDay = index > 0 ? formatMessageDateLabel(messages[index - 1].createdAt) : '';
-            return <View>{currentDay && currentDay !== previousDay ? <Text style={styles.date}>{currentDay}</Text> : null}<MessageBubble message={item} onRecall={() => {}} onReaction={emoji => void sendReaction(conversation.id, item, emoji)} onLongPress={() => onLongPress(item)} /></View>;
+            return <View>{currentDay && currentDay !== previousDay ? <Text style={styles.date}>{currentDay}</Text> : null}<MessageBubble message={item} onLongPress={() => { if (!item.recalled) setSelectedMessage(item); }} /></View>;
           }}
           contentContainerStyle={styles.messageList}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
@@ -143,6 +167,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         />
         <TypingIndicator visible={Boolean(typing)} />
         {error ? <Pressable onPress={() => setError('')} style={styles.error}><Text style={styles.errorText}>{error}</Text></Pressable> : null}
+        {replyingTo ? <View style={styles.replyComposer}><View style={styles.replyBar} /><View style={styles.replyBody}><Text numberOfLines={1} style={styles.replyName}>Đang trả lời {replyingTo.senderName}</Text><Text numberOfLines={1} style={styles.replyText}>{replyingTo.text}</Text></View><Pressable onPress={() => setReplyingTo(undefined)} style={styles.replyClose}><X color={colors.inkSoft} size={18} /></Pressable></View> : null}
         <View style={styles.composer}>
           <Pressable onPress={() => void takePhoto()} disabled={busy} style={styles.attach}><Camera color={colors.accent} size={19} /></Pressable>
           <Pressable onPress={() => void chooseFile(true)} disabled={busy} style={styles.attach}><ImagePlus color={colors.accent} size={20} /></Pressable>
@@ -151,6 +176,17 @@ export function ChatDetailScreen({ route, navigation }: Props) {
           <Pressable onPress={submitText} disabled={busy || !text.trim()} style={[styles.send, (!text.trim() || busy) && styles.sendDisabled]}><Send color="#fff" size={18} /></Pressable>
         </View>
       </KeyboardAvoidingView>
+      <MessageActionSheet
+        message={selectedMessage}
+        onClose={() => setSelectedMessage(null)}
+        onReply={replyMessage}
+        onCopy={copyMessage}
+        onShare={shareMessage}
+        onDownload={downloadMessage}
+        onDetails={showMessageDetails}
+        onReaction={(message, emoji) => void sendReaction(conversation.id, message, emoji).catch(value => setError(value instanceof Error ? value.message : 'Không thêm được biểu cảm.'))}
+        onRecall={message => void recallMessage(conversation.id, message).catch(value => setError(value instanceof Error ? value.message : 'Không thu hồi được tin nhắn.'))}
+      />
     </SafeAreaView>
   );
 }
@@ -173,6 +209,12 @@ const styles = StyleSheet.create({
   emptyText: { ...typography.body, color: colors.inkSoft, textAlign: 'center', marginTop: 7 },
   error: { marginHorizontal: 14, marginBottom: 7, borderRadius: 12, backgroundColor: '#FDECEC', padding: 9 },
   errorText: { ...typography.caption, color: colors.danger },
+  replyComposer: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 15, paddingVertical: 8, backgroundColor: colors.paper, borderTopWidth: 1, borderTopColor: colors.line },
+  replyBar: { width: 3, alignSelf: 'stretch', borderRadius: 2, backgroundColor: colors.accent },
+  replyBody: { flex: 1 },
+  replyName: { ...typography.caption, color: colors.accentDeep },
+  replyText: { ...typography.caption, color: colors.inkSoft, marginTop: 2 },
+  replyClose: { width: 34, height: 34, borderRadius: 12, backgroundColor: colors.canvas, alignItems: 'center', justifyContent: 'center' },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 7, paddingHorizontal: 11, paddingTop: 8, paddingBottom: 8, borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.paper },
   attach: { width: 35, height: 42, alignItems: 'center', justifyContent: 'center' },
   input: { maxHeight: 110, minHeight: 42, flex: 1, borderRadius: 19, backgroundColor: colors.canvas, paddingHorizontal: 14, paddingTop: 11, paddingBottom: 10, color: colors.ink, fontFamily: 'BeVietnamPro_400Regular', fontSize: 14 },

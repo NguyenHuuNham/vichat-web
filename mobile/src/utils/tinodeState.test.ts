@@ -8,6 +8,12 @@ describe('mapTinodeDeliveryStatus', () => {
     expect(mapTinodeDeliveryStatus(70, true, 10)).toBe('read');
   });
 
+  it('uses realtime receipt cursors when the SDK message status is stale', () => {
+    expect(mapTinodeDeliveryStatus(50, true, 10, { receivedSeq: 10 })).toBe('received');
+    expect(mapTinodeDeliveryStatus(50, true, 10, { readSeq: 10 })).toBe('read');
+    expect(mapTinodeDeliveryStatus(70, true, 10, { readSeq: 8 })).toBe('read');
+  });
+
   it('keeps incoming and pending states stable', () => {
     expect(mapTinodeDeliveryStatus(0, false, 10)).toBe('received');
     expect(mapTinodeDeliveryStatus(20, true)).toBe('sending');

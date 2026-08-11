@@ -56,6 +56,16 @@ until native credentials are configured, and the removed knowledge manager is
 not exposed. Run mobile checks from `mobile/`; signed Android/iOS builds need
 JDK/SDK or EAS plus store credentials.
 
+Protected Tinode images are fetched through the authenticated
+`chat.upgo.vn/tinode-media` relay into the native cache before rendering. An
+optional four-digit app PIN stores only a salted hash in SecureStore and locks
+the signed-in message surface after the app returns from the background; a
+forgotten PIN is reset only by clearing the local PIN and signing back in with
+UpGO Account. Local notifications remain available while the mobile runtime is
+alive. Background/killed push additionally requires the native Firebase/APNs
+client credential and the matching Tinode push provider; when enabled, mobile
+registers the native device token directly on the authenticated Tinode session.
+
 Steps 3 and 4 remain separate acceptance gates. Successful Step 2 login does
 not mean directory/conversation loading or Tinode realtime messaging is complete.
 

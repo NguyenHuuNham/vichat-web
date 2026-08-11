@@ -1,6 +1,6 @@
 {
   "name": "vichat-mobile",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "main": "index.ts",
   "dependencies": {
     "@expo-google-fonts/be-vietnam-pro": "^0.4.1",
@@ -14,6 +14,7 @@
     "expo": "~57.0.12",
     "expo-clipboard": "~57.0.1",
     "expo-constants": "~57.0.10",
+    "expo-crypto": "~57.0.1",
     "expo-device": "~57.0.1",
     "expo-document-picker": "~57.0.1",
     "expo-file-system": "~57.0.2",

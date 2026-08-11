@@ -6,6 +6,38 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-11-13 - Sua realtime presence receipt va recall cho ViChat Mobile
+
+- Thoi gian: 2026-08-11 23:11 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Mobile | Tinode | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code, kiem thu local va build APK arm64; chua UAT push khi app bi suspend/kill
+- Muc tieu: Khi tai khoan khac vao mobile, presence va trang thai hai dau tich cap nhat realtime; tin nhan thu hoi van con placeholder va khong con thao tac reply/view/reaction; giu duong push Tinode cho nhieu thiet bi.
+- Pham vi: `mobile/` Tinode client, receipt/presence state, message policy, notification registration, tai lieu; khong sua ChatUI web, Chatmgt API, database, topic, file, call hoac chatbot.
+- File da thay doi: `mobile/src/services/tinodeClient.ts`, `mobile/src/utils/tinodeState.ts`, `mobile/src/utils/tinodeState.test.ts`, `mobile/src/utils/messagePolicy.ts`, `mobile/src/utils/messagePolicy.test.ts`, `mobile/src/components/MessageActionSheet.tsx`, `mobile/src/screens/chat/ChatDetailScreen.tsx`, `mobile/src/store/appStore.ts`, `mobile/src/services/notificationService.ts`, `docs/chat-backend-architecture.md`, va `docs/CHANGELOG.md`.
+- Noi dung: Mobile lang nghe presence tu topic `me` va topic P2P, hydrate lai snapshot sau khi Chatmgt load directory, ACK `recv` ngay khi nhan data, luu cursor `recv/read` tang dan de snapshot cu khong ha trang thai receipt. Recall chi publish event, khong goi hard-delete; message cu da bi xoa trong cache Tinode duoc dung lai thanh placeholder `Tin nhan da duoc thu hoi`, xoa quote/reaction/attachment va chan toan bo menu thao tac. Dang ky device token duoc reset khi logout de moi phien tren tung thiet bi dang ky lai voi Tinode.
+- Quyet dinh ky thuat: Tinode van la nguon chuan cua presence, receipt va message; khong tao message store thay the, khong doi API/schema. Event recall la lop an noi dung de tuong thich voi web va khong phuc hoi noi dung goc. Push background/killed van dung native FCM/APNs token qua `hi.dev`, khong luu token vao Chatmgt.
+- Database/API/cau hinh: Khong migration, khong doi API hay secret. Muon co push khi app suspend/kill phai bat `EXPO_PUBLIC_PUSH_ENABLED=true`, nhung production con can Firebase/APNs credential trong binary va Tinode push provider tuong ung.
+- Kiem thu: `mobile/npm run typecheck` dat; `mobile/npm test` dat 8 file/18 test; `mobile/npm run lint` dat; `mobile/npm run export` dat; `npx expo prebuild --platform android --no-install` dat; Gradle `app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon` dat. APK `outputs/vichat-mobile/ViChat-1.0.5-arm64.apk` package `vn.upgo.vichat`, version `1.0.5`/code `6`, SHA-256 `448720C1042B72FD75D80B5C011F8F2580C392EFFA763BEF116C161A85CEB070`.
+- Rui ro con lai: Chua UAT hai tai khoan that cho presence/receipt/recall va chua xac nhan push khi app bi kill vi thieu native/provider credential; khong bao cao push kill-state la da hoat dong.
+- Viec tiep theo: UAT hai thiet bi/tai khoan trong cung tenant; sau khi cap credential Firebase/APNs va Tinode provider thi rebuild development/production build va test notification khi app background/killed.
+- Commit/PR: Tao commit mobile sau khi ra soat staged diff; khong deploy web.
+
+## 2026-08-11-12 - Hoan thien media, thao tac tin nhan, khoa PIN va push cho ViChat Mobile
+
+- Thoi gian: 2026-08-11 22:45 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Bao mat | Giao dien | Mobile | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code va build APK; cho UAT thong bao nen/khi app bi dong
+- Muc tieu: Hien thi anh trong bong chat nhu ung dung nhan tin hien dai, bo sung thao tac nhan giu, khoa app bang ma PIN va khoi phuc dang ky thong bao native ma khong thay doi ChatUI web, Chatmgt, Tinode API hay du lieu khac.
+- Pham vi: Chi `mobile/` va tai lieu kien truc/nhat ky; khong sua web ChatUI, Chatmgt, Tinode server, database, tenant, chatbot hoac luong nghiep vu khac.
+- File da thay doi: `mobile/App.tsx`, `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`, `mobile/src/components/MessageBubble.tsx`, `mobile/src/components/MessageActionSheet.tsx`, `mobile/src/components/AppLockScreen.tsx`, `mobile/src/components/PinSettingsModal.tsx`, `mobile/src/screens/chat/ChatDetailScreen.tsx`, `mobile/src/screens/settings/EditProfileScreen.tsx`, `mobile/src/screens/settings/SettingsScreen.tsx`, `mobile/src/services/tinodeClient.ts`, `mobile/src/services/notificationService.ts`, `mobile/src/services/appLockService.ts`, `mobile/src/services/appLifecycleService.ts`, `mobile/src/store/appLockStore.ts`, `mobile/src/store/appStore.ts`, `mobile/src/types/index.ts`, `mobile/src/utils/mediaUrl.ts`, `mobile/src/utils/mediaUrl.test.ts`, `mobile/src/utils/appLockPolicy.ts`, `mobile/src/utils/appLockPolicy.test.ts`, `README.md`, `docs/chat-backend-architecture.md`, va `docs/CHANGELOG.md`.
+- Noi dung: Anh Tinode duoc chuyen qua relay xac thuc, tai vao cache native truoc khi render, co trang thai dang tai/thu lai, xem toan man hinh va mo/tai; bong anh chi hien mot lan khong kem file-card. Nhan giu mo bottom sheet voi reaction, tra loi, sao chep, chia se, chi tiet, mo/tai tep va thu hoi chi khi message da duoc Tinode xac nhan. Metadata `x-reply-to` duoc gui qua Tinode de tuong thich voi web. Cai dat thay muc phien/quyen rieng tu bang `Ma PIN khi mo ViChat`; PIN 4 so duoc luu salt + hash trong SecureStore, khoa khi cold start/background va co quy trinh quen PIN dang xuat de dang nhap lai. Camera, thu vien, picker va chia se duoc danh dau trusted transition de khong khoa giua thao tac. Notification channel/local notification van hoat dong khi JS con song, dong thoi dang ky native FCM/APNs device token vao Tinode khi duoc bat.
+- Quyet dinh ky thuat: Khong luu PIN, file cache hay device token vao Chatmgt; khong tao message store thay the. Anh protected khong dung `Image` truc tiep voi URL trung tam vi thieu header Tinode tren native. Recall/reaction/reply tiep tuc dung Tinode topic hien tai; khong thay doi API hay schema.
+- Database/API/cau hinh: Them dependency `expo-crypto`; tang mobile version `1.0.4`, Android `versionCode=5`; khong migration. Push nen/khi app bi kill can dong thoi `EXPO_PUBLIC_PUSH_ENABLED=true`, credential Firebase/APNs trong binary va Tinode push provider production; production hien thieu `FCM_PUSH_ENABLED`, `FCM_PROJECT_ID`, `FCM_CRED_FILE` va credential google-services nen chua the xac nhan push kill-state.
+- Kiem thu: `mobile/npm run typecheck` dat; `mobile/npm test` dat 8 file/16 test; `mobile/npm run lint` exit 0; `git diff --check` dat. `npx expo prebuild --platform android --no-install` va Gradle `app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon` da dat; APK `outputs/vichat-mobile/ViChat-1.0.4-arm64.apk` package `vn.upgo.vichat`, version `1.0.4`/code `5`, SHA-256 `A267B6441CFC3AEC366349A460350005CA5FB23A35EC61F974FED138173B0434`, apksigner v2 dat. `adb install -r` dat tren Xiaomi `M2104K10AC` serial `z5lfxgnf8dw4ucjj`; cold start giu process song, chua UAT truc quan vi thiet bi dang bi khoa.
+- Rui ro con lai: Push khi ung dung bi kill/suspend phu thuoc credential Firebase/APNs va Tinode provider chua co trong production; chua gui tin/anh that de tranh lam thay doi du lieu chat cua cong ty.
+- Viec tiep theo: Hard refresh/UAT anh, nhan giu, PIN va local notification tren thiet bi; bo sung credential push rieng roi rebuild/release neu can thong bao khi app bi kill.
+- Commit/PR: Chua tao.
+
 ## 2026-08-11-11 - Dong bo lai ViChat Mobile va sua gui media
 
 - Thoi gian: 2026-08-11 18:58 (Asia/Saigon)

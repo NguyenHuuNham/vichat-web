@@ -9,6 +9,7 @@ import { useAppStore } from '../../store/appStore';
 import { colors } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import { Avatar } from '../../components/Avatar';
+import { beginTrustedExternalActivity } from '../../services/appLifecycleService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EditProfile'>;
 
@@ -21,7 +22,7 @@ export function EditProfileScreen({ navigation }: Props) {
   const [busy, setBusy] = useState(false);
   const [avatar, setAvatar] = useState(user?.avatar || '');
   const save = async () => { setBusy(true); try { await updateProfile({ name, title }); navigation.goBack(); } catch (error) { Alert.alert('Không thể cập nhật', error instanceof Error ? error.message : 'Thử lại sau.'); } finally { setBusy(false); } };
-  const chooseAvatar = async () => { const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'] as any, quality: 0.85, allowsEditing: true, aspect: [1, 1] }); const asset: any = !result.canceled ? result.assets?.[0] : null; if (!asset) return; setBusy(true); try { await updateAvatar({ uri: asset.uri, name: asset.fileName || 'avatar.jpg', type: asset.mimeType || 'image/jpeg' }); setAvatar(asset.uri); } catch (error) { Alert.alert('Không thể cập nhật ảnh', error instanceof Error ? error.message : 'Thử lại sau.'); } finally { setBusy(false); } };
+  const chooseAvatar = async () => { beginTrustedExternalActivity(); const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'] as any, quality: 0.85, allowsEditing: true, aspect: [1, 1] }); const asset: any = !result.canceled ? result.assets?.[0] : null; if (!asset) return; setBusy(true); try { await updateAvatar({ uri: asset.uri, name: asset.fileName || 'avatar.jpg', type: asset.mimeType || 'image/jpeg' }); setAvatar(asset.uri); } catch (error) { Alert.alert('Không thể cập nhật ảnh', error instanceof Error ? error.message : 'Thử lại sau.'); } finally { setBusy(false); } };
   return <SafeAreaView style={styles.screen} edges={['bottom', 'left', 'right']}><KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"><View style={styles.avatarWrap}><Avatar name={name} uri={avatar} size={100} /><Pressable onPress={() => void chooseAvatar()} style={styles.camera}><Camera color="#fff" size={17} /></Pressable></View><Text style={styles.hint}>Tên hiển thị được đồng bộ với UpGO Account.</Text><Text style={styles.label}>Tên hiển thị</Text><TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Tên của bạn" placeholderTextColor={colors.muted} /><Text style={styles.label}>Chức vụ</Text><TextInput value={title} onChangeText={setTitle} style={styles.input} placeholder="Chức vụ" placeholderTextColor={colors.muted} /><Text style={styles.label}>Email</Text><View style={[styles.input, styles.readonly]}><Text style={styles.readonlyText}>{user?.email || 'Được quản lý bởi UpGO Account'}</Text></View><Pressable disabled={busy} onPress={() => void save()} style={[styles.button, busy && { opacity: 0.55 }]}><Save color="#fff" size={19} /><Text style={styles.buttonText}>{busy ? 'Đang lưu...' : 'Lưu thay đổi'}</Text></Pressable></ScrollView></KeyboardAvoidingView></SafeAreaView>;
 }
 

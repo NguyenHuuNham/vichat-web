@@ -5,7 +5,7 @@ import { tinodeClient, TinodeEvent } from '../services/tinodeClient';
 import { workspaceService } from '../services/workspaceService';
 import { Conversation, ChatMessage, ConnectionState, Session, User, WorkspaceItem } from '../types';
 import { storageService } from '../services/storageService';
-import { notifyIncomingMessage } from '../services/notificationService';
+import { notifyIncomingMessage, resetPushNotificationRegistration } from '../services/notificationService';
 import { applyPresenceToConversation } from '../utils/tinodeState';
 import { retainAvailableConversations } from '../utils/conversationSync';
 
@@ -28,7 +28,7 @@ interface AppStore {
   openConversation: (conversationId: string) => Promise<Conversation | null>;
   createDirectConversation: (user: User) => Promise<Conversation>;
   createGroupConversation: (subject: string, participantIds: string[]) => Promise<Conversation>;
-  sendText: (conversationId: string, text: string) => Promise<void>;
+  sendText: (conversationId: string, text: string, replyTo?: ChatMessage['replyTo']) => Promise<void>;
   sendFile: (conversationId: string, file: any) => Promise<void>;
   sendReaction: (conversationId: string, message: ChatMessage, emoji: string) => Promise<void>;
   recallMessage: (conversationId: string, message: ChatMessage) => Promise<void>;
@@ -84,7 +84,11 @@ async function loadRemoteData(set: any, get: () => AppStore) {
       messages: [], badge: 0, members: [], participantIds: [], membersCount: 'Trợ lý nội bộ',
     } as Conversation]
     : prepared;
-  set({ conversations: withBot, directory, workspaceItems: workspace.items, workspaceSummary: workspace.summary });
+  const hydratedDirectory = directory.map(user => ({
+    ...user,
+    online: tinodeClient.getPresenceStatus(user.uid || user.id, user.online === true),
+  }));
+  set({ conversations: withBot, directory: hydratedDirectory, workspaceItems: workspace.items, workspaceSummary: workspace.summary });
   if (get().session?.tinodeAuth?.token) {
     const availableTopics = await tinodeClient.syncTopics(withBot.map(item => item.tinodeTopic).filter(Boolean));
     set((current: AppStore) => ({
@@ -184,6 +188,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   async logout() {
     await tinodeClient.disconnect();
+    resetPushNotificationRegistration();
     tinodeUnsubscribe?.();
     tinodeUnsubscribe = null;
     await authService.logout();
@@ -249,14 +254,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
     return created;
   },
 
-  async sendText(conversationId, text) {
+  async sendText(conversationId, text, replyTo) {
     const conversation = conversationForId(get().conversations, conversationId);
     if (!conversation?.tinodeTopic) throw new Error('Cuộc trò chuyện chưa sẵn sàng realtime.');
     const clientId = `mobile-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const pending: ChatMessage = { id: clientId, type: 'text', sender: 'outgoing', senderId: tinodeClient.currentUserId, senderName: 'Bạn', text, createdAt: new Date().toISOString(), pending: true, deliveryStatus: 'sending' };
+    const pending: ChatMessage = { id: clientId, type: 'text', sender: 'outgoing', senderId: tinodeClient.currentUserId, senderName: 'Bạn', text, replyTo, createdAt: new Date().toISOString(), pending: true, deliveryStatus: 'sending' };
     set({ conversations: mergeConversation(get().conversations, { ...conversation, messages: [...conversation.messages, pending], lastMsg: text, updatedAt: pending.createdAt }) });
     try {
-      await tinodeClient.sendText(conversation.tinodeTopic, text, clientId);
+      await tinodeClient.sendText(conversation.tinodeTopic, text, clientId, replyTo);
       await get().openConversation(conversationId);
     } catch (error) {
       set({ conversations: get().conversations.map(item => item.id === conversationId ? { ...item, messages: item.messages.map(message => message.id === clientId ? { ...message, pending: false, failed: true, deliveryStatus: 'failed' } : message) } : item) });

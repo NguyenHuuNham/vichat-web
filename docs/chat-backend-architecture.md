@@ -74,6 +74,45 @@ the UpGO password to Tinode. If Tinode is unavailable, mobile keeps
 Chatmgt directory/conversation metadata visible and disables only realtime
 message/file actions, matching ChatUI's management-mode fallback.
 
+Tinode media URLs from the central host are normalized to the authenticated
+`chat.upgo.vn/tinode-media` relay. The native client downloads protected images
+with its short-lived Tinode token into the OS cache before rendering, so an
+expired central certificate, redirect, or missing `Image` request header cannot
+leave a blank message bubble. The cache is disposable and is not a second
+message store.
+
+The optional mobile app lock is device-local. It stores a random salt and the
+SHA-256 hash of a four-digit PIN in SecureStore, never sends the PIN to Chatmgt,
+Tinode or UpGO Account, and covers only an authenticated message surface. Cold
+start and normal background-to-active transitions require the PIN; trusted
+camera, gallery, document-picker and share transitions do not interrupt the
+selected media operation. Resetting a forgotten PIN clears the local verifier
+and requires a fresh UpGO Account login.
+
+Notification delivery has two layers. A local notification is scheduled from
+an incoming Tinode event while the JavaScript/WebSocket runtime remains alive.
+When `EXPO_PUBLIC_PUSH_ENABLED=true` and the native Firebase/APNs client plus
+the matching Tinode push provider are configured, mobile obtains the native
+device token and registers it with the authenticated Tinode client through the
+Tinode `hi.dev` field. This lets Tinode deliver while the app is suspended or
+killed. No device token is stored in Chatmgt. Without both credential halves,
+background/killed push remains unavailable and must not be reported as active.
+
+Mobile presence is read from Tinode's `me` P2P contacts and the subscribed P2P
+topic. The client applies the initial snapshot after Chatmgt directory data is
+loaded, then accepts `on`/`off` events immediately. Message delivery is also
+Tinode-native: mobile sends `recv` as soon as a subscribed topic receives data,
+and keeps monotonic `recv/read` cursors so an older metadata snapshot cannot
+downgrade a two-check status. Opening a conversation still sends `read` through
+the existing topic API.
+
+Recall is an event overlay in the mobile renderer. The client does not hard
+delete the original Tinode packet, hides its content and attachment, removes
+quotes/reactions, and disables the message action menu. Legacy recall events
+whose original packet is no longer cached produce the same placeholder at the
+original sequence/time, so participants do not see the original content or
+lose the conversation position.
+
 Production uses `CHAT_ACCOUNT_SSO_ENABLED=true` and
 `CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED=true`. The cookie-based
 `POST /api/v1/auth/sso` endpoint remains available for compatible clients. The legacy

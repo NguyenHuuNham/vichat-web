@@ -10,7 +10,10 @@ import {
   canRecallMessage,
 } from '../utils/messagePolicy';
 import { formatMessageTime } from '../utils/timeFormatting';
-import { mapTinodeDeliveryStatus } from '../utils/tinodeState';
+import { mapTinodeDeliveryStatus, ReceiptCursor } from '../utils/tinodeState';
+import { normalizeMediaUrl } from '../utils/mediaUrl';
+
+export { normalizeMediaUrl } from '../utils/mediaUrl';
 
 let TinodeConstructor: any = null;
 let Drafty: any = null;
@@ -38,14 +41,7 @@ export type TinodeEvent =
   | { type: 'typing'; topic: string; uid: string; active: boolean }
   | { type: 'presence'; uid: string; online: boolean };
 
-function mediaUrl(value: unknown) {
-  const raw = String(value || '');
-  if (!raw) return '';
-  if (/^(?:data:|blob:|https?:)/i.test(raw)) return raw;
-  if (raw.startsWith('/tinode-media/')) return `https://chat.upgo.vn${raw}`;
-  if (raw.startsWith('/v0/file/')) return `${config.mediaBase}${raw}`;
-  return `${config.mediaBase}/${raw.replace(/^\/+/, '')}`;
-}
+const imageCacheRequests = new Map<string, Promise<string>>();
 
 function tinodeHeaders(token = '') {
   return {
@@ -66,7 +62,7 @@ function rawAttachment(raw: any) {
   const data = entity.data || {};
   const name = String(data.name || 'Tệp đính kèm');
   const mime = String(data.mime || 'application/octet-stream');
-  const url = mediaUrl(data.ref || data.url || data.val || (Drafty?.getDownloadUrl?.(data) || ''));
+  const url = normalizeMediaUrl(data.ref || data.url || data.val || (Drafty?.getDownloadUrl?.(data) || ''));
   return {
     isImage: entity.tp === 'IM' || /^image\//i.test(mime) || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(name),
     file: {
@@ -84,7 +80,23 @@ function parseEvent(content: string, prefix: string) {
   try { return JSON.parse(content.slice(prefix.length)); } catch { return null; }
 }
 
-function normalizeMessage(raw: any, client: any, topic: any): ChatMessage | null {
+function messageReply(raw: any) {
+  const value = raw?.head?.['x-reply-to'];
+  if (!value) return undefined;
+  try {
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+    if (!parsed?.id) return undefined;
+    return {
+      id: String(parsed.id),
+      text: String(parsed.text || 'Tin nhắn'),
+      senderName: String(parsed.senderName || 'Thành viên'),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeMessage(raw: any, client: any, topic: any, receiptCursor?: ReceiptCursor): ChatMessage | null {
   if (!raw || raw._deleted) return null;
   const senderId = String(raw.from || raw.head?.['x-sender-id'] || '');
   const outgoing = Boolean(senderId && client.isMe?.(senderId));
@@ -116,16 +128,17 @@ function normalizeMessage(raw: any, client: any, topic: any): ChatMessage | null
     file: attachment?.file,
     createdAt: raw.ts ? new Date(raw.ts).toISOString() : undefined,
     time: formatMessageTime(raw.ts),
-    deliveryStatus: mapTinodeDeliveryStatus(topic?.msgStatus?.(raw, false) ?? raw._status, outgoing, raw.seq),
+    deliveryStatus: mapTinodeDeliveryStatus(topic?.msgStatus?.(raw, false) ?? raw._status, outgoing, raw.seq, receiptCursor),
+    replyTo: messageReply(raw),
     raw,
   };
 }
 
-function materializeConversation(topic: any, client: any, presenceResolver: (uid: string, fallback: boolean) => boolean): Conversation {
+function materializeConversation(topic: any, client: any, presenceResolver: (uid: string, fallback: boolean) => boolean, receiptCursor?: ReceiptCursor): Conversation {
   const isGroup = Boolean(topic.isGroupType?.() || String(topic.name || '').startsWith('grp'));
   const loaded: ChatMessage[] = [];
   topic.messages?.((raw: any) => {
-    const message = normalizeMessage(raw, client, topic);
+    const message = normalizeMessage(raw, client, topic, receiptCursor);
     if (message) loaded.push(message);
   });
   const reactionState = new Map<string, Record<string, boolean>>();
@@ -142,6 +155,7 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
     if (event?.targetId) recalls.set(String(event.targetId), event);
     if (event?.targetSeq) recalls.set(`seq:${event.targetSeq}`, event);
   });
+  const appliedRecallIds = new Set<string>();
   const messages = loaded
     .filter(message => !['reaction', 'recall'].includes(message.type))
     .map(message => {
@@ -153,16 +167,48 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
           reactions[emoji] = (reactions[emoji] || 0) + 1;
         }
       });
-      return recall ? {
-        ...message,
-        type: 'text' as const,
-        text: 'Tin nhắn đã được thu hồi',
-        recalled: true,
-        file: undefined,
-        image: undefined,
-        reactions: {},
-      } : { ...message, reactions };
+      if (recall) {
+        const recallMessage = loaded.find(item => item.type === 'recall' && item.raw?.recallEvent === recall);
+        if (recallMessage) appliedRecallIds.add(recallMessage.id);
+        return {
+          ...message,
+          type: 'text' as const,
+          text: 'Tin nhắn đã được thu hồi',
+          recalled: true,
+          file: undefined,
+          image: undefined,
+          replyTo: undefined,
+          reactions: {},
+          raw: undefined,
+        };
+      }
+      return message.replyTo && (recalls.has(String(message.replyTo.id)) || recalls.has(`seq:${message.replyTo.id}`))
+        ? { ...message, replyTo: undefined, reactions }
+        : { ...message, reactions };
     });
+  loaded.filter(message => message.type === 'recall').forEach(message => {
+    if (appliedRecallIds.has(message.id)) return;
+    const event = message.raw?.recallEvent || {};
+    const targetSeq = Number(event.targetSeq) || undefined;
+    const senderId = String(event.actorId || event.originalSenderId || message.senderId || '');
+    const outgoing = Boolean(senderId && client.isMe?.(senderId));
+    const createdAt = event.originalCreatedAt || message.createdAt;
+    messages.push({
+      id: String(event.targetId || `recalled-${targetSeq || message.seq || message.id}`),
+      seq: targetSeq,
+      type: 'text',
+      sender: outgoing ? 'outgoing' : 'incoming',
+      senderId,
+      senderName: outgoing ? 'Bạn' : 'Thành viên',
+      text: 'Tin nhắn đã được thu hồi',
+      createdAt,
+      time: formatMessageTime(createdAt),
+      recalled: true,
+      reactions: {},
+      deliveryStatus: message.deliveryStatus,
+      raw: undefined,
+    });
+  });
   const members: any[] = [];
   topic.subscribers?.((sub: any) => {
     if (sub?.user) members.push({
@@ -170,7 +216,7 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
       uid: sub.user,
       username: sub.user,
       name: sub.public?.fn || sub.public?.name || 'Thành viên',
-      avatar: mediaUrl(sub.public?.photo?.ref || sub.public?.avatar || ''),
+      avatar: normalizeMediaUrl(sub.public?.photo?.ref || sub.public?.avatar || ''),
       active: true,
       tenantId: config.tenantId,
       online: presenceResolver(sub.user, sub.online === true),
@@ -190,7 +236,7 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
     tinodeTopic: topic.name,
     name: String(topic.public?.fn || topic.public?.name || directPeer?.name || topic.name || 'Cuộc trò chuyện'),
     isGroup,
-    avatarUrl: mediaUrl(topic.public?.photo?.ref || topic.public?.avatar || directPeer?.avatar || ''),
+    avatarUrl: normalizeMediaUrl(topic.public?.photo?.ref || topic.public?.avatar || directPeer?.avatar || ''),
     description: String(topic.public?.note || ''),
     membersCount: isGroup ? `${members.length} thành viên` : (directPeer?.online ? 'Đang hoạt động' : 'Offline'),
     members,
@@ -212,7 +258,9 @@ export class TinodeMobileClient {
   private tokenProvider: (() => Promise<TinodeAuth>) | null = null;
   private topics = new Map<string, any>();
   private presenceByUid = new Map<string, boolean>();
+  private receiptCursors = new Map<string, ReceiptCursor>();
   private notifiedSeqByTopic = new Map<string, number>();
+  private deviceToken: string | null = null;
 
   onEvent(listener: Listener) {
     this.listeners.add(listener);
@@ -228,7 +276,7 @@ export class TinodeMobileClient {
   }
 
   private materialize(topic: any) {
-    return materializeConversation(topic, this.client, (uid, fallback) => this.getPresenceStatus(uid, fallback));
+    return materializeConversation(topic, this.client, (uid, fallback) => this.getPresenceStatus(uid, fallback), this.receiptCursors.get(topic?.name));
   }
 
   private emitIncomingMessage(topic: any, raw: any, conversation?: Conversation) {
@@ -254,6 +302,43 @@ export class TinodeMobileClient {
     this.emit({ type: 'presence', uid, online });
   }
 
+  private updateContactPresence(contact: any, eventType = '') {
+    const uid = String(contact?.name || contact?.user || '');
+    if (!uid || !contact?.isP2PType?.()) return;
+    if (eventType && !['on', 'off', 'gone', 'term'].includes(eventType)) return;
+    const online = eventType === 'on' ? true : eventType === 'off' || eventType === 'gone' || eventType === 'term'
+      ? false
+      : contact.online === true;
+    this.updatePresence({ src: uid, what: online ? 'on' : 'off' });
+  }
+
+  private syncPresenceSnapshot(emitAll = false) {
+    this.meTopic?.contacts?.((contact: any) => {
+      const uid = String(contact?.name || '');
+      if (!uid || !contact?.isP2PType?.()) return;
+      const online = contact.online === true;
+      const changed = this.presenceByUid.get(uid) !== online;
+      this.presenceByUid.set(uid, online);
+      if (emitAll || changed) this.emit({ type: 'presence', uid, online });
+    });
+  }
+
+  private updateReceiptCursor(topic: any, what: string, seq: number) {
+    const sequence = Number(seq) || 0;
+    if (!topic?.name || sequence <= 0 || !['recv', 'read'].includes(what)) return;
+    const previous = this.receiptCursors.get(topic.name) || {};
+    const next: ReceiptCursor = {
+      receivedSeq: Math.max(Number(previous.receivedSeq) || 0, what === 'recv' ? sequence : Number(previous.receivedSeq) || 0, what === 'read' ? sequence : 0),
+      readSeq: Math.max(Number(previous.readSeq) || 0, what === 'read' ? sequence : 0),
+    };
+    this.receiptCursors.set(topic.name, next);
+  }
+
+  private acknowledgeTopicReceived(topic: any, seq?: number) {
+    const sequence = Number(seq || topic?.maxMsgSeq?.() || 0);
+    if (sequence > 0) topic?.noteRecv?.(sequence);
+  }
+
   get connected() {
     return Boolean(this.client?.isConnected?.() && this.client?.isAuthenticated?.());
   }
@@ -264,6 +349,38 @@ export class TinodeMobileClient {
 
   getMediaHeaders() {
     return tinodeHeaders(this.client?.getAuthToken?.()?.token || '');
+  }
+
+  setDeviceToken(token: string | null) {
+    this.deviceToken = token || null;
+    return Boolean(this.client?.setDeviceToken?.(this.deviceToken));
+  }
+
+  async cacheImage(value: string) {
+    const url = normalizeMediaUrl(value);
+    if (!url || /^(?:data:|file:|content:)/i.test(url)) return url;
+    if (!imageCacheRequests.has(url)) {
+      const request = (async () => {
+        const fileSystem: any = require('expo-file-system');
+        if (!fileSystem.File?.downloadFileAsync || !fileSystem.Paths?.cache) {
+          throw new Error('Bộ nhớ ảnh chưa sẵn sàng.');
+        }
+        let hash = 5381;
+        for (let index = 0; index < url.length; index += 1) hash = ((hash << 5) + hash) ^ url.charCodeAt(index);
+        const extension = url.match(/\.(?:avif|bmp|gif|jpe?g|png|webp)(?:\?|$)/i)?.[0]?.replace(/\?.*$/, '') || '.jpg';
+        const target = new fileSystem.File(fileSystem.Paths.cache, `vichat-image-${Math.abs(hash)}${extension}`);
+        const downloaded = await fileSystem.File.downloadFileAsync(url, target, {
+          headers: this.getMediaHeaders(),
+          idempotent: true,
+        });
+        return downloaded.uri;
+      })().catch(error => {
+        imageCacheRequests.delete(url);
+        throw error;
+      });
+      imageCacheRequests.set(url, request);
+    }
+    return imageCacheRequests.get(url)!;
   }
 
   async downloadFile(file: FileAttachment) {
@@ -282,10 +399,12 @@ export class TinodeMobileClient {
     if (!topic || topic.__vichatMobileWired) return topic;
     topic.__vichatMobileWired = true;
     topic.onData = (raw: any) => {
+      if (!raw?.from || !this.client?.isMe?.(raw.from)) this.acknowledgeTopicReceived(topic, raw?.seq);
       const conversation = this.materialize(topic);
       this.emit({ type: 'conversation', conversation });
       if (!topic.__vichatMobileSyncing) this.emitIncomingMessage(topic, raw, conversation);
     };
+    topic.onMetaDesc = () => this.emit({ type: 'conversation', conversation: this.materialize(topic) });
     topic.onMetaSub = () => this.emit({ type: 'conversation', conversation: this.materialize(topic) });
     topic.onSubsUpdated = () => this.emit({ type: 'conversation', conversation: this.materialize(topic) });
     topic.onPres = (presence: any) => {
@@ -294,7 +413,10 @@ export class TinodeMobileClient {
     };
     topic.onInfo = (info: any) => {
       if (['kp', 'kpa', 'kpv'].includes(info?.what)) this.emit({ type: 'typing', topic: topic.name, uid: info.from, active: true });
-      if (['read', 'recv'].includes(info?.what)) this.emit({ type: 'conversation', conversation: this.materialize(topic) });
+      if (['read', 'recv'].includes(info?.what) && !this.client?.isMe?.(info?.from)) {
+        this.updateReceiptCursor(topic, info.what, info.seq);
+        this.emit({ type: 'conversation', conversation: this.materialize(topic) });
+      }
     };
     return topic;
   }
@@ -336,13 +458,26 @@ export class TinodeMobileClient {
     const fresh = auth.token || (await this.tokenProvider()).token;
     await this.client.loginToken(fresh);
     this.auth = { ...auth, token: fresh };
+    if (this.deviceToken) this.client.setDeviceToken?.(this.deviceToken);
     this.meTopic = this.client.getMeTopic();
+    this.meTopic.onMetaSub = (contact: any) => {
+      this.updateContactPresence(contact);
+      const topic = this.topics.get(String(contact?.name || ''));
+      if (topic) this.emit({ type: 'conversation', conversation: this.materialize(topic) });
+    };
+    this.meTopic.onSubsUpdated = () => this.syncPresenceSnapshot();
+    this.meTopic.onContactUpdate = (what: string, contact: any) => {
+      this.updateContactPresence(contact, what);
+      const topic = this.topics.get(String(contact?.name || ''));
+      if (topic) this.emit({ type: 'conversation', conversation: this.materialize(topic) });
+    };
     this.meTopic.onPres = (presence: any) => {
       this.updatePresence(presence);
     };
     if (!this.meTopic.isSubscribed?.()) {
       await this.meTopic.subscribe(this.meTopic.startMetaQuery().withDesc().withSub().build());
     }
+    this.syncPresenceSnapshot(true);
     this.emit({ type: 'connection', state: 'connected' });
   }
 
@@ -361,10 +496,12 @@ export class TinodeMobileClient {
 
   async disconnect() {
     this.intentionalDisconnect = true;
+    this.client?.setDeviceToken?.(null);
     this.auth = null;
     this.meTopic = null;
     this.topics.clear();
     this.presenceByUid.clear();
+    this.receiptCursors.clear();
     this.notifiedSeqByTopic.clear();
     this.client?.disconnect?.();
     this.client = null;
@@ -392,6 +529,7 @@ export class TinodeMobileClient {
       topic.__vichatMobileSyncing = false;
     }
     if (historyLimit > 0) topic.__vichatMobileHistoryLoaded = true;
+    this.acknowledgeTopicReceived(topic);
     const conversation = this.materialize(topic);
     this.emit({ type: 'conversation', conversation });
     const latestSeq = Number(topic.maxMsgSeq?.() || 0);
@@ -420,11 +558,12 @@ export class TinodeMobileClient {
 
   openConversation(name: string) { return this.subscribeTopic(name, 100); }
 
-  async sendText(topicName: string, text: string, clientId: string) {
+  async sendText(topicName: string, text: string, clientId: string, replyTo?: ChatMessage['replyTo']) {
     await this.subscribeTopic(topicName, 0);
     const topic = this.getTopic(topicName);
     const draft = topic.createMessage(text, false);
     draft.head = { ...(draft.head || {}), 'x-client-id': clientId, 'x-sender-id': this.currentUserId };
+    if (replyTo?.id) draft.head['x-reply-to'] = JSON.stringify(replyTo);
     const result = await topic.publishMessage(draft);
     if (!result) throw new Error('Tinode không xác nhận tin nhắn.');
     return result;
@@ -443,6 +582,7 @@ export class TinodeMobileClient {
   }
 
   async sendReaction(topicName: string, message: ChatMessage, emoji: string) {
+    if (message.recalled) throw new Error('Tin nhắn đã được thu hồi và không thể biểu cảm.');
     await this.subscribeTopic(topicName, 0);
     const topic = this.getTopic(topicName);
     await topic.publish(`${REACTION_EVENT_PREFIX}${JSON.stringify({
@@ -459,7 +599,6 @@ export class TinodeMobileClient {
     await this.subscribeTopic(topicName, 0);
     const topic = this.getTopic(topicName);
     await topic.publish(`${RECALL_EVENT_PREFIX}${JSON.stringify(buildRecallEvent(message, this.currentUserId))}`);
-    if (message.seq) await topic.delMessagesList?.([Number(message.seq)], true).catch(() => null);
   }
 
   async sendFile(topicName: string, file: PickerFile, clientId: string) {
@@ -517,7 +656,7 @@ export class TinodeMobileClient {
     draft.head = { ...(draft.head || {}), 'x-client-id': clientId, 'x-sender-id': this.currentUserId };
     const result = await topic.publishMessage(draft);
     if (!result) throw new Error('Tinode không xác nhận tệp đính kèm.');
-    return { url: mediaUrl(url), file: { name: attachment.filename, mime: attachment.mime, size: attachment.size, url: mediaUrl(url) } };
+    return { url: normalizeMediaUrl(url), file: { name: attachment.filename, mime: attachment.mime, size: attachment.size, url: normalizeMediaUrl(url) } };
   }
 }
 

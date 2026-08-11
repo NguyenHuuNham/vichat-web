@@ -6,6 +6,12 @@ const MESSAGE_CHANNEL_ID = 'messages';
 let initializedForUser = '';
 let notificationHandlerReady = false;
 let notificationChannelReady = false;
+let lastRegistration: PushRegistration | null = null;
+
+export interface PushRegistration {
+  token: string;
+  platform: 'apns' | 'fcm';
+}
 
 async function loadNotificationModules() {
   const [Notifications, Device] = await Promise.all([
@@ -41,18 +47,42 @@ async function loadNotificationModules() {
 }
 
 export async function registerPushNotifications(user?: User | null) {
-  if (!user?.id || initializedForUser === user.id) return null;
-  initializedForUser = user.id;
+  if (!user?.id) return null;
+  if (initializedForUser === user.id) return lastRegistration;
   try {
     const { Notifications, Device } = await loadNotificationModules();
     const permission = await Notifications.getPermissionsAsync();
     let status = permission.status;
     if (status !== 'granted') status = (await Notifications.requestPermissionsAsync()).status;
-    if (status !== 'granted' || !config.pushEnabled || !Device.isDevice) return null;
+    if (status !== 'granted') return null;
+    if (!config.pushEnabled || !Device.isDevice) {
+      initializedForUser = user.id;
+      return null;
+    }
     const token = await Notifications.getDevicePushTokenAsync();
-    return { token: String(token.data), platform: Platform.OS === 'ios' ? 'apns' : 'fcm' };
+    lastRegistration = { token: String(token.data), platform: Platform.OS === 'ios' ? 'apns' : 'fcm' };
+    initializedForUser = user.id;
+    return lastRegistration;
   } catch {
     return null;
+  }
+}
+
+export function resetPushNotificationRegistration() {
+  initializedForUser = '';
+  lastRegistration = null;
+}
+
+export async function subscribeToPushTokenChanges(onToken: (registration: PushRegistration) => void) {
+  if (!config.pushEnabled) return () => {};
+  try {
+    const { Notifications } = await loadNotificationModules();
+    const subscription = Notifications.addPushTokenListener((token: { data: string }) => {
+      if (token?.data) onToken({ token: String(token.data), platform: Platform.OS === 'ios' ? 'apns' : 'fcm' });
+    });
+    return () => subscription?.remove?.();
+  } catch {
+    return () => {};
   }
 }
 
