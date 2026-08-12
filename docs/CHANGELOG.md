@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-12-07 - Deploy Chatmgt va ban APK test profile linked devices
+
+- Thoi gian: 2026-08-12 20:20 (Asia/Saigon)
+- Loai: Van hanh | Phat hanh | Kiem thu | Tai lieu
+- Trang thai: Da deploy Chatmgt; APK san sang UAT tai khoan that
+- Muc tieu: Dua fix profile va phien thiet bi cua commit `8ca0411` len production va cung cap ban mobile de kiem tra.
+- Pham vi: Chi service `chatmgt` va APK mobile; khong deploy lai `chat`, Tinode bridge/worker, ChatAPI, PostgreSQL, Redis, Coturn hoac web ChatUI.
+- File da thay doi: `docs/CHANGELOG.md`; artifact `outputs/vichat-mobile/ViChat-1.0.9-profile-devices-arm64.apk`.
+- Noi dung: Tao release bat bien `/opt/deploy/chat/releases/8ca0411` tu archive SHA-256 `DCEDDECC4961A51ADF6DAAB20E3557656BD9288856BDE6B134FF359DC6B60283`, giu nguyen `.env`/runtime production, build image Chatmgt moi va recreate rieng container. Release `current` da tro sang `8ca0411`; API devices/profile da vao dung route sau deploy.
+- Quyet dinh ky thuat: Gan rollback image Chatmgt cu `songhong-production-chatmgt:rollback-before-8ca0411`; khong migration va khong restart cac service ngoai Chatmgt de bao toan luong web/Tinode dang on dinh.
+- Database/API/cau hinh: Khong migration; image Chatmgt moi `sha256:55e2ee2182ce670d77364c6048cf8c6995e1fb551c6aaf5d658940386e8c9cba`; container `af94c4635e1c474ab06eb96f12a556cc84d59af7dda8ae47a93ef272dc421eb` healthy.
+- Kiem thu: Test trong image: Account profile `16/16`, auth session/linked devices `6/6`; full suite con 9 test source-only khong chay duoc trong production image do phu thuoc frontend/runtime ngoai image. Public `GET /api/v1/auth/health` `200`; public `GET /api/v1/auth/devices` va `PUT /api/v1/auth/profile` `401` khi chua dang nhap, khong con `404`. Container `chat` va cac service Tinode/DB/Redis giu nguyen ID. APK package `vn.upgo.vichat`, version `1.0.9`/code `10`, SHA-256 `72BACA38ED1F819DA07886EB2A6FA99A27D48675669E53094C2362B5AC8030FF`; signature v2 va zipalign da dat tu build truoc.
+- Rui ro con lai: Chua UAT tai khoan Account that tren mobile/web de xac nhan phien cross-device va cap nhat ho so qua Account; push khi app bi kill van phu thuoc credential Firebase/APNs/Tinode provider.
+- Viec tiep theo: Cai APK tren Android arm64, dang nhap tai khoan that, mo Cai dat > Thiet bi lien ket, dang nhap them web/thiet bi khac va thu cap nhat ho so; khong thay doi luong message dang on dinh.
+- Commit/PR: Deploy release `8ca0411`; changelog deploy commit sau.
+
 ## 2026-08-12-06 - Lam ro loi ho so va trang thai tai thiet bi Mobile
 
 - Thoi gian: 2026-08-12 19:00 (Asia/Saigon)
