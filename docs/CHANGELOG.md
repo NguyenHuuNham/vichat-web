@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-12-06 - Lam ro loi ho so va trang thai tai thiet bi Mobile
+
+- Thoi gian: 2026-08-12 19:00 (Asia/Saigon)
+- Loai: Sua loi | API | Mobile | Bao mat | Kiem thu | Tai lieu | Phat hanh
+- Trang thai: Hoan tat code va build APK; chua deploy Chatmgt, can UAT tai khoan that
+- Muc tieu: Khong hien trang thai phien rong trong luc dang tai va khong danh nham loi ho so chi-doc cua UpGO Account thanh loi het phien.
+- Pham vi: Chatmgt Account profile error contract va hai man hinh auth/profile cua mobile; khong sua `src/`, `dist/`, giao dien web, Tinode message flow, recall, presence, group, avatar hoac push.
+- File da thay doi: `chatservice-main/application/services/account_sso_service.py`, `chatservice-main/tests/test_account_sso_service.py`, `mobile/src/screens/settings/EditProfileScreen.tsx`, `mobile/src/screens/settings/LinkedDevicesScreen.tsx`, `docs/chat-backend-architecture.md`, va `docs/CHANGELOG.md`.
+- Noi dung: Giu nguyen ly do tu Account khi PUT profile tra 403; loi chi-doc duoc tra voi ma `ACCOUNT_PROFILE_READ_ONLY`, loi cam quyen khac duoc tach thanh `ACCOUNT_PROFILE_UPDATE_FORBIDDEN`, va mobile hien huong dan cap nhat tai UpGO Account. Man hinh Thiet bi lien ket hien trang thai dang tai truoc khi ket luan danh sach rong.
+- Quyet dinh ky thuat: Khong ghi profile fallback vao Chatmgt khi Account tu choi; Account van la nguon chuan. Chi sua phan phan loai loi va hien thi, giu nguyen luong Tinode/realtime va giao dien web.
+- Database/API/cau hinh: Khong migration; bo sung ma loi profile `ACCOUNT_PROFILE_READ_ONLY`/`ACCOUNT_PROFILE_UPDATE_FORBIDDEN`; can rebuild/redeploy rieng Chatmgt, khong deploy lai web.
+- Kiem thu: `python -m unittest discover -s chatservice-main/tests -q` dat 134 test, skip 43; `mobile/npm run typecheck` dat; `mobile/npm run lint` dat; `mobile/npx vitest run src/utils/tinodeState.test.ts src/utils/messagePolicy.test.ts src/utils/mediaUrl.test.ts` dat 3 file/10 test; `npx expo prebuild --platform android --no-install` dat; Gradle `app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon` dat voi JDK Temurin 17 va SDK tam; `aapt` xac nhan package `vn.upgo.vichat`, version `1.0.9`/code `10`; `apksigner verify --verbose` dat v2; `zipalign -c -v 4` dat; SHA-256 APK `72BACA38ED1F819DA07886EB2A6FA99A27D48675669E53094C2362B5AC8030FF`; public `GET https://chatmgt.upgo.vn/api/v1/auth/devices` van tra 404.
+- Rui ro con lai: Production chua chay endpoint linked devices/profile moi; SSH bang key deploy hien tai bi `Permission denied (publickey,password)` voi cac user da thu, nen chua the recreate Chatmgt; chua UAT tai khoan Account that va hai thiet bi.
+- Viec tiep theo: Deploy rieng Chatmgt tu commit nay khi co user SSH/quyen server, sau do dang nhap mobile/web cung tai khoan de kiem tra phien, Redis recovery va profile; khong deploy lai web.
+- Commit/PR: Chua tao.
+
 ## 2026-08-12-05 - Sua phien dang nhap va cap nhat ho so Account tren Mobile
 
 - Thoi gian: 2026-08-12 18:00 (Asia/Saigon)

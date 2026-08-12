@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from http.cookies import SimpleCookie
 from urllib.parse import parse_qsl, quote, urlencode, urljoin, urlsplit, urlunsplit
 
@@ -333,7 +334,7 @@ async def update_account_profile(request, identity, changes):
         update_path,
         json_body=_account_profile_update_payload(profile, changes=update_fields),
     )
-    if status in (401, 403, 520):
+    if status in (401, 520):
         raise AccountSSOError("Account login is required.", 401, "ACCOUNT_LOGIN_REQUIRED")
     if status >= 500:
         raise AccountSSOError(
@@ -342,9 +343,26 @@ async def update_account_profile(request, identity, changes):
             "ACCOUNT_PROFILE_UPDATE_UNAVAILABLE",
         )
     if status >= 300:
+        account_message = str(
+            (payload or {}).get("error_message")
+            or (payload or {}).get("message")
+            or ""
+        ).strip()
+        if status == 403:
+            if re.search(r"synchron|read[ -]?only|managed by.*account", account_message, re.I):
+                raise AccountSSOError(
+                    account_message or "Profile fields are synchronized from UpGO Account.",
+                    403,
+                    "ACCOUNT_PROFILE_READ_ONLY",
+                )
+            raise AccountSSOError(
+                account_message or "UpGO Account does not allow this profile update.",
+                403,
+                "ACCOUNT_PROFILE_UPDATE_FORBIDDEN",
+            )
         error_code = str((payload or {}).get("error_code") or "ACCOUNT_PROFILE_UPDATE_FAILED")
         raise AccountSSOError(
-            "Account rejected the profile update.",
+            account_message or "Account rejected the profile update.",
             status if status in (400, 403, 409) else 502,
             error_code,
         )

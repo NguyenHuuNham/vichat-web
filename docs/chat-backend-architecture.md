@@ -91,8 +91,10 @@ Account-backed profile edits follow the same source-of-truth rule: Chatmgt
 validates the Account cookie, forwards only editable public fields to the
 configured Account user-update endpoint, re-reads `/current_user`, and refreshes
 the tenant projection. Chatmgt does not persist a competing profile value and
-does not forward passwords or other secrets. Local/recovery accounts retain the
-existing Chatmgt profile-update behavior.
+does not forward passwords or other secrets. If Account rejects an update as
+read-only, Chatmgt returns `ACCOUNT_PROFILE_READ_ONLY` instead of treating the
+authorization response as an expired login or writing a local fallback value.
+Local/recovery accounts retain the existing Chatmgt profile-update behavior.
 
 Tinode media URLs from the central host are normalized to the authenticated
 `chat.upgo.vn/tinode-media` relay. The native client downloads protected message

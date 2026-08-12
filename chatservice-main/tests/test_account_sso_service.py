@@ -423,6 +423,28 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("password", update_call.kwargs["json_body"])
         self.assertEqual(account_request.await_args_list[2], call(request, "GET", "/current_user"))
 
+    async def test_profile_update_preserves_account_read_only_reason(self):
+        request = types.SimpleNamespace()
+        profile = {"id": "account-user-1", "display_name": "Old Name"}
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(side_effect=[
+                (200, profile),
+                (403, {"error_message": "Profile fields are synchronized from UpGO Account."}),
+            ]),
+        ):
+            with self.assertRaises(account_sso_service.AccountSSOError) as error:
+                await account_sso_service.update_account_profile(
+                    request,
+                    {"account_user_id": "account-user-1", "tenant_id": "tenant-a"},
+                    {"name": "New Name"},
+                )
+
+        self.assertEqual(error.exception.status_code, 403)
+        self.assertEqual(error.exception.error_code, "ACCOUNT_PROFILE_READ_ONLY")
+        self.assertIn("synchronized", str(error.exception))
+
     def test_missing_or_duplicate_account_cookie_is_rejected(self):
         missing = types.SimpleNamespace(headers={"Cookie": "other=value"})
         duplicate = types.SimpleNamespace(headers={"Cookie": "session=one; session=two"})

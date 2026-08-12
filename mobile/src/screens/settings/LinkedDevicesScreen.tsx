@@ -16,13 +16,17 @@ type Props = NativeStackScreenProps<RootStackParamList, 'LinkedDevices'>;
 export function LinkedDevicesScreen({ navigation }: Props) {
   const session = useAppStore(state => state.session);
   const updateLinkedDevices = useAppStore(state => state.updateLinkedDevices);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const refresh = useCallback(async () => {
+    setLoading(true);
     try {
       updateLinkedDevices(await authService.listLinkedDevices());
       setLoadError('');
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Không thể tải phiên đăng nhập.');
+    } finally {
+      setLoading(false);
     }
   }, [updateLinkedDevices]);
   useFocusEffect(useCallback(() => {
@@ -42,7 +46,7 @@ export function LinkedDevicesScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.intro}><Text style={styles.introTitle}>Phiên đăng nhập</Text><Text style={styles.introText}>Theo dõi nơi tài khoản đang được sử dụng trên ViChat.</Text></View>
         {loadError ? <Text style={styles.error}>{loadError}</Text> : null}
-        {devices.length ? devices.map(device => <DeviceCard key={device.id} device={device} />) : !loadError ? <Text style={styles.empty}>Chưa có phiên đăng nhập nào được máy chủ ghi nhận.</Text> : null}
+        {devices.length ? devices.map(device => <DeviceCard key={device.id} device={device} />) : loading ? <Text style={styles.empty}>Đang tải phiên đăng nhập từ máy chủ...</Text> : !loadError ? <Text style={styles.empty}>Chưa có phiên đăng nhập nào được máy chủ ghi nhận.</Text> : null}
       </ScrollView>
     </SafeAreaView>
   );
