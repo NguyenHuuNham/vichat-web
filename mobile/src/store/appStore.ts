@@ -8,6 +8,7 @@ import { storageService } from '../services/storageService';
 import { notifyIncomingMessage, resetPushNotificationRegistration } from '../services/notificationService';
 import { applyPresenceToConversation } from '../utils/tinodeState';
 import { retainAvailableConversations } from '../utils/conversationSync';
+import { canKeepTinodeAvatarAfterProfileRejection } from '../utils/avatarPolicy';
 
 interface AppStore {
   status: 'booting' | 'signed_out' | 'loading' | 'ready' | 'error';
@@ -37,7 +38,7 @@ interface AppStore {
   muteConversation: (conversationId: string, until: number | null) => Promise<void>;
   applyWorkspaceAction: (itemId: string, action: string) => Promise<void>;
   updateProfile: (profile: Partial<User>) => Promise<void>;
-  updateAvatar: (file: { uri: string; name: string; type: string }) => Promise<void>;
+  updateAvatar: (file: { uri: string; name: string; type: string }) => Promise<User>;
   updateLinkedDevices: (devices: LinkedDevice[]) => void;
   setActiveConversation: (conversationId: string) => void;
   clearError: () => void;
@@ -392,24 +393,33 @@ export const useAppStore = create<AppStore>((set, get) => ({
       if (error?.status !== 403 || error?.code !== 'ACCOUNT_AVATAR_UNSUPPORTED' || !tinodeClient.connected) throw error;
       const current = get().session?.user;
       const profile = await tinodeClient.updateCurrentProfile({ name: current?.name, avatarFile: file as PickerFile });
-      user = await authService.updateProfile({ avatar: profile.avatar });
+      try {
+        user = await authService.updateProfile({ avatar: profile.avatar });
+      } catch (profileError: any) {
+        if (!canKeepTinodeAvatarAfterProfileRejection(profileError) || !current) throw profileError;
+        user = { ...current, avatar: profile.avatar };
+      }
     }
     if (user.avatar && tinodeClient.connected) {
       await tinodeClient.updateCurrentProfile({ name: user.name, avatarUrl: user.avatar });
     }
     const currentUser = get().session?.user;
     const matchesCurrent = (value: User) => value.id === currentUser?.id || value.uid === currentUser?.uid;
-    const updatedUser = { ...currentUser, ...user } as User;
+    const avatar = user.avatar || currentUser?.avatar || '';
+    const updatedUser = { ...currentUser, ...user, avatar } as User;
     const session = get().session ? { ...get().session!, user: updatedUser } : null;
-    const directory = get().directory.map(item => matchesCurrent(item) ? { ...item, ...user } : item);
+    const directory = get().directory.map(item => matchesCurrent(item) ? { ...item, ...user, avatar } : item);
     const conversations = get().conversations.map(item => ({
       ...item,
-      avatarUrl: !item.isGroup && item.members?.some(matchesCurrent) ? user.avatar : item.avatarUrl,
-      members: item.members?.map(member => matchesCurrent(member) ? { ...member, ...user } : member),
-      messages: item.messages.map(message => matchesCurrent({ id: message.senderId, uid: message.senderId } as User) ? { ...message, avatar: user.avatar, senderName: user.name } : message),
+      avatarUrl: !item.isGroup && item.members?.some(matchesCurrent) ? (avatar || item.avatarUrl) : item.avatarUrl,
+      members: item.members?.map(member => matchesCurrent(member) ? { ...member, ...user, avatar } : member),
+      messages: item.messages.map(message => matchesCurrent({ id: message.senderId, uid: message.senderId } as User)
+        ? { ...message, avatar: avatar || message.avatar, senderName: user.name || message.senderName }
+        : message),
     }));
     set({ session, directory, conversations });
     await storageService.savePublicSession(session);
+    return updatedUser;
   },
 
   updateLinkedDevices(devices) {

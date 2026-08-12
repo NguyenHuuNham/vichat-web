@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-12-08 - Sua upload va dong bo avatar ViChat Mobile
+
+- Thoi gian: 2026-08-12 21:20 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Mobile | Kiem thu | Phat hanh | Tai lieu
+- Trang thai: Hoan tat code va build APK; cho UAT avatar tren thiet bi Android
+- Muc tieu: Sua luong thay avatar mobile theo `implementation_plan.md` ma khong thay doi web, backend, Tinode server hay luong tin nhan dang on dinh.
+- Pham vi: Chi `mobile/` va nhat ky thay doi; khong sua `src/`, `dist/`, Chatmgt API, database, Tinode, realtime message flow hoac service production.
+- File da thay doi: `mobile/src/services/apiClient.ts`, `mobile/src/services/authService.ts`, `mobile/src/store/appStore.ts`, `mobile/src/screens/settings/EditProfileScreen.tsx`, `mobile/src/utils/avatarPolicy.ts`, `mobile/src/utils/avatarPolicy.test.ts`, `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`, va `docs/CHANGELOG.md`.
+- Noi dung: Xoa moi `Content-Type` cu khi request dung React Native `FormData` de fetch tu tao multipart boundary; chuan hoa avatar file part va tang timeout upload len 10 phut. Fallback Tinode duoc giu lai khi Account tra `ACCOUNT_AVATAR_UNSUPPORTED`; neu Account tu choi luu profile vi read-only/forbidden thi van giu avatar da publish tren Tinode. Store tra user da cap nhat, dong bo avatar vao session, directory, member, conversation va message; man hinh ho so khong con luu URI local thay cho URL server va tu dong theo doi thay doi tu store.
+- Quyet dinh ky thuat: Tach policy avatar thanh helper pure de kiem thu duoc nhung khong tao message store hay luong upload moi. Account van la nguon chuan khi endpoint cho phep; Tinode chi la fallback cho tai khoan khong ho tro Account avatar.
+- Database/API/cau hinh: Khong migration, khong doi API/backend hay production config; tang mobile version `1.0.10`, Android `versionCode=11`.
+- Kiem thu: `mobile/npm run typecheck` dat; `mobile/npm run lint` dat; focused Vitest 4 file/12 test dat; `mobile/npm run export` dat; `npx expo prebuild --platform android --no-install` dat; Gradle `app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon` dat voi JDK Temurin 17 va SDK `D:\\VichatBuild\\android-sdk`; `aapt` xac nhan package `vn.upgo.vichat`, version `1.0.10`/code `11`, min SDK 24, target SDK 36, ABI arm64; `apksigner` xac nhan v2; `zipalign -c -v 4` dat; APK `outputs/vichat-mobile/ViChat-1.0.10-avatar-fix-arm64.apk` SHA-256 `2C5A30F873DB15F6E8C72B2D677C237F12FE5D6858C27A3FD110E7150920D190`; `adb devices` khong co thiet bi de UAT truc tiep.
+- Rui ro con lai: Chua xac minh upload avatar voi tai khoan Account that va hai thiet bi; endpoint upload Account production van can UAT thuc te. APK chi co ABI arm64 va debug signer, phu hop test noi bo, khong phai artifact Play Store.
+- Viec tiep theo: Cai APK tren Android arm64, dang nhap tai khoan that, chon anh tai `Cai dat > Chinh sua ho so`, kiem tra Settings/danh sach chat va doi chieu avatar tren web; khong deploy web/backend cho thay doi nay.
+- Commit/PR: Chua tao.
+
 ## 2026-08-12-07 - Deploy Chatmgt va ban APK test profile linked devices
 
 - Thoi gian: 2026-08-12 20:20 (Asia/Saigon)

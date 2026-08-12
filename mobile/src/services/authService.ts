@@ -154,8 +154,16 @@ export const authService = {
 
   async updateAvatar(file: { uri: string; name: string; type: string }) {
     const form = new FormData();
-    form.append('avatar', file as any);
-    const payload = await apiRequest<any>('/api/v1/auth/avatar', { method: 'POST', body: form });
+    form.append('avatar', {
+      uri: file.uri,
+      name: file.name || 'avatar.jpg',
+      type: file.type || 'image/jpeg',
+    } as any);
+    const payload = await apiRequest<any>('/api/v1/auth/avatar', {
+      method: 'POST',
+      body: form,
+      timeoutMs: 10 * 60 * 1000,
+    });
     return normalizeUser(payload?.user || payload);
   },
 };

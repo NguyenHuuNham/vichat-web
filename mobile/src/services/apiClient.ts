@@ -50,6 +50,11 @@ export async function apiRequest<T = any>(path: string, options: RequestOptions 
     headers['X-Vichat-Platform'] = `${Device.osName || Platform.OS} ${Device.osVersion || ''}`.trim();
     headers['X-Vichat-Device-Name'] = Device.modelName || 'ViChat Mobile';
   }
+  if (isFormData) {
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === 'content-type') delete headers[key];
+    }
+  }
 
   try {
     const response = await fetch(`${config.apiBase}${path}`, {
