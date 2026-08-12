@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `python -m unittest discover -s chatservice-main/tests -q` dat 133 test, skip 42; `mobile/npm run typecheck` dat; `mobile/npm run lint` dat; `mobile/npx vitest run src/utils/tinodeState.test.ts src/utils/messagePolicy.test.ts src/utils/mediaUrl.test.ts` dat 3 file/10 test; `mobile/npm test` chua dat do test hien co `src/services/workspaceService.test.ts` bi Rolldown khong parse Flow trong `react-native/index.js`, 18 test con lai pass; `git diff --check` dat.
 - Rui ro con lai: Chua goi Account update voi tai khoan production that; API Account phai cho phep role cua user hien tai sua cac truong da gui. Chua deploy Chatmgt production va chua UAT hai thiet bi cho linked devices.
 - Viec tiep theo: Build va cai APK `1.0.8`, deploy Chatmgt backend, dang nhap tren mobile/web bang cung tai khoan va kiem tra ten/chuc vu, phien, logout va Redis recovery; khong deploy lai web.
-- Commit/PR: Chua tao.
+- Commit/PR: `9021e81`.
 
 ## 2026-08-12-04 - Sua dong bo recall, avatar, phien thiet bi va presence tren Mobile
 
