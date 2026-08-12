@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, Globe2, Monitor, ShieldCheck, Smartphone } from 'lucide-react-native';
@@ -16,8 +16,14 @@ type Props = NativeStackScreenProps<RootStackParamList, 'LinkedDevices'>;
 export function LinkedDevicesScreen({ navigation }: Props) {
   const session = useAppStore(state => state.session);
   const updateLinkedDevices = useAppStore(state => state.updateLinkedDevices);
+  const [loadError, setLoadError] = useState('');
   const refresh = useCallback(async () => {
-    try { updateLinkedDevices(await authService.listLinkedDevices()); } catch { /* Keep the last server snapshot visible. */ }
+    try {
+      updateLinkedDevices(await authService.listLinkedDevices());
+      setLoadError('');
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Không thể tải phiên đăng nhập.');
+    }
   }, [updateLinkedDevices]);
   useFocusEffect(useCallback(() => {
     void refresh();
@@ -35,7 +41,8 @@ export function LinkedDevicesScreen({ navigation }: Props) {
       </View>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.intro}><Text style={styles.introTitle}>Phiên đăng nhập</Text><Text style={styles.introText}>Theo dõi nơi tài khoản đang được sử dụng trên ViChat.</Text></View>
-        {devices.length ? devices.map(device => <DeviceCard key={device.id} device={device} />) : <Text style={styles.empty}>Chưa có phiên đăng nhập nào được máy chủ ghi nhận.</Text>}
+        {loadError ? <Text style={styles.error}>{loadError}</Text> : null}
+        {devices.length ? devices.map(device => <DeviceCard key={device.id} device={device} />) : !loadError ? <Text style={styles.empty}>Chưa có phiên đăng nhập nào được máy chủ ghi nhận.</Text> : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -64,6 +71,7 @@ const styles = StyleSheet.create({
   introTitle: { ...typography.heading, color: colors.ink },
   introText: { ...typography.body, color: colors.inkSoft, marginTop: 4 },
   empty: { ...typography.body, color: colors.muted, paddingVertical: 24, textAlign: 'center' },
+  error: { ...typography.body, color: colors.danger, paddingVertical: 24, textAlign: 'center' },
   deviceCard: { minHeight: 86, marginBottom: 12, padding: 14, borderRadius: 19, backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.line, flexDirection: 'row', alignItems: 'center', gap: 12, ...shadow },
   deviceIcon: { width: 44, height: 44, borderRadius: 15, backgroundColor: colors.accentWash, alignItems: 'center', justifyContent: 'center' },
   deviceBody: { flex: 1, minWidth: 0 },

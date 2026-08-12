@@ -23,6 +23,8 @@ ACCOUNT_PROFILE_UPDATE_FIELDS = (
     "display_name",
     "full_name",
     "user_name",
+    "department",
+    "title",
     "phone",
     "phone_country_prefix",
     "phone_national_number",
@@ -246,7 +248,7 @@ async def login_account_with_credentials(username, password):
     return identity, account_cookie
 
 
-def _account_profile_update_payload(profile, avatar_url):
+def _account_profile_update_payload(profile, avatar_url=None, changes=None):
     if not isinstance(profile, dict):
         raise AccountSSOError(
             "Account returned an invalid self profile.",
@@ -258,8 +260,106 @@ def _account_profile_update_payload(profile, avatar_url):
         for field in ACCOUNT_PROFILE_UPDATE_FIELDS
         if field in profile
     }
-    payload["avatar_url"] = avatar_url
+    if avatar_url is not None:
+        payload["avatar_url"] = avatar_url
+    for field, value in (changes or {}).items():
+        if field in ACCOUNT_PROFILE_UPDATE_FIELDS:
+            payload[field] = value
     return payload
+
+
+def _validate_account_self_profile(status, profile):
+    if status in (401, 403, 520):
+        raise AccountSSOError("Account login is required.", 401, "ACCOUNT_LOGIN_REQUIRED")
+    if status >= 500:
+        raise AccountSSOError(
+            "Account profile is temporarily unavailable.",
+            503,
+            "ACCOUNT_PROFILE_UNAVAILABLE",
+        )
+    if status >= 300 or not isinstance(profile, dict):
+        raise AccountSSOError(
+            "Account rejected the profile request.",
+            502,
+            "ACCOUNT_PROFILE_FAILED",
+        )
+    return profile
+
+
+def _ensure_account_identity_matches(profile, identity):
+    account_user_id = str(identity.get("account_user_id") or "")
+    if str(profile.get("id") or "") != account_user_id:
+        raise AccountSSOError(
+            "The Account profile does not match the Chatmgt session.",
+            401,
+            "ACCOUNT_SESSION_MISMATCH",
+        )
+    return account_user_id
+
+
+async def update_account_profile(request, identity, changes):
+    """Update editable Account fields and return the verified Account identity."""
+    status, profile = await _account_request(
+        request,
+        "GET",
+        app.config.get("ACCOUNT_SSO_SELF_PROFILE_PATH") or "/me",
+    )
+    profile = _validate_account_self_profile(status, profile)
+    account_user_id = _ensure_account_identity_matches(profile, identity)
+    changes = changes if isinstance(changes, dict) else {}
+    update_fields = {}
+
+    if "name" in changes or "full_name" in changes:
+        full_name = str(changes.get("name") or changes.get("full_name") or "").strip()
+        if not full_name:
+            raise AccountSSOError("Full name is required.", 400, "PARAM_ERROR")
+        full_name = full_name[:255]
+        # Account identity normalization prefers full_name, then display_name.
+        update_fields.update({"full_name": full_name, "display_name": full_name})
+    if "title" in changes:
+        update_fields["title"] = str(changes.get("title") or "").strip()[:255]
+    if "department" in changes:
+        update_fields["department"] = str(changes.get("department") or "").strip()[:255]
+    if not update_fields:
+        raise AccountSSOError("No editable profile fields were supplied.", 400, "PARAM_ERROR")
+
+    update_path = "{}/{}".format(
+        str(app.config.get("ACCOUNT_SSO_USER_UPDATE_PATH") or "/api/v1/user").rstrip("/"),
+        quote(account_user_id, safe=""),
+    )
+    status, payload = await _account_request(
+        request,
+        "PUT",
+        update_path,
+        json_body=_account_profile_update_payload(profile, changes=update_fields),
+    )
+    if status in (401, 403, 520):
+        raise AccountSSOError("Account login is required.", 401, "ACCOUNT_LOGIN_REQUIRED")
+    if status >= 500:
+        raise AccountSSOError(
+            "Account profile update is temporarily unavailable.",
+            503,
+            "ACCOUNT_PROFILE_UPDATE_UNAVAILABLE",
+        )
+    if status >= 300:
+        error_code = str((payload or {}).get("error_code") or "ACCOUNT_PROFILE_UPDATE_FAILED")
+        raise AccountSSOError(
+            "Account rejected the profile update.",
+            status if status in (400, 403, 409) else 502,
+            error_code,
+        )
+
+    updated_identity = await current_account_session(request)
+    if (
+        str(updated_identity.get("account_user_id") or "") != account_user_id
+        or str(updated_identity.get("tenant_id") or "") != str(identity.get("tenant_id") or "")
+    ):
+        raise AccountSSOError(
+            "The Account session changed during the profile update.",
+            401,
+            "ACCOUNT_SESSION_MISMATCH",
+        )
+    return updated_identity
 
 
 async def _upload_account_avatar(upload):
@@ -326,28 +426,8 @@ async def update_account_avatar(request, identity, upload):
         "GET",
         app.config.get("ACCOUNT_SSO_SELF_PROFILE_PATH") or "/me",
     )
-    if status in (401, 403, 520):
-        raise AccountSSOError("Account login is required.", 401, "ACCOUNT_LOGIN_REQUIRED")
-    if status >= 500:
-        raise AccountSSOError(
-            "Account profile is temporarily unavailable.",
-            503,
-            "ACCOUNT_PROFILE_UNAVAILABLE",
-        )
-    if status >= 300 or not isinstance(profile, dict):
-        raise AccountSSOError(
-            "Account rejected the profile request.",
-            502,
-            "ACCOUNT_PROFILE_FAILED",
-        )
-
-    account_user_id = str(identity.get("account_user_id") or "")
-    if str(profile.get("id") or "") != account_user_id:
-        raise AccountSSOError(
-            "The Account profile does not match the Chatmgt session.",
-            401,
-            "ACCOUNT_SESSION_MISMATCH",
-        )
+    profile = _validate_account_self_profile(status, profile)
+    account_user_id = _ensure_account_identity_matches(profile, identity)
 
     avatar_url = await _upload_account_avatar(upload)
     update_path = "{}/{}".format(

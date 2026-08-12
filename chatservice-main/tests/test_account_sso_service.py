@@ -383,6 +383,46 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(error.exception.error_code, "ACCOUNT_SESSION_MISMATCH")
         avatar_upload.assert_not_awaited()
 
+    async def test_profile_update_forwards_editable_fields_and_reloads_account_identity(self):
+        request = types.SimpleNamespace()
+        identity = {
+            "account_user_id": "account-user-1",
+            "tenant_id": "tenant-a",
+        }
+        profile = {
+            "id": "account-user-1",
+            "display_name": "Old Name",
+            "full_name": "Old Name",
+            "title": "Old title",
+            "email": "nham@example.vn",
+            "password": "must-not-be-forwarded",
+        }
+        refreshed = account_payload()
+        refreshed.update({"display_name": "New Name", "full_name": "New Name", "title": "Lead"})
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(side_effect=[
+                (200, profile),
+                (200, {"updated": True}),
+                (200, refreshed),
+            ]),
+        ) as account_request:
+            result = await account_sso_service.update_account_profile(
+                request,
+                identity,
+                {"name": "New Name", "title": "Lead"},
+            )
+
+        self.assertEqual(result["full_name"], "New Name")
+        update_call = account_request.await_args_list[1]
+        self.assertEqual(update_call.args[:3], (request, "PUT", "/api/v1/user/account-user-1"))
+        self.assertEqual(update_call.kwargs["json_body"]["full_name"], "New Name")
+        self.assertEqual(update_call.kwargs["json_body"]["display_name"], "New Name")
+        self.assertEqual(update_call.kwargs["json_body"]["title"], "Lead")
+        self.assertNotIn("password", update_call.kwargs["json_body"])
+        self.assertEqual(account_request.await_args_list[2], call(request, "GET", "/current_user"))
+
     def test_missing_or_duplicate_account_cookie_is_rejected(self):
         missing = types.SimpleNamespace(headers={"Cookie": "other=value"})
         duplicate = types.SimpleNamespace(headers={"Cookie": "session=one; session=two"})

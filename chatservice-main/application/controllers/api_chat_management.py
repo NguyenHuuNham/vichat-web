@@ -28,6 +28,7 @@ from application.services.account_sso_service import (
     login_account_with_credentials,
     logout_account_session,
     set_account_cookie,
+    update_account_profile,
     update_account_avatar,
 )
 from application.services.auth_service import (
@@ -1689,12 +1690,41 @@ async def management_update_profile(request):
     account = _account_by_id(tenant_id, _user_id(current_user))
     if account is None:
         return _auth_error()
-    if (account.properties or {}).get("auth_source") == "account":
-        return json({
-            "error_code": "ACCOUNT_PROFILE_READ_ONLY",
-            "error_message": "Profile fields are synchronized from UpGO Account.",
-        }, status=403)
     body = request.json or {}
+    if (account.properties or {}).get("auth_source") == "account":
+        try:
+            identity = await _validated_account_identity(request, account)
+            updated_identity = await update_account_profile(request, identity, body)
+            tenant, updated_account = _sso_account(updated_identity, mark_login=False)
+            db.session.commit()
+            _audit(request, "ACCOUNT_PROFILE_UPDATED", True, tenant_id=tenant_id, user_id=str(updated_account.id))
+            return json({"user": _public_account(updated_account, tenant)})
+        except AccountSSOError as error:
+            db.session.rollback()
+            _audit(
+                request,
+                "ACCOUNT_PROFILE_UPDATED",
+                False,
+                tenant_id=tenant_id,
+                user_id=str(account.id),
+                properties={"error_code": error.error_code},
+            )
+            if error.error_code in (
+                "ACCOUNT_LOGIN_REQUIRED",
+                "ACCOUNT_SESSION_MISMATCH",
+                "ACCOUNT_TENANT_INVALID",
+            ):
+                revoke_request_token(request)
+                response = clear_auth_cookie(_account_sso_error(error), request)
+                return clear_account_cookie(response)
+            return _account_sso_error(error)
+        except Exception as error:
+            db.session.rollback()
+            logger.exception("Account profile update failed: %s", error)
+            return json({
+                "error_code": "ACCOUNT_PROFILE_UPDATE_FAILED",
+                "error_message": "Profile update failed.",
+            }, status=500)
     full_name = str(body.get("name") or body.get("full_name") or account.full_name or "").strip()
     email = str(body.get("email") if "email" in body else account.email or "").strip().lower() or None
     if not full_name:

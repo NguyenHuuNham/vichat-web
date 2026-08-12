@@ -442,8 +442,11 @@ def _linked_session_record(payload, request, existing=None, now=None):
 
 def register_linked_session(request, token):
     payload = decode_access_token(token)
-    if not payload or database.redisdb is None or not payload.get("jti"):
+    if not payload or not payload.get("jti"):
         return None
+    record = _linked_session_record(payload, request)
+    if database.redisdb is None:
+        return record
     key = _linked_session_key(payload)
     existing = {}
     try:
@@ -457,7 +460,8 @@ def register_linked_session(request, token):
     try:
         database.redisdb.setex(key, ttl, json.dumps(record, separators=(",", ":")))
     except Exception:
-        return None
+        # Keep the current session visible even if Redis is temporarily unavailable.
+        return record
     return record
 
 
@@ -475,7 +479,7 @@ def touch_linked_session(request, current_user=None):
         raw = database.redisdb.get(key)
         if raw:
             existing = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
-    except (TypeError, ValueError, UnicodeError, json.JSONDecodeError):
+    except Exception:
         existing = {}
     record = _linked_session_record(token_payload, request, existing=existing)
     issued_at = int(token_payload.get("iat") or token_payload.get("issued_at") or time.time())
@@ -483,7 +487,7 @@ def touch_linked_session(request, current_user=None):
     try:
         database.redisdb.setex(key, ttl, json.dumps(record, separators=(",", ":")))
     except Exception:
-        return None
+        return record
     return record
 
 
@@ -507,7 +511,8 @@ def linked_session_devices(request, current_user):
                 value = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
                 if value.get("id"):
                     records[str(value["id"])] = value
-        except (TypeError, ValueError, UnicodeError, json.JSONDecodeError):
+        except Exception:
+            # The current session above is still useful while Redis recovers.
             pass
     current_id = str(current_user.get("jti") or "")
     devices = []

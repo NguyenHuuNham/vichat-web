@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-12-05 - Sua phien dang nhap va cap nhat ho so Account tren Mobile
+
+- Thoi gian: 2026-08-12 18:00 (Asia/Saigon)
+- Loai: Sua loi | API | Mobile | Bao mat | Kiem thu | Tai lieu | Phat hanh
+- Trang thai: Hoan tat code va build APK; can deploy Chatmgt va UAT tai khoan that
+- Muc tieu: Khong de `Thiet bi lien ket` hien rong sau khi dang nhap va cho phep user Account cap nhat ten/chuc vu tu mobile.
+- Pham vi: Chatmgt Account SSO/profile, Redis linked-session registry va man hinh auth mobile; khong sua `src/`, `dist/`, giao dien web, Tinode message flow hoac realtime chat flow.
+- File da thay doi: `chatservice-main/application/services/account_sso_service.py`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/services/auth_service.py`, `chatservice-main/tests/test_account_sso_service.py`, `chatservice-main/tests/test_auth_session_scope.py`, `mobile/src/services/authService.ts`, `mobile/src/store/appStore.ts`, `mobile/src/screens/settings/LinkedDevicesScreen.tsx`, `mobile/src/screens/settings/SettingsScreen.tsx`, `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`, `docs/chat-backend-architecture.md`, va `docs/CHANGELOG.md`.
+- Noi dung: Account-backed profile update goi Account `/api/v1/user/{id}`, chi gui cac truong cong khai can thiet va doc lai `/current_user` de dong bo projection Chatmgt. Linked session luon tra phien hien tai khi Redis chua san sang, con danh sach cac thiet bi khac tu dong tro lai khi Redis phuc hoi. Mobile khong con nuot loi server thanh danh sach rong; hien loi tai du lieu de phan biet voi tai khoan chua co phien.
+- Quyet dinh ky thuat: Account van la nguon chuan cho identity/profile; Chatmgt khong cho phep luu gia tri profile canh tranh. Redis van la nguon dong bo cross-device, khong tao session gia local; fallback chi hien phien hien tai trong thoi gian Redis loi.
+- Database/API/cau hinh: Khong migration; thay doi hanh vi `PUT /api/v1/auth/profile` cho Account-backed user va giu `GET /api/v1/auth/devices`; can rebuild/deploy container Chatmgt cung release, khong deploy lai ChatUI web.
+- Kiem thu: `python -m unittest discover -s chatservice-main/tests -q` dat 133 test, skip 42; `mobile/npm run typecheck` dat; `mobile/npm run lint` dat; `mobile/npx vitest run src/utils/tinodeState.test.ts src/utils/messagePolicy.test.ts src/utils/mediaUrl.test.ts` dat 3 file/10 test; `mobile/npm test` chua dat do test hien co `src/services/workspaceService.test.ts` bi Rolldown khong parse Flow trong `react-native/index.js`, 18 test con lai pass; `git diff --check` dat.
+- Rui ro con lai: Chua goi Account update voi tai khoan production that; API Account phai cho phep role cua user hien tai sua cac truong da gui. Chua deploy Chatmgt production va chua UAT hai thiet bi cho linked devices.
+- Viec tiep theo: Build va cai APK `1.0.8`, deploy Chatmgt backend, dang nhap tren mobile/web bang cung tai khoan va kiem tra ten/chuc vu, phien, logout va Redis recovery; khong deploy lai web.
+- Commit/PR: Chua tao.
+
 ## 2026-08-12-04 - Sua dong bo recall, avatar, phien thiet bi va presence tren Mobile
 
 - Thoi gian: 2026-08-12 01:50 (Asia/Saigon)

@@ -364,8 +364,23 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   async updateProfile(profile) {
     const user = await authService.updateProfile(profile);
-    const session = get().session ? { ...get().session!, user: { ...get().session!.user, ...user } } : null;
-    set({ session });
+    if (user.name && tinodeClient.connected) {
+      await tinodeClient.updateCurrentProfile({ name: user.name });
+    }
+    const currentUser = get().session?.user;
+    const matchesCurrent = (value: User) => value.id === currentUser?.id || value.uid === currentUser?.uid;
+    const updatedUser = { ...currentUser, ...user } as User;
+    const session = get().session ? { ...get().session!, user: updatedUser } : null;
+    const directory = get().directory.map(item => matchesCurrent(item) ? { ...item, ...user } : item);
+    const conversations = get().conversations.map(item => ({
+      ...item,
+      name: !item.isGroup && item.members?.some(matchesCurrent) && user.name ? user.name : item.name,
+      members: item.members?.map(member => matchesCurrent(member) ? { ...member, ...user } : member),
+      messages: item.messages.map(message => matchesCurrent({ id: message.senderId, uid: message.senderId } as User)
+        ? { ...message, avatar: user.avatar || message.avatar, senderName: user.name || message.senderName }
+        : message),
+    }));
+    set({ session, directory, conversations });
     await storageService.savePublicSession(session);
   },
 

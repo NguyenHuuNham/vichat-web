@@ -2,6 +2,7 @@ import importlib.util
 import time
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 
 HAS_RUNTIME_DEPENDENCIES = all(
@@ -11,6 +12,7 @@ HAS_RUNTIME_DEPENDENCIES = all(
 
 if HAS_RUNTIME_DEPENDENCIES:
     from application.server import app
+    from application import database
     from application.services.auth_service import (
         ACCESS_COOKIE,
         MANAGEMENT_ACCESS_COOKIE,
@@ -117,6 +119,25 @@ class AuthSessionScopeTests(unittest.TestCase):
             self.assertEqual(mobile_access_token_payload(mobile_request, "chat-token"), {})
         finally:
             app.config["CHAT_MOBILE_BEARER_ENABLED"] = original
+
+    def test_linked_devices_keep_the_current_session_when_redis_is_unavailable(self):
+        from application.services.auth_service import linked_session_devices, register_linked_session
+
+        token = issue_access_token(self.account, session_scope="chat")
+        request = self.request(ACCESS_COOKIE, token)
+        request.headers.update({
+            "X-Vichat-Client": "mobile",
+            "X-Vichat-Platform": "Android 15",
+            "X-Vichat-Device-Name": "Test phone",
+        })
+        with patch.object(database, "redisdb", None):
+            registered = register_linked_session(request, token)
+            devices = linked_session_devices(request, current_user(request))
+
+        self.assertEqual(registered["kind"], "mobile")
+        self.assertEqual(registered["name"], "Test phone")
+        self.assertEqual(len(devices), 1)
+        self.assertTrue(devices[0]["current"])
 
 
 if __name__ == "__main__":

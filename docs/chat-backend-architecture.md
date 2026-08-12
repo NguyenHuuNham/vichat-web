@@ -81,9 +81,18 @@ touch the record, logout removes it, and `GET /api/v1/auth/devices` returns the
 current account's web/mobile/device sessions without exposing tokens. The mobile
 login response also includes the current mobile snapshot, and the mobile screen
 polls this endpoint while focused so a login from another client appears without
-inventing a local-only device record. When Chatmgt rotates a bearer during
+inventing a local-only device record. The current session is still returned when
+Redis is temporarily unavailable; cross-device records resume after Redis is
+healthy again. When Chatmgt rotates a bearer during
 Tinode-token refresh, the replacement bearer is returned to mobile before the old
 session is revoked.
+
+Account-backed profile edits follow the same source-of-truth rule: Chatmgt
+validates the Account cookie, forwards only editable public fields to the
+configured Account user-update endpoint, re-reads `/current_user`, and refreshes
+the tenant projection. Chatmgt does not persist a competing profile value and
+does not forward passwords or other secrets. Local/recovery accounts retain the
+existing Chatmgt profile-update behavior.
 
 Tinode media URLs from the central host are normalized to the authenticated
 `chat.upgo.vn/tinode-media` relay. The native client downloads protected message

@@ -50,6 +50,13 @@ function normalizeLinkedDevices(value: any): LinkedDevice[] {
   }));
 }
 
+function linkedDevicesFromPayload(payload: any): LinkedDevice[] | null {
+  for (const key of ['linked_devices', 'linkedDevices', 'sessions']) {
+    if (Array.isArray(payload?.[key])) return normalizeLinkedDevices(payload[key]);
+  }
+  return null;
+}
+
 function normalizeTinodeAuth(value: any): TinodeAuth | null {
   if (!value?.token) return null;
   return {
@@ -92,15 +99,18 @@ export const authService = {
   async listLinkedDevices() {
     try {
       const payload = await apiRequest<any>('/api/v1/auth/devices');
-      return normalizeLinkedDevices(payload?.linked_devices || payload?.linkedDevices || payload?.sessions);
+      const devices = linkedDevicesFromPayload(payload);
+      if (devices) return devices;
+      throw new Error('Máy chủ chưa trả về dữ liệu phiên đăng nhập.');
     } catch (error) {
       // Older Chatmgt releases expose the same snapshot through /auth/me.
+      let fallbackDevices: LinkedDevice[] | null = null;
       try {
         const payload = await apiRequest<any>('/api/v1/auth/me');
-        return normalizeLinkedDevices(payload?.linked_devices || payload?.linkedDevices || payload?.sessions);
-      } catch {
-        throw error;
-      }
+        fallbackDevices = linkedDevicesFromPayload(payload);
+      } catch { /* Re-throw the original endpoint error below. */ }
+      if (fallbackDevices) return fallbackDevices;
+      throw error;
     }
   },
 
