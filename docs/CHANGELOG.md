@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `python -m unittest discover -s chatservice-main/tests -q` dat 134 test, skip 43; `mobile/npm run typecheck` dat; `mobile/npm run lint` dat; `mobile/npx vitest run src/utils/tinodeState.test.ts src/utils/messagePolicy.test.ts src/utils/mediaUrl.test.ts` dat 3 file/10 test; `npx expo prebuild --platform android --no-install` dat; Gradle `app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon` dat voi JDK Temurin 17 va SDK tam; `aapt` xac nhan package `vn.upgo.vichat`, version `1.0.9`/code `10`; `apksigner verify --verbose` dat v2; `zipalign -c -v 4` dat; SHA-256 APK `72BACA38ED1F819DA07886EB2A6FA99A27D48675669E53094C2362B5AC8030FF`; public `GET https://chatmgt.upgo.vn/api/v1/auth/devices` van tra 404.
 - Rui ro con lai: Production chua chay endpoint linked devices/profile moi; SSH bang key deploy hien tai bi `Permission denied (publickey,password)` voi cac user da thu, nen chua the recreate Chatmgt; chua UAT tai khoan Account that va hai thiet bi.
 - Viec tiep theo: Deploy rieng Chatmgt tu commit nay khi co user SSH/quyen server, sau do dang nhap mobile/web cung tai khoan de kiem tra phien, Redis recovery va profile; khong deploy lai web.
-- Commit/PR: Chua tao.
+- Commit/PR: `bedb2b4`.
 
 ## 2026-08-12-05 - Sua phien dang nhap va cap nhat ho so Account tren Mobile
 
