@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `mobile/npx vitest run src/utils/messagePolicy.test.ts src/utils/tinodeState.test.ts src/utils/mediaUrl.test.ts` dat 3 file/12 test; `mobile/npm run typecheck` dat; `mobile/npm run lint` dat; `npm run test:frontend` dat 57/57; `python -m unittest discover -s chatservice-main/tests -q` dat 134 test, skip 43; `git diff --check` dat; Gradle `app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon --offline` dat; `aapt` xac nhan package `vn.upgo.vichat`, version `1.0.10`/code `11`; `apksigner verify --verbose` dat; `zipalign -c -v 4` dat; APK SHA-256 `C7881E59809D1F733B1A5D34ECAC894A1697D9863D4F34549E62FB5B77C67F29`.
 - Rui ro con lai: Chua UAT hai tai khoan tren hai thiet bi; chua xac minh upload/avatar, recall cross-device, mute/xoa va audio/video voi production account. Khong co production `.env`/TURN firewall trong workspace va chua co quyen SSH de deploy; push khi app bi kill van phu thuoc Firebase/APNs va Tinode provider. APK arm64 dung debug signer, chi phu hop test noi bo.
 - Viec tiep theo: Cai APK, UAT tren mobile/web cung tai khoan; deploy rieng Chatmgt backend neu can route self-remove; chi bat media production sau khi xac minh ICE/TURN va firewall. Khong deploy web trong lan nay.
-- Commit/PR: Chua tao.
+- Commit/PR: `9279aa9`.
 
 ## 2026-08-12-08 - Sua upload va dong bo avatar ViChat Mobile
 
