@@ -50,6 +50,8 @@ class TinodeAccountBridgeTests(unittest.TestCase):
         self.assertIs(bridge._rewrite_hello_response(upstream, ice_servers), upstream)
         login = {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrTest"}}}
         self.assertIs(bridge._rewrite_hello_response(login, ice_servers), login)
+        created = {"ctrl": {"id": "3", "code": 201, "params": {"user": "usrCreated"}}}
+        self.assertIs(bridge._rewrite_hello_response(created, ice_servers), created)
 
 
 if __name__ == "__main__":
