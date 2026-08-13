@@ -250,7 +250,11 @@ async def _verify_tinode_socket(url, api_key, token, expected_uid, origin=None, 
                     "lang": "vi",
                 },
             })
-            await _receive_tinode_ctrl(socket, "1")
+            hello_ctrl = await _receive_tinode_ctrl(socket, "1")
+            if origin:
+                ice_servers = (hello_ctrl.get("params") or {}).get("iceServers") or []
+                if not isinstance(ice_servers, list) or not ice_servers:
+                    raise RuntimeError("Public Tinode hello did not advertise ICE/TURN servers.")
             await socket.send_json({
                 "login": {"id": "2", "scheme": "token", "secret": token},
             })

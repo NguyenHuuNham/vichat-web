@@ -634,6 +634,7 @@ function toConversation(topic, tinode) {
       const recallMessage = recallsById.get(String(message.id)) || recallsBySeq.get(Number(message.seq));
       if (recallMessage) {
         appliedRecallEvents.add(recallMessage.id);
+        if (recallMessage.recallEvent?.mode === 'self') return null;
         return {
           ...message,
           type: 'text',

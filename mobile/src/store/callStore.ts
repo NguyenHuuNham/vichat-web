@@ -42,6 +42,7 @@ interface CallState {
 
 let peerConnection: RTCPeerConnectionType | null = null;
 let localStream: MediaStream | null = null;
+let remoteStream: MediaStream | null = null;
 let remoteCandidates: RTCIceCandidateType[] = [];
 let tracksAttached = false;
 let offerStarted = false;
@@ -85,6 +86,8 @@ export const useCallStore = create<CallState>((set, get) => {
     peerConnection = null;
     stopStream(localStream);
     localStream = null;
+    stopStream(remoteStream);
+    remoteStream = null;
     remoteCandidates = [];
     tracksAttached = false;
     offerStarted = false;
@@ -146,7 +149,10 @@ export const useCallStore = create<CallState>((set, get) => {
     };
     (connection as any).ontrack = (event: any) => {
       const stream = event?.streams?.[0];
-      if (stream) set({ remoteStream: stream });
+      if (stream) {
+        remoteStream = stream;
+        set({ remoteStream: stream });
+      }
     };
     const connectionStateChanged = () => {
       const state = connection.connectionState || connection.iceConnectionState;

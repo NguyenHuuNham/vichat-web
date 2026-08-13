@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-13-02 - Dong bo thao tac chat, avatar va WebRTC production
+
+- Thoi gian: 2026-08-13 09:46 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Realtime | Mobile | Ha tang | Van hanh | Tai lieu
+- Trang thai: Hoan tat code va kiem thu local; cho commit/push/trien khai production
+- Muc tieu: Dua dung cac ban sua mute, xoa phia toi, recall/media, avatar va voice/video call len web/mobile ma khong thay doi luong gui nhan tin dang on dinh.
+- Pham vi: ChatUI materializer, mobile call cleanup, Tinode Account bridge, production Compose/env, deployment verifier va tai lieu kien truc; khong migration, khong sua database, chatbot worker, bridge auth, topic/message publish hoac push provider.
+- File da thay doi: `src/features/chat/services/tinodeClient.js`, `mobile/src/store/callStore.ts`, `chatservice-main/scripts/tinode_account_bridge.py`, `chatservice-main/scripts/verify_deployment.py`, `chatservice-main/tests/test_tinode_account_bridge.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `infrastructure/production/.env.example`, `infrastructure/production/compose.yaml`, `docs/chat-backend-architecture.md`, va `docs/CHANGELOG.md`.
+- Noi dung: Web recall `self` an hoan toan tin goc nhu mobile; mobile dung ca remote media stream khi ket thuc cuoc goi. Tinode trung tam hien tra hello khong co `iceServers`, nen bridge doc file runtime ICE/TURN mode bao mat va chi bo sung vao hello khi upstream bo trong; verifier production nay tu choi release neu public hello van thieu ICE/TURN. Production defaults bat call UI/WebRTC va bridge mount runtime cung release. Kiem tra production truoc sua xac nhan web dang chay bundle cu, route `/self` chua co, trong khi upload service Account van tra URL anh hop le.
+- Quyet dinh ky thuat: Khong sua Tinode trung tam va khong dua TURN credential vao bundle/mobile config; relay chi bo sung metadata hello, con moi packet login/message/presence/call sau do van proxy nguyen trang. Khong thay sentinel mute `0`. Avatar tiep tuc lay UpGO Account lam nguon chuan; khong tao kho anh hay fallback du lieu moi.
+- Database/API/cau hinh: Khong migration. Them `TINODE_BRIDGE_ICE_SERVERS_FILE` noi bo va mount `./runtime` read-only cho `tinode-account-bridge`; giu endpoint `DELETE /api/v1/conversation/<id>/self` tu commit `9279aa9`. Release can ke thua private `.env`, `runtime/tinode-bootstrap.json` va `runtime/ice-servers.json`; khong ghi secret vao Git.
+- Kiem thu: `npm run test:frontend` dat 57/57; `npm run lint` exit 0, chi warning legacy/vendor/worktree co san; `npm run build:production` dat; `python -m unittest discover -s chatservice-main/tests -q` dat 136 test, skip 45; focused auth contract dat 32/32; focused bridge local skip 2 do Python Windows khong co `aiohttp` nhung se chay trong image Chatmgt; `python -m py_compile ...` dat; `mobile/npm run typecheck` dat; `mobile/npm run lint` dat; `bash -n infrastructure/production/start.sh` dat; Compose production `config --no-interpolate -q` dat; `git diff --check` dat. Probe public Tinode hello tra `201` nhung ICE count `0`; upload probe toi UpGO media tra URL HTTPS; Browser skill khong co browser runtime nen chua UAT giao dien truc quan.
+- Rui ro con lai: Chua UAT hai Account user that cho mute/xoa/recall/avatar va voice/video web-mobile; provider firewall van chan probe TCP `103.74.122.206:3478` tu may phat trien du UFW host da mo, nen TURN giua hai mang co the con that bai. Push khi app bi kill van phu thuoc Firebase/APNs/Tinode provider.
+- Viec tiep theo: Commit/push, tao release bat bien, copy private runtime mode `0600`, build/recreate `chatmgt`, `tinode-account-bridge` va `chat`, sau do xac minh public bundle, route `/self`, avatar/CORS, hello ICE count va bao toan container ngoai pham vi; UAT hai tai khoan tren web/mobile.
+- Commit/PR: Chua tao.
+
 ## 2026-08-13-01 - Hoan thien thao tac realtime va build APK Mobile
 
 - Thoi gian: 2026-08-13 08:20 (Asia/Saigon)

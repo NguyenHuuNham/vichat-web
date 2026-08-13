@@ -30,6 +30,7 @@ REQUEST_TIMEOUT = max(5, int(os.getenv("TINODE_BRIDGE_TIMEOUT", "15")))
 LISTEN_HOST = str(os.getenv("TINODE_BRIDGE_HOST", "0.0.0.0"))
 LISTEN_PORT = int(os.getenv("TINODE_BRIDGE_PORT", "8095"))
 INTERNAL_KEY = str(os.getenv("TINODE_BRIDGE_INTERNAL_KEY", "")).strip()
+ICE_SERVERS_FILE = str(os.getenv("TINODE_BRIDGE_ICE_SERVERS_FILE", "")).strip()
 ACCOUNT_SESSION_COOKIE_NAME = str(os.getenv("ACCOUNT_SESSION_COOKIE_NAME", "session")).strip() or "session"
 CHAT_ACCESS_COOKIE_NAME = str(os.getenv("CHAT_ACCESS_COOKIE_NAME", "vichat_access_token")).strip() or "vichat_access_token"
 
@@ -201,6 +202,35 @@ def _error_packet(request_id, error):
     }
 
 
+def _load_ice_servers(path=ICE_SERVERS_FILE):
+    if not path:
+        return []
+    try:
+        with open(path, "r") as source:
+            payload = json.load(source)
+    except (IOError, OSError, ValueError) as error:
+        LOGGER.warning("Tinode bridge ICE configuration could not be loaded: %s", error)
+        return []
+    if not isinstance(payload, list):
+        LOGGER.warning("Tinode bridge ICE configuration must be a JSON array.")
+        return []
+    return [item for item in payload if isinstance(item, dict) and item.get("urls")]
+
+
+def _rewrite_hello_response(packet, ice_servers):
+    ctrl = packet.get("ctrl") if isinstance(packet, dict) else None
+    if not isinstance(ctrl, dict) or int(ctrl.get("code") or 0) != 201:
+        return packet
+    params = ctrl.get("params")
+    if not isinstance(params, dict) or params.get("iceServers") or not ice_servers:
+        return packet
+    rewritten = dict(packet)
+    rewritten_ctrl = dict(ctrl)
+    rewritten_ctrl["params"] = dict(params, iceServers=ice_servers)
+    rewritten["ctrl"] = rewritten_ctrl
+    return rewritten
+
+
 async def _relay_client_to_tinode(client, upstream, allow_internal_basic=False):
     async for message in client:
         if message.type == aiohttp.WSMsgType.TEXT:
@@ -225,9 +255,17 @@ async def _relay_client_to_tinode(client, upstream, allow_internal_basic=False):
             break
 
 
-async def _relay_tinode_to_client(upstream, client):
+async def _relay_tinode_to_client(upstream, client, ice_servers=None):
     async for message in upstream:
         if message.type == aiohttp.WSMsgType.TEXT:
+            if ice_servers:
+                try:
+                    packet = _rewrite_hello_response(json.loads(message.data), ice_servers)
+                except (TypeError, ValueError):
+                    packet = None
+                if packet is not None:
+                    await client.send_json(packet)
+                    continue
             await client.send_str(message.data)
         elif message.type == aiohttp.WSMsgType.BINARY:
             await client.send_bytes(message.data)
@@ -244,6 +282,7 @@ async def channels(request):
     await client.prepare(request)
     internal_header = str(request.headers.get("X-Vichat-Tinode-Internal") or "")
     allow_internal_basic = bool(INTERNAL_KEY and hmac.compare_digest(internal_header, INTERNAL_KEY))
+    ice_servers = _load_ice_servers()
     timeout = aiohttp.ClientTimeout(total=None, sock_read=None)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -256,7 +295,9 @@ async def channels(request):
                 client_task = asyncio.create_task(
                     _relay_client_to_tinode(client, upstream, allow_internal_basic)
                 )
-                tinode_task = asyncio.create_task(_relay_tinode_to_client(upstream, client))
+                tinode_task = asyncio.create_task(
+                    _relay_tinode_to_client(upstream, client, ice_servers)
+                )
                 done, pending = await asyncio.wait(
                     (client_task, tinode_task),
                     return_when=asyncio.FIRST_COMPLETED,

@@ -125,6 +125,7 @@ class ChatAuthContractTests(unittest.TestCase):
 
         self.assertIn("tinode-account-bridge:", compose_source)
         self.assertIn("TINODE_CENTRAL_WS_URL", compose_source)
+        self.assertIn("TINODE_BRIDGE_ICE_SERVERS_FILE", compose_source)
         self.assertIn("location = /v0/channels", nginx_source)
         self.assertIn("proxy_pass http://tinode-account-bridge:8095/v0/channels", nginx_source)
         self.assertIn('"/api/v1/auth/account-login"', bridge_source)
@@ -135,6 +136,9 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('getattr(response, "cookies", None)', bridge_source)
         self.assertIn("ACCOUNT_SESSION_COOKIE_NAME", bridge_source)
         self.assertIn("CHAT_ACCESS_COOKIE_NAME", bridge_source)
+        self.assertIn("_rewrite_hello_response", bridge_source)
+        verifier_source = (PROJECT_ROOT / "scripts" / "verify_deployment.py").read_text(encoding="utf-8")
+        self.assertIn("Public Tinode hello did not advertise ICE/TURN servers", verifier_source)
         self.assertNotIn('"scheme": "basic", "secret": password', bridge_source)
 
         controller_source = CONTROLLER_PATH.read_text(encoding="utf-8")

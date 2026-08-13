@@ -228,6 +228,8 @@ services:
     expose:
       - "8095"
     command: ["python", "scripts/tinode_account_bridge.py"]
+    volumes:
+      - ./runtime:/app/deploy/runtime:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8095/healthz', timeout=2)"]
       interval: 10s
@@ -245,6 +247,7 @@ services:
       TINODE_API_KEY: ${TINODE_API_KEY:?TINODE_API_KEY is required}
       TINODE_CENTRAL_WS_URL: ${TINODE_CENTRAL_WS_URL:-wss://web.vichat.net/v0/channels}
       TINODE_BRIDGE_INTERNAL_KEY: ${TINODE_BRIDGE_INTERNAL_KEY:?TINODE_BRIDGE_INTERNAL_KEY is required}
+      TINODE_BRIDGE_ICE_SERVERS_FILE: /app/deploy/runtime/ice-servers.json
 
   tinode-chatbot-webhook:
     build:

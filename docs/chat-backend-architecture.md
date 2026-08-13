@@ -250,6 +250,12 @@ containers. The UpGO password is not sent to the central Tinode server or
 logged by the bridge. This keeps Tinode Web and ChatUI on the same central
 UID/topic/message store.
 
+The central Tinode hello currently does not advertise deployment-local TURN.
+The same bridge therefore reads the protected production
+`runtime/ice-servers.json` and fills `ctrl.params.iceServers` only when the
+upstream hello omits it. It never replaces ICE supplied by the authoritative
+Tinode and does not inspect or rewrite later message, presence or call packets.
+
 `POST /api/v1/conversation/<id>/tinode-prepare` prepares missing UID mappings
 from current Chatmgt membership. Group topic binding and add/remove/leave
 operations verify the fresh Tinode token and exact tenant member set before
