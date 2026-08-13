@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
 import { colors } from '../theme/colors';
-import { tinodeClient } from '../services/tinodeClient';
+import { normalizeMediaUrl, tinodeClient } from '../services/tinodeClient';
 
 interface Props { name?: string; uri?: string; size?: number; online?: boolean; rounded?: boolean }
 
@@ -12,9 +12,19 @@ function initials(name = '') {
 
 export function Avatar({ name = '', uri = '', size = 48, online = false, rounded = true }: Props) {
   const [sourceUri, setSourceUri] = useState('');
+  const [mediaVersion, setMediaVersion] = useState(() => tinodeClient.getMediaVersion(uri));
   const radius = rounded ? size / 2 : Math.round(size * 0.3);
   useEffect(() => {
+    const unsubscribe = tinodeClient.onEvent(event => {
+      if (event.type === 'media-invalidated' && event.url === normalizeMediaUrl(uri)) {
+        setMediaVersion(tinodeClient.getMediaVersion(uri));
+      }
+    });
+    return () => { unsubscribe(); };
+  }, [uri]);
+  useEffect(() => {
     let active = true;
+    setSourceUri('');
     if (!uri) {
       setSourceUri('');
       return () => { active = false; };
@@ -25,7 +35,7 @@ export function Avatar({ name = '', uri = '', size = 48, online = false, rounded
       if (active) setSourceUri(uri);
     });
     return () => { active = false; };
-  }, [uri]);
+  }, [uri, mediaVersion]);
   return (
     <View style={{ width: size, height: size }}>
       {sourceUri ? (

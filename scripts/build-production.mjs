@@ -12,7 +12,7 @@ const productionDefaults = {
   // The deployed Chatmgt tenant is not the local/demo tenant from .env.local.
   VITE_CHAT_TENANT_ID: 'tn6913580727957397',
   VITE_CHAT_AUTH_MODE: 'account_password',
-  VITE_CALLS_ENABLED: 'false',
+  VITE_CALLS_ENABLED: 'true',
   VITE_CHAT_MODE: 'internal',
   VITE_CHATBOT_API_URL: 'https://chatmgt.upgo.vn/api/v1/chatbot/message',
   VITE_CHATBOT_WITH_CREDENTIALS: 'true',

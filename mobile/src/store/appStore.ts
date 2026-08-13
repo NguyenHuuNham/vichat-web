@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { authService } from '../services/authService';
 import { chatManagementService } from '../services/chatManagementService';
 import { tinodeClient, TinodeEvent } from '../services/tinodeClient';
+import { routeMobileCallEvent } from './callStore';
 import { workspaceService } from '../services/workspaceService';
 import { Conversation, ChatMessage, ConnectionState, LinkedDevice, PickerFile, RecallMode, Session, User, WorkspaceItem } from '../types';
 import { storageService } from '../services/storageService';
@@ -9,6 +10,7 @@ import { notifyIncomingMessage, resetPushNotificationRegistration } from '../ser
 import { applyPresenceToConversation } from '../utils/tinodeState';
 import { retainAvailableConversations } from '../utils/conversationSync';
 import { canKeepTinodeAvatarAfterProfileRejection } from '../utils/avatarPolicy';
+import { useCallStore } from './callStore';
 
 interface AppStore {
   status: 'booting' | 'signed_out' | 'loading' | 'ready' | 'error';
@@ -36,6 +38,7 @@ interface AppStore {
   sendTyping: (conversationId: string) => Promise<void>;
   markRead: (conversationId: string) => Promise<void>;
   muteConversation: (conversationId: string, until: number | null) => Promise<void>;
+  deleteConversation: (conversationId: string) => Promise<void>;
   applyWorkspaceAction: (itemId: string, action: string) => Promise<void>;
   updateProfile: (profile: Partial<User>) => Promise<void>;
   updateAvatar: (file: { uri: string; name: string; type: string }) => Promise<User>;
@@ -47,6 +50,7 @@ interface AppStore {
 let tinodeUnsubscribe: (() => void) | null = null;
 let bootstrapRequest: Promise<void> | null = null;
 let reconnectRequest: Promise<void> | null = null;
+const deletedConversationIds = new Set<string>();
 
 function mergeConversation(previous: Conversation[], incoming: Conversation) {
   const index = previous.findIndex(item => item.id === incoming.id || (incoming.tinodeTopic && item.tinodeTopic === incoming.tinodeTopic));
@@ -100,6 +104,7 @@ async function loadRemoteData(set: any, get: () => AppStore) {
 }
 
 async function bootstrapAuthenticated(set: any, get: () => AppStore) {
+  deletedConversationIds.clear();
   const session = await authService.currentSession();
   set({ session, status: 'loading', error: '' });
   try {
@@ -121,6 +126,8 @@ async function bootstrapAuthenticated(set: any, get: () => AppStore) {
               : event.state === 'error' ? 'error' : 'offline';
         set({ connection: state });
       } else if (event.type === 'conversation') {
+        const eventConversation = event.conversation;
+        if (deletedConversationIds.has(String(eventConversation.id)) || deletedConversationIds.has(String(eventConversation.tinodeTopic))) return;
         set({ conversations: mergeConversation(current.conversations, event.conversation) });
       } else if (event.type === 'profile') {
         const matches = (value: User) => value.id === event.uid || value.uid === event.uid;
@@ -149,6 +156,13 @@ async function bootstrapAuthenticated(set: any, get: () => AppStore) {
         set({
           directory: current.directory.map(user => user.uid === event.uid || user.id === event.uid ? { ...user, online: event.online } : user),
           conversations: current.conversations.map(conversation => applyPresenceToConversation(conversation, event.uid, event.online)),
+        });
+      } else if (event.type === 'call-invite' || event.type === 'call-signal') {
+        const conversation = conversationForId(current.conversations, event.topic);
+        const peer = conversation?.members?.find(member => member.uid === event.from || member.id === event.from);
+        routeMobileCallEvent(event, {
+          name: peer?.name || conversation?.name,
+          avatar: peer?.avatar || conversation?.avatarUrl,
         });
       }
     });
@@ -206,11 +220,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   async logout() {
+    useCallStore.getState().hangUp();
     await tinodeClient.disconnect();
     resetPushNotificationRegistration();
     tinodeUnsubscribe?.();
     tinodeUnsubscribe = null;
     await authService.logout();
+    deletedConversationIds.clear();
     set({ status: 'signed_out', session: null, conversations: [], directory: [], workspaceItems: [], connection: 'offline', error: '' });
   },
 
@@ -356,6 +372,31 @@ export const useAppStore = create<AppStore>((set, get) => ({
   async muteConversation(conversationId, until) {
     const updated = await chatManagementService.updateConversationNotifications(conversationId, until);
     set({ conversations: mergeConversation(get().conversations, updated) });
+  },
+
+  async deleteConversation(conversationId) {
+    const conversation = conversationForId(get().conversations, conversationId);
+    if (!conversation) return;
+    const deletedKeys = [conversation.id, conversation.managementId, conversation.tinodeTopic].filter(Boolean).map(String);
+    deletedKeys.forEach(key => deletedConversationIds.add(key));
+    try {
+      // The backend validates this Tinode token against the current session.
+      // Refresh it first so a long-lived mobile session cannot fail deletion.
+      const tinodeAuth = await authService.refreshTinodeToken();
+      set((current: AppStore) => current.session ? ({
+        session: { ...current.session, tinodeAuth },
+      }) : ({}));
+      await chatManagementService.deleteConversationForCurrentUser(conversation.managementId || conversation.id, tinodeAuth.token);
+      if (conversation.tinodeTopic) tinodeClient.disallowConversationTopic(conversation.tinodeTopic);
+      set({
+        conversations: get().conversations.filter(item => item.id !== conversation.id),
+        activeConversationId: get().activeConversationId === conversation.id ? '' : get().activeConversationId,
+      });
+      setTimeout(() => deletedKeys.forEach(key => deletedConversationIds.delete(key)), 5000);
+    } catch (error) {
+      deletedKeys.forEach(key => deletedConversationIds.delete(key));
+      throw error;
+    }
   },
 
   async applyWorkspaceAction(itemId, action) {

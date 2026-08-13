@@ -79,6 +79,12 @@ export interface ChatMessage {
   deliveryStatus?: DeliveryStatus;
   reactions?: Record<string, number>;
   replyTo?: { id: string; text: string; senderName: string };
+  call?: {
+    audioOnly: boolean;
+    state: string;
+    duration: number;
+    incoming: boolean;
+  };
   raw?: any;
 }
 

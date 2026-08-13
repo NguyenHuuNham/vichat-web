@@ -25,6 +25,12 @@ export function canInteractWithMessage(message?: ChatMessage | null) {
   return Boolean(message && !message.recalled);
 }
 
+export function recallAppliesToViewer(event: any, client: { isMe?: (uid: string) => boolean } | null | undefined) {
+  if (event?.mode !== 'self') return true;
+  const actorId = String(event?.actorId || event?.originalSenderId || '');
+  return Boolean(actorId && client?.isMe?.(actorId));
+}
+
 export function buildRecallEvent(message: ChatMessage, actorId: string, mode: RecallMode = 'all') {
   return {
     targetId: String(message.id || ''),

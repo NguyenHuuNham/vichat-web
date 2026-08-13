@@ -2849,9 +2849,11 @@ async def conversation_participant_add(request, conversation_id):
         }, status=503)
 
 
+@app.route('/api/v1/conversation/<conversation_id>/self', methods=['DELETE'])
+@app.route('/api/v1/chat/threads/<conversation_id>/self', methods=['DELETE'])
 @app.route('/api/v1/conversation/<conversation_id>/participants/<participant_id>', methods=['DELETE'])
 @app.route('/api/v1/chat/threads/<conversation_id>/participants/<participant_id>', methods=['DELETE'])
-async def conversation_participant_remove(request, conversation_id, participant_id):
+async def conversation_participant_remove(request, conversation_id, participant_id=None):
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _auth_error()
@@ -2864,7 +2866,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
     item, membership = _conversation_and_membership(tenant_id, conversation_uuid, user_id)
     if item is None or membership is None:
         return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
-    participant_id = str(participant_id)
+    participant_id = str(participant_id or user_id)
     if participant_id != user_id and membership.role != "OWNER":
         return _forbidden_error()
 

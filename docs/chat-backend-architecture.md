@@ -276,9 +276,11 @@ Tinode profile path.
 
 ## Runtime call visibility and chatbot webhook
 
-`VITE_CALLS_ENABLED=false` hides voice/video call entry points, redial actions
-and incoming call UI in ChatUI while keeping the Tinode/WebRTC implementation
-available for a later rebuild. Disabled clients reject incoming call invites
+`VITE_CALLS_ENABLED=true` exposes direct voice/video call entry points and
+incoming call UI in builds that include the WebRTC implementation. The call
+capability still requires an authenticated P2P Tinode topic and non-empty
+ICE/TURN servers returned in the Tinode hello response. When
+`WEBRTC_ENABLED=false` or ICE/TURN is unavailable, clients reject the call
 without changing message, presence, receipt or group behavior.
 
 In the internal production mode, ChatUI obtains the tenant-independent bot UID
@@ -346,6 +348,7 @@ history, role-aware actions and a message-to-task shortcut.
 | `GET/POST` | `/api/v1/conversation` | Tenant-scoped conversation metadata |
 | `POST` | `/api/v1/conversation/<id>/tinode-prepare` | Prepare Tinode participant mappings |
 | `PUT` | `/api/v1/conversation/<id>/tinode-topic` | Verify/bind the topic to exact membership |
+| `DELETE` | `/api/v1/conversation/<id>/self` | Remove the current user's conversation membership only |
 | `GET` | `/api/v1/workspace/items` | List tenant-visible Workspace items and summary |
 | `POST` | `/api/v1/workspace/items` | Create a validated task, announcement, approval, ticket, wiki, event or integration entry |
 | `GET/PUT/DELETE` | `/api/v1/workspace/items/<id>` | Read, update or archive one tenant-scoped item |

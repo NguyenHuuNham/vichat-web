@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRecallEvent, canInteractWithMessage, canRecallMessage } from './messagePolicy';
+import { buildRecallEvent, canInteractWithMessage, canRecallMessage, recallAppliesToViewer } from './messagePolicy';
 
 describe('message policy', () => {
   it('does not allow recall while a message is pending or failed', () => {
@@ -13,5 +13,12 @@ describe('message policy', () => {
   it('blocks every message action after recall', () => {
     expect(canInteractWithMessage({ recalled: true } as any)).toBe(false);
     expect(canInteractWithMessage({ recalled: false } as any)).toBe(true);
+  });
+  it('shows self recall only to the authenticated author', () => {
+    const author = { isMe: (uid: string) => uid === 'usr-author' };
+    const other = { isMe: (uid: string) => uid === 'usr-other' };
+    expect(recallAppliesToViewer({ mode: 'self', actorId: 'usr-author' }, author)).toBe(true);
+    expect(recallAppliesToViewer({ mode: 'self', actorId: 'usr-author' }, other)).toBe(false);
+    expect(recallAppliesToViewer({ mode: 'all', actorId: 'usr-author' }, other)).toBe(true);
   });
 });

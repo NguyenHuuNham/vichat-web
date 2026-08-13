@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Download, FileText, ImageOff, RotateCcw, X } from 'lucide-react-native';
+import { Download, FileText, ImageOff, Phone, RotateCcw, Video, X } from 'lucide-react-native';
 import { beginTrustedExternalActivity } from '../services/appLifecycleService';
-import { tinodeClient } from '../services/tinodeClient';
+import { normalizeMediaUrl, tinodeClient } from '../services/tinodeClient';
 import { ChatMessage, FileAttachment } from '../types';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -15,6 +15,9 @@ interface Props {
 
 export function MessageBubble({ message, onLongPress }: Props) {
   if (message.type === 'system') return <Text style={styles.system}>{message.text}</Text>;
+  if (message.type === 'call' && message.call) {
+    return <View style={[styles.line, message.sender === 'outgoing' ? styles.outgoingLine : styles.incomingLine]}><View style={[styles.bubble, message.sender === 'outgoing' ? styles.outgoing : styles.incoming]}><View style={styles.callHistory}><View style={styles.callIcon}>{message.call.audioOnly ? <Phone color={message.sender === 'outgoing' ? '#fff' : colors.accent} size={19} /> : <Video color={message.sender === 'outgoing' ? '#fff' : colors.accent} size={19} />}</View><View style={{ flex: 1 }}><Text style={[styles.text, message.sender === 'outgoing' && styles.outgoingText]}>{message.text}</Text><Text style={[styles.fileMeta, message.sender === 'outgoing' && styles.outgoingSub]}>{message.call.audioOnly ? 'Cuộc gọi thoại' : 'Cuộc gọi video'}</Text></View></View><View style={styles.meta}><Text style={[styles.time, message.sender === 'outgoing' && styles.outgoingSub]}>{formatMessageTime(message.createdAt || message.time)}</Text></View></View></View>;
+  }
   const outgoing = message.sender === 'outgoing';
   const mediaOnly = Boolean(message.image && !message.text?.trim() && !message.recalled);
   const receipt = message.pending || message.deliveryStatus === 'sending'
@@ -43,17 +46,27 @@ export function MessageBubble({ message, onLongPress }: Props) {
 
 function ProtectedMessageImage({ uri, file, outgoing }: { uri: string; file?: FileAttachment; outgoing: boolean }) {
   const [attempt, setAttempt] = useState(0);
+  const [mediaVersion, setMediaVersion] = useState(() => tinodeClient.getMediaVersion(uri));
   const [source, setSource] = useState('');
   const [failed, setFailed] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [ratio, setRatio] = useState(4 / 3);
 
   useEffect(() => {
+    const unsubscribe = tinodeClient.onEvent(event => {
+      if (event.type === 'media-invalidated' && event.url === normalizeMediaUrl(uri)) {
+        setMediaVersion(tinodeClient.getMediaVersion(uri));
+      }
+    });
+    return () => { unsubscribe(); };
+  }, [uri]);
+
+  useEffect(() => {
     let active = true;
     setSource(''); setFailed(false);
     void tinodeClient.cacheImage(uri).then(value => { if (active) setSource(value); }).catch(() => { if (active) setFailed(true); });
     return () => { active = false; };
-  }, [attempt, uri]);
+  }, [attempt, uri, mediaVersion]);
 
   const height = Math.max(150, Math.min(330, 250 / Math.max(0.55, Math.min(2.2, ratio))));
   const attachment = file || { name: 'hinh-anh.jpg', mime: 'image/jpeg', size: 0, url: uri };
@@ -111,6 +124,8 @@ const styles = StyleSheet.create({
   receiptRead: { color: '#BCEBFF' },
   recalled: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   recalledText: { ...typography.caption, color: colors.muted, fontStyle: 'italic' },
+  callHistory: { flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 210 },
+  callIcon: { width: 36, height: 36, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
   reply: { borderLeftWidth: 3, borderLeftColor: colors.accent, backgroundColor: colors.accentWash, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, marginBottom: 7 },
   replyOutgoing: { borderLeftColor: '#fff', backgroundColor: 'rgba(255,255,255,0.16)' },
   replyName: { ...typography.caption, color: colors.accentDeep },

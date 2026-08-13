@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Login from '../features/auth/components/Login';
 import EnterpriseWorkspace from '../features/workspace/components/EnterpriseWorkspace';
 import CallOverlay from '../features/chat/components/CallOverlay';
-import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation } from '../features/chat/services/tinodeClient';
+import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation, normalizeTinodeMediaUrl } from '../features/chat/services/tinodeClient';
 import { chatManagementService } from '../features/chat/services/chatManagementService';
 import {
   applyReceiptToMessages,
@@ -120,6 +120,16 @@ function isImageAttachment(file, type = '') {
 function TinodeImagePreview({ source, alt, className = '' }) {
   const [resolvedSource, setResolvedSource] = useState('');
   const [failed, setFailed] = useState(false);
+  const [mediaVersion, setMediaVersion] = useState(() => tinodeClient.getMediaVersion(source));
+
+  useEffect(() => {
+    const normalizedSource = normalizeTinodeMediaUrl(source);
+    return tinodeClient.onEvent(event => {
+      if (event.type === 'media-invalidated' && event.url === normalizedSource) {
+        setMediaVersion(tinodeClient.getMediaVersion(source));
+      }
+    });
+  }, [source]);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,7 +149,7 @@ function TinodeImagePreview({ source, alt, className = '' }) {
       });
 
     return () => { cancelled = true; };
-  }, [source]);
+  }, [source, mediaVersion]);
 
   if (failed) {
     return (
@@ -389,24 +399,36 @@ function mergeTinodeMessages(existingMessages = [], incomingMessages = []) {
       const previousKey = merged[index]?.id;
       const previous = merged[index];
       const isOutgoing = previous.sender === 'outgoing' || message.sender === 'outgoing';
-      merged[index] = {
-        ...previous,
-        ...message,
-        type: previous.type === 'image' || message.type === 'image' ? 'image' : message.type,
-        ...(isOutgoing ? {
-          // A receipt update can arrive just before Tinode emits its refreshed
-          // conversation. Keep the highest known status from that snapshot.
-          deliveryStatus: mergeDeliveryStatus(previous.deliveryStatus, message.deliveryStatus),
-        } : {}),
-        // Reconcile Tinode's server echo with the optimistic message that was
-        // already rendered locally. The echo can arrive without `from`; do
-        // not let that overwrite the sender side while replacing pending UI.
-        ...(previous.pending ? { sender: previous.sender, senderId: previous.senderId, senderName: previous.senderName } : {}),
-        senderName: message.senderName || previous.senderName,
-        avatar: message.avatar || previous.avatar,
-        file: message.file || previous.file,
-        image: message.image || previous.image,
-      };
+      merged[index] = message.recalled || previous.recalled
+        ? {
+          ...previous,
+          ...message,
+          type: 'text',
+          text: 'Tin nhắn đã được thu hồi',
+          recalled: true,
+          file: undefined,
+          image: undefined,
+          replyTo: null,
+          reactions: {},
+        }
+        : {
+          ...previous,
+          ...message,
+          type: previous.type === 'image' || message.type === 'image' ? 'image' : message.type,
+          ...(isOutgoing ? {
+            // A receipt update can arrive just before Tinode emits its refreshed
+            // conversation. Keep the highest known status from that snapshot.
+            deliveryStatus: mergeDeliveryStatus(previous.deliveryStatus, message.deliveryStatus),
+          } : {}),
+          // Reconcile Tinode's server echo with the optimistic message that was
+          // already rendered locally. The echo can arrive without `from`; do
+          // not let that overwrite the sender side while replacing pending UI.
+          ...(previous.pending ? { sender: previous.sender, senderId: previous.senderId, senderName: previous.senderName } : {}),
+          senderName: message.senderName || previous.senderName,
+          avatar: message.avatar || previous.avatar,
+          file: message.file || previous.file,
+          image: message.image || previous.image,
+        };
       if (previousKey && previousKey !== key) indexes.delete(previousKey);
       if (key) indexes.set(key, index);
       return;
@@ -480,6 +502,16 @@ function mergeTinodeConversation(existing, incoming) {
 function SafeAvatar({ src, name, className = '' }) {
   const [failed, setFailed] = useState(false);
   const [resolvedSrc, setResolvedSrc] = useState('');
+  const [mediaVersion, setMediaVersion] = useState(() => tinodeClient.getMediaVersion(src));
+
+  useEffect(() => {
+    const normalizedSource = normalizeTinodeMediaUrl(src);
+    return tinodeClient.onEvent(event => {
+      if (event.type === 'media-invalidated' && event.url === normalizedSource) {
+        setMediaVersion(tinodeClient.getMediaVersion(src));
+      }
+    });
+  }, [src]);
 
   useEffect(() => {
     let active = true;
@@ -494,7 +526,7 @@ function SafeAvatar({ src, name, className = '' }) {
         if (active) setFailed(true);
       });
     return () => { active = false; };
-  }, [src]);
+  }, [src, mediaVersion]);
 
   if (!resolvedSrc || failed) {
     return <span className={`${className} avatar-fallback`} aria-label={name || 'Avatar'}>{name?.trim?.().slice(0, 1).toUpperCase() || '?'}</span>;
@@ -1827,10 +1859,6 @@ function App() {
     event.preventDefault();
     setChatError('');
     setProfileNotice('');
-    if (accountProfileReadOnly) {
-      setChatError('Hồ sơ nhân sự được quản lý tại account.upgo.vn và chỉ được đồng bộ sang Chatmgt.');
-      return;
-    }
     if (!profileForm.name.trim()) {
       setChatError('Vui lòng nhập họ tên hiển thị.');
       return;
@@ -2347,7 +2375,10 @@ function App() {
     const viewerId = currentUser?.id || currentUser?.uid;
     setIsDeletingConversation(true);
     setChatError('');
-    if (activeChat.isGroup) deletedConversationIdsRef.current.add(conversationId);
+    const deletedKeys = [conversationId, activeChat.managementId, activeChat.tinodeTopic]
+      .filter(Boolean)
+      .map(String);
+    deletedKeys.forEach(key => deletedConversationIdsRef.current.add(key));
     try {
       let removedTopic = '';
       if (chatMode === 'tinode') {
@@ -2361,10 +2392,8 @@ function App() {
         }
       }
       if (usesManagementData) {
-        await chatManagementService.removeConversationParticipant(
-          activeChat.managementId || activeChat.id,
-          viewerId,
-        );
+        if (chatMode === 'tinode') await chatManagementService.getFreshTinodeAuth();
+        await chatManagementService.deleteConversationForCurrentUser(activeChat.managementId || activeChat.id);
       } else if (activeChat.isGroup) {
         deleteDemoGroupForUser(conversationId, viewerId, currentUser?.name);
       } else {
@@ -2386,9 +2415,9 @@ function App() {
       const nextId = Object.keys(conversations).find(id => id !== conversationId) || CHATBOT_ACCOUNT.id;
       setCurrentChatId(nextId);
       setIsDetailOpen(false);
-      if (activeChat.isGroup) setTimeout(() => deletedConversationIdsRef.current.delete(conversationId), 5000);
+      setTimeout(() => deletedKeys.forEach(key => deletedConversationIdsRef.current.delete(key)), 5000);
     } catch (error) {
-      deletedConversationIdsRef.current.delete(conversationId);
+      deletedKeys.forEach(key => deletedConversationIdsRef.current.delete(key));
       setChatError(error?.message || 'Không thể xóa cuộc trò chuyện.');
     } finally {
       setIsDeletingConversation(false);
@@ -3011,7 +3040,7 @@ function App() {
   };
 
   const openMessageMenu = (event, message) => {
-    if (!message || ['system', 'friend_event'].includes(message.type)) return;
+    if (!message || message.recalled || ['system', 'friend_event'].includes(message.type)) return;
     event.preventDefault();
     const width = 245;
     const height = 360;
@@ -3029,7 +3058,7 @@ function App() {
 
   const handleMessageAction = async (action, message, emoji = '👍') => {
     setMessageMenu(null);
-    if (!message) return;
+    if (!message || message.recalled) return;
     const isOwnMessage = message.senderId === viewerId || message.sender === 'outgoing';
     try {
       if (action === 'create-task') {
@@ -3086,7 +3115,7 @@ function App() {
         saveMessageAction(message, { hidden: true });
         return;
       }
-      if (action === 'recall') {
+      if (action === 'recall' || action === 'recall-self' || action === 'recall-all') {
         if (!isOwnMessage) return;
         if (!canRecallDeliveredMessage(message)) {
           setChatError('Chỉ có thể thu hồi sau khi tin nhắn hoặc tệp đã được gửi thành công.');
@@ -3094,10 +3123,18 @@ function App() {
         }
         if (chatMode === 'tinode') {
           const topicName = await ensureTinodeConversationTopic(activeChat);
-          await tinodeClient.recallMessage(topicName, message);
+          const mode = action === 'recall-self' ? 'self' : 'all';
+          await tinodeClient.recallMessage(topicName, message, mode);
         }
-        const recalled = { text: 'Tin nhắn đã được thu hồi', type: 'text', recalled: true, file: undefined, image: undefined };
-        applyMessagePatch(message, recalled);
+        applyMessagePatch(message, {
+          text: 'Tin nhắn đã được thu hồi',
+          type: 'text',
+          recalled: true,
+          file: undefined,
+          image: undefined,
+          replyTo: null,
+          reactions: {},
+        });
         return;
       }
       if (action === 'share') {
@@ -3838,7 +3875,7 @@ function App() {
             );
           })}
 
-          {messageMenu && (() => {
+           {messageMenu && !messageMenu.message.recalled && (() => {
             const menuMessage = messageMenu.message;
             const isOwnMessage = menuMessage.senderId === viewerId || menuMessage.sender === 'outgoing';
             const canRecallMessage = isOwnMessage && canRecallDeliveredMessage(menuMessage);
@@ -3855,7 +3892,10 @@ function App() {
                   {['👍', '❤️', '😂', '😮', '😢'].map(emoji => <button type="button" key={emoji} onClick={() => handleMessageAction('reaction', menuMessage, emoji)}>{emoji}</button>)}
                 </div>
                 <button type="button" onClick={() => handleMessageAction('hide', menuMessage)}><i className="fa-solid fa-trash"></i>Xóa chỉ ở phía tôi</button>
-                {canRecallMessage && <button type="button" className="danger" onClick={() => handleMessageAction('recall', menuMessage)}><i className="fa-solid fa-rotate-left"></i>Thu hồi tin nhắn</button>}
+                 {canRecallMessage && <>
+                   <button type="button" className="danger" onClick={() => handleMessageAction('recall-self', menuMessage)}><i className="fa-solid fa-eye-slash"></i>Thu hồi phía tôi</button>
+                   <button type="button" className="danger" onClick={() => handleMessageAction('recall-all', menuMessage)}><i className="fa-solid fa-rotate-left"></i>Thu hồi tất cả</button>
+                 </>}
               </div>
             );
           })()}
@@ -4117,13 +4157,13 @@ function App() {
                   <div className="profile-detail-row"><i className="fa-solid fa-shield-halved"></i><div><small>Vai trò</small><strong>{profileAccount.role || 'Thành viên'}</strong></div></div>
                 </div>
                 <form className="profile-edit-form" onSubmit={handleProfileSave}>
-                  <label><span>Họ và tên</span><input value={profileForm.name} onChange={event => setProfileForm(previous => ({ ...previous, name: event.target.value }))} maxLength="255" required disabled={accountProfileReadOnly} /></label>
-                  <label><span>Email</span><input type="email" value={profileForm.email} onChange={event => setProfileForm(previous => ({ ...previous, email: event.target.value }))} maxLength="255" disabled={accountProfileReadOnly} /></label>
-                  <label><span>Chức vụ</span><input value={profileForm.title} onChange={event => setProfileForm(previous => ({ ...previous, title: event.target.value }))} maxLength="255" disabled={accountProfileReadOnly} /></label>
-                  <label><span>Phòng ban</span><input value={profileForm.department} onChange={event => setProfileForm(previous => ({ ...previous, department: event.target.value }))} maxLength="255" disabled={accountProfileReadOnly} /></label>
-                  {accountProfileReadOnly && <div className="profile-save-notice"><i className="fa-solid fa-building-shield"></i>Thông tin nhân sự được đồng bộ từ account.upgo.vn; ảnh đại diện có thể đổi tại đây.</div>}
+                  <label><span>Họ và tên</span><input value={profileForm.name} onChange={event => setProfileForm(previous => ({ ...previous, name: event.target.value }))} maxLength="255" required /></label>
+                  <label><span>Email</span><input type="email" value={profileForm.email} onChange={event => setProfileForm(previous => ({ ...previous, email: event.target.value }))} maxLength="255" /></label>
+                  <label><span>Chức vụ</span><input value={profileForm.title} onChange={event => setProfileForm(previous => ({ ...previous, title: event.target.value }))} maxLength="255" /></label>
+                  <label><span>Phòng ban</span><input value={profileForm.department} onChange={event => setProfileForm(previous => ({ ...previous, department: event.target.value }))} maxLength="255" /></label>
+                  {accountProfileReadOnly && <div className="profile-save-notice"><i className="fa-solid fa-building-shield"></i>Thông tin sẽ được lưu qua UpGO Account và đồng bộ lại cho các thiết bị.</div>}
                   {profileNotice && <div className="profile-save-notice"><i className="fa-solid fa-circle-check"></i>{profileNotice}</div>}
-                  <button type="submit" className="btn-primary profile-save-button" disabled={accountProfileReadOnly || isSavingProfile}>
+                  <button type="submit" className="btn-primary profile-save-button" disabled={isSavingProfile}>
                     <i className={`fa-solid ${isSavingProfile ? 'fa-spinner fa-spin' : 'fa-floppy-disk'}`}></i>
                     {isSavingProfile ? 'Đang lưu...' : 'Lưu hồ sơ'}
                   </button>

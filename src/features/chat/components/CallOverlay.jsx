@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-import { tinodeClient } from '../services/tinodeClient';
+import { tinodeClient, normalizeTinodeMediaUrl } from '../services/tinodeClient';
 import { CALL_SIGNAL_EVENTS, formatCallDuration } from '../services/callSignaling';
 
 const CALL_SETUP_TIMEOUT_MS = 40000;
@@ -25,6 +25,7 @@ function stopStream(stream) {
 function CallAvatar({ src, name }) {
   const [failed, setFailed] = useState(false);
   const [resolvedSrc, setResolvedSrc] = useState('');
+  const [mediaVersion, setMediaVersion] = useState(() => tinodeClient.getMediaVersion(src));
   const initials = String(name || 'VC')
     .split(/\s+/)
     .filter(Boolean)
@@ -32,6 +33,15 @@ function CallAvatar({ src, name }) {
     .map(part => part[0])
     .join('')
     .toUpperCase();
+
+  useEffect(() => {
+    const normalizedSource = normalizeTinodeMediaUrl(src);
+    return tinodeClient.onEvent(event => {
+      if (event.type === 'media-invalidated' && event.url === normalizedSource) {
+        setMediaVersion(tinodeClient.getMediaVersion(src));
+      }
+    });
+  }, [src]);
 
   useEffect(() => {
     let active = true;
@@ -46,7 +56,7 @@ function CallAvatar({ src, name }) {
         if (active) setFailed(true);
       });
     return () => { active = false; };
-  }, [src]);
+  }, [src, mediaVersion]);
 
   if (!resolvedSrc || failed) return <span className="call-avatar-fallback">{initials || 'VC'}</span>;
   return <img src={resolvedSrc} alt={name || 'Người tham gia'} onError={() => setFailed(true)} />;

@@ -420,6 +420,18 @@ export const chatManagementService = {
     return normalizeConversation(payload);
   },
 
+  async deleteConversationForCurrentUser(conversationId) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const tinodeAuth = activeSession?.tinodeAuth
+      ? await this.getFreshTinodeAuth()
+      : null;
+    const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/self`, {
+      method: 'DELETE',
+      body: JSON.stringify({ tinode_token: tinodeAuth?.token || '' }),
+    });
+    return normalizeConversation(payload);
+  },
+
   async updateConversationNotifications(conversationId, mutedUntil) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/notification-settings`, {

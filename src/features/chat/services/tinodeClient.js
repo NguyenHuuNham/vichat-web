@@ -66,6 +66,7 @@ const privateGroupTopics = new Set();
 const callInviteKeys = new Set();
 const conversationEmitTimers = new Map();
 const topicReceiptCursors = new Map();
+const mediaObjectUrlVersions = new Map();
 let conversationListRequest = null;
 let contactsEventQueued = false;
 let allowedConversationTopics = new Set();
@@ -103,12 +104,18 @@ function getDrafty() {
 function tinodeMediaPath(value) {
   const path = String(value || '');
   if (!path || /^(?:data:|blob:)/i.test(path)) return '';
+  if (path.startsWith(`${MEDIA_PROXY_PREFIX}/`)) {
+    const relayedPath = path.slice(MEDIA_PROXY_PREFIX.length);
+    return relayedPath.startsWith('/v0/file/') ? relayedPath : '';
+  }
   if (path.startsWith('/v0/file/')) return path;
   try {
     const parsed = new URL(path, 'https://tinode.invalid');
-    return parsed.pathname.startsWith('/v0/file/')
-      ? `${parsed.pathname}${parsed.search}`
-      : '';
+    if (parsed.pathname.startsWith('/v0/file/')) return `${parsed.pathname}${parsed.search}`;
+    if (parsed.pathname.startsWith(`${MEDIA_PROXY_PREFIX}/v0/file/`)) {
+      return `${parsed.pathname.slice(MEDIA_PROXY_PREFIX.length)}${parsed.search}`;
+    }
+    return '';
   } catch {
     return '';
   }
@@ -295,23 +302,49 @@ function normalizeAvatar(value) {
   return '';
 }
 
+export function normalizeTinodeMediaUrl(value) {
+  return normalizeAvatar(value);
+}
+
+function mediaCacheKey(value) {
+  const normalized = normalizeAvatar(value);
+  if (!normalized) return '';
+  return `${normalized}|${mediaObjectUrlVersions.get(normalized) || 0}`;
+}
+
+function invalidateProtectedMedia(value) {
+  const normalized = normalizeAvatar(value);
+  if (!normalized || !normalized.startsWith(MEDIA_PROXY_PREFIX)) return;
+  mediaObjectUrlVersions.set(normalized, (mediaObjectUrlVersions.get(normalized) || 0) + 1);
+  [...mediaObjectUrlCache.entries()]
+    .filter(([key]) => key.startsWith(`${normalized}|`))
+    .forEach(([key, request]) => {
+      mediaObjectUrlCache.delete(key);
+      Promise.resolve(request).then(url => URL.revokeObjectURL(url)).catch(() => {});
+    });
+  listeners.forEach(listener => listener({ type: 'media-invalidated', url: normalized }));
+}
+
 async function resolveProtectedMedia(value) {
   const normalized = normalizeAvatar(value);
   if (!normalized || !normalized.startsWith(MEDIA_PROXY_PREFIX)) return normalized;
-  if (!mediaObjectUrlCache.has(normalized)) {
+  const cacheKey = mediaCacheKey(normalized);
+  if (!mediaObjectUrlCache.has(cacheKey)) {
     const request = (async () => {
       const response = await fetch(normalized, {
         headers: tinodeRequestHeaders(getClient()),
+        credentials: 'include',
+        cache: 'no-store',
       });
       if (!response.ok) throw new Error(`Không thể tải ảnh đại diện (HTTP ${response.status}).`);
       return URL.createObjectURL(await response.blob());
     })().catch(error => {
-      mediaObjectUrlCache.delete(normalized);
+      mediaObjectUrlCache.delete(cacheKey);
       throw error;
     });
-    mediaObjectUrlCache.set(normalized, request);
+    mediaObjectUrlCache.set(cacheKey, request);
   }
-  return mediaObjectUrlCache.get(normalized);
+  return mediaObjectUrlCache.get(cacheKey);
 }
 
 function isOpaqueUserId(value) {
@@ -323,7 +356,7 @@ function usableProfileName(value) {
   return name && !isOpaqueUserId(name) ? name : '';
 }
 
-function cacheUserProfile(uid, publicProfile = {}) {
+function cacheUserProfile(uid, publicProfile = {}, { refreshAvatar = false } = {}) {
   if (!uid) return null;
   const previous = userProfileCache.get(uid) || {};
   const next = {
@@ -331,6 +364,13 @@ function cacheUserProfile(uid, publicProfile = {}) {
     name: usableProfileName(publicProfile.fn || publicProfile.name || previous.name),
     avatar: normalizeAvatar(publicProfile.photo || publicProfile.avatar) || previous.avatar || '',
   };
+  const avatarChanged = previous.avatar !== next.avatar;
+  if (previous.avatar && avatarChanged) {
+    invalidateProtectedMedia(previous.avatar);
+  }
+  if (next.avatar && (avatarChanged || refreshAvatar)) {
+    invalidateProtectedMedia(next.avatar);
+  }
   userProfileCache.set(uid, next);
   if (previous.id && (previous.name !== next.name || previous.avatar !== next.avatar)) {
     queueMicrotask(() => {
@@ -478,7 +518,10 @@ function toMessage(msg, tinode, topic = null) {
   const attachmentMime = attachmentData?.mime || 'application/octet-stream';
   const rawAttachmentUrl = attachmentData?.ref
     || attachmentData?.url
-    || (attachmentData?.val ? Drafty?.getDownloadUrl?.(attachmentData) : '');
+    || (attachmentData?.val
+      ? (Drafty?.getDownloadUrl?.(attachmentData)
+        || `data:${attachmentMime};base64,${attachmentData.val}`)
+      : '');
   const attachmentUrl = rawAttachmentUrl ? mediaProxyUrl(rawAttachmentUrl) : '';
   const isImageAttachment = Boolean(attachment && (
     attachment.tp === 'IM'
@@ -1071,6 +1114,7 @@ function resetSessionState({ clearEventListeners = false } = {}) {
     Promise.resolve(request).then(url => URL.revokeObjectURL(url)).catch(() => {});
   }
   mediaObjectUrlCache.clear();
+  mediaObjectUrlVersions.clear();
   userProfileCache.clear();
   userProfileRequests.clear();
   userProfilesLoaded.clear();
@@ -1307,6 +1351,15 @@ export const tinodeClient = {
     return normalizeIceServers(client?.getServerParam?.('iceServers', []));
   },
 
+  getMediaVersion(value) {
+    const normalized = normalizeAvatar(value);
+    return normalized ? (mediaObjectUrlVersions.get(normalized) || 0) : 0;
+  },
+
+  invalidateMediaUrl(value) {
+    invalidateProtectedMedia(value);
+  },
+
   getCallCapability(topicName, options = {}) {
     return callCapability({
       authenticated: this.authenticated,
@@ -1421,7 +1474,11 @@ export const tinodeClient = {
         },
       },
     });
-    const profile = cacheUserProfile(tinode.getCurrentUserID(), { ...currentPublic, fn: resolvedName, photo });
+    const profile = cacheUserProfile(
+      tinode.getCurrentUserID(),
+      { ...currentPublic, fn: resolvedName, photo },
+      { refreshAvatar: Boolean(avatarFile || avatarUrl) },
+    );
     listeners.forEach(listener => listener({ type: 'profile', profile }));
     return profile;
   },
@@ -1577,7 +1634,7 @@ export const tinodeClient = {
     return topic.publish(`${REACTION_EVENT_PREFIX}${JSON.stringify(event)}`);
   },
 
-  async recallMessage(topicName, message = {}) {
+  async recallMessage(topicName, message = {}, mode = 'all') {
     if (!canRecallDeliveredMessage(message)) {
       throw new Error('Chỉ có thể thu hồi sau khi tin nhắn hoặc tệp đã được gửi thành công.');
     }
@@ -1587,13 +1644,16 @@ export const tinodeClient = {
     }
     const topic = await subscribeTopic(topicName);
     const actorId = tinode.getCurrentUserID();
-    const event = buildRecallEvent(message, actorId);
+    const event = buildRecallEvent(message, actorId, new Date().toISOString(), mode === 'self' ? 'self' : 'all');
     if (!event.targetId && !event.targetSeq) throw new Error('Tin nhắn không có định danh để thu hồi.');
-    await topic.publish(`${RECALL_EVENT_PREFIX}${JSON.stringify(event)}`);
-    // Some legacy topics do not grant hard-delete permission to regular
-    // members. The persisted recall event still hides the original for all
-    // subscribers; hard deletion is attempted as an additional safeguard.
-    if (event.targetSeq) await topic.delMessagesList([event.targetSeq], true).catch(() => null);
+    const draft = topic.createMessage(`${RECALL_EVENT_PREFIX}${JSON.stringify(event)}`, false);
+    draft.head = {
+      ...(draft.head || {}),
+      'x-client-id': `web-recall-${event.targetSeq || event.targetId}-${Date.now()}`,
+      'x-sender-id': actorId,
+    };
+    const result = await topic.publishMessage(draft);
+    if (!result) throw new Error('Tinode khong xac nhan su kien thu hoi.');
     emitConversation(topic);
     return event;
   },

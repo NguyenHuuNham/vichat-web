@@ -13,6 +13,7 @@ import { AppLockScreen } from './src/components/AppLockScreen';
 import { useAppLockStore } from './src/store/appLockStore';
 import { consumeTrustedExternalActivity } from './src/services/appLifecycleService';
 import { colors } from './src/theme/colors';
+import { MobileCallOverlay } from './src/components/MobileCallOverlay';
 
 export default function App() {
   const scheme = useColorScheme();
@@ -73,6 +74,7 @@ export default function App() {
         <NavigationContainer theme={navigationTheme}>
           <AppNavigator />
         </NavigationContainer>
+        {appStatus === 'ready' ? <MobileCallOverlay /> : null}
         {appStatus === 'ready' && appLockInitialized && appLockConfigured && appLocked ? <AppLockScreen /> : null}
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       </View>

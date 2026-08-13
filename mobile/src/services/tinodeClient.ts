@@ -8,12 +8,68 @@ import {
   SYSTEM_EVENT_PREFIX,
   buildRecallEvent,
   canRecallMessage,
+  recallAppliesToViewer,
 } from '../utils/messagePolicy';
 import { formatMessageTime } from '../utils/timeFormatting';
 import { mapTinodeDeliveryStatus, ReceiptCursor } from '../utils/tinodeState';
 import { normalizeMediaUrl } from '../utils/mediaUrl';
 
 export { normalizeMediaUrl } from '../utils/mediaUrl';
+
+export const CALL_HEAD_STARTED = 'started';
+export const CALL_SIGNAL_EVENTS = Object.freeze({
+  RINGING: 'ringing',
+  ACCEPT: 'accept',
+  OFFER: 'offer',
+  ANSWER: 'answer',
+  ICE_CANDIDATE: 'ice-candidate',
+  HANG_UP: 'hang-up',
+});
+
+function callEntity(content: any) {
+  return content?.ent?.find?.((entity: any) => entity?.tp === 'VC')?.data || null;
+}
+
+export function parseCallMessage(content: any, head: any = {}, incoming = false) {
+  const entity = callEntity(content);
+  if (!entity && !head?.webrtc) return null;
+  const duration = Number(entity?.duration ?? head?.['webrtc-duration'] ?? 0);
+  return {
+    audioOnly: Boolean(entity?.aonly ?? head?.aonly),
+    state: String(entity?.state || head?.webrtc || CALL_HEAD_STARTED),
+    duration: Number.isFinite(duration) && duration > 0 ? duration : 0,
+    incoming: Boolean(entity?.incoming ?? incoming),
+  };
+}
+
+function formatCallDuration(durationMs = 0) {
+  const seconds = Math.max(0, Math.floor(Number(durationMs) / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+}
+
+function callHistoryLabel(call: ReturnType<typeof parseCallMessage>, outgoing = false) {
+  if (!call) return '';
+  const direction = outgoing ? 'Cuộc gọi đi' : 'Cuộc gọi đến';
+  if (call.state === 'busy') return `${direction} - Máy bận`;
+  if (call.state === 'declined') return `${direction} - Đã từ chối`;
+  if (call.state === 'missed') return outgoing ? 'Cuộc gọi đã hủy' : 'Cuộc gọi nhỡ';
+  if (call.state === 'disconnected') return `${direction} - Mất kết nối`;
+  if (call.duration > 0) return `${direction} - ${formatCallDuration(call.duration)}`;
+  if (call.state === 'accepted') return `${direction} - Đang diễn ra`;
+  return direction;
+}
+
+export type MobileCallSignalEvent = {
+  type: 'call-signal';
+  topic: string;
+  seq: number;
+  event: string;
+  payload?: any;
+  from?: string;
+  viaMe?: boolean;
+};
 
 let TinodeConstructor: any = null;
 let Drafty: any = null;
@@ -40,9 +96,13 @@ export type TinodeEvent =
   | { type: 'profile'; uid: string; name?: string; avatar?: string }
   | { type: 'incoming-message'; conversation: Conversation; message: ChatMessage }
   | { type: 'typing'; topic: string; uid: string; active: boolean }
-  | { type: 'presence'; uid: string; online: boolean };
+  | { type: 'presence'; uid: string; online: boolean }
+  | { type: 'media-invalidated'; url: string }
+  | { type: 'call-invite'; topic: string; seq: number; from: string; audioOnly: boolean }
+  | MobileCallSignalEvent;
 
 const imageCacheRequests = new Map<string, Promise<string>>();
+const imageCacheVersions = new Map<string, number>();
 
 function tinodeHeaders(token = '') {
   return {
@@ -56,14 +116,34 @@ function messageContent(raw: any) {
   return String(raw?.content?.txt || '');
 }
 
+function normalizeMediaValue(value: any, mime = 'image/jpeg') {
+  if (!value) return '';
+  if (typeof value === 'string') {
+    if (/^(?:data:|blob:|file:|content:|https?:)/i.test(value)) return normalizeMediaUrl(value);
+    return /^[-A-Za-z0-9+/=]+$/.test(value) ? `data:${mime};base64,${value}` : normalizeMediaUrl(value);
+  }
+  if (typeof value.ref === 'string') return normalizeMediaValue(value.ref, value.mime || mime);
+  if (typeof value.url === 'string') return normalizeMediaValue(value.url, value.mime || mime);
+  if (typeof value.val === 'string') return `data:${value.mime || mime};base64,${value.val}`;
+  return '';
+}
+
 function rawAttachment(raw: any) {
   const content = raw?.content;
-  const entity = content?.ent?.find?.((item: any) => item?.tp === 'EX' || item?.tp === 'IM');
+  let entity = content?.ent?.find?.((item: any) => item?.tp === 'EX' || item?.tp === 'IM');
+  if (!entity && Drafty?.entities && content) {
+    Drafty.entities(content, (data: any, _index: number, type: string) => {
+      if (type !== 'EX' && type !== 'IM') return false;
+      entity = { tp: type, data };
+      return true;
+    });
+  }
   if (!entity) return null;
   const data = entity.data || {};
   const name = String(data.name || 'Tệp đính kèm');
   const mime = String(data.mime || 'application/octet-stream');
-  const url = normalizeMediaUrl(data.ref || data.url || data.val || (Drafty?.getDownloadUrl?.(data) || ''));
+  const url = normalizeMediaValue(data.ref || data.url || (Drafty?.getDownloadUrl?.(data) || ''), mime)
+    || (data.val ? `data:${mime};base64,${data.val}` : '');
   return {
     isImage: entity.tp === 'IM' || /^image\//i.test(mime) || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(name),
     file: {
@@ -114,6 +194,7 @@ function normalizeMessage(raw: any, client: any, topic: any, receiptCursor?: Rec
   const senderId = String(raw.from || raw.head?.['x-sender-id'] || '');
   const outgoing = Boolean(senderId && client.isMe?.(senderId));
   const content = messageContent(raw);
+  const call = parseCallMessage(raw.content, raw.head, !outgoing);
   const reaction = parseEvent(content, REACTION_EVENT_PREFIX);
   const recall = parseEvent(content, RECALL_EVENT_PREFIX);
   const system = parseEvent(content, SYSTEM_EVENT_PREFIX);
@@ -128,7 +209,7 @@ function normalizeMessage(raw: any, client: any, topic: any, receiptCursor?: Rec
     id, seq: raw.seq, type: 'recall', sender: outgoing ? 'outgoing' : 'incoming', senderId,
     senderName: '', text: '', createdAt: raw.ts, raw: { ...raw, recallEvent: recall },
   };
-  const type = system ? 'system' : attachment ? (attachment.isImage ? 'image' : 'file') : 'text';
+  const type = call ? 'call' : system ? 'system' : attachment ? (attachment.isImage ? 'image' : 'file') : 'text';
   return {
     id,
     seq: Number(raw.seq) || undefined,
@@ -136,13 +217,14 @@ function normalizeMessage(raw: any, client: any, topic: any, receiptCursor?: Rec
     sender: outgoing ? 'outgoing' : 'incoming',
     senderId: senderId || (outgoing ? client.getCurrentUserID?.() : ''),
     senderName: outgoing ? 'Bạn' : 'Thành viên',
-    text: system ? String(system.text || system.action || 'Hoạt động hệ thống') : content,
+    text: call ? callHistoryLabel(call, outgoing) : system ? String(system.text || system.action || 'Hoạt động hệ thống') : content,
     image: attachment?.isImage ? attachment.file.url : undefined,
     file: attachment?.file,
     createdAt: raw.ts ? new Date(raw.ts).toISOString() : undefined,
     time: formatMessageTime(raw.ts),
     deliveryStatus: mapTinodeDeliveryStatus(topic?.msgStatus?.(raw, false) ?? raw._status, outgoing, raw.seq, receiptCursor),
     replyTo: messageReply(raw),
+    call: call || undefined,
     raw,
   };
 }
@@ -165,7 +247,7 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
   });
   const visibleRecallMessages = loaded.filter(message => message.type === 'recall').filter(message => {
     const event = message.raw?.recallEvent;
-    return event?.mode !== 'self' || client.isMe?.(event.actorId);
+    return recallAppliesToViewer(event, client);
   });
   visibleRecallMessages.forEach(message => {
     const event = message.raw?.recallEvent;
@@ -208,6 +290,9 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
   visibleRecallMessages.forEach(message => {
     if (appliedRecallIds.has(message.id)) return;
     const event = message.raw?.recallEvent || {};
+    // A self recall is visible only to its author. If the original packet was
+    // hard-deleted, do not recreate a placeholder for that same author.
+    if (event.mode === 'self' && client.isMe?.(event.actorId || event.originalSenderId)) return;
     const targetSeq = Number(event.targetSeq) || undefined;
     const senderId = String(event.actorId || event.originalSenderId || message.senderId || '');
     const outgoing = Boolean(senderId && client.isMe?.(senderId));
@@ -235,7 +320,7 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
       uid: sub.user,
       username: sub.user,
       name: sub.public?.fn || sub.public?.name || 'Thành viên',
-      avatar: normalizeMediaUrl(sub.public?.photo?.ref || sub.public?.avatar || ''),
+      avatar: normalizeMediaValue(sub.public?.photo || sub.public?.avatar || ''),
       active: true,
       tenantId: config.tenantId,
       online: presenceResolver(sub.user, sub.online === true),
@@ -255,7 +340,7 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
     tinodeTopic: topic.name,
     name: String(topic.public?.fn || topic.public?.name || directPeer?.name || topic.name || 'Cuộc trò chuyện'),
     isGroup,
-    avatarUrl: normalizeMediaUrl(topic.public?.photo?.ref || topic.public?.avatar || directPeer?.avatar || ''),
+    avatarUrl: normalizeMediaValue(topic.public?.photo || topic.public?.avatar || directPeer?.avatar || ''),
     description: String(topic.public?.note || ''),
     membersCount: isGroup ? `${members.length} thành viên` : (directPeer?.online ? 'Đang hoạt động' : 'Offline'),
     members,
@@ -280,6 +365,8 @@ export class TinodeMobileClient {
   private receiptCursors = new Map<string, ReceiptCursor>();
   private notifiedSeqByTopic = new Map<string, number>();
   private deviceToken: string | null = null;
+  private blockedTopics = new Set<string>();
+  private callInviteKeys = new Set<string>();
 
   onEvent(listener: Listener) {
     this.listeners.add(listener);
@@ -292,6 +379,34 @@ export class TinodeMobileClient {
 
   private emit(event: TinodeEvent) {
     this.listeners.forEach(listener => listener(event));
+  }
+
+  private invalidateImageCache(value: string) {
+    const url = normalizeMediaUrl(value);
+    if (!url) return;
+    imageCacheVersions.set(url, (imageCacheVersions.get(url) || 0) + 1);
+    [...imageCacheRequests.keys()]
+      .filter(key => key.startsWith(`${url}|`))
+      .forEach(key => imageCacheRequests.delete(key));
+    this.emit({ type: 'media-invalidated', url });
+  }
+
+  getMediaVersion(value: string) {
+    const url = normalizeMediaUrl(value);
+    return url ? (imageCacheVersions.get(url) || 0) : 0;
+  }
+
+  allowConversationTopic(topicName: string) {
+    if (topicName) this.blockedTopics.delete(String(topicName));
+  }
+
+  disallowConversationTopic(topicName: string) {
+    const name = String(topicName || '');
+    if (!name) return;
+    this.blockedTopics.add(name);
+    const topic = this.topics.get(name);
+    if (topic?.leave) Promise.resolve(topic.leave(true)).catch(() => {});
+    this.topics.delete(name);
   }
 
   private materialize(topic: any) {
@@ -394,14 +509,19 @@ export class TinodeMobileClient {
   async cacheImage(value: string) {
     const url = normalizeMediaUrl(value);
     if (!url || /^(?:data:|file:|content:)/i.test(url)) return url;
-    if (!imageCacheRequests.has(url)) {
+    // Tinode can reuse the same protected path after an avatar replacement.
+    // Include the current auth token in the cache key so native images do not
+    // remain stuck on the previous avatar.
+    const token = this.client?.getAuthToken?.()?.token || '';
+    const cacheKey = `${url}|${token}|${imageCacheVersions.get(url) || 0}`;
+    if (!imageCacheRequests.has(cacheKey)) {
       const request = (async () => {
         const fileSystem: any = require('expo-file-system');
         if (!fileSystem.File?.downloadFileAsync || !fileSystem.Paths?.cache) {
           throw new Error('Bộ nhớ ảnh chưa sẵn sàng.');
         }
         let hash = 5381;
-        for (let index = 0; index < url.length; index += 1) hash = ((hash << 5) + hash) ^ url.charCodeAt(index);
+        for (let index = 0; index < cacheKey.length; index += 1) hash = ((hash << 5) + hash) ^ cacheKey.charCodeAt(index);
         const extension = url.match(/\.(?:avif|bmp|gif|jpe?g|png|webp)(?:\?|$)/i)?.[0]?.replace(/\?.*$/, '') || '.jpg';
         const target = new fileSystem.File(fileSystem.Paths.cache, `vichat-image-${Math.abs(hash)}${extension}`);
         const downloaded = await fileSystem.File.downloadFileAsync(url, target, {
@@ -410,12 +530,12 @@ export class TinodeMobileClient {
         });
         return downloaded.uri;
       })().catch(error => {
-        imageCacheRequests.delete(url);
+        imageCacheRequests.delete(cacheKey);
         throw error;
       });
-      imageCacheRequests.set(url, request);
+      imageCacheRequests.set(cacheKey, request);
     }
-    return imageCacheRequests.get(url)!;
+    return imageCacheRequests.get(cacheKey)!;
   }
 
   async downloadFile(file: FileAttachment) {
@@ -434,19 +554,40 @@ export class TinodeMobileClient {
     if (!topic || topic.__vichatMobileWired) return topic;
     topic.__vichatMobileWired = true;
     topic.onData = (raw: any) => {
+      if (this.blockedTopics.has(String(topic.name || ''))) return;
+      this.emitCallInvite(topic, raw);
       if (!raw?.from || !this.client?.isMe?.(raw.from)) this.acknowledgeTopicReceived(topic, raw?.seq);
       const conversation = this.materialize(topic);
       this.emit({ type: 'conversation', conversation });
       if (!topic.__vichatMobileSyncing) this.emitIncomingMessage(topic, raw, conversation);
     };
-    topic.onMetaDesc = () => this.emit({ type: 'conversation', conversation: this.materialize(topic) });
-    topic.onMetaSub = () => this.emit({ type: 'conversation', conversation: this.materialize(topic) });
-    topic.onSubsUpdated = () => this.emit({ type: 'conversation', conversation: this.materialize(topic) });
+    topic.onMetaDesc = () => {
+      if (!this.blockedTopics.has(String(topic.name || ''))) this.emit({ type: 'conversation', conversation: this.materialize(topic) });
+    };
+    topic.onMetaSub = () => {
+      if (!this.blockedTopics.has(String(topic.name || ''))) this.emit({ type: 'conversation', conversation: this.materialize(topic) });
+    };
+    topic.onSubsUpdated = () => {
+      if (!this.blockedTopics.has(String(topic.name || ''))) this.emit({ type: 'conversation', conversation: this.materialize(topic) });
+    };
     topic.onPres = (presence: any) => {
+      if (this.blockedTopics.has(String(topic.name || ''))) return;
       this.updatePresence(presence);
       this.emit({ type: 'conversation', conversation: this.materialize(topic) });
     };
     topic.onInfo = (info: any) => {
+      if (this.blockedTopics.has(String(topic.name || ''))) return;
+      if (info?.what === 'call') {
+        this.emit({
+          type: 'call-signal',
+          topic: topic.name,
+          seq: Number(info.seq) || 0,
+          event: String(info.event || ''),
+          payload: info.payload,
+          from: info.from,
+        });
+        return;
+      }
       if (['kp', 'kpa', 'kpv'].includes(info?.what)) this.emit({ type: 'typing', topic: topic.name, uid: info.from, active: true });
       if (['read', 'recv'].includes(info?.what) && !this.client?.isMe?.(info?.from)) {
         this.updateReceiptCursor(topic, info.what, info.seq);
@@ -454,6 +595,17 @@ export class TinodeMobileClient {
       }
     };
     return topic;
+  }
+
+  private emitCallInvite(topic: any, raw: any) {
+    if (!raw?.seq || !raw?.from || this.client?.isMe?.(raw.from)) return;
+    if (raw.head?.webrtc !== CALL_HEAD_STARTED) return;
+    const content = raw.content;
+    const entity = content?.ent?.find?.((item: any) => item?.tp === 'VC')?.data;
+    const key = `${topic.name}:${raw.seq}`;
+    if (!entity || topic.name?.startsWith('grp') || this.callInviteKeys.has(key)) return;
+    this.callInviteKeys.add(key);
+    this.emit({ type: 'call-invite', topic: topic.name, seq: Number(raw.seq), from: String(raw.from), audioOnly: Boolean(entity.aonly || raw.head?.aonly) });
   }
 
   private getTopic(name: string) {
@@ -511,6 +663,20 @@ export class TinodeMobileClient {
     this.meTopic.onPres = (presence: any) => {
       this.updatePresence(presence);
     };
+    const previousInfo = this.meTopic.onInfo;
+    this.meTopic.onInfo = (info: any) => {
+      previousInfo?.(info);
+      if (info?.what !== 'call' || !info?.src) return;
+      this.emit({
+        type: 'call-signal',
+        topic: String(info.src),
+        seq: Number(info.seq) || 0,
+        event: String(info.event || ''),
+        payload: info.payload,
+        from: info.from,
+        viaMe: true,
+      });
+    };
     if (!this.meTopic.isSubscribed?.()) {
       await this.meTopic.subscribe(this.meTopic.startMetaQuery().withDesc().withSub().build());
     }
@@ -540,12 +706,17 @@ export class TinodeMobileClient {
     this.presenceByUid.clear();
     this.receiptCursors.clear();
     this.notifiedSeqByTopic.clear();
+    this.blockedTopics.clear();
+    this.callInviteKeys.clear();
+    imageCacheRequests.clear();
+    imageCacheVersions.clear();
     this.client?.disconnect?.();
     this.client = null;
     this.emit({ type: 'connection', state: 'disconnected' });
   }
 
   async subscribeTopic(name: string, historyLimit = 100) {
+    this.allowConversationTopic(name);
     if (!this.client || !name) throw new Error('Tinode chưa kết nối.');
     const topic = this.getTopic(name);
     const historyLoaded = Boolean(topic.__vichatMobileHistoryLoaded);
@@ -595,6 +766,41 @@ export class TinodeMobileClient {
 
   openConversation(name: string) { return this.subscribeTopic(name, 100); }
 
+  getCallIceServers() {
+    const servers = this.client?.getServerParam?.('iceServers', []);
+    return Array.isArray(servers) ? servers : [];
+  }
+
+  getCallCapability(topicName: string, options: { isGroup?: boolean; isChatbot?: boolean } = {}) {
+    if (!config.callsEnabled) return { available: false, reason: 'Cuộc gọi chưa được bật trong app.' };
+    if (!this.connected) return { available: false, reason: 'Kết nối Tinode realtime chưa sẵn sàng.' };
+    if (options.isChatbot) return { available: false, reason: 'Không thể gọi trợ lý chatbot.' };
+    if (options.isGroup || !/^usr[a-z0-9_-]+$/i.test(String(topicName || ''))) return { available: false, reason: 'Cuộc gọi mobile chỉ hỗ trợ hội thoại 1-1.' };
+    if (!this.getCallIceServers().length) return { available: false, reason: 'Máy chủ chưa cấu hình ICE/TURN cho cuộc gọi.' };
+    return { available: true, reason: '' };
+  }
+
+  async startCall(topicName: string, audioOnly = false) {
+    const capability = this.getCallCapability(topicName);
+    if (!capability.available) throw new Error(capability.reason);
+    await this.subscribeTopic(topicName, 0);
+    const topic = this.getTopic(topicName);
+    if (!Drafty?.videoCall) throw new Error('Tinode SDK không hỗ trợ cuộc gọi.');
+    const draft = topic.createMessage(Drafty.videoCall(Boolean(audioOnly)), false);
+    draft.head = { ...(draft.head || {}), webrtc: CALL_HEAD_STARTED, aonly: Boolean(audioOnly), 'x-sender-id': this.currentUserId };
+    const result = await topic.publishMessage(draft);
+    const seq = Number(result?.params?.seq || draft.seq || 0);
+    if (!seq) throw new Error('Tinode không trả về mã cuộc gọi.');
+    return { seq, topic: topicName, audioOnly: Boolean(audioOnly) };
+  }
+
+  async sendCallSignal(topicName: string, seq: number, event: string, payload?: any) {
+    if (!Object.values(CALL_SIGNAL_EVENTS).includes(event as any)) throw new Error('Tín hiệu cuộc gọi không hợp lệ.');
+    if (!Number(seq)) throw new Error('Cuộc gọi chưa có mã tin nhắn.');
+    await this.subscribeTopic(topicName, 0);
+    await this.getTopic(topicName).videoCall(event, Number(seq), payload);
+  }
+
   async sendText(topicName: string, text: string, clientId: string, replyTo?: ChatMessage['replyTo']) {
     await this.subscribeTopic(topicName, 0);
     const topic = this.getTopic(topicName);
@@ -643,6 +849,10 @@ export class TinodeMobileClient {
       `mobile-recall-${target}-${Date.now()}`,
       this.currentUserId,
     );
+  }
+
+  async deleteConversation(topicName: string) {
+    this.disallowConversationTopic(topicName);
   }
 
   getAuthTokenValue() {
@@ -721,6 +931,7 @@ export class TinodeMobileClient {
       },
     });
     const avatar = normalizeMediaUrl(photo?.ref || photo?.url || '');
+    this.invalidateImageCache(avatar);
     this.emit({ type: 'profile', uid: this.currentUserId, name: resolvedName, avatar });
     return { id: this.currentUserId, name: resolvedName, avatar };
   }

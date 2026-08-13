@@ -1,6 +1,7 @@
 import { AppState, Platform } from 'react-native';
 import { config } from '../constants/config';
 import { ChatMessage, Conversation, User } from '../types';
+import { isConversationMuted } from '../utils/conversationNotifications';
 
 const MESSAGE_CHANNEL_ID = 'messages';
 let initializedForUser = '';
@@ -94,8 +95,7 @@ function notificationBody(message: ChatMessage) {
 
 export async function notifyIncomingMessage(conversation: Conversation, message: ChatMessage) {
   if (AppState.currentState === 'active' || message.sender !== 'incoming') return null;
-  const mutedUntil = Number(conversation.notificationMutedUntil || 0);
-  if (mutedUntil > Date.now()) return null;
+  if (isConversationMuted(conversation.notificationMutedUntil)) return null;
   try {
     const { Notifications } = await loadNotificationModules();
     if ((await Notifications.getPermissionsAsync()).status !== 'granted') return null;

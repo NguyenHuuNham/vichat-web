@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MessageSquarePlus, Search, SlidersHorizontal, X } from 'lucide-react-native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -12,6 +12,7 @@ import { SearchField } from '../../components/SearchField';
 import { ConversationRow } from '../../components/ConversationRow';
 import { EmptyState } from '../../components/EmptyState';
 import { MessageCircleMore } from 'lucide-react-native';
+import { isConversationMuted } from '../../utils/conversationNotifications';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Chats'> & { navigation: any };
 type FilterKey = 'all' | 'unread' | 'groups';
@@ -29,6 +30,8 @@ export function ConversationListScreen({ navigation }: Props) {
   const error = useAppStore(state => state.error);
   const refreshData = useAppStore(state => state.refreshData);
   const openConversation = useAppStore(state => state.openConversation);
+  const muteConversation = useAppStore(state => state.muteConversation);
+  const deleteConversation = useAppStore(state => state.deleteConversation);
   const clearError = useAppStore(state => state.clearError);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterKey>('all');
@@ -48,6 +51,14 @@ export function ConversationListScreen({ navigation }: Props) {
     setRefreshing(true);
     try { await refreshData(); } finally { setRefreshing(false); }
   }, [refreshData]);
+
+  const runConversationAction = useCallback(async (action: () => Promise<void>, fallback: string) => {
+    try {
+      await action();
+    } catch (value) {
+      Alert.alert('Không thể thực hiện', value instanceof Error ? value.message : fallback);
+    }
+  }, []);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -86,7 +97,48 @@ export function ConversationListScreen({ navigation }: Props) {
       <FlatList
         data={filtered}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => <ConversationRow conversation={item} onPress={async () => { await openConversation(item.id); navigation.navigate('ChatDetail', { conversationId: item.id }); }} />}
+        renderItem={({ item }) => (
+          <ConversationRow
+            conversation={item}
+            onPress={async () => { await openConversation(item.id); navigation.navigate('ChatDetail', { conversationId: item.id }); }}
+            onLongPress={() => Alert.alert(
+              item.name,
+              'Chọn thao tác cho cuộc trò chuyện này.',
+              [
+                { text: 'Hủy', style: 'cancel' },
+                {
+                  text: isConversationMuted(item.notificationMutedUntil) ? 'Bật thông báo' : 'Tắt thông báo',
+                  onPress: () => {
+                    const muted = isConversationMuted(item.notificationMutedUntil);
+                    void runConversationAction(
+                      () => muteConversation(item.id, muted ? null : 0),
+                      'Không cập nhật được trạng thái thông báo.',
+                    );
+                  },
+                },
+                {
+                  text: 'Xóa phía tôi',
+                  style: 'destructive',
+                  onPress: () => Alert.alert(
+                    'Xóa cuộc trò chuyện?',
+                    'Tin nhắn của người khác không bị xóa.',
+                    [
+                      { text: 'Hủy', style: 'cancel' },
+                      {
+                        text: 'Xóa',
+                        style: 'destructive',
+                        onPress: () => void runConversationAction(
+                          () => deleteConversation(item.id),
+                          'Không xóa được cuộc trò chuyện phía bạn.',
+                        ),
+                      },
+                    ],
+                  ),
+                },
+              ],
+            )}
+          />
+        )}
         contentContainerStyle={filtered.length ? styles.list : styles.emptyList}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.accent} colors={[colors.accent]} />}
         ListEmptyComponent={<EmptyState icon={MessageCircleMore} title={query || filter !== 'all' ? 'Không tìm thấy cuộc trò chuyện' : 'Chưa có cuộc trò chuyện'} description={query || filter !== 'all' ? 'Thử đổi bộ lọc hoặc tìm bằng tên đồng nghiệp, nhóm.' : 'Mở Danh bạ để bắt đầu nhắn tin với đồng đội.'} />}

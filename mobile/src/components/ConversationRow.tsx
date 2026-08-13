@@ -6,9 +6,9 @@ import { typography } from '../theme/typography';
 import { formatConversationTime } from '../utils/timeFormatting';
 import { Avatar } from './Avatar';
 
-export function ConversationRow({ conversation, onPress }: { conversation: Conversation; onPress: () => void }) {
+export function ConversationRow({ conversation, onPress, onLongPress }: { conversation: Conversation; onPress: () => void; onLongPress?: () => void }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
+    <Pressable onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
       <Avatar name={conversation.name} uri={conversation.avatarUrl} size={52} rounded={!conversation.isGroup} />
       <View style={styles.body}>
         <View style={styles.topline}>

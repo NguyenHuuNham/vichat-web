@@ -92,6 +92,14 @@ export const chatManagementService = {
     return normalizeConversation(payload);
   },
 
+  async deleteConversationForCurrentUser(conversationId: string, tinodeToken = '') {
+    const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/self`, {
+      method: 'DELETE',
+      body: JSON.stringify({ tinode_token: tinodeToken }),
+    });
+    return normalizeConversation(payload);
+  },
+
   async listBotConfig(): Promise<TinodeChatbotConfig> {
     try {
       const payload = await apiRequest<TinodeChatbotConfig>('/api/v1/chatbot/tinode-config');

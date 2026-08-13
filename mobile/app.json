@@ -16,12 +16,18 @@
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": false
-        }
+        },
+        "NSCameraUsageDescription": "ViChat cần camera để thực hiện cuộc gọi video.",
+        "NSMicrophoneUsageDescription": "ViChat cần micro để thực hiện cuộc gọi thoại và video."
       }
     },
     "android": {
       "package": "vn.upgo.vichat",
       "versionCode": 11,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#F7F5F0",
@@ -42,7 +48,7 @@
         {
           "photosPermission": "ViChat cần truy cập ảnh để gửi trong cuộc trò chuyện.",
           "cameraPermission": "ViChat cần camera để chụp ảnh gửi trong cuộc trò chuyện.",
-          "microphonePermission": false
+          "microphonePermission": "ViChat cần quyền micro để thực hiện cuộc gọi thoại và video."
         }
       ],
       [

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-13-01 - Hoan thien thao tac realtime va build APK Mobile
+
+- Thoi gian: 2026-08-13 08:20 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Mobile | Tinode | Kiem thu | Phat hanh | Tai lieu
+- Trang thai: Hoan tat code va build APK; chua deploy production, cho UAT tai khoan that
+- Muc tieu: Sua mute, xoa phia toi va recall self tren Mobile; giu dong bo media, avatar va signaling cuoc goi ma khong thay doi luong gui nhan tin.
+- Pham vi: `mobile/`, `chatservice-main/` self-remove endpoint, Tinode/WebRTC relay va ChatUI call/media thay doi san co; khong deploy lai web.
+- File da thay doi: `mobile/src/store/appStore.ts`, `mobile/src/screens/chat/ConversationListScreen.tsx`, `mobile/src/services/tinodeClient.ts`, `mobile/src/utils/messagePolicy.ts`, `mobile/src/utils/messagePolicy.test.ts`, `mobile/src/components/MobileCallOverlay.tsx`, `mobile/src/store/callStore.ts`, `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/components/CallOverlay.jsx`, `chatservice-main/application/controllers/api_chat_management.py`, `infrastructure/production/Dockerfile`, `infrastructure/production/compose.yaml`, `scripts/build-production.mjs`, `docs/chat-backend-architecture.md`, va artifact `outputs/vichat-mobile/ViChat-1.0.10-actions-recall-arm64.apk`.
+- Noi dung: Mobile refresh Tinode token truoc khi xoa cuoc tro chuyen de tranh token het han; loi mute/xoa hien qua Alert thay vi bi nuot; policy recall self chi ap dung cho actor va khong tao lai placeholder khi goi tin goc da bi xoa. Tinode media cache, avatar/anh nhom va signaling audio/video tiep tuc dung relay chung; recall all van hien placeholder va chan reply/reaction/action.
+- Quyet dinh ky thuat: Recall van la event overlay, khong thay doi publish message binh thuong. Xoa la per-user membership removal tren Chatmgt va leave topic cua actor. Cuoc goi chi duoc phep khi Tinode tra ICE/TURN, khong gia lap ket noi khi thieu relay.
+- Database/API/cau hinh: Them route DELETE self cho Chatmgt; khong migration. Production defaults cho phep build call UI nhung van can `.env` voi Coturn va mo TCP/UDP `3478`, UDP `49160-49200` truoc khi bat media that.
+- Kiem thu: `mobile/npx vitest run src/utils/messagePolicy.test.ts src/utils/tinodeState.test.ts src/utils/mediaUrl.test.ts` dat 3 file/12 test; `mobile/npm run typecheck` dat; `mobile/npm run lint` dat; `npm run test:frontend` dat 57/57; `python -m unittest discover -s chatservice-main/tests -q` dat 134 test, skip 43; `git diff --check` dat; Gradle `app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon --offline` dat; `aapt` xac nhan package `vn.upgo.vichat`, version `1.0.10`/code `11`; `apksigner verify --verbose` dat; `zipalign -c -v 4` dat; APK SHA-256 `C7881E59809D1F733B1A5D34ECAC894A1697D9863D4F34549E62FB5B77C67F29`.
+- Rui ro con lai: Chua UAT hai tai khoan tren hai thiet bi; chua xac minh upload/avatar, recall cross-device, mute/xoa va audio/video voi production account. Khong co production `.env`/TURN firewall trong workspace va chua co quyen SSH de deploy; push khi app bi kill van phu thuoc Firebase/APNs va Tinode provider. APK arm64 dung debug signer, chi phu hop test noi bo.
+- Viec tiep theo: Cai APK, UAT tren mobile/web cung tai khoan; deploy rieng Chatmgt backend neu can route self-remove; chi bat media production sau khi xac minh ICE/TURN va firewall. Khong deploy web trong lan nay.
+- Commit/PR: Chua tao.
+
 ## 2026-08-12-08 - Sua upload va dong bo avatar ViChat Mobile
 
 - Thoi gian: 2026-08-12 21:20 (Asia/Saigon)

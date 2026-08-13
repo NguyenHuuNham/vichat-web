@@ -310,7 +310,7 @@ services:
         VITE_CHAT_MANAGEMENT_REMOTE_AUTH: "true"
         VITE_CHAT_TENANT_ID: ${CHATMGT_DEFAULT_TENANT:-tn6913580727957397}
         VITE_CHAT_AUTH_MODE: ${VITE_CHAT_AUTH_MODE:-account_sso}
-        VITE_CALLS_ENABLED: ${VITE_CALLS_ENABLED:-false}
+        VITE_CALLS_ENABLED: ${VITE_CALLS_ENABLED:-true}
         VITE_CHAT_MODE: ${VITE_CHAT_MODE:-internal}
     restart: unless-stopped
     depends_on:

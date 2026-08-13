@@ -5,7 +5,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, ChevronLeft, FilePlus2, ImagePlus, Info, Send, WifiOff, X } from 'lucide-react-native';
+import { Camera, ChevronLeft, FilePlus2, ImagePlus, Info, Phone, Send, Video, WifiOff, X } from 'lucide-react-native';
 import { RootStackParamList } from '../../navigation/types';
 import { useAppStore, getConversation } from '../../store/appStore';
 import { colors } from '../../theme/colors';
@@ -20,6 +20,7 @@ import { directPeerOnline } from '../../utils/tinodeState';
 import { formatMessageDateLabel } from '../../utils/timeFormatting';
 import { beginTrustedExternalActivity } from '../../services/appLifecycleService';
 import { tinodeClient } from '../../services/tinodeClient';
+import { useCallStore } from '../../store/callStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ChatDetail'>;
 
@@ -33,6 +34,8 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const sendFile = useAppStore(state => state.sendFile);
   const sendReaction = useAppStore(state => state.sendReaction);
   const recallMessage = useAppStore(state => state.recallMessage);
+  const startCall = useCallStore(state => state.startCall);
+  const activeCall = useCallStore(state => state.call);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -148,6 +151,13 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     ],
   );
   if (!conversation) return <SafeAreaView style={styles.screen}><Text style={styles.missing}>Cuộc trò chuyện không còn khả dụng.</Text></SafeAreaView>;
+  const peer = conversation.members?.find(member => member.uid !== tinodeClient.currentUserId && member.id !== tinodeClient.currentUserId) || conversation.members?.[0];
+  const callCapability = !conversation.isGroup && !conversation.isChatbot
+    ? tinodeClient.getCallCapability(conversation.tinodeTopic, { isGroup: false, isChatbot: false })
+    : { available: false, reason: 'Cuộc gọi mobile chỉ hỗ trợ hội thoại 1-1.' };
+  const beginCall = (audioOnly: boolean) => {
+    void startCall(conversation.tinodeTopic, audioOnly, { name: peer?.name || conversation.name, avatar: peer?.avatar || conversation.avatarUrl }).catch(value => setError(value instanceof Error ? value.message : 'Không thể bắt đầu cuộc gọi.'));
+  };
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']}>
@@ -155,6 +165,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         <Pressable onPress={() => navigation.goBack()} style={styles.back}><ChevronLeft color={colors.ink} size={27} /></Pressable>
         <Avatar name={conversation.name} uri={conversation.avatarUrl} size={42} rounded={!conversation.isGroup} online={!conversation.isGroup && directPeerOnline(conversation, tinodeClient.currentUserId)} />
         <View style={styles.headerTitle}><Text numberOfLines={1} style={styles.name}>{conversation.name}</Text><Text style={styles.status}>{conversation.isChatbot ? 'Trợ lý AI nội bộ' : conversation.isGroup ? conversation.membersCount : (directPeerOnline(conversation, tinodeClient.currentUserId) ? 'Đang hoạt động' : 'Offline')}</Text></View>
+        {callCapability.available ? <><Pressable accessibilityLabel="Gọi thoại" disabled={Boolean(activeCall)} onPress={() => beginCall(true)} style={styles.more}><Phone color={colors.accent} size={19} /></Pressable><Pressable accessibilityLabel="Gọi video" disabled={Boolean(activeCall)} onPress={() => beginCall(false)} style={styles.more}><Video color={colors.accent} size={19} /></Pressable></> : null}
         <Pressable accessibilityLabel="Thông tin cuộc trò chuyện" onPress={() => Alert.alert('Thông tin', conversation.description || (conversation.isGroup ? `${conversation.members?.length || 0} thành viên` : 'Cuộc trò chuyện nội bộ'))} style={styles.more}><Info color={colors.inkSoft} size={21} /></Pressable>
       </View>
       {connection !== 'connected' ? <View style={styles.offline}><WifiOff color={colors.warning} size={15} /><Text style={styles.offlineText}>Realtime đang gián đoạn. Tin nhắn sẽ gửi lại khi kết nối ổn định.</Text></View> : null}
