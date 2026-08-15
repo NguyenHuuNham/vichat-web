@@ -6,6 +6,10 @@ import {
   callHistoryLabel,
   extractCallInvite,
   formatCallDuration,
+  isAnsweredElsewhereSignal,
+  normalizeCallCandidate,
+  normalizeCallDescription,
+  normalizeCallPayload,
   normalizeIceServers,
   parseCallMessage,
   resolveCallsEnabled,
@@ -48,6 +52,25 @@ test('normalizes only valid STUN and TURN server entries', () => {
     { urls: ['turn:chat.example:3478?transport=udp'] },
   ]);
   assert.equal(input[3].urls[0], ' turn:chat.example:3478?transport=udp ');
+});
+
+test('normalizes relayed WebRTC payloads from object and JSON-string forms', () => {
+  const offer = { type: 'offer', sdp: 'v=0\r\n' };
+  assert.deepEqual(normalizeCallPayload(JSON.stringify(offer)), offer);
+  assert.deepEqual(normalizeCallPayload({ payload: JSON.stringify(offer) }), offer);
+  assert.deepEqual(normalizeCallDescription(JSON.stringify(offer), 'offer'), offer);
+  assert.deepEqual(normalizeCallDescription('v=0\r\n', 'answer'), { type: 'answer', sdp: 'v=0\r\n' });
+
+  const candidate = { candidate: 'candidate:1 1 udp 1 192.0.2.1 5000 typ host', sdpMid: '0', sdpMLineIndex: 0 };
+  assert.deepEqual(normalizeCallCandidate(JSON.stringify({ candidate })), candidate);
+  assert.equal(normalizeCallDescription({ type: 'offer' }, 'offer'), null);
+});
+
+test('only closes an incoming overlay for an accept echoed from another session', () => {
+  const event = { viaMe: true, from: 'usrMe', event: 'accept' };
+  assert.equal(isAnsweredElsewhereSignal(event, 'incoming', 'usrMe'), true);
+  assert.equal(isAnsweredElsewhereSignal(event, 'outgoing', 'usrMe'), false);
+  assert.equal(isAnsweredElsewhereSignal({ ...event, viaMe: false }, 'incoming', 'usrMe'), false);
 });
 
 test('accepts only a fresh incoming P2P call invite', () => {

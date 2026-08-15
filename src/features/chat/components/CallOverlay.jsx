@@ -1,7 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { tinodeClient, normalizeTinodeMediaUrl } from '../services/tinodeClient';
-import { CALL_SIGNAL_EVENTS, formatCallDuration } from '../services/callSignaling';
+import {
+  CALL_SIGNAL_EVENTS,
+  formatCallDuration,
+  isAnsweredElsewhereSignal,
+  normalizeCallCandidate,
+  normalizeCallDescription,
+} from '../services/callSignaling';
 
 const CALL_SETUP_TIMEOUT_MS = 40000;
 const CALL_DISCONNECT_TIMEOUT_MS = 10000;
@@ -68,6 +74,10 @@ export default function CallOverlay({ call, onClose, onError }) {
   const [cameraEnabled, setCameraEnabled] = useState(!call.audioOnly);
   const [remoteVideoAvailable, setRemoteVideoAvailable] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [audioOutputSupported, setAudioOutputSupported] = useState(false);
+  const [audioOutputDevices, setAudioOutputDevices] = useState([]);
+  const [audioOutputId, setAudioOutputId] = useState('default');
+  const [remoteAudioBlocked, setRemoteAudioBlocked] = useState(false);
 
   const localMediaRef = useRef(null);
   const remoteMediaRef = useRef(null);
@@ -89,6 +99,7 @@ export default function CallOverlay({ call, onClose, onError }) {
   const disconnectTimerRef = useRef(null);
   const durationTimerRef = useRef(null);
   const connectedAtRef = useRef(0);
+  const remotePlayRequestedRef = useRef(false);
 
   const clearTimers = useCallback(() => {
     clearTimeout(setupTimerRef.current);
@@ -116,6 +127,7 @@ export default function CallOverlay({ call, onClose, onError }) {
     remoteStreamRef.current = null;
     remoteCandidatesRef.current = [];
     tracksAttachedRef.current = false;
+    remotePlayRequestedRef.current = false;
     if (localMediaRef.current) localMediaRef.current.srcObject = null;
     if (remoteMediaRef.current) remoteMediaRef.current.srcObject = null;
   }, [clearTimers]);
@@ -137,6 +149,67 @@ export default function CallOverlay({ call, onClose, onError }) {
     closeCall({ notifyRemote, reason: 'error' });
   }, [closeCall, onError]);
 
+  const playRemoteMedia = useCallback(async () => {
+    const media = remoteMediaRef.current;
+    if (!media?.play) return false;
+    try {
+      await media.play();
+      if (mountedRef.current && !endingRef.current) setRemoteAudioBlocked(false);
+      return true;
+    } catch (error) {
+      if (['AbortError', 'NotAllowedError'].includes(error?.name)) {
+        if (remotePlayRequestedRef.current && mountedRef.current && !endingRef.current) setRemoteAudioBlocked(true);
+        return false;
+      }
+      onError(error?.message || 'Không thể phát âm thanh cuộc gọi.');
+      return false;
+    }
+  }, [onError]);
+
+  const refreshAudioOutputs = useCallback(async () => {
+    const media = remoteMediaRef.current;
+    const supported = typeof media?.setSinkId === 'function';
+    if (!mountedRef.current || endingRef.current) return;
+    setAudioOutputSupported(supported);
+    if (!supported || typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) {
+      setAudioOutputDevices([]);
+      return;
+    }
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      if (!mountedRef.current || endingRef.current) return;
+      setAudioOutputDevices(devices.filter(device => device.kind === 'audiooutput' && device.deviceId));
+    } catch {
+      if (mountedRef.current && !endingRef.current) setAudioOutputDevices([]);
+    }
+  }, []);
+
+  const changeAudioOutput = useCallback(async event => {
+    const deviceId = event.target.value || 'default';
+    const media = remoteMediaRef.current;
+    if (!media || typeof media.setSinkId !== 'function') {
+      remotePlayRequestedRef.current = true;
+      await playRemoteMedia();
+      return;
+    }
+    try {
+      await media.setSinkId(deviceId);
+      setAudioOutputId(deviceId);
+      remotePlayRequestedRef.current = true;
+      await playRemoteMedia();
+    } catch (error) {
+      onError(error?.message || 'Không thể chuyển sang thiết bị loa đã chọn.');
+    }
+  }, [onError, playRemoteMedia]);
+
+  useEffect(() => {
+    void refreshAudioOutputs();
+    const mediaDevices = typeof navigator === 'undefined' ? null : navigator.mediaDevices;
+    const handleDeviceChange = () => { void refreshAudioOutputs(); };
+    mediaDevices?.addEventListener?.('devicechange', handleDeviceChange);
+    return () => mediaDevices?.removeEventListener?.('devicechange', handleDeviceChange);
+  }, [refreshAudioOutputs]);
+
   const getLocalMedia = useCallback(async () => {
     if (localStreamRef.current) return localStreamRef.current;
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -152,11 +225,16 @@ export default function CallOverlay({ call, onClose, onError }) {
       throw new Error('Cuộc gọi đã kết thúc.');
     }
     localStreamRef.current = stream;
-    if (localMediaRef.current) localMediaRef.current.srcObject = stream;
+    if (localMediaRef.current) {
+      localMediaRef.current.srcObject = stream;
+      const playback = localMediaRef.current.play?.();
+      playback?.catch?.(() => {});
+    }
     setMicrophoneEnabled(stream.getAudioTracks()[0]?.enabled !== false);
     setCameraEnabled(Boolean(stream.getVideoTracks()[0]?.enabled));
+    void refreshAudioOutputs();
     return stream;
-  }, [call.audioOnly]);
+  }, [call.audioOnly, refreshAudioOutputs]);
 
   const drainRemoteCandidates = useCallback(async () => {
     const pc = peerConnectionRef.current;
@@ -198,42 +276,59 @@ export default function CallOverlay({ call, onClose, onError }) {
       ).catch(error => onError(error?.message || 'Không thể gửi ICE candidate.'));
     };
     pc.ontrack = event => {
-      const stream = event.streams?.[0];
+      const eventStream = event.streams?.[0];
+      let stream = remoteStreamRef.current || eventStream;
+      if (!stream && typeof globalThis.MediaStream === 'function') {
+        stream = new globalThis.MediaStream();
+      }
       if (!stream) return;
+
+      const addTrack = track => {
+        const currentTracks = stream.getTracks?.() || [];
+        if (!track || currentTracks.some(existing => existing.id === track.id)) return;
+        try { stream.addTrack?.(track); } catch { /* stream may be read-only in older browsers */ }
+      };
+      if (eventStream && stream !== eventStream) (eventStream.getTracks?.() || []).forEach(addTrack);
+      addTrack(event.track);
       remoteStreamRef.current = stream;
-      if (remoteMediaRef.current) remoteMediaRef.current.srcObject = stream;
+      if (remoteMediaRef.current && remoteMediaRef.current.srcObject !== stream) {
+        remoteMediaRef.current.srcObject = stream;
+      }
       const updateRemoteVideo = () => {
         if (!mountedRef.current || endingRef.current) return;
-        setRemoteVideoAvailable(stream.getVideoTracks().some(track => (
+        setRemoteVideoAvailable((stream.getVideoTracks?.() || []).some(track => (
           track.readyState === 'live' && !track.muted
         )));
       };
-      stream.getVideoTracks().forEach(track => {
+      (stream.getVideoTracks?.() || []).forEach(track => {
         track.onmute = updateRemoteVideo;
         track.onunmute = updateRemoteVideo;
         track.onended = updateRemoteVideo;
       });
       updateRemoteVideo();
+      void playRemoteMedia();
     };
     const handleConnectionState = () => {
-      const state = pc.connectionState || pc.iceConnectionState;
-      if (state === 'connected' || state === 'completed') {
+      const connectionState = pc.connectionState;
+      const iceState = pc.iceConnectionState;
+      if (['connected', 'completed'].includes(connectionState) || ['connected', 'completed'].includes(iceState)) {
         markConnected();
-      } else if (state === 'disconnected') {
+      } else if (connectionState === 'disconnected' || iceState === 'disconnected') {
         if (mountedRef.current && !endingRef.current) setPhase('reconnecting');
         clearTimeout(disconnectTimerRef.current);
         disconnectTimerRef.current = setTimeout(() => {
           closeCall({ notifyRemote: true, reason: 'disconnected' });
         }, CALL_DISCONNECT_TIMEOUT_MS);
-      } else if (state === 'failed' || state === 'closed') {
-        closeCall({ notifyRemote: state === 'failed', reason: state });
+      } else if (['failed', 'closed'].includes(connectionState) || ['failed', 'closed'].includes(iceState)) {
+        const failed = connectionState === 'failed' || iceState === 'failed';
+        closeCall({ notifyRemote: failed, reason: failed ? 'failed' : 'closed' });
       }
     };
     pc.onconnectionstatechange = handleConnectionState;
     pc.oniceconnectionstatechange = handleConnectionState;
     peerConnectionRef.current = pc;
     return pc;
-  }, [call.topic, closeCall, markConnected, onError]);
+  }, [call.topic, closeCall, markConnected, onError, playRemoteMedia]);
 
   const attachLocalTracks = useCallback((pc, stream) => {
     if (tracksAttachedRef.current) return;
@@ -269,7 +364,9 @@ export default function CallOverlay({ call, onClose, onError }) {
       setPhase('connecting');
       const stream = await getLocalMedia();
       const pc = createPeerConnection();
-      await pc.setRemoteDescription(new RTCSessionDescription(payload));
+      const offer = normalizeCallDescription(payload, 'offer');
+      if (!offer) throw new Error('SDP cuộc gọi đến không hợp lệ.');
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
       attachLocalTracks(pc, stream);
       await drainRemoteCandidates();
       const answer = await pc.createAnswer();
@@ -290,7 +387,9 @@ export default function CallOverlay({ call, onClose, onError }) {
     if (call.direction !== 'outgoing' || !pc || endingRef.current || remoteAnswerSetRef.current) return;
     remoteAnswerSetRef.current = true;
     try {
-      await pc.setRemoteDescription(new RTCSessionDescription(payload));
+      const answer = normalizeCallDescription(payload, 'answer');
+      if (!answer) throw new Error('SDP trả lời cuộc gọi không hợp lệ.');
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
       await drainRemoteCandidates();
     } catch (error) {
       failCall(error);
@@ -300,7 +399,9 @@ export default function CallOverlay({ call, onClose, onError }) {
   const handleCandidate = useCallback(async payload => {
     if (!payload || endingRef.current) return;
     try {
-      const candidate = new RTCIceCandidate(payload);
+      const candidatePayload = normalizeCallCandidate(payload);
+      if (!candidatePayload) throw new Error('ICE candidate không hợp lệ.');
+      const candidate = new RTCIceCandidate(candidatePayload);
       const pc = peerConnectionRef.current;
       if (!pc?.remoteDescription) {
         remoteCandidatesRef.current.push(candidate);
@@ -318,7 +419,7 @@ export default function CallOverlay({ call, onClose, onError }) {
     if (event.type !== 'call-signal' || event.topic !== call.topic) return;
     if (event.seq && sequenceRef.current && Number(event.seq) !== sequenceRef.current) return;
     if (!sequenceRef.current && event.seq) sequenceRef.current = Number(event.seq);
-    if (event.viaMe && event.from === tinodeClient.currentUserId && event.event === CALL_SIGNAL_EVENTS.ACCEPT) {
+    if (isAnsweredElsewhereSignal(event, call.direction, tinodeClient.currentUserId)) {
       closeCall({ notifyRemote: false, reason: 'answered-elsewhere' });
       return;
     }
@@ -350,6 +451,7 @@ export default function CallOverlay({ call, onClose, onError }) {
       return undefined;
     }
 
+    remotePlayRequestedRef.current = true;
     getLocalMedia()
       .then(() => tinodeClient.startCall(call.topic, call.audioOnly))
       .then(result => {
@@ -384,6 +486,7 @@ export default function CallOverlay({ call, onClose, onError }) {
     acceptingRef.current = true;
     try {
       setPhase('preparing');
+      remotePlayRequestedRef.current = true;
       await getLocalMedia();
       await tinodeClient.sendCallSignal(call.topic, sequenceRef.current, CALL_SIGNAL_EVENTS.ACCEPT);
       setPhase('connecting');
@@ -425,7 +528,22 @@ export default function CallOverlay({ call, onClose, onError }) {
             className={remoteVideoAvailable && !call.audioOnly ? 'visible' : ''}
             autoPlay
             playsInline
+            onLoadedMetadata={() => { void playRemoteMedia(); }}
+            onCanPlay={() => { void playRemoteMedia(); }}
           />
+          {remoteAudioBlocked && (
+            <button
+              type="button"
+              className="call-audio-unlock"
+              onClick={() => {
+                remotePlayRequestedRef.current = true;
+                void playRemoteMedia();
+              }}
+            >
+              <i className="fa-solid fa-volume-high"></i>
+              Bật âm thanh
+            </button>
+          )}
           {(!remoteVideoAvailable || call.audioOnly) && (
             <div className="call-peer-card">
               <div className="call-peer-avatar"><CallAvatar src={call.peerAvatar} name={call.peerName} /></div>
@@ -460,6 +578,29 @@ export default function CallOverlay({ call, onClose, onError }) {
             </>
           ) : (
             <>
+              {showActiveControls && (
+                <label
+                  className={`call-output-control ${audioOutputSupported ? '' : 'unsupported'}`}
+                  title={audioOutputSupported ? 'Chọn loa ngoài' : 'Trình duyệt đang dùng loa mặc định'}
+                >
+                  <i className="fa-solid fa-volume-high"></i>
+                  <select
+                    value={audioOutputId}
+                    onChange={changeAudioOutput}
+                    disabled={!audioOutputSupported}
+                    aria-label="Chọn loa ngoài"
+                  >
+                    <option value="default">Loa mặc định</option>
+                    {audioOutputDevices
+                      .filter(device => device.deviceId !== 'default')
+                      .map((device, index) => (
+                        <option key={device.deviceId} value={device.deviceId}>
+                          {device.label || `Thiết bị loa ${index + 1}`}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
               <button type="button" className={`call-control ${microphoneEnabled ? '' : 'disabled'}`} onClick={toggleMicrophone} disabled={!showActiveControls} aria-label={microphoneEnabled ? 'Tắt micro' : 'Bật micro'}>
                 <i className={`fa-solid ${microphoneEnabled ? 'fa-microphone' : 'fa-microphone-slash'}`}></i>
               </button>

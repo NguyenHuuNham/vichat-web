@@ -9,6 +9,57 @@ export const CALL_SIGNAL_EVENTS = Object.freeze({
   HANG_UP: 'hang-up',
 });
 
+/**
+ * Tinode transports call payloads as JSON values, while older relays may
+ * deliver the same value as a JSON-encoded string. Decode both forms before
+ * handing the value to the browser WebRTC constructors.
+ */
+export function normalizeCallPayload(payload) {
+  let value = payload;
+  for (let attempt = 0; attempt < 2 && typeof value === 'string'; attempt += 1) {
+    const text = value.trim();
+    if (!text) return value;
+    try {
+      value = JSON.parse(text);
+    } catch {
+      break;
+    }
+  }
+  if (value && typeof value === 'object' && value.payload !== undefined
+      && value.type === undefined && value.sdp === undefined && value.candidate === undefined) {
+    return normalizeCallPayload(value.payload);
+  }
+  return value;
+}
+
+export function normalizeCallDescription(payload, fallbackType = '') {
+  const value = normalizeCallPayload(payload);
+  const description = value?.description && typeof value.description === 'object'
+    ? value.description
+    : value;
+  if (typeof description === 'string') {
+    return fallbackType && description ? { type: fallbackType, sdp: description } : null;
+  }
+  if (!description || typeof description !== 'object') return null;
+  const type = String(description.type || fallbackType || '').trim().toLowerCase();
+  const sdp = typeof description.sdp === 'string' ? description.sdp : '';
+  return type && sdp ? { type, sdp } : null;
+}
+
+export function normalizeCallCandidate(payload) {
+  const value = normalizeCallPayload(payload);
+  if (!value || typeof value !== 'object') return null;
+  if (value.candidate && typeof value.candidate === 'object') return value.candidate;
+  return value;
+}
+
+export function isAnsweredElsewhereSignal(event, callDirection, currentUserId) {
+  return callDirection === 'incoming'
+    && Boolean(event?.viaMe)
+    && event?.from === currentUserId
+    && event?.event === CALL_SIGNAL_EVENTS.ACCEPT;
+}
+
 export function resolveCallsEnabled(value) {
   if (value === true) return true;
   return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());

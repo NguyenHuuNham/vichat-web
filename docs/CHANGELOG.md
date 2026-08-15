@@ -6,6 +6,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-16-02 - Sua cuoc goi WebRTC ChatUI web
+
+- Thoi gian: 2026-08-16 02:50 (Asia/Saigon)
+- Loai: Sua loi | Web | Realtime | Kiem thu | Van hanh
+- Trang thai: Dang thuc hien
+- Muc tieu: Sua loi goi thoai va goi video tren ChatUI web, bao dam phia nhan khong tu dong dong overlay khi chap nhan va co the chon loa ngoai khi trinh duyet ho tro.
+- Pham vi: `src/features/chat/components/CallOverlay.jsx`, `src/features/chat/services/callSignaling.js`, `src/features/chat/services/callSignaling.test.js`, hunk giao dien loa trong `src/styles/index.css`; giu nguyen mobile, Chatmgt, Tinode message/topic, database va cac service khac.
+- Noi dung: Chi xu ly tin hieu `accept` echo tu phien web khac khi dong overlay incoming; chuan hoa SDP/ICE tu object, JSON string va payload relay; ghep remote track khi browser khong gui `event.streams`; tu phat lai remote media khi autoplay bi chan; them danh sach thiet bi output qua `setSinkId` voi fallback loa mac dinh.
+- Quyet dinh ky thuat: Dung helper pure de giu hop dong Tinode cu va test duoc payload relay; khong thay doi signaling server hay them fallback STUN cong cong. Loa ngoai la tuy chon output cua phan tu media, nen trinh duyet khong ho tro van dung loa mac dinh.
+- Database/API/cau hinh: Khong migration, khong doi API/schema/bien moi truong.
+- Kiem thu: `node --test src/features/chat/services/callSignaling.test.js src/features/chat/services/chatManagementService.test.js` dat 13/13; `npm run test:frontend` dat 70/70; `npm run lint` exit 0 voi warning legacy/worktree co san; `npx vite build --mode production --outDir <temp>` dat; `git diff --check` dat.
+- Rui ro con lai: Chua UAT bang hai tai khoan trinh duyet that va hai mang; browser runtime tich hop hien khong co session dang nhap de kiem tra audio/video hai chieu, TURN va autoplay.
+- Viec tiep theo: Commit/push phan web call, deploy rieng service `chat`, kiem tra public health/bundle va giu nguyen ID cac container backend; rollback release neu gate production loi.
+- Commit/PR: Chua tao.
+
 ## 2026-08-16-01 - On dinh ChatUI va loai hoi thoai rong
 
 - Thoi gian: 2026-08-16 01:40 (Asia/Saigon)
