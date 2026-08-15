@@ -18,8 +18,10 @@ import {
 import { attachmentConversationPreview } from './messagePreview';
 import {
   buildRecallEvent,
+  applyRecallToMessage,
   canRecallDeliveredMessage,
   recallAppliesToViewer,
+  compactMessages,
   recallPlaceholderSenderId,
 } from './messagePolicy';
 
@@ -628,23 +630,13 @@ function toConversation(topic, tinode) {
     if (Number(event.targetSeq) > 0) recallsBySeq.set(Number(event.targetSeq), message);
   });
   const appliedRecallEvents = new Set();
-  const chatMessages = loadedMessages
+  const chatMessages = compactMessages(loadedMessages
     .filter(message => !['friend_event', 'reaction_event', 'recall_event'].includes(message.type))
     .map(message => {
       const recallMessage = recallsById.get(String(message.id)) || recallsBySeq.get(Number(message.seq));
       if (recallMessage) {
         appliedRecallEvents.add(recallMessage.id);
-        if (recallMessage.recallEvent?.mode === 'self') return null;
-        return {
-          ...message,
-          type: 'text',
-          text: 'Tin nhắn đã được thu hồi',
-          recalled: true,
-          file: undefined,
-          image: undefined,
-          replyTo: null,
-          reactions: {},
-        };
+        return applyRecallToMessage(message, recallMessage);
       }
       const withReactions = reactionCounts.has(message.id) ? { ...message, reactions: reactionCounts.get(message.id) } : message;
       return withReactions.replyTo?.id && recallsById.has(String(withReactions.replyTo.id))
@@ -676,7 +668,7 @@ function toConversation(topic, tinode) {
       pending: false,
       deliveryStatus: message.deliveryStatus,
       raw: message.raw,
-    });
+    }));
   });
   chatMessages.sort((first, second) => {
     if (Number.isFinite(first.seq) && Number.isFinite(second.seq) && first.seq !== second.seq) return first.seq - second.seq;

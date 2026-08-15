@@ -41,3 +41,22 @@ export function recallAppliesToViewer(event, tinode) {
 export function recallPlaceholderSenderId(event, fallbackSenderId = '') {
   return event?.actorId || event?.originalSenderId || fallbackSenderId;
 }
+
+export function applyRecallToMessage(message, recallMessage) {
+  if (!recallMessage) return message;
+  if (recallMessage.recallEvent?.mode === 'self') return null;
+  return {
+    ...message,
+    type: 'text',
+    text: 'Tin nhắn đã được thu hồi',
+    recalled: true,
+    file: undefined,
+    image: undefined,
+    replyTo: null,
+    reactions: {},
+  };
+}
+
+export function compactMessages(messages = []) {
+  return messages.filter(Boolean);
+}

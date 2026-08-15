@@ -4,12 +4,14 @@ import {
   acknowledgeTopicReceived,
   applyReceiptToMessages,
   deliveryStatusFromReceiptCursor,
+  firstVisibleConversationId,
   mergeDeliveryStatus,
   messageForDeliveryStatus,
   modeWithRealtimePresence,
   readyTinodeTypingTopic,
   resolvePreparedTinodeTopic,
   resolveTinodePresenceOnline,
+  shouldShowConversation,
   topicReceiptSequence,
   tinodeContactsSyncDelay,
 } from './chatRealtime.js';
@@ -43,6 +45,31 @@ test('typing is sent only for an authenticated prepared Tinode topic', () => {
   assert.equal(readyTinodeTypingTopic({ tinodeTopic: '' }, true), '');
   assert.equal(readyTinodeTypingTopic({ tinodeTopic: 'usrPeer123456' }, false), '');
   assert.equal(readyTinodeTypingTopic({ isChatbot: true, tinodeTopic: 'usrPeer123456' }, true), '');
+});
+
+test('conversation list hides empty direct metadata until Tinode history or a draft exists', () => {
+  const emptyManagedDirect = {
+    id: 'c86b5c06-9f90-4d27-b6e6-0123456789ab',
+    managementId: 'c86b5c06-9f90-4d27-b6e6-0123456789ab',
+    messages: [],
+  };
+
+  assert.equal(shouldShowConversation(emptyManagedDirect), false);
+  assert.equal(shouldShowConversation(emptyManagedDirect, 'Dang soan'), true);
+  assert.equal(shouldShowConversation({ ...emptyManagedDirect, messages: [null, { id: 'message-1' }] }), true);
+  assert.equal(shouldShowConversation({ ...emptyManagedDirect, isGroup: true }), true);
+  assert.equal(shouldShowConversation({ ...emptyManagedDirect, isChatbot: true }), true);
+});
+
+test('initial selection skips empty Chatmgt direct metadata', () => {
+  const conversations = {
+    empty: { messages: [] },
+    active: { messages: [{ id: 'message-1' }] },
+    bot: { isChatbot: true, messages: [] },
+  };
+
+  assert.equal(firstVisibleConversationId(conversations, {}, 'fallback'), 'active');
+  assert.equal(firstVisibleConversationId({ empty: conversations.empty }, {}, 'fallback'), 'fallback');
 });
 
 test('Tinode on and off events override stale contact presence immediately', () => {

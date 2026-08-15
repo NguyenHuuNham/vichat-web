@@ -135,7 +135,9 @@ packet for deterministic cross-client matching. `mode=self` is applied only when
 the viewer is the authenticated actor, so the sender loses the message while
 other participants continue to see the original. A recalled message has no
 reply, reaction or message-action affordances; replies render without quoting a
-recalled target. Missing `mode` is treated as `all` for legacy clients.
+recalled target. A self-only recall projects the removed message as `null`, so
+clients must compact that projection before ordering or reading Tinode sequence
+fields. Missing `mode` is treated as `all` for legacy clients.
 
 Production uses `CHAT_ACCOUNT_SSO_ENABLED=true` and
 `CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED=true`. The cookie-based
@@ -213,6 +215,15 @@ credential flow:
 The optional `TINODE_MIRROR_LOCAL_CREDENTIALS=true` setting applies only to
 explicit local/recovery sessions. It is not used by active UpGO Account SSO
 employees, whose Account password is never copied to Tinode.
+
+Chatmgt may retain a direct-conversation row before either participant has sent
+a Tinode message. In realtime mode, ChatUI therefore treats the sidebar as the
+intersection of authorized Chatmgt metadata and Tinode activity: direct rows are
+shown only after Tinode history contains a message or the employee has a local
+draft. Explicit groups and the configured assistant remain visible even when
+empty. The metadata row is not deleted, so reopening the coworker from the
+directory reuses the same tenant-scoped Chatmgt conversation and deterministic
+Tinode mapping without copying message content into Chatmgt.
 
 ```text
 tinode_username = stable_tinode_username(tenant_id, account_id)

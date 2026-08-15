@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   MAX_CHAT_ATTACHMENT_BYTES,
+  applyRecallToMessage,
   buildRecallEvent,
   canRecallDeliveredMessage,
   chatAttachmentValidationError,
+  compactMessages,
   recallAppliesToViewer,
   recallPlaceholderSenderId,
 } from './messagePolicy.js';
@@ -58,4 +60,32 @@ test('self recall applies only to the author while all recall applies to everyon
   assert.equal(recallAppliesToViewer({ mode: 'self', actorId: 'usr-author' }, author), true);
   assert.equal(recallAppliesToViewer({ mode: 'self', actorId: 'usr-author' }, other), false);
   assert.equal(recallAppliesToViewer({ mode: 'all', actorId: 'usr-author' }, other), true);
+});
+
+test('recall projection removes self-only messages before conversation sorting', () => {
+  const message = {
+    id: 'message-1',
+    type: 'image',
+    text: '',
+    image: '/tinode-media/v0/file/s/message-1',
+    file: { url: '/tinode-media/v0/file/s/message-1' },
+    replyTo: { id: 'older', text: 'Anh' },
+    reactions: { '👍': 1 },
+  };
+
+  assert.deepEqual(compactMessages([
+    applyRecallToMessage(message, { recallEvent: { mode: 'self' } }),
+    { id: 'message-2' },
+  ]), [{ id: 'message-2' }]);
+
+  assert.deepEqual(applyRecallToMessage(message, { recallEvent: { mode: 'all' } }), {
+    ...message,
+    type: 'text',
+    text: 'Tin nhắn đã được thu hồi',
+    recalled: true,
+    file: undefined,
+    image: undefined,
+    replyTo: null,
+    reactions: {},
+  });
 });

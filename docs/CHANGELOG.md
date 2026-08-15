@@ -6,6 +6,24 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-16-01 - On dinh ChatUI va loai hoi thoai rong
+
+- Thoi gian: 2026-08-16 01:40 (Asia/Saigon)
+- Loai: Sua loi | Web | Realtime | Kiem thu | Van hanh
+- Trang thai: Da deploy production; chua UAT bang tai khoan trinh duyet that
+- Muc tieu: Sua loi `Cannot read properties of null (reading 'seq')`, loai cac direct chat chua co noi dung khoi danh sach web va trien khai lai ma khong thay doi mobile.
+- Pham vi: ChatUI web, phep chieu recall Tinode, giao diem metadata Chatmgt/Tinode, tai lieu kien truc va release ChatUI; giu nguyen mobile, database, Account SSO, Tinode topic/message va cac service khac.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/messagePolicy.js`, `src/features/chat/services/messagePolicy.test.js`, `src/features/chat/services/chatManagementService.test.js`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`.
+- Noi dung: Recall `mode=self` loai message khoi phep chieu thay vi de `null` di vao buoc sap xep theo `seq`; sidebar chi hien direct conversation khi Tinode da co message hoac nguoi dung co draft, va bo qua metadata direct rong khi chon hoi thoai ban dau. Group va ViChat AI van hien; Chatmgt van giu ID/membership/topic mapping de mo lai cung cap direct tu danh ba.
+- Quyet dinh ky thuat: Khong xoa cac row Chatmgt hoac topic Tinode vi Chatmgt khong so huu message content va khong the phan biet an toan row rong voi history dang tam thoi khong tai duoc. UI ket hop metadata duoc Chatmgt cho phep voi lich su Tinode da tai, dong thoi compact ket qua recall truoc moi truy cap sequence.
+- Database/API/cau hinh: Khong migration, khong doi API/schema/bien moi truong.
+- Kiem thu: Focused frontend `node --test src/features/chat/services/chatRealtime.test.js src/features/chat/services/messagePolicy.test.js src/features/chat/services/chatManagementService.test.js` dat 22/22; `npm run test:frontend` dat 68/68; `npm run lint` exit 0 voi warning legacy/vendor/worktree co san; `npm run build:production` dat; `git diff --check` dat. Production public `/healthz`, Chatmgt auth health va chatbot health deu HTTP 200; worker `/healthz` tra 200 voi `connected=true`; bundle `App-BmbMM6kb.js` co marker release; ChatUI/Chatmgt/bridge/worker khong co traceback/panic/fatal/critical/emerg trong 5 phut sau deploy.
+- Rui ro con lai: Chua UAT giao dien bang browser dang nhap that do browser runtime tich hop khong khoi tao duoc; direct metadata khong co history Tinode se duoc mo lai tu Danh ba thay vi nam san trong sidebar.
+- Viec tiep theo: Hard refresh web, dang nhap hai tai khoan Account that va smoke test direct chat, recall self/all, group, file/call; neu can rollback thi tro `current` ve release truoc va dung tag `songhong-production-chat:rollback-before-chatui-conversation-sync-20260816`.
+- Van hanh: Hai lan gate chuyen thu truoc tu dong rollback an toan (mot lan do cu phap `grep` BusyBox, mot lan do public health race); lan cuoi dung retry lien tiep va chi cap nhat `current` sau khi health, bundle va container-preservation deu dat.
+- Trien khai: Release `/opt/deploy/chat/releases/chatui-conversation-sync-20260816-014503`; image ChatUI `sha256:86d7ad8e0a7fa5de07d797e721dca8190efcfbf29fc85c94d883b73042d4de2c`, container `2823b6f73184`; rollback tag giu image cu `sha256:673f86e7b6af9456328f3212e5ac9ccef47be9b8f41d5ce4276f6d69fc57e659`; chi recreate `chat`, Chatmgt `3f2ef755c041`, bridge `d62dce7b5d00`, ChatAPI `8476615ad4ac`, hai PostgreSQL, Redis va Coturn giu nguyen container ID; symlink `current` da tro release moi; khong migration, reset volume, topic hay message.
+- Commit/PR: Chua tao.
+
 ## 2026-08-13-02 - Dong bo thao tac chat, avatar va WebRTC production
 
 - Thoi gian: 2026-08-13 09:46 (Asia/Saigon)

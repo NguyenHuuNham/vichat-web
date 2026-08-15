@@ -6,9 +6,11 @@ import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation, normaliz
 import { chatManagementService } from '../features/chat/services/chatManagementService';
 import {
   applyReceiptToMessages,
+  firstVisibleConversationId,
   mergeDeliveryStatus,
   readyTinodeTypingTopic,
   resolvePreparedTinodeTopic,
+  shouldShowConversation,
   tinodeContactsSyncDelay,
 } from '../features/chat/services/chatRealtime';
 import {
@@ -331,15 +333,6 @@ function conversationTimestamp(room) {
   }
   if (time.toLowerCase().includes('hôm qua')) return Date.now() - 24 * 60 * 60 * 1000;
   return 0;
-}
-
-function shouldShowInConversationList(room) {
-  if (!room) return false;
-  if (room.isGroup || room.isChatbot) return true;
-  if (isManagementConversationId(room.managementId || room.id)) return true;
-  // Tinode may create an empty P2P topic while searching for a user or opening
-  // their profile. It becomes a real conversation only after the first message.
-  return Array.isArray(room.messages) && room.messages.length > 0;
 }
 
 function collectFriendshipRecords(conversations, viewerId) {
@@ -1068,7 +1061,7 @@ function App() {
     setConversations(nextRooms);
     tinodeClient.setAllowedConversationTopics(managedTinodeTopics(nextRooms));
     if (!nextRooms[currentChatIdRef.current]) {
-      setCurrentChatId(Object.keys(nextRooms)[0] || CHATBOT_ACCOUNT.id);
+      setCurrentChatId(firstVisibleConversationId(nextRooms, {}, CHATBOT_ACCOUNT.id));
     }
     return managedRooms;
   }, [currentUser, directoryAccounts]);
@@ -1594,7 +1587,7 @@ function App() {
         tinodeClient.setAllowedConversationTopics(managedTinodeTopics(next));
         managementConversationSessionRef.current = accountSession;
         setManagementConversationSession(accountSession);
-        setCurrentChatId(Object.keys(next)[0] || CHATBOT_ACCOUNT.id);
+        setCurrentChatId(firstVisibleConversationId(next, {}, CHATBOT_ACCOUNT.id));
         try {
           const friendRequests = await chatManagementService.listFriendRequests(managementUserId);
           if (accountSessionRef.current !== accountSession) return;
@@ -2350,7 +2343,10 @@ function App() {
         delete next[activeChat.id];
         return next;
       });
-      const nextId = Object.keys(conversations).find(id => id !== activeChat.id) || 'empty';
+      const remainingRooms = Object.fromEntries(
+        Object.entries(conversations).filter(([id]) => id !== activeChat.id),
+      );
+      const nextId = firstVisibleConversationId(remainingRooms, drafts, CHATBOT_ACCOUNT.id);
       setCurrentChatId(nextId);
       setIsDetailOpen(false);
       setTimeout(() => deletedConversationIdsRef.current.delete(activeChat.id), 5000);
@@ -2412,7 +2408,10 @@ function App() {
         return next;
       });
       setInputText('');
-      const nextId = Object.keys(conversations).find(id => id !== conversationId) || CHATBOT_ACCOUNT.id;
+      const remainingRooms = Object.fromEntries(
+        Object.entries(conversations).filter(([id]) => id !== conversationId),
+      );
+      const nextId = firstVisibleConversationId(remainingRooms, drafts, CHATBOT_ACCOUNT.id);
       setCurrentChatId(nextId);
       setIsDetailOpen(false);
       setTimeout(() => deletedKeys.forEach(key => deletedConversationIdsRef.current.delete(key)), 5000);
@@ -3385,7 +3384,7 @@ function App() {
   const filteredChatIds = Object.keys(conversations)
     .filter(id => !isSelfDirectConversation(conversations[id], currentUser, directoryAccounts))
     .filter(id => !isConversationHiddenAfterDelete(conversations[id]))
-    .filter(id => shouldShowInConversationList(conversations[id]))
+    .filter(id => shouldShowConversation(conversations[id], drafts[id]))
     .filter(id => conversations[id].name.toLowerCase().includes(searchQuery.toLowerCase()))
     .sort((firstId, secondId) => {
       const firstTimestamp = conversationTimestamp(conversations[firstId]);
@@ -3422,7 +3421,7 @@ function App() {
   const notifications = Object.values(conversations)
     .filter(room => !isSelfDirectConversation(room, currentUser, directoryAccounts))
     .filter(room => !isConversationHiddenAfterDelete(room))
-    .filter(shouldShowInConversationList)
+    .filter(room => shouldShowConversation(room, drafts[room.id]))
     .filter(room => room.lastMsg || room.badge > 0)
     .sort((a, b) => conversationTimestamp(b) - conversationTimestamp(a))
     .slice(0, 20);
@@ -3438,10 +3437,12 @@ function App() {
   const pendingIncomingFriendRequests = friendNotifications.filter(record => (
     record.event.recipientId === managementViewerId && !record.response
   ));
-  const notificationBadgeCount = Object.values(conversations).filter(room => room.badge > 0 && shouldShowInConversationList(room)).length
+  const notificationBadgeCount = Object.values(conversations).filter(room => (
+    room.badge > 0 && shouldShowConversation(room, drafts[room.id])
+  )).length
     + pendingIncomingFriendRequests.length;
 
-  const visibleMessages = activeChat.messages.filter(message => {
+  const visibleMessages = (activeChat.messages || []).filter(Boolean).filter(message => {
     if (messageActions[messageActionKey(activeChat.id, message.id)]?.hidden) return false;
     if (!messageSearchQuery.trim()) return true;
     return `${message.text || ''} ${message.senderName || ''}`.toLowerCase().includes(messageSearchQuery.toLowerCase());
@@ -3475,7 +3476,10 @@ function App() {
   }
 
   return (
-    <div className={`app-layout ${EXTERNAL_CHAT_ONLY ? 'external-chat-mode' : ''} ${isMobileChatActive ? 'mobile-active-chat' : ''}`}>
+    <div
+      className={`app-layout ${EXTERNAL_CHAT_ONLY ? 'external-chat-mode' : ''} ${isMobileChatActive ? 'mobile-active-chat' : ''}`}
+      data-chat-release="conversation-sync-20260816"
+    >
       {forcedLogoutSeconds !== null && (
         <div className="forced-logout-backdrop" role="presentation">
           <section className="forced-logout-modal" role="alertdialog" aria-modal="true" aria-labelledby="forced-logout-title">

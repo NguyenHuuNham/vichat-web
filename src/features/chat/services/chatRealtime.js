@@ -19,6 +19,17 @@ export function readyTinodeTypingTopic(room, authenticated) {
   return String(room.tinodeTopic || '').trim();
 }
 
+export function shouldShowConversation(room, draft = '') {
+  if (!room) return false;
+  if (room.isGroup || room.isChatbot) return true;
+  if (String(draft || '').trim()) return true;
+  return Array.isArray(room.messages) && room.messages.some(Boolean);
+}
+
+export function firstVisibleConversationId(conversations = {}, drafts = {}, fallbackId = '') {
+  return Object.keys(conversations).find(id => shouldShowConversation(conversations[id], drafts[id])) || fallbackId;
+}
+
 export function resolveTinodePresenceOnline(eventType, currentOnline = false) {
   if (eventType === 'on') return true;
   if (eventType === 'off' || eventType === 'gone' || eventType === 'term') return false;
