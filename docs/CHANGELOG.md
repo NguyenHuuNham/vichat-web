@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Viec tiep theo: Hard refresh web, dang nhap hai tai khoan Account that va smoke test direct chat, recall self/all, group, file/call; neu can rollback thi tro `current` ve release truoc va dung tag `songhong-production-chat:rollback-before-chatui-conversation-sync-20260816`.
 - Van hanh: Hai lan gate chuyen thu truoc tu dong rollback an toan (mot lan do cu phap `grep` BusyBox, mot lan do public health race); lan cuoi dung retry lien tiep va chi cap nhat `current` sau khi health, bundle va container-preservation deu dat.
 - Trien khai: Release `/opt/deploy/chat/releases/chatui-conversation-sync-20260816-014503`; image ChatUI `sha256:86d7ad8e0a7fa5de07d797e721dca8190efcfbf29fc85c94d883b73042d4de2c`, container `2823b6f73184`; rollback tag giu image cu `sha256:673f86e7b6af9456328f3212e5ac9ccef47be9b8f41d5ce4276f6d69fc57e659`; chi recreate `chat`, Chatmgt `3f2ef755c041`, bridge `d62dce7b5d00`, ChatAPI `8476615ad4ac`, hai PostgreSQL, Redis va Coturn giu nguyen container ID; symlink `current` da tro release moi; khong migration, reset volume, topic hay message.
-- Commit/PR: Chua tao.
+- Commit/PR: `c972e57` (focused web/realtime fix; cac thay doi khac trong worktree khong nam trong commit nay).
 
 ## 2026-08-13-02 - Dong bo thao tac chat, avatar va WebRTC production
 
