@@ -6,6 +6,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-16-09 - Dinh chinh probe WebRTC authoritative
+
+- Thoi gian: 2026-08-16 21:35 (Asia/Saigon)
+- Loai: Dinh chinh | Realtime | Kiem thu | Tai lieu
+- Trang thai: Can operator cau hinh Tinode trung tam
+- Muc tieu: Dinh chinh ket qua probe truoc do da suy ra `webrtcEnabled=true` chi tu viec hello co ICE.
+- Pham vi: Kiem tra public Tinode hello va dieu kien mo nut voice/video; khong thay doi code san pham hay database.
+- Noi dung: Raw WebSocket hello hien tra `webrtcEnabled=false` nhung van co STUN/TURN. ICE nay la fallback do relay quang ba, khong phai capability authoritative; ChatUI mau xam la hanh vi dung de tranh `501 not implemented`.
+- Quyet dinh ky thuat: Chi mo call khi field `ctrl.params.webrtcEnabled` cua Tinode trung tam la `true`; khong mo bang cach chi thay doi `WEBRTC_ENABLED` tren host ChatUI `.206`.
+- Database/API/cau hinh: Operator can cap nhat block `webrtc.enabled=true` va `ice_servers_file` tren Tinode `.215`, sau do restart service trung tam. SSH tu workstation hien bi tu choi.
+- Kiem thu: Raw probe `wss://chat.upgo.vn/v0/channels` tra code `201`, `webrtcEnabled=false`, co mot STUN va mot TURN record; ChatUI/Chatmgt health van `ok`/`200`.
+- Rui ro con lai: Voice/video van bi khoa cho den khi authoritative hello tra `webrtcEnabled=true`; chua UAT hai tai khoan.
+- Viec tiep theo: Cau hinh/restart Tinode `.215`, probe lai raw field, hard refresh ChatUI va test voice/video 1-1.
+- Commit/PR: Commit docs follow-up.
+
 ## 2026-08-16-08 - Xac nhan Tinode trung tam da bat WebRTC
 
 - Thoi gian: 2026-08-16 21:17 (Asia/Saigon)
