@@ -8,19 +8,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-16-03 - Hien dung quan tri vien va quyen xoa thanh vien nhom
 
-- Thoi gian: 2026-08-16 14:25 (Asia/Saigon)
+- Thoi gian: 2026-08-16 14:51 (Asia/Saigon)
 - Loai: Sua loi | Web | Phan quyen | Kiem thu
-- Trang thai: Hoan tat code va kiem thu local; chua commit/deploy
+- Trang thai: Da commit va deploy production; chua UAT bang hai tai khoan trinh duyet that
 - Muc tieu: Bao dam nguoi tao nhom duoc hien la quan tri vien trong thong tin nhom va chi quan tri vien co the xoa thanh vien khac, trong khi giu nguyen chat, goi, mobile va cac luong con lai.
 - Pham vi: Nhan dien danh tinh quan tri vien Chatmgt/Tinode va dieu kien hien/thuc thi nut xoa thanh vien tren ChatUI web; khong sua backend, mobile, Tinode message/call, database, schema hay cau hinh.
 - File da thay doi: `src/app/App.jsx`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `docs/CHANGELOG.md`.
 - Noi dung: Web nay giai `adminId` tu thanh vien nhom truoc, bo sung anh xa owner Tinode ve tai khoan Chatmgt khi can, hien ten quan tri vien thay vi truong `admin` rong va dung cung mot policy cho nut xoa lan handler. Quan tri vien chi xoa duoc thanh vien khac; thanh vien thuong va chinh owner khong co thao tac xoa.
 - Quyet dinh ky thuat: Giu Chatmgt `OWNER` la nguon quyen chuan, khong suy dien nguoi dau tien trong danh sach la owner va khong thay doi API. Kiem tra read-only production xac nhan cac nhom hien co, gom nhom `Vj`, deu co dung mot active `OWNER`, nen khong can migration/backfill.
 - Database/API/cau hinh: Khong migration, khong doi API/schema/bien moi truong; `docs/chat-backend-architecture.md` khong can cap nhat vi ranh gioi du lieu va quyen backend giu nguyen.
-- Kiem thu: Focused `node --test src/features/contacts/services/accountDirectory.test.js` dat 18/18; `npm run test:frontend` dat 73/73; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -v` dat 32/32; `npm run lint` exit 0 voi warning legacy/worktree co san; build Vite production vao thu muc tam dat; `git diff --check` dat cho cac file code trong pham vi.
-- Rui ro con lai: Chua UAT click xoa bang hai tai khoan trinh duyet that; backend production da xac nhan owner nhung can hard refresh de tai bundle moi sau khi deploy.
-- Viec tiep theo: Commit/push thay doi tap trung, deploy rieng ChatUI, kiem tra health/bundle va giu nguyen toan bo container backend/mobile.
-- Commit/PR: Chua tao.
+- Kiem thu local: Focused `node --test src/features/contacts/services/accountDirectory.test.js` dat 18/18; `npm run test:frontend` dat 73/73; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -v` dat 32/32; `npm run lint` exit 0 voi warning legacy/worktree co san; build Vite production vao thu muc tam dat; `git diff --check` dat cho cac file code trong pham vi.
+- Kiem thu production: `https://chat.upgo.vn/healthz`, `https://chatmgt.upgo.vn/api/v1/auth/health` va `https://chatmgt.upgo.vn/api/v1/chatbot/health` deu HTTP 200; worker Tinode chatbot healthy; public bundle `App-CgIU9uA8.js` co marker `adminId` va `btn-remove-member`; ChatUI healthy.
+- Trien khai: Release `/opt/deploy/chat/releases/chatui-group-owner-c0c54b8`, symlink `current` da tro release moi; image ChatUI `sha256:8bdf7e99e31e6a05b265bd037b6465e8ea753792312e81b19452c39b915d0395`, container `6a090a0fdc97`; rollback tag `songhong-production-chat:rollback-before-group-owner-c0c54b8` (`sha256:f9d0ea977713233a649367100e44a6baee151fec788156f99641aa6fe30d3c8e`); chi recreate `chat`, Chatmgt `3f2ef755c041`, bridge `d62dce7b5d00`, worker `2ba71cde63df`, ChatAPI `8476615ad4ac`, PostgreSQL/Redis/Coturn giu nguyen.
+- Rui ro con lai: Chua UAT click xoa bang hai tai khoan trinh duyet that; can hard refresh de tai bundle moi sau khi deploy.
+- Viec tiep theo: Dang nhap hai tai khoan cung tenant, xac nhan creator hien la quan tri vien, admin xoa duoc member khac, member thuong khong co nut xoa; neu gate loi thi tro `current` ve release truoc va dung rollback tag da ghi ben tren.
+- Commit/PR: Code `c0c54b8`; deploy record duoc ghi trong commit tai lieu follow-up.
 
 ## 2026-08-16-02 - Sua cuoc goi WebRTC ChatUI web
 
