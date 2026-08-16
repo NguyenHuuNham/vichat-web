@@ -643,7 +643,7 @@ function toConversation(topic, tinode) {
       return withReactions.replyTo?.id && recallsById.has(String(withReactions.replyTo.id))
         ? { ...withReactions, replyTo: { ...withReactions.replyTo, text: 'Tin nhắn đã được thu hồi' } }
         : withReactions;
-    });
+    }));
 
   // A successful hard delete removes the original packet from Tinode's cache.
   // Keep a synthetic placeholder from the recall event so every participant
@@ -669,7 +669,7 @@ function toConversation(topic, tinode) {
       pending: false,
       deliveryStatus: message.deliveryStatus,
       raw: message.raw,
-    }));
+    });
   });
   chatMessages.sort((first, second) => {
     if (Number.isFinite(first.seq) && Number.isFinite(second.seq) && first.seq !== second.seq) return first.seq - second.seq;
