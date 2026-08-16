@@ -125,8 +125,17 @@ TURN_RELAY_MAX_PORT=49200
 
 `start.sh` replaces the password placeholder with a random hexadecimal secret,
 renders the ignored `runtime/ice-servers.json` with mode `0600`, starts Coturn
-on the host network, and then starts ChatAPI with `WEBRTC_ENABLED=true`. Never
-commit either the real `.env` or the rendered ICE file.
+on the host network, and starts the local rollback ChatAPI with
+`WEBRTC_ENABLED=true`. Never commit either the real `.env` or the rendered ICE
+file.
+
+The authoritative server is `web.vichat.net`, not the rollback ChatAPI. Its
+Tinode configuration must also contain a `webrtc` block with
+`enabled=true` and the same valid STUN/TURN records (or an
+`ice_servers_file`) before the central service is restarted. The relay may add
+local ICE to the browser `hello` response, but that does not enable the
+server-side `PUB` call path; without the authoritative block Tinode returns
+`501 not implemented` and the clients intentionally keep call buttons disabled.
 
 `TURN_HOST` must resolve directly to the machine running Coturn. At the time of
 this release `chat.upgo.vn` resolves to the separate `.218` web entry, so the
@@ -147,11 +156,12 @@ server provider firewall instead of changing the host firewall policy during a
 release. TCP and UDP `3478` are the TURN listener; UDP `49160-49200` is the
 restricted relay range.
 
-After ChatAPI is recreated, its Tinode hello response must contain at least one
-`iceServers` entry. Complete acceptance with two employee accounts on separate
-networks: voice call, video call, reject, unanswered timeout, hang-up, camera
-and microphone toggles, then verify ordinary direct/group messages and external
-chatbot mode still behave as before.
+After the authoritative Tinode is recreated, its direct hello response must
+contain at least one `iceServers` entry; the public relay response must also
+contain `webrtcEnabled=true`. Complete acceptance with two employee accounts
+on separate networks: voice call, video call, reject, unanswered timeout,
+hang-up, camera and microphone toggles, then verify ordinary direct/group
+messages and external chatbot mode still behave as before.
 
 ## Tinode chatbot configuration
 

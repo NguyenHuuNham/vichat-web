@@ -261,11 +261,15 @@ containers. The UpGO password is not sent to the central Tinode server or
 logged by the bridge. This keeps Tinode Web and ChatUI on the same central
 UID/topic/message store.
 
-The central Tinode hello currently does not advertise deployment-local TURN.
-The same bridge therefore reads the protected production
-`runtime/ice-servers.json` and fills `ctrl.params.iceServers` only when the
-upstream hello omits it. It never replaces ICE supplied by the authoritative
-Tinode and does not inspect or rewrite later message, presence or call packets.
+The central Tinode hello must advertise its own WebRTC/ICE configuration before
+calls are enabled. The bridge reads the protected production
+`runtime/ice-servers.json` and may fill `ctrl.params.iceServers` when the
+upstream hello omits deployment-local TURN for browser connectivity, but it
+also sets `webrtcEnabled=false` because that fallback cannot enable call
+handling inside the authoritative Tinode server. Once central Tinode is
+configured with the same ICE/TURN records, the bridge marks the response as
+`webrtcEnabled=true`. It never replaces authoritative ICE and does not inspect
+or rewrite later message, presence or call packets.
 
 `POST /api/v1/conversation/<id>/tinode-prepare` prepares missing UID mappings
 from current Chatmgt membership. Group topic binding and add/remove/leave
@@ -295,10 +299,11 @@ Tinode profile path.
 
 `VITE_CALLS_ENABLED=true` exposes direct voice/video call entry points and
 incoming call UI in builds that include the WebRTC implementation. The call
-capability still requires an authenticated P2P Tinode topic and non-empty
-ICE/TURN servers returned in the Tinode hello response. When
-`WEBRTC_ENABLED=false` or ICE/TURN is unavailable, clients reject the call
-without changing message, presence, receipt or group behavior.
+capability still requires an authenticated P2P Tinode topic, non-empty
+ICE/TURN servers and `webrtcEnabled=true` from the authoritative Tinode hello
+response. When central Tinode is not configured, clients keep calls disabled
+and show an actionable configuration message without changing message,
+presence, receipt or group behavior.
 
 In the internal production mode, ChatUI obtains the tenant-independent bot UID
 from `GET /api/v1/chatbot/tinode-config`, then sends the chatbot message to the

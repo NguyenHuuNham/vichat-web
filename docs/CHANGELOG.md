@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-16-07 - Chan false-positive WebRTC khi Tinode trung tam thieu ICE
+
+- Thoi gian: 2026-08-16 20:43 (Asia/Saigon)
+- Loai: Sua loi | Realtime | Ha tang | Kiem thu
+- Trang thai: Can xac nhan; da sua code, chua bat lai WebRTC tren Tinode trung tam
+- Muc tieu: Khong de ChatUI/mobile hien nut goi roi nhan `501 not implemented` khi relay chi co ICE fallback ma server Tinode authoritative chua duoc cau hinh.
+- Pham vi: Tinode account bridge, capability call web/mobile, verifier production, tai lieu va regression test; khong doi signaling payload, database, Chatmgt auth hay noi dung message.
+- File da thay doi: `chatservice-main/scripts/tinode_account_bridge.py`, `chatservice-main/tests/test_tinode_account_bridge.py`, `chatservice-main/scripts/verify_deployment.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/features/chat/services/callSignaling.js`, `src/features/chat/services/callSignaling.test.js`, `src/features/chat/services/tinodeClient.js`, `mobile/src/services/tinodeClient.ts`, `docs/chat-backend-architecture.md`, `infrastructure/production/README.md`.
+- Noi dung: Xac nhan Tinode trung tam `web.vichat.net` tra build `mongodb:v0.25.1`, hello goc khong co `iceServers`; relay truoc day them ICE Coturn vao hello nen client tuong co the goi, nhung server van tu choi `PUB` co header `webrtc` bang 501. Bridge nay gan `webrtcEnabled=false` cho ICE fallback va `true` chi khi hello trung tam co ICE authoritative; client vo hieu hoa call dung ly do cau hinh va map 501 thanh thong bao hanh dong.
+- Quyet dinh ky thuat: Khong gia lap signaling ngoai Tinode va khong coi ICE relay fallback la kha nang server. Tinode authoritative phai duoc cau hinh `webrtc.enabled=true` va `ice_servers`/`ice_servers_file` bang Coturn truoc khi mo lai call.
+- Database/API/cau hinh: Khong migration/schema. Can cap nhat cau hinh rieng cua `web.vichat.net` va restart Tinode trung tam; `.206` chi la ChatUI/bridge/Coturn host va SSH hien tai khong co quyen vao `.215`.
+- Kiem thu: `npm run test:frontend` dat 77/77; `npm run lint` exit 0 voi warning legacy/worktree; `npx oxlint src/features/chat/services/callSignaling.js src/features/chat/services/callSignaling.test.js src/features/chat/services/tinodeClient.js` dat; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 33/33; `python -m unittest chatservice-main/tests/test_tinode_account_bridge.py -v` da chay nhung 2 test skip do may Windows thieu `aiohttp`; `mobile/npm run typecheck` va `mobile/npm run lint` dat; Vite production build vao thu muc tam dat. Public relay hello tra code 201 va co STUN/TURN nhung chua co truong `webrtcEnabled`, xac nhan ban production hien tai chua co guard moi.
+- Rui ro con lai: Chua deploy guard moi, chua co quyen restart Tinode `.215`, chua UAT hai tai khoan. Neu chi deploy ChatUI/bridge luc nay, call se bi an dung thay vi hoat dong cho den khi central cap ICE authoritative.
+- Viec tiep theo: Commit/push/deploy bridge + ChatUI sau khi gate local dat; cap cau hinh Tinode `.215`, verify public hello `webrtcEnabled=true`, sau do test voice/video hai tai khoan va TURN hai mang.
+- Commit/PR: Chua tao.
+
 ## 2026-08-16-06 - Sua publish mo cuoc goi Tinode
 
 - Thoi gian: 2026-08-16 19:29 (Asia/Saigon)

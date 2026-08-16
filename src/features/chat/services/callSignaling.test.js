@@ -34,6 +34,7 @@ test('extracts a valid call sequence from Tinode control or draft state', () => 
 
 test('keeps Tinode call publish failures actionable without exposing credentials', () => {
   assert.match(callPublishErrorMessage({ code: 403 }), /đăng nhập lại/);
+  assert.match(callPublishErrorMessage({ code: 501, text: 'not implemented' }), /chưa bật WebRTC\/ICE authoritative/);
   assert.equal(
     callPublishErrorMessage({ message: 'topic access denied (403)' }),
     'Không thể gửi tín hiệu cuộc gọi lên Tinode: topic access denied (403)',
@@ -78,6 +79,7 @@ test('call capability requires authenticated P2P Tinode and ICE servers', () => 
   assert.equal(callCapability({ authenticated: true, topicName: 'grp123', isGroup: true, iceServers, browserSupported: true }).available, false);
   assert.equal(callCapability({ authenticated: true, topicName: 'usrPeer123', isChatbot: true, iceServers, browserSupported: true }).available, false);
   assert.equal(callCapability({ authenticated: true, topicName: 'usrPeer123', iceServers: [], browserSupported: true }).available, false);
+  assert.equal(callCapability({ authenticated: true, topicName: 'usrPeer123', iceServers, serverCallEnabled: false, browserSupported: true }).available, false);
   assert.equal(callCapability({ authenticated: true, topicName: 'usrPeer123', iceServers, browserSupported: false }).available, false);
   assert.equal(callCapability({ authenticated: true, topicName: 'invalid', iceServers, browserSupported: true }).available, false);
 });

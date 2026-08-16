@@ -776,6 +776,10 @@ export class TinodeMobileClient {
     if (!this.connected) return { available: false, reason: 'Kết nối Tinode realtime chưa sẵn sàng.' };
     if (options.isChatbot) return { available: false, reason: 'Không thể gọi trợ lý chatbot.' };
     if (options.isGroup || !/^usr[a-z0-9_-]+$/i.test(String(topicName || ''))) return { available: false, reason: 'Cuộc gọi mobile chỉ hỗ trợ hội thoại 1-1.' };
+    const serverInfo = this.client?.getServerInfo?.() || {};
+    if (serverInfo.webrtcEnabled === false || String(serverInfo.webrtcEnabled || '').trim().toLowerCase() === 'false') {
+      return { available: false, reason: 'Máy chủ Tinode trung tâm chưa bật WebRTC/ICE authoritative.' };
+    }
     if (!this.getCallIceServers().length) return { available: false, reason: 'Máy chủ chưa cấu hình ICE/TURN cho cuộc gọi.' };
     return { available: true, reason: '' };
   }

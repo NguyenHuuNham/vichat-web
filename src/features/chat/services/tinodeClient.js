@@ -1360,12 +1360,14 @@ export const tinodeClient = {
   },
 
   getCallCapability(topicName, options = {}) {
+    const serverInfo = client?.getServerInfo?.() || {};
     return callCapability({
       authenticated: this.authenticated,
       topicName,
       isGroup: Boolean(options.isGroup),
       isChatbot: Boolean(options.isChatbot),
       iceServers: this.getCallIceServers(),
+      serverCallEnabled: serverInfo.webrtcEnabled,
     });
   },
 

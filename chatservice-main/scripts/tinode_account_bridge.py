@@ -222,16 +222,24 @@ def _rewrite_hello_response(packet, ice_servers):
     if not isinstance(ctrl, dict) or int(ctrl.get("code") or 0) != 201:
         return packet
     params = ctrl.get("params")
-    if (
-        not isinstance(params, dict)
-        or "ver" not in params
-        or params.get("iceServers")
-        or not ice_servers
-    ):
+    if not isinstance(params, dict) or "ver" not in params:
+        return packet
+    # ICE injected by this relay helps the browser build peer connections, but
+    # it cannot enable call handling inside the authoritative Tinode server.
+    upstream_ice = params.get("iceServers")
+    if isinstance(upstream_ice, list) and upstream_ice:
+        if params.get("webrtcEnabled") is True:
+            return packet
+        rewritten = dict(packet)
+        rewritten_ctrl = dict(ctrl)
+        rewritten_ctrl["params"] = dict(params, webrtcEnabled=True)
+        rewritten["ctrl"] = rewritten_ctrl
+        return rewritten
+    if not ice_servers:
         return packet
     rewritten = dict(packet)
     rewritten_ctrl = dict(ctrl)
-    rewritten_ctrl["params"] = dict(params, iceServers=ice_servers)
+    rewritten_ctrl["params"] = dict(params, iceServers=ice_servers, webrtcEnabled=False)
     rewritten["ctrl"] = rewritten_ctrl
     return rewritten
 

@@ -75,11 +75,14 @@ export function extractCallSequence(ctrl, draft = null) {
 
 export function callPublishErrorMessage(error, draft = null) {
   const code = Number(error?.code || error?.status || 0);
+  const serverMessage = String(error?.message || error?.text || '').trim();
+  if (code === 501 || /not implemented/i.test(serverMessage)) {
+    return 'Tinode trung tâm chưa bật WebRTC/ICE authoritative. Vui lòng cấu hình ICE/TURN trên máy chủ Tinode rồi thử lại.';
+  }
   if (code === 401 || code === 403) {
     return 'Phiên Tinode không còn quyền gửi cuộc gọi. Vui lòng tải lại trang và đăng nhập lại.';
   }
-  const message = String(error?.message || error?.text || '').trim();
-  if (message) return `Không thể gửi tín hiệu cuộc gọi lên Tinode: ${message}`;
+  if (serverMessage) return `Không thể gửi tín hiệu cuộc gọi lên Tinode: ${serverMessage}`;
   if (draft?._failed) {
     return 'Máy chủ Tinode đã từ chối bản tin mở cuộc gọi. Kiểm tra quyền cuộc trò chuyện và cấu hình WebRTC.';
   }
@@ -136,6 +139,7 @@ export function callCapability({
   isGroup = false,
   isChatbot = false,
   iceServers = [],
+  serverCallEnabled = true,
   browserSupported = browserCallSupported(),
 } = {}) {
   if (isChatbot) return { available: false, reason: 'Không thể gọi trợ lý chatbot.' };
@@ -145,6 +149,9 @@ export function callCapability({
     return { available: false, reason: 'Cuộc trò chuyện chưa có topic Tinode 1-1 hợp lệ.' };
   }
   if (!browserSupported) return { available: false, reason: 'Trình duyệt này không hỗ trợ WebRTC.' };
+  if (serverCallEnabled === false || String(serverCallEnabled).trim().toLowerCase() === 'false') {
+    return { available: false, reason: 'Máy chủ Tinode trung tâm chưa bật WebRTC/ICE authoritative.' };
+  }
   if (normalizeIceServers(iceServers).length === 0) {
     return { available: false, reason: 'Máy chủ chưa cấu hình ICE/TURN cho cuộc gọi.' };
   }

@@ -255,6 +255,10 @@ async def _verify_tinode_socket(url, api_key, token, expected_uid, origin=None, 
                 ice_servers = (hello_ctrl.get("params") or {}).get("iceServers") or []
                 if not isinstance(ice_servers, list) or not ice_servers:
                     raise RuntimeError("Public Tinode hello did not advertise ICE/TURN servers.")
+                if (hello_ctrl.get("params") or {}).get("webrtcEnabled") is not True:
+                    raise RuntimeError(
+                        "Public Tinode hello did not confirm authoritative WebRTC/ICE configuration."
+                    )
             await socket.send_json({
                 "login": {"id": "2", "scheme": "token", "secret": token},
             })

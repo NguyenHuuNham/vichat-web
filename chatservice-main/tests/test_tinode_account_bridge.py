@@ -38,16 +38,21 @@ class TinodeAccountBridgeTests(unittest.TestCase):
         finally:
             Path(path).unlink(missing_ok=True)
 
-    def test_adds_ice_servers_only_to_hello_without_upstream_ice(self):
+    def test_marks_relay_ice_as_non_authoritative_when_upstream_is_missing_it(self):
         ice_servers = [{"urls": ["turn:turn.example:3478"]}]
         hello = {"ctrl": {"id": "1", "code": 201, "params": {"ver": "0.25"}}}
         rewritten = bridge._rewrite_hello_response(hello, ice_servers)
 
         self.assertEqual(rewritten["ctrl"]["params"]["iceServers"], ice_servers)
+        self.assertFalse(rewritten["ctrl"]["params"]["webrtcEnabled"])
         self.assertNotIn("iceServers", hello["ctrl"]["params"])
 
         upstream = {"ctrl": {"id": "1", "code": 201, "params": {"iceServers": [{"urls": ["stun:central"]}]}}}
-        self.assertIs(bridge._rewrite_hello_response(upstream, ice_servers), upstream)
+        upstream_rewritten = bridge._rewrite_hello_response(upstream, ice_servers)
+        self.assertTrue(upstream_rewritten["ctrl"]["params"]["webrtcEnabled"])
+        self.assertNotIn("webrtcEnabled", upstream["ctrl"]["params"])
+        already_marked = {"ctrl": {"id": "1", "code": 201, "params": {"iceServers": [{"urls": ["stun:central"]}], "webrtcEnabled": True}}}
+        self.assertIs(bridge._rewrite_hello_response(already_marked, ice_servers), already_marked)
         login = {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrTest"}}}
         self.assertIs(bridge._rewrite_hello_response(login, ice_servers), login)
         created = {"ctrl": {"id": "3", "code": 201, "params": {"user": "usrCreated"}}}

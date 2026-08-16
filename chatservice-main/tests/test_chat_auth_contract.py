@@ -139,6 +139,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("_rewrite_hello_response", bridge_source)
         verifier_source = (PROJECT_ROOT / "scripts" / "verify_deployment.py").read_text(encoding="utf-8")
         self.assertIn("Public Tinode hello did not advertise ICE/TURN servers", verifier_source)
+        self.assertIn("Public Tinode hello did not confirm authoritative WebRTC/ICE configuration", verifier_source)
         self.assertNotIn('"scheme": "basic", "secret": password', bridge_source)
 
         controller_source = CONTROLLER_PATH.read_text(encoding="utf-8")
