@@ -151,6 +151,50 @@ export function findDirectPeer(room, accounts, currentUser) {
     .find(account => account && !identitiesOverlap(account, currentUser)) || null;
 }
 
+export function resolveGroupAdministrator(room, accounts = []) {
+  if (!room?.isGroup) return null;
+  const members = Array.isArray(room.members) ? room.members : [];
+  const tinodeOwner = members.find(member => String(member?.mode || '').includes('O')) || null;
+  const adminId = String(
+    room.adminId
+    || tinodeOwner?.id
+    || tinodeOwner?.uid
+    || tinodeOwner?.tinodeUid
+    || tinodeOwner?.tinode_uid
+    || '',
+  ).trim();
+  const memberAccount = findAccount(members, adminId) || tinodeOwner;
+  const directoryAccount = findAccount(accounts, adminId)
+    || (room.admin ? findAccount(accounts, room.admin) : null);
+  const resolved = memberAccount || directoryAccount
+    ? { ...(memberAccount || {}), ...(directoryAccount || {}) }
+    : null;
+
+  if (resolved) {
+    return {
+      ...resolved,
+      name: resolved.name || room.admin || tinodeOwner?.name || 'Quản trị viên',
+    };
+  }
+  if (!adminId && !room.admin) return null;
+  return { id: adminId, name: room.admin || 'Quản trị viên' };
+}
+
+export function canManageGroupMembers(room, accounts, currentUser) {
+  if (!room?.isGroup || !currentUser) return false;
+  const administrator = resolveGroupAdministrator(room, accounts);
+  if (identitiesOverlap(administrator, currentUser)) return true;
+  const adminId = String(room.adminId || '').trim();
+  if (adminId && identityValues(currentUser).includes(adminId)) return true;
+  return !adminId && Boolean(room.admin) && room.admin === currentUser.name;
+}
+
+export function canRemoveGroupMember(room, accounts, currentUser, member) {
+  if (!member?.id || !canManageGroupMembers(room, accounts, currentUser)) return false;
+  const administrator = resolveGroupAdministrator(room, accounts);
+  return !identitiesOverlap(member, currentUser) && !identitiesOverlap(member, administrator);
+}
+
 export function findAccount(accounts, identity) {
   if (!identity || !Array.isArray(accounts)) return null;
   const normalized = String(identity).trim().toLowerCase();

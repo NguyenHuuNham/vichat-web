@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  canManageGroupMembers,
+  canRemoveGroupMember,
   companyDirectoryContacts,
   companyDirectoryHeading,
   countGroupPresence,
@@ -12,6 +14,7 @@ import {
   mergeDirectoryAccountSnapshots,
   mergeRealtimeAccountProfile,
   mergeRealtimeMemberPresence,
+  resolveGroupAdministrator,
   updateAccountProfiles,
   updateAccountPresence,
 } from './accountDirectory.js';
@@ -200,6 +203,58 @@ test('group presence count always includes the connected current member', () => 
     memberCount: 3,
     onlineCount: 1,
   });
+});
+
+test('group administrator resolves from Chatmgt adminId even when the directory omits the creator', () => {
+  const creator = { id: 'account-owner', uid: 'usr-owner', name: 'Người tạo nhóm' };
+  const member = { id: 'account-member', uid: 'usr-member', name: 'Thành viên' };
+  const room = {
+    isGroup: true,
+    adminId: creator.id,
+    admin: '',
+    members: [creator, member],
+  };
+
+  assert.deepEqual(resolveGroupAdministrator(room, [member]), creator);
+  assert.equal(canManageGroupMembers(room, [member], { id: 'usr-owner' }), true);
+  assert.equal(canManageGroupMembers(room, [member], member), false);
+});
+
+test('group administrator resolves a Tinode owner to the matching Chatmgt account', () => {
+  const creator = {
+    id: 'account-owner',
+    tinodeUid: 'usr-owner',
+    name: 'Tên quản trị viên',
+  };
+  const room = {
+    isGroup: true,
+    members: [
+      { id: 'usr-owner', name: 'Tinode owner', mode: 'JRWPASO' },
+      { id: 'usr-member', name: 'Thành viên', mode: 'JRWPAS' },
+    ],
+  };
+
+  assert.deepEqual(resolveGroupAdministrator(room, [creator]), {
+    id: 'account-owner',
+    tinodeUid: 'usr-owner',
+    name: 'Tên quản trị viên',
+    mode: 'JRWPASO',
+  });
+});
+
+test('only the creator can remove another member and the owner cannot remove themselves', () => {
+  const creator = { id: 'account-owner', tinodeUid: 'usr-owner', name: 'Người tạo nhóm' };
+  const member = { id: 'account-member', tinodeUid: 'usr-member', name: 'Thành viên' };
+  const room = {
+    isGroup: true,
+    adminId: creator.id,
+    members: [creator, member],
+  };
+  const accounts = [creator, member];
+
+  assert.equal(canRemoveGroupMember(room, accounts, creator, member), true);
+  assert.equal(canRemoveGroupMember(room, accounts, member, creator), false);
+  assert.equal(canRemoveGroupMember(room, accounts, creator, creator), false);
 });
 
 test('direct conversations resolve the other account for the current viewer', () => {

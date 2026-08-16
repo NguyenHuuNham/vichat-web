@@ -33,6 +33,7 @@ import {
   formatMessageTime,
 } from '../features/chat/services/timeFormatting';
 import {
+  canRemoveGroupMember,
   companyDirectoryContacts,
   companyDirectoryHeading,
   countGroupPresence,
@@ -44,6 +45,7 @@ import {
   mergeDirectoryAccountSnapshots,
   mergeRealtimeAccountProfile,
   mergeRealtimeMemberPresence,
+  resolveGroupAdministrator,
   snapshotPresence,
   updateAccountProfiles,
   updateAccountPresence,
@@ -945,15 +947,8 @@ function App() {
       setMessageActions({});
     }
   }, [viewerId]);
-  const activeAdminId = activeChat.adminId
-    || activeChat.members?.find(member => member.mode?.includes?.('O'))?.id
-    || '';
-  const activeAdminAccount = findAccount(directoryAccounts, activeAdminId);
-  const isCurrentUserGroupAdmin = Boolean(activeChat.isGroup && (
-    identitiesOverlap(activeAdminAccount, currentUser)
-    || identityValues(currentUser).includes(String(activeAdminId))
-    || (!activeAdminId && activeChat.admin === currentUser?.name)
-  ));
+  const activeAdminAccount = resolveGroupAdministrator(activeChat, directoryAccounts);
+  const activeAdminName = activeAdminAccount?.name || activeChat.admin || 'Chưa xác định';
 
   // Auto scroll to bottom of chat
   const scrollToBottom = () => {
@@ -2618,8 +2613,7 @@ function App() {
   };
 
   const handleRemoveGroupMember = async (member) => {
-    if (!activeChat.isGroup || !member?.id || !isCurrentUserGroupAdmin || removingMemberId) return;
-    if (identitiesOverlap(member, currentUser) || identitiesOverlap(member, activeAdminAccount)) return;
+    if (removingMemberId || !canRemoveGroupMember(activeChat, directoryAccounts, currentUser, member)) return;
     if (!window.confirm(`Bạn có chắc muốn xóa ${member.name} khỏi nhóm "${activeChat.name}"?`)) return;
 
     setRemovingMemberId(member.id);
@@ -2633,7 +2627,9 @@ function App() {
       };
       let updatedRoom;
       if (usesManagementData) {
-        const memberAccount = findAccount(directoryAccounts, member.id || member.uid || member.name);
+        const memberAccount = findAccount(directoryAccounts, member.id || member.uid || member.name)
+          || findAccount(activeChat.members, member.id || member.uid || member.name)
+          || member;
         if (!memberAccount?.id) throw new Error('Chatmgt không xác định được thành viên cần xóa.');
         if (chatMode === 'tinode') {
           const topicName = await ensureTinodeConversationTopic(activeChat);
@@ -4037,7 +4033,7 @@ function App() {
           {activeChat.isGroup && (
             <div className="detail-section">
               <h4 className="section-title">Quản trị viên</h4>
-              <span className="admin-name">{activeChat.admin}</span>
+              <span className="admin-name">{activeAdminName}</span>
             </div>
           )}
 
@@ -4056,9 +4052,7 @@ function App() {
                       {accountPresenceLabel(member)}
                     </span>
                   </div>
-                  {isCurrentUserGroupAdmin && member.id
-                    && !identitiesOverlap(member, currentUser)
-                    && !identitiesOverlap(member, activeAdminAccount) && (
+                  {canRemoveGroupMember(activeChat, directoryAccounts, currentUser, member) && (
                     <button
                       type="button"
                       className="btn-remove-member"
