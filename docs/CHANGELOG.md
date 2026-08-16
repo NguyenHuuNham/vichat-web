@@ -6,6 +6,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-16-08 - Xac nhan Tinode trung tam da bat WebRTC
+
+- Thoi gian: 2026-08-16 21:17 (Asia/Saigon)
+- Loai: Van hanh | Realtime | Kiem thu | Tai lieu
+- Trang thai: Da xac nhan capability production; chua UAT hai tai khoan that
+- Muc tieu: Xac nhan blocker authoritative WebRTC da duoc go bo sau khi Tinode trung tam cap nhat cau hinh.
+- Pham vi: Public Tinode relay/hello va dieu kien mo lai voice/video; khong thay doi code, database hay signaling payload.
+- Noi dung: Probe `wss://chat.upgo.vn/v0/channels` tra `helloCode=201`, `webrtcEnabled=true`, mot STUN va mot TURN record; username/credential duoc redact. Dieu nay xac nhan hello public hien da quang ba ICE authoritative, khac voi ket qua `false` da ghi o muc truoc.
+- Quyet dinh ky thuat: Tiep tuc dung hello cua Tinode trung tam lam nguon chuan; khong dua credential TURN vao log hoac bundle. Capability da san sang nhung khong dong nghia da UAT media hai chieu.
+- Database/API/cau hinh: Khong thay doi trong repository; cau hinh WebRTC trung tam da duoc quan sat o trang thai active.
+- Kiem thu: `https://chat.upgo.vn/healthz` tra `ok`; Chatmgt auth health tra `200`; chatbot health tra `200` va `provider_configured=true`; `node scripts/debug_call_signaling.mjs` tra hello `201` voi STUN/TURN va credential da redact. Browser smoke test chua chay duoc vi browser runtime loi `failed to write kernel assets`.
+- Rui ro con lai: Chua xac nhan call voice/video hai chieu, accept/reject/timeout/hang-up, mute micro/camera va TURN tren hai mang bang hai tai khoan that.
+- Viec tiep theo: Hard refresh, dang nhap hai tai khoan that, test voice/video hai chieu va neu van loi thi thu thap ma loi/console sau khi cap nhat central.
+- Commit/PR: `4694349` da ghi release guard; muc xac minh nay cho commit follow-up.
+
 ## 2026-08-16-07 - Chan false-positive WebRTC khi Tinode trung tam thieu ICE
 
 - Thoi gian: 2026-08-16 20:43 (Asia/Saigon)
