@@ -65,6 +65,41 @@ export function resolveCallsEnabled(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
 }
 
+export function extractCallSequence(ctrl, draft = null) {
+  for (const value of [ctrl?.params?.seq, draft?.seq]) {
+    const sequence = Number(value);
+    if (Number.isInteger(sequence) && sequence > 0) return sequence;
+  }
+  return 0;
+}
+
+export function callPublishErrorMessage(error, draft = null) {
+  const code = Number(error?.code || error?.status || 0);
+  if (code === 401 || code === 403) {
+    return 'Phiên Tinode không còn quyền gửi cuộc gọi. Vui lòng tải lại trang và đăng nhập lại.';
+  }
+  const message = String(error?.message || error?.text || '').trim();
+  if (message) return `Không thể gửi tín hiệu cuộc gọi lên Tinode: ${message}`;
+  if (draft?._failed) {
+    return 'Máy chủ Tinode đã từ chối bản tin mở cuộc gọi. Kiểm tra quyền cuộc trò chuyện và cấu hình WebRTC.';
+  }
+  return 'Tinode không trả về mã cuộc gọi. Vui lòng thử lại.';
+}
+
+export async function publishCallInvite({ publish, draft }) {
+  let ctrl;
+  try {
+    ctrl = await publish(draft);
+  } catch (error) {
+    throw new Error(callPublishErrorMessage(error, draft));
+  }
+  const seq = extractCallSequence(ctrl, draft);
+  if (!seq) throw new Error(callPublishErrorMessage(null, draft));
+  draft.seq = seq;
+  if (ctrl?.ts) draft.ts = ctrl.ts;
+  return { ctrl, seq };
+}
+
 function callEntity(content) {
   return content?.ent?.find?.(entity => entity?.tp === 'VC')?.data || null;
 }

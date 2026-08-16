@@ -14,6 +14,7 @@ import {
   extractCallInvite,
   normalizeIceServers,
   parseCallMessage,
+  publishCallInvite,
 } from './callSignaling';
 import { attachmentConversationPreview } from './messagePreview';
 import {
@@ -1341,7 +1342,12 @@ export const tinodeClient = {
   },
 
   getCallIceServers() {
-    return normalizeIceServers(client?.getServerParam?.('iceServers', []));
+    const raw = client?.getServerParam?.('iceServers', []);
+    const servers = normalizeIceServers(raw);
+    if (Array.isArray(raw) && raw.length > 0 && servers.length === 0) {
+      console.warn('[ViChat] Tinode returned no valid ICE servers.', { advertised: raw.length });
+    }
+    return servers;
   },
 
   getMediaVersion(value) {
@@ -1377,10 +1383,23 @@ export const tinodeClient = {
       aonly: Boolean(audioOnly),
       'x-sender-id': tinode.getCurrentUserID(),
     };
-    const ctrl = await topic.publishMessage(draft);
-    const seq = Number(ctrl?.params?.seq || draft.seq || 0);
-    if (!seq) throw new Error('Tinode không trả về mã cuộc gọi.');
-    return { seq, topic: topicName, audioOnly: Boolean(audioOnly) };
+    try {
+      // Topic.publishMessage in Tinode SDK 0.25.3 swallows rejected PUB errors.
+      // Use the client-level method so the server error reaches the UI.
+      const published = await publishCallInvite({
+        draft,
+        publish: message => tinode.publishMessage(message),
+      });
+      return { seq: published.seq, topic: topicName, audioOnly: Boolean(audioOnly) };
+    } catch (error) {
+      console.warn('[ViChat] Tinode rejected the call invite.', {
+        topic: topicName,
+        audioOnly: Boolean(audioOnly),
+        code: Number(error?.code || error?.status || 0) || undefined,
+        errorName: error?.name || 'Error',
+      });
+      throw error;
+    }
   },
 
   async sendCallSignal(topicName, seq, event, payload) {
@@ -1390,7 +1409,11 @@ export const tinodeClient = {
     const callSeq = Number(seq);
     if (!callSeq) throw new Error('Cuộc gọi chưa có mã tin nhắn.');
     const topic = await subscribeTopic(topicName, { historyLimit: 0 });
-    await topic.videoCall(event, callSeq, payload);
+    if (typeof topic.videoCall !== 'function') {
+      throw new Error('Tinode SDK không hỗ trợ tín hiệu cuộc gọi.');
+    }
+    const result = topic.videoCall(event, callSeq, payload);
+    if (result && typeof result.then === 'function') await result;
   },
 
   async ensureSession(auth = {}) {

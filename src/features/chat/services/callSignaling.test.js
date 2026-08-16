@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 
 import {
   callCapability,
+  callPublishErrorMessage,
   callHistoryLabel,
   extractCallInvite,
+  extractCallSequence,
   formatCallDuration,
   isAnsweredElsewhereSignal,
   normalizeCallCandidate,
@@ -12,6 +14,7 @@ import {
   normalizeCallPayload,
   normalizeIceServers,
   parseCallMessage,
+  publishCallInvite,
   resolveCallsEnabled,
 } from './callSignaling.js';
 
@@ -20,6 +23,45 @@ test('call feature stays hidden unless explicitly enabled', () => {
   assert.equal(resolveCallsEnabled('false'), false);
   assert.equal(resolveCallsEnabled('true'), true);
   assert.equal(resolveCallsEnabled('ON'), true);
+});
+
+test('extracts a valid call sequence from Tinode control or draft state', () => {
+  assert.equal(extractCallSequence({ params: { seq: '17' } }), 17);
+  assert.equal(extractCallSequence({}, { seq: 23 }), 23);
+  assert.equal(extractCallSequence({ params: { seq: 0 } }, { seq: -1 }), 0);
+  assert.equal(extractCallSequence({ params: { seq: 'not-a-sequence' } }), 0);
+});
+
+test('keeps Tinode call publish failures actionable without exposing credentials', () => {
+  assert.match(callPublishErrorMessage({ code: 403 }), /đăng nhập lại/);
+  assert.equal(
+    callPublishErrorMessage({ message: 'topic access denied (403)' }),
+    'Không thể gửi tín hiệu cuộc gọi lên Tinode: topic access denied (403)',
+  );
+  assert.match(callPublishErrorMessage(null, { _failed: true }), /từ chối bản tin mở cuộc gọi/);
+  assert.match(callPublishErrorMessage(), /không trả về mã cuộc gọi/);
+});
+
+test('publishes a call invite with a server sequence and preserves the draft timestamp', async () => {
+  const draft = {};
+  const result = await publishCallInvite({
+    draft,
+    publish: async () => ({ params: { seq: '31' }, ts: '2026-08-16T10:00:00.000Z' }),
+  });
+  assert.equal(result.seq, 31);
+  assert.equal(draft.seq, 31);
+  assert.equal(draft.ts, '2026-08-16T10:00:00.000Z');
+});
+
+test('propagates rejected and incomplete call invite publishes', async () => {
+  await assert.rejects(
+    publishCallInvite({ draft: {}, publish: async () => { throw Object.assign(new Error('forbidden'), { code: 403 }); } }),
+    /đăng nhập lại/,
+  );
+  await assert.rejects(
+    publishCallInvite({ draft: { _failed: true }, publish: async () => ({ params: {} }) }),
+    /từ chối bản tin mở cuộc gọi/,
+  );
 });
 
 test('call capability requires authenticated P2P Tinode and ICE servers', () => {

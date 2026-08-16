@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-16-06 - Sua publish mo cuoc goi Tinode
+
+- Thoi gian: 2026-08-16 19:29 (Asia/Saigon)
+- Loai: Sua loi | Web | Realtime | Kiem thu
+- Trang thai: Hoan tat code va kiem thu local; chua commit, deploy hoac UAT hai tai khoan that
+- Muc tieu: Lam cho luong goi thoai va goi video lay duoc ma cuoc goi tu Tinode, khong hien thong bao chung khi server tu choi ban tin mo cuoc goi.
+- Pham vi: ChatUI Web Tinode publish/signaling va test pure cho call; giu nguyen Chatmgt, database, API, mobile va media WebRTC sau khi signaling thanh cong.
+- File da thay doi: `src/features/chat/services/callSignaling.js`, `src/features/chat/services/callSignaling.test.js`, `src/features/chat/services/tinodeClient.js`, `docs/CHANGELOG.md`.
+- Noi dung: Tranh loi SDK Tinode 0.25.3 trong `Topic.publishMessage()` khi SDK nuot reject cua `PUB` bang cach dung publish cap client cho ban tin `VC` dau tien; trich xuat `seq` tu control hoac draft, luu timestamp, map loi 401/403 va loi server de UI co thong tin hanh dong. Tin hieu `ringing/accept/offer/answer/ICE/hang-up` kiem tra kha nang SDK truoc khi gui; canh bao ICE chi ghi so luong entry, khong ghi credential.
+- Quyet dinh ky thuat: Chi bypass `Topic.publishMessage()` cho call invite de giu error response cua Tinode; khong sua `node_modules`, khong ghi token/credential vao log, khong thay doi hop dong Tinode hoac signaling payload.
+- Database/API/cau hinh: Khong migration, khong doi API/schema; server van can `WEBRTC_ENABLED` va ICE/TURN hop le.
+- Kiem thu: `node --test src/features/chat/services/callSignaling.test.js` dat 12/12; `npm run test:frontend` dat 77/77; `npx oxlint src/features/chat/services/callSignaling.js src/features/chat/services/callSignaling.test.js src/features/chat/services/tinodeClient.js` dat; `npm run lint` exit 0 voi warning legacy/vendor/worktree co san; `node --check` hai file call dat; `npx vite build --mode production --outDir <temp>` dat; `node scripts/debug_call_signaling.mjs` production hello tra 201 va 2 ICE entries voi credential da redact; `git diff --check` dat. Probe local `ws://127.0.0.1:6060/v0/channels` chua ket noi vi Tinode local chua khoi dong.
+- Rui ro con lai: Chua publish call bang token tai khoan that va chua UAT voice/video hai chieu tren hai trinh duyet/mang; neu Tinode server van tu choi `PUB`, UI da hien ma/noi dung loi that nhung can sua cau hinh/quyen server tuong ung.
+- Viec tiep theo: Khoi dong Tinode local voi WebRTC/ICE hoac dung hai tai khoan production, hard refresh, thu ca voice va video; chi commit/deploy sau khi UAT signaling, accept, SDP/ICE, media, timeout va hang-up.
+- Commit/PR: Chua tao.
+
 ## 2026-08-16-03 - Hien dung quan tri vien va quyen xoa thanh vien nhom
 
 - Thoi gian: 2026-08-16 14:51 (Asia/Saigon)
