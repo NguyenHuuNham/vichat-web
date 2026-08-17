@@ -15,7 +15,7 @@ function clearAccountReturnMarker() {
   window.history.replaceState({}, '', `${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`);
 }
 
-function Login({ onLoginSuccess, initialNotice = '' }) {
+function Login({ copy = { t: value => value }, onLoginSuccess, initialNotice = '' }) {
   const credentialMode = ['password', 'account_password'].includes(managementAuthClient.mode);
   const passwordMode = managementAuthClient.mode === 'password';
   const [identity, setIdentity] = useState('');
@@ -29,7 +29,7 @@ function Login({ onLoginSuccess, initialNotice = '' }) {
   const finishLogin = useCallback(async ({ redirectWhenRequired, credentials }) => {
     setError('');
     if (!managementAuthClient.enabled) {
-      setError('Chưa cấu hình dịch vụ xác thực Chatmgt.');
+      setError(copy.t('Chưa cấu hình dịch vụ xác thực Chatmgt.'));
       return;
     }
 
@@ -61,20 +61,20 @@ function Login({ onLoginSuccess, initialNotice = '' }) {
         return;
       }
       if (loginError?.code === 'ACCOUNT_LOGIN_REQUIRED') {
-        setError('Account chưa trả về phiên đăng nhập hợp lệ. Vui lòng đăng nhập lại tại account.upgo.vn.');
+        setError(copy.t('Account chưa trả về phiên đăng nhập hợp lệ. Vui lòng đăng nhập lại tại account.upgo.vn.'));
       } else if (loginError?.code === 'ACCOUNT_TENANT_INVALID') {
-        setError('Tài khoản UpGO chưa được mời vào doanh nghiệp hoặc membership chưa hoạt động.');
+        setError(copy.t('Tài khoản UpGO chưa được mời vào doanh nghiệp hoặc membership chưa hoạt động.'));
       } else if (loginError?.code === 'LOGIN_FAILED') {
-        setError('Tên đăng nhập hoặc mật khẩu không đúng.');
+        setError(copy.t('Tên đăng nhập hoặc mật khẩu không đúng.'));
       } else if (loginError?.code === 'LOGIN_RATE_LIMITED') {
-        setError('Bạn đã thử đăng nhập quá nhiều lần. Vui lòng thử lại sau.');
+        setError(copy.t('Bạn đã thử đăng nhập quá nhiều lần. Vui lòng thử lại sau.'));
       } else {
-        setError(loginError?.message || 'Không thể đăng nhập. Vui lòng thử lại.');
+        setError(copy.t(loginError?.message || 'Không thể đăng nhập. Vui lòng thử lại.'));
       }
     } finally {
       setIsLoading(false);
     }
-  }, [onLoginSuccess]);
+  }, [copy, onLoginSuccess]);
 
   useEffect(() => {
     if (passwordMode || !isAccountReturn() || accountReturnHandled.current) return;
@@ -86,7 +86,7 @@ function Login({ onLoginSuccess, initialNotice = '' }) {
   const handleLogin = event => {
     event.preventDefault();
     if (credentialMode && (!identity.trim() || !password)) {
-      setError('Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.');
+      setError(copy.t('Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.'));
       return;
     }
     finishLogin({
@@ -112,26 +112,26 @@ function Login({ onLoginSuccess, initialNotice = '' }) {
           {credentialMode && (
             <>
               <div className="login-form-group">
-                <label htmlFor="chat-identity">Tên đăng nhập hoặc email</label>
+                <label htmlFor="chat-identity">{copy.t('Tên đăng nhập hoặc email')}</label>
                 <div className="login-input-wrapper">
                   <i className="fa-regular fa-user login-input-icon"></i>
-                  <input id="chat-identity" name="username" type="text" autoComplete="username" value={identity} onChange={event => setIdentity(event.target.value)} disabled={isLoading} placeholder="Nhập tài khoản được cấp..." autoFocus />
+                  <input id="chat-identity" name="username" type="text" autoComplete="username" value={identity} onChange={event => setIdentity(event.target.value)} disabled={isLoading} placeholder={copy.t('Nhập tài khoản được cấp...')} autoFocus />
                 </div>
               </div>
               <div className="login-form-group">
-                <label htmlFor="chat-password">Mật khẩu</label>
+                <label htmlFor="chat-password">{copy.t('Mật khẩu')}</label>
                 <div className="login-input-wrapper">
                   <i className="fa-solid fa-lock login-input-icon"></i>
-                  <input id="chat-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} disabled={isLoading} placeholder="Nhập mật khẩu..." />
-                  <button type="button" className="btn-toggle-password" onClick={() => setShowPassword(previous => !previous)} disabled={isLoading} aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}><i className={`fa-regular ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i></button>
+                  <input id="chat-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} disabled={isLoading} placeholder={copy.t('Nhập mật khẩu...')} />
+                  <button type="button" className="btn-toggle-password" onClick={() => setShowPassword(previous => !previous)} disabled={isLoading} aria-label={showPassword ? copy.t('Ẩn mật khẩu') : copy.t('Hiện mật khẩu')}><i className={`fa-regular ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i></button>
                 </div>
               </div>
             </>
           )}
           <button type="submit" className="btn-login-submit" disabled={isLoading}>
             {isLoading
-              ? <><div className="login-spinner"></div><span>Đang xác thực...</span></>
-              : <><i className="fa-solid fa-arrow-right-to-bracket"></i><span>{managementAuthClient.mode === 'password' ? 'Đăng nhập' : 'Đăng nhập bằng UpGO Account'}</span></>}
+              ? <><div className="login-spinner"></div><span>{copy.t('Đang xác thực...')}</span></>
+              : <><i className="fa-solid fa-arrow-right-to-bracket"></i><span>{managementAuthClient.mode === 'password' ? copy.t('Đăng nhập') : copy.t('Đăng nhập bằng UpGO Account')}</span></>}
           </button>
         </form>
 

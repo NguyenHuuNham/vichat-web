@@ -106,6 +106,7 @@ import {
   verifyPin,
   writePinConfig,
 } from '../features/security/services/pinLock';
+import { createLocalizedCopy } from '../features/i18n/appLanguage';
 
 const CALLS_ENABLED = resolveCallsEnabled(import.meta.env.VITE_CALLS_ENABLED);
 
@@ -388,9 +389,10 @@ function mediaEntriesForMessages(messages = []) {
   return entries.sort((first, second) => second.timestamp - first.timestamp);
 }
 
-function formatMediaDateHeading(timestamp) {
-  if (!timestamp) return 'Chưa xác định ngày';
+function formatMediaDateHeading(timestamp, locale = 'vi-VN') {
+  if (!timestamp) return locale.startsWith('en') ? 'Unknown date' : 'Chưa xác định ngày';
   const date = new Date(timestamp);
+  if (locale.startsWith('en')) return date.toLocaleDateString(locale, { month: 'long', day: 'numeric', year: 'numeric' });
   return `Ngày ${date.getDate()} Tháng ${date.getMonth() + 1}, ${date.getFullYear()}`;
 }
 
@@ -400,7 +402,7 @@ function mediaDateKey(timestamp) {
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 }
 
-function TinodeImagePreview({ source, alt, className = '' }) {
+function TinodeImagePreview({ source, alt, className = '', copy = { t: value => value } }) {
   const [resolvedSource, setResolvedSource] = useState('');
   const [failed, setFailed] = useState(false);
   const [mediaVersion, setMediaVersion] = useState(() => tinodeClient.getMediaVersion(source));
@@ -438,16 +440,16 @@ function TinodeImagePreview({ source, alt, className = '' }) {
     return (
       <span className="image-preview-placeholder image-preview-error" role="img" aria-label={alt}>
         <i className="fa-regular fa-image" aria-hidden="true"></i>
-        <span>Không tải được ảnh xem trước</span>
+        <span>{copy.t('Không tải được ảnh xem trước')}</span>
       </span>
     );
   }
 
   if (!resolvedSource) {
     return (
-      <span className="image-preview-placeholder" role="status" aria-label="Đang tải ảnh">
+      <span className="image-preview-placeholder" role="status" aria-label={copy.t('Đang tải ảnh')}>
         <i className="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
-        <span>Đang tải ảnh...</span>
+        <span>{copy.t('Đang tải ảnh...')}</span>
       </span>
     );
   }
@@ -464,7 +466,7 @@ function TinodeImagePreview({ source, alt, className = '' }) {
   );
 }
 
-function ImageViewer({ source, onClose }) {
+function ImageViewer({ source, copy = { t: value => value }, onClose }) {
   useEffect(() => {
     const handleKeyDown = event => {
       if (event.key === 'Escape') onClose();
@@ -483,16 +485,16 @@ function ImageViewer({ source, onClose }) {
       className="image-viewer-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label="Xem ảnh"
+      aria-label={copy.t('Xem ảnh')}
       onMouseDown={event => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <button type="button" className="image-viewer-close" onClick={onClose} aria-label="Đóng ảnh" title="Đóng ảnh">
+      <button type="button" className="image-viewer-close" onClick={onClose} aria-label={copy.t('Đóng ảnh')} title={copy.t('Đóng ảnh')}>
         <i className="fa-solid fa-xmark" aria-hidden="true"></i>
       </button>
       <div className="image-viewer-content" onMouseDown={event => event.stopPropagation()}>
-        <TinodeImagePreview source={source} alt="Ảnh đính kèm" className="image-viewer-image" />
+        <TinodeImagePreview source={source} alt={copy.t('Ảnh đính kèm')} copy={copy} className="image-viewer-image" />
       </div>
     </div>
   );
@@ -564,6 +566,36 @@ function personalizeGroupSystemText(message, accounts, viewerId) {
     return message.senderId === viewerId ? 'Bạn đã tạo nhóm' : `${actorName} đã tạo nhóm`;
   }
   return message.text;
+}
+
+function localizedSystemText(message, copy, accounts = [], viewerId = '') {
+  if (!message) return '';
+  const text = message.type === 'system'
+    ? personalizeGroupSystemText(message, accounts, viewerId)
+    : message.text || '';
+  return copy.t(text);
+}
+
+function localizedConversationPreview(room, copy, accounts = [], viewerId = '') {
+  const lastMessage = (room?.messages || []).filter(Boolean).at(-1);
+  if (lastMessage?.type === 'system' || lastMessage?.type === 'friend_event' || lastMessage?.type === 'call') {
+    return localizedSystemText(lastMessage, copy, accounts, viewerId);
+  }
+  if (room?.isChatbot && lastMessage?.isWelcome) {
+    return `${lastMessage.senderName || CHATBOT_ACCOUNT.name}: ${copy.t(lastMessage.text)}`;
+  }
+  const attachmentPreview = attachmentConversationPreview(lastMessage);
+  if (attachmentPreview) return copy.t(attachmentPreview);
+  if (lastMessage?.type === 'text' && lastMessage.text) {
+    const sender = lastMessage.sender === 'outgoing'
+      ? copy.t('Bạn')
+      : lastMessage.senderName || copy.t('Thành viên');
+    return `${sender}: ${lastMessage.text}`;
+  }
+  if (!lastMessage && ['Chưa có tin nhắn', 'Bắt đầu cuộc trò chuyện', 'Nhóm mới được tạo'].includes(room?.lastMsg)) {
+    return copy.t(room.lastMsg);
+  }
+  return room?.lastMsg || '';
 }
 
 function isSelfDirectConversation(room, user, accounts) {
@@ -827,7 +859,7 @@ function SafeAvatar({ src, name, className = '' }) {
   return <img src={resolvedSrc} alt={name || 'Avatar'} className={className} onError={() => setFailed(true)} />;
 }
 
-function AudioMessagePlayer({ file, duration = 0, time = '', delivery = null, pending = false, failed = false, onError }) {
+function AudioMessagePlayer({ file, duration = 0, time = '', delivery = null, pending = false, failed = false, copy = { t: value => value }, onError }) {
   const audioRef = useRef(null);
   const [resolvedSource, setResolvedSource] = useState('');
   const [mediaVersion, setMediaVersion] = useState(() => tinodeClient.getMediaVersion(file?.url));
@@ -892,7 +924,7 @@ function AudioMessagePlayer({ file, duration = 0, time = '', delivery = null, pe
         className="audio-play-button"
         onClick={togglePlayback}
         disabled={!resolvedSource}
-        aria-label={isPlaying ? 'Tạm dừng tin nhắn thoại' : 'Phát tin nhắn thoại'}
+        aria-label={copy.t(isPlaying ? 'Tạm dừng tin nhắn thoại' : 'Phát tin nhắn thoại')}
       >
         <i className={`fa-solid ${isPlaying ? 'fa-pause' : resolvedSource ? 'fa-play' : 'fa-spinner fa-spin'}`}></i>
       </button>
@@ -917,7 +949,7 @@ function AudioMessagePlayer({ file, duration = 0, time = '', delivery = null, pe
           onEnded={() => { setIsPlaying(false); setCurrentTime(0); }}
           onError={() => {
             setLoadFailed(true);
-            onError?.(new Error('Không thể phát tin nhắn thoại.'));
+            onError?.(new Error(copy.t('Không thể phát tin nhắn thoại.')));
           }}
         />
       )}
@@ -925,7 +957,7 @@ function AudioMessagePlayer({ file, duration = 0, time = '', delivery = null, pe
   );
 }
 
-function MessageReplyPreview({ reply }) {
+function MessageReplyPreview({ reply, copy = { t: value => value } }) {
   if (!reply) return null;
   const isAudio = isAudioAttachment(reply.file || { name: reply.fileName, mime: reply.fileMime }, reply.type) || Number(reply.voiceDuration) > 0;
   const isImage = reply.type === 'image' || String(reply.fileMime || reply.file?.mime || '').toLowerCase().startsWith('image/');
@@ -934,8 +966,8 @@ function MessageReplyPreview({ reply }) {
     <div className="message-reply-preview">
       <span className="message-reply-preview-icon"><i className={`fa-solid ${icon}`} aria-hidden="true"></i></span>
       <span className="message-reply-preview-copy">
-        <strong>{reply.senderName || 'Tin nhắn'}</strong>
-        <span>{replyContentLabel(reply)}</span>
+        <strong>{reply.senderName || copy.t('Tin nhắn')}</strong>
+        <span>{reply.text?.trim() ? reply.text : copy.t(replyContentLabel(reply))}</span>
       </span>
     </div>
   );
@@ -1301,7 +1333,7 @@ function App() {
     return CONVERSATION_CATEGORY_OPTIONS.find(option => option.id === categoryId) || null;
   };
   const activeChatMuted = isConversationMuted(activeChat.notificationMutedUntil, notificationClock);
-  const activeChatMuteLabel = notificationMuteLabel(activeChat.notificationMutedUntil, notificationClock);
+  const activeChatMuteLabel = notificationMuteLabel(activeChat.notificationMutedUntil, notificationClock, settings.language === 'en' ? 'en-US' : 'vi-VN');
   const activeMessageCount = activeChat.messages?.length || 0;
   const usesManagementData = chatManagementService.remote && chatMode !== 'demo';
   const realtimeMessagingPending = usesManagementData
@@ -1312,13 +1344,13 @@ function App() {
     ? (connectionStatus === 'online' ? 'Đang kết nối kho tri thức' : 'Đang chờ kết nối realtime')
     : 'Kho tri thức doanh nghiệp';
   const accountProfileReadOnly = Boolean(currentUser?.accountManaged || currentUser?.account_managed);
-  const appCopy = APP_LANGUAGE_COPY[settings.language] || APP_LANGUAGE_COPY.vi;
+  const appCopy = createLocalizedCopy(APP_LANGUAGE_COPY[settings.language] || APP_LANGUAGE_COPY.vi, settings.language);
   const selectedLanguage = APP_LANGUAGE_OPTIONS.find(option => option.id === settings.language)
     || APP_LANGUAGE_OPTIONS[0];
   const pinViewerId = currentUser?.id || currentUser?.uid || '';
   const accountPresenceLabel = account => chatMode === 'tinode'
     ? (isAccountOnline(account) ? 'Online' : 'Offline')
-    : usesManagementData ? 'Danh bạ Chatmgt' : (isAccountOnline(account) ? 'Online' : 'Offline');
+    : usesManagementData ? (settings.language === 'en' ? 'Chatmgt directory' : 'Danh bạ Chatmgt') : (isAccountOnline(account) ? 'Online' : 'Offline');
 
   const isCurrentUserOnline = Boolean(
     isLoggedIn && currentUser && (chatMode !== 'tinode' || connectionStatus === 'online')
@@ -1327,8 +1359,8 @@ function App() {
     ? countGroupPresence(activeChat.members, currentUser, isCurrentUserOnline)
     : null;
   const activeChatPresenceLabel = activeGroupPresence
-    ? `${activeGroupPresence.memberCount} thành viên • ${activeGroupPresence.onlineCount} đang online`
-    : activeChat.membersCount;
+    ? appCopy.t(`${activeGroupPresence.memberCount} thành viên • ${activeGroupPresence.onlineCount} đang online`)
+    : appCopy.t(activeChat.membersCount);
   const callActionCapability = (() => {
     if (!CALLS_ENABLED) return { available: false, reason: 'Tính năng cuộc gọi đang tạm ẩn theo cấu hình doanh nghiệp.' };
     if (chatMode !== 'tinode') return { available: false, reason: 'Cuộc gọi chỉ khả dụng khi đã kết nối Tinode realtime.' };
@@ -1767,7 +1799,7 @@ function App() {
     }
   }, [viewerId]);
   const activeAdminAccount = resolveGroupAdministrator(activeChat, directoryAccounts);
-  const activeAdminName = activeAdminAccount?.name || activeChat.admin || 'Chưa xác định';
+  const activeAdminName = activeAdminAccount?.name || activeChat.admin || appCopy.t('Chưa xác định');
 
   // Auto scroll to bottom of chat
   const scrollToBottom = () => {
@@ -2092,7 +2124,7 @@ function App() {
       try {
         const senderName = message.senderName || notificationRoom?.name || 'Tin nhắn mới';
         const desktopNotification = new window.Notification(notificationRoom?.name || 'ViChat', {
-          body: `${senderName}: ${notificationMessageBody(message)}`,
+          body: `${senderName}: ${notificationMessageBody(message, appCopy.t)}`,
           icon: '/chat-logo.svg',
           tag: `vichat:${stateId}`,
           renotify: true,
@@ -2107,7 +2139,7 @@ function App() {
         // Permission can be revoked between rendering and an incoming packet.
       }
     }
-  }, [desktopNotificationPermission, playNotificationSound, settings.desktopNotifications, settings.sound, settings.sounds, viewerId]);
+  }, [appCopy, desktopNotificationPermission, playNotificationSound, settings.desktopNotifications, settings.sound, settings.sounds, viewerId]);
 
   // Keep the React view synchronized with Tinode's topic callbacks.
   useEffect(() => {
@@ -2711,7 +2743,7 @@ function App() {
   };
 
   const requestLogout = () => {
-    if (!window.confirm('Bạn có chắc chắn muốn đăng xuất khỏi Chat?')) return;
+    if (!window.confirm(appCopy.t('Bạn có chắc chắn muốn đăng xuất khỏi Chat?'))) return;
     setWorkspacePanel(null);
     handleLogout();
   };
@@ -3283,7 +3315,7 @@ function App() {
   });
 
   const handleLeaveGroup = async () => {
-    if (!activeChat.isGroup || !window.confirm(`Bạn có chắc muốn rời nhóm "${activeChat.name}"?`)) return;
+    if (!activeChat.isGroup || !window.confirm(appCopy.t(`Bạn có chắc muốn rời nhóm "${activeChat.name}"?`))) return;
     try {
       deletedConversationIdsRef.current.add(activeChat.id);
       const actorId = currentUser?.id || currentUser?.uid;
@@ -3341,11 +3373,12 @@ function App() {
     const activeChat = targetRoom;
     if (!targetRoom?.id || targetRoom.isChatbot || isDeletingConversation) return;
     const kind = activeChat.isGroup ? 'nhóm' : 'cuộc trò chuyện';
+    const localizedKind = appCopy.t(kind);
     const deleteEffect = usesManagementData
-      ? `${kind} sẽ được gỡ khỏi Chatmgt và phiên realtime Tinode của bạn.`
-      : `Toàn bộ tin nhắn và tệp trong ${kind} này sẽ bị xóa khỏi tài khoản của bạn và không thể khôi phục.`;
+      ? `${localizedKind} ${appCopy.t('sẽ được gỡ khỏi Chatmgt và phiên realtime Tinode của bạn.')}`
+      : `${appCopy.t('Toàn bộ tin nhắn và tệp trong')} ${localizedKind} ${appCopy.t('này sẽ bị xóa khỏi tài khoản của bạn và không thể khôi phục.')}`;
     const confirmed = window.confirm(
-      `Bạn có chắc muốn xóa ${kind} "${activeChat.name}"?\n\n${deleteEffect}`,
+      `${appCopy.t('Bạn có chắc muốn xóa')} ${localizedKind} "${activeChat.name}"?\n\n${deleteEffect}`,
     );
     if (!confirmed) return;
 
@@ -3698,7 +3731,7 @@ function App() {
 
   const handleRemoveGroupMember = async (member) => {
     if (removingMemberId || !canRemoveGroupMember(activeChat, directoryAccounts, currentUser, member)) return;
-    if (!window.confirm(`Bạn có chắc muốn xóa ${member.name} khỏi nhóm "${activeChat.name}"?`)) return;
+    if (!window.confirm(appCopy.t(`Bạn có chắc muốn xóa ${member.name} khỏi nhóm "${activeChat.name}"?`))) return;
 
     setRemovingMemberId(member.id);
     setChatError('');
@@ -4724,7 +4757,7 @@ function App() {
           key={`mention-${index}`}
           className="message-mention"
           onClick={() => openProfileFor(mention)}
-          title={`Xem thông tin ${mention?.name || part}`}
+          title={`${appCopy.t('Xem thông tin')} ${mention?.name || part}`}
         >
           {part}
         </button>,
@@ -4785,7 +4818,7 @@ function App() {
   const mediaGroups = filteredMediaEntries.reduce((groups, entry) => {
     const key = mediaDateKey(entry.timestamp);
     const current = groups.at(-1);
-    if (!current || current.key !== key) groups.push({ key, label: formatMediaDateHeading(entry.timestamp), entries: [entry] });
+    if (!current || current.key !== key) groups.push({ key, label: formatMediaDateHeading(entry.timestamp, appCopy.locale), entries: [entry] });
     else current.entries.push(entry);
     return groups;
   }, []);
@@ -4801,7 +4834,7 @@ function App() {
 
   const friendshipRecords = collectFriendshipRecords(conversations, managementViewerId);
   const companySearchResults = companyDirectoryContacts(workspaceResults, currentUser);
-  const companyDirectoryTitle = companyDirectoryHeading(currentUser);
+  const companyDirectoryTitle = appCopy.t(companyDirectoryHeading(currentUser));
   const friendNotifications = friendshipRecords.filter(record => (
     record.event.recipientId === managementViewerId
     || (record.event.requesterId === managementViewerId && Boolean(record.response))
@@ -4811,22 +4844,22 @@ function App() {
     if (!messageSearchQuery.trim()) return true;
     return `${message.text || ''} ${message.senderName || ''}`.toLowerCase().includes(messageSearchQuery.toLowerCase());
   });
-  const hasDatedMessages = visibleMessages.some(message => formatMessageDateLabel(message, displayClock));
+  const hasDatedMessages = visibleMessages.some(message => formatMessageDateLabel(message, displayClock, appCopy.locale));
 
   const deliveryStatusIcon = message => {
     if (message.failed || message.deliveryStatus === 'failed') {
-      return <i className="fa-solid fa-circle-exclamation read-status failed" title="Gửi thất bại"></i>;
+      return <i className="fa-solid fa-circle-exclamation read-status failed" title={appCopy.t('Gửi thất bại')}></i>;
     }
     if (message.pending || message.deliveryStatus === 'sending') {
-      return <i className="fa-solid fa-spinner fa-spin read-status pending" title="Đang gửi"></i>;
+      return <i className="fa-solid fa-spinner fa-spin read-status pending" title={appCopy.t('Đang gửi')}></i>;
     }
     if (message.deliveryStatus === 'read') {
-      return <i className="fa-solid fa-check-double read-status read" title="Đã xem"></i>;
+      return <i className="fa-solid fa-check-double read-status read" title={appCopy.t('Đã xem')}></i>;
     }
     if (message.deliveryStatus === 'received') {
-      return <i className="fa-solid fa-check-double read-status received" title="Đã nhận"></i>;
+      return <i className="fa-solid fa-check-double read-status received" title={appCopy.t('Đã nhận')}></i>;
     }
-    return <i className="fa-solid fa-check read-status sent" title="Đã gửi"></i>;
+    return <i className="fa-solid fa-check read-status sent" title={appCopy.t('Đã gửi')}></i>;
   };
   const activeRemoteTyping = chatMode === 'tinode' && !activeChat.isChatbot
     ? typingByTopic[tinodeTopicName(activeChat)]
@@ -4836,7 +4869,7 @@ function App() {
     && !tinodeClient.authenticated;
 
   if (!isLoggedIn) {
-    return <Login onLoginSuccess={handleLoginSuccess} initialNotice={loginNotice} />;
+    return <Login copy={appCopy} onLoginSuccess={handleLoginSuccess} initialNotice={appCopy.t(loginNotice)} />;
   }
 
   if (!pinLockReady) {
@@ -4888,9 +4921,9 @@ function App() {
         <div className="forced-logout-backdrop" role="presentation">
           <section className="forced-logout-modal" role="alertdialog" aria-modal="true" aria-labelledby="forced-logout-title">
             <div className="forced-logout-icon"><i className="fa-solid fa-user-lock"></i></div>
-            <h2 id="forced-logout-title">Bạn bị buộc phải đăng xuất</h2>
-            <p>Quản trị viên đã kết thúc phiên đăng nhập của bạn.</p>
-            <p className="forced-logout-countdown">Hệ thống sẽ tự động đưa bạn về trang đăng nhập sau <strong>{forcedLogoutSeconds} giây</strong>.</p>
+            <h2 id="forced-logout-title">{appCopy.t('Bạn bị buộc phải đăng xuất')}</h2>
+            <p>{appCopy.t('Quản trị viên đã kết thúc phiên đăng nhập của bạn.')}</p>
+            <p className="forced-logout-countdown">{appCopy.t('Hệ thống sẽ tự động đưa bạn về trang đăng nhập sau')} <strong>{forcedLogoutSeconds} {appCopy.t('giây')}</strong>.</p>
             <button type="button" className="btn-primary forced-logout-confirm" onClick={handleForcedLogout}>OK</button>
           </section>
         </div>
@@ -4898,14 +4931,15 @@ function App() {
       {(chatError || showTinodeConnectionNotice) && (
         <div className={`chat-system-banner ${chatError ? 'error' : 'info'}`} role="status">
           <i className={`fa-solid ${chatError ? 'fa-triangle-exclamation' : 'fa-circle-info'}`}></i>
-          <span>{chatError || 'Đang kết nối Tinode...'}</span>
-          {chatError && <button type="button" onClick={() => setChatError('')} aria-label="Đóng thông báo"><i className="fa-solid fa-xmark"></i></button>}
+          <span>{chatError ? appCopy.t(chatError) : appCopy.t('Đang kết nối Tinode...')}</span>
+          {chatError && <button type="button" onClick={() => setChatError('')} aria-label={appCopy.t('Đóng thông báo')}><i className="fa-solid fa-xmark"></i></button>}
         </div>
       )}
       {CALLS_ENABLED && activeCall && (
         <CallOverlay
           key={activeCall.id}
           call={activeCall}
+          copy={appCopy}
           onClose={handleCallClosed}
           onError={handleCallError}
         />
@@ -4913,6 +4947,7 @@ function App() {
       {imageViewer && (
         <ImageViewer
           source={imageViewer.source}
+          copy={appCopy}
           onClose={() => setImageViewer(null)}
         />
       )}
@@ -4925,9 +4960,9 @@ function App() {
           type="button"
           className="sidebar-collapse-toggle"
           onClick={() => setIsPrimarySidebarCollapsed(previous => !previous)}
-          aria-label={isPrimarySidebarCollapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'}
+          aria-label={appCopy.t(isPrimarySidebarCollapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng')}
           aria-pressed={isPrimarySidebarCollapsed}
-          title={isPrimarySidebarCollapsed ? 'Mở rộng menu' : 'Thu gọn menu'}
+          title={appCopy.t(isPrimarySidebarCollapsed ? 'Mở rộng menu' : 'Thu gọn menu')}
         >
           <i className={`fa-solid ${isPrimarySidebarCollapsed ? 'fa-angle-right' : 'fa-angle-left'}`}></i>
         </button>
@@ -4962,7 +4997,7 @@ function App() {
         </nav>
 
         <div className="primary-footer">
-          <div className="user-profile" data-tooltip="Hồ sơ cá nhân" role="button" tabIndex="0" onClick={() => openWorkspacePanel('profile')} onKeyDown={(event) => {
+          <div className="user-profile" data-tooltip={appCopy.t('Hồ sơ cá nhân')} role="button" tabIndex="0" onClick={() => openWorkspacePanel('profile')} onKeyDown={(event) => {
             if (event.key === 'Enter' || event.key === ' ') openWorkspacePanel('profile');
           }}>
             <SafeAvatar src={currentUser?.avatar} name={currentUser?.name} className="user-avatar-img" />
@@ -4982,8 +5017,8 @@ function App() {
       <aside className="sidebar-secondary">
         <div className="sidebar-header">
           <div className="header-top">
-            <h2>Cuộc trò chuyện</h2>
-            <button className="btn-action" title="Tạo nhóm mới" onClick={() => setIsCreateGroupOpen(true)}>
+          <h2>{appCopy.t('Cuộc trò chuyện')}</h2>
+            <button className="btn-action" title={appCopy.t('Tạo nhóm mới')} onClick={() => setIsCreateGroupOpen(true)}>
               <i className="fa-solid fa-plus"></i>
             </button>
           </div>
@@ -4991,7 +5026,7 @@ function App() {
             <i className="fa-solid fa-magnifying-glass search-icon"></i>
             <input
               type="text"
-              placeholder="Tìm kiếm"
+              placeholder={appCopy.t('Tìm kiếm')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -5020,24 +5055,24 @@ function App() {
                 <div className="conv-details">
                   <div className="conv-header">
                     <span className="conv-name">
-                      {room.pinned && <i className="fa-solid fa-thumbtack conv-pinned-icon" title="Đã ghim" aria-label="Đã ghim"></i>}
+                      {room.pinned && <i className="fa-solid fa-thumbtack conv-pinned-icon" title={appCopy.t('Đã ghim')} aria-label={appCopy.t('Đã ghim')}></i>}
                       {room.name}
-                      {roomCategory && <span className={`conversation-category-tag category-${roomCategory.id}`} style={{ '--category-color': roomCategory.color }} title={`Phân loại: ${roomCategory.label}`}>{roomCategory.label}</span>}
+                      {roomCategory && <span className={`conversation-category-tag category-${roomCategory.id}`} style={{ '--category-color': roomCategory.color }} title={`${appCopy.t('Phân loại')}: ${appCopy.t(roomCategory.label)}`}>{appCopy.t(roomCategory.label)}</span>}
                     </span>
                     <span
                       className={hasDraft ? 'conv-draft-status' : 'conv-time'}
-                      title={hasDraft ? undefined : formatFullMessageDateTime(room, room.time)}
+                      title={hasDraft ? undefined : formatFullMessageDateTime(room, room.time, appCopy.locale)}
                     >
-                      {hasDraft ? 'Chưa gửi' : formatConversationListTime(room, displayClock)}
+                      {hasDraft ? appCopy.t('Chưa gửi') : formatConversationListTime(room, displayClock, appCopy.locale)}
                     </span>
                   </div>
                   <div className="conv-message">
-                    <span className={`conv-last-msg ${hasDraft ? 'draft' : ''}`}>{hasDraft ? draft : room.lastMsg}</span>
+                    <span className={`conv-last-msg ${hasDraft ? 'draft' : ''}`}>{hasDraft ? draft : localizedConversationPreview(room, appCopy, directoryAccounts, viewerId)}</span>
                     {roomMuted && (
                       <i
                         className="fa-solid fa-bell-slash conv-muted-icon"
-                        title={notificationMuteLabel(room.notificationMutedUntil, notificationClock)}
-                        aria-label="Đã tắt thông báo"
+                        title={notificationMuteLabel(room.notificationMutedUntil, notificationClock, appCopy.locale)}
+                        aria-label={appCopy.t('Đã tắt thông báo')}
                       ></i>
                     )}
                     {room.badge > 0 && <span className="conv-badge">{room.badge}</span>}
@@ -5048,8 +5083,8 @@ function App() {
                     <button
                       type="button"
                       className="conv-menu-button"
-                      title="Tùy chọn hội thoại"
-                      aria-label={`Tùy chọn hội thoại ${room.name}`}
+                      title={appCopy.t('Tùy chọn hội thoại')}
+                      aria-label={`${appCopy.t('Tùy chọn hội thoại')} ${room.name}`}
                       aria-expanded={conversationMenu?.roomId === id}
                       onClick={event => openConversationMenu(event, room)}
                     >
@@ -5075,33 +5110,33 @@ function App() {
             onClick={event => event.stopPropagation()}
           >
             <button type="button" role="menuitem" onClick={() => handleConversationMenuAction('pin', menuRoom)}>
-              <i className="fa-solid fa-thumbtack"></i>{menuRoom.pinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại'}
+              <i className="fa-solid fa-thumbtack"></i>{appCopy.t(menuRoom.pinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại')}
             </button>
             <button type="button" role="menuitem" onClick={() => handleConversationMenuAction('unread', menuRoom)}>
-              <i className="fa-regular fa-envelope"></i>Đánh dấu chưa đọc
+              <i className="fa-regular fa-envelope"></i>{appCopy.t('Đánh dấu chưa đọc')}
             </button>
             <button type="button" role="menuitem" onClick={() => handleConversationMenuAction('mute', menuRoom)}>
-              <i className={`fa-regular ${menuRoomMuted ? 'fa-bell' : 'fa-bell-slash'}`}></i>{menuRoomMuted ? 'Bật thông báo' : 'Tắt thông báo'}
+              <i className={`fa-regular ${menuRoomMuted ? 'fa-bell' : 'fa-bell-slash'}`}></i>{appCopy.t(menuRoomMuted ? 'Bật thông báo' : 'Tắt thông báo')}
             </button>
             <button type="button" role="menuitem" className="conversation-category-trigger" aria-expanded={conversationCategoryMenuOpen} onClick={() => setConversationCategoryMenuOpen(previous => !previous)}>
-              <i className="fa-solid fa-tags"></i><span>Phân loại</span><i className="fa-solid fa-chevron-right submenu-arrow"></i>
+              <i className="fa-solid fa-tags"></i><span>{appCopy.t('Phân loại')}</span><i className="fa-solid fa-chevron-right submenu-arrow"></i>
             </button>
             {conversationCategoryMenuOpen && (
-              <div className="conversation-category-submenu" role="menu" aria-label="Phân loại cuộc trò chuyện">
+              <div className="conversation-category-submenu" role="menu" aria-label={`${appCopy.t('Phân loại')} ${appCopy.t('Cuộc trò chuyện').toLowerCase()}`}>
                 {menuCategory && (
                   <button type="button" role="menuitem" className="conversation-category-option clear" onClick={() => handleConversationMenuAction('category', menuRoom, '')}>
-                    <i className="fa-solid fa-xmark"></i><span>Bỏ phân loại</span>
+                    <i className="fa-solid fa-xmark"></i><span>{appCopy.t('Bỏ phân loại')}</span>
                   </button>
                 )}
                 {CONVERSATION_CATEGORY_OPTIONS.map(category => (
                   <button type="button" role="menuitem" className={`conversation-category-option ${menuCategory?.id === category.id ? 'selected' : ''}`} key={category.id} onClick={() => handleConversationMenuAction('category', menuRoom, category.id)}>
-                    <span className="conversation-category-dot" style={{ backgroundColor: category.color }}></span><span>{category.label}</span>{menuCategory?.id === category.id && <i className="fa-solid fa-check category-check"></i>}
+                  <span className="conversation-category-dot" style={{ backgroundColor: category.color }}></span><span>{appCopy.t(category.label)}</span>{menuCategory?.id === category.id && <i className="fa-solid fa-check category-check"></i>}
                   </button>
                 ))}
               </div>
             )}
             <button type="button" role="menuitem" className="danger" onClick={() => handleConversationMenuAction('delete', menuRoom)}>
-              <i className="fa-regular fa-trash-can"></i>Xóa hội thoại
+              <i className="fa-regular fa-trash-can"></i>{appCopy.t('Xóa hội thoại')}
             </button>
           </div>
         );
@@ -5128,7 +5163,7 @@ function App() {
             </div>
           </div>
           <div className="chat-header-actions">
-            <button className="btn-header-action" title="Tìm kiếm" onClick={() => openWorkspacePanel('search')}>
+            <button className="btn-header-action" title={appCopy.t('Tìm kiếm')} onClick={() => openWorkspacePanel('search')}>
               <i className="fa-solid fa-magnifying-glass"></i>
             </button>
             {CALLS_ENABLED && (
@@ -5136,7 +5171,7 @@ function App() {
                 <button
                   type="button"
                   className="btn-header-action"
-                  title={callActionCapability.available ? 'Gọi thoại' : callActionCapability.reason}
+                  title={callActionCapability.available ? appCopy.t('Gọi thoại') : appCopy.t(callActionCapability.reason)}
                   onClick={() => handleStartCall(true)}
                   disabled={!callActionCapability.available}
                 >
@@ -5145,7 +5180,7 @@ function App() {
                 <button
                   type="button"
                   className="btn-header-action"
-                  title={callActionCapability.available ? 'Gọi video' : callActionCapability.reason}
+                  title={callActionCapability.available ? appCopy.t('Gọi video') : appCopy.t(callActionCapability.reason)}
                   onClick={() => handleStartCall(false)}
                   disabled={!callActionCapability.available}
                 >
@@ -5153,7 +5188,7 @@ function App() {
                 </button>
               </>
             )}
-            <button className="btn-header-action" title="Thông tin nhóm" onClick={() => setIsDetailOpen(!isDetailOpen)}>
+            <button className="btn-header-action" title={appCopy.t('Thông tin nhóm')} onClick={() => setIsDetailOpen(!isDetailOpen)}>
               <i className="fa-solid fa-ellipsis-vertical"></i>
             </button>
           </div>
@@ -5161,21 +5196,21 @@ function App() {
 
         {activeChat.isChatbot && (
           <div className="chatbot-context-strip" role="status">
-            <span><i className="fa-solid fa-shield-halved"></i> AI riêng tư</span>
-            <span><i className="fa-solid fa-book-open-reader"></i> {chatbotStatus}</span>
-            <span><i className="fa-solid fa-link"></i> Trích dẫn nguồn</span>
+            <span><i className="fa-solid fa-shield-halved"></i> {appCopy.t('AI riêng tư')}</span>
+            <span><i className="fa-solid fa-book-open-reader"></i> {appCopy.t(chatbotStatus)}</span>
+            <span><i className="fa-solid fa-link"></i> {appCopy.t('Trích dẫn nguồn')}</span>
           </div>
         )}
 
         {/* Khu vực hiển thị tin nhắn */}
         <div className={`chat-messages ${activeChat.isChatbot ? 'chatbot-messages' : ''}`}>
           {!hasDatedMessages && (
-            <div className="date-divider"><span>{currentChatId === 'dieu-hanh' ? 'Hôm nay' : 'Hội thoại trực tuyến'}</span></div>
+            <div className="date-divider"><span>{appCopy.t(currentChatId === 'dieu-hanh' ? 'Hôm nay' : 'Hội thoại trực tuyến')}</span></div>
           )}
 
           {visibleMessages.map((msg, messageIndex) => {
-            const dateLabel = formatMessageDateLabel(msg, displayClock);
-            const previousDateLabel = formatMessageDateLabel(visibleMessages[messageIndex - 1], displayClock);
+            const dateLabel = formatMessageDateLabel(msg, displayClock, appCopy.locale);
+            const previousDateLabel = formatMessageDateLabel(visibleMessages[messageIndex - 1], displayClock, appCopy.locale);
             const showDateDivider = Boolean(dateLabel && dateLabel !== previousDateLabel);
             if (msg.type === 'system') {
               return (
@@ -5183,8 +5218,8 @@ function App() {
                   {showDateDivider && <div className="date-divider"><span>{dateLabel}</span></div>}
                   <div className="group-system-message">
                     <i className={`fa-solid ${msg.action === 'member_left' ? 'fa-arrow-right-from-bracket' : msg.action === 'member_removed' ? 'fa-user-minus' : msg.action === 'group_created' ? 'fa-people-group' : 'fa-user-plus'}`}></i>
-                    <span>{msg.text}</span>
-                    <time>{formatMessageTime(msg, msg.time)}</time>
+                    <span>{localizedSystemText(msg, appCopy, directoryAccounts, viewerId)}</span>
+                    <time>{formatMessageTime(msg, msg.time, appCopy.locale)}</time>
                   </div>
                 </React.Fragment>
               );
@@ -5199,9 +5234,9 @@ function App() {
             const messageState = messageActions[messageActionKey(activeChat.id, msg.id)] || {};
             const reactions = { ...(msg.reactions || {}), ...(messageState.reactions || {}) };
             const attachmentFile = msg.file || (msg.type === 'image' && msg.image ? {
-              name: 'Hình ảnh',
+              name: appCopy.t('Hình ảnh'),
               mime: 'image/*',
-              size: 'Hình ảnh',
+              size: appCopy.t('Hình ảnh'),
               url: msg.image,
             } : null);
             const attachmentIcon = attachmentIconClass(attachmentFile, msg.type);
@@ -5214,14 +5249,14 @@ function App() {
               : attachmentFile;
             const isAudioMessage = isAudioAttachment(attachmentFile, msg.type) || Number(msg.voiceDuration) > 0;
             const attachmentStatus = msg.pending
-              ? 'Đang tải lên...'
-              : attachmentFile?.url ? 'Đã có trên Cloud' : 'Có sẵn trên máy';
+              ? appCopy.t('Đang tải lên...')
+              : attachmentFile?.url ? appCopy.t('Đã có trên Cloud') : appCopy.t('Có sẵn trên máy');
             return (
               <React.Fragment key={msg.id}>
                 {showDateDivider && <div className="date-divider"><span>{dateLabel}</span></div>}
                 <div className={`message-item ${isOutgoing ? 'outgoing' : 'incoming'} ${activeChat.isChatbot ? 'chatbot-message-item' : ''}`}>
                 {!isOutgoing && (
-                  <button type="button" className="message-avatar message-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))} title={`Xem thông tin ${msg.senderName || 'thành viên'}`}>
+                  <button type="button" className="message-avatar message-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))} title={`${appCopy.t('Xem thông tin')} ${msg.senderName || appCopy.t('thành viên')}`}>
                     <SafeAvatar src={msg.avatar || ''} name={msg.senderName} />
                   </button>
                 )}
@@ -5237,23 +5272,23 @@ function App() {
                           <i className={`fa-solid ${msg.call.audioOnly ? 'fa-phone' : 'fa-video'}`}></i>
                         </span>
                         <span className="call-history-copy">
-                          <strong>{msg.text}</strong>
-                          <span>{msg.call.audioOnly ? 'Cuộc gọi thoại' : 'Cuộc gọi video'}</span>
+                          <strong>{appCopy.t(msg.text)}</strong>
+                          <span>{appCopy.t(msg.call.audioOnly ? 'Cuộc gọi thoại' : 'Cuộc gọi video')}</span>
                         </span>
                         <span className="message-time">
-                          {formatMessageTime(msg, msg.time)} {isOutgoing && deliveryStatusIcon(msg)}
+                          {formatMessageTime(msg, msg.time, appCopy.locale)} {isOutgoing && deliveryStatusIcon(msg)}
                         </span>
                         {CALLS_ENABLED && (
                           <button
                             type="button"
                             className="call-history-redial"
-                            title={callActionCapability.available ? 'Gọi lại' : callActionCapability.reason}
-                            aria-label={msg.call.audioOnly ? 'Gọi lại bằng cuộc gọi thoại' : 'Gọi lại bằng cuộc gọi video'}
+                            title={callActionCapability.available ? appCopy.t('Gọi lại') : appCopy.t(callActionCapability.reason)}
+                            aria-label={appCopy.t(msg.call.audioOnly ? 'Gọi lại bằng cuộc gọi thoại' : 'Gọi lại bằng cuộc gọi video')}
                             onClick={() => handleStartCall(msg.call.audioOnly)}
                             disabled={!callActionCapability.available}
                           >
                             <i className={`fa-solid ${msg.call.audioOnly ? 'fa-phone' : 'fa-video'}`}></i>
-                            Gọi lại
+                            {appCopy.t('Gọi lại')}
                           </button>
                         )}
                       </div>
@@ -5261,14 +5296,14 @@ function App() {
                     {/* Tin nhắn chữ thường */}
                     {msg.type === "text" && msg.text && (
                       <div className={`message-bubble ${activeChat.isChatbot && !isOutgoing ? 'chatbot-answer-bubble' : ''}`}>
-                        <MessageReplyPreview reply={msg.replyTo} />
+                        <MessageReplyPreview reply={msg.replyTo} copy={appCopy} />
                         {activeChat.isChatbot && !isOutgoing && (
                           <div className="chatbot-answer-label">
-                            <span><i className="fa-solid fa-sparkles"></i>{msg.grounded ? 'Tóm tắt từ tài liệu' : msg.isWelcome ? 'ViChat AI' : 'Phản hồi AI'}</span>
-                            {msg.grounded && <small>Đã đối chiếu nguồn</small>}
+                            <span><i className="fa-solid fa-sparkles"></i>{msg.grounded ? appCopy.t('Tóm tắt từ tài liệu') : msg.isWelcome ? 'ViChat AI' : appCopy.t('Phản hồi AI')}</span>
+                            {msg.grounded && <small>{appCopy.t('Đã đối chiếu nguồn')}</small>}
                           </div>
                         )}
-                        <p>{renderMessageText(msg.text, msg.mentions)}</p>
+                        <p>{renderMessageText(msg.isWelcome ? appCopy.t(msg.text) : msg.text, msg.mentions)}</p>
                         {Object.entries(reactions).filter(([, count]) => count > 0).length > 0 && (
                           <div className="message-reactions">
                             {Object.entries(reactions).filter(([, count]) => count > 0).map(([emoji, count]) => <span key={emoji}>{emoji} {count}</span>)}
@@ -5276,7 +5311,7 @@ function App() {
                         )}
                         {Array.isArray(msg.sources) && msg.sources.length > 0 && (
                           <div className="chatbot-sources">
-                            <strong><i className="fa-solid fa-book-bookmark"></i>Nguồn tham khảo</strong>
+                            <strong><i className="fa-solid fa-book-bookmark"></i>{appCopy.t('Nguồn tham khảo')}</strong>
                             {msg.sources.map((source, index) => (
                               <div className="chatbot-source-card" key={`${source.document_id || source.title}-${index}`}>
                                 <span className="chatbot-source-index">{index + 1}</span>
@@ -5289,7 +5324,7 @@ function App() {
                           </div>
                         )}
                         <span className="message-time">
-                          {messageState.marked && <i className="fa-solid fa-star message-marked" title="Đã đánh dấu"></i>} {formatMessageTime(msg, msg.time)} {isOutgoing && deliveryStatusIcon(msg)}
+                          {messageState.marked && <i className="fa-solid fa-star message-marked" title={appCopy.t('Đã đánh dấu')}></i>} {formatMessageTime(msg, msg.time, appCopy.locale)} {isOutgoing && deliveryStatusIcon(msg)}
                         </span>
                       </div>
                     )}
@@ -5298,45 +5333,47 @@ function App() {
                     {/* Image attachments are visual-only; do not render their filename. */}
                     {isAudioMessage ? (
                       <div className="attachment-message-stack">
-                        <MessageReplyPreview reply={msg.replyTo} />
+                        <MessageReplyPreview reply={msg.replyTo} copy={appCopy} />
                         <AudioMessagePlayer
                           file={attachmentFile}
                           duration={msg.voiceDuration || attachmentFile?.voiceDuration}
-                          time={formatMessageTime(msg, msg.time)}
+                          time={formatMessageTime(msg, msg.time, appCopy.locale)}
                           delivery={isOutgoing && deliveryStatusIcon(msg)}
                           pending={msg.pending}
                           failed={msg.failed}
+                          copy={appCopy}
                         />
                       </div>
                     ) : imagePreviewSource ? (
                       <div className="attachment-message-stack">
-                        <MessageReplyPreview reply={msg.replyTo} />
+                        <MessageReplyPreview reply={msg.replyTo} copy={appCopy} />
                         <div className={`message-bubble image-bubble ${msg.pending ? 'pending' : ''} ${msg.failed ? 'failed' : ''}`}>
                         <button
                           type="button"
                           className="image-preview-button"
-                          title="Bấm để xem ảnh"
+                          title={appCopy.t('Bấm để xem ảnh')}
                           onClick={() => openImageViewer(imagePreviewFile)}
                         >
                           <TinodeImagePreview
                             source={imagePreviewSource}
-                              alt="Ảnh đính kèm"
+                              alt={appCopy.t('Ảnh đính kèm')}
+                            copy={appCopy}
                           />
-                          <span className="image-view-hint"><i className="fa-solid fa-expand"></i>Xem ảnh</span>
+                          <span className="image-view-hint"><i className="fa-solid fa-expand"></i>{appCopy.t('Xem ảnh')}</span>
                         </button>
                         <div className="image-bubble-footer">
-                          <span className="message-time">{formatMessageTime(msg, msg.time)} {isOutgoing && deliveryStatusIcon(msg)}</span>
+                          <span className="message-time">{formatMessageTime(msg, msg.time, appCopy.locale)} {isOutgoing && deliveryStatusIcon(msg)}</span>
                         </div>
                         </div>
                       </div>
                     ) : attachmentFile && (
                       <div className="attachment-message-stack">
-                        <MessageReplyPreview reply={msg.replyTo} />
+                        <MessageReplyPreview reply={msg.replyTo} copy={appCopy} />
                         <div className={`message-bubble file-bubble ${msg.type} ${attachmentTone} ${attachmentFile.ext || ''} ${msg.pending ? 'pending' : ''} ${msg.failed ? 'failed' : ''}`}>
                         <button
                           type="button"
                           className="file-card-main"
-                          title={attachmentFile.url ? 'Tải file' : undefined}
+                          title={attachmentFile.url ? appCopy.t('Tải file') : undefined}
                           disabled={!attachmentFile.url}
                           onClick={() => handleFileDownload(attachmentFile)}
                         >
@@ -5353,18 +5390,18 @@ function App() {
                         </button>
                         <span className="file-card-side">
                           <span className="file-actions">
-                            <button type="button" className="file-action" title="Mở file" aria-label="Mở file" disabled={!attachmentFile.url} onClick={() => handleFileOpen(attachmentFile)}><i className="fa-regular fa-folder-open"></i></button>
-                            <button type="button" className="file-action" title="Tải xuống" aria-label="Tải xuống" disabled={!attachmentFile.url} onClick={() => handleFileDownload(attachmentFile)}><i className="fa-solid fa-download"></i></button>
+                            <button type="button" className="file-action" title={appCopy.t('Mở file')} aria-label={appCopy.t('Mở file')} disabled={!attachmentFile.url} onClick={() => handleFileOpen(attachmentFile)}><i className="fa-regular fa-folder-open"></i></button>
+                            <button type="button" className="file-action" title={appCopy.t('Tải xuống')} aria-label={appCopy.t('Tải xuống')} disabled={!attachmentFile.url} onClick={() => handleFileDownload(attachmentFile)}><i className="fa-solid fa-download"></i></button>
                           </span>
                           <span className="message-time">
-                            {formatMessageTime(msg, msg.time)} {isOutgoing && deliveryStatusIcon(msg)}
+                            {formatMessageTime(msg, msg.time, appCopy.locale)} {isOutgoing && deliveryStatusIcon(msg)}
                           </span>
                         </span>
                         </div>
                       </div>
                     )}
                     </div>
-                    <button type="button" className="message-more-action" onClick={event => { event.stopPropagation(); openMessageMenu(event, msg); }} aria-label="Tùy chọn tin nhắn"><i className="fa-solid fa-ellipsis"></i></button>
+                    <button type="button" className="message-more-action" onClick={event => { event.stopPropagation(); openMessageMenu(event, msg); }} aria-label={appCopy.t('Tùy chọn tin nhắn')}><i className="fa-solid fa-ellipsis"></i></button>
                   </div>
                 </div>
                 </div>
@@ -5373,17 +5410,17 @@ function App() {
           })}
 
           {activeChat.isChatbot && visibleMessages.length <= 1 && (
-            <section className="chatbot-starter" aria-label="Gợi ý câu hỏi cho ViChat AI">
+            <section className="chatbot-starter" aria-label={appCopy.t('Gợi ý câu hỏi cho ViChat AI')}>
               <div className="chatbot-starter-heading">
-                <span className="chatbot-starter-eyebrow">Bắt đầu nhanh</span>
-                <h3>Bạn muốn tìm gì trong tri thức doanh nghiệp?</h3>
-                <p>ViChat AI chỉ dùng nội dung được tìm thấy và luôn cho bạn biết nguồn tham khảo.</p>
+                <span className="chatbot-starter-eyebrow">{appCopy.t('Bắt đầu nhanh')}</span>
+                <h3>{appCopy.t('Bạn muốn tìm gì trong tri thức doanh nghiệp?')}</h3>
+                <p>{appCopy.t('ViChat AI chỉ dùng nội dung được tìm thấy và luôn cho bạn biết nguồn tham khảo.')}</p>
               </div>
               <div className="chatbot-starter-grid">
                 {CHATBOT_STARTER_PROMPTS.map(item => (
-                  <button type="button" key={item.title} onClick={() => handleSendMessage(item.prompt)} disabled={isTyping || realtimeMessagingPending}>
+                  <button type="button" key={item.title} onClick={() => handleSendMessage(appCopy.t(item.prompt))} disabled={isTyping || realtimeMessagingPending}>
                     <span className="chatbot-starter-icon"><i className={`fa-solid ${item.icon}`}></i></span>
-                    <span><strong>{item.title}</strong><small>{item.prompt}</small></span>
+                    <span><strong>{appCopy.t(item.title)}</strong><small>{appCopy.t(item.prompt)}</small></span>
                     <i className="fa-solid fa-arrow-up-right-from-square"></i>
                   </button>
                 ))}
@@ -5398,18 +5435,18 @@ function App() {
             const marked = messageActions[messageActionKey(activeChat.id, menuMessage.id)]?.marked;
             return (
               <div className="message-context-menu" style={{ left: messageMenu.left, top: messageMenu.top }} onClick={event => event.stopPropagation()}>
-                {!menuMessage.recalled && <button type="button" onClick={() => handleMessageAction('reply', menuMessage)}><i className="fa-solid fa-reply"></i>Trả lời tin nhắn</button>}
-                <button type="button" onClick={() => handleMessageAction('copy', menuMessage)}><i className="fa-regular fa-copy"></i>Copy tin nhắn</button>
-                <button type="button" onClick={() => handleMessageAction('mark', menuMessage)}><i className={`fa-${marked ? 'solid' : 'regular'} fa-star`}></i>{marked ? 'Bỏ đánh dấu' : 'Đánh dấu tin nhắn'}</button>
-                {!activeChat.isChatbot && isManagementConversationId(activeChat.managementId || activeChat.id) && <button type="button" onClick={() => handleMessageAction('create-task', menuMessage)}><i className="fa-solid fa-list-check"></i>Giao việc từ tin nhắn</button>}
-                <button type="button" onClick={() => handleMessageAction('detail', menuMessage)}><i className="fa-solid fa-circle-info"></i>Xem chi tiết</button>
-                <button type="button" onClick={() => handleMessageAction('share', menuMessage)}><i className="fa-solid fa-share"></i>Chia sẻ tin nhắn</button>
-                <div className="message-reaction-row" aria-label="Thêm biểu cảm">
+                {!menuMessage.recalled && <button type="button" onClick={() => handleMessageAction('reply', menuMessage)}><i className="fa-solid fa-reply"></i>{appCopy.t('Trả lời tin nhắn')}</button>}
+                <button type="button" onClick={() => handleMessageAction('copy', menuMessage)}><i className="fa-regular fa-copy"></i>{appCopy.t('Copy tin nhắn')}</button>
+                <button type="button" onClick={() => handleMessageAction('mark', menuMessage)}><i className={`fa-${marked ? 'solid' : 'regular'} fa-star`}></i>{appCopy.t(marked ? 'Bỏ đánh dấu' : 'Đánh dấu tin nhắn')}</button>
+                {!activeChat.isChatbot && isManagementConversationId(activeChat.managementId || activeChat.id) && <button type="button" onClick={() => handleMessageAction('create-task', menuMessage)}><i className="fa-solid fa-list-check"></i>{appCopy.t('Giao việc từ tin nhắn')}</button>}
+                <button type="button" onClick={() => handleMessageAction('detail', menuMessage)}><i className="fa-solid fa-circle-info"></i>{appCopy.t('Xem chi tiết')}</button>
+                <button type="button" onClick={() => handleMessageAction('share', menuMessage)}><i className="fa-solid fa-share"></i>{appCopy.t('Chia sẻ tin nhắn')}</button>
+                <div className="message-reaction-row" aria-label={appCopy.t('Thêm biểu cảm')}>
                   {['👍', '❤️', '😂', '😮', '😢'].map(emoji => <button type="button" key={emoji} onClick={() => handleMessageAction('reaction', menuMessage, emoji)}>{emoji}</button>)}
                 </div>
                  {canRecallMessage && <>
-                   <button type="button" className="danger" onClick={() => handleMessageAction('recall-self', menuMessage)}><i className="fa-solid fa-eye-slash"></i>Thu hồi phía tôi</button>
-                   <button type="button" className="danger" onClick={() => handleMessageAction('recall-all', menuMessage)}><i className="fa-solid fa-rotate-left"></i>Thu hồi tất cả</button>
+                   <button type="button" className="danger" onClick={() => handleMessageAction('recall-self', menuMessage)}><i className="fa-solid fa-eye-slash"></i>{appCopy.t('Thu hồi phía tôi')}</button>
+                   <button type="button" className="danger" onClick={() => handleMessageAction('recall-all', menuMessage)}><i className="fa-solid fa-rotate-left"></i>{appCopy.t('Thu hồi tất cả')}</button>
                  </>}
               </div>
             );
@@ -5420,7 +5457,7 @@ function App() {
               <div className="message-avatar"><SafeAvatar src={activeChat.members?.find(member => identitiesOverlap(member, { id: activeRemoteTyping.uid }))?.avatar || ''} name={activeRemoteTyping.name} /></div>
               <div className="message-content-wrapper">
                 <span className="sender-name">{activeRemoteTyping.name}</span>
-                <div className="message-bubble chatbot-typing-bubble" aria-label={`${activeRemoteTyping.name} đang nhập`}>
+                <div className="message-bubble chatbot-typing-bubble" aria-label={`${activeRemoteTyping.name} ${appCopy.t('đang nhập')}`}>
                   <span></span><span></span><span></span>
                 </div>
               </div>
@@ -5432,7 +5469,7 @@ function App() {
               <div className="message-avatar"><img src={CHATBOT_ACCOUNT.avatar} alt={CHATBOT_ACCOUNT.name} /></div>
               <div className="message-content-wrapper">
                 <span className="sender-name">{CHATBOT_ACCOUNT.name}</span>
-                <div className="message-bubble chatbot-typing-bubble" aria-label="Trợ lý đang trả lời">
+                <div className="message-bubble chatbot-typing-bubble" aria-label={appCopy.t('Trợ lý đang trả lời')}>
                   <span></span><span></span><span></span>
                 </div>
               </div>
@@ -5446,21 +5483,21 @@ function App() {
         {realtimeMessagingPending && (
           <div className="management-realtime-notice" role="status">
             <i className="fa-solid fa-database"></i>
-            <span>Dữ liệu Chatmgt vẫn sẵn sàng, nhưng kết nối realtime Tinode đang tạm gián đoạn.</span>
+            <span>{appCopy.t('Dữ liệu Chatmgt vẫn sẵn sàng, nhưng kết nối realtime Tinode đang tạm gián đoạn.')}</span>
           </div>
         )}
         <div className="chat-main-input">
           {replyingTo && (
             <div className="replying-banner">
               <div className="replying-banner-copy">
-                <strong>Đang trả lời {replyingTo.senderName}</strong>
-                <MessageReplyPreview reply={replyingTo} />
+                <strong>{appCopy.t('Đang trả lời')} {replyingTo.senderName}</strong>
+                <MessageReplyPreview reply={replyingTo} copy={appCopy} />
               </div>
-              <button type="button" onClick={() => setReplyingTo(null)} aria-label="Hủy trả lời"><i className="fa-solid fa-xmark"></i></button>
+              <button type="button" onClick={() => setReplyingTo(null)} aria-label={appCopy.t('Hủy trả lời')}><i className="fa-solid fa-xmark"></i></button>
             </div>
           )}
           <div className="input-actions-left">
-            <button className="btn-input-action image-input-action" title={activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều ảnh'} aria-label="Gửi nhiều ảnh" onClick={handleImageAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice}>
+            <button className="btn-input-action image-input-action" title={appCopy.t(activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều ảnh')} aria-label={appCopy.t('Gửi nhiều ảnh')} onClick={handleImageAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice}>
               <i className="fa-regular fa-image"></i>
             </button>
             <input
@@ -5471,7 +5508,7 @@ function App() {
               style={{ display: "none" }}
               onChange={handleImageChange}
             />
-            <button className="btn-input-action file-input-action" title={activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều file'} aria-label="Gửi nhiều file" onClick={handleAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice}>
+            <button className="btn-input-action file-input-action" title={appCopy.t(activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều file')} aria-label={appCopy.t('Gửi nhiều file')} onClick={handleAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice}>
               <i className="fa-solid fa-paperclip"></i>
             </button>
             <input
@@ -5481,19 +5518,19 @@ function App() {
               style={{ display: "none" }}
               onChange={handleFileChange}
             />
-            <button type="button" className="btn-input-action" title="Biểu cảm" aria-label="Mở biểu cảm" aria-expanded={showEmojiPicker} onClick={() => setShowEmojiPicker(prev => !prev)} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice}>
+            <button type="button" className="btn-input-action" title={appCopy.t('Biểu cảm')} aria-label={appCopy.t('Mở biểu cảm')} aria-expanded={showEmojiPicker} onClick={() => setShowEmojiPicker(prev => !prev)} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice}>
               <i className="fa-regular fa-smile"></i>
             </button>
             {showEmojiPicker && (
-              <div className="emoji-picker" role="listbox" aria-label="Chọn biểu cảm">
+              <div className="emoji-picker" role="listbox" aria-label={appCopy.t('Chọn biểu cảm')}>
                 {['😀', '😂', '😍', '👍', '👏', '🎉', '🙏', '🔥', '✅', '❤️'].map(emoji => <button type="button" role="option" key={emoji} aria-label={emoji} onMouseDown={event => event.preventDefault()} onClick={() => insertEmoji(emoji)}>{emoji}</button>)}
               </div>
             )}
             <button
               type="button"
               className={`btn-input-action voice-input-action ${isRecordingVoice ? 'recording' : ''}`}
-              title={isRecordingVoice ? 'Dừng và gửi tin nhắn thoại' : 'Ghi tin nhắn thoại'}
-              aria-label={isRecordingVoice ? 'Dừng và gửi tin nhắn thoại' : 'Ghi tin nhắn thoại'}
+              title={appCopy.t(isRecordingVoice ? 'Dừng và gửi tin nhắn thoại' : 'Ghi tin nhắn thoại')}
+              aria-label={appCopy.t(isRecordingVoice ? 'Dừng và gửi tin nhắn thoại' : 'Ghi tin nhắn thoại')}
               onClick={() => (isRecordingVoice ? stopVoiceRecording(false) : startVoiceRecording())}
               disabled={realtimeMessagingPending || activeChat.isChatbot}
             >
@@ -5504,9 +5541,9 @@ function App() {
             {isRecordingVoice ? (
               <div className="voice-recording-bar" role="status">
                 <span className="voice-recording-pulse"><i className="fa-solid fa-microphone"></i></span>
-                <span className="voice-recording-copy"><strong>Đang ghi âm</strong><small>{formatAudioDuration(voiceRecordingSeconds)}</small></span>
-                <span className="voice-recording-hint">Bấm nút đỏ để gửi</span>
-                <button type="button" className="voice-recording-cancel" onClick={() => stopVoiceRecording(true)}>Hủy</button>
+                <span className="voice-recording-copy"><strong>{appCopy.t('Đang ghi âm')}</strong><small>{formatAudioDuration(voiceRecordingSeconds)}</small></span>
+                <span className="voice-recording-hint">{appCopy.t('Bấm nút đỏ để gửi')}</span>
+                <button type="button" className="voice-recording-cancel" onClick={() => stopVoiceRecording(true)}>{appCopy.t('Hủy')}</button>
               </div>
             ) : (
               <>
@@ -5516,11 +5553,11 @@ function App() {
                 id="message-mention-picker"
                 className="mention-picker"
                 role="listbox"
-                aria-label="Chọn thành viên để nhắc đến"
+                aria-label={appCopy.t('Chọn thành viên để nhắc đến')}
               >
                 {mentionOptions.length > 0 ? mentionOptions.map((candidate, index) => {
                   const candidateKey = candidate.id || candidate.tinodeUid || candidate.username || candidate.name;
-                  const candidateName = candidate.isAll ? 'Báo cho cả nhóm' : mentionCandidateText(candidate);
+                  const candidateName = candidate.isAll ? appCopy.t('Báo cho cả nhóm') : mentionCandidateText(candidate);
                   return (
                     <button
                       type="button"
@@ -5544,7 +5581,7 @@ function App() {
                     </button>
                   );
                 }) : (
-                  <div className="mention-empty">Không tìm thấy thành viên phù hợp</div>
+                  <div className="mention-empty">{appCopy.t('Không tìm thấy thành viên phù hợp')}</div>
                 )}
               </div>
                 )}
@@ -5560,7 +5597,7 @@ function App() {
               aria-controls={mentionContext && activeChat.isGroup ? 'message-mention-picker' : undefined}
               aria-expanded={Boolean(mentionContext && activeChat.isGroup)}
               aria-activedescendant={mentionOptions.length > 0 ? `message-mention-option-${mentionActiveIndex}` : undefined}
-              placeholder={realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : activeChat.isChatbot ? 'Hỏi ViChat AI về quy trình, chính sách, tài liệu...' : 'Nhập tin nhắn...'}
+              placeholder={appCopy.t(realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : activeChat.isChatbot ? 'Hỏi ViChat AI về quy trình, chính sách, tài liệu...' : 'Nhập tin nhắn...')}
               value={inputText}
               disabled={realtimeMessagingPending || (activeChat.isChatbot && isTyping)}
               onChange={handleMessageInputChange}
@@ -5577,16 +5614,16 @@ function App() {
               </>
             )}
           </div>
-          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || isRecordingVoice || (activeChat.isChatbot && isTyping)} onClick={() => handleSendMessage()}>{activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi'}</button>
+          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || isRecordingVoice || (activeChat.isChatbot && isTyping)} onClick={() => handleSendMessage()}>{appCopy.t(activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi')}</button>
         </div>
-        {activeChat.isChatbot && <p className="chatbot-composer-note"><i className="fa-solid fa-circle-info"></i> ViChat AI có thể chưa bao quát mọi tài liệu. Hãy kiểm tra nguồn trước khi ra quyết định.</p>}
+        {activeChat.isChatbot && <p className="chatbot-composer-note"><i className="fa-solid fa-circle-info"></i> {appCopy.t('ViChat AI có thể chưa bao quát mọi tài liệu. Hãy kiểm tra nguồn trước khi ra quyết định.')}</p>}
         {messageDetails && (
           <div className="message-details-modal" role="dialog">
             <div className="message-details-card">
-              <div className="message-details-header"><strong>Chi tiết tin nhắn</strong><button type="button" onClick={() => setMessageDetails(null)}><i className="fa-solid fa-xmark"></i></button></div>
-              <p><strong>Người gửi:</strong> {messageDetails.senderName || (messageDetails.sender === 'outgoing' ? 'Bạn' : 'Thành viên')}</p>
-              <p><strong>Thời gian:</strong> {messageDetails.createdAt ? new Date(messageDetails.createdAt).toLocaleString('vi-VN') : messageDetails.time}</p>
-              <p><strong>Nội dung:</strong> {messageDetails.text || messageDetails.file?.name || 'Tệp đính kèm'}</p>
+              <div className="message-details-header"><strong>{appCopy.t('Chi tiết tin nhắn')}</strong><button type="button" onClick={() => setMessageDetails(null)} aria-label={appCopy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button></div>
+              <p><strong>{appCopy.t('Người gửi')}:</strong> {messageDetails.senderName || (messageDetails.sender === 'outgoing' ? appCopy.t('Bạn') : appCopy.t('Thành viên'))}</p>
+              <p><strong>{appCopy.t('Thời gian')}:</strong> {messageDetails.createdAt ? new Date(messageDetails.createdAt).toLocaleString(appCopy.locale) : messageDetails.time}</p>
+              <p><strong>{appCopy.t('Nội dung')}:</strong> {messageDetails.text || messageDetails.file?.name || appCopy.t('Tệp đính kèm')}</p>
             </div>
           </div>
         )}
@@ -5596,20 +5633,20 @@ function App() {
           }}>
             <section className="profile-contact-card" role="dialog" aria-modal="true" aria-labelledby="profile-contact-title">
               <div className="message-details-header">
-                <strong>Thông tin cá nhân</strong>
-                <button type="button" onClick={() => setProfileContact(null)} aria-label="Đóng thông tin cá nhân"><i className="fa-solid fa-xmark"></i></button>
+                <strong>{appCopy.t('Thông tin cá nhân')}</strong>
+                <button type="button" onClick={() => setProfileContact(null)} aria-label={appCopy.t('Đóng thông tin cá nhân')}><i className="fa-solid fa-xmark"></i></button>
               </div>
               <div className="profile-contact-hero">
                 <SafeAvatar src={profileContact.avatar} name={profileContact.name} className="profile-contact-avatar" />
                 <h2 id="profile-contact-title">{profileContact.name}</h2>
-                <span className={`profile-contact-status ${profileContact.online ? '' : 'offline'}`}><i className="fa-solid fa-circle"></i>{profileContact.online ? 'Đang hoạt động' : 'Ngoại tuyến'}</span>
+                <span className={`profile-contact-status ${profileContact.online ? '' : 'offline'}`}><i className="fa-solid fa-circle"></i>{appCopy.t(profileContact.online ? 'Đang hoạt động' : 'Ngoại tuyến')}</span>
               </div>
               <div className="profile-contact-details">
-                {profileContact.username && <div className="profile-contact-row"><i className="fa-solid fa-at"></i><span><small>Tài khoản</small><strong>@{profileContact.username.replace(/^@+/, '').split('@')[0]}</strong></span></div>}
-                {profileContact.title && <div className="profile-contact-row"><i className="fa-solid fa-briefcase"></i><span><small>Chức vụ</small><strong>{profileContact.title}</strong></span></div>}
-                {profileContact.department && <div className="profile-contact-row"><i className="fa-solid fa-building"></i><span><small>Phòng ban</small><strong>{profileContact.department}</strong></span></div>}
+                {profileContact.username && <div className="profile-contact-row"><i className="fa-solid fa-at"></i><span><small>{appCopy.t('Tài khoản')}</small><strong>@{profileContact.username.replace(/^@+/, '').split('@')[0]}</strong></span></div>}
+                {profileContact.title && <div className="profile-contact-row"><i className="fa-solid fa-briefcase"></i><span><small>{appCopy.t('Chức vụ')}</small><strong>{profileContact.title}</strong></span></div>}
+                {profileContact.department && <div className="profile-contact-row"><i className="fa-solid fa-building"></i><span><small>{appCopy.t('Phòng ban')}</small><strong>{profileContact.department}</strong></span></div>}
                 {profileContact.email && <div className="profile-contact-row"><i className="fa-regular fa-envelope"></i><span><small>Email</small><strong>{profileContact.email}</strong></span></div>}
-                {profileContact.role && <div className="profile-contact-row"><i className="fa-solid fa-shield-halved"></i><span><small>Vai trò</small><strong>{profileContact.role}</strong></span></div>}
+                {profileContact.role && <div className="profile-contact-row"><i className="fa-solid fa-shield-halved"></i><span><small>{appCopy.t('Vai trò')}</small><strong>{profileContact.role}</strong></span></div>}
               </div>
               {!profileContact.isCurrentAccount && profileContact.id && (
                 <button type="button" className="btn-primary profile-contact-chat-button" onClick={() => {
@@ -5617,7 +5654,7 @@ function App() {
                   setProfileContact(null);
                   void handleStartDirectChat(contact);
                 }}>
-                  <i className="fa-solid fa-comment-dots"></i>Nhắn tin
+                  <i className="fa-solid fa-comment-dots"></i>{appCopy.t('Nhắn tin')}
                 </button>
               )}
             </section>
@@ -5626,7 +5663,7 @@ function App() {
         {shareMessage && (
           <div className="message-details-modal" role="dialog" onClick={() => setShareMessage(null)}>
             <div className="message-share-card" onClick={event => event.stopPropagation()}>
-              <div className="message-details-header"><strong>Chia sẻ tin nhắn tới</strong><button type="button" onClick={() => setShareMessage(null)}><i className="fa-solid fa-xmark"></i></button></div>
+              <div className="message-details-header"><strong>{appCopy.t('Chia sẻ tin nhắn tới')}</strong><button type="button" onClick={() => setShareMessage(null)} aria-label={appCopy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button></div>
               <div className="share-conversation-list">
                 {Object.values(conversations).filter(room => room.id !== activeChat.id && !room.isChatbot).map(room => (
                   <button type="button" key={room.id} onClick={() => shareMessageTo(room)}><ConversationAvatar room={room} /><span>{room.name}</span></button>
@@ -5642,8 +5679,8 @@ function App() {
          ========================================================================== */}
       <aside className={`sidebar-detail ${isDetailOpen ? '' : 'collapsed'}`}>
         <div className="detail-header">
-          <h3>{activeChat.isGroup ? "Thông tin nhóm" : "Thông tin cá nhân"}</h3>
-          <button className="btn-close-detail" title="Đóng" onClick={() => setIsDetailOpen(false)}>
+          <h3>{appCopy.t(activeChat.isGroup ? 'Thông tin nhóm' : 'Thông tin cá nhân')}</h3>
+          <button className="btn-close-detail" title={appCopy.t('Đóng')} onClick={() => setIsDetailOpen(false)}>
             <i className="fa-solid fa-xmark"></i>
           </button>
         </div>
@@ -5659,14 +5696,14 @@ function App() {
 
           {activeChat.isGroup && (
             <div className="detail-section">
-              <h4 className="section-title">Quản trị viên</h4>
+              <h4 className="section-title">{appCopy.t('Quản trị viên')}</h4>
               <span className="admin-name">{activeAdminName}</span>
             </div>
           )}
 
           <div className="detail-section members-section">
             <div className="members-section-heading">
-              <h4 className="section-title">{activeChat.isGroup ? `Thành viên (${activeChat.members.length})` : "Thông tin cá nhân"}</h4>
+              <h4 className="section-title">{activeChat.isGroup ? `${appCopy.t('Thành viên')} (${activeChat.members.length})` : appCopy.t('Thông tin cá nhân')}</h4>
             </div>
             <div className="members-list">
               {activeChat.members.map((member, idx) => (
@@ -5685,8 +5722,8 @@ function App() {
                       className="btn-remove-member"
                       onClick={() => handleRemoveGroupMember(member)}
                       disabled={Boolean(removingMemberId)}
-                      title={`Xóa ${member.name} khỏi nhóm`}
-                      aria-label={`Xóa ${member.name} khỏi nhóm`}
+                      title={`${appCopy.t('Xóa')} ${member.name} ${appCopy.t('khỏi nhóm')}`}
+                      aria-label={`${appCopy.t('Xóa')} ${member.name} ${appCopy.t('khỏi nhóm')}`}
                     >
                       <i className={`fa-solid ${removingMemberId === member.id ? 'fa-spinner fa-spin' : 'fa-user-minus'}`}></i>
                     </button>
@@ -5699,10 +5736,10 @@ function App() {
           {!activeChat.isChatbot && activeChat.id !== 'empty' && (
             <section className="detail-section shared-media-section">
               <div className="shared-media-heading">
-                <h4 className="section-title">Ảnh, file và liên kết</h4>
-                <button type="button" className="detail-link-button" onClick={() => openMediaBrowser(mediaBrowserTab)}>Xem tất cả</button>
+                <h4 className="section-title">{appCopy.t('Ảnh, file và liên kết')}</h4>
+                <button type="button" className="detail-link-button" onClick={() => openMediaBrowser(mediaBrowserTab)}>{appCopy.t('Xem tất cả')}</button>
               </div>
-              <div className="detail-media-tabs" role="tablist" aria-label="Nội dung dùng chung">
+              <div className="detail-media-tabs" role="tablist" aria-label={appCopy.t('Nội dung dùng chung')}>
                 {MEDIA_BROWSER_TABS.map(tab => (
                   <button
                     type="button"
@@ -5712,22 +5749,22 @@ function App() {
                     key={tab.id}
                     onClick={() => setMediaBrowserTab(tab.id)}
                   >
-                    <i className={`fa-solid ${tab.icon}`}></i><span>{tab.label}</span><strong>{mediaCounts[tab.id]}</strong>
+                    <i className={`fa-solid ${tab.icon}`}></i><span>{appCopy.t(tab.label)}</span><strong>{mediaCounts[tab.id]}</strong>
                   </button>
                 ))}
               </div>
               {mediaCounts[mediaBrowserTab] === 0 ? (
-                <div className="detail-media-empty">Chưa có nội dung trong mục này.</div>
+                <div className="detail-media-empty">{appCopy.t('Chưa có nội dung trong mục này.')}</div>
               ) : (
                 <div className="detail-media-preview-grid">
                   {activeMediaEntries.filter(entry => entry.kind === mediaBrowserTab).slice(0, 4).map(entry => (
                     <button type="button" className={`detail-media-preview ${entry.kind}`} key={entry.id} onClick={() => handleMediaEntryOpen(entry)} title={entry.attachment?.name || entry.url}>
                       {entry.kind === 'images' && isImageAttachment(entry.attachment, entry.message?.type) && entry.attachment?.url ? (
-                        <TinodeImagePreview source={entry.attachment.url} alt={entry.attachment.name || 'Ảnh'} className="detail-media-thumbnail" />
+                        <TinodeImagePreview source={entry.attachment.url} alt={entry.attachment.name || appCopy.t('Ảnh')} copy={appCopy} className="detail-media-thumbnail" />
                       ) : (
                         <span className="detail-media-icon"><i className={`fa-solid ${entry.kind === 'links' ? 'fa-link' : attachmentIconClass(entry.attachment, entry.message?.type)}`}></i></span>
                       )}
-                      <span className="detail-media-preview-label">{entry.kind === 'links' ? entry.url : entry.attachment?.name || (entry.kind === 'images' ? 'Ảnh/Video' : 'File')}</span>
+                      <span className="detail-media-preview-label">{entry.kind === 'links' ? entry.url : entry.attachment?.name || (entry.kind === 'images' ? appCopy.t('Ảnh/Video') : appCopy.t('File'))}</span>
                     </button>
                   ))}
                 </div>
@@ -5741,7 +5778,7 @@ function App() {
                 <div className="action-label">
                   <i className={`fa-regular ${activeChatMuted ? 'fa-bell-slash' : 'fa-bell'}`}></i>
                   <span className="action-label-copy">
-                    <strong>Tắt thông báo</strong>
+                    <strong>{appCopy.t('Tắt thông báo')}</strong>
                     {activeChatMuteLabel && <small>{activeChatMuteLabel}</small>}
                   </span>
                 </div>
@@ -5760,13 +5797,13 @@ function App() {
             {activeChat.isGroup && (
               <button className="btn-leave-group" onClick={handleLeaveGroup}>
                 <i className="fa-solid fa-trash-can"></i>
-                <span>Rời khỏi nhóm</span>
+                <span>{appCopy.t('Rời khỏi nhóm')}</span>
               </button>
             )}
             {!activeChat.isChatbot && activeChat.id !== 'empty' && (
               <button className="btn-delete-conversation" onClick={handleDeleteConversation} disabled={isDeletingConversation}>
                 <i className={`fa-solid ${isDeletingConversation ? 'fa-spinner fa-spin' : 'fa-trash-can'}`}></i>
-                <span>{isDeletingConversation ? 'Đang xóa...' : 'Xóa cuộc trò chuyện'}</span>
+                <span>{isDeletingConversation ? appCopy.t('Đang xóa...') : appCopy.t('Xóa cuộc trò chuyện')}</span>
               </button>
             )}
           </div>
@@ -5780,16 +5817,16 @@ function App() {
           <section className="media-browser-panel" role="dialog" aria-modal="true" aria-labelledby="media-browser-title">
             <div className="media-browser-header">
               <div>
-                <span className="media-browser-eyebrow">Nội dung dùng chung</span>
+                <span className="media-browser-eyebrow">{appCopy.t('Nội dung dùng chung')}</span>
                 <h2 id="media-browser-title">{activeChat.name}</h2>
               </div>
-              <button type="button" className="btn-close-detail" onClick={() => setMediaBrowserOpen(false)} aria-label="Đóng"><i className="fa-solid fa-xmark"></i></button>
+              <button type="button" className="btn-close-detail" onClick={() => setMediaBrowserOpen(false)} aria-label={appCopy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button>
             </div>
 
-            <div className="media-browser-tabs" role="tablist" aria-label="Loại nội dung">
+            <div className="media-browser-tabs" role="tablist" aria-label={appCopy.t('Loại nội dung')}>
               {MEDIA_BROWSER_TABS.map(tab => (
                 <button type="button" role="tab" aria-selected={mediaBrowserTab === tab.id} className={mediaBrowserTab === tab.id ? 'selected' : ''} key={tab.id} onClick={() => setMediaBrowserTab(tab.id)}>
-                  <i className={`fa-solid ${tab.icon}`}></i><span>{tab.label}</span><strong>{mediaCounts[tab.id]}</strong>
+                  <i className={`fa-solid ${tab.icon}`}></i><span>{appCopy.t(tab.label)}</span><strong>{mediaCounts[tab.id]}</strong>
                 </button>
               ))}
             </div>
@@ -5797,33 +5834,33 @@ function App() {
             <div className="media-filter-grid">
               <label className="media-filter-search">
                 <i className="fa-solid fa-magnifying-glass"></i>
-                <input value={mediaSearchQuery} onChange={event => setMediaSearchQuery(event.target.value)} placeholder="Tìm theo tên, nội dung hoặc liên kết..." />
+                <input value={mediaSearchQuery} onChange={event => setMediaSearchQuery(event.target.value)} placeholder={appCopy.t('Tìm theo tên, nội dung hoặc liên kết...')} />
               </label>
               <label className="media-filter-field">
-                <span>Người gửi</span>
+                <span>{appCopy.t('Người gửi')}</span>
                 <select value={mediaSenderFilter} onChange={event => setMediaSenderFilter(event.target.value)}>
-                  <option value="all">Tất cả người gửi</option>
+                  <option value="all">{appCopy.t('Tất cả người gửi')}</option>
                   {mediaSenderOptions.map(option => <option value={option.id} key={option.id}>{option.name}</option>)}
                 </select>
               </label>
               <label className="media-filter-field">
-                <span>Thời gian</span>
+                <span>{appCopy.t('Thời gian')}</span>
                 <select value={mediaDateFilter} onChange={event => setMediaDateFilter(event.target.value)}>
-                  {MEDIA_DATE_FILTER_OPTIONS.map(option => <option value={option.id} key={option.id}>{option.label}</option>)}
+                  {MEDIA_DATE_FILTER_OPTIONS.map(option => <option value={option.id} key={option.id}>{appCopy.t(option.label)}</option>)}
                 </select>
               </label>
             </div>
             {mediaDateFilter === 'custom' && (
               <div className="media-custom-date-row">
-                <label className="media-filter-field"><span>Từ ngày</span><input type="date" value={mediaFromDate} onChange={event => setMediaFromDate(event.target.value)} /></label>
-                <label className="media-filter-field"><span>Đến ngày</span><input type="date" value={mediaToDate} onChange={event => setMediaToDate(event.target.value)} /></label>
+                <label className="media-filter-field"><span>{appCopy.t('Từ ngày')}</span><input type="date" value={mediaFromDate} onChange={event => setMediaFromDate(event.target.value)} /></label>
+                <label className="media-filter-field"><span>{appCopy.t('Đến ngày')}</span><input type="date" value={mediaToDate} onChange={event => setMediaToDate(event.target.value)} /></label>
               </div>
             )}
 
-            <div className="media-browser-summary"><span>{filteredMediaEntries.length} mục</span><span>Nhóm theo ngày gửi</span></div>
+            <div className="media-browser-summary"><span>{filteredMediaEntries.length} {appCopy.t('mục')}</span><span>{appCopy.t('Nhóm theo ngày gửi')}</span></div>
             <div className="media-browser-results">
               {mediaGroups.length === 0 ? (
-                <div className="workspace-empty media-browser-empty"><i className="fa-regular fa-folder-open"></i><span>Không có nội dung phù hợp với bộ lọc.</span></div>
+                <div className="workspace-empty media-browser-empty"><i className="fa-regular fa-folder-open"></i><span>{appCopy.t('Không có nội dung phù hợp với bộ lọc.')}</span></div>
               ) : mediaGroups.map(group => (
                 <section className="media-date-group" key={group.key}>
                   <div className="media-date-heading"><strong>{group.label}</strong><span>{group.entries.length}</span></div>
@@ -5832,20 +5869,20 @@ function App() {
                       <article className={`media-result-card ${entry.kind}`} key={entry.id}>
                         <button type="button" className="media-result-main" onClick={() => handleMediaEntryOpen(entry)}>
                           {entry.kind === 'images' && isImageAttachment(entry.attachment, entry.message?.type) && entry.attachment?.url ? (
-                            <TinodeImagePreview source={entry.attachment.url} alt={entry.attachment.name || 'Ảnh'} className="media-result-thumbnail" />
+                            <TinodeImagePreview source={entry.attachment.url} alt={entry.attachment.name || appCopy.t('Ảnh')} copy={appCopy} className="media-result-thumbnail" />
                           ) : (
                             <span className="media-result-icon"><i className={`fa-solid ${entry.kind === 'links' ? 'fa-link' : attachmentIconClass(entry.attachment, entry.message?.type)}`}></i></span>
                           )}
                           <span className="media-result-copy">
-                            <strong>{entry.kind === 'links' ? entry.url : entry.attachment?.name || (entry.kind === 'images' ? 'Ảnh/Video' : 'File đính kèm')}</strong>
-                            <small>{entry.senderName} · {entry.timestamp ? formatMediaDateHeading(entry.timestamp) : 'Chưa rõ ngày'}</small>
+                            <strong>{entry.kind === 'links' ? entry.url : entry.attachment?.name || (entry.kind === 'images' ? appCopy.t('Ảnh/Video') : appCopy.t('File đính kèm'))}</strong>
+                            <small>{entry.senderName} · {entry.timestamp ? formatMediaDateHeading(entry.timestamp, appCopy.locale) : appCopy.t('Chưa rõ ngày')}</small>
                             {entry.kind === 'files' && <small>{attachmentSizeLabel(entry.attachment)}</small>}
                           </span>
                         </button>
                         {entry.kind === 'files' && (
                           <span className="media-result-actions">
-                            <button type="button" title="Mở file" aria-label="Mở file" disabled={!entry.attachment?.url} onClick={() => handleFileOpen(entry.attachment)}><i className="fa-regular fa-folder-open"></i></button>
-                            <button type="button" title="Tải xuống" aria-label="Tải xuống" disabled={!entry.attachment?.url} onClick={() => handleFileDownload(entry.attachment)}><i className="fa-solid fa-download"></i></button>
+                            <button type="button" title={appCopy.t('Mở file')} aria-label={appCopy.t('Mở file')} disabled={!entry.attachment?.url} onClick={() => handleFileOpen(entry.attachment)}><i className="fa-regular fa-folder-open"></i></button>
+                            <button type="button" title={appCopy.t('Tải xuống')} aria-label={appCopy.t('Tải xuống')} disabled={!entry.attachment?.url} onClick={() => handleFileDownload(entry.attachment)}><i className="fa-solid fa-download"></i></button>
                           </span>
                         )}
                       </article>
@@ -5865,16 +5902,16 @@ function App() {
           <section className={`workspace-panel ${workspacePanel === 'enterprise' ? 'enterprise-shell-panel' : ''}`} role="dialog" aria-modal="true">
             <div className="workspace-panel-header">
               <div>
-                <h2>{workspacePanel === 'profile' ? 'Hồ sơ cá nhân' : workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'enterprise' ? appCopy.work : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : appCopy.settings}</h2>
+                <h2>{appCopy.t(workspacePanel === 'profile' ? 'Hồ sơ cá nhân' : workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'enterprise' ? appCopy.work : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : appCopy.settings)}</h2>
               </div>
               <div className="workspace-panel-header-actions">
                 {workspacePanel === 'profile' && (
                   <button type="button" className="workspace-logout-button" onClick={requestLogout}>
                     <i className="fa-solid fa-arrow-right-from-bracket"></i>
-                    <span>Đăng xuất</span>
+                    <span>{appCopy.t('Đăng xuất')}</span>
                   </button>
                 )}
-                <button type="button" className="btn-close-detail" onClick={() => setWorkspacePanel(null)} aria-label="Đóng"><i className="fa-solid fa-xmark"></i></button>
+                <button type="button" className="btn-close-detail" onClick={() => setWorkspacePanel(null)} aria-label={appCopy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button>
               </div>
             </div>
 
@@ -5882,6 +5919,7 @@ function App() {
               <EnterpriseWorkspace
                 user={currentUser}
                 accounts={directoryAccounts}
+                copy={appCopy}
                 taskSeed={enterpriseTaskSeed}
                 onTaskSeedConsumed={() => setEnterpriseTaskSeed(null)}
                 onError={setChatError}
@@ -5893,28 +5931,28 @@ function App() {
                 <div className="profile-hero">
                   <div className="profile-avatar-editor">
                     <SafeAvatar src={profileAccount.avatar} name={profileAccount.name} className="profile-avatar-large" />
-                    <label className={`profile-avatar-edit-button ${isUpdatingProfileAvatar ? 'loading' : ''}`} title="Đổi ảnh đại diện">
+                    <label className={`profile-avatar-edit-button ${isUpdatingProfileAvatar ? 'loading' : ''}`} title={appCopy.t('Đổi ảnh đại diện')}>
                       <i className={`fa-solid ${isUpdatingProfileAvatar ? 'fa-spinner fa-spin' : 'fa-camera'}`}></i>
                       <input type="file" accept="image/*" onChange={handleProfileAvatarChange} disabled={isUpdatingProfileAvatar} />
                     </label>
                   </div>
-                  <h3>{profileAccount.name || 'Tài khoản hiện tại'}</h3>
-                  <span className={`profile-status ${isCurrentUserOnline ? '' : 'offline'}`}><i className="fa-solid fa-circle"></i> {isCurrentUserOnline ? 'Đang hoạt động' : 'Ngoại tuyến'}</span>
+                  <h3>{profileAccount.name || appCopy.t('Tài khoản hiện tại')}</h3>
+                  <span className={`profile-status ${isCurrentUserOnline ? '' : 'offline'}`}><i className="fa-solid fa-circle"></i> {appCopy.t(isCurrentUserOnline ? 'Đang hoạt động' : 'Ngoại tuyến')}</span>
                 </div>
                 <div className="profile-details profile-readonly-details">
-                  <div className="profile-detail-row"><i className="fa-solid fa-at"></i><div><small>Username</small><strong>{profileAccount.username || 'Chưa cập nhật'}</strong></div></div>
-                  <div className="profile-detail-row"><i className="fa-solid fa-shield-halved"></i><div><small>Vai trò</small><strong>{profileAccount.role || 'Thành viên'}</strong></div></div>
+                  <div className="profile-detail-row"><i className="fa-solid fa-at"></i><div><small>Username</small><strong>{profileAccount.username || appCopy.t('Chưa cập nhật')}</strong></div></div>
+                  <div className="profile-detail-row"><i className="fa-solid fa-shield-halved"></i><div><small>{appCopy.t('Vai trò')}</small><strong>{profileAccount.role || appCopy.t('Thành viên')}</strong></div></div>
                 </div>
                 <form className="profile-edit-form" onSubmit={handleProfileSave}>
-                  <label><span>Họ và tên</span><input value={profileForm.name} onChange={event => setProfileForm(previous => ({ ...previous, name: event.target.value }))} maxLength="255" required /></label>
-                  <label><span>Email</span><input type="email" value={profileForm.email} onChange={event => setProfileForm(previous => ({ ...previous, email: event.target.value }))} maxLength="255" /></label>
-                  <label><span>Chức vụ</span><input value={profileForm.title} onChange={event => setProfileForm(previous => ({ ...previous, title: event.target.value }))} maxLength="255" /></label>
-                  <label><span>Phòng ban</span><input value={profileForm.department} onChange={event => setProfileForm(previous => ({ ...previous, department: event.target.value }))} maxLength="255" /></label>
-                  {accountProfileReadOnly && <div className="profile-save-notice"><i className="fa-solid fa-building-shield"></i>Thông tin sẽ được lưu qua UpGO Account và đồng bộ lại cho các thiết bị.</div>}
-                  {profileNotice && <div className="profile-save-notice"><i className="fa-solid fa-circle-check"></i>{profileNotice}</div>}
+                  <label><span>{appCopy.t('Họ và tên')}</span><input value={profileForm.name} onChange={event => setProfileForm(previous => ({ ...previous, name: event.target.value }))} maxLength="255" required /></label>
+                  <label><span>{appCopy.t('Email')}</span><input type="email" value={profileForm.email} onChange={event => setProfileForm(previous => ({ ...previous, email: event.target.value }))} maxLength="255" /></label>
+                  <label><span>{appCopy.t('Chức vụ')}</span><input value={profileForm.title} onChange={event => setProfileForm(previous => ({ ...previous, title: event.target.value }))} maxLength="255" /></label>
+                  <label><span>{appCopy.t('Phòng ban')}</span><input value={profileForm.department} onChange={event => setProfileForm(previous => ({ ...previous, department: event.target.value }))} maxLength="255" /></label>
+                  {accountProfileReadOnly && <div className="profile-save-notice"><i className="fa-solid fa-building-shield"></i>{appCopy.t('Thông tin sẽ được lưu qua UpGO Account và đồng bộ lại cho các thiết bị.')}</div>}
+                  {profileNotice && <div className="profile-save-notice"><i className="fa-solid fa-circle-check"></i>{appCopy.t(profileNotice)}</div>}
                   <button type="submit" className="btn-primary profile-save-button" disabled={isSavingProfile}>
                     <i className={`fa-solid ${isSavingProfile ? 'fa-spinner fa-spin' : 'fa-floppy-disk'}`}></i>
-                    {isSavingProfile ? 'Đang lưu...' : 'Lưu hồ sơ'}
+                    {isSavingProfile ? appCopy.t('Đang lưu...') : appCopy.t('Lưu hồ sơ')}
                   </button>
                 </form>
               </div>
@@ -5924,10 +5962,10 @@ function App() {
               <>
                 <div className="workspace-search-row">
                   <i className="fa-solid fa-magnifying-glass"></i>
-                  <input value={workspaceQuery} onChange={handleWorkspaceSearch} placeholder="Tìm theo tên, email hoặc username..." autoFocus />
+                  <input value={workspaceQuery} onChange={handleWorkspaceSearch} placeholder={appCopy.t('Tìm theo tên, email hoặc username...')} autoFocus />
                 </div>
 
-                {isWorkspaceLoading && <div className="workspace-empty"><i className="fa-solid fa-spinner fa-spin"></i> Đang tìm...</div>}
+                {isWorkspaceLoading && <div className="workspace-empty"><i className="fa-solid fa-spinner fa-spin"></i> {appCopy.t('Đang tìm...')}</div>}
                 {!isWorkspaceLoading && workspaceQuery.trim().length < 2 && companyContacts.length > 0 && (
                   <div className="friend-directory">
                     <div className="workspace-section-heading">
@@ -5946,7 +5984,7 @@ function App() {
                           </button>
                           <button type="button" className="btn-friend chat" onClick={() => handleStartDirectChat(contact)}>
                             <i className="fa-solid fa-message"></i>
-                            Nhắn tin
+                            {appCopy.t('Nhắn tin')}
                           </button>
                         </div>
                       ))}
@@ -5954,13 +5992,13 @@ function App() {
                   </div>
                 )}
                 {!isWorkspaceLoading && workspaceQuery.trim().length < 2 && companyContacts.length === 0 && (
-                  <div className="workspace-empty"><i className="fa-solid fa-user-group"></i><span>Chưa có nhân viên nào khác trong công ty.</span></div>
+                  <div className="workspace-empty"><i className="fa-solid fa-user-group"></i><span>{appCopy.t('Chưa có nhân viên nào khác trong công ty.')}</span></div>
                 )}
                 {!isWorkspaceLoading && workspaceQuery.trim().length >= 2 && companySearchResults.length === 0 && (
-                  <div className="workspace-empty"><i className="fa-regular fa-address-book"></i><span>Không tìm thấy tài khoản phù hợp.</span></div>
+                  <div className="workspace-empty"><i className="fa-regular fa-address-book"></i><span>{appCopy.t('Không tìm thấy tài khoản phù hợp.')}</span></div>
                 )}
                 {workspaceQuery.trim().length >= 2 && companySearchResults.length > 0 && (
-                  <div className="workspace-section-heading search-results-heading"><strong>Kết quả tìm kiếm</strong><span>{companySearchResults.length}</span></div>
+                  <div className="workspace-section-heading search-results-heading"><strong>{appCopy.t('Kết quả tìm kiếm')}</strong><span>{companySearchResults.length}</span></div>
                 )}
                 <div className="workspace-list">
                   {companySearchResults.map(contact => (
@@ -5971,7 +6009,7 @@ function App() {
                         </button>
                         <button type="button" className="btn-friend chat" onClick={() => handleStartDirectChat(contact)}>
                           <i className="fa-solid fa-message"></i>
-                          Nhắn tin
+                          {appCopy.t('Nhắn tin')}
                         </button>
                       </div>
                   ))}
@@ -5982,24 +6020,24 @@ function App() {
             {workspacePanel === 'files' && (
               <>
 
-                {sharedFiles.length === 0 ? <div className="workspace-empty"><i className="fa-regular fa-folder-open"></i><span>Chưa có file dùng chung.</span></div> : (
+                {sharedFiles.length === 0 ? <div className="workspace-empty"><i className="fa-regular fa-folder-open"></i><span>{appCopy.t('Chưa có file dùng chung.')}</span></div> : (
                   <div className="workspace-list">
                     {sharedFiles.map(file => {
                       const sharedAttachment = file.file || (file.type === 'image' && file.image ? {
-                        name: 'Hình ảnh',
+                        name: appCopy.t('Hình ảnh'),
                         mime: 'image/*',
-                        size: 'Hình ảnh',
+                        size: appCopy.t('Hình ảnh'),
                         url: file.image,
                       } : null);
                       const sharedIcon = attachmentIconClass(sharedAttachment, file.type);
                       const sharedTone = sharedIcon.replace('fa-file-', '');
-                      const sharedStatus = sharedAttachment?.url ? 'Đã có trên Cloud' : 'Có sẵn trên máy';
+                      const sharedStatus = sharedAttachment?.url ? appCopy.t('Đã có trên Cloud') : appCopy.t('Có sẵn trên máy');
                       return (
                         <article className="workspace-file-card" key={`${file.roomId}-${file.id}`}>
                           <button type="button" className="workspace-file-main" onClick={() => { setWorkspacePanel(null); handleConversationSelect(file.roomId); }}>
                             <span className={`workspace-file-icon ${file.type} ${sharedTone} ${sharedAttachment?.ext || ''}`}><i className={`fa-solid ${sharedIcon}`}></i></span>
                             <span className="workspace-file-copy">
-                              <strong title={sharedAttachment?.name || 'Tệp đính kèm'}>{sharedAttachment?.name || (file.type === 'image' ? 'Hình ảnh' : 'Tệp đính kèm')}</strong>
+                              <strong title={sharedAttachment?.name || appCopy.t('Tệp đính kèm')}>{sharedAttachment?.name || (file.type === 'image' ? appCopy.t('Hình ảnh') : appCopy.t('Tệp đính kèm'))}</strong>
                               <span className="workspace-file-meta">
                                 <small>{file.roomName} · {attachmentSizeLabel(sharedAttachment)} · {file.time}</small>
                                 <small className="workspace-cloud-status"><i className="fa-solid fa-cloud-check" aria-hidden="true"></i>{sharedStatus}</small>
@@ -6007,8 +6045,8 @@ function App() {
                             </span>
                           </button>
                           <span className="workspace-file-actions">
-                            <button type="button" className="workspace-file-action" title="Mở file" aria-label="Mở file" disabled={!sharedAttachment?.url} onClick={() => handleFileOpen(sharedAttachment)}><i className="fa-regular fa-folder-open"></i></button>
-                            <button type="button" className="workspace-file-action" title="Tải xuống" aria-label="Tải xuống" disabled={!sharedAttachment?.url} onClick={() => handleFileDownload(sharedAttachment)}><i className="fa-solid fa-download"></i></button>
+                            <button type="button" className="workspace-file-action" title={appCopy.t('Mở file')} aria-label={appCopy.t('Mở file')} disabled={!sharedAttachment?.url} onClick={() => handleFileOpen(sharedAttachment)}><i className="fa-regular fa-folder-open"></i></button>
+                            <button type="button" className="workspace-file-action" title={appCopy.t('Tải xuống')} aria-label={appCopy.t('Tải xuống')} disabled={!sharedAttachment?.url} onClick={() => handleFileDownload(sharedAttachment)}><i className="fa-solid fa-download"></i></button>
                           </span>
                         </article>
                       );
@@ -6021,43 +6059,43 @@ function App() {
             {workspacePanel === 'notifications' && (
               <>
 
-                {friendNotice && <div className="friend-notice"><i className="fa-solid fa-circle-check"></i><span>{friendNotice}</span></div>}
+                {friendNotice && <div className="friend-notice"><i className="fa-solid fa-circle-check"></i><span>{appCopy.t(friendNotice)}</span></div>}
                 {friendNotifications.length > 0 && (
                   <div className="friend-request-list">
                     {friendNotifications.map(record => {
                       const incoming = record.event.recipientId === managementViewerId;
                       const status = record.response?.event?.action || 'pending';
                       const displayName = incoming
-                        ? (record.event.requesterName || record.message.senderName || 'Người dùng')
-                        : (record.response?.event?.responderName || record.room.name || 'Người dùng');
+                        ? (record.event.requesterName || record.message.senderName || appCopy.t('Người dùng'))
+                        : (record.response?.event?.responderName || record.room.name || appCopy.t('Người dùng'));
                       return (
                         <article className="friend-request-card" key={record.event.requestId}>
                           <SafeAvatar src={incoming ? (record.message.avatar || record.room.avatarUrl) : record.room.avatarUrl} name={displayName} className="workspace-avatar" />
                           <div className="friend-request-copy">
                             <strong>{displayName}</strong>
-                            <span>{incoming ? 'đã gửi cho bạn lời mời kết bạn.' : status === 'accepted' ? 'đã chấp nhận lời mời kết bạn.' : 'đã từ chối lời mời kết bạn.'}</span>
+                        <span>{appCopy.t(incoming ? 'đã gửi cho bạn lời mời kết bạn.' : status === 'accepted' ? 'đã chấp nhận lời mời kết bạn.' : 'đã từ chối lời mời kết bạn.')}</span>
                             {record.event.note && <small>“{record.event.note}”</small>}
-                            <time>{formatMessageTime(record.message, record.message.time)}</time>
+                            <time>{formatMessageTime(record.message, record.message.time, appCopy.locale)}</time>
                           </div>
                           {incoming && status === 'pending' ? (
                             <div className="friend-request-actions">
-                              <button type="button" className="accept" disabled={Boolean(respondingFriendRequestId)} onClick={() => handleFriendRequestResponse(record, true)}>Chấp nhận</button>
-                              <button type="button" className="reject" disabled={Boolean(respondingFriendRequestId)} onClick={() => handleFriendRequestResponse(record, false)}>Từ chối</button>
+                              <button type="button" className="accept" disabled={Boolean(respondingFriendRequestId)} onClick={() => handleFriendRequestResponse(record, true)}>{appCopy.t('Chấp nhận')}</button>
+                              <button type="button" className="reject" disabled={Boolean(respondingFriendRequestId)} onClick={() => handleFriendRequestResponse(record, false)}>{appCopy.t('Từ chối')}</button>
                             </div>
                           ) : (
-                            <span className={`friend-request-status ${status}`}>{status === 'accepted' ? 'Đã chấp nhận' : status === 'rejected' ? 'Đã từ chối' : 'Đã gửi'}</span>
+                            <span className={`friend-request-status ${status}`}>{appCopy.t(status === 'accepted' ? 'Đã chấp nhận' : status === 'rejected' ? 'Đã từ chối' : 'Đã gửi')}</span>
                           )}
                         </article>
                       );
                     })}
                   </div>
                 )}
-                {notifications.length === 0 && friendNotifications.length === 0 ? <div className="workspace-empty"><i className="fa-regular fa-bell-slash"></i><span>Không có thông báo mới.</span></div> : notifications.length > 0 && (
+                {notifications.length === 0 && friendNotifications.length === 0 ? <div className="workspace-empty"><i className="fa-regular fa-bell-slash"></i><span>{appCopy.t('Không có thông báo mới.')}</span></div> : notifications.length > 0 && (
                   <div className="workspace-list">
                     {notifications.map(room => (
                       <button type="button" className="workspace-list-item" key={room.id} onClick={() => { setWorkspacePanel(null); handleConversationSelect(room.id); }}>
                         <span className="workspace-file-icon"><i className="fa-solid fa-message"></i></span>
-                        <span className="workspace-list-copy"><strong>{room.name}</strong><small>{room.lastMsg || 'Có cập nhật mới'} · {formatConversationListTime(room, displayClock)}</small></span>
+                        <span className="workspace-list-copy"><strong>{room.name}</strong><small>{localizedConversationPreview(room, appCopy, directoryAccounts, viewerId) || appCopy.t('Có cập nhật mới')} · {formatConversationListTime(room, displayClock, appCopy.locale)}</small></span>
                         {room.badge > 0 && <span className="workspace-unread">{room.badge}</span>}
                       </button>
                     ))}
@@ -6068,10 +6106,10 @@ function App() {
 
             {workspacePanel === 'search' && (
               <>
-                <div className="workspace-search-row"><i className="fa-solid fa-magnifying-glass"></i><input value={messageSearchQuery} onChange={event => setMessageSearchQuery(event.target.value)} placeholder="Tìm nội dung hoặc người gửi..." autoFocus /></div>
-                {messageSearchQuery && <p className="workspace-hint">{visibleMessages.length} kết quả trong {activeChat.name}</p>}
+                <div className="workspace-search-row"><i className="fa-solid fa-magnifying-glass"></i><input value={messageSearchQuery} onChange={event => setMessageSearchQuery(event.target.value)} placeholder={appCopy.t('Tìm nội dung hoặc người gửi...')} autoFocus /></div>
+                {messageSearchQuery && <p className="workspace-hint">{visibleMessages.length} {appCopy.t('kết quả trong')} {activeChat.name}</p>}
                 <div className="workspace-list">
-                  {messageSearchQuery && visibleMessages.map(message => <button type="button" className="workspace-list-item" key={message.id} onClick={() => setWorkspacePanel(null)}><span className="workspace-file-icon"><i className="fa-solid fa-message"></i></span><span className="workspace-list-copy"><strong>{message.senderName || 'Bạn'}</strong><small>{message.text || message.file?.name || 'Nội dung đính kèm'} · {formatMessageTime(message, message.time)}</small></span></button>)}
+                  {messageSearchQuery && visibleMessages.map(message => <button type="button" className="workspace-list-item" key={message.id} onClick={() => setWorkspacePanel(null)}><span className="workspace-file-icon"><i className="fa-solid fa-message"></i></span><span className="workspace-list-copy"><strong>{message.senderName || appCopy.t('Bạn')}</strong><small>{message.text || message.file?.name || appCopy.t('Nội dung đính kèm')} · {formatMessageTime(message, message.time, appCopy.locale)}</small></span></button>)}
                 </div>
               </>
             )}
@@ -6112,7 +6150,7 @@ function App() {
                           ? appCopy.permissionDefault
                           : appCopy.permissionReady}
                   </small>
-                  {notificationSettingsNotice && <div className="notification-settings-notice"><i className="fa-solid fa-circle-info"></i>{notificationSettingsNotice}</div>}
+                  {notificationSettingsNotice && <div className="notification-settings-notice"><i className="fa-solid fa-circle-info"></i>{appCopy.t(notificationSettingsNotice)}</div>}
                 </section>
                 <div className="notification-sound-settings">
                   <div className="notification-sound-heading">
@@ -6218,7 +6256,7 @@ function App() {
                       onClick={() => setLanguageMenuOpen(previous => !previous)}
                     >
                       <span className="language-picker-flag" aria-hidden="true">{selectedLanguage.flag}</span>
-                      <span>{selectedLanguage.label}</span>
+                      <span>{appCopy.t(selectedLanguage.label)}</span>
                       <i className={`fa-solid ${languageMenuOpen ? 'fa-chevron-up' : 'fa-chevron-down'}`} aria-hidden="true"></i>
                     </button>
                     {languageMenuOpen && (
@@ -6236,7 +6274,7 @@ function App() {
                             }}
                           >
                             <span className="language-picker-flag" aria-hidden="true">{option.flag}</span>
-                            <span>{option.label}</span>
+                            <span>{appCopy.t(option.label)}</span>
                             {settings.language === option.id && <i className="fa-solid fa-check" aria-hidden="true"></i>}
                           </button>
                         ))}
@@ -6291,7 +6329,7 @@ function App() {
                       )}
                     </div>
                   </form>
-                  {pinSettingsNotice && <div className="pin-settings-notice" role="status"><i className="fa-solid fa-circle-info"></i>{pinSettingsNotice}</div>}
+                  {pinSettingsNotice && <div className="pin-settings-notice" role="status"><i className="fa-solid fa-circle-info"></i>{appCopy.t(pinSettingsNotice)}</div>}
                 </section>
               </div>
             )}
@@ -6312,10 +6350,10 @@ function App() {
           >
             <div className="group-modal-header">
               <div>
-                <span className="group-modal-kicker">THÔNG BÁO HỘI THOẠI</span>
-                <h2 id="notification-mute-title">Tắt thông báo</h2>
+                <span className="group-modal-kicker">{appCopy.t('THÔNG BÁO HỘI THOẠI')}</span>
+                <h2 id="notification-mute-title">{appCopy.t('Tắt thông báo')}</h2>
               </div>
-              <button type="button" className="btn-close-detail" onClick={() => setNotificationMuteDialog(null)} aria-label="Đóng" disabled={isUpdatingNotificationMute}>
+              <button type="button" className="btn-close-detail" onClick={() => setNotificationMuteDialog(null)} aria-label={appCopy.t('Đóng')} disabled={isUpdatingNotificationMute}>
                 <i className="fa-solid fa-xmark"></i>
               </button>
             </div>
@@ -6336,7 +6374,7 @@ function App() {
                     onChange={() => setNotificationMuteOption(value)}
                     disabled={isUpdatingNotificationMute}
                   />
-                  <span>{label}</span>
+                  <span>{appCopy.t(label)}</span>
                 </label>
               ))}
             </div>
@@ -6344,9 +6382,9 @@ function App() {
             <div className="group-modal-footer notification-mute-footer actions-only">
 
               <div className="group-modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setNotificationMuteDialog(null)} disabled={isUpdatingNotificationMute}>Hủy</button>
+                <button type="button" className="btn-secondary" onClick={() => setNotificationMuteDialog(null)} disabled={isUpdatingNotificationMute}>{appCopy.t('Hủy')}</button>
                 <button type="submit" className="btn-primary" disabled={isUpdatingNotificationMute}>
-                  {isUpdatingNotificationMute ? <i className="fa-solid fa-spinner fa-spin"></i> : 'Đồng ý'}
+                  {isUpdatingNotificationMute ? <i className="fa-solid fa-spinner fa-spin"></i> : appCopy.t('Đồng ý')}
                 </button>
               </div>
             </div>
@@ -6360,8 +6398,8 @@ function App() {
         }}>
           <form className="group-modal create-group-modal" onSubmit={handleCreateGroup}>
             <div className="group-modal-header">
-              <h2>Tạo nhóm trò chuyện</h2>
-              <button type="button" className="btn-close-detail" onClick={closeCreateGroupModal} aria-label="Đóng" disabled={isCreatingGroup}>
+              <h2>{appCopy.t('Tạo nhóm trò chuyện')}</h2>
+              <button type="button" className="btn-close-detail" onClick={closeCreateGroupModal} aria-label={appCopy.t('Đóng')} disabled={isCreatingGroup}>
                 <i className="fa-solid fa-xmark"></i>
               </button>
             </div>
@@ -6369,42 +6407,42 @@ function App() {
             <div className="group-avatar-field">
               <div className="group-avatar-preview">
                 {groupAvatarPreview
-                  ? <img src={groupAvatarPreview} alt="Xem trước ảnh nhóm" />
+                  ? <img src={groupAvatarPreview} alt={appCopy.t('Xem trước ảnh nhóm')} />
                   : <i className="fa-solid fa-users"></i>}
               </div>
               <div className="group-avatar-picker-copy">
-                <strong>Ảnh đại diện nhóm</strong>
+                <strong>{appCopy.t('Ảnh đại diện nhóm')}</strong>
                 <label className="btn-group-avatar-upload">
                   <i className="fa-solid fa-camera"></i>
-                  <span>{groupAvatarFile ? 'Đổi ảnh' : 'Tải ảnh lên'}</span>
+                  <span>{appCopy.t(groupAvatarFile ? 'Đổi ảnh' : 'Tải ảnh lên')}</span>
                   <input type="file" accept="image/*" onChange={handleGroupAvatarChange} disabled={isCreatingGroup || chatMode !== 'tinode'} />
                 </label>
               </div>
               {groupAvatarFile && (
-                <button type="button" className="btn-remove-group-avatar" onClick={() => { setGroupAvatarFile(null); setGroupAvatarPreview(''); }} aria-label="Xóa ảnh đã chọn">
+                <button type="button" className="btn-remove-group-avatar" onClick={() => { setGroupAvatarFile(null); setGroupAvatarPreview(''); }} aria-label={appCopy.t('Xóa ảnh đã chọn')}>
                   <i className="fa-solid fa-xmark"></i>
                 </button>
               )}
             </div>
 
             <label className="group-form-field">
-              <span>Tên nhóm</span>
-              <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder="Nhập tên nhóm" required autoFocus />
+              <span>{appCopy.t('Tên nhóm')}</span>
+              <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder={appCopy.t('Nhập tên nhóm')} required autoFocus />
             </label>
 
             <div className="group-form-field">
-              <span>Thêm thành viên</span>
+              <span>{appCopy.t('Thêm thành viên')}</span>
               <input
                 value={groupMemberSearch}
                 onChange={handleFilterGroupMembers}
-                placeholder="Lọc danh bạ theo tên, email hoặc username"
-                aria-label="Lọc danh bạ công ty"
+                placeholder={appCopy.t('Lọc danh bạ theo tên, email hoặc username')}
+                aria-label={appCopy.t('Lọc danh bạ công ty')}
               />
               {companyContacts.length > 0 && (
                 <p className="group-form-hint">
                   {groupMemberIds.length > 0
-                    ? `Đã chọn ${groupMemberIds.length} thành viên từ danh bạ công ty.`
-                    : `Chọn trực tiếp từ ${companyContacts.length} người trong danh bạ công ty.`}
+                    ? `${appCopy.t('Đã chọn')} ${groupMemberIds.length} ${appCopy.t('thành viên từ danh bạ công ty.')}`
+                    : `${appCopy.t('Chọn trực tiếp từ')} ${companyContacts.length} ${appCopy.t('người trong danh bạ công ty.')}`}
                 </p>
               )}
               {groupCandidates.length > 0 ? (
@@ -6429,15 +6467,15 @@ function App() {
                 </div>
               ) : <p className="group-form-hint">{
                 groupMemberSearch.trim()
-                  ? 'Không tìm thấy thành viên phù hợp trong danh bạ công ty.'
-                  : 'Danh bạ công ty hiện chưa có thành viên khác.'
+                  ? appCopy.t('Không tìm thấy thành viên phù hợp trong danh bạ công ty.')
+                  : appCopy.t('Danh bạ công ty hiện chưa có thành viên khác.')
               }</p>}
             </div>
 
             <div className="group-modal-footer actions-only">
               <div className="group-modal-actions">
-                <button type="button" className="btn-secondary" onClick={closeCreateGroupModal} disabled={isCreatingGroup}>Hủy</button>
-                <button type="submit" className="btn-primary" disabled={!groupName.trim() || isCreatingGroup}>{isCreatingGroup ? 'Đang tạo...' : 'Tạo nhóm'}</button>
+                <button type="button" className="btn-secondary" onClick={closeCreateGroupModal} disabled={isCreatingGroup}>{appCopy.t('Hủy')}</button>
+                <button type="submit" className="btn-primary" disabled={!groupName.trim() || isCreatingGroup}>{isCreatingGroup ? appCopy.t('Đang tạo...') : appCopy.t('Tạo nhóm')}</button>
               </div>
             </div>
           </form>

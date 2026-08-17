@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizeWorkspaceItem,
+  formatWorkspaceDate,
   workspaceStatusLabel,
   workspaceTypeMeta,
 } from './enterpriseWorkspaceService.js';
@@ -25,4 +26,9 @@ test('exposes stable labels and type metadata for every module', () => {
   assert.equal(workspaceTypeMeta('WIKI').label, 'Wiki / Quy trình');
   assert.equal(workspaceStatusLabel('IN_PROGRESS'), 'Đang làm');
   assert.equal(workspaceStatusLabel('UNKNOWN'), 'UNKNOWN');
+});
+
+test('uses the selected locale for workspace date fallbacks', () => {
+  assert.equal(formatWorkspaceDate(null, { locale: 'en-US' }), 'Not set');
+  assert.equal(formatWorkspaceDate(null, { locale: 'vi-VN' }), 'Chưa đặt');
 });

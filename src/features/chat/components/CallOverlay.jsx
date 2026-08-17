@@ -12,13 +12,13 @@ import {
 const CALL_SETUP_TIMEOUT_MS = 40000;
 const CALL_DISCONNECT_TIMEOUT_MS = 10000;
 
-function mediaErrorMessage(error) {
+function mediaErrorMessage(error, copy) {
   if (error?.name === 'NotAllowedError' || error?.name === 'SecurityError') {
-    return 'Cần cho phép trình duyệt sử dụng micro và camera để bắt đầu cuộc gọi.';
+    return copy.t('Cần cho phép trình duyệt sử dụng micro và camera để bắt đầu cuộc gọi.');
   }
-  if (error?.name === 'NotFoundError') return 'Không tìm thấy micro hoặc camera phù hợp.';
-  if (error?.name === 'NotReadableError') return 'Micro hoặc camera đang được ứng dụng khác sử dụng.';
-  return error?.message || 'Không thể khởi tạo cuộc gọi WebRTC.';
+  if (error?.name === 'NotFoundError') return copy.t('Không tìm thấy micro hoặc camera phù hợp.');
+  if (error?.name === 'NotReadableError') return copy.t('Micro hoặc camera đang được ứng dụng khác sử dụng.');
+  return error?.message || copy.t('Không thể khởi tạo cuộc gọi WebRTC.');
 }
 
 function stopStream(stream) {
@@ -28,7 +28,7 @@ function stopStream(stream) {
   });
 }
 
-function CallAvatar({ src, name }) {
+function CallAvatar({ src, name, copy = { t: value => value } }) {
   const [failed, setFailed] = useState(false);
   const [resolvedSrc, setResolvedSrc] = useState('');
   const [mediaVersion, setMediaVersion] = useState(() => tinodeClient.getMediaVersion(src));
@@ -65,10 +65,10 @@ function CallAvatar({ src, name }) {
   }, [src, mediaVersion]);
 
   if (!resolvedSrc || failed) return <span className="call-avatar-fallback">{initials || 'VC'}</span>;
-  return <img src={resolvedSrc} alt={name || 'Người tham gia'} onError={() => setFailed(true)} />;
+  return <img src={resolvedSrc} alt={name || copy.t('Người tham gia')} onError={() => setFailed(true)} />;
 }
 
-export default function CallOverlay({ call, onClose, onError }) {
+export default function CallOverlay({ call, copy = { t: value => value }, onClose, onError }) {
   const [phase, setPhase] = useState(call.direction === 'incoming' ? 'incoming' : 'preparing');
   const [microphoneEnabled, setMicrophoneEnabled] = useState(true);
   const [cameraEnabled, setCameraEnabled] = useState(!call.audioOnly);
@@ -145,9 +145,9 @@ export default function CallOverlay({ call, onClose, onError }) {
 
   const failCall = useCallback((error, notifyRemote = Boolean(sequenceRef.current)) => {
     if (endingRef.current) return;
-    onError(mediaErrorMessage(error));
+    onError(mediaErrorMessage(error, copy));
     closeCall({ notifyRemote, reason: 'error' });
-  }, [closeCall, onError]);
+  }, [closeCall, copy, onError]);
 
   const playRemoteMedia = useCallback(async () => {
     const media = remoteMediaRef.current;
@@ -161,10 +161,10 @@ export default function CallOverlay({ call, onClose, onError }) {
         if (remotePlayRequestedRef.current && mountedRef.current && !endingRef.current) setRemoteAudioBlocked(true);
         return false;
       }
-      onError(error?.message || 'Không thể phát âm thanh cuộc gọi.');
+      onError(error?.message || copy.t('Không thể phát âm thanh cuộc gọi.'));
       return false;
     }
-  }, [onError]);
+  }, [copy, onError]);
 
   const refreshAudioOutputs = useCallback(async () => {
     const media = remoteMediaRef.current;
@@ -198,9 +198,9 @@ export default function CallOverlay({ call, onClose, onError }) {
       remotePlayRequestedRef.current = true;
       await playRemoteMedia();
     } catch (error) {
-      onError(error?.message || 'Không thể chuyển sang thiết bị loa đã chọn.');
+      onError(error?.message || copy.t('Không thể chuyển sang thiết bị loa đã chọn.'));
     }
-  }, [onError, playRemoteMedia]);
+  }, [copy, onError, playRemoteMedia]);
 
   useEffect(() => {
     void refreshAudioOutputs();
@@ -222,7 +222,7 @@ export default function CallOverlay({ call, onClose, onError }) {
     });
     if (!mountedRef.current || endingRef.current) {
       stopStream(stream);
-      throw new Error('Cuộc gọi đã kết thúc.');
+      throw new Error(copy.t('Cuộc gọi đã kết thúc.'));
     }
     localStreamRef.current = stream;
     if (localMediaRef.current) {
@@ -234,7 +234,7 @@ export default function CallOverlay({ call, onClose, onError }) {
     setCameraEnabled(Boolean(stream.getVideoTracks()[0]?.enabled));
     void refreshAudioOutputs();
     return stream;
-  }, [call.audioOnly, refreshAudioOutputs]);
+  }, [call.audioOnly, copy, refreshAudioOutputs]);
 
   const drainRemoteCandidates = useCallback(async () => {
     const pc = peerConnectionRef.current;
@@ -242,10 +242,10 @@ export default function CallOverlay({ call, onClose, onError }) {
     const candidates = remoteCandidatesRef.current.splice(0);
     for (const candidate of candidates) {
       await pc.addIceCandidate(candidate).catch(error => {
-        if (candidate.candidate) onError(error?.message || 'Không thể thêm ICE candidate.');
+        if (candidate.candidate) onError(error?.message || copy.t('Không thể thêm ICE candidate.'));
       });
     }
-  }, [onError]);
+  }, [copy, onError]);
 
   const markConnected = useCallback(() => {
     clearTimeout(setupTimerRef.current);
@@ -273,7 +273,7 @@ export default function CallOverlay({ call, onClose, onError }) {
         sequenceRef.current,
         CALL_SIGNAL_EVENTS.ICE_CANDIDATE,
         event.candidate.toJSON(),
-      ).catch(error => onError(error?.message || 'Không thể gửi ICE candidate.'));
+      ).catch(error => onError(error?.message || copy.t('Không thể gửi ICE candidate.')));
     };
     pc.ontrack = event => {
       const eventStream = event.streams?.[0];
@@ -328,7 +328,7 @@ export default function CallOverlay({ call, onClose, onError }) {
     pc.oniceconnectionstatechange = handleConnectionState;
     peerConnectionRef.current = pc;
     return pc;
-  }, [call.topic, closeCall, markConnected, onError, playRemoteMedia]);
+  }, [call.topic, closeCall, copy, markConnected, onError, playRemoteMedia]);
 
   const attachLocalTracks = useCallback((pc, stream) => {
     if (tracksAttachedRef.current) return;
@@ -365,7 +365,7 @@ export default function CallOverlay({ call, onClose, onError }) {
       const stream = await getLocalMedia();
       const pc = createPeerConnection();
       const offer = normalizeCallDescription(payload, 'offer');
-      if (!offer) throw new Error('SDP cuộc gọi đến không hợp lệ.');
+      if (!offer) throw new Error(copy.t('SDP cuộc gọi đến không hợp lệ.'));
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
       attachLocalTracks(pc, stream);
       await drainRemoteCandidates();
@@ -380,7 +380,7 @@ export default function CallOverlay({ call, onClose, onError }) {
     } catch (error) {
       failCall(error);
     }
-  }, [attachLocalTracks, call.direction, call.topic, createPeerConnection, drainRemoteCandidates, failCall, getLocalMedia]);
+  }, [attachLocalTracks, call.direction, call.topic, copy, createPeerConnection, drainRemoteCandidates, failCall, getLocalMedia]);
 
   const handleAnswer = useCallback(async payload => {
     const pc = peerConnectionRef.current;
@@ -388,19 +388,19 @@ export default function CallOverlay({ call, onClose, onError }) {
     remoteAnswerSetRef.current = true;
     try {
       const answer = normalizeCallDescription(payload, 'answer');
-      if (!answer) throw new Error('SDP trả lời cuộc gọi không hợp lệ.');
+      if (!answer) throw new Error(copy.t('SDP trả lời cuộc gọi không hợp lệ.'));
       await pc.setRemoteDescription(new RTCSessionDescription(answer));
       await drainRemoteCandidates();
     } catch (error) {
       failCall(error);
     }
-  }, [call.direction, drainRemoteCandidates, failCall]);
+  }, [call.direction, copy, drainRemoteCandidates, failCall]);
 
   const handleCandidate = useCallback(async payload => {
     if (!payload || endingRef.current) return;
     try {
       const candidatePayload = normalizeCallCandidate(payload);
-      if (!candidatePayload) throw new Error('ICE candidate không hợp lệ.');
+      if (!candidatePayload) throw new Error(copy.t('ICE candidate không hợp lệ.'));
       const candidate = new RTCIceCandidate(candidatePayload);
       const pc = peerConnectionRef.current;
       if (!pc?.remoteDescription) {
@@ -408,12 +408,12 @@ export default function CallOverlay({ call, onClose, onError }) {
         return;
       }
       await pc.addIceCandidate(candidate).catch(error => {
-        if (candidate.candidate) onError(error?.message || 'Không thể thêm ICE candidate.');
+        if (candidate.candidate) onError(error?.message || copy.t('Không thể thêm ICE candidate.'));
       });
     } catch (error) {
-      onError(error?.message || 'ICE candidate không hợp lệ.');
+      onError(error?.message || copy.t('ICE candidate không hợp lệ.'));
     }
-  }, [onError]);
+  }, [copy, onError]);
 
   useEffect(() => tinodeClient.onEvent(event => {
     if (event.type !== 'call-signal' || event.topic !== call.topic) return;
@@ -510,17 +510,17 @@ export default function CallOverlay({ call, onClose, onError }) {
   };
 
   const statusLabel = phase === 'incoming'
-    ? `${call.audioOnly ? 'Cuộc gọi thoại' : 'Cuộc gọi video'} đến`
-    : phase === 'preparing' ? 'Đang mở thiết bị...'
-      : phase === 'calling' ? 'Đang gọi...'
-        : phase === 'ringing' ? 'Đang đổ chuông...'
-          : phase === 'connecting' ? 'Đang kết nối...'
-            : phase === 'reconnecting' ? 'Đang khôi phục kết nối...'
+    ? copy.t(call.audioOnly ? 'Cuộc gọi thoại đến' : 'Cuộc gọi video đến')
+    : phase === 'preparing' ? copy.t('Đang mở thiết bị...')
+      : phase === 'calling' ? copy.t('Đang gọi...')
+        : phase === 'ringing' ? copy.t('Đang đổ chuông...')
+          : phase === 'connecting' ? copy.t('Đang kết nối...')
+            : phase === 'reconnecting' ? copy.t('Đang khôi phục kết nối...')
               : formatCallDuration(elapsedMs);
   const showActiveControls = !['incoming', 'preparing'].includes(phase) || call.direction === 'outgoing';
 
   return (
-    <div className="call-overlay" role="dialog" aria-modal="true" aria-label={call.audioOnly ? 'Cuộc gọi thoại' : 'Cuộc gọi video'}>
+    <div className="call-overlay" role="dialog" aria-modal="true" aria-label={copy.t(call.audioOnly ? 'Cuộc gọi thoại' : 'Cuộc gọi video')}>
       <section className={`call-shell ${call.audioOnly ? 'audio-only' : 'video-call'}`}>
         <div className="call-remote-stage">
           <video
@@ -541,13 +541,13 @@ export default function CallOverlay({ call, onClose, onError }) {
               }}
             >
               <i className="fa-solid fa-volume-high"></i>
-              Bật âm thanh
+              {copy.t('Bật âm thanh')}
             </button>
           )}
           {(!remoteVideoAvailable || call.audioOnly) && (
             <div className="call-peer-card">
-              <div className="call-peer-avatar"><CallAvatar src={call.peerAvatar} name={call.peerName} /></div>
-              <h2>{call.peerName || 'Người dùng'}</h2>
+              <div className="call-peer-avatar"><CallAvatar src={call.peerAvatar} name={call.peerName} copy={copy} /></div>
+              <h2>{call.peerName || copy.t('Người dùng')}</h2>
               <p>{statusLabel}</p>
             </div>
           )}
@@ -557,22 +557,22 @@ export default function CallOverlay({ call, onClose, onError }) {
           <div className={`call-local-preview ${cameraEnabled ? '' : 'camera-off'}`}>
             <video ref={localMediaRef} autoPlay muted playsInline />
             {!cameraEnabled && <i className="fa-solid fa-video-slash"></i>}
-            <span>Bạn</span>
+            <span>{copy.t('Bạn')}</span>
           </div>
         )}
 
         <div className="call-topline">
-          <span><i className={`fa-solid ${call.audioOnly ? 'fa-phone' : 'fa-video'}`}></i>{call.audioOnly ? 'Gọi thoại' : 'Gọi video'}</span>
+          <span><i className={`fa-solid ${call.audioOnly ? 'fa-phone' : 'fa-video'}`}></i>{copy.t(call.audioOnly ? 'Gọi thoại' : 'Gọi video')}</span>
           {phase === 'connected' && <time>{formatCallDuration(elapsedMs)}</time>}
         </div>
 
         <div className="call-controls">
           {phase === 'incoming' ? (
             <>
-              <button type="button" className="call-control danger" onClick={() => closeCall({ notifyRemote: true, reason: 'declined' })} aria-label="Từ chối cuộc gọi">
+              <button type="button" className="call-control danger" onClick={() => closeCall({ notifyRemote: true, reason: 'declined' })} aria-label={copy.t('Từ chối cuộc gọi')}>
                 <i className="fa-solid fa-phone-slash"></i>
               </button>
-              <button type="button" className="call-control accept" onClick={acceptIncomingCall} aria-label="Nhận cuộc gọi">
+              <button type="button" className="call-control accept" onClick={acceptIncomingCall} aria-label={copy.t('Nhận cuộc gọi')}>
                 <i className={`fa-solid ${call.audioOnly ? 'fa-phone' : 'fa-video'}`}></i>
               </button>
             </>
@@ -581,35 +581,35 @@ export default function CallOverlay({ call, onClose, onError }) {
               {showActiveControls && (
                 <label
                   className={`call-output-control ${audioOutputSupported ? '' : 'unsupported'}`}
-                  title={audioOutputSupported ? 'Chọn loa ngoài' : 'Trình duyệt đang dùng loa mặc định'}
+                  title={audioOutputSupported ? copy.t('Chọn loa ngoài') : copy.t('Trình duyệt đang dùng loa mặc định')}
                 >
                   <i className="fa-solid fa-volume-high"></i>
                   <select
                     value={audioOutputId}
                     onChange={changeAudioOutput}
                     disabled={!audioOutputSupported}
-                    aria-label="Chọn loa ngoài"
+                    aria-label={copy.t('Chọn loa ngoài')}
                   >
-                    <option value="default">Loa mặc định</option>
+                    <option value="default">{copy.t('Loa mặc định')}</option>
                     {audioOutputDevices
                       .filter(device => device.deviceId !== 'default')
                       .map((device, index) => (
                         <option key={device.deviceId} value={device.deviceId}>
-                          {device.label || `Thiết bị loa ${index + 1}`}
+                          {device.label || `${copy.t('Thiết bị loa')} ${index + 1}`}
                         </option>
                       ))}
                   </select>
                 </label>
               )}
-              <button type="button" className={`call-control ${microphoneEnabled ? '' : 'disabled'}`} onClick={toggleMicrophone} disabled={!showActiveControls} aria-label={microphoneEnabled ? 'Tắt micro' : 'Bật micro'}>
+              <button type="button" className={`call-control ${microphoneEnabled ? '' : 'disabled'}`} onClick={toggleMicrophone} disabled={!showActiveControls} aria-label={copy.t(microphoneEnabled ? 'Tắt micro' : 'Bật micro')}>
                 <i className={`fa-solid ${microphoneEnabled ? 'fa-microphone' : 'fa-microphone-slash'}`}></i>
               </button>
               {!call.audioOnly && (
-                <button type="button" className={`call-control ${cameraEnabled ? '' : 'disabled'}`} onClick={toggleCamera} disabled={!showActiveControls} aria-label={cameraEnabled ? 'Tắt camera' : 'Bật camera'}>
+                <button type="button" className={`call-control ${cameraEnabled ? '' : 'disabled'}`} onClick={toggleCamera} disabled={!showActiveControls} aria-label={copy.t(cameraEnabled ? 'Tắt camera' : 'Bật camera')}>
                   <i className={`fa-solid ${cameraEnabled ? 'fa-video' : 'fa-video-slash'}`}></i>
                 </button>
               )}
-              <button type="button" className="call-control danger" onClick={() => closeCall({ notifyRemote: true, reason: 'local' })} aria-label="Kết thúc cuộc gọi">
+              <button type="button" className="call-control danger" onClick={() => closeCall({ notifyRemote: true, reason: 'local' })} aria-label={copy.t('Kết thúc cuộc gọi')}>
                 <i className="fa-solid fa-phone-slash"></i>
               </button>
             </>

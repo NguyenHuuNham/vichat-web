@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-03 - Hoan thien ngon ngu English cho ChatUI
+
+- Thoi gian: 2026-08-18 01:45 (Asia/Saigon)
+- Loai: Sua loi | UX | Web | Kiem thu
+- Trang thai: Hoan tat code; chua deploy production
+- Muc tieu: Khi viewer chon English, toan bo nhan UI, loi, trang thai, Workspace, cuoc goi, thong bao, media va khoa PIN hien thi cung ngon ngu; khong dich noi dung tin nhan, ten nguoi, ten nhom hoac ten file cua user.
+- Pham vi: Them bo dich tap trung tai `src/features/i18n/appLanguage.js`; gan translator vao ChatUI, Login, CallOverlay, Workspace va notification; bo sung locale cho date/time va fallback nhan cu.
+- Noi dung: Dich nhan dong cho system event, attachment preview, call history, friend request, connection error, notification, media filter, Workspace metadata, profile/PIN notice; sua tieu de media theo `en-US` va cac fallback `Hom qua/Thu 6` de khong roi lai tieng Viet.
+- Quyet dinh ky thuat: Dich tai boundary cua UI va chi dich cac chuoi he thong da biet; giu nguyen message text, draft, ten hien thi, noi dung Workspace do user nhap va file name de khong lam thay doi du lieu nghiep vu.
+- Database/API/cau hinh: Khong migration, API, dependency, bien moi truong hoac thay doi service stateful.
+- File da thay doi: `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/app/App.jsx`, `src/features/auth/components/Login.jsx`, `src/features/chat/components/CallOverlay.jsx`, `src/features/chat/services/conversationNotifications.js`, `src/features/chat/services/conversationNotifications.test.js`, `src/features/chat/services/timeFormatting.js`, `src/features/chat/services/timeFormatting.test.js`, `src/features/workspace/components/EnterpriseWorkspace.jsx`, `src/features/workspace/services/enterpriseWorkspaceService.js`, `src/features/workspace/services/enterpriseWorkspaceService.test.js`, `package.json`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Kiem thu: `npm run test:frontend` dat 105/105; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat.
+- Rui ro con lai: Chua UAT bang browser/tai khoan that cho tat ca state English, notification desktop, call overlay va Workspace; chuoi loi tu server ben ngoai bo dich co the van giu nguyen neu khong trung pattern da khai bao.
+- Viec tiep theo: Hard refresh local/staging, dang nhap tai khoan test, chuyen English va kiem tra Chat, thong tin nhom/ca nhan, media, Workspace, cuoc goi, thong bao va PIN; chi deploy sau khi UAT dat.
+- Commit/PR: Chua tao.
+
 ## 2026-08-18-02 - Hotfix man hinh trang sau khi bat khoa PIN
 
 - Thoi gian: 2026-08-18 00:40 (Asia/Saigon)

@@ -154,11 +154,12 @@ export const enterpriseWorkspaceService = {
   },
 };
 
-export function formatWorkspaceDate(value, { withTime = true } = {}) {
-  if (!value) return 'Chưa đặt';
+export function formatWorkspaceDate(value, { withTime = true, locale = 'vi-VN' } = {}) {
+  const fallback = locale.startsWith('en') ? 'Not set' : 'Chưa đặt';
+  if (!value) return fallback;
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Chưa đặt';
-  return new Intl.DateTimeFormat('vi-VN', {
+  if (Number.isNaN(date.getTime())) return fallback;
+  return new Intl.DateTimeFormat(locale, {
     day: '2-digit', month: '2-digit', year: 'numeric',
     ...(withTime ? { hour: '2-digit', minute: '2-digit' } : {}),
   }).format(date);

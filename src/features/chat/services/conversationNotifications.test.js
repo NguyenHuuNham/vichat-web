@@ -129,5 +129,6 @@ test('exposes notification sound profiles and concise message bodies', () => {
   assert.equal(messageSoundProfile('missing').id, DEFAULT_NOTIFICATION_SETTINGS.sound);
   assert.equal(notificationMessageBody({ type: 'image' }), 'Đã gửi một hình ảnh.');
   assert.equal(notificationMessageBody({ type: 'file', file: { name: 'brief.pdf' } }), 'Đã gửi tệp brief.pdf.');
+  assert.equal(notificationMessageBody({ type: 'file', file: { name: 'brief.pdf' } }, value => value.replace('Đã gửi tệp', 'Sent file')), 'Sent file brief.pdf.');
   assert.equal(notificationMessageBody({ text: '  Xin chào  ' }), 'Xin chào');
 });

@@ -233,9 +233,9 @@ export async function deleteCustomNotificationSound(viewerId, factory = indexedD
   });
 }
 
-export function notificationMessageBody(message = {}) {
-  if (message.type === 'image') return 'Đã gửi một hình ảnh.';
-  if (message.type === 'file') return `Đã gửi tệp ${message.file?.name || 'đính kèm'}.`;
+export function notificationMessageBody(message = {}, translate = value => value) {
+  if (message.type === 'image') return translate('Đã gửi một hình ảnh.');
+  if (message.type === 'file') return translate(`Đã gửi tệp ${message.file?.name || 'đính kèm'}.`);
   return String(message.text || 'Có tin nhắn mới.').trim() || 'Có tin nhắn mới.';
 }
 
@@ -291,16 +291,17 @@ export function nextNotificationMuteExpiry(conversations, nowMs = Date.now()) {
   return expiries.length > 0 ? Math.min(...expiries) : null;
 }
 
-export function notificationMuteLabel(value, nowMs = Date.now()) {
+export function notificationMuteLabel(value, nowMs = Date.now(), locale = 'vi-VN') {
   const muteUntil = normalizeNotificationMuteUntil(value);
   if (!isConversationMuted(muteUntil, nowMs)) return '';
-  if (muteUntil === 0) return 'Đã tắt cho đến khi được mở lại';
+  if (muteUntil === 0) return locale.startsWith('en') ? 'Muted until turned back on' : 'Đã tắt cho đến khi được mở lại';
   const target = new Date(muteUntil * 1000);
   const now = new Date(nowMs);
   const sameDay = target.getFullYear() === now.getFullYear()
     && target.getMonth() === now.getMonth()
     && target.getDate() === now.getDate();
-  const time = target.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-  if (sameDay) return `Đã tắt đến ${time}`;
-  return `Đã tắt đến ${time} ${target.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}`;
+  const time = target.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  if (sameDay) return locale.startsWith('en') ? `Muted until ${time}` : `Đã tắt đến ${time}`;
+  const date = target.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' });
+  return locale.startsWith('en') ? `Muted until ${time} ${date}` : `Đã tắt đến ${time} ${date}`;
 }
