@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-17-11 - Them dark mode theo tai khoan ChatUI
+
+- Thoi gian: 2026-08-17 17:14 (Asia/Saigon)
+- Loai: Tinh nang | Web
+- Trang thai: Da kiem thu; cho deploy
+- Muc tieu: Cho phep moi tai khoan tu chon giao dien Sang, Toi hoac He thong ma khong lam thay doi giao dien cua tai khoan khac; mac dinh la Sang.
+- Pham vi: ChatUI panel Cai dat, preference localStorage theo viewer va CSS theme; khong doi chat, nhom, Work, Tinode, Chatmgt hay database.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/conversationNotifications.js`, `src/features/chat/services/conversationNotifications.test.js`, `src/styles/index.css`, `README.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Them preview ba lua chon giao dien, ap dung `data-theme` cho toan bo ChatUI, theo doi thay doi `prefers-color-scheme` khi chon He thong va luu `theme` trong preference record theo ID viewer.
+- Quyet dinh ky thuat: Tai su dung storage key per viewer hien co de giu giao dien doc lap giua cac tai khoan; khong tao cookie, token, API hay migration moi.
+- Database/API/cau hinh: Khong migration, API, dependency hoac bien moi truong moi.
+- Kiem thu: `npm run test:frontend` dat 88/88; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-Bz4VN1y1.js`, `App-BML5nbZE.js`, `index-CDd2UX-G.css`; `git diff --check` dat.
+- Rui ro con lai: Mot so mau file/avatar va overlay co mau dac thu co the can UAT them trong theme Toi; browser runtime co the khong san sang cho UAT tu dong.
+- Viec tiep theo: Deploy rieng ChatUI, kiem tra health/public bundle va UAT ba tuy chon tren hai tai khoan.
+- Commit/PR: Chua tao.
+
 ## 2026-08-17-10 - Sap xep menu chinh va them chon ngon ngu ChatUI
 
 - Thoi gian: 2026-08-17 16:57 (Asia/Saigon)

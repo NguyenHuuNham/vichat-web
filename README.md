@@ -130,10 +130,10 @@ deadline and automatically re-enables both. After F5, ChatUI calls
 `/api/v1/auth/me` with the existing HttpOnly Chatmgt cookie to rebuild its
 in-memory session; it never stores a token or password in browser storage.
 Desktop notifications require explicit browser permission and can be enabled
-per viewer in Settings. The viewer's notification preference and selected sound
-ID are stored in localStorage; an uploaded custom sound Blob is kept in
-origin-scoped IndexedDB. Authentication data and message content remain outside
-both browser stores.
+per viewer in Settings. The viewer's notification preference, selected sound ID
+and theme (`light`, `dark` or `system`) are stored in localStorage; an uploaded
+custom sound Blob is kept in origin-scoped IndexedDB. Authentication data and
+message content remain outside both browser stores.
 The same per-viewer preference record stores the selected UI language (`vi` or
 `en`), with Vietnamese as the default, so the choice survives refresh and is
 isolated between accounts on the same device.

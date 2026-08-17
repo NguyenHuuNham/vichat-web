@@ -15,6 +15,7 @@ import {
 } from '../features/chat/services/chatRealtime';
 import {
   APP_LANGUAGE_OPTIONS,
+  APP_THEME_OPTIONS,
   CUSTOM_NOTIFICATION_SOUND_ID,
   DEFAULT_NOTIFICATION_SETTINGS,
   MESSAGE_SOUND_OPTIONS,
@@ -91,6 +92,9 @@ const APP_LANGUAGE_COPY = Object.freeze({
     settings: 'Cài đặt',
     language: 'Ngôn ngữ',
     languageHint: 'Chọn ngôn ngữ hiển thị của ứng dụng',
+    themeTitle: 'Cài đặt giao diện',
+    themeDescription: 'Chọn giao diện riêng cho tài khoản này',
+    themeOptions: { light: 'Sáng', dark: 'Tối', system: 'Hệ thống' },
     notificationSettings: 'Cài đặt thông báo',
     notificationDescription: 'Nhận được thông báo mỗi khi có tin nhắn mới',
     desktopNotifications: 'Thông báo desktop',
@@ -123,6 +127,9 @@ const APP_LANGUAGE_COPY = Object.freeze({
     settings: 'Settings',
     language: 'Language',
     languageHint: 'Choose the application display language',
+    themeTitle: 'Appearance',
+    themeDescription: 'Choose a theme for this account',
+    themeOptions: { light: 'Light', dark: 'Dark', system: 'System' },
     notificationSettings: 'Notification settings',
     notificationDescription: 'Get a notification whenever a new message arrives',
     desktopNotifications: 'Desktop notifications',
@@ -1017,6 +1024,30 @@ function App() {
   useEffect(() => {
     if (typeof document !== 'undefined') document.documentElement.lang = settings.language;
   }, [settings.language]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
+    const root = document.documentElement;
+    const mediaQuery = typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-color-scheme: dark)')
+      : null;
+    const applyTheme = () => {
+      const resolvedTheme = settings.theme === 'dark'
+        || (settings.theme === 'system' && Boolean(mediaQuery?.matches))
+        ? 'dark'
+        : 'light';
+      root.dataset.theme = resolvedTheme;
+      root.style.colorScheme = resolvedTheme;
+    };
+    applyTheme();
+    if (settings.theme !== 'system' || !mediaQuery) return undefined;
+    if (mediaQuery.addEventListener) mediaQuery.addEventListener('change', applyTheme);
+    else mediaQuery.addListener?.(applyTheme);
+    return () => {
+      if (mediaQuery.removeEventListener) mediaQuery.removeEventListener('change', applyTheme);
+      else mediaQuery.removeListener?.(applyTheme);
+    };
+  }, [settings.theme]);
 
   useEffect(() => {
     if (workspacePanel !== 'profile') return;
@@ -5155,6 +5186,36 @@ function App() {
                     </div>
                   </div>
                 </div>
+                <section className="theme-preference-card" aria-labelledby="theme-preference-title">
+                  <div className="theme-preference-heading">
+                    <div>
+                      <h3 id="theme-preference-title">{appCopy.themeTitle}</h3>
+                      <p>{appCopy.themeDescription}</p>
+                    </div>
+                  </div>
+                  <div className="theme-choice-grid" role="radiogroup" aria-label={appCopy.themeTitle}>
+                    {APP_THEME_OPTIONS.map(option => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={`theme-choice ${settings.theme === option.id ? 'selected' : ''}`}
+                        role="radio"
+                        aria-checked={settings.theme === option.id}
+                        onClick={() => updateNotificationSettings({ theme: option.id })}
+                      >
+                        <span className={`theme-preview theme-preview-${option.id}`} aria-hidden="true">
+                          <span className="theme-preview-sidebar"></span>
+                          <span className="theme-preview-body">
+                            <span className="theme-preview-line wide"></span>
+                            <span className="theme-preview-line"></span>
+                            <span className="theme-preview-chip"></span>
+                          </span>
+                        </span>
+                        <span className="theme-choice-label"><span className="theme-radio-dot"></span>{appCopy.themeOptions[option.id] || option.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
                 <label className="workspace-setting-row language-setting-row">
                   <span><strong>{appCopy.language}</strong><small>{appCopy.languageHint}</small></span>
                   <select value={settings.language} onChange={event => updateNotificationSettings({ language: event.target.value })} aria-label={appCopy.language}>

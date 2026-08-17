@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   APP_LANGUAGE_OPTIONS,
+  APP_THEME_OPTIONS,
   CUSTOM_NOTIFICATION_SOUND_ID,
   CUSTOM_NOTIFICATION_SOUND_MAX_BYTES,
   DEFAULT_NOTIFICATION_SETTINGS,
@@ -90,13 +91,18 @@ test('normalizes and persists per-viewer desktop notification preferences', () =
     desktopNotifications: false,
   });
   assert.deepEqual(APP_LANGUAGE_OPTIONS.map(option => option.id), ['vi', 'en']);
+  assert.deepEqual(APP_THEME_OPTIONS.map(option => option.id), ['light', 'dark', 'system']);
+  assert.equal(DEFAULT_NOTIFICATION_SETTINGS.theme, 'light');
   assert.equal(normalizeNotificationSettings({ language: 'en' }).language, 'en');
   assert.equal(normalizeNotificationSettings({ language: 'fr' }).language, 'vi');
+  assert.equal(normalizeNotificationSettings({ theme: 'dark' }).theme, 'dark');
+  assert.equal(normalizeNotificationSettings({ theme: 'neon' }).theme, 'light');
   const saved = writeNotificationSettings('usrA', {
     desktopNotifications: false,
     sounds: false,
     sound: 'bell',
     language: 'en',
+    theme: 'dark',
   }, storage);
   assert.deepEqual(readNotificationSettings('usrA', storage), saved);
   assert.notDeepEqual(readNotificationSettings('usrB', storage), saved);

@@ -7,6 +7,11 @@ export const APP_LANGUAGE_OPTIONS = Object.freeze([
   Object.freeze({ id: 'vi', label: 'Tiếng Việt', flag: '🇻🇳' }),
   Object.freeze({ id: 'en', label: 'English', flag: '🇺🇸' }),
 ]);
+export const APP_THEME_OPTIONS = Object.freeze([
+  Object.freeze({ id: 'light', label: 'Sáng' }),
+  Object.freeze({ id: 'dark', label: 'Tối' }),
+  Object.freeze({ id: 'system', label: 'Hệ thống' }),
+]);
 
 const NOTIFICATION_SOUND_DATABASE_NAME = 'vichat-notification-sounds.v1';
 const NOTIFICATION_SOUND_STORE_NAME = 'sounds';
@@ -23,6 +28,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS = Object.freeze({
   sounds: true,
   sound: 'chime',
   language: 'vi',
+  theme: 'light',
 });
 
 function notificationSettingsStorageKey(viewerId) {
@@ -37,11 +43,15 @@ export function normalizeNotificationSettings(value = {}) {
   const language = APP_LANGUAGE_OPTIONS.some(option => option.id === value?.language)
     ? value.language
     : DEFAULT_NOTIFICATION_SETTINGS.language;
+  const theme = APP_THEME_OPTIONS.some(option => option.id === value?.theme)
+    ? value.theme
+    : DEFAULT_NOTIFICATION_SETTINGS.theme;
   return {
     desktopNotifications: value?.desktopNotifications !== false,
     sounds: value?.sounds !== false,
     sound,
     language,
+    theme,
   };
 }
 
