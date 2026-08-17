@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-17-05 - Deploy production commit ab0ab55
+
+- Thoi gian: 2026-08-17 12:24 (Asia/Saigon)
+- Loai: Van hanh | Web | Kiem thu | Tai lieu
+- Trang thai: Da deploy production; san sang UAT group mention
+- Muc tieu: Dua tinh nang mention thanh vien trong nhom cua commit `ab0ab55` len ChatUI production de kiem thu tren tai khoan that.
+- Pham vi: Chi ChatUI; Chatmgt, Tinode bridge/chatbot, ChatAPI, PostgreSQL, Redis va Coturn duoc giu nguyen.
+- File da thay doi: `docs/CHANGELOG.md`; source release tu commit `ab0ab55`.
+- Noi dung: Archive SHA-256 `b3f5bc38e023bdeb70865645ff98e68650bb510a679a62738bbea455cf6596c3` duoc staging tai `/opt/deploy/chat/releases/ab0ab55-20260817-1211`. Symlink `current` da chuyen sang release nay va `previous` tro ve `6bac0dd-20260817-1120`; image ChatUI moi duoc build thanh cong.
+- Quyet dinh ky thuat: Build tu thu muc release de `context: ../..` resolve dung source; recreate duy nhat service `chat` bang `docker compose ... up -d --no-deps chat`, khong dung `down`, khong reset volume/topic/message va khong restart backend.
+- Database/API/cau hinh: Khong migration, schema, API hay thay doi `.env` production.
+- Kiem thu: Remote build ChatUI dat; `songhong-production-chat-1` tra `running healthy`; `http://127.0.0.1:8094/healthz` va `https://chat.upgo.vn/healthz` deu tra `ok`; index public da phuc vu bundle `index-exz5oMSi.js` va `index-0KtUrc1_.css`; Compose `ps` xac nhan cac service con lai van healthy/Up.
+- Rui ro con lai: Chua UAT tren browser voi group tenant that de xac nhan picker, snapshot thanh vien, avatar protected media va echo `x-mentions` tu Tinode.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo group that, go `@`, thu `@All`, loc/chon mot nguoi bang chuot va ban phim, sau do gui tin va kiem tra mention hien dung.
+- Commit/PR: Source `ab0ab55`; deploy record follow-up commit.
+
 ## 2026-08-17-04 - Mention thanh vien trong nhom
 
 - Thoi gian: 2026-08-17 12:03 (Asia/Saigon)
