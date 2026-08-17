@@ -1315,6 +1315,7 @@ function App() {
   const appCopy = APP_LANGUAGE_COPY[settings.language] || APP_LANGUAGE_COPY.vi;
   const selectedLanguage = APP_LANGUAGE_OPTIONS.find(option => option.id === settings.language)
     || APP_LANGUAGE_OPTIONS[0];
+  const pinViewerId = currentUser?.id || currentUser?.uid || '';
   const accountPresenceLabel = account => chatMode === 'tinode'
     ? (isAccountOnline(account) ? 'Online' : 'Offline')
     : usesManagementData ? 'Danh bạ Chatmgt' : (isAccountOnline(account) ? 'Online' : 'Offline');
@@ -1451,7 +1452,6 @@ function App() {
     ? window.Notification.permission
     : 'unsupported';
   const notificationSettingsViewerId = currentUser?.id || currentUser?.uid || viewerId;
-  const pinViewerId = currentUser?.id || currentUser?.uid || '';
 
   const updateNotificationSettings = useCallback(patch => {
     setSettings(previous => {
