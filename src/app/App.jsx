@@ -14,18 +14,23 @@ import {
   tinodeContactsSyncDelay,
 } from '../features/chat/services/chatRealtime';
 import {
+  CUSTOM_NOTIFICATION_SOUND_ID,
   DEFAULT_NOTIFICATION_SETTINGS,
   MESSAGE_SOUND_OPTIONS,
   NOTIFICATION_MUTE_OPTIONS,
+  deleteCustomNotificationSound,
   isConversationMuted,
   messageSoundProfile,
   nextNotificationMuteExpiry,
   notificationMuteLabel,
   notificationMessageBody,
   normalizeNotificationSettings,
+  readCustomNotificationSound,
   readNotificationSettings,
   resolveNotificationMuteUntil,
+  validateCustomNotificationSoundFile,
   writeNotificationSettings,
+  writeCustomNotificationSound,
 } from '../features/chat/services/conversationNotifications';
 import {
   applyLocalConversationPins,
@@ -789,6 +794,10 @@ function App() {
   const [displayClock, setDisplayClock] = useState(() => Date.now());
   const [settings, setSettings] = useState(() => ({ ...DEFAULT_NOTIFICATION_SETTINGS }));
   const [notificationSettingsNotice, setNotificationSettingsNotice] = useState('');
+  const [customNotificationSound, setCustomNotificationSound] = useState(null);
+  const [customNotificationSoundUrl, setCustomNotificationSoundUrl] = useState('');
+  const [isLoadingCustomNotificationSound, setIsLoadingCustomNotificationSound] = useState(false);
+  const [isSavingCustomNotificationSound, setIsSavingCustomNotificationSound] = useState(false);
   const [directoryAccounts, setDirectoryAccounts] = useState([]);
   const [isUpdatingProfileAvatar, setIsUpdatingProfileAvatar] = useState(false);
   const [profileForm, setProfileForm] = useState({ name: '', email: '', title: '', department: '' });
@@ -829,6 +838,8 @@ function App() {
   const typingClearTimersRef = useRef(new Map());
   const notificationBaselineRef = useRef(new Map());
   const notificationAudioContextRef = useRef(null);
+  const notificationCustomAudioRef = useRef(null);
+  const notificationSoundFileInputRef = useRef(null);
   const notificationOpenHandlerRef = useRef(null);
   const contactsSyncTimerRef = useRef(null);
   const contactsSyncRequestRef = useRef(0);
@@ -971,6 +982,90 @@ function App() {
     setSettings(readNotificationSettings(notificationSettingsViewerId));
     setNotificationSettingsNotice('');
   }, [notificationSettingsViewerId]);
+
+  useEffect(() => {
+    let active = true;
+    setCustomNotificationSound(null);
+    setIsLoadingCustomNotificationSound(Boolean(notificationSettingsViewerId));
+    if (!notificationSettingsViewerId) return undefined;
+
+    readCustomNotificationSound(notificationSettingsViewerId)
+      .then(sound => {
+        if (active) setCustomNotificationSound(sound);
+      })
+      .catch(() => {
+        if (active) {
+          setCustomNotificationSound(null);
+          setNotificationSettingsNotice('Không thể đọc âm báo đã tải lên trên thiết bị này.');
+        }
+      })
+      .finally(() => {
+        if (active) setIsLoadingCustomNotificationSound(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [notificationSettingsViewerId]);
+
+  useEffect(() => {
+    if (!customNotificationSound?.blob || typeof URL === 'undefined' || !URL.createObjectURL) {
+      setCustomNotificationSoundUrl('');
+      return undefined;
+    }
+    const objectUrl = URL.createObjectURL(customNotificationSound.blob);
+    setCustomNotificationSoundUrl(objectUrl);
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+      const audio = notificationCustomAudioRef.current;
+      if (audio?.src === objectUrl) {
+        audio.pause();
+        audio.src = '';
+        notificationCustomAudioRef.current = null;
+      }
+    };
+  }, [customNotificationSound]);
+
+  const handleCustomNotificationSoundUpload = useCallback(async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const validationError = validateCustomNotificationSoundFile(file);
+    if (validationError) {
+      setNotificationSettingsNotice(validationError);
+      return;
+    }
+    if (!notificationSettingsViewerId) return;
+
+    setIsSavingCustomNotificationSound(true);
+    setNotificationSettingsNotice('');
+    try {
+      const savedSound = await writeCustomNotificationSound(notificationSettingsViewerId, file);
+      setCustomNotificationSound(savedSound);
+      updateNotificationSettings({ sound: CUSTOM_NOTIFICATION_SOUND_ID, sounds: true });
+      setNotificationSettingsNotice(`Đã lưu âm báo "${savedSound.name}" trên thiết bị này.`);
+    } catch (error) {
+      setNotificationSettingsNotice(error?.message || 'Không thể lưu file âm thanh trên thiết bị này.');
+    } finally {
+      setIsSavingCustomNotificationSound(false);
+    }
+  }, [notificationSettingsViewerId, updateNotificationSettings]);
+
+  const handleRemoveCustomNotificationSound = useCallback(async () => {
+    if (!notificationSettingsViewerId || isSavingCustomNotificationSound) return;
+    setIsSavingCustomNotificationSound(true);
+    setNotificationSettingsNotice('');
+    try {
+      await deleteCustomNotificationSound(notificationSettingsViewerId);
+      setCustomNotificationSound(null);
+      updateNotificationSettings({ sound: DEFAULT_NOTIFICATION_SETTINGS.sound });
+      setNotificationSettingsNotice('Đã xóa âm báo tùy chỉnh khỏi thiết bị này.');
+    } catch (error) {
+      setNotificationSettingsNotice(error?.message || 'Không thể xóa file âm thanh.');
+    } finally {
+      setIsSavingCustomNotificationSound(false);
+    }
+  }, [isSavingCustomNotificationSound, notificationSettingsViewerId, updateNotificationSettings]);
 
   const handleDesktopNotificationToggle = useCallback(async enabled => {
     if (!enabled) {
@@ -1372,12 +1467,27 @@ function App() {
   const playNotificationSound = useCallback((soundId = settings.sound) => {
     if (typeof window === 'undefined') return;
     try {
+      if (soundId === CUSTOM_NOTIFICATION_SOUND_ID && customNotificationSoundUrl && typeof window.Audio === 'function') {
+        const previousAudio = notificationCustomAudioRef.current;
+        previousAudio?.pause?.();
+        const audio = new window.Audio(customNotificationSoundUrl);
+        audio.preload = 'auto';
+        audio.volume = 0.75;
+        notificationCustomAudioRef.current = audio;
+        const playback = audio.play();
+        playback?.catch?.(() => {});
+        return;
+      }
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
       const context = notificationAudioContextRef.current || new AudioContext();
       notificationAudioContextRef.current = context;
       if (context.state === 'suspended') context.resume().catch(() => {});
-      const profile = messageSoundProfile(soundId);
+      const profile = messageSoundProfile(
+        soundId === CUSTOM_NOTIFICATION_SOUND_ID
+          ? DEFAULT_NOTIFICATION_SETTINGS.sound
+          : soundId,
+      );
       const startAt = context.currentTime + 0.01;
       profile.tones.forEach(([frequency, offset, duration]) => {
         const oscillator = context.createOscillator();
@@ -1396,7 +1506,7 @@ function App() {
     } catch {
       // Browsers may block sound until the page has received user input.
     }
-  }, [settings.sound]);
+  }, [customNotificationSoundUrl, settings.sound]);
 
   const showIncomingNotification = useCallback((conversation, message, stateId) => {
     if (!message || message.senderId === viewerId || typeof window === 'undefined') return;
@@ -4941,10 +5051,58 @@ function App() {
                   <div className="notification-sound-picker">
                     <select value={settings.sound} onChange={event => updateNotificationSettings({ sound: event.target.value })} disabled={!settings.sounds} aria-label="Chọn âm báo tin nhắn">
                       {MESSAGE_SOUND_OPTIONS.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+                      <option value={CUSTOM_NOTIFICATION_SOUND_ID} disabled={!customNotificationSound}>
+                        {customNotificationSound ? `Tệp riêng: ${customNotificationSound.name}` : 'Tệp riêng (chưa tải lên)'}
+                      </option>
                     </select>
-                    <button type="button" className="notification-preview-button" onClick={() => playNotificationSound(settings.sound)} disabled={!settings.sounds}>
+                    <button
+                      type="button"
+                      className="notification-preview-button"
+                      onClick={() => playNotificationSound(settings.sound)}
+                      disabled={!settings.sounds || (settings.sound === CUSTOM_NOTIFICATION_SOUND_ID && !customNotificationSoundUrl)}
+                    >
                       <i className="fa-solid fa-volume-high"></i>Nghe thử
                     </button>
+                  </div>
+                  <div className="notification-custom-sound">
+                    <input
+                      ref={notificationSoundFileInputRef}
+                      className="notification-sound-file-input"
+                      type="file"
+                      accept="audio/*"
+                      onChange={handleCustomNotificationSoundUpload}
+                    />
+                    <div className="notification-custom-sound-copy">
+                      <strong>Âm báo từ máy tính</strong>
+                      <small>
+                        {isLoadingCustomNotificationSound
+                          ? 'Đang kiểm tra file trên thiết bị...'
+                          : customNotificationSound
+                            ? customNotificationSound.name
+                            : 'MP3, WAV, OGG hoặc M4A · tối đa 8 MB'}
+                      </small>
+                    </div>
+                    <div className="notification-custom-sound-actions">
+                      <button
+                        type="button"
+                        className="notification-upload-button"
+                        onClick={() => notificationSoundFileInputRef.current?.click()}
+                        disabled={isSavingCustomNotificationSound || !notificationSettingsViewerId}
+                      >
+                        <i className={`fa-solid ${customNotificationSound ? 'fa-rotate' : 'fa-upload'}`}></i>
+                        {isSavingCustomNotificationSound ? 'Đang lưu...' : customNotificationSound ? 'Đổi file' : 'Tải file'}
+                      </button>
+                      {customNotificationSound && (
+                        <button
+                          type="button"
+                          className="notification-remove-button"
+                          onClick={handleRemoveCustomNotificationSound}
+                          disabled={isSavingCustomNotificationSound}
+                        >
+                          <i className="fa-solid fa-trash-can"></i>Xóa
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <label className="workspace-setting-row"><span><strong>Giao diện gọn</strong></span><input type="checkbox" checked={settings.compactMode} onChange={event => updateNotificationSettings({ compactMode: event.target.checked })} /></label>

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-17-09 - Tai am bao tuy chinh tu may tinh
+
+- Thoi gian: 2026-08-17 15:47 (Asia/Saigon)
+- Loai: Tinh nang | Web | Kiem thu
+- Trang thai: Dang thuc hien
+- Muc tieu: Cho phep nguoi dung chon file am thanh tu may tinh lam am bao tin nhan tren tung tai khoan.
+- Pham vi: ChatUI panel Cai dat va dich vu preference am bao; khong doi Tinode message, Chatmgt, API, schema, membership hay mobile.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/conversationNotifications.js`, `src/features/chat/services/conversationNotifications.test.js`, `src/styles/index.css`, `README.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Them kiem tra MIME/duoi file va gioi han 8 MB; luu Blob am thanh theo management account ID trong IndexedDB cua origin; luu chi ID lua chon trong localStorage. Settings co nut tai file, thay file, xoa file va nghe thu; khi gui tin den, am bao tuy chinh duoc phat bang HTML Audio, con cac profile san co van dung Web Audio.
+- Quyet dinh ky thuat: Tach Blob khoi localStorage de khong vuot gioi han chuoi va khong dua file am thanh len server; IndexedDB khong kha dung thi giu chat hoat dong va bao loi khi tai file. Khong luu token, mat khau hay noi dung tin nhan.
+- Database/API/cau hinh: Khong migration/schema/API/env moi; them database IndexedDB `vichat-notification-sounds.v1` phia trinh duyet, khong lien quan database production.
+- Kiem thu: `npm run test:frontend` dat 88/88; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-CwMhF8Ph.js`, `App-CvHstrn5.js`, `index-DOsfZ-Qm.css`; `git diff --check` dat. Production chua deploy o thoi diem ghi muc nay; Browser skill chua co runtime/session de UAT upload va phat file.
+- Rui ro con lai: File phu thuoc IndexedDB, quota va kha nang phat audio cua trinh duyet theo tung origin; can UAT tai file nho hon 8 MB, F5, doi tai khoan va thu tin nhan den tren hai trinh duyet that.
+- Viec tiep theo: Commit, push, deploy rieng ChatUI, kiem tra health/public bundle, sau do UAT upload/thay/xoa file va am bao tren `https://chat.upgo.vn`.
+- Commit/PR: Chua tao.
+
 ## 2026-08-17-08 - Khoi phuc phien sau F5 va thong bao desktop
 
 - Thoi gian: 2026-08-17 15:29 (Asia/Saigon)

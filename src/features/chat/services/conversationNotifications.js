@@ -1,6 +1,11 @@
 const HOUR_MS = 60 * 60 * 1000;
 
 export const NOTIFICATION_SETTINGS_STORAGE_PREFIX = 'vichat.notification-settings.v1';
+export const CUSTOM_NOTIFICATION_SOUND_ID = 'custom';
+export const CUSTOM_NOTIFICATION_SOUND_MAX_BYTES = 8 * 1024 * 1024;
+
+const NOTIFICATION_SOUND_DATABASE_NAME = 'vichat-notification-sounds.v1';
+const NOTIFICATION_SOUND_STORE_NAME = 'sounds';
 
 export const MESSAGE_SOUND_OPTIONS = Object.freeze([
   Object.freeze({ id: 'chime', label: 'Chuông nhẹ', tones: [[660, 0, 0.14], [880, 0.12, 0.2]] }),
@@ -22,6 +27,7 @@ function notificationSettingsStorageKey(viewerId) {
 
 export function normalizeNotificationSettings(value = {}) {
   const sound = MESSAGE_SOUND_OPTIONS.some(option => option.id === value?.sound)
+    || value?.sound === CUSTOM_NOTIFICATION_SOUND_ID
     ? value.sound
     : DEFAULT_NOTIFICATION_SETTINGS.sound;
   return {
@@ -52,6 +58,162 @@ export function writeNotificationSettings(viewerId, value, storage = globalThis?
     }
   }
   return next;
+}
+
+function indexedDbFactory() {
+  return typeof globalThis !== 'undefined' ? globalThis.indexedDB : null;
+}
+
+function closeDatabase(database) {
+  try {
+    database?.close?.();
+  } catch {
+    // Closing is best-effort and must not mask the storage result.
+  }
+}
+
+function openNotificationSoundDatabase(factory = indexedDbFactory()) {
+  return new Promise((resolve, reject) => {
+    if (!factory?.open) {
+      resolve(null);
+      return;
+    }
+    let request;
+    try {
+      request = factory.open(NOTIFICATION_SOUND_DATABASE_NAME, 1);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(NOTIFICATION_SOUND_STORE_NAME)) {
+        database.createObjectStore(NOTIFICATION_SOUND_STORE_NAME, { keyPath: 'viewerId' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Không thể mở kho âm báo.'));
+    request.onblocked = () => reject(new Error('Kho âm báo đang bị khóa bởi một tab khác.'));
+  });
+}
+
+function normalizedCustomNotificationSound(record) {
+  if (!record?.blob) return null;
+  return {
+    blob: record.blob,
+    name: String(record.name || 'Âm báo tùy chỉnh'),
+    type: String(record.type || record.blob.type || 'audio/*'),
+    size: Number.isFinite(Number(record.size)) ? Number(record.size) : 0,
+    lastModified: Number.isFinite(Number(record.lastModified)) ? Number(record.lastModified) : 0,
+  };
+}
+
+export function validateCustomNotificationSoundFile(file) {
+  if (!file) return 'Hãy chọn một file âm thanh.';
+  const type = String(file.type || '').toLowerCase();
+  const name = String(file.name || '').toLowerCase();
+  const hasAudioType = type.startsWith('audio/');
+  const hasRecognizedAudioExtension = /\.(aac|flac|m4a|mp3|oga|ogg|wav|webm)$/i.test(name);
+  if (!hasAudioType && !(type === '' && hasRecognizedAudioExtension)) {
+    return 'Chỉ hỗ trợ file âm thanh.';
+  }
+  const size = Number(file.size);
+  if (!Number.isFinite(size) || size <= 0) return 'File âm thanh không hợp lệ.';
+  if (size > CUSTOM_NOTIFICATION_SOUND_MAX_BYTES) {
+    return 'File âm thanh phải nhỏ hơn hoặc bằng 8 MB.';
+  }
+  return '';
+}
+
+export async function readCustomNotificationSound(viewerId, factory = indexedDbFactory()) {
+  if (!viewerId) return null;
+  const database = await openNotificationSoundDatabase(factory);
+  if (!database) return null;
+  return new Promise((resolve, reject) => {
+    let request;
+    try {
+      request = database
+        .transaction(NOTIFICATION_SOUND_STORE_NAME, 'readonly')
+        .objectStore(NOTIFICATION_SOUND_STORE_NAME)
+        .get(String(viewerId));
+    } catch (error) {
+      closeDatabase(database);
+      reject(error);
+      return;
+    }
+    request.onsuccess = () => {
+      closeDatabase(database);
+      resolve(normalizedCustomNotificationSound(request.result));
+    };
+    request.onerror = () => {
+      closeDatabase(database);
+      reject(request.error || new Error('Không thể đọc file âm báo.'));
+    };
+  });
+}
+
+export async function writeCustomNotificationSound(viewerId, file, factory = indexedDbFactory()) {
+  if (!viewerId) throw new Error('Thiếu tài khoản để lưu file âm báo.');
+  const validationError = validateCustomNotificationSoundFile(file);
+  if (validationError) throw new Error(validationError);
+  const database = await openNotificationSoundDatabase(factory);
+  if (!database) throw new Error('Trình duyệt không hỗ trợ lưu file âm thanh.');
+  const record = {
+    viewerId: String(viewerId),
+    blob: typeof file.slice === 'function' ? file.slice(0, file.size, file.type) : file,
+    name: String(file.name || 'Âm báo tùy chỉnh'),
+    type: String(file.type || 'audio/*'),
+    size: Number(file.size),
+    lastModified: Number(file.lastModified) || 0,
+  };
+  return new Promise((resolve, reject) => {
+    let request;
+    try {
+      request = database
+        .transaction(NOTIFICATION_SOUND_STORE_NAME, 'readwrite')
+        .objectStore(NOTIFICATION_SOUND_STORE_NAME)
+        .put(record);
+    } catch (error) {
+      closeDatabase(database);
+      reject(error);
+      return;
+    }
+    request.onsuccess = () => {
+      closeDatabase(database);
+      resolve(normalizedCustomNotificationSound(record));
+    };
+    request.onerror = () => {
+      closeDatabase(database);
+      reject(request.error || new Error('Không thể lưu file âm báo.'));
+    };
+  });
+}
+
+export async function deleteCustomNotificationSound(viewerId, factory = indexedDbFactory()) {
+  if (!viewerId) return false;
+  const database = await openNotificationSoundDatabase(factory);
+  if (!database) return false;
+  return new Promise((resolve, reject) => {
+    let request;
+    try {
+      request = database
+        .transaction(NOTIFICATION_SOUND_STORE_NAME, 'readwrite')
+        .objectStore(NOTIFICATION_SOUND_STORE_NAME)
+        .delete(String(viewerId));
+    } catch (error) {
+      closeDatabase(database);
+      reject(error);
+      return;
+    }
+    request.onsuccess = () => {
+      closeDatabase(database);
+      resolve(true);
+    };
+    request.onerror = () => {
+      closeDatabase(database);
+      reject(request.error || new Error('Không thể xóa file âm báo.'));
+    };
+  });
 }
 
 export function notificationMessageBody(message = {}) {

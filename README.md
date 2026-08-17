@@ -130,8 +130,10 @@ deadline and automatically re-enables both. After F5, ChatUI calls
 `/api/v1/auth/me` with the existing HttpOnly Chatmgt cookie to rebuild its
 in-memory session; it never stores a token or password in browser storage.
 Desktop notifications require explicit browser permission and can be enabled
-per viewer in Settings. Only the viewer's notification preference and built-in
-sound selection are stored in localStorage; message content remains in Tinode.
+per viewer in Settings. The viewer's notification preference and selected sound
+ID are stored in localStorage; an uploaded custom sound Blob is kept in
+origin-scoped IndexedDB. Authentication data and message content remain outside
+both browser stores.
 
 If Tinode is unavailable, ChatUI remains in `management` mode with the Step 3
 directory and conversations available; realtime inputs stay disabled instead

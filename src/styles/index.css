@@ -2358,6 +2358,18 @@ input:checked + .slider:before {
 .notification-preview-button { display: inline-flex; height: 36px; align-items: center; justify-content: center; gap: 6px; padding: 0 11px; border: 1px solid rgba(244, 81, 30, .25); border-radius: 9px; color: var(--vichat-blue-dark); background: var(--vichat-blue-light); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
 .notification-preview-button:hover:not(:disabled) { border-color: var(--vichat-blue); background: #fff; }
 .notification-preview-button:disabled { cursor: not-allowed; opacity: .48; }
+.notification-custom-sound { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 11px; border: 1px dashed #c8d7e4; border-radius: 10px; background: #f8fbfd; }
+.notification-sound-file-input { display: none; }
+.notification-custom-sound-copy { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.notification-custom-sound-copy strong { color: var(--text-main); font-size: 11px; }
+.notification-custom-sound-copy small { overflow: hidden; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.notification-custom-sound-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
+.notification-upload-button, .notification-remove-button { display: inline-flex; height: 30px; align-items: center; justify-content: center; gap: 5px; padding: 0 9px; border: 1px solid transparent; border-radius: 8px; font: inherit; font-size: 10px; font-weight: 750; cursor: pointer; }
+.notification-upload-button { border-color: rgba(244, 81, 30, .25); color: var(--vichat-blue-dark); background: var(--vichat-blue-light); }
+.notification-upload-button:hover:not(:disabled) { border-color: var(--vichat-blue); background: #fff; }
+.notification-remove-button { border-color: #e7d0d0; color: #a64040; background: #fff8f8; }
+.notification-remove-button:hover:not(:disabled) { border-color: #cc8e8e; background: #fff; }
+.notification-upload-button:disabled, .notification-remove-button:disabled { cursor: not-allowed; opacity: .48; }
 
 .contact-result { padding: 7px 8px; cursor: default; }
 .contact-result-main { display: flex; flex: 1; min-width: 0; align-items: center; gap: 11px; padding: 3px; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }

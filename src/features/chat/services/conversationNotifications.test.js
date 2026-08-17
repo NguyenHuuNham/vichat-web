@@ -2,17 +2,22 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  CUSTOM_NOTIFICATION_SOUND_ID,
+  CUSTOM_NOTIFICATION_SOUND_MAX_BYTES,
   DEFAULT_NOTIFICATION_SETTINGS,
   MESSAGE_SOUND_OPTIONS,
   NOTIFICATION_MUTE_OPTIONS,
+  deleteCustomNotificationSound,
   isConversationMuted,
   messageSoundProfile,
   notificationMessageBody,
   nextNotificationMuteExpiry,
   normalizeNotificationSettings,
   normalizeNotificationMuteUntil,
+  readCustomNotificationSound,
   readNotificationSettings,
   resolveNotificationMuteUntil,
+  validateCustomNotificationSoundFile,
   writeNotificationSettings,
 } from './conversationNotifications.js';
 
@@ -91,6 +96,21 @@ test('normalizes and persists per-viewer desktop notification preferences', () =
   }, storage);
   assert.deepEqual(readNotificationSettings('usrA', storage), saved);
   assert.notDeepEqual(readNotificationSettings('usrB', storage), saved);
+});
+
+test('supports custom sound selection and validates uploaded audio files', async () => {
+  assert.equal(
+    normalizeNotificationSettings({ sound: CUSTOM_NOTIFICATION_SOUND_ID }).sound,
+    CUSTOM_NOTIFICATION_SOUND_ID,
+  );
+  assert.equal(validateCustomNotificationSoundFile({ type: 'audio/mpeg', size: 1024, name: 'ring.mp3' }), '');
+  assert.equal(validateCustomNotificationSoundFile({ type: 'text/plain', size: 1024, name: 'ring.txt' }), 'Chỉ hỗ trợ file âm thanh.');
+  assert.equal(
+    validateCustomNotificationSoundFile({ type: 'audio/wav', size: CUSTOM_NOTIFICATION_SOUND_MAX_BYTES + 1, name: 'ring.wav' }),
+    'File âm thanh phải nhỏ hơn hoặc bằng 8 MB.',
+  );
+  assert.equal(await readCustomNotificationSound('usrA', null), null);
+  assert.equal(await deleteCustomNotificationSound('usrA', null), false);
 });
 
 test('exposes notification sound profiles and concise message bodies', () => {
