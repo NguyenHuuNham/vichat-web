@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-04 - Deploy English localization ChatUI len production
+
+- Thoi gian: 2026-08-18 02:00 (Asia/Saigon)
+- Loai: Trien khai | Van hanh | Web | Kiem thu production
+- Trang thai: Da deploy production; san sang UAT
+- Muc tieu: Dua bo sua ngon ngu English cua ChatUI len web that de viewer co the dung giao dien English nhat quan.
+- Pham vi: Chi service `chat`; khong recreate, restart, migration hoac thay doi Chatmgt, Tinode, bridge, chatbot webhook, ChatAPI, PostgreSQL, Redis, Coturn hay volume.
+- File da thay doi: Release `/opt/deploy/chat/releases/english-localization-9e0fb86-20260818-2020`; source commit `9e0fb86`.
+- Noi dung: Archive SHA-256 `2E2EC6012329C116739B101829C805FCB1A51298ED71A7D597AFB79DAF3E81B7` duoc staging vao `incoming`, build image ChatUI `sha256:eda6786dabcbf53a65cade4f008233caa204b9c3fd55919f5f6164732bb3f1a2`, chi recreate `chat` voi `--no-deps --force-recreate --no-build`; container moi la `3f6aa86a08f7`.
+- Quyet dinh ky thuat: Tao release bat bien, copy `.env` va runtime hien tai ma khong in secret, tag image cu de rollback, chi doi symlink `current` sau khi ChatUI healthy; `previous` tro ve `/opt/deploy/chat/releases/settings-pin-hotfix-e4c7155-20260817173730`.
+- Database/API/cau hinh: Khong migration, khong thay doi database, API, `.env` production, runtime config hoac service stateful.
+- Kiem thu production: `npm run test:frontend` dat 105/105; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat; remote Compose config dat; ChatUI healthy; `http://127.0.0.1:8094/healthz` va `https://chat.upgo.vn/healthz` deu tra `ok`; public entry `/assets/index-DpU1nsQE.js` va App chunk `/assets/App-CxCLt5so.js` HTTP 200, co marker `language-picker`, `English`, `Choose the application display language`; log ChatUI 5 phut sau recreate khong co traceback/panic/fatal/critical/emerg/exception; container stateful giu nguyen ID.
+- Rui ro con lai: Chua UAT bang browser/tai khoan UpGO that cho tat ca state English, notification desktop, call overlay va Workspace; chuoi loi tu server ben ngoai bo dich co the van giu nguyen neu khong trung pattern da khai bao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, dang nhap tai khoan test, chuyen English va kiem tra Chat, thong tin nhom/ca nhan, media, Workspace, cuoc goi, thong bao va PIN; rollback symlink `previous` neu UAT phat sinh loi.
+- Commit/PR: Source `9e0fb86`; docs deploy follow-up `Chua tao`.
+
 ## 2026-08-18-03 - Hoan thien ngon ngu English cho ChatUI
 
 - Thoi gian: 2026-08-18 01:45 (Asia/Saigon)
