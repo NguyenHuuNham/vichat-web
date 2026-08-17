@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-17-16 - Huy deploy giao dien compact/dark mode
+
+- Thoi gian: 2026-08-17 20:17 (Asia/Saigon)
+- Loai: Van hanh | Kiem thu | Huy deploy
+- Trang thai: Da huy deploy; production giu release cu
+- Muc tieu: Dung ngay lan deploy ChatUI compact/dark mode theo yeu cau nguoi dung va bao dam production tro lai trang thai healthy.
+- Pham vi: Chi quy trinh release ChatUI `a59a384`; khong thay doi Chatmgt, Tinode, database, Redis, Coturn hay du lieu chat.
+- File da thay doi: `docs/CHANGELOG.md`.
+- Noi dung: Commit `a59a384` da push `origin/master`; archive da staging tai `/opt/deploy/chat/releases/compact-ui-a59a384-20260817-2010` va image ChatUI moi da build, nhung symlink `current` khong doi va khong chay `up -d --no-deps`. Lenh rollback tag bi ngat khi Docker tam pause container ChatUI; container da duoc unpause ngay, sau do `chat` healthy va ca health noi bo/public deu tra `ok`.
+- Quyet dinh ky thuat: Khong switch release, khong recreate service va khong xoa release/image staging de co the tiep tuc an toan neu nguoi dung yeu cau deploy lai.
+- Database/API/cau hinh: Khong migration, khong thay doi API, `.env` production hoac cau hinh runtime dang chay.
+- Kiem thu: Remote `docker compose ... config -q` dat; build service `chat` dat; `http://127.0.0.1:8094/healthz` va `https://chat.upgo.vn/healthz` deu tra `ok`; sau khi unpause container `chat` tra `healthy`.
+- Rui ro con lai: UI compact/dark mode chua co tren production; release/image staging con ton tai nhung khong duoc traffic su dung.
+- Viec tiep theo: Chi deploy release `compact-ui-a59a384-20260817-2010` khi co yeu cau xac nhan lai.
+- Commit/PR: Chua tao.
+
 ## 2026-08-17-15 - Thu gon ChatUI va cai thien dark mode
 
 - Thoi gian: 2026-08-17 20:05 (Asia/Saigon)
