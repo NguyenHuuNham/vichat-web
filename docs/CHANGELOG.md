@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-17 23:28 (Asia/Saigon)
 - Loai: Tinh nang | UX | Web | Kiem thu
-- Trang thai: Hoan tat local; chua deploy
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Tach rieng luong gui anh va gui file, cho phep chon nhieu muc trong mot lan gui.
 - Pham vi: Composer ChatUI va helper phan loai attachment; giu nguyen upload Tinode, reply, paste va voice.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/messagePresentation.js`, `src/features/chat/services/messagePresentation.test.js`.
 - Noi dung: Them nut gui nhieu anh voi `accept=image/*`, nut gui nhieu file, ca hai input dung `multiple`; cac muc hop le duoc gui qua handler hien tai, anh chon nham o nut file va muc khong phai anh o nut anh duoc bao qua.
 - Quyet dinh ky thuat: Chuyen FileList thanh mang truoc khi reset input, giu thu tu lua chon va khong doi API Tinode/Chatmgt hay database.
 - Database/API/cau hinh: Khong co.
-- Kiem thu: `npm run test:frontend` dat 95/95; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat.
-- Rui ro con lai: Chua UAT bang browser that cho chon nhieu file/anh va upload dong thoi; chua deploy theo yeu cau.
-- Viec tiep theo: UAT local/staging bang nhieu anh, nhieu file, file hon hop va file bi chon nham loai; chi deploy khi co lenh moi.
-- Commit/PR: Chua tao.
+- Van hanh: Release `/opt/deploy/chat/releases/c5430dd-multi-attachments-20260817T164710Z`; archive SHA-256 `DAD46CE2B5DDC51ABBE948F449953482630F65EDF810F3E5C7BF82CA3746685C`; image manifest `sha256:9a182428aef52cff18a92b51650cb88567c81746177dc1e100786aa91d9f52f5`; container ChatUI `b539fc3b61ca`. Chi recreate `chat`, giu nguyen `.env`/runtime va cac container stateful.
+- Kiem thu: `npm run test:frontend` dat 95/95; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat; remote Compose config dat; ChatUI healthy; `http://127.0.0.1:8094/healthz` va `https://chat.upgo.vn/healthz` deu tra `ok`; bundle asset `App-CbLVKI--.js` HTTP 200 va co marker `image-input-action`.
+- Rui ro con lai: Chua UAT bang browser/tai khoan that cho chon nhieu file/anh, file hon hop, upload dong thoi va truong hop chon nham loai.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, thu nhieu anh, nhieu file, file hon hop va xac nhan cac attachment hien thanh tung tin nhan; neu phat sinh loi thi rollback symlink `previous` va image cu.
+- Commit/PR: `c5430dd` da push `origin/master`; docs follow-up `299c403` da push.
 
 ## 2026-08-17-20 - Reply, mention, ho so va tin nhan thoai
 
