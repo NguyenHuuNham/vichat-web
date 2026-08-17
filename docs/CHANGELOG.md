@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-02 - Hotfix man hinh trang sau khi bat khoa PIN
+
+- Thoi gian: 2026-08-18 00:40 (Asia/Saigon)
+- Loai: Sua loi | Van hanh | Web | Kiem thu
+- Trang thai: Da deploy production; san sang UAT
+- Muc tieu: Khoi phuc ChatUI khi trang production bi trang sau release cai dat va khoa PIN.
+- Pham vi: Khoi tao state PIN trong `src/app/App.jsx`; khong thay doi luong dang nhap, Chatmgt, Tinode, API hoac database.
+- File da thay doi: `src/app/App.jsx`, `docs/CHANGELOG.md`.
+- Noi dung: Sua loi runtime `Cannot access 'pinViewerId' before initialization` do effect khoa PIN tham chieu bien truoc khai bao. Dua khai bao `pinViewerId` len truoc effect de React co the render man hinh dang nhap/khoa PIN binh thuong.
+- Quyet dinh ky thuat: Giu nguyen co che PIN va session hien tai; chi sua thu tu khoi tao de loai bo Temporal Dead Zone, khong them fallback dang nhap nhanh.
+- Database/API/cau hinh: Khong migration, API, dependency, bien moi truong hoac thay doi service stateful.
+- Kiem thu: `npm run test:frontend` dat 98/98; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat; public `https://chat.upgo.vn/healthz` tra `ok`. Bundle public co `pin-lock-screen`, `language-picker`, `pin-preference-card`, `notification-sound-file-status` va khong co `workspace-account-card`.
+- Van hanh: Archive SHA-256 `82D08CFE7B4F33B5AEB837B290EED3640C3AF0012990AEF5916A6D1C41219651` duoc staging vao `/opt/deploy/chat/releases/settings-pin-hotfix-e4c7155-20260817173730`; image ChatUI `sha256:a25c28fbbda259aa34ec018b92e1b05f1cdd38f59e82389d5d620c773cedb90d`; chi recreate `chat` voi `--no-deps --force-recreate`, giu nguyen Chatmgt, Tinode, database, Redis, Coturn va volume.
+- Rui ro con lai: Chua UAT bang browser that do runtime browser hien khong co browser kha dung; can hard refresh va kiem tra dang nhap, khoa PIN, dark mode va selector ngon ngu tren tai khoan test.
+- Viec tiep theo: UAT `https://chat.upgo.vn`; neu van co loi thi thu console/runtime va rollback ve symlink `previous`.
+- Commit/PR: Hotfix `e4c7155`; changelog follow-up dang cho commit.
+
 ## 2026-08-18-01 - Gon giao dien cai dat va them khoa PIN theo tab
 
 - Thoi gian: 2026-08-18 00:19 (Asia/Saigon)
