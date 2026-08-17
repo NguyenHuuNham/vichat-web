@@ -10,17 +10,17 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-18 03:44 (Asia/Saigon)
 - Loai: UX | Web | Accessibility | Kiem thu
-- Trang thai: Hoan tat code; chua deploy production
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Lam gon va can doi panel Cai dat theo mau tham chieu, de doc ro ca o light mode va dark mode.
 - Pham vi: Chi ChatUI settings drawer; khong doi handler thong bao, am bao, giao dien, ngon ngu, PIN, Chat/Tinode, auth, tenant, API hoac database.
-- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`; release `/opt/deploy/chat/releases/settings-redesign-1df88c1-20260818-0348`.
 - Noi dung: Mo rong rieng settings drawer, them card co icon cho thong bao/am bao/giao dien/ngon ngu/PIN, them mo ta trang thai Bat/Tat, switch am bao, preview theme, trang thai PIN va ghi chu PIN chi luu tren thiet bi. Bo sung responsive mobile va dark-mode override co scope rieng de thong tin van tuong phan; giu nguyen toan bo handler va data flow hien co.
 - Quyet dinh ky thuat: Them class `settings-shell-panel` chi cho `workspacePanel === 'settings'`, khong sua CSS/layout cua profile, contacts, files, notifications, search hoac enterprise panel. Logic luu setting van dung local preference hien tai; khong them API, migration hay dependency.
 - Database/API/cau hinh: Khong co.
-- Kiem thu: `npm run test:frontend` dat 107/107; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle local `index-Cvshi1fR.js`, `App-CtCHr54g.js`, `index-DF3B3Rd2.css`; `git diff --check` dat.
-- Rui ro con lai: Chua UAT truc quan bang browser do moi truong hien khong co browser kha dung; can kiem tra panel settings o viewport desktop/mobile, light/dark mode va click chon thong bao/ngon ngu sau khi deploy.
-- Viec tiep theo: Neu UAT dat, tao release bat bien va chi recreate service `chat`; khong cham cac service stateful.
-- Commit/PR: Chua tao.
+- Kiem thu: Local `npm run test:frontend` dat 107/107; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat. Remote Compose config/build dat; image ChatUI `sha256:153cfd951a3ce0198e7c113dc88245603833889992328440dbc39459ef622fa8`; chi recreate `chat` voi `--no-deps --force-recreate --no-build`; `http://127.0.0.1:8094/healthz` va `https://chat.upgo.vn/healthz` tra `ok`; public bundle HTTP 200 co marker `settings-shell-panel`, `theme-choice-selected`, `pin-preference-note`; Chatmgt auth health HTTP 200; log ChatUI 10 phut khong co fatal marker; Chatmgt, Tinode bridge/webhook, ChatAPI, PostgreSQL, Redis va Coturn giu nguyen container ID/trang thai.
+- Rui ro con lai: Chua UAT truc quan bang browser/tai khoan that cho viewport desktop/mobile, light/dark mode, thao tac chon thong bao/ngon ngu va PIN; image rollback exact cua container cu khong the tag do Docker thieu metadata layer, nhung release filesystem `profile-menu-41ebf30-20260818-0315` van duoc giu de rebuild.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo `Cai dat` va kiem tra card/scroll/light-dark/mobile; neu phat sinh loi thi dung release `previous` va rebuild/recreate chi `chat`.
+- Commit/PR: Source `1df88c1`; deploy docs follow-up committed separately.
 
 ## 2026-08-18-07 - Sua khung menu chuyen cong ty
 
