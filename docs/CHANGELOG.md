@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-17-18 - Them kho noi dung va phan loai hoi thoai
+
+- Thoi gian: 2026-08-17 20:51 (Asia/Saigon)
+- Loai: Tinh nang | UX | Web | Kiem thu
+- Trang thai: Hoan tat code; chua deploy, can UAT
+- Muc tieu: Cho phep xem anh/video, file va link trong thong tin nhom/ca nhan theo ngay, dong thoi phan loai hoi thoai de danh sach de quan ly hon.
+- Pham vi: ChatUI sidebar thong tin nhom/ca nhan, menu 3 cham hoi thoai, bo loc noi dung dung chung va preference theo viewer; giu nguyen Tinode, Chatmgt, thanh vien, mute, ghim, roi va xoa hoi thoai.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/conversationCategoryPolicy.js`, `src/features/chat/services/conversationCategoryPolicy.test.js`, `package.json`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Them cac tab `Anh/Video`, `Files`, `Links`; loc theo nguoi gui, 7/30/90 ngay hoac khoang tuy chon, tim kiem va nhom ket qua theo ngay lich local. Dung lai handler media bao ve hien co de mo/xem/tai, khong tao kho noi dung thu hai. Them submenu `Phan loai` voi Khach hang, Gia dinh, Cong viec, Ban be, Dong nghiep va Khac; nhan mau hien tren danh sach hoi thoai va co the bo phan loai. Sidebar chi hien kho noi dung va cac chuc nang thong tin hien co; da xac minh khong con muc `Nhac hen`/`Danh sach nhac hen` trong UI hien tai.
+- Quyet dinh ky thuat: Phan loai luu trong localStorage theo ID viewer de khong lam doi API/schema va khong lam lo du lieu giua doanh nghiep; media duoc suy ra tu message hien co, link tu metadata hoac URL trong text, ngay duoc tinh theo mui gio trinh duyet.
+- Database/API/cau hinh: Khong migration, API, dependency hoac bien moi truong moi. Phan loai chua dong bo giua cac thiet bi/browser cua cung tai khoan.
+- Kiem thu: `npm run test:frontend` dat 91/91; `npm run lint` exit 0 voi warning legacy da co trong `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat voi bundle `App-BvqXUXQ1.js`, `index-BjI6La_B.css`; `git diff --check` dat; `rg -n -i "nhac hen|danh sach nhac|reminder|appointment|fa-calendar" src/app/App.jsx src/styles/index.css` khong tim thay muc nhac hen.
+- Rui ro con lai: Chua UAT bang browser/tai khoan that cho preview Tinode protected media, bo loc link va responsive; `Links` chi hien URL ma message hien tai co the trich xuat; chua deploy production trong lan nay.
+- Viec tiep theo: Hard refresh build local/staging, thu thong tin nhom/ca nhan, loc theo ngay/nguoi gui, mo/tai media va gan-bo nhan Phan loai; chi deploy khi UAT dat.
+- Commit/PR: Chua tao.
+
 ## 2026-08-17-17 - Deploy ChatUI compact/dark mode khong cham stateful
 
 - Thoi gian: 2026-08-17 20:24 (Asia/Saigon)

@@ -38,6 +38,12 @@ import {
   applyLocalConversationPins,
   toggleConversationPinIds,
 } from '../features/chat/services/conversationPinPolicy';
+import {
+  CONVERSATION_CATEGORY_OPTIONS,
+  applyLocalConversationCategories,
+  readConversationCategories,
+  setConversationCategory,
+} from '../features/chat/services/conversationCategoryPolicy';
 import { resolveCallsEnabled } from '../features/chat/services/callSignaling';
 import { attachmentConversationPreview } from '../features/chat/services/messagePreview';
 import {
@@ -159,6 +165,20 @@ const APP_LANGUAGE_COPY = Object.freeze({
   }),
 });
 
+const MEDIA_BROWSER_TABS = Object.freeze([
+  Object.freeze({ id: 'images', label: 'Ảnh/Video', icon: 'fa-images' }),
+  Object.freeze({ id: 'files', label: 'Files', icon: 'fa-file-lines' }),
+  Object.freeze({ id: 'links', label: 'Links', icon: 'fa-link' }),
+]);
+
+const MEDIA_DATE_FILTER_OPTIONS = Object.freeze([
+  Object.freeze({ id: 'all', label: 'Tất cả thời gian' }),
+  Object.freeze({ id: '7d', label: '7 ngày qua' }),
+  Object.freeze({ id: '30d', label: '30 ngày qua' }),
+  Object.freeze({ id: '90d', label: '3 tháng qua' }),
+  Object.freeze({ id: 'custom', label: 'Khoảng ngày tùy chọn' }),
+]);
+
 function tinodeTopicName(room) {
   return room?.tinodeTopic || room?.id || '';
 }
@@ -222,6 +242,88 @@ function isImageAttachment(file, type = '') {
   return type === 'image'
     || mime.startsWith('image/')
     || /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/.test(name);
+}
+
+function isVideoAttachment(file) {
+  const name = String(file?.name || '').toLowerCase();
+  const mime = String(file?.mime || '').toLowerCase();
+  return mime.startsWith('video/') || /\.(avi|mov|mkv|mp4|webm)$/.test(name);
+}
+
+function attachmentForMessage(message) {
+  if (!message) return null;
+  return message.file || (message.type === 'image' && message.image ? {
+    name: 'Hình ảnh',
+    mime: 'image/*',
+    size: 'Hình ảnh',
+    url: message.image,
+  } : null);
+}
+
+function messageSenderId(message) {
+  return String(message?.senderId || message?.raw?.from || message?.raw?.head?.['x-sender-id'] || '');
+}
+
+function messageSenderName(message) {
+  return message?.senderName || (message?.sender === 'outgoing' ? 'Bạn' : 'Thành viên');
+}
+
+function messageLinks(message) {
+  const explicitLinks = Array.isArray(message?.links)
+    ? message.links.map(link => typeof link === 'string' ? link : link?.url || link?.href).filter(Boolean)
+    : [];
+  const textLinks = String(message?.text || '').match(/https?:\/\/[^\s<]+/gi) || [];
+  return [...new Set([...explicitLinks, ...textLinks].map(link => String(link).replace(/[),.;!?]+$/, '')))]
+    .filter(link => /^https?:\/\//i.test(link));
+}
+
+function mediaEntriesForMessages(messages = []) {
+  const entries = [];
+  messages.forEach(message => {
+    if (!message || ['system', 'friend_event', 'call'].includes(message.type)) return;
+    const timestamp = messageTimestamp(message);
+    const attachment = attachmentForMessage(message);
+    const senderId = messageSenderId(message);
+    const senderName = messageSenderName(message);
+    if (attachment) {
+      const visual = isImageAttachment(attachment, message.type) || isVideoAttachment(attachment);
+      entries.push({
+        id: `attachment-${message.id || message.seq || entries.length}`,
+        kind: visual ? 'images' : 'files',
+        message,
+        attachment,
+        timestamp,
+        senderId,
+        senderName,
+        searchText: `${attachment.name || ''} ${attachment.mime || ''} ${message.text || ''} ${senderName}`.toLowerCase(),
+      });
+    }
+    messageLinks(message).forEach((url, index) => {
+      entries.push({
+        id: `link-${message.id || message.seq || entries.length}-${index}`,
+        kind: 'links',
+        message,
+        url,
+        timestamp,
+        senderId,
+        senderName,
+        searchText: `${url} ${message.text || ''} ${senderName}`.toLowerCase(),
+      });
+    });
+  });
+  return entries.sort((first, second) => second.timestamp - first.timestamp);
+}
+
+function formatMediaDateHeading(timestamp) {
+  if (!timestamp) return 'Chưa xác định ngày';
+  const date = new Date(timestamp);
+  return `Ngày ${date.getDate()} Tháng ${date.getMonth() + 1}, ${date.getFullYear()}`;
+}
+
+function mediaDateKey(timestamp) {
+  if (!timestamp) return 'unknown';
+  const date = new Date(timestamp);
+  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 }
 
 function TinodeImagePreview({ source, alt, className = '' }) {
@@ -860,6 +962,8 @@ function App() {
   const [messageMentions, setMessageMentions] = useState({});
   const [messageMenu, setMessageMenu] = useState(null);
   const [conversationMenu, setConversationMenu] = useState(null);
+  const [conversationCategoryMenuOpen, setConversationCategoryMenuOpen] = useState(false);
+  const [conversationCategories, setConversationCategories] = useState({});
   const [replyingTo, setReplyingTo] = useState(null);
   const [messageDetails, setMessageDetails] = useState(null);
   const [shareMessage, setShareMessage] = useState(null);
@@ -884,6 +988,22 @@ function App() {
   const [forcedLogoutSeconds, setForcedLogoutSeconds] = useState(null);
   const [activeCall, setActiveCall] = useState(null);
   const [imageViewer, setImageViewer] = useState(null);
+  const [mediaBrowserOpen, setMediaBrowserOpen] = useState(false);
+  const [mediaBrowserTab, setMediaBrowserTab] = useState('images');
+  const [mediaSenderFilter, setMediaSenderFilter] = useState('all');
+  const [mediaDateFilter, setMediaDateFilter] = useState('all');
+  const [mediaSearchQuery, setMediaSearchQuery] = useState('');
+  const [mediaFromDate, setMediaFromDate] = useState('');
+  const [mediaToDate, setMediaToDate] = useState('');
+
+  useEffect(() => {
+    if (!mediaBrowserOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mediaBrowserOpen]);
 
   // Mobile navigation state
   const [isMobileChatActive, setIsMobileChatActive] = useState(false);
@@ -965,6 +1085,11 @@ function App() {
     lastMsg: '',
     time: '',
     badge: 0,
+  };
+  const conversationCategoryFor = room => {
+    const key = String(room?.managementId || room?.id || '');
+    const categoryId = conversationCategories[key] || room?.category || '';
+    return CONVERSATION_CATEGORY_OPTIONS.find(option => option.id === categoryId) || null;
   };
   const activeChatMuted = isConversationMuted(activeChat.notificationMutedUntil, notificationClock);
   const activeChatMuteLabel = notificationMuteLabel(activeChat.notificationMutedUntil, notificationClock);
@@ -1088,6 +1213,11 @@ function App() {
     setSettings(readNotificationSettings(notificationSettingsViewerId));
     setNotificationSettingsNotice('');
   }, [notificationSettingsViewerId]);
+
+  useEffect(() => {
+    setConversationCategories(managementViewerId ? readConversationCategories(managementViewerId) : {});
+    setConversationCategoryMenuOpen(false);
+  }, [managementViewerId]);
 
   useEffect(() => {
     let active = true;
@@ -1324,6 +1454,7 @@ function App() {
       if (event.type === 'keydown' && event.key !== 'Escape') return;
       setMessageMenu(null);
       setConversationMenu(null);
+      setConversationCategoryMenuOpen(false);
     };
     document.addEventListener('click', closeMenus);
     document.addEventListener('keydown', closeMenus);
@@ -1408,9 +1539,12 @@ function App() {
     const managed = await chatManagementService.listConversations();
     if (accountSessionRef.current !== accountSession || managementConversationSessionRef.current !== accountSession) return {};
     const managedRoomsSnapshot = managementRoomsForSession(managed, directoryAccounts, currentUser, accountSession);
-    const managedRooms = chatManagementService.remote
-      ? managedRoomsSnapshot
-      : applyLocalConversationPins(managedRoomsSnapshot, managementUserId);
+    const managedRooms = applyLocalConversationCategories(
+      chatManagementService.remote
+        ? managedRoomsSnapshot
+        : applyLocalConversationPins(managedRoomsSnapshot, managementUserId),
+      managementUserId,
+    );
     const previousRooms = conversationsRef.current;
     const nextRooms = Object.fromEntries(Object.entries(previousRooms).filter(([, room]) => (
       room.isChatbot
@@ -1957,6 +2091,9 @@ function App() {
     setNotificationMuteDialog(null);
     setIsUpdatingNotificationMute(false);
     setNotificationClock(Date.now());
+    setConversationCategories({});
+    setConversationCategoryMenuOpen(false);
+    setMediaBrowserOpen(false);
     setDirectoryAccounts([]);
     avatarOverridesRef.current.clear();
     groupAvatarSyncRef.current.clear();
@@ -2013,9 +2150,12 @@ function App() {
         });
         if (accountSessionRef.current !== accountSession) return;
         const managedRoomsSnapshot = managementRoomsForSession(managed, accounts, user, accountSession);
-        const managedRooms = chatManagementService.remote
-          ? managedRoomsSnapshot
-          : applyLocalConversationPins(managedRoomsSnapshot, managementUserId);
+        const managedRooms = applyLocalConversationCategories(
+          chatManagementService.remote
+            ? managedRoomsSnapshot
+            : applyLocalConversationPins(managedRoomsSnapshot, managementUserId),
+          managementUserId,
+        );
         const next = {
           ...managedRooms,
           [CHATBOT_ACCOUNT.id]: chatbotRoom,
@@ -2979,8 +3119,25 @@ function App() {
     setConversationMenu(null);
   };
 
-  const handleConversationMenuAction = async (action, room) => {
+  const updateConversationCategory = (room, categoryId) => {
     if (!room) return;
+    const viewerKey = managementViewerId || viewerId;
+    const conversationId = room.managementId || room.id;
+    const nextCategories = setConversationCategory(viewerKey, conversationId, categoryId);
+    setConversationCategories(nextCategories);
+    setConversations(previous => previous[room.id]
+      ? { ...previous, [room.id]: { ...previous[room.id], category: categoryId || '' } }
+      : previous);
+    setConversationCategoryMenuOpen(false);
+    setConversationMenu(null);
+  };
+
+  const handleConversationMenuAction = async (action, room, value = '') => {
+    if (!room) return;
+    if (action === 'category') {
+      updateConversationCategory(room, value);
+      return;
+    }
     if (action === 'pin') {
       await updateConversationPin(room);
       return;
@@ -3523,6 +3680,22 @@ function App() {
     setImageViewer({ source: file.url });
   };
 
+  const openMediaBrowser = (tab = mediaBrowserTab) => {
+    setMediaBrowserTab(tab);
+    setMediaBrowserOpen(true);
+  };
+
+  const handleMediaEntryOpen = entry => {
+    if (!entry) return;
+    if (entry.kind === 'links') {
+      window.open(entry.url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    setMediaBrowserOpen(false);
+    if (isImageAttachment(entry.attachment, entry.message?.type)) openImageViewer(entry.attachment);
+    else handleFileOpen(entry.attachment);
+  };
+
   const updateCurrentDraft = (value) => {
     setInputText(value);
     setDrafts(prev => {
@@ -3675,9 +3848,10 @@ function App() {
   const openConversationMenu = (event, room) => {
     event.stopPropagation();
     const rect = event.currentTarget.getBoundingClientRect();
-    const width = 236;
-    const height = 260;
+    const width = 252;
+    const height = 410;
     setMessageMenu(null);
+    setConversationCategoryMenuOpen(false);
     setConversationMenu({
       roomId: room.id,
       left: Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12)),
@@ -4082,6 +4256,39 @@ function App() {
     .filter(message => message.type === 'file' || message.type === 'image')
     .map(message => ({ ...message, roomName: room.name, roomId: room.id })));
 
+  const activeMediaEntries = mediaEntriesForMessages(activeChat.messages || []);
+  const mediaSenderOptions = [...new Map(activeMediaEntries
+    .map(entry => [entry.senderId || `name:${entry.senderName}`, entry.senderName])
+    .filter(([id, name]) => Boolean(id && name))).entries()]
+    .map(([id, name]) => ({ id, name }))
+    .sort((first, second) => first.name.localeCompare(second.name, 'vi'));
+  const mediaDateStart = (() => {
+    if (mediaDateFilter === 'all') return 0;
+    if (mediaDateFilter === 'custom') {
+      return mediaFromDate ? new Date(`${mediaFromDate}T00:00:00`).getTime() : 0;
+    }
+    const days = mediaDateFilter === '7d' ? 7 : mediaDateFilter === '30d' ? 30 : 90;
+    return Date.now() - days * 24 * 60 * 60 * 1000;
+  })();
+  const mediaDateEnd = mediaDateFilter === 'custom' && mediaToDate
+    ? new Date(`${mediaToDate}T23:59:59.999`).getTime()
+    : Number.POSITIVE_INFINITY;
+  const normalizedMediaSearch = mediaSearchQuery.trim().toLowerCase();
+  const filteredMediaEntries = activeMediaEntries.filter(entry => {
+    if (entry.kind !== mediaBrowserTab) return false;
+    if (mediaSenderFilter !== 'all' && entry.senderId !== mediaSenderFilter && `name:${entry.senderName}` !== mediaSenderFilter) return false;
+    if (mediaDateFilter !== 'all' && (!entry.timestamp || entry.timestamp < mediaDateStart || entry.timestamp > mediaDateEnd)) return false;
+    return !normalizedMediaSearch || entry.searchText.includes(normalizedMediaSearch);
+  });
+  const mediaGroups = filteredMediaEntries.reduce((groups, entry) => {
+    const key = mediaDateKey(entry.timestamp);
+    const current = groups.at(-1);
+    if (!current || current.key !== key) groups.push({ key, label: formatMediaDateHeading(entry.timestamp), entries: [entry] });
+    else current.entries.push(entry);
+    return groups;
+  }, []);
+  const mediaCounts = activeMediaEntries.reduce((counts, entry) => ({ ...counts, [entry.kind]: counts[entry.kind] + 1 }), { images: 0, files: 0, links: 0 });
+
   const notifications = Object.values(conversations)
     .filter(room => !isSelfDirectConversation(room, currentUser, directoryAccounts))
     .filter(room => !isConversationHiddenAfterDelete(room))
@@ -4256,6 +4463,7 @@ function App() {
             const draft = drafts[id] || '';
             const hasDraft = Boolean(draft.trim());
             const roomMuted = isConversationMuted(room.notificationMutedUntil, notificationClock);
+            const roomCategory = conversationCategoryFor(room);
             return (
               <div
                 key={id}
@@ -4272,6 +4480,7 @@ function App() {
                     <span className="conv-name">
                       {room.pinned && <i className="fa-solid fa-thumbtack conv-pinned-icon" title="Đã ghim" aria-label="Đã ghim"></i>}
                       {room.name}
+                      {roomCategory && <span className={`conversation-category-tag category-${roomCategory.id}`} style={{ '--category-color': roomCategory.color }} title={`Phân loại: ${roomCategory.label}`}>{roomCategory.label}</span>}
                     </span>
                     <span
                       className={hasDraft ? 'conv-draft-status' : 'conv-time'}
@@ -4315,6 +4524,7 @@ function App() {
       {conversationMenu && conversations[conversationMenu.roomId] && (() => {
         const menuRoom = conversations[conversationMenu.roomId];
         const menuRoomMuted = isConversationMuted(menuRoom.notificationMutedUntil, notificationClock);
+        const menuCategory = conversationCategoryFor(menuRoom);
         return (
           <div
             className="conversation-context-menu"
@@ -4331,6 +4541,23 @@ function App() {
             <button type="button" role="menuitem" onClick={() => handleConversationMenuAction('mute', menuRoom)}>
               <i className={`fa-regular ${menuRoomMuted ? 'fa-bell' : 'fa-bell-slash'}`}></i>{menuRoomMuted ? 'Bật thông báo' : 'Tắt thông báo'}
             </button>
+            <button type="button" role="menuitem" className="conversation-category-trigger" aria-expanded={conversationCategoryMenuOpen} onClick={() => setConversationCategoryMenuOpen(previous => !previous)}>
+              <i className="fa-solid fa-tags"></i><span>Phân loại</span><i className="fa-solid fa-chevron-right submenu-arrow"></i>
+            </button>
+            {conversationCategoryMenuOpen && (
+              <div className="conversation-category-submenu" role="menu" aria-label="Phân loại cuộc trò chuyện">
+                {menuCategory && (
+                  <button type="button" role="menuitem" className="conversation-category-option clear" onClick={() => handleConversationMenuAction('category', menuRoom, '')}>
+                    <i className="fa-solid fa-xmark"></i><span>Bỏ phân loại</span>
+                  </button>
+                )}
+                {CONVERSATION_CATEGORY_OPTIONS.map(category => (
+                  <button type="button" role="menuitem" className={`conversation-category-option ${menuCategory?.id === category.id ? 'selected' : ''}`} key={category.id} onClick={() => handleConversationMenuAction('category', menuRoom, category.id)}>
+                    <span className="conversation-category-dot" style={{ backgroundColor: category.color }}></span><span>{category.label}</span>{menuCategory?.id === category.id && <i className="fa-solid fa-check category-check"></i>}
+                  </button>
+                ))}
+              </div>
+            )}
             <button type="button" role="menuitem" className="danger" onClick={() => handleConversationMenuAction('delete', menuRoom)}>
               <i className="fa-regular fa-trash-can"></i>Xóa hội thoại
             </button>
@@ -4836,6 +5063,45 @@ function App() {
             </div>
           </div>
 
+          {!activeChat.isChatbot && activeChat.id !== 'empty' && (
+            <section className="detail-section shared-media-section">
+              <div className="shared-media-heading">
+                <h4 className="section-title">Ảnh, file và liên kết</h4>
+                <button type="button" className="detail-link-button" onClick={() => openMediaBrowser(mediaBrowserTab)}>Xem tất cả</button>
+              </div>
+              <div className="detail-media-tabs" role="tablist" aria-label="Nội dung dùng chung">
+                {MEDIA_BROWSER_TABS.map(tab => (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mediaBrowserTab === tab.id}
+                    className={`detail-media-tab ${mediaBrowserTab === tab.id ? 'selected' : ''}`}
+                    key={tab.id}
+                    onClick={() => setMediaBrowserTab(tab.id)}
+                  >
+                    <i className={`fa-solid ${tab.icon}`}></i><span>{tab.label}</span><strong>{mediaCounts[tab.id]}</strong>
+                  </button>
+                ))}
+              </div>
+              {mediaCounts[mediaBrowserTab] === 0 ? (
+                <div className="detail-media-empty">Chưa có nội dung trong mục này.</div>
+              ) : (
+                <div className="detail-media-preview-grid">
+                  {activeMediaEntries.filter(entry => entry.kind === mediaBrowserTab).slice(0, 4).map(entry => (
+                    <button type="button" className={`detail-media-preview ${entry.kind}`} key={entry.id} onClick={() => handleMediaEntryOpen(entry)} title={entry.attachment?.name || entry.url}>
+                      {entry.kind === 'images' && isImageAttachment(entry.attachment, entry.message?.type) && entry.attachment?.url ? (
+                        <TinodeImagePreview source={entry.attachment.url} alt={entry.attachment.name || 'Ảnh'} className="detail-media-thumbnail" />
+                      ) : (
+                        <span className="detail-media-icon"><i className={`fa-solid ${entry.kind === 'links' ? 'fa-link' : attachmentIconClass(entry.attachment, entry.message?.type)}`}></i></span>
+                      )}
+                      <span className="detail-media-preview-label">{entry.kind === 'links' ? entry.url : entry.attachment?.name || (entry.kind === 'images' ? 'Ảnh/Video' : 'File')}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
           <div className="detail-actions">
             {!activeChat.isChatbot && activeChat.id !== 'empty' && (
               <div className="action-row">
@@ -4873,6 +5139,91 @@ function App() {
           </div>
         </div>
       </aside>
+
+      {mediaBrowserOpen && (
+        <div className="media-browser-overlay" role="presentation" onMouseDown={event => {
+          if (event.target === event.currentTarget) setMediaBrowserOpen(false);
+        }}>
+          <section className="media-browser-panel" role="dialog" aria-modal="true" aria-labelledby="media-browser-title">
+            <div className="media-browser-header">
+              <div>
+                <span className="media-browser-eyebrow">Nội dung dùng chung</span>
+                <h2 id="media-browser-title">{activeChat.name}</h2>
+              </div>
+              <button type="button" className="btn-close-detail" onClick={() => setMediaBrowserOpen(false)} aria-label="Đóng"><i className="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div className="media-browser-tabs" role="tablist" aria-label="Loại nội dung">
+              {MEDIA_BROWSER_TABS.map(tab => (
+                <button type="button" role="tab" aria-selected={mediaBrowserTab === tab.id} className={mediaBrowserTab === tab.id ? 'selected' : ''} key={tab.id} onClick={() => setMediaBrowserTab(tab.id)}>
+                  <i className={`fa-solid ${tab.icon}`}></i><span>{tab.label}</span><strong>{mediaCounts[tab.id]}</strong>
+                </button>
+              ))}
+            </div>
+
+            <div className="media-filter-grid">
+              <label className="media-filter-search">
+                <i className="fa-solid fa-magnifying-glass"></i>
+                <input value={mediaSearchQuery} onChange={event => setMediaSearchQuery(event.target.value)} placeholder="Tìm theo tên, nội dung hoặc liên kết..." />
+              </label>
+              <label className="media-filter-field">
+                <span>Người gửi</span>
+                <select value={mediaSenderFilter} onChange={event => setMediaSenderFilter(event.target.value)}>
+                  <option value="all">Tất cả người gửi</option>
+                  {mediaSenderOptions.map(option => <option value={option.id} key={option.id}>{option.name}</option>)}
+                </select>
+              </label>
+              <label className="media-filter-field">
+                <span>Thời gian</span>
+                <select value={mediaDateFilter} onChange={event => setMediaDateFilter(event.target.value)}>
+                  {MEDIA_DATE_FILTER_OPTIONS.map(option => <option value={option.id} key={option.id}>{option.label}</option>)}
+                </select>
+              </label>
+            </div>
+            {mediaDateFilter === 'custom' && (
+              <div className="media-custom-date-row">
+                <label className="media-filter-field"><span>Từ ngày</span><input type="date" value={mediaFromDate} onChange={event => setMediaFromDate(event.target.value)} /></label>
+                <label className="media-filter-field"><span>Đến ngày</span><input type="date" value={mediaToDate} onChange={event => setMediaToDate(event.target.value)} /></label>
+              </div>
+            )}
+
+            <div className="media-browser-summary"><span>{filteredMediaEntries.length} mục</span><span>Nhóm theo ngày gửi</span></div>
+            <div className="media-browser-results">
+              {mediaGroups.length === 0 ? (
+                <div className="workspace-empty media-browser-empty"><i className="fa-regular fa-folder-open"></i><span>Không có nội dung phù hợp với bộ lọc.</span></div>
+              ) : mediaGroups.map(group => (
+                <section className="media-date-group" key={group.key}>
+                  <div className="media-date-heading"><strong>{group.label}</strong><span>{group.entries.length}</span></div>
+                  <div className="media-result-list">
+                    {group.entries.map(entry => (
+                      <article className={`media-result-card ${entry.kind}`} key={entry.id}>
+                        <button type="button" className="media-result-main" onClick={() => handleMediaEntryOpen(entry)}>
+                          {entry.kind === 'images' && isImageAttachment(entry.attachment, entry.message?.type) && entry.attachment?.url ? (
+                            <TinodeImagePreview source={entry.attachment.url} alt={entry.attachment.name || 'Ảnh'} className="media-result-thumbnail" />
+                          ) : (
+                            <span className="media-result-icon"><i className={`fa-solid ${entry.kind === 'links' ? 'fa-link' : attachmentIconClass(entry.attachment, entry.message?.type)}`}></i></span>
+                          )}
+                          <span className="media-result-copy">
+                            <strong>{entry.kind === 'links' ? entry.url : entry.attachment?.name || (entry.kind === 'images' ? 'Ảnh/Video' : 'File đính kèm')}</strong>
+                            <small>{entry.senderName} · {entry.timestamp ? formatMediaDateHeading(entry.timestamp) : 'Chưa rõ ngày'}</small>
+                            {entry.kind === 'files' && <small>{attachmentSizeLabel(entry.attachment)}</small>}
+                          </span>
+                        </button>
+                        {entry.kind === 'files' && (
+                          <span className="media-result-actions">
+                            <button type="button" title="Mở file" aria-label="Mở file" disabled={!entry.attachment?.url} onClick={() => handleFileOpen(entry.attachment)}><i className="fa-regular fa-folder-open"></i></button>
+                            <button type="button" title="Tải xuống" aria-label="Tải xuống" disabled={!entry.attachment?.url} onClick={() => handleFileDownload(entry.attachment)}><i className="fa-solid fa-download"></i></button>
+                          </span>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
 
       {workspacePanel && (
         <div className="workspace-overlay" role="presentation" onMouseDown={(event) => {
