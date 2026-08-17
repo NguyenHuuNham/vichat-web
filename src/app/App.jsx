@@ -49,6 +49,7 @@ import { attachmentConversationPreview } from '../features/chat/services/message
 import {
   formatAudioDuration,
   isAudioAttachment,
+  splitAttachmentSelection,
   messageContentLabel,
   replyContentLabel,
 } from '../features/chat/services/messagePresentation';
@@ -1157,6 +1158,7 @@ function App() {
   const chatMessagesEndRef = useRef(null);
   const messageInputRef = useRef(null);
   const fileInputRef = useRef(null);
+  const imageInputRef = useRef(null);
   const mentionPickerRef = useRef(null);
   const currentChatIdRef = useRef(currentChatId);
   const deletedConversationIdsRef = useRef(new Set());
@@ -3633,7 +3635,7 @@ function App() {
   };
 
   // --- Attach & Gửi tệp tin ---
-  const handleAttachClick = () => {
+  const openAttachmentPicker = inputRef => {
     if (activeChat.isChatbot) {
       setChatError('Trợ lý AI hiện chỉ nhận tin nhắn văn bản.');
       return;
@@ -3642,10 +3644,13 @@ function App() {
       setChatError('Kết nối realtime Tinode chưa sẵn sàng; dữ liệu Chatmgt vẫn đang hoạt động.');
       return;
     }
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
+    if (inputRef.current) {
+      inputRef.current.click();
     }
   };
+
+  const handleAttachClick = () => openAttachmentPicker(fileInputRef);
+  const handleImageAttachClick = () => openAttachmentPicker(imageInputRef);
 
   const handleSendFile = (file, { voiceDuration = 0 } = {}) => {
     if (!file) return;
@@ -3868,11 +3873,23 @@ function App() {
     if (recorder.state !== 'inactive') recorder.stop();
   };
 
-  const handleFileChange = event => {
-    const file = event.target.files?.[0];
+  const handleAttachmentChange = (event, source) => {
+    const selection = splitAttachmentSelection(event.target.files, source);
     event.target.value = '';
-    handleSendFile(file);
+    selection.accepted.forEach(file => {
+      void handleSendFile(file);
+    });
+    if (selection.rejected.length > 0) {
+      const rejectedCount = selection.rejected.length;
+      const message = source === 'image'
+        ? `${rejectedCount} mục không phải ảnh đã được bỏ qua.`
+        : `${rejectedCount} ảnh đã được bỏ qua; hãy dùng nút gửi ảnh.`;
+      setChatError(message);
+    }
   };
+
+  const handleFileChange = event => handleAttachmentChange(event, 'file');
+  const handleImageChange = event => handleAttachmentChange(event, 'image');
 
   const handleMessagePaste = event => {
     if (event.defaultPrevented) return;
@@ -5206,14 +5223,26 @@ function App() {
             </div>
           )}
           <div className="input-actions-left">
-            <button className="btn-input-action" title={activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Đính kèm tệp'} onClick={handleAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice}>
+            <button className="btn-input-action image-input-action" title={activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều ảnh'} aria-label="Gửi nhiều ảnh" onClick={handleImageAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice}>
+              <i className="fa-regular fa-image"></i>
+            </button>
+            <input
+              type="file"
+              ref={imageInputRef}
+              accept="image/*"
+              multiple
+              style={{ display: "none" }}
+              onChange={handleImageChange}
+            />
+            <button className="btn-input-action file-input-action" title={activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều file'} aria-label="Gửi nhiều file" onClick={handleAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice}>
               <i className="fa-solid fa-paperclip"></i>
             </button>
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              style={{ display: "none" }} 
-              onChange={handleFileChange} 
+            <input
+              type="file"
+              ref={fileInputRef}
+              multiple
+              style={{ display: "none" }}
+              onChange={handleFileChange}
             />
             <button type="button" className="btn-input-action" title="Biểu cảm" aria-label="Mở biểu cảm" aria-expanded={showEmojiPicker} onClick={() => setShowEmojiPicker(prev => !prev)} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice}>
               <i className="fa-regular fa-smile"></i>

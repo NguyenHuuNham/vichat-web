@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-17-21 - Gui nhieu anh va file trong composer
+
+- Thoi gian: 2026-08-17 23:28 (Asia/Saigon)
+- Loai: Tinh nang | UX | Web | Kiem thu
+- Trang thai: Hoan tat local; chua deploy
+- Muc tieu: Tach rieng luong gui anh va gui file, cho phep chon nhieu muc trong mot lan gui.
+- Pham vi: Composer ChatUI va helper phan loai attachment; giu nguyen upload Tinode, reply, paste va voice.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/messagePresentation.js`, `src/features/chat/services/messagePresentation.test.js`.
+- Noi dung: Them nut gui nhieu anh voi `accept=image/*`, nut gui nhieu file, ca hai input dung `multiple`; cac muc hop le duoc gui qua handler hien tai, anh chon nham o nut file va muc khong phai anh o nut anh duoc bao qua.
+- Quyet dinh ky thuat: Chuyen FileList thanh mang truoc khi reset input, giu thu tu lua chon va khong doi API Tinode/Chatmgt hay database.
+- Database/API/cau hinh: Khong co.
+- Kiem thu: `npm run test:frontend` dat 95/95; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat.
+- Rui ro con lai: Chua UAT bang browser that cho chon nhieu file/anh va upload dong thoi; chua deploy theo yeu cau.
+- Viec tiep theo: UAT local/staging bang nhieu anh, nhieu file, file hon hop va file bi chon nham loai; chi deploy khi co lenh moi.
+- Commit/PR: Chua tao.
+
 ## 2026-08-17-20 - Reply, mention, ho so va tin nhan thoai
 
 - Thoi gian: 2026-08-17 21:38 (Asia/Saigon)

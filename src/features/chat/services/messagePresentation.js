@@ -6,6 +6,23 @@ export function isAudioAttachment(file, type = '') {
     || /\.(aac|flac|m4a|mp3|ogg|opus|wav|webm)$/i.test(name);
 }
 
+const IMAGE_FILE_EXTENSIONS = /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i;
+
+export function isImageFile(file) {
+  const name = String(file?.name || '').toLowerCase();
+  const mime = String(file?.type || file?.mime || '').toLowerCase();
+  return mime.startsWith('image/') || IMAGE_FILE_EXTENSIONS.test(name);
+}
+
+export function splitAttachmentSelection(files, source = 'file') {
+  const selected = Array.from(files || []).filter(Boolean);
+  const imageSelection = source === 'image';
+  return {
+    accepted: selected.filter(file => imageSelection === isImageFile(file)),
+    rejected: selected.filter(file => imageSelection !== isImageFile(file)),
+  };
+}
+
 export function formatAudioDuration(seconds) {
   const totalSeconds = Math.max(0, Math.round(Number(seconds) || 0));
   const minutes = Math.floor(totalSeconds / 60);
