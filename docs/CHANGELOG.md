@@ -8,19 +8,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-17-07 - Dong bo lai thanh vien Tinode sau khi xoa
 
-- Thoi gian: 2026-08-17 14:07 (Asia/Saigon)
+- Thoi gian: 2026-08-17 14:23 (Asia/Saigon)
 - Loai: Sua loi | Web | Realtime | Kiem thu | Van hanh
-- Trang thai: Hoan tat code va kiem thu local; chua deploy production
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Xoa thanh vien khoi nhom xong van gui tin binh thuong, ke ca khi topic Tinode con subscriber stale tu thao tac truoc.
 - Pham vi: Chatmgt/Tinode membership bridge, ChatUI remove member va snapshot thanh vien; khong doi schema, message content hay tenant authorization.
 - File da thay doi: `chatservice-main/application/services/auth_service.py`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_tinode_bridge_service.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
 - Noi dung: Them doc va reconcile subscriber Tinode theo active member set cua Chatmgt sau add/remove va khi bind gap lech; dung owner bridge credential de sua UID du/thieu. ChatUI khong bind lai topic da co truoc khi xoa, coi system event/open topic la best-effort va giu member list tu Chatmgt sau response.
 - Quyet dinh ky thuat: Chatmgt van la nguon thanh vien chuan; thao tac reconcile duoc gioi han trong bridge va dung token owner server-side, khong cho browser tu phat minh membership.
 - Database/API/cau hinh: Khong migration; khong doi endpoint/payload; khong doi bien moi truong.
-- Kiem thu: `npm run test:frontend` dat 84/84; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-DG5URbPh.js`, `App-Ypm7DEba.js`; `python -m unittest discover -s tests -q` dat 154 test, skip 50; `python -m py_compile application/services/auth_service.py application/controllers/api_chat_management.py tests/test_tinode_bridge_service.py tests/test_chat_auth_contract.py` dat; `git diff --check` dat.
-- Rui ro con lai: Chua UAT production sau release; neu Tinode tu choi token owner thi bind se tra loi loi thay vi tu dong sua, va can theo doi log reconciliation.
-- Viec tiep theo: Commit/push, deploy Chatmgt + ChatUI, verify health/log va thu remove member roi gui tin tren `https://chat.upgo.vn`.
-- Commit/PR: Chua tao.
+- Kiem thu: `npm run test:frontend` dat 84/84; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-DG5URbPh.js`, `App-Ypm7DEba.js`; `python -m unittest discover -s tests -q` dat 154 test, skip 50; `python -m py_compile application/services/auth_service.py application/controllers/api_chat_management.py tests/test_tinode_bridge_service.py tests/test_chat_auth_contract.py` dat; `git diff --check` dat; remote `python -m unittest tests.test_tinode_bridge_service -q` dat 15/15 va 5 test contract anh huong dat; full contract trong production image khong the chay tron bo vi image khong chua source frontend `/src/...` ma mot test doc truc tiep; remote build, health va smoke endpoint deu dat.
+- Noi dung deploy: Archive SHA-256 `07f5bde309e92428bae7d5604c934e1efecaa7f641b1bb80dc4c1a8d7162b367` duoc staging tai `/opt/deploy/chat/releases/member-reconcile-88165e9-20260817-1414`; `current` tro vao release nay, `previous` tro ve `/opt/deploy/chat/releases/avatar-pin-af69a9a-20260817-1305`; chi recreate `chatmgt` va `chat`, khong migration/reset volume. Image ChatUI `sha256:47b88605b57310d8323e02987bbd90948080eec5360d5be5b2d2288f5849f041`, container `a3dc3e2b863`; image Chatmgt `sha256:edef98143e7873826ab79fcb293389a0a0964147ef25a51fde1119d42c9e9e8d`, container `7a942d11f1f6`; rollback tag luu ve image release truoc.
+- Kiem tra production: ChatUI, Chatmgt, Tinode account bridge, chatbot webhook, ChatAPI va hai PostgreSQL healthy; Redis/Coturn running; `https://chat.upgo.vn/healthz` tra `ok`; Chatmgt `/api/v1/auth/health` tra `status: ok`; public bundle phuc vu `index-ZraCiGwW.js` va CSS co marker mention/context-menu; log sau recreate khong co traceback/panic/fatal/critical/emerg/error.
+- Rui ro con lai: Chua UAT production bang hai tai khoan that cho kich ban xoa member roi gui tin ngay; full contract test khong phu hop de chay trong image production vi phu thuoc source frontend ngoai image; can theo doi log reconciliation neu Tinode tu choi token owner.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo group, xoa mot member, gui tin ngay khong refresh, refresh roi gui tiep; neu can rollback dung symlink `previous` va release `avatar-pin-af69a9a-20260817-1305`.
+- Commit/PR: Source `88165e9`; deploy record follow-up.
 
 ## 2026-08-17-06 - Dong bo avatar nhom va menu ghim hoi thoai
 
