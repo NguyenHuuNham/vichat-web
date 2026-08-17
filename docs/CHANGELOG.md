@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-17 15:47 (Asia/Saigon)
 - Loai: Tinh nang | Web | Kiem thu
-- Trang thai: Dang thuc hien
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Cho phep nguoi dung chon file am thanh tu may tinh lam am bao tin nhan tren tung tai khoan.
 - Pham vi: ChatUI panel Cai dat va dich vu preference am bao; khong doi Tinode message, Chatmgt, API, schema, membership hay mobile.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/conversationNotifications.js`, `src/features/chat/services/conversationNotifications.test.js`, `src/styles/index.css`, `README.md`, `docs/CHANGELOG.md`, `dist/index.html`.
 - Noi dung: Them kiem tra MIME/duoi file va gioi han 8 MB; luu Blob am thanh theo management account ID trong IndexedDB cua origin; luu chi ID lua chon trong localStorage. Settings co nut tai file, thay file, xoa file va nghe thu; khi gui tin den, am bao tuy chinh duoc phat bang HTML Audio, con cac profile san co van dung Web Audio.
 - Quyet dinh ky thuat: Tach Blob khoi localStorage de khong vuot gioi han chuoi va khong dua file am thanh len server; IndexedDB khong kha dung thi giu chat hoat dong va bao loi khi tai file. Khong luu token, mat khau hay noi dung tin nhan.
 - Database/API/cau hinh: Khong migration/schema/API/env moi; them database IndexedDB `vichat-notification-sounds.v1` phia trinh duyet, khong lien quan database production.
-- Kiem thu: `npm run test:frontend` dat 88/88; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-CwMhF8Ph.js`, `App-CvHstrn5.js`, `index-DOsfZ-Qm.css`; `git diff --check` dat. Production chua deploy o thoi diem ghi muc nay; Browser skill chua co runtime/session de UAT upload va phat file.
+- Kiem thu: `npm run test:frontend` dat 88/88; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle local `index-CwMhF8Ph.js`, `App-CvHstrn5.js`, `index-DOsfZ-Qm.css`; `git diff --check` dat. Production release build dat; ChatUI healthy; `http://127.0.0.1:8094/healthz` va `https://chat.upgo.vn/healthz` deu tra `ok`; public bundle `index-7EaRdqMY.js` tai chunk `App-DMvWkzwk.js` va CSS `index-DOsfZ-Qm.css` co marker `notification-custom-sound`, `vichat-notification-sounds` va `notification-upload-button`; log ChatUI sau recreate khong co traceback/panic/fatal/critical/emerg/exception/error. Browser skill chua co runtime/session de UAT upload va phat file.
 - Rui ro con lai: File phu thuoc IndexedDB, quota va kha nang phat audio cua trinh duyet theo tung origin; can UAT tai file nho hon 8 MB, F5, doi tai khoan va thu tin nhan den tren hai trinh duyet that.
-- Viec tiep theo: Commit, push, deploy rieng ChatUI, kiem tra health/public bundle, sau do UAT upload/thay/xoa file va am bao tren `https://chat.upgo.vn`.
-- Commit/PR: Chua tao.
+- Noi dung deploy: Archive SHA-256 `BAC764BADF6DEAE0825C71FADE3977EECEF3297A5394E939D6A246A097513CC6` duoc staging vao `/opt/deploy/chat/releases/custom-sound-7c0b880-20260817-1553`; `current` tro vao release nay, `previous` tro ve `/opt/deploy/chat/releases/session-notify-e259d03-20260817-1511`; image ChatUI `sha256:a900266f1663cf50ee81aef2a0af7c43772a79cc1d6d10e8311765169d546338`, container `e8f7884c64f4`; chi recreate `chat`, khong restart Chatmgt/Tinode bridge/chatbot, database, Redis/Coturn hay reset volume. Lan build/recreate dau bi timeout sau khi image da build; image moi duoc giu lai, kiem tra lai health/marker va recreate khong build da dat truoc khi doi symlink.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, vao Cai dat tai file am thanh nho hon 8 MB, nghe thu/chon am bao, gui tin tu tai khoan khac; sau do thu F5, thay file, xoa file va doi tai khoan de xac nhan IndexedDB tach theo viewer.
+- Commit/PR: Code `7c0b880` da push `origin/master`; deploy record follow-up.
 
 ## 2026-08-17-08 - Khoi phuc phien sau F5 va thong bao desktop
 
