@@ -10,15 +10,16 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-17 21:38 (Asia/Saigon)
 - Loai: Tinh nang | UX | Web | Kiem thu
-- Trang thai: San sang commit/push va deploy production
+- Trang thai: Da commit/push; deploy production tam dung theo yeu cau, chua UAT production
 - Muc tieu: Lam ro luong tra loi tin nhan, cho phep mo ho so nguoi gui/nguoi duoc mention, hien mention mau xanh ngay trong o soan va them tin nhan thoai.
 - Pham vi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/messagePreview.js`, `src/features/chat/services/messagePresentation.js`, tests va `package.json`; menu tin nhan bo `Xoa chi o phia toi`, giu `Thu hoi phia toi`/`Thu hoi tat ca`.
 - Noi dung: Reply luu ca text/file/audio metadata va hien quote tren tin nhan text, anh, file, voice; mention duoc phu mau xanh bang lop preview ma van giu input/paste/Enter hien tai; avatar/ten nguoi gui va mention co the mo profile modal chi voi truong cong khai; voice dung `MediaRecorder`, upload Tinode file hien co, player co play/waveform/duration/trang thai.
 - Quyet dinh ky thuat: Khong doi database, API Chatmgt hay schema Tinode; reply file dung `x-reply-to`, voice duration dung `x-voice-duration`, ca hai duoc gioi han o metadata an toan. Khong luu password, token, cookie hay du lieu bi mat.
 - Kiem thu: `npm run test:frontend` dat 94/94; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat. Browser runtime khong co session nen chua UAT truc tiep thao tac microphone, player, mention click va profile modal.
 - Rui ro con lai: Can UAT production bang tai khoan that cho quyen microphone, upload/protected media, reply qua client khac va responsive; neu browser tu choi `MediaRecorder`, composer hien loi huong dan va khong gui file rong.
-- Viec tiep theo: Commit/push source, build release bat bien, recreate rieng `chat`, kiem tra health/bundle/log va cap nhat muc deploy follow-up.
-- Commit/PR: Pending.
+- Viec tiep theo: UAT local/staging bang tai khoan that cho microphone, upload, reply qua client khac va profile; chi deploy lai khi co lenh moi.
+- Van hanh: Release `d913cec-reply-mentions-voice-20260817T144335Z` da tao va build; health/public UAT chua chay. Docker, Docker socket va containerd da duoc dung theo yeu cau; khong xoa image, container hoac volume.
+- Commit/PR: `d913cec` da push `origin/master`.
 
 ## 2026-08-17-19 - Deploy kho noi dung va phan loai hoi thoai
 
