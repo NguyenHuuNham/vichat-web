@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-01 - Gon giao dien cai dat va them khoa PIN theo tab
+
+- Thoi gian: 2026-08-18 00:19 (Asia/Saigon)
+- Loai: Tinh nang | UX | Bao mat | Web | Kiem thu
+- Trang thai: Hoan tat code; chua deploy, can UAT
+- Muc tieu: Lam gon Cai dat theo mau mong muon, bo the tai khoan du thua, va cho phep nguoi dung tu bat khoa PIN khi mo Chat lai trong tab moi.
+- Pham vi: ChatUI settings, selector ngon ngu, am bao tuy chinh, thong bao desktop, session restore va client-side PIN; khong doi Chatmgt/Tinode/API/database.
+- File da thay doi: `src/app/App.jsx`, `src/features/auth/components/Login.jsx`, `src/styles/index.css`, `src/features/security/services/pinLock.js`, `src/features/security/services/pinLock.test.js`, `package.json`, `docs/chat-backend-architecture.md`, `dist/index.html`.
+- Noi dung: Thay select ngon ngu bang menu co co Viet/Anh va click-outside; gop tai/thay/xoa am bao vao cung hang chon am thanh; lam phang va gon card thong bao de de doc trong dark mode; bo card thong tin tai khoan. Them thiet lap PIN mac dinh tat, hash PBKDF2/SHA-256 co salt theo viewer trong localStorage, marker mo khoa theo sessionStorage; refresh cung tab khong hoi lai, tab moi sau khi dong se yeu cau PIN truoc khi render ChatUI.
+- Quyet dinh ky thuat: PIN chi la lop rieng tu phia client, khong thay the xac thuc UpGO/Chatmgt. Khong luu PIN plaintext, khong gui PIN ra server, va danh dau tab da mo khoa chi sau khi dang nhap thu cong hoac xac minh PIN thanh cong.
+- Database/API/cau hinh: Khong migration, API, dependency hoac bien moi truong moi. Them hai kho local theo viewer: localStorage cho verifier va sessionStorage cho quyen mo khoa cua tab hien tai.
+- Kiem thu: `npm run test:frontend` dat 98/98; `node --test src/features/security/services/pinLock.test.js` dat 3/3; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-a_RfqMp5.js`, `index-BjWA_b5x.css`; `git diff --check` dat.
+- Rui ro con lai: PIN la privacy gate tren trinh duyet, khong bao ve du lieu neu nguoi dung xoa storage hoac co quyen devtools; chua UAT bang browser that cho selector, dark mode, upload/xoa am bao va dong-mo tab.
+- Viec tiep theo: Hard refresh build khi deploy duoc phep, bat PIN tren tai khoan test, dong tab/mo lai de nhap PIN, kiem tra selector co Viet/Anh, thong bao dark mode va am bao; khong deploy trong lan lam viec nay.
+- Commit/PR: Chua tao.
+
 ## 2026-08-17-21 - Gui nhieu anh va file trong composer
 
 - Thoi gian: 2026-08-17 23:28 (Asia/Saigon)

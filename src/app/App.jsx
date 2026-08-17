@@ -94,6 +94,18 @@ import {
 import { appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
 import { CHATBOT_ACCOUNT, CHATBOT_STARTER_PROMPTS, EXTERNAL_CHAT_ONLY, applyTinodeChatbotConfig, loadChatbotMessages, loadChatbotMessagesFromServer, loadTinodeChatbotConfig, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
+import {
+  PIN_VALIDATION_ERRORS,
+  clearPinTabAccess,
+  createPinConfig,
+  hasPinTabAccess,
+  markPinTabUnlocked,
+  readPinConfig,
+  removePinConfig,
+  validatePin,
+  verifyPin,
+  writePinConfig,
+} from '../features/security/services/pinLock';
 
 const CALLS_ENABLED = resolveCallsEnabled(import.meta.env.VITE_CALLS_ENABLED);
 
@@ -133,6 +145,27 @@ const APP_LANGUAGE_COPY = Object.freeze({
     replaceSound: 'Đổi file',
     uploadSound: 'Tải file',
     removeSound: 'Xóa',
+    pinTitle: 'Thiết lập mã PIN',
+    pinDescription: 'Tắt mặc định. Khi bật, tab mới cần nhập mã PIN để mở Chat.',
+    pinEnabled: 'Đang bật',
+    pinDisabled: 'Đang tắt',
+    pinCode: 'Mã PIN mới (4-6 số)',
+    pinConfirm: 'Nhập lại mã PIN',
+    pinSet: 'Bật khóa PIN',
+    pinChange: 'Đổi mã PIN',
+    pinDisable: 'Tắt khóa PIN',
+    pinSaving: 'Đang lưu...',
+    pinSaved: 'Đã lưu thiết lập mã PIN cho tài khoản này.',
+    pinDisabledNotice: 'Đã tắt khóa PIN trên tài khoản này.',
+    pinMismatch: 'Hai mã PIN không trùng nhau.',
+    pinRequired: 'Hãy nhập mã PIN.',
+    pinDigitsOnly: 'Mã PIN chỉ được gồm chữ số.',
+    pinLength: 'Mã PIN phải có từ 4 đến 6 chữ số.',
+    pinUnlockTitle: 'Mở khóa Chat',
+    pinUnlockDescription: 'Nhập mã PIN để tiếp tục vào cuộc trò chuyện.',
+    pinUnlock: 'Mở khóa',
+    pinWrong: 'Mã PIN không đúng.',
+    pinChecking: 'Đang kiểm tra mã PIN...',
   }),
   en: Object.freeze({
     chat: 'Chat',
@@ -169,6 +202,27 @@ const APP_LANGUAGE_COPY = Object.freeze({
     replaceSound: 'Replace file',
     uploadSound: 'Upload file',
     removeSound: 'Remove',
+    pinTitle: 'Set up a PIN',
+    pinDescription: 'Off by default. When enabled, a new tab needs the PIN to open Chat.',
+    pinEnabled: 'On',
+    pinDisabled: 'Off',
+    pinCode: 'New PIN (4-6 digits)',
+    pinConfirm: 'Confirm PIN',
+    pinSet: 'Enable PIN lock',
+    pinChange: 'Change PIN',
+    pinDisable: 'Disable PIN lock',
+    pinSaving: 'Saving...',
+    pinSaved: 'PIN lock saved for this account.',
+    pinDisabledNotice: 'PIN lock is disabled for this account.',
+    pinMismatch: 'The PIN entries do not match.',
+    pinRequired: 'Enter a PIN.',
+    pinDigitsOnly: 'The PIN can contain digits only.',
+    pinLength: 'The PIN must contain 4 to 6 digits.',
+    pinUnlockTitle: 'Unlock Chat',
+    pinUnlockDescription: 'Enter your PIN to continue to the conversation.',
+    pinUnlock: 'Unlock',
+    pinWrong: 'Incorrect PIN.',
+    pinChecking: 'Checking PIN...',
   }),
 });
 
@@ -1116,6 +1170,17 @@ function App() {
   const [customNotificationSoundUrl, setCustomNotificationSoundUrl] = useState('');
   const [isLoadingCustomNotificationSound, setIsLoadingCustomNotificationSound] = useState(false);
   const [isSavingCustomNotificationSound, setIsSavingCustomNotificationSound] = useState(false);
+  const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
+  const [pinLockConfig, setPinLockConfig] = useState(null);
+  const [pinLockReady, setPinLockReady] = useState(true);
+  const [isPinTabUnlocked, setIsPinTabUnlocked] = useState(true);
+  const [pinSetupValue, setPinSetupValue] = useState('');
+  const [pinConfirmValue, setPinConfirmValue] = useState('');
+  const [pinUnlockValue, setPinUnlockValue] = useState('');
+  const [pinSettingsNotice, setPinSettingsNotice] = useState('');
+  const [pinUnlockNotice, setPinUnlockNotice] = useState('');
+  const [isSavingPin, setIsSavingPin] = useState(false);
+  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
   const [directoryAccounts, setDirectoryAccounts] = useState([]);
   const [isUpdatingProfileAvatar, setIsUpdatingProfileAvatar] = useState(false);
   const [profileForm, setProfileForm] = useState({ name: '', email: '', title: '', department: '' });
@@ -1160,6 +1225,7 @@ function App() {
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
   const mentionPickerRef = useRef(null);
+  const languageMenuRef = useRef(null);
   const currentChatIdRef = useRef(currentChatId);
   const deletedConversationIdsRef = useRef(new Set());
   const createGroupRequestRef = useRef(false);
@@ -1246,12 +1312,9 @@ function App() {
     ? (connectionStatus === 'online' ? 'Đang kết nối kho tri thức' : 'Đang chờ kết nối realtime')
     : 'Kho tri thức doanh nghiệp';
   const accountProfileReadOnly = Boolean(currentUser?.accountManaged || currentUser?.account_managed);
-  const chatModeLabel = chatMode === 'external'
-    ? 'External chatbot'
-    : chatMode === 'tinode'
-    ? 'Tinode realtime'
-    : usesManagementData ? 'Dữ liệu Chatmgt' : 'Demo mode';
   const appCopy = APP_LANGUAGE_COPY[settings.language] || APP_LANGUAGE_COPY.vi;
+  const selectedLanguage = APP_LANGUAGE_OPTIONS.find(option => option.id === settings.language)
+    || APP_LANGUAGE_OPTIONS[0];
   const accountPresenceLabel = account => chatMode === 'tinode'
     ? (isAccountOnline(account) ? 'Online' : 'Offline')
     : usesManagementData ? 'Danh bạ Chatmgt' : (isAccountOnline(account) ? 'Online' : 'Offline');
@@ -1304,6 +1367,48 @@ function App() {
   }, [settings.language]);
 
   useEffect(() => {
+    if (!languageMenuOpen || typeof document === 'undefined') return undefined;
+    const closeLanguageMenu = event => {
+      if (!languageMenuRef.current?.contains(event.target)) setLanguageMenuOpen(false);
+    };
+    const handleLanguageMenuKeyDown = event => {
+      if (event.key === 'Escape') setLanguageMenuOpen(false);
+    };
+    document.addEventListener('mousedown', closeLanguageMenu);
+    document.addEventListener('keydown', handleLanguageMenuKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', closeLanguageMenu);
+      document.removeEventListener('keydown', handleLanguageMenuKeyDown);
+    };
+  }, [languageMenuOpen]);
+
+  useEffect(() => {
+    if (!pinViewerId) {
+      setPinLockConfig(null);
+      setPinLockReady(true);
+      setIsPinTabUnlocked(true);
+      setPinSetupValue('');
+      setPinConfirmValue('');
+      setPinUnlockValue('');
+      setPinSettingsNotice('');
+      setPinUnlockNotice('');
+      return undefined;
+    }
+    let active = true;
+    setPinLockReady(false);
+    const config = readPinConfig(pinViewerId);
+    if (active) {
+      setPinLockConfig(config);
+      setIsPinTabUnlocked(!config || hasPinTabAccess(pinViewerId));
+      setPinLockReady(true);
+      setPinUnlockValue('');
+      setPinUnlockNotice('');
+      setPinSettingsNotice('');
+    }
+    return () => { active = false; };
+  }, [pinViewerId]);
+
+  useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
     const root = document.documentElement;
     const mediaQuery = typeof window.matchMedia === 'function'
@@ -1346,6 +1451,7 @@ function App() {
     ? window.Notification.permission
     : 'unsupported';
   const notificationSettingsViewerId = currentUser?.id || currentUser?.uid || viewerId;
+  const pinViewerId = currentUser?.id || currentUser?.uid || '';
 
   const updateNotificationSettings = useCallback(patch => {
     setSettings(previous => {
@@ -1453,6 +1559,80 @@ function App() {
       setIsSavingCustomNotificationSound(false);
     }
   }, [isSavingCustomNotificationSound, notificationSettingsViewerId, updateNotificationSettings]);
+
+  const pinValidationMessage = useCallback(errorCode => {
+    if (errorCode === PIN_VALIDATION_ERRORS.REQUIRED) return appCopy.pinRequired;
+    if (errorCode === PIN_VALIDATION_ERRORS.DIGITS_ONLY) return appCopy.pinDigitsOnly;
+    if (errorCode === PIN_VALIDATION_ERRORS.LENGTH) return appCopy.pinLength;
+    return appCopy.pinLength;
+  }, [appCopy]);
+
+  const handlePinSettingsSubmit = useCallback(async event => {
+    event.preventDefault();
+    if (!pinViewerId || isSavingPin) return;
+    const validationError = validatePin(pinSetupValue);
+    if (validationError) {
+      setPinSettingsNotice(pinValidationMessage(validationError));
+      return;
+    }
+    if (pinSetupValue !== pinConfirmValue) {
+      setPinSettingsNotice(appCopy.pinMismatch);
+      return;
+    }
+    setIsSavingPin(true);
+    setPinSettingsNotice('');
+    try {
+      const config = await createPinConfig(pinSetupValue);
+      if (!writePinConfig(pinViewerId, config)) throw new Error('PIN_STORAGE_UNAVAILABLE');
+      markPinTabUnlocked(pinViewerId);
+      setPinLockConfig(config);
+      setIsPinTabUnlocked(true);
+      setPinSetupValue('');
+      setPinConfirmValue('');
+      setPinSettingsNotice(appCopy.pinSaved);
+    } catch (error) {
+      setPinSettingsNotice(error?.message === 'PIN_STORAGE_UNAVAILABLE'
+        ? 'Không thể lưu mã PIN trên thiết bị này.'
+        : pinValidationMessage(error?.message));
+    } finally {
+      setIsSavingPin(false);
+    }
+  }, [appCopy, isSavingPin, pinConfirmValue, pinSetupValue, pinValidationMessage, pinViewerId]);
+
+  const handleDisablePin = useCallback(() => {
+    if (!pinViewerId || isSavingPin) return;
+    removePinConfig(pinViewerId);
+    clearPinTabAccess(pinViewerId);
+    setPinLockConfig(null);
+    setIsPinTabUnlocked(true);
+    setPinSetupValue('');
+    setPinConfirmValue('');
+    setPinSettingsNotice(appCopy.pinDisabledNotice);
+  }, [appCopy.pinDisabledNotice, isSavingPin, pinViewerId]);
+
+  const handlePinUnlockSubmit = useCallback(async event => {
+    event.preventDefault();
+    if (!pinViewerId || !pinLockConfig || isVerifyingPin) return;
+    const validationError = validatePin(pinUnlockValue);
+    if (validationError) {
+      setPinUnlockNotice(pinValidationMessage(validationError));
+      return;
+    }
+    setIsVerifyingPin(true);
+    setPinUnlockNotice('');
+    try {
+      const valid = await verifyPin(pinUnlockValue, pinLockConfig);
+      if (!valid) {
+        setPinUnlockNotice(appCopy.pinWrong);
+        return;
+      }
+      markPinTabUnlocked(pinViewerId);
+      setIsPinTabUnlocked(true);
+      setPinUnlockValue('');
+    } finally {
+      setIsVerifyingPin(false);
+    }
+  }, [appCopy.pinWrong, isVerifyingPin, pinLockConfig, pinValidationMessage, pinUnlockValue, pinViewerId]);
 
   const handleDesktopNotificationToggle = useCallback(async enabled => {
     if (!enabled) {
@@ -2223,7 +2403,7 @@ function App() {
     return () => { cancelled = true; };
   }, [isLoggedIn, chatMode, managementConversationSession, ensureTinodeSession, applyPresenceSnapshot]);
 
-  const handleLoginSuccess = async (user) => {
+  const handleLoginSuccess = async (user, { source = 'credentials' } = {}) => {
     clearActiveCall();
     if (!EXTERNAL_CHAT_ONLY) await tinodeClient.logout();
     setLoginNotice('');
@@ -2231,6 +2411,13 @@ function App() {
     managementConversationSessionRef.current = 0;
     setManagementConversationSession(0);
     const managementUserId = String(user.id || user.uid || '');
+    setPinLockReady(false);
+    setPinLockConfig(null);
+    setIsPinTabUnlocked(false);
+    setPinUnlockValue('');
+    setPinUnlockNotice('');
+    setPinSettingsNotice('');
+    if (source !== 'restore' && managementUserId) markPinTabUnlocked(managementUserId);
     const initialChatbot = createChatbotConversation(loadChatbotMessages(managementUserId));
     const initialRooms = { [CHATBOT_ACCOUNT.id]: initialChatbot };
     forcedLogoutRef.current = false;
@@ -2394,7 +2581,7 @@ function App() {
           connection: session.connection,
           avatar: session.profile?.avatar || '',
           mustChangePassword: Boolean(session.mustChangePassword),
-        });
+        }, { source: 'restore' });
       })
       .catch(error => {
         if (cancelled || error?.status === 401 || error?.status === 403) return;
@@ -2451,6 +2638,8 @@ function App() {
   const handleLogout = async () => {
     if (isLoggingOutRef.current) return;
     isLoggingOutRef.current = true;
+    const loggedOutViewerId = currentUser?.id || currentUser?.uid || '';
+    if (loggedOutViewerId) clearPinTabAccess(loggedOutViewerId);
     accountSessionRef.current += 1;
     managementConversationSessionRef.current = 0;
     setManagementConversationSession(0);
@@ -2481,6 +2670,14 @@ function App() {
       : 'Bạn đã đăng xuất khỏi Chat.');
     setIsLoggedIn(false);
     setCurrentUser(null);
+    setPinLockConfig(null);
+    setPinLockReady(true);
+    setIsPinTabUnlocked(true);
+    setPinSetupValue('');
+    setPinConfirmValue('');
+    setPinUnlockValue('');
+    setPinSettingsNotice('');
+    setPinUnlockNotice('');
     setDrafts({});
     setMessageMentions({});
     setMentionContext(null);
@@ -4642,6 +4839,46 @@ function App() {
     return <Login onLoginSuccess={handleLoginSuccess} initialNotice={loginNotice} />;
   }
 
+  if (!pinLockReady) {
+    return (
+      <div className="pin-lock-screen">
+        <section className="pin-lock-card" role="status" aria-live="polite">
+          <div className="pin-lock-icon"><i className="fa-solid fa-shield-halved"></i></div>
+          <h2>{appCopy.pinUnlockTitle}</h2>
+          <p>{appCopy.pinChecking}</p>
+        </section>
+      </div>
+    );
+  }
+
+  if (pinLockConfig && !isPinTabUnlocked) {
+    return (
+      <div className="pin-lock-screen">
+        <form className="pin-lock-card" onSubmit={handlePinUnlockSubmit}>
+          <div className="pin-lock-icon"><i className="fa-solid fa-lock"></i></div>
+          <h2>{appCopy.pinUnlockTitle}</h2>
+          <p>{appCopy.pinUnlockDescription}</p>
+          <label className="pin-lock-field">
+            <span>{appCopy.pinCode}</span>
+            <input
+              type="password"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={pinUnlockValue}
+              onChange={event => setPinUnlockValue(event.target.value.replace(/\D/g, '').slice(0, 6))}
+              autoFocus
+            />
+          </label>
+          {pinUnlockNotice && <div className="pin-lock-notice" role="alert"><i className="fa-solid fa-circle-info"></i>{pinUnlockNotice}</div>}
+          <button type="submit" className="btn-primary pin-lock-submit" disabled={isVerifyingPin}>
+            {isVerifyingPin ? appCopy.pinChecking : <><i className="fa-solid fa-lock-open"></i>{appCopy.pinUnlock}</>}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`app-layout ${EXTERNAL_CHAT_ONLY ? 'external-chat-mode' : ''} ${isMobileChatActive ? 'mobile-active-chat' : ''}`}
@@ -5897,8 +6134,6 @@ function App() {
                     >
                       <i className="fa-solid fa-volume-high"></i>{appCopy.previewSound}
                     </button>
-                  </div>
-                  <div className="notification-custom-sound">
                     <input
                       ref={notificationSoundFileInputRef}
                       className="notification-sound-file-input"
@@ -5906,37 +6141,39 @@ function App() {
                       accept="audio/*"
                       onChange={handleCustomNotificationSoundUpload}
                     />
-                    <div className="notification-custom-sound-copy">
-                      <strong>{appCopy.customSoundTitle}</strong>
-                      <small>
-                        {isLoadingCustomNotificationSound
-                          ? appCopy.checkingSound
-                          : customNotificationSound
-                            ? customNotificationSound.name
-                            : appCopy.customSoundEmpty}
-                      </small>
-                    </div>
-                    <div className="notification-custom-sound-actions">
+                    <button
+                      type="button"
+                      className="notification-upload-button"
+                      onClick={() => notificationSoundFileInputRef.current?.click()}
+                      disabled={isSavingCustomNotificationSound || !notificationSettingsViewerId}
+                      title={customNotificationSound ? appCopy.replaceSound : appCopy.uploadSound}
+                      aria-label={customNotificationSound ? appCopy.replaceSound : appCopy.uploadSound}
+                    >
+                      <i className={`fa-solid ${customNotificationSound ? 'fa-rotate' : 'fa-upload'}`}></i>
+                      <span>{isSavingCustomNotificationSound ? appCopy.saveSound : customNotificationSound ? appCopy.replaceSound : appCopy.uploadSound}</span>
+                    </button>
+                    {customNotificationSound && (
                       <button
                         type="button"
-                        className="notification-upload-button"
-                        onClick={() => notificationSoundFileInputRef.current?.click()}
-                        disabled={isSavingCustomNotificationSound || !notificationSettingsViewerId}
+                        className="notification-remove-button"
+                        onClick={handleRemoveCustomNotificationSound}
+                        disabled={isSavingCustomNotificationSound}
+                        title={appCopy.removeSound}
+                        aria-label={appCopy.removeSound}
                       >
-                        <i className={`fa-solid ${customNotificationSound ? 'fa-rotate' : 'fa-upload'}`}></i>
-                        {isSavingCustomNotificationSound ? appCopy.saveSound : customNotificationSound ? appCopy.replaceSound : appCopy.uploadSound}
+                        <i className="fa-solid fa-trash-can"></i><span>{appCopy.removeSound}</span>
                       </button>
-                      {customNotificationSound && (
-                        <button
-                          type="button"
-                          className="notification-remove-button"
-                          onClick={handleRemoveCustomNotificationSound}
-                          disabled={isSavingCustomNotificationSound}
-                        >
-                          <i className="fa-solid fa-trash-can"></i>{appCopy.removeSound}
-                        </button>
-                      )}
-                    </div>
+                    )}
+                  </div>
+                  <div className="notification-sound-file-status" role="status">
+                    <i className={`fa-solid ${customNotificationSound ? 'fa-file-audio' : 'fa-circle-info'}`}></i>
+                    <span>
+                      {isLoadingCustomNotificationSound
+                        ? appCopy.checkingSound
+                        : customNotificationSound
+                          ? `${appCopy.customSoundTitle}: ${customNotificationSound.name}`
+                          : appCopy.customSoundEmpty}
+                    </span>
                   </div>
                 </div>
                 <section className="theme-preference-card" aria-labelledby="theme-preference-title">
@@ -5969,15 +6206,93 @@ function App() {
                     ))}
                   </div>
                 </section>
-                <label className="workspace-setting-row language-setting-row">
+                <div className="workspace-setting-row language-setting-row">
                   <span><strong>{appCopy.language}</strong><small>{appCopy.languageHint}</small></span>
-                  <select value={settings.language} onChange={event => updateNotificationSettings({ language: event.target.value })} aria-label={appCopy.language}>
-                    {APP_LANGUAGE_OPTIONS.map(option => (
-                      <option key={option.id} value={option.id}>{option.flag} {option.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <div className="workspace-account-card"><i className="fa-solid fa-shield-halved"></i><div><strong>{currentUser?.name || 'Tài khoản hiện tại'}</strong><small>{currentUser?.email || 'Phiên đăng nhập SÔNG HỒNG'} · {chatModeLabel}</small></div></div>
+                  <div className="language-picker" ref={languageMenuRef}>
+                    <button
+                      type="button"
+                      className="language-picker-trigger"
+                      aria-haspopup="listbox"
+                      aria-expanded={languageMenuOpen}
+                      aria-label={appCopy.language}
+                      onClick={() => setLanguageMenuOpen(previous => !previous)}
+                    >
+                      <span className="language-picker-flag" aria-hidden="true">{selectedLanguage.flag}</span>
+                      <span>{selectedLanguage.label}</span>
+                      <i className={`fa-solid ${languageMenuOpen ? 'fa-chevron-up' : 'fa-chevron-down'}`} aria-hidden="true"></i>
+                    </button>
+                    {languageMenuOpen && (
+                      <div className="language-picker-menu" role="listbox" aria-label={appCopy.language}>
+                        {APP_LANGUAGE_OPTIONS.map(option => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            role="option"
+                            aria-selected={settings.language === option.id}
+                            className={`language-picker-option ${settings.language === option.id ? 'selected' : ''}`}
+                            onClick={() => {
+                              updateNotificationSettings({ language: option.id });
+                              setLanguageMenuOpen(false);
+                            }}
+                          >
+                            <span className="language-picker-flag" aria-hidden="true">{option.flag}</span>
+                            <span>{option.label}</span>
+                            {settings.language === option.id && <i className="fa-solid fa-check" aria-hidden="true"></i>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <section className="pin-preference-card" aria-labelledby="pin-preference-title">
+                  <div className="pin-preference-heading">
+                    <div>
+                      <h3 id="pin-preference-title">{appCopy.pinTitle}</h3>
+                      <p>{appCopy.pinDescription}</p>
+                    </div>
+                    <span className={`pin-preference-status ${pinLockConfig ? 'enabled' : ''}`}>
+                      {pinLockConfig ? appCopy.pinEnabled : appCopy.pinDisabled}
+                    </span>
+                  </div>
+                  <form className="pin-preference-form" onSubmit={handlePinSettingsSubmit}>
+                    <label className="pin-preference-field">
+                      <span>{appCopy.pinCode}</span>
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        autoComplete="new-password"
+                        maxLength={6}
+                        value={pinSetupValue}
+                        onChange={event => setPinSetupValue(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                        disabled={isSavingPin}
+                      />
+                    </label>
+                    <label className="pin-preference-field">
+                      <span>{appCopy.pinConfirm}</span>
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        autoComplete="new-password"
+                        maxLength={6}
+                        value={pinConfirmValue}
+                        onChange={event => setPinConfirmValue(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                        disabled={isSavingPin}
+                      />
+                    </label>
+                    <div className="pin-preference-actions">
+                      <button type="submit" className="pin-save-button" disabled={isSavingPin || !pinViewerId}>
+                        <i className="fa-solid fa-shield-halved"></i>
+                        {isSavingPin ? appCopy.pinSaving : pinLockConfig ? appCopy.pinChange : appCopy.pinSet}
+                      </button>
+                      {pinLockConfig && (
+                        <button type="button" className="pin-disable-button" onClick={handleDisablePin} disabled={isSavingPin}>
+                          <i className="fa-solid fa-lock-open"></i>{appCopy.pinDisable}
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                  {pinSettingsNotice && <div className="pin-settings-notice" role="status"><i className="fa-solid fa-circle-info"></i>{pinSettingsNotice}</div>}
+                </section>
               </div>
             )}
           </section>

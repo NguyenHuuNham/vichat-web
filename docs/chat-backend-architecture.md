@@ -119,6 +119,13 @@ camera, gallery, document-picker and share transitions do not interrupt the
 selected media operation. Resetting a forgotten PIN clears the local verifier
 and requires a fresh UpGO Account login.
 
+The optional web ChatUI lock follows the same client-only boundary. It stores a
+salted PBKDF2/SHA-256 verifier per viewer in localStorage and keeps the unlocked
+marker only in sessionStorage, so a refresh in the same tab remains available
+while a newly opened tab requires the PIN. The PIN is never sent to Chatmgt,
+Tinode or UpGO Account; disabling or losing the local verifier requires the
+normal UpGO Account login to regain access.
+
 Notification delivery has two layers. A local notification is scheduled from
 an incoming Tinode event while the JavaScript/WebSocket runtime remains alive.
 When `EXPO_PUBLIC_PUSH_ENABLED=true` and the native Firebase/APNs client plus

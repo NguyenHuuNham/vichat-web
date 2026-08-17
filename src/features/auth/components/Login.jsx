@@ -54,7 +54,7 @@ function Login({ onLoginSuccess, initialNotice = '' }) {
         connection: session.connection,
         avatar: session.profile?.avatar || '',
         mustChangePassword: Boolean(session.mustChangePassword),
-      });
+      }, { source: 'credentials' });
     } catch (loginError) {
       if (loginError?.code === 'ACCOUNT_LOGIN_REQUIRED' && redirectWhenRequired && managementAuthClient.mode === 'account_sso') {
         window.location.assign(managementAuthClient.accountLoginUrl());
