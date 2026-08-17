@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-08 - Thiet ke lai panel Cai dat
+
+- Thoi gian: 2026-08-18 03:44 (Asia/Saigon)
+- Loai: UX | Web | Accessibility | Kiem thu
+- Trang thai: Hoan tat code; chua deploy production
+- Muc tieu: Lam gon va can doi panel Cai dat theo mau tham chieu, de doc ro ca o light mode va dark mode.
+- Pham vi: Chi ChatUI settings drawer; khong doi handler thong bao, am bao, giao dien, ngon ngu, PIN, Chat/Tinode, auth, tenant, API hoac database.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Mo rong rieng settings drawer, them card co icon cho thong bao/am bao/giao dien/ngon ngu/PIN, them mo ta trang thai Bat/Tat, switch am bao, preview theme, trang thai PIN va ghi chu PIN chi luu tren thiet bi. Bo sung responsive mobile va dark-mode override co scope rieng de thong tin van tuong phan; giu nguyen toan bo handler va data flow hien co.
+- Quyet dinh ky thuat: Them class `settings-shell-panel` chi cho `workspacePanel === 'settings'`, khong sua CSS/layout cua profile, contacts, files, notifications, search hoac enterprise panel. Logic luu setting van dung local preference hien tai; khong them API, migration hay dependency.
+- Database/API/cau hinh: Khong co.
+- Kiem thu: `npm run test:frontend` dat 107/107; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle local `index-Cvshi1fR.js`, `App-CtCHr54g.js`, `index-DF3B3Rd2.css`; `git diff --check` dat.
+- Rui ro con lai: Chua UAT truc quan bang browser do moi truong hien khong co browser kha dung; can kiem tra panel settings o viewport desktop/mobile, light/dark mode va click chon thong bao/ngon ngu sau khi deploy.
+- Viec tiep theo: Neu UAT dat, tao release bat bien va chi recreate service `chat`; khong cham cac service stateful.
+- Commit/PR: Chua tao.
+
 ## 2026-08-18-07 - Sua khung menu chuyen cong ty
 
 - Thoi gian: 2026-08-18 03:08 (Asia/Saigon)

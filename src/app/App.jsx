@@ -127,6 +127,8 @@ const APP_LANGUAGE_COPY = Object.freeze({
     desktopNotifications: 'Thông báo desktop',
     enabled: 'Bật',
     disabled: 'Tắt',
+    notificationEnabledDescription: 'Thông báo đang bật',
+    notificationDisabledDescription: 'Không nhận thông báo',
     permissionUnsupported: 'Trình duyệt không hỗ trợ thông báo desktop.',
     permissionDenied: 'Quyền thông báo đang bị chặn trong cài đặt trình duyệt.',
     permissionDefault: 'Chọn Bật để cấp quyền hiển thị thông báo trên màn hình.',
@@ -156,6 +158,7 @@ const APP_LANGUAGE_COPY = Object.freeze({
     pinChange: 'Đổi mã PIN',
     pinDisable: 'Tắt khóa PIN',
     pinSaving: 'Đang lưu...',
+    pinDeviceNote: 'Mã PIN chỉ được lưu trên thiết bị của bạn.',
     pinSaved: 'Đã lưu thiết lập mã PIN cho tài khoản này.',
     pinDisabledNotice: 'Đã tắt khóa PIN trên tài khoản này.',
     pinMismatch: 'Hai mã PIN không trùng nhau.',
@@ -184,6 +187,8 @@ const APP_LANGUAGE_COPY = Object.freeze({
     desktopNotifications: 'Desktop notifications',
     enabled: 'On',
     disabled: 'Off',
+    notificationEnabledDescription: 'Notifications are on',
+    notificationDisabledDescription: 'Notifications are off',
     permissionUnsupported: 'This browser does not support desktop notifications.',
     permissionDenied: 'Notifications are blocked in the browser settings.',
     permissionDefault: 'Choose On to allow notifications on your screen.',
@@ -213,6 +218,7 @@ const APP_LANGUAGE_COPY = Object.freeze({
     pinChange: 'Change PIN',
     pinDisable: 'Disable PIN lock',
     pinSaving: 'Saving...',
+    pinDeviceNote: 'Your PIN is stored only on this device.',
     pinSaved: 'PIN lock saved for this account.',
     pinDisabledNotice: 'PIN lock is disabled for this account.',
     pinMismatch: 'The PIN entries do not match.',
@@ -5962,7 +5968,7 @@ function App() {
         <div className="workspace-overlay" role="presentation" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setWorkspacePanel(null);
         }}>
-          <section className={`workspace-panel ${workspacePanel === 'enterprise' ? 'enterprise-shell-panel' : ''}`} role="dialog" aria-modal="true">
+          <section className={`workspace-panel ${workspacePanel === 'enterprise' ? 'enterprise-shell-panel' : ''} ${workspacePanel === 'settings' ? 'settings-shell-panel' : ''}`} role="dialog" aria-modal="true">
             <div className="workspace-panel-header">
               <div>
                 <h2>{appCopy.t(workspacePanel === 'profile' ? 'Hồ sơ cá nhân' : workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'enterprise' ? appCopy.work : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : appCopy.settings)}</h2>
@@ -6229,9 +6235,14 @@ function App() {
 
             {workspacePanel === 'settings' && (
               <div className="workspace-settings">
-                <section className="notification-preference-card" aria-labelledby="desktop-notification-title">
-                  <h3 id="desktop-notification-title">{appCopy.notificationSettings}</h3>
-                  <p>{appCopy.notificationDescription}</p>
+                <section className="settings-card notification-preference-card" aria-labelledby="desktop-notification-title">
+                  <div className="settings-card-heading">
+                    <span className="settings-card-icon notification"><i className="fa-solid fa-bell"></i></span>
+                    <div className="settings-card-heading-copy">
+                      <h3 id="desktop-notification-title">{appCopy.notificationSettings}</h3>
+                      <p>{appCopy.notificationDescription}</p>
+                    </div>
+                  </div>
                   <div className="notification-device-options" role="radiogroup" aria-label={appCopy.desktopNotifications}>
                     <button
                       type="button"
@@ -6240,8 +6251,9 @@ function App() {
                       aria-checked={settings.desktopNotifications}
                       onClick={() => handleDesktopNotificationToggle(true)}
                     >
-                      <span className="notification-device-icon"><i className="fa-solid fa-laptop"></i></span>
-                      <span className="notification-device-label"><span className="notification-radio-dot"></span>{appCopy.enabled}</span>
+                      <span className="notification-device-icon"><i className="fa-solid fa-bell"></i></span>
+                      <span className="notification-device-copy"><strong>{appCopy.enabled}</strong><small>{appCopy.notificationEnabledDescription}</small></span>
+                      <span className="notification-radio-dot" aria-hidden="true"></span>
                     </button>
                     <button
                       type="button"
@@ -6250,25 +6262,36 @@ function App() {
                       aria-checked={!settings.desktopNotifications}
                       onClick={() => handleDesktopNotificationToggle(false)}
                     >
-                      <span className="notification-device-icon"><i className="fa-solid fa-laptop"></i></span>
-                      <span className="notification-device-label"><span className="notification-radio-dot"></span>{appCopy.disabled}</span>
+                      <span className="notification-device-icon"><i className="fa-solid fa-bell-slash"></i></span>
+                      <span className="notification-device-copy"><strong>{appCopy.disabled}</strong><small>{appCopy.notificationDisabledDescription}</small></span>
+                      <span className="notification-radio-dot" aria-hidden="true"></span>
                     </button>
                   </div>
-                  <small className="notification-permission-status">
-                    {desktopNotificationPermission === 'unsupported'
-                      ? appCopy.permissionUnsupported
-                      : desktopNotificationPermission === 'denied'
-                        ? appCopy.permissionDenied
-                        : desktopNotificationPermission === 'default'
-                          ? appCopy.permissionDefault
-                          : appCopy.permissionReady}
+                  <small className={`notification-permission-status ${desktopNotificationPermission === 'granted' ? 'ready' : 'attention'}`}>
+                    <i className={`fa-solid ${desktopNotificationPermission === 'granted' ? 'fa-circle-check' : 'fa-circle-exclamation'}`} aria-hidden="true"></i>
+                    <span>
+                      {desktopNotificationPermission === 'unsupported'
+                        ? appCopy.permissionUnsupported
+                        : desktopNotificationPermission === 'denied'
+                          ? appCopy.permissionDenied
+                          : desktopNotificationPermission === 'default'
+                            ? appCopy.permissionDefault
+                            : appCopy.permissionReady}
+                    </span>
                   </small>
                   {notificationSettingsNotice && <div className="notification-settings-notice"><i className="fa-solid fa-circle-info"></i>{appCopy.t(notificationSettingsNotice)}</div>}
                 </section>
-                <div className="notification-sound-settings">
-                  <div className="notification-sound-heading">
-                    <span><strong>{appCopy.soundTitle}</strong><small>{appCopy.soundDescription}</small></span>
-                    <input type="checkbox" checked={settings.sounds} onChange={event => updateNotificationSettings({ sounds: event.target.checked })} aria-label={appCopy.enableSound} />
+                <section className="settings-card notification-sound-settings" aria-labelledby="notification-sound-title">
+                  <div className="settings-card-heading notification-sound-heading">
+                    <span className="settings-card-icon sound"><i className="fa-solid fa-music"></i></span>
+                    <div className="settings-card-heading-copy">
+                      <h3 id="notification-sound-title">{appCopy.soundTitle}</h3>
+                      <p>{appCopy.soundDescription}</p>
+                    </div>
+                    <label className="settings-toggle">
+                      <input type="checkbox" checked={settings.sounds} onChange={event => updateNotificationSettings({ sounds: event.target.checked })} aria-label={appCopy.enableSound} />
+                      <span className="settings-toggle-track" aria-hidden="true"><span></span></span>
+                    </label>
                   </div>
                   <div className="notification-sound-picker">
                     <select value={settings.sound} onChange={event => updateNotificationSettings({ sound: event.target.value })} disabled={!settings.sounds} aria-label={appCopy.selectSound}>
@@ -6326,10 +6349,11 @@ function App() {
                           : appCopy.customSoundEmpty}
                     </span>
                   </div>
-                </div>
-                <section className="theme-preference-card" aria-labelledby="theme-preference-title">
-                  <div className="theme-preference-heading">
-                    <div>
+                </section>
+                <section className="settings-card theme-preference-card" aria-labelledby="theme-preference-title">
+                  <div className="settings-card-heading theme-preference-heading">
+                    <span className="settings-card-icon appearance"><i className="fa-solid fa-palette"></i></span>
+                    <div className="settings-card-heading-copy">
                       <h3 id="theme-preference-title">{appCopy.themeTitle}</h3>
                       <p>{appCopy.themeDescription}</p>
                     </div>
@@ -6352,13 +6376,20 @@ function App() {
                             <span className="theme-preview-chip"></span>
                           </span>
                         </span>
+                        {settings.theme === option.id && <span className="theme-choice-selected" aria-hidden="true"><i className="fa-solid fa-check"></i></span>}
                         <span className="theme-choice-label"><span className="theme-radio-dot"></span>{appCopy.themeOptions[option.id] || option.label}</span>
                       </button>
                     ))}
                   </div>
                 </section>
-                <div className="workspace-setting-row language-setting-row">
-                  <span><strong>{appCopy.language}</strong><small>{appCopy.languageHint}</small></span>
+                <section className="settings-card settings-inline-card language-setting-row" aria-labelledby="language-setting-title">
+                  <div className="settings-card-heading">
+                    <span className="settings-card-icon language"><i className="fa-solid fa-globe"></i></span>
+                    <div className="settings-card-heading-copy">
+                      <h3 id="language-setting-title">{appCopy.language}</h3>
+                      <p>{appCopy.languageHint}</p>
+                    </div>
+                  </div>
                   <div className="language-picker" ref={languageMenuRef}>
                     <button
                       type="button"
@@ -6394,10 +6425,11 @@ function App() {
                       </div>
                     )}
                   </div>
-                </div>
-                <section className="pin-preference-card" aria-labelledby="pin-preference-title">
-                  <div className="pin-preference-heading">
-                    <div>
+                </section>
+                <section className="settings-card pin-preference-card" aria-labelledby="pin-preference-title">
+                  <div className="settings-card-heading pin-preference-heading">
+                    <span className="settings-card-icon security"><i className="fa-solid fa-shield-halved"></i></span>
+                    <div className="settings-card-heading-copy">
                       <h3 id="pin-preference-title">{appCopy.pinTitle}</h3>
                       <p>{appCopy.pinDescription}</p>
                     </div>
@@ -6443,6 +6475,7 @@ function App() {
                     </div>
                   </form>
                   {pinSettingsNotice && <div className="pin-settings-notice" role="status"><i className="fa-solid fa-circle-info"></i>{appCopy.t(pinSettingsNotice)}</div>}
+                  <div className="pin-preference-note"><i className="fa-solid fa-shield-halved" aria-hidden="true"></i><span>{appCopy.pinDeviceNote}</span></div>
                 </section>
               </div>
             )}
