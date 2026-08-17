@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-17-04 - Mention thanh vien trong nhom
+
+- Thoi gian: 2026-08-17 12:03 (Asia/Saigon)
+- Loai: Tinh nang | Web | UX | Realtime | Kiem thu
+- Trang thai: Hoan tat code va kiem thu local; chua UAT tai khoan that
+- Muc tieu: Cho phep go `@` trong composer nhom de chon `@All` hoac mot thanh vien cu the.
+- Pham vi: Composer web, picker thanh vien, draft theo tung cuoc tro chuyen, metadata message Tinode/demo; khong doi Chatmgt, mobile, schema hay quyen thanh vien.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/mentionPolicy.js`, `src/features/chat/services/mentionPolicy.test.js`, `src/features/chat/services/tinodeClient.js`, `src/styles/index.css`, `package.json`, va `docs/CHANGELOG.md`.
+- Noi dung: Picker chi hien trong group, loc theo ten/username/email khong dau, co `@All`, avatar, chon bang chuot hoac `ArrowUp`/`ArrowDown` + `Enter`/`Tab`, `Escape` de dong, va chen token dung vi tri caret. Mention duoc giu trong draft, message optimistic va header `x-mentions` cua Tinode de khong lam thay doi text/send flow hien co.
+- Quyet dinh ky thuat: Dung regex context chi kich hoat khi `@` o dau token sau khoang trang/dau mo, tranh bat popup trong email; danh sach lay tu snapshot thanh vien group va danh ba tenant da dong bo, khong tu goi API moi hay mo rong quyen truy cap.
+- Database/API/cau hinh: Khong migration/schema; them metadata client-side trong header Tinode da co co che metadata, backend van coi noi dung la tin nhan text.
+- Kiem thu: `node --test src/features/chat/services/mentionPolicy.test.js` dat 3/3; `npm run test:frontend` dat 81/81; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` dat; `git diff --check` dat.
+- Rui ro con lai: Chua UAT tren browser voi group tenant that de xac nhan snapshot thanh vien, avatar protected media va echo `x-mentions` tu Tinode.
+- Viec tiep theo: Hard refresh ChatUI, mo group that, go `@`, thu loc/chon `@All`, chon nguoi bang ban phim va gui mot tin co mention.
+- Commit/PR: Chua tao.
+
 ## 2026-08-17-03 - Deploy production commit 6bac0dd
 
 - Thoi gian: 2026-08-17 11:44 (Asia/Saigon)

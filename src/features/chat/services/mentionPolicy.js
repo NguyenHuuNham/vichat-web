@@ -1,0 +1,74 @@
+export const ALL_MENTION_ID = '__all__';
+
+const MENTION_CONTEXT_PATTERN = /(^|[\s([{])@([^\s@]*)$/u;
+
+function clampCaretPosition(value, caretPosition) {
+  const text = String(value || '');
+  const numericPosition = Number(caretPosition);
+  if (!Number.isFinite(numericPosition)) return text.length;
+  return Math.max(0, Math.min(Math.trunc(numericPosition), text.length));
+}
+
+export function normalizeMentionSearch(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u0111\u0110]/g, 'd')
+    .toLocaleLowerCase('vi');
+}
+
+export function getMentionContext(value, caretPosition) {
+  const text = String(value || '');
+  const position = clampCaretPosition(text, caretPosition);
+  const beforeCaret = text.slice(0, position);
+  const match = beforeCaret.match(MENTION_CONTEXT_PATTERN);
+  if (!match) return null;
+
+  return {
+    start: (match.index || 0) + match[1].length,
+    end: position,
+    query: match[2] || '',
+  };
+}
+
+export function mentionCandidateText(candidate) {
+  return String(candidate?.name || candidate?.username || candidate?.email || '').trim();
+}
+
+export function mentionTokenFor(candidate) {
+  if (candidate?.id === ALL_MENTION_ID) return '@All';
+  const label = mentionCandidateText(candidate);
+  return label ? `@${label}` : '';
+}
+
+export function matchesMentionCandidate(candidate, query) {
+  const normalizedQuery = normalizeMentionSearch(query).trim();
+  if (!normalizedQuery) return true;
+  return [candidate?.name, candidate?.username, candidate?.email]
+    .filter(Boolean)
+    .some(value => normalizeMentionSearch(value).includes(normalizedQuery));
+}
+
+export function insertMentionAt(value, context, candidate) {
+  const text = String(value || '');
+  const token = mentionTokenFor(candidate);
+  if (!token || !context) return { text, caret: text.length, token: '' };
+
+  const before = text.slice(0, context.start);
+  const after = text.slice(context.end);
+  const separator = after && /^\s/u.test(after) ? '' : ' ';
+  const nextText = `${before}${token}${separator}${after}`;
+  return {
+    text: nextText,
+    caret: before.length + token.length + separator.length,
+    token,
+  };
+}
+
+export function mentionTokenExists(text, token) {
+  const value = String(text || '');
+  const target = String(token || '').trim();
+  if (!target) return false;
+  const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[\\s([{])${escaped}(?=$|[\\s.,!?;:])`, 'iu').test(value);
+}

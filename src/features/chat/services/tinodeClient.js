@@ -573,6 +573,15 @@ function toMessage(msg, tinode, topic = null) {
   if (msg.head?.['x-reply-to']) {
     try { replyTo = JSON.parse(msg.head['x-reply-to']); } catch { replyTo = null; }
   }
+  let mentions = [];
+  if (msg.head?.['x-mentions']) {
+    try {
+      const parsedMentions = JSON.parse(msg.head['x-mentions']);
+      mentions = Array.isArray(parsedMentions) ? parsedMentions.slice(0, 50) : [];
+    } catch {
+      mentions = [];
+    }
+  }
   let chatbotSources = [];
   if (msg.head?.['x-vichat-chatbot-sources']) {
     try {
@@ -615,6 +624,7 @@ function toMessage(msg, tinode, topic = null) {
     recallEvent,
     call,
     replyTo,
+    mentions,
     sources: chatbotSources,
     grounded: msg.head?.['x-vichat-chatbot-grounded'] === '1',
     text: call ? callHistoryLabel(call, isOutgoing) : friendEvent ? (friendEvent.note || '') : systemEvent ? formatSystemEvent(systemEvent, tinode.getCurrentUserID()) : content,
@@ -1679,6 +1689,9 @@ export const tinodeClient = {
     head['x-sender-id'] = getClient().getCurrentUserID();
     if (metadata.replyTo) head['x-reply-to'] = JSON.stringify(metadata.replyTo);
     if (metadata.sharedFrom) head['x-shared-from'] = String(metadata.sharedFrom);
+    if (Array.isArray(metadata.mentions) && metadata.mentions.length > 0) {
+      head['x-mentions'] = JSON.stringify(metadata.mentions.slice(0, 50));
+    }
     draft.head = head;
     return topic.publishMessage(draft);
   },

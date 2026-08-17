@@ -27,6 +27,15 @@ import {
   chatAttachmentValidationError,
 } from '../features/chat/services/messagePolicy';
 import {
+  ALL_MENTION_ID,
+  getMentionContext,
+  insertMentionAt,
+  matchesMentionCandidate,
+  mentionCandidateText,
+  mentionTokenExists,
+  mentionTokenFor,
+} from '../features/chat/services/mentionPolicy';
+import {
   formatConversationListTime,
   formatFullMessageDateTime,
   formatMessageDateLabel,
@@ -751,6 +760,9 @@ function App() {
   const [friendNotice, setFriendNotice] = useState('');
   const [messageSearchQuery, setMessageSearchQuery] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [mentionContext, setMentionContext] = useState(null);
+  const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
+  const [messageMentions, setMessageMentions] = useState({});
   const [messageMenu, setMessageMenu] = useState(null);
   const [replyingTo, setReplyingTo] = useState(null);
   const [messageDetails, setMessageDetails] = useState(null);
@@ -788,6 +800,7 @@ function App() {
   const chatMessagesEndRef = useRef(null);
   const messageInputRef = useRef(null);
   const fileInputRef = useRef(null);
+  const mentionPickerRef = useRef(null);
   const currentChatIdRef = useRef(currentChatId);
   const deletedConversationIdsRef = useRef(new Set());
   const createGroupRequestRef = useRef(false);
@@ -917,6 +930,66 @@ function App() {
     : (currentUser?.id || currentUser?.uid);
   // Friend requests use Chatmgt account IDs, not Tinode topic UIDs.
   const managementViewerId = currentUser?.id || currentUser?.uid || '';
+
+  const mentionCandidates = (() => {
+    if (!activeChat.isGroup) return [];
+    const rawMembers = [
+      ...(activeChat.members || []),
+      ...(activeChat.participantIds || [])
+        .map(identity => findAccount(directoryAccounts, identity))
+        .filter(Boolean),
+    ];
+    const seen = new Set();
+    return rawMembers.reduce((members, member) => {
+      const account = findAccount(
+        directoryAccounts,
+        member?.id || member?.uid || member?.tinodeUid || member?.tinode_uid || member?.name,
+      );
+      const candidate = {
+        ...(member || {}),
+        ...(account || {}),
+        id: account?.id || member?.id || member?.uid || member?.tinodeUid || member?.tinode_uid,
+        tinodeUid: account?.tinodeUid || account?.tinode_uid || member?.tinodeUid || member?.tinode_uid || member?.id,
+        name: account?.name || member?.name || account?.username || member?.username,
+        avatar: account?.avatar || member?.avatar || '',
+      };
+      const identity = String(
+        candidate.id || candidate.tinodeUid || candidate.username || candidate.name || '',
+      ).trim().toLowerCase();
+      if (!identity || !mentionCandidateText(candidate) || candidate.type === 'bot' || seen.has(identity)) {
+        return members;
+      }
+      seen.add(identity);
+      members.push(candidate);
+      return members;
+    }, []);
+  })();
+
+  const mentionOptions = mentionContext && activeChat.isGroup
+    ? [
+      {
+        id: ALL_MENTION_ID,
+        name: 'All',
+        label: 'Báo cho cả nhóm',
+        username: 'all',
+        isAll: true,
+      },
+      ...mentionCandidates,
+    ].filter(candidate => matchesMentionCandidate(candidate, mentionContext.query))
+    : [];
+
+  useEffect(() => {
+    if (!mentionContext || mentionOptions.length === 0) {
+      setMentionActiveIndex(0);
+      return;
+    }
+    setMentionActiveIndex(previous => Math.min(previous, mentionOptions.length - 1));
+  }, [mentionContext, mentionOptions.length]);
+
+  useEffect(() => {
+    setMentionContext(null);
+    setMentionActiveIndex(0);
+  }, [currentChatId]);
 
   const applyPresenceSnapshot = useCallback(snapshot => {
     const currentAccount = currentUserRef.current;
@@ -1531,6 +1604,8 @@ function App() {
     isLoggingOutRef.current = false;
     setForcedLogoutSeconds(null);
     setDrafts({});
+    setMessageMentions({});
+    setMentionContext(null);
     setInputText('');
     setNotificationMuteDialog(null);
     setIsUpdatingNotificationMute(false);
@@ -1725,6 +1800,8 @@ function App() {
     setIsLoggedIn(false);
     setCurrentUser(null);
     setDrafts({});
+    setMessageMentions({});
+    setMentionContext(null);
     setInputText('');
     setChatMode('demo');
     setConnectionStatus(isTinodeConfigured ? 'ready' : 'demo');
@@ -2973,6 +3050,12 @@ function App() {
       else delete next[currentChatId];
       return next;
     });
+    setMessageMentions(previous => {
+      const currentMentions = previous[currentChatId] || [];
+      const nextMentions = currentMentions.filter(mention => mentionTokenExists(value, mention.token));
+      if (nextMentions.length === currentMentions.length) return previous;
+      return { ...previous, [currentChatId]: nextMentions };
+    });
     const room = conversations[currentChatId];
     if (chatMode === 'tinode' && value.trim()) {
       const topicKey = readyTinodeTypingTopic(room, tinodeClient.authenticated);
@@ -2986,8 +3069,78 @@ function App() {
     }
   };
 
+  const handleMessageInputChange = event => {
+    const value = event.target.value;
+    updateCurrentDraft(value);
+    if (!activeChat.isGroup) {
+      setMentionContext(null);
+      return;
+    }
+    setMentionContext(getMentionContext(value, event.target.selectionStart));
+    setMentionActiveIndex(0);
+  };
+
+  const handleMentionSelect = candidate => {
+    if (!mentionContext) return;
+    const insertion = insertMentionAt(inputText, mentionContext, candidate);
+    if (!insertion.token) return;
+
+    updateCurrentDraft(insertion.text);
+    setMessageMentions(previous => {
+      const currentMentions = previous[currentChatId] || [];
+      const mention = {
+        id: candidate.id,
+        tinodeUid: candidate.tinodeUid || candidate.uid || '',
+        name: mentionCandidateText(candidate),
+        token: insertion.token,
+        isAll: candidate.id === ALL_MENTION_ID,
+      };
+      const exists = currentMentions.some(item => item.id === mention.id && item.token === mention.token);
+      return exists
+        ? previous
+        : { ...previous, [currentChatId]: [...currentMentions, mention] };
+    });
+    setMentionContext(null);
+    setMentionActiveIndex(0);
+    requestAnimationFrame(() => {
+      const input = messageInputRef.current;
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(insertion.caret, insertion.caret);
+    });
+  };
+
+  const handleMessageInputKeyDown = event => {
+    if (mentionContext) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMentionContext(null);
+        setMentionActiveIndex(0);
+        return;
+      }
+      if (mentionOptions.length > 0 && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+        event.preventDefault();
+        setMentionActiveIndex(previous => {
+          const offset = event.key === 'ArrowDown' ? 1 : -1;
+          return (previous + offset + mentionOptions.length) % mentionOptions.length;
+        });
+        return;
+      }
+      if (mentionOptions.length > 0 && (event.key === 'Enter' || event.key === 'Tab')) {
+        event.preventDefault();
+        handleMentionSelect(mentionOptions[mentionActiveIndex]);
+        return;
+      }
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleSendMessage();
+    }
+  };
+
   const insertEmoji = emoji => {
     updateCurrentDraft(`${inputText}${emoji}`);
+    setMentionContext(null);
     setShowEmojiPicker(false);
     requestAnimationFrame(() => messageInputRef.current?.focus());
   };
@@ -3184,6 +3337,15 @@ function App() {
     const timeStr = getTimeString();
     const createdAt = new Date().toISOString();
     const replyMeta = replyingTo ? { ...replyingTo } : null;
+    const mentions = (messageMentions[currentChatId] || [])
+      .filter(mention => mentionTokenExists(text, mention.token))
+      .map(mention => ({
+        id: mention.id,
+        tinodeUid: mention.tinodeUid || '',
+        name: mention.name,
+        token: mention.token,
+        isAll: Boolean(mention.isAll),
+      }));
     const newMsg = {
       id: `me-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       type: "text",
@@ -3193,6 +3355,7 @@ function App() {
       avatar: currentUser?.avatar,
       text: text,
       replyTo: replyMeta,
+      mentions,
       time: timeStr,
       createdAt,
       pending: chatMode === 'tinode',
@@ -3233,6 +3396,12 @@ function App() {
       delete next[currentChatId];
       return next;
     });
+    setMessageMentions(prev => {
+      const next = { ...prev };
+      delete next[currentChatId];
+      return next;
+    });
+    setMentionContext(null);
     const room = conversations[currentChatId];
     if (room?.isChatbot && chatMode === 'tinode' && room.tinodeTopic) {
       setIsTyping(false);
@@ -3241,7 +3410,7 @@ function App() {
           room.tinodeTopic,
           text,
           newMsg.id,
-          replyMeta ? { replyTo: replyMeta } : {},
+          { ...(replyMeta ? { replyTo: replyMeta } : {}), mentions },
         );
         setConversations(previous => ({
           ...previous,
@@ -3327,7 +3496,7 @@ function App() {
       const roomId = currentChatId;
       ensureTinodeConversationTopic(conversations[currentChatId])
         .then(async topicName => {
-          const result = await tinodeClient.sendText(topicName, text, newMsg.id, replyMeta ? { replyTo: replyMeta } : {});
+          const result = await tinodeClient.sendText(topicName, text, newMsg.id, { ...(replyMeta ? { replyTo: replyMeta } : {}), mentions });
           setConversations(previous => {
             const currentRoom = previous[roomId];
             if (!currentRoom) return previous;
@@ -3987,19 +4156,64 @@ function App() {
             )}
           </div>
           <div className="input-text-container">
+            {mentionContext && activeChat.isGroup && (
+              <div
+                ref={mentionPickerRef}
+                id="message-mention-picker"
+                className="mention-picker"
+                role="listbox"
+                aria-label="Chọn thành viên để nhắc đến"
+              >
+                {mentionOptions.length > 0 ? mentionOptions.map((candidate, index) => {
+                  const candidateKey = candidate.id || candidate.tinodeUid || candidate.username || candidate.name;
+                  const candidateName = candidate.isAll ? 'Báo cho cả nhóm' : mentionCandidateText(candidate);
+                  return (
+                    <button
+                      type="button"
+                      key={candidateKey}
+                      id={`message-mention-option-${index}`}
+                      className={`mention-option ${index === mentionActiveIndex ? 'active' : ''}`}
+                      role="option"
+                      aria-selected={index === mentionActiveIndex}
+                      onMouseDown={event => event.preventDefault()}
+                      onClick={() => handleMentionSelect(candidate)}
+                    >
+                      {candidate.isAll ? (
+                        <span className="mention-all-icon" aria-hidden="true">@</span>
+                      ) : (
+                        <SafeAvatar src={candidate.avatar || ''} name={candidateName} className="mention-avatar" />
+                      )}
+                      <span className="mention-option-copy">
+                        <strong>{candidateName}</strong>
+                        <small>{candidate.isAll ? '@All' : mentionTokenFor(candidate)}</small>
+                      </span>
+                    </button>
+                  );
+                }) : (
+                  <div className="mention-empty">Không tìm thấy thành viên phù hợp</div>
+                )}
+              </div>
+            )}
             <input
               type="text"
               ref={messageInputRef}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls={mentionContext && activeChat.isGroup ? 'message-mention-picker' : undefined}
+              aria-expanded={Boolean(mentionContext && activeChat.isGroup)}
+              aria-activedescendant={mentionOptions.length > 0 ? `message-mention-option-${mentionActiveIndex}` : undefined}
               placeholder={realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : activeChat.isChatbot ? 'Hỏi ViChat AI về quy trình, chính sách, tài liệu...' : 'Nhập tin nhắn...'}
               value={inputText}
               disabled={realtimeMessagingPending || (activeChat.isChatbot && isTyping)}
-              onChange={(e) => updateCurrentDraft(e.target.value)}
+              onChange={handleMessageInputChange}
               onPaste={handleMessagePaste}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
+              onKeyDown={handleMessageInputKeyDown}
+              onBlur={() => {
+                window.setTimeout(() => {
+                  if (!mentionPickerRef.current?.contains(document.activeElement)) {
+                    setMentionContext(null);
+                  }
+                }, 0);
               }}
             />
           </div>
