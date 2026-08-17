@@ -10,17 +10,17 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-18 03:08 (Asia/Saigon)
 - Loai: Sua loi | UX | Web | Kiem thu
-- Trang thai: Hoan tat code; chua deploy production
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Hien day du khung menu chuyen cong ty khi mo tu Ho so, khong de popup bi cat sang trai.
 - Pham vi: Header panel Ho so va CSS menu tenant; khong doi API, auth, tenant data, Tinode hay database.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
 - Noi dung: Dat nut Dang xuat truoc icon cong ty de popup neo gan mep phai cua panel; doi menu tenant sang `right: -42px` tren desktop va mobile de giu toan bo noi dung trong khung panel.
 - Quyet dinh ky thuat: Giu menu absolute va luong click/outside hien co; chi sua diem neo/thu tu header, khong thay doi handler chuyen tenant.
 - Database/API/cau hinh: Khong co.
-- Kiem thu: `npm run test:frontend` dat 107/107; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat. Browser runtime khong co phien kha dung de chup lai viewport production.
-- Rui ro con lai: Chua UAT truc quan tren production sau khi deploy; can kiem tra panel Ho so o viewport desktop va mobile.
-- Viec tiep theo: Hard refresh sau deploy, mo icon cong ty va xac nhan menu hien tron, khong che nut dong/khong tran khoi panel.
-- Commit/PR: Chua tao.
+- Kiem thu: `npm run test:frontend` dat 107/107; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat. Archive `profile-menu-41ebf30-20260818-0315` co SHA-256 `7168FB8A04E502C54EF4C1DB5280FD432DDBB8AD37E56F1E62B76742F832E865`; release `/opt/deploy/chat/releases/profile-menu-41ebf30-20260818-0315`; chi recreate `chat` voi `--no-deps --force-recreate --no-build`; image ChatUI `sha256:d334d4ca351133c8401b3b44e991fa34b88eed717890ec259957d72dacf69950`; `https://chat.upgo.vn/healthz` va Chatmgt auth health tra OK; public assets co `tenant-switch`, `workspace-logout-button`, `right:-42px`; log Chat/Chatmgt khong co fatal marker; cac service stateful van `Up`/`healthy`.
+- Rui ro con lai: Chua UAT truc quan bang tai khoan UpGO that o viewport desktop va mobile; release rollback `/opt/deploy/chat/releases/tenant-switch-5100ea6-20260818-024551` da giu lai, nhung image rollback exact cua lan truoc can rebuild neu Docker khong con metadata layer.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo Ho so va icon cong ty, xac nhan menu hien tron khong che nut dong/khong tran khoi panel; thu ca desktop va mobile.
+- Commit/PR: Source `41ebf30`; docs deploy follow-up dang cho commit.
 
 ## 2026-08-18-06 - Deploy chuyen cong ty ChatUI len production
 
