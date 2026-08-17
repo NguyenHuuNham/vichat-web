@@ -1,3 +1,5 @@
+import { isAudioAttachment } from './messagePresentation.js';
+
 function isImageFile(file, type = '', image = '') {
   const name = String(file?.name || '').toLowerCase();
   const mime = String(file?.mime || '').toLowerCase();
@@ -16,5 +18,5 @@ export function attachmentConversationPreview(message) {
   const sender = message.sender === 'outgoing'
     ? 'Bạn'
     : (message.senderName || 'Thành viên');
-  return `${sender} đã gửi ${image ? '1 ảnh' : '1 tệp'}`;
+  return `${sender} đã gửi ${isAudioAttachment(message.file, message.type) ? 'tin nhắn thoại' : image ? '1 ảnh' : '1 tệp'}`;
 }

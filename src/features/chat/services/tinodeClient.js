@@ -573,6 +573,9 @@ function toMessage(msg, tinode, topic = null) {
   if (msg.head?.['x-reply-to']) {
     try { replyTo = JSON.parse(msg.head['x-reply-to']); } catch { replyTo = null; }
   }
+  const voiceDuration = Number(msg.head?.['x-voice-duration']) > 0
+    ? Number(msg.head['x-voice-duration'])
+    : 0;
   let mentions = [];
   if (msg.head?.['x-mentions']) {
     try {
@@ -624,6 +627,7 @@ function toMessage(msg, tinode, topic = null) {
     recallEvent,
     call,
     replyTo,
+    voiceDuration,
     mentions,
     sources: chatbotSources,
     grounded: msg.head?.['x-vichat-chatbot-grounded'] === '1',
@@ -1815,7 +1819,7 @@ export const tinodeClient = {
     return event;
   },
 
-  async sendFile(topicName, file, clientId) {
+  async sendFile(topicName, file, clientId, metadata = {}) {
     const tinode = getClient();
     const topic = await subscribeTopic(topicName);
     const url = await uploadFile(tinode, file);
@@ -1838,6 +1842,8 @@ export const tinodeClient = {
     const draft = topic.createMessage(content, false);
     draft.head = { ...(draft.head || {}), 'x-sender-id': tinode.getCurrentUserID() };
     if (clientId) draft.head['x-client-id'] = clientId;
+    if (metadata.replyTo) draft.head['x-reply-to'] = JSON.stringify(metadata.replyTo);
+    if (Number(metadata.voiceDuration) > 0) draft.head['x-voice-duration'] = String(Math.round(metadata.voiceDuration));
     const result = await topic.publishMessage(draft);
     if (!result) throw new Error('Tinode không xác nhận tin nhắn đính kèm.');
     return {
@@ -1848,6 +1854,7 @@ export const tinodeClient = {
         size: file.size || 0,
         url,
       },
+      voiceDuration: Number(metadata.voiceDuration) > 0 ? Math.round(metadata.voiceDuration) : 0,
     };
   },
 

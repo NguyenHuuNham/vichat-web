@@ -47,6 +47,12 @@ import {
 import { resolveCallsEnabled } from '../features/chat/services/callSignaling';
 import { attachmentConversationPreview } from '../features/chat/services/messagePreview';
 import {
+  formatAudioDuration,
+  isAudioAttachment,
+  messageContentLabel,
+  replyContentLabel,
+} from '../features/chat/services/messagePresentation';
+import {
   canRecallDeliveredMessage,
   chatAttachmentValidationError,
 } from '../features/chat/services/messagePolicy';
@@ -258,6 +264,19 @@ function attachmentForMessage(message) {
     size: 'Hình ảnh',
     url: message.image,
   } : null);
+}
+
+function replyMetadataForMessage(message, fallbackSenderName = '') {
+  const attachment = attachmentForMessage(message);
+  return {
+    id: message?.id,
+    senderName: message?.senderName || fallbackSenderName || (message?.sender === 'outgoing' ? 'Bạn' : 'Thành viên'),
+    text: message?.text || (attachment ? messageContentLabel(message) : ''),
+    type: message?.type || '',
+    fileName: attachment?.name || '',
+    fileMime: attachment?.mime || '',
+    voiceDuration: Number(message?.voiceDuration) || 0,
+  };
 }
 
 function messageSenderId(message) {
@@ -753,6 +772,120 @@ function SafeAvatar({ src, name, className = '' }) {
   return <img src={resolvedSrc} alt={name || 'Avatar'} className={className} onError={() => setFailed(true)} />;
 }
 
+function AudioMessagePlayer({ file, duration = 0, time = '', delivery = null, pending = false, failed = false, onError }) {
+  const audioRef = useRef(null);
+  const [resolvedSource, setResolvedSource] = useState('');
+  const [mediaVersion, setMediaVersion] = useState(() => tinodeClient.getMediaVersion(file?.url));
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [loadedDuration, setLoadedDuration] = useState(Number(duration) || 0);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const waveform = [10, 17, 23, 14, 28, 20, 12, 25, 18, 30, 16, 22, 11, 27, 19, 13, 24, 16, 29, 18, 12, 21, 15, 26];
+
+  useEffect(() => {
+    const normalizedSource = normalizeTinodeMediaUrl(file?.url);
+    return tinodeClient.onEvent(event => {
+      if (event.type === 'media-invalidated' && event.url === normalizedSource) {
+        setMediaVersion(tinodeClient.getMediaVersion(file?.url));
+      }
+    });
+  }, [file?.url]);
+
+  useEffect(() => {
+    let active = true;
+    setResolvedSource('');
+    setLoadFailed(false);
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setLoadedDuration(Number(duration) || 0);
+    if (!file?.url) return () => { active = false; };
+
+    tinodeClient.resolveMediaUrl(file.url)
+      .then(url => {
+        if (active) setResolvedSource(url || '');
+      })
+      .catch(error => {
+        if (!active) return;
+        setLoadFailed(true);
+        onError?.(error);
+      });
+
+    const audioElement = audioRef.current;
+    return () => {
+      active = false;
+      audioElement?.pause();
+    };
+  }, [file?.url, duration, mediaVersion, onError]);
+
+  const togglePlayback = async () => {
+    const audio = audioRef.current;
+    if (!audio || !resolvedSource) return;
+    try {
+      if (audio.paused) await audio.play();
+      else audio.pause();
+    } catch (error) {
+      setLoadFailed(true);
+      onError?.(error);
+    }
+  };
+
+  const progress = loadedDuration > 0 ? Math.min(1, currentTime / loadedDuration) : 0;
+  return (
+    <div className={`message-bubble audio-bubble ${pending ? 'pending' : ''} ${failed || loadFailed ? 'failed' : ''}`}>
+      <button
+        type="button"
+        className="audio-play-button"
+        onClick={togglePlayback}
+        disabled={!resolvedSource}
+        aria-label={isPlaying ? 'Tạm dừng tin nhắn thoại' : 'Phát tin nhắn thoại'}
+      >
+        <i className={`fa-solid ${isPlaying ? 'fa-pause' : resolvedSource ? 'fa-play' : 'fa-spinner fa-spin'}`}></i>
+      </button>
+      <span className="audio-waveform" aria-hidden="true">
+        {waveform.map((height, index) => (
+          <i key={`${height}-${index}`} className={index / waveform.length < progress ? 'played' : ''} style={{ height: `${height}px` }}></i>
+        ))}
+      </span>
+      <span className="audio-duration">{formatAudioDuration(loadedDuration)}</span>
+      <span className="message-time">{time} {delivery}</span>
+      {resolvedSource && (
+        <audio
+          ref={audioRef}
+          src={resolvedSource}
+          preload="metadata"
+          onLoadedMetadata={event => {
+            if (Number.isFinite(event.currentTarget.duration) && event.currentTarget.duration > 0) setLoadedDuration(event.currentTarget.duration);
+          }}
+          onTimeUpdate={event => setCurrentTime(event.currentTarget.currentTime || 0)}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onEnded={() => { setIsPlaying(false); setCurrentTime(0); }}
+          onError={() => {
+            setLoadFailed(true);
+            onError?.(new Error('Không thể phát tin nhắn thoại.'));
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function MessageReplyPreview({ reply }) {
+  if (!reply) return null;
+  const isAudio = isAudioAttachment(reply.file || { name: reply.fileName, mime: reply.fileMime }, reply.type) || Number(reply.voiceDuration) > 0;
+  const isImage = reply.type === 'image' || String(reply.fileMime || reply.file?.mime || '').toLowerCase().startsWith('image/');
+  const icon = isAudio ? 'fa-microphone' : isImage ? 'fa-image' : reply.fileName ? 'fa-paperclip' : 'fa-reply';
+  return (
+    <div className="message-reply-preview">
+      <span className="message-reply-preview-icon"><i className={`fa-solid ${icon}`} aria-hidden="true"></i></span>
+      <span className="message-reply-preview-copy">
+        <strong>{reply.senderName || 'Tin nhắn'}</strong>
+        <span>{replyContentLabel(reply)}</span>
+      </span>
+    </div>
+  );
+}
+
 function ConversationAvatar({ room }) {
   const legacySource = typeof room?.avatarHtml === 'string'
     ? room.avatarHtml.match(/src=["']([^"']+)["']/i)?.[1]
@@ -965,6 +1098,9 @@ function App() {
   const [conversationCategoryMenuOpen, setConversationCategoryMenuOpen] = useState(false);
   const [conversationCategories, setConversationCategories] = useState({});
   const [replyingTo, setReplyingTo] = useState(null);
+  const [profileContact, setProfileContact] = useState(null);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [voiceRecordingSeconds, setVoiceRecordingSeconds] = useState(0);
   const [messageDetails, setMessageDetails] = useState(null);
   const [shareMessage, setShareMessage] = useState(null);
   const [messageActions, setMessageActions] = useState({});
@@ -1033,6 +1169,11 @@ function App() {
   const groupAvatarSyncRef = useRef(new Map());
   const typingNoticeAtRef = useRef(new Map());
   const typingClearTimersRef = useRef(new Map());
+  const mediaRecorderRef = useRef(null);
+  const voiceChunksRef = useRef([]);
+  const voiceRecordingDurationRef = useRef(0);
+  const voiceDiscardRef = useRef(false);
+  const voiceTimerRef = useRef(null);
   const notificationBaselineRef = useRef(new Map());
   const notificationAudioContextRef = useRef(null);
   const notificationCustomAudioRef = useRef(null);
@@ -1140,6 +1281,14 @@ function App() {
     ...(currentUser || {}),
     online: isCurrentUserOnline,
   };
+
+  useEffect(() => () => {
+    if (voiceTimerRef.current) window.clearInterval(voiceTimerRef.current);
+    voiceDiscardRef.current = true;
+    mediaRecorderRef.current?.stream?.getTracks?.().forEach(track => track.stop());
+    mediaRecorderRef.current = null;
+  }, []);
+
   useEffect(() => {
     try {
       window.localStorage.setItem('songhong.primary-sidebar-collapsed', String(isPrimarySidebarCollapsed));
@@ -1455,6 +1604,7 @@ function App() {
       setMessageMenu(null);
       setConversationMenu(null);
       setConversationCategoryMenuOpen(false);
+      if (event.type === 'keydown') setProfileContact(null);
     };
     document.addEventListener('click', closeMenus);
     document.addEventListener('keydown', closeMenus);
@@ -2900,6 +3050,39 @@ function App() {
     }
   };
 
+  const publicProfileFor = entity => {
+    if (!entity) return null;
+    const identity = entity.id || entity.uid || entity.tinodeUid || entity.tinode_uid || entity.username || entity.name;
+    const account = findAccount(directoryAccounts, identity)
+      || findAccount(activeChat.members, identity)
+      || (identitiesOverlap(entity, currentUser) ? currentUser : null);
+    const merged = { ...(account || {}), ...(entity || {}) };
+    const isCurrentAccount = identitiesOverlap(merged, currentUser);
+    return {
+      id: account?.id || account?.uid || merged.id || merged.uid || merged.tinodeUid || merged.tinode_uid || '',
+      name: merged.name || merged.username || 'Thành viên',
+      avatar: merged.avatar || '',
+      username: merged.username || '',
+      email: merged.email || '',
+      title: merged.title || '',
+      department: merged.department || '',
+      role: merged.role || merged.accountRole || '',
+      online: isCurrentAccount ? isCurrentUserOnline : Boolean(merged.online),
+      isCurrentAccount,
+    };
+  };
+
+  const openProfileFor = entity => {
+    const profile = publicProfileFor(entity);
+    if (profile) setProfileContact(profile);
+  };
+
+  const messageSenderProfile = message => publicProfileFor({
+    id: message?.senderId || message?.raw?.from || message?.raw?.head?.['x-sender-id'],
+    name: message?.senderName,
+    avatar: message?.avatar,
+  });
+
   const handleLeaveGroup = async () => {
     if (!activeChat.isGroup || !window.confirm(`Bạn có chắc muốn rời nhóm "${activeChat.name}"?`)) return;
     try {
@@ -3464,7 +3647,7 @@ function App() {
     }
   };
 
-  const handleSendFile = (file) => {
+  const handleSendFile = (file, { voiceDuration = 0 } = {}) => {
     if (!file) return;
     if (activeChat?.isChatbot) {
       setChatError('Trợ lý AI hiện chỉ nhận tin nhắn văn bản.');
@@ -3480,6 +3663,7 @@ function App() {
       return;
     }
     setChatError('');
+    const replyMeta = replyingTo ? { ...replyingTo } : null;
 
     const mime = file.type || 'application/octet-stream';
     const isUnnamedClipboardFile = !String(file.name || '').trim();
@@ -3523,9 +3707,12 @@ function App() {
         name: fileName,
         mime,
         ext: isImage ? "image" : extType,
-        size: `${displayExt} • ${sizeStr}`
+        size: `${displayExt} • ${sizeStr}`,
+        voiceDuration: Number(voiceDuration) || 0,
       },
       image: previewUrl || undefined,
+      replyTo: replyMeta,
+      voiceDuration: Number(voiceDuration) || 0,
       time: timeStr,
       createdAt,
       pending: chatMode === 'tinode',
@@ -3553,13 +3740,14 @@ function App() {
     } catch (err) {
       setChatError(err?.message || 'Không thể lưu tệp trong lịch sử nhóm.');
     }
+    setReplyingTo(null);
 
     if (chatMode === 'tinode') {
       const roomId = currentChatId;
       const room = conversations[roomId];
       ensureTinodeConversationTopic(room)
         .then(async topicName => {
-          const result = await tinodeClient.sendFile(topicName, uploadFile, newMsg.id);
+          const result = await tinodeClient.sendFile(topicName, uploadFile, newMsg.id, { replyTo: replyMeta, voiceDuration });
           const confirmedIsImage = /^image\//i.test(result.file.mime || '') || isImage;
           const confirmedMessage = {
             ...newMsg,
@@ -3567,12 +3755,14 @@ function App() {
             pending: false,
             failed: false,
             seq: newMsg.seq || result.ctrl?.params?.seq,
+            voiceDuration: result.voiceDuration || newMsg.voiceDuration || 0,
             image: confirmedIsImage ? result.file.url : undefined,
             file: {
               ...newMsg.file,
               ext: confirmedIsImage ? 'image' : newMsg.file.ext,
               url: result.file.url,
               mime: result.file.mime,
+              voiceDuration: result.voiceDuration || newMsg.voiceDuration || 0,
             },
           };
           setConversations(previous => {
@@ -3606,6 +3796,76 @@ function App() {
         setChatError(err?.message || 'Không thể tải tệp lên Tinode.');
       });
     }
+  };
+
+  const startVoiceRecording = async () => {
+    if (isRecordingVoice || mediaRecorderRef.current) return;
+    setShowEmojiPicker(false);
+    if (activeChat?.isChatbot) {
+      setChatError('Trợ lý AI hiện chỉ nhận tin nhắn văn bản.');
+      return;
+    }
+    if (realtimeMessagingPending) {
+      setChatError('Kết nối realtime Tinode chưa sẵn sàng; dữ liệu Chatmgt vẫn đang hoạt động.');
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setChatError('Trình duyệt này chưa hỗ trợ ghi âm tin nhắn thoại.');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeCandidates = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4'];
+      const mimeType = mimeCandidates.find(candidate => MediaRecorder.isTypeSupported?.(candidate)) || '';
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      voiceChunksRef.current = [];
+      voiceRecordingDurationRef.current = 0;
+      voiceDiscardRef.current = false;
+      recorder.ondataavailable = event => {
+        if (event.data?.size > 0) voiceChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const recordingMime = recorder.mimeType || mimeType || 'audio/webm';
+        const blob = new Blob(voiceChunksRef.current, { type: recordingMime });
+        const extension = recordingMime.includes('mp4') ? 'm4a' : recordingMime.includes('ogg') ? 'ogg' : 'webm';
+        const duration = voiceRecordingDurationRef.current;
+        const shouldSend = !voiceDiscardRef.current && blob.size > 0;
+        voiceChunksRef.current = [];
+        voiceRecordingDurationRef.current = 0;
+        mediaRecorderRef.current = null;
+        if (voiceTimerRef.current) window.clearInterval(voiceTimerRef.current);
+        voiceTimerRef.current = null;
+        setIsRecordingVoice(false);
+        setVoiceRecordingSeconds(0);
+        stream.getTracks().forEach(track => track.stop());
+        if (!shouldSend) return;
+        const voiceFile = new File([blob], `voice-${Date.now()}.${extension}`, { type: recordingMime, lastModified: Date.now() });
+        handleSendFile(voiceFile, { voiceDuration: duration });
+      };
+      recorder.onerror = () => {
+        setChatError('Không thể ghi âm tin nhắn thoại.');
+        voiceDiscardRef.current = true;
+      };
+      recorder.start(250);
+      mediaRecorderRef.current = recorder;
+      setVoiceRecordingSeconds(0);
+      setIsRecordingVoice(true);
+      voiceTimerRef.current = window.setInterval(() => {
+        voiceRecordingDurationRef.current += 1;
+        setVoiceRecordingSeconds(voiceRecordingDurationRef.current);
+      }, 1000);
+    } catch (error) {
+      setChatError(error?.name === 'NotAllowedError'
+        ? 'Bạn cần cho phép microphone để ghi tin nhắn thoại.'
+        : 'Không thể mở microphone trên thiết bị này.');
+    }
+  };
+
+  const stopVoiceRecording = (discard = false) => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) return;
+    voiceDiscardRef.current = discard;
+    if (recorder.state !== 'inactive') recorder.stop();
   };
 
   const handleFileChange = event => {
@@ -3893,7 +4153,7 @@ function App() {
       }
       if (action === 'reply') {
         if (message.recalled) return;
-        setReplyingTo({ id: message.id, text: message.text || message.file?.name || 'Tệp đính kèm', senderName: message.senderName || (isOwnMessage ? 'Bạn' : 'Thành viên') });
+        setReplyingTo(replyMetadataForMessage(message, isOwnMessage ? 'Bạn' : 'Thành viên'));
         requestAnimationFrame(() => messageInputRef.current?.focus());
         return;
       }
@@ -4198,6 +4458,23 @@ function App() {
     }
   };
 
+  const renderComposerText = (text, mentions = []) => {
+    if (!text) return null;
+    const escapeRegExp = value => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const mentionTokens = [...new Set((mentions || [])
+      .map(mention => mention?.token)
+      .filter(Boolean)
+      .map(String))].sort((first, second) => second.length - first.length);
+    const mentionPattern = mentionTokens.length > 0
+      ? new RegExp(`(${mentionTokens.map(escapeRegExp).join('|')})`, 'gu')
+      : null;
+    return (mentionPattern ? String(text).split(mentionPattern) : [String(text)]).map((part, index) => (
+      mentionTokens.includes(part)
+        ? <span key={`composer-mention-${index}`} className="message-mention">{part}</span>
+        : <React.Fragment key={`composer-text-${index}`}>{part}</React.Fragment>
+    ));
+  };
+
   // Keep mention styling tied to the metadata stamped by the sender.
   const renderMessageText = (text, mentions = []) => {
     if (!text) return '';
@@ -4223,11 +4500,22 @@ function App() {
       ));
     });
 
-    return (mentionPattern ? String(text).split(mentionPattern) : [String(text)]).flatMap((part, index) => (
-      mentionTokens.includes(part)
-        ? [<span key={`mention-${index}`} className="message-mention">{part}</span>]
-        : renderPlainText(part, `text-${index}`)
-    ));
+    return (mentionPattern ? String(text).split(mentionPattern) : [String(text)]).flatMap((part, index) => {
+      if (!mentionTokens.includes(part)) return renderPlainText(part, `text-${index}`);
+      const mention = (mentions || []).find(candidate => String(candidate?.token || '') === part);
+      if (mention?.isAll) return [<span key={`mention-${index}`} className="message-mention">{part}</span>];
+      return [
+        <button
+          type="button"
+          key={`mention-${index}`}
+          className="message-mention"
+          onClick={() => openProfileFor(mention)}
+          title={`Xem thông tin ${mention?.name || part}`}
+        >
+          {part}
+        </button>,
+      ];
+    });
   };
 
   // Filter conversations
@@ -4670,6 +4958,7 @@ function App() {
             const imagePreviewFile = imagePreviewSource && attachmentFile
               ? { ...attachmentFile, url: imagePreviewSource }
               : attachmentFile;
+            const isAudioMessage = isAudioAttachment(attachmentFile, msg.type) || Number(msg.voiceDuration) > 0;
             const attachmentStatus = msg.pending
               ? 'Đang tải lên...'
               : attachmentFile?.url ? 'Đã có trên Cloud' : 'Có sẵn trên máy';
@@ -4678,13 +4967,13 @@ function App() {
                 {showDateDivider && <div className="date-divider"><span>{dateLabel}</span></div>}
                 <div className={`message-item ${isOutgoing ? 'outgoing' : 'incoming'} ${activeChat.isChatbot ? 'chatbot-message-item' : ''}`}>
                 {!isOutgoing && (
-                  <div className="message-avatar">
+                  <button type="button" className="message-avatar message-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))} title={`Xem thông tin ${msg.senderName || 'thành viên'}`}>
                     <SafeAvatar src={msg.avatar || ''} name={msg.senderName} />
-                  </div>
+                  </button>
                 )}
 
                 <div className={`message-content-wrapper ${imagePreviewSource ? 'image-message-content' : ''}`}>
-                  {!isOutgoing && msg.senderName && <span className="sender-name">{msg.senderName}</span>}
+                  {!isOutgoing && msg.senderName && <button type="button" className="sender-name sender-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))}>{msg.senderName}</button>}
 
                   <div className="message-interactive" onContextMenu={event => openMessageMenu(event, msg)}>
                     <div className="message-bubble-group">
@@ -4718,7 +5007,7 @@ function App() {
                     {/* Tin nhắn chữ thường */}
                     {msg.type === "text" && msg.text && (
                       <div className={`message-bubble ${activeChat.isChatbot && !isOutgoing ? 'chatbot-answer-bubble' : ''}`}>
-                        {msg.replyTo && <div className="message-reply-preview"><strong>{msg.replyTo.senderName || 'Tin nhắn'}</strong><span>{msg.replyTo.text}</span></div>}
+                        <MessageReplyPreview reply={msg.replyTo} />
                         {activeChat.isChatbot && !isOutgoing && (
                           <div className="chatbot-answer-label">
                             <span><i className="fa-solid fa-sparkles"></i>{msg.grounded ? 'Tóm tắt từ tài liệu' : msg.isWelcome ? 'ViChat AI' : 'Phản hồi AI'}</span>
@@ -4753,8 +5042,22 @@ function App() {
 
                     {/* Tin nhắn file đính kèm */}
                     {/* Image attachments are visual-only; do not render their filename. */}
-                    {imagePreviewSource ? (
-                      <div className={`message-bubble image-bubble ${msg.pending ? 'pending' : ''} ${msg.failed ? 'failed' : ''}`}>
+                    {isAudioMessage ? (
+                      <div className="attachment-message-stack">
+                        <MessageReplyPreview reply={msg.replyTo} />
+                        <AudioMessagePlayer
+                          file={attachmentFile}
+                          duration={msg.voiceDuration || attachmentFile?.voiceDuration}
+                          time={formatMessageTime(msg, msg.time)}
+                          delivery={isOutgoing && deliveryStatusIcon(msg)}
+                          pending={msg.pending}
+                          failed={msg.failed}
+                        />
+                      </div>
+                    ) : imagePreviewSource ? (
+                      <div className="attachment-message-stack">
+                        <MessageReplyPreview reply={msg.replyTo} />
+                        <div className={`message-bubble image-bubble ${msg.pending ? 'pending' : ''} ${msg.failed ? 'failed' : ''}`}>
                         <button
                           type="button"
                           className="image-preview-button"
@@ -4770,9 +5073,12 @@ function App() {
                         <div className="image-bubble-footer">
                           <span className="message-time">{formatMessageTime(msg, msg.time)} {isOutgoing && deliveryStatusIcon(msg)}</span>
                         </div>
+                        </div>
                       </div>
                     ) : attachmentFile && (
-                      <div className={`message-bubble file-bubble ${msg.type} ${attachmentTone} ${attachmentFile.ext || ''} ${msg.pending ? 'pending' : ''} ${msg.failed ? 'failed' : ''}`}>
+                      <div className="attachment-message-stack">
+                        <MessageReplyPreview reply={msg.replyTo} />
+                        <div className={`message-bubble file-bubble ${msg.type} ${attachmentTone} ${attachmentFile.ext || ''} ${msg.pending ? 'pending' : ''} ${msg.failed ? 'failed' : ''}`}>
                         <button
                           type="button"
                           className="file-card-main"
@@ -4800,6 +5106,7 @@ function App() {
                             {formatMessageTime(msg, msg.time)} {isOutgoing && deliveryStatusIcon(msg)}
                           </span>
                         </span>
+                        </div>
                       </div>
                     )}
                     </div>
@@ -4846,7 +5153,6 @@ function App() {
                 <div className="message-reaction-row" aria-label="Thêm biểu cảm">
                   {['👍', '❤️', '😂', '😮', '😢'].map(emoji => <button type="button" key={emoji} onClick={() => handleMessageAction('reaction', menuMessage, emoji)}>{emoji}</button>)}
                 </div>
-                <button type="button" onClick={() => handleMessageAction('hide', menuMessage)}><i className="fa-solid fa-trash"></i>Xóa chỉ ở phía tôi</button>
                  {canRecallMessage && <>
                    <button type="button" className="danger" onClick={() => handleMessageAction('recall-self', menuMessage)}><i className="fa-solid fa-eye-slash"></i>Thu hồi phía tôi</button>
                    <button type="button" className="danger" onClick={() => handleMessageAction('recall-all', menuMessage)}><i className="fa-solid fa-rotate-left"></i>Thu hồi tất cả</button>
@@ -4892,12 +5198,15 @@ function App() {
         <div className="chat-main-input">
           {replyingTo && (
             <div className="replying-banner">
-              <div><strong>Đang trả lời {replyingTo.senderName}</strong><span>{replyingTo.text}</span></div>
+              <div className="replying-banner-copy">
+                <strong>Đang trả lời {replyingTo.senderName}</strong>
+                <MessageReplyPreview reply={replyingTo} />
+              </div>
               <button type="button" onClick={() => setReplyingTo(null)} aria-label="Hủy trả lời"><i className="fa-solid fa-xmark"></i></button>
             </div>
           )}
           <div className="input-actions-left">
-            <button className="btn-input-action" title={activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Đính kèm tệp'} onClick={handleAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot}>
+            <button className="btn-input-action" title={activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Đính kèm tệp'} onClick={handleAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice}>
               <i className="fa-solid fa-paperclip"></i>
             </button>
             <input 
@@ -4906,7 +5215,7 @@ function App() {
               style={{ display: "none" }} 
               onChange={handleFileChange} 
             />
-            <button type="button" className="btn-input-action" title="Biểu cảm" aria-label="Mở biểu cảm" aria-expanded={showEmojiPicker} onClick={() => setShowEmojiPicker(prev => !prev)} disabled={realtimeMessagingPending || activeChat.isChatbot}>
+            <button type="button" className="btn-input-action" title="Biểu cảm" aria-label="Mở biểu cảm" aria-expanded={showEmojiPicker} onClick={() => setShowEmojiPicker(prev => !prev)} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice}>
               <i className="fa-regular fa-smile"></i>
             </button>
             {showEmojiPicker && (
@@ -4914,9 +5223,28 @@ function App() {
                 {['😀', '😂', '😍', '👍', '👏', '🎉', '🙏', '🔥', '✅', '❤️'].map(emoji => <button type="button" role="option" key={emoji} aria-label={emoji} onMouseDown={event => event.preventDefault()} onClick={() => insertEmoji(emoji)}>{emoji}</button>)}
               </div>
             )}
+            <button
+              type="button"
+              className={`btn-input-action voice-input-action ${isRecordingVoice ? 'recording' : ''}`}
+              title={isRecordingVoice ? 'Dừng và gửi tin nhắn thoại' : 'Ghi tin nhắn thoại'}
+              aria-label={isRecordingVoice ? 'Dừng và gửi tin nhắn thoại' : 'Ghi tin nhắn thoại'}
+              onClick={() => (isRecordingVoice ? stopVoiceRecording(false) : startVoiceRecording())}
+              disabled={realtimeMessagingPending || activeChat.isChatbot}
+            >
+              <i className={`fa-solid ${isRecordingVoice ? 'fa-stop' : 'fa-microphone'}`}></i>
+            </button>
           </div>
-          <div className="input-text-container">
-            {mentionContext && activeChat.isGroup && (
+          <div className={`input-text-container ${isRecordingVoice ? 'voice-recording-container' : ''}`}>
+            {isRecordingVoice ? (
+              <div className="voice-recording-bar" role="status">
+                <span className="voice-recording-pulse"><i className="fa-solid fa-microphone"></i></span>
+                <span className="voice-recording-copy"><strong>Đang ghi âm</strong><small>{formatAudioDuration(voiceRecordingSeconds)}</small></span>
+                <span className="voice-recording-hint">Bấm nút đỏ để gửi</span>
+                <button type="button" className="voice-recording-cancel" onClick={() => stopVoiceRecording(true)}>Hủy</button>
+              </div>
+            ) : (
+              <>
+                {mentionContext && activeChat.isGroup && (
               <div
                 ref={mentionPickerRef}
                 id="message-mention-picker"
@@ -4953,8 +5281,12 @@ function App() {
                   <div className="mention-empty">Không tìm thấy thành viên phù hợp</div>
                 )}
               </div>
-            )}
-            <input
+                )}
+                {inputText && (messageMentions[currentChatId] || []).length > 0 && (
+                  <div className="input-text-preview" aria-hidden="true">{renderComposerText(inputText, messageMentions[currentChatId] || [])}</div>
+                )}
+                <input
+                  className={(messageMentions[currentChatId] || []).length > 0 ? 'has-styled-mentions' : ''}
               type="text"
               ref={messageInputRef}
               role="combobox"
@@ -4975,9 +5307,11 @@ function App() {
                   }
                 }, 0);
               }}
-            />
+                />
+              </>
+            )}
           </div>
-          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || (activeChat.isChatbot && isTyping)} onClick={() => handleSendMessage()}>{activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi'}</button>
+          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || isRecordingVoice || (activeChat.isChatbot && isTyping)} onClick={() => handleSendMessage()}>{activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi'}</button>
         </div>
         {activeChat.isChatbot && <p className="chatbot-composer-note"><i className="fa-solid fa-circle-info"></i> ViChat AI có thể chưa bao quát mọi tài liệu. Hãy kiểm tra nguồn trước khi ra quyết định.</p>}
         {messageDetails && (
@@ -4988,6 +5322,39 @@ function App() {
               <p><strong>Thời gian:</strong> {messageDetails.createdAt ? new Date(messageDetails.createdAt).toLocaleString('vi-VN') : messageDetails.time}</p>
               <p><strong>Nội dung:</strong> {messageDetails.text || messageDetails.file?.name || 'Tệp đính kèm'}</p>
             </div>
+          </div>
+        )}
+        {profileContact && (
+          <div className="profile-contact-modal" role="presentation" onMouseDown={event => {
+            if (event.target === event.currentTarget) setProfileContact(null);
+          }}>
+            <section className="profile-contact-card" role="dialog" aria-modal="true" aria-labelledby="profile-contact-title">
+              <div className="message-details-header">
+                <strong>Thông tin cá nhân</strong>
+                <button type="button" onClick={() => setProfileContact(null)} aria-label="Đóng thông tin cá nhân"><i className="fa-solid fa-xmark"></i></button>
+              </div>
+              <div className="profile-contact-hero">
+                <SafeAvatar src={profileContact.avatar} name={profileContact.name} className="profile-contact-avatar" />
+                <h2 id="profile-contact-title">{profileContact.name}</h2>
+                <span className={`profile-contact-status ${profileContact.online ? '' : 'offline'}`}><i className="fa-solid fa-circle"></i>{profileContact.online ? 'Đang hoạt động' : 'Ngoại tuyến'}</span>
+              </div>
+              <div className="profile-contact-details">
+                {profileContact.username && <div className="profile-contact-row"><i className="fa-solid fa-at"></i><span><small>Tài khoản</small><strong>@{profileContact.username.replace(/^@+/, '').split('@')[0]}</strong></span></div>}
+                {profileContact.title && <div className="profile-contact-row"><i className="fa-solid fa-briefcase"></i><span><small>Chức vụ</small><strong>{profileContact.title}</strong></span></div>}
+                {profileContact.department && <div className="profile-contact-row"><i className="fa-solid fa-building"></i><span><small>Phòng ban</small><strong>{profileContact.department}</strong></span></div>}
+                {profileContact.email && <div className="profile-contact-row"><i className="fa-regular fa-envelope"></i><span><small>Email</small><strong>{profileContact.email}</strong></span></div>}
+                {profileContact.role && <div className="profile-contact-row"><i className="fa-solid fa-shield-halved"></i><span><small>Vai trò</small><strong>{profileContact.role}</strong></span></div>}
+              </div>
+              {!profileContact.isCurrentAccount && profileContact.id && (
+                <button type="button" className="btn-primary profile-contact-chat-button" onClick={() => {
+                  const contact = findAccount(directoryAccounts, profileContact.id) || profileContact;
+                  setProfileContact(null);
+                  void handleStartDirectChat(contact);
+                }}>
+                  <i className="fa-solid fa-comment-dots"></i>Nhắn tin
+                </button>
+              )}
+            </section>
           </div>
         )}
         {shareMessage && (
