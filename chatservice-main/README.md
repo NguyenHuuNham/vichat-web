@@ -12,6 +12,10 @@ the indefinite sentinel through the conversation notification-settings API.
 Chatmgt never suppresses Tinode messages or unread receipts; ChatUI applies the
 preference only to the local alert sound.
 
+Conversation pins are also stored on the authenticated participant membership.
+The pin endpoint is tenant-scoped, survives refresh and login on another device,
+and does not change the conversation's Tinode topic or message history.
+
 For Account SSO employees, identity fields remain read-only projections. UpGO
 Account invitations and profile changes are the source of truth; Chatmgt does
 not create employee accounts in production. The authenticated

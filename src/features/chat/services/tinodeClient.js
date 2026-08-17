@@ -1662,6 +1662,11 @@ export const tinodeClient = {
     return enrichConversationProfiles(toConversation(topic, getClient()), getClient());
   },
 
+  async getConversationAvatar(topicName) {
+    const topic = await subscribeTopic(topicName, { historyLimit: 0 });
+    return avatarFromTopic(topic);
+  },
+
   async restoreConversation(topicName) {
     const topic = await subscribeTopic(topicName, { historyLimit: OPEN_HISTORY_LIMIT });
     return enrichConversationProfiles(toConversation(topic, getClient()), getClient());

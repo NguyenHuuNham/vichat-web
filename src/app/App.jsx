@@ -20,6 +20,10 @@ import {
   notificationMuteLabel,
   resolveNotificationMuteUntil,
 } from '../features/chat/services/conversationNotifications';
+import {
+  applyLocalConversationPins,
+  toggleConversationPinIds,
+} from '../features/chat/services/conversationPinPolicy';
 import { resolveCallsEnabled } from '../features/chat/services/callSignaling';
 import { attachmentConversationPreview } from '../features/chat/services/messagePreview';
 import {
@@ -500,7 +504,7 @@ function mergeTinodeConversation(existing, incoming) {
       : (incoming.name && incoming.name !== incoming.id ? incoming.name : existing.name),
     avatarHtml: incoming.avatarHtml || existing.avatarHtml,
     avatarUrl: managementOwned && !incomingManagementSnapshot
-      ? existing.avatarUrl
+      ? (incoming.avatarUrl || existing.avatarUrl)
       : (incoming.avatarUrl !== undefined ? incoming.avatarUrl : existing.avatarUrl),
     description: managementOwned && !incomingManagementSnapshot
       ? existing.description
@@ -764,6 +768,7 @@ function App() {
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
   const [messageMentions, setMessageMentions] = useState({});
   const [messageMenu, setMessageMenu] = useState(null);
+  const [conversationMenu, setConversationMenu] = useState(null);
   const [replyingTo, setReplyingTo] = useState(null);
   const [messageDetails, setMessageDetails] = useState(null);
   const [shareMessage, setShareMessage] = useState(null);
@@ -809,6 +814,7 @@ function App() {
   const currentUserRef = useRef(currentUser);
   const directoryAccountsRef = useRef(directoryAccounts);
   const avatarOverridesRef = useRef(new Map());
+  const groupAvatarSyncRef = useRef(new Map());
   const typingNoticeAtRef = useRef(new Map());
   const typingClearTimersRef = useRef(new Map());
   const notificationBaselineRef = useRef(new Map());
@@ -1053,9 +1059,17 @@ function App() {
   }, [activeMessageCount, currentChatId, isTyping]);
 
   useEffect(() => {
-    const closeMenu = () => setMessageMenu(null);
-    document.addEventListener('click', closeMenu);
-    return () => document.removeEventListener('click', closeMenu);
+    const closeMenus = event => {
+      if (event.type === 'keydown' && event.key !== 'Escape') return;
+      setMessageMenu(null);
+      setConversationMenu(null);
+    };
+    document.addEventListener('click', closeMenus);
+    document.addEventListener('keydown', closeMenus);
+    return () => {
+      document.removeEventListener('click', closeMenus);
+      document.removeEventListener('keydown', closeMenus);
+    };
   }, []);
 
   useEffect(() => {
@@ -1132,7 +1146,10 @@ function App() {
     if (!managementUserId) return {};
     const managed = await chatManagementService.listConversations();
     if (accountSessionRef.current !== accountSession || managementConversationSessionRef.current !== accountSession) return {};
-    const managedRooms = managementRoomsForSession(managed, directoryAccounts, currentUser, accountSession);
+    const managedRoomsSnapshot = managementRoomsForSession(managed, directoryAccounts, currentUser, accountSession);
+    const managedRooms = chatManagementService.remote
+      ? managedRoomsSnapshot
+      : applyLocalConversationPins(managedRoomsSnapshot, managementUserId);
     const previousRooms = conversationsRef.current;
     const nextRooms = Object.fromEntries(Object.entries(previousRooms).filter(([, room]) => (
       room.isChatbot
@@ -1209,12 +1226,22 @@ function App() {
     }
 
     if (!topicName) throw new Error('Chatmgt chưa gắn topic Tinode cho cuộc trò chuyện này.');
+    let liveGroupAvatar = '';
+    if (preparedRoom.isGroup) {
+      if (!groupAvatarSyncRef.current.has(topicName)) {
+        liveGroupAvatar = await tinodeClient.getConversationAvatar(topicName).catch(() => '');
+        groupAvatarSyncRef.current.set(topicName, liveGroupAvatar);
+      } else {
+        liveGroupAvatar = groupAvatarSyncRef.current.get(topicName) || '';
+      }
+    }
+    const effectiveGroupAvatar = liveGroupAvatar || createdGroupAvatar || preparedRoom.avatarUrl || room.avatarUrl || '';
     try {
       await chatManagementService.bindTinodeTopic(
         managementUserId,
         managementConversationId,
         topicName,
-        { avatarUrl: createdGroupAvatar },
+        { avatarUrl: effectiveGroupAvatar },
       );
     } catch (error) {
       const bindingRejected = Number(error?.status) >= 400 && Number(error?.status) < 500;
@@ -1233,7 +1260,7 @@ function App() {
         id: stateId,
         managementId: managementConversationId,
         tinodeTopic: topicName,
-        avatarUrl: createdGroupAvatar || preparedRoom.avatarUrl || '',
+        avatarUrl: effectiveGroupAvatar,
         accountSession,
       },
     };
@@ -1546,6 +1573,22 @@ function App() {
         if (stateId === currentChatIdRef.current && conversation.badge > 0 && document.visibilityState !== 'hidden') {
           tinodeClient.markRead(conversation.id).catch(() => {});
         }
+        const currentRoom = currentRooms[stateId];
+        if (
+          currentRoom?.isGroup
+          && conversation.avatarUrl
+          && conversation.avatarUrl !== currentRoom.avatarUrl
+          && chatManagementService.remote
+          && isManagementConversationId(currentRoom.managementId || currentRoom.id)
+        ) {
+          groupAvatarSyncRef.current.set(conversation.id, conversation.avatarUrl);
+          chatManagementService.bindTinodeTopic(
+            managementViewerId,
+            currentRoom.managementId || currentRoom.id,
+            conversation.id,
+            { avatarUrl: conversation.avatarUrl },
+          ).catch(() => {});
+        }
         setConversations(prev => {
           const previousRoom = prev[stateId];
           if (!previousRoom || previousRoom.accountSession !== accountSession || previousRoom.tinodeTopic !== conversation.id) return prev;
@@ -1566,7 +1609,7 @@ function App() {
         return;
       }
     });
-  }, [isLoggedIn, chatMode, managementConversationSession, currentUser, directoryAccounts, applyPresenceSnapshot, clearActiveCall, refreshManagementConversations, showIncomingNotification, viewerId]);
+  }, [isLoggedIn, chatMode, managementConversationSession, currentUser, directoryAccounts, applyPresenceSnapshot, clearActiveCall, refreshManagementConversations, showIncomingNotification, viewerId, managementViewerId]);
 
   // Keep every known Tinode topic subscribed after login. This is the piece
   // that makes unread badges and notifications realtime before a chat is opened.
@@ -1612,6 +1655,8 @@ function App() {
     setNotificationClock(Date.now());
     setDirectoryAccounts([]);
     avatarOverridesRef.current.clear();
+    groupAvatarSyncRef.current.clear();
+    setConversationMenu(null);
     setWorkspaceResults([]);
     setEnterpriseTaskSeed(null);
     conversationsRef.current = initialRooms;
@@ -1663,7 +1708,10 @@ function App() {
           userId: managementUserId,
         });
         if (accountSessionRef.current !== accountSession) return;
-        const managedRooms = managementRoomsForSession(managed, accounts, user, accountSession);
+        const managedRoomsSnapshot = managementRoomsForSession(managed, accounts, user, accountSession);
+        const managedRooms = chatManagementService.remote
+          ? managedRoomsSnapshot
+          : applyLocalConversationPins(managedRoomsSnapshot, managementUserId);
         const next = {
           ...managedRooms,
           [CHATBOT_ACCOUNT.id]: chatbotRoom,
@@ -1812,8 +1860,10 @@ function App() {
     setNotificationMuteDialog(null);
     setIsUpdatingNotificationMute(false);
     setNotificationClock(Date.now());
+    setConversationMenu(null);
     tinodeSessionRequestRef.current = null;
     deletedConversationIdsRef.current.clear();
+    groupAvatarSyncRef.current.clear();
     notificationBaselineRef.current.clear();
     typingNoticeAtRef.current.clear();
     typingClearTimersRef.current.forEach(timer => clearTimeout(timer));
@@ -2422,8 +2472,10 @@ function App() {
     }
   };
 
-  const handleDeleteConversation = async () => {
-    if (!activeChat?.id || activeChat.isChatbot || isDeletingConversation) return;
+  const handleDeleteConversation = async (roomOverride = null) => {
+    const targetRoom = roomOverride || conversations[currentChatId] || {};
+    const activeChat = targetRoom;
+    if (!targetRoom?.id || targetRoom.isChatbot || isDeletingConversation) return;
     const kind = activeChat.isGroup ? 'nhóm' : 'cuộc trò chuyện';
     const deleteEffect = usesManagementData
       ? `${kind} sẽ được gỡ khỏi Chatmgt và phiên realtime Tinode của bạn.`
@@ -2526,6 +2578,88 @@ function App() {
       return false;
     } finally {
       setIsUpdatingNotificationMute(false);
+    }
+  };
+
+  const updateConversationPin = async room => {
+    if (!room || room.isChatbot || room.id === 'empty') return false;
+    const nextPinned = !room.pinned;
+    const managementConversationId = room.managementId || room.id;
+    setChatError('');
+    try {
+      let persistedPinned = nextPinned;
+      let persistedPinnedAt = nextPinned ? Math.floor(Date.now() / 1000) : null;
+      if (chatManagementService.remote && chatMode !== 'demo') {
+        if (!isManagementConversationId(managementConversationId)) {
+          throw new Error('Chatmgt chua xac nhan cuoc tro chuyen nay.');
+        }
+        const updated = await chatManagementService.updateConversationPin(
+          managementConversationId,
+          nextPinned,
+        );
+        persistedPinned = Boolean(updated.pinned);
+        persistedPinnedAt = updated.pinnedAt || null;
+      } else {
+        toggleConversationPinIds(managementViewerId, managementConversationId, nextPinned);
+      }
+      setConversations(previous => {
+        if (!previous[room.id]) return previous;
+        const next = {
+          ...previous,
+          [room.id]: {
+            ...previous[room.id],
+            pinned: persistedPinned,
+            pinnedAt: persistedPinnedAt,
+          },
+        };
+        conversationsRef.current = next;
+        return next;
+      });
+      setConversationMenu(null);
+      return true;
+    } catch (error) {
+      setChatError(error?.message || 'Khong the cap nhat ghim hoi thoai.');
+      return false;
+    }
+  };
+
+  const markConversationUnread = room => {
+    if (!room || room.isChatbot) return;
+    setConversations(previous => {
+      if (!previous[room.id]) return previous;
+      const next = {
+        ...previous,
+        [room.id]: { ...previous[room.id], badge: Math.max(1, previous[room.id].badge || 0) },
+      };
+      conversationsRef.current = next;
+      return next;
+    });
+    setConversationMenu(null);
+  };
+
+  const handleConversationMenuAction = async (action, room) => {
+    if (!room) return;
+    if (action === 'pin') {
+      await updateConversationPin(room);
+      return;
+    }
+    if (action === 'unread') {
+      markConversationUnread(room);
+      return;
+    }
+    if (action === 'mute') {
+      setConversationMenu(null);
+      if (isConversationMuted(room.notificationMutedUntil, notificationClock)) {
+        await updateConversationMute(room.id, null);
+      } else {
+        setNotificationMuteOption(NOTIFICATION_MUTE_OPTIONS.ONE_HOUR);
+        setNotificationMuteDialog({ id: room.id, name: room.name });
+      }
+      return;
+    }
+    if (action === 'delete') {
+      setConversationMenu(null);
+      await handleDeleteConversation(room);
     }
   };
 
@@ -3191,6 +3325,19 @@ function App() {
     });
   };
 
+  const openConversationMenu = (event, room) => {
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = 236;
+    const height = 260;
+    setMessageMenu(null);
+    setConversationMenu({
+      roomId: room.id,
+      left: Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12)),
+      top: Math.max(12, Math.min(rect.bottom + 4, window.innerHeight - height - 12)),
+    });
+  };
+
   const applyMessagePatch = (message, patch) => {
     updateMessageInView(message, patch);
     persistMessagePatch(message, patch);
@@ -3530,24 +3677,36 @@ function App() {
     }
   };
 
-  // Helper render text with simple bold/italic markdown
-  const renderMessageText = (text) => {
-    if (!text) return "";
-    // simple parse bold: **text**
-    let parts = text.split(/(\*\*.*?\*\*)/g);
-    return parts.map((part, idx) => {
+  // Keep mention styling tied to the metadata stamped by the sender.
+  const renderMessageText = (text, mentions = []) => {
+    if (!text) return '';
+    const escapeRegExp = value => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const mentionTokens = [...new Set((mentions || [])
+      .map(mention => mention?.token)
+      .filter(Boolean)
+      .map(String))].sort((first, second) => second.length - first.length);
+    const mentionPattern = mentionTokens.length > 0
+      ? new RegExp(`(${mentionTokens.map(escapeRegExp).join('|')})`, 'gu')
+      : null;
+
+    const renderPlainText = (value, keyPrefix) => String(value).split(/(\*\*.*?\*\*)/g).flatMap((part, index) => {
+      if (!part) return [];
       if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={idx}>{part.slice(2, -2)}</strong>;
+        return [<strong key={`${keyPrefix}-bold-${index}`}>{part.slice(2, -2)}</strong>];
       }
-      // parse line breaks
-      let subparts = part.split('\n');
-      return subparts.map((sub, sidx) => (
-        <span key={`${idx}-${sidx}`}>
-          {sub}
-          {sidx < subparts.length - 1 && <br />}
-        </span>
+      return part.split('\n').map((line, lineIndex, lines) => (
+        <React.Fragment key={`${keyPrefix}-line-${index}-${lineIndex}`}>
+          {line}
+          {lineIndex < lines.length - 1 && <br />}
+        </React.Fragment>
       ));
     });
+
+    return (mentionPattern ? String(text).split(mentionPattern) : [String(text)]).flatMap((part, index) => (
+      mentionTokens.includes(part)
+        ? [<span key={`mention-${index}`} className="message-mention">{part}</span>]
+        : renderPlainText(part, `text-${index}`)
+    ));
   };
 
   // Filter conversations
@@ -3557,6 +3716,9 @@ function App() {
     .filter(id => shouldShowConversation(conversations[id], drafts[id]))
     .filter(id => conversations[id].name.toLowerCase().includes(searchQuery.toLowerCase()))
     .sort((firstId, secondId) => {
+      const firstPinned = Boolean(conversations[firstId].pinned);
+      const secondPinned = Boolean(conversations[secondId].pinned);
+      if (firstPinned !== secondPinned) return firstPinned ? -1 : 1;
       const firstTimestamp = conversationTimestamp(conversations[firstId]);
       const secondTimestamp = conversationTimestamp(conversations[secondId]);
       return secondTimestamp - firstTimestamp;
@@ -3769,7 +3931,7 @@ function App() {
             return (
               <div
                 key={id}
-                className={`conversation-item ${isActive ? 'active' : ''}`}
+                className={`conversation-item ${isActive ? 'active' : ''} ${conversationMenu?.roomId === id ? 'menu-open' : ''}`}
                 onClick={() => {
                   handleConversationSelect(id);
                 }}
@@ -3779,7 +3941,10 @@ function App() {
                 </div>
                 <div className="conv-details">
                   <div className="conv-header">
-                    <span className="conv-name">{room.name}</span>
+                    <span className="conv-name">
+                      {room.pinned && <i className="fa-solid fa-thumbtack conv-pinned-icon" title="Đã ghim" aria-label="Đã ghim"></i>}
+                      {room.name}
+                    </span>
                     <span
                       className={hasDraft ? 'conv-draft-status' : 'conv-time'}
                       title={hasDraft ? undefined : formatFullMessageDateTime(room, room.time)}
@@ -3799,11 +3964,51 @@ function App() {
                     {room.badge > 0 && <span className="conv-badge">{room.badge}</span>}
                   </div>
                 </div>
+                {!room.isChatbot && (
+                  <div className="conv-actions">
+                    <button
+                      type="button"
+                      className="conv-menu-button"
+                      title="Tùy chọn hội thoại"
+                      aria-label={`Tùy chọn hội thoại ${room.name}`}
+                      aria-expanded={conversationMenu?.roomId === id}
+                      onClick={event => openConversationMenu(event, room)}
+                    >
+                      <i className="fa-solid fa-ellipsis"></i>
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       </aside>
+
+      {conversationMenu && conversations[conversationMenu.roomId] && (() => {
+        const menuRoom = conversations[conversationMenu.roomId];
+        const menuRoomMuted = isConversationMuted(menuRoom.notificationMutedUntil, notificationClock);
+        return (
+          <div
+            className="conversation-context-menu"
+            style={{ left: conversationMenu.left, top: conversationMenu.top }}
+            role="menu"
+            onClick={event => event.stopPropagation()}
+          >
+            <button type="button" role="menuitem" onClick={() => handleConversationMenuAction('pin', menuRoom)}>
+              <i className="fa-solid fa-thumbtack"></i>{menuRoom.pinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại'}
+            </button>
+            <button type="button" role="menuitem" onClick={() => handleConversationMenuAction('unread', menuRoom)}>
+              <i className="fa-regular fa-envelope"></i>Đánh dấu chưa đọc
+            </button>
+            <button type="button" role="menuitem" onClick={() => handleConversationMenuAction('mute', menuRoom)}>
+              <i className={`fa-regular ${menuRoomMuted ? 'fa-bell' : 'fa-bell-slash'}`}></i>{menuRoomMuted ? 'Bật thông báo' : 'Tắt thông báo'}
+            </button>
+            <button type="button" role="menuitem" className="danger" onClick={() => handleConversationMenuAction('delete', menuRoom)}>
+              <i className="fa-regular fa-trash-can"></i>Xóa hội thoại
+            </button>
+          </div>
+        );
+      })()}
 
       {/* ==========================================================================
          CỘT 3: CHAT MAIN AREA (Khung chat chính)
@@ -3965,7 +4170,7 @@ function App() {
                             {msg.grounded && <small>Đã đối chiếu nguồn</small>}
                           </div>
                         )}
-                        <p>{renderMessageText(msg.text)}</p>
+                        <p>{renderMessageText(msg.text, msg.mentions)}</p>
                         {Object.entries(reactions).filter(([, count]) => count > 0).length > 0 && (
                           <div className="message-reactions">
                             {Object.entries(reactions).filter(([, count]) => count > 0).map(([emoji, count]) => <span key={emoji}>{emoji} {count}</span>)}
@@ -4263,13 +4468,6 @@ function App() {
             <h3 className="group-name-large">{activeChat.name}</h3>
             <span className="group-members-count">{activeChatPresenceLabel}</span>
           </div>
-
-          {activeChat.isGroup && (
-            <div className="detail-section">
-              <h4 className="section-title">Mô tả nhóm</h4>
-              <p className="section-desc">{activeChat.description}</p>
-            </div>
-          )}
 
           {activeChat.isGroup && (
             <div className="detail-section">

@@ -389,6 +389,15 @@ switching the `current` release symlink:
 6. Repeat list/search/detail/action calls with a second tenant. No item,
    participant, activity or aggregate count from the first tenant may appear.
 
+## Conversation pin acceptance test
+
+Revision `20260817_11` adds the per-user `conversation_participant.pinned_at`
+metadata used by the ChatUI sidebar. Run `alembic upgrade head` before switching
+the release symlink, then sign in as two employees and confirm pinning one
+conversation changes only that employee's ordering, survives refresh, and does
+not change the other employee's sidebar. Unpin it and confirm the conversation
+returns to normal recency ordering.
+
 ## Rollback
 
 Every migration release requires a pre-migration `pg_dump -Fc` and tagged prior

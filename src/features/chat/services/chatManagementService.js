@@ -133,6 +133,8 @@ function normalizeConversation(record) {
     updatedAt: record?.updatedAt || record?.last_message_at || properties.updatedAt,
     badge: record?.badge || properties.unreadCount || 0,
     notificationMutedUntil,
+    pinned: Boolean(record?.pinned ?? record?.isPinned ?? properties.pinned),
+    pinnedAt: record?.pinnedAt || record?.pinned_at || properties.pinnedAt || null,
   };
 }
 
@@ -437,6 +439,15 @@ export const chatManagementService = {
     const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/notification-settings`, {
       method: 'PUT',
       body: JSON.stringify({ muted_until: mutedUntil }),
+    });
+    return normalizeConversation(payload);
+  },
+
+  async updateConversationPin(conversationId, pinned) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/pin`, {
+      method: 'PUT',
+      body: JSON.stringify({ pinned: Boolean(pinned) }),
     });
     return normalizeConversation(payload);
   },

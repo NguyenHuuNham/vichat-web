@@ -419,6 +419,29 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertNotIn("new window.Notification", app_source)
         self.assertNotIn("Notification.requestPermission", app_source)
 
+    def test_conversation_pins_are_viewer_scoped_chatmgt_metadata(self):
+        _controller_source, serializer_source = function_source(
+            CONTROLLER_PATH,
+            "_serialize_conversation",
+        )
+        _controller_source, endpoint_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_pin",
+        )
+        model_source = (
+            PROJECT_ROOT / "application" / "models" / "models.py"
+        ).read_text(encoding="utf-8")
+        service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")
+        app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("pinned_at = db.Column(BigInteger())", model_source)
+        self.assertIn('"pinned": pinned_at is not None', serializer_source)
+        self.assertIn("_conversation_and_membership", endpoint_source)
+        self.assertIn("membership.pinned_at", endpoint_source)
+        self.assertIn("/pin", service_source)
+        self.assertIn("updateConversationPin", app_source)
+        self.assertIn("conversation-context-menu", app_source)
+
     def test_directory_sync_revalidates_tenant_and_deactivates_missing_accounts(self):
         _controller_source, directory_source = function_source(
             CONTROLLER_PATH,

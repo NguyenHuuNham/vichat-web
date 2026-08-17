@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-17-06 - Dong bo avatar nhom va menu ghim hoi thoai
+
+- Thoi gian: 2026-08-17 13:01 (Asia/Saigon)
+- Loai: Tinh nang | Web | Realtime | Du lieu | Kiem thu
+- Trang thai: Hoan tat code va kiem thu local; chua deploy production
+- Muc tieu: Dong bo avatar nhom cho moi thanh vien, hien mention mau xanh va them menu thao tac hoi thoai co ghim/bo ghim hoat dong nhu web that.
+- Pham vi: ChatUI sidebar/composer/group detail, Chatmgt conversation metadata, Tinode avatar snapshot va migration database; giu nguyen cac luong tin nhan, file, goi va mobile.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/conversationPinPolicy.js`, `src/features/chat/services/conversationPinPolicy.test.js`, `src/styles/index.css`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/models/models.py`, `chatservice-main/migrations/011_conversation_pins.sql`, `chatservice-main/alembic/versions/20260817_11_conversation_pins.py`, `chatservice-main/tests/test_chat_auth_contract.py`, tai lieu va `dist/index.html`.
+- Noi dung: ChatUI lay avatar group tu topic Tinode va ghi lai vao metadata Chatmgt de cac thanh vien dung cung mot avatar; bo panel `Mo ta nhom` trong thong tin nhom; token mention da chon duoc to mau xanh; menu ba cham nam tren moi hoi thoai, dat `Ghim hoi thoai` la muc dau, doi thanh `Bo ghim hoi thoai` sau khi ghim, sap xep hoi thoai ghim len tren, va giu cac thao tac doc chua doc/tat thong bao/xoa. Da bo `Bao xau` va `Phan loai`.
+- Quyet dinh ky thuat: Pin duoc luu tren `conversation_participant` theo tung viewer, khong thay doi topic Tinode hay lich su tin nhan; che do demo dung localStorage theo viewer de giu luong local, production dung Chatmgt lam nguon chuan. Avatar group chi dong bo qua topic da duoc Chatmgt xac nhan, tranh ghi de membership client.
+- Database/API/cau hinh: Them Alembic `20260817_11` va SQL `011_conversation_pins.sql`; them `PUT /api/v1/conversation/<id>/pin`; danh sach conversation tra `pinned`, `pinnedAt`, `avatar` va sap xep pin truoc. Deploy phai chay `alembic upgrade head` sau backup PostgreSQL truoc khi doi release.
+- Kiem thu: `npm run test:frontend` dat 83/83; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-BVgHC-Xz.js`, `App-DXiLL2jC.js`, `index-qWJaSBuU.css`; `python -m unittest tests.test_chat_auth_contract tests.test_enterprise_workspace -q` dat 45 test; `python -m py_compile application/controllers/api_chat_management.py application/models/models.py alembic/versions/20260817_11_conversation_pins.py` dat; `git diff --check` dat.
+- Rui ro con lai: Chua deploy va chua UAT bang hai tai khoan that de xac nhan avatar shared, mention echo Tinode, pin theo tung viewer va menu tren trinh duyet.
+- Viec tiep theo: Commit/push, backup va migrate Chatmgt, deploy release bat bien, health-check bundle/API, sau do hard refresh `https://chat.upgo.vn` de UAT.
+- Commit/PR: Chua tao.
+
 ## 2026-08-17-05 - Deploy production commit ab0ab55
 
 - Thoi gian: 2026-08-17 12:24 (Asia/Saigon)

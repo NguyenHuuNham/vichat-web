@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | 1 | Chatmgt deployment, Alembic, domains, HTTPS | Service healthy, database at Alembic head, public URLs use HTTPS |
 | 2 | Tenant employee login/logout | ChatUI validates invited employee credentials through UpGO Account; Chatmgt keeps a read-only projection |
-| 3 | ChatUI data from Chatmgt | Directory, friends, conversations, groups, profile and notification metadata are tenant-scoped |
+| 3 | ChatUI data from Chatmgt | Directory, friends, conversations, groups, profile, notification and per-user pin metadata are tenant-scoped |
 | 4 | Chatmgt and Tinode/ChatAPI | Short-lived Tinode tokens, messages, files, presence, receipts, typing and calls pass acceptance tests |
 
 Stages are tested independently. Employee Step 2 authentication does not trust
@@ -205,7 +205,7 @@ from another tenant by ID or query parameter.
 
 After login, ChatUI reads `/api/v1/chat/users`, `/api/v1/friend-request` and
 `/api/v1/conversation` from Chatmgt only. Search, direct pairs, groups,
-participants, notification mute deadlines and profile/avatar changes are all
+participants, notification mute deadlines, per-user pin state and profile/avatar changes are all
 stored under the JWT tenant. Foreign tenant IDs sent in query strings are
 ignored; the authenticated JWT and membership rows remain authoritative.
 
@@ -444,6 +444,7 @@ history, role-aware actions and a message-to-task shortcut.
 | `POST` | `/api/v1/chat/users/<id>/revoke-session` | Revoke a tenant employee session |
 | `GET/POST` | `/api/v1/friend-request` | Tenant-scoped friendship metadata |
 | `GET/POST` | `/api/v1/conversation` | Tenant-scoped conversation metadata |
+| `PUT` | `/api/v1/conversation/<id>/pin` | Set or clear the current user's conversation pin |
 | `POST` | `/api/v1/conversation/<id>/tinode-prepare` | Prepare Tinode participant mappings |
 | `PUT` | `/api/v1/conversation/<id>/tinode-topic` | Verify/bind the topic to exact membership |
 | `DELETE` | `/api/v1/conversation/<id>/self` | Remove the current user's conversation membership only |

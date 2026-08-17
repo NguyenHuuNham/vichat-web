@@ -163,6 +163,8 @@ class ConversationParticipant(CommonModel):
     active = db.Column(Boolean(), default=True)
     # NULL means enabled, 0 means muted until manually enabled, otherwise Unix seconds.
     notification_muted_until = db.Column(BigInteger())
+    # NULL means the conversation is not pinned for this participant.
+    pinned_at = db.Column(BigInteger())
 
 class ChatAgent(CommonModel):
     __tablename__ = "chat_agent"

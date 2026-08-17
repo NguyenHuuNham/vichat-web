@@ -79,8 +79,8 @@ directory, friendship, and conversation metadata:
 3. ChatUI loads `/api/v1/chat/users`, `/api/v1/friend-request`, and
    `/api/v1/conversation` with the Chatmgt HttpOnly session.
 4. Direct conversations, groups, membership changes, per-user removal, and
-   per-user notification mute deadlines are persisted in Chatmgt and survive
-   refresh or a new login.
+   per-user notification mute deadlines and conversation pins are persisted in
+   Chatmgt and survive refresh or a new login.
 5. Chatmgt returns a short-lived Tinode token after validating the Account
    session. If the relay is unavailable, ChatUI keeps the directory and
    conversation metadata visible while disabling realtime inputs; it never

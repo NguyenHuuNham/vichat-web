@@ -736,6 +736,7 @@ def _serialize_conversation(item, viewer_id):
     notification_muted_until = (
         viewer_membership.notification_muted_until if viewer_membership is not None else None
     )
+    pinned_at = viewer_membership.pinned_at if viewer_membership is not None else None
     notifications_muted = notification_muted_until == 0 or (
         notification_muted_until is not None and notification_muted_until > int(time.time())
     )
@@ -762,6 +763,7 @@ def _serialize_conversation(item, viewer_id):
         "updated_at": item.updated_at,
         "properties": properties,
         "isGroup": is_group,
+        "avatar": properties.get("avatar") or "",
         "participantIds": participant_ids,
         "members": [
             _public_account(accounts_by_id[participant_id])
@@ -771,6 +773,8 @@ def _serialize_conversation(item, viewer_id):
         "adminId": owner.participant_id if owner is not None else "",
         "notificationMutedUntil": notification_muted_until,
         "notificationsMuted": notifications_muted,
+        "pinned": pinned_at is not None,
+        "pinnedAt": pinned_at,
     }
 
 
@@ -2418,7 +2422,10 @@ async def conversation_list(request):
         ConversationParticipant.participant_id == user_id,
         ConversationParticipant.active.is_(True),
         ConversationParticipant.deleted.is_(False),
-    ).order_by(Conversation.updated_at.desc())
+    ).order_by(
+        ConversationParticipant.pinned_at.desc().nullslast(),
+        Conversation.updated_at.desc(),
+    )
     return json({"objects": [_serialize_conversation(item, user_id) for item in query.limit(limit).all()]})
 
 
@@ -2467,6 +2474,38 @@ async def conversation_notification_settings(request, conversation_id):
             mute_until = None
 
     membership.notification_muted_until = mute_until
+    membership.updated_at = int(time.time())
+    db.session.commit()
+    return json(_serialize_conversation(item, user_id))
+
+
+@app.route('/api/v1/conversation/<conversation_id>/pin', methods=['PUT'])
+@app.route('/api/v1/chat/threads/<conversation_id>/pin', methods=['PUT'])
+async def conversation_pin(request, conversation_id):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    if management_session_requested(request):
+        return json({
+            "error_code": "CHAT_SESSION_REQUIRED",
+            "error_message": "Conversation pins can only be changed from a Chat user session.",
+        }, status=403)
+    try:
+        conversation_uuid = uuid.UUID(str(conversation_id))
+    except (ValueError, TypeError, AttributeError):
+        return json({"error_code": "NOT_FOUND", "error_message": "Invalid conversation."}, status=404)
+
+    user_id = _user_id(current_user)
+    item, membership = _conversation_and_membership(tenant_id, conversation_uuid, user_id)
+    if item is None or membership is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
+
+    body = request.json or {}
+    pinned = body.get("pinned")
+    if not isinstance(pinned, bool):
+        return json({"error_code": "PARAM_ERROR", "error_message": "The pinned state must be boolean."}, status=400)
+
+    membership.pinned_at = int(time.time()) if pinned else None
     membership.updated_at = int(time.time())
     db.session.commit()
     return json(_serialize_conversation(item, user_id))
