@@ -6,6 +6,19 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-17-14 - Deploy account membership login len production
+
+- Thoi gian: 2026-08-17 19:48 (Asia/Saigon)
+- Loai: Trien khai | Xac thuc | UpGO Account | Kiem thu production
+- Trang thai: Da deploy production; san sang UAT
+- Muc tieu: Dua luong dang nhap tai khoan/mat khau UpGO va tu dong nhan membership doanh nghiep/brand vao ChatUI production, khong gan tenant CTY NHAM.
+- Quyet dinh trien khai: Upload release `/opt/deploy/chat/releases/account-membership-07d7ab6-20260817-1845`, build lan luot `chatmgt`, `tinode-account-bridge`, `chat` voi uu tien CPU/I/O thap, sau do recreate tung service voi `--no-deps`; giu nguyen PostgreSQL, Redis, Tinode va volume hien co. Symlink `current` tro vao release moi, `previous` tro ve `nav-language-1500b7e-20260817-1645`.
+- Cau hinh production da xac minh: `VITE_CHAT_AUTH_MODE=account_password`, `VITE_CHAT_TENANT_ID` trong; `CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED=true`. Chatmgt health tra endpoint `/api/v1/auth/account-login`, credential login va Tinode bridge deu duoc cau hinh.
+- Backup/rollback: Pre-migration backup tai `/opt/deploy/chat/backups/account-membership-07d7ab6-20260817-1845-chatservice.dump`; khong migration database. Khong dung `docker compose down -v`.
+- Kiem thu production: `https://chat.upgo.vn/healthz` tra `200 ok`; `https://chatmgt.upgo.vn/api/v1/auth/health` tra `200` voi `status=ok`, credential login va bridge true; health `chat`, `chatmgt`, `tinode-account-bridge`, `chat-postgres`, `tinode-postgres` deu `healthy`; Docker `active`; public bundle moi `index-D1eV74bT.js`, `App-C96PTG9x.js`, `ManagementApp-CQTFatFw.js` co marker `account_password`, `tenant_id`, `account-login`.
+- Rui ro con lai: Chua UAT bang tai khoan employee duoc moi o hai doanh nghiep/brand that; can hard refresh ChatUI va nhap thu cong tai khoan/mat khau UpGO de xac nhan membership, danh ba, Tinode token va tenant isolation.
+- Commit/PR: `07d7ab6` (source); deploy release production da hoan tat.
+
 ## 2026-08-17-13 - Tu dong nhan membership UpGO khi dang nhap thu cong
 
 - Thoi gian: 2026-08-17 18:31 (Asia/Saigon)
