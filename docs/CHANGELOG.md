@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-17-17 - Deploy ChatUI compact/dark mode khong cham stateful
+
+- Thoi gian: 2026-08-17 20:24 (Asia/Saigon)
+- Loai: Trien khai | Van hanh | Web | Kiem thu production
+- Trang thai: Da deploy production; san sang UAT
+- Muc tieu: Dua giao dien compact/dark mode va muc `Danh ba` len production de test, dong thoi khong restart hoac tao moi stateful service.
+- Pham vi: Chi service ChatUI `chat`; giu nguyen Chatmgt, Tinode bridge/chatbot, PostgreSQL, Redis, Coturn, volume, topic, message va database.
+- File da thay doi: `docs/CHANGELOG.md`; source release tu commit `a59a384`.
+- Noi dung: Dung release `/opt/deploy/chat/releases/compact-ui-a59a384-20260817-2010`, image ChatUI `sha256:12c97a9647efb379353572de8841b87470b4f4d8a8b5ee09d292c377e734ccab`, chay duy nhat `docker compose ... up -d --no-deps --force-recreate --no-build chat`. Symlink `current` tro release moi, `previous` tro lai `account-membership-07d7ab6-20260817-1845`; container ChatUI moi la `02b952d71f5a`.
+- Quyet dinh ky thuat: Khong dung `down`, khong migration, khong build/up theo dependency va khong cham cac container stateful. Rollback image `songhong-production-chat:rollback-before-a59a384` duoc giu lai.
+- Database/API/cau hinh: Khong thay doi API, schema, `.env` hoac runtime secrets. Production hien van dang co cac container PostgreSQL/Redis stateful cu; chua chuyen sang cluster ngoai Docker vi lan nay khong co endpoint/credential migration va khong duoc phep dung thao tac co the lam mat ket noi.
+- Kiem thu production: Compose config dat; image bundle co `fa-address-book` va dark marker `#172126`/`#25343a`; `chat` tra `healthy`; `http://127.0.0.1:8094/healthz` va `https://chat.upgo.vn/healthz` deu tra `ok`; public index phuc vu `index-D8mjR5eM.js`, `index-XiWJWy12.css`; ID PostgreSQL/Redis/Tinode/Chatmgt/bridge/chatbot/Coturn khong doi.
+- Rui ro con lai: Chua UAT truc quan light/dark va `Danh ba` bang tai khoan UpGO that; viec chuyen PostgreSQL/Redis sang cluster ngoai Docker van la cong viec ha tang rieng, chua thuc hien trong release nay.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, test dark mode va `Danh ba`; neu can chuyen stateful sang cluster ngoai Docker, can chot endpoint, credential, backup, migration va rollback rieng truoc khi dung.
+- Commit/PR: `a59a384` (source); changelog deploy follow-up dang cho commit.
+
 ## 2026-08-17-16 - Huy deploy giao dien compact/dark mode
 
 - Thoi gian: 2026-08-17 20:17 (Asia/Saigon)
