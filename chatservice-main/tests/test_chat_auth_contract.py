@@ -84,6 +84,7 @@ class ChatAuthContractTests(unittest.TestCase):
     def test_upgo_account_employee_auth_is_enabled_by_the_production_contract(self):
         compose_source = PRODUCTION_COMPOSE_PATH.read_text(encoding="utf-8")
         env_source = PRODUCTION_ENV_EXAMPLE_PATH.read_text(encoding="utf-8")
+        build_source = (PROJECT_ROOT.parent / "scripts" / "build-production.mjs").read_text(encoding="utf-8")
 
         self.assertIn("CHAT_ACCOUNT_SSO_ENABLED: ${CHAT_ACCOUNT_SSO_ENABLED:-true}", compose_source)
         self.assertIn("CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED: ${CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED:-true}", compose_source)
@@ -110,6 +111,12 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("TINODE_BRIDGE_INTERNAL_KEY=", env_source)
         self.assertIn("TINODE_MIRROR_LOCAL_CREDENTIALS: ${TINODE_MIRROR_LOCAL_CREDENTIALS:-true}", compose_source)
         self.assertIn("TINODE_MIRROR_LOCAL_CREDENTIALS=true", env_source)
+        self.assertIn("VITE_CHAT_TENANT_ID: ''", build_source)
+        self.assertNotIn("VITE_CHAT_TENANT_ID: 'tn6913580727957397'", build_source)
+        self.assertIn("VITE_CHAT_AUTH_MODE: ${VITE_CHAT_AUTH_MODE:-account_password}", compose_source)
+        self.assertIn("ARG VITE_CHAT_AUTH_MODE=account_password", (PROJECT_ROOT.parent / "infrastructure" / "production" / "Dockerfile").read_text(encoding="utf-8"))
+        self.assertIn("CHATBOT_DEFAULT_TENANT: ${CHATBOT_DEFAULT_TENANT:-}", compose_source)
+        self.assertIn("CHATBOT_DEFAULT_TENANT=", env_source)
 
     def test_account_sso_login_prepares_the_tinode_projection_without_returning_a_secret(self):
         controller_source, sso_source = function_source(CONTROLLER_PATH, "management_sso_login")
@@ -141,6 +148,8 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('getattr(response, "cookies", None)', bridge_source)
         self.assertIn("ACCOUNT_SESSION_COOKIE_NAME", bridge_source)
         self.assertIn("CHAT_ACCESS_COOKIE_NAME", bridge_source)
+        self.assertNotIn("DEFAULT_TENANT", bridge_source)
+        self.assertNotIn('"tenant_id": DEFAULT_TENANT', bridge_source)
         self.assertIn("_rewrite_hello_response", bridge_source)
         verifier_source = (PROJECT_ROOT / "scripts" / "verify_deployment.py").read_text(encoding="utf-8")
         self.assertIn("Public Tinode hello did not advertise ICE/TURN servers", verifier_source)
@@ -165,6 +174,11 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('issue_access_token(account, auth_method="account_sso")', login_source)
         self.assertIn("set_account_cookie(response, account_cookie)", login_source)
         self.assertIn("mobile_access_token_payload(request, token)", login_source)
+        self.assertIn('rate_limit_tenant = "account"', login_source)
+        self.assertIn('tenant_id = rate_limit_tenant', login_source)
+        self.assertIn('tenant_id = str(identity.get("tenant_id") or "").strip()', login_source)
+        self.assertNotIn('body.get("tenant_id")', login_source)
+        self.assertNotIn('!= tenant_id', login_source)
         self.assertIn('json={"username": username, "password": password}', service_source)
         self.assertIn("ACCOUNT_SSO_LOGIN_PATH", service_source)
         self.assertIn("normalize_account_session(profile)", service_source)
@@ -234,16 +248,18 @@ class ChatAuthContractTests(unittest.TestCase):
     def test_chatui_uses_upgo_account_employee_login_by_default(self):
         login_source = LOGIN_PATH.read_text(encoding="utf-8")
         service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")
+        build_source = (PROJECT_ROOT.parent / "scripts" / "build-production.mjs").read_text(encoding="utf-8")
 
         self.assertIn('name="username"', login_source)
         self.assertIn('name="password"', login_source)
         self.assertIn("Đăng nhập", login_source)
         self.assertIn("VITE_CHAT_AUTH_MODE", service_source)
         self.assertIn("account_sso", service_source)
+        self.assertIn("VITE_CHAT_AUTH_MODE: 'account_password'", build_source)
         self.assertIn("accountLoginUrl", service_source)
         self.assertIn("/api/v1/auth/sso", service_source)
         self.assertIn("/api/v1/auth/login", service_source)
-        self.assertIn("tenant_id: tenantId", service_source)
+        self.assertIn("authMode === 'password' && tenantId", service_source)
         self.assertIn("identity:", service_source)
         self.assertIn("password:", service_source)
 

@@ -17,8 +17,11 @@ def _first(payload, *names):
 
 
 def _membership_active(membership):
-    status = str((membership or {}).get("status") or "").strip().lower()
-    return status not in (
+    membership = membership if isinstance(membership, dict) else {}
+    status = str(
+        _first(membership, "status", "state", "membership_status", "invitation_status") or ""
+    ).strip().lower()
+    if status in (
         "disabled",
         "inactive",
         "deleted",
@@ -27,7 +30,42 @@ def _membership_active(membership):
         "pending",
         "invited",
         "invitation_pending",
-    )
+    ):
+        return False
+    for name in ("deleted", "is_deleted"):
+        if name in membership and bool(membership.get(name)):
+            return False
+    for name in ("active", "is_active", "enabled"):
+        if name not in membership:
+            continue
+        value = membership.get(name)
+        if isinstance(value, bool):
+            return value
+        return str(value or "").strip().lower() not in (
+            "0",
+            "false",
+            "no",
+            "off",
+            "disabled",
+        )
+    return True
+
+
+def _membership_id(membership):
+    if not isinstance(membership, dict):
+        return ""
+    return str(
+        _first(
+            membership,
+            "id",
+            "tenant_id",
+            "company_id",
+            "brand_id",
+            "organization_id",
+            "workspace_id",
+        )
+        or ""
+    ).strip()
 
 
 def _chat_role(role):
@@ -124,27 +162,91 @@ def normalize_account_session(payload):
         raise SSOIdentityError("Account returned an invalid session payload.")
 
     user_id = str(_first(payload, "id", "uid", "user_id") or "").strip()
-    tenant_id = str(_first(payload, "current_tenant_id", "tenant_id") or "").strip()
+    current_tenant = _first(
+        payload,
+        "current_tenant",
+        "current_company",
+        "current_brand",
+        "current_organization",
+    )
+    raw_tenant = _first(
+        payload,
+        "current_tenant_id",
+        "tenant_id",
+        "current_company_id",
+        "company_id",
+        "current_brand_id",
+        "brand_id",
+        "organization_id",
+    )
+    if isinstance(raw_tenant, dict):
+        current_tenant = raw_tenant
+        tenant_id = _membership_id(raw_tenant)
+    else:
+        tenant_id = str(raw_tenant or "").strip()
     has_explicit_tenant = bool(tenant_id)
-    memberships = payload.get("tenants")
     if not user_id:
         raise SSOIdentityError("Account session has no user ID.")
+
+    memberships = None
+    for key in ("tenants", "companies", "brands", "organizations", "memberships"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            memberships = value
+            break
+        if isinstance(value, dict):
+            memberships = [
+                {"id": key_id, **item}
+                for key_id, item in value.items()
+                if isinstance(item, dict)
+            ]
+            if memberships:
+                break
+    if memberships is None:
+        candidates = []
+        if isinstance(current_tenant, dict):
+            candidates.append(current_tenant)
+        if not candidates:
+            for key in ("tenant", "company", "brand", "organization"):
+                value = payload.get(key)
+                if isinstance(value, dict):
+                    candidates.append(value)
+                    break
+        if not candidates and tenant_id:
+            candidates.append({
+                "id": tenant_id,
+                "name": _first(payload, "tenant_name", "company_name", "brand_name") or tenant_id,
+                "role": _first(
+                    payload,
+                    "current_tenant_role",
+                    "current_company_role",
+                    "current_brand_role",
+                    "role",
+                ) or "member",
+                "status": "active",
+            })
+        memberships = candidates
     if not isinstance(memberships, list):
         raise SSOIdentityError("Account session has no tenant membership list.")
 
     active_memberships = {}
     for item in memberships:
-        membership_id = str((item or {}).get("id") or "").strip() if isinstance(item, dict) else ""
+        membership_id = _membership_id(item)
         if membership_id and _membership_active(item):
             active_memberships.setdefault(membership_id, item)
 
+    if current_tenant and isinstance(current_tenant, dict):
+        current_id = _membership_id(current_tenant)
+        if current_id and _membership_active(current_tenant):
+            active_memberships.setdefault(current_id, current_tenant)
+
     if not tenant_id:
-        if len(active_memberships) == 1:
-            tenant_id, membership = next(iter(active_memberships.items()))
-        elif not active_memberships:
+        if not active_memberships:
             raise SSOIdentityError("Account session has no active tenant membership.")
         else:
-            raise SSOIdentityError("Account session has no current tenant; select a tenant in Account.")
+            # Account may omit the current company for a credential login. The
+            # verified active membership order is the deterministic fallback.
+            tenant_id, membership = next(iter(active_memberships.items()))
     else:
         membership = active_memberships.get(tenant_id)
         if membership is None or not _membership_active(membership):
@@ -173,11 +275,30 @@ def normalize_account_session(payload):
         or username
     ).strip()[:255]
     tenant_name = str(
-        _first(membership, "tenant_name", "name", "display_name", "code") or tenant_id
+        _first(
+            membership,
+            "tenant_name",
+            "company_name",
+            "brand_name",
+            "organization_name",
+            "name",
+            "display_name",
+            "code",
+        )
+        or tenant_id
     ).strip()[:255]
     account_role = (
-        (_first(payload, "current_tenant_role") if has_explicit_tenant else None)
-        or membership.get("role")
+        (
+            _first(
+                payload,
+                "current_tenant_role",
+                "current_company_role",
+                "current_brand_role",
+            )
+            if has_explicit_tenant
+            else None
+        )
+        or _first(membership, "role", "tenant_role", "company_role", "brand_role")
         or "member"
     )
 

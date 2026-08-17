@@ -21,7 +21,6 @@ from aiohttp import web
 
 LOGGER = logging.getLogger("tinode-account-bridge")
 CHATMGT_URL = str(os.getenv("CHATMGT_INTERNAL_URL", "http://chatmgt:8093")).rstrip("/")
-DEFAULT_TENANT = str(os.getenv("CHATMGT_DEFAULT_TENANT", "")).strip()
 TINODE_API_KEY = str(os.getenv("TINODE_API_KEY", "")).strip()
 TINODE_CENTRAL_WS_URL = str(
     os.getenv("TINODE_CENTRAL_WS_URL", "wss://web.vichat.net/v0/channels")
@@ -96,8 +95,6 @@ def _basic_credentials(secret):
 
 
 async def _account_tinode_token(identity, password):
-    if not DEFAULT_TENANT:
-        raise BridgeError("Tinode Account bridge is not configured.", 503)
     timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
     client = aiohttp.ClientSession(
         timeout=timeout,
@@ -107,7 +104,6 @@ async def _account_tinode_token(identity, password):
         login_payload = {
             "identity": identity,
             "password": password,
-            "tenant_id": DEFAULT_TENANT,
         }
         async with client.post(
             CHATMGT_URL + "/api/v1/auth/account-login",

@@ -92,7 +92,7 @@ services:
       context: ../..
       dockerfile: infrastructure/production/Dockerfile.chatmgt
       args:
-        VITE_CHAT_TENANT_ID: ${CHATMGT_DEFAULT_TENANT:-tn6913580727957397}
+        VITE_CHAT_TENANT_ID: ${VITE_CHAT_TENANT_ID:-}
     restart: unless-stopped
     depends_on:
       chat-postgres:
@@ -142,7 +142,7 @@ services:
       ACCOUNT_SESSION_COOKIE_DOMAIN: ${ACCOUNT_SESSION_COOKIE_DOMAIN:-.upgo.vn}
       ACCOUNT_SESSION_COOKIE_SECURE: ${ACCOUNT_SESSION_COOKIE_SECURE:-true}
       SESSION_COOKIE_DOMAIN: ${SESSION_COOKIE_DOMAIN:-chatmgt.upgo.vn}
-      CHATMGT_DEFAULT_TENANT: ${CHATMGT_DEFAULT_TENANT:-tn6913580727957397}
+      CHATMGT_DEFAULT_TENANT: ${CHATMGT_DEFAULT_TENANT:-}
       CHAT_AUTH_JWT_SECRET: ${CHAT_AUTH_JWT_SECRET:?CHAT_AUTH_JWT_SECRET is required}
       CHAT_CORS_ORIGINS: '${CHAT_CORS_ORIGINS:-["http://127.0.0.1:5173"]}'
       CHAT_AUTH_ACCESS_TTL: ${CHAT_AUTH_ACCESS_TTL:-28800}
@@ -208,7 +208,7 @@ services:
       CHATBOT_TEMPERATURE: ${CHATBOT_TEMPERATURE:-0.2}
       CHATBOT_MAX_TOKENS: ${CHATBOT_MAX_TOKENS:-800}
       CHATBOT_MAX_INPUT_LENGTH: ${CHATBOT_MAX_INPUT_LENGTH:-4000}
-      CHATBOT_DEFAULT_TENANT: ${CHATBOT_DEFAULT_TENANT:-tn6913580727957397}
+      CHATBOT_DEFAULT_TENANT: ${CHATBOT_DEFAULT_TENANT:-}
       CHATBOT_KNOWLEDGE_ONLY: ${CHATBOT_KNOWLEDGE_ONLY:-false}
       CHATBOT_KNOWLEDGE_REQUIRE_AUTH: ${CHATBOT_KNOWLEDGE_REQUIRE_AUTH:-true}
       CHATBOT_RETRIEVAL_LIMIT: ${CHATBOT_RETRIEVAL_LIMIT:-6}
@@ -222,7 +222,7 @@ services:
       context: ../..
       dockerfile: infrastructure/production/Dockerfile.chatmgt
       args:
-        VITE_CHAT_TENANT_ID: ${CHATMGT_DEFAULT_TENANT:-tn6913580727957397}
+        VITE_CHAT_TENANT_ID: ${VITE_CHAT_TENANT_ID:-}
     restart: unless-stopped
     depends_on:
       chatmgt:
@@ -243,7 +243,6 @@ services:
       TINODE_BRIDGE_PORT: 8095
       TINODE_BRIDGE_TIMEOUT: ${TINODE_BRIDGE_TIMEOUT:-15}
       CHATMGT_INTERNAL_URL: http://chatmgt:8093
-      CHATMGT_DEFAULT_TENANT: ${CHATMGT_DEFAULT_TENANT:-tn6913580727957397}
       ACCOUNT_SESSION_COOKIE_NAME: ${ACCOUNT_SESSION_COOKIE_NAME:-session}
       CHAT_ACCESS_COOKIE_NAME: vichat_access_token
       TINODE_API_KEY: ${TINODE_API_KEY:?TINODE_API_KEY is required}
@@ -256,7 +255,7 @@ services:
       context: ../..
       dockerfile: infrastructure/production/Dockerfile.chatmgt
       args:
-        VITE_CHAT_TENANT_ID: ${CHATMGT_DEFAULT_TENANT:-tn6913580727957397}
+        VITE_CHAT_TENANT_ID: ${VITE_CHAT_TENANT_ID:-}
     restart: unless-stopped
     depends_on:
       chatmgt:
@@ -313,8 +312,8 @@ services:
         VITE_CHATBOT_DISPLAY_AVATAR: ${VITE_CHATBOT_DISPLAY_AVATAR:-/vichat-ai.svg}
         VITE_CHAT_MANAGEMENT_API_URL: ${CHAT_MANAGEMENT_PUBLIC_URL:-/chatmgt-api}
         VITE_CHAT_MANAGEMENT_REMOTE_AUTH: "true"
-        VITE_CHAT_TENANT_ID: ${CHATMGT_DEFAULT_TENANT:-tn6913580727957397}
-        VITE_CHAT_AUTH_MODE: ${VITE_CHAT_AUTH_MODE:-account_sso}
+        VITE_CHAT_TENANT_ID: ${VITE_CHAT_TENANT_ID:-}
+        VITE_CHAT_AUTH_MODE: ${VITE_CHAT_AUTH_MODE:-account_password}
         VITE_CALLS_ENABLED: ${VITE_CALLS_ENABLED:-true}
         VITE_CHAT_MODE: ${VITE_CHAT_MODE:-internal}
     restart: unless-stopped

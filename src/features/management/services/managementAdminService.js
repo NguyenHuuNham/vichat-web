@@ -1,6 +1,6 @@
 const env = import.meta.env || {};
 const configuredBase = String(env.VITE_CHAT_MANAGEMENT_API_URL || '').replace(/\/$/, '');
-const tenantId = env.VITE_CHAT_TENANT_ID || 'song-hong';
+const tenantId = String(env.VITE_CHAT_TENANT_ID || '').trim();
 const accountUrl = String(env.VITE_ACCOUNT_URL || 'https://account.upgo.vn').replace(/\/+$/, '');
 const accountAdminCallbackMarker = 'vichat_admin_sso';
 

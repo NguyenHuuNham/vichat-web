@@ -9,8 +9,9 @@ const productionDefaults = {
   VITE_TINODE_APP_NAME: 'SONGHONG/1.0',
   VITE_CHAT_MANAGEMENT_API_URL: 'https://chatmgt.upgo.vn',
   VITE_CHAT_MANAGEMENT_REMOTE_AUTH: 'true',
-  // The deployed Chatmgt tenant is not the local/demo tenant from .env.local.
-  VITE_CHAT_TENANT_ID: 'tn6913580727957397',
+  // Account login resolves the active tenant from the verified UpGo session.
+  // Keep this empty so a local env file cannot reintroduce a fixed tenant.
+  VITE_CHAT_TENANT_ID: '',
   VITE_CHAT_AUTH_MODE: 'account_password',
   VITE_CALLS_ENABLED: 'true',
   VITE_CHAT_MODE: 'internal',

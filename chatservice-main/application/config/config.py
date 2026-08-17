@@ -176,7 +176,7 @@ class Config(object):
     CHATBOT_MAX_INPUT_LENGTH = int(os.getenv("CHATBOT_MAX_INPUT_LENGTH", 4000))
     CHATMGT_DEFAULT_TENANT = os.getenv(
         "CHATMGT_DEFAULT_TENANT",
-        os.getenv("CHATBOT_DEFAULT_TENANT", "songhong"),
+        os.getenv("CHATBOT_DEFAULT_TENANT", ""),
     )
     CHATBOT_DEFAULT_TENANT = os.getenv("CHATBOT_DEFAULT_TENANT", CHATMGT_DEFAULT_TENANT)
     CHATBOT_KNOWLEDGE_ONLY = env_bool("CHATBOT_KNOWLEDGE_ONLY", True)

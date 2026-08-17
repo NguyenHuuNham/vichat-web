@@ -32,7 +32,7 @@ and profile changes remain exclusively in UpGO Account.
 1. A tenant admin enters `chatmgt.upgo.vn` through UpGO Account SSO.
 2. Chatmgt accepts only Account roles `admin`, `owner`, or `superadmin` and issues a separate management cookie for the active tenant.
 3. The admin invites or removes employees in UpGO Account; Chatmgt reads the tenant directory as a read-only source.
-4. ChatUI shows an email/password form; Chatmgt calls UpGO Account `POST /login`, validates the invited tenant membership, and exposes `POST /api/v1/auth/account-login` as the employee login contract.
+4. ChatUI requires the employee's UpGO Account email/password; Chatmgt calls UpGO Account `POST /login`, automatically resolves the invited active tenant/company/brand membership, and exposes `POST /api/v1/auth/account-login` as the employee login contract.
 5. Chatmgt projects the Account identity, derives/provisions the employee's Tinode identity server-side, and issues a tenant-scoped HttpOnly chat session.
 6. Chatmgt returns only public identity fields; ChatUI requests a short-lived Tinode token through `POST /api/v1/auth/tinode-token`.
 7. Logout revokes the Chatmgt session and clears the ChatUI cookie. Admin logout also ends the Account administrator session.

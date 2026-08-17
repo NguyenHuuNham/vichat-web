@@ -56,14 +56,14 @@ function Login({ onLoginSuccess, initialNotice = '' }) {
         mustChangePassword: Boolean(session.mustChangePassword),
       });
     } catch (loginError) {
-      if (loginError?.code === 'ACCOUNT_LOGIN_REQUIRED' && redirectWhenRequired) {
+      if (loginError?.code === 'ACCOUNT_LOGIN_REQUIRED' && redirectWhenRequired && managementAuthClient.mode === 'account_sso') {
         window.location.assign(managementAuthClient.accountLoginUrl());
         return;
       }
       if (loginError?.code === 'ACCOUNT_LOGIN_REQUIRED') {
         setError('Account chưa trả về phiên đăng nhập hợp lệ. Vui lòng đăng nhập lại tại account.upgo.vn.');
       } else if (loginError?.code === 'ACCOUNT_TENANT_INVALID') {
-        setError('Tài khoản chưa có đơn vị đang hoạt động hoặc chưa chọn đơn vị trên UpGO Account.');
+        setError('Tài khoản UpGO chưa được mời vào doanh nghiệp hoặc membership chưa hoạt động.');
       } else if (loginError?.code === 'LOGIN_FAILED') {
         setError('Tên đăng nhập hoặc mật khẩu không đúng.');
       } else if (loginError?.code === 'LOGIN_RATE_LIMITED') {

@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { chatManagementService, employeeLoginPayload, managementAuthClient, tinodeRefreshPayload } from './chatManagementService.js';
+import { chatManagementService, employeeLoginPayload, managementAuthClient, normalizeChatAuthMode, tinodeRefreshPayload } from './chatManagementService.js';
 
 const appSource = readFileSync(new URL('../../../app/App.jsx', import.meta.url), 'utf8');
 const managementServiceSource = readFileSync(new URL('./chatManagementService.js', import.meta.url), 'utf8');
 const mobileStoreSource = readFileSync(new URL('../../../../mobile/src/store/appStore.ts', import.meta.url), 'utf8');
 
-test('builds a tenant-scoped employee login payload', () => {
+test('sends only manual UpGO credentials for employee login', () => {
   const payload = employeeLoginPayload({
     identity: '  nhanvien.a  ',
     password: 'StrongPassword!2026',
@@ -17,10 +17,16 @@ test('builds a tenant-scoped employee login payload', () => {
   assert.deepEqual(payload, {
     identity: 'nhanvien.a',
     password: 'StrongPassword!2026',
-    tenant_id: 'song-hong',
   });
+  assert.equal('tenant_id' in payload, false);
   assert.equal('role' in payload, false);
   assert.equal('user_id' in payload, false);
+});
+
+test('defaults ChatUI to manual UpGO credential login', () => {
+  assert.equal(managementAuthClient.mode, 'account_password');
+  assert.equal(normalizeChatAuthMode('account_sso'), 'account_password');
+  assert.equal(normalizeChatAuthMode('account_password'), 'account_password');
 });
 
 test('resends the employee password only when the volatile Tinode token needs renewal', () => {

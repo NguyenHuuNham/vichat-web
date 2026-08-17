@@ -223,7 +223,7 @@ class SSOIdentityTests(unittest.TestCase):
 
         self.assertEqual(identity["tenant_id"], "tenant-a")
 
-    def test_missing_current_tenant_rejects_ambiguous_or_empty_memberships(self):
+    def test_missing_current_tenant_uses_the_first_active_membership(self):
         ambiguous = account_payload("tenant-a", "Tenant A")
         ambiguous["current_tenant_id"] = None
         ambiguous["tenants"].append({
@@ -232,14 +232,45 @@ class SSOIdentityTests(unittest.TestCase):
             "role": "member",
             "status": "active",
         })
-        with self.assertRaisesRegex(SSOIdentityError, "select a tenant in Account"):
-            normalize_account_session(ambiguous)
+        identity = normalize_account_session(ambiguous)
+        self.assertEqual(identity["tenant_id"], "tenant-a")
+        self.assertEqual(identity["tenant_name"], "Tenant A")
 
         empty = account_payload("tenant-a", "Tenant A")
         empty["current_tenant_id"] = None
         empty["tenants"] = []
         with self.assertRaisesRegex(SSOIdentityError, "no active tenant membership"):
             normalize_account_session(empty)
+
+    def test_account_brand_membership_shape_is_normalized_for_manual_login(self):
+        identity = normalize_account_session({
+            "id": "account-user-brand",
+            "username": "brand.user",
+            "email": "brand@example.vn",
+            "brands": [{
+                "brand_id": "brand-vn-test",
+                "brand_name": "VN TEST",
+                "brand_role": "member",
+                "is_active": True,
+            }],
+        })
+
+        self.assertEqual(identity["tenant_id"], "brand-vn-test")
+        self.assertEqual(identity["tenant_name"], "VN TEST")
+        self.assertEqual(identity["role"], "member")
+
+    def test_single_current_tenant_field_is_used_without_a_membership_array(self):
+        identity = normalize_account_session({
+            "id": "account-user-company",
+            "user_name": "company.user",
+            "company_id": "company-vn-test",
+            "company_name": "VN TEST",
+            "current_company_role": "admin",
+        })
+
+        self.assertEqual(identity["tenant_id"], "company-vn-test")
+        self.assertEqual(identity["tenant_name"], "VN TEST")
+        self.assertEqual(identity["role"], "admin")
 
     def test_normalized_identity_does_not_copy_password_or_token(self):
         identity = normalize_account_session(account_payload("tenant-a", "Tenant A"))

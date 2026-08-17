@@ -3,8 +3,12 @@ import { normalizeNotificationMuteUntil } from './conversationNotifications.js';
 const env = import.meta.env || {};
 const apiBase = String(env.VITE_CHAT_MANAGEMENT_API_URL || '').replace(/\/$/, '');
 const remoteAuth = String(env.VITE_CHAT_MANAGEMENT_REMOTE_AUTH || '').toLowerCase() === 'true';
-const tenantId = env.VITE_CHAT_TENANT_ID || 'song-hong';
-const authMode = String(env.VITE_CHAT_AUTH_MODE || 'account_sso').trim().toLowerCase();
+const tenantId = String(env.VITE_CHAT_TENANT_ID || '').trim();
+// Employee ChatUI only permits manual credentials; Account SSO is reserved for admin.
+export function normalizeChatAuthMode(value) {
+  return String(value || '').trim().toLowerCase() === 'password' ? 'password' : 'account_password';
+}
+const authMode = normalizeChatAuthMode(env.VITE_CHAT_AUTH_MODE || 'account_password');
 const accountUrl = String(env.VITE_ACCOUNT_URL || 'https://account.upgo.vn').replace(/\/+$/, '');
 const topicBindingsKey = 'vichat.management.topic-bindings.v1';
 
@@ -47,11 +51,14 @@ function accountTenant(account) {
 }
 
 export function employeeLoginPayload(credentials = {}) {
-  return {
+  const payload = {
     identity: String(credentials.identity || credentials.username || '').trim(),
     password: String(credentials.password || ''),
-    tenant_id: tenantId,
   };
+  // Account login derives the tenant from UpGO's verified current membership.
+  // Only the legacy local-password flow needs the configured tenant hint.
+  if (authMode === 'password' && tenantId) payload.tenant_id = tenantId;
+  return payload;
 }
 
 function publicAccount(account) {

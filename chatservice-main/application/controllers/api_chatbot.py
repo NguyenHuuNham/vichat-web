@@ -99,7 +99,7 @@ def _tenant_id(request, current_user=None, body=None):
         or request.headers.get("X-Tenant-Id")
         or request.args.get("tenant_id")
         or body.get("tenant_id")
-        or app.config.get("CHATBOT_DEFAULT_TENANT", "songhong")
+        or app.config.get("CHATBOT_DEFAULT_TENANT", "")
     )
 
 

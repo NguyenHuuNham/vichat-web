@@ -6,6 +6,37 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-17-13 - Tu dong nhan membership UpGO khi dang nhap thu cong
+
+- Thoi gian: 2026-08-17 18:31 (Asia/Saigon)
+- Loai: Sua loi | Xac thuc | UpGO Account | Kiem thu
+- Trang thai: Hoan tat code; chua deploy, can UAT
+- Muc tieu: Giữ ChatUI bat buoc nhap tai khoan/mat khau UpGO, nhung tu dong nhan dung doanh nghiep/brand duoc moi ma khong bat nguoi dung chon tenant.
+- Pham vi: Chuan hoa Account session trong `chatservice-main/application/services/sso_identity.py`, ChatUI credential mode/payload, thong bao loi, unit test membership, README, tai lieu kien truc va fallback build Docker/Compose; khong thay doi Chatmgt thanh trang tao nhan vien.
+- Noi dung: Chap nhan cac dang membership UpGO dung `tenants`, `companies`, `brands`, `organizations` hoac `memberships`, cung alias ID/ten/role. Neu Account khong tra `current_tenant_id`, Chatmgt tu chon membership active dau tien theo thu tu Account; chi tu choi khi khong con membership active. Credential van di qua `POST /api/v1/auth/account-login`, Tinode van duoc cap credential server-side sau khi xac thuc.
+- Quyet dinh ky thuat: Khong bat SSO nhanh va khong dua tenant selector vao ChatUI. Mat khau nguoi dung nhap la mat khau UpGO; khong luu, tra ve hoac gui mat khau do sang Tinode. Chatmgt chi giu projection/danh ba va mapping tenant-scoped.
+- Database/API/cau hinh: Khong migration; giu nguyen endpoint credential va tenant isolation. Khong them tenant mac dinh moi. Default ChatUI trong source, Dockerfile va Compose deu la `account_password` de khong co quick-login khi thieu env.
+- Kiem thu: `python -m unittest discover -s chatservice-main/tests -p 'test_sso_identity.py' -q` dat 23/23; `node --test src/features/chat/services/chatManagementService.test.js` dat 8/8; `npm run test:frontend` dat 89/89; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; 3 targeted auth-contract tests dat 3/3; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/application/services/sso_identity.py chatservice-main/scripts/tinode_account_bridge.py chatservice-main/tests/test_chat_auth_contract.py chatservice-main/tests/test_sso_identity.py` dat; `docker compose -f infrastructure/production/compose.yaml config -q` dat voi placeholder local cho bien bat buoc (chi canh bao `TINODE_CORS_ORIGINS` trong local env); `git diff --check` dat.
+- Rui ro con lai: Neu mot tai khoan co nhieu membership active nhung Account khong tra current tenant, he thong dung membership dau tien do Account tra ve; can UAT bang tai khoan co brand VN TEST va mot doanh nghiep khac.
+- Viec tiep theo: Rebuild/redeploy `chatmgt` va `chat`, hard refresh ChatUI, nhap tai khoan/mat khau UpGO cua employee duoc moi va kiem tra danh ba/Tinode.
+- Commit/PR: Chua tao.
+
+## 2026-08-17-12 - Sua dang nhap UpGO cho nhieu doanh nghiep
+
+- Thoi gian: 2026-08-17 17:29 (Asia/Saigon)
+- Loai: Sua loi | Bao mat | Xac thuc | Cau hinh | Kiem thu
+- Trang thai: Hoan tat code; chua deploy, can UAT
+- Muc tieu: Cho phep tai khoan UpGO duoc moi vao bat ky doanh nghiep active nao dang nhap Chat, khong bi tu choi vi tenant mac dinh cua CTY NHAM.
+- Pham vi: ChatUI, Chatmgt credential login, Tinode Account bridge, mobile login va production build configuration; giu nguyen tenant isolation sau khi cap session.
+- File da thay doi: `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/management/services/managementAdminService.js`, `mobile/src/services/authService.ts`, `mobile/src/constants/config.ts`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/config/config.py`, `chatservice-main/application/controllers/api_chatbot.py`, `chatservice-main/scripts/tinode_account_bridge.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `scripts/build-production.mjs`, `.env.example`, `infrastructure/production/Dockerfile`, `infrastructure/production/Dockerfile.chatmgt`, `infrastructure/production/compose.yaml`, `infrastructure/production/.env.example`, `infrastructure/production/README.md`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Bo `tenant_id` khoi payload dang nhap UpGO cua web/mobile; Chatmgt xac thuc email/mat khau voi UpGO truoc, sau do dung tenant active do `current_user`/membership UpGO tra ve de tao projection, JWT va Tinode mapping. Tenant hint tu client khong con quyen chon hoac tu choi company. Tinode bridge cung gui credential khong kem tenant co dinh. Fallback `VITE_CHAT_TENANT_ID` va default build production deu de trong, khong con gan vao tenant CTY NHAM; `CHATMGT_DEFAULT_TENANT` chi con danh cho bootstrap/local recovery. Fallback `CHATBOT_DEFAULT_TENANT` trong production cung de trong; request da xac thuc lay tenant tu Chatmgt session.
+- Quyet dinh ky thuat: Khong them tenant selector tren trinh duyet va khong tin tenant do client gui; UpGO Account la nguon chuan duy nhat. Neu mot user co nhieu membership, user can chon company hien tai trong UpGO Account truoc khi dang nhap. Cac truy van sau dang nhap van lay tenant tu JWT va tiep tuc cach ly du lieu.
+- Database/API/cau hinh: Khong migration. `POST /api/v1/auth/account-login` giu nguyen endpoint, nhung bo qua `tenant_id` tu body va dinh tuyen theo membership da verify; build args tenant chi nhan gia tri tuy chon; bridge khong con can `CHATMGT_DEFAULT_TENANT`.
+- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js` dat 7/7; `npm run test:frontend` dat 88/88; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` dat; trong `mobile/`, `npm run typecheck` va `npm run lint` dat; `python -m py_compile ...` cho cac file Python anh huong dat; `python -m unittest chatservice-main/tests/test_sso_identity.py chatservice-main/tests/test_account_sso_service.py -q` dat 39 test, skip 18; contract auth/bridge/UI login va build tenant dong muc tieu dat 4/4; `docker compose ... config -q` dat sau khi cap placeholder local cho bien secret bat buoc; `git diff --check` dat. `python -m unittest discover -s chatservice-main/tests -q` chay 154 test, skip 50 va con 1 assertion notification desktop da co truoc trong `test_chatui_keeps_muted_notifications_in_app_without_desktop_popups`; khong ghi full contract la dat.
+- Rui ro con lai: Chua rebuild/redeploy production va chua UAT bang hai tai khoan thuoc hai tenant that; neu UpGO session co nhieu membership, ket qua phu thuoc `current_tenant_id` hoac thu tu membership active do Account tra ve. Chatbot knowledge/external tenant van la cau hinh rieng; fallback tenant mac dinh da duoc bo de khong gan vao CTY NHAM.
+- Viec tiep theo: Rebuild/redeploy `chatmgt`, `chat` va Tinode bridge; hard refresh `https://chat.upgo.vn`; UAT tai khoan tenant CTY NHAM va mot doanh nghiep khac, kiem tra login, directory, conversation, Tinode token va khong lo du lieu cheo tenant.
+- Commit/PR: Chua tao.
+
 ## 2026-08-17-11 - Them dark mode theo tai khoan ChatUI
 
 - Thoi gian: 2026-08-17 17:14 (Asia/Saigon)

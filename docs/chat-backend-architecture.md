@@ -38,19 +38,19 @@ The administrator page uses `POST /api/v1/admin/sso` and the separate
 
 ## Step 2 employee authentication
 
-1. The company build fixes `VITE_CHAT_TENANT_ID`; the login page does not offer a
-   tenant browser or allow a user to enumerate companies.
+1. ChatUI does not offer a tenant browser or accept a tenant selector. The
+   employee's active UpGO Account membership is the only tenant-routing input.
 2. ChatUI sends the employee email/password to `POST /api/v1/auth/account-login`
    over HTTPS. Chatmgt forwards those credentials only to UpGO Account's
    official `POST /login` endpoint and never logs or stores the password.
-3. Chatmgt verifies the returned Account session and active tenant memberships.
-   A valid Account `current_tenant_id` remains authoritative. If that explicit
-   tenant is stale or inactive, Chatmgt selects the first active membership in
-   Account order and uses that membership's role; it rejects the session only
-   when no active membership exists. The fixed ChatUI/Chatmgt tenant comparison
-   still rejects a membership from another company. Chatmgt then projects the
-   identity to a stable tenant-scoped `management_account` row and forwards the
-   Account session cookie to later server-side Account checks.
+3. Chatmgt verifies the returned Account session and active tenant/company/
+   brand memberships. A valid Account `current_tenant_id` remains authoritative.
+   If the field is missing, stale, or inactive, Chatmgt selects the first active
+   membership in Account order and uses that membership's role; it rejects the
+   session only when no active membership exists. The employee never has to
+   choose a tenant in ChatUI. Chatmgt then projects the verified identity to a
+   stable tenant-scoped `management_account` row and forwards the Account
+   session cookie to later server-side Account checks.
 4. Chatmgt issues the HttpOnly chat cookie and returns only public user/tenant
    fields; it never returns an Account password or Tinode secret.
 5. ChatUI loads Step 3 metadata, then calls `POST /api/v1/auth/tinode-token`.
@@ -481,7 +481,8 @@ CHAT_ACCOUNT_SSO_ENABLED=true
 CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED=true
 CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true
 VITE_CHAT_AUTH_MODE=account_password
-CHATMGT_DEFAULT_TENANT=tn6913580727957397
+# Optional legacy/local bootstrap tenant; Account login uses the active UpGO membership.
+CHATMGT_DEFAULT_TENANT=<bootstrap-tenant-id>
 CHAT_AUTH_JWT_SECRET=<at-least-32-random-characters>
 TINODE_SSO_SECRET=<at-least-32-random-characters>
 TINODE_MIRROR_LOCAL_CREDENTIALS=true
@@ -513,9 +514,11 @@ database backup procedure; the migration is intentionally marked irreversible
 because production data must be restored from the verified PostgreSQL backup
 when a rollback requires removing Workspace rows.
 
-The real production `.env` is never committed or printed. For another company,
-deploy a separate fixed tenant configuration/domain or an explicitly approved
-tenant-routing layer; do not expose a global tenant selector in ChatUI.
+The real production `.env` is never committed or printed. Account employee
+login is tenant-routed from the verified active UpGO membership, so the same
+ChatUI can serve multiple companies without a browser tenant selector. Keep
+all downstream queries and Tinode mappings tenant-scoped; use a separate
+domain/deployment only when an enterprise isolation policy requires it.
 
 ## Acceptance requirements
 

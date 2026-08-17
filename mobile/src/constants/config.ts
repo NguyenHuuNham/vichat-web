@@ -2,7 +2,7 @@ const env = (name: string, fallback: string) => String((globalThis as any)?.proc
 
 export const config = {
   apiBase: env('EXPO_PUBLIC_CHATMGT_API_URL', 'https://chatmgt.upgo.vn').replace(/\/+$/, ''),
-  tenantId: env('EXPO_PUBLIC_CHAT_TENANT_ID', 'tn6913580727957397'),
+  tenantId: env('EXPO_PUBLIC_CHAT_TENANT_ID', ''),
   tinodeHost: env('EXPO_PUBLIC_TINODE_HOST', 'chat.upgo.vn'),
   tinodeApiKey: env('EXPO_PUBLIC_TINODE_API_KEY', 'AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K'),
   tinodeSecure: env('EXPO_PUBLIC_TINODE_SECURE', 'true').toLowerCase() !== 'false',

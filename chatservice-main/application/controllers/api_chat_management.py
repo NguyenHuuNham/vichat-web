@@ -891,9 +891,12 @@ async def employee_account_credential_login(request):
 
     body = request.json or {}
     identity_input = str(body.get("identity") or body.get("username") or body.get("email") or "").strip()
-    tenant_id = str(body.get("tenant_id") or app.config.get("CHATMGT_DEFAULT_TENANT") or "").strip()
+    # Account is authoritative for tenant routing. A browser/mobile supplied
+    # tenant hint must never select or reject the authenticated company.
+    rate_limit_tenant = "account"
+    tenant_id = rate_limit_tenant
     ip_address = str(getattr(request, "ip", "") or "")[:100]
-    if login_rate_limited(tenant_id, identity_input.lower(), ip_address):
+    if login_rate_limited(rate_limit_tenant, identity_input.lower(), ip_address):
         return json({
             "error_code": "LOGIN_RATE_LIMITED",
             "error_message": "Too many failed login attempts. Try again later.",
@@ -904,9 +907,10 @@ async def employee_account_credential_login(request):
             identity_input,
             body.get("password"),
         )
-        if str(identity.get("tenant_id") or "") != tenant_id:
+        tenant_id = str(identity.get("tenant_id") or "").strip()
+        if not tenant_id:
             raise AccountSSOError(
-                "The UpGO Account is not active in this company.",
+                "The UpGO Account has no active company membership.",
                 403,
                 "ACCOUNT_TENANT_INVALID",
             )
@@ -920,7 +924,7 @@ async def employee_account_credential_login(request):
                 error,
             )
         db.session.commit()
-        clear_login_failures(tenant_id, identity_input.lower(), ip_address)
+        clear_login_failures(rate_limit_tenant, identity_input.lower(), ip_address)
         revoke_request_token(request)
         token = issue_access_token(account, auth_method="account_sso")
         register_linked_session(request, token)
@@ -948,7 +952,7 @@ async def employee_account_credential_login(request):
         return set_auth_cookie(response, token, request)
     except AccountSSOError as error:
         db.session.rollback()
-        record_login_failure(tenant_id, identity_input.lower(), ip_address)
+        record_login_failure(rate_limit_tenant, identity_input.lower(), ip_address)
         _audit(
             request,
             "AUTH_ACCOUNT_CREDENTIAL_LOGIN",

@@ -79,7 +79,7 @@ export const authService = {
     const payload = await apiRequest<any>('/api/v1/auth/account-login', {
       method: 'POST',
       mobileLogin: true,
-      body: JSON.stringify({ identity: identity.trim(), password, tenant_id: config.tenantId }),
+      body: JSON.stringify({ identity: identity.trim(), password }),
     });
     if (!payload?.access_token) {
       throw new Error('Chatmgt chưa bật phiên Bearer dành cho ứng dụng mobile.');
