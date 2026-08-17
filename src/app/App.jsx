@@ -5970,6 +5970,10 @@ function App() {
               <div className="workspace-panel-header-actions">
                 {workspacePanel === 'profile' && (
                   <>
+                    <button type="button" className="workspace-logout-button" onClick={requestLogout}>
+                      <i className="fa-solid fa-arrow-right-from-bracket"></i>
+                      <span>{appCopy.t('Đăng xuất')}</span>
+                    </button>
                     {canSwitchTenant && (
                       <div className="tenant-switcher" ref={tenantSwitcherRef}>
                         <button
@@ -6017,10 +6021,6 @@ function App() {
                         )}
                       </div>
                     )}
-                    <button type="button" className="workspace-logout-button" onClick={requestLogout}>
-                      <i className="fa-solid fa-arrow-right-from-bracket"></i>
-                      <span>{appCopy.t('Đăng xuất')}</span>
-                    </button>
                   </>
                 )}
                 <button type="button" className="btn-close-detail" onClick={() => setWorkspacePanel(null)} aria-label={appCopy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button>

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-07 - Sua khung menu chuyen cong ty
+
+- Thoi gian: 2026-08-18 03:08 (Asia/Saigon)
+- Loai: Sua loi | UX | Web | Kiem thu
+- Trang thai: Hoan tat code; chua deploy production
+- Muc tieu: Hien day du khung menu chuyen cong ty khi mo tu Ho so, khong de popup bi cat sang trai.
+- Pham vi: Header panel Ho so va CSS menu tenant; khong doi API, auth, tenant data, Tinode hay database.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Dat nut Dang xuat truoc icon cong ty de popup neo gan mep phai cua panel; doi menu tenant sang `right: -42px` tren desktop va mobile de giu toan bo noi dung trong khung panel.
+- Quyet dinh ky thuat: Giu menu absolute va luong click/outside hien co; chi sua diem neo/thu tu header, khong thay doi handler chuyen tenant.
+- Database/API/cau hinh: Khong co.
+- Kiem thu: `npm run test:frontend` dat 107/107; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat. Browser runtime khong co phien kha dung de chup lai viewport production.
+- Rui ro con lai: Chua UAT truc quan tren production sau khi deploy; can kiem tra panel Ho so o viewport desktop va mobile.
+- Viec tiep theo: Hard refresh sau deploy, mo icon cong ty va xac nhan menu hien tron, khong che nut dong/khong tran khoi panel.
+- Commit/PR: Chua tao.
+
 ## 2026-08-18-06 - Deploy chuyen cong ty ChatUI len production
 
 - Thoi gian: 2026-08-18 03:05 (Asia/Saigon)
