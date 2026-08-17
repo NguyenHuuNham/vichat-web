@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-06 - Deploy chuyen cong ty ChatUI len production
+
+- Thoi gian: 2026-08-18 03:05 (Asia/Saigon)
+- Loai: Trien khai | Van hanh | Xac thuc | Kiem thu production
+- Trang thai: Da deploy production; san sang UAT hai cong ty
+- Muc tieu: Dua luong chuyen giua nhieu membership UpGO cua cung mot tai khoan len web that de khong phai logout hoac nhap lai mat khau.
+- Pham vi: Release Chatmgt va ChatUI `tenant-switch-5100ea6-20260818-024551`; khong migration, khong recreate Tinode, bridge, chatbot webhook, ChatAPI, PostgreSQL, Redis, Coturn hoac volume.
+- File da thay doi: Release `/opt/deploy/chat/releases/tenant-switch-5100ea6-20260818-024551`; source commit `5100ea6`; tai lieu source `docs/CHANGELOG.md`.
+- Noi dung: `current` tro release tenant-switch va `previous` tro release English cu. Chi recreate `chatmgt` va `chat` voi `--no-deps --force-recreate --no-build`; image moi lan luot la `sha256:84f63cfbc9aff3dc850243bdfdebfa3b437d16b772712be6bec8fb2b617108a8` va `sha256:334cf6833b76f26ae696d19d09484318c2cdced47bc0d16b7d1c3adb2784b130`.
+- Quyet dinh trien khai: Build va healthcheck tung service truoc khi chot symlink; khong dung `docker compose down`, khong chay migration va giu nguyen tat ca service stateful. Docker khong con metadata image cu de tag truc tiep, nen rollback filesystem van duoc giu qua release `previous` va can rebuild image cu neu phat sinh loi.
+- Database/API/cau hinh: Khong thay doi database, schema, secret production hay bien moi truong; endpoint `POST /api/v1/auth/switch-tenant` tu source commit duoc phuc vu trong Chatmgt moi.
+- Kiem thu: Remote Compose `config -q` dat; Chatmgt Docker health `healthy`, `https://chatmgt.upgo.vn/api/v1/auth/health` tra `status=ok`; ChatUI Docker health `healthy`, `http://127.0.0.1:8094/healthz` va `https://chat.upgo.vn/healthz` tra `ok`; public App chunk `/assets/App-C55Ljxtm.js` co marker `switch-tenant` va `tenant-switch`; log Chatmgt/Chat khong co `traceback|panic|fatal|critical|emerg|exception`; Tinode bridge, chatbot webhook, ChatAPI, hai PostgreSQL, Redis va Coturn van `Up`/`healthy`.
+- Rui ro con lai: Chua UAT bang tai khoan UpGO that co it nhat hai membership active de xac nhan cookie Account, danh ba, hoi thoai va Tinode sau khi switch; rollback image exact cua container cu khong the tag do Docker da thieu metadata layer.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, dang nhap thu cong, mo Ho so, bam icon cong ty va xac nhan danh ba/hoi thoai/Tinode cua ca hai cong ty; neu loi thi dung release `previous` va rebuild/recreate theo release cu.
+- Commit/PR: Source `5100ea6`; docs source `fdaca4f`; deploy follow-up dang cho commit.
+
 ## 2026-08-18-05 - Chuyen cong ty trong ChatUI
 
 - Thoi gian: 2026-08-18 02:37 (Asia/Saigon)
