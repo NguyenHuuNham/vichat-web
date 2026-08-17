@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-17-02 - Chon thanh vien nhom tu danh ba cong ty
+
+- Thoi gian: 2026-08-17 10:11 (Asia/Saigon)
+- Loai: Tinh nang | Web | UX | Kiem thu
+- Trang thai: Hoan tat code va kiem thu local; chua UAT danh ba tenant that
+- Muc tieu: Cho phep nguoi tao nhom chon ngay nhan vien trong danh ba cong ty da dong bo, khong phai cho tim kiem tung nguoi.
+- Pham vi: Modal `Tao nhom tro chuyen` cua ChatUI web va helper loc danh ba client-side; khong doi Chatmgt, Tinode, mobile, schema hay quyen thanh vien.
+- File da thay doi: `src/app/App.jsx`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `src/features/chat/services/chatManagementService.test.js`, va `docs/CHANGELOG.md`.
+- Noi dung: Modal hien toan bo nhan vien active cung tenant ngay khi mo va cho phep chon/bo chon truc tiep. O nhap nay la bo loc cuc bo theo ten, username, email, chuc vu hoac phong ban (ho tro go khong dau), nen modal khong con goi `searchUsers` khi nguoi dung go. Van hien so luong da chon, trang thai va username de nhan dien dung nguoi.
+- Quyet dinh ky thuat: Tai su dung `companyDirectoryContacts` - danh ba da duoc Chatmgt dong bo trong phien dang nhap va da loc current user, nhan vien inactive va tenant khac - lam nguon duy nhat cua picker. Loc tai client tranh request mang lap lai, giu nguyen API va rang buoc tenant hien co.
+- Database/API/cau hinh: Khong co migration, endpoint, payload, bien moi truong hoac thay doi kien truc. `docs/chat-backend-architecture.md` khong can cap nhat vi nguon du lieu va ranh gioi dich vu giu nguyen.
+- Kiem thu: `node --test src/features/contacts/services/accountDirectory.test.js` dat 19/19; `npm run test:frontend` dat 78/78; `npm run lint` exit 0 voi cac warning legacy/vendor va worktree co san; `npx vite build --mode production --outDir <thu-muc-tam>` dat, sinh 13 file. `git diff --check` dat.
+- Rui ro con lai: Chua UAT bang phien nhan vien that co danh ba tenant tren trinh duyet; can xac nhan danh sach hien ngay khi mo modal, loc va chon nhieu nguoi truoc khi tao nhom.
+- Viec tiep theo: Hard refresh ChatUI va UAT mot nhom moi bang danh ba cong ty that; khong co migration hay cau hinh bo sung.
+- Commit/PR: `1b029c9`.
+
 ## 2026-08-16-09 - Dinh chinh probe WebRTC authoritative
 
 - Thoi gian: 2026-08-16 21:35 (Asia/Saigon)
