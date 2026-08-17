@@ -92,6 +92,9 @@ class ExternalChatbotContractTests(unittest.TestCase):
         self.assertIn("VITE_CHAT_MODE: ${VITE_CHAT_MODE:-internal}", compose)
         self.assertIn("ARG VITE_CHAT_MODE=internal", dockerfile)
         self.assertIn("CHATBOT_EXTERNAL_API_KEY", compose)
+        self.assertIn("https://knowledge-ai.gonapp.net/api/v1/chat", compose)
+        self.assertIn("CHATBOT_EXTERNAL_AUTH_HEADER: ${CHATBOT_EXTERNAL_AUTH_HEADER:-X-API-Key}", compose)
+        self.assertIn("CHATBOT_EXTERNAL_REQUEST_MODE: ${CHATBOT_EXTERNAL_REQUEST_MODE:-knowledge-retrieval}", compose)
 
     def test_external_provider_accepts_common_response_shapes(self):
         service = chatbot_service.ChatbotService(SimpleNamespace(config={}))

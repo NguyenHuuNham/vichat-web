@@ -53,7 +53,7 @@ import {
 } from '../features/contacts/services/accountDirectory';
 import { appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
-import { CHATBOT_ACCOUNT, EXTERNAL_CHAT_ONLY, applyTinodeChatbotConfig, loadChatbotMessages, loadChatbotMessagesFromServer, loadTinodeChatbotConfig, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
+import { CHATBOT_ACCOUNT, CHATBOT_STARTER_PROMPTS, EXTERNAL_CHAT_ONLY, applyTinodeChatbotConfig, loadChatbotMessages, loadChatbotMessagesFromServer, loadTinodeChatbotConfig, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
 
 const CALLS_ENABLED = resolveCallsEnabled(import.meta.env.VITE_CALLS_ENABLED);
 
@@ -231,11 +231,12 @@ function createChatbotConversation(messages = [], { accountSession = 0, useTinod
     senderId: CHATBOT_ACCOUNT.id,
     senderName: CHATBOT_ACCOUNT.name,
     avatar: CHATBOT_ACCOUNT.avatar,
-    text: 'Chào bạn! Mình là Trợ lý Sông Hồng.',
+    text: 'Chào bạn! Mình là ViChat AI. Mình tìm câu trả lời trong kho tri thức doanh nghiệp và luôn hiển thị nguồn để bạn kiểm chứng.',
     time: '',
+    isWelcome: true,
   };
   if (EXTERNAL_CHAT_ONLY) {
-    welcomeMessage.text = 'Xin chào! Trợ lý bên ngoài đã sẵn sàng.';
+    welcomeMessage.text = `Xin chào! ${CHATBOT_ACCOUNT.name} đã sẵn sàng hỗ trợ bạn.`;
   }
   const conversationMessages = [welcomeMessage, ...messages.filter(message => message.id !== welcomeMessage.id)];
   const lastMessage = messages[messages.length - 1] || welcomeMessage;
@@ -247,8 +248,8 @@ function createChatbotConversation(messages = [], { accountSession = 0, useTinod
     isChatbot: true,
     avatarHtml: <img src={CHATBOT_ACCOUNT.avatar} alt={CHATBOT_ACCOUNT.name} />,
     avatarClass: 'chatbot-avatar',
-    membersCount: 'Trợ lý AI · Online',
-    description: '',
+    membersCount: 'Tra cứu tri thức · Có nguồn kiểm chứng',
+    description: 'Trợ lý AI dùng dữ liệu doanh nghiệp đã được phê duyệt.',
     admin: '',
     members: [CHATBOT_ACCOUNT],
     participantIds: [CHATBOT_ACCOUNT.id, useTinode ? CHATBOT_ACCOUNT.tinodeUid : ''].filter(Boolean),
@@ -449,6 +450,22 @@ function mergeTinodeMessages(existingMessages = [], incomingMessages = []) {
       return first.index - second.index;
     })
     .map(item => item.message);
+}
+
+function removeMessageFromConversation(room, message) {
+  if (!room || !message) return room;
+  const messages = (room.messages || []).filter(item => (
+    item.id !== message.id
+    && !(Number.isFinite(message.seq) && Number.isFinite(item?.seq) && item.seq === message.seq)
+  ));
+  const latestMessage = messages.at(-1);
+  return {
+    ...room,
+    messages,
+    lastMsg: attachmentConversationPreview(latestMessage) || latestMessage?.text || '',
+    time: latestMessage?.time || '',
+    updatedAt: latestMessage?.createdAt || room.updatedAt,
+  };
 }
 
 function mergeTinodeConversation(existing, incoming) {
@@ -836,6 +853,10 @@ function App() {
   const realtimeMessagingPending = usesManagementData
     && !activeChat.isChatbot
     && (chatMode !== 'tinode' || connectionStatus !== 'online');
+  const chatbotUsesTinode = Boolean(activeChat.isChatbot && activeChat.tinodeTopic);
+  const chatbotStatus = chatbotUsesTinode
+    ? (connectionStatus === 'online' ? 'Đang kết nối kho tri thức' : 'Đang chờ kết nối realtime')
+    : 'Kho tri thức doanh nghiệp';
   const accountProfileReadOnly = Boolean(currentUser?.accountManaged || currentUser?.account_managed);
   const chatModeLabel = chatMode === 'external'
     ? 'External chatbot'
@@ -2287,20 +2308,21 @@ function App() {
         createdAt: new Date().toISOString(),
       };
       let departedTopic = '';
-      if (chatMode === 'tinode' && activeChat.id) {
-        departedTopic = await ensureTinodeConversationTopic(activeChat);
-        await tinodeClient.sendSystemEvent(departedTopic, {
-          action: 'member_left',
-          actorId,
-          actorName: currentUser?.name,
-        });
-      }
       if (usesManagementData) {
         await chatManagementService.removeConversationParticipant(
           activeChat.managementId || activeChat.id,
           actorId,
         );
+        departedTopic = activeChat.tinodeTopic || '';
       } else {
+        if (chatMode === 'tinode' && activeChat.id) {
+          departedTopic = await ensureTinodeConversationTopic(activeChat);
+          await tinodeClient.sendSystemEvent(departedTopic, {
+            action: 'member_left',
+            actorId,
+            actorName: currentUser?.name,
+          });
+        }
         persistDemoGroupMessage(activeChat, systemMessage);
         leaveDemoGroup(activeChat.id, actorId);
       }
@@ -2346,7 +2368,7 @@ function App() {
       let removedTopic = '';
       if (chatMode === 'tinode') {
         removedTopic = await ensureTinodeConversationTopic(activeChat);
-        if (activeChat.isGroup) {
+        if (activeChat.isGroup && !usesManagementData) {
           await tinodeClient.sendSystemEvent(removedTopic, {
             action: 'member_left',
             actorId: viewerId,
@@ -3090,6 +3112,19 @@ function App() {
           const topicName = await ensureTinodeConversationTopic(activeChat);
           const mode = action === 'recall-self' ? 'self' : 'all';
           await tinodeClient.recallMessage(topicName, message, mode);
+          if (mode === 'self') {
+            setConversations(previous => {
+              const room = previous[activeChat.id];
+              if (!room) return previous;
+              const next = {
+                ...previous,
+                [activeChat.id]: removeMessageFromConversation(room, message),
+              };
+              conversationsRef.current = next;
+              return next;
+            });
+            return;
+          }
         }
         applyMessagePatch(message, {
           text: 'Tin nhắn đã được thu hồi',
@@ -3139,7 +3174,7 @@ function App() {
 
   // --- Send Message Action ---
   const handleSendMessage = async (textToSend = null) => {
-    const text = textToSend !== null ? textToSend : inputText.trim();
+    const text = (textToSend !== null ? textToSend : inputText).trim();
     if (!text || (activeChat.isChatbot && isTyping)) return;
     if (realtimeMessagingPending) {
       setChatError('Danh bạ và cuộc trò chuyện đã được lưu ở Chatmgt, nhưng realtime Tinode chưa kết nối.');
@@ -3227,7 +3262,7 @@ function App() {
               : message),
           },
         }));
-        setChatError(err?.message || 'KhÃ´ng thá»ƒ gá»­i tin nháº¯n cho trá»£ lÃ½ AI.');
+        setChatError(err?.message || 'Không thể gửi tin nhắn cho ViChat AI.');
       }
       return;
     }
@@ -3653,8 +3688,16 @@ function App() {
           </div>
         </div>
 
+        {activeChat.isChatbot && (
+          <div className="chatbot-context-strip" role="status">
+            <span><i className="fa-solid fa-shield-halved"></i> AI riêng tư</span>
+            <span><i className="fa-solid fa-book-open-reader"></i> {chatbotStatus}</span>
+            <span><i className="fa-solid fa-link"></i> Trích dẫn nguồn</span>
+          </div>
+        )}
+
         {/* Khu vực hiển thị tin nhắn */}
-        <div className="chat-messages">
+        <div className={`chat-messages ${activeChat.isChatbot ? 'chatbot-messages' : ''}`}>
           {!hasDatedMessages && (
             <div className="date-divider"><span>{currentChatId === 'dieu-hanh' ? 'Hôm nay' : 'Hội thoại trực tuyến'}</span></div>
           )}
@@ -3704,7 +3747,7 @@ function App() {
             return (
               <React.Fragment key={msg.id}>
                 {showDateDivider && <div className="date-divider"><span>{dateLabel}</span></div>}
-                <div className={`message-item ${isOutgoing ? 'outgoing' : 'incoming'}`}>
+                <div className={`message-item ${isOutgoing ? 'outgoing' : 'incoming'} ${activeChat.isChatbot ? 'chatbot-message-item' : ''}`}>
                 {!isOutgoing && (
                   <div className="message-avatar">
                     <SafeAvatar src={msg.avatar || ''} name={msg.senderName} />
@@ -3745,8 +3788,14 @@ function App() {
                     )}
                     {/* Tin nhắn chữ thường */}
                     {msg.type === "text" && msg.text && (
-                      <div className="message-bubble">
+                      <div className={`message-bubble ${activeChat.isChatbot && !isOutgoing ? 'chatbot-answer-bubble' : ''}`}>
                         {msg.replyTo && <div className="message-reply-preview"><strong>{msg.replyTo.senderName || 'Tin nhắn'}</strong><span>{msg.replyTo.text}</span></div>}
+                        {activeChat.isChatbot && !isOutgoing && (
+                          <div className="chatbot-answer-label">
+                            <span><i className="fa-solid fa-sparkles"></i>{msg.grounded ? 'Tóm tắt từ tài liệu' : msg.isWelcome ? 'ViChat AI' : 'Phản hồi AI'}</span>
+                            {msg.grounded && <small>Đã đối chiếu nguồn</small>}
+                          </div>
+                        )}
                         <p>{renderMessageText(msg.text)}</p>
                         {Object.entries(reactions).filter(([, count]) => count > 0).length > 0 && (
                           <div className="message-reactions">
@@ -3755,11 +3804,15 @@ function App() {
                         )}
                         {Array.isArray(msg.sources) && msg.sources.length > 0 && (
                           <div className="chatbot-sources">
+                            <strong><i className="fa-solid fa-book-bookmark"></i>Nguồn tham khảo</strong>
                             {msg.sources.map((source, index) => (
-                              <span key={`${source.document_id || source.title}-${index}`}>
-                                <i className="fa-solid fa-book-open"></i>
-                                {source.title || source.file_name || `Nguồn ${index + 1}`}
-                              </span>
+                              <div className="chatbot-source-card" key={`${source.document_id || source.title}-${index}`}>
+                                <span className="chatbot-source-index">{index + 1}</span>
+                                <span className="chatbot-source-copy">
+                                  <b>{source.title || source.file_name || `Nguồn ${index + 1}`}</b>
+                                  {source.snippet && <small>{source.snippet}</small>}
+                                </span>
+                              </div>
                             ))}
                           </div>
                         )}
@@ -3829,6 +3882,25 @@ function App() {
             );
           })}
 
+          {activeChat.isChatbot && visibleMessages.length <= 1 && (
+            <section className="chatbot-starter" aria-label="Gợi ý câu hỏi cho ViChat AI">
+              <div className="chatbot-starter-heading">
+                <span className="chatbot-starter-eyebrow">Bắt đầu nhanh</span>
+                <h3>Bạn muốn tìm gì trong tri thức doanh nghiệp?</h3>
+                <p>ViChat AI chỉ dùng nội dung được tìm thấy và luôn cho bạn biết nguồn tham khảo.</p>
+              </div>
+              <div className="chatbot-starter-grid">
+                {CHATBOT_STARTER_PROMPTS.map(item => (
+                  <button type="button" key={item.title} onClick={() => handleSendMessage(item.prompt)} disabled={isTyping || realtimeMessagingPending}>
+                    <span className="chatbot-starter-icon"><i className={`fa-solid ${item.icon}`}></i></span>
+                    <span><strong>{item.title}</strong><small>{item.prompt}</small></span>
+                    <i className="fa-solid fa-arrow-up-right-from-square"></i>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
            {messageMenu && !messageMenu.message.recalled && (() => {
             const menuMessage = messageMenu.message;
             const isOwnMessage = menuMessage.senderId === viewerId || menuMessage.sender === 'outgoing';
@@ -3896,7 +3968,7 @@ function App() {
             </div>
           )}
           <div className="input-actions-left">
-            <button className="btn-input-action" title={realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Đính kèm tệp'} onClick={handleAttachClick} disabled={realtimeMessagingPending}>
+            <button className="btn-input-action" title={activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Đính kèm tệp'} onClick={handleAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot}>
               <i className="fa-solid fa-paperclip"></i>
             </button>
             <input 
@@ -3905,7 +3977,7 @@ function App() {
               style={{ display: "none" }} 
               onChange={handleFileChange} 
             />
-            <button type="button" className="btn-input-action" title="Biểu cảm" aria-label="Mở biểu cảm" aria-expanded={showEmojiPicker} onClick={() => setShowEmojiPicker(prev => !prev)} disabled={realtimeMessagingPending}>
+            <button type="button" className="btn-input-action" title="Biểu cảm" aria-label="Mở biểu cảm" aria-expanded={showEmojiPicker} onClick={() => setShowEmojiPicker(prev => !prev)} disabled={realtimeMessagingPending || activeChat.isChatbot}>
               <i className="fa-regular fa-smile"></i>
             </button>
             {showEmojiPicker && (
@@ -3918,7 +3990,7 @@ function App() {
             <input
               type="text"
               ref={messageInputRef}
-              placeholder={realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Nhập tin nhắn...'}
+              placeholder={realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : activeChat.isChatbot ? 'Hỏi ViChat AI về quy trình, chính sách, tài liệu...' : 'Nhập tin nhắn...'}
               value={inputText}
               disabled={realtimeMessagingPending || (activeChat.isChatbot && isTyping)}
               onChange={(e) => updateCurrentDraft(e.target.value)}
@@ -3931,8 +4003,9 @@ function App() {
               }}
             />
           </div>
-          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || (activeChat.isChatbot && isTyping)} onClick={() => handleSendMessage()}>{activeChat.isChatbot && isTyping ? 'Đang trả lời...' : 'Gửi'}</button>
+          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || (activeChat.isChatbot && isTyping)} onClick={() => handleSendMessage()}>{activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi'}</button>
         </div>
+        {activeChat.isChatbot && <p className="chatbot-composer-note"><i className="fa-solid fa-circle-info"></i> ViChat AI có thể chưa bao quát mọi tài liệu. Hãy kiểm tra nguồn trước khi ra quyết định.</p>}
         {messageDetails && (
           <div className="message-details-modal" role="dialog">
             <div className="message-details-card">

@@ -5,6 +5,7 @@ import test from 'node:test';
 import { chatManagementService, employeeLoginPayload, tinodeRefreshPayload } from './chatManagementService.js';
 
 const appSource = readFileSync(new URL('../../../app/App.jsx', import.meta.url), 'utf8');
+const mobileStoreSource = readFileSync(new URL('../../../../mobile/src/store/appStore.ts', import.meta.url), 'utf8');
 
 test('builds a tenant-scoped employee login payload', () => {
   const payload = employeeLoginPayload({
@@ -67,4 +68,18 @@ test('create-group picker uses the synced company directory while group detail s
   }
 
   assert.equal(typeof chatManagementService.addConversationParticipants, 'function');
+});
+
+test('conversation actions use the authoritative Chatmgt id on web and mobile', () => {
+  assert.match(appSource, /deleteConversationForCurrentUser\(activeChat\.managementId \|\| activeChat\.id\)/);
+  assert.match(appSource, /const managementConversationId = room\.managementId \|\| room\.id;/);
+  assert.match(mobileStoreSource, /conversation\.managementId \|\| conversation\.id,[\s\S]*until,/);
+  assert.match(mobileStoreSource, /deleteConversationForCurrentUser\(conversation\.managementId \|\| conversation\.id, tinodeAuth\.token\)/);
+});
+
+test('web self recall removes the local message while all recall keeps a placeholder', () => {
+  assert.match(
+    appSource,
+    /if \(mode === 'self'\) \{[\s\S]*removeMessageFromConversation\(room, message\)[\s\S]*return;[\s\S]*\}[\s\S]*applyMessagePatch\(message,/,
+  );
 });

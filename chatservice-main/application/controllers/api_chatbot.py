@@ -26,6 +26,10 @@ from application.services import (
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_CHATBOT_CONVERSATION_REF = "vichat-ai"
+LEGACY_CHATBOT_CONVERSATION_REFS = ("bot-songhong",)
+
+
 chatbot_service = ChatbotService(app)
 knowledge_service = KnowledgeService(app)
 chat_manager_service = ChatManagerService(app, chatbot_service, knowledge_service)
@@ -294,6 +298,13 @@ def _serialize_history_message(item):
     }
 
 
+def _chatbot_history_refs(conversation_ref):
+    value = str(conversation_ref or DEFAULT_CHATBOT_CONVERSATION_REF)[:255]
+    if value != DEFAULT_CHATBOT_CONVERSATION_REF:
+        return (value,)
+    return (DEFAULT_CHATBOT_CONVERSATION_REF,) + LEGACY_CHATBOT_CONVERSATION_REFS
+
+
 def _store_history_message(tenant_id, conversation_ref, user_ref, role, content, message_ref=None, properties=None):
     if message_ref:
         existing = ChatbotMessage.query.filter(
@@ -336,6 +347,8 @@ async def chatbot_health(request):
         "enabled": chatbot_service.enabled,
         "provider": app.config.get("CHATBOT_PROVIDER", "openai-compatible"),
         "model": app.config.get("CHATBOT_MODEL"),
+        "request_mode": app.config.get("CHATBOT_EXTERNAL_REQUEST_MODE", "chat"),
+        "provider_configured": chatbot_service.enabled,
         "knowledge_enabled": True,
         "knowledge_only": app.config.get("CHATBOT_KNOWLEDGE_ONLY", True),
         "tinode_webhook": {
@@ -425,6 +438,8 @@ async def chatbot_tinode_webhook(request):
             "message_ref": message_ref,
             "duplicate": True,
             "tenant_id": account.tenant_id,
+            "grounded": bool((existing_reply.properties or {}).get("grounded")),
+            "sources": (existing_reply.properties or {}).get("sources") or [],
         })
 
     history_rows = ChatbotMessage.query.filter(
@@ -470,6 +485,8 @@ async def chatbot_tinode_webhook(request):
                 "seq": sequence,
                 "provider": result.get("provider"),
                 "model": result.get("model"),
+                "grounded": bool(result.get("grounded")),
+                "sources": result.get("sources") or [],
             },
         )
         return json({
@@ -478,6 +495,7 @@ async def chatbot_tinode_webhook(request):
             "tenant_id": account.tenant_id,
             "provider": result.get("provider"),
             "grounded": bool(result.get("grounded")),
+            "sources": result.get("sources") or [],
         })
     except ChatbotServiceError as error:
         return _error_response(error, "TINODE_CHATBOT_ERROR")
@@ -580,7 +598,7 @@ async def chatbot_message(request):
             "error_message": "Tin nhắn vượt quá {} ký tự.".format(max_length),
         }, status=400)
 
-    conversation_ref = str(body.get("conversation_id") or "bot-songhong")
+    conversation_ref = str(body.get("conversation_id") or DEFAULT_CHATBOT_CONVERSATION_REF)[:255]
     user_ref = _user_ref(current_user)
     message_ref = str(body.get("message_id") or "") or None
     try:
@@ -606,7 +624,12 @@ async def chatbot_message(request):
             "assistant",
             result.get("reply") or "",
             message_ref="{}:assistant".format(message_ref or uuid.uuid4()),
-            properties={"provider": result.get("provider"), "model": result.get("model")},
+            properties={
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "grounded": bool(result.get("grounded")),
+                "sources": result.get("sources") or [],
+            },
         )
         return json(result)
     except ChatbotServiceError as error:
@@ -618,11 +641,12 @@ async def chatbot_history(request):
     current_user, tenant_id = _chatbot_identity(request)
     if current_user is None:
         return json({"error_code": "SESSION_EXPIRED", "error_message": "Phiên làm việc hết hạn"}, status=401)
-    conversation_ref = str(request.args.get("conversation_id") or "bot-songhong")
+    conversation_ref = str(request.args.get("conversation_id") or DEFAULT_CHATBOT_CONVERSATION_REF)[:255]
+    history_refs = _chatbot_history_refs(conversation_ref)
     limit = min(max(int(request.args.get("limit", 200)), 1), 500)
     items = ChatbotMessage.query.filter(
         ChatbotMessage.tenant_id == tenant_id,
-        ChatbotMessage.conversation_ref == conversation_ref,
+        ChatbotMessage.conversation_ref.in_(history_refs),
         ChatbotMessage.user_ref == _user_ref(current_user),
         ChatbotMessage.deleted.is_(False),
     ).order_by(ChatbotMessage.created_at.desc()).limit(limit).all()
@@ -636,10 +660,11 @@ async def chatbot_history_delete(request):
     current_user, tenant_id = _chatbot_identity(request, body)
     if current_user is None:
         return json({"error_code": "SESSION_EXPIRED", "error_message": "Phiên làm việc hết hạn"}, status=401)
-    conversation_ref = str(body.get("conversation_id") or "bot-songhong")
+    conversation_ref = str(body.get("conversation_id") or DEFAULT_CHATBOT_CONVERSATION_REF)[:255]
+    history_refs = _chatbot_history_refs(conversation_ref)
     for item in ChatbotMessage.query.filter(
         ChatbotMessage.tenant_id == tenant_id,
-        ChatbotMessage.conversation_ref == conversation_ref,
+        ChatbotMessage.conversation_ref.in_(history_refs),
         ChatbotMessage.user_ref == _user_ref(current_user),
         ChatbotMessage.deleted.is_(False),
     ).all():

@@ -13,6 +13,8 @@ import {
 import { formatMessageTime } from '../utils/timeFormatting';
 import { mapTinodeDeliveryStatus, ReceiptCursor } from '../utils/tinodeState';
 import { normalizeMediaUrl } from '../utils/mediaUrl';
+import { shouldRetryProtectedMedia } from '../utils/mediaRetryPolicy';
+import { publishCallInvite } from '../utils/callSignaling';
 
 export { normalizeMediaUrl } from '../utils/mediaUrl';
 
@@ -111,6 +113,13 @@ function tinodeHeaders(token = '') {
   };
 }
 
+function tokenExpiry(value: unknown) {
+  if (value instanceof Date) return value;
+  if (typeof value === 'number') return new Date(value < 10_000_000_000 ? value * 1000 : value);
+  const parsed = new Date(String(value || ''));
+  return Number.isNaN(parsed.getTime()) ? new Date(Date.now() + 60_000) : parsed;
+}
+
 function messageContent(raw: any) {
   if (typeof raw?.content === 'string') return raw.content;
   return String(raw?.content?.txt || '');
@@ -189,6 +198,23 @@ function messageReply(raw: any) {
   }
 }
 
+function chatbotMetadata(raw: any) {
+  let sources: ChatMessage['sources'] = [];
+  const encodedSources = raw?.head?.['x-vichat-chatbot-sources'];
+  if (encodedSources) {
+    try {
+      const parsed = typeof encodedSources === 'string' ? JSON.parse(encodedSources) : encodedSources;
+      sources = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      sources = [];
+    }
+  }
+  return {
+    sources,
+    grounded: raw?.head?.['x-vichat-chatbot-grounded'] === '1',
+  };
+}
+
 function normalizeMessage(raw: any, client: any, topic: any, receiptCursor?: ReceiptCursor): ChatMessage | null {
   if (!raw || raw._deleted) return null;
   const senderId = String(raw.from || raw.head?.['x-sender-id'] || '');
@@ -200,6 +226,7 @@ function normalizeMessage(raw: any, client: any, topic: any, receiptCursor?: Rec
   const system = parseEvent(content, SYSTEM_EVENT_PREFIX);
   const attachment = rawAttachment(raw);
   const id = String(raw.head?.['x-client-id'] || `${senderId || 'system'}-${raw.seq || raw.ts || Date.now()}`);
+  const chatbot = chatbotMetadata(raw);
   if (reaction) return {
     id, seq: raw.seq, type: 'reaction', sender: outgoing ? 'outgoing' : 'incoming', senderId,
     senderName: '', text: '', createdAt: raw.ts, reaction: undefined,
@@ -224,6 +251,7 @@ function normalizeMessage(raw: any, client: any, topic: any, receiptCursor?: Rec
     time: formatMessageTime(raw.ts),
     deliveryStatus: mapTinodeDeliveryStatus(topic?.msgStatus?.(raw, false) ?? raw._status, outgoing, raw.seq, receiptCursor),
     replyTo: messageReply(raw),
+    ...chatbot,
     call: call || undefined,
     raw,
   };
@@ -501,6 +529,17 @@ export class TinodeMobileClient {
     return tinodeHeaders(this.client?.getAuthToken?.()?.token || '');
   }
 
+  private async refreshMediaAuth() {
+    if (!this.tokenProvider) return false;
+    const refreshed = await this.tokenProvider();
+    const token = String(refreshed?.token || '').trim();
+    if (!token) return false;
+    const expires = tokenExpiry(refreshed?.expires);
+    this.client?.setAuthToken?.({ token, expires });
+    this.auth = { ...(this.auth || refreshed), ...refreshed, token };
+    return true;
+  }
+
   setDeviceToken(token: string | null) {
     this.deviceToken = token || null;
     return Boolean(this.client?.setDeviceToken?.(this.deviceToken));
@@ -524,10 +563,22 @@ export class TinodeMobileClient {
         for (let index = 0; index < cacheKey.length; index += 1) hash = ((hash << 5) + hash) ^ cacheKey.charCodeAt(index);
         const extension = url.match(/\.(?:avif|bmp|gif|jpe?g|png|webp)(?:\?|$)/i)?.[0]?.replace(/\?.*$/, '') || '.jpg';
         const target = new fileSystem.File(fileSystem.Paths.cache, `vichat-image-${Math.abs(hash)}${extension}`);
-        const downloaded = await fileSystem.File.downloadFileAsync(url, target, {
+        const download = () => fileSystem.File.downloadFileAsync(url, target, {
           headers: this.getMediaHeaders(),
           idempotent: true,
         });
+        let downloaded;
+        try {
+          downloaded = await download();
+        } catch (error: any) {
+          // Protected media can outlive the short Tinode token; renew once,
+          // then retry the same request without hiding other download errors.
+          if (!shouldRetryProtectedMedia(error)) throw error;
+          let refreshed = false;
+          try { refreshed = await this.refreshMediaAuth(); } catch { /* Keep the original media error. */ }
+          if (!refreshed) throw error;
+          downloaded = await download();
+        }
         return downloaded.uri;
       })().catch(error => {
         imageCacheRequests.delete(cacheKey);
@@ -545,7 +596,17 @@ export class TinodeMobileClient {
     const sharing: any = require('expo-sharing');
     if (!fileSystem.File?.downloadFileAsync || !fileSystem.Paths?.cache) throw new Error('Bộ nhớ tải tệp chưa sẵn sàng.');
     const target = new fileSystem.File(fileSystem.Paths.cache, `vichat-${Date.now()}-${safeName}`);
-    const downloaded = await fileSystem.File.downloadFileAsync(file.url, target, { headers: this.getMediaHeaders(), idempotent: true });
+    const download = () => fileSystem.File.downloadFileAsync(file.url, target, { headers: this.getMediaHeaders(), idempotent: true });
+    let downloaded;
+    try {
+      downloaded = await download();
+    } catch (error) {
+      if (!shouldRetryProtectedMedia(error)) throw error;
+      let refreshed = false;
+      try { refreshed = await this.refreshMediaAuth(); } catch { /* Keep the original media error. */ }
+      if (!refreshed) throw error;
+      downloaded = await download();
+    }
     if (await sharing.isAvailableAsync()) await sharing.shareAsync(downloaded.uri, { mimeType: file.mime, dialogTitle: file.name });
     return downloaded.uri;
   }
@@ -792,10 +853,14 @@ export class TinodeMobileClient {
     if (!Drafty?.videoCall) throw new Error('Tinode SDK không hỗ trợ cuộc gọi.');
     const draft = topic.createMessage(Drafty.videoCall(Boolean(audioOnly)), false);
     draft.head = { ...(draft.head || {}), webrtc: CALL_HEAD_STARTED, aonly: Boolean(audioOnly), 'x-sender-id': this.currentUserId };
-    const result = await topic.publishMessage(draft);
-    const seq = Number(result?.params?.seq || draft.seq || 0);
-    if (!seq) throw new Error('Tinode không trả về mã cuộc gọi.');
-    return { seq, topic: topicName, audioOnly: Boolean(audioOnly) };
+    const client = this.client;
+    if (!client?.publishMessage) throw new Error('Tinode chưa sẵn sàng gửi cuộc gọi.');
+    // Topic.publishMessage in Tinode SDK 0.25.3 swallows rejected PUB errors.
+    const published = await publishCallInvite({
+      draft,
+      publish: message => client.publishMessage(message),
+    });
+    return { seq: published.seq, topic: topicName, audioOnly: Boolean(audioOnly) };
   }
 
   async sendCallSignal(topicName: string, seq: number, event: string, payload?: any) {

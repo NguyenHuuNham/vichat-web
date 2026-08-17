@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Download, FileText, ImageOff, Phone, RotateCcw, Video, X } from 'lucide-react-native';
+import { BookOpen, CheckCircle2, Download, FileText, ImageOff, Phone, RotateCcw, Video, X } from 'lucide-react-native';
 import { beginTrustedExternalActivity } from '../services/appLifecycleService';
 import { normalizeMediaUrl, tinodeClient } from '../services/tinodeClient';
 import { ChatMessage, FileAttachment } from '../types';
@@ -35,6 +35,8 @@ export function MessageBubble({ message, onLongPress }: Props) {
           </Pressable>
         ) : null}
         {message.text && !message.recalled ? <Text style={[styles.text, outgoing && styles.outgoingText]}>{message.text}</Text> : null}
+        {!outgoing && message.grounded ? <View style={styles.grounded}><CheckCircle2 color={colors.online} size={13} /><Text style={styles.groundedText}>Đã đối chiếu nguồn</Text></View> : null}
+        {!outgoing && message.sources?.length ? <View style={styles.sources}><View style={styles.sourcesTitle}><BookOpen color={colors.accent} size={14} /><Text style={styles.sourcesTitleText}>Nguồn tham khảo</Text></View>{message.sources.map((source, index) => <View key={`${source.title || source.file_name || index}`} style={styles.sourceCard}><Text style={styles.sourceIndex}>{index + 1}</Text><View style={{ flex: 1 }}><Text numberOfLines={1} style={styles.sourceName}>{source.title || source.file_name || `Nguồn ${index + 1}`}</Text>{source.snippet ? <Text numberOfLines={2} style={styles.sourceSnippet}>{source.snippet}</Text> : null}</View></View>)}</View> : null}
         {message.recalled ? <View style={styles.recalled}><RotateCcw color={outgoing ? '#fff' : colors.muted} size={14} /><Text style={[styles.recalledText, outgoing && styles.outgoingText]}>Tin nhắn đã được thu hồi</Text></View> : null}
         <View style={[styles.meta, mediaOnly && styles.mediaMeta]}><Text style={[styles.time, outgoing && !mediaOnly && styles.outgoingSub, mediaOnly && styles.mediaMetaText]}>{formatMessageTime(message.createdAt || message.time)}</Text>{outgoing ? <Text style={[styles.receipt, message.deliveryStatus === 'read' && styles.receiptRead]}>{receipt}</Text> : null}</View>
       </Pressable>
@@ -135,4 +137,13 @@ const styles = StyleSheet.create({
   reactionText: { ...typography.caption, color: colors.ink },
   failedText: { ...typography.caption, color: colors.danger, marginTop: 3 },
   system: { ...typography.caption, color: colors.muted, textAlign: 'center', marginVertical: 12, paddingHorizontal: 30 },
+  grounded: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
+  groundedText: { ...typography.caption, color: colors.online, fontSize: 10.5 },
+  sources: { gap: 7, marginTop: 10, padding: 9, borderRadius: 13, backgroundColor: '#F3F8F5', borderWidth: 1, borderColor: '#DDEBE4' },
+  sourcesTitle: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  sourcesTitleText: { ...typography.caption, color: colors.ink, fontFamily: 'BeVietnamPro_700Bold' },
+  sourceCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 8, borderRadius: 10, backgroundColor: '#FFFFFF' },
+  sourceIndex: { width: 22, height: 22, borderRadius: 8, overflow: 'hidden', textAlign: 'center', textAlignVertical: 'center', color: '#FFFFFF', backgroundColor: '#123B39', fontFamily: 'BeVietnamPro_700Bold', fontSize: 10 },
+  sourceName: { ...typography.caption, color: colors.ink, fontFamily: 'BeVietnamPro_700Bold' },
+  sourceSnippet: { ...typography.caption, color: colors.muted, fontSize: 10.5, marginTop: 2 },
 });

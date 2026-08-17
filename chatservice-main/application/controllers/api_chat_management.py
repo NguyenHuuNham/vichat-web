@@ -61,7 +61,9 @@ from application.services.auth_service import (
     tinode_disabled_password,
     tinode_mirror_enabled,
     tinode_mirror_login,
+    tinode_accept_topic_owner,
     tinode_remove_topic_member,
+    tinode_publish_system_event,
     tinode_sso_password,
     tinode_sso_login,
     tinode_username_compatible,
@@ -2890,19 +2892,63 @@ async def conversation_participant_remove(request, conversation_id, participant_
 
     now = int(time.time())
     replacement = None
-    if target.role == "OWNER":
+    if is_group and target.role == "OWNER":
+        # Choose a remaining active member without coupling ownership to join order.
         replacement = ConversationParticipant.query.filter(
             ConversationParticipant.tenant_id == tenant_id,
             ConversationParticipant.conversation_id == item.id,
             ConversationParticipant.participant_id != participant_id,
             ConversationParticipant.active.is_(True),
             ConversationParticipant.deleted.is_(False),
-        ).order_by(ConversationParticipant.joined_at.asc()).first()
+        ).order_by(func.random()).first()
+    event_sender_participant = replacement
+    if is_group and participant_id == user_id and event_sender_participant is None:
+        event_sender_participant = ConversationParticipant.query.filter(
+            ConversationParticipant.tenant_id == tenant_id,
+            ConversationParticipant.conversation_id == item.id,
+            ConversationParticipant.participant_id != participant_id,
+            ConversationParticipant.active.is_(True),
+            ConversationParticipant.deleted.is_(False),
+        ).order_by(func.random()).first()
     try:
         tinode_token = ""
         actor_account = None
         target_account = None
+        event_sender_account = None
+        event_sender_uid = ""
+        event_sender_tinode_token = ""
         replacement_uid = ""
+        replacement_tinode_token = ""
+        owner_transfer_accepted = False
+
+        async def rollback_tinode_owner_transfer():
+            if not replacement_uid or actor_account is None or not tinode_token:
+                return
+            try:
+                if owner_transfer_accepted and replacement_tinode_token:
+                    await tinode_add_topic_members(
+                        replacement_tinode_token,
+                        replacement_uid,
+                        item.tinode_topic,
+                        [actor_account.tinode_uid],
+                        mode="JRWPASO",
+                    )
+                    await tinode_accept_topic_owner(
+                        tinode_token,
+                        actor_account.tinode_uid,
+                        item.tinode_topic,
+                        mode="JRWPASO",
+                    )
+                await tinode_add_topic_members(
+                    tinode_token,
+                    actor_account.tinode_uid,
+                    item.tinode_topic,
+                    [replacement_uid],
+                    mode="JRWPAS",
+                )
+            except AuthError:
+                logger.warning("Could not roll back the Tinode owner transfer.")
+
         if item.tinode_topic:
             tinode_token = str((request.json or {}).get("tinode_token") or "").strip()
             if not tinode_token:
@@ -2915,9 +2961,27 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 return json({"error_code": "TINODE_ACCOUNT_UNPREPARED", "error_message": "The target Tinode account is not prepared."}, status=409)
             if current_user.get("auth_method") == "account_sso":
                 await _validated_account_identity(request, actor_account)
-            if is_group and replacement is not None:
-                replacement_account = _account_by_id(tenant_id, replacement.participant_id)
-                replacement_uid = await _ensure_tinode_account(replacement_account)
+            if is_group and event_sender_participant is not None:
+                event_sender_account = _account_by_id(tenant_id, event_sender_participant.participant_id)
+                if event_sender_account is not None:
+                    try:
+                        event_sender_uid = await _ensure_tinode_account(event_sender_account)
+                        event_sender_auth = await tinode_sso_login(
+                            _tinode_account_identity(event_sender_account),
+                            event_sender_account.tinode_username,
+                            event_sender_account.tinode_uid,
+                        )
+                        event_sender_tinode_token = str(event_sender_auth.get("token") or "").strip()
+                    except Exception:
+                        if replacement is not event_sender_participant:
+                            logger.warning("Could not prepare a surviving Tinode member for the leave event.")
+                        else:
+                            raise
+                if replacement is not None:
+                    replacement_uid = event_sender_uid
+                    replacement_tinode_token = event_sender_tinode_token
+                    if not replacement_uid or not replacement_tinode_token:
+                        raise AuthError("Tinode could not prepare the replacement owner.", 502)
 
         target.active = False
         target.left_at = now
@@ -2935,6 +2999,13 @@ async def conversation_participant_remove(request, conversation_id, participant_
                     [replacement_uid],
                     mode="JRWPASO",
                 )
+                await tinode_accept_topic_owner(
+                    replacement_tinode_token,
+                    replacement_uid,
+                    item.tinode_topic,
+                    mode="JRWPASO",
+                )
+                owner_transfer_accepted = True
             await tinode_remove_topic_member(
                 tinode_token,
                 actor_account.tinode_uid,
@@ -2942,6 +3013,22 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 target_account.tinode_uid,
             )
         db.session.commit()
+        if is_group and participant_id == user_id and event_sender_tinode_token:
+            try:
+                await tinode_publish_system_event(
+                    event_sender_tinode_token,
+                    event_sender_uid,
+                    item.tinode_topic,
+                    {
+                        "action": "member_left",
+                        "actorId": participant_id,
+                        "actorName": target_account.full_name or target_account.username or participant_id,
+                    },
+                )
+            except Exception as error:
+                # Membership is already authoritative; a missing activity event
+                # must not make a successful leave appear to have failed.
+                logger.warning("Could not publish the group leave event: %s", error)
         return json(_serialize_conversation(item, user_id))
     except AccountSSOError as error:
         db.session.rollback()
@@ -2953,20 +3040,11 @@ async def conversation_participant_remove(request, conversation_id, participant_
         return _account_sso_error(error)
     except AuthError as error:
         db.session.rollback()
-        if replacement_uid and actor_account is not None and tinode_token:
-            try:
-                await tinode_add_topic_members(
-                    tinode_token,
-                    actor_account.tinode_uid,
-                    item.tinode_topic,
-                    [replacement_uid],
-                    mode="JRWPAS",
-                )
-            except AuthError:
-                logger.warning("Could not roll back the Tinode owner transfer.")
+        await rollback_tinode_owner_transfer()
         return json({"error_code": "TINODE_MEMBERSHIP_FAILED", "error_message": str(error)}, status=error.status_code)
     except Exception as error:
         db.session.rollback()
+        await rollback_tinode_owner_transfer()
         logger.exception("Could not remove Chatmgt/Tinode participant: %s", error)
         return json({
             "error_code": "CONVERSATION_PARTICIPANT_ERROR",

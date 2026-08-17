@@ -7,13 +7,19 @@ import { useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAppStore } from './src/store/appStore';
 import { AppNavigator } from './src/navigation/AppNavigator';
-import { registerPushNotifications, subscribeToPushTokenChanges } from './src/services/notificationService';
+import { registerPushNotifications, subscribeToIncomingCallNotificationResponses, subscribeToPushTokenChanges } from './src/services/notificationService';
 import { tinodeClient } from './src/services/tinodeClient';
 import { AppLockScreen } from './src/components/AppLockScreen';
 import { useAppLockStore } from './src/store/appLockStore';
 import { consumeTrustedExternalActivity } from './src/services/appLifecycleService';
 import { colors } from './src/theme/colors';
 import { MobileCallOverlay } from './src/components/MobileCallOverlay';
+import { routeMobileCallEvent } from './src/store/callStore';
+import {
+  IncomingCallNotificationData,
+  incomingCallNotificationKey,
+  isIncomingCallNotificationFresh,
+} from './src/utils/callNotificationPolicy';
 
 export default function App() {
   const scheme = useColorScheme();
@@ -53,16 +59,63 @@ export default function App() {
 
   useEffect(() => {
     let stopTokenListener = () => {};
+    let stopCallResponseListener = () => {};
+    const pendingCalls = new Map<string, IncomingCallNotificationData>();
+    let flushingCalls = false;
+
+    const flushPendingCalls = async () => {
+      if (flushingCalls || !pendingCalls.size) return;
+      if (useAppStore.getState().status !== 'ready') return;
+      flushingCalls = true;
+      try {
+        await reconnect();
+        if (!tinodeClient.connected || useAppStore.getState().status !== 'ready') return;
+        const now = Date.now();
+        for (const [key, data] of pendingCalls) {
+          if (!isIncomingCallNotificationFresh(data, now)) {
+            pendingCalls.delete(key);
+            continue;
+          }
+          routeMobileCallEvent({
+            type: 'call-invite',
+            topic: data.topic,
+            seq: data.seq,
+            from: data.from,
+            audioOnly: data.audioOnly,
+          }, { name: data.peerName, avatar: data.peerAvatar });
+          pendingCalls.delete(key);
+        }
+      } catch {
+        // Keep the invite queued; a later reconnect or ready-state change retries it.
+      } finally {
+        flushingCalls = false;
+      }
+    };
+
+    const routeNotificationCall = (data: IncomingCallNotificationData) => {
+      if (!isIncomingCallNotificationFresh(data)) return;
+      pendingCalls.set(incomingCallNotificationKey(data), data);
+      void flushPendingCalls();
+    };
+
     void subscribeToPushTokenChanges(registration => tinodeClient.setDeviceToken(registration.token)).then(stop => { stopTokenListener = stop; });
+    void subscribeToIncomingCallNotificationResponses(routeNotificationCall).then(stop => { stopCallResponseListener = stop; });
     const unsubscribe = useAppStore.subscribe(state => {
+      if (state.status === 'signed_out') pendingCalls.clear();
       if (state.status === 'ready' && state.session?.user) {
         void registerPushNotifications(state.session.user).then(registration => {
           if (registration) tinodeClient.setDeviceToken(registration.token);
         });
+        void flushPendingCalls();
       }
     });
-    return () => { unsubscribe(); stopTokenListener(); };
-  }, []);
+    return () => {
+      pendingCalls.clear();
+      unsubscribe();
+      stopTokenListener();
+      stopCallResponseListener();
+    };
+  }, [reconnect]);
 
   const navigationTheme = scheme === 'dark'
     ? { ...DarkTheme, colors: { ...DarkTheme.colors, primary: colors.accent } }
@@ -74,8 +127,8 @@ export default function App() {
         <NavigationContainer theme={navigationTheme}>
           <AppNavigator />
         </NavigationContainer>
-        {appStatus === 'ready' ? <MobileCallOverlay /> : null}
         {appStatus === 'ready' && appLockInitialized && appLockConfigured && appLocked ? <AppLockScreen /> : null}
+        {appStatus === 'ready' ? <MobileCallOverlay /> : null}
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       </View>
     </SafeAreaProvider>

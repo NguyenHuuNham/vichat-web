@@ -1,5 +1,6 @@
 import importlib.util
 import base64
+import json
 import sys
 import types
 import unittest
@@ -85,7 +86,7 @@ class FakeClientSession:
     async def __aexit__(self, _exc_type, _exc, _traceback):
         return False
 
-    def ws_connect(self, _url):
+    def ws_connect(self, _url, **_kwargs):
         return FakeSocketContext(self.socket)
 
 
@@ -381,6 +382,61 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
             "user": "usrMember",
             "mode": "JRWPAS",
         })
+
+    async def test_owner_transfer_is_accepted_by_the_replacement_user(self):
+        socket = FakeSocket([
+            {"ctrl": {"id": "1", "code": 201}},
+            {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrMember"}}},
+            {"ctrl": {"id": "3", "code": 200}},
+            {"ctrl": {"id": "4", "code": 200}},
+        ])
+        with self.config(), patch.object(
+            auth_service.aiohttp,
+            "ClientSession",
+            self.client_session(socket),
+        ):
+            await auth_service.tinode_accept_topic_owner(
+                "replacement-token",
+                "usrMember",
+                "grpRoom",
+            )
+
+        self.assertEqual(socket.sent[-1]["set"], {
+            "id": "4",
+            "topic": "grpRoom",
+            "sub": {"mode": "JRWPASO"},
+        })
+
+    async def test_group_leave_event_is_published_by_a_surviving_user(self):
+        socket = FakeSocket([
+            {"ctrl": {"id": "1", "code": 201}},
+            {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrMember"}}},
+            {"ctrl": {"id": "3", "code": 200}},
+            {"ctrl": {"id": "3", "code": 200, "params": {"seq": 44}}},
+        ])
+        event = {
+            "action": "member_left",
+            "actorId": "acctOwner",
+            "actorName": "Owner",
+        }
+        with self.config(), patch.object(
+            auth_service.aiohttp,
+            "ClientSession",
+            self.client_session(socket),
+        ):
+            await auth_service.tinode_publish_system_event(
+                "replacement-token",
+                "usrMember",
+                "grpRoom",
+                event,
+            )
+
+        content = socket.sent[-1]["pub"]["content"]
+        self.assertTrue(content.startswith("__VICHAT_SYSTEM_EVENT__:"))
+        self.assertEqual(
+            json.loads(content.split(":", 1)[1]),
+            event,
+        )
 
     async def test_self_removal_unsubscribes_the_current_tinode_user(self):
         socket = FakeSocket([

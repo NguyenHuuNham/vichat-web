@@ -10,6 +10,11 @@ function isRealMessage(message) {
   return !id.startsWith('incoming-') && !LEGACY_DEMO_MESSAGE_IDS.has(id);
 }
 
+function randomMemberId(memberIds) {
+  const candidates = uniqueIds(memberIds);
+  return candidates[Math.floor(Math.random() * candidates.length)] || '';
+}
+
 function reconcileGroupMembership(group) {
   const messages = (group.messages || []).filter(isRealMessage);
   let memberIds = uniqueIds([
@@ -31,7 +36,7 @@ function reconcileGroupMembership(group) {
     }
   }
   const ownerId = ownerLeft || !memberIds.includes(group.ownerId)
-    ? memberIds.find(id => id !== group.ownerId) || memberIds[0]
+    ? randomMemberId(memberIds.filter(id => id !== group.ownerId)) || memberIds[0]
     : group.ownerId;
   return { ...group, memberIds, ownerId, messages };
 }
@@ -169,7 +174,7 @@ export function leaveDemoGroup(groupId, userId) {
   const group = groups.find(item => item.id === groupId);
   if (!group) return;
   const memberIds = (group.memberIds || []).filter(id => id !== userId);
-  const ownerId = group.ownerId === userId ? memberIds[0] : group.ownerId;
+  const ownerId = group.ownerId === userId ? randomMemberId(memberIds) : group.ownerId;
   writeGroups(memberIds.length > 0
     ? [...groups.filter(item => item.id !== groupId), { ...group, memberIds, ownerId, updatedAt: new Date().toISOString() }]
     : groups.filter(item => item.id !== groupId));
@@ -181,7 +186,7 @@ export function deleteDemoGroupForUser(groupId, userId, userName = 'Một thành
   if (!group) return;
   const deletedAt = new Date().toISOString();
   const memberIds = (group.memberIds || []).filter(id => id !== userId);
-  const ownerId = group.ownerId === userId ? memberIds[0] : group.ownerId;
+  const ownerId = group.ownerId === userId ? randomMemberId(memberIds) : group.ownerId;
   const leaveMessage = {
     id: `system-delete-${Date.now()}`,
     type: 'system',

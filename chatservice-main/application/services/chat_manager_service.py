@@ -88,7 +88,7 @@ class ChatManagerService(object):
 
         if small_talk:
             result = {
-                "reply": "Chào bạn! Mình là Trợ lý Sông Hồng. Bạn có thể hỏi mình về thông tin nội bộ hoặc cách sử dụng hệ thống.",
+                "reply": "Chào bạn! Mình là ViChat AI. Bạn có thể hỏi mình về quy trình, chính sách và tài liệu nội bộ.",
                 "provider": "knowledge-base",
                 "model": None,
                 "sources": [],

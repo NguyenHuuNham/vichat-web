@@ -102,6 +102,10 @@ and avatar images with its short-lived Tinode token into the OS cache and passes
 the same auth headers to native image rendering, so an expired central
 certificate, redirect, or missing `Image` request header cannot leave a blank
 media surface. The cache is disposable and is not a second message store.
+If the relay rejects a protected image or file with `401`/`403`, mobile refreshes
+the short-lived Tinode token through Chatmgt and retries that same download once;
+network errors and other HTTP failures are not retried. Cache keys include the
+token/version so an avatar replacement cannot reuse a stale protected object.
 
 The optional mobile app lock is device-local. It stores a random salt and the
 SHA-256 hash of a four-digit PIN in SecureStore, never sends the PIN to Chatmgt,
@@ -119,6 +123,25 @@ device token and registers it with the authenticated Tinode client through the
 Tinode `hi.dev` field. This lets Tinode deliver while the app is suspended or
 killed. No device token is stored in Chatmgt. Without both credential halves,
 background/killed push remains unavailable and must not be reported as active.
+
+Incoming call invites use a separate high-priority local notification channel.
+The notification payload carries only the validated P2P topic, Tinode sequence,
+caller UID, media mode and issue time. Tapping it queues the invite until the
+authenticated app state is ready, reconnects Tinode, and routes it through the
+same mobile call store used by foreground realtime events. Payloads older than
+the 40-second call setup window are discarded, expired local notifications are
+dismissed, and ending the call dismisses the matching notification. The incoming-call overlay remains above the
+optional message PIN screen so a resumed call can be answered or rejected
+without exposing conversation content. This improves background/resume behavior while
+remaining subject to the native Firebase/APNs and Tinode provider prerequisites
+for a fully killed process.
+
+Android voice/video releases are generated from `mobile/app.json`; the ignored
+native project is not an authoritative source. Every release prebuild must
+materialize both `android.permission.CAMERA` and
+`android.permission.RECORD_AUDIO`, and the packaged APK must be inspected for
+both permissions before distribution. A stale generated manifest can otherwise
+silently remove microphone access while the TypeScript call flow still passes.
 
 Mobile presence is read from Tinode's `me` P2P contacts and the subscribed P2P
 topic. The client applies the initial snapshot after Chatmgt directory data is
@@ -193,6 +216,15 @@ with coworkers. Friendship records remain compatibility metadata only; direct
 conversation creation still validates that every participant is active in the
 same tenant before Chatmgt prepares the Tinode pair.
 
+Chatmgt may retain a direct-conversation row before either participant has sent
+a Tinode message. In realtime mode, ChatUI therefore treats the sidebar as the
+intersection of authorized Chatmgt metadata and Tinode activity: direct rows are
+shown only after Tinode history contains a message or the employee has a local
+draft. Explicit groups and the configured assistant remain visible even when
+empty. The metadata row is not deleted, so reopening the coworker from the
+directory reuses the same tenant-scoped Chatmgt conversation and deterministic
+Tinode mapping without copying message content into Chatmgt.
+
 Chatmgt never uses browser localStorage as a fallback message store. If Tinode
 is unavailable, the directory and conversation metadata remain visible while
 realtime message/file inputs stay disabled and show the connection state.
@@ -215,15 +247,6 @@ credential flow:
 The optional `TINODE_MIRROR_LOCAL_CREDENTIALS=true` setting applies only to
 explicit local/recovery sessions. It is not used by active UpGO Account SSO
 employees, whose Account password is never copied to Tinode.
-
-Chatmgt may retain a direct-conversation row before either participant has sent
-a Tinode message. In realtime mode, ChatUI therefore treats the sidebar as the
-intersection of authorized Chatmgt metadata and Tinode activity: direct rows are
-shown only after Tinode history contains a message or the employee has a local
-draft. Explicit groups and the configured assistant remain visible even when
-empty. The metadata row is not deleted, so reopening the coworker from the
-directory reuses the same tenant-scoped Chatmgt conversation and deterministic
-Tinode mapping without copying message content into Chatmgt.
 
 ```text
 tinode_username = stable_tinode_username(tenant_id, account_id)
@@ -274,7 +297,12 @@ or rewrite later message, presence or call packets.
 `POST /api/v1/conversation/<id>/tinode-prepare` prepares missing UID mappings
 from current Chatmgt membership. Group topic binding and add/remove/leave
 operations verify the fresh Tinode token and exact tenant member set before
-committing Chatmgt metadata. The central Tinode remains authoritative for
+committing Chatmgt metadata. When a group owner leaves, Chatmgt grants the
+replacement member owner access, has that member accept the transfer through
+its own Tinode session, and only then removes the former owner. The leave
+activity event is published by a surviving member after the membership commit,
+so a rejected Tinode operation cannot create a false "left the group" message.
+The central Tinode remains authoritative for
 message content, files, presence, typing, reactions, receipts and call
 signaling. ChatUI does not post normal messages/files to Chatmgt knowledge;
 legacy chat-ingestion routes return `410 TINODE_CONTENT_ONLY`.
@@ -295,6 +323,11 @@ the canonical avatar to Tinode public metadata so web and mobile subscribers
 receive the change in realtime. Local/recovery accounts use the authenticated
 Tinode profile path.
 
+Avatar uploads use a dedicated longer Account upload timeout and verify the
+returned avatar URL against the uploaded URL. If `/current_user` is briefly
+stale after the Account PUT, Chatmgt re-reads `/me` once before returning an
+unconfirmed-update error; it never accepts an unrelated cached avatar.
+
 ## Runtime call visibility and chatbot webhook
 
 `VITE_CALLS_ENABLED=true` exposes direct voice/video call entry points and
@@ -312,19 +345,62 @@ the bot Tinode session, subscribes only to direct `usr*` topics, and forwards a
 bounded message envelope to `POST /api/v1/chatbot/tinode-webhook`. Chatmgt
 resolves the sender UID to an active `ManagementAccount` and its authenticated
 tenant before calling the fixed `CHATBOT_API_URL`, currently
-`https://knowledge.gonapp.net/api/v1/chat`. This route calls the provider
-directly with the bounded message, conversation ID, public user identity and
-history; it does not run `KnowledgeService.retrieve()` or send a RAG `context`
-field. The worker publishes the reply back to the same Tinode topic and
+`https://knowledge-ai.gonapp.net/api/v1/chat`. In
+`CHATBOT_EXTERNAL_REQUEST_MODE=knowledge-retrieval`, Chatmgt authenticates with
+the server-only `X-API-Key`, sends only `message` and bounded `top_k`, then
+normalizes returned `sources[].snippet` objects into a grounded reply with
+source metadata. It does not send employee identity, history, conversation IDs
+or local `KnowledgeService` context to the external retrieval boundary. The
+worker publishes the reply back to the same Tinode topic and
 persists a cursor/idempotency key so reconnects do not duplicate replies.
+
+The product-facing assistant identity is `ViChat AI` on both web and mobile.
+The synthetic client conversation key is `vichat-ai`; the actual Tinode UID
+continues to come from the authenticated `tinode-config` response and is never
+hard-coded in either client. The worker places only bounded presentation
+metadata (`grounded` and at most five compact source records) in private Tinode
+headers, so both clients can render the same verification cards without
+changing message ownership or copying employee chat content into Chatmgt.
+HTTP fallback history stores the same source metadata with the assistant row.
+When the stable client key changed from `bot-songhong` to `vichat-ai`, the
+history read/delete routes kept the legacy key as an alias and browser fallback
+storage reads it when the new key is empty, so the branding change does not
+hide an employee's existing assistant conversation.
+The legacy employee-facing knowledge manager and its upload/delete calls are
+not part of this retrieval-only assistant surface.
 
 Employee credentials, Tinode tokens, cookies and webhook keys never leave the
 trusted Chatmgt/worker boundary. A missing bot configuration or provider outage
 returns a bounded temporary reply and leaves normal employee/group/file topics
 untouched. The existing authenticated `POST /api/v1/chatbot/message` remains a
-direct-provider fallback for clients that cannot use the Tinode bot topic.
+HTTP fallback through the same provider adapter for clients that cannot use the
+Tinode bot topic.
 ChatUI does not expose the legacy knowledge manager or send a knowledge-base
 selector in either route.
+
+### Workstation-only answer bridge
+
+For local demonstrations, `scripts/local_vichat_ai_api.py` exposes
+`POST /api/ask` on the developer workstation. The caller may send `question`,
+`query` or `message`; the bridge calls the approved Knowledge API for bounded
+sources and then asks a local Ollama/OpenAI-compatible model to synthesize the
+answer. The response contains both `answer` and `reply`, plus bounded
+`grounded`/`sources` metadata. `X-Local-AI-Token` (also accepted as
+`Authorization: Bearer` or `X-API-Key`) protects the endpoint.
+
+The workstation setup can run a portable llama.cpp `qwen2.5:1.5b` server on
+`127.0.0.1:8080` and configure the bridge for its OpenAI-compatible
+`/v1/chat/completions` endpoint. The bridge bounds generated tokens so a CPU
+model cannot leave a request open indefinitely. A separate ngrok or Cloudflare
+quick tunnel may expose only the bridge port for a temporary cross-network
+test; the upstream Knowledge key remains on the workstation.
+
+This bridge is intentionally outside the production service boundary: it is
+not deployed to the VPS, does not read employee chat history, and is available
+only while the user's computer and process are running. A LAN URL is suitable
+only when the caller is on the same private network; an external caller needs
+an approved HTTPS tunnel. The workstation must not expose port 8000 publicly
+without authentication and TLS.
 
 ## Enterprise Workspace
 

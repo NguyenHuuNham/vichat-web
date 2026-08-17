@@ -172,10 +172,11 @@ private mode-`0600` `.env`:
 ```dotenv
 CHATBOT_ENABLED=true
 CHATBOT_PROVIDER=external-webhook
-CHATBOT_API_URL=https://knowledge.gonapp.net/api/v1/chat
-CHATBOT_API_KEY=
-CHATBOT_EXTERNAL_AUTH_HEADER=Authorization
-CHATBOT_EXTERNAL_AUTH_SCHEME=Bearer
+CHATBOT_API_URL=https://knowledge-ai.gonapp.net/api/v1/chat
+CHATBOT_API_KEY=<knowledge-ai-api-key>
+CHATBOT_EXTERNAL_AUTH_HEADER=X-API-Key
+CHATBOT_EXTERNAL_AUTH_SCHEME=
+CHATBOT_EXTERNAL_REQUEST_MODE=knowledge-retrieval
 CHATBOT_KNOWLEDGE_ONLY=false
 CHATBOT_EXTERNAL_API_KEY=<separate-inbound-key>
 CHATBOT_EXTERNAL_TENANT=tn6913580727957397
@@ -183,17 +184,20 @@ CHATBOT_EXTERNAL_KNOWLEDGE_BASE_ID=<optional-approved-base-uuid>
 TINODE_CHATBOT_ENABLED=true
 TINODE_CHATBOT_USERNAME=upgo_chatbot
 TINODE_CHATBOT_PASSWORD=<random-tinode-bot-password>
+TINODE_CHATBOT_DISPLAY_NAME=ViChat AI
+TINODE_CHATBOT_DISPLAY_TITLE=Tro ly tri thuc doanh nghiep
+TINODE_CHATBOT_DISPLAY_ORGANIZATION=GON Platform
+TINODE_CHATBOT_DISPLAY_AVATAR=https://chat.upgo.vn/vichat-ai.svg
 TINODE_CHATBOT_WEBHOOK_KEY=<separate-random-webhook-key>
 TINODE_CHATBOT_WEBHOOK_URL=http://chatmgt:8093/api/v1/chatbot/tinode-webhook
 ```
 
-Chatmgt calls `https://knowledge.gonapp.net/api/v1/chat` server-side. Set
-`CHATBOT_API_KEY` only if that endpoint is later protected; the browser and the
-Tinode worker must continue to call Chatmgt instead of the partner service
-directly. The tenant-checked Tinode webhook and authenticated HTTP fallback call
-the provider without knowledge retrieval, knowledge-base selection or a RAG
-context field. The legacy knowledge APIs and related server variables remain
-only for separate compatibility integrations and are not exposed in ChatUI.
+Chatmgt calls `https://knowledge-ai.gonapp.net/api/v1/chat` server-side with
+`X-API-Key`. The current API is retrieval-only: Chatmgt sends `message` and
+bounded `top_k`, converts returned snippets to the sourced reply, and never
+sends employee identity/history to the provider. The browser and Tinode worker
+must continue to call Chatmgt instead of the partner service directly. The
+legacy knowledge APIs remain separate compatibility integrations.
 The worker is started as `tinode-chatbot-webhook`, persists its cursor in the
 named `tinode_chatbot_state` volume, and subscribes only to direct employee
 topics.
@@ -204,6 +208,10 @@ authenticated employee session, and `tinode-chatbot-webhook/healthz`. Send a
 test message to the bot and confirm the response appears in the same Tinode
 topic. If the provider route is unavailable, the worker emits its temporary
 failure reply while ordinary employee/group/file messages continue unchanged.
+The web and mobile surfaces identify this assistant as `ViChat AI`, show a
+small starter-question panel, and render bounded source cards when retrieval
+returns matches. Source metadata is carried in private Tinode headers; it is
+not copied into ordinary employee messages or sent to the browser as a secret.
 Rollback only disables `TINODE_CHATBOT_ENABLED` and recreates
 `chatmgt`/`tinode-chatbot-webhook`; no database migration or Tinode topic reset
 is involved.

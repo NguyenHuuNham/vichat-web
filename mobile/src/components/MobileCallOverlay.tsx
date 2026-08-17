@@ -82,7 +82,8 @@ function CallButton({ icon: Icon, label, onPress, danger = false, accept = false
 }
 
 const styles = StyleSheet.create({
-  overlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(7,12,16,0.72)', justifyContent: 'flex-end', zIndex: 20 },
+  // Incoming calls must remain actionable even when the optional PIN gate is visible.
+  overlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(7,12,16,0.72)', justifyContent: 'flex-end', zIndex: 1100 },
   sheet: { minHeight: 430, borderTopLeftRadius: 30, borderTopRightRadius: 30, overflow: 'hidden', backgroundColor: '#142027', ...shadow },
   videoSheet: { minHeight: '100%' },
   remoteVideo: { ...StyleSheet.absoluteFill },

@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type { MediaStream, RTCIceCandidate as RTCIceCandidateType, RTCPeerConnection as RTCPeerConnectionType } from 'react-native-webrtc';
 import { tinodeClient, CALL_SIGNAL_EVENTS } from '../services/tinodeClient';
 import type { MobileCallSignalEvent } from '../services/tinodeClient';
+import { dismissIncomingCallNotification } from '../services/notificationService';
+import { normalizeCallCandidate, normalizeCallDescription } from '../utils/callSignaling';
 
 export type MobileCallPhase = 'incoming' | 'preparing' | 'calling' | 'ringing' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -81,6 +83,8 @@ function displayPeer(peer?: MobileCallPeer) {
 
 export const useCallStore = create<CallState>((set, get) => {
   const clearCall = () => {
+    const activeCall = get().call;
+    if (activeCall?.seq) void dismissIncomingCallNotification(activeCall.topic, activeCall.seq);
     clearTimers();
     peerConnection?.close?.();
     peerConnection = null;
@@ -133,7 +137,9 @@ export const useCallStore = create<CallState>((set, get) => {
   };
 
   const markConnected = () => {
+    clearTimeout(setupTimer || undefined);
     clearTimeout(disconnectTimer || undefined);
+    setupTimer = null;
     disconnectTimer = null;
     set(state => state.call ? { call: { ...state.call, phase: 'connected' } } : state);
   };
@@ -199,7 +205,9 @@ export const useCallStore = create<CallState>((set, get) => {
       set({ call: { ...call, phase: 'connecting' } });
       const stream = await getLocalMedia(call);
       const connection = createPeer();
-      await connection.setRemoteDescription(new (getWebRtc().RTCSessionDescription)(payload));
+      const offer = normalizeCallDescription(payload, 'offer');
+      if (!offer) throw new Error('SDP cuộc gọi đến không hợp lệ.');
+      await connection.setRemoteDescription(new (getWebRtc().RTCSessionDescription)(offer as any));
       attachTracks(connection, stream);
       await drainCandidates();
       const answer = await connection.createAnswer();
@@ -216,7 +224,9 @@ export const useCallStore = create<CallState>((set, get) => {
     try {
       const connection = peerConnection;
       if (!connection) return;
-      await connection.setRemoteDescription(new (getWebRtc().RTCSessionDescription)(payload));
+      const answer = normalizeCallDescription(payload, 'answer');
+      if (!answer) throw new Error('SDP trả lời cuộc gọi không hợp lệ.');
+      await connection.setRemoteDescription(new (getWebRtc().RTCSessionDescription)(answer as any));
       await drainCandidates();
     } catch (error) {
       failCall(error);
@@ -225,13 +235,19 @@ export const useCallStore = create<CallState>((set, get) => {
 
   const handleCandidate = async (payload: any) => {
     if (!payload) return;
-    const candidate = new (getWebRtc().RTCIceCandidate)(payload);
-    const connection = peerConnection;
-    if (!connection?.remoteDescription) {
-      remoteCandidates.push(candidate);
-      return;
+    try {
+      const candidatePayload = normalizeCallCandidate(payload);
+      if (!candidatePayload) throw new Error('ICE candidate không hợp lệ.');
+      const candidate = new (getWebRtc().RTCIceCandidate)(candidatePayload as any);
+      const connection = peerConnection;
+      if (!connection?.remoteDescription) {
+        remoteCandidates.push(candidate);
+        return;
+      }
+      await connection.addIceCandidate(candidate).catch(error => failCall(error));
+    } catch (error) {
+      failCall(error);
     }
-    await connection.addIceCandidate(candidate).catch(error => failCall(error));
   };
 
   const startTimeout = () => {
@@ -275,6 +291,8 @@ export const useCallStore = create<CallState>((set, get) => {
     handleInvite(event, peer) {
       if (!event.seq) return;
       if (get().call) {
+        const current = get().call;
+        if (current?.topic === event.topic && current.seq === event.seq) return;
         void tinodeClient.sendCallSignal(event.topic, event.seq, CALL_SIGNAL_EVENTS.HANG_UP).catch(() => {});
         return;
       }

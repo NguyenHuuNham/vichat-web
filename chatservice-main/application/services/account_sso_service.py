@@ -388,7 +388,14 @@ async def _upload_account_avatar(upload):
             503,
             "ACCOUNT_AVATAR_UPLOAD_NOT_CONFIGURED",
         )
-    timeout = aiohttp.ClientTimeout(total=int(app.config.get("ACCOUNT_SSO_TIMEOUT", 10)))
+    timeout = aiohttp.ClientTimeout(
+        total=int(
+            app.config.get(
+                "ACCOUNT_AVATAR_UPLOAD_TIMEOUT",
+                app.config.get("ACCOUNT_SSO_TIMEOUT", 10),
+            )
+        )
+    )
     form = aiohttp.FormData()
     form.add_field(
         "image",
@@ -483,7 +490,22 @@ async def update_account_avatar(request, identity, upload):
             401,
             "ACCOUNT_SESSION_MISMATCH",
         )
-    if not str(updated_identity.get("avatar") or "").strip():
+    confirmed_avatar = str(updated_identity.get("avatar") or "").strip()
+    if confirmed_avatar != avatar_url:
+        # Account may serve a cached /current_user snapshot immediately after
+        # PUT. Re-read the authoritative /me profile once before declaring the
+        # upload unsuccessful.
+        status, fresh_profile = await _account_request(
+            request,
+            "GET",
+            app.config.get("ACCOUNT_SSO_SELF_PROFILE_PATH") or "/me",
+        )
+        fresh_profile = _validate_account_self_profile(status, fresh_profile)
+        _ensure_account_identity_matches(fresh_profile, identity)
+        if str(fresh_profile.get("avatar_url") or fresh_profile.get("avatar") or "").strip() == avatar_url:
+            updated_identity = normalize_account_session(fresh_profile)
+            confirmed_avatar = avatar_url
+    if confirmed_avatar != avatar_url:
         raise AccountSSOError(
             "Account did not confirm the new avatar.",
             502,

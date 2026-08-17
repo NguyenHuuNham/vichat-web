@@ -6,7 +6,7 @@ import { routeMobileCallEvent } from './callStore';
 import { workspaceService } from '../services/workspaceService';
 import { Conversation, ChatMessage, ConnectionState, LinkedDevice, PickerFile, RecallMode, Session, User, WorkspaceItem } from '../types';
 import { storageService } from '../services/storageService';
-import { notifyIncomingMessage, resetPushNotificationRegistration } from '../services/notificationService';
+import { notifyIncomingCall, notifyIncomingMessage, resetPushNotificationRegistration } from '../services/notificationService';
 import { applyPresenceToConversation } from '../utils/tinodeState';
 import { retainAvailableConversations } from '../utils/conversationSync';
 import { canKeepTinodeAvatarAfterProfileRejection } from '../utils/avatarPolicy';
@@ -85,9 +85,10 @@ async function loadRemoteData(set: any, get: () => AppStore) {
   const chatbot = await chatManagementService.listBotConfig();
   const withBot = chatbot.enabled && (chatbot.tinodeUid || chatbot.uid)
     ? [...prepared, {
-      id: 'bot-songhong', managementId: 'bot-songhong', tinodeTopic: String(chatbot.tinodeUid || chatbot.uid),
-      name: chatbot.name || 'Trợ lý AI', isGroup: false, isChatbot: true, avatarUrl: chatbot.avatar || '',
-      messages: [], badge: 0, members: [], participantIds: [], membersCount: 'Trợ lý nội bộ',
+      id: 'vichat-ai', managementId: 'vichat-ai', tinodeTopic: String(chatbot.tinodeUid || chatbot.uid),
+      name: chatbot.name || 'ViChat AI', isGroup: false, isChatbot: true, avatarUrl: chatbot.avatar || '',
+      messages: [], badge: 0, members: [], participantIds: [], membersCount: 'Tra cứu tri thức · Có nguồn kiểm chứng',
+      description: 'Trợ lý AI dùng dữ liệu doanh nghiệp đã được phê duyệt.',
     } as Conversation]
     : prepared;
   const hydratedDirectory = directory.map(user => ({
@@ -160,10 +161,12 @@ async function bootstrapAuthenticated(set: any, get: () => AppStore) {
       } else if (event.type === 'call-invite' || event.type === 'call-signal') {
         const conversation = conversationForId(current.conversations, event.topic);
         const peer = conversation?.members?.find(member => member.uid === event.from || member.id === event.from);
-        routeMobileCallEvent(event, {
+        const callPeer = {
           name: peer?.name || conversation?.name,
           avatar: peer?.avatar || conversation?.avatarUrl,
-        });
+        };
+        routeMobileCallEvent(event, callPeer);
+        if (event.type === 'call-invite') void notifyIncomingCall(event, callPeer);
       }
     });
     await tinodeClient.connect(tinodeAuth, () => authService.refreshTinodeToken());
@@ -370,7 +373,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   async muteConversation(conversationId, until) {
-    const updated = await chatManagementService.updateConversationNotifications(conversationId, until);
+    const conversation = conversationForId(get().conversations, conversationId);
+    if (!conversation) return;
+    const updated = await chatManagementService.updateConversationNotifications(
+      conversation.managementId || conversation.id,
+      until,
+    );
     set({ conversations: mergeConversation(get().conversations, updated) });
   },
 

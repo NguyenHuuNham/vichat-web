@@ -22,6 +22,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Viec tiep theo: Hard refresh ChatUI va UAT mot nhom moi bang danh ba cong ty that; khong co migration hay cau hinh bo sung.
 - Commit/PR: `1b029c9`.
 
+## 2026-08-17-01 - Khac phuc signaling cuoc goi mobile
+
+- Thoi gian: 2026-08-17 00:17 (Asia/Saigon)
+- Loai: Sua loi | Realtime | Kiem thu
+- Trang thai: Hoan tat; chua UAT hai tai khoan that
+- Muc tieu: Khoi phuc loi moi va ket noi cuoc goi thoai/video mobile.
+- Pham vi: Tinode call invite, sequence server, va payload SDP/ICE trong ung dung mobile; giu nguyen luong web va cac luong chat khac.
+- File da thay doi: `mobile/src/services/tinodeClient.ts`, `mobile/src/store/callStore.ts`, `mobile/src/utils/callSignaling.ts`, `mobile/src/utils/callSignaling.test.ts`.
+- Noi dung: Chuyen publish loi moi tu `Topic.publishMessage()` sang `Tinode.publishMessage()` de khong bi SDK 0.25.3 nuot loi PUB va de lay dung sequence do server cap; them thong bao loi co hanh dong va giai ma payload JSON/string/wrapper truoc khi tao SDP/ICE native.
+- Quyet dinh ky thuat: Khong doi signaling protocol, server Tinode, hay cau hinh WebRTC; chi bo sung lop tuong thich mobile theo luong web da co.
+- Database/API/cau hinh: Khong co migration hoac API moi. Tinode van can tra `webrtcEnabled=true` va ICE/TURN; `EXPO_PUBLIC_CALLS_ENABLED` phai la `true`.
+- Kiem thu: `npx vitest run src/utils/callSignaling.test.ts` dat 3/3; `npm run typecheck` dat; `npm run lint` dat; `npm run test:frontend` dat 77/77; `npm run lint` web exit 0 voi warning legacy; `npx vite build --mode production --outDir <thu-muc-tam>` dat; `node scripts/debug_call_signaling.mjs` tra `helloCode=201`, `webrtcEnabled=true` va STUN/TURN. `npm test -- --run` mobile con 1 suite legacy khong parse duoc Flow trong `react-native/index.js` (`workspaceService.test.ts`), 29 test van dat.
+- Rui ro con lai: Chua UAT hai tai khoan that tren browser/mobile vi browser runtime khong co phien kha dung (`agent.browsers.list()` tra `[]`); `.env.local` hien o `VITE_CHAT_MODE=external` nen web local co chu y vo hieu hoa call, khong tu doi de tranh anh huong luong chat external.
+- Viec tiep theo: UAT voice/video 1-1 tren hai tai khoan va hai mang, sau do build/deploy mobile va web theo quy trinh phat hanh.
+- Commit/PR: Chua tao.
+
 ## 2026-08-16-09 - Dinh chinh probe WebRTC authoritative
 
 - Thoi gian: 2026-08-16 21:35 (Asia/Saigon)
@@ -87,6 +103,41 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Viec tiep theo: Dang nhap hai Account user cung tenant tren hai browser/mang, hard refresh, thu voice va video hai chieu, accept/reject/timeout/hang-up va mute micro/camera; neu call bi Tinode tu choi thi dung thong tin loi 401/403/server de sua quyen/cau hinh. Khong can deploy lai tru khi gate UAT that bai.
 - Commit/PR: Code `91bfd82`, build fix `e750c36`; docs deploy record se duoc ghi bo sung trong commit follow-up.
 
+## 2026-08-16-05 - Sua owner roi nhom bi Tinode tu choi
+
+- Thoi gian: 2026-08-16 17:38 (Asia/Saigon)
+- Loai: Sua loi | Web | Realtime | Phan quyen | Kiem thu
+- Trang thai: Da deploy production; chua UAT bang tai khoan that
+- Muc tieu: Khi owner bam `Roi khoi nhom`, thao tac phai xoa membership that, khong hien thong bao roi nhom gia khi Tinode tu choi.
+- Pham vi: Chatmgt/Tinode transfer owner va ChatUI group leave/delete; giu nguyen schema, API endpoint, mobile va cac luong tin nhan khac.
+- Noi dung: Tinode yeu cau thanh vien moi chap nhan quyen `O` bang phien cua chinh thanh vien do truoc khi owner cu co the `leave`. Chatmgt thuc hien grant -> accept -> remove, publish su kien `member_left` bang tai khoan con lai sau khi commit; ChatUI khong publish su kien truoc endpoint management nua. Them bao toan loi Tinode chi tiet va rollback owner transfer khi buoc sau that bai.
+- Quyet dinh ky thuat: Khong de frontend tu dong song song hai nguon membership; Chatmgt van la transaction coordinator. Su kien nhom la best-effort sau commit, vi loi phat su kien khong duoc lam rollback membership da thanh cong.
+- Database/API/cau hinh: Khong migration, khong doi endpoint/payload/bien moi truong.
+- Kiem thu: Local `python -m unittest discover -s chatservice-main/tests -q` dat 152 test, skip 49; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 33/33; `npm run test:frontend` dat 73/73; `npm run lint` exit 0 voi warning legacy/worktree co san; Vite production build vao thu muc tam dat; `python -m py_compile` va `git diff --check` dat. Trong image production, Tinode bridge dat 14/14 va Chatmgt contract dat 33/33. Full image suite con 3 loi contract chatbot cu (`test_external_chatbot_contract` 2, `test_tinode_chatbot_webhook` 1), khong lien quan owner leave.
+- Trien khai: Release `/opt/deploy/chat/releases/owner-leave-20260816-1742`; symlink `current` da tro release moi. Image Chatmgt `sha256:e59fbee03eab86a7c2926e6e675b1f7000d7dcfc94e02cff5e8a5373594636a5`, container `a6e65c1f0074`; image ChatUI `sha256:1d17c245496608b1303b3601c8d8cd0ca967ccb6af5ba43005b10b410b895a94`, container `fd4c670478b0`. Rollback tag Chatmgt `songhong-production-chatmgt:rollback-before-owner-leave-20260816-1742` (image `sha256:4cf465bdccff5fa9a246dd4d973e1a2be3d42c6715dbc26a2827f6fe9e36bfd3`); rollback tag ChatUI `songhong-production-chat:rollback-before-owner-leave-20260816-1742` (image `sha256:6e6bbea4bc27b77cadce50fe65eec19dcc8076f54b436f0e6911513741a4e694`).
+- Kiem thu production: `https://chatmgt.upgo.vn/api/v1/auth/health`, `https://chat.upgo.vn/healthz` va `https://chatmgt.upgo.vn/api/v1/chatbot/health` deu tra HTTP 200; hai container moi healthy; log 3 phut sau recreate khong co traceback/panic/fatal/critical/emerg/error. Tinode bridge, worker, ChatAPI, PostgreSQL, Redis va Coturn giu nguyen container ID.
+- Rui ro con lai: Can UAT bang tai khoan owner va it nhat mot thanh vien trong cung nhom; nhom chi con owner khong co nguoi nhan su kien de hien activity.
+- Viec tiep theo: Hard refresh ChatUI, dung hai tai khoan that cho owner roi nhom va xac nhan thanh vien duoc chon co quyen quan tri/xoa thanh vien; neu gate loi thi dung rollback tag da ghi.
+- Commit/PR: Chua tao.
+
+## 2026-08-16-04 - Ban giao quan tri vien ngau nhien khi owner roi nhom
+
+- Thoi gian: 2026-08-16 17:06 (Asia/Saigon)
+- Loai: Tinh nang | Sua loi | Web | Phan quyen | Kiem thu
+- Trang thai: Da deploy production; chua UAT bang tai khoan that
+- Muc tieu: Khi quan tri vien/owner roi nhom, mot thanh vien active con lai bat ky tiep quan tri vien voi dung quyen hien co.
+- Pham vi: Chatmgt owner transfer khi roi group va group store cua che do demo local; giu nguyen API, Tinode mode, mobile va cac luong khac.
+- File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/features/demo/services/demoGroupStore.js`, `docs/CHANGELOG.md`.
+- Noi dung: Thay cach chon thanh vien tham gia som nhat bang `func.random()` tren danh sach thanh vien active con lai. Backend van gan role `OWNER` va cap lai Tinode mode `JRWPASO`; demo local cung chon ngau nhien mot lan khi owner roi hoac xoa khoi nhom va luu lai owner moi.
+- Quyet dinh ky thuat: Chon ngau nhien tai backend de moi client dung cung mot owner va khong de frontend tu suy dien quyen. Khong doi rang buoc ai duoc them/xoa thanh vien hoac quyen cua owner moi.
+- Database/API/cau hinh: Khong migration, khong doi endpoint/schema/bien moi truong.
+- Kiem thu: `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -v` dat 33/33; `python -m unittest discover -s chatservice-main/tests -q` dat 150 test, skip 47; `npm run test:frontend` dat 73/73; `npm run lint` exit 0 voi cac warning legacy/worktree co san; `node --check src/features/demo/services/demoGroupStore.js`; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/tests/test_chat_auth_contract.py`; `git diff --check` deu dat.
+- Kiem thu production: Release `owner-transfer-20260816-171635` build thanh cong; Compose `config --no-interpolate -q` dat; contract group membership trong image dat 1/1; selector `func.random()` da xac nhan trong source image; `https://chatmgt.upgo.vn/api/v1/auth/health`, `https://chat.upgo.vn/healthz` va chatbot health deu tra thanh cong; log `chatmgt` 2 phut sau recreate co 0 mau `traceback/panic/fatal/critical/emerg/exception/error`. Full `python -m unittest discover -s tests -q` trong image chua dat do 9 test tich hop Tinode/external-chatbot bao `ERROR`, khong lien quan selector owner-transfer.
+- Trien khai: Release `/opt/deploy/chat/releases/owner-transfer-20260816-171635`; image Chatmgt `sha256:267ee4f19e789a16698c1e12fbd1e61fff181ccc211327a02eb6e9a8c4e37653`, container `13e2675aa495`; rollback tag `songhong-production-chatmgt:rollback-before-owner-transfer-20260816-171635` tro image cu `sha256:49b210041f9f765ee8cf20cbfe841dc1fe2cb9ba7dc4b86201e235578b9d1db2`; symlink `current` da tro release moi; chi recreate `chatmgt`, giu nguyen ChatUI, Tinode bridge/chatbot, ChatAPI, PostgreSQL, Redis va Coturn.
+- Rui ro con lai: Chua UAT viec owner roi nhom bang hai tai khoan that; full image suite van con 9 test tich hop Tinode/external-chatbot loi nhu tren.
+- Viec tiep theo: Hard refresh ChatUI, dung hai tai khoan trong cung tenant, cho owner roi nhom va xac nhan mot thanh vien con lai co the quan tri/xoa thanh vien; neu gate loi thi dung rollback tag da ghi.
+- Commit/PR: Chua tao.
+
 ## 2026-08-16-03 - Hien dung quan tri vien va quyen xoa thanh vien nhom
 
 - Thoi gian: 2026-08-16 14:51 (Asia/Saigon)
@@ -138,6 +189,178 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Van hanh: Hai lan gate chuyen thu truoc tu dong rollback an toan (mot lan do cu phap `grep` BusyBox, mot lan do public health race); lan cuoi dung retry lien tiep va chi cap nhat `current` sau khi health, bundle va container-preservation deu dat.
 - Trien khai: Release `/opt/deploy/chat/releases/chatui-conversation-sync-20260816-014503`; image ChatUI `sha256:86d7ad8e0a7fa5de07d797e721dca8190efcfbf29fc85c94d883b73042d4de2c`, container `2823b6f73184`; rollback tag giu image cu `sha256:673f86e7b6af9456328f3212e5ac9ccef47be9b8f41d5ce4276f6d69fc57e659`; chi recreate `chat`, Chatmgt `3f2ef755c041`, bridge `d62dce7b5d00`, ChatAPI `8476615ad4ac`, hai PostgreSQL, Redis va Coturn giu nguyen container ID; symlink `current` da tro release moi; khong migration, reset volume, topic hay message.
 - Commit/PR: `c972e57` (focused web/realtime fix; cac thay doi khac trong worktree khong nam trong commit nay).
+
+## 2026-08-14-04 - Sua retry media protected tren ChatUI web
+
+- Thoi gian: 2026-08-14 12:20 (Asia/Saigon)
+- Loai: Sua loi | Web | Realtime | Kiem thu | Van hanh
+- Trang thai: Da deploy production; chua UAT media voi tai khoan trinh duyet that
+- Muc tieu: Khong de xem/tai file va anh dai dien tren web bi ket thuc loi khi token Tinode ngan han het han.
+- Pham vi: ChatUI web protected media; giu nguyen mobile, Chatmgt, Tinode contract, database, chatbot va cac luong dang hoat dong.
+- File da thay doi: `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/mediaRetryPolicy.js`, `src/features/chat/services/mediaRetryPolicy.test.js`, `package.json`.
+- Noi dung: Hop nhat request media cho avatar, xem file va tai file; khi relay tra `401/403`, web xin token Tinode moi qua provider da co va thu lai dung mot lan. `404`, loi mang va loi server khac khong retry.
+- Quyet dinh ky thuat: Tach policy retry thanh helper pure de test duoc va khong lap request; khong doi cache, URL relay, auth contract hay session lifetime.
+- Database/API/cau hinh: Khong migration, khong doi API/schema/bien moi truong.
+- Kiem thu: `node --test src/features/chat/services/mediaRetryPolicy.test.js` dat 3/3; `npm run test:frontend` dat 66/66; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` dat; `git diff --check` dat. Remote build lan dau dung lai an toan vi source local co export `messagePolicy` chua co trong snapshot production; build lai tu baseline production voi patch media toi thieu dat. Sau deploy: `https://chat.upgo.vn/healthz` 200, Chatmgt auth health 200, chatbot health 200, `vichat-ai.svg` 200/1081 bytes, media relay file thieu 403, Tinode WSS hello 201 voi STUN/TURN, container `chat` healthy, log 5 phut khong co traceback/panic/fatal/critical/emerg/error.
+- Rui ro con lai: Chua UAT giao dien bang browser dang nhap that do browser runtime tich hop khong khoi tao duoc; file Tinode da bi xoa that van tra 404; chua co commit/PR cho worktree hien tai.
+- Viec tiep theo: Hard refresh web, dang nhap tai khoan that va thu xem/tai mot file protected sau khi token het han; neu gap loi thi rollback tag `songhong-production-chat:rollback-before-chatui-media-retry-20260814` va tro `current` ve release truoc.
+- Trien khai: Release `/opt/deploy/chat/releases/chatui-media-retry-20260814-1225`; image ChatUI `sha256:673f86e7b6af9456328f3212e5ac9ccef47be9b8f41d5ce4276f6d69fc57e659`, container `4e39ce527125`; rollback tag giu image cu `sha256:ce781b55c98a8f52dc484cad3a790c37fc320c0015b0dea165609d2d102bb080`; chi recreate `chat`, cac container Chatmgt/Tinode/worker/database/Redis/Coturn giu nguyen ID; symlink `current` da tro release moi.
+- Commit/PR: Chua tao.
+
+## 2026-08-14-03 - Tao local Q&A bridge cho Knowledge API va LLM
+
+- Thoi gian: 2026-08-14 10:30 (Asia/Saigon)
+- Loai: Tinh nang | API | Bao mat | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code, local model/API va public tunnel da smoke-test thanh cong; khong phai dich vu 24/7
+- Muc tieu: Cho phep dich vu Knowledge/Q&A cua doi tac goi vao may Windows cua nguoi dung de nhan cau tra loi do LLM local sinh ra, khong deploy them len VPS.
+- Pham vi: Local HTTP bridge `POST /api/ask`, contract request/response, token auth, Knowledge API adapter, Ollama/OpenAI-compatible local model adapter va huong dan chay workstation; khong thay doi Tinode production, Chatmgt production hay luong chat nhan vien.
+- File da thay doi: `scripts/local_vichat_ai_api.py`, `scripts/start-local-vichat-api.ps1`, `scripts/start-local-vichat-llm.ps1`, `scripts/start-local-vichat-tunnel.ps1`, `scripts/allow-local-vichat-api-firewall.ps1`, `.env.local-ai-api.example`, `docs/local-ai-api.md`, `docs/chat-backend-architecture.md`, `.gitignore`, `chatservice-main/tests/test_local_vichat_ai_api.py`.
+- Noi dung: Bridge chap nhan `question`, `query` hoac `message`, gui `message` va `top_k` toi Knowledge API, sau do dung model local (mac dinh Ollama `qwen2.5:1.5b`) de tong hop. Response tra ca `answer` va `reply`, kem `grounded` va nguon da gioi han. Token vao duoc chap nhan qua `X-Local-AI-Token`, `Authorization: Bearer` hoac `X-API-Key`; khong log token/API key. Tunnel launcher tu nhan ban `cloudflared` portable tai `D:\ViChatLocalAI\bin\cloudflared.exe` de truy cap tu ngoai LAN ma khong dua AI len VPS. Them launcher llama.cpp portable cho Qwen 1.5B tren o D va gioi han output token de tranh request treo. Huong dan Windows neu ro phai `Set-Location` vao repo truoc khi goi script.
+- Quyet dinh ky thuat: Dung Python standard library de chay tren may Windows hien tai khong can them framework server; cho phep upstream tra answer san hoac chi tra sources; khong cho port 8000 public mac dinh va khong tu dong mo firewall.
+- Database/API/cau hinh: Them file mau `.env.local-ai-api` (ignored) voi URL/key Knowledge, URL/model LLM, token vao va port 8000. Khong migration, khong them secret vao Git, khong deploy VPS.
+- Kiem thu: `python -m py_compile scripts/local_vichat_ai_api.py chatservice-main/tests/test_local_vichat_ai_api.py` dat; `python -m unittest chatservice-main/tests/test_local_vichat_ai_api.py -v` dat 6/6; `python -m unittest discover -s chatservice-main/tests -q` dat 149 test, skip 47; HTTP contract test xac nhan token sai tra 401 va alias `query` tra `answer`/`reply`; probe Knowledge API that bang credential ngoai Git tra HTTP 200 voi 5 source va bridge chuan hoa `grounded=true`; cloudflared `2026.8.1` tao quick HTTPS tunnel va smoke request den `/api/ask` tra `answer`/`reply` sau khi xac thuc token; llama.cpp health `200`, OpenAI-compatible local completion `200`, va public ngrok POST tra `200` voi 5 source/answer.
+- Rui ro con lai: Cac cua so llama-server, bridge va ngrok phai cung duoc giu mo; quick-tunnel URL doi moi lan khoi dong va khong co uptime bao dam; model CPU tra loi co the mat khoang 18 giay/cau; named tunnel/domain can cau hinh Cloudflare rieng.
+- Viec tiep theo: Moi phien bat `scripts/start-local-vichat-llm.ps1`, `scripts/start-local-vichat-api.ps1` va ngrok; gui URL tunnel moi cung local token cho doi tac. Neu can URL co dinh, cau hinh named tunnel/domain.
+- Commit/PR: Chua tao.
+
+## 2026-08-14-02 - Trien khai ViChat AI retrieval-only len production
+
+- Thoi gian: 2026-08-14 02:06 (Asia/Saigon)
+- Loai: Tinh nang | Bao mat | Web | Mobile | Van hanh | Kiem thu | Tai lieu
+- Trang thai: Da deploy production; chua UAT chat tu tai khoan trinh duyet/mobile
+- Muc tieu: Dua ban ViChat AI co nguon vao production, dung Knowledge AI retrieval-only qua ranh gioi server-side.
+- Pham vi: Chatmgt provider adapter, Tinode chatbot worker, ChatUI/mobile chatbot surface, production Compose/Dockerfile va cau hinh display; khong migration, khong reset database/volume/topic/message, khong doi auth/SSO, chat nhan vien, group, file, call hay Workspace.
+- Quyet dinh ky thuat: Tao release bat bien tu snapshot production `05004d6`, backup env/database/container state truoc recreate, chi cap nhat endpoint Knowledge AI, header `X-API-Key`, request mode retrieval, API key server-side va nhan dien `ViChat AI`; giu nguyen cac secret runtime khac.
+- Bao mat: Provider nhan toi thieu `message` va `top_k`; khong gui API key, lich su, conversation ID, danh tinh nhan vien hay context noi bo; archive deploy khong chua `.env`, key, `.git`, `node_modules` hoac `dist`.
+- Kiem thu local snapshot: `npm run test:frontend` 60/60; `npm run lint` exit 0 (warning legacy/vendor); `npm run build:production` dat; backend `python -m unittest discover -s chatservice-main/tests -q` 136 test, skip 45; `py_compile` dat; mobile typecheck/lint dat; focused Vitest 3/3; `git diff --check` dat truoc build artifact; Compose config voi env production hien tai dat.
+- Kiem thu production: Release `/opt/deploy/chat/releases/vichat-ai-20260814-020607`; `https://chat.upgo.vn/healthz` HTTP 200; public chatbot health bao `enabled=true`, `provider_configured=true`, `request_mode=knowledge-retrieval`; worker `/healthz` `status=ok`, `connected=true`; Knowledge AI probe tu container HTTP 200 voi 5 source; avatar `/vichat-ai.svg` HTTP 200/1081 bytes; bundle co marker `ViChat AI` va `vichat-ai`; image/container: `chatmgt` `sha256:49b210041f9f765ee8cf20cbfe841dc1fe2cb9ba7dc4b86201e235578b9d1db2` / `3f2ef755c041`, worker `sha256:6b6790f3e38f42277ed8dfee28cca35c7316216dc45b1d4eeb7c385e33af2797` / `2ba71cde63df`, ChatUI `sha256:ce781b55c98a8f52dc484cad3a790c37fc320c0015b0dea165609d2d102bb080` / `df79997bf387`; backup `/opt/deploy/chat/backups/vichat-ai-20260814-020607` gom env mode `600`, runtime va `chat-postgres.dump` 92421 bytes; rollback tags da tao cho ba image. Chatmgt, worker va ChatUI logs 5 phut sau deploy khong co traceback/panic/fatal/critical/emerg/error.
+- Rui ro con lai: Browser runtime khong co san nen chua UAT dang nhap cau co nguon/cau khong co nguon tren web/mobile; can hard refresh va smoke test cac luong chat khac.
+- Viec tiep theo: Hard refresh va UAT mot cau co nguon, mot cau khong co nguon tren tai khoan that web/mobile; neu health gate loi, tro `current` ve release `05004d6` va khoi phuc env backup; khong xoa volume/database/topic/message.
+
+## 2026-08-14-01 - Thay chatbot cu bang trai nghiem ViChat AI co nguon
+
+- Thoi gian: 2026-08-14 00:43 (Asia/Saigon)
+- Loai: Tinh nang | Giao dien | API | Bao mat | Web | Mobile | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code va kiem thu local; chua deploy/UAT voi tai khoan va API key production
+- Muc tieu: Thay nhan dien chatbot Song Hong cu bang ViChat AI dong nhat, de tra cuu tri thuc de dung va de kiem chung tren ca web/mobile ma khong doi cac luong chat khac.
+- Pham vi: Chatbot UI/service web, UI Tinode mobile, metadata nguon qua worker/Chatmgt, cau hinh hien thi va tai lieu; khong sua auth/SSO, chat nhan vien 1-1, nhom, file, call, Workspace, schema database hoac Tinode topic/message ownership.
+- File da thay doi: `public/vichat-ai.svg`, `scripts/build-production.mjs`, `src/app/App.jsx`, `src/styles/index.css`, `src/features/chatbot/`, `src/features/chat/services/tinodeClient.js`, `chatservice-main/application/services/chatbot_service.py`, `chatservice-main/application/controllers/api_chatbot.py`, `chatservice-main/application/services/chat_manager_service.py`, `chatservice-main/application/services/tinode_chatbot_service.py`, `chatservice-main/scripts/tinode_chatbot_webhook.py`, `chatservice-main/knowledge/songhong-default.json`, cac test chatbot, `mobile/src/store/appStore.ts`, `mobile/src/screens/chat/ChatDetailScreen.tsx`, `mobile/src/components/MessageBubble.tsx`, `mobile/src/services/tinodeClient.ts`, `mobile/src/types/index.ts`, cac env/Compose/Dockerfile example, `docs/chat-backend-architecture.md` va muc nhat ky nay.
+- Noi dung: Doi bot mac dinh thanh `ViChat AI` voi ID client `vichat-ai`, avatar rieng, mo ta tro ly tri thuc, man hinh chao, ba cau hoi goi y, strip trang thai rieng tu/nguon, composer rieng va giao dien answer card tren web/mobile. Xoa component `KnowledgeManager` va cac ham CRUD knowledge legacy khoi frontend. Retrieval reply nay tom tat cac snippet theo thu tu, khong lap nhan nguon trong text; source card hien title/snippet rieng. Chatmgt luu `grounded`/`sources` voi history, worker gui toi da nam source da cat gon qua Tinode header de web va mobile render nhat quan, ke ca khi replay duplicate. Production build defaults cung dung ViChat AI; history API va localStorage doc alias `bot-songhong` khi key moi chua co du lieu de khong an lich su fallback cu.
+- Quyet dinh ky thuat: Giu Knowledge AI la retrieval-only va khong gia lap cau tra loi generative khi khong co tai lieu; truong hop khong match yeu cau user bo sung tu khoa. Chi metadata trinh bay co gioi han di qua Tinode header; API key, danh tinh nhan vien, lich su rieng, conversation ID va context noi bo van khong gui toi provider. Tinode UID runtime van do server cap, con `vichat-ai` chi la ID UI/fallback on dinh.
+- Database/API/cau hinh: Khong migration/schema va khong them endpoint. Response webhook/fallback bo sung `sources` va `grounded`; history properties luu cung metadata. Dong bo defaults `TINODE_CHATBOT_DISPLAY_NAME=ViChat AI`, title, avatar public va fallback message; production van phai dien `CHATBOT_API_KEY` trong secret `.env` ngoai Git, khong co secret nao duoc ghi vao source/nhat ky.
+- Kiem thu: `npm run test:frontend` dat 63/63; `npm run lint` exit 0 voi warning legacy/vendor/worktree co san; `npm run build:production` dat; `python -m unittest chatservice-main/tests/test_chatbot_webhook_provider.py chatservice-main/tests/test_tinode_chatbot_webhook.py -v` dat 18/18; `python -m unittest discover -s chatservice-main/tests -q` dat 143 test, skip 47; `python -m py_compile chatservice-main/application/services/chatbot_service.py chatservice-main/application/controllers/api_chatbot.py chatservice-main/scripts/tinode_chatbot_webhook.py` dat; mobile `npm run typecheck` va `npm run lint` dat; `mobile/npx vitest run src/utils/mediaUrl.test.ts` dat 3/3; production Compose `config --no-interpolate -q` dat; `node --check scripts/build-production.mjs` va `git diff --check` dat.
+- Rui ro con lai: Chua co production `CHATBOT_API_KEY` trong workspace, chua UAT response that tren hai tai khoan web/mobile va chua xac minh truc quan tren browser dang nhap production. Retrieval-only van chi tong hop snippet tim duoc, khong thay the mot LLM suy luan tong quat.
+- Viec tiep theo: Dien secret Knowledge AI trong `.env` production mode `0600`, rebuild/recreate `chatmgt`, `tinode-chatbot-webhook` va ChatUI, cai lai mobile neu muon nhan UI moi; sau do UAT mot cau co nguon, mot cau khong co nguon va kiem tra nhanh direct/group/file/call khong doi.
+- Commit/PR: Chua tao.
+
+## 2026-08-13-09 - Ket noi Knowledge AI retrieval cho chatbot web va mobile
+
+- Thoi gian: 2026-08-13 17:23 (Asia/Saigon)
+- Loai: Tinh nang | Sua loi | API | Bao mat | Web | Mobile | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code va kiem thu local; chua deploy/UAT noi dung AI voi API key production
+- Muc tieu: Lam cho tro ly AI dung dung endpoint Knowledge AI dang chay, thay vi goi hostname cu tra `404`, dong thoi giu mot hop dong chung cho web va mobile qua Tinode/Chatmgt.
+- Pham vi: Chatmgt provider adapter, health/config contract, production va local Compose/env example, tai lieu API/kien truc, regression tests; giu nguyen UI Chatbot, Tinode worker, tenant mapping, history/idempotency, chat nhan vien, file, call va database schema.
+- Noi dung: Xac minh thuc te `knowledge.gonapp.net/api/v1/chat` tra `404`, con `knowledge-ai.gonapp.net/api/v1/chat` tra `401` va OpenAPI cong khai xac nhan day la API retrieval-only yeu cau `X-API-Key`, nhan `{message, top_k}` va tra `sources[].snippet`. Them `CHATBOT_EXTERNAL_REQUEST_MODE=knowledge-retrieval`; adapter server-side bat buoc `CHATBOT_API_KEY`, gui payload toi thieu khong kem user/history/conversation ID, gioi han `top_k` 1-20, chuan hoa snippets thanh reply co nguon cho ca fallback HTTP va Tinode worker. Health hien thi request mode va provider readiness; key khong bao gio vao browser/mobile.
+- Quyet dinh ky thuat: Khong gia lap truong `reply` ma Knowledge AI khong co; hien thi snippets co nhan nguon de bao toan tinh trung thuc retrieval-only. Cac mode external webhook cu van duoc giu tuong thich khi `CHATBOT_EXTERNAL_REQUEST_MODE=chat`; local KnowledgeService va external partner data API khong bi xoa.
+- Database/API/cau hinh: Khong migration/schema. Doi mac dinh URL sang `https://knowledge-ai.gonapp.net/api/v1/chat`, header `X-API-Key`, request mode retrieval trong `infrastructure/production/compose.yaml`, `infrastructure/chatservice/compose.yaml` va cac env example. Production `.env` that khong nam trong workspace; can dien key Knowledge AI server-side truoc khi recreate Chatmgt/worker.
+- Kiem thu: Probe DNS/HTTPS: hostname cu `404`, hostname moi `401` khi thieu key; `openapi.json` `200`, xac nhan schema/response retrieval-only. `python -m unittest chatservice-main/tests/test_chatbot_webhook_provider.py chatservice-main/tests/test_external_chatbot_contract.py chatservice-main/tests/test_tinode_chatbot_webhook.py -v` dat 23/23; `python -m unittest discover -s chatservice-main/tests -q` dat 142 test, skip 47; `npm run test:frontend` dat 60/60; `mobile/npm run typecheck` dat; `mobile/npm run lint` dat; `docker compose -f infrastructure/production/compose.yaml config --no-interpolate -q` dat; Compose local dat; `python -m py_compile ...`, `node --check scripts/debug_call_signaling.mjs` va `git diff --check` dat.
+- Rui ro con lai: Chua co `CHATBOT_API_KEY` production trong workspace nen chua goi duoc API moi voi credential that, chua xac minh chat answer tren hai tai khoan web/mobile, va chua UAT worker Tinode reconnect/push. Retrieval-only khong tu sinh cau tra loi generative; neu muon cau tra loi tu nhien can them LLM provider server-side sau nay.
+- Viec tiep theo: Dien key trong secret manager/.env `0600`, recreate rieng `chatmgt` va `tinode-chatbot-webhook`, kiem tra `/api/v1/chatbot/health` bao `enabled=true`/`provider_configured=true`, sau do UAT mot cau hoi co tai lieu va mot cau hoi khong co tai lieu tren web + mobile. Khong commit secret, khong deploy cac service khac.
+- Commit/PR: Chua tao.
+
+## 2026-08-13-08 - Dong goi APK day du sau sua media protected mobile
+
+- Thoi gian: 2026-08-13 16:52 (Asia/Saigon)
+- Loai: Phat hanh noi bo | Mobile | Kiem thu | Tai lieu
+- Trang thai: Hoan tat APK tu ma hien tai va kiem tra tinh toan ven; chua UAT hai tai khoan that
+- Muc tieu: Tao lai APK arm64 sau bo sung retry Tinode token cho protected media mobile, de ban cai thu nghiem chua day du cac sua loi mute/xoa, recall anh, xem anh, avatar va voice/video call thay vi dung artifact build truoc thay doi moi nhat.
+- Pham vi: Expo Android prebuild, Gradle release arm64, artifact `outputs/vichat-mobile/ViChat-1.0.11-full-fixes-arm64.apk` va nhat ky; khong sua them logic production, khong ghi de APK cu, khong cham cac thay doi `dist/`, file phan tich hoac worktree phu.
+- Noi dung: Tao lai native Android tu `mobile/app.json`, xac nhan manifest sinh ra co ca camera va micro, build release arm64 tu worktree hien tai, sau do sao chep thanh artifact moi co ten rieng. APK chua cac thay doi retry protected image/file `401/403` moi nhat cung toan bo sua loi cross-client da duoc ghi tai cac muc truoc.
+- Quyet dinh ky thuat: Giu version `1.0.11`/code `12` vi khong thay doi contract phat hanh ke tu artifact truoc; artifact dung Android Debug signer chi de cai thu nghiem noi bo. Khong commit TURN credential, khong them STUN public fallback va khong tuyen bo call production hoan tat truoc UAT hai mang.
+- Database/API/cau hinh: Khong migration, khong doi endpoint/schema/cau hinh trong buoc dong goi nay.
+- Kiem thu: Truoc build, `npm run test:frontend` dat 60/60; `python -m unittest discover -s chatservice-main/tests -q` dat 138 test, skip 47; `mobile/npm run typecheck` dat; `mobile/npm run lint` dat; focused mobile Vitest 5 file/16 test dat; `git diff --check` dat. Trong buoc dong goi, `npx expo prebuild --platform android --no-install` dat; Gradle `app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon --offline` sinh APK `47,713,444` byte; `aapt` xac nhan package `vn.upgo.vichat`, version `1.0.11`/code `12`, min SDK 24, target SDK 36, ABI `arm64-v8a`, quyen `CAMERA` va `RECORD_AUDIO`; `apksigner verify --verbose --print-certs` dat APK Signature Scheme v2 voi Android Debug signer; `zipalign -c -v 4` dat; SHA-256 `E6E8052928FCBC487C8786E7AB0E55E388E26F3B62753A8F075A3E9668A82F7D`.
+- Rui ro con lai: Chua cai APK tren thiet bi that va chua UAT hai tai khoan Web-Mobile tren hai mang cho voice/video hai chieu, TURN, mute/xoa, recall `self`/`all`, protected media va avatar. Push khi app bi kill van phu thuoc Firebase/APNs va Tinode provider; APK arm64/debug signer khong phai artifact Play Store.
+- Viec tiep theo: Cai artifact moi tren Android arm64, cap quyen camera/micro va chay checklist UAT bat buoc; chi commit/push/deploy khi duoc phep.
+- Commit/PR: Chua tao.
+
+## 2026-08-13-07 - Bo sung retry token media mobile va chot kiem thu local
+
+- Thoi gian: 2026-08-13 15:58 (Asia/Saigon)
+- Loai: Sua loi | Media | Mobile | Realtime | Kiem thu
+- Trang thai: Hoan tat code va kiem thu local; chua UAT hai tai khoan that
+- Muc tieu: Khong de anh/file protected tren mobile tiep tuc loi khi Tinode token ngan han da het han, dong thoi ghi nhat ket qua kiem thu thuc te cua toan bo nhom sua loi mute/xoa, recall, avatar va call.
+- Pham vi: `mobile/src/services/tinodeClient.ts`, `mobile/src/utils/mediaRetryPolicy.ts` va test retry tai media mot lan sau khi download bi tu choi `401/403`, cap nhat tai lieu kien truc/changelog; giu nguyen hop dong Tinode, Chatmgt, database, chatbot va cac artifact `dist/` co san.
+- Noi dung: Mobile dung `tokenProvider` de lay Tinode token moi, cap nhat auth token trong SDK, roi thu lai cung URL protected media mot lan. Loi mang, file khong ton tai hoac ma HTTP khac van duoc tra ve nhu cu; cache key van tach theo token/version de khong hien anh cu sau khi doi avatar.
+- Quyet dinh ky thuat: Retry chi xay ra voi `401/403` va toi da mot lan, tranh vong lap/lam cham cac loi khac. ICE/TURN van lay tu Tinode, khong them STUN fallback cong cong.
+- Database/API/cau hinh: Khong migration, khong doi endpoint hay schema.
+- Kiem thu: `npm run test:frontend` dat 60/60; `python -m unittest discover -s chatservice-main/tests -q` dat 138 test, skip 47; `mobile/npm run typecheck` dat; `mobile/npm run lint` dat; focused mobile Vitest 5 file/16 test dat; `node --check scripts/debug_call_signaling.mjs` dat; `git diff --check` dat.
+- Rui ro con lai: Chua UAT hai tai khoan Web-Mobile tren hai mang, chua xac minh media retry voi HTTP 401/403 tu thiet bi that; full `mobile/npm test` van co test legacy `workspaceService.test.ts` khong parse Flow trong `react-native/index.js`.
+- Viec tiep theo: Cai APK `1.0.11`, dang nhap hai tai khoan va UAT mute/xoa/recall anh/avatar va audio-video hai chieu; chi deploy khi duoc phep.
+- Commit/PR: Chua tao.
+
+## 2026-08-13-06 - Dong bo recall self va don notification call foreground
+
+- Thoi gian: 2026-08-13 15:35 (Asia/Saigon)
+- Loai: Sua loi | Realtime | Web | Mobile | Kiem thu
+- Trang thai: Hoan tat code va kiem thu local; chua UAT hai tai khoan that
+- Muc tieu: Bao dam `Thu hoi phia toi` tren web bien mat ngay va khong bi placeholder optimistic giu lai trong luc cho snapshot Tinode; dong thoi don notification cuoc goi neu invite den khi mobile da foreground.
+- Pham vi: State ChatUI sau khi Tinode xac nhan recall `self`, cleanup notification call foreground tren mobile, regression test va nhat ky; khong thay doi event recall, message publish, recall `all`, backend, database, chatbot hay cac artifact `dist/` co san.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `mobile/src/services/notificationService.ts`, `docs/CHANGELOG.md`.
+- Noi dung: Sau khi publish event `mode=self` thanh cong, ChatUI loai tin theo ca `id` va `seq`, cap nhat preview/thoi gian cuoc tro chuyen tu tin con lai va dung lai nhanh xu ly. `mode=all` van giu placeholder `Tin nhan da duoc thu hoi`; snapshot Tinode tiep tuc la nguon chuan cho cac lan dong bo sau. Mobile cung don notification cuoc goi cung topic/sequence neu invite den dung luc app da active, tranh de thong bao OS treo sau khi overlay foreground da hien.
+- Quyet dinh ky thuat: Chi optimistic-remove sau khi Tinode da xac nhan, khong an truoc request de tranh mat tin khi publish that bai. Khong doi materializer hay contract recall cross-client.
+- Database/API/cau hinh: Khong co.
+- Kiem thu: `npm run test:frontend` dat 60/60; `python -m unittest discover -s chatservice-main/tests -q` dat 138 test, skip 47; mobile `npm run typecheck` dat; mobile `npm run lint` dat; focused mobile Vitest 4 file/14 test dat; `node --check scripts/debug_call_signaling.mjs` dat; `git diff --check` dat. Root lint/build va APK da co ket qua tai muc `2026-08-13-05`; khong chay lai build de giu nguyen artifact `dist/` co san cua nguoi dung.
+- Rui ro con lai: Chua UAT hai Account tren web-mobile de quan sat recall anh/tin nhan thuc te va snapshot cross-client.
+- Viec tiep theo: Cai APK `1.0.11`, deploy web/backend hien tai neu duoc phep, sau do UAT mute/xoa/recall/media/avatar va audio-video hai chieu.
+- Commit/PR: Chua tao.
+
+## 2026-08-13-05 - Khoi phuc quyen micro Android va chot APK goi dien 1.0.11
+
+- Thoi gian: 2026-08-13 14:48 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Phat hanh | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code, cau hinh va APK test noi bo; chua UAT hai tai khoan that
+- Muc tieu: Bao dam ban Android phat hanh co quyen micro/camera that de voice/video call co the khoi tao media, dong thoi chot lai cac sua loi mute/xoa, recall/media web-mobile va avatar ma khong thay doi luong chat/chatbot dang on dinh.
+- Pham vi: Native Android generated manifest va phien ban mobile, APK arm64, kiem thu web/mobile/backend, tai lieu release; giu nguyen message publish, chatbot, database/schema va cac thay doi `dist/`/artifact co san cua nguoi dung.
+- File da thay doi: `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`, generated `mobile/android/app/src/main/AndroidManifest.xml`, `mobile/README.md`, `docs/chat-backend-architecture.md`, va `docs/CHANGELOG.md`; APK `outputs/vichat-mobile/ViChat-1.0.11-call-permissions-arm64.apk`.
+- Noi dung: Phat hien APK `1.0.10` bi generated native manifest cu ghi de `android.permission.RECORD_AUDIO` bang `tools:node=\"remove\"`, nen JavaScript/WebRTC van chay nhung Android khong the cap micro. Da chay lai Expo prebuild de materialize ca `CAMERA` va `RECORD_AUDIO`, tang mobile len `1.0.11`/Android `versionCode=12`, va tao APK arm64 co du hai quyen. Cac ban sua truoc do van giu dung pham vi: thao tac mute/xoa dung Chatmgt `managementId`, recall web loc message `null` truoc sort, Tinode media web refresh token mot lan khi `401/403`, avatar chi thanh cong khi Account xac nhan dung URL upload, va call mobile don timeout/notification trung.
+- Quyet dinh ky thuat: `mobile/app.json` la nguon khai bao native; truoc moi Android release phai prebuild va kiem tra quyen trong APK, khong tin vao thu muc generated bi ignore. Khong them STUN public fallback va khong gia lap killed-state push; ICE/TURN Tinode va credential Firebase/APNs/provider van la dieu kien production.
+- Database/API/cau hinh: Khong migration/schema. Mobile version `1.0.11`, Android `versionCode=12`; APK package `vn.upgo.vichat`, ABI `arm64-v8a`. Bien `ACCOUNT_AVATAR_UPLOAD_TIMEOUT=60`, `VITE_CALLS_ENABLED=true`, `EXPO_PUBLIC_CALLS_ENABLED=true` va production call defaults da duoc dong bo trong cac file example/Compose cua cung worktree; can rebuild/redeploy Chatmgt/web va cai APK moi de production nhan thay doi.
+- Kiem thu: `python -m unittest discover -s chatservice-main/tests -q` dat 138 test, skip 47; `python -m py_compile ...` va `node --check scripts/debug_call_signaling.mjs` dat; `npm run test:frontend` dat 59/59; root `npm run lint` exit 0 voi warning legacy/vendor/worktree co san; `npm run build:production` dat; Compose `config --no-interpolate -q` dat; mobile `npm run typecheck` va `npm run lint` dat; focused Vitest 4 file/14 test dat; tat ca 9 file Vitest khong phu thuoc React Native runtime dat 24/24. Full `mobile/npm test` van fail rieng `src/services/workspaceService.test.ts` do Rolldown khong parse Flow trong `react-native/index.js`, 24 test con lai dat. APK build arm64 truoc buoc chot nay dat `BUILD SUCCESSFUL in 7m 17s`; `aapt` xac nhan version `1.0.11`/code `12`, ABI `arm64-v8a`, `CAMERA` va `RECORD_AUDIO`; `apksigner verify --verbose --print-certs` dat APK Signature Scheme v2 voi Android Debug signer; `zipalign -c -v 4` dat; SHA-256 `6C3D278D5A7795EB218775211DB5A6AFFA647485719FF47DE383E6EDEFF179FD`; `git diff --check` dat.
+- Rui ro con lai: Chua deploy worktree hien tai; chua cai APK/kiem tra micro-camera tren thiet bi; chua UAT hai Account Web-Mobile cho mute, xoa, recall anh, xem anh, avatar va audio/video hai chieu. TURN can duoc test tren hai mang va firewall can mo TCP/UDP `3478`, UDP `49160-49200`; push khi app bi kill van can Firebase/APNs va Tinode provider. APK chi co arm64 va dung debug signer, khong phai artifact Play Store.
+- Viec tiep theo: Cai APK `1.0.11` tren Android arm64, cap quyen micro/camera va UAT bang hai tai khoan that; sau do commit/push/deploy tung service dung pham vi va xac minh production. Khong tuyen bo voice/video call hoan tat truoc khi audio/video hai chieu va TURN qua hai mang dat.
+- Commit/PR: Chua tao.
+
+## 2026-08-13-04 - Chot edge case cuoc goi nen va cap nhat kiem thu
+
+- Thoi gian: 2026-08-13 13:32 (Asia/Saigon)
+- Loai: Sua loi | Realtime | Mobile | Cau hinh | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code va kiem thu local; chua UAT tai khoan that
+- Muc tieu: Bao dam notification cuoc goi khong mo lai invite da het han, khong tang bo nho vo han, va overlay cuoc goi co the duoc xu ly khi app dang khoa PIN.
+- Pham vi: Mobile incoming-call notification/call overlay, call diagnostic script, tai lieu kien truc; khong thay doi message publish, chatbot, schema hoac cac thay doi san co trong `dist/`.
+- File da thay doi: `mobile/src/utils/callNotificationPolicy.ts`, `mobile/src/utils/callNotificationPolicy.test.ts`, `mobile/src/services/notificationService.ts`, `mobile/src/components/MobileCallOverlay.tsx`, `mobile/App.tsx`, `scripts/debug_call_signaling.mjs`, `docs/chat-backend-architecture.md`, va `docs/CHANGELOG.md`.
+- Noi dung: Dong bo TTL notification voi timeout setup WebRTC 40 giay; notification het han va tombstone deu tu dong don sau TTL; thong bao script neu khong co peer token se dung phien thu hai cung sender token; dua CallOverlay len tren AppLockScreen de thao tac accept/reject khong bi khoa man hinh.
+- Quyet dinh ky thuat: Chi cho phep route notification con han qua Tinode reconnect va call store; khong gia lap push killed-state. `VICHAT_TINODE_PEER_TOKEN` la tuy chon cho probe publish, khong bat buoc neu dung cung sender token.
+- Database/API/cau hinh: Khong migration/schema/API. Them `VITE_CALLS_ENABLED=true` vao `.env.local` bi ignore de web dev hien nut goi, khong thay doi cac endpoint local va khong dua file vao Git. Production van can `VITE_CALLS_ENABLED=true`, `EXPO_PUBLIC_CALLS_ENABLED=true`, `WEBRTC_ENABLED=true`, ICE/TURN va credential push ngoai repo.
+- Kiem thu: `npm run test:frontend` dat 59/59; `npm run lint` exit 0 voi warning legacy/vendor/worktree co san; frontend build tam voi `VITE_CALLS_ENABLED=true` dat va da don artifact, khong cham `dist/`; `mobile/npm run typecheck` dat; `mobile/npm run lint` dat; `mobile/npx vitest run src/utils/callNotificationPolicy.test.ts src/utils/tinodeState.test.ts src/utils/messagePolicy.test.ts src/utils/mediaUrl.test.ts` dat 4 file/14 test; `python -m unittest discover -s chatservice-main/tests -q` dat 137 test, skip 46; `python -m py_compile ...` dat; `bash -n infrastructure/production/start.sh` dat; Compose `config --no-interpolate -q` dat; `node --check scripts/debug_call_signaling.mjs` dat; hello probe production tra `201` va 2 ICE server, credential da redact. Browser UAT chua chay duoc vi runtime khong co browser kha dung; khong build APK moi trong lan nay.
+- Rui ro con lai: `mobile/npm test` full van fail duy nhat `src/services/workspaceService.test.ts` do Rolldown khong parse Flow trong `react-native/index.js`, nhung 24 test con lai dat; chua UAT hai tai khoan Web-Mobile, permission media, TURN qua hai mang, avatar/recall/mute/xoa; push khi app bi kill phu thuoc Firebase/APNs va Tinode provider.
+- Viec tiep theo: Cai/rebuild APK neu can va UAT hai tai khoan tren web/mobile; khong tuyen bo killed-state push hoat dong truoc khi cap credential/provider.
+- Commit/PR: Chua tao.
+
+## 2026-08-13-03 - Sua dong bo recall/media, avatar va cuoc goi nen
+
+- Thoi gian: 2026-08-13 12:44 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | API | Realtime | Mobile | Ha tang | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code va kiem thu local; chua UAT hai tai khoan that tren hai mang
+- Muc tieu: Lam cho thu hoi tin nhan/anh phan hoi dung giua web-mobile, avatar xac nhan dung anh moi, cuoc goi khong tu ngat sau khi ket noi, va thao tac mute/xoa dung ID Chatmgt authoritative.
+- Pham vi: `src/features/chat/services/`, `mobile/src/store/`, `mobile/src/services/`, `mobile/src/utils/`, `mobile/App.tsx`, Account SSO avatar service/config, production Compose/env example, diagnostic script va tai lieu; khong doi schema, Tinode message publish, chatbot hay cac thay doi san co trong `dist/`.
+- File da thay doi: `src/features/chat/services/messagePolicy.js`, `src/features/chat/services/messagePolicy.test.js`, `src/features/chat/services/tinodeClient.js`, `mobile/src/store/callStore.ts`, `mobile/src/store/appStore.ts`, `mobile/src/services/notificationService.ts`, `mobile/src/utils/callNotificationPolicy.ts`, `mobile/src/utils/callNotificationPolicy.test.ts`, `mobile/App.tsx`, `chatservice-main/application/services/account_sso_service.py`, `chatservice-main/application/config/config.py`, `chatservice-main/tests/test_account_sso_service.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `infrastructure/production/compose.yaml`, `infrastructure/production/.env.example`, `.env.example`, `mobile/.env.example`, `scripts/debug_call_signaling.mjs`, `docs/chat-backend-architecture.md`, va `docs/CHANGELOG.md`.
+- Noi dung: Web recall projection loc `null` truoc khi sort va dung helper pure de khong lam vo danh sach khi recall self; media relay thu lai mot lan sau `401/403` bang Tinode token moi; mobile xoa setup timer khi WebRTC connected va bo qua invite trung cung topic/sequence. Mobile them kenh local notification uu tien cao cho incoming call khi runtime con song, payload duoc validate, tap notification se reconnect va mo cung call store foreground. Mobile mute nay gui `managementId` thay vi state id.
+- Quyet dinh ky thuat: Khong dung STUN Google fallback; ICE/TURN production tu hello Tinode van la nguon chuan. Notification killed-state chi duoc coi la kha dung khi co du credential Firebase/APNs va Tinode push provider; code local nay khong gia lap push server. Avatar chi thanh cong khi Account xac nhan dung URL upload; neu `/current_user` stale thi doc lai `/me` mot lan, khong chap nhan avatar cu.
+- Database/API/cau hinh: Khong migration/schema. Them `ACCOUNT_AVATAR_UPLOAD_TIMEOUT` (mac dinh 60 giay) cho upload Account; dong bo vi du `VITE_CALLS_ENABLED=true` va `EXPO_PUBLIC_CALLS_ENABLED=true`. Them `scripts/debug_call_signaling.mjs`; probe mac dinh chi hello, redact TURN credential, publish chi khi set token/topic va co co `VICHAT_CALL_DEBUG_PUBLISH=true`.
+- Kiem thu: Ket qua ban dau cua muc nay la `npm run test:frontend` 58/58; lan chot 2026-08-13-04 cap nhat lai thanh 59/59 trong muc moi nhat. `npm run lint` exit 0 voi warning legacy/vendor/worktree co san; `mobile/npm run typecheck` dat; focused mobile Vitest 4 file/14 test dat; `mobile/npm test` chua dat do test cu `workspaceService.test.ts` khong parse Flow trong `react-native/index.js`, 24 test con lai dat; `python -m unittest discover -s chatservice-main/tests -q` dat 137 test, skip 46; `python -m py_compile ...` dat; `npm run build:production` dat; `bash -n infrastructure/production/start.sh` dat; Compose `config --no-interpolate -q` dat; `git diff --check` dat; `node scripts/debug_call_signaling.mjs` probe hello production tra 2 ICE server va da redact credential.
+- Rui ro con lai: Chua co browser runtime/UAT hai tai khoan that Web-Mobile; probe TCP TURN tu mang phat trien truoc do timeout, can test hai mang that va mo firewall nha cung cap neu can. Push khi app bi kill van phu thuoc credential/provider ngoai repo. `dist/` va cac artifact/untracked cua nguoi dung duoc giu nguyen.
+- Viec tiep theo: Cai APK/rebuild native neu can, dang nhap hai tai khoan tren web va mobile, test mute/xoa/recall anh/avatar va voice/video tren hai mang; sau do deploy Chatmgt/Web bundle theo quy trinh release neu muon dua code len production.
+- Commit/PR: Chua tao.
 
 ## 2026-08-13-02 - Dong bo thao tac chat, avatar va WebRTC production
 

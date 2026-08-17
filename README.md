@@ -138,9 +138,10 @@ from Chatmgt.
 Production keeps `VITE_CHAT_MODE=internal`, so the assistant is a normal Tinode
 P2P conversation alongside employee chats. ChatUI obtains the bot UID from
 Chatmgt, while the isolated `tinode-chatbot-webhook` worker receives only direct
-`usr*` messages, calls `https://knowledge.gonapp.net/api/v1/chat` through
-Chatmgt's tenant-checked webhook without knowledge retrieval or RAG context,
-and publishes the reply back to Tinode.
+`usr*` messages and calls Chatmgt's tenant-checked webhook. Chatmgt then calls
+the retrieval-only `https://knowledge-ai.gonapp.net/api/v1/chat` endpoint with
+the server-side `X-API-Key`, sends only the bounded question and `top_k`, and
+publishes the returned document snippets back to Tinode as a sourced reply.
 Normal employee/group/file flows never pass through the worker. Configure the
 bot credentials and shared webhook key in the private production `.env`; see
 `infrastructure/production/.env.example` and

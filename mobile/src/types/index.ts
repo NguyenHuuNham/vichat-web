@@ -79,6 +79,13 @@ export interface ChatMessage {
   deliveryStatus?: DeliveryStatus;
   reactions?: Record<string, number>;
   replyTo?: { id: string; text: string; senderName: string };
+  sources?: Array<{
+    title?: string;
+    file_name?: string;
+    snippet?: string;
+    score?: number;
+  }>;
+  grounded?: boolean;
   call?: {
     audioOnly: boolean;
     state: string;

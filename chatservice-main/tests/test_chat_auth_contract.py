@@ -99,6 +99,11 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("ACCOUNT_SSO_SELF_PROFILE_PATH=/me", env_source)
         self.assertIn("ACCOUNT_SSO_USER_UPDATE_PATH=/api/v1/user", env_source)
         self.assertIn("ACCOUNT_AVATAR_UPLOAD_URL=https://service.upgo.vn/api/image/upload?path=accounts", env_source)
+        self.assertIn("ACCOUNT_AVATAR_UPLOAD_TIMEOUT=60", env_source)
+        self.assertIn("ACCOUNT_AVATAR_UPLOAD_TIMEOUT: ${ACCOUNT_AVATAR_UPLOAD_TIMEOUT:-60}", compose_source)
+        self.assertIn("CHATBOT_API_URL=https://knowledge-ai.gonapp.net/api/v1/chat", env_source)
+        self.assertIn("CHATBOT_EXTERNAL_AUTH_HEADER=X-API-Key", env_source)
+        self.assertIn("CHATBOT_EXTERNAL_REQUEST_MODE=knowledge-retrieval", env_source)
         self.assertIn("TINODE_SSO_SECRET: ${TINODE_SSO_SECRET:?TINODE_SSO_SECRET is required}", compose_source)
         self.assertIn("TINODE_BRIDGE_INTERNAL_KEY: ${TINODE_BRIDGE_INTERNAL_KEY:?TINODE_BRIDGE_INTERNAL_KEY is required}", compose_source)
         self.assertIn("TINODE_CENTRAL_WS_URL=wss://web.vichat.net/v0/channels", env_source)
@@ -339,10 +344,37 @@ class ChatAuthContractTests(unittest.TestCase):
 
         self.assertIn("tinode_add_topic_members", add_source)
         self.assertIn("tinode_remove_topic_member", remove_source)
+        self.assertIn("tinode_accept_topic_owner", remove_source)
+        self.assertIn("tinode_publish_system_event", remove_source)
         self.assertIn("TINODE_TOKEN_REQUIRED", add_source)
         self.assertIn("TINODE_TOKEN_REQUIRED", remove_source)
         self.assertIn('mode="JRWPASO"', remove_source)
         self.assertIn('mode="JRWPAS"', remove_source)
+        if CHAT_APP_PATH.exists():
+            app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
+            leave_source = app_source.split("const handleLeaveGroup", 1)[1].split(
+                "const handleDeleteConversation", 1
+            )[0]
+            self.assertLess(
+                leave_source.index("removeConversationParticipant"),
+                leave_source.index("sendSystemEvent"),
+            )
+
+    def test_owner_leave_chooses_a_random_active_replacement(self):
+        _controller_source, remove_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_participant_remove",
+        )
+
+        self.assertIn("ConversationParticipant.active.is_(True)", remove_source)
+        self.assertIn(".order_by(func.random()).first()", remove_source)
+        self.assertNotIn("joined_at.asc()", remove_source)
+        self.assertIn('replacement.role = "OWNER"', remove_source)
+        self.assertIn('mode="JRWPASO"', remove_source)
+        self.assertLess(
+            remove_source.index("tinode_accept_topic_owner"),
+            remove_source.index("tinode_remove_topic_member"),
+        )
 
     def test_direct_conversations_are_reused_by_participant_pair(self):
         _controller_source, create_source = function_source(

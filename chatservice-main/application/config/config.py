@@ -112,6 +112,7 @@ class Config(object):
         "https://service.upgo.vn/api/image/upload?path=accounts",
     )
     ACCOUNT_SSO_TIMEOUT = int(os.getenv("ACCOUNT_SSO_TIMEOUT", 10))
+    ACCOUNT_AVATAR_UPLOAD_TIMEOUT = int(os.getenv("ACCOUNT_AVATAR_UPLOAD_TIMEOUT", 60))
     ACCOUNT_SSO_DIRECTORY_SYNC_TTL = int(os.getenv("ACCOUNT_SSO_DIRECTORY_SYNC_TTL", 10))
     ACCOUNT_SESSION_COOKIE_NAME = os.getenv("ACCOUNT_SESSION_COOKIE_NAME", "session")
     ACCOUNT_SESSION_COOKIE_DOMAIN = os.getenv("ACCOUNT_SESSION_COOKIE_DOMAIN", ".upgo.vn")
@@ -129,7 +130,7 @@ class Config(object):
     MINIO_STORED = os.environ.get("MINIO_STORED")
     S3_URL = os.getenv('S3_URL')
 
-    # Chatbot: OpenAI-compatible endpoint. Secrets stay in the server environment.
+    # Chatbot provider credentials stay in the server environment.
     CHATBOT_ENABLED = env_bool("CHATBOT_ENABLED", False)
     CHATBOT_REQUIRE_AUTH = env_bool("CHATBOT_REQUIRE_AUTH", True)
     CHATBOT_PROVIDER = os.getenv("CHATBOT_PROVIDER", "openai-compatible")
@@ -138,6 +139,7 @@ class Config(object):
     CHATBOT_MODEL = os.getenv("CHATBOT_MODEL")
     CHATBOT_EXTERNAL_AUTH_HEADER = os.getenv("CHATBOT_EXTERNAL_AUTH_HEADER", "Authorization")
     CHATBOT_EXTERNAL_AUTH_SCHEME = os.getenv("CHATBOT_EXTERNAL_AUTH_SCHEME", "Bearer")
+    CHATBOT_EXTERNAL_REQUEST_MODE = os.getenv("CHATBOT_EXTERNAL_REQUEST_MODE", "chat")
     CHATBOT_EXTERNAL_API_KEY = os.getenv("CHATBOT_EXTERNAL_API_KEY", "")
     CHATBOT_EXTERNAL_TENANT = os.getenv("CHATBOT_EXTERNAL_TENANT", "")
     CHATBOT_EXTERNAL_KNOWLEDGE_BASE_ID = os.getenv("CHATBOT_EXTERNAL_KNOWLEDGE_BASE_ID", "")
@@ -145,12 +147,14 @@ class Config(object):
     TINODE_CHATBOT_USERNAME = os.getenv("TINODE_CHATBOT_USERNAME", "upgo_chatbot")
     TINODE_CHATBOT_PASSWORD = os.getenv("TINODE_CHATBOT_PASSWORD", "")
     TINODE_CHATBOT_DISPLAY_NAME = os.getenv("TINODE_CHATBOT_DISPLAY_NAME", "ViChat AI")
-    TINODE_CHATBOT_DISPLAY_TITLE = os.getenv("TINODE_CHATBOT_DISPLAY_TITLE", "Tro ly AI")
+    TINODE_CHATBOT_DISPLAY_TITLE = os.getenv(
+        "TINODE_CHATBOT_DISPLAY_TITLE", "Tro ly tri thuc doanh nghiep"
+    )
     TINODE_CHATBOT_DISPLAY_ORGANIZATION = os.getenv(
         "TINODE_CHATBOT_DISPLAY_ORGANIZATION", "GON Platform"
     )
     TINODE_CHATBOT_DISPLAY_AVATAR = os.getenv(
-        "TINODE_CHATBOT_DISPLAY_AVATAR", "/favicon.svg"
+        "TINODE_CHATBOT_DISPLAY_AVATAR", "https://chat.upgo.vn/vichat-ai.svg"
     )
     TINODE_CHATBOT_WEBHOOK_KEY = os.getenv("TINODE_CHATBOT_WEBHOOK_KEY", "")
     TINODE_CHATBOT_WEBHOOK_URL = os.getenv(
@@ -164,7 +168,7 @@ class Config(object):
     )
     TINODE_CHATBOT_FAILURE_REPLY = os.getenv(
         "TINODE_CHATBOT_FAILURE_REPLY",
-        "Tro ly AI dang tam thoi khong phan hoi. Vui long thu lai sau.",
+        "ViChat AI dang tam thoi khong phan hoi. Vui long thu lai sau.",
     )
     CHATBOT_TIMEOUT = int(os.getenv("CHATBOT_TIMEOUT", 30))
     CHATBOT_TEMPERATURE = float(os.getenv("CHATBOT_TEMPERATURE", 0.2))
@@ -184,7 +188,7 @@ class Config(object):
     CHATBOT_MAX_KNOWLEDGE_FILE_SIZE = int(os.getenv("CHATBOT_MAX_KNOWLEDGE_FILE_SIZE", 20971520))
     CHATBOT_SYSTEM_PROMPT = os.getenv(
         "CHATBOT_SYSTEM_PROMPT",
-        "Bạn là Trợ lý Sông Hồng. Trả lời bằng tiếng Việt, rõ ràng, ngắn gọn. "
+        "Bạn là ViChat AI. Trả lời bằng tiếng Việt, rõ ràng, ngắn gọn. "
         "Không suy đoán dữ liệu nội bộ; nếu thiếu dữ liệu hãy nói chưa đủ thông tin. "
         "Không tiết lộ mật khẩu, token, khóa API hoặc thông tin nhạy cảm.",
     )

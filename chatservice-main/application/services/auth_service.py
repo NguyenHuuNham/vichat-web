@@ -927,7 +927,10 @@ async def tinode_add_topic_members(token, expected_uid, topic_name, member_uids,
             if str(ctrl.get("id") or "") != str(request_id):
                 continue
             if int(ctrl.get("code") or 500) >= 300:
-                raise AuthError("Tinode rejected the group membership update.", 409)
+                raise AuthError(
+                    ctrl.get("text") or "Tinode rejected the group membership update.",
+                    409,
+                )
             return ctrl
         raise AuthError("Tinode did not confirm the group membership update.", 502)
 
@@ -972,6 +975,51 @@ async def tinode_add_topic_members(token, expected_uid, topic_name, member_uids,
             return added
 
 
+async def tinode_accept_topic_owner(token, expected_uid, topic_name, mode="JRWPASO"):
+    """Accept an owner invitation from the replacement user's Tinode session."""
+    base_url = str(app.config.get("TINODE_INTERNAL_WS_URL") or "").rstrip("?")
+    api_key = str(app.config.get("TINODE_API_KEY") or "")
+    if not base_url or not api_key or not token:
+        raise AuthError("Tinode topic membership is not configured.", 503)
+    separator = "&" if "?" in base_url else "?"
+    url = "{}{}apikey={}".format(base_url, separator, quote(api_key, safe=""))
+    timeout = aiohttp.ClientTimeout(total=int(app.config.get("TINODE_AUTH_TIMEOUT", 10)))
+
+    async def receive_ctrl(socket, request_id):
+        for _attempt in range(30):
+            packet = await socket.receive_json()
+            ctrl = packet.get("ctrl") or {}
+            if str(ctrl.get("id") or "") != str(request_id):
+                continue
+            if int(ctrl.get("code") or 500) >= 300:
+                raise AuthError(
+                    ctrl.get("text") or "Tinode rejected the owner transfer.",
+                    409,
+                )
+            return ctrl
+        raise AuthError("Tinode did not confirm the owner transfer.", 502)
+
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.ws_connect(url, headers=_tinode_bridge_headers()) as socket:
+            await socket.send_json({"hi": {"id": "1", "ver": "0.25", "ua": "VICHAT-CHAT-SERVICE", "platf": "server", "lang": "vi"}})
+            await receive_ctrl(socket, "1")
+            await socket.send_json({"login": {"id": "2", "scheme": "token", "secret": token}})
+            login_ctrl = await receive_ctrl(socket, "2")
+            authenticated_uid = str((login_ctrl.get("params") or {}).get("user") or "")
+            if expected_uid and authenticated_uid != str(expected_uid):
+                raise AuthError("Tinode authenticated a different user.", 409)
+            await socket.send_json({"sub": {"id": "3", "topic": topic_name, "get": {"what": "desc"}}})
+            await receive_ctrl(socket, "3")
+            await socket.send_json({
+                "set": {
+                    "id": "4",
+                    "topic": topic_name,
+                    "sub": {"mode": mode},
+                },
+            })
+            return await receive_ctrl(socket, "4")
+
+
 async def tinode_remove_topic_member(token, expected_uid, topic_name, member_uid):
     base_url = str(app.config.get("TINODE_INTERNAL_WS_URL") or "").rstrip("?")
     api_key = str(app.config.get("TINODE_API_KEY") or "")
@@ -991,7 +1039,10 @@ async def tinode_remove_topic_member(token, expected_uid, topic_name, member_uid
             if str(ctrl.get("id") or "") != str(request_id):
                 continue
             if int(ctrl.get("code") or 500) >= 300:
-                raise AuthError("Tinode rejected the group membership update.", 409)
+                raise AuthError(
+                    ctrl.get("text") or "Tinode rejected the group membership update.",
+                    409,
+                )
             return ctrl
         raise AuthError("Tinode did not confirm the group membership update.", 502)
 
@@ -1025,6 +1076,52 @@ async def tinode_remove_topic_member(token, expected_uid, topic_name, member_uid
                 })
             await receive_ctrl(socket, "4")
             return target_uid
+
+
+async def tinode_publish_system_event(token, expected_uid, topic_name, event):
+    """Publish a membership event through a surviving group member."""
+    base_url = str(app.config.get("TINODE_INTERNAL_WS_URL") or "").rstrip("?")
+    api_key = str(app.config.get("TINODE_API_KEY") or "")
+    if not base_url or not api_key or not token:
+        raise AuthError("Tinode topic membership is not configured.", 503)
+    separator = "&" if "?" in base_url else "?"
+    url = "{}{}apikey={}".format(base_url, separator, quote(api_key, safe=""))
+    timeout = aiohttp.ClientTimeout(total=int(app.config.get("TINODE_AUTH_TIMEOUT", 10)))
+
+    async def receive_ctrl(socket, request_id):
+        for _attempt in range(30):
+            packet = await socket.receive_json()
+            ctrl = packet.get("ctrl") or {}
+            if str(ctrl.get("id") or "") != str(request_id):
+                continue
+            if int(ctrl.get("code") or 500) >= 300:
+                raise AuthError(
+                    ctrl.get("text") or "Tinode rejected the group event.",
+                    409,
+                )
+            return ctrl
+        raise AuthError("Tinode did not confirm the group event.", 502)
+
+    content = "__VICHAT_SYSTEM_EVENT__:{}".format(
+        json.dumps(event or {}, ensure_ascii=False, separators=(",", ":"))
+    )
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.ws_connect(url, headers=_tinode_bridge_headers()) as socket:
+            await socket.send_json({"hi": {"id": "1", "ver": "0.25", "ua": "VICHAT-CHAT-SERVICE", "platf": "server", "lang": "vi"}})
+            await receive_ctrl(socket, "1")
+            await socket.send_json({"login": {"id": "2", "scheme": "token", "secret": token}})
+            login_ctrl = await receive_ctrl(socket, "2")
+            authenticated_uid = str((login_ctrl.get("params") or {}).get("user") or "")
+            if expected_uid and authenticated_uid != str(expected_uid):
+                raise AuthError("Tinode authenticated a different user.", 409)
+            await socket.send_json({
+                "pub": {
+                    "id": "3",
+                    "topic": topic_name,
+                    "content": content,
+                },
+            })
+            return await receive_ctrl(socket, "3")
 
 
 async def tinode_change_password(username, current_password, new_password, new_username=None):

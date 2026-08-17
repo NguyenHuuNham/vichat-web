@@ -17,4 +17,5 @@ describe('Tinode media URL', () => {
   it('keeps ordinary public HTTPS images unchanged', () => {
     expect(normalizeMediaUrl('https://cdn.example.com/photo.jpg')).toBe('https://cdn.example.com/photo.jpg');
   });
+
 });

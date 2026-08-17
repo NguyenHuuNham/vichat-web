@@ -70,9 +70,15 @@ def tinode_chatbot_public_config(app, uid=""):
         "uid": resolved_uid,
         "tinodeUid": resolved_uid,
         "name": str(app.config.get("TINODE_CHATBOT_DISPLAY_NAME") or "ViChat AI"),
-        "title": str(app.config.get("TINODE_CHATBOT_DISPLAY_TITLE") or "Tro ly AI"),
+        "title": str(
+            app.config.get("TINODE_CHATBOT_DISPLAY_TITLE")
+            or "Tro ly tri thuc doanh nghiep"
+        ),
         "organization": str(
             app.config.get("TINODE_CHATBOT_DISPLAY_ORGANIZATION") or "GON Platform"
         ),
-        "avatar": str(app.config.get("TINODE_CHATBOT_DISPLAY_AVATAR") or "/favicon.svg"),
+        "avatar": str(
+            app.config.get("TINODE_CHATBOT_DISPLAY_AVATAR")
+            or "https://chat.upgo.vn/vichat-ai.svg"
+        ),
     }

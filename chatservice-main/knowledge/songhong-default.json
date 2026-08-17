@@ -1,18 +1,18 @@
 {
   "base": {
     "code": "songhong-company",
-    "name": "SÔNG HỒNG - Dữ liệu nội bộ mặc định",
-    "description": "Bộ dữ liệu khởi đầu cho trợ lý SÔNG HỒNG. Có thể thay thế hoặc bổ sung bằng tài liệu doanh nghiệp.",
+    "name": "ViChat AI - Dữ liệu nội bộ mặc định",
+    "description": "Bộ dữ liệu khởi đầu cho ViChat AI. Có thể thay thế hoặc bổ sung bằng tài liệu doanh nghiệp.",
     "access_scope": "COMPANY"
   },
   "documents": [
     {
-      "title": "Giới thiệu trợ lý SÔNG HỒNG",
-      "content": "Trợ lý SÔNG HỒNG hỗ trợ tra cứu dữ liệu nội bộ đã được doanh nghiệp cung cấp. Khi không tìm thấy thông tin phù hợp, trợ lý phải nói rõ chưa có dữ liệu và không tự suy đoán. Người quản trị có thể bổ sung PDF, TXT, Markdown, CSV hoặc JSON vào kho tri thức."
+      "title": "Giới thiệu ViChat AI",
+      "content": "ViChat AI hỗ trợ tra cứu dữ liệu nội bộ đã được doanh nghiệp cung cấp. Khi không tìm thấy thông tin phù hợp, trợ lý phải nói rõ chưa có dữ liệu và không tự suy đoán. Người quản trị có thể bổ sung PDF, TXT, Markdown, CSV hoặc JSON vào kho tri thức."
     },
     {
       "title": "Hướng dẫn sử dụng hệ thống chat",
-      "content": "Người dùng đăng nhập bằng tài khoản SÔNG HỒNG, có thể chat 1-1, chat nhóm, gửi tệp và tìm kiếm thành viên. Tin nhắn và tệp chat được lưu bởi Tinode. Chatbot là cuộc trò chuyện riêng có tên Trợ lý SÔNG HỒNG; lịch sử hiển thị theo từng tài khoản."
+      "content": "Người dùng đăng nhập bằng tài khoản doanh nghiệp, có thể chat 1-1, chat nhóm, gửi tệp và tìm kiếm thành viên. Tin nhắn và tệp chat được lưu bởi Tinode. ViChat AI là cuộc trò chuyện riêng; lịch sử hiển thị theo từng tài khoản."
     },
     {
       "title": "Nguyên tắc bảo mật dữ liệu",

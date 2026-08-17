@@ -26,6 +26,8 @@ if HAS_AIOHTTP:
         "ACCOUNT_SSO_SELF_PROFILE_PATH": "/me",
         "ACCOUNT_SSO_USER_UPDATE_PATH": "/api/v1/user",
         "ACCOUNT_AVATAR_UPLOAD_URL": "https://service.upgo.vn/api/image/upload?path=accounts",
+        "ACCOUNT_SSO_TIMEOUT": 10,
+        "ACCOUNT_AVATAR_UPLOAD_TIMEOUT": 60,
         "ACCOUNT_SESSION_COOKIE_NAME": "session",
         "ACCOUNT_SESSION_COOKIE_DOMAIN": ".upgo.vn",
         "ACCOUNT_SESSION_COOKIE_SECURE": True,
@@ -382,6 +384,60 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(error.exception.error_code, "ACCOUNT_SESSION_MISMATCH")
         avatar_upload.assert_not_awaited()
+
+    async def test_avatar_update_reloads_me_when_current_user_is_stale(self):
+        request = types.SimpleNamespace()
+        identity = {"account_user_id": "account-user-1", "tenant_id": "tenant-a"}
+        profile = {"id": "account-user-1", "avatar_url": "https://old.example/avatar.png"}
+        stale = account_payload()
+        fresh = dict(stale)
+        fresh["avatar_url"] = "https://service.upgo.vn/accounts/new-avatar.png"
+        upload = types.SimpleNamespace(name="avatar.png", type="image/png", body=b"avatar-bytes")
+        with patch.object(
+            account_sso_service,
+            "_upload_account_avatar",
+            AsyncMock(return_value=fresh["avatar_url"]),
+        ), patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(side_effect=[
+                (200, profile),
+                (200, {"updated": True}),
+                (200, stale),
+                (200, fresh),
+            ]),
+        ) as account_request:
+            result = await account_sso_service.update_account_avatar(request, identity, upload)
+
+        self.assertEqual(result["avatar"], fresh["avatar_url"])
+        self.assertEqual(account_request.await_args_list[3], call(request, "GET", "/me"))
+
+    async def test_avatar_update_rejects_when_account_never_confirms_uploaded_url(self):
+        request = types.SimpleNamespace()
+        identity = {"account_user_id": "account-user-1", "tenant_id": "tenant-a"}
+        profile = {"id": "account-user-1", "avatar_url": "https://old.example/avatar.png"}
+        stale = account_payload()
+        stale["avatar_url"] = profile["avatar_url"]
+        upload = types.SimpleNamespace(name="avatar.png", type="image/png", body=b"avatar-bytes")
+        uploaded_url = "https://service.upgo.vn/accounts/new-avatar.png"
+        with patch.object(
+            account_sso_service,
+            "_upload_account_avatar",
+            AsyncMock(return_value=uploaded_url),
+        ), patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(side_effect=[
+                (200, profile),
+                (200, {"updated": True}),
+                (200, stale),
+                (200, stale),
+            ]),
+        ):
+            with self.assertRaises(account_sso_service.AccountSSOError) as error:
+                await account_sso_service.update_account_avatar(request, identity, upload)
+
+        self.assertEqual(error.exception.error_code, "ACCOUNT_AVATAR_UPDATE_UNCONFIRMED")
 
     async def test_profile_update_forwards_editable_fields_and_reloads_account_identity(self):
         request = types.SimpleNamespace()

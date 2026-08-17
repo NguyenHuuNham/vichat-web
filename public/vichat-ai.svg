@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+  <title>ViChat AI</title>
+  <defs>
+    <linearGradient id="bg" x1="32" y1="24" x2="224" y2="232" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#123B39"/>
+      <stop offset="1" stop-color="#071F1D"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="78" y1="66" x2="186" y2="190" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFB36E"/>
+      <stop offset=".48" stop-color="#F4511E"/>
+      <stop offset="1" stop-color="#E82D65"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="72" fill="url(#bg)"/>
+  <path d="M49 117c0-38 31-69 69-69h20c38 0 69 31 69 69s-31 69-69 69h-14l-36 26 8-31c-28-9-47-34-47-64Z" fill="#F8FBF6"/>
+  <path d="M90 116c0-20 16-36 36-36h7c20 0 36 16 36 36s-16 36-36 36h-8l-20 14 5-19c-12-6-20-18-20-31Z" fill="url(#spark)"/>
+  <path d="M130 87l6 17 17 6-17 6-6 17-6-17-17-6 17-6 6-17Z" fill="white"/>
+  <circle cx="183" cy="65" r="12" fill="#FFB36E"/>
+  <path d="M183 45l4 12 12 4-12 4-4 12-4-12-12-4 12-4 4-12Z" fill="white"/>
+</svg>

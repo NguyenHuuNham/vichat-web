@@ -2,15 +2,33 @@ const env = import.meta.env || {};
 
 export const EXTERNAL_CHAT_ONLY = String(env.VITE_CHAT_MODE || 'internal').toLowerCase() === 'external';
 
+export const CHATBOT_STARTER_PROMPTS = [
+  {
+    icon: 'fa-file-shield',
+    title: 'Tìm quy trình',
+    prompt: 'Tóm tắt quy trình nghỉ phép và các bước cần thực hiện.',
+  },
+  {
+    icon: 'fa-clipboard-check',
+    title: 'Tra cứu chính sách',
+    prompt: 'Các chính sách nội bộ quan trọng mà nhân viên mới cần biết là gì?',
+  },
+  {
+    icon: 'fa-magnifying-glass-chart',
+    title: 'Tìm nhanh tài liệu',
+    prompt: 'Hãy giúp tôi tìm tài liệu liên quan đến quy trình phê duyệt công việc.',
+  },
+];
+
 export const CHATBOT_ACCOUNT = {
-  id: 'bot-songhong',
-  username: 'songhong_bot',
-  name: 'Trợ lý Sông Hồng',
-  email: 'bot@songhong.vn',
+  id: 'vichat-ai',
+  username: 'vichat_ai',
+  name: 'ViChat AI',
+  email: '',
   role: 'assistant',
-  department: 'SÔNG HỒNG AI',
-  title: 'Trợ lý AI nội bộ',
-  avatar: '/favicon.svg',
+  department: 'GON Platform',
+  title: 'Trợ lý tri thức doanh nghiệp',
+  avatar: String(env.VITE_CHATBOT_DISPLAY_AVATAR || '/vichat-ai.svg'),
   online: true,
   type: 'bot',
 };
@@ -33,12 +51,12 @@ export function applyTinodeChatbotConfig(config = {}) {
 
 if (EXTERNAL_CHAT_ONLY) {
   Object.assign(CHATBOT_ACCOUNT, {
-    id: String(env.VITE_CHATBOT_ID || 'external-chatbot'),
-    username: String(env.VITE_CHATBOT_USERNAME || 'external_bot'),
+    id: String(env.VITE_CHATBOT_ID || 'vichat-ai'),
+    username: String(env.VITE_CHATBOT_USERNAME || 'vichat_ai'),
     email: '',
-    name: String(env.VITE_CHATBOT_DISPLAY_NAME || 'External AI'),
-    title: String(env.VITE_CHATBOT_DISPLAY_TITLE || 'External chatbot'),
-    department: String(env.VITE_CHATBOT_DISPLAY_ORGANIZATION || 'Connected service'),
+    name: String(env.VITE_CHATBOT_DISPLAY_NAME || 'ViChat AI'),
+    title: String(env.VITE_CHATBOT_DISPLAY_TITLE || 'Trợ lý tri thức doanh nghiệp'),
+    department: String(env.VITE_CHATBOT_DISPLAY_ORGANIZATION || 'GON Platform'),
     avatar: String(env.VITE_CHATBOT_DISPLAY_AVATAR || CHATBOT_ACCOUNT.avatar),
   });
 }
@@ -48,6 +66,9 @@ const API_ROOT = API_URL.replace(/\/message\/?$/, '');
 const TINODE_CHATBOT_CONFIG_URL = API_ROOT ? `${API_ROOT}/tinode-config` : '';
 const WITH_CREDENTIALS = String(env.VITE_CHATBOT_WITH_CREDENTIALS || 'true').toLowerCase() === 'true';
 const STORAGE_PREFIX = `vichat.chatbot.${CHATBOT_ACCOUNT.id}.messages.`;
+const LEGACY_STORAGE_PREFIXES = CHATBOT_ACCOUNT.id === 'vichat-ai'
+  ? ['vichat.chatbot.bot-songhong.messages.']
+  : [];
 
 function unavailableReply() {
   return {
@@ -59,15 +80,29 @@ function unavailableReply() {
   };
 }
 
-function storageKey(userId) {
-  return `${STORAGE_PREFIX}${userId || 'anonymous'}`;
+function storageKey(userId, prefix = STORAGE_PREFIX) {
+  return `${prefix}${userId || 'anonymous'}`;
+}
+
+function storedMessages(key) {
+  try {
+    const raw = window.localStorage.getItem(key);
+    const messages = raw ? JSON.parse(raw) : [];
+    return Array.isArray(messages) ? messages : [];
+  } catch {
+    return [];
+  }
 }
 
 export function loadChatbotMessages(userId) {
   try {
-    const raw = window.localStorage.getItem(storageKey(userId));
-    const messages = raw ? JSON.parse(raw) : [];
-    return Array.isArray(messages) ? messages : [];
+    const current = storedMessages(storageKey(userId));
+    if (current.length > 0) return current;
+    for (const prefix of LEGACY_STORAGE_PREFIXES) {
+      const legacy = storedMessages(storageKey(userId, prefix));
+      if (legacy.length > 0) return legacy;
+    }
+    return [];
   } catch {
     return [];
   }
@@ -120,46 +155,12 @@ export async function loadChatbotMessagesFromServer(user, conversationId = CHATB
       time: item.created_at ? new Date(item.created_at * 1000).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
       createdAt: item.created_at ? new Date(item.created_at * 1000).toISOString() : undefined,
       source: item.properties?.provider,
+      sources: Array.isArray(item.properties?.sources) ? item.properties.sources : [],
+      grounded: Boolean(item.properties?.grounded),
     }));
   } catch {
     return loadChatbotMessages(user?.id || user?.uid);
   }
-}
-
-export async function listKnowledgeBases() {
-  const response = await fetch(`${API_ROOT}/knowledge/bases`, { credentials: WITH_CREDENTIALS ? 'include' : 'omit' });
-  if (!response.ok) throw new Error(`Khong tai duoc kho tri thuc (${response.status}).`);
-  return (await response.json()).objects || [];
-}
-
-export async function listKnowledgeDocuments(_user, knowledgeBaseId = '') {
-  const params = knowledgeBaseId ? `?${query({ knowledge_base_id: knowledgeBaseId })}` : '';
-  const response = await fetch(`${API_ROOT}/knowledge/documents${params}`, { credentials: WITH_CREDENTIALS ? 'include' : 'omit' });
-  if (!response.ok) throw new Error(`Khong tai duoc tai lieu (${response.status}).`);
-  return (await response.json()).objects || [];
-}
-
-export async function uploadKnowledgeDocument(_user, knowledgeBaseId, file) {
-  const form = new FormData();
-  form.set('file', file, file.name);
-  form.set('title', file.name);
-  form.set('knowledge_base_id', knowledgeBaseId);
-  const response = await fetch(`${API_ROOT}/knowledge/documents/upload`, {
-    method: 'POST',
-    credentials: WITH_CREDENTIALS ? 'include' : 'omit',
-    body: form,
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error_message || `Khong tai duoc tai lieu (${response.status}).`);
-  return payload;
-}
-
-export async function deleteKnowledgeDocument(_user, documentId) {
-  const response = await fetch(`${API_ROOT}/knowledge/documents/${encodeURIComponent(documentId)}`, {
-    method: 'DELETE',
-    credentials: WITH_CREDENTIALS ? 'include' : 'omit',
-  });
-  if (!response.ok) throw new Error(`Khong xoa duoc tai lieu (${response.status}).`);
 }
 
 export async function requestChatbotReply({ message, messageId, conversationId, history = [] }) {

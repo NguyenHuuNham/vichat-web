@@ -21,9 +21,14 @@ class ChatbotService(object):
         if provider == "local":
             return bool(self.app.config.get("CHATBOT_ENABLED", False))
         if provider in ("external", "external-webhook", "webhook"):
+            request_mode = self._external_request_mode()
             return bool(
                 self.app.config.get("CHATBOT_ENABLED", False)
                 and self.app.config.get("CHATBOT_API_URL")
+                and (
+                    request_mode not in ("knowledge-retrieval", "retrieval", "rag")
+                    or str(self.app.config.get("CHATBOT_API_KEY") or "").strip()
+                )
             )
         return bool(
             self.app.config.get("CHATBOT_ENABLED", False)
@@ -115,6 +120,20 @@ class ChatbotService(object):
         headers[header_name] = "{} {}".format(scheme, api_key).strip()
         return headers
 
+    def _external_request_mode(self):
+        return str(
+            self.app.config.get("CHATBOT_EXTERNAL_REQUEST_MODE") or "chat"
+        ).strip().lower()
+
+    def _retrieval_limit(self):
+        try:
+            return min(
+                max(int(self.app.config.get("CHATBOT_RETRIEVAL_LIMIT", 6)), 1),
+                20,
+            )
+        except (TypeError, ValueError):
+            return 6
+
     def _external_payload(
         self,
         message,
@@ -124,6 +143,14 @@ class ChatbotService(object):
         history=None,
         include_context=True,
     ):
+        if self._external_request_mode() in ("knowledge-retrieval", "retrieval", "rag"):
+            # The Knowledge AI production API is retrieval-only. Keep the
+            # request minimal so private employee metadata never leaves Chatmgt.
+            return {
+                "message": str(message or "").strip(),
+                "top_k": self._retrieval_limit(),
+            }
+
         safe_user = {}
         if isinstance(user, dict):
             for key in (
@@ -143,6 +170,69 @@ class ChatbotService(object):
         if include_context:
             payload["context"] = str(context or "")
         return payload
+
+    @staticmethod
+    def _retrieval_sources(data):
+        if not isinstance(data, dict):
+            return []
+        raw_sources = data.get("sources")
+        if not isinstance(raw_sources, list):
+            nested = data.get("data")
+            raw_sources = nested.get("sources") if isinstance(nested, dict) else []
+        sources = []
+        for item in (raw_sources or [])[:20]:
+            if not isinstance(item, dict):
+                continue
+            file_name = str(item.get("file_name") or "").strip()
+            relative_path = str(item.get("relative_path") or "").strip()
+            path_name = relative_path.replace("\\", "/").rsplit("/", 1)[-1]
+            title = str(item.get("title") or file_name or path_name or "Tài liệu").strip()
+            snippet = str(
+                item.get("snippet") or item.get("content") or item.get("text") or ""
+            ).strip()
+            if not snippet:
+                continue
+            sources.append({
+                "title": title[:500],
+                "file_name": file_name[:500] if file_name else None,
+                "snippet": snippet[:2000],
+                "score": item.get("score"),
+            })
+        return sources
+
+    @classmethod
+    def _retrieval_reply(cls, data):
+        sources = cls._retrieval_sources(data)
+        if not sources:
+            return {
+                "reply": (
+                    "Mình chưa tìm thấy tài liệu đủ phù hợp để trả lời chắc chắn. "
+                    "Bạn thử nêu rõ tên quy trình, phòng ban hoặc từ khóa chính nhé."
+                ),
+                "sources": [],
+                "grounded": False,
+            }
+        unique_snippets = []
+        seen = set()
+        for item in sources:
+            snippet = " ".join(str(item.get("snippet") or "").split())
+            key = snippet.casefold()
+            if not snippet or key in seen:
+                continue
+            seen.add(key)
+            unique_snippets.append(snippet)
+        summary = "\n\n".join(
+            "{}. {}".format(index, snippet)
+            for index, snippet in enumerate(unique_snippets[:5], 1)
+        )
+        return {
+            "reply": (
+                "Mình đã đối chiếu kho tri thức và tìm thấy các nội dung liên quan:\n\n{}\n\n"
+                "Bạn có thể mở phần Nguồn tham khảo để kiểm tra tài liệu gốc."
+            ).format(summary)[:8000].rstrip(),
+            "sources": sources,
+            "grounded": True,
+        }
 
     async def _external_reply(
         self,
@@ -184,6 +274,18 @@ class ChatbotService(object):
                             provider_message or "External chatbot returned an error.",
                             502,
                         )
+
+                    if self._external_request_mode() in ("knowledge-retrieval", "retrieval", "rag"):
+                        retrieval = self._retrieval_reply(data)
+                        return {
+                            **retrieval,
+                            "model": None,
+                            "provider": self.app.config.get("CHATBOT_PROVIDER", "external-webhook"),
+                            "usage": {
+                                "retrieval_time_ms": data.get("retrieval_time_ms")
+                                if isinstance(data, dict) else None,
+                            },
+                        }
 
                     content = self._response_content(data)
                     if not content:

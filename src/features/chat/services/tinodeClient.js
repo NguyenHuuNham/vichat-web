@@ -17,12 +17,13 @@ import {
   publishCallInvite,
 } from './callSignaling';
 import { attachmentConversationPreview } from './messagePreview';
+import { fetchProtectedMediaWithRetry } from './mediaRetryPolicy';
 import {
-  buildRecallEvent,
   applyRecallToMessage,
+  buildRecallEvent,
   canRecallDeliveredMessage,
-  recallAppliesToViewer,
   compactMessages,
+  recallAppliesToViewer,
   recallPlaceholderSenderId,
 } from './messagePolicy';
 
@@ -144,6 +145,38 @@ function tinodeRequestHeaders(tinode) {
   const token = tinode.getAuthToken?.()?.token;
   if (token) headers['X-Tinode-Auth'] = `Token ${token}`;
   return headers;
+}
+
+function tokenExpiry(value) {
+  if (!value) return new Date(Date.now() + 60_000);
+  if (value instanceof Date) return value;
+  if (typeof value === 'number') return new Date(value < 10_000_000_000 ? value * 1000 : value);
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date(Date.now() + 60_000) : parsed;
+}
+
+async function refreshTinodeAuth(tinode) {
+  if (!sessionTokenProvider) return false;
+  const refreshedAuth = await sessionTokenProvider();
+  const refreshedToken = sessionToken(refreshedAuth?.token);
+  if (!refreshedToken) return false;
+  tinode.setAuthToken?.({
+    token: refreshedToken,
+    expires: tokenExpiry(refreshedAuth?.expires),
+  });
+  if (sessionAuth) sessionAuth = { ...sessionAuth, ...refreshedAuth, token: refreshedToken };
+  return true;
+}
+
+function fetchProtectedMedia(value, options = {}) {
+  const tinode = getClient();
+  return fetchProtectedMediaWithRetry({
+    request: () => fetch(mediaProxyUrl(value), {
+      ...options,
+      headers: tinodeRequestHeaders(tinode),
+    }),
+    refreshAuth: sessionTokenProvider ? () => refreshTinodeAuth(tinode) : null,
+  });
 }
 
 async function uploadFile(tinode, file, avatarFor = '') {
@@ -334,8 +367,7 @@ async function resolveProtectedMedia(value) {
   const cacheKey = mediaCacheKey(normalized);
   if (!mediaObjectUrlCache.has(cacheKey)) {
     const request = (async () => {
-      const response = await fetch(normalized, {
-        headers: tinodeRequestHeaders(getClient()),
+      const response = await fetchProtectedMedia(normalized, {
         credentials: 'include',
         cache: 'no-store',
       });
@@ -541,6 +573,15 @@ function toMessage(msg, tinode, topic = null) {
   if (msg.head?.['x-reply-to']) {
     try { replyTo = JSON.parse(msg.head['x-reply-to']); } catch { replyTo = null; }
   }
+  let chatbotSources = [];
+  if (msg.head?.['x-vichat-chatbot-sources']) {
+    try {
+      const parsed = JSON.parse(msg.head['x-vichat-chatbot-sources']);
+      chatbotSources = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      chatbotSources = [];
+    }
+  }
   const friendActorId = friendEvent?.action === 'request' ? friendEvent.requesterId : friendEvent?.responderId;
   const friendActorName = friendEvent?.action === 'request' ? friendEvent.requesterName : friendEvent?.responderName;
   // Attachment echoes can omit `from` while retaining our stamped sender
@@ -574,6 +615,8 @@ function toMessage(msg, tinode, topic = null) {
     recallEvent,
     call,
     replyTo,
+    sources: chatbotSources,
+    grounded: msg.head?.['x-vichat-chatbot-grounded'] === '1',
     text: call ? callHistoryLabel(call, isOutgoing) : friendEvent ? (friendEvent.note || '') : systemEvent ? formatSystemEvent(systemEvent, tinode.getCurrentUserID()) : content,
     image: isImageAttachment ? attachmentUrl : undefined,
     file: attachment ? {
@@ -1792,10 +1835,7 @@ export const tinodeClient = {
 
   async downloadFile(file) {
     if (!file?.url) throw new Error('File này chưa có đường dẫn tải xuống.');
-    const tinode = getClient();
-    const response = await fetch(mediaProxyUrl(file.url), {
-      headers: tinodeRequestHeaders(tinode),
-    });
+    const response = await fetchProtectedMedia(file.url);
     if (!response.ok) throw new Error(`Không thể tải file (HTTP ${response.status}).`);
     const blob = await response.blob();
     const objectUrl = URL.createObjectURL(blob);
@@ -1829,9 +1869,7 @@ export const tinodeClient = {
 
   async fetchFile(file) {
     if (!file?.url) throw new Error('File này chưa có đường dẫn tải xuống.');
-    const response = await fetch(mediaProxyUrl(file.url), {
-      headers: tinodeRequestHeaders(getClient()),
-    });
+    const response = await fetchProtectedMedia(file.url);
     if (!response.ok) throw new Error(`Không thể tải file (HTTP ${response.status}).`);
     const blob = await response.blob();
     return new File([blob], file.name || 'tep-chat', {

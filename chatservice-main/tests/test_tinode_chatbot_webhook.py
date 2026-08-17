@@ -82,6 +82,8 @@ class TinodeChatbotContractTests(unittest.TestCase):
         self.assertIn('ManagementAccount.tinode_uid == sender_uid', controller)
         self.assertIn("room?.isChatbot && chatMode === 'tinode' && room.tinodeTopic", app)
         self.assertIn("tinode-chatbot-webhook:", compose)
+        self.assertIn('"x-vichat-chatbot-sources"', worker)
+        self.assertIn('"sources": result.get("sources") or []', controller)
 
 
 if __name__ == "__main__":

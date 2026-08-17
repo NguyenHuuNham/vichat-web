@@ -59,7 +59,7 @@ CONFIG = {
     "TINODE_CHATBOT_FAILURE_REPLY": str(
         os.getenv(
             "TINODE_CHATBOT_FAILURE_REPLY",
-            "Tro ly AI dang tam thoi khong phan hoi. Vui long thu lai sau.",
+            "ViChat AI dang tam thoi khong phan hoi. Vui long thu lai sau.",
         )
     ),
 }
@@ -229,11 +229,22 @@ class TinodeChatbotWorker(object):
             return ctrl
         raise RuntimeError("Tinode did not confirm the request.")
 
-    async def _publish(self, topic, reply, source_sequence):
+    async def _publish(self, topic, reply, source_sequence, metadata=None):
         request_id = self._request_id("pub")
         loop = asyncio.get_running_loop()
         future = loop.create_future()
         self.pending_ctrl[request_id] = future
+        chatbot_metadata = metadata if isinstance(metadata, dict) else {}
+        compact_sources = []
+        for source in (chatbot_metadata.get("sources") or [])[:5]:
+            if not isinstance(source, dict):
+                continue
+            compact_sources.append({
+                "title": str(source.get("title") or source.get("file_name") or "Tài liệu")[:180],
+                "file_name": str(source.get("file_name") or "")[:180],
+                "snippet": " ".join(str(source.get("snippet") or "").split())[:420],
+                "score": source.get("score"),
+            })
         await self._send({
             "pub": {
                 "id": request_id,
@@ -242,6 +253,12 @@ class TinodeChatbotWorker(object):
                 "head": {
                     "x-vichat-chatbot": "1",
                     "x-vichat-chatbot-source-seq": str(source_sequence),
+                    "x-vichat-chatbot-grounded": "1" if chatbot_metadata.get("grounded") else "0",
+                    "x-vichat-chatbot-sources": json.dumps(
+                        compact_sources,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
                 },
                 "content": reply,
             },
@@ -303,7 +320,11 @@ class TinodeChatbotWorker(object):
             reply = str(payload.get("reply") or "").strip()
             if not reply:
                 raise RuntimeError("Chatmgt chatbot webhook returned no reply.")
-            return reply
+            return {
+                "reply": reply,
+                "grounded": bool(payload.get("grounded")),
+                "sources": payload.get("sources") if isinstance(payload.get("sources"), list) else [],
+            }
 
     async def _process_message(self, packet):
         data = packet.get("data") or {}
@@ -321,12 +342,12 @@ class TinodeChatbotWorker(object):
                 self.cursor.advance(topic, sequence)
                 return
             try:
-                reply = await self._webhook_reply(packet, message)
+                response = await self._webhook_reply(packet, message)
             except Exception as error:
                 LOGGER.warning("Chatbot provider failed for %s:%s: %s", topic, sequence, error)
                 self.last_error = str(error)[:500]
-                reply = self.failure_reply
-            await self._publish(topic, reply, sequence)
+                response = {"reply": self.failure_reply, "grounded": False, "sources": []}
+            await self._publish(topic, response["reply"], sequence, response)
             self.cursor.advance(topic, sequence)
 
     def _track_message(self, packet):

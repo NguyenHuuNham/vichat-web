@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 *.local
+.env.local-ai
+.env.local-ai-api
 infrastructure/tinode/.env
 infrastructure/tinode/.persistence-test.json
 infrastructure/chatservice/.env
@@ -32,3 +34,13 @@ chatservice-main/.env
 *.njsproj
 *.sln
 *.sw?
+
+# Codex worktrees and temporary files
+.codex-worktrees/
+.codex-deploy-group-owner/
+.codex-remote-overlay/
+.codex-vite.err.log
+.codex-vite.out.log
+outputs/
+analysis_*.md
+#

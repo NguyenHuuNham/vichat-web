@@ -12,40 +12,37 @@ Configure Chatmgt:
 ```dotenv
 CHATBOT_ENABLED=true
 CHATBOT_PROVIDER=external-webhook
-CHATBOT_API_URL=https://knowledge.gonapp.net/api/v1/chat
-CHATBOT_API_KEY=
-CHATBOT_EXTERNAL_AUTH_HEADER=Authorization
-CHATBOT_EXTERNAL_AUTH_SCHEME=Bearer
+CHATBOT_API_URL=https://knowledge-ai.gonapp.net/api/v1/chat
+CHATBOT_API_KEY=<knowledge-ai-api-key>
+CHATBOT_EXTERNAL_AUTH_HEADER=X-API-Key
+CHATBOT_EXTERNAL_AUTH_SCHEME=
+CHATBOT_EXTERNAL_REQUEST_MODE=knowledge-retrieval
 CHATBOT_KNOWLEDGE_ONLY=false
 ```
 
 Chatmgt calls this HTTPS endpoint server-side. The browser continues to call
-Chatmgt and never receives the partner URL or any future API credential. Leave
-`CHATBOT_API_KEY` empty only while the endpoint does not require authentication.
+Chatmgt and never receives the partner URL or API credential. The current
+Knowledge AI endpoint requires `X-API-Key`; without it Chatmgt reports the
+provider as not ready.
 
-Chatmgt sends a server-to-server JSON payload. The provider key is never sent
-to the browser.
+For `knowledge-retrieval`, Chatmgt sends a minimal server-to-server payload:
 
 ```json
 {
   "message": "How do I request leave?",
-  "conversation_id": "bot-session-123",
-  "history": [{"role": "user", "content": "Hello"}],
-  "user": {
-    "id": "account-user-id",
-    "name": "User name",
-    "tenant_id": "song-hong"
-  },
-  "context": "[Nguon 1: Leave policy]\n..."
+  "top_k": 6
 }
 ```
 
-The provider response may use `reply`, `answer`, `text`, `message`,
-`data.answer`, or `choices[0].message.content`.
+The provider returns `sources` with snippets. Chatmgt converts those snippets
+to the reply shown on web/mobile and keeps source names in the response. Other
+external-webhook modes still accept `reply`, `answer`, `text`, `message`,
+`data.answer`, or `choices[0].message.content` for compatibility.
 
-External webhook mode forwards greetings and questions even when retrieval finds
-no approved context; the `context` field is then empty. This avoids falling back
-to the legacy internal assistant reply path.
+Compatibility external-webhook mode forwards greetings and questions even when
+local retrieval finds no approved context. In Knowledge AI retrieval mode, the
+provider itself returns an empty `sources` list and Chatmgt renders a bounded
+no-match reply instead.
 
 Set `VITE_CHAT_MODE=external` for the production frontend. ChatUI then keeps
 Account SSO, profile/session validation, settings, knowledge administration,

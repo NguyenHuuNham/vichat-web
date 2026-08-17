@@ -16,12 +16,12 @@ const productionDefaults = {
   VITE_CHAT_MODE: 'internal',
   VITE_CHATBOT_API_URL: 'https://chatmgt.upgo.vn/api/v1/chatbot/message',
   VITE_CHATBOT_WITH_CREDENTIALS: 'true',
-  VITE_CHATBOT_ID: 'external-chatbot',
-  VITE_CHATBOT_USERNAME: 'external_bot',
-  VITE_CHATBOT_DISPLAY_NAME: 'External AI',
-  VITE_CHATBOT_DISPLAY_TITLE: 'External chatbot',
-  VITE_CHATBOT_DISPLAY_ORGANIZATION: 'Connected service',
-  VITE_CHATBOT_DISPLAY_AVATAR: '/favicon.svg',
+  VITE_CHATBOT_ID: 'vichat-ai',
+  VITE_CHATBOT_USERNAME: 'vichat_ai',
+  VITE_CHATBOT_DISPLAY_NAME: 'ViChat AI',
+  VITE_CHATBOT_DISPLAY_TITLE: 'Trợ lý tri thức doanh nghiệp',
+  VITE_CHATBOT_DISPLAY_ORGANIZATION: 'GON Platform',
+  VITE_CHATBOT_DISPLAY_AVATAR: '/vichat-ai.svg',
 };
 
 for (const [name, value] of Object.entries(productionDefaults)) {
