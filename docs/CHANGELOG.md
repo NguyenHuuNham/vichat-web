@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `npm run test:frontend` dat 98/98; `node --test src/features/security/services/pinLock.test.js` dat 3/3; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-a_RfqMp5.js`, `index-BjWA_b5x.css`; `git diff --check` dat.
 - Rui ro con lai: PIN la privacy gate tren trinh duyet, khong bao ve du lieu neu nguoi dung xoa storage hoac co quyen devtools; chua UAT bang browser that cho selector, dark mode, upload/xoa am bao va dong-mo tab.
 - Viec tiep theo: Hard refresh build khi deploy duoc phep, bat PIN tren tai khoan test, dong tab/mo lai de nhap PIN, kiem tra selector co Viet/Anh, thong bao dark mode va am bao; khong deploy trong lan lam viec nay.
-- Commit/PR: Chua tao.
+- Commit/PR: `f5c00c5` (source); docs follow-up.
 
 ## 2026-08-17-21 - Gui nhieu anh va file trong composer
 
