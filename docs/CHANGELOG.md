@@ -8,19 +8,20 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-17-10 - Sap xep menu chinh va them chon ngon ngu ChatUI
 
-- Thoi gian: 2026-08-17 16:40 (Asia/Saigon)
+- Thoi gian: 2026-08-17 16:57 (Asia/Saigon)
 - Loai: Tinh nang | Web
-- Trang thai: Da kiem thu; cho deploy
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Rut gon thanh dieu huong con Chat, Nhom, Work va Cai dat; thay tuy chon Giao dien gon bang chon Tieng Viet/English.
 - Pham vi: ChatUI sidebar va panel Cai dat; giu nguyen cac panel danh ba, file, thong bao cung cac luong chat, nhom va Work ben trong.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/conversationNotifications.js`, `src/features/chat/services/conversationNotifications.test.js`, `src/styles/index.css`, `README.md`, `docs/CHANGELOG.md`, `dist/index.html`.
 - Noi dung: An ba muc Danh ba, File dung chung va Thong bao khoi menu chinh, doi nhan Workspace thanh Work, them selector ngon ngu co co Viet/Anh va luu lua chon theo viewer trong localStorage. Cac panel bi an van duoc giu nguyen de khong lam dut luong hien co.
 - Quyet dinh ky thuat: Tai su dung preference record theo ID tai khoan dang nhap; normalize chi chap nhan `vi` va `en`, mac dinh `vi`, dong thoi cap nhat `document.documentElement.lang` khi doi ngon ngu.
 - Database/API/cau hinh: Khong migration, API, dependency hoac bien moi truong moi.
-- Kiem thu: `npm run test:frontend` dat 88/88; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-ip5gQJb2.js`, `App-6SGUobUE.js`, `index-B6WVCdci.css`; `git diff --check` dat; bundle co marker option `Tiếng Việt`/`English`.
-- Rui ro con lai: Cac luong noi dung cu ngoai sidebar va panel Cai dat van hien thi theo copy hien tai; can UAT selector, F5 va doi tai khoan sau khi build/deploy.
-- Viec tiep theo: Deploy rieng ChatUI, kiem tra health/public bundle va UAT selector ngon ngu sau hard refresh.
-- Commit/PR: Chua tao.
+- Kiem thu: `npm run test:frontend` dat 88/88; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-ip5gQJb2.js`, `App-6SGUobUE.js`, `index-B6WVCdci.css`; `git diff --check` dat; public bundle moi co marker `English` va `Choose the application display language`, khong con marker `compactMode`; `https://chat.upgo.vn/healthz` tra `ok`; ChatUI healthy; `docker compose ps` xac nhan Chatmgt, Tinode bridge/webhook, ChatAPI, PostgreSQL, Redis va Coturn van healthy/Up. Mot lenh kiem tra phu dung nham service key chatbot va tra `no such service`, sau do da chay lai lenh tong thanh cong.
+- Noi dung deploy: Archive SHA-256 `E50EB6492B189D8B2BAD7F5DE946822E51DAF869B9739D66A0D340DB06F1F654` duoc staging vao `/opt/deploy/chat/releases/nav-language-1500b7e-20260817-1645`; `current` tro vao release nay, `previous` tro ve `/opt/deploy/chat/releases/custom-sound-7c0b880-20260817-1553`; image ChatUI `sha256:5b1ebdca3918529e1884189b1ca726e527aa276266168720fc197117172f716a`, container `b3feecb1d8997ebc72188c648c7d52754ae598f18b7437ab11d303c54442212a`; chi recreate `chat`, khong restart Chatmgt/Tinode bridge/chatbot, database, Redis/Coturn hay reset volume.
+- Rui ro con lai: Chua UAT thao tac bang browser that vi browser runtime hien khong co session kha dung; can hard refresh, chon English/Tieng Viet, F5, doi tai khoan va xac nhan localStorage tach theo viewer.
+- Viec tiep theo: Mo `https://chat.upgo.vn`, vao Cai dat, doi selector ngon ngu va kiem tra lai cac luong chat/nhom/Work; neu can rollback dung symlink `previous`.
+- Commit/PR: Source `1500b7e` da push `origin/master`; deploy record follow-up.
 
 ## 2026-08-17-09 - Tai am bao tuy chinh tu may tinh
 
