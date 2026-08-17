@@ -344,6 +344,7 @@ class ChatAuthContractTests(unittest.TestCase):
 
         self.assertIn("tinode_add_topic_members", add_source)
         self.assertIn("tinode_remove_topic_member", remove_source)
+        self.assertIn("tinode_reconcile_topic_members", remove_source)
         self.assertIn("tinode_accept_topic_owner", remove_source)
         self.assertIn("tinode_publish_system_event", remove_source)
         self.assertIn("TINODE_TOKEN_REQUIRED", add_source)

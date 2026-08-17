@@ -819,7 +819,7 @@ async def tinode_sso_login(identity, tinode_username, tinode_uid=None):
         return await tinode_login(tinode_username, password)
 
 
-async def tinode_verify_topic_access(token, expected_uid, topic_name, expected_member_uids=None):
+async def tinode_topic_member_uids(token, expected_uid, topic_name, include_members=True):
     base_url = str(app.config.get("TINODE_INTERNAL_WS_URL") or "").rstrip("?")
     api_key = str(app.config.get("TINODE_API_KEY") or "")
     if not base_url or not api_key or not token:
@@ -866,8 +866,7 @@ async def tinode_verify_topic_access(token, expected_uid, topic_name, expected_m
                 },
             })
             await receive_ctrl(socket, "3")
-
-            if expected_member_uids is None:
+            if not include_members:
                 return None
 
             await socket.send_json({
@@ -902,10 +901,19 @@ async def tinode_verify_topic_access(token, expected_uid, topic_name, expected_m
             if actual_member_uids is None:
                 raise AuthError("Tinode did not return the topic membership.", 502)
 
-            expected = {str(uid) for uid in expected_member_uids if uid}
-            if actual_member_uids != expected:
-                raise AuthError("Tinode topic members do not match Chatmgt.", 409)
             return actual_member_uids
+
+
+async def tinode_verify_topic_access(token, expected_uid, topic_name, expected_member_uids=None):
+    if expected_member_uids is None:
+        await tinode_topic_member_uids(token, expected_uid, topic_name, include_members=False)
+        return None
+
+    actual_member_uids = await tinode_topic_member_uids(token, expected_uid, topic_name)
+    expected = {str(uid) for uid in expected_member_uids if uid}
+    if actual_member_uids != expected:
+        raise AuthError("Tinode topic members do not match Chatmgt.", 409)
+    return actual_member_uids
 
 
 async def tinode_add_topic_members(token, expected_uid, topic_name, member_uids, mode="JRWPAS"):
@@ -1076,6 +1084,47 @@ async def tinode_remove_topic_member(token, expected_uid, topic_name, member_uid
                 })
             await receive_ctrl(socket, "4")
             return target_uid
+
+
+async def tinode_reconcile_topic_members(
+    token,
+    expected_uid,
+    topic_name,
+    expected_member_uids,
+    max_attempts=4,
+):
+    """Make a management-owned topic match Chatmgt after a membership change."""
+    expected = {str(uid) for uid in expected_member_uids if uid}
+    if not expected:
+        raise AuthError("The Chatmgt topic membership is empty.", 409)
+
+    attempts = max(1, int(max_attempts))
+    for attempt in range(attempts):
+        actual = await tinode_topic_member_uids(token, expected_uid, topic_name)
+        if actual == expected:
+            return actual
+
+        extra = sorted(actual - expected)
+        missing = sorted(expected - actual)
+        if str(expected_uid) in extra:
+            raise AuthError("Tinode authenticated a user outside Chatmgt membership.", 409)
+        for member_uid in extra:
+            await tinode_remove_topic_member(token, expected_uid, topic_name, member_uid)
+        if str(expected_uid) in missing:
+            await tinode_add_topic_members(
+                token,
+                expected_uid,
+                topic_name,
+                [str(expected_uid)],
+                mode="JRWPASO",
+            )
+            missing.remove(str(expected_uid))
+        if missing:
+            await tinode_add_topic_members(token, expected_uid, topic_name, missing)
+        if attempt + 1 < attempts:
+            await asyncio.sleep(0.1 * (attempt + 1))
+
+    raise AuthError("Tinode topic members do not match Chatmgt.", 409)
 
 
 async def tinode_publish_system_event(token, expected_uid, topic_name, event):

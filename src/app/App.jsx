@@ -490,7 +490,9 @@ function mergeTinodeConversation(existing, incoming) {
     existing.accountSession && isManagementConversationId(existing.managementId || existing.id),
   );
   const incomingManagementSnapshot = managementOwned && Array.isArray(incoming.participantIds);
-  const snapshotMembers = incoming.members?.length ? incoming.members : (existing.members || []);
+  const snapshotMembers = incomingManagementSnapshot
+    ? (Array.isArray(incoming.members) ? incoming.members : [])
+    : (incoming.members?.length ? incoming.members : (existing.members || []));
   const members = incomingManagementSnapshot
     ? mergeRealtimeMemberPresence(snapshotMembers, existing.members || [])
     : managementOwned
@@ -2835,13 +2837,18 @@ function App() {
           || member;
         if (!memberAccount?.id) throw new Error('Chatmgt không xác định được thành viên cần xóa.');
         if (chatMode === 'tinode') {
-          const topicName = await ensureTinodeConversationTopic(activeChat);
+          // A bound topic is already managed by Chatmgt; do not re-bind it
+          // before removing a member because the old Tinode snapshot may be
+          // exactly the inconsistency this operation is repairing.
+          const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
           const managedRoom = await chatManagementService.removeConversationParticipant(
             activeChat.managementId || activeChat.id,
             memberAccount.id,
           );
-          await tinodeClient.sendSystemEvent(topicName, event);
-          const realtimeRoom = await tinodeClient.openConversation(topicName);
+          await tinodeClient.sendSystemEvent(topicName, event).catch(() => {});
+          const realtimeRoom = await tinodeClient.openConversation(topicName).catch(() => ({
+            messages: activeChat.messages || [],
+          }));
           updatedRoom = {
             ...normalizeTinodeConversation(realtimeRoom),
             ...managedRoom,

@@ -63,6 +63,7 @@ from application.services.auth_service import (
     tinode_mirror_login,
     tinode_accept_topic_owner,
     tinode_remove_topic_member,
+    tinode_reconcile_topic_members,
     tinode_publish_system_event,
     tinode_sso_password,
     tinode_sso_login,
@@ -2737,12 +2738,35 @@ async def conversation_bind_tinode(request, conversation_id):
         return json({"error_code": "TINODE_TOKEN_REQUIRED", "error_message": "Tinode authentication is required."}, status=400)
 
     try:
-        await tinode_verify_topic_access(
-            tinode_token,
-            account.tinode_uid,
-            topic_name,
-            expected_member_uids=expected_member_uids,
-        )
+        try:
+            await tinode_verify_topic_access(
+                tinode_token,
+                account.tinode_uid,
+                topic_name,
+                expected_member_uids=expected_member_uids,
+            )
+        except AuthError as error:
+            if not is_group or str(error) != "Tinode topic members do not match Chatmgt.":
+                raise
+            owner_participant = next(
+                (participant for participant in participants if participant.role == "OWNER"),
+                None,
+            )
+            owner_account = accounts_by_id.get(owner_participant.participant_id) if owner_participant else None
+            if owner_account is None:
+                raise
+            owner_uid = await _ensure_tinode_account(owner_account)
+            owner_auth = await tinode_sso_login(
+                _tinode_account_identity(owner_account),
+                owner_account.tinode_username,
+                owner_uid,
+            )
+            await tinode_reconcile_topic_members(
+                str(owner_auth.get("token") or ""),
+                owner_uid,
+                topic_name,
+                expected_member_uids,
+            )
         if is_group and body.get("avatar"):
             properties = dict(item.properties or {})
             properties["avatar"] = str(body.get("avatar") or "")[:8192]
@@ -2959,6 +2983,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
         replacement_uid = ""
         replacement_tinode_token = ""
         owner_transfer_accepted = False
+        tinode_target_removed = False
 
         async def rollback_tinode_owner_transfer():
             if not replacement_uid or actor_account is None or not tinode_token:
@@ -2987,6 +3012,29 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 )
             except AuthError:
                 logger.warning("Could not roll back the Tinode owner transfer.")
+
+        async def rollback_tinode_changes():
+            if replacement is not None:
+                await rollback_tinode_owner_transfer()
+                return
+            if not tinode_target_removed or target_account is None:
+                return
+            restore_token = event_sender_tinode_token if participant_id == user_id else tinode_token
+            restore_uid = event_sender_uid if participant_id == user_id else (
+                actor_account.tinode_uid if actor_account is not None else ""
+            )
+            if not restore_token or not restore_uid:
+                return
+            try:
+                await tinode_add_topic_members(
+                    restore_token,
+                    restore_uid,
+                    item.tinode_topic,
+                    [target_account.tinode_uid],
+                    mode="JRWPAS",
+                )
+            except AuthError:
+                logger.warning("Could not roll back the Tinode member removal.")
 
         if item.tinode_topic:
             tinode_token = str((request.json or {}).get("tinode_token") or "").strip()
@@ -3051,6 +3099,22 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 item.tinode_topic,
                 target_account.tinode_uid,
             )
+            tinode_target_removed = True
+            if is_group:
+                active_participants, active_accounts = _active_conversation_accounts(item)
+                expected_member_uids = {
+                    str(active_accounts[participant.participant_id].tinode_uid or "")
+                    for participant in active_participants
+                }
+                verification_token = replacement_tinode_token or event_sender_tinode_token or tinode_token
+                verification_uid = replacement_uid or event_sender_uid or actor_account.tinode_uid
+                if verification_token and verification_uid and expected_member_uids:
+                    await tinode_reconcile_topic_members(
+                        verification_token,
+                        verification_uid,
+                        item.tinode_topic,
+                        expected_member_uids,
+                    )
         db.session.commit()
         if is_group and participant_id == user_id and event_sender_tinode_token:
             try:
@@ -3071,6 +3135,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
         return json(_serialize_conversation(item, user_id))
     except AccountSSOError as error:
         db.session.rollback()
+        await rollback_tinode_changes()
         if error.status_code != 503:
             revoke_request_token(request)
             revoked_error = AccountSSOError(str(error), 401, error.error_code)
@@ -3079,11 +3144,11 @@ async def conversation_participant_remove(request, conversation_id, participant_
         return _account_sso_error(error)
     except AuthError as error:
         db.session.rollback()
-        await rollback_tinode_owner_transfer()
+        await rollback_tinode_changes()
         return json({"error_code": "TINODE_MEMBERSHIP_FAILED", "error_message": str(error)}, status=error.status_code)
     except Exception as error:
         db.session.rollback()
-        await rollback_tinode_owner_transfer()
+        await rollback_tinode_changes()
         logger.exception("Could not remove Chatmgt/Tinode participant: %s", error)
         return json({
             "error_code": "CONVERSATION_PARTICIPANT_ERROR",

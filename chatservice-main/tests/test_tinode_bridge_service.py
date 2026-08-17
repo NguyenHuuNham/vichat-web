@@ -358,6 +358,31 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(raised.exception.status_code, 409)
 
+    async def test_topic_member_reconciliation_removes_stale_tinode_subscriber(self):
+        observed = AsyncMock(side_effect=[
+            {"usrOwner", "usrMember", "usrStale"},
+            {"usrOwner", "usrMember"},
+        ])
+        with patch.object(auth_service, "tinode_topic_member_uids", observed), patch.object(
+            auth_service,
+            "tinode_remove_topic_member",
+            AsyncMock(),
+        ) as remove:
+            members = await auth_service.tinode_reconcile_topic_members(
+                "short-token",
+                "usrOwner",
+                "grpRoom",
+                {"usrOwner", "usrMember"},
+            )
+
+        self.assertEqual(members, {"usrOwner", "usrMember"})
+        remove.assert_awaited_once_with(
+            "short-token",
+            "usrOwner",
+            "grpRoom",
+            "usrStale",
+        )
+
     async def test_add_member_uses_the_authenticated_owner_token(self):
         socket = FakeSocket([
             {"ctrl": {"id": "1", "code": 201}},

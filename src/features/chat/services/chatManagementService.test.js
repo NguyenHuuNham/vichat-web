@@ -77,6 +77,13 @@ test('conversation actions use the authoritative Chatmgt id on web and mobile', 
   assert.match(mobileStoreSource, /deleteConversationForCurrentUser\(conversation\.managementId \|\| conversation\.id, tinodeAuth\.token\)/);
 });
 
+test('managed member removal does not re-bind an already bound topic first', () => {
+  const removeSource = appSource.split('const handleRemoveGroupMember')[1].split('const persistDemoGroupMessage')[0];
+  assert.match(removeSource, /activeChat\.tinodeTopic \|\| await ensureTinodeConversationTopic\(activeChat\)/);
+  assert.match(removeSource, /sendSystemEvent\(topicName, event\)\.catch/);
+  assert.match(removeSource, /openConversation\(topicName\)\.catch/);
+});
+
 test('web self recall removes the local message while all recall keeps a placeholder', () => {
   assert.match(
     appSource,

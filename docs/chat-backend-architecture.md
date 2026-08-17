@@ -297,7 +297,10 @@ or rewrite later message, presence or call packets.
 `POST /api/v1/conversation/<id>/tinode-prepare` prepares missing UID mappings
 from current Chatmgt membership. Group topic binding and add/remove/leave
 operations verify the fresh Tinode token and exact tenant member set before
-committing Chatmgt metadata. When a group owner leaves, Chatmgt grants the
+committing Chatmgt metadata. If a bound group has a stale Tinode subscriber
+snapshot, Chatmgt uses the surviving owner bridge credential to reconcile the
+topic to the active Chatmgt member set before accepting the bind or membership
+change. When a group owner leaves, Chatmgt grants the
 replacement member owner access, has that member accept the transfer through
 its own Tinode session, and only then removes the former owner. The leave
 activity event is published by a surviving member after the membership commit,

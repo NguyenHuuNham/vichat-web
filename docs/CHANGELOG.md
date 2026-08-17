@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-17-07 - Dong bo lai thanh vien Tinode sau khi xoa
+
+- Thoi gian: 2026-08-17 14:07 (Asia/Saigon)
+- Loai: Sua loi | Web | Realtime | Kiem thu | Van hanh
+- Trang thai: Hoan tat code va kiem thu local; chua deploy production
+- Muc tieu: Xoa thanh vien khoi nhom xong van gui tin binh thuong, ke ca khi topic Tinode con subscriber stale tu thao tac truoc.
+- Pham vi: Chatmgt/Tinode membership bridge, ChatUI remove member va snapshot thanh vien; khong doi schema, message content hay tenant authorization.
+- File da thay doi: `chatservice-main/application/services/auth_service.py`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_tinode_bridge_service.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Them doc va reconcile subscriber Tinode theo active member set cua Chatmgt sau add/remove va khi bind gap lech; dung owner bridge credential de sua UID du/thieu. ChatUI khong bind lai topic da co truoc khi xoa, coi system event/open topic la best-effort va giu member list tu Chatmgt sau response.
+- Quyet dinh ky thuat: Chatmgt van la nguon thanh vien chuan; thao tac reconcile duoc gioi han trong bridge va dung token owner server-side, khong cho browser tu phat minh membership.
+- Database/API/cau hinh: Khong migration; khong doi endpoint/payload; khong doi bien moi truong.
+- Kiem thu: `npm run test:frontend` dat 84/84; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-DG5URbPh.js`, `App-Ypm7DEba.js`; `python -m unittest discover -s tests -q` dat 154 test, skip 50; `python -m py_compile application/services/auth_service.py application/controllers/api_chat_management.py tests/test_tinode_bridge_service.py tests/test_chat_auth_contract.py` dat; `git diff --check` dat.
+- Rui ro con lai: Chua UAT production sau release; neu Tinode tu choi token owner thi bind se tra loi loi thay vi tu dong sua, va can theo doi log reconciliation.
+- Viec tiep theo: Commit/push, deploy Chatmgt + ChatUI, verify health/log va thu remove member roi gui tin tren `https://chat.upgo.vn`.
+- Commit/PR: Chua tao.
+
 ## 2026-08-17-06 - Dong bo avatar nhom va menu ghim hoi thoai
 
 - Thoi gian: 2026-08-17 13:01 (Asia/Saigon)
