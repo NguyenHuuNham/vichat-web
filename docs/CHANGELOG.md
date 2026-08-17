@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-18 02:37 (Asia/Saigon)
 - Loai: Tinh nang | Xac thuc | Bao mat | UX | Kiem thu
-- Trang thai: Hoan tat code; chua commit/deploy production
+- Trang thai: Da commit; chua deploy production
 - Muc tieu: Cho phep mot tai khoan UpGO co nhieu membership active chuyen Chat sang cong ty khac ngay trong Ho so ma khong dang xuat hoac dang nhap lai.
 - Pham vi: Chatmgt SSO/JWT, dong bo current tenant Account, projection tenant, ChatUI ho so, Tinode reconnect, ban dich, cau hinh production va test; khong deploy production trong lan nay.
 - File da thay doi: `README.md`, `chatservice-main/application/config/config.py`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/services/account_sso_service.py`, `chatservice-main/application/services/sso_identity.py`, `chatservice-main/tests/test_account_sso_service.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `chatservice-main/tests/test_sso_identity.py`, `docs/chat-backend-architecture.md`, `infrastructure/production/.env.example`, `infrastructure/production/compose.yaml`, `src/app/App.jsx`, `src/features/auth/components/Login.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `dist/index.html`.
@@ -18,9 +18,9 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Khong tin tenant ID tu browser; khong logout Account va khong xoa credential. Tenant chi hop le neu Account session xac nhan membership active va Account current tenant trung voi JWT moi truoc khi doc danh ba.
 - Database/API/cau hinh: Them endpoint `POST /api/v1/auth/switch-tenant`; them `ACCOUNT_SSO_TENANT_SWITCH_PATH=/api/v1/tenant/set_current_tenant`; khong migration. Cap nhat hai contract test cu theo source hien tai (composer dynamic class va desktop notification co gate mute/quyen).
 - Kiem thu: trong `chatservice-main`, `python -m unittest discover -s tests -q` dat 164 test, 53 skip do local thieu dependency runtime `aiohttp`; `python -m unittest discover -s tests -p 'test_sso_identity.py' -v` dat 26/26; `python -m py_compile application/services/account_sso_service.py application/services/sso_identity.py application/controllers/api_chat_management.py application/config/config.py` dat; `npm run test:frontend` dat 107/107; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `docker compose --env-file infrastructure/production/.env.example -f infrastructure/production/compose.yaml config --quiet` dat voi gia tri kiem tra tam thoi cho bien bat buoc; `git diff --check` dat.
-- Rui ro con lai: Chua UAT bang tai khoan UpGO that co it nhat hai membership active de xac nhan Account cookie, danh ba, hoi thoai va Tinode sau khi switch; chua commit/push/deploy.
-- Viec tiep theo: Review diff, commit/push theo quy trinh, sau do deploy release bat bien va UAT hai cong ty; rollback neu switch khong dong bo danh ba.
-- Commit/PR: Chua tao.
+- Rui ro con lai: Chua UAT bang tai khoan UpGO that co it nhat hai membership active de xac nhan Account cookie, danh ba, hoi thoai va Tinode sau khi switch; chua deploy production.
+- Viec tiep theo: Push commit, deploy release bat bien va UAT hai cong ty; rollback neu switch khong dong bo danh ba.
+- Commit/PR: `5100ea6`.
 
 ## 2026-08-18-04 - Deploy English localization ChatUI len production
 
