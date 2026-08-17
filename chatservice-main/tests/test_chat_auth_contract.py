@@ -129,6 +129,40 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('ACCOUNT_SSO_PASSWORD_MARKER = "!account-sso-only"', controller_source)
         self.assertIn("password_hash=ACCOUNT_SSO_PASSWORD_MARKER", projection_source)
 
+    def test_employee_tenant_switch_rotates_chat_only_after_membership_validation(self):
+        _controller_source, switch_source = function_source(
+            CONTROLLER_PATH,
+            "management_switch_tenant",
+        )
+
+        self.assertIn("management_session_requested", switch_source)
+        self.assertIn('current_user.get("auth_method") != "account_sso"', switch_source)
+        self.assertIn("preferred_tenant_id=requested_tenant_id", switch_source)
+        self.assertIn("account_user_id", switch_source)
+        self.assertIn("await switch_account_tenant(", switch_source)
+        self.assertIn("switched_account_cookie", switch_source)
+        self.assertIn("set_account_cookie(response, switched_account_cookie)", switch_source)
+        self.assertIn("switched_identity = await current_account_session(request)", switch_source)
+        self.assertIn("ACCOUNT_TENANT_SWITCH_UNCONFIRMED", switch_source)
+        self.assertIn('issue_access_token(account, auth_method="account_sso")', switch_source)
+        self.assertIn("revoke_request_token(request)", switch_source)
+        self.assertIn("set_auth_cookie(response, token, request)", switch_source)
+        self.assertNotIn("logout_account_session", switch_source)
+        self.assertNotIn("clear_account_cookie", switch_source)
+
+    @repository_source_test
+    def test_production_configures_account_tenant_switch_endpoint(self):
+        compose_source = PRODUCTION_COMPOSE_PATH.read_text(encoding="utf-8")
+        env_source = PRODUCTION_ENV_EXAMPLE_PATH.read_text(encoding="utf-8")
+        config_source = (PROJECT_ROOT / "application" / "config" / "config.py").read_text(encoding="utf-8")
+
+        self.assertIn("ACCOUNT_SSO_TENANT_SWITCH_PATH", config_source)
+        self.assertIn("ACCOUNT_SSO_TENANT_SWITCH_PATH=/api/v1/tenant/set_current_tenant", env_source)
+        self.assertIn(
+            "ACCOUNT_SSO_TENANT_SWITCH_PATH: ${ACCOUNT_SSO_TENANT_SWITCH_PATH:-/api/v1/tenant/set_current_tenant}",
+            compose_source,
+        )
+
     @repository_source_test
     def test_tinode_web_basic_login_uses_the_account_bridge(self):
         compose_source = PRODUCTION_COMPOSE_PATH.read_text(encoding="utf-8")
@@ -299,7 +333,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("tinodeClient.authenticated", draft_source)
         self.assertNotIn("ensureTinodeConversationTopic", draft_source)
         self.assertEqual(app_source.count("ref={messageInputRef}"), 1)
-        composer_source = app_source.split('<div className="input-text-container">', 1)[1]
+        composer_source = app_source.split("className={`input-text-container", 1)[1]
         self.assertIn("ref={messageInputRef}", composer_source)
 
     @repository_source_test
@@ -433,8 +467,9 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("notificationMutedUntil", service_source)
         self.assertIn("isConversationMuted", app_source)
         self.assertIn("fa-bell-slash conv-muted-icon", app_source)
-        self.assertNotIn("new window.Notification", app_source)
-        self.assertNotIn("Notification.requestPermission", app_source)
+        self.assertIn("if (isConversationMuted(notificationRoom?.notificationMutedUntil)) return;", app_source)
+        self.assertIn("new window.Notification", app_source)
+        self.assertIn("desktopNotificationPermission === 'granted'", app_source)
 
     def test_conversation_pins_are_viewer_scoped_chatmgt_metadata(self):
         _controller_source, serializer_source = function_source(

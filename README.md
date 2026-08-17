@@ -35,7 +35,8 @@ and profile changes remain exclusively in UpGO Account.
 4. ChatUI requires the employee's UpGO Account email/password; Chatmgt calls UpGO Account `POST /login`, automatically resolves the invited active tenant/company/brand membership, and exposes `POST /api/v1/auth/account-login` as the employee login contract.
 5. Chatmgt projects the Account identity, derives/provisions the employee's Tinode identity server-side, and issues a tenant-scoped HttpOnly chat session.
 6. Chatmgt returns only public identity fields; ChatUI requests a short-lived Tinode token through `POST /api/v1/auth/tinode-token`.
-7. Logout revokes the Chatmgt session and clears the ChatUI cookie. Admin logout also ends the Account administrator session.
+7. If the employee has multiple active Account memberships, ChatUI calls `POST /api/v1/auth/switch-tenant` from the profile. Chatmgt validates the membership, changes Account's current tenant through `/api/v1/tenant/set_current_tenant`, confirms it, then rotates only the Chatmgt session; the Account cookie and credentials remain valid.
+8. Logout revokes the Chatmgt session and clears the ChatUI cookie. Admin logout also ends the Account administrator session.
 
 ## ViChat Mobile
 

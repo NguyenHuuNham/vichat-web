@@ -8,6 +8,13 @@ test('translates exact UI labels and keeps Vietnamese as the default', () => {
   assert.equal(translateUiText('Cài đặt'), 'Cài đặt');
 });
 
+test('translates tenant switch labels', () => {
+  assert.equal(translateUiText('Chuyển công ty', 'en'), 'Switch company');
+  assert.equal(translateUiText('Chọn công ty để làm việc', 'en'), 'Choose a company to work in');
+  assert.equal(translateUiText('Công ty hiện tại', 'en'), 'Current company');
+  assert.equal(translateUiText('Đang chuyển công ty...', 'en'), 'Switching company...');
+});
+
 test('translates dynamic system text without translating user content', () => {
   assert.equal(
     translateUiText('Nguyễn đã xóa Lan khỏi nhóm', 'en'),

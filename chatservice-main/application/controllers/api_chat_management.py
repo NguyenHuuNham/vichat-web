@@ -28,6 +28,7 @@ from application.services.account_sso_service import (
     login_account_with_credentials,
     logout_account_session,
     set_account_cookie,
+    switch_account_tenant,
     update_account_profile,
     update_account_avatar,
 )
@@ -127,6 +128,36 @@ def _public_tenant(tenant):
         "name": tenant.name,
         "active": bool(tenant.active),
         "properties": tenant.properties or {},
+    }
+
+
+def _public_tenant_options(identity):
+    options = []
+    seen = set()
+    for item in (identity or {}).get("tenant_options") or []:
+        if not isinstance(item, dict):
+            continue
+        tenant_id = str(item.get("id") or "").strip()
+        if not tenant_id or tenant_id in seen or len(tenant_id) > 50:
+            continue
+        seen.add(tenant_id)
+        options.append({
+            "id": tenant_id,
+            "name": str(item.get("name") or tenant_id).strip()[:255],
+            "role": str(item.get("role") or "member").strip().lower(),
+            "accountRole": str(
+                item.get("account_role") or item.get("accountRole") or "member"
+            ).strip().lower(),
+            "active": bool(item.get("active", True)),
+        })
+    return options
+
+
+def _tenant_options_payload(identity):
+    options = _public_tenant_options(identity)
+    return {
+        "tenantOptions": options,
+        "tenant_options": options,
     }
 
 
@@ -469,7 +500,10 @@ def _sso_account(identity, mark_login=True):
 
 
 async def _validated_account_identity(request, account):
-    identity = await current_account_session(request)
+    identity = await current_account_session(
+        request,
+        preferred_tenant_id=str(account.tenant_id or "").strip(),
+    )
     if not account_session_matches(account.properties, identity):
         raise AccountSSOError(
             "The Account session does not match the Chatmgt session.",
@@ -864,6 +898,7 @@ async def management_sso_login(request):
             "tenant": _public_tenant(tenant),
             "tenant_id": account.tenant_id,
             "connection": "management",
+            **_tenant_options_payload(identity),
         })
         _audit(request, "AUTH_SSO_LOGIN", True, tenant_id=account.tenant_id, user_id=str(account.id))
         return set_auth_cookie(response, token, request)
@@ -934,6 +969,7 @@ async def employee_account_credential_login(request):
             "tenant_id": account.tenant_id,
             "connection": "management",
         }
+        response_payload.update(_tenant_options_payload(identity))
         response_payload.update(mobile_access_token_payload(request, token))
         linked_devices = _mobile_linked_devices(request, token)
         if linked_devices is not None:
@@ -1127,6 +1163,7 @@ async def management_admin_sso_login(request):
             "tenant": _public_tenant(tenant),
             "tenant_id": account.tenant_id,
             "connection": "management",
+            **_tenant_options_payload(identity),
         })
         _audit(
             request,
@@ -1176,9 +1213,10 @@ async def management_current_user(request):
     tenant = _tenant_by_id(tenant_id)
     if tenant is None:
         return _auth_error()
+    account_identity = None
     if current_user.get("auth_method") == "account_sso":
         try:
-            await _validated_account_identity(request, account)
+            account_identity = await _validated_account_identity(request, account)
         except AccountSSOError as error:
             if error.status_code != 503:
                 revoke_request_token(request)
@@ -1192,10 +1230,130 @@ async def management_current_user(request):
         "tenant_id": tenant_id,
         "connection": "management",
         "linked_devices": linked_session_devices(request, current_user),
+        **_tenant_options_payload(account_identity),
     })
     if management_session_requested(request):
         return set_auth_cookie(response, token_from_request(request), request)
     return response
+
+
+@app.route('/api/v1/auth/switch-tenant', methods=['POST'])
+async def management_switch_tenant(request):
+    """Rotate only the Chat session after a verified Account tenant switch."""
+    if management_session_requested(request):
+        return _management_scope_error()
+    current_user, current_tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    if current_user.get("auth_method") != "account_sso":
+        return json({
+            "error_code": "ACCOUNT_SSO_REQUIRED",
+            "error_message": "An UpGO Account session is required to switch companies.",
+        }, status=403)
+
+    body = request.json or {}
+    requested_tenant_id = str(
+        body.get("tenant_id") or body.get("tenantId") or ""
+    ).strip()
+    if not requested_tenant_id or len(requested_tenant_id) > 50:
+        return json({
+            "error_code": "ACCOUNT_TENANT_REQUIRED",
+            "error_message": "A valid company is required.",
+        }, status=400)
+
+    current_account = _account_by_id(current_tenant_id, _user_id(current_user))
+    if current_account is None:
+        return _auth_error()
+    try:
+        identity = await current_account_session(
+            request,
+            preferred_tenant_id=requested_tenant_id,
+        )
+        linked_user_id = str(
+            (current_account.properties or {}).get("account_user_id") or ""
+        ).strip()
+        if linked_user_id != str(identity.get("account_user_id") or "").strip():
+            raise AccountSSOError(
+                "The Account session does not match the Chatmgt session.",
+                401,
+                "ACCOUNT_SESSION_MISMATCH",
+            )
+        _switch_payload, switched_account_cookie = await switch_account_tenant(
+            request,
+            requested_tenant_id,
+        )
+        switched_identity = await current_account_session(request)
+        if (
+            str(switched_identity.get("account_user_id") or "").strip()
+            != str(identity.get("account_user_id") or "").strip()
+            or str(switched_identity.get("tenant_id") or "").strip()
+            != requested_tenant_id
+        ):
+            raise AccountSSOError(
+                "Account did not confirm the requested tenant switch.",
+                409,
+                "ACCOUNT_TENANT_SWITCH_UNCONFIRMED",
+            )
+        identity = switched_identity
+        tenant, account = _sso_account(identity)
+        try:
+            await _ensure_tinode_account(account)
+        except Exception as error:
+            logger.warning(
+                "Tinode provisioning deferred after Account tenant switch for user %s: %s",
+                identity.get("account_user_id"),
+                error,
+            )
+        db.session.commit()
+        revoke_request_token(request)
+        token = issue_access_token(account, auth_method="account_sso")
+        register_linked_session(request, token)
+        response_payload = {
+            "user": _public_account(account, tenant),
+            "tenant": _public_tenant(tenant),
+            "tenant_id": account.tenant_id,
+            "connection": "management",
+        }
+        response_payload.update(_tenant_options_payload(identity))
+        response_payload["switched"] = True
+        response_payload["previous_tenant_id"] = str(current_tenant_id or "")
+        response = json(response_payload)
+        response.headers["Cache-Control"] = "no-store"
+        set_account_cookie(response, switched_account_cookie)
+        _audit(
+            request,
+            "AUTH_TENANT_SWITCH",
+            True,
+            tenant_id=account.tenant_id,
+            user_id=str(account.id),
+            properties={"previous_tenant_id": str(current_tenant_id or "")},
+        )
+        return set_auth_cookie(response, token, request)
+    except AccountSSOError as error:
+        db.session.rollback()
+        _audit(
+            request,
+            "AUTH_TENANT_SWITCH",
+            False,
+            tenant_id=current_tenant_id,
+            user_id=_user_id(current_user),
+            properties={"error_code": error.error_code},
+        )
+        return _account_sso_error(error)
+    except Exception as error:
+        db.session.rollback()
+        logger.exception("Account tenant switch failed: %s", error)
+        _audit(
+            request,
+            "AUTH_TENANT_SWITCH_SERVICE",
+            False,
+            tenant_id=current_tenant_id,
+            user_id=_user_id(current_user),
+        )
+        return json({
+            "error_code": "ACCOUNT_TENANT_SWITCH_FAILED",
+            "error_message": "The company switch is temporarily unavailable.",
+        }, status=503)
 
 
 @app.route('/api/v1/auth/devices', methods=['GET'])

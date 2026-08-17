@@ -47,6 +47,7 @@ function Login({ copy = { t: value => value }, onLoginSuccess, initialNotice = '
         tenantId: session.tenantId,
         tenantName: session.tenantName,
         tenant: session.tenant,
+        tenantOptions: session.tenantOptions,
         tinodeUid: session.tinodeUid,
         tinodeAuth: session.tinodeAuth,
         title: session.profile?.title || '',

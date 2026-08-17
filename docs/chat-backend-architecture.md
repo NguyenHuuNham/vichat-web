@@ -54,7 +54,13 @@ The administrator page uses `POST /api/v1/admin/sso` and the separate
 4. Chatmgt issues the HttpOnly chat cookie and returns only public user/tenant
    fields; it never returns an Account password or Tinode secret.
 5. ChatUI loads Step 3 metadata, then calls `POST /api/v1/auth/tinode-token`.
-6. Logout revokes the Chatmgt token and clears the ChatUI cookie. A later API
+6. When the Account identity has more than one active membership, ChatUI shows
+   a company switcher in the profile. `POST /api/v1/auth/switch-tenant` first
+   validates the requested membership against `/current_user`, calls Account's
+   `/api/v1/tenant/set_current_tenant` with the existing Account session, and
+   re-reads `/current_user` before rotating only the Chatmgt cookie. It does not
+   log out Account or require the employee to enter credentials again.
+7. Logout revokes the Chatmgt token and clears the ChatUI cookie. A later API
    call receives `401`/`403`.
 
 When the web page reloads, ChatUI uses `GET /api/v1/auth/me` with the existing
@@ -457,6 +463,7 @@ history, role-aware actions and a message-to-task shortcut.
 | `POST` | `/api/v1/auth/account-login` | UpGO Account email/password exchange and employee projection |
 | `POST` | `/api/v1/auth/login` | Legacy local-password login for explicit recovery mode |
 | `GET` | `/api/v1/auth/me` | Read the current Chatmgt session |
+| `POST` | `/api/v1/auth/switch-tenant` | Validate an active Account membership and switch the Account/Chatmgt tenant |
 | `GET` | `/api/v1/auth/devices` | Read current account's linked web/mobile/device sessions |
 | `POST` | `/api/v1/auth/logout` | Revoke the current Chatmgt session |
 | `POST` | `/api/v1/auth/tinode-token` | Issue/refresh a short-lived Tinode token |
@@ -500,6 +507,7 @@ TINODE_CENTRAL_WS_URL=wss://web.vichat.net/v0/channels
 TINODE_BRIDGE_TIMEOUT=15
 TINODE_TOKEN_EXPIRE_IN=300
 ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user
+ACCOUNT_SSO_TENANT_SWITCH_PATH=/api/v1/tenant/set_current_tenant
 ACCOUNT_SSO_DIRECTORY_SYNC_TTL=10
 ACCOUNT_SSO_LOGIN_PATH=/login
 ```
@@ -531,6 +539,10 @@ domain/deployment only when an enterprise isolation policy requires it.
 
 - An invited tenant-A UpGO Account authenticates only to active tenant A; the
   same Account identity in tenant B receives a different projection and Tinode identity.
+- An Account identity with active memberships in tenant A and B can switch from
+  A to B in ChatUI without Account logout or re-entering credentials; the Account
+  current tenant, Chatmgt JWT, directory projection and Tinode mapping all move
+  to B before the next directory read.
 - A tenant-A session cannot list, search, open, add, update or remove tenant-B
   users, conversations, groups, participants or audit records.
 - Invalid credentials return `401`; rate limits are scoped by tenant, identity

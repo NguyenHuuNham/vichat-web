@@ -1218,6 +1218,9 @@ function App() {
   const [profileForm, setProfileForm] = useState({ name: '', email: '', title: '', department: '' });
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileNotice, setProfileNotice] = useState('');
+  const [tenantSwitcherOpen, setTenantSwitcherOpen] = useState(false);
+  const [isSwitchingTenant, setIsSwitchingTenant] = useState(false);
+  const [tenantSwitchNotice, setTenantSwitchNotice] = useState('');
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const [forcedLogoutSeconds, setForcedLogoutSeconds] = useState(null);
   const [activeCall, setActiveCall] = useState(null);
@@ -1258,6 +1261,7 @@ function App() {
   const imageInputRef = useRef(null);
   const mentionPickerRef = useRef(null);
   const languageMenuRef = useRef(null);
+  const tenantSwitcherRef = useRef(null);
   const currentChatIdRef = useRef(currentChatId);
   const deletedConversationIdsRef = useRef(new Set());
   const createGroupRequestRef = useRef(false);
@@ -1379,6 +1383,11 @@ function App() {
     ...(currentUser || {}),
     online: isCurrentUserOnline,
   };
+  const tenantOptions = (Array.isArray(currentUser?.tenantOptions)
+    ? currentUser.tenantOptions
+    : Array.isArray(currentUser?.tenant_options) ? currentUser.tenant_options : [])
+    .filter(option => option?.id && option.active !== false);
+  const canSwitchTenant = tenantOptions.length > 1;
 
   useEffect(() => () => {
     if (voiceTimerRef.current) window.clearInterval(voiceTimerRef.current);
@@ -1414,6 +1423,22 @@ function App() {
       document.removeEventListener('keydown', handleLanguageMenuKeyDown);
     };
   }, [languageMenuOpen]);
+
+  useEffect(() => {
+    if (!tenantSwitcherOpen || typeof document === 'undefined') return undefined;
+    const closeTenantSwitcher = event => {
+      if (!tenantSwitcherRef.current?.contains(event.target)) setTenantSwitcherOpen(false);
+    };
+    const handleTenantSwitcherKeyDown = event => {
+      if (event.key === 'Escape') setTenantSwitcherOpen(false);
+    };
+    document.addEventListener('mousedown', closeTenantSwitcher);
+    document.addEventListener('keydown', handleTenantSwitcherKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', closeTenantSwitcher);
+      document.removeEventListener('keydown', handleTenantSwitcherKeyDown);
+    };
+  }, [tenantSwitcherOpen]);
 
   useEffect(() => {
     if (!pinViewerId) {
@@ -2606,6 +2631,7 @@ function App() {
           tenantId: session.tenantId,
           tenantName: session.tenantName,
           tenant: session.tenant,
+          tenantOptions: session.tenantOptions,
           tinodeUid: session.tinodeUid,
           tinodeAuth: session.tinodeAuth,
           title: session.profile?.title || '',
@@ -2746,6 +2772,43 @@ function App() {
     if (!window.confirm(appCopy.t('Bạn có chắc chắn muốn đăng xuất khỏi Chat?'))) return;
     setWorkspacePanel(null);
     handleLogout();
+  };
+
+  const handleTenantSwitch = async option => {
+    const requestedTenantId = String(option?.id || '').trim();
+    const currentTenantId = String(profileAccount.tenantId || profileAccount.tenant_id || '').trim();
+    if (!requestedTenantId || requestedTenantId === currentTenantId || isSwitchingTenant) return;
+    setTenantSwitchNotice('');
+    setIsSwitchingTenant(true);
+    try {
+      const nextSession = await chatManagementService.switchTenant(requestedTenantId);
+      accountSessionRef.current += 1;
+      managementConversationSessionRef.current = 0;
+      setManagementConversationSession(0);
+      tinodeClient.setAllowedConversationTopics([]);
+      if (chatMode === 'tinode') {
+        try {
+          await tinodeClient.logout();
+        } catch {
+          // The new Chatmgt cookie is already issued; reload rebuilds Tinode state.
+        }
+      }
+      setTenantSwitcherOpen(false);
+      if (typeof window !== 'undefined') {
+        window.location.reload();
+      } else if (nextSession) {
+        setCurrentUser(previous => ({ ...previous, ...nextSession }));
+      }
+    } catch (error) {
+      const message = error?.code === 'ACCOUNT_TENANT_REQUIRED'
+        ? 'Vui lòng chọn công ty hợp lệ.'
+        : error?.code === 'ACCOUNT_SSO_REQUIRED'
+          ? 'Chỉ tài khoản UpGO mới có thể chuyển công ty.'
+          : error?.message || 'Không thể chuyển công ty. Vui lòng thử lại.';
+      setTenantSwitchNotice(appCopy.t(message));
+    } finally {
+      setIsSwitchingTenant(false);
+    }
   };
 
   const handleForcedLogout = async () => {
@@ -5906,10 +5969,59 @@ function App() {
               </div>
               <div className="workspace-panel-header-actions">
                 {workspacePanel === 'profile' && (
-                  <button type="button" className="workspace-logout-button" onClick={requestLogout}>
-                    <i className="fa-solid fa-arrow-right-from-bracket"></i>
-                    <span>{appCopy.t('Đăng xuất')}</span>
-                  </button>
+                  <>
+                    {canSwitchTenant && (
+                      <div className="tenant-switcher" ref={tenantSwitcherRef}>
+                        <button
+                          type="button"
+                          className={`tenant-switcher-button ${tenantSwitcherOpen ? 'active' : ''}`}
+                          title={appCopy.t('Chuyển công ty')}
+                          aria-label={appCopy.t('Chuyển công ty')}
+                          aria-expanded={tenantSwitcherOpen}
+                          onClick={event => {
+                            event.stopPropagation();
+                            setTenantSwitchNotice('');
+                            setTenantSwitcherOpen(previous => !previous);
+                          }}
+                          disabled={isSwitchingTenant}
+                        >
+                          <i className={`fa-solid ${isSwitchingTenant ? 'fa-spinner fa-spin' : 'fa-building'}`}></i>
+                        </button>
+                        {tenantSwitcherOpen && (
+                          <div className="tenant-switcher-menu" role="listbox" aria-label={appCopy.t('Chọn công ty để làm việc')} onClick={event => event.stopPropagation()}>
+                            <div className="tenant-switcher-heading">{appCopy.t('Chọn công ty để làm việc')}</div>
+                            {tenantOptions.map(option => {
+                              const isCurrentTenant = String(option.id) === String(profileAccount.tenantId || profileAccount.tenant_id || '');
+                              return (
+                                <button
+                                  type="button"
+                                  role="option"
+                                  aria-selected={isCurrentTenant}
+                                  className={`tenant-switcher-option ${isCurrentTenant ? 'current' : ''}`}
+                                  key={option.id}
+                                  onClick={() => handleTenantSwitch(option)}
+                                  disabled={isSwitchingTenant || isCurrentTenant}
+                                >
+                                  <span className="tenant-switcher-option-icon"><i className="fa-solid fa-building"></i></span>
+                                  <span className="tenant-switcher-option-copy">
+                                    <strong>{option.name}</strong>
+                                    <small>{isCurrentTenant ? appCopy.t('Công ty hiện tại') : option.role}</small>
+                                  </span>
+                                  {isCurrentTenant && <i className="fa-solid fa-check tenant-switcher-check"></i>}
+                                </button>
+                              );
+                            })}
+                            {tenantSwitchNotice && <div className="tenant-switcher-notice" role="alert"><i className="fa-solid fa-triangle-exclamation"></i><span>{tenantSwitchNotice}</span></div>}
+                            {isSwitchingTenant && <div className="tenant-switcher-loading"><i className="fa-solid fa-spinner fa-spin"></i>{appCopy.t('Đang chuyển công ty...')}</div>}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <button type="button" className="workspace-logout-button" onClick={requestLogout}>
+                      <i className="fa-solid fa-arrow-right-from-bracket"></i>
+                      <span>{appCopy.t('Đăng xuất')}</span>
+                    </button>
+                  </>
                 )}
                 <button type="button" className="btn-close-detail" onClick={() => setWorkspacePanel(null)} aria-label={appCopy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button>
               </div>
@@ -5942,6 +6054,7 @@ function App() {
                 <div className="profile-details profile-readonly-details">
                   <div className="profile-detail-row"><i className="fa-solid fa-at"></i><div><small>Username</small><strong>{profileAccount.username || appCopy.t('Chưa cập nhật')}</strong></div></div>
                   <div className="profile-detail-row"><i className="fa-solid fa-shield-halved"></i><div><small>{appCopy.t('Vai trò')}</small><strong>{profileAccount.role || appCopy.t('Thành viên')}</strong></div></div>
+                  <div className="profile-detail-row profile-current-tenant"><i className="fa-solid fa-building"></i><div><small>{appCopy.t('Công ty hiện tại')}</small><strong>{profileAccount.tenantName || profileAccount.tenant_name || profileAccount.tenant?.name || appCopy.t('Chưa cập nhật')}</strong></div></div>
                 </div>
                 <form className="profile-edit-form" onSubmit={handleProfileSave}>
                   <label><span>{appCopy.t('Họ và tên')}</span><input value={profileForm.name} onChange={event => setProfileForm(previous => ({ ...previous, name: event.target.value }))} maxLength="255" required /></label>

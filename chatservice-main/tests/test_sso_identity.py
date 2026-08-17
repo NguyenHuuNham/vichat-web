@@ -184,6 +184,49 @@ class SSOIdentityTests(unittest.TestCase):
         self.assertEqual(identity["tenant_name"], "Tenant A")
         self.assertEqual(identity["role"], "admin")
 
+    def test_preferred_tenant_selects_another_active_membership(self):
+        payload = account_payload("tenant-a", "Tenant A", role="admin")
+        payload["tenants"].append({
+            "id": "tenant-b",
+            "tenant_name": "Tenant B",
+            "role": "member",
+            "status": "active",
+        })
+
+        identity = normalize_account_session(payload, preferred_tenant_id="tenant-b")
+
+        self.assertEqual(identity["tenant_id"], "tenant-b")
+        self.assertEqual(identity["tenant_name"], "Tenant B")
+        self.assertEqual(identity["role"], "member")
+        self.assertEqual(
+            {option["id"] for option in identity["tenant_options"]},
+            {"tenant-a", "tenant-b"},
+        )
+        self.assertNotIn("password", identity)
+        self.assertNotIn("token", identity)
+
+    def test_preferred_tenant_rejects_unknown_or_inactive_membership(self):
+        payload = account_payload("tenant-a", "Tenant A")
+        payload["tenants"].append({
+            "id": "tenant-disabled",
+            "tenant_name": "Disabled tenant",
+            "role": "member",
+            "status": "disabled",
+        })
+
+        with self.assertRaisesRegex(SSOIdentityError, "Requested Account tenant membership is not active"):
+            normalize_account_session(payload, preferred_tenant_id="tenant-disabled")
+        with self.assertRaisesRegex(SSOIdentityError, "Requested Account tenant membership is not active"):
+            normalize_account_session(payload, preferred_tenant_id="tenant-unknown")
+
+    def test_directory_record_with_foreign_tenant_is_rejected(self):
+        with self.assertRaisesRegex(SSOIdentityError, "outside the verified tenant"):
+            normalize_account_directory_record({
+                "id": "account-user-2",
+                "user_name": "other.user",
+                "tenant_id": "tenant-b",
+            }, "tenant-a", "Tenant A")
+
     def test_explicit_tenant_without_active_memberships_is_rejected(self):
         with self.assertRaisesRegex(SSOIdentityError, "no active tenant membership"):
             normalize_account_session(account_payload("tenant-a", "Tenant A", status="disabled"))

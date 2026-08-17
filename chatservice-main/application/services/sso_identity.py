@@ -54,18 +54,75 @@ def _membership_active(membership):
 def _membership_id(membership):
     if not isinstance(membership, dict):
         return ""
-    return str(
-        _first(
-            membership,
-            "id",
-            "tenant_id",
-            "company_id",
-            "brand_id",
-            "organization_id",
-            "workspace_id",
-        )
-        or ""
-    ).strip()
+    value = _first(
+        membership,
+        "id",
+        "tenant_id",
+        "company_id",
+        "brand_id",
+        "organization_id",
+        "workspace_id",
+    )
+    if isinstance(value, dict):
+        return _membership_id(value)
+    if value:
+        return str(value).strip()
+    for name in ("tenant", "company", "brand", "organization", "workspace"):
+        nested = membership.get(name)
+        if isinstance(nested, dict):
+            nested_id = _membership_id(nested)
+            if nested_id:
+                return nested_id
+    return ""
+
+
+def _membership_name(membership, fallback=""):
+    if not isinstance(membership, dict):
+        return str(fallback or "").strip()
+    value = _first(
+        membership,
+        "tenant_name",
+        "company_name",
+        "brand_name",
+        "organization_name",
+        "workspace_name",
+        "name",
+        "display_name",
+        "code",
+    )
+    if isinstance(value, dict):
+        value = _first(value, "name", "full_name", "display_name", "title", "code")
+    if value:
+        return str(value).strip()
+    for name in ("tenant", "company", "brand", "organization", "workspace"):
+        nested = membership.get(name)
+        if isinstance(nested, dict):
+            nested_name = _membership_name(nested, fallback)
+            if nested_name:
+                return nested_name
+    return str(fallback or "").strip()
+
+
+def _tenant_option(membership):
+    tenant_id = _membership_id(membership)
+    if not tenant_id or len(tenant_id) > 50 or not _membership_active(membership):
+        return None
+    account_role = _first(
+        membership,
+        "role",
+        "tenant_role",
+        "company_role",
+        "brand_role",
+        "organization_role",
+        "workspace_role",
+    ) or "member"
+    return {
+        "id": tenant_id,
+        "name": _membership_name(membership, tenant_id)[:255],
+        "role": _chat_role(account_role),
+        "account_role": str(account_role).strip().lower(),
+        "active": True,
+    }
 
 
 def _chat_role(role):
@@ -119,6 +176,19 @@ def normalize_account_directory_record(payload, tenant_id, tenant_name=""):
     if not tenant_id or len(tenant_id) > 50:
         raise SSOIdentityError("Account directory tenant is invalid.")
 
+    record_tenant = _first(
+        payload,
+        "tenant_id",
+        "current_tenant_id",
+        "company_id",
+        "brand_id",
+        "organization_id",
+    )
+    if isinstance(record_tenant, dict):
+        record_tenant = _membership_id(record_tenant)
+    if record_tenant and str(record_tenant).strip() != tenant_id:
+        raise SSOIdentityError("Account directory record is outside the verified tenant.")
+
     username = str(_first(payload, "user_name", "username", "email", "phone") or "").strip().lower()
     if not username:
         raise SSOIdentityError("Account directory user has no usable username.")
@@ -157,7 +227,7 @@ def normalize_account_directory_record(payload, tenant_id, tenant_name=""):
     }
 
 
-def normalize_account_session(payload):
+def normalize_account_session(payload, preferred_tenant_id=None):
     if not isinstance(payload, dict):
         raise SSOIdentityError("Account returned an invalid session payload.")
 
@@ -185,6 +255,9 @@ def normalize_account_session(payload):
     else:
         tenant_id = str(raw_tenant or "").strip()
     has_explicit_tenant = bool(tenant_id)
+    preferred_tenant_id = str(preferred_tenant_id or "").strip()
+    if preferred_tenant_id and len(preferred_tenant_id) > 50:
+        raise SSOIdentityError("Requested Account tenant ID exceeds the Chatmgt limit.")
     if not user_id:
         raise SSOIdentityError("Account session has no user ID.")
 
@@ -240,7 +313,18 @@ def normalize_account_session(payload):
         if current_id and _membership_active(current_tenant):
             active_memberships.setdefault(current_id, current_tenant)
 
-    if not tenant_id:
+    tenant_options = []
+    for membership_id, membership_item in active_memberships.items():
+        option = _tenant_option(membership_item)
+        if option:
+            tenant_options.append(option)
+
+    if preferred_tenant_id:
+        membership = active_memberships.get(preferred_tenant_id)
+        if membership is None:
+            raise SSOIdentityError("Requested Account tenant membership is not active.")
+        tenant_id = preferred_tenant_id
+    elif not tenant_id:
         if not active_memberships:
             raise SSOIdentityError("Account session has no active tenant membership.")
         else:
@@ -274,30 +358,17 @@ def normalize_account_session(payload):
         _first(payload, "full_name", "display_name", "name", "user_name", "username")
         or username
     ).strip()[:255]
-    tenant_name = str(
-        _first(
-            membership,
-            "tenant_name",
-            "company_name",
-            "brand_name",
-            "organization_name",
-            "name",
-            "display_name",
-            "code",
-        )
-        or tenant_id
-    ).strip()[:255]
+    tenant_name = _membership_name(membership, tenant_id)[:255]
     account_role = (
-        (
+        (None if preferred_tenant_id else (
             _first(
                 payload,
                 "current_tenant_role",
                 "current_company_role",
                 "current_brand_role",
             )
-            if has_explicit_tenant
-            else None
-        )
+            if has_explicit_tenant else None
+        ))
         or _first(membership, "role", "tenant_role", "company_role", "brand_role")
         or "member"
     )
@@ -314,6 +385,7 @@ def normalize_account_session(payload):
         "department": str(payload.get("department") or "").strip()[:255],
         "title": str(payload.get("title") or "").strip()[:255],
         "avatar": str(_first(payload, "avatar_url", "avatar", "photo") or "").strip(),
+        "tenant_options": tenant_options,
     }
 
 

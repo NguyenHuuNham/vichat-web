@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { chatManagementService, employeeLoginPayload, managementAuthClient, normalizeChatAuthMode, tinodeRefreshPayload } from './chatManagementService.js';
+import { chatManagementService, employeeLoginPayload, managementAuthClient, normalizeChatAuthMode, normalizeTenantOptions, tinodeRefreshPayload } from './chatManagementService.js';
 
 const appSource = readFileSync(new URL('../../../app/App.jsx', import.meta.url), 'utf8');
 const managementServiceSource = readFileSync(new URL('./chatManagementService.js', import.meta.url), 'utf8');
@@ -52,6 +52,27 @@ test('restores a cookie-backed session after a full page reload', () => {
   assert.match(managementServiceSource, /apiRequest\('\/api\/v1\/auth\/me'\)/);
   assert.match(appSource, /managementAuthClient\.restoreSession\(\)/);
   assert.match(appSource, /sessionRestoreAttemptedRef/);
+});
+
+test('keeps only safe active tenant options and switches without logout', () => {
+  assert.deepEqual(normalizeTenantOptions([
+    { id: 'tenant-a', name: 'Tenant A', role: 'admin', active: true },
+    { id: 'tenant-a', name: 'Duplicate', active: true },
+    { id: 'tenant-disabled', name: 'Disabled', active: false },
+  ]), [{
+    id: 'tenant-a',
+    name: 'Tenant A',
+    role: 'admin',
+    accountRole: 'member',
+    active: true,
+  }]);
+  assert.equal(typeof chatManagementService.switchTenant, 'function');
+  assert.match(managementServiceSource, /apiRequest\('\/api\/v1\/auth\/switch-tenant'/);
+  assert.match(managementServiceSource, /activeTinodePassword = ''/);
+  assert.match(appSource, /chatManagementService\.switchTenant\(requestedTenantId\)/);
+  assert.match(appSource, /window\.location\.reload\(\)/);
+  const switchUiSource = appSource.split('const handleTenantSwitch = async option')[1].split('const handleForcedLogout')[0];
+  assert.doesNotMatch(switchUiSource, /chatManagementService\.logout/);
 });
 
 test('create-group picker uses the synced company directory while group detail stays read-only', () => {

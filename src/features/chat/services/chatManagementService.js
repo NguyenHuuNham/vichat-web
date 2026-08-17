@@ -50,6 +50,24 @@ function accountTenant(account) {
   return account?.tenantId || account?.tenant_id || tenantId;
 }
 
+export function normalizeTenantOptions(value) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  return value.map(option => {
+    if (!option || typeof option !== 'object') return null;
+    const id = String(option.id || option.tenantId || option.tenant_id || '').trim();
+    if (!id || seen.has(id)) return null;
+    seen.add(id);
+    return {
+      id,
+      name: String(option.name || option.tenantName || option.tenant_name || id).trim(),
+      role: String(option.role || 'member').trim().toLowerCase(),
+      accountRole: String(option.accountRole || option.account_role || 'member').trim().toLowerCase(),
+      active: option.active !== false,
+    };
+  }).filter(option => option?.active);
+}
+
 export function employeeLoginPayload(credentials = {}) {
   const payload = {
     identity: String(credentials.identity || credentials.username || '').trim(),
@@ -70,6 +88,9 @@ function publicAccount(account) {
     secret: _secret,
     ...safe
   } = account;
+  const tenantOptions = normalizeTenantOptions(
+    safe.tenantOptions || safe.tenant_options,
+  );
   return {
     ...safe,
     id: safe.id || safe.user_id || safe.uid,
@@ -78,12 +99,21 @@ function publicAccount(account) {
     name: safe.name || safe.full_name || safe.display_name || safe.username || safe.user_name,
     avatar: safe.avatar || safe.photo || '',
     tenantId: accountTenant(safe),
+    tenantOptions,
+    tenant_options: tenantOptions,
     active: safe.active ?? safe.is_active ?? true,
   };
 }
 
 function hydrateActiveSession(payload, { preserveExisting = true } = {}) {
   const account = publicAccount(payload?.user || payload?.current_user || payload);
+  const tenantOptions = normalizeTenantOptions(
+    payload?.tenantOptions || payload?.tenant_options || account?.tenantOptions,
+  );
+  if (account) {
+    account.tenantOptions = tenantOptions;
+    account.tenant_options = tenantOptions;
+  }
   const tenant = payload?.tenant || account?.tenant || null;
   const rawTinodeAuth = payload?.tinode || payload?.tinode_auth || {};
   const hasTinodeToken = Boolean(rawTinodeAuth.token || payload?.tinode_token);
@@ -103,10 +133,11 @@ function hydrateActiveSession(payload, { preserveExisting = true } = {}) {
     ...(previous || {}),
     user: account,
     tenant,
+    tenantOptions,
     connection,
     tinodeAuth,
   };
-  return { ...account, tenant, connection };
+  return { ...account, tenant, tenantOptions, connection };
 }
 
 function responseItems(payload) {
@@ -212,6 +243,13 @@ export const chatManagementService = {
       },
     );
     const account = publicAccount(payload.user || payload.current_user || payload);
+    const tenantOptions = normalizeTenantOptions(
+      payload.tenantOptions || payload.tenant_options || account?.tenantOptions,
+    );
+    if (account) {
+      account.tenantOptions = tenantOptions;
+      account.tenant_options = tenantOptions;
+    }
     const tenant = payload.tenant || account?.tenant || null;
     const rawTinodeAuth = payload.tinode || payload.tinode_auth || {};
     const hasTinodeToken = Boolean(rawTinodeAuth.token || payload.tinode_token);
@@ -221,6 +259,7 @@ export const chatManagementService = {
     activeSession = {
       user: account,
       tenant,
+      tenantOptions,
       connection,
       tinodeAuth: hasTinodeToken ? {
         ...rawTinodeAuth,
@@ -233,7 +272,7 @@ export const chatManagementService = {
         tenantName: tenant?.name || account?.tenantName || account?.tenant_name || '',
       } : null,
     };
-    return { ...account, tenant, connection };
+    return { ...account, tenant, tenantOptions, connection };
   },
 
   async currentSession() {
@@ -246,6 +285,20 @@ export const chatManagementService = {
   async restoreSession() {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const payload = await apiRequest('/api/v1/auth/me');
+    return hydrateActiveSession(payload, { preserveExisting: false });
+  },
+
+  async switchTenant(nextTenantId) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const requestedTenantId = String(nextTenantId || '').trim();
+    if (!requestedTenantId) throw new Error('A company is required.');
+    const payload = await apiRequest('/api/v1/auth/switch-tenant', {
+      method: 'POST',
+      body: JSON.stringify({ tenant_id: requestedTenantId }),
+    });
+    activeTinodePassword = '';
+    tinodeTokenRequest = null;
+    lastDirectorySync = null;
     return hydrateActiveSession(payload, { preserveExisting: false });
   },
 
@@ -545,6 +598,7 @@ function toLoginSession(account) {
     tenantId: account.tenantId || account.tenant_id,
     tenantName: tenant?.name || account.tenantName || account.tenant_name || '',
     tenant,
+    tenantOptions: normalizeTenantOptions(account.tenantOptions || account.tenant_options),
     tinodeUid: account.tinodeUid || auth?.uid,
     tinodeAuth: auth,
     mustChangePassword: Boolean(account.mustChangePassword || account.must_change_password),

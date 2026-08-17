@@ -104,6 +104,10 @@ class Config(object):
     ACCOUNT_SSO_LOGIN_PATH = os.getenv("ACCOUNT_SSO_LOGIN_PATH", "/login")
     ACCOUNT_SSO_PROFILE_PATH = os.getenv("ACCOUNT_SSO_PROFILE_PATH", "/current_user")
     ACCOUNT_SSO_DIRECTORY_PATH = os.getenv("ACCOUNT_SSO_DIRECTORY_PATH", "/api/v1/tenant_user")
+    ACCOUNT_SSO_TENANT_SWITCH_PATH = os.getenv(
+        "ACCOUNT_SSO_TENANT_SWITCH_PATH",
+        "/api/v1/tenant/set_current_tenant",
+    )
     ACCOUNT_SSO_LOGOUT_PATH = os.getenv("ACCOUNT_SSO_LOGOUT_PATH", "/logout")
     ACCOUNT_SSO_SELF_PROFILE_PATH = os.getenv("ACCOUNT_SSO_SELF_PROFILE_PATH", "/me")
     ACCOUNT_SSO_USER_UPDATE_PATH = os.getenv("ACCOUNT_SSO_USER_UPDATE_PATH", "/api/v1/user")

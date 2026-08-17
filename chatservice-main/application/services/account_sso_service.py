@@ -84,7 +84,14 @@ def _account_cookie(request):
     return cookie_name, values[0]
 
 
-async def _account_request(request, method, path, json_body=None, account_cookie=None):
+async def _account_request(
+    request,
+    method,
+    path,
+    json_body=None,
+    account_cookie=None,
+    capture_account_cookie=False,
+):
     if account_cookie is None:
         cookie_name, cookie_value = _account_cookie(request)
     else:
@@ -110,6 +117,8 @@ async def _account_request(request, method, path, json_body=None, account_cookie
                     payload = await response.json(content_type=None)
                 except (aiohttp.ContentTypeError, ValueError):
                     payload = {}
+                if capture_account_cookie:
+                    return response.status, payload, _account_login_cookie(response, cookie_name)
                 return response.status, payload
     except (aiohttp.ClientError, asyncio.TimeoutError) as error:
         raise AccountSSOError(
@@ -514,7 +523,7 @@ async def update_account_avatar(request, identity, upload):
     return updated_identity
 
 
-async def current_account_session(request):
+async def current_account_session(request, preferred_tenant_id=None):
     status, payload = await _account_request(
         request,
         "GET",
@@ -532,7 +541,7 @@ async def current_account_session(request):
     if status >= 300:
         raise AccountSSOError("Account rejected the session.", 401, "ACCOUNT_SESSION_INVALID")
     try:
-        return normalize_account_session(payload)
+        return normalize_account_session(payload, preferred_tenant_id=preferred_tenant_id)
     except SSOIdentityError as error:
         user_id, user_name, current_tenant_id, tenant_ids = _account_session_log_fields(payload)
         logger.warning(
@@ -545,6 +554,47 @@ async def current_account_session(request):
             error,
         )
         raise AccountSSOError(str(error), 403, "ACCOUNT_TENANT_INVALID") from error
+
+
+async def switch_account_tenant(request, tenant_id):
+    """Move the Account session to a verified tenant for directory reads."""
+    tenant_id = str(tenant_id or "").strip()
+    if not tenant_id or len(tenant_id) > 50:
+        raise AccountSSOError(
+            "A valid Account tenant is required.",
+            400,
+            "ACCOUNT_TENANT_REQUIRED",
+        )
+
+    status, payload, account_cookie = await _account_request(
+        request,
+        "POST",
+        app.config.get("ACCOUNT_SSO_TENANT_SWITCH_PATH")
+        or "/api/v1/tenant/set_current_tenant",
+        json_body={"tenant_id": tenant_id},
+        capture_account_cookie=True,
+    )
+    error_code = str((payload or {}).get("error_code") or "") if isinstance(payload, dict) else ""
+    if status in (401, 403, 520) or error_code in ("SESSION_EXPIRED", "AUTH_ERROR"):
+        raise AccountSSOError("Account login is required.", 401, "ACCOUNT_LOGIN_REQUIRED")
+    if status >= 500:
+        raise AccountSSOError(
+            "Account tenant switching is temporarily unavailable.",
+            503,
+            "ACCOUNT_TENANT_SWITCH_UNAVAILABLE",
+        )
+    if status >= 300:
+        account_message = str(
+            (payload or {}).get("error_message")
+            or (payload or {}).get("message")
+            or ""
+        ).strip()
+        raise AccountSSOError(
+            account_message or "Account rejected the tenant switch request.",
+            status if status in (400, 409) else 502,
+            error_code or "ACCOUNT_TENANT_SWITCH_FAILED",
+        )
+    return payload if isinstance(payload, dict) else {}, account_cookie
 
 
 def _directory_items(payload):

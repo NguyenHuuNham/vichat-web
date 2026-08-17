@@ -22,6 +22,7 @@ if HAS_AIOHTTP:
         "ACCOUNT_URL": "https://account.upgo.vn",
         "ACCOUNT_SSO_PROFILE_PATH": "/current_user",
         "ACCOUNT_SSO_DIRECTORY_PATH": "/api/v1/tenant_user",
+        "ACCOUNT_SSO_TENANT_SWITCH_PATH": "/api/v1/tenant/set_current_tenant",
         "ACCOUNT_SSO_LOGOUT_PATH": "/logout",
         "ACCOUNT_SSO_SELF_PROFILE_PATH": "/me",
         "ACCOUNT_SSO_USER_UPDATE_PATH": "/api/v1/user",
@@ -236,6 +237,65 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(identity["tenant_id"], "tenant-a")
         self.assertEqual(identity["avatar"], account_payload()["avatar_url"])
         account_request.assert_awaited_once_with(request, "GET", "/current_user")
+
+    async def test_current_account_session_can_select_a_verified_membership(self):
+        request = types.SimpleNamespace()
+        profile = account_payload()
+        profile["tenants"].append({
+            "id": "tenant-b",
+            "tenant_name": "Tenant B",
+            "role": "admin",
+            "status": "active",
+        })
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(200, profile)),
+        ):
+            identity = await account_sso_service.current_account_session(
+                request,
+                preferred_tenant_id="tenant-b",
+            )
+
+        self.assertEqual(identity["tenant_id"], "tenant-b")
+        self.assertEqual(identity["role"], "admin")
+        self.assertEqual(
+            {option["id"] for option in identity["tenant_options"]},
+            {"tenant-a", "tenant-b"},
+        )
+
+    async def test_switch_account_tenant_updates_the_account_session(self):
+        request = types.SimpleNamespace()
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(200, {}, None)),
+        ) as account_request:
+            payload, account_cookie = await account_sso_service.switch_account_tenant(request, "tenant-b")
+
+        self.assertEqual(payload, {})
+        self.assertIsNone(account_cookie)
+        account_request.assert_awaited_once_with(
+            request,
+            "POST",
+            "/api/v1/tenant/set_current_tenant",
+            json_body={"tenant_id": "tenant-b"},
+            capture_account_cookie=True,
+        )
+
+    async def test_switch_account_tenant_rejects_an_expired_account_session(self):
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(401, {"error_code": "AUTH_ERROR"}, None)),
+        ):
+            with self.assertRaises(account_sso_service.AccountSSOError) as error:
+                await account_sso_service.switch_account_tenant(
+                    types.SimpleNamespace(),
+                    "tenant-b",
+                )
+
+        self.assertEqual(error.exception.error_code, "ACCOUNT_LOGIN_REQUIRED")
 
     async def test_expired_account_session_requires_login(self):
         with patch.object(
