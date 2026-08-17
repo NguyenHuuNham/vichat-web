@@ -6,11 +6,27 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-17-19 - Deploy kho noi dung va phan loai hoi thoai
+
+- Thoi gian: 2026-08-17 21:07 (Asia/Saigon)
+- Loai: Trien khai | Van hanh | Web | Kiem thu production
+- Trang thai: Da deploy production; san sang UAT
+- Muc tieu: Dua release ChatUI co kho media/file theo ngay va Phan loai len server that ma khong lam gian doan cac service stateful.
+- Pham vi: Chi service `chat`; khong recreate, restart, migration hoac thay doi PostgreSQL, Redis, Tinode, Chatmgt, Tinode bridge, chatbot webhook va Coturn.
+- File da thay doi: Release `/opt/deploy/chat/releases/media-category-0e174fe-20260817-205752`; source commit `0e174fe`.
+- Noi dung: Archive SHA-256 `82CA4781A2091DCC1D6C7EBB8278D7D48836A14B45487FC5BD87158003B4B3D6` duoc staging vao `incoming`, build image ChatUI `sha256:809a350dc521a8eed923dd330026ae3b4da8dd35f5e9dc0aa096b7e5dbf1c647`, chi chay `docker compose ... up -d --no-deps --force-recreate --no-build chat`. `current` tro release moi, `previous` tro lai `compact-ui-a59a384-20260817-2010`; container ChatUI moi la `94846e8b46d7`.
+- Quyet dinh ky thuat: Tao release bat bien canh release dang chay, copy `.env` va runtime hien tai ma khong in secret, build truoc roi moi recreate `chat`; khong dung `down`, khong cham volume va khong chay migration.
+- Database/API/cau hinh: Khong thay doi database, API, schema, `.env` hoac runtime config. Public index dang phuc vu bundle `index-BZhbZp-Z.js`, `index-BjI6La_B.css`, chunk UI co marker `media-browser`, `conversation-category` va `Phân loại`.
+- Kiem thu production: Local `npm run test:frontend` dat 91/91, `npm run lint` exit 0 voi warning legacy, `npm run build:production` dat, `git diff --check` dat; remote `docker compose ... config -q` dat; ChatUI container healthy; `http://127.0.0.1:8094/healthz` va `https://chat.upgo.vn/healthz` deu tra `ok`; cac service stateful van healthy/Up.
+- Rui ro con lai: Chua UAT bang browser/tai khoan UpGO that cho preview media protected, bo loc va Phan loai; rollback symlink co san neu can.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo thong tin nhom/ca nhan, thu loc media theo ngay/nguoi gui va gan-bo Phan loai; neu phat sinh loi thi dung `previous` va image rollback da luu.
+- Commit/PR: `0e174fe` da push `origin/master`; release production da hoan tat.
+
 ## 2026-08-17-18 - Them kho noi dung va phan loai hoi thoai
 
 - Thoi gian: 2026-08-17 20:51 (Asia/Saigon)
 - Loai: Tinh nang | UX | Web | Kiem thu
-- Trang thai: Hoan tat code; chua deploy, can UAT
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Cho phep xem anh/video, file va link trong thong tin nhom/ca nhan theo ngay, dong thoi phan loai hoi thoai de danh sach de quan ly hon.
 - Pham vi: ChatUI sidebar thong tin nhom/ca nhan, menu 3 cham hoi thoai, bo loc noi dung dung chung va preference theo viewer; giu nguyen Tinode, Chatmgt, thanh vien, mute, ghim, roi va xoa hoi thoai.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/conversationCategoryPolicy.js`, `src/features/chat/services/conversationCategoryPolicy.test.js`, `package.json`, `dist/index.html`, `docs/CHANGELOG.md`.
@@ -20,7 +36,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `npm run test:frontend` dat 91/91; `npm run lint` exit 0 voi warning legacy da co trong `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat voi bundle `App-BvqXUXQ1.js`, `index-BjI6La_B.css`; `git diff --check` dat; `rg -n -i "nhac hen|danh sach nhac|reminder|appointment|fa-calendar" src/app/App.jsx src/styles/index.css` khong tim thay muc nhac hen.
 - Rui ro con lai: Chua UAT bang browser/tai khoan that cho preview Tinode protected media, bo loc link va responsive; `Links` chi hien URL ma message hien tai co the trich xuat; chua deploy production trong lan nay.
 - Viec tiep theo: Hard refresh build local/staging, thu thong tin nhom/ca nhan, loc theo ngay/nguoi gui, mo/tai media va gan-bo nhan Phan loai; chi deploy khi UAT dat.
-- Commit/PR: Chua tao.
+- Commit/PR: `0e174fe`; deploy production ghi tai muc `2026-08-17-19`.
 
 ## 2026-08-17-17 - Deploy ChatUI compact/dark mode khong cham stateful
 
