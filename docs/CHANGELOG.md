@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-17-03 - Deploy production commit 6bac0dd
+
+- Thoi gian: 2026-08-17 11:44 (Asia/Saigon)
+- Loai: Van hanh | Kiem thu | Tai lieu
+- Trang thai: Da deploy production; can operator cau hinh Tinode trung tam
+- Muc tieu: Dua commit `6bac0dd` len production theo release flow cua repository.
+- Pham vi: ChatUI, Chatmgt, Tinode account bridge va chatbot worker trong `infrastructure/production/compose.yaml`; PostgreSQL, Redis, ChatAPI va Coturn duoc giu nguyen.
+- File da thay doi: `docs/CHANGELOG.md`; source release tu commit `6bac0dd`.
+- Noi dung: Tao archive SHA-256 `cfd4c589ac3ced9c9b12a76a98d4ae289b4ef3e19ce2665ac176c8b4bb1967c0`, giai nen tai `/opt/deploy/chat/releases/6bac0dd-20260817-1120`, sao chep `.env`/runtime production, build 4 image moi va chuyen symlink `current` sang release moi. ChatUI phuc vu bundle `index-BzVEuxbE.js`; `previous` tro ve `call-guard-79519d2-20260816`.
+- Quyet dinh ky thuat: Dung release bat bien, khong ghi de worktree production dang co thay doi va chi recreate 4 service bi anh huong. Khi bridge doi container, ChatUI duoc recreate tiep de Nginx refresh upstream DNS; khong dung `down -v`, khong reset volume/topic/message.
+- Database/API/cau hinh: Backup Chatmgt PostgreSQL va Tinode PostgreSQL tai `/opt/deploy/chat/backups/6bac0dd-20260817-1120`; `alembic upgrade head` chay thanh cong va database da o head; khong sua `.env` production. Rollback tags `songhong-production-chat:rollback-before-6bac0dd`, `songhong-production-chatmgt:rollback-before-6bac0dd`, `songhong-production-tinode-account-bridge:rollback-before-6bac0dd` va `songhong-production-tinode-chatbot-webhook:rollback-before-6bac0dd` da tao.
+- Kiem thu: Local `npm run test:frontend` dat 78/78; `python -m unittest discover -s chatservice-main/tests -q` dat 152, skip 49; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production`, `python -m py_compile ...` va `git diff --check` dat. Remote Compose config/build dat; production verifier dat database/credential policy va tenant isolation; health ChatUI/Chatmgt/chatbot HTTP 200; 4 container healthy; log 2 phut sau recreate khong co traceback/panic/fatal/critical/emerg/exception/error.
+- Rui ro con lai: Tinode hello authoritative tra `helloCode=201`, 2 ICE entries nhung `webrtcEnabled=false`, nen voice/video van bi khoa dung. Full `verify_deployment.py` dung o gate WebRTC; day la cau hinh trung tam Tinode `.215`, khong phai loi release. Chua UAT hai tai khoan that.
+- Viec tiep theo: Operator cau hinh `webrtc.enabled=true` va ICE authoritative tren Tinode trung tam `.215`, probe lai voi Origin production, chay lai verifier va UAT voice/video. Neu can rollback toan bo, dung symlink `previous` va cac rollback tags da ghi.
+- Commit/PR: Chua tao.
+
 ## 2026-08-17-02 - Chon thanh vien nhom tu danh ba cong ty
 
 - Thoi gian: 2026-08-17 10:11 (Asia/Saigon)
