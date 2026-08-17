@@ -2310,6 +2310,54 @@ input:checked + .slider:before {
 .workspace-account-card div { display: flex; flex-direction: column; gap: 4px; }
 .workspace-account-card strong { font-size: 13px; }
 .workspace-account-card small { font-size: 11px; }
+.notification-preference-card {
+    padding: 18px 16px 15px;
+    border: 1px solid #d9e4ee;
+    border-radius: 17px;
+    background: linear-gradient(145deg, #f8fbff 0%, #eef5fb 100%);
+    box-shadow: 0 8px 22px rgba(28, 54, 78, .06);
+}
+.notification-preference-card h3 { margin: 0; color: var(--text-main); font-size: 17px; }
+.notification-preference-card > p { margin: 6px 0 16px; color: var(--text-muted); font-size: 12px; }
+.notification-device-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.notification-device-choice {
+    display: flex;
+    min-height: 134px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 10px 10px;
+    border: 1px solid #d6e0e9;
+    border-radius: 14px;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, .72);
+    font: inherit;
+    cursor: pointer;
+    transition: border-color .16s ease, background .16s ease, color .16s ease, transform .16s ease;
+}
+.notification-device-choice:hover { border-color: rgba(244, 81, 30, .45); transform: translateY(-1px); }
+.notification-device-choice.selected { border-color: var(--vichat-blue); color: var(--vichat-blue-dark); background: #fff; box-shadow: 0 5px 14px rgba(244, 81, 30, .1); }
+.notification-device-icon { display: grid; width: 92px; height: 76px; place-items: center; border: 3px solid currentColor; border-radius: 8px 8px 4px 4px; font-size: 33px; }
+.notification-device-icon::after { content: ''; position: absolute; width: 105px; height: 8px; margin-top: 82px; border: 2px solid currentColor; border-radius: 0 0 9px 9px; }
+.notification-device-icon { position: relative; }
+.notification-device-choice:not(.selected) .notification-device-icon { opacity: .45; }
+.notification-device-label { display: inline-flex; align-items: center; gap: 7px; color: var(--text-main); font-size: 12px; font-weight: 750; }
+.notification-radio-dot { display: inline-block; width: 18px; height: 18px; border: 2px solid #647486; border-radius: 50%; }
+.notification-device-choice.selected .notification-radio-dot { border-color: var(--vichat-blue); box-shadow: inset 0 0 0 4px #fff; background: var(--vichat-blue); }
+.notification-permission-status { display: block; margin-top: 13px; color: var(--text-muted); font-size: 11px; line-height: 1.45; }
+.notification-settings-notice { display: flex; align-items: flex-start; gap: 7px; margin-top: 10px; color: var(--vichat-blue-dark); font-size: 11px; line-height: 1.45; }
+.notification-sound-settings { padding: 11px 0 4px; border-bottom: 1px solid var(--border-color); }
+.notification-sound-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+.notification-sound-heading > span { display: flex; flex-direction: column; gap: 4px; }
+.notification-sound-heading strong { color: var(--text-main); font-size: 13px; }
+.notification-sound-heading small { color: var(--text-muted); font-size: 11px; }
+.notification-sound-heading input { width: 17px; height: 17px; accent-color: var(--vichat-blue); }
+.notification-sound-picker { display: flex; align-items: center; gap: 8px; margin: 11px 0 7px; }
+.notification-sound-picker select { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--border-color); border-radius: 9px; color: var(--text-main); background: var(--bg-white); font: inherit; font-size: 12px; }
+.notification-sound-picker select:disabled { cursor: not-allowed; opacity: .55; }
+.notification-preview-button { display: inline-flex; height: 36px; align-items: center; justify-content: center; gap: 6px; padding: 0 11px; border: 1px solid rgba(244, 81, 30, .25); border-radius: 9px; color: var(--vichat-blue-dark); background: var(--vichat-blue-light); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.notification-preview-button:hover:not(:disabled) { border-color: var(--vichat-blue); background: #fff; }
+.notification-preview-button:disabled { cursor: not-allowed; opacity: .48; }
 
 .contact-result { padding: 7px 8px; cursor: default; }
 .contact-result-main { display: flex; flex: 1; min-width: 0; align-items: center; gap: 11px; padding: 3px; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }

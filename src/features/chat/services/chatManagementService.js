@@ -75,6 +75,33 @@ function publicAccount(account) {
   };
 }
 
+function hydrateActiveSession(payload, { preserveExisting = true } = {}) {
+  const account = publicAccount(payload?.user || payload?.current_user || payload);
+  const tenant = payload?.tenant || account?.tenant || null;
+  const rawTinodeAuth = payload?.tinode || payload?.tinode_auth || {};
+  const hasTinodeToken = Boolean(rawTinodeAuth.token || payload?.tinode_token);
+  const previous = preserveExisting ? activeSession : null;
+  const tinodeAuth = previous?.tinodeAuth || (hasTinodeToken ? {
+    ...rawTinodeAuth,
+    username: rawTinodeAuth.username || account?.tinodeUsername || account?.tinode_username || account?.username,
+    uid: rawTinodeAuth.uid || account?.tinodeUid || account?.tinode_uid,
+    token: rawTinodeAuth.token || payload?.tinode_token,
+    displayName: account?.name || '',
+    avatar: account?.avatar || '',
+    tenantId: tenant?.id || account?.tenantId || account?.tenant_id || tenantId,
+    tenantName: tenant?.name || account?.tenantName || account?.tenant_name || '',
+  } : null);
+  const connection = previous?.connection || payload?.connection || (hasTinodeToken ? 'tinode' : 'management');
+  activeSession = {
+    ...(previous || {}),
+    user: account,
+    tenant,
+    connection,
+    tinodeAuth,
+  };
+  return { ...account, tenant, connection };
+}
+
 function responseItems(payload) {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.objects)) return payload.objects;
@@ -205,7 +232,14 @@ export const chatManagementService = {
   async currentSession() {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const payload = await apiRequest('/api/v1/auth/me');
+    if (!activeSession) hydrateActiveSession(payload, { preserveExisting: false });
     return publicAccount(payload.user || payload.current_user || payload);
+  },
+
+  async restoreSession() {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const payload = await apiRequest('/api/v1/auth/me');
+    return hydrateActiveSession(payload, { preserveExisting: false });
   },
 
   async refreshTinodeToken() {
@@ -531,6 +565,10 @@ export const managementAuthClient = {
 
   async login(credentials) {
     return toLoginSession(await chatManagementService.login(credentials));
+  },
+
+  async restoreSession() {
+    return toLoginSession(await chatManagementService.restoreSession());
   },
 
   async logout() {

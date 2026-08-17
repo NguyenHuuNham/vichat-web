@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-17-08 - Khoi phuc phien sau F5 va thong bao desktop
+
+- Thoi gian: 2026-08-17 15:00 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Web | Kiem thu
+- Trang thai: Hoan tat code va kiem thu local; chua deploy production
+- Muc tieu: Giu nguyen phien dang nhap sau khi F5 va cho phep bat/tat thong bao desktop cung am bao tin nhan theo tung tai khoan.
+- Pham vi: ChatUI auth restore, Tinode message notification, panel Cai dat; khong doi noi dung tin nhan, membership, Chatmgt schema hay mobile.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/chat/services/conversationNotifications.js`, `src/features/chat/services/conversationNotifications.test.js`, `src/styles/index.css`, `README.md`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: ChatUI goi `GET /api/v1/auth/me` qua cookie HttpOnly sau reload de khoi phuc session trong memory, sau do nap lai Chatmgt/Tinode nhu luong dang nhap. Them thong bao desktop cho tin nhan den khi viewer dang o xa hoi thoai, co yeu cau quyen trinh duyet, bat/tat theo viewer, am bao Web Audio voi 4 profile va nut nghe thu; mute hoi thoai van chan ca hai loai thong bao.
+- Quyet dinh ky thuat: Khong luu token/mat khau; chi luu preference khong nhay cam theo management account ID trong localStorage. Desktop Notification dung `silent: true` de am bao tuy chon duoc phat bang Web Audio; neu trinh duyet khong cap quyen thi van giu chat va am bao rieng.
+- Database/API/cau hinh: Khong migration/schema moi; tai su dung `GET /api/v1/auth/me` va cookie Chatmgt hien co; khong them bien moi truong hay dependency.
+- Kiem thu: `npm run test:frontend` dat 87/87; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-qcpbtzqr.js`, `App-CEUEPDeI.js`, `index-B_IDmWGu.css`; `git diff --check` dat. Browser skill da thu ket noi nhung moi truong khong co browser kha dung nen chua UAT thao tac F5/quyen notification.
+- Rui ro con lai: Desktop notification phu thuoc quyen cua browser va chi hoat dong khi web runtime con song; can UAT bang hai tai khoan that de xac nhan tin nhan, am bao, click notification mo dung hoi thoai va refresh khong mat phien.
+- Viec tiep theo: Commit/push, deploy rieng ChatUI, verify health/public bundle va UAT.
+- Commit/PR: Chua tao.
+
 ## 2026-08-17-07 - Dong bo lai thanh vien Tinode sau khi xoa
 
 - Thoi gian: 2026-08-17 14:23 (Asia/Saigon)

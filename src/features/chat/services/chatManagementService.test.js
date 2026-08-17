@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { chatManagementService, employeeLoginPayload, tinodeRefreshPayload } from './chatManagementService.js';
+import { chatManagementService, employeeLoginPayload, managementAuthClient, tinodeRefreshPayload } from './chatManagementService.js';
 
 const appSource = readFileSync(new URL('../../../app/App.jsx', import.meta.url), 'utf8');
+const managementServiceSource = readFileSync(new URL('./chatManagementService.js', import.meta.url), 'utf8');
 const mobileStoreSource = readFileSync(new URL('../../../../mobile/src/store/appStore.ts', import.meta.url), 'utf8');
 
 test('builds a tenant-scoped employee login payload', () => {
@@ -37,6 +38,14 @@ test('resends the employee password only when the volatile Tinode token needs re
     token: 'expired-token',
     expires: Date.now() / 1000 - 10,
   }, ''), {});
+});
+
+test('restores a cookie-backed session after a full page reload', () => {
+  assert.equal(typeof chatManagementService.restoreSession, 'function');
+  assert.equal(typeof managementAuthClient.restoreSession, 'function');
+  assert.match(managementServiceSource, /apiRequest\('\/api\/v1\/auth\/me'\)/);
+  assert.match(appSource, /managementAuthClient\.restoreSession\(\)/);
+  assert.match(appSource, /sessionRestoreAttemptedRef/);
 });
 
 test('create-group picker uses the synced company directory while group detail stays read-only', () => {

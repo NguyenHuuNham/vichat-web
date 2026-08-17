@@ -1,5 +1,70 @@
 const HOUR_MS = 60 * 60 * 1000;
 
+export const NOTIFICATION_SETTINGS_STORAGE_PREFIX = 'vichat.notification-settings.v1';
+
+export const MESSAGE_SOUND_OPTIONS = Object.freeze([
+  Object.freeze({ id: 'chime', label: 'Chuông nhẹ', tones: [[660, 0, 0.14], [880, 0.12, 0.2]] }),
+  Object.freeze({ id: 'bell', label: 'Chuông ngân', tones: [[740, 0, 0.18], [988, 0.14, 0.28]] }),
+  Object.freeze({ id: 'pop', label: 'Âm pop', tones: [[520, 0, 0.1], [780, 0.08, 0.12]] }),
+  Object.freeze({ id: 'soft', label: 'Âm dịu', tones: [[440, 0, 0.2], [554, 0.18, 0.26]] }),
+]);
+
+export const DEFAULT_NOTIFICATION_SETTINGS = Object.freeze({
+  desktopNotifications: true,
+  sounds: true,
+  sound: 'chime',
+  compactMode: false,
+});
+
+function notificationSettingsStorageKey(viewerId) {
+  return `${NOTIFICATION_SETTINGS_STORAGE_PREFIX}.${encodeURIComponent(String(viewerId || 'anonymous'))}`;
+}
+
+export function normalizeNotificationSettings(value = {}) {
+  const sound = MESSAGE_SOUND_OPTIONS.some(option => option.id === value?.sound)
+    ? value.sound
+    : DEFAULT_NOTIFICATION_SETTINGS.sound;
+  return {
+    desktopNotifications: value?.desktopNotifications !== false,
+    sounds: value?.sounds !== false,
+    sound,
+    compactMode: value?.compactMode === true,
+  };
+}
+
+export function readNotificationSettings(viewerId, storage = globalThis?.localStorage) {
+  if (!viewerId || !storage) return { ...DEFAULT_NOTIFICATION_SETTINGS };
+  try {
+    const raw = storage.getItem(notificationSettingsStorageKey(viewerId));
+    return normalizeNotificationSettings(raw ? JSON.parse(raw) : DEFAULT_NOTIFICATION_SETTINGS);
+  } catch {
+    return { ...DEFAULT_NOTIFICATION_SETTINGS };
+  }
+}
+
+export function writeNotificationSettings(viewerId, value, storage = globalThis?.localStorage) {
+  const next = normalizeNotificationSettings(value);
+  if (viewerId && storage) {
+    try {
+      storage.setItem(notificationSettingsStorageKey(viewerId), JSON.stringify(next));
+    } catch {
+      // Preferences remain active for the current tab when storage is unavailable.
+    }
+  }
+  return next;
+}
+
+export function notificationMessageBody(message = {}) {
+  if (message.type === 'image') return 'Đã gửi một hình ảnh.';
+  if (message.type === 'file') return `Đã gửi tệp ${message.file?.name || 'đính kèm'}.`;
+  return String(message.text || 'Có tin nhắn mới.').trim() || 'Có tin nhắn mới.';
+}
+
+export function messageSoundProfile(soundId) {
+  return MESSAGE_SOUND_OPTIONS.find(option => option.id === soundId)
+    || MESSAGE_SOUND_OPTIONS[0];
+}
+
 export const NOTIFICATION_MUTE_OPTIONS = Object.freeze({
   ONE_HOUR: 'one-hour',
   FOUR_HOURS: 'four-hours',

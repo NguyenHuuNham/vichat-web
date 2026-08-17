@@ -125,8 +125,13 @@ only the Chatmgt conversation ID/name and Tinode message reference.
 
 Unread counts and the latest message preview still come from Tinode while a
 conversation is muted. Chatmgt stores only the current employee's mute deadline;
-ChatUI suppresses the sound until that deadline and automatically re-enables it.
-ChatUI does not request or display browser desktop notifications.
+ChatUI suppresses the custom sound and browser desktop notification until that
+deadline and automatically re-enables both. After F5, ChatUI calls
+`/api/v1/auth/me` with the existing HttpOnly Chatmgt cookie to rebuild its
+in-memory session; it never stores a token or password in browser storage.
+Desktop notifications require explicit browser permission and can be enabled
+per viewer in Settings. Only the viewer's notification preference and built-in
+sound selection are stored in localStorage; message content remains in Tinode.
 
 If Tinode is unavailable, ChatUI remains in `management` mode with the Step 3
 directory and conversations available; realtime inputs stay disabled instead

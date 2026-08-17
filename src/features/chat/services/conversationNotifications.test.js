@@ -2,11 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  DEFAULT_NOTIFICATION_SETTINGS,
+  MESSAGE_SOUND_OPTIONS,
   NOTIFICATION_MUTE_OPTIONS,
   isConversationMuted,
+  messageSoundProfile,
+  notificationMessageBody,
   nextNotificationMuteExpiry,
+  normalizeNotificationSettings,
   normalizeNotificationMuteUntil,
+  readNotificationSettings,
   resolveNotificationMuteUntil,
+  writeNotificationSettings,
 } from './conversationNotifications.js';
 
 test('normalizes persisted notification mute deadlines', () => {
@@ -64,4 +71,33 @@ test('finds the first active timed mute for exact automatic reopening', () => {
     { notificationMutedUntil: (nowMs / 1000) + 30 },
   ], nowMs), nowMs + 30_000);
   assert.equal(nextNotificationMuteExpiry([{ notificationMutedUntil: 0 }], nowMs), null);
+});
+
+test('normalizes and persists per-viewer desktop notification preferences', () => {
+  const storage = {
+    values: new Map(),
+    getItem(key) { return this.values.get(key) || null; },
+    setItem(key, value) { this.values.set(key, value); },
+  };
+  assert.deepEqual(normalizeNotificationSettings({ desktopNotifications: false, sound: 'missing' }), {
+    ...DEFAULT_NOTIFICATION_SETTINGS,
+    desktopNotifications: false,
+  });
+  const saved = writeNotificationSettings('usrA', {
+    desktopNotifications: false,
+    sounds: false,
+    sound: 'bell',
+    compactMode: true,
+  }, storage);
+  assert.deepEqual(readNotificationSettings('usrA', storage), saved);
+  assert.notDeepEqual(readNotificationSettings('usrB', storage), saved);
+});
+
+test('exposes notification sound profiles and concise message bodies', () => {
+  assert.ok(MESSAGE_SOUND_OPTIONS.length >= 3);
+  assert.equal(messageSoundProfile('bell').id, 'bell');
+  assert.equal(messageSoundProfile('missing').id, DEFAULT_NOTIFICATION_SETTINGS.sound);
+  assert.equal(notificationMessageBody({ type: 'image' }), 'Đã gửi một hình ảnh.');
+  assert.equal(notificationMessageBody({ type: 'file', file: { name: 'brief.pdf' } }), 'Đã gửi tệp brief.pdf.');
+  assert.equal(notificationMessageBody({ text: '  Xin chào  ' }), 'Xin chào');
 });

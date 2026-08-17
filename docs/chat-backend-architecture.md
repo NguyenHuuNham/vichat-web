@@ -57,6 +57,10 @@ The administrator page uses `POST /api/v1/admin/sso` and the separate
 6. Logout revokes the Chatmgt token and clears the ChatUI cookie. A later API
    call receives `401`/`403`.
 
+When the web page reloads, ChatUI uses `GET /api/v1/auth/me` with the existing
+HttpOnly cookie to rebuild its in-memory account session before loading
+Chatmgt/Tinode data. No token or password is persisted in browser storage.
+
 ### Mobile client session
 
 The `mobile/` Expo client uses the same employee credential endpoint but sends
@@ -309,6 +313,13 @@ The central Tinode remains authoritative for
 message content, files, presence, typing, reactions, receipts and call
 signaling. ChatUI does not post normal messages/files to Chatmgt knowledge;
 legacy chat-ingestion routes return `410 TINODE_CONTENT_ONLY`.
+
+While the web runtime is active, an incoming Tinode message can trigger a
+browser desktop notification and a configurable built-in sound when the viewer
+is away from that conversation. The viewer must grant browser permission and
+can enable/disable desktop notifications, mute the sound, or choose a sound
+profile in ChatUI Settings. Conversation mute suppresses both alerts; these
+preferences are viewer-local and contain no message or credential data.
 
 Mobile group creation first creates the tenant-scoped Chatmgt conversation,
 prepares every participant's Tinode UID, creates a Tinode `grp` topic, uploads

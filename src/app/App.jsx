@@ -3,7 +3,7 @@ import Login from '../features/auth/components/Login';
 import EnterpriseWorkspace from '../features/workspace/components/EnterpriseWorkspace';
 import CallOverlay from '../features/chat/components/CallOverlay';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation, normalizeTinodeMediaUrl } from '../features/chat/services/tinodeClient';
-import { chatManagementService } from '../features/chat/services/chatManagementService';
+import { chatManagementService, managementAuthClient } from '../features/chat/services/chatManagementService';
 import {
   applyReceiptToMessages,
   firstVisibleConversationId,
@@ -14,11 +14,18 @@ import {
   tinodeContactsSyncDelay,
 } from '../features/chat/services/chatRealtime';
 import {
+  DEFAULT_NOTIFICATION_SETTINGS,
+  MESSAGE_SOUND_OPTIONS,
   NOTIFICATION_MUTE_OPTIONS,
   isConversationMuted,
+  messageSoundProfile,
   nextNotificationMuteExpiry,
   notificationMuteLabel,
+  notificationMessageBody,
+  normalizeNotificationSettings,
+  readNotificationSettings,
   resolveNotificationMuteUntil,
+  writeNotificationSettings,
 } from '../features/chat/services/conversationNotifications';
 import {
   applyLocalConversationPins,
@@ -780,7 +787,8 @@ function App() {
   const [isUpdatingNotificationMute, setIsUpdatingNotificationMute] = useState(false);
   const [notificationClock, setNotificationClock] = useState(() => Date.now());
   const [displayClock, setDisplayClock] = useState(() => Date.now());
-  const [settings, setSettings] = useState({ sounds: true, compactMode: false });
+  const [settings, setSettings] = useState(() => ({ ...DEFAULT_NOTIFICATION_SETTINGS }));
+  const [notificationSettingsNotice, setNotificationSettingsNotice] = useState('');
   const [directoryAccounts, setDirectoryAccounts] = useState([]);
   const [isUpdatingProfileAvatar, setIsUpdatingProfileAvatar] = useState(false);
   const [profileForm, setProfileForm] = useState({ name: '', email: '', title: '', department: '' });
@@ -821,6 +829,7 @@ function App() {
   const typingClearTimersRef = useRef(new Map());
   const notificationBaselineRef = useRef(new Map());
   const notificationAudioContextRef = useRef(null);
+  const notificationOpenHandlerRef = useRef(null);
   const contactsSyncTimerRef = useRef(null);
   const contactsSyncRequestRef = useRef(0);
   const logoutHandlerRef = useRef(null);
@@ -830,6 +839,8 @@ function App() {
   const accountSessionRef = useRef(0);
   const managementConversationSessionRef = useRef(0);
   const activeCallRef = useRef(null);
+  const sessionRestoreAttemptedRef = useRef(false);
+  const loginSuccessHandlerRef = useRef(null);
 
   // Event callbacks can run between React renders; keep the latest room map
   // available without forcing Tinode subscriptions to be recreated.
@@ -938,6 +949,53 @@ function App() {
     : (currentUser?.id || currentUser?.uid);
   // Friend requests use Chatmgt account IDs, not Tinode topic UIDs.
   const managementViewerId = currentUser?.id || currentUser?.uid || '';
+  const desktopNotificationPermission = typeof window !== 'undefined' && 'Notification' in window
+    ? window.Notification.permission
+    : 'unsupported';
+  const notificationSettingsViewerId = currentUser?.id || currentUser?.uid || viewerId;
+
+  const updateNotificationSettings = useCallback(patch => {
+    setSettings(previous => {
+      const next = normalizeNotificationSettings({ ...previous, ...patch });
+      if (notificationSettingsViewerId) writeNotificationSettings(notificationSettingsViewerId, next);
+      return next;
+    });
+  }, [notificationSettingsViewerId]);
+
+  useEffect(() => {
+    if (!notificationSettingsViewerId) {
+      setSettings({ ...DEFAULT_NOTIFICATION_SETTINGS });
+      setNotificationSettingsNotice('');
+      return;
+    }
+    setSettings(readNotificationSettings(notificationSettingsViewerId));
+    setNotificationSettingsNotice('');
+  }, [notificationSettingsViewerId]);
+
+  const handleDesktopNotificationToggle = useCallback(async enabled => {
+    if (!enabled) {
+      updateNotificationSettings({ desktopNotifications: false });
+      setNotificationSettingsNotice('Thông báo desktop đã tắt trên tài khoản này.');
+      return;
+    }
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      updateNotificationSettings({ desktopNotifications: false });
+      setNotificationSettingsNotice('Trình duyệt hiện tại không hỗ trợ thông báo desktop.');
+      return;
+    }
+    let permission = window.Notification.permission;
+    if (permission === 'default') permission = await window.Notification.requestPermission();
+    if (permission === 'granted') {
+      updateNotificationSettings({ desktopNotifications: true });
+      setNotificationSettingsNotice('Thông báo desktop đã được bật.');
+    } else if (permission === 'denied') {
+      updateNotificationSettings({ desktopNotifications: false });
+      setNotificationSettingsNotice('Trình duyệt đang chặn thông báo. Hãy cho phép thông báo trong cài đặt site.');
+    } else {
+      updateNotificationSettings({ desktopNotifications: false });
+      setNotificationSettingsNotice('Chưa cấp quyền thông báo desktop.');
+    }
+  }, [updateNotificationSettings]);
 
   const mentionCandidates = (() => {
     if (!activeChat.isGroup) return [];
@@ -1311,6 +1369,35 @@ function App() {
     }
   };
 
+  const playNotificationSound = useCallback((soundId = settings.sound) => {
+    if (typeof window === 'undefined') return;
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      const context = notificationAudioContextRef.current || new AudioContext();
+      notificationAudioContextRef.current = context;
+      if (context.state === 'suspended') context.resume().catch(() => {});
+      const profile = messageSoundProfile(soundId);
+      const startAt = context.currentTime + 0.01;
+      profile.tones.forEach(([frequency, offset, duration]) => {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        const start = startAt + offset;
+        oscillator.type = 'sine';
+        oscillator.frequency.value = frequency;
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.045, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(start);
+        oscillator.stop(start + duration + 0.02);
+      });
+    } catch {
+      // Browsers may block sound until the page has received user input.
+    }
+  }, [settings.sound]);
+
   const showIncomingNotification = useCallback((conversation, message, stateId) => {
     if (!message || message.senderId === viewerId || typeof window === 'undefined') return;
     const shouldAlert = document.visibilityState === 'hidden' || currentChatIdRef.current !== stateId;
@@ -1318,28 +1405,27 @@ function App() {
     const notificationRoom = conversationsRef.current[stateId] || conversation;
     if (isConversationMuted(notificationRoom?.notificationMutedUntil)) return;
 
-    if (settings.sounds) {
+    if (settings.sounds) playNotificationSound(settings.sound);
+    if (settings.desktopNotifications && desktopNotificationPermission === 'granted') {
       try {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (AudioContext) {
-          const context = notificationAudioContextRef.current || new AudioContext();
-          notificationAudioContextRef.current = context;
-          if (context.state === 'suspended') context.resume().catch(() => {});
-          const oscillator = context.createOscillator();
-          const gain = context.createGain();
-          oscillator.frequency.value = 720;
-          gain.gain.setValueAtTime(0.04, context.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.16);
-          oscillator.connect(gain);
-          gain.connect(context.destination);
-          oscillator.start();
-          oscillator.stop(context.currentTime + 0.16);
-        }
+        const senderName = message.senderName || notificationRoom?.name || 'Tin nhắn mới';
+        const desktopNotification = new window.Notification(notificationRoom?.name || 'ViChat', {
+          body: `${senderName}: ${notificationMessageBody(message)}`,
+          icon: '/chat-logo.svg',
+          tag: `vichat:${stateId}`,
+          renotify: true,
+          silent: true,
+        });
+        desktopNotification.onclick = () => {
+          window.focus();
+          desktopNotification.close();
+          notificationOpenHandlerRef.current?.(stateId);
+        };
       } catch {
-        // Browsers may block sound until the page has received user input.
+        // Permission can be revoked between rendering and an incoming packet.
       }
     }
-  }, [settings.sounds, viewerId]);
+  }, [desktopNotificationPermission, playNotificationSound, settings.desktopNotifications, settings.sound, settings.sounds, viewerId]);
 
   // Keep the React view synchronized with Tinode's topic callbacks.
   useEffect(() => {
@@ -1773,6 +1859,42 @@ function App() {
     }
   };
 
+  loginSuccessHandlerRef.current = handleLoginSuccess;
+
+  useEffect(() => {
+    if (!chatManagementService.remote || sessionRestoreAttemptedRef.current) return undefined;
+    sessionRestoreAttemptedRef.current = true;
+    let cancelled = false;
+    managementAuthClient.restoreSession()
+      .then(session => {
+        if (cancelled) return;
+        return loginSuccessHandlerRef.current?.({
+          id: session.uid,
+          uid: session.uid,
+          username: session.login,
+          name: session.profile?.name || session.login,
+          email: session.email || '',
+          role: session.role,
+          department: session.department,
+          tenantId: session.tenantId,
+          tenantName: session.tenantName,
+          tenant: session.tenant,
+          tinodeUid: session.tinodeUid,
+          tinodeAuth: session.tinodeAuth,
+          title: session.profile?.title || '',
+          tinodeSession: session,
+          connection: session.connection,
+          avatar: session.profile?.avatar || '',
+          mustChangePassword: Boolean(session.mustChangePassword),
+        });
+      })
+      .catch(error => {
+        if (cancelled || error?.status === 401 || error?.status === 403) return;
+        setLoginNotice('Không thể khôi phục phiên hiện tại. Bạn có thể đăng nhập lại.');
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   const handleConversationSelect = async (id) => {
     const room = conversations[id];
     setCurrentChatId(id);
@@ -1815,6 +1937,8 @@ function App() {
       }
     }
   };
+
+  notificationOpenHandlerRef.current = handleConversationSelect;
 
   const handleLogout = async () => {
     if (isLoggingOutRef.current) return;
@@ -4773,8 +4897,57 @@ function App() {
 
             {workspacePanel === 'settings' && (
               <div className="workspace-settings">
-                <label className="workspace-setting-row"><span><strong>Âm thanh tin nhắn</strong></span><input type="checkbox" checked={settings.sounds} onChange={event => setSettings(prev => ({ ...prev, sounds: event.target.checked }))} /></label>
-                <label className="workspace-setting-row"><span><strong>Giao diện gọn</strong></span><input type="checkbox" checked={settings.compactMode} onChange={event => setSettings(prev => ({ ...prev, compactMode: event.target.checked }))} /></label>
+                <section className="notification-preference-card" aria-labelledby="desktop-notification-title">
+                  <h3 id="desktop-notification-title">Cài đặt thông báo</h3>
+                  <p>Nhận được thông báo mỗi khi có tin nhắn mới</p>
+                  <div className="notification-device-options" role="radiogroup" aria-label="Thông báo desktop">
+                    <button
+                      type="button"
+                      className={`notification-device-choice ${settings.desktopNotifications ? 'selected' : ''}`}
+                      role="radio"
+                      aria-checked={settings.desktopNotifications}
+                      onClick={() => handleDesktopNotificationToggle(true)}
+                    >
+                      <span className="notification-device-icon"><i className="fa-solid fa-laptop"></i></span>
+                      <span className="notification-device-label"><span className="notification-radio-dot"></span>Bật</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`notification-device-choice ${!settings.desktopNotifications ? 'selected' : ''}`}
+                      role="radio"
+                      aria-checked={!settings.desktopNotifications}
+                      onClick={() => handleDesktopNotificationToggle(false)}
+                    >
+                      <span className="notification-device-icon"><i className="fa-solid fa-laptop"></i></span>
+                      <span className="notification-device-label"><span className="notification-radio-dot"></span>Tắt</span>
+                    </button>
+                  </div>
+                  <small className="notification-permission-status">
+                    {desktopNotificationPermission === 'unsupported'
+                      ? 'Trình duyệt không hỗ trợ thông báo desktop.'
+                      : desktopNotificationPermission === 'denied'
+                        ? 'Quyền thông báo đang bị chặn trong cài đặt trình duyệt.'
+                        : desktopNotificationPermission === 'default'
+                          ? 'Chọn Bật để cấp quyền hiển thị thông báo trên màn hình.'
+                          : 'Thông báo desktop đang sẵn sàng.'}
+                  </small>
+                  {notificationSettingsNotice && <div className="notification-settings-notice"><i className="fa-solid fa-circle-info"></i>{notificationSettingsNotice}</div>}
+                </section>
+                <div className="notification-sound-settings">
+                  <div className="notification-sound-heading">
+                    <span><strong>Âm báo tin nhắn</strong><small>Chọn nhạc chuông phát khi có tin nhắn mới</small></span>
+                    <input type="checkbox" checked={settings.sounds} onChange={event => updateNotificationSettings({ sounds: event.target.checked })} aria-label="Bật âm báo tin nhắn" />
+                  </div>
+                  <div className="notification-sound-picker">
+                    <select value={settings.sound} onChange={event => updateNotificationSettings({ sound: event.target.value })} disabled={!settings.sounds} aria-label="Chọn âm báo tin nhắn">
+                      {MESSAGE_SOUND_OPTIONS.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+                    </select>
+                    <button type="button" className="notification-preview-button" onClick={() => playNotificationSound(settings.sound)} disabled={!settings.sounds}>
+                      <i className="fa-solid fa-volume-high"></i>Nghe thử
+                    </button>
+                  </div>
+                </div>
+                <label className="workspace-setting-row"><span><strong>Giao diện gọn</strong></span><input type="checkbox" checked={settings.compactMode} onChange={event => updateNotificationSettings({ compactMode: event.target.checked })} /></label>
                 <div className="workspace-account-card"><i className="fa-solid fa-shield-halved"></i><div><strong>{currentUser?.name || 'Tài khoản hiện tại'}</strong><small>{currentUser?.email || 'Phiên đăng nhập SÔNG HỒNG'} · {chatModeLabel}</small></div></div>
               </div>
             )}
