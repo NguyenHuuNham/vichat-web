@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu production: `npm run test:frontend` dat 105/105; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat; remote Compose config dat; ChatUI healthy; `http://127.0.0.1:8094/healthz` va `https://chat.upgo.vn/healthz` deu tra `ok`; public entry `/assets/index-DpU1nsQE.js` va App chunk `/assets/App-CxCLt5so.js` HTTP 200, co marker `language-picker`, `English`, `Choose the application display language`; log ChatUI 5 phut sau recreate khong co traceback/panic/fatal/critical/emerg/exception; container stateful giu nguyen ID.
 - Rui ro con lai: Chua UAT bang browser/tai khoan UpGO that cho tat ca state English, notification desktop, call overlay va Workspace; chuoi loi tu server ben ngoai bo dich co the van giu nguyen neu khong trung pattern da khai bao.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn`, dang nhap tai khoan test, chuyen English va kiem tra Chat, thong tin nhom/ca nhan, media, Workspace, cuoc goi, thong bao va PIN; rollback symlink `previous` neu UAT phat sinh loi.
-- Commit/PR: Source `9e0fb86`; docs deploy follow-up `Chua tao`.
+- Commit/PR: Source `9e0fb86`; docs deploy follow-up `3d97230`.
 
 ## 2026-08-18-03 - Hoan thien ngon ngu English cho ChatUI
 
