@@ -2305,6 +2305,9 @@ input:checked + .slider:before {
 .workspace-setting-row strong { color: var(--text-main); font-size: 13px; }
 .workspace-setting-row small { color: var(--text-muted); font-size: 11px; }
 .workspace-setting-row input { width: 17px; height: 17px; accent-color: var(--vichat-blue); }
+.workspace-setting-row select { min-width: 142px; height: 36px; padding: 0 10px; border: 1px solid var(--border-color); border-radius: 9px; color: var(--text-main); background: var(--bg-white); font: inherit; font-size: 12px; cursor: pointer; }
+.workspace-setting-row select:focus { outline: 2px solid rgba(244, 81, 30, .25); outline-offset: 1px; border-color: var(--vichat-blue); }
+.language-setting-row { cursor: default; }
 .workspace-account-card { display: flex; align-items: center; gap: 11px; margin-top: 18px; padding: 13px; border-radius: 11px; color: var(--vichat-blue-dark); background: var(--vichat-blue-light); }
 .workspace-account-card > i { font-size: 18px; }
 .workspace-account-card div { display: flex; flex-direction: column; gap: 4px; }

@@ -134,6 +134,9 @@ per viewer in Settings. The viewer's notification preference and selected sound
 ID are stored in localStorage; an uploaded custom sound Blob is kept in
 origin-scoped IndexedDB. Authentication data and message content remain outside
 both browser stores.
+The same per-viewer preference record stores the selected UI language (`vi` or
+`en`), with Vietnamese as the default, so the choice survives refresh and is
+isolated between accounts on the same device.
 
 If Tinode is unavailable, ChatUI remains in `management` mode with the Step 3
 directory and conversations available; realtime inputs stay disabled instead

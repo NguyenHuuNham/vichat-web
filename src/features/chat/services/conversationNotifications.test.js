@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  APP_LANGUAGE_OPTIONS,
   CUSTOM_NOTIFICATION_SOUND_ID,
   CUSTOM_NOTIFICATION_SOUND_MAX_BYTES,
   DEFAULT_NOTIFICATION_SETTINGS,
@@ -88,11 +89,14 @@ test('normalizes and persists per-viewer desktop notification preferences', () =
     ...DEFAULT_NOTIFICATION_SETTINGS,
     desktopNotifications: false,
   });
+  assert.deepEqual(APP_LANGUAGE_OPTIONS.map(option => option.id), ['vi', 'en']);
+  assert.equal(normalizeNotificationSettings({ language: 'en' }).language, 'en');
+  assert.equal(normalizeNotificationSettings({ language: 'fr' }).language, 'vi');
   const saved = writeNotificationSettings('usrA', {
     desktopNotifications: false,
     sounds: false,
     sound: 'bell',
-    compactMode: true,
+    language: 'en',
   }, storage);
   assert.deepEqual(readNotificationSettings('usrA', storage), saved);
   assert.notDeepEqual(readNotificationSettings('usrB', storage), saved);

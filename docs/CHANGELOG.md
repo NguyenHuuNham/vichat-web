@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-17-10 - Sap xep menu chinh va them chon ngon ngu ChatUI
+
+- Thoi gian: 2026-08-17 16:40 (Asia/Saigon)
+- Loai: Tinh nang | Web
+- Trang thai: Da kiem thu; cho deploy
+- Muc tieu: Rut gon thanh dieu huong con Chat, Nhom, Work va Cai dat; thay tuy chon Giao dien gon bang chon Tieng Viet/English.
+- Pham vi: ChatUI sidebar va panel Cai dat; giu nguyen cac panel danh ba, file, thong bao cung cac luong chat, nhom va Work ben trong.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/conversationNotifications.js`, `src/features/chat/services/conversationNotifications.test.js`, `src/styles/index.css`, `README.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: An ba muc Danh ba, File dung chung va Thong bao khoi menu chinh, doi nhan Workspace thanh Work, them selector ngon ngu co co Viet/Anh va luu lua chon theo viewer trong localStorage. Cac panel bi an van duoc giu nguyen de khong lam dut luong hien co.
+- Quyet dinh ky thuat: Tai su dung preference record theo ID tai khoan dang nhap; normalize chi chap nhan `vi` va `en`, mac dinh `vi`, dong thoi cap nhat `document.documentElement.lang` khi doi ngon ngu.
+- Database/API/cau hinh: Khong migration, API, dependency hoac bien moi truong moi.
+- Kiem thu: `npm run test:frontend` dat 88/88; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-ip5gQJb2.js`, `App-6SGUobUE.js`, `index-B6WVCdci.css`; `git diff --check` dat; bundle co marker option `Tiếng Việt`/`English`.
+- Rui ro con lai: Cac luong noi dung cu ngoai sidebar va panel Cai dat van hien thi theo copy hien tai; can UAT selector, F5 va doi tai khoan sau khi build/deploy.
+- Viec tiep theo: Deploy rieng ChatUI, kiem tra health/public bundle va UAT selector ngon ngu sau hard refresh.
+- Commit/PR: Chua tao.
+
 ## 2026-08-17-09 - Tai am bao tuy chinh tu may tinh
 
 - Thoi gian: 2026-08-17 15:47 (Asia/Saigon)

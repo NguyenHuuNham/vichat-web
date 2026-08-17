@@ -3,6 +3,10 @@ const HOUR_MS = 60 * 60 * 1000;
 export const NOTIFICATION_SETTINGS_STORAGE_PREFIX = 'vichat.notification-settings.v1';
 export const CUSTOM_NOTIFICATION_SOUND_ID = 'custom';
 export const CUSTOM_NOTIFICATION_SOUND_MAX_BYTES = 8 * 1024 * 1024;
+export const APP_LANGUAGE_OPTIONS = Object.freeze([
+  Object.freeze({ id: 'vi', label: 'Tiếng Việt', flag: '🇻🇳' }),
+  Object.freeze({ id: 'en', label: 'English', flag: '🇺🇸' }),
+]);
 
 const NOTIFICATION_SOUND_DATABASE_NAME = 'vichat-notification-sounds.v1';
 const NOTIFICATION_SOUND_STORE_NAME = 'sounds';
@@ -18,7 +22,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS = Object.freeze({
   desktopNotifications: true,
   sounds: true,
   sound: 'chime',
-  compactMode: false,
+  language: 'vi',
 });
 
 function notificationSettingsStorageKey(viewerId) {
@@ -30,11 +34,14 @@ export function normalizeNotificationSettings(value = {}) {
     || value?.sound === CUSTOM_NOTIFICATION_SOUND_ID
     ? value.sound
     : DEFAULT_NOTIFICATION_SETTINGS.sound;
+  const language = APP_LANGUAGE_OPTIONS.some(option => option.id === value?.language)
+    ? value.language
+    : DEFAULT_NOTIFICATION_SETTINGS.language;
   return {
     desktopNotifications: value?.desktopNotifications !== false,
     sounds: value?.sounds !== false,
     sound,
-    compactMode: value?.compactMode === true,
+    language,
   };
 }
 

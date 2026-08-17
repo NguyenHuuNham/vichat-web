@@ -14,6 +14,7 @@ import {
   tinodeContactsSyncDelay,
 } from '../features/chat/services/chatRealtime';
 import {
+  APP_LANGUAGE_OPTIONS,
   CUSTOM_NOTIFICATION_SOUND_ID,
   DEFAULT_NOTIFICATION_SETTINGS,
   MESSAGE_SOUND_OPTIONS,
@@ -81,6 +82,73 @@ import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId,
 import { CHATBOT_ACCOUNT, CHATBOT_STARTER_PROMPTS, EXTERNAL_CHAT_ONLY, applyTinodeChatbotConfig, loadChatbotMessages, loadChatbotMessagesFromServer, loadTinodeChatbotConfig, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
 
 const CALLS_ENABLED = resolveCallsEnabled(import.meta.env.VITE_CALLS_ENABLED);
+
+const APP_LANGUAGE_COPY = Object.freeze({
+  vi: Object.freeze({
+    chat: 'Chat',
+    groups: 'Nhóm',
+    work: 'Work',
+    settings: 'Cài đặt',
+    language: 'Ngôn ngữ',
+    languageHint: 'Chọn ngôn ngữ hiển thị của ứng dụng',
+    notificationSettings: 'Cài đặt thông báo',
+    notificationDescription: 'Nhận được thông báo mỗi khi có tin nhắn mới',
+    desktopNotifications: 'Thông báo desktop',
+    enabled: 'Bật',
+    disabled: 'Tắt',
+    permissionUnsupported: 'Trình duyệt không hỗ trợ thông báo desktop.',
+    permissionDenied: 'Quyền thông báo đang bị chặn trong cài đặt trình duyệt.',
+    permissionDefault: 'Chọn Bật để cấp quyền hiển thị thông báo trên màn hình.',
+    permissionReady: 'Thông báo desktop đang sẵn sàng.',
+    soundTitle: 'Âm báo tin nhắn',
+    soundDescription: 'Chọn nhạc chuông phát khi có tin nhắn mới',
+    enableSound: 'Bật âm báo tin nhắn',
+    selectSound: 'Chọn âm báo tin nhắn',
+    previewSound: 'Nghe thử',
+    customSoundTitle: 'Âm báo từ máy tính',
+    checkingSound: 'Đang kiểm tra file trên thiết bị...',
+    customSoundEmpty: 'MP3, WAV, OGG hoặc M4A · tối đa 8 MB',
+    customSoundMissing: 'Tệp riêng (chưa tải lên)',
+    customSoundLabel: 'Tệp riêng',
+    soundOptions: { chime: 'Chuông nhẹ', bell: 'Chuông ngân', pop: 'Âm pop', soft: 'Âm dịu' },
+    saveSound: 'Đang lưu...',
+    replaceSound: 'Đổi file',
+    uploadSound: 'Tải file',
+    removeSound: 'Xóa',
+  }),
+  en: Object.freeze({
+    chat: 'Chat',
+    groups: 'Group',
+    work: 'Work',
+    settings: 'Settings',
+    language: 'Language',
+    languageHint: 'Choose the application display language',
+    notificationSettings: 'Notification settings',
+    notificationDescription: 'Get a notification whenever a new message arrives',
+    desktopNotifications: 'Desktop notifications',
+    enabled: 'On',
+    disabled: 'Off',
+    permissionUnsupported: 'This browser does not support desktop notifications.',
+    permissionDenied: 'Notifications are blocked in the browser settings.',
+    permissionDefault: 'Choose On to allow notifications on your screen.',
+    permissionReady: 'Desktop notifications are ready.',
+    soundTitle: 'Message sound',
+    soundDescription: 'Choose the ringtone played for new messages',
+    enableSound: 'Enable message sound',
+    selectSound: 'Choose message sound',
+    previewSound: 'Preview',
+    customSoundTitle: 'Sound from computer',
+    checkingSound: 'Checking the file on this device...',
+    customSoundEmpty: 'MP3, WAV, OGG or M4A · up to 8 MB',
+    customSoundMissing: 'Custom file (not uploaded)',
+    customSoundLabel: 'Custom file',
+    soundOptions: { chime: 'Soft chime', bell: 'Bell', pop: 'Pop sound', soft: 'Gentle sound' },
+    saveSound: 'Saving...',
+    replaceSound: 'Replace file',
+    uploadSound: 'Upload file',
+    removeSound: 'Remove',
+  }),
+});
 
 function tinodeTopicName(room) {
   return room?.tinodeTopic || room?.id || '';
@@ -906,6 +974,7 @@ function App() {
     : chatMode === 'tinode'
     ? 'Tinode realtime'
     : usesManagementData ? 'Dữ liệu Chatmgt' : 'Demo mode';
+  const appCopy = APP_LANGUAGE_COPY[settings.language] || APP_LANGUAGE_COPY.vi;
   const accountPresenceLabel = account => chatMode === 'tinode'
     ? (isAccountOnline(account) ? 'Online' : 'Offline')
     : usesManagementData ? 'Danh bạ Chatmgt' : (isAccountOnline(account) ? 'Online' : 'Offline');
@@ -944,6 +1013,10 @@ function App() {
       // The layout still works when browser storage is unavailable.
     }
   }, [isPrimarySidebarCollapsed]);
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') document.documentElement.lang = settings.language;
+  }, [settings.language]);
 
   useEffect(() => {
     if (workspacePanel !== 'profile') return;
@@ -3991,14 +4064,6 @@ function App() {
     record.event.recipientId === managementViewerId
     || (record.event.requesterId === managementViewerId && Boolean(record.response))
   ));
-  const pendingIncomingFriendRequests = friendNotifications.filter(record => (
-    record.event.recipientId === managementViewerId && !record.response
-  ));
-  const notificationBadgeCount = Object.values(conversations).filter(room => (
-    room.badge > 0 && shouldShowConversation(room, drafts[room.id])
-  )).length
-    + pendingIncomingFriendRequests.length;
-
   const visibleMessages = (activeChat.messages || []).filter(Boolean).filter(message => {
     if (messageActions[messageActionKey(activeChat.id, message.id)]?.hidden) return false;
     if (!messageSearchQuery.trim()) return true;
@@ -4092,36 +4157,21 @@ function App() {
         </div>
 
         <nav className="primary-nav">
-          <a href="#" className={`nav-item ${!workspacePanel ? 'active' : ''}`} data-tooltip="Chat" onClick={(e) => { e.preventDefault(); setWorkspacePanel(null); }}>
+          <a href="#" className={`nav-item ${!workspacePanel ? 'active' : ''}`} data-tooltip={appCopy.chat} onClick={(e) => { e.preventDefault(); setWorkspacePanel(null); }}>
             <i className="fa-solid fa-comment-dots"></i>
-            <span>Chat</span>
+            <span>{appCopy.chat}</span>
           </a>
-          <a href="#" className={`nav-item ${workspacePanel === 'contacts' ? 'active' : ''}`} data-tooltip="Danh bạ" onClick={(e) => { e.preventDefault(); openWorkspacePanel('contacts'); }}>
-            <i className="fa-solid fa-address-book"></i>
-            <span>Danh bạ</span>
-          </a>
-          <a href="#" className="nav-item" data-tooltip="Nhóm" onClick={(e) => { e.preventDefault(); setIsCreateGroupOpen(true); }}>
+          <a href="#" className="nav-item" data-tooltip={appCopy.groups} onClick={(e) => { e.preventDefault(); setIsCreateGroupOpen(true); }}>
             <i className="fa-solid fa-users"></i>
-            <span>Nhóm</span>
+            <span>{appCopy.groups}</span>
           </a>
-          <a href="#" className={`nav-item ${workspacePanel === 'files' ? 'active' : ''}`} data-tooltip="File dùng chung" onClick={(e) => { e.preventDefault(); openWorkspacePanel('files'); }}>
-            <i className="fa-solid fa-folder-open"></i>
-            <span>File dùng chung</span>
-          </a>
-          <a href="#" className={`nav-item ${workspacePanel === 'enterprise' ? 'active' : ''}`} data-tooltip="Workspace doanh nghiệp" onClick={(e) => { e.preventDefault(); openWorkspacePanel('enterprise'); }}>
+          <a href="#" className={`nav-item ${workspacePanel === 'enterprise' ? 'active' : ''}`} data-tooltip={appCopy.work} onClick={(e) => { e.preventDefault(); openWorkspacePanel('enterprise'); }}>
             <i className="fa-solid fa-briefcase"></i>
-            <span>Workspace</span>
+            <span>{appCopy.work}</span>
           </a>
-          <a href="#" className={`nav-item ${workspacePanel === 'notifications' ? 'active' : ''}`} data-tooltip="Thông báo" onClick={(e) => { e.preventDefault(); openWorkspacePanel('notifications'); }}>
-            <div className="icon-badge-wrapper">
-              <i className="fa-solid fa-bell"></i>
-              {notificationBadgeCount > 0 && <span className="badge-count">{notificationBadgeCount}</span>}
-            </div>
-            <span>Thông báo</span>
-          </a>
-          <a href="#" className={`nav-item ${workspacePanel === 'settings' ? 'active' : ''}`} data-tooltip="Cài đặt" onClick={(e) => { e.preventDefault(); openWorkspacePanel('settings'); }}>
+          <a href="#" className={`nav-item ${workspacePanel === 'settings' ? 'active' : ''}`} data-tooltip={appCopy.settings} onClick={(e) => { e.preventDefault(); openWorkspacePanel('settings'); }}>
             <i className="fa-solid fa-gear"></i>
-            <span>Cài đặt</span>
+            <span>{appCopy.settings}</span>
           </a>
         </nav>
 
@@ -4794,7 +4844,7 @@ function App() {
           <section className={`workspace-panel ${workspacePanel === 'enterprise' ? 'enterprise-shell-panel' : ''}`} role="dialog" aria-modal="true">
             <div className="workspace-panel-header">
               <div>
-                <h2>{workspacePanel === 'profile' ? 'Hồ sơ cá nhân' : workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'enterprise' ? 'Enterprise Workspace' : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : 'Cài đặt'}</h2>
+                <h2>{workspacePanel === 'profile' ? 'Hồ sơ cá nhân' : workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'enterprise' ? appCopy.work : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : appCopy.settings}</h2>
               </div>
               <div className="workspace-panel-header-actions">
                 {workspacePanel === 'profile' && (
@@ -5008,9 +5058,9 @@ function App() {
             {workspacePanel === 'settings' && (
               <div className="workspace-settings">
                 <section className="notification-preference-card" aria-labelledby="desktop-notification-title">
-                  <h3 id="desktop-notification-title">Cài đặt thông báo</h3>
-                  <p>Nhận được thông báo mỗi khi có tin nhắn mới</p>
-                  <div className="notification-device-options" role="radiogroup" aria-label="Thông báo desktop">
+                  <h3 id="desktop-notification-title">{appCopy.notificationSettings}</h3>
+                  <p>{appCopy.notificationDescription}</p>
+                  <div className="notification-device-options" role="radiogroup" aria-label={appCopy.desktopNotifications}>
                     <button
                       type="button"
                       className={`notification-device-choice ${settings.desktopNotifications ? 'selected' : ''}`}
@@ -5019,7 +5069,7 @@ function App() {
                       onClick={() => handleDesktopNotificationToggle(true)}
                     >
                       <span className="notification-device-icon"><i className="fa-solid fa-laptop"></i></span>
-                      <span className="notification-device-label"><span className="notification-radio-dot"></span>Bật</span>
+                      <span className="notification-device-label"><span className="notification-radio-dot"></span>{appCopy.enabled}</span>
                     </button>
                     <button
                       type="button"
@@ -5029,30 +5079,30 @@ function App() {
                       onClick={() => handleDesktopNotificationToggle(false)}
                     >
                       <span className="notification-device-icon"><i className="fa-solid fa-laptop"></i></span>
-                      <span className="notification-device-label"><span className="notification-radio-dot"></span>Tắt</span>
+                      <span className="notification-device-label"><span className="notification-radio-dot"></span>{appCopy.disabled}</span>
                     </button>
                   </div>
                   <small className="notification-permission-status">
                     {desktopNotificationPermission === 'unsupported'
-                      ? 'Trình duyệt không hỗ trợ thông báo desktop.'
+                      ? appCopy.permissionUnsupported
                       : desktopNotificationPermission === 'denied'
-                        ? 'Quyền thông báo đang bị chặn trong cài đặt trình duyệt.'
+                        ? appCopy.permissionDenied
                         : desktopNotificationPermission === 'default'
-                          ? 'Chọn Bật để cấp quyền hiển thị thông báo trên màn hình.'
-                          : 'Thông báo desktop đang sẵn sàng.'}
+                          ? appCopy.permissionDefault
+                          : appCopy.permissionReady}
                   </small>
                   {notificationSettingsNotice && <div className="notification-settings-notice"><i className="fa-solid fa-circle-info"></i>{notificationSettingsNotice}</div>}
                 </section>
                 <div className="notification-sound-settings">
                   <div className="notification-sound-heading">
-                    <span><strong>Âm báo tin nhắn</strong><small>Chọn nhạc chuông phát khi có tin nhắn mới</small></span>
-                    <input type="checkbox" checked={settings.sounds} onChange={event => updateNotificationSettings({ sounds: event.target.checked })} aria-label="Bật âm báo tin nhắn" />
+                    <span><strong>{appCopy.soundTitle}</strong><small>{appCopy.soundDescription}</small></span>
+                    <input type="checkbox" checked={settings.sounds} onChange={event => updateNotificationSettings({ sounds: event.target.checked })} aria-label={appCopy.enableSound} />
                   </div>
                   <div className="notification-sound-picker">
-                    <select value={settings.sound} onChange={event => updateNotificationSettings({ sound: event.target.value })} disabled={!settings.sounds} aria-label="Chọn âm báo tin nhắn">
-                      {MESSAGE_SOUND_OPTIONS.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+                    <select value={settings.sound} onChange={event => updateNotificationSettings({ sound: event.target.value })} disabled={!settings.sounds} aria-label={appCopy.selectSound}>
+                      {MESSAGE_SOUND_OPTIONS.map(option => <option key={option.id} value={option.id}>{appCopy.soundOptions[option.id] || option.label}</option>)}
                       <option value={CUSTOM_NOTIFICATION_SOUND_ID} disabled={!customNotificationSound}>
-                        {customNotificationSound ? `Tệp riêng: ${customNotificationSound.name}` : 'Tệp riêng (chưa tải lên)'}
+                        {customNotificationSound ? `${appCopy.customSoundLabel}: ${customNotificationSound.name}` : appCopy.customSoundMissing}
                       </option>
                     </select>
                     <button
@@ -5061,7 +5111,7 @@ function App() {
                       onClick={() => playNotificationSound(settings.sound)}
                       disabled={!settings.sounds || (settings.sound === CUSTOM_NOTIFICATION_SOUND_ID && !customNotificationSoundUrl)}
                     >
-                      <i className="fa-solid fa-volume-high"></i>Nghe thử
+                      <i className="fa-solid fa-volume-high"></i>{appCopy.previewSound}
                     </button>
                   </div>
                   <div className="notification-custom-sound">
@@ -5073,13 +5123,13 @@ function App() {
                       onChange={handleCustomNotificationSoundUpload}
                     />
                     <div className="notification-custom-sound-copy">
-                      <strong>Âm báo từ máy tính</strong>
+                      <strong>{appCopy.customSoundTitle}</strong>
                       <small>
                         {isLoadingCustomNotificationSound
-                          ? 'Đang kiểm tra file trên thiết bị...'
+                          ? appCopy.checkingSound
                           : customNotificationSound
                             ? customNotificationSound.name
-                            : 'MP3, WAV, OGG hoặc M4A · tối đa 8 MB'}
+                            : appCopy.customSoundEmpty}
                       </small>
                     </div>
                     <div className="notification-custom-sound-actions">
@@ -5090,7 +5140,7 @@ function App() {
                         disabled={isSavingCustomNotificationSound || !notificationSettingsViewerId}
                       >
                         <i className={`fa-solid ${customNotificationSound ? 'fa-rotate' : 'fa-upload'}`}></i>
-                        {isSavingCustomNotificationSound ? 'Đang lưu...' : customNotificationSound ? 'Đổi file' : 'Tải file'}
+                        {isSavingCustomNotificationSound ? appCopy.saveSound : customNotificationSound ? appCopy.replaceSound : appCopy.uploadSound}
                       </button>
                       {customNotificationSound && (
                         <button
@@ -5099,13 +5149,20 @@ function App() {
                           onClick={handleRemoveCustomNotificationSound}
                           disabled={isSavingCustomNotificationSound}
                         >
-                          <i className="fa-solid fa-trash-can"></i>Xóa
+                          <i className="fa-solid fa-trash-can"></i>{appCopy.removeSound}
                         </button>
                       )}
                     </div>
                   </div>
                 </div>
-                <label className="workspace-setting-row"><span><strong>Giao diện gọn</strong></span><input type="checkbox" checked={settings.compactMode} onChange={event => updateNotificationSettings({ compactMode: event.target.checked })} /></label>
+                <label className="workspace-setting-row language-setting-row">
+                  <span><strong>{appCopy.language}</strong><small>{appCopy.languageHint}</small></span>
+                  <select value={settings.language} onChange={event => updateNotificationSettings({ language: event.target.value })} aria-label={appCopy.language}>
+                    {APP_LANGUAGE_OPTIONS.map(option => (
+                      <option key={option.id} value={option.id}>{option.flag} {option.label}</option>
+                    ))}
+                  </select>
+                </label>
                 <div className="workspace-account-card"><i className="fa-solid fa-shield-halved"></i><div><strong>{currentUser?.name || 'Tài khoản hiện tại'}</strong><small>{currentUser?.email || 'Phiên đăng nhập SÔNG HỒNG'} · {chatModeLabel}</small></div></div>
               </div>
             )}
