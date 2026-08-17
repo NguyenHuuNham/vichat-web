@@ -89,6 +89,7 @@ const APP_LANGUAGE_COPY = Object.freeze({
     chat: 'Chat',
     groups: 'Nhóm',
     work: 'Work',
+    contacts: 'Danh bạ',
     settings: 'Cài đặt',
     language: 'Ngôn ngữ',
     languageHint: 'Chọn ngôn ngữ hiển thị của ứng dụng',
@@ -124,6 +125,7 @@ const APP_LANGUAGE_COPY = Object.freeze({
     chat: 'Chat',
     groups: 'Group',
     work: 'Work',
+    contacts: 'Contacts',
     settings: 'Settings',
     language: 'Language',
     languageHint: 'Choose the application display language',
@@ -4199,6 +4201,10 @@ function App() {
           <a href="#" className={`nav-item ${workspacePanel === 'enterprise' ? 'active' : ''}`} data-tooltip={appCopy.work} onClick={(e) => { e.preventDefault(); openWorkspacePanel('enterprise'); }}>
             <i className="fa-solid fa-briefcase"></i>
             <span>{appCopy.work}</span>
+          </a>
+          <a href="#" className={`nav-item ${workspacePanel === 'contacts' ? 'active' : ''}`} data-tooltip={appCopy.contacts} onClick={(e) => { e.preventDefault(); openWorkspacePanel('contacts'); }}>
+            <i className="fa-solid fa-address-book"></i>
+            <span>{appCopy.contacts}</span>
           </a>
           <a href="#" className={`nav-item ${workspacePanel === 'settings' ? 'active' : ''}`} data-tooltip={appCopy.settings} onClick={(e) => { e.preventDefault(); openWorkspacePanel('settings'); }}>
             <i className="fa-solid fa-gear"></i>

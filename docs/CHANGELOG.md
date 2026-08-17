@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-17-15 - Thu gon ChatUI va cai thien dark mode
+
+- Thoi gian: 2026-08-17 20:05 (Asia/Saigon)
+- Loai: Tinh nang | Tai cau truc | UX | Web | Kiem thu
+- Trang thai: Hoan tat code; chua deploy, can UAT
+- Muc tieu: Giao dien bot cang, dark mode chi lam toi nen nhung van giu ro tin nhan/thong tin, va bo sung muc `Danh ba` tren menu chinh.
+- Pham vi: ChatUI menu, sidebar, chat header/composer, workspace panel, danh ba, cac surface dark mode; giu nguyen API, membership, Tinode va luong Chat/Nhom/Work.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Them `Danh ba` ngay tren `Cai dat` va mo panel contacts hien co. Giam kich thuoc/padding cua sidebar, danh sach hoi thoai, header, composer, panel va cac card cai dat. Dark mode dung cac lop nen charcoal/teal co bien `text-main`, `text-body`, `text-muted`, border va bubble incoming/outgoing rieng; bo sung tuong phan cho file, thong bao, danh ba va ViChat AI de khong bi chim chu.
+- Quyet dinh ky thuat: Chi sua CSS va copy/menu cua ChatUI, uu tien design token va dark override tai cuoi stylesheet de khong thay doi data flow hay hop dong API. Khong xoa hoac thay doi panel contacts da co.
+- Database/API/cau hinh: Khong co.
+- Kiem thu: `npm run test:frontend` dat 89/89; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-XiWJWy12.css`, `App-DDIc4ejP.js`; `git diff --check` dat.
+- Rui ro con lai: Chua UAT bang browser voi tai khoan that o ca light/dark, responsive mobile va thao tac mo `Danh ba`; chua deploy production trong lan nay.
+- Viec tiep theo: Hard refresh ban build local/staging, kiem tra dark mode va `Danh ba`; sau khi UAT dat moi deploy ChatUI theo quy trinh release an toan.
+- Commit/PR: Chua tao.
+
 ## 2026-08-17-14 - Deploy account membership login len production
 
 - Thoi gian: 2026-08-17 19:48 (Asia/Saigon)
