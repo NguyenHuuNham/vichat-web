@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-17 13:01 (Asia/Saigon)
 - Loai: Tinh nang | Web | Realtime | Du lieu | Kiem thu
-- Trang thai: Hoan tat code va kiem thu local; chua deploy production
+- Trang thai: Da commit; chua deploy production
 - Muc tieu: Dong bo avatar nhom cho moi thanh vien, hien mention mau xanh va them menu thao tac hoi thoai co ghim/bo ghim hoat dong nhu web that.
 - Pham vi: ChatUI sidebar/composer/group detail, Chatmgt conversation metadata, Tinode avatar snapshot va migration database; giu nguyen cac luong tin nhan, file, goi va mobile.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/conversationPinPolicy.js`, `src/features/chat/services/conversationPinPolicy.test.js`, `src/styles/index.css`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/models/models.py`, `chatservice-main/migrations/011_conversation_pins.sql`, `chatservice-main/alembic/versions/20260817_11_conversation_pins.py`, `chatservice-main/tests/test_chat_auth_contract.py`, tai lieu va `dist/index.html`.
@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `npm run test:frontend` dat 83/83; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-BVgHC-Xz.js`, `App-DXiLL2jC.js`, `index-qWJaSBuU.css`; `python -m unittest tests.test_chat_auth_contract tests.test_enterprise_workspace -q` dat 45 test; `python -m py_compile application/controllers/api_chat_management.py application/models/models.py alembic/versions/20260817_11_conversation_pins.py` dat; `git diff --check` dat.
 - Rui ro con lai: Chua deploy va chua UAT bang hai tai khoan that de xac nhan avatar shared, mention echo Tinode, pin theo tung viewer va menu tren trinh duyet.
 - Viec tiep theo: Commit/push, backup va migrate Chatmgt, deploy release bat bien, health-check bundle/API, sau do hard refresh `https://chat.upgo.vn` de UAT.
-- Commit/PR: Chua tao.
+- Commit/PR: Code `283e94e`; deploy record follow-up.
 
 ## 2026-08-17-05 - Deploy production commit ab0ab55
 
