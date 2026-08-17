@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: Local `npm run test:frontend` dat 78/78; `python -m unittest discover -s chatservice-main/tests -q` dat 152, skip 49; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production`, `python -m py_compile ...` va `git diff --check` dat. Remote Compose config/build dat; production verifier dat database/credential policy va tenant isolation; health ChatUI/Chatmgt/chatbot HTTP 200; 4 container healthy; log 2 phut sau recreate khong co traceback/panic/fatal/critical/emerg/exception/error.
 - Rui ro con lai: Tinode hello authoritative tra `helloCode=201`, 2 ICE entries nhung `webrtcEnabled=false`, nen voice/video van bi khoa dung. Full `verify_deployment.py` dung o gate WebRTC; day la cau hinh trung tam Tinode `.215`, khong phai loi release. Chua UAT hai tai khoan that.
 - Viec tiep theo: Operator cau hinh `webrtc.enabled=true` va ICE authoritative tren Tinode trung tam `.215`, probe lai voi Origin production, chay lai verifier va UAT voice/video. Neu can rollback toan bo, dung symlink `previous` va cac rollback tags da ghi.
-- Commit/PR: Chua tao.
+- Commit/PR: Source `6bac0dd`; deploy record `8d90b0b` da push `origin/master`.
 
 ## 2026-08-17-02 - Chon thanh vien nhom tu danh ba cong ty
 
