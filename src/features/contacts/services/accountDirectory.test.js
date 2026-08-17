@@ -11,6 +11,7 @@ import {
   findDirectPeer,
   identitiesOverlap,
   identityValues,
+  matchesCompanyDirectoryContact,
   mergeDirectoryAccountSnapshots,
   mergeRealtimeAccountProfile,
   mergeRealtimeMemberPresence,
@@ -54,6 +55,22 @@ test('company directory excludes accounts from another tenant', () => {
     companyDirectoryContacts(accounts, viewer).map(account => account.id),
     ['same-company'],
   );
+});
+
+test('company directory contact filtering is local and ignores Vietnamese accents', () => {
+  const account = {
+    name: 'Nguyễn Văn Đức',
+    username: 'duc.nguyen',
+    email: 'duc.nguyen@example.com',
+    title: 'Kế toán viên',
+    department: 'Tài chính',
+  };
+
+  assert.equal(matchesCompanyDirectoryContact(account, 'nguyen van duc'), true);
+  assert.equal(matchesCompanyDirectoryContact(account, 'example.com'), true);
+  assert.equal(matchesCompanyDirectoryContact(account, 'ke toan'), true);
+  assert.equal(matchesCompanyDirectoryContact(account, 'khong co'), false);
+  assert.equal(matchesCompanyDirectoryContact(account, ''), true);
 });
 
 test('directory username removes an email domain without changing plain usernames', () => {

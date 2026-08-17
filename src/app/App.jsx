@@ -42,6 +42,7 @@ import {
   findDirectPeer,
   identitiesOverlap,
   identityValues,
+  matchesCompanyDirectoryContact,
   mergeDirectoryAccountSnapshots,
   mergeRealtimeAccountProfile,
   mergeRealtimeMemberPresence,
@@ -723,8 +724,6 @@ function App() {
   const [groupMemberIds, setGroupMemberIds] = useState([]);
   const [groupMemberProfiles, setGroupMemberProfiles] = useState({});
   const [groupMemberSearch, setGroupMemberSearch] = useState('');
-  const [groupSearchResults, setGroupSearchResults] = useState([]);
-  const [isSearchingMembers, setIsSearchingMembers] = useState(false);
   const [removingMemberId, setRemovingMemberId] = useState('');
   const [workspacePanel, setWorkspacePanel] = useState(null);
   const [enterpriseTaskSeed, setEnterpriseTaskSeed] = useState(null);
@@ -774,7 +773,6 @@ function App() {
   const fileInputRef = useRef(null);
   const currentChatIdRef = useRef(currentChatId);
   const deletedConversationIdsRef = useRef(new Set());
-  const memberSearchRequestRef = useRef(0);
   const createGroupRequestRef = useRef(false);
   const tinodeSessionRequestRef = useRef(null);
   const conversationsRef = useRef(conversations);
@@ -908,7 +906,6 @@ function App() {
       return next;
     });
     setWorkspaceResults(previous => updateAccountPresence(previous, snapshot, currentAccount));
-    setGroupSearchResults(previous => updateAccountPresence(previous, snapshot, currentAccount));
     setConversations(previous => {
       let changed = false;
       const next = Object.fromEntries(Object.entries(previous).map(([id, room]) => {
@@ -1386,7 +1383,6 @@ function App() {
         const updateAccount = account => mergeRealtimeAccountProfile(account, profile);
         setDirectoryAccounts(previous => updateAccountProfiles(previous, profile));
         setWorkspaceResults(previous => updateAccountProfiles(previous, profile));
-        setGroupSearchResults(previous => updateAccountProfiles(previous, profile));
         setConversations(previous => Object.fromEntries(Object.entries(previous).map(([id, room]) => {
           const members = (room.members || []).map(updateAccount);
           const peer = !room.isGroup ? members.find(member => identitiesOverlap(member, profile)) : null;
@@ -1522,7 +1518,6 @@ function App() {
     avatarOverridesRef.current.clear();
     setWorkspaceResults([]);
     setEnterpriseTaskSeed(null);
-    setGroupSearchResults([]);
     conversationsRef.current = initialRooms;
     setConversations(initialRooms);
     setCurrentChatId(CHATBOT_ACCOUNT.id);
@@ -1814,26 +1809,8 @@ function App() {
     });
   };
 
-  const handleSearchGroupMembers = async (event) => {
-    const value = event.target.value;
-    const requestId = ++memberSearchRequestRef.current;
-    setGroupMemberSearch(value);
-    if (value.trim().length < 2) {
-      setGroupSearchResults([]);
-      setIsSearchingMembers(false);
-      return;
-    }
-    setIsSearchingMembers(true);
-    try {
-      const results = await chatManagementService.searchUsers(value, {
-        excludeUserId: currentUser?.id || currentUser?.uid,
-      });
-      if (requestId === memberSearchRequestRef.current) setGroupSearchResults(results);
-    } catch (err) {
-      setChatError(err?.message || 'Không tìm được thành viên.');
-    } finally {
-      if (requestId === memberSearchRequestRef.current) setIsSearchingMembers(false);
-    }
+  const handleFilterGroupMembers = event => {
+    setGroupMemberSearch(event.target.value);
   };
 
   const openWorkspacePanel = (panel) => {
@@ -2089,11 +2066,6 @@ function App() {
           const next = refreshResultList(previous);
           return next.length === previous.length && next.every((item, index) => item === previous[index]) ? previous : next;
         });
-        setGroupSearchResults(previous => {
-          const next = refreshResultList(previous);
-          return next.length === previous.length && next.every((item, index) => item === previous[index]) ? previous : next;
-        });
-
         const self = findAccount(effectiveAccounts, managementViewerId);
         if (self) {
           setCurrentUser(previous => {
@@ -2573,7 +2545,6 @@ function App() {
       setGroupMemberIds([]);
       setGroupMemberProfiles({});
       setGroupMemberSearch('');
-      setGroupSearchResults([]);
     } catch (err) {
       setChatError(err?.message || 'Không thể tạo nhóm.');
     } finally {
@@ -2609,7 +2580,6 @@ function App() {
     setGroupMemberIds([]);
     setGroupMemberProfiles({});
     setGroupMemberSearch('');
-    setGroupSearchResults([]);
   };
 
   const handleRemoveGroupMember = async (member) => {
@@ -3388,25 +3358,10 @@ function App() {
       return secondTimestamp - firstTimestamp;
     });
 
-  const conversationMembers = Object.values(conversations)
-    .flatMap(room => room.members || [])
-    .map(member => {
-      const account = findAccount(directoryAccounts, member.id || member.name);
-      return account ? { ...member, ...account, id: account.id, name: account.name } : member;
-    });
-
-  const availableMembers = [...directoryAccounts.filter(account => account.active !== false), ...conversationMembers]
-    .filter((member, index, all) => member?.name && all.findIndex(item => (item.id || item.name) === (member.id || member.name)) === index)
+  const companyContacts = companyDirectoryContacts(directoryAccounts, currentUser);
+  const groupCandidates = companyContacts
     .filter(member => member.type !== 'bot')
-    .filter(member => member.id !== (currentUser?.id || currentUser?.uid));
-
-  const candidateSource = chatMode === 'tinode'
-    ? groupSearchResults
-    : groupMemberSearch.trim().length >= 2 ? groupSearchResults : availableMembers;
-  const existingMemberIds = [];
-  const groupCandidates = candidateSource
-    .filter((member, index, all) => member?.name && all.findIndex(item => (item.id || item.name) === (member.id || member.name)) === index)
-    .filter(member => !existingMemberIds.includes(member.id) && !existingMemberIds.includes(member.name));
+    .filter(member => matchesCompanyDirectoryContact(member, groupMemberSearch));
 
   const sharedFiles = Object.values(conversations)
     .filter(room => canAccessRoomFiles(room, currentUser, directoryAccounts, chatMode))
@@ -3423,7 +3378,6 @@ function App() {
     .slice(0, 20);
 
   const friendshipRecords = collectFriendshipRecords(conversations, managementViewerId);
-  const companyContacts = companyDirectoryContacts(directoryAccounts, currentUser);
   const companySearchResults = companyDirectoryContacts(workspaceResults, currentUser);
   const companyDirectoryTitle = companyDirectoryHeading(currentUser);
   const friendNotifications = friendshipRecords.filter(record => (
@@ -4431,25 +4385,44 @@ function App() {
 
             <div className="group-form-field">
               <span>Thêm thành viên</span>
-              <input value={groupMemberSearch} onChange={handleSearchGroupMembers} placeholder="Tìm thành viên" />
-              {isSearchingMembers && <p className="group-form-hint">Đang tìm thành viên...</p>}
+              <input
+                value={groupMemberSearch}
+                onChange={handleFilterGroupMembers}
+                placeholder="Lọc danh bạ theo tên, email hoặc username"
+                aria-label="Lọc danh bạ công ty"
+              />
+              {companyContacts.length > 0 && (
+                <p className="group-form-hint">
+                  {groupMemberIds.length > 0
+                    ? `Đã chọn ${groupMemberIds.length} thành viên từ danh bạ công ty.`
+                    : `Chọn trực tiếp từ ${companyContacts.length} người trong danh bạ công ty.`}
+                </p>
+              )}
               {groupCandidates.length > 0 ? (
                 <div className="group-member-picker">
                   {groupCandidates.map(member => {
                     const memberId = member.id || member.name;
                     const selected = groupMemberIds.includes(memberId);
                     return (
-                      <button type="button" key={memberId} className={`group-member-option ${selected ? 'selected' : ''}`} onClick={() => toggleGroupMember(member)}>
+                      <button
+                        type="button"
+                        key={memberId}
+                        className={`group-member-option ${selected ? 'selected' : ''}`}
+                        onClick={() => toggleGroupMember(member)}
+                        aria-pressed={selected}
+                      >
                         <span className="picker-check"><i className={`fa-solid ${selected ? 'fa-check' : 'fa-plus'}`}></i></span>
                         <span className="picker-name">{member.name}</span>
-                        <span className="picker-status">{accountPresenceLabel(member)}</span>
+                        <span className="picker-status">{accountPresenceLabel(member)}{directoryUsernameMeta(member)}</span>
                       </button>
                     );
                   })}
                 </div>
-              ) : groupMemberSearch.trim().length >= 2 && !isSearchingMembers
-                ? <p className="group-form-hint">Không tìm thấy thành viên.</p>
-                : null}
+              ) : <p className="group-form-hint">{
+                groupMemberSearch.trim()
+                  ? 'Không tìm thấy thành viên phù hợp trong danh bạ công ty.'
+                  : 'Danh bạ công ty hiện chưa có thành viên khác.'
+              }</p>}
             </div>
 
             <div className="group-modal-footer actions-only">

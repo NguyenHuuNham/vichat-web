@@ -39,6 +39,26 @@ export function directoryUsernameMeta(account) {
   return ` · @${username.split('@')[0]}`;
 }
 
+function normalizedDirectorySearchValue(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .toLocaleLowerCase('vi');
+}
+
+export function matchesCompanyDirectoryContact(account, query) {
+  const normalizedQuery = normalizedDirectorySearchValue(query).trim();
+  if (!normalizedQuery) return true;
+  return [
+    account?.name,
+    account?.username,
+    account?.email,
+    account?.title,
+    account?.department,
+  ].some(value => normalizedDirectorySearchValue(value).includes(normalizedQuery));
+}
+
 export function companyDirectoryContacts(accounts, currentUser) {
   const contacts = [];
   const currentTenantId = tenantId(currentUser);

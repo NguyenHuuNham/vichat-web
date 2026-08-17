@@ -38,13 +38,16 @@ test('resends the employee password only when the volatile Tinode token needs re
   }, ''), {});
 });
 
-test('group detail removes add-member UI without removing other group actions or the backend API', () => {
+test('create-group picker uses the synced company directory while group detail stays read-only', () => {
   for (const removedBinding of [
     'isAddMembersOpen',
     'isAddingMembers',
     'addMembersRequestRef',
     'openAddMembers',
     'handleAddMembers',
+    'handleSearchGroupMembers',
+    'groupSearchResults',
+    'isSearchingMembers',
     'btn-add-member',
     'group-members-modal',
   ]) {
@@ -53,7 +56,9 @@ test('group detail removes add-member UI without removing other group actions or
 
   for (const retainedBinding of [
     'isCreateGroupOpen',
-    'handleSearchGroupMembers',
+    'handleFilterGroupMembers',
+    'companyDirectoryContacts(directoryAccounts, currentUser)',
+    'matchesCompanyDirectoryContact(member, groupMemberSearch)',
     'handleRemoveGroupMember',
     'handleLeaveGroup',
     'handleDeleteConversation',
