@@ -8,19 +8,20 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-19-01 - Sua reply tren anh, truy ve tin goc va thu gon tin ghim
 
-- Thoi gian: 2026-08-19 00:00 (Asia/Saigon)
+- Thoi gian: 2026-08-19 01:02 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | UI | Kiem thu
-- Trang thai: Dang thuc hien
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Reply tren anh khong bi mat thao tac khi rê chuot; khối reply gon, tu tag nguoi duoc tra loi, click preview quay ve tin goc va pin message hien thi gon theo mac dinh.
 - Pham vi: Thanh thao tac tin nhan, reply preview/composer, mention metadata, cuon den tin goc va thanh tin nhan da ghim trong ChatUI.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `dist/index.html`.
 - Noi dung: Giu vung hit cua Reply/Share/Like khi rê qua khoang noi, them do tre dong action/reaction picker, can trai banner reply, tu chen mention cho nguoi gui trong ca direct/group, cho phep bam reply preview de highlight va cuon den tin goc, va mac dinh chi hien mot pin preview kem nut Mo rong/Thu gon.
 - Quyet dinh ky thuat: Dung DOM message map hien co va helper cuon chung cho pin/reply; pin van la metadata viewer/device-local qua `message-actions`, khong tao API Tinode moi; khong thay doi Tinode message/reaction contract.
 - Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi truong.
-- Kiem thu: `npm run test:frontend` dat 131/131; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat. Browser UAT chua chay vi session nay khong co browser kha dung.
-- Rui ro con lai: Can UAT bang tai khoan production de xac nhan hover tren anh, click reply, mention Tinode va pin tren desktop/mobile.
-- Viec tiep theo: Commit, push, deploy rieng `chat` va kiem tra health/public bundle; sau do UAT luong reply/pin tren production.
-- Commit/PR: Chua tao
+- Kiem thu: `npm run test:frontend` dat 131/131; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat. Production `docker compose config -q`, build service `chat`, container health, `docker exec .../healthz`, public `https://chat.upgo.vn/healthz`, public App/CSS bundle HTTP 200 co marker reply/pin/action hover, Chatmgt auth health, `sudo nginx -t` va log ChatUI 5 phut khong co fatal marker deu dat. Browser UAT khong chay vi session nay khong co browser kha dung.
+- Trien khai: Source `bb2e08c` da push `origin/master`. Archive SHA-256 `E6F6EC183F59DB5395CEEA595BCDC0131434373C99B0E8BCE9E282A1009A7697`; release `/opt/deploy/chat/releases/reply-actions-bb2e08c-20260819-010232`; image ChatUI `sha256:862a4447978ee4df7bb8b2b683242270d4f8143ab8b555990620b5e13d27958f`, container `8060b100d300`; rollback tag `songhong-production-chat:rollback-before-reply-actions-bb2e08c` (`sha256:4c762f566ef6a73ba303f6f9e5b0fc3cccecf78fff38ae7d5ea96ad52827b3a3`); `current` tro release moi, `previous` tro `message-actions-95a4003-20260818-2348`; chi recreate `chat`, giu nguyen Chatmgt/Tinode bridge/worker, ChatAPI, PostgreSQL, Redis va Coturn.
+- Rui ro con lai: Can UAT bang tai khoan production de xac nhan hover tren anh, click reply, mention Tinode va pin tren desktop/mobile; pin message van viewer/device-local theo thiet ke hien tai.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, gui reply cho tin nhan anh/van ban, bam preview de quay ve tin goc, kiem tra mention va mo/thu gon pin tren desktop/mobile.
+- Commit/PR: Source `bb2e08c`; changelog deployment follow-up; chua co PR
 
 ## 2026-08-18-26 - Thao tac nhanh, mention va ghim tin nhan
 
