@@ -10,14 +10,14 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-18 21:58 (Asia/Saigon)
 - Loai: Tinh nang | Web | Chatmgt | API | Kiem thu
-- Trang thai: Da kiem thu; dang chuan bi deploy production
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Chi hien thi bieu tuong/logo cong ty trong ho so, van cho biet ten cong ty khi tro chuot, va tu dong nhan logo moi tu UpGo Account ma khong reload chat.
 - Pham vi: Tenant option public cua Chatmgt, chuan hoa logo/version tren ChatUI, refresh session metadata, giao dien profile va test lien quan.
 - Noi dung: Chatmgt doc them logo version tu membership/brand metadata va tra qua tenantOptions. ChatUI kiem tra GET /api/v1/auth/me khi tab focus/visibility va moi 5 giay, chi cap nhat tenantOptions trong React state neu metadata doi; logo co version duoc cache-bust, logo thieu/loi dung fallback toa nha. Conversation, directory, Tinode va realtime khong bi reset.
 - Quyet dinh ky thuat: UpGo Account van la nguon chuan; Chatmgt khong luu anh hay secret. Nut chuyen cong ty giu title/aria-label ten cong ty nhung an ten/role trong layout. Refresh dung endpoint auth hien co de khong tao polling/API moi va khong tac dong den luong chat.
 - Database/API/cau hinh: Mo rong tenantOptions voi optional logoVersion/logo_version; khong migration, secret hoac bien moi truong.
-- Kiem thu: npm run test:frontend dat 126/126; python -m unittest discover -s chatservice-main/tests -v dat 167 test, bo qua 56 test do thieu runtime dependency local; python -m py_compile dat; npm run lint exit 0 voi warning legacy/vendor da co; npm run build:production dat; git diff --check dat.
-- Trien khai: Dang cho release va health check production sau khi push commit.
+- Kiem thu: npm run test:frontend dat 126/126; python -m unittest discover -s chatservice-main/tests -v dat 167 test, bo qua 56 test do thieu runtime dependency local; python -m py_compile dat; npm run lint exit 0 voi warning legacy/vendor da co; npm run build:production dat; git diff --check dat. Trong image production, test_sso_identity dat 26/26 va test_account_sso_service dat 21/21; full discover khong chay duoc 5 source-only/import checks vi runtime image khong mount /src va /infrastructure, trong do 13 test duoc skip theo decorator; day la gioi han cua test image, khong phai loi runtime logo.
+- Trien khai: Commit 9fc2d0e da push origin/master. Release /opt/deploy/chat/releases/logo-refresh-9fc2d0e-20260818T150243Z; archive SHA-256 E66EE3ECFE47F78139EE6ECD04E5C321A4697C9F69E5345262D974C3E47626D1; image ChatUI sha256:6eccccc8f146fbf2fa19c47d3f4c0db9dab272167581be04546946b2033a560f, container 868806f93dad; image Chatmgt sha256:b4bbd0853ddc6a2f0a77b78bb177faeb913113f838b153f3baba6b386e9104a1, container ebdc4c02b875. current tro release moi, previous tro logo-switch-9f7d183-20260818-2116; chat/chatmgt healthy, health public ok, lazy App bundle co marker vichat_logo/refreshSessionMetadata/tenant-switcher-option.
 - Rui ro con lai: Neu Account giu nguyen URL anh va khong tra logo version/updated_at cung khong co cache invalidation, Chatmgt khong the biet noi dung byte cua anh da doi; code da ho tro cac truong version/update pho bien de tranh tinh huong nay.
 - Viec tiep theo: Hard refresh production, dang nhap tai khoan co nhieu membership, hover tung logo de kiem tra tooltip, doi logo trong UpGo Account va xac nhan ChatUI cap nhat trong vong refresh/focus ma khong mat room dang mo.
 
