@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-18 11:00 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | UX | Web | Kiem thu
-- Trang thai: Hoan tat code; chua commit; chua deploy production
+- Trang thai: Da commit; chua deploy production
 - Muc tieu: Mention trong o soan tin phai hien mau xanh, reply trong nhom phai tu dong tag nguoi duoc tra loi, va thong tin nhom phai cho phep them thanh vien tu danh ba theo dung quyen.
 - Pham vi: ChatUI composer/reply, Tinode group event, Chatmgt participant flow, demo group store, avatar nhom, i18n va CSS; khong doi tenant/auth hay cac luong chat khac.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/tinodeClient.js`, `src/features/demo/services/demoGroupStore.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `docs/CHANGELOG.md`.
@@ -19,8 +19,8 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong co migration, endpoint moi, secret hay bien moi; tai su dung API participant hien co va Tinode topic metadata.
 - Kiem thu: `npm run test:frontend` dat 110/110; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va vendor `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat. Da khoi dong Vite local de kiem tra nhung Browser runtime khong tao duoc kernel asset nen chua hoan tat visual UAT.
 - Rui ro con lai: Chua UAT truc quan bang tai khoan UpGO/Tinode that cho mention, reply, them thanh vien va doi avatar; nhom demo luu anh data URL phu thuoc dung luong localStorage.
-- Viec tiep theo: Chay visual UAT local/production, sau do commit va deploy khi co yeu cau.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Push commit, deploy release ChatUI bat bien va chay UAT production.
+- Commit/PR: Source `fe3f019`; deploy follow-up dang cho.
 
 ## 2026-08-18-10 - Deploy workspace route ChatUI
 
