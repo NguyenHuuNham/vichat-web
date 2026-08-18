@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `npm run test:frontend` dat 122/122; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat, bundle local tao `App-BsmhbJfQ.js`; `python -m unittest discover -s tests -v` lan chay xac nhan dat 167 test, bo qua 56 test do dependency chi co trong image Chatmgt (lan dau gap mot loi localhost Windows `WinError 10053`, test do va toan suite deu dat khi chay lai); `python -m unittest tests.test_tinode_bridge_service -v` dat 18/18 voi `aiohttp 3.10.11` va `bcrypt 4.2.1` trong thu muc tam; `python -m unittest tests.test_chat_auth_contract -v` dat 36/36; `python -m py_compile application/services/auth_service.py application/controllers/api_chat_management.py tests/test_tinode_bridge_service.py tests/test_chat_auth_contract.py` va `git diff --check` dat.
 - Rui ro con lai: Chua co browser session/tai khoan production de xem request loi thuc te; public production van phuc vu bundle cu `App-BoNit3Ko.js`, nen chua the ket luan UAT da dat.
 - Viec tiep theo: Tao release/deploy rieng Chatmgt va ChatUI, sau do hard refresh va UAT room 1-1, them/xoa member nhom va gui tin sau retry; khong restart database, Redis, Tinode bridge hay Coturn.
-- Commit/PR: Chua tao.
+- Commit/PR: Source `232889d`; docs follow-up dang cho commit.
 
 ## 2026-08-18-16 - Sua mapping room va retry them xoa thanh vien
 
