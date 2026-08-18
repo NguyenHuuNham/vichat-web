@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-13 - Sua loi trang trang khi mo chat 1-1
+
+- Thoi gian: 2026-08-18 11:44 (Asia/Saigon)
+- Loai: Sua loi | Web | Kiem thu
+- Trang thai: Hoan tat code; chua deploy production
+- Muc tieu: Mo lai duoc cuoc tro chuyen 1-1 khi snapshot Chatmgt/Tinode thieu metadata ten phong, khong lam ChatUI crash toan man hinh.
+- Pham vi: ChatUI danh sach hoi thoai, merge realtime va luong mo tao cuoc tro chuyen truc tiep; khong doi Chatmgt, Tinode, auth, tenant, API hoac database.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `docs/CHANGELOG.md`.
+- Noi dung: Them ham lay ten phong an toan cho chuoi, so va fallback theo thanh vien; dung fallback khi merge room realtime, tao room 1-1 va render sidebar; bo loi goi `.toLowerCase()` tren ten phong co the bi thieu.
+- Quyet dinh ky thuat: Giu nguyen data flow Chatmgt/Tinode, chi chuan hoa gia tri hien thi tai bien giao dien va kiem tra metadata; khong tu dong xoa hoac bo qua room hop le.
+- Database/API/cau hinh: Khong co.
+- Kiem thu: `npm run test:frontend` dat 111/111; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat. Browser runtime UAT chua chay duoc do khong tao duoc kernel asset.
+- Rui ro con lai: Chua UAT truc quan bang tai khoan UpGO/Tinode that tren chat 1-1; chua deploy production.
+- Viec tiep theo: Hard refresh moi truong test, mo mot chat 1-1 co tin nhan va mot room moi de xac nhan ten, tin nhan, realtime va sidebar.
+- Commit/PR: Chua tao.
+
 ## 2026-08-18-12 - Deploy sua mention/reply va quan ly nhom ChatUI
 
 - Thoi gian: 2026-08-18 11:08 (Asia/Saigon)

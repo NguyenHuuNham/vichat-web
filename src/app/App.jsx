@@ -6,6 +6,7 @@ import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation, normaliz
 import { chatManagementService, managementAuthClient } from '../features/chat/services/chatManagementService';
 import {
   applyReceiptToMessages,
+  conversationDisplayName,
   firstVisibleConversationId,
   mergeDeliveryStatus,
   readyTinodeTypingTopic,
@@ -812,12 +813,19 @@ function mergeTinodeConversation(existing, incoming) {
     : managementOwned
       ? mergeRealtimeMemberPresence(existing.members || [], incoming.members || [])
       : snapshotMembers;
+  const incomingExplicitName = conversationDisplayName({ ...incoming, members: [] }, '');
+  const existingExplicitName = conversationDisplayName({ ...existing, members: [] }, '');
+  const incomingPeerName = incoming.isGroup ? '' : conversationDisplayName(incoming, '');
+  const existingPeerName = existing.isGroup ? '' : conversationDisplayName(existing, '');
+  const existingName = existingExplicitName || existingPeerName;
+  const incomingName = incomingExplicitName || (!existingName ? incomingPeerName : '');
+  const fallbackName = existing.isGroup || incoming.isGroup ? 'Nhóm' : 'Cuộc trò chuyện cá nhân';
   return {
     ...existing,
     ...incoming,
     name: managementOwned && !incomingManagementSnapshot
-      ? existing.name
-      : (incoming.name && incoming.name !== incoming.id ? incoming.name : existing.name),
+      ? existingName || incomingName || fallbackName
+      : incomingName || existingName || fallbackName,
     avatarHtml: incoming.avatarHtml || existing.avatarHtml,
     avatarUrl: managementOwned && !incomingManagementSnapshot
       ? (incoming.avatarUrl || existing.avatarUrl)
@@ -1040,7 +1048,7 @@ function demoGroupToConversation(group, accounts, viewerId) {
   const lastContent = lastMessage?.text || 'Nhóm mới được tạo';
   return {
     id: group.id,
-    name: group.name,
+    name: conversationDisplayName(group, 'Nhóm'),
     isGroup: true,
     avatarHtml: group.avatar ? undefined : <i className="fa-solid fa-users"></i>,
     avatarUrl: group.avatar || '',
@@ -1060,6 +1068,10 @@ function demoGroupToConversation(group, accounts, viewerId) {
 
 function demoDirectToConversation(direct, accounts, viewerId) {
   const other = findDirectPeer(direct, accounts, { id: viewerId });
+  const otherName = conversationDisplayName(
+    { ...direct, name: other?.name, members: other ? [other] : [] },
+    'Cuộc trò chuyện cá nhân',
+  );
   const deletedBefore = Date.parse(direct.deletedAtByUser?.[viewerId] || '') || 0;
   const messages = (direct.messages || [])
     .filter(message => (Date.parse(message.createdAt || '') || 0) > deletedBefore)
@@ -1077,9 +1089,9 @@ function demoDirectToConversation(direct, accounts, viewerId) {
   const lastContent = lastMessage?.text || 'Bắt đầu cuộc trò chuyện';
   return {
     id: direct.id,
-    name: other?.name || 'Cuộc trò chuyện cá nhân',
+    name: otherName,
     isGroup: false,
-    avatarHtml: other?.avatar ? <img src={other.avatar} alt={other.name} /> : <span>{other?.name?.slice(0, 1).toUpperCase() || '?'}</span>,
+    avatarHtml: other?.avatar ? <img src={other.avatar} alt={otherName} /> : <span>{otherName.slice(0, 1).toUpperCase() || '?'}</span>,
     avatarClass: '',
     membersCount: other?.online ? 'Đang hoạt động' : 'Ngoại tuyến',
     description: '',
@@ -1113,16 +1125,23 @@ function managementRoomsForSession(managed, accounts, user, accountSession) {
     })
     .map(room => {
       const peer = room.isGroup ? null : findDirectPeer(room, accounts, user);
+      const roomForName = room.isGroup
+        ? { ...room, members: [] }
+        : peer ? { ...room, name: peer.name, members: [peer] } : room;
+      const roomName = conversationDisplayName(
+        roomForName,
+        room.isGroup ? 'Nhóm' : 'Cuộc trò chuyện cá nhân',
+      );
       return {
         ...room,
         ...(peer ? {
-          name: peer.name || room.name,
           avatarHtml: undefined,
           avatarUrl: peer.avatar || '',
           membersCount: peer.online ? 'Đang hoạt động' : 'Ngoại tuyến',
           description: '',
           members: [{ ...peer }],
         } : {}),
+        name: roomName,
         messages: [],
         lastMsg: 'Chưa có tin nhắn',
         time: '',
@@ -1342,7 +1361,17 @@ function App() {
     setActiveCall(null);
   }, []);
 
-  const activeChat = conversations[currentChatId] || Object.values(conversations)[0] || {
+  const activeChatSource = conversations[currentChatId] || Object.values(conversations)[0];
+  const activeChatNameSource = activeChatSource?.isGroup
+    ? { ...activeChatSource, members: [] }
+    : activeChatSource;
+  const activeChat = activeChatSource ? {
+    ...activeChatSource,
+    name: conversationDisplayName(
+      activeChatNameSource,
+      activeChatSource.isGroup ? 'Nhóm' : 'Cuộc trò chuyện cá nhân',
+    ),
+  } : {
     id: 'empty',
     name: 'Chưa có cuộc trò chuyện',
     isGroup: false,
@@ -3353,6 +3382,10 @@ function App() {
       setChatError('Không thể mở cuộc trò chuyện với chính tài khoản đang đăng nhập.');
       return;
     }
+    const contactName = conversationDisplayName(
+      { name: contact.name },
+      contact.username || contact.email || 'Người dùng',
+    );
     const viewerId = currentUser?.id || currentUser?.uid;
     const accountSession = accountSessionRef.current;
     const linkedRoom = Object.values(conversations).find(room => (
@@ -3368,7 +3401,7 @@ function App() {
     const participantIds = contact.id ? [viewerId, contact.id] : [];
     const contactId = chatMode === 'demo' && participantIds.length === 2
       ? directConversationId(...participantIds)
-      : linkedRoom?.id || contact.id || contact.name;
+      : linkedRoom?.id || contact.id || contactName;
     try {
       let stateConversationId = contactId;
       deletedConversationIdsRef.current.delete(contactId);
@@ -3382,7 +3415,7 @@ function App() {
         if (!managedRoom) {
           managedRoom = await chatManagementService.createConversation({
             userId: viewerId,
-            subject: contact.name,
+            subject: contactName,
             participantIds: [contact.id],
             properties: {},
           });
@@ -3394,7 +3427,7 @@ function App() {
           id: stateConversationId,
           managementId: managedRoom.managementId || stateConversationId,
           tinodeTopic,
-          name: contact.name,
+          name: contactName,
           isGroup: false,
           members: [currentUser, contact],
           participantIds,
@@ -3414,9 +3447,9 @@ function App() {
         id: stateConversationId,
         managementId: managedRoom?.managementId || linkedRoom?.managementId || stateConversationId,
         tinodeTopic,
-        name: contact.name,
+        name: contactName,
         isGroup: false,
-        avatarHtml: contact.avatar ? <img src={contact.avatar} alt={contact.name} /> : <span>{contact.name.slice(0, 1).toUpperCase()}</span>,
+        avatarHtml: contact.avatar ? <img src={contact.avatar} alt={contactName} /> : <span>{contactName.slice(0, 1).toUpperCase()}</span>,
         avatarClass: '',
         membersCount: accountPresenceLabel(contact),
         description: '',
@@ -5163,11 +5196,12 @@ function App() {
   };
 
   // Filter conversations
+  const normalizedConversationSearch = String(searchQuery || '').trim().toLocaleLowerCase('vi');
   const filteredChatIds = Object.keys(conversations)
     .filter(id => !isSelfDirectConversation(conversations[id], currentUser, directoryAccounts))
     .filter(id => !isConversationHiddenAfterDelete(conversations[id]))
     .filter(id => shouldShowConversation(conversations[id], drafts[id]))
-    .filter(id => conversations[id].name.toLowerCase().includes(searchQuery.toLowerCase()))
+    .filter(id => conversationDisplayName(conversations[id], '').toLocaleLowerCase('vi').includes(normalizedConversationSearch))
     .sort((firstId, secondId) => {
       const firstPinned = Boolean(conversations[firstId].pinned);
       const secondPinned = Boolean(conversations[secondId].pinned);
@@ -5533,6 +5567,10 @@ function App() {
         <div className="conversations-list">
           {filteredChatIds.map(id => {
             const room = conversations[id];
+            const roomName = conversationDisplayName(
+              room.isGroup ? { ...room, members: [] } : room,
+              room.isGroup ? appCopy.t('Nhóm') : appCopy.t('Cuộc trò chuyện cá nhân'),
+            );
             const isActive = currentChatId === id;
             const draft = drafts[id] || '';
             const hasDraft = Boolean(draft.trim());
@@ -5553,7 +5591,7 @@ function App() {
                   <div className="conv-header">
                     <span className="conv-name">
                       {room.pinned && <i className="fa-solid fa-thumbtack conv-pinned-icon" title={appCopy.t('Đã ghim')} aria-label={appCopy.t('Đã ghim')}></i>}
-                      {room.name}
+                      {roomName}
                       {roomCategory && <span className={`conversation-category-tag category-${roomCategory.id}`} style={{ '--category-color': roomCategory.color }} title={`${appCopy.t('Phân loại')}: ${appCopy.t(roomCategory.label)}`}>{appCopy.t(roomCategory.label)}</span>}
                     </span>
                     <span
@@ -5581,7 +5619,7 @@ function App() {
                       type="button"
                       className="conv-menu-button"
                       title={appCopy.t('Tùy chọn hội thoại')}
-                      aria-label={`${appCopy.t('Tùy chọn hội thoại')} ${room.name}`}
+                      aria-label={`${appCopy.t('Tùy chọn hội thoại')} ${roomName}`}
                       aria-expanded={conversationMenu?.roomId === id}
                       onClick={event => openConversationMenu(event, room)}
                     >

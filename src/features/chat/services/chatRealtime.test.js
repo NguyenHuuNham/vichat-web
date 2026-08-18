@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   acknowledgeTopicReceived,
   applyReceiptToMessages,
+  conversationDisplayName,
   deliveryStatusFromReceiptCursor,
   firstVisibleConversationId,
   mergeDeliveryStatus,
@@ -59,6 +60,13 @@ test('conversation list hides empty direct metadata until Tinode history or a dr
   assert.equal(shouldShowConversation({ ...emptyManagedDirect, messages: [null, { id: 'message-1' }] }), true);
   assert.equal(shouldShowConversation({ ...emptyManagedDirect, isGroup: true }), true);
   assert.equal(shouldShowConversation({ ...emptyManagedDirect, isChatbot: true }), true);
+});
+
+test('conversation display names tolerate incomplete direct room metadata', () => {
+  assert.equal(conversationDisplayName({ id: 'direct-1', members: [{ name: 'Nguyen Van A' }] }), 'Nguyen Van A');
+  assert.equal(conversationDisplayName({ id: 'direct-1', name: 'direct-1' }, 'Cuoc tro chuyen ca nhan'), 'Cuoc tro chuyen ca nhan');
+  assert.equal(conversationDisplayName({ id: 'direct-1', name: 42 }), '42');
+  assert.equal(conversationDisplayName({ id: 'direct-1' }, 'Cuoc tro chuyen ca nhan'), 'Cuoc tro chuyen ca nhan');
 });
 
 test('initial selection skips empty Chatmgt direct metadata', () => {

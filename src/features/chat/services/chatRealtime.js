@@ -19,6 +19,23 @@ export function readyTinodeTypingTopic(room, authenticated) {
   return String(room.tinodeTopic || '').trim();
 }
 
+function conversationText(value) {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return '';
+}
+
+export function conversationDisplayName(room, fallback = '') {
+  const roomId = conversationText(room?.id);
+  const roomName = conversationText(room?.name);
+  if (roomName && roomName !== roomId) return roomName;
+
+  const memberName = (Array.isArray(room?.members) ? room.members : [])
+    .map(member => conversationText(member?.name))
+    .find(Boolean);
+  return memberName || (roomName !== roomId ? roomName : '') || conversationText(fallback);
+}
+
 export function shouldShowConversation(room, draft = '') {
   if (!room) return false;
   if (room.isGroup || room.isChatbot) return true;
