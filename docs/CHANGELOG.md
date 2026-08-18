@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-15 - Chan room 1-1 loi shape o toan bo render
+
+- Thoi gian: 2026-08-18 13:30 (Asia/Saigon)
+- Loai: Sua loi | Web | Kiem thu | Van hanh
+- Trang thai: Dang thuc hien
+- Muc tieu: Khong de du lieu room 1-1 tu Chatmgt/Tinode lam crash ChatUI va hien man hinh trang.
+- Pham vi: Bien doi account/tenant, Tinode message metadata, conversation boundary va cac danh sach render cua ChatUI; khong doi Chatmgt, Tinode, auth, tenant, API hoac database.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`.
+- Noi dung: Chuan hoa account, tenant, avatar, attachment, reaction, member, message va room metadata ve gia tri render-safe; normalize toan bo map conversation truoc khi render sidebar, thong bao, chia se va room dang mo; mo chat 1-1 chi su dung contact da chuan hoa.
+- Quyet dinh ky thuat: Dat lop normalize tai bien gioi du lieu va mot lop normalize map cho moi nhanh render, giu nguyen data flow va khong bo qua room hop le. Them regression cho room co `name`, `lastMsg`, `avatarUrl` va message metadata sai kieu.
+- Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi truong moi.
+- Kiem thu: `npm run test:frontend` dat 115/115; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va vendor `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat.
+- Rui ro con lai: Chua UAT truc quan bang tai khoan UpGO/Tinode that do browser runtime cua agent khong tao duoc kernel asset; can hard refresh de tai bundle moi.
+- Viec tiep theo: Commit, push va deploy immutable chi service `chat`; sau do mo lai room 1-1 dang loi va room moi de xac nhan sidebar, ten, tin nhan va realtime.
+- Commit/PR: Chua tao.
+
 ## 2026-08-18-14 - Bao ve render khi du lieu chat 1-1 khong day du
 
 - Thoi gian: 2026-08-18 12:50 (Asia/Saigon)

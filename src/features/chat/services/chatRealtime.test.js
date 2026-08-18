@@ -74,6 +74,8 @@ test('normalizes malformed direct room metadata before the UI iterates it', () =
   const room = normalizeConversationShape({
     id: 'direct-1',
     name: { invalid: true },
+    lastMsg: { invalid: true },
+    avatarUrl: { invalid: true },
     members: {
       peer: { id: 'account-peer', name: 'Peer', username: { invalid: true } },
     },
@@ -83,12 +85,16 @@ test('normalizes malformed direct room metadata before the UI iterates it', () =
         id: 'message-1',
         sender: 'incoming',
         text: { invalid: true },
+        avatar: { ref: '/tinode-media/v0/file/u/avatar' },
+        reactions: { like: { invalid: true }, heart: 2 },
         replyTo: { senderName: { invalid: true }, text: { invalid: true } },
       },
     },
   });
 
   assert.equal(room.name, '');
+  assert.equal(room.lastMsg, '');
+  assert.equal(room.avatarUrl, '');
   assert.deepEqual(room.participantIds, ['account-viewer', 'account-peer']);
   assert.equal(room.members.length, 1);
   assert.equal(room.members[0].name, 'Peer');
@@ -96,6 +102,8 @@ test('normalizes malformed direct room metadata before the UI iterates it', () =
   assert.equal(room.messages[0].text, '');
   assert.equal(room.messages[0].replyTo.text, '');
   assert.equal(room.messages[0].replyTo.senderName, '');
+  assert.equal(room.messages[0].avatar, '/tinode-media/v0/file/u/avatar');
+  assert.deepEqual(room.messages[0].reactions, { heart: 2 });
 });
 
 test('initial selection skips empty Chatmgt direct metadata', () => {

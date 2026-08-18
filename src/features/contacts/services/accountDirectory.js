@@ -8,6 +8,100 @@ export async function authenticateDemoAccount() {
   throw new Error('Public account login is disabled.');
 }
 
+function scalarText(value) {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return '';
+}
+
+function firstText(...values) {
+  return values.map(scalarText).find(Boolean) || '';
+}
+
+function avatarText(value) {
+  const direct = scalarText(value);
+  if (direct) return direct;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  return firstText(value.url, value.ref, value.src, value.href, value.path);
+}
+
+function booleanValue(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+  }
+  return fallback;
+}
+
+export function normalizeTenantShape(tenant) {
+  if (!tenant || typeof tenant !== 'object' || Array.isArray(tenant)) return null;
+  const id = firstText(tenant.id, tenant.tenantId, tenant.tenant_id);
+  const name = firstText(tenant.name, tenant.tenantName, tenant.tenant_name, id);
+  if (!id && !name) return null;
+  return { ...tenant, id, name };
+}
+
+// Keep API and realtime profile fields render-safe before they reach React.
+export function normalizeAccountShape(account) {
+  if (!account || typeof account !== 'object' || Array.isArray(account)) return null;
+  const id = firstText(account.id, account.user_id, account.uid);
+  const uid = firstText(account.uid, account.user_id, id);
+  const tinodeUid = firstText(account.tinodeUid, account.tinode_uid);
+  const username = firstText(account.username, account.user_name, account.login, account.email);
+  const name = firstText(
+    account.name,
+    account.full_name,
+    account.display_name,
+    username,
+  );
+  const email = firstText(account.email, account.mail);
+  const avatar = [account.avatar, account.avatarUrl, account.avatar_url, account.photo]
+    .map(avatarText)
+    .find(Boolean) || '';
+  const tenant = normalizeTenantShape(account.tenant);
+  const tenantId = firstText(account.tenantId, account.tenant_id, tenant?.id);
+  const tenantName = firstText(account.tenantName, account.tenant_name, tenant?.name);
+  const safe = {
+    ...account,
+    id,
+    uid,
+    tinodeUid,
+    tinode_uid: tinodeUid,
+    username,
+    user_name: username,
+    name,
+    full_name: name,
+    display_name: name,
+    email,
+    title: firstText(account.title, account.job_title),
+    department: firstText(account.department, account.department_name),
+    avatar,
+    avatarUrl: avatar,
+    avatar_url: avatar,
+    photo: avatar,
+    tenantId,
+    tenant_id: tenantId,
+    tenantName,
+    tenant_name: tenantName,
+    tenant,
+    role: firstText(account.role, account.accountRole, account.account_role),
+    accountRole: firstText(account.accountRole, account.account_role, account.role),
+    active: booleanValue(account.active ?? account.is_active, true),
+  };
+  if (account.online !== undefined) safe.online = booleanValue(account.online);
+  if (account.accountManaged !== undefined || account.account_managed !== undefined) {
+    safe.accountManaged = booleanValue(account.accountManaged ?? account.account_managed);
+    safe.account_managed = safe.accountManaged;
+  }
+  if (account.mustChangePassword !== undefined || account.must_change_password !== undefined) {
+    safe.mustChangePassword = booleanValue(account.mustChangePassword ?? account.must_change_password);
+  }
+  return safe;
+}
+
 export function identityValues(entity) {
   return [...new Set([
     entity?.id,

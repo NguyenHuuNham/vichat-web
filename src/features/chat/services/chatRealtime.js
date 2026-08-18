@@ -42,6 +42,17 @@ function conversationIdentity(value) {
   return conversationText(value);
 }
 
+function conversationMedia(value) {
+  const direct = conversationText(value);
+  if (direct) return direct;
+  const object = conversationObject(value);
+  if (!object) return '';
+  return conversationText(object.url)
+    || conversationText(object.ref)
+    || conversationText(object.src)
+    || conversationText(object.href);
+}
+
 function normalizeAttachment(value) {
   const attachment = conversationObject(value);
   if (!attachment) return null;
@@ -50,7 +61,7 @@ function normalizeAttachment(value) {
     name: conversationText(attachment.name),
     ext: conversationText(attachment.ext),
     size: conversationText(attachment.size),
-    url: conversationText(attachment.url),
+    url: conversationMedia(attachment.url || attachment.ref),
     mime: conversationText(attachment.mime),
   };
 }
@@ -84,7 +95,7 @@ function normalizeMember(value) {
     email: conversationText(member.email),
     title: conversationText(member.title),
     department: conversationText(member.department),
-    avatar: conversationText(member.avatar),
+    avatar: conversationMedia(member.avatar || member.photo),
   };
 }
 
@@ -124,6 +135,13 @@ function normalizeEvent(value) {
   };
 }
 
+function normalizeReactions(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value)
+    .map(([emoji, count]) => [conversationText(emoji), Number(count)])
+    .filter(([emoji, count]) => emoji && Number.isFinite(count)));
+}
+
 function normalizeMessage(value, index) {
   const message = conversationObject(value);
   if (!message) return null;
@@ -137,7 +155,8 @@ function normalizeMessage(value, index) {
     senderId: conversationIdentity(message.senderId),
     senderName: conversationText(message.senderName),
     text: conversationText(message.text),
-    image: conversationText(message.image),
+    image: conversationMedia(message.image),
+    avatar: conversationMedia(message.avatar || message.photo),
     file: normalizeAttachment(message.file),
     replyTo: normalizeReply(message.replyTo),
     targetIds: conversationArray(message.targetIds).map(conversationIdentity).filter(Boolean),
@@ -153,6 +172,7 @@ function normalizeMessage(value, index) {
         snippet: conversationText(normalized.snippet),
       };
     }).filter(Boolean),
+    reactions: normalizeReactions(message.reactions),
     systemEvent: normalizeEvent(message.systemEvent),
     friendEvent: normalizeEvent(message.friendEvent),
     voiceDuration: Number(message.voiceDuration) > 0 ? Number(message.voiceDuration) : 0,

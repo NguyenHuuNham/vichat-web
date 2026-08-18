@@ -89,6 +89,7 @@ import {
   mergeDirectoryAccountSnapshots,
   mergeRealtimeAccountProfile,
   mergeRealtimeMemberPresence,
+  normalizeAccountShape,
   resolveGroupAdministrator,
   snapshotPresence,
   updateAccountProfiles,
@@ -1384,7 +1385,12 @@ function App() {
     setActiveCall(null);
   }, []);
 
-  const rawActiveChatSource = conversations[currentChatId] || Object.values(conversations)[0];
+  // Normalize every room used by render paths, including the sidebar. A direct
+  // snapshot can be malformed before it reaches the active-chat selector.
+  const renderConversations = Object.fromEntries(
+    Object.entries(conversations || {}).map(([id, room]) => [id, normalizeConversationShape(room)]),
+  );
+  const rawActiveChatSource = renderConversations[currentChatId] || Object.values(renderConversations)[0];
   const activeChatSource = rawActiveChatSource ? normalizeConversationShape(rawActiveChatSource) : null;
   const activeChatNameSource = activeChatSource?.isGroup
     ? { ...activeChatSource, members: [] }
@@ -1950,7 +1956,10 @@ function App() {
 
   useEffect(() => {
     const now = Date.now();
-    const nextExpiry = nextNotificationMuteExpiry(Object.values(conversations), now);
+    const nextExpiry = nextNotificationMuteExpiry(
+      Object.values(conversations || {}).map(normalizeConversationShape),
+      now,
+    );
     if (nextExpiry === null) return undefined;
     const timer = window.setTimeout(
       () => setNotificationClock(Date.now()),
@@ -2353,9 +2362,10 @@ function App() {
       }
       if (event.type === 'typing') {
         if (!event.uid || event.uid === viewerId || !event.topic) return;
+        const typingProfile = normalizeAccountShape({ id: event.uid, name: event.name });
         setTypingByTopic(previous => ({
           ...previous,
-          [event.topic]: { uid: event.uid, name: event.name || 'Thành viên' },
+          [event.topic]: { uid: event.uid, name: typingProfile?.name || 'Thành viên' },
         }));
         const previousTimer = typingClearTimersRef.current.get(event.topic);
         if (previousTimer) clearTimeout(previousTimer);
@@ -2403,14 +2413,14 @@ function App() {
       }
       if ((event.type === 'profile' || event.type === 'user-profile') && event.profile?.id) {
         const profileAccount = findAccount(directoryAccountsRef.current, event.profile.id);
-        const profile = profileAccount
+        const profile = normalizeAccountShape(profileAccount
           ? {
             ...event.profile,
             id: profileAccount.id,
             uid: profileAccount.uid || profileAccount.id,
             tinodeUid: profileAccount.tinodeUid || profileAccount.tinode_uid || event.profile.id,
           }
-          : event.profile;
+          : event.profile) || {};
         rememberAvatarOverride(profile, profile.avatar);
         if (identitiesOverlap(currentUser, profile)) {
           setCurrentUser(previous => ({
@@ -3226,16 +3236,14 @@ function App() {
         time: '',
         badge: 0,
       };
-      return {
-        ...previous,
-        [roomId]: {
-          ...room,
-          name: contact?.name || room.name,
-          avatarUrl: contact?.avatar || room.avatarUrl || '',
-          members: contact ? [contact] : roomMembers(room),
-          friendEvents: mergeTinodeMessages(roomFriendEvents(room), [message]),
-        },
-      };
+      const nextRoom = normalizeConversationShape({
+        ...room,
+        name: contact?.name || room.name,
+        avatarUrl: contact?.avatar || room.avatarUrl || '',
+        members: contact ? [contact] : roomMembers(room),
+        friendEvents: mergeTinodeMessages(roomFriendEvents(room), [message]),
+      });
+      return { ...previous, [roomId]: nextRoom };
     });
   }, []);
 
@@ -3402,13 +3410,15 @@ function App() {
   };
 
   const handleStartDirectChat = async (contact) => {
-    if (contact.id === (currentUser?.id || currentUser?.uid)) {
+    const safeContact = normalizeAccountShape(contact);
+    if (!safeContact) return;
+    if (safeContact.id === (currentUser?.id || currentUser?.uid)) {
       setChatError('Không thể mở cuộc trò chuyện với chính tài khoản đang đăng nhập.');
       return;
     }
     const contactName = conversationDisplayName(
-      { name: contact.name },
-      contact.username || contact.email || 'Người dùng',
+      { name: safeContact.name },
+      safeContact.username || safeContact.email || 'Người dùng',
     );
     const viewerId = currentUser?.id || currentUser?.uid;
     const accountSession = accountSessionRef.current;
@@ -3418,21 +3428,21 @@ function App() {
       && room.accountSession === accountSession
       && isManagementConversationId(room.managementId || room.id)
       && (
-        (room.participantIds || []).map(String).includes(String(contact.id))
-        || roomMembers(room).some(member => findAccount(directoryAccounts, member.id || member.name)?.id === contact.id)
+        (room.participantIds || []).map(String).includes(String(safeContact.id))
+        || roomMembers(room).some(member => findAccount(directoryAccounts, member.id || member.name)?.id === safeContact.id)
       )
     ));
-    const participantIds = contact.id ? [viewerId, contact.id] : [];
+    const participantIds = safeContact.id ? [viewerId, safeContact.id] : [];
     const contactId = chatMode === 'demo' && participantIds.length === 2
       ? directConversationId(...participantIds)
-      : linkedRoom?.id || contact.id || contactName;
+      : linkedRoom?.id || safeContact.id || contactName;
     try {
       let stateConversationId = contactId;
       deletedConversationIdsRef.current.delete(contactId);
       let managedRoom = linkedRoom;
       let tinodeTopic = linkedRoom?.tinodeTopic
         || chatManagementService.getTinodeTopic(viewerId, linkedRoom?.managementId || contactId);
-      if (usesManagementData && contact.id) {
+      if (usesManagementData && safeContact.id) {
         if (managementConversationSessionRef.current !== accountSession) {
           throw new Error('Danh sách cuộc trò chuyện chưa được chatmgt xác nhận.');
         }
@@ -3440,7 +3450,7 @@ function App() {
           managedRoom = await chatManagementService.createConversation({
             userId: viewerId,
             subject: contactName,
-            participantIds: [contact.id],
+            participantIds: [safeContact.id],
             properties: {},
           });
           if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
@@ -3453,7 +3463,7 @@ function App() {
           tinodeTopic,
           name: contactName,
           isGroup: false,
-          members: [currentUser, contact],
+          members: [currentUser, safeContact],
           participantIds,
           accountSession,
         };
@@ -3473,12 +3483,12 @@ function App() {
         tinodeTopic,
         name: contactName,
         isGroup: false,
-        avatarHtml: contact.avatar ? <img src={contact.avatar} alt={contactName} /> : <span>{contactName.slice(0, 1).toUpperCase()}</span>,
+        avatarHtml: safeContact.avatar ? <img src={safeContact.avatar} alt={contactName} /> : <span>{contactName.slice(0, 1).toUpperCase()}</span>,
         avatarClass: '',
-        membersCount: accountPresenceLabel(contact),
+        membersCount: accountPresenceLabel(safeContact),
         description: '',
         admin: '',
-        members: [contact],
+        members: [safeContact],
         participantIds: participantIds.length === 2 ? participantIds : existing?.participantIds,
         messages: existing?.messages || [],
         lastMsg: existing?.lastMsg || 'Bắt đầu cuộc trò chuyện',
@@ -3504,7 +3514,7 @@ function App() {
     const account = findAccount(directoryAccounts, identity)
       || findAccount(activeChat.members, identity)
       || (identitiesOverlap(entity, currentUser) ? currentUser : null);
-    const merged = { ...(account || {}), ...(entity || {}) };
+    const merged = normalizeAccountShape({ ...(account || {}), ...(entity || {}) }) || {};
     const isCurrentAccount = identitiesOverlap(merged, currentUser);
     return {
       id: account?.id || account?.uid || merged.id || merged.uid || merged.tinodeUid || merged.tinode_uid || '',
@@ -5221,17 +5231,17 @@ function App() {
 
   // Filter conversations
   const normalizedConversationSearch = String(searchQuery || '').trim().toLocaleLowerCase('vi');
-  const filteredChatIds = Object.keys(conversations)
-    .filter(id => !isSelfDirectConversation(conversations[id], currentUser, directoryAccounts))
-    .filter(id => !isConversationHiddenAfterDelete(conversations[id]))
-    .filter(id => shouldShowConversation(conversations[id], drafts[id]))
-    .filter(id => conversationDisplayName(conversations[id], '').toLocaleLowerCase('vi').includes(normalizedConversationSearch))
+  const filteredChatIds = Object.keys(renderConversations)
+    .filter(id => !isSelfDirectConversation(renderConversations[id], currentUser, directoryAccounts))
+    .filter(id => !isConversationHiddenAfterDelete(renderConversations[id]))
+    .filter(id => shouldShowConversation(renderConversations[id], drafts[id]))
+    .filter(id => conversationDisplayName(renderConversations[id], '').toLocaleLowerCase('vi').includes(normalizedConversationSearch))
     .sort((firstId, secondId) => {
-      const firstPinned = Boolean(conversations[firstId].pinned);
-      const secondPinned = Boolean(conversations[secondId].pinned);
+      const firstPinned = Boolean(renderConversations[firstId].pinned);
+      const secondPinned = Boolean(renderConversations[secondId].pinned);
       if (firstPinned !== secondPinned) return firstPinned ? -1 : 1;
-      const firstTimestamp = conversationTimestamp(conversations[firstId]);
-      const secondTimestamp = conversationTimestamp(conversations[secondId]);
+      const firstTimestamp = conversationTimestamp(renderConversations[firstId]);
+      const secondTimestamp = conversationTimestamp(renderConversations[secondId]);
       return secondTimestamp - firstTimestamp;
     });
 
@@ -5339,7 +5349,7 @@ function App() {
     </form>
   );
 
-  const sharedFiles = Object.values(conversations)
+  const sharedFiles = Object.values(renderConversations)
     .filter(room => canAccessRoomFiles(room, currentUser, directoryAccounts, chatMode))
     .flatMap(room => roomMessages(room)
     .filter(message => message.type === 'file' || message.type === 'image')
@@ -5378,7 +5388,7 @@ function App() {
   }, []);
   const mediaCounts = activeMediaEntries.reduce((counts, entry) => ({ ...counts, [entry.kind]: counts[entry.kind] + 1 }), { images: 0, files: 0, links: 0 });
 
-  const notifications = Object.values(conversations)
+  const notifications = Object.values(renderConversations)
     .filter(room => !isSelfDirectConversation(room, currentUser, directoryAccounts))
     .filter(room => !isConversationHiddenAfterDelete(room))
     .filter(room => shouldShowConversation(room, drafts[room.id]))
@@ -5386,7 +5396,7 @@ function App() {
     .sort((a, b) => conversationTimestamp(b) - conversationTimestamp(a))
     .slice(0, 20);
 
-  const friendshipRecords = collectFriendshipRecords(conversations, managementViewerId);
+  const friendshipRecords = collectFriendshipRecords(renderConversations, managementViewerId);
   const companySearchResults = companyDirectoryContacts(workspaceResults, currentUser);
   const companyDirectoryTitle = appCopy.t(companyDirectoryHeading(currentUser));
   const friendNotifications = friendshipRecords.filter(record => (
@@ -5590,7 +5600,7 @@ function App() {
 
         <div className="conversations-list">
           {filteredChatIds.map(id => {
-            const room = conversations[id];
+            const room = renderConversations[id];
             const roomName = conversationDisplayName(
               room.isGroup ? { ...room, members: [] } : room,
               room.isGroup ? appCopy.t('Nhóm') : appCopy.t('Cuộc trò chuyện cá nhân'),
@@ -5657,8 +5667,8 @@ function App() {
         </div>
       </aside>
 
-      {conversationMenu && conversations[conversationMenu.roomId] && (() => {
-        const menuRoom = conversations[conversationMenu.roomId];
+      {conversationMenu && renderConversations[conversationMenu.roomId] && (() => {
+        const menuRoom = renderConversations[conversationMenu.roomId];
         const menuRoomMuted = isConversationMuted(menuRoom.notificationMutedUntil, notificationClock);
         const menuCategory = conversationCategoryFor(menuRoom);
         return (
@@ -6224,7 +6234,7 @@ function App() {
             <div className="message-share-card" onClick={event => event.stopPropagation()}>
               <div className="message-details-header"><strong>{appCopy.t('Chia sẻ tin nhắn tới')}</strong><button type="button" onClick={() => setShareMessage(null)} aria-label={appCopy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button></div>
               <div className="share-conversation-list">
-                {Object.values(conversations).filter(room => room.id !== activeChat.id && !room.isChatbot).map(room => (
+                {Object.values(renderConversations).filter(room => room.id !== activeChat.id && !room.isChatbot).map(room => (
                   <button type="button" key={room.id} onClick={() => shareMessageTo(room)}><ConversationAvatar room={room} /><span>{room.name}</span></button>
                 ))}
               </div>

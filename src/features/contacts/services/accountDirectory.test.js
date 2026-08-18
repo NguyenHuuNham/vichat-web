@@ -16,6 +16,8 @@ import {
   mergeDirectoryAccountSnapshots,
   mergeRealtimeAccountProfile,
   mergeRealtimeMemberPresence,
+  normalizeAccountShape,
+  normalizeTenantShape,
   resolveGroupAdministrator,
   updateAccountProfiles,
   updateAccountPresence,
@@ -298,4 +300,27 @@ test('identity matching ignores malformed optional profile fields', () => {
   const account = { id: 'account-a', username: { invalid: true }, email: null, name: { invalid: true } };
   assert.strictEqual(findAccount([account], 'account-a'), account);
   assert.equal(findAccount([account], 'not-the-account'), null);
+});
+
+test('account snapshots convert malformed profile values to render-safe scalars', () => {
+  const account = normalizeAccountShape({
+    id: 'account-peer',
+    name: { value: 'Peer' },
+    display_name: 'Peer name',
+    username: { value: 'peer' },
+    email: { value: 'peer@example.com' },
+    avatar: { ref: '/tinode-media/v0/file/u/avatar' },
+    tenant: { id: 'tenant-a', name: { value: 'Tenant A' } },
+    active: { value: true },
+  });
+
+  assert.equal(account.id, 'account-peer');
+  assert.equal(account.name, 'Peer name');
+  assert.equal(account.username, '');
+  assert.equal(account.email, '');
+  assert.equal(account.avatar, '/tinode-media/v0/file/u/avatar');
+  assert.equal(account.tenantId, 'tenant-a');
+  assert.equal(account.tenantName, 'tenant-a');
+  assert.equal(account.active, true);
+  assert.equal(normalizeTenantShape({ id: 'tenant-a', name: { invalid: true } }).name, 'tenant-a');
 });

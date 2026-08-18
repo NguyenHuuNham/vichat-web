@@ -1,5 +1,6 @@
 import { normalizeNotificationMuteUntil } from './conversationNotifications.js';
 import { normalizeConversationShape } from './chatRealtime.js';
+import { normalizeAccountShape, normalizeTenantShape } from '../../contacts/services/accountDirectory.js';
 
 const env = import.meta.env || {};
 const apiBase = String(env.VITE_CHAT_MANAGEMENT_API_URL || '').replace(/\/$/, '');
@@ -48,7 +49,27 @@ function writeStorage(key, value) {
 }
 
 function accountTenant(account) {
-  return account?.tenantId || account?.tenant_id || tenantId;
+  const value = [account?.tenantId, account?.tenant_id, account?.tenant?.id]
+    .map(item => typeof item === 'string' || typeof item === 'number' ? String(item).trim() : '')
+    .find(Boolean);
+  return value || tenantId;
+}
+
+function scalarText(value) {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return '';
+}
+
+function booleanValue(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+  }
+  return fallback;
 }
 
 export function normalizeTenantOptions(value) {
@@ -56,15 +77,16 @@ export function normalizeTenantOptions(value) {
   const seen = new Set();
   return value.map(option => {
     if (!option || typeof option !== 'object') return null;
-    const id = String(option.id || option.tenantId || option.tenant_id || '').trim();
+    const id = [option.id, option.tenantId, option.tenant_id].map(scalarText).find(Boolean) || '';
     if (!id || seen.has(id)) return null;
     seen.add(id);
+    const name = [option.name, option.tenantName, option.tenant_name, id].map(scalarText).find(Boolean) || id;
     return {
       id,
-      name: String(option.name || option.tenantName || option.tenant_name || id).trim(),
-      role: String(option.role || 'member').trim().toLowerCase(),
-      accountRole: String(option.accountRole || option.account_role || 'member').trim().toLowerCase(),
-      active: option.active !== false,
+      name,
+      role: ([option.role, 'member'].map(scalarText).find(Boolean) || 'member').toLowerCase(),
+      accountRole: ([option.accountRole, option.account_role, 'member'].map(scalarText).find(Boolean) || 'member').toLowerCase(),
+      active: booleanValue(option.active ?? option.is_active, true),
     };
   }).filter(option => option?.active);
 }
@@ -89,20 +111,18 @@ function publicAccount(account) {
     secret: _secret,
     ...safe
   } = account;
+  const normalized = normalizeAccountShape(safe);
+  if (!normalized) return null;
   const tenantOptions = normalizeTenantOptions(
     safe.tenantOptions || safe.tenant_options,
   );
   return {
-    ...safe,
-    id: safe.id || safe.user_id || safe.uid,
-    uid: safe.uid || safe.tinode_uid || safe.tinodeUid,
-    username: safe.username || safe.user_name || safe.login,
-    name: safe.name || safe.full_name || safe.display_name || safe.username || safe.user_name,
-    avatar: safe.avatar || safe.photo || '',
-    tenantId: accountTenant(safe),
+    ...normalized,
+    tenantId: accountTenant(normalized),
+    tenant_id: accountTenant(normalized),
     tenantOptions,
     tenant_options: tenantOptions,
-    active: safe.active ?? safe.is_active ?? true,
+    tenant: normalizeTenantShape(safe.tenant || normalized.tenant),
   };
 }
 
@@ -115,7 +135,7 @@ function hydrateActiveSession(payload, { preserveExisting = true } = {}) {
     account.tenantOptions = tenantOptions;
     account.tenant_options = tenantOptions;
   }
-  const tenant = payload?.tenant || account?.tenant || null;
+  const tenant = normalizeTenantShape(payload?.tenant || account?.tenant);
   const rawTinodeAuth = payload?.tinode || payload?.tinode_auth || {};
   const hasTinodeToken = Boolean(rawTinodeAuth.token || payload?.tinode_token);
   const previous = preserveExisting ? activeSession : null;
@@ -251,7 +271,7 @@ export const chatManagementService = {
       account.tenantOptions = tenantOptions;
       account.tenant_options = tenantOptions;
     }
-    const tenant = payload.tenant || account?.tenant || null;
+    const tenant = normalizeTenantShape(payload.tenant || account?.tenant);
     const rawTinodeAuth = payload.tinode || payload.tinode_auth || {};
     const hasTinodeToken = Boolean(rawTinodeAuth.token || payload.tinode_token);
     const connection = payload.connection || (hasTinodeToken ? 'tinode' : 'management');
