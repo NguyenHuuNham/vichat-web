@@ -2336,37 +2336,44 @@ input:checked + .slider:before {
 .btn-login-submit { box-shadow: 0 4px 12px rgba(244, 81, 30, .24); }
 .btn-login-submit:hover { box-shadow: 0 6px 16px rgba(244, 81, 30, .32); }
 
-/* Workspace pages: contacts, shared files, notifications and settings */
+/* Workspace panels stay modal so the active chat remains visible underneath. */
 .workspace-overlay {
-    position: relative;
-    flex: 1 1 auto;
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     min-width: 0;
     min-height: 0;
-    display: flex;
-    overflow: hidden;
-    background: var(--bg-app);
+    overflow: auto;
+    padding: clamp(12px, 3vw, 30px);
+    background: rgba(10, 34, 31, .38);
+    backdrop-filter: blur(8px) saturate(.86);
+    animation: workspaceOverlayReveal .18s ease-out;
 }
 .workspace-panel {
-    width: 100%;
+    width: min(780px, calc(100vw - 48px));
     min-width: 0;
-    height: 100%;
+    max-width: 100%;
+    max-height: min(820px, calc(100vh - 48px));
+    min-height: 280px;
     overflow-y: auto;
-    padding: 20px 18px;
+    padding: 22px 24px 26px;
+    border: 1px solid rgba(255, 255, 255, .74);
+    border-radius: 24px;
     background: var(--bg-white);
-    box-shadow: none;
-    animation: workspacePageReveal .2s ease-out;
+    box-shadow: 0 28px 80px rgba(6, 28, 26, .24), 0 5px 18px rgba(6, 28, 26, .1);
+    overscroll-behavior: contain;
+    animation: workspaceModalReveal .22s ease-out;
 }
-@keyframes workspacePageReveal { from { transform: translateY(8px); opacity: .55; } to { transform: translateY(0); opacity: 1; } }
-.workspace-route-active .sidebar-secondary,
-.workspace-route-active .chat-main,
-.workspace-route-active .sidebar-detail { display: none; }
-.workspace-route-active .workspace-overlay { background: var(--bg-app); }
-.workspace-route-active .workspace-panel { flex: 1 1 auto; max-width: none; box-shadow: none; }
+@keyframes workspaceOverlayReveal { from { opacity: 0; } to { opacity: 1; } }
+@keyframes workspaceModalReveal { from { transform: translateY(12px) scale(.985); opacity: .55; } to { transform: translateY(0) scale(1); opacity: 1; } }
 .workspace-group-page { width: min(720px, 100%); margin: 0 auto; padding: 2px 0 24px; }
 .workspace-group-page .group-avatar-field { margin-bottom: 20px; }
 .workspace-group-page .group-modal-footer { margin-top: 24px; }
-.workspace-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
-.workspace-panel-header h2 { margin: 2px 0 0; color: var(--text-main); font-size: 20px; }
+.workspace-panel-header { position: sticky; top: -22px; z-index: 4; display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin: -22px -24px 18px; padding: 16px 24px 13px; border-bottom: 1px solid var(--border-color); background: var(--bg-white); }
+.workspace-panel-header h2 { margin: 2px 0 0; color: var(--text-main); font-size: 22px; line-height: 1.2; }
 .workspace-panel-header-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
 .workspace-logout-button { display: inline-flex; height: 34px; align-items: center; justify-content: center; gap: 7px; padding: 0 12px; border: 1px solid rgba(224, 68, 45, .2); border-radius: 10px; color: var(--vichat-red); background: #fff5f2; font: inherit; font-size: 12px; font-weight: 750; cursor: pointer; transition: var(--transition-fast); }
 .workspace-logout-button:hover { border-color: rgba(224, 68, 45, .34); background: var(--vichat-red-light); transform: translateY(-1px); }
@@ -4121,7 +4128,9 @@ input:checked + .slider:before {
 
 @media (prefers-reduced-motion: reduce) {
   .call-peer-card::before,
-  .call-control.accept { animation: none; }
+  .call-control.accept,
+  .workspace-overlay,
+  .workspace-panel { animation: none; }
 }
 
 /* Dark theme surfaces keep the content readable above the darker background. */
@@ -4276,23 +4285,23 @@ html[data-theme="dark"] .profile-contact-card { border-color: #3b4b54; backgroun
 html[data-theme="dark"] .profile-contact-row { border-color: #3b4b54; background: var(--bg-app); }
 html[data-theme="dark"] select option { color: var(--text-main); background: var(--bg-white); }
 
-/* Settings redesign is scoped to the settings drawer so other workspace panels keep their layout. */
+/* Settings keeps the shared modal shell but uses a denser card layout. */
 .workspace-panel.settings-shell-panel {
-    width: min(860px, 100vw);
-    padding: 34px clamp(18px, 4vw, 44px) 48px;
+    width: min(820px, calc(100vw - 48px));
+    padding: 22px 24px 28px;
     background: var(--bg-app);
-    box-shadow: -14px 0 42px rgba(15, 23, 42, .12);
+    box-shadow: 0 28px 80px rgba(6, 28, 26, .24), 0 5px 18px rgba(6, 28, 26, .1);
 }
 .settings-shell-panel .workspace-panel-header {
     align-items: center;
-    margin-bottom: 28px;
+    margin: -22px -24px 18px;
 }
 .settings-shell-panel .workspace-panel-header h2 {
     margin: 0;
     color: var(--text-main);
-    font-size: clamp(30px, 4vw, 42px);
+    font-size: 28px;
     font-weight: 800;
-    letter-spacing: -.045em;
+    letter-spacing: -.03em;
     line-height: 1.05;
 }
 .settings-shell-panel .workspace-panel-header-actions { gap: 0; }
@@ -4311,12 +4320,12 @@ html[data-theme="dark"] select option { color: var(--text-main); background: var
     background: var(--bg-white);
     transform: translateY(-1px);
 }
-.settings-shell-panel .workspace-settings { gap: 18px; }
+.settings-shell-panel .workspace-settings { gap: 12px; }
 .settings-shell-panel .settings-card {
     box-sizing: border-box;
-    padding: 26px;
+    padding: 18px;
     border: 1px solid var(--border-color);
-    border-radius: 22px;
+    border-radius: 16px;
     background: var(--bg-white);
     box-shadow: 0 5px 20px rgba(15, 23, 42, .055);
 }
@@ -4324,8 +4333,8 @@ html[data-theme="dark"] select option { color: var(--text-main); background: var
     display: flex;
     min-width: 0;
     align-items: flex-start;
-    gap: 16px;
-    margin-bottom: 23px;
+    gap: 12px;
+    margin-bottom: 16px;
 }
 .settings-shell-panel .settings-card-heading-copy {
     min-width: 0;
@@ -4334,7 +4343,7 @@ html[data-theme="dark"] select option { color: var(--text-main); background: var
 .settings-shell-panel .settings-card-heading-copy h3 {
     margin: 2px 0 5px;
     color: var(--text-main);
-    font-size: 21px;
+    font-size: 16px;
     font-weight: 800;
     letter-spacing: -.025em;
     line-height: 1.15;
@@ -4342,19 +4351,19 @@ html[data-theme="dark"] select option { color: var(--text-main); background: var
 .settings-shell-panel .settings-card-heading-copy p {
     margin: 0;
     color: var(--text-muted);
-    font-size: 14px;
+    font-size: 12px;
     line-height: 1.45;
 }
 .settings-shell-panel .settings-card-icon {
     display: grid;
-    width: 48px;
-    height: 48px;
-    flex: 0 0 48px;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
     place-items: center;
-    border-radius: 16px;
+    border-radius: 12px;
     color: var(--vichat-blue);
     background: #fff0e9;
-    font-size: 21px;
+    font-size: 17px;
 }
 .settings-shell-panel .settings-card-icon.notification,
 .settings-shell-panel .settings-card-icon.sound,
@@ -4362,13 +4371,13 @@ html[data-theme="dark"] select option { color: var(--text-main); background: var
 .settings-shell-panel .settings-card-icon.language,
 .settings-shell-panel .settings-card-icon.security { color: #21825d; background: #e8f7ef; }
 
-.settings-shell-panel .notification-device-options { gap: 16px; }
+.settings-shell-panel .notification-device-options { gap: 10px; }
 .settings-shell-panel .notification-device-choice {
-    min-height: 112px;
+    min-height: 84px;
     align-items: center;
-    gap: 15px;
-    padding: 17px 18px;
-    border-radius: 17px;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 13px;
     color: var(--text-body);
     background: var(--bg-app);
 }
@@ -4380,14 +4389,14 @@ html[data-theme="dark"] select option { color: var(--text-main); background: var
     box-shadow: 0 4px 14px rgba(244, 81, 30, .08);
 }
 .settings-shell-panel .notification-device-icon {
-    width: 52px;
-    height: 52px;
-    flex-basis: 52px;
+    width: 42px;
+    height: 42px;
+    flex-basis: 42px;
     border: 0;
-    border-radius: 17px;
+    border-radius: 13px;
     color: var(--vichat-blue);
     background: #ffebe2;
-    font-size: 22px;
+    font-size: 18px;
 }
 .settings-shell-panel .notification-device-icon::after { content: none; }
 .settings-shell-panel .notification-device-choice:not(.selected) .notification-device-icon {
@@ -4405,12 +4414,12 @@ html[data-theme="dark"] select option { color: var(--text-main); background: var
 }
 .settings-shell-panel .notification-device-copy strong {
     color: var(--text-main);
-    font-size: 17px;
+    font-size: 14px;
     font-weight: 800;
 }
 .settings-shell-panel .notification-device-copy small {
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 12px;
 }
 .settings-shell-panel .notification-radio-dot {
     display: grid;
@@ -4438,7 +4447,7 @@ html[data-theme="dark"] select option { color: var(--text-main); background: var
     display: flex;
     align-items: flex-start;
     gap: 9px;
-    margin-top: 20px;
+    margin-top: 14px;
     color: var(--text-muted);
     font-size: 13px;
     line-height: 1.45;
@@ -4521,13 +4530,13 @@ html[data-theme="dark"] select option { color: var(--text-main); background: var
 .settings-shell-panel .settings-toggle input:focus-visible + .settings-toggle-track { outline: 3px solid rgba(244, 81, 30, .22); outline-offset: 3px; }
 
 .settings-shell-panel .theme-preference-heading { margin-bottom: 25px; }
-.settings-shell-panel .theme-choice-grid { gap: 18px; }
+.settings-shell-panel .theme-choice-grid { gap: 10px; }
 .settings-shell-panel .theme-choice {
     position: relative;
-    min-height: 210px;
-    gap: 17px;
-    padding: 17px;
-    border-radius: 18px;
+    min-height: 154px;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 14px;
     color: var(--text-muted);
     background: var(--bg-white);
 }
@@ -4538,11 +4547,11 @@ html[data-theme="dark"] select option { color: var(--text-main); background: var
     background: #fffaf7;
     box-shadow: 0 6px 18px rgba(244, 81, 30, .1);
 }
-.settings-shell-panel .theme-preview { height: 112px; padding: 10px; border-radius: 13px; }
+.settings-shell-panel .theme-preview { height: 84px; padding: 8px; border-radius: 11px; }
 .settings-shell-panel .theme-preview-sidebar { border-radius: 8px; }
-.settings-shell-panel .theme-preview-body { gap: 8px; padding: 9px; border-radius: 7px; }
+.settings-shell-panel .theme-preview-body { gap: 6px; padding: 7px; border-radius: 6px; }
 .settings-shell-panel .theme-preview-line { height: 9px; border-radius: 5px; }
-.settings-shell-panel .theme-preview-chip { height: 25px; border-radius: 6px; }
+.settings-shell-panel .theme-preview-chip { height: 20px; border-radius: 5px; }
 .settings-shell-panel .theme-choice-selected {
     position: absolute;
     top: 11px;
@@ -4559,7 +4568,7 @@ html[data-theme="dark"] select option { color: var(--text-main); background: var
 .settings-shell-panel .theme-choice-label {
     justify-content: center;
     gap: 8px;
-    font-size: 15px;
+    font-size: 13px;
 }
 .settings-shell-panel .theme-choice.selected .theme-radio-dot { display: none; }
 .settings-shell-panel .theme-radio-dot { width: 22px; height: 22px; }
@@ -4568,22 +4577,22 @@ html[data-theme="dark"] select option { color: var(--text-main); background: var
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 26px;
+    gap: 18px;
 }
 .settings-shell-panel .settings-inline-card .settings-card-heading { margin-bottom: 0; }
-.settings-shell-panel .language-picker { min-width: 258px; }
+.settings-shell-panel .language-picker { min-width: 210px; }
 .settings-shell-panel .language-picker-trigger {
-    height: 52px;
+    height: 42px;
     gap: 10px;
     padding: 0 15px;
-    border-radius: 14px;
-    font-size: 14px;
+    border-radius: 11px;
+    font-size: 12px;
 }
-.settings-shell-panel .language-picker-flag { width: 28px; flex-basis: 28px; font-size: 20px; }
+.settings-shell-panel .language-picker-flag { width: 24px; flex-basis: 24px; font-size: 17px; }
 .settings-shell-panel .language-picker-menu { min-width: 100%; border-radius: 13px; }
 .settings-shell-panel .language-picker-option { min-height: 42px; font-size: 13px; }
 
-.settings-shell-panel .pin-preference-heading { margin-bottom: 25px; }
+.settings-shell-panel .pin-preference-heading { margin-bottom: 16px; }
 .settings-shell-panel .pin-preference-heading .pin-preference-status { margin-left: auto; }
 .settings-shell-panel .pin-preference-status {
     flex: 0 0 auto;
@@ -4599,21 +4608,21 @@ html[data-theme="dark"] select option { color: var(--text-main); background: var
 .settings-shell-panel .pin-preference-field { gap: 8px; }
 .settings-shell-panel .pin-preference-field > span { color: var(--text-body); font-size: 13px; }
 .settings-shell-panel .pin-preference-field input {
-    height: 54px;
+    height: 42px;
     padding: 0 15px;
-    border-radius: 14px;
+    border-radius: 11px;
     color: var(--text-main);
     background: var(--bg-white);
-    font-size: 16px;
+    font-size: 13px;
     letter-spacing: 5px;
 }
 .settings-shell-panel .pin-preference-actions { gap: 10px; margin-top: 4px; }
 .settings-shell-panel .pin-save-button,
 .settings-shell-panel .pin-disable-button {
-    height: 48px;
+    height: 40px;
     padding: 0 18px;
-    border-radius: 14px;
-    font-size: 13px;
+    border-radius: 11px;
+    font-size: 12px;
 }
 .settings-shell-panel .pin-save-button { border-color: transparent; color: var(--vichat-blue-dark); background: #fff0e9; }
 .settings-shell-panel .pin-disable-button { height: 42px; align-self: center; }
@@ -4629,7 +4638,7 @@ html[data-theme="dark"] select option { color: var(--text-main); background: var
 }
 .settings-shell-panel .pin-preference-note i { flex: 0 0 auto; margin-top: 2px; color: #4d7370; }
 
-html[data-theme="dark"] .workspace-panel.settings-shell-panel { box-shadow: -14px 0 42px rgba(0, 0, 0, .32); }
+html[data-theme="dark"] .workspace-panel.settings-shell-panel { box-shadow: 0 28px 80px rgba(0, 0, 0, .38), 0 5px 18px rgba(0, 0, 0, .24); }
 html[data-theme="dark"] .settings-shell-panel .settings-card {
     border-color: #3b4b54;
     box-shadow: 0 7px 22px rgba(0, 0, 0, .18);
@@ -4650,18 +4659,18 @@ html[data-theme="dark"] .settings-shell-panel .pin-preference-status.enabled { c
 html[data-theme="dark"] .settings-shell-panel .pin-preference-note i { color: #9ddbd2; }
 
 @media (max-width: 700px) {
-    .workspace-panel.settings-shell-panel { padding: 24px 14px 34px; }
-    .settings-shell-panel .workspace-panel-header { margin-bottom: 21px; }
-    .settings-shell-panel .workspace-panel-header h2 { font-size: 31px; }
+    .workspace-panel.settings-shell-panel { width: min(100%, calc(100vw - 24px)); padding: 18px 16px 22px; }
+    .settings-shell-panel .workspace-panel-header { margin: -18px -16px 15px; padding: 14px 16px 11px; }
+    .settings-shell-panel .workspace-panel-header h2 { font-size: 23px; }
     .settings-shell-panel .btn-close-detail { width: 42px; height: 42px; font-size: 18px; }
-    .settings-shell-panel .settings-card { padding: 20px 17px; border-radius: 18px; }
+    .settings-shell-panel .settings-card { padding: 15px; border-radius: 14px; }
     .settings-shell-panel .settings-card-heading { gap: 12px; margin-bottom: 19px; }
-    .settings-shell-panel .settings-card-icon { width: 42px; height: 42px; flex-basis: 42px; border-radius: 14px; font-size: 18px; }
-    .settings-shell-panel .settings-card-heading-copy h3 { font-size: 18px; }
+    .settings-shell-panel .settings-card-icon { width: 38px; height: 38px; flex-basis: 38px; border-radius: 11px; font-size: 16px; }
+    .settings-shell-panel .settings-card-heading-copy h3 { font-size: 15px; }
     .settings-shell-panel .settings-card-heading-copy p { font-size: 12px; }
     .settings-shell-panel .notification-device-options { grid-template-columns: 1fr; gap: 10px; }
-    .settings-shell-panel .notification-device-choice { min-height: 92px; padding: 13px; }
-    .settings-shell-panel .notification-device-copy strong { font-size: 15px; }
+    .settings-shell-panel .notification-device-choice { min-height: 78px; padding: 11px; }
+    .settings-shell-panel .notification-device-copy strong { font-size: 14px; }
     .settings-shell-panel .notification-device-copy small { font-size: 12px; }
     .settings-shell-panel .notification-sound-picker { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .settings-shell-panel .notification-sound-picker select { grid-column: 1 / -1; }
@@ -4670,7 +4679,7 @@ html[data-theme="dark"] .settings-shell-panel .pin-preference-note i { color: #9
     .settings-shell-panel .notification-remove-button { width: 100%; padding: 0 10px; }
     .settings-shell-panel .theme-choice-grid { grid-template-columns: 1fr; gap: 10px; }
     .settings-shell-panel .theme-choice { min-height: 0; flex-direction: row; align-items: center; gap: 13px; padding: 12px; }
-    .settings-shell-panel .theme-preview { width: 145px; height: 78px; flex: 0 0 145px; }
+    .settings-shell-panel .theme-preview { width: 125px; height: 68px; flex: 0 0 125px; }
     .settings-shell-panel .settings-inline-card { align-items: stretch; flex-direction: column; gap: 17px; }
     .settings-shell-panel .language-picker { width: 100%; min-width: 0; }
     .settings-shell-panel .pin-preference-heading { align-items: flex-start; }
@@ -4678,15 +4687,9 @@ html[data-theme="dark"] .settings-shell-panel .pin-preference-note i { color: #9
     .settings-shell-panel .pin-preference-actions { grid-column: auto; }
 }
 
-/* Workspace navigation replaces the chat columns instead of covering them. */
-.workspace-route-active .workspace-panel.settings-shell-panel {
-    width: 100%;
-    max-width: none;
-    box-shadow: none;
-}
-
 @media (max-width: 576px) {
-    .workspace-route-active .sidebar-primary { transform: translateX(0); }
-    .workspace-route-active .workspace-overlay { margin-left: 70px; }
-    .workspace-route-active .workspace-panel { padding: 18px 14px 28px; }
+    .workspace-overlay { align-items: flex-start; padding: 12px; }
+    .workspace-panel { width: 100%; max-height: calc(100vh - 24px); min-height: 240px; padding: 18px 16px 22px; border-radius: 18px; }
+    .workspace-panel-header { top: -18px; margin: -18px -16px 15px; padding: 14px 16px 11px; }
+    .workspace-panel-header h2 { font-size: 19px; }
 }

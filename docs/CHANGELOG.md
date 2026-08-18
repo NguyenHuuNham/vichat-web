@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-25 - Dua workspace ve modal trung tam tren nen chat
+
+- Thoi gian: 2026-08-18 23:07 (Asia/Saigon)
+- Loai: Tai cau truc | Web | UI | Kiem thu
+- Trang thai: Da build; cho deploy va UAT
+- Muc tieu: Mo Cai dat, Danh ba, Nhom, Tim kiem, Thong bao, File, Ho so va Workspace trong mot hop noi dung gon o giua man hinh, van nhin thay chat phia sau.
+- Pham vi: ChatUI workspace overlay/panel, responsive layout, Settings cards, Enterprise Workspace shell va regression test; khong thay doi chat, directory, Tinode, realtime, API, database hay tenant.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/workspace/components/enterpriseWorkspace.css`, `src/features/workspace/services/workspaceLayout.test.js`, `package.json`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Chuyen workspace overlay tu layout thay the cac cot chat sang fixed modal co nen dim/blur, panel gioi han chieu cao va scroll noi bo; them dong bang click nen va role dialog; thu gon Settings va giu Enterprise Workspace rong vua du trong cung modal.
+- Quyet dinh ky thuat: Dung mot shell CSS dung chung cho moi panel de cac route van giu nguyen nhung phan modal nhat quan; bo cac rule an `.chat-main`, `.sidebar-secondary`, `.sidebar-detail`; khong them state/API moi.
+- Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi truong.
+- Kiem thu: `npm run test:frontend` dat 128/128; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va vendor `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat. Kiem tra browser local chua chay duoc vi runtime khong co browser backend.
+- Rui ro con lai: Chua co UAT bang tai khoan production that de xac nhan kich thuoc modal tren desktop/mobile va thao tac tung workspace; can hard refresh sau deploy.
+- Viec tiep theo: Push, deploy rieng `chat`, health-check bundle/public, sau do UAT mo Settings, Contacts, Groups, Search, Notifications, Files, Profile va Work tren desktop/mobile.
+- Commit/PR: Chua tao.
+
 ## 2026-08-18-24 - Icon-only chuyen cong ty va dong bo logo tu Account
 
 - Thoi gian: 2026-08-18 21:58 (Asia/Saigon)
