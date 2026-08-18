@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Trien khai: Release /opt/deploy/chat/releases/logo-switch-9f7d183-20260818-2116; archive SHA-256 359F97897253BA3B309AD1E2F4A90DEB79F0376E52367F4F51B2EDDF6C5DBA6C; current tro release moi, previous tro /opt/deploy/chat/releases/tdz-fix-3c670fc-20260818T133342Z. Image ChatUI sha256:14e4c512156cd74fb566a7a9661a1703fdcf0ffd2fe5ea8f76680d20b37e1af2, container d6d1a2902d73; Chatmgt sha256:eeddb9570b0078c7129a028988a4366b625556c6c4ab982a8e83c9a6a766f324, container 5fdbf09b1006; chat/Chatmgt healthy, local/public health ok, Chatmgt auth health status=ok, public assets index-9Z_KovJI.js, App-ZRMiVIH4.js va index-Bnwr_3C-.css HTTP 200 co marker tenant-switcher-option, switch-tenant, company_logo. Chi recreate chat va chatmgt; khong migration, khong chay docker compose down, cac service stateful van Up sau deploy.
 - Rui ro con lai: Chua UAT voi phien Account production co logo that; neu Account dung ten truong logo ngoai cac alias da ho tro thi se hien fallback toa nha va can bo sung alias theo payload thuc te. Rollback image layer cu khong con content digest de tag lai sau build; release previous van duoc giu de rebuild/recreate khi can.
 - Viec tiep theo: Hard refresh https://chat.upgo.vn, dang nhap tai khoan co nhieu membership, bam tung logo va xac nhan logo, danh ba, hoi thoai, Tinode/realtime cua ca hai cong ty; neu loi thi dung release previous va rebuild/recreate rieng chat/chatmgt.
-- Commit/PR: Source 9f7d183 da push origin/master; docs follow-up dang cho commit.
+- Commit/PR: Source 9f7d183 va docs 681605a da push origin/master; chua co PR.
 
 ## 2026-08-18-22 - Sua crash TDZ khi mo chat tu danh ba
 
