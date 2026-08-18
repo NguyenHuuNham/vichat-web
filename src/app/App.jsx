@@ -63,6 +63,10 @@ import {
   chatAttachmentValidationError,
 } from '../features/chat/services/messagePolicy';
 import {
+  MESSAGE_QUICK_REACTIONS,
+  pinnedMessagesForRoom,
+} from '../features/chat/services/messageActionPolicy';
+import {
   ALL_MENTION_ID,
   getMentionContext,
   insertMentionAt,
@@ -1373,6 +1377,8 @@ function App() {
   const [messageDetails, setMessageDetails] = useState(null);
   const [shareMessage, setShareMessage] = useState(null);
   const [messageActions, setMessageActions] = useState({});
+  const [messageReactionPickerKey, setMessageReactionPickerKey] = useState(null);
+  const [highlightedMessageKey, setHighlightedMessageKey] = useState(null);
   const [notificationMuteDialog, setNotificationMuteDialog] = useState(null);
   const [notificationMuteOption, setNotificationMuteOption] = useState(NOTIFICATION_MUTE_OPTIONS.ONE_HOUR);
   const [isUpdatingNotificationMute, setIsUpdatingNotificationMute] = useState(false);
@@ -1438,6 +1444,8 @@ function App() {
 
   // References
   const chatMessagesEndRef = useRef(null);
+  const messageElementsRef = useRef(new Map());
+  const messageHighlightTimerRef = useRef(null);
   const messageInputRef = useRef(null);
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
@@ -1533,6 +1541,13 @@ function App() {
     setGroupMemberAddIds([]);
     setGroupMemberAddProfiles({});
     setGroupMemberAddSearch('');
+    messageElementsRef.current.clear();
+    setMessageReactionPickerKey(null);
+    setHighlightedMessageKey(null);
+    if (messageHighlightTimerRef.current) {
+      window.clearTimeout(messageHighlightTimerRef.current);
+      messageHighlightTimerRef.current = null;
+    }
   }, [activeChat.id]);
   const conversationCategoryFor = room => {
     const key = String(room?.managementId || room?.id || '');
@@ -5100,6 +5115,52 @@ function App() {
     });
   };
 
+  const prepareReplyToMessage = message => {
+    if (!message || message.recalled) return '';
+    const isOwnMessage = message.senderId === viewerId || message.sender === 'outgoing';
+    const reply = replyMetadataForMessage(message, isOwnMessage ? 'Bạn' : 'Thành viên');
+    setReplyingTo(reply);
+
+    let nextDraft = inputText;
+    if (activeChat.isGroup && !isOwnMessage) {
+      const candidate = mentionCandidateForMessage(message);
+      const token = mentionTokenFor(candidate);
+      if (candidate && token) {
+        if (!mentionTokenExists(nextDraft, token)) {
+          nextDraft = nextDraft.trim()
+            ? `${token} ${nextDraft.trim()}`
+            : `${token} `;
+          updateCurrentDraft(nextDraft);
+        }
+        setMessageMentions(previous => {
+          const currentMentions = previous[currentChatId] || [];
+          if (currentMentions.some(item => item.token === token)) return previous;
+          return {
+            ...previous,
+            [currentChatId]: [
+              ...currentMentions,
+              {
+                id: candidate.id,
+                tinodeUid: candidate.tinodeUid || candidate.uid || '',
+                name: mentionCandidateText(candidate),
+                token,
+                isAll: false,
+              },
+            ],
+          };
+        });
+      }
+    }
+
+    requestAnimationFrame(() => {
+      const input = messageInputRef.current;
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(nextDraft.length, nextDraft.length);
+    });
+    return nextDraft;
+  };
+
   const applyMessagePatch = (message, patch) => {
     updateMessageInView(message, patch);
     persistMessagePatch(message, patch);
@@ -5107,6 +5168,7 @@ function App() {
 
   const handleMessageAction = async (action, message, emoji = '👍') => {
     setMessageMenu(null);
+    setMessageReactionPickerKey(null);
     if (!message || message.recalled) return;
     const isOwnMessage = message.senderId === viewerId || message.sender === 'outgoing';
     try {
@@ -5133,43 +5195,7 @@ function App() {
         return;
       }
       if (action === 'reply') {
-        if (message.recalled) return;
-        const reply = replyMetadataForMessage(message, isOwnMessage ? 'Bạn' : 'Thành viên');
-        setReplyingTo(reply);
-        let nextDraft = inputText;
-        if (activeChat.isGroup && !isOwnMessage) {
-          const candidate = mentionCandidateForMessage(message);
-          const token = mentionTokenFor(candidate);
-          if (candidate && token && !mentionTokenExists(inputText, token)) {
-            nextDraft = inputText.trim()
-              ? `${token} ${inputText.trim()}`
-              : `${token} `;
-            updateCurrentDraft(nextDraft);
-            setMessageMentions(previous => {
-              const currentMentions = previous[currentChatId] || [];
-              if (currentMentions.some(item => item.token === token)) return previous;
-              return {
-                ...previous,
-                [currentChatId]: [
-                  ...currentMentions,
-                  {
-                    id: candidate.id,
-                    tinodeUid: candidate.tinodeUid || candidate.uid || '',
-                    name: mentionCandidateText(candidate),
-                    token,
-                    isAll: false,
-                  },
-                ],
-              };
-            });
-          }
-        }
-        requestAnimationFrame(() => {
-          const input = messageInputRef.current;
-          if (!input) return;
-          input.focus();
-          input.setSelectionRange(nextDraft.length, nextDraft.length);
-        });
+        prepareReplyToMessage(message);
         return;
       }
       if (action === 'detail') {
@@ -5179,6 +5205,11 @@ function App() {
       if (action === 'mark') {
         const key = messageActionKey(activeChat.id, message.id);
         saveMessageAction(message, { marked: !messageActions[key]?.marked });
+        return;
+      }
+      if (action === 'pin') {
+        const key = messageActionKey(activeChat.id, message.id);
+        saveMessageAction(message, { pinned: !messageActions[key]?.pinned });
         return;
       }
       if (action === 'reaction') {
@@ -5712,6 +5743,31 @@ function App() {
     if (!messageSearchQuery.trim()) return true;
     return `${message.text || ''} ${message.senderName || ''}`.toLowerCase().includes(messageSearchQuery.toLowerCase());
   });
+  const pinnedMessages = pinnedMessagesForRoom(roomMessages(activeChat), messageActions, activeChat.id);
+  const pinnedMessagePreview = message => String(message?.text || '').trim()
+    || message?.file?.name
+    || (message?.type === 'image' ? appCopy.t('Ảnh') : appCopy.t('Nội dung đính kèm'));
+  const scrollToPinnedMessage = message => {
+    if (!message?.id) return;
+    const key = messageActionKey(activeChat.id, message.id);
+    const scroll = () => {
+      const target = messageElementsRef.current.get(key);
+      if (!target) return;
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedMessageKey(key);
+      if (messageHighlightTimerRef.current) window.clearTimeout(messageHighlightTimerRef.current);
+      messageHighlightTimerRef.current = window.setTimeout(() => {
+        setHighlightedMessageKey(current => current === key ? null : current);
+        messageHighlightTimerRef.current = null;
+      }, 1800);
+    };
+    if (messageSearchQuery.trim()) {
+      setMessageSearchQuery('');
+      window.requestAnimationFrame(() => window.requestAnimationFrame(scroll));
+    } else {
+      window.requestAnimationFrame(scroll);
+    }
+  };
   const hasDatedMessages = visibleMessages.some(message => formatMessageDateLabel(message, displayClock, appCopy.locale));
 
   const deliveryStatusIcon = message => {
@@ -6086,6 +6142,36 @@ function App() {
           </div>
         )}
 
+        {pinnedMessages.length > 0 && (
+          <section className="pinned-messages-strip" aria-label={appCopy.t('Tin nhắn đã ghim')}>
+            <div className="pinned-messages-heading">
+              <i className="fa-solid fa-thumbtack" aria-hidden="true"></i>
+              <span>{appCopy.t('Tin nhắn đã ghim')}</span>
+              <strong>{pinnedMessages.length > 1
+                ? `+${pinnedMessages.length - 1} ${appCopy.t('ghim')}`
+                : appCopy.t('Ghim trên thiết bị này')}</strong>
+            </div>
+            <div className="pinned-message-list">
+              {pinnedMessages.map(message => (
+                <button
+                  type="button"
+                  className="pinned-message-item"
+                  key={message.id}
+                  title={`${appCopy.t('Đi tới tin nhắn')}: ${pinnedMessagePreview(message)}`}
+                  aria-label={`${appCopy.t('Đi tới tin nhắn')}: ${pinnedMessagePreview(message)}`}
+                  onClick={() => scrollToPinnedMessage(message)}
+                >
+                  <span className="pinned-message-copy">
+                    <strong>{message.senderName || (message.sender === 'outgoing' ? appCopy.t('Bạn') : appCopy.t('Thành viên'))}</strong>
+                    <small>{pinnedMessagePreview(message)}</small>
+                  </span>
+                  <i className="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Khu vực hiển thị tin nhắn */}
         <ConversationErrorBoundary
           key={activeChat.id}
@@ -6120,7 +6206,8 @@ function App() {
             const isOutgoing = msg.sender === "outgoing"
               || Boolean(messageSenderId && viewerId && messageSenderId === viewerId)
               || Boolean(msg.pending && msg.senderId && msg.senderId === viewerId);
-            const messageState = messageActions[messageActionKey(activeChat.id, msg.id)] || {};
+            const messageKey = messageActionKey(activeChat.id, msg.id);
+            const messageState = messageActions[messageKey] || {};
             const reactions = { ...(msg.reactions || {}), ...(messageState.reactions || {}) };
             const attachmentFile = msg.file || (msg.type === 'image' && msg.image ? {
               name: appCopy.t('Hình ảnh'),
@@ -6143,7 +6230,13 @@ function App() {
             return (
               <React.Fragment key={msg.id}>
                 {showDateDivider && <div className="date-divider"><span>{dateLabel}</span></div>}
-                <div className={`message-item ${isOutgoing ? 'outgoing' : 'incoming'} ${activeChat.isChatbot ? 'chatbot-message-item' : ''}`}>
+                <div
+                  ref={element => {
+                    if (element) messageElementsRef.current.set(messageKey, element);
+                    else messageElementsRef.current.delete(messageKey);
+                  }}
+                  className={`message-item ${isOutgoing ? 'outgoing' : 'incoming'} ${activeChat.isChatbot ? 'chatbot-message-item' : ''} ${messageState.pinned ? 'message-is-pinned' : ''} ${highlightedMessageKey === messageKey ? 'message-pinned-highlight' : ''}`}
+                >
                 {!isOutgoing && (
                   <button type="button" className="message-avatar message-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))} title={`${appCopy.t('Xem thông tin')} ${msg.senderName || appCopy.t('thành viên')}`}>
                     <SafeAvatar src={msg.avatar || ''} name={msg.senderName} />
@@ -6290,7 +6383,66 @@ function App() {
                       </div>
                     )}
                     </div>
-                    <button type="button" className="message-more-action" onClick={event => { event.stopPropagation(); openMessageMenu(event, msg); }} aria-label={appCopy.t('Tùy chọn tin nhắn')}><i className="fa-solid fa-ellipsis"></i></button>
+                    {messageState.pinned && (
+                      <span className="message-pinned-indicator" title={appCopy.t('Ghim trên thiết bị này')}>
+                        <i className="fa-solid fa-thumbtack" aria-hidden="true"></i>
+                        <span>{appCopy.t('Đã ghim')}</span>
+                      </span>
+                    )}
+                    <div className="message-quick-actions" onClick={event => event.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="message-action-button"
+                        title={appCopy.t('Trả lời tin nhắn')}
+                        aria-label={appCopy.t('Trả lời tin nhắn')}
+                        onClick={() => handleMessageAction('reply', msg)}
+                      >
+                        <i className="fa-solid fa-reply" aria-hidden="true"></i>
+                      </button>
+                      <button
+                        type="button"
+                        className="message-action-button"
+                        title={appCopy.t('Chia sẻ tin nhắn')}
+                        aria-label={appCopy.t('Chia sẻ tin nhắn')}
+                        onClick={() => handleMessageAction('share', msg)}
+                      >
+                        <i className="fa-solid fa-share" aria-hidden="true"></i>
+                      </button>
+                      <div
+                        className="message-reaction-action"
+                        onMouseEnter={() => setMessageReactionPickerKey(messageKey)}
+                        onMouseLeave={() => setMessageReactionPickerKey(current => current === messageKey ? null : current)}
+                      >
+                        <button
+                          type="button"
+                          className="message-action-button"
+                          title={appCopy.t('Thêm biểu cảm')}
+                          aria-label={appCopy.t('Thêm biểu cảm')}
+                          aria-expanded={messageReactionPickerKey === messageKey}
+                          onFocus={() => setMessageReactionPickerKey(messageKey)}
+                          onClick={() => handleMessageAction('reaction', msg, '👍')}
+                        >
+                          <i className="fa-regular fa-thumbs-up" aria-hidden="true"></i>
+                        </button>
+                        {messageReactionPickerKey === messageKey && (
+                          <div className="message-reaction-picker" role="listbox" aria-label={appCopy.t('Thêm biểu cảm')}>
+                            {MESSAGE_QUICK_REACTIONS.map(reaction => (
+                              <button
+                                type="button"
+                                role="option"
+                                key={reaction}
+                                aria-label={reaction}
+                                onMouseDown={event => event.preventDefault()}
+                                onClick={() => handleMessageAction('reaction', msg, reaction)}
+                              >
+                                {reaction}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <button type="button" className="message-action-button message-more-action" onClick={event => { event.stopPropagation(); openMessageMenu(event, msg); }} aria-label={appCopy.t('Tùy chọn tin nhắn')}><i className="fa-solid fa-ellipsis" aria-hidden="true"></i></button>
+                    </div>
                   </div>
                 </div>
                 </div>
@@ -6321,18 +6473,15 @@ function App() {
             const menuMessage = messageMenu.message;
             const isOwnMessage = menuMessage.senderId === viewerId || menuMessage.sender === 'outgoing';
             const canRecallMessage = isOwnMessage && canRecallDeliveredMessage(menuMessage);
-            const marked = messageActions[messageActionKey(activeChat.id, menuMessage.id)]?.marked;
+            const menuMessageState = messageActions[messageActionKey(activeChat.id, menuMessage.id)] || {};
+            const marked = menuMessageState.marked;
             return (
               <div className="message-context-menu" style={{ left: messageMenu.left, top: messageMenu.top }} onClick={event => event.stopPropagation()}>
-                {!menuMessage.recalled && <button type="button" onClick={() => handleMessageAction('reply', menuMessage)}><i className="fa-solid fa-reply"></i>{appCopy.t('Trả lời tin nhắn')}</button>}
                 <button type="button" onClick={() => handleMessageAction('copy', menuMessage)}><i className="fa-regular fa-copy"></i>{appCopy.t('Copy tin nhắn')}</button>
                 <button type="button" onClick={() => handleMessageAction('mark', menuMessage)}><i className={`fa-${marked ? 'solid' : 'regular'} fa-star`}></i>{appCopy.t(marked ? 'Bỏ đánh dấu' : 'Đánh dấu tin nhắn')}</button>
+                <button type="button" onClick={() => handleMessageAction('pin', menuMessage)}><i className="fa-solid fa-thumbtack"></i>{appCopy.t(menuMessageState.pinned ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn')}</button>
                 {!activeChat.isChatbot && isManagementConversationId(activeChat.managementId || activeChat.id) && <button type="button" onClick={() => handleMessageAction('create-task', menuMessage)}><i className="fa-solid fa-list-check"></i>{appCopy.t('Giao việc từ tin nhắn')}</button>}
                 <button type="button" onClick={() => handleMessageAction('detail', menuMessage)}><i className="fa-solid fa-circle-info"></i>{appCopy.t('Xem chi tiết')}</button>
-                <button type="button" onClick={() => handleMessageAction('share', menuMessage)}><i className="fa-solid fa-share"></i>{appCopy.t('Chia sẻ tin nhắn')}</button>
-                <div className="message-reaction-row" aria-label={appCopy.t('Thêm biểu cảm')}>
-                  {['👍', '❤️', '😂', '😮', '😢'].map(emoji => <button type="button" key={emoji} onClick={() => handleMessageAction('reaction', menuMessage, emoji)}>{emoji}</button>)}
-                </div>
                  {canRecallMessage && <>
                    <button type="button" className="danger" onClick={() => handleMessageAction('recall-self', menuMessage)}><i className="fa-solid fa-eye-slash"></i>{appCopy.t('Thu hồi phía tôi')}</button>
                    <button type="button" className="danger" onClick={() => handleMessageAction('recall-all', menuMessage)}><i className="fa-solid fa-rotate-left"></i>{appCopy.t('Thu hồi tất cả')}</button>

@@ -8,6 +8,12 @@ test('translates exact UI labels and keeps Vietnamese as the default', () => {
   assert.equal(translateUiText('Cài đặt'), 'Cài đặt');
 });
 
+test('translates message pin labels for the English UI', () => {
+  assert.equal(translateUiText('Ghim tin nhắn', 'en'), 'Pin message');
+  assert.equal(translateUiText('Bỏ ghim tin nhắn', 'en'), 'Unpin message');
+  assert.equal(translateUiText('Tin nhắn đã ghim', 'en'), 'Pinned messages');
+});
+
 test('translates tenant switch labels', () => {
   assert.equal(translateUiText('Chuyển công ty', 'en'), 'Switch company');
   assert.equal(translateUiText('Chọn công ty để làm việc', 'en'), 'Choose a company to work in');
