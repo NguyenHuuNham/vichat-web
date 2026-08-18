@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-18 17:23 (Asia/Saigon)
 - Loai: Sua loi | Web | Kiem thu | Van hanh
-- Trang thai: Da build local; cho deploy va UAT
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Bam `Danh ba -> Nhan tin` khong duoc day toan bo ChatUI vao man hinh "Chat dang tam dung" khi state co room null, undefined hoac sai shape.
 - Pham vi: ChatUI conversation state, luong mo chat 1-1, refresh Chatmgt, presence/receipt/profile Tinode, thao tac room va bundle production.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`, `docs/CHANGELOG.md`.
 - Noi dung: Them helper map room an toan de normalize moi room truoc khi callback doc `isGroup`, `isChatbot`, topic, membership, members hoac messages; dua toan bo preamble cua `handleStartDirectChat` vao try/catch va tim linked room tu map da chuan hoa; harden cac callback realtime, refresh, xoa, mute, pin, profile va tao nhom de room loi khong lam crash render.
 - Quyet dinh ky thuat: Bao ve o bien gioi state consumer, khong bo qua loi bang cach doi API hay xoa du lieu; room malformed duoc thay bang fallback co id state de cac luong con lai tiep tuc, con loi mo chat duoc hien thanh `chatError` thay vi nem vao global ErrorBoundary.
 - Database/API/cau hinh: Khong migration, endpoint, secret hoac bien moi truong moi; khong thay doi Chatmgt, Tinode, database hay service stateful.
-- Kiem thu: `npm run test:frontend` dat 123/123; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat.
+- Kiem thu: `npm run test:frontend` dat 123/123; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat. Remote `docker compose config -q` va build service `chat` dat; container ChatUI healthy; local/public `/healthz` tra `ok`; Chatmgt auth health tra `status=ok`; public entry `index-BqHPZbsY.js` va App chunk `App-BVWBfTyU.js` HTTP 200, co chuoi guard normalization/direct-chat; log ChatUI 10 phut khong co traceback/panic/fatal/exception.
+- Trien khai: Release `/opt/deploy/chat/releases/conversation-state-784b9e1-20260818-102838`; archive SHA-256 `3630097E972F05DFD6C7CCD5EDAB9148D349116B25BEE077A01DFE9BC0F3D90F`; image ChatUI `sha256:1296bd238012bf89422fa31741c6a049cd80b8bb3cfa76328f6ba39534a87f4c`; container moi `df117f47e58c`; `current` tro release moi, `previous` tro `conversation-render-2c23df6-20260818-095516`; rollback tag `songhong-production-chat:rollback-before-784b9e1`; chi recreate `chat`, khong migration/reset volume/topic/message.
 - Rui ro con lai: Chua UAT truc quan bang tai khoan UpGO that tren production do browser session cua agent khong co; can hard refresh va test danh ba -> nhan tin, room cu, room moi, gui tin, nhom va reload.
-- Viec tiep theo: Commit/push, deploy release immutable, recreate rieng `chat`, kiem tra health/bundle/log va UAT production.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, bam `Danh ba -> Nhan tin` voi tai khoan that va xac nhan khong con man hinh ErrorBoundary.
+- Commit/PR: Source `784b9e1`; docs deploy follow-up dang cho commit.
 
 ## 2026-08-18-19 - Bao ve toan bo luong mo danh ba va chat 1-1
 
