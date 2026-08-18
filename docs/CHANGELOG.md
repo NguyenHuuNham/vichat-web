@@ -10,17 +10,17 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-18 13:30 (Asia/Saigon)
 - Loai: Sua loi | Web | Kiem thu | Van hanh
-- Trang thai: Dang thuc hien
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Khong de du lieu room 1-1 tu Chatmgt/Tinode lam crash ChatUI va hien man hinh trang.
 - Pham vi: Bien doi account/tenant, Tinode message metadata, conversation boundary va cac danh sach render cua ChatUI; khong doi Chatmgt, Tinode, auth, tenant, API hoac database.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`.
 - Noi dung: Chuan hoa account, tenant, avatar, attachment, reaction, member, message va room metadata ve gia tri render-safe; normalize toan bo map conversation truoc khi render sidebar, thong bao, chia se va room dang mo; mo chat 1-1 chi su dung contact da chuan hoa.
 - Quyet dinh ky thuat: Dat lop normalize tai bien gioi du lieu va mot lop normalize map cho moi nhanh render, giu nguyen data flow va khong bo qua room hop le. Them regression cho room co `name`, `lastMsg`, `avatarUrl` va message metadata sai kieu.
 - Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi truong moi.
-- Kiem thu: `npm run test:frontend` dat 115/115; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va vendor `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat.
+- Kiem thu: `npm run test:frontend` dat 115/115; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va vendor `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat. Remote archive SHA-256 `D12E99C474B197B19517401FC6D5B6082170DB1BFDC7C9A3FE12433097EA8A60`; Compose `config -q` va build ChatUI dat; image `sha256:04b0362010544cd52151dc82a4594bb331ad0e0c86c311651d0baaa6f83336c2`; container `1fc0f745546917054b13522066d2ccba44ce51f1846d206ec092acda2c75a9c3` healthy; local/public `/healthz` tra `ok`; bundle `index-U3k_J-T7.js` va `App-L4AWzBWe.js` HTTP 200; Chatmgt auth health tra `status=ok`; `sudo nginx -t` dat; log ChatUI sau recreate khong co fatal/exception marker; khong recreate Chatmgt, Tinode bridge/webhook, ChatAPI, PostgreSQL, Redis hoac Coturn.
 - Rui ro con lai: Chua UAT truc quan bang tai khoan UpGO/Tinode that do browser runtime cua agent khong tao duoc kernel asset; can hard refresh de tai bundle moi.
-- Viec tiep theo: Commit, push va deploy immutable chi service `chat`; sau do mo lai room 1-1 dang loi va room moi de xac nhan sidebar, ten, tin nhan va realtime.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo room 1-1 dang loi va mot room moi de xac nhan sidebar, ten, tin nhan, realtime va khong con man hinh trang.
+- Commit/PR: Source `a234415`; docs follow-up dang cho commit; release `/opt/deploy/chat/releases/direct-render-a234415-20260818-133248`.
 
 ## 2026-08-18-14 - Bao ve render khi du lieu chat 1-1 khong day du
 
