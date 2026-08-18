@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `npm run test:frontend` dat 114/114; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat. Artifact `dist` sinh tu dong da duoc khoi phuc ve trang thai truoc build.
 - Rui ro con lai: Chua xac nhan truc quan bang tai khoan UpGO/Tinode that cho room dang loi; production hien van dang phuc vu bundle cu truoc ban sanitizer.
 - Viec tiep theo: Chay build, commit, deploy chi service `chat` va kiem tra bundle/health/log production.
-- Commit/PR: Chua tao.
+- Commit/PR: `f76b974`; chua deploy production.
 
 ## 2026-08-18-13 - Sua loi trang trang khi mo chat 1-1
 
