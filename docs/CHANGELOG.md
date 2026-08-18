@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-10 - Deploy workspace route ChatUI
+
+- Thoi gian: 2026-08-18 10:09 (Asia/Saigon)
+- Loai: Trien khai | Van hanh | Xac thuc | Kiem thu
+- Trang thai: Da deploy production; san sang UAT
+- Muc tieu: Dua commit `c0518de` len `https://chat.upgo.vn` de cac muc workspace mo bang URL rieng va khong de len giao dien chat.
+- Pham vi: Chi ChatUI; khong thay doi Chatmgt, Tinode, ChatAPI, PostgreSQL, Redis, Coturn, database, auth hoac tenant flow.
+- File da thay doi: Release `/opt/deploy/chat/releases/workspace-routes-c0518de-20260818-100046-r1`; symlink `current`/`previous`; `docs/CHANGELOG.md`.
+- Noi dung: Archive commit `c0518de` co SHA-256 `19D15A1EB973F626C67022D0F8FC9169A482030A8336AF4D1EF2753133829CD4`; giu nguyen `.env` va runtime production; build image ChatUI `sha256:d0e6881aa7fd864bc225d62e4632b82baf224ec9faaad4268bb0baa65bd69a47`; `current` tro release moi va `previous` tro `settings-redesign-1df88c1-20260818-0348`.
+- Quyet dinh ky thuat: Chay `docker compose config -q`, build va `up -d --no-deps --force-recreate --no-build chat` tu release moi; khong chay `docker compose down`, migration hoac recreate service stateful.
+- Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi truong moi.
+- Kiem thu: Remote Compose config dat; ChatUI healthy; `http://127.0.0.1:8094/healthz` va `https://chat.upgo.vn/healthz` tra `ok`; `/friends`, `/groups`, `/work`, `/settings`, `/chat` tra HTTP 200 va SPA root; bundle public `App-CUH1pqwA.js` co marker `popstate`, `/settings`, `/friends`; Chatmgt auth health tra `status=ok`; `nginx -t` dat; log ChatUI 10 phut khong co fatal marker; Chatmgt, Tinode bridge/webhook, ChatAPI, PostgreSQL, Redis va Coturn giu nguyen container ID/trang thai.
+- Rui ro con lai: Chua UAT truc quan bang tai khoan UpGO that cho Back/Forward, hard refresh tung route, mobile responsive va luong tao nhom tren page.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, kiem tra tung tab workspace, Back/Forward va refresh truc tiep `/friends`/`/settings`; neu loi thi tro `current` ve `previous` va recreate rieng `chat` tu release cu.
+- Commit/PR: Source `c0518de`; deploy follow-up commit trong lan lam viec nay.
+
 ## 2026-08-18-09 - Chuyen workspace sang route rieng
 
 - Thoi gian: 2026-08-18 09:31 (Asia/Saigon)
