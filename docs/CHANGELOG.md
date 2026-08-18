@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `npm run test:frontend` dat 125/125; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat.
 - Rui ro con lai: Chua UAT truc quan voi phien dang nhap production; chua deploy tu phien lam viec nay.
 - Viec tiep theo: Hard refresh production, bam `Danh ba -> Nhan tin`, gui tin nhan, mo lai room cu va kiem tra nhom/reload.
-- Commit/PR: Chua tao.
+- Commit/PR: Source `ad032d2`; chua push/deploy.
 
 ## 2026-08-18-21 - Mo chat tu danh ba khong bi chan boi provisioning
 
