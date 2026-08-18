@@ -208,6 +208,8 @@ function normalizeMessage(value, index) {
 // Normalize untrusted API/Tinode snapshots before any React code iterates them.
 export function normalizeConversationShape(conversation) {
   const source = conversationObject(conversation) || {};
+  const managementId = conversationText(source.managementId) || conversationText(source.management_id);
+  const tinodeTopic = conversationText(source.tinodeTopic) || conversationText(source.tinode_topic);
   const participantIds = conversationArray(source.participantIds)
     .map(value => conversationIdentity(conversationObject(value)?.id || value))
     .filter(Boolean);
@@ -223,6 +225,8 @@ export function normalizeConversationShape(conversation) {
   return {
     ...source,
     id: conversationIdentity(source.id),
+    managementId,
+    tinodeTopic,
     name: conversationText(source.name),
     isGroup,
     // Chatmgt snapshots carry authoritative account/member IDs. Tinode
@@ -230,8 +234,9 @@ export function normalizeConversationShape(conversation) {
     managementSnapshot: Boolean(source.managementSnapshot || source.management_snapshot),
     isChatbot: Boolean(source.isChatbot),
     avatarUrl: source.avatarUrl !== undefined || source.avatar !== undefined
-      ? conversationText(source.avatarUrl || source.avatar)
+      ? (conversationMedia(source.avatarUrl) || conversationMedia(source.avatar))
       : undefined,
+    avatarClass: conversationText(source.avatarClass),
     membersCount: conversationText(source.membersCount),
     description: conversationText(source.description),
     admin: conversationText(source.admin),
@@ -244,6 +249,7 @@ export function normalizeConversationShape(conversation) {
     time: conversationText(source.time),
     updatedAt: conversationText(source.updatedAt),
     deletedAt: conversationText(source.deletedAt),
+    category: conversationText(source.category),
     notificationMutedUntil: mutedUntil,
     badge: Number.isFinite(badge) ? badge : 0,
     pinned: Boolean(source.pinned),

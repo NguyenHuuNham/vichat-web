@@ -160,13 +160,13 @@ test('managed member removal does not re-bind an already bound topic first', () 
   assert.match(removeSource, /activeChat\.tinodeTopic \|\| await ensureTinodeConversationTopic\(activeChat\)/);
   assert.match(removeSource, /sendSystemEvent\(topicName, event\)\.catch/);
   assert.match(removeSource, /openConversation\(topicName\)\.catch/);
-  assert.match(removeSource, /\[stateConversationId\]: mergeTinodeConversation/);
+  assert.match(removeSource, /\[stateConversationId\]: safeMergeTinodeConversation/);
   assert.match(removeSource, /messages: roomMessages\(realtimeRoom\)\.length > 0/);
 });
 
 test('managed direct chats hydrate Tinode history before committing the room state', () => {
   assert.match(appSource, /const restoredRoom = await tinodeClient\.restoreConversation\(tinodeTopic\)/);
-  assert.match(appSource, /\[stateConversationId\]: mergeTinodeConversation\(previousRoom, restoredStateRoom\)/);
+  assert.match(appSource, /\[stateConversationId\]: safeMergeTinodeConversation\(previousRoom, restoredStateRoom\)/);
 });
 
 test('managed member addition keeps the Chatmgt id separate from the UI room key', () => {
@@ -174,7 +174,7 @@ test('managed member addition keeps the Chatmgt id separate from the UI room key
   assert.match(addSource, /const stateConversationId = activeChat\.id/);
   assert.match(addSource, /const managementConversationId = activeChat\.managementId \|\| stateConversationId/);
   assert.match(addSource, /addConversationParticipants\(\s*managementConversationId/);
-  assert.match(addSource, /\[stateConversationId\]: mergeTinodeConversation/);
+  assert.match(addSource, /\[stateConversationId\]: safeMergeTinodeConversation/);
 });
 
 test('marks Chatmgt conversation responses as authoritative membership snapshots', () => {
@@ -187,4 +187,11 @@ test('web self recall removes the local message while all recall keeps a placeho
     appSource,
     /if \(mode === 'self'\) \{[\s\S]*removeMessageFromConversation\(room, message\)[\s\S]*return;[\s\S]*\}[\s\S]*applyMessagePatch\(message,/,
   );
+});
+
+test('directory-started chats keep malformed rooms isolated from the app render', () => {
+  assert.match(appSource, /safeNormalizeConversationForRender/);
+  assert.match(appSource, /safeMergeTinodeConversation/);
+  assert.match(appSource, /<ConversationErrorBoundary/);
+  assert.doesNotMatch(appSource, /activeChat\.members\?/);
 });

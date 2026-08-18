@@ -6,6 +6,37 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-19 - Bao ve toan bo luong mo danh ba va chat 1-1
+
+- Thoi gian: 2026-08-18 16:32 (Asia/Saigon)
+- Loai: Sua loi | Web | Kiem thu
+- Trang thai: Hoan tat code; chua deploy va UAT
+- Muc tieu: Mo danh ba, bat dau chat voi moi tai khoan va tiep tuc cac luong chat khac ma khong de snapshot conversation loi lam crash toan bo ChatUI.
+- Pham vi: ChatUI normalize room, merge Chatmgt/Tinode, danh sach conversation, room 1-1, vung tin nhan, panel chi tiet va du lieu room realtime.
+- File da thay doi: `src/app/App.jsx`, `src/components/ConversationErrorBoundary.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `docs/CHANGELOG.md`, va bundle `dist/index.html`/asset thay doi tu build production.
+- Noi dung: Bo sung normalize room an toan co fallback theo key state, chuan hoa management ID/topic/avatar metadata, thay cac truy cap truc tiep `members/messages/participantIds` bang helper an toan, va bao ve tat ca callsite merge Tinode. Bao quanh tung item sidebar, vung tin nhan dang mo va panel chi tiet bang boundary rieng de mot room loi khong lam mat danh ba/navigation. Bao boc conversation event Tinode de bo qua packet loi va giu cac event presence/receipt khac hoat dong.
+- Quyet dinh ky thuat: Chatmgt van la nguon membership chuan; lop phong ve chi loai bo shape khong hop le tai bien gioi render, giu room hien tai neu merge realtime loi, va khong thay doi API, tenant, Tinode topic hay schema. Khong dung browser storage cho du lieu auth/chat.
+- Database/API/cau hinh: Khong migration, endpoint, secret hoac bien moi moi.
+- Kiem thu: `npm run test:frontend` dat 123/123; `npm run lint` exit 0 voi warning legacy da co tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat. Browser UAT chua chay vi moi truong hien tai khong co browser session kha dung.
+- Rui ro con lai: Chua hard refresh/UAT voi tai khoan UpGO that tren production, chua xac nhan payload danh ba va room 1-1 qua server Tinode trong trinh duyet. Bundle local da build nhung chua deploy.
+- Viec tiep theo: Deploy bundle, hard refresh `https://chat.upgo.vn/chat`, test danh ba -> Nhan tin, mo room cu, tao room moi, gui tin, nhom, them/xoa thanh vien va reload bang it nhat hai tai khoan cung tenant.
+- Commit/PR: Chua tao.
+
+## 2026-08-18-18 - Bao ve merge va render khong crash khi du lieu conversation malformed
+
+- Thoi gian: 2026-08-18 16:15 (Asia/Saigon)
+- Loai: Sua loi | Web | Kiem thu
+- Trang thai: Da build local; can deploy va UAT
+- Muc tieu: Khong de du lieu conversation malformed tu Chatmgt/Tinode crash toan bo ChatUI hien thi man hinh "Chat dang tam dung".
+- Pham vi: ChatUI merge conversation, render sidebar, event handler Tinode, khong doi Chatmgt, Tinode, auth, tenant, API hoac database.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `docs/CHANGELOG.md`.
+- Noi dung: Them `safeMergeTinodeConversation` wrapper boc `mergeTinodeConversation` trong try-catch de tra fallback thay vi crash; thay the tat ca 7 callsite cua `mergeTinodeConversation` bang wrapper an toan; boc toan bo Tinode `conversation` event handler trong try-catch de event malformed khong lam mat xu ly event; guard `renderConversations` voi try-catch va filter loai bo room loi normalize; guard sidebar search filter voi `String()` de `.toLocaleLowerCase()` khong crash tren gia tri non-string; dung `roomMembers(activeChat)` thay vi `activeChat.members` truc tiep de bao dam luon la array; cap nhat 3 assertion trong test de khop voi ten `safeMergeTinodeConversation`.
+- Quyet dinh ky thuat: Chien luoc "khong crash du du lieu sai" thay vi "normalize moi du lieu dung" — vi nguon du lieu Chatmgt + Tinode co the tra shape bat ky. `safeMergeTinodeConversation` log console.error de developer co the debug ma khong mat giao dien. Conversation event handler try-catch chi log loi va bo qua event, khong anh huong den cac event khac (presence, typing, receipt). `renderConversations` filter loai bo room khong hop le thay vi crash toan bo sidebar.
+- Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi.
+- Kiem thu: `npm run test:frontend` dat 122/122; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat.
+- Rui ro con lai: Chua UAT tren production voi tai khoan that; can hard refresh va test chat 1-1, nhom, them/xoa thanh vien, gui tin nhan.
+- Viec tiep theo: Deploy len production, hard refresh `https://chat.upgo.vn`, UAT bang tai khoan that; neu van loi, mo F12 Console de lay JavaScript error stack trace chinh xac.
+
 ## 2026-08-18-17 - Lam retry thanh vien Chatmgt Tinode idempotent
 
 - Thoi gian: 2026-08-18 15:16 (Asia/Saigon)

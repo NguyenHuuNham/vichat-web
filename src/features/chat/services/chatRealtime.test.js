@@ -74,9 +74,15 @@ test('conversation display names tolerate incomplete direct room metadata', () =
 test('normalizes malformed direct room metadata before the UI iterates it', () => {
   const room = normalizeConversationShape({
     id: 'direct-1',
+    managementId: { invalid: true },
+    management_id: 'managed-1',
+    tinodeTopic: { invalid: true },
+    tinode_topic: 'usr-peer-123456',
     name: { invalid: true },
     lastMsg: { invalid: true },
     avatarUrl: { invalid: true },
+    avatarClass: { invalid: true },
+    category: { invalid: true },
     members: {
       peer: { id: 'account-peer', name: 'Peer', username: { invalid: true } },
     },
@@ -94,8 +100,12 @@ test('normalizes malformed direct room metadata before the UI iterates it', () =
   });
 
   assert.equal(room.name, '');
+  assert.equal(room.managementId, 'managed-1');
+  assert.equal(room.tinodeTopic, 'usr-peer-123456');
   assert.equal(room.lastMsg, '');
   assert.equal(room.avatarUrl, '');
+  assert.equal(room.avatarClass, '');
+  assert.equal(room.category, '');
   assert.deepEqual(room.participantIds, ['account-viewer', 'account-peer']);
   assert.equal(room.members.length, 1);
   assert.equal(room.members[0].name, 'Peer');
