@@ -1,5 +1,31 @@
 export const TINODE_CONTACT_SYNC_DELAYS_MS = Object.freeze([120, 600, 1800]);
 
+const MANAGEMENT_CONVERSATION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isManagementConversationId(value) {
+  return MANAGEMENT_CONVERSATION_ID_PATTERN.test(String(value || ''));
+}
+
+export function conversationManagementMergePolicy(existing = {}, incoming = {}) {
+  const incomingManagementSnapshot = Boolean(
+    incoming?.managementSnapshot || incoming?.management_snapshot,
+  );
+  const managementId = incoming?.managementId
+    || existing?.managementId
+    || (incomingManagementSnapshot ? incoming?.id : existing?.id)
+    || incoming?.id;
+  const managementOwned = isManagementConversationId(managementId) && Boolean(
+    incomingManagementSnapshot
+      || existing?.accountSession
+      || incoming?.accountSession,
+  );
+
+  return {
+    managementOwned,
+    incomingManagementSnapshot: managementOwned && incomingManagementSnapshot,
+  };
+}
+
 export function resolvePreparedTinodeTopic(room, preparedRoom, cachedTopic = '') {
   return String(room?.tinodeTopic || preparedRoom?.tinodeTopic || cachedTopic || '').trim();
 }

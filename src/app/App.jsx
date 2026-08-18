@@ -6,8 +6,10 @@ import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation, normaliz
 import { chatManagementService, managementAuthClient } from '../features/chat/services/chatManagementService';
 import {
   applyReceiptToMessages,
+  conversationManagementMergePolicy,
   conversationDisplayName,
   firstVisibleConversationId,
+  isManagementConversationId,
   mergeDeliveryStatus,
   normalizeConversationShape,
   readyTinodeTypingTopic,
@@ -254,10 +256,6 @@ const MEDIA_DATE_FILTER_OPTIONS = Object.freeze([
 
 function tinodeTopicName(room) {
   return room?.tinodeTopic || room?.id || '';
-}
-
-function isManagementConversationId(value) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
 }
 
 function getTimeString() {
@@ -819,14 +817,15 @@ function mergeTinodeConversation(existing, incoming) {
   const messages = mergeTinodeMessages(safeExisting.messages, safeIncoming.messages);
   const friendEvents = mergeTinodeMessages(safeExisting.friendEvents, safeIncoming.friendEvents);
   const latestAttachmentPreview = attachmentConversationPreview(messages.at(-1));
-  const managementOwned = Boolean(
-    safeExisting.accountSession && isManagementConversationId(safeExisting.managementId || safeExisting.id),
-  );
-  const incomingManagementSnapshot = managementOwned && Boolean(
-    safeIncoming.managementSnapshot
+  const {
+    managementOwned,
+    incomingManagementSnapshot,
+  } = conversationManagementMergePolicy(safeExisting, {
+    ...safeIncoming,
+    managementSnapshot: safeIncoming.managementSnapshot
       || incoming?.managementSnapshot
       || incoming?.management_snapshot,
-  );
+  });
   const snapshotMembers = incomingManagementSnapshot
     ? safeIncoming.members
     : (safeIncoming.members.length ? safeIncoming.members : safeExisting.members);

@@ -3042,6 +3042,17 @@ async def conversation_participant_add(request, conversation_id):
                 added_tinode_uids,
             )
             tinode_members_added = True
+            active_participants, active_accounts = _active_conversation_accounts(item)
+            expected_member_uids = {
+                str(active_accounts[participant.participant_id].tinode_uid or "")
+                for participant in active_participants
+            }
+            await tinode_reconcile_topic_members(
+                tinode_token,
+                actor_account.tinode_uid,
+                item.tinode_topic,
+                expected_member_uids,
+            )
         db.session.commit()
         database_committed = True
         return json(_serialize_conversation(item, user_id))

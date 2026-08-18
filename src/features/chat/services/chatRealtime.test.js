@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   acknowledgeTopicReceived,
   applyReceiptToMessages,
+  conversationManagementMergePolicy,
   conversationDisplayName,
   deliveryStatusFromReceiptCursor,
   firstVisibleConversationId,
@@ -110,6 +111,29 @@ test('keeps the source of a management snapshot separate from Tinode realtime da
   assert.equal(normalizeConversationShape({ managementSnapshot: true }).managementSnapshot, true);
   assert.equal(normalizeConversationShape({ management_snapshot: true }).managementSnapshot, true);
   assert.equal(normalizeConversationShape({}).managementSnapshot, false);
+});
+
+test('accepts a first Chatmgt snapshot over an earlier Tinode-only room', () => {
+  const managementId = 'c86b5c06-9f90-4d27-b6e6-0123456789ab';
+  assert.deepEqual(conversationManagementMergePolicy(
+    { id: 'grpTinodeOnly', members: [{ id: 'usr-owner' }] },
+    {
+      id: managementId,
+      managementId,
+      managementSnapshot: true,
+      accountSession: 3,
+    },
+  ), {
+    managementOwned: true,
+    incomingManagementSnapshot: true,
+  });
+  assert.deepEqual(conversationManagementMergePolicy(
+    { id: managementId, managementId, accountSession: 3 },
+    { id: managementId, managementId, members: [{ id: 'usr-owner' }] },
+  ), {
+    managementOwned: true,
+    incomingManagementSnapshot: false,
+  });
 });
 
 test('initial selection skips empty Chatmgt direct metadata', () => {

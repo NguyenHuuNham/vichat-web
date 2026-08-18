@@ -408,6 +408,50 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
             "mode": "JRWPAS",
         })
 
+    async def test_add_member_treats_an_existing_tinode_subscription_as_success(self):
+        socket = FakeSocket([
+            {"ctrl": {"id": "1", "code": 201}},
+            {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrOwner"}}},
+            {"ctrl": {"id": "3", "code": 200}},
+            {"ctrl": {"id": "4", "code": 304, "text": "not modified"}},
+        ])
+        with self.config(), patch.object(
+            auth_service.aiohttp,
+            "ClientSession",
+            self.client_session(socket),
+        ):
+            added = await auth_service.tinode_add_topic_members(
+                "short-token",
+                "usrOwner",
+                "grpRoom",
+                ["usrMember"],
+            )
+
+        self.assertEqual(added, ["usrMember"])
+
+    async def test_add_member_does_not_roll_back_an_existing_subscription_after_later_failure(self):
+        socket = FakeSocket([
+            {"ctrl": {"id": "1", "code": 201}},
+            {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrOwner"}}},
+            {"ctrl": {"id": "3", "code": 200}},
+            {"ctrl": {"id": "4", "code": 304, "text": "not modified"}},
+            {"ctrl": {"id": "5", "code": 403, "text": "permission denied"}},
+        ])
+        with self.config(), patch.object(
+            auth_service.aiohttp,
+            "ClientSession",
+            self.client_session(socket),
+        ):
+            with self.assertRaises(auth_service.AuthError):
+                await auth_service.tinode_add_topic_members(
+                    "short-token",
+                    "usrOwner",
+                    "grpRoom",
+                    ["usrExisting", "usrRejected"],
+                )
+
+        self.assertFalse(any("del" in packet for packet in socket.sent))
+
     async def test_owner_transfer_is_accepted_by_the_replacement_user(self):
         socket = FakeSocket([
             {"ctrl": {"id": "1", "code": 201}},
@@ -487,6 +531,27 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
             "topic": "grpRoom",
             "unsub": True,
         })
+
+    async def test_remove_member_treats_an_already_missing_subscription_as_success(self):
+        socket = FakeSocket([
+            {"ctrl": {"id": "1", "code": 201}},
+            {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrOwner"}}},
+            {"ctrl": {"id": "3", "code": 200}},
+            {"ctrl": {"id": "4", "code": 404, "text": "subscription not found"}},
+        ])
+        with self.config(), patch.object(
+            auth_service.aiohttp,
+            "ClientSession",
+            self.client_session(socket),
+        ):
+            removed = await auth_service.tinode_remove_topic_member(
+                "short-token",
+                "usrOwner",
+                "grpRoom",
+                "usrMember",
+            )
+
+        self.assertEqual(removed, "usrMember")
 
     async def test_account_creation_preserves_server_failure_instead_of_retrying_as_conflict(self):
         socket = FakeSocket([

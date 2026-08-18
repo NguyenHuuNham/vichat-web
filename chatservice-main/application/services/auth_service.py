@@ -928,13 +928,15 @@ async def tinode_add_topic_members(token, expected_uid, topic_name, member_uids,
     url = "{}{}apikey={}".format(base_url, separator, quote(api_key, safe=""))
     timeout = aiohttp.ClientTimeout(total=int(app.config.get("TINODE_AUTH_TIMEOUT", 10)))
 
-    async def receive_ctrl(socket, request_id):
+    async def receive_ctrl(socket, request_id, accepted_codes=None):
+        accepted = set(accepted_codes or ())
         for _attempt in range(30):
             packet = await socket.receive_json()
             ctrl = packet.get("ctrl") or {}
             if str(ctrl.get("id") or "") != str(request_id):
                 continue
-            if int(ctrl.get("code") or 500) >= 300:
+            code = int(ctrl.get("code") or 500)
+            if code >= 300 and code not in accepted:
                 raise AuthError(
                     ctrl.get("text") or "Tinode rejected the group membership update.",
                     409,
@@ -953,7 +955,8 @@ async def tinode_add_topic_members(token, expected_uid, topic_name, member_uids,
                 raise AuthError("Tinode authenticated a different user.", 409)
             await socket.send_json({"sub": {"id": "3", "topic": topic_name, "get": {"what": "desc"}}})
             await receive_ctrl(socket, "3")
-            added = []
+            updated = []
+            created = []
             try:
                 for index, member_uid in enumerate(members, start=4):
                     await socket.send_json({
@@ -963,10 +966,12 @@ async def tinode_add_topic_members(token, expected_uid, topic_name, member_uids,
                             "sub": {"user": member_uid, "mode": mode},
                         },
                     })
-                    await receive_ctrl(socket, str(index))
-                    added.append(member_uid)
+                    ctrl = await receive_ctrl(socket, str(index), accepted_codes={304})
+                    updated.append(member_uid)
+                    if int(ctrl.get("code") or 500) < 300:
+                        created.append(member_uid)
             except AuthError:
-                for rollback_index, member_uid in enumerate(reversed(added), start=100):
+                for rollback_index, member_uid in enumerate(reversed(created), start=100):
                     await socket.send_json({
                         "del": {
                             "id": str(rollback_index),
@@ -976,11 +981,15 @@ async def tinode_add_topic_members(token, expected_uid, topic_name, member_uids,
                         },
                     })
                     try:
-                        await receive_ctrl(socket, str(rollback_index))
+                        await receive_ctrl(
+                            socket,
+                            str(rollback_index),
+                            accepted_codes={304, 404},
+                        )
                     except AuthError:
                         pass
                 raise
-            return added
+            return updated
 
 
 async def tinode_accept_topic_owner(token, expected_uid, topic_name, mode="JRWPASO"):
@@ -1040,13 +1049,15 @@ async def tinode_remove_topic_member(token, expected_uid, topic_name, member_uid
     url = "{}{}apikey={}".format(base_url, separator, quote(api_key, safe=""))
     timeout = aiohttp.ClientTimeout(total=int(app.config.get("TINODE_AUTH_TIMEOUT", 10)))
 
-    async def receive_ctrl(socket, request_id):
+    async def receive_ctrl(socket, request_id, accepted_codes=None):
+        accepted = set(accepted_codes or ())
         for _attempt in range(30):
             packet = await socket.receive_json()
             ctrl = packet.get("ctrl") or {}
             if str(ctrl.get("id") or "") != str(request_id):
                 continue
-            if int(ctrl.get("code") or 500) >= 300:
+            code = int(ctrl.get("code") or 500)
+            if code >= 300 and code not in accepted:
                 raise AuthError(
                     ctrl.get("text") or "Tinode rejected the group membership update.",
                     409,
@@ -1082,7 +1093,7 @@ async def tinode_remove_topic_member(token, expected_uid, topic_name, member_uid
                         "user": target_uid,
                     },
                 })
-            await receive_ctrl(socket, "4")
+            await receive_ctrl(socket, "4", accepted_codes={304, 404})
             return target_uid
 
 

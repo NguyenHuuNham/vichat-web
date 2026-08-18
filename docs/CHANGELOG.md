@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-17 - Lam retry thanh vien Chatmgt Tinode idempotent
+
+- Thoi gian: 2026-08-18 15:16 (Asia/Saigon)
+- Loai: Sua loi | Web | Chatmgt | Realtime | Kiem thu
+- Trang thai: Hoan tat code; chua deploy production
+- Muc tieu: Khac phuc truong hop mo chat hoac them/xoa thanh vien van khong hoat dong sau deploy khi snapshot Chatmgt den sau snapshot Tinode, token Tinode can lam moi, hoac retry gap subscription da duoc thay doi.
+- Pham vi: ChatUI merge snapshot va request membership; Chatmgt bridge them/xoa/reconcile subscriber Tinode; khong doi schema, tenant, auth source, message content hay service stateful.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `chatservice-main/application/services/auth_service.py`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_tinode_bridge_service.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/CHANGELOG.md`.
+- Noi dung: Bo sung policy de snapshot Chatmgt dau tien thay duoc UID/account membership cua room Tinode cu; membership request tai su dung Tinode auth dang co, tu xin token neu phien restore chua co token va retry mot lan sau khi lam moi token ke ca khi bridge tra 409; bridge coi add 304 va remove 304/404 sau khi subscribe topic thanh cong la ket qua idempotent, khong rollback nham subscription da ton tai, sau add doi chieu lai tap subscriber voi Chatmgt.
+- Quyet dinh ky thuat: Chatmgt van la nguon membership chuan; retry chi chap nhan ket qua Tinode an toan sau khi actor da dang nhap/subscribed dung topic, khong nuot loi topic, tenant hay quyen.
+- Database/API/cau hinh: Khong migration, endpoint, payload, secret hoac bien moi; chi lam ro semantics retry cua API participant hien co.
+- Kiem thu: `npm run test:frontend` dat 122/122; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat, bundle local tao `App-BsmhbJfQ.js`; `python -m unittest discover -s tests -v` lan chay xac nhan dat 167 test, bo qua 56 test do dependency chi co trong image Chatmgt (lan dau gap mot loi localhost Windows `WinError 10053`, test do va toan suite deu dat khi chay lai); `python -m unittest tests.test_tinode_bridge_service -v` dat 18/18 voi `aiohttp 3.10.11` va `bcrypt 4.2.1` trong thu muc tam; `python -m unittest tests.test_chat_auth_contract -v` dat 36/36; `python -m py_compile application/services/auth_service.py application/controllers/api_chat_management.py tests/test_tinode_bridge_service.py tests/test_chat_auth_contract.py` va `git diff --check` dat.
+- Rui ro con lai: Chua co browser session/tai khoan production de xem request loi thuc te; public production van phuc vu bundle cu `App-BoNit3Ko.js`, nen chua the ket luan UAT da dat.
+- Viec tiep theo: Tao release/deploy rieng Chatmgt va ChatUI, sau do hard refresh va UAT room 1-1, them/xoa member nhom va gui tin sau retry; khong restart database, Redis, Tinode bridge hay Coturn.
+- Commit/PR: Chua tao.
+
 ## 2026-08-18-16 - Sua mapping room va retry them xoa thanh vien
 
 - Thoi gian: 2026-08-18 14:00 (Asia/Saigon)

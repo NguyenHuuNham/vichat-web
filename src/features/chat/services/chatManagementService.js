@@ -34,6 +34,24 @@ export function tinodeRefreshPayload(auth, password) {
   return { password: String(password) };
 }
 
+export function shouldRequestTinodeAuth(session, force = false) {
+  return Boolean(force || session?.connection === 'tinode' || session?.tinodeAuth?.token);
+}
+
+export function shouldRetryTinodeMembership(error) {
+  return ['TINODE_TOKEN_REQUIRED', 'TINODE_MEMBERSHIP_FAILED'].includes(error?.code)
+    && [400, 401, 403, 409].includes(Number(error?.status));
+}
+
+export async function retryTinodeMembershipRequest(request, retryAvailable = true) {
+  try {
+    return await request(false);
+  } catch (error) {
+    if (!retryAvailable || !shouldRetryTinodeMembership(error)) throw error;
+    return request(true);
+  }
+}
+
 function readStorage(key, fallback) {
   if (typeof window === 'undefined') return fallback;
   try {
@@ -188,6 +206,26 @@ async function apiRequest(path, options = {}) {
     throw error;
   }
   return payload;
+}
+
+async function membershipApiRequest(path, method, body = {}) {
+  const request = async force => {
+    const tinodeAuth = shouldRequestTinodeAuth(activeSession, force)
+      ? await chatManagementService.getFreshTinodeAuth({ force })
+      : null;
+    return apiRequest(path, {
+      method,
+      body: JSON.stringify({
+        ...body,
+        tinode_token: tinodeAuth?.token || '',
+      }),
+    });
+  };
+
+  return retryTinodeMembershipRequest(
+    request,
+    Boolean(activeSession),
+  );
 }
 
 function normalizeConversation(record) {
@@ -513,28 +551,20 @@ export const chatManagementService = {
 
   async addConversationParticipants(conversationId, participantIds = []) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
-    const tinodeAuth = activeSession?.connection === 'tinode'
-      ? await this.getFreshTinodeAuth()
-      : null;
-    const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/participants`, {
-      method: 'POST',
-      body: JSON.stringify({
-        participant_ids: participantIds,
-        tinode_token: tinodeAuth?.token || '',
-      }),
-    });
+    const payload = await membershipApiRequest(
+      `/api/v1/conversation/${encodeURIComponent(conversationId)}/participants`,
+      'POST',
+      { participant_ids: participantIds },
+    );
     return normalizeConversation(payload);
   },
 
   async removeConversationParticipant(conversationId, participantId) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
-    const tinodeAuth = activeSession?.connection === 'tinode'
-      ? await this.getFreshTinodeAuth()
-      : null;
-    const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/participants/${encodeURIComponent(participantId)}`, {
-      method: 'DELETE',
-      body: JSON.stringify({ tinode_token: tinodeAuth?.token || '' }),
-    });
+    const payload = await membershipApiRequest(
+      `/api/v1/conversation/${encodeURIComponent(conversationId)}/participants/${encodeURIComponent(participantId)}`,
+      'DELETE',
+    );
     return normalizeConversation(payload);
   },
 

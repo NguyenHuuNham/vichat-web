@@ -2,7 +2,17 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { chatManagementService, employeeLoginPayload, managementAuthClient, normalizeChatAuthMode, normalizeTenantOptions, tinodeRefreshPayload } from './chatManagementService.js';
+import {
+  chatManagementService,
+  employeeLoginPayload,
+  managementAuthClient,
+  normalizeChatAuthMode,
+  normalizeTenantOptions,
+  retryTinodeMembershipRequest,
+  shouldRequestTinodeAuth,
+  shouldRetryTinodeMembership,
+  tinodeRefreshPayload,
+} from './chatManagementService.js';
 
 const appSource = readFileSync(new URL('../../../app/App.jsx', import.meta.url), 'utf8');
 const managementServiceSource = readFileSync(new URL('./chatManagementService.js', import.meta.url), 'utf8');
@@ -44,6 +54,34 @@ test('resends the employee password only when the volatile Tinode token needs re
     token: 'expired-token',
     expires: Date.now() / 1000 - 10,
   }, ''), {});
+});
+
+test('membership mutations reuse or refresh any available Tinode session', () => {
+  assert.equal(shouldRequestTinodeAuth({ connection: 'tinode' }), true);
+  assert.equal(shouldRequestTinodeAuth({ connection: 'management', tinodeAuth: { token: 'short-token' } }), true);
+  assert.equal(shouldRequestTinodeAuth({ connection: 'management' }), false);
+  assert.equal(shouldRequestTinodeAuth({ connection: 'management' }, true), true);
+  assert.equal(shouldRetryTinodeMembership({ code: 'TINODE_MEMBERSHIP_FAILED', status: 401 }), true);
+  assert.equal(shouldRetryTinodeMembership({ code: 'TINODE_MEMBERSHIP_FAILED', status: 409 }), true);
+  assert.equal(shouldRetryTinodeMembership({ code: 'TINODE_TOKEN_REQUIRED', status: 400 }), true);
+  assert.equal(shouldRetryTinodeMembership({ code: 'TENANT_VIOLATION', status: 400 }), false);
+});
+
+test('membership mutations retry exactly once with a forced Tinode refresh', async () => {
+  const attempts = [];
+  const result = await retryTinodeMembershipRequest(async force => {
+    attempts.push(force);
+    if (!force) {
+      const error = new Error('expired');
+      error.code = 'TINODE_MEMBERSHIP_FAILED';
+      error.status = 401;
+      throw error;
+    }
+    return 'updated';
+  });
+
+  assert.equal(result, 'updated');
+  assert.deepEqual(attempts, [false, true]);
 });
 
 test('restores a cookie-backed session after a full page reload', () => {
@@ -141,7 +179,7 @@ test('managed member addition keeps the Chatmgt id separate from the UI room key
 
 test('marks Chatmgt conversation responses as authoritative membership snapshots', () => {
   assert.match(managementServiceSource, /managementSnapshot: true/);
-  assert.match(appSource, /safeIncoming\.managementSnapshot/);
+  assert.match(appSource, /conversationManagementMergePolicy/);
 });
 
 test('web self recall removes the local message while all recall keeps a placeholder', () => {
