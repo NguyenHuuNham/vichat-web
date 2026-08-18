@@ -6,11 +6,27 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-12 - Deploy sua mention/reply va quan ly nhom ChatUI
+
+- Thoi gian: 2026-08-18 11:08 (Asia/Saigon)
+- Loai: Trien khai | Van hanh | Xac thuc | Kiem thu
+- Trang thai: Da deploy production; san sang UAT
+- Muc tieu: Dua cac sua loi mention/reply, them thanh vien, avatar nhom va i18n len ChatUI production de kiem thu voi tai khoan UpGO/Tinode that.
+- Pham vi: Chi ChatUI; khong thay doi Chatmgt, Tinode, bridge, chatbot webhook, ChatAPI, PostgreSQL, Redis, Coturn, database hoac migration.
+- File da thay doi: Archive `/opt/deploy/chat/releases/group-mentions-81f3ff3-20260818-110852`; symlink `current` tro release moi, `previous` tro `workspace-routes-c0518de-20260818-100046-r1`; image ChatUI `sha256:ccb8ed60bed4e0676ef436e9aa0bafd13701f72135609cd0ac93917f512886d1`.
+- Noi dung: Archive source `81f3ff3` co SHA-256 `d4aa2b5faf96c67bc8f5410d334e211a9e3022f5421894b9cdbf722c717ac47f`; copy `.env` va runtime production hien tai; build va `up -d --no-deps --force-recreate --no-build chat` tu release moi.
+- Quyet dinh ky thuat: Chi recreate service `chat` sau khi `docker compose config -q` va image build dat; khong dung `docker compose down`, khong recreate service stateful hoac Chatmgt.
+- Database/API/cau hinh: Khong migration, endpoint moi, secret hay bien moi; giu nguyen cau hinh production.
+- Kiem thu: Local `npm run test:frontend` dat 110/110; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` dat; `git diff --check` dat. Remote archive hash khop; Compose config dat; bundle build tao `App-CRbewZAb.js`; ChatUI healthy; local/public `/healthz` tra `ok`; public bundle HTTP 200 co marker `x-mentions`, `x-reply-to`, `updateGroupAvatar`; Chatmgt auth health `status=ok`; `nginx -t` dat; log ChatUI 10 phut khong co fatal marker; container Chatmgt, Tinode bridge/webhook, ChatAPI, PostgreSQL, Redis va Coturn giu nguyen ID/trang thai.
+- Rui ro con lai: Chua UAT truc quan bang tai khoan that cho mention mau xanh, reply tu dong tag, them/xoa thanh vien, doi avatar nhom va chuyen Viet-Anh; browser runtime local truoc do khong tao duoc kernel asset.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, kiem tra group mention/reply/member/avatar va hai ngon ngu; neu loi thi tro `current` ve `previous` va recreate rieng `chat` tu release cu.
+- Commit/PR: Source `fe3f019`; docs `81f3ff3`; deploy follow-up dang cho.
+
 ## 2026-08-18-11 - Sua mention/reply va quan ly thanh vien nhom
 
 - Thoi gian: 2026-08-18 11:00 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | UX | Web | Kiem thu
-- Trang thai: Da commit; chua deploy production
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Mention trong o soan tin phai hien mau xanh, reply trong nhom phai tu dong tag nguoi duoc tra loi, va thong tin nhom phai cho phep them thanh vien tu danh ba theo dung quyen.
 - Pham vi: ChatUI composer/reply, Tinode group event, Chatmgt participant flow, demo group store, avatar nhom, i18n va CSS; khong doi tenant/auth hay cac luong chat khac.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/tinodeClient.js`, `src/features/demo/services/demoGroupStore.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `docs/CHANGELOG.md`.
@@ -19,8 +35,8 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong co migration, endpoint moi, secret hay bien moi; tai su dung API participant hien co va Tinode topic metadata.
 - Kiem thu: `npm run test:frontend` dat 110/110; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va vendor `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat. Da khoi dong Vite local de kiem tra nhung Browser runtime khong tao duoc kernel asset nen chua hoan tat visual UAT.
 - Rui ro con lai: Chua UAT truc quan bang tai khoan UpGO/Tinode that cho mention, reply, them thanh vien va doi avatar; nhom demo luu anh data URL phu thuoc dung luong localStorage.
-- Viec tiep theo: Push commit, deploy release ChatUI bat bien va chay UAT production.
-- Commit/PR: Source `fe3f019`; deploy follow-up dang cho.
+- Viec tiep theo: Hard refresh production va chay UAT voi tai khoan UpGO/Tinode that.
+- Commit/PR: Source `fe3f019`; docs `81f3ff3`; deploy follow-up o muc 2026-08-18-12.
 
 ## 2026-08-18-10 - Deploy workspace route ChatUI
 
