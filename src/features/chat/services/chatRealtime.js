@@ -199,6 +199,9 @@ export function normalizeConversationShape(conversation) {
     id: conversationIdentity(source.id),
     name: conversationText(source.name),
     isGroup,
+    // Chatmgt snapshots carry authoritative account/member IDs. Tinode
+    // snapshots only carry realtime UIDs and must not replace that mapping.
+    managementSnapshot: Boolean(source.managementSnapshot || source.management_snapshot),
     isChatbot: Boolean(source.isChatbot),
     avatarUrl: source.avatarUrl !== undefined || source.avatar !== undefined
       ? conversationText(source.avatarUrl || source.avatar)

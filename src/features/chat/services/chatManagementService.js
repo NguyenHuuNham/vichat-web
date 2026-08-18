@@ -201,6 +201,7 @@ function normalizeConversation(record) {
     id: managementId,
     managementId,
     tinodeTopic,
+    managementSnapshot: true,
     name: record?.name || record?.subject || properties.name || 'Cuoc tro chuyen',
     isGroup: record?.isGroup ?? properties.isGroup ?? properties.is_group ?? false,
     avatarHtml: record?.avatarHtml,

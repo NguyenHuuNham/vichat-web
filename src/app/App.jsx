@@ -822,7 +822,11 @@ function mergeTinodeConversation(existing, incoming) {
   const managementOwned = Boolean(
     safeExisting.accountSession && isManagementConversationId(safeExisting.managementId || safeExisting.id),
   );
-  const incomingManagementSnapshot = managementOwned && Array.isArray(incoming?.participantIds);
+  const incomingManagementSnapshot = managementOwned && Boolean(
+    safeIncoming.managementSnapshot
+      || incoming?.managementSnapshot
+      || incoming?.management_snapshot,
+  );
   const snapshotMembers = incomingManagementSnapshot
     ? safeIncoming.members
     : (safeIncoming.members.length ? safeIncoming.members : safeExisting.members);
@@ -841,6 +845,7 @@ function mergeTinodeConversation(existing, incoming) {
   return {
     ...safeExisting,
     ...safeIncoming,
+    managementSnapshot: safeExisting.managementSnapshot || safeIncoming.managementSnapshot,
     name: managementOwned && !incomingManagementSnapshot
       ? existingName || incomingName || fallbackName
       : incomingName || existingName || fallbackName,
@@ -3455,6 +3460,7 @@ function App() {
           });
           if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
         }
+        tinodeTopic = tinodeTopic || managedRoom.tinodeTopic || '';
         stateConversationId = managedRoom.id;
         const managedStateRoom = {
           ...managedRoom,
@@ -3469,7 +3475,22 @@ function App() {
         };
         if (chatMode === 'tinode') {
           tinodeTopic = await ensureTinodeConversationTopic(managedStateRoom);
-          await tinodeClient.restoreConversation(tinodeTopic);
+          const restoredRoom = await tinodeClient.restoreConversation(tinodeTopic);
+          if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
+          const previousRoom = conversationsRef.current[stateConversationId] || managedStateRoom;
+          const restoredStateRoom = {
+            ...restoredRoom,
+            id: stateConversationId,
+            managementId: managedRoom.managementId || stateConversationId,
+            tinodeTopic,
+            accountSession,
+          };
+          const restoredRooms = {
+            ...conversationsRef.current,
+            [stateConversationId]: mergeTinodeConversation(previousRoom, restoredStateRoom),
+          };
+          conversationsRef.current = restoredRooms;
+          setConversations(restoredRooms);
         }
       }
       const previousRooms = conversationsRef.current;
@@ -4047,6 +4068,8 @@ function App() {
       .filter(Boolean);
     if (selectedMembers.length === 0) return;
 
+    const stateConversationId = activeChat.id;
+    const managementConversationId = activeChat.managementId || stateConversationId;
     setIsAddingGroupMembers(true);
     setChatError('');
     try {
@@ -4069,11 +4092,17 @@ function App() {
       if (usesManagementData) {
         const accountSession = accountSessionRef.current;
         const managedRoom = await chatManagementService.addConversationParticipants(
-          activeChat.managementId || activeChat.id,
+          managementConversationId,
           selectedIds,
         );
         if (chatMode === 'tinode') {
-          const topicName = activeChat.tinodeTopic || managedRoom.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
+          const topicName = activeChat.tinodeTopic
+            || managedRoom.tinodeTopic
+            || await ensureTinodeConversationTopic({
+              ...activeChat,
+              id: stateConversationId,
+              managementId: managementConversationId,
+            });
           const realtimeRoom = await tinodeClient.openConversation(topicName);
           await tinodeClient.sendSystemEvent(topicName, {
             action: 'member_added',
@@ -4087,16 +4116,20 @@ function App() {
           updatedRoom = {
             ...normalizeTinodeConversation(realtimeRoom),
             ...managedRoom,
-            id: activeChat.id,
-            managementId: activeChat.managementId || activeChat.id,
+            id: stateConversationId,
+            managementId: managementConversationId,
             tinodeTopic: topicName,
             accountSession,
+            managementSnapshot: true,
             messages: roomMessages(realtimeRoom).length > 0 ? roomMessages(realtimeRoom) : roomMessages(activeChat),
           };
         } else {
           updatedRoom = {
             ...normalizeTinodeConversation(managedRoom),
+            id: stateConversationId,
+            managementId: managementConversationId,
             accountSession,
+            managementSnapshot: true,
             messages: roomMessages(activeChat),
           };
         }
@@ -4128,10 +4161,10 @@ function App() {
         updatedRoom = demoGroupToConversation(groupWithEvent, directoryAccounts, actorId);
       }
       setConversations(previous => {
-        const currentRoom = previous[activeChat.id] || activeChat;
+        const currentRoom = previous[stateConversationId] || activeChat;
         const next = {
           ...previous,
-          [activeChat.id]: mergeTinodeConversation(currentRoom, updatedRoom),
+          [stateConversationId]: mergeTinodeConversation(currentRoom, updatedRoom),
         };
         conversationsRef.current = next;
         return next;
@@ -4163,20 +4196,30 @@ function App() {
     if (removingMemberId || !canRemoveGroupMember(activeChat, directoryAccounts, currentUser, member)) return;
     if (!window.confirm(appCopy.t(`Bạn có chắc muốn xóa ${member.name} khỏi nhóm "${activeChat.name}"?`))) return;
 
-    setRemovingMemberId(member.id);
+    const stateConversationId = activeChat.id;
+    const managementConversationId = activeChat.managementId || stateConversationId;
+    const memberIdentity = member.id || member.uid || member.tinodeUid || member.tinode_uid || member.name;
+    setRemovingMemberId(memberIdentity);
     setChatError('');
     try {
+      const memberAccount = findAccount(directoryAccounts, memberIdentity)
+        || findAccount(activeChat.members, memberIdentity);
       const event = {
         action: 'member_removed',
         actorId: viewerId,
         actorName: currentUser?.name,
-        targets: [{ id: member.id, name: member.name }],
+        targets: [{
+          id: memberAccount?.tinodeUid
+            || memberAccount?.tinode_uid
+            || member.tinodeUid
+            || member.tinode_uid
+            || member.uid
+            || member.id,
+          name: member.name,
+        }],
       };
       let updatedRoom;
       if (usesManagementData) {
-        const memberAccount = findAccount(directoryAccounts, member.id || member.uid || member.name)
-          || findAccount(activeChat.members, member.id || member.uid || member.name)
-          || member;
         if (!memberAccount?.id) throw new Error('Chatmgt không xác định được thành viên cần xóa.');
         if (chatMode === 'tinode') {
           // A bound topic is already managed by Chatmgt; do not re-bind it
@@ -4184,7 +4227,7 @@ function App() {
           // exactly the inconsistency this operation is repairing.
           const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
           const managedRoom = await chatManagementService.removeConversationParticipant(
-            activeChat.managementId || activeChat.id,
+            managementConversationId,
             memberAccount.id,
           );
           await tinodeClient.sendSystemEvent(topicName, event).catch(() => {});
@@ -4194,21 +4237,25 @@ function App() {
           updatedRoom = {
             ...normalizeTinodeConversation(realtimeRoom),
             ...managedRoom,
-            id: activeChat.id,
-            managementId: activeChat.managementId || activeChat.id,
+            id: stateConversationId,
+            managementId: managementConversationId,
             tinodeTopic: topicName,
             accountSession: accountSessionRef.current,
-            messages: realtimeRoom.messages || [],
+            managementSnapshot: true,
+            messages: roomMessages(realtimeRoom).length > 0 ? roomMessages(realtimeRoom) : roomMessages(activeChat),
           };
         } else {
           const managedRoom = await chatManagementService.removeConversationParticipant(
-            activeChat.managementId || activeChat.id,
+            managementConversationId,
             memberAccount.id,
           );
           updatedRoom = {
             ...normalizeTinodeConversation(managedRoom),
+            id: stateConversationId,
+            managementId: managementConversationId,
             accountSession: accountSessionRef.current,
-          messages: roomMessages(activeChat),
+            managementSnapshot: true,
+            messages: roomMessages(activeChat),
           };
         }
       } else {
@@ -4227,10 +4274,19 @@ function App() {
         const groupWithEvent = appendDemoGroupMessage(group.id, systemMessage);
         updatedRoom = demoGroupToConversation(groupWithEvent, directoryAccounts, viewerId);
       }
-      setConversations(previous => ({
-        ...previous,
-        [updatedRoom.id]: mergeTinodeConversation(previous[updatedRoom.id], updatedRoom),
-      }));
+      setConversations(previous => {
+        const currentRoom = previous[stateConversationId] || activeChat;
+        const next = {
+          ...previous,
+          [stateConversationId]: mergeTinodeConversation(currentRoom, {
+            ...updatedRoom,
+            id: stateConversationId,
+            managementId: managementConversationId,
+          }),
+        };
+        conversationsRef.current = next;
+        return next;
+      });
     } catch (error) {
       setChatError(error?.message || 'Không thể xóa thành viên khỏi nhóm.');
     } finally {

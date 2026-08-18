@@ -401,6 +401,8 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("TINODE_TOKEN_REQUIRED", remove_source)
         self.assertIn('mode="JRWPASO"', remove_source)
         self.assertIn('mode="JRWPAS"', remove_source)
+        self.assertIn("known_target = ConversationParticipant.query.filter", remove_source)
+        self.assertIn("already inactive membership", remove_source)
         if CHAT_APP_PATH.exists():
             app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
             leave_source = app_source.split("const handleLeaveGroup", 1)[1].split(

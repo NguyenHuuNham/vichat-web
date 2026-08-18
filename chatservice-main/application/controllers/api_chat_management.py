@@ -3105,6 +3105,18 @@ async def conversation_participant_remove(request, conversation_id, participant_
         ConversationParticipant.deleted.is_(False),
     ).first()
     if target is None:
+        # Retries are normal after a successful Tinode mutation. Treat an
+        # already inactive membership as an idempotent success while keeping
+        # an unknown participant a real 404.
+        known_target = ConversationParticipant.query.filter(
+            ConversationParticipant.tenant_id == tenant_id,
+            ConversationParticipant.conversation_id == item.id,
+            ConversationParticipant.participant_id == participant_id,
+        ).first()
+        if known_target is not None and (
+            known_target.active is not True or known_target.deleted is True
+        ):
+            return json(_serialize_conversation(item, user_id))
         return json({"error_code": "NOT_FOUND", "error_message": "Participant not found."}, status=404)
     if target.role == "OWNER" and participant_id != user_id:
         return json({"error_code": "OWNER_REQUIRED", "error_message": "The group owner cannot be removed."}, status=409)

@@ -122,6 +122,26 @@ test('managed member removal does not re-bind an already bound topic first', () 
   assert.match(removeSource, /activeChat\.tinodeTopic \|\| await ensureTinodeConversationTopic\(activeChat\)/);
   assert.match(removeSource, /sendSystemEvent\(topicName, event\)\.catch/);
   assert.match(removeSource, /openConversation\(topicName\)\.catch/);
+  assert.match(removeSource, /\[stateConversationId\]: mergeTinodeConversation/);
+  assert.match(removeSource, /messages: roomMessages\(realtimeRoom\)\.length > 0/);
+});
+
+test('managed direct chats hydrate Tinode history before committing the room state', () => {
+  assert.match(appSource, /const restoredRoom = await tinodeClient\.restoreConversation\(tinodeTopic\)/);
+  assert.match(appSource, /\[stateConversationId\]: mergeTinodeConversation\(previousRoom, restoredStateRoom\)/);
+});
+
+test('managed member addition keeps the Chatmgt id separate from the UI room key', () => {
+  const addSource = appSource.split('const handleAddGroupMembers')[1].split('const closeCreateGroupModal')[0];
+  assert.match(addSource, /const stateConversationId = activeChat\.id/);
+  assert.match(addSource, /const managementConversationId = activeChat\.managementId \|\| stateConversationId/);
+  assert.match(addSource, /addConversationParticipants\(\s*managementConversationId/);
+  assert.match(addSource, /\[stateConversationId\]: mergeTinodeConversation/);
+});
+
+test('marks Chatmgt conversation responses as authoritative membership snapshots', () => {
+  assert.match(managementServiceSource, /managementSnapshot: true/);
+  assert.match(appSource, /safeIncoming\.managementSnapshot/);
 });
 
 test('web self recall removes the local message while all recall keeps a placeholder', () => {

@@ -106,6 +106,12 @@ test('normalizes malformed direct room metadata before the UI iterates it', () =
   assert.deepEqual(room.messages[0].reactions, { heart: 2 });
 });
 
+test('keeps the source of a management snapshot separate from Tinode realtime data', () => {
+  assert.equal(normalizeConversationShape({ managementSnapshot: true }).managementSnapshot, true);
+  assert.equal(normalizeConversationShape({ management_snapshot: true }).managementSnapshot, true);
+  assert.equal(normalizeConversationShape({}).managementSnapshot, false);
+});
+
 test('initial selection skips empty Chatmgt direct metadata', () => {
   const conversations = {
     empty: { messages: [] },
