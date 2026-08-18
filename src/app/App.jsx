@@ -1539,14 +1539,18 @@ function App() {
   const selectedLanguage = APP_LANGUAGE_OPTIONS.find(option => option.id === settings.language)
     || APP_LANGUAGE_OPTIONS[0];
   const pinViewerId = currentUser?.id || currentUser?.uid || '';
+  const isCurrentUserOnline = Boolean(
+    isLoggedIn && currentUser && (chatMode !== 'tinode' || connectionStatus === 'online')
+  );
+  const isAccountOnline = account => identitiesOverlap(account, currentUser)
+    ? isCurrentUserOnline
+    : Boolean(account?.online);
+
   const accountPresenceLabel = account => {
     if (usesManagementData && chatMode !== 'tinode') return appCopy.t('Danh bạ Chatmgt');
     return appCopy.t(isAccountOnline(account) ? 'Đang hoạt động' : 'Ngoại tuyến');
   };
 
-  const isCurrentUserOnline = Boolean(
-    isLoggedIn && currentUser && (chatMode !== 'tinode' || connectionStatus === 'online')
-  );
   const activeChatMembers = roomMembers(activeChat);
   const activeGroupPresence = activeChat.isGroup
     ? countGroupPresence(activeChatMembers, currentUser, isCurrentUserOnline)
@@ -2004,10 +2008,6 @@ function App() {
       return changed ? next : previous;
     });
   }, []);
-
-  const isAccountOnline = account => identitiesOverlap(account, currentUser)
-    ? isCurrentUserOnline
-    : Boolean(account?.online);
 
   useEffect(() => {
     if (!viewerId) return;
@@ -6010,52 +6010,58 @@ function App() {
          ========================================================================== */}
       <section className="chat-main" onPasteCapture={handleMessagePaste} onPaste={handleMessagePaste}>
         {/* Header khung chat */}
-        <div className="chat-main-header">
-          <div className="chat-header-info">
-            <button className="btn-back-mobile" onClick={() => setIsMobileChatActive(false)}>
-              <i className="fa-solid fa-arrow-left"></i>
-            </button>
-            <div className={`chat-header-avatar ${activeChat.avatarClass || ''}`}>
-              <ConversationAvatar room={activeChat} />
+        <ConversationErrorBoundary
+          key={`${activeChat.id}:header`}
+          scope="chat header"
+          fallback={<div className="chat-main-header conversation-render-error" role="alert">Conversation header unavailable.</div>}
+        >
+          <div className="chat-main-header">
+            <div className="chat-header-info">
+              <button className="btn-back-mobile" onClick={() => setIsMobileChatActive(false)}>
+                <i className="fa-solid fa-arrow-left"></i>
+              </button>
+              <div className={`chat-header-avatar ${activeChat.avatarClass || ''}`}>
+                <ConversationAvatar room={activeChat} />
+              </div>
+              <div className="chat-header-meta">
+                <h2 className="chat-header-name">{activeChat.name}</h2>
+                <span className={`chat-header-status ${activeChat.isGroup ? 'group-presence' : ''}`}>
+                  {activeChatPresenceLabel}
+                </span>
+              </div>
             </div>
-            <div className="chat-header-meta">
-              <h2 className="chat-header-name">{activeChat.name}</h2>
-              <span className={`chat-header-status ${activeChat.isGroup ? 'group-presence' : ''}`}>
-                {activeChatPresenceLabel}
-              </span>
+            <div className="chat-header-actions">
+              <button className="btn-header-action" title={appCopy.t('Tìm kiếm')} onClick={() => openWorkspacePanel('search')}>
+                <i className="fa-solid fa-magnifying-glass"></i>
+              </button>
+              {CALLS_ENABLED && (
+                <>
+                  <button
+                    type="button"
+                    className="btn-header-action"
+                    title={callActionCapability.available ? appCopy.t('Gọi thoại') : appCopy.t(callActionCapability.reason)}
+                    onClick={() => handleStartCall(true)}
+                    disabled={!callActionCapability.available}
+                  >
+                    <i className="fa-solid fa-phone"></i>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-header-action"
+                    title={callActionCapability.available ? appCopy.t('Gọi video') : appCopy.t(callActionCapability.reason)}
+                    onClick={() => handleStartCall(false)}
+                    disabled={!callActionCapability.available}
+                  >
+                    <i className="fa-solid fa-video"></i>
+                  </button>
+                </>
+              )}
+              <button className="btn-header-action" title={appCopy.t('Thông tin nhóm')} onClick={() => setIsDetailOpen(!isDetailOpen)}>
+                <i className="fa-solid fa-ellipsis-vertical"></i>
+              </button>
             </div>
           </div>
-          <div className="chat-header-actions">
-            <button className="btn-header-action" title={appCopy.t('Tìm kiếm')} onClick={() => openWorkspacePanel('search')}>
-              <i className="fa-solid fa-magnifying-glass"></i>
-            </button>
-            {CALLS_ENABLED && (
-              <>
-                <button
-                  type="button"
-                  className="btn-header-action"
-                  title={callActionCapability.available ? appCopy.t('Gọi thoại') : appCopy.t(callActionCapability.reason)}
-                  onClick={() => handleStartCall(true)}
-                  disabled={!callActionCapability.available}
-                >
-                  <i className="fa-solid fa-phone"></i>
-                </button>
-                <button
-                  type="button"
-                  className="btn-header-action"
-                  title={callActionCapability.available ? appCopy.t('Gọi video') : appCopy.t(callActionCapability.reason)}
-                  onClick={() => handleStartCall(false)}
-                  disabled={!callActionCapability.available}
-                >
-                  <i className="fa-solid fa-video"></i>
-                </button>
-              </>
-            )}
-            <button className="btn-header-action" title={appCopy.t('Thông tin nhóm')} onClick={() => setIsDetailOpen(!isDetailOpen)}>
-              <i className="fa-solid fa-ellipsis-vertical"></i>
-            </button>
-          </div>
-        </div>
+        </ConversationErrorBoundary>
 
         {activeChat.isChatbot && (
           <div className="chatbot-context-strip" role="status">

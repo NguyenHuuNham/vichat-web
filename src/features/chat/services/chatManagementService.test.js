@@ -203,6 +203,18 @@ test('directory-started chats keep malformed rooms isolated from the app render'
   assert.doesNotMatch(directChatSource, /Object\.values\(conversations\)/);
 });
 
+test('declares the account presence helper before render labels use it', () => {
+  const currentUserOnlineIndex = appSource.indexOf('const isCurrentUserOnline = Boolean(');
+  const accountOnlineIndex = appSource.indexOf('const isAccountOnline = account =>');
+  const accountLabelIndex = appSource.indexOf('const accountPresenceLabel = account =>');
+  const activeLabelIndex = appSource.indexOf('const activeChatPresenceLabel =');
+
+  assert.ok(currentUserOnlineIndex >= 0);
+  assert.ok(accountOnlineIndex > currentUserOnlineIndex);
+  assert.ok(accountLabelIndex > accountOnlineIndex);
+  assert.ok(activeLabelIndex > accountOnlineIndex);
+});
+
 test('directory chat navigates before remote provisioning can reject', () => {
   const directChatSource = appSource
     .split('const handleStartDirectChat')[1]
