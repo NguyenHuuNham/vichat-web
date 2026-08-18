@@ -78,7 +78,7 @@ export function listDemoGroupsForUser(userId) {
   return groups.filter(group => group.memberIds?.includes(userId));
 }
 
-export function saveDemoGroup({ id, name, description = '', ownerId, memberIds = [], messages = [] }) {
+export function saveDemoGroup({ id, name, description = '', avatar = '', ownerId, memberIds = [], messages = [] }) {
   const groups = readGroups();
   const now = new Date().toISOString();
   const groupId = id || `demo-grp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -89,6 +89,7 @@ export function saveDemoGroup({ id, name, description = '', ownerId, memberIds =
     id: groupId,
     name,
     description,
+    avatar: avatar || previous?.avatar || '',
     ownerId: effectiveOwnerId,
     memberIds: previous
       ? uniqueIds([...(previous.memberIds || []), ...memberIds])

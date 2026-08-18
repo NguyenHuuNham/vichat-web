@@ -777,7 +777,7 @@ function toConversation(topic, tinode) {
     isGroup,
     avatarUrl: avatarFromTopic(topic),
     avatarClass: isGroup ? 'group blue' : '',
-    membersCount: isGroup ? `${members.length || 1} thành viên` : (directPeer?.online ? 'Online' : 'Offline'),
+    membersCount: isGroup ? `${members.length || 1} thành viên` : (directPeer?.online ? 'Đang hoạt động' : 'Ngoại tuyến'),
     description: topic.public?.note || topic.public?.fn || '',
     admin: members.find(member => member.mode?.includes?.('O'))?.name || '',
     adminId: members.find(member => member.mode?.includes?.('O'))?.id || '',
@@ -1669,6 +1669,27 @@ export const tinodeClient = {
   async getConversationAvatar(topicName) {
     const topic = await subscribeTopic(topicName, { historyLimit: 0 });
     return avatarFromTopic(topic);
+  },
+
+  async updateGroupAvatar(topicName, avatarFile) {
+    if (!topicName || !avatarFile) throw new Error('Vui lòng chọn ảnh nhóm.');
+    const tinode = getClient();
+    const topic = await subscribeTopic(topicName, { historyLimit: 0 });
+    const avatarUrl = await uploadFile(tinode, avatarFile, topicName);
+    await topic.setMeta({
+      desc: {
+        public: {
+          ...(topic.public || {}),
+          photo: {
+            ref: avatarUrl,
+            mime: avatarFile.type || 'image/jpeg',
+            size: avatarFile.size || 0,
+          },
+        },
+      },
+    });
+    emitConversation(topic);
+    return avatarUrl;
   },
 
   async restoreConversation(topicName) {

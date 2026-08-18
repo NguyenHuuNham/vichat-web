@@ -55,3 +55,10 @@ test('translates attachment, upload and connection status messages', () => {
     'Tinode realtime is not ready; Chatmgt data is still available.',
   );
 });
+
+test('translates group avatar and member management messages', () => {
+  assert.equal(translateUiText('Không thể đọc ảnh nhóm.', 'en'), 'Unable to read the group image.');
+  assert.equal(translateUiText('Không thể cập nhật ảnh nhóm.', 'en'), 'Unable to update the group image.');
+  assert.equal(translateUiText('Không thể thêm thành viên vào nhóm.', 'en'), 'Unable to add members to the group.');
+  assert.equal(translateUiText('Tất cả', 'en'), 'All');
+});

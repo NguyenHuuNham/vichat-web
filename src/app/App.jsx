@@ -73,6 +73,7 @@ import {
   formatMessageTime,
 } from '../features/chat/services/timeFormatting';
 import {
+  canManageGroupMembers,
   canRemoveGroupMember,
   companyDirectoryContacts,
   companyDirectoryHeading,
@@ -91,7 +92,7 @@ import {
   updateAccountProfiles,
   updateAccountPresence,
 } from '../features/contacts/services/accountDirectory';
-import { appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
+import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
 import { CHATBOT_ACCOUNT, CHATBOT_STARTER_PROMPTS, EXTERNAL_CHAT_ONLY, applyTinodeChatbotConfig, loadChatbotMessages, loadChatbotMessagesFromServer, loadTinodeChatbotConfig, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
 import {
@@ -115,7 +116,7 @@ const APP_LANGUAGE_COPY = Object.freeze({
   vi: Object.freeze({
     chat: 'Chat',
     groups: 'Nhóm',
-    work: 'Work',
+    work: 'Công việc',
     contacts: 'Danh bạ',
     settings: 'Cài đặt',
     language: 'Ngôn ngữ',
@@ -236,8 +237,8 @@ const APP_LANGUAGE_COPY = Object.freeze({
 
 const MEDIA_BROWSER_TABS = Object.freeze([
   Object.freeze({ id: 'images', label: 'Ảnh/Video', icon: 'fa-images' }),
-  Object.freeze({ id: 'files', label: 'Files', icon: 'fa-file-lines' }),
-  Object.freeze({ id: 'links', label: 'Links', icon: 'fa-link' }),
+  Object.freeze({ id: 'files', label: 'Tệp', icon: 'fa-file-lines' }),
+  Object.freeze({ id: 'links', label: 'Liên kết', icon: 'fa-link' }),
 ]);
 
 const MEDIA_DATE_FILTER_OPTIONS = Object.freeze([
@@ -261,6 +262,15 @@ function getTimeString() {
   const hours = date.getHours().toString().padStart(2, '0');
   const minutes = date.getMinutes().toString().padStart(2, '0');
   return `${hours}:${minutes}`;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Không thể đọc ảnh nhóm.'));
+    reader.readAsDataURL(file);
+  });
 }
 
 async function copyTextToClipboard(value) {
@@ -861,9 +871,9 @@ function SafeAvatar({ src, name, className = '' }) {
   }, [src, mediaVersion]);
 
   if (!resolvedSrc || failed) {
-    return <span className={`${className} avatar-fallback`} aria-label={name || 'Avatar'}>{name?.trim?.().slice(0, 1).toUpperCase() || '?'}</span>;
+    return <span className={`${className} avatar-fallback`} aria-label={name || 'Ảnh đại diện'}>{name?.trim?.().slice(0, 1).toUpperCase() || '?'}</span>;
   }
-  return <img src={resolvedSrc} alt={name || 'Avatar'} className={className} onError={() => setFailed(true)} />;
+  return <img src={resolvedSrc} alt={name || 'Ảnh đại diện'} className={className} onError={() => setFailed(true)} />;
 }
 
 function AudioMessagePlayer({ file, duration = 0, time = '', delivery = null, pending = false, failed = false, copy = { t: value => value }, onError }) {
@@ -1032,7 +1042,8 @@ function demoGroupToConversation(group, accounts, viewerId) {
     id: group.id,
     name: group.name,
     isGroup: true,
-    avatarHtml: <i className="fa-solid fa-users"></i>,
+    avatarHtml: group.avatar ? undefined : <i className="fa-solid fa-users"></i>,
+    avatarUrl: group.avatar || '',
     avatarClass: 'group blue',
     membersCount: `${members.length} thành viên`,
     description: group.description || '',
@@ -1070,7 +1081,7 @@ function demoDirectToConversation(direct, accounts, viewerId) {
     isGroup: false,
     avatarHtml: other?.avatar ? <img src={other.avatar} alt={other.name} /> : <span>{other?.name?.slice(0, 1).toUpperCase() || '?'}</span>,
     avatarClass: '',
-    membersCount: other?.online ? 'Online' : 'Offline',
+    membersCount: other?.online ? 'Đang hoạt động' : 'Ngoại tuyến',
     description: '',
     admin: '',
     members: other ? [{ ...other }] : [],
@@ -1108,7 +1119,7 @@ function managementRoomsForSession(managed, accounts, user, accountSession) {
           name: peer.name || room.name,
           avatarHtml: undefined,
           avatarUrl: peer.avatar || '',
-          membersCount: peer.online ? 'Online' : 'Offline',
+          membersCount: peer.online ? 'Đang hoạt động' : 'Ngoại tuyến',
           description: '',
           members: [{ ...peer }],
         } : {}),
@@ -1174,6 +1185,11 @@ function App() {
   const [groupMemberIds, setGroupMemberIds] = useState([]);
   const [groupMemberProfiles, setGroupMemberProfiles] = useState({});
   const [groupMemberSearch, setGroupMemberSearch] = useState('');
+  const [isGroupMemberPickerOpen, setIsGroupMemberPickerOpen] = useState(false);
+  const [groupMemberAddIds, setGroupMemberAddIds] = useState([]);
+  const [groupMemberAddProfiles, setGroupMemberAddProfiles] = useState({});
+  const [groupMemberAddSearch, setGroupMemberAddSearch] = useState('');
+  const [isAddingGroupMembers, setIsAddingGroupMembers] = useState(false);
   const [removingMemberId, setRemovingMemberId] = useState('');
   const [workspacePanel, setWorkspacePanel] = useState(() => (
     typeof window === 'undefined' ? null : workspacePanelFromPath(window.location.pathname)
@@ -1224,6 +1240,7 @@ function App() {
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
   const [directoryAccounts, setDirectoryAccounts] = useState([]);
   const [isUpdatingProfileAvatar, setIsUpdatingProfileAvatar] = useState(false);
+  const [isUpdatingGroupAvatar, setIsUpdatingGroupAvatar] = useState(false);
   const [profileForm, setProfileForm] = useState({ name: '', email: '', title: '', department: '' });
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileNotice, setProfileNotice] = useState('');
@@ -1340,6 +1357,12 @@ function App() {
     time: '',
     badge: 0,
   };
+  useEffect(() => {
+    setIsGroupMemberPickerOpen(false);
+    setGroupMemberAddIds([]);
+    setGroupMemberAddProfiles({});
+    setGroupMemberAddSearch('');
+  }, [activeChat.id]);
   const conversationCategoryFor = room => {
     const key = String(room?.managementId || room?.id || '');
     const categoryId = conversationCategories[key] || room?.category || '';
@@ -1361,9 +1384,10 @@ function App() {
   const selectedLanguage = APP_LANGUAGE_OPTIONS.find(option => option.id === settings.language)
     || APP_LANGUAGE_OPTIONS[0];
   const pinViewerId = currentUser?.id || currentUser?.uid || '';
-  const accountPresenceLabel = account => chatMode === 'tinode'
-    ? (isAccountOnline(account) ? 'Online' : 'Offline')
-    : usesManagementData ? (settings.language === 'en' ? 'Chatmgt directory' : 'Danh bạ Chatmgt') : (isAccountOnline(account) ? 'Online' : 'Offline');
+  const accountPresenceLabel = account => {
+    if (usesManagementData && chatMode !== 'tinode') return appCopy.t('Danh bạ Chatmgt');
+    return appCopy.t(isAccountOnline(account) ? 'Đang hoạt động' : 'Ngoại tuyến');
+  };
 
   const isCurrentUserOnline = Boolean(
     isLoggedIn && currentUser && (chatMode !== 'tinode' || connectionStatus === 'online')
@@ -1371,8 +1395,13 @@ function App() {
   const activeGroupPresence = activeChat.isGroup
     ? countGroupPresence(activeChat.members, currentUser, isCurrentUserOnline)
     : null;
+  const activeDirectPeer = !activeChat.isGroup && !activeChat.isChatbot
+    ? activeChat.members?.find(member => !identitiesOverlap(member, currentUser)) || activeChat.members?.[0]
+    : null;
   const activeChatPresenceLabel = activeGroupPresence
     ? appCopy.t(`${activeGroupPresence.memberCount} thành viên • ${activeGroupPresence.onlineCount} đang online`)
+    : activeDirectPeer
+      ? appCopy.t(isAccountOnline(activeDirectPeer) ? 'Đang hoạt động' : 'Ngoại tuyến')
     : appCopy.t(activeChat.membersCount);
   const callActionCapability = (() => {
     if (!CALLS_ENABLED) return { available: false, reason: 'Tính năng cuộc gọi đang tạm ẩn theo cấu hình doanh nghiệp.' };
@@ -1763,7 +1792,7 @@ function App() {
     ? [
       {
         id: ALL_MENTION_ID,
-        name: 'All',
+        name: appCopy.t('Tất cả'),
         label: 'Báo cho cả nhóm',
         username: 'all',
         isAll: true,
@@ -1811,7 +1840,7 @@ function App() {
         const peer = !room.isGroup && !room.isChatbot
           ? members.find(member => !identitiesOverlap(member, currentAccount)) || members[0]
           : null;
-        const membersCount = peer ? (peer.online ? 'Online' : 'Offline') : room.membersCount;
+        const membersCount = peer ? (peer.online ? 'Đang hoạt động' : 'Ngoại tuyến') : room.membersCount;
         if (!membersChanged && membersCount === room.membersCount) return [id, room];
         changed = true;
         return [id, { ...room, members, membersCount }];
@@ -2943,6 +2972,25 @@ function App() {
     setGroupMemberSearch(event.target.value);
   };
 
+  const toggleGroupMemberToAdd = member => {
+    const memberId = member?.id || member?.name;
+    if (!memberId) return;
+    const selected = groupMemberAddIds.includes(memberId);
+    setGroupMemberAddIds(previous => selected
+      ? previous.filter(id => id !== memberId)
+      : [...previous, memberId]);
+    setGroupMemberAddProfiles(profiles => {
+      const next = { ...profiles };
+      if (selected) delete next[memberId];
+      else next[memberId] = member;
+      return next;
+    });
+  };
+
+  const handleFilterGroupMembersToAdd = event => {
+    setGroupMemberAddSearch(event.target.value);
+  };
+
   const handleProfileSave = async event => {
     event.preventDefault();
     setChatError('');
@@ -3115,7 +3163,7 @@ function App() {
         isGroup: false,
         avatarUrl: contact?.avatar || '',
         avatarClass: '',
-        membersCount: contact?.online ? 'Online' : 'Offline',
+        membersCount: contact?.online ? 'Đang hoạt động' : 'Ngoại tuyến',
         description: '',
         admin: '',
         members: contact ? [contact] : [],
@@ -3425,6 +3473,23 @@ function App() {
     name: message?.senderName,
     avatar: message?.avatar,
   });
+
+  const mentionCandidateForMessage = message => {
+    const senderId = messageSenderId(message);
+    const senderName = message?.senderName || '';
+    const candidate = findAccount(activeChat.members, senderId)
+      || findAccount(directoryAccounts, senderId)
+      || findAccount(activeChat.members, senderName)
+      || findAccount(directoryAccounts, senderName);
+    if (candidate) return { ...candidate, name: candidate.name || senderName };
+    if (!senderId && !senderName) return null;
+    return {
+      id: senderId || senderName,
+      tinodeUid: senderId,
+      name: senderName || senderId,
+      avatar: message?.avatar || '',
+    };
+  };
 
   const handleLeaveGroup = async () => {
     if (!activeChat.isGroup || !window.confirm(appCopy.t(`Bạn có chắc muốn rời nhóm "${activeChat.name}"?`))) return;
@@ -3770,20 +3835,27 @@ function App() {
           conversationsRef.current = provisionalRooms;
           setConversations(provisionalRooms);
           tinodeClient.allowConversationTopic(tinodeTopic);
+          const tinodeActorId = tinodeClient.currentUserId || viewerId;
           const targetUids = (realtimeRoom.members || [])
-            .map(member => member.id)
-            .filter(id => id && id !== tinodeClient.currentUserId);
+            .filter(member => member.id && member.id !== tinodeActorId);
           await tinodeClient.sendSystemEvent(tinodeTopic, {
             action: addedNames.length > 0 ? 'member_added' : 'group_created',
-            actorId,
+            actorId: tinodeActorId,
             actorName: currentUser?.name,
-            targets: targetUids.map((id, index) => ({ id, name: addedNames[index] })),
+            targets: targetUids.map(member => ({
+              id: member.id,
+              name: member.name || findAccount(directoryAccounts, member.id)?.name || member.id,
+            })),
           });
         }
       } else {
+        const initialAvatar = chatMode === 'demo' && groupAvatarFile
+          ? await readFileAsDataUrl(groupAvatarFile)
+          : '';
         let group = saveDemoGroup({
           name,
           description: groupDescription.trim(),
+          avatar: initialAvatar,
           ownerId: actorId,
           memberIds: groupMemberIds,
         });
@@ -3828,6 +3900,184 @@ function App() {
     setChatError('');
     setGroupAvatarFile(file);
     setGroupAvatarPreview(URL.createObjectURL(file));
+  };
+
+  const handleActiveGroupAvatarChange = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !activeChat.isGroup || isUpdatingGroupAvatar) return;
+    if (!file.type.startsWith('image/')) {
+      setChatError('Ảnh nhóm phải là file hình ảnh.');
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setChatError('Ảnh nhóm không được vượt quá 8 MB.');
+      return;
+    }
+    if (usesManagementData && chatMode !== 'tinode') {
+      setChatError('Cập nhật ảnh nhóm cần kết nối realtime Tinode.');
+      return;
+    }
+    setIsUpdatingGroupAvatar(true);
+    setChatError('');
+    try {
+      if (chatMode === 'demo') {
+        const avatarUrl = await readFileAsDataUrl(file);
+        const memberIds = (activeChat.members || [])
+          .map(member => findAccount(directoryAccounts, member.id || member.uid || member.name)?.id || member.id)
+          .filter(Boolean);
+        const group = saveDemoGroup({
+          id: activeChat.id,
+          name: activeChat.name,
+          description: activeChat.description || '',
+          avatar: avatarUrl,
+          ownerId: activeChat.adminId || viewerId,
+          memberIds,
+        });
+        const updatedRoom = demoGroupToConversation(group, directoryAccounts, viewerId);
+        setConversations(previous => {
+          const next = { ...previous, [activeChat.id]: updatedRoom };
+          conversationsRef.current = next;
+          return next;
+        });
+        return;
+      }
+      const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
+      const avatarUrl = await tinodeClient.updateGroupAvatar(topicName, file);
+      if (usesManagementData && isManagementConversationId(activeChat.managementId || activeChat.id)) {
+        await chatManagementService.bindTinodeTopic(
+          managementViewerId,
+          activeChat.managementId || activeChat.id,
+          topicName,
+          { avatarUrl },
+        );
+      }
+      groupAvatarSyncRef.current.set(activeChat.id, avatarUrl);
+      groupAvatarSyncRef.current.set(topicName, avatarUrl);
+      setConversations(previous => {
+        const currentRoom = previous[activeChat.id] || activeChat;
+        const updatedRoom = mergeTinodeConversation(currentRoom, { ...currentRoom, avatarUrl });
+        const next = { ...previous, [activeChat.id]: updatedRoom };
+        conversationsRef.current = next;
+        return next;
+      });
+    } catch (error) {
+      setChatError(error?.message || 'Không thể cập nhật ảnh nhóm.');
+    } finally {
+      setIsUpdatingGroupAvatar(false);
+    }
+  };
+
+  const handleAddGroupMembers = async () => {
+    if (
+      isAddingGroupMembers
+      || !activeChat.isGroup
+      || !canManageGroupMembers(activeChat, directoryAccounts, currentUser)
+      || groupMemberAddIds.length === 0
+    ) return;
+    const selectedMembers = groupMemberAddIds
+      .map(memberId => groupMemberAddProfiles[memberId] || findAccount(directoryAccounts, memberId))
+      .filter(Boolean);
+    if (selectedMembers.length === 0) return;
+
+    setIsAddingGroupMembers(true);
+    setChatError('');
+    try {
+      const actorId = currentUser?.id || currentUser?.uid;
+      const tinodeActorId = chatMode === 'tinode' ? (tinodeClient.currentUserId || viewerId) : actorId;
+      const selectedIds = selectedMembers.map(member => member.id || member.uid || member.name).filter(Boolean);
+      const systemText = `${currentUser?.name || 'Quản trị viên'} đã thêm ${selectedMembers.map(member => member.name).join(', ')} vào nhóm`;
+      const systemMessage = {
+        id: `system-add-${Date.now()}`,
+        type: 'system',
+        action: 'member_added',
+        senderId: actorId,
+        senderName: currentUser?.name,
+        targetIds: selectedIds,
+        text: systemText,
+        time: getTimeString(),
+        createdAt: new Date().toISOString(),
+      };
+      let updatedRoom;
+      if (usesManagementData) {
+        const accountSession = accountSessionRef.current;
+        const managedRoom = await chatManagementService.addConversationParticipants(
+          activeChat.managementId || activeChat.id,
+          selectedIds,
+        );
+        if (chatMode === 'tinode') {
+          const topicName = activeChat.tinodeTopic || managedRoom.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
+          const realtimeRoom = await tinodeClient.openConversation(topicName);
+          await tinodeClient.sendSystemEvent(topicName, {
+            action: 'member_added',
+            actorId: tinodeActorId,
+            actorName: currentUser?.name,
+            targets: selectedMembers.map(member => ({
+              id: member.tinodeUid || member.tinode_uid || member.uid || member.id,
+              name: member.name,
+            })),
+          }).catch(() => {});
+          updatedRoom = {
+            ...normalizeTinodeConversation(realtimeRoom),
+            ...managedRoom,
+            id: activeChat.id,
+            managementId: activeChat.managementId || activeChat.id,
+            tinodeTopic: topicName,
+            accountSession,
+            messages: realtimeRoom.messages || activeChat.messages || [],
+          };
+        } else {
+          updatedRoom = {
+            ...normalizeTinodeConversation(managedRoom),
+            accountSession,
+            messages: activeChat.messages || [],
+          };
+        }
+      } else if (chatMode === 'tinode') {
+        const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
+        await Promise.all(selectedMembers.map(member => tinodeClient.addMember(
+          topicName,
+          member.tinodeUid || member.tinode_uid || member.uid || member.id,
+        )));
+        const realtimeRoom = await tinodeClient.openConversation(topicName);
+        await tinodeClient.sendSystemEvent(topicName, {
+          action: 'member_added',
+          actorId: tinodeActorId,
+          actorName: currentUser?.name,
+          targets: selectedMembers.map(member => ({
+            id: member.tinodeUid || member.tinode_uid || member.uid || member.id,
+            name: member.name,
+          })),
+        }).catch(() => {});
+        updatedRoom = {
+          ...normalizeTinodeConversation(realtimeRoom),
+          ...activeChat,
+          tinodeTopic: topicName,
+          messages: realtimeRoom.messages || activeChat.messages || [],
+        };
+      } else {
+        const group = addDemoGroupMembers(activeChat.id, selectedIds);
+        const groupWithEvent = appendDemoGroupMessage(group.id, systemMessage);
+        updatedRoom = demoGroupToConversation(groupWithEvent, directoryAccounts, actorId);
+      }
+      setConversations(previous => {
+        const currentRoom = previous[activeChat.id] || activeChat;
+        const next = {
+          ...previous,
+          [activeChat.id]: mergeTinodeConversation(currentRoom, updatedRoom),
+        };
+        conversationsRef.current = next;
+        return next;
+      });
+      setIsGroupMemberPickerOpen(false);
+      setGroupMemberAddIds([]);
+      setGroupMemberAddProfiles({});
+      setGroupMemberAddSearch('');
+    } catch (error) {
+      setChatError(error?.message || 'Không thể thêm thành viên vào nhóm.');
+    } finally {
+      setIsAddingGroupMembers(false);
+    }
   };
 
   const closeCreateGroupModal = () => {
@@ -4513,8 +4763,42 @@ function App() {
       }
       if (action === 'reply') {
         if (message.recalled) return;
-        setReplyingTo(replyMetadataForMessage(message, isOwnMessage ? 'Bạn' : 'Thành viên'));
-        requestAnimationFrame(() => messageInputRef.current?.focus());
+        const reply = replyMetadataForMessage(message, isOwnMessage ? 'Bạn' : 'Thành viên');
+        setReplyingTo(reply);
+        let nextDraft = inputText;
+        if (activeChat.isGroup && !isOwnMessage) {
+          const candidate = mentionCandidateForMessage(message);
+          const token = mentionTokenFor(candidate);
+          if (candidate && token && !mentionTokenExists(inputText, token)) {
+            nextDraft = inputText.trim()
+              ? `${token} ${inputText.trim()}`
+              : `${token} `;
+            updateCurrentDraft(nextDraft);
+            setMessageMentions(previous => {
+              const currentMentions = previous[currentChatId] || [];
+              if (currentMentions.some(item => item.token === token)) return previous;
+              return {
+                ...previous,
+                [currentChatId]: [
+                  ...currentMentions,
+                  {
+                    id: candidate.id,
+                    tinodeUid: candidate.tinodeUid || candidate.uid || '',
+                    name: mentionCandidateText(candidate),
+                    token,
+                    isAll: false,
+                  },
+                ],
+              };
+            });
+          }
+        }
+        requestAnimationFrame(() => {
+          const input = messageInputRef.current;
+          if (!input) return;
+          input.focus();
+          input.setSelectionRange(nextDraft.length, nextDraft.length);
+        });
         return;
       }
       if (action === 'detail') {
@@ -4897,6 +5181,16 @@ function App() {
   const groupCandidates = companyContacts
     .filter(member => member.type !== 'bot')
     .filter(member => matchesCompanyDirectoryContact(member, groupMemberSearch));
+  const activeGroupMemberIdentities = new Set([
+    ...(activeChat.members || []).flatMap(member => identityValues(member)),
+    ...(activeChat.participantIds || []).map(identity => String(identity)),
+  ].map(identity => identity.toLowerCase()));
+  const groupMemberAddCandidates = activeChat.isGroup
+    ? companyContacts
+      .filter(member => member.type !== 'bot')
+      .filter(member => !identityValues(member).some(identity => activeGroupMemberIdentities.has(identity.toLowerCase())))
+      .filter(member => matchesCompanyDirectoryContact(member, groupMemberAddSearch))
+    : [];
 
   const renderCreateGroupForm = variant => (
     <form className={variant === 'page' ? 'workspace-group-page' : 'group-modal create-group-modal'} onSubmit={handleCreateGroup}>
@@ -4920,7 +5214,7 @@ function App() {
           <label className="btn-group-avatar-upload">
             <i className="fa-solid fa-camera"></i>
             <span>{appCopy.t(groupAvatarFile ? 'Đổi ảnh' : 'Tải ảnh lên')}</span>
-            <input type="file" accept="image/*" onChange={handleGroupAvatarChange} disabled={isCreatingGroup || chatMode !== 'tinode'} />
+            <input type="file" accept="image/*" onChange={handleGroupAvatarChange} disabled={isCreatingGroup} />
           </label>
         </div>
         {groupAvatarFile && (
@@ -5207,7 +5501,7 @@ function App() {
             <div className="user-info">
               <span className="user-name">{currentUser?.name || "Mai Thành Lâm"}</span>
               <span className={`user-status ${isCurrentUserOnline ? 'online' : 'offline'}`}>
-                {isCurrentUserOnline ? 'Online' : 'Offline'}
+                {appCopy.t(isCurrentUserOnline ? 'Đang hoạt động' : 'Ngoại tuyến')}
               </span>
             </div>
           </div>
@@ -5890,8 +6184,25 @@ function App() {
 
         <div className="detail-content">
           <div className="group-identity">
-            <div className={`group-avatar-large ${activeChat.avatarClass || ''}`}>
-              <ConversationAvatar room={activeChat} />
+            <div className="group-avatar-editor">
+              <div className={`group-avatar-large ${activeChat.avatarClass || ''}`}>
+                <ConversationAvatar room={activeChat} />
+              </div>
+              {activeChat.isGroup && activeChat.id !== 'empty' && (
+                <label
+                  className={`group-avatar-edit-button ${isUpdatingGroupAvatar ? 'loading' : ''}`}
+                  title={appCopy.t(isUpdatingGroupAvatar ? 'Đang cập nhật ảnh nhóm...' : 'Đổi ảnh nhóm')}
+                  aria-label={appCopy.t('Đổi ảnh nhóm')}
+                >
+                  <i className={`fa-solid ${isUpdatingGroupAvatar ? 'fa-spinner fa-spin' : 'fa-camera'}`}></i>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleActiveGroupAvatarChange}
+                    disabled={isUpdatingGroupAvatar || (usesManagementData && chatMode !== 'tinode')}
+                  />
+                </label>
+              )}
             </div>
             <h3 className="group-name-large">{activeChat.name}</h3>
             <span className="group-members-count">{activeChatPresenceLabel}</span>
@@ -5907,7 +6218,67 @@ function App() {
           <div className="detail-section members-section">
             <div className="members-section-heading">
               <h4 className="section-title">{activeChat.isGroup ? `${appCopy.t('Thành viên')} (${activeChat.members.length})` : appCopy.t('Thông tin cá nhân')}</h4>
+              {activeChat.isGroup && canManageGroupMembers(activeChat, directoryAccounts, currentUser) && (
+                <button
+                  type="button"
+                  className="btn-add-member"
+                  onClick={() => {
+                    setIsGroupMemberPickerOpen(previous => !previous);
+                    setGroupMemberAddIds([]);
+                    setGroupMemberAddProfiles({});
+                    setGroupMemberAddSearch('');
+                  }}
+                  aria-expanded={isGroupMemberPickerOpen}
+                >
+                  <i className="fa-solid fa-user-plus"></i>{appCopy.t('Thêm thành viên')}
+                </button>
+              )}
             </div>
+            {activeChat.isGroup && isGroupMemberPickerOpen && (
+              <div className="group-member-add-panel">
+                <div className="group-member-add-toolbar">
+                  <input
+                    value={groupMemberAddSearch}
+                    onChange={handleFilterGroupMembersToAdd}
+                    placeholder={appCopy.t('Tìm thành viên trong danh bạ')}
+                    aria-label={appCopy.t('Tìm thành viên trong danh bạ')}
+                    autoFocus
+                  />
+                  <span>{groupMemberAddIds.length} {appCopy.t('đã chọn')}</span>
+                </div>
+                {groupMemberAddCandidates.length > 0 ? (
+                  <div className="group-member-picker group-member-add-picker">
+                    {groupMemberAddCandidates.map(member => {
+                      const memberId = member.id || member.uid || member.tinodeUid || member.name;
+                      const selected = groupMemberAddIds.includes(memberId);
+                      return (
+                        <button
+                          type="button"
+                          key={memberId}
+                          className={`group-member-option ${selected ? 'selected' : ''}`}
+                          onClick={() => toggleGroupMemberToAdd(member)}
+                          aria-pressed={selected}
+                        >
+                          <SafeAvatar src={member.avatar || ''} name={member.name} className="mention-avatar" />
+                          <span className="picker-name">{member.name}</span>
+                          <span className="picker-status">{directoryUsernameMeta(member)}</span>
+                          <span className="picker-check"><i className={`fa-solid ${selected ? 'fa-check' : 'fa-plus'}`}></i></span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="group-form-hint">{groupMemberAddSearch.trim() ? appCopy.t('Không tìm thấy thành viên phù hợp trong danh bạ công ty.') : appCopy.t('Không còn thành viên mới trong danh bạ.')}</p>
+                )}
+                <div className="group-member-add-actions">
+                  <button type="button" className="btn-secondary" onClick={() => setIsGroupMemberPickerOpen(false)} disabled={isAddingGroupMembers}>{appCopy.t('Hủy')}</button>
+                  <button type="button" className="btn-primary" onClick={handleAddGroupMembers} disabled={isAddingGroupMembers || groupMemberAddIds.length === 0}>
+                    <i className={`fa-solid ${isAddingGroupMembers ? 'fa-spinner fa-spin' : 'fa-user-plus'}`}></i>
+                    {isAddingGroupMembers ? appCopy.t('Đang thêm thành viên...') : appCopy.t('Thêm vào nhóm')}
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="members-list">
               {activeChat.members.map((member, idx) => (
                 <div key={idx} className="member-item">
@@ -5967,7 +6338,7 @@ function App() {
                       ) : (
                         <span className="detail-media-icon"><i className={`fa-solid ${entry.kind === 'links' ? 'fa-link' : attachmentIconClass(entry.attachment, entry.message?.type)}`}></i></span>
                       )}
-                      <span className="detail-media-preview-label">{entry.kind === 'links' ? entry.url : entry.attachment?.name || (entry.kind === 'images' ? appCopy.t('Ảnh/Video') : appCopy.t('File'))}</span>
+                      <span className="detail-media-preview-label">{entry.kind === 'links' ? entry.url : entry.attachment?.name || (entry.kind === 'images' ? appCopy.t('Ảnh/Video') : appCopy.t('Tệp'))}</span>
                     </button>
                   ))}
                 </div>
@@ -6192,7 +6563,7 @@ function App() {
                   <span className={`profile-status ${isCurrentUserOnline ? '' : 'offline'}`}><i className="fa-solid fa-circle"></i> {appCopy.t(isCurrentUserOnline ? 'Đang hoạt động' : 'Ngoại tuyến')}</span>
                 </div>
                 <div className="profile-details profile-readonly-details">
-                  <div className="profile-detail-row"><i className="fa-solid fa-at"></i><div><small>Username</small><strong>{profileAccount.username || appCopy.t('Chưa cập nhật')}</strong></div></div>
+                  <div className="profile-detail-row"><i className="fa-solid fa-at"></i><div><small>{appCopy.t('Tên đăng nhập')}</small><strong>{profileAccount.username || appCopy.t('Chưa cập nhật')}</strong></div></div>
                   <div className="profile-detail-row"><i className="fa-solid fa-shield-halved"></i><div><small>{appCopy.t('Vai trò')}</small><strong>{profileAccount.role || appCopy.t('Thành viên')}</strong></div></div>
                   <div className="profile-detail-row profile-current-tenant"><i className="fa-solid fa-building"></i><div><small>{appCopy.t('Công ty hiện tại')}</small><strong>{profileAccount.tenantName || profileAccount.tenant_name || profileAccount.tenant?.name || appCopy.t('Chưa cập nhật')}</strong></div></div>
                 </div>

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-11 - Sua mention/reply va quan ly thanh vien nhom
+
+- Thoi gian: 2026-08-18 11:00 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | UX | Web | Kiem thu
+- Trang thai: Hoan tat code; chua commit; chua deploy production
+- Muc tieu: Mention trong o soan tin phai hien mau xanh, reply trong nhom phai tu dong tag nguoi duoc tra loi, va thong tin nhom phai cho phep them thanh vien tu danh ba theo dung quyen.
+- Pham vi: ChatUI composer/reply, Tinode group event, Chatmgt participant flow, demo group store, avatar nhom, i18n va CSS; khong doi tenant/auth hay cac luong chat khac.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/tinodeClient.js`, `src/features/demo/services/demoGroupStore.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `docs/CHANGELOG.md`.
+- Noi dung: Them lop overlay trong suot de text goc khong che mention mau xanh; khi reply tin nhan thanh vien trong group, composer tu chen mention va giu quote reply; them picker tim/chon nhieu thanh vien tu danh ba cho chu nhom; doi avatar group ngay trong thong tin nhom va luu avatar demo; cho phep avatar ban dau cua demo group; dong bo cac thong bao/nhan hien thi moi voi bo dich Viet-Anh.
+- Quyet dinh ky thuat: Su dung metadata `x-mentions` va `x-reply-to` da co cua Tinode; su kien member-added trong Tinode dung UID Tinode cua actor de hien dung “Ban”; Chatmgt van la nguon quyen them/xoa thanh vien, Tinode la nguon realtime; avatar group duoc luu tren public topic metadata va demo localStorage.
+- Database/API/cau hinh: Khong co migration, endpoint moi, secret hay bien moi; tai su dung API participant hien co va Tinode topic metadata.
+- Kiem thu: `npm run test:frontend` dat 110/110; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va vendor `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat. Da khoi dong Vite local de kiem tra nhung Browser runtime khong tao duoc kernel asset nen chua hoan tat visual UAT.
+- Rui ro con lai: Chua UAT truc quan bang tai khoan UpGO/Tinode that cho mention, reply, them thanh vien va doi avatar; nhom demo luu anh data URL phu thuoc dung luong localStorage.
+- Viec tiep theo: Chay visual UAT local/production, sau do commit va deploy khi co yeu cau.
+- Commit/PR: Chua tao.
+
 ## 2026-08-18-10 - Deploy workspace route ChatUI
 
 - Thoi gian: 2026-08-18 10:09 (Asia/Saigon)

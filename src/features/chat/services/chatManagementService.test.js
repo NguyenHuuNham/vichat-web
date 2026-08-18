@@ -75,7 +75,7 @@ test('keeps only safe active tenant options and switches without logout', () => 
   assert.doesNotMatch(switchUiSource, /chatManagementService\.logout/);
 });
 
-test('create-group picker uses the synced company directory while group detail stays read-only', () => {
+test('group member controls use the synced company directory with owner-only mutations', () => {
   for (const removedBinding of [
     'isAddMembersOpen',
     'isAddingMembers',
@@ -85,7 +85,6 @@ test('create-group picker uses the synced company directory while group detail s
     'handleSearchGroupMembers',
     'groupSearchResults',
     'isSearchingMembers',
-    'btn-add-member',
     'group-members-modal',
   ]) {
     assert.equal(appSource.includes(removedBinding), false, removedBinding);
@@ -96,6 +95,11 @@ test('create-group picker uses the synced company directory while group detail s
     'handleFilterGroupMembers',
     'companyDirectoryContacts(directoryAccounts, currentUser)',
     'matchesCompanyDirectoryContact(member, groupMemberSearch)',
+    'btn-add-member',
+    'isGroupMemberPickerOpen',
+    'groupMemberAddIds',
+    'handleAddGroupMembers',
+    'canManageGroupMembers(activeChat, directoryAccounts, currentUser)',
     'handleRemoveGroupMember',
     'handleLeaveGroup',
     'handleDeleteConversation',

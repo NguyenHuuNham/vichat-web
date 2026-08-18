@@ -1565,10 +1565,14 @@ body {
 }
 
 .input-text-container input.has-styled-mentions {
-    color: transparent;
+    color: transparent !important;
     caret-color: var(--text-main);
-    -webkit-text-fill-color: transparent;
-    background: transparent;
+    -webkit-text-fill-color: transparent !important;
+    background: transparent !important;
+}
+
+.input-text-container input.has-styled-mentions:focus {
+    background: transparent !important;
 }
 
 .input-text-preview {
@@ -1583,10 +1587,10 @@ body {
     font-size: 14px;
     line-height: normal;
     pointer-events: none;
-    white-space: nowrap;
+    white-space: pre;
 }
 
-.input-text-preview .message-mention { cursor: text; }
+.input-text-preview .message-mention { color: #1d6fe8; cursor: text; }
 .voice-recording-container { min-height: 40px; }
 .voice-recording-bar { display: flex; width: 100%; min-height: 40px; align-items: center; gap: 9px; padding: 5px 10px; border: 1px solid rgba(220, 38, 38, .25); border-radius: 20px; background: rgba(220, 38, 38, .06); }
 .voice-recording-pulse { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; color: #fff; background: #dc2626; animation: voice-recording-pulse 1.2s ease-in-out infinite; }
@@ -1691,6 +1695,12 @@ body {
     gap: 8px;
 }
 
+.group-avatar-editor {
+    position: relative;
+    width: 80px;
+    height: 80px;
+}
+
 .group-avatar-large {
     width: 80px;
     height: 80px;
@@ -1710,6 +1720,26 @@ body {
     height: 100%;
     object-fit: cover;
 }
+
+.group-avatar-edit-button {
+    position: absolute;
+    right: -3px;
+    bottom: -3px;
+    display: grid;
+    width: 29px;
+    height: 29px;
+    place-items: center;
+    border: 3px solid var(--bg-white);
+    border-radius: 50%;
+    color: #fff;
+    background: var(--vichat-red);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .18);
+    cursor: pointer;
+}
+
+.group-avatar-edit-button:hover { filter: brightness(.92); }
+.group-avatar-edit-button.loading { cursor: wait; }
+.group-avatar-edit-button input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 
 .group-name-large {
     font-size: 18px;
@@ -1777,6 +1807,45 @@ body {
 }
 
 .btn-add-member:hover { background: rgba(244, 81, 30, .16); }
+
+.group-member-add-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-app);
+}
+
+.group-member-add-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.group-member-add-toolbar input {
+    min-width: 0;
+    flex: 1;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-main);
+    background: var(--bg-white);
+    font: inherit;
+    font-size: 12px;
+    outline: none;
+}
+
+.group-member-add-toolbar input:focus { border-color: var(--vichat-blue); box-shadow: 0 0 0 3px rgba(244, 81, 30, .1); }
+.group-member-add-toolbar > span { flex: 0 0 auto; color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+.group-member-add-picker { max-height: 220px; }
+.group-member-add-picker .group-member-option { padding: 7px 8px; }
+.group-member-add-picker .mention-avatar { width: 28px; height: 28px; flex: 0 0 28px; }
+.group-member-add-picker .picker-status { overflow: hidden; max-width: 100px; text-overflow: ellipsis; white-space: nowrap; }
+.group-member-add-actions { display: flex; justify-content: flex-end; gap: 7px; padding-top: 2px; }
+.group-member-add-actions .btn-primary,
+.group-member-add-actions .btn-secondary { padding: 7px 10px; font-size: 11px; }
 
 .members-list {
     display: flex;
