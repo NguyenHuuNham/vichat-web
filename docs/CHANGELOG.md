@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-18 23:07 (Asia/Saigon)
 - Loai: Tai cau truc | Web | UI | Kiem thu
-- Trang thai: Da build; cho deploy va UAT
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Mo Cai dat, Danh ba, Nhom, Tim kiem, Thong bao, File, Ho so va Workspace trong mot hop noi dung gon o giua man hinh, van nhin thay chat phia sau.
 - Pham vi: ChatUI workspace overlay/panel, responsive layout, Settings cards, Enterprise Workspace shell va regression test; khong thay doi chat, directory, Tinode, realtime, API, database hay tenant.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/workspace/components/enterpriseWorkspace.css`, `src/features/workspace/services/workspaceLayout.test.js`, `package.json`, `dist/index.html`, `docs/CHANGELOG.md`.
 - Noi dung: Chuyen workspace overlay tu layout thay the cac cot chat sang fixed modal co nen dim/blur, panel gioi han chieu cao va scroll noi bo; them dong bang click nen va role dialog; thu gon Settings va giu Enterprise Workspace rong vua du trong cung modal.
 - Quyet dinh ky thuat: Dung mot shell CSS dung chung cho moi panel de cac route van giu nguyen nhung phan modal nhat quan; bo cac rule an `.chat-main`, `.sidebar-secondary`, `.sidebar-detail`; khong them state/API moi.
 - Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi truong.
-- Kiem thu: `npm run test:frontend` dat 128/128; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va vendor `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat. Kiem tra browser local chua chay duoc vi runtime khong co browser backend.
+- Kiem thu: `npm run test:frontend` dat 128/128; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va vendor `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat. Production archive SHA-256 `9A01601EC1EBB8494FE91716490EECA3B2FE9AC9F54E58FF559B6FBC488B48B3`; `docker compose config -q`, build image `chat`, remote `/healthz`, public `https://chat.upgo.vn/healthz`, Chatmgt auth health, `sudo nginx -t` va public assets HTTP 200 dat; public CSS co marker modal/backdrop va App bundle co workspace overlay/dialog; log `chat` 5 phut khong co fatal marker. Browser runtime local khong co backend de chay UAT truc quan.
+- Trien khai: Source `89eaad2` da push origin/master. Release `/opt/deploy/chat/releases/workspace-modal-89eaad2-20260818-2308`; `current` tro release moi, `previous` tro `/opt/deploy/chat/releases/logo-refresh-9fc2d0e-20260818T150243Z`; image ChatUI `sha256:b8966723d0e07a49675637e8205884b100e3b304f9b12b0abd0a63394d8a5d48`, container `7def682db031`; chi recreate `chat`, giu nguyen Chatmgt/Tinode bridge/worker, ChatAPI, PostgreSQL, Redis va Coturn.
 - Rui ro con lai: Chua co UAT bang tai khoan production that de xac nhan kich thuoc modal tren desktop/mobile va thao tac tung workspace; can hard refresh sau deploy.
-- Viec tiep theo: Push, deploy rieng `chat`, health-check bundle/public, sau do UAT mo Settings, Contacts, Groups, Search, Notifications, Files, Profile va Work tren desktop/mobile.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, UAT mo Settings, Contacts, Groups, Search, Notifications, Files, Profile va Work tren desktop/mobile; neu co loi thi tro `current` ve `previous` va recreate rieng `chat` tu release cu.
+- Commit/PR: Source `89eaad2` da push; docs follow-up dang cho commit.
 
 ## 2026-08-18-24 - Icon-only chuyen cong ty va dong bo logo tu Account
 
