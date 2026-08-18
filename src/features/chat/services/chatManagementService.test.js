@@ -202,3 +202,18 @@ test('directory-started chats keep malformed rooms isolated from the app render'
   assert.match(directChatSource, /safeConversationValues\(conversationsRef\.current\)/);
   assert.doesNotMatch(directChatSource, /Object\.values\(conversations\)/);
 });
+
+test('directory chat navigates before remote provisioning can reject', () => {
+  const directChatSource = appSource
+    .split('const handleStartDirectChat')[1]
+    .split('const publicProfileFor')[0];
+  const navigationIndex = directChatSource.indexOf('closeWorkspacePanel();');
+  const remoteProvisioningIndex = directChatSource.indexOf('if (usesManagementData && safeContact.id)');
+
+  assert.ok(navigationIndex >= 0);
+  assert.ok(remoteProvisioningIndex > navigationIndex);
+  assert.match(directChatSource, /const optimisticRoom/);
+  assert.match(directChatSource, /pendingDirect/);
+  assert.match(directChatSource, /migrateOptimisticRoom/);
+  assert.match(appSource, /selectedRoom = previousRooms\[currentChatIdRef\.current\]/);
+});

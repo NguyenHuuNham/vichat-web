@@ -1525,7 +1525,11 @@ function App() {
   const usesManagementData = chatManagementService.remote && chatMode !== 'demo';
   const realtimeMessagingPending = usesManagementData
     && !activeChat.isChatbot
-    && (chatMode !== 'tinode' || connectionStatus !== 'online');
+    && (
+      chatMode !== 'tinode'
+      || connectionStatus !== 'online'
+      || ['pending', 'error'].includes(activeChat.directProvisioning)
+    );
   const chatbotUsesTinode = Boolean(activeChat.isChatbot && activeChat.tinodeTopic);
   const chatbotStatus = chatbotUsesTinode
     ? (connectionStatus === 'online' ? 'Đang kết nối kho tri thức' : 'Đang chờ kết nối realtime')
@@ -2131,6 +2135,9 @@ function App() {
     const nextRooms = Object.fromEntries(safeConversationEntries(previousRooms).filter(([, room]) => (
       room.isChatbot
       || (!room.managementId && !room.tinodeTopic && roomFriendEvents(room).length > 0)
+      // Keep an optimistic direct room visible while the create/bind request
+      // is still running, otherwise the refresh can select another room.
+      || (room.pendingDirect && room.accountSession === accountSession)
     )));
     safeConversationEntries(managedRooms).forEach(([id, room]) => {
       const previousRoom = previousRooms[id] || safeConversationValues(previousRooms)
@@ -2140,7 +2147,8 @@ function App() {
     conversationsRef.current = nextRooms;
     setConversations(nextRooms);
     tinodeClient.setAllowedConversationTopics(managedTinodeTopics(nextRooms));
-    if (!nextRooms[currentChatIdRef.current]) {
+    const selectedRoom = previousRooms[currentChatIdRef.current];
+    if (!nextRooms[currentChatIdRef.current] && !selectedRoom?.pendingDirect) {
       setCurrentChatId(firstVisibleConversationId(nextRooms, {}, CHATBOT_ACCOUNT.id));
     }
     return managedRooms;
@@ -2851,6 +2859,7 @@ function App() {
       setChatError('Cuoc tro chuyen khong con kha dung. Vui long tai lai danh ba.');
       return;
     }
+    currentChatIdRef.current = id;
     setCurrentChatId(id);
     setInputText(drafts[id] || '');
     setIsMobileChatActive(true);
@@ -2887,7 +2896,11 @@ function App() {
           : { ...openedRoom, id, managementId: room.managementId || id, tinodeTopic: topicName };
         setConversations(prev => ({
           ...prev,
-          [id]: safeMergeTinodeConversation(prev[id], managedRoom),
+          [id]: {
+            ...safeMergeTinodeConversation(prev[id], managedRoom),
+            directProvisioning: 'ready',
+            pendingDirect: false,
+          },
         }));
         await tinodeClient.markRead(topicName);
       } catch (err) {
@@ -3547,6 +3560,86 @@ function App() {
       let managedRoom = linkedRoom;
       let tinodeTopic = linkedRoom?.tinodeTopic
         || chatManagementService.getTinodeTopic(viewerId, linkedRoom?.managementId || contactId);
+      const previousRooms = Object.fromEntries(safeConversationEntries(conversationsRef.current));
+      const existingRoom = previousRooms[stateConversationId] || previousRooms[contactId] || managedRoom || linkedRoom;
+      const needsDirectProvisioning = usesManagementData
+        && (!managedRoom || (chatMode === 'tinode' && !tinodeTopic));
+      const optimisticRoom = {
+        ...existingRoom,
+        id: stateConversationId,
+        managementId: managedRoom?.managementId || linkedRoom?.managementId || '',
+        tinodeTopic,
+        name: contactName,
+        isGroup: false,
+        avatarHtml: safeContact.avatar ? <img src={safeContact.avatar} alt={contactName} /> : <span>{contactName.slice(0, 1).toUpperCase()}</span>,
+        avatarClass: '',
+        membersCount: accountPresenceLabel(safeContact),
+        description: '',
+        admin: '',
+        members: [safeContact],
+        participantIds: participantIds.length === 2 ? participantIds : existingRoom?.participantIds,
+        messages: existingRoom?.messages || [],
+        lastMsg: existingRoom?.lastMsg || 'Bắt đầu cuộc trò chuyện',
+        time: existingRoom?.time || getTimeString(),
+        updatedAt: existingRoom?.updatedAt || new Date().toISOString(),
+        badge: existingRoom?.badge || 0,
+        ...(usesManagementData ? {
+          accountSession,
+          directContactId: safeContact.id || '',
+          pendingDirect: Boolean(safeContact.id),
+          directProvisioning: needsDirectProvisioning ? 'pending' : 'ready',
+        } : {}),
+      };
+      const optimisticRooms = { ...previousRooms, [stateConversationId]: optimisticRoom };
+      if (linkedRoom && linkedRoom.id !== stateConversationId) delete optimisticRooms[linkedRoom.id];
+      conversationsRef.current = optimisticRooms;
+      currentChatIdRef.current = stateConversationId;
+      setConversations(optimisticRooms);
+      setCurrentChatId(stateConversationId);
+      setInputText(drafts[stateConversationId] || '');
+      setChatError('');
+      closeWorkspacePanel();
+      setIsMobileChatActive(true);
+
+      const migrateOptimisticRoom = (nextId, patch = {}) => {
+        if (!nextId || nextId === stateConversationId) return;
+        const previousId = stateConversationId;
+        const latestRooms = Object.fromEntries(safeConversationEntries(conversationsRef.current));
+        const previousRoom = latestRooms[previousId] || optimisticRoom;
+        const migratedRoom = safeMergeTinodeConversation(previousRoom, {
+          ...patch,
+          id: nextId,
+          managementId: patch.managementId || nextId,
+        });
+        const nextRooms = {
+          ...latestRooms,
+          [nextId]: {
+            ...migratedRoom,
+            id: nextId,
+            managementId: patch.managementId || nextId,
+            directContactId: safeContact.id || '',
+            pendingDirect: true,
+            directProvisioning: chatMode === 'tinode' ? 'pending' : 'ready',
+            accountSession,
+          },
+        };
+        delete nextRooms[previousId];
+        conversationsRef.current = nextRooms;
+        setConversations(nextRooms);
+        setDrafts(previous => {
+          if (!previous[previousId]) return previous;
+          const next = { ...previous, [nextId]: previous[previousId] };
+          delete next[previousId];
+          return next;
+        });
+        if (currentChatIdRef.current === previousId) {
+          currentChatIdRef.current = nextId;
+          setCurrentChatId(nextId);
+          setInputText(drafts[previousId] || drafts[nextId] || '');
+        }
+        stateConversationId = nextId;
+      };
+
       if (usesManagementData && safeContact.id) {
         if (managementConversationSessionRef.current !== accountSession) {
           throw new Error('Danh sách cuộc trò chuyện chưa được chatmgt xác nhận.');
@@ -3561,11 +3654,17 @@ function App() {
           if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
         }
         tinodeTopic = tinodeTopic || managedRoom.tinodeTopic || '';
-        stateConversationId = managedRoom.id;
+        const managedConversationId = managedRoom.managementId || managedRoom.id;
+        if (!managedConversationId) throw new Error('Chatmgt khong tra ve ma cuoc tro chuyen.');
+        migrateOptimisticRoom(managedConversationId, {
+          ...managedRoom,
+          managementId: managedConversationId,
+          tinodeTopic,
+        });
         const managedStateRoom = {
           ...managedRoom,
           id: stateConversationId,
-          managementId: managedRoom.managementId || stateConversationId,
+          managementId: managedConversationId,
           tinodeTopic,
           name: contactName,
           isGroup: false,
@@ -3596,14 +3695,15 @@ function App() {
           setConversations(restoredRooms);
         }
       }
-      const previousRooms = Object.fromEntries(safeConversationEntries(conversationsRef.current));
-      const existing = previousRooms[stateConversationId] || previousRooms[contactId] || managedRoom || linkedRoom;
-      const next = { ...previousRooms };
+      const latestRooms = Object.fromEntries(safeConversationEntries(conversationsRef.current));
+      const existing = latestRooms[stateConversationId] || latestRooms[contactId] || managedRoom || linkedRoom;
+      const next = { ...latestRooms };
       if (linkedRoom && linkedRoom.id !== stateConversationId) delete next[linkedRoom.id];
+      if (contactId !== stateConversationId) delete next[contactId];
       next[stateConversationId] = {
         ...existing,
         id: stateConversationId,
-        managementId: managedRoom?.managementId || linkedRoom?.managementId || stateConversationId,
+        managementId: managedRoom?.managementId || linkedRoom?.managementId || (isManagementConversationId(stateConversationId) ? stateConversationId : ''),
         tinodeTopic,
         name: contactName,
         isGroup: false,
@@ -3619,14 +3719,21 @@ function App() {
         time: existing?.time || getTimeString(),
         updatedAt: existing?.updatedAt || new Date().toISOString(),
         badge: existing?.badge || 0,
-        ...(usesManagementData ? { accountSession } : {}),
+        ...(usesManagementData ? {
+          accountSession,
+          directContactId: safeContact.id || '',
+          pendingDirect: false,
+          directProvisioning: 'ready',
+        } : {}),
       };
       conversationsRef.current = next;
       setConversations(next);
-      setCurrentChatId(stateConversationId);
-      setInputText(drafts[stateConversationId] || '');
-      closeWorkspacePanel();
-      setIsMobileChatActive(true);
+      if (currentChatIdRef.current === stateConversationId) {
+        currentChatIdRef.current = stateConversationId;
+        setCurrentChatId(stateConversationId);
+        setInputText(drafts[stateConversationId] || '');
+        setIsMobileChatActive(true);
+      }
     } catch (err) {
       setChatError(err?.message || 'Không thể mở cuộc trò chuyện.');
     }

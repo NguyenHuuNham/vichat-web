@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-21 - Mo chat tu danh ba khong bi chan boi provisioning
+
+- Thoi gian: 2026-08-18 19:13 (Asia/Saigon)
+- Loai: Sua loi | Web | Kiem thu | Van hanh
+- Trang thai: Dang thuc hien
+- Muc tieu: Bam `Danh ba -> Nhan tin` phai chuyen sang phong chat ngay ca khi Chatmgt hoac Tinode dang cham, loi tam thoi hoac tu choi request.
+- Pham vi: ChatUI direct-chat navigation, state conversation, Chatmgt refresh va hydrate Tinode.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Ghi room tam va chon `currentChatId` truoc cac lenh await; giu room tam qua refresh; migrate khoa tai khoan sang UUID Chatmgt khi tao thanh cong; hydrate topic/lich su Tinode o nen va giu phong chat neu realtime loi.
+- Quyet dinh ky thuat: Tach navigation khoi provisioning. Trang thai `pendingDirect`/`directProvisioning` ngan thao tac gui truoc khi phong san sang ma khong lam mat route chat; Chatmgt van la nguon conversation chuan.
+- Database/API/cau hinh: Khong migration, endpoint moi, secret hoac thay doi cau hinh; chi su dung API Chatmgt/Tinode hien co.
+- Kiem thu: `npm run test:frontend` dat 124/124; `npm run lint` exit 0 voi warning legacy da co; `npm run build:production` dat; `git diff --check` dat.
+- Rui ro con lai: Browser runtime cua agent khong co phien dang nhap de UAT truc quan; can xac nhan thao tac that sau deploy bang tai khoan employee.
+- Viec tiep theo: Commit, push, deploy release ChatUI va kiem tra health/API/bundle production; sau do UAT hard refresh va `Danh ba -> Nhan tin`.
+- Commit/PR: Chua tao
+
 ## 2026-08-18-20 - Chan crash khi mo chat tu danh ba
 
 - Thoi gian: 2026-08-18 17:23 (Asia/Saigon)
