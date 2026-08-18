@@ -194,4 +194,11 @@ test('directory-started chats keep malformed rooms isolated from the app render'
   assert.match(appSource, /safeMergeTinodeConversation/);
   assert.match(appSource, /<ConversationErrorBoundary/);
   assert.doesNotMatch(appSource, /activeChat\.members\?/);
+
+  const directChatSource = appSource
+    .split('const handleStartDirectChat')[1]
+    .split('const publicProfileFor')[0];
+  assert.match(directChatSource, /try \{\s*const safeContact/);
+  assert.match(directChatSource, /safeConversationValues\(conversationsRef\.current\)/);
+  assert.doesNotMatch(directChatSource, /Object\.values\(conversations\)/);
 });

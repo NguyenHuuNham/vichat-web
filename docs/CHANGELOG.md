@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-20 - Chan crash khi mo chat tu danh ba
+
+- Thoi gian: 2026-08-18 17:23 (Asia/Saigon)
+- Loai: Sua loi | Web | Kiem thu | Van hanh
+- Trang thai: Da build local; cho deploy va UAT
+- Muc tieu: Bam `Danh ba -> Nhan tin` khong duoc day toan bo ChatUI vao man hinh "Chat dang tam dung" khi state co room null, undefined hoac sai shape.
+- Pham vi: ChatUI conversation state, luong mo chat 1-1, refresh Chatmgt, presence/receipt/profile Tinode, thao tac room va bundle production.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Them helper map room an toan de normalize moi room truoc khi callback doc `isGroup`, `isChatbot`, topic, membership, members hoac messages; dua toan bo preamble cua `handleStartDirectChat` vao try/catch va tim linked room tu map da chuan hoa; harden cac callback realtime, refresh, xoa, mute, pin, profile va tao nhom de room loi khong lam crash render.
+- Quyet dinh ky thuat: Bao ve o bien gioi state consumer, khong bo qua loi bang cach doi API hay xoa du lieu; room malformed duoc thay bang fallback co id state de cac luong con lai tiep tuc, con loi mo chat duoc hien thanh `chatError` thay vi nem vao global ErrorBoundary.
+- Database/API/cau hinh: Khong migration, endpoint, secret hoac bien moi truong moi; khong thay doi Chatmgt, Tinode, database hay service stateful.
+- Kiem thu: `npm run test:frontend` dat 123/123; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat.
+- Rui ro con lai: Chua UAT truc quan bang tai khoan UpGO that tren production do browser session cua agent khong co; can hard refresh va test danh ba -> nhan tin, room cu, room moi, gui tin, nhom va reload.
+- Viec tiep theo: Commit/push, deploy release immutable, recreate rieng `chat`, kiem tra health/bundle/log va UAT production.
+- Commit/PR: Chua tao.
+
 ## 2026-08-18-19 - Bao ve toan bo luong mo danh ba va chat 1-1
 
 - Thoi gian: 2026-08-18 17:04 (Asia/Saigon)

@@ -687,7 +687,7 @@ function conversationTimestamp(room) {
 function collectFriendshipRecords(conversations, viewerId) {
   const requests = new Map();
   const responses = new Map();
-  Object.values(conversations || {}).forEach(room => {
+  safeConversationValues(conversations).forEach(room => {
     roomFriendEvents(room).forEach(message => {
       const event = message.friendEvent;
       if (!event?.requestId) return;
@@ -838,6 +838,29 @@ function safeNormalizeConversationForRender(conversation, fallbackId = '') {
       pinned: false,
     };
   }
+}
+
+function safeConversationEntries(conversations) {
+  if (!conversations || typeof conversations !== 'object' || Array.isArray(conversations)) return [];
+  try {
+    return Object.entries(conversations)
+      .map(([id, room]) => [id, safeNormalizeConversationForRender(room, id)])
+      .filter(([, room]) => room?.id);
+  } catch (error) {
+    console.error('ViChat: conversation map normalization failed', error);
+    return [];
+  }
+}
+
+function safeConversationValues(conversations) {
+  return safeConversationEntries(conversations).map(([, room]) => room);
+}
+
+function safeConversationList(conversations) {
+  if (!Array.isArray(conversations)) return [];
+  return conversations
+    .map((room, index) => safeNormalizeConversationForRender(room, room?.id || `conversation-${index}`))
+    .filter(room => room?.id);
 }
 
 function removeMessageFromConversation(room, message) {
@@ -1205,7 +1228,7 @@ function managementRoomsForSession(managed, accounts, user, accountSession) {
   const savedDirects = (managed?.directs || [])
     .map(direct => demoDirectToConversation(direct, accounts, managementUserId));
   const savedDirectIds = new Set(savedDirects.map(room => room.id));
-  const remoteRooms = (managed?.conversations || [])
+  const remoteRooms = safeConversationList(managed?.conversations)
     .filter(room => !room.isChatbot)
     .filter(room => isManagementConversationId(room.managementId || room.id))
     .filter(room => roomParticipantIds(room).map(String).includes(managementUserId))
@@ -1254,7 +1277,7 @@ function managementRoomsForSession(managed, accounts, user, accountSession) {
 }
 
 function managedTinodeTopics(rooms) {
-  return Object.values(rooms || {}).map(room => room.tinodeTopic).filter(Boolean);
+  return safeConversationValues(rooms).map(room => room.tinodeTopic).filter(Boolean);
 }
 
 function callPeerDetails(room, currentUser) {
@@ -1456,11 +1479,7 @@ function App() {
 
   // Normalize every room used by render paths, including the sidebar. A direct
   // snapshot can be malformed before it reaches the active-chat selector.
-  const renderConversations = Object.fromEntries(
-    Object.entries(conversations || {})
-      .map(([id, room]) => [id, safeNormalizeConversationForRender(room, id)])
-      .filter(entry => entry && entry[0] && entry[1] && entry[1].id),
-  );
+  const renderConversations = Object.fromEntries(safeConversationEntries(conversations));
   const rawActiveChatSource = renderConversations[currentChatId] || Object.values(renderConversations)[0];
   const activeChatSource = rawActiveChatSource
     ? safeNormalizeConversationForRender(rawActiveChatSource, currentChatId)
@@ -1958,7 +1977,7 @@ function App() {
     setWorkspaceResults(previous => updateAccountPresence(previous, snapshot, currentAccount));
     setConversations(previous => {
       let changed = false;
-      const next = Object.fromEntries(Object.entries(previous).map(([id, room]) => {
+      const next = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
         let membersChanged = false;
         const members = roomMembers(room).map(member => {
           const account = findAccount(accounts, member.id || member.uid || member.name);
@@ -2031,7 +2050,7 @@ function App() {
   useEffect(() => {
     const now = Date.now();
     const nextExpiry = nextNotificationMuteExpiry(
-      Object.values(conversations || {}).map(room => safeNormalizeConversationForRender(room)),
+      safeConversationValues(conversations),
       now,
     );
     if (nextExpiry === null) return undefined;
@@ -2108,13 +2127,13 @@ function App() {
         : applyLocalConversationPins(managedRoomsSnapshot, managementUserId),
       managementUserId,
     );
-    const previousRooms = conversationsRef.current;
-    const nextRooms = Object.fromEntries(Object.entries(previousRooms).filter(([, room]) => (
+    const previousRooms = Object.fromEntries(safeConversationEntries(conversationsRef.current));
+    const nextRooms = Object.fromEntries(safeConversationEntries(previousRooms).filter(([, room]) => (
       room.isChatbot
       || (!room.managementId && !room.tinodeTopic && roomFriendEvents(room).length > 0)
     )));
-    Object.entries(managedRooms).forEach(([id, room]) => {
-      const previousRoom = previousRooms[id] || Object.values(previousRooms)
+    safeConversationEntries(managedRooms).forEach(([id, room]) => {
+      const previousRoom = previousRooms[id] || safeConversationValues(previousRooms)
         .find(candidate => room.tinodeTopic && candidate.tinodeTopic === room.tinodeTopic);
       nextRooms[id] = safeMergeTinodeConversation(previousRoom, room);
     });
@@ -2381,7 +2400,7 @@ function App() {
         if (!event.topic || !Number.isFinite(receiptSequence) || receiptSequence <= 0) return;
         setConversations(previous => {
           let changed = false;
-          const next = Object.fromEntries(Object.entries(previous).map(([id, room]) => {
+          const next = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
             if (room.accountSession !== accountSession || room.tinodeTopic !== event.topic) return [id, room];
             const messages = applyReceiptToMessages(roomMessages(room), {
               seq: receiptSequence,
@@ -2460,7 +2479,7 @@ function App() {
           return;
         }
         const currentRooms = conversationsRef.current;
-        const managedEntry = Object.entries(currentRooms)
+        const managedEntry = safeConversationEntries(currentRooms)
           .filter(([, room]) => room.accountSession === accountSession)
           .find(([, room]) => room.tinodeTopic === event.topic);
         const room = managedEntry?.[1];
@@ -2506,7 +2525,7 @@ function App() {
         const updateAccount = account => mergeRealtimeAccountProfile(account, profile);
         setDirectoryAccounts(previous => updateAccountProfiles(previous, profile));
         setWorkspaceResults(previous => updateAccountProfiles(previous, profile));
-        setConversations(previous => Object.fromEntries(Object.entries(previous).map(([id, room]) => {
+        setConversations(previous => Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
           const members = roomMembers(room).map(updateAccount);
           const peer = !room.isGroup ? members.find(member => identitiesOverlap(member, profile)) : null;
           return [id, {
@@ -2526,7 +2545,7 @@ function App() {
         if (expectedTinodeUid && String(event.sessionUid || '') !== expectedTinodeUid) return;
         const conversation = normalizeTinodeConversation(event.conversation);
         const currentRooms = conversationsRef.current;
-        const managedEntry = Object.entries(currentRooms)
+        const managedEntry = safeConversationEntries(currentRooms)
           .filter(([, room]) => room.accountSession === accountSession)
           .find(([, room]) => room.tinodeTopic === conversation.id);
         if (!managedEntry) return;
@@ -2572,7 +2591,7 @@ function App() {
         if (stateId === currentChatIdRef.current && conversation.badge > 0 && document.visibilityState !== 'hidden') {
           tinodeClient.markRead(conversation.id).catch(() => {});
         }
-        const currentRoom = currentRooms[stateId];
+        const currentRoom = safeNormalizeConversationForRender(currentRooms[stateId], stateId);
         if (
           currentRoom?.isGroup
           && conversation.avatarUrl
@@ -2589,7 +2608,7 @@ function App() {
           ).catch(() => {});
         }
         setConversations(prev => {
-          const previousRoom = prev[stateId];
+          const previousRoom = safeNormalizeConversationForRender(prev[stateId], stateId);
           if (!previousRoom || previousRoom.accountSession !== accountSession || previousRoom.tinodeTopic !== conversation.id) return prev;
           const incoming = {
             ...conversation,
@@ -2824,12 +2843,24 @@ function App() {
   }, []);
 
   const handleConversationSelect = async (id) => {
-    const room = conversations[id];
+    const rawRoom = conversationsRef.current[id] ?? conversations[id];
+    const room = rawRoom === null || rawRoom === undefined
+      ? null
+      : safeNormalizeConversationForRender(rawRoom, id);
+    if (!room?.id) {
+      setChatError('Cuoc tro chuyen khong con kha dung. Vui long tai lai danh ba.');
+      return;
+    }
     setCurrentChatId(id);
     setInputText(drafts[id] || '');
     setIsMobileChatActive(true);
     setChatError('');
-    setConversations(prev => prev[id] ? ({ ...prev, [id]: { ...prev[id], badge: 0 } }) : prev);
+    setConversations(prev => {
+      const previousRoom = prev[id] === null || prev[id] === undefined
+        ? null
+        : safeNormalizeConversationForRender(prev[id], id);
+      return previousRoom ? { ...prev, [id]: { ...previousRoom, badge: 0 } } : prev;
+    });
     if (chatMode === 'demo') {
       const userId = currentUser?.id || currentUser?.uid;
       if (!room?.isChatbot) {
@@ -2941,7 +2972,7 @@ function App() {
       chatLogoutFailed = true;
     }
     if (chatMode === 'demo') {
-      Object.values(conversations)
+      safeConversationValues(conversations)
         .filter(room => !room.isGroup && !room.isChatbot && roomMessages(room).length > 0)
         .forEach(room => persistDemoDirectMessage(room, null));
     }
@@ -3153,7 +3184,7 @@ function App() {
       setDirectoryAccounts(previous => previous.map(account => (
         account.id === updated.id ? { ...account, ...updated } : account
       )));
-      setConversations(previous => Object.fromEntries(Object.entries(previous).map(([id, room]) => [id, {
+      setConversations(previous => Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => [id, {
         ...room,
         members: roomMembers(room).map(member => identitiesOverlap(member, currentUser)
           ? { ...member, name: updated.name, avatar: updated.avatar || member.avatar }
@@ -3245,7 +3276,7 @@ function App() {
         directoryAccountsRef.current = next;
         return next;
       });
-      setConversations(previous => Object.fromEntries(Object.entries(previous).map(([id, room]) => [id, {
+      setConversations(previous => Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => [id, {
         ...room,
         members: roomMembers(room).map(member => identitiesOverlap(member, currentUser) ? { ...member, avatar: nextAvatar } : member),
         messages: roomMessages(room).map(message => identitiesOverlap(message, currentUser) ? { ...message, avatar: nextAvatar } : message),
@@ -3391,7 +3422,7 @@ function App() {
 
         setConversations(previous => {
           let changed = false;
-          const nextConversations = Object.fromEntries(Object.entries(previous).map(([id, room]) => {
+          const nextConversations = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
           const members = roomMembers(room).map(member => {
             const account = findAccount(effectiveAccounts, member.id || member.uid || member.tinodeUid || member.name);
             if (!account) return member;
@@ -3484,6 +3515,7 @@ function App() {
   };
 
   const handleStartDirectChat = async (contact) => {
+    try {
     const safeContact = normalizeAccountShape(contact);
     if (!safeContact) return;
     if (safeContact.id === (currentUser?.id || currentUser?.uid)) {
@@ -3496,7 +3528,7 @@ function App() {
     );
     const viewerId = currentUser?.id || currentUser?.uid;
     const accountSession = accountSessionRef.current;
-    const linkedRoom = Object.values(conversations).find(room => (
+    const linkedRoom = safeConversationValues(conversationsRef.current).find(room => (
       !room.isGroup
       && !room.isChatbot
       && room.accountSession === accountSession
@@ -3510,7 +3542,6 @@ function App() {
     const contactId = chatMode === 'demo' && participantIds.length === 2
       ? directConversationId(...participantIds)
       : linkedRoom?.id || safeContact.id || contactName;
-    try {
       let stateConversationId = contactId;
       deletedConversationIdsRef.current.delete(contactId);
       let managedRoom = linkedRoom;
@@ -3546,7 +3577,10 @@ function App() {
           tinodeTopic = await ensureTinodeConversationTopic(managedStateRoom);
           const restoredRoom = await tinodeClient.restoreConversation(tinodeTopic);
           if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
-          const previousRoom = conversationsRef.current[stateConversationId] || managedStateRoom;
+          const previousRoom = safeNormalizeConversationForRender(
+            conversationsRef.current[stateConversationId],
+            stateConversationId,
+          ) || managedStateRoom;
           const restoredStateRoom = {
             ...restoredRoom,
             id: stateConversationId,
@@ -3555,14 +3589,14 @@ function App() {
             accountSession,
           };
           const restoredRooms = {
-            ...conversationsRef.current,
+            ...Object.fromEntries(safeConversationEntries(conversationsRef.current)),
             [stateConversationId]: safeMergeTinodeConversation(previousRoom, restoredStateRoom),
           };
           conversationsRef.current = restoredRooms;
           setConversations(restoredRooms);
         }
       }
-      const previousRooms = conversationsRef.current;
+      const previousRooms = Object.fromEntries(safeConversationEntries(conversationsRef.current));
       const existing = previousRooms[stateConversationId] || previousRooms[contactId] || managedRoom || linkedRoom;
       const next = { ...previousRooms };
       if (linkedRoom && linkedRoom.id !== stateConversationId) delete next[linkedRoom.id];
@@ -3690,7 +3724,7 @@ function App() {
         return next;
       });
       const remainingRooms = Object.fromEntries(
-        Object.entries(conversations).filter(([id]) => id !== activeChat.id),
+        safeConversationEntries(conversations).filter(([id]) => id !== activeChat.id),
       );
       const nextId = firstVisibleConversationId(remainingRooms, drafts, CHATBOT_ACCOUNT.id);
       setCurrentChatId(nextId);
@@ -3703,7 +3737,10 @@ function App() {
   };
 
   const handleDeleteConversation = async (roomOverride = null) => {
-    const targetRoom = roomOverride || conversations[currentChatId] || {};
+    const rawTargetRoom = roomOverride || conversationsRef.current[currentChatId] || conversations[currentChatId];
+    const targetRoom = rawTargetRoom
+      ? safeNormalizeConversationForRender(rawTargetRoom, currentChatId)
+      : null;
     const activeChat = targetRoom;
     if (!targetRoom?.id || targetRoom.isChatbot || isDeletingConversation) return;
     const kind = activeChat.isGroup ? 'nhóm' : 'cuộc trò chuyện';
@@ -3758,7 +3795,7 @@ function App() {
       });
       setInputText('');
       const remainingRooms = Object.fromEntries(
-        Object.entries(conversations).filter(([id]) => id !== conversationId),
+        safeConversationEntries(conversations).filter(([id]) => id !== conversationId),
       );
       const nextId = firstVisibleConversationId(remainingRooms, drafts, CHATBOT_ACCOUNT.id);
       setCurrentChatId(nextId);
@@ -3773,7 +3810,10 @@ function App() {
   };
 
   const updateConversationMute = async (conversationId, mutedUntil) => {
-    const room = conversationsRef.current[conversationId];
+    const rawRoom = conversationsRef.current[conversationId];
+    const room = rawRoom === null || rawRoom === undefined
+      ? null
+      : safeNormalizeConversationForRender(rawRoom, conversationId);
     if (!room || room.isChatbot || room.id === 'empty') return false;
     setIsUpdatingNotificationMute(true);
     setChatError('');
@@ -3791,11 +3831,14 @@ function App() {
         persistedMuteUntil = updated.notificationMutedUntil;
       }
       setConversations(previous => {
-        if (!previous[conversationId]) return previous;
+        const previousRoom = previous[conversationId] === null || previous[conversationId] === undefined
+          ? null
+          : safeNormalizeConversationForRender(previous[conversationId], conversationId);
+        if (!previousRoom) return previous;
         const next = {
           ...previous,
           [conversationId]: {
-            ...previous[conversationId],
+            ...previousRoom,
             notificationMutedUntil: persistedMuteUntil,
           },
         };
@@ -3834,11 +3877,14 @@ function App() {
         toggleConversationPinIds(managementViewerId, managementConversationId, nextPinned);
       }
       setConversations(previous => {
-        if (!previous[room.id]) return previous;
+        const previousRoom = previous[room.id] === null || previous[room.id] === undefined
+          ? null
+          : safeNormalizeConversationForRender(previous[room.id], room.id);
+        if (!previousRoom) return previous;
         const next = {
           ...previous,
           [room.id]: {
-            ...previous[room.id],
+            ...previousRoom,
             pinned: persistedPinned,
             pinnedAt: persistedPinnedAt,
           },
@@ -3857,10 +3903,13 @@ function App() {
   const markConversationUnread = room => {
     if (!room || room.isChatbot) return;
     setConversations(previous => {
-      if (!previous[room.id]) return previous;
+      const previousRoom = previous[room.id] === null || previous[room.id] === undefined
+        ? null
+        : safeNormalizeConversationForRender(previous[room.id], room.id);
+      if (!previousRoom) return previous;
       const next = {
         ...previous,
-        [room.id]: { ...previous[room.id], badge: Math.max(1, previous[room.id].badge || 0) },
+        [room.id]: { ...previousRoom, badge: Math.max(1, previousRoom.badge || 0) },
       };
       conversationsRef.current = next;
       return next;
@@ -3874,9 +3923,14 @@ function App() {
     const conversationId = room.managementId || room.id;
     const nextCategories = setConversationCategory(viewerKey, conversationId, categoryId);
     setConversationCategories(nextCategories);
-    setConversations(previous => previous[room.id]
-      ? { ...previous, [room.id]: { ...previous[room.id], category: categoryId || '' } }
-      : previous);
+    setConversations(previous => {
+      const previousRoom = previous[room.id] === null || previous[room.id] === undefined
+        ? null
+        : safeNormalizeConversationForRender(previous[room.id], room.id);
+      return previousRoom
+        ? { ...previous, [room.id]: { ...previousRoom, category: categoryId || '' } }
+        : previous;
+    });
     setConversationCategoryMenuOpen(false);
     setConversationMenu(null);
   };
@@ -3979,21 +4033,24 @@ function App() {
           const tinodeTopic = await ensureTinodeConversationTopic(room, {
             avatarFile: groupAvatarFile,
           });
-          const realtimeRoom = await tinodeClient.openConversation(tinodeTopic);
+          const realtimeRoom = normalizeTinodeConversation(await tinodeClient.openConversation(tinodeTopic));
           if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
           room = {
             ...realtimeRoom,
             ...room,
             tinodeTopic,
-            messages: realtimeRoom.messages || [],
+            messages: roomMessages(realtimeRoom),
           };
           const provisionalRoom = normalizeTinodeConversation(room);
-          const provisionalRooms = { ...conversationsRef.current, [provisionalRoom.id]: provisionalRoom };
+          const provisionalRooms = {
+            ...Object.fromEntries(safeConversationEntries(conversationsRef.current)),
+            [provisionalRoom.id]: provisionalRoom,
+          };
           conversationsRef.current = provisionalRooms;
           setConversations(provisionalRooms);
           tinodeClient.allowConversationTopic(tinodeTopic);
           const tinodeActorId = tinodeClient.currentUserId || viewerId;
-      const targetUids = (Array.isArray(realtimeRoom.members) ? realtimeRoom.members : [])
+      const targetUids = roomMembers(realtimeRoom)
             .filter(member => member.id && member.id !== tinodeActorId);
           await tinodeClient.sendSystemEvent(tinodeTopic, {
             action: addedNames.length > 0 ? 'member_added' : 'group_created',
@@ -5238,7 +5295,7 @@ function App() {
             ...prev,
             [room.id]: {
               ...chatbotRoom,
-              messages: [...chatbotRoom.messages, botMessage],
+              messages: [...roomMessages(chatbotRoom), botMessage],
               lastMsg: `${CHATBOT_ACCOUNT.name}: ${botMessage.text}`,
               time: botMessage.time,
               updatedAt: replyCreatedAt,
