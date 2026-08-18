@@ -94,7 +94,7 @@ test('restores a cookie-backed session after a full page reload', () => {
 
 test('keeps only safe active tenant options and switches without logout', () => {
   assert.deepEqual(normalizeTenantOptions([
-    { id: 'tenant-a', name: 'Tenant A', role: 'admin', active: true },
+    { id: 'tenant-a', name: 'Tenant A', role: 'admin', active: true, logo_url: 'https://account.upgo.vn/company-a.png' },
     { id: 'tenant-a', name: 'Duplicate', active: true },
     { id: 'tenant-disabled', name: 'Disabled', active: false },
   ]), [{
@@ -103,6 +103,7 @@ test('keeps only safe active tenant options and switches without logout', () => 
     role: 'admin',
     accountRole: 'member',
     active: true,
+    logo: 'https://account.upgo.vn/company-a.png',
   }]);
   assert.equal(typeof chatManagementService.switchTenant, 'function');
   assert.match(managementServiceSource, /apiRequest\('\/api\/v1\/auth\/switch-tenant'/);
@@ -111,6 +112,9 @@ test('keeps only safe active tenant options and switches without logout', () => 
   assert.match(appSource, /window\.location\.reload\(\)/);
   const switchUiSource = appSource.split('const handleTenantSwitch = async option')[1].split('const handleForcedLogout')[0];
   assert.doesNotMatch(switchUiSource, /chatManagementService\.logout/);
+  assert.doesNotMatch(appSource, /tenant-switcher-menu/);
+  assert.match(appSource, /<TenantLogo src=\{option\.logo\}/);
+  assert.match(appSource, /handleTenantSwitch\(option\)/);
 });
 
 test('group member controls use the synced company directory with owner-only mutations', () => {

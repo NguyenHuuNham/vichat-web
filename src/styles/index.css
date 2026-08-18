@@ -2372,26 +2372,21 @@ input:checked + .slider:before {
 .workspace-logout-button:hover { border-color: rgba(224, 68, 45, .34); background: var(--vichat-red-light); transform: translateY(-1px); }
 .workspace-logout-button:focus-visible { outline: 3px solid rgba(224, 68, 45, .14); outline-offset: 2px; }
 .workspace-logout-button i { font-size: 13px; }
-.tenant-switcher { position: relative; flex: 0 0 auto; }
-.tenant-switcher-button { display: inline-grid; width: 34px; height: 34px; place-items: center; border: 1px solid rgba(18, 59, 57, .14); border-radius: 10px; color: var(--vichat-blue); background: var(--vichat-blue-light); font: inherit; cursor: pointer; transition: var(--transition-fast); }
-.tenant-switcher-button:hover, .tenant-switcher-button.active { border-color: rgba(18, 59, 57, .3); background: #d9eeeb; transform: translateY(-1px); }
-.tenant-switcher-button:focus-visible { outline: 3px solid rgba(244, 81, 30, .14); outline-offset: 2px; }
-.tenant-switcher-button:disabled { cursor: wait; opacity: .72; transform: none; }
-.tenant-switcher-button i { font-size: 13px; }
-.tenant-switcher-menu { position: absolute; top: calc(100% + 8px); right: -42px; z-index: 15; display: flex; width: min(300px, calc(100vw - 52px)); flex-direction: column; gap: 5px; padding: 9px; border: 1px solid var(--border-color); border-radius: 14px; background: var(--bg-white); box-shadow: 0 18px 44px rgba(15, 23, 42, .18); animation: tenantSwitcherReveal .16s ease-out; }
-@keyframes tenantSwitcherReveal { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-.tenant-switcher-heading { padding: 3px 7px 6px; color: var(--text-muted); font-size: 11px; font-weight: 750; letter-spacing: .02em; }
-.tenant-switcher-option { display: flex; width: 100%; align-items: center; gap: 9px; padding: 8px; border: 1px solid transparent; border-radius: 10px; color: var(--text-body); background: transparent; font: inherit; text-align: left; cursor: pointer; }
-.tenant-switcher-option:hover:not(:disabled) { border-color: var(--border-color); background: var(--bg-app); }
-.tenant-switcher-option.current { border-color: rgba(18, 59, 57, .16); background: var(--vichat-blue-light); }
-.tenant-switcher-option:disabled { cursor: default; }
-.tenant-switcher-option-icon { display: grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; border-radius: 9px; color: var(--vichat-blue); background: var(--bg-app); }
+.tenant-switcher { display: flex; max-width: min(560px, 100%); flex: 0 1 auto; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+.tenant-switcher-option { display: inline-flex; min-width: 0; max-width: 180px; align-items: center; gap: 8px; padding: 4px 8px 4px 4px; border: 1px solid rgba(18, 59, 57, .14); border-radius: 12px; color: var(--text-body); background: var(--bg-white); font: inherit; text-align: left; cursor: pointer; transition: var(--transition-fast); }
+.tenant-switcher-option:hover:not(:disabled) { border-color: rgba(18, 59, 57, .3); background: var(--vichat-blue-light); transform: translateY(-1px); }
+.tenant-switcher-option:focus-visible { outline: 3px solid rgba(244, 81, 30, .14); outline-offset: 2px; }
+.tenant-switcher-option.current { border-color: rgba(18, 59, 57, .32); background: var(--vichat-blue-light); box-shadow: 0 0 0 2px rgba(18, 59, 57, .08); }
+.tenant-switcher-option:disabled { cursor: default; opacity: .78; transform: none; }
+.tenant-switcher-option-icon { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; overflow: hidden; border-radius: 10px; color: var(--vichat-blue); background: var(--bg-app); }
+.tenant-switcher-option-icon img { display: block; width: 100%; height: 100%; object-fit: contain; border-radius: inherit; }
+.tenant-switcher-option-icon > i { font-size: 14px; }
 .tenant-switcher-option.current .tenant-switcher-option-icon { color: #fff; background: var(--vichat-blue); }
 .tenant-switcher-option-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
 .tenant-switcher-option-copy strong { overflow: hidden; color: var(--text-main); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .tenant-switcher-option-copy small { overflow: hidden; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .tenant-switcher-check { color: var(--status-online); font-size: 12px; }
-.tenant-switcher-loading, .tenant-switcher-notice { display: flex; align-items: flex-start; gap: 7px; margin-top: 3px; padding: 7px 8px; border-radius: 9px; color: var(--text-muted); background: var(--bg-app); font-size: 11px; line-height: 1.4; }
+.tenant-switcher-loading, .tenant-switcher-notice { display: flex; flex-basis: 100%; align-items: flex-start; gap: 7px; margin-top: 3px; padding: 7px 8px; border-radius: 9px; color: var(--text-muted); background: var(--bg-app); font-size: 11px; line-height: 1.4; }
 .tenant-switcher-loading i { color: var(--vichat-blue); }
 .tenant-switcher-notice { color: #9a3412; background: #fff3ed; }
 .tenant-switcher-notice i { margin-top: 2px; }
@@ -2943,7 +2938,10 @@ input:checked + .slider:before {
     .profile-edit-form { grid-template-columns: 1fr; }
     .workspace-logout-button { width: 34px; padding: 0; }
     .workspace-logout-button span { display: none; }
-    .tenant-switcher-menu { right: -42px; width: min(300px, calc(100vw - 28px)); }
+    .tenant-switcher { max-width: calc(100vw - 120px); flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; scrollbar-width: none; }
+    .tenant-switcher::-webkit-scrollbar { display: none; }
+    .tenant-switcher-option { flex: 0 0 auto; }
+    .tenant-switcher-option-copy { display: none; }
 }
 
 .conv-avatar.chatbot-avatar,
@@ -4222,12 +4220,9 @@ html[data-theme="dark"] .notification-device-choice.selected { background: #2634
 html[data-theme="dark"] .notification-device-choice.selected .notification-radio-dot { box-shadow: inset 0 0 0 4px var(--bg-white); }
 html[data-theme="dark"] .workspace-logout-button { border-color: rgba(224, 68, 45, .42); color: #ffb0a0; background: #3d2928; }
 html[data-theme="dark"] .workspace-logout-button:hover { background: #4b3030; }
-html[data-theme="dark"] .tenant-switcher-button { border-color: #3b5659; color: #9ddbd2; background: #21383b; }
-html[data-theme="dark"] .tenant-switcher-button:hover,
-html[data-theme="dark"] .tenant-switcher-button.active { border-color: #5c8885; background: #29494b; }
-html[data-theme="dark"] .tenant-switcher-menu { border-color: #3b4b54; background: var(--bg-white); box-shadow: 0 18px 44px rgba(0, 0, 0, .42); }
+html[data-theme="dark"] .tenant-switcher-option { border-color: #3b5659; background: var(--bg-white); }
+html[data-theme="dark"] .tenant-switcher-option:hover:not(:disabled) { border-color: #5c8885; background: #29494b; }
 html[data-theme="dark"] .tenant-switcher-option.current { border-color: #456b6b; background: #21383b; }
-html[data-theme="dark"] .tenant-switcher-option:hover:not(:disabled) { border-color: #3b4b54; background: var(--bg-app); }
 html[data-theme="dark"] .tenant-switcher-option-icon { color: #9ddbd2; background: #2b3c42; }
 html[data-theme="dark"] .tenant-switcher-option.current .tenant-switcher-option-icon { color: #102427; background: #9ddbd2; }
 html[data-theme="dark"] .tenant-switcher-notice { color: #ffc0a5; background: #3d2928; }

@@ -191,6 +191,9 @@ class SSOIdentityTests(unittest.TestCase):
             "tenant_name": "Tenant B",
             "role": "member",
             "status": "active",
+            "company": {
+                "logo_url": "https://account.upgo.vn/company-b.svg",
+            },
         })
 
         identity = normalize_account_session(payload, preferred_tenant_id="tenant-b")
@@ -198,6 +201,10 @@ class SSOIdentityTests(unittest.TestCase):
         self.assertEqual(identity["tenant_id"], "tenant-b")
         self.assertEqual(identity["tenant_name"], "Tenant B")
         self.assertEqual(identity["role"], "member")
+        self.assertEqual(
+            next(option["logo"] for option in identity["tenant_options"] if option["id"] == "tenant-b"),
+            "https://account.upgo.vn/company-b.svg",
+        )
         self.assertEqual(
             {option["id"] for option in identity["tenant_options"]},
             {"tenant-a", "tenant-b"},

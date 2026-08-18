@@ -103,6 +103,51 @@ def _membership_name(membership, fallback=""):
     return str(fallback or "").strip()
 
 
+def _media_url(value):
+    if isinstance(value, str):
+        return value.strip()
+    if not isinstance(value, dict):
+        return ""
+    for name in ("url", "src", "href", "ref", "path", "uri"):
+        candidate = value.get(name)
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return ""
+
+
+def _membership_logo(membership):
+    if not isinstance(membership, dict):
+        return ""
+    sources = [membership]
+    for name in ("tenant", "company", "brand", "organization", "workspace"):
+        nested = membership.get(name)
+        if isinstance(nested, dict):
+            sources.append(nested)
+    logo_names = (
+        "logo_url",
+        "logoUrl",
+        "logo",
+        "company_logo",
+        "company_logo_url",
+        "companyLogo",
+        "brand_logo",
+        "brand_logo_url",
+        "brandLogo",
+        "image_url",
+        "imageUrl",
+        "image",
+        "avatar_url",
+        "avatarUrl",
+        "avatar",
+    )
+    for source in sources:
+        for name in logo_names:
+            logo = _media_url(source.get(name))
+            if logo:
+                return logo
+    return ""
+
+
 def _tenant_option(membership):
     tenant_id = _membership_id(membership)
     if not tenant_id or len(tenant_id) > 50 or not _membership_active(membership):
@@ -116,13 +161,17 @@ def _tenant_option(membership):
         "organization_role",
         "workspace_role",
     ) or "member"
-    return {
+    option = {
         "id": tenant_id,
         "name": _membership_name(membership, tenant_id)[:255],
         "role": _chat_role(account_role),
         "account_role": str(account_role).strip().lower(),
         "active": True,
     }
+    logo = _membership_logo(membership)
+    if logo:
+        option["logo"] = logo[:2048]
+    return option
 
 
 def _chat_role(role):

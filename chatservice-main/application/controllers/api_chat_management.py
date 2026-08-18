@@ -141,7 +141,7 @@ def _public_tenant_options(identity):
         if not tenant_id or tenant_id in seen or len(tenant_id) > 50:
             continue
         seen.add(tenant_id)
-        options.append({
+        option = {
             "id": tenant_id,
             "name": str(item.get("name") or tenant_id).strip()[:255],
             "role": str(item.get("role") or "member").strip().lower(),
@@ -149,7 +149,20 @@ def _public_tenant_options(identity):
                 item.get("account_role") or item.get("accountRole") or "member"
             ).strip().lower(),
             "active": bool(item.get("active", True)),
-        })
+        }
+        logo = item.get("logo") or item.get("logoUrl") or item.get("logo_url")
+        if isinstance(logo, dict):
+            logo = next(
+                (
+                    logo.get(name)
+                    for name in ("url", "src", "href", "ref", "path", "uri")
+                    if isinstance(logo.get(name), str) and logo.get(name).strip()
+                ),
+                "",
+            )
+        if isinstance(logo, str) and logo.strip():
+            option["logo"] = logo.strip()[:2048]
+        options.append(option)
     return options
 
 

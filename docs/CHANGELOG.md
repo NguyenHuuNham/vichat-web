@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-23 - Tach logo chuyen cong ty theo membership UpGo
+
+- Thoi gian: 2026-08-18 21:16 (Asia/Saigon)
+- Loai: Tinh nang | Web | Chatmgt | API | Kiem thu
+- Trang thai: Dang thuc hien
+- Muc tieu: Hien thi logo cong ty rieng le tu UpGo Account va chuyen dung tenant khi nguoi dung bam logo, khong lam thay doi cac luong chat, danh ba, realtime hoac dang nhap hien co.
+- Pham vi: Tenant option SSO, payload public cua Chatmgt, giao dien ho so ChatUI va test lien quan.
+- File da thay doi: chatservice-main/application/services/sso_identity.py, chatservice-main/application/controllers/api_chat_management.py, chatservice-main/tests/test_sso_identity.py, src/features/chat/services/chatManagementService.js, src/features/chat/services/chatManagementService.test.js, src/app/App.jsx, src/styles/index.css, docs/chat-backend-architecture.md, dist/index.html.
+- Noi dung: Doc logo tu cac truong public pho bien cua membership tenant/company/brand, tra optional logo qua tenantOptions, chuan hoa URL o ChatUI, hien thi moi membership thanh mot nut logo doc lap va dung fallback bieu tuong toa nha khi logo thieu/loi. Bam tenant khac van goi POST /api/v1/auth/switch-tenant hien co va reload de tai lai session/danh ba theo tenant moi.
+- Quyet dinh ky thuat: UpGo Account van la nguon chuan cho membership va logo; Chatmgt chi forward metadata public, khong luu logo vao message/auth secret va khong tao API switch moi. Khong cham vao conversation, Tinode, Chatmgt membership hoac cac luong realtime khac.
+- Database/API/cau hinh: Mo rong response public tenantOptions voi truong optional logo; khong migration, secret hoac bien moi truong.
+- Kiem thu: npm run test:frontend dat 125/125; python -m unittest chatservice-main.tests.test_sso_identity -v dat 26/26; python -m py_compile chatservice-main/application/services/sso_identity.py chatservice-main/application/controllers/api_chat_management.py chatservice-main/tests/test_sso_identity.py dat; npm run lint exit 0 voi warning legacy/vendor da co; npm run build:production dat; git diff --check dat.
+- Rui ro con lai: Chua UAT voi phien Account production co logo that; neu Account dung ten truong logo ngoai cac alias da ho tro thi se hien fallback toa nha va can bo sung alias theo payload thuc te.
+- Viec tiep theo: Commit/push, deploy lai chatmgt va chat, hard refresh https://chat.upgo.vn, bam tung logo va xac nhan danh ba/hoi thoai/realtime van dung tenant.
+- Commit/PR: Chua tao.
+
 ## 2026-08-18-22 - Sua crash TDZ khi mo chat tu danh ba
 
 - Thoi gian: 2026-08-18 20:24 (Asia/Saigon)

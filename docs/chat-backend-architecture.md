@@ -59,7 +59,10 @@ The administrator page uses `POST /api/v1/admin/sso` and the separate
    validates the requested membership against `/current_user`, calls Account's
    `/api/v1/tenant/set_current_tenant` with the existing Account session, and
    re-reads `/current_user` before rotating only the Chatmgt cookie. It does not
-   log out Account or require the employee to enter credentials again.
+   log out Account or require the employee to enter credentials again. Each
+   public option may also carry the Account-provided company/brand logo URL;
+   ChatUI renders these as separate switch buttons and uses a building fallback
+   when the logo is absent or unavailable. The logo is display metadata only.
 7. Logout revokes the Chatmgt token and clears the ChatUI cookie. A later API
    call receives `401`/`403`.
 

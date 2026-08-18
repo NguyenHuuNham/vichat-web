@@ -79,6 +79,15 @@ function scalarText(value) {
   return '';
 }
 
+function avatarText(value) {
+  const direct = scalarText(value);
+  if (direct) return direct;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  return ['url', 'ref', 'src', 'href', 'path', 'uri']
+    .map(name => scalarText(value[name]))
+    .find(Boolean) || '';
+}
+
 function booleanValue(value, fallback = false) {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') return value !== 0;
@@ -99,13 +108,26 @@ export function normalizeTenantOptions(value) {
     if (!id || seen.has(id)) return null;
     seen.add(id);
     const name = [option.name, option.tenantName, option.tenant_name, id].map(scalarText).find(Boolean) || id;
-    return {
+    const normalized = {
       id,
       name,
       role: ([option.role, 'member'].map(scalarText).find(Boolean) || 'member').toLowerCase(),
       accountRole: ([option.accountRole, option.account_role, 'member'].map(scalarText).find(Boolean) || 'member').toLowerCase(),
       active: booleanValue(option.active ?? option.is_active, true),
     };
+    const logo = [
+      option.logo,
+      option.logoUrl,
+      option.logo_url,
+      option.companyLogo,
+      option.company_logo,
+      option.company_logo_url,
+      option.brandLogo,
+      option.brand_logo,
+      option.brand_logo_url,
+    ].map(avatarText).find(Boolean) || '';
+    if (logo) normalized.logo = logo;
+    return normalized;
   }).filter(option => option?.active);
 }
 
