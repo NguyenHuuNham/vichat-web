@@ -10,17 +10,17 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-18 14:00 (Asia/Saigon)
 - Loai: Sua loi | Web | Chatmgt | Kiem thu
-- Trang thai: Hoan tat code; chua deploy production
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Khoi phuc luong nhan tin 1-1/nhom va thao tac them, xoa thanh vien khong lam mat room, lich su tin nhan hoac mapping tai khoan.
 - Pham vi: ChatUI merge snapshot Tinode/Chatmgt, tao room 1-1, xoa thanh vien nhom va Chatmgt participant DELETE.
-- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/chat/services/chatRealtime.test.js`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/chat/services/chatRealtime.test.js`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`; release `/opt/deploy/chat/releases/managed-chat-d5d2594-20260818-071610`.
 - Noi dung: Danh dau snapshot Chatmgt la nguon membership chuan de snapshot Tinode chi cap nhat realtime/presence; tao room 1-1 su dung ngay topic do Chatmgt tra ve; tai va hop nhat lich su Tinode truoc khi chot room 1-1 moi; them/xoa thanh vien luon tach khoa room tren UI khoi ID conversation Chatmgt va giu lich su khi Tinode tra snapshot rong; DELETE lap lai tren membership da inactive tra snapshot hien tai thay vi 404.
 - Quyet dinh ky thuat: Khong de `participantIds: []` tu lop normalize bi hieu nham la snapshot Chatmgt; chi snapshot co `managementSnapshot` moi duoc thay the membership/account IDs. Room 1-1 moi nhan ket qua `restoreConversation` truc tiep de khong hien rong trong luc event Tinode chua ve. Mutation thanh vien dung `managementConversationId` cho API va `stateConversationId` cho React state; retry xoa da thanh cong duoc xu ly idempotent, participant khong ton tai van tra 404.
 - Database/API/cau hinh: Khong migration, secret hoac bien moi; thay doi contract DELETE participant theo huong idempotent cho membership da inactive.
-- Kiem thu: `npm run test:frontend` dat 119/119; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `python -m unittest discover -s tests -v` dat 164 test, bo qua 53 test do dependency chi co trong image Chatmgt; `git diff --check` dat.
-- Rui ro con lai: Chua UAT truc quan voi tai khoan UpGO/Tinode that do SSH production khong co credential trong phien nay; can test room 1-1, group, them thanh vien, xoa thanh vien va gui tin sau khi deploy rieng ChatUI/Chatmgt.
-- Viec tiep theo: Review diff, commit va deploy theo quy trinh `test -> commit -> push -> deploy`; khong restart Tinode, database, Redis hoac service stateful.
-- Commit/PR: Chua tao.
+- Kiem thu: `npm run test:frontend` dat 119/119; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `python -m unittest discover -s tests -v` dat 164 test, bo qua 53 test do dependency chi co trong image Chatmgt; `git diff --check` dat. Remote archive SHA-256 `3E072CB73C9067B6568698F198C8DB513D92EB4EACFB332CB72C8017D94B3FA6`; Compose config/build dat; container `chatmgt` `2edbfdbce98c` va `chat` `79f6f7e5a3f3` healthy; public ChatUI/Chatmgt health dat; bundle `App-BoNit3Ko.js` co marker `managementSnapshot`, `restoreConversation`, `addConversationParticipants`; Tinode bridge/webhook, ChatAPI, PostgreSQL, Redis va Coturn khong bi recreate.
+- Rui ro con lai: Chua UAT truc quan voi tai khoan UpGO/Tinode that; can hard refresh va test room 1-1, group, them thanh vien, xoa thanh vien va gui tin.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, UAT bang tai khoan that; neu phat sinh loi thi tro `current` ve `previous` va recreate rieng `chat`/`chatmgt`, khong restart service stateful.
+- Commit/PR: Source `d5d2594`; docs follow-up dang cho commit.
 
 ## 2026-08-18-15 - Chan room 1-1 loi shape o toan bo render
 
