@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-18 20:24 (Asia/Saigon)
 - Loai: Sua loi | Web | Kiem thu
-- Trang thai: Da sua va build local; can UAT
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Bam `Danh ba -> Nhan tin` khong duoc day ChatUI vao man hinh "Chat dang tam dung" do loi render.
 - Pham vi: ChatUI presence label, header phong chat 1-1 va test hoi quy.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`, va `docs/CHANGELOG.md`.
 - Noi dung: Dua `isCurrentUserOnline` va `isAccountOnline` len truoc cac ham label duoc goi trong render, loai bo loi `Cannot access 'isAccountOnline' before initialization` khi active direct peer ton tai. Boc them header phong chat bang `ConversationErrorBoundary` de loi du lieu header chi lam hong vung header.
 - Quyet dinh ky thuat: Khoi tao helper theo dung thu tu phu thuoc JavaScript thay vi doi API hoac them fallback du lieu; boundary chi la lop cach ly hien thi, khong thay doi nguon du lieu Chatmgt/Tinode.
 - Database/API/cau hinh: Khong migration, endpoint, secret hoac bien moi.
-- Kiem thu: `npm run test:frontend` dat 125/125; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat.
-- Rui ro con lai: Chua UAT truc quan voi phien dang nhap production; chua deploy tu phien lam viec nay.
+- Kiem thu: Local `npm run test:frontend` dat 125/125; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat. Production `docker compose config -q`, build image `chat`, `nginx -t`, container health, `http://127.0.0.1:8094/healthz`, public `https://chat.upgo.vn/healthz`, public entry `index-CzGBnfaI.js`, App bundle `App-BhXRfUKF.js` va Chatmgt auth health deu dat; bundle co marker `Conversation header unavailable`.
+- Trien khai: Source `ad032d2` va docs `3c670fc` da push `origin/master`; release `/opt/deploy/chat/releases/tdz-fix-3c670fc-20260818T133342Z`; archive SHA-256 `17D09E22EAB713D36576FF40BD68CE2027A4815F4EE220631EB87FBB2D0662E8`; image ChatUI `sha256:f8e2ad9456808b6789da558899c4b60ba459fceb016bed103e48ea64a6211065`; container `3ec91c5bf111`; `current` tro release moi, `previous` tro `direct-navigation-1156017-20260818-1915`; rollback tag `songhong-production-chat:rollback-before-tdz-fix-3c670fc`; chi recreate `chat`, giu nguyen Chatmgt/Tinode bridge/chatbot, ChatAPI, PostgreSQL, Redis, Coturn va volume.
+- Rui ro con lai: Chua UAT truc quan voi phien dang nhap production; loi 404 media cu trong log Tinode khong thuoc pham vi thay doi nay.
 - Viec tiep theo: Hard refresh production, bam `Danh ba -> Nhan tin`, gui tin nhan, mo lai room cu va kiem tra nhom/reload.
-- Commit/PR: Source `ad032d2`; chua push/deploy.
+- Commit/PR: Source `ad032d2`; docs `3c670fc`; deploy da hoan tat, chua co PR.
 
 ## 2026-08-18-21 - Mo chat tu danh ba khong bi chan boi provisioning
 
