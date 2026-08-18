@@ -2373,7 +2373,7 @@ input:checked + .slider:before {
 .workspace-logout-button:focus-visible { outline: 3px solid rgba(224, 68, 45, .14); outline-offset: 2px; }
 .workspace-logout-button i { font-size: 13px; }
 .tenant-switcher { display: flex; max-width: min(560px, 100%); flex: 0 1 auto; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
-.tenant-switcher-option { display: inline-flex; min-width: 0; max-width: 180px; align-items: center; gap: 8px; padding: 4px 8px 4px 4px; border: 1px solid rgba(18, 59, 57, .14); border-radius: 12px; color: var(--text-body); background: var(--bg-white); font: inherit; text-align: left; cursor: pointer; transition: var(--transition-fast); }
+.tenant-switcher-option { position: relative; display: inline-flex; width: 42px; height: 42px; min-width: 42px; align-items: center; justify-content: center; padding: 3px; border: 1px solid rgba(18, 59, 57, .14); border-radius: 12px; color: var(--text-body); background: var(--bg-white); font: inherit; text-align: center; cursor: pointer; transition: var(--transition-fast); }
 .tenant-switcher-option:hover:not(:disabled) { border-color: rgba(18, 59, 57, .3); background: var(--vichat-blue-light); transform: translateY(-1px); }
 .tenant-switcher-option:focus-visible { outline: 3px solid rgba(244, 81, 30, .14); outline-offset: 2px; }
 .tenant-switcher-option.current { border-color: rgba(18, 59, 57, .32); background: var(--vichat-blue-light); box-shadow: 0 0 0 2px rgba(18, 59, 57, .08); }
@@ -2382,10 +2382,8 @@ input:checked + .slider:before {
 .tenant-switcher-option-icon img { display: block; width: 100%; height: 100%; object-fit: contain; border-radius: inherit; }
 .tenant-switcher-option-icon > i { font-size: 14px; }
 .tenant-switcher-option.current .tenant-switcher-option-icon { color: #fff; background: var(--vichat-blue); }
-.tenant-switcher-option-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
-.tenant-switcher-option-copy strong { overflow: hidden; color: var(--text-main); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.tenant-switcher-option-copy small { overflow: hidden; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.tenant-switcher-check { color: var(--status-online); font-size: 12px; }
+.tenant-switcher-option-copy { display: none; }
+.tenant-switcher-check { position: absolute; right: -4px; bottom: -4px; display: grid; width: 16px; height: 16px; place-items: center; border: 2px solid var(--bg-white); border-radius: 50%; color: var(--status-online); background: var(--bg-white); font-size: 9px; }
 .tenant-switcher-loading, .tenant-switcher-notice { display: flex; flex-basis: 100%; align-items: flex-start; gap: 7px; margin-top: 3px; padding: 7px 8px; border-radius: 9px; color: var(--text-muted); background: var(--bg-app); font-size: 11px; line-height: 1.4; }
 .tenant-switcher-loading i { color: var(--vichat-blue); }
 .tenant-switcher-notice { color: #9a3412; background: #fff3ed; }
@@ -2941,7 +2939,6 @@ input:checked + .slider:before {
     .tenant-switcher { max-width: calc(100vw - 120px); flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; scrollbar-width: none; }
     .tenant-switcher::-webkit-scrollbar { display: none; }
     .tenant-switcher-option { flex: 0 0 auto; }
-    .tenant-switcher-option-copy { display: none; }
 }
 
 .conv-avatar.chatbot-avatar,

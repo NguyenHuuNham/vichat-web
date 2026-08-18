@@ -191,6 +191,7 @@ class SSOIdentityTests(unittest.TestCase):
             "tenant_name": "Tenant B",
             "role": "member",
             "status": "active",
+            "logo_updated_at": "2026-08-18T21:30:00Z",
             "company": {
                 "logo_url": "https://account.upgo.vn/company-b.svg",
             },
@@ -204,6 +205,10 @@ class SSOIdentityTests(unittest.TestCase):
         self.assertEqual(
             next(option["logo"] for option in identity["tenant_options"] if option["id"] == "tenant-b"),
             "https://account.upgo.vn/company-b.svg",
+        )
+        self.assertEqual(
+            next(option["logo_version"] for option in identity["tenant_options"] if option["id"] == "tenant-b"),
+            "2026-08-18T21:30:00Z",
         )
         self.assertEqual(
             {option["id"] for option in identity["tenant_options"]},

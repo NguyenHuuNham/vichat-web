@@ -6,6 +6,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-24 - Icon-only chuyen cong ty va dong bo logo tu Account
+
+- Thoi gian: 2026-08-18 21:58 (Asia/Saigon)
+- Loai: Tinh nang | Web | Chatmgt | API | Kiem thu
+- Trang thai: Da kiem thu; dang chuan bi deploy production
+- Muc tieu: Chi hien thi bieu tuong/logo cong ty trong ho so, van cho biet ten cong ty khi tro chuot, va tu dong nhan logo moi tu UpGo Account ma khong reload chat.
+- Pham vi: Tenant option public cua Chatmgt, chuan hoa logo/version tren ChatUI, refresh session metadata, giao dien profile va test lien quan.
+- Noi dung: Chatmgt doc them logo version tu membership/brand metadata va tra qua tenantOptions. ChatUI kiem tra GET /api/v1/auth/me khi tab focus/visibility va moi 5 giay, chi cap nhat tenantOptions trong React state neu metadata doi; logo co version duoc cache-bust, logo thieu/loi dung fallback toa nha. Conversation, directory, Tinode va realtime khong bi reset.
+- Quyet dinh ky thuat: UpGo Account van la nguon chuan; Chatmgt khong luu anh hay secret. Nut chuyen cong ty giu title/aria-label ten cong ty nhung an ten/role trong layout. Refresh dung endpoint auth hien co de khong tao polling/API moi va khong tac dong den luong chat.
+- Database/API/cau hinh: Mo rong tenantOptions voi optional logoVersion/logo_version; khong migration, secret hoac bien moi truong.
+- Kiem thu: npm run test:frontend dat 126/126; python -m unittest discover -s chatservice-main/tests -v dat 167 test, bo qua 56 test do thieu runtime dependency local; python -m py_compile dat; npm run lint exit 0 voi warning legacy/vendor da co; npm run build:production dat; git diff --check dat.
+- Trien khai: Dang cho release va health check production sau khi push commit.
+- Rui ro con lai: Neu Account giu nguyen URL anh va khong tra logo version/updated_at cung khong co cache invalidation, Chatmgt khong the biet noi dung byte cua anh da doi; code da ho tro cac truong version/update pho bien de tranh tinh huong nay.
+- Viec tiep theo: Hard refresh production, dang nhap tai khoan co nhieu membership, hover tung logo de kiem tra tooltip, doi logo trong UpGo Account va xac nhan ChatUI cap nhat trong vong refresh/focus ma khong mat room dang mo.
+
 ## 2026-08-18-23 - Tach logo chuyen cong ty theo membership UpGo
 
 - Thoi gian: 2026-08-18 21:16 (Asia/Saigon)

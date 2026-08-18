@@ -162,6 +162,17 @@ def _public_tenant_options(identity):
             )
         if isinstance(logo, str) and logo.strip():
             option["logo"] = logo.strip()[:2048]
+        logo_version = (
+            item.get("logo_version")
+            or item.get("logoVersion")
+            or item.get("logo_updated_at")
+            or item.get("logoUpdatedAt")
+        )
+        if isinstance(logo_version, (str, int, float)) and not isinstance(logo_version, bool):
+            logo_version = str(logo_version).strip()
+            if logo_version:
+                option["logoVersion"] = logo_version[:255]
+                option["logo_version"] = logo_version[:255]
         options.append(option)
     return options
 

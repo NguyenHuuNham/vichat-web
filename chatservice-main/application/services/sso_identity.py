@@ -115,9 +115,31 @@ def _media_url(value):
     return ""
 
 
-def _membership_logo(membership):
-    if not isinstance(membership, dict):
+def _media_version(value):
+    if not isinstance(value, dict):
         return ""
+    for name in (
+        "version",
+        "updated_at",
+        "updatedAt",
+        "last_modified",
+        "lastModified",
+    ):
+        candidate = value.get(name)
+        if candidate is not None and str(candidate).strip():
+            return str(candidate).strip()
+    return ""
+
+
+def _version_value(value):
+    if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+        return str(value).strip()
+    return _media_version(value)
+
+
+def _membership_logo_metadata(membership):
+    if not isinstance(membership, dict):
+        return "", ""
     sources = [membership]
     for name in ("tenant", "company", "brand", "organization", "workspace"):
         nested = membership.get(name)
@@ -140,12 +162,42 @@ def _membership_logo(membership):
         "avatarUrl",
         "avatar",
     )
+    version_names = (
+        "logo_version",
+        "logoVersion",
+        "logo_updated_at",
+        "logoUpdatedAt",
+        "company_logo_version",
+        "companyLogoVersion",
+        "brand_logo_version",
+        "brandLogoVersion",
+        "updated_at",
+        "updatedAt",
+    )
+    fallback_version = next(
+        (
+            _version_value(source.get(name))
+            for source in sources
+            for name in version_names
+            if source.get(name) is not None and _version_value(source.get(name))
+        ),
+        "",
+    )
     for source in sources:
+        source_version = _version_value(next(
+            (source.get(name) for name in version_names if source.get(name) is not None),
+            None,
+        ))
         for name in logo_names:
-            logo = _media_url(source.get(name))
+            raw_logo = source.get(name)
+            logo = _media_url(raw_logo)
             if logo:
-                return logo
-    return ""
+                return logo, _media_version(raw_logo) or source_version or fallback_version
+    return "", ""
+
+
+def _membership_logo(membership):
+    return _membership_logo_metadata(membership)[0]
 
 
 def _tenant_option(membership):
@@ -168,9 +220,11 @@ def _tenant_option(membership):
         "account_role": str(account_role).strip().lower(),
         "active": True,
     }
-    logo = _membership_logo(membership)
+    logo, logo_version = _membership_logo_metadata(membership)
     if logo:
         option["logo"] = logo[:2048]
+    if logo_version:
+        option["logo_version"] = logo_version[:255]
     return option
 
 

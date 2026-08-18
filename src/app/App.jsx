@@ -958,17 +958,26 @@ function safeMergeTinodeConversation(existing, incoming) {
   }
 }
 
-function TenantLogo({ src, name }) {
+function tenantLogoSource(src, version) {
+  const value = String(src || '').trim();
+  const cacheVersion = String(version || '').trim();
+  if (!value || !cacheVersion || !/^(https?:|\/\/|\/)/i.test(value)) return value;
+  const separator = value.includes('?') ? '&' : '?';
+  return `${value}${separator}vichat_logo=${encodeURIComponent(cacheVersion)}`;
+}
+
+function TenantLogo({ src, name, version }) {
   const [failed, setFailed] = useState(false);
+  const resolvedSrc = tenantLogoSource(src, version);
 
   useEffect(() => {
     setFailed(false);
-  }, [src]);
+  }, [resolvedSrc]);
 
-  if (!src || failed) {
+  if (!resolvedSrc || failed) {
     return <i className="fa-solid fa-building" aria-hidden="true"></i>;
   }
-  return <img src={src} alt={name || ''} onError={() => setFailed(true)} />;
+  return <img src={resolvedSrc} alt={name || ''} onError={() => setFailed(true)} />;
 }
 
 function SafeAvatar({ src, name, className = '' }) {
@@ -3089,7 +3098,20 @@ function App() {
       if (forcedLogoutRef.current) return;
       checking = true;
       try {
-        await chatManagementService.currentSession();
+        const refreshedSession = await chatManagementService.refreshSessionMetadata();
+        if (!cancelled && refreshedSession) {
+          const nextTenantOptions = refreshedSession.tenantOptions || refreshedSession.tenant_options || [];
+          setCurrentUser(previous => {
+            if (!previous) return previous;
+            const previousTenantOptions = previous.tenantOptions || previous.tenant_options || [];
+            if (JSON.stringify(previousTenantOptions) === JSON.stringify(nextTenantOptions)) return previous;
+            return {
+              ...previous,
+              tenantOptions: nextTenantOptions,
+              tenant_options: nextTenantOptions,
+            };
+          });
+        }
       } catch (error) {
         if (!cancelled && error?.status === 401) {
           if (error?.code === 'SESSION_REVOKED') {
@@ -6879,11 +6901,7 @@ function App() {
                               disabled={isSwitchingTenant || isCurrentTenant}
                             >
                               <span className="tenant-switcher-option-icon">
-                                <TenantLogo src={option.logo} name={option.name} />
-                              </span>
-                              <span className="tenant-switcher-option-copy">
-                                <strong>{option.name}</strong>
-                                <small>{isCurrentTenant ? appCopy.t('Công ty hiện tại') : option.role}</small>
+                                <TenantLogo src={option.logo} name={option.name} version={option.logoVersion} />
                               </span>
                               {isCurrentTenant && <i className="fa-solid fa-check tenant-switcher-check" aria-hidden="true"></i>}
                             </button>

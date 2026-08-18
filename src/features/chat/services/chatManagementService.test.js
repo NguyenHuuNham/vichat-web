@@ -117,6 +117,30 @@ test('keeps only safe active tenant options and switches without logout', () => 
   assert.match(appSource, /handleTenantSwitch\(option\)/);
 });
 
+test('refreshes company logo metadata without resetting the active chat session', () => {
+  assert.equal(typeof chatManagementService.refreshSessionMetadata, 'function');
+  assert.match(managementServiceSource, /async refreshSessionMetadata\(\)/);
+  assert.match(managementServiceSource, /hydrateActiveSession\(payload, \{ preserveExisting: true \}\)/);
+  assert.match(appSource, /chatManagementService\.refreshSessionMetadata\(\)/);
+  assert.match(appSource, /tenantOptions: nextTenantOptions/);
+  assert.match(appSource, /title=\{option\.name\}/);
+  assert.doesNotMatch(appSource, /tenant-switcher-option-copy/);
+  assert.deepEqual(normalizeTenantOptions([{
+    id: 'tenant-a',
+    name: 'Tenant A',
+    logo_url: 'https://account.upgo.vn/company-a.png',
+    logo_updated_at: '2026-08-18T21:30:00Z',
+  }]), [{
+    id: 'tenant-a',
+    name: 'Tenant A',
+    role: 'member',
+    accountRole: 'member',
+    active: true,
+    logo: 'https://account.upgo.vn/company-a.png',
+    logoVersion: '2026-08-18T21:30:00Z',
+  }]);
+});
+
 test('group member controls use the synced company directory with owner-only mutations', () => {
   for (const removedBinding of [
     'isAddMembersOpen',

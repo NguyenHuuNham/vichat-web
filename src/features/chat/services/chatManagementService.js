@@ -88,6 +88,13 @@ function avatarText(value) {
     .find(Boolean) || '';
 }
 
+function mediaVersionText(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  return ['version', 'updatedAt', 'updated_at', 'lastModified', 'last_modified']
+    .map(name => scalarText(value[name]))
+    .find(Boolean) || '';
+}
+
 function booleanValue(value, fallback = false) {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') return value !== 0;
@@ -126,7 +133,28 @@ export function normalizeTenantOptions(value) {
       option.brand_logo,
       option.brand_logo_url,
     ].map(avatarText).find(Boolean) || '';
+    const logoVersion = [
+      option.logoVersion,
+      option.logo_version,
+      option.logoUpdatedAt,
+      option.logo_updated_at,
+      option.companyLogoVersion,
+      option.company_logo_version,
+      option.brandLogoVersion,
+      option.brand_logo_version,
+      option.updatedAt,
+      option.updated_at,
+      option.companyUpdatedAt,
+      option.company_updated_at,
+      option.brandUpdatedAt,
+      option.brand_updated_at,
+    ].map(scalarText).find(Boolean)
+      || [option.logo, option.companyLogo, option.company_logo, option.brandLogo, option.brand_logo]
+        .map(mediaVersionText)
+        .find(Boolean)
+      || '';
     if (logo) normalized.logo = logo;
+    if (logoVersion) normalized.logoVersion = logoVersion;
     return normalized;
   }).filter(option => option?.active);
 }
@@ -359,9 +387,14 @@ export const chatManagementService = {
 
   async currentSession() {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const session = await this.refreshSessionMetadata();
+    return publicAccount(session);
+  },
+
+  async refreshSessionMetadata() {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const payload = await apiRequest('/api/v1/auth/me');
-    if (!activeSession) hydrateActiveSession(payload, { preserveExisting: false });
-    return publicAccount(payload.user || payload.current_user || payload);
+    return hydrateActiveSession(payload, { preserveExisting: true });
   },
 
   async restoreSession() {

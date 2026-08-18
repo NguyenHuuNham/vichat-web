@@ -60,15 +60,22 @@ The administrator page uses `POST /api/v1/admin/sso` and the separate
    `/api/v1/tenant/set_current_tenant` with the existing Account session, and
    re-reads `/current_user` before rotating only the Chatmgt cookie. It does not
    log out Account or require the employee to enter credentials again. Each
-   public option may also carry the Account-provided company/brand logo URL;
-   ChatUI renders these as separate switch buttons and uses a building fallback
-   when the logo is absent or unavailable. The logo is display metadata only.
+   public option may also carry the Account-provided company/brand logo URL
+   and optional logo version; ChatUI renders these as separate icon-only switch
+   buttons, exposes the company name through the button tooltip, and uses a
+   building fallback when the logo is absent or unavailable. The logo is display
+   metadata only.
 7. Logout revokes the Chatmgt token and clears the ChatUI cookie. A later API
    call receives `401`/`403`.
 
 When the web page reloads, ChatUI uses `GET /api/v1/auth/me` with the existing
 HttpOnly cookie to rebuild its in-memory account session before loading
-Chatmgt/Tinode data. No token or password is persisted in browser storage.
+Chatmgt/Tinode data. While an account is active, the same endpoint is checked
+when the tab regains focus/visibility and every five seconds. Chatmgt therefore
+re-reads the current Account membership logos; ChatUI updates only the in-memory
+tenant option metadata (using the optional logo version for cache invalidation)
+and does not reset conversations, Tinode, or realtime state. No token or
+password is persisted in browser storage.
 
 ### Mobile client session
 
