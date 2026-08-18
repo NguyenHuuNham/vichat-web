@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-09 - Chuyen workspace sang route rieng
+
+- Thoi gian: 2026-08-18 09:31 (Asia/Saigon)
+- Loai: Tinh nang | UX | Web | Navigation | Kiem thu
+- Trang thai: Hoan tat code; chua deploy production
+- Muc tieu: Khi mo Nhom, Work, Danh ba, Cai dat hoac workspace khac, noi dung phai la mot trang rieng co URL nhu `/friends` va khong phu len giao dien Chat.
+- Pham vi: ChatUI navigation/layout, route History API cho workspace, trang tao nhom, responsive va test; khong doi API, database, auth, tenant, Tinode hay luong chat hien tai.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/workspace/components/enterpriseWorkspace.css`, `src/features/workspace/services/workspaceRouting.js`, `src/features/workspace/services/workspaceRouting.test.js`, `package.json`, `docs/CHANGELOG.md`.
+- Noi dung: Map `contacts` thanh `/friends`, `enterprise` thanh `/work`, `groups` thanh `/groups`, `settings` thanh `/settings` va cac workspace khac thanh route rieng; ho tro Back/Forward bang `popstate`; workspace chiem vung noi dung ben phai thanh dieu huong, bo backdrop/drawer; tab Nhom dung lai form tao nhom trong page nhung nut `+` van giu modal cu.
+- Quyet dinh ky thuat: Dung History API khong them dependency/router moi; route server da co `try_files ... /index.html` nen co the refresh truc tiep cac URL workspace; chi dong bo URL va state, khong tao data flow moi.
+- Database/API/cau hinh: Khong co migration, endpoint, secret, bien moi truong hoac thay doi service stateful.
+- Kiem thu: `npm run test:frontend` dat 109/109; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat. Browser UAT truc quan chua chay do runtime browser khong ket noi trong moi truong hien tai.
+- Rui ro con lai: Chua UAT bang tai khoan UpGO that cho desktop/mobile, Back/Forward, refresh truc tiep `/friends` va `/settings`, cung luong tao nhom tren page.
+- Viec tiep theo: Chay local/production UAT, kiem tra URL doi dung khi bam tung tab va hard refresh cac route; chi deploy sau khi ban xac nhan giao dien.
+- Commit/PR: Chua tao.
+
 ## 2026-08-18-08 - Thiet ke lai panel Cai dat
 
 - Thoi gian: 2026-08-18 03:44 (Asia/Saigon)

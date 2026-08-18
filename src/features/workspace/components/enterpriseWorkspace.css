@@ -7,6 +7,12 @@
     linear-gradient(180deg, #fbfdfc, #f4f8f6);
 }
 
+.workspace-route-active .enterprise-shell-panel {
+  width: 100%;
+  max-width: none;
+  box-shadow: none;
+}
+
 .enterprise-shell-panel > .workspace-panel-header {
   margin-bottom: 14px;
 }
