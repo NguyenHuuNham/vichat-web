@@ -7,6 +7,7 @@ import {
   deliveryStatusFromReceiptCursor,
   firstVisibleConversationId,
   mergeDeliveryStatus,
+  normalizeConversationShape,
   messageForDeliveryStatus,
   modeWithRealtimePresence,
   readyTinodeTypingTopic,
@@ -67,6 +68,34 @@ test('conversation display names tolerate incomplete direct room metadata', () =
   assert.equal(conversationDisplayName({ id: 'direct-1', name: 'direct-1' }, 'Cuoc tro chuyen ca nhan'), 'Cuoc tro chuyen ca nhan');
   assert.equal(conversationDisplayName({ id: 'direct-1', name: 42 }), '42');
   assert.equal(conversationDisplayName({ id: 'direct-1' }, 'Cuoc tro chuyen ca nhan'), 'Cuoc tro chuyen ca nhan');
+});
+
+test('normalizes malformed direct room metadata before the UI iterates it', () => {
+  const room = normalizeConversationShape({
+    id: 'direct-1',
+    name: { invalid: true },
+    members: {
+      peer: { id: 'account-peer', name: 'Peer', username: { invalid: true } },
+    },
+    participantIds: { viewer: 'account-viewer', peer: { id: 'account-peer' } },
+    messages: {
+      first: {
+        id: 'message-1',
+        sender: 'incoming',
+        text: { invalid: true },
+        replyTo: { senderName: { invalid: true }, text: { invalid: true } },
+      },
+    },
+  });
+
+  assert.equal(room.name, '');
+  assert.deepEqual(room.participantIds, ['account-viewer', 'account-peer']);
+  assert.equal(room.members.length, 1);
+  assert.equal(room.members[0].name, 'Peer');
+  assert.equal(room.messages.length, 1);
+  assert.equal(room.messages[0].text, '');
+  assert.equal(room.messages[0].replyTo.text, '');
+  assert.equal(room.messages[0].replyTo.senderName, '');
 });
 
 test('initial selection skips empty Chatmgt direct metadata', () => {

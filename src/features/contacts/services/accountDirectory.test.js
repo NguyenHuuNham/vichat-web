@@ -8,6 +8,7 @@ import {
   companyDirectoryHeading,
   countGroupPresence,
   directoryUsernameMeta,
+  findAccount,
   findDirectPeer,
   identitiesOverlap,
   identityValues,
@@ -285,4 +286,16 @@ test('direct conversations resolve the other account for the current viewer', ()
     name: viewer.name,
   }, accounts, viewer), peer);
   assert.strictEqual(findDirectPeer({ members: [{ id: 'usr-b' }] }, accounts, viewer), peer);
+});
+
+test('direct peer lookup ignores malformed member collections', () => {
+  const viewer = { id: 'account-a', tinodeUid: 'usr-a' };
+  const peer = { id: 'account-b', tinodeUid: 'usr-b', name: 'Peer' };
+  assert.strictEqual(findDirectPeer({ members: { peer }, participantIds: { peer } }, [viewer, peer], viewer), null);
+});
+
+test('identity matching ignores malformed optional profile fields', () => {
+  const account = { id: 'account-a', username: { invalid: true }, email: null, name: { invalid: true } };
+  assert.strictEqual(findAccount([account], 'account-a'), account);
+  assert.equal(findAccount([account], 'not-the-account'), null);
 });

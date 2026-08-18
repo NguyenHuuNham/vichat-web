@@ -4,6 +4,7 @@ import {
   deliveryStatusFromReceiptCursor,
   messageForDeliveryStatus,
   modeWithRealtimePresence,
+  normalizeConversationShape,
   resolveTinodePresenceOnline,
 } from './chatRealtime';
 import {
@@ -795,11 +796,12 @@ function toConversation(topic, tinode) {
 
 async function enrichConversationProfiles(conversation, tinode = getClient()) {
   if (!conversation) return conversation;
+  const safeConversation = normalizeConversationShape(conversation);
   const profileIds = [...new Set([
-    ...(conversation.members || []).map(member => member.id),
-    ...(conversation.messages || []).map(message => message.senderId),
-    ...(conversation.messages || []).flatMap(message => message.targetIds || []),
-    ...(conversation.friendEvents || []).flatMap(message => [
+    ...(safeConversation.members || []).map(member => member.id),
+    ...(safeConversation.messages || []).map(message => message.senderId),
+    ...(safeConversation.messages || []).flatMap(message => message.targetIds || []),
+    ...(safeConversation.friendEvents || []).flatMap(message => [
       message.friendEvent?.requesterId,
       message.friendEvent?.recipientId,
       message.friendEvent?.responderId,
@@ -807,7 +809,7 @@ async function enrichConversationProfiles(conversation, tinode = getClient()) {
   ].filter(Boolean))];
   const loadedProfiles = await Promise.all(profileIds.map(uid => loadUserProfile(uid, tinode)));
   const profilesById = new Map(profileIds.map((uid, index) => [uid, loadedProfiles[index]]));
-  const members = (conversation.members || []).map(member => {
+  const members = (safeConversation.members || []).map(member => {
     const profile = profilesById.get(member.id) || {};
     return {
       ...member,
@@ -818,7 +820,7 @@ async function enrichConversationProfiles(conversation, tinode = getClient()) {
   });
   members.forEach(member => profilesById.set(member.id, member));
   const peer = members.find(member => member.id !== tinode.getCurrentUserID()) || members[0];
-  const messages = (conversation.messages || []).map(message => {
+  const messages = (safeConversation.messages || []).map(message => {
     const profile = profilesById.get(message.senderId) || userProfileCache.get(message.senderId);
     const next = {
       ...message,
@@ -839,7 +841,7 @@ async function enrichConversationProfiles(conversation, tinode = getClient()) {
     }
     return next;
   });
-  const friendEvents = (conversation.friendEvents || []).map(message => {
+  const friendEvents = (safeConversation.friendEvents || []).map(message => {
     const event = message.friendEvent || {};
     const requester = profilesById.get(event.requesterId) || userProfileCache.get(event.requesterId) || {};
     const responder = profilesById.get(event.responderId) || userProfileCache.get(event.responderId) || {};
@@ -856,17 +858,17 @@ async function enrichConversationProfiles(conversation, tinode = getClient()) {
     };
   });
   return {
-    ...conversation,
-    avatarUrl: conversation.isGroup
-      ? conversation.avatarUrl
-      : (peer?.avatar || conversation.avatarUrl || ''),
-    name: conversation.isGroup
-      ? conversation.name
-      : (usableProfileName(conversation.name) || peer?.name || 'Cuộc trò chuyện'),
+    ...safeConversation,
+    avatarUrl: safeConversation.isGroup
+      ? safeConversation.avatarUrl
+      : (peer?.avatar || safeConversation.avatarUrl || ''),
+    name: safeConversation.isGroup
+      ? safeConversation.name
+      : (usableProfileName(safeConversation.name) || peer?.name || 'Cuộc trò chuyện'),
     members,
     messages,
     friendEvents,
-    admin: members.find(member => member.mode?.includes?.('O'))?.name || conversation.admin || '',
+    admin: members.find(member => member.mode?.includes?.('O'))?.name || safeConversation.admin || '',
   };
 }
 
@@ -2035,6 +2037,7 @@ export const tinodeClient = {
 };
 
 export function normalizeTinodeConversation(conversation) {
-  const { topic: _topic, ...safeConversation } = conversation;
-  return safeConversation;
+  const source = conversation && typeof conversation === 'object' ? conversation : {};
+  const { topic: _topic, ...safeConversation } = source;
+  return normalizeConversationShape(safeConversation);
 }

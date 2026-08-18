@@ -25,6 +25,182 @@ function conversationText(value) {
   return '';
 }
 
+function conversationObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
+
+function conversationArray(value) {
+  if (Array.isArray(value)) return value;
+  const object = conversationObject(value);
+  if (!object) return [];
+  const looksLikeRecord = ['id', 'uid', 'name', 'type', 'senderId', 'text', 'seq']
+    .some(key => Object.prototype.hasOwnProperty.call(object, key));
+  return looksLikeRecord ? [object] : Object.values(object);
+}
+
+function conversationIdentity(value) {
+  return conversationText(value);
+}
+
+function normalizeAttachment(value) {
+  const attachment = conversationObject(value);
+  if (!attachment) return null;
+  return {
+    ...attachment,
+    name: conversationText(attachment.name),
+    ext: conversationText(attachment.ext),
+    size: conversationText(attachment.size),
+    url: conversationText(attachment.url),
+    mime: conversationText(attachment.mime),
+  };
+}
+
+function normalizeReply(value) {
+  const reply = conversationObject(value);
+  if (!reply) return null;
+  return {
+    ...reply,
+    id: conversationIdentity(reply.id),
+    senderName: conversationText(reply.senderName),
+    text: conversationText(reply.text),
+    type: conversationText(reply.type),
+    fileName: conversationText(reply.fileName),
+    fileMime: conversationText(reply.fileMime),
+    file: normalizeAttachment(reply.file),
+    voiceDuration: Number(reply.voiceDuration) > 0 ? Number(reply.voiceDuration) : 0,
+  };
+}
+
+function normalizeMember(value) {
+  const member = conversationObject(value);
+  if (!member) return null;
+  return {
+    ...member,
+    id: conversationIdentity(member.id),
+    uid: conversationIdentity(member.uid),
+    tinodeUid: conversationIdentity(member.tinodeUid || member.tinode_uid),
+    name: conversationText(member.name) || conversationText(member.username) || conversationText(member.email),
+    username: conversationText(member.username),
+    email: conversationText(member.email),
+    title: conversationText(member.title),
+    department: conversationText(member.department),
+    avatar: conversationText(member.avatar),
+  };
+}
+
+function normalizeMention(value) {
+  const mention = conversationObject(value);
+  if (!mention) return null;
+  return {
+    ...mention,
+    id: conversationIdentity(mention.id),
+    tinodeUid: conversationIdentity(mention.tinodeUid || mention.tinode_uid),
+    name: conversationText(mention.name),
+    username: conversationText(mention.username),
+    email: conversationText(mention.email),
+    token: conversationText(mention.token),
+    isAll: Boolean(mention.isAll),
+  };
+}
+
+function normalizeEvent(value) {
+  const event = conversationObject(value);
+  if (!event) return null;
+  return {
+    ...event,
+    action: conversationText(event.action),
+    actorId: conversationIdentity(event.actorId),
+    actorName: conversationText(event.actorName),
+    text: conversationText(event.text),
+    targets: conversationArray(event.targets).map(target => {
+      const normalized = conversationObject(target);
+      if (!normalized) return null;
+      return {
+        ...normalized,
+        id: conversationIdentity(normalized.id),
+        name: conversationText(normalized.name),
+      };
+    }).filter(Boolean),
+  };
+}
+
+function normalizeMessage(value, index) {
+  const message = conversationObject(value);
+  if (!message) return null;
+  const sequence = Number(message.seq);
+  return {
+    ...message,
+    id: conversationIdentity(message.id) || (Number.isFinite(sequence) ? `message-${sequence}` : `message-${index}`),
+    seq: Number.isFinite(sequence) ? sequence : undefined,
+    type: conversationText(message.type) || 'text',
+    sender: conversationText(message.sender) || 'incoming',
+    senderId: conversationIdentity(message.senderId),
+    senderName: conversationText(message.senderName),
+    text: conversationText(message.text),
+    image: conversationText(message.image),
+    file: normalizeAttachment(message.file),
+    replyTo: normalizeReply(message.replyTo),
+    targetIds: conversationArray(message.targetIds).map(conversationIdentity).filter(Boolean),
+    mentions: conversationArray(message.mentions).map(normalizeMention).filter(Boolean),
+    sources: conversationArray(message.sources).map(source => {
+      const normalized = conversationObject(source);
+      if (!normalized) return null;
+      return {
+        ...normalized,
+        document_id: conversationIdentity(normalized.document_id),
+        title: conversationText(normalized.title),
+        file_name: conversationText(normalized.file_name),
+        snippet: conversationText(normalized.snippet),
+      };
+    }).filter(Boolean),
+    systemEvent: normalizeEvent(message.systemEvent),
+    friendEvent: normalizeEvent(message.friendEvent),
+    voiceDuration: Number(message.voiceDuration) > 0 ? Number(message.voiceDuration) : 0,
+  };
+}
+
+// Normalize untrusted API/Tinode snapshots before any React code iterates them.
+export function normalizeConversationShape(conversation) {
+  const source = conversationObject(conversation) || {};
+  const participantIds = conversationArray(source.participantIds)
+    .map(value => conversationIdentity(conversationObject(value)?.id || value))
+    .filter(Boolean);
+  const members = conversationArray(source.members).map(normalizeMember).filter(Boolean);
+  const messages = conversationArray(source.messages).map(normalizeMessage).filter(Boolean);
+  const friendEvents = conversationArray(source.friendEvents).map((message, index) => normalizeMessage(message, index)).filter(Boolean);
+  const isGroup = source.isGroup === true || source.isGroup === 1 || source.isGroup === 'true';
+  const mutedUntil = typeof source.notificationMutedUntil === 'string' || typeof source.notificationMutedUntil === 'number'
+    ? source.notificationMutedUntil
+    : undefined;
+  const badge = Number(source.badge);
+
+  return {
+    ...source,
+    id: conversationIdentity(source.id),
+    name: conversationText(source.name),
+    isGroup,
+    isChatbot: Boolean(source.isChatbot),
+    avatarUrl: source.avatarUrl !== undefined || source.avatar !== undefined
+      ? conversationText(source.avatarUrl || source.avatar)
+      : undefined,
+    membersCount: conversationText(source.membersCount),
+    description: conversationText(source.description),
+    admin: conversationText(source.admin),
+    adminId: conversationIdentity(source.adminId),
+    members,
+    participantIds,
+    messages,
+    friendEvents,
+    lastMsg: conversationText(source.lastMsg),
+    time: conversationText(source.time),
+    updatedAt: conversationText(source.updatedAt),
+    deletedAt: conversationText(source.deletedAt),
+    notificationMutedUntil: mutedUntil,
+    badge: Number.isFinite(badge) ? badge : 0,
+    pinned: Boolean(source.pinned),
+  };
+}
+
 export function conversationDisplayName(room, fallback = '') {
   const roomId = conversationText(room?.id);
   const roomName = conversationText(room?.name);

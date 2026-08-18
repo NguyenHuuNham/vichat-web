@@ -9,6 +9,7 @@ import {
   conversationDisplayName,
   firstVisibleConversationId,
   mergeDeliveryStatus,
+  normalizeConversationShape,
   readyTinodeTypingTopic,
   resolvePreparedTinodeTopic,
   shouldShowConversation,
@@ -570,7 +571,7 @@ function createInitialConversations() {
 
 function personalizeGroupSystemText(message, accounts, viewerId) {
   const actorName = findAccount(accounts, message.senderId)?.name || message.senderName || 'Một thành viên';
-  const targetIds = message.targetIds || [];
+  const targetIds = Array.isArray(message.targetIds) ? message.targetIds : [];
   const targetNames = targetIds.map(id => findAccount(accounts, id)?.name || id);
   if (message.action === 'member_added') {
     if (message.senderId === viewerId) return `Bạn đã thêm ${targetNames.join(', ')} vào nhóm`;
@@ -594,8 +595,20 @@ function localizedSystemText(message, copy, accounts = [], viewerId = '') {
   return copy.t(text);
 }
 
+function roomMembers(room) {
+  return Array.isArray(room?.members) ? room.members : [];
+}
+
+function roomMessages(room) {
+  return Array.isArray(room?.messages) ? room.messages : [];
+}
+
+function roomFriendEvents(room) {
+  return Array.isArray(room?.friendEvents) ? room.friendEvents : [];
+}
+
 function localizedConversationPreview(room, copy, accounts = [], viewerId = '') {
-  const lastMessage = (room?.messages || []).filter(Boolean).at(-1);
+  const lastMessage = roomMessages(room).filter(Boolean).at(-1);
   if (lastMessage?.type === 'system' || lastMessage?.type === 'friend_event' || lastMessage?.type === 'call') {
     return localizedSystemText(lastMessage, copy, accounts, viewerId);
   }
@@ -620,7 +633,7 @@ function isSelfDirectConversation(room, user, accounts) {
   if (!room || room.isGroup || !user) return false;
   const userId = user.id || user.uid;
   if (room.id === userId || room.id === user.uid) return true;
-  const members = room.members || [];
+  const members = roomMembers(room);
   const peerMembers = members.filter(member => {
     const account = findAccount(accounts, member.id || member.name);
     return member.id !== userId && account?.id !== userId;
@@ -634,10 +647,10 @@ function canAccessRoomFiles(room, user, accounts, mode) {
   if (!viewerId) return false;
   if (mode === 'tinode') {
     if (!room.isGroup) return room.id !== viewerId;
-    return (room.members || []).some(member => member.id === viewerId);
+    return roomMembers(room).some(member => member.id === viewerId);
   }
   if (room.isGroup) {
-    return (room.members || []).some(member => {
+    return roomMembers(room).some(member => {
       const account = findAccount(accounts, member.id || member.name);
       return member.id === viewerId || account?.id === viewerId;
     });
@@ -648,7 +661,7 @@ function canAccessRoomFiles(room, user, accounts, mode) {
 function isConversationHiddenAfterDelete(room) {
   const deletedAt = Date.parse(room?.deletedAt || '') || 0;
   if (!deletedAt) return false;
-  const latestMessageAt = Math.max(0, ...(room.messages || []).map(message => messageTimestamp(message)));
+  const latestMessageAt = Math.max(0, ...roomMessages(room).map(message => messageTimestamp(message)));
   const latestActivityAt = Math.max(latestMessageAt, Date.parse(room?.updatedAt || '') || 0);
   return latestActivityAt <= deletedAt;
 }
@@ -671,7 +684,7 @@ function collectFriendshipRecords(conversations, viewerId) {
   const requests = new Map();
   const responses = new Map();
   Object.values(conversations || {}).forEach(room => {
-    (room.friendEvents || []).forEach(message => {
+    roomFriendEvents(room).forEach(message => {
       const event = message.friendEvent;
       if (!event?.requestId) return;
       const record = { roomId: room.id, room, message, event };
@@ -705,6 +718,8 @@ function messagePayloadKey(message) {
 function mergeTinodeMessages(existingMessages = [], incomingMessages = []) {
   const merged = [];
   const indexes = new Map();
+  const existingList = Array.isArray(existingMessages) ? existingMessages : [];
+  const incomingList = Array.isArray(incomingMessages) ? incomingMessages : [];
 
   const upsert = message => {
     if (!message) return;
@@ -763,8 +778,8 @@ function mergeTinodeMessages(existingMessages = [], incomingMessages = []) {
     merged.push(message);
   };
 
-  existingMessages.forEach(upsert);
-  incomingMessages.forEach(upsert);
+  existingList.forEach(upsert);
+  incomingList.forEach(upsert);
 
   return merged
     .map((message, index) => ({ message, index }))
@@ -782,7 +797,7 @@ function mergeTinodeMessages(existingMessages = [], incomingMessages = []) {
 
 function removeMessageFromConversation(room, message) {
   if (!room || !message) return room;
-  const messages = (room.messages || []).filter(item => (
+  const messages = roomMessages(room).filter(item => (
     item.id !== message.id
     && !(Number.isFinite(message.seq) && Number.isFinite(item?.seq) && item.seq === message.seq)
   ));
@@ -797,55 +812,57 @@ function removeMessageFromConversation(room, message) {
 }
 
 function mergeTinodeConversation(existing, incoming) {
-  if (!existing) return incoming;
-  const messages = mergeTinodeMessages(existing.messages, incoming.messages);
-  const friendEvents = mergeTinodeMessages(existing.friendEvents, incoming.friendEvents);
+  if (!existing) return normalizeConversationShape(incoming);
+  const safeExisting = normalizeConversationShape(existing);
+  const safeIncoming = normalizeConversationShape(incoming);
+  const messages = mergeTinodeMessages(safeExisting.messages, safeIncoming.messages);
+  const friendEvents = mergeTinodeMessages(safeExisting.friendEvents, safeIncoming.friendEvents);
   const latestAttachmentPreview = attachmentConversationPreview(messages.at(-1));
   const managementOwned = Boolean(
-    existing.accountSession && isManagementConversationId(existing.managementId || existing.id),
+    safeExisting.accountSession && isManagementConversationId(safeExisting.managementId || safeExisting.id),
   );
-  const incomingManagementSnapshot = managementOwned && Array.isArray(incoming.participantIds);
+  const incomingManagementSnapshot = managementOwned && Array.isArray(incoming?.participantIds);
   const snapshotMembers = incomingManagementSnapshot
-    ? (Array.isArray(incoming.members) ? incoming.members : [])
-    : (incoming.members?.length ? incoming.members : (existing.members || []));
+    ? safeIncoming.members
+    : (safeIncoming.members.length ? safeIncoming.members : safeExisting.members);
   const members = incomingManagementSnapshot
-    ? mergeRealtimeMemberPresence(snapshotMembers, existing.members || [])
+    ? mergeRealtimeMemberPresence(snapshotMembers, safeExisting.members)
     : managementOwned
-      ? mergeRealtimeMemberPresence(existing.members || [], incoming.members || [])
+      ? mergeRealtimeMemberPresence(safeExisting.members, safeIncoming.members)
       : snapshotMembers;
-  const incomingExplicitName = conversationDisplayName({ ...incoming, members: [] }, '');
-  const existingExplicitName = conversationDisplayName({ ...existing, members: [] }, '');
-  const incomingPeerName = incoming.isGroup ? '' : conversationDisplayName(incoming, '');
-  const existingPeerName = existing.isGroup ? '' : conversationDisplayName(existing, '');
+  const incomingExplicitName = conversationDisplayName({ ...safeIncoming, members: [] }, '');
+  const existingExplicitName = conversationDisplayName({ ...safeExisting, members: [] }, '');
+  const incomingPeerName = safeIncoming.isGroup ? '' : conversationDisplayName(safeIncoming, '');
+  const existingPeerName = safeExisting.isGroup ? '' : conversationDisplayName(safeExisting, '');
   const existingName = existingExplicitName || existingPeerName;
   const incomingName = incomingExplicitName || (!existingName ? incomingPeerName : '');
-  const fallbackName = existing.isGroup || incoming.isGroup ? 'Nhóm' : 'Cuộc trò chuyện cá nhân';
+  const fallbackName = safeExisting.isGroup || safeIncoming.isGroup ? 'Nhóm' : 'Cuộc trò chuyện cá nhân';
   return {
-    ...existing,
-    ...incoming,
+    ...safeExisting,
+    ...safeIncoming,
     name: managementOwned && !incomingManagementSnapshot
       ? existingName || incomingName || fallbackName
       : incomingName || existingName || fallbackName,
-    avatarHtml: incoming.avatarHtml || existing.avatarHtml,
+    avatarHtml: safeIncoming.avatarHtml || safeExisting.avatarHtml,
     avatarUrl: managementOwned && !incomingManagementSnapshot
-      ? (incoming.avatarUrl || existing.avatarUrl)
-      : (incoming.avatarUrl !== undefined ? incoming.avatarUrl : existing.avatarUrl),
+      ? (safeIncoming.avatarUrl || safeExisting.avatarUrl)
+      : (safeIncoming.avatarUrl !== undefined ? safeIncoming.avatarUrl : safeExisting.avatarUrl),
     description: managementOwned && !incomingManagementSnapshot
-      ? existing.description
-      : (incoming.description || existing.description),
+      ? safeExisting.description
+      : (safeIncoming.description || safeExisting.description),
     admin: managementOwned && !incomingManagementSnapshot
-      ? existing.admin
-      : (incoming.admin || existing.admin),
+      ? safeExisting.admin
+      : (safeIncoming.admin || safeExisting.admin),
     adminId: managementOwned && !incomingManagementSnapshot
-      ? existing.adminId
-      : (incoming.adminId || existing.adminId),
+      ? safeExisting.adminId
+      : (safeIncoming.adminId || safeExisting.adminId),
     members,
-    participantIds: incomingManagementSnapshot ? incoming.participantIds : existing.participantIds,
+    participantIds: incomingManagementSnapshot ? safeIncoming.participantIds : safeExisting.participantIds,
     messages,
     friendEvents,
-    lastMsg: latestAttachmentPreview || incoming.lastMsg || existing.lastMsg,
-    time: incoming.time || existing.time,
-    updatedAt: incoming.updatedAt || existing.updatedAt || messages[messages.length - 1]?.createdAt,
+    lastMsg: latestAttachmentPreview || safeIncoming.lastMsg || safeExisting.lastMsg,
+    time: safeIncoming.time || safeExisting.time,
+    updatedAt: safeIncoming.updatedAt || safeExisting.updatedAt || messages[messages.length - 1]?.createdAt,
   };
 }
 
@@ -987,12 +1004,16 @@ function MessageReplyPreview({ reply, copy = { t: value => value } }) {
   const isAudio = isAudioAttachment(reply.file || { name: reply.fileName, mime: reply.fileMime }, reply.type) || Number(reply.voiceDuration) > 0;
   const isImage = reply.type === 'image' || String(reply.fileMime || reply.file?.mime || '').toLowerCase().startsWith('image/');
   const icon = isAudio ? 'fa-microphone' : isImage ? 'fa-image' : reply.fileName ? 'fa-paperclip' : 'fa-reply';
+  const senderName = typeof reply.senderName === 'string' ? reply.senderName : copy.t('Tin nhắn');
+  const replyText = typeof reply.text === 'string'
+    ? reply.text.trim()
+    : (typeof reply.text === 'number' && Number.isFinite(reply.text) ? String(reply.text) : '');
   return (
     <div className="message-reply-preview">
       <span className="message-reply-preview-icon"><i className={`fa-solid ${icon}`} aria-hidden="true"></i></span>
       <span className="message-reply-preview-copy">
-        <strong>{reply.senderName || copy.t('Tin nhắn')}</strong>
-        <span>{reply.text?.trim() ? reply.text : copy.t(replyContentLabel(reply))}</span>
+        <strong>{senderName}</strong>
+        <span>{replyText || copy.t(replyContentLabel(reply))}</span>
       </span>
     </div>
   );
@@ -1011,13 +1032,15 @@ function ConversationAvatar({ room }) {
 
 function unreadMessageCount(messages, readBy, viewerId) {
   const lastReadAt = Date.parse(readBy?.[viewerId] || '') || 0;
-  return (messages || []).filter(message =>
+  const safeMessages = Array.isArray(messages) ? messages : [];
+  return safeMessages.filter(message =>
     message.senderId && message.senderId !== viewerId && (Date.parse(message.createdAt || '') || 0) > lastReadAt
   ).length;
 }
 
 function demoGroupToConversation(group, accounts, viewerId) {
-  const members = (group.memberIds || []).map(memberId => {
+  const memberIds = Array.isArray(group.memberIds) ? group.memberIds : [];
+  const members = memberIds.map(memberId => {
     const account = findAccount(accounts, memberId);
     return account ? {
       id: account.id,
@@ -1030,7 +1053,7 @@ function demoGroupToConversation(group, accounts, viewerId) {
   });
   const owner = findAccount(accounts, group.ownerId);
   const deletedBefore = Date.parse(group.deletedAtByUser?.[viewerId] || '') || 0;
-  const messages = (group.messages || [])
+  const messages = (Array.isArray(group.messages) ? group.messages : [])
     .filter(message => (Date.parse(message.createdAt || '') || 0) > deletedBefore)
     .map(message => {
     const senderAccount = findAccount(accounts, message.senderId);
@@ -1073,7 +1096,7 @@ function demoDirectToConversation(direct, accounts, viewerId) {
     'Cuộc trò chuyện cá nhân',
   );
   const deletedBefore = Date.parse(direct.deletedAtByUser?.[viewerId] || '') || 0;
-  const messages = (direct.messages || [])
+  const messages = (Array.isArray(direct.messages) ? direct.messages : [])
     .filter(message => (Date.parse(message.createdAt || '') || 0) > deletedBefore)
     .map(message => {
     const sender = findAccount(accounts, message.senderId);
@@ -1361,7 +1384,8 @@ function App() {
     setActiveCall(null);
   }, []);
 
-  const activeChatSource = conversations[currentChatId] || Object.values(conversations)[0];
+  const rawActiveChatSource = conversations[currentChatId] || Object.values(conversations)[0];
+  const activeChatSource = rawActiveChatSource ? normalizeConversationShape(rawActiveChatSource) : null;
   const activeChatNameSource = activeChatSource?.isGroup
     ? { ...activeChatSource, members: [] }
     : activeChatSource;
@@ -1786,7 +1810,7 @@ function App() {
   const mentionCandidates = (() => {
     if (!activeChat.isGroup) return [];
     const rawMembers = [
-      ...(activeChat.members || []),
+      ...roomMembers(activeChat),
       ...(activeChat.participantIds || [])
         .map(identity => findAccount(directoryAccounts, identity))
         .filter(Boolean),
@@ -1856,7 +1880,7 @@ function App() {
       let changed = false;
       const next = Object.fromEntries(Object.entries(previous).map(([id, room]) => {
         let membersChanged = false;
-        const members = (room.members || []).map(member => {
+        const members = roomMembers(room).map(member => {
           const account = findAccount(accounts, member.id || member.uid || member.name);
           const isCurrentAccount = identitiesOverlap(member, currentAccount) || identitiesOverlap(account, currentAccount);
           const online = isCurrentAccount
@@ -2004,7 +2028,7 @@ function App() {
     const previousRooms = conversationsRef.current;
     const nextRooms = Object.fromEntries(Object.entries(previousRooms).filter(([, room]) => (
       room.isChatbot
-      || (!room.managementId && !room.tinodeTopic && (room.friendEvents || []).length > 0)
+      || (!room.managementId && !room.tinodeTopic && roomFriendEvents(room).length > 0)
     )));
     Object.entries(managedRooms).forEach(([id, room]) => {
       const previousRoom = previousRooms[id] || Object.values(previousRooms)
@@ -2053,7 +2077,7 @@ function App() {
     }
 
     if (!topicName && preparedRoom.isGroup) {
-      const memberAccounts = (preparedRoom.members || [])
+      const memberAccounts = roomMembers(preparedRoom)
         .filter(member => String(member?.id || '') !== String(managementUserId));
       const memberIds = [...new Set(memberAccounts.map(member => (
         member.tinodeUid || member.tinode_uid || ''
@@ -2071,7 +2095,7 @@ function App() {
       createdGroupTopic = true;
       createdGroupAvatar = created.avatarUrl || '';
     } else if (!topicName) {
-      const contact = (preparedRoom.members || [])
+      const contact = roomMembers(preparedRoom)
         .find(member => String(member?.id || '') !== String(managementUserId));
       topicName = contact?.tinodeUid || contact?.tinode_uid || '';
     }
@@ -2276,7 +2300,7 @@ function App() {
           let changed = false;
           const next = Object.fromEntries(Object.entries(previous).map(([id, room]) => {
             if (room.accountSession !== accountSession || room.tinodeTopic !== event.topic) return [id, room];
-            const messages = applyReceiptToMessages(room.messages || [], {
+            const messages = applyReceiptToMessages(roomMessages(room), {
               seq: receiptSequence,
               what: event.what,
               viewerId,
@@ -2399,13 +2423,13 @@ function App() {
         setDirectoryAccounts(previous => updateAccountProfiles(previous, profile));
         setWorkspaceResults(previous => updateAccountProfiles(previous, profile));
         setConversations(previous => Object.fromEntries(Object.entries(previous).map(([id, room]) => {
-          const members = (room.members || []).map(updateAccount);
+          const members = roomMembers(room).map(updateAccount);
           const peer = !room.isGroup ? members.find(member => identitiesOverlap(member, profile)) : null;
           return [id, {
             ...room,
             ...(peer ? { name: profile.name || room.name, avatarUrl: profile.avatar || room.avatarUrl || '' } : {}),
             members,
-            messages: (room.messages || []).map(message => identitiesOverlap({ id: message.senderId }, profile)
+            messages: roomMessages(room).map(message => identitiesOverlap({ id: message.senderId }, profile)
               ? { ...message, senderName: profile.name || message.senderName, avatar: profile.avatar || message.avatar || '' }
               : message),
           }];
@@ -3047,10 +3071,10 @@ function App() {
       )));
       setConversations(previous => Object.fromEntries(Object.entries(previous).map(([id, room]) => [id, {
         ...room,
-        members: (room.members || []).map(member => identitiesOverlap(member, currentUser)
+        members: roomMembers(room).map(member => identitiesOverlap(member, currentUser)
           ? { ...member, name: updated.name, avatar: updated.avatar || member.avatar }
           : member),
-        messages: (room.messages || []).map(message => identitiesOverlap(message, currentUser)
+        messages: roomMessages(room).map(message => identitiesOverlap(message, currentUser)
           ? { ...message, senderName: updated.name, avatar: updated.avatar || message.avatar }
           : message),
       }])));
@@ -3139,8 +3163,8 @@ function App() {
       });
       setConversations(previous => Object.fromEntries(Object.entries(previous).map(([id, room]) => [id, {
         ...room,
-        members: (room.members || []).map(member => identitiesOverlap(member, currentUser) ? { ...member, avatar: nextAvatar } : member),
-        messages: (room.messages || []).map(message => identitiesOverlap(message, currentUser) ? { ...message, avatar: nextAvatar } : message),
+        members: roomMembers(room).map(member => identitiesOverlap(member, currentUser) ? { ...member, avatar: nextAvatar } : member),
+        messages: roomMessages(room).map(message => identitiesOverlap(message, currentUser) ? { ...message, avatar: nextAvatar } : message),
       }])));
       setProfileNotice('Ảnh đại diện đã được cập nhật.');
     } catch (error) {
@@ -3208,8 +3232,8 @@ function App() {
           ...room,
           name: contact?.name || room.name,
           avatarUrl: contact?.avatar || room.avatarUrl || '',
-          members: contact ? [contact] : room.members,
-          friendEvents: mergeTinodeMessages(room.friendEvents || [], [message]),
+          members: contact ? [contact] : roomMembers(room),
+          friendEvents: mergeTinodeMessages(roomFriendEvents(room), [message]),
         },
       };
     });
@@ -3286,7 +3310,7 @@ function App() {
         setConversations(previous => {
           let changed = false;
           const nextConversations = Object.fromEntries(Object.entries(previous).map(([id, room]) => {
-          const members = (room.members || []).map(member => {
+          const members = roomMembers(room).map(member => {
             const account = findAccount(effectiveAccounts, member.id || member.uid || member.tinodeUid || member.name);
             if (!account) return member;
             const updated = { ...member, name: account.name || member.name, avatar: account.avatar || member.avatar || '', online: member.online };
@@ -3295,13 +3319,13 @@ function App() {
           const peer = !room.isGroup
             ? members.find(member => !identitiesOverlap(member, currentUser))
             : null;
-          const messages = (room.messages || []).map(message => {
+          const messages = roomMessages(room).map(message => {
             const account = findAccount(effectiveAccounts, message.senderId || message.senderName);
             if (!account) return message;
             const updated = { ...message, senderName: account.name || message.senderName, avatar: account.avatar || message.avatar || '' };
             return updated.senderName === message.senderName && updated.avatar === message.avatar ? message : updated;
           });
-          const friendEvents = (room.friendEvents || []).map(message => {
+          const friendEvents = roomFriendEvents(room).map(message => {
             const event = message.friendEvent || {};
             const account = findAccount(effectiveAccounts, event.action === 'request' ? event.requesterId : event.responderId);
             if (!account) return message;
@@ -3315,11 +3339,11 @@ function App() {
             friendEvents,
             ...(peer ? { name: peer.name || room.name, avatarUrl: peer.avatar || room.avatarUrl || '' } : {}),
           };
-          const membersChanged = members.length !== (room.members || []).length
+          const membersChanged = members.length !== roomMembers(room).length
             || members.some((member, index) => member !== room.members?.[index]);
-          const messagesChanged = messages.length !== (room.messages || []).length
+          const messagesChanged = messages.length !== roomMessages(room).length
             || messages.some((message, index) => message !== room.messages?.[index]);
-          const friendEventsChanged = friendEvents.length !== (room.friendEvents || []).length
+          const friendEventsChanged = friendEvents.length !== roomFriendEvents(room).length
             || friendEvents.some((message, index) => message !== room.friendEvents?.[index]);
           const roomChanged = membersChanged || messagesChanged || friendEventsChanged
             || nextRoom.name !== room.name || nextRoom.avatarUrl !== room.avatarUrl;
@@ -3395,7 +3419,7 @@ function App() {
       && isManagementConversationId(room.managementId || room.id)
       && (
         (room.participantIds || []).map(String).includes(String(contact.id))
-        || room.members?.some(member => findAccount(directoryAccounts, member.id || member.name)?.id === contact.id)
+        || roomMembers(room).some(member => findAccount(directoryAccounts, member.id || member.name)?.id === contact.id)
       )
     ));
     const participantIds = contact.id ? [viewerId, contact.id] : [];
@@ -3869,7 +3893,7 @@ function App() {
           setConversations(provisionalRooms);
           tinodeClient.allowConversationTopic(tinodeTopic);
           const tinodeActorId = tinodeClient.currentUserId || viewerId;
-          const targetUids = (realtimeRoom.members || [])
+      const targetUids = (Array.isArray(realtimeRoom.members) ? realtimeRoom.members : [])
             .filter(member => member.id && member.id !== tinodeActorId);
           await tinodeClient.sendSystemEvent(tinodeTopic, {
             action: addedNames.length > 0 ? 'member_added' : 'group_created',
@@ -3956,7 +3980,7 @@ function App() {
     try {
       if (chatMode === 'demo') {
         const avatarUrl = await readFileAsDataUrl(file);
-        const memberIds = (activeChat.members || [])
+      const memberIds = roomMembers(activeChat)
           .map(member => findAccount(directoryAccounts, member.id || member.uid || member.name)?.id || member.id)
           .filter(Boolean);
         const group = saveDemoGroup({
@@ -4057,13 +4081,13 @@ function App() {
             managementId: activeChat.managementId || activeChat.id,
             tinodeTopic: topicName,
             accountSession,
-            messages: realtimeRoom.messages || activeChat.messages || [],
+            messages: roomMessages(realtimeRoom).length > 0 ? roomMessages(realtimeRoom) : roomMessages(activeChat),
           };
         } else {
           updatedRoom = {
             ...normalizeTinodeConversation(managedRoom),
             accountSession,
-            messages: activeChat.messages || [],
+            messages: roomMessages(activeChat),
           };
         }
       } else if (chatMode === 'tinode') {
@@ -4086,7 +4110,7 @@ function App() {
           ...normalizeTinodeConversation(realtimeRoom),
           ...activeChat,
           tinodeTopic: topicName,
-          messages: realtimeRoom.messages || activeChat.messages || [],
+          messages: roomMessages(realtimeRoom).length > 0 ? roomMessages(realtimeRoom) : roomMessages(activeChat),
         };
       } else {
         const group = addDemoGroupMembers(activeChat.id, selectedIds);
@@ -4155,7 +4179,7 @@ function App() {
           );
           await tinodeClient.sendSystemEvent(topicName, event).catch(() => {});
           const realtimeRoom = await tinodeClient.openConversation(topicName).catch(() => ({
-            messages: activeChat.messages || [],
+          messages: roomMessages(activeChat),
           }));
           updatedRoom = {
             ...normalizeTinodeConversation(realtimeRoom),
@@ -4174,7 +4198,7 @@ function App() {
           updatedRoom = {
             ...normalizeTinodeConversation(managedRoom),
             accountSession: accountSessionRef.current,
-            messages: activeChat.messages || [],
+          messages: roomMessages(activeChat),
           };
         }
       } else {
@@ -4219,7 +4243,7 @@ function App() {
     };
     const memberIds = [...new Set([
       viewerId,
-      ...room.members.map(member => findAccount(directoryAccounts, member.id || member.name)?.id || member.id),
+      ...roomMembers(room).map(member => findAccount(directoryAccounts, member.id || member.name)?.id || member.id),
     ].filter(Boolean))];
     saveDemoGroup({
       id: room.id,
@@ -4227,7 +4251,7 @@ function App() {
       description: room.description,
       ownerId: findAccount(directoryAccounts, room.admin)?.id || viewerId,
       memberIds,
-      messages: (room.messages || []).map(toStoredMessage),
+      messages: roomMessages(room).map(toStoredMessage),
     });
     appendDemoGroupMessage(room.id, toStoredMessage(message));
   };
@@ -4237,7 +4261,7 @@ function App() {
     const viewerId = currentUser?.id || currentUser?.uid;
     const participantIds = room?.participantIds?.length === 2
       ? room.participantIds
-      : [viewerId, ...((room?.members || []).map(member => findAccount(directoryAccounts, member.id || member.name)?.id || member.id))]
+      : [viewerId, ...roomMembers(room).map(member => findAccount(directoryAccounts, member.id || member.name)?.id || member.id)]
         .filter(Boolean)
         .slice(0, 2);
     if (participantIds.length !== 2) return;
@@ -4255,7 +4279,7 @@ function App() {
     saveDemoDirect({
       id: directId,
       participantIds,
-      messages: (room.messages || []).map(toStoredMessage),
+      messages: roomMessages(room).map(toStoredMessage),
     });
     if (message) appendDemoDirectMessage(directId, toStoredMessage(message));
   };
@@ -4356,7 +4380,7 @@ function App() {
         ...prev,
         [currentChatId]: {
           ...room,
-          messages: [...room.messages, newMsg],
+          messages: [...roomMessages(room), newMsg],
           lastMsg: attachmentConversationPreview(newMsg),
           time: timeStr,
           updatedAt: createdAt,
@@ -4403,7 +4427,7 @@ function App() {
               ...previous,
               [roomId]: {
                 ...currentRoom,
-                messages: (currentRoom.messages || []).map(message => message.id === newMsg.id ? confirmedMessage : message),
+                messages: roomMessages(currentRoom).map(message => message.id === newMsg.id ? confirmedMessage : message),
               },
             };
           });
@@ -4418,7 +4442,7 @@ function App() {
               ...previous,
               [roomId]: {
                 ...currentRoom,
-                messages: (currentRoom.messages || []).map(message => message.id === newMsg.id
+                messages: roomMessages(currentRoom).map(message => message.id === newMsg.id
                   ? { ...message, pending: false, failed: true }
                   : message),
               },
@@ -4729,7 +4753,7 @@ function App() {
       ...previous,
       [activeChat.id]: {
         ...previous[activeChat.id],
-        messages: (previous[activeChat.id]?.messages || []).map(item => item.id === message.id
+        messages: roomMessages(previous[activeChat.id]).map(item => item.id === message.id
           ? { ...item, ...(typeof patch === 'function' ? patch(item) : patch) }
           : item),
       },
@@ -4925,7 +4949,7 @@ function App() {
     else persistDemoDirectMessage(target, shared);
     setConversations(previous => ({
       ...previous,
-      [target.id]: { ...previous[target.id], messages: [...(previous[target.id]?.messages || []), shared], lastMsg: `Bạn: ${text}`, time: shared.time, updatedAt: shared.createdAt },
+      [target.id]: { ...previous[target.id], messages: [...roomMessages(previous[target.id]), shared], lastMsg: `Bạn: ${text}`, time: shared.time, updatedAt: shared.createdAt },
     }));
     setShareMessage(null);
   };
@@ -4973,7 +4997,7 @@ function App() {
         ...prev,
         [currentChatId]: {
           ...room,
-          messages: [...room.messages, newMsg],
+          messages: [...roomMessages(room), newMsg],
           lastMsg: `Bạn: ${text}`,
           time: timeStr,
           updatedAt: new Date().toISOString(),
@@ -5021,7 +5045,7 @@ function App() {
           ...previous,
           [room.id]: {
             ...previous[room.id],
-            messages: (previous[room.id]?.messages || []).map(message => message.id === newMsg.id
+            messages: roomMessages(previous[room.id]).map(message => message.id === newMsg.id
               ? { ...message, pending: false, failed: false, seq: message.seq || result?.params?.seq }
               : message),
           },
@@ -5031,7 +5055,7 @@ function App() {
           ...previous,
           [room.id]: {
             ...previous[room.id],
-            messages: (previous[room.id]?.messages || []).map(message => message.id === newMsg.id
+            messages: roomMessages(previous[room.id]).map(message => message.id === newMsg.id
               ? { ...message, pending: false, failed: true }
               : message),
           },
@@ -5048,7 +5072,7 @@ function App() {
           messageId: newMsg.id,
           conversationId: room.id,
           user: currentUser,
-          history: (room.messages || [])
+          history: roomMessages(room)
             .filter(item => item.type === 'text' && item.text)
             .slice(-10)
             .map(item => ({
@@ -5109,7 +5133,7 @@ function App() {
               ...previous,
               [roomId]: {
                 ...currentRoom,
-                messages: (currentRoom.messages || []).map(message => message.id === newMsg.id
+                messages: roomMessages(currentRoom).map(message => message.id === newMsg.id
                   ? { ...message, pending: false, failed: false, seq: message.seq || result?.params?.seq }
                   : message),
               },
@@ -5124,7 +5148,7 @@ function App() {
               ...previous,
               [roomId]: {
                 ...currentRoom,
-                messages: (currentRoom.messages || []).map(message => message.id === newMsg.id
+                messages: roomMessages(currentRoom).map(message => message.id === newMsg.id
                   ? { ...message, pending: false, failed: true }
                   : message),
               },
@@ -5216,7 +5240,7 @@ function App() {
     .filter(member => member.type !== 'bot')
     .filter(member => matchesCompanyDirectoryContact(member, groupMemberSearch));
   const activeGroupMemberIdentities = new Set([
-    ...(activeChat.members || []).flatMap(member => identityValues(member)),
+    ...roomMembers(activeChat).flatMap(member => identityValues(member)),
     ...(activeChat.participantIds || []).map(identity => String(identity)),
   ].map(identity => identity.toLowerCase()));
   const groupMemberAddCandidates = activeChat.isGroup
@@ -5317,11 +5341,11 @@ function App() {
 
   const sharedFiles = Object.values(conversations)
     .filter(room => canAccessRoomFiles(room, currentUser, directoryAccounts, chatMode))
-    .flatMap(room => (room.messages || [])
+    .flatMap(room => roomMessages(room)
     .filter(message => message.type === 'file' || message.type === 'image')
     .map(message => ({ ...message, roomName: room.name, roomId: room.id })));
 
-  const activeMediaEntries = mediaEntriesForMessages(activeChat.messages || []);
+  const activeMediaEntries = mediaEntriesForMessages(roomMessages(activeChat));
   const mediaSenderOptions = [...new Map(activeMediaEntries
     .map(entry => [entry.senderId || `name:${entry.senderName}`, entry.senderName])
     .filter(([id, name]) => Boolean(id && name))).entries()]
@@ -5369,7 +5393,7 @@ function App() {
     record.event.recipientId === managementViewerId
     || (record.event.requesterId === managementViewerId && Boolean(record.response))
   ));
-  const visibleMessages = (activeChat.messages || []).filter(Boolean).filter(message => {
+  const visibleMessages = roomMessages(activeChat).filter(Boolean).filter(message => {
     if (messageActions[messageActionKey(activeChat.id, message.id)]?.hidden) return false;
     if (!messageSearchQuery.trim()) return true;
     return `${message.text || ''} ${message.senderName || ''}`.toLowerCase().includes(messageSearchQuery.toLowerCase());
@@ -6318,7 +6342,7 @@ function App() {
               </div>
             )}
             <div className="members-list">
-              {activeChat.members.map((member, idx) => (
+              {roomMembers(activeChat).map((member, idx) => (
                 <div key={idx} className="member-item">
                   <SafeAvatar src={typeof member.avatar === 'string' ? member.avatar : ''} name={member.name} className="member-avatar" />
                   <div className="member-info">

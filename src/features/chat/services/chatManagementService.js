@@ -1,4 +1,5 @@
 import { normalizeNotificationMuteUntil } from './conversationNotifications.js';
+import { normalizeConversationShape } from './chatRealtime.js';
 
 const env = import.meta.env || {};
 const apiBase = String(env.VITE_CHAT_MANAGEMENT_API_URL || '').replace(/\/$/, '');
@@ -176,7 +177,7 @@ function normalizeConversation(record) {
   const notificationMutedUntil = normalizeNotificationMuteUntil(
     record?.notificationMutedUntil ?? record?.notification_muted_until,
   );
-  return {
+  return normalizeConversationShape({
     id: managementId,
     managementId,
     tinodeTopic,
@@ -200,7 +201,7 @@ function normalizeConversation(record) {
     notificationMutedUntil,
     pinned: Boolean(record?.pinned ?? record?.isPinned ?? properties.pinned),
     pinnedAt: record?.pinnedAt || record?.pinned_at || properties.pinnedAt || null,
-  };
+  });
 }
 
 function bindingKey(userId, conversationId) {

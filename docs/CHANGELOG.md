@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-18-14 - Bao ve render khi du lieu chat 1-1 khong day du
+
+- Thoi gian: 2026-08-18 12:20 (Asia/Saigon)
+- Loai: Sua loi | Web | Kiem thu
+- Trang thai: Hoan tat code; chua deploy production
+- Muc tieu: Khong de snapshot Chatmgt/Tinode loi shape lam trang toan bo ChatUI khi mo chat 1-1.
+- Pham vi: ChatUI data boundary, Tinode conversation mapping, account lookup va fallback render; khong doi Chatmgt, Tinode, auth, tenant, API hoac database.
+- File da thay doi: `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/chatManagementService.js`, `src/features/contacts/services/accountDirectory.js`, `src/app/App.jsx`, `src/RootApp.jsx`, cac file test lien quan.
+- Noi dung: Chuan hoa members/messages/reply/attachment metadata truoc khi render, bo qua record khong hop le, lam account lookup an toan voi truong tuy chon sai kieu, bao ve nhanh legacy direct co collection sai kieu va them Error Boundary de hien fallback thay vi man hinh trang.
+- Quyet dinh ky thuat: Bao ve tai bien du lieu o boundary va giu nguyen data flow; Error Boundary chi la lop cuoi de khong mat toan bo giao dien neu mot truong hop moi vuot qua sanitizer.
+- Database/API/cau hinh: Khong co.
+- Kiem thu: `npm run test:frontend` dat 114/114; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat. Artifact `dist` sinh tu dong da duoc khoi phuc ve trang thai truoc build.
+- Rui ro con lai: Chua xac nhan truc quan bang tai khoan UpGO/Tinode that cho room dang loi; production hien van dang phuc vu bundle cu truoc ban sanitizer.
+- Viec tiep theo: Chay build, commit, deploy chi service `chat` va kiem tra bundle/health/log production.
+- Commit/PR: Chua tao.
+
 ## 2026-08-18-13 - Sua loi trang trang khi mo chat 1-1
 
 - Thoi gian: 2026-08-18 11:58 (Asia/Saigon)
