@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Trien khai: Source `95a4003` da push `origin/master`. Archive SHA-256 `FF371981F51259A4FE3BE2613E42DE0D23723AB82004614DBE17E646B73B712E`; release `/opt/deploy/chat/releases/message-actions-95a4003-20260818-2348`; image ChatUI `sha256:87557a45778ab1cf7f3e4bbd08da7611c82e150c6b88b21dfe0fda96cb08fe30`, container `c9f30968f23a`; `current` tro release moi, `previous` tro `workspace-modal-89eaad2-20260818-2308`; chi recreate `chat`, giu nguyen Chatmgt/Tinode bridge/worker, ChatAPI, PostgreSQL, Redis va Coturn.
 - Rui ro con lai: Chua UAT bang tai khoan production that cho hover/click tren desktop va mobile; pin message chua dong bo giua nhieu thiet bi vi backend chua co message-pin API.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo group co tin nhan incoming de bam Reply va xac nhan mention, hover Like de chon reaction, Share, Pin/Unpin va bam header ghim de cuon den tin; kiem tra lai tren mobile.
-- Commit/PR: Source `95a4003`; docs follow-up dang cho commit
+- Commit/PR: Source `95a4003`; docs `291fb04`; chua co PR
 
 ## 2026-08-18-25 - Dua workspace ve modal trung tam tren nen chat
 
