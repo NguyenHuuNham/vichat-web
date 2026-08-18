@@ -1117,7 +1117,7 @@ function AudioMessagePlayer({ file, duration = 0, time = '', delivery = null, pe
   );
 }
 
-function MessageReplyPreview({ reply, copy = { t: value => value } }) {
+function MessageReplyPreview({ reply, copy = { t: value => value }, onClick }) {
   if (!reply) return null;
   const isAudio = isAudioAttachment(reply.file || { name: reply.fileName, mime: reply.fileMime }, reply.type) || Number(reply.voiceDuration) > 0;
   const isImage = reply.type === 'image' || String(reply.fileMime || reply.file?.mime || '').toLowerCase().startsWith('image/');
@@ -1126,14 +1126,30 @@ function MessageReplyPreview({ reply, copy = { t: value => value } }) {
   const replyText = typeof reply.text === 'string'
     ? reply.text.trim()
     : (typeof reply.text === 'number' && Number.isFinite(reply.text) ? String(reply.text) : '');
-  return (
-    <div className="message-reply-preview">
+  const previewContent = (
+    <>
       <span className="message-reply-preview-icon"><i className={`fa-solid ${icon}`} aria-hidden="true"></i></span>
       <span className="message-reply-preview-copy">
         <strong>{senderName}</strong>
         <span>{replyText || copy.t(replyContentLabel(reply))}</span>
       </span>
-    </div>
+    </>
+  );
+  const canJump = typeof onClick === 'function' && reply.id !== undefined && reply.id !== null && String(reply.id);
+  if (!canJump) return <div className="message-reply-preview">{previewContent}</div>;
+  return (
+    <button
+      type="button"
+      className="message-reply-preview message-reply-preview-action"
+      title={`${copy.t('Đi tới tin nhắn')}: ${senderName}`}
+      aria-label={`${copy.t('Đi tới tin nhắn')}: ${senderName}`}
+      onClick={event => {
+        event.stopPropagation();
+        onClick(reply);
+      }}
+    >
+      {previewContent}
+    </button>
   );
 }
 
@@ -1378,6 +1394,8 @@ function App() {
   const [shareMessage, setShareMessage] = useState(null);
   const [messageActions, setMessageActions] = useState({});
   const [messageReactionPickerKey, setMessageReactionPickerKey] = useState(null);
+  const [messageActionHoverKey, setMessageActionHoverKey] = useState(null);
+  const [pinnedMessagesExpanded, setPinnedMessagesExpanded] = useState(false);
   const [highlightedMessageKey, setHighlightedMessageKey] = useState(null);
   const [notificationMuteDialog, setNotificationMuteDialog] = useState(null);
   const [notificationMuteOption, setNotificationMuteOption] = useState(NOTIFICATION_MUTE_OPTIONS.ONE_HOUR);
@@ -1446,6 +1464,8 @@ function App() {
   const chatMessagesEndRef = useRef(null);
   const messageElementsRef = useRef(new Map());
   const messageHighlightTimerRef = useRef(null);
+  const messageActionHideTimerRef = useRef(null);
+  const messageReactionHideTimerRef = useRef(null);
   const messageInputRef = useRef(null);
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
@@ -1543,12 +1563,54 @@ function App() {
     setGroupMemberAddSearch('');
     messageElementsRef.current.clear();
     setMessageReactionPickerKey(null);
+    setMessageActionHoverKey(null);
+    setPinnedMessagesExpanded(false);
     setHighlightedMessageKey(null);
     if (messageHighlightTimerRef.current) {
       window.clearTimeout(messageHighlightTimerRef.current);
       messageHighlightTimerRef.current = null;
     }
+    if (messageActionHideTimerRef.current) {
+      window.clearTimeout(messageActionHideTimerRef.current);
+      messageActionHideTimerRef.current = null;
+    }
+    if (messageReactionHideTimerRef.current) {
+      window.clearTimeout(messageReactionHideTimerRef.current);
+      messageReactionHideTimerRef.current = null;
+    }
   }, [activeChat.id]);
+
+  const showMessageActions = messageKey => {
+    if (messageActionHideTimerRef.current) {
+      window.clearTimeout(messageActionHideTimerRef.current);
+      messageActionHideTimerRef.current = null;
+    }
+    setMessageActionHoverKey(messageKey);
+  };
+
+  const hideMessageActionsLater = messageKey => {
+    if (messageActionHideTimerRef.current) window.clearTimeout(messageActionHideTimerRef.current);
+    messageActionHideTimerRef.current = window.setTimeout(() => {
+      setMessageActionHoverKey(current => current === messageKey ? null : current);
+      messageActionHideTimerRef.current = null;
+    }, 240);
+  };
+
+  const showMessageReactionPicker = messageKey => {
+    if (messageReactionHideTimerRef.current) {
+      window.clearTimeout(messageReactionHideTimerRef.current);
+      messageReactionHideTimerRef.current = null;
+    }
+    setMessageReactionPickerKey(messageKey);
+  };
+
+  const hideMessageReactionPickerLater = messageKey => {
+    if (messageReactionHideTimerRef.current) window.clearTimeout(messageReactionHideTimerRef.current);
+    messageReactionHideTimerRef.current = window.setTimeout(() => {
+      setMessageReactionPickerKey(current => current === messageKey ? null : current);
+      messageReactionHideTimerRef.current = null;
+    }, 240);
+  };
   const conversationCategoryFor = room => {
     const key = String(room?.managementId || room?.id || '');
     const categoryId = conversationCategories[key] || room?.category || '';
@@ -5122,7 +5184,7 @@ function App() {
     setReplyingTo(reply);
 
     let nextDraft = inputText;
-    if (activeChat.isGroup && !isOwnMessage) {
+    if (!isOwnMessage) {
       const candidate = mentionCandidateForMessage(message);
       const token = mentionTokenFor(candidate);
       if (candidate && token) {
@@ -5747,9 +5809,9 @@ function App() {
   const pinnedMessagePreview = message => String(message?.text || '').trim()
     || message?.file?.name
     || (message?.type === 'image' ? appCopy.t('Ảnh') : appCopy.t('Nội dung đính kèm'));
-  const scrollToPinnedMessage = message => {
-    if (!message?.id) return;
-    const key = messageActionKey(activeChat.id, message.id);
+  const scrollToMessageById = messageId => {
+    if (messageId === undefined || messageId === null || !String(messageId)) return;
+    const key = messageActionKey(activeChat.id, messageId);
     const scroll = () => {
       const target = messageElementsRef.current.get(key);
       if (!target) return;
@@ -5768,6 +5830,8 @@ function App() {
       window.requestAnimationFrame(scroll);
     }
   };
+  const scrollToPinnedMessage = message => scrollToMessageById(message?.id);
+  const visiblePinnedMessages = pinnedMessagesExpanded ? pinnedMessages : pinnedMessages.slice(0, 1);
   const hasDatedMessages = visibleMessages.some(message => formatMessageDateLabel(message, displayClock, appCopy.locale));
 
   const deliveryStatusIcon = message => {
@@ -6151,8 +6215,8 @@ function App() {
                 ? `+${pinnedMessages.length - 1} ${appCopy.t('ghim')}`
                 : appCopy.t('Ghim trên thiết bị này')}</strong>
             </div>
-            <div className="pinned-message-list">
-              {pinnedMessages.map(message => (
+            <div className={`pinned-message-list ${pinnedMessagesExpanded ? 'is-expanded' : 'is-collapsed'}`}>
+              {visiblePinnedMessages.map(message => (
                 <button
                   type="button"
                   className="pinned-message-item"
@@ -6166,9 +6230,22 @@ function App() {
                     <small>{pinnedMessagePreview(message)}</small>
                   </span>
                   <i className="fa-solid fa-arrow-right" aria-hidden="true"></i>
-                </button>
+                  </button>
               ))}
             </div>
+            {pinnedMessages.length > 1 && (
+              <button
+                type="button"
+                className="pinned-messages-toggle"
+                aria-expanded={pinnedMessagesExpanded}
+                aria-label={appCopy.t(pinnedMessagesExpanded ? 'Thu gọn tin nhắn đã ghim' : 'Mở rộng tin nhắn đã ghim')}
+                title={appCopy.t(pinnedMessagesExpanded ? 'Thu gọn tin nhắn đã ghim' : 'Mở rộng tin nhắn đã ghim')}
+                onClick={() => setPinnedMessagesExpanded(previous => !previous)}
+              >
+                <span>{appCopy.t(pinnedMessagesExpanded ? 'Thu gọn' : 'Mở rộng')}</span>
+                <i className={`fa-solid fa-chevron-${pinnedMessagesExpanded ? 'up' : 'down'}`} aria-hidden="true"></i>
+              </button>
+            )}
           </section>
         )}
 
@@ -6246,7 +6323,12 @@ function App() {
                 <div className={`message-content-wrapper ${imagePreviewSource ? 'image-message-content' : ''}`}>
                   {!isOutgoing && msg.senderName && <button type="button" className="sender-name sender-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))}>{msg.senderName}</button>}
 
-                  <div className="message-interactive" onContextMenu={event => openMessageMenu(event, msg)}>
+                  <div
+                    className={`message-interactive ${messageActionHoverKey === messageKey ? 'message-actions-visible' : ''}`}
+                    onContextMenu={event => openMessageMenu(event, msg)}
+                    onMouseEnter={() => showMessageActions(messageKey)}
+                    onMouseLeave={() => hideMessageActionsLater(messageKey)}
+                  >
                     <div className="message-bubble-group">
                     {msg.type === 'call' && msg.call && (
                       <div className="message-bubble call-history-bubble">
@@ -6278,7 +6360,7 @@ function App() {
                     {/* Tin nhắn chữ thường */}
                     {msg.type === "text" && msg.text && (
                       <div className={`message-bubble ${activeChat.isChatbot && !isOutgoing ? 'chatbot-answer-bubble' : ''}`}>
-                        <MessageReplyPreview reply={msg.replyTo} copy={appCopy} />
+                        <MessageReplyPreview reply={msg.replyTo} copy={appCopy} onClick={reply => scrollToMessageById(reply.id)} />
                         {activeChat.isChatbot && !isOutgoing && (
                           <div className="chatbot-answer-label">
                             <span><i className="fa-solid fa-sparkles"></i>{msg.grounded ? appCopy.t('Tóm tắt từ tài liệu') : msg.isWelcome ? 'ViChat AI' : appCopy.t('Phản hồi AI')}</span>
@@ -6315,7 +6397,7 @@ function App() {
                     {/* Image attachments are visual-only; do not render their filename. */}
                     {isAudioMessage ? (
                       <div className="attachment-message-stack">
-                        <MessageReplyPreview reply={msg.replyTo} copy={appCopy} />
+                        <MessageReplyPreview reply={msg.replyTo} copy={appCopy} onClick={reply => scrollToMessageById(reply.id)} />
                         <AudioMessagePlayer
                           file={attachmentFile}
                           duration={msg.voiceDuration || attachmentFile?.voiceDuration}
@@ -6328,7 +6410,7 @@ function App() {
                       </div>
                     ) : imagePreviewSource ? (
                       <div className="attachment-message-stack">
-                        <MessageReplyPreview reply={msg.replyTo} copy={appCopy} />
+                        <MessageReplyPreview reply={msg.replyTo} copy={appCopy} onClick={reply => scrollToMessageById(reply.id)} />
                         <div className={`message-bubble image-bubble ${msg.pending ? 'pending' : ''} ${msg.failed ? 'failed' : ''}`}>
                         <button
                           type="button"
@@ -6350,7 +6432,7 @@ function App() {
                       </div>
                     ) : attachmentFile && (
                       <div className="attachment-message-stack">
-                        <MessageReplyPreview reply={msg.replyTo} copy={appCopy} />
+                        <MessageReplyPreview reply={msg.replyTo} copy={appCopy} onClick={reply => scrollToMessageById(reply.id)} />
                         <div className={`message-bubble file-bubble ${msg.type} ${attachmentTone} ${attachmentFile.ext || ''} ${msg.pending ? 'pending' : ''} ${msg.failed ? 'failed' : ''}`}>
                         <button
                           type="button"
@@ -6389,7 +6471,12 @@ function App() {
                         <span>{appCopy.t('Đã ghim')}</span>
                       </span>
                     )}
-                    <div className="message-quick-actions" onClick={event => event.stopPropagation()}>
+                    <div
+                      className="message-quick-actions"
+                      onClick={event => event.stopPropagation()}
+                      onMouseEnter={() => showMessageActions(messageKey)}
+                      onMouseLeave={() => hideMessageActionsLater(messageKey)}
+                    >
                       <button
                         type="button"
                         className="message-action-button"
@@ -6410,8 +6497,11 @@ function App() {
                       </button>
                       <div
                         className="message-reaction-action"
-                        onMouseEnter={() => setMessageReactionPickerKey(messageKey)}
-                        onMouseLeave={() => setMessageReactionPickerKey(current => current === messageKey ? null : current)}
+                        onMouseEnter={() => {
+                          showMessageActions(messageKey);
+                          showMessageReactionPicker(messageKey);
+                        }}
+                        onMouseLeave={() => hideMessageReactionPickerLater(messageKey)}
                       >
                         <button
                           type="button"
@@ -6419,13 +6509,22 @@ function App() {
                           title={appCopy.t('Thêm biểu cảm')}
                           aria-label={appCopy.t('Thêm biểu cảm')}
                           aria-expanded={messageReactionPickerKey === messageKey}
-                          onFocus={() => setMessageReactionPickerKey(messageKey)}
+                          onFocus={() => showMessageReactionPicker(messageKey)}
                           onClick={() => handleMessageAction('reaction', msg, '👍')}
                         >
                           <i className="fa-regular fa-thumbs-up" aria-hidden="true"></i>
                         </button>
                         {messageReactionPickerKey === messageKey && (
-                          <div className="message-reaction-picker" role="listbox" aria-label={appCopy.t('Thêm biểu cảm')}>
+                          <div
+                            className="message-reaction-picker"
+                            role="listbox"
+                            aria-label={appCopy.t('Thêm biểu cảm')}
+                            onMouseEnter={() => {
+                              showMessageActions(messageKey);
+                              showMessageReactionPicker(messageKey);
+                            }}
+                            onMouseLeave={() => hideMessageReactionPickerLater(messageKey)}
+                          >
                             {MESSAGE_QUICK_REACTIONS.map(reaction => (
                               <button
                                 type="button"
@@ -6530,7 +6629,7 @@ function App() {
             <div className="replying-banner">
               <div className="replying-banner-copy">
                 <strong>{appCopy.t('Đang trả lời')} {replyingTo.senderName}</strong>
-                <MessageReplyPreview reply={replyingTo} copy={appCopy} />
+                <MessageReplyPreview reply={replyingTo} copy={appCopy} onClick={reply => scrollToMessageById(reply.id)} />
               </div>
               <button type="button" onClick={() => setReplyingTo(null)} aria-label={appCopy.t('Hủy trả lời')}><i className="fa-solid fa-xmark"></i></button>
             </div>

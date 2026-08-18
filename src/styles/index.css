@@ -932,9 +932,13 @@ body {
 
 .message-interactive { position: relative; display: flex; align-items: center; gap: 6px; }
 .message-item.outgoing .message-interactive { flex-direction: row-reverse; }
-.message-quick-actions { display: flex; align-items: center; gap: 4px; opacity: 0; pointer-events: none; transition: opacity .15s ease; }
+.message-quick-actions { position: relative; display: flex; align-items: center; gap: 4px; opacity: 0; pointer-events: auto; transition: opacity .15s ease; }
 .message-interactive:hover .message-quick-actions,
-.message-interactive:focus-within .message-quick-actions { opacity: 1; pointer-events: auto; }
+.message-interactive:focus-within .message-quick-actions,
+.message-interactive.message-actions-visible .message-quick-actions { opacity: 1; }
+.message-quick-actions::before { content: ''; position: absolute; top: -8px; bottom: -8px; width: 10px; }
+.message-item.incoming .message-quick-actions::before { left: -10px; }
+.message-item.outgoing .message-quick-actions::before { right: -10px; }
 .message-action-button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; color: var(--text-muted); background: var(--bg-gray); cursor: pointer; transition: color .15s ease, background .15s ease, transform .15s ease; }
 .message-action-button:hover, .message-action-button:focus-visible { color: var(--vichat-blue); background: var(--vichat-blue-light); outline: none; transform: translateY(-1px); }
 .message-more-action { opacity: 1; }
@@ -962,6 +966,8 @@ body {
 .message-reactions { display: flex; gap: 4px; margin-top: 5px; }
 .message-reactions span { padding: 2px 6px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-gray); font-size: 12px; }
 .message-reply-preview { display: flex; align-items: center; gap: 7px; min-width: 0; margin-bottom: 7px; padding: 6px 8px; border-left: 3px solid var(--vichat-blue); border-radius: 4px; background: rgba(244, 81, 30, .08); color: var(--text-muted); font-size: 11px; }
+.message-reply-preview-action { width: 100%; border-top: 0; border-right: 0; border-bottom: 0; text-align: left; cursor: pointer; font: inherit; }
+.message-reply-preview-action:hover, .message-reply-preview-action:focus-visible { background: rgba(244, 81, 30, .14); outline: none; }
 .message-reply-preview-icon { display: grid; width: 20px; height: 20px; flex: 0 0 20px; place-items: center; color: var(--vichat-blue); }
 .message-reply-preview-copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
 .message-reply-preview-copy strong,
@@ -970,11 +976,13 @@ body {
 .message-mention { padding: 0; border: 0; color: #1d6fe8; background: transparent; font: inherit; font-weight: 650; cursor: pointer; }
 .message-mention:hover { text-decoration: underline; }
 .recalled-label { color: var(--text-muted); font-style: italic; }
-.replying-banner { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 7px 12px; border: 1px solid var(--border-color); border-radius: 9px; background: var(--bg-gray); font-size: 12px; }
-.replying-banner div { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
-.replying-banner-copy > .message-reply-preview { align-items: center; flex-direction: row; gap: 7px; margin: 2px 0 0; padding: 0; border: 0; background: transparent; }
+.replying-banner { display: flex; align-items: flex-start; justify-content: space-between; width: 100%; padding: 7px 12px; border: 1px solid var(--border-color); border-radius: 9px; background: var(--bg-gray); font-size: 12px; }
+.replying-banner-copy { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 2px; overflow: hidden; text-align: left; }
+.replying-banner-copy > strong { max-width: 100%; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.replying-banner-copy > .message-reply-preview { align-items: flex-start; flex-direction: row; gap: 7px; width: auto; max-width: 100%; margin: 2px 0 0; padding: 0; border: 0; background: transparent; }
 .replying-banner-copy > .message-reply-preview .message-reply-preview-copy span { max-width: min(520px, 70vw); }
 .replying-banner button, .message-details-header button { border: 0; background: transparent; color: var(--text-muted); cursor: pointer; }
+.replying-banner > button { flex: 0 0 auto; margin-top: 1px; }
 .attachment-message-stack { display: flex; width: min(560px, 100%); flex-direction: column; gap: 3px; }
 .attachment-message-stack > .message-reply-preview { margin-bottom: 0; }
 .message-details-modal { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(15,23,42,.35); }
@@ -3027,7 +3035,8 @@ input:checked + .slider:before {
 }
 
 .pinned-messages-heading strong { color: var(--text-muted); font-size: 10px; font-weight: 600; }
-.pinned-message-list { display: flex; min-width: 0; gap: 6px; overflow-x: auto; scrollbar-width: thin; }
+.pinned-message-list { display: flex; flex: 1 1 auto; min-width: 0; gap: 6px; overflow-x: auto; scrollbar-width: thin; }
+.pinned-message-list.is-expanded { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(245px, 100%), 1fr)); max-height: 160px; overflow-y: auto; }
 .pinned-message-item { display: flex; align-items: center; gap: 10px; min-width: min(245px, 42vw); max-width: min(310px, 48vw); padding: 5px 9px; border: 1px solid rgba(244, 81, 30, .16); border-radius: 9px; color: var(--text-main); background: rgba(255, 255, 255, .82); text-align: left; cursor: pointer; }
 .pinned-message-item:hover, .pinned-message-item:focus-visible { border-color: rgba(244, 81, 30, .42); background: var(--vichat-blue-light); outline: none; }
 .pinned-message-copy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
@@ -3035,6 +3044,8 @@ input:checked + .slider:before {
 .pinned-message-copy strong { color: var(--vichat-blue-dark); font-size: 10px; }
 .pinned-message-copy small { color: var(--text-muted); font-size: 11px; }
 .pinned-message-item > i { margin-left: auto; color: var(--vichat-blue); font-size: 11px; }
+.pinned-messages-toggle { display: inline-flex; align-items: center; flex: 0 0 auto; gap: 5px; padding: 5px 7px; border: 1px solid rgba(244, 81, 30, .18); border-radius: 999px; color: var(--vichat-blue-dark); background: rgba(255, 255, 255, .72); font-size: 10px; font-weight: 700; cursor: pointer; }
+.pinned-messages-toggle:hover, .pinned-messages-toggle:focus-visible { border-color: rgba(244, 81, 30, .42); background: var(--vichat-blue-light); outline: none; }
 
 .chatbot-messages {
     background:
@@ -3805,7 +3816,9 @@ input:checked + .slider:before {
   .chatbot-context-strip span { white-space: nowrap; }
   .pinned-messages-strip { align-items: flex-start; flex-direction: column; gap: 5px; padding: 7px 12px; }
   .pinned-message-list { width: 100%; }
+  .pinned-message-list.is-expanded { grid-template-columns: 1fr; max-height: 190px; }
   .pinned-message-item { min-width: min(250px, 78vw); max-width: 78vw; }
+  .pinned-messages-toggle { align-self: flex-end; }
   .message-quick-actions { opacity: 1; pointer-events: auto; }
   .message-action-button { width: 26px; height: 26px; }
   .chatbot-message-item.incoming .message-content-wrapper { max-width: calc(100vw - 78px); }
@@ -4308,6 +4321,8 @@ html[data-theme="dark"] .chatbot-context-strip span { border-color: #3a4c51; col
 html[data-theme="dark"] .pinned-messages-strip { border-bottom-color: #35464c; background: linear-gradient(90deg, rgba(58, 42, 35, .96), rgba(32, 43, 49, .96)); }
 html[data-theme="dark"] .pinned-message-item { border-color: #70483a; background: rgba(32, 43, 49, .88); }
 html[data-theme="dark"] .pinned-message-item:hover, html[data-theme="dark"] .pinned-message-item:focus-visible { border-color: #b96b4d; background: #4a2e24; }
+html[data-theme="dark"] .pinned-messages-toggle { border-color: #70483a; color: #ffc0a5; background: rgba(32, 43, 49, .88); }
+html[data-theme="dark"] .pinned-messages-toggle:hover, html[data-theme="dark"] .pinned-messages-toggle:focus-visible { border-color: #b96b4d; background: #4a2e24; }
 html[data-theme="dark"] .chatbot-messages {
   background:
     radial-gradient(circle at 8% 0%, rgba(244, 81, 30, .08), transparent 28%),

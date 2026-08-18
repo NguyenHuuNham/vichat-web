@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-19-01 - Sua reply tren anh, truy ve tin goc va thu gon tin ghim
+
+- Thoi gian: 2026-08-19 00:00 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Web | UI | Kiem thu
+- Trang thai: Dang thuc hien
+- Muc tieu: Reply tren anh khong bi mat thao tac khi rê chuot; khối reply gon, tu tag nguoi duoc tra loi, click preview quay ve tin goc va pin message hien thi gon theo mac dinh.
+- Pham vi: Thanh thao tac tin nhan, reply preview/composer, mention metadata, cuon den tin goc va thanh tin nhan da ghim trong ChatUI.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `dist/index.html`.
+- Noi dung: Giu vung hit cua Reply/Share/Like khi rê qua khoang noi, them do tre dong action/reaction picker, can trai banner reply, tu chen mention cho nguoi gui trong ca direct/group, cho phep bam reply preview de highlight va cuon den tin goc, va mac dinh chi hien mot pin preview kem nut Mo rong/Thu gon.
+- Quyet dinh ky thuat: Dung DOM message map hien co va helper cuon chung cho pin/reply; pin van la metadata viewer/device-local qua `message-actions`, khong tao API Tinode moi; khong thay doi Tinode message/reaction contract.
+- Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi truong.
+- Kiem thu: `npm run test:frontend` dat 131/131; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat. Browser UAT chua chay vi session nay khong co browser kha dung.
+- Rui ro con lai: Can UAT bang tai khoan production de xac nhan hover tren anh, click reply, mention Tinode va pin tren desktop/mobile.
+- Viec tiep theo: Commit, push, deploy rieng `chat` va kiem tra health/public bundle; sau do UAT luong reply/pin tren production.
+- Commit/PR: Chua tao
+
 ## 2026-08-18-26 - Thao tac nhanh, mention va ghim tin nhan
 
 - Thoi gian: 2026-08-18 23:48 (Asia/Saigon)
