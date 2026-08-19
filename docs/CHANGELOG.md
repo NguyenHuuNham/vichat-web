@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `npm run test:frontend` dat 132/132; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va vendor `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat. Browser khong kha dung nen chua chay UAT pixel-level.
 - Rui ro con lai: Can UAT bang tai khoan that de xac nhan banner text/image/file tren desktop va mobile, cung nhu icon Font Awesome sau hard refresh.
 - Viec tiep theo: Hard refresh ChatUI, bam Reply tren tin nhan text va anh, kiem tra tieu de/noi dung thut deu, nut dong va gui tin; sau do kiem tra lai English UI.
-- Commit/PR: Chua tao.
+- Commit/PR: Source `4a8ee5b`; deploy production dang cho.
 
 ## 2026-08-19-01 - Sua reply tren anh, truy ve tin goc va thu gon tin ghim
 
