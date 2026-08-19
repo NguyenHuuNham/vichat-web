@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Viec tiep theo: Hard refresh ChatUI va UAT direct history, mention `@ViChatAI` trong group, style cau tra loi va membership reconcile; khong can migration.
 - Trien khai: Source `ee57500` da push `origin/master`. Archive SHA-256 `7EFA0ED64D88764AB7E9480CE1D64BDE985B90F2B1262AB8932085936F385C49`; release `/opt/deploy/chat/releases/vichat-ai-ee57500-20260819-1424`; `current` tro release moi, `previous` tro `/opt/deploy/chat/releases/pinned-theme-30eb900-20260819-1305`; image ChatUI `sha256:4ae1503bd2bd65710410c8b585716232c1d274920ea76bbbdfd794b20753ade6`, container `623b6a6c4902`; image Chatmgt `sha256:9e81203c10ff6e873bd7cefd474ca96dd6634d096027f36f303a6e574a92d6ce`, container `a9c71147d668`; image webhook `sha256:b722585f9368d6b90eee262a4e5f0889c32753509908e508195e4bce11037efb`, container `2882b6109176`; chi recreate `chatmgt`, `chat`, `tinode-chatbot-webhook`, giu nguyen Tinode account bridge, ChatAPI, PostgreSQL, Redis, Coturn va volume; khong migration/reset volume.
 - Kiem tra production: Remote Compose config dat; build ba image dat; `chat`, `chatmgt`, `tinode-chatbot-webhook` healthy; `nginx -t` dat; Chatmgt health noi bo va worker health tra 200; public `https://chat.upgo.vn/healthz`, Chatmgt chatbot health va auth health tra 200; public App bundle co marker `vichat-ai` va `@ViChatAI`; log fatal/panic/traceback/exception cua ba service trong 5 phut sau deploy deu 0.
-- Commit/PR: Source `ee57500`; docs deployment follow-up dang cho commit; chua co PR.
+- Commit/PR: Source `ee57500`; docs deployment follow-up `6bf5e28`; chua co PR.
 
 ## 2026-08-19-05 - Dong bo mau pinned panel theo theme
 
