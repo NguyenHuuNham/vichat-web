@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-19 09:07 (Asia/Saigon)
 - Loai: Sua loi | Web | UI | Kiem thu
-- Trang thai: San sang UAT; chua kiem tra truc quan bang browser trong moi truong nay
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Sua banner reply bi day vao giua khi tra loi nguoi khac, can noi dung theo cung mot truc va dung icon quote theo mau giao dien.
 - Pham vi: Composer reply, preview reply trong tin nhan va nhan ban dich tieu de reply; khong thay doi metadata, mention, luong gui Tinode hoac thao tac click ve tin goc.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `dist/index.html`, `docs/CHANGELOG.md`.
 - Noi dung: Cho cot noi dung banner chiem phan rong con lai thay vi bi `space-between` day vao giua; them icon `fa-quote-left` cho banner va quick action Reply; preview trong composer an icon/ten nguoi gui trung lap nhung van giu preview click duoc ve tin goc; bo sung ban dich `Tra loi` cho English UI.
 - Quyet dinh ky thuat: Mo rong `MessageReplyPreview` bang hai tuy chon hien thi (`showIcon`, `showSender`) de dung lai component hien co; chi sua DOM/CSS/i18n, khong tao state, API, event Tinode hay contract moi.
 - Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi truong.
-- Kiem thu: `npm run test:frontend` dat 132/132; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va vendor `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat. Browser khong kha dung nen chua chay UAT pixel-level.
+- Kiem thu: `npm run test:frontend` dat 132/132; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va vendor `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat. Production `docker compose config -q`, build service `chat`, container health, `docker exec .../healthz`, `http://127.0.0.1:8094/healthz`, `https://chat.upgo.vn/healthz`, Chatmgt `/api/v1/auth/health`, `sudo nginx -t` va log ChatUI 5 phut khong co fatal marker deu dat; public `index-BJNG5XeN.js`, `App-DwLv8xgr.js`, `index-DwPTQNct.css` HTTP 200 co marker `fa-quote-left`, `replying-banner-copy`, `message-reply-preview`. Browser khong kha dung nen chua chay UAT pixel-level.
 - Rui ro con lai: Can UAT bang tai khoan that de xac nhan banner text/image/file tren desktop va mobile, cung nhu icon Font Awesome sau hard refresh.
 - Viec tiep theo: Hard refresh ChatUI, bam Reply tren tin nhan text va anh, kiem tra tieu de/noi dung thut deu, nut dong va gui tin; sau do kiem tra lai English UI.
-- Commit/PR: Source `4a8ee5b`; deploy production dang cho.
+- Trien khai: Source `4a8ee5b` da push `origin/master`. Archive SHA-256 `21C6B5AD3C13BA773C4868AB2B0C536720A15965402FFEBC66772B36471D8301`; release `/opt/deploy/chat/releases/reply-align-88c4ed6-20260819-0915`; image ChatUI `sha256:da465ef6401654de3430f5765bd2039748d799c580e04099af8d8d495a23ce9c`, container `92e92d6b4ee3925b0529465f73626b5d48fc4e414666d97df6e538f34bd809b8`; rollback tag `songhong-production-chat:rollback-before-reply-align-88c4ed6` (`sha256:862a4447978ee4df7bb8b2b683242270d4f8143ab8b555990620b5e13d27958f`); `current` tro release moi, `previous` tro `/opt/deploy/chat/releases/reply-actions-bb2e08c-20260819-010232`; chi recreate `chat`, giu nguyen Chatmgt/Tinode bridge/worker, ChatAPI, PostgreSQL, Redis va Coturn; khong migration, khong reset volume.
+- Commit/PR: Source `4a8ee5b`; docs deployment follow-up dang ghi nhan; chua co PR.
 
 ## 2026-08-19-01 - Sua reply tren anh, truy ve tin goc va thu gon tin ghim
 
