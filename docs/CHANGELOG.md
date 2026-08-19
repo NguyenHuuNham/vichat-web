@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-19 17:12 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | Kiem thu
-- Trang thai: Hoan tat code; chua deploy
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Moi tai khoan luon co phong `ViChat AI` kem tin chao mac dinh trong danh sach cuoc tro chuyen, ke ca khi state bi refresh hoac snapshot quan ly thieu phong nay.
 - Pham vi: ChatUI state/sidebar va test hien thi cuoc tro chuyen; khong thay doi bo loc, membership, tin nhan 1-1, nhom hoac mention bot.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `dist/index.html`, va `docs/CHANGELOG.md`.
@@ -18,9 +18,11 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Khong mo rong `shouldShowConversation` cho direct/group. Chi inject mot entry AI fallback va giu nguyen cac room hien huu, nham tranh anh huong luong chat nhan vien.
 - Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi truong moi.
 - Kiem thu: `npm run test:frontend` dat 135/135; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat.
-- Rui ro con lai: Chua UAT pixel-level tren browser production va chua xac nhan release public sau deploy.
-- Viec tiep theo: Commit/push, build/recreate rieng ChatUI, kiem tra health/public bundle va hard refresh bang tai khoan that.
-- Commit/PR: Chua tao.
+- Rui ro con lai: Chua UAT pixel-level tren browser production; can hard refresh va kiem tra phong AI bang tai khoan that.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, xac nhan moi tai khoan thay `ViChat AI` kem tin chao mac dinh, mo duoc phong va khong anh huong chat 1-1/nhom.
+- Trien khai: Source `ca8b330` da push `origin/master`. Archive SHA-256 `7D5389C1757BE436EEF623E997DD3210914F9DFF26FA1CE9C7F81BD09E9D0703`; release `/opt/deploy/chat/releases/default-ai-ca8b330-20260819-1715`; image ChatUI `sha256:91f3a79852f81a8207a2e9f7bc8b4639b926243381224a0550d3b100867b6be1`, container `5e9a2d4d1833`; rollback tag `songhong-production-chat:rollback-before-default-ai-ca8b330` (`sha256:6f7d86abe12d50831326ed0c3ca0962bea2dee74d6f22384c260f9270bd9cdb6`) giu image release `ee57500`; `current` tro release moi, `previous` tro `/opt/deploy/chat/releases/vichat-ai-ee57500-20260819-1424`; chi recreate `chat`, khong migration/reset volume va giu nguyen Chatmgt/Tinode/worker/ChatAPI/PostgreSQL/Redis/Coturn.
+- Kiem tra production: Compose config dat; `chat` healthy; local/public `/healthz` tra 200; Chatmgt auth health tra 200; `nginx -t` dat; public bundle `App-6YAoFgsF.js` HTTP 200 co marker `bot-welcome`, `vichat-ai`, `ViChat AI`; log fatal/panic/traceback/uncaught/exception cua ChatUI, Chatmgt va worker trong 5 phut sau deploy deu 0.
+- Commit/PR: Source `ca8b330`; deployment follow-up dang ghi nhan; chua co PR.
 
 ## 2026-08-19-06 - Khoi phuc lich su ViChat AI va mention trong nhom
 
