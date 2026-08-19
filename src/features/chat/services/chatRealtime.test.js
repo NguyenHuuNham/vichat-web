@@ -6,6 +6,7 @@ import {
   conversationManagementMergePolicy,
   conversationDisplayName,
   deliveryStatusFromReceiptCursor,
+  ensureConversationEntry,
   firstVisibleConversationId,
   mergeDeliveryStatus,
   normalizeConversationShape,
@@ -62,6 +63,17 @@ test('conversation list hides empty direct metadata until Tinode history or a dr
   assert.equal(shouldShowConversation({ ...emptyManagedDirect, messages: [null, { id: 'message-1' }] }), true);
   assert.equal(shouldShowConversation({ ...emptyManagedDirect, isGroup: true }), true);
   assert.equal(shouldShowConversation({ ...emptyManagedDirect, isChatbot: true }), true);
+});
+
+test('default conversation entry is restored without changing existing rooms', () => {
+  const direct = { id: 'direct-1', messages: [{ id: 'message-1' }] };
+  const chatbot = { id: 'vichat-ai', isChatbot: true, messages: [{ id: 'bot-welcome' }] };
+  const rooms = { [direct.id]: direct };
+  const restored = ensureConversationEntry(rooms, chatbot.id, chatbot);
+
+  assert.equal(restored[direct.id], direct);
+  assert.equal(restored[chatbot.id], chatbot);
+  assert.equal(ensureConversationEntry(restored, chatbot.id, { id: chatbot.id }), restored);
 });
 
 test('conversation display names tolerate incomplete direct room metadata', () => {

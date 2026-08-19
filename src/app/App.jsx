@@ -9,6 +9,7 @@ import {
   applyReceiptToMessages,
   conversationManagementMergePolicy,
   conversationDisplayName,
+  ensureConversationEntry,
   firstVisibleConversationId,
   isManagementConversationId,
   mergeDeliveryStatus,
@@ -570,6 +571,47 @@ function createInitialConversations() {
   return {
     ...INITIAL_CHAT_DATA,
     [CHATBOT_ACCOUNT.id]: createChatbotConversation(),
+  };
+}
+
+function ensureDefaultChatbotConversation(conversations, { accountSession = 0, useTinode = false } = {}) {
+  const source = conversations && typeof conversations === 'object' && !Array.isArray(conversations)
+    ? conversations
+    : {};
+  const existing = source[CHATBOT_ACCOUNT.id];
+  const existingMessages = roomMessages(existing);
+  const hasWelcomeMessage = existingMessages.some(message => message?.id === 'bot-welcome' || message?.isWelcome);
+  const hasRequiredTinodeTopic = !useTinode || Boolean(existing?.tinodeTopic);
+  if (existing?.isChatbot && hasWelcomeMessage && hasRequiredTinodeTopic) return source;
+
+  const fallback = createChatbotConversation(existingMessages, {
+    accountSession: existing?.accountSession ?? accountSession,
+    useTinode: Boolean(existing?.tinodeTopic || useTinode),
+  });
+  if (!existing) return ensureConversationEntry(source, CHATBOT_ACCOUNT.id, fallback);
+
+  return {
+    ...source,
+    [CHATBOT_ACCOUNT.id]: {
+      ...fallback,
+      ...existing,
+      id: CHATBOT_ACCOUNT.id,
+      name: CHATBOT_ACCOUNT.name,
+      isGroup: false,
+      isChatbot: true,
+      avatarHtml: existing.avatarHtml || fallback.avatarHtml,
+      avatarClass: existing.avatarClass || fallback.avatarClass,
+      membersCount: existing.membersCount || fallback.membersCount,
+      description: existing.description || fallback.description,
+      members: roomMembers(existing).length ? existing.members : fallback.members,
+      participantIds: roomParticipantIds(existing).length ? existing.participantIds : fallback.participantIds,
+      tinodeTopic: existing.tinodeTopic || fallback.tinodeTopic,
+      accountSession: existing.accountSession ?? fallback.accountSession,
+      messages: fallback.messages,
+      lastMsg: existing.lastMsg || fallback.lastMsg,
+      time: existing.time || fallback.time,
+      updatedAt: existing.updatedAt || fallback.updatedAt,
+    },
   };
 }
 
@@ -1569,7 +1611,11 @@ function App() {
 
   // Normalize every room used by render paths, including the sidebar. A direct
   // snapshot can be malformed before it reaches the active-chat selector.
-  const renderConversations = Object.fromEntries(safeConversationEntries(conversations));
+  const chatbotUseTinode = Boolean(isLoggedIn && chatMode === 'tinode' && CHATBOT_ACCOUNT.tinodeUid);
+  const renderConversations = ensureDefaultChatbotConversation(
+    Object.fromEntries(safeConversationEntries(conversations)),
+    { accountSession: accountSessionRef.current, useTinode: chatbotUseTinode },
+  );
   const rawActiveChatSource = renderConversations[currentChatId] || Object.values(renderConversations)[0];
   const activeChatSource = rawActiveChatSource
     ? safeNormalizeConversationForRender(rawActiveChatSource, currentChatId)
@@ -1598,6 +1644,15 @@ function App() {
     time: '',
     badge: 0,
   };
+  useEffect(() => {
+    const ensured = ensureDefaultChatbotConversation(conversations, {
+      accountSession: accountSessionRef.current,
+      useTinode: chatbotUseTinode,
+    });
+    if (ensured === conversations) return;
+    conversationsRef.current = ensured;
+    setConversations(ensured);
+  }, [chatbotUseTinode, conversations, isLoggedIn]);
   useEffect(() => {
     setIsGroupMemberPickerOpen(false);
     setGroupMemberAddIds([]);
@@ -3033,7 +3088,7 @@ function App() {
   }, []);
 
   const handleConversationSelect = async (id) => {
-    const rawRoom = conversationsRef.current[id] ?? conversations[id];
+    const rawRoom = conversationsRef.current[id] ?? conversations[id] ?? renderConversations[id];
     const room = rawRoom === null || rawRoom === undefined
       ? null
       : safeNormalizeConversationForRender(rawRoom, id);

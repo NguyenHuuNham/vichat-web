@@ -274,6 +274,15 @@ export function shouldShowConversation(room, draft = '') {
   return Array.isArray(room.messages) && room.messages.some(Boolean);
 }
 
+export function ensureConversationEntry(conversations = {}, conversationId, fallbackRoom) {
+  const id = conversationText(conversationId);
+  const source = conversations && typeof conversations === 'object' && !Array.isArray(conversations)
+    ? conversations
+    : {};
+  if (!id || source[id] !== undefined && source[id] !== null) return source;
+  return { ...source, [id]: fallbackRoom };
+}
+
 export function firstVisibleConversationId(conversations = {}, drafts = {}, fallbackId = '') {
   return Object.keys(conversations).find(id => shouldShowConversation(conversations[id], drafts[id])) || fallbackId;
 }

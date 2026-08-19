@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-19-07 - Duy tri cuoc tro chuyen ViChat AI mac dinh
+
+- Thoi gian: 2026-08-19 17:12 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Web | Kiem thu
+- Trang thai: Hoan tat code; chua deploy
+- Muc tieu: Moi tai khoan luon co phong `ViChat AI` kem tin chao mac dinh trong danh sach cuoc tro chuyen, ke ca khi state bi refresh hoac snapshot quan ly thieu phong nay.
+- Pham vi: ChatUI state/sidebar va test hien thi cuoc tro chuyen; khong thay doi bo loc, membership, tin nhan 1-1, nhom hoac mention bot.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `dist/index.html`, va `docs/CHANGELOG.md`.
+- Noi dung: Them invariant rieng cho phong `vichat-ai`. Neu phong bi thieu, malformed hoac mat tin chao, giao dien tu khoi phuc phong AI va giu lai history/topic da co; thao tac chon phong cung dung fallback nay de tranh loi race truoc khi state duoc cap nhat.
+- Quyet dinh ky thuat: Khong mo rong `shouldShowConversation` cho direct/group. Chi inject mot entry AI fallback va giu nguyen cac room hien huu, nham tranh anh huong luong chat nhan vien.
+- Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi truong moi.
+- Kiem thu: `npm run test:frontend` dat 135/135; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat.
+- Rui ro con lai: Chua UAT pixel-level tren browser production va chua xac nhan release public sau deploy.
+- Viec tiep theo: Commit/push, build/recreate rieng ChatUI, kiem tra health/public bundle va hard refresh bang tai khoan that.
+- Commit/PR: Chua tao.
+
 ## 2026-08-19-06 - Khoi phuc lich su ViChat AI va mention trong nhom
 
 - Thoi gian: 2026-08-19 14:02 (Asia/Saigon)
