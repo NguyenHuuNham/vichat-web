@@ -12,6 +12,8 @@ test('translates message pin labels for the English UI', () => {
   assert.equal(translateUiText('Ghim tin nhắn', 'en'), 'Pin message');
   assert.equal(translateUiText('Bỏ ghim tin nhắn', 'en'), 'Unpin message');
   assert.equal(translateUiText('Tin nhắn đã ghim', 'en'), 'Pinned messages');
+  assert.equal(translateUiText('Danh sách ghim', 'en'), 'Pinned list');
+  assert.equal(translateUiText('Bình chọn', 'en'), 'Poll');
   assert.equal(translateUiText('Mở rộng tin nhắn đã ghim', 'en'), 'Expand pinned messages');
   assert.equal(translateUiText('Thu gọn tin nhắn đã ghim', 'en'), 'Collapse pinned messages');
 });

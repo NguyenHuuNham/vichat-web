@@ -1153,6 +1153,48 @@ function MessageReplyPreview({ reply, copy = { t: value => value }, onClick, sho
   );
 }
 
+function pinnedMessageKind(message, copy = { t: value => value }) {
+  const attachment = attachmentForMessage(message);
+  if (message?.type === 'poll' || message?.poll || message?.pollData) {
+    return { label: copy.t('Bình chọn'), icon: 'fa-chart-simple', tone: 'poll' };
+  }
+  if (isImageAttachment(attachment, message?.type)) {
+    return { label: copy.t('Ảnh'), icon: 'fa-image', tone: 'media' };
+  }
+  if (message?.type === 'file' || attachment) {
+    return { label: copy.t('Tệp'), icon: attachmentIconClass(attachment, message?.type), tone: 'file' };
+  }
+  return { label: copy.t('Tin nhắn'), icon: 'fa-message', tone: 'message' };
+}
+
+function PinnedMessageItem({ message, copy, preview, onClick, featured = false, showMore = true }) {
+  const kind = pinnedMessageKind(message, copy);
+  const senderName = message.senderName || (message.sender === 'outgoing' ? copy.t('Bạn') : copy.t('Thành viên'));
+  const summary = `${senderName}: ${preview}`;
+  return (
+    <button
+      type="button"
+      className={`pinned-message-item${featured ? ' is-featured' : ''}`}
+      title={`${copy.t('Đi tới tin nhắn')}: ${summary}`}
+      aria-label={`${copy.t('Đi tới tin nhắn')}: ${summary}`}
+      onClick={onClick}
+    >
+      <span className={`pinned-message-icon is-${kind.tone}`} aria-hidden="true">
+        <i className={`${kind.icon === 'fa-message' ? 'fa-regular' : 'fa-solid'} ${kind.icon}`}></i>
+      </span>
+      <span className="pinned-message-copy">
+        <strong>{kind.label}</strong>
+        <small>{summary}</small>
+      </span>
+      {showMore && (
+        <span className="pinned-message-more" aria-hidden="true">
+          <i className="fa-solid fa-ellipsis"></i>
+        </span>
+      )}
+    </button>
+  );
+}
+
 function ConversationAvatar({ room }) {
   const legacySource = typeof room?.avatarHtml === 'string'
     ? room.avatarHtml.match(/src=["']([^"']+)["']/i)?.[1]
@@ -5831,7 +5873,7 @@ function App() {
     }
   };
   const scrollToPinnedMessage = message => scrollToMessageById(message?.id);
-  const visiblePinnedMessages = pinnedMessagesExpanded ? pinnedMessages : pinnedMessages.slice(0, 1);
+  const showExpandedPinnedMessages = pinnedMessagesExpanded && pinnedMessages.length > 1;
   const hasDatedMessages = visibleMessages.some(message => formatMessageDateLabel(message, displayClock, appCopy.locale));
 
   const deliveryStatusIcon = message => {
@@ -6207,44 +6249,67 @@ function App() {
         )}
 
         {pinnedMessages.length > 0 && (
-          <section className="pinned-messages-strip" aria-label={appCopy.t('Tin nhắn đã ghim')}>
-            <div className="pinned-messages-heading">
-              <i className="fa-solid fa-thumbtack" aria-hidden="true"></i>
-              <span>{appCopy.t('Tin nhắn đã ghim')}</span>
-              <strong>{pinnedMessages.length > 1
-                ? `+${pinnedMessages.length - 1} ${appCopy.t('ghim')}`
-                : appCopy.t('Ghim trên thiết bị này')}</strong>
-            </div>
-            <div className={`pinned-message-list ${pinnedMessagesExpanded ? 'is-expanded' : 'is-collapsed'}`}>
-              {visiblePinnedMessages.map(message => (
-                <button
-                  type="button"
-                  className="pinned-message-item"
-                  key={message.id}
-                  title={`${appCopy.t('Đi tới tin nhắn')}: ${pinnedMessagePreview(message)}`}
-                  aria-label={`${appCopy.t('Đi tới tin nhắn')}: ${pinnedMessagePreview(message)}`}
-                  onClick={() => scrollToPinnedMessage(message)}
-                >
-                  <span className="pinned-message-copy">
-                    <strong>{message.senderName || (message.sender === 'outgoing' ? appCopy.t('Bạn') : appCopy.t('Thành viên'))}</strong>
-                    <small>{pinnedMessagePreview(message)}</small>
-                  </span>
-                  <i className="fa-solid fa-arrow-right" aria-hidden="true"></i>
+          <section
+            className={`pinned-messages-strip ${showExpandedPinnedMessages ? 'is-expanded' : 'is-collapsed'}`}
+            aria-label={appCopy.t('Tin nhắn đã ghim')}
+          >
+            {showExpandedPinnedMessages ? (
+              <>
+                <div className="pinned-messages-expanded-heading">
+                  <strong>{appCopy.t('Danh sách ghim')} ({pinnedMessages.length})</strong>
+                  <button
+                    type="button"
+                    className="pinned-messages-toggle pinned-messages-collapse-toggle"
+                    aria-expanded="true"
+                    aria-label={appCopy.t('Thu gọn tin nhắn đã ghim')}
+                    title={appCopy.t('Thu gọn tin nhắn đã ghim')}
+                    onClick={() => setPinnedMessagesExpanded(false)}
+                  >
+                    <span>{appCopy.t('Thu gọn')}</span>
+                    <i className="fa-solid fa-chevron-up" aria-hidden="true"></i>
                   </button>
-              ))}
-            </div>
-            {pinnedMessages.length > 1 && (
-              <button
-                type="button"
-                className="pinned-messages-toggle"
-                aria-expanded={pinnedMessagesExpanded}
-                aria-label={appCopy.t(pinnedMessagesExpanded ? 'Thu gọn tin nhắn đã ghim' : 'Mở rộng tin nhắn đã ghim')}
-                title={appCopy.t(pinnedMessagesExpanded ? 'Thu gọn tin nhắn đã ghim' : 'Mở rộng tin nhắn đã ghim')}
-                onClick={() => setPinnedMessagesExpanded(previous => !previous)}
-              >
-                <span>{appCopy.t(pinnedMessagesExpanded ? 'Thu gọn' : 'Mở rộng')}</span>
-                <i className={`fa-solid fa-chevron-${pinnedMessagesExpanded ? 'up' : 'down'}`} aria-hidden="true"></i>
-              </button>
+                </div>
+                <div className="pinned-message-list is-expanded">
+                  {pinnedMessages.map(message => (
+                    <PinnedMessageItem
+                      key={message.id}
+                      message={message}
+                      copy={appCopy}
+                      preview={pinnedMessagePreview(message)}
+                      onClick={() => scrollToPinnedMessage(message)}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <PinnedMessageItem
+                  message={pinnedMessages[0]}
+                  copy={appCopy}
+                  preview={pinnedMessagePreview(pinnedMessages[0])}
+                  featured
+                  showMore={false}
+                  onClick={() => scrollToPinnedMessage(pinnedMessages[0])}
+                />
+                <div className="pinned-messages-actions">
+                  {pinnedMessages.length > 1 && (
+                    <button
+                      type="button"
+                      className="pinned-messages-toggle pinned-messages-count-toggle"
+                      aria-expanded="false"
+                      aria-label={appCopy.t('Mở rộng tin nhắn đã ghim')}
+                      title={appCopy.t('Mở rộng tin nhắn đã ghim')}
+                      onClick={() => setPinnedMessagesExpanded(true)}
+                    >
+                      <span>+{pinnedMessages.length - 1} {appCopy.t('ghim')}</span>
+                      <i className="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                    </button>
+                  )}
+                  <span className="pinned-messages-more" aria-hidden="true">
+                    <i className="fa-solid fa-ellipsis"></i>
+                  </span>
+                </div>
+              </>
             )}
           </section>
         )}

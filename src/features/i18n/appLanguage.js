@@ -44,6 +44,8 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Ghim tin nhắn': 'Pin message',
   'Bỏ ghim tin nhắn': 'Unpin message',
   'Tin nhắn đã ghim': 'Pinned messages',
+  'Danh sách ghim': 'Pinned list',
+  'Bình chọn': 'Poll',
   'Ghim trên thiết bị này': 'Pinned on this device',
   'Đi tới tin nhắn': 'Jump to message',
   'Mở rộng tin nhắn đã ghim': 'Expand pinned messages',

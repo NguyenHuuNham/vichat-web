@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-19-03 - Doi layout danh sach tin nhan ghim trong nhom
+
+- Thoi gian: 2026-08-19 11:00 (Asia/Saigon)
+- Loai: Sua loi | Web | UI | Kiem thu
+- Trang thai: Hoan tat code; chua deploy; can UAT
+- Muc tieu: Dua khu vuc tin nhan ghim ve dung hai trang thai theo mau: thu gon hien mot preview kem `+N ghim`, mo rong hien danh sach doc co tieu de va nut Thu gon.
+- Pham vi: Header pinned messages cua ChatUI, responsive mobile, dark mode va nhan dich UI; khong thay doi luong pin, click cuon tin goc hay luu metadata.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Tach layout collapsed/expanded; collapsed hien icon loai tin, ten loai, nguoi gui/noi dung, nut `+N ghim` va dau ba cham; expanded hien `Danh sach ghim (N)`, cac dong pin doc, icon theo tin nhan/anh/file/binh chon va dau ba cham ben phai. Van giu thao tac bam preview de cuon den tin goc.
+- Quyet dinh ky thuat: Tao `PinnedMessageItem` dung chung cho hai trang thai va helper phan loai icon/nhan pin; chi thay DOM/CSS/i18n, khong them API, state luu tru, migration hay event Tinode moi.
+- Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi truong.
+- Kiem thu: `npm run test:frontend` dat 132/132; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va vendor `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat. Browser runtime khong kha dung nen chua UAT pixel-level.
+- Rui ro con lai: Can UAT tai khoan that trong group co it nhat 2 pin tren desktop/mobile, ca collapsed/expanded va English UI; chua xac nhan pixel-level bang browser.
+- Viec tiep theo: Hard refresh ChatUI, mo group co nhieu tin ghim, kiem tra `+N ghim`, `Danh sach ghim (N)`, Thu gon, click tung dong va responsive; sau UAT moi commit/push/deploy neu can.
+- Commit/PR: Chua tao.
+
 ## 2026-08-19-02 - Can chinh banner reply va thay icon tra loi
 
 - Thoi gian: 2026-08-19 09:07 (Asia/Saigon)
