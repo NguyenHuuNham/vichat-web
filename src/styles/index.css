@@ -3021,9 +3021,9 @@ input:checked + .slider:before {
     gap: 10px;
     min-height: 64px;
     padding: 8px 14px;
-    border-bottom: 1px solid #30363d;
-    color: #e4e9ef;
-    background: #1f2329;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-body);
+    background: var(--bg-chat);
 }
 
 .pinned-messages-strip.is-expanded {
@@ -3049,7 +3049,7 @@ input:checked + .slider:before {
 .pinned-message-item:hover,
 .pinned-message-item:focus-visible { outline: none; }
 .pinned-message-item:focus-visible .pinned-message-copy,
-.pinned-message-item:hover .pinned-message-copy { color: #e4e9ef; }
+.pinned-message-item:hover .pinned-message-copy { color: var(--text-main); }
 .pinned-message-item.is-featured { min-height: 46px; }
 
 .pinned-message-icon {
@@ -3059,7 +3059,7 @@ input:checked + .slider:before {
     flex: 0 0 32px;
     place-items: center;
     border-radius: 50%;
-    color: #69a8ff;
+    color: var(--vichat-blue);
     font-size: 17px;
 }
 
@@ -3067,7 +3067,7 @@ input:checked + .slider:before {
 .pinned-message-icon.is-file { color: #9ba9ff; }
 .pinned-messages-actions { display: flex; align-items: center; flex: 0 0 auto; gap: 14px; }
 .pinned-messages-more,
-.pinned-message-more { display: inline-flex; align-items: center; justify-content: center; color: #c5ccd5; font-size: 15px; }
+.pinned-message-more { display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 15px; }
 .pinned-messages-more { width: 20px; }
 .pinned-message-more { width: 28px; margin-left: auto; }
 
@@ -3081,8 +3081,8 @@ input:checked + .slider:before {
 
 .pinned-message-copy strong,
 .pinned-message-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pinned-message-copy strong { color: #e4e9ef; font-size: 14px; font-weight: 750; }
-.pinned-message-copy small { color: #c8d0d9; font-size: 13px; }
+.pinned-message-copy strong { color: var(--text-main); font-size: 14px; font-weight: 750; }
+.pinned-message-copy small { color: var(--text-muted); font-size: 13px; }
 
 .pinned-messages-expanded-heading {
     display: flex;
@@ -3090,16 +3090,16 @@ input:checked + .slider:before {
     justify-content: space-between;
     min-height: 38px;
     padding: 0 7px 0 8px;
-    border-bottom: 1px solid #30363d;
+    border-bottom: 1px solid var(--border-color);
 }
 
-.pinned-messages-expanded-heading > strong { color: #e4e9ef; font-size: 14px; font-weight: 750; }
+.pinned-messages-expanded-heading > strong { color: var(--text-main); font-size: 14px; font-weight: 750; }
 .pinned-message-list { display: flex; min-width: 0; flex-direction: column; }
 .pinned-message-list.is-expanded { max-height: 240px; overflow-y: auto; }
 .pinned-message-list.is-expanded .pinned-message-item { min-height: 62px; padding: 9px 7px; }
-.pinned-message-list.is-expanded .pinned-message-item + .pinned-message-item { border-top: 1px solid #30363d; }
+.pinned-message-list.is-expanded .pinned-message-item + .pinned-message-item { border-top: 1px solid var(--border-color); }
 .pinned-message-list.is-expanded .pinned-message-item:hover,
-.pinned-message-list.is-expanded .pinned-message-item:focus-visible { background: #262c33; }
+.pinned-message-list.is-expanded .pinned-message-item:focus-visible { background: var(--bg-gray); }
 
 .pinned-messages-toggle {
     display: inline-flex;
@@ -3109,10 +3109,10 @@ input:checked + .slider:before {
     gap: 8px;
     min-height: 32px;
     padding: 0 12px;
-    border: 1px solid #59616b;
+    border: 1px solid var(--border-color);
     border-radius: 5px;
-    color: #e1e6ec;
-    background: #252b31;
+    color: var(--text-main);
+    background: var(--bg-white);
     font: inherit;
     font-size: 13px;
     font-weight: 700;
@@ -4397,7 +4397,7 @@ html[data-theme="dark"] .chatbot-context-strip {
     linear-gradient(90deg, #203034, #1d292d);
 }
 html[data-theme="dark"] .chatbot-context-strip span { border-color: #3a4c51; color: #c7d8d7; background: rgba(32, 43, 49, .84); }
-html[data-theme="dark"] .pinned-messages-strip { border-bottom-color: #30363d; background: #1f2329; }
+html[data-theme="dark"] .pinned-messages-strip { border-bottom-color: var(--border-color); background: var(--bg-chat); }
 html[data-theme="dark"] .pinned-messages-expanded-heading { border-bottom-color: #30363d; }
 html[data-theme="dark"] .pinned-message-list.is-expanded .pinned-message-item + .pinned-message-item { border-top-color: #30363d; }
 html[data-theme="dark"] .pinned-message-item:hover,

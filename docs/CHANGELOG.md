@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-19-05 - Dong bo mau pinned panel theo theme
+
+- Thoi gian: 2026-08-19 13:05 (Asia/Saigon)
+- Loai: Sua loi | Web | UI | Kiem thu
+- Trang thai: Da sua code; cho commit va deploy
+- Muc tieu: Khong de pinned panel mac dinh hien nen dark trong light mode; mau panel phai dong bo voi khu vuc chat va chi toi khi nguoi dung bat dark mode.
+- Pham vi: Chi CSS pinned messages va production bundle ChatUI; khong thay doi DOM, state pin, thao tac click ve tin goc, Tinode hay Chatmgt.
+- File da thay doi: `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Thay mau hard-code dark cua pinned strip, tieu de, noi dung, divider, hover va nut mo rong bang cac bien theme hien co; giu selector `html[data-theme="dark"]` rieng cho dark mode.
+- Quyet dinh ky thuat: Tai su dung `--bg-chat`, `--bg-white`, `--bg-gray`, `--border-color`, `--text-main`, `--text-body` va `--text-muted` de tranh anh huong cac luong chat khac; khong them state hay API.
+- Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi truong.
+- Kiem thu: `npm run test:frontend` dat 132/132; `npm run lint` exit 0 voi warning legacy; `npm run build:production` dat; `git diff --check` dat.
+- Rui ro con lai: Chua UAT pixel-level bang browser trong session nay; can kiem tra light/dark va collapsed/expanded tren desktop/mobile sau deploy.
+- Viec tiep theo: Commit, recreate rieng container `chat`, kiem tra public health/bundle va cap nhat fingerprint deploy.
+- Commit/PR: Chua tao.
+
 ## 2026-08-19-04 - Deploy layout danh sach tin nhan ghim
 
 - Thoi gian: 2026-08-19 12:06 (Asia/Saigon)
