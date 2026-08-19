@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Trien khai: Source `30eb900` da push `origin/master`. Archive SHA-256 `0493A3AA13BABE8C20AC2E57FF06CA8E0B6431B7D1DE27A2C0123129D7F375B3`; release `/opt/deploy/chat/releases/pinned-theme-30eb900-20260819-1305`; image ChatUI `sha256:e7fbe9449b300255175c08cc1864f3167848994fdb2335c0959b4a8d9aad924d`, container `1e9b3028f866`; rollback tag `songhong-production-chat:rollback-before-pinned-theme-30eb900` (`sha256:b59440b17d36a7953c68610f7f02b7af13f05c9a12a0fda6a351483b1d08d380`); `current` tro release moi, `previous` tro `/opt/deploy/chat/releases/pinned-panel-47704fe-20260819-115146`; chi recreate `chat`, khong migration/reset volume.
 - Rui ro con lai: Chua UAT pixel-level bang browser trong session nay; can kiem tra light/dark va collapsed/expanded tren desktop/mobile sau deploy.
 - Viec tiep theo: Hard refresh ChatUI, kiem tra pinned panel light/dark va collapsed/expanded tren desktop/mobile.
-- Commit/PR: Source `30eb900` da push `origin/master`; deployment follow-up dang cho commit; chua co PR.
+- Commit/PR: Source `30eb900` va deployment follow-up `b2c6bc3` da push `origin/master`; chua co PR.
 
 ## 2026-08-19-04 - Deploy layout danh sach tin nhan ghim
 
