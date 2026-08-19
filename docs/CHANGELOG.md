@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn`, xac nhan moi tai khoan thay `ViChat AI` kem tin chao mac dinh, mo duoc phong va khong anh huong chat 1-1/nhom.
 - Trien khai: Source `ca8b330` da push `origin/master`. Archive SHA-256 `7D5389C1757BE436EEF623E997DD3210914F9DFF26FA1CE9C7F81BD09E9D0703`; release `/opt/deploy/chat/releases/default-ai-ca8b330-20260819-1715`; image ChatUI `sha256:91f3a79852f81a8207a2e9f7bc8b4639b926243381224a0550d3b100867b6be1`, container `5e9a2d4d1833`; rollback tag `songhong-production-chat:rollback-before-default-ai-ca8b330` (`sha256:6f7d86abe12d50831326ed0c3ca0962bea2dee74d6f22384c260f9270bd9cdb6`) giu image release `ee57500`; `current` tro release moi, `previous` tro `/opt/deploy/chat/releases/vichat-ai-ee57500-20260819-1424`; chi recreate `chat`, khong migration/reset volume va giu nguyen Chatmgt/Tinode/worker/ChatAPI/PostgreSQL/Redis/Coturn.
 - Kiem tra production: Compose config dat; `chat` healthy; local/public `/healthz` tra 200; Chatmgt auth health tra 200; `nginx -t` dat; public bundle `App-6YAoFgsF.js` HTTP 200 co marker `bot-welcome`, `vichat-ai`, `ViChat AI`; log fatal/panic/traceback/uncaught/exception cua ChatUI, Chatmgt va worker trong 5 phut sau deploy deu 0.
-- Commit/PR: Source `ca8b330`; deployment follow-up dang ghi nhan; chua co PR.
+- Commit/PR: Source `ca8b330`; deployment follow-up `867f561`; chua co PR.
 
 ## 2026-08-19-06 - Khoi phuc lich su ViChat AI va mention trong nhom
 
