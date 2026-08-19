@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-19-04 - Deploy layout danh sach tin nhan ghim
+
+- Thoi gian: 2026-08-19 12:06 (Asia/Saigon)
+- Loai: Van hanh | Web | UI | Kiem thu
+- Trang thai: Da deploy production; san sang UAT
+- Muc tieu: Dua ban sua layout tin nhan ghim cua commit `47704fe` len production de group co collapsed preview va expanded list dung mau.
+- Pham vi: Chi service ChatUI; khong thay doi Chatmgt, Tinode bridge/worker, ChatAPI, PostgreSQL, Redis, Coturn hay database.
+- File da thay doi: `docs/CHANGELOG.md`; source runtime tu release bat bien `/opt/deploy/chat/releases/pinned-panel-47704fe-20260819-115146`.
+- Noi dung: Recreate rieng container `chat`, sau do chuyen `current` sang release moi va `previous` ve `/opt/deploy/chat/releases/reply-align-88c4ed6-20260819-0915` de rollback nhanh. Khong chay migration, khong reset volume.
+- Quyet dinh ky thuat: Deploy tu archive source da kiem SHA-256; giu nguyen cac service stateful va cac luong realtime dang hoat dong.
+- Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi truong moi. Archive SHA-256 `E567F2C1E1BDDD103BFF12FB6F240824E789D1D559A5C03FCB64EFCC42B315F3`.
+- Kiem thu: Local `npm run test:frontend` dat 132/132; `npm run lint` exit 0 voi warning legacy; `npm run build:production` dat; `git diff --check` dat. Production `docker compose config -q`, container `chat`/`chatmgt` healthy, local/public `/healthz`, Chatmgt auth health, public bundle markers reply/pinned/expanded, `sudo nginx -t` deu dat; log ChatUI 5 phut co 0 fatal marker.
+- Trien khai: Image ChatUI `sha256:968b721be7564ab0602b083d1a41ca43b6510b9267f4b0a071e9e3b7e4ed522c`, container `4e60103685fc`; rollback tag `songhong-production-chat:rollback-before-pinned-panel-47704fe` tro image cu `sha256:da465ef6401654de3430f5765bd2039748d799c580e04099af8d8d495a23ce9c`; `current` tro release moi.
+- Rui ro con lai: Browser runtime trong session khong kha dung nen chua UAT pixel-level; can tai khoan production kiem tra group co >=2 tin ghim tren desktop/mobile va hard refresh.
+- Viec tiep theo: UAT collapsed `+N ghim`, expanded `Danh sach ghim (N)`, nut Thu gon, click tung dong cuon ve tin goc va responsive mobile.
+- Commit/PR: Source `47704fe` da push `origin/master`; changelog deployment follow-up dang cho commit; chua co PR.
+
 ## 2026-08-19-03 - Doi layout danh sach tin nhan ghim trong nhom
 
 - Thoi gian: 2026-08-19 11:00 (Asia/Saigon)
