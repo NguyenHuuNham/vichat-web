@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Trien khai: Image ChatUI `sha256:968b721be7564ab0602b083d1a41ca43b6510b9267f4b0a071e9e3b7e4ed522c`, container `4e60103685fc`; rollback tag `songhong-production-chat:rollback-before-pinned-panel-47704fe` tro image cu `sha256:da465ef6401654de3430f5765bd2039748d799c580e04099af8d8d495a23ce9c`; `current` tro release moi.
 - Rui ro con lai: Browser runtime trong session khong kha dung nen chua UAT pixel-level; can tai khoan production kiem tra group co >=2 tin ghim tren desktop/mobile va hard refresh.
 - Viec tiep theo: UAT collapsed `+N ghim`, expanded `Danh sach ghim (N)`, nut Thu gon, click tung dong cuon ve tin goc va responsive mobile.
-- Commit/PR: Source `47704fe` da push `origin/master`; changelog deployment follow-up dang cho commit; chua co PR.
+- Commit/PR: Source `47704fe` va deployment follow-up `f1b2380` da push `origin/master`; chua co PR.
 
 ## 2026-08-19-03 - Doi layout danh sach tin nhan ghim trong nhom
 
