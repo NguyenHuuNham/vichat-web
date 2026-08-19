@@ -1117,20 +1117,20 @@ function AudioMessagePlayer({ file, duration = 0, time = '', delivery = null, pe
   );
 }
 
-function MessageReplyPreview({ reply, copy = { t: value => value }, onClick }) {
+function MessageReplyPreview({ reply, copy = { t: value => value }, onClick, showIcon = true, showSender = true }) {
   if (!reply) return null;
   const isAudio = isAudioAttachment(reply.file || { name: reply.fileName, mime: reply.fileMime }, reply.type) || Number(reply.voiceDuration) > 0;
   const isImage = reply.type === 'image' || String(reply.fileMime || reply.file?.mime || '').toLowerCase().startsWith('image/');
-  const icon = isAudio ? 'fa-microphone' : isImage ? 'fa-image' : reply.fileName ? 'fa-paperclip' : 'fa-reply';
+  const icon = isAudio ? 'fa-microphone' : isImage ? 'fa-image' : reply.fileName ? 'fa-paperclip' : 'fa-quote-left';
   const senderName = typeof reply.senderName === 'string' ? reply.senderName : copy.t('Tin nhắn');
   const replyText = typeof reply.text === 'string'
     ? reply.text.trim()
     : (typeof reply.text === 'number' && Number.isFinite(reply.text) ? String(reply.text) : '');
   const previewContent = (
     <>
-      <span className="message-reply-preview-icon"><i className={`fa-solid ${icon}`} aria-hidden="true"></i></span>
+      {showIcon && <span className="message-reply-preview-icon"><i className={`fa-solid ${icon}`} aria-hidden="true"></i></span>}
       <span className="message-reply-preview-copy">
-        <strong>{senderName}</strong>
+        {showSender && <strong>{senderName}</strong>}
         <span>{replyText || copy.t(replyContentLabel(reply))}</span>
       </span>
     </>
@@ -6484,7 +6484,7 @@ function App() {
                         aria-label={appCopy.t('Trả lời tin nhắn')}
                         onClick={() => handleMessageAction('reply', msg)}
                       >
-                        <i className="fa-solid fa-reply" aria-hidden="true"></i>
+                        <i className="fa-solid fa-quote-left" aria-hidden="true"></i>
                       </button>
                       <button
                         type="button"
@@ -6627,9 +6627,10 @@ function App() {
         <div className="chat-main-input">
           {replyingTo && (
             <div className="replying-banner">
+              <span className="replying-banner-icon" aria-hidden="true"><i className="fa-solid fa-quote-left"></i></span>
               <div className="replying-banner-copy">
-                <strong>{appCopy.t('Đang trả lời')} {replyingTo.senderName}</strong>
-                <MessageReplyPreview reply={replyingTo} copy={appCopy} onClick={reply => scrollToMessageById(reply.id)} />
+                <strong>{appCopy.t('Trả lời')} {replyingTo.senderName}</strong>
+                <MessageReplyPreview reply={replyingTo} copy={appCopy} onClick={reply => scrollToMessageById(reply.id)} showIcon={false} showSender={false} />
               </div>
               <button type="button" onClick={() => setReplyingTo(null)} aria-label={appCopy.t('Hủy trả lời')}><i className="fa-solid fa-xmark"></i></button>
             </div>

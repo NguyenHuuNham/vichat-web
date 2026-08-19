@@ -274,6 +274,7 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Loại nội dung': 'Content type',
   'mục': 'items',
   'Chưa rõ ngày': 'Unknown date',
+  'Trả lời': 'Reply to',
   'Đang trả lời': 'Replying to',
   'ViChat AI hiện nhận câu hỏi văn bản': 'ViChat AI currently accepts text questions',
   'Kết nối realtime Tinode chưa sẵn sàng': 'Tinode realtime is not ready',

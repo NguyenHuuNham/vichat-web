@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-19-02 - Can chinh banner reply va thay icon tra loi
+
+- Thoi gian: 2026-08-19 09:07 (Asia/Saigon)
+- Loai: Sua loi | Web | UI | Kiem thu
+- Trang thai: San sang UAT; chua kiem tra truc quan bang browser trong moi truong nay
+- Muc tieu: Sua banner reply bi day vao giua khi tra loi nguoi khac, can noi dung theo cung mot truc va dung icon quote theo mau giao dien.
+- Pham vi: Composer reply, preview reply trong tin nhan va nhan ban dich tieu de reply; khong thay doi metadata, mention, luong gui Tinode hoac thao tac click ve tin goc.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Cho cot noi dung banner chiem phan rong con lai thay vi bi `space-between` day vao giua; them icon `fa-quote-left` cho banner va quick action Reply; preview trong composer an icon/ten nguoi gui trung lap nhung van giu preview click duoc ve tin goc; bo sung ban dich `Tra loi` cho English UI.
+- Quyet dinh ky thuat: Mo rong `MessageReplyPreview` bang hai tuy chon hien thi (`showIcon`, `showSender`) de dung lai component hien co; chi sua DOM/CSS/i18n, khong tao state, API, event Tinode hay contract moi.
+- Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi truong.
+- Kiem thu: `npm run test:frontend` dat 132/132; `npm run lint` exit 0 voi warning legacy tai `src/App.jsx` va vendor `public/ChatBotWidget/tinode.js`; `npm run build:production` dat; `git diff --check` dat. Browser khong kha dung nen chua chay UAT pixel-level.
+- Rui ro con lai: Can UAT bang tai khoan that de xac nhan banner text/image/file tren desktop va mobile, cung nhu icon Font Awesome sau hard refresh.
+- Viec tiep theo: Hard refresh ChatUI, bam Reply tren tin nhan text va anh, kiem tra tieu de/noi dung thut deu, nut dong va gui tin; sau do kiem tra lai English UI.
+- Commit/PR: Chua tao.
+
 ## 2026-08-19-01 - Sua reply tren anh, truy ve tin goc va thu gon tin ghim
 
 - Thoi gian: 2026-08-19 01:02 (Asia/Saigon)

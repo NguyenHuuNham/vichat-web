@@ -16,6 +16,10 @@ test('translates message pin labels for the English UI', () => {
   assert.equal(translateUiText('Thu gọn tin nhắn đã ghim', 'en'), 'Collapse pinned messages');
 });
 
+test('translates the reply composer heading', () => {
+  assert.equal(translateUiText('Trả lời', 'en'), 'Reply to');
+});
+
 test('translates tenant switch labels', () => {
   assert.equal(translateUiText('Chuyển công ty', 'en'), 'Switch company');
   assert.equal(translateUiText('Chọn công ty để làm việc', 'en'), 'Choose a company to work in');
