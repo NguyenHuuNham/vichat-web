@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-19 13:05 (Asia/Saigon)
 - Loai: Sua loi | Web | UI | Kiem thu
-- Trang thai: Da sua code; cho commit va deploy
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Khong de pinned panel mac dinh hien nen dark trong light mode; mau panel phai dong bo voi khu vuc chat va chi toi khi nguoi dung bat dark mode.
 - Pham vi: Chi CSS pinned messages va production bundle ChatUI; khong thay doi DOM, state pin, thao tac click ve tin goc, Tinode hay Chatmgt.
 - File da thay doi: `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
 - Noi dung: Thay mau hard-code dark cua pinned strip, tieu de, noi dung, divider, hover va nut mo rong bang cac bien theme hien co; giu selector `html[data-theme="dark"]` rieng cho dark mode.
 - Quyet dinh ky thuat: Tai su dung `--bg-chat`, `--bg-white`, `--bg-gray`, `--border-color`, `--text-main`, `--text-body` va `--text-muted` de tranh anh huong cac luong chat khac; khong them state hay API.
 - Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi truong.
-- Kiem thu: `npm run test:frontend` dat 132/132; `npm run lint` exit 0 voi warning legacy; `npm run build:production` dat; `git diff --check` dat.
+- Kiem thu: `npm run test:frontend` dat 132/132; `npm run lint` exit 0 voi warning legacy; `npm run build:production` dat; `git diff --check` dat. Production `docker compose config -q`, container `chat`/`chatmgt` healthy, local/public `/healthz`, Chatmgt auth health, public bundle co pinned selector va bien theme, `sudo nginx -t` deu dat; log ChatUI 5 phut co 0 fatal marker.
+- Trien khai: Source `30eb900` da push `origin/master`. Archive SHA-256 `0493A3AA13BABE8C20AC2E57FF06CA8E0B6431B7D1DE27A2C0123129D7F375B3`; release `/opt/deploy/chat/releases/pinned-theme-30eb900-20260819-1305`; image ChatUI `sha256:e7fbe9449b300255175c08cc1864f3167848994fdb2335c0959b4a8d9aad924d`, container `1e9b3028f866`; rollback tag `songhong-production-chat:rollback-before-pinned-theme-30eb900` (`sha256:b59440b17d36a7953c68610f7f02b7af13f05c9a12a0fda6a351483b1d08d380`); `current` tro release moi, `previous` tro `/opt/deploy/chat/releases/pinned-panel-47704fe-20260819-115146`; chi recreate `chat`, khong migration/reset volume.
 - Rui ro con lai: Chua UAT pixel-level bang browser trong session nay; can kiem tra light/dark va collapsed/expanded tren desktop/mobile sau deploy.
-- Viec tiep theo: Commit, recreate rieng container `chat`, kiem tra public health/bundle va cap nhat fingerprint deploy.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh ChatUI, kiem tra pinned panel light/dark va collapsed/expanded tren desktop/mobile.
+- Commit/PR: Source `30eb900` da push `origin/master`; deployment follow-up dang cho commit; chua co PR.
 
 ## 2026-08-19-04 - Deploy layout danh sach tin nhan ghim
 
