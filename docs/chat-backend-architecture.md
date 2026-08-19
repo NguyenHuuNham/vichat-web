@@ -378,17 +378,24 @@ presence, receipt or group behavior.
 In the internal production mode, ChatUI obtains the tenant-independent bot UID
 from `GET /api/v1/chatbot/tinode-config`, then sends the chatbot message to the
 bot's normal Tinode P2P topic. The isolated `tinode-chatbot-webhook` worker owns
-the bot Tinode session, subscribes only to direct `usr*` topics, and forwards a
-bounded message envelope to `POST /api/v1/chatbot/tinode-webhook`. Chatmgt
-resolves the sender UID to an active `ManagementAccount` and its authenticated
-tenant before calling the fixed `CHATBOT_API_URL`, currently
-`https://knowledge-ai.gonapp.net/api/v1/chat`. In
-`CHATBOT_EXTERNAL_REQUEST_MODE=knowledge-retrieval`, Chatmgt authenticates with
-the server-only `X-API-Key`, sends only `message` and bounded `top_k`, then
-normalizes returned `sources[].snippet` objects into a grounded reply with
-source metadata. It does not send employee identity, history, conversation IDs
-or local `KnowledgeService` context to the external retrieval boundary. The
-worker publishes the reply back to the same Tinode topic and
+the bot Tinode session, subscribes to direct `usr*` topics and opted-in group
+`grp*` topics, and forwards a bounded message envelope to
+`POST /api/v1/chatbot/tinode-webhook`. A group message is processed only when
+its text or mention metadata contains the canonical `@ViChatAI` mention.
+Chatmgt resolves the sender UID to an active `ManagementAccount`, validates the
+authenticated tenant and group membership, and persists the group bot opt-in
+so later membership reconciliation does not remove the bot. It then calls the
+fixed `CHATBOT_API_URL`, currently `https://knowledge-ai.gonapp.net/api/v1/chat`.
+In `CHATBOT_EXTERNAL_REQUEST_MODE=knowledge-retrieval`, Chatmgt authenticates
+with the server-only `X-API-Key`, sends `message`, bounded `top_k`, and when
+`CHATBOT_RETRIEVAL_INCLUDE_HISTORY=true` at most six recent role/content turns
+with each turn limited to 800 characters. This bounded context lets a provider
+match the group's language and tone without sending employee identity,
+credentials, tenant secrets or local knowledge records. If an older retrieval
+endpoint rejects the optional history field, Chatmgt retries with the legacy
+`message`/`top_k` payload. Provider answers are preferred when returned;
+otherwise `sources[].snippet` objects are normalized into a grounded reply with
+source metadata. The worker publishes the reply back to the same Tinode topic and
 persists a cursor/idempotency key so reconnects do not duplicate replies.
 
 The product-facing assistant identity is `ViChat AI` on both web and mobile.

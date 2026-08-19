@@ -68,6 +68,7 @@ from application.services.auth_service import (
     tinode_publish_system_event,
     tinode_sso_password,
     tinode_sso_login,
+    tinode_topic_member_uids,
     tinode_username_compatible,
     tinode_verify_topic_access,
     token_from_request,
@@ -84,6 +85,10 @@ from application.services.sso_identity import (
     stable_local_account_id,
     stable_tinode_username,
     valid_tinode_topic,
+)
+from application.services.tinode_chatbot_service import (
+    ensure_tinode_chatbot_auth,
+    tinode_chatbot_enabled,
 )
 
 
@@ -754,6 +759,18 @@ def _active_conversation_accounts(item):
     if set(participant_ids) != set(accounts_by_id):
         raise AuthError("A Chatmgt participant is no longer active in this tenant.", 409)
     return participants, accounts_by_id
+
+
+def _expected_tinode_member_uids(item, participants, accounts_by_id):
+    expected = {
+        str(accounts_by_id[participant.participant_id].tinode_uid or "")
+        for participant in participants
+    }
+    properties = item.properties or {}
+    chatbot_uid = str(properties.get("chatbot_tinode_uid") or "").strip()
+    if properties.get("chatbot_enabled") and chatbot_uid:
+        expected.add(chatbot_uid)
+    return expected
 
 
 def _audit(request, event_name, success=True, tenant_id=None, user_id=None, properties=None):
@@ -2907,10 +2924,7 @@ async def conversation_bind_tinode(request, conversation_id):
     else:
         try:
             participants, accounts_by_id = _active_conversation_accounts(item)
-            expected_member_uids = {
-                str(accounts_by_id[participant.participant_id].tinode_uid or "")
-                for participant in participants
-            }
+            expected_member_uids = _expected_tinode_member_uids(item, participants, accounts_by_id)
         except AuthError as error:
             return json({"error_code": "TINODE_PARTICIPANTS_INVALID", "error_message": str(error)}, status=error.status_code)
         if not expected_member_uids or "" in expected_member_uids:
@@ -2968,6 +2982,136 @@ async def conversation_bind_tinode(request, conversation_id):
     except Exception:
         db.session.rollback()
         return json({"error_code": "TINODE_TOPIC_CONFLICT", "error_message": "Could not bind the Tinode topic."}, status=409)
+
+
+@app.route('/api/v1/conversation/<conversation_id>/tinode-chatbot', methods=['POST'])
+@app.route('/api/v1/chat/threads/<conversation_id>/tinode-chatbot', methods=['POST'])
+async def conversation_enable_tinode_chatbot(request, conversation_id):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    if management_session_requested(request):
+        return json({
+            "error_code": "CHAT_SESSION_REQUIRED",
+            "error_message": "The group chatbot can only be enabled from a Chat user session.",
+        }, status=403)
+    try:
+        conversation_uuid = uuid.UUID(str(conversation_id))
+    except (ValueError, TypeError, AttributeError):
+        return json({"error_code": "NOT_FOUND", "error_message": "Invalid conversation."}, status=404)
+
+    user_id = _user_id(current_user)
+    item, membership = _conversation_and_membership(tenant_id, conversation_uuid, user_id)
+    if item is None or membership is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
+    if not bool((item.properties or {}).get("is_group")):
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "The chatbot can only be enabled in a group.",
+        }, status=400)
+    if not item.tinode_topic or not valid_tinode_topic(item.tinode_topic, True):
+        return json({
+            "error_code": "TINODE_TOPIC_REQUIRED",
+            "error_message": "Bind the group to Tinode before enabling ViChat AI.",
+        }, status=409)
+    account = _account_by_id(tenant_id, user_id)
+    if account is None:
+        return _auth_error()
+
+    try:
+        if current_user.get("auth_method") == "account_sso":
+            await _validated_account_identity(request, account)
+        if not tinode_chatbot_enabled(app):
+            return json({
+                "error_code": "TINODE_CHATBOT_NOT_CONFIGURED",
+                "error_message": "ViChat AI is not configured on the server.",
+            }, status=503)
+
+        chatbot_auth = await ensure_tinode_chatbot_auth(app)
+        chatbot_uid = str(chatbot_auth.get("uid") or "").strip()
+        if not chatbot_uid:
+            raise AuthError("Tinode chatbot account has no user mapping.", 503)
+
+        participants, accounts_by_id = _active_conversation_accounts(item)
+        expected_member_uids = {
+            str(accounts_by_id[participant.participant_id].tinode_uid or "")
+            for participant in participants
+        }
+        if not expected_member_uids or "" in expected_member_uids:
+            return json({
+                "error_code": "TINODE_PARTICIPANTS_UNPREPARED",
+                "error_message": "Prepare all group members before enabling ViChat AI.",
+            }, status=409)
+        owner_participant = next(
+            (participant for participant in participants if participant.role == "OWNER"),
+            None,
+        )
+        owner_account = accounts_by_id.get(owner_participant.participant_id) if owner_participant else None
+        if owner_account is None:
+            raise AuthError("The group has no active owner.", 409)
+        owner_uid = await _ensure_tinode_account(owner_account)
+        owner_auth = await tinode_sso_login(
+            _tinode_account_identity(owner_account),
+            owner_account.tinode_username,
+            owner_uid,
+        )
+        owner_token = str(owner_auth.get("token") or "").strip()
+        if not owner_token:
+            raise AuthError("Tinode could not authenticate the group owner.", 502)
+
+        actual_member_uids = await tinode_topic_member_uids(
+            owner_token,
+            owner_uid,
+            item.tinode_topic,
+        )
+        if chatbot_uid in actual_member_uids:
+            expected_member_uids.add(chatbot_uid)
+        if actual_member_uids != expected_member_uids:
+            await tinode_reconcile_topic_members(
+                owner_token,
+                owner_uid,
+                item.tinode_topic,
+                expected_member_uids,
+            )
+            actual_member_uids = await tinode_topic_member_uids(
+                owner_token,
+                owner_uid,
+                item.tinode_topic,
+            )
+        if chatbot_uid not in actual_member_uids:
+            await tinode_add_topic_members(
+                owner_token,
+                owner_uid,
+                item.tinode_topic,
+                [chatbot_uid],
+                mode="JRWPAS",
+            )
+
+        properties = dict(item.properties or {})
+        properties["chatbot_enabled"] = True
+        properties["chatbot_tinode_uid"] = chatbot_uid
+        item.properties = properties
+        item.updated_at = int(time.time())
+        db.session.commit()
+        return json(_serialize_conversation(item, user_id))
+    except AccountSSOError as error:
+        db.session.rollback()
+        if error.status_code != 503:
+            revoke_request_token(request)
+            revoked_error = AccountSSOError(str(error), 401, error.error_code)
+            response = clear_auth_cookie(_account_sso_error(revoked_error), request)
+            return clear_account_cookie(response)
+        return _account_sso_error(error)
+    except AuthError as error:
+        db.session.rollback()
+        return json({"error_code": "TINODE_CHATBOT_MEMBERSHIP_FAILED", "error_message": str(error)}, status=error.status_code)
+    except Exception as error:
+        db.session.rollback()
+        logger.exception("Could not enable the Tinode group chatbot: %s", error)
+        return json({
+            "error_code": "TINODE_CHATBOT_MEMBERSHIP_FAILED",
+            "error_message": "Could not enable ViChat AI in this group.",
+        }, status=503)
 
 
 @app.route('/api/v1/conversation/<conversation_id>/participants', methods=['POST'])
@@ -3067,10 +3211,7 @@ async def conversation_participant_add(request, conversation_id):
             )
             tinode_members_added = True
             active_participants, active_accounts = _active_conversation_accounts(item)
-            expected_member_uids = {
-                str(active_accounts[participant.participant_id].tinode_uid or "")
-                for participant in active_participants
-            }
+            expected_member_uids = _expected_tinode_member_uids(item, active_participants, active_accounts)
             await tinode_reconcile_topic_members(
                 tinode_token,
                 actor_account.tinode_uid,
@@ -3311,10 +3452,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
             tinode_target_removed = True
             if is_group:
                 active_participants, active_accounts = _active_conversation_accounts(item)
-                expected_member_uids = {
-                    str(active_accounts[participant.participant_id].tinode_uid or "")
-                    for participant in active_participants
-                }
+                expected_member_uids = _expected_tinode_member_uids(item, active_participants, active_accounts)
                 verification_token = replacement_tinode_token or event_sender_tinode_token or tinode_token
                 verification_uid = replacement_uid or event_sender_uid or actor_account.tinode_uid
                 if verification_token and verification_uid and expected_member_uids:

@@ -14,6 +14,8 @@ spec.loader.exec_module(protocol)
 CursorStore = protocol.CursorStore
 tinode_contact_topics = protocol.tinode_contact_topics
 tinode_message_text = protocol.tinode_message_text
+tinode_message_mentions_bot = protocol.tinode_message_mentions_bot
+tinode_strip_bot_mention = protocol.tinode_strip_bot_mention
 tinode_websocket_url = protocol.tinode_websocket_url
 
 
@@ -35,6 +37,23 @@ class TinodeChatbotProtocolTests(unittest.TestCase):
         })
 
         self.assertEqual(topics, ["usrEmployee1", "usrEmployee2"])
+
+    def test_discovers_group_topics_only_when_requested(self):
+        meta = {"sub": [{"topic": "usrEmployee1"}, {"topic": "grpCompany"}]}
+
+        self.assertEqual(tinode_contact_topics(meta), ["usrEmployee1"])
+        self.assertEqual(
+            tinode_contact_topics(meta, include_groups=True),
+            ["usrEmployee1", "grpCompany"],
+        )
+
+    def test_detects_and_removes_the_vichat_ai_group_mention(self):
+        head = {"x-mentions": '[{"id":"usrBot","token":"@ViChatAI"}]'}
+
+        self.assertTrue(tinode_message_mentions_bot("@ViChatAI check this", head, "usrBot"))
+        self.assertTrue(tinode_message_mentions_bot("Please @ViChat AI help", {}, "usrBot"))
+        self.assertFalse(tinode_message_mentions_bot("Please check this", {}, "usrBot"))
+        self.assertEqual(tinode_strip_bot_mention("@ViChatAI check this"), "check this")
 
     def test_websocket_url_preserves_query_and_adds_api_key_once(self):
         self.assertEqual(
@@ -77,7 +96,11 @@ class TinodeChatbotContractTests(unittest.TestCase):
 
         self.assertNotIn("from application", worker)
         self.assertIn("def ensure_tinode_chatbot_auth(force=False):", worker)
-        self.assertIn('topic.startswith("usr")', worker)
+        self.assertIn('topic.startswith("usr") or topic.startswith("grp")', worker)
+        self.assertIn('include_groups=True', worker)
+        self.assertIn('bot_mentioned', worker)
+        self.assertIn('presence_source.startswith("grp")', worker)
+        self.assertIn('"history": history[-20:]', worker)
         self.assertIn('X-Vichat-Chatbot-Webhook', controller)
         self.assertIn('ManagementAccount.tinode_uid == sender_uid', controller)
         self.assertIn("room?.isChatbot && chatMode === 'tinode' && room.tinodeTopic", app)

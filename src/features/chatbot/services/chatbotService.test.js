@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { CHATBOT_ACCOUNT, CHATBOT_STARTER_PROMPTS, applyTinodeChatbotConfig } from './chatbotService.js';
+import {
+  CHATBOT_ACCOUNT,
+  CHATBOT_STARTER_PROMPTS,
+  applyTinodeChatbotConfig,
+  mergeChatbotMessages,
+} from './chatbotService.js';
 
 const appSource = readFileSync(new URL('../../../app/App.jsx', import.meta.url), 'utf8');
 const serviceSource = readFileSync(new URL('./chatbotService.js', import.meta.url), 'utf8');
@@ -57,4 +62,29 @@ test('production build keeps the ViChat AI identity instead of legacy external d
 test('fallback storage can read the legacy bot conversation after the rename', () => {
   assert.match(serviceSource, /vichat\.chatbot\.bot-songhong\.messages\./);
   assert.match(serviceSource, /LEGACY_STORAGE_PREFIXES/);
+  assert.match(serviceSource, /mergeChatbotMessages\(current, \.\.\.legacySources\)/);
+});
+
+test('merges legacy and Tinode history without duplicating the same message', () => {
+  const legacy = {
+    id: 'legacy-1',
+    sender: 'outgoing',
+    text: 'Leave policy?',
+    createdAt: '2026-08-19T10:00:01.000Z',
+  };
+  const tinodeCopy = {
+    id: 'tinode-1',
+    sender: 'outgoing',
+    text: 'Leave policy?',
+    createdAt: '2026-08-19T10:00:03.000Z',
+  };
+
+  const result = mergeChatbotMessages([legacy], [tinodeCopy, {
+    id: 'tinode-2',
+    sender: 'incoming',
+    text: 'I will check the approved source.',
+    createdAt: '2026-08-19T10:00:04.000Z',
+  }]);
+
+  assert.deepEqual(result.map(message => message.id), ['legacy-1', 'tinode-2']);
 });

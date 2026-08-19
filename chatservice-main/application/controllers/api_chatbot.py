@@ -298,11 +298,40 @@ def _serialize_history_message(item):
     }
 
 
-def _chatbot_history_refs(conversation_ref):
+def _chatbot_history_refs(conversation_ref, current_user=None):
     value = str(conversation_ref or DEFAULT_CHATBOT_CONVERSATION_REF)[:255]
     if value != DEFAULT_CHATBOT_CONVERSATION_REF:
         return (value,)
-    return (DEFAULT_CHATBOT_CONVERSATION_REF,) + LEGACY_CHATBOT_CONVERSATION_REFS
+    refs = (DEFAULT_CHATBOT_CONVERSATION_REF,) + LEGACY_CHATBOT_CONVERSATION_REFS
+    tinode_uid = str((current_user or {}).get("tinodeUid") or "").strip()
+    if tinode_uid:
+        refs += ("tinode-chatbot:{}".format(tinode_uid)[:255],)
+    return refs
+
+
+def _filter_chatbot_history_conversations(query, conversation_ref, history_refs):
+    """Include Tinode topic history while keeping the tenant/user filters."""
+    if conversation_ref == DEFAULT_CHATBOT_CONVERSATION_REF:
+        return query.filter(
+            (ChatbotMessage.conversation_ref.in_(history_refs))
+            | ChatbotMessage.conversation_ref.like("tinode-chatbot:%")
+        )
+    return query.filter(ChatbotMessage.conversation_ref.in_(history_refs))
+
+
+def _sanitize_tinode_history(value):
+    if not isinstance(value, list):
+        return []
+    history = []
+    for item in value[-20:]:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "").strip().lower()
+        content = str(item.get("content") or item.get("text") or "").strip()
+        if role not in ("user", "assistant") or not content:
+            continue
+        history.append({"role": role, "content": content[:4000]})
+    return history
 
 
 def _store_history_message(tenant_id, conversation_ref, user_ref, role, content, message_ref=None, properties=None):
@@ -411,6 +440,17 @@ async def chatbot_tinode_webhook(request):
             "error_code": "PARAM_ERROR",
             "error_message": "Tin nhan vuot qua {} ky tu.".format(max_length),
         }, status=400)
+    is_group_topic = topic.startswith("grp")
+    if not topic.startswith(("usr", "grp")):
+        return json({
+            "error_code": "TINODE_TOPIC_INVALID",
+            "error_message": "Tinode chatbot topic type is invalid.",
+        }, status=400)
+    if is_group_topic and body.get("bot_mentioned") is not True:
+        return json({
+            "error_code": "TINODE_BOT_MENTION_REQUIRED",
+            "error_message": "ViChat AI only answers explicitly mentioned group messages.",
+        }, status=400)
 
     account = ManagementAccount.query.filter(
         ManagementAccount.tinode_uid == sender_uid,
@@ -422,15 +462,57 @@ async def chatbot_tinode_webhook(request):
             "error_message": "Tinode sender is not an active Chat account.",
         }, status=403)
 
-    conversation_ref = "tinode-chatbot:{}".format(topic)[:255]
-    user_ref = str(account.id)
+    group_conversation = None
+    if is_group_topic:
+        group_conversation = Conversation.query.filter(
+            Conversation.tenant_id == account.tenant_id,
+            Conversation.tinode_topic == topic,
+            Conversation.deleted.is_(False),
+        ).first()
+        if group_conversation is None or not bool((group_conversation.properties or {}).get("is_group")):
+            return json({
+                "error_code": "TINODE_GROUP_NOT_ALLOWED",
+                "error_message": "Tinode group is not bound to a Chatmgt conversation.",
+            }, status=403)
+        membership = ConversationParticipant.query.filter(
+            ConversationParticipant.tenant_id == account.tenant_id,
+            ConversationParticipant.conversation_id == group_conversation.id,
+            ConversationParticipant.participant_id == str(account.id),
+            ConversationParticipant.active.is_(True),
+            ConversationParticipant.deleted.is_(False),
+        ).first()
+        if membership is None:
+            return json({
+                "error_code": "TINODE_GROUP_MEMBER_NOT_ALLOWED",
+                "error_message": "Tinode sender is not an active group member.",
+            }, status=403)
+
+    # Direct AI history uses the same stable key as the HTTP fallback. Group
+    # history stays topic-scoped so one group's context never crosses another.
+    conversation_ref = (
+        DEFAULT_CHATBOT_CONVERSATION_REF
+        if not is_group_topic
+        else "tinode-chatbot:{}".format(topic)[:255]
+    )
+    user_ref = (
+        "group:{}".format(hashlib.sha256(topic.encode("utf-8")).hexdigest()[:64])
+        if is_group_topic else str(account.id)
+    )
     message_ref = _tinode_message_ref(topic, sequence)
-    existing_reply = ChatbotMessage.query.filter(
+    history_refs = _chatbot_history_refs(
+        conversation_ref,
+        {"tinodeUid": account.tinode_uid},
+    )
+    existing_reply_query = ChatbotMessage.query.filter(
         ChatbotMessage.tenant_id == account.tenant_id,
-        ChatbotMessage.conversation_ref == conversation_ref,
         ChatbotMessage.user_ref == user_ref,
         ChatbotMessage.message_ref == message_ref + ":assistant",
         ChatbotMessage.deleted.is_(False),
+    )
+    existing_reply = _filter_chatbot_history_conversations(
+        existing_reply_query,
+        conversation_ref,
+        history_refs,
     ).first()
     if existing_reply is not None:
         return json({
@@ -442,11 +524,15 @@ async def chatbot_tinode_webhook(request):
             "sources": (existing_reply.properties or {}).get("sources") or [],
         })
 
-    history_rows = ChatbotMessage.query.filter(
+    history_query = ChatbotMessage.query.filter(
         ChatbotMessage.tenant_id == account.tenant_id,
-        ChatbotMessage.conversation_ref == conversation_ref,
         ChatbotMessage.user_ref == user_ref,
         ChatbotMessage.deleted.is_(False),
+    )
+    history_rows = _filter_chatbot_history_conversations(
+        history_query,
+        conversation_ref,
+        history_refs,
     ).order_by(ChatbotMessage.created_at.desc()).limit(
         max(1, int(app.config.get("TINODE_CHATBOT_HISTORY_LIMIT", 100)))
     ).all()
@@ -454,6 +540,9 @@ async def chatbot_tinode_webhook(request):
         {"role": item.role, "content": item.content}
         for item in reversed(history_rows)
     ]
+    supplied_history = _sanitize_tinode_history(body.get("history")) if is_group_topic else []
+    if supplied_history:
+        history = supplied_history
     user = _tinode_chatbot_user(account)
     try:
         _store_history_message(
@@ -463,7 +552,14 @@ async def chatbot_tinode_webhook(request):
             "user",
             message,
             message_ref=message_ref,
-            properties={"source": "tinode-webhook", "topic": topic, "seq": sequence},
+            properties={
+                "source": "tinode-webhook",
+                "topic": topic,
+                "seq": sequence,
+                "is_group": is_group_topic,
+                "sender_uid": sender_uid,
+                "sender_name": account.full_name or account.username,
+            },
         )
         result = await chatbot_service.reply(
             message=message,
@@ -493,6 +589,7 @@ async def chatbot_tinode_webhook(request):
             "reply": result.get("reply") or "",
             "message_ref": message_ref,
             "tenant_id": account.tenant_id,
+            "is_group": is_group_topic,
             "provider": result.get("provider"),
             "grounded": bool(result.get("grounded")),
             "sources": result.get("sources") or [],
@@ -642,13 +739,17 @@ async def chatbot_history(request):
     if current_user is None:
         return json({"error_code": "SESSION_EXPIRED", "error_message": "Phiên làm việc hết hạn"}, status=401)
     conversation_ref = str(request.args.get("conversation_id") or DEFAULT_CHATBOT_CONVERSATION_REF)[:255]
-    history_refs = _chatbot_history_refs(conversation_ref)
+    history_refs = _chatbot_history_refs(conversation_ref, current_user)
     limit = min(max(int(request.args.get("limit", 200)), 1), 500)
-    items = ChatbotMessage.query.filter(
+    history_query = ChatbotMessage.query.filter(
         ChatbotMessage.tenant_id == tenant_id,
-        ChatbotMessage.conversation_ref.in_(history_refs),
         ChatbotMessage.user_ref == _user_ref(current_user),
         ChatbotMessage.deleted.is_(False),
+    )
+    items = _filter_chatbot_history_conversations(
+        history_query,
+        conversation_ref,
+        history_refs,
     ).order_by(ChatbotMessage.created_at.desc()).limit(limit).all()
     items.reverse()
     return json({"objects": [_serialize_history_message(item) for item in items]})
@@ -661,12 +762,16 @@ async def chatbot_history_delete(request):
     if current_user is None:
         return json({"error_code": "SESSION_EXPIRED", "error_message": "Phiên làm việc hết hạn"}, status=401)
     conversation_ref = str(body.get("conversation_id") or DEFAULT_CHATBOT_CONVERSATION_REF)[:255]
-    history_refs = _chatbot_history_refs(conversation_ref)
-    for item in ChatbotMessage.query.filter(
+    history_refs = _chatbot_history_refs(conversation_ref, current_user)
+    history_query = ChatbotMessage.query.filter(
         ChatbotMessage.tenant_id == tenant_id,
-        ChatbotMessage.conversation_ref.in_(history_refs),
         ChatbotMessage.user_ref == _user_ref(current_user),
         ChatbotMessage.deleted.is_(False),
+    )
+    for item in _filter_chatbot_history_conversations(
+        history_query,
+        conversation_ref,
+        history_refs,
     ).all():
         item.deleted = True
     db.session.commit()

@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -13,7 +14,7 @@ def tinode_message_text(content):
     return ""
 
 
-def tinode_contact_topics(meta):
+def tinode_contact_topics(meta, include_groups=False):
     subscriptions = (meta or {}).get("sub") or []
     if isinstance(subscriptions, dict):
         subscriptions = [subscriptions]
@@ -22,9 +23,52 @@ def tinode_contact_topics(meta):
         if not isinstance(subscription, dict) or subscription.get("deleted"):
             continue
         topic = str(subscription.get("topic") or subscription.get("user") or "").strip()
-        if topic.startswith("usr"):
+        if topic.startswith("usr") or (include_groups and topic.startswith("grp")):
             topics.append(topic)
     return list(dict.fromkeys(topics))
+
+
+def _bot_token(value):
+    return "".join(char for char in str(value or "").casefold() if char.isalnum())
+
+
+def _mention_objects(value):
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError):
+            return []
+    if isinstance(value, dict):
+        value = [value]
+    return [item for item in (value or []) if isinstance(item, dict)]
+
+
+def tinode_message_mentions_bot(text, head=None, bot_uid=""):
+    for mention in _mention_objects((head or {}).get("x-mentions")):
+        mention_uid = str(
+            mention.get("tinodeUid")
+            or mention.get("tinode_uid")
+            or mention.get("id")
+            or ""
+        ).strip()
+        if mention_uid and mention_uid == str(bot_uid or "").strip():
+            return True
+        if _bot_token(mention.get("token") or mention.get("name")) == "vichatai":
+            return True
+    return bool(re.search(
+        r"(?<![\w@])@vi\s*chat\s*ai(?![\w])",
+        str(text or ""),
+        re.IGNORECASE,
+    ))
+
+
+def tinode_strip_bot_mention(text):
+    return re.sub(
+        r"(?<![\w@])@vi\s*chat\s*ai(?![\w])\s*",
+        "",
+        str(text or ""),
+        flags=re.IGNORECASE,
+    ).strip()
 
 
 def tinode_websocket_url(base_url, api_key):

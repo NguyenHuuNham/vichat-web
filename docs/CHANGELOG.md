@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-19-06 - Khoi phuc lich su ViChat AI va mention trong nhom
+
+- Thoi gian: 2026-08-19 14:02 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Bao mat | API | Kiem thu
+- Trang thai: Dang thuc hien
+- Muc tieu: Hien lai doan chat AI cho moi tai khoan, cho phep tag `@ViChatAI` trong nhom va tra loi theo ngon ngu/ngu canh gan nhat cua doan chat.
+- Pham vi: ChatUI AI room, mention group, Tinode chatbot worker, Chatmgt webhook/history, provider adapter va cau hinh production; khong thay doi luong chat nhan vien neu khong mention bot.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/mentionPolicy.js`, `src/features/chat/services/mentionPolicy.test.js`, `src/features/chatbot/services/chatbotService.js`, `src/features/chatbot/services/chatbotService.test.js`, `chatservice-main/application/config/config.py`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/controllers/api_chatbot.py`, `chatservice-main/application/services/chatbot_service.py`, `chatservice-main/scripts/tinode_chatbot_protocol.py`, `chatservice-main/scripts/tinode_chatbot_webhook.py`, `chatservice-main/tests/test_chatbot_webhook_provider.py`, `chatservice-main/tests/test_tinode_chatbot_webhook.py`, `infrastructure/production/compose.yaml`, `infrastructure/production/.env.example`, `infrastructure/production/README.md`, `chatservice-main/.env.chatbot.example`, `README.md`, `docs/chat-backend-architecture.md`, `docs/external-chatbot-api.md`.
+- Noi dung: Sua API history doc ca khoa `vichat-ai`, khoa legacy va cac ban ghi `tinode-chatbot:*` theo dung tenant/user; direct webhook ghi khoa on dinh moi nhung van doc du lieu cu. ChatUI merge Tinode, HTTP va localStorage history co chong trung. Them candidate bot voi token chuan `@ViChatAI`; worker chi xu ly group khi mention, webhook kiem tra tenant/thanh vien, endpoint owner-enable bot truoc khi gui tin. Provider nhan toi da 6 luot role/content gan nhat, uu tien answer tu provider va retry payload legacy neu retrieval endpoint khong chap nhan history.
+- Quyet dinh ky thuat: Dung bot Tinode P2P chung de moi tai khoan dung cung identity va khong tao topic AI rieng trong Chatmgt; history group duoc gioi han 800 ky tu/luot va 6 luot de giu style nhung khong gui identity/token. Bot group duoc luu trong properties de reconcile thanh vien khong xoa lai; khong migration database.
+- Database/API/cau hinh: Them `POST /api/v1/conversation/<conversation_id>/tinode-chatbot` (chi Chat user, owner reconciliation qua Tinode), them `CHATBOT_RETRIEVAL_INCLUDE_HISTORY=true`; khong them migration, secret, token hay du lieu rieng vao repo.
+- Kiem thu: `npm run test:frontend` dat 134/134; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `python -m unittest discover -s tests -v` dat 170 test, skip 56 test do dependency/runtime chi co trong image Chatmgt; focused `python -m unittest tests.test_chatbot_webhook_provider tests.test_tinode_chatbot_webhook -v` dat 21/21; `python -m py_compile application/controllers/api_chatbot.py application/controllers/api_chat_management.py application/services/chatbot_service.py application/services/tinode_chatbot_service.py scripts/tinode_chatbot_protocol.py scripts/tinode_chatbot_webhook.py tests/test_chatbot_webhook_provider.py tests/test_tinode_chatbot_webhook.py` dat; `docker compose ... config --quiet` dat voi cac bien bat buoc dummy khong phai secret; `git diff --check` dat.
+- Rui ro con lai: Provider retrieval cu co the bo qua history va chi tra snippet fallback; can UAT voi tai khoan production de xac nhan lich su cu, mention bot trong group, style cau tra loi va membership reconcile. Chua chay browser pixel/UAT end-to-end trong session nay.
+- Viec tiep theo: Commit/push/deploy; sau deploy hard refresh ChatUI va UAT direct history, mention `@ViChatAI` trong group, style cau tra loi va membership reconcile.
+- Commit/PR: Chua tao.
+
 ## 2026-08-19-05 - Dong bo mau pinned panel theo theme
 
 - Thoi gian: 2026-08-19 13:05 (Asia/Saigon)

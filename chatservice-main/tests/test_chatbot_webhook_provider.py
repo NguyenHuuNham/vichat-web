@@ -85,7 +85,7 @@ class ChatbotWebhookProviderTests(unittest.TestCase):
 
         self.assertNotIn("context", payload)
 
-    def test_knowledge_retrieval_payload_is_minimal_and_bounded(self):
+    def test_knowledge_retrieval_payload_keeps_bounded_history_without_identity(self):
         payload = self.service(
             CHATBOT_EXTERNAL_REQUEST_MODE="knowledge-retrieval",
             CHATBOT_RETRIEVAL_LIMIT=50,
@@ -99,7 +99,9 @@ class ChatbotWebhookProviderTests(unittest.TestCase):
         self.assertEqual(payload, {
             "message": "Quy trinh nghi phep",
             "top_k": 20,
+            "history": [{"role": "user", "content": "private history"}],
         })
+        self.assertNotIn("private-user", str(payload))
 
     def test_knowledge_retrieval_response_becomes_grounded_reply_and_sources(self):
         result = self.service()._retrieval_reply({
@@ -123,6 +125,19 @@ class ChatbotWebhookProviderTests(unittest.TestCase):
         missing = self.service()._retrieval_reply({"sources": []})
         self.assertFalse(missing["grounded"])
         self.assertEqual(missing["sources"], [])
+
+    def test_retrieval_provider_answer_is_preserved_when_available(self):
+        result = self.service()._retrieval_reply({
+            "answer": "Gửi đơn trước ba ngày và chờ quản lý phê duyệt.",
+            "sources": [{
+                "title": "Quy trình nghỉ phép",
+                "snippet": "Gửi đơn trước ba ngày.",
+                "score": 0.9,
+            }],
+        })
+
+        self.assertEqual(result["reply"], "Gửi đơn trước ba ngày và chờ quản lý phê duyệt.")
+        self.assertTrue(result["grounded"])
 
     def test_response_parser_accepts_common_webhook_shapes(self):
         service = self.service()
@@ -171,6 +186,8 @@ class ChatbotWebhookProviderTests(unittest.TestCase):
         self.assertIn('DEFAULT_CHATBOT_CONVERSATION_REF = "vichat-ai"', controller)
         self.assertIn('LEGACY_CHATBOT_CONVERSATION_REFS = ("bot-songhong",)', controller)
         self.assertIn("ChatbotMessage.conversation_ref.in_(history_refs)", controller)
+        self.assertIn('ChatbotMessage.conversation_ref.like("tinode-chatbot:%")', controller)
+        self.assertIn('DEFAULT_CHATBOT_CONVERSATION_REF\n        if not is_group_topic', controller)
 
 
 class ChatbotKnowledgeRetrievalRequestTests(unittest.IsolatedAsyncioTestCase):
@@ -239,6 +256,7 @@ class ChatbotKnowledgeRetrievalRequestTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(captured["json"], {
             "message": "quy trinh nghi phep",
             "top_k": 6,
+            "history": [{"role": "user", "content": "private history"}],
         })
         self.assertEqual(captured["headers"]["X-API-Key"], "server-secret")
         self.assertNotIn("private-user", str(captured["json"]))

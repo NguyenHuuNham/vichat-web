@@ -37,6 +37,7 @@ export function mentionCandidateText(candidate) {
 
 export function mentionTokenFor(candidate) {
   if (candidate?.id === ALL_MENTION_ID) return '@All';
+  if (candidate?.type === 'bot' || candidate?.isChatbot || candidate?.id === 'vichat-ai') return '@ViChatAI';
   const label = mentionCandidateText(candidate);
   return label ? `@${label}` : '';
 }
@@ -44,7 +45,7 @@ export function mentionTokenFor(candidate) {
 export function matchesMentionCandidate(candidate, query) {
   const normalizedQuery = normalizeMentionSearch(query).trim();
   if (!normalizedQuery) return true;
-  return [candidate?.name, candidate?.username, candidate?.email]
+  return [candidate?.name, candidate?.username, candidate?.email, ...(candidate?.mentionAliases || [])]
     .filter(Boolean)
     .some(value => normalizeMentionSearch(value).includes(normalizedQuery));
 }

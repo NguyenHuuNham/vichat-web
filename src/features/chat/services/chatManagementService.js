@@ -690,6 +690,15 @@ export const chatManagementService = {
     writeStorage(topicBindingsKey, bindings);
     return topicName;
   },
+
+  async enableTinodeChatbot(conversationId) {
+    if (!apiBase || !remoteAuth) return false;
+    await membershipApiRequest(
+      `/api/v1/conversation/${encodeURIComponent(conversationId)}/tinode-chatbot`,
+      'POST',
+    );
+    return true;
+  },
 };
 
 function toLoginSession(account) {

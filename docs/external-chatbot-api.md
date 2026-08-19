@@ -30,12 +30,22 @@ For `knowledge-retrieval`, Chatmgt sends a minimal server-to-server payload:
 ```json
 {
   "message": "How do I request leave?",
-  "top_k": 6
+  "top_k": 6,
+  "history": [
+    {"role": "user", "content": "Can I take leave next week?"},
+    {"role": "assistant", "content": "I will check the approved policy."}
+  ]
 }
 ```
 
-The provider returns `sources` with snippets. Chatmgt converts those snippets
-to the reply shown on web/mobile and keeps source names in the response. Other
+`history` is optional and contains at most six recent role/content turns, with
+each turn limited to 800 characters. It is used only to help the provider match
+the conversation's language and tone; employee identity and credentials are
+not included. Set `CHATBOT_RETRIEVAL_INCLUDE_HISTORY=false` to keep the legacy
+minimal payload. If a retrieval endpoint rejects the optional field, Chatmgt
+retries once with only `message` and `top_k`. The provider may return an
+`answer`/`reply` plus `sources`; when no answer is returned, Chatmgt converts
+the source snippets to the bounded reply shown on web/mobile. Other
 external-webhook modes still accept `reply`, `answer`, `text`, `message`,
 `data.answer`, or `choices[0].message.content` for compatibility.
 

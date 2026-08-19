@@ -177,6 +177,7 @@ CHATBOT_API_KEY=<knowledge-ai-api-key>
 CHATBOT_EXTERNAL_AUTH_HEADER=X-API-Key
 CHATBOT_EXTERNAL_AUTH_SCHEME=
 CHATBOT_EXTERNAL_REQUEST_MODE=knowledge-retrieval
+CHATBOT_RETRIEVAL_INCLUDE_HISTORY=true
 CHATBOT_KNOWLEDGE_ONLY=false
 CHATBOT_EXTERNAL_API_KEY=<separate-inbound-key>
 CHATBOT_EXTERNAL_TENANT=tn6913580727957397
@@ -193,14 +194,18 @@ TINODE_CHATBOT_WEBHOOK_URL=http://chatmgt:8093/api/v1/chatbot/tinode-webhook
 ```
 
 Chatmgt calls `https://knowledge-ai.gonapp.net/api/v1/chat` server-side with
-`X-API-Key`. The current API is retrieval-only: Chatmgt sends `message` and
-bounded `top_k`, converts returned snippets to the sourced reply, and never
-sends employee identity/history to the provider. The browser and Tinode worker
-must continue to call Chatmgt instead of the partner service directly. The
-legacy knowledge APIs remain separate compatibility integrations.
+`X-API-Key`. In retrieval mode it sends `message`, bounded `top_k` and at most
+six recent role/content turns (each at most 800 characters) so the provider can
+match the conversation tone; employee identity and credentials are not sent.
+If an older provider rejects `history`, Chatmgt retries with the legacy
+`message`/`top_k` payload and uses the returned snippets. The browser and
+Tinode worker must continue to call Chatmgt instead of the partner service
+directly. The legacy knowledge APIs remain separate compatibility integrations.
 The worker is started as `tinode-chatbot-webhook`, persists its cursor in the
-named `tinode_chatbot_state` volume, and subscribes only to direct employee
-topics.
+named `tinode_chatbot_state` volume, subscribes to direct employee topics and
+group topics only after a member explicitly mentions `@ViChatAI`. Chatmgt
+validates group membership and keeps the bot in the Tinode member set after
+the opt-in.
 
 Do not copy the example placeholders into production. After deployment, verify
 `GET /api/v1/chatbot/health`, `GET /api/v1/chatbot/tinode-config` with an

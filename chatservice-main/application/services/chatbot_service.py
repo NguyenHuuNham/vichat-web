@@ -70,6 +70,15 @@ class ChatbotService(object):
             messages.append({"role": role, "content": content.strip()[:4000]})
         return messages
 
+    def _retrieval_history(self, history):
+        """Keep only recent chat turns needed for provider style/context."""
+        if not self.app.config.get("CHATBOT_RETRIEVAL_INCLUDE_HISTORY", True):
+            return []
+        return [
+            {"role": item["role"], "content": item["content"][:800]}
+            for item in self._history_messages(history)[-6:]
+        ]
+
     @staticmethod
     def _response_content(data):
         if isinstance(data, str):
@@ -144,12 +153,16 @@ class ChatbotService(object):
         include_context=True,
     ):
         if self._external_request_mode() in ("knowledge-retrieval", "retrieval", "rag"):
-            # The Knowledge AI production API is retrieval-only. Keep the
-            # request minimal so private employee metadata never leaves Chatmgt.
-            return {
+            # Keep identity out of retrieval requests while allowing the
+            # provider to match the recent conversation's language and tone.
+            payload = {
                 "message": str(message or "").strip(),
                 "top_k": self._retrieval_limit(),
             }
+            retrieval_history = self._retrieval_history(history)
+            if retrieval_history:
+                payload["history"] = retrieval_history
+            return payload
 
         safe_user = {}
         if isinstance(user, dict):
@@ -203,6 +216,13 @@ class ChatbotService(object):
     @classmethod
     def _retrieval_reply(cls, data):
         sources = cls._retrieval_sources(data)
+        provider_answer = cls._response_content(data)
+        if provider_answer:
+            return {
+                "reply": str(provider_answer).strip()[:8000],
+                "sources": sources,
+                "grounded": bool(sources),
+            }
         if not sources:
             return {
                 "reply": (
@@ -254,49 +274,60 @@ class ChatbotService(object):
             include_context=include_context,
         )
         timeout = aiohttp.ClientTimeout(total=timeout_seconds)
+        payloads = [payload]
+        retrieval_mode = self._external_request_mode() in (
+            "knowledge-retrieval", "retrieval", "rag"
+        )
+        if retrieval_mode and payload.get("history"):
+            # Older retrieval endpoints reject unknown fields. Retry without
+            # context only for schema errors so the existing AI flow survives.
+            payloads.append({key: value for key, value in payload.items() if key != "history"})
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(
-                    api_url,
-                    json=payload,
-                    headers=self._external_headers(),
-                ) as response:
-                    try:
-                        data = await response.json(content_type=None)
-                    except Exception:
-                        data = {"text": await response.text()}
-                    if response.status < 200 or response.status >= 300:
-                        provider_message = data.get("error") if isinstance(data, dict) else None
-                        if isinstance(provider_message, dict):
-                            provider_message = provider_message.get("message")
-                        provider_message = provider_message or self._response_content(data)
-                        raise ChatbotServiceError(
-                            provider_message or "External chatbot returned an error.",
-                            502,
-                        )
+                for attempt, request_payload in enumerate(payloads):
+                    async with session.post(
+                        api_url,
+                        json=request_payload,
+                        headers=self._external_headers(),
+                    ) as response:
+                        try:
+                            data = await response.json(content_type=None)
+                        except Exception:
+                            data = {"text": await response.text()}
+                        if response.status < 200 or response.status >= 300:
+                            if attempt == 0 and response.status in (400, 415, 422):
+                                continue
+                            provider_message = data.get("error") if isinstance(data, dict) else None
+                            if isinstance(provider_message, dict):
+                                provider_message = provider_message.get("message")
+                            provider_message = provider_message or self._response_content(data)
+                            raise ChatbotServiceError(
+                                provider_message or "External chatbot returned an error.",
+                                502,
+                            )
 
-                    if self._external_request_mode() in ("knowledge-retrieval", "retrieval", "rag"):
-                        retrieval = self._retrieval_reply(data)
+                        if retrieval_mode:
+                            retrieval = self._retrieval_reply(data)
+                            return {
+                                **retrieval,
+                                "model": None,
+                                "provider": self.app.config.get("CHATBOT_PROVIDER", "external-webhook"),
+                                "usage": {
+                                    "retrieval_time_ms": data.get("retrieval_time_ms")
+                                    if isinstance(data, dict) else None,
+                                },
+                            }
+
+                        content = self._response_content(data)
+                        if not content:
+                            raise ChatbotServiceError("External chatbot returned no message content.")
+                        response_metadata = data if isinstance(data, dict) else {}
                         return {
-                            **retrieval,
-                            "model": None,
+                            "reply": str(content).strip(),
+                            "model": response_metadata.get("model") or self.app.config.get("CHATBOT_MODEL"),
                             "provider": self.app.config.get("CHATBOT_PROVIDER", "external-webhook"),
-                            "usage": {
-                                "retrieval_time_ms": data.get("retrieval_time_ms")
-                                if isinstance(data, dict) else None,
-                            },
+                            "usage": response_metadata.get("usage") or {},
                         }
-
-                    content = self._response_content(data)
-                    if not content:
-                        raise ChatbotServiceError("External chatbot returned no message content.")
-                    response_metadata = data if isinstance(data, dict) else {}
-                    return {
-                        "reply": str(content).strip(),
-                        "model": response_metadata.get("model") or self.app.config.get("CHATBOT_MODEL"),
-                        "provider": self.app.config.get("CHATBOT_PROVIDER", "external-webhook"),
-                        "usage": response_metadata.get("usage") or {},
-                    }
         except ChatbotServiceError:
             raise
         except aiohttp.ClientError as error:

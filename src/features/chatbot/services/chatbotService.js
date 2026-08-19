@@ -97,15 +97,60 @@ function storedMessages(key) {
 export function loadChatbotMessages(userId) {
   try {
     const current = storedMessages(storageKey(userId));
-    if (current.length > 0) return current;
-    for (const prefix of LEGACY_STORAGE_PREFIXES) {
-      const legacy = storedMessages(storageKey(userId, prefix));
-      if (legacy.length > 0) return legacy;
-    }
-    return [];
+    const legacySources = LEGACY_STORAGE_PREFIXES.map(prefix => (
+      storedMessages(storageKey(userId, prefix))
+    ));
+    return mergeChatbotMessages(current, ...legacySources);
   } catch {
     return [];
   }
+}
+
+function chatbotMessageFingerprint(message) {
+  const text = String(message?.text || '').trim().replace(/\s+/gu, ' ');
+  const createdAt = Date.parse(message?.createdAt || '') || 0;
+  if (!text || !createdAt) return '';
+  const sender = message?.sender === 'outgoing' ? 'user' : 'assistant';
+  return `${sender}|${text}`;
+}
+
+// Merge legacy HTTP history with Tinode history without duplicating messages.
+export function mergeChatbotMessages(...sources) {
+  const merged = [];
+  const ids = new Set();
+  const fingerprints = new Map();
+  sources.forEach((source, sourceIndex) => {
+    (Array.isArray(source) ? source : []).forEach(message => {
+      if (!message || typeof message !== 'object') return;
+      const id = String(message.id || '').trim();
+      const fingerprint = chatbotMessageFingerprint(message);
+      const createdAt = Date.parse(message.createdAt || '') || 0;
+      const duplicate = fingerprint && (fingerprints.get(fingerprint) || []).some(previous => (
+        previous.sourceIndex !== sourceIndex
+        && createdAt > 0
+        && previous.createdAt > 0
+        && Math.abs(createdAt - previous.createdAt) <= 5000
+      ));
+      if ((id && ids.has(id)) || duplicate) return;
+      if (id) ids.add(id);
+      if (fingerprint) {
+        const matches = fingerprints.get(fingerprint) || [];
+        matches.push({ sourceIndex, createdAt });
+        fingerprints.set(fingerprint, matches);
+      }
+      merged.push(message);
+    });
+  });
+  return merged
+    .map((message, index) => ({ message, index }))
+    .sort((first, second) => {
+      const firstTime = Date.parse(first.message?.createdAt || '') || 0;
+      const secondTime = Date.parse(second.message?.createdAt || '') || 0;
+      return firstTime && secondTime && firstTime !== secondTime
+        ? firstTime - secondTime
+        : first.index - second.index;
+    })
+    .map(item => item.message);
 }
 
 export function saveChatbotMessage(userId, message) {
@@ -144,7 +189,10 @@ export async function loadChatbotMessagesFromServer(user, conversationId = CHATB
     });
     if (!response.ok) throw new Error(`History returned ${response.status}.`);
     const payload = await response.json();
-    return (payload.objects || []).map((item, index) => ({
+    return (payload.objects || []).map((item, index) => {
+      const historySequence = Number(item.properties?.seq);
+      const hasSequence = Number.isFinite(historySequence) && historySequence > 0;
+      return {
       id: item.message_ref || item.id || `bot-history-${index}`,
       type: 'text',
       sender: item.role === 'user' ? 'outgoing' : 'incoming',
@@ -157,7 +205,12 @@ export async function loadChatbotMessagesFromServer(user, conversationId = CHATB
       source: item.properties?.provider,
       sources: Array.isArray(item.properties?.sources) ? item.properties.sources : [],
       grounded: Boolean(item.properties?.grounded),
-    }));
+      ...(hasSequence ? {
+        seq: item.role === 'user' ? historySequence : undefined,
+        correlationKey: `${item.role === 'user' ? 'user' : 'assistant'}:${historySequence}`,
+      } : {}),
+      };
+    });
   } catch {
     return loadChatbotMessages(user?.id || user?.uid);
   }

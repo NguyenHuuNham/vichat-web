@@ -148,13 +148,17 @@ from Chatmgt.
 
 Production keeps `VITE_CHAT_MODE=internal`, so the assistant is a normal Tinode
 P2P conversation alongside employee chats. ChatUI obtains the bot UID from
-Chatmgt, while the isolated `tinode-chatbot-webhook` worker receives only direct
-`usr*` messages and calls Chatmgt's tenant-checked webhook. Chatmgt then calls
-the retrieval-only `https://knowledge-ai.gonapp.net/api/v1/chat` endpoint with
-the server-side `X-API-Key`, sends only the bounded question and `top_k`, and
-publishes the returned document snippets back to Tinode as a sourced reply.
-Normal employee/group/file flows never pass through the worker. Configure the
-bot credentials and shared webhook key in the private production `.env`; see
+Chatmgt, while the isolated `tinode-chatbot-webhook` worker receives direct
+`usr*` messages and group `grp*` messages only after an explicit `@ViChatAI`
+mention. Chatmgt validates the sender's tenant/group membership, keeps a
+bounded recent group history for tone and context, and calls the
+`https://knowledge-ai.gonapp.net/api/v1/chat` endpoint with the server-side
+`X-API-Key`. Retrieval requests include only the question, `top_k` and at most
+the recent role/content turns; if the provider rejects the optional history,
+Chatmgt retries the legacy retrieval shape. Returned answers or document
+snippets are published back to Tinode as sourced replies.
+Normal employee/group/file flows never pass through the worker unless a group
+member explicitly mentions the bot. Configure the bot credentials and shared webhook key in the private production `.env`; see
 `infrastructure/production/.env.example` and
 `infrastructure/production/README.md`.
 

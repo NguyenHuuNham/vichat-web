@@ -104,7 +104,7 @@ import {
 } from '../features/contacts/services/accountDirectory';
 import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
-import { CHATBOT_ACCOUNT, CHATBOT_STARTER_PROMPTS, EXTERNAL_CHAT_ONLY, applyTinodeChatbotConfig, loadChatbotMessages, loadChatbotMessagesFromServer, loadTinodeChatbotConfig, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
+import { CHATBOT_ACCOUNT, CHATBOT_STARTER_PROMPTS, EXTERNAL_CHAT_ONLY, applyTinodeChatbotConfig, loadChatbotMessages, loadChatbotMessagesFromServer, loadTinodeChatbotConfig, mergeChatbotMessages, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
 import {
   PIN_VALIDATION_ERRORS,
   clearPinTabAccess,
@@ -2046,7 +2046,7 @@ function App() {
         .filter(Boolean),
     ];
     const seen = new Set();
-    return rawMembers.reduce((members, member) => {
+    const candidates = rawMembers.reduce((members, member) => {
       const account = findAccount(
         directoryAccounts,
         member?.id || member?.uid || member?.tinodeUid || member?.tinode_uid || member?.name,
@@ -2062,13 +2062,27 @@ function App() {
       const identity = String(
         candidate.id || candidate.tinodeUid || candidate.username || candidate.name || '',
       ).trim().toLowerCase();
-      if (!identity || !mentionCandidateText(candidate) || candidate.type === 'bot' || seen.has(identity)) {
+      const isChatbot = [candidate.id, candidate.tinodeUid, candidate.username]
+        .filter(Boolean)
+        .some(value => String(value).trim() === String(CHATBOT_ACCOUNT.tinodeUid || '').trim()
+          || String(value).trim().toLowerCase() === CHATBOT_ACCOUNT.id);
+      if (!identity || !mentionCandidateText(candidate) || candidate.type === 'bot' || isChatbot || seen.has(identity)) {
         return members;
       }
       seen.add(identity);
       members.push(candidate);
       return members;
     }, []);
+    if (chatMode === 'tinode' && CHATBOT_ACCOUNT.tinodeUid) {
+      candidates.push({
+        ...CHATBOT_ACCOUNT,
+        id: CHATBOT_ACCOUNT.id,
+        type: 'bot',
+        username: 'vichatai',
+        mentionAliases: ['vichatai', 'vichat ai'],
+      });
+    }
+    return candidates;
   })();
 
   const mentionOptions = mentionContext && activeChat.isGroup
@@ -2770,11 +2784,42 @@ function App() {
     let cancelled = false;
     ensureTinodeSession()
       .then(() => tinodeClient.listConversations())
-      .then(() => {
+      .then(async () => {
         if (!cancelled) {
           setConnectionStatus('online');
           applyPresenceSnapshot(tinodeClient.getPresenceSnapshot());
         }
+        if (cancelled || !CHATBOT_ACCOUNT.tinodeUid) return;
+        const sessionId = accountSessionRef.current;
+        const [tinodeRoom, serverMessages] = await Promise.all([
+          tinodeClient.openConversation(CHATBOT_ACCOUNT.tinodeUid).catch(() => null),
+          loadChatbotMessagesFromServer(currentUserRef.current),
+        ]);
+        if (cancelled || accountSessionRef.current !== sessionId) return;
+        setConversations(previous => {
+          const room = previous[CHATBOT_ACCOUNT.id];
+          if (!room || (room.accountSession && room.accountSession !== sessionId)) return previous;
+          const messages = mergeChatbotMessages(
+            roomMessages(room),
+            tinodeRoom?.messages,
+            serverMessages,
+          );
+          const latest = messages.at(-1);
+          const next = {
+            ...previous,
+            [CHATBOT_ACCOUNT.id]: {
+              ...room,
+              messages,
+              lastMsg: latest
+                ? `${latest.sender === 'outgoing' ? 'Bạn' : CHATBOT_ACCOUNT.name}: ${latest.text || ''}`
+                : room.lastMsg,
+              time: latest?.time || room.time,
+              updatedAt: latest?.createdAt || room.updatedAt,
+            },
+          };
+          conversationsRef.current = next;
+          return next;
+        });
       })
       .catch(error => {
         if (!cancelled) {
@@ -2856,7 +2901,7 @@ function App() {
         ]);
         const tinodeChatbotEnabled = applyTinodeChatbotConfig(tinodeChatbotConfig);
         const chatbotRoom = createChatbotConversation(
-          tinodeChatbotEnabled ? [] : loadChatbotMessages(managementUserId),
+          loadChatbotMessages(managementUserId),
           { accountSession, useTinode: tinodeChatbotEnabled },
         );
         const accounts = mergeDirectoryAccountSnapshots([user], directoryUsers)
@@ -2922,15 +2967,29 @@ function App() {
             ));
           }
         }
-        if (!tinodeChatbotEnabled) {
-          loadChatbotMessagesFromServer(user).then(messages => {
-            if (accountSessionRef.current !== accountSession) return;
-            setConversations(previous => ({
+        // Keep the old HTTP history visible while Tinode hydrates the current
+        // bot topic. The backend aliases both legacy and Tinode AI history.
+        loadChatbotMessagesFromServer(user).then(serverMessages => {
+          if (accountSessionRef.current !== accountSession) return;
+          setConversations(previous => {
+            const room = previous[CHATBOT_ACCOUNT.id];
+            if (!room || (room.accountSession && room.accountSession !== accountSession)) return previous;
+            const messages = mergeChatbotMessages(roomMessages(room), serverMessages);
+            const latest = messages.at(-1);
+            return {
               ...previous,
-              [CHATBOT_ACCOUNT.id]: createChatbotConversation(messages),
-            }));
-          }).catch(() => {});
-        }
+              [CHATBOT_ACCOUNT.id]: {
+                ...room,
+                messages,
+                lastMsg: latest
+                  ? `${latest.sender === 'outgoing' ? 'Bạn' : CHATBOT_ACCOUNT.name}: ${latest.text || ''}`
+                  : room.lastMsg,
+                time: latest?.time || room.time,
+                updatedAt: latest?.createdAt || room.updatedAt,
+              },
+            };
+          });
+        }).catch(() => {});
     } catch (err) {
       setChatError(err?.message || 'Không tải được danh sách cuộc trò chuyện.');
     }
@@ -5423,6 +5482,7 @@ function App() {
         name: mention.name,
         token: mention.token,
         isAll: Boolean(mention.isAll),
+        isBot: Boolean(mention.type === 'bot' || mention.isChatbot || mention.id === CHATBOT_ACCOUNT.id),
       }));
     const newMsg = {
       id: `me-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
@@ -5574,6 +5634,16 @@ function App() {
       const roomId = currentChatId;
       ensureTinodeConversationTopic(conversations[currentChatId])
         .then(async topicName => {
+          const chatbotMentioned = mentions.some(mention => mention.isBot)
+            || mentionTokenExists(text, '@ViChatAI');
+          if (conversations[currentChatId]?.isGroup && chatbotMentioned) {
+            try {
+              await chatManagementService.enableTinodeChatbot(conversations[currentChatId].managementId || roomId);
+            } catch (chatbotError) {
+              // Keep the employee message flowing if bot provisioning is down.
+              setChatError(chatbotError?.message || 'ViChat AI chua san sang trong nhom.');
+            }
+          }
           const result = await tinodeClient.sendText(topicName, text, newMsg.id, { ...(replyMeta ? { replyTo: replyMeta } : {}), mentions });
           setConversations(previous => {
             const currentRoom = previous[roomId];

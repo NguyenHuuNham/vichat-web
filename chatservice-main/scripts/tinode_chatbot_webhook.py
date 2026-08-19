@@ -19,6 +19,8 @@ from tinode_chatbot_protocol import (
     CursorStore,
     tinode_contact_topics,
     tinode_message_text,
+    tinode_message_mentions_bot,
+    tinode_strip_bot_mention,
     tinode_websocket_url,
 )
 
@@ -207,6 +209,7 @@ class TinodeChatbotWorker(object):
         self.request_ids = itertools.count(10)
         self.send_lock = asyncio.Lock()
         self.topic_locks = {}
+        self.group_context = {}
         self.subscribed_topics = set()
         self.pending_ctrl = {}
         self.message_tasks = set()
@@ -272,7 +275,7 @@ class TinodeChatbotWorker(object):
 
     async def _subscribe_topic(self, topic):
         topic = str(topic or "").strip()
-        if not topic.startswith("usr") or topic == self.bot_uid or topic in self.subscribed_topics:
+        if not (topic.startswith("usr") or topic.startswith("grp")) or topic == self.bot_uid or topic in self.subscribed_topics:
             return
         self.subscribed_topics.add(topic)
         request_id = self._request_id("sub")
@@ -290,8 +293,10 @@ class TinodeChatbotWorker(object):
             },
         })
 
-    async def _webhook_reply(self, packet, message):
+    async def _webhook_reply(self, packet, message, history=None):
         data = packet.get("data") or {}
+        topic = str(data.get("topic") or "")
+        is_group = topic.startswith("grp")
         async with self.http.post(
             self.webhook_url,
             headers={
@@ -301,11 +306,17 @@ class TinodeChatbotWorker(object):
                 "User-Agent": "VICHAT-TINODE-CHATBOT/1.0",
             },
             json={
-                "topic": str(data.get("topic") or ""),
+                "topic": topic,
                 "seq": int(data.get("seq") or 0),
                 "sender_uid": str(data.get("from") or ""),
                 "message": message,
                 "created_at": data.get("ts"),
+                "bot_mentioned": not is_group or tinode_message_mentions_bot(
+                    tinode_message_text(data.get("content")),
+                    data.get("head") or {},
+                    self.bot_uid,
+                ),
+                **({"history": history[-20:]} if is_group and history else {}),
             },
             timeout=aiohttp.ClientTimeout(total=self.webhook_timeout),
         ) as response:
@@ -337,17 +348,32 @@ class TinodeChatbotWorker(object):
         async with lock:
             if sequence <= self.cursor.get(topic):
                 return
-            message = tinode_message_text(data.get("content"))
-            if sender_uid == self.bot_uid or not message or message.startswith(SPECIAL_MESSAGE_PREFIXES):
+            raw_message = tinode_message_text(data.get("content"))
+            is_group = topic.startswith("grp")
+            mentioned = tinode_message_mentions_bot(raw_message, data.get("head") or {}, self.bot_uid)
+            message = tinode_strip_bot_mention(raw_message) if is_group else raw_message
+            if is_group and sender_uid != self.bot_uid and raw_message and not raw_message.startswith(SPECIAL_MESSAGE_PREFIXES):
+                context = self.group_context.setdefault(topic, [])
+                context.append({"role": "user", "content": message[:4000]})
+                del context[:-20]
+            if sender_uid == self.bot_uid or not message or message.startswith(SPECIAL_MESSAGE_PREFIXES) or (is_group and not mentioned):
                 self.cursor.advance(topic, sequence)
                 return
             try:
-                response = await self._webhook_reply(packet, message)
+                response = await self._webhook_reply(
+                    packet,
+                    message,
+                    self.group_context.get(topic, [])[:-1] if is_group else None,
+                )
             except Exception as error:
                 LOGGER.warning("Chatbot provider failed for %s:%s: %s", topic, sequence, error)
                 self.last_error = str(error)[:500]
                 response = {"reply": self.failure_reply, "grounded": False, "sources": []}
             await self._publish(topic, response["reply"], sequence, response)
+            if is_group:
+                context = self.group_context.setdefault(topic, [])
+                context.append({"role": "assistant", "content": response["reply"][:4000]})
+                del context[:-20]
             self.cursor.advance(topic, sequence)
 
     def _track_message(self, packet):
@@ -365,13 +391,16 @@ class TinodeChatbotWorker(object):
 
         meta = packet.get("meta") or {}
         if str(meta.get("topic") or "") == "me":
-            for topic in tinode_contact_topics(meta):
+            for topic in tinode_contact_topics(meta, include_groups=True):
                 asyncio.create_task(self._subscribe_topic(topic))
             return
 
         presence = packet.get("pres") or {}
         presence_source = str(presence.get("src") or "").strip()
-        if presence_source.startswith("usr") and presence_source != self.bot_uid:
+        if (
+            (presence_source.startswith("usr") or presence_source.startswith("grp"))
+            and presence_source != self.bot_uid
+        ):
             asyncio.create_task(self._subscribe_topic(presence_source))
             return
 
@@ -382,6 +411,7 @@ class TinodeChatbotWorker(object):
         auth = await ensure_tinode_chatbot_auth(force=True)
         self.bot_uid = str(auth.get("uid") or "")
         self.subscribed_topics.clear()
+        self.group_context.clear()
         async with self.http.ws_connect(
             self.ws_url,
             headers=_bridge_headers(),

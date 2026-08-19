@@ -36,3 +36,16 @@ test('replaces the active mention query and keeps the caret after the inserted t
   assert.equal(mentionTokenFor({ id: ALL_MENTION_ID }), '@All');
   assert.equal(mentionTokenExists(result.text, '@\u0110\u00e0m H\u01b0ng'), true);
 });
+
+test('uses the compact ViChat AI token and matches its aliases', () => {
+  const bot = {
+    id: 'vichat-ai',
+    type: 'bot',
+    name: 'ViChat AI',
+    mentionAliases: ['vichatai', 'vichat ai'],
+  };
+
+  assert.equal(mentionTokenFor(bot), '@ViChatAI');
+  assert.equal(matchesMentionCandidate(bot, 'VichatAI'), true);
+  assert.equal(mentionTokenExists('Tra loi @ViChatAI nhe', '@ViChatAI'), true);
+});
