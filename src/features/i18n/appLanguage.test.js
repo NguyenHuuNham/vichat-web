@@ -70,6 +70,14 @@ test('translates attachment, upload and connection status messages', () => {
   );
 });
 
+test('translates sticker picker labels and previews for the English UI', () => {
+  assert.equal(translateUiText('Sticker và biểu cảm', 'en'), 'Stickers and emoji');
+  assert.equal(translateUiText('Tích cực', 'en'), 'Positive');
+  assert.equal(translateUiText('Không tìm thấy sticker phù hợp', 'en'), 'No matching stickers');
+  assert.equal(translateUiText('Bạn đã gửi sticker', 'en'), 'You sent a sticker');
+  assert.equal(translateUiText('Lan đã gửi sticker', 'en'), 'Lan sent a sticker');
+});
+
 test('translates group avatar and member management messages', () => {
   assert.equal(translateUiText('Không thể đọc ảnh nhóm.', 'en'), 'Unable to read the group image.');
   assert.equal(translateUiText('Không thể cập nhật ảnh nhóm.', 'en'), 'Unable to update the group image.');

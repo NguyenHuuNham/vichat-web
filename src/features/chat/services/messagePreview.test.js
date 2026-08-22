@@ -25,6 +25,17 @@ test('formats an outgoing file as a self-authored attachment', () => {
   );
 });
 
+test('formats a sticker as a lightweight conversation preview', () => {
+  assert.equal(
+    attachmentConversationPreview({
+      type: 'sticker',
+      sender: 'outgoing',
+      sticker: { id: 'positive-1' },
+    }),
+    'Bạn đã gửi sticker',
+  );
+});
+
 test('leaves text messages to the existing text preview flow', () => {
   assert.equal(attachmentConversationPreview({ type: 'text', text: 'Xin chào' }), '');
 });

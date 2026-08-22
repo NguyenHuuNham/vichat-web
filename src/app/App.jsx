@@ -3,6 +3,7 @@ import Login from '../features/auth/components/Login';
 import ConversationErrorBoundary from '../components/ConversationErrorBoundary';
 import EnterpriseWorkspace from '../features/workspace/components/EnterpriseWorkspace';
 import CallOverlay from '../features/chat/components/CallOverlay';
+import StickerPicker from '../features/chat/components/StickerPicker';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation, normalizeTinodeMediaUrl } from '../features/chat/services/tinodeClient';
 import { chatManagementService, managementAuthClient } from '../features/chat/services/chatManagementService';
 import {
@@ -314,7 +315,7 @@ function attachmentSizeLabel(file) {
 function attachmentIconClass(file, type = '') {
   const name = String(file?.name || '').toLowerCase();
   const mime = String(file?.mime || '').toLowerCase();
-  if (type === 'image' || mime.startsWith('image/') || /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/.test(name)) return 'fa-file-image';
+  if (type === 'image' || type === 'sticker' || mime.startsWith('image/') || /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/.test(name)) return 'fa-file-image';
   if (mime.startsWith('audio/') || /\.(m4a|mp3|ogg|wav|flac)$/.test(name)) return 'fa-file-audio';
   if (mime.startsWith('video/') || /\.(avi|mov|mkv|mp4|webm)$/.test(name)) return 'fa-file-video';
   if (file?.ext === 'pdf' || mime.includes('pdf') || name.endsWith('.pdf')) return 'fa-file-pdf';
@@ -325,7 +326,7 @@ function attachmentIconClass(file, type = '') {
 function isImageAttachment(file, type = '') {
   const name = String(file?.name || '').toLowerCase();
   const mime = String(file?.mime || '').toLowerCase();
-  return type === 'image'
+  return type === 'image' || type === 'sticker'
     || mime.startsWith('image/')
     || /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/.test(name);
 }
@@ -338,7 +339,7 @@ function isVideoAttachment(file) {
 
 function attachmentForMessage(message) {
   if (!message) return null;
-  return message.file || (message.type === 'image' && message.image ? {
+  return message.file || ((message.type === 'image' || message.type === 'sticker') && message.image ? {
     name: 'Hình ảnh',
     mime: 'image/*',
     size: 'Hình ảnh',
@@ -762,6 +763,7 @@ function messagePayloadKey(message) {
     message?.text || '',
     message?.file?.name || '',
     message?.image || '',
+    message?.sticker?.id || message?.sticker?.stickerId || '',
   ].join('|');
 }
 
@@ -798,13 +800,16 @@ function mergeTinodeMessages(existingMessages = [], incomingMessages = []) {
           recalled: true,
           file: undefined,
           image: undefined,
+          sticker: undefined,
           replyTo: null,
           reactions: {},
         }
         : {
           ...previous,
           ...message,
-          type: previous.type === 'image' || message.type === 'image' ? 'image' : message.type,
+          type: previous.type === 'sticker' || message.type === 'sticker'
+            ? 'sticker'
+            : previous.type === 'image' || message.type === 'image' ? 'image' : message.type,
           ...(isOutgoing ? {
             // A receipt update can arrive just before Tinode emits its refreshed
             // conversation. Keep the highest known status from that snapshot.
@@ -818,6 +823,7 @@ function mergeTinodeMessages(existingMessages = [], incomingMessages = []) {
           avatar: message.avatar || previous.avatar,
           file: message.file || previous.file,
           image: message.image || previous.image,
+          sticker: message.sticker || previous.sticker,
         };
       if (previousKey && previousKey !== key) indexes.delete(previousKey);
       if (key) indexes.set(key, index);
@@ -1463,6 +1469,7 @@ function App() {
   const [friendNotice, setFriendNotice] = useState('');
   const [messageSearchQuery, setMessageSearchQuery] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [composerPickerTab, setComposerPickerTab] = useState('stickers');
   const [mentionContext, setMentionContext] = useState(null);
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
   const [messageMentions, setMessageMentions] = useState({});
@@ -5000,6 +5007,119 @@ function App() {
     }
   };
 
+  const handleSendSticker = sticker => {
+    if (!sticker?.src || !sticker?.id || !sticker?.packId) {
+      setChatError('Sticker không hợp lệ.');
+      return;
+    }
+    if (activeChat?.isChatbot) {
+      setChatError('Trợ lý AI hiện chỉ nhận tin nhắn văn bản.');
+      return;
+    }
+    if (realtimeMessagingPending) {
+      setChatError('Kết nối realtime Tinode chưa sẵn sàng; dữ liệu Chatmgt vẫn đang hoạt động.');
+      return;
+    }
+    setChatError('');
+    const replyMeta = replyingTo ? { ...replyingTo } : null;
+    const timeStr = getTimeString();
+    const createdAt = new Date().toISOString();
+    const newMsg = {
+      id: `me-sticker-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      type: 'sticker',
+      sender: 'outgoing',
+      senderId: currentUser?.id || currentUser?.uid,
+      senderName: currentUser?.name,
+      avatar: currentUser?.avatar,
+      sticker: { ...sticker },
+      image: sticker.src,
+      file: {
+        name: `${sticker.id}.png`,
+        mime: sticker.mime || 'image/png',
+        ext: 'sticker',
+        size: 'Sticker',
+        url: sticker.src,
+      },
+      replyTo: replyMeta,
+      time: timeStr,
+      createdAt,
+      pending: chatMode === 'tinode',
+    };
+
+    setConversations(previous => {
+      const room = previous[currentChatId];
+      if (!room) return previous;
+      return {
+        ...previous,
+        [currentChatId]: {
+          ...room,
+          messages: [...roomMessages(room), newMsg],
+          lastMsg: attachmentConversationPreview(newMsg),
+          time: timeStr,
+          updatedAt: createdAt,
+        },
+      };
+    });
+
+    try {
+      const room = conversations[currentChatId];
+      if (room?.isGroup) persistDemoGroupMessage(room, newMsg);
+      else persistDemoDirectMessage(room, newMsg);
+    } catch (error) {
+      setChatError(error?.message || 'Không thể lưu sticker trong lịch sử nhắn tin.');
+    }
+    setReplyingTo(null);
+    setMentionContext(null);
+    setShowEmojiPicker(false);
+
+    if (chatMode !== 'tinode') return;
+    const roomId = currentChatId;
+    const room = conversations[roomId];
+    ensureTinodeConversationTopic(room)
+      .then(async topicName => {
+        const result = await tinodeClient.sendSticker(topicName, sticker, newMsg.id, { replyTo: replyMeta });
+        const confirmedMessage = {
+          ...newMsg,
+          pending: false,
+          failed: false,
+          seq: newMsg.seq || result.ctrl?.params?.seq,
+          image: result.file.url,
+          file: {
+            ...newMsg.file,
+            url: result.file.url,
+            mime: result.file.mime || newMsg.file.mime,
+          },
+        };
+        setConversations(previous => {
+          const currentRoom = previous[roomId];
+          if (!currentRoom) return previous;
+          return {
+            ...previous,
+            [roomId]: {
+              ...currentRoom,
+              messages: roomMessages(currentRoom).map(message => message.id === newMsg.id ? confirmedMessage : message),
+            },
+          };
+        });
+      })
+      .catch(error => {
+        setConversations(previous => {
+          const currentRoom = previous[roomId];
+          if (!currentRoom) return previous;
+          return {
+            ...previous,
+            [roomId]: {
+              ...currentRoom,
+              messages: roomMessages(currentRoom).map(message => message.id === newMsg.id
+                ? { ...message, pending: false, failed: true }
+                : message),
+            },
+          };
+        });
+        setChatError(error?.message || 'Không thể gửi sticker.');
+      });
+  };
+
   const startVoiceRecording = async () => {
     if (isRecordingVoice || mediaRecorderRef.current) return;
     setShowEmojiPicker(false);
@@ -6476,7 +6596,8 @@ function App() {
             const messageKey = messageActionKey(activeChat.id, msg.id);
             const messageState = messageActions[messageKey] || {};
             const reactions = { ...(msg.reactions || {}), ...(messageState.reactions || {}) };
-            const attachmentFile = msg.file || (msg.type === 'image' && msg.image ? {
+            const isStickerMessage = msg.type === 'sticker' || Boolean(msg.sticker?.id || msg.sticker?.stickerId);
+            const attachmentFile = msg.file || ((msg.type === 'image' || isStickerMessage) && msg.image ? {
               name: appCopy.t('Hình ảnh'),
               mime: 'image/*',
               size: appCopy.t('Hình ảnh'),
@@ -6484,7 +6605,10 @@ function App() {
             } : null);
             const attachmentIcon = attachmentIconClass(attachmentFile, msg.type);
             const attachmentTone = attachmentIcon.replace('fa-file-', '');
-            const imagePreviewSource = isImageAttachment(attachmentFile, msg.type)
+            const stickerPreviewSource = isStickerMessage
+              ? attachmentFile?.url || msg.image || msg.sticker?.src || ''
+              : '';
+            const imagePreviewSource = !isStickerMessage && isImageAttachment(attachmentFile, msg.type)
               ? attachmentFile?.url || msg.image || ''
               : '';
             const imagePreviewFile = imagePreviewSource && attachmentFile
@@ -6510,7 +6634,7 @@ function App() {
                   </button>
                 )}
 
-                <div className={`message-content-wrapper ${imagePreviewSource ? 'image-message-content' : ''}`}>
+                <div className={`message-content-wrapper ${imagePreviewSource ? 'image-message-content' : ''} ${isStickerMessage ? 'sticker-message-content' : ''}`}>
                   {!isOutgoing && msg.senderName && <button type="button" className="sender-name sender-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))}>{msg.senderName}</button>}
 
                   <div
@@ -6585,7 +6709,15 @@ function App() {
 
                     {/* Tin nhắn file đính kèm */}
                     {/* Image attachments are visual-only; do not render their filename. */}
-                    {isAudioMessage ? (
+                    {isStickerMessage ? (
+                      <div className="attachment-message-stack sticker-message-stack">
+                        <MessageReplyPreview reply={msg.replyTo} copy={appCopy} onClick={reply => scrollToMessageById(reply.id)} />
+                        <div className={`sticker-bubble ${msg.pending ? 'pending' : ''} ${msg.failed ? 'failed' : ''}`}>
+                          <TinodeImagePreview source={stickerPreviewSource} alt={msg.sticker?.label || appCopy.t('Sticker')} copy={appCopy} className="sticker-message-image" />
+                          <span className="message-time">{formatMessageTime(msg, msg.time, appCopy.locale)} {isOutgoing && deliveryStatusIcon(msg)}</span>
+                        </div>
+                      </div>
+                    ) : isAudioMessage ? (
                       <div className="attachment-message-stack">
                         <MessageReplyPreview reply={msg.replyTo} copy={appCopy} onClick={reply => scrollToMessageById(reply.id)} />
                         <AudioMessagePlayer
@@ -6847,13 +6979,18 @@ function App() {
               style={{ display: "none" }}
               onChange={handleFileChange}
             />
-            <button type="button" className="btn-input-action" title={appCopy.t('Biểu cảm')} aria-label={appCopy.t('Mở biểu cảm')} aria-expanded={showEmojiPicker} onClick={() => setShowEmojiPicker(prev => !prev)} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice}>
+            <button type="button" className="btn-input-action" title={appCopy.t('Sticker và biểu cảm')} aria-label={appCopy.t('Mở sticker và biểu cảm')} aria-expanded={showEmojiPicker} onClick={() => { if (!showEmojiPicker) { setComposerPickerTab('stickers'); setMentionContext(null); } setShowEmojiPicker(previous => !previous); }} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice}>
               <i className="fa-regular fa-smile"></i>
             </button>
             {showEmojiPicker && (
-              <div className="emoji-picker" role="listbox" aria-label={appCopy.t('Chọn biểu cảm')}>
-                {['😀', '😂', '😍', '👍', '👏', '🎉', '🙏', '🔥', '✅', '❤️'].map(emoji => <button type="button" role="option" key={emoji} aria-label={emoji} onMouseDown={event => event.preventDefault()} onClick={() => insertEmoji(emoji)}>{emoji}</button>)}
-              </div>
+              <StickerPicker
+                activeTab={composerPickerTab}
+                onTabChange={setComposerPickerTab}
+                onSelectSticker={handleSendSticker}
+                onSelectEmoji={insertEmoji}
+                scope={currentUser?.id || currentUser?.uid || 'anonymous'}
+                copy={appCopy}
+              />
             )}
             <button
               type="button"

@@ -92,6 +92,19 @@ function normalizeAttachment(value) {
   };
 }
 
+function normalizeSticker(value) {
+  const sticker = conversationObject(value);
+  if (!sticker) return null;
+  return {
+    ...sticker,
+    id: conversationIdentity(sticker.id || sticker.stickerId),
+    stickerId: conversationIdentity(sticker.stickerId || sticker.id),
+    packId: conversationIdentity(sticker.packId || sticker.pack),
+    label: conversationText(sticker.label || sticker.name),
+    src: conversationMedia(sticker.src || sticker.url),
+  };
+}
+
 function normalizeReply(value) {
   const reply = conversationObject(value);
   if (!reply) return null;
@@ -182,6 +195,7 @@ function normalizeMessage(value, index) {
     senderName: conversationText(message.senderName),
     text: conversationText(message.text),
     image: conversationMedia(message.image),
+    sticker: normalizeSticker(message.sticker),
     avatar: conversationMedia(message.avatar || message.photo),
     file: normalizeAttachment(message.file),
     replyTo: normalizeReply(message.replyTo),

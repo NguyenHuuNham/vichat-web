@@ -129,6 +129,30 @@ test('normalizes malformed direct room metadata before the UI iterates it', () =
   assert.deepEqual(room.messages[0].reactions, { heart: 2 });
 });
 
+test('normalizes sticker metadata without letting malformed fields reach the UI', () => {
+  const room = normalizeConversationShape({
+    id: 'direct-sticker',
+    messages: [{
+      id: 'sticker-1',
+      type: 'sticker',
+      sender: 'incoming',
+      sticker: {
+        id: 'positive-1',
+        stickerId: 'positive-1',
+        packId: 'positive',
+        label: ' Tuyệt vời! ',
+        src: { url: '/stickers/puppysoft/positive-1.png' },
+      },
+    }],
+  });
+
+  assert.equal(room.messages[0].type, 'sticker');
+  assert.equal(room.messages[0].sticker.id, 'positive-1');
+  assert.equal(room.messages[0].sticker.packId, 'positive');
+  assert.equal(room.messages[0].sticker.label, 'Tuyệt vời!');
+  assert.equal(room.messages[0].sticker.src, '/stickers/puppysoft/positive-1.png');
+});
+
 test('keeps the source of a management snapshot separate from Tinode realtime data', () => {
   assert.equal(normalizeConversationShape({ managementSnapshot: true }).managementSnapshot, true);
   assert.equal(normalizeConversationShape({ management_snapshot: true }).managementSnapshot, true);

@@ -43,4 +43,6 @@ test('uses human-readable labels for replies and attachments', () => {
   assert.equal(messageContentLabel({ type: 'image' }), 'Ảnh');
   assert.equal(replyContentLabel({ fileName: 'voice.webm', fileMime: 'audio/webm' }), 'Tin nhắn thoại');
   assert.equal(replyContentLabel({ fileName: 'report.pdf' }), 'report.pdf');
+  assert.equal(messageContentLabel({ type: 'sticker', sticker: { label: 'Tuyệt vời!' } }), 'Sticker: Tuyệt vời!');
+  assert.equal(replyContentLabel({ type: 'sticker', sticker: { label: 'Tuyệt vời!' } }), 'Sticker: Tuyệt vời!');
 });

@@ -11,6 +11,10 @@ function isImageFile(file, type = '', image = '') {
 
 export function attachmentConversationPreview(message) {
   if (!message) return '';
+  if (message.type === 'sticker' || message.sticker) {
+    const sender = message.sender === 'outgoing' ? 'Bạn' : (message.senderName || 'Thành viên');
+    return `${sender} đã gửi sticker`;
+  }
   const image = isImageFile(message.file, message.type, message.image);
   const isAttachment = image || message.type === 'file' || Boolean(message.file);
   if (!isAttachment) return '';

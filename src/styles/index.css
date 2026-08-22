@@ -3317,6 +3317,7 @@ input:checked + .slider:before {
         left: auto;
         width: min(320px, calc(100vw - 24px));
     }
+
 }
 
 @keyframes chatbotTyping {
@@ -3326,6 +3327,224 @@ input:checked + .slider:before {
 .emoji-picker { position: absolute; bottom: calc(100% + 10px); left: 0; z-index: 30; display: grid; grid-template-columns: repeat(5, 34px); gap: 4px; padding: 8px; border: 1px solid var(--border-color); border-radius: 11px; background: var(--bg-white); box-shadow: var(--shadow-md); }
 .emoji-picker button { border: 0; border-radius: 7px; padding: 6px; background: transparent; font-size: 19px; cursor: pointer; }
 .emoji-picker button:hover { background: var(--bg-gray); }
+
+.sticker-picker-panel {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 10px);
+    z-index: 35;
+    display: flex;
+    width: min(370px, calc(100vw - 24px));
+    max-height: min(480px, calc(100vh - 132px));
+    overflow: hidden;
+    flex-direction: column;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    background: var(--bg-white);
+    box-shadow: 0 16px 38px rgba(18, 59, 57, .2);
+    animation: stickerPickerIn .16s ease-out;
+}
+
+.sticker-picker-tabs {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 4px;
+    padding: 7px 9px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.sticker-picker-tabs button {
+    position: relative;
+    min-width: 84px;
+    padding: 8px 11px 10px;
+    border: 0;
+    color: var(--text-muted);
+    background: transparent;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .05em;
+    cursor: pointer;
+}
+
+.sticker-picker-tabs button::after {
+    position: absolute;
+    right: 12px;
+    bottom: -1px;
+    left: 12px;
+    height: 2px;
+    border-radius: 999px;
+    background: transparent;
+    content: '';
+}
+
+.sticker-picker-tabs button:hover,
+.sticker-picker-tabs button:focus-visible,
+.sticker-picker-tabs button.active { color: var(--vichat-blue); outline: none; }
+.sticker-picker-tabs button.active::after { background: var(--vichat-blue); }
+
+.sticker-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 10px 7px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    color: var(--text-muted);
+    background: var(--bg-app);
+}
+
+.sticker-search:focus-within {
+    border-color: var(--vichat-blue);
+    box-shadow: 0 0 0 3px rgba(244, 81, 30, .1);
+    background: var(--bg-white);
+}
+
+.sticker-search input {
+    min-width: 0;
+    flex: 1;
+    border: 0;
+    outline: 0;
+    color: var(--text-main);
+    background: transparent;
+    font: inherit;
+    font-size: 12px;
+}
+
+.sticker-picker-body {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 10px 8px;
+}
+
+.sticker-picker-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 2px 2px 7px;
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.sticker-picker-heading small {
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.sticker-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+}
+
+.sticker-option {
+    display: grid;
+    aspect-ratio: 1 / .86;
+    min-width: 0;
+    place-items: center;
+    padding: 4px;
+    border: 1px solid transparent;
+    border-radius: 11px;
+    background: transparent;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease, transform .15s ease;
+}
+
+.sticker-option:hover,
+.sticker-option:focus-visible {
+    border-color: rgba(244, 81, 30, .24);
+    outline: none;
+    background: var(--vichat-blue-light);
+    transform: translateY(-1px);
+}
+
+.sticker-option img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.sticker-empty {
+    display: grid;
+    grid-column: 1 / -1;
+    min-height: 96px;
+    place-items: center;
+    padding: 16px;
+    color: var(--text-muted);
+    font-size: 12px;
+    text-align: center;
+}
+
+.sticker-pack-tabs {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 5px;
+    overflow-x: auto;
+    padding: 8px 10px 10px;
+    border-top: 1px solid var(--border-color);
+    scrollbar-width: thin;
+}
+
+.sticker-pack-tabs button {
+    position: relative;
+    display: grid;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    place-items: center;
+    padding: 3px;
+    border: 1px solid var(--border-color);
+    border-radius: 11px;
+    color: var(--text-muted);
+    background: var(--bg-app);
+    cursor: pointer;
+    transition: border-color .15s ease, background .15s ease, transform .15s ease;
+}
+
+.sticker-pack-tabs button:hover,
+.sticker-pack-tabs button:focus-visible,
+.sticker-pack-tabs button.active {
+    border-color: var(--sticker-pack-color, var(--vichat-blue));
+    outline: none;
+    background: var(--bg-white);
+    transform: translateY(-1px);
+}
+
+.sticker-pack-tabs button > i { position: absolute; right: 2px; bottom: 2px; display: grid; width: 14px; height: 14px; place-items: center; border-radius: 50%; color: #fff; background: var(--sticker-pack-color, var(--vichat-blue)); font-size: 8px; }
+.sticker-pack-tabs button:first-child > i { position: static; width: auto; height: auto; color: var(--vichat-blue); background: transparent; font-size: 15px; }
+.sticker-pack-tabs button:first-child { color: var(--vichat-blue); }
+.sticker-pack-tab-preview { display: grid; width: 31px; height: 31px; place-items: center; }
+.sticker-pack-tab-preview img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.sticker-emoji-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; padding: 13px; }
+.sticker-emoji-grid button { display: grid; min-height: 45px; place-items: center; padding: 5px; border: 0; border-radius: 10px; background: transparent; cursor: pointer; font-size: 24px; }
+.sticker-emoji-grid button:hover, .sticker-emoji-grid button:focus-visible { background: var(--bg-gray); outline: none; transform: scale(1.06); }
+
+@keyframes stickerPickerIn {
+    from { opacity: 0; transform: translateY(5px) scale(.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.sticker-message-content { width: min(220px, calc(100vw - 112px)); min-width: 0; max-width: 100%; }
+.sticker-message-stack { width: auto; max-width: 220px; }
+.sticker-bubble { display: flex; width: fit-content; max-width: 100%; align-items: flex-end; flex-direction: column; padding: 4px 6px 3px; border: 1px solid rgba(18, 59, 57, .1); border-radius: 16px; background: rgba(255, 255, 255, .82); box-shadow: 0 7px 18px rgba(18, 59, 57, .08); }
+.message-item.outgoing .sticker-bubble { border-color: rgba(244, 81, 30, .16); background: var(--vichat-blue-light); }
+.sticker-bubble.pending { opacity: .72; }
+.sticker-bubble.failed { border-color: #ef4444; }
+.sticker-message-image { width: auto !important; max-width: 190px; max-height: 150px; object-fit: contain; }
+.sticker-bubble .image-preview-placeholder { min-width: 150px; min-height: 90px; padding: 15px; border-radius: 11px; }
+.sticker-bubble .message-time { margin-top: 1px; padding: 0 2px; font-size: 9px; }
+
+@media (max-width: 576px) {
+    .sticker-picker-panel { left: -4px; width: min(350px, calc(100vw - 24px)); }
+    .sticker-message-content { width: min(190px, calc(100vw - 96px)); }
+    .sticker-message-stack { max-width: 190px; }
+    .sticker-message-image { max-width: 164px; max-height: 132px; }
+}
 
 /* ==========================================================================
    LOGIN SCREEN STYLES (Trang Đăng Nhập VICHAT)
@@ -4270,7 +4489,8 @@ input:checked + .slider:before {
   .call-peer-card::before,
   .call-control.accept,
   .workspace-overlay,
-  .workspace-panel { animation: none; }
+  .workspace-panel,
+  .sticker-picker-panel { animation: none; }
 }
 
 /* Dark theme surfaces keep the content readable above the darker background. */
@@ -4323,6 +4543,19 @@ html[data-theme="dark"] .message-item.outgoing .message-bubble {
 html[data-theme="dark"] .message-item.outgoing .message-time { color: #d7b8aa; }
 html[data-theme="dark"] .message-reply-preview { background: rgba(244, 81, 30, .14); }
 html[data-theme="dark"] .message-mention { color: #8ec5ff; }
+html[data-theme="dark"] .sticker-picker-panel { border-color: #3b4b54; background: #202c32; box-shadow: 0 16px 38px rgba(0, 0, 0, .34); }
+html[data-theme="dark"] .sticker-picker-tabs,
+html[data-theme="dark"] .sticker-pack-tabs { border-color: #3b4b54; }
+html[data-theme="dark"] .sticker-search { border-color: #3b4b54; background: #27363c; }
+html[data-theme="dark"] .sticker-search:focus-within { background: #202c32; }
+html[data-theme="dark"] .sticker-option:hover,
+html[data-theme="dark"] .sticker-option:focus-visible { background: #2b4549; }
+html[data-theme="dark"] .sticker-pack-tabs button { border-color: #3b4b54; background: #27363c; }
+html[data-theme="dark"] .sticker-pack-tabs button:hover,
+html[data-theme="dark"] .sticker-pack-tabs button:focus-visible,
+html[data-theme="dark"] .sticker-pack-tabs button.active { background: #202c32; }
+html[data-theme="dark"] .sticker-bubble { border-color: #3b4b54; background: rgba(37, 52, 58, .86); box-shadow: 0 7px 18px rgba(0, 0, 0, .2); }
+html[data-theme="dark"] .message-item.outgoing .sticker-bubble { border-color: #6a4030; background: #4a2e24; }
 html[data-theme="dark"] .audio-bubble { border-color: #3d5057; background: #25343a; }
 html[data-theme="dark"] .message-item.outgoing .audio-bubble { border-color: #6a4030; background: #4a2e24; }
 html[data-theme="dark"] .audio-duration { color: var(--text-main); }

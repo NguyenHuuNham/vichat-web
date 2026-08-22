@@ -337,6 +337,14 @@ message content, files, presence, typing, reactions, receipts and call
 signaling. ChatUI does not post normal messages/files to Chatmgt knowledge;
 legacy chat-ingestion routes return `410 TINODE_CONTENT_ONLY`.
 
+Sticker messages stay within the same Tinode file path as ordinary image
+attachments. ChatUI uploads the selected static `/stickers/puppysoft/*.png`
+asset through the authenticated Tinode relay and adds the bounded
+`x-vichat-sticker` header (`stickerId`, `packId`, label and version) so the
+receiver and history projection can render it as a sticker. Sticker assets and
+recent-selection IDs remain frontend-local; Chatmgt does not store sticker
+content or metadata, and no separate API or database migration is required.
+
 While the web runtime is active, an incoming Tinode message can trigger a
 browser desktop notification and a configurable built-in sound when the viewer
 is away from that conversation. The viewer must grant browser permission and

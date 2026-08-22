@@ -79,6 +79,7 @@ const SYSTEM_EVENT_PREFIX = '__VICHAT_SYSTEM_EVENT__:';
 const FRIEND_EVENT_PREFIX = '__SONGHONG_FRIEND_EVENT__:';
 const REACTION_EVENT_PREFIX = '__VICHAT_REACTION_EVENT__:';
 const RECALL_EVENT_PREFIX = '__VICHAT_RECALL_EVENT__:';
+const STICKER_HEAD = 'x-vichat-sticker';
 const MEDIA_PROXY_PREFIX = '/tinode-media';
 // Keep room for Tinode's restricted auth/email/tel tags (server maximum is 16).
 const MAX_DISCOVERY_TAGS = 13;
@@ -490,6 +491,26 @@ function draftyAttachment(content) {
   return attachment;
 }
 
+function parseStickerMetadata(head = {}) {
+  const raw = head?.[STICKER_HEAD];
+  if (!raw) return null;
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const stickerId = String(parsed?.stickerId || parsed?.id || '').trim();
+    const packId = String(parsed?.packId || '').trim();
+    if (!stickerId || !packId || stickerId.length > 80 || packId.length > 80) return null;
+    return {
+      id: stickerId,
+      stickerId,
+      packId,
+      label: String(parsed?.label || '').trim().slice(0, 120),
+      version: String(parsed?.version || '1').slice(0, 24),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function deliveryStatusName(status) {
   if (status >= 70) return 'read';
   if (status >= 60) return 'received';
@@ -519,6 +540,7 @@ function toMessage(msg, tinode, topic = null) {
   const isOutgoing = messageSenderId ? tinode.isMe(messageSenderId) : false;
   const call = parseCallMessage(msg.content, msg.head, !isOutgoing);
   const attachment = draftyAttachment(msg.content);
+  const sticker = parseStickerMetadata(msg.head);
   const content = typeof msg.content === 'string' ? msg.content : (msg.content?.txt || '');
   let systemEvent = null;
   let friendEvent = null;
@@ -616,7 +638,7 @@ function toMessage(msg, tinode, topic = null) {
       ? `friend-${friendEvent.action}-${friendEvent.requestId}`
       : clientId || `${msg.from || 'system'}-${msg.seq || msg.ts || Date.now()}`,
     seq: msg.seq,
-    type: call ? 'call' : friendEvent ? 'friend_event' : reactionEvent ? 'reaction_event' : recallEvent ? 'recall_event' : systemEvent ? 'system' : attachment ? (isImageAttachment ? 'image' : 'file') : 'text',
+    type: call ? 'call' : friendEvent ? 'friend_event' : reactionEvent ? 'reaction_event' : recallEvent ? 'recall_event' : systemEvent ? 'system' : attachment ? (sticker ? 'sticker' : isImageAttachment ? 'image' : 'file') : 'text',
     action: friendEvent?.action || systemEvent?.action,
     sender: isOutgoing ? 'outgoing' : 'incoming',
     senderId: friendActorId || systemEvent?.actorId || messageSenderId || (isOutgoing ? tinode.getCurrentUserID() : undefined),
@@ -628,6 +650,7 @@ function toMessage(msg, tinode, topic = null) {
     recallEvent,
     call,
     replyTo,
+    sticker: sticker || undefined,
     voiceDuration,
     mentions,
     sources: chatbotSources,
@@ -1866,6 +1889,14 @@ export const tinodeClient = {
     draft.head = { ...(draft.head || {}), 'x-sender-id': tinode.getCurrentUserID() };
     if (clientId) draft.head['x-client-id'] = clientId;
     if (metadata.replyTo) draft.head['x-reply-to'] = JSON.stringify(metadata.replyTo);
+    if (metadata.sticker?.stickerId && metadata.sticker?.packId) {
+      draft.head[STICKER_HEAD] = JSON.stringify({
+        stickerId: String(metadata.sticker.stickerId).slice(0, 80),
+        packId: String(metadata.sticker.packId).slice(0, 80),
+        label: String(metadata.sticker.label || '').slice(0, 120),
+        version: String(metadata.sticker.version || '1').slice(0, 24),
+      });
+    }
     if (Number(metadata.voiceDuration) > 0) draft.head['x-voice-duration'] = String(Math.round(metadata.voiceDuration));
     const result = await topic.publishMessage(draft);
     if (!result) throw new Error('Tinode không xác nhận tin nhắn đính kèm.');
@@ -1878,7 +1909,28 @@ export const tinodeClient = {
         url,
       },
       voiceDuration: Number(metadata.voiceDuration) > 0 ? Math.round(metadata.voiceDuration) : 0,
+      sticker: metadata.sticker || undefined,
     };
+  },
+
+  async sendSticker(topicName, sticker, clientId, metadata = {}) {
+    if (!sticker?.src || !sticker?.id || !sticker?.packId) {
+      throw new Error('Sticker không hợp lệ.');
+    }
+    const response = await fetch(sticker.src);
+    if (!response.ok) throw new Error('Không thể tải asset sticker.');
+    const blob = await response.blob();
+    const file = new File([blob], `${sticker.id}.png`, { type: blob.type || sticker.mime || 'image/png' });
+    return this.sendFile(topicName, file, clientId, {
+      ...metadata,
+      sticker: {
+        id: sticker.id,
+        stickerId: sticker.id,
+        packId: sticker.packId,
+        label: sticker.label,
+        version: sticker.version || '1',
+      },
+    });
   },
 
   async downloadFile(file) {

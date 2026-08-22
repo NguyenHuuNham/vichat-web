@@ -52,6 +52,7 @@ export function applyRecallToMessage(message, recallMessage) {
     recalled: true,
     file: undefined,
     image: undefined,
+    sticker: undefined,
     replyTo: null,
     reactions: {},
   };

@@ -32,6 +32,7 @@ export function formatAudioDuration(seconds) {
 
 export function messageContentLabel(message, fallback = 'Tệp đính kèm') {
   if (!message) return fallback;
+  if (message.type === 'sticker' || message.sticker) return `Sticker: ${message.sticker?.label || 'PuppySoft'}`;
   const file = message.file || null;
   if (isAudioAttachment(file, message.type) || Number(message.voiceDuration) > 0) return 'Tin nhắn thoại';
   if (message.type === 'image' || String(file?.mime || '').toLowerCase().startsWith('image/')) return 'Ảnh';
@@ -40,6 +41,7 @@ export function messageContentLabel(message, fallback = 'Tệp đính kèm') {
 
 export function replyContentLabel(reply, fallback = 'Tệp đính kèm') {
   if (!reply) return fallback;
+  if (reply.type === 'sticker' || reply.sticker) return `Sticker: ${reply.sticker?.label || 'PuppySoft'}`;
   if (String(reply.text || '').trim()) return String(reply.text).trim();
   if (isAudioAttachment(reply.file || { name: reply.fileName, mime: reply.fileMime }, reply.type) || Number(reply.voiceDuration) > 0) return 'Tin nhắn thoại';
   if (reply.type === 'image' || String(reply.file?.mime || reply.fileMime || '').toLowerCase().startsWith('image/')) return 'Ảnh';

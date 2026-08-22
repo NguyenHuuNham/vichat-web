@@ -85,6 +85,7 @@ test('recall projection removes self-only messages before conversation sorting',
     recalled: true,
     file: undefined,
     image: undefined,
+    sticker: undefined,
     replyTo: null,
     reactions: {},
   });

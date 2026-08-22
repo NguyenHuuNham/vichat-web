@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-01 - Tich hop sticker tu bo anh nguoi dung cung cap
+
+- Thoi gian: 2026-08-23 01:44 (Asia/Saigon)
+- Loai: Tinh nang | Web | UI | Kiem thu
+- Trang thai: Hoan tat code; chua UAT tren browser
+- Muc tieu: Cho phep gui sticker tu icon mat cuoi, phan nhom de chon nhanh va hien sticker dung dang anh trong lich su chat.
+- Pham vi: Picker sticker trong composer, 48 asset PNG, hien thi tin nhan, preview hoi thoai, normalize/recall va upload Tinode; khong thay doi text, anh, file, emoji, voice, Chatmgt hay database.
+- File da thay doi: `public/stickers/puppysoft/*.png`, `src/features/chat/components/StickerPicker.jsx`, `src/features/chat/services/stickerCatalog.js`, `src/features/chat/services/stickerCatalog.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/messagePolicy.js`, `src/features/chat/services/messagePresentation.js`, `src/features/chat/services/messagePreview.js`, `src/app/App.jsx`, `src/styles/index.css`, `src/features/i18n/appLanguage.js`, cac test lien quan, `package.json`, `dist/index.html`, `docs/chat-backend-architecture.md`.
+- Noi dung: Tach va lam trong 48 sticker tu anh `stk.jpg` do nguoi dung cung cap; dong goi thanh 6 nhom Tich cuc, Phan hoi, Trung lap, Can ho tro, Cam xuc va Hanh dong nhanh. Icon mat cuoi mo picker co tab STICKER/EMOJI, tim kiem, sticker gan day theo tai khoan, thumbnail nhom, responsive va dark mode. Tin nhan sticker co optimistic state, trang thai pending/failed, reply, preview danh sach va xu ly recall.
+- Quyet dinh ky thuat: Tai sticker qua cung luong `sendFile` anh hien co cua Tinode, chi them header `x-vichat-sticker` voi metadata gioi han de nhan dien khi history/realtime; asset duoc bundle local thay vi phu thuoc URL ben ngoai runtime, khong can API rieng.
+- Database/API/cau hinh: Khong co migration, endpoint, bien moi truong hoac secret moi. Tinode nhan metadata trong message head; Chatmgt khong luu sticker. Ba file contact-sheet/preview tam da duoc loai khoi `public/stickers`.
+- Kiem thu: `npm run test:frontend` dat 141/141; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat; asset source con dung 48 PNG. Browser UAT pixel-level chua chay vi phien nay khong co Browser runtime.
+- Rui ro con lai: Chua click UAT picker/gui sticker that tren Tinode, kiem tra mobile/light/dark va xac nhan receiver history tren tai khoan production; can hard refresh sau build/deploy.
+- Viec tiep theo: UAT icon mat cuoi, tung nhom, tim kiem, gan day, gui/nhan/reply/recall sticker tren desktop/mobile; neu deploy thi chi recreate ChatUI, khong chay migration.
+- Commit/PR: Chua tao.
+
 ## 2026-08-19-07 - Duy tri cuoc tro chuyen ViChat AI mac dinh
 
 - Thoi gian: 2026-08-19 17:12 (Asia/Saigon)
