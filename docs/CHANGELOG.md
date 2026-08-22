@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo profile bang tai khoan co nhieu membership, kiem tra Huy/ESC/nhan ra ngoai va Xac nhan tren light/dark, desktop/mobile.
 - Trien khai: Source `5565fb8` da push `origin/master`; archive SHA-256 `37A7D76CEF2E8CCB63E16F9617E586F9665B2D94D83DB7A08D221616C7C83115`; release `/opt/deploy/chat/releases/tenant-confirm-5565fb8-20260823-0236`; image ChatUI `sha256:02ac4e2cfa565663d5c9ed5225ec3c8ae57c9ee5c7f267ddf22696d6906637d9`, container `55b2d14abc56`; rollback tag `songhong-production-chat:rollback-before-tenant-confirm-5565fb8-20260823-0236` giu image cu `sha256:4c7f56c89f8bd67b5f29ec34bb54cb3694736ac4e0978eaeed0390bf6927b268`; `current` tro release moi, `previous` tro `/opt/deploy/chat/releases/sticker-e37ea1d-20260823-0200`; chi recreate `chat`, giu nguyen Chatmgt/Tinode bridge/worker, ChatAPI, PostgreSQL, Redis va Coturn; khong migration/reset volume.
 - Kiem thu production: Compose config/build dat; Nginx `-t` dat trong Docker network; local/public `/healthz` tra `ok`; Chatmgt auth health HTTP 200; public JS/CSS asset HTTP 200 va co marker tenant confirmation; log ChatUI/Chatmgt/bridge/worker 5 phut co 0 fatal marker.
-- Commit/PR: Source `5565fb8` da push origin/master; deployment follow-up commit se ghi trong commit docs nay.
+- Commit/PR: Source `5565fb8` va deployment follow-up docs `8ade2fb` da push origin/master; chua co PR.
 
 ## 2026-08-23-01 - Tich hop sticker tu bo anh nguoi dung cung cap
 
