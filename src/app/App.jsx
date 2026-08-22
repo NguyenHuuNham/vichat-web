@@ -1518,6 +1518,7 @@ function App() {
   const [profileNotice, setProfileNotice] = useState('');
   const [isSwitchingTenant, setIsSwitchingTenant] = useState(false);
   const [tenantSwitchNotice, setTenantSwitchNotice] = useState('');
+  const [pendingTenantSwitch, setPendingTenantSwitch] = useState(null);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const [forcedLogoutSeconds, setForcedLogoutSeconds] = useState(null);
   const [activeCall, setActiveCall] = useState(null);
@@ -3287,6 +3288,7 @@ function App() {
     const requestedTenantId = String(option?.id || '').trim();
     const currentTenantId = String(profileAccount.tenantId || profileAccount.tenant_id || '').trim();
     if (!requestedTenantId || requestedTenantId === currentTenantId || isSwitchingTenant) return;
+    setPendingTenantSwitch(null);
     setTenantSwitchNotice('');
     setIsSwitchingTenant(true);
     try {
@@ -3318,6 +3320,28 @@ function App() {
       setIsSwitchingTenant(false);
     }
   };
+
+  const requestTenantSwitch = option => {
+    const requestedTenantId = String(option?.id || '').trim();
+    const currentTenantId = String(profileAccount.tenantId || profileAccount.tenant_id || '').trim();
+    if (!requestedTenantId || requestedTenantId === currentTenantId || isSwitchingTenant) return;
+    setTenantSwitchNotice('');
+    setPendingTenantSwitch(option);
+  };
+
+  const confirmTenantSwitch = () => {
+    if (!pendingTenantSwitch || isSwitchingTenant) return;
+    handleTenantSwitch(pendingTenantSwitch);
+  };
+
+  useEffect(() => {
+    if (!pendingTenantSwitch || typeof document === 'undefined') return undefined;
+    const handleTenantSwitchKeyDown = event => {
+      if (event.key === 'Escape') setPendingTenantSwitch(null);
+    };
+    document.addEventListener('keydown', handleTenantSwitchKeyDown);
+    return () => document.removeEventListener('keydown', handleTenantSwitchKeyDown);
+  }, [pendingTenantSwitch]);
 
   const handleForcedLogout = async () => {
     await handleLogout();
@@ -7476,10 +7500,7 @@ function App() {
                               title={option.name}
                               aria-label={option.name}
                               aria-pressed={isCurrentTenant}
-                              onClick={() => {
-                                setTenantSwitchNotice('');
-                                handleTenantSwitch(option);
-                              }}
+                              onClick={() => requestTenantSwitch(option)}
                               disabled={isSwitchingTenant || isCurrentTenant}
                             >
                               <span className="tenant-switcher-option-icon">
@@ -8003,6 +8024,49 @@ function App() {
               </div>
             </div>
           </form>
+        </div>
+      )}
+
+      {pendingTenantSwitch && (
+        <div className="modal-backdrop tenant-switch-confirm-backdrop" role="presentation" onMouseDown={event => {
+          if (event.target === event.currentTarget) setPendingTenantSwitch(null);
+        }}>
+          <section
+            className="group-modal tenant-switch-confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tenant-switch-confirm-title"
+            aria-describedby="tenant-switch-confirm-description"
+          >
+            <div className="group-modal-header">
+              <div>
+                <span className="group-modal-kicker">{appCopy.t('Chuyển công ty')}</span>
+                <h2 id="tenant-switch-confirm-title">{appCopy.t('Xác nhận chuyển công ty')}</h2>
+              </div>
+              <button type="button" className="btn-close-detail" onClick={() => setPendingTenantSwitch(null)} aria-label={appCopy.t('Đóng')}>
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <div className="tenant-switch-confirm-summary">
+              <span className="tenant-switch-confirm-logo">
+                <TenantLogo src={pendingTenantSwitch.logo} name={pendingTenantSwitch.name} version={pendingTenantSwitch.logoVersion} />
+              </span>
+              <div className="tenant-switch-confirm-copy">
+                <p id="tenant-switch-confirm-description">{appCopy.t('Bạn có muốn chuyển sang công ty này không?')}</p>
+                <strong>{pendingTenantSwitch.name || appCopy.t('Công ty được chọn')}</strong>
+              </div>
+            </div>
+
+            <div className="group-modal-footer actions-only">
+              <div className="group-modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setPendingTenantSwitch(null)}>{appCopy.t('Hủy')}</button>
+                <button type="button" className="btn-primary" onClick={confirmTenantSwitch} disabled={isSwitchingTenant}>
+                  {isSwitchingTenant ? <i className="fa-solid fa-spinner fa-spin"></i> : appCopy.t('Chuyển sang công ty này')}
+                </button>
+              </div>
+            </div>
+          </section>
         </div>
       )}
 

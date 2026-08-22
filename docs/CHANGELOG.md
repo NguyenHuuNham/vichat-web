@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-02 - Them xac nhan khi chuyen cong ty
+
+- Thoi gian: 2026-08-23 02:29 (Asia/Saigon)
+- Loai: Tinh nang | Web | UI | Kiem thu
+- Trang thai: Hoan tat code; chua deploy
+- Muc tieu: Cho nguoi dung xac nhan truoc khi tai lai phien lam viec voi tenant/cong ty moi.
+- Pham vi: Chi profile tenant switcher va cac nhan UI i18n; khong thay doi chat, sticker, Tinode, Chatmgt hoac database.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `dist/index.html`.
+- Noi dung: Click logo cong ty khac chi mo dialog hien ten/logo cong ty dich. Huy, dong dialog, nhan ra ngoai hoac Escape deu giu tenant hien tai; chi nut xac nhan moi goi lai `handleTenantSwitch` va giu nguyen API, logout Tinode, reload va thong bao loi dang co.
+- Quyet dinh ky thuat: Dung state tam thoi trong ChatUI de chan thao tac vo y; khong dua tenant moi vao session, localStorage hay URL truoc khi API switch thanh cong.
+- Database/API/cau hinh: Khong co migration, endpoint, bien moi truong, secret hoac thay doi quyen.
+- Kiem thu: `npm run test:frontend` dat 142/142; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat.
+- Rui ro con lai: Chua UAT click dialog tren browser production; source chua deploy.
+- Viec tiep theo: Mo profile bang tai khoan co nhieu membership, kiem tra Huy/ESC/nhan ra ngoai va Xac nhan tren light/dark, desktop/mobile sau khi deploy.
+- Commit/PR: Chua tao.
+
 ## 2026-08-23-01 - Tich hop sticker tu bo anh nguoi dung cung cap
 
 - Thoi gian: 2026-08-23 02:14 (Asia/Saigon)

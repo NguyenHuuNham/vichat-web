@@ -27,6 +27,9 @@ test('translates tenant switch labels', () => {
   assert.equal(translateUiText('Chọn công ty để làm việc', 'en'), 'Choose a company to work in');
   assert.equal(translateUiText('Công ty hiện tại', 'en'), 'Current company');
   assert.equal(translateUiText('Đang chuyển công ty...', 'en'), 'Switching company...');
+  assert.equal(translateUiText('Xác nhận chuyển công ty', 'en'), 'Confirm company switch');
+  assert.equal(translateUiText('Bạn có muốn chuyển sang công ty này không?', 'en'), 'Do you want to switch to this company?');
+  assert.equal(translateUiText('Chuyển sang công ty này', 'en'), 'Switch to this company');
 });
 
 test('translates dynamic system text without translating user content', () => {

@@ -114,7 +114,20 @@ test('keeps only safe active tenant options and switches without logout', () => 
   assert.doesNotMatch(switchUiSource, /chatManagementService\.logout/);
   assert.doesNotMatch(appSource, /tenant-switcher-menu/);
   assert.match(appSource, /<TenantLogo src=\{option\.logo\}/);
-  assert.match(appSource, /handleTenantSwitch\(option\)/);
+  assert.match(appSource, /requestTenantSwitch\(option\)/);
+});
+
+test('requires explicit confirmation before switching tenants', () => {
+  assert.match(appSource, /const \[pendingTenantSwitch, setPendingTenantSwitch\] = useState\(null\)/);
+  assert.match(appSource, /onClick=\{\(\) => requestTenantSwitch\(option\)\}/);
+  assert.match(appSource, /setPendingTenantSwitch\(option\)/);
+  assert.match(appSource, /tenant-switch-confirm-modal/);
+  assert.match(appSource, /aria-describedby="tenant-switch-confirm-description"/);
+  assert.match(appSource, /onClick=\{confirmTenantSwitch\}/);
+  const tenantOptionSource = appSource.split('{tenantOptions.map(option => {')[1].split('{tenantSwitchNotice &&')[0];
+  assert.doesNotMatch(tenantOptionSource, /handleTenantSwitch\(option\)/);
+  const confirmationSource = appSource.split('const confirmTenantSwitch = () => {')[1].split('useEffect(() => {')[0];
+  assert.match(confirmationSource, /handleTenantSwitch\(pendingTenantSwitch\)/);
 });
 
 test('refreshes company logo metadata without resetting the active chat session', () => {
