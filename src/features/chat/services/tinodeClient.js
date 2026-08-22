@@ -18,6 +18,7 @@ import {
   publishCallInvite,
 } from './callSignaling';
 import { attachmentConversationPreview } from './messagePreview';
+import { normalizeGroupSettings } from './groupSettings';
 import { fetchProtectedMediaWithRetry } from './mediaRetryPolicy';
 import {
   applyRecallToMessage,
@@ -803,6 +804,10 @@ function toConversation(topic, tinode) {
     avatarClass: isGroup ? 'group blue' : '',
     membersCount: isGroup ? `${members.length || 1} thành viên` : (directPeer?.online ? 'Đang hoạt động' : 'Ngoại tuyến'),
     description: topic.public?.note || topic.public?.fn || '',
+    groupSettings: topic.public?.vichat?.groupSettings
+      || topic.public?.vichat?.group_settings
+      || topic.public?.groupSettings
+      || topic.public?.group_settings,
     admin: members.find(member => member.mode?.includes?.('O'))?.name || '',
     adminId: members.find(member => member.mode?.includes?.('O'))?.id || '',
     members,
@@ -1715,6 +1720,48 @@ export const tinodeClient = {
     });
     emitConversation(topic);
     return avatarUrl;
+  },
+
+  async updateGroupName(topicName, name) {
+    const nextName = String(name || '').trim();
+    if (!topicName || !nextName) throw new Error('Tên nhóm không được để trống.');
+    const topic = await subscribeTopic(topicName, { historyLimit: 0 });
+    await topic.setMeta({
+      desc: {
+        public: {
+          ...(topic.public || {}),
+          fn: nextName,
+        },
+      },
+    });
+    emitConversation(topic);
+    return nextName;
+  },
+
+  async updateGroupMetadata(topicName, { name, avatar, settings } = {}) {
+    if (!topicName) throw new Error('Nhóm chưa có topic Tinode.');
+    const topic = await subscribeTopic(topicName, { historyLimit: 0 });
+    const publicMetadata = { ...(topic.public || {}) };
+    if (name !== undefined) {
+      const nextName = String(name || '').trim();
+      if (!nextName) throw new Error('Tên nhóm không được để trống.');
+      publicMetadata.fn = nextName;
+    }
+    if (avatar !== undefined) {
+      const nextAvatar = String(avatar || '').trim();
+      const avatarReference = tinodeMediaPath(nextAvatar) || nextAvatar;
+      if (avatarReference) publicMetadata.photo = { ref: avatarReference };
+      else delete publicMetadata.photo;
+    }
+    if (settings !== undefined) {
+      publicMetadata.vichat = {
+        ...(publicMetadata.vichat && typeof publicMetadata.vichat === 'object' ? publicMetadata.vichat : {}),
+        groupSettings: normalizeGroupSettings(settings),
+      };
+    }
+    await topic.setMeta({ desc: { public: publicMetadata } });
+    emitConversation(topic);
+    return toConversation(topic, getClient());
   },
 
   async restoreConversation(topicName) {

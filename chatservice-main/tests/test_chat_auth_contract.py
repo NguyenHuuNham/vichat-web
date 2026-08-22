@@ -479,7 +479,7 @@ class ChatAuthContractTests(unittest.TestCase):
             CONTROLLER_PATH,
             "_serialize_conversation",
         )
-        _controller_source, endpoint_source = function_source(
+        controller_source, endpoint_source = function_source(
             CONTROLLER_PATH,
             "conversation_pin",
         )
@@ -496,6 +496,31 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("/pin", service_source)
         self.assertIn("updateConversationPin", app_source)
         self.assertIn("conversation-context-menu", app_source)
+
+    def test_group_settings_are_owner_only_and_tenant_scoped(self):
+        _controller_source, serializer_source = function_source(
+            CONTROLLER_PATH,
+            "_serialize_conversation",
+        )
+        controller_source, endpoint_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_group_settings",
+        )
+        service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")
+        app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("groupSettings", serializer_source)
+        self.assertIn("properties.get(\"groupSettings\")", serializer_source)
+        self.assertIn("/api/v1/conversation/<conversation_id>/group-settings", controller_source)
+        self.assertIn("/api/v1/chat/threads/<conversation_id>/group-settings", controller_source)
+        self.assertIn("management_session_requested", endpoint_source)
+        self.assertIn("is_owner = membership.role == \"OWNER\"", endpoint_source)
+        self.assertIn("allowMembersEditInfo", endpoint_source)
+        self.assertIn("_conversation_and_membership", endpoint_source)
+        self.assertIn("GROUP_SETTING_KEYS", endpoint_source)
+        self.assertIn("updateGroupSettings", service_source)
+        self.assertIn("isActiveGroupAdmin", app_source)
+        self.assertIn("handleGroupManagementSubmit", app_source)
 
     def test_directory_sync_revalidates_tenant_and_deactivates_missing_accounts(self):
         _controller_source, directory_source = function_source(

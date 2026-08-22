@@ -236,6 +236,19 @@ participants, notification mute deadlines, per-user pin state and profile/avatar
 stored under the JWT tenant. Foreign tenant IDs sent in query strings are
 ignored; the authenticated JWT and membership rows remain authoritative.
 
+The group information panel keeps notification mute and conversation pin
+viewer-scoped. Adding members and opening or saving group management settings
+require the active group owner; renaming/changing the group avatar is also
+owner-only unless the owner explicitly enables `allowMembersEditInfo`. Chatmgt
+persists the group subject, avatar reference, and whitelisted boolean
+`groupSettings` in the existing `Conversation.subject`/`properties` columns.
+`PUT /api/v1/conversation/<id>/group-settings` (and the
+`/api/v1/chat/threads/<id>/group-settings` alias) rejects management-scope
+sessions, non-members, non-groups, unauthorized members, unknown settings, and
+non-boolean values. Tinode public metadata is updated in realtime mode before
+the Chatmgt write, with a best-effort Tinode rollback if the authoritative
+Chatmgt update fails. No migration is required.
+
 The default ChatUI contact list is the active UpGO Account employee directory
 for the authenticated tenant, excluding the current employee. Employees do not
 need an accepted friendship record to discover or start a direct conversation

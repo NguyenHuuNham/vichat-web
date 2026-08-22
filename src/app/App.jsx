@@ -121,6 +121,11 @@ import {
 } from '../features/security/services/pinLock';
 import { createLocalizedCopy } from '../features/i18n/appLanguage';
 import { workspacePanelFromPath, workspacePathForPanel } from '../features/workspace/services/workspaceRouting';
+import {
+  DEFAULT_GROUP_SETTINGS,
+  groupSettingEnabled,
+  normalizeGroupSettings,
+} from '../features/chat/services/groupSettings';
 
 const CALLS_ENABLED = resolveCallsEnabled(import.meta.env.VITE_CALLS_ENABLED);
 
@@ -259,6 +264,18 @@ const MEDIA_DATE_FILTER_OPTIONS = Object.freeze([
   Object.freeze({ id: '30d', label: '30 ngày qua' }),
   Object.freeze({ id: '90d', label: '3 tháng qua' }),
   Object.freeze({ id: 'custom', label: 'Khoảng ngày tùy chọn' }),
+]);
+
+const GROUP_MANAGEMENT_OPTIONS = Object.freeze([
+  Object.freeze({ key: 'allowMembersEditInfo', icon: 'fa-pen-to-square', label: 'Cho phép thành viên đổi tên/ảnh nhóm', description: 'Thành viên có thể đổi tên hoặc ảnh nhóm.' }),
+  Object.freeze({ key: 'allowPinMessages', icon: 'fa-thumbtack', label: 'Cho phép ghim tin nhắn', description: 'Thành viên được ghim tin nhắn để xem lại nhanh.' }),
+  Object.freeze({ key: 'allowNotes', icon: 'fa-note-sticky', label: 'Cho phép tạo ghi chú', description: 'Cho phép tạo ghi chú trong cuộc trò chuyện.' }),
+  Object.freeze({ key: 'allowPolls', icon: 'fa-square-poll-vertical', label: 'Cho phép tạo bình chọn', description: 'Cho phép thành viên tạo bình chọn.' }),
+  Object.freeze({ key: 'allowReminders', icon: 'fa-calendar-check', label: 'Cho phép tạo nhắc hẹn', description: 'Cho phép tạo ghi chú hoặc nhắc hẹn từ nhóm.' }),
+  Object.freeze({ key: 'allowMessages', icon: 'fa-message', label: 'Cho phép gửi tin nhắn', description: 'Thành viên được gửi tin nhắn và tệp.' }),
+  Object.freeze({ key: 'approveMembers', icon: 'fa-user-check', label: 'Phê duyệt thành viên mới', description: 'Thành viên mới cần được quản trị viên duyệt.' }),
+  Object.freeze({ key: 'markOwnerMessages', icon: 'fa-crown', label: 'Đánh dấu tin nhắn trưởng nhóm', description: 'Làm nổi bật tin nhắn của quản trị viên nhóm.' }),
+  Object.freeze({ key: 'newMemberHistory', icon: 'fa-clock-rotate-left', label: 'Cho thành viên mới đọc tin nhắn gần nhất', description: 'Thành viên mới được xem phần lịch sử gần nhất.' }),
 ]);
 
 function tinodeTopicName(room) {
@@ -982,6 +999,9 @@ function mergeTinodeConversation(existing, incoming) {
     adminId: managementOwned && !incomingManagementSnapshot
       ? safeExisting.adminId
       : (safeIncoming.adminId || safeExisting.adminId),
+    groupSettings: managementOwned && !incomingManagementSnapshot
+      ? safeExisting.groupSettings
+      : (safeIncoming.groupSettings || safeExisting.groupSettings),
     members,
     participantIds: incomingManagementSnapshot ? safeIncoming.participantIds : safeExisting.participantIds,
     messages,
@@ -1302,6 +1322,7 @@ function demoGroupToConversation(group, accounts, viewerId) {
     avatarClass: 'group blue',
     membersCount: `${members.length} thành viên`,
     description: group.description || '',
+    groupSettings: normalizeGroupSettings(group.groupSettings),
     admin: owner?.name || 'Quản trị viên',
     adminId: owner?.id || group.ownerId || '',
     members,
@@ -1458,6 +1479,13 @@ function App() {
   const [groupMemberAddSearch, setGroupMemberAddSearch] = useState('');
   const [isAddingGroupMembers, setIsAddingGroupMembers] = useState(false);
   const [removingMemberId, setRemovingMemberId] = useState('');
+  const [isGroupManagementOpen, setIsGroupManagementOpen] = useState(false);
+  const [groupManagementDraft, setGroupManagementDraft] = useState({ ...DEFAULT_GROUP_SETTINGS });
+  const [isUpdatingGroupManagement, setIsUpdatingGroupManagement] = useState(false);
+  const [groupManagementNotice, setGroupManagementNotice] = useState('');
+  const [isGroupRenameOpen, setIsGroupRenameOpen] = useState(false);
+  const [groupRenameValue, setGroupRenameValue] = useState('');
+  const [isRenamingGroup, setIsRenamingGroup] = useState(false);
   const [workspacePanel, setWorkspacePanel] = useState(() => (
     typeof window === 'undefined' ? null : workspacePanelFromPath(window.location.pathname)
   ));
@@ -1671,6 +1699,9 @@ function App() {
     setMessageActionHoverKey(null);
     setPinnedMessagesExpanded(false);
     setHighlightedMessageKey(null);
+    setIsGroupManagementOpen(false);
+    setGroupManagementNotice('');
+    setIsGroupRenameOpen(false);
     if (messageHighlightTimerRef.current) {
       window.clearTimeout(messageHighlightTimerRef.current);
       messageHighlightTimerRef.current = null;
@@ -1684,6 +1715,18 @@ function App() {
       messageReactionHideTimerRef.current = null;
     }
   }, [activeChat.id]);
+
+  const activeGroupSettingsDependency = JSON.stringify(activeChat.groupSettings || {});
+  useEffect(() => {
+    let nextSettings = {};
+    try {
+      nextSettings = JSON.parse(activeGroupSettingsDependency);
+    } catch {
+      nextSettings = {};
+    }
+    setGroupManagementDraft(normalizeGroupSettings(nextSettings));
+    setGroupRenameValue(activeChat.name || '');
+  }, [activeChat.id, activeChat.name, activeGroupSettingsDependency]);
 
   const showMessageActions = messageKey => {
     if (messageActionHideTimerRef.current) {
@@ -1754,6 +1797,19 @@ function App() {
   };
 
   const activeChatMembers = roomMembers(activeChat);
+  const activeGroupSettings = activeChat.isGroup
+    ? normalizeGroupSettings(activeChat.groupSettings)
+    : normalizeGroupSettings();
+  const isActiveGroupAdmin = activeChat.isGroup
+    && canManageGroupMembers(activeChat, directoryAccounts, currentUser);
+  const canEditActiveGroupInfo = activeChat.isGroup
+    && (isActiveGroupAdmin || groupSettingEnabled(activeGroupSettings, 'allowMembersEditInfo'));
+  const canSendInActiveGroup = !activeChat.isGroup
+    || isActiveGroupAdmin
+    || groupSettingEnabled(activeGroupSettings, 'allowMessages');
+  const canPinActiveGroupMessages = !activeChat.isGroup
+    || isActiveGroupAdmin
+    || groupSettingEnabled(activeGroupSettings, 'allowPinMessages');
   const activeGroupPresence = activeChat.isGroup
     ? countGroupPresence(activeChatMembers, currentUser, isCurrentUserOnline)
     : null;
@@ -4068,6 +4124,164 @@ function App() {
     };
   };
 
+  const updateActiveGroupRoom = (roomUpdate = {}) => {
+    const stateConversationId = activeChat.id;
+    setConversations(previous => {
+      const currentRoom = previous[stateConversationId] || activeChat;
+      const nextRoom = safeMergeTinodeConversation(currentRoom, {
+        ...currentRoom,
+        ...roomUpdate,
+        id: stateConversationId,
+        managementId: currentRoom.managementId || stateConversationId,
+        messages: roomMessages(roomUpdate).length > 0 ? roomMessages(roomUpdate) : roomMessages(currentRoom),
+      });
+      const next = { ...previous, [stateConversationId]: nextRoom };
+      conversationsRef.current = next;
+      return next;
+    });
+  };
+
+  const openGroupManagement = () => {
+    if (!isActiveGroupAdmin) {
+      setChatError('Chỉ quản trị viên của nhóm mới có thể mở mục quản lý nhóm.');
+      return;
+    }
+    setGroupManagementDraft(normalizeGroupSettings(activeChat.groupSettings));
+    setGroupManagementNotice('');
+    setIsGroupManagementOpen(true);
+  };
+
+  const openGroupRename = () => {
+    if (!canEditActiveGroupInfo) {
+      setChatError('Bạn chưa được cấp quyền đổi tên nhóm.');
+      return;
+    }
+    setGroupRenameValue(activeChat.name || '');
+    setIsGroupRenameOpen(true);
+  };
+
+  const persistGroupMetadata = async ({ name, settings } = {}) => {
+    const managementConversationId = activeChat.managementId || activeChat.id;
+    const tinodeMetadataChanged = chatMode === 'tinode';
+    let topicName = '';
+    let tinodeUpdated = false;
+    let tinodeUpdatedRoom = null;
+    const rollbackMetadata = {
+      ...(name !== undefined ? { name: activeChat.name } : {}),
+      ...(settings !== undefined ? { settings: activeGroupSettings } : {}),
+    };
+
+    try {
+      if (tinodeMetadataChanged) {
+        topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
+        tinodeUpdatedRoom = await tinodeClient.updateGroupMetadata(topicName, { name, settings });
+        tinodeUpdated = true;
+      }
+      if (usesManagementData) {
+        if (!isManagementConversationId(managementConversationId)) {
+          throw new Error('Chatmgt chưa xác nhận nhóm này.');
+        }
+        return chatManagementService.updateGroupSettings(
+          managementConversationId,
+          { name, settings },
+        );
+      }
+      if (tinodeMetadataChanged) {
+        return tinodeUpdatedRoom;
+      }
+      return null;
+    } catch (error) {
+      if (tinodeUpdated && topicName) {
+        await tinodeClient.updateGroupMetadata(topicName, rollbackMetadata).catch(() => {});
+      }
+      throw error;
+    }
+  };
+
+  const handleGroupRenameSubmit = async event => {
+    event.preventDefault();
+    const nextName = groupRenameValue.trim();
+    if (!nextName || isRenamingGroup || !activeChat.isGroup) return;
+    if (!canEditActiveGroupInfo) {
+      setIsGroupRenameOpen(false);
+      setChatError('Bạn chưa được cấp quyền đổi tên nhóm.');
+      return;
+    }
+    setIsRenamingGroup(true);
+    setChatError('');
+    try {
+      let updatedRoom;
+      if (usesManagementData || chatMode === 'tinode') {
+        updatedRoom = await persistGroupMetadata({ name: nextName });
+      } else {
+        const memberIds = roomMembers(activeChat)
+          .map(member => findAccount(directoryAccounts, member.id || member.uid || member.name)?.id || member.id)
+          .filter(Boolean);
+        const group = saveDemoGroup({
+          id: activeChat.id,
+          name: nextName,
+          description: activeChat.description || '',
+          avatar: activeChat.avatarUrl || '',
+          ownerId: activeChat.adminId || viewerId,
+          memberIds,
+          groupSettings: activeGroupSettings,
+        });
+        updatedRoom = demoGroupToConversation(group, directoryAccounts, viewerId);
+      }
+      updateActiveGroupRoom({
+        ...updatedRoom,
+        name: nextName,
+        groupSettings: updatedRoom?.groupSettings || activeGroupSettings,
+      });
+      setIsGroupRenameOpen(false);
+    } catch (error) {
+      setChatError(error?.message || 'Không thể cập nhật tên nhóm.');
+    } finally {
+      setIsRenamingGroup(false);
+    }
+  };
+
+  const handleGroupManagementSubmit = async event => {
+    event.preventDefault();
+    if (isUpdatingGroupManagement || !activeChat.isGroup) return;
+    if (!isActiveGroupAdmin) {
+      setIsGroupManagementOpen(false);
+      setChatError('Chỉ quản trị viên của nhóm mới có thể thay đổi thiết lập.');
+      return;
+    }
+    const nextSettings = normalizeGroupSettings(groupManagementDraft);
+    setIsUpdatingGroupManagement(true);
+    setGroupManagementNotice('');
+    setChatError('');
+    try {
+      let updatedRoom;
+      if (usesManagementData || chatMode === 'tinode') {
+        updatedRoom = await persistGroupMetadata({ settings: nextSettings });
+      } else {
+        const memberIds = roomMembers(activeChat)
+          .map(member => findAccount(directoryAccounts, member.id || member.uid || member.name)?.id || member.id)
+          .filter(Boolean);
+        const group = saveDemoGroup({
+          id: activeChat.id,
+          name: activeChat.name,
+          description: activeChat.description || '',
+          avatar: activeChat.avatarUrl || '',
+          ownerId: activeChat.adminId || viewerId,
+          memberIds,
+          groupSettings: nextSettings,
+        });
+        updatedRoom = demoGroupToConversation(group, directoryAccounts, viewerId);
+      }
+      setGroupManagementDraft(nextSettings);
+      updateActiveGroupRoom({ ...updatedRoom, groupSettings: nextSettings });
+      setGroupManagementNotice('Đã lưu thiết lập quản lý nhóm.');
+    } catch (error) {
+      setChatError(error?.message || 'Không thể lưu thiết lập quản lý nhóm.');
+    } finally {
+      setIsUpdatingGroupManagement(false);
+    }
+  };
+
   const handleLeaveGroup = async () => {
     if (!activeChat.isGroup || !window.confirm(appCopy.t(`Bạn có chắc muốn rời nhóm "${activeChat.name}"?`))) return;
     try {
@@ -4506,6 +4720,10 @@ function App() {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file || !activeChat.isGroup || isUpdatingGroupAvatar) return;
+    if (!canEditActiveGroupInfo) {
+      setChatError('Bạn chưa được cấp quyền đổi ảnh nhóm.');
+      return;
+    }
     if (!file.type.startsWith('image/')) {
       setChatError('Ảnh nhóm phải là file hình ảnh.');
       return;
@@ -4543,24 +4761,22 @@ function App() {
         return;
       }
       const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
+      const previousAvatarUrl = activeChat.avatarUrl || '';
       const avatarUrl = await tinodeClient.updateGroupAvatar(topicName, file);
-      if (usesManagementData && isManagementConversationId(activeChat.managementId || activeChat.id)) {
-        await chatManagementService.bindTinodeTopic(
-          managementViewerId,
-          activeChat.managementId || activeChat.id,
-          topicName,
-          { avatarUrl },
-        );
+      try {
+        if (usesManagementData && isManagementConversationId(activeChat.managementId || activeChat.id)) {
+          await chatManagementService.updateGroupProfile(
+            activeChat.managementId || activeChat.id,
+            { avatar: avatarUrl },
+          );
+        }
+      } catch (error) {
+        await tinodeClient.updateGroupMetadata(topicName, { avatar: previousAvatarUrl }).catch(() => {});
+        throw error;
       }
       groupAvatarSyncRef.current.set(activeChat.id, avatarUrl);
       groupAvatarSyncRef.current.set(topicName, avatarUrl);
-      setConversations(previous => {
-        const currentRoom = previous[activeChat.id] || activeChat;
-        const updatedRoom = safeMergeTinodeConversation(currentRoom, { ...currentRoom, avatarUrl });
-        const next = { ...previous, [activeChat.id]: updatedRoom };
-        conversationsRef.current = next;
-        return next;
-      });
+      updateActiveGroupRoom({ avatarUrl });
     } catch (error) {
       setChatError(error?.message || 'Không thể cập nhật ảnh nhóm.');
     } finally {
@@ -4872,6 +5088,10 @@ function App() {
       setChatError('Kết nối realtime Tinode chưa sẵn sàng; dữ liệu Chatmgt vẫn đang hoạt động.');
       return;
     }
+    if (!canSendInActiveGroup) {
+      setChatError('Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.');
+      return;
+    }
     if (inputRef.current) {
       inputRef.current.click();
     }
@@ -4888,6 +5108,10 @@ function App() {
     }
     if (realtimeMessagingPending) {
       setChatError('Kết nối realtime Tinode chưa sẵn sàng; dữ liệu Chatmgt vẫn đang hoạt động.');
+      return;
+    }
+    if (!canSendInActiveGroup) {
+      setChatError('Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.');
       return;
     }
     const validationError = chatAttachmentValidationError(file);
@@ -5044,6 +5268,10 @@ function App() {
       setChatError('Kết nối realtime Tinode chưa sẵn sàng; dữ liệu Chatmgt vẫn đang hoạt động.');
       return;
     }
+    if (!canSendInActiveGroup) {
+      setChatError('Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.');
+      return;
+    }
     setChatError('');
     const replyMeta = replyingTo ? { ...replyingTo } : null;
     const timeStr = getTimeString();
@@ -5153,6 +5381,10 @@ function App() {
     }
     if (realtimeMessagingPending) {
       setChatError('Kết nối realtime Tinode chưa sẵn sàng; dữ liệu Chatmgt vẫn đang hoạt động.');
+      return;
+    }
+    if (!canSendInActiveGroup) {
+      setChatError('Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.');
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
@@ -5570,6 +5802,10 @@ function App() {
         return;
       }
       if (action === 'pin') {
+        if (!canPinActiveGroupMessages) {
+          setChatError('Quản trị viên đã tắt quyền ghim tin nhắn trong nhóm.');
+          return;
+        }
         const key = messageActionKey(activeChat.id, message.id);
         saveMessageAction(message, { pinned: !messageActions[key]?.pinned });
         return;
@@ -5665,6 +5901,10 @@ function App() {
   const handleSendMessage = async (textToSend = null) => {
     const text = (textToSend !== null ? textToSend : inputText).trim();
     if (!text || (activeChat.isChatbot && isTyping)) return;
+    if (!canSendInActiveGroup) {
+      setChatError('Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.');
+      return;
+    }
     if (realtimeMessagingPending) {
       setChatError('Danh bạ và cuộc trò chuyện đã được lưu ở Chatmgt, nhưng realtime Tinode chưa kết nối.');
       return;
@@ -6619,6 +6859,9 @@ function App() {
               || Boolean(msg.pending && msg.senderId && msg.senderId === viewerId);
             const messageKey = messageActionKey(activeChat.id, msg.id);
             const messageState = messageActions[messageKey] || {};
+            const isOwnerMessage = activeChat.isGroup
+              && activeGroupSettings.markOwnerMessages
+              && identitiesOverlap({ id: messageSenderId }, activeAdminAccount);
             const reactions = { ...(msg.reactions || {}), ...(messageState.reactions || {}) };
             const isStickerMessage = msg.type === 'sticker' || Boolean(msg.sticker?.id || msg.sticker?.stickerId);
             const attachmentFile = msg.file || ((msg.type === 'image' || isStickerMessage) && msg.image ? {
@@ -6659,7 +6902,12 @@ function App() {
                 )}
 
                 <div className={`message-content-wrapper ${imagePreviewSource ? 'image-message-content' : ''} ${isStickerMessage ? 'sticker-message-content' : ''}`}>
-                  {!isOutgoing && msg.senderName && <button type="button" className="sender-name sender-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))}>{msg.senderName}</button>}
+                  {!isOutgoing && msg.senderName && (
+                    <div className="sender-name-row">
+                      <button type="button" className="sender-name sender-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))}>{msg.senderName}</button>
+                      {isOwnerMessage && <span className="group-owner-message-badge"><i className="fa-solid fa-crown"></i>{appCopy.t('Trưởng nhóm')}</span>}
+                    </div>
+                  )}
 
                   <div
                     className={`message-interactive ${messageActionHoverKey === messageKey ? 'message-actions-visible' : ''}`}
@@ -6924,7 +7172,7 @@ function App() {
               <div className="message-context-menu" style={{ left: messageMenu.left, top: messageMenu.top }} onClick={event => event.stopPropagation()}>
                 <button type="button" onClick={() => handleMessageAction('copy', menuMessage)}><i className="fa-regular fa-copy"></i>{appCopy.t('Copy tin nhắn')}</button>
                 <button type="button" onClick={() => handleMessageAction('mark', menuMessage)}><i className={`fa-${marked ? 'solid' : 'regular'} fa-star`}></i>{appCopy.t(marked ? 'Bỏ đánh dấu' : 'Đánh dấu tin nhắn')}</button>
-                <button type="button" onClick={() => handleMessageAction('pin', menuMessage)}><i className="fa-solid fa-thumbtack"></i>{appCopy.t(menuMessageState.pinned ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn')}</button>
+                {canPinActiveGroupMessages && <button type="button" onClick={() => handleMessageAction('pin', menuMessage)}><i className="fa-solid fa-thumbtack"></i>{appCopy.t(menuMessageState.pinned ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn')}</button>}
                 {!activeChat.isChatbot && isManagementConversationId(activeChat.managementId || activeChat.id) && <button type="button" onClick={() => handleMessageAction('create-task', menuMessage)}><i className="fa-solid fa-list-check"></i>{appCopy.t('Giao việc từ tin nhắn')}</button>}
                 <button type="button" onClick={() => handleMessageAction('detail', menuMessage)}><i className="fa-solid fa-circle-info"></i>{appCopy.t('Xem chi tiết')}</button>
                  {canRecallMessage && <>
@@ -6970,6 +7218,12 @@ function App() {
             <span>{appCopy.t('Dữ liệu Chatmgt vẫn sẵn sàng, nhưng kết nối realtime Tinode đang tạm gián đoạn.')}</span>
           </div>
         )}
+        {!canSendInActiveGroup && activeChat.isGroup && (
+          <div className="group-send-disabled-notice" role="status">
+            <i className="fa-solid fa-lock"></i>
+            <span>{appCopy.t('Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.')}</span>
+          </div>
+        )}
         <div className="chat-main-input">
           {replyingTo && (
             <div className="replying-banner">
@@ -6982,7 +7236,7 @@ function App() {
             </div>
           )}
           <div className="input-actions-left">
-            <button className="btn-input-action image-input-action" title={appCopy.t(activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều ảnh')} aria-label={appCopy.t('Gửi nhiều ảnh')} onClick={handleImageAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice}>
+            <button className="btn-input-action image-input-action" title={appCopy.t(activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều ảnh')} aria-label={appCopy.t('Gửi nhiều ảnh')} onClick={handleImageAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup}>
               <i className="fa-regular fa-image"></i>
             </button>
             <input
@@ -6993,7 +7247,7 @@ function App() {
               style={{ display: "none" }}
               onChange={handleImageChange}
             />
-            <button className="btn-input-action file-input-action" title={appCopy.t(activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều file')} aria-label={appCopy.t('Gửi nhiều file')} onClick={handleAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice}>
+            <button className="btn-input-action file-input-action" title={appCopy.t(activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều file')} aria-label={appCopy.t('Gửi nhiều file')} onClick={handleAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup}>
               <i className="fa-solid fa-paperclip"></i>
             </button>
             <input
@@ -7003,7 +7257,7 @@ function App() {
               style={{ display: "none" }}
               onChange={handleFileChange}
             />
-            <button type="button" className="btn-input-action" title={appCopy.t('Sticker và biểu cảm')} aria-label={appCopy.t('Mở sticker và biểu cảm')} aria-expanded={showEmojiPicker} onClick={() => { if (!showEmojiPicker) { setComposerPickerTab('stickers'); setMentionContext(null); } setShowEmojiPicker(previous => !previous); }} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice}>
+            <button type="button" className="btn-input-action" title={appCopy.t('Sticker và biểu cảm')} aria-label={appCopy.t('Mở sticker và biểu cảm')} aria-expanded={showEmojiPicker} onClick={() => { if (!showEmojiPicker) { setComposerPickerTab('stickers'); setMentionContext(null); } setShowEmojiPicker(previous => !previous); }} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup}>
               <i className="fa-regular fa-smile"></i>
             </button>
             {showEmojiPicker && (
@@ -7022,7 +7276,7 @@ function App() {
               title={appCopy.t(isRecordingVoice ? 'Dừng và gửi tin nhắn thoại' : 'Ghi tin nhắn thoại')}
               aria-label={appCopy.t(isRecordingVoice ? 'Dừng và gửi tin nhắn thoại' : 'Ghi tin nhắn thoại')}
               onClick={() => (isRecordingVoice ? stopVoiceRecording(false) : startVoiceRecording())}
-              disabled={realtimeMessagingPending || activeChat.isChatbot}
+              disabled={realtimeMessagingPending || activeChat.isChatbot || !canSendInActiveGroup}
             >
               <i className={`fa-solid ${isRecordingVoice ? 'fa-stop' : 'fa-microphone'}`}></i>
             </button>
@@ -7089,7 +7343,7 @@ function App() {
               aria-activedescendant={mentionOptions.length > 0 ? `message-mention-option-${mentionActiveIndex}` : undefined}
               placeholder={appCopy.t(realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : activeChat.isChatbot ? 'Hỏi ViChat AI về quy trình, chính sách, tài liệu...' : 'Nhập tin nhắn...')}
               value={inputText}
-              disabled={realtimeMessagingPending || (activeChat.isChatbot && isTyping)}
+              disabled={realtimeMessagingPending || !canSendInActiveGroup || (activeChat.isChatbot && isTyping)}
               onChange={handleMessageInputChange}
               onPaste={handleMessagePaste}
               onKeyDown={handleMessageInputKeyDown}
@@ -7104,7 +7358,7 @@ function App() {
               </>
             )}
           </div>
-          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || isRecordingVoice || (activeChat.isChatbot && isTyping)} onClick={() => handleSendMessage()}>{appCopy.t(activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi')}</button>
+          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || !canSendInActiveGroup || isRecordingVoice || (activeChat.isChatbot && isTyping)} onClick={() => handleSendMessage()}>{appCopy.t(activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi')}</button>
         </div>
         {activeChat.isChatbot && <p className="chatbot-composer-note"><i className="fa-solid fa-circle-info"></i> {appCopy.t('ViChat AI có thể chưa bao quát mọi tài liệu. Hãy kiểm tra nguồn trước khi ra quyết định.')}</p>}
         {messageDetails && (
@@ -7186,7 +7440,7 @@ function App() {
               <div className={`group-avatar-large ${activeChat.avatarClass || ''}`}>
                 <ConversationAvatar room={activeChat} />
               </div>
-              {activeChat.isGroup && activeChat.id !== 'empty' && (
+              {activeChat.isGroup && activeChat.id !== 'empty' && canEditActiveGroupInfo && (
                 <label
                   className={`group-avatar-edit-button ${isUpdatingGroupAvatar ? 'loading' : ''}`}
                   title={appCopy.t(isUpdatingGroupAvatar ? 'Đang cập nhật ảnh nhóm...' : 'Đổi ảnh nhóm')}
@@ -7202,7 +7456,20 @@ function App() {
                 </label>
               )}
             </div>
-            <h3 className="group-name-large">{activeChat.name}</h3>
+            <div className="group-name-line">
+              <h3 className="group-name-large">{activeChat.name}</h3>
+              {activeChat.isGroup && activeChat.id !== 'empty' && canEditActiveGroupInfo && (
+                <button
+                  type="button"
+                  className="group-name-edit-button"
+                  title={appCopy.t('Sửa tên nhóm')}
+                  aria-label={appCopy.t('Sửa tên nhóm')}
+                  onClick={openGroupRename}
+                >
+                  <i className="fa-solid fa-pen"></i>
+                </button>
+              )}
+            </div>
             <span className="group-members-count">{activeChatPresenceLabel}</span>
           </div>
 
@@ -7213,13 +7480,29 @@ function App() {
             </div>
           )}
 
-          <div className="detail-section members-section">
-            <div className="members-section-heading">
-              <h4 className="section-title">{activeChat.isGroup ? `${appCopy.t('Thành viên')} (${activeChatMembers.length})` : appCopy.t('Thông tin cá nhân')}</h4>
-              {activeChat.isGroup && canManageGroupMembers(activeChat, directoryAccounts, currentUser) && (
+          {!activeChat.isChatbot && activeChat.id !== 'empty' && activeChat.isGroup && (
+            <div className="group-detail-quick-actions" role="group" aria-label={appCopy.t('Thao tác nhóm')}>
+              <button
+                type="button"
+                className={`group-detail-quick-action ${activeChatMuted ? 'active' : ''}`}
+                onClick={handleConversationMuteToggle}
+                disabled={isUpdatingNotificationMute}
+              >
+                <span className="group-detail-quick-icon"><i className={`fa-regular ${activeChatMuted ? 'fa-bell-slash' : 'fa-bell'}`}></i></span>
+                <span>{appCopy.t('Tắt thông báo')}</span>
+              </button>
+              <button
+                type="button"
+                className={`group-detail-quick-action ${activeChat.pinned ? 'active' : ''}`}
+                onClick={() => updateConversationPin(activeChat)}
+              >
+                <span className="group-detail-quick-icon"><i className="fa-solid fa-thumbtack"></i></span>
+                <span>{appCopy.t(activeChat.pinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại')}</span>
+              </button>
+              {isActiveGroupAdmin && (
                 <button
                   type="button"
-                  className="btn-add-member"
+                  className="group-detail-quick-action btn-add-member"
                   onClick={() => {
                     setIsGroupMemberPickerOpen(previous => !previous);
                     setGroupMemberAddIds([]);
@@ -7228,9 +7511,27 @@ function App() {
                   }}
                   aria-expanded={isGroupMemberPickerOpen}
                 >
-                  <i className="fa-solid fa-user-plus"></i>{appCopy.t('Thêm thành viên')}
+                  <span className="group-detail-quick-icon"><i className="fa-solid fa-user-plus"></i></span>
+                  <span>{appCopy.t('Thêm thành viên')}</span>
                 </button>
               )}
+              {isActiveGroupAdmin && (
+                <button
+                  type="button"
+                  className={`group-detail-quick-action ${isGroupManagementOpen ? 'active' : ''}`}
+                  onClick={openGroupManagement}
+                  aria-expanded={isGroupManagementOpen}
+                >
+                  <span className="group-detail-quick-icon"><i className="fa-solid fa-users-gear"></i></span>
+                  <span>{appCopy.t('Quản lý nhóm')}</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="detail-section members-section">
+            <div className="members-section-heading">
+              <h4 className="section-title">{activeChat.isGroup ? `${appCopy.t('Thành viên')} (${activeChatMembers.length})` : appCopy.t('Thông tin cá nhân')}</h4>
             </div>
             {activeChat.isGroup && isGroupMemberPickerOpen && (
               <div className="group-member-add-panel">
@@ -7345,7 +7646,7 @@ function App() {
           )}
 
           <div className="detail-actions">
-            {!activeChat.isChatbot && activeChat.id !== 'empty' && (
+            {!activeChat.isChatbot && activeChat.id !== 'empty' && !activeChat.isGroup && (
               <div className="action-row">
                 <div className="action-label">
                   <i className={`fa-regular ${activeChatMuted ? 'fa-bell-slash' : 'fa-bell'}`}></i>
@@ -8020,6 +8321,92 @@ function App() {
                 <button type="button" className="btn-secondary" onClick={() => setNotificationMuteDialog(null)} disabled={isUpdatingNotificationMute}>{appCopy.t('Hủy')}</button>
                 <button type="submit" className="btn-primary" disabled={isUpdatingNotificationMute}>
                   {isUpdatingNotificationMute ? <i className="fa-solid fa-spinner fa-spin"></i> : appCopy.t('Đồng ý')}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {isGroupManagementOpen && activeChat.isGroup && (
+        <div className="modal-backdrop group-management-backdrop" role="presentation" onMouseDown={event => {
+          if (event.target === event.currentTarget && !isUpdatingGroupManagement) setIsGroupManagementOpen(false);
+        }}>
+          <form
+            className="group-modal group-management-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="group-management-title"
+            onSubmit={handleGroupManagementSubmit}
+          >
+            <div className="group-modal-header">
+              <div>
+                <span className="group-modal-kicker">{appCopy.t('QUẢN TRỊ NHÓM')}</span>
+                <h2 id="group-management-title">{appCopy.t('Quản lý nhóm')}</h2>
+              </div>
+              <button type="button" className="btn-close-detail" onClick={() => setIsGroupManagementOpen(false)} aria-label={appCopy.t('Đóng')} disabled={isUpdatingGroupManagement}>
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+            <p className="group-management-intro"><i className="fa-solid fa-shield-halved"></i>{appCopy.t('Chỉ quản trị viên của nhóm mới có thể thay đổi các thiết lập này.')}</p>
+            <div className="group-management-list">
+              {GROUP_MANAGEMENT_OPTIONS.map(option => (
+                <label className="group-management-option" key={option.key}>
+                  <span className="group-management-option-icon"><i className={`fa-solid ${option.icon}`}></i></span>
+                  <span className="group-management-option-copy">
+                    <strong>{appCopy.t(option.label)}</strong>
+                    <small>{appCopy.t(option.description)}</small>
+                  </span>
+                  <span className="switch group-management-switch">
+                    <input
+                      type="checkbox"
+                      checked={groupManagementDraft[option.key] === true}
+                      onChange={event => setGroupManagementDraft(previous => ({ ...previous, [option.key]: event.target.checked }))}
+                      disabled={isUpdatingGroupManagement}
+                    />
+                    <span className="slider round"></span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            {groupManagementNotice && <div className="group-management-notice" role="status"><i className="fa-solid fa-circle-check"></i>{appCopy.t(groupManagementNotice)}</div>}
+            <div className="group-modal-footer actions-only">
+              <div className="group-modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setIsGroupManagementOpen(false)} disabled={isUpdatingGroupManagement}>{appCopy.t('Đóng')}</button>
+                <button type="submit" className="btn-primary" disabled={isUpdatingGroupManagement}>
+                  {isUpdatingGroupManagement ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-check"></i>}
+                  {isUpdatingGroupManagement ? appCopy.t('Đang lưu...') : appCopy.t('Lưu thiết lập')}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {isGroupRenameOpen && activeChat.isGroup && (
+        <div className="modal-backdrop group-rename-backdrop" role="presentation" onMouseDown={event => {
+          if (event.target === event.currentTarget && !isRenamingGroup) setIsGroupRenameOpen(false);
+        }}>
+          <form className="group-modal group-rename-modal" role="dialog" aria-modal="true" aria-labelledby="group-rename-title" onSubmit={handleGroupRenameSubmit}>
+            <div className="group-modal-header">
+              <div>
+                <span className="group-modal-kicker">{appCopy.t('THÔNG TIN NHÓM')}</span>
+                <h2 id="group-rename-title">{appCopy.t('Sửa tên nhóm')}</h2>
+              </div>
+              <button type="button" className="btn-close-detail" onClick={() => setIsGroupRenameOpen(false)} aria-label={appCopy.t('Đóng')} disabled={isRenamingGroup}>
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+            <label className="group-form-field">
+              <span>{appCopy.t('Tên nhóm')}</span>
+              <input value={groupRenameValue} onChange={event => setGroupRenameValue(event.target.value.slice(0, 120))} autoFocus required disabled={isRenamingGroup} />
+            </label>
+            <div className="group-modal-footer actions-only">
+              <div className="group-modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setIsGroupRenameOpen(false)} disabled={isRenamingGroup}>{appCopy.t('Hủy')}</button>
+                <button type="submit" className="btn-primary" disabled={isRenamingGroup || !groupRenameValue.trim()}>
+                  {isRenamingGroup ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-check"></i>}
+                  {isRenamingGroup ? appCopy.t('Đang lưu...') : appCopy.t('Lưu tên nhóm')}
                 </button>
               </div>
             </div>

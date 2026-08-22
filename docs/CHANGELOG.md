@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-05 - Them thao tac va quan tri thong tin nhom
+
+- Thoi gian: 2026-08-23 04:15 (Asia/Saigon)
+- Loai: Tinh nang | API | Bao mat | Web | UI
+- Trang thai: Dang thuc hien
+- Muc tieu: Bo sung 4 thao tac trong thong tin nhom, cho phep quan tri vien quan ly thiet lap nhom va sua ten nhom ma khong lam thay doi luong chat hien tai.
+- Pham vi: ChatUI thong tin nhom, Chatmgt conversation metadata, Tinode group public metadata va kiem tra hop dong; khong thay doi sticker, tenant switch, tin nhan, database schema hoac migration.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/groupSettings.js`, `src/features/chat/services/groupSettings.test.js`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/tinodeClient.js`, `src/features/demo/services/demoGroupStore.js`, `src/features/i18n/appLanguage.js`, `package.json`, `dist/index.html`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`.
+- Noi dung: Them cac quick action tat thong bao, ghim hoi thoai, them thanh vien va quan ly nhom; hien nut but sua ten/anh nhom theo quyen; dialog quan ly gom cac toggle group settings, chi owner duoc mo va luu. Chatmgt normalize/luu `groupSettings`, ten va avatar; Tinode dong bo public metadata khi realtime san sang; cac hanh vi gui/ghim bi khoa theo setting.
+- Quyet dinh ky thuat: Dung cot `Conversation.subject` va JSONB `Conversation.properties` da co, khong them migration; backend whitelist 9 khoa boolean, chi owner luu management settings, va chi cho member doi ten/anh neu owner bat `allowMembersEditInfo` trong tenant cua session; merge realtime giu lai metadata Chatmgt khi Tinode khong co snapshot setting.
+- Database/API/cau hinh: Them `PUT /api/v1/conversation/<id>/group-settings` va alias `/api/v1/chat/threads/<id>/group-settings`; khong co migration, bien moi truong hoac secret.
+- Kiem thu: `npm run test:frontend` dat 144/144; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle group management; `python -m py_compile application/controllers/api_chat_management.py tests/test_chat_auth_contract.py` dat; `python -m unittest tests.test_chat_auth_contract -q` dat 37/37; `git diff --check` dat.
+- Rui ro con lai: Cac toggle ghi chu/binh chon/nhac hen moi luu va hien thi theo group settings; codebase chua co luong tao note/poll/reminder rieng de enforce sau khi bat/tat.
+- Viec tiep theo: Review diff, commit/push va deploy ChatUI cung Chatmgt; khong migration/reset volume.
+- Commit/PR: Chua tao.
+
 ## 2026-08-23-04 - Lam ro sticker va mo rong emoji
 
 - Thoi gian: 2026-08-23 03:12 (Asia/Saigon)

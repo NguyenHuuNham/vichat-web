@@ -1,3 +1,5 @@
+import { normalizeGroupSettings } from './groupSettings.js';
+
 export const TINODE_CONTACT_SYNC_DELAYS_MS = Object.freeze([120, 600, 1800]);
 
 const MANAGEMENT_CONVERSATION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -231,6 +233,14 @@ export function normalizeConversationShape(conversation) {
   const messages = conversationArray(source.messages).map(normalizeMessage).filter(Boolean);
   const friendEvents = conversationArray(source.friendEvents).map((message, index) => normalizeMessage(message, index)).filter(Boolean);
   const isGroup = source.isGroup === true || source.isGroup === 1 || source.isGroup === 'true';
+  const groupSettings = isGroup
+    ? normalizeGroupSettings(
+      source.groupSettings
+      || source.group_settings
+      || source.properties?.groupSettings
+      || source.properties?.group_settings,
+    )
+    : undefined;
   const mutedUntil = typeof source.notificationMutedUntil === 'string' || typeof source.notificationMutedUntil === 'number'
     ? source.notificationMutedUntil
     : undefined;
@@ -243,6 +253,7 @@ export function normalizeConversationShape(conversation) {
     tinodeTopic,
     name: conversationText(source.name),
     isGroup,
+    groupSettings,
     // Chatmgt snapshots carry authoritative account/member IDs. Tinode
     // snapshots only carry realtime UIDs and must not replace that mapping.
     managementSnapshot: Boolean(source.managementSnapshot || source.management_snapshot),

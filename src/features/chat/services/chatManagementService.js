@@ -1,5 +1,6 @@
 import { normalizeNotificationMuteUntil } from './conversationNotifications.js';
 import { normalizeConversationShape } from './chatRealtime.js';
+import { normalizeGroupSettings } from './groupSettings.js';
 import { normalizeAccountShape, normalizeTenantShape } from '../../contacts/services/accountDirectory.js';
 
 const env = import.meta.env || {};
@@ -310,6 +311,10 @@ function normalizeConversation(record) {
     notificationMutedUntil,
     pinned: Boolean(record?.pinned ?? record?.isPinned ?? properties.pinned),
     pinnedAt: record?.pinnedAt || record?.pinned_at || properties.pinnedAt || null,
+    groupSettings: record?.groupSettings
+      || record?.group_settings
+      || properties.groupSettings
+      || properties.group_settings,
   });
 }
 
@@ -649,6 +654,30 @@ export const chatManagementService = {
     const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/pin`, {
       method: 'PUT',
       body: JSON.stringify({ pinned: Boolean(pinned) }),
+    });
+    return normalizeConversation(payload);
+  },
+
+  async updateGroupSettings(conversationId, { name, settings } = {}) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const body = {};
+    if (name !== undefined) body.name = String(name || '').trim();
+    if (settings !== undefined) body.settings = normalizeGroupSettings(settings);
+    const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/group-settings`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+    return normalizeConversation(payload);
+  },
+
+  async updateGroupProfile(conversationId, profile = {}) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const body = {};
+    if (profile.name !== undefined) body.name = String(profile.name || '').trim();
+    if (profile.avatar !== undefined) body.avatar = String(profile.avatar || '').trim();
+    const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/group-settings`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
     });
     return normalizeConversation(payload);
   },

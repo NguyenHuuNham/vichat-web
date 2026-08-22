@@ -96,6 +96,27 @@ logger = logging.getLogger(__name__)
 ACCOUNT_SSO_PASSWORD_MARKER = "!account-sso-only"
 _ACCOUNT_DIRECTORY_SYNC_CACHE = {}
 
+GROUP_SETTING_DEFAULTS = {
+    "allowMembersEditInfo": False,
+    "allowPinMessages": True,
+    "allowNotes": True,
+    "allowPolls": True,
+    "allowReminders": True,
+    "allowMessages": True,
+    "approveMembers": False,
+    "markOwnerMessages": False,
+    "newMemberHistory": True,
+}
+GROUP_SETTING_KEYS = frozenset(GROUP_SETTING_DEFAULTS)
+
+
+def _normalized_group_settings(value=None):
+    source = value if isinstance(value, dict) else {}
+    return {
+        key: source[key] if isinstance(source.get(key), bool) else default
+        for key, default in GROUP_SETTING_DEFAULTS.items()
+    }
+
 
 def _mobile_linked_devices(request, token):
     if str(request.headers.get("X-Vichat-Client") or "").strip().lower() != "mobile":
@@ -818,6 +839,9 @@ def _serialize_conversation(item, viewer_id):
     )
     properties = item.properties or {}
     is_group = bool(properties.get("is_group"))
+    group_settings = _normalized_group_settings(
+        properties.get("groupSettings") or properties.get("group_settings")
+    ) if is_group else None
     tinode_topic = item.tinode_topic if is_group else direct_peer_tinode_uid(
         viewer_id,
         participant_ids,
@@ -832,6 +856,7 @@ def _serialize_conversation(item, viewer_id):
         "conversation_no": item.conversation_no,
         "tenant_id": item.tenant_id,
         "tinode_topic": tinode_topic,
+        "name": item.subject,
         "subject": item.subject,
         "status": item.status,
         "priority": item.priority,
@@ -840,6 +865,7 @@ def _serialize_conversation(item, viewer_id):
         "properties": properties,
         "isGroup": is_group,
         "avatar": properties.get("avatar") or "",
+        "groupSettings": group_settings,
         "participantIds": participant_ids,
         "members": [
             _public_account(accounts_by_id[participant_id])
@@ -2715,6 +2741,98 @@ async def conversation_pin(request, conversation_id):
     return json(_serialize_conversation(item, user_id))
 
 
+@app.route('/api/v1/conversation/<conversation_id>/group-settings', methods=['PUT'])
+@app.route('/api/v1/chat/threads/<conversation_id>/group-settings', methods=['PUT'])
+async def conversation_group_settings(request, conversation_id):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    if management_session_requested(request):
+        return json({
+            "error_code": "CHAT_SESSION_REQUIRED",
+            "error_message": "Group settings can only be changed from a Chat user session.",
+        }, status=403)
+    try:
+        conversation_uuid = uuid.UUID(str(conversation_id))
+    except (ValueError, TypeError, AttributeError):
+        return json({"error_code": "NOT_FOUND", "error_message": "Invalid conversation."}, status=404)
+
+    user_id = _user_id(current_user)
+    item, membership = _conversation_and_membership(tenant_id, conversation_uuid, user_id)
+    if item is None or membership is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
+    if not bool((item.properties or {}).get("is_group")):
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "Group settings can only be changed for a group.",
+        }, status=400)
+    is_owner = membership.role == "OWNER"
+    existing_properties = item.properties or {}
+    existing_settings = _normalized_group_settings(
+        existing_properties.get("groupSettings") or existing_properties.get("group_settings")
+    )
+    body = request.json or {}
+    if not is_owner and (
+        not isinstance(body, dict)
+        or "settings" in body
+        or not existing_settings["allowMembersEditInfo"]
+    ):
+        return _forbidden_error()
+
+    if not isinstance(body, dict) or not any(key in body for key in ("name", "avatar", "settings")):
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "At least one group setting is required.",
+        }, status=400)
+
+    next_name = None
+    if "name" in body:
+        if not isinstance(body.get("name"), str):
+            return json({"error_code": "PARAM_ERROR", "error_message": "The group name must be text."}, status=400)
+        next_name = body["name"].strip()
+        if not next_name or len(next_name) > 120:
+            return json({"error_code": "PARAM_ERROR", "error_message": "The group name must be between 1 and 120 characters."}, status=400)
+
+    next_avatar = None
+    if "avatar" in body:
+        if not isinstance(body.get("avatar"), str):
+            return json({"error_code": "PARAM_ERROR", "error_message": "The group avatar must be text."}, status=400)
+        next_avatar = body["avatar"].strip()
+        if len(next_avatar) > 8192:
+            return json({"error_code": "PARAM_ERROR", "error_message": "The group avatar reference is too long."}, status=400)
+
+    next_settings = None
+    if "settings" in body:
+        requested_settings = body.get("settings")
+        if not isinstance(requested_settings, dict):
+            return json({"error_code": "PARAM_ERROR", "error_message": "Group settings must be an object."}, status=400)
+        unknown_keys = sorted(set(requested_settings) - GROUP_SETTING_KEYS)
+        if unknown_keys:
+            return json({"error_code": "PARAM_ERROR", "error_message": "Unknown group setting."}, status=400)
+        invalid_keys = sorted(
+            key for key, value in requested_settings.items()
+            if not isinstance(value, bool)
+        )
+        if invalid_keys:
+            return json({"error_code": "PARAM_ERROR", "error_message": "Group settings must be boolean."}, status=400)
+        next_settings = _normalized_group_settings(
+            existing_properties.get("groupSettings") or existing_properties.get("group_settings")
+        )
+        next_settings.update(requested_settings)
+
+    properties = dict(item.properties or {})
+    if next_name is not None:
+        item.subject = next_name
+    if next_avatar is not None:
+        properties["avatar"] = next_avatar
+    if next_settings is not None:
+        properties["groupSettings"] = next_settings
+    item.properties = properties
+    item.updated_at = int(time.time())
+    db.session.commit()
+    return json(_serialize_conversation(item, user_id))
+
+
 @app.route('/api/v1/conversation', methods=['POST'])
 @app.route('/api/v1/chat/threads', methods=['POST'])
 async def conversation_create(request):
@@ -2742,6 +2860,10 @@ async def conversation_create(request):
         "description": str(requested_properties.get("description") or "")[:2000],
         "avatar": str(requested_properties.get("avatar") or "")[:8192],
     }
+    if is_group:
+        properties["groupSettings"] = _normalized_group_settings(
+            requested_properties.get("groupSettings") or requested_properties.get("group_settings")
+        )
     if direct_key:
         properties["direct_key"] = direct_key
         existing = Conversation.query.filter(
