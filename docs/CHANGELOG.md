@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Rui ro con lai: Chua click UAT picker/gui sticker that tren Tinode, kiem tra mobile/light/dark va xac nhan receiver history tren tai khoan production; can hard refresh sau deploy.
 - Viec tiep theo: UAT icon mat cuoi, 6 nhom, tim kiem, gan day, gui/nhan/reply/recall sticker tren desktop/mobile; neu loi thi tro `current` ve `previous` va recreate rieng `chat` tu release cu.
 - Trien khai: Source `e37ea1d` da push `origin/master`; archive SHA-256 `0946DF18A135E9D1B5E7FE2FE3DE314B1879541A8126F546ED95FE931D64AD16`; release `/opt/deploy/chat/releases/sticker-e37ea1d-20260823-0200`; image ChatUI `sha256:4c7f56c89f8bd67b5f29ec34bb54cb3694736ac4e0978eaeed0390bf6927b268`, container `8bdc8b22a5f238d64d0027dbfaab7d2bc4d063b2d13edffa9d0a2337041e7362`; rollback tag `songhong-production-chat:rollback-before-sticker-e37ea1d` (`sha256:03cb2e20aeabbfe5a486a8806784a55d1e28821da6d0475fe4617c6f9e25db68`); `current` tro release sticker, `previous` tro `/opt/deploy/chat/releases/default-ai-ca8b330-20260819-1715`; chi recreate `chat`, giu nguyen Chatmgt/Tinode bridge/worker, ChatAPI, PostgreSQL, Redis va Coturn; khong migration/reset volume.
-- Commit/PR: Source `e37ea1d`; deployment follow-up dang tao.
+- Commit/PR: Source `e37ea1d`; deployment follow-up `1ca5f56`; chua co PR.
 
 ## 2026-08-19-07 - Duy tri cuoc tro chuyen ViChat AI mac dinh
 
