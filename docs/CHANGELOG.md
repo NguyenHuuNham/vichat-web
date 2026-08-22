@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-23 03:12 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | UI
-- Trang thai: Hoan tat code; dang trien khai production
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Hien day du hinh va dong chu cua sticker tu anh nguon, loai bo phan thua cua o ke ben va bo sung nhieu emoji hon trong picker.
 - Pham vi: 48 asset PNG trong ChatUI, StickerPicker va CSS gioi han cuon cua bang emoji; khong thay doi luong gui tin nhan, Tinode, Chatmgt, tenant, backend hoac database.
 - File da thay doi: `public/stickers/puppysoft/*.png`, `src/features/chat/components/StickerPicker.jsx`, `src/styles/index.css`, `docs/CHANGELOG.md`.
 - Noi dung: Cat lai 6 hang x 8 o tu `stk.jpg`, giu nguyen nhan vat va nhan chu ben duoi, tach nen trang ben ngoai bang flood-fill de khong lam trong phan trang tri ben trong sticker; them bo emoji phong phu va cho bang emoji cuon rieng khi danh sach dai.
 - Quyet dinh ky thuat: Dung crop xac dinh theo luoi anh nguon va xu ly alpha tai bien thay vi sinh lai hinh, de bao toan text goc va tranh thay doi noi dung sticker; emoji van la danh sach local, khong them tai nguyen ben ngoai hoac API.
 - Database/API/cau hinh: Khong co migration, endpoint, bien moi truong hoac thay doi quyen.
-- Kiem thu: `npm run test:frontend` dat 142/142; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; kiem tra Pillow xac nhan 48 PNG RGBA voi goc ngoai trong suot; `git diff --check` dat.
-- Rui ro con lai: Chua UAT picker tren tai khoan production, desktop/mobile va light/dark; cac luong chat khac chua bi thay doi trong pham vi code.
-- Viec tiep theo: Deploy rieng ChatUI, health check sau recreate va hard refresh de UAT picker/gui sticker.
-- Commit/PR: Source `196ce7b` da commit va push `origin/master`; production deploy pending.
+- Kiem thu: `npm run test:frontend` dat 142/142; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; kiem tra Pillow xac nhan 48 PNG RGBA voi goc ngoai trong suot; `git diff --check` dat. Production Compose config, build image ChatUI, local/public `/healthz`, Chatmgt auth health, `sudo nginx -t`, 48 asset sticker HTTP 200, bundle marker picker va log 4 service khong co fatal marker trong 5 phut deu dat.
+- Rui ro con lai: Chua UAT picker tren tai khoan production, desktop/mobile va light/dark; cac luong chat khac khong thay doi trong pham vi code.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo icon mat cuoi, kiem tra 6 nhom sticker, dong chu, emoji cuon va gui/nhan sticker; neu co loi thi tro `current` ve `previous` va recreate rieng `chat` tu release cu.
+- Trien khai: Source `196ce7b` va docs verification `3ba7c10` da push `origin/master`; archive SHA-256 `75E2EC824572DD8CD3FE154B50EB0D3CC23D948AEE1432B86D4AE3578ED86207`; release `/opt/deploy/chat/releases/sticker-fix-3ba7c10-20260823-0317`; image ChatUI `sha256:210eca938de47ce202d14c41a4acfb508f1f8c3befa299d7e5b7c05377411d9a`, container `97232c2e4d1a`; rollback tag `songhong-production-chat:rollback-before-sticker-fix-3ba7c10` giu image cu `sha256:f8d0d27d97c7ddcb6725fc120d7c1c5d5cee791ac9e62fb0d9b7064b16f97d12`; `current` tro release moi, `previous` tro `/opt/deploy/chat/releases/tenant-confirm-layer-052f3ee-20260823-0252`; chi recreate `chat`, giu nguyen Chatmgt/Tinode bridge/worker, ChatAPI, PostgreSQL, Redis va Coturn; khong migration/reset volume.
+- Commit/PR: Source `196ce7b` va docs verification `3ba7c10` da push origin/master; deployment follow-up docs commit.
 
 ## 2026-08-23-03 - Sua lop phu dialog chuyen cong ty
 
