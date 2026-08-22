@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-23 02:29 (Asia/Saigon)
 - Loai: Tinh nang | Web | UI | Kiem thu
-- Trang thai: Hoan tat code; chua deploy
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Cho nguoi dung xac nhan truoc khi tai lai phien lam viec voi tenant/cong ty moi.
 - Pham vi: Chi profile tenant switcher va cac nhan UI i18n; khong thay doi chat, sticker, Tinode, Chatmgt hoac database.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `dist/index.html`.
@@ -18,9 +18,11 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Dung state tam thoi trong ChatUI de chan thao tac vo y; khong dua tenant moi vao session, localStorage hay URL truoc khi API switch thanh cong.
 - Database/API/cau hinh: Khong co migration, endpoint, bien moi truong, secret hoac thay doi quyen.
 - Kiem thu: `npm run test:frontend` dat 142/142; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat.
-- Rui ro con lai: Chua UAT click dialog tren browser production; source chua deploy.
-- Viec tiep theo: Mo profile bang tai khoan co nhieu membership, kiem tra Huy/ESC/nhan ra ngoai va Xac nhan tren light/dark, desktop/mobile sau khi deploy.
-- Commit/PR: Chua tao.
+- Rui ro con lai: Chua UAT click dialog bang tai khoan production co nhieu membership; khong co loi health/log da biet.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo profile bang tai khoan co nhieu membership, kiem tra Huy/ESC/nhan ra ngoai va Xac nhan tren light/dark, desktop/mobile.
+- Trien khai: Source `5565fb8` da push `origin/master`; archive SHA-256 `37A7D76CEF2E8CCB63E16F9617E586F9665B2D94D83DB7A08D221616C7C83115`; release `/opt/deploy/chat/releases/tenant-confirm-5565fb8-20260823-0236`; image ChatUI `sha256:02ac4e2cfa565663d5c9ed5225ec3c8ae57c9ee5c7f267ddf22696d6906637d9`, container `55b2d14abc56`; rollback tag `songhong-production-chat:rollback-before-tenant-confirm-5565fb8-20260823-0236` giu image cu `sha256:4c7f56c89f8bd67b5f29ec34bb54cb3694736ac4e0978eaeed0390bf6927b268`; `current` tro release moi, `previous` tro `/opt/deploy/chat/releases/sticker-e37ea1d-20260823-0200`; chi recreate `chat`, giu nguyen Chatmgt/Tinode bridge/worker, ChatAPI, PostgreSQL, Redis va Coturn; khong migration/reset volume.
+- Kiem thu production: Compose config/build dat; Nginx `-t` dat trong Docker network; local/public `/healthz` tra `ok`; Chatmgt auth health HTTP 200; public JS/CSS asset HTTP 200 va co marker tenant confirmation; log ChatUI/Chatmgt/bridge/worker 5 phut co 0 fatal marker.
+- Commit/PR: Source `5565fb8` da push origin/master; deployment follow-up commit se ghi trong commit docs nay.
 
 ## 2026-08-23-01 - Tich hop sticker tu bo anh nguoi dung cung cap
 
