@@ -4064,7 +4064,7 @@ input:checked + .slider:before {
 .notification-mute-option input { width: 17px; height: 17px; accent-color: var(--vichat-blue); }
 .notification-mute-footer { align-items: center; }
 
-.tenant-switch-confirm-backdrop { z-index: 60; }
+.tenant-switch-confirm-backdrop { z-index: 90; }
 .tenant-switch-confirm-modal { width: min(460px, 100%); }
 .tenant-switch-confirm-summary { display: flex; align-items: center; gap: 13px; padding: 14px; border: 1px solid var(--border-color); border-radius: 14px; background: var(--bg-app); }
 .tenant-switch-confirm-logo { display: grid; width: 52px; height: 52px; flex: 0 0 52px; place-items: center; overflow: hidden; border-radius: 14px; color: var(--vichat-blue); background: var(--vichat-blue-light); font-size: 20px; }

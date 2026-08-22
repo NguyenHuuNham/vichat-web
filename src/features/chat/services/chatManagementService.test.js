@@ -15,6 +15,7 @@ import {
 } from './chatManagementService.js';
 
 const appSource = readFileSync(new URL('../../../app/App.jsx', import.meta.url), 'utf8');
+const stylesSource = readFileSync(new URL('../../../styles/index.css', import.meta.url), 'utf8');
 const managementServiceSource = readFileSync(new URL('./chatManagementService.js', import.meta.url), 'utf8');
 const mobileStoreSource = readFileSync(new URL('../../../../mobile/src/store/appStore.ts', import.meta.url), 'utf8');
 
@@ -128,6 +129,8 @@ test('requires explicit confirmation before switching tenants', () => {
   assert.doesNotMatch(tenantOptionSource, /handleTenantSwitch\(option\)/);
   const confirmationSource = appSource.split('const confirmTenantSwitch = () => {')[1].split('useEffect(() => {')[0];
   assert.match(confirmationSource, /handleTenantSwitch\(pendingTenantSwitch\)/);
+  assert.match(stylesSource, /\.workspace-overlay \{[\s\S]*?z-index: 80;/);
+  assert.match(stylesSource, /\.tenant-switch-confirm-backdrop \{ z-index: 90; \}/);
 });
 
 test('refreshes company logo metadata without resetting the active chat session', () => {

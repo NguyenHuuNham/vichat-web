@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-03 - Sua lop phu dialog chuyen cong ty
+
+- Thoi gian: 2026-08-23 02:50 (Asia/Saigon)
+- Loai: Sua loi | Web | UI | Kiem thu
+- Trang thai: Dang thuc hien
+- Muc tieu: Dam bao dialog xac nhan chuyen cong ty nam de len Profile va nut Huy/Xac nhan nhan click dung.
+- Pham vi: Chi stacking layer cua dialog tenant va regression test; khong thay doi handler switch, API, chat, sticker, Tinode, Chatmgt hoac database.
+- File da thay doi: `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`.
+- Noi dung: `.workspace-overlay` co `z-index: 80` trong khi dialog tenant truoc do chi co `z-index: 60`, khien Profile nam tren va chan tuong tac. Nang rieng `tenant-switch-confirm-backdrop` len `z-index: 90`; forced logout `z-index: 100` va cac luong khac giu nguyen.
+- Quyet dinh ky thuat: Sua tai selector CSS scoped thay vi doi DOM/state, dong thoi them assertion de ngan dialog roi xuong duoi workspace overlay trong lan sau.
+- Database/API/cau hinh: Khong co migration, endpoint, bien moi truong, secret hoac thay doi quyen.
+- Kiem thu: `npm run test:frontend` dat 142/142; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat.
+- Rui ro con lai: Chua deploy ban fix va chua UAT click dialog tren browser production.
+- Viec tiep theo: Commit/push, deploy chi `chat`, kiem tra health/bundle va UAT Huy/Xac nhan tren tai khoan co nhieu membership.
+- Commit/PR: Chua tao.
+
 ## 2026-08-23-02 - Them xac nhan khi chuyen cong ty
 
 - Thoi gian: 2026-08-23 02:29 (Asia/Saigon)
