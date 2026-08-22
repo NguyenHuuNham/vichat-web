@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-06 - Bo sung guard test source-only cho release group
+
+- Thoi gian: 2026-08-23 04:28 (Asia/Saigon)
+- Loai: Sua loi | Kiem thu
+- Trang thai: Dang thuc hien
+- Muc tieu: Khong de contract test doc source frontend bi bao loi khi chay trong image Chatmgt production.
+- Pham vi: Hai test contract pin hoi thoai va quan ly cai dat nhom; khong thay doi runtime, API, database hay luong chat.
+- File da thay doi: `chatservice-main/tests/test_chat_auth_contract.py`, `docs/CHANGELOG.md`.
+- Noi dung: Danh dau hai test co phu thuoc source frontend la source-only de image Chatmgt skip dung nhu cac test cung nhom; local repository van chay day du cac assertion nay.
+- Quyet dinh ky thuat: Dung decorator `repository_source_test` da co thay vi mount source frontend vao runtime image.
+- Database/API/cau hinh: Khong co.
+- Kiem thu: `npm run test:frontend` dat 144/144; `npm run lint` exit 0 voi warning legacy/vendor da co; `python -m py_compile application/controllers/api_chat_management.py tests/test_chat_auth_contract.py` dat; `python -m unittest tests.test_chat_auth_contract -q` dat 37/37; `git diff --check` dat.
+- Rui ro con lai: Chua deploy release group information production.
+- Viec tiep theo: Chay lai frontend/backend test, commit/push, build va deploy release group information; khong migration.
+- Commit/PR: Chua tao.
+
 ## 2026-08-23-05 - Them thao tac va quan tri thong tin nhom
 
 - Thoi gian: 2026-08-23 04:15 (Asia/Saigon)

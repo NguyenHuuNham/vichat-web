@@ -474,6 +474,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("new window.Notification", app_source)
         self.assertIn("desktopNotificationPermission === 'granted'", app_source)
 
+    @repository_source_test
     def test_conversation_pins_are_viewer_scoped_chatmgt_metadata(self):
         _controller_source, serializer_source = function_source(
             CONTROLLER_PATH,
@@ -497,6 +498,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("updateConversationPin", app_source)
         self.assertIn("conversation-context-menu", app_source)
 
+    @repository_source_test
     def test_group_settings_are_owner_only_and_tenant_scoped(self):
         _controller_source, serializer_source = function_source(
             CONTROLLER_PATH,
