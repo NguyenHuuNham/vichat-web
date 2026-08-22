@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-23 04:28 (Asia/Saigon)
 - Loai: Sua loi | Kiem thu
-- Trang thai: Dang thuc hien
+- Trang thai: Hoan tat
 - Muc tieu: Khong de contract test doc source frontend bi bao loi khi chay trong image Chatmgt production.
 - Pham vi: Hai test contract pin hoi thoai va quan ly cai dat nhom; khong thay doi runtime, API, database hay luong chat.
 - File da thay doi: `chatservice-main/tests/test_chat_auth_contract.py`, `docs/CHANGELOG.md`.
@@ -18,25 +18,26 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Dung decorator `repository_source_test` da co thay vi mount source frontend vao runtime image.
 - Database/API/cau hinh: Khong co.
 - Kiem thu: `npm run test:frontend` dat 144/144; `npm run lint` exit 0 voi warning legacy/vendor da co; `python -m py_compile application/controllers/api_chat_management.py tests/test_chat_auth_contract.py` dat; `python -m unittest tests.test_chat_auth_contract -q` dat 37/37; `git diff --check` dat.
-- Rui ro con lai: Chua deploy release group information production.
-- Viec tiep theo: Chay lai frontend/backend test, commit/push, build va deploy release group information; khong migration.
-- Commit/PR: Chua tao.
+- Rui ro con lai: Khong co da biet; can UAT voi tai khoan owner va thanh vien that.
+- Viec tiep theo: UAT mo thong tin nhom, ghim hoi thoai, mo quan ly nhom va doi ten nhom; khong migration.
+- Commit/PR: `bf74edd` da push origin/master; khong co PR.
 
 ## 2026-08-23-05 - Them thao tac va quan tri thong tin nhom
 
 - Thoi gian: 2026-08-23 04:15 (Asia/Saigon)
 - Loai: Tinh nang | API | Bao mat | Web | UI
-- Trang thai: Dang thuc hien
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Bo sung 4 thao tac trong thong tin nhom, cho phep quan tri vien quan ly thiet lap nhom va sua ten nhom ma khong lam thay doi luong chat hien tai.
 - Pham vi: ChatUI thong tin nhom, Chatmgt conversation metadata, Tinode group public metadata va kiem tra hop dong; khong thay doi sticker, tenant switch, tin nhan, database schema hoac migration.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/groupSettings.js`, `src/features/chat/services/groupSettings.test.js`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/tinodeClient.js`, `src/features/demo/services/demoGroupStore.js`, `src/features/i18n/appLanguage.js`, `package.json`, `dist/index.html`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`.
 - Noi dung: Them cac quick action tat thong bao, ghim hoi thoai, them thanh vien va quan ly nhom; hien nut but sua ten/anh nhom theo quyen; dialog quan ly gom cac toggle group settings, chi owner duoc mo va luu. Chatmgt normalize/luu `groupSettings`, ten va avatar; Tinode dong bo public metadata khi realtime san sang; cac hanh vi gui/ghim bi khoa theo setting.
 - Quyet dinh ky thuat: Dung cot `Conversation.subject` va JSONB `Conversation.properties` da co, khong them migration; backend whitelist 9 khoa boolean, chi owner luu management settings, va chi cho member doi ten/anh neu owner bat `allowMembersEditInfo` trong tenant cua session; merge realtime giu lai metadata Chatmgt khi Tinode khong co snapshot setting.
 - Database/API/cau hinh: Them `PUT /api/v1/conversation/<id>/group-settings` va alias `/api/v1/chat/threads/<id>/group-settings`; khong co migration, bien moi truong hoac secret.
-- Kiem thu: `npm run test:frontend` dat 144/144; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle group management; `python -m py_compile application/controllers/api_chat_management.py tests/test_chat_auth_contract.py` dat; `python -m unittest tests.test_chat_auth_contract -q` dat 37/37; `git diff --check` dat.
-- Rui ro con lai: Cac toggle ghi chu/binh chon/nhac hen moi luu va hien thi theo group settings; codebase chua co luong tao note/poll/reminder rieng de enforce sau khi bat/tat.
-- Viec tiep theo: Review diff, commit/push va deploy ChatUI cung Chatmgt; khong migration/reset volume.
-- Commit/PR: Chua tao.
+- Kiem thu: `npm run test:frontend` dat 144/144; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle group management; `python -m py_compile application/controllers/api_chat_management.py tests/test_chat_auth_contract.py` dat; local `python -m unittest tests.test_chat_auth_contract -q` dat 37/37; production image contract dat 37/37 voi 15 test source-only skip dung; `nginx -t` trong image va `sudo nginx -t` tren host dat; public `/healthz` tra `ok`, Chatmgt auth health HTTP 200, bundle marker va log 4 service 5 phut co 0 fatal/panic/traceback/critical; `git diff --check` dat.
+- Rui ro con lai: Cac toggle ghi chu/binh chon/nhac hen moi luu va hien thi theo group settings; codebase chua co luong tao note/poll/reminder rieng de enforce sau khi bat/tat; chua UAT bang tai khoan owner/thanh vien production.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo thong tin nhom, kiem tra 4 quick action, mo quan ly nhom bang owner, luu toggle va doi ten bang icon but; neu loi thi tro `current` ve `previous` va recreate rieng `chat`/`chatmgt` tu release rollback.
+- Trien khai: Source `0801470`, test follow-up `bf74edd` da push origin/master; archive SHA-256 `C40C93C225CDCA31227FE3B983D667DE4DDF2E832953457FDE1D50D38880FE30`; release `/opt/deploy/chat/releases/group-info-bf74edd-20260823-043033`; image ChatUI `sha256:b7494c7696b8822ff702c1626dba7f4aad26b9c7b131044a50a9bce14bb8afff`, container `22497e37277e44ed3d05adcc5298c12101842be229d9111cbe7b4378fdd3a7e8`; image Chatmgt `sha256:b0c5c6e1c7a4f3319214978b1025fd3dc1b375ce86625698acc0708ef10d891d`, container `65c05f204836c820ada4655e9fb5cb9b37656b848c216ff1f6a8a111e6722dcd`; rollback tag `songhong-production-chat:rollback-before-group-info-bf74edd-20260823-043033` giu image cu `sha256:210eca938de47ce202d14c41a4acfb508f1f8c3befa299d7e5b7c05377411d9a`, `songhong-production-chatmgt:rollback-before-group-info-bf74edd-20260823-043033` giu image cu `sha256:9e81203c10ff6e873bd7cefd474ca96dd6634d096027f36f303a6e574a92d6ce`; `current` tro release moi, `previous` tro `/opt/deploy/chat/releases/sticker-fix-3ba7c10-20260823-0317`; chi recreate `chatmgt` va `chat`, giu nguyen Tinode bridge/worker, ChatAPI, PostgreSQL, Redis va Coturn; khong migration/reset volume.
+- Commit/PR: Source `0801470`; deployment/test follow-up `bf74edd`; khong co PR.
 
 ## 2026-08-23-04 - Lam ro sticker va mo rong emoji
 
