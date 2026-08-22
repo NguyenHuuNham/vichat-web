@@ -85,6 +85,14 @@ test('membership mutations retry exactly once with a forced Tinode refresh', asy
   assert.deepEqual(attempts, [false, true]);
 });
 
+test('managed group additions rely on the server-side owner bridge', () => {
+  const addSource = managementServiceSource
+    .split('async addConversationParticipants')[1]
+    .split('async removeConversationParticipant')[0];
+  assert.match(addSource, /apiRequest\(`\/api\/v1\/conversation\/\$\{encodeURIComponent\(conversationId\)\}\/participants`/);
+  assert.doesNotMatch(addSource, /membershipApiRequest/);
+});
+
 test('restores a cookie-backed session after a full page reload', () => {
   assert.equal(typeof chatManagementService.restoreSession, 'function');
   assert.equal(typeof managementAuthClient.restoreSession, 'function');
@@ -190,6 +198,19 @@ test('group member controls use the synced company directory with owner-only mut
   }
 
   assert.equal(typeof chatManagementService.addConversationParticipants, 'function');
+  const addSource = appSource.split('const handleAddGroupMembers')[1].split('const closeCreateGroupModal')[0];
+  assert.doesNotMatch(addSource, /canManageGroupMembers\(activeChat, directoryAccounts, currentUser\)/);
+  assert.match(appSource, /\{activeChat\.isGroup && \(\s*<button[\s\S]*btn-add-member/);
+});
+
+test('group mute and reaction controls preserve the existing checkbox flow and expose actor details', () => {
+  const muteSource = appSource.split('const handleConversationMuteToggle')[1].split('const handleNotificationMuteSubmit')[0];
+  assert.match(muteSource, /typeof event\?\.target\?\.checked === 'boolean'/);
+  assert.match(muteSource, /!activeChatMuted/);
+  assert.match(appSource, /reactionUsers/);
+  assert.match(appSource, /reaction-details-modal/);
+  assert.match(appSource, /fa-key/);
+  assert.match(appSource, /activeChat\.isGroup\s*\n?\s*&& identitiesOverlap\(\{ id: messageSenderId \}/);
 });
 
 test('conversation actions use the authoritative Chatmgt id on web and mobile', () => {

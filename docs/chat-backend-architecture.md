@@ -237,9 +237,13 @@ stored under the JWT tenant. Foreign tenant IDs sent in query strings are
 ignored; the authenticated JWT and membership rows remain authoritative.
 
 The group information panel keeps notification mute and conversation pin
-viewer-scoped. Adding members and opening or saving group management settings
-require the active group owner; renaming/changing the group avatar is also
-owner-only unless the owner explicitly enables `allowMembersEditInfo`. Chatmgt
+viewer-scoped. Any active group member may add another active employee from the
+same tenant; Chatmgt performs that Tinode mutation with a short-lived
+server-side owner bridge credential, so legacy member permissions cannot block
+the feature and no owner token is returned to the browser. Opening or saving
+group management settings and removing another member remain owner-only.
+Renaming/changing the group avatar is also owner-only
+unless the owner explicitly enables `allowMembersEditInfo`. Chatmgt
 persists the group subject, avatar reference, and whitelisted boolean
 `groupSettings` in the existing `Conversation.subject`/`properties` columns.
 `PUT /api/v1/conversation/<id>/group-settings` (and the
@@ -336,11 +340,13 @@ or rewrite later message, presence or call packets.
 
 `POST /api/v1/conversation/<id>/tinode-prepare` prepares missing UID mappings
 from current Chatmgt membership. Group topic binding and add/remove/leave
-operations verify the fresh Tinode token and exact tenant member set before
-committing Chatmgt metadata. If a bound group has a stale Tinode subscriber
-snapshot, Chatmgt uses the surviving owner bridge credential to reconcile the
-topic to the active Chatmgt member set before accepting the bind or membership
-change. When a group owner leaves, Chatmgt grants the
+operations verify the exact tenant member set before committing Chatmgt
+metadata. Add-member requests are authorized by the current Chatmgt
+membership and use the active owner bridge credential server-side; the browser
+does not need to supply an owner token. If a bound group has a stale Tinode
+subscriber snapshot, Chatmgt uses the surviving owner bridge credential to
+reconcile the topic to the active Chatmgt member set before accepting the bind
+or membership change. When a group owner leaves, Chatmgt grants the
 replacement member owner access, has that member accept the transfer through
 its own Tinode session, and only then removes the former owner. The leave
 activity event is published by a surviving member after the membership commit,
@@ -513,6 +519,8 @@ history, role-aware actions and a message-to-task shortcut.
 | `PUT` | `/api/v1/conversation/<id>/pin` | Set or clear the current user's conversation pin |
 | `POST` | `/api/v1/conversation/<id>/tinode-prepare` | Prepare Tinode participant mappings |
 | `PUT` | `/api/v1/conversation/<id>/tinode-topic` | Verify/bind the topic to exact membership |
+| `POST` | `/api/v1/conversation/<id>/participants` | Add same-tenant active employees; any active group member may request this |
+| `DELETE` | `/api/v1/conversation/<id>/participants/<participant-id>` | Remove self, or remove another member as the group owner |
 | `DELETE` | `/api/v1/conversation/<id>/self` | Remove the current user's conversation membership only |
 | `GET` | `/api/v1/workspace/items` | List tenant-visible Workspace items and summary |
 | `POST` | `/api/v1/workspace/items` | Create a validated task, announcement, approval, ticket, wiki, event or integration entry |

@@ -933,6 +933,16 @@ body {
     line-height: 1.2;
 }
 
+.group-owner-message-badge i {
+    color: #d39b00;
+    font-size: 11px;
+}
+
+.group-owner-message-badge.outgoing {
+    align-self: flex-end;
+    margin-right: 4px;
+}
+
 .sender-profile-trigger {
     align-self: flex-start;
     padding: 0;
@@ -984,7 +994,8 @@ body {
 .message-reaction-row { display: flex; gap: 4px; padding: 6px 4px; border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); }
 .message-reaction-row button { width: auto; justify-content: center; padding: 4px 6px; font-size: 18px; }
 .message-reactions { display: flex; gap: 4px; margin-top: 5px; }
-.message-reactions span { padding: 2px 6px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-gray); font-size: 12px; }
+.message-reactions button { padding: 2px 6px; border: 1px solid var(--border-color); border-radius: 10px; color: var(--text-main); background: var(--bg-gray); font: inherit; font-size: 12px; cursor: pointer; }
+.message-reactions button:hover, .message-reactions button:focus-visible { border-color: var(--vichat-blue); background: var(--vichat-blue-light); outline: none; }
 .message-reply-preview { display: flex; align-items: center; gap: 7px; min-width: 0; margin-bottom: 7px; padding: 6px 8px; border-left: 3px solid var(--vichat-blue); border-radius: 4px; background: rgba(244, 81, 30, .08); color: var(--text-muted); font-size: 11px; }
 .message-reply-preview-action { width: 100%; border-top: 0; border-right: 0; border-bottom: 0; text-align: left; cursor: pointer; font: inherit; }
 .message-reply-preview-action:hover, .message-reply-preview-action:focus-visible { background: rgba(244, 81, 30, .14); outline: none; }
@@ -1012,6 +1023,18 @@ body {
 .message-details-card, .message-share-card { width: min(430px, 100%); max-height: 80vh; overflow: auto; padding: 18px; border-radius: 14px; background: var(--bg-white); box-shadow: 0 20px 50px rgba(0,0,0,.22); }
 .message-details-header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); font-size: 15px; }
 .message-details-card p { margin: 13px 0 0; color: var(--text-main); font-size: 13px; word-break: break-word; }
+.reaction-details-card { width: min(430px, 100%); }
+.reaction-details-message-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted) !important; }
+.reaction-details-tabs { display: flex; gap: 6px; margin: 14px 0 8px; overflow-x: auto; }
+.reaction-details-tabs button { flex: 0 0 auto; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: 999px; color: var(--text-muted); background: var(--bg-gray); font: inherit; font-size: 12px; cursor: pointer; }
+.reaction-details-tabs button.active, .reaction-details-tabs button:hover, .reaction-details-tabs button:focus-visible { border-color: var(--vichat-blue); color: var(--vichat-blue); background: var(--vichat-blue-light); outline: none; }
+.reaction-details-tabs button span { margin-left: 3px; font-weight: 700; }
+.reaction-details-list { display: flex; max-height: 48vh; flex-direction: column; overflow-y: auto; }
+.reaction-details-user { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 7px 2px; border-bottom: 1px solid var(--border-color); }
+.reaction-details-avatar { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 50%; }
+.reaction-details-user-name { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--text-main); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.reaction-details-user-emojis { color: var(--text-muted); font-size: 16px; }
+.reaction-details-empty { padding: 20px 0 8px; text-align: center; }
 .share-conversation-list { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
 .share-conversation-list button { display: flex; align-items: center; gap: 10px; padding: 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text-main); text-align: left; cursor: pointer; }
 .share-conversation-list button:hover { background: var(--bg-gray); }

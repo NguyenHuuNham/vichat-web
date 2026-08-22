@@ -3253,8 +3253,6 @@ async def conversation_participant_add(request, conversation_id):
         return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
     if not bool((item.properties or {}).get("is_group")):
         return json({"error_code": "PARAM_ERROR", "error_message": "Participants can only be added to a group."}, status=400)
-    if membership.role != "OWNER":
-        return _forbidden_error()
 
     requested_ids = list(dict.fromkeys(
         str(value) for value in ((request.json or {}).get("participant_ids") or []) if value
@@ -3286,19 +3284,33 @@ async def conversation_participant_add(request, conversation_id):
     ]
     try:
         tinode_token = ""
-        actor_account = None
+        tinode_operator_uid = ""
         added_tinode_uids = []
         tinode_members_added = False
         database_committed = False
         if item.tinode_topic and activated_ids:
-            tinode_token = str((request.json or {}).get("tinode_token") or "").strip()
-            if not tinode_token:
-                return json({"error_code": "TINODE_TOKEN_REQUIRED", "error_message": "Tinode authentication is required."}, status=400)
-            actor_account = _account_by_id(tenant_id, user_id)
-            if actor_account is None or not actor_account.tinode_uid:
+            current_account = _account_by_id(tenant_id, user_id)
+            if current_account is None:
                 return json({"error_code": "TINODE_ACCOUNT_UNPREPARED", "error_message": "The current Tinode account is not prepared."}, status=409)
             if current_user.get("auth_method") == "account_sso":
-                await _validated_account_identity(request, actor_account)
+                await _validated_account_identity(request, current_account)
+            participants, accounts_by_id = _active_conversation_accounts(item)
+            owner_participant = next(
+                (participant for participant in participants if participant.role == "OWNER"),
+                None,
+            )
+            owner_account = accounts_by_id.get(owner_participant.participant_id) if owner_participant else None
+            if owner_account is None:
+                raise AuthError("The group has no active owner.", 409)
+            tinode_operator_uid = await _ensure_tinode_account(owner_account)
+            owner_auth = await tinode_sso_login(
+                _tinode_account_identity(owner_account),
+                owner_account.tinode_username,
+                tinode_operator_uid,
+            )
+            tinode_token = str(owner_auth.get("token") or "").strip()
+            if not tinode_token:
+                raise AuthError("Tinode could not authenticate the group owner.", 502)
             prepared_uids = await _ensure_tinode_accounts(
                 requested_accounts_by_id[requested_id] for requested_id in activated_ids
             )
@@ -3327,7 +3339,7 @@ async def conversation_participant_add(request, conversation_id):
         if item.tinode_topic and added_tinode_uids:
             await tinode_add_topic_members(
                 tinode_token,
-                actor_account.tinode_uid,
+                tinode_operator_uid,
                 item.tinode_topic,
                 added_tinode_uids,
             )
@@ -3336,7 +3348,7 @@ async def conversation_participant_add(request, conversation_id):
             expected_member_uids = _expected_tinode_member_uids(item, active_participants, active_accounts)
             await tinode_reconcile_topic_members(
                 tinode_token,
-                actor_account.tinode_uid,
+                tinode_operator_uid,
                 item.tinode_topic,
                 expected_member_uids,
             )
@@ -3361,7 +3373,7 @@ async def conversation_participant_add(request, conversation_id):
                 try:
                     await tinode_remove_topic_member(
                         tinode_token,
-                        actor_account.tinode_uid,
+                        tinode_operator_uid,
                         item.tinode_topic,
                         added_uid,
                     )

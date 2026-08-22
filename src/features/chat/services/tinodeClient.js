@@ -642,8 +642,14 @@ function toMessage(msg, tinode, topic = null) {
     type: call ? 'call' : friendEvent ? 'friend_event' : reactionEvent ? 'reaction_event' : recallEvent ? 'recall_event' : systemEvent ? 'system' : attachment ? (sticker ? 'sticker' : isImageAttachment ? 'image' : 'file') : 'text',
     action: friendEvent?.action || systemEvent?.action,
     sender: isOutgoing ? 'outgoing' : 'incoming',
-    senderId: friendActorId || systemEvent?.actorId || messageSenderId || (isOutgoing ? tinode.getCurrentUserID() : undefined),
-    senderName: friendActorName || systemEvent?.actorName || (isOutgoing ? undefined : (messageSenderId || 'Thành viên')),
+    senderId: friendActorId
+      || systemEvent?.actorId
+      || messageSenderId
+      || (isOutgoing ? tinode.getCurrentUserID() : undefined),
+    senderName: friendActorName
+      || systemEvent?.actorName
+      || reactionEvent?.actorName
+      || (isOutgoing ? undefined : (messageSenderId || 'Thành viên')),
     targetIds: systemEvent?.targets?.map?.(target => target.id) || [],
     systemEvent,
     friendEvent,
@@ -690,21 +696,40 @@ function toConversation(topic, tinode) {
   reactionEvents.forEach(event => {
     const targetId = event.reactionEvent?.targetId;
     const emoji = event.reactionEvent?.emoji;
-    const actorId = event.reactionEvent?.actorId || event.senderId || event.id;
+    // Tinode's packet sender is authoritative; the event payload only fills
+    // the gap for legacy packets that omitted the sender field.
+    const actorId = event.senderId || event.reactionEvent?.actorId || event.id;
     if (!targetId || !emoji) return;
-    const states = reactionState.get(targetId) || {};
-    states[`${actorId}:${emoji}`] = event.reactionEvent?.active !== false;
-    reactionState.set(targetId, states);
-  });
-  const reactionCounts = new Map([...reactionState.entries()].map(([targetId, states]) => {
-    const counts = {};
-    Object.entries(states).forEach(([key, active]) => {
-      if (!active) return;
-      const emoji = key.slice(key.indexOf(':') + 1);
-      counts[emoji] = (counts[emoji] || 0) + 1;
+    const targetStates = reactionState.get(targetId) || new Map();
+    const emojiStates = targetStates.get(emoji) || new Map();
+    emojiStates.set(String(actorId), {
+      active: event.reactionEvent?.active !== false,
+      user: {
+        id: String(actorId),
+        name: event.reactionEvent?.actorName || event.senderName || '',
+        avatar: event.reactionEvent?.actorAvatar || event.avatar || '',
+      },
     });
-    return [targetId, counts];
-  }));
+    targetStates.set(emoji, emojiStates);
+    reactionState.set(targetId, targetStates);
+  });
+  const reactionCounts = new Map();
+  const reactionUsers = new Map();
+  reactionState.forEach((emojiStates, targetId) => {
+    const counts = {};
+    const usersByEmoji = {};
+    emojiStates.forEach((actorStates, emoji) => {
+      const activeUsers = [...actorStates.values()]
+        .filter(state => state.active)
+        .map(state => state.user);
+      if (activeUsers.length > 0) {
+        counts[emoji] = activeUsers.length;
+        usersByEmoji[emoji] = activeUsers;
+      }
+    });
+    reactionCounts.set(targetId, counts);
+    reactionUsers.set(targetId, usersByEmoji);
+  });
   const recallsById = new Map();
   const recallsBySeq = new Map();
   visibleRecallEvents.forEach(message => {
@@ -721,7 +746,13 @@ function toConversation(topic, tinode) {
         appliedRecallEvents.add(recallMessage.id);
         return applyRecallToMessage(message, recallMessage);
       }
-      const withReactions = reactionCounts.has(message.id) ? { ...message, reactions: reactionCounts.get(message.id) } : message;
+      const withReactions = reactionCounts.has(message.id)
+        ? {
+          ...message,
+          reactions: reactionCounts.get(message.id),
+          reactionUsers: reactionUsers.get(message.id) || {},
+        }
+        : message;
       return withReactions.replyTo?.id && recallsById.has(String(withReactions.replyTo.id))
         ? { ...withReactions, replyTo: { ...withReactions.replyTo, text: 'Tin nhắn đã được thu hồi' } }
         : withReactions;
@@ -829,6 +860,8 @@ async function enrichConversationProfiles(conversation, tinode = getClient()) {
     ...(safeConversation.members || []).map(member => member.id),
     ...(safeConversation.messages || []).map(message => message.senderId),
     ...(safeConversation.messages || []).flatMap(message => message.targetIds || []),
+    ...(safeConversation.messages || []).flatMap(message => Object.values(message.reactionUsers || {})
+      .flatMap(users => (Array.isArray(users) ? users : []).map(user => user?.id))),
     ...(safeConversation.friendEvents || []).flatMap(message => [
       message.friendEvent?.requesterId,
       message.friendEvent?.recipientId,
@@ -854,6 +887,17 @@ async function enrichConversationProfiles(conversation, tinode = getClient()) {
       ...message,
       senderName: usableProfileName(message.senderName) || profile?.name || 'Thành viên',
       avatar: profile?.avatar || message.avatar || '',
+      reactionUsers: Object.fromEntries(Object.entries(message.reactionUsers || {}).map(([emoji, users]) => [
+        emoji,
+        (Array.isArray(users) ? users : []).map(user => {
+          const reactionProfile = profilesById.get(user.id) || userProfileCache.get(user.id) || {};
+          return {
+            ...user,
+            name: usableProfileName(user.name) || reactionProfile.name || user.id,
+            avatar: reactionProfile.avatar || user.avatar || '',
+          };
+        }),
+      ])),
     };
     if (message.type === 'system' && message.systemEvent) {
       const event = {
@@ -1800,10 +1844,13 @@ export const tinodeClient = {
 
   async sendReaction(topicName, targetId, emoji, active = true) {
     const topic = await subscribeTopic(topicName);
+    const actorId = getClient().getCurrentUserID();
     const event = {
       targetId: String(targetId || ''),
       emoji: String(emoji || '').slice(0, 8),
-      actorId: getClient().getCurrentUserID(),
+      actorId,
+      actorName: currentSession?.profile?.name || '',
+      actorAvatar: currentSession?.profile?.avatar || '',
       active: Boolean(active),
     };
     if (!event.targetId || !event.emoji) throw new Error('Thiếu tin nhắn hoặc biểu cảm.');

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-07 - Sua tat thong bao, them thanh vien va hien thi group reaction
+
+- Thoi gian: 2026-08-23 05:26 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Bao mat | Web | API | Kiem thu
+- Trang thai: Dang thuc hien
+- Muc tieu: Cho phep chon thoi gian tat thong bao, cho moi thanh vien group them thanh vien, hien bieu tuong chia khoa cho tin nhan cua quan tri vien group va xem danh sach nguoi da thich cam xuc.
+- Pham vi: ChatUI reaction/mute/group membership, Tinode reaction projection, Chatmgt participant API va tai lieu kien truc; khong thay doi chat 1-1, database schema, sticker hay luong quan tri group.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/messagePolicy.js`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/messagePolicy.test.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Nut tat thong bao mo dialog chon 1 gio, 4 gio, den 8:00 hoac den khi bat lai; quick action them thanh vien hien cho moi member trong group. Chatmgt van gioi han theo membership cung tenant va thuc hien mutation Tinode bang owner bridge credential ngan han tren server de ca group cu cung hoat dong; xoa member va quan ly group van owner-only. Reaction duoc luu actor/profile theo emoji, pill reaction co the bam de mo dialog loc theo emoji; tin nhan cua admin group hien icon chia khoa vang, chi trong group.
+- Quyet dinh ky thuat: Khong dung token owner tren browser; khong doi schema. Tinode van la nguon message/reaction, Chatmgt la nguon membership/quyen, va UI bo qua local reaction overlay trong realtime mode de tranh ghi de event Tinode.
+- Database/API/cau hinh: Mo rong hanh vi `POST /api/v1/conversation/<id>/participants` va alias hien co; khong migration, bien moi truong hoac secret.
+- Kiem thu local: `npm run test:frontend` dat 146/146; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `python -m py_compile application/controllers/api_chat_management.py tests/test_chat_auth_contract.py` dat; `python -m unittest tests.test_chat_auth_contract -q` dat 37/37; `git diff --check` dat. Production verification dang cho deploy.
+- Rui ro con lai: Can UAT bang tai khoan owner va member tren group cu/moi, reaction tren tin nhan text/file/sticker, mute tren desktop/mobile.
+- Viec tiep theo: Chay test -> commit/push -> deploy chi `chat` va `chatmgt` -> health/log/rollback marker -> UAT production; khong migration va khong reset volume.
+- Commit/PR: Chua tao.
+
 ## 2026-08-23-06 - Bo sung guard test source-only cho release group
 
 - Thoi gian: 2026-08-23 04:28 (Asia/Saigon)

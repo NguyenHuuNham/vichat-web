@@ -106,6 +106,10 @@ test('normalizes malformed direct room metadata before the UI iterates it', () =
         text: { invalid: true },
         avatar: { ref: '/tinode-media/v0/file/u/avatar' },
         reactions: { like: { invalid: true }, heart: 2 },
+        reactionUsers: {
+          heart: [{ id: 'usr-peer', name: 'Peer', avatar: { ref: '/avatar' } }],
+          invalid: [{ name: 'Missing id' }],
+        },
         replyTo: { senderName: { invalid: true }, text: { invalid: true } },
       },
     },
@@ -127,6 +131,9 @@ test('normalizes malformed direct room metadata before the UI iterates it', () =
   assert.equal(room.messages[0].replyTo.senderName, '');
   assert.equal(room.messages[0].avatar, '/tinode-media/v0/file/u/avatar');
   assert.deepEqual(room.messages[0].reactions, { heart: 2 });
+  assert.deepEqual(room.messages[0].reactionUsers, {
+    heart: [{ id: 'usr-peer', name: 'Peer', avatar: '/avatar', uid: '', tinodeUid: '' }],
+  });
 });
 
 test('normalizes sticker metadata without letting malformed fields reach the UI', () => {

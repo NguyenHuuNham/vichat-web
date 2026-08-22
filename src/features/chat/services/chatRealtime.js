@@ -183,6 +183,34 @@ function normalizeReactions(value) {
     .filter(([emoji, count]) => emoji && Number.isFinite(count)));
 }
 
+function normalizeReactionUsers(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value)
+    .map(([emoji, users]) => [
+      conversationText(emoji),
+      conversationArray(users).map(user => {
+        const normalized = conversationObject(user);
+        if (!normalized) return null;
+        const id = conversationIdentity(
+          normalized.id
+          || normalized.uid
+          || normalized.tinodeUid
+          || normalized.tinode_uid,
+        );
+        if (!id) return null;
+        return {
+          ...normalized,
+          id,
+          uid: conversationIdentity(normalized.uid),
+          tinodeUid: conversationIdentity(normalized.tinodeUid || normalized.tinode_uid),
+          name: conversationText(normalized.name) || id,
+          avatar: conversationMedia(normalized.avatar || normalized.photo),
+        };
+      }).filter(Boolean),
+    ])
+    .filter(([emoji, users]) => emoji && users.length > 0));
+}
+
 function normalizeMessage(value, index) {
   const message = conversationObject(value);
   if (!message) return null;
@@ -215,6 +243,7 @@ function normalizeMessage(value, index) {
       };
     }).filter(Boolean),
     reactions: normalizeReactions(message.reactions),
+    reactionUsers: normalizeReactionUsers(message.reactionUsers),
     systemEvent: normalizeEvent(message.systemEvent),
     friendEvent: normalizeEvent(message.friendEvent),
     voiceDuration: Number(message.voiceDuration) > 0 ? Number(message.voiceDuration) : 0,

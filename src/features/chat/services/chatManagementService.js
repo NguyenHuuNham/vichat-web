@@ -611,11 +611,12 @@ export const chatManagementService = {
 
   async addConversationParticipants(conversationId, participantIds = []) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
-    const payload = await membershipApiRequest(
-      `/api/v1/conversation/${encodeURIComponent(conversationId)}/participants`,
-      'POST',
-      { participant_ids: participantIds },
-    );
+    // Chatmgt performs the Tinode add with the owner bridge credential. The
+    // current member's browser token is not needed and may lack invite rights.
+    const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/participants`, {
+      method: 'POST',
+      body: JSON.stringify({ participant_ids: participantIds }),
+    });
     return normalizeConversation(payload);
   },
 

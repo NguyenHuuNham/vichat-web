@@ -385,6 +385,29 @@ function messageSenderName(message) {
   return message?.senderName || (message?.sender === 'outgoing' ? 'Bạn' : 'Thành viên');
 }
 
+function reactionUserRecords(reactionUsers = {}, selectedEmoji = 'all') {
+  const grouped = new Map();
+  Object.entries(reactionUsers || {}).forEach(([emoji, users]) => {
+    if (selectedEmoji !== 'all' && emoji !== selectedEmoji) return;
+    (Array.isArray(users) ? users : []).forEach(user => {
+      const id = String(user?.id || user?.uid || '').trim();
+      if (!id) return;
+      const previous = grouped.get(id) || { ...user, id, emojis: [] };
+      if (!previous.emojis.includes(emoji)) previous.emojis.push(emoji);
+      if (!previous.name && user?.name) previous.name = user.name;
+      if (!previous.avatar && user?.avatar) previous.avatar = user.avatar;
+      grouped.set(id, previous);
+    });
+  });
+  return [...grouped.values()];
+}
+
+function reactionEmojiCounts(reactionUsers = {}) {
+  return Object.fromEntries(Object.entries(reactionUsers || {})
+    .map(([emoji, users]) => [emoji, Array.isArray(users) ? users.length : 0])
+    .filter(([, count]) => count > 0));
+}
+
 function messageLinks(message) {
   const explicitLinks = Array.isArray(message?.links)
     ? message.links.map(link => typeof link === 'string' ? link : link?.url || link?.href).filter(Boolean)
@@ -820,6 +843,7 @@ function mergeTinodeMessages(existingMessages = [], incomingMessages = []) {
           sticker: undefined,
           replyTo: null,
           reactions: {},
+          reactionUsers: {},
         }
         : {
           ...previous,
@@ -1510,6 +1534,7 @@ function App() {
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [voiceRecordingSeconds, setVoiceRecordingSeconds] = useState(0);
   const [messageDetails, setMessageDetails] = useState(null);
+  const [reactionDetails, setReactionDetails] = useState(null);
   const [shareMessage, setShareMessage] = useState(null);
   const [messageActions, setMessageActions] = useState({});
   const [messageReactionPickerKey, setMessageReactionPickerKey] = useState(null);
@@ -1680,6 +1705,9 @@ function App() {
     time: '',
     badge: 0,
   };
+  const reactionDetailsMessage = reactionDetails
+    ? roomMessages(activeChat).find(message => message?.id === reactionDetails.messageId) || reactionDetails.message
+    : null;
   useEffect(() => {
     const ensured = ensureDefaultChatbotConversation(conversations, {
       accountSession: accountSessionRef.current,
@@ -1697,6 +1725,7 @@ function App() {
     messageElementsRef.current.clear();
     setMessageReactionPickerKey(null);
     setMessageActionHoverKey(null);
+    setReactionDetails(null);
     setPinnedMessagesExpanded(false);
     setHighlightedMessageKey(null);
     setIsGroupManagementOpen(false);
@@ -2293,7 +2322,10 @@ function App() {
       setMessageMenu(null);
       setConversationMenu(null);
       setConversationCategoryMenuOpen(false);
-      if (event.type === 'keydown') setProfileContact(null);
+      if (event.type === 'keydown') {
+        setProfileContact(null);
+        setReactionDetails(null);
+      }
     };
     document.addEventListener('click', closeMenus);
     document.addEventListener('keydown', closeMenus);
@@ -4566,7 +4598,10 @@ function App() {
   };
 
   const handleConversationMuteToggle = event => {
-    if (event.target.checked) {
+    const shouldMute = typeof event?.target?.checked === 'boolean'
+      ? event.target.checked
+      : !activeChatMuted;
+    if (shouldMute) {
       setNotificationMuteOption(NOTIFICATION_MUTE_OPTIONS.ONE_HOUR);
       setNotificationMuteDialog({ id: activeChat.id, name: activeChat.name });
       return;
@@ -4788,7 +4823,6 @@ function App() {
     if (
       isAddingGroupMembers
       || !activeChat.isGroup
-      || !canManageGroupMembers(activeChat, directoryAccounts, currentUser)
       || groupMemberAddIds.length === 0
     ) return;
     const selectedMembers = groupMemberAddIds
@@ -5651,6 +5685,27 @@ function App() {
 
   const messageActionKey = (roomId, messageId) => `${roomId}:${messageId}`;
 
+  const reactionDetailState = reactionDetailsMessage && chatMode !== 'tinode'
+    ? messageActions[messageActionKey(activeChat.id, reactionDetailsMessage.id)] || {}
+    : {};
+  const reactionDetailCounts = {
+    ...(reactionDetailsMessage?.reactions || {}),
+    ...(reactionDetailState.reactions || {}),
+  };
+  const reactionDetailUsersByEmoji = {
+    ...(reactionDetailsMessage?.reactionUsers || {}),
+    ...(reactionDetailState.reactionUsers || {}),
+  };
+  const reactionDetailEmojiCounts = {
+    ...reactionEmojiCounts(reactionDetailUsersByEmoji),
+    ...reactionDetailCounts,
+  };
+  const reactionDetailSelectedEmoji = reactionDetails?.emoji || 'all';
+  const reactionDetailUsers = reactionUserRecords(
+    reactionDetailUsersByEmoji,
+    reactionDetailSelectedEmoji,
+  );
+
   const saveMessageAction = (message, patch) => {
     if (!message?.id || !currentChatId) return;
     const key = messageActionKey(currentChatId, message.id);
@@ -5812,15 +5867,47 @@ function App() {
       }
       if (action === 'reaction') {
         const key = messageActionKey(activeChat.id, message.id);
-        const current = messageActions[key]?.reactions || {};
-        const active = !current[emoji];
-        const nextReactions = { ...current, [emoji]: active ? 1 : 0 };
+        const current = chatMode === 'tinode' ? {} : (messageActions[key]?.reactions || {});
+        const reactionActorId = tinodeClient.currentUserId || viewerId;
+        const reactionUsersByEmoji = {
+          ...(message.reactionUsers || {}),
+          ...(chatMode === 'tinode' ? {} : (messageActions[key]?.reactionUsers || {})),
+        };
+        const currentReactionUsers = Array.isArray(reactionUsersByEmoji[emoji])
+          ? reactionUsersByEmoji[emoji]
+          : [];
+        const viewerAlreadyReacted = currentReactionUsers.some(user => identitiesOverlap(user, { id: reactionActorId })
+          || identitiesOverlap(user, currentUser));
+        const hasLocalReactionState = Object.prototype.hasOwnProperty.call(current, emoji);
+        const active = hasLocalReactionState ? !current[emoji] : !viewerAlreadyReacted;
+        const serverCount = Math.max(0, Number(message.reactions?.[emoji]) || 0);
+        const nextReactions = {
+          ...current,
+          [emoji]: active ? Math.max(serverCount + 1, 1) : Math.max(serverCount - 1, 0),
+        };
+        const nextReactionUsers = { ...reactionUsersByEmoji };
+        const remainingUsers = currentReactionUsers.filter(user => !identitiesOverlap(user, { id: reactionActorId })
+          && !identitiesOverlap(user, currentUser));
+        if (active && reactionActorId) {
+          nextReactionUsers[emoji] = [
+            ...remainingUsers,
+            {
+              id: reactionActorId,
+              name: currentUser?.name || 'Bạn',
+              avatar: currentUser?.avatar || '',
+            },
+          ];
+        } else if (remainingUsers.length > 0) {
+          nextReactionUsers[emoji] = remainingUsers;
+        } else {
+          delete nextReactionUsers[emoji];
+        }
         if (chatMode === 'tinode') {
           const topicName = await ensureTinodeConversationTopic(activeChat);
           await tinodeClient.sendReaction(topicName, message.id, emoji, active);
         }
-        saveMessageAction(message, { reactions: nextReactions });
-        applyMessagePatch(message, { reactions: nextReactions });
+        saveMessageAction(message, { reactions: nextReactions, reactionUsers: nextReactionUsers });
+        applyMessagePatch(message, { reactions: nextReactions, reactionUsers: nextReactionUsers });
         return;
       }
       if (action === 'hide') {
@@ -6853,16 +6940,34 @@ function App() {
             // Tinode can deliver an echo without the legacy `sender` field. In
             // that case the sender id is the source of truth; otherwise a
             // reply that Lâm sends can be rendered on the recipient side.
-            const messageSenderId = msg.senderId || msg.raw?.from || msg.raw?.head?.['x-sender-id'];
+            const explicitMessageSenderId = msg.senderId || msg.raw?.from || msg.raw?.head?.['x-sender-id'];
             const isOutgoing = msg.sender === "outgoing"
-              || Boolean(messageSenderId && viewerId && messageSenderId === viewerId)
+              || Boolean(explicitMessageSenderId && viewerId && explicitMessageSenderId === viewerId)
               || Boolean(msg.pending && msg.senderId && msg.senderId === viewerId);
+            const messageSenderId = explicitMessageSenderId || (isOutgoing ? viewerId : '');
             const messageKey = messageActionKey(activeChat.id, msg.id);
             const messageState = messageActions[messageKey] || {};
             const isOwnerMessage = activeChat.isGroup
-              && activeGroupSettings.markOwnerMessages
               && identitiesOverlap({ id: messageSenderId }, activeAdminAccount);
-            const reactions = { ...(msg.reactions || {}), ...(messageState.reactions || {}) };
+            const reactions = chatMode === 'tinode'
+              ? { ...(msg.reactions || {}) }
+              : { ...(msg.reactions || {}), ...(messageState.reactions || {}) };
+            const reactionEntries = Object.entries(reactions).filter(([, count]) => Number(count) > 0);
+            const reactionPills = reactionEntries.length > 0 && (
+              <div className="message-reactions">
+                {reactionEntries.map(([emoji, count]) => (
+                  <button
+                    type="button"
+                    key={emoji}
+                    title={appCopy.t('Xem người đã thả cảm xúc')}
+                    aria-label={`${appCopy.t('Xem người đã thả cảm xúc')} ${emoji}`}
+                    onClick={() => setReactionDetails({ messageId: msg.id, message: msg, emoji })}
+                  >
+                    {emoji} {count}
+                  </button>
+                ))}
+              </div>
+            );
             const isStickerMessage = msg.type === 'sticker' || Boolean(msg.sticker?.id || msg.sticker?.stickerId);
             const attachmentFile = msg.file || ((msg.type === 'image' || isStickerMessage) && msg.image ? {
               name: appCopy.t('Hình ảnh'),
@@ -6905,8 +7010,18 @@ function App() {
                   {!isOutgoing && msg.senderName && (
                     <div className="sender-name-row">
                       <button type="button" className="sender-name sender-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))}>{msg.senderName}</button>
-                      {isOwnerMessage && <span className="group-owner-message-badge"><i className="fa-solid fa-crown"></i>{appCopy.t('Trưởng nhóm')}</span>}
+                      {isOwnerMessage && (
+                        <span className="group-owner-message-badge" title={appCopy.t('Quản trị viên nhóm')} aria-label={appCopy.t('Quản trị viên nhóm')}>
+                          <i className="fa-solid fa-key" aria-hidden="true"></i>
+                        </span>
+                      )}
                     </div>
+                  )}
+
+                  {isOutgoing && isOwnerMessage && (
+                    <span className="group-owner-message-badge outgoing" title={appCopy.t('Quản trị viên nhóm')} aria-label={appCopy.t('Quản trị viên nhóm')}>
+                      <i className="fa-solid fa-key" aria-hidden="true"></i>
+                    </span>
                   )}
 
                   <div
@@ -6954,11 +7069,7 @@ function App() {
                           </div>
                         )}
                         <p>{renderMessageText(msg.isWelcome ? appCopy.t(msg.text) : msg.text, msg.mentions)}</p>
-                        {Object.entries(reactions).filter(([, count]) => count > 0).length > 0 && (
-                          <div className="message-reactions">
-                            {Object.entries(reactions).filter(([, count]) => count > 0).map(([emoji, count]) => <span key={emoji}>{emoji} {count}</span>)}
-                          </div>
-                        )}
+                        {reactionPills}
                         {Array.isArray(msg.sources) && msg.sources.length > 0 && (
                           <div className="chatbot-sources">
                             <strong><i className="fa-solid fa-book-bookmark"></i>{appCopy.t('Nguồn tham khảo')}</strong>
@@ -7058,6 +7169,7 @@ function App() {
                         </div>
                       </div>
                     )}
+                    {msg.type !== 'text' && reactionPills}
                     </div>
                     {messageState.pinned && (
                       <span className="message-pinned-indicator" title={appCopy.t('Ghim trên thiết bị này')}>
@@ -7371,6 +7483,65 @@ function App() {
             </div>
           </div>
         )}
+        {reactionDetails && reactionDetailsMessage && (
+          <div
+            className="message-details-modal reaction-details-modal"
+            role="presentation"
+            onMouseDown={event => {
+              if (event.target === event.currentTarget) setReactionDetails(null);
+            }}
+          >
+            <section className="message-details-card reaction-details-card" role="dialog" aria-modal="true" aria-labelledby="reaction-details-title">
+              <div className="message-details-header">
+                <strong id="reaction-details-title">{appCopy.t('Cảm xúc trên tin nhắn')}</strong>
+                <button type="button" onClick={() => setReactionDetails(null)} aria-label={appCopy.t('Đóng')}>
+                  <i className="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+              <p className="reaction-details-message-preview">
+                {reactionDetailsMessage.text || reactionDetailsMessage.file?.name || appCopy.t('Tệp đính kèm')}
+              </p>
+              <div className="reaction-details-tabs" role="tablist" aria-label={appCopy.t('Lọc cảm xúc')}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={reactionDetailSelectedEmoji === 'all'}
+                  className={reactionDetailSelectedEmoji === 'all' ? 'active' : ''}
+                  onClick={() => setReactionDetails(previous => previous ? { ...previous, emoji: '' } : previous)}
+                >
+                  {appCopy.t('Tất cả')} <span>{Object.values(reactionDetailEmojiCounts).reduce((total, count) => total + Math.max(0, Number(count) || 0), 0)}</span>
+                </button>
+                {Object.entries(reactionDetailEmojiCounts)
+                  .filter(([, count]) => Number(count) > 0)
+                  .map(([emoji, count]) => (
+                    <button
+                      type="button"
+                      role="tab"
+                      key={emoji}
+                      aria-selected={reactionDetailSelectedEmoji === emoji}
+                      className={reactionDetailSelectedEmoji === emoji ? 'active' : ''}
+                      onClick={() => setReactionDetails(previous => previous ? { ...previous, emoji } : previous)}
+                    >
+                      {emoji} <span>{count}</span>
+                    </button>
+                  ))}
+              </div>
+              <div className="reaction-details-list">
+                {reactionDetailUsers.length > 0 ? reactionDetailUsers.map(user => (
+                  <div className="reaction-details-user" key={user.id}>
+                    <SafeAvatar src={user.avatar || ''} name={user.name} className="reaction-details-avatar" />
+                    <span className="reaction-details-user-name">{user.name || appCopy.t('Thành viên')}</span>
+                    {reactionDetailSelectedEmoji === 'all' && user.emojis.length > 0 && (
+                      <span className="reaction-details-user-emojis">{user.emojis.join(' ')}</span>
+                    )}
+                  </div>
+                )) : (
+                  <p className="reaction-details-empty">{appCopy.t('Chưa có người thả cảm xúc')}</p>
+                )}
+              </div>
+            </section>
+          </div>
+        )}
         {profileContact && (
           <div className="profile-contact-modal" role="presentation" onMouseDown={event => {
             if (event.target === event.currentTarget) setProfileContact(null);
@@ -7499,7 +7670,7 @@ function App() {
                 <span className="group-detail-quick-icon"><i className="fa-solid fa-thumbtack"></i></span>
                 <span>{appCopy.t(activeChat.pinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại')}</span>
               </button>
-              {isActiveGroupAdmin && (
+              {activeChat.isGroup && (
                 <button
                   type="button"
                   className="group-detail-quick-action btn-add-member"

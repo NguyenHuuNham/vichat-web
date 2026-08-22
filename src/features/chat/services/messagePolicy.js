@@ -55,6 +55,7 @@ export function applyRecallToMessage(message, recallMessage) {
     sticker: undefined,
     replyTo: null,
     reactions: {},
+    reactionUsers: {},
   };
 }
 
