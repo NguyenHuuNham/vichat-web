@@ -10,17 +10,17 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-23 03:12 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | UI
-- Trang thai: Dang thuc hien
+- Trang thai: Hoan tat code; dang trien khai production
 - Muc tieu: Hien day du hinh va dong chu cua sticker tu anh nguon, loai bo phan thua cua o ke ben va bo sung nhieu emoji hon trong picker.
 - Pham vi: 48 asset PNG trong ChatUI, StickerPicker va CSS gioi han cuon cua bang emoji; khong thay doi luong gui tin nhan, Tinode, Chatmgt, tenant, backend hoac database.
 - File da thay doi: `public/stickers/puppysoft/*.png`, `src/features/chat/components/StickerPicker.jsx`, `src/styles/index.css`, `docs/CHANGELOG.md`.
 - Noi dung: Cat lai 6 hang x 8 o tu `stk.jpg`, giu nguyen nhan vat va nhan chu ben duoi, tach nen trang ben ngoai bang flood-fill de khong lam trong phan trang tri ben trong sticker; them bo emoji phong phu va cho bang emoji cuon rieng khi danh sach dai.
 - Quyet dinh ky thuat: Dung crop xac dinh theo luoi anh nguon va xu ly alpha tai bien thay vi sinh lai hinh, de bao toan text goc va tranh thay doi noi dung sticker; emoji van la danh sach local, khong them tai nguyen ben ngoai hoac API.
 - Database/API/cau hinh: Khong co migration, endpoint, bien moi truong hoac thay doi quyen.
-- Kiem thu: Chua chay; dang hoan thien thay doi.
-- Rui ro con lai: Can chay frontend test/lint/build va UAT picker tren desktop/mobile, light/dark sau khi dong goi.
-- Viec tiep theo: Chay kiem tra, xem diff, commit va deploy rieng ChatUI neu tat ca dat.
-- Commit/PR: Chua tao.
+- Kiem thu: `npm run test:frontend` dat 142/142; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; kiem tra Pillow xac nhan 48 PNG RGBA voi goc ngoai trong suot; `git diff --check` dat.
+- Rui ro con lai: Chua UAT picker tren tai khoan production, desktop/mobile va light/dark; cac luong chat khac chua bi thay doi trong pham vi code.
+- Viec tiep theo: Deploy rieng ChatUI, health check sau recreate va hard refresh de UAT picker/gui sticker.
+- Commit/PR: Source `196ce7b` da commit va push `origin/master`; production deploy pending.
 
 ## 2026-08-23-03 - Sua lop phu dialog chuyen cong ty
 
