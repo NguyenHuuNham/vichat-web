@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-23 23:53 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | Realtime | Kiem thu | Tai lieu
-- Trang thai: Dang kiem tra production
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Giữ hình nền phủ toàn bộ lịch sử khi cuộn, bảo đảm tin nhắn dễ đọc ở cả sáng/tối, và cho người dùng chọn nền chỉ mình thấy hoặc chia sẻ.
 - Phạm vi: ChatUI vùng message, modal đổi hình nền, lưu preference viewer-scoped, metadata Tinode direct/group; không thay đổi transport tin nhắn, file, sticker, reaction, tenant hay quyền nhóm khác.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/conversationBackground.js`, `src/features/chat/services/conversationBackground.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
@@ -20,7 +20,8 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `npm run test:frontend` đạt 164/164; `npm run lint` exit 0 với warning legacy/vendor có sẵn; `npm run build:production` đạt với bundle `index-BCqOVy5L.js`, `App-A1mBv3Sp.js`, CSS `index-D9-GP0HU.css`; `git diff --check` đạt. Không có browser tool callable trong phiên nên chưa chạy UAT scroll/pixel trực tiếp.
 - Rui ro con lai: Chưa có browser UAT hai tài khoản để xác nhận pixel-level khi cuộn dài và đồng bộ group shared; cần test production với preset/custom, reset, đổi sáng/tối và kiểm tra quyền ghi public metadata group. Không thay đổi hoặc reset dữ liệu Tinode.
 - Viec tiep theo: Hard refresh production, test chat 1-1 và nhóm với lựa chọn local/shared, gửi đủ tin để cuộn qua vùng cũ; nếu UAT lỗi chỉ rollback release ChatUI, không thao tác Chatmgt/Tinode/database/volume.
-- Commit/PR: Chua tao.
+- Trien khai: Commit `8d0dd0a` đã push `origin/master`; release `/opt/deploy/chat/releases/8d0dd0a-20260823-171249`, `current` trỏ release này, `previous` trỏ `/opt/deploy/chat/releases/56af172-20260823-230427`; chỉ recreate `chat`, giữ nguyên Chatmgt/Tinode/bridge/webhook/ChatAPI/PostgreSQL/Redis/Coturn, không migration/reset volume/topic/message. Archive SHA-256 `c23c2f22d962c54b3ea601588dd416dbdf8c068fe94819d2afde5f4592f0a51c`; image ChatUI `sha256:dcf30f416ff8911d2a8ad94d3faba056670aa583f8b1dea452ca55837d0e33e7`; rollback tag `songhong-production-chat:rollback-before-wallpaper-8d0dd0a-20260823-171249` giữ image cũ `sha256:5bde38e106d9f051d276d7417f4aea56f7c684a16fd78d8b9c8d8b739bb10609`. Production `/healthz`, Chatmgt auth health và `sudo nginx -t` đều đạt; public bundle có `App-BZ6XOW8Z.js` và `index-D9-GP0HU.css`; log ChatUI sau deploy không có fatal/panic/traceback/critical/emerg/uncaught.
+- Commit/PR: `8d0dd0a`.
 
 ## 2026-08-23-21 - Bo sung 10 bo sticker va tach khoi media file
 
