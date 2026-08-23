@@ -1976,7 +1976,7 @@ body {
 }
 
 .members-section {
-    gap: 12px;
+    gap: 10px;
 }
 
 .members-section-heading {
@@ -1987,6 +1987,127 @@ body {
 }
 
 .members-section-heading .section-title { margin: 0; }
+
+.group-members-section {
+    gap: 0;
+}
+
+.members-section-toggle {
+    display: flex;
+    width: 100%;
+    min-height: 76px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    color: var(--text-main);
+    background: linear-gradient(145deg, var(--bg-white), var(--bg-app));
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.members-section-toggle:hover,
+.members-section-toggle:focus-visible,
+.members-section-toggle.expanded {
+    border-color: rgba(244, 81, 30, .32);
+    background: var(--vichat-blue-light);
+    outline: none;
+}
+
+.members-section-toggle > i {
+    flex: 0 0 auto;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.members-section-toggle-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 9px;
+}
+
+.members-section-toggle-copy strong {
+    color: var(--text-main);
+    font-size: 13px;
+    line-height: 1.25;
+}
+
+.members-section-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-body);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.members-section-summary i {
+    color: var(--text-muted);
+    font-size: 16px;
+}
+
+.members-section-body {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.group-members-expanded-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+}
+
+.group-members-expanded-heading strong {
+    color: var(--text-main);
+    font-size: 15px;
+}
+
+.group-members-back-button {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    color: var(--text-muted);
+    background: transparent;
+    cursor: pointer;
+}
+
+.group-members-back-button:hover,
+.group-members-back-button:focus-visible {
+    color: var(--text-main);
+    background: var(--bg-gray);
+    outline: none;
+}
+
+.group-member-add-trigger {
+    width: 100%;
+    justify-content: center;
+    min-height: 34px;
+}
+
+.members-list-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 2px;
+}
+
+.members-list-heading strong {
+    color: var(--text-body);
+    font-size: 12px;
+}
 
 .btn-add-member {
     display: inline-flex;
@@ -2047,13 +2168,16 @@ body {
 .members-list {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
 }
 
 .member-item {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
+    min-width: 0;
+    padding: 4px 2px;
 }
 
 .member-avatar {
@@ -2081,7 +2205,12 @@ body {
     flex-direction: column;
 }
 
-.btn-remove-member {
+.member-item-menu {
+    position: relative;
+    flex: 0 0 auto;
+}
+
+.member-menu-trigger {
     display: grid;
     width: 30px;
     height: 30px;
@@ -2089,13 +2218,58 @@ body {
     place-items: center;
     border: 0;
     border-radius: 8px;
-    color: var(--vichat-red);
-    background: var(--vichat-red-light);
+    color: var(--text-muted);
+    background: transparent;
     cursor: pointer;
 }
 
-.btn-remove-member:hover { background: #fbd5d9; }
-.btn-remove-member:disabled { cursor: wait; opacity: .6; }
+.member-menu-trigger:hover,
+.member-menu-trigger:focus-visible,
+.member-item.menu-open .member-menu-trigger {
+    color: var(--text-main);
+    background: var(--bg-gray);
+    outline: none;
+}
+
+.member-menu-trigger:disabled { cursor: wait; opacity: .6; }
+
+.member-context-menu {
+    position: absolute;
+    top: calc(100% + 5px);
+    right: 0;
+    z-index: 25;
+    min-width: 168px;
+    padding: 5px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-white);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, .16);
+}
+
+.member-context-menu-item {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 10px;
+    border: 0;
+    border-radius: 7px;
+    color: var(--text-body);
+    background: transparent;
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.member-context-menu-item:hover,
+.member-context-menu-item:focus-visible {
+    background: var(--bg-gray);
+    outline: none;
+}
+
+.member-context-menu-item.danger { color: var(--vichat-red); }
+.member-context-menu-item:disabled { cursor: wait; opacity: .6; }
 
 .member-name {
     font-size: 13.5px;
@@ -4942,6 +5116,18 @@ html[data-theme="dark"] .friend-request-status.rejected { color: #ffb0a0; backgr
 html[data-theme="dark"] .profile-save-notice { color: #b4ebc8; background: #183226; }
 html[data-theme="dark"] .group-member-option:hover,
 html[data-theme="dark"] .group-member-option.selected { background: var(--vichat-blue-light); }
+html[data-theme="dark"] .members-section-toggle { border-color: #3b4b54; background: linear-gradient(145deg, #25343a, #202c32); }
+html[data-theme="dark"] .members-section-toggle:hover,
+html[data-theme="dark"] .members-section-toggle:focus-visible,
+html[data-theme="dark"] .members-section-toggle.expanded { border-color: #8c5b48; background: #4a2e24; }
+html[data-theme="dark"] .group-members-back-button:hover,
+html[data-theme="dark"] .group-members-back-button:focus-visible,
+html[data-theme="dark"] .member-menu-trigger:hover,
+html[data-theme="dark"] .member-menu-trigger:focus-visible,
+html[data-theme="dark"] .member-item.menu-open .member-menu-trigger { background: #2f393d; }
+html[data-theme="dark"] .member-context-menu { border-color: #3b4b54; background: #202c32; box-shadow: 0 12px 28px rgba(0, 0, 0, .34); }
+html[data-theme="dark"] .member-context-menu-item:hover,
+html[data-theme="dark"] .member-context-menu-item:focus-visible { background: #2f393d; }
 html[data-theme="dark"] .group-detail-quick-action { border-color: #3b4b54; background: rgba(37, 52, 58, .78); }
 html[data-theme="dark"] .group-detail-quick-action:hover,
 html[data-theme="dark"] .group-detail-quick-action:focus-visible,

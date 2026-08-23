@@ -1676,6 +1676,8 @@ function App() {
   const [groupMemberAddSearch, setGroupMemberAddSearch] = useState('');
   const [isAddingGroupMembers, setIsAddingGroupMembers] = useState(false);
   const [removingMemberId, setRemovingMemberId] = useState('');
+  const [isGroupMembersExpanded, setIsGroupMembersExpanded] = useState(false);
+  const [groupMemberMenuId, setGroupMemberMenuId] = useState('');
   const [isGroupManagementOpen, setIsGroupManagementOpen] = useState(false);
   const [groupManagementDraft, setGroupManagementDraft] = useState({ ...DEFAULT_GROUP_SETTINGS });
   const [isUpdatingGroupManagement, setIsUpdatingGroupManagement] = useState(false);
@@ -1913,6 +1915,8 @@ function App() {
     setGroupMemberAddIds([]);
     setGroupMemberAddProfiles({});
     setGroupMemberAddSearch('');
+    setIsGroupMembersExpanded(false);
+    setGroupMemberMenuId('');
     messageElementsRef.current.clear();
     setMessageReactionPickerKey(null);
     setMessageActionHoverKey(null);
@@ -2676,6 +2680,7 @@ function App() {
       if (event.type === 'keydown' && event.key !== 'Escape') return;
       setMessageMenu(null);
       setConversationMenu(null);
+      setGroupMemberMenuId('');
       setConversationCategoryMenuOpen(false);
       if (event.type === 'keydown') {
         setProfileContact(null);
@@ -3924,6 +3929,24 @@ function App() {
 
   const handleFilterGroupMembersToAdd = event => {
     setGroupMemberAddSearch(event.target.value);
+  };
+
+  const openGroupMemberPicker = () => {
+    setIsGroupMembersExpanded(true);
+    setIsGroupMemberPickerOpen(true);
+    setGroupMemberAddIds([]);
+    setGroupMemberAddProfiles({});
+    setGroupMemberAddSearch('');
+    setGroupMemberMenuId('');
+  };
+
+  const toggleGroupMembersSection = () => {
+    const next = !isGroupMembersExpanded;
+    setIsGroupMembersExpanded(next);
+    if (!next) {
+      setIsGroupMemberPickerOpen(false);
+      setGroupMemberMenuId('');
+    }
   };
 
   const handleProfileSave = async event => {
@@ -5432,7 +5455,7 @@ function App() {
 
     const stateConversationId = activeChat.id;
     const managementConversationId = activeChat.managementId || stateConversationId;
-    const memberIdentity = member.id || member.uid || member.tinodeUid || member.tinode_uid || member.name;
+    const memberIdentity = String(member.id || member.uid || member.tinodeUid || member.tinode_uid || member.name);
     setRemovingMemberId(memberIdentity);
     setChatError('');
     try {
@@ -8221,22 +8244,6 @@ function App() {
                 <span className="group-detail-quick-icon"><i className="fa-solid fa-thumbtack"></i></span>
                 <span>{appCopy.t(activeChat.pinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại')}</span>
               </button>
-              {activeChat.isGroup && (
-                <button
-                  type="button"
-                  className="group-detail-quick-action btn-add-member"
-                  onClick={() => {
-                    setIsGroupMemberPickerOpen(previous => !previous);
-                    setGroupMemberAddIds([]);
-                    setGroupMemberAddProfiles({});
-                    setGroupMemberAddSearch('');
-                  }}
-                  aria-expanded={isGroupMemberPickerOpen}
-                >
-                  <span className="group-detail-quick-icon"><i className="fa-solid fa-user-plus"></i></span>
-                  <span>{appCopy.t('Thêm thành viên')}</span>
-                </button>
-              )}
               {isActiveGroupAdmin && (
                 <button
                   type="button"
@@ -8258,81 +8265,169 @@ function App() {
             </div>
           )}
 
-          <div className="detail-section members-section">
-            <div className="members-section-heading">
-              <h4 className="section-title">{activeChat.isGroup ? `${appCopy.t('Thành viên')} (${activeChatMembers.length})` : appCopy.t('Thông tin cá nhân')}</h4>
-            </div>
-            {activeChat.isGroup && isGroupMemberPickerOpen && (
-              <div className="group-member-add-panel">
-                <div className="group-member-add-toolbar">
-                  <input
-                    value={groupMemberAddSearch}
-                    onChange={handleFilterGroupMembersToAdd}
-                    placeholder={appCopy.t('Tìm thành viên trong danh bạ')}
-                    aria-label={appCopy.t('Tìm thành viên trong danh bạ')}
-                    autoFocus
-                  />
-                  <span>{groupMemberAddIds.length} {appCopy.t('đã chọn')}</span>
-                </div>
-                {groupMemberAddCandidates.length > 0 ? (
-                  <div className="group-member-picker group-member-add-picker">
-                    {groupMemberAddCandidates.map(member => {
-                      const memberId = member.id || member.uid || member.tinodeUid || member.name;
-                      const selected = groupMemberAddIds.includes(memberId);
-                      return (
-                        <button
-                          type="button"
-                          key={memberId}
-                          className={`group-member-option ${selected ? 'selected' : ''}`}
-                          onClick={() => toggleGroupMemberToAdd(member)}
-                          aria-pressed={selected}
-                        >
-                          <SafeAvatar src={member.avatar || ''} name={member.name} className="mention-avatar" />
-                          <span className="picker-name">{member.name}</span>
-                          <span className="picker-status">{directoryUsernameMeta(member)}</span>
-                          <span className="picker-check"><i className={`fa-solid ${selected ? 'fa-check' : 'fa-plus'}`}></i></span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="group-form-hint">{groupMemberAddSearch.trim() ? appCopy.t('Không tìm thấy thành viên phù hợp trong danh bạ công ty.') : appCopy.t('Không còn thành viên mới trong danh bạ.')}</p>
-                )}
-                <div className="group-member-add-actions">
-                  <button type="button" className="btn-secondary" onClick={() => setIsGroupMemberPickerOpen(false)} disabled={isAddingGroupMembers}>{appCopy.t('Hủy')}</button>
-                  <button type="button" className="btn-primary" onClick={handleAddGroupMembers} disabled={isAddingGroupMembers || groupMemberAddIds.length === 0}>
-                    <i className={`fa-solid ${isAddingGroupMembers ? 'fa-spinner fa-spin' : 'fa-user-plus'}`}></i>
-                    {isAddingGroupMembers ? appCopy.t('Đang thêm thành viên...') : appCopy.t('Thêm vào nhóm')}
+          <div className={`detail-section members-section ${activeChat.isGroup ? 'group-members-section' : ''}`}>
+            {activeChat.isGroup ? (
+              isGroupMembersExpanded ? (
+                <div className="group-members-expanded-heading">
+                  <button
+                    type="button"
+                    className="group-members-back-button"
+                    onClick={toggleGroupMembersSection}
+                    aria-label={appCopy.t('Thu gọn')}
+                    title={appCopy.t('Thu gọn')}
+                  >
+                    <i className="fa-solid fa-arrow-left" aria-hidden="true"></i>
                   </button>
+                  <strong>{appCopy.t('Thành viên')}</strong>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="members-section-toggle"
+                  onClick={toggleGroupMembersSection}
+                  aria-expanded={false}
+                  aria-controls="group-members-panel"
+                >
+                  <span className="members-section-toggle-copy">
+                    <strong>{appCopy.t('Thành viên nhóm')}</strong>
+                    <span className="members-section-summary">
+                      <i className="fa-solid fa-users" aria-hidden="true"></i>
+                      {activeChatMembers.length} {appCopy.t('thành viên')}
+                    </span>
+                  </span>
+                  <i className="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                </button>
+              )
+            ) : (
+              <div className="members-section-heading">
+                <h4 className="section-title">{appCopy.t('Thông tin cá nhân')}</h4>
+              </div>
+            )}
+
+            {(!activeChat.isGroup || isGroupMembersExpanded) && (
+              <div id={activeChat.isGroup ? 'group-members-panel' : undefined} className="members-section-body">
+                {activeChat.isGroup && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-add-member group-member-add-trigger"
+                      onClick={() => {
+                        if (isGroupMemberPickerOpen) {
+                          setIsGroupMemberPickerOpen(false);
+                        } else {
+                          openGroupMemberPicker();
+                        }
+                      }}
+                      aria-expanded={isGroupMemberPickerOpen}
+                    >
+                      <i className="fa-solid fa-user-plus" aria-hidden="true"></i>
+                      <span>{appCopy.t('Thêm thành viên')}</span>
+                    </button>
+                    {isGroupMemberPickerOpen && (
+                      <div className="group-member-add-panel">
+                        <div className="group-member-add-toolbar">
+                          <input
+                            value={groupMemberAddSearch}
+                            onChange={handleFilterGroupMembersToAdd}
+                            placeholder={appCopy.t('Tìm thành viên trong danh bạ')}
+                            aria-label={appCopy.t('Tìm thành viên trong danh bạ')}
+                            autoFocus
+                          />
+                          <span>{groupMemberAddIds.length} {appCopy.t('đã chọn')}</span>
+                        </div>
+                        {groupMemberAddCandidates.length > 0 ? (
+                          <div className="group-member-picker group-member-add-picker">
+                            {groupMemberAddCandidates.map(member => {
+                              const memberId = member.id || member.uid || member.tinodeUid || member.name;
+                              const selected = groupMemberAddIds.includes(memberId);
+                              return (
+                                <button
+                                  type="button"
+                                  key={memberId}
+                                  className={`group-member-option ${selected ? 'selected' : ''}`}
+                                  onClick={() => toggleGroupMemberToAdd(member)}
+                                  aria-pressed={selected}
+                                >
+                                  <SafeAvatar src={member.avatar || ''} name={member.name} className="mention-avatar" />
+                                  <span className="picker-name">{member.name}</span>
+                                  <span className="picker-status">{directoryUsernameMeta(member)}</span>
+                                  <span className="picker-check"><i className={`fa-solid ${selected ? 'fa-check' : 'fa-plus'}`}></i></span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="group-form-hint">{groupMemberAddSearch.trim() ? appCopy.t('Không tìm thấy thành viên phù hợp trong danh bạ công ty.') : appCopy.t('Không còn thành viên mới trong danh bạ.')}</p>
+                        )}
+                        <div className="group-member-add-actions">
+                          <button type="button" className="btn-secondary" onClick={() => setIsGroupMemberPickerOpen(false)} disabled={isAddingGroupMembers}>{appCopy.t('Hủy')}</button>
+                          <button type="button" className="btn-primary" onClick={handleAddGroupMembers} disabled={isAddingGroupMembers || groupMemberAddIds.length === 0}>
+                            <i className={`fa-solid ${isAddingGroupMembers ? 'fa-spinner fa-spin' : 'fa-user-plus'}`}></i>
+                            {isAddingGroupMembers ? appCopy.t('Đang thêm thành viên...') : appCopy.t('Thêm vào nhóm')}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    <div className="members-list-heading">
+                      <strong>{appCopy.t('Danh sách thành viên')} ({activeChatMembers.length})</strong>
+                    </div>
+                  </>
+                )}
+                <div className="members-list">
+                  {roomMembers(activeChat).map((member, idx) => {
+                    const memberIdentity = String(member.id || member.uid || member.tinodeUid || member.tinode_uid || member.name || idx);
+                    const canRemove = canRemoveGroupMember(activeChat, directoryAccounts, currentUser, member);
+                    return (
+                      <div key={memberIdentity} className={`member-item ${groupMemberMenuId === memberIdentity ? 'menu-open' : ''}`}>
+                        <SafeAvatar src={typeof member.avatar === 'string' ? member.avatar : ''} name={member.name} className="member-avatar" />
+                        <div className="member-info">
+                          <span className="member-name">{member.name}</span>
+                          <span className="member-status-text">
+                            <span className={`status-dot ${chatMode === 'tinode' ? (isAccountOnline(member) ? 'online' : 'offline') : 'managed'}`}></span>
+                            {accountPresenceLabel(member)}
+                          </span>
+                        </div>
+                        {canRemove && (
+                          <div className="member-item-menu">
+                            <button
+                              type="button"
+                              className="member-menu-trigger"
+                              onClick={event => {
+                                event.stopPropagation();
+                                setGroupMemberMenuId(previous => previous === memberIdentity ? '' : memberIdentity);
+                              }}
+                              disabled={Boolean(removingMemberId)}
+                              title={appCopy.t('Tùy chọn thành viên')}
+                              aria-label={appCopy.t('Tùy chọn thành viên')}
+                              aria-expanded={groupMemberMenuId === memberIdentity}
+                            >
+                              <i className="fa-solid fa-ellipsis" aria-hidden="true"></i>
+                            </button>
+                            {groupMemberMenuId === memberIdentity && (
+                              <div className="member-context-menu" role="menu" onClick={event => event.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  className="member-context-menu-item danger"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setGroupMemberMenuId('');
+                                    void handleRemoveGroupMember(member);
+                                  }}
+                                  disabled={Boolean(removingMemberId)}
+                                >
+                                  <i className={`fa-solid ${removingMemberId === memberIdentity ? 'fa-spinner fa-spin' : 'fa-user-minus'}`} aria-hidden="true"></i>
+                                  <span>{appCopy.t('Xóa khỏi nhóm')}</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
-            <div className="members-list">
-              {roomMembers(activeChat).map((member, idx) => (
-                <div key={idx} className="member-item">
-                  <SafeAvatar src={typeof member.avatar === 'string' ? member.avatar : ''} name={member.name} className="member-avatar" />
-                  <div className="member-info">
-                    <span className="member-name">{member.name}</span>
-                    <span className="member-status-text">
-                      <span className={`status-dot ${chatMode === 'tinode' ? (isAccountOnline(member) ? 'online' : 'offline') : 'managed'}`}></span>
-                      {accountPresenceLabel(member)}
-                    </span>
-                  </div>
-                  {canRemoveGroupMember(activeChat, directoryAccounts, currentUser, member) && (
-                    <button
-                      type="button"
-                      className="btn-remove-member"
-                      onClick={() => handleRemoveGroupMember(member)}
-                      disabled={Boolean(removingMemberId)}
-                      title={`${appCopy.t('Xóa')} ${member.name} ${appCopy.t('khỏi nhóm')}`}
-                      aria-label={`${appCopy.t('Xóa')} ${member.name} ${appCopy.t('khỏi nhóm')}`}
-                    >
-                      <i className={`fa-solid ${removingMemberId === member.id ? 'fa-spinner fa-spin' : 'fa-user-minus'}`}></i>
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
           </div>
 
           {!activeChat.isChatbot && activeChat.id !== 'empty' && (

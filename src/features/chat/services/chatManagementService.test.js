@@ -200,7 +200,11 @@ test('group member controls use the synced company directory with owner-only mut
   assert.equal(typeof chatManagementService.addConversationParticipants, 'function');
   const addSource = appSource.split('const handleAddGroupMembers')[1].split('const closeCreateGroupModal')[0];
   assert.doesNotMatch(addSource, /canManageGroupMembers\(activeChat, directoryAccounts, currentUser\)/);
-  assert.match(appSource, /\{activeChat\.isGroup && \(\s*<button[\s\S]*btn-add-member/);
+  assert.match(appSource, /members-section-toggle/);
+  assert.match(appSource, /btn-add-member group-member-add-trigger/);
+  assert.match(appSource, /member-menu-trigger/);
+  assert.match(appSource, /Xóa khỏi nhóm/);
+  assert.doesNotMatch(appSource, /Thêm phó nhóm/);
 });
 
 test('group mute and reaction controls preserve the existing checkbox flow and expose actor details', () => {

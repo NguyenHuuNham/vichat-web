@@ -6,6 +6,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-14 - Thu gon muc thanh vien nhom
+
+- Thoi gian: 2026-08-23 16:25 (Asia/Saigon)
+- Loai: Sua loi | Web | UI | Kiem thu
+- Trang thai: Da kiem tra local; cho deploy production
+- Muc tieu: Thu gon muc thanh vien trong thong tin nhom va dua cac thao tac lien quan vao dung ngu canh ma khong anh huong luong chat khac.
+- Pham vi: Chi panel thanh vien cua group trong `src/app/App.jsx`, style panel, ban dich va test frontend; giu nguyen API, handler va quyen membership hien co.
+- Noi dung: Muc `Thanh vien nhom` mac dinh thu gon va hien so luong; khi mo hien danh sach, nut `Them thanh vien` nam ben trong panel; moi member duoc phep thao tac co menu ba cham chi gom `Xoa khoi nhom`; khong them `Them pho nhom`.
+- Quyet dinh ky thuat: Dung state UI rieng de dong/mo panel va menu theo tung member; thao tac them/xoa van tai su dung callback va service hien co, khong them endpoint, migration hay thay doi quyen.
+- Database/API/cau hinh: Khong co migration, endpoint, bien moi truong, secret hoac thay doi phan quyen.
+- Kiem thu: `npm run test:frontend` dat 151/151; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `App-DT3Yz-T5.js`, `index-BBRCn3_m.js`, CSS `index-B_xSE4Xo.css`; `python -m unittest discover -s chatservice-main/tests -q` dat 178 test, skip 60 theo moi truong; `git diff --check` dat.
+- Rui ro con lai: Chua UAT pixel-level voi tai khoan owner/member production o light/dark/mobile; quyen xoa member van phu thuoc helper hien co.
+- Viec tiep theo: Commit, push va deploy rieng service `chat`, sau do hard refresh va kiem tra panel member voi owner/member that.
+- Commit/PR: Chua tao.
+
 ## 2026-08-23-13 - Thu gon thao tac thong tin nhom
 
 - Thoi gian: 2026-08-23 15:53 (Asia/Saigon)
