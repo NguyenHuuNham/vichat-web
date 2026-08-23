@@ -100,6 +100,11 @@ function emitEvent(event) {
   listeners.forEach(listener => listener(event));
 }
 
+function emitSessionReady(session) {
+  if (session) emitEvent({ type: 'session-ready', session });
+  return session;
+}
+
 function getTinodeConstructor() {
   return Tinode || null;
 }
@@ -1552,7 +1557,9 @@ export const tinodeClient = {
   async ensureSession(auth = {}) {
     const expectedUid = String(auth.uid || '');
     if (this.authenticated) {
-      if (!expectedUid || String(currentSession?.uid || '') === expectedUid) return currentSession;
+      if (!expectedUid || String(currentSession?.uid || '') === expectedUid) {
+        return emitSessionReady(currentSession);
+      }
       resetSessionState();
     }
     const token = auth.token?.token || auth.token;
@@ -1569,7 +1576,7 @@ export const tinodeClient = {
       resetSessionState();
       throw new Error('Phiên Tinode không khớp với tài khoản quản lý hiện tại.');
     }
-    return session;
+    return emitSessionReady(session);
   },
 
   async login({ username, password, token, displayName = '' }) {

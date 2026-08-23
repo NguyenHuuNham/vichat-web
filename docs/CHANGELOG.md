@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-09 - Khoi phuc avatar group sau reload
+
+- Thoi gian: 2026-08-23 11:23 (Asia/Saigon)
+- Loai: Sua loi | Web | Tinode | Kiem thu
+- Trang thai: Dang thuc hien
+- Muc tieu: Giu avatar nhom sau F5 hoac sau khi chuyen tenant va tai lai phien chat.
+- Pham vi: `SafeAvatar`, phien xac thuc Tinode va retry protected media; khong thay doi upload, Chatmgt, DB, API, sticker, tenant switch hay luong tin nhan.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/mediaRetryPolicy.js`, `src/features/chat/services/mediaRetryPolicy.test.js`, `dist/index.html`.
+- Noi dung: Tinode phat su kien `session-ready` sau xac thuc; avatar protected tu thu resolve lai khi phien san sang hoac reconnect. Dieu nay xu ly race condition sau reload ma khong thay doi nguon du lieu avatar.
+- Quyet dinh ky thuat: Chi retry cac URL `/tinode-media/` sau su kien phien, giu nguyen fallback cho anh ngoai Tinode va cac loi media khac.
+- Database/API/cau hinh: Khong co migration, thay doi API, bien moi truong hoac secret.
+- Kiem thu: `npm run test:frontend` dat 147/147; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-Bykhe6XO.js`; `git diff --check` dat.
+- Rui ro con lai: Can UAT production bang hard refresh va doi tenant tren group co avatar protected.
+- Viec tiep theo: Commit, push, deploy va kiem tra health production.
+- Commit/PR: Chua tao.
+
 ## 2026-08-23-08 - Mo rong sticker, tao group va viewer anh
 
 - Thoi gian: 2026-08-23 07:15 (Asia/Saigon)

@@ -5,6 +5,7 @@ import EnterpriseWorkspace from '../features/workspace/components/EnterpriseWork
 import CallOverlay from '../features/chat/components/CallOverlay';
 import StickerPicker from '../features/chat/components/StickerPicker';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation, normalizeTinodeMediaUrl } from '../features/chat/services/tinodeClient';
+import { shouldRetryProtectedMediaAfterSession } from '../features/chat/services/mediaRetryPolicy';
 import { chatManagementService, managementAuthClient } from '../features/chat/services/chatManagementService';
 import {
   applyReceiptToMessages,
@@ -1117,12 +1118,17 @@ function SafeAvatar({ src, name, className = '' }) {
   const [failed, setFailed] = useState(false);
   const [resolvedSrc, setResolvedSrc] = useState('');
   const [mediaVersion, setMediaVersion] = useState(() => tinodeClient.getMediaVersion(src));
+  const [sessionRetry, setSessionRetry] = useState(0);
 
   useEffect(() => {
     const normalizedSource = normalizeTinodeMediaUrl(src);
     return tinodeClient.onEvent(event => {
       if (event.type === 'media-invalidated' && event.url === normalizedSource) {
         setMediaVersion(tinodeClient.getMediaVersion(src));
+        return;
+      }
+      if (shouldRetryProtectedMediaAfterSession(event.type, normalizedSource)) {
+        setSessionRetry(previous => previous + 1);
       }
     });
   }, [src]);
@@ -1140,7 +1146,7 @@ function SafeAvatar({ src, name, className = '' }) {
         if (active) setFailed(true);
       });
     return () => { active = false; };
-  }, [src, mediaVersion]);
+  }, [src, mediaVersion, sessionRetry]);
 
   if (!resolvedSrc || failed) {
     return <span className={`${className} avatar-fallback`} aria-label={name || 'Ảnh đại diện'}>{name?.trim?.().slice(0, 1).toUpperCase() || '?'}</span>;

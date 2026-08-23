@@ -4,7 +4,15 @@ import test from 'node:test';
 import {
   fetchProtectedMediaWithRetry,
   shouldRetryProtectedMedia,
+  shouldRetryProtectedMediaAfterSession,
 } from './mediaRetryPolicy.js';
+
+test('retries protected avatars when the Tinode session becomes ready', () => {
+  assert.equal(shouldRetryProtectedMediaAfterSession('session-ready', '/tinode-media/v0/file/s/avatar.png'), true);
+  assert.equal(shouldRetryProtectedMediaAfterSession('reconnect', '/tinode-media/v0/file/s/avatar.png'), true);
+  assert.equal(shouldRetryProtectedMediaAfterSession('session-ready', 'https://cdn.example/avatar.png'), false);
+  assert.equal(shouldRetryProtectedMediaAfterSession('media-invalidated', '/tinode-media/v0/file/s/avatar.png'), false);
+});
 
 test('retries protected media once after a 401 or 403 token response', async () => {
   for (const status of [401, 403]) {
