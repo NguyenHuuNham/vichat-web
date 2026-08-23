@@ -1231,17 +1231,28 @@ body {
     gap: 7px;
     max-width: min(560px, 90%);
     margin: 4px auto;
-    padding: 7px 12px;
-    border: 1px solid rgba(244, 81, 30, .12);
+    padding: 8px 13px;
+    border: 1px solid rgba(244, 81, 30, .22);
     border-radius: 999px;
-    color: var(--text-muted);
-    background: rgba(244, 81, 30, .06);
-    font-size: 11.5px;
+    color: var(--text-main);
+    background: rgba(255, 255, 255, .9);
+    box-shadow: 0 5px 16px rgba(18, 59, 57, .1);
+    backdrop-filter: blur(6px) saturate(1.05);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
     text-align: center;
 }
 
-.group-system-message i { color: var(--vichat-blue); }
-.group-system-message time { color: var(--text-muted); font-size: 10px; white-space: nowrap; }
+.group-system-message-icon { display: grid; width: 19px; height: 19px; flex: 0 0 19px; place-items: center; color: var(--vichat-blue); font-size: 12px; }
+.group-system-message-copy { min-width: 0; overflow-wrap: anywhere; }
+.group-system-message time { color: var(--text-body); font-size: 10px; font-weight: 600; white-space: nowrap; }
+.group-system-message-member_added > .group-system-message-icon,
+.group-system-message-member_joined > .group-system-message-icon { color: #188b58; }
+.group-system-message-member_left > .group-system-message-icon { color: #c2410c; }
+.group-system-message-member_removed > .group-system-message-icon { color: #dc2626; }
+.group-system-message-message_pinned > .group-system-message-icon { color: #c27a00; }
+.group-system-message-message_unpinned > .group-system-message-icon { color: #64748b; }
 
 .message-bubble {
     background-color: var(--bg-white);
@@ -5556,10 +5567,41 @@ html[data-theme="dark"] .sticker-pack-tabs button:focus-visible,
 html[data-theme="dark"] .sticker-pack-tabs button.active { background: #202c32; }
 html[data-theme="dark"] .sticker-bubble { border-color: #3b4b54; background: rgba(37, 52, 58, .86); box-shadow: 0 7px 18px rgba(0, 0, 0, .2); }
 html[data-theme="dark"] .message-item.outgoing .sticker-bubble { border-color: #6a4030; background: #4a2e24; }
+/* Keep transparent sticker artwork on a clean card in dark mode. */
+html[data-theme="dark"] .sticker-bubble,
+html[data-theme="dark"] .chat-messages.has-conversation-background .sticker-bubble {
+  border-color: rgba(255, 255, 255, .72);
+  background: rgba(246, 249, 248, .96);
+  box-shadow: 0 7px 18px rgba(0, 0, 0, .28);
+  backdrop-filter: none;
+}
+html[data-theme="dark"] .message-item.outgoing .sticker-bubble,
+html[data-theme="dark"] .chat-messages.has-conversation-background .message-item.outgoing .sticker-bubble {
+  border-color: rgba(244, 81, 30, .46);
+  background: rgba(255, 250, 247, .97);
+}
+html[data-theme="dark"] .sticker-message-image { filter: none !important; mix-blend-mode: normal; }
+html[data-theme="dark"] .sticker-bubble .message-time,
+html[data-theme="dark"] .message-item.outgoing .sticker-bubble .message-time { color: #4d6263; text-shadow: none; }
 html[data-theme="dark"] .audio-bubble { border-color: #3d5057; background: #25343a; }
 html[data-theme="dark"] .message-item.outgoing .audio-bubble { border-color: #6a4030; background: #4a2e24; }
 html[data-theme="dark"] .audio-duration { color: var(--text-main); }
-html[data-theme="dark"] .group-system-message { border-color: rgba(244, 81, 30, .24); background: rgba(244, 81, 30, .12); }
+html[data-theme="dark"] .group-system-message,
+html[data-theme="dark"] .chat-messages.has-conversation-background .group-system-message {
+  border-color: rgba(255, 255, 255, .25);
+  color: #f2f7f7;
+  background: rgba(24, 35, 40, .95);
+  box-shadow: 0 7px 20px rgba(0, 0, 0, .3);
+}
+html[data-theme="dark"] .group-system-message-copy { color: #f2f7f7; }
+html[data-theme="dark"] .group-system-message time { color: #c4d3d4; }
+html[data-theme="dark"] .group-system-message-icon { color: #ffb866; }
+html[data-theme="dark"] .group-system-message-member_added > .group-system-message-icon,
+html[data-theme="dark"] .group-system-message-member_joined > .group-system-message-icon { color: #72d69d; }
+html[data-theme="dark"] .group-system-message-member_left > .group-system-message-icon { color: #ff9c72; }
+html[data-theme="dark"] .group-system-message-member_removed > .group-system-message-icon { color: #ff8f8f; }
+html[data-theme="dark"] .group-system-message-message_pinned > .group-system-message-icon { color: #ffd166; }
+html[data-theme="dark"] .group-system-message-message_unpinned > .group-system-message-icon { color: #b8c7d1; }
 html[data-theme="dark"] .image-bubble { border-color: #3b4b54; background: #1b242a; box-shadow: 0 8px 20px rgba(0, 0, 0, .24); }
 html[data-theme="dark"] .message-item.outgoing .image-bubble { border-color: #485b66; background: #1b242a; }
 html[data-theme="dark"] .image-preview-button { background: #243238; }

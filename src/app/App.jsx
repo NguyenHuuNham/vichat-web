@@ -744,6 +744,12 @@ function personalizeGroupSystemText(message, accounts, viewerId) {
     if (targetIds.includes(viewerId)) return `${actorName} đã thêm bạn vào nhóm`;
     return `${actorName} đã thêm ${targetNames.join(', ')} vào nhóm`;
   }
+  if (message.action === 'member_joined') {
+    const joinedName = targetNames[0] || actorName;
+    return message.senderId === viewerId || targetIds.includes(viewerId)
+      ? 'Bạn đã tham gia nhóm'
+      : `${joinedName} đã tham gia nhóm`;
+  }
   if (message.action === 'member_left') {
     const replacementName = String(message.replacementName || message.systemEvent?.replacementName || '').trim();
     const leaveText = message.senderId === viewerId ? 'Bạn đã rời khỏi nhóm' : `${actorName} đã rời khỏi nhóm`;
@@ -8627,6 +8633,20 @@ function App() {
             const previousDateLabel = formatMessageDateLabel(visibleMessages[messageIndex - 1], displayClock, appCopy.locale);
             const showDateDivider = Boolean(dateLabel && dateLabel !== previousDateLabel);
             if (msg.type === 'system') {
+              const systemEventClass = String(msg.action || 'activity').replace(/[^a-z0-9_-]/gi, '-');
+              const systemEventIcon = msg.action === 'member_left'
+                ? 'fa-arrow-right-from-bracket'
+                : msg.action === 'member_removed'
+                  ? 'fa-user-minus'
+                  : msg.action === 'group_created'
+                    ? 'fa-people-group'
+                    : ['message_pinned', 'message_unpinned'].includes(msg.action)
+                      ? 'fa-thumbtack'
+                      : msg.action === 'conversation_background_changed'
+                        ? 'fa-image'
+                        : msg.action === 'group_dissolved'
+                          ? 'fa-triangle-exclamation'
+                          : 'fa-user-plus';
               return (
                 <React.Fragment key={msg.id}>
                   {activeUnreadBoundary?.revealed && unreadBoundaryStart === messageIndex && (
@@ -8642,10 +8662,10 @@ function App() {
                       if (element) messageElementsRef.current.set(messageKey, element);
                       else messageElementsRef.current.delete(messageKey);
                     }}
-                    className="group-system-message"
+                    className={`group-system-message group-system-message-${systemEventClass}`}
                   >
-                    <i className={`fa-solid ${msg.action === 'member_left' ? 'fa-arrow-right-from-bracket' : msg.action === 'member_removed' ? 'fa-user-minus' : msg.action === 'group_created' ? 'fa-people-group' : ['message_pinned', 'message_unpinned'].includes(msg.action) ? 'fa-thumbtack' : msg.action === 'conversation_background_changed' ? 'fa-image' : msg.action === 'group_dissolved' ? 'fa-triangle-exclamation' : 'fa-user-plus'}`}></i>
-                    <span>{localizedSystemText(msg, appCopy, directoryAccounts, viewerId)}</span>
+                    <i className={`group-system-message-icon fa-solid ${systemEventIcon}`} aria-hidden="true"></i>
+                    <span className="group-system-message-copy">{localizedSystemText(msg, appCopy, directoryAccounts, viewerId)}</span>
                     <time>{formatMessageTime(msg, msg.time, appCopy.locale)}</time>
                   </div>
                 </React.Fragment>

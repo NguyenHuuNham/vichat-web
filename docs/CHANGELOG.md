@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-03 - Lam ro sticker dark theme va thong bao hoat dong nhom
+
+- Thoi gian: 2026-08-24 03:04 (Asia/Saigon)
+- Loai: Sua loi | Web | Realtime | Kiem thu | Tai lieu
+- Trang thai: Hoan tat; cho deploy production
+- Muc tieu: Giup sticker giu mau va bien dang ro rang trong chu de toi, dong thoi lam thong bao ghim, them/tham gia, roi va xoa thanh vien de doc tren nen chat co hinh.
+- Pham vi: Chi ChatUI sticker message surface, group system-event presentation va renderer system event; khong thay doi sticker transport/catalog, file anh/video, reaction, membership API, database hay luong chat 1-1.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/chatManagementService.test.js`, `src/styles/index.css`, `docs/CHANGELOG.md`.
+- Noi dung: Dark theme dua sticker ve card trung tinh, tat anh huong filter/blend va ca truong hop co conversation background; light theme giu nguyen. Thong bao hoat dong nhom duoc tang tuong phan, chu dam hon, co icon theo action va ho tro payload `member_joined` ma khong tao transport moi.
+- Quyet dinh ky thuat: Chi sua lop render/CSS va ham format system event; cac event Tinode `member_added`, `member_left`, `member_removed`, `message_pinned`/`message_unpinned` van giu nguyen. Khong sua nguon sticker, noi dung tin nhan hay quyen nhom.
+- Database/API/cau hinh: Khong migration, endpoint, bien moi truong hoac secret moi.
+- Kiem thu: `npm run test:frontend` dat 170/170; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `App-BnR26NeG.js`, `index-BbechADC.js`, CSS `index-p7vdQmCV.css`; `git diff --check` dat.
+- Rui ro con lai: Chua UAT pixel-level tren production bang ca light/dark theme va hai tai khoan trong cung group; can xac nhan event realtime tren nen anh dai va sticker co caption.
+- Viec tiep theo: Commit, push va deploy chi service `chat`; sau deploy hard refresh va UAT sticker dark, ghim, them/tham gia, roi nhom tren hai phien. Khong thao tac Chatmgt/Tinode/database/Redis/volume.
+- Commit/PR: Chua tao.
+
 ## 2026-08-24-02 - Them moc tin nhan chua doc
 
 - Thoi gian: 2026-08-24 02:06 (Asia/Saigon)

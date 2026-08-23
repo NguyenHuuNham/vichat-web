@@ -252,6 +252,15 @@ test('group message pinning announces the actor without changing direct-chat pin
   assert.match(appSource, /group_dissolved/);
 });
 
+test('keeps dark stickers crisp and group activity announcements readable', () => {
+  assert.match(appSource, /group-system-message-\$\{systemEventClass\}/);
+  assert.match(appSource, /group-system-message-copy/);
+  assert.match(appSource, /member_joined/);
+  assert.match(stylesSource, /\.group-system-message-copy/);
+  assert.match(stylesSource, /background: rgba\(246, 249, 248, \.96\)/);
+  assert.match(stylesSource, /\.sticker-message-image \{ filter: none !important; mix-blend-mode: normal; \}/);
+});
+
 test('group mute and reaction controls preserve the existing checkbox flow and expose actor details', () => {
   const muteSource = appSource.split('const handleConversationMuteToggle')[1].split('const handleNotificationMuteSubmit')[0];
   assert.match(muteSource, /typeof event\?\.target\?\.checked === 'boolean'/);
