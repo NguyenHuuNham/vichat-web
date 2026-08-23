@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-05 - Dat nhan tin nhan ghim va can menu 3 cham
+
+- Thoi gian: 2026-08-24 04:11 (Asia/Saigon)
+- Loai: Sua loi | Web | UI | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code; cho deploy production
+- Muc tieu: Dua nhan `Da ghim` len tren bubble va can menu 3 cham theo nut thao tac de menu khong bi lech cao hoac che noi dung.
+- Pham vi: Chi ChatUI phan hien thi message pin va menu hanh dong tin nhan; giu nguyen logic pin, action, reaction, file, sticker, Tinode, backend va membership.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Nhan ghim duoc dua thanh hang rieng ngay truoc vung tin nhan, can trai/phai theo message va khong con absolute xuong duoi bubble. Menu 3 cham neo vao `getBoundingClientRect()` cua nut thao tac, tinh chieu cao theo cac action dang co, uu tien mo ben duoi, tu dong doi len tren khi thieu cho va gioi han theo viewport; menu cung co kich thuoc an toan tren man hinh nho.
+- Quyet dinh ky thuat: Chi thay doi render/CSS va phep tinh toa do phia client. Hanh vi right-click van duoc giu voi fallback theo toa do con tro; khong them state backend, API hay persistence moi.
+- Database/API/cau hinh: Khong migration, endpoint, bien moi truong hoac secret moi.
+- Kiem thu: `npm run test:frontend` dat 170/170; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat. Chua UAT pixel-level bang browser trong phien nay vi browser runtime khong callable.
+- Rui ro con lai: Can hard refresh production va kiem tra menu o message gan dau/cuoi viewport, message incoming/outgoing, mobile, pin/unpin va cac action hien co; khong co thay doi backend can migration.
+- Viec tiep theo: Commit, push va deploy chi service `chat`; sau deploy UAT ChatUI, neu loi chi rollback release ChatUI ve `previous`, khong thao tac dich vu stateful.
+- Commit/PR: Chua tao.
+
 ## 2026-08-24-04 - Sua loi nen chat va menu hanh dong tin nhan
 
 - Thoi gian: 2026-08-24 03:53 (Asia/Saigon)

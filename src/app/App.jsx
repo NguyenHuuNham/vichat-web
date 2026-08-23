@@ -7215,16 +7215,34 @@ function App() {
   const openMessageMenu = (event, message) => {
     if (!message || message.recalled || ['system', 'friend_event'].includes(message.type)) return;
     event.preventDefault();
-    const width = 245;
-    const height = 360;
     const gutter = 12;
-    const anchorX = Number.isFinite(event.clientX) ? event.clientX : gutter;
-    const anchorY = Number.isFinite(event.clientY) ? event.clientY : gutter;
-    const left = Math.max(gutter, Math.min(anchorX, window.innerWidth - width - gutter));
-    const belowTop = anchorY + 6;
-    const top = belowTop + height <= window.innerHeight - gutter
+    const gap = 6;
+    const width = Math.min(245, Math.max(0, window.innerWidth - (gutter * 2)));
+    const isOwnMessage = message.senderId === viewerId || message.sender === 'outgoing';
+    const canRecallMessage = isOwnMessage && canRecallDeliveredMessage(message);
+    const hasManagementAction = !activeChat.isChatbot
+      && isManagementConversationId(activeChat.managementId || activeChat.id);
+    const menuItemCount = 3
+      + (canPinActiveGroupMessages ? 1 : 0)
+      + (hasManagementAction ? 1 : 0)
+      + (canRecallMessage ? 2 : 0);
+    const estimatedHeight = 14 + (menuItemCount * 35);
+    const source = event.currentTarget;
+    const anchor = source?.matches?.('.message-more-action')
+      ? source
+      : source?.querySelector?.('.message-more-action');
+    const anchorRect = anchor?.getBoundingClientRect?.();
+    const isOutgoing = source?.closest?.('.message-item.outgoing');
+    const fallbackX = Number.isFinite(event.clientX) ? event.clientX : gutter;
+    const fallbackY = Number.isFinite(event.clientY) ? event.clientY : gutter;
+    const preferredLeft = anchorRect
+      ? (isOutgoing ? anchorRect.right - width : anchorRect.left)
+      : fallbackX;
+    const left = Math.max(gutter, Math.min(preferredLeft, window.innerWidth - width - gutter));
+    const belowTop = anchorRect ? anchorRect.bottom + gap : fallbackY + gap;
+    const top = belowTop + estimatedHeight <= window.innerHeight - gutter
       ? belowTop
-      : Math.max(gutter, anchorY - height - 6);
+      : Math.max(gutter, (anchorRect ? anchorRect.top : fallbackY) - estimatedHeight - gap);
     setMessageMenu({
       message,
       left,
@@ -8765,6 +8783,12 @@ function App() {
                       <button type="button" className="sender-name sender-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))}>{msg.senderName}</button>
                     </div>
                   )}
+                  {messageState.pinned && (
+                    <span className="message-pinned-indicator" title={appCopy.t('Ghim trên thiết bị này')}>
+                      <i className="fa-solid fa-thumbtack" aria-hidden="true"></i>
+                      <span>{appCopy.t('Đã ghim')}</span>
+                    </span>
+                  )}
 
                   <div
                     className={`message-interactive ${messageActionHoverKey === messageKey ? 'message-actions-visible' : ''}`}
@@ -8913,12 +8937,6 @@ function App() {
                     )}
                     {msg.type !== 'text' && reactionPills}
                     </div>
-                    {messageState.pinned && (
-                      <span className="message-pinned-indicator" title={appCopy.t('Ghim trên thiết bị này')}>
-                        <i className="fa-solid fa-thumbtack" aria-hidden="true"></i>
-                        <span>{appCopy.t('Đã ghim')}</span>
-                      </span>
-                    )}
                     <div
                       className="message-quick-actions"
                       onClick={event => event.stopPropagation()}

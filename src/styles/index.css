@@ -1144,10 +1144,10 @@ body {
 .message-item.outgoing .message-reaction-picker { right: 0; left: auto; }
 .message-reaction-picker button { display: grid; place-items: center; width: 31px; height: 31px; padding: 0; border: 0; border-radius: 9px; background: transparent; cursor: pointer; font-size: 18px; }
 .message-reaction-picker button:hover, .message-reaction-picker button:focus-visible { background: var(--bg-gray); outline: none; transform: scale(1.08); }
-.message-pinned-indicator { position: absolute; bottom: -17px; left: 4px; display: inline-flex; align-items: center; gap: 4px; color: var(--vichat-blue); font-size: 10px; }
-.message-item.outgoing .message-pinned-indicator { right: 4px; left: auto; }
+.message-pinned-indicator { display: inline-flex; width: fit-content; max-width: 100%; align-items: center; gap: 4px; align-self: flex-start; margin: 0 4px; color: var(--vichat-blue); font-size: 10px; line-height: 1.2; white-space: nowrap; }
+.message-item.outgoing .message-pinned-indicator { align-self: flex-end; margin-right: 4px; margin-left: 0; }
 .message-pinned-highlight .message-bubble { box-shadow: 0 0 0 3px rgba(244, 81, 30, .3), 0 8px 18px rgba(244, 81, 30, .12); }
-.message-context-menu { position: fixed; z-index: 120; min-width: 245px; max-width: min(245px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow-y: auto; overscroll-behavior: contain; padding: 7px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-white); box-shadow: 0 12px 30px rgba(0,0,0,.18); }
+.message-context-menu { position: fixed; z-index: 120; width: min(245px, calc(100vw - 24px)); min-width: 0; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; padding: 7px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-white); box-shadow: 0 12px 30px rgba(0,0,0,.18); }
 .message-context-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; border-radius: 7px; color: var(--text-main); background: transparent; text-align: left; cursor: pointer; font-size: 13px; }
 .message-context-menu button:hover { background: var(--bg-gray); }
 .message-context-menu button i { width: 18px; color: var(--vichat-blue); }
