@@ -32,6 +32,14 @@ export function resolvePreparedTinodeTopic(room, preparedRoom, cachedTopic = '')
   return String(room?.tinodeTopic || preparedRoom?.tinodeTopic || cachedTopic || '').trim();
 }
 
+export function mergeManagementAvatar(existingAvatar, incomingAvatar, { incomingManagementSnapshot = false } = {}) {
+  const existing = conversationText(existingAvatar);
+  const incoming = conversationText(incomingAvatar);
+  return incomingManagementSnapshot
+    ? incoming || existing
+    : existing || incoming;
+}
+
 export function tinodeContactsSyncDelay(attempt, {
   sessionActive = true,
   pendingTopicNames = [],

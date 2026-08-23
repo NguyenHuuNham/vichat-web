@@ -262,6 +262,7 @@ class ChatAuthContractTests(unittest.TestCase):
             CONTROLLER_PATH,
             "management_update_avatar",
         )
+        _controller_source, sso_source = function_source(CONTROLLER_PATH, "_sso_account")
         service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")
         app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
         profile_source = app_source.split("workspacePanel === 'profile'", 1)[1]
@@ -269,7 +270,10 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('request.files.get("avatar")', avatar_source)
         self.assertIn("_validated_account_identity", avatar_source)
         self.assertIn("update_account_avatar", avatar_source)
-        self.assertIn("_sso_account(updated_identity", avatar_source)
+        self.assertIn("_sso_account(", avatar_source)
+        self.assertIn("AUTHORITATIVE_AVATAR_PROPERTY", sso_source)
+        self.assertIn("directory_projection", sso_source)
+        self.assertIn("authoritative_avatar=updated_identity.get(\"avatar\")", avatar_source)
         self.assertIn("/api/v1/auth/avatar", service_source)
         self.assertIn("FormData", service_source)
         self.assertIn("chatManagementService.updateAvatar(file)", app_source)
@@ -513,6 +517,9 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("groupAvatarSyncRef.current.set(topicName, avatarUrl)", app_source)
         self.assertIn("event.type === 'conversation'", app_source)
         self.assertIn("conversation.avatarUrl !== currentRoom.avatarUrl", app_source)
+        self.assertIn("mergeManagementAvatar", app_source)
+        self.assertIn("persistedGroupAvatar", app_source)
+        self.assertIn("refreshManagementConversations(accountSession)", app_source)
         self.assertIn("bindTinodeTopic", service_source)
 
         self.assertIn("properties[\"avatar\"]", group_settings_source)
@@ -661,6 +668,9 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertNotIn("_management_user_mutations_enabled", update_source)
         self.assertIn("updateContactNickname", service_source)
         self.assertIn("applyContactNicknames", directory_source)
+        self.assertIn("findAccountByIdentities", directory_source)
+        self.assertIn("message.raw?.from", app_source)
+        self.assertIn("knownAccounts", app_source)
         self.assertIn("contactNicknameDialog", app_source)
         self.assertIn("setContactNicknameValue(contact.nickname || defaultName)", app_source)
         self.assertIn("contact-nickname-edit-button", app_source)

@@ -265,14 +265,35 @@ export function mergeDirectoryAccountSnapshots(previousAccounts = [], incomingAc
     const previousAccount = findAccount(previous, account?.id || account?.uid || account?.tinodeUid || account?.tinode_uid);
     if (!previousAccount) return account;
     const avatar = account.avatar || previousAccount.avatar || '';
-    const name = account.name || previousAccount.name || '';
+    const hasIncomingNickname = Object.prototype.hasOwnProperty.call(account || {}, 'nickname');
+    const nickname = hasIncomingNickname
+      ? scalarText(account.nickname)
+      : scalarText(previousAccount.nickname);
+    const defaultName = firstText(
+      account.defaultName,
+      account.default_name,
+      previousAccount.defaultName,
+      previousAccount.default_name,
+      account.name,
+      previousAccount.name,
+    );
+    const name = hasIncomingNickname
+      ? (nickname || defaultName)
+      : (nickname || account.name || previousAccount.name || defaultName);
     const merged = {
       ...account,
       name,
+      defaultName,
+      default_name: defaultName,
+      display_name: name,
+      nickname,
       // Directory polling may briefly return an old/empty avatar after upload.
       avatar,
     };
-    const accountChanged = name !== account.name || avatar !== account.avatar;
+    const accountChanged = name !== account.name
+      || defaultName !== account.defaultName
+      || nickname !== scalarText(account.nickname)
+      || avatar !== account.avatar;
     if (accountChanged) changed = true;
     return accountChanged ? merged : account;
   });
@@ -376,4 +397,13 @@ export function findAccount(accounts, identity) {
     || matches(item.defaultName)
     || matches(item.default_name)
   )) || null;
+}
+
+export function findAccountByIdentities(accounts, identities = []) {
+  const values = Array.isArray(identities) ? identities : [identities];
+  for (const identity of values) {
+    const account = findAccount(accounts, identity);
+    if (account) return account;
+  }
+  return null;
 }

@@ -9,6 +9,7 @@ import {
   countGroupPresence,
   directoryUsernameMeta,
   findAccount,
+  findAccountByIdentities,
   findDirectPeer,
   identitiesOverlap,
   identityValues,
@@ -88,6 +89,21 @@ test('account identities include both management and Tinode identifiers', () => 
 
   assert.deepEqual(identityValues(account), ['account-1', 'account-alias', 'usr-one']);
   assert.equal(identitiesOverlap(account, { id: 'usr-one' }), true);
+});
+
+test('display lookup falls through every realtime identity before using a name', () => {
+  const account = {
+    id: 'account-peer',
+    uid: 'account-peer',
+    tinodeUid: 'usr-peer',
+    name: 'Bi danh rieng',
+    defaultName: 'Ten chinh thuc',
+  };
+
+  assert.strictEqual(
+    findAccountByIdentities([account], ['missing-id', 'usr-peer']),
+    account,
+  );
 });
 
 test('presence update preserves the account array when nothing changes', () => {
@@ -172,6 +188,26 @@ test('directory polling keeps the latest known avatar when the server snapshot i
 
   assert.equal(result[0].name, 'One updated');
   assert.equal(result[0].avatar, '/new.jpg');
+});
+
+test('directory snapshots can explicitly clear a previous contact nickname', () => {
+  const previous = [{
+    id: 'account-1',
+    name: 'Nickname',
+    defaultName: 'Official name',
+    nickname: 'Nickname',
+  }];
+  const incoming = [{
+    id: 'account-1',
+    name: 'Official name',
+    defaultName: 'Official name',
+    nickname: '',
+  }];
+
+  const result = mergeDirectoryAccountSnapshots(previous, incoming);
+
+  assert.equal(result[0].name, 'Official name');
+  assert.equal(result[0].nickname, '');
 });
 
 test('realtime group presence overlays Chatmgt members without replacing their identities', () => {

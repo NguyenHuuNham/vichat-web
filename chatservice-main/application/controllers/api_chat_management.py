@@ -131,6 +131,7 @@ HISTORY_INTERNAL_MESSAGE_PREFIXES = (
 CONTACT_NICKNAMES_PROPERTY = "contact_nicknames"
 CONTACT_NICKNAME_MAX_LENGTH = 80
 CONTACT_NICKNAME_MAX_COUNT = 1000
+AUTHORITATIVE_AVATAR_PROPERTY = "chat_authoritative_avatar"
 
 
 def _normalized_group_settings(value=None):
@@ -434,7 +435,7 @@ def _tinode_bridge_request(request):
     return bool(expected and supplied and hmac.compare_digest(expected, supplied))
 
 
-def _sso_account(identity, mark_login=True):
+def _sso_account(identity, mark_login=True, authoritative_avatar=None):
     identity = dict(identity)
     account_username = identity["username"]
     account_email = identity.get("email")
@@ -557,6 +558,16 @@ def _sso_account(identity, mark_login=True):
         db.session.add(account)
 
     directory_projection = bool(identity.get("directory_projection"))
+    properties = dict(account.properties or {})
+    if authoritative_avatar is not None:
+        explicit_avatar = str(authoritative_avatar or "").strip()
+        properties[AUTHORITATIVE_AVATAR_PROPERTY] = explicit_avatar
+    elif not directory_projection and not properties.get(AUTHORITATIVE_AVATAR_PROPERTY):
+        current_avatar = str(identity.get("avatar") or "").strip()
+        if current_avatar:
+            properties[AUTHORITATIVE_AVATAR_PROPERTY] = current_avatar
+    has_persisted_avatar = AUTHORITATIVE_AVATAR_PROPERTY in properties
+    persisted_avatar = str(properties.get(AUTHORITATIVE_AVATAR_PROPERTY) or "").strip()
     account.username = identity["username"]
     if not directory_projection or identity.get("email_present"):
         account.email = identity.get("email")
@@ -567,7 +578,11 @@ def _sso_account(identity, mark_login=True):
         account.department = identity.get("department") or ""
     if not directory_projection or identity.get("title_present"):
         account.title = identity.get("title") or ""
-    if not directory_projection or identity.get("avatar_present"):
+    if has_persisted_avatar:
+        # A directory response can lag behind a confirmed upload. Keep the
+        # last explicit avatar update until another upload replaces it.
+        account.avatar = persisted_avatar
+    elif not directory_projection or identity.get("avatar_present"):
         account.avatar = identity.get("avatar") or ""
     account.password_hash = ACCOUNT_SSO_PASSWORD_MARKER
     account.active = bool(identity.get("active", True))
@@ -575,7 +590,6 @@ def _sso_account(identity, mark_login=True):
     _repair_unprovisioned_tinode_username(account, identity)
     if mark_login:
         account.last_login_at = now
-    properties = dict(account.properties or {})
     properties.update(linked_properties)
     if not directory_projection or identity.get("role_present"):
         properties["account_role"] = identity.get("account_role") or "member"
@@ -2262,7 +2276,11 @@ async def management_update_avatar(request):
     try:
         identity = await _validated_account_identity(request, account)
         updated_identity = await update_account_avatar(request, identity, upload)
-        tenant, updated_account = _sso_account(updated_identity, mark_login=False)
+        tenant, updated_account = _sso_account(
+            updated_identity,
+            mark_login=False,
+            authoritative_avatar=updated_identity.get("avatar"),
+        )
         db.session.commit()
         _audit(
             request,

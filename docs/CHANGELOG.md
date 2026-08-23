@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-19 - Giu avatar sau reload va dong bo biet danh trong nhom
+
+- Thoi gian: 2026-08-23 19:25 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | API | Web | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Khong de avatar ca nhan/nhom quay ve gia tri cu sau F5, chuyen tenant hoac reconnect; biet danh da dat trong chat 1-1 phai hien dung trong group va o bo chon mention khi soan tin.
+- Pham vi: Chatmgt account avatar projection, ChatUI group/avatar merge, directory identity lookup, message/reply/reaction/member/mention rendering; khong thay doi sticker, reaction storage, tenant switch, membership hay message content.
+- File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Luu dau moc URL avatar da Account xac nhan trong `ManagementAccount.properties` de directory projection cu khong ghi de avatar moi; uu tien avatar group tu Chatmgt khi Tinode reconnect va chi refresh snapshot authoritative. Bo sung lookup qua management ID, UID va Tinode UID de nickname viewer-scoped cap nhat sender group, reply, reaction, member va mention picker ngay sau khi luu.
+- Quyet dinh ky thuat: Khong them schema; Account van la nguon avatar ca nhan, Chatmgt la projection tenant ben vung, Tinode chi phat realtime metadata. Nickname van chi thuoc viewer hien tai, khong broadcast sang tai khoan khac.
+- Database/API/cau hinh: Khong migration, endpoint, bien moi truong, secret hoac thay doi cau hinh.
+- Kiem thu: `npm run test:frontend` dat 159/159; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-D7jXEG7O.js`, `App-CoGiATsj.js`, CSS `index-KipYZzQp.css`; `python -m unittest discover -s chatservice-main/tests -q` dat 181 test, skip 61 theo moi truong; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/tests/test_chat_auth_contract.py` dat; `git diff --check` dat.
+- Rui ro con lai: Can UAT production bang hard refresh, chuyen tenant, doi avatar group/ca nhan va kiem tra nickname trong group bang hai tai khoan; avatar doi tu he thong Account ben ngoai ChatUI can duoc xac nhan bang tai khoan that.
+- Viec tiep theo: Chay full frontend checks, commit/push va deploy rieng `chat`/`chatmgt`; khong migration/reset database, Tinode, Redis, volume hay service khac.
+- Commit/PR: Chua tao.
+
 ## 2026-08-23-18 - Dat chia khoa owner tren avatar tin nhan nhom
 
 - Thoi gian: 2026-08-23 18:42 (Asia/Saigon)

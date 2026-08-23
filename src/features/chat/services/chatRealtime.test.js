@@ -8,6 +8,7 @@ import {
   deliveryStatusFromReceiptCursor,
   ensureConversationEntry,
   firstVisibleConversationId,
+  mergeManagementAvatar,
   mergeDeliveryStatus,
   normalizeConversationShape,
   messageForDeliveryStatus,
@@ -30,6 +31,15 @@ test('prepared Chatmgt group topic is reused instead of creating a conflicting t
     { tinodeTopic: 'grpExisting123' },
     { isGroup: true, tinodeTopic: 'grpPrepared123' },
   ), 'grpExisting123');
+});
+
+test('persisted group avatars win over stale Tinode-only metadata', () => {
+  assert.equal(mergeManagementAvatar('/chatmgt-new.jpg', '/tinode-old.jpg'), '/chatmgt-new.jpg');
+  assert.equal(mergeManagementAvatar('', '/tinode-current.jpg'), '/tinode-current.jpg');
+  assert.equal(
+    mergeManagementAvatar('/chatmgt-old.jpg', '/chatmgt-new.jpg', { incomingManagementSnapshot: true }),
+    '/chatmgt-new.jpg',
+  );
 });
 
 test('Tinode contacts sync retries only while an unknown topic and account session remain active', () => {

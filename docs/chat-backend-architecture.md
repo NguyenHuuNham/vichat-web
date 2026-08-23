@@ -116,14 +116,25 @@ read-only, Chatmgt returns `ACCOUNT_PROFILE_READ_ONLY` instead of treating the
 authorization response as an expired login or writing a local fallback value.
 Local/recovery accounts retain the existing Chatmgt profile-update behavior.
 
-Private 1-1 contact nicknames are a separate viewer preference owned by
-Chatmgt. They are stored in the current account's tenant-scoped
+Account-backed avatar uploads are confirmed by Account before Chatmgt accepts
+the new URL. Chatmgt keeps that confirmed URL in the existing account
+properties as a protected projection marker, so a delayed `/current_user` or
+directory snapshot cannot restore an older avatar after refresh, tenant switch,
+or reconnect. A later confirmed upload replaces the marker. Tinode receives the
+same confirmed URL for realtime rendering, but Tinode metadata is not allowed
+to overwrite the persisted Chatmgt/Account avatar on reconnect.
+
+Private contact nicknames are a separate viewer preference owned by Chatmgt.
+They are stored in the current account's tenant-scoped
 `ManagementAccount.properties.contact_nicknames` JSON object, keyed by the
 target management account ID; no schema migration is required. The official
 Account/Tinode identity remains the source of truth in `defaultName`/
 `full_name`, while Chatmgt applies the nickname only when serializing data for
-the viewer who owns it. Nicknames are never written to Tinode, broadcast in
-realtime profile events, or included in another viewer's response.
+the viewer who owns it. ChatUI applies the same viewer-specific name to
+conversation members, group message senders, replies, reactions, history
+results, and the group mention/composer picker. Nicknames are never written to
+Tinode, broadcast in realtime profile events, or included in another viewer's
+response.
 
 Tinode media URLs from the central host are normalized to the authenticated
 `chat.upgo.vn/tinode-media` relay. The native client downloads protected message
@@ -431,6 +442,11 @@ avatar updates use UpGO Account as the canonical profile source and then publish
 the canonical avatar to Tinode public metadata so web and mobile subscribers
 receive the change in realtime. Local/recovery accounts use the authenticated
 Tinode profile path.
+
+When Tinode reconnects with an older group avatar, ChatUI keeps the current
+Chatmgt conversation snapshot and refreshes that snapshot instead of writing
+the stale Tinode value back. Group avatar changes continue to persist in the
+existing conversation properties and are then merged into all active viewers.
 
 Avatar uploads use a dedicated longer Account upload timeout and verify the
 returned avatar URL against the uploaded URL. If `/current_user` is briefly

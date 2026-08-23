@@ -15,6 +15,7 @@ import {
   firstVisibleConversationId,
   isManagementConversationId,
   mergeDeliveryStatus,
+  mergeManagementAvatar,
   normalizeConversationShape,
   readyTinodeTypingTopic,
   resolvePreparedTinodeTopic,
@@ -92,6 +93,7 @@ import {
   countGroupPresence,
   directoryUsernameMeta,
   findAccount,
+  findAccountByIdentities,
   findDirectPeer,
   identitiesOverlap,
   identityValues,
@@ -813,17 +815,32 @@ function roomFriendEvents(room) {
 }
 
 function accountForIdentity(accounts, identity) {
-  return findAccount(accounts, identity) || null;
+  return findAccountByIdentities(accounts, identity) || null;
 }
 
 function personalizeMessageForViewer(message, accounts) {
   if (!message) return message;
-  const sender = accountForIdentity(accounts, message.senderId || message.senderName);
-  const replySender = accountForIdentity(accounts, message.replyTo?.senderId || message.replyTo?.senderName);
+  const sender = accountForIdentity(accounts, [
+    message.senderId,
+    message.raw?.from,
+    message.raw?.head?.['x-sender-id'],
+    message.senderName,
+  ]);
+  const replySender = accountForIdentity(accounts, [
+    message.replyTo?.senderId,
+    message.replyTo?.uid,
+    message.replyTo?.senderName,
+  ]);
   const reactionUsers = Object.fromEntries(Object.entries(message.reactionUsers || {}).map(([emoji, users]) => [
     emoji,
     (Array.isArray(users) ? users : []).map(user => {
-      const account = accountForIdentity(accounts, user?.id || user?.uid || user?.tinodeUid || user?.name);
+      const account = accountForIdentity(accounts, [
+        user?.id,
+        user?.uid,
+        user?.tinodeUid,
+        user?.tinode_uid,
+        user?.name,
+      ]);
       return account ? { ...user, name: account.name, nickname: account.nickname || '', avatar: account.avatar || user.avatar || '' } : user;
     }),
   ]));
@@ -841,7 +858,13 @@ function personalizeMessageForViewer(message, accounts) {
 function personalizeConversationForViewer(room, accounts, viewer) {
   if (!room) return room;
   const members = roomMembers(room).map(member => {
-    const account = accountForIdentity(accounts, member?.id || member?.uid || member?.tinodeUid || member?.name);
+    const account = accountForIdentity(accounts, [
+      member?.id,
+      member?.uid,
+      member?.tinodeUid,
+      member?.tinode_uid,
+      member?.name,
+    ]);
     if (!account) return member;
     return {
       ...member,
@@ -1194,8 +1217,10 @@ function mergeTinodeConversation(existing, incoming) {
       ? existingName || incomingName || fallbackName
       : incomingName || existingName || fallbackName,
     avatarHtml: safeIncoming.avatarHtml || safeExisting.avatarHtml,
-    avatarUrl: managementOwned && !incomingManagementSnapshot
-      ? (safeIncoming.avatarUrl || safeExisting.avatarUrl)
+    avatarUrl: managementOwned
+      ? mergeManagementAvatar(safeExisting.avatarUrl, safeIncoming.avatarUrl, {
+        incomingManagementSnapshot,
+      })
       : (safeIncoming.avatarUrl !== undefined ? safeIncoming.avatarUrl : safeExisting.avatarUrl),
     description: managementOwned && !incomingManagementSnapshot
       ? safeExisting.description
@@ -1838,6 +1863,7 @@ function App() {
   const contactNicknamesRef = useRef(contactNicknames);
   const avatarOverridesRef = useRef(new Map());
   const groupAvatarSyncRef = useRef(new Map());
+  const groupAvatarRefreshRef = useRef(new Map());
   const messageSearchRequestRef = useRef(0);
   const typingNoticeAtRef = useRef(new Map());
   const typingClearTimersRef = useRef(new Map());
@@ -2592,10 +2618,13 @@ function App() {
     ];
     const seen = new Set();
     const candidates = rawMembers.reduce((members, member) => {
-      const account = findAccount(
-        directoryAccounts,
-        member?.id || member?.uid || member?.tinodeUid || member?.tinode_uid || member?.name,
-      );
+      const account = findAccountByIdentities(directoryAccounts, [
+        member?.id,
+        member?.uid,
+        member?.tinodeUid,
+        member?.tinode_uid,
+        member?.name,
+      ]);
       const candidate = {
         ...(member || {}),
         ...(account || {}),
@@ -2914,7 +2943,7 @@ function App() {
 
     if (!topicName) throw new Error('Chatmgt chưa gắn topic Tinode cho cuộc trò chuyện này.');
     let liveGroupAvatar = '';
-    if (preparedRoom.isGroup) {
+    if (preparedRoom.isGroup && !preparedRoom.avatarUrl && !room.avatarUrl) {
       if (!groupAvatarSyncRef.current.has(topicName)) {
         liveGroupAvatar = await tinodeClient.getConversationAvatar(topicName).catch(() => '');
         groupAvatarSyncRef.current.set(topicName, liveGroupAvatar);
@@ -2922,7 +2951,8 @@ function App() {
         liveGroupAvatar = groupAvatarSyncRef.current.get(topicName) || '';
       }
     }
-    const effectiveGroupAvatar = liveGroupAvatar || createdGroupAvatar || preparedRoom.avatarUrl || room.avatarUrl || '';
+    const persistedGroupAvatar = preparedRoom.avatarUrl || room.avatarUrl || '';
+    const effectiveGroupAvatar = persistedGroupAvatar || createdGroupAvatar || liveGroupAvatar || '';
     try {
       await chatManagementService.bindTinodeTopic(
         managementUserId,
@@ -3313,13 +3343,14 @@ function App() {
           && chatManagementService.remote
           && isManagementConversationId(currentRoom.managementId || currentRoom.id)
         ) {
-          groupAvatarSyncRef.current.set(conversation.id, conversation.avatarUrl);
-          chatManagementService.bindTinodeTopic(
-            managementViewerId,
-            currentRoom.managementId || currentRoom.id,
-            conversation.id,
-            { avatarUrl: conversation.avatarUrl },
-          ).catch(() => {});
+          // Tinode metadata can be older than the persisted Chatmgt group
+          // avatar after reconnect. Refresh the authoritative snapshot rather
+          // than writing that realtime value back into Chatmgt.
+          const refreshKey = `${currentRoom.managementId || currentRoom.id}:${conversation.avatarUrl}`;
+          if (currentRoom.avatarUrl && groupAvatarRefreshRef.current.get(refreshKey) !== conversation.avatarUrl) {
+            groupAvatarRefreshRef.current.set(refreshKey, conversation.avatarUrl);
+            refreshManagementConversations(accountSession).catch(() => {});
+          }
         }
         setConversations(prev => {
           const previousRoom = safeNormalizeConversationForRender(prev[stateId], stateId);
@@ -3436,6 +3467,7 @@ function App() {
     setIsSavingContactNickname(false);
     avatarOverridesRef.current.clear();
     groupAvatarSyncRef.current.clear();
+    groupAvatarRefreshRef.current.clear();
     setConversationMenu(null);
     setWorkspaceResults([]);
     setEnterpriseTaskSeed(null);
@@ -4278,7 +4310,13 @@ function App() {
           let changed = false;
           const nextConversations = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
           const members = roomMembers(room).map(member => {
-            const account = findAccount(effectiveAccounts, member.id || member.uid || member.tinodeUid || member.name);
+            const account = findAccountByIdentities(effectiveAccounts, [
+              member.id,
+              member.uid,
+              member.tinodeUid,
+              member.tinode_uid,
+              member.name,
+            ]);
             if (!account) return member;
             const updated = {
               ...member,
@@ -4300,7 +4338,12 @@ function App() {
             ? members.find(member => !identitiesOverlap(member, currentUser))
             : null;
           const messages = roomMessages(room).map(message => {
-            const account = findAccount(effectiveAccounts, message.senderId || message.senderName);
+            const account = findAccountByIdentities(effectiveAccounts, [
+              message.senderId,
+              message.raw?.from,
+              message.raw?.head?.['x-sender-id'],
+              message.senderName,
+            ]);
             if (!account) return message;
             const updated = { ...message, senderName: account.name || message.senderName, avatar: account.avatar || message.avatar || '' };
             return updated.senderName === message.senderName && updated.avatar === message.avatar ? message : updated;
@@ -4714,8 +4757,15 @@ function App() {
       else delete nextNicknames[contactId];
       contactNicknamesRef.current = nextNicknames;
       setContactNicknames(nextNicknames);
-      const nextAccounts = applyContactNicknames(
+      const contactAccount = normalizeAccountShape(contact) || contact;
+      const knownAccounts = findAccountByIdentities(
         directoryAccountsRef.current,
+        [contactId, contactAccount?.uid, contactAccount?.tinodeUid],
+      )
+        ? directoryAccountsRef.current
+        : [...directoryAccountsRef.current, contactAccount];
+      const nextAccounts = applyContactNicknames(
+        knownAccounts,
         { [contactId]: savedNickname },
       );
       directoryAccountsRef.current = nextAccounts;
