@@ -1,0 +1,40 @@
+{
+  "explorer.compactFolders": false,
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.expand": false,
+  "explorer.fileNesting.patterns": {
+    "package.json": "package-lock.json",
+    ".env.example": ".env.local-ai-api.example",
+    "README.md": "AGENTS.md,SKILL.md",
+    ".gitignore": ".gitattributes"
+  },
+  "files.exclude": {
+    "**/.agents": true,
+    "**/.codex-deploy-group-owner": true,
+    "**/.codex-remote-overlay": true,
+    "**/.codex-worktrees": true,
+    "**/.git": true,
+    "**/.codex-vite.err.log": true,
+    "**/.codex-vite.out.log": true,
+    "**/analysis_*.md": true,
+    "**/dist": true,
+    "**/node_modules": true,
+    "**/outputs": true,
+    "**/.env.local": true,
+    "**/.env.local-ai-api": true
+  },
+  "search.exclude": {
+    "**/.agents": true,
+    "**/.codex-deploy-group-owner": true,
+    "**/.codex-remote-overlay": true,
+    "**/.codex-worktrees": true,
+    "**/.git": true,
+    "**/dist/**": true,
+    "**/node_modules/**": true,
+    "**/outputs/**": true,
+    "**/analysis_*.md": true,
+    "**/*.log": true
+  },
+  "workbench.tree.indent": 16,
+  "workbench.tree.renderIndentGuides": "always"
+}

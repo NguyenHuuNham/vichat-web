@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-10 - Don dep workspace Explorer
+
+- Thoi gian: 2026-08-23 11:35 (Asia/Saigon)
+- Loai: Tai lieu | Cau hinh
+- Trang thai: Hoan tat
+- Muc tieu: Lam goc code trong VS Code gon va chuyen nghiep hon ma khong anh huong web.
+- Pham vi: VS Code Explorer/Search va cac file metadata cua repository; khong thay doi runtime, bundle, API, database hay duong dan build/deploy.
+- File da thay doi: `.vscode/settings.json`, `.gitignore`, `docs/CHANGELOG.md`.
+- Noi dung: An cac thu muc sinh tu dong, dependency, build artifact, log va file local; gom package lock, tai lieu huong dan va env example bang file nesting; giu nguyen cac thu muc code quan trong `src`, `public`, `scripts`, `infrastructure`, `chatservice-main` va `mobile`.
+- Quyet dinh ky thuat: Chi thay doi cau hinh hien thi cua VS Code, khong di chuyen hoac doi ten file that de tranh anh huong import, Docker context va production deploy.
+- Database/API/cau hinh: Khong co migration, API, bien runtime hoac secret moi.
+- Kiem thu: Kiem tra cau hinh JSON hop le; `git diff --check` dat; `npm run build:production` dat voi bundle giu nguyen (`index-Bykhe6XO.js`, `App-CpR6oYYU.js`); khong can deploy production vi thay doi chi anh huong IDE.
+- Rui ro con lai: File bi an van ton tai va co the mo bang Quick Open/terminal; may khong dung VS Code se khong thay doi gi.
+- Viec tiep theo: Mo lai Explorer neu VS Code chua tu nap workspace settings.
+- Commit/PR: Chua tao.
+
 ## 2026-08-23-09 - Khoi phuc avatar group sau reload
 
 - Thoi gian: 2026-08-23 11:23 (Asia/Saigon)
