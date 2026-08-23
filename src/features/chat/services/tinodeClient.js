@@ -891,6 +891,13 @@ function toConversation(topic, tinode) {
   const conversationBackground = rawConversationBackground
     ? { ...rawConversationBackground, url: normalizeAvatar(rawConversationBackground.url) }
     : rawConversationBackground;
+  const topicSequence = Number(topic.seq) || 0;
+  const topicReadSequence = Number(topic.read) || 0;
+  const explicitUnreadCount = Number(topic.unread);
+  const topicUnreadCount = Math.max(
+    0,
+    Number.isFinite(explicitUnreadCount) ? explicitUnreadCount : topicSequence - topicReadSequence,
+  );
 
   return {
     id: topic.name,
@@ -913,7 +920,11 @@ function toConversation(topic, tinode) {
     time: latestMapped?.time || '',
     updatedAt: latestMapped?.createdAt || (topic.touched ? new Date(topic.touched).toISOString() : undefined),
     ...(conversationBackground !== undefined ? { conversationBackground } : {}),
-    badge: messages.length > 0 ? Math.max(0, topic.unread || ((topic.seq || 0) - (topic.read || 0))) : 0,
+    readSeq: topicReadSequence,
+    unreadFromSeq: topicUnreadCount > 0
+      ? topicReadSequence + 1
+      : 0,
+    badge: messages.length > 0 ? topicUnreadCount : 0,
     deletedAt,
     topic,
   };

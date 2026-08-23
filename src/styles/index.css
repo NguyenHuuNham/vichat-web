@@ -855,6 +855,110 @@ body {
     background-color: rgba(255, 255, 255, .84);
 }
 
+.unread-jump-button {
+    position: absolute;
+    top: 14px;
+    right: 20px;
+    z-index: 4;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+    padding: 8px 12px;
+    border: 1px solid rgba(24, 119, 242, .22);
+    border-radius: 999px;
+    color: var(--vichat-blue);
+    background: var(--bg-white);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, .14);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+}
+
+.unread-jump-button:hover,
+.unread-jump-button:focus-visible {
+    background: var(--vichat-blue-light);
+    box-shadow: 0 10px 26px rgba(15, 23, 42, .2);
+    outline: none;
+    transform: translateY(-1px);
+}
+
+.unread-jump-button span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.unread-jump-button strong {
+    display: inline-grid;
+    min-width: 20px;
+    height: 20px;
+    place-items: center;
+    padding: 0 5px;
+    border-radius: 999px;
+    color: #fff;
+    background: var(--vichat-blue);
+    font-size: 10px;
+}
+
+.unread-jump-button > .fa-chevron-down {
+    font-size: 10px;
+}
+
+.unread-message-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 8px 0 2px;
+    color: var(--vichat-blue);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.unread-message-divider::before,
+.unread-message-divider::after {
+    height: 1px;
+    flex: 1;
+    content: '';
+    background: rgba(24, 119, 242, .32);
+}
+
+.unread-message-divider span {
+    white-space: nowrap;
+}
+
+.unread-message-divider time {
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    white-space: nowrap;
+}
+
+@media (max-width: 576px) {
+    .unread-jump-button {
+        top: 9px;
+        right: 10px;
+        max-width: calc(100% - 20px);
+        padding: 7px 10px;
+        font-size: 11px;
+    }
+
+    .unread-message-divider {
+        gap: 6px;
+        font-size: 9px;
+    }
+
+    .unread-message-divider time {
+        display: none;
+    }
+}
+
 .date-divider {
     display: flex;
     align-items: center;

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-02 - Them moc tin nhan chua doc
+
+- Thoi gian: 2026-08-24 02:06 (Asia/Saigon)
+- Loai: Tinh nang | Sua loi | Web | Realtime | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code; dang kiem thu release
+- Muc tieu: Cho nguoi dung quay lai dung moc tin nhan cuoi cung da xem khi hoi thoai co nhieu tin moi, sau do tu dong tro lai giao dien binh thuong khi da di qua tin cuoi cua cum chua doc.
+- Pham vi: Chi ChatUI message list, unread/read cursor projection, nut nhay va divider tin chua doc; giu nguyen sticker, nen, avatar, reaction, file, group, tenant va composer.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/unreadBoundary.js`, `src/features/chat/services/unreadBoundary.test.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/tinodeClient.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `package.json`, `dist/index.html`.
+- Noi dung: Tinode conversation gioi thieu `readSeq` va `unreadFromSeq`; demo conversation dung `readAt`. ChatUI luu moc dau/cuoi cua cum tin den, hien nut `Tin chua doc`, chi hien divider `TIN NHAN CHUA DOC` sau khi nguoi dung bam nut, tai them message dau tien neu chua nam trong lich su dang render, va go moc sau khi tin cuoi hien thi on dinh. Phong duoc chon mac dinh cung duoc bat moc, auto-scroll bi chan sau khi nguoi dung nhay vao cum tin chua doc, va cursor UI duoc reset sau khi markRead thanh cong. Tin he thong co ref doc rieng de observer khong bi ket neu no la tin cuoi cua cum.
+- Quyet dinh ky thuat: Khong tao bang, endpoint hay local storage moi. Tinode van la nguon read cursor va markRead; UI chi giu state tam thoi theo conversation trong phien hien tai. Demo fallback tiep tuc dung readBy hien co, chi chuyen timestamp viewer vao projection render.
+- Database/API/cau hinh: Khong migration, khong API/backend change, khong bien moi truong, khong secret. Chi recreate ChatUI khi deploy.
+- Kiem thu: `npm run test:frontend` dat 169/169; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `App-CfUymtHv.js`, `index-Dr5bXf0i.js`, CSS `index-Cm8EbR3l.css`; `git diff --check` dat.
+- Rui ro con lai: Chua UAT pixel-level bang hai tai khoan production va chua xac nhan scroll tren trinh duyet mobile; can kiem tra tin nhan den khi tab an, mo hoi thoai, bam nut, cuon qua tin cuoi va refresh/reconnect.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, UAT chat 1-1 va group voi nhieu tin chua doc; neu loi chi rollback release ChatUI ve `previous`, khong thao tac Tinode/database/volume.
+- Commit/PR: Chua tao
+
 ## 2026-08-24-01 - Dong bo avatar Account va giu avatar nhom
 
 - Thoi gian: 2026-08-24 01:23 (Asia/Saigon)

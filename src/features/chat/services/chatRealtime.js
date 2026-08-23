@@ -294,6 +294,11 @@ export function normalizeConversationShape(conversation) {
     ? source.notificationMutedUntil
     : undefined;
   const badge = Number(source.badge);
+  const readSeq = Number(source.readSeq);
+  const unreadFromSeq = Number(source.unreadFromSeq);
+  const readAt = typeof source.readAt === 'string' || typeof source.readAt === 'number'
+    ? source.readAt
+    : undefined;
   const hasConversationBackground = Object.prototype.hasOwnProperty.call(source, 'conversationBackground')
     || Object.prototype.hasOwnProperty.call(source, 'conversation_background');
   const conversationBackground = hasConversationBackground
@@ -332,6 +337,9 @@ export function normalizeConversationShape(conversation) {
     lastMsg: conversationText(source.lastMsg),
     time: conversationText(source.time),
     updatedAt: conversationText(source.updatedAt),
+    readSeq: Number.isFinite(readSeq) && readSeq > 0 ? readSeq : 0,
+    unreadFromSeq: Number.isFinite(unreadFromSeq) && unreadFromSeq > 0 ? unreadFromSeq : 0,
+    ...(readAt !== undefined ? { readAt } : {}),
     ...(hasConversationBackground ? { conversationBackground } : {}),
     deletedAt: conversationText(source.deletedAt),
     category: conversationText(source.category),

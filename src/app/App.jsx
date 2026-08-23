@@ -56,6 +56,12 @@ import {
 import { resolveCallsEnabled } from '../features/chat/services/callSignaling';
 import { attachmentConversationPreview } from '../features/chat/services/messagePreview';
 import {
+  createUnreadBoundary,
+  isUnreadBoundaryEnd,
+  mergeUnreadBoundary,
+  unreadBoundaryStartIndex,
+} from '../features/chat/services/unreadBoundary';
+import {
   formatAudioDuration,
   isAudioAttachment,
   splitAttachmentSelection,
@@ -1289,6 +1295,10 @@ function mergeTinodeConversation(existing, incoming) {
     participantIds: incomingManagementSnapshot ? safeIncoming.participantIds : safeExisting.participantIds,
     messages,
     friendEvents,
+    readSeq: Math.max(Number(safeExisting.readSeq) || 0, Number(safeIncoming.readSeq) || 0),
+    unreadFromSeq: incomingManagementSnapshot
+      ? (Number(safeIncoming.unreadFromSeq) || Number(safeExisting.unreadFromSeq) || 0)
+      : (Number(safeIncoming.unreadFromSeq) || 0),
     lastMsg: latestAttachmentPreview || safeIncoming.lastMsg || safeExisting.lastMsg,
     time: safeIncoming.time || safeExisting.time,
     updatedAt: safeIncoming.updatedAt || safeExisting.updatedAt || messages[messages.length - 1]?.createdAt,
@@ -1657,6 +1667,7 @@ function demoGroupToConversation(group, accounts, viewerId) {
     adminId: owner?.id || group.ownerId || '',
     members,
     messages,
+    readAt: group.readBy?.[viewerId] || '',
     lastMsg: lastMessage ? (lastMessage.type === 'system' ? lastContent : lastAttachmentPreview || `${lastMessage.sender === 'outgoing' ? 'Bạn' : lastMessage.senderName}: ${lastContent}`) : 'Nhóm mới được tạo',
     time: lastMessage?.time || (group.updatedAt ? new Date(group.updatedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : getTimeString()),
     updatedAt: group.updatedAt,
@@ -1697,6 +1708,7 @@ function demoDirectToConversation(direct, accounts, viewerId) {
     members: other ? [{ ...other }] : [],
     participantIds: direct.participantIds,
     messages,
+    readAt: direct.readBy?.[viewerId] || '',
     lastMsg: lastMessage ? (lastAttachmentPreview || `${lastMessage.sender === 'outgoing' ? 'Bạn' : lastMessage.senderName}: ${lastContent}`) : 'Bắt đầu cuộc trò chuyện',
     time: lastMessage?.time || (direct.updatedAt ? new Date(direct.updatedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''),
     updatedAt: lastMessage?.createdAt || direct.updatedAt,
@@ -1869,6 +1881,7 @@ function App() {
   const [reactionDetails, setReactionDetails] = useState(null);
   const [shareMessage, setShareMessage] = useState(null);
   const [messageActions, setMessageActions] = useState({});
+  const [unreadBoundaries, setUnreadBoundaries] = useState({});
   const [messageReactionPickerKey, setMessageReactionPickerKey] = useState(null);
   const [messageActionHoverKey, setMessageActionHoverKey] = useState(null);
   const [pinnedMessagesExpanded, setPinnedMessagesExpanded] = useState(false);
@@ -1943,6 +1956,7 @@ function App() {
 
   // References
   const chatMessagesEndRef = useRef(null);
+  const chatMessagesRef = useRef(null);
   const messageElementsRef = useRef(new Map());
   const messageHighlightTimerRef = useRef(null);
   const messageActionHideTimerRef = useRef(null);
@@ -1972,6 +1986,10 @@ function App() {
   const voiceDiscardRef = useRef(false);
   const voiceTimerRef = useRef(null);
   const notificationBaselineRef = useRef(new Map());
+  const unreadBoundariesRef = useRef({});
+  const unreadCompletionRequestsRef = useRef(new Set());
+  const unreadBoundaryJumpedRef = useRef(new Set());
+  const visibleMessagesRef = useRef([]);
   const notificationAudioContextRef = useRef(null);
   const notificationCustomAudioRef = useRef(null);
   const notificationSoundFileInputRef = useRef(null);
@@ -1995,6 +2013,7 @@ function App() {
   currentUserRef.current = currentUser;
   directoryAccountsRef.current = directoryAccounts;
   contactNicknamesRef.current = contactNicknames;
+  unreadBoundariesRef.current = unreadBoundaries;
 
   const rememberAvatarOverride = (entity, avatar) => {
     const value = String(avatar || '').trim();
@@ -2606,6 +2625,117 @@ function App() {
     ? window.Notification.permission
     : 'unsupported';
   const notificationSettingsViewerId = currentUser?.id || currentUser?.uid || viewerId;
+  const unreadViewerId = chatMode === 'tinode' ? viewerId : managementViewerId;
+
+  const rememberUnreadBoundary = useCallback((room, conversationId = room?.id) => {
+    if (!room || room.isChatbot || room.id === 'empty' || !conversationId) return null;
+    const key = String(conversationId);
+    if (unreadCompletionRequestsRef.current.has(key)) return null;
+    const firstUnreadSeq = Number(room.unreadFromSeq) > 0
+      ? Number(room.unreadFromSeq)
+      : Number(room.readSeq) > 0 ? Number(room.readSeq) + 1 : 0;
+    const boundary = createUnreadBoundary(roomMessages(room), {
+      viewerId: unreadViewerId,
+      unreadCount: room.badge,
+      firstUnreadSeq,
+      lastReadAt: room.readAt || room.readBy?.[unreadViewerId] || '',
+      topicName: room.tinodeTopic || '',
+    });
+    if (!boundary) return null;
+    const merged = mergeUnreadBoundary(unreadBoundariesRef.current[key], boundary);
+    unreadBoundariesRef.current = { ...unreadBoundariesRef.current, [key]: merged };
+    setUnreadBoundaries(previous => (
+      previous[key] === merged ? previous : { ...previous, [key]: merged }
+    ));
+    return merged;
+  }, [unreadViewerId]);
+
+  const completeUnreadBoundary = useCallback(async conversationId => {
+    const key = String(conversationId || '');
+    const boundary = unreadBoundariesRef.current[key];
+    if (!key || !boundary || unreadCompletionRequestsRef.current.has(key)) return;
+    unreadCompletionRequestsRef.current.add(key);
+    const completedAt = new Date().toISOString();
+    try {
+      const rawRoom = conversationsRef.current[key] || conversationsRef.current[conversationId];
+      const room = rawRoom ? safeNormalizeConversationForRender(rawRoom, key) : null;
+      if (chatMode === 'tinode') {
+        const topicName = boundary.topicName || room?.tinodeTopic;
+        if (topicName) await tinodeClient.markRead(topicName);
+      } else if (room?.isGroup) {
+        markDemoGroupRead(key, unreadViewerId);
+      } else {
+        markDemoDirectRead(key, unreadViewerId);
+      }
+      unreadCompletionRequestsRef.current.delete(key);
+      unreadBoundaryJumpedRef.current.delete(key);
+      delete unreadBoundariesRef.current[key];
+      setUnreadBoundaries(previous => {
+        if (!previous[key]) return previous;
+        const next = { ...previous };
+        delete next[key];
+        return next;
+      });
+      setConversations(previous => {
+        const previousRoom = previous[key]
+          ? safeNormalizeConversationForRender(previous[key], key)
+          : null;
+        if (!previousRoom) return previous;
+        const latestSequence = roomMessages(previousRoom)
+          .reduce((maximum, message) => Math.max(maximum, Number(message?.seq) || 0), 0);
+        const readSeq = Math.max(
+          Number(previousRoom.readSeq) || 0,
+          latestSequence,
+          Number(boundary.lastUnreadSeq) || 0,
+          Number(boundary.firstUnreadSeq) || 0,
+        );
+        const nextRoom = {
+          ...previousRoom,
+          badge: 0,
+          unreadFromSeq: 0,
+          ...(readSeq > 0 ? { readSeq } : {}),
+          ...(chatMode === 'demo' ? { readAt: completedAt } : {}),
+        };
+        const next = { ...previous, [key]: nextRoom };
+        conversationsRef.current = next;
+        return next;
+      });
+    } catch (error) {
+      unreadCompletionRequestsRef.current.delete(key);
+      console.warn('ViChat: failed to acknowledge unread boundary', error);
+    }
+  }, [chatMode, unreadViewerId]);
+
+  useEffect(() => {
+    unreadBoundariesRef.current = {};
+    unreadCompletionRequestsRef.current.clear();
+    unreadBoundaryJumpedRef.current.clear();
+    setUnreadBoundaries({});
+  }, [unreadViewerId, managementConversationSession]);
+
+  // Demo restores can select a room before its unread cursor reaches a
+  // realtime callback. Capture that initial room just like a Tinode event.
+  const activeUnreadRoomId = activeChat.id;
+  const activeUnreadRoomIsChatbot = activeChat.isChatbot;
+  const activeUnreadRoomBadge = activeChat.badge;
+  const activeUnreadRoomCursor = activeChat.unreadFromSeq;
+  const activeUnreadRoomReadAt = activeChat.readAt;
+  useEffect(() => {
+    if (activeUnreadRoomIsChatbot || activeUnreadRoomId === 'empty') return;
+    const room = conversationsRef.current[activeUnreadRoomId];
+    if (!room) return;
+    if (Number(activeUnreadRoomBadge) > 0 || Number(activeUnreadRoomCursor) > 0) {
+      rememberUnreadBoundary(room, activeUnreadRoomId);
+    }
+  }, [
+    activeUnreadRoomId,
+    activeUnreadRoomIsChatbot,
+    activeUnreadRoomBadge,
+    activeUnreadRoomCursor,
+    activeUnreadRoomReadAt,
+    activeMessageCount,
+    rememberUnreadBoundary,
+  ]);
 
   const updateNotificationSettings = useCallback(patch => {
     setSettings(previous => {
@@ -3040,6 +3170,7 @@ function App() {
 
   // Auto scroll to bottom of chat
   const scrollToBottom = () => {
+    if (unreadBoundariesRef.current[currentChatIdRef.current]?.revealed) return;
     if (chatMessagesEndRef.current) {
       chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
@@ -3642,7 +3773,19 @@ function App() {
           }
         }
 
-        if (stateId === currentChatIdRef.current && conversation.badge > 0 && document.visibilityState !== 'hidden') {
+        if (conversation.badge > 0 || Number(conversation.unreadFromSeq) > 0) {
+          rememberUnreadBoundary({
+            ...conversation,
+            id: stateId,
+            tinodeTopic: conversation.id,
+          }, stateId);
+        }
+        if (
+          stateId === currentChatIdRef.current
+          && conversation.badge > 0
+          && document.visibilityState !== 'hidden'
+          && !unreadBoundariesRef.current[stateId]
+        ) {
           tinodeClient.markRead(conversation.id).catch(() => {});
         }
         const currentRoom = safeNormalizeConversationForRender(currentRooms[stateId], stateId);
@@ -3694,7 +3837,7 @@ function App() {
         return;
       }
     });
-  }, [isLoggedIn, chatMode, managementConversationSession, currentUser, directoryAccounts, applyPresenceSnapshot, clearActiveCall, refreshManagementConversations, showIncomingNotification, viewerId, managementViewerId]);
+  }, [isLoggedIn, chatMode, managementConversationSession, currentUser, directoryAccounts, applyPresenceSnapshot, clearActiveCall, refreshManagementConversations, showIncomingNotification, viewerId, managementViewerId, rememberUnreadBoundary]);
 
   // Keep every known Tinode topic subscribed after login. This is the piece
   // that makes unread badges and notifications realtime before a chat is opened.
@@ -3703,10 +3846,24 @@ function App() {
     let cancelled = false;
     ensureTinodeSession()
       .then(() => tinodeClient.listConversations())
-      .then(async () => {
+      .then(async tinodeConversations => {
         if (!cancelled) {
           setConnectionStatus('online');
           applyPresenceSnapshot(tinodeClient.getPresenceSnapshot());
+        }
+        if (!cancelled && Array.isArray(tinodeConversations)) {
+          const knownRooms = safeConversationEntries(conversationsRef.current);
+          tinodeConversations.forEach(conversation => {
+            if (!conversation || (Number(conversation.badge) <= 0 && Number(conversation.unreadFromSeq) <= 0)) return;
+            const managedEntry = knownRooms.find(([, room]) => room.tinodeTopic === conversation.id);
+            if (!managedEntry) return;
+            const stateId = managedEntry[0];
+            rememberUnreadBoundary({
+              ...conversation,
+              id: stateId,
+              tinodeTopic: conversation.id,
+            }, stateId);
+          });
         }
         if (cancelled || !CHATBOT_ACCOUNT.tinodeUid) return;
         const sessionId = accountSessionRef.current;
@@ -3747,7 +3904,7 @@ function App() {
         }
       });
     return () => { cancelled = true; };
-  }, [isLoggedIn, chatMode, managementConversationSession, ensureTinodeSession, applyPresenceSnapshot]);
+  }, [isLoggedIn, chatMode, managementConversationSession, ensureTinodeSession, applyPresenceSnapshot, rememberUnreadBoundary]);
 
   const handleLoginSuccess = async (user, { source = 'credentials' } = {}) => {
     clearActiveCall();
@@ -3982,17 +4139,30 @@ function App() {
     setInputText(drafts[id] || '');
     setIsMobileChatActive(true);
     setChatError('');
+    let pendingUnreadBoundary = null;
+    const existingUnreadBoundary = unreadBoundariesRef.current[id] || null;
+    const hasSelectionUnreadCursor = Boolean(existingUnreadBoundary)
+      || Number(room.badge) > 0
+      || Number(room.unreadFromSeq) > 0;
+    if (hasSelectionUnreadCursor) {
+      pendingUnreadBoundary = rememberUnreadBoundary(room, id);
+    }
     setConversations(prev => {
       const previousRoom = prev[id] === null || prev[id] === undefined
         ? null
         : safeNormalizeConversationForRender(prev[id], id);
-      return previousRoom ? { ...prev, [id]: { ...previousRoom, badge: 0 } } : prev;
+      if (!previousRoom) return prev;
+      return pendingUnreadBoundary
+        ? prev
+        : { ...prev, [id]: { ...previousRoom, badge: 0 } };
     });
     if (chatMode === 'demo') {
       const userId = currentUser?.id || currentUser?.uid;
       if (!room?.isChatbot) {
-        if (room?.isGroup) markDemoGroupRead(id, userId);
-        else markDemoDirectRead(id, userId);
+        if (!pendingUnreadBoundary) {
+          if (room?.isGroup) markDemoGroupRead(id, userId);
+          else markDemoDirectRead(id, userId);
+        }
       }
     }
     if (chatMode === 'tinode' && (!room?.isChatbot || room?.tinodeTopic)) {
@@ -4016,6 +4186,7 @@ function App() {
             accountSession: room.accountSession,
           }
           : { ...openedRoom, id, managementId: room.managementId || id, tinodeTopic: topicName };
+        pendingUnreadBoundary = pendingUnreadBoundary || rememberUnreadBoundary(managedRoom, id);
         setConversations(prev => ({
           ...prev,
           [id]: {
@@ -4024,7 +4195,7 @@ function App() {
             pendingDirect: false,
           },
         }));
-        await tinodeClient.markRead(topicName);
+        if (!pendingUnreadBoundary) await tinodeClient.markRead(topicName);
       } catch (err) {
         setConnectionStatus(tinodeClient.authenticated ? 'online' : 'offline');
         setChatError(err?.message || 'Không mở được cuộc trò chuyện.');
@@ -7774,6 +7945,11 @@ function App() {
     if (!messageSearchQuery.trim()) return true;
     return `${message.text || ''} ${message.senderName || ''}`.toLowerCase().includes(messageSearchQuery.toLowerCase());
   });
+  visibleMessagesRef.current = visibleMessages;
+  const activeUnreadBoundary = unreadBoundaries[activeChat.id] || null;
+  const unreadBoundaryStart = activeUnreadBoundary && !messageSearchQuery.trim()
+    ? unreadBoundaryStartIndex(visibleMessages, activeUnreadBoundary)
+    : -1;
   const localHistorySearchResults = messageSearchHasFilters
     ? roomMessages(activeChat)
       .filter(message => !messageActions[messageActionKey(activeChat.id, message.id)]?.hidden)
@@ -7856,6 +8032,114 @@ function App() {
   const scrollToPinnedMessage = message => scrollToMessageById(message?.id);
   const showExpandedPinnedMessages = pinnedMessagesExpanded && pinnedMessages.length > 1;
   const hasDatedMessages = visibleMessages.some(message => formatMessageDateLabel(message, displayClock, appCopy.locale));
+
+  const scrollToUnreadBoundary = async () => {
+    if (!activeUnreadBoundary) return;
+    const boundaryKey = String(activeChat.id);
+    const revealedBoundary = { ...activeUnreadBoundary, revealed: true };
+    unreadBoundariesRef.current = { ...unreadBoundariesRef.current, [boundaryKey]: revealedBoundary };
+    setUnreadBoundaries(previous => ({ ...previous, [boundaryKey]: revealedBoundary }));
+    unreadBoundaryJumpedRef.current.add(String(activeChat.id));
+    const firstVisibleMessage = unreadBoundaryStart >= 0 ? visibleMessages[unreadBoundaryStart] : null;
+    const firstUnreadSequence = Number(activeUnreadBoundary.firstUnreadSeq) || 0;
+    const firstVisibleSequence = Number(firstVisibleMessage?.seq) || 0;
+    const exactFirstMessage = firstVisibleMessage && activeUnreadBoundary.firstUnreadId
+      && String(firstVisibleMessage.id) === String(activeUnreadBoundary.firstUnreadId);
+    const needsHistoryLoad = chatMode === 'tinode'
+      && activeChat.tinodeTopic
+      && firstUnreadSequence > 0
+      && (!firstVisibleMessage || firstVisibleSequence > firstUnreadSequence || !exactFirstMessage);
+    let targetId = exactFirstMessage || !needsHistoryLoad ? firstVisibleMessage?.id || '' : '';
+    if (needsHistoryLoad) {
+      try {
+        const loadedConversation = await tinodeClient.loadConversationMessages(
+          activeChat.tinodeTopic,
+          [firstUnreadSequence],
+        );
+        const loadedMessage = roomMessages(loadedConversation)
+          .find(message => Number(message?.seq) === firstUnreadSequence);
+        targetId = loadedMessage?.id || '';
+        if (loadedConversation) {
+          setConversations(previous => {
+            const currentRoom = previous[boundaryKey] || activeChat;
+            const incoming = {
+              ...loadedConversation,
+              id: boundaryKey,
+              managementId: currentRoom.managementId || boundaryKey,
+              tinodeTopic: activeChat.tinodeTopic,
+              accountSession: currentRoom.accountSession,
+            };
+            const next = {
+              ...previous,
+              [boundaryKey]: safeMergeTinodeConversation(currentRoom, incoming),
+            };
+            conversationsRef.current = next;
+            return next;
+          });
+        }
+        if (targetId) {
+          const nextBoundary = {
+            ...unreadBoundariesRef.current[boundaryKey],
+            firstUnreadId: targetId,
+            revealed: true,
+          };
+          unreadBoundariesRef.current = { ...unreadBoundariesRef.current, [boundaryKey]: nextBoundary };
+          setUnreadBoundaries(previous => ({ ...previous, [boundaryKey]: nextBoundary }));
+        }
+      } catch (error) {
+        console.warn('ViChat: failed to load the first unread message', error);
+      }
+    }
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const firstKey = targetId ? messageActionKey(activeChat.id, targetId) : '';
+      const target = (firstKey && messageElementsRef.current.get(firstKey))
+        || chatMessagesRef.current?.querySelector('[data-unread-boundary="true"]');
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      else chatMessagesRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    }));
+  };
+
+  useEffect(() => {
+    if (!activeUnreadBoundary || activeChat.isChatbot || messageSearchQuery.trim()) return undefined;
+    if (!unreadBoundaryJumpedRef.current.has(String(activeChat.id))) return undefined;
+    let observer;
+    let timer;
+    let frame;
+    const observeLastUnread = () => {
+      const currentMessages = visibleMessagesRef.current;
+      const exactTarget = currentMessages.find(message => isUnreadBoundaryEnd(message, activeUnreadBoundary));
+      const lastSequence = Number(activeUnreadBoundary.lastUnreadSeq) || 0;
+      const sequenceTarget = lastSequence > 0
+        ? currentMessages.filter(message => Number(message?.seq) > 0 && Number(message.seq) <= lastSequence).at(-1)
+        : null;
+      const targetMessage = exactTarget || sequenceTarget || (lastSequence > 0 ? null : currentMessages.at(-1));
+      const target = targetMessage
+        ? messageElementsRef.current.get(messageActionKey(activeChat.id, targetMessage.id))
+        : null;
+      const root = chatMessagesRef.current;
+      if (!target || !root || typeof IntersectionObserver === 'undefined') return;
+      observer = new IntersectionObserver(entries => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting || entry.intersectionRatio < 0.35) {
+          if (timer) window.clearTimeout(timer);
+          timer = null;
+          return;
+        }
+        if (timer) return;
+        timer = window.setTimeout(() => {
+          timer = null;
+          if (document.visibilityState !== 'hidden') void completeUnreadBoundary(activeChat.id);
+        }, 900);
+      }, { root, threshold: [0.35, 0.7] });
+      observer.observe(target);
+    };
+    frame = window.requestAnimationFrame(observeLastUnread);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      if (timer) window.clearTimeout(timer);
+      observer?.disconnect();
+    };
+  }, [activeChat.id, activeChat.isChatbot, activeUnreadBoundary, completeUnreadBoundary, messageSearchQuery]);
 
   const deliveryStatusIcon = message => {
     if (message.failed || message.deliveryStatus === 'failed') {
@@ -8315,7 +8599,23 @@ function App() {
           scope="active conversation"
           fallback={<div className="chat-messages conversation-render-error" role="alert">Conversation data could not be displayed.</div>}
         >
-          <div className={`chat-messages ${activeChat.isChatbot ? 'chatbot-messages' : ''} ${activeConversationBackground ? 'has-conversation-background' : ''}`}>
+          <div
+            ref={chatMessagesRef}
+            className={`chat-messages ${activeChat.isChatbot ? 'chatbot-messages' : ''} ${activeConversationBackground ? 'has-conversation-background' : ''}`}
+          >
+          {activeUnreadBoundary && !activeUnreadBoundary.revealed && !messageSearchQuery.trim() && (
+            <button
+              type="button"
+              className="unread-jump-button"
+              aria-label={appCopy.t('Tin chưa đọc')}
+              title={appCopy.t('Đi tới tin nhắn chưa đọc')}
+              onClick={scrollToUnreadBoundary}
+            >
+              <span><i className="fa-solid fa-arrow-down" aria-hidden="true"></i>{appCopy.t('Tin chưa đọc')}</span>
+              <strong>{activeUnreadBoundary.unreadCount || ''}</strong>
+              <i className="fa-solid fa-chevron-down" aria-hidden="true"></i>
+            </button>
+          )}
           <div className="chat-messages-content">
             <ConversationBackgroundLayer background={activeConversationBackground} />
           {!hasDatedMessages && (
@@ -8329,8 +8629,21 @@ function App() {
             if (msg.type === 'system') {
               return (
                 <React.Fragment key={msg.id}>
+                  {activeUnreadBoundary?.revealed && unreadBoundaryStart === messageIndex && (
+                    <div className="unread-message-divider" data-unread-boundary="true">
+                      <span>{appCopy.t('TIN NHẮN CHƯA ĐỌC')}</span>
+                      {activeUnreadBoundary.firstUnreadAt && <time>{formatFullMessageDateTime(activeUnreadBoundary.firstUnreadAt, '', appCopy.locale)}</time>}
+                    </div>
+                  )}
                   {showDateDivider && <div className="date-divider"><span>{dateLabel}</span></div>}
-                  <div className="group-system-message">
+                  <div
+                    ref={element => {
+                      const messageKey = messageActionKey(activeChat.id, msg.id);
+                      if (element) messageElementsRef.current.set(messageKey, element);
+                      else messageElementsRef.current.delete(messageKey);
+                    }}
+                    className="group-system-message"
+                  >
                     <i className={`fa-solid ${msg.action === 'member_left' ? 'fa-arrow-right-from-bracket' : msg.action === 'member_removed' ? 'fa-user-minus' : msg.action === 'group_created' ? 'fa-people-group' : ['message_pinned', 'message_unpinned'].includes(msg.action) ? 'fa-thumbtack' : msg.action === 'conversation_background_changed' ? 'fa-image' : msg.action === 'group_dissolved' ? 'fa-triangle-exclamation' : 'fa-user-plus'}`}></i>
                     <span>{localizedSystemText(msg, appCopy, directoryAccounts, viewerId)}</span>
                     <time>{formatMessageTime(msg, msg.time, appCopy.locale)}</time>
@@ -8393,6 +8706,12 @@ function App() {
               : attachmentFile?.url ? appCopy.t('Đã có trên Cloud') : appCopy.t('Có sẵn trên máy');
             return (
               <React.Fragment key={msg.id}>
+                {activeUnreadBoundary?.revealed && unreadBoundaryStart === messageIndex && (
+                  <div className="unread-message-divider" data-unread-boundary="true">
+                    <span>{appCopy.t('TIN NHẮN CHƯA ĐỌC')}</span>
+                    {activeUnreadBoundary.firstUnreadAt && <time>{formatFullMessageDateTime(activeUnreadBoundary.firstUnreadAt, '', appCopy.locale)}</time>}
+                  </div>
+                )}
                 {showDateDivider && <div className="date-divider"><span>{dateLabel}</span></div>}
                 <div
                   ref={element => {
