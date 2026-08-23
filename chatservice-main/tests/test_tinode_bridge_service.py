@@ -5,7 +5,7 @@ import sys
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 
 
 HAS_RUNTIME_DEPENDENCIES = all(
@@ -531,6 +531,22 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
             "topic": "grpRoom",
             "unsub": True,
         })
+
+    async def test_dissolve_removes_non_owners_before_the_owner(self):
+        remove_member = AsyncMock()
+        with patch.object(auth_service, "tinode_remove_topic_member", remove_member):
+            removed = await auth_service.tinode_dissolve_topic(
+                "short-token",
+                "usrOwner",
+                "grpRoom",
+                ["usrOwner", "usrMember", "usrOther", "usrMember"],
+            )
+
+        self.assertEqual(removed, ["usrMember", "usrOther", "usrOwner"])
+        self.assertEqual(
+            [call.args[3] for call in remove_member.await_args_list],
+            ["usrMember", "usrOther", "usrOwner"],
+        )
 
     async def test_remove_member_treats_an_already_missing_subscription_as_success(self):
         socket = FakeSocket([

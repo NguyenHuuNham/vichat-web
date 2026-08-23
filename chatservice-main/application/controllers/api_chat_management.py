@@ -65,6 +65,7 @@ from application.services.auth_service import (
     tinode_mirror_enabled,
     tinode_mirror_login,
     tinode_accept_topic_owner,
+    tinode_dissolve_topic,
     tinode_remove_topic_member,
     tinode_reconcile_topic_members,
     tinode_publish_system_event,
@@ -3168,6 +3169,143 @@ async def conversation_group_settings(request, conversation_id):
     item.updated_at = int(time.time())
     db.session.commit()
     return json(_serialize_conversation(item, user_id))
+
+
+@app.route('/api/v1/conversation/<conversation_id>/dissolve', methods=['POST'])
+@app.route('/api/v1/chat/threads/<conversation_id>/dissolve', methods=['POST'])
+async def conversation_dissolve(request, conversation_id):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    if management_session_requested(request):
+        return json({
+            "error_code": "CHAT_SESSION_REQUIRED",
+            "error_message": "Groups can only be dissolved from a Chat user session.",
+        }, status=403)
+    try:
+        conversation_uuid = uuid.UUID(str(conversation_id))
+    except (ValueError, TypeError, AttributeError):
+        return json({"error_code": "NOT_FOUND", "error_message": "Invalid conversation."}, status=404)
+
+    user_id = _user_id(current_user)
+    item, membership = _conversation_and_membership(tenant_id, conversation_uuid, user_id)
+    if item is None or membership is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
+    if not bool((item.properties or {}).get("is_group")):
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "Only groups can be dissolved.",
+        }, status=400)
+    if membership.role != "OWNER":
+        return json({
+            "error_code": "OWNER_REQUIRED",
+            "error_message": "Only the group owner can dissolve this group.",
+        }, status=403)
+
+    now = int(time.time())
+    tinode_token = ""
+    owner_uid = ""
+    try:
+        participants, accounts_by_id = _active_conversation_accounts(item)
+        owner_participant = next(
+            (participant for participant in participants if participant.role == "OWNER"),
+            None,
+        )
+        owner_account = accounts_by_id.get(owner_participant.participant_id) if owner_participant else None
+        if owner_account is None or owner_participant.participant_id != user_id:
+            return json({
+                "error_code": "OWNER_REQUIRED",
+                "error_message": "Only the group owner can dissolve this group.",
+            }, status=403)
+        if current_user.get("auth_method") == "account_sso":
+            await _validated_account_identity(request, owner_account)
+
+        if item.tinode_topic:
+            await _ensure_tinode_accounts(accounts_by_id.values())
+            owner_uid = str(owner_account.tinode_uid or "").strip()
+            owner_auth = await tinode_sso_login(
+                _tinode_account_identity(owner_account),
+                owner_account.tinode_username,
+                owner_uid,
+            )
+            tinode_token = str(owner_auth.get("token") or "").strip()
+            if not owner_uid or not tinode_token:
+                raise AuthError("Tinode could not authenticate the group owner.", 502)
+            expected_tinode_uids = [
+                str(accounts_by_id[participant.participant_id].tinode_uid or "").strip()
+                for participant in participants
+                if participant.participant_id in accounts_by_id
+            ]
+            chatbot_uid = str((item.properties or {}).get("chatbot_tinode_uid") or "").strip()
+            if chatbot_uid:
+                expected_tinode_uids.append(chatbot_uid)
+            actual_tinode_uids = await tinode_topic_member_uids(
+                tinode_token,
+                owner_uid,
+                item.tinode_topic,
+            )
+            tinode_uids = list(dict.fromkeys([
+                *actual_tinode_uids,
+                *expected_tinode_uids,
+            ]))
+            await tinode_publish_system_event(
+                tinode_token,
+                owner_uid,
+                item.tinode_topic,
+                {
+                    "action": "group_dissolved",
+                    "actorId": user_id,
+                    "actorName": owner_account.full_name or owner_account.username or user_id,
+                    "groupName": item.subject or "",
+                },
+            )
+            await tinode_dissolve_topic(
+                tinode_token,
+                owner_uid,
+                item.tinode_topic,
+                tinode_uids,
+            )
+
+        for participant in participants:
+            participant.active = False
+            participant.left_at = now
+            participant.deleted = True
+        item.status = "CLOSED"
+        item.closed_at = now
+        item.updated_at = now
+        item.deleted = True
+        db.session.commit()
+        _audit(
+            request,
+            "CONVERSATION_GROUP_DISSOLVE",
+            True,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            properties={"conversation_id": str(item.id)},
+        )
+        return json({
+            "dissolved": True,
+            "conversation_id": str(item.id),
+            "group_name": item.subject or "",
+        })
+    except AccountSSOError as error:
+        db.session.rollback()
+        if error.status_code != 503:
+            revoke_request_token(request)
+            revoked_error = AccountSSOError(str(error), 401, error.error_code)
+            response = clear_auth_cookie(_account_sso_error(revoked_error), request)
+            return clear_account_cookie(response)
+        return _account_sso_error(error)
+    except AuthError as error:
+        db.session.rollback()
+        return json({"error_code": "TINODE_DISSOLVE_FAILED", "error_message": str(error)}, status=error.status_code)
+    except Exception as error:
+        db.session.rollback()
+        logger.exception("Could not dissolve Chatmgt/Tinode group: %s", error)
+        return json({
+            "error_code": "CONVERSATION_DISSOLVE_ERROR",
+            "error_message": "Could not dissolve the group.",
+        }, status=503)
 
 
 @app.route('/api/v1/conversation/<conversation_id>/search', methods=['POST'])

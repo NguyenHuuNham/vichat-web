@@ -713,6 +713,14 @@ export const chatManagementService = {
     return normalizeConversation(payload);
   },
 
+  async dissolveGroup(conversationId) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    return apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/dissolve`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
+
   async updateGroupProfile(conversationId, profile = {}) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const body = {};

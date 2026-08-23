@@ -387,6 +387,15 @@ published by a surviving member after the membership commit, so every client
 can show the transfer and a rejected Tinode operation cannot create a false
 "left the group" message. The replacement receives the same full owner
 permissions as the previous owner.
+The owner-only `POST /api/v1/conversation/<id>/dissolve` endpoint closes a
+group for every member. Before committing the Chatmgt closure it authenticates
+the owner bridge, unions the active Chatmgt Tinode mappings with the actual
+Tinode subscriber list, publishes a `group_dissolved` system event, and removes
+every subscription with the owner last. All participant rows are then marked
+inactive/deleted and the conversation is closed; a partial Tinode failure is
+rolled back where possible. Group message pinning remains viewer-local as
+before, while ChatUI publishes bounded `message_pinned`/`message_unpinned`
+system events only for group topics so direct-chat pin behavior is unchanged.
 The central Tinode remains authoritative for
 message content, files, presence, typing, reactions, receipts and call
 signaling. ChatUI does not post normal messages/files to Chatmgt knowledge;
@@ -556,6 +565,7 @@ history, role-aware actions and a message-to-task shortcut.
 | `PUT` | `/api/v1/conversation/<id>/pin` | Set or clear the current user's conversation pin |
 | `POST` | `/api/v1/conversation/<id>/tinode-prepare` | Prepare Tinode participant mappings |
 | `PUT` | `/api/v1/conversation/<id>/tinode-topic` | Verify/bind the topic to exact membership |
+| `POST` | `/api/v1/conversation/<id>/dissolve` | Owner-only group dissolution; remove all active members and close the group |
 | `POST` | `/api/v1/conversation/<id>/participants` | Add same-tenant active employees; any active group member may request this |
 | `DELETE` | `/api/v1/conversation/<id>/participants/<participant-id>` | Remove self, or remove another member as the group owner; owner self-removal requires body `replacement_id` for another active member |
 | `DELETE` | `/api/v1/conversation/<id>/self` | Remove the current user's conversation membership; group owner self-removal requires body `replacement_id` |

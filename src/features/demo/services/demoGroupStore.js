@@ -189,6 +189,15 @@ export function leaveDemoGroup(groupId, userId, replacementId = '') {
     : groups.filter(item => item.id !== groupId));
 }
 
+export function dissolveDemoGroup(groupId, ownerId) {
+  const groups = readGroups();
+  const group = groups.find(item => item.id === groupId);
+  if (!group) return false;
+  if (group.ownerId !== ownerId) throw new Error('Chỉ quản trị viên của nhóm mới có thể giải tán nhóm.');
+  writeGroups(groups.filter(item => item.id !== groupId));
+  return true;
+}
+
 export function deleteDemoGroupForUser(groupId, userId, userName = 'Một thành viên', replacementId = '', replacementName = '') {
   const groups = readGroups();
   const group = groups.find(item => item.id === groupId);

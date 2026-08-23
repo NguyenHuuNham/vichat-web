@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-16 - Giai tan nhom va thong bao ghim tin nhan
+
+- Thoi gian: 2026-08-23 18:10 (Asia/Saigon)
+- Loai: Tinh nang | Bao mat | API | Web | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Cho owner giai tan group sau xac nhan, xac nhan truoc khi owner roi/xoa hoi thoai, va thong bao cho group khi co nguoi ghim hoac bo ghim tin nhan.
+- Pham vi: ChatUI group management/leave/delete/pin, Chatmgt group lifecycle endpoint, Tinode system event va demo fallback; khong thay doi pin chat 1-1 hay cac luong sticker, reaction, mute, tenant.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/demo/services/demoGroupStore.js`, `src/features/i18n/appLanguage.js`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/services/auth_service.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `chatservice-main/tests/test_tinode_bridge_service.py`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Them nut `Giai tan nhom` chi hien voi owner va dialog xac nhan; Chatmgt xac minh owner, hop nhat subscriber Tinode thuc te voi mapping membership, phat `group_dissolved`, remove tat ca subscription voi owner sau cung, dong conversation va danh dau participant inactive/deleted. Owner leave/delete deu hoi xac nhan truoc khi mo dialog chon replacement. Pin group van luu viewer-local nhu cu, dong thoi phat `message_pinned`/`message_unpinned` kem actor va preview ngan; direct chat khong phat event.
+- Quyet dinh ky thuat: Tinode van la nguon system event realtime; Chatmgt la noi quyet dinh quyen owner va membership. Partial Tinode dissolve co co che restore thanh vien da remove neu thao tac tiep theo loi; khong migration/schema moi.
+- Database/API/cau hinh: Them `POST /api/v1/conversation/<id>/dissolve` va alias `/api/v1/chat/threads/<id>/dissolve`; khong migration, bien moi truong, secret hoac token moi.
+- Kiem thu: `npm run test:frontend` dat 155/155; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `App-fuTMcsXN.js` va CSS `index-Bmd9AcUp.css`; `python -m py_compile application/controllers/api_chat_management.py application/services/auth_service.py tests/test_chat_auth_contract.py tests/test_tinode_bridge_service.py` dat; `python -m unittest discover -s tests -q` dat 181 test, skip 61; `git diff --check` dat.
+- Rui ro con lai: Chua UAT bang owner va member that tren production de xac nhan dialog, dissolve tren group co subscriber stale, va pin event realtime tren hai phien; can theo doi neu DB commit loi sau khi Tinode da remove subscription.
+- Viec tiep theo: Chay contract/deploy production chi recreate `chat` va `chatmgt`, health-check/log-check, sau do UAT group owner/member. Neu rollback, tro release `current` ve `previous` va recreate rieng hai service, khong reset database/volume/Tinode.
+- Trien khai: Chua deploy.
+- Commit/PR: Chua tao.
+
 ## 2026-08-23-15 - Chuyen quyen truong nhom khi owner roi nhom
 
 - Thoi gian: 2026-08-23 17:17 (Asia/Saigon)

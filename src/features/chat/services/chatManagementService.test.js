@@ -219,6 +219,29 @@ test('group owner departure requires an explicit replacement and announces the t
   assert.doesNotMatch(appSource, /randomMemberId/);
 });
 
+test('group lifecycle actions confirm before leaving and expose owner-only dissolve controls', () => {
+  assert.equal(typeof chatManagementService.dissolveGroup, 'function');
+  assert.match(managementServiceSource, /async dissolveGroup\(conversationId\)/);
+  assert.match(managementServiceSource, /\/dissolve/);
+  assert.match(appSource, /const \[isDissolvingGroup, setIsDissolvingGroup\] = useState\(false\)/);
+  assert.match(appSource, /handleDissolveGroup/);
+  assert.match(appSource, /group-dissolve-button/);
+  assert.match(appSource, /Bạn có chắc muốn giải tán nhóm/);
+  assert.match(appSource, /Bạn có chắc muốn rời nhóm/);
+  assert.match(appSource, /Bạn có chắc muốn xóa hội thoại/);
+  assert.match(stylesSource, /\.group-management-danger-zone/);
+});
+
+test('group message pinning announces the actor without changing direct-chat pin behavior', () => {
+  assert.match(appSource, /message_pinned/);
+  assert.match(appSource, /message_unpinned/);
+  assert.match(appSource, /tinodeClient\.sendSystemEvent\(topicName, pinEvent\)/);
+  assert.match(appSource, /appendDemoGroupMessage\(activeChat\.id, systemMessage\)/);
+  assert.match(appSource, /activeChat\.isGroup && chatMode === 'tinode'/);
+  assert.match(appSource, /activeChat\.isGroup && chatMode === 'demo'/);
+  assert.match(appSource, /group_dissolved/);
+});
+
 test('group mute and reaction controls preserve the existing checkbox flow and expose actor details', () => {
   const muteSource = appSource.split('const handleConversationMuteToggle')[1].split('const handleNotificationMuteSubmit')[0];
   assert.match(muteSource, /typeof event\?\.target\?\.checked === 'boolean'/);

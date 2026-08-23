@@ -486,6 +486,15 @@ function formatSystemEvent(event, viewerId) {
   if (event.action === 'group_created') {
     return event.actorId === viewerId ? 'Bạn đã tạo nhóm' : `${actorName} đã tạo nhóm`;
   }
+  if (event.action === 'message_pinned' || event.action === 'message_unpinned') {
+    const actionText = event.action === 'message_pinned' ? 'đã ghim tin nhắn' : 'đã bỏ ghim tin nhắn';
+    const actorText = event.actorId === viewerId ? 'Bạn' : actorName;
+    const preview = String(event.messagePreview || '').trim();
+    return preview ? `${actorText} ${actionText}: “${preview}”` : `${actorText} ${actionText}`;
+  }
+  if (event.action === 'group_dissolved') {
+    return event.actorId === viewerId ? 'Bạn đã giải tán nhóm' : `${actorName} đã giải tán nhóm`;
+  }
   return event.text || 'Hoạt động nhóm';
 }
 
@@ -660,6 +669,7 @@ function toMessage(msg, tinode, topic = null) {
       || reactionEvent?.actorName
       || (isOutgoing ? undefined : (messageSenderId || 'Thành viên')),
     targetIds: systemEvent?.targets?.map?.(target => target.id) || [],
+    messagePreview: systemEvent?.messagePreview || '',
     systemEvent,
     friendEvent,
     reactionEvent,

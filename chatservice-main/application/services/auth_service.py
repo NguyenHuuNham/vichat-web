@@ -1259,6 +1259,37 @@ async def tinode_remove_topic_member(token, expected_uid, topic_name, member_uid
             return target_uid
 
 
+async def tinode_dissolve_topic(token, expected_uid, topic_name, member_uids):
+    """Remove every subscription from a group, leaving the owner for last."""
+    members = list(dict.fromkeys(str(uid).strip() for uid in (member_uids or []) if str(uid).strip()))
+    owner_uid = str(expected_uid or "").strip()
+    if not owner_uid or owner_uid not in members:
+        raise AuthError("The group owner mapping is missing.", 409)
+
+    removed = []
+    try:
+        for member_uid in [uid for uid in members if uid != owner_uid] + [owner_uid]:
+            await tinode_remove_topic_member(token, owner_uid, topic_name, member_uid)
+            removed.append(member_uid)
+    except Exception:
+        # The owner remains subscribed until the final operation, so a
+        # partial failure can restore the removed members before retrying.
+        if owner_uid not in removed:
+            for member_uid in reversed(removed):
+                try:
+                    await tinode_add_topic_members(
+                        token,
+                        owner_uid,
+                        topic_name,
+                        [member_uid],
+                        mode="JRWPAS",
+                    )
+                except Exception:
+                    logger.warning("Could not restore Tinode member %s after dissolve failure.", member_uid)
+        raise
+    return removed
+
+
 async def tinode_reconcile_topic_members(
     token,
     expected_uid,

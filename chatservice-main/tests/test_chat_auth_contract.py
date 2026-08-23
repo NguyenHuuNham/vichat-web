@@ -441,6 +441,35 @@ class ChatAuthContractTests(unittest.TestCase):
             remove_source.index("tinode_remove_topic_member"),
         )
 
+    def test_group_dissolve_is_owner_only_and_removes_every_tinode_subscription(self):
+        controller_source, dissolve_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_dissolve",
+        )
+        auth_source = (
+            PROJECT_ROOT / "application" / "services" / "auth_service.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("/api/v1/conversation/<conversation_id>/dissolve", controller_source)
+        self.assertIn("membership.role != \"OWNER\"", dissolve_source)
+        self.assertIn("tinode_topic_member_uids", dissolve_source)
+        self.assertIn("tinode_dissolve_topic", dissolve_source)
+        self.assertIn('item.status = "CLOSED"', dissolve_source)
+        self.assertIn("participant.deleted = True", dissolve_source)
+        self.assertIn('"action": "group_dissolved"', dissolve_source)
+        self.assertIn("leaving the owner for last", auth_source)
+        self.assertIn("if owner_uid not in removed", auth_source)
+
+    def test_group_pin_events_stay_in_chatui_and_are_not_direct_chat_events(self):
+        app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
+        tinode_source = (
+            REPOSITORY_ROOT / "src" / "features" / "chat" / "services" / "tinodeClient.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn("message_pinned", app_source)
+        self.assertIn("message_unpinned", app_source)
+        self.assertIn("activeChat.isGroup && chatMode === 'tinode'", app_source)
+        self.assertIn("group_dissolved", tinode_source)
+
     def test_direct_conversations_are_reused_by_participant_pair(self):
         _controller_source, create_source = function_source(
             CONTROLLER_PATH,

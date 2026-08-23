@@ -106,7 +106,7 @@ import {
   updateAccountProfiles,
   updateAccountPresence,
 } from '../features/contacts/services/accountDirectory';
-import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
+import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, dissolveDemoGroup, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
 import { CHATBOT_ACCOUNT, CHATBOT_STARTER_PROMPTS, EXTERNAL_CHAT_ONLY, applyTinodeChatbotConfig, loadChatbotMessages, loadChatbotMessagesFromServer, loadTinodeChatbotConfig, mergeChatbotMessages, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
 import {
@@ -720,6 +720,17 @@ function personalizeGroupSystemText(message, accounts, viewerId) {
   }
   if (message.action === 'group_created') {
     return message.senderId === viewerId ? 'Bạn đã tạo nhóm' : `${actorName} đã tạo nhóm`;
+  }
+  if (message.action === 'message_pinned' || message.action === 'message_unpinned') {
+    const pinText = message.action === 'message_pinned' ? 'đã ghim tin nhắn' : 'đã bỏ ghim tin nhắn';
+    const preview = String(message.messagePreview || message.systemEvent?.messagePreview || '').trim();
+    const actorText = message.senderId === viewerId ? 'Bạn' : actorName;
+    return preview ? `${actorText} ${pinText}: “${preview}”` : `${actorText} ${pinText}`;
+  }
+  if (message.action === 'group_dissolved') {
+    return message.senderId === viewerId
+      ? 'Bạn đã giải tán nhóm'
+      : `${actorName} đã giải tán nhóm`;
   }
   return message.text;
 }
@@ -1685,6 +1696,7 @@ function App() {
   const [isGroupManagementOpen, setIsGroupManagementOpen] = useState(false);
   const [groupManagementDraft, setGroupManagementDraft] = useState({ ...DEFAULT_GROUP_SETTINGS });
   const [isUpdatingGroupManagement, setIsUpdatingGroupManagement] = useState(false);
+  const [isDissolvingGroup, setIsDissolvingGroup] = useState(false);
   const [groupManagementNotice, setGroupManagementNotice] = useState('');
   const [isGroupRenameOpen, setIsGroupRenameOpen] = useState(false);
   const [groupRenameValue, setGroupRenameValue] = useState('');
@@ -2703,6 +2715,8 @@ function App() {
   }, [viewerId]);
   const activeAdminAccount = resolveGroupAdministrator(activeChat, directoryAccounts);
   const activeAdminName = activeAdminAccount?.name || activeChat.admin || appCopy.t('Chưa xác định');
+  const isActiveGroupOwner = activeChat.isGroup
+    && identitiesOverlap(activeAdminAccount, currentUser);
 
   // Auto scroll to bottom of chat
   const scrollToBottom = () => {
@@ -4844,6 +4858,61 @@ function App() {
     }
   };
 
+  const handleDissolveGroup = async () => {
+    if (!activeChat?.isGroup || !isActiveGroupOwner || isDissolvingGroup) return;
+    const groupName = activeChat.name || appCopy.t('Nhóm');
+    const confirmed = window.confirm(
+      `${appCopy.t('Bạn có chắc muốn giải tán nhóm')} "${groupName}"?\n\n${appCopy.t('Tất cả thành viên sẽ bị đưa ra khỏi nhóm và thao tác này không thể khôi phục.')}`,
+    );
+    if (!confirmed) return;
+
+    const targetRoom = safeNormalizeConversationForRender(activeChat, activeChat.id);
+    const actorId = currentUser?.id || currentUser?.uid || '';
+    const tinodeActorId = tinodeClient.currentUserId || actorId;
+    const deletedKeys = [targetRoom.id, targetRoom.managementId, targetRoom.tinodeTopic]
+      .filter(Boolean)
+      .map(String);
+    deletedKeys.forEach(key => deletedConversationIdsRef.current.add(key));
+    setIsDissolvingGroup(true);
+    setChatError('');
+    try {
+      let removedTopic = '';
+      if (usesManagementData) {
+        await chatManagementService.dissolveGroup(targetRoom.managementId || targetRoom.id);
+        removedTopic = targetRoom.tinodeTopic || '';
+      } else if (chatMode === 'tinode') {
+        removedTopic = await ensureTinodeConversationTopic(targetRoom);
+        await tinodeClient.sendSystemEvent(removedTopic, {
+          action: 'group_dissolved',
+          actorId: tinodeActorId,
+          actorName: currentUser?.name || 'Quản trị viên',
+          groupName: targetRoom.name || '',
+        });
+        await tinodeClient.discardGroupTopic(removedTopic);
+      } else {
+        dissolveDemoGroup(targetRoom.id, actorId);
+      }
+
+      if (removedTopic) tinodeClient.disallowConversationTopic(removedTopic);
+      const currentConversationMap = conversationsRef.current || conversations;
+      const remainingRooms = Object.fromEntries(
+        safeConversationEntries(currentConversationMap).filter(([id]) => id !== targetRoom.id),
+      );
+      setConversations(remainingRooms);
+      conversationsRef.current = remainingRooms;
+      setCurrentChatId(firstVisibleConversationId(remainingRooms, drafts, CHATBOT_ACCOUNT.id));
+      setIsDetailOpen(false);
+      setIsGroupManagementOpen(false);
+      setGroupManagementNotice('');
+      window.setTimeout(() => deletedKeys.forEach(key => deletedConversationIdsRef.current.delete(key)), 5000);
+    } catch (error) {
+      deletedKeys.forEach(key => deletedConversationIdsRef.current.delete(key));
+      setChatError(error?.message || 'Không thể giải tán nhóm.');
+    } finally {
+      setIsDissolvingGroup(false);
+    }
+  };
+
   const executeGroupLeave = async (targetRoom, replacementId = '', replacementName = '', mode = 'leave') => {
     if (!targetRoom?.isGroup || isLeavingGroup) return false;
     const actorId = currentUser?.id || currentUser?.uid;
@@ -4944,7 +5013,12 @@ function App() {
 
   const requestGroupLeave = (targetRoom, mode = 'leave') => {
     if (!targetRoom?.isGroup || isLeavingGroup) return;
-    if (canManageGroupMembers(targetRoom, directoryAccounts, currentUser)) {
+    const isOwner = canManageGroupMembers(targetRoom, directoryAccounts, currentUser);
+    const confirmText = mode === 'delete'
+      ? `${appCopy.t('Bạn có chắc muốn xóa hội thoại')} "${targetRoom.name}"?\n\n${appCopy.t('Bạn sẽ rời nhóm sau khi chọn trưởng nhóm mới.')}`
+      : `${appCopy.t('Bạn có chắc muốn rời nhóm')} "${targetRoom.name}"?`;
+    if (isOwner) {
+      if (!window.confirm(confirmText)) return;
       setPendingGroupLeave({ room: targetRoom, mode });
       setGroupLeaveSearch('');
       setGroupLeaveReplacementId('');
@@ -6501,7 +6575,36 @@ function App() {
           return;
         }
         const key = messageActionKey(activeChat.id, message.id);
-        saveMessageAction(message, { pinned: !messageActions[key]?.pinned });
+        const nextPinned = !messageActions[key]?.pinned;
+        const pinEvent = {
+          action: nextPinned ? 'message_pinned' : 'message_unpinned',
+          actorId: tinodeClient.currentUserId || viewerId,
+          actorName: currentUser?.name || 'Một thành viên',
+          messageId: String(message.id || '').slice(0, 200),
+          messageSeq: Number(message.seq) || 0,
+          messagePreview: String(message.text || message.file?.name || (message.type === 'sticker' ? 'Sticker' : 'Nội dung đính kèm'))
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 120),
+        };
+        if (activeChat.isGroup && chatMode === 'tinode') {
+          const topicName = await ensureTinodeConversationTopic(activeChat);
+          await tinodeClient.sendSystemEvent(topicName, pinEvent);
+        } else if (activeChat.isGroup && chatMode === 'demo') {
+          const systemMessage = {
+            id: `system-pin-${Date.now()}`,
+            type: 'system',
+            ...pinEvent,
+            senderId: pinEvent.actorId,
+            senderName: pinEvent.actorName,
+            text: personalizeGroupSystemText({ ...pinEvent, type: 'system' }, directoryAccounts, viewerId),
+            time: getTimeString(),
+            createdAt: new Date().toISOString(),
+          };
+          const group = appendDemoGroupMessage(activeChat.id, systemMessage);
+          updateActiveGroupRoom(demoGroupToConversation(group, directoryAccounts, viewerId));
+        }
+        saveMessageAction(message, { pinned: nextPinned });
         return;
       }
       if (action === 'reaction') {
@@ -7625,7 +7728,7 @@ function App() {
                 <React.Fragment key={msg.id}>
                   {showDateDivider && <div className="date-divider"><span>{dateLabel}</span></div>}
                   <div className="group-system-message">
-                    <i className={`fa-solid ${msg.action === 'member_left' ? 'fa-arrow-right-from-bracket' : msg.action === 'member_removed' ? 'fa-user-minus' : msg.action === 'group_created' ? 'fa-people-group' : 'fa-user-plus'}`}></i>
+                    <i className={`fa-solid ${msg.action === 'member_left' ? 'fa-arrow-right-from-bracket' : msg.action === 'member_removed' ? 'fa-user-minus' : msg.action === 'group_created' ? 'fa-people-group' : ['message_pinned', 'message_unpinned'].includes(msg.action) ? 'fa-thumbtack' : msg.action === 'group_dissolved' ? 'fa-triangle-exclamation' : 'fa-user-plus'}`}></i>
                     <span>{localizedSystemText(msg, appCopy, directoryAccounts, viewerId)}</span>
                     <time>{formatMessageTime(msg, msg.time, appCopy.locale)}</time>
                   </div>
@@ -9479,7 +9582,7 @@ function App() {
 
       {isGroupManagementOpen && activeChat.isGroup && (
         <div className="modal-backdrop group-management-backdrop" role="presentation" onMouseDown={event => {
-          if (event.target === event.currentTarget && !isUpdatingGroupManagement) setIsGroupManagementOpen(false);
+          if (event.target === event.currentTarget && !isUpdatingGroupManagement && !isDissolvingGroup) setIsGroupManagementOpen(false);
         }}>
           <form
             className="group-modal group-management-modal"
@@ -9493,7 +9596,7 @@ function App() {
                 <span className="group-modal-kicker">{appCopy.t('QUẢN TRỊ NHÓM')}</span>
                 <h2 id="group-management-title">{appCopy.t('Quản lý nhóm')}</h2>
               </div>
-              <button type="button" className="btn-close-detail" onClick={() => setIsGroupManagementOpen(false)} aria-label={appCopy.t('Đóng')} disabled={isUpdatingGroupManagement}>
+              <button type="button" className="btn-close-detail" onClick={() => setIsGroupManagementOpen(false)} aria-label={appCopy.t('Đóng')} disabled={isUpdatingGroupManagement || isDissolvingGroup}>
                 <i className="fa-solid fa-xmark"></i>
               </button>
             </div>
@@ -9511,7 +9614,7 @@ function App() {
                       type="checkbox"
                       checked={groupManagementDraft[option.key] === true}
                       onChange={event => setGroupManagementDraft(previous => ({ ...previous, [option.key]: event.target.checked }))}
-                      disabled={isUpdatingGroupManagement}
+                      disabled={isUpdatingGroupManagement || isDissolvingGroup}
                     />
                     <span className="slider round"></span>
                   </span>
@@ -9519,10 +9622,22 @@ function App() {
               ))}
             </div>
             {groupManagementNotice && <div className="group-management-notice" role="status"><i className="fa-solid fa-circle-check"></i>{appCopy.t(groupManagementNotice)}</div>}
+            {isActiveGroupOwner && (
+              <div className="group-management-danger-zone">
+                <div className="group-management-danger-copy">
+                  <strong>{appCopy.t('Giải tán nhóm')}</strong>
+                  <small>{appCopy.t('Đưa tất cả thành viên ra khỏi nhóm và đóng cuộc trò chuyện này.')}</small>
+                </div>
+                <button type="button" className="group-dissolve-button" onClick={handleDissolveGroup} disabled={isUpdatingGroupManagement || isDissolvingGroup}>
+                  {isDissolvingGroup ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-trash-can"></i>}
+                  {isDissolvingGroup ? appCopy.t('Đang giải tán...') : appCopy.t('Giải tán nhóm')}
+                </button>
+              </div>
+            )}
             <div className="group-modal-footer actions-only">
               <div className="group-modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setIsGroupManagementOpen(false)} disabled={isUpdatingGroupManagement}>{appCopy.t('Đóng')}</button>
-                <button type="submit" className="btn-primary" disabled={isUpdatingGroupManagement}>
+                <button type="button" className="btn-secondary" onClick={() => setIsGroupManagementOpen(false)} disabled={isUpdatingGroupManagement || isDissolvingGroup}>{appCopy.t('Đóng')}</button>
+                <button type="submit" className="btn-primary" disabled={isUpdatingGroupManagement || isDissolvingGroup}>
                   {isUpdatingGroupManagement ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-check"></i>}
                   {isUpdatingGroupManagement ? appCopy.t('Đang lưu...') : appCopy.t('Lưu thiết lập')}
                 </button>
