@@ -132,6 +132,7 @@ CONTACT_NICKNAMES_PROPERTY = "contact_nicknames"
 CONTACT_NICKNAME_MAX_LENGTH = 80
 CONTACT_NICKNAME_MAX_COUNT = 1000
 AUTHORITATIVE_AVATAR_PROPERTY = "chat_authoritative_avatar"
+GROUP_AVATAR_PROPERTY_KEYS = ("group_avatar", "avatar", "avatar_url", "avatarUrl")
 
 
 def _normalized_group_settings(value=None):
@@ -140,6 +141,18 @@ def _normalized_group_settings(value=None):
         key: source[key] if isinstance(source.get(key), bool) else default
         for key, default in GROUP_SETTING_DEFAULTS.items()
     }
+
+
+def _conversation_avatar(properties):
+    source = properties if isinstance(properties, dict) else {}
+    return next(
+        (
+            str(source.get(key) or "").strip()
+            for key in GROUP_AVATAR_PROPERTY_KEYS
+            if str(source.get(key) or "").strip()
+        ),
+        "",
+    )
 
 
 def _mobile_linked_devices(request, token):
@@ -562,10 +575,12 @@ def _sso_account(identity, mark_login=True, authoritative_avatar=None):
     if authoritative_avatar is not None:
         explicit_avatar = str(authoritative_avatar or "").strip()
         properties[AUTHORITATIVE_AVATAR_PROPERTY] = explicit_avatar
-    elif not directory_projection and not properties.get(AUTHORITATIVE_AVATAR_PROPERTY):
+    elif not directory_projection and identity.get("avatar_present", True):
+        # A full Account session is authoritative. Refresh the marker when
+        # the avatar changes outside ChatUI so directory sync cannot restore
+        # an older projection.
         current_avatar = str(identity.get("avatar") or "").strip()
-        if current_avatar:
-            properties[AUTHORITATIVE_AVATAR_PROPERTY] = current_avatar
+        properties[AUTHORITATIVE_AVATAR_PROPERTY] = current_avatar
     has_persisted_avatar = AUTHORITATIVE_AVATAR_PROPERTY in properties
     persisted_avatar = str(properties.get(AUTHORITATIVE_AVATAR_PROPERTY) or "").strip()
     account.username = identity["username"]
@@ -626,6 +641,25 @@ async def _validated_account_identity(request, account):
             "ACCOUNT_ROLE_CHANGED",
         )
     return identity
+
+
+def _account_projection_matches_identity(account, identity):
+    if account is None or not isinstance(identity, dict):
+        return True
+    fields = (
+        ("username", "username"),
+        ("full_name", "full_name"),
+        ("department", "department"),
+        ("title", "title"),
+        ("role", "role"),
+        ("avatar", "avatar"),
+    )
+    for account_field, identity_field in fields:
+        if identity_field == "avatar" and not identity.get("avatar_present", True):
+            continue
+        if str(getattr(account, account_field) or "") != str(identity.get(identity_field) or ""):
+            return False
+    return True
 
 
 async def _management_account_sso_guard(request, current_user, tenant_id):
@@ -930,7 +964,7 @@ def _serialize_conversation(item, viewer_id):
         "updated_at": item.updated_at,
         "properties": properties,
         "isGroup": is_group,
-        "avatar": properties.get("avatar") or "",
+        "avatar": _conversation_avatar(properties),
         "groupSettings": group_settings,
         "participantIds": participant_ids,
         "members": [
@@ -1543,6 +1577,20 @@ async def management_current_user(request):
                 response = clear_auth_cookie(_account_sso_error(revoked_error), request)
                 return clear_account_cookie(response)
             return _account_sso_error(error)
+        if not _account_projection_matches_identity(account, account_identity):
+            try:
+                tenant, account = _sso_account(account_identity, mark_login=False)
+                db.session.commit()
+            except AccountSSOError as error:
+                db.session.rollback()
+                return _account_sso_error(error)
+            except Exception as error:
+                db.session.rollback()
+                logger.exception("Account profile projection refresh failed: %s", error)
+                return json({
+                    "error_code": "ACCOUNT_PROFILE_SYNC_UNAVAILABLE",
+                    "error_message": "Account profile synchronization is temporarily unavailable.",
+                }, status=503)
     response = json({
         "user": _public_account(account, tenant),
         "tenant": _public_tenant(tenant),
@@ -3183,6 +3231,9 @@ async def conversation_group_settings(request, conversation_id):
         item.subject = next_name
     if next_avatar is not None:
         properties["avatar"] = next_avatar
+        properties["group_avatar"] = next_avatar
+        for legacy_key in ("avatar_url", "avatarUrl"):
+            properties.pop(legacy_key, None)
     if next_settings is not None:
         properties["groupSettings"] = next_settings
     item.properties = properties
@@ -3509,6 +3560,7 @@ async def conversation_create(request):
         "avatar": str(requested_properties.get("avatar") or "")[:8192],
     }
     if is_group:
+        properties["group_avatar"] = properties["avatar"]
         properties["groupSettings"] = _normalized_group_settings(
             requested_properties.get("groupSettings") or requested_properties.get("group_settings")
         )
@@ -3737,9 +3789,10 @@ async def conversation_bind_tinode(request, conversation_id):
                 topic_name,
                 expected_member_uids,
             )
-        if is_group and body.get("avatar"):
+        if is_group and "avatar" in body:
             properties = dict(item.properties or {})
             properties["avatar"] = str(body.get("avatar") or "")[:8192]
+            properties["group_avatar"] = properties["avatar"]
             item.properties = properties
         # A Tinode direct topic is the other participant's UID, so it differs
         # for each viewer and must not be persisted as one shared binding.

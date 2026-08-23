@@ -39,6 +39,15 @@ export function shouldRequestTinodeAuth(session, force = false) {
   return Boolean(force || session?.connection === 'tinode' || session?.tinodeAuth?.token);
 }
 
+export function isAccountManaged(account) {
+  return Boolean(
+    account?.accountManaged
+      || account?.account_managed
+      || account?.authSource === 'account'
+      || account?.auth_source === 'account',
+  );
+}
+
 export function shouldRetryTinodeMembership(error) {
   return ['TINODE_TOKEN_REQUIRED', 'TINODE_MEMBERSHIP_FAILED'].includes(error?.code)
     && [400, 401, 403, 409].includes(Number(error?.status));
@@ -208,7 +217,13 @@ function hydrateActiveSession(payload, { preserveExisting = true } = {}) {
   const rawTinodeAuth = payload?.tinode || payload?.tinode_auth || {};
   const hasTinodeToken = Boolean(rawTinodeAuth.token || payload?.tinode_token);
   const previous = preserveExisting ? activeSession : null;
-  const tinodeAuth = previous?.tinodeAuth || (hasTinodeToken ? {
+  const tinodeAuth = previous?.tinodeAuth
+    ? {
+      ...previous.tinodeAuth,
+      displayName: account?.name || previous.tinodeAuth.displayName || '',
+      avatar: account?.avatar || '',
+    }
+    : (hasTinodeToken ? {
     ...rawTinodeAuth,
     username: rawTinodeAuth.username || account?.tinodeUsername || account?.tinode_username || account?.username,
     uid: rawTinodeAuth.uid || account?.tinodeUid || account?.tinode_uid,
@@ -228,6 +243,18 @@ function hydrateActiveSession(payload, { preserveExisting = true } = {}) {
     tinodeAuth,
   };
   return { ...account, tenant, tenantOptions, connection };
+}
+
+function updateActiveSessionProfile(account) {
+  if (!activeSession || !account) return;
+  activeSession.user = { ...(activeSession.user || {}), ...account };
+  if (activeSession.tinodeAuth) {
+    activeSession.tinodeAuth = {
+      ...activeSession.tinodeAuth,
+      displayName: account.name || activeSession.tinodeAuth.displayName || '',
+      avatar: account.avatar || '',
+    };
+  }
 }
 
 function responseItems(payload) {
@@ -294,7 +321,7 @@ function normalizeConversation(record) {
     name: record?.name || record?.subject || properties.name || 'Cuoc tro chuyen',
     isGroup: record?.isGroup ?? properties.isGroup ?? properties.is_group ?? false,
     avatarHtml: record?.avatarHtml,
-    avatarUrl: record?.avatarUrl || record?.avatar || properties.avatar || '',
+    avatarUrl: record?.avatarUrl || record?.avatar || properties.group_avatar || properties.avatar || '',
     avatarClass: record?.avatarClass || (record?.isGroup ? 'group' : ''),
     membersCount: record?.membersCount || properties.membersCount || '',
     description: record?.description || properties.description || '',
@@ -334,6 +361,10 @@ export const chatManagementService = {
 
   get chatEngine() {
     return env.VITE_TINODE_HOST ? 'tinode' : 'demo';
+  },
+
+  get accountManaged() {
+    return isAccountManaged(activeSession?.user);
   },
 
   get directorySync() {
@@ -515,7 +546,7 @@ export const chatManagementService = {
       body: JSON.stringify(profile || {}),
     });
     const account = publicAccount(payload.user || payload);
-    if (activeSession && account) activeSession.user = account;
+    updateActiveSessionProfile(account);
     return account;
   },
 
@@ -529,7 +560,7 @@ export const chatManagementService = {
       body: form,
     });
     const account = publicAccount(payload.user || payload);
-    if (activeSession && account) activeSession.user = account;
+    updateActiveSessionProfile(account);
     return account;
   },
 
@@ -797,6 +828,8 @@ function toLoginSession(account) {
     tenantOptions: normalizeTenantOptions(account.tenantOptions || account.tenant_options),
     tinodeUid: account.tinodeUid || auth?.uid,
     tinodeAuth: auth,
+    authSource: account.authSource || account.auth_source || '',
+    accountManaged: isAccountManaged(account),
     mustChangePassword: Boolean(account.mustChangePassword || account.must_change_password),
     profile: {
       name: account.name,

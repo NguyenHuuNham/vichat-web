@@ -525,7 +525,7 @@ class ChatAuthContractTests(unittest.TestCase):
             "tinodeClient.updateGroupMetadata(topicName, { avatar: previousAvatarUrl })",
             app_source,
         )
-        self.assertIn("groupAvatarSyncRef.current.set(topicName, avatarUrl)", app_source)
+        self.assertIn("groupAvatarSyncRef.current.set(topicName, persistedAvatarUrl)", app_source)
         self.assertIn("event.type === 'conversation'", app_source)
         self.assertIn("conversation.avatarUrl !== currentRoom.avatarUrl", app_source)
         self.assertIn("mergeManagementAvatar", app_source)
@@ -534,7 +534,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("bindTinodeTopic", service_source)
 
         self.assertIn("properties[\"avatar\"]", group_settings_source)
-        self.assertIn('"avatar": properties.get("avatar") or ""', controller_source)
+        self.assertIn('"avatar": _conversation_avatar(properties)', controller_source)
         self.assertIn("topic.setMeta", tinode_source)
         self.assertIn("photo:", tinode_source)
         self.assertIn("emitConversation(topic)", tinode_source)

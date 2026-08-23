@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-01 - Dong bo avatar Account va giu avatar nhom
+
+- Thoi gian: 2026-08-24 01:07 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | API | Web | Realtime | Kiem thu | Tai lieu | Van hanh
+- Trang thai: Dang thuc hien
+- Muc tieu: Dong bo avatar hai chieu giua UpGO Account va ViChat, dong thoi khong de avatar nhom mat sau F5, chuyen tenant, reconnect hoac deploy.
+- Pham vi: Account SSO avatar, Chatmgt projection, ChatUI directory/profile/message/member avatar, Tinode group metadata; khong thay doi sticker, wallpaper, reaction, membership hay transport tin nhan.
+- File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/services/sso_identity.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/app/App.jsx`, `src/features/auth/components/Login.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/chat/services/chatRealtime.js`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Avatar Account duoc upload qua endpoint Account va chi cap nhat giao dien sau khi Account xac nhan URL. `GET /api/v1/auth/me` revalidate session dinh ky/de focus de nhan avatar thay doi tu UpGO Account, cap nhat directory, thanh vien, tin nhan va profile Tinode ma khong reset phien chat. Chatmgt luu dau moc avatar da xac nhan trong projection; avatar nhom ghi ca `group_avatar` va `avatar`, doc tu cac key legacy, uu tien snapshot Chatmgt khi Tinode reconnect va backfill record cu khi can.
+- Quyet dinh ky thuat: UpGO Account la nguon avatar ca nhan; Chatmgt la projection ben vung trong tenant; Tinode chi phat realtime va khong duoc ghi de avatar Account/group da xac nhan. Khong them schema migration.
+- Database/API/cau hinh: Su dung endpoint hien co `POST /api/v1/auth/avatar`, mo rong serializer/metadata conversation hien co; khong them bien moi truong, secret, migration hay reset volume/topic/message.
+- Kiem thu: `npm run test:frontend` dat 166/166; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi `index-DBZ8HM0y.js`, `App-CRPg9lZB.js`, `index-D9-GP0HU.css`; `python -m unittest discover -s tests -q` dat 182 test, skip 61 theo moi truong; `python -m py_compile application/controllers/api_chat_management.py application/services/sso_identity.py tests/test_chat_auth_contract.py` dat; `git diff --check` dat. Mot lan test backend chay dong thoi voi build gap `ConnectionAbortedError` o test local AI HTTP, sau khi chay rieng da dat 182/182.
+- Rui ro con lai: Chua UAT production bang tai khoan UpGO that cho doi avatar tu ca Account va web, doi tenant, reconnect va deploy; chua co browser pixel UAT trong phien nay.
+- Viec tiep theo: Commit/push, tao release bat bien, chi recreate `chat` va `chatmgt`, kiem tra health/public asset/Nginx/log, sau do hard refresh va UAT hai tai khoan. Neu loi chi rollback `current` ve `previous`, khong reset Tinode/database/volume.
+- Trien khai: Chua thuc hien.
+- Commit/PR: Chua tao.
+
 ## 2026-08-23-22 - Sua nen cuon va pham vi chia se hinh nen
 
 - Thoi gian: 2026-08-23 23:53 (Asia/Saigon)

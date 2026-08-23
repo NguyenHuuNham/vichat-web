@@ -50,6 +50,8 @@ function Login({ copy = { t: value => value }, onLoginSuccess, initialNotice = '
         tenantOptions: session.tenantOptions,
         tinodeUid: session.tinodeUid,
         tinodeAuth: session.tinodeAuth,
+        authSource: session.authSource,
+        accountManaged: session.accountManaged,
         title: session.profile?.title || '',
         tinodeSession: session,
         connection: session.connection,

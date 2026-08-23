@@ -36,6 +36,15 @@ function booleanValue(value, fallback = false) {
   return fallback;
 }
 
+function accountManagedValue(account) {
+  return Boolean(
+    account?.accountManaged
+      || account?.account_managed
+      || account?.authSource === 'account'
+      || account?.auth_source === 'account',
+  );
+}
+
 export function normalizeTenantShape(tenant) {
   if (!tenant || typeof tenant !== 'object' || Array.isArray(tenant)) return null;
   const id = firstText(tenant.id, tenant.tenantId, tenant.tenant_id);
@@ -68,6 +77,11 @@ export function normalizeAccountShape(account) {
   const tenant = normalizeTenantShape(account.tenant);
   const tenantId = firstText(account.tenantId, account.tenant_id, tenant?.id);
   const tenantName = firstText(account.tenantName, account.tenant_name, tenant?.name);
+  const authSource = firstText(account.authSource, account.auth_source).toLowerCase();
+  const hasAccountManaged = account.accountManaged !== undefined || account.account_managed !== undefined;
+  const accountManaged = hasAccountManaged
+    ? booleanValue(account.accountManaged ?? account.account_managed)
+    : authSource === 'account';
   const safe = {
     ...account,
     id,
@@ -97,12 +111,14 @@ export function normalizeAccountShape(account) {
     role: firstText(account.role, account.accountRole, account.account_role),
     accountRole: firstText(account.accountRole, account.account_role, account.role),
     active: booleanValue(account.active ?? account.is_active, true),
+    ...(authSource || hasAccountManaged ? {
+      authSource,
+      auth_source: authSource,
+      accountManaged,
+      account_managed: accountManaged,
+    } : {}),
   };
   if (account.online !== undefined) safe.online = booleanValue(account.online);
-  if (account.accountManaged !== undefined || account.account_managed !== undefined) {
-    safe.accountManaged = booleanValue(account.accountManaged ?? account.account_managed);
-    safe.account_managed = safe.accountManaged;
-  }
   if (account.mustChangePassword !== undefined || account.must_change_password !== undefined) {
     safe.mustChangePassword = booleanValue(account.mustChangePassword ?? account.must_change_password);
   }
@@ -199,7 +215,7 @@ export function mergeRealtimeAccountProfile(entity, profile) {
   const nextDefaultName = firstText(profile.defaultName, profile.default_name, profile.name, entity.defaultName, entity.name);
   const nextNickname = firstText(entity.nickname, profile.nickname);
   const nextName = nextNickname || nextDefaultName;
-  const nextAvatar = profile.avatar || entity.avatar || '';
+  const nextAvatar = accountManagedValue(profile) ? scalarText(profile.avatar) : (profile.avatar || entity.avatar || '');
   if (
     nextName === entity.name
     && nextDefaultName === entity.defaultName
@@ -264,7 +280,8 @@ export function mergeDirectoryAccountSnapshots(previousAccounts = [], incomingAc
   const next = incoming.map(account => {
     const previousAccount = findAccount(previous, account?.id || account?.uid || account?.tinodeUid || account?.tinode_uid);
     if (!previousAccount) return account;
-    const avatar = account.avatar || previousAccount.avatar || '';
+    const accountManaged = accountManagedValue(account);
+    const avatar = accountManaged ? (account.avatar || '') : (account.avatar || previousAccount.avatar || '');
     const hasIncomingNickname = Object.prototype.hasOwnProperty.call(account || {}, 'nickname');
     const nickname = hasIncomingNickname
       ? scalarText(account.nickname)

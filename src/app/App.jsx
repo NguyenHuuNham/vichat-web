@@ -6,7 +6,7 @@ import CallOverlay from '../features/chat/components/CallOverlay';
 import StickerPicker from '../features/chat/components/StickerPicker';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation, normalizeTinodeMediaUrl } from '../features/chat/services/tinodeClient';
 import { shouldRetryProtectedMediaAfterSession } from '../features/chat/services/mediaRetryPolicy';
-import { chatManagementService, managementAuthClient } from '../features/chat/services/chatManagementService';
+import { chatManagementService, isAccountManaged, managementAuthClient } from '../features/chat/services/chatManagementService';
 import {
   applyReceiptToMessages,
   conversationManagementMergePolicy,
@@ -873,15 +873,29 @@ function personalizeMessageForViewer(message, accounts) {
         user?.tinode_uid,
         user?.name,
       ]);
-      return account ? { ...user, name: account.name, nickname: account.nickname || '', avatar: account.avatar || user.avatar || '' } : user;
+      return account ? {
+        ...user,
+        name: account.name,
+        nickname: account.nickname || '',
+        avatar: isAccountManaged(account) ? (account.avatar || '') : (account.avatar || user.avatar || ''),
+      } : user;
     }),
   ]));
   if (!sender && !replySender && Object.keys(reactionUsers).length === 0) return message;
   return {
     ...message,
-    ...(sender ? { senderName: sender.name, avatar: sender.avatar || message.avatar || '' } : {}),
+    ...(sender ? {
+      senderName: sender.name,
+      avatar: isAccountManaged(sender) ? (sender.avatar || '') : (sender.avatar || message.avatar || ''),
+    } : {}),
     ...(replySender && message.replyTo ? {
-      replyTo: { ...message.replyTo, senderName: replySender.name, avatar: replySender.avatar || message.replyTo.avatar || '' },
+      replyTo: {
+        ...message.replyTo,
+        senderName: replySender.name,
+        avatar: isAccountManaged(replySender)
+          ? (replySender.avatar || '')
+          : (replySender.avatar || message.replyTo.avatar || ''),
+      },
     } : {}),
     ...(Object.keys(reactionUsers).length > 0 ? { reactionUsers } : {}),
   };
@@ -904,7 +918,7 @@ function personalizeConversationForViewer(room, accounts, viewer) {
       defaultName: account.defaultName || member.defaultName || member.name,
       default_name: account.default_name || member.default_name || member.name,
       nickname: account.nickname || '',
-      avatar: account.avatar || member.avatar || '',
+      avatar: isAccountManaged(account) ? (account.avatar || '') : (account.avatar || member.avatar || ''),
       online: member.online,
     };
   });
@@ -917,7 +931,9 @@ function personalizeConversationForViewer(room, accounts, viewer) {
   const originalMessages = roomMessages(room);
   const originalFriendEvents = roomFriendEvents(room);
   const nextName = peer ? peer.name || room.name : room.name;
-  const nextAvatarUrl = peer ? peer.avatar || room.avatarUrl || '' : room.avatarUrl;
+  const nextAvatarUrl = peer
+    ? (isAccountManaged(peer) ? (peer.avatar || '') : (peer.avatar || room.avatarUrl || ''))
+    : room.avatarUrl;
   const changed = members.length !== originalMembers.length
     || members.some((member, index) => member !== originalMembers[index])
     || messages.length !== originalMessages.length
@@ -1982,13 +1998,118 @@ function App() {
 
   const rememberAvatarOverride = (entity, avatar) => {
     const value = String(avatar || '').trim();
-    if (!value) return;
-    identityValues(entity).forEach(identity => avatarOverridesRef.current.set(identity, value));
+    identityValues(entity).forEach(identity => {
+      if (value) avatarOverridesRef.current.set(identity, value);
+      else avatarOverridesRef.current.delete(identity);
+    });
   };
 
   const avatarOverrideFor = account => identityValues(account)
     .map(identity => avatarOverridesRef.current.get(identity))
     .find(Boolean) || '';
+
+  const syncCurrentAccountProfile = useCallback(snapshot => {
+    const previousUser = currentUserRef.current;
+    if (!previousUser || !snapshot) return false;
+    const profile = normalizeAccountShape(snapshot);
+    if (!profile) return false;
+    const previousAvatar = String(previousUser.avatar || '').trim();
+    const profileValue = String(profile.avatar || '').trim();
+    identityValues(profile).forEach(identity => {
+      if (profileValue) avatarOverridesRef.current.set(identity, profileValue);
+      else avatarOverridesRef.current.delete(identity);
+    });
+
+    setCurrentUser(previous => {
+      if (!previous) return previous;
+      const next = {
+        ...previous,
+        id: profile.id || previous.id,
+        userId: profile.userId || previous.userId,
+        username: profile.username || previous.username,
+        user_name: profile.user_name || previous.user_name,
+        name: profile.name || previous.name,
+        full_name: profile.full_name || previous.full_name,
+        fullName: profile.fullName || previous.fullName,
+        display_name: profile.display_name || previous.display_name,
+        displayName: profile.displayName || previous.displayName,
+        defaultName: profile.defaultName || previous.defaultName,
+        default_name: profile.default_name || previous.default_name,
+        avatar: profile.avatar,
+        avatarUrl: profile.avatar,
+        avatar_url: profile.avatar,
+        photo: profile.avatar,
+        email: profile.email || previous.email,
+        title: profile.title || previous.title,
+        department: profile.department || previous.department,
+        accountManaged: profile.accountManaged ?? previous.accountManaged,
+        account_managed: profile.account_managed ?? previous.account_managed,
+        authSource: profile.authSource || previous.authSource,
+        auth_source: profile.auth_source || previous.auth_source,
+        tenantId: profile.tenantId || previous.tenantId,
+        tenant_id: profile.tenant_id || previous.tenant_id,
+        tenantName: profile.tenantName || previous.tenantName,
+        tenant_name: profile.tenant_name || previous.tenant_name,
+        uid: previous.uid || profile.uid,
+        tinodeUid: previous.tinodeUid || profile.tinodeUid,
+      };
+      const changed = ['name', 'avatar', 'email', 'title', 'department', 'accountManaged', 'authSource']
+        .some(key => next[key] !== previous[key]);
+      if (!changed) return previous;
+      currentUserRef.current = next;
+      return next;
+    });
+    setDirectoryAccounts(previous => {
+      const next = updateAccountProfiles(previous, profile);
+      directoryAccountsRef.current = next;
+      return next;
+    });
+    setWorkspaceResults(previous => updateAccountProfiles(previous, profile));
+    setConversations(previous => {
+      let changed = false;
+      const next = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
+        let roomChanged = false;
+        const members = roomMembers(room).map(member => {
+          if (!identitiesOverlap(member, profile)) return member;
+          const updated = mergeRealtimeAccountProfile(member, profile);
+          if (updated !== member) roomChanged = true;
+          return updated;
+        });
+        const messages = roomMessages(room).map(message => {
+          const senderId = messageSenderId(message);
+          if (!identitiesOverlap({ id: senderId, uid: senderId }, profile)) return message;
+          const updated = {
+            ...message,
+            senderName: profile.name || message.senderName,
+            avatar: profile.avatar || '',
+          };
+          if (updated.senderName !== message.senderName || updated.avatar !== message.avatar) roomChanged = true;
+          return updated;
+        });
+        const peer = !room.isGroup
+          ? members.find(member => !identitiesOverlap(member, currentUserRef.current))
+          : null;
+        const nextRoom = {
+          ...room,
+          members,
+          messages,
+          ...(peer ? {
+            name: peer.name || room.name,
+            avatarUrl: isAccountManaged(peer) ? (peer.avatar || '') : (peer.avatar || room.avatarUrl || ''),
+          } : {}),
+        };
+        if (nextRoom.name !== room.name || nextRoom.avatarUrl !== room.avatarUrl) roomChanged = true;
+        if (roomChanged) changed = true;
+        return [id, roomChanged ? nextRoom : room];
+      }));
+      if (changed) {
+        conversationsRef.current = next;
+        return next;
+      }
+      return previous;
+    });
+    return profileValue !== previousAvatar;
+  }, []);
 
   const clearActiveCall = useCallback(() => {
     activeCallRef.current = null;
@@ -2280,7 +2401,7 @@ function App() {
   const chatbotStatus = chatbotUsesTinode
     ? (connectionStatus === 'online' ? 'Đang kết nối kho tri thức' : 'Đang chờ kết nối realtime')
     : 'Kho tri thức doanh nghiệp';
-  const accountProfileReadOnly = Boolean(currentUser?.accountManaged || currentUser?.account_managed);
+  const accountProfileReadOnly = isAccountManaged(currentUser) || chatManagementService.accountManaged;
   const appCopy = createLocalizedCopy(APP_LANGUAGE_COPY[settings.language] || APP_LANGUAGE_COPY.vi, settings.language);
   const selectedLanguage = APP_LANGUAGE_OPTIONS.find(option => option.id === settings.language)
     || APP_LANGUAGE_OPTIONS[0];
@@ -3415,21 +3536,33 @@ function App() {
         return;
       }
       if ((event.type === 'profile' || event.type === 'user-profile') && event.profile?.id) {
-        const profileAccount = findAccount(directoryAccountsRef.current, event.profile.id);
+        const profileAccount = findAccountByIdentities(directoryAccountsRef.current, [event.profile.id]);
+        const profileIsAccountManaged = isAccountManaged(profileAccount)
+          || (identitiesOverlap(currentUserRef.current, profileAccount) && isAccountManaged(currentUserRef.current));
         const profile = normalizeAccountShape(profileAccount
           ? {
             ...event.profile,
             id: profileAccount.id,
             uid: profileAccount.uid || profileAccount.id,
             tinodeUid: profileAccount.tinodeUid || profileAccount.tinode_uid || event.profile.id,
+            ...(profileIsAccountManaged ? {
+              name: profileAccount.name,
+              avatar: profileAccount.avatar,
+              defaultName: profileAccount.defaultName,
+              default_name: profileAccount.default_name,
+              accountManaged: profileAccount.accountManaged,
+              account_managed: profileAccount.account_managed,
+              authSource: profileAccount.authSource,
+              auth_source: profileAccount.auth_source,
+            } : {}),
           }
           : event.profile) || {};
-        rememberAvatarOverride(profile, profile.avatar);
+        if (!profileIsAccountManaged) rememberAvatarOverride(profile, profile.avatar);
         if (identitiesOverlap(currentUser, profile)) {
           setCurrentUser(previous => ({
             ...previous,
             name: profile.name || previous?.name,
-            avatar: profile.avatar || previous?.avatar || '',
+            avatar: profileIsAccountManaged ? (profileAccount?.avatar || previous?.avatar || '') : (profile.avatar || previous?.avatar || ''),
           }));
         }
         const updateAccount = account => mergeRealtimeAccountProfile(account, profile);
@@ -3440,10 +3573,17 @@ function App() {
           const peer = !room.isGroup ? members.find(member => identitiesOverlap(member, profile)) : null;
           return [id, {
             ...room,
-            ...(peer ? { name: peer.name || profile.name || room.name, avatarUrl: profile.avatar || room.avatarUrl || '' } : {}),
+            ...(peer ? {
+              name: peer.name || profile.name || room.name,
+              avatarUrl: profileIsAccountManaged ? (profile.avatar || '') : (profile.avatar || room.avatarUrl || ''),
+            } : {}),
             members,
             messages: roomMessages(room).map(message => identitiesOverlap({ id: message.senderId }, profile)
-              ? { ...message, senderName: peer?.name || profile.name || message.senderName, avatar: profile.avatar || message.avatar || '' }
+              ? {
+                ...message,
+                senderName: peer?.name || profile.name || message.senderName,
+                avatar: profileIsAccountManaged ? (profile.avatar || '') : (profile.avatar || message.avatar || ''),
+              }
               : message),
           }];
         })));
@@ -3515,11 +3655,20 @@ function App() {
         ) {
           // Tinode metadata can be older than the persisted Chatmgt group
           // avatar after reconnect. Refresh the authoritative snapshot rather
-          // than writing that realtime value back into Chatmgt.
+          // than writing that realtime value back into Chatmgt. If an older
+          // group has no Chatmgt avatar yet, backfill it from the verified
+          // Tinode topic so it survives the next reload/deploy.
           const refreshKey = `${currentRoom.managementId || currentRoom.id}:${conversation.avatarUrl}`;
-          if (currentRoom.avatarUrl && groupAvatarRefreshRef.current.get(refreshKey) !== conversation.avatarUrl) {
+          if (groupAvatarRefreshRef.current.get(refreshKey) !== conversation.avatarUrl) {
             groupAvatarRefreshRef.current.set(refreshKey, conversation.avatarUrl);
-            refreshManagementConversations(accountSession).catch(() => {});
+            if (currentRoom.avatarUrl) {
+              refreshManagementConversations(accountSession).catch(() => {});
+            } else if (canManageGroupMembers(currentRoom, directoryAccounts, currentUser)) {
+              chatManagementService.updateGroupProfile(
+                currentRoom.managementId || currentRoom.id,
+                { avatar: conversation.avatarUrl },
+              ).then(() => refreshManagementConversations(accountSession)).catch(() => {});
+            }
           }
         }
         setConversations(prev => {
@@ -3680,7 +3829,10 @@ function App() {
           { accountSession, useTinode: tinodeChatbotEnabled },
         );
         const accounts = mergeDirectoryAccountSnapshots([user], directoryUsers)
-          .map(account => ({ ...account, avatar: avatarOverrideFor(account) || account.avatar || '' }));
+          .map(account => ({
+            ...account,
+            avatar: isAccountManaged(account) ? (account.avatar || '') : (avatarOverrideFor(account) || account.avatar || ''),
+          }));
         const nicknameMap = Object.fromEntries(
           accounts
             .filter(account => account?.id && account?.nickname)
@@ -3800,6 +3952,8 @@ function App() {
           tenantOptions: session.tenantOptions,
           tinodeUid: session.tinodeUid,
           tinodeAuth: session.tinodeAuth,
+          authSource: session.authSource,
+          accountManaged: session.accountManaged,
           title: session.profile?.title || '',
           tinodeSession: session,
           connection: session.connection,
@@ -4100,6 +4254,15 @@ function App() {
       try {
         const refreshedSession = await chatManagementService.refreshSessionMetadata();
         if (!cancelled && refreshedSession) {
+          const avatarChanged = syncCurrentAccountProfile(refreshedSession);
+          if (avatarChanged && chatMode === 'tinode') {
+            ensureTinodeSession()
+              .then(() => tinodeClient.updateCurrentProfile({
+                name: refreshedSession.name,
+                avatarUrl: refreshedSession.avatar || '',
+              }))
+              .catch(() => {});
+          }
           const nextTenantOptions = refreshedSession.tenantOptions || refreshedSession.tenant_options || [];
           setCurrentUser(previous => {
             if (!previous) return previous;
@@ -4137,7 +4300,7 @@ function App() {
       window.removeEventListener('focus', validateSession);
       document.removeEventListener('visibilitychange', validateVisibleSession);
     };
-  }, [isLoggedIn]);
+  }, [isLoggedIn, chatMode, ensureTinodeSession, syncCurrentAccountProfile]);
 
   useEffect(() => {
     if (forcedLogoutSeconds === null) return undefined;
@@ -4313,7 +4476,9 @@ function App() {
       }
       if (!avatar) throw new Error('Máy chủ không trả về ảnh đại diện mới.');
       const nextAvatar = updated.avatar || avatar;
-      rememberAvatarOverride(updated || currentUser, nextAvatar);
+      if (!isAccountManaged(updated || currentUser)) {
+        rememberAvatarOverride(updated || currentUser, nextAvatar);
+      }
       setCurrentUser(previous => ({ ...previous, avatar: nextAvatar }));
       setDirectoryAccounts(previous => {
         const next = previous.map(account => (
@@ -4420,7 +4585,7 @@ function App() {
         const mergedAccounts = mergeDirectoryAccountSnapshots(previousAccounts, accounts);
         const nextAccounts = mergedAccounts.map(account => {
           const previous = findAccount(previousAccounts, account.id || account.uid || account.tinodeUid);
-          const override = avatarOverrideFor(account);
+          const override = isAccountManaged(account) ? '' : avatarOverrideFor(account);
           const next = override ? { ...account, avatar: override } : account;
           return previous && typeof previous.online === 'boolean'
             ? { ...next, online: previous.online }
@@ -4461,11 +4626,12 @@ function App() {
         });
         const self = findAccount(effectiveAccounts, managementViewerId);
         if (self) {
+          const selfIsAccountManaged = isAccountManaged(self) || isAccountManaged(currentUserRef.current);
           setCurrentUser(previous => {
             const next = {
               ...previous,
               name: self.name || previous?.name,
-              avatar: self.avatar || previous?.avatar || '',
+              avatar: selfIsAccountManaged ? (self.avatar || '') : (self.avatar || previous?.avatar || ''),
               email: self.email || previous?.email,
               title: self.title || previous?.title,
               department: self.department || previous?.department,
@@ -4494,7 +4660,7 @@ function App() {
               defaultName: account.defaultName || member.defaultName || member.name,
               default_name: account.default_name || member.default_name || member.name,
               nickname: account.nickname || '',
-              avatar: account.avatar || member.avatar || '',
+              avatar: isAccountManaged(account) ? (account.avatar || '') : (account.avatar || member.avatar || ''),
               online: member.online,
             };
             return updated.name === member.name
@@ -4515,14 +4681,22 @@ function App() {
               message.senderName,
             ]);
             if (!account) return message;
-            const updated = { ...message, senderName: account.name || message.senderName, avatar: account.avatar || message.avatar || '' };
+            const updated = {
+              ...message,
+              senderName: account.name || message.senderName,
+              avatar: isAccountManaged(account) ? (account.avatar || '') : (account.avatar || message.avatar || ''),
+            };
             return updated.senderName === message.senderName && updated.avatar === message.avatar ? message : updated;
           });
           const friendEvents = roomFriendEvents(room).map(message => {
             const event = message.friendEvent || {};
             const account = findAccount(effectiveAccounts, event.action === 'request' ? event.requesterId : event.responderId);
             if (!account) return message;
-            const updated = { ...message, senderName: account.name || message.senderName, avatar: account.avatar || message.avatar || '' };
+            const updated = {
+              ...message,
+              senderName: account.name || message.senderName,
+              avatar: isAccountManaged(account) ? (account.avatar || '') : (account.avatar || message.avatar || ''),
+            };
             return updated.senderName === message.senderName && updated.avatar === message.avatar ? message : updated;
           });
           const nextRoom = {
@@ -4530,7 +4704,10 @@ function App() {
             members,
             messages,
             friendEvents,
-            ...(peer ? { name: peer.name || room.name, avatarUrl: peer.avatar || room.avatarUrl || '' } : {}),
+            ...(peer ? {
+              name: peer.name || room.name,
+              avatarUrl: isAccountManaged(peer) ? (peer.avatar || '') : (peer.avatar || room.avatarUrl || ''),
+            } : {}),
           };
           const membersChanged = members.length !== roomMembers(room).length
             || members.some((member, index) => member !== roomMembers(room)[index]);
@@ -5901,20 +6078,22 @@ function App() {
       const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
       const previousAvatarUrl = activeChat.avatarUrl || '';
       const avatarUrl = await tinodeClient.updateGroupAvatar(topicName, file);
+      let persistedAvatarUrl = avatarUrl;
       try {
         if (usesManagementData && isManagementConversationId(activeChat.managementId || activeChat.id)) {
-          await chatManagementService.updateGroupProfile(
+          const persistedRoom = await chatManagementService.updateGroupProfile(
             activeChat.managementId || activeChat.id,
             { avatar: avatarUrl },
           );
+          persistedAvatarUrl = persistedRoom?.avatarUrl || avatarUrl;
         }
       } catch (error) {
         await tinodeClient.updateGroupMetadata(topicName, { avatar: previousAvatarUrl }).catch(() => {});
         throw error;
       }
-      groupAvatarSyncRef.current.set(activeChat.id, avatarUrl);
-      groupAvatarSyncRef.current.set(topicName, avatarUrl);
-      updateActiveGroupRoom({ avatarUrl });
+      groupAvatarSyncRef.current.set(activeChat.id, persistedAvatarUrl);
+      groupAvatarSyncRef.current.set(topicName, persistedAvatarUrl);
+      updateActiveGroupRoom({ avatarUrl: persistedAvatarUrl });
     } catch (error) {
       setChatError(error?.message || 'Không thể cập nhật ảnh nhóm.');
     } finally {

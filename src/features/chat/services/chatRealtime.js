@@ -299,6 +299,13 @@ export function normalizeConversationShape(conversation) {
   const conversationBackground = hasConversationBackground
     ? normalizeConversationBackground(source.conversationBackground || source.conversation_background)
     : undefined;
+  const directAvatar = conversationMedia(source.avatarUrl) || conversationMedia(source.avatar);
+  const persistedAvatar = conversationMedia(
+    source.properties?.group_avatar || source.properties?.avatar,
+  );
+  const hasConversationAvatar = Object.prototype.hasOwnProperty.call(source, 'avatarUrl')
+    || Object.prototype.hasOwnProperty.call(source, 'avatar')
+    || Boolean(persistedAvatar);
 
   return {
     ...source,
@@ -312,9 +319,7 @@ export function normalizeConversationShape(conversation) {
     // snapshots only carry realtime UIDs and must not replace that mapping.
     managementSnapshot: Boolean(source.managementSnapshot || source.management_snapshot),
     isChatbot: Boolean(source.isChatbot),
-    avatarUrl: source.avatarUrl !== undefined || source.avatar !== undefined
-      ? (conversationMedia(source.avatarUrl) || conversationMedia(source.avatar))
-      : undefined,
+    avatarUrl: hasConversationAvatar ? (directAvatar || persistedAvatar) : undefined,
     avatarClass: conversationText(source.avatarClass),
     membersCount: conversationText(source.membersCount),
     description: conversationText(source.description),

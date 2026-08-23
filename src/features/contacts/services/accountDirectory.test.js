@@ -190,6 +190,15 @@ test('directory polling keeps the latest known avatar when the server snapshot i
   assert.equal(result[0].avatar, '/new.jpg');
 });
 
+test('Account-managed avatar snapshots can explicitly clear a stale avatar', () => {
+  const result = mergeRealtimeAccountProfile(
+    { id: 'account-1', avatar: '/old.jpg' },
+    { id: 'account-1', avatar: '', accountManaged: true },
+  );
+
+  assert.equal(result.avatar, '');
+});
+
 test('directory snapshots can explicitly clear a previous contact nickname', () => {
   const previous = [{
     id: 'account-1',

@@ -124,6 +124,16 @@ or reconnect. A later confirmed upload replaces the marker. Tinode receives the
 same confirmed URL for realtime rendering, but Tinode metadata is not allowed
 to overwrite the persisted Chatmgt/Account avatar on reconnect.
 
+`GET /api/v1/auth/me` revalidates the authenticated Account session on focus,
+visibility changes, and the ChatUI background interval. If UpGo Account changes
+the avatar outside ChatUI, Chatmgt refreshes the tenant projection and ChatUI
+updates the active directory, member, message, and Tinode profile surfaces
+without resetting the conversation session. Group avatar metadata is persisted
+in the existing conversation properties under `group_avatar` and `avatar`; the
+serializer also reads `avatar_url` and `avatarUrl` for older records, while every
+new group update writes the canonical pair so a reload, tenant switch, reconnect,
+or deployment cannot fall back to a stale Tinode-only value.
+
 Private contact nicknames are a separate viewer preference owned by Chatmgt.
 They are stored in the current account's tenant-scoped
 `ManagementAccount.properties.contact_nicknames` JSON object, keyed by the

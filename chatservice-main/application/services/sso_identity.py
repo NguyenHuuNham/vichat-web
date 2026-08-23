@@ -488,6 +488,7 @@ def normalize_account_session(payload, preferred_tenant_id=None):
         "department": str(payload.get("department") or "").strip()[:255],
         "title": str(payload.get("title") or "").strip()[:255],
         "avatar": str(_first(payload, "avatar_url", "avatar", "photo") or "").strip(),
+        "avatar_present": any(name in payload for name in ("avatar_url", "avatar", "photo")),
         "tenant_options": tenant_options,
     }
 

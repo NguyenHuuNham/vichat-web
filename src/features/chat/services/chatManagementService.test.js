@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   chatManagementService,
   employeeLoginPayload,
+  isAccountManaged,
   managementAuthClient,
   normalizeChatAuthMode,
   normalizeTenantOptions,
@@ -163,6 +164,15 @@ test('refreshes company logo metadata without resetting the active chat session'
     logo: 'https://account.upgo.vn/company-a.png',
     logoVersion: '2026-08-18T21:30:00Z',
   }]);
+});
+
+test('routes Account-managed profiles through the Account avatar contract', () => {
+  assert.equal(isAccountManaged({ accountManaged: true }), true);
+  assert.equal(isAccountManaged({ auth_source: 'account' }), true);
+  assert.equal(isAccountManaged({ authSource: 'local' }), false);
+  assert.match(managementServiceSource, /async updateAvatar\(file\)/);
+  assert.match(appSource, /isAccountManaged\(currentUser\) \|\| chatManagementService\.accountManaged/);
+  assert.match(appSource, /chatManagementService\.updateAvatar\(file\)/);
 });
 
 test('group member controls use the synced company directory with owner-only mutations', () => {
