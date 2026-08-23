@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-23 17:17 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Bao mat | API | Web | Mobile | Kiem thu
-- Trang thai: Dang thuc hien
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Bat buoc group owner chon mot thanh vien cu the lam truong nhom moi truoc khi roi, bo co che random va thong bao ro viec chuyen quyen.
 - Pham vi: ChatUI dialog roi nhom/xoa hoi thoai, Chatmgt participant API, Tinode system event, demo store va mobile delete flow; giu nguyen cac luong chat, group member, sticker, reaction va tenant.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/tinodeClient.js`, `src/features/demo/services/demoGroupStore.js`, `src/features/i18n/appLanguage.js`, `mobile/src/screens/chat/ConversationListScreen.tsx`, `mobile/src/store/appStore.ts`, `mobile/src/services/chatManagementService.ts`, `mobile/src/services/tinodeClient.ts`, `mobile/src/types/index.ts`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.test.js`, `docs/chat-backend-architecture.md`.
@@ -18,9 +18,11 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Chatmgt la noi quyet dinh quyen va validate replacement; Tinode chi nhan owner transfer va phat event tu surviving member sau commit. Neu legacy demo data thieu metadata chuyen quyen, recovery dung member dau tien theo thu tu luu tru de khong tao random behavior moi.
 - Database/API/cau hinh: Khong migration, bien moi truong hoac secret. Mo rong body DELETE membership voi `replacement_id` bat buoc rieng cho owner self-leave.
 - Kiem thu: `npm run test:frontend` dat 153/153; `npm run lint` dat voi warning legacy/vendor co san; mobile `npm run typecheck` va `npm run lint` dat; backend `python -m unittest discover -s tests -v` dat 178 test, skip 60 theo moi truong; `python -m py_compile application/controllers/api_chat_management.py application/services/auth_service.py tests/test_chat_auth_contract.py` dat; `npm run build:production` dat; `git diff --check` dat. Mobile `npm test -- --run` co 29 test pass nhung 1 suite fail do Vitest khong parse Flow syntax trong `node_modules/react-native/index.js`.
+- Kiem tra production: Release `/opt/deploy/chat/releases/04ddf7e-20260823-1721` dang la `current`, `previous` tro release `8714506-20260823-1629`; `chat` va `chatmgt` healthy; public/internal health tra `ok`; `sudo nginx -t` dat; bundle JS/CSS public HTTP 200 va co marker dialog/chuyen quyen; production image contract dat 97 test, skip 18 theo moi truong. Khong migration, khong reset database/volume va khong recreate Tinode bridge, webhook, ChatAPI, PostgreSQL, Redis hoac Coturn.
 - Rui ro con lai: Can UAT owner/member tren production de xac nhan dialog, quyen owner moi va event hien realtime tren hai phien.
-- Viec tiep theo: Commit/push, deploy chi `chat` va `chatmgt` theo quy trinh release bat bien, health check va kiem tra rollback; sau do UAT bang owner va thanh vien that.
-- Commit/PR: Chua tao.
+- Viec tiep theo: UAT bang owner va thanh vien that; neu gap loi thi tro `current` ve `previous` va chi recreate `chat`/`chatmgt` tu release rollback.
+- Trien khai: Commit `04ddf7e` da push `origin/master`; image `chat` `sha256:854610c3d5362bd4b89ca3be3bc8411a1ac8c649d61867ec0700a1473d6905ed`, image `chatmgt` `sha256:44f2715766639530d26fd803670cf4d5491e69d22ed8a438aad3e66c16ba444b`; rollback tags `songhong-production-chat:rollback-before-owner-transfer-04ddf7e-20260823-1721` va `songhong-production-chatmgt:rollback-before-owner-transfer-04ddf7e-20260823-1721`; archive SHA-256 `1a29b3d7cdc4c595817b01390da111a0dec5742b2b8099a4e9bd6882eeb2c548`.
+- Commit/PR: `04ddf7e`; follow-up nay ghi nhan deploy production.
 
 ## 2026-08-23-14 - Thu gon muc thanh vien nhom
 
