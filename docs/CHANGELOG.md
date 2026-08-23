@@ -8,9 +8,9 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-23-20 - Hinh nen rieng cho nhom va dong bo cho chat 1-1
 
-- Thoi gian: 2026-08-23 20:00 (Asia/Saigon)
+- Thoi gian: 2026-08-23 20:39 (Asia/Saigon)
 - Loai: Tinh nang | Web | Realtime | Kiem thu | Tai lieu
-- Trang thai: Hoan tat
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Cho nguoi dung chon preset hoac tai anh lam hinh nen cuoc tro chuyen; nhom chi hien theo tuy chon cua tung user, chat 1-1 dong bo cho ca hai ben va co thong bao actor.
 - Pham vi: ChatUI header/action, modal hinh nen, local storage/IndexedDB cho tuy chon nhom, metadata va system event Tinode cho chat 1-1; khong thay doi tin nhan, sticker, reaction, tenant, membership hay quyen nhom.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/conversationBackground.js`, `src/features/chat/services/conversationBackground.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `docs/chat-backend-architecture.md`, `package.json`, `dist/index.html`.
@@ -19,8 +19,10 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong migration, khong endpoint Chatmgt moi, khong secret moi; su dung cac API Tinode hien co cho file upload, topic metadata va system message.
 - Kiem thu: `npm run test:frontend` dat 162/162; `npm run lint` exit 0 voi warning legacy trong `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat voi bundle `index-Dxeqk1fv.js`, `App-DwthBYyg.js`, CSS `index-D2-iPLca.css`; `git diff --check` dat. Chua chay smoke test tuong tac browser vi phien nay khong co cong cu browser callable.
 - Rui ro con lai: Chua UAT hai phien tai production cho set/reset direct va reload/reconnect; preset phu thuoc kha nang tai anh Unsplash; anh group custom la du lieu tren thiet bi va se mat neu user xoa storage trinh duyet.
-- Viec tiep theo: UAT group bang hai tai khoan de xac nhan nen khong lan sang thanh vien khac va UAT direct bang hai tai khoan de xac nhan aux metadata, system event va upload protected media truoc khi deploy production.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`; UAT group bang hai tai khoan de xac nhan nen khong lan sang thanh vien khac; UAT direct bang hai tai khoan de xac nhan dong bo, system event, reset va upload anh.
+- Trien khai: Da deploy production tai release `/opt/deploy/chat/releases/1dfd072-20260823-2039`; `current` tro release nay, `previous` tro `/opt/deploy/chat/releases/b07e850-20260823-1933`; chi recreate `chat`, khong dong vao Chatmgt, Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis, Coturn hoac volume. Rollback tag: `songhong-production-chat:rollback-before-background-1dfd072-20260823-2039`.
+- Kiem tra production: `chat` va `chatmgt` healthy; health noi bo/public, bundle JS/CSS va Nginx config da duoc kiem tra; log sau deploy khong co fatal/panic/traceback/critical/emerg/uncaught.
+- Commit/PR: `1dfd072` da commit va push `origin/master`.
 
 ## 2026-08-23-19 - Giu avatar sau reload va dong bo biet danh trong nhom
 
