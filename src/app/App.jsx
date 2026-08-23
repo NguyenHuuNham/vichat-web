@@ -132,14 +132,16 @@ import {
 } from '../features/chat/services/groupSettings';
 import {
   CONVERSATION_BACKGROUND_PRESETS,
+  CONVERSATION_BACKGROUND_SCOPES,
   clearConversationBackground,
+  createClearedConversationBackground,
   normalizeConversationBackground,
   conversationBackgroundStorageKey,
   deleteConversationBackgroundFile,
-  readConversationBackground,
+  readConversationBackgroundPreference,
   readConversationBackgroundFile,
   validateConversationBackgroundFile,
-  writeConversationBackground,
+  writeConversationBackgroundPreference,
   writeConversationBackgroundFile,
 } from '../features/chat/services/conversationBackground';
 
@@ -1800,6 +1802,7 @@ function App() {
   const [groupManagementNotice, setGroupManagementNotice] = useState('');
   const [isConversationBackgroundOpen, setIsConversationBackgroundOpen] = useState(false);
   const [conversationBackgroundSelection, setConversationBackgroundSelection] = useState(null);
+  const [conversationBackgroundScope, setConversationBackgroundScope] = useState(CONVERSATION_BACKGROUND_SCOPES.SHARED);
   const [conversationBackgrounds, setConversationBackgrounds] = useState({});
   const [isSavingConversationBackground, setIsSavingConversationBackground] = useState(false);
   const [conversationBackgroundNotice, setConversationBackgroundNotice] = useState('');
@@ -2523,11 +2526,16 @@ function App() {
     conversationBackgrounds,
     activeBackgroundStateKey,
   );
-  const activeConversationBackground = hasLoadedActiveBackground
+  const activeBackgroundPreference = hasLoadedActiveBackground
     ? conversationBackgrounds[activeBackgroundStateKey]
-    : (!activeChat.isGroup && activeChat.conversationBackground !== undefined
-      ? activeChat.conversationBackground
+    : (activeChat.conversationBackground !== undefined
+      ? (activeChat.conversationBackground
+        ? { ...activeChat.conversationBackground, scope: CONVERSATION_BACKGROUND_SCOPES.SHARED }
+        : createClearedConversationBackground(CONVERSATION_BACKGROUND_SCOPES.SHARED))
       : null);
+  const activeConversationBackground = activeBackgroundPreference?.cleared
+    ? null
+    : activeBackgroundPreference;
 
   useEffect(() => {
     setConversationBackgrounds({});
@@ -2538,13 +2546,21 @@ function App() {
   useEffect(() => {
     if (!conversationBackgroundViewerId || !activeBackgroundConversationId || activeChat.id === 'empty') return undefined;
     let active = true;
-    const shared = !activeChat.isGroup ? activeChat.conversationBackground : undefined;
-    const local = readConversationBackground(
+    const localPreference = readConversationBackgroundPreference(
       conversationBackgroundViewerId,
       conversationBackgroundTenantId,
       activeBackgroundConversationId,
     );
-    const source = !activeChat.isGroup && shared !== undefined ? shared : local;
+    const shared = activeChat.conversationBackground !== undefined
+      ? normalizeConversationBackground({
+        ...activeChat.conversationBackground,
+        scope: CONVERSATION_BACKGROUND_SCOPES.SHARED,
+      })
+      : undefined;
+    const local = localPreference
+      ? (localPreference.background || createClearedConversationBackground(localPreference.scope))
+      : null;
+    const source = localPreference ? local : shared;
     if (!source) {
       setConversationBackgrounds(previous => ({ ...previous, [activeBackgroundStateKey]: null }));
       return () => { active = false; };
@@ -5509,11 +5525,12 @@ function App() {
     if (updated) setNotificationMuteDialog(null);
   };
 
-  const patchActiveConversationBackground = nextBackground => {
+  const patchActiveConversationBackground = (nextBackground, { shared = false } = {}) => {
     setConversationBackgrounds(previous => ({
       ...previous,
       [activeBackgroundStateKey]: nextBackground,
     }));
+    if (!shared) return;
     setConversations(previous => {
       const currentRoom = previous[activeChat.id] === null || previous[activeChat.id] === undefined
         ? null
@@ -5530,6 +5547,11 @@ function App() {
 
   const openConversationBackgroundPicker = () => {
     if (!activeChat || activeChat.id === 'empty' || activeChat.isChatbot) return;
+    const scope = chatMode === 'demo'
+      ? CONVERSATION_BACKGROUND_SCOPES.LOCAL
+      : activeBackgroundPreference?.scope
+      || (activeChat.isGroup ? CONVERSATION_BACKGROUND_SCOPES.LOCAL : CONVERSATION_BACKGROUND_SCOPES.SHARED);
+    setConversationBackgroundScope(scope);
     setConversationBackgroundSelection(activeConversationBackground || null);
     setConversationBackgroundNotice('');
     setIsConversationBackgroundOpen(true);
@@ -5551,7 +5573,8 @@ function App() {
     event.target.value = '';
     if (!file) return;
     const validationError = validateConversationBackgroundFile(file, {
-      localOnly: activeChat.isGroup || chatMode === 'demo',
+      localOnly: chatMode === 'demo'
+        || conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.LOCAL,
     });
     if (validationError) {
       setConversationBackgroundNotice(validationError);
@@ -5580,17 +5603,26 @@ function App() {
     setConversationBackgroundNotice('');
     setChatError('');
     try {
-      let nextBackground = selected ? normalizeConversationBackground(selected) : null;
+      const sharedScope = chatMode !== 'demo'
+        && conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.SHARED;
+      let nextBackground = selected
+        ? normalizeConversationBackground({
+          ...selected,
+          scope: sharedScope
+            ? CONVERSATION_BACKGROUND_SCOPES.SHARED
+            : CONVERSATION_BACKGROUND_SCOPES.LOCAL,
+        })
+        : null;
       const previousBackground = activeConversationBackground;
-      if (activeChat.isGroup || chatMode === 'demo') {
-        if (activeChat.isGroup && selected?.file) {
+      if (!sharedScope) {
+        if (selected?.file) {
           const fileRecord = await writeConversationBackgroundFile(
             conversationBackgroundViewerId,
             conversationBackgroundTenantId,
             activeBackgroundConversationId,
             selected.file,
           );
-          nextBackground = fileRecord;
+          nextBackground = { ...fileRecord, scope: CONVERSATION_BACKGROUND_SCOPES.LOCAL };
         }
         if (previousBackground?.customKey && previousBackground.customKey !== nextBackground?.customKey) {
           await deleteConversationBackgroundFile(
@@ -5599,21 +5631,14 @@ function App() {
             activeBackgroundConversationId,
           ).catch(() => {});
         }
-        if (nextBackground) {
-          writeConversationBackground(
-            conversationBackgroundViewerId,
-            conversationBackgroundTenantId,
-            activeBackgroundConversationId,
-            nextBackground,
-          );
-        } else {
-          clearConversationBackground(
-            conversationBackgroundViewerId,
-            conversationBackgroundTenantId,
-            activeBackgroundConversationId,
-          );
-        }
-        if (!activeChat.isGroup) {
+        writeConversationBackgroundPreference(
+          conversationBackgroundViewerId,
+          conversationBackgroundTenantId,
+          activeBackgroundConversationId,
+          CONVERSATION_BACKGROUND_SCOPES.LOCAL,
+          nextBackground,
+        );
+        if (!activeChat.isGroup && chatMode === 'demo') {
           const systemMessage = {
             id: `system-background-${Date.now()}`,
             type: 'system',
@@ -5637,25 +5662,51 @@ function App() {
           });
         }
       } else {
+        const localPreference = readConversationBackgroundPreference(
+          conversationBackgroundViewerId,
+          conversationBackgroundTenantId,
+          activeBackgroundConversationId,
+        );
         if (realtimeMessagingPending) throw new Error('Kết nối realtime Tinode chưa sẵn sàng.');
         const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
-        if (selected?.file) {
-          const uploadedUrl = await tinodeClient.uploadConversationBackground(topicName, selected.file);
+        const selectedUpload = selected?.file || selected?.blob;
+        if (selected?.kind === 'custom' && !selectedUpload && String(selected?.url || '').startsWith('indexeddb://')) {
+          throw new Error('Ảnh hình nền cục bộ không còn sẵn sàng. Hãy chọn lại ảnh từ máy tính.');
+        }
+        if (selectedUpload) {
+          const uploadedUrl = await tinodeClient.uploadConversationBackground(topicName, selectedUpload);
           nextBackground = normalizeConversationBackground({
             id: 'custom',
             url: normalizeTinodeMediaUrl(uploadedUrl),
-            label: selected.file.name || 'Ảnh tải lên',
+            label: selected.file?.name || selected.label || 'Ảnh tải lên',
             kind: 'custom',
+            scope: CONVERSATION_BACKGROUND_SCOPES.SHARED,
           });
         }
         nextBackground = await tinodeClient.updateDirectConversationBackground(topicName, nextBackground);
         if (nextBackground?.url) nextBackground = {
           ...nextBackground,
           url: normalizeTinodeMediaUrl(nextBackground.url),
+          scope: CONVERSATION_BACKGROUND_SCOPES.SHARED,
         };
+        if (localPreference?.background?.customKey) {
+          await deleteConversationBackgroundFile(
+            conversationBackgroundViewerId,
+            conversationBackgroundTenantId,
+            activeBackgroundConversationId,
+          ).catch(() => {});
+        }
+        clearConversationBackground(
+          conversationBackgroundViewerId,
+          conversationBackgroundTenantId,
+          activeBackgroundConversationId,
+        );
       }
-      patchActiveConversationBackground(nextBackground);
-      setConversationBackgroundSelection(nextBackground);
+      const viewerBackground = sharedScope
+        ? nextBackground
+        : (nextBackground || createClearedConversationBackground(CONVERSATION_BACKGROUND_SCOPES.LOCAL));
+      patchActiveConversationBackground(viewerBackground, { shared: sharedScope });
+      setConversationBackgroundSelection(viewerBackground?.cleared ? null : viewerBackground);
       setIsConversationBackgroundOpen(false);
     } catch (error) {
       setConversationBackgroundNotice(error?.message || 'Không thể cập nhật hình nền cuộc trò chuyện.');
@@ -8086,7 +8137,8 @@ function App() {
           fallback={<div className="chat-messages conversation-render-error" role="alert">Conversation data could not be displayed.</div>}
         >
           <div className={`chat-messages ${activeChat.isChatbot ? 'chatbot-messages' : ''} ${activeConversationBackground ? 'has-conversation-background' : ''}`}>
-          <ConversationBackgroundLayer background={activeConversationBackground} />
+          <div className="chat-messages-content">
+            <ConversationBackgroundLayer background={activeConversationBackground} />
           {!hasDatedMessages && (
             <div className="date-divider"><span>{appCopy.t(currentChatId === 'dieu-hanh' ? 'Hôm nay' : 'Hội thoại trực tuyến')}</span></div>
           )}
@@ -8484,6 +8536,7 @@ function App() {
           )}
 
             <div ref={chatMessagesEndRef} />
+          </div>
           </div>
         </ConversationErrorBoundary>
 
@@ -9774,10 +9827,46 @@ function App() {
 
             <p className="conversation-background-intro">
               <i className="fa-solid fa-shield-halved"></i>
-              <span>{appCopy.t(activeChat.isGroup
-                ? 'Hình nền nhóm chỉ hiển thị riêng với bạn.'
-                : 'Hình nền chat 1-1 sẽ được đồng bộ cho cả hai người và hiển thị thông báo.')}</span>
+              <span>{appCopy.t(conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.SHARED
+                ? (activeChat.isGroup
+                  ? 'Hình nền này sẽ hiển thị với tất cả thành viên trong nhóm và có thông báo.'
+                  : 'Hình nền này sẽ được đồng bộ cho cả hai người và có thông báo.')
+                : 'Hình nền này chỉ hiển thị trên thiết bị của bạn.')}</span>
             </p>
+
+            {chatMode !== 'demo' && (
+              <div className="conversation-background-scope" role="radiogroup" aria-label={appCopy.t('Phạm vi hình nền')}>
+                <span className="conversation-background-scope-label">{appCopy.t('Hiển thị hình nền')}</span>
+                <label className={`conversation-background-scope-option ${conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.LOCAL ? 'selected' : ''}`}>
+                  <input
+                    type="radio"
+                    name="conversation-background-scope"
+                    value={CONVERSATION_BACKGROUND_SCOPES.LOCAL}
+                    checked={conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.LOCAL}
+                    onChange={() => setConversationBackgroundScope(CONVERSATION_BACKGROUND_SCOPES.LOCAL)}
+                    disabled={isSavingConversationBackground}
+                  />
+                  <span>
+                    <strong>{appCopy.t('Chỉ mình tôi')}</strong>
+                    <small>{appCopy.t('Không thay đổi giao diện của người khác')}</small>
+                  </span>
+                </label>
+                <label className={`conversation-background-scope-option ${conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.SHARED ? 'selected' : ''}`}>
+                  <input
+                    type="radio"
+                    name="conversation-background-scope"
+                    value={CONVERSATION_BACKGROUND_SCOPES.SHARED}
+                    checked={conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.SHARED}
+                    onChange={() => setConversationBackgroundScope(CONVERSATION_BACKGROUND_SCOPES.SHARED)}
+                    disabled={isSavingConversationBackground}
+                  />
+                  <span>
+                    <strong>{appCopy.t(activeChat.isGroup ? 'Chia sẻ với cả nhóm' : 'Chia sẻ với người bên kia')}</strong>
+                    <small>{appCopy.t('Cập nhật đồng bộ và hiện thông báo')}</small>
+                  </span>
+                </label>
+              </div>
+            )}
 
             <div className="conversation-background-grid" role="listbox" aria-label={appCopy.t('Hình nền có sẵn')}>
               <button
@@ -9816,7 +9905,9 @@ function App() {
               </div>
               <div className="conversation-background-upload-copy">
                 <strong>{appCopy.t('Ảnh từ máy tính')}</strong>
-                <small>{appCopy.t(activeChat.isGroup ? 'Tối đa 2 MB · chỉ lưu trên thiết bị này' : 'Tối đa 8 MB · ảnh sẽ được gửi tới cuộc trò chuyện 1-1')}</small>
+                <small>{appCopy.t(conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.SHARED
+                  ? 'Tối đa 8 MB · ảnh sẽ được chia sẻ trong cuộc trò chuyện'
+                  : 'Tối đa 2 MB · chỉ lưu trên thiết bị này')}</small>
                 {conversationBackgroundSelection?.kind === 'custom' && <span>{conversationBackgroundSelection.label}</span>}
               </div>
               <label className="conversation-background-upload-button">

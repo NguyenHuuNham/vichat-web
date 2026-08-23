@@ -875,9 +875,19 @@ function toConversation(topic, tinode) {
     ? latestSharedConversationBackground({ messages })
     : undefined;
   const auxBackground = !isGroup ? conversationBackgroundFromAux(topic) : undefined;
-  const rawConversationBackground = auxBackground !== undefined
-    ? auxBackground
-    : latestBackground;
+  const groupBackground = isGroup
+    ? normalizeConversationBackground(
+      topic.public?.vichat?.conversationBackground
+        || topic.public?.vichat?.conversation_background
+        || topic.public?.conversationBackground
+        || topic.public?.conversation_background,
+    )
+    : undefined;
+  const rawConversationBackground = isGroup
+    ? groupBackground
+    : auxBackground !== undefined
+      ? auxBackground
+      : latestBackground;
   const conversationBackground = rawConversationBackground
     ? { ...rawConversationBackground, url: normalizeAvatar(rawConversationBackground.url) }
     : rawConversationBackground;
@@ -1996,15 +2006,29 @@ export const tinodeClient = {
       backgroundKind: normalized?.kind || '',
       updatedAt: new Date().toISOString(),
     };
-    // P2P public metadata is reserved for the user profile. Store the shared
-    // presentation preference in aux so both subscribers can read it safely.
-    const auxValue = normalized
-      ? JSON.stringify({
+    const sharedBackground = normalized
+      ? {
         ...normalized,
+        scope: 'shared',
         url: tinodeMediaPath(normalized.url) || normalized.url,
-      })
-      : TINODE_DELETE_CHAR;
-    await topic.setMeta({ aux: { [CONVERSATION_BACKGROUND_AUX_KEY]: auxValue } });
+      }
+      : null;
+    const isGroupTopic = topic.isGroupType?.() || topic.name?.startsWith('grp');
+    if (isGroupTopic) {
+      const publicMetadata = { ...(topic.public || {}) };
+      const publicVichat = {
+        ...(publicMetadata.vichat && typeof publicMetadata.vichat === 'object' ? publicMetadata.vichat : {}),
+      };
+      if (sharedBackground) publicVichat.conversationBackground = sharedBackground;
+      else delete publicVichat.conversationBackground;
+      publicMetadata.vichat = publicVichat;
+      await topic.setMeta({ desc: { public: publicMetadata } });
+    } else {
+      // P2P public metadata is reserved for the user profile. Store the shared
+      // presentation preference in aux so both subscribers can read it safely.
+      const auxValue = sharedBackground ? JSON.stringify(sharedBackground) : TINODE_DELETE_CHAR;
+      await topic.setMeta({ aux: { [CONVERSATION_BACKGROUND_AUX_KEY]: auxValue } });
+    }
     const draft = topic.createMessage(`${SYSTEM_EVENT_PREFIX}${JSON.stringify(event)}`, false);
     draft.head = {
       ...(draft.head || {}),
@@ -2014,7 +2038,7 @@ export const tinodeClient = {
     const result = await topic.publishMessage(draft);
     if (!result) throw new Error('Tinode không xác nhận thay đổi hình nền.');
     emitConversation(topic);
-    return normalized;
+    return normalized ? { ...normalized, scope: 'shared' } : normalized;
   },
 
   async uploadConversationBackground(topicName, file) {

@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   CONVERSATION_BACKGROUND_PRESETS,
+  CONVERSATION_BACKGROUND_SCOPES,
   latestSharedConversationBackground,
   normalizeConversationBackground,
   readConversationBackground,
+  readConversationBackgroundPreference,
   validateConversationBackgroundFile,
-  writeConversationBackground,
+  writeConversationBackgroundPreference,
 } from './conversationBackground.js';
 
 function memoryStorage() {
@@ -21,11 +23,58 @@ function memoryStorage() {
 test('background presets normalize and remain scoped per viewer and conversation', () => {
   const storage = memoryStorage();
   const preset = normalizeConversationBackground({ ...CONVERSATION_BACKGROUND_PRESETS[0], kind: 'preset' });
-  writeConversationBackground('viewer-a', 'tenant-a', 'conversation-1', preset, storage);
+  writeConversationBackgroundPreference(
+    'viewer-a',
+    'tenant-a',
+    'conversation-1',
+    CONVERSATION_BACKGROUND_SCOPES.LOCAL,
+    preset,
+    storage,
+  );
 
   assert.equal(readConversationBackground('viewer-a', 'tenant-a', 'conversation-1', storage).id, preset.id);
+  assert.equal(
+    readConversationBackgroundPreference('viewer-a', 'tenant-a', 'conversation-1', storage).scope,
+    CONVERSATION_BACKGROUND_SCOPES.LOCAL,
+  );
   assert.equal(readConversationBackground('viewer-b', 'tenant-a', 'conversation-1', storage), null);
   assert.equal(readConversationBackground('viewer-a', 'tenant-a', 'conversation-2', storage), null);
+});
+
+test('a local clear keeps a viewer override over a shared background', () => {
+  const storage = memoryStorage();
+  writeConversationBackgroundPreference(
+    'viewer-a',
+    'tenant-a',
+    'conversation-1',
+    CONVERSATION_BACKGROUND_SCOPES.LOCAL,
+    null,
+    storage,
+  );
+
+  assert.deepEqual(
+    readConversationBackgroundPreference('viewer-a', 'tenant-a', 'conversation-1', storage),
+    { scope: CONVERSATION_BACKGROUND_SCOPES.LOCAL, background: null },
+  );
+  assert.equal(readConversationBackground('viewer-a', 'tenant-a', 'conversation-1', storage), null);
+});
+
+test('shared preferences retain the shared scope without hiding the value', () => {
+  const storage = memoryStorage();
+  const preset = normalizeConversationBackground({ ...CONVERSATION_BACKGROUND_PRESETS[2], kind: 'preset' });
+  writeConversationBackgroundPreference(
+    'viewer-a',
+    'tenant-a',
+    'conversation-1',
+    CONVERSATION_BACKGROUND_SCOPES.SHARED,
+    preset,
+    storage,
+  );
+
+  assert.deepEqual(
+    readConversationBackgroundPreference('viewer-a', 'tenant-a', 'conversation-1', storage),
+    { scope: CONVERSATION_BACKGROUND_SCOPES.SHARED, background: { ...preset, scope: CONVERSATION_BACKGROUND_SCOPES.SHARED } },
+  );
 });
 
 test('latest shared background event wins, including an explicit reset', () => {

@@ -785,23 +785,33 @@ body {
     isolation: isolate;
     overflow-y: auto;
     padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+    display: block;
 }
 
 .chat-messages.has-conversation-background {
     background: var(--bg-chat);
 }
 
+.chat-messages-content {
+    position: relative;
+    display: flex;
+    min-height: 100%;
+    flex-direction: column;
+    gap: 12px;
+}
+
 .conversation-background-layer {
-    position: absolute;
-    z-index: -1;
-    inset: 0;
+    position: sticky;
+    top: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100vh;
+    flex: 0 0 100vh;
+    margin-bottom: -100vh;
     background-position: center;
     background-size: cover;
-    background-attachment: local;
-    filter: saturate(.86);
+    background-attachment: scroll;
+    filter: saturate(.94);
     pointer-events: none;
 }
 
@@ -809,13 +819,40 @@ body {
     position: absolute;
     inset: 0;
     content: '';
-    background: rgba(249, 252, 253, .68);
-    backdrop-filter: blur(1px);
+    background: transparent;
+    pointer-events: none;
 }
 
-.chat-messages.has-conversation-background > :not(.conversation-background-layer) {
+.chat-messages.has-conversation-background .chat-messages-content > :not(.conversation-background-layer) {
     position: relative;
     z-index: 1;
+}
+
+.chat-messages.has-conversation-background .date-divider span {
+    background: rgba(247, 251, 249, .72);
+    text-shadow: 0 1px 3px rgba(255, 255, 255, .72);
+}
+
+.chat-messages.has-conversation-background .sender-name,
+.chat-messages.has-conversation-background .chatbot-starter-heading,
+.chat-messages.has-conversation-background .chatbot-starter-eyebrow {
+    text-shadow: 0 1px 3px rgba(255, 255, 255, .9);
+}
+
+.chat-messages.has-conversation-background .message-bubble {
+    background: rgba(255, 255, 255, .82);
+    backdrop-filter: saturate(1.05);
+}
+
+.chat-messages.has-conversation-background .message-item.outgoing .message-bubble {
+    background: rgba(255, 240, 233, .86);
+}
+
+.chat-messages.has-conversation-background .sticker-bubble,
+.chat-messages.has-conversation-background .audio-bubble,
+.chat-messages.has-conversation-background .file-bubble,
+.chat-messages.has-conversation-background .image-bubble {
+    background-color: rgba(255, 255, 255, .84);
 }
 
 .date-divider {
@@ -4700,6 +4737,56 @@ input:checked + .slider:before {
     line-height: 1.45;
 }
 .conversation-background-intro i { flex: 0 0 auto; margin-top: 2px; }
+.conversation-background-scope {
+    display: grid;
+    grid-template-columns: auto repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    align-items: stretch;
+    margin: 0 0 15px;
+}
+.conversation-background-scope-label {
+    align-self: center;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 750;
+    white-space: nowrap;
+}
+.conversation-background-scope-option {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    gap: 7px;
+    padding: 9px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    color: var(--text-body);
+    background: var(--bg-app);
+    cursor: pointer;
+}
+.conversation-background-scope-option.selected {
+    border-color: var(--vichat-blue);
+    background: var(--vichat-blue-light);
+}
+.conversation-background-scope-option input {
+    flex: 0 0 auto;
+    margin: 2px 0 0;
+    accent-color: var(--vichat-blue);
+}
+.conversation-background-scope-option span {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+}
+.conversation-background-scope-option strong {
+    color: var(--text-main);
+    font-size: 11.5px;
+}
+.conversation-background-scope-option small {
+    color: var(--text-muted);
+    font-size: 10px;
+    line-height: 1.35;
+}
 .conversation-background-grid {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -4839,6 +4926,8 @@ input:checked + .slider:before {
     .group-name-line .group-name-large { max-width: 178px; }
     .contact-nickname-modal { width: 100%; }
     .conversation-background-modal { width: 100%; }
+    .conversation-background-scope { grid-template-columns: 1fr; }
+    .conversation-background-scope-label { margin-bottom: -2px; }
     .conversation-background-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); max-height: 310px; }
     .conversation-background-upload { align-items: flex-start; flex-wrap: wrap; }
     .conversation-background-upload-copy { flex-basis: calc(100% - 68px); }
@@ -5280,7 +5369,36 @@ html[data-theme="dark"] .chat-main {
     radial-gradient(circle at 12% 0%, rgba(244, 81, 30, .08), transparent 28%),
     linear-gradient(180deg, #1b282d 0%, var(--bg-chat) 55%, #172126 100%);
 }
-html[data-theme="dark"] .conversation-background-layer::after { background: rgba(15, 25, 29, .72); }
+html[data-theme="dark"] .conversation-background-layer::after { background: rgba(15, 25, 29, .34); }
+html[data-theme="dark"] .chat-messages.has-conversation-background .date-divider span {
+  background: rgba(24, 35, 40, .76);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .8);
+}
+html[data-theme="dark"] .chat-messages.has-conversation-background .sender-name,
+html[data-theme="dark"] .chat-messages.has-conversation-background .chatbot-starter-heading,
+html[data-theme="dark"] .chat-messages.has-conversation-background .chatbot-starter-eyebrow {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .92);
+}
+html[data-theme="dark"] .chat-messages.has-conversation-background .message-bubble {
+  background: rgba(37, 52, 58, .88);
+}
+html[data-theme="dark"] .chat-messages.has-conversation-background .message-item.outgoing .message-bubble {
+  background: rgba(74, 46, 36, .9);
+}
+html[data-theme="dark"] .chat-messages.has-conversation-background .sticker-bubble,
+html[data-theme="dark"] .chat-messages.has-conversation-background .audio-bubble,
+html[data-theme="dark"] .chat-messages.has-conversation-background .file-bubble,
+html[data-theme="dark"] .chat-messages.has-conversation-background .image-bubble {
+  background-color: rgba(37, 52, 58, .9);
+}
+html[data-theme="dark"] .chat-messages.has-conversation-background .message-item.outgoing .sticker-bubble,
+html[data-theme="dark"] .chat-messages.has-conversation-background .message-item.outgoing .audio-bubble,
+html[data-theme="dark"] .chat-messages.has-conversation-background .message-item.outgoing .file-bubble,
+html[data-theme="dark"] .chat-messages.has-conversation-background .message-item.outgoing .image-bubble {
+  background-color: rgba(74, 46, 36, .92);
+}
+html[data-theme="dark"] .conversation-background-scope-option { background: #202b31; }
+html[data-theme="dark"] .conversation-background-scope-option.selected { background: #4a2e24; }
 html[data-theme="dark"] .conversation-background-upload { background: var(--bg-app); }
 html[data-theme="dark"] .conversation-background-upload-button { color: var(--text-body); background: var(--bg-white); }
 html[data-theme="dark"] .sidebar-collapse-toggle { border-color: rgba(255, 138, 95, .38); color: #ff9b73; background: #20292f; }

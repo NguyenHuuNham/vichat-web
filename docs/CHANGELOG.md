@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-22 - Sua nen cuon va pham vi chia se hinh nen
+
+- Thoi gian: 2026-08-23 23:53 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Web | Realtime | Kiem thu | Tai lieu
+- Trang thai: Dang kiem tra production
+- Muc tieu: Giữ hình nền phủ toàn bộ lịch sử khi cuộn, bảo đảm tin nhắn dễ đọc ở cả sáng/tối, và cho người dùng chọn nền chỉ mình thấy hoặc chia sẻ.
+- Phạm vi: ChatUI vùng message, modal đổi hình nền, lưu preference viewer-scoped, metadata Tinode direct/group; không thay đổi transport tin nhắn, file, sticker, reaction, tenant hay quyền nhóm khác.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/conversationBackground.js`, `src/features/chat/services/conversationBackground.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Tách lớp cuộn message khỏi lớp nền sticky để nền không kết thúc ở viewport đầu; bỏ blur sáng, thêm lớp tương phản nhẹ tối và bubble bán trong suốt theo theme. Modal có hai lựa chọn `Chỉ mình tôi` và `Chia sẻ`; local clear được lưu như override, direct shared tiếp tục dùng P2P aux, group shared dùng public `vichat.conversationBackground` và phát system event. Khi chuyển một ảnh local đã lưu sang chia sẻ, hệ thống đọc Blob từ IndexedDB và upload ảnh thật thay vì gửi khóa lưu cục bộ.
+- Quyet dinh ky thuat: Giữ mặc định cũ cho nhóm là local và chat 1-1 là shared; chỉ ghi metadata Tinode khi người dùng chọn chia sẻ, còn local preference không lan sang viewer khác. Không thêm endpoint hoặc migration.
+- Database/API/cau hinh: Không migration; mở rộng metadata public Tinode của group bằng `vichat.conversationBackground`, giữ nguyên aux P2P hiện tại; không thêm biến môi trường hoặc secret.
+- Kiem thu: `npm run test:frontend` đạt 164/164; `npm run lint` exit 0 với warning legacy/vendor có sẵn; `npm run build:production` đạt với bundle `index-BCqOVy5L.js`, `App-A1mBv3Sp.js`, CSS `index-D9-GP0HU.css`; `git diff --check` đạt. Không có browser tool callable trong phiên nên chưa chạy UAT scroll/pixel trực tiếp.
+- Rui ro con lai: Chưa có browser UAT hai tài khoản để xác nhận pixel-level khi cuộn dài và đồng bộ group shared; cần test production với preset/custom, reset, đổi sáng/tối và kiểm tra quyền ghi public metadata group. Không thay đổi hoặc reset dữ liệu Tinode.
+- Viec tiep theo: Hard refresh production, test chat 1-1 và nhóm với lựa chọn local/shared, gửi đủ tin để cuộn qua vùng cũ; nếu UAT lỗi chỉ rollback release ChatUI, không thao tác Chatmgt/Tinode/database/volume.
+- Commit/PR: Chua tao.
+
 ## 2026-08-23-21 - Bo sung 10 bo sticker va tach khoi media file
 
 - Thoi gian: 2026-08-23 22:54 (Asia/Saigon)

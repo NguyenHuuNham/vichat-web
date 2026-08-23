@@ -2,6 +2,10 @@ const STORAGE_PREFIX = 'vichat.conversation-backgrounds.v1';
 
 export const CONVERSATION_BACKGROUND_MAX_BYTES = 8 * 1024 * 1024;
 export const CONVERSATION_BACKGROUND_LOCAL_MAX_BYTES = 2 * 1024 * 1024;
+export const CONVERSATION_BACKGROUND_SCOPES = Object.freeze({
+  LOCAL: 'local',
+  SHARED: 'shared',
+});
 const DATABASE_NAME = 'vichat-conversation-backgrounds';
 const STORE_NAME = 'background-files';
 
@@ -74,6 +78,10 @@ function storageKey(viewerId, tenantId, conversationId) {
 
 export function normalizeConversationBackground(value) {
   if (!value || typeof value !== 'object') return null;
+  const scope = text(value.scope || value.visibility || value.backgroundScope);
+  const normalizedScope = Object.values(CONVERSATION_BACKGROUND_SCOPES).includes(scope)
+    ? scope
+    : '';
   const customKey = text(value.customKey || value.custom_key);
   const url = text(value.url || value.backgroundUrl || value.background_url)
     || (customKey ? `indexeddb://${customKey}` : '');
@@ -85,6 +93,7 @@ export function normalizeConversationBackground(value) {
     label: text(value.label || value.backgroundLabel || value.background_label) || 'Hình nền cuộc trò chuyện',
     kind: text(value.kind || value.backgroundKind || value.background_kind) || 'custom',
     updatedAt: text(value.updatedAt || value.updated_at) || new Date().toISOString(),
+    ...(normalizedScope ? { scope: normalizedScope } : {}),
   };
 }
 
@@ -92,7 +101,17 @@ export function readConversationBackground(viewerId, tenantId, conversationId, s
   if (!viewerId || !conversationId || !storage) return null;
   try {
     const raw = storage.getItem(storageKey(viewerId, tenantId, conversationId));
-    return raw ? normalizeConversationBackground(JSON.parse(raw)) : null;
+    const parsed = raw ? JSON.parse(raw) : null;
+    const backgroundValue = parsed?.background && typeof parsed.background === 'object' ? parsed.background : parsed;
+    const normalized = parsed?.cleared === true
+      ? createClearedConversationBackground(CONVERSATION_BACKGROUND_SCOPES.LOCAL, parsed.updatedAt)
+      : normalizeConversationBackground(backgroundValue);
+    const scope = text(parsed?.scope || backgroundValue?.scope) === CONVERSATION_BACKGROUND_SCOPES.SHARED
+      ? CONVERSATION_BACKGROUND_SCOPES.SHARED
+      : CONVERSATION_BACKGROUND_SCOPES.LOCAL;
+    return normalized && !normalized.cleared
+      ? { ...normalized, scope }
+      : null;
   } catch {
     return null;
   }
@@ -103,6 +122,70 @@ export function writeConversationBackground(viewerId, tenantId, conversationId, 
   if (!normalized || !viewerId || !conversationId || !storage) return normalized;
   try {
     storage.setItem(storageKey(viewerId, tenantId, conversationId), JSON.stringify(normalized));
+  } catch {
+    // A local preference must not block the active chat if storage is full.
+  }
+  return normalized;
+}
+
+export function createClearedConversationBackground(
+  scope = CONVERSATION_BACKGROUND_SCOPES.LOCAL,
+  updatedAt = new Date().toISOString(),
+) {
+  return {
+    id: '',
+    url: '',
+    customKey: '',
+    label: '',
+    kind: 'none',
+    updatedAt: text(updatedAt) || new Date().toISOString(),
+    scope,
+    cleared: true,
+  };
+}
+
+export function readConversationBackgroundPreference(viewerId, tenantId, conversationId, storage = globalThis?.localStorage) {
+  if (!viewerId || !conversationId || !storage) return null;
+  try {
+    const raw = storage.getItem(storageKey(viewerId, tenantId, conversationId));
+    if (!raw) return null;
+    const value = JSON.parse(raw);
+    const nested = value?.background && typeof value.background === 'object' ? value.background : value;
+    const scope = text(value?.scope || nested?.scope) === CONVERSATION_BACKGROUND_SCOPES.SHARED
+      ? CONVERSATION_BACKGROUND_SCOPES.SHARED
+      : CONVERSATION_BACKGROUND_SCOPES.LOCAL;
+    const backgroundValue = value?.cleared === true
+      ? null
+      : normalizeConversationBackground(nested);
+    return {
+      scope,
+      background: backgroundValue ? { ...backgroundValue, scope } : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function writeConversationBackgroundPreference(
+  viewerId,
+  tenantId,
+  conversationId,
+  scope,
+  value,
+  storage = globalThis?.localStorage,
+) {
+  const normalizedScope = scope === CONVERSATION_BACKGROUND_SCOPES.SHARED
+    ? CONVERSATION_BACKGROUND_SCOPES.SHARED
+    : CONVERSATION_BACKGROUND_SCOPES.LOCAL;
+  const normalized = value ? normalizeConversationBackground({ ...value, scope: normalizedScope }) : null;
+  if (!viewerId || !conversationId || !storage) return normalized;
+  try {
+    storage.setItem(storageKey(viewerId, tenantId, conversationId), JSON.stringify({
+      scope: normalizedScope,
+      background: normalized,
+      cleared: !normalized,
+      updatedAt: new Date().toISOString(),
+    }));
   } catch {
     // A local preference must not block the active chat if storage is full.
   }
@@ -143,6 +226,7 @@ export function latestSharedConversationBackground(room) {
       url: event.backgroundUrl || event.background_url,
       label: event.backgroundLabel || event.background_label,
       kind: event.backgroundKind || event.background_kind,
+      scope: CONVERSATION_BACKGROUND_SCOPES.SHARED,
       updatedAt: event.updatedAt || event.updated_at || message.createdAt,
     });
     return background;
@@ -248,6 +332,7 @@ export async function writeConversationBackgroundFile(viewerId, tenantId, conver
     customKey: key,
     label: text(file.name) || 'Ảnh tải lên',
     kind: 'custom',
+    scope: CONVERSATION_BACKGROUND_SCOPES.LOCAL,
     updatedAt: new Date().toISOString(),
   });
   const record = {

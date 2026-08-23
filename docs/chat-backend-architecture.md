@@ -137,18 +137,23 @@ Tinode, broadcast in realtime profile events, or included in another viewer's
 response.
 
 Conversation backgrounds follow a separate scope because they are presentation
-preferences rather than message content. For groups, ChatUI stores the selected
-preset metadata in viewer/tenant/conversation-scoped `localStorage` and stores a
-custom image blob in viewer/tenant/conversation-scoped IndexedDB; it never
-writes that preference to Tinode, so another group member cannot inherit it.
-For direct conversations, ChatUI uploads custom images through the authenticated
-Tinode media relay, stores the latest normalized background as a JSON value in
-the P2P topic's `aux.x-vichat-conversation-background` metadata, and publishes a
-`conversation_background_changed` system event. P2P public metadata remains
-reserved for the user profile. Both participants therefore restore the same
-background after reload and receive the actor notification.
-The message list renders a contrast overlay above the background so message
-bubbles remain readable. No Chatmgt schema, message copy, or migration is
+preferences rather than message content. ChatUI asks whether a selection is
+viewer-local or shared. A local selection is stored in
+viewer/tenant/conversation-scoped `localStorage`; custom local images are kept
+in the matching IndexedDB record, and a local clear marker can override a
+shared background without changing the other viewer's presentation. A shared
+selection uploads custom images through the authenticated Tinode media relay,
+publishes a `conversation_background_changed` system event, and persists the
+normalized metadata in the conversation's shared presentation storage: P2P
+topics use `aux.x-vichat-conversation-background` because P2P public metadata
+remains reserved for the user profile, while group topics use the existing
+public `vichat.conversationBackground` metadata. Direct participants or group
+members therefore restore a shared background after reload and receive the
+actor notification; local group preferences remain viewer-scoped.
+The message list keeps the background in a sticky layer inside the full
+scrollable message content. Light mode leaves the image sharp and uses
+translucent readable message surfaces; dark mode adds a light contrast veil and
+stronger message surfaces. No Chatmgt schema, message copy, or migration is
 required.
 
 Tinode media URLs from the central host are normalized to the authenticated
