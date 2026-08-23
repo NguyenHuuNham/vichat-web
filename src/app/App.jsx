@@ -267,15 +267,22 @@ const MEDIA_DATE_FILTER_OPTIONS = Object.freeze([
   Object.freeze({ id: 'custom', label: 'Khoảng ngày tùy chọn' }),
 ]);
 
+const HISTORY_SEARCH_TYPE_OPTIONS = Object.freeze([
+  Object.freeze({ id: 'all', label: 'Tất cả loại' }),
+  Object.freeze({ id: 'text', label: 'Tin nhắn' }),
+  Object.freeze({ id: 'image', label: 'Ảnh / sticker' }),
+  Object.freeze({ id: 'file', label: 'Tệp' }),
+  Object.freeze({ id: 'video', label: 'Video' }),
+  Object.freeze({ id: 'audio', label: 'Âm thanh' }),
+  Object.freeze({ id: 'document', label: 'Tài liệu' }),
+  Object.freeze({ id: 'archive', label: 'Tệp nén' }),
+]);
+
 const GROUP_MANAGEMENT_OPTIONS = Object.freeze([
   Object.freeze({ key: 'allowMembersEditInfo', icon: 'fa-pen-to-square', label: 'Cho phép thành viên đổi tên/ảnh nhóm', description: 'Thành viên có thể đổi tên hoặc ảnh nhóm.' }),
   Object.freeze({ key: 'allowPinMessages', icon: 'fa-thumbtack', label: 'Cho phép ghim tin nhắn', description: 'Thành viên được ghim tin nhắn để xem lại nhanh.' }),
-  Object.freeze({ key: 'allowNotes', icon: 'fa-note-sticky', label: 'Cho phép tạo ghi chú', description: 'Cho phép tạo ghi chú trong cuộc trò chuyện.' }),
-  Object.freeze({ key: 'allowPolls', icon: 'fa-square-poll-vertical', label: 'Cho phép tạo bình chọn', description: 'Cho phép thành viên tạo bình chọn.' }),
-  Object.freeze({ key: 'allowReminders', icon: 'fa-calendar-check', label: 'Cho phép tạo nhắc hẹn', description: 'Cho phép tạo ghi chú hoặc nhắc hẹn từ nhóm.' }),
   Object.freeze({ key: 'allowMessages', icon: 'fa-message', label: 'Cho phép gửi tin nhắn', description: 'Thành viên được gửi tin nhắn và tệp.' }),
   Object.freeze({ key: 'approveMembers', icon: 'fa-user-check', label: 'Phê duyệt thành viên mới', description: 'Thành viên mới cần được quản trị viên duyệt.' }),
-  Object.freeze({ key: 'markOwnerMessages', icon: 'fa-crown', label: 'Đánh dấu tin nhắn trưởng nhóm', description: 'Làm nổi bật tin nhắn của quản trị viên nhóm.' }),
   Object.freeze({ key: 'newMemberHistory', icon: 'fa-clock-rotate-left', label: 'Cho thành viên mới đọc tin nhắn gần nhất', description: 'Thành viên mới được xem phần lịch sử gần nhất.' }),
 ]);
 
@@ -726,6 +733,59 @@ function roomMembers(room) {
 
 function roomMessages(room) {
   return Array.isArray(room?.messages) ? room.messages : [];
+}
+
+function messageSearchSenderId(value) {
+  return String(value?.senderId || value?.sender_id || value?.tinodeUid || value?.tinode_uid || value?.uid || value?.id || '').trim();
+}
+
+function messageSearchTypeFor(message) {
+  if (!message) return 'text';
+  if (message.type === 'sticker' || message.sticker?.id || message.sticker?.stickerId) return 'sticker';
+  const mime = String(message.file?.mime || '').toLowerCase();
+  const name = String(message.file?.name || '').toLowerCase();
+  if (message.type === 'image' || mime.startsWith('image/') || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/.test(name)) return 'image';
+  if (message.type === 'file' && mime.startsWith('video/')) return 'video';
+  if (message.type === 'file' && mime.startsWith('audio/')) return 'audio';
+  if (message.type === 'file' && /(?:pdf|word|excel|powerpoint|spreadsheet|^text\/)/i.test(mime)) return 'document';
+  if (message.type === 'file') return 'file';
+  return message.type || 'text';
+}
+
+function messageSearchMatchesLocal(message, { query = '', senderId = 'all', type = 'all', fromDate = '', toDate = '' } = {}) {
+  if (!message) return false;
+  const normalizedQuery = String(query || '').trim().toLocaleLowerCase('vi');
+  if (normalizedQuery && !`${message.text || ''} ${message.senderName || ''} ${message.file?.name || ''}`.toLocaleLowerCase('vi').includes(normalizedQuery)) return false;
+  if (senderId !== 'all' && messageSearchSenderId(message) !== String(senderId)) return false;
+  const actualType = messageSearchTypeFor(message);
+  if (type !== 'all') {
+    if (type === 'image' && !['image', 'sticker'].includes(actualType)) return false;
+    else if (type === 'file' && ['text', 'image', 'sticker'].includes(actualType)) return false;
+    else if (!['image', 'file'].includes(type) && actualType !== type) return false;
+  }
+  const timestamp = Date.parse(String(message.createdAt || '')) || 0;
+  if (fromDate && (!timestamp || timestamp < new Date(`${fromDate}T00:00:00`).getTime())) return false;
+  if (toDate && (!timestamp || timestamp > new Date(`${toDate}T23:59:59.999`).getTime())) return false;
+  return true;
+}
+
+function normalizeHistorySearchItem(item) {
+  const source = item && typeof item === 'object' ? item : {};
+  const createdAt = String(source.createdAt || '').trim();
+  return {
+    ...source,
+    id: String(source.id || `${source.senderId || 'message'}-${source.seq || Date.now()}`),
+    seq: Number(source.seq) || 0,
+    senderId: String(source.senderId || '').trim(),
+    senderName: String(source.senderName || source.senderId || 'Thành viên'),
+    text: String(source.text || ''),
+    type: String(source.type || 'text'),
+    createdAt,
+    time: createdAt ? new Date(createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
+    file: source.file
+      ? { ...source.file, url: normalizeTinodeMediaUrl(source.file.url || '') }
+      : undefined,
+  };
 }
 
 function roomParticipantIds(room) {
@@ -1563,6 +1623,17 @@ function App() {
   const [respondingFriendRequestId, setRespondingFriendRequestId] = useState('');
   const [friendNotice, setFriendNotice] = useState('');
   const [messageSearchQuery, setMessageSearchQuery] = useState('');
+  const [messageSearchSender, setMessageSearchSender] = useState('all');
+  const [messageSearchType, setMessageSearchType] = useState('all');
+  const [messageSearchFromDate, setMessageSearchFromDate] = useState('');
+  const [messageSearchToDate, setMessageSearchToDate] = useState('');
+  const [messageSearchResults, setMessageSearchResults] = useState([]);
+  const [messageSearchTotal, setMessageSearchTotal] = useState(0);
+  const [messageSearchScanned, setMessageSearchScanned] = useState(0);
+  const [messageSearchCursor, setMessageSearchCursor] = useState(null);
+  const [messageSearchHasMore, setMessageSearchHasMore] = useState(false);
+  const [messageSearchLoading, setMessageSearchLoading] = useState(false);
+  const [messageSearchError, setMessageSearchError] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [composerPickerTab, setComposerPickerTab] = useState('stickers');
   const [mentionContext, setMentionContext] = useState(null);
@@ -1668,6 +1739,7 @@ function App() {
   const directoryAccountsRef = useRef(directoryAccounts);
   const avatarOverridesRef = useRef(new Map());
   const groupAvatarSyncRef = useRef(new Map());
+  const messageSearchRequestRef = useRef(0);
   const typingNoticeAtRef = useRef(new Map());
   const typingClearTimersRef = useRef(new Map());
   const mediaRecorderRef = useRef(null);
@@ -1840,6 +1912,146 @@ function App() {
   const activeChatMuteLabel = notificationMuteLabel(activeChat.notificationMutedUntil, notificationClock, settings.language === 'en' ? 'en-US' : 'vi-VN');
   const activeMessageCount = roomMessages(activeChat).length;
   const usesManagementData = chatManagementService.remote && chatMode !== 'demo';
+  const activeSearchConversationId = String(activeChat.managementId || activeChat.id || '').trim();
+  const messageSearchHasFilters = Boolean(
+    messageSearchQuery.trim()
+    || messageSearchSender !== 'all'
+    || messageSearchType !== 'all'
+    || messageSearchFromDate
+    || messageSearchToDate,
+  );
+  const canSearchConversationHistory = workspacePanel === 'search'
+    && messageSearchHasFilters
+    && usesManagementData
+    && chatMode === 'tinode'
+    && connectionStatus === 'online'
+    && !activeChat.isChatbot
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(activeSearchConversationId);
+
+  useEffect(() => {
+    setMessageSearchQuery('');
+    setMessageSearchSender('all');
+    setMessageSearchType('all');
+    setMessageSearchFromDate('');
+    setMessageSearchToDate('');
+    setMessageSearchResults([]);
+    setMessageSearchTotal(0);
+    setMessageSearchScanned(0);
+    setMessageSearchCursor(null);
+    setMessageSearchHasMore(false);
+    setMessageSearchError('');
+  }, [activeSearchConversationId]);
+
+  useEffect(() => {
+    const requestId = messageSearchRequestRef.current + 1;
+    messageSearchRequestRef.current = requestId;
+    if (!canSearchConversationHistory) {
+      setMessageSearchResults([]);
+      setMessageSearchTotal(0);
+      setMessageSearchScanned(0);
+      setMessageSearchCursor(null);
+      setMessageSearchHasMore(false);
+      setMessageSearchLoading(false);
+      setMessageSearchError('');
+      return undefined;
+    }
+
+    let cancelled = false;
+    setMessageSearchLoading(true);
+    setMessageSearchError('');
+    const timer = window.setTimeout(async () => {
+      try {
+        const payload = await chatManagementService.searchConversationHistory(activeSearchConversationId, {
+          query: messageSearchQuery,
+          senderId: messageSearchSender === 'all' ? '' : messageSearchSender,
+          type: messageSearchType,
+          fromDate: messageSearchFromDate,
+          toDate: messageSearchToDate,
+          limit: 100,
+        });
+        if (cancelled || messageSearchRequestRef.current !== requestId) return;
+        const items = Array.isArray(payload?.objects) ? payload.objects : (Array.isArray(payload?.items) ? payload.items : []);
+        setMessageSearchResults(items.map(normalizeHistorySearchItem));
+        setMessageSearchTotal(Number(payload?.total) || items.length);
+        setMessageSearchScanned(Number(payload?.scanned) || 0);
+        setMessageSearchCursor(payload?.next_cursor || null);
+        setMessageSearchHasMore(Boolean(payload?.has_more));
+      } catch (error) {
+        if (cancelled || messageSearchRequestRef.current !== requestId) return;
+        setMessageSearchResults([]);
+        setMessageSearchTotal(0);
+        setMessageSearchScanned(0);
+        setMessageSearchError(error?.message || 'Không thể tìm lịch sử hội thoại.');
+      } finally {
+        if (!cancelled && messageSearchRequestRef.current === requestId) setMessageSearchLoading(false);
+      }
+    }, 280);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    activeChat.isChatbot,
+    activeSearchConversationId,
+    chatMode,
+    canSearchConversationHistory,
+    connectionStatus,
+    messageSearchFromDate,
+    messageSearchHasFilters,
+    messageSearchQuery,
+    messageSearchSender,
+    messageSearchToDate,
+    messageSearchType,
+    usesManagementData,
+    workspacePanel,
+  ]);
+
+  const loadMoreMessageSearchResults = async () => {
+    if (!canSearchConversationHistory || !messageSearchHasMore || !messageSearchCursor || messageSearchLoading) return;
+    const requestId = messageSearchRequestRef.current + 1;
+    messageSearchRequestRef.current = requestId;
+    setMessageSearchLoading(true);
+    setMessageSearchError('');
+    try {
+      const payload = await chatManagementService.searchConversationHistory(activeSearchConversationId, {
+        query: messageSearchQuery,
+        senderId: messageSearchSender === 'all' ? '' : messageSearchSender,
+        type: messageSearchType,
+        fromDate: messageSearchFromDate,
+        toDate: messageSearchToDate,
+        limit: 100,
+        cursor: messageSearchCursor,
+      });
+      if (messageSearchRequestRef.current !== requestId) return;
+      const items = (Array.isArray(payload?.objects) ? payload.objects : (Array.isArray(payload?.items) ? payload.items : []))
+        .map(normalizeHistorySearchItem);
+      const knownKeys = new Set(messageSearchResults.map(item => item.seq > 0 ? `seq:${item.seq}` : `id:${item.id}`));
+      const additions = items.filter(item => {
+        const key = item.seq > 0 ? `seq:${item.seq}` : `id:${item.id}`;
+        if (knownKeys.has(key)) return false;
+        knownKeys.add(key);
+        return true;
+      });
+      setMessageSearchResults(previous => {
+        const merged = [...previous, ...additions];
+        return merged.filter((item, index, values) => (
+          index === values.findIndex(candidate => (
+            candidate.id === item.id
+            || (candidate.seq > 0 && item.seq > 0 && candidate.seq === item.seq)
+          ))
+        ));
+      });
+      setMessageSearchTotal(previous => previous + additions.length);
+      setMessageSearchScanned(previous => previous + (Number(payload?.scanned) || 0));
+      setMessageSearchCursor(payload?.next_cursor || null);
+      setMessageSearchHasMore(Boolean(payload?.has_more));
+    } catch (error) {
+      if (messageSearchRequestRef.current === requestId) setMessageSearchError(error?.message || 'Không thể tải thêm lịch sử hội thoại.');
+    } finally {
+      if (messageSearchRequestRef.current === requestId) setMessageSearchLoading(false);
+    }
+  };
+
   const realtimeMessagingPending = usesManagementData
     && !activeChat.isChatbot
     && (
@@ -1882,6 +2094,16 @@ function App() {
   const canPinActiveGroupMessages = !activeChat.isGroup
     || isActiveGroupAdmin
     || groupSettingEnabled(activeGroupSettings, 'allowPinMessages');
+  const messageSearchSenderOptions = [currentUser, ...activeChatMembers]
+    .reduce((options, account) => {
+      const id = messageSearchSenderId(account);
+      if (!id || options.some(option => option.id === id)) return options;
+      options.push({
+        id,
+        name: String(account?.name || account?.full_name || account?.fullName || account?.username || id).trim(),
+      });
+      return options;
+    }, []);
   const activeGroupPresence = activeChat.isGroup
     ? countGroupPresence(activeChatMembers, currentUser, isCurrentUserOnline)
     : null;
@@ -3292,6 +3514,19 @@ function App() {
     setWorkspaceQuery('');
     setWorkspaceResults([]);
     setTenantSwitchNotice('');
+    messageSearchRequestRef.current += 1;
+    setMessageSearchQuery('');
+    setMessageSearchSender('all');
+    setMessageSearchType('all');
+    setMessageSearchFromDate('');
+    setMessageSearchToDate('');
+    setMessageSearchResults([]);
+    setMessageSearchTotal(0);
+    setMessageSearchScanned(0);
+    setMessageSearchCursor(null);
+    setMessageSearchHasMore(false);
+    setMessageSearchLoading(false);
+    setMessageSearchError('');
     setConversationMenu(null);
     setConversationCategoryMenuOpen(false);
     setMessageMenu(null);
@@ -6511,6 +6746,26 @@ function App() {
     if (!messageSearchQuery.trim()) return true;
     return `${message.text || ''} ${message.senderName || ''}`.toLowerCase().includes(messageSearchQuery.toLowerCase());
   });
+  const localHistorySearchResults = messageSearchHasFilters
+    ? roomMessages(activeChat)
+      .filter(message => !messageActions[messageActionKey(activeChat.id, message.id)]?.hidden)
+      .filter(message => messageSearchMatchesLocal(message, {
+        query: messageSearchQuery,
+        senderId: messageSearchSender,
+        type: messageSearchType,
+        fromDate: messageSearchFromDate,
+        toDate: messageSearchToDate,
+      }))
+      .sort((first, second) => (Number(second?.seq) || 0) - (Number(first?.seq) || 0) || messageTimestamp(second) - messageTimestamp(first))
+      .slice(0, 100)
+    : [];
+  const displayedHistorySearchResults = canSearchConversationHistory
+    ? messageSearchResults
+    : (!usesManagementData || chatMode !== 'tinode' ? localHistorySearchResults : []);
+  const historySearchTypeLabel = type => {
+    const option = HISTORY_SEARCH_TYPE_OPTIONS.find(candidate => candidate.id === type);
+    return option ? appCopy.t(option.label) : (type === 'sticker' ? appCopy.t('Sticker') : appCopy.t('Tệp'));
+  };
   const pinnedMessages = pinnedMessagesForRoom(roomMessages(activeChat), messageActions, activeChat.id);
   const pinnedMessagePreview = message => String(message?.text || '').trim()
     || message?.file?.name
@@ -6535,6 +6790,39 @@ function App() {
     } else {
       window.requestAnimationFrame(scroll);
     }
+  };
+  const openMessageSearchResult = async result => {
+    if (!result) return;
+    const roomId = activeChat.id;
+    const sequence = Number(result.seq) || 0;
+    let targetId = result.id;
+    if (chatMode === 'tinode' && activeChat.tinodeTopic && sequence > 0) {
+      try {
+        const loadedConversation = await tinodeClient.loadConversationMessages(activeChat.tinodeTopic, [sequence]);
+        const loadedMessage = roomMessages(loadedConversation).find(message => Number(message?.seq) === sequence);
+        targetId = loadedMessage?.id || targetId;
+        if (loadedConversation) {
+          setConversations(previous => {
+            const currentRoom = previous[roomId] || activeChat;
+            const incoming = {
+              ...loadedConversation,
+              id: roomId,
+              managementId: currentRoom.managementId || activeSearchConversationId,
+              tinodeTopic: activeChat.tinodeTopic,
+              accountSession: currentRoom.accountSession,
+            };
+            const next = { ...previous, [roomId]: safeMergeTinodeConversation(currentRoom, incoming) };
+            conversationsRef.current = next;
+            return next;
+          });
+        }
+      } catch (error) {
+        setChatError(error?.message || 'Không thể mở tin nhắn trong lịch sử.');
+        return;
+      }
+    }
+    closeWorkspacePanel();
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => scrollToMessageById(targetId)));
   };
   const scrollToPinnedMessage = message => scrollToMessageById(message?.id);
   const showExpandedPinnedMessages = pinnedMessagesExpanded && pinnedMessages.length > 1;
@@ -8257,11 +8545,61 @@ function App() {
 
             {workspacePanel === 'search' && (
               <>
-                <div className="workspace-search-row"><i className="fa-solid fa-magnifying-glass"></i><input value={messageSearchQuery} onChange={event => setMessageSearchQuery(event.target.value)} placeholder={appCopy.t('Tìm nội dung hoặc người gửi...')} autoFocus /></div>
-                {messageSearchQuery && <p className="workspace-hint">{visibleMessages.length} {appCopy.t('kết quả trong')} {activeChat.name}</p>}
-                <div className="workspace-list">
-                  {messageSearchQuery && visibleMessages.map(message => <button type="button" className="workspace-list-item" key={message.id} onClick={() => closeWorkspacePanel()}><span className="workspace-file-icon"><i className="fa-solid fa-message"></i></span><span className="workspace-list-copy"><strong>{message.senderName || appCopy.t('Bạn')}</strong><small>{message.text || message.file?.name || appCopy.t('Nội dung đính kèm')} · {formatMessageTime(message, message.time, appCopy.locale)}</small></span></button>)}
+                <div className="workspace-search-row">
+                  <i className="fa-solid fa-magnifying-glass"></i>
+                  <input value={messageSearchQuery} onChange={event => setMessageSearchQuery(event.target.value)} placeholder={appCopy.t('Tìm nội dung hoặc người gửi...')} autoFocus />
                 </div>
+                <div className="history-search-filters" role="group" aria-label={appCopy.t('Bộ lọc tìm kiếm')}>
+                  <label className="history-search-filter">
+                    <span>{appCopy.t('Người gửi')}</span>
+                    <select value={messageSearchSender} onChange={event => setMessageSearchSender(event.target.value)}>
+                      <option value="all">{appCopy.t('Tất cả người gửi')}</option>
+                      {messageSearchSenderOptions.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="history-search-filter">
+                    <span>{appCopy.t('Loại')}</span>
+                    <select value={messageSearchType} onChange={event => setMessageSearchType(event.target.value)}>
+                      {HISTORY_SEARCH_TYPE_OPTIONS.map(option => <option key={option.id} value={option.id}>{appCopy.t(option.label)}</option>)}
+                    </select>
+                  </label>
+                  <label className="history-search-filter">
+                    <span>{appCopy.t('Từ ngày')}</span>
+                    <input type="date" value={messageSearchFromDate} max={messageSearchToDate || undefined} onChange={event => setMessageSearchFromDate(event.target.value)} />
+                  </label>
+                  <label className="history-search-filter">
+                    <span>{appCopy.t('Đến ngày')}</span>
+                    <input type="date" value={messageSearchToDate} min={messageSearchFromDate || undefined} onChange={event => setMessageSearchToDate(event.target.value)} />
+                  </label>
+                </div>
+                {!messageSearchHasFilters && <p className="workspace-hint history-search-hint"><i className="fa-solid fa-circle-info"></i>{appCopy.t('Nhập nội dung hoặc chọn bộ lọc để tìm toàn bộ lịch sử hội thoại.')}</p>}
+                {messageSearchLoading && <div className="workspace-search-status"><i className="fa-solid fa-spinner fa-spin"></i>{appCopy.t('Đang tìm toàn bộ lịch sử...')}</div>}
+                {messageSearchError && <div className="workspace-search-error" role="alert"><i className="fa-solid fa-circle-exclamation"></i>{messageSearchError}</div>}
+                {messageSearchHasFilters && !messageSearchLoading && !messageSearchError && (
+                  <p className="workspace-hint history-search-hint">
+                    {canSearchConversationHistory ? messageSearchTotal : displayedHistorySearchResults.length} {appCopy.t('kết quả trong')} {activeChat.name}
+                    {canSearchConversationHistory && messageSearchScanned > 0 && ` · ${appCopy.t('đã quét')} ${messageSearchScanned} ${appCopy.t('tin nhắn')}`}
+                  </p>
+                )}
+                {messageSearchHasFilters && !messageSearchLoading && displayedHistorySearchResults.length === 0 && !messageSearchError && (
+                  <div className="workspace-empty history-search-empty"><i className="fa-regular fa-message"></i><span>{appCopy.t('Không tìm thấy tin nhắn phù hợp.')}</span></div>
+                )}
+                {displayedHistorySearchResults.length > 0 && (
+                  <div className="workspace-list history-search-results">
+                    {displayedHistorySearchResults.map(message => (
+                      <button type="button" className="workspace-list-item history-search-result" key={`${message.id}-${message.seq || ''}`} onClick={() => openMessageSearchResult(message)}>
+                        <span className={`workspace-file-icon history-search-type-${message.type}`}><i className={`fa-solid ${message.type === 'image' || message.type === 'sticker' ? 'fa-image' : message.type === 'file' || message.type === 'document' || message.type === 'archive' ? 'fa-file' : message.type === 'video' ? 'fa-video' : message.type === 'audio' ? 'fa-microphone' : 'fa-message'}`}></i></span>
+                        <span className="workspace-list-copy">
+                          <strong>{message.senderName || appCopy.t('Thành viên')}</strong>
+                          <small>{message.text || message.file?.name || appCopy.t('Nội dung đính kèm')} · {formatFullMessageDateTime(message, message.time, appCopy.locale)} · {historySearchTypeLabel(message.type)}</small>
+                        </span>
+                        <i className="fa-solid fa-chevron-right history-search-open-icon" aria-hidden="true"></i>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {canSearchConversationHistory && messageSearchHasMore && <button type="button" className="history-search-load-more" onClick={loadMoreMessageSearchResults} disabled={messageSearchLoading}><i className="fa-solid fa-clock-rotate-left"></i>{appCopy.t('Tải thêm lịch sử cũ')}</button>}
+                {!canSearchConversationHistory && messageSearchHasFilters && chatMode === 'tinode' && usesManagementData && <p className="workspace-hint history-search-hint"><i className="fa-solid fa-cloud-arrow-down"></i>{appCopy.t('Đang hiển thị phần lịch sử đã tải; kết nối realtime để tìm toàn bộ.')}</p>}
               </>
             )}
 

@@ -87,3 +87,9 @@ test('translates group avatar and member management messages', () => {
   assert.equal(translateUiText('Không thể thêm thành viên vào nhóm.', 'en'), 'Unable to add members to the group.');
   assert.equal(translateUiText('Tất cả', 'en'), 'All');
 });
+
+test('translates history search filters', () => {
+  assert.equal(translateUiText('Tất cả người gửi', 'en'), 'All senders');
+  assert.equal(translateUiText('Tải thêm lịch sử cũ', 'en'), 'Load older history');
+  assert.equal(translateUiText('Không tìm thấy tin nhắn phù hợp.', 'en'), 'No matching messages found.');
+});

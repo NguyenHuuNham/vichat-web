@@ -819,6 +819,168 @@ async def tinode_sso_login(identity, tinode_username, tinode_uid=None):
         return await tinode_login(tinode_username, password)
 
 
+async def tinode_history_window(
+    token,
+    expected_uid,
+    topic_name,
+    before=None,
+    page_limit=100,
+    max_messages=20000,
+):
+    """Read a bounded, paged Tinode history window for an authorized topic."""
+    base_url = str(app.config.get("TINODE_INTERNAL_WS_URL") or "").rstrip("?")
+    api_key = str(app.config.get("TINODE_API_KEY") or "")
+    topic = str(topic_name or "").strip()
+    if not base_url or not api_key or not token:
+        raise AuthError("Tinode history search is not configured.", 503)
+    if not topic:
+        raise AuthError("Tinode topic is required for history search.", 400)
+
+    page_limit = min(200, max(20, int(page_limit or 100)))
+    max_messages = min(20000, max(page_limit, int(max_messages or 20000)))
+    cursor = None
+    if before not in (None, ""):
+        try:
+            cursor = max(1, int(before))
+        except (TypeError, ValueError):
+            raise AuthError("The Tinode history cursor is invalid.", 400)
+
+    separator = "&" if "?" in base_url else "?"
+    url = "{}{}apikey={}".format(base_url, separator, quote(api_key, safe=""))
+    timeout = aiohttp.ClientTimeout(total=int(app.config.get("TINODE_AUTH_TIMEOUT", 10)))
+
+    async def receive_ctrl(socket, request_id, auth_request=False):
+        for _attempt in range(60):
+            packet = await socket.receive_json()
+            ctrl = packet.get("ctrl") or {}
+            if str(ctrl.get("id") or "") != str(request_id):
+                continue
+            code = int(ctrl.get("code") or 500)
+            if code >= 300:
+                raise AuthError(
+                    ctrl.get("text") or "Tinode rejected the history search.",
+                    401 if auth_request and code in (401, 403) else 409,
+                )
+            return ctrl
+        raise AuthError("Tinode did not confirm the history search.", 502)
+
+    async def receive_meta_and_ctrl(socket, request_id):
+        messages = []
+        for _attempt in range(120):
+            packet = await socket.receive_json()
+            data_packet = packet.get("data") or {}
+            if isinstance(data_packet, dict) and data_packet.get("topic") == topic:
+                messages.append(data_packet)
+            meta = packet.get("meta") or {}
+            if str(meta.get("id") or "") == str(request_id):
+                data = meta.get("data") or []
+                if isinstance(data, dict):
+                    data = [data]
+                messages.extend(item for item in data if isinstance(item, dict))
+            ctrl = packet.get("ctrl") or {}
+            if str(ctrl.get("id") or "") != str(request_id):
+                continue
+            code = int(ctrl.get("code") or 500)
+            if code >= 300:
+                raise AuthError(
+                    ctrl.get("text") or "Tinode rejected the history search.",
+                    409,
+                )
+            return messages, ctrl
+        raise AuthError("Tinode did not return the requested history page.", 502)
+
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.ws_connect(url, headers=_tinode_bridge_headers()) as socket:
+            await socket.send_json({
+                "hi": {
+                    "id": "1",
+                    "ver": "0.25",
+                    "ua": "VICHAT-CHAT-SERVICE",
+                    "platf": "server",
+                    "lang": "vi",
+                },
+            })
+            await receive_ctrl(socket, "1")
+            await socket.send_json({
+                "login": {"id": "2", "scheme": "token", "secret": token},
+            })
+            login_ctrl = await receive_ctrl(socket, "2", auth_request=True)
+            authenticated_uid = str((login_ctrl.get("params") or {}).get("user") or "")
+            if expected_uid and authenticated_uid != str(expected_uid):
+                raise AuthError("Tinode authenticated a different user.", 409)
+
+            # Subscribe first so Tinode applies the current user's topic ACL.
+            await socket.send_json({
+                "sub": {
+                    "id": "3",
+                    "topic": topic,
+                    "get": {"what": "desc"},
+                },
+            })
+            await receive_meta_and_ctrl(socket, "3")
+
+            messages = []
+            seen_sequences = set()
+            has_more = True
+            request_id = 4
+            while len(messages) < max_messages:
+                data_params = {"limit": page_limit}
+                if cursor is not None:
+                    data_params["before"] = cursor
+                await socket.send_json({
+                    "get": {
+                        "id": str(request_id),
+                        "topic": topic,
+                        "what": "data",
+                        "data": data_params,
+                    },
+                })
+                page, ctrl = await receive_meta_and_ctrl(socket, str(request_id))
+                request_id += 1
+                if not page:
+                    has_more = False
+                    break
+
+                page_sequences = []
+                for message in page:
+                    sequence = message.get("seq")
+                    try:
+                        sequence = int(sequence)
+                    except (TypeError, ValueError):
+                        continue
+                    if sequence <= 0 or sequence in seen_sequences:
+                        continue
+                    seen_sequences.add(sequence)
+                    page_sequences.append(sequence)
+                    messages.append(message)
+
+                if not page_sequences:
+                    has_more = False
+                    break
+                if len(page) < page_limit:
+                    has_more = False
+                    break
+
+                page_min = min(page_sequences)
+                next_cursor = page_min if cursor is None or page_min < cursor else page_min - 1
+                if next_cursor <= 0 or next_cursor == cursor:
+                    has_more = False
+                    break
+                cursor = next_cursor
+                if int((ctrl.get("params") or {}).get("count") or 0) == 0:
+                    has_more = False
+                    break
+
+            if len(messages) >= max_messages and has_more:
+                has_more = True
+            next_cursor = cursor if has_more else None
+            return {
+                "messages": messages,
+                "next_cursor": next_cursor,
+                "has_more": has_more,
+            }
+
+
 async def tinode_topic_member_uids(token, expected_uid, topic_name, include_members=True):
     base_url = str(app.config.get("TINODE_INTERNAL_WS_URL") or "").rstrip("?")
     api_key = str(app.config.get("TINODE_API_KEY") or "")

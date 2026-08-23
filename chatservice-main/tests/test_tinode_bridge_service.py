@@ -573,6 +573,102 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raised.exception.status_code, 502)
         self.assertEqual(str(raised.exception), "database value is too long")
 
+    async def test_history_window_pages_from_tinode_and_deduplicates_sequences(self):
+        first_page = [
+            {"topic": "grpRoom", "seq": sequence, "from": "usrMember", "ts": "2026-08-23T10:00:00Z", "content": "message"}
+            for sequence in range(40, 20, -1)
+        ]
+        second_page = [
+            {"topic": "grpRoom", "seq": sequence, "from": "usrMember", "ts": "2026-08-23T09:00:00Z", "content": "message"}
+            for sequence in [21, *range(20, 1, -1)]
+        ]
+        socket = FakeSocket([
+            {"ctrl": {"id": "1", "code": 201}},
+            {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrOwner"}}},
+            {"ctrl": {"id": "3", "code": 200}},
+            {"meta": {"id": "4", "topic": "grpRoom", "data": first_page}},
+            {"ctrl": {"id": "4", "code": 200, "params": {"count": 20}}},
+            {"meta": {"id": "5", "topic": "grpRoom", "data": second_page}},
+            {"ctrl": {"id": "5", "code": 200, "params": {"count": 20}}},
+            {"meta": {"id": "6", "topic": "grpRoom", "data": []}},
+            {"ctrl": {"id": "6", "code": 200, "params": {"count": 0}}},
+        ])
+        with self.config(), patch.object(
+            auth_service.aiohttp,
+            "ClientSession",
+            self.client_session(socket),
+        ):
+            result = await auth_service.tinode_history_window(
+                "short-token",
+                "usrOwner",
+                "grpRoom",
+                page_limit=20,
+            )
+
+        self.assertEqual(len(result["messages"]), 39)
+        self.assertEqual({message["seq"] for message in result["messages"]}, set(range(2, 41)))
+        self.assertFalse(result["has_more"])
+        self.assertIsNone(result["next_cursor"])
+        self.assertEqual(socket.sent[4]["get"]["data"]["before"], 21)
+        self.assertEqual(socket.sent[5]["get"]["data"]["before"], 2)
+
+    async def test_history_window_honors_a_cursor_and_stops_on_an_empty_page(self):
+        socket = FakeSocket([
+            {"ctrl": {"id": "1", "code": 201}},
+            {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrOwner"}}},
+            {"ctrl": {"id": "3", "code": 200}},
+            {"meta": {"id": "4", "topic": "grpRoom", "data": [
+                {"topic": "grpRoom", "seq": 8, "from": "usrMember", "content": "old"},
+            ]}},
+            {"ctrl": {"id": "4", "code": 200, "params": {"count": 1}}},
+        ])
+        with self.config(), patch.object(
+            auth_service.aiohttp,
+            "ClientSession",
+            self.client_session(socket),
+        ):
+            result = await auth_service.tinode_history_window(
+                "short-token",
+                "usrOwner",
+                "grpRoom",
+                before=9,
+            )
+
+        self.assertEqual([message["seq"] for message in result["messages"]], [8])
+        self.assertFalse(result["has_more"])
+        self.assertEqual(socket.sent[-1]["get"]["data"]["before"], 9)
+
+    async def test_history_window_rejects_a_token_for_another_user(self):
+        socket = FakeSocket([
+            {"ctrl": {"id": "1", "code": 201}},
+            {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrOther"}}},
+        ])
+        with self.config(), patch.object(
+            auth_service.aiohttp,
+            "ClientSession",
+            self.client_session(socket),
+        ):
+            with self.assertRaises(auth_service.AuthError) as raised:
+                await auth_service.tinode_history_window("short-token", "usrOwner", "grpRoom")
+
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(len(socket.sent), 2)
+
+    async def test_history_window_maps_expired_tokens_to_unauthorized(self):
+        socket = FakeSocket([
+            {"ctrl": {"id": "1", "code": 201}},
+            {"ctrl": {"id": "2", "code": 401, "text": "token expired"}},
+        ])
+        with self.config(), patch.object(
+            auth_service.aiohttp,
+            "ClientSession",
+            self.client_session(socket),
+        ):
+            with self.assertRaises(auth_service.AuthError) as raised:
+                await auth_service.tinode_history_window("expired-token", "usrOwner", "grpRoom")
+
+        self.assertEqual(raised.exception.status_code, 401)
+
 
 if __name__ == "__main__":
     unittest.main()

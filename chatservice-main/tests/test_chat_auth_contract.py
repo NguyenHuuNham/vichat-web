@@ -569,6 +569,30 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("isActiveGroupAdmin", app_source)
         self.assertIn("handleGroupManagementSubmit", app_source)
 
+    @repository_source_test
+    def test_history_search_stays_in_the_employee_chat_session_and_reads_tinode(self):
+        controller_source, search_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_history_search",
+        )
+        app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
+        service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("/api/v1/conversation/<conversation_id>/search", controller_source)
+        self.assertIn("management_session_requested", search_source)
+        self.assertIn("_conversation_and_membership", search_source)
+        self.assertIn("tinode_history_window", search_source)
+        self.assertIn("sender_filter", search_source)
+        self.assertIn("date_from", search_source)
+        self.assertIn("file_type", search_source)
+        self.assertIn("Cache-Control", search_source)
+        self.assertIn("searchConversationHistory", service_source)
+        self.assertIn("Tải thêm lịch sử cũ", app_source)
+        self.assertNotIn("allowNotes", controller_source)
+        self.assertNotIn("allowPolls", controller_source)
+        self.assertNotIn("allowReminders", controller_source)
+        self.assertNotIn("markOwnerMessages", controller_source)
+
     def test_directory_sync_revalidates_tenant_and_deactivates_missing_accounts(self):
         _controller_source, directory_source = function_source(
             CONTROLLER_PATH,

@@ -16,6 +16,10 @@ test('group settings use safe defaults and ignore unknown values', () => {
     ...DEFAULT_GROUP_SETTINGS,
     allowMessages: false,
   });
+  for (const removedKey of ['allowNotes', 'allowPolls', 'allowReminders', 'markOwnerMessages']) {
+    assert.equal(Object.hasOwn(DEFAULT_GROUP_SETTINGS, removedKey), false);
+    assert.equal(Object.hasOwn(normalizeGroupSettings({ [removedKey]: true }), removedKey), false);
+  }
 });
 
 test('group setting lookup is boolean and default-safe', () => {

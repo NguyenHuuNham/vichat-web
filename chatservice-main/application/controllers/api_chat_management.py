@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import hmac
+import json as jsonlib
 import logging
 import time
 import uuid
@@ -59,6 +60,7 @@ from application.services.auth_service import (
     tinode_admin_reset_password,
     tinode_auth_expired,
     tinode_auth_from_request,
+    tinode_history_window,
     tinode_disabled_password,
     tinode_mirror_enabled,
     tinode_mirror_login,
@@ -99,15 +101,32 @@ _ACCOUNT_DIRECTORY_SYNC_CACHE = {}
 GROUP_SETTING_DEFAULTS = {
     "allowMembersEditInfo": False,
     "allowPinMessages": True,
-    "allowNotes": True,
-    "allowPolls": True,
-    "allowReminders": True,
     "allowMessages": True,
     "approveMembers": False,
-    "markOwnerMessages": False,
     "newMemberHistory": True,
 }
 GROUP_SETTING_KEYS = frozenset(GROUP_SETTING_DEFAULTS)
+
+HISTORY_SEARCH_TYPES = frozenset({
+    "all",
+    "text",
+    "image",
+    "sticker",
+    "file",
+    "video",
+    "audio",
+    "document",
+    "archive",
+})
+HISTORY_SEARCH_PAGE_LIMIT = 100
+HISTORY_SEARCH_MAX_MESSAGES = 20000
+HISTORY_SEARCH_TIMEZONE = datetime.timezone(datetime.timedelta(hours=7))
+HISTORY_INTERNAL_MESSAGE_PREFIXES = (
+    "__VICHAT_SYSTEM_EVENT__:",
+    "__VICHAT_REACTION_EVENT__:",
+    "__VICHAT_RECALL_EVENT__:",
+    "__SONGHONG_FRIEND_EVENT__:",
+)
 
 
 def _normalized_group_settings(value=None):
@@ -896,6 +915,171 @@ def _conversation_and_membership(tenant_id, conversation_id, user_id):
         ConversationParticipant.deleted.is_(False),
     ).first()
     return item, membership
+
+
+def _history_search_datetime(value, end_of_day=False):
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        if len(raw) == 10:
+            parsed = datetime.datetime.strptime(raw, "%Y-%m-%d")
+            if end_of_day:
+                parsed = parsed.replace(hour=23, minute=59, second=59, microsecond=999999)
+        else:
+            parsed = datetime.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=HISTORY_SEARCH_TIMEZONE)
+        return parsed.astimezone(datetime.timezone.utc)
+    except (TypeError, ValueError, OverflowError):
+        raise AuthError("The history date filter is invalid.", 400)
+
+
+def _history_message_datetime(message):
+    value = (message or {}).get("ts")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            return datetime.datetime.fromtimestamp(value, datetime.timezone.utc)
+        except (TypeError, ValueError, OverflowError):
+            return None
+    try:
+        parsed = datetime.datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+    return parsed.astimezone(datetime.timezone.utc)
+
+
+def _history_message_attachment(content):
+    if not isinstance(content, dict):
+        return None
+    for entity in content.get("ent") or []:
+        if not isinstance(entity, dict) or entity.get("tp") not in ("EX", "IM"):
+            continue
+        data = entity.get("data")
+        if isinstance(data, dict):
+            return {"type": entity.get("tp"), **data}
+    return None
+
+
+def _history_message_text(content):
+    if isinstance(content, str):
+        return content
+    if isinstance(content, dict):
+        return str(content.get("txt") or content.get("text") or "")
+    return ""
+
+
+def _history_message_file_type(attachment, head):
+    sticker = {}
+    raw_sticker = (head or {}).get("x-vichat-sticker")
+    if raw_sticker:
+        try:
+            sticker = jsonlib.loads(raw_sticker) if isinstance(raw_sticker, str) else raw_sticker
+        except (TypeError, ValueError):
+            sticker = {}
+    if isinstance(sticker, dict) and (sticker.get("stickerId") or sticker.get("id")):
+        return "sticker"
+    if not attachment:
+        return "text"
+    mime = str(attachment.get("mime") or "").lower()
+    name = str(attachment.get("filename") or attachment.get("name") or "").lower()
+    if attachment.get("type") == "IM" or mime.startswith("image/") or name.endswith((
+        ".avif", ".bmp", ".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp",
+    )):
+        return "image"
+    if mime.startswith("video/") or name.endswith((".avi", ".mkv", ".mov", ".mp4", ".webm")):
+        return "video"
+    if mime.startswith("audio/") or name.endswith((".aac", ".flac", ".m4a", ".mp3", ".ogg", ".wav")):
+        return "audio"
+    if mime.startswith(("text/", "application/pdf")) or name.endswith((
+        ".csv", ".doc", ".docx", ".pdf", ".ppt", ".pptx", ".rtf", ".txt", ".xls", ".xlsx",
+    )):
+        return "document"
+    if mime.startswith(("application/zip", "application/x-rar", "application/x-7z", "application/x-tar")) or name.endswith((
+        ".7z", ".gz", ".rar", ".tar", ".zip",
+    )):
+        return "archive"
+    return "file"
+
+
+def _serialize_history_search_message(message, sender_names, viewer_uid=""):
+    if not isinstance(message, dict) or message.get("_deleted"):
+        return None
+    head = message.get("head") if isinstance(message.get("head"), dict) else {}
+    sender_id = str(message.get("from") or head.get("x-sender-id") or "").strip()
+    try:
+        sequence = int(message.get("seq") or 0)
+    except (TypeError, ValueError):
+        sequence = 0
+    if sequence <= 0:
+        return None
+    content = message.get("content")
+    raw_text = _history_message_text(content).lstrip()
+    if raw_text.startswith(HISTORY_INTERNAL_MESSAGE_PREFIXES):
+        return None
+    attachment = _history_message_attachment(content)
+    file_type = _history_message_file_type(attachment, head)
+    text = _history_message_text(content).strip()
+    file_name = str((attachment or {}).get("filename") or (attachment or {}).get("name") or "").strip()
+    attachment_url = str(
+        (attachment or {}).get("ref")
+        or (attachment or {}).get("refurl")
+        or (attachment or {}).get("url")
+        or ""
+    ).strip()
+    timestamp = _history_message_datetime(message)
+    client_id = str(head.get("x-client-id") or "").strip()
+    message_id = client_id[:255] if client_id else "{}-{}".format(sender_id or "system", sequence)
+    item = {
+        "id": message_id,
+        "seq": sequence,
+        "senderId": sender_id,
+        "senderName": sender_names.get(sender_id) or sender_id or "Thành viên",
+        "sender": "outgoing" if sender_id and sender_id == str(viewer_uid) else "incoming",
+        "text": text,
+        "type": file_type,
+        "createdAt": timestamp.isoformat().replace("+00:00", "Z") if timestamp else None,
+    }
+    if attachment:
+        size = attachment.get("size")
+        item["file"] = {
+            "name": file_name or "Tệp đính kèm",
+            "mime": str(attachment.get("mime") or "application/octet-stream"),
+            "size": size if isinstance(size, (int, float)) and not isinstance(size, bool) else 0,
+            "url": attachment_url,
+        }
+    return item
+
+
+def _history_search_matches(item, query, sender_ids, date_from, date_to, file_type):
+    if not item:
+        return False
+    if query:
+        haystack = " ".join((
+            str(item.get("text") or ""),
+            str(item.get("senderName") or ""),
+            str((item.get("file") or {}).get("name") or ""),
+        )).casefold()
+        if query.casefold() not in haystack:
+            return False
+    if sender_ids and str(item.get("senderId") or "") not in sender_ids:
+        return False
+    timestamp = _history_search_datetime(item.get("createdAt")) if item.get("createdAt") else None
+    if date_from and (timestamp is None or timestamp < date_from):
+        return False
+    if date_to and (timestamp is None or timestamp > date_to):
+        return False
+    if file_type != "all":
+        actual_type = str(item.get("type") or "text")
+        if file_type == "image":
+            return actual_type not in ("image", "sticker")
+        if file_type == "file":
+            return actual_type in ("text", "image", "sticker")
+        if actual_type != file_type:
+            return False
+    return True
 
 
 def _iso_timestamp(value):
@@ -2831,6 +3015,152 @@ async def conversation_group_settings(request, conversation_id):
     item.updated_at = int(time.time())
     db.session.commit()
     return json(_serialize_conversation(item, user_id))
+
+
+@app.route('/api/v1/conversation/<conversation_id>/search', methods=['POST'])
+@app.route('/api/v1/chat/threads/<conversation_id>/search', methods=['POST'])
+async def conversation_history_search(request, conversation_id):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    if management_session_requested(request):
+        return json({
+            "error_code": "CHAT_SESSION_REQUIRED",
+            "error_message": "Conversation history search requires a Chat user session.",
+        }, status=403)
+    try:
+        conversation_uuid = uuid.UUID(str(conversation_id))
+    except (ValueError, TypeError, AttributeError):
+        return json({"error_code": "NOT_FOUND", "error_message": "Invalid conversation."}, status=404)
+
+    user_id = _user_id(current_user)
+    item, membership = _conversation_and_membership(tenant_id, conversation_uuid, user_id)
+    if item is None or membership is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
+
+    body = request.json or {}
+    if not isinstance(body, dict):
+        return json({"error_code": "PARAM_ERROR", "error_message": "Search filters must be an object."}, status=400)
+    query = str(body.get("query") or "").strip()[:200]
+    sender_filter = str(body.get("sender_id") or body.get("senderId") or "").strip()
+    file_type = str(body.get("type") or body.get("message_type") or "all").strip().lower()
+    if file_type not in HISTORY_SEARCH_TYPES:
+        return json({"error_code": "PARAM_ERROR", "error_message": "The history file type is invalid."}, status=400)
+    try:
+        date_from = _history_search_datetime(body.get("from_date") or body.get("fromDate"))
+        date_to = _history_search_datetime(
+            body.get("to_date") or body.get("toDate"),
+            end_of_day=True,
+        )
+        if date_from and date_to and date_from > date_to:
+            return json({"error_code": "PARAM_ERROR", "error_message": "The history date range is invalid."}, status=400)
+        limit = min(200, max(1, int(body.get("limit") or 100)))
+    except (TypeError, ValueError, OverflowError):
+        return json({"error_code": "PARAM_ERROR", "error_message": "The history search limit is invalid."}, status=400)
+
+    tinode_token = str(body.get("tinode_token") or "").strip()
+    if not tinode_token:
+        return json({
+            "error_code": "TINODE_TOKEN_REQUIRED",
+            "error_message": "Tinode authentication is required for history search.",
+        }, status=400)
+
+    account = _account_by_id(tenant_id, user_id)
+    if account is None:
+        return _auth_error()
+
+    try:
+        if current_user.get("auth_method") == "account_sso":
+            await _validated_account_identity(request, account)
+
+        participants, accounts_by_id = _active_conversation_accounts(item)
+        participant_ids = [participant.participant_id for participant in participants]
+        tinode_uids = {
+            participant_id: str(accounts_by_id[participant_id].tinode_uid or "")
+            for participant_id in participant_ids
+            if participant_id in accounts_by_id
+        }
+        is_group = bool((item.properties or {}).get("is_group"))
+        topic_name = item.tinode_topic if is_group else direct_peer_tinode_uid(
+            user_id,
+            participant_ids,
+            tinode_uids,
+        )
+        if not topic_name or not valid_tinode_topic(topic_name, is_group):
+            return json({
+                "error_code": "TINODE_TOPIC_REQUIRED",
+                "error_message": "The conversation is not ready for history search.",
+            }, status=409)
+        expected_uid = str(account.tinode_uid or "").strip()
+        if not expected_uid:
+            return json({
+                "error_code": "TINODE_UID_REQUIRED",
+                "error_message": "The employee Tinode identity is not ready.",
+            }, status=409)
+
+        sender_ids = set()
+        sender_names = {}
+        for participant_id, participant_account in accounts_by_id.items():
+            uid = str(participant_account.tinode_uid or "").strip()
+            if not uid:
+                continue
+            sender_names[uid] = participant_account.full_name or participant_account.username or uid
+            if sender_filter and sender_filter in {
+                str(participant_id),
+                uid,
+                str(participant_account.tinode_username or ""),
+                str(participant_account.username or ""),
+            }:
+                sender_ids.add(uid)
+        if sender_filter and not sender_ids:
+            return json({
+                "objects": [],
+                "items": [],
+                "total": 0,
+                "scanned": 0,
+                "has_more": False,
+                "next_cursor": None,
+            })
+
+        cursor = body.get("cursor")
+        history = await tinode_history_window(
+            tinode_token,
+            expected_uid,
+            topic_name,
+            before=cursor,
+            page_limit=HISTORY_SEARCH_PAGE_LIMIT,
+            max_messages=HISTORY_SEARCH_MAX_MESSAGES,
+        )
+        matched = []
+        for raw_message in history.get("messages") or []:
+            result = _serialize_history_search_message(raw_message, sender_names, expected_uid)
+            if _history_search_matches(result, query, sender_ids, date_from, date_to, file_type):
+                matched.append(result)
+        matched.sort(key=lambda value: (int(value.get("seq") or 0), str(value.get("createdAt") or "")), reverse=True)
+        matched = matched[:limit]
+        response = json({
+            "objects": matched,
+            "items": matched,
+            "total": len(matched),
+            "scanned": len(history.get("messages") or []),
+            "has_more": bool(history.get("has_more")),
+            "next_cursor": history.get("next_cursor"),
+            "conversation_id": str(item.id),
+        })
+        response.headers["Cache-Control"] = "no-store"
+        return response
+    except AccountSSOError as error:
+        return _account_sso_error(error)
+    except AuthError as error:
+        status_code = error.status_code
+        error_code = "TINODE_SEARCH_AUTH_FAILED" if status_code == 401 else "TINODE_SEARCH_FAILED"
+        return json({"error_code": error_code, "error_message": str(error)}, status=status_code)
+    except Exception:
+        logger.exception("Tinode conversation history search failed")
+        return json({
+            "error_code": "TINODE_SEARCH_FAILED",
+            "error_message": "Conversation history search is temporarily unavailable.",
+        }, status=503)
 
 
 @app.route('/api/v1/conversation', methods=['POST'])

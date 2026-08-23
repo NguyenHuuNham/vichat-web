@@ -1747,6 +1747,17 @@ export const tinodeClient = {
     return enrichConversationProfiles(toConversation(topic, getClient()), getClient());
   },
 
+  async loadConversationMessages(topicName, sequences = []) {
+    const normalizedSequences = [...new Set((sequences || [])
+      .map(sequence => Number(sequence))
+      .filter(sequence => Number.isFinite(sequence) && sequence > 0))];
+    if (!topicName || normalizedSequences.length === 0) return null;
+    const topic = await subscribeTopic(topicName, { historyLimit: 0 });
+    await topic.getMeta(topic.startMetaQuery().withDataList(normalizedSequences).build());
+    emitConversation(topic);
+    return enrichConversationProfiles(toConversation(topic, getClient()), getClient());
+  },
+
   async getConversationAvatar(topicName) {
     const topic = await subscribeTopic(topicName, { historyLimit: 0 });
     return avatarFromTopic(topic);

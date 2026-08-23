@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-11 - Tim kiem lich su hoi thoai server-side
+
+- Thoi gian: 2026-08-23 14:45 (Asia/Saigon)
+- Loai: Tinh nang | Bao mat | Web | API | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Tim duoc toan bo lich su Tinode theo noi dung, nguoi gui, ngay va loai file ma khong lam thay doi luong chat hien tai.
+- Pham vi: ChatUI panel tim kiem, Chatmgt-Tinode bridge, bo loc group settings; khong thay doi schema, tin nhan thuong, sticker, reaction, mute, tenant switch, membership hay Workspace.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/groupSettings.js`, `src/features/chat/services/groupSettings.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `chatservice-main/application/services/auth_service.py`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `chatservice-main/tests/test_tinode_bridge_service.py`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Them `POST /api/v1/conversation/<conversation_id>/search` va alias chat threads. Chatmgt xac minh chat scope, tenant, membership, topic va UID Tinode roi doc history theo cursor; khong luu copy message/index vao Chatmgt. UI co loc sender/type/from/to date, hien so luong da quet, tai them history cu va mo dung sequence Tinode. Loai bo `allowNotes`, `allowPolls`, `allowReminders`, `markOwnerMessages` khoi group-management whitelist, frontend va ban dich.
+- Quyet dinh ky thuat: Tinode van la nguon message chuan; filter ngay khong co timezone duoc hieu theo `Asia/Ho_Chi_Minh` va chuyen sang UTC khi so sanh. Internal reaction/recall/friend/system event khong xuat hien nhu message search thong thuong. Cursor va gioi han quet 20.000 message moi request giu an toan tai nguyen; nut tai them cho history lon hon.
+- Database/API/cau hinh: Them API search, khong migration, khong bien moi truong moi, khong secret/token/cookie nao duoc ghi vao log hoac tai lieu.
+- Kiem thu: `python -m py_compile ...` dat; `python -m unittest discover -s chatservice-main/tests -q` dat 177 test, skip 60 theo moi truong; `npm run test:frontend` dat 148/148; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-DYUUJOKJ.js`, `App-C5njMDz2.js`, CSS `index-DPqn1q3B.css`; `git diff --check` dat.
+- Rui ro con lai: Chua chay deploy/health production va chua UAT bang hai tai khoan that; history lon hon 20.000 message can bam tai them. Can theo doi thoi gian phan hoi Tinode khi hoi thoai rat lon.
+- Viec tiep theo: Commit, push, build/recreate rieng `chat` va `chatmgt`, kiem tra health/public asset, sau do UAT tim theo sender/date/file va bo group settings.
+- Commit/PR: Chua tao.
+
 ## 2026-08-23-10 - Don dep workspace Explorer
 
 - Thoi gian: 2026-08-23 11:35 (Asia/Saigon)

@@ -231,10 +231,24 @@ from another tenant by ID or query parameter.
 ## Step 3 tenant data flow
 
 After login, ChatUI reads `/api/v1/chat/users`, `/api/v1/friend-request` and
-`/api/v1/conversation` from Chatmgt only. Search, direct pairs, groups,
+`/api/v1/conversation` from Chatmgt only. Directory search, direct pairs, groups,
 participants, notification mute deadlines, per-user pin state and profile/avatar changes are all
 stored under the JWT tenant. Foreign tenant IDs sent in query strings are
 ignored; the authenticated JWT and membership rows remain authoritative.
+
+Employee message-history search uses the authenticated
+`POST /api/v1/conversation/<conversation_id>/search` endpoint (with the
+`/api/v1/chat/threads/<conversation_id>/search` compatibility alias). Chatmgt
+validates the chat-session scope, tenant membership, conversation membership,
+Tinode topic mapping and the current Tinode UID before asking Tinode for paged
+history. Filters cover text, sender, local calendar date range
+(Asia/Ho_Chi_Minh) and explicit timestamps normalized to UTC, plus message/file type
+(including images/stickers, video, audio, documents and archives). Tinode is
+the canonical message source; Chatmgt stores no message copy or search index.
+The response includes a cursor when the safety window contains more history so
+ChatUI can continue loading older results without exposing another conversation.
+The management admin surface continues to exclude message content and this
+employee search endpoint.
 
 The group information panel keeps notification mute and conversation pin
 viewer-scoped. Any active group member may add another active employee from the
@@ -251,7 +265,10 @@ persists the group subject, avatar reference, and whitelisted boolean
 sessions, non-members, non-groups, unauthorized members, unknown settings, and
 non-boolean values. Tinode public metadata is updated in realtime mode before
 the Chatmgt write, with a best-effort Tinode rollback if the authoritative
-Chatmgt update fails. No migration is required.
+Chatmgt update fails. The group-management whitelist intentionally contains
+only member info, pinning, message sending, member approval and new-member
+history; notes, polls, reminders and group-leader message marking are not
+supported settings. No migration is required.
 
 The default ChatUI contact list is the active UpGO Account employee directory
 for the authenticated tenant, excluding the current employee. Employees do not

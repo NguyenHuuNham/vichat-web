@@ -595,6 +595,37 @@ export const chatManagementService = {
     };
   },
 
+  async searchConversationHistory(conversationId, filters = {}) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const request = async force => {
+      const tinodeAuth = shouldRequestTinodeAuth(activeSession, force)
+        ? await this.getFreshTinodeAuth({ force })
+        : null;
+      const body = {
+        query: String(filters.query || '').trim(),
+        sender_id: String(filters.senderId || filters.sender_id || '').trim(),
+        from_date: String(filters.fromDate || filters.from_date || '').trim(),
+        to_date: String(filters.toDate || filters.to_date || '').trim(),
+        type: String(filters.type || 'all').trim(),
+        limit: Math.min(200, Math.max(1, Number(filters.limit) || 100)),
+        cursor: filters.cursor || null,
+        tinode_token: tinodeAuth?.token || '',
+      };
+      return apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/search`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    };
+    try {
+      return await request(false);
+    } catch (error) {
+      if (!activeSession || !['TINODE_SEARCH_AUTH_FAILED', 'TINODE_TOKEN_REQUIRED'].includes(error?.code)) {
+        throw error;
+      }
+      return request(true);
+    }
+  },
+
   async createConversation({ subject, isGroup = false, participantIds = [], properties = {} }) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const payload = await apiRequest('/api/v1/conversation', {
