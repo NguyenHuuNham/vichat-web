@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Viec tiep theo: Hard refresh production va UAT hai tai khoan: doi avatar tren UpGO Account, doi avatar tren web, kiem tra member/message/profile, F5, reconnect, chuyen tenant va avatar nhom. Neu loi chi rollback `current` ve `previous`, khong reset Tinode/database/volume.
 - Trien khai: Archive SHA-256 `9f8add581a9a4850e9b9c461fcaa9c74291b4789458d87dfbb20060a5968767a` duoc staging tai `/opt/deploy/chat/incoming/vichat-web-a29c560.tar.gz`; release `/opt/deploy/chat/releases/a29c560-20260824-0108` dang la `current`, `previous` tro `/opt/deploy/chat/releases/8d0dd0a-20260823-171249`. Chi recreate `chat` va `chatmgt` voi `--no-deps --force-recreate --no-build`; image `chat` `sha256:b61ae5c99325e1c9cbd86c8ac7e70a864e763b40d229001cbf0bb54f09b28025`, `chatmgt` `sha256:f9c3827d3b686b965831c4d76c7e48dee30f4a94e58fb483d61b047e2fb042ce`; rollback tags duoc luu trong release. PostgreSQL, Redis, Tinode, bridge, webhook, Coturn, volume, topic va message khong bi reset.
 - Kiem tra production: Remote compose `config -q` dat; container `chat` va `chatmgt` healthy; `http://127.0.0.1:8094/healthz`, `http://192.168.80.160:8081/api/v1/auth/health`, `https://chat.upgo.vn/healthz`, `https://chatmgt.upgo.vn/api/v1/auth/health` deu tra OK; public bundle `/assets/index-CMVjOBm5.js` HTTP 200; `sudo nginx -t` dat; log 10 phut cua ChatUI/Chatmgt khong co fatal/panic/traceback/critical/emerg/uncaught.
-- Commit/PR: Source `a29c560` da commit va push `origin/master`; changelog deploy follow-up dang cho commit.
+- Commit/PR: Source `a29c560` va changelog deploy follow-up `1ecfc6d` da commit va push `origin/master`.
 
 ## 2026-08-23-22 - Sua nen cuon va pham vi chia se hinh nen
 
