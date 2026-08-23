@@ -745,6 +745,11 @@ function personalizeGroupSystemText(message, accounts, viewerId) {
     if (targetIds.includes(viewerId)) return `${actorName} đã thêm bạn vào nhóm`;
     return `${actorName} đã thêm ${targetNames.join(', ')} vào nhóm`;
   }
+  if (message.action === 'member_approved') {
+    if (message.senderId === viewerId) return `Bạn đã duyệt ${targetNames.join(', ')} vào nhóm`;
+    if (targetIds.includes(viewerId)) return `${actorName} đã duyệt bạn vào nhóm`;
+    return `${actorName} đã duyệt ${targetNames.join(', ')} vào nhóm`;
+  }
   if (message.action === 'member_joined') {
     const joinedName = targetNames[0] || actorName;
     return message.senderId === viewerId || targetIds.includes(viewerId)
@@ -1300,6 +1305,8 @@ function mergeTinodeConversation(existing, incoming) {
       : safeExisting.conversationBackground,
     members,
     participantIds: incomingManagementSnapshot ? safeIncoming.participantIds : safeExisting.participantIds,
+    pendingMembers: incomingManagementSnapshot ? safeIncoming.pendingMembers : safeExisting.pendingMembers,
+    pendingParticipantIds: incomingManagementSnapshot ? safeIncoming.pendingParticipantIds : safeExisting.pendingParticipantIds,
     messages,
     friendEvents,
     readSeq: Math.max(Number(safeExisting.readSeq) || 0, Number(safeIncoming.readSeq) || 0),
@@ -1820,6 +1827,7 @@ function App() {
   const [groupMemberAddProfiles, setGroupMemberAddProfiles] = useState({});
   const [groupMemberAddSearch, setGroupMemberAddSearch] = useState('');
   const [isAddingGroupMembers, setIsAddingGroupMembers] = useState(false);
+  const [approvingMemberId, setApprovingMemberId] = useState('');
   const [removingMemberId, setRemovingMemberId] = useState('');
   const [isGroupMembersExpanded, setIsGroupMembersExpanded] = useState(false);
   const [groupMemberMenuId, setGroupMemberMenuId] = useState('');
@@ -2187,6 +2195,7 @@ function App() {
     setGroupMemberAddIds([]);
     setGroupMemberAddProfiles({});
     setGroupMemberAddSearch('');
+    setApprovingMemberId('');
     setIsGroupMembersExpanded(false);
     setGroupMemberMenuId('');
     messageElementsRef.current.clear();
@@ -2443,6 +2452,21 @@ function App() {
     : normalizeGroupSettings();
   const isActiveGroupAdmin = activeChat.isGroup
     && canManageGroupMembers(activeChat, directoryAccounts, currentUser);
+  const activePendingMembers = activeChat.isGroup && isActiveGroupAdmin
+    ? (Array.isArray(activeChat.pendingMembers) ? activeChat.pendingMembers : [])
+      .map(member => {
+        const identity = member?.id || member?.uid || member?.tinodeUid || member?.tinode_uid;
+        const account = findAccount(directoryAccounts, identity) || member;
+        return {
+          ...member,
+          ...account,
+          id: String(identity || account?.id || '').trim(),
+          name: account?.name || member?.name || identity,
+          avatar: account?.avatar || member?.avatar || '',
+        };
+      })
+      .filter(member => member.id && member.name)
+    : [];
   const canEditActiveGroupInfo = activeChat.isGroup
     && (isActiveGroupAdmin || groupSettingEnabled(activeGroupSettings, 'allowMembersEditInfo'));
   const canSendInActiveGroup = !activeChat.isGroup
@@ -6311,7 +6335,9 @@ function App() {
           managementConversationId,
           selectedIds,
         );
-        if (chatMode === 'tinode') {
+        const activeMemberIds = new Set((managedRoom.participantIds || []).map(id => String(id)));
+        const approvedSelectedMembers = selectedMembers.filter(member => activeMemberIds.has(String(member.id || member.uid || member.tinodeUid || member.tinode_uid)));
+        if (chatMode === 'tinode' && approvedSelectedMembers.length > 0) {
           const topicName = activeChat.tinodeTopic
             || managedRoom.tinodeTopic
             || await ensureTinodeConversationTopic({
@@ -6324,7 +6350,7 @@ function App() {
             action: 'member_added',
             actorId: tinodeActorId,
             actorName: currentUser?.name,
-            targets: selectedMembers.map(member => ({
+            targets: approvedSelectedMembers.map(member => ({
               id: member.tinodeUid || member.tinode_uid || member.uid || member.id,
               name: member.name,
             })),
@@ -6393,6 +6419,67 @@ function App() {
       setChatError(error?.message || 'Không thể thêm thành viên vào nhóm.');
     } finally {
       setIsAddingGroupMembers(false);
+    }
+  };
+
+  const handleGroupMemberApproval = async (member, approved) => {
+    if (
+      approvingMemberId
+      || !activeChat.isGroup
+      || !isActiveGroupAdmin
+      || !usesManagementData
+    ) return;
+    const memberId = String(member?.id || member?.uid || member?.tinodeUid || member?.tinode_uid || '').trim();
+    if (!memberId) return;
+    const stateConversationId = activeChat.id;
+    const managementConversationId = activeChat.managementId || stateConversationId;
+    setApprovingMemberId(memberId);
+    setChatError('');
+    try {
+      const accountSession = accountSessionRef.current;
+      const managedRoom = await chatManagementService.updateConversationParticipantApproval(
+        managementConversationId,
+        memberId,
+        approved,
+      );
+      let updatedRoom = {
+        ...normalizeTinodeConversation(managedRoom),
+        ...managedRoom,
+        id: stateConversationId,
+        managementId: managementConversationId,
+        accountSession,
+        managementSnapshot: true,
+        messages: roomMessages(activeChat),
+      };
+      const topicName = activeChat.tinodeTopic || managedRoom.tinodeTopic;
+      if (chatMode === 'tinode' && topicName) {
+        const realtimeRoom = await tinodeClient.openConversation(topicName);
+        updatedRoom = {
+          ...normalizeTinodeConversation(realtimeRoom),
+          ...managedRoom,
+          id: stateConversationId,
+          managementId: managementConversationId,
+          tinodeTopic: topicName,
+          accountSession,
+          managementSnapshot: true,
+          messages: roomMessages(realtimeRoom).length > 0 ? roomMessages(realtimeRoom) : roomMessages(activeChat),
+        };
+      }
+      setConversations(previous => {
+        const currentRoom = previous[stateConversationId] || activeChat;
+        const next = {
+          ...previous,
+          [stateConversationId]: safeMergeTinodeConversation(currentRoom, updatedRoom),
+        };
+        conversationsRef.current = next;
+        return next;
+      });
+    } catch (error) {
+      setChatError(error?.message || (approved
+        ? 'Không thể duyệt thành viên vào nhóm.'
+        : 'Không thể từ chối thành viên trong nhóm.'));
+    } finally {
+      setApprovingMemberId('');
     }
   };
 
@@ -7816,6 +7903,7 @@ function App() {
   const activeGroupMemberIdentities = new Set([
     ...roomMembers(activeChat).flatMap(member => identityValues(member)),
     ...roomParticipantIds(activeChat).map(identity => String(identity)),
+    ...(activeChat.isGroup ? (activeChat.pendingParticipantIds || []).map(identity => String(identity)) : []),
   ].map(identity => identity.toLowerCase()));
   const groupMemberAddCandidates = activeChat.isGroup
     ? companyContacts
@@ -8664,7 +8752,9 @@ function App() {
                 ? 'fa-arrow-right-from-bracket'
                 : msg.action === 'member_removed'
                   ? 'fa-user-minus'
-                  : msg.action === 'group_created'
+                    : msg.action === 'member_approved'
+                      ? 'fa-user-check'
+                      : msg.action === 'group_created'
                     ? 'fa-people-group'
                     : ['message_pinned', 'message_unpinned'].includes(msg.action)
                       ? 'fa-thumbtack'
@@ -9559,6 +9649,57 @@ function App() {
                           </button>
                         </div>
                       </div>
+                    )}
+                    {isActiveGroupAdmin && (activePendingMembers.length > 0 || groupSettingEnabled(activeGroupSettings, 'approveMembers')) && (
+                      <section className="pending-members-section" aria-labelledby="pending-members-heading">
+                        <div className="members-list-heading pending-members-heading">
+                          <strong id="pending-members-heading">
+                            <i className="fa-solid fa-user-clock" aria-hidden="true"></i>
+                            {appCopy.t('Danh sách cần duyệt')} ({activePendingMembers.length})
+                          </strong>
+                        </div>
+                        {activePendingMembers.length > 0 ? (
+                          <div className="members-list pending-members-list">
+                            {activePendingMembers.map(member => {
+                              const memberIdentity = String(member.id);
+                              const isProcessing = approvingMemberId === memberIdentity;
+                              return (
+                                <div key={memberIdentity} className="member-item pending-member-item">
+                                  <SafeAvatar src={member.avatar || ''} name={member.name} className="member-avatar" />
+                                  <div className="member-info">
+                                    <span className="member-name">{member.name}</span>
+                                    <span className="member-status-text">{appCopy.t('Đang chờ duyệt')}</span>
+                                  </div>
+                                  <div className="pending-member-actions">
+                                    <button
+                                      type="button"
+                                      className="pending-member-action approve"
+                                      onClick={() => void handleGroupMemberApproval(member, true)}
+                                      disabled={Boolean(approvingMemberId)}
+                                      title={appCopy.t('Duyệt vào nhóm')}
+                                      aria-label={`${appCopy.t('Duyệt vào nhóm')} ${member.name}`}
+                                    >
+                                      <i className={`fa-solid ${isProcessing ? 'fa-spinner fa-spin' : 'fa-check'}`} aria-hidden="true"></i>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="pending-member-action reject"
+                                      onClick={() => void handleGroupMemberApproval(member, false)}
+                                      disabled={Boolean(approvingMemberId)}
+                                      title={appCopy.t('Từ chối vào nhóm')}
+                                      aria-label={`${appCopy.t('Từ chối vào nhóm')} ${member.name}`}
+                                    >
+                                      <i className={`fa-solid ${isProcessing ? 'fa-spinner fa-spin' : 'fa-xmark'}`} aria-hidden="true"></i>
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="pending-members-empty">{appCopy.t('Chưa có thành viên chờ duyệt.')}</p>
+                        )}
+                      </section>
                     )}
                     <div className="members-list-heading">
                       <strong>{appCopy.t('Danh sách thành viên')} ({activeChatMembers.length})</strong>

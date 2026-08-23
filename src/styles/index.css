@@ -2287,6 +2287,86 @@ body {
     font-size: 12px;
 }
 
+.pending-members-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid rgba(213, 139, 0, .28);
+    border-radius: 12px;
+    background: rgba(213, 139, 0, .06);
+}
+
+.pending-members-heading {
+    padding-top: 0;
+}
+
+.pending-members-heading strong {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #a66a00;
+}
+
+.pending-members-heading i {
+    font-size: 11px;
+}
+
+.pending-members-list {
+    gap: 5px;
+}
+
+.pending-member-item {
+    padding: 4px 0;
+}
+
+.pending-member-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: 0 0 auto;
+}
+
+.pending-member-action {
+    display: grid;
+    width: 29px;
+    height: 29px;
+    place-items: center;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font: inherit;
+    cursor: pointer;
+}
+
+.pending-member-action.approve {
+    color: #197342;
+    border-color: rgba(25, 115, 66, .2);
+    background: rgba(25, 115, 66, .1);
+}
+
+.pending-member-action.reject {
+    color: var(--vichat-red);
+    border-color: rgba(224, 68, 45, .2);
+    background: rgba(224, 68, 45, .08);
+}
+
+.pending-member-action:hover,
+.pending-member-action:focus-visible {
+    filter: brightness(.96);
+    outline: none;
+}
+
+.pending-member-action:disabled {
+    cursor: wait;
+    opacity: .58;
+}
+
+.pending-members-empty {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
 .btn-add-member {
     display: inline-flex;
     align-items: center;
@@ -5661,6 +5741,10 @@ html[data-theme="dark"] .member-item.menu-open .member-menu-trigger { background
 html[data-theme="dark"] .member-context-menu { border-color: #3b4b54; background: #202c32; box-shadow: 0 12px 28px rgba(0, 0, 0, .34); }
 html[data-theme="dark"] .member-context-menu-item:hover,
 html[data-theme="dark"] .member-context-menu-item:focus-visible { background: #2f393d; }
+html[data-theme="dark"] .pending-members-section { border-color: #765d2a; background: rgba(213, 139, 0, .12); }
+html[data-theme="dark"] .pending-members-heading strong { color: #f2c46d; }
+html[data-theme="dark"] .pending-member-action.approve { color: #9de5bb; border-color: #28573e; background: #214334; }
+html[data-theme="dark"] .pending-member-action.reject { color: #ffb0a0; border-color: #704342; background: #452523; }
 html[data-theme="dark"] .group-detail-quick-action { border-color: #3b4b54; background: rgba(37, 52, 58, .78); }
 html[data-theme="dark"] .group-detail-quick-action:hover,
 html[data-theme="dark"] .group-detail-quick-action:focus-visible,

@@ -161,6 +161,8 @@ class ConversationParticipant(CommonModel):
     joined_at = db.Column(BigInteger())
     left_at = db.Column(BigInteger())
     active = db.Column(Boolean(), default=True)
+    # PENDING members stay outside the active/Tinode membership until approved.
+    approval_status = db.Column(String(20), nullable=False, default="APPROVED", index=True)
     # NULL means enabled, 0 means muted until manually enabled, otherwise Unix seconds.
     notification_muted_until = db.Column(BigInteger())
     # NULL means the conversation is not pinned for this participant.

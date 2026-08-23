@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-07 - Them phe duyet thanh vien nhom
+
+- Thoi gian: 2026-08-24 05:12 (Asia/Saigon)
+- Loai: Tinh nang | API | Database | Web | Realtime | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Cho truong nhom xem danh sach thanh vien dang cho duyet va dung nut check/X de duyet hoac tu choi, trong khi thanh vien moi khong vao nhom active truoc khi duoc duyet.
+- Pham vi: Chi membership group approval trong Chatmgt va ChatUI; giu nguyen chat 1-1, sticker, avatar, nen, reaction, ghim, mute, file va cac quyen them thanh vien hien co.
+- File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/models/models.py`, `chatservice-main/migrations/012_conversation_member_approval.sql`, `chatservice-main/alembic/versions/20260824_12_conversation_member_approval.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `dist/index.html`, `docs/chat-backend-architecture.md`.
+- Noi dung: Them cot `approval_status` voi gia tri `PENDING`, `APPROVED`, `REJECTED`; backfill membership cu thanh `APPROVED`. Khi `approveMembers=true`, API them thanh vien tao pending inactive va khong them subscriber Tinode. Serializer chi tra `pendingMembers` cho owner; endpoint approval owner-only duyet hoac tu choi, duyet moi reconcile Tinode va phat event `member_approved`. ChatUI hien muc `Danh sach can duyet` trong danh sach thanh vien voi nut check/X, cap nhat snapshot sau thao tac va khong phat event `member_added` cho request dang cho.
+- Quyet dinh ky thuat: Dung trang thai rieng thay vi suy dien tu `active=false` de khong nham voi thanh vien da roi nhom. Chatmgt/Tinode la nguon trang thai ben vung sau F5, chuyen tenant va reconnect; member thuong khong nhin thay danh sach pending va khong co quyen approval.
+- Database/API/cau hinh: Alembic `20260824_12` them `conversation_participant.approval_status` va index pending. Them `PUT /api/v1/conversation/<id>/participants/<participant-id>/approval` (alias `/api/v1/chat/threads/...`) voi body `{approved: boolean}`. Production can chay `alembic upgrade head` truoc khi bat dau release.
+- Kiem thu: `npm run test:frontend` dat 172/172; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `App-DTV6c5zU.js`, `index-CA32cuGv.js`, `index-DK7uz_Kt.css`; `python -m py_compile application/controllers/api_chat_management.py application/models/models.py tests/test_chat_auth_contract.py` dat; `python -m unittest discover -s tests -q` dat 183 test, skip 61 theo moi truong; `git diff --check` dat.
+- Rui ro con lai: Chua UAT hai tai khoan production va chua chay migration tren database that; can kiem tra owner/member, bat tat setting, them nguoi khi pending, duyet, tu choi, F5/reconnect va subscriber Tinode.
+- Viec tiep theo: Chay test/build lai sau tinh chinh cuoi, commit/push, backup PostgreSQL + migrate production, recreate toi thieu `chatmgt` va `chat`, sau do UAT approval. Neu loi chi rollback release va migration theo quy trinh, khong reset Tinode/topic/message.
+- Commit/PR: Chua tao
+
 ## 2026-08-24-06 - Thu gon bang doi hinh nen trong mot man hinh
 
 - Thoi gian: 2026-08-24 04:37 (Asia/Saigon)

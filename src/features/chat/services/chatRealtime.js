@@ -278,7 +278,15 @@ export function normalizeConversationShape(conversation) {
   const participantIds = conversationArray(source.participantIds)
     .map(value => conversationIdentity(conversationObject(value)?.id || value))
     .filter(Boolean);
+  const pendingParticipantIds = conversationArray(
+    source.pendingParticipantIds || source.pending_participant_ids,
+  )
+    .map(value => conversationIdentity(conversationObject(value)?.id || value))
+    .filter(Boolean);
   const members = conversationArray(source.members).map(normalizeMember).filter(Boolean);
+  const pendingMembers = conversationArray(
+    source.pendingMembers || source.pending_members,
+  ).map(normalizeMember).filter(Boolean);
   const messages = conversationArray(source.messages).map(normalizeMessage).filter(Boolean);
   const friendEvents = conversationArray(source.friendEvents).map((message, index) => normalizeMessage(message, index)).filter(Boolean);
   const isGroup = source.isGroup === true || source.isGroup === 1 || source.isGroup === 'true';
@@ -332,6 +340,8 @@ export function normalizeConversationShape(conversation) {
     adminId: conversationIdentity(source.adminId),
     members,
     participantIds,
+    pendingMembers,
+    pendingParticipantIds,
     messages,
     friendEvents,
     lastMsg: conversationText(source.lastMsg),

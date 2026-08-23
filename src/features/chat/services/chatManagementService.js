@@ -329,6 +329,8 @@ function normalizeConversation(record) {
     adminId: record?.adminId || properties.adminId || '',
     members: record?.members || properties.members || [],
     participantIds: record?.participantIds || properties.participantIds || [],
+    pendingMembers: record?.pendingMembers || record?.pending_members || properties.pendingMembers || properties.pending_members || [],
+    pendingParticipantIds: record?.pendingParticipantIds || record?.pending_participant_ids || properties.pendingParticipantIds || properties.pending_participant_ids || [],
     // Message history is loaded exclusively from Tinode/chatapi.
     messages: [],
     lastMsg: record?.lastMsg || properties.lastMessage || '',
@@ -689,6 +691,18 @@ export const chatManagementService = {
       method: 'POST',
       body: JSON.stringify({ participant_ids: participantIds }),
     });
+    return normalizeConversation(payload);
+  },
+
+  async updateConversationParticipantApproval(conversationId, participantId, approved) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const payload = await apiRequest(
+      `/api/v1/conversation/${encodeURIComponent(conversationId)}/participants/${encodeURIComponent(participantId)}/approval`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ approved: Boolean(approved) }),
+      },
+    );
     return normalizeConversation(payload);
   },
 

@@ -855,6 +855,7 @@ def _active_conversation_accounts(item):
         ConversationParticipant.tenant_id == item.tenant_id,
         ConversationParticipant.conversation_id == item.id,
         ConversationParticipant.active.is_(True),
+        ConversationParticipant.approval_status == "APPROVED",
         ConversationParticipant.deleted.is_(False),
     ).all()
     participant_ids = [participant.participant_id for participant in participants]
@@ -881,6 +882,10 @@ def _expected_tinode_member_uids(item, participants, accounts_by_id):
     return expected
 
 
+def _participant_approval_status(participant):
+    return str(getattr(participant, "approval_status", "APPROVED") or "APPROVED").upper()
+
+
 def _audit(request, event_name, success=True, tenant_id=None, user_id=None, properties=None):
     try:
         db.session.add(SecurityAuditLog(
@@ -904,6 +909,7 @@ def _serialize_conversation(item, viewer_id):
         ConversationParticipant.conversation_id == item.id,
         ConversationParticipant.deleted.is_(False),
         ConversationParticipant.active.is_(True),
+        ConversationParticipant.approval_status == "APPROVED",
     ).order_by(ConversationParticipant.created_at.asc()).all()
     participant_ids = [participant.participant_id for participant in participants]
     accounts = ManagementAccount.query.filter(
@@ -930,6 +936,23 @@ def _serialize_conversation(item, viewer_id):
     group_settings = _normalized_group_settings(
         properties.get("groupSettings") or properties.get("group_settings")
     ) if is_group else None
+    pending_participants = []
+    pending_accounts_by_id = {}
+    if is_group and viewer_membership is not None and viewer_membership.role == "OWNER":
+        pending_participants = ConversationParticipant.query.filter(
+            ConversationParticipant.tenant_id == item.tenant_id,
+            ConversationParticipant.conversation_id == item.id,
+            ConversationParticipant.deleted.is_(False),
+            ConversationParticipant.active.is_(False),
+            ConversationParticipant.approval_status == "PENDING",
+        ).order_by(ConversationParticipant.created_at.asc()).all()
+        pending_ids = [participant.participant_id for participant in pending_participants]
+        pending_accounts = ManagementAccount.query.filter(
+            ManagementAccount.tenant_id == item.tenant_id,
+            ManagementAccount.id.in_(pending_ids),
+            ManagementAccount.active.is_(True),
+        ).all() if pending_ids else []
+        pending_accounts_by_id = {str(account.id): account for account in pending_accounts}
     tinode_topic = item.tinode_topic if is_group else direct_peer_tinode_uid(
         viewer_id,
         participant_ids,
@@ -972,6 +995,16 @@ def _serialize_conversation(item, viewer_id):
             for participant_id in participant_ids
             if participant_id in accounts_by_id
         ],
+        "pendingParticipantIds": [
+            participant.participant_id
+            for participant in pending_participants
+            if participant.participant_id in pending_accounts_by_id
+        ],
+        "pendingMembers": [
+            _public_account(pending_accounts_by_id[participant.participant_id], viewer_account=viewer_account)
+            for participant in pending_participants
+            if participant.participant_id in pending_accounts_by_id
+        ],
         "adminId": owner.participant_id if owner is not None else "",
         "notificationMutedUntil": notification_muted_until,
         "notificationsMuted": notifications_muted,
@@ -993,6 +1026,7 @@ def _conversation_and_membership(tenant_id, conversation_id, user_id):
         ConversationParticipant.conversation_id == item.id,
         ConversationParticipant.participant_id == user_id,
         ConversationParticipant.active.is_(True),
+        ConversationParticipant.approval_status == "APPROVED",
         ConversationParticipant.deleted.is_(False),
     ).first()
     return item, membership
@@ -3057,6 +3091,7 @@ async def conversation_list(request):
         ConversationParticipant.tenant_id == tenant_id,
         ConversationParticipant.participant_id == user_id,
         ConversationParticipant.active.is_(True),
+        ConversationParticipant.approval_status == "APPROVED",
         ConversationParticipant.deleted.is_(False),
     ).order_by(
         ConversationParticipant.pinned_at.desc().nullslast(),
@@ -3591,11 +3626,13 @@ async def conversation_create(request):
                         role="OWNER" if index == 0 else "MEMBER",
                         joined_at=now,
                         active=True,
+                        approval_status="APPROVED",
                     )
                     db.session.add(membership)
                 else:
                     membership.active = True
                     membership.left_at = None
+                    membership.approval_status = "APPROVED"
             existing.updated_at = now
             db.session.commit()
             return json(_serialize_conversation(existing, owner_id))
@@ -3622,6 +3659,7 @@ async def conversation_create(request):
                 role="OWNER" if index == 0 else "MEMBER",
                 joined_at=int(time.time()),
                 active=True,
+                approval_status="APPROVED",
             ))
         db.session.commit()
         return json(_serialize_conversation(item, owner_id), status=201)
@@ -3979,10 +4017,16 @@ async def conversation_participant_add(request, conversation_id):
         ConversationParticipant.deleted.is_(False),
     ).all()
     existing_by_id = {participant.participant_id: participant for participant in existing}
+    group_settings = _normalized_group_settings(
+        (item.properties or {}).get("groupSettings") or (item.properties or {}).get("group_settings")
+    )
+    approval_required = bool(group_settings["approveMembers"])
     activated_ids = [
         requested_id for requested_id in requested_ids
         if existing_by_id.get(requested_id) is None or not existing_by_id[requested_id].active
     ]
+    if approval_required:
+        activated_ids = []
     try:
         tinode_token = ""
         tinode_operator_uid = ""
@@ -4019,6 +4063,9 @@ async def conversation_participant_add(request, conversation_id):
 
         for requested_id in requested_ids:
             participant = existing_by_id.get(requested_id)
+            requires_approval = approval_required and (
+                participant is None or not participant.active
+            )
             if participant is None:
                 participant = ConversationParticipant(
                     tenant_id=tenant_id,
@@ -4026,15 +4073,23 @@ async def conversation_participant_add(request, conversation_id):
                     participant_type="USER",
                     participant_id=requested_id,
                     role="MEMBER",
-                    joined_at=now,
-                    active=True,
+                    joined_at=None if requires_approval else now,
+                    active=not requires_approval,
+                    approval_status="PENDING" if requires_approval else "APPROVED",
                 )
                 db.session.add(participant)
+            elif requires_approval:
+                participant.active = False
+                participant.left_at = None
+                participant.joined_at = None
+                participant.role = "MEMBER"
+                participant.approval_status = "PENDING"
             else:
                 participant.active = True
                 participant.left_at = None
                 participant.joined_at = now
                 participant.role = "MEMBER"
+                participant.approval_status = "APPROVED"
         item.updated_at = now
         db.session.flush()
         if item.tinode_topic and added_tinode_uids:
@@ -4087,6 +4142,153 @@ async def conversation_participant_add(request, conversation_id):
         }, status=503)
 
 
+@app.route('/api/v1/conversation/<conversation_id>/participants/<participant_id>/approval', methods=['PUT'])
+@app.route('/api/v1/chat/threads/<conversation_id>/participants/<participant_id>/approval', methods=['PUT'])
+async def conversation_participant_approval(request, conversation_id, participant_id):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    try:
+        conversation_uuid = uuid.UUID(str(conversation_id))
+    except (ValueError, TypeError, AttributeError):
+        return json({"error_code": "NOT_FOUND", "error_message": "Invalid conversation."}, status=404)
+
+    user_id = _user_id(current_user)
+    item, membership = _conversation_and_membership(tenant_id, conversation_uuid, user_id)
+    if item is None or membership is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
+    if not bool((item.properties or {}).get("is_group")):
+        return json({"error_code": "PARAM_ERROR", "error_message": "Member approval is only available for a group."}, status=400)
+    if membership.role != "OWNER":
+        return json({"error_code": "OWNER_REQUIRED", "error_message": "Only the group owner can approve members."}, status=403)
+
+    approved = (request.json or {}).get("approved")
+    if not isinstance(approved, bool):
+        return json({"error_code": "PARAM_ERROR", "error_message": "The approval decision must be boolean."}, status=400)
+
+    target = ConversationParticipant.query.filter(
+        ConversationParticipant.tenant_id == tenant_id,
+        ConversationParticipant.conversation_id == item.id,
+        ConversationParticipant.participant_id == str(participant_id),
+        ConversationParticipant.deleted.is_(False),
+    ).first()
+    if target is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Pending member not found."}, status=404)
+    status = _participant_approval_status(target)
+    if status != "PENDING":
+        if approved and status == "APPROVED" and target.active:
+            return json(_serialize_conversation(item, user_id))
+        return json({"error_code": "MEMBER_APPROVAL_STALE", "error_message": "This member approval request is no longer pending."}, status=409)
+
+    now = int(time.time())
+    owner_account = _account_by_id(tenant_id, user_id)
+    target_account = _account_by_id(tenant_id, str(participant_id))
+    if approved and (owner_account is None or target_account is None):
+        return json({"error_code": "TENANT_VIOLATION", "error_message": "The member is no longer active in this tenant."}, status=409)
+
+    tinode_token = ""
+    owner_uid = ""
+    target_uid = ""
+    tinode_member_added = False
+    database_committed = False
+    try:
+        if approved:
+            if current_user.get("auth_method") == "account_sso":
+                await _validated_account_identity(request, owner_account)
+            if item.tinode_topic:
+                target_uid = await _ensure_tinode_account(target_account)
+                owner_uid = await _ensure_tinode_account(owner_account)
+                owner_auth = await tinode_sso_login(
+                    _tinode_account_identity(owner_account),
+                    owner_account.tinode_username,
+                    owner_uid,
+                )
+                tinode_token = str(owner_auth.get("token") or "").strip()
+                if not tinode_token:
+                    raise AuthError("Tinode could not authenticate the group owner.", 502)
+
+            target.active = True
+            target.left_at = None
+            target.joined_at = now
+            target.role = "MEMBER"
+            target.approval_status = "APPROVED"
+            item.updated_at = now
+            db.session.flush()
+
+            if item.tinode_topic:
+                await tinode_add_topic_members(
+                    tinode_token,
+                    owner_uid,
+                    item.tinode_topic,
+                    [target_uid],
+                )
+                tinode_member_added = True
+                active_participants, active_accounts = _active_conversation_accounts(item)
+                expected_member_uids = _expected_tinode_member_uids(item, active_participants, active_accounts)
+                await tinode_reconcile_topic_members(
+                    tinode_token,
+                    owner_uid,
+                    item.tinode_topic,
+                    expected_member_uids,
+                )
+        else:
+            target.active = False
+            target.left_at = now
+            target.approval_status = "REJECTED"
+            target.deleted = True
+            item.updated_at = now
+
+        db.session.commit()
+        database_committed = True
+        if approved and item.tinode_topic:
+            try:
+                await tinode_publish_system_event(
+                    tinode_token,
+                    owner_uid,
+                    item.tinode_topic,
+                    {
+                        "action": "member_approved",
+                        "actorId": owner_uid or user_id,
+                        "actorName": owner_account.full_name or owner_account.username or user_id,
+                        "targets": [{
+                            "id": target_uid or str(participant_id),
+                            "name": target_account.full_name or target_account.username or str(participant_id),
+                        }],
+                    },
+                )
+            except Exception as error:
+                logger.warning("Could not publish the group member approval event: %s", error)
+        return json(_serialize_conversation(item, user_id))
+    except AccountSSOError as error:
+        db.session.rollback()
+        if error.status_code != 503:
+            revoke_request_token(request)
+            revoked_error = AccountSSOError(str(error), 401, error.error_code)
+            response = clear_auth_cookie(_account_sso_error(revoked_error), request)
+            return clear_account_cookie(response)
+        return _account_sso_error(error)
+    except AuthError as error:
+        db.session.rollback()
+        if tinode_member_added and not database_committed:
+            try:
+                await tinode_remove_topic_member(tinode_token, owner_uid, item.tinode_topic, target_uid)
+            except AuthError:
+                logger.warning("Could not roll back the approved Tinode member %s.", target_uid)
+        return json({"error_code": "TINODE_MEMBERSHIP_FAILED", "error_message": str(error)}, status=error.status_code)
+    except Exception as error:
+        db.session.rollback()
+        if tinode_member_added and not database_committed:
+            try:
+                await tinode_remove_topic_member(tinode_token, owner_uid, item.tinode_topic, target_uid)
+            except AuthError:
+                logger.warning("Could not roll back the approved Tinode member %s.", target_uid)
+        logger.exception("Could not update group member approval: %s", error)
+        return json({
+            "error_code": "CONVERSATION_MEMBER_APPROVAL_ERROR",
+            "error_message": "Could not update the group member approval.",
+        }, status=503)
+
+
 @app.route('/api/v1/conversation/<conversation_id>/self', methods=['DELETE'])
 @app.route('/api/v1/chat/threads/<conversation_id>/self', methods=['DELETE'])
 @app.route('/api/v1/conversation/<conversation_id>/participants/<participant_id>', methods=['DELETE'])
@@ -4113,6 +4315,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
         ConversationParticipant.conversation_id == item.id,
         ConversationParticipant.participant_id == participant_id,
         ConversationParticipant.active.is_(True),
+        ConversationParticipant.approval_status == "APPROVED",
         ConversationParticipant.deleted.is_(False),
     ).first()
     if target is None:
@@ -4160,6 +4363,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
             ConversationParticipant.conversation_id == item.id,
             ConversationParticipant.participant_id == replacement_id,
             ConversationParticipant.active.is_(True),
+            ConversationParticipant.approval_status == "APPROVED",
             ConversationParticipant.deleted.is_(False),
         ).first()
         if replacement is None:
@@ -4174,6 +4378,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
             ConversationParticipant.conversation_id == item.id,
             ConversationParticipant.participant_id != participant_id,
             ConversationParticipant.active.is_(True),
+            ConversationParticipant.approval_status == "APPROVED",
             ConversationParticipant.deleted.is_(False),
         ).order_by(
             ConversationParticipant.joined_at.asc().nullslast(),

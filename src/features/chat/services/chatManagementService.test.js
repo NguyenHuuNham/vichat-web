@@ -94,6 +94,18 @@ test('managed group additions rely on the server-side owner bridge', () => {
   assert.doesNotMatch(addSource, /membershipApiRequest/);
 });
 
+test('exposes group member approval snapshots and mutations through Chatmgt', () => {
+  assert.equal(typeof chatManagementService.updateConversationParticipantApproval, 'function');
+  assert.match(managementServiceSource, /pendingMembers/);
+  assert.match(managementServiceSource, /pendingParticipantIds/);
+  assert.match(managementServiceSource, /participants\/\$\{encodeURIComponent\(participantId\)\}\/approval/);
+  assert.match(appSource, /activePendingMembers/);
+  assert.match(appSource, /handleGroupMemberApproval/);
+  assert.match(appSource, /Danh sách cần duyệt/);
+  assert.match(appSource, /pending-member-action approve/);
+  assert.match(appSource, /pending-member-action reject/);
+});
+
 test('restores a cookie-backed session after a full page reload', () => {
   assert.equal(typeof chatManagementService.restoreSession, 'function');
   assert.equal(typeof managementAuthClient.restoreSession, 'function');

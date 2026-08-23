@@ -492,6 +492,11 @@ function formatSystemEvent(event, viewerId) {
     if (targets.some(target => target.id === viewerId)) return `${actorName} đã thêm bạn vào nhóm`;
     return `${actorName} đã thêm ${targetNames.join(', ')} vào nhóm`;
   }
+  if (event.action === 'member_approved') {
+    if (event.actorId === viewerId) return `Bạn đã duyệt ${targetNames.join(', ')} vào nhóm`;
+    if (targets.some(target => target.id === viewerId)) return `${actorName} đã duyệt bạn vào nhóm`;
+    return `${actorName} đã duyệt ${targetNames.join(', ')} vào nhóm`;
+  }
   if (event.action === 'member_joined') {
     const joinedName = targetNames[0] || actorName;
     return event.actorId === viewerId || targets.some(target => target.id === viewerId)

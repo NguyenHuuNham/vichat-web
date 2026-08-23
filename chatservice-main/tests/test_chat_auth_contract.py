@@ -433,6 +433,31 @@ class ChatAuthContractTests(unittest.TestCase):
                 leave_source.index("sendSystemEvent"),
             )
 
+    def test_group_member_approval_stays_out_of_active_tinode_membership_until_approved(self):
+        controller_source = CONTROLLER_PATH.read_text(encoding="utf-8")
+        model_source = (PROJECT_ROOT / "application" / "models" / "models.py").read_text(encoding="utf-8")
+        migration_source = (PROJECT_ROOT / "migrations" / "012_conversation_member_approval.sql").read_text(encoding="utf-8")
+        _controller_source, add_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_participant_add",
+        )
+        _controller_source, approval_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_participant_approval",
+        )
+
+        self.assertIn("approval_status", model_source)
+        self.assertIn("ADD COLUMN IF NOT EXISTS approval_status", migration_source)
+        self.assertIn('approval_required = bool(group_settings["approveMembers"])', add_source)
+        self.assertIn('approval_status="PENDING"', add_source)
+        self.assertIn('active=not requires_approval', add_source)
+        self.assertIn('ConversationParticipant.approval_status == "APPROVED"', controller_source)
+        self.assertIn('viewer_membership.role == "OWNER"', controller_source)
+        self.assertIn('target.approval_status = "APPROVED"', approval_source)
+        self.assertIn('target.approval_status = "REJECTED"', approval_source)
+        self.assertIn("tinode_add_topic_members", approval_source)
+        self.assertIn("tinode_publish_system_event", approval_source)
+
     def test_owner_leave_requires_an_explicit_active_replacement(self):
         _controller_source, remove_source = function_source(
             CONTROLLER_PATH,

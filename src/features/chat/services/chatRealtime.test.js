@@ -176,6 +176,22 @@ test('keeps the source of a management snapshot separate from Tinode realtime da
   assert.equal(normalizeConversationShape({}).managementSnapshot, false);
 });
 
+test('normalizes owner-only pending group member snapshots separately from active members', () => {
+  const room = normalizeConversationShape({
+    isGroup: true,
+    participantIds: ['owner-1'],
+    members: [{ id: 'owner-1', name: 'Owner' }],
+    pendingParticipantIds: ['pending-1'],
+    pendingMembers: [{ id: 'pending-1', name: ' Pending user ' }],
+  });
+
+  assert.deepEqual(room.participantIds, ['owner-1']);
+  assert.deepEqual(room.pendingParticipantIds, ['pending-1']);
+  assert.equal(room.members.length, 1);
+  assert.equal(room.pendingMembers[0].id, 'pending-1');
+  assert.equal(room.pendingMembers[0].name, 'Pending user');
+});
+
 test('accepts a first Chatmgt snapshot over an earlier Tinode-only room', () => {
   const managementId = 'c86b5c06-9f90-4d27-b6e6-0123456789ab';
   assert.deepEqual(conversationManagementMergePolicy(

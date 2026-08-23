@@ -304,8 +304,16 @@ The group information panel keeps notification mute and conversation pin
 viewer-scoped. Any active group member may add another active employee from the
 same tenant; Chatmgt performs that Tinode mutation with a short-lived
 server-side owner bridge credential, so legacy member permissions cannot block
-the feature and no owner token is returned to the browser. Opening or saving
-group management settings and removing another member remain owner-only.
+the feature and no owner token is returned to the browser. When the group's
+`groupSettings.approveMembers` flag is enabled, a new add request is persisted
+as `conversation_participant.approval_status = PENDING`, remains inactive and
+is omitted from `participantIds`/Tinode subscribers until the owner approves
+it. Owner-only conversation snapshots include `pendingMembers`; the owner can
+approve or reject each request through the approval endpoint. Approval adds the
+member to Tinode and publishes a `member_approved` system event after the
+membership commit; rejection soft-deletes the pending row. Disabling the flag
+preserves the existing immediate-add flow. Opening or saving group management
+settings and removing another member remain owner-only.
 Renaming/changing the group avatar is also owner-only
 unless the owner explicitly enables `allowMembersEditInfo`. Chatmgt
 persists the group subject, avatar reference, and whitelisted boolean
@@ -318,7 +326,9 @@ the Chatmgt write, with a best-effort Tinode rollback if the authoritative
 Chatmgt update fails. The group-management whitelist intentionally contains
 only member info, pinning, message sending, member approval and new-member
 history; notes, polls, reminders and group-leader message marking are not
-supported settings. No migration is required.
+supported settings. Member approval uses Alembic revision `20260824_12` to add
+the explicit `conversation_participant.approval_status` column; existing rows
+are backfilled as `APPROVED`.
 
 The default ChatUI contact list is the active UpGO Account employee directory
 for the authenticated tenant, excluding the current employee. Employees do not
@@ -612,7 +622,8 @@ history, role-aware actions and a message-to-task shortcut.
 | `POST` | `/api/v1/conversation/<id>/tinode-prepare` | Prepare Tinode participant mappings |
 | `PUT` | `/api/v1/conversation/<id>/tinode-topic` | Verify/bind the topic to exact membership |
 | `POST` | `/api/v1/conversation/<id>/dissolve` | Owner-only group dissolution; remove all active members and close the group |
-| `POST` | `/api/v1/conversation/<id>/participants` | Add same-tenant active employees; any active group member may request this |
+| `POST` | `/api/v1/conversation/<id>/participants` | Add same-tenant active employees; any active group member may request this, with owner approval when `approveMembers` is enabled |
+| `PUT` | `/api/v1/conversation/<id>/participants/<participant-id>/approval` | Owner-only approve or reject a pending group member; approval reconciles Tinode |
 | `DELETE` | `/api/v1/conversation/<id>/participants/<participant-id>` | Remove self, or remove another member as the group owner; owner self-removal requires body `replacement_id` for another active member |
 | `DELETE` | `/api/v1/conversation/<id>/self` | Remove the current user's conversation membership; group owner self-removal requires body `replacement_id` |
 | `GET` | `/api/v1/workspace/items` | List tenant-visible Workspace items and summary |
