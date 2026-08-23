@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Rui ro con lai: Chua UAT pixel-level tren production bang ca light/dark theme va hai tai khoan trong cung group; can xac nhan event realtime tren nen anh dai va sticker co caption.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT sticker dark, ghim, them/tham gia, roi nhom tren hai phien; kiem tra them sticker co caption tren nen anh dai. Neu can rollback, tro `current` ve `previous` va chi recreate `chat`; khong thao tac Chatmgt/Tinode/database/Redis/volume.
 - Trien khai: Commit code `953a138` da push `origin/master`; archive SHA-256 `2C1FBDFAFC3588880B6E1AAF0E53D76ACA483325A59F60154421E40A10794F3D`; release `/opt/deploy/chat/releases/953a138-20260824-0310` dang la `current`, `previous` tro `/opt/deploy/chat/releases/4dd4df2-20260823-192601`; chi recreate `chat`, khong migration/reset stateful service. Image `sha256:d070848a44c6049fa79b761f5c2d8461dff908700761386c90df201dd1e89d61`, container `52ceccdc5821cf48638b9fa2f47cfc3192780087eb352923e956d4a4c8ccd054`, rollback tag `songhong-production-chat:rollback-before-dark-stickers-953a138`; local/public health, Chatmgt health, public asset marker, nginx config va log scan 10 phut deu dat.
-- Commit/PR: Code `953a138`; follow-up docs commit dang chuan bi.
+- Commit/PR: Code `953a138`; deployment docs follow-up `2e05e0c`.
 
 ## 2026-08-24-02 - Them moc tin nhan chua doc
 
