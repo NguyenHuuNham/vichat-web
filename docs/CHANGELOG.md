@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-24 04:37 (Asia/Saigon)
 - Loai: Sua loi | Web | UI | Kiem thu | Tai lieu
-- Trang thai: Dang thuc hien
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Cho nguoi dung chon va luu hinh nen trong cung mot man hinh, khong phai cuon xuong de thay nut ap dung.
 - Pham vi: Chi modal doi hinh nen cua ChatUI; giu nguyen preset, upload, validation, luu local, chia se 1-1/nhom va cac luong chat khac.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/i18n/appLanguage.js`, `dist/index.html`, va `docs/CHANGELOG.md`.
@@ -18,9 +18,10 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Chi thay doi JSX hien thi, copy tieng Anh va CSS responsive; khong thay doi state, handler, persistence, API hay quyet dinh pham vi chia se. Van giu thong bao loi validation va trang thai Dang ap dung.
 - Database/API/cau hinh: Khong migration, endpoint, bien moi truong hoac thay doi kien truc.
 - Kiem thu: `npm run test:frontend` dat 170/170; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `App-DPxwq4HB.js`, `index-IsYU87ma.js`, CSS `index-1GmfItyq.css`; `git diff --check` dat. Chua UAT pixel-level bang browser vi browser runtime khong callable trong phien nay.
-- Rui ro con lai: Can kiem tra tren production voi desktop/mobile va man hinh rat thap; modal co the can tinh chinh them neu viewport nho bat thuong.
-- Viec tiep theo: Commit, push, deploy chi ChatUI, kiem tra health/bundle/container va hard refresh production de UAT modal.
-- Commit/PR: Chua tao.
+- Rui ro con lai: Chua UAT pixel-level bang trinh duyet that; can kiem tra desktop/mobile, man hinh rat thap, preset, upload, luu, doi pham vi local/shared va nut Ap dung sau hard refresh.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT modal desktop/mobile; neu can rollback chi tro `current` ve `previous` va recreate `chat`, khong thao tac dich vu stateful.
+- Trien khai: Commit source `2d03aa4` da push `origin/master`; archive SHA-256 `39b644f2913504340e30373eb9f5ad1287656416af961357f659904bc2569660`; release `/opt/deploy/chat/releases/background-picker-2d03aa4-20260823-214315` dang la `current`, `previous` tro `/opt/deploy/chat/releases/pinned-menu-af2440e-20260824-0411`; chi recreate `chat`. Image `sha256:c63ba3d03d61c8cfb6a660513d45b3e4d488c39b9c054116011852b62d7b8be5`, container `a42a9fbbd925dfe570fc6a053979b6ea453f6cd4a3bf4d72d182513f01fc31cc`; Chatmgt, Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis va Coturn van giu nguyen container. Public `/healthz`, Chatmgt auth health, Compose, bundle marker va log scan sau recreate deu dat.
+- Commit/PR: Source `2d03aa4`; changelog follow-up dang cap nhat.
 
 ## 2026-08-24-05 - Dat nhan tin nhan ghim va can menu 3 cham
 
