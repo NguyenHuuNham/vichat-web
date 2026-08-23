@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-24 06:03 (Asia/Saigon)
 - Loai: Tinh nang | Sua loi | Web | API | Kiem thu
-- Trang thai: Dang thuc hien
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Bo truong chuc vu/phong ban khoi ho so ca nhan, luu ten/email qua UpGo Account va cho nguoi dung can chinh avatar truoc khi cap nhat ben vung.
 - Pham vi: ChatUI ho so ca nhan, hop dong profile/avatar Chatmgt-UpGo Account va cac ham merge snapshot avatar; giu nguyen chat, Tinode, nhom, sticker, reaction, nen va cac luong khac.
 - File da thay doi: `src/app/App.jsx`, `src/features/contacts/components/AvatarCropModal.jsx`, `src/features/contacts/services/avatarCrop.js`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/services/account_sso_service.py`, `chatservice-main/tests/test_account_sso_service.py`, `docs/CHANGELOG.md`, `dist/index.html`.
@@ -19,8 +19,10 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Mo rong profile update Account de forward email; giu nguyen endpoint avatar va bien moi truong hien co; khong migration.
 - Kiem thu: `npm run test:frontend` dat 175/175; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `App-D-3CRwCV.js`, `index-BSkLC5NZ.js`, CSS `index-DZMcncBx.css`; `python -m unittest chatservice-main/tests/test_account_sso_service.py chatservice-main/tests/test_chat_auth_contract.py` dat 65 test, skip 21 theo moi truong; `git diff --check` dat.
 - Rui ro con lai: Chua UAT pixel-level bang browser runtime trong phien nay; can kiem tra crop desktop/mobile, upload Account that, F5, chuyen tenant, reconnect va cap nhat avatar tu UpGo. Khong co thay doi database.
-- Viec tiep theo: Commit/push, tao release moi chi recreate `chat` va `chatmgt`, sau do health/asset/log verify; khong restart PostgreSQL, Redis, Tinode, bridge, webhook, ChatAPI hay Coturn.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT crop desktop/mobile, upload avatar tu UpGo/web, F5, chuyen tenant va reconnect; neu loi chi tro `current` ve `previous`, khong reset Tinode/database/volume.
+- Trien khai: Source `9f3f9d5` da push `origin/master`; archive SHA-256 `c2c25e8e3a031129830eac49b763bed111c16358eba7260b21fe7afded07e80c`; release `/opt/deploy/chat/releases/profile-avatar-9f3f9d5-20260824-0605` dang la `current`, `previous` tro release `member-approval-8456dcf-20260824-1`; backup PostgreSQL `/opt/deploy/chat/backups/chatservice-profile-avatar-20260824-0605.dump`; chi recreate `chat` va `chatmgt`, giu nguyen Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis, Coturn va volume.
+- Kiem tra production: `chat` va `chatmgt` healthy; `https://chat.upgo.vn/healthz` va `https://chatmgt.upgo.vn/api/v1/auth/health` HTTP 200; `sudo -n nginx -t` dat; public chunk `App-CB29jREZ.js` HTTP 200 va co marker crop; log 15 phut khong co fatal/panic/traceback/critical/emerg/uncaught/error.
+- Commit/PR: Source `9f3f9d5`; deployment follow-up dang tao.
 
 ## 2026-08-24-07 - Them phe duyet thanh vien nhom
 
