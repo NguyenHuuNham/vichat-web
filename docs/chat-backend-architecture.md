@@ -116,6 +116,15 @@ read-only, Chatmgt returns `ACCOUNT_PROFILE_READ_ONLY` instead of treating the
 authorization response as an expired login or writing a local fallback value.
 Local/recovery accounts retain the existing Chatmgt profile-update behavior.
 
+Private 1-1 contact nicknames are a separate viewer preference owned by
+Chatmgt. They are stored in the current account's tenant-scoped
+`ManagementAccount.properties.contact_nicknames` JSON object, keyed by the
+target management account ID; no schema migration is required. The official
+Account/Tinode identity remains the source of truth in `defaultName`/
+`full_name`, while Chatmgt applies the nickname only when serializing data for
+the viewer who owns it. Nicknames are never written to Tinode, broadcast in
+realtime profile events, or included in another viewer's response.
+
 Tinode media URLs from the central host are normalized to the authenticated
 `chat.upgo.vn/tinode-media` relay. The native client downloads protected message
 and avatar images with its short-lived Tinode token into the OS cache and passes
@@ -535,6 +544,7 @@ history, role-aware actions and a message-to-task shortcut.
 | `POST` | `/api/v1/auth/tinode-token` | Issue/refresh a short-lived Tinode token |
 | `POST` | `/api/v1/admin/sso` | Account SSO for current-tenant administrators |
 | `GET` | `/api/v1/chat/users...` | Tenant employee directory projection and Tinode readiness |
+| `GET/PUT` | `/api/v1/chat/contact-nicknames...` | Read or update private viewer-scoped 1-1 contact nicknames |
 | `POST` | `/api/v1/chat/users/<id>/revoke-session` | Revoke a tenant employee session |
 | `GET/POST` | `/api/v1/friend-request` | Tenant-scoped friendship metadata |
 | `GET/POST` | `/api/v1/conversation` | Tenant-scoped conversation metadata |

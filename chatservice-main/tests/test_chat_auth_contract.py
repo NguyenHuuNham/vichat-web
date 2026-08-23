@@ -593,6 +593,42 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertNotIn("allowReminders", controller_source)
         self.assertNotIn("markOwnerMessages", controller_source)
 
+    @repository_source_test
+    def test_contact_nicknames_are_private_chat_scope_metadata(self):
+        controller_source, list_source = function_source(
+            CONTROLLER_PATH,
+            "contact_nickname_list",
+        )
+        _controller_source, update_source = function_source(
+            CONTROLLER_PATH,
+            "contact_nickname_update",
+        )
+        app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
+        directory_source = (
+            REPOSITORY_ROOT / "src" / "features" / "contacts" / "services" / "accountDirectory.js"
+        ).read_text(encoding="utf-8")
+        service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")
+        architecture_source = (
+            REPOSITORY_ROOT / "docs" / "chat-backend-architecture.md"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("/api/v1/contact-nicknames", controller_source)
+        self.assertIn("/api/v1/chat/contact-nicknames", controller_source)
+        self.assertIn("management_session_requested(request)", list_source)
+        self.assertIn("management_session_requested(request)", update_source)
+        self.assertIn("CONTACT_NICKNAMES_PROPERTY", update_source)
+        self.assertIn("_account_by_id(tenant_id, target_id)", update_source)
+        self.assertIn("viewer.properties = properties", update_source)
+        self.assertIn("_audit", update_source)
+        self.assertIn("defaultName", update_source)
+        self.assertNotIn("_management_user_mutations_enabled", update_source)
+        self.assertIn("updateContactNickname", service_source)
+        self.assertIn("applyContactNicknames", directory_source)
+        self.assertIn("contactNicknameDialog", app_source)
+        self.assertIn("setContactNicknameValue(contact.nickname || defaultName)", app_source)
+        self.assertIn("contact-nickname-edit-button", app_source)
+        self.assertIn("contact nicknames", architecture_source)
+
     def test_directory_sync_revalidates_tenant_and_deactivates_missing_accounts(self):
         _controller_source, directory_source = function_source(
             CONTROLLER_PATH,

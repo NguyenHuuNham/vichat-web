@@ -126,12 +126,23 @@ function normalizeReply(value) {
 function normalizeMember(value) {
   const member = conversationObject(value);
   if (!member) return null;
+  const defaultName = conversationText(
+    member.defaultName
+      || member.default_name
+      || member.name
+      || member.username
+      || member.email,
+  );
+  const nickname = conversationText(member.nickname || member.contactNickname || member.contact_nickname);
   return {
     ...member,
     id: conversationIdentity(member.id),
     uid: conversationIdentity(member.uid),
     tinodeUid: conversationIdentity(member.tinodeUid || member.tinode_uid),
-    name: conversationText(member.name) || conversationText(member.username) || conversationText(member.email),
+    name: nickname || defaultName,
+    defaultName,
+    default_name: defaultName,
+    nickname,
     username: conversationText(member.username),
     email: conversationText(member.email),
     title: conversationText(member.title),

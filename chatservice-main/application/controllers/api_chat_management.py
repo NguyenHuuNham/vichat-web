@@ -127,6 +127,9 @@ HISTORY_INTERNAL_MESSAGE_PREFIXES = (
     "__VICHAT_RECALL_EVENT__:",
     "__SONGHONG_FRIEND_EVENT__:",
 )
+CONTACT_NICKNAMES_PROPERTY = "contact_nicknames"
+CONTACT_NICKNAME_MAX_LENGTH = 80
+CONTACT_NICKNAME_MAX_COUNT = 1000
 
 
 def _normalized_group_settings(value=None):
@@ -230,10 +233,23 @@ def _tenant_options_payload(identity):
     }
 
 
-def _public_account(account, tenant=None):
+def _account_default_name(account):
+    return str(account.full_name or account.username or account.id or "").strip()
+
+
+def _account_display_name(account, viewer_account=None):
+    default_name = _account_default_name(account)
+    if viewer_account is None or str(viewer_account.id) == str(account.id):
+        return default_name, ""
+    nickname = _contact_nicknames(viewer_account).get(str(account.id), "")
+    return nickname or default_name, nickname
+
+
+def _public_account(account, tenant=None, viewer_account=None):
     properties = account.properties or {}
     auth_source = str(properties.get("auth_source") or "local")
-    full_name = account.full_name or account.username
+    default_name = _account_default_name(account)
+    display_name, nickname = _account_display_name(account, viewer_account)
     public_username = properties.get("account_username") or account.username
     public_email = properties.get("account_email") or account.email or ""
     tenant_payload = _public_tenant(tenant)
@@ -244,11 +260,14 @@ def _public_account(account, tenant=None):
         "user_id": str(account.id),
         "username": public_username,
         "email": public_email,
-        "name": full_name,
-        "fullName": full_name,
-        "full_name": full_name,
-        "displayName": full_name,
-        "display_name": full_name,
+        "name": display_name,
+        "fullName": default_name,
+        "full_name": default_name,
+        "displayName": display_name,
+        "display_name": display_name,
+        "defaultName": default_name,
+        "default_name": default_name,
+        "nickname": nickname,
         "role": account.role or "member",
         "department": account.department or "",
         "title": account.title or "",
@@ -844,6 +863,7 @@ def _serialize_conversation(item, viewer_id):
         ManagementAccount.active.is_(True),
     ).all() if participant_ids else []
     accounts_by_id = {str(account.id): account for account in accounts}
+    viewer_account = _account_by_id(item.tenant_id, viewer_id)
     owner = next((participant for participant in participants if participant.role == "OWNER"), None)
     viewer_membership = next(
         (participant for participant in participants if participant.participant_id == viewer_id),
@@ -870,12 +890,24 @@ def _serialize_conversation(item, viewer_id):
             if participant_id in accounts_by_id
         },
     )
+    conversation_name = item.subject
+    if not is_group:
+        peer_account = next(
+            (
+                accounts_by_id[participant_id]
+                for participant_id in participant_ids
+                if participant_id != str(viewer_id) and participant_id in accounts_by_id
+            ),
+            None,
+        )
+        if peer_account is not None:
+            conversation_name, _nickname = _account_display_name(peer_account, viewer_account)
     return {
         "id": str(item.id),
         "conversation_no": item.conversation_no,
         "tenant_id": item.tenant_id,
         "tinode_topic": tinode_topic,
-        "name": item.subject,
+        "name": conversation_name,
         "subject": item.subject,
         "status": item.status,
         "priority": item.priority,
@@ -887,7 +919,7 @@ def _serialize_conversation(item, viewer_id):
         "groupSettings": group_settings,
         "participantIds": participant_ids,
         "members": [
-            _public_account(accounts_by_id[participant_id])
+            _public_account(accounts_by_id[participant_id], viewer_account=viewer_account)
             for participant_id in participant_ids
             if participant_id in accounts_by_id
         ],
@@ -915,6 +947,25 @@ def _conversation_and_membership(tenant_id, conversation_id, user_id):
         ConversationParticipant.deleted.is_(False),
     ).first()
     return item, membership
+
+
+def _contact_nicknames(account):
+    """Return only bounded, render-safe nicknames owned by this account."""
+    raw = (account.properties or {}).get(CONTACT_NICKNAMES_PROPERTY)
+    if not isinstance(raw, dict):
+        return {}
+    result = {}
+    for contact_id, nickname in raw.items():
+        contact_key = str(contact_id or "").strip()
+        value = str(nickname or "").strip()
+        if (
+            contact_key
+            and value
+            and len(value) <= CONTACT_NICKNAME_MAX_LENGTH
+            and len(result) < CONTACT_NICKNAME_MAX_COUNT
+        ):
+            result[contact_key] = value
+    return result
 
 
 def _history_search_datetime(value, end_of_day=False):
@@ -2371,8 +2422,12 @@ async def management_users(request):
             func.lower(ManagementAccount.department).like(pattern),
         ))
     accounts = query.order_by(ManagementAccount.full_name.asc()).limit(1000).all()
+    viewer_account = _account_by_id(tenant_id, _user_id(current_user))
     return json({
-        "objects": [_public_account(account) for account in accounts],
+        "objects": [
+            _public_account(account, viewer_account=viewer_account)
+            for account in accounts
+        ],
         "directory_sync": {
             "source": "account" if employee_account_directory else "local",
             "status": sync_status,
@@ -2382,6 +2437,104 @@ async def management_users(request):
             "tinode_provisioned": tinode_provisioned,
             "tinode_failed": tinode_failed,
         },
+    })
+
+
+@app.route('/api/v1/contact-nicknames', methods=['GET'])
+@app.route('/api/v1/chat/contact-nicknames', methods=['GET'])
+async def contact_nickname_list(request):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    if management_session_requested(request):
+        return json({
+            "error_code": "CHAT_SESSION_REQUIRED",
+            "error_message": "Contact nicknames can only be read from a Chat user session.",
+        }, status=403)
+
+    account = _account_by_id(tenant_id, _user_id(current_user))
+    if account is None:
+        return _auth_error()
+    nicknames = _contact_nicknames(account)
+    objects = [
+        {"contactId": contact_id, "nickname": nickname}
+        for contact_id, nickname in nicknames.items()
+    ]
+    return json({"nicknames": nicknames, "objects": objects, "items": objects})
+
+
+@app.route('/api/v1/contact-nicknames/<contact_id>', methods=['PUT'])
+@app.route('/api/v1/chat/contact-nicknames/<contact_id>', methods=['PUT'])
+async def contact_nickname_update(request, contact_id):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    if management_session_requested(request):
+        return json({
+            "error_code": "CHAT_SESSION_REQUIRED",
+            "error_message": "Contact nicknames can only be changed from a Chat user session.",
+        }, status=403)
+
+    viewer_id = _user_id(current_user)
+    target_id = str(contact_id or "").strip()
+    if not target_id or target_id == viewer_id:
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "A nickname can only be set for another contact.",
+        }, status=400)
+    target = _account_by_id(tenant_id, target_id)
+    if target is None:
+        return json({
+            "error_code": "NOT_FOUND",
+            "error_message": "Contact not found in this tenant.",
+        }, status=404)
+
+    body = request.json or {}
+    if not isinstance(body, dict) or not isinstance(body.get("nickname"), str):
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "The nickname must be text.",
+        }, status=400)
+    nickname = body["nickname"].strip()
+    if len(nickname) > CONTACT_NICKNAME_MAX_LENGTH:
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "The nickname is too long.",
+        }, status=400)
+
+    viewer = _account_by_id(tenant_id, viewer_id)
+    if viewer is None:
+        return _auth_error()
+    properties = dict(viewer.properties or {})
+    nicknames = _contact_nicknames(viewer)
+    if nickname:
+        if target_id not in nicknames and len(nicknames) >= CONTACT_NICKNAME_MAX_COUNT:
+            return json({
+                "error_code": "PARAM_ERROR",
+                "error_message": "Too many contact nicknames are stored for this account.",
+            }, status=400)
+        nicknames[target_id] = nickname
+    else:
+        nicknames.pop(target_id, None)
+    if nicknames:
+        properties[CONTACT_NICKNAMES_PROPERTY] = nicknames
+    else:
+        properties.pop(CONTACT_NICKNAMES_PROPERTY, None)
+    viewer.properties = properties
+    viewer.updated_at = int(time.time())
+    db.session.commit()
+    _audit(
+        request,
+        "CONTACT_NICKNAME_UPDATED",
+        True,
+        tenant_id=tenant_id,
+        user_id=viewer_id,
+        properties={"contact_id": target_id, "cleared": not bool(nickname)},
+    )
+    return json({
+        "contactId": target_id,
+        "nickname": nickname,
+        "defaultName": _account_default_name(target),
     })
 
 
@@ -3104,7 +3257,7 @@ async def conversation_history_search(request, conversation_id):
             uid = str(participant_account.tinode_uid or "").strip()
             if not uid:
                 continue
-            sender_names[uid] = participant_account.full_name or participant_account.username or uid
+            sender_names[uid] = _account_display_name(participant_account, account)[0] or uid
             if sender_filter and sender_filter in {
                 str(participant_id),
                 uid,

@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-12 - Biet danh rieng trong chat 1-1
+
+- Thoi gian: 2026-08-23 15:29 (Asia/Saigon)
+- Loai: Tinh nang | API | Web | Kiem thu | Tai lieu
+- Trang thai: Da kiem thu local; cho commit va deploy production
+- Muc tieu: Cho nguoi dung dat ten goi nho rieng cho mot tai khoan trong chat 1-1, hien thi dong bo o moi noi cua tai khoan do ma khong lam thay doi ten chinh thuc cua nguoi khac.
+- Pham vi: Dialog va nut but trong chi tiet chat 1-1, directory/conversation/message/reaction/profile display, Chatmgt nickname API; khong thay doi group, sticker, reaction storage, Tinode profile, tenant switch hay message content.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatRealtime.js`, `src/features/i18n/appLanguage.js`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Them but doi ten goi nho ben canh ten doi tac trong chi tiet hoi thoai; dialog dien san ten mac dinh, cho luu hoac xoa nickname. Chatmgt luu nickname trong `ManagementAccount.properties.contact_nicknames` theo tai khoan hien tai va tenant hien tai; directory, conversation header/list, thanh vien, sender, reply, reaction actor va history search deu render theo viewer. Nguoi dung khac van nhan ten chinh thuc hoac nickname rieng cua ho.
+- Quyet dinh ky thuat: Khong migration. Account/Tinode van la nguon ten chinh thuc; nickname la viewer metadata cua Chatmgt, gioi han 80 ky tu/1000 contact, khong ghi vao Tinode va khong broadcast cho viewer khac. Endpoint chi chap nhan Chat scope, target phai la account active cung tenant va ghi audit event.
+- Database/API/cau hinh: Them GET/PUT `/api/v1/chat/contact-nicknames...` va alias `/api/v1/contact-nicknames...`; khong them bien moi truong, secret hay migration.
+- Kiem thu: `npm run test:frontend` dat 151/151; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/tests/test_chat_auth_contract.py` dat; `python -m unittest discover -s chatservice-main/tests -q` dat 178 test, skip 60 theo moi truong; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `App-CNmXYj-3.js`, CSS `index-DNaPZcbY.css`; `git diff --check` dat.
+- Rui ro con lai: Chua UAT bang hai tai khoan that de xac nhan viewer A/B, hard refresh, chuyen tenant, history/reaction va profile update realtime; neu account directory tam thoi stale thi can tai lai danh ba.
+- Viec tiep theo: Commit/push, deploy chi recreate `chat` va `chatmgt`, kiem tra health/public asset va UAT nickname. Khong reset database, Tinode, Redis, volume hay cac service khac.
+- Trien khai: Dang cho; rollback se tro `current` ve `previous` va recreate rieng `chat`/`chatmgt` tu image cu, khong xoa volume/database.
+- Commit/PR: Dang cho.
+
 ## 2026-08-23-11 - Tim kiem lich su hoi thoai server-side
 
 - Thoi gian: 2026-08-23 14:56 (Asia/Saigon)

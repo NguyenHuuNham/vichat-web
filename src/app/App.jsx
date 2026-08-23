@@ -96,6 +96,7 @@ import {
   identitiesOverlap,
   identityValues,
   matchesCompanyDirectoryContact,
+  applyContactNicknames,
   mergeDirectoryAccountSnapshots,
   mergeRealtimeAccountProfile,
   mergeRealtimeMemberPresence,
@@ -794,6 +795,75 @@ function roomParticipantIds(room) {
 
 function roomFriendEvents(room) {
   return Array.isArray(room?.friendEvents) ? room.friendEvents : [];
+}
+
+function accountForIdentity(accounts, identity) {
+  return findAccount(accounts, identity) || null;
+}
+
+function personalizeMessageForViewer(message, accounts) {
+  if (!message) return message;
+  const sender = accountForIdentity(accounts, message.senderId || message.senderName);
+  const replySender = accountForIdentity(accounts, message.replyTo?.senderId || message.replyTo?.senderName);
+  const reactionUsers = Object.fromEntries(Object.entries(message.reactionUsers || {}).map(([emoji, users]) => [
+    emoji,
+    (Array.isArray(users) ? users : []).map(user => {
+      const account = accountForIdentity(accounts, user?.id || user?.uid || user?.tinodeUid || user?.name);
+      return account ? { ...user, name: account.name, nickname: account.nickname || '', avatar: account.avatar || user.avatar || '' } : user;
+    }),
+  ]));
+  if (!sender && !replySender && Object.keys(reactionUsers).length === 0) return message;
+  return {
+    ...message,
+    ...(sender ? { senderName: sender.name, avatar: sender.avatar || message.avatar || '' } : {}),
+    ...(replySender && message.replyTo ? {
+      replyTo: { ...message.replyTo, senderName: replySender.name, avatar: replySender.avatar || message.replyTo.avatar || '' },
+    } : {}),
+    ...(Object.keys(reactionUsers).length > 0 ? { reactionUsers } : {}),
+  };
+}
+
+function personalizeConversationForViewer(room, accounts, viewer) {
+  if (!room) return room;
+  const members = roomMembers(room).map(member => {
+    const account = accountForIdentity(accounts, member?.id || member?.uid || member?.tinodeUid || member?.name);
+    if (!account) return member;
+    return {
+      ...member,
+      name: account.name || member.name,
+      defaultName: account.defaultName || member.defaultName || member.name,
+      default_name: account.default_name || member.default_name || member.name,
+      nickname: account.nickname || '',
+      avatar: account.avatar || member.avatar || '',
+      online: member.online,
+    };
+  });
+  const messages = roomMessages(room).map(message => personalizeMessageForViewer(message, accounts));
+  const friendEvents = roomFriendEvents(room).map(message => personalizeMessageForViewer(message, accounts));
+  const peer = !room.isGroup && !room.isChatbot
+    ? members.find(member => !identitiesOverlap(member, viewer))
+    : null;
+  const originalMembers = roomMembers(room);
+  const originalMessages = roomMessages(room);
+  const originalFriendEvents = roomFriendEvents(room);
+  const nextName = peer ? peer.name || room.name : room.name;
+  const nextAvatarUrl = peer ? peer.avatar || room.avatarUrl || '' : room.avatarUrl;
+  const changed = members.length !== originalMembers.length
+    || members.some((member, index) => member !== originalMembers[index])
+    || messages.length !== originalMessages.length
+    || messages.some((message, index) => message !== originalMessages[index])
+    || friendEvents.length !== originalFriendEvents.length
+    || friendEvents.some((message, index) => message !== originalFriendEvents[index])
+    || nextName !== room.name
+    || nextAvatarUrl !== room.avatarUrl;
+  if (!changed) return room;
+  return {
+    ...room,
+    members,
+    messages,
+    friendEvents,
+    ...(peer ? { name: nextName, avatarUrl: nextAvatarUrl } : {}),
+  };
 }
 
 function localizedConversationPreview(room, copy, accounts = [], viewerId = '') {
@@ -1678,6 +1748,10 @@ function App() {
   const [isSavingPin, setIsSavingPin] = useState(false);
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
   const [directoryAccounts, setDirectoryAccounts] = useState([]);
+  const [contactNicknames, setContactNicknames] = useState({});
+  const [contactNicknameDialog, setContactNicknameDialog] = useState(null);
+  const [contactNicknameValue, setContactNicknameValue] = useState('');
+  const [isSavingContactNickname, setIsSavingContactNickname] = useState(false);
   const [isUpdatingProfileAvatar, setIsUpdatingProfileAvatar] = useState(false);
   const [isUpdatingGroupAvatar, setIsUpdatingGroupAvatar] = useState(false);
   const [profileForm, setProfileForm] = useState({ name: '', email: '', title: '', department: '' });
@@ -1737,6 +1811,7 @@ function App() {
   const conversationsRef = useRef(conversations);
   const currentUserRef = useRef(currentUser);
   const directoryAccountsRef = useRef(directoryAccounts);
+  const contactNicknamesRef = useRef(contactNicknames);
   const avatarOverridesRef = useRef(new Map());
   const groupAvatarSyncRef = useRef(new Map());
   const messageSearchRequestRef = useRef(0);
@@ -1769,6 +1844,7 @@ function App() {
   conversationsRef.current = conversations;
   currentUserRef.current = currentUser;
   directoryAccountsRef.current = directoryAccounts;
+  contactNicknamesRef.current = contactNicknames;
 
   const rememberAvatarOverride = (entity, avatar) => {
     const value = String(avatar || '').trim();
@@ -2560,6 +2636,20 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!currentUser || directoryAccounts.length === 0) return;
+    setConversations(previous => {
+      let changed = false;
+      const next = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
+        const personalized = personalizeConversationForViewer(room, directoryAccounts, currentUser);
+        if (personalized !== room) changed = true;
+        return [id, personalized];
+      }));
+      if (changed) conversationsRef.current = next;
+      return changed ? next : previous;
+    });
+  }, [currentUser, directoryAccounts]);
+
+  useEffect(() => {
     if (!viewerId) return;
     try {
       setMessageActions(JSON.parse(window.localStorage.getItem(`songhong.message-actions.${viewerId}`) || '{}'));
@@ -3091,10 +3181,10 @@ function App() {
           const peer = !room.isGroup ? members.find(member => identitiesOverlap(member, profile)) : null;
           return [id, {
             ...room,
-            ...(peer ? { name: profile.name || room.name, avatarUrl: profile.avatar || room.avatarUrl || '' } : {}),
+            ...(peer ? { name: peer.name || profile.name || room.name, avatarUrl: profile.avatar || room.avatarUrl || '' } : {}),
             members,
             messages: roomMessages(room).map(message => identitiesOverlap({ id: message.senderId }, profile)
-              ? { ...message, senderName: profile.name || message.senderName, avatar: profile.avatar || message.avatar || '' }
+              ? { ...message, senderName: peer?.name || profile.name || message.senderName, avatar: profile.avatar || message.avatar || '' }
               : message),
           }];
         })));
@@ -3104,7 +3194,11 @@ function App() {
         try {
         const expectedTinodeUid = String(currentUser?.tinodeUid || '');
         if (expectedTinodeUid && String(event.sessionUid || '') !== expectedTinodeUid) return;
-        const conversation = normalizeTinodeConversation(event.conversation);
+        const conversation = personalizeConversationForViewer(
+          normalizeTinodeConversation(event.conversation),
+          directoryAccountsRef.current,
+          currentUser,
+        );
         const currentRooms = conversationsRef.current;
         const managedEntry = safeConversationEntries(currentRooms)
           .filter(([, room]) => room.accountSession === accountSession)
@@ -3277,6 +3371,10 @@ function App() {
     setConversationCategoryMenuOpen(false);
     setMediaBrowserOpen(false);
     setDirectoryAccounts([]);
+    setContactNicknames({});
+    setContactNicknameDialog(null);
+    setContactNicknameValue('');
+    setIsSavingContactNickname(false);
     avatarOverridesRef.current.clear();
     groupAvatarSyncRef.current.clear();
     setConversationMenu(null);
@@ -3322,7 +3420,14 @@ function App() {
         );
         const accounts = mergeDirectoryAccountSnapshots([user], directoryUsers)
           .map(account => ({ ...account, avatar: avatarOverrideFor(account) || account.avatar || '' }));
+        const nicknameMap = Object.fromEntries(
+          accounts
+            .filter(account => account?.id && account?.nickname)
+            .map(account => [String(account.id), String(account.nickname)]),
+        );
         if (accountSessionRef.current !== accountSession) return;
+        contactNicknamesRef.current = nicknameMap;
+        setContactNicknames(nicknameMap);
         setDirectoryAccounts(accounts);
         if (chatManagementService.directorySync?.status === 'stale') {
           setChatError('Account đang tạm thời không trả được danh bạ mới; Chatmgt đang hiển thị dữ liệu đồng bộ gần nhất.');
@@ -3480,7 +3585,11 @@ function App() {
         const topicName = room.isChatbot
           ? room.tinodeTopic
           : await ensureTinodeConversationTopic(room);
-        const openedRoom = normalizeTinodeConversation(await tinodeClient.openConversation(topicName));
+        const openedRoom = personalizeConversationForViewer(
+          normalizeTinodeConversation(await tinodeClient.openConversation(topicName)),
+          directoryAccountsRef.current,
+          currentUser,
+        );
         const managedRoom = room.isChatbot
           ? {
             ...openedRoom,
@@ -4038,10 +4147,20 @@ function App() {
             ? { ...next, online: previous.online }
             : next;
         });
+        const nextNicknames = Object.fromEntries(
+          nextAccounts
+            .filter(account => account?.id && account?.nickname)
+            .map(account => [String(account.id), String(account.nickname)]),
+        );
+        const nicknamesChanged = JSON.stringify(contactNicknamesRef.current) !== JSON.stringify(nextNicknames);
+        if (nicknamesChanged) {
+          contactNicknamesRef.current = nextNicknames;
+          setContactNicknames(nextNicknames);
+        }
         const accountsChanged = previousAccounts.length !== nextAccounts.length
           || nextAccounts.some(account => {
             const previous = findAccount(previousAccounts, account.id || account.uid || account.tinodeUid);
-            return !previous || ['id', 'uid', 'tinodeUid', 'username', 'name', 'avatar', 'email', 'title', 'department', 'active', 'online']
+            return !previous || ['id', 'uid', 'tinodeUid', 'username', 'name', 'defaultName', 'nickname', 'avatar', 'email', 'title', 'department', 'active', 'online']
               .some(key => previous[key] !== account[key]);
           });
         const effectiveAccounts = accountsChanged ? nextAccounts : previousAccounts;
@@ -4053,7 +4172,7 @@ function App() {
           const account = findAccount(effectiveAccounts, result.id || result.uid || result.tinodeUid || result.name);
           if (!account) return result;
           const next = { ...result, ...account, online: result.online };
-          return ['name', 'avatar', 'email', 'title', 'department', 'active'].some(key => result[key] !== next[key])
+          return ['name', 'defaultName', 'nickname', 'avatar', 'email', 'title', 'department', 'active'].some(key => result[key] !== next[key])
             ? next
             : result;
         });
@@ -4084,8 +4203,21 @@ function App() {
           const members = roomMembers(room).map(member => {
             const account = findAccount(effectiveAccounts, member.id || member.uid || member.tinodeUid || member.name);
             if (!account) return member;
-            const updated = { ...member, name: account.name || member.name, avatar: account.avatar || member.avatar || '', online: member.online };
-            return updated.name === member.name && updated.avatar === member.avatar ? member : updated;
+            const updated = {
+              ...member,
+              name: account.name || member.name,
+              defaultName: account.defaultName || member.defaultName || member.name,
+              default_name: account.default_name || member.default_name || member.name,
+              nickname: account.nickname || '',
+              avatar: account.avatar || member.avatar || '',
+              online: member.online,
+            };
+            return updated.name === member.name
+              && updated.defaultName === member.defaultName
+              && updated.nickname === member.nickname
+              && updated.avatar === member.avatar
+              ? member
+              : updated;
           });
           const peer = !room.isGroup
             ? members.find(member => !identitiesOverlap(member, currentUser))
@@ -4468,6 +4600,63 @@ function App() {
     }
     setGroupRenameValue(activeChat.name || '');
     setIsGroupRenameOpen(true);
+  };
+
+  const openContactNicknameDialog = () => {
+    if (activeChat.isGroup || activeChat.isChatbot || !activeDirectPeer) return;
+    const contact = findAccount(
+      directoryAccounts,
+      activeDirectPeer.id || activeDirectPeer.uid || activeDirectPeer.tinodeUid || activeDirectPeer.name,
+    ) || activeDirectPeer;
+    const defaultName = contact.defaultName || contact.default_name || contact.full_name || contact.name || contact.username || 'Người dùng';
+    setContactNicknameDialog({
+      ...contact,
+      defaultName,
+      avatar: contact.avatar || activeDirectPeer.avatar || '',
+    });
+    setContactNicknameValue(contact.nickname || defaultName);
+    setChatError('');
+  };
+
+  const handleContactNicknameSubmit = async event => {
+    event.preventDefault();
+    const contact = contactNicknameDialog;
+    const contactId = String(contact?.id || contact?.uid || '').trim();
+    if (!contactId || isSavingContactNickname) return;
+    const nickname = contactNicknameValue.trim().slice(0, 80);
+    setIsSavingContactNickname(true);
+    setChatError('');
+    try {
+      let savedNickname = nickname;
+      if (chatManagementService.remote) {
+        const response = await chatManagementService.updateContactNickname(contactId, nickname);
+        savedNickname = String(response?.nickname || '').trim();
+      }
+      const nextNicknames = { ...contactNicknamesRef.current };
+      if (savedNickname) nextNicknames[contactId] = savedNickname;
+      else delete nextNicknames[contactId];
+      contactNicknamesRef.current = nextNicknames;
+      setContactNicknames(nextNicknames);
+      const nextAccounts = applyContactNicknames(
+        directoryAccountsRef.current,
+        { [contactId]: savedNickname },
+      );
+      directoryAccountsRef.current = nextAccounts;
+      setDirectoryAccounts(nextAccounts);
+      setConversations(previous => {
+        const next = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => [
+          id,
+          personalizeConversationForViewer(room, nextAccounts, currentUserRef.current),
+        ]));
+        conversationsRef.current = next;
+        return next;
+      });
+      setContactNicknameDialog(null);
+    } catch (error) {
+      setChatError(error?.message || 'Không thể lưu tên gợi nhớ.');
+    } finally {
+      setIsSavingContactNickname(false);
+    }
   };
 
   const persistGroupMetadata = async ({ name, settings } = {}) => {
@@ -7999,6 +8188,17 @@ function App() {
                   <i className="fa-solid fa-pen"></i>
                 </button>
               )}
+              {!activeChat.isGroup && !activeChat.isChatbot && activeDirectPeer && (
+                <button
+                  type="button"
+                  className="group-name-edit-button contact-nickname-edit-button"
+                  title={appCopy.t('Đổi tên gợi nhớ')}
+                  aria-label={appCopy.t('Đổi tên gợi nhớ')}
+                  onClick={openContactNicknameDialog}
+                >
+                  <i className="fa-solid fa-pen"></i>
+                </button>
+              )}
             </div>
             <span className="group-members-count">{activeChatPresenceLabel}</span>
           </div>
@@ -8901,6 +9101,58 @@ function App() {
                 <button type="button" className="btn-secondary" onClick={() => setNotificationMuteDialog(null)} disabled={isUpdatingNotificationMute}>{appCopy.t('Hủy')}</button>
                 <button type="submit" className="btn-primary" disabled={isUpdatingNotificationMute}>
                   {isUpdatingNotificationMute ? <i className="fa-solid fa-spinner fa-spin"></i> : appCopy.t('Đồng ý')}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {contactNicknameDialog && !activeChat.isGroup && (
+        <div className="modal-backdrop contact-nickname-backdrop" role="presentation" onMouseDown={event => {
+          if (event.target === event.currentTarget && !isSavingContactNickname) setContactNicknameDialog(null);
+        }}>
+          <form
+            className="group-modal contact-nickname-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="contact-nickname-title"
+            onSubmit={handleContactNicknameSubmit}
+            onMouseDown={event => event.stopPropagation()}
+          >
+            <div className="group-modal-header contact-nickname-header">
+              <div>
+                <span className="group-modal-kicker">{appCopy.t('Thông tin hội thoại')}</span>
+                <h2 id="contact-nickname-title">{appCopy.t('Đặt tên gợi nhớ')}</h2>
+              </div>
+              <button type="button" className="btn-close-detail" onClick={() => setContactNicknameDialog(null)} aria-label={appCopy.t('Đóng')} disabled={isSavingContactNickname}>
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+            <div className="contact-nickname-hero">
+              <SafeAvatar src={contactNicknameDialog.avatar || ''} name={contactNicknameDialog.defaultName} className="contact-nickname-avatar" />
+              <p>
+                {appCopy.t('Hãy đặt cho')} <strong>{contactNicknameDialog.defaultName}</strong> {appCopy.t('một cái tên để nhớ.')}
+              </p>
+              <small>{appCopy.t('Lưu ý: Tên gợi nhớ sẽ chỉ hiển thị riêng với bạn.')}</small>
+            </div>
+            <label className="group-form-field contact-nickname-field">
+              <span>{appCopy.t('Tên gợi nhớ')}</span>
+              <input
+                value={contactNicknameValue}
+                onChange={event => setContactNicknameValue(event.target.value.slice(0, 80))}
+                placeholder={contactNicknameDialog.defaultName}
+                maxLength={80}
+                autoFocus
+                disabled={isSavingContactNickname}
+              />
+            </label>
+            <div className="group-modal-footer actions-only">
+              <div className="group-modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setContactNicknameDialog(null)} disabled={isSavingContactNickname}>{appCopy.t('Hủy')}</button>
+                <button type="submit" className="btn-primary" disabled={isSavingContactNickname}>
+                  {isSavingContactNickname ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-check"></i>}
+                  {isSavingContactNickname ? appCopy.t('Đang lưu tên gợi nhớ...') : appCopy.t('Lưu tên gợi nhớ')}
                 </button>
               </div>
             </div>

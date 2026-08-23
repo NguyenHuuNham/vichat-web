@@ -13,6 +13,7 @@ import {
   identitiesOverlap,
   identityValues,
   matchesCompanyDirectoryContact,
+  applyContactNicknames,
   mergeDirectoryAccountSnapshots,
   mergeRealtimeAccountProfile,
   mergeRealtimeMemberPresence,
@@ -323,4 +324,55 @@ test('account snapshots convert malformed profile values to render-safe scalars'
   assert.equal(account.tenantName, 'tenant-a');
   assert.equal(account.active, true);
   assert.equal(normalizeTenantShape({ id: 'tenant-a', name: { invalid: true } }).name, 'tenant-a');
+});
+
+test('contact nicknames override only the viewer display name and retain the official name', () => {
+  const accounts = [
+    { id: 'account-peer', uid: 'account-peer', name: 'Tên chính thức', defaultName: 'Tên chính thức' },
+    { id: 'account-other', uid: 'account-other', name: 'Người khác', defaultName: 'Người khác' },
+  ];
+
+  const result = applyContactNicknames(accounts, { 'account-peer': 'Anh thân' });
+
+  assert.equal(result[0].name, 'Anh thân');
+  assert.equal(result[0].nickname, 'Anh thân');
+  assert.equal(result[0].defaultName, 'Tên chính thức');
+  assert.equal(result[0].full_name, 'Tên chính thức');
+  assert.equal(result[1].name, 'Người khác');
+  assert.equal(result[1].nickname, '');
+});
+
+test('clearing a contact nickname restores the account default name', () => {
+  const account = {
+    id: 'account-peer',
+    name: 'Tên gợi nhớ',
+    defaultName: 'Tên chính thức',
+    nickname: 'Tên gợi nhớ',
+  };
+
+  const result = applyContactNicknames([account], {});
+
+  assert.equal(result[0].name, 'Tên chính thức');
+  assert.equal(result[0].nickname, '');
+  assert.equal(result[0].default_name, 'Tên chính thức');
+});
+
+test('realtime profile merges preserve a viewer nickname while updating the official profile', () => {
+  const account = {
+    id: 'account-peer',
+    uid: 'account-peer',
+    name: 'Tên gợi nhớ',
+    defaultName: 'Tên cũ',
+    nickname: 'Tên gợi nhớ',
+  };
+
+  const result = mergeRealtimeAccountProfile(account, {
+    id: 'account-peer',
+    name: 'Tên mới',
+    defaultName: 'Tên mới',
+  });
+
+  assert.equal(result.name, 'Tên gợi nhớ');
+  assert.equal(result.nickname, 'Tên gợi nhớ');
+  assert.equal(result.defaultName, 'Tên mới');
 });

@@ -4352,6 +4352,37 @@ input:checked + .slider:before {
 .tenant-switch-confirm-copy p { margin: 0; color: var(--text-body); font-size: 13.5px; line-height: 1.5; }
 .tenant-switch-confirm-copy strong { overflow-wrap: anywhere; color: var(--text-main); font-size: 15px; }
 
+.contact-nickname-backdrop { z-index: 110; }
+.contact-nickname-modal { width: min(430px, 100%); }
+.contact-nickname-header { margin-bottom: 16px; }
+.contact-nickname-header h2 { margin-top: 3px; }
+.contact-nickname-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 4px 12px 18px;
+    color: var(--text-body);
+    text-align: center;
+}
+.contact-nickname-avatar {
+    width: 76px;
+    height: 76px;
+    margin-bottom: 14px;
+    border: 3px solid var(--vichat-blue-light);
+    border-radius: 50%;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, .12);
+}
+.contact-nickname-hero p { margin: 0; font-size: 14px; line-height: 1.5; }
+.contact-nickname-hero p strong { color: var(--text-main); }
+.contact-nickname-hero small {
+    max-width: 330px;
+    margin-top: 8px;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.45;
+}
+.contact-nickname-field { margin-bottom: 4px; }
+
 @media (max-width: 576px) {
     .chat-system-banner { top: 8px; }
     .group-modal { padding: 18px; border-radius: 16px; }
@@ -4360,6 +4391,7 @@ input:checked + .slider:before {
     .group-detail-quick-actions { gap: 6px; }
     .group-detail-quick-action { min-height: 70px; font-size: 10px; }
     .group-name-line .group-name-large { max-width: 178px; }
+    .contact-nickname-modal { width: 100%; }
     .friend-request-card { grid-template-columns: auto minmax(0, 1fr); }
     .friend-request-actions, .friend-request-status { grid-column: 2; }
     .friend-request-actions { flex-direction: row; }

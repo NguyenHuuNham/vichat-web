@@ -51,12 +51,16 @@ export function normalizeAccountShape(account) {
   const uid = firstText(account.uid, account.user_id, id);
   const tinodeUid = firstText(account.tinodeUid, account.tinode_uid);
   const username = firstText(account.username, account.user_name, account.login, account.email);
-  const name = firstText(
+  const defaultName = firstText(
+    account.defaultName,
+    account.default_name,
     account.name,
     account.full_name,
     account.display_name,
     username,
   );
+  const nickname = firstText(account.nickname, account.contactNickname, account.contact_nickname);
+  const name = nickname || defaultName;
   const email = firstText(account.email, account.mail);
   const avatar = [account.avatar, account.avatarUrl, account.avatar_url, account.photo]
     .map(avatarText)
@@ -73,8 +77,11 @@ export function normalizeAccountShape(account) {
     username,
     user_name: username,
     name,
-    full_name: name,
+    full_name: defaultName,
     display_name: name,
+    defaultName,
+    default_name: defaultName,
+    nickname,
     email,
     title: firstText(account.title, account.job_title),
     department: firstText(account.department, account.department_name),
@@ -189,10 +196,24 @@ export function updateAccountPresence(accounts, snapshot, currentUser) {
 
 export function mergeRealtimeAccountProfile(entity, profile) {
   if (!entity || !profile || !identitiesOverlap(entity, profile)) return entity;
-  const nextName = profile.name || entity.name;
+  const nextDefaultName = firstText(profile.defaultName, profile.default_name, profile.name, entity.defaultName, entity.name);
+  const nextNickname = firstText(entity.nickname, profile.nickname);
+  const nextName = nextNickname || nextDefaultName;
   const nextAvatar = profile.avatar || entity.avatar || '';
-  if (nextName === entity.name && nextAvatar === entity.avatar) return entity;
-  return { ...entity, name: nextName, avatar: nextAvatar };
+  if (
+    nextName === entity.name
+    && nextDefaultName === entity.defaultName
+    && nextAvatar === entity.avatar
+  ) return entity;
+  return {
+    ...entity,
+    name: nextName,
+    full_name: nextDefaultName,
+    defaultName: nextDefaultName,
+    default_name: nextDefaultName,
+    nickname: nextNickname,
+    avatar: nextAvatar,
+  };
 }
 
 export function updateAccountProfiles(accounts, profile) {
@@ -201,6 +222,37 @@ export function updateAccountProfiles(accounts, profile) {
     const updated = mergeRealtimeAccountProfile(account, profile);
     if (updated !== account) changed = true;
     return updated;
+  });
+  return changed ? next : accounts;
+}
+
+export function applyContactNicknames(accounts, nicknames = {}) {
+  const source = nicknames && typeof nicknames === 'object' && !Array.isArray(nicknames)
+    ? nicknames
+    : {};
+  let changed = false;
+  const next = (accounts || []).map(account => {
+    const identity = identityValues(account).find(value => (
+      Object.prototype.hasOwnProperty.call(source, value)
+    )) || '';
+    const defaultName = firstText(account?.defaultName, account?.default_name, account?.name, account?.username);
+    const nickname = scalarText(identity ? source[identity] : '');
+    const name = nickname || defaultName;
+    if (
+      account?.name === name
+      && account?.defaultName === defaultName
+      && account?.nickname === nickname
+    ) return account;
+    changed = true;
+    return {
+      ...account,
+      name,
+      full_name: defaultName,
+      display_name: name,
+      defaultName,
+      default_name: defaultName,
+      nickname,
+    };
   });
   return changed ? next : accounts;
 }
@@ -321,5 +373,7 @@ export function findAccount(accounts, identity) {
     || matches(item.username)
     || matches(item.email)
     || matches(item.name)
+    || matches(item.defaultName)
+    || matches(item.default_name)
   )) || null;
 }
