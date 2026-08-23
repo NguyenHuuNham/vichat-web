@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-24 02:06 (Asia/Saigon)
 - Loai: Tinh nang | Sua loi | Web | Realtime | Kiem thu | Tai lieu
-- Trang thai: Hoan tat code; dang kiem thu release
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Cho nguoi dung quay lai dung moc tin nhan cuoi cung da xem khi hoi thoai co nhieu tin moi, sau do tu dong tro lai giao dien binh thuong khi da di qua tin cuoi cua cum chua doc.
 - Pham vi: Chi ChatUI message list, unread/read cursor projection, nut nhay va divider tin chua doc; giu nguyen sticker, nen, avatar, reaction, file, group, tenant va composer.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/unreadBoundary.js`, `src/features/chat/services/unreadBoundary.test.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/tinodeClient.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `package.json`, `dist/index.html`.
@@ -20,7 +20,9 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `npm run test:frontend` dat 169/169; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `App-CfUymtHv.js`, `index-Dr5bXf0i.js`, CSS `index-Cm8EbR3l.css`; `git diff --check` dat.
 - Rui ro con lai: Chua UAT pixel-level bang hai tai khoan production va chua xac nhan scroll tren trinh duyet mobile; can kiem tra tin nhan den khi tab an, mo hoi thoai, bam nut, cuon qua tin cuoi va refresh/reconnect.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn`, UAT chat 1-1 va group voi nhieu tin chua doc; neu loi chi rollback release ChatUI ve `previous`, khong thao tac Tinode/database/volume.
-- Commit/PR: Chua tao
+- Trien khai: Commit `4dd4df2` da push `origin/master`; archive SHA-256 `E703E46E417191E65AC9F342CD9FE224CBA38C7D3EEC1B8AEFF8831B47238346`; release `/opt/deploy/chat/releases/4dd4df2-20260823-192601`, `current` tro release nay, `previous` tro `/opt/deploy/chat/releases/a29c560-20260824-0108`. Chi recreate `chat`; image `sha256:b167218275b363a4dfc2b4e7bdf7b83c8c114fdc3ea45c4ed8c6274d4d04a6da`, container `7eaf8a171a2bdf2e4aed2db0c9e5fbf72ff278357ca6b7cdbddbccfaa741a4d3`, rollback tag `songhong-production-chat:rollback-before-unread-4dd4df2`; Chatmgt, Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis, Coturn va volume giu nguyen, khong migration/reset topic/message.
+- Kiem tra production: `http://127.0.0.1:8094/healthz`, `https://chat.upgo.vn/healthz`, `https://chatmgt.upgo.vn/api/v1/auth/health` deu OK; `sudo -n nginx -t` dat; public asset `index-B4JGG7EU.js`, `App-CNhlDKsA.js`, `index-Cm8EbR3l.css` HTTP 200, App bundle co marker `unread-jump-button` va `unreadFromSeq`; rollback image ton tai; log ChatUI/Chatmgt 10 phut khong co fatal/panic/traceback/critical/emerg/uncaught; container ID ngoai `chat` khong doi.
+- Commit/PR: Source `4dd4df2`; docs deploy follow-up dang chuan bi
 
 ## 2026-08-24-01 - Dong bo avatar Account va giu avatar nhom
 
