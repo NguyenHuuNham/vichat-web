@@ -8200,15 +8200,7 @@ function App() {
                 </button>
               )}
             </div>
-            <span className="group-members-count">{activeChatPresenceLabel}</span>
           </div>
-
-          {activeChat.isGroup && (
-            <div className="detail-section">
-              <h4 className="section-title">{appCopy.t('Quản trị viên')}</h4>
-              <span className="admin-name">{activeAdminName}</span>
-            </div>
-          )}
 
           {!activeChat.isChatbot && activeChat.id !== 'empty' && activeChat.isGroup && (
             <div className="group-detail-quick-actions" role="group" aria-label={appCopy.t('Thao tác nhóm')}>
@@ -8256,6 +8248,13 @@ function App() {
                   <span>{appCopy.t('Quản lý nhóm')}</span>
                 </button>
               )}
+            </div>
+          )}
+
+          {activeChat.isGroup && (
+            <div className="detail-section">
+              <h4 className="section-title">{appCopy.t('Quản trị viên')}</h4>
+              <span className="admin-name">{activeAdminName}</span>
             </div>
           )}
 

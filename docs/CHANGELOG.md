@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-13 - Thu gon thao tac thong tin nhom
+
+- Thoi gian: 2026-08-23 15:53 (Asia/Saigon)
+- Loai: Sua loi | Web | UI | Kiem thu
+- Trang thai: Dang cho deploy production
+- Muc tieu: Trinh bay cac thao tac nhom gon theo hang icon va bo dong hien thi so thanh vien dang hoat dong trung lap trong panel chi tiet.
+- Pham vi: Chi panel thong tin nhom trong ChatUI; giu nguyen handler, API, quyen member/admin, mute, pin va them thanh vien.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Dua hang `Tat thong bao`, `Ghim hoi thoai`, `Them thanh vien` va `Quan ly nhom` len ngay duoi ten nhom, truoc muc `Quan tri vien`; chuyen sang luoi icon ngang gon, tu co gian theo so thao tac va van ho tro dark theme/mobile. Xoa rieng dong presence `x thanh vien - y dang online` khoi panel chi tiet; label presence tren tieu de chat va phan danh sach thanh vien van giu nguyen.
+- Quyet dinh ky thuat: Chi thay doi thu tu JSX va CSS presentation; khong doi state, callback, endpoint, phan quyen, Tinode hay du lieu.
+- Database/API/cau hinh: Khong co migration, endpoint, bien moi truong, secret hoac thay doi quyen.
+- Kiem thu: `npm run test:frontend` dat 151/151; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `python -m unittest discover -s chatservice-main/tests -q` dat 178 test, skip 60 theo moi truong; `git diff --check` dat.
+- Rui ro con lai: Chua deploy/UAT production; can hard refresh va kiem tra panel group bang member thuong va admin o light/dark/mobile.
+- Viec tiep theo: Commit, push, deploy rieng `chat`, health check va cap nhat ket qua release; khong migration.
+- Commit/PR: Chua tao.
+
 ## 2026-08-23-12 - Biet danh rieng trong chat 1-1
 
 - Thoi gian: 2026-08-23 15:29 (Asia/Saigon)
