@@ -8,9 +8,9 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-23-11 - Tim kiem lich su hoi thoai server-side
 
-- Thoi gian: 2026-08-23 14:45 (Asia/Saigon)
+- Thoi gian: 2026-08-23 14:56 (Asia/Saigon)
 - Loai: Tinh nang | Bao mat | Web | API | Kiem thu | Tai lieu
-- Trang thai: Dang thuc hien
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Tim duoc toan bo lich su Tinode theo noi dung, nguoi gui, ngay va loai file ma khong lam thay doi luong chat hien tai.
 - Pham vi: ChatUI panel tim kiem, Chatmgt-Tinode bridge, bo loc group settings; khong thay doi schema, tin nhan thuong, sticker, reaction, mute, tenant switch, membership hay Workspace.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/groupSettings.js`, `src/features/chat/services/groupSettings.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `chatservice-main/application/services/auth_service.py`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `chatservice-main/tests/test_tinode_bridge_service.py`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
@@ -18,9 +18,11 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Tinode van la nguon message chuan; filter ngay khong co timezone duoc hieu theo `Asia/Ho_Chi_Minh` va chuyen sang UTC khi so sanh. Internal reaction/recall/friend/system event khong xuat hien nhu message search thong thuong. Cursor va gioi han quet 20.000 message moi request giu an toan tai nguyen; nut tai them cho history lon hon.
 - Database/API/cau hinh: Them API search, khong migration, khong bien moi truong moi, khong secret/token/cookie nao duoc ghi vao log hoac tai lieu.
 - Kiem thu: `python -m py_compile ...` dat; `python -m unittest discover -s chatservice-main/tests -q` dat 177 test, skip 60 theo moi truong; `npm run test:frontend` dat 148/148; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-DYUUJOKJ.js`, `App-C5njMDz2.js`, CSS `index-DPqn1q3B.css`; `git diff --check` dat.
-- Rui ro con lai: Chua chay deploy/health production va chua UAT bang hai tai khoan that; history lon hon 20.000 message can bam tai them. Can theo doi thoi gian phan hoi Tinode khi hoi thoai rat lon.
-- Viec tiep theo: Commit, push, build/recreate rieng `chat` va `chatmgt`, kiem tra health/public asset, sau do UAT tim theo sender/date/file va bo group settings.
-- Commit/PR: Chua tao.
+- Rui ro con lai: Chua UAT bang hai tai khoan that; history lon hon 20.000 message can bam tai them va can theo doi thoi gian phan hoi Tinode khi hoi thoai rat lon.
+- Viec tiep theo: UAT production tim theo sender/date/file, tai file trong ket qua va xac nhan ba muc group-management da bi loai bo; neu can rollback, tro `current` ve `previous` va recreate rieng `chat`/`chatmgt` tu image rollback, khong xoa volume/database.
+- Trien khai: Commit `266bde1` da push `origin/master`; release `/opt/deploy/chat/releases/266bde1-20260823-1450`; `current` tro release moi, `previous` tro `/opt/deploy/chat/releases/6eef973-20260823-1127`; chi recreate `chat` va `chatmgt`, khong migration/reset volume/database, Tinode/bridge/webhook/ChatAPI/PostgreSQL/Redis/Coturn giu nguyen. Image `chat` `sha256:19553b4e503db1132e199897025462f3275837da663b3617463802ffd31b744e`, image `chatmgt` `sha256:1cd7ce8d94374fde87986ca2f310c6f5d5fda448efdd716a4d691e6c7713752a`; rollback candidate tags da giu tren server.
+- Kiem tra production: Hai container `healthy`; `http://127.0.0.1:8094/healthz`, Chatmgt `/api/v1/auth/health` noi bo va hai public health endpoint tra `status: ok`; bundle JS/CSS moi tra HTTP 200; `sudo -n nginx -t` thanh cong; log 15 phut sau restart khong co `fatal`, `panic`, `traceback`, `critical`, `emerg` hoac `uncaught`.
+- Commit/PR: `266bde1`; follow-up nay la commit tai lieu xac nhan deploy.
 
 ## 2026-08-23-10 - Don dep workspace Explorer
 
