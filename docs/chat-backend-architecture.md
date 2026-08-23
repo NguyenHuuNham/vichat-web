@@ -136,6 +136,21 @@ results, and the group mention/composer picker. Nicknames are never written to
 Tinode, broadcast in realtime profile events, or included in another viewer's
 response.
 
+Conversation backgrounds follow a separate scope because they are presentation
+preferences rather than message content. For groups, ChatUI stores the selected
+preset metadata in viewer/tenant/conversation-scoped `localStorage` and stores a
+custom image blob in viewer/tenant/conversation-scoped IndexedDB; it never
+writes that preference to Tinode, so another group member cannot inherit it.
+For direct conversations, ChatUI uploads custom images through the authenticated
+Tinode media relay, stores the latest normalized background as a JSON value in
+the P2P topic's `aux.x-vichat-conversation-background` metadata, and publishes a
+`conversation_background_changed` system event. P2P public metadata remains
+reserved for the user profile. Both participants therefore restore the same
+background after reload and receive the actor notification.
+The message list renders a contrast overlay above the background so message
+bubbles remain readable. No Chatmgt schema, message copy, or migration is
+required.
+
 Tinode media URLs from the central host are normalized to the authenticated
 `chat.upgo.vn/tinode-media` relay. The native client downloads protected message
 and avatar images with its short-lived Tinode token into the OS cache and passes

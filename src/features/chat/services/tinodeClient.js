@@ -19,6 +19,10 @@ import {
 } from './callSignaling';
 import { attachmentConversationPreview } from './messagePreview';
 import { normalizeGroupSettings } from './groupSettings';
+import {
+  latestSharedConversationBackground,
+  normalizeConversationBackground,
+} from './conversationBackground';
 import { fetchProtectedMediaWithRetry } from './mediaRetryPolicy';
 import {
   applyRecallToMessage,
@@ -64,6 +68,8 @@ const userProfileCache = new Map();
 const userProfileRequests = new Map();
 const userProfilesLoaded = new Set();
 const topicSubscriptionRequests = new Map();
+const conversationBackgroundAuxRequests = new Map();
+const conversationBackgroundAuxTopics = new Set();
 const fullHistoryRequests = new Map();
 const fullHistoryTopics = new Set();
 const groupPermissionMigrationRequests = new Map();
@@ -81,6 +87,8 @@ const FRIEND_EVENT_PREFIX = '__SONGHONG_FRIEND_EVENT__:';
 const REACTION_EVENT_PREFIX = '__VICHAT_REACTION_EVENT__:';
 const RECALL_EVENT_PREFIX = '__VICHAT_RECALL_EVENT__:';
 const STICKER_HEAD = 'x-vichat-sticker';
+const CONVERSATION_BACKGROUND_AUX_KEY = 'x-vichat-conversation-background';
+const TINODE_DELETE_CHAR = Tinode?.DEL_CHAR || '\u2421';
 const MEDIA_PROXY_PREFIX = '/tinode-media';
 // Keep room for Tinode's restricted auth/email/tel tags (server maximum is 16).
 const MAX_DISCOVERY_TAGS = 13;
@@ -463,6 +471,18 @@ function avatarFromTopic(topic) {
   return normalizeAvatar(topic?.public?.photo || topic?.public?.avatar);
 }
 
+function conversationBackgroundFromAux(topic) {
+  if (!topic?.isP2PType?.() || typeof topic.aux !== 'function') return undefined;
+  const raw = topic.aux(CONVERSATION_BACKGROUND_AUX_KEY);
+  if (raw === undefined) return undefined;
+  if (raw === TINODE_DELETE_CHAR || raw === null || raw === '') return null;
+  try {
+    return normalizeConversationBackground(JSON.parse(String(raw)));
+  } catch {
+    return undefined;
+  }
+}
+
 function formatSystemEvent(event, viewerId) {
   const actorName = event.actorName || event.actorId || 'Một thành viên';
   const targets = event.targets || [];
@@ -494,6 +514,12 @@ function formatSystemEvent(event, viewerId) {
   }
   if (event.action === 'group_dissolved') {
     return event.actorId === viewerId ? 'Bạn đã giải tán nhóm' : `${actorName} đã giải tán nhóm`;
+  }
+  if (event.action === 'conversation_background_changed') {
+    const actorText = event.actorId === viewerId ? 'Bạn đã' : `${actorName} đã`;
+    return event.backgroundUrl
+      ? `${actorText} đổi hình nền cuộc trò chuyện`
+      : `${actorText} xóa hình nền cuộc trò chuyện`;
   }
   return event.text || 'Hoạt động nhóm';
 }
@@ -845,6 +871,16 @@ function toConversation(topic, tinode) {
   const directPeer = !isGroup
     ? members.find(member => member.id !== tinode.getCurrentUserID()) || members[0]
     : null;
+  const latestBackground = !isGroup
+    ? latestSharedConversationBackground({ messages })
+    : undefined;
+  const auxBackground = !isGroup ? conversationBackgroundFromAux(topic) : undefined;
+  const rawConversationBackground = auxBackground !== undefined
+    ? auxBackground
+    : latestBackground;
+  const conversationBackground = rawConversationBackground
+    ? { ...rawConversationBackground, url: normalizeAvatar(rawConversationBackground.url) }
+    : rawConversationBackground;
 
   return {
     id: topic.name,
@@ -866,6 +902,7 @@ function toConversation(topic, tinode) {
     lastMsg: attachmentConversationPreview(latestMapped) || latestMapped?.text || '',
     time: latestMapped?.time || '',
     updatedAt: latestMapped?.createdAt || (topic.touched ? new Date(topic.touched).toISOString() : undefined),
+    ...(conversationBackground !== undefined ? { conversationBackground } : {}),
     badge: messages.length > 0 ? Math.max(0, topic.unread || ((topic.seq || 0) - (topic.read || 0))) : 0,
     deletedAt,
     topic,
@@ -1048,6 +1085,7 @@ function wireTopic(topic) {
   topic.onMetaDesc = () => emitConversation(topic, topicClient);
   topic.onMetaSub = () => emitConversation(topic, topicClient);
   topic.onSubsUpdated = () => emitConversation(topic, topicClient);
+  topic.onAuxUpdated = () => emitConversation(topic, topicClient);
   topic.onPres = presence => {
     if (presence?.src && (presence.what === 'on' || presence.what === 'off')) {
       emitPresence(presence.src, presence.what === 'on');
@@ -1181,6 +1219,7 @@ async function subscribeTopic(topicName, { historyLimit = BACKGROUND_HISTORY_LIM
         const queryBuilder = topic.startMetaQuery()
           .withDesc()
           .withSub();
+        if (topic.isP2PType?.()) queryBuilder.withAux();
         if (historyLimit > 0) {
           if (newerOnly) {
             queryBuilder.withLaterData(historyLimit).withLaterDel(historyLimit);
@@ -1190,11 +1229,25 @@ async function subscribeTopic(topicName, { historyLimit = BACKGROUND_HISTORY_LIM
         }
         const query = queryBuilder.build();
         await topic.subscribe(query);
+        if (topic.isP2PType?.()) conversationBackgroundAuxTopics.add(topicName);
         if (!newerOnly && historyLimit >= 1000) fullHistoryTopics.add(topicName);
       })().finally(() => topicSubscriptionRequests.delete(topicName));
       topicSubscriptionRequests.set(topicName, request);
     }
     await topicSubscriptionRequests.get(topicName);
+  }
+
+  if (topic.isP2PType?.() && !conversationBackgroundAuxTopics.has(topicName)) {
+    if (!conversationBackgroundAuxRequests.has(topicName)) {
+      const request = topic
+        .getMeta(topic.startMetaQuery().withAux().build())
+        .then(() => {
+          conversationBackgroundAuxTopics.add(topicName);
+        })
+        .finally(() => conversationBackgroundAuxRequests.delete(topicName));
+      conversationBackgroundAuxRequests.set(topicName, request);
+    }
+    await conversationBackgroundAuxRequests.get(topicName);
   }
 
   // Existing owners migrate legacy public groups once per session. A failed
@@ -1263,6 +1316,8 @@ function resetSessionState({ clearEventListeners = false } = {}) {
   userProfileRequests.clear();
   userProfilesLoaded.clear();
   topicSubscriptionRequests.clear();
+  conversationBackgroundAuxRequests.clear();
+  conversationBackgroundAuxTopics.clear();
   fullHistoryRequests.clear();
   fullHistoryTopics.clear();
   groupPermissionMigrationRequests.clear();
@@ -1922,6 +1977,50 @@ export const tinodeClient = {
   async sendSystemEvent(topicName, event) {
     const topic = await subscribeTopic(topicName);
     return topic.publish(`${SYSTEM_EVENT_PREFIX}${JSON.stringify(event)}`);
+  },
+
+  async updateDirectConversationBackground(topicName, background = null) {
+    if (!topicName) throw new Error('Cuộc trò chuyện chưa có topic Tinode.');
+    const topic = await subscribeTopic(topicName, { historyLimit: OPEN_HISTORY_LIMIT });
+    const normalized = background ? normalizeConversationBackground(background) : null;
+    if (background && !normalized) throw new Error('Hình nền cuộc trò chuyện không hợp lệ.');
+    const actorId = getClient().getCurrentUserID();
+    const actorName = currentSession?.profile?.name || '';
+    const event = {
+      action: 'conversation_background_changed',
+      actorId,
+      actorName,
+      backgroundId: normalized?.id || '',
+      backgroundUrl: normalized?.url || '',
+      backgroundLabel: normalized?.label || '',
+      backgroundKind: normalized?.kind || '',
+      updatedAt: new Date().toISOString(),
+    };
+    // P2P public metadata is reserved for the user profile. Store the shared
+    // presentation preference in aux so both subscribers can read it safely.
+    const auxValue = normalized
+      ? JSON.stringify({
+        ...normalized,
+        url: tinodeMediaPath(normalized.url) || normalized.url,
+      })
+      : TINODE_DELETE_CHAR;
+    await topic.setMeta({ aux: { [CONVERSATION_BACKGROUND_AUX_KEY]: auxValue } });
+    const draft = topic.createMessage(`${SYSTEM_EVENT_PREFIX}${JSON.stringify(event)}`, false);
+    draft.head = {
+      ...(draft.head || {}),
+      'x-client-id': `web-background-${Date.now()}`,
+      'x-sender-id': actorId,
+    };
+    const result = await topic.publishMessage(draft);
+    if (!result) throw new Error('Tinode không xác nhận thay đổi hình nền.');
+    emitConversation(topic);
+    return normalized;
+  },
+
+  async uploadConversationBackground(topicName, file) {
+    if (!topicName || !file) throw new Error('Thiếu ảnh hình nền hoặc cuộc trò chuyện.');
+    const topic = await subscribeTopic(topicName, { historyLimit: 0 });
+    return uploadFile(getClient(), file, topic.name);
   },
 
   async sendFriendRequest(uid, note = '') {

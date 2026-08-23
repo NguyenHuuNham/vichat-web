@@ -130,6 +130,18 @@ import {
   groupSettingEnabled,
   normalizeGroupSettings,
 } from '../features/chat/services/groupSettings';
+import {
+  CONVERSATION_BACKGROUND_PRESETS,
+  clearConversationBackground,
+  normalizeConversationBackground,
+  conversationBackgroundStorageKey,
+  deleteConversationBackgroundFile,
+  readConversationBackground,
+  readConversationBackgroundFile,
+  validateConversationBackgroundFile,
+  writeConversationBackground,
+  writeConversationBackgroundFile,
+} from '../features/chat/services/conversationBackground';
 
 const CALLS_ENABLED = resolveCallsEnabled(import.meta.env.VITE_CALLS_ENABLED);
 
@@ -734,6 +746,12 @@ function personalizeGroupSystemText(message, accounts, viewerId) {
       ? 'Bạn đã giải tán nhóm'
       : `${actorName} đã giải tán nhóm`;
   }
+  if (message.action === 'conversation_background_changed') {
+    const actorText = message.senderId === viewerId ? 'Bạn đã' : `${actorName} đã`;
+    return message.backgroundUrl || message.systemEvent?.backgroundUrl
+      ? `${actorText} đổi hình nền cuộc trò chuyện`
+      : `${actorText} xóa hình nền cuộc trò chuyện`;
+  }
   return message.text;
 }
 
@@ -1234,6 +1252,9 @@ function mergeTinodeConversation(existing, incoming) {
     groupSettings: managementOwned && !incomingManagementSnapshot
       ? safeExisting.groupSettings
       : (safeIncoming.groupSettings || safeExisting.groupSettings),
+    conversationBackground: safeIncoming.conversationBackground !== undefined
+      ? safeIncoming.conversationBackground
+      : safeExisting.conversationBackground,
     members,
     participantIds: incomingManagementSnapshot ? safeIncoming.participantIds : safeExisting.participantIds,
     messages,
@@ -1511,6 +1532,44 @@ function ConversationAvatar({ room }) {
   return <span>{room?.name?.trim?.().slice(0, 1).toUpperCase() || '?'}</span>;
 }
 
+function ConversationBackgroundLayer({ background }) {
+  const [resolvedSource, setResolvedSource] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl = '';
+    setResolvedSource('');
+    if (!background?.url) return () => { active = false; };
+
+    if (background.blob && typeof URL !== 'undefined' && URL.createObjectURL) {
+      objectUrl = URL.createObjectURL(background.blob);
+      setResolvedSource(objectUrl);
+      return () => {
+        active = false;
+        URL.revokeObjectURL(objectUrl);
+      };
+    }
+
+    tinodeClient.resolveMediaUrl(background.url)
+      .then(url => {
+        if (active) setResolvedSource(url || '');
+      })
+      .catch(() => {
+        if (active) setResolvedSource('');
+      });
+    return () => { active = false; };
+  }, [background?.url, background?.blob]);
+
+  if (!resolvedSource) return null;
+  return (
+    <div
+      className="conversation-background-layer"
+      aria-hidden="true"
+      style={{ backgroundImage: `url("${resolvedSource.replaceAll('"', '\\"')}")` }}
+    />
+  );
+}
+
 function unreadMessageCount(messages, readBy, viewerId) {
   const lastReadAt = Date.parse(readBy?.[viewerId] || '') || 0;
   const safeMessages = Array.isArray(messages) ? messages : [];
@@ -1723,6 +1782,11 @@ function App() {
   const [isUpdatingGroupManagement, setIsUpdatingGroupManagement] = useState(false);
   const [isDissolvingGroup, setIsDissolvingGroup] = useState(false);
   const [groupManagementNotice, setGroupManagementNotice] = useState('');
+  const [isConversationBackgroundOpen, setIsConversationBackgroundOpen] = useState(false);
+  const [conversationBackgroundSelection, setConversationBackgroundSelection] = useState(null);
+  const [conversationBackgrounds, setConversationBackgrounds] = useState({});
+  const [isSavingConversationBackground, setIsSavingConversationBackground] = useState(false);
+  const [conversationBackgroundNotice, setConversationBackgroundNotice] = useState('');
   const [isGroupRenameOpen, setIsGroupRenameOpen] = useState(false);
   const [groupRenameValue, setGroupRenameValue] = useState('');
   const [isRenamingGroup, setIsRenamingGroup] = useState(false);
@@ -1876,6 +1940,7 @@ function App() {
   const notificationAudioContextRef = useRef(null);
   const notificationCustomAudioRef = useRef(null);
   const notificationSoundFileInputRef = useRef(null);
+  const conversationBackgroundFileInputRef = useRef(null);
   const notificationOpenHandlerRef = useRef(null);
   const contactsSyncTimerRef = useRef(null);
   const contactsSyncRequestRef = useRef(0);
@@ -2424,6 +2489,79 @@ function App() {
     setConversationCategories(managementViewerId ? readConversationCategories(managementViewerId) : {});
     setConversationCategoryMenuOpen(false);
   }, [managementViewerId]);
+
+  const conversationBackgroundViewerId = managementViewerId || viewerId || '';
+  const conversationBackgroundTenantId = String(
+    currentUser?.tenantId
+      || currentUser?.tenant_id
+      || currentUser?.tenant?.id
+      || 'default',
+  );
+  const activeBackgroundConversationId = String(activeChat.managementId || activeChat.id || '');
+  const activeBackgroundStateKey = conversationBackgroundStorageKey(
+    conversationBackgroundViewerId,
+    conversationBackgroundTenantId,
+    activeBackgroundConversationId,
+  );
+  const hasLoadedActiveBackground = Object.prototype.hasOwnProperty.call(
+    conversationBackgrounds,
+    activeBackgroundStateKey,
+  );
+  const activeConversationBackground = hasLoadedActiveBackground
+    ? conversationBackgrounds[activeBackgroundStateKey]
+    : (!activeChat.isGroup && activeChat.conversationBackground !== undefined
+      ? activeChat.conversationBackground
+      : null);
+
+  useEffect(() => {
+    setConversationBackgrounds({});
+    setIsConversationBackgroundOpen(false);
+    setConversationBackgroundSelection(null);
+  }, [conversationBackgroundViewerId, conversationBackgroundTenantId]);
+
+  useEffect(() => {
+    if (!conversationBackgroundViewerId || !activeBackgroundConversationId || activeChat.id === 'empty') return undefined;
+    let active = true;
+    const shared = !activeChat.isGroup ? activeChat.conversationBackground : undefined;
+    const local = readConversationBackground(
+      conversationBackgroundViewerId,
+      conversationBackgroundTenantId,
+      activeBackgroundConversationId,
+    );
+    const source = !activeChat.isGroup && shared !== undefined ? shared : local;
+    if (!source) {
+      setConversationBackgrounds(previous => ({ ...previous, [activeBackgroundStateKey]: null }));
+      return () => { active = false; };
+    }
+    if (!source.customKey) {
+      setConversationBackgrounds(previous => ({ ...previous, [activeBackgroundStateKey]: source }));
+      return () => { active = false; };
+    }
+    readConversationBackgroundFile(
+      conversationBackgroundViewerId,
+      conversationBackgroundTenantId,
+      activeBackgroundConversationId,
+    )
+      .then(fileRecord => {
+        if (!active) return;
+        setConversationBackgrounds(previous => ({
+          ...previous,
+          [activeBackgroundStateKey]: fileRecord || source,
+        }));
+      })
+      .catch(() => {
+        if (active) setConversationBackgrounds(previous => ({ ...previous, [activeBackgroundStateKey]: source }));
+      });
+    return () => { active = false; };
+  }, [
+    conversationBackgroundViewerId,
+    conversationBackgroundTenantId,
+    activeBackgroundConversationId,
+    activeBackgroundStateKey,
+    activeChat.id,
+    activeChat.isGroup,
+    activeChat.conversationBackground,
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -5355,6 +5493,161 @@ function App() {
     if (updated) setNotificationMuteDialog(null);
   };
 
+  const patchActiveConversationBackground = nextBackground => {
+    setConversationBackgrounds(previous => ({
+      ...previous,
+      [activeBackgroundStateKey]: nextBackground,
+    }));
+    setConversations(previous => {
+      const currentRoom = previous[activeChat.id] === null || previous[activeChat.id] === undefined
+        ? null
+        : safeNormalizeConversationForRender(previous[activeChat.id], activeChat.id);
+      if (!currentRoom) return previous;
+      const next = {
+        ...previous,
+        [activeChat.id]: { ...currentRoom, conversationBackground: nextBackground },
+      };
+      conversationsRef.current = next;
+      return next;
+    });
+  };
+
+  const openConversationBackgroundPicker = () => {
+    if (!activeChat || activeChat.id === 'empty' || activeChat.isChatbot) return;
+    setConversationBackgroundSelection(activeConversationBackground || null);
+    setConversationBackgroundNotice('');
+    setIsConversationBackgroundOpen(true);
+  };
+
+  const selectConversationBackgroundPreset = preset => {
+    const normalized = normalizeConversationBackground({ ...preset, kind: 'preset' });
+    setConversationBackgroundSelection(normalized);
+    setConversationBackgroundNotice('');
+  };
+
+  const clearConversationBackgroundSelection = () => {
+    setConversationBackgroundSelection(null);
+    setConversationBackgroundNotice('');
+  };
+
+  const handleConversationBackgroundFileChange = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const validationError = validateConversationBackgroundFile(file, {
+      localOnly: activeChat.isGroup || chatMode === 'demo',
+    });
+    if (validationError) {
+      setConversationBackgroundNotice(validationError);
+      return;
+    }
+    try {
+      const previewUrl = await readFileAsDataUrl(file);
+      setConversationBackgroundSelection({
+        id: 'custom',
+        url: previewUrl,
+        label: file.name || 'Ảnh tải lên',
+        kind: 'custom',
+        file,
+      });
+      setConversationBackgroundNotice('');
+    } catch (error) {
+      setConversationBackgroundNotice(error?.message || 'Không thể đọc ảnh hình nền.');
+    }
+  };
+
+  const handleConversationBackgroundApply = async event => {
+    event.preventDefault();
+    if (isSavingConversationBackground || !activeChat || activeChat.id === 'empty' || activeChat.isChatbot) return;
+    const selected = conversationBackgroundSelection;
+    setIsSavingConversationBackground(true);
+    setConversationBackgroundNotice('');
+    setChatError('');
+    try {
+      let nextBackground = selected ? normalizeConversationBackground(selected) : null;
+      const previousBackground = activeConversationBackground;
+      if (activeChat.isGroup || chatMode === 'demo') {
+        if (activeChat.isGroup && selected?.file) {
+          const fileRecord = await writeConversationBackgroundFile(
+            conversationBackgroundViewerId,
+            conversationBackgroundTenantId,
+            activeBackgroundConversationId,
+            selected.file,
+          );
+          nextBackground = fileRecord;
+        }
+        if (previousBackground?.customKey && previousBackground.customKey !== nextBackground?.customKey) {
+          await deleteConversationBackgroundFile(
+            conversationBackgroundViewerId,
+            conversationBackgroundTenantId,
+            activeBackgroundConversationId,
+          ).catch(() => {});
+        }
+        if (nextBackground) {
+          writeConversationBackground(
+            conversationBackgroundViewerId,
+            conversationBackgroundTenantId,
+            activeBackgroundConversationId,
+            nextBackground,
+          );
+        } else {
+          clearConversationBackground(
+            conversationBackgroundViewerId,
+            conversationBackgroundTenantId,
+            activeBackgroundConversationId,
+          );
+        }
+        if (!activeChat.isGroup) {
+          const systemMessage = {
+            id: `system-background-${Date.now()}`,
+            type: 'system',
+            action: 'conversation_background_changed',
+            senderId: viewerId,
+            senderName: currentUser?.name || 'Bạn',
+            backgroundId: nextBackground?.id || '',
+            backgroundUrl: nextBackground?.url || '',
+            backgroundLabel: nextBackground?.label || '',
+            backgroundKind: nextBackground?.kind || '',
+            text: nextBackground ? 'Bạn đã đổi hình nền cuộc trò chuyện' : 'Bạn đã xóa hình nền cuộc trò chuyện',
+            time: getTimeString(),
+            createdAt: new Date().toISOString(),
+          };
+          const updatedDirect = appendDemoDirectMessage(activeChat.id, systemMessage);
+          const nextRoom = demoDirectToConversation(updatedDirect, directoryAccounts, managementViewerId);
+          setConversations(previous => {
+            const next = { ...previous, [activeChat.id]: nextRoom };
+            conversationsRef.current = next;
+            return next;
+          });
+        }
+      } else {
+        if (realtimeMessagingPending) throw new Error('Kết nối realtime Tinode chưa sẵn sàng.');
+        const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
+        if (selected?.file) {
+          const uploadedUrl = await tinodeClient.uploadConversationBackground(topicName, selected.file);
+          nextBackground = normalizeConversationBackground({
+            id: 'custom',
+            url: normalizeTinodeMediaUrl(uploadedUrl),
+            label: selected.file.name || 'Ảnh tải lên',
+            kind: 'custom',
+          });
+        }
+        nextBackground = await tinodeClient.updateDirectConversationBackground(topicName, nextBackground);
+        if (nextBackground?.url) nextBackground = {
+          ...nextBackground,
+          url: normalizeTinodeMediaUrl(nextBackground.url),
+        };
+      }
+      patchActiveConversationBackground(nextBackground);
+      setConversationBackgroundSelection(nextBackground);
+      setIsConversationBackgroundOpen(false);
+    } catch (error) {
+      setConversationBackgroundNotice(error?.message || 'Không thể cập nhật hình nền cuộc trò chuyện.');
+    } finally {
+      setIsSavingConversationBackground(false);
+    }
+  };
+
   const handleCreateGroup = async (event) => {
     event.preventDefault();
     const name = groupName.trim();
@@ -7655,6 +7948,17 @@ function App() {
               <button className="btn-header-action" title={appCopy.t('Tìm kiếm')} onClick={() => openWorkspacePanel('search')}>
                 <i className="fa-solid fa-magnifying-glass"></i>
               </button>
+              {!activeChat.isChatbot && activeChat.id !== 'empty' && (
+                <button
+                  type="button"
+                  className={`btn-header-action ${activeConversationBackground ? 'active' : ''}`}
+                  title={appCopy.t('Đổi hình nền')}
+                  aria-label={appCopy.t('Đổi hình nền')}
+                  onClick={openConversationBackgroundPicker}
+                >
+                  <i className="fa-solid fa-image"></i>
+                </button>
+              )}
               {CALLS_ENABLED && (
                 <>
                   <button
@@ -7764,7 +8068,8 @@ function App() {
           scope="active conversation"
           fallback={<div className="chat-messages conversation-render-error" role="alert">Conversation data could not be displayed.</div>}
         >
-          <div className={`chat-messages ${activeChat.isChatbot ? 'chatbot-messages' : ''}`}>
+          <div className={`chat-messages ${activeChat.isChatbot ? 'chatbot-messages' : ''} ${activeConversationBackground ? 'has-conversation-background' : ''}`}>
+          <ConversationBackgroundLayer background={activeConversationBackground} />
           {!hasDatedMessages && (
             <div className="date-divider"><span>{appCopy.t(currentChatId === 'dieu-hanh' ? 'Hôm nay' : 'Hội thoại trực tuyến')}</span></div>
           )}
@@ -7778,7 +8083,7 @@ function App() {
                 <React.Fragment key={msg.id}>
                   {showDateDivider && <div className="date-divider"><span>{dateLabel}</span></div>}
                   <div className="group-system-message">
-                    <i className={`fa-solid ${msg.action === 'member_left' ? 'fa-arrow-right-from-bracket' : msg.action === 'member_removed' ? 'fa-user-minus' : msg.action === 'group_created' ? 'fa-people-group' : ['message_pinned', 'message_unpinned'].includes(msg.action) ? 'fa-thumbtack' : msg.action === 'group_dissolved' ? 'fa-triangle-exclamation' : 'fa-user-plus'}`}></i>
+                    <i className={`fa-solid ${msg.action === 'member_left' ? 'fa-arrow-right-from-bracket' : msg.action === 'member_removed' ? 'fa-user-minus' : msg.action === 'group_created' ? 'fa-people-group' : ['message_pinned', 'message_unpinned'].includes(msg.action) ? 'fa-thumbtack' : msg.action === 'conversation_background_changed' ? 'fa-image' : msg.action === 'group_dissolved' ? 'fa-triangle-exclamation' : 'fa-user-plus'}`}></i>
                     <span>{localizedSystemText(msg, appCopy, directoryAccounts, viewerId)}</span>
                     <time>{formatMessageTime(msg, msg.time, appCopy.locale)}</time>
                   </div>
@@ -9415,6 +9720,112 @@ function App() {
               </div>
             )}
           </section>
+        </div>
+      )}
+
+      {isConversationBackgroundOpen && (
+        <div
+          className="modal-backdrop conversation-background-backdrop"
+          role="presentation"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget && !isSavingConversationBackground) setIsConversationBackgroundOpen(false);
+          }}
+        >
+          <form
+            className="group-modal conversation-background-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="conversation-background-title"
+            onSubmit={handleConversationBackgroundApply}
+            onMouseDown={event => event.stopPropagation()}
+          >
+            <div className="group-modal-header conversation-background-header">
+              <div>
+                <span className="group-modal-kicker">{appCopy.t('TÙY CHỈNH HỘI THOẠI')}</span>
+                <h2 id="conversation-background-title">{appCopy.t('Đổi hình nền')}</h2>
+              </div>
+              <button
+                type="button"
+                className="btn-close-detail"
+                onClick={() => setIsConversationBackgroundOpen(false)}
+                aria-label={appCopy.t('Đóng')}
+                disabled={isSavingConversationBackground}
+              >
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <p className="conversation-background-intro">
+              <i className="fa-solid fa-shield-halved"></i>
+              <span>{appCopy.t(activeChat.isGroup
+                ? 'Hình nền nhóm chỉ hiển thị riêng với bạn.'
+                : 'Hình nền chat 1-1 sẽ được đồng bộ cho cả hai người và hiển thị thông báo.')}</span>
+            </p>
+
+            <div className="conversation-background-grid" role="listbox" aria-label={appCopy.t('Hình nền có sẵn')}>
+              <button
+                type="button"
+                className={`conversation-background-tile default ${!conversationBackgroundSelection ? 'selected' : ''}`}
+                onClick={clearConversationBackgroundSelection}
+                role="option"
+                aria-selected={!conversationBackgroundSelection}
+              >
+                <span className="conversation-background-preview default-preview"><i className="fa-solid fa-ban"></i></span>
+                <span>{appCopy.t('Mặc định')}</span>
+              </button>
+              {CONVERSATION_BACKGROUND_PRESETS.map(preset => (
+                <button
+                  type="button"
+                  className={`conversation-background-tile ${conversationBackgroundSelection?.id === preset.id ? 'selected' : ''}`}
+                  key={preset.id}
+                  onClick={() => selectConversationBackgroundPreset(preset)}
+                  role="option"
+                  aria-selected={conversationBackgroundSelection?.id === preset.id}
+                >
+                  <span className="conversation-background-preview" style={{ backgroundImage: `url("${preset.url}")` }}></span>
+                  <span>{appCopy.t(preset.label)}</span>
+                  {conversationBackgroundSelection?.id === preset.id && <i className="conversation-background-check fa-solid fa-check"></i>}
+                </button>
+              ))}
+            </div>
+
+            <div className={`conversation-background-upload ${conversationBackgroundSelection?.kind === 'custom' ? 'selected' : ''}`}>
+              <div className="conversation-background-upload-preview">
+                {conversationBackgroundSelection?.kind === 'custom' && conversationBackgroundSelection.url && !conversationBackgroundSelection.url.startsWith('indexeddb://') ? (
+                  <img src={conversationBackgroundSelection.url} alt="" />
+                ) : (
+                  <i className="fa-solid fa-image"></i>
+                )}
+              </div>
+              <div className="conversation-background-upload-copy">
+                <strong>{appCopy.t('Ảnh từ máy tính')}</strong>
+                <small>{appCopy.t(activeChat.isGroup ? 'Tối đa 2 MB · chỉ lưu trên thiết bị này' : 'Tối đa 8 MB · ảnh sẽ được gửi tới cuộc trò chuyện 1-1')}</small>
+                {conversationBackgroundSelection?.kind === 'custom' && <span>{conversationBackgroundSelection.label}</span>}
+              </div>
+              <label className="conversation-background-upload-button">
+                <i className="fa-solid fa-upload"></i>{appCopy.t('Tải ảnh lên')}
+                <input
+                  ref={conversationBackgroundFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleConversationBackgroundFileChange}
+                  disabled={isSavingConversationBackground}
+                />
+              </label>
+            </div>
+            {conversationBackgroundNotice && <div className="conversation-background-notice" role="alert"><i className="fa-solid fa-circle-info"></i><span>{appCopy.t(conversationBackgroundNotice)}</span></div>}
+
+            <div className="group-modal-footer conversation-background-footer">
+              <span className="conversation-background-source-note"><i className="fa-solid fa-circle-check"></i>{appCopy.t('Preset dùng ảnh Unsplash có nguồn công khai.')}</span>
+              <div className="group-modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setIsConversationBackgroundOpen(false)} disabled={isSavingConversationBackground}>{appCopy.t('Hủy')}</button>
+                <button type="submit" className="btn-primary" disabled={isSavingConversationBackground}>
+                  {isSavingConversationBackground ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-check"></i>}
+                  {isSavingConversationBackground ? appCopy.t('Đang áp dụng...') : appCopy.t('Áp dụng')}
+                </button>
+              </div>
+            </div>
+          </form>
         </div>
       )}
 

@@ -1,4 +1,5 @@
 import { normalizeGroupSettings } from './groupSettings.js';
+import { normalizeConversationBackground } from './conversationBackground.js';
 
 export const TINODE_CONTACT_SYNC_DELAYS_MS = Object.freeze([120, 600, 1800]);
 
@@ -293,6 +294,11 @@ export function normalizeConversationShape(conversation) {
     ? source.notificationMutedUntil
     : undefined;
   const badge = Number(source.badge);
+  const hasConversationBackground = Object.prototype.hasOwnProperty.call(source, 'conversationBackground')
+    || Object.prototype.hasOwnProperty.call(source, 'conversation_background');
+  const conversationBackground = hasConversationBackground
+    ? normalizeConversationBackground(source.conversationBackground || source.conversation_background)
+    : undefined;
 
   return {
     ...source,
@@ -321,6 +327,7 @@ export function normalizeConversationShape(conversation) {
     lastMsg: conversationText(source.lastMsg),
     time: conversationText(source.time),
     updatedAt: conversationText(source.updatedAt),
+    ...(hasConversationBackground ? { conversationBackground } : {}),
     deletedAt: conversationText(source.deletedAt),
     category: conversationText(source.category),
     notificationMutedUntil: mutedUntil,

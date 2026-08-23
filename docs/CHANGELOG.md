@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-20 - Hinh nen rieng cho nhom va dong bo cho chat 1-1
+
+- Thoi gian: 2026-08-23 20:00 (Asia/Saigon)
+- Loai: Tinh nang | Web | Realtime | Kiem thu | Tai lieu
+- Trang thai: Hoan tat
+- Muc tieu: Cho nguoi dung chon preset hoac tai anh lam hinh nen cuoc tro chuyen; nhom chi hien theo tuy chon cua tung user, chat 1-1 dong bo cho ca hai ben va co thong bao actor.
+- Pham vi: ChatUI header/action, modal hinh nen, local storage/IndexedDB cho tuy chon nhom, metadata va system event Tinode cho chat 1-1; khong thay doi tin nhan, sticker, reaction, tenant, membership hay quyen nhom.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/conversationBackground.js`, `src/features/chat/services/conversationBackground.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `docs/chat-backend-architecture.md`, `package.json`, `dist/index.html`.
+- Noi dung: Them icon va modal chon preset Unsplash hoac tai anh tu may; them lop phu tuong phan de tin nhan luon doc duoc; group luu tuy chon theo viewer/tenant/cuoc tro chuyen tren localStorage va IndexedDB; direct upload qua Tinode, luu metadata trong aux cua P2P topic va phat system event de hai ben cung thay nen, co thong bao actor, va khoi phuc sau reload/reconnect. Loai bo key dich trung phat sinh trong phan UI moi.
+- Quyet dinh ky thuat: Preset dung anh Unsplash co URL on dinh; group background la viewer-scoped tren thiet bi, direct background la P2P aux metadata de hai tai khoan nhan cung mot gia tri; public metadata P2P duoc giu cho ho so nguoi dung; khong dua tuy chon group vao Tinode de tranh anh huong thiet lap cua thanh vien khac.
+- Database/API/cau hinh: Khong migration, khong endpoint Chatmgt moi, khong secret moi; su dung cac API Tinode hien co cho file upload, topic metadata va system message.
+- Kiem thu: `npm run test:frontend` dat 162/162; `npm run lint` exit 0 voi warning legacy trong `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat voi bundle `index-Dxeqk1fv.js`, `App-DwthBYyg.js`, CSS `index-D2-iPLca.css`; `git diff --check` dat. Chua chay smoke test tuong tac browser vi phien nay khong co cong cu browser callable.
+- Rui ro con lai: Chua UAT hai phien tai production cho set/reset direct va reload/reconnect; preset phu thuoc kha nang tai anh Unsplash; anh group custom la du lieu tren thiet bi va se mat neu user xoa storage trinh duyet.
+- Viec tiep theo: UAT group bang hai tai khoan de xac nhan nen khong lan sang thanh vien khac va UAT direct bang hai tai khoan de xac nhan aux metadata, system event va upload protected media truoc khi deploy production.
+- Commit/PR: Chua tao.
+
 ## 2026-08-23-19 - Giu avatar sau reload va dong bo biet danh trong nhom
 
 - Thoi gian: 2026-08-23 19:33 (Asia/Saigon)
