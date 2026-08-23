@@ -4820,42 +4820,34 @@ input:checked + .slider:before {
 .contact-nickname-field { margin-bottom: 4px; }
 
 .conversation-background-backdrop { z-index: 115; }
-.conversation-background-modal { width: min(680px, 100%); }
-.conversation-background-header { margin-bottom: 14px; }
-.conversation-background-intro {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    margin: 0 0 15px;
-    padding: 10px 11px;
-    border: 1px solid rgba(244, 81, 30, .16);
-    border-radius: 11px;
-    color: var(--vichat-blue-dark);
-    background: var(--vichat-blue-light);
-    font-size: 11.5px;
-    line-height: 1.45;
+.conversation-background-modal {
+    width: min(680px, 100%);
+    max-height: min(720px, calc(100vh - 24px));
+    max-height: min(720px, calc(100dvh - 24px));
+    overflow: hidden;
+    padding: 18px;
 }
-.conversation-background-intro i { flex: 0 0 auto; margin-top: 2px; }
+.conversation-background-header { margin-bottom: 10px; }
 .conversation-background-scope {
     display: grid;
     grid-template-columns: auto repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    gap: 6px;
     align-items: stretch;
-    margin: 0 0 15px;
+    margin: 0 0 10px;
 }
 .conversation-background-scope-label {
     align-self: center;
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 750;
     white-space: nowrap;
 }
 .conversation-background-scope-option {
     display: flex;
     min-width: 0;
-    align-items: flex-start;
+    align-items: center;
     gap: 7px;
-    padding: 9px 10px;
+    padding: 7px 8px;
     border: 1px solid var(--border-color);
     border-radius: 10px;
     color: var(--text-body);
@@ -4875,23 +4867,16 @@ input:checked + .slider:before {
     display: flex;
     min-width: 0;
     flex-direction: column;
-    gap: 2px;
+    gap: 0;
 }
 .conversation-background-scope-option strong {
     color: var(--text-main);
-    font-size: 11.5px;
-}
-.conversation-background-scope-option small {
-    color: var(--text-muted);
-    font-size: 10px;
-    line-height: 1.35;
+    font-size: 11px;
 }
 .conversation-background-grid {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 9px;
-    max-height: 360px;
-    overflow-y: auto;
+    gap: 6px;
     padding: 2px;
 }
 .conversation-background-tile {
@@ -4899,14 +4884,14 @@ input:checked + .slider:before {
     display: flex;
     min-width: 0;
     flex-direction: column;
-    gap: 6px;
-    padding: 4px;
+    gap: 3px;
+    padding: 3px;
     border: 1px solid transparent;
-    border-radius: 12px;
+    border-radius: 10px;
     color: var(--text-body);
     background: transparent;
     font: inherit;
-    font-size: 10px;
+    font-size: 9px;
     cursor: pointer;
     text-align: left;
     transition: border-color var(--transition-fast), background-color var(--transition-fast), transform var(--transition-fast);
@@ -4922,10 +4907,10 @@ input:checked + .slider:before {
 .conversation-background-preview {
     display: grid;
     width: 100%;
-    aspect-ratio: 1.35;
+    aspect-ratio: 1.42;
     place-items: center;
     overflow: hidden;
-    border-radius: 9px;
+    border-radius: 8px;
     background-position: center;
     background-size: cover;
     box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .08);
@@ -4933,67 +4918,66 @@ input:checked + .slider:before {
 .conversation-background-preview.default-preview {
     color: var(--text-muted);
     background: linear-gradient(135deg, var(--bg-gray), var(--bg-white));
-    font-size: 20px;
+    font-size: 18px;
 }
 .conversation-background-tile > span:last-of-type {
     overflow: hidden;
-    padding: 0 3px 3px;
+    padding: 0 2px 2px;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 .conversation-background-check {
     position: absolute;
-    top: 9px;
-    right: 9px;
+    top: 7px;
+    right: 7px;
     display: grid;
-    width: 21px;
-    height: 21px;
+    width: 18px;
+    height: 18px;
     place-items: center;
     border: 2px solid #fff;
     border-radius: 50%;
     color: #fff;
     background: var(--vichat-blue);
     box-shadow: 0 2px 5px rgba(15, 23, 42, .25);
-    font-size: 9px;
+    font-size: 8px;
 }
 .conversation-background-upload {
     display: flex;
     align-items: center;
-    gap: 11px;
-    margin-top: 16px;
-    padding: 10px;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 8px;
     border: 1px dashed var(--border-color);
-    border-radius: 13px;
+    border-radius: 11px;
     background: var(--bg-app);
 }
 .conversation-background-upload.selected { border-color: var(--vichat-blue); background: var(--vichat-blue-light); }
 .conversation-background-upload-preview {
     display: grid;
-    width: 54px;
-    height: 42px;
-    flex: 0 0 54px;
+    width: 48px;
+    height: 36px;
+    flex: 0 0 48px;
     place-items: center;
     overflow: hidden;
-    border-radius: 9px;
+    border-radius: 8px;
     color: var(--vichat-blue);
     background: var(--bg-white);
 }
 .conversation-background-upload-preview img { width: 100%; height: 100%; object-fit: cover; }
-.conversation-background-upload-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
-.conversation-background-upload-copy strong { color: var(--text-main); font-size: 12px; }
-.conversation-background-upload-copy small,
-.conversation-background-upload-copy span { overflow: hidden; color: var(--text-muted); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-background-upload-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+.conversation-background-upload-copy strong { color: var(--text-main); font-size: 11px; }
+.conversation-background-upload-copy span { overflow: hidden; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .conversation-background-upload-button {
     position: relative;
     display: inline-flex;
     flex: 0 0 auto;
     align-items: center;
-    gap: 6px;
-    padding: 8px 10px;
+    gap: 5px;
+    padding: 7px 9px;
     border-radius: 8px;
     color: var(--vichat-blue-dark);
     background: var(--bg-white);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 750;
     cursor: pointer;
 }
@@ -5003,15 +4987,19 @@ input:checked + .slider:before {
     display: flex;
     align-items: flex-start;
     gap: 7px;
-    margin-top: 11px;
+    margin-top: 7px;
     color: var(--vichat-red);
     font-size: 11px;
     line-height: 1.4;
 }
 .conversation-background-notice i { flex: 0 0 auto; margin-top: 2px; }
-.conversation-background-footer { align-items: center; gap: 12px; }
-.conversation-background-source-note { display: inline-flex; min-width: 0; align-items: center; gap: 6px; color: var(--text-muted); font-size: 10px; }
-.conversation-background-source-note i { color: #2a9b70; }
+.conversation-background-footer {
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+}
 
 @media (max-width: 576px) {
     .chat-system-banner { top: 8px; }
@@ -5024,17 +5012,28 @@ input:checked + .slider:before {
     .group-detail-quick-action { min-height: 66px; font-size: 9px; }
     .group-name-line .group-name-large { max-width: 178px; }
     .contact-nickname-modal { width: 100%; }
-    .conversation-background-modal { width: 100%; }
-    .conversation-background-scope { grid-template-columns: 1fr; }
-    .conversation-background-scope-label { margin-bottom: -2px; }
-    .conversation-background-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); max-height: 310px; }
-    .conversation-background-upload { align-items: flex-start; flex-wrap: wrap; }
-    .conversation-background-upload-copy { flex-basis: calc(100% - 68px); }
-    .conversation-background-upload-button { margin-left: 65px; }
-    .conversation-background-footer { align-items: flex-start; flex-direction: column; }
+    .conversation-background-modal { width: 100%; max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); padding: 14px; }
+    .conversation-background-scope { grid-template-columns: 1fr 1fr; gap: 5px; }
+    .conversation-background-scope-label { grid-column: 1 / -1; }
+    .conversation-background-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+    .conversation-background-upload { gap: 7px; margin-top: 8px; padding: 7px; }
+    .conversation-background-upload-preview { width: 44px; height: 34px; flex-basis: 44px; }
+    .conversation-background-upload-button { padding: 7px 8px; }
+    .conversation-background-footer { align-items: center; flex-direction: row; margin-top: 8px; padding-top: 8px; }
+    .conversation-background-footer .group-modal-actions { width: auto; }
     .friend-request-card { grid-template-columns: auto minmax(0, 1fr); }
     .friend-request-actions, .friend-request-status { grid-column: 2; }
     .friend-request-actions { flex-direction: row; }
+}
+
+@media (max-height: 700px) {
+    .conversation-background-modal { padding: 14px; }
+    .conversation-background-header { margin-bottom: 8px; }
+    .conversation-background-scope { margin-bottom: 7px; }
+    .conversation-background-grid { gap: 4px; }
+    .conversation-background-preview { aspect-ratio: 1.6; }
+    .conversation-background-upload { margin-top: 7px; padding: 7px; }
+    .conversation-background-footer { margin-top: 7px; padding-top: 7px; }
 }
 .chatbot-sources {
   display: grid;

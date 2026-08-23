@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-06 - Thu gon bang doi hinh nen trong mot man hinh
+
+- Thoi gian: 2026-08-24 04:37 (Asia/Saigon)
+- Loai: Sua loi | Web | UI | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Cho nguoi dung chon va luu hinh nen trong cung mot man hinh, khong phai cuon xuong de thay nut ap dung.
+- Pham vi: Chi modal doi hinh nen cua ChatUI; giu nguyen preset, upload, validation, luu local, chia se 1-1/nhom va cac luong chat khac.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/i18n/appLanguage.js`, `dist/index.html`, va `docs/CHANGELOG.md`.
+- Noi dung: Bo banner huong dan, mo ta phu duoi pham vi, gioi han upload va ghi chu nguon preset khoi giao dien. Thu gon grid, upload va footer; bo scroll noi bo cua danh sach preset, dua cac lua chon pham vi thanh hang gon tren mobile de nut Huy/Ap dung luon hien thi.
+- Quyet dinh ky thuat: Chi thay doi JSX hien thi, copy tieng Anh va CSS responsive; khong thay doi state, handler, persistence, API hay quyet dinh pham vi chia se. Van giu thong bao loi validation va trang thai Dang ap dung.
+- Database/API/cau hinh: Khong migration, endpoint, bien moi truong hoac thay doi kien truc.
+- Kiem thu: `npm run test:frontend` dat 170/170; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `App-DPxwq4HB.js`, `index-IsYU87ma.js`, CSS `index-1GmfItyq.css`; `git diff --check` dat. Chua UAT pixel-level bang browser vi browser runtime khong callable trong phien nay.
+- Rui ro con lai: Can kiem tra tren production voi desktop/mobile va man hinh rat thap; modal co the can tinh chinh them neu viewport nho bat thuong.
+- Viec tiep theo: Commit, push, deploy chi ChatUI, kiem tra health/bundle/container va hard refresh production de UAT modal.
+- Commit/PR: Chua tao.
+
 ## 2026-08-24-05 - Dat nhan tin nhan ghim va can menu 3 cham
 
 - Thoi gian: 2026-08-24 04:11 (Asia/Saigon)

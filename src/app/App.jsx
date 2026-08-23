@@ -10357,7 +10357,6 @@ function App() {
           >
             <div className="group-modal-header conversation-background-header">
               <div>
-                <span className="group-modal-kicker">{appCopy.t('TÙY CHỈNH HỘI THOẠI')}</span>
                 <h2 id="conversation-background-title">{appCopy.t('Đổi hình nền')}</h2>
               </div>
               <button
@@ -10370,15 +10369,6 @@ function App() {
                 <i className="fa-solid fa-xmark"></i>
               </button>
             </div>
-
-            <p className="conversation-background-intro">
-              <i className="fa-solid fa-shield-halved"></i>
-              <span>{appCopy.t(conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.SHARED
-                ? (activeChat.isGroup
-                  ? 'Hình nền này sẽ hiển thị với tất cả thành viên trong nhóm và có thông báo.'
-                  : 'Hình nền này sẽ được đồng bộ cho cả hai người và có thông báo.')
-                : 'Hình nền này chỉ hiển thị trên thiết bị của bạn.')}</span>
-            </p>
 
             {chatMode !== 'demo' && (
               <div className="conversation-background-scope" role="radiogroup" aria-label={appCopy.t('Phạm vi hình nền')}>
@@ -10394,7 +10384,6 @@ function App() {
                   />
                   <span>
                     <strong>{appCopy.t('Chỉ mình tôi')}</strong>
-                    <small>{appCopy.t('Không thay đổi giao diện của người khác')}</small>
                   </span>
                 </label>
                 <label className={`conversation-background-scope-option ${conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.SHARED ? 'selected' : ''}`}>
@@ -10408,7 +10397,6 @@ function App() {
                   />
                   <span>
                     <strong>{appCopy.t(activeChat.isGroup ? 'Chia sẻ với cả nhóm' : 'Chia sẻ với người bên kia')}</strong>
-                    <small>{appCopy.t('Cập nhật đồng bộ và hiện thông báo')}</small>
                   </span>
                 </label>
               </div>
@@ -10451,9 +10439,6 @@ function App() {
               </div>
               <div className="conversation-background-upload-copy">
                 <strong>{appCopy.t('Ảnh từ máy tính')}</strong>
-                <small>{appCopy.t(conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.SHARED
-                  ? 'Tối đa 8 MB · ảnh sẽ được chia sẻ trong cuộc trò chuyện'
-                  : 'Tối đa 2 MB · chỉ lưu trên thiết bị này')}</small>
                 {conversationBackgroundSelection?.kind === 'custom' && <span>{conversationBackgroundSelection.label}</span>}
               </div>
               <label className="conversation-background-upload-button">
@@ -10470,7 +10455,6 @@ function App() {
             {conversationBackgroundNotice && <div className="conversation-background-notice" role="alert"><i className="fa-solid fa-circle-info"></i><span>{appCopy.t(conversationBackgroundNotice)}</span></div>}
 
             <div className="group-modal-footer conversation-background-footer">
-              <span className="conversation-background-source-note"><i className="fa-solid fa-circle-check"></i>{appCopy.t('Preset dùng ảnh Unsplash có nguồn công khai.')}</span>
               <div className="group-modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setIsConversationBackgroundOpen(false)} disabled={isSavingConversationBackground}>{appCopy.t('Hủy')}</button>
                 <button type="submit" className="btn-primary" disabled={isSavingConversationBackground}>
