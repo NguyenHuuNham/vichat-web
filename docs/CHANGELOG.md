@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `npm run test:frontend` dat 147/147; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-Bykhe6XO.js`; `git diff --check` dat.
 - Rui ro con lai: Can UAT production bang hard refresh va doi tenant tren group co avatar protected.
 - Viec tiep theo: Commit, push, deploy va kiem tra health production.
-- Commit/PR: Chua tao.
+- Commit/PR: `85b3368`; chua tao PR.
 
 ## 2026-08-23-08 - Mo rong sticker, tao group va viewer anh
 
