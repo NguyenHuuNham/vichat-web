@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-23 11:23 (Asia/Saigon)
 - Loai: Sua loi | Web | Tinode | Kiem thu
-- Trang thai: Dang thuc hien
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Giu avatar nhom sau F5 hoac sau khi chuyen tenant va tai lai phien chat.
 - Pham vi: `SafeAvatar`, phien xac thuc Tinode va retry protected media; khong thay doi upload, Chatmgt, DB, API, sticker, tenant switch hay luong tin nhan.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/mediaRetryPolicy.js`, `src/features/chat/services/mediaRetryPolicy.test.js`, `dist/index.html`.
 - Noi dung: Tinode phat su kien `session-ready` sau xac thuc; avatar protected tu thu resolve lai khi phien san sang hoac reconnect. Dieu nay xu ly race condition sau reload ma khong thay doi nguon du lieu avatar.
 - Quyet dinh ky thuat: Chi retry cac URL `/tinode-media/` sau su kien phien, giu nguyen fallback cho anh ngoai Tinode va cac loi media khac.
 - Database/API/cau hinh: Khong co migration, thay doi API, bien moi truong hoac secret.
-- Kiem thu: `npm run test:frontend` dat 147/147; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-Bykhe6XO.js`; `git diff --check` dat.
+- Kiem thu: `npm run test:frontend` dat 147/147; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-Bykhe6XO.js`; `git diff --check` dat. Production archive SHA-256 `b152d15812405a9ec51b88207eece28993bd32f9b4c0782ae01948fa49783471`; Docker build `chat` dat voi image `sha256:ea61ca2c06f415d2dd8fe827b0f4daa25689325652049fc541855f9a9359a1dd`; release health noi bo va public deu tra `ok`; bundle `App-DT02Dfv5.js`, CSS `index-BKcXFzbk.css` HTTP 200 va co marker retry; toan bo container healthy; log `chat` 5 phut khong co fatal/panic/traceback/critical/emerg/uncaught.
 - Rui ro con lai: Can UAT production bang hard refresh va doi tenant tren group co avatar protected.
-- Viec tiep theo: Commit, push, deploy va kiem tra health production.
-- Commit/PR: `85b3368`; chua tao PR.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, kiem tra avatar group sau F5 va sau chuyen tenant; neu loi thi tro `current` ve `previous` va recreate rieng `chat` tu image rollback.
+- Trien khai: Source `6eef973` (fix runtime `85b3368`); release `/opt/deploy/chat/releases/6eef973-20260823-1127`; `current` tro release moi, `previous` tro `/opt/deploy/chat/releases/4211866`; chi recreate `chat`, khong migration/reset volume/database, `chatmgt`/Tinode/bridge/webhook/DB/Redis giu nguyen; image rollback `songhong-production-chat:rollback-before-avatar-6eef973` giu `sha256:06b3eb935f51310e0aa14e568c63a509fffb0fb863dca5fe28cc97043c7dc2b4`.
+- Commit/PR: `85b3368`, `6eef973`; chua tao PR.
 
 ## 2026-08-23-08 - Mo rong sticker, tao group va viewer anh
 
