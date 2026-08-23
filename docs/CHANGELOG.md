@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-23 22:54 (Asia/Saigon)
 - Loai: Tinh nang | Sua loi | Web | API | Kiem thu | Tai lieu
-- Trang thai: Hoan tat
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Dua 10 bo sticker moi vao picker, giu dung phan loai sticker va khong de sticker xuat hien trong muc Anh/Video hoac Tep.
 - Pham vi: Catalog/picker sticker, hien thi preview va thong bao, media/file dung chung, tim kiem lich su server-side; khong thay doi transport Tinode hay cac luong chat khac.
 - File da thay doi: `src/features/chat/services/stickerCatalog.js`, `src/features/chat/services/stickerCatalog.test.js`, `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/conversationNotifications.js`, `src/features/chat/services/conversationNotifications.test.js`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `public/stickers/puppysoft/*.png`, `dist/index.html`.
@@ -19,8 +19,10 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong migration, khong bien moi truong, khong thay doi contract gui tin; backend history filter tiep tuc dung type `sticker` da co va chi sua dieu kien image/file.
 - Kiem thu: `npm run test:frontend` dat 162/162; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-DNmjp03T.js`, `App-Cyj-OU6e.js`, CSS `index-BGmlSiTR.css`; `python -m unittest discover -s chatservice-main/tests -q` dat 182 test, skip 61 theo moi truong; `git diff --check` dat; 272 asset PNG trong catalog ton tai, gom 160 asset moi.
 - Rui ro con lai: Chua UAT tuong tac hai tai khoan tren production trong phien nay; can hard refresh va thu gui/nhan, tim sticker, kiem tra Anh/Video va Tep khong hien sticker.
+- Trien khai: Commit `56af172` da push `origin/master`; release `/opt/deploy/chat/releases/56af172-20260823-230427`, `current` tro release nay, `previous` tro `/opt/deploy/chat/releases/1dfd072-20260823-2039`; chi recreate `chat` va `chatmgt`, khong migration, khong `down`, khong reset database/volume/topic/message, Tinode/bridge/webhook/ChatAPI/PostgreSQL/Redis/Coturn giu nguyen. Archive SHA-256 `4738718eb5082d57f17d4c9737c41c4fb9beabbf6e1d35501bab631fb9a6e0f7`; image `chat` `sha256:5bde38e106d9f051d276d7417f4aea56f7c684a16fd78d8b9c8d8b739bb10609`, `chatmgt` `sha256:4f7759c7ab928878c74dbbc3db6e805a7931d80121fc5f649682f0504e26cb35`.
+- Kiem tra production: `https://chat.upgo.vn/healthz` HTTP 200; `https://chatmgt.upgo.vn/api/v1/auth/health` HTTP 200; container `chat` va `chatmgt` healthy, 272 sticker PNG co trong container, `https://chat.upgo.vn/stickers/puppysoft/frog-v2-1.png` HTTP 200; bundle App co marker pack `frog-v2` va `/stickers/puppysoft`; `sudo -n nginx -t` dat; log 5 phut cua `chat`/`chatmgt` khong co fatal/panic/traceback/critical/emerg/uncaught. Rollback filesystem duoc giu tai `previous`; Docker metadata image cu da duoc Docker don sau build nen khong gan rollback tag image cu.
 - Viec tiep theo: Hard refresh web production va UAT sticker bang hai tai khoan; khong dong vao Tinode, bridge, webhook, ChatAPI, database, Redis, Coturn hoac volume.
-- Commit/PR: Dang chuan bi commit va deploy.
+- Commit/PR: `56af172`; follow-up changelog commit dang chuan bi.
 
 ## 2026-08-23-20 - Hinh nen rieng cho nhom va dong bo cho chat 1-1
 
