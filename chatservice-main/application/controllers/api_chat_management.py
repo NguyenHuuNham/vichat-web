@@ -2842,6 +2842,8 @@ async def conversation_create(request):
     body = request.json or {}
     owner_id = _user_id(current_user)
     requested_ids = [str(value) for value in (body.get("participant_ids") or []) if value]
+    requested_ids = list(dict.fromkeys(requested_ids))
+    requested_group_ids = [participant_id for participant_id in requested_ids if participant_id != owner_id]
     participant_ids = list(dict.fromkeys([owner_id, *requested_ids]))
     valid_ids = {
         account.id for account in ManagementAccount.query.filter(
@@ -2854,6 +2856,11 @@ async def conversation_create(request):
         return json({"error_code": "TENANT_VIOLATION", "error_message": "All participants must belong to the same tenant."}, status=400)
     requested_properties = body.get("properties") if isinstance(body.get("properties"), dict) else {}
     is_group = bool(body.get("is_group", requested_properties.get("is_group", False)))
+    if is_group and not requested_group_ids:
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "A group must include at least one participant besides its owner.",
+        }, status=400)
     direct_key = ":".join(sorted(participant_ids)) if not is_group and len(participant_ids) == 2 else ""
     properties = {
         "is_group": is_group,

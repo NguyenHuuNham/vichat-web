@@ -260,6 +260,11 @@ with coworkers. Friendship records remain compatibility metadata only; direct
 conversation creation still validates that every participant is active in the
 same tenant before Chatmgt prepares the Tinode pair.
 
+Group creation additionally requires at least one active same-tenant
+participant other than the owner. ChatUI disables the submit action when no
+other employee is selected, and Chatmgt rejects owner-only group requests so
+the rule cannot be bypassed by a direct API call.
+
 Chatmgt may retain a direct-conversation row before either participant has sent
 a Tinode message. In realtime mode, ChatUI therefore treats the sidebar as the
 intersection of authorized Chatmgt metadata and Tinode activity: direct rows are

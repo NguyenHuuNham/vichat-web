@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-08 - Mo rong sticker, tao group va viewer anh
+
+- Thoi gian: 2026-08-23 07:15 (Asia/Saigon)
+- Loai: Tinh nang | Sua loi | API | Web | UI | Kiem thu
+- Trang thai: Hoan tat; san sang deploy
+- Muc tieu: Them 4 bo sticker moi giu day du caption, chan group owner-only, bo sung cong cu xem anh va dam bao doi avatar group dong bo realtime cho cac thanh vien.
+- Pham vi: ChatUI sticker/catalog, tao group, viewer anh, avatar group Tinode/Chatmgt va contract test; khong thay doi chat 1-1, reaction, mute, tenant switch hay schema database.
+- File da thay doi: `public/stickers/puppysoft/*.png`, `src/features/chat/services/stickerCatalog.js`, `src/features/chat/services/stickerCatalog.test.js`, `src/app/App.jsx`, `src/styles/index.css`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Them 64 asset PNG RGBA tu 4 bang anh nguon vao 4 pack sticker; frontend va Chatmgt deu bat buoc group co it nhat mot thanh vien khac owner. Viewer anh co zoom 50-300%, reset, share/copy link va tai xuong. Avatar group upload/set public Tinode metadata, luu Chatmgt co rollback neu that bai, va cac client nhan cap nhat qua su kien conversation metadata.
+- Quyet dinh ky thuat: Cat deterministic tu anh nguon va giu caption goc, khong sinh lai asset. Dung Tinode lam kenh realtime avatar va Chatmgt lam metadata chuan; khong them API, migration hay token moi.
+- Database/API/cau hinh: Them guard API cho `POST /api/v1/conversation`; khong migration, bien moi truong hoac secret.
+- Kiem thu: `npm run test:frontend` dat 146/146; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-D64Q6htL.js`; `python -m py_compile application/controllers/api_chat_management.py tests/test_chat_auth_contract.py` dat; `python -m unittest discover -s tests -q` dat 172 test, skip 56 theo moi truong; Pillow xac nhan 112/112 PNG RGBA; `git diff --check` dat.
+- Rui ro con lai: Chua UAT bang owner va member that tren hai phien dang nhap de xac nhan avatar group cap nhat ngay tren ca nhom; chua commit/push/deploy.
+- Viec tiep theo: Commit/push, deploy release bat bien, kiem tra health/bundle/log va UAT sticker, tao group, viewer anh va avatar realtime.
+- Commit/PR: Chua tao.
+
 ## 2026-08-23-07 - Sua tat thong bao, them thanh vien va hien thi group reaction
 
 - Thoi gian: 2026-08-23 05:26 (Asia/Saigon)

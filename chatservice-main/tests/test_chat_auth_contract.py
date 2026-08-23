@@ -442,6 +442,48 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("direct_key", create_source)
         self.assertIn("sorted(participant_ids)", create_source)
         self.assertIn("Conversation.properties.contains", create_source)
+        self.assertIn("requested_group_ids = [participant_id for participant_id in requested_ids if participant_id != owner_id]", create_source)
+        self.assertIn("if is_group and not requested_group_ids", create_source)
+        self.assertIn("besides its owner", create_source)
+
+    @repository_source_test
+    def test_group_creation_viewer_and_avatar_updates_preserve_realtime_contract(self):
+        controller_source, group_settings_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_group_settings",
+        )
+        app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
+        service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")
+        tinode_source = (
+            REPOSITORY_ROOT / "src" / "features" / "chat" / "services" / "tinodeClient.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("selectedGroupMemberIds.length === 0", app_source)
+        self.assertIn("groupMemberIds.length === 0", app_source)
+        self.assertIn("fa-magnifying-glass-plus", app_source)
+        self.assertIn("navigator.share", app_source)
+        self.assertIn("tinodeClient.downloadFile(file)", app_source)
+        self.assertIn("onDownload={handleFileDownload}", app_source)
+        self.assertIn("onShare={handleImageShare}", app_source)
+
+        self.assertIn("updateGroupAvatar(topicName, file)", app_source)
+        self.assertIn("updateGroupProfile", app_source)
+        self.assertIn("previousAvatarUrl", app_source)
+        self.assertIn(
+            "tinodeClient.updateGroupMetadata(topicName, { avatar: previousAvatarUrl })",
+            app_source,
+        )
+        self.assertIn("groupAvatarSyncRef.current.set(topicName, avatarUrl)", app_source)
+        self.assertIn("event.type === 'conversation'", app_source)
+        self.assertIn("conversation.avatarUrl !== currentRoom.avatarUrl", app_source)
+        self.assertIn("bindTinodeTopic", service_source)
+
+        self.assertIn("properties[\"avatar\"]", group_settings_source)
+        self.assertIn('"avatar": properties.get("avatar") or ""', controller_source)
+        self.assertIn("topic.setMeta", tinode_source)
+        self.assertIn("photo:", tinode_source)
+        self.assertIn("emitConversation(topic)", tinode_source)
+        self.assertIn("topic.onMetaDesc", tinode_source)
 
     def test_conversation_notification_mutes_are_viewer_scoped_chatmgt_metadata(self):
         _controller_source, serializer_source = function_source(

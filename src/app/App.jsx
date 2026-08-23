@@ -467,7 +467,7 @@ function mediaDateKey(timestamp) {
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 }
 
-function TinodeImagePreview({ source, alt, className = '', copy = { t: value => value } }) {
+function TinodeImagePreview({ source, alt, className = '', copy = { t: value => value }, style }) {
   const [resolvedSource, setResolvedSource] = useState('');
   const [failed, setFailed] = useState(false);
   const [mediaVersion, setMediaVersion] = useState(() => tinodeClient.getMediaVersion(source));
@@ -524,6 +524,7 @@ function TinodeImagePreview({ source, alt, className = '', copy = { t: value => 
       src={resolvedSource}
       alt={alt}
       className={`chat-attached-image ${className}`.trim()}
+      style={style}
       loading="lazy"
       draggable="false"
       onError={() => setFailed(true)}
@@ -531,7 +532,9 @@ function TinodeImagePreview({ source, alt, className = '', copy = { t: value => 
   );
 }
 
-function ImageViewer({ source, copy = { t: value => value }, onClose }) {
+function ImageViewer({ source, file = null, copy = { t: value => value }, onClose, onDownload, onShare }) {
+  const [zoom, setZoom] = useState(1);
+
   useEffect(() => {
     const handleKeyDown = event => {
       if (event.key === 'Escape') onClose();
@@ -544,6 +547,14 @@ function ImageViewer({ source, copy = { t: value => value }, onClose }) {
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [onClose]);
+
+  useEffect(() => {
+    setZoom(1);
+  }, [source]);
+
+  const changeZoom = amount => {
+    setZoom(previous => Math.min(3, Math.max(0.5, Number((previous + amount).toFixed(2)))));
+  };
 
   return (
     <div
@@ -559,7 +570,33 @@ function ImageViewer({ source, copy = { t: value => value }, onClose }) {
         <i className="fa-solid fa-xmark" aria-hidden="true"></i>
       </button>
       <div className="image-viewer-content" onMouseDown={event => event.stopPropagation()}>
-        <TinodeImagePreview source={source} alt={copy.t('Ảnh đính kèm')} copy={copy} className="image-viewer-image" />
+        <div className="image-viewer-stage">
+          <TinodeImagePreview
+            source={source}
+            alt={copy.t('Ảnh đính kèm')}
+            copy={copy}
+            className="image-viewer-image"
+            style={{ transform: `scale(${zoom})` }}
+          />
+        </div>
+        <div className="image-viewer-toolbar" role="toolbar" aria-label={copy.t('Công cụ ảnh')}>
+          <button type="button" onClick={() => changeZoom(-0.25)} disabled={zoom <= 0.5} title={copy.t('Thu nhỏ')} aria-label={copy.t('Thu nhỏ')}>
+            <i className="fa-solid fa-magnifying-glass-minus" aria-hidden="true"></i>
+          </button>
+          <button type="button" className="image-viewer-zoom-value" onClick={() => setZoom(1)} title={copy.t('Đặt lại kích thước')} aria-label={copy.t('Đặt lại kích thước')}>
+            {Math.round(zoom * 100)}%
+          </button>
+          <button type="button" onClick={() => changeZoom(0.25)} disabled={zoom >= 3} title={copy.t('Phóng to')} aria-label={copy.t('Phóng to')}>
+            <i className="fa-solid fa-magnifying-glass-plus" aria-hidden="true"></i>
+          </button>
+          <span className="image-viewer-toolbar-divider" aria-hidden="true"></span>
+          <button type="button" onClick={() => onShare?.(file || { url: source })} disabled={!source} title={copy.t('Chia sẻ ảnh')} aria-label={copy.t('Chia sẻ ảnh')}>
+            <i className="fa-solid fa-share-nodes" aria-hidden="true"></i>
+          </button>
+          <button type="button" onClick={() => onDownload?.(file || { url: source })} disabled={!source} title={copy.t('Tải xuống')} aria-label={copy.t('Tải xuống')}>
+            <i className="fa-solid fa-download" aria-hidden="true"></i>
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -4621,13 +4658,18 @@ function App() {
     event.preventDefault();
     const name = groupName.trim();
     if (!name || createGroupRequestRef.current) return;
+    const selectedGroupMemberIds = groupMemberIds.filter(memberId => !identitiesOverlap({ id: memberId }, currentUser));
+    if (selectedGroupMemberIds.length === 0) {
+      setChatError('Vui lòng chọn ít nhất 1 thành viên khác để tạo nhóm.');
+      return;
+    }
     createGroupRequestRef.current = true;
     setChatError('');
     setIsCreatingGroup(true);
     try {
       let room;
       const actorId = currentUser?.id || currentUser?.uid;
-      const addedNames = groupMemberIds.map(memberId =>
+      const addedNames = selectedGroupMemberIds.map(memberId =>
         groupMemberProfiles[memberId]?.name || findAccount(directoryAccounts, memberId)?.name || memberId
       );
       const systemText = addedNames.length > 0
@@ -4639,7 +4681,7 @@ function App() {
         action: addedNames.length > 0 ? 'member_added' : 'group_created',
         senderId: actorId,
         senderName: currentUser?.name,
-        targetIds: groupMemberIds,
+        targetIds: selectedGroupMemberIds,
         text: systemText,
         time: getTimeString(),
         createdAt: new Date().toISOString(),
@@ -4653,7 +4695,7 @@ function App() {
           userId: actorId,
           subject: name,
           isGroup: true,
-          participantIds: groupMemberIds,
+          participantIds: selectedGroupMemberIds,
           properties: { description: groupDescription.trim() },
         });
         if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
@@ -4706,7 +4748,7 @@ function App() {
           description: groupDescription.trim(),
           avatar: initialAvatar,
           ownerId: actorId,
-          memberIds: groupMemberIds,
+          memberIds: selectedGroupMemberIds,
         });
         group = appendDemoGroupMessage(group.id, systemMessage);
         room = demoGroupToConversation(group, directoryAccounts, actorId);
@@ -5561,7 +5603,27 @@ function App() {
 
   const openImageViewer = file => {
     if (!file?.url) return;
-    setImageViewer({ source: file.url });
+    setImageViewer({
+      source: file.url,
+      file: { ...file, name: file.name || 'vichat-image' },
+    });
+  };
+
+  const handleImageShare = async file => {
+    if (!file?.url) return;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: file.name || appCopy.t('Ảnh ViChat'),
+          url: file.url,
+        });
+        return;
+      }
+      await copyTextToClipboard(file.url);
+      setChatError('Đã sao chép liên kết ảnh.');
+    } catch (error) {
+      if (error?.name !== 'AbortError') setChatError(error?.message || 'Không thể chia sẻ ảnh.');
+    }
   };
 
   const openMediaBrowser = (tab = mediaBrowserTab) => {
@@ -6344,7 +6406,7 @@ function App() {
           <p className="group-form-hint">
             {groupMemberIds.length > 0
               ? `${appCopy.t('Đã chọn')} ${groupMemberIds.length} ${appCopy.t('thành viên từ danh bạ công ty.')}`
-              : `${appCopy.t('Chọn trực tiếp từ')} ${companyContacts.length} ${appCopy.t('người trong danh bạ công ty.')}`}
+              : `${appCopy.t('Bắt buộc chọn ít nhất 1 thành viên khác.')} ${appCopy.t('Chọn trực tiếp từ')} ${companyContacts.length} ${appCopy.t('người trong danh bạ công ty.')}`}
           </p>
         )}
         {groupCandidates.length > 0 ? (
@@ -6378,7 +6440,7 @@ function App() {
         <div className="group-modal-actions">
           {variant !== 'page' && <button type="button" className="btn-secondary" onClick={closeCreateGroupModal} disabled={isCreatingGroup}>{appCopy.t('Hủy')}</button>}
           {variant === 'page' && <button type="button" className="btn-secondary" onClick={() => { closeCreateGroupModal(); closeWorkspacePanel(); }} disabled={isCreatingGroup}>{appCopy.t('Hủy')}</button>}
-          <button type="submit" className="btn-primary" disabled={!groupName.trim() || isCreatingGroup}>{isCreatingGroup ? appCopy.t('Đang tạo...') : appCopy.t('Tạo nhóm')}</button>
+          <button type="submit" className="btn-primary" disabled={!groupName.trim() || groupMemberIds.length === 0 || isCreatingGroup}>{isCreatingGroup ? appCopy.t('Đang tạo...') : appCopy.t('Tạo nhóm')}</button>
         </div>
       </div>
     </form>
@@ -6574,7 +6636,10 @@ function App() {
       {imageViewer && (
         <ImageViewer
           source={imageViewer.source}
+          file={imageViewer.file}
           copy={appCopy}
+          onDownload={handleFileDownload}
+          onShare={handleImageShare}
           onClose={() => setImageViewer(null)}
         />
       )}
