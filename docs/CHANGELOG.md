@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT crop desktop/mobile, upload avatar tu UpGo/web, F5, chuyen tenant va reconnect; neu loi chi tro `current` ve `previous`, khong reset Tinode/database/volume.
 - Trien khai: Source `9f3f9d5` da push `origin/master`; archive SHA-256 `c2c25e8e3a031129830eac49b763bed111c16358eba7260b21fe7afded07e80c`; release `/opt/deploy/chat/releases/profile-avatar-9f3f9d5-20260824-0605` dang la `current`, `previous` tro release `member-approval-8456dcf-20260824-1`; backup PostgreSQL `/opt/deploy/chat/backups/chatservice-profile-avatar-20260824-0605.dump`; chi recreate `chat` va `chatmgt`, giu nguyen Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis, Coturn va volume.
 - Kiem tra production: `chat` va `chatmgt` healthy; `https://chat.upgo.vn/healthz` va `https://chatmgt.upgo.vn/api/v1/auth/health` HTTP 200; `sudo -n nginx -t` dat; public chunk `App-CB29jREZ.js` HTTP 200 va co marker crop; log 15 phut khong co fatal/panic/traceback/critical/emerg/uncaught/error.
-- Commit/PR: Source `9f3f9d5`; deployment follow-up dang tao.
+- Commit/PR: Source `9f3f9d5`; deployment follow-up `6198cee`.
 
 ## 2026-08-24-07 - Them phe duyet thanh vien nhom
 
