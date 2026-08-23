@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Rui ro con lai: Can hard refresh production va kiem tra menu o message gan dau/cuoi viewport, message incoming/outgoing, mobile, pin/unpin va cac action hien co; khong co thay doi backend can migration.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT menu o message gan dau/cuoi viewport, incoming/outgoing, mobile, pin/unpin va cac action hien co; neu loi chi rollback release ChatUI ve `previous`, khong thao tac dich vu stateful.
 - Trien khai: Commit source `af2440e` da push `origin/master`; archive SHA-256 `C93C547B8B3FEDD850A1C0E7CD5BAA5F3CE012644C5EF1FB1FE813F29ED34943`; release `/opt/deploy/chat/releases/pinned-menu-af2440e-20260824-0411` dang la `current`, `previous` tro `/opt/deploy/chat/releases/8238a62-20260823-204740`; chi recreate `chat`. Image moi `sha256:c57d6868fabaf0a1a016db41e0ce695ac9a0198610d9f62bda7f07fcd0125487`, container `f559f81fc2df`; rollback tag `songhong-production-chat:rollback-before-pinned-menu-af2440e` giu image `sha256:279c7c69d0d80f83071b8bca393a00bd792e0a9611e384e54738ce88c328e92f`. Chatmgt, Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis va Coturn van giu nguyen container, khong migration/reset stateful service.
-- Commit/PR: Source `af2440e` da push `origin/master`; deployment da hoan tat; changelog deploy follow-up dang cap nhat.
+- Commit/PR: Source `af2440e` va changelog deploy follow-up `3873a28` da push `origin/master`; deployment da hoan tat.
 
 ## 2026-08-24-04 - Sua loi nen chat va menu hanh dong tin nhan
 
