@@ -576,8 +576,12 @@ function TinodeImagePreview({ source, alt, className = '', copy = { t: value => 
   );
 }
 
-function ImageViewer({ source, file = null, copy = { t: value => value }, onClose, onDownload, onShare }) {
+function ImageViewer({ source, file = null, message = null, copy = { t: value => value }, onClose, onDownload, onShare }) {
   const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const stageRef = useRef(null);
+  const dragRef = useRef(null);
 
   useEffect(() => {
     const handleKeyDown = event => {
@@ -594,10 +598,69 @@ function ImageViewer({ source, file = null, copy = { t: value => value }, onClos
 
   useEffect(() => {
     setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setIsDragging(false);
   }, [source]);
+
+  useEffect(() => {
+    if (zoom <= 1) setPan({ x: 0, y: 0 });
+  }, [zoom]);
 
   const changeZoom = amount => {
     setZoom(previous => Math.min(3, Math.max(0.5, Number((previous + amount).toFixed(2)))));
+  };
+
+  const clampPan = useCallback(nextPan => {
+    const stage = stageRef.current;
+    const image = stage?.querySelector('img.image-viewer-image');
+    if (!stage || !image || zoom <= 1) return { x: 0, y: 0 };
+    const stageStyles = window.getComputedStyle(stage);
+    const contentWidth = Math.max(0, stage.clientWidth - parseFloat(stageStyles.paddingLeft) - parseFloat(stageStyles.paddingRight));
+    const contentHeight = Math.max(0, stage.clientHeight - parseFloat(stageStyles.paddingTop) - parseFloat(stageStyles.paddingBottom));
+    const maxX = Math.max(0, (image.offsetWidth * zoom - contentWidth) / 2);
+    const maxY = Math.max(0, (image.offsetHeight * zoom - contentHeight) / 2);
+    return {
+      x: Math.min(maxX, Math.max(-maxX, Number(nextPan.x) || 0)),
+      y: Math.min(maxY, Math.max(-maxY, Number(nextPan.y) || 0)),
+    };
+  }, [zoom]);
+
+  useEffect(() => {
+    setPan(previous => clampPan(previous));
+  }, [clampPan]);
+
+  const handlePointerDown = event => {
+    if (zoom <= 1 || event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      panX: pan.x,
+      panY: pan.y,
+    };
+    setIsDragging(true);
+  };
+
+  const handlePointerMove = event => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    setPan(clampPan({
+      x: drag.panX + event.clientX - drag.startX,
+      y: drag.panY + event.clientY - drag.startY,
+    }));
+  };
+
+  const handlePointerUp = event => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    dragRef.current = null;
+    setIsDragging(false);
   };
 
   return (
@@ -614,13 +677,20 @@ function ImageViewer({ source, file = null, copy = { t: value => value }, onClos
         <i className="fa-solid fa-xmark" aria-hidden="true"></i>
       </button>
       <div className="image-viewer-content" onMouseDown={event => event.stopPropagation()}>
-        <div className="image-viewer-stage">
+        <div
+          ref={stageRef}
+          className={`image-viewer-stage ${zoom > 1 ? 'pannable' : ''} ${isDragging ? 'dragging' : ''}`}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+        >
           <TinodeImagePreview
             source={source}
             alt={copy.t('Ảnh đính kèm')}
             copy={copy}
             className="image-viewer-image"
-            style={{ transform: `scale(${zoom})` }}
+            style={{ transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})` }}
           />
         </div>
         <div className="image-viewer-toolbar" role="toolbar" aria-label={copy.t('Công cụ ảnh')}>
@@ -634,7 +704,7 @@ function ImageViewer({ source, file = null, copy = { t: value => value }, onClos
             <i className="fa-solid fa-magnifying-glass-plus" aria-hidden="true"></i>
           </button>
           <span className="image-viewer-toolbar-divider" aria-hidden="true"></span>
-          <button type="button" onClick={() => onShare?.(file || { url: source })} disabled={!source} title={copy.t('Chia sẻ ảnh')} aria-label={copy.t('Chia sẻ ảnh')}>
+          <button type="button" onClick={() => onShare?.(file || { url: source }, message)} disabled={!source || !message} title={copy.t('Chia sẻ tin nhắn')} aria-label={copy.t('Chia sẻ tin nhắn')}>
             <i className="fa-solid fa-share-nodes" aria-hidden="true"></i>
           </button>
           <button type="button" onClick={() => onDownload?.(file || { url: source })} disabled={!source} title={copy.t('Tải xuống')} aria-label={copy.t('Tải xuống')}>
@@ -7113,29 +7183,27 @@ function App() {
     window.open(file.url, '_blank', 'noopener,noreferrer');
   };
 
-  const openImageViewer = file => {
+  const openImageViewer = (file, message = null) => {
     if (!file?.url) return;
     setImageViewer({
       source: file.url,
       file: { ...file, name: file.name || 'vichat-image' },
+      message,
     });
   };
 
-  const handleImageShare = async file => {
-    if (!file?.url) return;
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: file.name || appCopy.t('Ảnh ViChat'),
-          url: file.url,
-        });
-        return;
-      }
-      await copyTextToClipboard(file.url);
-      setChatError('Đã sao chép liên kết ảnh.');
-    } catch (error) {
-      if (error?.name !== 'AbortError') setChatError(error?.message || 'Không thể chia sẻ ảnh.');
+  const handleImageShare = (file, message) => {
+    if (!message) {
+      setChatError('Không thể chia sẻ tin nhắn này.');
+      return;
     }
+    const shareableMessage = {
+      ...message,
+      file: file?.url ? { ...(message.file || {}), ...file } : message.file,
+      image: message.image || file?.url || '',
+    };
+    setImageViewer(null);
+    setShareMessage(shareableMessage);
   };
 
   const openMediaBrowser = (tab = mediaBrowserTab) => {
@@ -7150,7 +7218,7 @@ function App() {
       return;
     }
     setMediaBrowserOpen(false);
-    if (isImageAttachment(entry.attachment, entry.message?.type)) openImageViewer(entry.attachment);
+    if (isImageAttachment(entry.attachment, entry.message?.type)) openImageViewer(entry.attachment, entry.message);
     else handleFileOpen(entry.attachment);
   };
 
@@ -7600,17 +7668,62 @@ function App() {
       avatar: currentUser?.avatar, text, sharedFrom: shareMessage.id,
       time: getTimeString(), createdAt: new Date().toISOString(),
     };
-    if (chatMode === 'tinode') {
-      const topicName = await ensureTinodeConversationTopic(target);
-      await tinodeClient.sendText(topicName, text, shared.id, { sharedFrom: shareMessage.id });
+    const sourceAttachment = !isStickerMessage(shareMessage) ? attachmentForMessage(shareMessage) : null;
+    let forwarded = shared;
+
+    try {
+      if (chatMode === 'tinode') {
+        const topicName = await ensureTinodeConversationTopic(target);
+        if (sourceAttachment?.url) {
+          const sourceFile = await tinodeClient.fetchFile(sourceAttachment);
+          const result = await tinodeClient.sendFile(topicName, sourceFile, shared.id, {
+            sharedFrom: shareMessage.id,
+          });
+          const forwardedAttachment = {
+            ...sourceAttachment,
+            ...result.file,
+            name: sourceAttachment.name || result.file?.name || sourceFile.name,
+            mime: result.file?.mime || sourceAttachment.mime || sourceFile.type,
+            size: result.file?.size || sourceAttachment.size || sourceFile.size,
+          };
+          const forwardedIsImage = isImageAttachment(forwardedAttachment, result.file?.mime?.startsWith('image/') ? 'image' : '');
+          forwarded = {
+            ...shared,
+            type: forwardedIsImage ? 'image' : 'file',
+            text: '',
+            file: forwardedAttachment,
+            image: forwardedIsImage ? forwardedAttachment.url : undefined,
+          };
+        } else {
+          await tinodeClient.sendText(topicName, text, shared.id, { sharedFrom: shareMessage.id });
+        }
+      } else {
+        forwarded = sourceAttachment
+          ? {
+            ...shared,
+            type: isImageAttachment(sourceAttachment) ? 'image' : 'file',
+            text: '',
+            file: sourceAttachment,
+            image: isImageAttachment(sourceAttachment) ? sourceAttachment.url : undefined,
+          }
+          : shared;
+        if (target.isGroup) persistDemoGroupMessage(target, forwarded);
+        else persistDemoDirectMessage(target, forwarded);
+      }
+      setConversations(previous => ({
+        ...previous,
+        [target.id]: {
+          ...previous[target.id],
+          messages: [...roomMessages(previous[target.id]), forwarded],
+          lastMsg: forwarded.type === 'text' ? `Bạn: ${text}` : attachmentConversationPreview(forwarded),
+          time: forwarded.time,
+          updatedAt: forwarded.createdAt,
+        },
+      }));
+      setShareMessage(null);
+    } catch (error) {
+      setChatError(error?.message || 'Không thể chia sẻ tin nhắn.');
     }
-    else if (target.isGroup) persistDemoGroupMessage(target, shared);
-    else persistDemoDirectMessage(target, shared);
-    setConversations(previous => ({
-      ...previous,
-      [target.id]: { ...previous[target.id], messages: [...roomMessages(previous[target.id]), shared], lastMsg: `Bạn: ${text}`, time: shared.time, updatedAt: shared.createdAt },
-    }));
-    setShareMessage(null);
   };
 
   // --- Send Message Action ---
@@ -8372,6 +8485,7 @@ function App() {
         <ImageViewer
           source={imageViewer.source}
           file={imageViewer.file}
+          message={imageViewer.message}
           copy={appCopy}
           onDownload={handleFileDownload}
           onShare={handleImageShare}
@@ -8999,7 +9113,7 @@ function App() {
                           type="button"
                           className="image-preview-button"
                           title={appCopy.t('Bấm để xem ảnh')}
-                          onClick={() => openImageViewer(imagePreviewFile)}
+                          onClick={() => openImageViewer(imagePreviewFile, msg)}
                         >
                           <TinodeImagePreview
                             source={imagePreviewSource}

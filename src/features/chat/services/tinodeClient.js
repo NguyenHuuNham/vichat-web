@@ -2160,6 +2160,7 @@ export const tinodeClient = {
     draft.head = { ...(draft.head || {}), 'x-sender-id': tinode.getCurrentUserID() };
     if (clientId) draft.head['x-client-id'] = clientId;
     if (metadata.replyTo) draft.head['x-reply-to'] = JSON.stringify(metadata.replyTo);
+    if (metadata.sharedFrom) draft.head['x-shared-from'] = String(metadata.sharedFrom);
     if (metadata.sticker?.stickerId && metadata.sticker?.packId) {
       draft.head[STICKER_HEAD] = JSON.stringify({
         stickerId: String(metadata.sticker.stickerId).slice(0, 80),
@@ -2244,7 +2245,7 @@ export const tinodeClient = {
     if (!response.ok) throw new Error(`Không thể tải file (HTTP ${response.status}).`);
     const blob = await response.blob();
     return new File([blob], file.name || 'tep-chat', {
-      type: file.mime || blob.type || 'application/octet-stream',
+      type: blob.type || (file.mime !== 'image/*' ? file.mime : '') || 'application/octet-stream',
     });
   },
 

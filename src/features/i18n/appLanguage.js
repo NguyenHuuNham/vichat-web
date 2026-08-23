@@ -502,6 +502,8 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Không thể lưu tệp trong lịch sử nhóm.': 'Unable to save the file in group history.',
   'Chỉ có thể giao việc từ cuộc trò chuyện đã được Chatmgt quản lý.': 'Tasks can only be created from Chatmgt-managed conversations.',
   'Chia sẻ tin nhắn cần kết nối realtime Tinode.': 'Sharing a message requires the Tinode realtime connection.',
+  'Không thể chia sẻ tin nhắn này.': 'Unable to share this message.',
+  'Không thể chia sẻ tin nhắn.': 'Unable to share the message.',
   'Không thể gửi tin nhắn cho ViChat AI.': 'Unable to send a message to ViChat AI.',
   'Trợ lý AI chưa thể phản hồi. Vui lòng thử lại.': 'The AI assistant cannot respond yet. Please try again.',
   'Bạn có chắc chắn muốn đăng xuất khỏi Chat?': 'Are you sure you want to sign out of Chat?',

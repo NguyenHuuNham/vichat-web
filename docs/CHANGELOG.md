@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-09 - Keo anh khi zoom va chia se tin nhan noi bo
+
+- Thoi gian: 2026-08-24 06:36 (Asia/Saigon)
+- Loai: Tinh nang | Sua loi | Web | Realtime | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Cho phep keo anh sau khi phong to de xem phan bi che va dung nut chia se trong viewer de chuyen tiep tin nhan cho mot nguoi hoac nhom trong ViChat.
+- Pham vi: Chi image viewer, message forward picker va Tinode attachment forward; giu nguyen ho so, avatar, sticker, nen, reaction, membership va cac luong chat khac.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Viewer them pointer drag co gioi han theo khung anh, con tro grab/grabbing va reset pan khi doi anh/thu nho. Nut Share khong goi `navigator.share` hoac bang chia se he dieu hanh; no mo danh sach cuoc tro chuyen noi bo hien co. Khi chuyen tiep anh/file trong Tinode, he thong tai file qua media authenticated, upload lai vao topic dich va giu metadata `sharedFrom`; tin nhan van ban tiep tuc dung luong cu.
+- Quyet dinh ky thuat: Dung pointer capture va `translate3d` tren lop scale hien co, khong them dependency; gioi han pan theo kich thuoc layout de nguoi dung khong lam mat anh. Forward attachment dung `tinodeClient.fetchFile`/`sendFile`, khong copy URL protected sang topic khac.
+- Database/API/cau hinh: Khong migration, endpoint moi hoac bien moi truong; chi bo sung head metadata `x-shared-from` cho luong `sendFile` Tinode hien co.
+- Kiem thu: `npm run test:frontend` dat 175/175; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `App-8mTO8XWv.js`, `index-BL62cxPp.js`, CSS `index-D8JDW2m6.css`; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 44/44; `git diff --check` dat.
+- Rui ro con lai: Chua UAT pixel-level bang browser runtime; can thu keo anh desktop/mobile o zoom 125-300%, thu reset/doi anh, chuyen tiep anh/file/van ban sang chat 1-1 va nhom, va xac nhan loi upload khong lam mat modal.
+- Viec tiep theo: Commit/push va deploy chi recreate `chat`, sau do health/asset/log verify; khong restart PostgreSQL, Redis, Tinode, bridge, webhook, ChatAPI hay Coturn.
+- Commit/PR: Chua tao.
+
 ## 2026-08-24-08 - Dong bo ho so UpGo va crop avatar
 
 - Thoi gian: 2026-08-24 06:03 (Asia/Saigon)
