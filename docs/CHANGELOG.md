@@ -8,9 +8,9 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-24-01 - Dong bo avatar Account va giu avatar nhom
 
-- Thoi gian: 2026-08-24 01:07 (Asia/Saigon)
+- Thoi gian: 2026-08-24 01:23 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | API | Web | Realtime | Kiem thu | Tai lieu | Van hanh
-- Trang thai: Dang thuc hien
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Dong bo avatar hai chieu giua UpGO Account va ViChat, dong thoi khong de avatar nhom mat sau F5, chuyen tenant, reconnect hoac deploy.
 - Pham vi: Account SSO avatar, Chatmgt projection, ChatUI directory/profile/message/member avatar, Tinode group metadata; khong thay doi sticker, wallpaper, reaction, membership hay transport tin nhan.
 - File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/services/sso_identity.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/app/App.jsx`, `src/features/auth/components/Login.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/chat/services/chatRealtime.js`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
@@ -18,10 +18,11 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: UpGO Account la nguon avatar ca nhan; Chatmgt la projection ben vung trong tenant; Tinode chi phat realtime va khong duoc ghi de avatar Account/group da xac nhan. Khong them schema migration.
 - Database/API/cau hinh: Su dung endpoint hien co `POST /api/v1/auth/avatar`, mo rong serializer/metadata conversation hien co; khong them bien moi truong, secret, migration hay reset volume/topic/message.
 - Kiem thu: `npm run test:frontend` dat 166/166; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi `index-DBZ8HM0y.js`, `App-CRPg9lZB.js`, `index-D9-GP0HU.css`; `python -m unittest discover -s tests -q` dat 182 test, skip 61 theo moi truong; `python -m py_compile application/controllers/api_chat_management.py application/services/sso_identity.py tests/test_chat_auth_contract.py` dat; `git diff --check` dat. Mot lan test backend chay dong thoi voi build gap `ConnectionAbortedError` o test local AI HTTP, sau khi chay rieng da dat 182/182.
-- Rui ro con lai: Chua UAT production bang tai khoan UpGO that cho doi avatar tu ca Account va web, doi tenant, reconnect va deploy; chua co browser pixel UAT trong phien nay.
-- Viec tiep theo: Commit/push, tao release bat bien, chi recreate `chat` va `chatmgt`, kiem tra health/public asset/Nginx/log, sau do hard refresh va UAT hai tai khoan. Neu loi chi rollback `current` ve `previous`, khong reset Tinode/database/volume.
-- Trien khai: Chua thuc hien.
-- Commit/PR: Chua tao.
+- Rui ro con lai: Chua UAT production bang tai khoan UpGO that de doi avatar tu ca Account va web, doi tenant, reconnect va deploy; chua co browser pixel UAT trong phien nay.
+- Viec tiep theo: Hard refresh production va UAT hai tai khoan: doi avatar tren UpGO Account, doi avatar tren web, kiem tra member/message/profile, F5, reconnect, chuyen tenant va avatar nhom. Neu loi chi rollback `current` ve `previous`, khong reset Tinode/database/volume.
+- Trien khai: Archive SHA-256 `9f8add581a9a4850e9b9c461fcaa9c74291b4789458d87dfbb20060a5968767a` duoc staging tai `/opt/deploy/chat/incoming/vichat-web-a29c560.tar.gz`; release `/opt/deploy/chat/releases/a29c560-20260824-0108` dang la `current`, `previous` tro `/opt/deploy/chat/releases/8d0dd0a-20260823-171249`. Chi recreate `chat` va `chatmgt` voi `--no-deps --force-recreate --no-build`; image `chat` `sha256:b61ae5c99325e1c9cbd86c8ac7e70a864e763b40d229001cbf0bb54f09b28025`, `chatmgt` `sha256:f9c3827d3b686b965831c4d76c7e48dee30f4a94e58fb483d61b047e2fb042ce`; rollback tags duoc luu trong release. PostgreSQL, Redis, Tinode, bridge, webhook, Coturn, volume, topic va message khong bi reset.
+- Kiem tra production: Remote compose `config -q` dat; container `chat` va `chatmgt` healthy; `http://127.0.0.1:8094/healthz`, `http://192.168.80.160:8081/api/v1/auth/health`, `https://chat.upgo.vn/healthz`, `https://chatmgt.upgo.vn/api/v1/auth/health` deu tra OK; public bundle `/assets/index-CMVjOBm5.js` HTTP 200; `sudo nginx -t` dat; log 10 phut cua ChatUI/Chatmgt khong co fatal/panic/traceback/critical/emerg/uncaught.
+- Commit/PR: Source `a29c560` da commit va push `origin/master`; changelog deploy follow-up dang cho commit.
 
 ## 2026-08-23-22 - Sua nen cuon va pham vi chia se hinh nen
 
