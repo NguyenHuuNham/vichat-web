@@ -60,6 +60,53 @@ export function ConversationListScreen({ navigation }: Props) {
     }
   }, []);
 
+  const requestConversationDelete = useCallback((item: typeof conversations[number]) => {
+    const currentIds = new Set([session?.user.id, session?.user.uid].filter(Boolean).map(String));
+    const ownerId = String(item.adminId || '');
+    const isOwner = item.isGroup && (
+      (ownerId && currentIds.has(ownerId))
+      || item.members?.some(member => String(member.mode || '').includes('O') && currentIds.has(String(member.id || member.uid)))
+    );
+    if (!isOwner) {
+      Alert.alert(
+        'Xóa cuộc trò chuyện?',
+        'Tin nhắn của người khác không bị xóa.',
+        [
+          { text: 'Hủy', style: 'cancel' },
+          {
+            text: 'Xóa',
+            style: 'destructive',
+            onPress: () => void runConversationAction(
+              () => deleteConversation(item.id),
+              'Không xóa được cuộc trò chuyện phía bạn.',
+            ),
+          },
+        ],
+      );
+      return;
+    }
+
+    const candidates = (item.members || []).filter(member => !currentIds.has(String(member.id || member.uid)));
+    if (candidates.length === 0) {
+      Alert.alert('Không thể rời nhóm', 'Nhóm cần có một thành viên khác để nhận quyền trưởng nhóm.');
+      return;
+    }
+    Alert.alert(
+      'Chọn trưởng nhóm mới',
+      'Bạn phải chuyển quyền cho một thành viên trước khi rời nhóm.',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        ...candidates.map(member => ({
+          text: member.name || member.username || String(member.id || member.uid),
+          onPress: () => void runConversationAction(
+            () => deleteConversation(item.id, String(member.id || member.uid)),
+            'Không thể chuyển quyền và rời nhóm.',
+          ),
+        })),
+      ],
+    );
+  }, [deleteConversation, runConversationAction, session]);
+
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
@@ -119,21 +166,7 @@ export function ConversationListScreen({ navigation }: Props) {
                 {
                   text: 'Xóa phía tôi',
                   style: 'destructive',
-                  onPress: () => Alert.alert(
-                    'Xóa cuộc trò chuyện?',
-                    'Tin nhắn của người khác không bị xóa.',
-                    [
-                      { text: 'Hủy', style: 'cancel' },
-                      {
-                        text: 'Xóa',
-                        style: 'destructive',
-                        onPress: () => void runConversationAction(
-                          () => deleteConversation(item.id),
-                          'Không xóa được cuộc trò chuyện phía bạn.',
-                        ),
-                      },
-                    ],
-                  ),
+                  onPress: () => requestConversationDelete(item),
                 },
               ],
             )}

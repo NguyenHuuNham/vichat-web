@@ -10,9 +10,8 @@ function isRealMessage(message) {
   return !id.startsWith('incoming-') && !LEGACY_DEMO_MESSAGE_IDS.has(id);
 }
 
-function randomMemberId(memberIds) {
-  const candidates = uniqueIds(memberIds);
-  return candidates[Math.floor(Math.random() * candidates.length)] || '';
+function firstMemberId(memberIds) {
+  return uniqueIds(memberIds)[0] || '';
 }
 
 function reconcileGroupMembership(group) {
@@ -21,7 +20,8 @@ function reconcileGroupMembership(group) {
     ...(group.memberIds || []),
     ...messages.map(message => message.senderId),
   ]);
-  let ownerLeft = false;
+  let ownerId = group.ownerId;
+  let ownerNeedsRecovery = false;
   for (const message of messages) {
     if (message.type !== 'system') continue;
     if (message.action === 'member_added') {
@@ -29,15 +29,17 @@ function reconcileGroupMembership(group) {
     }
     if (message.action === 'member_left' && message.senderId) {
       memberIds = memberIds.filter(id => id !== message.senderId);
-      if (message.senderId === group.ownerId) ownerLeft = true;
+      if (message.senderId === ownerId) {
+        const replacementId = String(message.replacementId || '').trim();
+        if (replacementId && memberIds.includes(replacementId)) ownerId = replacementId;
+        else ownerNeedsRecovery = true;
+      }
     }
     if (message.action === 'member_removed') {
       memberIds = memberIds.filter(id => !(message.targetIds || []).includes(id));
     }
   }
-  const ownerId = ownerLeft || !memberIds.includes(group.ownerId)
-    ? randomMemberId(memberIds.filter(id => id !== group.ownerId)) || memberIds[0]
-    : group.ownerId;
+  if (ownerNeedsRecovery || !memberIds.includes(ownerId)) ownerId = firstMemberId(memberIds);
   return { ...group, memberIds, ownerId, messages };
 }
 
@@ -171,30 +173,41 @@ export function removeDemoGroupMember(groupId, memberId, ownerId) {
   return updated;
 }
 
-export function leaveDemoGroup(groupId, userId) {
+export function leaveDemoGroup(groupId, userId, replacementId = '') {
   const groups = readGroups();
   const group = groups.find(item => item.id === groupId);
   if (!group) return;
-  const memberIds = (group.memberIds || []).filter(id => id !== userId);
-  const ownerId = group.ownerId === userId ? randomMemberId(memberIds) : group.ownerId;
+  const memberIds = uniqueIds(group.memberIds || []).filter(id => id !== userId);
+  const isOwner = group.ownerId === userId;
+  const nextOwnerId = String(replacementId || '').trim();
+  if (isOwner && (!nextOwnerId || !memberIds.includes(nextOwnerId))) {
+    throw new Error('Quản trị viên phải chọn một thành viên mới trước khi rời nhóm.');
+  }
+  const ownerId = isOwner ? nextOwnerId : group.ownerId;
   writeGroups(memberIds.length > 0
     ? [...groups.filter(item => item.id !== groupId), { ...group, memberIds, ownerId, updatedAt: new Date().toISOString() }]
     : groups.filter(item => item.id !== groupId));
 }
 
-export function deleteDemoGroupForUser(groupId, userId, userName = 'Một thành viên') {
+export function deleteDemoGroupForUser(groupId, userId, userName = 'Một thành viên', replacementId = '', replacementName = '') {
   const groups = readGroups();
   const group = groups.find(item => item.id === groupId);
   if (!group) return;
   const deletedAt = new Date().toISOString();
-  const memberIds = (group.memberIds || []).filter(id => id !== userId);
-  const ownerId = group.ownerId === userId ? randomMemberId(memberIds) : group.ownerId;
+  const memberIds = uniqueIds(group.memberIds || []).filter(id => id !== userId);
+  const isOwner = group.ownerId === userId;
+  const nextOwnerId = String(replacementId || '').trim();
+  if (isOwner && (!nextOwnerId || !memberIds.includes(nextOwnerId))) {
+    throw new Error('Quản trị viên phải chọn một thành viên mới trước khi rời nhóm.');
+  }
+  const ownerId = isOwner ? nextOwnerId : group.ownerId;
   const leaveMessage = {
     id: `system-delete-${Date.now()}`,
     type: 'system',
     action: 'member_left',
     senderId: userId,
     senderName: userName,
+    ...(nextOwnerId ? { replacementId: nextOwnerId, replacementName } : {}),
     text: `${userName} đã rời khỏi nhóm`,
     time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
     createdAt: deletedAt,

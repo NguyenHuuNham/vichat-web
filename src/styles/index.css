@@ -4485,6 +4485,61 @@ input:checked + .slider:before {
     background: #eaf8ef;
     font-size: 11.5px;
 }
+.group-management-notice.error { color: var(--vichat-red); background: var(--vichat-red-light); }
+
+.group-leave-modal { width: min(530px, 100%); }
+.group-leave-intro {
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    margin: -7px 0 18px;
+    padding: 12px;
+    border: 1px solid rgba(244, 81, 30, .18);
+    border-radius: 13px;
+    color: var(--vichat-blue-dark);
+    background: var(--vichat-blue-light);
+}
+.group-leave-intro-icon {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    place-items: center;
+    border-radius: 10px;
+    color: var(--vichat-blue);
+    background: var(--bg-white);
+}
+.group-leave-intro strong { display: block; color: var(--text-main); font-size: 13px; }
+.group-leave-intro p { margin: 4px 0 0; color: var(--text-body); font-size: 11.5px; line-height: 1.5; }
+.group-leave-search-field { margin-bottom: 12px; }
+.group-leave-search-wrap { position: relative; }
+.group-leave-search-wrap > i { position: absolute; top: 50%; left: 12px; color: var(--text-muted); transform: translateY(-50%); pointer-events: none; }
+.group-leave-search-wrap input { padding-left: 35px; }
+.group-leave-list { display: flex; flex-direction: column; gap: 7px; max-height: 270px; overflow-y: auto; }
+.group-leave-member {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 58px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-white);
+    cursor: pointer;
+    transition: border-color var(--transition-fast), background-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.group-leave-member:hover,
+.group-leave-member.selected { border-color: var(--vichat-blue); background: var(--vichat-blue-light); box-shadow: 0 5px 14px rgba(244, 81, 30, .08); }
+.group-leave-member input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.group-leave-member-avatar { width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%; }
+.group-leave-member-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.group-leave-member-copy strong { overflow: hidden; color: var(--text-main); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.group-leave-member-copy small { overflow: hidden; color: var(--text-muted); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+.group-leave-radio-indicator { display: grid; width: 22px; height: 22px; flex: 0 0 22px; place-items: center; border: 1px solid var(--border-color); border-radius: 50%; color: transparent; background: var(--bg-app); font-size: 10px; }
+.group-leave-member.selected .group-leave-radio-indicator { border-color: var(--vichat-blue); color: #fff; background: var(--vichat-blue); }
+.group-leave-empty { padding: 12px 4px; text-align: center; }
+.group-leave-notice { display: flex; align-items: flex-start; gap: 7px; margin: 13px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.45; }
+.group-leave-notice i { flex: 0 0 auto; margin-top: 2px; color: var(--vichat-blue); }
 
 .group-rename-modal { width: min(440px, 100%); }
 
@@ -5138,6 +5193,13 @@ html[data-theme="dark"] .group-management-option:hover { border-color: #8c5b48; 
 html[data-theme="dark"] .group-management-option-icon { background: #27363c; }
 html[data-theme="dark"] .group-management-intro { border-color: #754837; color: #ffc0a5; background: #3d2928; }
 html[data-theme="dark"] .group-management-notice { color: #a4e6bf; background: #214334; }
+html[data-theme="dark"] .group-management-notice.error { color: #ffb0a0; background: #452523; }
+html[data-theme="dark"] .group-leave-intro { border-color: #754837; color: #ffc0a5; background: #3d2928; }
+html[data-theme="dark"] .group-leave-intro-icon { background: #27363c; }
+html[data-theme="dark"] .group-leave-member { border-color: #3b4b54; background: #202c32; }
+html[data-theme="dark"] .group-leave-member:hover,
+html[data-theme="dark"] .group-leave-member.selected { border-color: #8c5b48; background: #4a2e24; }
+html[data-theme="dark"] .group-leave-radio-indicator { border-color: #53636a; background: #27363c; }
 html[data-theme="dark"] .group-owner-message-badge { color: #f6d783; background: #4b3d1f; }
 html[data-theme="dark"] .group-send-disabled-notice { border-color: #704342; color: #ffb0a0; background: #3d2928; }
 html[data-theme="dark"] .btn-secondary:hover { background: #354149; }

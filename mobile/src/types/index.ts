@@ -105,6 +105,7 @@ export interface Conversation {
   tinodeTopic: string;
   name: string;
   isGroup: boolean;
+  adminId?: string;
   isChatbot?: boolean;
   avatarUrl?: string;
   description?: string;

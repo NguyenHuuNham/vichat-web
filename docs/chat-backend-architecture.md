@@ -372,16 +372,21 @@ or rewrite later message, presence or call packets.
 `POST /api/v1/conversation/<id>/tinode-prepare` prepares missing UID mappings
 from current Chatmgt membership. Group topic binding and add/remove/leave
 operations verify the exact tenant member set before committing Chatmgt
-metadata. Add-member requests are authorized by the current Chatmgt
+metadata. A group owner who leaves must send an explicit `replacement_id`
+for another active member; Chatmgt never chooses a successor randomly and
+rejects the leave when the selection is missing or invalid. Add-member requests are authorized by the current Chatmgt
 membership and use the active owner bridge credential server-side; the browser
 does not need to supply an owner token. If a bound group has a stale Tinode
 subscriber snapshot, Chatmgt uses the surviving owner bridge credential to
 reconcile the topic to the active Chatmgt member set before accepting the bind
 or membership change. When a group owner leaves, Chatmgt grants the
-replacement member owner access, has that member accept the transfer through
-its own Tinode session, and only then removes the former owner. The leave
-activity event is published by a surviving member after the membership commit,
-so a rejected Tinode operation cannot create a false "left the group" message.
+explicitly selected replacement member owner access, has that member accept
+the transfer through its own Tinode session, and only then removes the former
+owner. The leave activity event includes the new owner identity and is
+published by a surviving member after the membership commit, so every client
+can show the transfer and a rejected Tinode operation cannot create a false
+"left the group" message. The replacement receives the same full owner
+permissions as the previous owner.
 The central Tinode remains authoritative for
 message content, files, presence, typing, reactions, receipts and call
 signaling. ChatUI does not post normal messages/files to Chatmgt knowledge;
@@ -552,8 +557,8 @@ history, role-aware actions and a message-to-task shortcut.
 | `POST` | `/api/v1/conversation/<id>/tinode-prepare` | Prepare Tinode participant mappings |
 | `PUT` | `/api/v1/conversation/<id>/tinode-topic` | Verify/bind the topic to exact membership |
 | `POST` | `/api/v1/conversation/<id>/participants` | Add same-tenant active employees; any active group member may request this |
-| `DELETE` | `/api/v1/conversation/<id>/participants/<participant-id>` | Remove self, or remove another member as the group owner |
-| `DELETE` | `/api/v1/conversation/<id>/self` | Remove the current user's conversation membership only |
+| `DELETE` | `/api/v1/conversation/<id>/participants/<participant-id>` | Remove self, or remove another member as the group owner; owner self-removal requires body `replacement_id` for another active member |
+| `DELETE` | `/api/v1/conversation/<id>/self` | Remove the current user's conversation membership; group owner self-removal requires body `replacement_id` |
 | `GET` | `/api/v1/workspace/items` | List tenant-visible Workspace items and summary |
 | `POST` | `/api/v1/workspace/items` | Create a validated task, announcement, approval, ticket, wiki, event or integration entry |
 | `GET/PUT/DELETE` | `/api/v1/workspace/items/<id>` | Read, update or archive one tenant-scoped item |

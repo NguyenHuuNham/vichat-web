@@ -712,7 +712,11 @@ function personalizeGroupSystemText(message, accounts, viewerId) {
     return `${actorName} đã thêm ${targetNames.join(', ')} vào nhóm`;
   }
   if (message.action === 'member_left') {
-    return message.senderId === viewerId ? 'Bạn đã rời khỏi nhóm' : `${actorName} đã rời khỏi nhóm`;
+    const replacementName = String(message.replacementName || message.systemEvent?.replacementName || '').trim();
+    const leaveText = message.senderId === viewerId ? 'Bạn đã rời khỏi nhóm' : `${actorName} đã rời khỏi nhóm`;
+    return replacementName
+      ? `${leaveText}. ${replacementName} đã trở thành trưởng nhóm mới`
+      : leaveText;
   }
   if (message.action === 'group_created') {
     return message.senderId === viewerId ? 'Bạn đã tạo nhóm' : `${actorName} đã tạo nhóm`;
@@ -1685,6 +1689,12 @@ function App() {
   const [isGroupRenameOpen, setIsGroupRenameOpen] = useState(false);
   const [groupRenameValue, setGroupRenameValue] = useState('');
   const [isRenamingGroup, setIsRenamingGroup] = useState(false);
+  const [pendingGroupLeave, setPendingGroupLeave] = useState(null);
+  const [groupLeaveSearch, setGroupLeaveSearch] = useState('');
+  const [groupLeaveReplacementId, setGroupLeaveReplacementId] = useState('');
+  const [groupLeaveReplacementName, setGroupLeaveReplacementName] = useState('');
+  const [groupLeaveNotice, setGroupLeaveNotice] = useState('');
+  const [isLeavingGroup, setIsLeavingGroup] = useState(false);
   const [workspacePanel, setWorkspacePanel] = useState(() => (
     typeof window === 'undefined' ? null : workspacePanelFromPath(window.location.pathname)
   ));
@@ -1926,6 +1936,11 @@ function App() {
     setIsGroupManagementOpen(false);
     setGroupManagementNotice('');
     setIsGroupRenameOpen(false);
+    setPendingGroupLeave(null);
+    setGroupLeaveSearch('');
+    setGroupLeaveReplacementId('');
+    setGroupLeaveReplacementName('');
+    setGroupLeaveNotice('');
     if (messageHighlightTimerRef.current) {
       window.clearTimeout(messageHighlightTimerRef.current);
       messageHighlightTimerRef.current = null;
@@ -2174,6 +2189,31 @@ function App() {
   const canPinActiveGroupMessages = !activeChat.isGroup
     || isActiveGroupAdmin
     || groupSettingEnabled(activeGroupSettings, 'allowPinMessages');
+  const groupLeaveCandidates = (() => {
+    if (!pendingGroupLeave?.room?.isGroup) return [];
+    const pendingGroupAdmin = resolveGroupAdministrator(pendingGroupLeave.room, directoryAccounts);
+    const seen = new Set();
+    return roomMembers(pendingGroupLeave.room)
+      .map(member => {
+        const account = findAccount(
+          directoryAccounts,
+          member.id || member.uid || member.tinodeUid || member.tinode_uid || member.name,
+        ) || member;
+        const id = String(account.id || account.uid || account.tinodeUid || account.tinode_uid || member.id || '').trim();
+        if (!id || identitiesOverlap(account, currentUser) || identitiesOverlap(account, pendingGroupAdmin) || seen.has(id)) return null;
+        seen.add(id);
+        return {
+          ...member,
+          ...account,
+          id,
+          name: account.name || member.name || id,
+          avatar: account.avatar || member.avatar || '',
+        };
+      })
+      .filter(Boolean)
+      .filter(member => matchesCompanyDirectoryContact(member, groupLeaveSearch))
+      .sort((first, second) => String(first.name).localeCompare(String(second.name), 'vi', { sensitivity: 'base' }));
+  })();
   const messageSearchSenderOptions = [currentUser, ...activeChatMembers]
     .reduce((options, account) => {
       const id = messageSearchSenderId(account);
@@ -4804,58 +4844,138 @@ function App() {
     }
   };
 
-  const handleLeaveGroup = async () => {
-    if (!activeChat.isGroup || !window.confirm(appCopy.t(`Bạn có chắc muốn rời nhóm "${activeChat.name}"?`))) return;
+  const executeGroupLeave = async (targetRoom, replacementId = '', replacementName = '', mode = 'leave') => {
+    if (!targetRoom?.isGroup || isLeavingGroup) return false;
+    const actorId = currentUser?.id || currentUser?.uid;
+    const isOwner = canManageGroupMembers(targetRoom, directoryAccounts, currentUser);
+    if (isOwner && !replacementId) {
+      setGroupLeaveNotice('Quản trị viên phải chọn một thành viên mới trước khi rời nhóm.');
+      return false;
+    }
+
+    setIsLeavingGroup(true);
+    setChatError('');
+    setGroupLeaveNotice('');
+    const deletedKeys = [targetRoom.id, targetRoom.managementId, targetRoom.tinodeTopic]
+      .filter(Boolean)
+      .map(String);
+    deletedKeys.forEach(key => deletedConversationIdsRef.current.add(key));
+    const createdAt = new Date().toISOString();
+    const systemMessage = {
+      id: `system-leave-${Date.now()}`,
+      type: 'system',
+      action: 'member_left',
+      senderId: actorId,
+      senderName: currentUser?.name,
+      ...(replacementId ? { replacementId, replacementName } : {}),
+      text: `${currentUser?.name || 'Một thành viên'} đã rời khỏi nhóm`,
+      time: getTimeString(),
+      createdAt,
+    };
     try {
-      deletedConversationIdsRef.current.add(activeChat.id);
-      const actorId = currentUser?.id || currentUser?.uid;
-      const systemText = `${currentUser?.name || 'Một thành viên'} đã rời khỏi nhóm`;
-      const systemMessage = {
-        id: `system-leave-${Date.now()}`,
-        type: 'system',
-        action: 'member_left',
-        senderId: actorId,
-        senderName: currentUser?.name,
-        text: systemText,
-        time: getTimeString(),
-        createdAt: new Date().toISOString(),
-      };
       let departedTopic = '';
       if (usesManagementData) {
         await chatManagementService.removeConversationParticipant(
-          activeChat.managementId || activeChat.id,
+          targetRoom.managementId || targetRoom.id,
           actorId,
+          { replacementId },
         );
-        departedTopic = activeChat.tinodeTopic || '';
+        departedTopic = targetRoom.tinodeTopic || '';
       } else {
-        if (chatMode === 'tinode' && activeChat.id) {
-          departedTopic = await ensureTinodeConversationTopic(activeChat);
+        if (chatMode === 'tinode' && targetRoom.id) {
+          departedTopic = await ensureTinodeConversationTopic(targetRoom);
           await tinodeClient.sendSystemEvent(departedTopic, {
             action: 'member_left',
             actorId,
             actorName: currentUser?.name,
+            ...(replacementId ? { replacementId, replacementName } : {}),
           });
         }
-        persistDemoGroupMessage(activeChat, systemMessage);
-        leaveDemoGroup(activeChat.id, actorId);
+        if (mode === 'delete') {
+          deleteDemoGroupForUser(targetRoom.id, actorId, currentUser?.name, replacementId, replacementName);
+        } else {
+          persistDemoGroupMessage(targetRoom, systemMessage);
+          leaveDemoGroup(targetRoom.id, actorId, replacementId);
+        }
       }
       if (departedTopic) tinodeClient.disallowConversationTopic(departedTopic);
-      setConversations(prev => {
-        const next = { ...prev };
-        delete next[activeChat.id];
+      setConversations(previous => {
+        const next = { ...previous };
+        delete next[targetRoom.id];
         return next;
       });
+      const currentConversationMap = conversationsRef.current || conversations;
       const remainingRooms = Object.fromEntries(
-        safeConversationEntries(conversations).filter(([id]) => id !== activeChat.id),
+        safeConversationEntries(currentConversationMap).filter(([id]) => id !== targetRoom.id),
       );
       const nextId = firstVisibleConversationId(remainingRooms, drafts, CHATBOT_ACCOUNT.id);
       setCurrentChatId(nextId);
       setIsDetailOpen(false);
-      setTimeout(() => deletedConversationIdsRef.current.delete(activeChat.id), 5000);
+      setPendingGroupLeave(null);
+      setGroupLeaveSearch('');
+      setGroupLeaveReplacementId('');
+      setGroupLeaveReplacementName('');
+      setGroupLeaveNotice('');
+      setTimeout(() => deletedKeys.forEach(key => deletedConversationIdsRef.current.delete(key)), 5000);
+      return true;
     } catch (err) {
-      deletedConversationIdsRef.current.delete(activeChat.id);
-      setChatError(err?.message || 'Không thể rời nhóm.');
+      deletedKeys.forEach(key => deletedConversationIdsRef.current.delete(key));
+      const message = {
+        OWNER_REPLACEMENT_REQUIRED: 'Quản trị viên phải chọn một thành viên mới trước khi rời nhóm.',
+        OWNER_REPLACEMENT_INVALID: 'Thành viên được chọn không hợp lệ để nhận quyền trưởng nhóm.',
+        OWNER_REPLACEMENT_NOT_MEMBER: 'Thành viên được chọn không còn ở trong nhóm.',
+      }[err?.code] || err?.message || 'Không thể rời nhóm.';
+      setChatError(message);
+      setGroupLeaveNotice(message);
+      return false;
+    } finally {
+      setIsLeavingGroup(false);
     }
+  };
+
+  const closeGroupLeaveDialog = () => {
+    if (isLeavingGroup) return;
+    setPendingGroupLeave(null);
+    setGroupLeaveSearch('');
+    setGroupLeaveReplacementId('');
+    setGroupLeaveReplacementName('');
+    setGroupLeaveNotice('');
+  };
+
+  const requestGroupLeave = (targetRoom, mode = 'leave') => {
+    if (!targetRoom?.isGroup || isLeavingGroup) return;
+    if (canManageGroupMembers(targetRoom, directoryAccounts, currentUser)) {
+      setPendingGroupLeave({ room: targetRoom, mode });
+      setGroupLeaveSearch('');
+      setGroupLeaveReplacementId('');
+      setGroupLeaveReplacementName('');
+      setGroupLeaveNotice('');
+      setChatError('');
+      return;
+    }
+    if (window.confirm(appCopy.t(`Bạn có chắc muốn rời nhóm "${targetRoom.name}"?`))) {
+      void executeGroupLeave(targetRoom);
+    }
+  };
+
+  const handleGroupLeaveSubmit = async event => {
+    event.preventDefault();
+    if (!pendingGroupLeave?.room || isLeavingGroup) return;
+    if (!groupLeaveReplacementId) {
+      setGroupLeaveNotice('Hãy chọn một thành viên để trở thành trưởng nhóm mới.');
+      return;
+    }
+    await executeGroupLeave(
+      pendingGroupLeave.room,
+      groupLeaveReplacementId,
+      groupLeaveReplacementName,
+      pendingGroupLeave.mode || 'leave',
+    );
+  };
+
+  const handleLeaveGroup = () => {
+    if (!activeChat.isGroup) return;
+    requestGroupLeave(activeChat, 'leave');
   };
 
   const handleDeleteConversation = async (roomOverride = null) => {
@@ -4865,6 +4985,10 @@ function App() {
       : null;
     const activeChat = targetRoom;
     if (!targetRoom?.id || targetRoom.isChatbot || isDeletingConversation) return;
+    if (activeChat.isGroup && canManageGroupMembers(activeChat, directoryAccounts, currentUser)) {
+      requestGroupLeave(activeChat, 'delete');
+      return;
+    }
     const kind = activeChat.isGroup ? 'nhóm' : 'cuộc trò chuyện';
     const localizedKind = appCopy.t(kind);
     const deleteEffect = usesManagementData
@@ -9144,6 +9268,105 @@ function App() {
               </div>
             )}
           </section>
+        </div>
+      )}
+
+      {pendingGroupLeave?.room?.isGroup && (
+        <div className="modal-backdrop group-leave-backdrop" role="presentation" onMouseDown={event => {
+          if (event.target === event.currentTarget) closeGroupLeaveDialog();
+        }}>
+          <form
+            className="group-modal group-leave-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="group-leave-title"
+            onSubmit={handleGroupLeaveSubmit}
+            onMouseDown={event => event.stopPropagation()}
+          >
+            <div className="group-modal-header">
+              <div>
+                <span className="group-modal-kicker">{appCopy.t('CHUYỂN QUYỀN NHÓM')}</span>
+                <h2 id="group-leave-title">{appCopy.t('Chọn trưởng nhóm mới')}</h2>
+              </div>
+              <button type="button" className="btn-close-detail" onClick={closeGroupLeaveDialog} aria-label={appCopy.t('Đóng')} disabled={isLeavingGroup}>
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <div className="group-leave-intro">
+              <span className="group-leave-intro-icon"><i className="fa-solid fa-user-shield"></i></span>
+              <div>
+                <strong>{appCopy.t('Bạn đang là trưởng nhóm')}</strong>
+                <p>{appCopy.t('Hãy chọn một thành viên còn lại làm trưởng nhóm mới trước khi rời nhóm. Người được chọn sẽ nhận đầy đủ quyền quản trị như bạn.')}</p>
+              </div>
+            </div>
+
+            <label className="group-form-field group-leave-search-field">
+              <span>{appCopy.t('Tìm thành viên')}</span>
+              <div className="group-leave-search-wrap">
+                <i className="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input
+                  value={groupLeaveSearch}
+                  onChange={event => setGroupLeaveSearch(event.target.value)}
+                  placeholder={appCopy.t('Tìm theo tên hoặc tài khoản')}
+                  aria-label={appCopy.t('Tìm thành viên')}
+                  autoFocus
+                  disabled={isLeavingGroup}
+                />
+              </div>
+            </label>
+
+            <div className="group-leave-list" role="radiogroup" aria-label={appCopy.t('Danh sách thành viên có thể làm trưởng nhóm')}>
+              {groupLeaveCandidates.length > 0 ? groupLeaveCandidates.map(member => {
+                const memberId = String(member.id || member.uid || member.tinodeUid || member.name);
+                const selected = groupLeaveReplacementId === memberId;
+                return (
+                  <label className={`group-leave-member ${selected ? 'selected' : ''}`} key={memberId}>
+                    <input
+                      type="radio"
+                      name="group-leave-replacement"
+                      value={memberId}
+                      checked={selected}
+                      onChange={() => {
+                        setGroupLeaveReplacementId(memberId);
+                        setGroupLeaveReplacementName(member.name || memberId);
+                        setGroupLeaveNotice('');
+                      }}
+                      disabled={isLeavingGroup}
+                    />
+                    <SafeAvatar src={member.avatar || ''} name={member.name} className="group-leave-member-avatar" />
+                    <span className="group-leave-member-copy">
+                      <strong>{member.name}</strong>
+                      <small>{directoryUsernameMeta(member) || appCopy.t('Thành viên trong nhóm')}</small>
+                    </span>
+                    <span className="group-leave-radio-indicator"><i className="fa-solid fa-check"></i></span>
+                  </label>
+                );
+              }) : (
+                <p className="group-form-hint group-leave-empty">
+                  {groupLeaveSearch.trim()
+                    ? appCopy.t('Không tìm thấy thành viên phù hợp.')
+                    : appCopy.t('Nhóm chưa có thành viên khác để chuyển quyền. Hãy thêm thành viên trước khi rời nhóm.')}
+                </p>
+              )}
+            </div>
+
+            <p className="group-leave-notice" role="status">
+              <i className="fa-solid fa-circle-info"></i>
+              <span>{appCopy.t('Việc chuyển quyền và rời nhóm sẽ được thông báo tới mọi thành viên.')}</span>
+            </p>
+            {groupLeaveNotice && <div className="group-management-notice error" role="alert"><i className="fa-solid fa-circle-exclamation"></i>{appCopy.t(groupLeaveNotice)}</div>}
+
+            <div className="group-modal-footer actions-only">
+              <div className="group-modal-actions">
+                <button type="button" className="btn-secondary" onClick={closeGroupLeaveDialog} disabled={isLeavingGroup}>{appCopy.t('Hủy')}</button>
+                <button type="submit" className="btn-primary" disabled={isLeavingGroup || !groupLeaveReplacementId}>
+                  {isLeavingGroup ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-arrow-right-from-bracket"></i>}
+                  {isLeavingGroup ? appCopy.t('Đang chuyển quyền...') : appCopy.t('Chuyển quyền và rời nhóm')}
+                </button>
+              </div>
+            </div>
+          </form>
         </div>
       )}
 

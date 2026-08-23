@@ -14,6 +14,7 @@ function normalizeConversation(record: any): Conversation {
     tinodeTopic: topic,
     name: String(record?.name || record?.subject || properties.name || 'Cuộc trò chuyện'),
     isGroup: Boolean(record?.isGroup ?? record?.is_group ?? properties.isGroup ?? properties.is_group),
+    adminId: String(record?.adminId || record?.admin_id || properties.adminId || properties.admin_id || ''),
     avatarUrl: normalizeMediaUrl(record?.avatarUrl || record?.avatar || properties.avatar || ''),
     description: String(record?.description || properties.description || ''),
     membersCount: String(record?.membersCount || properties.membersCount || ''),
@@ -84,18 +85,24 @@ export const chatManagementService = {
     return normalizeConversation(payload);
   },
 
-  async removeConversationParticipant(conversationId: string, participantId: string, tinodeToken = '') {
+  async removeConversationParticipant(conversationId: string, participantId: string, tinodeToken = '', replacementId = '') {
     const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/participants/${encodeURIComponent(participantId)}`, {
       method: 'DELETE',
-      body: JSON.stringify({ tinode_token: tinodeToken }),
+      body: JSON.stringify({
+        tinode_token: tinodeToken,
+        ...(replacementId ? { replacement_id: replacementId } : {}),
+      }),
     });
     return normalizeConversation(payload);
   },
 
-  async deleteConversationForCurrentUser(conversationId: string, tinodeToken = '') {
+  async deleteConversationForCurrentUser(conversationId: string, tinodeToken = '', replacementId = '') {
     const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/self`, {
       method: 'DELETE',
-      body: JSON.stringify({ tinode_token: tinodeToken }),
+      body: JSON.stringify({
+        tinode_token: tinodeToken,
+        ...(replacementId ? { replacement_id: replacementId } : {}),
+      }),
     });
     return normalizeConversation(payload);
   },

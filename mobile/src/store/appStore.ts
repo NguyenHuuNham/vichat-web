@@ -38,7 +38,7 @@ interface AppStore {
   sendTyping: (conversationId: string) => Promise<void>;
   markRead: (conversationId: string) => Promise<void>;
   muteConversation: (conversationId: string, until: number | null) => Promise<void>;
-  deleteConversation: (conversationId: string) => Promise<void>;
+  deleteConversation: (conversationId: string, replacementId?: string) => Promise<void>;
   applyWorkspaceAction: (itemId: string, action: string) => Promise<void>;
   updateProfile: (profile: Partial<User>) => Promise<void>;
   updateAvatar: (file: { uri: string; name: string; type: string }) => Promise<User>;
@@ -60,6 +60,7 @@ function mergeConversation(previous: Conversation[], incoming: Conversation) {
     ...next[index],
     ...incoming,
     id: incoming.managementId === incoming.tinodeTopic ? next[index].id : incoming.id,
+    adminId: incoming.adminId || next[index].adminId,
     messages: incoming.messages.length ? incoming.messages : next[index].messages,
     name: incoming.name || next[index].name,
     avatarUrl: incoming.avatarUrl || next[index].avatarUrl,
@@ -382,7 +383,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({ conversations: mergeConversation(get().conversations, updated) });
   },
 
-  async deleteConversation(conversationId) {
+  async deleteConversation(conversationId, replacementId = '') {
     const conversation = conversationForId(get().conversations, conversationId);
     if (!conversation) return;
     const deletedKeys = [conversation.id, conversation.managementId, conversation.tinodeTopic].filter(Boolean).map(String);
@@ -394,7 +395,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       set((current: AppStore) => current.session ? ({
         session: { ...current.session, tinodeAuth },
       }) : ({}));
-      await chatManagementService.deleteConversationForCurrentUser(conversation.managementId || conversation.id, tinodeAuth.token);
+      await chatManagementService.deleteConversationForCurrentUser(conversation.managementId || conversation.id, tinodeAuth.token, replacementId);
       if (conversation.tinodeTopic) tinodeClient.disallowConversationTopic(conversation.tinodeTopic);
       set({
         conversations: get().conversations.filter(item => item.id !== conversation.id),

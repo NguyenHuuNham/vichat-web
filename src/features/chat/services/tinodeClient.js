@@ -473,7 +473,11 @@ function formatSystemEvent(event, viewerId) {
     return `${actorName} đã thêm ${targetNames.join(', ')} vào nhóm`;
   }
   if (event.action === 'member_left') {
-    return event.actorId === viewerId ? 'Bạn đã rời khỏi nhóm' : `${actorName} đã rời khỏi nhóm`;
+    const replacementName = String(event.replacementName || '').trim();
+    const leaveText = event.actorId === viewerId ? 'Bạn đã rời khỏi nhóm' : `${actorName} đã rời khỏi nhóm`;
+    return replacementName
+      ? `${leaveText}. ${replacementName} đã trở thành trưởng nhóm mới`
+      : leaveText;
   }
   if (event.action === 'member_removed') {
     if (targets.some(target => target.id === viewerId)) return `${actorName} đã xóa bạn khỏi nhóm`;

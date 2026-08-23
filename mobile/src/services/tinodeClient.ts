@@ -170,6 +170,18 @@ function parseEvent(content: string, prefix: string) {
   try { return JSON.parse(content.slice(prefix.length)); } catch { return null; }
 }
 
+function formatSystemEvent(event: any, client: any) {
+  if (event?.action === 'member_left') {
+    const actor = event.actorId && client.isMe?.(event.actorId)
+      ? 'Bạn'
+      : String(event.actorName || event.actorId || 'Một thành viên');
+    const leaveText = actor === 'Bạn' ? 'Bạn đã rời khỏi nhóm' : `${actor} đã rời khỏi nhóm`;
+    const replacement = String(event.replacementName || '').trim();
+    return replacement ? `${leaveText}. ${replacement} đã trở thành trưởng nhóm mới` : leaveText;
+  }
+  return String(event?.text || event?.action || 'Hoạt động hệ thống');
+}
+
 async function publishControlEvent(topic: any, content: string, clientId: string, senderId: string) {
   const draft = topic.createMessage(content, false);
   draft.head = {
@@ -244,7 +256,7 @@ function normalizeMessage(raw: any, client: any, topic: any, receiptCursor?: Rec
     sender: outgoing ? 'outgoing' : 'incoming',
     senderId: senderId || (outgoing ? client.getCurrentUserID?.() : ''),
     senderName: outgoing ? 'Bạn' : 'Thành viên',
-    text: call ? callHistoryLabel(call, outgoing) : system ? String(system.text || system.action || 'Hoạt động hệ thống') : content,
+    text: call ? callHistoryLabel(call, outgoing) : system ? formatSystemEvent(system, client) : content,
     image: attachment?.isImage ? attachment.file.url : undefined,
     file: attachment?.file,
     createdAt: raw.ts ? new Date(raw.ts).toISOString() : undefined,
@@ -362,12 +374,14 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
   messages.sort((a, b) => (Number(a.seq || 0) - Number(b.seq || 0)) || ((Date.parse(a.createdAt || '') || 0) - (Date.parse(b.createdAt || '') || 0)));
   const latest = messages[messages.length - 1];
   const directPeer = members.find(item => item.id !== client.getCurrentUserID?.()) || members[0];
+  const owner = members.find(member => String(member.mode || '').includes('O'));
   return {
     id: topic.name,
     managementId: topic.name,
     tinodeTopic: topic.name,
     name: String(topic.public?.fn || topic.public?.name || directPeer?.name || topic.name || 'Cuộc trò chuyện'),
     isGroup,
+    adminId: owner?.id || '',
     avatarUrl: normalizeMediaValue(topic.public?.photo || topic.public?.avatar || directPeer?.avatar || ''),
     description: String(topic.public?.note || ''),
     membersCount: isGroup ? `${members.length} thành viên` : (directPeer?.online ? 'Đang hoạt động' : 'Offline'),

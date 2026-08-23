@@ -42,6 +42,13 @@ test('translates dynamic system text without translating user content', () => {
   assert.equal(translateUiText('Đây là tin nhắn của nhân viên.', 'en'), 'Đây là tin nhắn của nhân viên.');
 });
 
+test('translates the group owner transfer system event', () => {
+  assert.equal(
+    translateUiText('Lan đã rời khỏi nhóm. Minh đã trở thành trưởng nhóm mới', 'en'),
+    'Lan left the group. Minh is now the group owner',
+  );
+});
+
 test('localized copy exposes the correct locale and translator', () => {
   const copy = createLocalizedCopy({ groups: 'Nhóm' }, 'en');
   assert.equal(copy.language, 'en');

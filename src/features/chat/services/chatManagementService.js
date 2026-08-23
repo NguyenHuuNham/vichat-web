@@ -661,11 +661,12 @@ export const chatManagementService = {
     return normalizeConversation(payload);
   },
 
-  async removeConversationParticipant(conversationId, participantId) {
+  async removeConversationParticipant(conversationId, participantId, { replacementId = '' } = {}) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const payload = await membershipApiRequest(
       `/api/v1/conversation/${encodeURIComponent(conversationId)}/participants/${encodeURIComponent(participantId)}`,
       'DELETE',
+      replacementId ? { replacement_id: replacementId } : {},
     );
     return normalizeConversation(payload);
   },

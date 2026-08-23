@@ -207,6 +207,18 @@ test('group member controls use the synced company directory with owner-only mut
   assert.doesNotMatch(appSource, /Thêm phó nhóm/);
 });
 
+test('group owner departure requires an explicit replacement and announces the transfer', () => {
+  assert.match(appSource, /pendingGroupLeave/);
+  assert.match(appSource, /groupLeaveReplacementId/);
+  assert.match(appSource, /Chọn trưởng nhóm mới/);
+  assert.match(appSource, /replacementId/);
+  assert.match(appSource, /Chuyển quyền và rời nhóm/);
+  assert.match(managementServiceSource, /replacement_id/);
+  assert.match(appSource, /replacementName/);
+  assert.match(appSource, /leaveDemoGroup\(targetRoom\.id, actorId, replacementId\)/);
+  assert.doesNotMatch(appSource, /randomMemberId/);
+});
+
 test('group mute and reaction controls preserve the existing checkbox flow and expose actor details', () => {
   const muteSource = appSource.split('const handleConversationMuteToggle')[1].split('const handleNotificationMuteSubmit')[0];
   assert.match(muteSource, /typeof event\?\.target\?\.checked === 'boolean'/);
@@ -221,7 +233,7 @@ test('conversation actions use the authoritative Chatmgt id on web and mobile', 
   assert.match(appSource, /deleteConversationForCurrentUser\(activeChat\.managementId \|\| activeChat\.id\)/);
   assert.match(appSource, /const managementConversationId = room\.managementId \|\| room\.id;/);
   assert.match(mobileStoreSource, /conversation\.managementId \|\| conversation\.id,[\s\S]*until,/);
-  assert.match(mobileStoreSource, /deleteConversationForCurrentUser\(conversation\.managementId \|\| conversation\.id, tinodeAuth\.token\)/);
+  assert.match(mobileStoreSource, /deleteConversationForCurrentUser\(conversation\.managementId \|\| conversation\.id, tinodeAuth\.token, replacementId\)/);
 });
 
 test('managed member removal does not re-bind an already bound topic first', () => {

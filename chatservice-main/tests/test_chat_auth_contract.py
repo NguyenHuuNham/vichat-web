@@ -409,24 +409,32 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("already inactive membership", remove_source)
         if CHAT_APP_PATH.exists():
             app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
-            leave_source = app_source.split("const handleLeaveGroup", 1)[1].split(
+            leave_source = app_source.split("const executeGroupLeave", 1)[1].split(
                 "const handleDeleteConversation", 1
             )[0]
+            self.assertIn("replacementId", leave_source)
             self.assertLess(
                 leave_source.index("removeConversationParticipant"),
                 leave_source.index("sendSystemEvent"),
             )
 
-    def test_owner_leave_chooses_a_random_active_replacement(self):
+    def test_owner_leave_requires_an_explicit_active_replacement(self):
         _controller_source, remove_source = function_source(
             CONTROLLER_PATH,
             "conversation_participant_remove",
         )
 
         self.assertIn("ConversationParticipant.active.is_(True)", remove_source)
-        self.assertIn(".order_by(func.random()).first()", remove_source)
-        self.assertNotIn("joined_at.asc()", remove_source)
+        self.assertIn("replacement_id = str(request_payload.get(\"replacement_id\") or \"\").strip()", remove_source)
+        self.assertIn("OWNER_REPLACEMENT_REQUIRED", remove_source)
+        self.assertIn("OWNER_REPLACEMENT_INVALID", remove_source)
+        self.assertIn("OWNER_REPLACEMENT_NOT_MEMBER", remove_source)
+        self.assertNotIn("func.random()", remove_source)
+        self.assertIn("joined_at.asc()", remove_source)
         self.assertIn('replacement.role = "OWNER"', remove_source)
+        self.assertIn('replacement_name =', remove_source)
+        self.assertIn('"replacementId": replacement.participant_id', remove_source)
+        self.assertIn('"replacementName": replacement_name or replacement.participant_id', remove_source)
         self.assertIn('mode="JRWPASO"', remove_source)
         self.assertLess(
             remove_source.index("tinode_accept_topic_owner"),

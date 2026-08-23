@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-15 - Chuyen quyen truong nhom khi owner roi nhom
+
+- Thoi gian: 2026-08-23 17:17 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Bao mat | API | Web | Mobile | Kiem thu
+- Trang thai: Dang thuc hien
+- Muc tieu: Bat buoc group owner chon mot thanh vien cu the lam truong nhom moi truoc khi roi, bo co che random va thong bao ro viec chuyen quyen.
+- Pham vi: ChatUI dialog roi nhom/xoa hoi thoai, Chatmgt participant API, Tinode system event, demo store va mobile delete flow; giu nguyen cac luong chat, group member, sticker, reaction va tenant.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/tinodeClient.js`, `src/features/demo/services/demoGroupStore.js`, `src/features/i18n/appLanguage.js`, `mobile/src/screens/chat/ConversationListScreen.tsx`, `mobile/src/store/appStore.ts`, `mobile/src/services/chatManagementService.ts`, `mobile/src/services/tinodeClient.ts`, `mobile/src/types/index.ts`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.test.js`, `docs/chat-backend-architecture.md`.
+- Noi dung: Owner tu nut roi nhom hoac xoa phia minh se mo dialog tim/chon thanh vien con lai; client gui `replacement_id`, server validate cung tenant/group, cap role `OWNER`, cho replacement accept full Tinode owner mode roi moi remove owner cu. Event `member_left` mang `replacementId`/`replacementName` de cac thanh vien con lai nhan thong bao ai da tro thanh truong nhom; demo va mobile cung khong con random owner.
+- Quyet dinh ky thuat: Chatmgt la noi quyet dinh quyen va validate replacement; Tinode chi nhan owner transfer va phat event tu surviving member sau commit. Neu legacy demo data thieu metadata chuyen quyen, recovery dung member dau tien theo thu tu luu tru de khong tao random behavior moi.
+- Database/API/cau hinh: Khong migration, bien moi truong hoac secret. Mo rong body DELETE membership voi `replacement_id` bat buoc rieng cho owner self-leave.
+- Kiem thu: `npm run test:frontend` dat 153/153; `npm run lint` dat voi warning legacy/vendor co san; mobile `npm run typecheck` va `npm run lint` dat; backend `python -m unittest discover -s tests -v` dat 178 test, skip 60 theo moi truong; `python -m py_compile application/controllers/api_chat_management.py application/services/auth_service.py tests/test_chat_auth_contract.py` dat; `npm run build:production` dat; `git diff --check` dat. Mobile `npm test -- --run` co 29 test pass nhung 1 suite fail do Vitest khong parse Flow syntax trong `node_modules/react-native/index.js`.
+- Rui ro con lai: Can UAT owner/member tren production de xac nhan dialog, quyen owner moi va event hien realtime tren hai phien.
+- Viec tiep theo: Commit/push, deploy chi `chat` va `chatmgt` theo quy trinh release bat bien, health check va kiem tra rollback; sau do UAT bang owner va thanh vien that.
+- Commit/PR: Chua tao.
+
 ## 2026-08-23-14 - Thu gon muc thanh vien nhom
 
 - Thoi gian: 2026-08-23 16:25 (Asia/Saigon)

@@ -3928,16 +3928,34 @@ async def conversation_participant_remove(request, conversation_id, participant_
         }, status=409)
 
     now = int(time.time())
+    request_payload = request.json if isinstance(request.json, dict) else {}
+    replacement_id = str(request_payload.get("replacement_id") or "").strip()
     replacement = None
     if is_group and target.role == "OWNER":
-        # Choose a remaining active member without coupling ownership to join order.
+        if participant_id != user_id:
+            return json({"error_code": "OWNER_REQUIRED", "error_message": "The group owner cannot be removed."}, status=409)
+        if not replacement_id:
+            return json({
+                "error_code": "OWNER_REPLACEMENT_REQUIRED",
+                "error_message": "The group owner must choose a replacement before leaving.",
+            }, status=409)
+        if replacement_id == participant_id:
+            return json({
+                "error_code": "OWNER_REPLACEMENT_INVALID",
+                "error_message": "The replacement owner must be another active group member.",
+            }, status=409)
         replacement = ConversationParticipant.query.filter(
             ConversationParticipant.tenant_id == tenant_id,
             ConversationParticipant.conversation_id == item.id,
-            ConversationParticipant.participant_id != participant_id,
+            ConversationParticipant.participant_id == replacement_id,
             ConversationParticipant.active.is_(True),
             ConversationParticipant.deleted.is_(False),
-        ).order_by(func.random()).first()
+        ).first()
+        if replacement is None:
+            return json({
+                "error_code": "OWNER_REPLACEMENT_NOT_MEMBER",
+                "error_message": "The selected replacement is not an active member of this group.",
+            }, status=409)
     event_sender_participant = replacement
     if is_group and participant_id == user_id and event_sender_participant is None:
         event_sender_participant = ConversationParticipant.query.filter(
@@ -3946,7 +3964,10 @@ async def conversation_participant_remove(request, conversation_id, participant_
             ConversationParticipant.participant_id != participant_id,
             ConversationParticipant.active.is_(True),
             ConversationParticipant.deleted.is_(False),
-        ).order_by(func.random()).first()
+        ).order_by(
+            ConversationParticipant.joined_at.asc().nullslast(),
+            ConversationParticipant.participant_id.asc(),
+        ).first()
     try:
         tinode_token = ""
         actor_account = None
@@ -3954,6 +3975,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
         event_sender_account = None
         event_sender_uid = ""
         event_sender_tinode_token = ""
+        replacement_name = ""
         replacement_uid = ""
         replacement_tinode_token = ""
         owner_transfer_accepted = False
@@ -4011,7 +4033,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 logger.warning("Could not roll back the Tinode member removal.")
 
         if item.tinode_topic:
-            tinode_token = str((request.json or {}).get("tinode_token") or "").strip()
+            tinode_token = str(request_payload.get("tinode_token") or "").strip()
             if not tinode_token:
                 return json({"error_code": "TINODE_TOKEN_REQUIRED", "error_message": "Tinode authentication is required."}, status=400)
             actor_account = _account_by_id(tenant_id, user_id)
@@ -4041,6 +4063,11 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 if replacement is not None:
                     replacement_uid = event_sender_uid
                     replacement_tinode_token = event_sender_tinode_token
+                    replacement_name = (
+                        event_sender_account.full_name
+                        or event_sender_account.username
+                        or replacement.participant_id
+                    ) if event_sender_account is not None else replacement.participant_id
                     if not replacement_uid or not replacement_tinode_token:
                         raise AuthError("Tinode could not prepare the replacement owner.", 502)
 
@@ -4097,6 +4124,10 @@ async def conversation_participant_remove(request, conversation_id, participant_
                         "action": "member_left",
                         "actorId": participant_id,
                         "actorName": target_account.full_name or target_account.username or participant_id,
+                        **({
+                            "replacementId": replacement.participant_id,
+                            "replacementName": replacement_name or replacement.participant_id,
+                        } if replacement is not None else {}),
                     },
                 )
             except Exception as error:
