@@ -205,7 +205,15 @@ function publicAccount(account) {
 }
 
 function hydrateActiveSession(payload, { preserveExisting = true } = {}) {
-  const account = publicAccount(payload?.user || payload?.current_user || payload);
+  const rawAccount = publicAccount(payload?.user || payload?.current_user || payload);
+  const previousSession = activeSession;
+  const previous = preserveExisting ? previousSession : null;
+  const preservedAvatar = rawAccount?.avatar || (
+    isAccountManaged(previousSession?.user) ? String(previousSession.user.avatar || '').trim() : ''
+  );
+  const account = rawAccount && preservedAvatar && !rawAccount.avatar
+    ? { ...rawAccount, avatar: preservedAvatar, avatarUrl: preservedAvatar, avatar_url: preservedAvatar, photo: preservedAvatar }
+    : rawAccount;
   const tenantOptions = normalizeTenantOptions(
     payload?.tenantOptions || payload?.tenant_options || account?.tenantOptions,
   );
@@ -216,7 +224,6 @@ function hydrateActiveSession(payload, { preserveExisting = true } = {}) {
   const tenant = normalizeTenantShape(payload?.tenant || account?.tenant);
   const rawTinodeAuth = payload?.tinode || payload?.tinode_auth || {};
   const hasTinodeToken = Boolean(rawTinodeAuth.token || payload?.tinode_token);
-  const previous = preserveExisting ? activeSession : null;
   const tinodeAuth = previous?.tinodeAuth
     ? {
       ...previous.tinodeAuth,
@@ -247,12 +254,20 @@ function hydrateActiveSession(payload, { preserveExisting = true } = {}) {
 
 function updateActiveSessionProfile(account) {
   if (!activeSession || !account) return;
-  activeSession.user = { ...(activeSession.user || {}), ...account };
+  const nextAvatar = account.avatar || activeSession.user?.avatar || '';
+  activeSession.user = {
+    ...(activeSession.user || {}),
+    ...account,
+    avatar: nextAvatar,
+    avatarUrl: nextAvatar,
+    avatar_url: nextAvatar,
+    photo: nextAvatar,
+  };
   if (activeSession.tinodeAuth) {
     activeSession.tinodeAuth = {
       ...activeSession.tinodeAuth,
       displayName: account.name || activeSession.tinodeAuth.displayName || '',
-      avatar: account.avatar || '',
+      avatar: nextAvatar,
     };
   }
 }
@@ -547,7 +562,12 @@ export const chatManagementService = {
       method: 'PUT',
       body: JSON.stringify(profile || {}),
     });
-    const account = publicAccount(payload.user || payload);
+    const rawAccount = publicAccount(payload.user || payload);
+    const previousAvatar = String(activeSession?.user?.avatar || '').trim();
+    const avatar = rawAccount?.avatar || previousAvatar;
+    const account = rawAccount && avatar && !rawAccount.avatar
+      ? { ...rawAccount, avatar, avatarUrl: avatar, avatar_url: avatar, photo: avatar }
+      : rawAccount;
     updateActiveSessionProfile(account);
     return account;
   },

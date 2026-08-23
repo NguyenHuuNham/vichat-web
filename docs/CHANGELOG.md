@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-08 - Dong bo ho so UpGo va crop avatar
+
+- Thoi gian: 2026-08-24 06:03 (Asia/Saigon)
+- Loai: Tinh nang | Sua loi | Web | API | Kiem thu
+- Trang thai: Dang thuc hien
+- Muc tieu: Bo truong chuc vu/phong ban khoi ho so ca nhan, luu ten/email qua UpGo Account va cho nguoi dung can chinh avatar truoc khi cap nhat ben vung.
+- Pham vi: ChatUI ho so ca nhan, hop dong profile/avatar Chatmgt-UpGo Account va cac ham merge snapshot avatar; giu nguyen chat, Tinode, nhom, sticker, reaction, nen va cac luong khac.
+- File da thay doi: `src/app/App.jsx`, `src/features/contacts/components/AvatarCropModal.jsx`, `src/features/contacts/services/avatarCrop.js`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/services/account_sso_service.py`, `chatservice-main/tests/test_account_sso_service.py`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: File avatar chi mo modal crop sau khi chon; crop vuong 512px co keo, zoom va can giua, chi upload khi bam Luu. Profile Account chi gui name/email va doc lai profile tu UpGo. Snapshot rong/stale khong con xoa avatar da xac nhan; avatar moi non-empty tu thao tac upload hoac thay doi ben UpGo van duoc cap nhat cho session, directory, Tinode va cac room hien tai.
+- Quyet dinh ky thuat: Dung Canvas native va endpoint `/api/v1/auth/avatar` hien co de khong them dependency hoac luong upload moi. UpGo Account tiep tuc la nguon chuan; Chatmgt giu marker avatar da xac nhan de chong ghi de boi cache/directory lag. Khong tao migration.
+- Database/API/cau hinh: Mo rong profile update Account de forward email; giu nguyen endpoint avatar va bien moi truong hien co; khong migration.
+- Kiem thu: `npm run test:frontend` dat 175/175; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `App-D-3CRwCV.js`, `index-BSkLC5NZ.js`, CSS `index-DZMcncBx.css`; `python -m unittest chatservice-main/tests/test_account_sso_service.py chatservice-main/tests/test_chat_auth_contract.py` dat 65 test, skip 21 theo moi truong; `git diff --check` dat.
+- Rui ro con lai: Chua UAT pixel-level bang browser runtime trong phien nay; can kiem tra crop desktop/mobile, upload Account that, F5, chuyen tenant, reconnect va cap nhat avatar tu UpGo. Khong co thay doi database.
+- Viec tiep theo: Commit/push, tao release moi chi recreate `chat` va `chatmgt`, sau do health/asset/log verify; khong restart PostgreSQL, Redis, Tinode, bridge, webhook, ChatAPI hay Coturn.
+- Commit/PR: Chua tao.
+
 ## 2026-08-24-07 - Them phe duyet thanh vien nhom
 
 - Thoi gian: 2026-08-24 05:41 (Asia/Saigon)

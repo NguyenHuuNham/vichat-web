@@ -24,6 +24,12 @@ import {
   updateAccountProfiles,
   updateAccountPresence,
 } from './accountDirectory.js';
+import {
+  AVATAR_CROP_MAX_ZOOM,
+  AVATAR_CROP_MIN_ZOOM,
+  avatarCropMetrics,
+  avatarCropSourceRect,
+} from './avatarCrop.js';
 
 test('company directory lists every other active employee without friendship data', () => {
   const viewer = { id: 'account-viewer', tinodeUid: 'usr-viewer', name: 'Viewer' };
@@ -190,13 +196,40 @@ test('directory polling keeps the latest known avatar when the server snapshot i
   assert.equal(result[0].avatar, '/new.jpg');
 });
 
-test('Account-managed avatar snapshots can explicitly clear a stale avatar', () => {
+test('Account-managed avatar snapshots cannot clear a confirmed avatar', () => {
   const result = mergeRealtimeAccountProfile(
     { id: 'account-1', avatar: '/old.jpg' },
     { id: 'account-1', avatar: '', accountManaged: true },
   );
 
-  assert.equal(result.avatar, '');
+  assert.equal(result.avatar, '/old.jpg');
+});
+
+test('avatar crop starts centered and keeps the image inside the circular viewport', () => {
+  const metrics = avatarCropMetrics({ imageWidth: 1200, imageHeight: 800, zoom: AVATAR_CROP_MIN_ZOOM });
+  assert.equal(metrics.offsetX, 0);
+  assert.equal(metrics.offsetY, 0);
+  assert.ok(metrics.displayedWidth >= metrics.viewportSize);
+  assert.ok(metrics.displayedHeight >= metrics.viewportSize);
+
+  const moved = avatarCropMetrics({
+    imageWidth: 1200,
+    imageHeight: 800,
+    zoom: AVATAR_CROP_MAX_ZOOM,
+    offsetX: 99999,
+    offsetY: -99999,
+  });
+  assert.equal(moved.offsetX, moved.maxOffsetX);
+  assert.equal(moved.offsetY, -moved.maxOffsetY);
+});
+
+test('avatar crop source is a square and remains within the source image', () => {
+  const crop = avatarCropSourceRect({ imageWidth: 900, imageHeight: 600, zoom: 1.6, offsetX: 42, offsetY: -18 });
+  assert.equal(crop.sourceSize, Math.min(crop.imageWidth, crop.imageHeight, crop.viewportSize / crop.scale));
+  assert.ok(crop.sourceX >= 0);
+  assert.ok(crop.sourceY >= 0);
+  assert.ok(crop.sourceX + crop.sourceSize <= crop.imageWidth);
+  assert.ok(crop.sourceY + crop.sourceSize <= crop.imageHeight);
 });
 
 test('directory snapshots can explicitly clear a previous contact nickname', () => {

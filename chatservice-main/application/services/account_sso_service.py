@@ -326,6 +326,8 @@ async def update_account_profile(request, identity, changes):
         full_name = full_name[:255]
         # Account identity normalization prefers full_name, then display_name.
         update_fields.update({"full_name": full_name, "display_name": full_name})
+    if "email" in changes:
+        update_fields["email"] = str(changes.get("email") or "").strip().lower()[:255] or None
     if "title" in changes:
         update_fields["title"] = str(changes.get("title") or "").strip()[:255]
     if "department" in changes:

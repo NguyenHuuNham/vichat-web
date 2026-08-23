@@ -574,15 +574,19 @@ def _sso_account(identity, mark_login=True, authoritative_avatar=None):
     properties = dict(account.properties or {})
     if authoritative_avatar is not None:
         explicit_avatar = str(authoritative_avatar or "").strip()
-        properties[AUTHORITATIVE_AVATAR_PROPERTY] = explicit_avatar
+        # Only a confirmed non-empty upload may replace the stored avatar.
+        # Empty Account snapshots must not erase a user's last known image.
+        if explicit_avatar:
+            properties[AUTHORITATIVE_AVATAR_PROPERTY] = explicit_avatar
     elif not directory_projection and identity.get("avatar_present", True):
         # A full Account session is authoritative. Refresh the marker when
         # the avatar changes outside ChatUI so directory sync cannot restore
         # an older projection.
         current_avatar = str(identity.get("avatar") or "").strip()
-        properties[AUTHORITATIVE_AVATAR_PROPERTY] = current_avatar
-    has_persisted_avatar = AUTHORITATIVE_AVATAR_PROPERTY in properties
+        if current_avatar:
+            properties[AUTHORITATIVE_AVATAR_PROPERTY] = current_avatar
     persisted_avatar = str(properties.get(AUTHORITATIVE_AVATAR_PROPERTY) or "").strip()
+    has_persisted_avatar = bool(persisted_avatar)
     account.username = identity["username"]
     if not directory_projection or identity.get("email_present"):
         account.email = identity.get("email")
@@ -597,8 +601,8 @@ def _sso_account(identity, mark_login=True, authoritative_avatar=None):
         # A directory response can lag behind a confirmed upload. Keep the
         # last explicit avatar update until another upload replaces it.
         account.avatar = persisted_avatar
-    elif not directory_projection or identity.get("avatar_present"):
-        account.avatar = identity.get("avatar") or ""
+    elif str(identity.get("avatar") or "").strip():
+        account.avatar = str(identity.get("avatar") or "").strip()
     account.password_hash = ACCOUNT_SSO_PASSWORD_MARKER
     account.active = bool(identity.get("active", True))
     account.updated_at = now
@@ -2317,7 +2321,8 @@ async def management_update_profile(request):
         avatar = str(body.get("avatar") or "")
         if len(avatar) > 8192:
             return json({"error_code": "AVATAR_TOO_LARGE", "error_message": "Avatar URL is too large."}, status=400)
-        account.avatar = avatar
+        if avatar:
+            account.avatar = avatar
     account.updated_at = int(time.time())
     try:
         db.session.commit()

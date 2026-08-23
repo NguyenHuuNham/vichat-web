@@ -527,7 +527,7 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
             result = await account_sso_service.update_account_profile(
                 request,
                 identity,
-                {"name": "New Name", "title": "Lead"},
+                {"name": "New Name", "email": "new@example.com", "title": "Lead"},
             )
 
         self.assertEqual(result["full_name"], "New Name")
@@ -536,6 +536,7 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(update_call.kwargs["json_body"]["full_name"], "New Name")
         self.assertEqual(update_call.kwargs["json_body"]["display_name"], "New Name")
         self.assertEqual(update_call.kwargs["json_body"]["title"], "Lead")
+        self.assertEqual(update_call.kwargs["json_body"]["email"], "new@example.com")
         self.assertNotIn("password", update_call.kwargs["json_body"])
         self.assertEqual(account_request.await_args_list[2], call(request, "GET", "/current_user"))
 

@@ -215,7 +215,10 @@ export function mergeRealtimeAccountProfile(entity, profile) {
   const nextDefaultName = firstText(profile.defaultName, profile.default_name, profile.name, entity.defaultName, entity.name);
   const nextNickname = firstText(entity.nickname, profile.nickname);
   const nextName = nextNickname || nextDefaultName;
-  const nextAvatar = accountManagedValue(profile) ? scalarText(profile.avatar) : (profile.avatar || entity.avatar || '');
+  // Account snapshots can briefly omit the avatar while the Account CDN/cache catches up.
+  const nextAvatar = accountManagedValue(profile)
+    ? (scalarText(profile.avatar) || scalarText(entity.avatar))
+    : (profile.avatar || entity.avatar || '');
   if (
     nextName === entity.name
     && nextDefaultName === entity.defaultName
@@ -280,8 +283,7 @@ export function mergeDirectoryAccountSnapshots(previousAccounts = [], incomingAc
   const next = incoming.map(account => {
     const previousAccount = findAccount(previous, account?.id || account?.uid || account?.tinodeUid || account?.tinode_uid);
     if (!previousAccount) return account;
-    const accountManaged = accountManagedValue(account);
-    const avatar = accountManaged ? (account.avatar || '') : (account.avatar || previousAccount.avatar || '');
+    const avatar = account.avatar || previousAccount.avatar || '';
     const hasIncomingNickname = Object.prototype.hasOwnProperty.call(account || {}, 'nickname');
     const nickname = hasIncomingNickname
       ? scalarText(account.nickname)

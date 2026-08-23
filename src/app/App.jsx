@@ -115,6 +115,7 @@ import {
   updateAccountProfiles,
   updateAccountPresence,
 } from '../features/contacts/services/accountDirectory';
+import AvatarCropModal from '../features/contacts/components/AvatarCropModal';
 import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, dissolveDemoGroup, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
 import { CHATBOT_ACCOUNT, CHATBOT_STARTER_PROMPTS, EXTERNAL_CHAT_ONLY, applyTinodeChatbotConfig, loadChatbotMessages, loadChatbotMessagesFromServer, loadTinodeChatbotConfig, mergeChatbotMessages, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
@@ -1922,8 +1923,9 @@ function App() {
   const [contactNicknameValue, setContactNicknameValue] = useState('');
   const [isSavingContactNickname, setIsSavingContactNickname] = useState(false);
   const [isUpdatingProfileAvatar, setIsUpdatingProfileAvatar] = useState(false);
+  const [avatarCropFile, setAvatarCropFile] = useState(null);
   const [isUpdatingGroupAvatar, setIsUpdatingGroupAvatar] = useState(false);
-  const [profileForm, setProfileForm] = useState({ name: '', email: '', title: '', department: '' });
+  const [profileForm, setProfileForm] = useState({ name: '', email: '' });
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileNotice, setProfileNotice] = useState('');
   const [isSwitchingTenant, setIsSwitchingTenant] = useState(false);
@@ -2038,13 +2040,16 @@ function App() {
   const syncCurrentAccountProfile = useCallback(snapshot => {
     const previousUser = currentUserRef.current;
     if (!previousUser || !snapshot) return false;
-    const profile = normalizeAccountShape(snapshot);
-    if (!profile) return false;
+    const snapshotProfile = normalizeAccountShape(snapshot);
+    if (!snapshotProfile) return false;
     const previousAvatar = String(previousUser.avatar || '').trim();
-    const profileValue = String(profile.avatar || '').trim();
+    const profileValue = String(snapshotProfile.avatar || '').trim();
+    const effectiveAvatar = profileValue || previousAvatar;
+    const profile = effectiveAvatar === profileValue
+      ? snapshotProfile
+      : { ...snapshotProfile, avatar: effectiveAvatar, avatarUrl: effectiveAvatar, avatar_url: effectiveAvatar, photo: effectiveAvatar };
     identityValues(profile).forEach(identity => {
-      if (profileValue) avatarOverridesRef.current.set(identity, profileValue);
-      else avatarOverridesRef.current.delete(identity);
+      if (effectiveAvatar) avatarOverridesRef.current.set(identity, effectiveAvatar);
     });
 
     setCurrentUser(previous => {
@@ -2062,10 +2067,10 @@ function App() {
         displayName: profile.displayName || previous.displayName,
         defaultName: profile.defaultName || previous.defaultName,
         default_name: profile.default_name || previous.default_name,
-        avatar: profile.avatar,
-        avatarUrl: profile.avatar,
-        avatar_url: profile.avatar,
-        photo: profile.avatar,
+        avatar: effectiveAvatar,
+        avatarUrl: effectiveAvatar,
+        avatar_url: effectiveAvatar,
+        photo: effectiveAvatar,
         email: profile.email || previous.email,
         title: profile.title || previous.title,
         department: profile.department || previous.department,
@@ -2108,7 +2113,7 @@ function App() {
           const updated = {
             ...message,
             senderName: profile.name || message.senderName,
-            avatar: profile.avatar || '',
+            avatar: profile.avatar || message.avatar || '',
           };
           if (updated.senderName !== message.senderName || updated.avatar !== message.avatar) roomChanged = true;
           return updated;
@@ -2135,7 +2140,7 @@ function App() {
       }
       return previous;
     });
-    return profileValue !== previousAvatar;
+    return effectiveAvatar !== previousAvatar;
   }, []);
 
   const clearActiveCall = useCallback(() => {
@@ -2635,11 +2640,9 @@ function App() {
     setProfileForm({
       name: profileAccount.name || '',
       email: profileAccount.email || '',
-      title: profileAccount.title || '',
-      department: profileAccount.department || '',
     });
     setProfileNotice('');
-  }, [workspacePanel, profileAccount.name, profileAccount.email, profileAccount.title, profileAccount.department]);
+  }, [workspacePanel, profileAccount.name, profileAccount.email]);
   const viewerId = chatMode === 'tinode'
     ? (currentUser?.tinodeUid || currentUser?.uid || currentUser?.id)
     : (currentUser?.id || currentUser?.uid);
@@ -3731,14 +3734,14 @@ function App() {
             ...room,
             ...(peer ? {
               name: peer.name || profile.name || room.name,
-              avatarUrl: profileIsAccountManaged ? (profile.avatar || '') : (profile.avatar || room.avatarUrl || ''),
+              avatarUrl: profile.avatar || room.avatarUrl || '',
             } : {}),
             members,
             messages: roomMessages(room).map(message => identitiesOverlap({ id: message.senderId }, profile)
               ? {
                 ...message,
                 senderName: peer?.name || profile.name || message.senderName,
-                avatar: profileIsAccountManaged ? (profile.avatar || '') : (profile.avatar || message.avatar || ''),
+                avatar: profile.avatar || message.avatar || '',
               }
               : message),
           }];
@@ -4577,17 +4580,18 @@ function App() {
       const updated = await chatManagementService.updateProfile({
         name: profileForm.name.trim(),
         email: profileForm.email.trim(),
-        title: profileForm.title.trim(),
-        department: profileForm.department.trim(),
       });
       setCurrentUser(previous => ({
         ...previous,
         ...updated,
+        avatar: updated.avatar || previous?.avatar || '',
         uid: previous?.uid,
         tinodeUid: previous?.tinodeUid,
       }));
       setDirectoryAccounts(previous => previous.map(account => (
-        account.id === updated.id ? { ...account, ...updated } : account
+        account.id === updated.id
+          ? { ...account, ...updated, avatar: updated.avatar || account.avatar || '' }
+          : account
       )));
       setConversations(previous => Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => [id, {
         ...room,
@@ -4601,8 +4605,6 @@ function App() {
       setProfileForm({
         name: updated.name || '',
         email: updated.email || '',
-        title: updated.title || '',
-        department: updated.department || '',
       });
       if (chatMode === 'tinode') {
         try {
@@ -4620,19 +4622,8 @@ function App() {
     }
   };
 
-  const handleProfileAvatarChange = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      setChatError('Vui lòng chọn đúng tệp hình ảnh.');
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setChatError('Ảnh đại diện không được lớn hơn 10 MB.');
-      return;
-    }
-
+  const uploadProfileAvatar = async file => {
+    if (!file) return false;
     setIsUpdatingProfileAvatar(true);
     setChatError('');
     try {
@@ -4671,14 +4662,13 @@ function App() {
         updated = await chatManagementService.updateProfile({ avatar });
       }
       if (!avatar) throw new Error('Máy chủ không trả về ảnh đại diện mới.');
-      const nextAvatar = updated.avatar || avatar;
-      if (!isAccountManaged(updated || currentUser)) {
-        rememberAvatarOverride(updated || currentUser, nextAvatar);
-      }
+      const nextAvatar = updated?.avatar || avatar;
+      const targetAccount = updated || currentUser;
+      if (!isAccountManaged(targetAccount)) rememberAvatarOverride(targetAccount, nextAvatar);
       setCurrentUser(previous => ({ ...previous, avatar: nextAvatar }));
       setDirectoryAccounts(previous => {
         const next = previous.map(account => (
-          identitiesOverlap(account, updated || currentUser) ? { ...account, avatar: nextAvatar } : account
+          identitiesOverlap(account, targetAccount) ? { ...account, avatar: nextAvatar } : account
         ));
         directoryAccountsRef.current = next;
         return next;
@@ -4689,11 +4679,35 @@ function App() {
         messages: roomMessages(room).map(message => identitiesOverlap(message, currentUser) ? { ...message, avatar: nextAvatar } : message),
       }])));
       setProfileNotice('Ảnh đại diện đã được cập nhật.');
+      return true;
     } catch (error) {
       setChatError(error?.message || 'Không thể cập nhật ảnh đại diện.');
+      return false;
     } finally {
       setIsUpdatingProfileAvatar(false);
     }
+  };
+
+  const handleProfileAvatarChange = event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setChatError('Vui lòng chọn đúng tệp hình ảnh.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setChatError('Ảnh đại diện không được lớn hơn 10 MB.');
+      return;
+    }
+    setChatError('');
+    setAvatarCropFile(file);
+  };
+
+  const handleProfileAvatarCropSave = async croppedFile => {
+    const saved = await uploadProfileAvatar(croppedFile);
+    if (saved) setAvatarCropFile(null);
+    return saved;
   };
 
   const handleWorkspaceSearch = async (event) => {
@@ -4822,12 +4836,11 @@ function App() {
         });
         const self = findAccount(effectiveAccounts, managementViewerId);
         if (self) {
-          const selfIsAccountManaged = isAccountManaged(self) || isAccountManaged(currentUserRef.current);
           setCurrentUser(previous => {
             const next = {
               ...previous,
               name: self.name || previous?.name,
-              avatar: selfIsAccountManaged ? (self.avatar || '') : (self.avatar || previous?.avatar || ''),
+              avatar: self.avatar || previous?.avatar || '',
               email: self.email || previous?.email,
               title: self.title || previous?.title,
               department: self.department || previous?.department,
@@ -8365,6 +8378,15 @@ function App() {
           onClose={() => setImageViewer(null)}
         />
       )}
+      {avatarCropFile && (
+        <AvatarCropModal
+          file={avatarCropFile}
+          copy={appCopy}
+          isSaving={isUpdatingProfileAvatar}
+          onCancel={() => setAvatarCropFile(null)}
+          onSave={handleProfileAvatarCropSave}
+        />
+      )}
 
       {/* ==========================================================================
          CỘT 1: SIDEBAR PRIMARY (Màu xanh dương đậm)
@@ -10012,8 +10034,6 @@ function App() {
                 <form className="profile-edit-form" onSubmit={handleProfileSave}>
                   <label><span>{appCopy.t('Họ và tên')}</span><input value={profileForm.name} onChange={event => setProfileForm(previous => ({ ...previous, name: event.target.value }))} maxLength="255" required /></label>
                   <label><span>{appCopy.t('Email')}</span><input type="email" value={profileForm.email} onChange={event => setProfileForm(previous => ({ ...previous, email: event.target.value }))} maxLength="255" /></label>
-                  <label><span>{appCopy.t('Chức vụ')}</span><input value={profileForm.title} onChange={event => setProfileForm(previous => ({ ...previous, title: event.target.value }))} maxLength="255" /></label>
-                  <label><span>{appCopy.t('Phòng ban')}</span><input value={profileForm.department} onChange={event => setProfileForm(previous => ({ ...previous, department: event.target.value }))} maxLength="255" /></label>
                   {accountProfileReadOnly && <div className="profile-save-notice"><i className="fa-solid fa-building-shield"></i>{appCopy.t('Thông tin sẽ được lưu qua UpGO Account và đồng bộ lại cho các thiết bị.')}</div>}
                   {profileNotice && <div className="profile-save-notice"><i className="fa-solid fa-circle-check"></i>{appCopy.t(profileNotice)}</div>}
                   <button type="submit" className="btn-primary profile-save-button" disabled={isSavingProfile}>

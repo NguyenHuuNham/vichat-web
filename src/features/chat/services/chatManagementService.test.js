@@ -17,6 +17,7 @@ import {
 
 const appSource = readFileSync(new URL('../../../app/App.jsx', import.meta.url), 'utf8');
 const stylesSource = readFileSync(new URL('../../../styles/index.css', import.meta.url), 'utf8');
+const avatarCropSource = readFileSync(new URL('../../contacts/components/AvatarCropModal.jsx', import.meta.url), 'utf8');
 const managementServiceSource = readFileSync(new URL('./chatManagementService.js', import.meta.url), 'utf8');
 const mobileStoreSource = readFileSync(new URL('../../../../mobile/src/store/appStore.ts', import.meta.url), 'utf8');
 
@@ -185,6 +186,17 @@ test('routes Account-managed profiles through the Account avatar contract', () =
   assert.match(managementServiceSource, /async updateAvatar\(file\)/);
   assert.match(appSource, /isAccountManaged\(currentUser\) \|\| chatManagementService\.accountManaged/);
   assert.match(appSource, /chatManagementService\.updateAvatar\(file\)/);
+});
+
+test('personal profile keeps only synced name and email fields and opens avatar crop before upload', () => {
+  const profileSection = (appSource.split("{workspacePanel === 'profile' && (")[1] || '')
+    .split("{workspacePanel === 'contacts' && (")[0];
+  assert.doesNotMatch(profileSection, /profileForm\.title|profileForm\.department/);
+  assert.match(appSource, /setAvatarCropFile\(file\)/);
+  assert.match(appSource, /AvatarCropModal/);
+  assert.match(avatarCropSource, /canvas\.toBlob/);
+  assert.match(avatarCropSource, /avatarCropSourceRect/);
+  assert.match(managementServiceSource, /updateProfile\(profile\)/);
 });
 
 test('group member controls use the synced company directory with owner-only mutations', () => {
