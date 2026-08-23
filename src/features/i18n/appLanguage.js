@@ -690,6 +690,7 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Không thể lưu file âm báo.': 'Unable to save the sound file.',
   'Không thể xóa file âm báo.': 'Unable to remove the sound file.',
   'Thời hạn tắt thông báo không hợp lệ.': 'The notification mute duration is invalid.',
+  'Đã gửi sticker.': 'Sent a sticker.',
   'Đã gửi một hình ảnh.': 'Sent an image.',
   'Có tin nhắn mới.': 'You have a new message.',
   'lỗi mạng': 'network error',

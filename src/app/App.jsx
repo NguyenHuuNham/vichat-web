@@ -285,7 +285,8 @@ const MEDIA_DATE_FILTER_OPTIONS = Object.freeze([
 const HISTORY_SEARCH_TYPE_OPTIONS = Object.freeze([
   Object.freeze({ id: 'all', label: 'Tất cả loại' }),
   Object.freeze({ id: 'text', label: 'Tin nhắn' }),
-  Object.freeze({ id: 'image', label: 'Ảnh / sticker' }),
+  Object.freeze({ id: 'image', label: 'Ảnh' }),
+  Object.freeze({ id: 'sticker', label: 'Sticker' }),
   Object.freeze({ id: 'file', label: 'Tệp' }),
   Object.freeze({ id: 'video', label: 'Video' }),
   Object.freeze({ id: 'audio', label: 'Âm thanh' }),
@@ -355,7 +356,8 @@ function attachmentSizeLabel(file) {
 function attachmentIconClass(file, type = '') {
   const name = String(file?.name || '').toLowerCase();
   const mime = String(file?.mime || '').toLowerCase();
-  if (type === 'image' || type === 'sticker' || mime.startsWith('image/') || /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/.test(name)) return 'fa-file-image';
+  if (type === 'sticker' || file?.ext === 'sticker') return 'fa-face-smile';
+  if (type === 'image' || mime.startsWith('image/') || /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/.test(name)) return 'fa-file-image';
   if (mime.startsWith('audio/') || /\.(m4a|mp3|ogg|wav|flac)$/.test(name)) return 'fa-file-audio';
   if (mime.startsWith('video/') || /\.(avi|mov|mkv|mp4|webm)$/.test(name)) return 'fa-file-video';
   if (file?.ext === 'pdf' || mime.includes('pdf') || name.endsWith('.pdf')) return 'fa-file-pdf';
@@ -366,7 +368,7 @@ function attachmentIconClass(file, type = '') {
 function isImageAttachment(file, type = '') {
   const name = String(file?.name || '').toLowerCase();
   const mime = String(file?.mime || '').toLowerCase();
-  return type === 'image' || type === 'sticker'
+  return type === 'image'
     || mime.startsWith('image/')
     || /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/.test(name);
 }
@@ -385,6 +387,15 @@ function attachmentForMessage(message) {
     size: 'Hình ảnh',
     url: message.image,
   } : null);
+}
+
+function isStickerMessage(message) {
+  return Boolean(message && (
+    message.type === 'sticker'
+    || message.sticker?.id
+    || message.sticker?.stickerId
+    || message.file?.ext === 'sticker'
+  ));
 }
 
 function replyMetadataForMessage(message, fallbackSenderName = '') {
@@ -443,7 +454,7 @@ function messageLinks(message) {
 function mediaEntriesForMessages(messages = []) {
   const entries = [];
   messages.forEach(message => {
-    if (!message || ['system', 'friend_event', 'call'].includes(message.type)) return;
+    if (!message || ['system', 'friend_event', 'call'].includes(message.type) || isStickerMessage(message)) return;
     const timestamp = messageTimestamp(message);
     const attachment = attachmentForMessage(message);
     const senderId = messageSenderId(message);
@@ -777,7 +788,7 @@ function messageSearchSenderId(value) {
 
 function messageSearchTypeFor(message) {
   if (!message) return 'text';
-  if (message.type === 'sticker' || message.sticker?.id || message.sticker?.stickerId) return 'sticker';
+  if (isStickerMessage(message)) return 'sticker';
   const mime = String(message.file?.mime || '').toLowerCase();
   const name = String(message.file?.name || '').toLowerCase();
   if (message.type === 'image' || mime.startsWith('image/') || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/.test(name)) return 'image';
@@ -795,7 +806,8 @@ function messageSearchMatchesLocal(message, { query = '', senderId = 'all', type
   if (senderId !== 'all' && messageSearchSenderId(message) !== String(senderId)) return false;
   const actualType = messageSearchTypeFor(message);
   if (type !== 'all') {
-    if (type === 'image' && !['image', 'sticker'].includes(actualType)) return false;
+    if (type === 'image' && actualType !== 'image') return false;
+    else if (type === 'sticker' && actualType !== 'sticker') return false;
     else if (type === 'file' && ['text', 'image', 'sticker'].includes(actualType)) return false;
     else if (!['image', 'file'].includes(type) && actualType !== type) return false;
   }
@@ -1446,8 +1458,9 @@ function AudioMessagePlayer({ file, duration = 0, time = '', delivery = null, pe
 function MessageReplyPreview({ reply, copy = { t: value => value }, onClick, showIcon = true, showSender = true }) {
   if (!reply) return null;
   const isAudio = isAudioAttachment(reply.file || { name: reply.fileName, mime: reply.fileMime }, reply.type) || Number(reply.voiceDuration) > 0;
+  const isSticker = isStickerMessage(reply);
   const isImage = reply.type === 'image' || String(reply.fileMime || reply.file?.mime || '').toLowerCase().startsWith('image/');
-  const icon = isAudio ? 'fa-microphone' : isImage ? 'fa-image' : reply.fileName ? 'fa-paperclip' : 'fa-quote-left';
+  const icon = isAudio ? 'fa-microphone' : isSticker ? 'fa-face-smile' : isImage ? 'fa-image' : reply.fileName ? 'fa-paperclip' : 'fa-quote-left';
   const senderName = typeof reply.senderName === 'string' ? reply.senderName : copy.t('Tin nhắn');
   const replyText = typeof reply.text === 'string'
     ? reply.text.trim()
@@ -1483,6 +1496,9 @@ function pinnedMessageKind(message, copy = { t: value => value }) {
   const attachment = attachmentForMessage(message);
   if (message?.type === 'poll' || message?.poll || message?.pollData) {
     return { label: copy.t('Bình chọn'), icon: 'fa-chart-simple', tone: 'poll' };
+  }
+  if (isStickerMessage(message)) {
+    return { label: copy.t('Sticker'), icon: 'fa-face-smile', tone: 'sticker' };
   }
   if (isImageAttachment(attachment, message?.type)) {
     return { label: copy.t('Ảnh'), icon: 'fa-image', tone: 'media' };
@@ -7472,7 +7488,7 @@ function App() {
   const sharedFiles = Object.values(renderConversations)
     .filter(room => canAccessRoomFiles(room, currentUser, directoryAccounts, chatMode))
     .flatMap(room => roomMessages(room)
-    .filter(message => message.type === 'file' || message.type === 'image')
+    .filter(message => !isStickerMessage(message) && (message.type === 'file' || message.type === 'image'))
     .map(message => ({ ...message, roomName: room.name, roomId: room.id })));
 
   const activeMediaEntries = mediaEntriesForMessages(roomMessages(activeChat));
@@ -7550,6 +7566,7 @@ function App() {
   };
   const pinnedMessages = pinnedMessagesForRoom(roomMessages(activeChat), messageActions, activeChat.id);
   const pinnedMessagePreview = message => String(message?.text || '').trim()
+    || (isStickerMessage(message) ? appCopy.t('Sticker') : '')
     || message?.file?.name
     || (message?.type === 'image' ? appCopy.t('Ảnh') : appCopy.t('Nội dung đính kèm'));
   const scrollToMessageById = messageId => {
@@ -8121,7 +8138,7 @@ function App() {
                 ))}
               </div>
             );
-            const isStickerMessage = msg.type === 'sticker' || Boolean(msg.sticker?.id || msg.sticker?.stickerId);
+            const isStickerMessage = msg.type === 'sticker' || Boolean(msg.sticker?.id || msg.sticker?.stickerId || msg.file?.ext === 'sticker');
             const attachmentFile = msg.file || ((msg.type === 'image' || isStickerMessage) && msg.image ? {
               name: appCopy.t('Hình ảnh'),
               mime: 'image/*',
@@ -9458,10 +9475,10 @@ function App() {
                   <div className="workspace-list history-search-results">
                     {displayedHistorySearchResults.map(message => (
                       <button type="button" className="workspace-list-item history-search-result" key={`${message.id}-${message.seq || ''}`} onClick={() => openMessageSearchResult(message)}>
-                        <span className={`workspace-file-icon history-search-type-${message.type}`}><i className={`fa-solid ${message.type === 'image' || message.type === 'sticker' ? 'fa-image' : message.type === 'file' || message.type === 'document' || message.type === 'archive' ? 'fa-file' : message.type === 'video' ? 'fa-video' : message.type === 'audio' ? 'fa-microphone' : 'fa-message'}`}></i></span>
+                        <span className={`workspace-file-icon history-search-type-${message.type}`}><i className={`fa-solid ${message.type === 'sticker' ? 'fa-face-smile' : message.type === 'image' ? 'fa-image' : message.type === 'file' || message.type === 'document' || message.type === 'archive' ? 'fa-file' : message.type === 'video' ? 'fa-video' : message.type === 'audio' ? 'fa-microphone' : 'fa-message'}`}></i></span>
                         <span className="workspace-list-copy">
                           <strong>{message.senderName || appCopy.t('Thành viên')}</strong>
-                          <small>{message.text || message.file?.name || appCopy.t('Nội dung đính kèm')} · {formatFullMessageDateTime(message, message.time, appCopy.locale)} · {historySearchTypeLabel(message.type)}</small>
+                          <small>{message.text || (message.type === 'sticker' ? appCopy.t('Sticker') : message.file?.name) || appCopy.t('Nội dung đính kèm')} · {formatFullMessageDateTime(message, message.time, appCopy.locale)} · {historySearchTypeLabel(message.type)}</small>
                         </span>
                         <i className="fa-solid fa-chevron-right history-search-open-icon" aria-hidden="true"></i>
                       </button>

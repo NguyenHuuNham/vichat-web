@@ -1140,7 +1140,9 @@ def _history_search_matches(item, query, sender_ids, date_from, date_to, file_ty
     if file_type != "all":
         actual_type = str(item.get("type") or "text")
         if file_type == "image":
-            return actual_type not in ("image", "sticker")
+            return actual_type != "image"
+        if file_type == "sticker":
+            return actual_type != "sticker"
         if file_type == "file":
             return actual_type in ("text", "image", "sticker")
         if actual_type != file_type:

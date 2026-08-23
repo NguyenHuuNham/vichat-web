@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-21 - Bo sung 10 bo sticker va tach khoi media file
+
+- Thoi gian: 2026-08-23 22:54 (Asia/Saigon)
+- Loai: Tinh nang | Sua loi | Web | API | Kiem thu | Tai lieu
+- Trang thai: Hoan tat
+- Muc tieu: Dua 10 bo sticker moi vao picker, giu dung phan loai sticker va khong de sticker xuat hien trong muc Anh/Video hoac Tep.
+- Pham vi: Catalog/picker sticker, hien thi preview va thong bao, media/file dung chung, tim kiem lich su server-side; khong thay doi transport Tinode hay cac luong chat khac.
+- File da thay doi: `src/features/chat/services/stickerCatalog.js`, `src/features/chat/services/stickerCatalog.test.js`, `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/conversationNotifications.js`, `src/features/chat/services/conversationNotifications.test.js`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `public/stickers/puppysoft/*.png`, `dist/index.html`.
+- Noi dung: Them 160 PNG sticker da cat thanh 10 pack `frog-v2`, `corgi`, `orange-cat`, `office-panda`, `capybara`, `duck`, `pink-bunny`, `bear`, `otter`, `axolotl`; tong catalog 20 pack/272 sticker. Them nhan dien sticker dung ca metadata moi va legacy, bo qua sticker khi tao danh sach media/file, tach bo loc lich su `Anh` va `Sticker`, sua icon/preview/thong bao sticker.
+- Quyet dinh ky thuat: Tai su dung co che picker va metadata `x-vichat-sticker` hien co; chi bo sung asset/catalog va cac guard phan loai, khong them endpoint, database migration, transport hoac dependency runtime.
+- Database/API/cau hinh: Khong migration, khong bien moi truong, khong thay doi contract gui tin; backend history filter tiep tuc dung type `sticker` da co va chi sua dieu kien image/file.
+- Kiem thu: `npm run test:frontend` dat 162/162; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-DNmjp03T.js`, `App-Cyj-OU6e.js`, CSS `index-BGmlSiTR.css`; `python -m unittest discover -s chatservice-main/tests -q` dat 182 test, skip 61 theo moi truong; `git diff --check` dat; 272 asset PNG trong catalog ton tai, gom 160 asset moi.
+- Rui ro con lai: Chua UAT tuong tac hai tai khoan tren production trong phien nay; can hard refresh va thu gui/nhan, tim sticker, kiem tra Anh/Video va Tep khong hien sticker.
+- Viec tiep theo: Hard refresh web production va UAT sticker bang hai tai khoan; khong dong vao Tinode, bridge, webhook, ChatAPI, database, Redis, Coturn hoac volume.
+- Commit/PR: Dang chuan bi commit va deploy.
+
 ## 2026-08-23-20 - Hinh nen rieng cho nhom va dong bo cho chat 1-1
 
 - Thoi gian: 2026-08-23 20:39 (Asia/Saigon)

@@ -2841,7 +2841,8 @@ input:checked + .slider:before {
 .history-search-result { align-items: center; }
 .history-search-result .workspace-list-copy { gap: 4px; }
 .history-search-result .workspace-list-copy small { white-space: normal; line-height: 1.45; }
-.history-search-type-image, .history-search-type-sticker { color: #d16b13; background: #fff3d8; }
+.history-search-type-image { color: #d16b13; background: #fff3d8; }
+.history-search-type-sticker { color: #c34278; background: #fff0f6; }
 .history-search-type-file, .history-search-type-document, .history-search-type-archive { color: #486c9c; background: #eaf2ff; }
 .history-search-type-video { color: #a04f86; background: #f8eafa; }
 .history-search-type-audio { color: #198266; background: #e5f7f0; }

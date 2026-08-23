@@ -56,6 +56,17 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("_admin_account_sso_enabled", management_login_source)
         self.assertIn("AUTH_METHOD_DISABLED", management_login_source)
 
+    def test_history_search_keeps_stickers_out_of_image_and_generic_file_filters(self):
+        _controller_source, search_source = function_source(
+            CONTROLLER_PATH,
+            "_history_search_matches",
+        )
+
+        self.assertIn('if file_type == "sticker":', search_source)
+        self.assertIn('return actual_type != "image"', search_source)
+        self.assertIn('return actual_type != "sticker"', search_source)
+        self.assertIn('return actual_type in ("text", "image", "sticker")', search_source)
+
     def test_management_account_sso_requires_an_account_admin_and_management_scope(self):
         _controller_source, admin_sso_source = function_source(
             CONTROLLER_PATH,

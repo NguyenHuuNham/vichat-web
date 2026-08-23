@@ -234,6 +234,7 @@ export async function deleteCustomNotificationSound(viewerId, factory = indexedD
 }
 
 export function notificationMessageBody(message = {}, translate = value => value) {
+  if (message.type === 'sticker') return translate('Đã gửi sticker.');
   if (message.type === 'image') return translate('Đã gửi một hình ảnh.');
   if (message.type === 'file') return translate(`Đã gửi tệp ${message.file?.name || 'đính kèm'}.`);
   return String(message.text || 'Có tin nhắn mới.').trim() || 'Có tin nhắn mới.';
