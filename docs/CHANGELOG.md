@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-23 15:53 (Asia/Saigon)
 - Loai: Sua loi | Web | UI | Kiem thu
-- Trang thai: Dang cho deploy production
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Trinh bay cac thao tac nhom gon theo hang icon va bo dong hien thi so thanh vien dang hoat dong trung lap trong panel chi tiet.
 - Pham vi: Chi panel thong tin nhom trong ChatUI; giu nguyen handler, API, quyen member/admin, mute, pin va them thanh vien.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `docs/CHANGELOG.md`, `dist/index.html`.
@@ -18,9 +18,11 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Chi thay doi thu tu JSX va CSS presentation; khong doi state, callback, endpoint, phan quyen, Tinode hay du lieu.
 - Database/API/cau hinh: Khong co migration, endpoint, bien moi truong, secret hoac thay doi quyen.
 - Kiem thu: `npm run test:frontend` dat 151/151; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `python -m unittest discover -s chatservice-main/tests -q` dat 178 test, skip 60 theo moi truong; `git diff --check` dat.
-- Rui ro con lai: Chua deploy/UAT production; can hard refresh va kiem tra panel group bang member thuong va admin o light/dark/mobile.
-- Viec tiep theo: Commit, push, deploy rieng `chat`, health check va cap nhat ket qua release; khong migration.
-- Commit/PR: Chua tao.
+- Rui ro con lai: Chua UAT pixel-level bang tai khoan production; can kiem tra panel group voi member thuong va admin o light/dark/mobile sau hard refresh.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, kiem tra 3 icon voi member thuong, 4 icon voi admin, va xac nhan muc `Quan tri vien` nam ben duoi; neu gap loi thi tro `current` ve `previous` va recreate rieng `chat` tu image rollback.
+- Trien khai: Commit `443b31e` da push `origin/master`; archive SHA-256 `4161CAB253F00F72B1AAB82FD58839C28CD01C00A2A38DA78CB12A100A851E51`; release `/opt/deploy/chat/releases/443b31e-20260823-1558`; `current` tro release moi, `previous` tro `/opt/deploy/chat/releases/7116bbe-20260823-1533`; chi recreate `chat`, khong migration/reset volume/database, Chatmgt/Tinode bridge/webhook/ChatAPI/PostgreSQL/Redis/Coturn giu nguyen. Image ChatUI `sha256:e2f4049bcf2db8792dac5c9a81ab79d0b54f8d04d0ccacbb9fa76be4b1d0eda1`, container `f6bcd77315c6426f09c04581e82c54b570ef71785149a4c1e6df8e2344bc67bf`; rollback tag `songhong-production-chat:rollback-before-group-quick-actions-443b31e` giu image cu `sha256:4cc781b29e3af957947388bf12bebe1f1a3b4c922317827b7c4e08ceb539a9d6`.
+- Kiem tra production: Compose config dat; container `chat` healthy; local/public Chat `/healthz` tra `ok`; Chatmgt auth health tra `status: ok`; public bundle `App-DMYE3QSG.js`, `index-CHOeiW6Q.js`, `index-CLP-tqLO.css` HTTP 200, App co marker quick action, CSS co `auto-fit`, bundle khong con `group-members-count`; `sudo -n nginx -t` dat; log 5 phut cua `chat`, `chatmgt`, bridge va webhook khong co fatal/panic/traceback/critical/emerg/uncaught.
+- Commit/PR: Source `443b31e`; follow-up docs deployment commit.
 
 ## 2026-08-23-12 - Biet danh rieng trong chat 1-1
 
