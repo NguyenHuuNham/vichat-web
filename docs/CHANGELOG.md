@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-04 - Sua loi nen chat va menu hanh dong tin nhan
+
+- Thoi gian: 2026-08-24 04:00 (Asia/Saigon)
+- Loai: Sua loi | Web | UI | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Giu hinh nen phu dung toan bo khung tin nhan khi cuon va dua menu 3 cham cua tin nhan ra ngoai vung cuon de khong bi che hoac lam sai thao tac.
+- Pham vi: Chi ChatUI vung nen cuoc tro chuyen, scroll container va menu hanh dong tin nhan; khong thay doi transport, Tinode, tin nhan, ghim, reaction, file, sticker hay membership.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Bo lop sticky cao `100vh` dang nam trong flex content; hinh nen hien duoc gan vao viewport cua `.chat-messages` va dung lop tuong phan theo theme. Menu 3 cham duoc render qua portal vao `document.body`, tinh lai vi tri theo khoang trong cua viewport, co gioi han chieu cao va tu dong dong khi vung tin nhan cuon de khong bi tach khoi tin da chon.
+- Quyet dinh ky thuat: Background khong con tao them chieu cao scrollable hay horizontal overflow; menu hanh dong khong phu thuoc stacking/overflow cua danh sach tin nhan. Khong them state backend hoac API moi.
+- Database/API/cau hinh: Khong migration, endpoint, bien moi truong hoac secret moi.
+- Kiem thu: `npm run test:frontend` dat 170/170; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat; `git diff --check` dat.
+- Rui ro con lai: Chua UAT pixel-level bang trinh duyet that trong phien nay; can kiem tra nen anh dai, cuon nhieu tin, mo menu 3 cham, ghim va cac action khac o light/dark theme.
+- Viec tiep theo: Hoan tat commit/deploy ChatUI va hard refresh production de UAT; neu loi chi rollback release ChatUI, khong thao tac dich vu stateful.
+- Commit/PR: Chua tao.
+
 ## 2026-08-24-03 - Lam ro sticker dark theme va thong bao hoat dong nhom
 
 - Thoi gian: 2026-08-24 03:04 (Asia/Saigon)

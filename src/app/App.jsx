@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import Login from '../features/auth/components/Login';
 import ConversationErrorBoundary from '../components/ConversationErrorBoundary';
 import EnterpriseWorkspace from '../features/workspace/components/EnterpriseWorkspace';
@@ -1582,7 +1583,7 @@ function ConversationAvatar({ room }) {
   return <span>{room?.name?.trim?.().slice(0, 1).toUpperCase() || '?'}</span>;
 }
 
-function ConversationBackgroundLayer({ background }) {
+function useConversationBackgroundSource(background) {
   const [resolvedSource, setResolvedSource] = useState('');
 
   useEffect(() => {
@@ -1610,14 +1611,7 @@ function ConversationBackgroundLayer({ background }) {
     return () => { active = false; };
   }, [background?.url, background?.blob]);
 
-  if (!resolvedSource) return null;
-  return (
-    <div
-      className="conversation-background-layer"
-      aria-hidden="true"
-      style={{ backgroundImage: `url("${resolvedSource.replaceAll('"', '\\"')}")` }}
-    />
-  );
+  return resolvedSource;
 }
 
 function unreadMessageCount(messages, readBy, viewerId) {
@@ -2793,6 +2787,7 @@ function App() {
   const activeConversationBackground = activeBackgroundPreference?.cleared
     ? null
     : activeBackgroundPreference;
+  const activeConversationBackgroundSource = useConversationBackgroundSource(activeConversationBackground);
 
   useEffect(() => {
     setConversationBackgrounds({});
@@ -7222,10 +7217,18 @@ function App() {
     event.preventDefault();
     const width = 245;
     const height = 360;
+    const gutter = 12;
+    const anchorX = Number.isFinite(event.clientX) ? event.clientX : gutter;
+    const anchorY = Number.isFinite(event.clientY) ? event.clientY : gutter;
+    const left = Math.max(gutter, Math.min(anchorX, window.innerWidth - width - gutter));
+    const belowTop = anchorY + 6;
+    const top = belowTop + height <= window.innerHeight - gutter
+      ? belowTop
+      : Math.max(gutter, anchorY - height - 6);
     setMessageMenu({
       message,
-      left: Math.min(event.clientX, window.innerWidth - width - 12),
-      top: Math.min(event.clientY, window.innerHeight - height - 12),
+      left,
+      top,
     });
   };
 
@@ -8608,6 +8611,12 @@ function App() {
           <div
             ref={chatMessagesRef}
             className={`chat-messages ${activeChat.isChatbot ? 'chatbot-messages' : ''} ${activeConversationBackground ? 'has-conversation-background' : ''}`}
+            style={activeConversationBackgroundSource
+              ? { '--conversation-background-image': `url("${activeConversationBackgroundSource.replaceAll('"', '\\"')}")` }
+              : undefined}
+            onScroll={() => {
+              if (messageMenu) setMessageMenu(null);
+            }}
           >
           {activeUnreadBoundary && !activeUnreadBoundary.revealed && !messageSearchQuery.trim() && (
             <button
@@ -8623,7 +8632,6 @@ function App() {
             </button>
           )}
           <div className="chat-messages-content">
-            <ConversationBackgroundLayer background={activeConversationBackground} />
           {!hasDatedMessages && (
             <div className="date-divider"><span>{appCopy.t(currentChatId === 'dieu-hanh' ? 'Hôm nay' : 'Hội thoại trực tuyến')}</span></div>
           )}
@@ -9014,18 +9022,20 @@ function App() {
             const canRecallMessage = isOwnMessage && canRecallDeliveredMessage(menuMessage);
             const menuMessageState = messageActions[messageActionKey(activeChat.id, menuMessage.id)] || {};
             const marked = menuMessageState.marked;
-            return (
+            if (typeof document === 'undefined' || !document.body) return null;
+            return createPortal(
               <div className="message-context-menu" style={{ left: messageMenu.left, top: messageMenu.top }} onClick={event => event.stopPropagation()}>
                 <button type="button" onClick={() => handleMessageAction('copy', menuMessage)}><i className="fa-regular fa-copy"></i>{appCopy.t('Copy tin nhắn')}</button>
                 <button type="button" onClick={() => handleMessageAction('mark', menuMessage)}><i className={`fa-${marked ? 'solid' : 'regular'} fa-star`}></i>{appCopy.t(marked ? 'Bỏ đánh dấu' : 'Đánh dấu tin nhắn')}</button>
                 {canPinActiveGroupMessages && <button type="button" onClick={() => handleMessageAction('pin', menuMessage)}><i className="fa-solid fa-thumbtack"></i>{appCopy.t(menuMessageState.pinned ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn')}</button>}
                 {!activeChat.isChatbot && isManagementConversationId(activeChat.managementId || activeChat.id) && <button type="button" onClick={() => handleMessageAction('create-task', menuMessage)}><i className="fa-solid fa-list-check"></i>{appCopy.t('Giao việc từ tin nhắn')}</button>}
                 <button type="button" onClick={() => handleMessageAction('detail', menuMessage)}><i className="fa-solid fa-circle-info"></i>{appCopy.t('Xem chi tiết')}</button>
-                 {canRecallMessage && <>
-                   <button type="button" className="danger" onClick={() => handleMessageAction('recall-self', menuMessage)}><i className="fa-solid fa-eye-slash"></i>{appCopy.t('Thu hồi phía tôi')}</button>
-                   <button type="button" className="danger" onClick={() => handleMessageAction('recall-all', menuMessage)}><i className="fa-solid fa-rotate-left"></i>{appCopy.t('Thu hồi tất cả')}</button>
-                 </>}
-              </div>
+                {canRecallMessage && <>
+                  <button type="button" className="danger" onClick={() => handleMessageAction('recall-self', menuMessage)}><i className="fa-solid fa-eye-slash"></i>{appCopy.t('Thu hồi phía tôi')}</button>
+                  <button type="button" className="danger" onClick={() => handleMessageAction('recall-all', menuMessage)}><i className="fa-solid fa-rotate-left"></i>{appCopy.t('Thu hồi tất cả')}</button>
+                </>}
+              </div>,
+              document.body,
             );
           })()}
 
