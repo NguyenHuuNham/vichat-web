@@ -834,10 +834,11 @@ body {
 }
 
 .message-avatar {
+    position: relative;
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    overflow: hidden;
+    overflow: visible;
     flex-shrink: 0;
     align-self: flex-start;
 }
@@ -863,7 +864,12 @@ body {
 .message-avatar img {
     width: 100%;
     height: 100%;
+    border-radius: 50%;
     object-fit: cover;
+}
+
+.message-avatar > .avatar-fallback {
+    border-radius: 50%;
 }
 
 .message-avatar > .avatar-fallback,
@@ -920,27 +926,28 @@ body {
     min-height: 17px;
 }
 
-.group-owner-message-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 6px;
-    border-radius: 999px;
+.group-owner-avatar-badge {
+    position: absolute;
+    right: -4px;
+    bottom: -3px;
+    z-index: 1;
+    display: grid;
+    width: 16px;
+    height: 16px;
+    place-items: center;
+    border: 2px solid var(--bg-chat);
+    border-radius: 50%;
     color: #996b00;
-    background: #fff4c7;
-    font-size: 9px;
-    font-weight: 700;
-    line-height: 1.2;
+    background: #ffd35a;
+    box-shadow: 0 1px 4px rgba(69, 49, 0, .24);
+    font-size: 8px;
+    line-height: 1;
+    pointer-events: none;
 }
 
-.group-owner-message-badge i {
-    color: #d39b00;
-    font-size: 11px;
-}
-
-.group-owner-message-badge.outgoing {
-    align-self: flex-end;
-    margin-right: 4px;
+.group-owner-avatar-badge i {
+    color: #8b5f00;
+    font-size: 8px;
 }
 
 .sender-profile-trigger {
@@ -5237,7 +5244,7 @@ html[data-theme="dark"] .group-leave-member { border-color: #3b4b54; background:
 html[data-theme="dark"] .group-leave-member:hover,
 html[data-theme="dark"] .group-leave-member.selected { border-color: #8c5b48; background: #4a2e24; }
 html[data-theme="dark"] .group-leave-radio-indicator { border-color: #53636a; background: #27363c; }
-html[data-theme="dark"] .group-owner-message-badge { color: #f6d783; background: #4b3d1f; }
+html[data-theme="dark"] .group-owner-avatar-badge { border-color: var(--bg-chat); color: #f6d783; background: #4b3d1f; }
 html[data-theme="dark"] .group-send-disabled-notice { border-color: #704342; color: #ffb0a0; background: #3d2928; }
 html[data-theme="dark"] .btn-secondary:hover { background: #354149; }
 html[data-theme="dark"] .chatbot-context-strip {

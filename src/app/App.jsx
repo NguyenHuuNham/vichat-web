@@ -7801,6 +7801,11 @@ function App() {
                 {!isOutgoing && (
                   <button type="button" className="message-avatar message-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))} title={`${appCopy.t('Xem thông tin')} ${msg.senderName || appCopy.t('thành viên')}`}>
                     <SafeAvatar src={msg.avatar || ''} name={msg.senderName} />
+                    {isOwnerMessage && (
+                      <span className="group-owner-avatar-badge" title={appCopy.t('Quản trị viên nhóm')} aria-label={appCopy.t('Quản trị viên nhóm')} role="img">
+                        <i className="fa-solid fa-key" aria-hidden="true"></i>
+                      </span>
+                    )}
                   </button>
                 )}
 
@@ -7808,18 +7813,7 @@ function App() {
                   {!isOutgoing && msg.senderName && (
                     <div className="sender-name-row">
                       <button type="button" className="sender-name sender-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))}>{msg.senderName}</button>
-                      {isOwnerMessage && (
-                        <span className="group-owner-message-badge" title={appCopy.t('Quản trị viên nhóm')} aria-label={appCopy.t('Quản trị viên nhóm')}>
-                          <i className="fa-solid fa-key" aria-hidden="true"></i>
-                        </span>
-                      )}
                     </div>
-                  )}
-
-                  {isOutgoing && isOwnerMessage && (
-                    <span className="group-owner-message-badge outgoing" title={appCopy.t('Quản trị viên nhóm')} aria-label={appCopy.t('Quản trị viên nhóm')}>
-                      <i className="fa-solid fa-key" aria-hidden="true"></i>
-                    </span>
                   )}
 
                   <div

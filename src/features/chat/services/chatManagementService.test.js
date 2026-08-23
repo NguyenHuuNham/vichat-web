@@ -248,8 +248,18 @@ test('group mute and reaction controls preserve the existing checkbox flow and e
   assert.match(muteSource, /!activeChatMuted/);
   assert.match(appSource, /reactionUsers/);
   assert.match(appSource, /reaction-details-modal/);
-  assert.match(appSource, /fa-key/);
   assert.match(appSource, /activeChat\.isGroup\s*\n?\s*&& identitiesOverlap\(\{ id: messageSenderId \}/);
+});
+
+test('renders the group owner key on incoming owner avatars only', () => {
+  const avatarBlock = appSource.split('{!isOutgoing && (')[1].split('</button>')[0];
+  assert.match(avatarBlock, /isOwnerMessage/);
+  assert.match(avatarBlock, /group-owner-avatar-badge/);
+  assert.match(avatarBlock, /fa-key/);
+  assert.doesNotMatch(appSource, /group-owner-message-badge/);
+  assert.doesNotMatch(appSource, /isOutgoing && isOwnerMessage/);
+  assert.match(stylesSource, /\.message-avatar \{[\s\S]*?position: relative;[\s\S]*?overflow: visible;/);
+  assert.match(stylesSource, /\.group-owner-avatar-badge \{[\s\S]*?position: absolute;[\s\S]*?right: -4px;[\s\S]*?bottom: -3px;/);
 });
 
 test('conversation actions use the authoritative Chatmgt id on web and mobile', () => {
