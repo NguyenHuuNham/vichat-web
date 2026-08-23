@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-24 06:36 (Asia/Saigon)
 - Loai: Tinh nang | Sua loi | Web | Realtime | Kiem thu | Tai lieu
-- Trang thai: Dang thuc hien
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Cho phep keo anh sau khi phong to de xem phan bi che va dung nut chia se trong viewer de chuyen tiep tin nhan cho mot nguoi hoac nhom trong ViChat.
 - Pham vi: Chi image viewer, message forward picker va Tinode attachment forward; giu nguyen ho so, avatar, sticker, nen, reaction, membership va cac luong chat khac.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/CHANGELOG.md`, `dist/index.html`.
@@ -19,8 +19,10 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong migration, endpoint moi hoac bien moi truong; chi bo sung head metadata `x-shared-from` cho luong `sendFile` Tinode hien co.
 - Kiem thu: `npm run test:frontend` dat 175/175; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `App-8mTO8XWv.js`, `index-BL62cxPp.js`, CSS `index-D8JDW2m6.css`; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 44/44; `git diff --check` dat.
 - Rui ro con lai: Chua UAT pixel-level bang browser runtime; can thu keo anh desktop/mobile o zoom 125-300%, thu reset/doi anh, chuyen tiep anh/file/van ban sang chat 1-1 va nhom, va xac nhan loi upload khong lam mat modal.
-- Viec tiep theo: Commit/push va deploy chi recreate `chat`, sau do health/asset/log verify; khong restart PostgreSQL, Redis, Tinode, bridge, webhook, ChatAPI hay Coturn.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT viewer desktop/mobile, zoom keo anh, share text/anh/file sang chat 1-1 va nhom; neu loi chi tro `current` ve `previous`, khong reset Tinode/database/volume.
+- Trien khai: Source `1036637` da push `origin/master`; archive SHA-256 `225a4b72169c9ea418019d6c8cd34407e244e9ad68ce7e2ed758c98f8ed24c2e`; release `/opt/deploy/chat/releases/image-forward-1036637-20260824-0641` dang la `current`, `previous` tro `/opt/deploy/chat/releases/profile-avatar-9f3f9d5-20260824-0605`; backup PostgreSQL `/opt/deploy/chat/backups/chatservice-image-forward-1036637.dump` SHA-256 `5527ce902baa69818879972f3de39fc72d5df03a924e0319ed905a51f171926a`; chi recreate `chat`, image digest `sha256:fee1de61bbbab075e10de5c796f9e77c3e0fcf68ba10df1d645999a9be775330`, khong restart Chatmgt, Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis, Coturn.
+- Kiem tra production: `chat` va `chatmgt` healthy; local/public `https://chat.upgo.vn/healthz` va `https://chatmgt.upgo.vn/api/v1/auth/health` HTTP 200; `sudo -n nginx -t` va Compose config dat; public chunks `App-CPIWflTU.js` va `index-BFNsiRDL.js` HTTP 200, chunk App co marker viewer/forward; log 10 phut cua ChatUI/Chatmgt khong co fatal/panic/traceback/critical/emerg/uncaught/error.
+- Commit/PR: Source `1036637`; deployment follow-up dang tao.
 
 ## 2026-08-24-08 - Dong bo ho so UpGo va crop avatar
 
