@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT viewer desktop/mobile, zoom keo anh, share text/anh/file sang chat 1-1 va nhom; neu loi chi tro `current` ve `previous`, khong reset Tinode/database/volume.
 - Trien khai: Source `1036637` da push `origin/master`; archive SHA-256 `225a4b72169c9ea418019d6c8cd34407e244e9ad68ce7e2ed758c98f8ed24c2e`; release `/opt/deploy/chat/releases/image-forward-1036637-20260824-0641` dang la `current`, `previous` tro `/opt/deploy/chat/releases/profile-avatar-9f3f9d5-20260824-0605`; backup PostgreSQL `/opt/deploy/chat/backups/chatservice-image-forward-1036637.dump` SHA-256 `5527ce902baa69818879972f3de39fc72d5df03a924e0319ed905a51f171926a`; chi recreate `chat`, image digest `sha256:fee1de61bbbab075e10de5c796f9e77c3e0fcf68ba10df1d645999a9be775330`, khong restart Chatmgt, Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis, Coturn.
 - Kiem tra production: `chat` va `chatmgt` healthy; local/public `https://chat.upgo.vn/healthz` va `https://chatmgt.upgo.vn/api/v1/auth/health` HTTP 200; `sudo -n nginx -t` va Compose config dat; public chunks `App-CPIWflTU.js` va `index-BFNsiRDL.js` HTTP 200, chunk App co marker viewer/forward; log 10 phut cua ChatUI/Chatmgt khong co fatal/panic/traceback/critical/emerg/uncaught/error.
-- Commit/PR: Source `1036637`; deployment follow-up dang tao.
+- Commit/PR: Source `1036637`; deployment follow-up `6fd54da`.
 
 ## 2026-08-24-08 - Dong bo ho so UpGo va crop avatar
 
