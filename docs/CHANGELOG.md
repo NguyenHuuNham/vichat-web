@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-23-17 - Xac nhan deploy giai tan nhom va thong bao ghim
+
+- Thoi gian: 2026-08-23 18:34 (Asia/Saigon)
+- Loai: Van hanh | Kiem thu | Tai lieu
+- Trang thai: Da deploy production; san sang UAT
+- Muc tieu: Xac nhan ban group lifecycle da duoc commit, push va chay tren production an toan.
+- Pham vi: Chi recreate `chat` va `chatmgt`; Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis, Coturn va volume duoc giu nguyen.
+- File da thay doi: `docs/CHANGELOG.md`.
+- Noi dung: Commit `a2efad7` da push `origin/master`. Release `/opt/deploy/chat/releases/a2efad7-20260823-1830` dang la `current`; `previous` tro `/opt/deploy/chat/releases/04ddf7e-20260823-1721`. Khong migration, khong reset database/volume. Image moi la `chat` digest `sha256:8a07486d0076ae50e7900920133b44015be9be0b6bc52489c4ebefdb258bf84b` va `chatmgt` digest `sha256:0f5326e184c6bce4ae9a75b48ae273fe46b42892920cf54d4db635d08579cd7e`.
+- Quyet dinh ky thuat: Tao rollback tags `songhong-production-chat:rollback-before-group-dissolve-a2efad7-20260823-1830` va `songhong-production-chatmgt:rollback-before-group-dissolve-a2efad7-20260823-1830`; chi doi symlink sau khi image moi va health check dat.
+- Database/API/cau hinh: Khong migration, bien moi truong hay secret moi.
+- Kiem thu: Local `npm run test:frontend` dat 155/155; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` dat; backend `python -m py_compile ...` dat; `python -m unittest discover -s tests -q` dat 181 test, skip 61; production image contract voi source mounts dat 181/181; `verify_tenant_isolation.py` dat; public `/healthz` va Chatmgt `/api/v1/auth/health` dat; public asset JS/CSS HTTP 200 va bundle co marker `group_dissolved`/`message_pinned`; `sudo -n nginx -t` dat; log scan 15 phut khong co fatal/traceback.
+- Rui ro con lai: `verify_deployment.py` da qua database/credential policy nhung van dung o gate WebRTC/Tinode co san (`Public Tinode hello did not confirm authoritative WebRTC/ICE configuration`), khong phat sinh tu thay doi nay. Chua UAT bang owner/member that cho dialog, giai tan, pin event realtime; van con consistency risk neu DB commit loi sau khi Tinode da remove subscriber.
+- Viec tiep theo: UAT group bang hai tai khoan production; neu can rollback, tro `current` ve `previous` va recreate rieng `chat`/`chatmgt` tu rollback tags, khong reset database/volume/Tinode.
+- Trien khai: Da deploy production tai release `/opt/deploy/chat/releases/a2efad7-20260823-1830`.
+- Commit/PR: `a2efad7`; follow-up docs commit.
+
 ## 2026-08-23-16 - Giai tan nhom va thong bao ghim tin nhan
 
 - Thoi gian: 2026-08-23 18:10 (Asia/Saigon)
