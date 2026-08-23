@@ -8,19 +8,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-23-19 - Giu avatar sau reload va dong bo biet danh trong nhom
 
-- Thoi gian: 2026-08-23 19:25 (Asia/Saigon)
+- Thoi gian: 2026-08-23 19:33 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | API | Web | Kiem thu | Tai lieu
-- Trang thai: Dang thuc hien
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Khong de avatar ca nhan/nhom quay ve gia tri cu sau F5, chuyen tenant hoac reconnect; biet danh da dat trong chat 1-1 phai hien dung trong group va o bo chon mention khi soan tin.
 - Pham vi: Chatmgt account avatar projection, ChatUI group/avatar merge, directory identity lookup, message/reply/reaction/member/mention rendering; khong thay doi sticker, reaction storage, tenant switch, membership hay message content.
 - File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
 - Noi dung: Luu dau moc URL avatar da Account xac nhan trong `ManagementAccount.properties` de directory projection cu khong ghi de avatar moi; uu tien avatar group tu Chatmgt khi Tinode reconnect va chi refresh snapshot authoritative. Bo sung lookup qua management ID, UID va Tinode UID de nickname viewer-scoped cap nhat sender group, reply, reaction, member va mention picker ngay sau khi luu.
 - Quyet dinh ky thuat: Khong them schema; Account van la nguon avatar ca nhan, Chatmgt la projection tenant ben vung, Tinode chi phat realtime metadata. Nickname van chi thuoc viewer hien tai, khong broadcast sang tai khoan khac.
 - Database/API/cau hinh: Khong migration, endpoint, bien moi truong, secret hoac thay doi cau hinh.
-- Kiem thu: `npm run test:frontend` dat 159/159; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-D7jXEG7O.js`, `App-CoGiATsj.js`, CSS `index-KipYZzQp.css`; `python -m unittest discover -s chatservice-main/tests -q` dat 181 test, skip 61 theo moi truong; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/tests/test_chat_auth_contract.py` dat; `git diff --check` dat.
+- Kiem thu local: `npm run test:frontend` dat 159/159; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `index-D7jXEG7O.js`, `App-CoGiATsj.js`, CSS `index-KipYZzQp.css`; `python -m unittest discover -s chatservice-main/tests -q` dat 181 test, skip 61 theo moi truong; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/tests/test_chat_auth_contract.py` dat; `git diff --check` dat. Contract test trong image production voi mount day du source/docs dat 181/181.
 - Rui ro con lai: Can UAT production bang hard refresh, chuyen tenant, doi avatar group/ca nhan va kiem tra nickname trong group bang hai tai khoan; avatar doi tu he thong Account ben ngoai ChatUI can duoc xac nhan bang tai khoan that.
-- Viec tiep theo: Chay full frontend checks, commit/push va deploy rieng `chat`/`chatmgt`; khong migration/reset database, Tinode, Redis, volume hay service khac.
-- Commit/PR: Chua tao.
+- Viec tiep theo: UAT voi hai tai khoan that: doi avatar ca nhan/nhom, hard refresh, chuyen tenant, reconnect; doi nickname o chat 1-1 va xac nhan nickname cap nhat trong group, member, reply, reaction, history va mention picker. Neu UAT gap loi, rollback `current` ve `previous` va chi recreate `chat`/`chatmgt`; khong migration/reset database, Tinode, Redis, volume hay service khac.
+- Trien khai: Da deploy production tai release `/opt/deploy/chat/releases/b07e850-20260823-1933`; `current` tro release nay, `previous` tro `/opt/deploy/chat/releases/dea1dd2-20260823-1845`. Chi recreate `chat` va `chatmgt`; Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis, Coturn va volume duoc giu nguyen. Image digest: `chat` `sha256:e6d86c4500d7a5ab26f47e23f083eb02a326be6959bf581bd2b366541c1b251e`, `chatmgt` `sha256:3a35f1fb3ecf9e3aab49d1f472bcf1d5658aca7d006a49487928e636b952a73f`. Rollback tags: `songhong-production-chat:rollback-before-avatar-nickname-b07e850-20260823-1933`, `songhong-production-chatmgt:rollback-before-avatar-nickname-b07e850-20260823-1933`.
+- Kiem tra production: `https://chat.upgo.vn/healthz` HTTP 200 `ok`; `https://chatmgt.upgo.vn/api/v1/auth/health` HTTP 200 `status: ok`; `chat` va `chatmgt` healthy; public entry va CSS HTTP 200, App chunk co marker `contact-nicknames`; `sudo nginx -t` dat. Co mot so request webhook 503 ngan trong luc recreate service, sau do da tu phuc hoi; log sau deploy khong thay loi fatal.
+- Commit/PR: `b07e850` da commit va push `origin/master`.
 
 ## 2026-08-23-18 - Dat chia khoa owner tren avatar tin nhan nhom
 
