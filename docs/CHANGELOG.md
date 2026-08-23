@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-23 18:42 (Asia/Saigon)
 - Loai: Sua loi | Web | UI | Kiem thu | Tai lieu
-- Trang thai: Dang thuc hien
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Hien thi bieu tuong chia khoa vang cua owner dung tai goc avatar cua owner trong tin nhan nhom.
 - Pham vi: Chi render avatar/badge cua tin nhan trong `src/app/App.jsx` va style lien quan; khong thay doi logic chat, quyen, Tinode hay API.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`, `docs/CHANGELOG.md`.
 - Noi dung: Badge chi hien tren tin nhan den cua owner de thanh vien khac nhan biet; tin nhan do chinh owner gui khong hien badge. Avatar van giu nguyen thao tac mo ho so.
 - Quyet dinh ky thuat: Tai su dung `isOwnerMessage` hien co va dat badge trong avatar incoming, khong tao state/endpoint moi.
 - Database/API/cau hinh: Khong co.
-- Kiem thu: `npm run test:frontend` dat 156/156; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `App-BJikQiI5.js` va `index-KipYZzQp.css`; `git diff --check` dat.
-- Rui ro con lai: Can xac minh pixel-level tren light/dark va UAT bang owner/member production.
-- Viec tiep theo: Chay kiem tra local, commit/push va deploy rieng service `chat`.
-- Commit/PR: Chua tao.
+- Kiem thu: Local `npm run test:frontend` dat 156/156; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi bundle `App-BJikQiI5.js` va `index-KipYZzQp.css`; `git diff --check` dat. Production release `dea1dd2-20260823-1845` co container `chat` healthy; internal/public `/healthz` HTTP 200; asset JS/CSS HTTP 200 va co marker `group-owner-avatar-badge`; `sudo -n nginx -t` dat.
+- Rui ro con lai: Chua UAT pixel-level tren light/dark bang owner/member production.
+- Viec tiep theo: UAT group bang tai khoan owner va member; neu can rollback, tro `current` ve `previous` va recreate rieng `chat` tu rollback tag.
+- Trien khai: Da deploy production tai release `/opt/deploy/chat/releases/dea1dd2-20260823-1845`; `current` tro release nay, `previous` tro `a2efad7-20260823-1830`; chi recreate `chat`, khong dong vao `chatmgt`, Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis, Coturn hoac volume. Image moi manifest `sha256:3371ddd4122840cc29815fa5b1cbc6251429d8da7c1f0b2e9fcef508d9947784`; rollback tag `songhong-production-chat:rollback-before-owner-key-dea1dd2-20260823-1845`.
+- Commit/PR: Source `dea1dd2` da push `origin/master`; follow-up docs commit.
 
 ## 2026-08-23-17 - Xac nhan deploy giai tan nhom va thong bao ghim
 
