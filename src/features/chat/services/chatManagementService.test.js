@@ -130,8 +130,26 @@ test('keeps unread emphasis and latest-message navigation in the ChatUI layer', 
   assert.match(appSource, /indicatorCleared/);
   assert.match(appSource, /latest-message-jump-button/);
   assert.match(appSource, /chatIsNearBottomRef/);
+  assert.match(appSource, /const acknowledgedReadSeq = await tinodeClient\.markRead\(topicName\)/);
+  assert.match(appSource, /const notificationFloor = Math\.max/);
+  assert.match(appSource, /openingConversationRef\.current !== String\(stateId\)/);
+  assert.match(tinodeSource, /const topicReadFloors = new Map\(\)/);
+  assert.match(tinodeSource, /topic\.noteRead\(readSequence\)/);
+  const markReadSource = tinodeSource
+    .split('async markRead')[1]
+    .split('async sendTyping')[0];
+  assert.doesNotMatch(markReadSource, /delMessages|deleteMessage/);
   assert.match(stylesSource, /\.conversation-item\.unread/);
   assert.match(stylesSource, /\.latest-message-jump-button/);
+});
+
+test('automatic topic binding never sends an empty group avatar', () => {
+  const bindSource = managementServiceSource
+    .split('async bindTinodeTopic')[1]
+    .split('async enableTinodeChatbot')[0];
+  assert.match(bindSource, /String\(avatarUrl \|\| ''\)\.trim\(\)/);
+  assert.doesNotMatch(bindSource, /avatar: avatarUrl \|\| ''/);
+  assert.doesNotMatch(tinodeSource, /else delete publicMetadata\.photo/);
 });
 
 test('renders per-user message receipts without changing the Tinode receipt flow', () => {

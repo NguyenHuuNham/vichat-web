@@ -601,8 +601,12 @@ class ChatAuthContractTests(unittest.TestCase):
 
         self.assertIn("properties[\"avatar\"]", group_settings_source)
         self.assertIn('"avatar": _conversation_avatar(properties)', controller_source)
+        self.assertIn("if next_avatar:", group_settings_source)
+        self.assertIn("incoming_avatar = str(body.get(\"avatar\") or \"\").strip()", controller_source)
+        self.assertIn("if is_group and incoming_avatar:", controller_source)
         self.assertIn("topic.setMeta", tinode_source)
         self.assertIn("photo:", tinode_source)
+        self.assertNotIn("else delete publicMetadata.photo", tinode_source)
         self.assertIn("emitConversation(topic)", tinode_source)
         self.assertIn("topic.onMetaDesc", tinode_source)
 

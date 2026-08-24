@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-25-03 - Bao toan avatar nhom va cursor da doc Tinode
+
+- Thoi gian: 2026-08-25 01:18 (Asia/Saigon)
+- Loai: Sua loi | Bao mat | Web | Realtime | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Khong de avatar nhom bi xoa boi snapshot rong va khong de tin nhan da doc tu truoc bi hien lai unread/thong bao khi mo cuoc tro chuyen.
+- Pham vi: ChatUI merge/read-notification, Tinode client read receipt va group metadata, Chatmgt bind/group-settings, contract/unit test, tai lieu kien truc.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/chatManagementService.test.js`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Bind/group-settings chi ghi avatar khi reference khong rong; Tinode khong xoa `publicMetadata.photo` khi nhan avatar rong; merge avatar luon giu gia tri hien co. Read cursor duoc giu tang dan, co read floor trong session, `markRead` gui sequence cu the ngay khi mo chat, va notification/boundary bo qua sequence da doc. Luong nay chi cap nhat receipt, khong goi xoa/recall tin nhan tu dong.
+- Quyet dinh ky thuat: Tinode van la nguon chuan cua message va receipt; Chatmgt la nguon chuan cua group avatar. Khong them schema/migration hay kho luu ban sao tin nhan; snapshot cu chi duoc phep bo sung du lieu moi, khong duoc ha cursor hoac xoa metadata khong co lenh ro rang.
+- Database/API/cau hinh: Khong migration, khong doi schema. Payload avatar rong trong endpoint bind/group-settings tro thanh no-op de tuong thich nguoc va ngan xoa tu dong.
+- Kiem thu: `node --test src/features/chat/services/chatRealtime.test.js src/features/chat/services/chatManagementService.test.js src/features/chat/services/unreadBoundary.test.js` dat 72/72; `npm run test:frontend` dat 234/234; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat, canh bao chunk App lon hon 500 KB da co; `python -m unittest discover -s chatservice-main/tests -p "test_chat_auth_contract.py" -q` dat 48/48; `python -m unittest discover -s chatservice-main/tests -q` hoan tat 193 test, skip 67 do dependency runtime; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py` dat; `git diff --check` dat.
+- Rui ro con lai: Chua deploy production va chua UAT voi hai tai khoan Tinode that; can hard refresh sau khi phat hanh bundle.
+- Viec tiep theo: Chua deploy; can deploy bundle/backend va UAT voi hai tai khoan Tinode that, sau do hard refresh ChatUI.
+- Commit/PR: Chua tao.
+
 ## 2026-08-25-02 - Thu gon bo chuyen cong ty va them hieu ung loading
 
 - Thoi gian: 2026-08-25 00:26 (Asia/Saigon)

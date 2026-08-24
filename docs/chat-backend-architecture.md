@@ -565,6 +565,14 @@ ChatUI resolves the subscriber UID through the existing profile cache for the
 bounded avatar stack and the message-information panel. No receipt data is
 copied to Chatmgt or stored in the message transport.
 
+The web viewer's own read cursor is monotonic for the active Tinode session.
+Opening a conversation immediately sends `read` at the latest known topic
+sequence and keeps an in-memory floor until Tinode reflects that cursor. Older
+topic or Chatmgt snapshots cannot lower the cursor, recreate an unread badge or
+trigger a desktop/sound notification for a sequence at or below it. This
+acknowledgement changes only receipt metadata: it never recalls, deletes or
+rewrites message/file content, and Tinode remains the durable receipt source.
+
 Sticker messages stay within the same Tinode file path as ordinary image
 attachments. ChatUI uploads the selected static `/stickers/puppysoft/*.png`
 asset through the authenticated Tinode relay and adds the bounded
@@ -600,6 +608,11 @@ When Tinode reconnects with an older group avatar, ChatUI keeps the current
 Chatmgt conversation snapshot and refreshes that snapshot instead of writing
 the stale Tinode value back. Group avatar changes continue to persist in the
 existing conversation properties and are then merged into all active viewers.
+Avatar mutation is replace-only across automatic topic binding, group settings
+and Tinode metadata synchronization: only a non-empty reference may replace the
+canonical value. A missing or empty avatar from a delayed snapshot preserves
+the existing `avatar`/`group_avatar` properties and Tinode `photo`; it is never
+interpreted as an implicit delete request.
 
 Avatar uploads use a dedicated longer Account upload timeout and verify the
 returned avatar URL against the uploaded URL. If `/current_user` is briefly

@@ -6,6 +6,8 @@ import {
   modeWithRealtimePresence,
   normalizeConversationShape,
   resolveTinodePresenceOnline,
+  resolveTopicReadState,
+  topicReceiptSequence,
 } from './chatRealtime';
 import {
   CALL_HEAD_STARTED,
@@ -82,6 +84,9 @@ const privateGroupTopics = new Set();
 const callInviteKeys = new Set();
 const conversationEmitTimers = new Map();
 const topicReceiptCursors = new Map();
+// A local read floor protects the UI from an older Tinode snapshot arriving
+// after markRead. The server remains the durable source of the receipt.
+const topicReadFloors = new Map();
 const mediaObjectUrlVersions = new Map();
 let conversationListRequest = null;
 let fndDiscoveryRequest = Promise.resolve();
@@ -1075,13 +1080,13 @@ function toConversation(topic, tinode) {
   const conversationBackground = rawConversationBackground
     ? { ...rawConversationBackground, url: normalizeAvatar(rawConversationBackground.url) }
     : rawConversationBackground;
-  const topicSequence = Number(topic.seq) || 0;
-  const topicReadSequence = Number(topic.read) || 0;
-  const explicitUnreadCount = Number(topic.unread);
-  const topicUnreadCount = Math.max(
-    0,
-    Number.isFinite(explicitUnreadCount) ? explicitUnreadCount : topicSequence - topicReadSequence,
-  );
+  const topicSequence = Math.max(Number(topic.seq) || 0, topicReceiptSequence(topic));
+  const topicReadState = resolveTopicReadState({
+    topicSequence,
+    serverReadSeq: topic.read,
+    localReadFloor: topicReadFloors.get(topic.name),
+    explicitUnreadCount: topic.unread,
+  });
 
   return {
     id: topic.name,
@@ -1106,11 +1111,9 @@ function toConversation(topic, tinode) {
     time: latestMappedTime || '',
     updatedAt: latestMappedActivityAt || (topic.touched ? new Date(topic.touched).toISOString() : undefined),
     ...(conversationBackground !== undefined ? { conversationBackground } : {}),
-    readSeq: topicReadSequence,
-    unreadFromSeq: topicUnreadCount > 0
-      ? topicReadSequence + 1
-      : 0,
-    badge: finalMessages.length > 0 ? topicUnreadCount : 0,
+    readSeq: topicReadState.readSeq,
+    unreadFromSeq: finalMessages.length > 0 ? topicReadState.unreadFromSeq : 0,
+    badge: finalMessages.length > 0 ? topicReadState.badge : 0,
     deletedAt,
     topic,
   };
@@ -1486,7 +1489,11 @@ async function ensureGroupInvitePermissions(topic) {
   return groupPermissionMigrationRequests.get(topic.name);
 }
 
-async function subscribeTopic(topicName, { historyLimit = BACKGROUND_HISTORY_LIMIT, newerOnly = false } = {}) {
+async function subscribeTopic(topicName, {
+  historyLimit = BACKGROUND_HISTORY_LIMIT,
+  newerOnly = false,
+  emit = true,
+} = {}) {
   const tinode = getClient();
   const topic = wireTopic(tinode.getTopic(topicName));
   if (!topic.isSubscribed?.()) {
@@ -1546,7 +1553,7 @@ async function subscribeTopic(topicName, { historyLimit = BACKGROUND_HISTORY_LIM
     }
     await fullHistoryRequests.get(topicName);
   }
-  emitConversation(topic);
+  if (emit) emitConversation(topic);
   return topic;
 }
 
@@ -1603,6 +1610,7 @@ function resetSessionState({ clearEventListeners = false } = {}) {
   conversationEmitTimers.forEach(timer => clearTimeout(timer));
   conversationEmitTimers.clear();
   topicReceiptCursors.clear();
+  topicReadFloors.clear();
   conversationListRequest = null;
   contactsEventQueued = false;
   allowedConversationTopics = new Set();
@@ -2161,8 +2169,9 @@ export const tinodeClient = {
     if (avatar !== undefined) {
       const nextAvatar = String(avatar || '').trim();
       const avatarReference = tinodeMediaPath(nextAvatar) || nextAvatar;
+      // Empty/stale metadata is not an explicit delete operation. Preserve the
+      // current photo so reconnects and rollback paths cannot erase the avatar.
       if (avatarReference) publicMetadata.photo = { ref: avatarReference };
-      else delete publicMetadata.photo;
     }
     if (settings !== undefined) {
       publicMetadata.vichat = {
@@ -2188,9 +2197,29 @@ export const tinodeClient = {
   },
 
   async markRead(topicName) {
-    const topic = await subscribeTopic(topicName);
-    topic.noteRead();
+    const cachedTopic = client?.getTopic?.(topicName);
+    const cachedSequence = cachedTopic
+      ? Math.max(Number(cachedTopic.seq) || 0, topicReceiptSequence(cachedTopic))
+      : 0;
+    if (cachedSequence > 0) {
+      topicReadFloors.set(topicName, Math.max(
+        Number(topicReadFloors.get(topicName)) || 0,
+        cachedSequence,
+      ));
+    }
+    const topic = await subscribeTopic(topicName, { emit: false });
+    const readSequence = Math.max(
+      Number(topicReadFloors.get(topicName)) || 0,
+      Number(topic.read) || 0,
+      Number(topic.seq) || 0,
+      topicReceiptSequence(topic),
+    );
+    if (readSequence > 0) {
+      topicReadFloors.set(topicName, readSequence);
+      topic.noteRead(readSequence);
+    }
     emitConversation(topic);
+    return readSequence;
   },
 
   async sendTyping(topicName) {
@@ -2601,6 +2630,7 @@ export const tinodeClient = {
     tinode.cacheRemTopic?.(topicName);
     allowedConversationTopics.delete(String(topicName));
     topicSubscriptionRequests.delete(topicName);
+    topicReadFloors.delete(String(topicName));
     fullHistoryRequests.delete(topicName);
     fullHistoryTopics.delete(topicName);
     conversationListRequest = null;
@@ -2634,6 +2664,7 @@ export const tinodeClient = {
     const tinode = getClient();
     const topic = tinode.getTopic(topicName);
     if (topic) await topic.leave(true);
+    topicReadFloors.delete(String(topicName));
     topicSubscriptionRequests.delete(topicName);
     fullHistoryRequests.delete(topicName);
     fullHistoryTopics.delete(topicName);
@@ -2649,6 +2680,7 @@ export const tinodeClient = {
     if (isGroup || unsubscribe) {
       await topic.leave(true);
       tinode.cacheRemTopic?.(topicName);
+      topicReadFloors.delete(String(topicName));
       topicSubscriptionRequests.delete(topicName);
       fullHistoryRequests.delete(topicName);
       fullHistoryTopics.delete(topicName);

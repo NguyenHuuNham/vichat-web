@@ -44,6 +44,72 @@ export function mergeManagementAvatar(existingAvatar, incomingAvatar, { incoming
     : existing || incoming;
 }
 
+function conversationSequenceFloor(conversation) {
+  return (Array.isArray(conversation?.messages) ? conversation.messages : [])
+    .concat(Array.isArray(conversation?.friendEvents) ? conversation.friendEvents : [])
+    .reduce((maximum, message) => Math.max(
+      maximum,
+      Number(message?.seq) || 0,
+      Number(message?.raw?.seq) || 0,
+      Number(message?.pollActivitySeq) || 0,
+    ), 0);
+}
+
+/**
+ * Merge viewer read state monotonically. Tinode can emit an older topic
+ * snapshot after a local markRead; that snapshot must never resurrect an
+ * unread badge or boundary which was already acknowledged.
+ */
+export function mergeConversationReadState(existing = {}, incoming = {}) {
+  const existingReadSeq = Math.max(0, Number(existing?.readSeq) || 0);
+  const incomingReadSeq = Math.max(0, Number(incoming?.readSeq) || 0);
+  const readSeq = Math.max(existingReadSeq, incomingReadSeq);
+  const existingUnreadFromSeq = Math.max(0, Number(existing?.unreadFromSeq) || 0);
+  const incomingUnreadFromSeq = Math.max(0, Number(incoming?.unreadFromSeq) || 0);
+  const existingBadge = Math.max(0, Number(existing?.badge) || 0);
+  const incomingBadge = Math.max(0, Number(incoming?.badge) || 0);
+  const existingLatestSeq = conversationSequenceFloor(existing);
+  const incomingLatestSeq = conversationSequenceFloor(incoming);
+  const incomingHasNewMessages = incomingLatestSeq > existingLatestSeq;
+  const incomingHasExplicitUnread = incomingUnreadFromSeq > 0 || incomingBadge > 0;
+  const incomingHasNewUnread = incomingHasNewMessages
+    && incomingLatestSeq > readSeq
+    && incomingHasExplicitUnread;
+  const existingHasUnread = existingUnreadFromSeq > existingReadSeq || existingBadge > 0;
+  const existingHasReadState = Boolean(existingReadSeq || existingUnreadFromSeq || existingBadge);
+  const incomingCursorAdvanced = incomingReadSeq > existingReadSeq;
+  const incomingEqualUnreadIsValid = incomingReadSeq === existingReadSeq
+    && incomingHasExplicitUnread
+    && !existingHasUnread
+    && (incomingUnreadFromSeq > readSeq || incomingLatestSeq > readSeq);
+  const incomingStateCanReplace = incomingCursorAdvanced
+    || incomingEqualUnreadIsValid
+    || incomingHasNewUnread
+    || (!existingHasReadState && (incomingUnreadFromSeq > 0 || incomingBadge > 0));
+
+  let unreadFromSeq = existingUnreadFromSeq;
+  let badge = existingBadge;
+  if (incomingStateCanReplace) {
+    if (incomingHasNewUnread) {
+      const maximumUnread = Math.max(1, incomingLatestSeq - readSeq);
+      unreadFromSeq = incomingUnreadFromSeq > readSeq
+        ? incomingUnreadFromSeq
+        : readSeq + 1;
+      badge = incomingBadge > 0 ? Math.min(incomingBadge, maximumUnread) : maximumUnread;
+    } else {
+      unreadFromSeq = incomingUnreadFromSeq > readSeq ? incomingUnreadFromSeq : 0;
+      badge = incomingBadge;
+    }
+  }
+
+  // A boundary at or below the effective read cursor is never unread. Keep
+  // the badge only when the source supplied a valid unread boundary.
+  if (unreadFromSeq > 0 && unreadFromSeq <= readSeq) unreadFromSeq = 0;
+  if (unreadFromSeq === 0 && incomingStateCanReplace && incomingBadge === 0) badge = 0;
+
+  return { readSeq, unreadFromSeq, badge };
+}
+
 export function resolveConversationDeletedAt(existing = {}, incoming = {}) {
   const incomingDeletedAt = String(incoming?.deletedAt || '').trim();
   const existingDeletedAt = String(existing?.deletedAt || '').trim();
@@ -440,6 +506,33 @@ export function topicReceiptSequence(topic) {
   if (Number.isFinite(maxSequence) && maxSequence > 0) return maxSequence;
   const latestSequence = Number(topic?.latestMessage?.()?.seq);
   return Number.isFinite(latestSequence) && latestSequence > 0 ? latestSequence : 0;
+}
+
+export function resolveTopicReadState({
+  topicSequence = 0,
+  serverReadSeq = 0,
+  localReadFloor = 0,
+  explicitUnreadCount,
+} = {}) {
+  const sequence = Math.max(0, Number(topicSequence) || 0);
+  const serverRead = Math.max(0, Number(serverReadSeq) || 0);
+  const readFloor = Math.max(0, Number(localReadFloor) || 0);
+  const readSeq = Math.max(serverRead, readFloor);
+  const derivedUnreadCount = Math.max(0, sequence - readSeq);
+  const explicitUnread = Number(explicitUnreadCount);
+  let badge = Number.isFinite(explicitUnread)
+    ? Math.max(0, explicitUnread)
+    : derivedUnreadCount;
+
+  if ((sequence > 0 && readSeq >= sequence) || readFloor > 0) {
+    badge = derivedUnreadCount;
+  }
+
+  return {
+    readSeq,
+    unreadFromSeq: badge > 0 ? readSeq + 1 : 0,
+    badge,
+  };
 }
 
 export function messageForDeliveryStatus(message) {

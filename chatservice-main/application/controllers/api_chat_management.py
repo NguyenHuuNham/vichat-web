@@ -3725,7 +3725,10 @@ async def conversation_group_settings(request, conversation_id):
     properties = dict(item.properties or {})
     if next_name is not None:
         item.subject = next_name
-    if next_avatar is not None:
+    # Empty avatar payloads commonly come from stale realtime snapshots. They
+    # must not erase the authoritative Chatmgt value; replacement requires a
+    # non-empty avatar reference.
+    if next_avatar:
         properties["avatar"] = next_avatar
         properties["group_avatar"] = next_avatar
         for legacy_key in ("avatar_url", "avatarUrl"):
@@ -4311,9 +4314,10 @@ async def conversation_bind_tinode(request, conversation_id):
                 topic_name,
                 expected_member_uids,
             )
-        if is_group and "avatar" in body:
+        incoming_avatar = str(body.get("avatar") or "").strip()
+        if is_group and incoming_avatar:
             properties = dict(item.properties or {})
-            properties["avatar"] = str(body.get("avatar") or "")[:8192]
+            properties["avatar"] = incoming_avatar[:8192]
             properties["group_avatar"] = properties["avatar"]
             item.properties = properties
         if not is_group:

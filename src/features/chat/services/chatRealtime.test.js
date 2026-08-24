@@ -9,6 +9,7 @@ import {
   ensureConversationEntry,
   firstVisibleConversationId,
   mergeManagementAvatar,
+  mergeConversationReadState,
   mergeDeliveryStatus,
   normalizeConversationShape,
   messageForDeliveryStatus,
@@ -16,6 +17,7 @@ import {
   readyTinodeTypingTopic,
   resolveConversationDeletedAt,
   resolvePreparedTinodeTopic,
+  resolveTopicReadState,
   resolveTinodePresenceOnline,
   shouldShowConversation,
   topicReceiptSequence,
@@ -41,6 +43,128 @@ test('persisted group avatars win over stale Tinode-only metadata', () => {
     mergeManagementAvatar('/chatmgt-old.jpg', '/chatmgt-new.jpg', { incomingManagementSnapshot: true }),
     '/chatmgt-new.jpg',
   );
+});
+
+test('empty avatar snapshots never clear an existing group avatar', () => {
+  assert.equal(mergeManagementAvatar('/group-kept.jpg', ''), '/group-kept.jpg');
+  assert.equal(mergeManagementAvatar('/group-kept.jpg', '   ', { incomingManagementSnapshot: true }), '/group-kept.jpg');
+});
+
+test('stale read snapshots cannot resurrect an acknowledged unread boundary', () => {
+  const existing = {
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+    messages: [{ seq: 100 }],
+  };
+  const stale = {
+    readSeq: 90,
+    unreadFromSeq: 91,
+    badge: 10,
+    messages: [{ seq: 100 }],
+  };
+
+  assert.deepEqual(mergeConversationReadState(existing, stale), {
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+  });
+
+  assert.deepEqual(mergeConversationReadState(existing, {
+    ...stale,
+    messages: [{ seq: 100 }, { seq: 101 }],
+    badge: 11,
+  }), {
+    readSeq: 100,
+    unreadFromSeq: 101,
+    badge: 1,
+  });
+});
+
+test('a newer read cursor clears unread state while a genuinely newer message remains unread', () => {
+  const existing = {
+    readSeq: 100,
+    unreadFromSeq: 101,
+    badge: 1,
+    messages: [{ seq: 101 }],
+  };
+  assert.deepEqual(mergeConversationReadState(existing, {
+    readSeq: 101,
+    unreadFromSeq: 0,
+    badge: 0,
+    messages: [{ seq: 101 }],
+  }), {
+    readSeq: 101,
+    unreadFromSeq: 0,
+    badge: 0,
+  });
+
+  assert.deepEqual(mergeConversationReadState({
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+    messages: [{ seq: 100 }],
+  }, {
+    readSeq: 100,
+    unreadFromSeq: 101,
+    badge: 1,
+    messages: [{ seq: 100 }, { seq: 101 }],
+  }), {
+    readSeq: 100,
+    unreadFromSeq: 101,
+    badge: 1,
+  });
+
+  assert.deepEqual(mergeConversationReadState({
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+    messages: [],
+  }, {
+    readSeq: 100,
+    unreadFromSeq: 101,
+    badge: 1,
+    messages: [],
+  }), {
+    readSeq: 100,
+    unreadFromSeq: 101,
+    badge: 1,
+  });
+
+  assert.deepEqual(mergeConversationReadState(existing, {
+    readSeq: 0,
+    unreadFromSeq: 0,
+    badge: 0,
+    messages: [],
+    managementSnapshot: true,
+  }), {
+    readSeq: 100,
+    unreadFromSeq: 101,
+    badge: 1,
+  });
+});
+
+test('local read floors override stale explicit Tinode unread counters', () => {
+  assert.deepEqual(resolveTopicReadState({
+    topicSequence: 100,
+    serverReadSeq: 80,
+    localReadFloor: 100,
+    explicitUnreadCount: 20,
+  }), {
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+  });
+  assert.deepEqual(resolveTopicReadState({
+    topicSequence: 120,
+    serverReadSeq: 80,
+    localReadFloor: 100,
+    explicitUnreadCount: 40,
+  }), {
+    readSeq: 100,
+    unreadFromSeq: 101,
+    badge: 20,
+  });
 });
 
 test('Tinode contacts sync retries only while an unknown topic and account session remain active', () => {

@@ -21,6 +21,7 @@ import {
   firstVisibleConversationId,
   isManagementConversationId,
   mergeDeliveryStatus,
+  mergeConversationReadState,
   mergeManagementAvatar,
   normalizeConversationShape,
   readyTinodeTypingTopic,
@@ -1546,6 +1547,7 @@ function mergeTinodeConversation(existing, incoming) {
   const existingName = existingExplicitName || existingPeerName;
   const incomingName = incomingExplicitName || (!existingName ? incomingPeerName : '');
   const fallbackName = safeExisting.isGroup || safeIncoming.isGroup ? 'Nhóm' : 'Cuộc trò chuyện cá nhân';
+  const readState = mergeConversationReadState(safeExisting, safeIncoming);
   return {
     ...safeExisting,
     ...safeIncoming,
@@ -1555,11 +1557,13 @@ function mergeTinodeConversation(existing, incoming) {
       ? existingName || incomingName || fallbackName
       : incomingName || existingName || fallbackName,
     avatarHtml: safeIncoming.avatarHtml || safeExisting.avatarHtml,
+    // Avatar updates are replace-only. An empty realtime/management snapshot
+    // is incomplete metadata, never an implicit delete request.
     avatarUrl: managementOwned
       ? mergeManagementAvatar(safeExisting.avatarUrl, safeIncoming.avatarUrl, {
         incomingManagementSnapshot,
       })
-      : (safeIncoming.avatarUrl !== undefined ? safeIncoming.avatarUrl : safeExisting.avatarUrl),
+      : (safeIncoming.avatarUrl || safeExisting.avatarUrl),
     description: managementOwned && !incomingManagementSnapshot
       ? safeExisting.description
       : (safeIncoming.description || safeExisting.description),
@@ -1581,10 +1585,7 @@ function mergeTinodeConversation(existing, incoming) {
     pendingParticipantIds: incomingManagementSnapshot ? safeIncoming.pendingParticipantIds : safeExisting.pendingParticipantIds,
     messages,
     friendEvents,
-    readSeq: Math.max(Number(safeExisting.readSeq) || 0, Number(safeIncoming.readSeq) || 0),
-    unreadFromSeq: incomingManagementSnapshot
-      ? (Number(safeIncoming.unreadFromSeq) || Number(safeExisting.unreadFromSeq) || 0)
-      : (Number(safeIncoming.unreadFromSeq) || 0),
+    ...readState,
     lastMsg: latestAttachmentPreview || safeIncoming.lastMsg || safeExisting.lastMsg,
     time: safeIncoming.time || safeExisting.time,
     updatedAt: safeIncoming.updatedAt || safeExisting.updatedAt || messages[messages.length - 1]?.createdAt,
@@ -2771,6 +2772,7 @@ function App() {
   const voiceDiscardRef = useRef(false);
   const voiceTimerRef = useRef(null);
   const notificationBaselineRef = useRef(new Map());
+  const openingConversationRef = useRef('');
   const unreadBoundariesRef = useRef({});
   const unreadCompletionRequestsRef = useRef(new Set());
   const unreadBoundaryJumpedRef = useRef(new Set());
@@ -4264,8 +4266,9 @@ function App() {
     }
 
     if (!topicName) throw new Error('Chatmgt chưa gắn topic Tinode cho cuộc trò chuyện này.');
+    const cachedRoomAvatar = conversationsRef.current[room.id]?.avatarUrl || '';
     let liveGroupAvatar = '';
-    if (preparedRoom.isGroup && !preparedRoom.avatarUrl && !room.avatarUrl) {
+    if (preparedRoom.isGroup && !preparedRoom.avatarUrl && !room.avatarUrl && !cachedRoomAvatar) {
       if (!groupAvatarSyncRef.current.has(topicName)) {
         liveGroupAvatar = await tinodeClient.getConversationAvatar(topicName).catch(() => '');
         groupAvatarSyncRef.current.set(topicName, liveGroupAvatar);
@@ -4273,7 +4276,7 @@ function App() {
         liveGroupAvatar = groupAvatarSyncRef.current.get(topicName) || '';
       }
     }
-    const persistedGroupAvatar = preparedRoom.avatarUrl || room.avatarUrl || '';
+    const persistedGroupAvatar = preparedRoom.avatarUrl || room.avatarUrl || cachedRoomAvatar || '';
     const effectiveGroupAvatar = persistedGroupAvatar || createdGroupAvatar || liveGroupAvatar || '';
     try {
       await chatManagementService.bindTinodeTopic(
@@ -4300,7 +4303,8 @@ function App() {
         id: stateId,
         managementId: managementConversationId,
         tinodeTopic: topicName,
-        avatarUrl: effectiveGroupAvatar,
+        // Never replace a known avatar with an empty realtime snapshot.
+        ...(effectiveGroupAvatar ? { avatarUrl: effectiveGroupAvatar } : {}),
         accountSession,
         ...(preparedRoom.isGroup ? {} : { deletedAt: '' }),
       },
@@ -4761,6 +4765,14 @@ function App() {
         }
         const currentRoom = safeNormalizeConversationForRender(currentRooms[stateId], stateId);
         void reopenDirectConversation(stateId, currentRoom, conversation);
+        // Merge the read cursor before deriving notifications or boundaries.
+        // A delayed Tinode snapshot must not make an already-read message look
+        // new again.
+        const effectiveReadState = mergeConversationReadState(currentRoom, conversation);
+        const conversationWithReadState = {
+          ...conversation,
+          ...effectiveReadState,
+        };
         const notificationMessages = (conversation.messages || [])
           .filter(message => (
             (message.type !== 'system' || ['poll_vote', 'poll_option_added', 'poll_locked'].includes(message.action))
@@ -4773,24 +4785,32 @@ function App() {
           const previousSeq = notificationBaselineRef.current.get(conversation.id);
           const latestSequence = messageNotificationSequence(latestIncoming);
           notificationBaselineRef.current.set(conversation.id, Math.max(previousSeq || 0, latestSequence));
-          if (previousSeq !== undefined && latestSequence > previousSeq) {
+          const notificationFloor = Math.max(
+            previousSeq || 0,
+            Number(effectiveReadState.readSeq) || 0,
+          );
+          if (
+            previousSeq !== undefined
+            && latestSequence > notificationFloor
+            && openingConversationRef.current !== String(stateId)
+          ) {
             const newMessage = notificationMessages
-              .filter(message => messageNotificationSequence(message) > previousSeq)
+              .filter(message => messageNotificationSequence(message) > notificationFloor)
               .at(-1);
             showIncomingNotification(conversation, newMessage, stateId);
           }
         }
 
-        if (conversation.badge > 0 || Number(conversation.unreadFromSeq) > 0) {
+        if (conversationWithReadState.badge > 0 || Number(conversationWithReadState.unreadFromSeq) > 0) {
           rememberUnreadBoundary({
-            ...conversation,
+            ...conversationWithReadState,
             id: stateId,
             tinodeTopic: conversation.id,
           }, stateId);
         }
         if (
           stateId === currentChatIdRef.current
-          && conversation.badge > 0
+          && conversationWithReadState.badge > 0
           && document.visibilityState !== 'hidden'
           && !unreadBoundariesRef.current[stateId]
         ) {
@@ -4825,7 +4845,7 @@ function App() {
           const previousRoom = safeNormalizeConversationForRender(prev[stateId], stateId);
           if (!previousRoom || previousRoom.accountSession !== accountSession || previousRoom.tinodeTopic !== conversation.id) return prev;
           const incoming = {
-            ...conversation,
+            ...conversationWithReadState,
             id: stateId,
             managementId: previousRoom.managementId,
             tinodeTopic: conversation.id,
@@ -4865,8 +4885,11 @@ function App() {
             const managedEntry = knownRooms.find(([, room]) => room.tinodeTopic === conversation.id);
             if (!managedEntry) return;
             const stateId = managedEntry[0];
+            const mergedReadState = mergeConversationReadState(managedEntry[1], conversation);
+            if (mergedReadState.badge <= 0 && mergedReadState.unreadFromSeq <= 0) return;
             rememberUnreadBoundary({
               ...conversation,
+              ...mergedReadState,
               id: stateId,
               tinodeTopic: conversation.id,
             }, stateId);
@@ -4958,6 +4981,7 @@ function App() {
     setCurrentChatId(CHATBOT_ACCOUNT.id);
     deletedConversationIdsRef.current.clear();
     notificationBaselineRef.current.clear();
+    openingConversationRef.current = '';
     tinodeSessionRequestRef.current = null;
     if (contactsSyncTimerRef.current) clearTimeout(contactsSyncTimerRef.current);
     contactsSyncTimerRef.current = null;
@@ -5162,6 +5186,7 @@ function App() {
       return;
     }
     currentChatIdRef.current = id;
+    openingConversationRef.current = String(id);
     setCurrentChatId(id);
     setInputText(drafts[id] || '');
     setIsMobileChatActive(true);
@@ -5180,17 +5205,20 @@ function App() {
         ? null
         : safeNormalizeConversationForRender(prev[id], id);
       if (!previousRoom) return prev;
-      return pendingUnreadBoundary
-        ? prev
-        : { ...prev, [id]: { ...previousRoom, badge: 0 } };
+      return {
+        ...prev,
+        [id]: {
+          ...previousRoom,
+          badge: 0,
+          unreadFromSeq: 0,
+        },
+      };
     });
     if (chatMode === 'demo') {
       const userId = currentUser?.id || currentUser?.uid;
       if (!room?.isChatbot) {
-        if (!pendingUnreadBoundary) {
-          if (room?.isGroup) markDemoGroupRead(id, userId);
-          else markDemoDirectRead(id, userId);
-        }
+        if (room?.isGroup) markDemoGroupRead(id, userId);
+        else markDemoDirectRead(id, userId);
       }
     }
     if (chatMode === 'tinode' && (!room?.isChatbot || room?.tinodeTopic)) {
@@ -5198,6 +5226,7 @@ function App() {
         const topicName = room.isChatbot
           ? room.tinodeTopic
           : await ensureTinodeConversationTopic(room);
+        const acknowledgedReadSeq = await tinodeClient.markRead(topicName);
         const openedRoom = personalizeConversationForViewer(
           normalizeTinodeConversation(await tinodeClient.openConversation(topicName)),
           directoryAccountsRef.current,
@@ -5216,19 +5245,42 @@ function App() {
           : { ...openedRoom, id, managementId: room.managementId || id, tinodeTopic: topicName };
         pendingUnreadBoundary = pendingUnreadBoundary || rememberUnreadBoundary(managedRoom, id);
         pendingUnreadBoundary = dismissUnreadBoundaryIndicator(id, pendingUnreadBoundary);
+        if (pendingUnreadBoundary) {
+          delete unreadBoundariesRef.current[id];
+          unreadCompletionRequestsRef.current.delete(id);
+          unreadBoundaryJumpedRef.current.delete(id);
+          setUnreadBoundaries(previous => {
+            if (!previous[id]) return previous;
+            const next = { ...previous };
+            delete next[id];
+            return next;
+          });
+        }
+        const acknowledgedRoom = {
+          ...managedRoom,
+          badge: 0,
+          unreadFromSeq: 0,
+          readSeq: Math.max(
+            Number(managedRoom.readSeq) || 0,
+            Number(acknowledgedReadSeq) || 0,
+          ),
+        };
         setConversations(prev => ({
           ...prev,
           [id]: {
-            ...safeMergeTinodeConversation(prev[id], managedRoom),
+            ...safeMergeTinodeConversation(prev[id], acknowledgedRoom),
             directProvisioning: 'ready',
             pendingDirect: false,
           },
         }));
-        if (!pendingUnreadBoundary) await tinodeClient.markRead(topicName);
       } catch (err) {
         setConnectionStatus(tinodeClient.authenticated ? 'online' : 'offline');
         setChatError(err?.message || 'Không mở được cuộc trò chuyện.');
+      } finally {
+        if (openingConversationRef.current === String(id)) openingConversationRef.current = '';
       }
+    } else if (openingConversationRef.current === String(id)) {
+      openingConversationRef.current = '';
     }
   };
 

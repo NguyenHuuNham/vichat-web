@@ -905,7 +905,9 @@ export const chatManagementService = {
         body: JSON.stringify({
           tinode_topic: topicName,
           tinode_token: tinodeAuth?.token || '',
-          avatar: avatarUrl || '',
+          ...(String(avatarUrl || '').trim()
+            ? { avatar: String(avatarUrl).trim() }
+            : {}),
         }),
       });
     }
