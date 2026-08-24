@@ -62,6 +62,15 @@ export function createUnreadBoundary(messages = [], {
   };
 }
 
+export function unreadCountForConversation(room = null, boundary = null) {
+  const roomBadge = Math.max(Number(room?.badge) || 0, 0);
+  const boundaryCount = Math.max(Number(boundary?.unreadCount) || 0, 0);
+  const hasUnreadCursor = Number(room?.unreadFromSeq) > 0
+    || Number(boundary?.firstUnreadSeq) > 0
+    || Boolean(boundary?.firstUnreadId);
+  return Math.max(roomBadge, boundaryCount, hasUnreadCursor ? 1 : 0);
+}
+
 export function mergeUnreadBoundary(existing, incoming) {
   if (!existing) return incoming || null;
   if (!incoming) return existing;

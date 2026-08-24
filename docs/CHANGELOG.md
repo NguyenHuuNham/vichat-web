@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-26 - Hoan thien thong bao tin chua doc va nut ve tin moi nhat
+
+- Thoi gian: 2026-08-24 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Web | Realtime | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; chua commit va chua deploy
+- Muc tieu: Hien ro hoi thoai co tin moi, giu dung moc tin chua doc va cho phep quay nhanh ve tin nhan moi nhat ma khong lam gian doan luong realtime.
+- Pham vi: ChatUI sidebar unread, unread boundary, message-list scroll state, i18n, CSS va unit test; khong thay doi Chatmgt, Tinode protocol, receipt, membership, database hay admin.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/unreadBoundary.js`, `src/features/chat/services/unreadBoundary.test.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Hoi thoai co unread duoc in dam/highlight ten va preview, hien count tu badge hoac unread cursor. Them nut tron `fa-angles-down` de ve tin moi nhat sau khi nguoi dung nhay vao moc unread; theo doi khoang cach toi cuoi danh sach de khong auto-scroll nguoi dang xem lich su khi Tinode co tin realtime moi.
+- Quyet dinh ky thuat: Tiep tuc dung `unreadBoundary` va `completeUnreadBoundary` lam nguon duy nhat de mark-read/xoa badge; trang thai nut latest chi la state UI theo conversation hien tai, khong ghi localStorage hay tao API moi.
+- Database/API/cau hinh: Khong migration, endpoint, schema, bien moi truong, secret hoac thay doi kien truc.
+- Kiem thu: `node --test src/features/chat/services/unreadBoundary.test.js src/features/i18n/appLanguage.test.js src/features/chat/services/chatManagementService.test.js` dat 55/55; `npm run test:frontend` dat 212/212; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` dat sau khi chay lai rieng (lan chay song song voi production build bi `ENOTEMPTY` tai `dist/stickers`); `npm run build:production` dat voi canh bao chunk App lon hon 500 KB da co; `git diff --check` dat.
+- Rui ro con lai: Chua UAT production bang hai tai khoan that cho chu ky nhan nhieu tin, nhay unread, xem het unread va quay ve tin moi nhat.
+- Viec tiep theo: Commit/push, deploy chi service `chat` va verify health/bundle/log; sau deploy can UAT production voi hai tai khoan.
+- Commit/PR: Chua tao.
+
 ## 2026-08-24-25 - Chuyen bo chon cong ty sang block khong cuon ngang
 
 - Thoi gian: 2026-08-24 (Asia/Saigon)

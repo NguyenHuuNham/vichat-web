@@ -49,6 +49,10 @@ test('translates session bootstrap labels', () => {
   assert.equal(translateUiText('Thử lại', 'en'), 'Try again');
 });
 
+test('translates the latest-message jump label', () => {
+  assert.equal(translateUiText('Đi tới tin nhắn mới nhất', 'en'), 'Go to latest messages');
+});
+
 test('translates dynamic system text without translating user content', () => {
   assert.equal(
     translateUiText('Nguyễn đã xóa Lan khỏi nhóm', 'en'),

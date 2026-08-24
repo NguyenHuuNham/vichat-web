@@ -648,6 +648,28 @@ body {
     padding: 0 4px;
 }
 
+.conversation-item.unread:not(.active) {
+    background-color: rgba(24, 119, 242, .055);
+}
+
+.conversation-item.unread:not(.active):hover {
+    background-color: rgba(24, 119, 242, .1);
+}
+
+.conversation-item.unread .conv-name {
+    font-weight: 800;
+}
+
+.conversation-item.unread .conv-last-msg {
+    color: var(--text-body);
+    font-weight: 700;
+}
+
+.conversation-item.unread .conv-time {
+    color: var(--vichat-blue);
+    font-weight: 700;
+}
+
 .text-green { color: var(--status-online); }
 
 /* ==========================================================================
@@ -904,6 +926,37 @@ body {
     font-size: 10px;
 }
 
+.latest-message-jump-button {
+    position: absolute;
+    right: 18px;
+    bottom: 18px;
+    z-index: 4;
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    border: 1px solid rgba(24, 119, 242, .24);
+    border-radius: 50%;
+    color: var(--vichat-blue);
+    background: var(--bg-white);
+    box-shadow: 0 9px 24px rgba(15, 23, 42, .2);
+    font: inherit;
+    cursor: pointer;
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+}
+
+.latest-message-jump-button:hover,
+.latest-message-jump-button:focus-visible {
+    background: var(--vichat-blue-light);
+    box-shadow: 0 11px 28px rgba(15, 23, 42, .25);
+    outline: none;
+    transform: translateY(-1px);
+}
+
+.latest-message-jump-button .fa-angles-down {
+    font-size: 16px;
+}
+
 .unread-message-divider {
     display: flex;
     align-items: center;
@@ -944,6 +997,13 @@ body {
         max-width: calc(100% - 20px);
         padding: 7px 10px;
         font-size: 11px;
+    }
+
+    .latest-message-jump-button {
+        right: 12px;
+        bottom: 12px;
+        width: 40px;
+        height: 40px;
     }
 
     .unread-message-divider {

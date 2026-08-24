@@ -125,6 +125,14 @@ test('restores a cookie-backed session after a full page reload', () => {
   assert.match(appSource, /retrySessionRestore/);
 });
 
+test('keeps unread emphasis and latest-message navigation in the ChatUI layer', () => {
+  assert.match(appSource, /unreadCountForConversation/);
+  assert.match(appSource, /latest-message-jump-button/);
+  assert.match(appSource, /chatIsNearBottomRef/);
+  assert.match(stylesSource, /\.conversation-item\.unread/);
+  assert.match(stylesSource, /\.latest-message-jump-button/);
+});
+
 test('keeps only safe active tenant options and switches without logout', () => {
   assert.deepEqual(normalizeTenantOptions([
     { id: 'tenant-a', name: 'Tenant A', role: 'admin', active: true, logo_url: 'https://account.upgo.vn/company-a.png' },

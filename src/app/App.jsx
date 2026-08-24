@@ -66,6 +66,7 @@ import {
   createUnreadBoundary,
   isUnreadBoundaryEnd,
   mergeUnreadBoundary,
+  unreadCountForConversation,
   unreadBoundaryStartIndex,
 } from '../features/chat/services/unreadBoundary';
 import {
@@ -2575,6 +2576,7 @@ function App() {
   const [shareMessage, setShareMessage] = useState(null);
   const [messageActions, setMessageActions] = useState({});
   const [unreadBoundaries, setUnreadBoundaries] = useState({});
+  const [showLatestMessageButton, setShowLatestMessageButton] = useState(false);
   const [messageReactionPickerKey, setMessageReactionPickerKey] = useState(null);
   const [messageActionHoverKey, setMessageActionHoverKey] = useState(null);
   const [pinnedMessagesExpanded, setPinnedMessagesExpanded] = useState(false);
@@ -2652,6 +2654,7 @@ function App() {
   // References
   const chatMessagesEndRef = useRef(null);
   const chatMessagesRef = useRef(null);
+  const chatIsNearBottomRef = useRef(true);
   const messageElementsRef = useRef(new Map());
   const messageHighlightTimerRef = useRef(null);
   const messageActionHideTimerRef = useRef(null);
@@ -3939,13 +3942,32 @@ function App() {
   const isActiveGroupOwner = activeChat.isGroup
     && identitiesOverlap(activeAdminAccount, currentUser);
 
-  // Auto scroll to bottom of chat
+  // Do not auto-scroll while the unread boundary is being reviewed.
   const scrollToBottom = () => {
     if (unreadBoundariesRef.current[currentChatIdRef.current]?.revealed) return;
+    if (!chatIsNearBottomRef.current) return;
     if (chatMessagesEndRef.current) {
-      chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      setShowLatestMessageButton(false);
     }
   };
+
+  const scrollToLatestMessage = () => {
+    chatIsNearBottomRef.current = true;
+    setShowLatestMessageButton(false);
+    chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  };
+
+  useEffect(() => {
+    chatIsNearBottomRef.current = true;
+    setShowLatestMessageButton(false);
+  }, [currentChatId]);
+
+  useEffect(() => {
+    if (!messageSearchQuery.trim()) return;
+    chatIsNearBottomRef.current = true;
+    setShowLatestMessageButton(false);
+  }, [messageSearchQuery]);
 
   useEffect(() => {
     scrollToBottom();
@@ -9479,6 +9501,8 @@ function App() {
 
   const scrollToUnreadBoundary = async () => {
     if (!activeUnreadBoundary) return;
+    chatIsNearBottomRef.current = false;
+    setShowLatestMessageButton(true);
     const boundaryKey = String(activeChat.id);
     const revealedBoundary = { ...activeUnreadBoundary, revealed: true };
     unreadBoundariesRef.current = { ...unreadBoundariesRef.current, [boundaryKey]: revealedBoundary };
@@ -10081,6 +10105,9 @@ function App() {
             const hasDraft = Boolean(draft.trim());
             const roomMuted = isConversationMuted(room.notificationMutedUntil, notificationClock);
             const roomCategory = conversationCategoryFor(room);
+            const roomUnreadBoundary = unreadBoundaries[id] || null;
+            const roomUnreadCount = unreadCountForConversation(room, roomUnreadBoundary);
+            const hasUnread = roomUnreadCount > 0;
             return (
               <ConversationErrorBoundary
                 key={id}
@@ -10088,7 +10115,7 @@ function App() {
                 fallback={<div className="conversation-item conversation-item-error" role="alert">Conversation unavailable</div>}
               >
                 <div
-                  className={`conversation-item ${isActive ? 'active' : ''} ${conversationMenu?.roomId === id ? 'menu-open' : ''}`}
+                  className={`conversation-item ${isActive ? 'active' : ''} ${hasUnread ? 'unread' : ''} ${conversationMenu?.roomId === id ? 'menu-open' : ''}`}
                   onClick={() => {
                     handleConversationSelect(id);
                   }}
@@ -10098,7 +10125,7 @@ function App() {
                   </div>
                   <div className="conv-details">
                     <div className="conv-header">
-                      <span className="conv-name">
+                      <span className={`conv-name ${hasUnread ? 'unread' : ''}`}>
                         {room.pinned && <i className="fa-solid fa-thumbtack conv-pinned-icon" title={appCopy.t('Đã ghim')} aria-label={appCopy.t('Đã ghim')}></i>}
                         {roomName}
                         {roomCategory && <span className={`conversation-category-tag category-${roomCategory.id}`} style={{ '--category-color': roomCategory.color }} title={`${appCopy.t('Phân loại')}: ${appCopy.t(roomCategory.label)}`}>{appCopy.t(roomCategory.label)}</span>}
@@ -10111,7 +10138,7 @@ function App() {
                       </span>
                     </div>
                     <div className="conv-message">
-                      <span className={`conv-last-msg ${hasDraft ? 'draft' : ''}`}>{hasDraft ? draft : localizedConversationPreview(room, appCopy, directoryAccounts, viewerId)}</span>
+                      <span className={`conv-last-msg ${hasDraft ? 'draft' : ''} ${hasUnread ? 'unread' : ''}`}>{hasDraft ? draft : localizedConversationPreview(room, appCopy, directoryAccounts, viewerId)}</span>
                       {roomMuted && (
                         <i
                           className="fa-solid fa-bell-slash conv-muted-icon"
@@ -10119,7 +10146,7 @@ function App() {
                           aria-label={appCopy.t('Đã tắt thông báo')}
                         ></i>
                       )}
-                      {room.badge > 0 && <span className="conv-badge">{room.badge}</span>}
+                      {hasUnread && <span className="conv-badge" aria-label={`${roomUnreadCount} ${appCopy.t('Tin chưa đọc')}`} title={`${roomUnreadCount} ${appCopy.t('Tin chưa đọc')}`}>{roomUnreadCount}</span>}
                     </div>
                   </div>
                   {!room.isChatbot && (
@@ -10378,7 +10405,17 @@ function App() {
             style={activeConversationBackgroundSource
               ? { '--conversation-background-image': `url("${activeConversationBackgroundSource.replaceAll('"', '\\"')}")` }
               : undefined}
-            onScroll={() => {
+            onScroll={event => {
+              const root = event.currentTarget;
+              if (root) {
+                const distanceFromBottom = root.scrollHeight - root.scrollTop - root.clientHeight;
+                const isNearBottom = distanceFromBottom <= 72;
+                chatIsNearBottomRef.current = isNearBottom;
+                setShowLatestMessageButton(previous => {
+                  const next = !isNearBottom;
+                  return previous === next ? previous : next;
+                });
+              }
               if (messageMenu) setMessageMenu(null);
             }}
           >
@@ -10393,6 +10430,17 @@ function App() {
               <span><i className="fa-solid fa-arrow-down" aria-hidden="true"></i>{appCopy.t('Tin chưa đọc')}</span>
               <strong>{activeUnreadBoundary.unreadCount || ''}</strong>
               <i className="fa-solid fa-chevron-down" aria-hidden="true"></i>
+            </button>
+          )}
+          {showLatestMessageButton && !messageSearchQuery.trim() && visibleMessages.length > 0 && (
+            <button
+              type="button"
+              className="latest-message-jump-button"
+              aria-label={appCopy.t('Đi tới tin nhắn mới nhất')}
+              title={appCopy.t('Đi tới tin nhắn mới nhất')}
+              onClick={scrollToLatestMessage}
+            >
+              <i className="fa-solid fa-angles-down" aria-hidden="true"></i>
             </button>
           )}
           <div className="chat-messages-content">

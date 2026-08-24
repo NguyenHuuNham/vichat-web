@@ -4,6 +4,7 @@ import {
   createUnreadBoundary,
   isUnreadBoundaryEnd,
   mergeUnreadBoundary,
+  unreadCountForConversation,
   unreadBoundaryStartIndex,
 } from './unreadBoundary.js';
 
@@ -48,4 +49,12 @@ test('keeps the first boundary while extending its unread tail', () => {
   assert.equal(merged.firstUnreadId, 'two');
   assert.equal(merged.lastUnreadId, 'four');
   assert.equal(merged.revealed, false);
+});
+
+test('keeps a visible unread count when the server exposes only a cursor', () => {
+  assert.equal(unreadCountForConversation({ badge: 4 }), 4);
+  assert.equal(unreadCountForConversation({ badge: 0 }, { unreadCount: 3 }), 3);
+  assert.equal(unreadCountForConversation({ unreadFromSeq: 42 }), 1);
+  assert.equal(unreadCountForConversation({}, { firstUnreadSeq: 42 }), 1);
+  assert.equal(unreadCountForConversation({}, null), 0);
 });

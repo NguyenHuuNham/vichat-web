@@ -18,6 +18,7 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Tin nhắn chưa đọc': 'Unread messages',
   'TIN NHẮN CHƯA ĐỌC': 'UNREAD MESSAGES',
   'Đi tới tin nhắn chưa đọc': 'Go to unread messages',
+  'Đi tới tin nhắn mới nhất': 'Go to latest messages',
   'Bật thông báo': 'Turn on notifications',
   'Tắt thông báo': 'Mute notifications',
   'Phân loại': 'Category',
