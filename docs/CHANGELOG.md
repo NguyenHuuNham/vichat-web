@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-24 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | UI | Kiem thu | Tai lieu
-- Trang thai: San sang commit va deploy
+- Trang thai: Da commit va deploy production; san sang UAT
 - Muc tieu: Lam khung cong ty gon bang chieu cao nut Dang xuat, co nut mui ten xuong rieng va cho phep chon cong ty trong danh sach doc khong tran header.
 - Pham vi: ChatUI profile tenant switcher, menu logo/ten/trang thai, responsive CSS, source-contract test va tai lieu kien truc; khong doi API switch tenant, xac nhan, session, Tinode, membership hay realtime.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `docs/chat-backend-architecture.md`.
@@ -19,8 +19,10 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong migration, endpoint, schema, secret hoac bien moi truong moi.
 - Kiem thu: `python -m unittest discover -s chatservice-main/tests -p "test_chat_auth_contract.py" -q` dat 47/47; `python -m py_compile chatservice-main/tests/test_chat_auth_contract.py` dat; `npm run test:frontend` dat 226/226; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` dat voi canh bao chunk App lon hon 500 KB; `git diff --check` dat (chi co canh bao LF/CRLF khi Git cham file).
 - Rui ro con lai: Chua UAT visual production tren desktop/mobile voi nhieu tenant va menu dai.
-- Viec tiep theo: Commit source, deploy rieng ChatUI theo release bat bien va UAT menu/chuyen tenant tren desktop/mobile.
-- Commit/PR: Se cap nhat sau khi deploy.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT menu/chuyen tenant tren desktop/mobile voi tai khoan co nhieu cong ty.
+- Kiem tra production: Archive `/opt/deploy/chat/incoming/vichat-release-df79ba2.tar.gz` SHA-256 `3ec93b1823a72adee5f2267b882900a1f95142895e1c47144ccd91eb5fa96b59` khop; `docker compose config --quiet` va build `chat` dat; ChatUI image `sha256:71022d66a197c529bc8c611b4627df691983617f35a49cc62984054207f072b7`, container `04e5c0ef0ecb` healthy; local/public `/healthz` tra `ok`; Chatmgt auth health HTTP 200/status `ok`; `sudo -n nginx -t` dat; public bundle `App-CV92zZdv.js` va CSS `index-pJY7y7dv.css` HTTP 200, co marker tenant menu, receipt, unread va latest-message; log ChatUI 10 phut khong co fatal/panic/traceback/uncaught/critical/emerg.
+- Trien khai: Source commit `df79ba2` da push `origin/master`; release `/opt/deploy/chat/releases/df79ba2-20260824-233439` dang la `current`, `previous` tro `/opt/deploy/chat/releases/chat-maintenance-fee55ed-20260824-154938`; chi recreate `chat` voi `--no-deps --force-recreate`, khong migration/reset volume/database; rollback tag `songhong-production-chat:rollback-before-df79ba2` giu image cu `sha256:0dd4cc5859ee953dc8bc136316d34d591947688330773cb4f8a20ad5ec72fcd9`; Chatmgt, Tinode bridge, webhook, ChatAPI, PostgreSQL, Redis va Coturn khong restart.
+- Commit/PR: Source `df79ba2`; khong co PR.
 
 ## 2026-08-24-31 - Tam dung ChatUI realtime khi dang cap nhat
 
@@ -43,7 +45,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-24 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | UI | Kiem thu | Tai lieu
-- Trang thai: San sang commit va deploy cung release ChatUI
+- Trang thai: Da commit va deploy production; san sang UAT
 - Muc tieu: Hien bo chuyen tenant gon nhu header mau, khong lam tran header khi tai khoan co nhieu cong ty.
 - Pham vi: ChatUI profile header, tenant switcher, tooltip logo, responsive CSS, i18n va source-contract test; khong doi API switch tenant, session, Tinode, membership hay modal xac nhan.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/features/chat/services/chatManagementService.test.js`, `docs/chat-backend-architecture.md`.
@@ -52,14 +54,16 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong migration, endpoint, schema, secret hoac bien moi truong moi.
 - Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js src/features/i18n/appLanguage.test.js` dat 54/54; `npm run test:frontend` dat 222/222; `npm run lint` exit 0 voi warning legacy da co; `npm run build` va `npm run build:production` dat voi canh bao chunk App lon hon 500 KB; `git diff --check` dat.
 - Rui ro con lai: Chua UAT production tren man hinh nho va tai khoan co nhieu logo; tooltip phu thuoc hover/focus cua trinh duyet.
-- Viec tiep theo: UAT profile voi 2-10 tenant, hover/focus tung logo, chon tenant khac va huy/xac nhan modal sau deploy.
-- Commit/PR: Se cap nhat sau khi deploy.
+- Viec tiep theo: UAT profile voi 2-10 tenant, hover/focus tung logo, chon tenant khac va huy/xac nhan modal.
+- Kiem tra production: Cung release `/opt/deploy/chat/releases/df79ba2-20260824-233439`; ChatUI healthy, public ChatUI/Chatmgt health OK, `nginx -t` dat va bundle moi co tenant menu marker; chi recreate `chat`, cac dich vu backend va volume giu nguyen.
+- Trien khai: Source commit `df79ba2` da push `origin/master`; archive va rollback duoc ghi tai muc 2026-08-24-32.
+- Commit/PR: Source `df79ba2`; khong co PR.
 
 ## 2026-08-24-29 - Hien avatar nguoi da xem tin nhan theo realtime
 
 - Thoi gian: 2026-08-24 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | Realtime | UI | Kiem thu | Tai lieu
-- Trang thai: San sang commit va deploy cung release ChatUI
+- Trang thai: Da commit va deploy production; san sang UAT
 - Muc tieu: Khi nguoi khac xem tin nhan, nguoi gui nhin thay avatar nguoi da xem, gioi han 5 avatar va mo duoc bang chi tiet `Da xem`/`Da nhan`.
 - Pham vi: ChatUI message receipts, Tinode topic subscriber cursors, avatar stack, message-information panel, CSS va helper test; khong doi Chatmgt API, membership, message publish, file upload, presence hay receipt acknowledgement.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/messageReceipts.js`, `src/features/chat/services/messageReceipts.test.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/tinodeClient.js`, `src/styles/index.css`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/features/chat/services/chatManagementService.test.js`, `package.json`, `docs/chat-backend-architecture.md`.
@@ -69,13 +73,15 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `node --test src/features/chat/services/messageReceipts.test.js src/features/chat/services/chatRealtime.test.js` dat 26/26; `npm run test:frontend` dat 222/222; `npm run lint` exit 0 voi warning legacy da co; `npm run build` va `npm run build:production` dat voi canh bao chunk App lon hon 500 KB da co; `git diff --check` dat (chi co canh bao LF/CRLF khi Git cham file).
 - Rui ro con lai: Chua UAT production bang hai tai khoan that cho direct/group va nhom tren 5 nguoi; avatar/profile protected can phu thuoc session Tinode dang san sang.
 - Viec tiep theo: UAT bang hai tai khoan, hard refresh sau deploy; neu can rollback chi recreate rieng ChatUI, khong reset topic/message hay database.
-- Commit/PR: Se cap nhat sau khi deploy.
+- Kiem tra production: Cung release `/opt/deploy/chat/releases/df79ba2-20260824-233439`; bundle public co receipt avatar/detail marker va unread/latest marker; ChatUI healthy, Chatmgt health OK, log khong co fatal marker; chi recreate `chat`, khong reset topic/message/database.
+- Trien khai: Source commit `df79ba2` da push `origin/master`; archive va rollback duoc ghi tai muc 2026-08-24-32.
+- Commit/PR: Source `df79ba2`; khong co PR.
 
 ## 2026-08-24-28 - Bao mat biet danh theo nguoi xem trong mention va reply
 
 - Thoi gian: 2026-08-24 21:23 (Asia/Saigon)
 - Loai: Sua loi | Bao mat | Web | Realtime | Kiem thu | Tai lieu
-- Trang thai: San sang commit va deploy cung release ChatUI
+- Trang thai: Da commit va deploy production; san sang UAT
 - Muc tieu: Biet danh do mot viewer dat cho lien he chi hien voi viewer do, khong bi ghi vao noi dung hoac metadata Tinode de nguoi khac thay.
 - Pham vi: ChatUI mention/composer, reply text/file/sticker, forward, system event muc tieu thanh vien; mention policy, contract test va tai lieu kien truc. Khong doi Chatmgt API, Tinode protocol, membership, presence, database hay admin.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/mentionPolicy.js`, `src/features/chat/services/mentionPolicy.test.js`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
@@ -85,7 +91,9 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `node --test src/features/chat/services/mentionPolicy.test.js` dat 5/5; `npm run test:frontend` dat 216/216; `python -m unittest discover -s chatservice-main/tests -p "test_chat_auth_contract.py" -q` dat 46/46; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` va `npm run build:production` dat voi canh bao chunk App lon hon 500 KB da co; `git diff --check` dat.
 - Rui ro con lai: Chua UAT bang hai tai khoan that de xac nhan mention/reply sau deploy; tin nhan cu khong co stable ID co the tiep tuc hien ten fallback.
 - Viec tiep theo: UAT chat group/direct bang hai viewer va hard refresh ChatUI sau deploy.
-- Commit/PR: Se cap nhat sau khi deploy.
+- Kiem tra production: Cung release `/opt/deploy/chat/releases/df79ba2-20260824-233439`; public ChatUI health OK, bundle moi da phat hanh, khong recreate Chatmgt/Tinode hay cac luong message.
+- Trien khai: Source commit `df79ba2` da push `origin/master`; archive va rollback duoc ghi tai muc 2026-08-24-32.
+- Commit/PR: Source `df79ba2`; khong co PR.
 
 ## 2026-08-24-27 - Sua dong bo realtime va upload hinh nen hoi thoai
 
