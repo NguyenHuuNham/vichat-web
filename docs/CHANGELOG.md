@@ -10,17 +10,19 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thời gian: 2026-08-24 09:30 (Asia/Saigon)
 - Loại: Tính năng | Web | Realtime | Kiểm thử | Tài liệu
-- Trạng thái: Đang triển khai
+- Trạng thái: Đã deploy production; sẵn sàng UAT
 - Mục tiêu: Bổ sung mục Bảng tin nhóm trong Thông tin nhóm để thành viên xem và tương tác với các cuộc bình chọn của nhóm.
 - Phạm vi: Chỉ ChatUI nhóm; không hiển thị ở chat 1-1, không thay đổi Tinode message contract, Chatmgt API, sticker, file, thành viên hoặc các luồng hội thoại khác.
 - File đã thay đổi: `src/app/App.jsx`, `src/features/i18n/appLanguage.js`, `src/features/chat/services/chatManagementService.test.js`, `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
 - Nội dung: Thêm mục mở rộng Bảng tin nhóm với số lượng poll, danh sách poll lấy trực tiếp từ lịch sử conversation hiện có và sắp xếp theo hoạt động mới nhất. Tái sử dụng `PollMessageCard` cùng các handler vote/thêm phương án/khóa poll hiện tại; thêm trạng thái rỗng, nút tạo poll theo quyền `allowPolls`, bản dịch tiếng Anh và giao diện dark mode.
 - Quyết định kỹ thuật: Không tạo bảng dữ liệu hay API mới; Bảng tin chỉ là projection presentation từ `roomMessages(activeChat)`, vì vậy vẫn phục hồi sau F5/reconnect theo cơ chế poll hiện có. Khi mở Bảng tin, mục Thành viên được thu gọn để tránh hai panel chiếm cùng sidebar.
 - Database/API/cấu hình: Không có migration, endpoint, schema, biến môi trường hoặc thay đổi backend.
-- Kiểm thử: `npm run test:frontend` đạt 193/193; `npm run lint` exit 0 với cảnh báo legacy/vendor đã có; `npm run build` đạt; `npm run build:production` đạt; `git diff --check` đạt. Smoke test browser chưa chạy vì phiên này không expose công cụ browser tương tác.
+- Kiểm thử: `npm run test:frontend` đạt 193/193; `npm run lint` exit 0 với cảnh báo legacy/vendor đã có; `npm run build` đạt; `npm run build:production` đạt; `git diff --check` đạt. Production `docker compose config --quiet`, build image ChatUI, `chat` healthy, local/public health, Chatmgt auth health, `sudo -n nginx -t`, public bundle marker `group-board-section` và log ChatUI 10 phút không có fatal marker đều đạt. Smoke test browser chưa chạy vì phiên này không expose công cụ browser tương tác.
 - Rủi ro còn lại: Chưa xác nhận pixel-level trên browser production; cần UAT nhóm có poll, nhóm chưa có poll, member bị tắt quyền tạo poll và chat 1-1 không có mục này.
-- Việc tiếp theo: Commit, push và deploy riêng image ChatUI; sau đó hard refresh production để UAT Bảng tin nhóm.
-- Commit/PR: Chưa tạo.
+- Việc tiếp theo: Hard refresh `https://chat.upgo.vn`, vào nhóm có/không có poll để kiểm tra mở/thu gọn Bảng tin nhóm, vote realtime và xác nhận chat 1-1 không hiển thị mục này.
+- Triển khai: Commit `a01e93c` đã push `origin/master`; archive `/opt/deploy/chat/incoming/vichat-group-board-a01e93c-20260824-0936.tar.gz` SHA-256 `28458d5a513dd797a881da143b93726c5ec20a4d492427784d2dadd872dce4c6`; release `/opt/deploy/chat/releases/group-board-a01e93c-20260824-0936` đang là `current`, `previous` trỏ `/opt/deploy/chat/releases/group-poll-permission-37d7e18-20260824-021331`; chỉ recreate `chat`, không migration/backup database và không restart Chatmgt, Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis hay Coturn.
+- Kiểm tra production: Image ChatUI `sha256:2434d628ac2614b25473cd34dd8bfc1a028a259cb33912297a513723d382da2f`, container `07ee6406cd3fa12b0825d69fc3b22a97f5533531d30b1ff615d11b364e271531`; Chatmgt giữ container `ce4118827e375a88434f5c2906e19c1e2a6a1a3c0530ae59e81ef5ffaea991a1`; các container stateful/bridge/webhook giữ nguyên ID.
+- Commit/PR: `a01e93c` đã push `origin/master`; changelog deployment follow-up đang chờ commit.
 
 ## 2026-08-24-12 - Phan quyen tao binh chon trong nhom
 
