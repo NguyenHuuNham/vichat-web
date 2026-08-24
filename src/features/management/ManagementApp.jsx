@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { managementAdminService } from './services/managementAdminService.js';
+import { subscribeChatMaintenance } from '../maintenance/chatMaintenanceService.js';
 import './management.css';
 
 const ADMIN_ROLES = ['admin', 'superadmin', 'owner'];
@@ -163,6 +164,8 @@ export default function ManagementApp() {
   const [auditSearch, setAuditSearch] = useState('');
   const [actionUserId, setActionUserId] = useState('');
   const [notice, setNotice] = useState(null);
+  const [chatUiMaintenance, setChatUiMaintenance] = useState({ enabled: false, updatedAt: 0 });
+  const [chatUiMaintenanceSaving, setChatUiMaintenanceSaving] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -193,11 +196,13 @@ export default function ManagementApp() {
       managementAdminService.listUsers(),
       managementAdminService.listAuditLogs(),
       managementAdminService.health(),
+      managementAdminService.getChatUiMaintenance(),
     ]);
-    const [usersResult, auditResult, healthResult] = results;
+    const [usersResult, auditResult, healthResult, maintenanceResult] = results;
     if (usersResult.status === 'fulfilled') setUsers(usersResult.value);
     if (auditResult.status === 'fulfilled') setAuditLogs(auditResult.value);
     if (healthResult.status === 'fulfilled') setHealth(healthResult.value);
+    if (maintenanceResult.status === 'fulfilled') setChatUiMaintenance(maintenanceResult.value);
     const firstError = results.find(result => result.status === 'rejected')?.reason;
     if (firstError && !silent) setNotice({ type: 'error', text: firstError.message || 'Không tải được toàn bộ dữ liệu quản trị.' });
     if (!silent) setLoadingData(false);
@@ -214,6 +219,14 @@ export default function ManagementApp() {
       window.removeEventListener('focus', refresh);
     };
   }, [authState, loadData]);
+
+  useEffect(() => {
+    if (authState !== 'authenticated') return undefined;
+    const closeStream = subscribeChatMaintenance({
+      onState: setChatUiMaintenance,
+    });
+    return () => closeStream?.();
+  }, [authState]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -286,6 +299,24 @@ export default function ManagementApp() {
       setNotice({ type: 'error', text: error.message || 'Không thể bắt tài khoản đăng xuất khỏi Chat.' });
     } finally {
       setActionUserId('');
+    }
+  };
+
+  const toggleChatUiMaintenance = async enabled => {
+    const action = enabled ? 'tạm dừng toàn bộ Chat UI' : 'mở lại Chat UI';
+    if (!window.confirm(`Bạn có chắc muốn ${action}? Thay đổi sẽ áp dụng realtime cho mọi người đang dùng Chat UI.`)) return;
+    setChatUiMaintenanceSaving(true);
+    try {
+      const nextState = await managementAdminService.setChatUiMaintenance(enabled);
+      setChatUiMaintenance(nextState);
+      setNotice({
+        type: 'success',
+        text: enabled ? 'Đã tạm dừng Chat UI realtime.' : 'Đã mở lại Chat UI realtime.',
+      });
+    } catch (error) {
+      setNotice({ type: 'error', text: error.message || 'Không thể thay đổi trạng thái Chat UI.' });
+    } finally {
+      setChatUiMaintenanceSaving(false);
     }
   };
 
@@ -365,6 +396,24 @@ export default function ManagementApp() {
                 <MetricCard icon="fa-solid fa-link" value={stats.provisioned} label="Đã có Tinode UID" detail="Sẵn sàng nâng lên realtime" tone="green" />
                 <MetricCard icon="fa-solid fa-right-from-bracket" value="Duy nhất" label="Thao tác trên tài khoản" detail="Bắt đăng xuất khỏi Chat" tone="orange" />
               </div>
+              <article className={`management-maintenance-card ${chatUiMaintenance.enabled ? 'enabled' : ''}`}>
+                <div className="management-maintenance-icon" aria-hidden="true"><i className={`fa-solid fa-gear ${chatUiMaintenance.enabled ? 'fa-spin' : ''}`}></i></div>
+                <div className="management-maintenance-copy">
+                  <span className="management-kicker">Điều khiển Chat UI</span>
+                  <h3>Tạm dừng truy cập Chat UI</h3>
+                  <p>{chatUiMaintenance.enabled ? 'Chat UI đang hiện màn hình bảo trì cho tất cả người dùng.' : 'Bật trong lúc có thêm thay đổi để ngăn người dùng vào luồng chưa ổn định.'}</p>
+                  <span className={`management-maintenance-status ${chatUiMaintenance.enabled ? 'enabled' : ''}`}><i></i>{chatUiMaintenance.enabled ? 'Đang tác động realtime' : 'Chat UI đang hoạt động bình thường'}</span>
+                </div>
+                <button
+                  type="button"
+                  className={`management-button ${chatUiMaintenance.enabled ? 'danger' : 'primary'}`}
+                  onClick={() => toggleChatUiMaintenance(!chatUiMaintenance.enabled)}
+                  disabled={chatUiMaintenanceSaving}
+                >
+                  <i className={`fa-solid ${chatUiMaintenanceSaving ? 'fa-spinner fa-spin' : chatUiMaintenance.enabled ? 'fa-power-off' : 'fa-pause'}`}></i>
+                  {chatUiMaintenanceSaving ? 'Đang cập nhật...' : chatUiMaintenance.enabled ? 'Mở lại Chat UI' : 'Bật tạm dừng'}
+                </button>
+              </article>
               <div className="management-overview-grid">
                 <article className="management-panel management-security-panel">
                   <header><div><span className="management-eyebrow">An toàn truy cập</span><h3>Nhật ký gần nhất</h3></div><span className="management-live-dot">Tự làm mới</span></header>

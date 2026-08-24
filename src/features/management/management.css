@@ -1265,6 +1265,49 @@
 .management-system-card em { position: absolute; right: 18px; bottom: 18px; color: var(--mgmt-green); font-size: 11px; font-style: normal; font-weight: 800; text-transform: uppercase; }
 .management-system-card.warning em { color: #b06127; }
 
+.management-maintenance-card {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  margin-top: 20px;
+  padding: 22px 24px;
+  border: 1px solid rgba(201, 68, 22, .16);
+  border-radius: 17px;
+  background: linear-gradient(135deg, #fffaf4 0%, #fff 68%);
+  box-shadow: var(--mgmt-shadow-sm);
+}
+
+.management-maintenance-card.enabled {
+  border-color: rgba(201, 76, 60, .34);
+  background: linear-gradient(135deg, #fff3ef 0%, #fff 70%);
+}
+
+.management-maintenance-icon {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  border-radius: 16px;
+  color: var(--mgmt-orange-deep);
+  background: #fff0df;
+  font-size: 25px;
+}
+
+.management-maintenance-card.enabled .management-maintenance-icon {
+  color: var(--mgmt-red);
+  background: #fae7e3;
+}
+
+.management-maintenance-copy { min-width: 0; }
+.management-maintenance-copy h3 { margin-top: 4px; font-family: var(--mgmt-font-display); font-size: 22px; font-weight: 600; letter-spacing: -.015em; }
+.management-maintenance-copy p { max-width: 680px; margin-top: 6px; color: var(--mgmt-muted); font-size: 12px; line-height: 1.55; }
+.management-maintenance-status { display: inline-flex; align-items: center; gap: 7px; margin-top: 10px; color: var(--mgmt-green); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.management-maintenance-status i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 4px rgba(22, 132, 93, .12); }
+.management-maintenance-status.enabled { color: var(--mgmt-red); }
+.management-maintenance-status.enabled i { box-shadow: 0 0 0 4px rgba(201, 76, 60, .12); }
+.management-maintenance-card .management-button { white-space: nowrap; }
+
 .management-toast {
   position: fixed;
   top: 104px;
@@ -2309,6 +2352,8 @@
   .management-hero-card { grid-template-columns: 1fr; }
   .management-hero-orbit { display: none; }
   .management-system-grid { grid-template-columns: 1fr; }
+  .management-maintenance-card { grid-template-columns: 58px minmax(0, 1fr); }
+  .management-maintenance-card .management-button { grid-column: 1 / -1; width: 100%; }
   .management-login { grid-template-columns: 1fr; }
   .management-login-story { display: none; }
   .management-login-panel { min-height: 100vh; }
@@ -2329,6 +2374,9 @@
   .management-metric-icon { width: 36px; height: 36px; }
   .management-metric strong { font-size: 25px; }
   .management-panel { padding: 18px; }
+  .management-maintenance-card { grid-template-columns: 44px minmax(0, 1fr); gap: 12px; padding: 18px; }
+  .management-maintenance-icon { width: 44px; height: 44px; border-radius: 13px; font-size: 19px; }
+  .management-maintenance-copy h3 { font-size: 18px; }
   .management-section-heading { align-items: stretch; flex-direction: column; }
   .management-section-heading .management-button { width: 100%; }
   .management-toolbar { align-items: stretch; flex-direction: column; }

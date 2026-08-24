@@ -36,6 +36,26 @@ The administrator page uses `POST /api/v1/admin/sso` and the separate
 `superadmin` for the active tenant. Employee ChatUI sessions use
 `vichat_access_token` with `scp=chat`; the two scopes cannot cross surfaces.
 
+### ChatUI maintenance control
+
+Chatmgt has a global maintenance control for protecting ChatUI during a
+release. `GET /api/v1/chat/maintenance` is a public, cache-free snapshot and
+`GET /api/v1/chat/maintenance/stream` is a public SSE stream, because ChatUI
+must be able to block a new visitor before login. The management-only
+`GET`/`PUT /api/v1/admin/chat-ui-maintenance` endpoint still requires the
+management session, Account SSO guard and an `admin`, `owner` or `superadmin`
+role. The state is stored in Redis AOF under a versioned key and published on
+a separate Redis channel; it does not touch PostgreSQL, Tinode, message data,
+presence or user sessions.
+
+ChatUI performs an initial snapshot fetch, subscribes to SSE and keeps a
+five-second fallback poll. When enabled it unmounts the ChatApp and shows the
+maintenance screen; the Chatmgt surface bypasses this gate so administrators
+can turn it off. Redis read errors fail open to protect existing login/chat
+flows, while the management write endpoint reports storage failures. Both
+production Nginx layers disable buffering and use a long read timeout for the
+SSE route so an on/off change reaches open tabs immediately.
+
 ## Step 2 employee authentication
 
 1. ChatUI does not offer a tenant browser or accept a tenant selector. The

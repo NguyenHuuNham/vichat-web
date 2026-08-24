@@ -10,10 +10,12 @@ VERIFIER_PATH = PROJECT_ROOT / "scripts" / "verify_deployment.py"
 LOGIN_PATH = REPOSITORY_ROOT / "src" / "features" / "auth" / "components" / "Login.jsx"
 CHAT_SERVICE_PATH = REPOSITORY_ROOT / "src" / "features" / "chat" / "services" / "chatManagementService.js"
 CHAT_APP_PATH = REPOSITORY_ROOT / "src" / "app" / "App.jsx"
+ROOT_APP_PATH = REPOSITORY_ROOT / "src" / "RootApp.jsx"
 MANAGEMENT_APP_PATH = REPOSITORY_ROOT / "src" / "features" / "management" / "ManagementApp.jsx"
 MANAGEMENT_SERVICE_PATH = REPOSITORY_ROOT / "src" / "features" / "management" / "services" / "managementAdminService.js"
 PRODUCTION_COMPOSE_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / "compose.yaml"
 PRODUCTION_NGINX_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / "nginx.conf"
+PRODUCTION_NGINX_MGMT_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / "nginx-host-chatmgt.conf"
 TINODE_BRIDGE_PATH = PROJECT_ROOT / "scripts" / "tinode_account_bridge.py"
 PRODUCTION_ENV_EXAMPLE_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / ".env.example"
 PRESENCE_SERVICE_PATH = PROJECT_ROOT / "application" / "services" / "presence_service.py"
@@ -943,6 +945,41 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("scan_iter", presence_source)
         self.assertIn("CHAT_PRESENCE_TTL", compose_source)
         self.assertIn("CHAT_PRESENCE_TTL=8", env_source)
+
+    @repository_source_test
+    def test_chat_ui_maintenance_is_global_admin_controlled_and_realtime(self):
+        controller_source = CONTROLLER_PATH.read_text(encoding="utf-8")
+        maintenance_source = (
+            PROJECT_ROOT / "application" / "services" / "chat_maintenance_service.py"
+        ).read_text(encoding="utf-8")
+        root_source = ROOT_APP_PATH.read_text(encoding="utf-8")
+        management_source = MANAGEMENT_APP_PATH.read_text(encoding="utf-8")
+        management_service_source = MANAGEMENT_SERVICE_PATH.read_text(encoding="utf-8")
+        nginx_source = PRODUCTION_NGINX_PATH.read_text(encoding="utf-8")
+        nginx_management_source = PRODUCTION_NGINX_MGMT_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("MAINTENANCE_KEY =", maintenance_source)
+        self.assertIn("MAINTENANCE_CHANNEL =", maintenance_source)
+        self.assertIn("client.publish(MAINTENANCE_CHANNEL", maintenance_source)
+        self.assertIn("/api/v1/chat/maintenance", controller_source)
+        self.assertIn("/api/v1/chat/maintenance/stream", controller_source)
+        self.assertIn("/api/v1/admin/chat-ui-maintenance", controller_source)
+        self.assertIn("management_session_requested(request)", controller_source)
+        self.assertIn("_management_account_sso_guard", controller_source)
+        self.assertIn("_is_admin(current_user)", controller_source)
+        self.assertIn("CHAT_UI_MAINTENANCE_ON", controller_source)
+        self.assertIn("CHAT_UI_MAINTENANCE_OFF", controller_source)
+        self.assertIn("ChatMaintenanceGate", root_source)
+        self.assertIn("subscribeChatMaintenance", root_source)
+        self.assertIn("window.setInterval(refresh, 5000)", root_source)
+        self.assertIn("isManagementSurface", root_source)
+        self.assertIn("setChatUiMaintenance", management_source)
+        self.assertIn("subscribeChatMaintenance", management_source)
+        self.assertIn("/api/v1/admin/chat-ui-maintenance", management_service_source)
+        for source in (nginx_source, nginx_management_source):
+            self.assertIn("maintenance/stream", source)
+            self.assertIn("proxy_buffering off", source)
+            self.assertIn("proxy_read_timeout 1h", source)
 
 
 if __name__ == "__main__":

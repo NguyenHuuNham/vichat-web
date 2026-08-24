@@ -6406,6 +6406,73 @@ html[data-theme="dark"] .profile-contact-card { border-color: #3b4b54; backgroun
 html[data-theme="dark"] .profile-contact-row { border-color: #3b4b54; background: var(--bg-app); }
 html[data-theme="dark"] select option { color: var(--text-main); background: var(--bg-white); }
 
+.chat-maintenance-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    overflow: auto;
+    background:
+        radial-gradient(circle at 18% 12%, rgba(244, 81, 30, .16), transparent 28%),
+        radial-gradient(circle at 86% 86%, rgba(43, 166, 111, .16), transparent 32%),
+        linear-gradient(145deg, #f8fbf4 0%, #eaf4ed 48%, #f7f0e8 100%);
+}
+
+.chat-maintenance-card {
+    width: min(620px, 100%);
+    box-sizing: border-box;
+    padding: clamp(32px, 7vw, 72px) clamp(24px, 7vw, 68px);
+    border: 1px solid rgba(18, 59, 57, .12);
+    border-radius: 30px;
+    color: var(--text-main);
+    background: rgba(255, 255, 255, .83);
+    box-shadow: 0 30px 90px rgba(18, 59, 57, .16), inset 0 1px rgba(255, 255, 255, .95);
+    text-align: center;
+    backdrop-filter: blur(16px);
+}
+
+.chat-maintenance-gear {
+    display: grid;
+    width: 92px;
+    height: 92px;
+    margin: 0 auto 24px;
+    place-items: center;
+    border: 1px solid rgba(244, 81, 30, .2);
+    border-radius: 28px;
+    color: var(--vichat-blue);
+    background: linear-gradient(145deg, #fff6ee, #e7f5ef);
+    box-shadow: 0 16px 34px rgba(18, 59, 57, .12);
+    font-size: 43px;
+}
+
+.chat-maintenance-card h1 {
+    margin: 0;
+    color: var(--text-main);
+    font-size: clamp(20px, 3.2vw, 30px);
+    font-weight: 850;
+    letter-spacing: -.03em;
+    line-height: 1.18;
+}
+
+.chat-maintenance-card p {
+    margin: 15px auto 0;
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+html[data-theme="dark"] .chat-maintenance-screen {
+    background:
+        radial-gradient(circle at 18% 12%, rgba(244, 81, 30, .18), transparent 28%),
+        radial-gradient(circle at 86% 86%, rgba(43, 166, 111, .12), transparent 32%),
+        linear-gradient(145deg, #17292b 0%, #1b282d 52%, #2b2628 100%);
+}
+
+html[data-theme="dark"] .chat-maintenance-card { border-color: #3b5659; background: rgba(32, 43, 49, .9); box-shadow: 0 30px 90px rgba(0, 0, 0, .32); }
+html[data-theme="dark"] .chat-maintenance-gear { border-color: #3b5659; background: linear-gradient(145deg, #3d302d, #213b3b); }
+
 /* Settings keeps the shared modal shell but uses a denser card layout. */
 .workspace-panel.settings-shell-panel {
     width: min(820px, calc(100vw - 48px));

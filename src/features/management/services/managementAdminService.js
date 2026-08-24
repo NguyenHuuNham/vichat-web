@@ -1,3 +1,5 @@
+import { normalizeChatMaintenanceState } from '../../maintenance/chatMaintenanceService.js';
+
 const env = import.meta.env || {};
 const configuredBase = String(env.VITE_CHAT_MANAGEMENT_API_URL || '').replace(/\/$/, '');
 const tenantId = String(env.VITE_CHAT_TENANT_ID || '').trim();
@@ -126,6 +128,19 @@ export const managementAdminService = {
 
   async health() {
     return apiRequest('/api/v1/auth/health');
+  },
+
+  async getChatUiMaintenance() {
+    const payload = await apiRequest('/api/v1/admin/chat-ui-maintenance');
+    return normalizeChatMaintenanceState(payload);
+  },
+
+  async setChatUiMaintenance(enabled) {
+    const payload = await apiRequest('/api/v1/admin/chat-ui-maintenance', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled: Boolean(enabled) }),
+    });
+    return normalizeChatMaintenanceState(payload);
   },
 
   async listUsers({ query = '' } = {}) {

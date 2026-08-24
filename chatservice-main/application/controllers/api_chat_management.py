@@ -1,14 +1,16 @@
 import asyncio
 import datetime
+import functools
 import hmac
 import json as jsonlib
 import logging
 import time
 import uuid
 
-from gatco.response import json
+from gatco.response import json, stream
 from sqlalchemy import and_, func, or_
 
+from application import database
 from application.database import db
 from application.models.models import (
     Conversation,
@@ -98,6 +100,14 @@ from application.services.presence_service import (
     mark_online,
     online_snapshot,
     presence_ttl,
+)
+from application.services.chat_maintenance_service import (
+    MAINTENANCE_CHANNEL,
+    maintenance_sse_chunk,
+    normalize_maintenance_state,
+    parse_enabled,
+    read_maintenance_state,
+    write_maintenance_state,
 )
 
 
@@ -2718,6 +2728,149 @@ async def management_users(request):
             "tinode_failed": tinode_failed,
         },
     })
+
+
+def _maintenance_public_response(state=None):
+    response = json({
+        "maintenance": normalize_maintenance_state(state),
+    })
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+@app.route('/api/v1/chat/maintenance', methods=['GET'])
+async def chat_maintenance_status(request):
+    """Expose only the non-sensitive global ChatUI maintenance state."""
+    return _maintenance_public_response(read_maintenance_state())
+
+
+@app.route('/api/v1/chat/maintenance/stream', methods=['GET'])
+async def chat_maintenance_stream(request):
+    """Stream maintenance changes without coupling the gate to Tinode."""
+    async def streaming_fn(response):
+        loop = asyncio.get_event_loop()
+        pubsub = None
+        try:
+            if database.redisdb is not None:
+                pubsub = await loop.run_in_executor(
+                    None,
+                    functools.partial(database.redisdb.pubsub),
+                )
+                await loop.run_in_executor(
+                    None,
+                    functools.partial(pubsub.subscribe, MAINTENANCE_CHANNEL),
+                )
+
+            current = await loop.run_in_executor(None, read_maintenance_state)
+            last_state = normalize_maintenance_state(current)
+            await response.write(maintenance_sse_chunk(last_state))
+            last_poll_at = loop.time()
+            last_ping_at = loop.time()
+
+            while True:
+                message = None
+                if pubsub is not None:
+                    message = await loop.run_in_executor(
+                        None,
+                        functools.partial(
+                            pubsub.get_message,
+                            ignore_subscribe_messages=True,
+                            timeout=1,
+                        ),
+                    )
+                else:
+                    await asyncio.sleep(1)
+
+                if message and message.get("data"):
+                    next_state = normalize_maintenance_state(message.get("data"))
+                    if next_state != last_state:
+                        last_state = next_state
+                        await response.write(maintenance_sse_chunk(last_state))
+
+                # Redis Pub/Sub delivers the fast path. This small persisted
+                # state poll also recovers a missed publish without touching
+                # session, Tinode or conversation state.
+                if loop.time() - last_poll_at >= 3:
+                    next_state = await loop.run_in_executor(None, read_maintenance_state)
+                    next_state = normalize_maintenance_state(next_state)
+                    if next_state != last_state:
+                        last_state = next_state
+                        await response.write(maintenance_sse_chunk(last_state))
+                    last_poll_at = loop.time()
+
+                if loop.time() - last_ping_at >= 15:
+                    await response.write(": keep-alive\n\n")
+                    last_ping_at = loop.time()
+        except Exception:
+            # A closed browser connection is normal for EventSource. The
+            # finally block releases the Redis subscription below.
+            return
+        finally:
+            if pubsub is not None:
+                try:
+                    await loop.run_in_executor(None, pubsub.close)
+                except Exception:
+                    pass
+
+    response = stream(
+        streaming_fn,
+        content_type="text/event-stream; charset=utf-8",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+    return response
+
+
+@app.route('/api/v1/admin/chat-ui-maintenance', methods=['GET', 'PUT'])
+async def management_chat_ui_maintenance(request):
+    if not management_session_requested(request):
+        return _management_scope_error()
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    management_guard = await _management_account_sso_guard(request, current_user, tenant_id)
+    if management_guard is not None:
+        return management_guard
+    if not _is_admin(current_user):
+        return _forbidden_error()
+    if request.method == "GET":
+        return _maintenance_public_response(read_maintenance_state())
+
+    body = request.json or {}
+    enabled = parse_enabled(body.get("enabled"))
+    if enabled is None:
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "The enabled maintenance flag must be boolean.",
+        }, status=400)
+    try:
+        state = write_maintenance_state(enabled)
+        _audit(
+            request,
+            "CHAT_UI_MAINTENANCE_ON" if enabled else "CHAT_UI_MAINTENANCE_OFF",
+            tenant_id=tenant_id,
+            user_id=_user_id(current_user),
+            properties={"enabled": bool(enabled)},
+        )
+        return _maintenance_public_response(state)
+    except Exception as error:
+        logger.exception("Could not update ChatUI maintenance state: %s", error)
+        _audit(
+            request,
+            "CHAT_UI_MAINTENANCE_ON" if enabled else "CHAT_UI_MAINTENANCE_OFF",
+            False,
+            tenant_id=tenant_id,
+            user_id=_user_id(current_user),
+            properties={"enabled": bool(enabled)},
+        )
+        return json({
+            "error_code": "CHAT_UI_MAINTENANCE_UNAVAILABLE",
+            "error_message": "The ChatUI maintenance control is temporarily unavailable.",
+        }, status=503)
 
 
 def _presence_request_body(request):

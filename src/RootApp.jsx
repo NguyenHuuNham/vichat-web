@@ -1,4 +1,11 @@
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
+import {
+  CHAT_MAINTENANCE_MESSAGE,
+  DEFAULT_CHAT_MAINTENANCE_STATE,
+  chatMaintenanceConfigured,
+  fetchChatMaintenance,
+  subscribeChatMaintenance,
+} from './features/maintenance/chatMaintenanceService.js';
 
 const ChatApp = lazy(() => import('./app/App.jsx'));
 const ManagementApp = lazy(() => import('./features/management/ManagementApp.jsx'));
@@ -30,6 +37,90 @@ class AppErrorBoundary extends React.Component {
   }
 }
 
+function ChatMaintenanceScreen({ loading = false, message = CHAT_MAINTENANCE_MESSAGE }) {
+  return (
+    <main className="chat-maintenance-screen" aria-busy={loading}>
+      <section className="chat-maintenance-card" role="status" aria-live="assertive">
+        <div className="chat-maintenance-gear" aria-hidden="true">
+          <i className="fa-solid fa-gear fa-spin"></i>
+        </div>
+        <h1>{loading ? 'ĐANG KIỂM TRA TRẠNG THÁI HỆ THỐNG' : message}</h1>
+        <p>{loading ? 'Vui lòng chờ trong giây lát...' : 'Hệ thống sẽ tự động hoạt động trở lại sau khi cập nhật xong.'}</p>
+      </section>
+    </main>
+  );
+}
+
+function ChatMaintenanceGate({ children }) {
+  const [state, setState] = useState(DEFAULT_CHAT_MAINTENANCE_STATE);
+  const [status, setStatus] = useState(() => chatMaintenanceConfigured() ? 'loading' : 'ready');
+
+  useEffect(() => {
+    if (!chatMaintenanceConfigured()) return undefined;
+    let cancelled = false;
+    let closeStream = null;
+    let reconnectTimer = null;
+    let reconnectDelay = 1000;
+
+    const applyState = nextState => {
+      if (cancelled || !nextState) return;
+      setState(nextState);
+      setStatus('ready');
+      reconnectDelay = 1000;
+    };
+
+    const refresh = () => fetchChatMaintenance()
+      .then(applyState)
+      .catch(() => {
+        // The gate fails open when Chatmgt is temporarily unreachable; the
+        // next fallback poll or SSE reconnect can still activate maintenance.
+        if (!cancelled) setStatus(previous => previous === 'loading' ? 'ready' : previous);
+      });
+
+    const scheduleReconnect = () => {
+      if (cancelled || reconnectTimer) return;
+      const delay = reconnectDelay;
+      reconnectDelay = Math.min(30000, reconnectDelay * 2);
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        connectStream();
+      }, delay);
+    };
+
+    const connectStream = () => {
+      if (cancelled) return;
+      closeStream?.();
+      closeStream = null;
+      try {
+        closeStream = subscribeChatMaintenance({
+          onState: applyState,
+          onError: () => {
+            closeStream?.();
+            closeStream = null;
+            scheduleReconnect();
+          },
+        });
+      } catch {
+        scheduleReconnect();
+      }
+    };
+
+    refresh();
+    connectStream();
+    const fallbackTimer = window.setInterval(refresh, 5000);
+    return () => {
+      cancelled = true;
+      closeStream?.();
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      window.clearInterval(fallbackTimer);
+    };
+  }, []);
+
+  if (status === 'loading') return <ChatMaintenanceScreen loading />;
+  if (state.enabled) return <ChatMaintenanceScreen message={state.message} />;
+  return children;
+}
+
 export default function RootApp() {
   const params = new URLSearchParams(window.location.search);
   const isManagementSurface = window.location.hostname === 'chatmgt.upgo.vn'
@@ -39,7 +130,9 @@ export default function RootApp() {
   return (
     <AppErrorBoundary>
       <Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: '#f6f2ea' }}></div>}>
-        <ActiveApp />
+        {isManagementSurface
+          ? <ActiveApp />
+          : <ChatMaintenanceGate><ActiveApp /></ChatMaintenanceGate>}
       </Suspense>
     </AppErrorBoundary>
   );
