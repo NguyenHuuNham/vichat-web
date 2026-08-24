@@ -19,7 +19,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `npm run test:frontend` dat 195/195; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` dat; `npm run build:production` dat; `git diff --check` dat. Production Docker build dat; ChatUI healthy; local/public `/healthz` tra `ok`; Chatmgt auth health `status=ok`; `sudo -n nginx -t` dat; public va container bundle deu co `.modal-backdrop.avatar-crop-backdrop{z-index:240}`; log ChatUI 2 phut sau recreate khong co fatal marker.
 - Rui ro con lai: Chua UAT pixel-level bang tai khoan that; can hard refresh va thu mo Ho so ca nhan, chon anh, dong crop, huy va luu avatar tren desktop/mobile.
 - Trien khai: Archive `/opt/deploy/chat/incoming/vichat-avatar-crop-bed4c1d-20260824-102032.tar.gz` SHA-256 `097c731c7aadb4bb9a380b459ffb6659fc1842007f88aab6478112021ba6454d`; release `/opt/deploy/chat/releases/avatar-crop-bed4c1d-20260824-102032` dang chay; chi recreate `chat`, khong migration/backup database va khong restart Chatmgt, Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis hay Coturn. Image ChatUI `sha256:e65f807b2686aaface5cb715b967e29bb4eafc707a1602948ac40d967bee2804`, container `301dd6c5abad`; rollback source release la `/opt/deploy/chat/releases/pinned-menu-3820121-20260824-0958`.
-- Commit/PR: Source `bed4c1d` da push `origin/master`; deployment follow-up dang cho commit.
+- Commit/PR: Source `bed4c1d` va deployment docs `fc1ce6c` da push `origin/master`.
 
 
 ## 2026-08-24-14 - Menu tin ghim va nut thong tin cuoc tro chuyen
