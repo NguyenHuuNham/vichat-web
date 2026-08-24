@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `npm run test:frontend` dat 207/207; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` exit 0; `npm run build:production` exit 0; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/tests/test_chat_auth_contract.py` exit 0; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 46/46; `python -m unittest discover -s chatservice-main/tests -p "test_*.py" -q` dat 187, skip 63; `git diff --check` khong co loi.
 - Rui ro con lai: Can verify realtime hai trinh duyet tren production sau deploy; chua co acceptance test Tinode production trong local.
 - Viec tiep theo: Commit, push, deploy va health-check.
-- Commit/PR: Chua tao
+- Commit/PR: `c171785` (master)
 
 ## 2026-08-24-19 - Them phim tat ChatUI tuy chinh
 
