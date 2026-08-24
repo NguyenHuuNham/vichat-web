@@ -8,9 +8,9 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-24-17 - Sua presence danh ba khong cap nhat realtime
 
-- Thoi gian: 2026-08-24 12:31 (Asia/Saigon)
+- Thoi gian: 2026-08-24 12:31 (Asia/Saigon); deploy production 2026-08-24 12:39 (Asia/Saigon)
 - Loai: Sua loi | Web | Realtime | Kiem thu | Tai lieu
-- Trang thai: Dang thuc hien
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Hien thi trang thai online/offline moi nhat cua nhan vien trong danh ba, ke ca khi hai nguoi chua mo chat voi nhau.
 - Pham vi: ChatUI, Tinode discovery presence, dong bo danh ba va tai lieu kien truc; khong thay doi Chatmgt, Tinode message, membership, database hay admin.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/directoryPresence.js`, `src/features/chat/services/directoryPresence.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/contacts/services/accountDirectory.js`, `package.json`, `dist/index.html`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`.
@@ -18,9 +18,11 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Tinode van la nguon chuan cua presence. Ket qua discovery chi duoc chap nhan neu UID nam trong danh ba cua tenant hien tai; batch loi giu trang thai cu, logout xoa hang doi cua phien cu.
 - Database/API/cau hinh: Khong co migration, endpoint moi, bien moi truong, secret hoac thay doi cau hinh production.
 - Kiem thu: `npm run test:frontend` dat 198/198; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` dat voi canh bao chunk App lon hon 500 KB; `npm run build:production` dat voi cung canh bao chunk; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 44/44; `git diff --check` dat.
-- Rui ro con lai: Chua UAT production bang hai tai khoan that de do thoi gian cap nhat online/offline va xac nhan khong phat sinh topic; can hard refresh sau deploy.
-- Viec tiep theo: Commit/push va deploy rieng service `chat`, sau do kiem tra health, bundle marker, log va UAT presence hai tai khoan; khong restart cac service stateful.
-- Commit/PR: Chua tao.
+- Rui ro con lai: Chua UAT production bang hai tai khoan that de do thoi gian cap nhat online/offline va xac nhan khong phat sinh topic; can hard refresh sau deploy. Phien nay khong co browser session UAT san sang.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT presence hai tai khoan; khi mot nguoi dang online/offline, danh ba can doi trong toi da mot chu ky discovery 5 giay. Neu loi chi tro `current` ve `previous` va recreate rieng `chat`; khong restart cac service stateful.
+- Trien khai: Source commit `c9dbc9e` da push `origin/master`. Archive `/opt/deploy/chat/incoming/vichat-directory-presence-c9dbc9e-20260824-1233.tar.gz` SHA-256 `f70b952abeb4a19e5d5fa7dbaa651d824e66680b42aa71ddd4223a56a23f977b`; release `/opt/deploy/chat/releases/directory-presence-c9dbc9e-20260824-1233` dang la `current`, `previous` tro `/opt/deploy/chat/releases/directory-sync-814fc0b-20260824-1145`. Chi recreate `chat` voi `--no-deps --force-recreate`, khong migration, khong `down`, khong restart Chatmgt, Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis, Coturn hay volume. Image ChatUI `sha256:d2b75596f17ba0a5870d3194fafe1638022fc572a274dfddc3933f151170c495`, container `dfe1e9e943ec`; rollback tag `songhong-production-chat:rollback-before-directory-presence-c9dbc9e-1233` giu image cu `sha256:e65f807b2686aaface5cb715b967e29bb4eafc707a1602948ac40d967bee2804`.
+- Kiem tra production: `http://127.0.0.1:8094/healthz` va `https://chat.upgo.vn/healthz` tra `ok`; `https://chatmgt.upgo.vn/api/v1/auth/health` HTTP 200/status `ok`; `sudo -n nginx -t` dat; public bundle `App-dcdg2Wfx.js` HTTP 200 co marker `getDirectoryPresence`; ChatUI healthy; log 3 phut sau recreate khong co fatal marker; container ngoai `chat` giu nguyen ID.
+- Commit/PR: Source `c9dbc9e` da push `origin/master`; deployment record follow-up dang cho commit.
 
 ## 2026-08-24-16 - Khong thu hoi phien tu snapshot directory thieu du lieu
 
