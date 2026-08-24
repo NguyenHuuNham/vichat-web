@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-24 07:07 (Asia/Saigon)
 - Loai: Tinh nang | Sua loi | Web | Realtime | Kiem thu | Tai lieu
-- Trang thai: Hoan tat; cho deploy production
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Hien thi nhieu anh duoc chon trong cung mot lan gui theo luoi gon, van mo duoc tung anh o ImageViewer.
 - Pham vi: ChatUI image attachment renderer, metadata Tinode cho batch anh va test layout; khong thay doi sticker, file, upload validation, reaction, reply, share hoac cac luong chat khac.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/imageBatchLayout.js`, `src/features/chat/services/imageBatchLayout.test.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/tinodeClient.js`, `src/styles/index.css`, `package.json`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
@@ -19,8 +19,10 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong migration, endpoint moi, bien moi truong hoac thay doi schema; chi them head metadata presentation-only.
 - Kiem thu: `node --test src/features/chat/services/imageBatchLayout.test.js src/features/chat/services/chatRealtime.test.js` dat 25/25; `npm run test:frontend` dat 180/180; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` va `npm run build:production` dat; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 44/44; `git diff --check` dat.
 - Rui ro con lai: Chua UAT pixel-level bang browser runtime trong phien nay; can thu gui 2/3/4/5+ anh, click tung tile mo viewer, reaction/menu va F5/reconnect o chat 1-1/nhom.
-- Viec tiep theo: Chay build production, commit/push/deploy va kiem tra health/bundle; sau do UAT batch anh tren desktop/mobile.
-- Commit/PR: Source `1374fb0`; deployment follow-up pending.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT batch anh tren desktop/mobile; neu loi chi tro `current` ve `previous` va recreate rieng `chat`, khong thao tac Tinode/database/volume.
+- Commit/PR: Source `1374fb0`; deployment follow-up `f2c8feb`.
+- Trien khai: Archive `/opt/deploy/chat/incoming/vichat-image-batch-f2c8feb.tar.gz` SHA-256 `3a7829abe030a5fb06cf31075debc03401af28065c47b72adfce19b1b7db71d8`; release `/opt/deploy/chat/releases/image-batch-f2c8feb-20260824-0710` dang la `current`, `previous` tro `/opt/deploy/chat/releases/image-forward-1036637-20260824-0641`; chi recreate `chat`, khong migration/backup database vi thay doi presentation-only, khong restart Chatmgt, Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis, Coturn.
+- Kiem tra production: Image ChatUI `sha256:7d7f42e75d9ed79b3fbfc4c6cf909f9779dde1d4768807813c498c37548e8350`, container `aa38482c5e8c`; rollback tag `songhong-production-chat:rollback-before-image-batch-f2c8feb-20260824-0710` giu image truoc release `sha256:cdace9de5021f54a21002e544f808b2cb0cd083f06ef2f479746d2de6b84b8a3`; Chatmgt van la container `975a2e7cb64d` image `sha256:6c9043829082b8ab88c12b2a67ac9d62fbf3d691f2f9b7981ec6f20d07140a6e`; local/public health, Chatmgt auth health, Compose config, `sudo -n nginx -t`, public bundle marker `x-vichat-image-batch`/`image-batch-grid` va log scan deu dat.
 
 ## 2026-08-24-09 - Keo anh khi zoom va chia se tin nhan noi bo
 
