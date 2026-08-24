@@ -2,6 +2,7 @@ export const GROUP_SETTING_KEYS = Object.freeze([
   'allowMembersEditInfo',
   'allowPinMessages',
   'allowMessages',
+  'allowPolls',
   'approveMembers',
   'newMemberHistory',
 ]);
@@ -10,6 +11,7 @@ export const DEFAULT_GROUP_SETTINGS = Object.freeze({
   allowMembersEditInfo: false,
   allowPinMessages: true,
   allowMessages: true,
+  allowPolls: true,
   approveMembers: false,
   newMemberHistory: true,
 });

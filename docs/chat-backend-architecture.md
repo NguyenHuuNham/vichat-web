@@ -345,10 +345,13 @@ persists the group subject, avatar reference, and whitelisted boolean
 sessions, non-members, non-groups, unauthorized members, unknown settings, and
 non-boolean values. Tinode public metadata is updated in realtime mode before
 the Chatmgt write, with a best-effort Tinode rollback if the authoritative
-Chatmgt update fails. The group-management whitelist intentionally contains
-only member info, pinning, message sending, member approval and new-member
-history; notes, polls, reminders and group-leader message marking are not
-supported settings. Member approval uses Alembic revision `20260824_12` to add
+Chatmgt update fails. The group-management whitelist contains
+only member info, pinning, message sending, poll creation, member approval and
+new-member history; notes, reminders and group-leader message marking are not
+supported settings. `allowPolls` defaults to enabled for backwards
+compatibility with existing groups; when disabled, ChatUI exposes poll voting
+but only the group administrator can open/create a new poll. Member approval
+uses Alembic revision `20260824_12` to add
 the explicit `conversation_participant.approval_status` column; existing rows
 are backfilled as `APPROVED`.
 

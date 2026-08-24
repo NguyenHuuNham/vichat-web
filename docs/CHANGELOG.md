@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-12 - Phan quyen tao binh chon trong nhom
+
+- Thoi gian: 2026-08-24 09:10 (Asia/Saigon)
+- Loai: Tinh nang | Web | API | Realtime | Kiem thu | Tai lieu
+- Trang thai: Da kiem thu local; cho commit va deploy production
+- Muc tieu: Cho quan tri vien bat/tat quyen thanh vien tao binh chon trong tung nhom; khi tat, chi quan tri vien duoc tao poll.
+- Pham vi: Group settings, poll composer va luong normalize Chatmgt/Tinode; giu nguyen vote, ghim, khoa poll, chat 1-1 va cac quyen nhom khac.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/groupSettings.js`, `src/features/chat/services/groupSettings.test.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `dist/index.html`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`.
+- Noi dung: Them setting `allowPolls` vao whitelist group settings va modal Quan ly nhom. Mac dinh bat de khong doi hanh vi cac nhom cu; khi tat, thanh vien khong mo/tao poll, con poll hien co van xem va binh chon. Guard duoc lap lai o nut mo va submit de tranh vuot qua UI state stale.
+- Quyet dinh ky thuat: Chatmgt va Tinode public metadata cung normalize mot khoa boolean, khong them migration hay bang moi. Quyen quan tri vien van bypass setting nhu cac quyen group hien co.
+- Database/API/cau hinh: Mo rong object `groupSettings` voi `allowPolls`; khong thay doi endpoint, schema, bien moi truong hoac secret.
+- Kiem thu: `npm run test:frontend` dat 192/192; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` va `npm run build:production` dat voi bundle `App-CvUErDG_.js`, `index-BFNvHpEr.js`, `index-BWOZRSZq.css`; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 44/44; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/tests/test_chat_auth_contract.py` dat; `git diff --check` dat.
+- Rui ro con lai: Chua UAT hai tai khoan production bang browser trong phien nay; can kiem tra admin bat/tat setting, member thay doi icon poll sau realtime/F5, admin van tao duoc, member khong tao duoc khi tat.
+- Viec tiep theo: Commit/push/deploy release ChatUI + Chatmgt; sau deploy hard refresh va UAT group poll bang owner/member.
+- Commit/PR: Chua tao.
+
 ## 2026-08-24-11 - Bình chọn trong nhóm
 
 - Thoi gian: 2026-08-24 08:11 (Asia/Saigon)

@@ -10,13 +10,14 @@ import {
 test('group settings use safe defaults and ignore unknown values', () => {
   assert.deepEqual(normalizeGroupSettings({
     allowMessages: false,
-    allowPolls: 'yes',
+    allowPolls: false,
     unknown: true,
   }), {
     ...DEFAULT_GROUP_SETTINGS,
     allowMessages: false,
+    allowPolls: false,
   });
-  for (const removedKey of ['allowNotes', 'allowPolls', 'allowReminders', 'markOwnerMessages']) {
+  for (const removedKey of ['allowNotes', 'allowReminders', 'markOwnerMessages']) {
     assert.equal(Object.hasOwn(DEFAULT_GROUP_SETTINGS, removedKey), false);
     assert.equal(Object.hasOwn(normalizeGroupSettings({ [removedKey]: true }), removedKey), false);
   }
@@ -25,5 +26,7 @@ test('group settings use safe defaults and ignore unknown values', () => {
 test('group setting lookup is boolean and default-safe', () => {
   assert.equal(groupSettingEnabled({ allowPinMessages: false }, 'allowPinMessages'), false);
   assert.equal(groupSettingEnabled({}, 'allowMessages'), true);
+  assert.equal(groupSettingEnabled({ allowPolls: false }, 'allowPolls'), false);
+  assert.equal(groupSettingEnabled({}, 'allowPolls'), true);
   assert.equal(groupSettingEnabled({}, 'unknown'), false);
 });

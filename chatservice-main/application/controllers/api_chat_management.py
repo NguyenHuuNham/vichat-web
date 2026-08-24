@@ -103,6 +103,7 @@ GROUP_SETTING_DEFAULTS = {
     "allowMembersEditInfo": False,
     "allowPinMessages": True,
     "allowMessages": True,
+    "allowPolls": True,
     "approveMembers": False,
     "newMemberHistory": True,
 }

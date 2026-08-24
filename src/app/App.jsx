@@ -325,6 +325,7 @@ const GROUP_MANAGEMENT_OPTIONS = Object.freeze([
   Object.freeze({ key: 'allowMembersEditInfo', icon: 'fa-pen-to-square', label: 'Cho phép thành viên đổi tên/ảnh nhóm', description: 'Thành viên có thể đổi tên hoặc ảnh nhóm.' }),
   Object.freeze({ key: 'allowPinMessages', icon: 'fa-thumbtack', label: 'Cho phép ghim tin nhắn', description: 'Thành viên được ghim tin nhắn để xem lại nhanh.' }),
   Object.freeze({ key: 'allowMessages', icon: 'fa-message', label: 'Cho phép gửi tin nhắn', description: 'Thành viên được gửi tin nhắn và tệp.' }),
+  Object.freeze({ key: 'allowPolls', icon: 'fa-square-poll-vertical', label: 'Cho phép thành viên tạo bình chọn', description: 'Thành viên được tạo bình chọn trong nhóm.' }),
   Object.freeze({ key: 'approveMembers', icon: 'fa-user-check', label: 'Phê duyệt thành viên mới', description: 'Thành viên mới cần được quản trị viên duyệt.' }),
   Object.freeze({ key: 'newMemberHistory', icon: 'fa-clock-rotate-left', label: 'Cho thành viên mới đọc tin nhắn gần nhất', description: 'Thành viên mới được xem phần lịch sử gần nhất.' }),
 ]);
@@ -3063,6 +3064,8 @@ function App() {
   const canPinActiveGroupMessages = !activeChat.isGroup
     || isActiveGroupAdmin
     || groupSettingEnabled(activeGroupSettings, 'allowPinMessages');
+  const canCreatePollInActiveGroup = activeChat.isGroup
+    && (isActiveGroupAdmin || groupSettingEnabled(activeGroupSettings, 'allowPolls'));
   const groupLeaveCandidates = (() => {
     if (!pendingGroupLeave?.room?.isGroup) return [];
     const pendingGroupAdmin = resolveGroupAdministrator(pendingGroupLeave.room, directoryAccounts);
@@ -7440,6 +7443,10 @@ function App() {
 
   const openPollComposer = () => {
     if (!activeChat?.isGroup) return;
+    if (!canCreatePollInActiveGroup) {
+      setChatError('Quản trị viên đã tắt quyền tạo bình chọn trong nhóm.');
+      return;
+    }
     if (activeChat.isChatbot || realtimeMessagingPending || isRecordingVoice || !canSendInActiveGroup) {
       setChatError('Bình chọn chỉ khả dụng khi nhóm đang sẵn sàng nhận tin nhắn.');
       return;
@@ -7555,6 +7562,11 @@ function App() {
   const handlePollCreate = async event => {
     event.preventDefault();
     if (!pollComposer || !activeChat.isGroup || isCreatingPoll) return;
+    if (!canCreatePollInActiveGroup) {
+      closePollComposer();
+      setChatError('Quản trị viên đã tắt quyền tạo bình chọn trong nhóm.');
+      return;
+    }
     const question = String(pollComposer.question || '').trim().slice(0, POLL_LIMITS.maxQuestionLength);
     const optionTexts = [...new Set((pollComposer.options || []).map(option => String(option || '').trim()).filter(Boolean))]
       .slice(0, POLL_LIMITS.maxOptions);
@@ -10275,10 +10287,10 @@ function App() {
               <button
                 type="button"
                 className="btn-input-action poll-input-action"
-                title={appCopy.t('Tạo bình chọn')}
+                title={appCopy.t(canCreatePollInActiveGroup ? 'Tạo bình chọn' : 'Chỉ quản trị viên mới có thể tạo bình chọn trong nhóm.')}
                 aria-label={appCopy.t('Tạo bình chọn')}
                 onClick={openPollComposer}
-                disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup}
+                disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup || !canCreatePollInActiveGroup}
               >
                 <i className="fa-solid fa-square-poll-vertical"></i>
               </button>

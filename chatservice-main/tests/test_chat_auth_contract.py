@@ -648,6 +648,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("management_session_requested", endpoint_source)
         self.assertIn("is_owner = membership.role == \"OWNER\"", endpoint_source)
         self.assertIn("allowMembersEditInfo", endpoint_source)
+        self.assertIn("allowPolls", controller_source)
         self.assertIn("_conversation_and_membership", endpoint_source)
         self.assertIn("GROUP_SETTING_KEYS", endpoint_source)
         self.assertIn("updateGroupSettings", service_source)
@@ -674,7 +675,6 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("searchConversationHistory", service_source)
         self.assertIn("Tải thêm lịch sử cũ", app_source)
         self.assertNotIn("allowNotes", controller_source)
-        self.assertNotIn("allowPolls", controller_source)
         self.assertNotIn("allowReminders", controller_source)
         self.assertNotIn("markOwnerMessages", controller_source)
 

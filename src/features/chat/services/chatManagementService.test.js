@@ -241,6 +241,14 @@ test('group member controls use the synced company directory with owner-only mut
   assert.doesNotMatch(appSource, /Thêm phó nhóm/);
 });
 
+test('group poll creation follows the administrator setting while voting remains available', () => {
+  assert.match(appSource, /allowPolls/);
+  assert.match(appSource, /const canCreatePollInActiveGroup/);
+  assert.match(appSource, /isActiveGroupAdmin \|\| groupSettingEnabled\(activeGroupSettings, 'allowPolls'\)/);
+  assert.match(appSource, /if \(!canCreatePollInActiveGroup\)/);
+  assert.match(appSource, /poll-input-action/);
+});
+
 test('group owner departure requires an explicit replacement and announces the transfer', () => {
   assert.match(appSource, /pendingGroupLeave/);
   assert.match(appSource, /groupLeaveReplacementId/);
