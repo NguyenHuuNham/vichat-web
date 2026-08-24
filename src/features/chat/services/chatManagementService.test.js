@@ -261,6 +261,27 @@ test('group information exposes a poll-only board without changing direct-chat d
   assert.match(appSource, /\{activeChat\.isGroup && \(\s*<section className=\{`detail-section group-board-section/);
 });
 
+test('pinned message overflow reuses message actions and can open the group board', () => {
+  assert.match(appSource, /const \[pinnedMessageMenu, setPinnedMessageMenu\] = useState\(null\)/);
+  assert.match(appSource, /const openPinnedMessageMenu = event =>/);
+  assert.match(appSource, /className="pinned-messages-more pinned-messages-menu-button"/);
+  assert.match(appSource, /appCopy\.t\('Copy tin nhắn'\)/);
+  assert.match(appSource, /appCopy\.t\('Mở bảng tin nhóm'\)/);
+  assert.match(appSource, /handlePinnedMessageMenuAction\('unpin'\)/);
+  assert.match(appSource, /setIsDetailOpen\(true\);\s*setIsGroupBoardOpen\(true\);/);
+  assert.match(stylesSource, /\.pinned-messages-more:hover/);
+});
+
+test('chat header uses a stateful information panel control for direct and group chats', () => {
+  assert.match(appSource, /btn-header-action btn-header-detail/);
+  assert.match(appSource, /isDetailOpen \? 'active is-open' : 'is-closed'/);
+  assert.match(appSource, /fa-table-columns/);
+  assert.match(appSource, /aria-expanded=\{isDetailOpen\}/);
+  assert.match(appSource, /id="conversation-details-sidebar"/);
+  assert.match(stylesSource, /\.btn-header-detail\.is-closed/);
+  assert.match(stylesSource, /\.btn-header-detail\.is-open/);
+});
+
 test('group owner departure requires an explicit replacement and announces the transfer', () => {
   assert.match(appSource, /pendingGroupLeave/);
   assert.match(appSource, /groupLeaveReplacementId/);

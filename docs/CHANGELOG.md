@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-14 - Menu tin ghim va nut thong tin cuoc tro chuyen
+
+- Thoi gian: 2026-08-24 09:54 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Web | UI | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Cho phep mo menu thao tac tu khu vuc tin nhan da ghim va thay nut ba cham tren header bang nut panel thong tin co trang thai mo/dong.
+- Pham vi: Chi ChatUI header, khu vuc tin ghim, i18n, CSS va source assertions; ap dung cho chat nhom va chat 1-1, khong thay doi Tinode, Chatmgt, poll, message action backend hay realtime transport.
+- File da thay doi: `src/app/App.jsx`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Bien ellipsis tin ghim thanh button co menu Copy, Mo bang tin nhom (chi chat nhom) va Bo ghim; menu dung lai handler copy/pin hien co, mo bang tin nhom tu dong mo sidebar va thu gon cac muc thanh vien. Header dung icon `fa-table-columns`, mau active khi thong tin dang mo va mau neutral khi dong, co aria label/expanded/controls cho ca group va direct chat.
+- Quyet dinh ky thuat: Menu tin ghim duoc render qua portal va tinh toa do theo viewport de khong bi che o man hinh thap; state menu duoc dong khi doi hoi thoai, click ngoai hoac Escape. Khong tao state persistence, API, database, migration hay thay doi quyen.
+- Database/API/cau hinh: Khong co migration, endpoint, schema, bien moi truong, secret hoac thay doi kien truc.
+- Kiem thu: `npm run test:frontend` dat 195/195; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` dat voi bundle `App-rPYYYj2t.js`; `npm run build:production` dat voi bundle `App-DJq6HDV1.js`, entry `index-DqPe-h7W.js`, CSS `index-CdssrYEE.css`. Mot lan build production chay dong thoi voi build thuong bi `ENOTEMPTY` do hai tien trinh cung don `dist/stickers`; chay lai rieng production da dat. `git diff --check` dat. Chua UAT pixel-level bang browser production trong phien nay.
+- Rui ro con lai: Can hard refresh production va kiem tra menu tin ghim o chat 1-1/nhom, menu gan dau/cuoi viewport, thao tac copy/bo ghim, mo Bảng tin nhóm va icon panel tren desktop/mobile.
+- Viec tiep theo: Commit, push va deploy rieng ChatUI; sau deploy kiem tra health/public bundle va UAT hai theme. Neu loi chi rollback release ChatUI ve `previous`, khong restart dich vu stateful.
+- Commit/PR: Chua tao; deployment dang cho thuc hien.
+
 ## 2026-08-24-13 - Bảng tin nhóm cho các cuộc bình chọn
 
 - Thời gian: 2026-08-24 09:30 (Asia/Saigon)

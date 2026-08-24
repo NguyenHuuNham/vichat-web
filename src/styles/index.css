@@ -768,6 +768,19 @@ body {
     background: var(--vichat-blue-light);
 }
 
+.btn-header-detail.is-closed {
+    color: var(--text-muted);
+    background: transparent;
+}
+
+.btn-header-detail.is-open,
+.btn-header-detail.is-open:hover,
+.btn-header-detail.is-open:focus-visible {
+    color: var(--vichat-blue);
+    background: var(--vichat-blue-light);
+    outline: none;
+}
+
 .btn-header-action:disabled {
     cursor: not-allowed;
     opacity: .38;
@@ -4035,7 +4048,9 @@ input:checked + .slider:before {
 .pinned-messages-actions { display: flex; align-items: center; flex: 0 0 auto; gap: 14px; }
 .pinned-messages-more,
 .pinned-message-more { display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 15px; }
-.pinned-messages-more { width: 20px; }
+.pinned-messages-more { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; }
+.pinned-messages-more:hover,
+.pinned-messages-more:focus-visible { color: var(--text-main); background: var(--bg-gray); outline: none; }
 .pinned-message-more { width: 28px; margin-left: auto; }
 
 .pinned-message-copy {

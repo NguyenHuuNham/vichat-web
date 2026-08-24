@@ -2479,6 +2479,7 @@ function App() {
   const [messageReactionPickerKey, setMessageReactionPickerKey] = useState(null);
   const [messageActionHoverKey, setMessageActionHoverKey] = useState(null);
   const [pinnedMessagesExpanded, setPinnedMessagesExpanded] = useState(false);
+  const [pinnedMessageMenu, setPinnedMessageMenu] = useState(null);
   const [highlightedMessageKey, setHighlightedMessageKey] = useState(null);
   const [notificationMuteDialog, setNotificationMuteDialog] = useState(null);
   const [notificationMuteOption, setNotificationMuteOption] = useState(NOTIFICATION_MUTE_OPTIONS.ONE_HOUR);
@@ -2794,6 +2795,7 @@ function App() {
     setMessageActionHoverKey(null);
     setReactionDetails(null);
     setPinnedMessagesExpanded(false);
+    setPinnedMessageMenu(null);
     setHighlightedMessageKey(null);
     setIsGroupManagementOpen(false);
     setGroupManagementNotice('');
@@ -3800,6 +3802,7 @@ function App() {
     const closeMenus = event => {
       if (event.type === 'keydown' && event.key !== 'Escape') return;
       setMessageMenu(null);
+      setPinnedMessageMenu(null);
       setConversationMenu(null);
       setGroupMemberMenuId('');
       setConversationCategoryMenuOpen(false);
@@ -9075,6 +9078,39 @@ function App() {
     window.requestAnimationFrame(() => window.requestAnimationFrame(() => scrollToMessageById(targetId)));
   };
   const scrollToPinnedMessage = message => scrollToMessageById(message?.id);
+  const openPinnedMessageMenu = event => {
+    event.stopPropagation();
+    const message = pinnedMessages[0];
+    if (!message || typeof window === 'undefined') return;
+    const gutter = 12;
+    const gap = 6;
+    const width = Math.min(245, Math.max(0, window.innerWidth - (gutter * 2)));
+    const menuItemCount = activeChat.isGroup ? 3 : 2;
+    const estimatedHeight = 14 + (menuItemCount * 35);
+    const rect = event.currentTarget.getBoundingClientRect();
+    const left = Math.max(gutter, Math.min(rect.right - width, window.innerWidth - width - gutter));
+    const belowTop = rect.bottom + gap;
+    const top = belowTop + estimatedHeight <= window.innerHeight - gutter
+      ? belowTop
+      : Math.max(gutter, rect.top - estimatedHeight - gap);
+    setMessageMenu(null);
+    setPinnedMessageMenu({ message, left, top });
+  };
+  const handlePinnedMessageMenuAction = async action => {
+    const message = pinnedMessageMenu?.message;
+    setPinnedMessageMenu(null);
+    if (!message) return;
+    if (action === 'group-board') {
+      if (!activeChat.isGroup) return;
+      setIsDetailOpen(true);
+      setIsGroupBoardOpen(true);
+      setIsGroupMembersExpanded(false);
+      setIsGroupMemberPickerOpen(false);
+      setGroupMemberMenuId('');
+      return;
+    }
+    await handleMessageAction(action === 'unpin' ? 'pin' : action, message);
+  };
   const showExpandedPinnedMessages = pinnedMessagesExpanded && pinnedMessages.length > 1;
   const hasDatedMessages = visibleMessages.some(message => formatMessageDateLabel(message, displayClock, appCopy.locale));
 
@@ -9567,8 +9603,16 @@ function App() {
                   </button>
                 </>
               )}
-              <button className="btn-header-action" title={appCopy.t('Thông tin nhóm')} onClick={() => setIsDetailOpen(!isDetailOpen)}>
-                <i className="fa-solid fa-ellipsis-vertical"></i>
+              <button
+                type="button"
+                className={`btn-header-action btn-header-detail ${isDetailOpen ? 'active is-open' : 'is-closed'}`}
+                title={appCopy.t(isDetailOpen ? 'Đóng thông tin hội thoại' : 'Mở thông tin hội thoại')}
+                aria-label={appCopy.t(isDetailOpen ? 'Đóng thông tin hội thoại' : 'Mở thông tin hội thoại')}
+                aria-expanded={isDetailOpen}
+                aria-controls="conversation-details-sidebar"
+                onClick={() => setIsDetailOpen(previous => !previous)}
+              >
+                <i className="fa-solid fa-table-columns" aria-hidden="true"></i>
               </button>
             </div>
           </div>
@@ -9639,13 +9683,41 @@ function App() {
                       <i className="fa-solid fa-chevron-down" aria-hidden="true"></i>
                     </button>
                   )}
-                  <span className="pinned-messages-more" aria-hidden="true">
+                  <button
+                    type="button"
+                    className="pinned-messages-more pinned-messages-menu-button"
+                    aria-expanded={Boolean(pinnedMessageMenu)}
+                    aria-label={appCopy.t('Tùy chọn tin nhắn đã ghim')}
+                    title={appCopy.t('Tùy chọn tin nhắn đã ghim')}
+                    onClick={openPinnedMessageMenu}
+                  >
                     <i className="fa-solid fa-ellipsis"></i>
-                  </span>
+                  </button>
                 </div>
               </>
             )}
           </section>
+        )}
+
+        {pinnedMessageMenu && typeof document !== 'undefined' && document.body && createPortal(
+          <div
+            className="message-context-menu pinned-message-context-menu"
+            style={{ left: pinnedMessageMenu.left, top: pinnedMessageMenu.top }}
+            onClick={event => event.stopPropagation()}
+          >
+            <button type="button" onClick={() => handlePinnedMessageMenuAction('copy')}>
+              <i className="fa-regular fa-copy" aria-hidden="true"></i>{appCopy.t('Copy tin nhắn')}
+            </button>
+            {activeChat.isGroup && (
+              <button type="button" onClick={() => handlePinnedMessageMenuAction('group-board')}>
+                <i className="fa-regular fa-rectangle-list" aria-hidden="true"></i>{appCopy.t('Mở bảng tin nhóm')}
+              </button>
+            )}
+            <button type="button" onClick={() => handlePinnedMessageMenuAction('unpin')}>
+              <i className="fa-solid fa-thumbtack" aria-hidden="true"></i>{appCopy.t('Bỏ ghim')}
+            </button>
+          </div>,
+          document.body,
         )}
 
         {/* Khu vực hiển thị tin nhắn */}
@@ -10644,7 +10716,7 @@ function App() {
         scope="conversation details"
         fallback={<aside className="sidebar-detail conversation-render-error" role="alert">Conversation details unavailable.</aside>}
       >
-      <aside className={`sidebar-detail ${isDetailOpen ? '' : 'collapsed'}`}>
+      <aside id="conversation-details-sidebar" className={`sidebar-detail ${isDetailOpen ? '' : 'collapsed'}`}>
         <div className="detail-header">
           <h3>{appCopy.t(activeChat.isGroup ? 'Thông tin nhóm' : 'Thông tin cá nhân')}</h3>
           <button className="btn-close-detail" title={appCopy.t('Đóng')} onClick={() => setIsDetailOpen(false)}>
