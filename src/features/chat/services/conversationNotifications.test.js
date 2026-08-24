@@ -97,14 +97,18 @@ test('normalizes and persists per-viewer desktop notification preferences', () =
   assert.equal(normalizeNotificationSettings({ language: 'fr' }).language, 'vi');
   assert.equal(normalizeNotificationSettings({ theme: 'dark' }).theme, 'dark');
   assert.equal(normalizeNotificationSettings({ theme: 'neon' }).theme, 'light');
+  assert.equal(normalizeNotificationSettings({ stickerSuggestions: false }).stickerSuggestions, false);
+  assert.equal(normalizeNotificationSettings({ stickerSuggestions: 'off' }).stickerSuggestions, true);
   const saved = writeNotificationSettings('usrA', {
     desktopNotifications: false,
     sounds: false,
     sound: 'bell',
     language: 'en',
     theme: 'dark',
+    stickerSuggestions: false,
   }, storage);
   assert.deepEqual(readNotificationSettings('usrA', storage), saved);
+  assert.equal(saved.stickerSuggestions, false);
   assert.notDeepEqual(readNotificationSettings('usrB', storage), saved);
 });
 

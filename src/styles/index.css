@@ -2022,6 +2022,79 @@ body {
     background: var(--bg-chat);
 }
 
+.sticker-suggestion-bar {
+    display: flex;
+    flex: 0 0 100%;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 4px 2px 2px;
+}
+
+.sticker-suggestion-heading {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 5px;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.sticker-suggestion-heading i { color: var(--vichat-blue); }
+
+.sticker-suggestion-list {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 2px 1px 4px;
+    scrollbar-width: thin;
+}
+
+.sticker-suggestion-option {
+    display: inline-flex;
+    min-width: 74px;
+    flex: 0 0 74px;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 7px 4px 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    color: var(--text-body);
+    background: var(--bg-app);
+    font: inherit;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color .15s ease, background .15s ease, transform .15s ease;
+}
+
+.sticker-suggestion-option:hover,
+.sticker-suggestion-option:focus-visible {
+    border-color: rgba(244, 81, 30, .45);
+    outline: none;
+    background: var(--vichat-blue-light);
+    transform: translateY(-1px);
+}
+
+.sticker-suggestion-option img {
+    display: block;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    object-fit: contain;
+}
+
+.sticker-suggestion-option span {
+    max-width: 66px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .btn-input-action {
     width: 36px;
     height: 36px;
@@ -3570,26 +3643,6 @@ input:checked + .slider:before {
     .theme-choice { flex-direction: row; align-items: center; }
     .theme-preview { width: 145px; flex: 0 0 145px; }
 }
-.pin-preference-card { padding: 13px 0 4px; border-bottom: 1px solid var(--border-color); }
-.pin-preference-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.pin-preference-heading h3 { margin: 0; color: var(--text-main); font-size: 14px; }
-.pin-preference-heading p { margin: 5px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.45; }
-.pin-preference-status { flex: 0 0 auto; padding: 4px 8px; border-radius: 999px; color: var(--text-muted); background: var(--bg-gray); font-size: 10px; font-weight: 750; }
-.pin-preference-status.enabled { color: #147447; background: #e8f7ef; }
-.pin-preference-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
-.pin-preference-field { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
-.pin-preference-field > span { color: var(--text-muted); font-size: 10.5px; font-weight: 700; }
-.pin-preference-field input { width: 100%; height: 35px; padding: 0 9px; border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-main); background: var(--bg-white); font: inherit; font-size: 12px; letter-spacing: 2px; }
-.pin-preference-field input:focus { outline: 2px solid rgba(244, 81, 30, .2); outline-offset: 1px; border-color: var(--vichat-blue); }
-.pin-preference-actions { display: flex; grid-column: 1 / -1; flex-wrap: wrap; gap: 7px; }
-.pin-save-button, .pin-disable-button { display: inline-flex; height: 32px; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; border: 1px solid transparent; border-radius: 8px; font: inherit; font-size: 10.5px; font-weight: 750; cursor: pointer; }
-.pin-save-button { border-color: rgba(244, 81, 30, .25); color: var(--vichat-blue-dark); background: var(--vichat-blue-light); }
-.pin-save-button:hover:not(:disabled) { border-color: var(--vichat-blue); }
-.pin-disable-button { border-color: #e7d0d0; color: #a64040; background: #fff8f8; }
-.pin-disable-button:hover:not(:disabled) { border-color: #cc8e8e; background: #fff; }
-.pin-save-button:disabled, .pin-disable-button:disabled { cursor: not-allowed; opacity: .5; }
-.pin-settings-notice { display: flex; align-items: flex-start; gap: 7px; margin: 9px 0 2px; color: var(--vichat-blue-dark); font-size: 10.5px; line-height: 1.45; }
-
 .pin-lock-screen { display: grid; min-height: 100vh; place-items: center; padding: 24px; background: var(--bg-app); }
 .pin-lock-card { width: min(100%, 360px); padding: 28px 24px 24px; border: 1px solid var(--border-color); border-radius: 16px; color: var(--text-main); background: var(--bg-white); box-shadow: var(--shadow-md); text-align: center; }
 .pin-lock-icon { display: grid; width: 48px; height: 48px; margin: 0 auto 13px; place-items: center; border-radius: 14px; color: var(--vichat-blue); background: var(--vichat-blue-light); font-size: 20px; }
@@ -3603,9 +3656,6 @@ input:checked + .slider:before {
 .pin-lock-notice { display: flex; align-items: flex-start; gap: 7px; margin-top: 9px; color: #b14436; font-size: 11px; line-height: 1.45; text-align: left; }
 @media (max-width: 576px) {
     .language-picker { min-width: 128px; }
-    .pin-preference-heading { flex-direction: column; gap: 8px; }
-    .pin-preference-form { grid-template-columns: 1fr; }
-    .pin-preference-actions { grid-column: auto; }
     .notification-sound-picker { flex-wrap: wrap; }
     .notification-sound-picker select { width: 100%; flex-basis: 100%; }
     .notification-preview-button, .notification-upload-button, .notification-remove-button { flex: 1; }
@@ -5989,6 +6039,9 @@ html[data-theme="dark"] .sticker-search { border-color: #3b4b54; background: #27
 html[data-theme="dark"] .sticker-search:focus-within { background: #202c32; }
 html[data-theme="dark"] .sticker-option:hover,
 html[data-theme="dark"] .sticker-option:focus-visible { background: #2b4549; }
+html[data-theme="dark"] .sticker-suggestion-option { border-color: #3b4b54; background: #27363c; }
+html[data-theme="dark"] .sticker-suggestion-option:hover,
+html[data-theme="dark"] .sticker-suggestion-option:focus-visible { background: #2b4549; }
 html[data-theme="dark"] .sticker-pack-tabs button { border-color: #3b4b54; background: #27363c; }
 html[data-theme="dark"] .sticker-pack-tabs button:hover,
 html[data-theme="dark"] .sticker-pack-tabs button:focus-visible,
@@ -6082,9 +6135,6 @@ html[data-theme="dark"] .notification-upload-button:hover:not(:disabled),
 html[data-theme="dark"] .notification-remove-button:hover:not(:disabled) { background: var(--bg-gray); }
 html[data-theme="dark"] .notification-remove-button { border-color: #704342; color: #ffb0a0; background: #3d2928; }
 html[data-theme="dark"] .notification-sound-file-status i { color: #ffad8e; }
-html[data-theme="dark"] .pin-preference-status.enabled { color: #a4e6bf; background: #214334; }
-html[data-theme="dark"] .pin-disable-button { border-color: #704342; color: #ffb0a0; background: #3d2928; }
-html[data-theme="dark"] .pin-disable-button:hover:not(:disabled) { border-color: #9d615b; background: #4b3030; }
 html[data-theme="dark"] .pin-lock-notice { color: #ffb0a0; }
 html[data-theme="dark"] .friend-notice { border-color: #28573e; color: #a4e6bf; background: #183226; }
 html[data-theme="dark"] .btn-friend.secondary { color: #ffb292; background: #4a2e24; }
@@ -6279,6 +6329,9 @@ html[data-theme="dark"] select option { color: var(--text-main); background: var
 .settings-shell-panel .settings-card-icon.language,
 .settings-shell-panel .settings-card-icon.security { color: #21825d; background: #e8f7ef; }
 .settings-shell-panel .settings-card-icon.keyboard { color: #5664c5; background: #eef0ff; }
+.settings-shell-panel .settings-card-icon.sticker { color: #b34d8d; background: #fff0f8; }
+.settings-shell-panel .sticker-suggestion-setting { order: 9; }
+.settings-shell-panel .keyboard-shortcut-card { order: 10; }
 .settings-shell-panel .keyboard-shortcut-heading { align-items: center; }
 .settings-shell-panel .keyboard-shortcut-heading .settings-toggle { margin-left: auto; }
 .settings-shell-panel .keyboard-shortcut-hint {
@@ -6599,52 +6652,6 @@ html[data-theme="dark"] select option { color: var(--text-main); background: var
 .settings-shell-panel .language-picker-menu { min-width: 100%; border-radius: 13px; }
 .settings-shell-panel .language-picker-option { min-height: 42px; font-size: 13px; }
 
-.settings-shell-panel .pin-preference-heading { margin-bottom: 16px; }
-.settings-shell-panel .pin-preference-heading .pin-preference-status { margin-left: auto; }
-.settings-shell-panel .pin-preference-status {
-    flex: 0 0 auto;
-    padding: 7px 12px;
-    border-radius: 999px;
-    color: var(--text-muted);
-    background: var(--bg-gray);
-    font-size: 12px;
-    font-weight: 750;
-}
-.settings-shell-panel .pin-preference-status.enabled { color: #18794f; background: #e8f7ef; }
-.settings-shell-panel .pin-preference-form { gap: 17px 24px; margin-top: 0; }
-.settings-shell-panel .pin-preference-field { gap: 8px; }
-.settings-shell-panel .pin-preference-field > span { color: var(--text-body); font-size: 13px; }
-.settings-shell-panel .pin-preference-field input {
-    height: 42px;
-    padding: 0 15px;
-    border-radius: 11px;
-    color: var(--text-main);
-    background: var(--bg-white);
-    font-size: 13px;
-    letter-spacing: 5px;
-}
-.settings-shell-panel .pin-preference-actions { gap: 10px; margin-top: 4px; }
-.settings-shell-panel .pin-save-button,
-.settings-shell-panel .pin-disable-button {
-    height: 40px;
-    padding: 0 18px;
-    border-radius: 11px;
-    font-size: 12px;
-}
-.settings-shell-panel .pin-save-button { border-color: transparent; color: var(--vichat-blue-dark); background: #fff0e9; }
-.settings-shell-panel .pin-disable-button { height: 42px; align-self: center; }
-.settings-shell-panel .pin-settings-notice { margin-top: 15px; font-size: 12px; }
-.settings-shell-panel .pin-preference-note {
-    display: flex;
-    align-items: flex-start;
-    gap: 9px;
-    margin-top: 19px;
-    color: var(--text-muted);
-    font-size: 13px;
-    line-height: 1.45;
-}
-.settings-shell-panel .pin-preference-note i { flex: 0 0 auto; margin-top: 2px; color: #4d7370; }
-
 html[data-theme="dark"] .workspace-panel.settings-shell-panel { box-shadow: 0 28px 80px rgba(0, 0, 0, .38), 0 5px 18px rgba(0, 0, 0, .24); }
 html[data-theme="dark"] .settings-shell-panel .settings-card {
     border-color: #3b4b54;
@@ -6656,15 +6663,13 @@ html[data-theme="dark"] .settings-shell-panel .settings-card-icon.appearance { c
 html[data-theme="dark"] .settings-shell-panel .settings-card-icon.language,
 html[data-theme="dark"] .settings-shell-panel .settings-card-icon.security { color: #a4e6bf; background: #214334; }
 html[data-theme="dark"] .settings-shell-panel .settings-card-icon.keyboard { color: #c6caff; background: #303455; }
+html[data-theme="dark"] .settings-shell-panel .settings-card-icon.sticker { color: #f3a9d3; background: #4a2b40; }
 html[data-theme="dark"] .settings-shell-panel .notification-device-choice.selected,
 html[data-theme="dark"] .settings-shell-panel .theme-choice.selected { background: #342a27; }
 html[data-theme="dark"] .settings-shell-panel .notification-device-choice:not(.selected) .notification-device-icon { color: #b6c4c5; background: #2d3b40; }
 html[data-theme="dark"] .settings-shell-panel .notification-device-choice { background: var(--bg-app); }
-html[data-theme="dark"] .settings-shell-panel .notification-preview-button,
-html[data-theme="dark"] .settings-shell-panel .pin-save-button { color: #ffc0a5; background: #4a2e24; }
+html[data-theme="dark"] .settings-shell-panel .notification-preview-button { color: #ffc0a5; background: #4a2e24; }
 html[data-theme="dark"] .settings-shell-panel .notification-upload-button { color: var(--text-body); background: var(--bg-gray); }
-html[data-theme="dark"] .settings-shell-panel .pin-preference-status.enabled { color: #a4e6bf; background: #214334; }
-html[data-theme="dark"] .settings-shell-panel .pin-preference-note i { color: #9ddbd2; }
 
 @media (max-width: 700px) {
     .workspace-panel.settings-shell-panel { width: min(100%, calc(100vw - 24px)); padding: 18px 16px 22px; }
@@ -6693,9 +6698,6 @@ html[data-theme="dark"] .settings-shell-panel .pin-preference-note i { color: #9
     .settings-shell-panel .keyboard-shortcut-capture { min-width: 0; width: 100%; }
     .settings-shell-panel .settings-inline-card { align-items: stretch; flex-direction: column; gap: 17px; }
     .settings-shell-panel .language-picker { width: 100%; min-width: 0; }
-    .settings-shell-panel .pin-preference-heading { align-items: flex-start; }
-    .settings-shell-panel .pin-preference-form { grid-template-columns: 1fr; gap: 14px; }
-    .settings-shell-panel .pin-preference-actions { grid-column: auto; }
 }
 
 @media (max-width: 576px) {

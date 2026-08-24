@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import Login from '../features/auth/components/Login';
 import ConversationErrorBoundary from '../components/ConversationErrorBoundary';
@@ -128,14 +128,11 @@ import { CHATBOT_ACCOUNT, CHATBOT_STARTER_PROMPTS, EXTERNAL_CHAT_ONLY, applyTino
 import {
   PIN_VALIDATION_ERRORS,
   clearPinTabAccess,
-  createPinConfig,
   hasPinTabAccess,
   markPinTabUnlocked,
   readPinConfig,
-  removePinConfig,
   validatePin,
   verifyPin,
-  writePinConfig,
 } from '../features/security/services/pinLock';
 import { createLocalizedCopy } from '../features/i18n/appLanguage';
 import { workspacePanelFromPath, workspacePathForPanel } from '../features/workspace/services/workspaceRouting';
@@ -183,6 +180,7 @@ import {
   shortcutFromKeyboardEvent,
   writeKeyboardShortcutSettings,
 } from '../features/chat/services/keyboardShortcuts';
+import { suggestStickersForText } from '../features/chat/services/stickerCatalog';
 
 const CALLS_ENABLED = resolveCallsEnabled(import.meta.env.VITE_CALLS_ENABLED);
 
@@ -229,20 +227,7 @@ const APP_LANGUAGE_COPY = Object.freeze({
     replaceSound: 'Đổi file',
     uploadSound: 'Tải file',
     removeSound: 'Xóa',
-    pinTitle: 'Thiết lập mã PIN',
-    pinDescription: 'Tắt mặc định. Khi bật, tab mới cần nhập mã PIN để mở Chat.',
-    pinEnabled: 'Đang bật',
-    pinDisabled: 'Đang tắt',
-    pinCode: 'Mã PIN mới (4-6 số)',
-    pinConfirm: 'Nhập lại mã PIN',
-    pinSet: 'Bật khóa PIN',
-    pinChange: 'Đổi mã PIN',
-    pinDisable: 'Tắt khóa PIN',
-    pinSaving: 'Đang lưu...',
-    pinDeviceNote: 'Mã PIN chỉ được lưu trên thiết bị của bạn.',
-    pinSaved: 'Đã lưu thiết lập mã PIN cho tài khoản này.',
-    pinDisabledNotice: 'Đã tắt khóa PIN trên tài khoản này.',
-    pinMismatch: 'Hai mã PIN không trùng nhau.',
+    pinCode: 'Mã PIN',
     pinRequired: 'Hãy nhập mã PIN.',
     pinDigitsOnly: 'Mã PIN chỉ được gồm chữ số.',
     pinLength: 'Mã PIN phải có từ 4 đến 6 chữ số.',
@@ -276,6 +261,9 @@ const APP_LANGUAGE_COPY = Object.freeze({
     shortcutNextConversationDescription: 'Chuyển xuống cuộc trò chuyện kế tiếp trong danh sách.',
     shortcutPreviousConversation: 'Cuộc trò chuyện trước',
     shortcutPreviousConversationDescription: 'Chuyển lên cuộc trò chuyện trước trong danh sách.',
+    stickerSuggestions: 'Gợi ý Sticker',
+    stickerSuggestionsDescription: 'Hiển thị sticker phù hợp với nội dung tin nhắn đang soạn.',
+    stickerSuggestionsEnabled: 'Bật gợi ý Sticker',
   }),
   en: Object.freeze({
     chat: 'Chat',
@@ -314,20 +302,7 @@ const APP_LANGUAGE_COPY = Object.freeze({
     replaceSound: 'Replace file',
     uploadSound: 'Upload file',
     removeSound: 'Remove',
-    pinTitle: 'Set up a PIN',
-    pinDescription: 'Off by default. When enabled, a new tab needs the PIN to open Chat.',
-    pinEnabled: 'On',
-    pinDisabled: 'Off',
-    pinCode: 'New PIN (4-6 digits)',
-    pinConfirm: 'Confirm PIN',
-    pinSet: 'Enable PIN lock',
-    pinChange: 'Change PIN',
-    pinDisable: 'Disable PIN lock',
-    pinSaving: 'Saving...',
-    pinDeviceNote: 'Your PIN is stored only on this device.',
-    pinSaved: 'PIN lock saved for this account.',
-    pinDisabledNotice: 'PIN lock is disabled for this account.',
-    pinMismatch: 'The PIN entries do not match.',
+    pinCode: 'PIN',
     pinRequired: 'Enter a PIN.',
     pinDigitsOnly: 'The PIN can contain digits only.',
     pinLength: 'The PIN must contain 4 to 6 digits.',
@@ -361,6 +336,9 @@ const APP_LANGUAGE_COPY = Object.freeze({
     shortcutNextConversationDescription: 'Move down to the next conversation in the list.',
     shortcutPreviousConversation: 'Previous conversation',
     shortcutPreviousConversationDescription: 'Move up to the previous conversation in the list.',
+    stickerSuggestions: 'Sticker suggestions',
+    stickerSuggestionsDescription: 'Show stickers that match the message you are composing.',
+    stickerSuggestionsEnabled: 'Enable sticker suggestions',
   }),
 });
 
@@ -2574,12 +2552,8 @@ function App() {
   const [pinLockConfig, setPinLockConfig] = useState(null);
   const [pinLockReady, setPinLockReady] = useState(true);
   const [isPinTabUnlocked, setIsPinTabUnlocked] = useState(true);
-  const [pinSetupValue, setPinSetupValue] = useState('');
-  const [pinConfirmValue, setPinConfirmValue] = useState('');
   const [pinUnlockValue, setPinUnlockValue] = useState('');
-  const [pinSettingsNotice, setPinSettingsNotice] = useState('');
   const [pinUnlockNotice, setPinUnlockNotice] = useState('');
-  const [isSavingPin, setIsSavingPin] = useState(false);
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
   const [directoryAccounts, setDirectoryAccounts] = useState([]);
   const [contactNicknames, setContactNicknames] = useState({});
@@ -3145,6 +3119,10 @@ function App() {
   const canSendInActiveGroup = !activeChat.isGroup
     || isActiveGroupAdmin
     || groupSettingEnabled(activeGroupSettings, 'allowMessages');
+  const suggestedStickers = useMemo(
+    () => suggestStickersForText(inputText, 4),
+    [inputText],
+  );
   const canPinActiveGroupMessages = !activeChat.isGroup
     || isActiveGroupAdmin
     || groupSettingEnabled(activeGroupSettings, 'allowPinMessages');
@@ -3260,10 +3238,7 @@ function App() {
       setPinLockConfig(null);
       setPinLockReady(true);
       setIsPinTabUnlocked(true);
-      setPinSetupValue('');
-      setPinConfirmValue('');
       setPinUnlockValue('');
-      setPinSettingsNotice('');
       setPinUnlockNotice('');
       return undefined;
     }
@@ -3276,7 +3251,6 @@ function App() {
       setPinLockReady(true);
       setPinUnlockValue('');
       setPinUnlockNotice('');
-      setPinSettingsNotice('');
     }
     return () => { active = false; };
   }, [pinViewerId]);
@@ -3702,49 +3676,6 @@ function App() {
     if (errorCode === PIN_VALIDATION_ERRORS.LENGTH) return appCopy.pinLength;
     return appCopy.pinLength;
   }, [appCopy]);
-
-  const handlePinSettingsSubmit = useCallback(async event => {
-    event.preventDefault();
-    if (!pinViewerId || isSavingPin) return;
-    const validationError = validatePin(pinSetupValue);
-    if (validationError) {
-      setPinSettingsNotice(pinValidationMessage(validationError));
-      return;
-    }
-    if (pinSetupValue !== pinConfirmValue) {
-      setPinSettingsNotice(appCopy.pinMismatch);
-      return;
-    }
-    setIsSavingPin(true);
-    setPinSettingsNotice('');
-    try {
-      const config = await createPinConfig(pinSetupValue);
-      if (!writePinConfig(pinViewerId, config)) throw new Error('PIN_STORAGE_UNAVAILABLE');
-      markPinTabUnlocked(pinViewerId);
-      setPinLockConfig(config);
-      setIsPinTabUnlocked(true);
-      setPinSetupValue('');
-      setPinConfirmValue('');
-      setPinSettingsNotice(appCopy.pinSaved);
-    } catch (error) {
-      setPinSettingsNotice(error?.message === 'PIN_STORAGE_UNAVAILABLE'
-        ? 'Không thể lưu mã PIN trên thiết bị này.'
-        : pinValidationMessage(error?.message));
-    } finally {
-      setIsSavingPin(false);
-    }
-  }, [appCopy, isSavingPin, pinConfirmValue, pinSetupValue, pinValidationMessage, pinViewerId]);
-
-  const handleDisablePin = useCallback(() => {
-    if (!pinViewerId || isSavingPin) return;
-    removePinConfig(pinViewerId);
-    clearPinTabAccess(pinViewerId);
-    setPinLockConfig(null);
-    setIsPinTabUnlocked(true);
-    setPinSetupValue('');
-    setPinConfirmValue('');
-    setPinSettingsNotice(appCopy.pinDisabledNotice);
-  }, [appCopy.pinDisabledNotice, isSavingPin, pinViewerId]);
 
   const handlePinUnlockSubmit = useCallback(async event => {
     event.preventDefault();
@@ -4792,7 +4723,6 @@ function App() {
     setIsPinTabUnlocked(false);
     setPinUnlockValue('');
     setPinUnlockNotice('');
-    setPinSettingsNotice('');
     if (source !== 'restore' && managementUserId) markPinTabUnlocked(managementUserId);
     const initialChatbot = createChatbotConversation(loadChatbotMessages(managementUserId));
     const initialRooms = { [CHATBOT_ACCOUNT.id]: initialChatbot };
@@ -5175,10 +5105,7 @@ function App() {
     setPinLockConfig(null);
     setPinLockReady(true);
     setIsPinTabUnlocked(true);
-    setPinSetupValue('');
-    setPinConfirmValue('');
     setPinUnlockValue('');
-    setPinSettingsNotice('');
     setPinUnlockNotice('');
     setDrafts({});
     setMessageMentions({});
@@ -8382,6 +8309,13 @@ function App() {
     setMentionActiveIndex(0);
   };
 
+  const handleStickerSuggestionSelect = sticker => {
+    updateCurrentDraft('');
+    setMentionContext(null);
+    handleSendSticker(sticker);
+    requestAnimationFrame(() => messageInputRef.current?.focus());
+  };
+
   const handleMentionSelect = candidate => {
     if (!mentionContext) return;
     const insertion = insertMentionAt(inputText, mentionContext, candidate);
@@ -10946,6 +10880,35 @@ function App() {
               <button type="button" onClick={() => setReplyingTo(null)} aria-label={appCopy.t('Hủy trả lời')}><i className="fa-solid fa-xmark"></i></button>
             </div>
           )}
+          {settings.stickerSuggestions
+            && suggestedStickers.length > 0
+            && inputText.trim()
+            && !mentionContext
+            && !activeChat.isChatbot
+            && !realtimeMessagingPending
+            && !isRecordingVoice
+            && canSendInActiveGroup && (
+            <div className="sticker-suggestion-bar" role="list" aria-label={appCopy.t('Gợi ý Sticker')}>
+              <span className="sticker-suggestion-heading"><i className="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>{appCopy.t('Gợi ý Sticker')}</span>
+              <div className="sticker-suggestion-list">
+                {suggestedStickers.map(sticker => (
+                  <button
+                    type="button"
+                    className="sticker-suggestion-option"
+                    key={sticker.id}
+                    role="listitem"
+                    title={appCopy.t(sticker.label)}
+                    aria-label={`${appCopy.t('Chọn sticker gợi ý')}: ${appCopy.t(sticker.label)}`}
+                    onMouseDown={event => event.preventDefault()}
+                    onClick={() => handleStickerSuggestionSelect(sticker)}
+                  >
+                    <img src={sticker.src} alt="" loading="lazy" draggable="false" />
+                    <span>{appCopy.t(sticker.label)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="input-actions-left">
             <button className="btn-input-action image-input-action" title={appCopy.t(activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều ảnh')} aria-label={appCopy.t('Gửi nhiều ảnh')} onClick={handleImageAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup}>
               <i className="fa-regular fa-image"></i>
@@ -12463,56 +12426,23 @@ function App() {
                     )}
                   </div>
                 </section>
-                <section className="settings-card pin-preference-card" aria-labelledby="pin-preference-title">
-                  <div className="settings-card-heading pin-preference-heading">
-                    <span className="settings-card-icon security"><i className="fa-solid fa-shield-halved"></i></span>
+                <section className="settings-card settings-inline-card sticker-suggestion-setting" aria-labelledby="sticker-suggestion-title">
+                  <div className="settings-card-heading">
+                    <span className="settings-card-icon sticker"><i className="fa-solid fa-face-smile"></i></span>
                     <div className="settings-card-heading-copy">
-                      <h3 id="pin-preference-title">{appCopy.pinTitle}</h3>
-                      <p>{appCopy.pinDescription}</p>
+                      <h3 id="sticker-suggestion-title">{appCopy.stickerSuggestions}</h3>
+                      <p>{appCopy.stickerSuggestionsDescription}</p>
                     </div>
-                    <span className={`pin-preference-status ${pinLockConfig ? 'enabled' : ''}`}>
-                      {pinLockConfig ? appCopy.pinEnabled : appCopy.pinDisabled}
-                    </span>
                   </div>
-                  <form className="pin-preference-form" onSubmit={handlePinSettingsSubmit}>
-                    <label className="pin-preference-field">
-                      <span>{appCopy.pinCode}</span>
-                      <input
-                        type="password"
-                        inputMode="numeric"
-                        autoComplete="new-password"
-                        maxLength={6}
-                        value={pinSetupValue}
-                        onChange={event => setPinSetupValue(event.target.value.replace(/\D/g, '').slice(0, 6))}
-                        disabled={isSavingPin}
-                      />
-                    </label>
-                    <label className="pin-preference-field">
-                      <span>{appCopy.pinConfirm}</span>
-                      <input
-                        type="password"
-                        inputMode="numeric"
-                        autoComplete="new-password"
-                        maxLength={6}
-                        value={pinConfirmValue}
-                        onChange={event => setPinConfirmValue(event.target.value.replace(/\D/g, '').slice(0, 6))}
-                        disabled={isSavingPin}
-                      />
-                    </label>
-                    <div className="pin-preference-actions">
-                      <button type="submit" className="pin-save-button" disabled={isSavingPin || !pinViewerId}>
-                        <i className="fa-solid fa-shield-halved"></i>
-                        {isSavingPin ? appCopy.pinSaving : pinLockConfig ? appCopy.pinChange : appCopy.pinSet}
-                      </button>
-                      {pinLockConfig && (
-                        <button type="button" className="pin-disable-button" onClick={handleDisablePin} disabled={isSavingPin}>
-                          <i className="fa-solid fa-lock-open"></i>{appCopy.pinDisable}
-                        </button>
-                      )}
-                    </div>
-                  </form>
-                  {pinSettingsNotice && <div className="pin-settings-notice" role="status"><i className="fa-solid fa-circle-info"></i>{appCopy.t(pinSettingsNotice)}</div>}
-                  <div className="pin-preference-note"><i className="fa-solid fa-shield-halved" aria-hidden="true"></i><span>{appCopy.pinDeviceNote}</span></div>
+                  <label className="settings-toggle">
+                    <input
+                      type="checkbox"
+                      checked={settings.stickerSuggestions}
+                      onChange={event => updateNotificationSettings({ stickerSuggestions: event.target.checked })}
+                      aria-label={appCopy.stickerSuggestionsEnabled}
+                    />
+                    <span className="settings-toggle-track" aria-hidden="true"><span></span></span>
+                  </label>
                 </section>
               </div>
             )}

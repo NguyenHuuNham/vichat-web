@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-22 - Hien thi phim tat va goi y sticker trong ChatUI
+
+- Thoi gian: 2026-08-24 16:42 (Asia/Saigon)
+- Loai: Tinh nang | Web | UI | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; dang chuan bi commit va deploy production
+- Muc tieu: Dua muc Phim tat vao vi tri de thay trong Cai dat, cho phep bat/tat va custom tung phim; bo form thiet lap ma PIN khoi Cai dat; them goi y sticker khi dang soan tin.
+- Pham vi: Chi ChatUI, settings theo viewer, sticker catalog va composer; khong thay doi Tinode message contract, Chatmgt API, database, membership, admin hoac luong realtime hien tai.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/conversationNotifications.js`, `src/features/chat/services/conversationNotifications.test.js`, `src/features/chat/services/stickerCatalog.js`, `src/features/chat/services/stickerCatalog.test.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `dist/index.html`.
+- Noi dung: Sap xep card Phim tat o cuoi panel Cai dat voi toggle, ghi phim, xoa/khoi phuc tung phim va khoi phuc toan bo; thay card PIN bang toggle Goi y Sticker. Goi y duoc cham diem theo tu khoa/nhan sticker, hien toi da bon sticker tren composer va click se dung lai `handleSendSticker` hien co. Toggle sticker duoc luu cung record settings rieng cua viewer.
+- Quyet dinh ky thuat: Chi bo UI va state tao/sua PIN, giu co che unlock runtime cho tai khoan da co PIN de khong lam thay doi luong bao mat cu. Sticker suggestion khong tao Tinode event/API moi, khong hien trong chatbot, mention picker, recording, mat realtime hoac group bi khoa gui tin.
+- Database/API/cau hinh: Khong migration, endpoint, schema, secret, bien moi truong hoac thay doi kien truc.
+- Kiem thu: `npm run test:frontend` dat 208/208; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` va `npm run build:production` dat voi canh bao chunk App lon hon 500 KB; `node --test src/features/chat/services/stickerCatalog.test.js src/features/chat/services/conversationNotifications.test.js src/features/chat/services/keyboardShortcuts.test.js` dat 16/16; `git diff --check` dat.
+- Rui ro con lai: Chua UAT pixel/browser production trong phien nay; can hard refresh va kiem tra card Phim tat, bat/tat/custom phim, goi y `deadline`/`cam on`, click gui sticker o chat 1-1 va group, toggle tat goi y, cung tai khoan cu da co PIN.
+- Viec tiep theo: Commit/push va chi recreate service `chat`; khong restart Chatmgt, Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis hoac Coturn.
+- Commit/PR: Chua tao.
+
 ## 2026-08-24-21 - Deploy sua loi xoa hoi thoai truc tiep
 
 - Thoi gian: 2026-08-24 16:14 (Asia/Saigon)

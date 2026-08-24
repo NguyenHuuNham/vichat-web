@@ -29,6 +29,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS = Object.freeze({
   sound: 'chime',
   language: 'vi',
   theme: 'light',
+  stickerSuggestions: true,
 });
 
 function notificationSettingsStorageKey(viewerId) {
@@ -52,6 +53,7 @@ export function normalizeNotificationSettings(value = {}) {
     sound,
     language,
     theme,
+    stickerSuggestions: value?.stickerSuggestions !== false,
   };
 }
 

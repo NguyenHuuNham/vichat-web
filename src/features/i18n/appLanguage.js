@@ -157,6 +157,8 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Nhóm sticker': 'Sticker categories',
   'Không tìm thấy sticker phù hợp': 'No matching stickers',
   'Chưa có sticker gần đây': 'No recent stickers',
+  'Gợi ý Sticker': 'Sticker suggestions',
+  'Chọn sticker gợi ý': 'Choose suggested sticker',
   'Sticker không hợp lệ.': 'The sticker is invalid.',
   'Tích cực': 'Positive',
   'Phản hồi': 'Response',

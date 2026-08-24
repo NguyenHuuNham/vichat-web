@@ -7,6 +7,7 @@ import {
   recentStickerStorageKey,
   stickerById,
   stickerPackById,
+  suggestStickersForText,
 } from './stickerCatalog.js';
 
 test('contains the twenty categorized sticker packs and all extracted assets', () => {
@@ -32,6 +33,13 @@ test('filters stickers by Vietnamese label and keyword without changing the cata
   assert.equal(STICKER_ITEMS.length, 272);
   assert.equal(filterStickers(STICKER_ITEMS, 'deadline')[0]?.id, 'attention-5');
   assert.equal(filterStickers(STICKER_ITEMS, 'cà phê')[0]?.id, 'capybara-1');
+});
+
+test('suggests stickers from the current message without changing the catalog', () => {
+  assert.equal(suggestStickersForText('deadline ngày mai')[0]?.id, 'attention-5');
+  assert.equal(suggestStickersForText('Cảm ơn bạn')[0]?.id, 'positive-4');
+  assert.deepEqual(suggestStickersForText('a'), []);
+  assert.equal(STICKER_ITEMS.length, 272);
 });
 
 test('scopes recent sticker storage by account', () => {

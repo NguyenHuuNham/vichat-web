@@ -464,6 +464,43 @@ export function filterStickers(items = STICKER_ITEMS, query = '') {
   return items.filter(item => `${item.label} ${item.keywords}`.toLocaleLowerCase('vi').includes(normalized));
 }
 
+function normalizeStickerSearchText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('vi')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+export function suggestStickersForText(text, limit = 4) {
+  const normalizedText = normalizeStickerSearchText(text);
+  if (normalizedText.length < 2) return [];
+  const queryTokens = normalizedText.split(/\s+/).filter(token => token.length >= 2);
+  if (queryTokens.length === 0) return [];
+
+  return STICKER_ITEMS
+    .map((item, index) => {
+      const label = normalizeStickerSearchText(item.label);
+      const keywords = normalizeStickerSearchText(item.keywords);
+      const labelTokens = new Set(label.split(/\s+/));
+      const keywordTokens = new Set(keywords.split(/\s+/));
+      let score = normalizedText.length >= 3
+        && ((label && normalizedText.includes(label)) || (keywords && normalizedText.includes(keywords)))
+        ? 80
+        : 0;
+      queryTokens.forEach(token => {
+        if (keywordTokens.has(token)) score += 16 + (token.length * 4);
+        else if (labelTokens.has(token)) score += 8 + (token.length * 2);
+      });
+      return { item, index, score };
+    })
+    .filter(result => result.score > 0)
+    .sort((first, second) => second.score - first.score || first.index - second.index)
+    .slice(0, Math.max(1, Number(limit) || 4))
+    .map(result => result.item);
+}
+
 export function recentStickerStorageKey(scope = 'anonymous') {
   return `${RECENT_STORAGE_PREFIX}:${String(scope || 'anonymous')}`;
 }
