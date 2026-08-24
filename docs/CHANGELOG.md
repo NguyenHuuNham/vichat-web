@@ -6,6 +6,20 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-25 - Chuyen bo chon cong ty sang block khong cuon ngang
+
+- Thoi gian: 2026-08-24 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Web | UI | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; dang cho commit va deploy
+- Muc tieu: Cho nguoi dung co nhieu tenant chon cong ty trong mot block gon, khong tran header va khong phai keo/cuon ngang.
+- Pham vi: Chi ChatUI profile panel, tenant switcher, responsive CSS va source-contract test; khong doi API switch tenant, Chatmgt, Tinode, session, membership, loading hoac realtime.
+- Noi dung: Bo carousel render nhieu cong ty tren mot hang; hien mot box tai mot thoi diem gom logo, ten, trang thai va dau check cho cong ty hien tai. Nut mui ten va phim mui ten chi doi tenant dang xem; click box van goi `requestTenantSwitch` de giu modal xac nhan va luong switch hien co.
+- Quyet dinh ky thuat: Dung index trong state va dong bo ve tenant hien tai moi khi mo profile/session metadata thay doi. Gioi han box bang CSS `min-width: 0` va ellipsis ten dai, khong dung `overflow-x`, `scrollBy` hoac `scrollIntoView`, tranh loi tran man hinh khi co nhieu cong ty.
+- Database/API/cau hinh: Khong migration, endpoint, schema, secret, bien moi truong hoac thay doi kien truc.
+- Kiem thu local: `npm run test:frontend` dat 209/209; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` va `npm run build:production` dat voi canh bao chunk App lon hon 500 KB da co; `git diff --check` dat.
+- Rui ro con lai: Chua UAT visual production voi nhieu tenant that; can hard refresh va kiem tra block logo/ten, mui ten, modal xac nhan, loading khi switch tren desktop/mobile.
+- Viec tiep theo: Commit, push, deploy rieng `chat` va health-check; rollback bang release truoc neu UAT gap loi, khong restart Chatmgt/Tinode hay reset du lieu.
+
 ## 2026-08-24-24 - Loading khoi phuc phien va chuyen cong ty
 
 - Thoi gian: 2026-08-24 18:40 (Asia/Saigon)

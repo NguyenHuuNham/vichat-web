@@ -146,28 +146,29 @@ test('keeps only safe active tenant options and switches without logout', () => 
   const switchUiSource = appSource.split('const handleTenantSwitch = async option')[1].split('const handleForcedLogout')[0];
   assert.doesNotMatch(switchUiSource, /chatManagementService\.logout/);
   assert.doesNotMatch(appSource, /tenant-switcher-menu/);
-  assert.match(appSource, /<TenantLogo src=\{option\.logo\}/);
-  assert.match(appSource, /tenantSwitcherViewportRef/);
-  assert.match(appSource, /scrollTenantSwitcher/);
-  assert.match(appSource, /requestTenantSwitch\(option\)/);
+  assert.match(appSource, /<TenantLogo src=\{selectedTenantOption\.logo\}/);
+  assert.match(appSource, /const \[tenantSwitcherIndex, setTenantSwitcherIndex\] = useState\(0\)/);
+  assert.match(appSource, /shiftTenantSwitcher/);
+  assert.match(appSource, /requestTenantSwitch\(selectedTenantOption\)/);
+  assert.doesNotMatch(appSource, /tenantSwitcherViewportRef|scrollTenantSwitcher|tenant-switcher-viewport|tenant-switcher-track/);
 });
 
 test('requires explicit confirmation before switching tenants', () => {
   assert.match(appSource, /const \[pendingTenantSwitch, setPendingTenantSwitch\] = useState\(null\)/);
-  assert.match(appSource, /onClick=\{\(\) => requestTenantSwitch\(option\)\}/);
+  assert.match(appSource, /onClick=\{\(\) => requestTenantSwitch\(selectedTenantOption\)\}/);
   assert.match(appSource, /setPendingTenantSwitch\(option\)/);
   assert.match(appSource, /tenant-switch-confirm-modal/);
   assert.match(appSource, /aria-describedby="tenant-switch-confirm-description"/);
   assert.match(appSource, /onClick=\{confirmTenantSwitch\}/);
-  const tenantOptionSource = appSource.split('{tenantOptions.map(option => {')[1].split('{tenantSwitchNotice &&')[0];
-  assert.doesNotMatch(tenantOptionSource, /handleTenantSwitch\(option\)/);
+  assert.doesNotMatch(appSource, /onClick=\{\(\) => handleTenantSwitch\(selectedTenantOption\)\}/);
   const confirmationSource = appSource.split('const confirmTenantSwitch = () => {')[1].split('useEffect(() => {')[0];
   assert.match(confirmationSource, /handleTenantSwitch\(pendingTenantSwitch\)/);
   assert.match(stylesSource, /\.workspace-overlay \{[\s\S]*?z-index: 80;/);
   assert.match(stylesSource, /\.tenant-switch-confirm-backdrop \{ z-index: 90; \}/);
-  assert.match(stylesSource, /\.tenant-switcher-viewport \{/);
+  assert.match(stylesSource, /\.tenant-switcher-control \{/);
+  assert.doesNotMatch(stylesSource, /\.tenant-switcher-viewport \{|\.tenant-switcher-track \{/);
   assert.match(stylesSource, /\.tenant-switcher-nav \{/);
-  assert.match(appSource, /data-tenant-current=\{isCurrentTenant \? 'true' : 'false'\}/);
+  assert.match(appSource, /data-tenant-current=\{String\(selectedTenantOption\.id\) === currentTenantId \? 'true' : 'false'\}/);
   assert.match(appSource, /TenantSwitchLoadingOverlay/);
   assert.match(appSource, /Đang chuyển công ty\.\.\./);
   assert.match(appSource, /reloadStarted/);
@@ -180,7 +181,7 @@ test('refreshes company logo metadata without resetting the active chat session'
   assert.match(managementServiceSource, /hydrateActiveSession\(payload, \{ preserveExisting: true \}\)/);
   assert.match(appSource, /chatManagementService\.refreshSessionMetadata\(\)/);
   assert.match(appSource, /tenantOptions: nextTenantOptions/);
-  assert.match(appSource, /title=\{option\.name\}/);
+  assert.match(appSource, /title=\{selectedTenantOption\.name\}/);
   assert.match(appSource, /tenant-switcher-option-copy/);
   assert.deepEqual(normalizeTenantOptions([{
     id: 'tenant-a',

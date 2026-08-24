@@ -2615,9 +2615,7 @@ function App() {
   const [isSwitchingTenant, setIsSwitchingTenant] = useState(false);
   const [tenantSwitchNotice, setTenantSwitchNotice] = useState('');
   const [pendingTenantSwitch, setPendingTenantSwitch] = useState(null);
-  const tenantSwitcherViewportRef = useRef(null);
-  const [tenantCarouselCanScrollPrev, setTenantCarouselCanScrollPrev] = useState(false);
-  const [tenantCarouselCanScrollNext, setTenantCarouselCanScrollNext] = useState(false);
+  const [tenantSwitcherIndex, setTenantSwitcherIndex] = useState(0);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const [forcedLogoutSeconds, setForcedLogoutSeconds] = useState(null);
   const [activeCall, setActiveCall] = useState(null);
@@ -3248,44 +3246,31 @@ function App() {
   const canSwitchTenant = tenantOptions.length > 1;
   const currentTenantId = String(profileAccount.tenantId || profileAccount.tenant_id || '').trim();
 
-  const updateTenantCarouselBounds = useCallback(() => {
-    const viewport = tenantSwitcherViewportRef.current;
-    if (!viewport) return;
-    setTenantCarouselCanScrollPrev(viewport.scrollLeft > 2);
-    setTenantCarouselCanScrollNext(viewport.scrollLeft + viewport.clientWidth < viewport.scrollWidth - 2);
-  }, []);
+  const tenantOptionKey = tenantOptions.map(option => String(option.id)).join('|');
+  const currentTenantOptionIndex = tenantOptions.findIndex(option => String(option.id) === currentTenantId);
+  const selectedTenantIndex = tenantOptions.length
+    ? Math.min(Math.max(tenantSwitcherIndex, 0), tenantOptions.length - 1)
+    : 0;
+  const selectedTenantOption = tenantOptions[selectedTenantIndex] || null;
 
-  const scrollTenantSwitcher = useCallback((direction) => {
-    const viewport = tenantSwitcherViewportRef.current;
-    if (!viewport) return;
-    const distance = Math.max(viewport.clientWidth * 0.8, 150);
-    if (typeof viewport.scrollBy === 'function') {
-      viewport.scrollBy({ left: direction * distance, behavior: 'smooth' });
-    } else {
-      viewport.scrollLeft += direction * distance;
-    }
-    if (typeof window !== 'undefined') window.setTimeout(updateTenantCarouselBounds, 260);
-  }, [updateTenantCarouselBounds]);
+  const shiftTenantSwitcher = useCallback((direction) => {
+    setTenantSwitcherIndex(previousIndex => {
+      if (tenantOptions.length < 2) return 0;
+      return Math.min(Math.max(previousIndex + direction, 0), tenantOptions.length - 1);
+    });
+  }, [tenantOptions.length]);
 
   useEffect(() => {
-    const viewport = tenantSwitcherViewportRef.current;
-    if (workspacePanel !== 'profile' || !canSwitchTenant || !viewport) {
-      setTenantCarouselCanScrollPrev(false);
-      setTenantCarouselCanScrollNext(false);
+    if (!canSwitchTenant) {
+      setTenantSwitcherIndex(0);
       return undefined;
     }
-    const currentOption = viewport.querySelector('[data-tenant-current="true"]');
-    if (currentOption && typeof currentOption.scrollIntoView === 'function') {
-      currentOption.scrollIntoView({ block: 'nearest', inline: 'center' });
-    }
-    updateTenantCarouselBounds();
-    viewport.addEventListener('scroll', updateTenantCarouselBounds, { passive: true });
-    window.addEventListener('resize', updateTenantCarouselBounds);
-    return () => {
-      viewport.removeEventListener('scroll', updateTenantCarouselBounds);
-      window.removeEventListener('resize', updateTenantCarouselBounds);
-    };
-  }, [canSwitchTenant, currentTenantId, tenantOptions.length, updateTenantCarouselBounds, workspacePanel]);
+    if (workspacePanel !== 'profile') return undefined;
+    setTenantSwitcherIndex(previousIndex => currentTenantOptionIndex >= 0
+      ? currentTenantOptionIndex
+      : Math.min(previousIndex, tenantOptions.length - 1));
+    return undefined;
+  }, [canSwitchTenant, currentTenantId, currentTenantOptionIndex, tenantOptionKey, tenantOptions.length, workspacePanel]);
 
   useEffect(() => () => {
     if (voiceTimerRef.current) window.clearInterval(voiceTimerRef.current);
@@ -11991,70 +11976,56 @@ function App() {
                     {canSwitchTenant && (
                       <div className="tenant-switcher" role="group" aria-label={appCopy.t('Chuyển công ty')}>
                         <span className="tenant-switcher-caption"><i className="fa-solid fa-building" aria-hidden="true"></i><span>{appCopy.t('Chọn công ty')}</span></span>
-                        <button
-                          type="button"
-                          className="tenant-switcher-nav"
-                          title={appCopy.t('Công ty trước')}
-                          aria-label={appCopy.t('Công ty trước')}
-                          onClick={() => scrollTenantSwitcher(-1)}
-                          disabled={!tenantCarouselCanScrollPrev || isSwitchingTenant}
-                        >
-                          <i className="fa-solid fa-chevron-left" aria-hidden="true"></i>
-                        </button>
-                        <div
-                          className="tenant-switcher-viewport"
-                          ref={tenantSwitcherViewportRef}
-                          tabIndex="0"
-                          aria-label={appCopy.t('Trượt để chọn công ty')}
-                          onKeyDown={event => {
-                            if (event.key === 'ArrowLeft') {
-                              event.preventDefault();
-                              scrollTenantSwitcher(-1);
-                            } else if (event.key === 'ArrowRight') {
-                              event.preventDefault();
-                              scrollTenantSwitcher(1);
-                            }
-                          }}
-                        >
-                          <div className="tenant-switcher-track">
-                            {tenantOptions.map(option => {
-                              const isCurrentTenant = String(option.id) === currentTenantId;
-                              return (
-                                <button
-                                  type="button"
-                                  className={`tenant-switcher-option ${isCurrentTenant ? 'current' : ''}`}
-                                  key={option.id}
-                                  title={option.name}
-                                  aria-label={option.name}
-                                  aria-pressed={isCurrentTenant}
-                                  data-tenant-current={isCurrentTenant ? 'true' : 'false'}
-                                  onClick={() => requestTenantSwitch(option)}
-                                  disabled={isSwitchingTenant || isCurrentTenant}
-                                >
-                                  <span className="tenant-switcher-option-icon">
-                                    <TenantLogo src={option.logo} name={option.name} version={option.logoVersion} />
-                                  </span>
-                                  <span className="tenant-switcher-option-copy">
-                                    <strong>{option.name}</strong>
-                                    <small>{isCurrentTenant ? appCopy.t('Đang dùng') : appCopy.t('Chọn')}</small>
-                                  </span>
-                                  {isCurrentTenant && <i className="fa-solid fa-check tenant-switcher-check" aria-hidden="true"></i>}
-                                </button>
-                              );
-                            })}
-                          </div>
+                        <div className="tenant-switcher-control">
+                          <button
+                            type="button"
+                            className="tenant-switcher-nav"
+                            title={appCopy.t('Công ty trước')}
+                            aria-label={appCopy.t('Công ty trước')}
+                            onClick={() => shiftTenantSwitcher(-1)}
+                            disabled={selectedTenantIndex <= 0 || isSwitchingTenant}
+                          >
+                            <i className="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                          </button>
+                          {selectedTenantOption && (
+                            <button
+                              type="button"
+                              className={`tenant-switcher-option ${String(selectedTenantOption.id) === currentTenantId ? 'current' : ''}`}
+                              title={selectedTenantOption.name}
+                              aria-label={selectedTenantOption.name}
+                              aria-pressed={String(selectedTenantOption.id) === currentTenantId}
+                              data-tenant-current={String(selectedTenantOption.id) === currentTenantId ? 'true' : 'false'}
+                              onClick={() => requestTenantSwitch(selectedTenantOption)}
+                              onKeyDown={event => {
+                                if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                                  event.preventDefault();
+                                  shiftTenantSwitcher(event.key === 'ArrowLeft' ? -1 : 1);
+                                }
+                              }}
+                              disabled={isSwitchingTenant || String(selectedTenantOption.id) === currentTenantId}
+                            >
+                              <span className="tenant-switcher-option-icon">
+                                <TenantLogo src={selectedTenantOption.logo} name={selectedTenantOption.name} version={selectedTenantOption.logoVersion} />
+                              </span>
+                              <span className="tenant-switcher-option-copy">
+                                <strong>{selectedTenantOption.name}</strong>
+                                <small>{String(selectedTenantOption.id) === currentTenantId ? appCopy.t('Đang dùng') : appCopy.t('Chọn')}</small>
+                              </span>
+                              {String(selectedTenantOption.id) === currentTenantId && <i className="fa-solid fa-check tenant-switcher-check" aria-hidden="true"></i>}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="tenant-switcher-nav"
+                            title={appCopy.t('Công ty tiếp theo')}
+                            aria-label={appCopy.t('Công ty tiếp theo')}
+                            onClick={() => shiftTenantSwitcher(1)}
+                            disabled={selectedTenantIndex >= tenantOptions.length - 1 || isSwitchingTenant}
+                          >
+                            <i className="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                          </button>
+                          <span className="tenant-switcher-count" aria-label={`${selectedTenantIndex + 1} / ${tenantOptions.length}`}>{selectedTenantIndex + 1}/{tenantOptions.length}</span>
                         </div>
-                        <button
-                          type="button"
-                          className="tenant-switcher-nav"
-                          title={appCopy.t('Công ty tiếp theo')}
-                          aria-label={appCopy.t('Công ty tiếp theo')}
-                          onClick={() => scrollTenantSwitcher(1)}
-                          disabled={!tenantCarouselCanScrollNext || isSwitchingTenant}
-                        >
-                          <i className="fa-solid fa-chevron-right" aria-hidden="true"></i>
-                        </button>
-                        <span className="tenant-switcher-count" aria-hidden="true">{tenantOptions.length}</span>
                         {tenantSwitchNotice && <div className="tenant-switcher-notice" role="alert"><i className="fa-solid fa-triangle-exclamation"></i><span>{tenantSwitchNotice}</span></div>}
                         {isSwitchingTenant && <div className="tenant-switcher-loading"><i className="fa-solid fa-spinner fa-spin"></i>{appCopy.t('Đang chuyển công ty...')}</div>}
                       </div>
