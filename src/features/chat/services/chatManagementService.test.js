@@ -367,6 +367,14 @@ test('keeps dark stickers crisp and group activity announcements readable', () =
   assert.match(stylesSource, /\.sticker-message-image \{ filter: none !important; mix-blend-mode: normal; \}/);
 });
 
+test('keeps conversation background scope isolated from the message and presence flows', () => {
+  assert.match(appSource, /writeConversationBackgroundPreference\([\s\S]*CONVERSATION_BACKGROUND_SCOPES\.LOCAL/);
+  assert.match(appSource, /tinodeClient\.uploadConversationBackground\(topicName, selectedUpload\)/);
+  assert.match(appSource, /tinodeClient\.updateConversationBackground\(topicName, nextBackground\)/);
+  assert.match(tinodeSource, /const latestBackground = latestSharedConversationBackground\(\{ messages: finalMessages \}\)/);
+  assert.match(tinodeSource, /scope: CONVERSATION_BACKGROUND_SCOPES\.SHARED/);
+});
+
 test('group mute and reaction controls preserve the existing checkbox flow and expose actor details', () => {
   const muteSource = appSource.split('const handleConversationMuteToggle')[1].split('const handleNotificationMuteSubmit')[0];
   assert.match(muteSource, /typeof event\?\.target\?\.checked === 'boolean'/);

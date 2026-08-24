@@ -7,6 +7,7 @@ import {
   normalizeConversationBackground,
   readConversationBackground,
   readConversationBackgroundPreference,
+  sharedConversationBackgroundFromEvent,
   validateConversationBackgroundFile,
   writeConversationBackgroundPreference,
 } from './conversationBackground.js';
@@ -94,6 +95,36 @@ test('latest shared background event wins, including an explicit reset', () => {
     }).id,
     background.id,
   );
+});
+
+test('shared background events are normalized for both direct and group realtime snapshots', () => {
+  const background = sharedConversationBackgroundFromEvent({
+    action: 'conversation_background_changed',
+    backgroundId: 'shared-preset',
+    backgroundUrl: 'https://example.test/background.jpg',
+    backgroundLabel: 'Shared preset',
+    backgroundKind: 'preset',
+    updatedAt: '2026-08-24T12:00:00.000Z',
+  });
+
+  assert.deepEqual(background, {
+    id: 'shared-preset',
+    url: 'https://example.test/background.jpg',
+    customKey: '',
+    label: 'Shared preset',
+    kind: 'preset',
+    updatedAt: '2026-08-24T12:00:00.000Z',
+    scope: CONVERSATION_BACKGROUND_SCOPES.SHARED,
+  });
+  assert.equal(sharedConversationBackgroundFromEvent({
+    action: 'conversation_background_changed',
+    backgroundUrl: '',
+  }), null);
+  assert.equal(sharedConversationBackgroundFromEvent({
+    action: 'conversation_background_changed',
+    scope: CONVERSATION_BACKGROUND_SCOPES.LOCAL,
+    backgroundUrl: 'https://example.test/local-only.jpg',
+  }), undefined);
 });
 
 test('background file validation accepts images and enforces the local group limit', () => {

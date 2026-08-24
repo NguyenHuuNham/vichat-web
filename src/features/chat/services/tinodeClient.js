@@ -22,6 +22,7 @@ import { normalizeImageBatch } from './imageBatchLayout';
 import { normalizeGroupSettings } from './groupSettings';
 import { applyPollEvent, normalizePoll, normalizePollEvent } from './poll';
 import {
+  CONVERSATION_BACKGROUND_SCOPES,
   latestSharedConversationBackground,
   normalizeConversationBackground,
 } from './conversationBackground';
@@ -1029,9 +1030,10 @@ function toConversation(topic, tinode) {
   const directPeer = !isGroup
     ? members.find(member => member.id !== tinode.getCurrentUserID()) || members[0]
     : null;
-  const latestBackground = !isGroup
-    ? latestSharedConversationBackground({ messages: finalMessages })
-    : undefined;
+  // The system event can arrive before the metadata packet on another client.
+  // Use it as the immediate shared snapshot, while metadata remains the reload
+  // fallback when the bounded message history no longer contains the event.
+  const latestBackground = latestSharedConversationBackground({ messages: finalMessages });
   const auxBackground = !isGroup ? conversationBackgroundFromAux(topic) : undefined;
   const groupBackground = isGroup
     ? normalizeConversationBackground(
@@ -1041,11 +1043,11 @@ function toConversation(topic, tinode) {
         || topic.public?.conversation_background,
     )
     : undefined;
-  const rawConversationBackground = isGroup
-    ? groupBackground
-    : auxBackground !== undefined
-      ? auxBackground
-      : latestBackground;
+  const rawConversationBackground = latestBackground !== undefined
+    ? latestBackground
+    : isGroup
+      ? groupBackground
+      : auxBackground;
   const conversationBackground = rawConversationBackground
     ? { ...rawConversationBackground, url: normalizeAvatar(rawConversationBackground.url) }
     : rawConversationBackground;
@@ -2262,7 +2264,7 @@ export const tinodeClient = {
     return topic.publish(`${SYSTEM_EVENT_PREFIX}${JSON.stringify(event)}`);
   },
 
-  async updateDirectConversationBackground(topicName, background = null) {
+  async updateConversationBackground(topicName, background = null) {
     if (!topicName) throw new Error('Cuộc trò chuyện chưa có topic Tinode.');
     const topic = await subscribeTopic(topicName, { historyLimit: OPEN_HISTORY_LIMIT });
     const normalized = background ? normalizeConversationBackground(background) : null;
@@ -2271,6 +2273,7 @@ export const tinodeClient = {
     const actorName = currentSession?.profile?.name || '';
     const event = {
       action: 'conversation_background_changed',
+      scope: CONVERSATION_BACKGROUND_SCOPES.SHARED,
       actorId,
       actorName,
       backgroundId: normalized?.id || '',
@@ -2282,7 +2285,7 @@ export const tinodeClient = {
     const sharedBackground = normalized
       ? {
         ...normalized,
-        scope: 'shared',
+        scope: CONVERSATION_BACKGROUND_SCOPES.SHARED,
         url: tinodeMediaPath(normalized.url) || normalized.url,
       }
       : null;
@@ -2295,12 +2298,18 @@ export const tinodeClient = {
       if (sharedBackground) publicVichat.conversationBackground = sharedBackground;
       else delete publicVichat.conversationBackground;
       publicMetadata.vichat = publicVichat;
-      await topic.setMeta({ desc: { public: publicMetadata } });
+      const metadataResult = await topic.setMeta({ desc: { public: publicMetadata } });
+      if (metadataResult?.code >= 300) {
+        throw new Error(metadataResult.text || 'Tinode từ chối cập nhật hình nền nhóm.');
+      }
     } else {
       // P2P public metadata is reserved for the user profile. Store the shared
       // presentation preference in aux so both subscribers can read it safely.
       const auxValue = sharedBackground ? JSON.stringify(sharedBackground) : TINODE_DELETE_CHAR;
-      await topic.setMeta({ aux: { [CONVERSATION_BACKGROUND_AUX_KEY]: auxValue } });
+      const metadataResult = await topic.setMeta({ aux: { [CONVERSATION_BACKGROUND_AUX_KEY]: auxValue } });
+      if (metadataResult?.code >= 300) {
+        throw new Error(metadataResult.text || 'Tinode từ chối cập nhật hình nền cuộc trò chuyện.');
+      }
     }
     const draft = topic.createMessage(`${SYSTEM_EVENT_PREFIX}${JSON.stringify(event)}`, false);
     draft.head = {
@@ -2309,15 +2318,22 @@ export const tinodeClient = {
       'x-sender-id': actorId,
     };
     const result = await topic.publishMessage(draft);
-    if (!result) throw new Error('Tinode không xác nhận thay đổi hình nền.');
+    if (!result || result.code >= 300) throw new Error(result?.text || 'Tinode không xác nhận thay đổi hình nền.');
     emitConversation(topic);
-    return normalized ? { ...normalized, scope: 'shared' } : normalized;
+    return normalized ? { ...normalized, scope: CONVERSATION_BACKGROUND_SCOPES.SHARED } : normalized;
+  },
+
+  async updateDirectConversationBackground(topicName, background = null) {
+    return this.updateConversationBackground(topicName, background);
   },
 
   async uploadConversationBackground(topicName, file) {
     if (!topicName || !file) throw new Error('Thiếu ảnh hình nền hoặc cuộc trò chuyện.');
     const topic = await subscribeTopic(topicName, { historyLimit: 0 });
-    return uploadFile(getClient(), file, topic.name);
+    const uploadedUrl = await uploadFile(getClient(), file, topic.name);
+    const normalizedUrl = normalizeAvatar(uploadedUrl);
+    if (!normalizedUrl) throw new Error('Tinode không trả về URL ảnh hình nền hợp lệ.');
+    return normalizedUrl;
   },
 
   async sendFriendRequest(uid, note = '') {

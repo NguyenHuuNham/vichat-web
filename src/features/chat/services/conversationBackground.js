@@ -215,21 +215,29 @@ export function validateConversationBackgroundFile(file, { localOnly = false } =
   return '';
 }
 
+export function sharedConversationBackgroundFromEvent(event, fallbackUpdatedAt = '') {
+  if (event?.action !== 'conversation_background_changed') return undefined;
+  const eventScope = text(event.scope || event.visibility || event.backgroundScope);
+  if (eventScope && eventScope !== CONVERSATION_BACKGROUND_SCOPES.SHARED) return undefined;
+  const backgroundUrl = text(event.backgroundUrl || event.background_url);
+  if (!backgroundUrl) return null;
+  return normalizeConversationBackground({
+    id: event.backgroundId || event.background_id,
+    url: backgroundUrl,
+    label: event.backgroundLabel || event.background_label,
+    kind: event.backgroundKind || event.background_kind,
+    scope: CONVERSATION_BACKGROUND_SCOPES.SHARED,
+    updatedAt: event.updatedAt || event.updated_at || fallbackUpdatedAt,
+  });
+}
+
 export function latestSharedConversationBackground(room) {
   const messages = Array.isArray(room?.messages) ? room.messages : [];
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     const event = message?.systemEvent || message;
-    if (event?.action !== 'conversation_background_changed') continue;
-    const background = normalizeConversationBackground({
-      id: event.backgroundId,
-      url: event.backgroundUrl || event.background_url,
-      label: event.backgroundLabel || event.background_label,
-      kind: event.backgroundKind || event.background_kind,
-      scope: CONVERSATION_BACKGROUND_SCOPES.SHARED,
-      updatedAt: event.updatedAt || event.updated_at || message.createdAt,
-    });
-    return background;
+    const background = sharedConversationBackgroundFromEvent(event, message?.createdAt);
+    if (background !== undefined) return background;
   }
   return undefined;
 }

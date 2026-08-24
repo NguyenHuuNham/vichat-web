@@ -6993,6 +6993,11 @@ function App() {
     try {
       const sharedScope = chatMode !== 'demo'
         && conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.SHARED;
+      const selectedUpload = selected?.file || selected?.blob;
+      if (selectedUpload) {
+        const uploadValidationError = validateConversationBackgroundFile(selectedUpload, { localOnly: !sharedScope });
+        if (uploadValidationError) throw new Error(uploadValidationError);
+      }
       let nextBackground = selected
         ? normalizeConversationBackground({
           ...selected,
@@ -7057,21 +7062,21 @@ function App() {
         );
         if (realtimeMessagingPending) throw new Error('Kết nối realtime Tinode chưa sẵn sàng.');
         const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
-        const selectedUpload = selected?.file || selected?.blob;
         if (selected?.kind === 'custom' && !selectedUpload && String(selected?.url || '').startsWith('indexeddb://')) {
           throw new Error('Ảnh hình nền cục bộ không còn sẵn sàng. Hãy chọn lại ảnh từ máy tính.');
         }
         if (selectedUpload) {
           const uploadedUrl = await tinodeClient.uploadConversationBackground(topicName, selectedUpload);
+          if (!uploadedUrl) throw new Error('Không nhận được ảnh hình nền sau khi tải lên.');
           nextBackground = normalizeConversationBackground({
             id: 'custom',
-            url: normalizeTinodeMediaUrl(uploadedUrl),
+            url: uploadedUrl,
             label: selected.file?.name || selected.label || 'Ảnh tải lên',
             kind: 'custom',
             scope: CONVERSATION_BACKGROUND_SCOPES.SHARED,
           });
         }
-        nextBackground = await tinodeClient.updateDirectConversationBackground(topicName, nextBackground);
+        nextBackground = await tinodeClient.updateConversationBackground(topicName, nextBackground);
         if (nextBackground?.url) nextBackground = {
           ...nextBackground,
           url: normalizeTinodeMediaUrl(nextBackground.url),

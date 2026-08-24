@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-27 - Sua dong bo realtime va upload hinh nen hoi thoai
+
+- Thoi gian: 2026-08-24 20:08 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Web | Realtime | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code; dang cho commit va deploy
+- Muc tieu: Khi chon chia se, group va chat 1-1 phai doi hinh nen cho cac viewer ngay realtime kem system event; khi chon `Chi minh toi`, chi viewer hien tai doi va khong phat thong bao.
+- Pham vi: ChatUI background picker/upload, Tinode shared metadata va system event, conversation projection; khong sua message, receipt, presence, membership, Chatmgt hay database.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/conversationBackground.js`, `src/features/chat/services/conversationBackground.test.js`, `src/features/chat/services/chatManagementService.test.js`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Dung event nen shared moi nhat lam snapshot realtime cho ca group/direct khi metadata packet den tre; metadata Tinode van la fallback sau reload. Shared upload chi commit sau khi server tra media URL hop le, kiem tra ma loi metadata/publish; local tiep tuc luu viewer/tenant/conversation-scoped va khong upload/ghi topic/publish event.
+- Quyet dinh ky thuat: Giu aux cho P2P va public `vichat.conversationBackground` cho group; them scope shared vao event va giu alias update cu de khong lam vo luong goi hien co. Khong thay doi transport message hoac cac realtime channel khac.
+- Database/API/cau hinh: Khong migration, endpoint, schema, secret hoac bien moi truong moi.
+- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js src/features/chat/services/conversationBackground.test.js src/features/chat/services/chatRealtime.test.js` dat 65/65; `npm run test:frontend` dat 215/215; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` dat voi canh bao chunk App lon hon 500 KB da co; `npm run build:production` dat khi chay rieng; `git diff --check` dat.
+- Rui ro con lai: Chua UAT production bang hai tai khoan that cho shared/local group, shared/local direct va upload anh protected; can hard refresh sau deploy.
+- Viec tiep theo: Commit, push, deploy release chi recreate `chat`, kiem tra health/bundle/log va UAT realtime hai viewer; rollback chi tro `previous` va recreate `chat`, khong reset Tinode/topic/message hay database.
+- Commit/PR: Chua tao.
+
 ## 2026-08-24-26 - Hoan thien thong bao tin chua doc va nut ve tin moi nhat
 
 - Thoi gian: 2026-08-24 19:39 (Asia/Saigon); deploy follow-up 2026-08-24 19:52 (Asia/Saigon)

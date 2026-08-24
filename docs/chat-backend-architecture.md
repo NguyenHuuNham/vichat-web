@@ -169,6 +169,10 @@ remains reserved for the user profile, while group topics use the existing
 public `vichat.conversationBackground` metadata. Direct participants or group
 members therefore restore a shared background after reload and receive the
 actor notification; local group preferences remain viewer-scoped.
+The realtime projection also applies the newest shared background event before
+the accompanying Tinode metadata packet when those packets cross in flight;
+the persisted topic metadata remains the recovery source after reload. Local
+changes never upload, write topic metadata, or publish a system event.
 The message list keeps the background in a sticky layer inside the full
 scrollable message content. Light mode leaves the image sharp and uses
 translucent readable message surfaces; dark mode adds a light contrast veil and
