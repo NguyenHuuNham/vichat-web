@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-21 - Deploy sua loi xoa hoi thoai truc tiep
+
+- Thoi gian: 2026-08-24 16:14 (Asia/Saigon)
+- Loai: Van hanh | Sua loi | Web | Chatmgt | Tinode | Kiem thu | Tai lieu
+- Trang thai: Da deploy production; san sang UAT
+- Muc tieu: Dua ban sua direct chat len production de nguoi dung xoa lich su rieng van nhan tin binh thuong, khong lam mat topic, nickname hoac nen hoi thoai.
+- Pham vi: Chi recreate `chatmgt` va `chat`; khong migration, khong `docker compose down`, khong restart Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis, Coturn hoac volume.
+- Noi dung: Release bat bien duoc tao tu source commit `d36e8eb` (feature `c171785`), copy `.env` va runtime production hien tai, sau do build hai image moi. `current` tro sang release moi va `previous` giu release presence truoc do.
+- Quyet dinh trien khai: Archive chi gom file tracked, khong gom `.env`/secret; rollback bang symlink `previous` va recreate lai rieng `chatmgt`/`chat`, khong dong vao du lieu Tinode hoac database.
+- Kiem thu: Archive remote checksum SHA-256 khop `7D4F5FE846CFE2A78F14B382D26793B5A391064CCBFEF4AFC30385A5E537BC46`; `docker compose config --quiet`, build `chatmgt`/`chat`, recreate tung service, local/public health (`8094`, `chat.upgo.vn`, `chatmgt.upgo.vn`), `sudo nginx -t`, bundle marker `clearConversationDeletion`, backend marker `direct_deleted_at_by_user` va scan log 10 phut deu dat.
+- Trien khai: Archive `/opt/deploy/chat/incoming/direct-chat-deletion-c171785.tar.gz`; release `/opt/deploy/chat/releases/direct-chat-deletion-c171785-20260824-090115`; `current` tro release nay, `previous` tro `/opt/deploy/chat/releases/directory-presence-d010d89`. Image ChatUI `sha256:6f37f2f1002d5f2c84bda49b43dc63650abab3c843eecb7196959efcebe42e16`, Chatmgt `sha256:9f4a1a9788d78c0ef33f4fc71239bbd89b0a7d880f1d9272094973f0ced56336`; container moi lan luot `2f5cdadcc52e` va `5aa69e4f4129`. Rollback tags `songhong-production-chat:rollback-before-direct-chat-deletion-c171785` va `songhong-production-chatmgt:rollback-before-direct-chat-deletion-c171785` da luu.
+- Kiem tra container giu nguyen: Tinode bridge `7d9c0e317719`, chatbot webhook `2882b6109176`, ChatAPI `8476615ad4ac`, Redis `ceef7df23feb`, PostgreSQL `78a434b49404`/`9f6e4dcc9c2f`, Coturn `aa680d35fdc0`.
+- Rui ro con lai: Chua UAT bang hai tai khoan that de xac nhan Tinode realtime sau khi mot viewer xoa direct chat; smoke-check khong thay the duoc viec gui tin giua hai trinh duyet.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, dung hai tai khoan test xoa chat 1-1 o mot viewer, gui tin tu viewer con lai va xac nhan viewer da xoa chi thay tin moi, nickname/nen van con; kiem tra lai chat group va luong admin khong doi. Neu loi, tro `current` ve `previous` va recreate rieng hai service.
+- Commit/PR: Source `c171785`, changelog truoc `d36e8eb`, deployment record dang cho commit docs.
+
 ## 2026-08-24-20 - Sua loi xoa hoi thoai truc tiep
 
 - Thoi gian: 2026-08-24 (Asia/Saigon)
