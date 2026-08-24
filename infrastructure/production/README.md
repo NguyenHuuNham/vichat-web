@@ -280,11 +280,13 @@ ChatUI receives only a short-lived token from `/api/v1/auth/tinode-token`.
 returned by the central Tinode provider. Keep it equal to the provider policy;
 the local rollback ChatAPI default remains separate.
 
-Remove an employee from the tenant in UpGO Account and wait for the directory
-sync interval. Chatmgt must mark the projection inactive and the next Chatmgt
-or Tinode request must reject the old session. Account administrator login
-remains at `chatmgt.upgo.vn`; a normal employee cannot obtain the management
-scope.
+Disable or remove an employee in UpGO Account and wait for the directory sync
+interval. When Account returns an explicit inactive/deleted record, Chatmgt
+must mark the projection inactive and the next Chatmgt or Tinode request must
+reject the old session. A user omitted from a partial/paginated directory
+snapshot must remain usable until Account confirms the membership change.
+Account administrator login remains at `chatmgt.upgo.vn`; a normal employee
+cannot obtain the management scope.
 
 Log out and confirm refresh cannot reopen the protected UI and
 `/api/v1/auth/me` returns `401` or `403`. Repeat with two companies using the

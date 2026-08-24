@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-16 - Khong thu hoi phien tu snapshot directory thieu du lieu
+
+- Thoi gian: 2026-08-24 11:36 (Asia/Saigon)
+- Loai: Sua loi | Xac thuc | Chatmgt | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code; chua deploy production
+- Muc tieu: Ngan viec employee dang chat binh thuong bi `SESSION_REVOKED` khi mot lan dong bo danh ba Account tra ve snapshot thieu user.
+- Pham vi: Chatmgt Account directory sync, `/api/v1/auth/me`, test auth contract, tai lieu kien truc va huong dan acceptance; khong thay doi ChatUI, Tinode message/realtime hay quyen admin.
+- File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`, `infrastructure/production/README.md`, `docs/CHANGELOG.md`.
+- Noi dung: Bo logic coi user khong xuat hien trong snapshot la da bi thu hoi; giu viec deactive khi Account tra record explicit inactive/deleted va giu revalidation membership truc tiep cua session hien tai. Them self-healing co dieu kien cho row cu co `directory_removed_at`, chi khoi phuc sau khi cung Account session, tenant, auth version va membership duoc xac nhan.
+- Quyet dinh ky thuat: Directory response co the partial/paginated nen chi la phep cong projection, khong duoc suy dien phep tru tu viec thieu record. Khong tu dong khoi phuc account bi admin revoke hoac sai tenant; marker cu phai qua `_validated_account_identity` truoc khi xoa.
+- Database/API/cau hinh: Khong migration, khong schema/bien moi truong/secret moi; giu nguyen endpoint va response directory, them nhanh phuc hoi an toan trong `/api/v1/auth/me`.
+- Kiem thu: `python -m unittest discover -s chatservice-main/tests -q` dat 183 tests, skip 61; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 44/44; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/tests/test_chat_auth_contract.py` dat; `npm run test:frontend` dat 195/195; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` va `npm run build:production` dat voi warning chunk App lon hon 500 KB da co; `git diff --check` dat.
+- Rui ro con lai: Neu Account xoa user nhung directory chi omit user ma khong tra explicit inactive/deleted, projection cua user do duoc giu cache de tranh logout nham; session cua chinh user van bi tu choi khi `/auth/me` revalidate membership. Chua UAT production bang hai tai khoan that.
+- Viec tiep theo: Deploy rieng Chatmgt, hard refresh ChatUI, theo doi `/auth/me` va `directory_sync` voi hai tai khoan; xac nhan snapshot thieu khong lam mat phien va record explicit inactive van bi chan. Khong can migration.
+- Commit/PR: Chua tao; chua deploy production.
+
 ## 2026-08-24-15 - Keep avatar crop above profile panel
 
 - Thoi gian: 2026-08-24 10:28 (Asia/Saigon)

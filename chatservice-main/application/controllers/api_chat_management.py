@@ -617,6 +617,10 @@ def _sso_account(identity, mark_login=True, authoritative_avatar=None):
     properties["account_email"] = account_email or ""
     if identity.get("directory_projection"):
         properties["directory_synced_at"] = now
+    if account.active:
+        # Clear the marker left by the former incomplete-snapshot path after
+        # Account has supplied a confirmed active identity.
+        properties.pop("directory_removed_at", None)
     properties.setdefault("auth_version", 0)
     account.properties = properties
     return tenant, account
@@ -646,6 +650,61 @@ async def _validated_account_identity(request, account):
             "ACCOUNT_ROLE_CHANGED",
         )
     return identity
+
+
+async def _restore_directory_removed_account(request):
+    """Repair only projections previously disabled by an incomplete snapshot."""
+    try:
+        token_user = current_jwt_user(request)
+    except Exception:
+        token_user = None
+    if not token_user or token_user.get("auth_method") != "account_sso":
+        return None
+
+    tenant_id = str(
+        token_user.get("current_tenant_id") or token_user.get("tenant_id") or ""
+    ).strip()
+    user_id = _user_id(token_user)
+    if not tenant_id or not user_id:
+        return None
+    account = ManagementAccount.query.filter(
+        ManagementAccount.id == user_id,
+        ManagementAccount.tenant_id == tenant_id,
+    ).first()
+    properties = dict((account.properties if account is not None else {}) or {})
+    if (
+        account is None
+        or account.active
+        or properties.get("auth_source") != "account"
+        or not properties.get("directory_removed_at")
+        or int(token_user.get("auth_version") or 0)
+        != int(properties.get("auth_version") or 0)
+    ):
+        return None
+    if _tenant_by_id(tenant_id) is None:
+        return None
+
+    try:
+        await _validated_account_identity(request, account)
+    except AccountSSOError as error:
+        if error.status_code == 503:
+            return _account_sso_error(error)
+        return None
+
+    account.active = True
+    properties.pop("directory_removed_at", None)
+    account.properties = properties
+    account.updated_at = int(time.time())
+    try:
+        db.session.commit()
+    except Exception as error:
+        db.session.rollback()
+        logger.exception("Could not restore Account directory projection %s: %s", account.id, error)
+        return json({
+            "error_code": "ACCOUNT_PROJECTION_RESTORE_UNAVAILABLE",
+            "error_message": "The account session is temporarily unavailable.",
+        }, status=503)
+    return None
 
 
 def _account_projection_matches_identity(account, identity):
@@ -1596,6 +1655,9 @@ async def employee_password_login(request):
 
 @app.route('/api/v1/auth/me', methods=['GET'])
 async def management_current_user(request):
+    recovery_response = await _restore_directory_removed_account(request)
+    if recovery_response is not None:
+        return recovery_response
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _current_session_error(request)
@@ -2443,14 +2505,16 @@ async def management_users(request):
                 # Recheck after the directory request so a concurrent Account tenant
                 # switch cannot project the new tenant's users into the old JWT tenant.
                 await _validated_account_identity(request, account)
-                synced_account_ids = set()
+                # Account directory responses may be partial or paginated; omission
+                # is not proof that an existing membership was revoked.
                 tinode_candidates = []
                 for directory_identity in identities:
                     try:
                         _tenant, synced_account = _sso_account(directory_identity, mark_login=False)
-                        synced_account_ids.add(str(synced_account.id))
                         tinode_candidates.append(synced_account)
                         synced_count += 1
+                        if not synced_account.active:
+                            deactivated_count += 1
                     except AccountSSOError as error:
                         skipped_count += 1
                         logger.warning(
@@ -2467,21 +2531,6 @@ async def management_users(request):
                         account_id,
                         error,
                     )
-                if synced_account_ids:
-                    missing_accounts = ManagementAccount.query.filter(
-                        ManagementAccount.tenant_id == tenant_id,
-                        ManagementAccount.active.is_(True),
-                        ManagementAccount.properties.contains({"auth_source": "account"}),
-                        ~ManagementAccount.id.in_(synced_account_ids),
-                    ).all()
-                    now = int(time.time())
-                    for missing_account in missing_accounts:
-                        missing_account.active = False
-                        missing_account.updated_at = now
-                        missing_properties = dict(missing_account.properties or {})
-                        missing_properties["directory_removed_at"] = now
-                        missing_account.properties = missing_properties
-                        deactivated_count += 1
                 db.session.commit()
                 _ACCOUNT_DIRECTORY_SYNC_CACHE[tenant_id] = time.time()
                 sync_status = "partial" if tinode_failed else "fresh"

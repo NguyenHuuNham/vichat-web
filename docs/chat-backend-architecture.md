@@ -134,6 +134,15 @@ serializer also reads `avatar_url` and `avatarUrl` for older records, while ever
 new group update writes the canonical pair so a reload, tenant switch, reconnect,
 or deployment cannot fall back to a stale Tinode-only value.
 
+Account directory synchronization is additive: a directory response may be
+paginated or otherwise partial, so an existing Chatmgt projection is never
+deactivated merely because its Account user is absent from one snapshot. A
+projection is deactivated only when Account returns that user with an explicit
+inactive/deleted status or when the authenticated Account membership check
+rejects the current session. Projections marked by the former incomplete-
+snapshot path are repaired only after the current Account session confirms the
+same tenant membership; no inactive or cross-tenant account is revived.
+
 Private contact nicknames are a separate viewer preference owned by Chatmgt.
 They are stored in the current account's tenant-scoped
 `ManagementAccount.properties.contact_nicknames` JSON object, keyed by the
@@ -726,8 +735,9 @@ domain/deployment only when an enterprise isolation policy requires it.
   an employee Tinode token.
 - Token refresh works after the original employee password is no longer
   available to the browser.
-- Removing or disabling an UpGO Account membership deactivates the projection,
-  revokes the old Chatmgt session, and prevents new Tinode tokens.
+- An UpGO Account membership returned as explicitly removed/disabled deactivates
+  the projection, revokes the old Chatmgt session, and prevents new Tinode
+  tokens; a partial directory snapshot must not deactivate omitted projections.
 - Token reconnect works from the signed Chatmgt session without recovering the
   original employee password.
 - Logout invalidates the session and all protected endpoints reject the old

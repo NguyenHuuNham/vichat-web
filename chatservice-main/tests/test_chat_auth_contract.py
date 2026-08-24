@@ -717,10 +717,14 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("contact-nickname-edit-button", app_source)
         self.assertIn("contact nicknames", architecture_source)
 
-    def test_directory_sync_revalidates_tenant_and_deactivates_missing_accounts(self):
-        _controller_source, directory_source = function_source(
+    def test_directory_sync_revalidates_tenant_without_deactivating_missing_snapshots(self):
+        controller_source, directory_source = function_source(
             CONTROLLER_PATH,
             "management_users",
+        )
+        _controller_source, restore_source = function_source(
+            CONTROLLER_PATH,
+            "_restore_directory_removed_account",
         )
 
         self.assertGreaterEqual(directory_source.count("_validated_account_identity"), 2)
@@ -729,8 +733,15 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('"tinode_provisioned"', directory_source)
         self.assertIn('sync_status = "partial"', directory_source)
         self.assertIn('sync_status = "cached"', directory_source)
-        self.assertIn("directory_removed_at", directory_source)
         self.assertIn('ManagementAccount.properties.contains({"auth_source": "account"})', directory_source)
+        self.assertNotIn("missing_accounts", directory_source)
+        self.assertNotIn("synced_account_ids", directory_source)
+        self.assertIn("_restore_directory_removed_account", controller_source)
+        self.assertIn("directory_removed_at", controller_source)
+        self.assertIn("await _validated_account_identity(request, account)", restore_source)
+        self.assertIn('properties.get("auth_source") != "account"', restore_source)
+        self.assertIn('properties.pop("directory_removed_at", None)', restore_source)
+        self.assertIn("account.active = True", restore_source)
 
     def test_management_admin_conversation_metadata_is_hidden(self):
         _controller_source, endpoint_source = function_source(
