@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-13 - Bảng tin nhóm cho các cuộc bình chọn
+
+- Thời gian: 2026-08-24 09:30 (Asia/Saigon)
+- Loại: Tính năng | Web | Realtime | Kiểm thử | Tài liệu
+- Trạng thái: Đang triển khai
+- Mục tiêu: Bổ sung mục Bảng tin nhóm trong Thông tin nhóm để thành viên xem và tương tác với các cuộc bình chọn của nhóm.
+- Phạm vi: Chỉ ChatUI nhóm; không hiển thị ở chat 1-1, không thay đổi Tinode message contract, Chatmgt API, sticker, file, thành viên hoặc các luồng hội thoại khác.
+- File đã thay đổi: `src/app/App.jsx`, `src/features/i18n/appLanguage.js`, `src/features/chat/services/chatManagementService.test.js`, `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Nội dung: Thêm mục mở rộng Bảng tin nhóm với số lượng poll, danh sách poll lấy trực tiếp từ lịch sử conversation hiện có và sắp xếp theo hoạt động mới nhất. Tái sử dụng `PollMessageCard` cùng các handler vote/thêm phương án/khóa poll hiện tại; thêm trạng thái rỗng, nút tạo poll theo quyền `allowPolls`, bản dịch tiếng Anh và giao diện dark mode.
+- Quyết định kỹ thuật: Không tạo bảng dữ liệu hay API mới; Bảng tin chỉ là projection presentation từ `roomMessages(activeChat)`, vì vậy vẫn phục hồi sau F5/reconnect theo cơ chế poll hiện có. Khi mở Bảng tin, mục Thành viên được thu gọn để tránh hai panel chiếm cùng sidebar.
+- Database/API/cấu hình: Không có migration, endpoint, schema, biến môi trường hoặc thay đổi backend.
+- Kiểm thử: `npm run test:frontend` đạt 193/193; `npm run lint` exit 0 với cảnh báo legacy/vendor đã có; `npm run build` đạt; `npm run build:production` đạt; `git diff --check` đạt. Smoke test browser chưa chạy vì phiên này không expose công cụ browser tương tác.
+- Rủi ro còn lại: Chưa xác nhận pixel-level trên browser production; cần UAT nhóm có poll, nhóm chưa có poll, member bị tắt quyền tạo poll và chat 1-1 không có mục này.
+- Việc tiếp theo: Commit, push và deploy riêng image ChatUI; sau đó hard refresh production để UAT Bảng tin nhóm.
+- Commit/PR: Chưa tạo.
+
 ## 2026-08-24-12 - Phan quyen tao binh chon trong nhom
 
 - Thoi gian: 2026-08-24 09:10 (Asia/Saigon)

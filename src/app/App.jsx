@@ -2413,6 +2413,7 @@ function App() {
   const [approvingMemberId, setApprovingMemberId] = useState('');
   const [removingMemberId, setRemovingMemberId] = useState('');
   const [isGroupMembersExpanded, setIsGroupMembersExpanded] = useState(false);
+  const [isGroupBoardOpen, setIsGroupBoardOpen] = useState(false);
   const [groupMemberMenuId, setGroupMemberMenuId] = useState('');
   const [isGroupManagementOpen, setIsGroupManagementOpen] = useState(false);
   const [groupManagementDraft, setGroupManagementDraft] = useState({ ...DEFAULT_GROUP_SETTINGS });
@@ -2786,6 +2787,7 @@ function App() {
     setGroupMemberAddSearch('');
     setApprovingMemberId('');
     setIsGroupMembersExpanded(false);
+    setIsGroupBoardOpen(false);
     setGroupMemberMenuId('');
     messageElementsRef.current.clear();
     setMessageReactionPickerKey(null);
@@ -5141,6 +5143,7 @@ function App() {
 
   const openGroupMemberPicker = () => {
     setIsGroupMembersExpanded(true);
+    setIsGroupBoardOpen(false);
     setIsGroupMemberPickerOpen(true);
     setGroupMemberAddIds([]);
     setGroupMemberAddProfiles({});
@@ -5151,7 +5154,18 @@ function App() {
   const toggleGroupMembersSection = () => {
     const next = !isGroupMembersExpanded;
     setIsGroupMembersExpanded(next);
+    if (next) setIsGroupBoardOpen(false);
     if (!next) {
+      setIsGroupMemberPickerOpen(false);
+      setGroupMemberMenuId('');
+    }
+  };
+
+  const toggleGroupBoard = () => {
+    const next = !isGroupBoardOpen;
+    setIsGroupBoardOpen(next);
+    if (next) {
+      setIsGroupMembersExpanded(false);
       setIsGroupMemberPickerOpen(false);
       setGroupMemberMenuId('');
     }
@@ -5856,6 +5870,7 @@ function App() {
     }
     setGroupManagementDraft(normalizeGroupSettings(activeChat.groupSettings));
     setGroupManagementNotice('');
+    setIsGroupBoardOpen(false);
     setIsGroupManagementOpen(true);
   };
 
@@ -8986,6 +9001,21 @@ function App() {
     return option ? appCopy.t(option.label) : (type === 'sticker' ? appCopy.t('Sticker') : appCopy.t('Tệp'));
   };
   const pinnedMessages = pinnedMessagesForRoom(roomMessages(activeChat), messageActions, activeChat.id);
+  const groupBoardPolls = activeChat.isGroup
+    ? roomMessages(activeChat)
+      .filter(message => isPollMessage(message))
+      .filter(message => !messageActions[messageActionKey(activeChat.id, message.id)]?.hidden)
+      .map(message => ({
+        ...message,
+        poll: normalizePoll(message.poll || message.pollData),
+      }))
+      .filter(message => message.poll)
+      .sort((first, second) => {
+        const firstTime = Date.parse(first.poll.lastActivityAt || '') || messageTimestamp(first);
+        const secondTime = Date.parse(second.poll.lastActivityAt || '') || messageTimestamp(second);
+        return secondTime - firstTime || (Number(second.seq) || 0) - (Number(first.seq) || 0);
+      })
+    : [];
   const pinnedMessagePreview = message => String(message?.text || '').trim()
     || (isStickerMessage(message) ? appCopy.t('Sticker') : '')
     || message?.file?.name
@@ -10709,6 +10739,92 @@ function App() {
               <h4 className="section-title">{appCopy.t('Quản trị viên')}</h4>
               <span className="admin-name">{activeAdminName}</span>
             </div>
+          )}
+
+          {activeChat.isGroup && (
+            <section className={`detail-section group-board-section ${isGroupBoardOpen ? 'expanded' : ''}`}>
+              {!isGroupBoardOpen ? (
+                <button
+                  type="button"
+                  className="members-section-toggle group-board-toggle"
+                  onClick={toggleGroupBoard}
+                  aria-expanded={false}
+                  aria-controls="group-board-panel"
+                >
+                  <span className="members-section-toggle-copy">
+                    <strong><i className="fa-solid fa-square-poll-vertical" aria-hidden="true"></i>{appCopy.t('Bảng tin nhóm')}</strong>
+                    <span className="members-section-summary">
+                      <i className="fa-regular fa-rectangle-list" aria-hidden="true"></i>
+                      {groupBoardPolls.length} {appCopy.t('cuộc bình chọn')}
+                    </span>
+                  </span>
+                  <i className="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                </button>
+              ) : (
+                <div id="group-board-panel" className="group-board-panel">
+                  <div className="group-board-expanded-heading">
+                    <button
+                      type="button"
+                      className="group-members-back-button"
+                      onClick={toggleGroupBoard}
+                      aria-label={appCopy.t('Thu gọn')}
+                      title={appCopy.t('Thu gọn')}
+                    >
+                      <i className="fa-solid fa-arrow-left" aria-hidden="true"></i>
+                    </button>
+                    <div className="group-board-heading-copy">
+                      <strong>{appCopy.t('Bảng tin nhóm')}</strong>
+                      <span>{groupBoardPolls.length} {appCopy.t('cuộc bình chọn')}</span>
+                    </div>
+                    {canCreatePollInActiveGroup && (
+                      <button
+                        type="button"
+                        className="group-board-create-button"
+                        onClick={openPollComposer}
+                        title={appCopy.t('Tạo bình chọn')}
+                        aria-label={appCopy.t('Tạo bình chọn')}
+                      >
+                        <i className="fa-solid fa-plus" aria-hidden="true"></i>
+                      </button>
+                    )}
+                  </div>
+
+                  {groupBoardPolls.length > 0 ? (
+                    <div className="group-board-poll-list">
+                      {groupBoardPolls.map(pollMessage => (
+                        <article className="group-board-poll-item" key={pollMessage.id}>
+                          <div className="group-board-poll-meta">
+                            <span><i className="fa-solid fa-square-poll-vertical" aria-hidden="true"></i>{appCopy.t('Bình chọn')}</span>
+                            <time dateTime={pollMessage.createdAt || undefined}>
+                              {formatFullMessageDateTime(pollMessage.poll.lastActivityAt || pollMessage.createdAt, pollMessage.time, appCopy.locale)}
+                            </time>
+                          </div>
+                          <PollMessageCard
+                            message={pollMessage}
+                            viewerIdentities={[viewerId, managementViewerId, currentUser?.id, currentUser?.uid, currentUser?.tinodeUid].filter(Boolean)}
+                            copy={appCopy}
+                            onVote={handlePollVote}
+                            onAddOption={handlePollAddOption}
+                            onLock={handlePollLock}
+                          />
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="group-board-empty">
+                      <span className="group-board-empty-icon"><i className="fa-regular fa-rectangle-list" aria-hidden="true"></i></span>
+                      <strong>{appCopy.t('Chưa có cuộc bình chọn')}</strong>
+                      <span>{appCopy.t('Các cuộc bình chọn trong nhóm sẽ hiển thị tại đây.')}</span>
+                      {canCreatePollInActiveGroup && (
+                        <button type="button" className="btn-primary group-board-empty-action" onClick={openPollComposer}>
+                          <i className="fa-solid fa-plus" aria-hidden="true"></i>{appCopy.t('Tạo bình chọn')}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
           )}
 
           <div className={`detail-section members-section ${activeChat.isGroup ? 'group-members-section' : ''}`}>

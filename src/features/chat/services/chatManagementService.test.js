@@ -249,6 +249,18 @@ test('group poll creation follows the administrator setting while voting remains
   assert.match(appSource, /poll-input-action/);
 });
 
+test('group information exposes a poll-only board without changing direct-chat details', () => {
+  assert.match(appSource, /const \[isGroupBoardOpen, setIsGroupBoardOpen\] = useState\(false\)/);
+  assert.match(appSource, /const groupBoardPolls = activeChat\.isGroup/);
+  assert.match(appSource, /className=\{`detail-section group-board-section/);
+  assert.match(appSource, /appCopy\.t\('Bảng tin nhóm'\)/);
+  assert.match(appSource, /<PollMessageCard/);
+  assert.match(appSource, /onVote=\{handlePollVote\}/);
+  assert.match(appSource, /onAddOption=\{handlePollAddOption\}/);
+  assert.match(appSource, /onLock=\{handlePollLock\}/);
+  assert.match(appSource, /\{activeChat\.isGroup && \(\s*<section className=\{`detail-section group-board-section/);
+});
+
 test('group owner departure requires an explicit replacement and announces the transfer', () => {
   assert.match(appSource, /pendingGroupLeave/);
   assert.match(appSource, /groupLeaveReplacementId/);
