@@ -26,6 +26,7 @@ test('creates a sequence-based boundary at the first message after the read curs
   assert.equal(boundary.firstUnreadSeq, 2);
   assert.equal(boundary.lastUnreadId, 'four');
   assert.equal(boundary.unreadCount, 3);
+  assert.equal(boundary.indicatorCleared, false);
   assert.equal(unreadBoundaryStartIndex(messages, boundary), 1);
   assert.equal(isUnreadBoundaryEnd(messages[3], boundary), true);
 });
@@ -48,6 +49,18 @@ test('keeps the first boundary while extending its unread tail', () => {
 
   assert.equal(merged.firstUnreadId, 'two');
   assert.equal(merged.lastUnreadId, 'four');
+  assert.equal(merged.revealed, false);
+});
+
+test('preserves the dismissed sidebar indicator while extending the boundary', () => {
+  const first = {
+    ...createUnreadBoundary(messages.slice(1, 3), { viewerId: 'me', firstUnreadSeq: 2 }),
+    indicatorCleared: true,
+  };
+  const next = createUnreadBoundary(messages, { viewerId: 'me', firstUnreadSeq: 2 });
+  const merged = mergeUnreadBoundary(first, next);
+
+  assert.equal(merged.indicatorCleared, true);
   assert.equal(merged.revealed, false);
 });
 

@@ -127,6 +127,7 @@ test('restores a cookie-backed session after a full page reload', () => {
 
 test('keeps unread emphasis and latest-message navigation in the ChatUI layer', () => {
   assert.match(appSource, /unreadCountForConversation/);
+  assert.match(appSource, /indicatorCleared/);
   assert.match(appSource, /latest-message-jump-button/);
   assert.match(appSource, /chatIsNearBottomRef/);
   assert.match(stylesSource, /\.conversation-item\.unread/);

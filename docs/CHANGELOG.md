@@ -10,19 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-24 19:39 (Asia/Saigon); deploy production 2026-08-24 19:39 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | Realtime | Kiem thu | Tai lieu
-- Trang thai: Da deploy production; san sang UAT
+- Trang thai: Hoan tat local; cho deploy follow-up
 - Muc tieu: Hien ro hoi thoai co tin moi, giu dung moc tin chua doc va cho phep quay nhanh ve tin nhan moi nhat ma khong lam gian doan luong realtime.
 - Pham vi: ChatUI sidebar unread, unread boundary, message-list scroll state, i18n, CSS va unit test; khong thay doi Chatmgt, Tinode protocol, receipt, membership, database hay admin.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/unreadBoundary.js`, `src/features/chat/services/unreadBoundary.test.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
-- Noi dung: Hoi thoai co unread duoc in dam/highlight ten va preview, hien count tu badge hoac unread cursor. Them nut tron `fa-angles-down` de ve tin moi nhat sau khi nguoi dung nhay vao moc unread; theo doi khoang cach toi cuoi danh sach de khong auto-scroll nguoi dang xem lich su khi Tinode co tin realtime moi.
-- Quyet dinh ky thuat: Tiep tuc dung `unreadBoundary` va `completeUnreadBoundary` lam nguon duy nhat de mark-read/xoa badge; trang thai nut latest chi la state UI theo conversation hien tai, khong ghi localStorage hay tao API moi.
+- Noi dung: Hoi thoai co unread duoc in dam/highlight ten va preview, hien count tu badge hoac unread cursor. Khi mo conversation hoac bam nut unread, chi an indicator o room dang active; boundary van duoc giu de nhay ve lan seen cuoi va mark-read dung moc. Them nut tron `fa-angles-down` de ve tin moi nhat; theo doi khoang cach toi cuoi danh sach de khong auto-scroll nguoi dang xem lich su khi Tinode co tin realtime moi.
+- Quyet dinh ky thuat: Dung `indicatorCleared` tam thoi trong unread boundary de tach trang thai da xem UI khoi receipt Tinode; khi roi room truoc khi xem het, badge hien lai; `completeUnreadBoundary` van la noi duy nhat mark-read/xoa cursor. Trang thai nut latest khong ghi localStorage hay tao API moi.
 - Database/API/cau hinh: Khong migration, endpoint, schema, bien moi truong, secret hoac thay doi kien truc.
-- Kiem thu: `node --test src/features/chat/services/unreadBoundary.test.js src/features/i18n/appLanguage.test.js src/features/chat/services/chatManagementService.test.js` dat 55/55; `npm run test:frontend` dat 212/212; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` dat sau khi chay lai rieng (lan chay song song voi production build bi `ENOTEMPTY` tai `dist/stickers`); `npm run build:production` dat voi canh bao chunk App lon hon 500 KB da co; `git diff --check` dat.
+- Kiem thu: `node --test src/features/chat/services/unreadBoundary.test.js src/features/i18n/appLanguage.test.js src/features/chat/services/chatManagementService.test.js` dat 56/56; `npm run test:frontend` dat 213/213; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` va `npm run build:production` dat voi canh bao chunk App lon hon 500 KB da co; `git diff --check` dat.
 - Kiem tra production: Archive `/opt/deploy/chat/incoming/vichat-unread-297a000.tar.gz` SHA-256 `53cefe9dc39cb4de061afc0d8bba3dbb2e91f9bdea405c5baf4448f6e5984587` khop; Compose config dat; image ChatUI `sha256:658a212ec14336b35aba99e020aeeddbf9d61c7846ab9f262906d44e5ed6a18e`, container `17b8a0b66daa` healthy; local/public `/healthz` tra `ok`; Chatmgt auth health `status=ok`; `sudo -n nginx -t` dat; public bundle `App-BhttC_ZV.js` va CSS `index-mB2GpR0O.css` co marker unread/latest; log ChatUI 5 phut khong co fatal/panic/traceback/critical/emerg/uncaught; cac service ngoai `chat` giu nguyen container ID.
 - Rui ro con lai: Chua UAT production bang hai tai khoan that cho chu ky nhan nhieu tin, nhay unread, xem het unread va quay ve tin moi nhat.
-- Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT chat 1-1/group bang hai tai khoan; neu loi chi tro `current` ve `previous` (`tenant-block-0c1707e-20260824-115945`) va recreate rieng `chat`, khong restart Chatmgt/Tinode hay reset du lieu.
-- Trien khai: Source archive release `/opt/deploy/chat/releases/unread-latest-297a000-20260824-1931` dang la `current`, `previous` tro `/opt/deploy/chat/releases/tenant-block-0c1707e-20260824-115945`; chi recreate `chat`; rollback tag `songhong-production-chat:rollback-before-unread-297a000` giu image `sha256:f52e16d280c3cadfa46110a119783cc9358a9e869829d5c2a4ff00e726e8ba73`; Chatmgt, Tinode bridge, webhook, ChatAPI, PostgreSQL, Redis va Coturn khong bi restart.
-- Commit/PR: Source `297a000`; deployment follow-up dang tao.
+- Viec tiep theo: Commit/push va deploy follow-up chi service `chat`; sau deploy hard refresh `https://chat.upgo.vn` va UAT chat 1-1/group bang hai tai khoan.
+- Commit/PR: Chua tao.
 
 ## 2026-08-24-25 - Chuyen bo chon cong ty sang block khong cuon ngang
 

@@ -58,6 +58,7 @@ export function createUnreadBoundary(messages = [], {
     lastUnreadAt: last?.createdAt || last?.raw?.ts || '',
     unreadCount: count,
     topicName: String(topicName || ''),
+    indicatorCleared: false,
     revealed: false,
   };
 }
@@ -89,6 +90,7 @@ export function mergeUnreadBoundary(existing, incoming) {
     } : {}),
     unreadCount: Math.max(Number(existing.unreadCount) || 0, Number(incoming.unreadCount) || 0),
     topicName: existing.topicName || incoming.topicName || '',
+    indicatorCleared: Boolean(existing.indicatorCleared || incoming.indicatorCleared),
     revealed: Boolean(existing.revealed || incoming.revealed),
   };
 }

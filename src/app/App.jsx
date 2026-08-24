@@ -3398,6 +3398,18 @@ function App() {
     return merged;
   }, [unreadViewerId]);
 
+  const dismissUnreadBoundaryIndicator = useCallback((conversationId, boundary = null) => {
+    const key = String(conversationId || '');
+    const current = unreadBoundariesRef.current[key] || boundary;
+    if (!key || !current || current.indicatorCleared) return current;
+    const dismissed = { ...current, indicatorCleared: true };
+    unreadBoundariesRef.current = { ...unreadBoundariesRef.current, [key]: dismissed };
+    setUnreadBoundaries(previous => (
+      previous[key] === dismissed ? previous : { ...previous, [key]: dismissed }
+    ));
+    return dismissed;
+  }, []);
+
   const completeUnreadBoundary = useCallback(async conversationId => {
     const key = String(conversationId || '');
     const boundary = unreadBoundariesRef.current[key];
@@ -3473,7 +3485,8 @@ function App() {
     const room = conversationsRef.current[activeUnreadRoomId];
     if (!room) return;
     if (Number(activeUnreadRoomBadge) > 0 || Number(activeUnreadRoomCursor) > 0) {
-      rememberUnreadBoundary(room, activeUnreadRoomId);
+      const boundary = rememberUnreadBoundary(room, activeUnreadRoomId);
+      dismissUnreadBoundaryIndicator(activeUnreadRoomId, boundary);
     }
   }, [
     activeUnreadRoomId,
@@ -3483,6 +3496,7 @@ function App() {
     activeUnreadRoomReadAt,
     activeMessageCount,
     rememberUnreadBoundary,
+    dismissUnreadBoundaryIndicator,
   ]);
 
   const updateNotificationSettings = useCallback(patch => {
@@ -5064,6 +5078,7 @@ function App() {
       || Number(room.unreadFromSeq) > 0;
     if (hasSelectionUnreadCursor) {
       pendingUnreadBoundary = rememberUnreadBoundary(room, id);
+      pendingUnreadBoundary = dismissUnreadBoundaryIndicator(id, pendingUnreadBoundary);
     }
     setConversations(prev => {
       const previousRoom = prev[id] === null || prev[id] === undefined
@@ -5105,6 +5120,7 @@ function App() {
           }
           : { ...openedRoom, id, managementId: room.managementId || id, tinodeTopic: topicName };
         pendingUnreadBoundary = pendingUnreadBoundary || rememberUnreadBoundary(managedRoom, id);
+        pendingUnreadBoundary = dismissUnreadBoundaryIndicator(id, pendingUnreadBoundary);
         setConversations(prev => ({
           ...prev,
           [id]: {
@@ -9504,7 +9520,7 @@ function App() {
     chatIsNearBottomRef.current = false;
     setShowLatestMessageButton(true);
     const boundaryKey = String(activeChat.id);
-    const revealedBoundary = { ...activeUnreadBoundary, revealed: true };
+    const revealedBoundary = { ...activeUnreadBoundary, indicatorCleared: true, revealed: true };
     unreadBoundariesRef.current = { ...unreadBoundariesRef.current, [boundaryKey]: revealedBoundary };
     setUnreadBoundaries(previous => ({ ...previous, [boundaryKey]: revealedBoundary }));
     unreadBoundaryJumpedRef.current.add(String(activeChat.id));
@@ -10107,7 +10123,7 @@ function App() {
             const roomCategory = conversationCategoryFor(room);
             const roomUnreadBoundary = unreadBoundaries[id] || null;
             const roomUnreadCount = unreadCountForConversation(room, roomUnreadBoundary);
-            const hasUnread = roomUnreadCount > 0;
+            const hasUnread = !(isActive && roomUnreadBoundary?.indicatorCleared) && roomUnreadCount > 0;
             return (
               <ConversationErrorBoundary
                 key={id}
