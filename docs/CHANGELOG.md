@@ -8,9 +8,9 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-24-26 - Hoan thien thong bao tin chua doc va nut ve tin moi nhat
 
-- Thoi gian: 2026-08-24 19:39 (Asia/Saigon); deploy production 2026-08-24 19:39 (Asia/Saigon)
+- Thoi gian: 2026-08-24 19:39 (Asia/Saigon); deploy follow-up 2026-08-24 19:52 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | Realtime | Kiem thu | Tai lieu
-- Trang thai: Hoan tat local; cho deploy follow-up
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Hien ro hoi thoai co tin moi, giu dung moc tin chua doc va cho phep quay nhanh ve tin nhan moi nhat ma khong lam gian doan luong realtime.
 - Pham vi: ChatUI sidebar unread, unread boundary, message-list scroll state, i18n, CSS va unit test; khong thay doi Chatmgt, Tinode protocol, receipt, membership, database hay admin.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/unreadBoundary.js`, `src/features/chat/services/unreadBoundary.test.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
@@ -20,8 +20,11 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `node --test src/features/chat/services/unreadBoundary.test.js src/features/i18n/appLanguage.test.js src/features/chat/services/chatManagementService.test.js` dat 56/56; `npm run test:frontend` dat 213/213; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` va `npm run build:production` dat voi canh bao chunk App lon hon 500 KB da co; `git diff --check` dat.
 - Kiem tra production: Archive `/opt/deploy/chat/incoming/vichat-unread-297a000.tar.gz` SHA-256 `53cefe9dc39cb4de061afc0d8bba3dbb2e91f9bdea405c5baf4448f6e5984587` khop; Compose config dat; image ChatUI `sha256:658a212ec14336b35aba99e020aeeddbf9d61c7846ab9f262906d44e5ed6a18e`, container `17b8a0b66daa` healthy; local/public `/healthz` tra `ok`; Chatmgt auth health `status=ok`; `sudo -n nginx -t` dat; public bundle `App-BhttC_ZV.js` va CSS `index-mB2GpR0O.css` co marker unread/latest; log ChatUI 5 phut khong co fatal/panic/traceback/critical/emerg/uncaught; cac service ngoai `chat` giu nguyen container ID.
 - Rui ro con lai: Chua UAT production bang hai tai khoan that cho chu ky nhan nhieu tin, nhay unread, xem het unread va quay ve tin moi nhat.
-- Viec tiep theo: Commit/push va deploy follow-up chi service `chat`; sau deploy hard refresh `https://chat.upgo.vn` va UAT chat 1-1/group bang hai tai khoan.
-- Commit/PR: Chua tao.
+- Kiem tra production: Archive `/opt/deploy/chat/incoming/vichat-unread-228ae42.tar.gz` SHA-256 `3ab81cda53fb76e9bd2aa2ab4bb7a2790a528839459cb44dcbda1f46c0dcf6a0` khop; Compose config dat; image ChatUI `sha256:371a141ebb26096abe768781cb28c1e24ce903311090c54256b6a71dc5ff5430`, container `331bcb5e0a3d` healthy; local/public `/healthz` tra `ok`; Chatmgt auth health `status=ok`; `sudo -n nginx -t` dat; public bundle `App-TwoJNO0d.js` co marker `indicatorCleared` va `latest-message-jump-button`, CSS `index-mB2GpR0O.css` co `conversation-item.unread`; log ChatUI 5 phut khong co fatal/panic/traceback/critical/emerg/uncaught; cac service ngoai `chat` giu nguyen container ID.
+- Rui ro con lai: Chua UAT production bang hai tai khoan that cho chu ky nhan nhieu tin, nhay unread, xem het unread va quay ve tin moi nhat.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT chat 1-1/group bang hai tai khoan; neu loi chi tro `current` ve `previous` (`unread-latest-297a000-20260824-1931`) va recreate rieng `chat`, khong restart Chatmgt/Tinode hay reset du lieu.
+- Trien khai: Source `228ae42` da push `origin/master`; release `/opt/deploy/chat/releases/unread-indicator-228ae42-20260824-1945` dang la `current`, `previous` tro `/opt/deploy/chat/releases/unread-latest-297a000-20260824-1931`; chi recreate `chat`; rollback tag `songhong-production-chat:rollback-before-unread-indicator-228ae42` giu image `sha256:658a212ec14336b35aba99e020aeeddbf9d61c7846ab9f262906d44e5ed6a18e`; Chatmgt, Tinode bridge, webhook, ChatAPI, PostgreSQL, Redis va Coturn khong bi restart.
+- Commit/PR: Source `228ae42`; deployment follow-up dang tao.
 
 ## 2026-08-24-25 - Chuyen bo chon cong ty sang block khong cuon ngang
 
