@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-25 00:26 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | UI | Kiem thu | Tai lieu
-- Trang thai: Hoan tat local; chua commit/deploy
+- Trang thai: Da commit va deploy production; san sang UAT
 - Muc tieu: Lam menu chuyen cong ty ngan gon, hien ba dong gan nhat roi cho phep cuon; cac man hinh loading khi tai Chat, F5, chuyen cong ty va maintenance phai co animation ro rang.
 - Pham vi: ChatUI tenant switcher, RootApp fallback loading, session restore, tenant switch overlay, maintenance gear, CSS responsive va source-contract test; khong doi API, session, Tinode, realtime, danh ba hay database.
 - File da thay doi: `src/app/App.jsx`, `src/RootApp.jsx`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`.
@@ -19,8 +19,9 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong migration, schema, API, secret hoac bien moi truong moi.
 - Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js src/features/maintenance/chatMaintenanceService.test.js` dat 42/42; `npm run test:frontend` dat 229/229; `npm run lint` exit 0 voi warning legacy da co; `npm run build:production` dat voi canh bao chunk App lon hon 500 KB da co; `git diff --check` dat.
 - Rui ro con lai: Chua UAT visual production tren desktop/mobile voi tai khoan co nhieu cong ty; can hard refresh de nhan bundle moi.
-- Viec tiep theo: UAT menu ba dong/cuon va quan sat animation loading Chat, chuyen cong ty, maintenance; neu can rollback chi recreate ChatUI, khong restart Chatmgt/Tinode/Redis/PostgreSQL.
-- Commit/PR: Chua tao.
+- Viec tiep theo: UAT menu ba dong/cuon va quan sat animation loading Chat, chuyen cong ty, maintenance; neu can rollback chi recreate ChatUI tu `previous`, khong restart Chatmgt/Tinode/Redis/PostgreSQL.
+- Kiem tra production: Archive `/opt/deploy/chat/incoming/vichat-tenant-loading-058dcf0.tar.gz` SHA-256 `d0a143f2ffbfff56e7d1674e1bc117966f95e1146da01ab436e6f912c9576a66`; release `/opt/deploy/chat/releases/tenant-loading-058dcf0-20260825-0026` dang la `current`, `previous` tro `/opt/deploy/chat/releases/tenant-directory-482bb7f-20260824-170721`; image ChatUI `sha256:4b09dbe8a6eaeea2a3dec8ee603dbb74f400750504cc14dbd76c26c5547fccc5`, container `40d6edc027b9` healthy; local/public `/healthz` tra `ok`, Chatmgt public health tra `status=ok`, bundle JS/CSS moi HTTP 200, CSS co marker `vichatLoadingSpin`, `sudo -n nginx -t` dat; chi recreate `chat`, cac service khac giu nguyen container ID `2f82a2a5ef20`, `2882b6109176`, `7d9c0e317719`, `8476615ad4ac`, `aa680d35fdc0`, `78a434b49404`, `9f6e4dcc9c2f`, `ceef7df23feb`.
+- Commit/PR: Source commit `058dcf0` da push `origin/master`; deployment follow-up docs commit se duoc tao rieng sau khi cap nhat muc nay.
 
 ## 2026-08-25-01 - Tach danh ba theo tenant va chan snapshot thieu tenant
 
