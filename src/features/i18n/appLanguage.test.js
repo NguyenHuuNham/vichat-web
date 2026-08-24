@@ -31,6 +31,10 @@ test('translates the reply composer heading', () => {
 
 test('translates tenant switch labels', () => {
   assert.equal(translateUiText('Chuyển công ty', 'en'), 'Switch company');
+  assert.equal(translateUiText('Chọn công ty', 'en'), 'Choose company');
+  assert.equal(translateUiText('Trượt để chọn công ty', 'en'), 'Slide to choose a company');
+  assert.equal(translateUiText('Công ty trước', 'en'), 'Previous company');
+  assert.equal(translateUiText('Công ty tiếp theo', 'en'), 'Next company');
   assert.equal(translateUiText('Chọn công ty để làm việc', 'en'), 'Choose a company to work in');
   assert.equal(translateUiText('Công ty hiện tại', 'en'), 'Current company');
   assert.equal(translateUiText('Đang chuyển công ty...', 'en'), 'Switching company...');

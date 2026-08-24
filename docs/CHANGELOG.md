@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-23 - Carousel chon cong ty khong tran man hinh
+
+- Thoi gian: 2026-08-24 17:25 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Web | UI | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; dang chuan bi commit va deploy production
+- Muc tieu: Cho nguoi dung co nhieu tenant chon cong ty ma khong lam tran header ho so tren desktop hoac mobile.
+- Pham vi: Chi ChatUI profile panel, tenant switcher, responsive CSS va nhan dich; khong doi API switch tenant, Chatmgt, Tinode, session, membership hoac realtime.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`.
+- Noi dung: Thay danh sach icon render dong thanh carousel co viewport co dinh, nut truoc/sau, keo ngang, phim mui ten, snap theo tung cong ty, tu dua cong ty hien tai vao tam va ellipsis ten dai; mobile dua bo chon xuong dong rieng de khong ep header tran ngang.
+- Quyet dinh ky thuat: Chi thay lop hien thi va state scroll cuc bo; nut cong ty van goi `requestTenantSwitch` va modal xac nhan hien tai, giu nguyen `chatManagementService.switchTenant` va luong rotate session/reconnect Tinode.
+- Database/API/cau hinh: Khong migration, endpoint, schema, secret hoac bien moi truong.
+- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js src/features/i18n/appLanguage.test.js` dat 48/48; `npm run test:frontend` dat 208/208; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` va `npm run build:production` dat voi canh bao chunk App lon hon 500 KB; `git diff --check` dat.
+- Rui ro con lai: Chua UAT visual bang browser voi 2, 10 va nhieu tenant that; can kiem tra keo ngang, nut mui ten, tenant hien tai va luong xac nhan/chuyen tenant tren desktop/mobile.
+- Viec tiep theo: Commit/push va chi recreate service `chat`; khong restart Chatmgt, Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis hoac Coturn.
+- Commit/PR: Chua tao.
+
 ## 2026-08-24-22 - Hien thi phim tat va goi y sticker trong ChatUI
 
 - Thoi gian: 2026-08-24 16:42 (Asia/Saigon)

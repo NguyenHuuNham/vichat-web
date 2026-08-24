@@ -138,6 +138,8 @@ test('keeps only safe active tenant options and switches without logout', () => 
   assert.doesNotMatch(switchUiSource, /chatManagementService\.logout/);
   assert.doesNotMatch(appSource, /tenant-switcher-menu/);
   assert.match(appSource, /<TenantLogo src=\{option\.logo\}/);
+  assert.match(appSource, /tenantSwitcherViewportRef/);
+  assert.match(appSource, /scrollTenantSwitcher/);
   assert.match(appSource, /requestTenantSwitch\(option\)/);
 });
 
@@ -154,6 +156,9 @@ test('requires explicit confirmation before switching tenants', () => {
   assert.match(confirmationSource, /handleTenantSwitch\(pendingTenantSwitch\)/);
   assert.match(stylesSource, /\.workspace-overlay \{[\s\S]*?z-index: 80;/);
   assert.match(stylesSource, /\.tenant-switch-confirm-backdrop \{ z-index: 90; \}/);
+  assert.match(stylesSource, /\.tenant-switcher-viewport \{/);
+  assert.match(stylesSource, /\.tenant-switcher-nav \{/);
+  assert.match(appSource, /data-tenant-current=\{isCurrentTenant \? 'true' : 'false'\}/);
 });
 
 test('refreshes company logo metadata without resetting the active chat session', () => {
@@ -163,7 +168,7 @@ test('refreshes company logo metadata without resetting the active chat session'
   assert.match(appSource, /chatManagementService\.refreshSessionMetadata\(\)/);
   assert.match(appSource, /tenantOptions: nextTenantOptions/);
   assert.match(appSource, /title=\{option\.name\}/);
-  assert.doesNotMatch(appSource, /tenant-switcher-option-copy/);
+  assert.match(appSource, /tenant-switcher-option-copy/);
   assert.deepEqual(normalizeTenantOptions([{
     id: 'tenant-a',
     name: 'Tenant A',
