@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-25 (Asia/Saigon)
 - Loai: Sua loi | Bao mat | Web | Kiem thu | Tai lieu
-- Trang thai: Hoan tat local; chua commit/deploy
+- Trang thai: Da commit va deploy production; san sang UAT
 - Muc tieu: Khong cho danh ba cua cong ty nay bi tron vao tenant khac, dong thoi khong lam thay doi luong chat, Tinode hoac presence hop le.
 - Pham vi: ChatUI directory/search/state/presence input, Chatmgt directory contract test va tai lieu ranh gioi tenant; khong doi database, message, conversation, membership hay API contract.
 - File da thay doi: `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/app/App.jsx`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`, `dist/index.html`.
@@ -18,9 +18,10 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Chatmgt van la lop query chuan theo `ManagementAccount.tenant_id == tenant_id` cua JWT; ChatUI them defense-in-depth va xoa bo record thieu tenant thay vi suy doan. Khong them cache, endpoint, migration hoac thay doi giao thuc realtime.
 - Database/API/cau hinh: Khong migration, khong doi API/schema/bien moi truong; build production chi cap nhat entry `dist/index.html`.
 - Kiem thu: `node --test src/features/contacts/services/accountDirectory.test.js src/features/chat/services/chatManagementService.test.js` dat 73/73; `npm run test:frontend` dat 229/229; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 48/48; `python -m unittest chatservice-main/tests/test_sso_identity.py chatservice-main/tests/test_account_sso_service.py -q` dat 47 test, skip 21 do thieu dependency runtime; `python -m py_compile ...` dat; `npm run lint` exit 0 voi warning legacy da co; `npm run build:production` dat voi canh bao chunk App lon hon 500 KB da co; `git diff --check` dat.
-- Rui ro con lai: Chua UAT production bang hai tai khoan thuoc hai tenant va chua commit/deploy trong luot nay.
-- Viec tiep theo: UAT hard refresh bang hai tenant; neu phat hanh thi recreate rieng ChatUI, khong restart Chatmgt/Tinode/Redis/PostgreSQL.
-- Commit/PR: Chua tao.
+- Rui ro con lai: Chua UAT production bang hai tai khoan thuoc hai tenant; can xac nhan them voi du lieu danh ba thuc te sau khi hard refresh.
+- Viec tiep theo: UAT hard refresh bang hai tenant; neu co loi chi rollback/recreate rieng ChatUI tu `previous`, khong reset topic/message/database va khong restart Chatmgt/Tinode/Redis/PostgreSQL.
+- Kiem tra production: Archive `/opt/deploy/chat/incoming/vichat-directory-tenant-482bb7f.tar.gz` SHA-256 `51f317eec0e4821e773410a72f8957f04bf8f2331f6ed29cea790f1c3bb7ccd8`; release `/opt/deploy/chat/releases/tenant-directory-482bb7f-20260824-170721` dang la `current`, `previous` tro `/opt/deploy/chat/releases/df79ba2-20260824-233439`; image ChatUI `sha256:11782de49ada0bfbaad0c6a869c652e7a3b52d11c98a99312b24cea26934927c`; container ChatUI healthy, local/public `/healthz` tra `ok`, Chatmgt public health tra `status=ok`, `sudo -n nginx -t` dat, log ChatUI khong co fatal/panic/traceback trong 10 phut; chi recreate `chat`, cac container backend, Tinode, PostgreSQL, Redis va Coturn giu nguyen.
+- Commit/PR: Source commit `482bb7f` da push `origin/master`; deployment follow-up docs commit se duoc tao rieng sau khi cap nhat muc nay.
 
 ## 2026-08-24-32 - Thu gon bo chon cong ty va danh sach tenant cuon doc
 
