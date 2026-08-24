@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-24 08:11 (Asia/Saigon)
 - Loai: Tinh nang | Sua loi | Web | Realtime | Kiem thu | Tai lieu
-- Trang thai: Da kiem thu local; cho commit va deploy production
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Cho phep tao, cau hinh, binh chon, ghim va khoa binh chon trong chat nhom, khong hien thi trong chat 1-1.
 - Pham vi: ChatUI composer/poll card, Tinode metadata va event projection, notification, demo fallback, i18n; khong thay doi tin nhan text/file/sticker, reaction, reply, avatar, wallpaper, membership hay Chatmgt.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/poll.js`, `src/features/chat/services/poll.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/conversationNotifications.js`, `src/features/chat/services/conversationNotifications.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `package.json`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
@@ -19,8 +19,10 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong co migration, endpoint moi, bien moi truong hoac thay doi cau hinh.
 - Kiem thu: `npm run test:frontend` dat 191/191; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` va `npm run build:production` dat voi bundle `App-BkiOxeUB.js`, `index-yEywbIB4.js`, `index-BWOZRSZq.css`; `git diff --check` dat. UAT click bang browser chua chay vi browser tool khong duoc expose trong phien nay.
 - Rui ro con lai: Chua UAT hai tai khoan production cho tao poll, vote realtime, notification, het han, khoa, ghim va chat 1-1; bundle co warning chunk App > 500 KB da ton tai theo quy mo UI.
-- Viec tiep theo: Commit/push/deploy release ChatUI; sau deploy hard refresh va UAT owner/member tren chat nhom, sau do xac nhan chat 1-1 khong co icon poll.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT owner/member tren chat nhom: tao poll, vote realtime, thong bao, het han, khoa, ghim; sau do xac nhan chat 1-1 khong co icon poll.
+- Trien khai: Archive `/opt/deploy/chat/incoming/vichat-group-polls-d19845e-20260824.tar.gz` SHA-256 `f4e3c2f21ffd7d88ec7fc06c9c3a2c005c5a59100d10dfb585518640bd00accf`; release `/opt/deploy/chat/releases/group-polls-d19845e-20260824-012136` dang la `current`, `previous` tro `/opt/deploy/chat/releases/image-batch-f2c8feb-20260824-0710`; chi recreate `chat`, khong migration/backup database va khong restart Chatmgt, Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis hay Coturn.
+- Kiem tra production: Compose config, build image, `chat` healthy, local/public `/healthz`, Chatmgt auth health, `sudo -n nginx -t`, public bundle poll marker va log ChatUI 10 phut deu dat. Image ChatUI `sha256:855d8fbc35b80e148fe8b48c3b6b47e283980a246289577bbf9974c7c868749f`, container `d418f8dbb0b068a1de682c290f72d15d7d204539291ec048c7b6bf82c3c8c0a7`; rollback tag `songhong-production-chat:rollback-before-group-polls-d19845e-012136` giu image cu `sha256:7d7f42e75d9ed79b3fbfc4c6cf909f9779dde1d4768807813c498c37548e8350`. Cac container ngoai `chat` giu nguyen ID.
+- Commit/PR: Source `d19845e` da push `origin/master`; deploy da hoan tat, chua co PR.
 
 ## 2026-08-24-10 - Gom nhieu anh trong mot tin nhan
 
