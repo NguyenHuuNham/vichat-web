@@ -2137,6 +2137,13 @@ export const tinodeClient = {
     return enrichConversationProfiles(toConversation(topic, getClient()), getClient());
   },
 
+  async clearConversationDeletion(topicName) {
+    const topic = await subscribeTopic(topicName, { historyLimit: 0 });
+    if (!topic.private?.vichatDeletedAt) return;
+    await topic.setMeta({ desc: { private: { vichatDeletedAt: TINODE_DELETE_CHAR } } });
+    emitConversation(topic);
+  },
+
   async markRead(topicName) {
     const topic = await subscribeTopic(topicName);
     topic.noteRead();

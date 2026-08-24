@@ -6,6 +6,38 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-20 - Sua loi xoa hoi thoai truc tiep
+
+- Thoi gian: 2026-08-24 (Asia/Saigon)
+- Loai: Sua loi | Web | Chatmgt | Tinode | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; chua commit va chua deploy
+- Muc tieu: Cho phep nguoi dung xoa lich su chat 1-1 nhung nguoi con lai van nhan tin binh thuong va tin moi hien realtime.
+- Pham vi: ChatUI, Chatmgt direct conversation, Tinode viewer history boundary; khong thay doi luong roi/xoa nhom.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/tinodeClient.js`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`.
+- Noi dung: Direct delete giu hai membership o trang thai active, luu moc xoa theo viewer trong `direct_deleted_at_by_user`, xoa lich su viewer bang Tinode non-hard delete va giu topic subscribed. Khi co tin moi sau moc xoa, ChatUI tu dong mo lai cap Chatmgt, xoa marker, giu nickname/nen va chi hien tin moi; du lieu legacy inactive duoc sua khi prepare/bind.
+- Quyet dinh ky thuat: Chi ap dung marker viewer-scoped cho direct 1-1; group van dung membership leave/dissolve hien tai de tranh thay doi luong nhom.
+- Database/API/cau hinh: Khong migration; them JSON property noi bo va truong `deletedAt` trong snapshot conversation.
+- Kiem thu: `npm run test:frontend` dat 207/207; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` exit 0; `npm run build:production` exit 0; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/tests/test_chat_auth_contract.py` exit 0; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 46/46; `python -m unittest discover -s chatservice-main/tests -p "test_*.py" -q` dat 187, skip 63; `git diff --check` khong co loi.
+- Rui ro con lai: Can verify realtime hai trinh duyet tren production sau deploy; chua co acceptance test Tinode production trong local.
+- Viec tiep theo: Commit, push, deploy va health-check.
+- Commit/PR: Chua tao
+
+## 2026-08-24-19 - Them phim tat ChatUI tuy chinh
+
+- Thoi gian: 2026-08-24 (Asia/Saigon)
+- Loai: Tinh nang | Web | UI | Kiem thu | Tai lieu
+- Trang thai: Da hoan tat local; chua commit va chua deploy
+- Muc tieu: Cho user dong nhanh lop phu bang `Esc`, dung them phim tat thao tac va tu custom trong Cai dat.
+- Pham vi: Chi ChatUI, xu ly keyboard event, UI Cai dat va localStorage theo viewer; khong thay doi Tinode, Chatmgt, API, database, membership, tin nhan hay luong admin.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/keyboardShortcuts.js`, `src/features/chat/services/keyboardShortcuts.test.js`, `src/styles/index.css`, `package.json`, `dist/index.html`.
+- Noi dung: Them `Esc` dong lop dang mo theo thu tu tu trong ra ngoai; them tim kiem hoi thoai, focus o soan tin, danh ba, cai dat va chuyen hoi thoai tiep truoc. Moi viewer co bo phim rieng, co the bat/tat, ghi phim, xoa tung phim, khoi phuc tung phim hoac khoi phuc toan bo; chan phim trung va phim don de tranh bat nham khi dang nhap noi dung.
+- Quyet dinh ky thuat: Global handler dung capture phase nhung bo qua input/textarea/contenteditable cho shortcut co modifier; `Esc` van cho phep dong lop ngoai, con mention picker duoc input xu ly truoc. Handler dong lop dung state hien tai va ref cho callback de khong can thay doi Tinode/Chatmgt.
+- Database/API/cau hinh: Khong migration, endpoint, secret, bien moi truong hoac thay doi kien truc; du lieu custom luu tai `localStorage` voi key co viewer ID.
+- Kiem thu: `node --test src/features/chat/services/keyboardShortcuts.test.js` dat 4/4; `npm run test:frontend` dat 205/205; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` va `npm run build:production` dat voi canh bao chunk App lon hon 500 KB da co; `git diff --check` dat. Lan build production chay dong thoi voi build thuong bi `EPERM` do hai tien trinh cung ghi `dist`, sau do chay lai rieng da dat.
+- Rui ro con lai: Chua UAT bang browser tren desktop/mobile; can kiem tra Esc voi mention picker, modal/panel, draft dang nhap va custom phim cua hai tai khoan sau khi deploy.
+- Viec tiep theo: Neu deploy, hard refresh ChatUI va kiem tra localStorage theo viewer; neu can rollback chi revert bundle/UI release nay, khong restart hoac migration service stateful.
+- Commit/PR: Chua tao.
+
 ## 2026-08-24-18 - Sua presence danh ba theo heartbeat Redis
 
 - Thoi gian: 2026-08-24 13:28 (Asia/Saigon); deploy production 2026-08-24 13:48 (Asia/Saigon)

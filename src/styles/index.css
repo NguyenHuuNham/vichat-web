@@ -6278,6 +6278,105 @@ html[data-theme="dark"] select option { color: var(--text-main); background: var
 .settings-shell-panel .settings-card-icon.appearance { color: var(--vichat-blue); background: #fff0e9; }
 .settings-shell-panel .settings-card-icon.language,
 .settings-shell-panel .settings-card-icon.security { color: #21825d; background: #e8f7ef; }
+.settings-shell-panel .settings-card-icon.keyboard { color: #5664c5; background: #eef0ff; }
+.settings-shell-panel .keyboard-shortcut-heading { align-items: center; }
+.settings-shell-panel .keyboard-shortcut-heading .settings-toggle { margin-left: auto; }
+.settings-shell-panel .keyboard-shortcut-hint {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin: -3px 0 16px;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+.settings-shell-panel .keyboard-shortcut-hint i { flex: 0 0 auto; margin-top: 2px; color: #5664c5; }
+.settings-shell-panel .keyboard-shortcut-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.settings-shell-panel .keyboard-shortcut-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(150px, auto) 34px 34px;
+    align-items: center;
+    gap: 8px;
+    min-height: 58px;
+    padding: 9px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-app);
+}
+.settings-shell-panel .keyboard-shortcut-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+}
+.settings-shell-panel .keyboard-shortcut-copy strong { color: var(--text-main); font-size: 13px; }
+.settings-shell-panel .keyboard-shortcut-copy small { color: var(--text-muted); font-size: 11px; line-height: 1.35; }
+.settings-shell-panel .keyboard-shortcut-capture {
+    min-width: 150px;
+    height: 36px;
+    padding: 0 12px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: 9px;
+    color: var(--text-main);
+    background: var(--bg-white);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 750;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+.settings-shell-panel .keyboard-shortcut-capture:hover,
+.settings-shell-panel .keyboard-shortcut-capture:focus-visible { border-color: #5664c5; outline: 0; box-shadow: 0 0 0 3px rgba(86, 100, 197, .14); }
+.settings-shell-panel .keyboard-shortcut-capture.recording { color: #5664c5; border-color: #5664c5; background: #f4f5ff; box-shadow: 0 0 0 3px rgba(86, 100, 197, .14); }
+.settings-shell-panel .keyboard-shortcut-icon-button {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    color: var(--text-muted);
+    background: transparent;
+    cursor: pointer;
+}
+.settings-shell-panel .keyboard-shortcut-icon-button:hover,
+.settings-shell-panel .keyboard-shortcut-icon-button:focus-visible { border-color: var(--border-color); color: var(--vichat-blue); background: var(--bg-white); outline: 0; }
+.settings-shell-panel .keyboard-shortcut-icon-button.clear:hover,
+.settings-shell-panel .keyboard-shortcut-icon-button.clear:focus-visible { color: var(--vichat-red); }
+.settings-shell-panel .keyboard-shortcut-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 12px;
+    color: #b45309;
+    font-size: 12px;
+    line-height: 1.45;
+}
+.settings-shell-panel .keyboard-shortcut-notice i { margin-top: 2px; }
+.settings-shell-panel .keyboard-shortcut-reset-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+    margin-top: 14px;
+    padding: 0 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 9px;
+    color: var(--text-body);
+    background: var(--bg-white);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.settings-shell-panel .keyboard-shortcut-reset-all:hover,
+.settings-shell-panel .keyboard-shortcut-reset-all:focus-visible { border-color: #5664c5; color: #5664c5; outline: 0; }
 
 .settings-shell-panel .notification-device-options { gap: 10px; }
 .settings-shell-panel .notification-device-choice {
@@ -6556,6 +6655,7 @@ html[data-theme="dark"] .settings-shell-panel .settings-card-icon.sound,
 html[data-theme="dark"] .settings-shell-panel .settings-card-icon.appearance { color: #ffb292; background: #4a2e24; }
 html[data-theme="dark"] .settings-shell-panel .settings-card-icon.language,
 html[data-theme="dark"] .settings-shell-panel .settings-card-icon.security { color: #a4e6bf; background: #214334; }
+html[data-theme="dark"] .settings-shell-panel .settings-card-icon.keyboard { color: #c6caff; background: #303455; }
 html[data-theme="dark"] .settings-shell-panel .notification-device-choice.selected,
 html[data-theme="dark"] .settings-shell-panel .theme-choice.selected { background: #342a27; }
 html[data-theme="dark"] .settings-shell-panel .notification-device-choice:not(.selected) .notification-device-icon { color: #b6c4c5; background: #2d3b40; }
@@ -6588,6 +6688,9 @@ html[data-theme="dark"] .settings-shell-panel .pin-preference-note i { color: #9
     .settings-shell-panel .theme-choice-grid { grid-template-columns: 1fr; gap: 10px; }
     .settings-shell-panel .theme-choice { min-height: 0; flex-direction: row; align-items: center; gap: 13px; padding: 12px; }
     .settings-shell-panel .theme-preview { width: 125px; height: 68px; flex: 0 0 125px; }
+    .settings-shell-panel .keyboard-shortcut-row { grid-template-columns: minmax(0, 1fr) 34px 34px; gap: 7px; }
+    .settings-shell-panel .keyboard-shortcut-copy { grid-column: 1 / -1; }
+    .settings-shell-panel .keyboard-shortcut-capture { min-width: 0; width: 100%; }
     .settings-shell-panel .settings-inline-card { align-items: stretch; flex-direction: column; gap: 17px; }
     .settings-shell-panel .language-picker { width: 100%; min-width: 0; }
     .settings-shell-panel .pin-preference-heading { align-items: flex-start; }

@@ -43,6 +43,17 @@ export function mergeManagementAvatar(existingAvatar, incomingAvatar, { incoming
     : existing || incoming;
 }
 
+export function resolveConversationDeletedAt(existing = {}, incoming = {}) {
+  const incomingDeletedAt = String(incoming?.deletedAt || '').trim();
+  const existingDeletedAt = String(existing?.deletedAt || '').trim();
+  const incomingManagementSnapshot = Boolean(
+    incoming?.managementSnapshot || incoming?.management_snapshot,
+  );
+  return incomingManagementSnapshot && !incomingDeletedAt
+    ? ''
+    : incomingDeletedAt || existingDeletedAt;
+}
+
 export function tinodeContactsSyncDelay(attempt, {
   sessionActive = true,
   pendingTopicNames = [],

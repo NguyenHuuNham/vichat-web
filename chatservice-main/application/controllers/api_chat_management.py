@@ -113,6 +113,10 @@ GROUP_SETTING_DEFAULTS = {
     "approveMembers": False,
     "newMemberHistory": True,
 }
+
+# Direct conversations keep one shared Chatmgt row. A delete therefore stores
+# only the viewer's history boundary instead of disabling the shared member.
+DIRECT_DELETED_AT_PROPERTY = "direct_deleted_at_by_user"
 GROUP_SETTING_KEYS = frozenset(GROUP_SETTING_DEFAULTS)
 
 HISTORY_SEARCH_TYPES = frozenset({
@@ -942,6 +946,87 @@ def _active_conversation_accounts(item):
     return participants, accounts_by_id
 
 
+def _direct_conversation_accounts(item):
+    """Return both direct participants, including a legacy inactive member."""
+    participants = ConversationParticipant.query.filter(
+        ConversationParticipant.tenant_id == item.tenant_id,
+        ConversationParticipant.conversation_id == item.id,
+        ConversationParticipant.approval_status == "APPROVED",
+        ConversationParticipant.deleted.is_(False),
+    ).order_by(ConversationParticipant.created_at.asc()).all()
+    participant_ids = [participant.participant_id for participant in participants]
+    accounts = ManagementAccount.query.filter(
+        ManagementAccount.tenant_id == item.tenant_id,
+        ManagementAccount.id.in_(participant_ids),
+        ManagementAccount.active.is_(True),
+    ).all() if participant_ids else []
+    accounts_by_id = {str(account.id): account for account in accounts}
+    if set(participant_ids) != set(accounts_by_id):
+        raise AuthError("A Chatmgt participant is no longer active in this tenant.", 409)
+    return participants, accounts_by_id
+
+
+def _restore_legacy_direct_memberships(item):
+    """Repair direct rows created by the old delete-as-leave behavior."""
+    if bool((item.properties or {}).get("is_group")):
+        return False
+    try:
+        participants, _accounts_by_id = _direct_conversation_accounts(item)
+    except AuthError:
+        return False
+    participant_ids = [participant.participant_id for participant in participants]
+    if len(participants) != 2 or len(set(participant_ids)) != 2:
+        return False
+    now = int(time.time())
+    changed = False
+    for participant in participants:
+        if participant.active is not True:
+            participant.active = True
+            participant.left_at = None
+            participant.updated_at = now
+            changed = True
+    return changed
+
+
+def _conversation_deleted_at(item, viewer_id, membership=None):
+    properties = item.properties or {}
+    markers = properties.get(DIRECT_DELETED_AT_PROPERTY)
+    if isinstance(markers, dict):
+        marker = str(markers.get(str(viewer_id)) or "").strip()
+        if marker:
+            return marker
+    # Existing rows used active=false for direct deletion. Keep their old
+    # boundary readable while new deletes use the viewer-scoped marker above.
+    if membership is not None and membership.active is not True and membership.left_at:
+        try:
+            return datetime.datetime.fromtimestamp(
+                int(membership.left_at),
+                datetime.timezone.utc,
+            ).isoformat().replace("+00:00", "Z")
+        except (TypeError, ValueError, OverflowError, OSError):
+            return ""
+    return ""
+
+
+def _clear_direct_deleted_marker(item, viewer_id):
+    """Clear only this viewer's history boundary when a direct chat resumes."""
+    properties = dict(item.properties or {})
+    markers = properties.get(DIRECT_DELETED_AT_PROPERTY)
+    if not isinstance(markers, dict) or str(viewer_id) not in markers:
+        return False
+    markers = {
+        str(key): str(value)
+        for key, value in markers.items()
+        if str(key) != str(viewer_id) and key and value
+    }
+    if markers:
+        properties[DIRECT_DELETED_AT_PROPERTY] = markers
+    else:
+        properties.pop(DIRECT_DELETED_AT_PROPERTY, None)
+    item.properties = properties
+    return True
+
+
 def _expected_tinode_member_uids(item, participants, accounts_by_id):
     expected = {
         str(accounts_by_id[participant.participant_id].tinode_uid or "")
@@ -976,13 +1061,17 @@ def _audit(request, event_name, success=True, tenant_id=None, user_id=None, prop
 
 
 def _serialize_conversation(item, viewer_id):
-    participants = ConversationParticipant.query.filter(
+    properties = item.properties or {}
+    is_group = bool(properties.get("is_group"))
+    participant_query = ConversationParticipant.query.filter(
         ConversationParticipant.tenant_id == item.tenant_id,
         ConversationParticipant.conversation_id == item.id,
         ConversationParticipant.deleted.is_(False),
-        ConversationParticipant.active.is_(True),
         ConversationParticipant.approval_status == "APPROVED",
-    ).order_by(ConversationParticipant.created_at.asc()).all()
+    )
+    if is_group:
+        participant_query = participant_query.filter(ConversationParticipant.active.is_(True))
+    participants = participant_query.order_by(ConversationParticipant.created_at.asc()).all()
     participant_ids = [participant.participant_id for participant in participants]
     accounts = ManagementAccount.query.filter(
         ManagementAccount.tenant_id == item.tenant_id,
@@ -1003,8 +1092,6 @@ def _serialize_conversation(item, viewer_id):
     notifications_muted = notification_muted_until == 0 or (
         notification_muted_until is not None and notification_muted_until > int(time.time())
     )
-    properties = item.properties or {}
-    is_group = bool(properties.get("is_group"))
     group_settings = _normalized_group_settings(
         properties.get("groupSettings") or properties.get("group_settings")
     ) if is_group else None
@@ -1035,6 +1122,7 @@ def _serialize_conversation(item, viewer_id):
         },
     )
     conversation_name = item.subject
+    peer_account = None
     if not is_group:
         peer_account = next(
             (
@@ -1044,20 +1132,32 @@ def _serialize_conversation(item, viewer_id):
             ),
             None,
         )
-        if peer_account is not None:
-            conversation_name, _nickname = _account_display_name(peer_account, viewer_account)
+    if peer_account is not None:
+        conversation_name, _nickname = _account_display_name(peer_account, viewer_account)
+    direct_peer = next(
+        (
+            participant
+            for participant in participants
+            if participant.participant_id != str(viewer_id)
+        ),
+        None,
+    ) if not is_group else None
+    direct_deleted_at = _conversation_deleted_at(item, viewer_id, viewer_membership) if not is_group else ""
+    public_properties = dict(properties)
+    public_properties.pop(DIRECT_DELETED_AT_PROPERTY, None)
     return {
         "id": str(item.id),
         "conversation_no": item.conversation_no,
         "tenant_id": item.tenant_id,
         "tinode_topic": tinode_topic,
+        "deletedAt": direct_deleted_at,
         "name": conversation_name,
         "subject": item.subject,
         "status": item.status,
         "priority": item.priority,
         "last_message_at": item.last_message_at,
         "updated_at": item.updated_at,
-        "properties": properties,
+        "properties": public_properties,
         "isGroup": is_group,
         "avatar": _conversation_avatar(properties),
         "groupSettings": group_settings,
@@ -1085,7 +1185,12 @@ def _serialize_conversation(item, viewer_id):
     }
 
 
-def _conversation_and_membership(tenant_id, conversation_id, user_id):
+def _conversation_and_membership(
+    tenant_id,
+    conversation_id,
+    user_id,
+    allow_legacy_direct=False,
+):
     item = Conversation.query.filter(
         Conversation.id == conversation_id,
         Conversation.tenant_id == tenant_id,
@@ -1101,6 +1206,15 @@ def _conversation_and_membership(tenant_id, conversation_id, user_id):
         ConversationParticipant.approval_status == "APPROVED",
         ConversationParticipant.deleted.is_(False),
     ).first()
+    if membership is None and allow_legacy_direct and not bool((item.properties or {}).get("is_group")):
+        membership = ConversationParticipant.query.filter(
+            ConversationParticipant.tenant_id == tenant_id,
+            ConversationParticipant.conversation_id == item.id,
+            ConversationParticipant.participant_id == user_id,
+            ConversationParticipant.active.is_(False),
+            ConversationParticipant.approval_status == "APPROVED",
+            ConversationParticipant.deleted.is_(False),
+        ).first()
     return item, membership
 
 
@@ -3625,7 +3739,12 @@ async def conversation_history_search(request, conversation_id):
         return json({"error_code": "NOT_FOUND", "error_message": "Invalid conversation."}, status=404)
 
     user_id = _user_id(current_user)
-    item, membership = _conversation_and_membership(tenant_id, conversation_uuid, user_id)
+    item, membership = _conversation_and_membership(
+        tenant_id,
+        conversation_uuid,
+        user_id,
+        allow_legacy_direct=True,
+    )
     if item is None or membership is None:
         return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
 
@@ -3664,6 +3783,9 @@ async def conversation_history_search(request, conversation_id):
         if current_user.get("auth_method") == "account_sso":
             await _validated_account_identity(request, account)
 
+        is_group = bool((item.properties or {}).get("is_group"))
+        if not is_group:
+            _restore_legacy_direct_memberships(item)
         participants, accounts_by_id = _active_conversation_accounts(item)
         participant_ids = [participant.participant_id for participant in participants]
         tinode_uids = {
@@ -3671,7 +3793,6 @@ async def conversation_history_search(request, conversation_id):
             for participant_id in participant_ids
             if participant_id in accounts_by_id
         }
-        is_group = bool((item.properties or {}).get("is_group"))
         topic_name = item.tinode_topic if is_group else direct_peer_tinode_uid(
             user_id,
             participant_ids,
@@ -3827,6 +3948,7 @@ async def conversation_create(request):
                     membership.active = True
                     membership.left_at = None
                     membership.approval_status = "APPROVED"
+            _clear_direct_deleted_marker(existing, owner_id)
             existing.updated_at = now
             db.session.commit()
             return json(_serialize_conversation(existing, owner_id))
@@ -3879,7 +4001,12 @@ async def conversation_prepare_tinode(request, conversation_id):
         return json({"error_code": "NOT_FOUND", "error_message": "Invalid conversation."}, status=404)
 
     user_id = _user_id(current_user)
-    item, membership = _conversation_and_membership(tenant_id, conversation_uuid, user_id)
+    item, membership = _conversation_and_membership(
+        tenant_id,
+        conversation_uuid,
+        user_id,
+        allow_legacy_direct=True,
+    )
     if item is None or membership is None:
         return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
     account = _account_by_id(tenant_id, user_id)
@@ -3888,6 +4015,9 @@ async def conversation_prepare_tinode(request, conversation_id):
     try:
         if current_user.get("auth_method") == "account_sso":
             await _validated_account_identity(request, account)
+        _restore_legacy_direct_memberships(item)
+        if not bool((item.properties or {}).get("is_group")):
+            _clear_direct_deleted_marker(item, user_id)
         _participants, accounts_by_id = _active_conversation_accounts(item)
         await _ensure_tinode_accounts(accounts_by_id.values())
         db.session.commit()
@@ -3923,7 +4053,12 @@ async def conversation_bind_tinode(request, conversation_id):
     except (ValueError, TypeError, AttributeError):
         return json({"error_code": "NOT_FOUND", "error_message": "Invalid conversation."}, status=404)
     user_id = _user_id(current_user)
-    item, membership = _conversation_and_membership(tenant_id, conversation_uuid, user_id)
+    item, membership = _conversation_and_membership(
+        tenant_id,
+        conversation_uuid,
+        user_id,
+        allow_legacy_direct=True,
+    )
     if item is None or membership is None:
         return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
     body = request.json or {}
@@ -3960,6 +4095,8 @@ async def conversation_bind_tinode(request, conversation_id):
                 response = clear_auth_cookie(_account_sso_error(revoked_error), request)
                 return clear_account_cookie(response)
             return _account_sso_error(error)
+    if not is_group:
+        _restore_legacy_direct_memberships(item)
     expected_member_uids = None
     if not is_group:
         try:
@@ -4026,6 +4163,8 @@ async def conversation_bind_tinode(request, conversation_id):
             properties["avatar"] = str(body.get("avatar") or "")[:8192]
             properties["group_avatar"] = properties["avatar"]
             item.properties = properties
+        if not is_group:
+            _clear_direct_deleted_marker(item, user_id)
         # A Tinode direct topic is the other participant's UID, so it differs
         # for each viewer and must not be persisted as one shared binding.
         item.tinode_topic = topic_name if is_group else None
@@ -4537,6 +4676,29 @@ async def conversation_participant_remove(request, conversation_id, participant_
 
     now = int(time.time())
     request_payload = request.json if isinstance(request.json, dict) else {}
+    if not is_group:
+        deleted_at = datetime.datetime.fromtimestamp(
+            now,
+            datetime.timezone.utc,
+        ).isoformat().replace("+00:00", "Z")
+        properties = dict(item.properties or {})
+        deleted_by_user = properties.get(DIRECT_DELETED_AT_PROPERTY)
+        if not isinstance(deleted_by_user, dict):
+            deleted_by_user = {}
+        deleted_by_user = {
+            str(key): str(value)
+            for key, value in deleted_by_user.items()
+            if key and value
+        }
+        deleted_by_user[user_id] = deleted_at
+        properties[DIRECT_DELETED_AT_PROPERTY] = deleted_by_user
+        item.properties = properties
+        target.notification_muted_until = None
+        target.pinned_at = None
+        item.updated_at = now
+        db.session.commit()
+        return json(_serialize_conversation(item, user_id))
+
     replacement_id = str(request_payload.get("replacement_id") or "").strip()
     replacement = None
     if is_group and target.role == "OWNER":

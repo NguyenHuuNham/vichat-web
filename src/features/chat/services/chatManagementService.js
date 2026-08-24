@@ -360,6 +360,7 @@ function normalizeConversation(record) {
     lastMsg: record?.lastMsg || properties.lastMessage || '',
     time: record?.time || properties.time || '',
     updatedAt: record?.updatedAt || record?.last_message_at || properties.updatedAt,
+    deletedAt: record?.deletedAt || record?.deleted_at || properties.deletedAt || properties.deleted_at || '',
     badge: record?.badge || properties.unreadCount || 0,
     notificationMutedUntil,
     pinned: Boolean(record?.pinned ?? record?.isPinned ?? properties.pinned),

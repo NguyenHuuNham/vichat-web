@@ -14,6 +14,7 @@ import {
   messageForDeliveryStatus,
   modeWithRealtimePresence,
   readyTinodeTypingTopic,
+  resolveConversationDeletedAt,
   resolvePreparedTinodeTopic,
   resolveTinodePresenceOnline,
   shouldShowConversation,
@@ -206,6 +207,22 @@ test('keeps the source of a management snapshot separate from Tinode realtime da
   assert.equal(normalizeConversationShape({ managementSnapshot: true }).managementSnapshot, true);
   assert.equal(normalizeConversationShape({ management_snapshot: true }).managementSnapshot, true);
   assert.equal(normalizeConversationShape({}).managementSnapshot, false);
+});
+
+test('a fresh management snapshot clears a viewer-scoped direct delete marker', () => {
+  const deletedAt = '2026-08-24T10:00:00.000Z';
+  assert.equal(resolveConversationDeletedAt(
+    { deletedAt },
+    { managementSnapshot: true, deletedAt: '' },
+  ), '');
+  assert.equal(resolveConversationDeletedAt(
+    { deletedAt },
+    { managementSnapshot: false, deletedAt: '' },
+  ), deletedAt);
+  assert.equal(resolveConversationDeletedAt(
+    { deletedAt: '' },
+    { managementSnapshot: true, deletedAt },
+  ), deletedAt);
 });
 
 test('normalizes owner-only pending group member snapshots separately from active members', () => {

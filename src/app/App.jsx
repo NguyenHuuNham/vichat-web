@@ -19,6 +19,7 @@ import {
   mergeManagementAvatar,
   normalizeConversationShape,
   readyTinodeTypingTopic,
+  resolveConversationDeletedAt,
   resolvePreparedTinodeTopic,
   shouldShowConversation,
   tinodeContactsSyncDelay,
@@ -169,8 +170,26 @@ import {
   writeConversationBackgroundPreference,
   writeConversationBackgroundFile,
 } from '../features/chat/services/conversationBackground';
+import {
+  DEFAULT_KEYBOARD_SHORTCUT_SETTINGS,
+  SHORTCUT_ACTIONS,
+  formatShortcut,
+  isSafeShortcut,
+  normalizeKeyboardShortcutSettings,
+  normalizeShortcut,
+  readKeyboardShortcutSettings,
+  shortcutConflict,
+  shortcutMatchesEvent,
+  shortcutFromKeyboardEvent,
+  writeKeyboardShortcutSettings,
+} from '../features/chat/services/keyboardShortcuts';
 
 const CALLS_ENABLED = resolveCallsEnabled(import.meta.env.VITE_CALLS_ENABLED);
+
+function isEditableKeyboardTarget(target) {
+  const tagName = String(target?.tagName || '').toLowerCase();
+  return Boolean(target?.isContentEditable || ['input', 'textarea', 'select'].includes(tagName));
+}
 
 const APP_LANGUAGE_COPY = Object.freeze({
   vi: Object.freeze({
@@ -232,6 +251,31 @@ const APP_LANGUAGE_COPY = Object.freeze({
     pinUnlock: 'Mở khóa',
     pinWrong: 'Mã PIN không đúng.',
     pinChecking: 'Đang kiểm tra mã PIN...',
+    keyboardShortcuts: 'Phím tắt',
+    keyboardShortcutsDescription: 'Tăng tốc thao tác trong Chat bằng các tổ hợp phím riêng cho tài khoản này.',
+    keyboardShortcutsEnabled: 'Bật phím tắt',
+    keyboardShortcutsEnabledDescription: 'Cho phép dùng phím tắt khi không đang nhập nội dung.',
+    keyboardShortcutsHint: 'Bấm vào ô bên phải rồi nhấn tổ hợp phím muốn dùng. Esc có thể dùng một mình; phím khác nên đi kèm Ctrl/Cmd, Alt hoặc Shift.',
+    keyboardShortcutsReset: 'Khôi phục mặc định',
+    keyboardShortcutsClear: 'Xóa phím',
+    keyboardShortcutsNotAssigned: 'Chưa gán',
+    keyboardShortcutsRecording: 'Đang ghi...',
+    keyboardShortcutsInvalid: 'Tổ hợp phím không hợp lệ. Hãy dùng Esc hoặc thêm Ctrl/Cmd, Alt hay Shift.',
+    keyboardShortcutsConflict: 'Tổ hợp phím này đã được dùng cho thao tác khác.',
+    shortcutClose: 'Đóng nhanh',
+    shortcutCloseDescription: 'Đóng lớp phủ, popup, panel hoặc menu đang mở.',
+    shortcutSearch: 'Tìm cuộc trò chuyện',
+    shortcutSearchDescription: 'Đưa con trỏ vào ô tìm kiếm cuộc trò chuyện.',
+    shortcutComposer: 'Soạn tin nhắn',
+    shortcutComposerDescription: 'Đưa con trỏ vào ô nhập tin nhắn hiện tại.',
+    shortcutContacts: 'Mở danh bạ',
+    shortcutContactsDescription: 'Mở panel danh bạ công ty.',
+    shortcutSettings: 'Mở cài đặt',
+    shortcutSettingsDescription: 'Mở panel cài đặt ứng dụng.',
+    shortcutNextConversation: 'Cuộc trò chuyện tiếp theo',
+    shortcutNextConversationDescription: 'Chuyển xuống cuộc trò chuyện kế tiếp trong danh sách.',
+    shortcutPreviousConversation: 'Cuộc trò chuyện trước',
+    shortcutPreviousConversationDescription: 'Chuyển lên cuộc trò chuyện trước trong danh sách.',
   }),
   en: Object.freeze({
     chat: 'Chat',
@@ -292,6 +336,31 @@ const APP_LANGUAGE_COPY = Object.freeze({
     pinUnlock: 'Unlock',
     pinWrong: 'Incorrect PIN.',
     pinChecking: 'Checking PIN...',
+    keyboardShortcuts: 'Keyboard shortcuts',
+    keyboardShortcutsDescription: 'Speed up Chat with account-specific keyboard shortcuts.',
+    keyboardShortcutsEnabled: 'Enable shortcuts',
+    keyboardShortcutsEnabledDescription: 'Use shortcuts when you are not typing content.',
+    keyboardShortcutsHint: 'Click a field and press the combination you want. Escape can stand alone; other keys should use Ctrl/Cmd, Alt or Shift.',
+    keyboardShortcutsReset: 'Restore defaults',
+    keyboardShortcutsClear: 'Clear shortcut',
+    keyboardShortcutsNotAssigned: 'Not assigned',
+    keyboardShortcutsRecording: 'Recording...',
+    keyboardShortcutsInvalid: 'Invalid shortcut. Use Escape or add Ctrl/Cmd, Alt or Shift.',
+    keyboardShortcutsConflict: 'This shortcut is already used by another action.',
+    shortcutClose: 'Close quickly',
+    shortcutCloseDescription: 'Close the active overlay, popup, panel or menu.',
+    shortcutSearch: 'Search conversations',
+    shortcutSearchDescription: 'Focus the conversation search field.',
+    shortcutComposer: 'Focus composer',
+    shortcutComposerDescription: 'Focus the current message input.',
+    shortcutContacts: 'Open contacts',
+    shortcutContactsDescription: 'Open the company contacts panel.',
+    shortcutSettings: 'Open settings',
+    shortcutSettingsDescription: 'Open the application settings panel.',
+    shortcutNextConversation: 'Next conversation',
+    shortcutNextConversationDescription: 'Move down to the next conversation in the list.',
+    shortcutPreviousConversation: 'Previous conversation',
+    shortcutPreviousConversationDescription: 'Move up to the previous conversation in the list.',
   }),
 });
 
@@ -1424,8 +1493,13 @@ function mergeTinodeConversation(existing, incoming) {
   if (!existing) return normalizeConversationShape(incoming);
   const safeExisting = normalizeConversationShape(existing);
   const safeIncoming = normalizeConversationShape(incoming);
-  const messages = mergeTinodeMessages(safeExisting.messages, safeIncoming.messages);
-  const friendEvents = mergeTinodeMessages(safeExisting.friendEvents, safeIncoming.friendEvents);
+  const deletedAt = resolveConversationDeletedAt(safeExisting, safeIncoming);
+  const deletedTimestamp = Date.parse(deletedAt) || 0;
+  const visibleAfterDelete = messages => deletedTimestamp
+    ? messages.filter(message => (Date.parse(message.createdAt || '') || 0) > deletedTimestamp)
+    : messages;
+  const messages = visibleAfterDelete(mergeTinodeMessages(safeExisting.messages, safeIncoming.messages));
+  const friendEvents = visibleAfterDelete(mergeTinodeMessages(safeExisting.friendEvents, safeIncoming.friendEvents));
   const latestAttachmentPreview = attachmentConversationPreview(messages.at(-1));
   const {
     managementOwned,
@@ -1455,6 +1529,7 @@ function mergeTinodeConversation(existing, incoming) {
     ...safeExisting,
     ...safeIncoming,
     managementSnapshot: safeExisting.managementSnapshot || safeIncoming.managementSnapshot,
+    deletedAt,
     name: managementOwned && !incomingManagementSnapshot
       ? existingName || incomingName || fallbackName
       : incomingName || existingName || fallbackName,
@@ -2488,6 +2563,9 @@ function App() {
   const [displayClock, setDisplayClock] = useState(() => Date.now());
   const [settings, setSettings] = useState(() => ({ ...DEFAULT_NOTIFICATION_SETTINGS }));
   const [notificationSettingsNotice, setNotificationSettingsNotice] = useState('');
+  const [keyboardShortcutSettings, setKeyboardShortcutSettings] = useState(() => normalizeKeyboardShortcutSettings(DEFAULT_KEYBOARD_SHORTCUT_SETTINGS));
+  const [keyboardShortcutNotice, setKeyboardShortcutNotice] = useState('');
+  const [capturingShortcutAction, setCapturingShortcutAction] = useState('');
   const [customNotificationSound, setCustomNotificationSound] = useState(null);
   const [customNotificationSoundUrl, setCustomNotificationSoundUrl] = useState('');
   const [isLoadingCustomNotificationSound, setIsLoadingCustomNotificationSound] = useState(false);
@@ -2558,17 +2636,20 @@ function App() {
   const messageActionHideTimerRef = useRef(null);
   const messageReactionHideTimerRef = useRef(null);
   const messageInputRef = useRef(null);
+  const conversationSearchInputRef = useRef(null);
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
   const mentionPickerRef = useRef(null);
   const languageMenuRef = useRef(null);
   const currentChatIdRef = useRef(currentChatId);
   const deletedConversationIdsRef = useRef(new Set());
+  const reopeningDirectTopicsRef = useRef(new Set());
   const createGroupRequestRef = useRef(false);
   const tinodeSessionRequestRef = useRef(null);
   const conversationsRef = useRef(conversations);
   const currentUserRef = useRef(currentUser);
   const directoryAccountsRef = useRef(directoryAccounts);
+  const keyboardShortcutActionHandlersRef = useRef({});
   const contactNicknamesRef = useRef(contactNicknames);
   const avatarOverridesRef = useRef(new Map());
   const groupAvatarSyncRef = useRef(new Map());
@@ -3371,6 +3452,74 @@ function App() {
     setNotificationSettingsNotice('');
   }, [notificationSettingsViewerId]);
 
+  const updateKeyboardShortcutSettings = useCallback(nextValue => {
+    const next = normalizeKeyboardShortcutSettings(nextValue);
+    if (notificationSettingsViewerId) writeKeyboardShortcutSettings(notificationSettingsViewerId, next);
+    setKeyboardShortcutSettings(next);
+    setKeyboardShortcutNotice('');
+    return next;
+  }, [notificationSettingsViewerId]);
+
+  const updateKeyboardShortcutBinding = useCallback((actionId, shortcut) => {
+    const normalized = normalizeShortcut(shortcut);
+    if (normalized && !isSafeShortcut(normalized)) {
+      setKeyboardShortcutNotice('keyboardShortcutsInvalid');
+      return false;
+    }
+    const nextBindings = {
+      ...keyboardShortcutSettings.bindings,
+      [actionId]: normalized,
+    };
+    if (shortcutConflict(nextBindings, normalized, actionId)) {
+      setKeyboardShortcutNotice('keyboardShortcutsConflict');
+      return false;
+    }
+    updateKeyboardShortcutSettings({
+      ...keyboardShortcutSettings,
+      bindings: nextBindings,
+    });
+    return true;
+  }, [keyboardShortcutSettings, updateKeyboardShortcutSettings]);
+
+  const resetKeyboardShortcut = useCallback(actionId => {
+    const action = SHORTCUT_ACTIONS.find(item => item.id === actionId);
+    if (!action) return;
+    if (updateKeyboardShortcutBinding(actionId, action.defaultShortcut)) setCapturingShortcutAction('');
+  }, [updateKeyboardShortcutBinding]);
+
+  const clearKeyboardShortcut = useCallback(actionId => {
+    if (updateKeyboardShortcutBinding(actionId, null)) setCapturingShortcutAction('');
+  }, [updateKeyboardShortcutBinding]);
+
+  const handleKeyboardShortcutCapture = useCallback(event => {
+    const actionId = String(event.currentTarget?.dataset?.shortcutAction || '').trim();
+    if (!actionId) return;
+    if (event.key === 'Tab') {
+      setCapturingShortcutAction(previous => previous === actionId ? '' : previous);
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const shortcut = shortcutFromKeyboardEvent(event);
+    if (!shortcut || !isSafeShortcut(shortcut)) {
+      setKeyboardShortcutNotice('keyboardShortcutsInvalid');
+      return;
+    }
+    if (updateKeyboardShortcutBinding(actionId, shortcut)) setCapturingShortcutAction('');
+  }, [updateKeyboardShortcutBinding]);
+
+  useEffect(() => {
+    if (!notificationSettingsViewerId) {
+      setKeyboardShortcutSettings(normalizeKeyboardShortcutSettings(DEFAULT_KEYBOARD_SHORTCUT_SETTINGS));
+      setKeyboardShortcutNotice('');
+      setCapturingShortcutAction('');
+      return;
+    }
+    setKeyboardShortcutSettings(readKeyboardShortcutSettings(notificationSettingsViewerId));
+    setKeyboardShortcutNotice('');
+    setCapturingShortcutAction('');
+  }, [notificationSettingsViewerId]);
+
   useEffect(() => {
     setConversationCategories(managementViewerId ? readConversationCategories(managementViewerId) : {});
     setConversationCategoryMenuOpen(false);
@@ -4000,6 +4149,7 @@ function App() {
         topicName,
         { avatarUrl: effectiveGroupAvatar },
       );
+      if (!preparedRoom.isGroup) await tinodeClient.clearConversationDeletion(topicName).catch(() => {});
     } catch (error) {
       const bindingRejected = Number(error?.status) >= 400 && Number(error?.status) < 500;
       if (createdGroupTopic && bindingRejected) {
@@ -4019,6 +4169,7 @@ function App() {
         tinodeTopic: topicName,
         avatarUrl: effectiveGroupAvatar,
         accountSession,
+        ...(preparedRoom.isGroup ? {} : { deletedAt: '' }),
       },
     };
     conversationsRef.current = nextRooms;
@@ -4143,6 +4294,83 @@ function App() {
   useEffect(() => {
     if (!isLoggedIn || chatMode !== 'tinode' || managementConversationSession !== accountSessionRef.current) return undefined;
     const accountSession = managementConversationSession;
+    const reopenDirectConversation = async (stateId, currentRoom, conversation) => {
+      if (
+        !chatManagementService.remote
+        || !currentRoom
+        || currentRoom.isGroup
+        || currentRoom.isChatbot
+        || !isManagementConversationId(currentRoom.managementId || currentRoom.id)
+      ) return;
+      const deletedAt = Date.parse(currentRoom.deletedAt || '') || 0;
+      if (!deletedAt || !roomMessages(conversation).some(message => messageTimestamp(message) > deletedAt)) return;
+      const reopenKey = `${accountSession}:${conversation.id}`;
+      if (reopeningDirectTopicsRef.current.has(reopenKey)) return;
+      const viewerId = String(currentUserRef.current?.id || currentUserRef.current?.uid || '');
+      const peerId = roomParticipantIds(currentRoom)
+        .map(String)
+        .find(participantId => participantId && participantId !== viewerId)
+        || String(currentRoom.directContactId || '').trim();
+      if (!peerId || peerId === viewerId) return;
+      reopeningDirectTopicsRef.current.add(reopenKey);
+      try {
+        const reopened = await chatManagementService.createConversation({
+          subject: currentRoom.name || 'Cuoc tro chuyen',
+          isGroup: false,
+          participantIds: [peerId],
+          properties: {},
+        });
+        if (accountSessionRef.current !== accountSession) return;
+        const managementId = String(reopened?.managementId || reopened?.id || currentRoom.managementId || stateId);
+        const topicName = String(reopened?.tinodeTopic || conversation.id || currentRoom.tinodeTopic || '').trim();
+        if (topicName) {
+          await tinodeClient.clearConversationDeletion(topicName).catch(() => {});
+          tinodeClient.allowConversationTopic(topicName);
+        }
+        await refreshManagementConversations(accountSession);
+        if (accountSessionRef.current !== accountSession) return;
+        setConversations(previous => {
+          const current = safeNormalizeConversationForRender(previous[stateId] || currentRoom, stateId);
+          if (!current) return previous;
+          const managementSnapshot = {
+            ...reopened,
+            id: stateId,
+            managementId,
+            tinodeTopic: topicName,
+            accountSession,
+            managementSnapshot: true,
+            deletedAt: '',
+          };
+          const refreshed = safeMergeTinodeConversation(current, managementSnapshot);
+          const live = safeMergeTinodeConversation(refreshed, {
+            ...conversation,
+            id: stateId,
+            managementId,
+            tinodeTopic: conversation.id || topicName,
+            accountSession,
+            deletedAt: '',
+            messages: roomMessages(conversation).filter(message => messageTimestamp(message) > deletedAt),
+            friendEvents: roomFriendEvents(conversation).filter(message => messageTimestamp(message) > deletedAt),
+          });
+          const next = {
+            ...previous,
+            [stateId]: {
+              ...live,
+              pendingDirect: false,
+              directProvisioning: 'ready',
+            },
+          };
+          conversationsRef.current = next;
+          return next;
+        });
+      } catch (error) {
+        // The live message remains visible; the next open/send retries the
+        // Chatmgt marker clear through the normal direct binding flow.
+        console.warn('ViChat: direct conversation reopen failed', error);
+      } finally {
+        reopeningDirectTopicsRef.current.delete(reopenKey);
+      }
+    };
     return tinodeClient.onEvent(async event => {
       if (accountSessionRef.current !== accountSession) return;
       if (event.type === 'disconnect') {
@@ -4355,9 +4583,31 @@ function App() {
         const stateId = managedEntry[0];
         if (deletedConversationIdsRef.current.has(stateId) || deletedConversationIdsRef.current.has(conversation.id)) return;
         if (isConversationHiddenAfterDelete(conversation)) {
+          // Keep a hidden direct tombstone subscribed so the first message
+          // after deletion can re-open the room without restoring old history.
           setConversations(prev => {
-            const next = { ...prev };
-            delete next[stateId];
+            const previousRoom = prev[stateId];
+            if (!previousRoom) return prev;
+            const hiddenRoom = safeMergeTinodeConversation(previousRoom, {
+              ...conversation,
+              id: stateId,
+              managementId: previousRoom.managementId,
+              tinodeTopic: conversation.id,
+              accountSession,
+            });
+            const next = {
+              ...prev,
+              [stateId]: {
+                ...hiddenRoom,
+                deletedAt: previousRoom.deletedAt || conversation.deletedAt,
+                messages: [],
+                friendEvents: [],
+                lastMsg: '',
+                time: '',
+                badge: 0,
+                unreadFromSeq: 0,
+              },
+            };
             conversationsRef.current = next;
             return next;
           });
@@ -4375,6 +4625,8 @@ function App() {
           if (currentChatIdRef.current === stateId) setCurrentChatId(CHATBOT_ACCOUNT.id);
           return;
         }
+        const currentRoom = safeNormalizeConversationForRender(currentRooms[stateId], stateId);
+        void reopenDirectConversation(stateId, currentRoom, conversation);
         const notificationMessages = (conversation.messages || [])
           .filter(message => (
             (message.type !== 'system' || ['poll_vote', 'poll_option_added', 'poll_locked'].includes(message.action))
@@ -4410,7 +4662,6 @@ function App() {
         ) {
           tinodeClient.markRead(conversation.id).catch(() => {});
         }
-        const currentRoom = safeNormalizeConversationForRender(currentRooms[stateId], stateId);
         if (
           currentRoom?.isGroup
           && conversation.avatarUrl
@@ -6344,16 +6595,22 @@ function App() {
 
     const conversationId = activeChat.id;
     const viewerId = currentUser?.id || currentUser?.uid;
+    const isManagedDirect = usesManagementData && !activeChat.isGroup;
     setIsDeletingConversation(true);
     setChatError('');
     const deletedKeys = [conversationId, activeChat.managementId, activeChat.tinodeTopic]
       .filter(Boolean)
       .map(String);
-    deletedKeys.forEach(key => deletedConversationIdsRef.current.add(key));
+    if (!isManagedDirect) deletedKeys.forEach(key => deletedConversationIdsRef.current.add(key));
     try {
       let removedTopic = '';
+      let deletedAt = '';
       if (chatMode === 'tinode') {
         removedTopic = await ensureTinodeConversationTopic(activeChat);
+        if (isManagedDirect) {
+          const deletion = await tinodeClient.deleteConversation(removedTopic, { isGroup: false });
+          deletedAt = deletion?.deletedAt || '';
+        }
         if (activeChat.isGroup && !usesManagementData) {
           await tinodeClient.sendSystemEvent(removedTopic, {
             action: 'member_left',
@@ -6364,17 +6621,38 @@ function App() {
       }
       if (usesManagementData) {
         if (chatMode === 'tinode') await chatManagementService.getFreshTinodeAuth();
-        await chatManagementService.deleteConversationForCurrentUser(activeChat.managementId || activeChat.id);
+        const deletedConversation = await chatManagementService.deleteConversationForCurrentUser(activeChat.managementId || activeChat.id);
+        deletedAt = deletedConversation?.deletedAt || deletedAt;
       } else if (activeChat.isGroup) {
         deleteDemoGroupForUser(conversationId, viewerId, currentUser?.name);
       } else {
         deleteDemoDirectForUser(conversationId, viewerId);
       }
-      if (removedTopic) tinodeClient.disallowConversationTopic(removedTopic);
+      if (removedTopic && isManagedDirect) tinodeClient.allowConversationTopic(removedTopic);
+      else if (removedTopic) tinodeClient.disallowConversationTopic(removedTopic);
 
       setConversations(previous => {
         const next = { ...previous };
-        delete next[conversationId];
+        if (isManagedDirect) {
+          const existing = previous[conversationId] || activeChat;
+          next[conversationId] = {
+            ...existing,
+            deletedAt: deletedAt || existing.deletedAt || new Date().toISOString(),
+            messages: [],
+            friendEvents: [],
+            lastMsg: '',
+            time: '',
+            badge: 0,
+            unreadFromSeq: 0,
+            notificationMutedUntil: null,
+            pinned: false,
+            pinnedAt: null,
+            updatedAt: deletedAt || existing.updatedAt || new Date().toISOString(),
+          };
+        } else {
+          delete next[conversationId];
+        }
+        conversationsRef.current = next;
         return next;
       });
       setDrafts(previous => {
@@ -9299,6 +9577,278 @@ function App() {
     && ['connecting', 'offline'].includes(connectionStatus)
     && !tinodeClient.authenticated;
 
+  keyboardShortcutActionHandlersRef.current = {
+    closeCreateGroupModal,
+    closeActiveCall: clearActiveCall,
+    closeGroupLeaveDialog,
+    closePollComposer,
+    closeWorkspacePanel,
+    handleConversationSelect,
+    openWorkspacePanel,
+    stopVoiceRecording,
+  };
+
+  const closeTopmostKeyboardLayer = useCallback(({ allowNavigation = true } = {}) => {
+    if (forcedLogoutSeconds !== null) return false;
+    if (activeCall) {
+      keyboardShortcutActionHandlersRef.current.closeActiveCall?.();
+      return true;
+    }
+    if (pendingTenantSwitch) {
+      setPendingTenantSwitch(null);
+      return true;
+    }
+    if (isConversationBackgroundOpen) {
+      if (isSavingConversationBackground) return true;
+      setIsConversationBackgroundOpen(false);
+      setConversationBackgroundSelection(null);
+      return true;
+    }
+    if (notificationMuteDialog) {
+      if (isUpdatingNotificationMute) return true;
+      setNotificationMuteDialog(null);
+      return true;
+    }
+    if (contactNicknameDialog) {
+      if (isSavingContactNickname) return true;
+      setContactNicknameDialog(null);
+      return true;
+    }
+    if (isGroupManagementOpen) {
+      if (isUpdatingGroupManagement || isDissolvingGroup) return true;
+      setIsGroupManagementOpen(false);
+      return true;
+    }
+    if (isGroupRenameOpen) {
+      if (isRenamingGroup) return true;
+      setIsGroupRenameOpen(false);
+      return true;
+    }
+    if (pendingGroupLeave) {
+      if (isLeavingGroup) return true;
+      keyboardShortcutActionHandlersRef.current.closeGroupLeaveDialog?.();
+      return true;
+    }
+    if (avatarCropFile) {
+      if (isUpdatingProfileAvatar) return true;
+      setAvatarCropFile(null);
+      return true;
+    }
+    if (mediaBrowserOpen) {
+      setMediaBrowserOpen(false);
+      return true;
+    }
+    if (imageViewer) {
+      setImageViewer(null);
+      return true;
+    }
+    if (shareMessage) {
+      setShareMessage(null);
+      return true;
+    }
+    if (reactionDetails) {
+      setReactionDetails(null);
+      return true;
+    }
+    if (messageDetails) {
+      setMessageDetails(null);
+      return true;
+    }
+    if (profileContact) {
+      setProfileContact(null);
+      return true;
+    }
+    if (pollComposer) {
+      if (isCreatingPoll) return true;
+      keyboardShortcutActionHandlersRef.current.closePollComposer?.();
+      return true;
+    }
+    if (isCreateGroupOpen) {
+      keyboardShortcutActionHandlersRef.current.closeCreateGroupModal?.();
+      return true;
+    }
+    if (isRecordingVoice) {
+      keyboardShortcutActionHandlersRef.current.stopVoiceRecording?.(true);
+      return true;
+    }
+    if (languageMenuOpen) {
+      setLanguageMenuOpen(false);
+      return true;
+    }
+    if (showEmojiPicker) {
+      setShowEmojiPicker(false);
+      return true;
+    }
+    if (mentionContext) {
+      setMentionContext(null);
+      setMentionActiveIndex(0);
+      return true;
+    }
+    if (messageMenu || pinnedMessageMenu || conversationMenu || conversationCategoryMenuOpen || groupMemberMenuId) {
+      setMessageMenu(null);
+      setPinnedMessageMenu(null);
+      setConversationMenu(null);
+      setConversationCategoryMenuOpen(false);
+      setGroupMemberMenuId('');
+      return true;
+    }
+    if (messageReactionPickerKey || messageActionHoverKey || pinnedMessagesExpanded) {
+      setMessageReactionPickerKey(null);
+      setMessageActionHoverKey(null);
+      setPinnedMessagesExpanded(false);
+      return true;
+    }
+    if (isGroupMemberPickerOpen || isGroupBoardOpen || isGroupMembersExpanded) {
+      setIsGroupMemberPickerOpen(false);
+      setIsGroupBoardOpen(false);
+      setIsGroupMembersExpanded(false);
+      return true;
+    }
+    if (workspacePanel && allowNavigation) {
+      if (workspacePanel === 'groups' && isCreatingGroup) return true;
+      keyboardShortcutActionHandlersRef.current.closeWorkspacePanel?.();
+      return true;
+    }
+    if (replyingTo) {
+      setReplyingTo(null);
+      return true;
+    }
+    if (isDetailOpen) {
+      setIsDetailOpen(false);
+      return true;
+    }
+    if (isMobileChatActive) {
+      setIsMobileChatActive(false);
+      return true;
+    }
+    return false;
+  }, [
+    avatarCropFile,
+    activeCall,
+    conversationCategoryMenuOpen,
+    conversationMenu,
+    contactNicknameDialog,
+    forcedLogoutSeconds,
+    groupMemberMenuId,
+    imageViewer,
+    isConversationBackgroundOpen,
+    isCreatingGroup,
+    isCreateGroupOpen,
+    isCreatingPoll,
+    isDetailOpen,
+    isDissolvingGroup,
+    isGroupBoardOpen,
+    isGroupManagementOpen,
+    isGroupMemberPickerOpen,
+    isGroupMembersExpanded,
+    isGroupRenameOpen,
+    isLeavingGroup,
+    isMobileChatActive,
+    isRecordingVoice,
+    isRenamingGroup,
+    isSavingContactNickname,
+    isSavingConversationBackground,
+    isUpdatingGroupManagement,
+    isUpdatingNotificationMute,
+    isUpdatingProfileAvatar,
+    languageMenuOpen,
+    mediaBrowserOpen,
+    mentionContext,
+    messageActionHoverKey,
+    messageDetails,
+    messageMenu,
+    messageReactionPickerKey,
+    notificationMuteDialog,
+    pendingGroupLeave,
+    pendingTenantSwitch,
+    pinnedMessageMenu,
+    pinnedMessagesExpanded,
+    pollComposer,
+    profileContact,
+    reactionDetails,
+    replyingTo,
+    shareMessage,
+    showEmojiPicker,
+    workspacePanel,
+    keyboardShortcutActionHandlersRef,
+  ]);
+
+  const executeKeyboardShortcut = useCallback((actionId, options = {}) => {
+    if (actionId === 'closeOverlay') return closeTopmostKeyboardLayer(options);
+    if (actionId === 'focusSearch') {
+      if (workspacePanel) keyboardShortcutActionHandlersRef.current.closeWorkspacePanel?.();
+      window.requestAnimationFrame(() => {
+        conversationSearchInputRef.current?.focus();
+        conversationSearchInputRef.current?.select?.();
+      });
+      return true;
+    }
+    if (actionId === 'focusComposer') {
+      if (workspacePanel) keyboardShortcutActionHandlersRef.current.closeWorkspacePanel?.();
+      setIsMobileChatActive(true);
+      window.requestAnimationFrame(() => messageInputRef.current?.focus());
+      return true;
+    }
+    if (actionId === 'openContacts') {
+      keyboardShortcutActionHandlersRef.current.openWorkspacePanel?.('contacts');
+      return true;
+    }
+    if (actionId === 'openSettings') {
+      keyboardShortcutActionHandlersRef.current.openWorkspacePanel?.('settings');
+      return true;
+    }
+    if (actionId === 'nextConversation' || actionId === 'previousConversation') {
+      if (workspacePanel || filteredChatIds.length === 0) return false;
+      const currentIndex = filteredChatIds.indexOf(currentChatId);
+      const offset = actionId === 'nextConversation' ? 1 : -1;
+      const nextIndex = currentIndex < 0
+        ? 0
+        : (currentIndex + offset + filteredChatIds.length) % filteredChatIds.length;
+      if (filteredChatIds[nextIndex] === currentChatId) return true;
+      void keyboardShortcutActionHandlersRef.current.handleConversationSelect?.(filteredChatIds[nextIndex]);
+      return true;
+    }
+    return false;
+  }, [
+    closeTopmostKeyboardLayer,
+    currentChatId,
+    filteredChatIds,
+    workspacePanel,
+    keyboardShortcutActionHandlersRef,
+  ]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !isPinTabUnlocked || !keyboardShortcutSettings.enabled || capturingShortcutAction) return undefined;
+    const handleKeyboardShortcut = event => {
+      if (event.repeat) return;
+      const target = event.target;
+      const isEditableTarget = isEditableKeyboardTarget(target);
+      const isMessageInput = target === messageInputRef.current;
+      if (isMessageInput && event.key === 'Escape' && mentionContext) return;
+      if (isEditableTarget && event.key !== 'Escape') return;
+      const action = SHORTCUT_ACTIONS.find(item => shortcutMatchesEvent(
+        keyboardShortcutSettings.bindings[item.id],
+        event,
+      ));
+      if (!action) return;
+      const handled = executeKeyboardShortcut(action.id, {
+        allowNavigation: !(isEditableTarget && isMessageInput),
+      });
+      if (!handled) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener('keydown', handleKeyboardShortcut, true);
+    return () => window.removeEventListener('keydown', handleKeyboardShortcut, true);
+  }, [
+    capturingShortcutAction,
+    executeKeyboardShortcut,
+    isLoggedIn,
+    isPinTabUnlocked,
+    keyboardShortcutSettings,
+    mentionContext,
+  ]);
+
   if (!isLoggedIn) {
     return <Login copy={appCopy} onLoginSuccess={handleLoginSuccess} initialNotice={appCopy.t(loginNotice)} />;
   }
@@ -9471,6 +10021,7 @@ function App() {
             <i className="fa-solid fa-magnifying-glass search-icon"></i>
             <input
               type="text"
+              ref={conversationSearchInputRef}
               placeholder={appCopy.t('Tìm kiếm')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -11783,6 +12334,90 @@ function App() {
                       </button>
                     ))}
                   </div>
+                </section>
+                <section className="settings-card keyboard-shortcut-card" aria-labelledby="keyboard-shortcuts-title">
+                  <div className="settings-card-heading keyboard-shortcut-heading">
+                    <span className="settings-card-icon keyboard"><i className="fa-solid fa-keyboard"></i></span>
+                    <div className="settings-card-heading-copy">
+                      <h3 id="keyboard-shortcuts-title">{appCopy.keyboardShortcuts}</h3>
+                      <p>{appCopy.keyboardShortcutsDescription}</p>
+                    </div>
+                    <label className="settings-toggle">
+                      <input
+                        type="checkbox"
+                        checked={keyboardShortcutSettings.enabled}
+                        onChange={event => updateKeyboardShortcutSettings({ ...keyboardShortcutSettings, enabled: event.target.checked })}
+                        aria-label={appCopy.keyboardShortcutsEnabled}
+                      />
+                      <span className="settings-toggle-track" aria-hidden="true"><span></span></span>
+                    </label>
+                  </div>
+                  <p className="keyboard-shortcut-hint"><i className="fa-solid fa-circle-info" aria-hidden="true"></i>{appCopy.keyboardShortcutsHint}</p>
+                  <div className="keyboard-shortcut-list">
+                    {SHORTCUT_ACTIONS.map(action => {
+                      const binding = keyboardShortcutSettings.bindings[action.id];
+                      const isCapturing = capturingShortcutAction === action.id;
+                      return (
+                        <div className="keyboard-shortcut-row" key={action.id}>
+                          <div className="keyboard-shortcut-copy">
+                            <strong>{appCopy[action.labelKey]}</strong>
+                            <small>{appCopy[action.descriptionKey]}</small>
+                          </div>
+                          <button
+                            type="button"
+                            className={`keyboard-shortcut-capture ${isCapturing ? 'recording' : ''}`}
+                            data-shortcut-action={action.id}
+                            onClick={() => {
+                              setCapturingShortcutAction(previous => previous === action.id ? '' : action.id);
+                              setKeyboardShortcutNotice('');
+                            }}
+                            onBlur={() => setCapturingShortcutAction(previous => previous === action.id ? '' : previous)}
+                            onKeyDown={isCapturing ? handleKeyboardShortcutCapture : undefined}
+                            aria-label={`${appCopy[action.labelKey]}: ${formatShortcut(binding, appCopy.keyboardShortcutsNotAssigned)}`}
+                            aria-pressed={isCapturing}
+                          >
+                            {isCapturing ? appCopy.keyboardShortcutsRecording : formatShortcut(binding, appCopy.keyboardShortcutsNotAssigned)}
+                          </button>
+                          <button
+                            type="button"
+                            className="keyboard-shortcut-icon-button"
+                            onClick={() => resetKeyboardShortcut(action.id)}
+                            title={appCopy.keyboardShortcutsReset}
+                            aria-label={`${appCopy.keyboardShortcutsReset}: ${appCopy[action.labelKey]}`}
+                          >
+                            <i className="fa-solid fa-rotate-left" aria-hidden="true"></i>
+                          </button>
+                          {binding && (
+                            <button
+                              type="button"
+                              className="keyboard-shortcut-icon-button clear"
+                              onClick={() => clearKeyboardShortcut(action.id)}
+                              title={appCopy.keyboardShortcutsClear}
+                              aria-label={`${appCopy.keyboardShortcutsClear}: ${appCopy[action.labelKey]}`}
+                            >
+                              <i className="fa-solid fa-xmark" aria-hidden="true"></i>
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {keyboardShortcutNotice && (
+                    <div className="keyboard-shortcut-notice" role="status">
+                      <i className="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+                      {appCopy[keyboardShortcutNotice] || keyboardShortcutNotice}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="keyboard-shortcut-reset-all"
+                    onClick={() => {
+                      updateKeyboardShortcutSettings(DEFAULT_KEYBOARD_SHORTCUT_SETTINGS);
+                      setCapturingShortcutAction('');
+                    }}
+                  >
+                    <i className="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>{appCopy.keyboardShortcutsReset}
+                  </button>
                 </section>
                 <section className="settings-card settings-inline-card language-setting-row" aria-labelledby="language-setting-title">
                   <div className="settings-card-heading">

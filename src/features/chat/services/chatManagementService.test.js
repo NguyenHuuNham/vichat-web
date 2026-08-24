@@ -17,6 +17,7 @@ import {
 
 const appSource = readFileSync(new URL('../../../app/App.jsx', import.meta.url), 'utf8');
 const stylesSource = readFileSync(new URL('../../../styles/index.css', import.meta.url), 'utf8');
+const tinodeSource = readFileSync(new URL('./tinodeClient.js', import.meta.url), 'utf8');
 const avatarCropSource = readFileSync(new URL('../../contacts/components/AvatarCropModal.jsx', import.meta.url), 'utf8');
 const managementServiceSource = readFileSync(new URL('./chatManagementService.js', import.meta.url), 'utf8');
 const mobileStoreSource = readFileSync(new URL('../../../../mobile/src/store/appStore.ts', import.meta.url), 'utf8');
@@ -377,6 +378,18 @@ test('managed member removal does not re-bind an already bound topic first', () 
 test('managed direct chats hydrate Tinode history before committing the room state', () => {
   assert.match(appSource, /const restoredRoom = await tinodeClient\.restoreConversation\(tinodeTopic\)/);
   assert.match(appSource, /\[stateConversationId\]: safeMergeTinodeConversation\(previousRoom, restoredStateRoom\)/);
+});
+
+test('managed direct deletion keeps the topic and reopens after a post-delete message', () => {
+  assert.match(appSource, /const isManagedDirect = usesManagementData && !activeChat\.isGroup/);
+  assert.match(appSource, /tinodeClient\.deleteConversation\(removedTopic, \{ isGroup: false \}\)/);
+  assert.match(appSource, /if \(removedTopic && isManagedDirect\) tinodeClient\.allowConversationTopic\(removedTopic\)/);
+  assert.match(appSource, /const reopenDirectConversation = async/);
+  assert.match(appSource, /chatManagementService\.createConversation\(\{[\s\S]*participantIds: \[peerId\]/);
+  assert.match(appSource, /messages: roomMessages\(conversation\)\.filter\(message => messageTimestamp\(message\) > deletedAt\)/);
+  assert.match(managementServiceSource, /deletedAt: record\?\.deletedAt/);
+  assert.match(tinodeSource, /await topic\.delMessagesAll\(false\)/);
+  assert.match(tinodeSource, /vichatDeletedAt/);
 });
 
 test('managed member addition keeps the Chatmgt id separate from the UI room key', () => {

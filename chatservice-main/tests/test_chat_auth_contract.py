@@ -524,6 +524,39 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("if is_group and not requested_group_ids", create_source)
         self.assertIn("besides its owner", create_source)
 
+    def test_direct_delete_keeps_shared_membership_and_uses_viewer_history_markers(self):
+        controller_source, remove_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_participant_remove",
+        )
+        _controller_source, list_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_list",
+        )
+        _controller_source, prepare_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_prepare_tinode",
+        )
+        _controller_source, bind_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_bind_tinode",
+        )
+
+        self.assertIn("DIRECT_DELETED_AT_PROPERTY", controller_source)
+        self.assertIn("_clear_direct_deleted_marker", controller_source)
+        self.assertIn("ConversationParticipant.active.is_(True)", list_source)
+        self.assertNotIn('Conversation.properties.contains({"is_group": False})', list_source)
+        direct_branch = remove_source.split("if not is_group:", 1)[1].split(
+            "replacement_id =",
+            1,
+        )[0]
+        self.assertIn("DIRECT_DELETED_AT_PROPERTY", direct_branch)
+        self.assertNotIn("target.active = False", direct_branch)
+        self.assertIn("allow_legacy_direct=True", prepare_source)
+        self.assertIn("_restore_legacy_direct_memberships", prepare_source)
+        self.assertIn("allow_legacy_direct=True", bind_source)
+        self.assertIn("_restore_legacy_direct_memberships", bind_source)
+
     @repository_source_test
     def test_group_creation_viewer_and_avatar_updates_preserve_realtime_contract(self):
         controller_source, group_settings_source = function_source(

@@ -404,6 +404,19 @@ empty. The metadata row is not deleted, so reopening the coworker from the
 directory reuses the same tenant-scoped Chatmgt conversation and deterministic
 Tinode mapping without copying message content into Chatmgt.
 
+Deleting a direct conversation is viewer-scoped. Chatmgt keeps both approved
+participant rows active and stores only the viewer's deletion timestamp in the
+conversation JSON property `direct_deleted_at_by_user`; it never applies the
+group leave/deactivation path to a direct pair. Tinode removes the viewer's
+message copy with a non-hard delete and records a private `vichatDeletedAt`
+boundary. Nicknames remain in the viewer's account properties and shared
+conversation backgrounds remain in Tinode auxiliary metadata. When a direct
+topic receives a message after that boundary, ChatUI reuses the same Chatmgt
+pair, clears both viewer-scoped markers, and merges only post-delete messages;
+the group membership and group deletion flows are unchanged. Legacy direct rows
+left inactive by the previous behavior are reactivated when the pair is
+prepared or bound.
+
 Chatmgt never uses browser localStorage as a fallback message store. If Tinode
 is unavailable, the directory and conversation metadata remain visible while
 realtime message/file inputs stay disabled and show the connection state.
