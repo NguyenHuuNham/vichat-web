@@ -1,7 +1,11 @@
 import { normalizeNotificationMuteUntil } from './conversationNotifications.js';
 import { normalizeConversationShape } from './chatRealtime.js';
 import { normalizeGroupSettings } from './groupSettings.js';
-import { normalizeAccountShape, normalizeTenantShape } from '../../contacts/services/accountDirectory.js';
+import {
+  filterAccountsByTenant,
+  normalizeAccountShape,
+  normalizeTenantShape,
+} from '../../contacts/services/accountDirectory.js';
 
 const env = import.meta.env || {};
 const apiBase = String(env.VITE_CHAT_MANAGEMENT_API_URL || '').replace(/\/$/, '');
@@ -93,7 +97,21 @@ function accountTenant(account) {
   const value = [account?.tenantId, account?.tenant_id, account?.tenant?.id]
     .map(item => typeof item === 'string' || typeof item === 'number' ? String(item).trim() : '')
     .find(Boolean);
-  return value || tenantId;
+  return value || '';
+}
+
+function activeSessionTenantId() {
+  return [
+    activeSession?.tenant?.id,
+    activeSession?.user?.tenantId,
+    activeSession?.user?.tenant_id,
+  ].map(scalarText).find(Boolean)
+    || (authMode === 'password' ? tenantId : '');
+}
+
+function accountsForActiveTenant(accounts) {
+  const currentTenantId = activeSessionTenantId();
+  return currentTenantId ? filterAccountsByTenant(accounts, currentTenantId) : [];
 }
 
 function scalarText(value) {
@@ -207,10 +225,11 @@ function publicAccount(account) {
   const tenantOptions = normalizeTenantOptions(
     safe.tenantOptions || safe.tenant_options,
   );
+  const normalizedTenantId = accountTenant(normalized);
   return {
     ...normalized,
-    tenantId: accountTenant(normalized),
-    tenant_id: accountTenant(normalized),
+    tenantId: normalizedTenantId,
+    tenant_id: normalizedTenantId,
     tenantOptions,
     tenant_options: tenantOptions,
     tenant: normalizeTenantShape(safe.tenant || normalized.tenant),
@@ -619,7 +638,7 @@ export const chatManagementService = {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const payload = await apiRequest('/api/v1/chat/users?results_per_page=1000');
     lastDirectorySync = payload?.directory_sync || null;
-    return responseItems(payload).map(publicAccount).filter(Boolean);
+    return accountsForActiveTenant(responseItems(payload).map(publicAccount).filter(Boolean));
   },
 
   async heartbeatPresence(accountIds = []) {
@@ -673,7 +692,8 @@ export const chatManagementService = {
       const params = new URLSearchParams({ q: value, results_per_page: '50' });
       if (excludeUserId) params.set('exclude_user_id', excludeUserId);
       const payload = await apiRequest(`/api/v1/chat/users?${params}`);
-      return responseItems(payload).map(publicAccount).filter(account => account?.id !== excludeUserId);
+      return accountsForActiveTenant(responseItems(payload).map(publicAccount))
+        .filter(account => account?.id !== excludeUserId);
     }
     throw new Error('Management service authentication is not configured.');
   },

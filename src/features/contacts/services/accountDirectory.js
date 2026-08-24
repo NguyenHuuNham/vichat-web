@@ -146,6 +146,17 @@ function tenantId(entity) {
   return String(entity?.tenantId || entity?.tenant_id || entity?.tenant?.id || '').trim();
 }
 
+// A directory snapshot without an active tenant is not safe to display or retain.
+export function filterAccountsByTenant(accounts, currentTenantOrUser) {
+  const currentTenantId = typeof currentTenantOrUser === 'string' || typeof currentTenantOrUser === 'number'
+    ? String(currentTenantOrUser).trim()
+    : tenantId(currentTenantOrUser);
+  if (!currentTenantId) return [];
+  return (Array.isArray(accounts) ? accounts : []).filter(account => (
+    tenantId(account) === currentTenantId
+  ));
+}
+
 export function companyDirectoryHeading(currentUser) {
   const companyName = String(
     currentUser?.tenantName || currentUser?.tenant_name || currentUser?.tenant?.name || '',
@@ -181,11 +192,8 @@ export function matchesCompanyDirectoryContact(account, query) {
 
 export function companyDirectoryContacts(accounts, currentUser) {
   const contacts = [];
-  const currentTenantId = tenantId(currentUser);
-  (Array.isArray(accounts) ? accounts : []).forEach(account => {
+  filterAccountsByTenant(accounts, currentUser).forEach(account => {
     if (!account || account.active === false || identitiesOverlap(account, currentUser)) return;
-    const accountTenantId = tenantId(account);
-    if (currentTenantId && accountTenantId !== currentTenantId) return;
     if (contacts.some(contact => identitiesOverlap(contact, account))) return;
     contacts.push(account);
   });

@@ -366,7 +366,14 @@ After login, ChatUI reads `/api/v1/chat/users`, `/api/v1/friend-request` and
 `/api/v1/conversation` from Chatmgt only. Directory search, direct pairs, groups,
 participants, notification mute deadlines, per-user pin state and profile/avatar changes are all
 stored under the JWT tenant. Foreign tenant IDs sent in query strings are
-ignored; the authenticated JWT and membership rows remain authoritative.
+ignored; the authenticated JWT and membership rows remain authoritative. The
+Chatmgt users endpoint queries `ManagementAccount.tenant_id` for that JWT
+tenant, and ChatUI applies a second fail-closed filter: a directory record is
+accepted only when it carries an explicit tenant ID equal to the active session
+tenant. Records with a missing tenant ID are dropped from the directory,
+search results, cached state and presence input instead of being assigned the
+build-time default tenant. This defense does not change conversation, message,
+Tinode or presence protocols for valid same-tenant records.
 
 Employee message-history search uses the authenticated
 `POST /api/v1/conversation/<conversation_id>/search` endpoint (with the

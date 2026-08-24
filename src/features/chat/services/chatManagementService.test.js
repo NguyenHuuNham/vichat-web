@@ -178,6 +178,25 @@ test('keeps only safe active tenant options and switches without logout', () => 
   assert.doesNotMatch(appSource, /tenantSwitcherIndex|shiftTenantSwitcher|tenant-switcher-viewport|tenant-switcher-track/);
 });
 
+test('keeps Chatmgt directory responses isolated to the active tenant', () => {
+  const accountTenantSource = managementServiceSource
+    .split('function accountTenant')[1]
+    .split('function activeSessionTenantId')[0];
+  assert.doesNotMatch(accountTenantSource, /return value \|\| tenantId/);
+  assert.match(managementServiceSource, /function activeSessionTenantId\(\)/);
+  assert.match(managementServiceSource, /function accountsForActiveTenant\(accounts\)/);
+  assert.match(
+    managementServiceSource,
+    /return accountsForActiveTenant\(responseItems\(payload\)\.map\(publicAccount\)\.filter\(Boolean\)\)/,
+  );
+  assert.match(
+    managementServiceSource,
+    /return accountsForActiveTenant\(responseItems\(payload\)\.map\(publicAccount\)\)/,
+  );
+  assert.match(appSource, /filterAccountsByTenant\(\s*directoryAccountsRef\.current/);
+  assert.match(appSource, /filterAccountsByTenant\(\s*accounts,\s*currentUserRef\.current \|\| currentUser/);
+});
+
 test('requires explicit confirmation before switching tenants', () => {
   assert.match(appSource, /const \[pendingTenantSwitch, setPendingTenantSwitch\] = useState\(null\)/);
   assert.match(appSource, /onClick=\{\(\) => requestTenantSwitch\(option\)\}/);

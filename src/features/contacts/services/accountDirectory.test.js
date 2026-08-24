@@ -8,6 +8,7 @@ import {
   companyDirectoryHeading,
   countGroupPresence,
   directoryUsernameMeta,
+  filterAccountsByTenant,
   findAccount,
   findAccountByIdentities,
   findDirectPeer,
@@ -32,27 +33,27 @@ import {
 } from './avatarCrop.js';
 
 test('company directory lists every other active employee without friendship data', () => {
-  const viewer = { id: 'account-viewer', tinodeUid: 'usr-viewer', name: 'Viewer' };
+  const viewer = { id: 'account-viewer', tinodeUid: 'usr-viewer', name: 'Viewer', tenantId: 'tenant-a' };
   const accounts = [
-    { id: 'account-z', tinodeUid: 'usr-z', name: 'Zeta', active: true },
+    { id: 'account-z', tinodeUid: 'usr-z', name: 'Zeta', tenantId: 'tenant-a', active: true },
     viewer,
-    { id: 'account-a', tinodeUid: 'usr-a', name: 'An', active: true },
-    { id: 'account-disabled', name: 'Disabled', active: false },
-    { id: 'account-a', tinodeUid: 'usr-a', name: 'An duplicate', active: true },
+    { id: 'account-a', tinodeUid: 'usr-a', name: 'An', tenantId: 'tenant-a', active: true },
+    { id: 'account-disabled', tenantId: 'tenant-a', name: 'Disabled', active: false },
+    { id: 'account-a', tinodeUid: 'usr-a', tenantId: 'tenant-a', name: 'An duplicate', active: true },
   ];
 
-  const result = companyDirectoryContacts(accounts, { id: 'usr-viewer' });
+  const result = companyDirectoryContacts(accounts, { id: 'usr-viewer', tenantId: 'tenant-a' });
 
   assert.deepEqual(result.map(account => account.id), ['account-a', 'account-z']);
 });
 
 test('company directory promotes online employees before offline employees', () => {
   const result = companyDirectoryContacts([
-    { id: 'offline-z', name: 'Zeta', online: false, active: true },
-    { id: 'online-b', name: 'Beta', online: true, active: true },
-    { id: 'offline-a', name: 'Alpha', online: false, active: true },
-    { id: 'online-a', name: 'An', online: true, active: true },
-  ], { id: 'viewer' });
+    { id: 'offline-z', tenantId: 'tenant-a', name: 'Zeta', online: false, active: true },
+    { id: 'online-b', tenantId: 'tenant-a', name: 'Beta', online: true, active: true },
+    { id: 'offline-a', tenantId: 'tenant-a', name: 'Alpha', online: false, active: true },
+    { id: 'online-a', tenantId: 'tenant-a', name: 'An', online: true, active: true },
+  ], { id: 'viewer', tenantId: 'tenant-a' });
 
   assert.deepEqual(result.map(account => account.id), [
     'online-a',
@@ -80,6 +81,30 @@ test('company directory excludes accounts from another tenant', () => {
 
   assert.deepEqual(
     companyDirectoryContacts(accounts, viewer).map(account => account.id),
+    ['same-company'],
+  );
+});
+
+test('tenant directory fails closed when the viewer tenant is missing', () => {
+  const accounts = [
+    { id: 'tenant-a-user', tenantId: 'tenant-a', active: true },
+    { id: 'tenant-b-user', tenantId: 'tenant-b', active: true },
+    { id: 'unknown-user', active: true },
+  ];
+
+  assert.deepEqual(companyDirectoryContacts(accounts, { id: 'viewer' }), []);
+  assert.deepEqual(filterAccountsByTenant(accounts, {}), []);
+});
+
+test('tenant directory keeps only explicitly matching tenant records', () => {
+  const accounts = [
+    { id: 'same-company', tenantId: 'tenant-a' },
+    { id: 'other-company', tenantId: 'tenant-b' },
+    { id: 'missing-tenant' },
+  ];
+
+  assert.deepEqual(
+    filterAccountsByTenant(accounts, 'tenant-a').map(account => account.id),
     ['same-company'],
   );
 });

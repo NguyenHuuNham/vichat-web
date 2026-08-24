@@ -782,6 +782,20 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('properties.pop("directory_removed_at", None)', restore_source)
         self.assertIn("account.active = True", restore_source)
 
+    def test_directory_endpoint_remains_scoped_to_the_verified_tenant(self):
+        _controller_source, directory_source = function_source(
+            CONTROLLER_PATH,
+            "management_users",
+        )
+
+        self.assertIn("current_user, tenant_id = _identity(request)", directory_source)
+        self.assertIn(
+            "ManagementAccount.query.filter(ManagementAccount.tenant_id == tenant_id)",
+            directory_source,
+        )
+        self.assertIn("_public_account(account, viewer_account=viewer_account)", directory_source)
+        self.assertNotIn("ManagementAccount.query.all()", directory_source)
+
     def test_management_admin_conversation_metadata_is_hidden(self):
         _controller_source, endpoint_source = function_source(
             CONTROLLER_PATH,

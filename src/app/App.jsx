@@ -118,6 +118,7 @@ import {
   companyDirectoryHeading,
   countGroupPresence,
   directoryUsernameMeta,
+  filterAccountsByTenant,
   findAccount,
   findAccountByIdentities,
   findDirectPeer,
@@ -3976,13 +3977,21 @@ function App() {
 
   const applyPresenceSnapshot = useCallback(snapshot => {
     const currentAccount = currentUserRef.current;
-    const accounts = directoryAccountsRef.current;
+    const accounts = filterAccountsByTenant(
+      directoryAccountsRef.current,
+      currentAccount,
+    );
     setDirectoryAccounts(previous => {
-      const next = updateAccountPresence(previous, snapshot, currentAccount);
+      const scopedPrevious = filterAccountsByTenant(previous, currentAccount);
+      const next = updateAccountPresence(scopedPrevious, snapshot, currentAccount);
       directoryAccountsRef.current = next;
       return next;
     });
-    setWorkspaceResults(previous => updateAccountPresence(previous, snapshot, currentAccount));
+    setWorkspaceResults(previous => updateAccountPresence(
+      filterAccountsByTenant(previous, currentAccount),
+      snapshot,
+      currentAccount,
+    ));
     setConversations(previous => {
       let changed = false;
       const next = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
@@ -4980,8 +4989,10 @@ function App() {
           loadChatbotMessages(managementUserId),
           { accountSession, useTinode: tinodeChatbotEnabled },
         );
-        const accounts = mergeDirectoryAccountSnapshots([user], directoryUsers)
-          .map(account => ({
+        const accounts = filterAccountsByTenant(
+          mergeDirectoryAccountSnapshots([user], directoryUsers),
+          user,
+        ).map(account => ({
             ...account,
             avatar: isAccountManaged(account) ? (account.avatar || '') : (avatarOverrideFor(account) || account.avatar || ''),
           }));
@@ -5722,8 +5733,15 @@ function App() {
       const results = await chatManagementService.searchUsers(value, {
         excludeUserId: currentUser?.id || currentUser?.uid,
       });
-      const knownAccounts = directoryAccountsRef.current;
-      setWorkspaceResults(results.map(result => {
+      const scopedResults = filterAccountsByTenant(
+        results,
+        currentUserRef.current || currentUser,
+      );
+      const knownAccounts = filterAccountsByTenant(
+        directoryAccountsRef.current,
+        currentUserRef.current || currentUser,
+      );
+      setWorkspaceResults(scopedResults.map(result => {
         const known = findAccount(knownAccounts, result.id || result.uid || result.tinodeUid);
         return known && typeof known.online === 'boolean'
           ? { ...result, online: known.online }
@@ -5798,16 +5816,26 @@ function App() {
         ]);
         if (cancelled || accountSessionRef.current !== accountSession) return;
 
-        const previousAccounts = directoryAccountsRef.current;
-        const mergedAccounts = mergeDirectoryAccountSnapshots(previousAccounts, accounts);
-        const nextAccounts = mergedAccounts.map(account => {
+        const rawPreviousAccounts = Array.isArray(directoryAccountsRef.current)
+          ? directoryAccountsRef.current
+          : [];
+        const previousAccounts = filterAccountsByTenant(
+          rawPreviousAccounts,
+          currentUserRef.current || currentUser,
+        );
+        const scopedAccounts = filterAccountsByTenant(
+          accounts,
+          currentUserRef.current || currentUser,
+        );
+        const mergedAccounts = mergeDirectoryAccountSnapshots(previousAccounts, scopedAccounts);
+        const nextAccounts = filterAccountsByTenant(mergedAccounts.map(account => {
           const previous = findAccount(previousAccounts, account.id || account.uid || account.tinodeUid);
           const override = isAccountManaged(account) ? '' : avatarOverrideFor(account);
           const next = override ? { ...account, avatar: override } : account;
           return previous && typeof previous.online === 'boolean'
             ? { ...next, online: previous.online }
             : next;
-        });
+        }), currentUserRef.current || currentUser);
         const nextNicknames = Object.fromEntries(
           nextAccounts
             .filter(account => account?.id && account?.nickname)
@@ -5818,7 +5846,8 @@ function App() {
           contactNicknamesRef.current = nextNicknames;
           setContactNicknames(nextNicknames);
         }
-        const accountsChanged = previousAccounts.length !== nextAccounts.length
+        const accountsChanged = rawPreviousAccounts.length !== previousAccounts.length
+          || previousAccounts.length !== nextAccounts.length
           || nextAccounts.some(account => {
             const previous = findAccount(previousAccounts, account.id || account.uid || account.tinodeUid);
             return !previous || ['id', 'uid', 'tinodeUid', 'username', 'name', 'defaultName', 'nickname', 'avatar', 'email', 'title', 'department', 'active', 'online']
@@ -5843,8 +5872,15 @@ function App() {
             : result;
         });
         setWorkspaceResults(previous => {
-          const next = refreshResultList(previous);
-          return next.length === previous.length && next.every((item, index) => item === previous[index]) ? previous : next;
+          const scopedPrevious = filterAccountsByTenant(
+            previous,
+            currentUserRef.current || currentUser,
+          );
+          const next = refreshResultList(scopedPrevious);
+          return next.length === scopedPrevious.length
+            && next.every((item, index) => item === scopedPrevious[index])
+            ? scopedPrevious
+            : next;
         });
         const self = findAccount(effectiveAccounts, managementViewerId);
         if (self) {
@@ -6385,9 +6421,9 @@ function App() {
       )
         ? directoryAccountsRef.current
         : [...directoryAccountsRef.current, contactAccount];
-      const nextAccounts = applyContactNicknames(
-        knownAccounts,
-        { [contactId]: savedNickname },
+      const nextAccounts = filterAccountsByTenant(
+        applyContactNicknames(knownAccounts, { [contactId]: savedNickname }),
+        currentUserRef.current || currentUser,
       );
       directoryAccountsRef.current = nextAccounts;
       setDirectoryAccounts(nextAccounts);
