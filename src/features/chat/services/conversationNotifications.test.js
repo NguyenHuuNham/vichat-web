@@ -133,4 +133,6 @@ test('exposes notification sound profiles and concise message bodies', () => {
   assert.equal(notificationMessageBody({ type: 'file', file: { name: 'brief.pdf' } }), 'Đã gửi tệp brief.pdf.');
   assert.equal(notificationMessageBody({ type: 'file', file: { name: 'brief.pdf' } }, value => value.replace('Đã gửi tệp', 'Sent file')), 'Sent file brief.pdf.');
   assert.equal(notificationMessageBody({ text: '  Xin chào  ' }), 'Xin chào');
+  assert.equal(notificationMessageBody({ action: 'poll_vote' }), 'Đã có người bình chọn trong nhóm.');
+  assert.equal(notificationMessageBody({ type: 'poll', poll: { question: 'Chọn giờ họp' } }), 'Bình chọn: Chọn giờ họp');
 });

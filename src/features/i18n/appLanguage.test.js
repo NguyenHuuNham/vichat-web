@@ -18,6 +18,13 @@ test('translates message pin labels for the English UI', () => {
   assert.equal(translateUiText('Thu gọn tin nhắn đã ghim', 'en'), 'Collapse pinned messages');
 });
 
+test('translates poll composer and activity labels', () => {
+  assert.equal(translateUiText('Tạo bình chọn', 'en'), 'Create poll');
+  assert.equal(translateUiText('Cho phép chọn nhiều phương án', 'en'), 'Allow multiple choices');
+  assert.equal(translateUiText('Khóa bình chọn', 'en'), 'Lock poll');
+  assert.equal(translateUiText('Đã có người bình chọn trong nhóm.', 'en'), 'Someone voted in the group poll.');
+});
+
 test('translates the reply composer heading', () => {
   assert.equal(translateUiText('Trả lời', 'en'), 'Reply to');
 });

@@ -1,6 +1,7 @@
 import { normalizeGroupSettings } from './groupSettings.js';
 import { normalizeConversationBackground } from './conversationBackground.js';
 import { normalizeImageBatch } from './imageBatchLayout.js';
+import { normalizePoll, normalizePollEvent } from './poll.js';
 
 export const TINODE_CONTACT_SYNC_DELAYS_MS = Object.freeze([120, 600, 1800]);
 
@@ -247,6 +248,21 @@ function normalizeMessage(value, index) {
     text: conversationText(message.text),
     image: conversationMedia(message.image),
     imageBatch: normalizeImageBatch(message.imageBatch || message.image_batch),
+    poll: normalizePoll(message.poll || message.pollData || message.poll_data),
+    pollEvent: normalizePollEvent(message.pollEvent || message.poll_event),
+    pollActivity: (() => {
+      const source = message.pollActivity || message.poll_activity;
+      const normalized = normalizePollEvent(source);
+      return normalized
+        ? { ...normalized, seq: Number(source?.seq) > 0 ? Number(source.seq) : 0 }
+        : null;
+    })(),
+    pollActivitySeq: Number(message.pollActivitySeq || message.poll_activity_seq) > 0
+      ? Number(message.pollActivitySeq || message.poll_activity_seq)
+      : 0,
+    pollActivityAt: conversationText(message.pollActivityAt || message.poll_activity_at),
+    pollActivityActorId: conversationIdentity(message.pollActivityActorId || message.poll_activity_actor_id),
+    pollActivityActorName: conversationText(message.pollActivityActorName || message.poll_activity_actor_name),
     sticker: normalizeSticker(message.sticker),
     avatar: conversationMedia(message.avatar || message.photo),
     file: normalizeAttachment(message.file),

@@ -234,6 +234,13 @@ export async function deleteCustomNotificationSound(viewerId, factory = indexedD
 }
 
 export function notificationMessageBody(message = {}, translate = value => value) {
+  if (message.action === 'poll_vote') return translate('Đã có người bình chọn trong nhóm.');
+  if (message.action === 'poll_option_added') return translate('Đã thêm phương án vào bình chọn.');
+  if (message.action === 'poll_locked') return translate('Bình chọn đã được khóa.');
+  if (message.type === 'poll' || message.poll || message.pollData) {
+    const question = String(message.poll?.question || message.pollData?.question || message.text || '').trim();
+    return question ? `${translate('Bình chọn')}: ${question}` : translate('Có một bình chọn mới.');
+  }
   if (message.type === 'sticker') return translate('Đã gửi sticker.');
   if (message.type === 'image') return translate('Đã gửi một hình ảnh.');
   if (message.type === 'file') return translate(`Đã gửi tệp ${message.file?.name || 'đính kèm'}.`);

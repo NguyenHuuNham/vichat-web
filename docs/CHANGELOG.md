@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-11 - Bình chọn trong nhóm
+
+- Thoi gian: 2026-08-24 08:11 (Asia/Saigon)
+- Loai: Tinh nang | Sua loi | Web | Realtime | Kiem thu | Tai lieu
+- Trang thai: Da kiem thu local; cho commit va deploy production
+- Muc tieu: Cho phep tao, cau hinh, binh chon, ghim va khoa binh chon trong chat nhom, khong hien thi trong chat 1-1.
+- Pham vi: ChatUI composer/poll card, Tinode metadata va event projection, notification, demo fallback, i18n; khong thay doi tin nhan text/file/sticker, reaction, reply, avatar, wallpaper, membership hay Chatmgt.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/poll.js`, `src/features/chat/services/poll.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/conversationNotifications.js`, `src/features/chat/services/conversationNotifications.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `package.json`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Them icon binh chon canh voice trong nhom; modal tao poll voi thoi han, chon mot/nhieu, them phuong an, an ket qua/voter va tuy chon ghim. Poll root dung head `x-vichat-poll`; vote, them phuong an va khoa dung event `__VICHAT_POLL_EVENT__:` trong cung topic. Poll duoc replay sau F5/reconnect, day xuong cuoi timeline sau activity, hien thong bao ro actor va cho creator khoa poll. Quyền ghim van dung chinh sach ghim hien co.
+- Quyet dinh ky thuat: Tinode van la nguon chuan; khong them API, migration, bang poll hay copy tin nhan sang Chatmgt. Sender Tinode la actor authoritative cho vote/khoa; replay tu choi vote/phuong an sau han va khoa tu thanh vien khac. Demo fallback cung chiếu lai event sau F5.
+- Database/API/cau hinh: Khong co migration, endpoint moi, bien moi truong hoac thay doi cau hinh.
+- Kiem thu: `npm run test:frontend` dat 191/191; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` va `npm run build:production` dat voi bundle `App-BkiOxeUB.js`, `index-yEywbIB4.js`, `index-BWOZRSZq.css`; `git diff --check` dat. UAT click bang browser chua chay vi browser tool khong duoc expose trong phien nay.
+- Rui ro con lai: Chua UAT hai tai khoan production cho tao poll, vote realtime, notification, het han, khoa, ghim va chat 1-1; bundle co warning chunk App > 500 KB da ton tai theo quy mo UI.
+- Viec tiep theo: Commit/push/deploy release ChatUI; sau deploy hard refresh va UAT owner/member tren chat nhom, sau do xac nhan chat 1-1 khong co icon poll.
+- Commit/PR: Chua tao.
+
 ## 2026-08-24-10 - Gom nhieu anh trong mot tin nhan
 
 - Thoi gian: 2026-08-24 07:07 (Asia/Saigon)

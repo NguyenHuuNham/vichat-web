@@ -144,6 +144,18 @@ import {
   normalizeGroupSettings,
 } from '../features/chat/services/groupSettings';
 import {
+  DEFAULT_POLL_SETTINGS,
+  POLL_LIMITS,
+  applyPollEvent,
+  normalizePoll,
+  normalizePollEvent,
+  pollCanViewerLock,
+  pollIsClosed,
+  pollOptionVoteCounts,
+  pollTotalVoters,
+  pollViewerIdentities,
+} from '../features/chat/services/poll';
+import {
   CONVERSATION_BACKGROUND_PRESETS,
   CONVERSATION_BACKGROUND_SCOPES,
   clearConversationBackground,
@@ -411,6 +423,76 @@ function isStickerMessage(message) {
     || message.sticker?.stickerId
     || message.file?.ext === 'sticker'
   ));
+}
+
+function isPollMessage(message) {
+  return Boolean(message && (message.type === 'poll' || message.poll || message.pollData));
+}
+
+function pollEventForMessage(message) {
+  const event = message?.pollEvent || message?.systemEvent;
+  return normalizePollEvent(event);
+}
+
+function projectDemoPollMessages(messages = []) {
+  const source = Array.isArray(messages) ? messages : [];
+  const eventsByPollId = new Map();
+  source.forEach(message => {
+    const event = pollEventForMessage(message);
+    if (!event?.pollId) return;
+    const events = eventsByPollId.get(event.pollId) || [];
+    events.push({ message, event });
+    eventsByPollId.set(event.pollId, events);
+  });
+  eventsByPollId.forEach(events => events.sort((first, second) => (
+    (Date.parse(first.message?.createdAt || first.event.createdAt || '') || 0)
+      - (Date.parse(second.message?.createdAt || second.event.createdAt || '') || 0)
+  )));
+
+  const projected = source.map(message => {
+    if (!isPollMessage(message)) return message;
+    const poll = normalizePoll(message.poll || message.pollData);
+    if (!poll) return message;
+    const events = eventsByPollId.get(poll.id) || [];
+    let nextPoll = poll;
+    events.forEach(({ message: eventMessage, event }) => {
+      nextPoll = applyPollEvent(
+        nextPoll,
+        event,
+        eventMessage.senderId || event.actorId,
+        Number(eventMessage.seq) || 0,
+      );
+    });
+    const latest = events.at(-1);
+    const latestEvent = latest?.event;
+    return {
+      ...message,
+      poll: nextPoll,
+      text: nextPoll.question,
+      ...(latestEvent ? { action: latestEvent.action } : {}),
+      ...(latestEvent ? {
+        pollActivity: latestEvent,
+        pollActivityAt: latest.message.createdAt || latestEvent.createdAt || message.createdAt,
+        pollActivityActorId: latest.message.senderId || latestEvent.actorId || '',
+        pollActivityActorName: latest.message.senderName || latestEvent.actorName || '',
+      } : {}),
+    };
+  });
+  const movedPolls = projected.filter(message => (
+    isPollMessage(message)
+      && Date.parse(message.pollActivityAt || '') > Date.parse(message.createdAt || '')
+  ));
+  return movedPolls.length > 0
+    ? [...projected.filter(message => !movedPolls.includes(message)), ...movedPolls]
+    : projected;
+}
+
+function messageNotificationActorId(message) {
+  return message?.pollActivityActorId || message?.senderId || message?.raw?.from || message?.raw?.head?.['x-sender-id'] || '';
+}
+
+function messageNotificationSequence(message) {
+  return Math.max(Number(message?.pollActivitySeq) || 0, Number(message?.seq) || 0);
 }
 
 function replyMetadataForMessage(message, fallbackSenderName = '') {
@@ -859,6 +941,19 @@ function personalizeGroupSystemText(message, accounts, viewerId) {
       ? `${actorText} đổi hình nền cuộc trò chuyện`
       : `${actorText} xóa hình nền cuộc trò chuyện`;
   }
+  if (message.action === 'poll_vote') {
+    const actorText = message.senderId === viewerId ? 'Bạn' : actorName;
+    return `${actorText} đã bình chọn`;
+  }
+  if (message.action === 'poll_option_added') {
+    const actorText = message.senderId === viewerId ? 'Bạn' : actorName;
+    const optionText = String(message.pollEvent?.optionText || message.systemEvent?.optionText || '').trim();
+    return optionText ? `${actorText} đã thêm phương án “${optionText}”` : `${actorText} đã thêm một phương án`;
+  }
+  if (message.action === 'poll_locked') {
+    const actorText = message.senderId === viewerId ? 'Bạn' : actorName;
+    return `${actorText} đã khóa bình chọn`;
+  }
   return message.text;
 }
 
@@ -1142,7 +1237,10 @@ function collectFriendshipRecords(conversations, viewerId) {
 }
 
 function messageTimestamp(message) {
-  return Date.parse(message?.createdAt || message?.raw?.ts || '') || 0;
+  return Math.max(
+    Date.parse(message?.createdAt || message?.raw?.ts || '') || 0,
+    Date.parse(message?.pollActivityAt || '') || 0,
+  );
 }
 
 function messagePayloadKey(message) {
@@ -1152,6 +1250,7 @@ function messagePayloadKey(message) {
     message?.file?.name || '',
     message?.image || '',
     message?.sticker?.id || message?.sticker?.stickerId || '',
+    message?.poll?.id || message?.pollData?.id || '',
   ].join('|');
 }
 
@@ -1610,6 +1709,149 @@ function MessageReplyPreview({ reply, copy = { t: value => value }, onClick, sho
   );
 }
 
+function PollMessageCard({
+  message,
+  viewerIdentities = [],
+  copy = { t: value => value },
+  onVote,
+  onAddOption,
+  onLock,
+}) {
+  const poll = normalizePoll(message?.poll || message?.pollData);
+  const viewerVote = pollViewerIdentities(poll, viewerIdentities);
+  const [selectedOptionIds, setSelectedOptionIds] = useState(viewerVote?.optionIds || []);
+  const [newOption, setNewOption] = useState('');
+  const [isAddingOption, setIsAddingOption] = useState(false);
+  const [, setPollClock] = useState(Date.now());
+  const closed = pollIsClosed(poll);
+  const counts = pollOptionVoteCounts(poll);
+  const totalVoters = pollTotalVoters(poll);
+  const canLock = pollCanViewerLock(poll, viewerIdentities);
+  const showResults = !poll?.settings?.hideResultsUntilVote || Boolean(viewerVote) || closed || canLock;
+  const maxCount = Math.max(1, ...Object.values(counts));
+  const viewerVoteCreatedAt = viewerVote?.createdAt || '';
+  const viewerVoteOptionIds = (viewerVote?.optionIds || []).join('|');
+
+  useEffect(() => {
+    setSelectedOptionIds(viewerVoteOptionIds ? viewerVoteOptionIds.split('|') : []);
+  }, [message?.id, viewerVoteCreatedAt, viewerVoteOptionIds]);
+
+  useEffect(() => {
+    const expiresAt = Date.parse(poll?.settings?.expiresAt || '');
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return undefined;
+    const timer = window.setTimeout(() => setPollClock(Date.now()), expiresAt - Date.now() + 20);
+    return () => window.clearTimeout(timer);
+  }, [poll?.id, poll?.settings?.expiresAt]);
+
+  if (!poll) return null;
+
+  const toggleOption = optionId => {
+    if (closed) return;
+    setSelectedOptionIds(previous => {
+      if (!poll.settings.allowMultiple) return [optionId];
+      return previous.includes(optionId)
+        ? previous.filter(id => id !== optionId)
+        : [...previous, optionId];
+    });
+  };
+
+  const submitVote = () => {
+    if (!selectedOptionIds.length || closed) return;
+    onVote?.(message, selectedOptionIds);
+  };
+
+  const submitOption = async event => {
+    event.preventDefault();
+    const optionText = newOption.trim();
+    if (!optionText || isAddingOption || closed) return;
+    setIsAddingOption(true);
+    try {
+      await onAddOption?.(message, optionText);
+      setNewOption('');
+    } finally {
+      setIsAddingOption(false);
+    }
+  };
+
+  return (
+    <div className="poll-message-card">
+      <div className="poll-message-heading">
+        <span className="poll-message-icon" aria-hidden="true"><i className="fa-solid fa-square-poll-vertical"></i></span>
+        <div className="poll-message-heading-copy">
+          <strong>{copy.t('Bình chọn')}</strong>
+          <small>{poll.creatorName || copy.t('Thành viên')} · {totalVoters} {copy.t('lượt bình chọn')}</small>
+        </div>
+        {closed && <span className="poll-status-badge"><i className="fa-solid fa-lock"></i>{copy.t('Đã khóa')}</span>}
+      </div>
+      <h3 className="poll-question">{poll.question}</h3>
+      <div className="poll-options" role="group" aria-label={poll.question}>
+        {poll.options.map(option => {
+          const count = counts[option.id] || 0;
+          const selected = selectedOptionIds.includes(option.id);
+          const percentage = totalVoters > 0 ? Math.round((count / totalVoters) * 100) : 0;
+          return (
+            <button
+              type="button"
+              key={option.id}
+              className={`poll-option ${selected ? 'selected' : ''}`}
+              onClick={() => toggleOption(option.id)}
+              disabled={closed}
+              aria-pressed={selected}
+            >
+              <span className={`poll-option-marker ${poll.settings.allowMultiple ? 'multiple' : ''}`} aria-hidden="true">
+                {selected && <i className="fa-solid fa-check"></i>}
+              </span>
+              <span className="poll-option-copy">
+                <span className="poll-option-label">{option.text}</span>
+                {showResults && (
+                  <span className="poll-option-progress" aria-hidden="true">
+                    <span style={{ width: `${Math.min(100, (count / maxCount) * 100)}%` }}></span>
+                  </span>
+                )}
+              </span>
+              {showResults && <strong className="poll-option-count">{count} <small>{percentage}%</small></strong>}
+            </button>
+          );
+        })}
+      </div>
+      {!showResults && <p className="poll-hidden-results"><i className="fa-solid fa-eye-slash"></i>{copy.t('Kết quả sẽ hiện sau khi bạn bình chọn')}</p>}
+      {poll.settings.allowAddOptions && !closed && (
+        <form className="poll-add-option" onSubmit={submitOption}>
+          <input
+            value={newOption}
+            maxLength={POLL_LIMITS.maxOptionLength}
+            onChange={event => setNewOption(event.target.value)}
+            placeholder={copy.t('Thêm phương án')}
+            aria-label={copy.t('Thêm phương án')}
+          />
+          <button type="submit" disabled={!newOption.trim() || isAddingOption} aria-label={copy.t('Thêm')}>
+            <i className={`fa-solid ${isAddingOption ? 'fa-spinner fa-spin' : 'fa-plus'}`}></i>
+          </button>
+        </form>
+      )}
+      {!poll.settings.hideVoters && totalVoters > 0 && showResults && (
+        <div className="poll-voter-list">
+          {Object.entries(poll.votes).slice(0, 8).map(([actorId, vote]) => (
+            <span key={actorId} className="poll-voter" title={vote.name || actorId}>
+              <SafeAvatar src={vote.avatar || ''} name={vote.name || actorId} />
+            </span>
+          ))}
+          {totalVoters > 8 && <small>+{totalVoters - 8}</small>}
+        </div>
+      )}
+      <div className="poll-message-footer">
+        <span>{poll.settings.allowMultiple ? copy.t('Có thể chọn nhiều') : copy.t('Chọn một phương án')}</span>
+        <div className="poll-message-actions">
+          {canLock && <button type="button" onClick={() => onLock?.(message)}><i className="fa-solid fa-lock"></i>{copy.t('Khóa bình chọn')}</button>}
+          <button type="button" className="poll-vote-button" onClick={submitVote} disabled={closed || !selectedOptionIds.length}>
+            <i className="fa-solid fa-check"></i>{copy.t('Bình chọn')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MessageQuickActions({
   message,
   messageKey,
@@ -1961,7 +2203,7 @@ function demoGroupToConversation(group, accounts, viewerId) {
   });
   const owner = findAccount(accounts, group.ownerId);
   const deletedBefore = Date.parse(group.deletedAtByUser?.[viewerId] || '') || 0;
-  const messages = (Array.isArray(group.messages) ? group.messages : [])
+  const messages = projectDemoPollMessages((Array.isArray(group.messages) ? group.messages : [])
     .filter(message => (Date.parse(message.createdAt || '') || 0) > deletedBefore)
     .map(message => {
     const senderAccount = findAccount(accounts, message.senderId);
@@ -1972,8 +2214,8 @@ function demoGroupToConversation(group, accounts, viewerId) {
       senderName: senderAccount?.name || message.senderName || message.senderId,
       avatar: senderAccount?.avatar || message.avatar,
       text: message.type === 'system' ? personalizeGroupSystemText(message, accounts, viewerId) : message.text,
-    };
-  });
+      };
+  }));
   const lastMessage = messages[messages.length - 1];
   const lastAttachmentPreview = attachmentConversationPreview(lastMessage);
   const lastContent = lastMessage?.text || 'Nhóm mới được tạo';
@@ -2110,6 +2352,29 @@ function callPeerDetails(room, currentUser) {
   };
 }
 
+const POLL_DURATION_OPTIONS = Object.freeze([
+  { id: 'none', label: 'Không giới hạn' },
+  { id: '1h', label: '1 giờ' },
+  { id: '1d', label: '1 ngày' },
+  { id: '3d', label: '3 ngày' },
+  { id: '7d', label: '7 ngày' },
+]);
+
+function createPollComposerState() {
+  return {
+    question: '',
+    options: ['', ''],
+    duration: 'none',
+    settings: { ...DEFAULT_POLL_SETTINGS },
+    advancedOpen: false,
+  };
+}
+
+function pollExpiryForDuration(duration, now = Date.now()) {
+  const durations = { '1h': 60 * 60 * 1000, '1d': 24 * 60 * 60 * 1000, '3d': 3 * 24 * 60 * 60 * 1000, '7d': 7 * 24 * 60 * 60 * 1000 };
+  return durations[duration] ? new Date(now + durations[duration]).toISOString() : '';
+}
+
 function App() {
   const [currentChatId, setCurrentChatId] = useState(CHATBOT_ACCOUNT.id);
   const [conversations, setConversations] = useState(createInitialConversations);
@@ -2190,6 +2455,8 @@ function App() {
   const [messageSearchLoading, setMessageSearchLoading] = useState(false);
   const [messageSearchError, setMessageSearchError] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [pollComposer, setPollComposer] = useState(null);
+  const [isCreatingPoll, setIsCreatingPoll] = useState(false);
   const [composerPickerTab, setComposerPickerTab] = useState('stickers');
   const [mentionContext, setMentionContext] = useState(null);
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
@@ -3837,7 +4104,7 @@ function App() {
   }, [customNotificationSoundUrl, settings.sound]);
 
   const showIncomingNotification = useCallback((conversation, message, stateId) => {
-    if (!message || message.senderId === viewerId || typeof window === 'undefined') return;
+    if (!message || messageNotificationActorId(message) === viewerId || typeof window === 'undefined') return;
     const shouldAlert = document.visibilityState === 'hidden' || currentChatIdRef.current !== stateId;
     if (!shouldAlert) return;
     const notificationRoom = conversationsRef.current[stateId] || conversation;
@@ -3846,7 +4113,7 @@ function App() {
     if (settings.sounds) playNotificationSound(settings.sound);
     if (settings.desktopNotifications && desktopNotificationPermission === 'granted') {
       try {
-        const senderName = message.senderName || notificationRoom?.name || 'Tin nhắn mới';
+        const senderName = message.pollActivityActorName || message.senderName || notificationRoom?.name || 'Tin nhắn mới';
         const desktopNotification = new window.Notification(notificationRoom?.name || 'ViChat', {
           body: `${senderName}: ${notificationMessageBody(message, appCopy.t)}`,
           icon: '/chat-logo.svg',
@@ -4101,17 +4368,21 @@ function App() {
           if (currentChatIdRef.current === stateId) setCurrentChatId(CHATBOT_ACCOUNT.id);
           return;
         }
-        const latestIncoming = (conversation.messages || [])
-          .filter(message => message.type !== 'system' && message.senderId !== viewerId && Number.isFinite(message.seq))
-          .sort((first, second) => first.seq - second.seq)
-          .at(-1);
+        const notificationMessages = (conversation.messages || [])
+          .filter(message => (
+            (message.type !== 'system' || ['poll_vote', 'poll_option_added', 'poll_locked'].includes(message.action))
+            && messageNotificationActorId(message) !== viewerId
+            && messageNotificationSequence(message) > 0
+          ))
+          .sort((first, second) => messageNotificationSequence(first) - messageNotificationSequence(second));
+        const latestIncoming = notificationMessages.at(-1);
         if (latestIncoming) {
           const previousSeq = notificationBaselineRef.current.get(conversation.id);
-          notificationBaselineRef.current.set(conversation.id, Math.max(previousSeq || 0, latestIncoming.seq));
-          if (previousSeq !== undefined && latestIncoming.seq > previousSeq) {
-            const newMessage = (conversation.messages || [])
-              .filter(message => message.type !== 'system' && message.senderId !== viewerId && message.seq > previousSeq)
-              .sort((first, second) => first.seq - second.seq)
+          const latestSequence = messageNotificationSequence(latestIncoming);
+          notificationBaselineRef.current.set(conversation.id, Math.max(previousSeq || 0, latestSequence));
+          if (previousSeq !== undefined && latestSequence > previousSeq) {
+            const newMessage = notificationMessages
+              .filter(message => messageNotificationSequence(message) > previousSeq)
               .at(-1);
             showIncomingNotification(conversation, newMessage, stateId);
           }
@@ -7165,6 +7436,237 @@ function App() {
     }
   };
 
+  const closePollComposer = () => setPollComposer(null);
+
+  const openPollComposer = () => {
+    if (!activeChat?.isGroup) return;
+    if (activeChat.isChatbot || realtimeMessagingPending || isRecordingVoice || !canSendInActiveGroup) {
+      setChatError('Bình chọn chỉ khả dụng khi nhóm đang sẵn sàng nhận tin nhắn.');
+      return;
+    }
+    setChatError('');
+    setShowEmojiPicker(false);
+    setPollComposer(createPollComposerState());
+  };
+
+  const pollActivityMessage = (event, actorId, actorName, sourceMessage) => ({
+    id: `poll-activity-${event.clientId || Date.now()}`,
+    type: 'system',
+    action: event.action,
+    sender: actorId === (tinodeClient.currentUserId || viewerId) ? 'outgoing' : 'incoming',
+    senderId: actorId,
+    senderName: actorName,
+    pollEvent: { ...event, actorId, actorName },
+    systemEvent: { ...event, actorId, actorName },
+    text: personalizeGroupSystemText({ action: event.action, senderId: actorId, senderName: actorName, pollEvent: event }, directoryAccounts, viewerId),
+    time: getTimeString(),
+    createdAt: event.createdAt || new Date().toISOString(),
+    pollId: sourceMessage?.poll?.id || sourceMessage?.pollData?.id || '',
+  });
+
+  const applyLocalPollEvent = (message, event) => {
+    const actorId = event.actorId || tinodeClient.currentUserId || viewerId;
+    const room = conversationsRef.current[activeChat.id];
+    const currentMessage = roomMessages(room).find(item => item.id === message?.id) || message;
+    const currentPoll = normalizePoll(currentMessage?.poll || currentMessage?.pollData);
+    if (!currentPoll || !actorId) return null;
+    const nextPoll = applyPollEvent(currentPoll, event, actorId, 0);
+    const activity = pollActivityMessage(event, actorId, event.actorName || currentUser?.name || 'Thành viên', currentMessage);
+    setConversations(previous => {
+      const currentRoom = previous[activeChat.id] || room;
+      if (!currentRoom) return previous;
+      const withoutPoll = roomMessages(currentRoom).filter(item => item.id !== currentMessage.id && item.id !== activity.id);
+      const nextMessages = [
+        ...withoutPoll,
+        activity,
+        { ...currentMessage, poll: nextPoll, text: nextPoll.question, pending: false },
+      ];
+      const latest = nextMessages.at(-1);
+      const next = {
+        ...previous,
+        [activeChat.id]: {
+          ...currentRoom,
+          messages: nextMessages,
+          lastMsg: `Bình chọn: ${nextPoll.question}`,
+          time: latest?.time || currentRoom.time,
+          updatedAt: latest?.createdAt || currentRoom.updatedAt,
+        },
+      };
+      conversationsRef.current = next;
+      return next;
+    });
+    if (chatMode === 'demo') {
+      updateDemoGroupMessage(activeChat.id, currentMessage.id, { poll: nextPoll });
+      appendDemoGroupMessage(activeChat.id, activity);
+    }
+    return activity;
+  };
+
+  const publishPollEvent = async (message, event) => {
+    if (!activeChat?.isGroup || !message?.poll) return;
+    if (realtimeMessagingPending || !canSendInActiveGroup) {
+      setChatError('Nhóm chưa sẵn sàng để cập nhật bình chọn.');
+      return;
+    }
+    const actorId = tinodeClient.currentUserId || currentUser?.tinodeUid || viewerId;
+    const normalizedEvent = {
+      ...event,
+      pollId: message.poll.id,
+      actorId,
+      actorName: currentUser?.name || 'Thành viên',
+      actorAvatar: currentUser?.avatar || '',
+      createdAt: new Date().toISOString(),
+      clientId: `poll-event-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    };
+    applyLocalPollEvent(message, normalizedEvent);
+    if (chatMode !== 'tinode') return;
+    try {
+      const topicName = await ensureTinodeConversationTopic(activeChat);
+      await tinodeClient.sendPollEvent(topicName, normalizedEvent, normalizedEvent.clientId);
+    } catch (error) {
+      setChatError(error?.message || 'Không thể cập nhật bình chọn.');
+    }
+  };
+
+  const handlePollVote = async (message, optionIds) => {
+    const poll = normalizePoll(message?.poll);
+    if (!activeChat.isGroup || !poll || pollIsClosed(poll) || !optionIds?.length) return;
+    await publishPollEvent(message, { action: 'poll_vote', optionIds });
+  };
+
+  const handlePollAddOption = async (message, optionText) => {
+    const poll = normalizePoll(message?.poll);
+    if (!activeChat.isGroup || !poll || pollIsClosed(poll) || !poll.settings.allowAddOptions) return;
+    const optionId = `option-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    await publishPollEvent(message, {
+      action: 'poll_option_added',
+      optionId,
+      optionText: String(optionText || '').trim().slice(0, POLL_LIMITS.maxOptionLength),
+    });
+  };
+
+  const handlePollLock = async message => {
+    const poll = normalizePoll(message?.poll);
+    const identities = [viewerId, managementViewerId, currentUser?.id, currentUser?.uid, currentUser?.tinodeUid].filter(Boolean);
+    if (!activeChat.isGroup || !poll || !pollCanViewerLock(poll, identities)) return;
+    await publishPollEvent(message, { action: 'poll_locked' });
+  };
+
+  const handlePollCreate = async event => {
+    event.preventDefault();
+    if (!pollComposer || !activeChat.isGroup || isCreatingPoll) return;
+    const question = String(pollComposer.question || '').trim().slice(0, POLL_LIMITS.maxQuestionLength);
+    const optionTexts = [...new Set((pollComposer.options || []).map(option => String(option || '').trim()).filter(Boolean))]
+      .slice(0, POLL_LIMITS.maxOptions);
+    if (question.length < 1) {
+      setChatError('Hãy nhập câu hỏi cho bình chọn.');
+      return;
+    }
+    if (optionTexts.length < 2) {
+      setChatError('Bình chọn cần ít nhất 2 phương án.');
+      return;
+    }
+    setIsCreatingPoll(true);
+    setChatError('');
+    const pollId = `poll-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const creatorId = tinodeClient.currentUserId || currentUser?.tinodeUid || viewerId;
+    const poll = normalizePoll({
+      id: pollId,
+      question,
+      options: optionTexts.map((text, index) => ({ id: `option-${index}-${Math.random().toString(36).slice(2, 6)}`, text })),
+      creatorId,
+      creatorName: currentUser?.name || 'Thành viên',
+      creatorAvatar: currentUser?.avatar || '',
+      settings: {
+        ...pollComposer.settings,
+        pinPoll: Boolean(pollComposer.settings.pinPoll && canPinActiveGroupMessages),
+        expiresAt: pollExpiryForDuration(pollComposer.duration),
+      },
+    });
+    if (!poll) {
+      setIsCreatingPoll(false);
+      setChatError('Bình chọn không hợp lệ.');
+      return;
+    }
+    const roomId = currentChatId;
+    const time = getTimeString();
+    const createdAt = new Date().toISOString();
+    const newMessage = {
+      id: pollId,
+      type: 'poll',
+      sender: 'outgoing',
+      senderId: creatorId,
+      senderName: currentUser?.name || 'Thành viên',
+      avatar: currentUser?.avatar || '',
+      poll,
+      text: question,
+      time,
+      createdAt,
+      pending: chatMode === 'tinode',
+    };
+    closePollComposer();
+    setConversations(previous => {
+      const room = previous[roomId];
+      if (!room) return previous;
+      const next = {
+        ...previous,
+        [roomId]: {
+          ...room,
+          messages: [...roomMessages(room), newMessage],
+          lastMsg: `Bình chọn: ${question}`,
+          time,
+          updatedAt: createdAt,
+        },
+      };
+      conversationsRef.current = next;
+      return next;
+    });
+    try {
+      const room = conversations[roomId];
+      if (chatMode === 'demo') {
+        persistDemoGroupMessage(room, newMessage);
+        if (poll.settings.pinPoll) saveMessageAction(newMessage, { pinned: true });
+        return;
+      }
+      const topicName = await ensureTinodeConversationTopic(room);
+      const result = await tinodeClient.sendPoll(topicName, poll, newMessage.id);
+      const sequence = result?.ctrl?.params?.seq || result?.params?.seq;
+      setConversations(previous => ({
+        ...previous,
+        [roomId]: {
+          ...previous[roomId],
+          messages: roomMessages(previous[roomId]).map(message => message.id === newMessage.id
+            ? { ...message, pending: false, failed: false, seq: sequence || message.seq }
+            : message),
+        },
+      }));
+      if (poll.settings.pinPoll) {
+        saveMessageAction(newMessage, { pinned: true });
+        await tinodeClient.sendSystemEvent(topicName, {
+          action: 'message_pinned',
+          actorId: creatorId,
+          actorName: currentUser?.name || 'Thành viên',
+          messageId: newMessage.id,
+          messageSeq: Number(sequence) || 0,
+          messagePreview: `Bình chọn: ${question}`,
+        });
+      }
+    } catch (error) {
+      setConversations(previous => ({
+        ...previous,
+        [roomId]: {
+          ...previous[roomId],
+          messages: roomMessages(previous[roomId]).map(message => message.id === newMessage.id
+            ? { ...message, pending: false, failed: true }
+            : message),
+        },
+      }));
+      setChatError(error?.message || 'Không thể tạo bình chọn.');
+    } finally {
+      setIsCreatingPoll(false);
+    }
+  };
+
   const handleSendSticker = sticker => {
     if (!sticker?.src || !sticker?.id || !sticker?.packId) {
       setChatError('Sticker không hợp lệ.');
@@ -9186,7 +9688,9 @@ function App() {
             }
             if (msg.type === 'system') {
               const systemEventClass = String(msg.action || 'activity').replace(/[^a-z0-9_-]/gi, '-');
-              const systemEventIcon = msg.action === 'member_left'
+              const systemEventIcon = ['poll_vote', 'poll_option_added', 'poll_locked'].includes(msg.action)
+                ? 'fa-square-poll-vertical'
+                : msg.action === 'member_left'
                 ? 'fa-arrow-right-from-bracket'
                 : msg.action === 'member_removed'
                   ? 'fa-user-minus'
@@ -9221,6 +9725,90 @@ function App() {
                     <i className={`group-system-message-icon fa-solid ${systemEventIcon}`} aria-hidden="true"></i>
                     <span className="group-system-message-copy">{localizedSystemText(msg, appCopy, directoryAccounts, viewerId)}</span>
                     <time>{formatMessageTime(msg, msg.time, appCopy.locale)}</time>
+                  </div>
+                </React.Fragment>
+              );
+            }
+            if (msg.type === 'poll' && activeChat.isGroup) {
+              const explicitPollSenderId = msg.senderId || msg.raw?.from || msg.raw?.head?.['x-sender-id'];
+              const isPollOutgoing = msg.sender === 'outgoing'
+                || Boolean(explicitPollSenderId && viewerId && explicitPollSenderId === viewerId);
+              const pollMessageKey = messageActionKey(activeChat.id, msg.id);
+              const pollMessageState = messageActions[pollMessageKey] || {};
+              const pollOwnerMessage = identitiesOverlap({ id: explicitPollSenderId }, activeAdminAccount);
+              const pollViewerIdentities = [
+                viewerId,
+                managementViewerId,
+                currentUser?.id,
+                currentUser?.uid,
+                currentUser?.tinodeUid,
+              ].filter(Boolean);
+              return (
+                <React.Fragment key={msg.id}>
+                  {activeUnreadBoundary?.revealed && unreadBoundaryStart === messageIndex && (
+                    <div className="unread-message-divider" data-unread-boundary="true">
+                      <span>{appCopy.t('TIN NHẮN CHƯA ĐỌC')}</span>
+                      {activeUnreadBoundary.firstUnreadAt && <time>{formatFullMessageDateTime(activeUnreadBoundary.firstUnreadAt, '', appCopy.locale)}</time>}
+                    </div>
+                  )}
+                  {showDateDivider && <div className="date-divider"><span>{dateLabel}</span></div>}
+                  <div
+                    ref={element => {
+                      if (element) messageElementsRef.current.set(pollMessageKey, element);
+                      else messageElementsRef.current.delete(pollMessageKey);
+                    }}
+                    className={`message-item ${isPollOutgoing ? 'outgoing' : 'incoming'} poll-message-item ${pollMessageState.pinned ? 'message-is-pinned' : ''} ${highlightedMessageKey === pollMessageKey ? 'message-pinned-highlight' : ''}`}
+                  >
+                    {!isPollOutgoing && (
+                      <button type="button" className="message-avatar message-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))} title={`${appCopy.t('Xem thông tin')} ${msg.senderName || appCopy.t('thành viên')}`}>
+                        <SafeAvatar src={msg.avatar || ''} name={msg.senderName} />
+                        {pollOwnerMessage && (
+                          <span className="group-owner-avatar-badge" title={appCopy.t('Quản trị viên nhóm')} aria-label={appCopy.t('Quản trị viên nhóm')} role="img">
+                            <i className="fa-solid fa-key" aria-hidden="true"></i>
+                          </span>
+                        )}
+                      </button>
+                    )}
+                    <div className="message-content-wrapper poll-message-content">
+                      {!isPollOutgoing && msg.senderName && (
+                        <div className="sender-name-row">
+                          <button type="button" className="sender-name sender-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))}>{msg.senderName}</button>
+                        </div>
+                      )}
+                      {pollMessageState.pinned && (
+                        <span className="message-pinned-indicator" title={appCopy.t('Đã ghim')}>
+                          <i className="fa-solid fa-thumbtack" aria-hidden="true"></i><span>{appCopy.t('Đã ghim')}</span>
+                        </span>
+                      )}
+                      <div
+                        className={`message-interactive ${messageActionHoverKey === pollMessageKey ? 'message-actions-visible' : ''}`}
+                        onContextMenu={event => openMessageMenu(event, msg)}
+                        onMouseEnter={() => showMessageActions(pollMessageKey)}
+                        onMouseLeave={() => hideMessageActionsLater(pollMessageKey)}
+                      >
+                        <PollMessageCard
+                          message={msg}
+                          viewerIdentities={pollViewerIdentities}
+                          copy={appCopy}
+                          onVote={handlePollVote}
+                          onAddOption={handlePollAddOption}
+                          onLock={handlePollLock}
+                        />
+                        <MessageQuickActions
+                          message={msg}
+                          messageKey={pollMessageKey}
+                          copy={appCopy}
+                          messageActionHoverKey={messageActionHoverKey}
+                          messageReactionPickerKey={messageReactionPickerKey}
+                          showMessageActions={showMessageActions}
+                          hideMessageActionsLater={hideMessageActionsLater}
+                          showMessageReactionPicker={showMessageReactionPicker}
+                          hideMessageReactionPickerLater={hideMessageReactionPickerLater}
+                          handleMessageAction={handleMessageAction}
+                          openMessageMenu={openMessageMenu}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </React.Fragment>
               );
@@ -9683,6 +10271,18 @@ function App() {
             >
               <i className={`fa-solid ${isRecordingVoice ? 'fa-stop' : 'fa-microphone'}`}></i>
             </button>
+            {activeChat.isGroup && (
+              <button
+                type="button"
+                className="btn-input-action poll-input-action"
+                title={appCopy.t('Tạo bình chọn')}
+                aria-label={appCopy.t('Tạo bình chọn')}
+                onClick={openPollComposer}
+                disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup}
+              >
+                <i className="fa-solid fa-square-poll-vertical"></i>
+              </button>
+            )}
           </div>
           <div className={`input-text-container ${isRecordingVoice ? 'voice-recording-container' : ''}`}>
             {isRecordingVoice ? (
@@ -9763,6 +10363,120 @@ function App() {
           </div>
           <button className="btn-send-message-sh" disabled={realtimeMessagingPending || !canSendInActiveGroup || isRecordingVoice || (activeChat.isChatbot && isTyping)} onClick={() => handleSendMessage()}>{appCopy.t(activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi')}</button>
         </div>
+        {pollComposer && (
+          <div
+            className="poll-composer-modal modal-backdrop"
+            role="presentation"
+            onMouseDown={event => {
+              if (event.target === event.currentTarget) closePollComposer();
+            }}
+          >
+            <form className="poll-composer-card" onSubmit={handlePollCreate} role="dialog" aria-modal="true" aria-labelledby="poll-composer-title">
+              <div className="poll-composer-header">
+                <div>
+                  <span className="group-modal-kicker">{appCopy.t('NHÓM')}</span>
+                  <h2 id="poll-composer-title">{appCopy.t('Tạo bình chọn')}</h2>
+                </div>
+                <button type="button" className="poll-composer-close" onClick={closePollComposer} aria-label={appCopy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button>
+              </div>
+              <label className="poll-form-field">
+                <span>{appCopy.t('Câu hỏi')}</span>
+                <textarea
+                  value={pollComposer.question}
+                  maxLength={POLL_LIMITS.maxQuestionLength}
+                  onChange={event => setPollComposer(previous => ({ ...previous, question: event.target.value }))}
+                  placeholder={appCopy.t('Bạn muốn hỏi cả nhóm điều gì?')}
+                  autoFocus
+                  rows={3}
+                />
+                <small>{pollComposer.question.length}/{POLL_LIMITS.maxQuestionLength}</small>
+              </label>
+              <div className="poll-form-field">
+                <span>{appCopy.t('Phương án')}</span>
+                <div className="poll-composer-options">
+                  {pollComposer.options.map((option, index) => (
+                    <div className="poll-composer-option" key={`poll-option-${index}`}>
+                      <input
+                        value={option}
+                        maxLength={POLL_LIMITS.maxOptionLength}
+                        onChange={event => setPollComposer(previous => ({
+                          ...previous,
+                          options: previous.options.map((current, optionIndex) => optionIndex === index ? event.target.value : current),
+                        }))}
+                        placeholder={`${appCopy.t('Phương án')} ${index + 1}`}
+                      />
+                      {pollComposer.options.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => setPollComposer(previous => ({ ...previous, options: previous.options.filter((_, optionIndex) => optionIndex !== index) }))}
+                          aria-label={appCopy.t('Xóa phương án')}
+                        ><i className="fa-solid fa-xmark"></i></button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {pollComposer.options.length < POLL_LIMITS.maxOptions && (
+                  <button
+                    type="button"
+                    className="poll-add-choice-button"
+                    onClick={() => setPollComposer(previous => ({ ...previous, options: [...previous.options, ''] }))}
+                  ><i className="fa-solid fa-plus"></i>{appCopy.t('Thêm phương án')}</button>
+                )}
+              </div>
+              <div className="poll-composer-settings-heading">
+                <span>{appCopy.t('Thiết lập')}</span>
+                <button
+                  type="button"
+                  className={`poll-settings-button ${pollComposer.advancedOpen ? 'active' : ''}`}
+                  onClick={() => setPollComposer(previous => ({ ...previous, advancedOpen: !previous.advancedOpen }))}
+                  aria-expanded={pollComposer.advancedOpen}
+                  aria-label={appCopy.t('Thiết lập nâng cao')}
+                  title={appCopy.t('Thiết lập nâng cao')}
+                ><i className="fa-solid fa-gear"></i></button>
+              </div>
+              {pollComposer.advancedOpen && (
+                <div className="poll-advanced-settings">
+                  <label className="poll-form-field">
+                    <span>{appCopy.t('Thời hạn')}</span>
+                    <select
+                      value={pollComposer.duration}
+                      onChange={event => setPollComposer(previous => ({ ...previous, duration: event.target.value }))}
+                    >
+                      {POLL_DURATION_OPTIONS.map(option => <option key={option.id} value={option.id}>{appCopy.t(option.label)}</option>)}
+                    </select>
+                  </label>
+                  {[
+                    ['allowMultiple', 'Cho phép chọn nhiều phương án'],
+                    ['allowAddOptions', 'Cho thành viên thêm phương án'],
+                    ['hideResultsUntilVote', 'Ẩn kết quả trước khi bình chọn'],
+                    ['hideVoters', 'Ẩn danh sách người đã bình chọn'],
+                    ['pinPoll', 'Ghim bình chọn sau khi tạo'],
+                  ].map(([key, label]) => (
+                    <label className="poll-setting-toggle" key={key}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(pollComposer.settings[key])}
+                        disabled={key === 'pinPoll' && !canPinActiveGroupMessages}
+                        onChange={event => setPollComposer(previous => ({
+                          ...previous,
+                          settings: { ...previous.settings, [key]: event.target.checked },
+                        }))}
+                      />
+                      <span><i className="fa-solid fa-check"></i></span>
+                      <strong>{appCopy.t(label)}</strong>
+                    </label>
+                  ))}
+                </div>
+              )}
+              <div className="poll-composer-footer">
+                <button type="button" className="btn-secondary" onClick={closePollComposer} disabled={isCreatingPoll}>{appCopy.t('Hủy')}</button>
+                <button type="submit" className="btn-primary" disabled={isCreatingPoll || !pollComposer.question.trim()}>
+                  <i className={`fa-solid ${isCreatingPoll ? 'fa-spinner fa-spin' : 'fa-square-poll-vertical'}`}></i>{isCreatingPoll ? appCopy.t('Đang tạo...') : appCopy.t('Tạo bình chọn')}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
         {activeChat.isChatbot && <p className="chatbot-composer-note"><i className="fa-solid fa-circle-info"></i> {appCopy.t('ViChat AI có thể chưa bao quát mọi tài liệu. Hãy kiểm tra nguồn trước khi ra quyết định.')}</p>}
         {messageDetails && (
           <div className="message-details-modal" role="dialog">

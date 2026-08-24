@@ -170,6 +170,38 @@ test('normalizes sticker metadata without letting malformed fields reach the UI'
   assert.equal(room.messages[0].sticker.src, '/stickers/puppysoft/positive-1.png');
 });
 
+test('normalizes poll state and latest poll activity for realtime rendering', () => {
+  const room = normalizeConversationShape({
+    id: 'group-poll',
+    isGroup: true,
+    messages: [{
+      id: 'poll-1',
+      type: 'poll',
+      seq: 12,
+      poll: {
+        id: 'poll-1',
+        question: 'Chọn giờ họp',
+        options: [{ id: 'a', text: 'Sáng' }, { id: 'b', text: 'Chiều' }],
+        creatorId: 'usr-owner',
+      },
+      pollActivity: {
+        action: 'poll_vote',
+        pollId: 'poll-1',
+        actorId: 'usr-voter',
+        actorName: 'Người vote',
+        seq: 18,
+      },
+      pollActivitySeq: 18,
+      pollActivityActorId: 'usr-voter',
+      pollActivityActorName: 'Người vote',
+    }],
+  });
+  assert.equal(room.messages[0].poll.question, 'Chọn giờ họp');
+  assert.equal(room.messages[0].pollActivity.action, 'poll_vote');
+  assert.equal(room.messages[0].pollActivity.seq, 18);
+  assert.equal(room.messages[0].pollActivityActorId, 'usr-voter');
+});
+
 test('keeps the source of a management snapshot separate from Tinode realtime data', () => {
   assert.equal(normalizeConversationShape({ managementSnapshot: true }).managementSnapshot, true);
   assert.equal(normalizeConversationShape({ management_snapshot: true }).managementSnapshot, true);

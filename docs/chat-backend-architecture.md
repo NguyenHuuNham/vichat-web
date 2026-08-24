@@ -174,6 +174,20 @@ contiguous image messages from the same sender and explicit batch for a compact
 grid. Stickers, files, legacy messages and separately sent images are not
 grouped, and no Chatmgt schema, API or database migration is required.
 
+Group polls use the same Tinode topic as ordinary messages and are deliberately
+not enabled for P2P conversations. The poll root message carries bounded JSON
+metadata in the `x-vichat-poll` head. Votes, member-added options and creator
+locks are small event messages prefixed with `__VICHAT_POLL_EVENT__:`; ChatUI
+replays those events against the root poll to rebuild the current options,
+votes, expiry and lock state after reconnect or reload. The poll card is
+projected after its latest activity so a new vote remains visible at the end
+of the group timeline, while the event remains a readable group activity
+notice. Tinode's authenticated sender is authoritative for the actor and only
+the poll creator can publish a lock event from the UI. No poll copy, vote index,
+Chatmgt endpoint, schema migration or database table is introduced. Local
+notifications derive the actor from the poll activity rather than the poll
+creator, so a vote by another member is not misattributed.
+
 Tinode media URLs from the central host are normalized to the authenticated
 `chat.upgo.vn/tinode-media` relay. The native client downloads protected message
 and avatar images with its short-lived Tinode token into the OS cache and passes

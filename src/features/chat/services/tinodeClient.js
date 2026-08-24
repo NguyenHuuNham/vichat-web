@@ -20,6 +20,7 @@ import {
 import { attachmentConversationPreview } from './messagePreview';
 import { normalizeImageBatch } from './imageBatchLayout';
 import { normalizeGroupSettings } from './groupSettings';
+import { applyPollEvent, normalizePoll, normalizePollEvent } from './poll';
 import {
   latestSharedConversationBackground,
   normalizeConversationBackground,
@@ -88,6 +89,8 @@ const FRIEND_EVENT_PREFIX = '__SONGHONG_FRIEND_EVENT__:';
 const REACTION_EVENT_PREFIX = '__VICHAT_REACTION_EVENT__:';
 const RECALL_EVENT_PREFIX = '__VICHAT_RECALL_EVENT__:';
 const STICKER_HEAD = 'x-vichat-sticker';
+const POLL_HEAD = 'x-vichat-poll';
+const POLL_EVENT_PREFIX = '__VICHAT_POLL_EVENT__:';
 const IMAGE_BATCH_HEAD = 'x-vichat-image-batch';
 const CONVERSATION_BACKGROUND_AUX_KEY = 'x-vichat-conversation-background';
 const TINODE_DELETE_CHAR = Tinode?.DEL_CHAR || '\u2421';
@@ -534,6 +537,20 @@ function formatSystemEvent(event, viewerId) {
       ? `${actorText} đổi hình nền cuộc trò chuyện`
       : `${actorText} xóa hình nền cuộc trò chuyện`;
   }
+  if (event.action === 'poll_vote') {
+    const actorText = event.actorId === viewerId ? 'Bạn' : actorName;
+    return `${actorText} đã bình chọn${event.optionText ? `: ${event.optionText}` : ''}`;
+  }
+  if (event.action === 'poll_option_added') {
+    const actorText = event.actorId === viewerId ? 'Bạn' : actorName;
+    return event.optionText
+      ? `${actorText} đã thêm phương án “${event.optionText}”`
+      : `${actorText} đã thêm một phương án`;
+  }
+  if (event.action === 'poll_locked') {
+    const actorText = event.actorId === viewerId ? 'Bạn' : actorName;
+    return `${actorText} đã khóa bình chọn`;
+  }
   return event.text || 'Hoạt động nhóm';
 }
 
@@ -564,6 +581,25 @@ function parseStickerMetadata(head = {}) {
       label: String(parsed?.label || '').trim().slice(0, 120),
       version: String(parsed?.version || '1').slice(0, 24),
     };
+  } catch {
+    return null;
+  }
+}
+
+function parsePollMetadata(head = {}) {
+  const raw = head?.[POLL_HEAD];
+  if (!raw) return null;
+  try {
+    return normalizePoll(typeof raw === 'string' ? JSON.parse(raw) : raw);
+  } catch {
+    return null;
+  }
+}
+
+function parsePollEventMetadata(content = '') {
+  if (!String(content).startsWith(POLL_EVENT_PREFIX)) return null;
+  try {
+    return normalizePollEvent(JSON.parse(String(content).slice(POLL_EVENT_PREFIX.length)));
   } catch {
     return null;
   }
@@ -609,8 +645,10 @@ function toMessage(msg, tinode, topic = null) {
   const call = parseCallMessage(msg.content, msg.head, !isOutgoing);
   const attachment = draftyAttachment(msg.content);
   const sticker = parseStickerMetadata(msg.head);
+  const poll = parsePollMetadata(msg.head);
   const imageBatch = parseImageBatchMetadata(msg.head);
   const content = typeof msg.content === 'string' ? msg.content : (msg.content?.txt || '');
+  const pollEvent = parsePollEventMetadata(content);
   let systemEvent = null;
   let friendEvent = null;
   let reactionEvent = null;
@@ -707,20 +745,24 @@ function toMessage(msg, tinode, topic = null) {
       ? `friend-${friendEvent.action}-${friendEvent.requestId}`
       : clientId || `${msg.from || 'system'}-${msg.seq || msg.ts || Date.now()}`,
     seq: msg.seq,
-    type: call ? 'call' : friendEvent ? 'friend_event' : reactionEvent ? 'reaction_event' : recallEvent ? 'recall_event' : systemEvent ? 'system' : attachment ? (sticker ? 'sticker' : isImageAttachment ? 'image' : 'file') : 'text',
-    action: friendEvent?.action || systemEvent?.action,
+    type: call ? 'call' : poll ? 'poll' : pollEvent ? 'poll_event' : friendEvent ? 'friend_event' : reactionEvent ? 'reaction_event' : recallEvent ? 'recall_event' : systemEvent ? 'system' : attachment ? (sticker ? 'sticker' : isImageAttachment ? 'image' : 'file') : 'text',
+    action: friendEvent?.action || systemEvent?.action || pollEvent?.action,
     sender: isOutgoing ? 'outgoing' : 'incoming',
     senderId: friendActorId
+      || (pollEvent ? (messageSenderId || pollEvent.actorId) : '')
       || systemEvent?.actorId
       || messageSenderId
       || (isOutgoing ? tinode.getCurrentUserID() : undefined),
     senderName: friendActorName
+      || (pollEvent ? (pollEvent.actorName || (messageSenderId ? undefined : 'Thành viên')) : '')
       || systemEvent?.actorName
       || reactionEvent?.actorName
       || (isOutgoing ? undefined : (messageSenderId || 'Thành viên')),
     targetIds: systemEvent?.targets?.map?.(target => target.id) || [],
     messagePreview: systemEvent?.messagePreview || '',
     systemEvent,
+    poll,
+    pollEvent,
     friendEvent,
     reactionEvent,
     recallEvent,
@@ -731,7 +773,7 @@ function toMessage(msg, tinode, topic = null) {
     mentions,
     sources: chatbotSources,
     grounded: msg.head?.['x-vichat-chatbot-grounded'] === '1',
-    text: call ? callHistoryLabel(call, isOutgoing) : friendEvent ? (friendEvent.note || '') : systemEvent ? formatSystemEvent(systemEvent, tinode.getCurrentUserID()) : content,
+    text: call ? callHistoryLabel(call, isOutgoing) : poll ? poll.question : pollEvent ? '' : friendEvent ? (friendEvent.note || '') : systemEvent ? formatSystemEvent(systemEvent, tinode.getCurrentUserID()) : content,
     image: isImageAttachment ? attachmentUrl : undefined,
     imageBatch: imageBatch || undefined,
     file: attachment ? {
@@ -761,6 +803,17 @@ function toConversation(topic, tinode) {
   const friendEvents = loadedMessages.filter(message => message.type === 'friend_event');
   const reactionEvents = loadedMessages.filter(message => message.type === 'reaction_event');
   const recallEvents = loadedMessages.filter(message => message.type === 'recall_event');
+  const pollEventsById = new Map();
+  loadedMessages.filter(message => message.type === 'poll_event').forEach(eventMessage => {
+    const pollId = eventMessage.pollEvent?.pollId;
+    if (!pollId) return;
+    const events = pollEventsById.get(pollId) || [];
+    events.push(eventMessage);
+    pollEventsById.set(pollId, events);
+  });
+  pollEventsById.forEach(events => events.sort((first, second) => (
+    (Number(first.seq) || 0) - (Number(second.seq) || 0)
+  )));
   const visibleRecallEvents = recallEvents.filter(message => recallAppliesToViewer(message.recallEvent, tinode));
   const reactionState = new Map();
   reactionEvents.forEach(event => {
@@ -809,7 +862,7 @@ function toConversation(topic, tinode) {
   });
   const appliedRecallEvents = new Set();
   const chatMessages = compactMessages(loadedMessages
-    .filter(message => !['friend_event', 'reaction_event', 'recall_event'].includes(message.type))
+    .filter(message => !['friend_event', 'reaction_event', 'recall_event', 'poll_event'].includes(message.type))
     .map(message => {
       const recallMessage = recallsById.get(String(message.id)) || recallsBySeq.get(Number(message.seq));
       if (recallMessage) {
@@ -823,9 +876,43 @@ function toConversation(topic, tinode) {
           reactionUsers: reactionUsers.get(message.id) || {},
         }
         : message;
-      return withReactions.replyTo?.id && recallsById.has(String(withReactions.replyTo.id))
-        ? { ...withReactions, replyTo: { ...withReactions.replyTo, text: 'Tin nhắn đã được thu hồi' } }
-        : withReactions;
+      if (withReactions.type !== 'poll' || !withReactions.poll) {
+        return withReactions.replyTo?.id && recallsById.has(String(withReactions.replyTo.id))
+          ? { ...withReactions, replyTo: { ...withReactions.replyTo, text: 'Tin nhắn đã được thu hồi' } }
+          : withReactions;
+      }
+      const pollEvents = pollEventsById.get(withReactions.poll.id) || [];
+      let nextPoll = withReactions.poll;
+      pollEvents.forEach(eventMessage => {
+        nextPoll = applyPollEvent(
+          nextPoll,
+          eventMessage.pollEvent,
+          eventMessage.senderId || eventMessage.pollEvent?.actorId,
+          eventMessage.seq,
+        );
+      });
+      const latestPollEvent = pollEvents.at(-1);
+      const pollActivity = latestPollEvent?.pollEvent
+        ? {
+          ...latestPollEvent.pollEvent,
+          actorId: latestPollEvent.senderId || latestPollEvent.pollEvent.actorId || '',
+          actorName: latestPollEvent.pollEvent.actorName || latestPollEvent.senderName || '',
+          seq: Number(latestPollEvent.seq) || 0,
+        }
+        : null;
+      return {
+        ...withReactions,
+        poll: nextPoll,
+        ...(pollActivity ? { action: pollActivity.action } : {}),
+        ...(pollActivity ? {
+          pollActivity,
+          pollActivitySeq: pollActivity.seq,
+          pollActivityAt: pollActivity.createdAt || nextPoll.lastActivityAt || withReactions.createdAt,
+          pollActivityActorId: pollActivity.actorId,
+          pollActivityActorName: pollActivity.actorName,
+          seq: Math.max(Number(withReactions.seq) || 0, pollActivity.seq),
+        } : {}),
+      };
     }));
 
   // A successful hard delete removes the original packet from Tinode's cache.
@@ -854,14 +941,59 @@ function toConversation(topic, tinode) {
       raw: message.raw,
     });
   });
+  pollEventsById.forEach(events => {
+    events.forEach(eventMessage => {
+      const pollEvent = eventMessage.pollEvent;
+      if (!pollEvent) return;
+      const systemEvent = {
+        ...pollEvent,
+        action: pollEvent.action,
+        actorId: eventMessage.senderId || pollEvent.actorId || '',
+        actorName: pollEvent.actorName || eventMessage.senderName || '',
+      };
+      chatMessages.push({
+        id: `poll-activity-${eventMessage.id}`,
+        seq: eventMessage.seq,
+        type: 'system',
+        action: pollEvent.action,
+        sender: eventMessage.sender,
+        senderId: systemEvent.actorId,
+        senderName: systemEvent.actorName,
+        systemEvent,
+        pollEvent,
+        text: formatSystemEvent(systemEvent, tinode.getCurrentUserID()),
+        time: eventMessage.time,
+        createdAt: eventMessage.createdAt,
+        pending: false,
+        raw: eventMessage.raw,
+      });
+    });
+  });
   chatMessages.sort((first, second) => {
     if (Number.isFinite(first.seq) && Number.isFinite(second.seq) && first.seq !== second.seq) return first.seq - second.seq;
     return (Date.parse(first.createdAt || '') || 0) - (Date.parse(second.createdAt || '') || 0);
   });
-  const messages = deletedTimestamp
-    ? chatMessages.filter(message => (Date.parse(message.createdAt || '') || 0) > deletedTimestamp)
+  // A poll card follows its latest vote/lock event, while the event itself
+  // remains in the normal timeline as the visible group activity notice.
+  const movedPolls = chatMessages.filter(message => (
+    message.type === 'poll'
+      && Number(message.pollActivitySeq) > 0
+      && Number(message.pollActivitySeq) > (Number(message.raw?.seq) || Number(message.seq) || 0)
+  ));
+  const projectedMessages = movedPolls.length > 0
+    ? [
+      ...chatMessages.filter(message => !movedPolls.includes(message)),
+      ...movedPolls.sort((first, second) => Number(first.pollActivitySeq) - Number(second.pollActivitySeq)),
+    ]
     : chatMessages;
-  const latestMapped = messages[messages.length - 1];
+  const finalMessages = deletedTimestamp
+    ? projectedMessages.filter(message => (Date.parse(message.createdAt || '') || 0) > deletedTimestamp)
+    : projectedMessages;
+  const latestMapped = finalMessages[finalMessages.length - 1];
+  const latestMappedActivityAt = latestMapped?.pollActivityAt || latestMapped?.createdAt;
+  const latestMappedTime = latestMapped?.pollActivityAt
+    ? new Date(latestMapped.pollActivityAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+    : latestMapped?.time;
 
   const members = [];
   topic.subscribers?.(sub => {
@@ -897,7 +1029,7 @@ function toConversation(topic, tinode) {
     ? members.find(member => member.id !== tinode.getCurrentUserID()) || members[0]
     : null;
   const latestBackground = !isGroup
-    ? latestSharedConversationBackground({ messages })
+    ? latestSharedConversationBackground({ messages: finalMessages })
     : undefined;
   const auxBackground = !isGroup ? conversationBackgroundFromAux(topic) : undefined;
   const groupBackground = isGroup
@@ -939,17 +1071,19 @@ function toConversation(topic, tinode) {
     admin: members.find(member => member.mode?.includes?.('O'))?.name || '',
     adminId: members.find(member => member.mode?.includes?.('O'))?.id || '',
     members,
-    messages,
+    messages: finalMessages,
     friendEvents,
-    lastMsg: attachmentConversationPreview(latestMapped) || latestMapped?.text || '',
-    time: latestMapped?.time || '',
-    updatedAt: latestMapped?.createdAt || (topic.touched ? new Date(topic.touched).toISOString() : undefined),
+    lastMsg: latestMapped?.type === 'poll'
+      ? `Bình chọn: ${latestMapped.text || latestMapped.poll?.question || ''}`
+      : attachmentConversationPreview(latestMapped) || latestMapped?.text || '',
+    time: latestMappedTime || '',
+    updatedAt: latestMappedActivityAt || (topic.touched ? new Date(topic.touched).toISOString() : undefined),
     ...(conversationBackground !== undefined ? { conversationBackground } : {}),
     readSeq: topicReadSequence,
     unreadFromSeq: topicUnreadCount > 0
       ? topicReadSequence + 1
       : 0,
-    badge: messages.length > 0 ? topicUnreadCount : 0,
+    badge: finalMessages.length > 0 ? topicUnreadCount : 0,
     deletedAt,
     topic,
   };
@@ -964,6 +1098,13 @@ async function enrichConversationProfiles(conversation, tinode = getClient()) {
     ...(safeConversation.messages || []).flatMap(message => message.targetIds || []),
     ...(safeConversation.messages || []).flatMap(message => Object.values(message.reactionUsers || {})
       .flatMap(users => (Array.isArray(users) ? users : []).map(user => user?.id))),
+    ...(safeConversation.messages || []).flatMap(message => [
+      message.poll?.creatorId,
+      ...Object.keys(message.poll?.votes || {}),
+      message.pollEvent?.actorId,
+      message.pollActivityActorId,
+      message.pollActivity?.actorId,
+    ]),
     ...(safeConversation.friendEvents || []).flatMap(message => [
       message.friendEvent?.requesterId,
       message.friendEvent?.recipientId,
@@ -1012,6 +1153,36 @@ async function enrichConversationProfiles(conversation, tinode = getClient()) {
       };
       next.systemEvent = event;
       next.text = formatSystemEvent(event, tinode.getCurrentUserID());
+    }
+    if (message.poll) {
+      const creator = profilesById.get(message.poll.creatorId) || userProfileCache.get(message.poll.creatorId) || {};
+      const votes = Object.fromEntries(Object.entries(message.poll.votes || {}).map(([actorId, vote]) => {
+        const voteProfile = profilesById.get(actorId) || userProfileCache.get(actorId) || {};
+        return [actorId, {
+          ...vote,
+          name: usableProfileName(voteProfile.name) || vote.name || actorId,
+          avatar: voteProfile.avatar || vote.avatar || '',
+        }];
+      }));
+      next.poll = {
+        ...message.poll,
+        creatorName: usableProfileName(creator.name) || message.poll.creatorName,
+        creatorAvatar: creator.avatar || message.poll.creatorAvatar || '',
+        votes,
+      };
+    }
+    if (message.pollActivity || message.pollActivityActorId) {
+      const activityActorId = message.pollActivityActorId || message.pollActivity?.actorId || message.senderId;
+      const activityProfile = profilesById.get(activityActorId) || userProfileCache.get(activityActorId) || {};
+      const activityActorName = usableProfileName(activityProfile.name)
+        || message.pollActivityActorName
+        || message.pollActivity?.actorName
+        || message.senderName;
+      next.pollActivity = message.pollActivity
+        ? { ...message.pollActivity, actorId: activityActorId, actorName: activityActorName }
+        : message.pollActivity;
+      next.pollActivityActorId = activityActorId;
+      next.pollActivityActorName = activityActorName;
     }
     return next;
   });
@@ -1972,6 +2143,45 @@ export const tinodeClient = {
       head['x-mentions'] = JSON.stringify(metadata.mentions.slice(0, 50));
     }
     draft.head = head;
+    return topic.publishMessage(draft);
+  },
+
+  async sendPoll(topicName, poll, clientId) {
+    const topic = await subscribeTopic(topicName);
+    if (!topic.isGroupType?.() && !String(topic.name || '').startsWith('grp')) {
+      throw new Error('Bình chọn chỉ khả dụng trong nhóm.');
+    }
+    const actorId = getClient().getCurrentUserID();
+    const normalized = normalizePoll({ ...poll, creatorId: actorId });
+    if (!normalized) throw new Error('Bình chọn không hợp lệ.');
+    const draft = topic.createMessage(normalized.question, false);
+    draft.head = {
+      ...(draft.head || {}),
+      [POLL_HEAD]: JSON.stringify(normalized),
+      ...(clientId ? { 'x-client-id': clientId } : {}),
+      'x-sender-id': actorId,
+    };
+    return topic.publishMessage(draft);
+  },
+
+  async sendPollEvent(topicName, event, clientId) {
+    const topic = await subscribeTopic(topicName);
+    if (!topic.isGroupType?.() && !String(topic.name || '').startsWith('grp')) {
+      throw new Error('Bình chọn chỉ khả dụng trong nhóm.');
+    }
+    const actorId = getClient().getCurrentUserID();
+    const normalized = normalizePollEvent({
+      ...event,
+      actorId,
+      createdAt: event?.createdAt || new Date().toISOString(),
+    });
+    if (!normalized?.pollId) throw new Error('Thiếu bình chọn cần cập nhật.');
+    const draft = topic.createMessage(`${POLL_EVENT_PREFIX}${JSON.stringify(normalized)}`, false);
+    draft.head = {
+      ...(draft.head || {}),
+      ...(clientId ? { 'x-client-id': clientId } : {}),
+      'x-sender-id': actorId,
+    };
     return topic.publishMessage(draft);
   },
 
