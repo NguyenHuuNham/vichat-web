@@ -10,17 +10,19 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-24 17:25 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | UI | Kiem thu | Tai lieu
-- Trang thai: Hoan tat local; dang chuan bi commit va deploy production
+- Trang thai: Da commit va deploy production; san sang UAT
 - Muc tieu: Cho nguoi dung co nhieu tenant chon cong ty ma khong lam tran header ho so tren desktop hoac mobile.
 - Pham vi: Chi ChatUI profile panel, tenant switcher, responsive CSS va nhan dich; khong doi API switch tenant, Chatmgt, Tinode, session, membership hoac realtime.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`.
 - Noi dung: Thay danh sach icon render dong thanh carousel co viewport co dinh, nut truoc/sau, keo ngang, phim mui ten, snap theo tung cong ty, tu dua cong ty hien tai vao tam va ellipsis ten dai; mobile dua bo chon xuong dong rieng de khong ep header tran ngang.
 - Quyet dinh ky thuat: Chi thay lop hien thi va state scroll cuc bo; nut cong ty van goi `requestTenantSwitch` va modal xac nhan hien tai, giu nguyen `chatManagementService.switchTenant` va luong rotate session/reconnect Tinode.
 - Database/API/cau hinh: Khong migration, endpoint, schema, secret hoac bien moi truong.
-- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js src/features/i18n/appLanguage.test.js` dat 48/48; `npm run test:frontend` dat 208/208; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` va `npm run build:production` dat voi canh bao chunk App lon hon 500 KB; `git diff --check` dat.
+- Kiem thu local: `node --test src/features/chat/services/chatManagementService.test.js src/features/i18n/appLanguage.test.js` dat 48/48; `npm run test:frontend` dat 208/208; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` va `npm run build:production` dat voi canh bao chunk App lon hon 500 KB; `git diff --check` dat.
+- Kiem thu production: Archive checksum khop; `docker compose config --quiet` va build image `chat` dat; ChatUI image `sha256:d3415d39afd2453b1d88a427f1f04ec214c44dd51d03e2ebe4462ce492f20840` healthy; local `http://127.0.0.1:8094/healthz` va public `https://chat.upgo.vn/healthz` tra `ok`; `https://chatmgt.upgo.vn/api/v1/auth/health` tra HTTP 200/status `ok`; `sudo -n nginx -t` dat; public bundle `App-DatDm81_.js` co marker `tenant-switcher-viewport` va `tenant-switcher-nav`; cac service ngoai `chat` giu nguyen container ID.
+- Trien khai: Source commit `e258b09` da push `origin/master`; archive `/opt/deploy/chat/incoming/vichat-tenant-carousel-e258b09.tar.gz` SHA-256 `4eda71992e884fa7b52791c6f8d9aefbef6e62c9d4184909477a7ceecd4361fb`; release `/opt/deploy/chat/releases/tenant-carousel-e258b09-20260824-1727` dang la `current`, `previous` tro `/opt/deploy/chat/releases/shortcuts-stickers-8beeb6b-20260824-1648`; chi recreate `chat`, khong migration va khong restart Chatmgt, Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis, Coturn. Container ChatUI moi `6cfcbddb94d4`; Chatmgt `5aa69e4f4129`, Tinode bridge `7d9c0e317719`, chatbot webhook `2882b6109176`, ChatAPI `8476615ad4ac`, Redis `ceef7df23feb`, PostgreSQL `78a434b49404`/`9f6e4dcc9c2f`, Coturn `aa680d35fdc0` giu nguyen ID.
 - Rui ro con lai: Chua UAT visual bang browser voi 2, 10 va nhieu tenant that; can kiem tra keo ngang, nut mui ten, tenant hien tai va luong xac nhan/chuyen tenant tren desktop/mobile.
-- Viec tiep theo: Commit/push va chi recreate service `chat`; khong restart Chatmgt, Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis hoac Coturn.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT hai luong tren; neu loi chi tro `current` ve `previous` va recreate rieng `chat`, khong reset Tinode/topic/message hay database.
+- Commit/PR: Source commit `e258b09` da push `origin/master`; deployment record follow-up changelog commit.
 
 ## 2026-08-24-22 - Hien thi phim tat va goi y sticker trong ChatUI
 
