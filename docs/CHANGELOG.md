@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Rui ro con lai: Chua UAT production bang hai tai khoan that cho shared/local group, shared/local direct va upload anh protected; can hard refresh sau deploy.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT hai tai khoan cho shared/local group, shared/local direct va upload anh protected; neu loi chi tro `current` ve `previous` va recreate rieng `chat`, khong reset Tinode/topic/message hay database.
 - Trien khai: Source `973815d` da push `origin/master`; chi recreate `chat` voi `--no-deps --force-recreate --no-build`; rollback tag `songhong-production-chat:rollback-before-conversation-background-973815d-20260824-131805` giu image cu `sha256:371a141ebb26096abe768781cb28c1e24ce903311090c54256b6a71dc5ff5430`; Chatmgt, Tinode bridge, webhook, ChatAPI, PostgreSQL, Redis va Coturn khong bi restart.
-- Commit/PR: Source `973815d`; deployment follow-up dang tao.
+- Commit/PR: Source `973815d`; deployment follow-up `7e404e9`; khong co PR.
 
 ## 2026-08-24-26 - Hoan thien thong bao tin chua doc va nut ve tin moi nhat
 
