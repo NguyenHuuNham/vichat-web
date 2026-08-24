@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-24 (Asia/Saigon)
 - Loai: Tinh nang | Van hanh | Web | Realtime | Kiem thu | Tai lieu
-- Trang thai: Dang thuc hien
+- Trang thai: Da commit va deploy production; san sang UAT
 - Muc tieu: Cho phep admin Chatmgt tam dung ChatUI toan cuc de nguoi dang mo hoac truy cap moi deu thay man hinh dang cap nhat, khong bi roi vao luong dang loi.
 - Pham vi: Chatmgt maintenance API va Redis state, ChatUI gate, man hinh gear spinner, nut dieu khien trong Chatmgt, SSE Nginx va contract test; khong doi Tinode, tin nhan, presence, session hay database.
 - File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/services/chat_maintenance_service.py`, `chatservice-main/tests/test_chat_maintenance_service.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/RootApp.jsx`, `src/features/maintenance/chatMaintenanceService.js`, `src/features/maintenance/chatMaintenanceService.test.js`, `src/features/management/ManagementApp.jsx`, `src/features/management/services/managementAdminService.js`, `src/features/management/management.css`, `src/styles/index.css`, `infrastructure/production/nginx.conf`, `infrastructure/production/nginx-host-chatmgt.conf`, `docs/chat-backend-architecture.md`.
 - Noi dung: Them trang thai global duoc luu trong Redis AOF va phat qua Redis Pub/Sub + SSE; ChatUI lay snapshot, nghe realtime va poll fallback 5 giay. Khi bat, ChatApp duoc unmount va hien thong bao `WEBSITE DANG TRONG QUA TRINH CAP NHAT VUI LONG THU LAI SAU` voi banh rang quay; Chatmgt khong bi chan. Khi tat, ChatUI tu mount lai va tiep tuc session hien co.
 - Quyet dinh ky thuat: Tach maintenance khoi Tinode/PostgreSQL de khong anh huong message, presence, session va du lieu hoi thoai. Route public chi doc trang thai khong nhay cam; route thay doi chi chap nhan management scope + Account SSO + admin role. Redis read loi fail-open de bao ve luong chat hien co; write loi tra 503.
 - Database/API/cau hinh: Khong migration/schema moi; them `GET /api/v1/chat/maintenance`, `GET /api/v1/chat/maintenance/stream`, `GET/PUT /api/v1/admin/chat-ui-maintenance`; Nginx tat buffering cho SSE.
-- Kiem thu: Chua chay day du; se cap nhat lenh va ket qua sau khi test local va verify production.
-- Rui ro con lai: Chua UAT production bat/tat voi tab ChatUI dang mo va tab moi.
-- Viec tiep theo: Chay test/lint/build, commit, push, deploy va smoke test public API/SSE/bat-tat tu Chatmgt.
-- Commit/PR: Chua tao.
+- Kiem thu: `npm run test:frontend` dat 226/226; auth contract dat 47/47; maintenance unit test trong production image dat 4/4; `py_compile` dat; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build` va `npm run build:production` dat. Production snapshot maintenance HTTP 200 voi `enabled=false`; SSE truc tiep va qua `/chatmgt-api` HTTP 200, co `event: maintenance`, `Content-Type: text/event-stream` va `X-Accel-Buffering: no`.
+- Rui ro con lai: Chua UAT production bang tai khoan admin that de bat/tat va quan sat dong thoi tab ChatUI dang mo, tab moi va luc tat lai.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, vao Chatmgt bat/tat tam dung, kiem tra tab ChatUI dang mo tu chuyen man hinh, tab moi bi chan, va sau khi tat tu hoat dong lai.
+- Trien khai: Source `fee55ed` da push `origin/master`; archive production `/opt/deploy/chat/releases/chat-maintenance-fee55ed-20260824-154938`; `current` tro release nay, `previous` tro `/opt/deploy/chat/releases/conversation-background-973815d-20260824-131805`; chi recreate `chat` va `chatmgt`, PostgreSQL, Redis, Tinode, bridge, webhook va Coturn khong restart.
+- Commit/PR: Source `fee55ed`; deployment follow-up docs commit dang tao.
 
 ## 2026-08-24-27 - Sua dong bo realtime va upload hinh nen hoi thoai
 
