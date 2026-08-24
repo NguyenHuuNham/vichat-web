@@ -8,16 +8,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-24-15 - Keep avatar crop above profile panel
 
-- Thoi gian: 2026-08-24 (Asia/Saigon)
+- Thoi gian: 2026-08-24 10:28 (Asia/Saigon)
 - Loai: Sua loi | Web | UI | Kiem thu | Tai lieu
-- Trang thai: Da sua; san sang UAT
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Dam bao khung can chinh avatar luon nam tren panel Ho so ca nhan sau khi nguoi dung chon anh.
 - Pham vi: Chi tang stacking level cua backdrop crop avatar; giu nguyen chon file, canvas crop, upload, persistence va cac overlay/luong khac.
+- File da thay doi: `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
 - Quyet dinh ky thuat: Dung selector `.modal-backdrop.avatar-crop-backdrop` voi `z-index: 240` de khong bi rule `.modal-backdrop` phia sau ghi de, uu tien hon workspace/profile ma khong thay doi state, API, database hay realtime.
 - Database/API/cau hinh: Khong co migration, endpoint, schema, bien moi truong, secret hoac thay doi kien truc.
-- Kiem thu: `npm run test:frontend` dat 195/195; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` dat; `npm run build:production` dat; `git diff --check` dat.
-- Rui ro con lai: Chua UAT pixel-level tren production; can hard refresh va thu mo Ho so ca nhan, chon anh, dong crop, huy va luu avatar tren desktop/mobile.
-- Trien khai: Chua deploy trong lan sua nay.
+- Kiem thu: `npm run test:frontend` dat 195/195; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` dat; `npm run build:production` dat; `git diff --check` dat. Production Docker build dat; ChatUI healthy; local/public `/healthz` tra `ok`; Chatmgt auth health `status=ok`; `sudo -n nginx -t` dat; public va container bundle deu co `.modal-backdrop.avatar-crop-backdrop{z-index:240}`; log ChatUI 2 phut sau recreate khong co fatal marker.
+- Rui ro con lai: Chua UAT pixel-level bang tai khoan that; can hard refresh va thu mo Ho so ca nhan, chon anh, dong crop, huy va luu avatar tren desktop/mobile.
+- Trien khai: Archive `/opt/deploy/chat/incoming/vichat-avatar-crop-bed4c1d-20260824-102032.tar.gz` SHA-256 `097c731c7aadb4bb9a380b459ffb6659fc1842007f88aab6478112021ba6454d`; release `/opt/deploy/chat/releases/avatar-crop-bed4c1d-20260824-102032` dang chay; chi recreate `chat`, khong migration/backup database va khong restart Chatmgt, Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis hay Coturn. Image ChatUI `sha256:e65f807b2686aaface5cb715b967e29bb4eafc707a1602948ac40d967bee2804`, container `301dd6c5abad`; rollback source release la `/opt/deploy/chat/releases/pinned-menu-3820121-20260824-0958`.
+- Commit/PR: Source `bed4c1d` da push `origin/master`; deployment follow-up dang cho commit.
 
 
 ## 2026-08-24-14 - Menu tin ghim va nut thong tin cuoc tro chuyen
