@@ -70,6 +70,11 @@ import {
   replyContentLabel,
 } from '../features/chat/services/messagePresentation';
 import {
+  groupImageMessageEntries,
+  imageBatchLayoutClass,
+  normalizeImageBatch,
+} from '../features/chat/services/imageBatchLayout';
+import {
   canRecallDeliveredMessage,
   chatAttachmentValidationError,
 } from '../features/chat/services/messagePolicy';
@@ -1602,6 +1607,247 @@ function MessageReplyPreview({ reply, copy = { t: value => value }, onClick, sho
     >
       {previewContent}
     </button>
+  );
+}
+
+function MessageQuickActions({
+  message,
+  messageKey,
+  copy = { t: value => value },
+  messageActionHoverKey,
+  messageReactionPickerKey,
+  showMessageActions,
+  hideMessageActionsLater,
+  showMessageReactionPicker,
+  hideMessageReactionPickerLater,
+  handleMessageAction,
+  openMessageMenu,
+}) {
+  return (
+    <div
+      className={`message-quick-actions ${messageActionHoverKey === messageKey ? 'message-actions-visible' : ''}`}
+      onClick={event => event.stopPropagation()}
+      onMouseEnter={() => showMessageActions(messageKey)}
+      onMouseLeave={() => hideMessageActionsLater(messageKey)}
+    >
+      <button
+        type="button"
+        className="message-action-button"
+        title={copy.t('Tráº£ lá»i tin nháº¯n')}
+        aria-label={copy.t('Tráº£ lá»i tin nháº¯n')}
+        onClick={() => handleMessageAction('reply', message)}
+      >
+        <i className="fa-solid fa-quote-left" aria-hidden="true"></i>
+      </button>
+      <button
+        type="button"
+        className="message-action-button"
+        title={copy.t('Chia sáº» tin nháº¯n')}
+        aria-label={copy.t('Chia sáº» tin nháº¯n')}
+        onClick={() => handleMessageAction('share', message)}
+      >
+        <i className="fa-solid fa-share" aria-hidden="true"></i>
+      </button>
+      <div
+        className="message-reaction-action"
+        onMouseEnter={() => {
+          showMessageActions(messageKey);
+          showMessageReactionPicker(messageKey);
+        }}
+        onMouseLeave={() => hideMessageReactionPickerLater(messageKey)}
+      >
+        <button
+          type="button"
+          className="message-action-button"
+          title={copy.t('Thêm biểu cảm')}
+          aria-label={copy.t('Thêm biểu cảm')}
+          aria-expanded={messageReactionPickerKey === messageKey}
+          onFocus={() => showMessageReactionPicker(messageKey)}
+          onClick={() => handleMessageAction('reaction', message, '👍')}
+        >
+          <i className="fa-regular fa-thumbs-up" aria-hidden="true"></i>
+        </button>
+        {messageReactionPickerKey === messageKey && (
+          <div
+            className="message-reaction-picker"
+            role="listbox"
+            aria-label={copy.t('Thêm biểu cảm')}
+            onMouseEnter={() => {
+              showMessageActions(messageKey);
+              showMessageReactionPicker(messageKey);
+            }}
+            onMouseLeave={() => hideMessageReactionPickerLater(messageKey)}
+          >
+            {MESSAGE_QUICK_REACTIONS.map(reaction => (
+              <button
+                type="button"
+                role="option"
+                key={reaction}
+                aria-label={reaction}
+                onMouseDown={event => event.preventDefault()}
+                onClick={() => handleMessageAction('reaction', message, reaction)}
+              >
+                {reaction}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        className="message-action-button message-more-action"
+        onClick={event => {
+          event.stopPropagation();
+          openMessageMenu(event, message);
+        }}
+        aria-label={copy.t('Tùy chọn tin nhắn')}
+      >
+        <i className="fa-solid fa-ellipsis" aria-hidden="true"></i>
+      </button>
+    </div>
+  );
+}
+
+function ImageBatchMessage({
+  messages,
+  activeChat,
+  activeChatId,
+  viewerId,
+  activeAdminAccount,
+  copy = { t: value => value, locale: 'vi-VN' },
+  chatMode,
+  messageActions,
+  messageActionKey,
+  messageActionHoverKey,
+  messageReactionPickerKey,
+  highlightedMessageKey,
+  openProfileFor,
+  messageSenderProfile,
+  openImageViewer,
+  setReactionDetails,
+  scrollToMessageById,
+  showMessageActions,
+  hideMessageActionsLater,
+  showMessageReactionPicker,
+  hideMessageReactionPickerLater,
+  handleMessageAction,
+  openMessageMenu,
+  messageElementsRef,
+  deliveryStatusIcon,
+}) {
+  const firstMessage = messages[0];
+  const firstSenderId = firstMessage.senderId || firstMessage.raw?.from || firstMessage.raw?.head?.['x-sender-id'];
+  const isOutgoing = firstMessage.sender === 'outgoing'
+    || Boolean(firstSenderId && viewerId && firstSenderId === viewerId);
+  const isOwnerMessage = activeChat.isGroup && identitiesOverlap({ id: firstSenderId }, activeAdminAccount);
+  const layoutClass = imageBatchLayoutClass(messages.length);
+
+  return (
+    <div className={`message-item image-batch-message ${isOutgoing ? 'outgoing' : 'incoming'} ${highlightedMessageKey === messageActionKey(activeChatId, firstMessage.id) ? 'message-pinned-highlight' : ''}`}>
+      {!isOutgoing && (
+        <button type="button" className="message-avatar message-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(firstMessage))} title={`${copy.t('Xem thông tin')} ${firstMessage.senderName || copy.t('thành viên')}`}>
+          <SafeAvatar src={firstMessage.avatar || ''} name={firstMessage.senderName} />
+          {isOwnerMessage && (
+            <span className="group-owner-avatar-badge" title={copy.t('Quản trị viên nhóm')} aria-label={copy.t('Quản trị viên nhóm')} role="img">
+              <i className="fa-solid fa-key" aria-hidden="true"></i>
+            </span>
+          )}
+        </button>
+      )}
+
+      <div className="message-content-wrapper image-message-content image-batch-content">
+        {!isOutgoing && firstMessage.senderName && (
+          <div className="sender-name-row">
+            <button type="button" className="sender-name sender-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(firstMessage))}>{firstMessage.senderName}</button>
+          </div>
+        )}
+        <div className={`message-interactive image-batch-interactive ${messageActionHoverKey === messageActionKey(activeChatId, firstMessage.id) ? 'message-actions-visible' : ''}`}>
+          <div className={`image-batch-grid image-batch-grid-${layoutClass}`}>
+            {messages.map(message => {
+              const messageKey = messageActionKey(activeChatId, message.id);
+              const messageState = messageActions[messageKey] || {};
+              const reactions = chatMode === 'tinode'
+                ? { ...(message.reactions || {}) }
+                : { ...(message.reactions || {}), ...(messageState.reactions || {}) };
+              const reactionEntries = Object.entries(reactions).filter(([, count]) => Number(count) > 0);
+              const reactionPills = reactionEntries.length > 0 && (
+                <div className="message-reactions">
+                  {reactionEntries.map(([emoji, count]) => (
+                    <button
+                      type="button"
+                      key={emoji}
+                      title={copy.t('Xem người đã thả cảm xúc')}
+                      aria-label={`${copy.t('Xem người đã thả cảm xúc')} ${emoji}`}
+                      onClick={() => setReactionDetails({ messageId: message.id, message, emoji })}
+                    >
+                      {emoji} {count}
+                    </button>
+                  ))}
+                </div>
+              );
+              const attachmentFile = attachmentForMessage(message);
+              const imagePreviewSource = isImageAttachment(attachmentFile, message.type)
+                ? attachmentFile?.url || message.image || ''
+                : '';
+              const imagePreviewFile = imagePreviewSource && attachmentFile
+                ? { ...attachmentFile, url: imagePreviewSource }
+                : attachmentFile;
+              if (!imagePreviewSource) return null;
+
+              return (
+                <div
+                  key={message.id}
+                  ref={element => {
+                    if (element) messageElementsRef.current.set(messageKey, element);
+                    else messageElementsRef.current.delete(messageKey);
+                  }}
+                  className={`image-batch-tile ${messageState.pinned ? 'message-is-pinned' : ''} ${highlightedMessageKey === messageKey ? 'message-pinned-highlight' : ''}`}
+                  onContextMenu={event => openMessageMenu(event, message)}
+                  onMouseEnter={() => showMessageActions(messageKey)}
+                  onMouseLeave={() => hideMessageActionsLater(messageKey)}
+                >
+                  {messageState.pinned && (
+                    <span className="message-pinned-indicator" title={copy.t('Đã ghim trên thiết bị này')}>
+                      <i className="fa-solid fa-thumbtack" aria-hidden="true"></i>
+                      <span>{copy.t('Đã ghim')}</span>
+                    </span>
+                  )}
+                  <MessageReplyPreview reply={message.replyTo} copy={copy} onClick={reply => scrollToMessageById(reply.id)} />
+                  <div className={`message-bubble image-bubble ${message.pending ? 'pending' : ''} ${message.failed ? 'failed' : ''}`}>
+                    <button
+                      type="button"
+                      className="image-preview-button"
+                      title={copy.t('Bấm để xem ảnh')}
+                      onClick={() => openImageViewer(imagePreviewFile, message)}
+                    >
+                      <TinodeImagePreview source={imagePreviewSource} alt={copy.t('Ảnh đính kèm')} copy={copy} />
+                      <span className="image-view-hint"><i className="fa-solid fa-expand"></i>{copy.t('Xem ảnh')}</span>
+                    </button>
+                    <div className="image-bubble-footer">
+                      <span className="message-time">{formatMessageTime(message, message.time, copy.locale)} {isOutgoing && deliveryStatusIcon(message)}</span>
+                    </div>
+                  </div>
+                  {reactionPills}
+                  <MessageQuickActions
+                    message={message}
+                    messageKey={messageKey}
+                    copy={copy}
+                    messageActionHoverKey={messageActionHoverKey}
+                    messageReactionPickerKey={messageReactionPickerKey}
+                    showMessageActions={showMessageActions}
+                    hideMessageActionsLater={hideMessageActionsLater}
+                    showMessageReactionPicker={showMessageReactionPicker}
+                    hideMessageReactionPickerLater={hideMessageReactionPickerLater}
+                    handleMessageAction={handleMessageAction}
+                    openMessageMenu={openMessageMenu}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -6758,7 +7004,7 @@ function App() {
   const handleAttachClick = () => openAttachmentPicker(fileInputRef);
   const handleImageAttachClick = () => openAttachmentPicker(imageInputRef);
 
-  const handleSendFile = (file, { voiceDuration = 0 } = {}) => {
+  const handleSendFile = (file, { voiceDuration = 0, imageBatch = null } = {}) => {
     if (!file) return;
     if (activeChat?.isChatbot) {
       setChatError('Trợ lý AI hiện chỉ nhận tin nhắn văn bản.');
@@ -6811,6 +7057,7 @@ function App() {
 
     const timeStr = getTimeString();
     const createdAt = new Date().toISOString();
+    const normalizedImageBatch = isImage ? normalizeImageBatch(imageBatch) : null;
     const newMsg = {
       id: `me-file-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       type: isImage ? "image" : "file",
@@ -6826,6 +7073,7 @@ function App() {
         voiceDuration: Number(voiceDuration) || 0,
       },
       image: previewUrl || undefined,
+      imageBatch: normalizedImageBatch || undefined,
       replyTo: replyMeta,
       voiceDuration: Number(voiceDuration) || 0,
       time: timeStr,
@@ -6862,7 +7110,11 @@ function App() {
       const room = conversations[roomId];
       ensureTinodeConversationTopic(room)
         .then(async topicName => {
-          const result = await tinodeClient.sendFile(topicName, uploadFile, newMsg.id, { replyTo: replyMeta, voiceDuration });
+          const result = await tinodeClient.sendFile(topicName, uploadFile, newMsg.id, {
+            replyTo: replyMeta,
+            voiceDuration,
+            imageBatch: normalizedImageBatch,
+          });
           const confirmedIsImage = /^image\//i.test(result.file.mime || '') || isImage;
           const confirmedMessage = {
             ...newMsg,
@@ -7107,8 +7359,13 @@ function App() {
   const handleAttachmentChange = (event, source) => {
     const selection = splitAttachmentSelection(event.target.files, source);
     event.target.value = '';
-    selection.accepted.forEach(file => {
-      void handleSendFile(file);
+    const imageBatchId = source === 'image' && selection.accepted.length > 1
+      ? `image-batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      : '';
+    selection.accepted.forEach((file, index) => {
+      void handleSendFile(file, imageBatchId
+        ? { imageBatch: { id: imageBatchId, index, size: selection.accepted.length } }
+        : undefined);
     });
     if (selection.rejected.length > 0) {
       const rejectedCount = selection.rejected.length;
@@ -8191,6 +8448,9 @@ function App() {
   const unreadBoundaryStart = activeUnreadBoundary && !messageSearchQuery.trim()
     ? unreadBoundaryStartIndex(visibleMessages, activeUnreadBoundary)
     : -1;
+  const visibleMessageEntries = messageSearchQuery.trim()
+    ? visibleMessages.map((message, index) => ({ kind: 'message', key: message.id || `message:${index}`, message, index }))
+    : groupImageMessageEntries(visibleMessages, unreadBoundaryStart);
   const localHistorySearchResults = messageSearchHasFilters
     ? roomMessages(activeChat)
       .filter(message => !messageActions[messageActionKey(activeChat.id, message.id)]?.hidden)
@@ -8878,10 +9138,52 @@ function App() {
             <div className="date-divider"><span>{appCopy.t(currentChatId === 'dieu-hanh' ? 'Hôm nay' : 'Hội thoại trực tuyến')}</span></div>
           )}
 
-          {visibleMessages.map((msg, messageIndex) => {
+          {visibleMessageEntries.map(entry => {
+            const msg = entry.message || entry.messages[0];
+            const messageIndex = entry.index;
             const dateLabel = formatMessageDateLabel(msg, displayClock, appCopy.locale);
             const previousDateLabel = formatMessageDateLabel(visibleMessages[messageIndex - 1], displayClock, appCopy.locale);
             const showDateDivider = Boolean(dateLabel && dateLabel !== previousDateLabel);
+            if (entry.kind === 'image-batch') {
+              return (
+                <React.Fragment key={entry.key}>
+                  {activeUnreadBoundary?.revealed && unreadBoundaryStart === messageIndex && (
+                    <div className="unread-message-divider" data-unread-boundary="true">
+                      <span>{appCopy.t('TIN NHẮN CHƯA ĐỌC')}</span>
+                      {activeUnreadBoundary.firstUnreadAt && <time>{formatFullMessageDateTime(activeUnreadBoundary.firstUnreadAt, '', appCopy.locale)}</time>}
+                    </div>
+                  )}
+                  {showDateDivider && <div className="date-divider"><span>{dateLabel}</span></div>}
+                  <ImageBatchMessage
+                    messages={entry.messages}
+                    activeChat={activeChat}
+                    activeChatId={activeChat.id}
+                    viewerId={viewerId}
+                    activeAdminAccount={activeAdminAccount}
+                    copy={appCopy}
+                    chatMode={chatMode}
+                    messageActions={messageActions}
+                    messageActionKey={messageActionKey}
+                    messageActionHoverKey={messageActionHoverKey}
+                    messageReactionPickerKey={messageReactionPickerKey}
+                    highlightedMessageKey={highlightedMessageKey}
+                    openProfileFor={openProfileFor}
+                    messageSenderProfile={messageSenderProfile}
+                    openImageViewer={openImageViewer}
+                    setReactionDetails={setReactionDetails}
+                    scrollToMessageById={scrollToMessageById}
+                    showMessageActions={showMessageActions}
+                    hideMessageActionsLater={hideMessageActionsLater}
+                    showMessageReactionPicker={showMessageReactionPicker}
+                    hideMessageReactionPickerLater={hideMessageReactionPickerLater}
+                    handleMessageAction={handleMessageAction}
+                    openMessageMenu={openMessageMenu}
+                    messageElementsRef={messageElementsRef}
+                    deliveryStatusIcon={deliveryStatusIcon}
+                  />
+                </React.Fragment>
+              );
+            }
             if (msg.type === 'system') {
               const systemEventClass = String(msg.action || 'activity').replace(/[^a-z0-9_-]/gi, '-');
               const systemEventIcon = msg.action === 'member_left'

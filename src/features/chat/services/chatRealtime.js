@@ -1,5 +1,6 @@
 import { normalizeGroupSettings } from './groupSettings.js';
 import { normalizeConversationBackground } from './conversationBackground.js';
+import { normalizeImageBatch } from './imageBatchLayout.js';
 
 export const TINODE_CONTACT_SYNC_DELAYS_MS = Object.freeze([120, 600, 1800]);
 
@@ -245,6 +246,7 @@ function normalizeMessage(value, index) {
     senderName: conversationText(message.senderName),
     text: conversationText(message.text),
     image: conversationMedia(message.image),
+    imageBatch: normalizeImageBatch(message.imageBatch || message.image_batch),
     sticker: normalizeSticker(message.sticker),
     avatar: conversationMedia(message.avatar || message.photo),
     file: normalizeAttachment(message.file),

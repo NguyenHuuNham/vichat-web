@@ -18,6 +18,7 @@ import {
   publishCallInvite,
 } from './callSignaling';
 import { attachmentConversationPreview } from './messagePreview';
+import { normalizeImageBatch } from './imageBatchLayout';
 import { normalizeGroupSettings } from './groupSettings';
 import {
   latestSharedConversationBackground,
@@ -87,6 +88,7 @@ const FRIEND_EVENT_PREFIX = '__SONGHONG_FRIEND_EVENT__:';
 const REACTION_EVENT_PREFIX = '__VICHAT_REACTION_EVENT__:';
 const RECALL_EVENT_PREFIX = '__VICHAT_RECALL_EVENT__:';
 const STICKER_HEAD = 'x-vichat-sticker';
+const IMAGE_BATCH_HEAD = 'x-vichat-image-batch';
 const CONVERSATION_BACKGROUND_AUX_KEY = 'x-vichat-conversation-background';
 const TINODE_DELETE_CHAR = Tinode?.DEL_CHAR || '\u2421';
 const MEDIA_PROXY_PREFIX = '/tinode-media';
@@ -567,6 +569,16 @@ function parseStickerMetadata(head = {}) {
   }
 }
 
+function parseImageBatchMetadata(head = {}) {
+  const raw = head?.[IMAGE_BATCH_HEAD];
+  if (!raw) return null;
+  try {
+    return normalizeImageBatch(typeof raw === 'string' ? JSON.parse(raw) : raw);
+  } catch {
+    return null;
+  }
+}
+
 function deliveryStatusName(status) {
   if (status >= 70) return 'read';
   if (status >= 60) return 'received';
@@ -597,6 +609,7 @@ function toMessage(msg, tinode, topic = null) {
   const call = parseCallMessage(msg.content, msg.head, !isOutgoing);
   const attachment = draftyAttachment(msg.content);
   const sticker = parseStickerMetadata(msg.head);
+  const imageBatch = parseImageBatchMetadata(msg.head);
   const content = typeof msg.content === 'string' ? msg.content : (msg.content?.txt || '');
   let systemEvent = null;
   let friendEvent = null;
@@ -720,6 +733,7 @@ function toMessage(msg, tinode, topic = null) {
     grounded: msg.head?.['x-vichat-chatbot-grounded'] === '1',
     text: call ? callHistoryLabel(call, isOutgoing) : friendEvent ? (friendEvent.note || '') : systemEvent ? formatSystemEvent(systemEvent, tinode.getCurrentUserID()) : content,
     image: isImageAttachment ? attachmentUrl : undefined,
+    imageBatch: imageBatch || undefined,
     file: attachment ? {
       name: attachmentName,
       ext: attachmentExt,
@@ -2161,6 +2175,8 @@ export const tinodeClient = {
     if (clientId) draft.head['x-client-id'] = clientId;
     if (metadata.replyTo) draft.head['x-reply-to'] = JSON.stringify(metadata.replyTo);
     if (metadata.sharedFrom) draft.head['x-shared-from'] = String(metadata.sharedFrom);
+    const imageBatch = normalizeImageBatch(metadata.imageBatch);
+    if (imageBatch) draft.head[IMAGE_BATCH_HEAD] = JSON.stringify(imageBatch);
     if (metadata.sticker?.stickerId && metadata.sticker?.packId) {
       draft.head[STICKER_HEAD] = JSON.stringify({
         stickerId: String(metadata.sticker.stickerId).slice(0, 80),

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-10 - Gom nhieu anh trong mot tin nhan
+
+- Thoi gian: 2026-08-24 07:07 (Asia/Saigon)
+- Loai: Tinh nang | Sua loi | Web | Realtime | Kiem thu | Tai lieu
+- Trang thai: Hoan tat; cho deploy production
+- Muc tieu: Hien thi nhieu anh duoc chon trong cung mot lan gui theo luoi gon, van mo duoc tung anh o ImageViewer.
+- Pham vi: ChatUI image attachment renderer, metadata Tinode cho batch anh va test layout; khong thay doi sticker, file, upload validation, reaction, reply, share hoac cac luong chat khac.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/imageBatchLayout.js`, `src/features/chat/services/imageBatchLayout.test.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/tinodeClient.js`, `src/styles/index.css`, `package.json`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Lan chon tu hai anh tro len duoc gan batch id/index/size; renderer dung bo cuc 2 cot cho 2/4 anh, bo cuc mot anh dau lon cho 3 anh va luoi 3 cot cho nhieu anh (2 cot tren mobile). Moi tile van giu mo anh full, menu hanh dong, reaction, reply va share.
+- Quyet dinh ky thuat: Dung metadata `x-vichat-image-batch` trong head Tinode de giu grouping sau F5/reconnect va tren nguoi nhan; chi gom message lien tiep cung sender va cung batch, khong suy dien theo timestamp de tranh gom nham anh gui rieng.
+- Database/API/cau hinh: Khong migration, endpoint moi, bien moi truong hoac thay doi schema; chi them head metadata presentation-only.
+- Kiem thu: `node --test src/features/chat/services/imageBatchLayout.test.js src/features/chat/services/chatRealtime.test.js` dat 25/25; `npm run test:frontend` dat 180/180; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` va `npm run build:production` dat; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 44/44; `git diff --check` dat.
+- Rui ro con lai: Chua UAT pixel-level bang browser runtime trong phien nay; can thu gui 2/3/4/5+ anh, click tung tile mo viewer, reaction/menu va F5/reconnect o chat 1-1/nhom.
+- Viec tiep theo: Chay build production, commit/push/deploy va kiem tra health/bundle; sau do UAT batch anh tren desktop/mobile.
+- Commit/PR: Chua tao.
+
 ## 2026-08-24-09 - Keo anh khi zoom va chia se tin nhan noi bo
 
 - Thoi gian: 2026-08-24 06:36 (Asia/Saigon)

@@ -166,6 +166,14 @@ translucent readable message surfaces; dark mode adds a light contrast veil and
 stronger message surfaces. No Chatmgt schema, message copy, or migration is
 required.
 
+When a user selects multiple images in one upload action, ChatUI stamps each
+Tinode attachment with a bounded `x-vichat-image-batch` head containing the
+batch id, position and total count. The metadata is presentation-only: Tinode
+continues to own each image message and file URL, while ChatUI groups only
+contiguous image messages from the same sender and explicit batch for a compact
+grid. Stickers, files, legacy messages and separately sent images are not
+grouped, and no Chatmgt schema, API or database migration is required.
+
 Tinode media URLs from the central host are normalized to the authenticated
 `chat.upgo.vn/tinode-media` relay. The native client downloads protected message
 and avatar images with its short-lived Tinode token into the OS cache and passes
