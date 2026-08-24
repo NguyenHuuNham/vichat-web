@@ -15,6 +15,15 @@ const authMode = normalizeChatAuthMode(env.VITE_CHAT_AUTH_MODE || 'account_passw
 const accountUrl = String(env.VITE_ACCOUNT_URL || 'https://account.upgo.vn').replace(/\/+$/, '');
 const topicBindingsKey = 'vichat.management.topic-bindings.v1';
 
+function createPresenceSessionId() {
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+const presenceSessionId = createPresenceSessionId();
+
 let activeSession = null;
 let activeTinodePassword = '';
 let lastDirectorySync = null;
@@ -388,6 +397,10 @@ export const chatManagementService = {
     return lastDirectorySync;
   },
 
+  get presenceSessionId() {
+    return presenceSessionId;
+  },
+
   async login(credentials = {}) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const passwordLogin = authMode === 'password';
@@ -518,6 +531,13 @@ export const chatManagementService = {
     let payload = null;
     let logoutError = null;
     if (apiBase && remoteAuth) {
+      // Give the best-effort cleanup a short window without making logout
+      // depend on a broken Redis/API connection.
+      const presenceCleanup = this.clearPresence({ keepalive: true }).catch(() => null);
+      await Promise.race([
+        presenceCleanup,
+        new Promise(resolve => setTimeout(resolve, 500)),
+      ]);
       try {
         payload = await apiRequest('/api/v1/auth/logout', { method: 'POST' });
       } catch (error) {
@@ -595,6 +615,40 @@ export const chatManagementService = {
     const payload = await apiRequest('/api/v1/chat/users?results_per_page=1000');
     lastDirectorySync = payload?.directory_sync || null;
     return responseItems(payload).map(publicAccount).filter(Boolean);
+  },
+
+  async heartbeatPresence(accountIds = []) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const ids = [...new Set((Array.isArray(accountIds) ? accountIds : [])
+      .map(value => String(value || '').trim())
+      .filter(Boolean))].slice(0, 1000);
+    return apiRequest('/api/v1/chat/presence/heartbeat', {
+      method: 'POST',
+      body: JSON.stringify({
+        session_id: presenceSessionId,
+        account_ids: ids,
+      }),
+    });
+  },
+
+  async listPresence(accountIds = []) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const ids = [...new Set((Array.isArray(accountIds) ? accountIds : [])
+      .map(value => String(value || '').trim())
+      .filter(Boolean))].slice(0, 1000);
+    return apiRequest('/api/v1/chat/presence/batch', {
+      method: 'POST',
+      body: JSON.stringify({ account_ids: ids }),
+    });
+  },
+
+  async clearPresence({ keepalive = false } = {}) {
+    if (!apiBase || !remoteAuth) return null;
+    return apiRequest('/api/v1/chat/presence/offline', {
+      method: 'POST',
+      keepalive,
+      body: JSON.stringify({ session_id: presenceSessionId }),
+    });
   },
 
   async updateContactNickname(contactId, nickname) {

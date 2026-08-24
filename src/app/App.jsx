@@ -3035,7 +3035,6 @@ function App() {
     : Boolean(account?.online);
 
   const accountPresenceLabel = account => {
-    if (usesManagementData && chatMode !== 'tinode') return appCopy.t('Danh bạ Chatmgt');
     return appCopy.t(isAccountOnline(account) ? 'Đang hoạt động' : 'Ngoại tuyến');
   };
 
@@ -5326,8 +5325,15 @@ function App() {
     }
     setIsWorkspaceLoading(true);
     try {
-      setWorkspaceResults(await chatManagementService.searchUsers(value, {
+      const results = await chatManagementService.searchUsers(value, {
         excludeUserId: currentUser?.id || currentUser?.uid,
+      });
+      const knownAccounts = directoryAccountsRef.current;
+      setWorkspaceResults(results.map(result => {
+        const known = findAccount(knownAccounts, result.id || result.uid || result.tinodeUid);
+        return known && typeof known.online === 'boolean'
+          ? { ...result, online: known.online }
+          : result;
       }));
     } catch (err) {
       setChatError(err?.message || 'Không thể tìm danh bạ.');
@@ -5432,8 +5438,13 @@ function App() {
         const refreshResultList = results => (results || []).map(result => {
           const account = findAccount(effectiveAccounts, result.id || result.uid || result.tinodeUid || result.name);
           if (!account) return result;
-          const next = { ...result, ...account, online: result.online };
-          return ['name', 'defaultName', 'nickname', 'avatar', 'email', 'title', 'department', 'active'].some(key => result[key] !== next[key])
+          const knownOnline = typeof account.online === 'boolean' ? account.online : result.online;
+          const next = {
+            ...result,
+            ...account,
+            ...(typeof knownOnline === 'boolean' ? { online: knownOnline } : {}),
+          };
+          return ['name', 'defaultName', 'nickname', 'avatar', 'email', 'title', 'department', 'active', 'online'].some(key => result[key] !== next[key])
             ? next
             : result;
         });
@@ -5558,33 +5569,49 @@ function App() {
     };
   }, [isLoggedIn, managementViewerId, currentUser, appendLocalFriendEvent]);
 
-  // Discovery returns Tinode's current user presence without creating P2P
-  // topics for employees who have not started a conversation yet.
+  // Chatmgt owns the directory-wide presence lease. The short polling window
+  // keeps the list responsive while Redis TTL handles crashed tabs/network loss.
   useEffect(() => {
-    if (!isLoggedIn || chatMode !== 'tinode' || !managementViewerId) return undefined;
+    if (!isLoggedIn || !chatManagementService.remote || !managementViewerId) return undefined;
     const accountSession = accountSessionRef.current;
     let cancelled = false;
     let syncing = false;
     const syncDirectoryPresence = async () => {
       if (cancelled || syncing || accountSessionRef.current !== accountSession) return;
-      if (!tinodeClient.authenticated || directoryAccountsRef.current.length === 0) return;
       syncing = true;
       try {
-        const snapshot = await tinodeClient.getDirectoryPresence(directoryAccountsRef.current);
-        if (!cancelled && accountSessionRef.current === accountSession) applyPresenceSnapshot(snapshot);
+        const accountIds = directoryAccountsRef.current
+          .map(account => account?.id || account?.uid)
+          .filter(Boolean);
+        const payload = await chatManagementService.heartbeatPresence(accountIds);
+        if (!cancelled && accountSessionRef.current === accountSession) {
+          applyPresenceSnapshot(payload?.presence || {});
+        }
       } catch {
-        // Presence is best-effort and must not interrupt messaging or login.
+        // Presence is best-effort and must not interrupt login or messaging.
       } finally {
         syncing = false;
       }
     };
     void syncDirectoryPresence();
-    const timer = window.setInterval(syncDirectoryPresence, 5000);
+    const timer = window.setInterval(syncDirectoryPresence, 2000);
+    const syncWhenVisible = () => {
+      if (document.visibilityState !== 'hidden') void syncDirectoryPresence();
+    };
+    const clearPresenceOnPageHide = () => {
+      void chatManagementService.clearPresence({ keepalive: true }).catch(() => {});
+    };
+    document.addEventListener('visibilitychange', syncWhenVisible);
+    window.addEventListener('focus', syncWhenVisible);
+    window.addEventListener('pagehide', clearPresenceOnPageHide);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', syncWhenVisible);
+      window.removeEventListener('focus', syncWhenVisible);
+      window.removeEventListener('pagehide', clearPresenceOnPageHide);
     };
-  }, [isLoggedIn, chatMode, managementViewerId, applyPresenceSnapshot]);
+  }, [isLoggedIn, managementViewerId, directoryAccounts.length, applyPresenceSnapshot]);
 
   const handleFriendRequestResponse = async (record, accepted) => {
     if (!record?.event?.requestId || respondingFriendRequestId) return;

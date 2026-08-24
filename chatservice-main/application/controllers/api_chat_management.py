@@ -93,6 +93,12 @@ from application.services.tinode_chatbot_service import (
     ensure_tinode_chatbot_auth,
     tinode_chatbot_enabled,
 )
+from application.services.presence_service import (
+    mark_offline,
+    mark_online,
+    online_snapshot,
+    presence_ttl,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -298,6 +304,8 @@ def _public_account(account, tenant=None, viewer_account=None):
         "tinodeUid": account.tinode_uid,
         "tinode_uid": account.tinode_uid,
         "active": bool(account.active),
+        # The directory snapshot keeps the legacy field for compatibility;
+        # ChatUI overlays Redis-backed presence after loading it.
         "online": False,
         "mustChangePassword": bool(properties.get("must_change_password")),
         "createdAt": _iso_timestamp(account.created_at),
@@ -2596,6 +2604,137 @@ async def management_users(request):
             "tinode_failed": tinode_failed,
         },
     })
+
+
+def _presence_request_body(request):
+    body = request.json or {}
+    return body if isinstance(body, dict) else {}
+
+
+def _presence_session_id(current_user, body):
+    browser_session_id = str(
+        body.get("session_id") or body.get("sessionId") or ""
+    ).strip()
+    jwt_session_id = str((current_user or {}).get("jti") or "").strip()
+    if (
+        not browser_session_id
+        or len(browser_session_id) > 128
+        or not jwt_session_id
+        or len(jwt_session_id) > 128
+    ):
+        return ""
+    # Keep tabs independent while binding a lease to the authenticated JWT.
+    return "{}.{}".format(jwt_session_id, browser_session_id)
+
+
+def _presence_account_ids(body):
+    raw_ids = body.get("account_ids")
+    if raw_ids is None:
+        raw_ids = body.get("accountIds")
+    if not isinstance(raw_ids, list):
+        return []
+    seen = set()
+    account_ids = []
+    for raw_id in raw_ids[:1000]:
+        account_id = str(raw_id or "").strip()
+        if not account_id or len(account_id) > 128 or account_id in seen:
+            continue
+        seen.add(account_id)
+        account_ids.append(account_id)
+    return account_ids
+
+
+def _tenant_presence_ids(tenant_id, requested_ids):
+    if not requested_ids:
+        return []
+    accounts = ManagementAccount.query.filter(
+        ManagementAccount.tenant_id == tenant_id,
+        ManagementAccount.id.in_(requested_ids),
+        ManagementAccount.active.is_(True),
+    ).all()
+    return [str(account.id) for account in accounts]
+
+
+def _presence_unavailable_error():
+    return json({
+        "error_code": "PRESENCE_UNAVAILABLE",
+        "error_message": "Realtime presence is temporarily unavailable.",
+    }, status=503)
+
+
+def _chat_session_required_for_presence(request):
+    if not management_session_requested(request):
+        return None
+    return json({
+        "error_code": "CHAT_SESSION_REQUIRED",
+        "error_message": "Presence can only be updated from a Chat user session.",
+    }, status=403)
+
+
+@app.route('/api/v1/chat/presence/heartbeat', methods=['POST'])
+async def chat_presence_heartbeat(request):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    session_error = _chat_session_required_for_presence(request)
+    if session_error is not None:
+        return session_error
+    body = _presence_request_body(request)
+    session_id = _presence_session_id(current_user, body)
+    if not session_id:
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "A browser presence session is required.",
+        }, status=400)
+    account_id = _user_id(current_user)
+    if not mark_online(tenant_id, account_id, session_id):
+        return _presence_unavailable_error()
+    requested_ids = _tenant_presence_ids(tenant_id, _presence_account_ids(body))
+    snapshot = online_snapshot(tenant_id, requested_ids)
+    if snapshot is None:
+        return _presence_unavailable_error()
+    return json({
+        "presence": snapshot,
+        "online": True,
+        "expires_in": presence_ttl(),
+    })
+
+
+@app.route('/api/v1/chat/presence/batch', methods=['POST'])
+async def chat_presence_batch(request):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    session_error = _chat_session_required_for_presence(request)
+    if session_error is not None:
+        return session_error
+    requested_ids = _tenant_presence_ids(tenant_id, _presence_account_ids(_presence_request_body(request)))
+    snapshot = online_snapshot(tenant_id, requested_ids)
+    if snapshot is None:
+        return _presence_unavailable_error()
+    return json({
+        "presence": snapshot,
+        "expires_in": presence_ttl(),
+    })
+
+
+@app.route('/api/v1/chat/presence/offline', methods=['POST'])
+async def chat_presence_offline(request):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    session_error = _chat_session_required_for_presence(request)
+    if session_error is not None:
+        return session_error
+    session_id = _presence_session_id(current_user, _presence_request_body(request))
+    if not session_id:
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "A browser presence session is required.",
+        }, status=400)
+    if not mark_offline(tenant_id, _user_id(current_user), session_id):
+        return _presence_unavailable_error()
+    return json({"offline": True})
 
 
 @app.route('/api/v1/contact-nicknames', methods=['GET'])

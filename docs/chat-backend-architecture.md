@@ -259,15 +259,24 @@ and keeps monotonic `recv/read` cursors so an older metadata snapshot cannot
 downgrade a two-check status. Opening a conversation still sends `read` through
 the existing topic API.
 
-Web ChatUI keeps the same Tinode source of truth but also refreshes the active
-tenant directory's presence through the read-only `fnd` discovery topic every
-five seconds. It queries the deterministic Tinode usernames already returned by
-Chatmgt, matches discovery results back to the expected Tinode UIDs, and merges
-only the `online` field. Discovery batches are bounded and serialized with
-employee search/UID resolution because each `fnd` query replaces the prior
-result set. This does not subscribe to P2P topics, create conversations, change
-membership, or copy presence into Chatmgt; existing `me` `on`/`off` events still
-apply immediately when a P2P subscription exists.
+Web ChatUI keeps Tinode as the source of presence for subscribed conversations,
+but directory-wide presence uses an independent Chatmgt lease. Each authenticated
+browser sends a heartbeat every two seconds to
+`POST /api/v1/chat/presence/heartbeat`; Chatmgt stores only a tenant-scoped,
+session-scoped Redis key with an eight-second TTL. The heartbeat response includes
+the requested same-tenant account states, and the optional batch endpoint can read
+the same snapshot without refreshing the caller's lease. Logout and `pagehide`
+remove the current browser lease best-effort; a crashed tab or network loss becomes
+offline automatically when the TTL expires. Redis failures leave the last UI state
+in place and never block login, messages, membership, or admin actions.
+
+The server validates every requested account ID against the authenticated JWT
+tenant before reading Redis. The client merges only `online`, never lets a stale
+Chatmgt directory snapshot overwrite a newer lease, and sorts online employees
+before offline employees with name ordering inside each group. This does not
+subscribe to P2P topics, create conversations, change membership, or copy
+presence into Chatmgt/PostgreSQL. Tinode `me` `on`/`off` events still apply
+immediately when a P2P subscription exists.
 
 Recall is an event overlay shared by mobile and ChatUI. `mode=all` hides the
 original content and attachment for every participant and keeps a
@@ -658,6 +667,9 @@ history, role-aware actions and a message-to-task shortcut.
 | `POST` | `/api/v1/auth/tinode-token` | Issue/refresh a short-lived Tinode token |
 | `POST` | `/api/v1/admin/sso` | Account SSO for current-tenant administrators |
 | `GET` | `/api/v1/chat/users...` | Tenant employee directory projection and Tinode readiness |
+| `POST` | `/api/v1/chat/presence/heartbeat` | Refresh the current ChatUI presence lease and return requested same-tenant states |
+| `POST` | `/api/v1/chat/presence/batch` | Read requested same-tenant ephemeral presence states |
+| `POST` | `/api/v1/chat/presence/offline` | Remove the current browser presence lease best-effort |
 | `GET/PUT` | `/api/v1/chat/contact-nicknames...` | Read or update private viewer-scoped 1-1 contact nicknames |
 | `POST` | `/api/v1/chat/users/<id>/revoke-session` | Revoke a tenant employee session |
 | `GET/POST` | `/api/v1/friend-request` | Tenant-scoped friendship metadata |

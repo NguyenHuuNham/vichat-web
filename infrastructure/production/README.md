@@ -374,6 +374,18 @@ The automated verifier checks configuration and management isolation but cannot
 fabricate a real Account cookie. The two-user/two-tenant browser checks are
 therefore mandatory before Step 4 is marked complete.
 
+## Directory presence acceptance
+
+After ChatUI and Chatmgt are healthy, sign in with two active employees in the
+same tenant on separate browser sessions. Keep the directory open, then sign
+out or close the second session and confirm the first session changes that
+employee to offline within the configured eight-second Redis lease plus one
+poll interval. Sign the second employee back in and confirm the employee moves
+to the top of the directory within two seconds of the next heartbeat. Repeat
+with two tenants and confirm no account from the other tenant is included in a
+presence response. A Redis/API failure must leave the last visible state and
+must not disconnect Tinode or hide Chatmgt conversations.
+
 ## Enterprise Workspace acceptance test
 
 Revision `20260804_10` creates the Workspace item, participant and activity

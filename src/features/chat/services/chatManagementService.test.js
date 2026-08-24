@@ -179,6 +179,18 @@ test('refreshes company logo metadata without resetting the active chat session'
   }]);
 });
 
+test('uses the Chatmgt heartbeat for directory presence and cleans it up on logout', () => {
+  assert.equal(typeof chatManagementService.heartbeatPresence, 'function');
+  assert.equal(typeof chatManagementService.listPresence, 'function');
+  assert.equal(typeof chatManagementService.clearPresence, 'function');
+  assert.match(managementServiceSource, /\/api\/v1\/chat\/presence\/heartbeat/);
+  assert.match(managementServiceSource, /\/api\/v1\/chat\/presence\/batch/);
+  assert.match(managementServiceSource, /\/api\/v1\/chat\/presence\/offline/);
+  assert.match(appSource, /chatManagementService\.heartbeatPresence\(accountIds\)/);
+  assert.match(appSource, /setInterval\(syncDirectoryPresence, 2000\)/);
+  assert.doesNotMatch(appSource, /getDirectoryPresence\(/);
+});
+
 test('routes Account-managed profiles through the Account avatar contract', () => {
   assert.equal(isAccountManaged({ accountManaged: true }), true);
   assert.equal(isAccountManaged({ auth_source: 'account' }), true);

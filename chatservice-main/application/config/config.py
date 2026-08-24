@@ -57,6 +57,7 @@ class Config(object):
     )
     CHAT_AUTH_ACCESS_TTL = int(os.getenv("CHAT_AUTH_ACCESS_TTL", 28800))
     CHAT_AUTH_COOKIE_SECURE = env_bool("CHAT_AUTH_COOKIE_SECURE", False)
+    CHAT_PRESENCE_TTL = int(os.getenv("CHAT_PRESENCE_TTL", 8))
     CHAT_AUTH_MAX_FAILURES = int(os.getenv("CHAT_AUTH_MAX_FAILURES", 5))
     CHAT_AUTH_FAILURE_WINDOW = int(os.getenv("CHAT_AUTH_FAILURE_WINDOW", 900))
     CHAT_PASSWORD_RESET_TTL = int(os.getenv("CHAT_PASSWORD_RESET_TTL", 1800))

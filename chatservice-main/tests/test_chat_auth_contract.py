@@ -16,6 +16,7 @@ PRODUCTION_COMPOSE_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / "c
 PRODUCTION_NGINX_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / "nginx.conf"
 TINODE_BRIDGE_PATH = PROJECT_ROOT / "scripts" / "tinode_account_bridge.py"
 PRODUCTION_ENV_EXAMPLE_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / ".env.example"
+PRESENCE_SERVICE_PATH = PROJECT_ROOT / "application" / "services" / "presence_service.py"
 HAS_REPOSITORY_SOURCES = all(path.is_file() for path in (
     LOGIN_PATH,
     CHAT_SERVICE_PATH,
@@ -891,6 +892,24 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("/api/v1/chat/users", service_source)
         self.assertIn("/api/v1/friend-request", service_source)
         self.assertIn("/api/v1/conversation", service_source)
+
+    @repository_source_test
+    def test_directory_presence_uses_ephemeral_tenant_scoped_leases(self):
+        controller_source = CONTROLLER_PATH.read_text(encoding="utf-8")
+        presence_source = PRESENCE_SERVICE_PATH.read_text(encoding="utf-8")
+        compose_source = PRODUCTION_COMPOSE_PATH.read_text(encoding="utf-8")
+        env_source = PRODUCTION_ENV_EXAMPLE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("/api/v1/chat/presence/heartbeat", controller_source)
+        self.assertIn("/api/v1/chat/presence/batch", controller_source)
+        self.assertIn("/api/v1/chat/presence/offline", controller_source)
+        self.assertIn("ManagementAccount.tenant_id == tenant_id", controller_source)
+        self.assertIn("ManagementAccount.id.in_(requested_ids)", controller_source)
+        self.assertIn("mark_online(tenant_id, account_id, session_id)", controller_source)
+        self.assertIn("setex", presence_source)
+        self.assertIn("scan_iter", presence_source)
+        self.assertIn("CHAT_PRESENCE_TTL", compose_source)
+        self.assertIn("CHAT_PRESENCE_TTL=8", env_source)
 
 
 if __name__ == "__main__":

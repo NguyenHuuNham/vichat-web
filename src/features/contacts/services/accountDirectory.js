@@ -189,10 +189,13 @@ export function companyDirectoryContacts(accounts, currentUser) {
     if (contacts.some(contact => identitiesOverlap(contact, account))) return;
     contacts.push(account);
   });
-  return contacts.sort((first, second) => (
-    String(first.name || first.username || first.email || '')
-      .localeCompare(String(second.name || second.username || second.email || ''), 'vi', { sensitivity: 'base' })
-  ));
+  return contacts.sort((first, second) => {
+    const firstOnline = first.online === true;
+    const secondOnline = second.online === true;
+    if (firstOnline !== secondOnline) return secondOnline ? 1 : -1;
+    return String(first.name || first.username || first.email || '')
+      .localeCompare(String(second.name || second.username || second.email || ''), 'vi', { sensitivity: 'base' });
+  });
 }
 
 export function snapshotPresence(entity, snapshot) {
@@ -288,6 +291,7 @@ export function mergeDirectoryAccountSnapshots(previousAccounts = [], incomingAc
     if (!previousAccount) return account;
     const avatar = account.avatar || previousAccount.avatar || '';
     const hasIncomingNickname = Object.prototype.hasOwnProperty.call(account || {}, 'nickname');
+    const hasIncomingOnline = Object.prototype.hasOwnProperty.call(account || {}, 'online');
     const nickname = hasIncomingNickname
       ? scalarText(account.nickname)
       : scalarText(previousAccount.nickname);
@@ -311,11 +315,19 @@ export function mergeDirectoryAccountSnapshots(previousAccounts = [], incomingAc
       nickname,
       // Directory polling may briefly return an old/empty avatar after upload.
       avatar,
+      ...(hasIncomingOnline || typeof previousAccount.online === 'boolean'
+        ? {
+          online: typeof previousAccount.online === 'boolean'
+            ? previousAccount.online
+            : account.online === true,
+        }
+        : {}),
     };
     const accountChanged = name !== account.name
       || defaultName !== account.defaultName
       || nickname !== scalarText(account.nickname)
-      || avatar !== account.avatar;
+      || avatar !== account.avatar
+      || merged.online !== account.online;
     if (accountChanged) changed = true;
     return accountChanged ? merged : account;
   });

@@ -34,10 +34,6 @@ import {
   recallAppliesToViewer,
   recallPlaceholderSenderId,
 } from './messagePolicy';
-import {
-  buildDirectoryPresenceBatches,
-  presenceSnapshotFromDiscovery,
-} from './directoryPresence';
 
 /*
  * Thin integration layer around the Tinode browser SDK.
@@ -1269,8 +1265,8 @@ function presenceSnapshot(tinode = getClient()) {
   return snapshot;
 }
 
-// The fnd topic is shared by search, UID resolution, and directory presence.
-// Serialize those requests because each query replaces the topic's result set.
+// The fnd topic is shared by search and UID resolution. Serialize those
+// requests because each query replaces the topic's result set.
 function enqueueFndDiscovery(tinode, factory) {
   const run = async () => {
     if (tinode !== client) return null;
@@ -1772,29 +1768,6 @@ export const tinodeClient = {
 
   getPresenceSnapshot() {
     return presenceSnapshot(getClient());
-  },
-
-  async getDirectoryPresence(accounts = []) {
-    const tinode = getClient();
-    const batches = buildDirectoryPresenceBatches(accounts);
-    if (batches.length === 0) return {};
-    const request = enqueueFndDiscovery(tinode, async (fnd, activeTinode) => {
-      const contacts = [];
-      const completedUids = [];
-      for (const batch of batches) {
-        if (activeTinode !== client) return {};
-        try {
-          await fnd.setMeta({ desc: { public: batch.query } });
-          await fnd.getMeta(fnd.startMetaQuery().withSub(undefined, Math.min(200, batch.uids.length + 5)).build());
-          fnd.contacts(contact => contacts.push(contact));
-          completedUids.push(...batch.uids);
-        } catch {
-          // Preserve the last known state for a batch which failed transiently.
-        }
-      }
-      return presenceSnapshotFromDiscovery(accounts, contacts, completedUids);
-    });
-    return (await request) || {};
   },
 
   getPendingConversationTopics() {

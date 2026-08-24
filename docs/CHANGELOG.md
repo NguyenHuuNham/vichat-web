@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-18 - Sua presence danh ba theo heartbeat Redis
+
+- Thoi gian: 2026-08-24 13:28 (Asia/Saigon)
+- Loai: Sua loi | Web | API | Realtime | Bao mat | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Cap nhat online/offline danh ba gan nhu ngay lap tuc va dua nguoi dang hoat dong len dau danh sach.
+- Pham vi: ChatUI, Chatmgt presence lease, Redis, tenant isolation va tai lieu; khong thay doi Tinode message, membership, conversation, admin hay database schema.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `chatservice-main/application/services/presence_service.py`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/config/config.py`, `chatservice-main/tests/test_presence_service.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `infrastructure/production/compose.yaml`, `infrastructure/production/.env.example`, `infrastructure/production/README.md`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Bo presence directory khoi Tinode `fnd` vi Tinode 0.25.3 tra online co dinh `FALSE`. ChatUI heartbeat moi 2 giay voi session ID rieng cho tung tab; Chatmgt luu lease tenant-scoped trong Redis TTL 8 giay, tra batch trang thai, xoa lease khi logout/pagehide va giu trang thai cu neu Redis loi. Danh ba sort online truoc, offline sau, moi nhom tiep tuc sort theo ten.
+- Quyet dinh ky thuat: Presence la du lieu ephemeral, khong ghi PostgreSQL va khong tao P2P topic. Server chi doc account ID sau khi loc theo tenant cua JWT; key ket hop tenant, account va JWT/browser session de nhieu tab khong tat trang thai cua nhau. Directory snapshot khong con la nguon online.
+- Database/API/cau hinh: Them `POST /api/v1/chat/presence/heartbeat`, `POST /api/v1/chat/presence/batch`, `POST /api/v1/chat/presence/offline` va `CHAT_PRESENCE_TTL` (mac dinh 8 giay); khong migration.
+- Kiem thu: `npm run test:frontend` dat 200/200; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` va `npm run build:production` dat voi canh bao chunk App lon hon 500 KB da co; `python -m unittest discover -s chatservice-main/tests -q` dat 186 tests, skip 63; targeted presence/auth dat 47 tests, skip 2; `py_compile`, `git diff --check` va Compose config voi gia tri validation khong bi mat deu dat.
+- Rui ro con lai: Chua xac nhan production bang hai tai khoan that; offline khi mat mang/phat crash phu thuoc TTL toi da 8 giay neu pagehide khong gui duoc.
+- Viec tiep theo: Chay kiem thu, commit/push, deploy chi `chatmgt` va `chat`, kiem tra health/log/bundle va UAT hai tai khoan.
+- Commit/PR: Chua tao.
+
 ## 2026-08-24-17 - Sua presence danh ba khong cap nhat realtime
 
 - Thoi gian: 2026-08-24 12:31 (Asia/Saigon); deploy production 2026-08-24 12:39 (Asia/Saigon)

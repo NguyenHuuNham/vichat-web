@@ -46,6 +46,22 @@ test('company directory lists every other active employee without friendship dat
   assert.deepEqual(result.map(account => account.id), ['account-a', 'account-z']);
 });
 
+test('company directory promotes online employees before offline employees', () => {
+  const result = companyDirectoryContacts([
+    { id: 'offline-z', name: 'Zeta', online: false, active: true },
+    { id: 'online-b', name: 'Beta', online: true, active: true },
+    { id: 'offline-a', name: 'Alpha', online: false, active: true },
+    { id: 'online-a', name: 'An', online: true, active: true },
+  ], { id: 'viewer' });
+
+  assert.deepEqual(result.map(account => account.id), [
+    'online-a',
+    'online-b',
+    'offline-a',
+    'offline-z',
+  ]);
+});
+
 test('company directory heading uses the current UpGO tenant name', () => {
   assert.equal(
     companyDirectoryHeading({ tenantName: 'Gon Platform' }),
@@ -194,6 +210,16 @@ test('directory polling keeps the latest known avatar when the server snapshot i
 
   assert.equal(result[0].name, 'One updated');
   assert.equal(result[0].avatar, '/new.jpg');
+});
+
+test('directory metadata never clears a newer presence lease', () => {
+  const previous = [{ id: 'account-1', name: 'One', online: true }];
+  const incoming = [{ id: 'account-1', name: 'One updated' }];
+
+  const result = mergeDirectoryAccountSnapshots(previous, incoming);
+
+  assert.equal(result[0].name, 'One updated');
+  assert.equal(result[0].online, true);
 });
 
 test('Account-managed avatar snapshots cannot clear a confirmed avatar', () => {
