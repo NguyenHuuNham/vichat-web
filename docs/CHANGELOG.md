@@ -6,6 +6,20 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-15 - Keep avatar crop above profile panel
+
+- Thoi gian: 2026-08-24 (Asia/Saigon)
+- Loai: Sua loi | Web | UI | Kiem thu | Tai lieu
+- Trang thai: Da sua; san sang UAT
+- Muc tieu: Dam bao khung can chinh avatar luon nam tren panel Ho so ca nhan sau khi nguoi dung chon anh.
+- Pham vi: Chi tang stacking level cua backdrop crop avatar; giu nguyen chon file, canvas crop, upload, persistence va cac overlay/luong khac.
+- Quyet dinh ky thuat: Dung selector `.modal-backdrop.avatar-crop-backdrop` voi `z-index: 240` de khong bi rule `.modal-backdrop` phia sau ghi de, uu tien hon workspace/profile ma khong thay doi state, API, database hay realtime.
+- Database/API/cau hinh: Khong co migration, endpoint, schema, bien moi truong, secret hoac thay doi kien truc.
+- Kiem thu: `npm run test:frontend` dat 195/195; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` dat; `npm run build:production` dat; `git diff --check` dat.
+- Rui ro con lai: Chua UAT pixel-level tren production; can hard refresh va thu mo Ho so ca nhan, chon anh, dong crop, huy va luu avatar tren desktop/mobile.
+- Trien khai: Chua deploy trong lan sua nay.
+
+
 ## 2026-08-24-14 - Menu tin ghim va nut thong tin cuoc tro chuyen
 
 - Thoi gian: 2026-08-24 09:54 (Asia/Saigon)

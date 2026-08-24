@@ -3909,7 +3909,8 @@ input:checked + .slider:before {
 .profile-edit-form input:focus { border-color: var(--vichat-blue); background: var(--bg-white); box-shadow: 0 0 0 3px rgba(244, 81, 30, .1); }
 .profile-save-notice { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; padding: 9px 11px; border-radius: 9px; color: #166534; background: #ecfdf3; font-size: 12px; font-weight: 600; }
 .profile-save-button { grid-column: 1 / -1; justify-self: end; display: inline-flex; align-items: center; gap: 8px; }
-.avatar-crop-backdrop { z-index: 120; }
+/* Keep avatar cropping above the profile workspace that launched it. */
+.modal-backdrop.avatar-crop-backdrop { z-index: 240; }
 .avatar-crop-modal { width: min(430px, 100%); }
 .avatar-crop-header { margin-bottom: 12px; }
 .avatar-crop-help { margin: 0 0 16px; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
