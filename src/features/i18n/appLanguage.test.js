@@ -43,6 +43,12 @@ test('translates tenant switch labels', () => {
   assert.equal(translateUiText('Chuyển sang công ty này', 'en'), 'Switch to this company');
 });
 
+test('translates session bootstrap labels', () => {
+  assert.equal(translateUiText('Đang tải Chat...', 'en'), 'Loading Chat...');
+  assert.equal(translateUiText('Không thể tải Chat', 'en'), 'Unable to load Chat');
+  assert.equal(translateUiText('Thử lại', 'en'), 'Try again');
+});
+
 test('translates dynamic system text without translating user content', () => {
   assert.equal(
     translateUiText('Nguyễn đã xóa Lan khỏi nhóm', 'en'),

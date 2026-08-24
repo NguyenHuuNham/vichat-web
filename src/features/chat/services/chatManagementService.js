@@ -57,6 +57,10 @@ export function isAccountManaged(account) {
   );
 }
 
+export function isSessionRestoreAuthFailure(error) {
+  return Number(error?.status) === 401;
+}
+
 export function shouldRetryTinodeMembership(error) {
   return ['TINODE_TOKEN_REQUIRED', 'TINODE_MEMBERSHIP_FAILED'].includes(error?.code)
     && [400, 401, 403, 409].includes(Number(error?.status));

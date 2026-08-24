@@ -6,6 +6,7 @@ import {
   chatManagementService,
   employeeLoginPayload,
   isAccountManaged,
+  isSessionRestoreAuthFailure,
   managementAuthClient,
   normalizeChatAuthMode,
   normalizeTenantOptions,
@@ -111,9 +112,17 @@ test('exposes group member approval snapshots and mutations through Chatmgt', ()
 test('restores a cookie-backed session after a full page reload', () => {
   assert.equal(typeof chatManagementService.restoreSession, 'function');
   assert.equal(typeof managementAuthClient.restoreSession, 'function');
+  assert.equal(isSessionRestoreAuthFailure({ status: 401 }), true);
+  assert.equal(isSessionRestoreAuthFailure({ status: 403 }), false);
+  assert.equal(isSessionRestoreAuthFailure(new Error('network timeout')), false);
   assert.match(managementServiceSource, /apiRequest\('\/api\/v1\/auth\/me'\)/);
   assert.match(appSource, /managementAuthClient\.restoreSession\(\)/);
   assert.match(appSource, /sessionRestoreAttemptedRef/);
+  assert.match(appSource, /sessionRestoreState/);
+  assert.match(appSource, /SessionBootstrapScreen/);
+  assert.match(appSource, /if \(isSessionRestoreAuthFailure\(error\)\)/);
+  assert.match(appSource, /setSessionRestoreState\('error'\)/);
+  assert.match(appSource, /retrySessionRestore/);
 });
 
 test('keeps only safe active tenant options and switches without logout', () => {
@@ -159,6 +168,10 @@ test('requires explicit confirmation before switching tenants', () => {
   assert.match(stylesSource, /\.tenant-switcher-viewport \{/);
   assert.match(stylesSource, /\.tenant-switcher-nav \{/);
   assert.match(appSource, /data-tenant-current=\{isCurrentTenant \? 'true' : 'false'\}/);
+  assert.match(appSource, /TenantSwitchLoadingOverlay/);
+  assert.match(appSource, /Đang chuyển công ty\.\.\./);
+  assert.match(appSource, /reloadStarted/);
+  assert.match(stylesSource, /\.tenant-switch-loading-backdrop \{/);
 });
 
 test('refreshes company logo metadata without resetting the active chat session', () => {

@@ -3372,6 +3372,91 @@ input:checked + .slider:before {
 .btn-login-submit { box-shadow: 0 4px 12px rgba(244, 81, 30, .24); }
 .btn-login-submit:hover { box-shadow: 0 6px 16px rgba(244, 81, 30, .32); }
 
+.session-bootstrap-screen {
+    display: grid;
+    min-height: 100vh;
+    place-items: center;
+    padding: 24px;
+    background:
+        radial-gradient(circle at 12% 15%, rgba(244, 81, 30, .14), transparent 32%),
+        linear-gradient(135deg, #e5f7f0 0%, #f8fbf8 52%, #fff3ec 100%);
+}
+
+.session-bootstrap-card {
+    width: min(440px, 100%);
+    padding: 34px 30px 30px;
+    border: 1px solid rgba(18, 59, 57, .12);
+    border-radius: 24px;
+    color: var(--text-body);
+    background: rgba(255, 255, 255, .92);
+    box-shadow: 0 24px 70px rgba(10, 45, 40, .15);
+    text-align: center;
+    backdrop-filter: blur(10px);
+}
+
+.session-bootstrap-spinner,
+.tenant-switch-loading-spinner {
+    display: grid;
+    width: 58px;
+    height: 58px;
+    margin: 0 auto 18px;
+    place-items: center;
+    border: 1px solid rgba(244, 81, 30, .18);
+    border-radius: 18px;
+    color: var(--vichat-blue);
+    background: var(--vichat-blue-light);
+    font-size: 25px;
+}
+
+.session-bootstrap-spinner.error {
+    color: var(--vichat-red);
+    border-color: rgba(224, 68, 45, .18);
+    background: var(--vichat-red-light);
+}
+
+.session-bootstrap-card h1,
+.tenant-switch-loading-card h2 {
+    margin: 0 0 10px;
+    color: var(--text-main);
+    font-size: 22px;
+}
+
+.session-bootstrap-card p,
+.tenant-switch-loading-card p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.session-bootstrap-retry {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 22px;
+}
+
+.tenant-switch-loading-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 250;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: rgba(10, 34, 31, .62);
+    backdrop-filter: blur(8px) saturate(.88);
+}
+
+.tenant-switch-loading-card {
+    width: min(420px, 100%);
+    padding: 32px 28px 28px;
+    border: 1px solid rgba(255, 255, 255, .7);
+    border-radius: 22px;
+    background: var(--bg-white);
+    box-shadow: 0 28px 80px rgba(6, 28, 26, .28);
+    text-align: center;
+}
+
 /* Workspace panels stay modal so the active chat remains visible underneath. */
 .workspace-overlay {
     position: fixed;

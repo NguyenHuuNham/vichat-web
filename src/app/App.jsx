@@ -7,7 +7,12 @@ import CallOverlay from '../features/chat/components/CallOverlay';
 import StickerPicker from '../features/chat/components/StickerPicker';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation, normalizeTinodeMediaUrl } from '../features/chat/services/tinodeClient';
 import { shouldRetryProtectedMediaAfterSession } from '../features/chat/services/mediaRetryPolicy';
-import { chatManagementService, isAccountManaged, managementAuthClient } from '../features/chat/services/chatManagementService';
+import {
+  chatManagementService,
+  isAccountManaged,
+  isSessionRestoreAuthFailure,
+  managementAuthClient,
+} from '../features/chat/services/chatManagementService';
 import {
   applyReceiptToMessages,
   conversationManagementMergePolicy,
@@ -2429,6 +2434,43 @@ function pollExpiryForDuration(duration, now = Date.now()) {
   return durations[duration] ? new Date(now + durations[duration]).toISOString() : '';
 }
 
+function SessionBootstrapScreen({ copy, status = 'loading', onRetry }) {
+  const hasError = status === 'error';
+  return (
+    <div className="session-bootstrap-screen" aria-busy={!hasError}>
+      <section className="session-bootstrap-card" role={hasError ? 'alert' : 'status'} aria-live="polite">
+        <div className={`session-bootstrap-spinner ${hasError ? 'error' : ''}`} aria-hidden="true">
+          <i className={`fa-solid ${hasError ? 'fa-triangle-exclamation' : 'fa-spinner fa-spin'}`}></i>
+        </div>
+        <h1>{copy.t(hasError ? 'Không thể tải Chat' : 'Đang tải Chat...')}</h1>
+        <p>{copy.t(hasError
+          ? 'Chưa thể khôi phục phiên. Kiểm tra kết nối rồi thử lại; màn hình đăng nhập chưa được mở.'
+          : 'Đang khôi phục phiên làm việc của bạn.')}</p>
+        {hasError && (
+          <button type="button" className="btn-primary session-bootstrap-retry" onClick={onRetry}>
+            <i className="fa-solid fa-rotate-right"></i>
+            {copy.t('Thử lại')}
+          </button>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function TenantSwitchLoadingOverlay({ copy }) {
+  return (
+    <div className="tenant-switch-loading-backdrop" aria-busy="true">
+      <section className="tenant-switch-loading-card" role="status" aria-live="polite">
+        <div className="tenant-switch-loading-spinner" aria-hidden="true">
+          <i className="fa-solid fa-spinner fa-spin"></i>
+        </div>
+        <h2>{copy.t('Đang chuyển công ty...')}</h2>
+        <p>{copy.t('Đang chuẩn bị dữ liệu cho công ty mới. Vui lòng chờ...')}</p>
+      </section>
+    </div>
+  );
+}
+
 function App() {
   const [currentChatId, setCurrentChatId] = useState(CHATBOT_ACCOUNT.id);
   const [conversations, setConversations] = useState(createInitialConversations);
@@ -2443,6 +2485,10 @@ function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [loginNotice, setLoginNotice] = useState('');
+  const [sessionRestoreState, setSessionRestoreState] = useState(() => (
+    chatManagementService.remote ? 'loading' : 'ready'
+  ));
+  const [sessionRestoreAttempt, setSessionRestoreAttempt] = useState(0);
   const [chatMode, setChatMode] = useState('demo');
   const [connectionStatus, setConnectionStatus] = useState(isTinodeConfigured ? 'ready' : 'demo');
   const [chatError, setChatError] = useState('');
@@ -4808,6 +4854,7 @@ function App() {
       ? 'external'
       : user.connection === 'tinode' ? 'ready' : user.connection === 'management' ? 'managed' : 'demo');
     setChatError('');
+    setSessionRestoreState('ready');
     setIsLoggedIn(true);
     if (EXTERNAL_CHAT_ONLY) {
       managementConversationSessionRef.current = accountSession;
@@ -4938,10 +4985,11 @@ function App() {
     if (!chatManagementService.remote || sessionRestoreAttemptedRef.current) return undefined;
     sessionRestoreAttemptedRef.current = true;
     let cancelled = false;
+    setSessionRestoreState('loading');
     managementAuthClient.restoreSession()
-      .then(session => {
+      .then(async session => {
         if (cancelled) return;
-        return loginSuccessHandlerRef.current?.({
+        await loginSuccessHandlerRef.current?.({
           id: session.uid,
           uid: session.uid,
           username: session.login,
@@ -4965,11 +5013,28 @@ function App() {
         }, { source: 'restore' });
       })
       .catch(error => {
-        if (cancelled || error?.status === 401 || error?.status === 403) return;
-        setLoginNotice('Không thể khôi phục phiên hiện tại. Bạn có thể đăng nhập lại.');
+        if (cancelled) return;
+        if (isSessionRestoreAuthFailure(error)) {
+          setSessionRestoreState('ready');
+          return;
+        }
+        setSessionRestoreState('error');
+      })
+      .finally(() => {
+        if (!cancelled) setSessionRestoreState(previous => previous === 'loading' ? 'ready' : previous);
       });
-    return () => { cancelled = true; };
-  }, []);
+    return () => {
+      cancelled = true;
+      sessionRestoreAttemptedRef.current = false;
+    };
+  }, [sessionRestoreAttempt]);
+
+  const retrySessionRestore = () => {
+    if (sessionRestoreState === 'loading') return;
+    sessionRestoreAttemptedRef.current = false;
+    setSessionRestoreState('loading');
+    setSessionRestoreAttempt(previous => previous + 1);
+  };
 
   const handleConversationSelect = async (id) => {
     const rawRoom = conversationsRef.current[id] ?? conversations[id] ?? renderConversations[id];
@@ -5195,6 +5260,7 @@ function App() {
     setPendingTenantSwitch(null);
     setTenantSwitchNotice('');
     setIsSwitchingTenant(true);
+    let reloadStarted = false;
     try {
       const nextSession = await chatManagementService.switchTenant(requestedTenantId);
       accountSessionRef.current += 1;
@@ -5209,11 +5275,13 @@ function App() {
         }
       }
       if (typeof window !== 'undefined') {
+        reloadStarted = true;
         window.location.reload();
       } else if (nextSession) {
         setCurrentUser(previous => ({ ...previous, ...nextSession }));
       }
     } catch (error) {
+      reloadStarted = false;
       const message = error?.code === 'ACCOUNT_TENANT_REQUIRED'
         ? 'Vui lòng chọn công ty hợp lệ.'
         : error?.code === 'ACCOUNT_SSO_REQUIRED'
@@ -5221,7 +5289,7 @@ function App() {
           : error?.message || 'Không thể chuyển công ty. Vui lòng thử lại.';
       setTenantSwitchNotice(appCopy.t(message));
     } finally {
-      setIsSwitchingTenant(false);
+      if (!reloadStarted) setIsSwitchingTenant(false);
     }
   };
 
@@ -9827,6 +9895,15 @@ function App() {
   ]);
 
   if (!isLoggedIn) {
+    if (chatManagementService.remote && sessionRestoreState !== 'ready') {
+      return (
+        <SessionBootstrapScreen
+          copy={appCopy}
+          status={sessionRestoreState}
+          onRetry={retrySessionRestore}
+        />
+      );
+    }
     return <Login copy={appCopy} onLoginSuccess={handleLoginSuccess} initialNotice={appCopy.t(loginNotice)} />;
   }
 
@@ -9876,6 +9953,7 @@ function App() {
       data-chat-release="conversation-sync-20260816"
       data-workspace-route={workspacePathForPanel(workspacePanel)}
     >
+      {isSwitchingTenant && <TenantSwitchLoadingOverlay copy={appCopy} />}
       {forcedLogoutSeconds !== null && (
         <div className="forced-logout-backdrop" role="presentation">
           <section className="forced-logout-modal" role="alertdialog" aria-modal="true" aria-labelledby="forced-logout-title">

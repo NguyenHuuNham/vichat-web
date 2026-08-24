@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-24 - Loading khoi phuc phien va chuyen cong ty
+
+- Thoi gian: 2026-08-24 18:23 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Web | UI | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Hien spinner khi F5/khôi phuc session va khi chuyen tenant, khong day nguoi dung vao Login trong luc request tam thoi that bai.
+- Pham vi: ChatUI bootstrap auth, overlay switch tenant, i18n, CSS va source-contract tests; khong thay doi Chatmgt, Tinode, admin, message, directory hay realtime.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Them man hinh `Dang tai Chat...` trong khi `GET /api/v1/auth/me` dang khoi phuc cookie session; loi mang/5xx giu man hinh nay va cho Thu lai, chi HTTP 401 moi mo Login. Them overlay `Dang chuyen cong ty...` phu toan bo giao dien, giu current user va khong goi logout khi switch tenant thanh cong truoc khi reload.
+- Quyet dinh ky thuat: Dung state bootstrap rieng va phan biet auth failure 401 voi loi ket noi; reset guard trong cleanup de khong bi React StrictMode giu loading vo han. Khi reload tenant thanh cong, giu `isSwitchingTenant` den luc navigation bat dau de khong nhay ve giao dien cu.
+- Database/API/cau hinh: Khong migration, endpoint, schema, secret, bien moi truong hay thay doi kien truc; chi tai su dung `/api/v1/auth/me` va `/api/v1/auth/switch-tenant` hien co.
+- Kiem thu: `npm run test:frontend` dat 209/209; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` dat voi canh bao chunk App lon hon 500 KB; `npm run build:production` dat voi canh bao chunk App lon hon 500 KB; `git diff --check` dat.
+- Rui ro con lai: Chua UAT visual bang browser production voi session cookie that, loi mang tam thoi va hai tai khoan co nhieu tenant; can kiem tra spinner, nut Thu lai, F5 va switch tenant tren desktop/mobile.
+- Viec tiep theo: Commit, push va deploy rieng service `chat`; sau deploy hard refresh `https://chat.upgo.vn` va UAT hai luong, neu loi chi tro `current` ve `previous` va recreate lai `chat`.
+- Commit/PR: Chua tao
+
 ## 2026-08-24-23 - Carousel chon cong ty khong tran man hinh
 
 - Thoi gian: 2026-08-24 17:25 (Asia/Saigon)
