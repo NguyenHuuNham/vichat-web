@@ -34,6 +34,10 @@ import {
   recallAppliesToViewer,
   recallPlaceholderSenderId,
 } from './messagePolicy';
+import {
+  buildDirectoryPresenceBatches,
+  presenceSnapshotFromDiscovery,
+} from './directoryPresence';
 
 /*
  * Thin integration layer around the Tinode browser SDK.
@@ -82,6 +86,7 @@ const conversationEmitTimers = new Map();
 const topicReceiptCursors = new Map();
 const mediaObjectUrlVersions = new Map();
 let conversationListRequest = null;
+let fndDiscoveryRequest = Promise.resolve();
 let contactsEventQueued = false;
 let allowedConversationTopics = new Set();
 const SYSTEM_EVENT_PREFIX = '__VICHAT_SYSTEM_EVENT__:';
@@ -1264,6 +1269,21 @@ function presenceSnapshot(tinode = getClient()) {
   return snapshot;
 }
 
+// The fnd topic is shared by search, UID resolution, and directory presence.
+// Serialize those requests because each query replaces the topic's result set.
+function enqueueFndDiscovery(tinode, factory) {
+  const run = async () => {
+    if (tinode !== client) return null;
+    const fnd = tinode.getFndTopic();
+    if (!fnd.isSubscribed?.()) await fnd.subscribe();
+    if (tinode !== client) return null;
+    return factory(fnd, tinode);
+  };
+  const request = fndDiscoveryRequest.then(run, run);
+  fndDiscoveryRequest = request.catch(() => {});
+  return request;
+}
+
 function emitPresence(uid, online) {
   if (!uid) return;
   listeners.forEach(listener => listener({
@@ -1547,6 +1567,7 @@ function resetSessionState({ clearEventListeners = false } = {}) {
   conversationListRequest = null;
   contactsEventQueued = false;
   allowedConversationTopics = new Set();
+  fndDiscoveryRequest = Promise.resolve();
   sessionRequest = null;
   reconnectRequest = null;
   if (clearEventListeners) {
@@ -1751,6 +1772,29 @@ export const tinodeClient = {
 
   getPresenceSnapshot() {
     return presenceSnapshot(getClient());
+  },
+
+  async getDirectoryPresence(accounts = []) {
+    const tinode = getClient();
+    const batches = buildDirectoryPresenceBatches(accounts);
+    if (batches.length === 0) return {};
+    const request = enqueueFndDiscovery(tinode, async (fnd, activeTinode) => {
+      const contacts = [];
+      const completedUids = [];
+      for (const batch of batches) {
+        if (activeTinode !== client) return {};
+        try {
+          await fnd.setMeta({ desc: { public: batch.query } });
+          await fnd.getMeta(fnd.startMetaQuery().withSub(undefined, Math.min(200, batch.uids.length + 5)).build());
+          fnd.contacts(contact => contacts.push(contact));
+          completedUids.push(...batch.uids);
+        } catch {
+          // Preserve the last known state for a batch which failed transiently.
+        }
+      }
+      return presenceSnapshotFromDiscovery(accounts, contacts, completedUids);
+    });
+    return (await request) || {};
   },
 
   getPendingConversationTopics() {
@@ -1970,35 +2014,36 @@ export const tinodeClient = {
     const value = query.trim();
     if (!value) return [];
     const tinode = getClient();
-    const fnd = tinode.getFndTopic();
-    await fnd.subscribe();
-    const result = new Map();
+    const response = await enqueueFndDiscovery(tinode, async fnd => {
+      const result = new Map();
 
-    const discoveryQueries = [...new Set([
-      ...buildDiscoveryQueries(value),
-      ...buildDirectoryDiscoveryQueries(value, directoryAccounts),
-    ])];
+      const discoveryQueries = [...new Set([
+        ...buildDiscoveryQueries(value),
+        ...buildDirectoryDiscoveryQueries(value, directoryAccounts),
+      ])];
 
-    for (const discoveryQuery of discoveryQueries) {
-      await fnd.setMeta({ desc: { public: discoveryQuery } });
-      await fnd.getMeta(fnd.startMetaQuery().withSub(undefined, 30).build());
-      fnd.contacts(sub => {
-        // User discovery results from Tinode use `topic` for the user's UID.
-        // Some server versions use `user`, so support both representations.
-        const uid = sub?.user || sub?.topic;
-        if (uid && uid !== tinode.getCurrentUserID()) {
-          const profile = cacheUserProfile(uid, sub.public || {}) || {};
-          result.set(uid, {
-            id: uid,
-            name: profile.name || 'Người dùng',
-            avatar: profile.avatar || '',
-            online: sub.online === true,
-          });
-        }
-      });
-    }
+      for (const discoveryQuery of discoveryQueries) {
+        await fnd.setMeta({ desc: { public: discoveryQuery } });
+        await fnd.getMeta(fnd.startMetaQuery().withSub(undefined, 30).build());
+        fnd.contacts(sub => {
+          // User discovery results from Tinode use `topic` for the user's UID.
+          // Some server versions use `user`, so support both representations.
+          const uid = sub?.user || sub?.topic;
+          if (uid && uid !== tinode.getCurrentUserID()) {
+            const profile = cacheUserProfile(uid, sub.public || {}) || {};
+            result.set(uid, {
+              id: uid,
+              name: profile.name || 'Người dùng',
+              avatar: profile.avatar || '',
+              online: sub.online === true,
+            });
+          }
+        });
+      }
 
-    return [...result.values()];
+      return [...result.values()];
+    });
+    return response === null ? [] : response;
   },
 
   async resolveUserTopic(account = {}) {
@@ -2014,17 +2059,19 @@ export const tinodeClient = {
     }
 
     const tinode = getClient();
-    const fnd = tinode.getFndTopic();
-    if (!fnd.isSubscribed?.()) await fnd.subscribe();
-    for (const query of queries) {
-      await fnd.setMeta({ desc: { public: query } });
-      await fnd.getMeta(fnd.startMetaQuery().withSub(undefined, 10).build());
-      let resolved = '';
-      fnd.contacts(sub => {
-        if (!resolved) resolved = sub?.user || sub?.topic || '';
-      });
-      if (resolved && resolved !== tinode.getCurrentUserID()) return resolved;
-    }
+    const resolved = await enqueueFndDiscovery(tinode, async (fnd, activeTinode) => {
+      for (const query of queries) {
+        await fnd.setMeta({ desc: { public: query } });
+        await fnd.getMeta(fnd.startMetaQuery().withSub(undefined, 10).build());
+        let found = '';
+        fnd.contacts(sub => {
+          if (!found) found = sub?.user || sub?.topic || '';
+        });
+        if (found && found !== activeTinode.getCurrentUserID()) return found;
+      }
+      return '';
+    });
+    if (resolved) return resolved;
     throw new Error('Management account has no matching Tinode user.');
   },
 

@@ -259,6 +259,16 @@ and keeps monotonic `recv/read` cursors so an older metadata snapshot cannot
 downgrade a two-check status. Opening a conversation still sends `read` through
 the existing topic API.
 
+Web ChatUI keeps the same Tinode source of truth but also refreshes the active
+tenant directory's presence through the read-only `fnd` discovery topic every
+five seconds. It queries the deterministic Tinode usernames already returned by
+Chatmgt, matches discovery results back to the expected Tinode UIDs, and merges
+only the `online` field. Discovery batches are bounded and serialized with
+employee search/UID resolution because each `fnd` query replaces the prior
+result set. This does not subscribe to P2P topics, create conversations, change
+membership, or copy presence into Chatmgt; existing `me` `on`/`off` events still
+apply immediately when a P2P subscription exists.
+
 Recall is an event overlay shared by mobile and ChatUI. `mode=all` hides the
 original content and attachment for every participant and keeps a
 `Tin nhan da duoc thu hoi` placeholder while retaining the original Tinode

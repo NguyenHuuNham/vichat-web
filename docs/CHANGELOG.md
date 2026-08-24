@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-24-17 - Sua presence danh ba khong cap nhat realtime
+
+- Thoi gian: 2026-08-24 12:31 (Asia/Saigon)
+- Loai: Sua loi | Web | Realtime | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Hien thi trang thai online/offline moi nhat cua nhan vien trong danh ba, ke ca khi hai nguoi chua mo chat voi nhau.
+- Pham vi: ChatUI, Tinode discovery presence, dong bo danh ba va tai lieu kien truc; khong thay doi Chatmgt, Tinode message, membership, database hay admin.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/directoryPresence.js`, `src/features/chat/services/directoryPresence.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/contacts/services/accountDirectory.js`, `package.json`, `dist/index.html`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`.
+- Noi dung: ChatUI doc presence tu Tinode `fnd` moi 5 giay theo cac username deterministic da co trong danh ba, chia batch va chi merge truong `online` vao account/conversation. Hang doi dung chung voi search va UID resolution de tranh cac truy van `fnd` ghi de ket qua cua nhau; khong subscribe P2P, khong tao hoi thoai va loi discovery khong lam gian doan dang nhap/tin nhan.
+- Quyet dinh ky thuat: Tinode van la nguon chuan cua presence. Ket qua discovery chi duoc chap nhan neu UID nam trong danh ba cua tenant hien tai; batch loi giu trang thai cu, logout xoa hang doi cua phien cu.
+- Database/API/cau hinh: Khong co migration, endpoint moi, bien moi truong, secret hoac thay doi cau hinh production.
+- Kiem thu: `npm run test:frontend` dat 198/198; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` dat voi canh bao chunk App lon hon 500 KB; `npm run build:production` dat voi cung canh bao chunk; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 44/44; `git diff --check` dat.
+- Rui ro con lai: Chua UAT production bang hai tai khoan that de do thoi gian cap nhat online/offline va xac nhan khong phat sinh topic; can hard refresh sau deploy.
+- Viec tiep theo: Commit/push va deploy rieng service `chat`, sau do kiem tra health, bundle marker, log va UAT presence hai tai khoan; khong restart cac service stateful.
+- Commit/PR: Chua tao.
+
 ## 2026-08-24-16 - Khong thu hoi phien tu snapshot directory thieu du lieu
 
 - Thoi gian: 2026-08-24 11:36 (Asia/Saigon); deploy production 2026-08-24 12:00 (Asia/Saigon)

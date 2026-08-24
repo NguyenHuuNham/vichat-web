@@ -5558,6 +5558,34 @@ function App() {
     };
   }, [isLoggedIn, managementViewerId, currentUser, appendLocalFriendEvent]);
 
+  // Discovery returns Tinode's current user presence without creating P2P
+  // topics for employees who have not started a conversation yet.
+  useEffect(() => {
+    if (!isLoggedIn || chatMode !== 'tinode' || !managementViewerId) return undefined;
+    const accountSession = accountSessionRef.current;
+    let cancelled = false;
+    let syncing = false;
+    const syncDirectoryPresence = async () => {
+      if (cancelled || syncing || accountSessionRef.current !== accountSession) return;
+      if (!tinodeClient.authenticated || directoryAccountsRef.current.length === 0) return;
+      syncing = true;
+      try {
+        const snapshot = await tinodeClient.getDirectoryPresence(directoryAccountsRef.current);
+        if (!cancelled && accountSessionRef.current === accountSession) applyPresenceSnapshot(snapshot);
+      } catch {
+        // Presence is best-effort and must not interrupt messaging or login.
+      } finally {
+        syncing = false;
+      }
+    };
+    void syncDirectoryPresence();
+    const timer = window.setInterval(syncDirectoryPresence, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isLoggedIn, chatMode, managementViewerId, applyPresenceSnapshot]);
+
   const handleFriendRequestResponse = async (record, accepted) => {
     if (!record?.event?.requestId || respondingFriendRequestId) return;
     setRespondingFriendRequestId(record.event.requestId);

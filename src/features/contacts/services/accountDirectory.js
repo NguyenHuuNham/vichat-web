@@ -59,6 +59,7 @@ export function normalizeAccountShape(account) {
   const id = firstText(account.id, account.user_id, account.uid);
   const uid = firstText(account.uid, account.user_id, id);
   const tinodeUid = firstText(account.tinodeUid, account.tinode_uid);
+  const tinodeUsername = firstText(account.tinodeUsername, account.tinode_username);
   const username = firstText(account.username, account.user_name, account.login, account.email);
   const defaultName = firstText(
     account.defaultName,
@@ -88,6 +89,8 @@ export function normalizeAccountShape(account) {
     uid,
     tinodeUid,
     tinode_uid: tinodeUid,
+    tinodeUsername,
+    tinode_username: tinodeUsername,
     username,
     user_name: username,
     name,
