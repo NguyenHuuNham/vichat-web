@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `node --test src/features/chat/services/imageBatchLayout.test.js src/features/chat/services/chatRealtime.test.js` dat 25/25; `npm run test:frontend` dat 180/180; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` va `npm run build:production` dat; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 44/44; `git diff --check` dat.
 - Rui ro con lai: Chua UAT pixel-level bang browser runtime trong phien nay; can thu gui 2/3/4/5+ anh, click tung tile mo viewer, reaction/menu va F5/reconnect o chat 1-1/nhom.
 - Viec tiep theo: Chay build production, commit/push/deploy va kiem tra health/bundle; sau do UAT batch anh tren desktop/mobile.
-- Commit/PR: Chua tao.
+- Commit/PR: Source `1374fb0`; deployment follow-up pending.
 
 ## 2026-08-24-09 - Keo anh khi zoom va chia se tin nhan noi bo
 
