@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Rui ro con lai: Chua UAT production bang tai khoan admin that de bat/tat va quan sat dong thoi tab ChatUI dang mo, tab moi va luc tat lai.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn`, vao Chatmgt bat/tat tam dung, kiem tra tab ChatUI dang mo tu chuyen man hinh, tab moi bi chan, va sau khi tat tu hoat dong lai.
 - Trien khai: Source `fee55ed` da push `origin/master`; archive production `/opt/deploy/chat/releases/chat-maintenance-fee55ed-20260824-154938`; `current` tro release nay, `previous` tro `/opt/deploy/chat/releases/conversation-background-973815d-20260824-131805`; chi recreate `chat` va `chatmgt`, PostgreSQL, Redis, Tinode, bridge, webhook va Coturn khong restart.
-- Commit/PR: Source `fee55ed`; deployment follow-up docs commit dang tao.
+- Commit/PR: Source `fee55ed`; deployment follow-up docs commit `5281802`.
 
 ## 2026-08-24-27 - Sua dong bo realtime va upload hinh nen hoi thoai
 
