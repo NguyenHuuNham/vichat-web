@@ -351,3 +351,25 @@ test('receipt cursor keeps outgoing messages at two checks after a snapshot refr
     viewerId: 'usr-me',
   }), 'sent');
 });
+
+test('realtime receipt events retain the viewer identity for message details', () => {
+  const messages = [{
+    id: 'message-1',
+    seq: 12,
+    sender: 'outgoing',
+    senderId: 'usr-me',
+    deliveryStatus: 'received',
+    receiptUsers: { received: [{ id: 'usr-peer', name: 'Peer' }] },
+  }];
+
+  const next = applyReceiptToMessages(messages, {
+    seq: 12,
+    what: 'read',
+    viewerId: 'usr-me',
+    receiptUser: { id: 'usr-peer', name: 'Peer' },
+  });
+
+  assert.equal(next[0].deliveryStatus, 'read');
+  assert.deepEqual(next[0].receiptUsers.read.map(user => user.id), ['usr-peer']);
+  assert.deepEqual(next[0].receiptUsers.received, []);
+});

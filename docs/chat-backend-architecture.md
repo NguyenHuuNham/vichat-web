@@ -81,10 +81,13 @@ SSE route so an on/off change reaches open tabs immediately.
    re-reads `/current_user` before rotating only the Chatmgt cookie. It does not
    log out Account or require the employee to enter credentials again. Each
    public option may also carry the Account-provided company/brand logo URL
-   and optional logo version; ChatUI renders these as separate icon-only switch
-   buttons, exposes the company name through the button tooltip, and uses a
-   building fallback when the logo is absent or unavailable. The logo is display
-   metadata only.
+   and optional logo version; ChatUI renders the active logo, company name and
+   current status in a compact control beside a separate down-arrow toggle.
+   The opened menu is a bounded vertical list with logo/name rows and scrolls
+   when the account has many companies. Selecting another option still goes
+   through the existing confirmation and tenant-switch flow. It uses a
+   building fallback when the logo is absent or unavailable. The logo is
+   display metadata only.
 7. Logout revokes the Chatmgt token and clears the ChatUI cookie. A later API
    call receives `401`/`403`.
 
@@ -171,9 +174,14 @@ Account/Tinode identity remains the source of truth in `defaultName`/
 `full_name`, while Chatmgt applies the nickname only when serializing data for
 the viewer who owns it. ChatUI applies the same viewer-specific name to
 conversation members, group message senders, replies, reactions, history
-results, and the group mention/composer picker. Nicknames are never written to
+results, and the group mention/composer picker. The picker and rendered message
+labels may show the viewer's nickname, but outbound mention text and `x-mentions`
+metadata use the official `defaultName` plus stable account/Tinode IDs. Reply
+metadata, forwarded sender labels, and member-event target labels follow the
+same allow-listed official-name rule, so a viewer nickname is never written to
 Tinode, broadcast in realtime profile events, or included in another viewer's
-response.
+response. Existing legacy mention metadata is resolved against the current
+viewer directory before rendering when the target identity is available.
 
 Conversation backgrounds follow a separate scope because they are presentation
 preferences rather than message content. ChatUI asks whether a selection is
@@ -541,6 +549,14 @@ The central Tinode remains authoritative for
 message content, files, presence, typing, reactions, receipts and call
 signaling. ChatUI does not post normal messages/files to Chatmgt knowledge;
 legacy chat-ingestion routes return `410 TINODE_CONTENT_ONLY`.
+
+For outgoing message receipts, ChatUI keeps the existing Tinode `recv`/`read`
+status flow and additionally projects each topic subscriber's per-user
+`recv`/`read` cursor into the message view. The projection is read-only and
+in-memory: Tinode remains authoritative for delivery/read receipts, while
+ChatUI resolves the subscriber UID through the existing profile cache for the
+bounded avatar stack and the message-information panel. No receipt data is
+copied to Chatmgt or stored in the message transport.
 
 Sticker messages stay within the same Tinode file path as ordinary image
 attachments. ChatUI uploads the selected static `/stickers/puppysoft/*.png`

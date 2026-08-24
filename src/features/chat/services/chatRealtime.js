@@ -2,6 +2,7 @@ import { normalizeGroupSettings } from './groupSettings.js';
 import { normalizeConversationBackground } from './conversationBackground.js';
 import { normalizeImageBatch } from './imageBatchLayout.js';
 import { normalizePoll, normalizePollEvent } from './poll.js';
+import { mergeReceiptUsers, normalizeReceiptUsers } from './messageReceipts.js';
 
 export const TINODE_CONTACT_SYNC_DELAYS_MS = Object.freeze([120, 600, 1800]);
 
@@ -293,6 +294,7 @@ function normalizeMessage(value, index) {
     }).filter(Boolean),
     reactions: normalizeReactions(message.reactions),
     reactionUsers: normalizeReactionUsers(message.reactionUsers),
+    receiptUsers: normalizeReceiptUsers(message.receiptUsers || message.receipts),
     systemEvent: normalizeEvent(message.systemEvent),
     friendEvent: normalizeEvent(message.friendEvent),
     voiceDuration: Number(message.voiceDuration) > 0 ? Number(message.voiceDuration) : 0,
@@ -445,7 +447,21 @@ export function messageForDeliveryStatus(message) {
   return message?.from || !senderId ? message : { ...message, from: senderId };
 }
 
-export function applyReceiptToMessages(messages = [], { seq = 0, what = '', viewerId = '' } = {}) {
+function receiptUsersChanged(previous, next) {
+  const current = normalizeReceiptUsers(previous);
+  const updated = normalizeReceiptUsers(next);
+  return ['read', 'received'].some(key => (
+    current[key].length !== updated[key].length
+      || current[key].some((user, index) => user.id !== updated[key][index]?.id)
+  ));
+}
+
+export function applyReceiptToMessages(messages = [], {
+  seq = 0,
+  what = '',
+  viewerId = '',
+  receiptUser = null,
+} = {}) {
   const receiptSequence = Number(seq);
   if (!Number.isFinite(receiptSequence) || receiptSequence <= 0 || !['recv', 'read'].includes(what)) return messages;
   let changed = false;
@@ -457,13 +473,20 @@ export function applyReceiptToMessages(messages = [], { seq = 0, what = '', view
     if (!outgoing || !Number.isFinite(messageSequence) || messageSequence <= 0 || messageSequence > receiptSequence) return message;
 
     const nextStatus = deliveryStatusForReceipt(message, { seq: receiptSequence, what, viewerId });
-    if (nextStatus === (message.deliveryStatus || 'none') && !message.pending) return message;
+    const nextReceiptUsers = mergeReceiptUsers(message.receiptUsers, {
+      what,
+      user: receiptUser,
+      viewerId,
+    });
+    const receiptChanged = receiptUsersChanged(message.receiptUsers, nextReceiptUsers);
+    if (nextStatus === (message.deliveryStatus || 'none') && !message.pending && !receiptChanged) return message;
     changed = true;
     return {
       ...message,
       pending: false,
       failed: false,
       deliveryStatus: nextStatus,
+      receiptUsers: nextReceiptUsers,
     };
   });
 

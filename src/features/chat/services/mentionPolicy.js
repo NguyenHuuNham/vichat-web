@@ -32,20 +32,73 @@ export function getMentionContext(value, caretPosition) {
 }
 
 export function mentionCandidateText(candidate) {
-  return String(candidate?.name || candidate?.username || candidate?.email || '').trim();
+  return String(candidate?.name || candidate?.nickname || candidate?.username || candidate?.email || '').trim();
+}
+
+// Shared message metadata must use the official identity label, never a
+// viewer-scoped nickname. Directory snapshots provide defaultName for this.
+export function mentionCanonicalText(candidate) {
+  return String(
+    candidate?.defaultName
+      || candidate?.default_name
+      || candidate?.fullName
+      || candidate?.full_name
+      || candidate?.username
+      || candidate?.email
+      || candidate?.name
+      || '',
+  ).trim();
+}
+
+export function mentionDisplayTokenFor(candidate) {
+  if (candidate?.id === ALL_MENTION_ID) return candidate?.token || '@All';
+  if (candidate?.type === 'bot' || candidate?.isChatbot || candidate?.id === 'vichat-ai') return '@ViChatAI';
+  const label = mentionCandidateText(candidate).replace(/^@+/u, '');
+  return label ? `@${label}` : String(candidate?.token || '').trim();
 }
 
 export function mentionTokenFor(candidate) {
   if (candidate?.id === ALL_MENTION_ID) return '@All';
   if (candidate?.type === 'bot' || candidate?.isChatbot || candidate?.id === 'vichat-ai') return '@ViChatAI';
-  const label = mentionCandidateText(candidate);
+  const label = mentionCanonicalText(candidate);
   return label ? `@${label}` : '';
+}
+
+export function serializeMentionForTransport(mention) {
+  if (!mention || typeof mention !== 'object' || Array.isArray(mention)) return null;
+  const isAll = Boolean(mention.isAll || mention.id === ALL_MENTION_ID);
+  const canonicalName = isAll ? 'All' : mentionCanonicalText(mention);
+  const token = isAll
+    ? '@All'
+    : mentionTokenFor({
+      ...mention,
+      name: canonicalName,
+      defaultName: canonicalName,
+      nickname: '',
+    });
+  if (!token) return null;
+  return {
+    id: String(mention.id || '').trim(),
+    tinodeUid: String(mention.tinodeUid || mention.uid || '').trim(),
+    name: canonicalName,
+    token,
+    isAll,
+    isBot: Boolean(mention.isBot || mention.type === 'bot' || mention.isChatbot || mention.id === 'vichat-ai'),
+  };
 }
 
 export function matchesMentionCandidate(candidate, query) {
   const normalizedQuery = normalizeMentionSearch(query).trim();
   if (!normalizedQuery) return true;
-  return [candidate?.name, candidate?.username, candidate?.email, ...(candidate?.mentionAliases || [])]
+  return [
+    candidate?.name,
+    candidate?.nickname,
+    candidate?.defaultName,
+    candidate?.default_name,
+    candidate?.username,
+    candidate?.email,
+    ...(candidate?.mentionAliases || []),
+  ]
     .filter(Boolean)
     .some(value => normalizeMentionSearch(value).includes(normalizedQuery));
 }

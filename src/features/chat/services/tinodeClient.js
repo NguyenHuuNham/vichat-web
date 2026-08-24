@@ -21,6 +21,7 @@ import { attachmentConversationPreview } from './messagePreview';
 import { normalizeImageBatch } from './imageBatchLayout';
 import { normalizeGroupSettings } from './groupSettings';
 import { applyPollEvent, normalizePoll, normalizePollEvent } from './poll';
+import { normalizeReceiptUsers, receiptUsersFromMembers } from './messageReceipts';
 import {
   CONVERSATION_BACKGROUND_SCOPES,
   latestSharedConversationBackground,
@@ -635,6 +636,27 @@ function rememberTopicReceipt(topicName, what, sequence) {
   if (next !== current[key]) topicReceiptCursors.set(topicName, { ...current, [key]: next });
 }
 
+function receiptUsersForTopicMessage(topic, sequence, tinode) {
+  const members = [];
+  topic?.subscribers?.(subscriber => {
+    const id = String(subscriber?.user || '').trim();
+    if (!id || tinode?.isMe?.(id)) return;
+    const cachedProfile = userProfileCache.get(id) || {};
+    members.push({
+      id,
+      name: usableProfileName(subscriber?.public?.fn || subscriber?.public?.name)
+        || cachedProfile.name
+        || 'Thành viên',
+      avatar: normalizeAvatar(subscriber?.public?.photo || subscriber?.public?.avatar)
+        || cachedProfile.avatar
+        || '',
+      readSeq: Number(subscriber?.read) || 0,
+      receivedSeq: Math.max(Number(subscriber?.recv) || 0, Number(subscriber?.read) || 0),
+    });
+  });
+  return normalizeReceiptUsers(receiptUsersFromMembers(members, sequence, tinode?.getCurrentUserID?.()));
+}
+
 function toMessage(msg, tinode, topic = null) {
   if (!msg || msg._deleted) return null;
   // Locally acknowledged messages may not have `from` yet; Tinode treats
@@ -742,6 +764,7 @@ function toMessage(msg, tinode, topic = null) {
       currentStatus: baseDeliveryStatus,
     },
   );
+  const receiptUsers = isOutgoing ? receiptUsersForTopicMessage(topic, msg.seq, tinode) : undefined;
   return {
     id: friendEvent?.requestId
       ? `friend-${friendEvent.action}-${friendEvent.requestId}`
@@ -789,6 +812,7 @@ function toMessage(msg, tinode, topic = null) {
     createdAt: msg.ts ? new Date(msg.ts).toISOString() : undefined,
     pending: false,
     deliveryStatus,
+    ...(receiptUsers ? { receiptUsers } : {}),
     raw: msg,
   };
 }
@@ -1108,6 +1132,10 @@ async function enrichConversationProfiles(conversation, tinode = getClient()) {
       message.pollActivityActorId,
       message.pollActivity?.actorId,
     ]),
+    ...(safeConversation.messages || []).flatMap(message => [
+      ...(message.receiptUsers?.read || []).map(user => user?.id),
+      ...(message.receiptUsers?.received || []).map(user => user?.id),
+    ]),
     ...(safeConversation.friendEvents || []).flatMap(message => [
       message.friendEvent?.requesterId,
       message.friendEvent?.recipientId,
@@ -1129,10 +1157,23 @@ async function enrichConversationProfiles(conversation, tinode = getClient()) {
   const peer = members.find(member => member.id !== tinode.getCurrentUserID()) || members[0];
   const messages = (safeConversation.messages || []).map(message => {
     const profile = profilesById.get(message.senderId) || userProfileCache.get(message.senderId);
+    const receiptUsers = normalizeReceiptUsers(message.receiptUsers);
+    const enrichReceiptList = users => (Array.isArray(users) ? users : []).map(user => {
+      const receiptProfile = profilesById.get(user.id) || userProfileCache.get(user.id) || {};
+      return {
+        ...user,
+        name: usableProfileName(receiptProfile.name) || user.name || user.id,
+        avatar: receiptProfile.avatar || user.avatar || '',
+      };
+    });
     const next = {
       ...message,
       senderName: usableProfileName(message.senderName) || profile?.name || 'Thành viên',
       avatar: profile?.avatar || message.avatar || '',
+      receiptUsers: {
+        read: enrichReceiptList(receiptUsers.read),
+        received: enrichReceiptList(receiptUsers.received),
+      },
       reactionUsers: Object.fromEntries(Object.entries(message.reactionUsers || {}).map(([emoji, users]) => [
         emoji,
         (Array.isArray(users) ? users : []).map(user => {

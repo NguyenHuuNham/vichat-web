@@ -751,6 +751,9 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("contactNicknameDialog", app_source)
         self.assertIn("setContactNicknameValue(contact.nickname || defaultName)", app_source)
         self.assertIn("contact-nickname-edit-button", app_source)
+        self.assertIn("mentionCanonicalText", app_source)
+        self.assertIn("serializeMentionForTransport", app_source)
+        self.assertIn("replyMetadataForTransport", app_source)
         self.assertIn("contact nicknames", architecture_source)
 
     def test_directory_sync_revalidates_tenant_without_deactivating_missing_snapshots(self):

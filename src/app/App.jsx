@@ -70,6 +70,10 @@ import {
   unreadBoundaryStartIndex,
 } from '../features/chat/services/unreadBoundary';
 import {
+  normalizeReceiptUsers,
+  receiptAvatarPreview,
+} from '../features/chat/services/messageReceipts';
+import {
   formatAudioDuration,
   isAudioAttachment,
   splitAttachmentSelection,
@@ -94,7 +98,10 @@ import {
   getMentionContext,
   insertMentionAt,
   matchesMentionCandidate,
+  mentionCanonicalText,
   mentionCandidateText,
+  mentionDisplayTokenFor,
+  serializeMentionForTransport,
   mentionTokenExists,
   mentionTokenFor,
 } from '../features/chat/services/mentionPolicy';
@@ -553,12 +560,35 @@ function replyMetadataForMessage(message, fallbackSenderName = '') {
   const attachment = attachmentForMessage(message);
   return {
     id: message?.id,
+    senderId: messageSenderId(message),
     senderName: message?.senderName || fallbackSenderName || (message?.sender === 'outgoing' ? 'Bạn' : 'Thành viên'),
     text: message?.text || (attachment ? messageContentLabel(message) : ''),
     type: message?.type || '',
     fileName: attachment?.name || '',
     fileMime: attachment?.mime || '',
     voiceDuration: Number(message?.voiceDuration) || 0,
+  };
+}
+
+function replyMetadataForTransport(reply, accounts = []) {
+  if (!reply || typeof reply !== 'object' || Array.isArray(reply)) return null;
+  const senderId = messageSenderId(reply);
+  const account = findAccountByIdentities(accounts, [
+    senderId,
+    reply.senderId,
+    reply.uid,
+    reply.tinodeUid,
+    reply.senderName,
+  ]);
+  return {
+    id: reply.id,
+    senderId,
+    senderName: account ? mentionCanonicalText(account) : senderId,
+    text: reply.text || '',
+    type: reply.type || '',
+    fileName: reply.fileName || '',
+    fileMime: reply.fileMime || '',
+    voiceDuration: Number(reply.voiceDuration) || 0,
   };
 }
 
@@ -1134,6 +1164,12 @@ function personalizeMessageForViewer(message, accounts) {
     ...(replySender && message.replyTo ? {
       replyTo: {
         ...message.replyTo,
+        senderId: message.replyTo.senderId
+          || replySender.tinodeUid
+          || replySender.tinode_uid
+          || replySender.uid
+          || replySender.id
+          || '',
         senderName: replySender.name,
         avatar: isAccountManaged(replySender)
           ? (replySender.avatar || '')
@@ -1634,6 +1670,50 @@ function SafeAvatar({ src, name, className = '' }) {
   return <img src={resolvedSrc} alt={name || 'Ảnh đại diện'} className={className} onError={() => setFailed(true)} />;
 }
 
+function MessageReceiptIndicator({ message, copy = { t: value => value }, onOpen }) {
+  const receiptUsers = normalizeReceiptUsers(message?.receiptUsers);
+  const preview = receiptAvatarPreview(receiptUsers);
+  const hasReadUsers = receiptUsers.read.length > 0;
+  const hasReceiptUsers = hasReadUsers || receiptUsers.received.length > 0;
+  const isRead = message?.deliveryStatus === 'read' || hasReadUsers;
+  const statusIcon = message?.deliveryStatus === 'received' ? 'fa-check-double' : 'fa-check';
+  const statusClass = isRead ? 'read' : message?.deliveryStatus === 'received' ? 'received' : 'sent';
+  const statusTitle = isRead
+    ? copy.t('Đã xem')
+    : message?.deliveryStatus === 'received' ? copy.t('Đã nhận') : copy.t('Đã gửi');
+
+  if (!hasReceiptUsers) {
+    return <i className={`fa-solid ${message?.deliveryStatus === 'read' ? 'fa-check-double' : statusIcon} read-status ${statusClass}`} title={statusTitle}></i>;
+  }
+
+  const viewerCount = hasReadUsers ? receiptUsers.read.length : receiptUsers.received.length;
+  const viewerLabel = `${statusTitle} ${viewerCount}`;
+  return (
+    <button
+      type="button"
+      className={`message-receipt-trigger ${hasReadUsers ? 'read' : 'received'}`}
+      title={`${viewerLabel} - ${copy.t('Xem chi tiết')}`}
+      aria-label={`${viewerLabel} - ${copy.t('Xem chi tiết')}`}
+      onClick={event => {
+        event.stopPropagation();
+        onOpen?.(message);
+      }}
+    >
+      {hasReadUsers ? (
+        <span className="message-receipt-avatar-stack" aria-hidden="true">
+          {preview.users.map(user => (
+            <SafeAvatar key={user.id} src={user.avatar || ''} name={user.name} className="message-receipt-avatar" />
+          ))}
+          {preview.overflowCount > 0 && <span className="message-receipt-overflow">5+</span>}
+        </span>
+      ) : (
+        <i className={`fa-solid fa-check-double read-status ${isRead ? 'read' : 'received'}`} aria-hidden="true"></i>
+      )}
+      {hasReadUsers && <i className="fa-solid fa-check-double read-status read" aria-hidden="true"></i>}
+    </button>
+  );
+}
+
 function AudioMessagePlayer({ file, duration = 0, time = '', delivery = null, pending = false, failed = false, copy = { t: value => value }, onError }) {
   const audioRef = useRef(null);
   const [resolvedSource, setResolvedSource] = useState('');
@@ -2126,7 +2206,9 @@ function ImageBatchMessage({
                       <span className="image-view-hint"><i className="fa-solid fa-expand"></i>{copy.t('Xem ảnh')}</span>
                     </button>
                     <div className="image-bubble-footer">
-                      <span className="message-time">{formatMessageTime(message, message.time, copy.locale)} {isOutgoing && deliveryStatusIcon(message)}</span>
+                      <span className="message-time">
+                        {formatMessageTime(message, message.time, copy.locale)} {isOutgoing && deliveryStatusIcon(message)}
+                      </span>
                     </div>
                   </div>
                   {reactionPills}
@@ -2617,7 +2699,7 @@ function App() {
   const [isSwitchingTenant, setIsSwitchingTenant] = useState(false);
   const [tenantSwitchNotice, setTenantSwitchNotice] = useState('');
   const [pendingTenantSwitch, setPendingTenantSwitch] = useState(null);
-  const [tenantSwitcherIndex, setTenantSwitcherIndex] = useState(0);
+  const [tenantSwitcherOpen, setTenantSwitcherOpen] = useState(false);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const [forcedLogoutSeconds, setForcedLogoutSeconds] = useState(null);
   const [activeCall, setActiveCall] = useState(null);
@@ -2665,6 +2747,7 @@ function App() {
   const imageInputRef = useRef(null);
   const mentionPickerRef = useRef(null);
   const languageMenuRef = useRef(null);
+  const tenantSwitcherRef = useRef(null);
   const currentChatIdRef = useRef(currentChatId);
   const deletedConversationIdsRef = useRef(new Set());
   const reopeningDirectTopicsRef = useRef(new Set());
@@ -3248,32 +3331,29 @@ function App() {
     .filter(option => option?.id && option.active !== false);
   const canSwitchTenant = tenantOptions.length > 1;
   const currentTenantId = String(profileAccount.tenantId || profileAccount.tenant_id || '').trim();
-
-  const tenantOptionKey = tenantOptions.map(option => String(option.id)).join('|');
-  const currentTenantOptionIndex = tenantOptions.findIndex(option => String(option.id) === currentTenantId);
-  const selectedTenantIndex = tenantOptions.length
-    ? Math.min(Math.max(tenantSwitcherIndex, 0), tenantOptions.length - 1)
-    : 0;
-  const selectedTenantOption = tenantOptions[selectedTenantIndex] || null;
-
-  const shiftTenantSwitcher = useCallback((direction) => {
-    setTenantSwitcherIndex(previousIndex => {
-      if (tenantOptions.length < 2) return 0;
-      return Math.min(Math.max(previousIndex + direction, 0), tenantOptions.length - 1);
-    });
-  }, [tenantOptions.length]);
+  const currentTenantOption = tenantOptions.find(option => String(option.id) === currentTenantId)
+    || tenantOptions[0]
+    || null;
 
   useEffect(() => {
-    if (!canSwitchTenant) {
-      setTenantSwitcherIndex(0);
-      return undefined;
-    }
-    if (workspacePanel !== 'profile') return undefined;
-    setTenantSwitcherIndex(previousIndex => currentTenantOptionIndex >= 0
-      ? currentTenantOptionIndex
-      : Math.min(previousIndex, tenantOptions.length - 1));
-    return undefined;
-  }, [canSwitchTenant, currentTenantId, currentTenantOptionIndex, tenantOptionKey, tenantOptions.length, workspacePanel]);
+    if (!canSwitchTenant || workspacePanel !== 'profile') setTenantSwitcherOpen(false);
+  }, [canSwitchTenant, currentTenantId, workspacePanel]);
+
+  useEffect(() => {
+    if (!tenantSwitcherOpen || typeof document === 'undefined') return undefined;
+    const closeTenantSwitcher = event => {
+      if (!tenantSwitcherRef.current?.contains(event.target)) setTenantSwitcherOpen(false);
+    };
+    const handleTenantSwitcherKeyDown = event => {
+      if (event.key === 'Escape') setTenantSwitcherOpen(false);
+    };
+    document.addEventListener('pointerdown', closeTenantSwitcher);
+    document.addEventListener('keydown', handleTenantSwitcherKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', closeTenantSwitcher);
+      document.removeEventListener('keydown', handleTenantSwitcherKeyDown);
+    };
+  }, [tenantSwitcherOpen]);
 
   useEffect(() => () => {
     if (voiceTimerRef.current) window.clearInterval(voiceTimerRef.current);
@@ -4455,6 +4535,7 @@ function App() {
               seq: receiptSequence,
               what: event.what,
               viewerId,
+              receiptUser: event.from ? { id: event.from } : null,
             });
             if (messages === roomMessages(room)) return [id, room];
             changed = true;
@@ -5320,6 +5401,7 @@ function App() {
     const requestedTenantId = String(option?.id || '').trim();
     const currentTenantId = String(profileAccount.tenantId || profileAccount.tenant_id || '').trim();
     if (!requestedTenantId || requestedTenantId === currentTenantId || isSwitchingTenant) return;
+    setTenantSwitcherOpen(false);
     setTenantSwitchNotice('');
     setPendingTenantSwitch(option);
   };
@@ -6173,6 +6255,14 @@ function App() {
       || findAccount(roomMembers(activeChat), identity)
       || (identitiesOverlap(entity, currentUser) ? currentUser : null);
     const merged = normalizeAccountShape({ ...(account || {}), ...(entity || {}) }) || {};
+    const viewerAccount = normalizeAccountShape(account);
+    if (viewerAccount) {
+      merged.name = viewerAccount.name || merged.name;
+      merged.display_name = viewerAccount.name || merged.display_name;
+      merged.defaultName = viewerAccount.defaultName || merged.defaultName;
+      merged.default_name = viewerAccount.default_name || merged.default_name;
+      merged.nickname = viewerAccount.nickname || '';
+    }
     const isCurrentAccount = identitiesOverlap(merged, currentUser);
     return {
       id: account?.id || account?.uid || merged.id || merged.uid || merged.tinodeUid || merged.tinode_uid || '',
@@ -7189,7 +7279,7 @@ function App() {
             actorName: currentUser?.name,
             targets: targetUids.map(member => ({
               id: member.id,
-              name: member.name || findAccount(directoryAccounts, member.id)?.name || member.id,
+              name: mentionCanonicalText(findAccount(directoryAccounts, member.id) || member) || member.id,
             })),
           });
         }
@@ -7372,7 +7462,7 @@ function App() {
             actorName: currentUser?.name,
             targets: approvedSelectedMembers.map(member => ({
               id: member.tinodeUid || member.tinode_uid || member.uid || member.id,
-              name: member.name,
+              name: mentionCanonicalText(member),
             })),
           }).catch(() => {});
           updatedRoom = {
@@ -7408,7 +7498,7 @@ function App() {
           actorName: currentUser?.name,
           targets: selectedMembers.map(member => ({
             id: member.tinodeUid || member.tinode_uid || member.uid || member.id,
-            name: member.name,
+            name: mentionCanonicalText(member),
           })),
         }).catch(() => {});
         updatedRoom = {
@@ -7538,7 +7628,7 @@ function App() {
             || member.tinode_uid
             || member.uid
             || member.id,
-          name: member.name,
+          name: mentionCanonicalText(memberAccount || member),
         }],
       };
       let updatedRoom;
@@ -7716,6 +7806,7 @@ function App() {
     }
     setChatError('');
     const replyMeta = replyingTo ? { ...replyingTo } : null;
+    const sharedReplyMeta = replyMetadataForTransport(replyMeta, directoryAccounts);
 
     const mime = file.type || 'application/octet-stream';
     const isUnnamedClipboardFile = !String(file.name || '').trim();
@@ -7802,7 +7893,7 @@ function App() {
       ensureTinodeConversationTopic(room)
         .then(async topicName => {
           const result = await tinodeClient.sendFile(topicName, uploadFile, newMsg.id, {
-            replyTo: replyMeta,
+            replyTo: sharedReplyMeta,
             voiceDuration,
             imageBatch: normalizedImageBatch,
           });
@@ -8115,6 +8206,7 @@ function App() {
     }
     setChatError('');
     const replyMeta = replyingTo ? { ...replyingTo } : null;
+    const sharedReplyMeta = replyMetadataForTransport(replyMeta, directoryAccounts);
     const timeStr = getTimeString();
     const createdAt = new Date().toISOString();
     const newMsg = {
@@ -8170,7 +8262,7 @@ function App() {
     const room = conversations[roomId];
     ensureTinodeConversationTopic(room)
       .then(async topicName => {
-        const result = await tinodeClient.sendSticker(topicName, sticker, newMsg.id, { replyTo: replyMeta });
+        const result = await tinodeClient.sendSticker(topicName, sticker, newMsg.id, { replyTo: sharedReplyMeta });
         const confirmedMessage = {
           ...newMsg,
           pending: false,
@@ -8467,8 +8559,11 @@ function App() {
         id: candidate.id,
         tinodeUid: candidate.tinodeUid || candidate.uid || '',
         name: mentionCandidateText(candidate),
+        defaultName: mentionCanonicalText(candidate),
+        username: candidate.username || '',
         token: insertion.token,
         isAll: candidate.id === ALL_MENTION_ID,
+        isBot: Boolean(candidate.type === 'bot' || candidate.isChatbot || candidate.id === CHATBOT_ACCOUNT.id),
       };
       const exists = currentMentions.some(item => item.id === mention.id && item.token === mention.token);
       return exists
@@ -8655,8 +8750,11 @@ function App() {
                 id: candidate.id,
                 tinodeUid: candidate.tinodeUid || candidate.uid || '',
                 name: mentionCandidateText(candidate),
+                defaultName: mentionCanonicalText(candidate),
+                username: candidate.username || '',
                 token,
                 isAll: false,
+                isBot: Boolean(candidate.type === 'bot' || candidate.isChatbot || candidate.id === CHATBOT_ACCOUNT.id),
               },
             ],
           };
@@ -8677,6 +8775,15 @@ function App() {
     updateMessageInView(message, patch);
     persistMessagePatch(message, patch);
   };
+
+  const openMessageReceiptDetails = useCallback(message => {
+    if (!message) return;
+    setMessageDetails({
+      ...message,
+      receiptDetails: true,
+      receiptUsers: normalizeReceiptUsers(message.receiptUsers),
+    });
+  }, []);
 
   const handleMessageAction = async (action, message, emoji = '👍') => {
     setMessageMenu(null);
@@ -8856,7 +8963,16 @@ function App() {
       setChatError('Chia sẻ tin nhắn cần kết nối realtime Tinode.');
       return;
     }
-    const text = `↪ ${shareMessage.senderName || (shareMessage.sender === 'outgoing' ? 'Bạn' : 'Thành viên')}: ${shareMessage.text || shareMessage.file?.name || 'Tệp đính kèm'}`;
+    const sourceSender = findAccountByIdentities(directoryAccounts, [
+      shareMessage.senderId,
+      shareMessage.raw?.from,
+      shareMessage.raw?.head?.['x-sender-id'],
+      shareMessage.senderName,
+    ]);
+    const sourceSenderName = sourceSender
+      ? mentionCanonicalText(sourceSender)
+      : String(shareMessage.senderId || '').trim() || (shareMessage.sender === 'outgoing' ? 'Bạn' : 'Thành viên');
+    const text = `↪ ${sourceSenderName}: ${shareMessage.text || shareMessage.file?.name || 'Tệp đính kèm'}`;
     const shared = {
       id: `shared-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       type: 'text', sender: 'outgoing', senderId: viewerId, senderName: currentUser?.name,
@@ -8937,16 +9053,11 @@ function App() {
     const timeStr = getTimeString();
     const createdAt = new Date().toISOString();
     const replyMeta = replyingTo ? { ...replyingTo } : null;
+    const sharedReplyMeta = replyMetadataForTransport(replyMeta, directoryAccounts);
     const mentions = (messageMentions[currentChatId] || [])
       .filter(mention => mentionTokenExists(text, mention.token))
-      .map(mention => ({
-        id: mention.id,
-        tinodeUid: mention.tinodeUid || '',
-        name: mention.name,
-        token: mention.token,
-        isAll: Boolean(mention.isAll),
-        isBot: Boolean(mention.type === 'bot' || mention.isChatbot || mention.id === CHATBOT_ACCOUNT.id),
-      }));
+      .map(serializeMentionForTransport)
+      .filter(Boolean);
     const newMsg = {
       id: `me-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       type: "text",
@@ -9011,7 +9122,7 @@ function App() {
           room.tinodeTopic,
           text,
           newMsg.id,
-          { ...(replyMeta ? { replyTo: replyMeta } : {}), mentions },
+          { ...(sharedReplyMeta ? { replyTo: sharedReplyMeta } : {}), mentions },
         );
         setConversations(previous => ({
           ...previous,
@@ -9107,7 +9218,7 @@ function App() {
               setChatError(chatbotError?.message || 'ViChat AI chua san sang trong nhom.');
             }
           }
-          const result = await tinodeClient.sendText(topicName, text, newMsg.id, { ...(replyMeta ? { replyTo: replyMeta } : {}), mentions });
+          const result = await tinodeClient.sendText(topicName, text, newMsg.id, { ...(sharedReplyMeta ? { replyTo: sharedReplyMeta } : {}), mentions });
           setConversations(previous => {
             const currentRoom = previous[roomId];
             if (!currentRoom) return previous;
@@ -9141,6 +9252,23 @@ function App() {
     }
   };
 
+  const displayMentionToken = (mention, fallbackToken = '') => {
+    const account = findAccountByIdentities(directoryAccounts, [
+      mention?.id,
+      mention?.tinodeUid,
+      mention?.uid,
+    ]) || findAccountByIdentities(roomMembers(activeChat), [
+      mention?.id,
+      mention?.tinodeUid,
+      mention?.uid,
+    ]);
+    return mentionDisplayTokenFor({
+      ...(mention || {}),
+      ...(account || {}),
+      token: fallbackToken || mention?.token || '',
+    });
+  };
+
   const renderComposerText = (text, mentions = []) => {
     if (!text) return null;
     const escapeRegExp = value => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -9151,11 +9279,13 @@ function App() {
     const mentionPattern = mentionTokens.length > 0
       ? new RegExp(`(${mentionTokens.map(escapeRegExp).join('|')})`, 'gu')
       : null;
-    return (mentionPattern ? String(text).split(mentionPattern) : [String(text)]).map((part, index) => (
-      mentionTokens.includes(part)
-        ? <span key={`composer-mention-${index}`} className="message-mention">{part}</span>
-        : <React.Fragment key={`composer-text-${index}`}>{part}</React.Fragment>
-    ));
+    return (mentionPattern ? String(text).split(mentionPattern) : [String(text)]).map((part, index) => {
+      if (!mentionTokens.includes(part)) {
+        return <React.Fragment key={`composer-text-${index}`}>{part}</React.Fragment>;
+      }
+      const mention = (mentions || []).find(candidate => String(candidate?.token || '') === part);
+      return <span key={`composer-mention-${index}`} className="message-mention">{displayMentionToken(mention, part)}</span>;
+    });
   };
 
   // Keep mention styling tied to the metadata stamped by the sender.
@@ -9187,15 +9317,16 @@ function App() {
       if (!mentionTokens.includes(part)) return renderPlainText(part, `text-${index}`);
       const mention = (mentions || []).find(candidate => String(candidate?.token || '') === part);
       if (mention?.isAll) return [<span key={`mention-${index}`} className="message-mention">{part}</span>];
+      const displayToken = displayMentionToken(mention, part);
       return [
         <button
           type="button"
           key={`mention-${index}`}
           className="message-mention"
           onClick={() => openProfileFor(mention)}
-          title={`${appCopy.t('Xem thông tin')} ${mention?.name || part}`}
+          title={`${appCopy.t('Xem thông tin')} ${displayToken || mention?.name || part}`}
         >
-          {part}
+          {displayToken || part}
         </button>,
       ];
     });
@@ -9637,13 +9768,7 @@ function App() {
     if (message.pending || message.deliveryStatus === 'sending') {
       return <i className="fa-solid fa-spinner fa-spin read-status pending" title={appCopy.t('Đang gửi')}></i>;
     }
-    if (message.deliveryStatus === 'read') {
-      return <i className="fa-solid fa-check-double read-status read" title={appCopy.t('Đã xem')}></i>;
-    }
-    if (message.deliveryStatus === 'received') {
-      return <i className="fa-solid fa-check-double read-status received" title={appCopy.t('Đã nhận')}></i>;
-    }
-    return <i className="fa-solid fa-check read-status sent" title={appCopy.t('Đã gửi')}></i>;
+    return <MessageReceiptIndicator message={message} copy={appCopy} onOpen={openMessageReceiptDetails} />;
   };
   const activeRemoteTyping = chatMode === 'tinode' && !activeChat.isChatbot
     ? typingByTopic[tinodeTopicName(activeChat)]
@@ -9671,6 +9796,10 @@ function App() {
     }
     if (pendingTenantSwitch) {
       setPendingTenantSwitch(null);
+      return true;
+    }
+    if (tenantSwitcherOpen) {
+      setTenantSwitcherOpen(false);
       return true;
     }
     if (isConversationBackgroundOpen) {
@@ -9844,6 +9973,7 @@ function App() {
     replyingTo,
     shareMessage,
     showEmojiPicker,
+    tenantSwitcherOpen,
     workspacePanel,
     keyboardShortcutActionHandlersRef,
   ]);
@@ -11336,16 +11466,67 @@ function App() {
           </div>
         )}
         {activeChat.isChatbot && <p className="chatbot-composer-note"><i className="fa-solid fa-circle-info"></i> {appCopy.t('ViChat AI có thể chưa bao quát mọi tài liệu. Hãy kiểm tra nguồn trước khi ra quyết định.')}</p>}
-        {messageDetails && (
-          <div className="message-details-modal" role="dialog">
-            <div className="message-details-card">
-              <div className="message-details-header"><strong>{appCopy.t('Chi tiết tin nhắn')}</strong><button type="button" onClick={() => setMessageDetails(null)} aria-label={appCopy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button></div>
-              <p><strong>{appCopy.t('Người gửi')}:</strong> {messageDetails.senderName || (messageDetails.sender === 'outgoing' ? appCopy.t('Bạn') : appCopy.t('Thành viên'))}</p>
-              <p><strong>{appCopy.t('Thời gian')}:</strong> {messageDetails.createdAt ? new Date(messageDetails.createdAt).toLocaleString(appCopy.locale) : messageDetails.time}</p>
-              <p><strong>{appCopy.t('Nội dung')}:</strong> {messageDetails.text || messageDetails.file?.name || appCopy.t('Tệp đính kèm')}</p>
+        {messageDetails && (() => {
+          const receiptUsers = normalizeReceiptUsers(messageDetails.receiptUsers);
+          const previewText = messageDetails.text
+            || messageDetails.file?.name
+            || (messageDetails.type === 'sticker' ? appCopy.t('Sticker') : appCopy.t('Tệp đính kèm'));
+          const renderReceiptUsers = (users, emptyLabel, statusClass) => users.length > 0
+            ? users.map(user => (
+              <div className="message-receipt-user" key={user.id}>
+                <SafeAvatar src={user.avatar || ''} name={user.name} className="message-receipt-details-avatar" />
+                <span className="message-receipt-user-name">{user.name || appCopy.t('Thành viên')}</span>
+                <i className={`fa-solid fa-check-double message-receipt-user-status ${statusClass}`} aria-hidden="true"></i>
+              </div>
+            ))
+            : <p className="message-receipt-empty">{emptyLabel}</p>;
+          return (
+            <div
+              className="message-details-modal"
+              role="presentation"
+              onMouseDown={event => {
+                if (event.target === event.currentTarget) setMessageDetails(null);
+              }}
+            >
+              <section className="message-details-card message-receipt-details-card" role="dialog" aria-modal="true" aria-labelledby="message-details-title">
+                <div className="message-details-header">
+                  <strong id="message-details-title">{appCopy.t('Chi tiết tin nhắn')}</strong>
+                  <button type="button" onClick={() => setMessageDetails(null)} aria-label={appCopy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button>
+                </div>
+                <div className="message-details-preview">
+                  <span className="message-details-preview-icon" aria-hidden="true"><i className={`fa-solid ${messageDetails.type === 'file' ? 'fa-paperclip' : messageDetails.type === 'image' ? 'fa-image' : 'fa-message'}`}></i></span>
+                  <p>{previewText}</p>
+                </div>
+                <div className="message-details-meta">
+                  <p><strong>{appCopy.t('Người gửi')}:</strong> {messageDetails.senderName || (messageDetails.sender === 'outgoing' ? appCopy.t('Bạn') : appCopy.t('Thành viên'))}</p>
+                  <p><strong>{appCopy.t('Thời gian')}:</strong> {messageDetails.createdAt ? new Date(messageDetails.createdAt).toLocaleString(appCopy.locale) : messageDetails.time}</p>
+                </div>
+                {(receiptUsers.read.length > 0 || receiptUsers.received.length > 0 || messageDetails.receiptDetails) && (
+                  <div className="message-receipt-sections">
+                    <section className="message-receipt-section" aria-labelledby="message-receipt-read-title">
+                      <div className="message-receipt-section-heading">
+                        <span id="message-receipt-read-title"><i className="fa-solid fa-eye" aria-hidden="true"></i>{appCopy.t('Đã xem')}</span>
+                        <strong>{receiptUsers.read.length}</strong>
+                      </div>
+                      <div className="message-receipt-list">
+                        {renderReceiptUsers(receiptUsers.read, appCopy.t('Chưa có ai xem tin nhắn này'), 'read')}
+                      </div>
+                    </section>
+                    <section className="message-receipt-section" aria-labelledby="message-receipt-received-title">
+                      <div className="message-receipt-section-heading">
+                        <span id="message-receipt-received-title"><i className="fa-solid fa-check-double" aria-hidden="true"></i>{appCopy.t('Đã nhận')}</span>
+                        <strong>{receiptUsers.received.length}</strong>
+                      </div>
+                      <div className="message-receipt-list">
+                        {renderReceiptUsers(receiptUsers.received, appCopy.t('Chưa có ai nhận tin nhắn này'), 'received')}
+                      </div>
+                    </section>
+                  </div>
+                )}
+              </section>
             </div>
-          </div>
-        )}
+          );
+        })()}
         {reactionDetails && reactionDetailsMessage && (
           <div
             className="message-details-modal reaction-details-modal"
@@ -12043,57 +12224,74 @@ function App() {
                       <span>{appCopy.t('Đăng xuất')}</span>
                     </button>
                     {canSwitchTenant && (
-                      <div className="tenant-switcher" role="group" aria-label={appCopy.t('Chuyển công ty')}>
-                        <span className="tenant-switcher-caption"><i className="fa-solid fa-building" aria-hidden="true"></i><span>{appCopy.t('Chọn công ty')}</span></span>
+                      <div className="tenant-switcher" ref={tenantSwitcherRef} role="group" aria-label={appCopy.t('Chuyển công ty')}>
+                        <span className="tenant-switcher-caption"><i className="fa-solid fa-building" aria-hidden="true"></i><span>{appCopy.t('Công ty')}</span></span>
                         <div className="tenant-switcher-control">
-                          <button
-                            type="button"
-                            className="tenant-switcher-nav"
-                            title={appCopy.t('Công ty trước')}
-                            aria-label={appCopy.t('Công ty trước')}
-                            onClick={() => shiftTenantSwitcher(-1)}
-                            disabled={selectedTenantIndex <= 0 || isSwitchingTenant}
-                          >
-                            <i className="fa-solid fa-chevron-left" aria-hidden="true"></i>
-                          </button>
-                          {selectedTenantOption && (
+                          {currentTenantOption && (
                             <button
                               type="button"
-                              className={`tenant-switcher-option ${String(selectedTenantOption.id) === currentTenantId ? 'current' : ''}`}
-                              title={selectedTenantOption.name}
-                              aria-label={selectedTenantOption.name}
-                              aria-pressed={String(selectedTenantOption.id) === currentTenantId}
-                              data-tenant-current={String(selectedTenantOption.id) === currentTenantId ? 'true' : 'false'}
-                              onClick={() => requestTenantSwitch(selectedTenantOption)}
-                              onKeyDown={event => {
-                                if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-                                  event.preventDefault();
-                                  shiftTenantSwitcher(event.key === 'ArrowLeft' ? -1 : 1);
-                                }
-                              }}
-                              disabled={isSwitchingTenant || String(selectedTenantOption.id) === currentTenantId}
+                              className="tenant-switcher-current"
+                              title={currentTenantOption.name}
+                              aria-label={`${appCopy.t('Công ty hiện tại')}: ${currentTenantOption.name}`}
+                              aria-expanded={tenantSwitcherOpen}
+                              aria-haspopup="menu"
+                              onClick={() => setTenantSwitcherOpen(previous => !previous)}
+                              disabled={isSwitchingTenant}
                             >
-                              <span className="tenant-switcher-option-icon">
-                                <TenantLogo src={selectedTenantOption.logo} name={selectedTenantOption.name} version={selectedTenantOption.logoVersion} />
+                              <span className="tenant-switcher-current-icon">
+                                <TenantLogo src={currentTenantOption.logo} name={currentTenantOption.name} version={currentTenantOption.logoVersion} />
                               </span>
-                              <span className="tenant-switcher-option-copy">
-                                <strong>{selectedTenantOption.name}</strong>
-                                <small>{String(selectedTenantOption.id) === currentTenantId ? appCopy.t('Đang dùng') : appCopy.t('Chọn')}</small>
+                              <span className="tenant-switcher-current-copy">
+                                <strong>{currentTenantOption.name}</strong>
+                                <small>{appCopy.t('Đang dùng')}</small>
                               </span>
-                              {String(selectedTenantOption.id) === currentTenantId && <i className="fa-solid fa-check tenant-switcher-check" aria-hidden="true"></i>}
                             </button>
                           )}
                           <button
                             type="button"
-                            className="tenant-switcher-nav"
-                            title={appCopy.t('Công ty tiếp theo')}
-                            aria-label={appCopy.t('Công ty tiếp theo')}
-                            onClick={() => shiftTenantSwitcher(1)}
-                            disabled={selectedTenantIndex >= tenantOptions.length - 1 || isSwitchingTenant}
+                            className="tenant-switcher-toggle"
+                            title={appCopy.t('Chọn công ty')}
+                            aria-label={appCopy.t('Chọn công ty')}
+                            aria-expanded={tenantSwitcherOpen}
+                            aria-haspopup="menu"
+                            onClick={() => setTenantSwitcherOpen(previous => !previous)}
+                            disabled={isSwitchingTenant}
                           >
-                            <i className="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                            <i className={`fa-solid ${tenantSwitcherOpen ? 'fa-chevron-up' : 'fa-chevron-down'}`} aria-hidden="true"></i>
                           </button>
-                          <span className="tenant-switcher-count" aria-label={`${selectedTenantIndex + 1} / ${tenantOptions.length}`}>{selectedTenantIndex + 1}/{tenantOptions.length}</span>
+                          {tenantSwitcherOpen && (
+                            <div className="tenant-switcher-menu" role="menu" aria-label={appCopy.t('Chọn công ty')}>
+                              <div className="tenant-switcher-menu-list">
+                                {tenantOptions.map(option => {
+                                  const isCurrent = String(option.id) === currentTenantId;
+                                  return (
+                                    <button
+                                      type="button"
+                                      role="menuitemradio"
+                                      key={option.id}
+                                      className={`tenant-switcher-menu-option ${isCurrent ? 'current' : ''}`}
+                                      title={option.name}
+                                      aria-label={option.name}
+                                      data-tenant-name={option.name}
+                                      aria-checked={isCurrent}
+                                      data-tenant-current={isCurrent ? 'true' : 'false'}
+                                      onClick={() => requestTenantSwitch(option)}
+                                      disabled={isSwitchingTenant || isCurrent}
+                                    >
+                                      <span className="tenant-switcher-menu-option-icon">
+                                        <TenantLogo src={option.logo} name={option.name} version={option.logoVersion} />
+                                      </span>
+                                      <span className="tenant-switcher-menu-option-copy">
+                                        <strong>{option.name}</strong>
+                                        <small>{isCurrent ? appCopy.t('Đang dùng') : appCopy.t('Chọn')}</small>
+                                      </span>
+                                      {isCurrent && <i className="fa-solid fa-check tenant-switcher-menu-check" aria-hidden="true"></i>}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
                         {tenantSwitchNotice && <div className="tenant-switcher-notice" role="alert"><i className="fa-solid fa-triangle-exclamation"></i><span>{tenantSwitchNotice}</span></div>}
                         {isSwitchingTenant && <div className="tenant-switcher-loading"><i className="fa-solid fa-spinner fa-spin"></i>{appCopy.t('Đang chuyển công ty...')}</div>}

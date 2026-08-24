@@ -70,3 +70,29 @@ test('normalizes Account projections as read-only management users', () => {
   assert.equal(user.tinodeUid, 'usrTinodeA');
   assert.equal(user.updatedAt, '2026-07-31T00:00:00Z');
 });
+
+test('controls Chat UI maintenance through the isolated management scope', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options = {}) => {
+    requests.push({ url, options });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ maintenance: { enabled: options.method === 'PUT', updatedAt: 12 } }),
+    };
+  };
+
+  try {
+    assert.equal((await managementAdminService.getChatUiMaintenance()).enabled, false);
+    assert.equal((await managementAdminService.setChatUiMaintenance(true)).enabled, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(requests[0].url, '/api/v1/admin/chat-ui-maintenance');
+  assert.equal(requests[1].url, '/api/v1/admin/chat-ui-maintenance');
+  assert.equal(requests[1].options.method, 'PUT');
+  assert.deepEqual(JSON.parse(requests[1].options.body), { enabled: true });
+  assert.equal(requests.every(request => request.options.headers['X-Vichat-Session-Scope'] === 'management'), true);
+});

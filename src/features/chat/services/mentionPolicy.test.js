@@ -5,6 +5,10 @@ import {
   getMentionContext,
   insertMentionAt,
   matchesMentionCandidate,
+  mentionCanonicalText,
+  mentionDisplayTokenFor,
+  mentionCandidateText,
+  serializeMentionForTransport,
   mentionTokenExists,
   mentionTokenFor,
 } from './mentionPolicy.js';
@@ -35,6 +39,42 @@ test('replaces the active mention query and keeps the caret after the inserted t
   assert.equal(result.caret, result.text.length);
   assert.equal(mentionTokenFor({ id: ALL_MENTION_ID }), '@All');
   assert.equal(mentionTokenExists(result.text, '@\u0110\u00e0m H\u01b0ng'), true);
+});
+
+test('keeps viewer nicknames out of the shared mention token', () => {
+  const candidate = {
+    id: 'account-peer',
+    name: 'S\u1ebfp C\u01b0\u1eddng',
+    nickname: 'S\u1ebfp C\u01b0\u1eddng',
+    defaultName: 'Nguy\u1ec5n C\u01b0\u1eddng',
+    username: 'cuong',
+  };
+
+  assert.equal(mentionCandidateText(candidate), 'S\u1ebfp C\u01b0\u1eddng');
+  assert.equal(mentionCanonicalText(candidate), 'Nguy\u1ec5n C\u01b0\u1eddng');
+  assert.equal(mentionTokenFor(candidate), '@Nguy\u1ec5n C\u01b0\u1eddng');
+  assert.equal(mentionDisplayTokenFor(candidate), '@S\u1ebfp C\u01b0\u1eddng');
+  assert.equal(mentionDisplayTokenFor({
+    id: candidate.id,
+    name: candidate.defaultName,
+    token: '@Nguy\u1ec5n C\u01b0\u1eddng',
+  }), '@Nguy\u1ec5n C\u01b0\u1eddng');
+  assert.deepEqual(serializeMentionForTransport({
+    ...candidate,
+    token: '@S\u1ebfp C\u01b0\u1eddng',
+  }), {
+    id: 'account-peer',
+    tinodeUid: '',
+    name: 'Nguy\u1ec5n C\u01b0\u1eddng',
+    token: '@Nguy\u1ec5n C\u01b0\u1eddng',
+    isAll: false,
+    isBot: false,
+  });
+
+  const value = 'Giao vi\u1ec7c cho @S\u1ebfp';
+  const result = insertMentionAt(value, getMentionContext(value, value.length), candidate);
+  assert.equal(result.text, 'Giao vi\u1ec7c cho @Nguy\u1ec5n C\u01b0\u1eddng ');
+  assert.equal(result.text.includes('S\u1ebfp C\u01b0\u1eddng'), false);
 });
 
 test('uses the compact ViChat AI token and matches its aliases', () => {

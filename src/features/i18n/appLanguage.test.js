@@ -31,6 +31,7 @@ test('translates the reply composer heading', () => {
 
 test('translates tenant switch labels', () => {
   assert.equal(translateUiText('Chuyển công ty', 'en'), 'Switch company');
+  assert.equal(translateUiText('Công ty', 'en'), 'Company');
   assert.equal(translateUiText('Chọn công ty', 'en'), 'Choose company');
   assert.equal(translateUiText('Trượt để chọn công ty', 'en'), 'Slide to choose a company');
   assert.equal(translateUiText('Công ty trước', 'en'), 'Previous company');
@@ -51,6 +52,11 @@ test('translates session bootstrap labels', () => {
 
 test('translates the latest-message jump label', () => {
   assert.equal(translateUiText('Đi tới tin nhắn mới nhất', 'en'), 'Go to latest messages');
+});
+
+test('translates message receipt empty states', () => {
+  assert.equal(translateUiText('Chưa có ai xem tin nhắn này', 'en'), 'No one has seen this message yet');
+  assert.equal(translateUiText('Chưa có ai nhận tin nhắn này', 'en'), 'No one has received this message yet');
 });
 
 test('translates dynamic system text without translating user content', () => {
