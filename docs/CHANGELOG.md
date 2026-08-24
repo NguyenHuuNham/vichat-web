@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-24 09:10 (Asia/Saigon)
 - Loai: Tinh nang | Web | API | Realtime | Kiem thu | Tai lieu
-- Trang thai: Da kiem thu local; cho commit va deploy production
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Cho quan tri vien bat/tat quyen thanh vien tao binh chon trong tung nhom; khi tat, chi quan tri vien duoc tao poll.
 - Pham vi: Group settings, poll composer va luong normalize Chatmgt/Tinode; giu nguyen vote, ghim, khoa poll, chat 1-1 va cac quyen nhom khac.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/groupSettings.js`, `src/features/chat/services/groupSettings.test.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `dist/index.html`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`.
@@ -19,8 +19,10 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Mo rong object `groupSettings` voi `allowPolls`; khong thay doi endpoint, schema, bien moi truong hoac secret.
 - Kiem thu: `npm run test:frontend` dat 192/192; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` va `npm run build:production` dat voi bundle `App-CvUErDG_.js`, `index-BFNvHpEr.js`, `index-BWOZRSZq.css`; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 44/44; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/tests/test_chat_auth_contract.py` dat; `git diff --check` dat.
 - Rui ro con lai: Chua UAT hai tai khoan production bang browser trong phien nay; can kiem tra admin bat/tat setting, member thay doi icon poll sau realtime/F5, admin van tao duoc, member khong tao duoc khi tat.
-- Viec tiep theo: Commit/push/deploy release ChatUI + Chatmgt; sau deploy hard refresh va UAT group poll bang owner/member.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT group poll bang owner/member: bat/tat allowPolls, member tao poll khi bat, member bi chan khi tat, admin van tao duoc.
+- Trien khai: Archive `/opt/deploy/chat/incoming/vichat-group-poll-permission-37d7e18-20260824.tar.gz` SHA-256 `e93b24d5af4c72cedd7ce8c7aedf5f9271371261bd12934ea9cf453d471dc6cd`; release `/opt/deploy/chat/releases/group-poll-permission-37d7e18-20260824-021331` dang la `current`, `previous` tro `/opt/deploy/chat/releases/group-polls-d19845e-20260824-012136`; chi recreate `chat` va `chatmgt`, khong migration/backup database va khong restart Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis hay Coturn.
+- Kiem tra production: Compose config, build/recreate hai image, Chatmgt va ChatUI healthy, local/public health, `sudo -n nginx -t`, bundle public co `allowPolls`/poll marker, Chatmgt image co whitelist moi va log hai service 10 phut deu dat. Image ChatUI `sha256:b2c51b30bae0c892584f2b38f9841be98f15fc3e2579f8983403f72e4bb94d4f`, container `df962d28d2298192cc63b3bad78af45ba2c3308b43872b423783a8b1cff5159c`; image Chatmgt `sha256:d7a8ffbace96b038b6c247568da5e202052dfe94b2b96d8502bbf895a262f8dc`, container `ce4118827e375a884f34f5c2906e19c1e2a6a1a3c0530ae59e81ef5ffaea991a1`; rollback tags `songhong-production-chat:rollback-before-group-poll-permission-37d7e18-021331` va `songhong-production-chatmgt:rollback-before-group-poll-permission-37d7e18-021331` da luu. Cac container ngoai `chat`/`chatmgt` giu nguyen ID.
+- Commit/PR: Source `37d7e18` da push `origin/master`; deploy da hoan tat, chua co PR.
 
 ## 2026-08-24-11 - Bình chọn trong nhóm
 
