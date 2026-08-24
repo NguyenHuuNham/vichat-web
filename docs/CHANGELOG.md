@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem tra container giu nguyen: Tinode bridge `7d9c0e317719`, chatbot webhook `2882b6109176`, ChatAPI `8476615ad4ac`, Redis `ceef7df23feb`, PostgreSQL `78a434b49404`/`9f6e4dcc9c2f`, Coturn `aa680d35fdc0`.
 - Rui ro con lai: Chua UAT bang hai tai khoan that de xac nhan Tinode realtime sau khi mot viewer xoa direct chat; smoke-check khong thay the duoc viec gui tin giua hai trinh duyet.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn`, dung hai tai khoan test xoa chat 1-1 o mot viewer, gui tin tu viewer con lai va xac nhan viewer da xoa chi thay tin moi, nickname/nen van con; kiem tra lai chat group va luong admin khong doi. Neu loi, tro `current` ve `previous` va recreate rieng hai service.
-- Commit/PR: Source `c171785`, changelog truoc `d36e8eb`, deployment record dang cho commit docs.
+- Commit/PR: Source `c171785`, changelog truoc `d36e8eb`, deployment record `c542e65`.
 
 ## 2026-08-24-20 - Sua loi xoa hoi thoai truc tiep
 
