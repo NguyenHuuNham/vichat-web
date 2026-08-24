@@ -8,19 +8,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-24-27 - Sua dong bo realtime va upload hinh nen hoi thoai
 
-- Thoi gian: 2026-08-24 20:08 (Asia/Saigon)
+- Thoi gian: 2026-08-24 20:08 (Asia/Saigon); deploy production 2026-08-24 20:21 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | Realtime | Kiem thu | Tai lieu
-- Trang thai: Hoan tat code; dang cho commit va deploy
+- Trang thai: Da deploy production; san sang UAT
 - Muc tieu: Khi chon chia se, group va chat 1-1 phai doi hinh nen cho cac viewer ngay realtime kem system event; khi chon `Chi minh toi`, chi viewer hien tai doi va khong phat thong bao.
 - Pham vi: ChatUI background picker/upload, Tinode shared metadata va system event, conversation projection; khong sua message, receipt, presence, membership, Chatmgt hay database.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/conversationBackground.js`, `src/features/chat/services/conversationBackground.test.js`, `src/features/chat/services/chatManagementService.test.js`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
 - Noi dung: Dung event nen shared moi nhat lam snapshot realtime cho ca group/direct khi metadata packet den tre; metadata Tinode van la fallback sau reload. Shared upload chi commit sau khi server tra media URL hop le, kiem tra ma loi metadata/publish; local tiep tuc luu viewer/tenant/conversation-scoped va khong upload/ghi topic/publish event.
 - Quyet dinh ky thuat: Giu aux cho P2P va public `vichat.conversationBackground` cho group; them scope shared vao event va giu alias update cu de khong lam vo luong goi hien co. Khong thay doi transport message hoac cac realtime channel khac.
 - Database/API/cau hinh: Khong migration, endpoint, schema, secret hoac bien moi truong moi.
-- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js src/features/chat/services/conversationBackground.test.js src/features/chat/services/chatRealtime.test.js` dat 65/65; `npm run test:frontend` dat 215/215; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` dat voi canh bao chunk App lon hon 500 KB da co; `npm run build:production` dat khi chay rieng; `git diff --check` dat.
+- Kiem thu local: `node --test src/features/chat/services/chatManagementService.test.js src/features/chat/services/conversationBackground.test.js src/features/chat/services/chatRealtime.test.js` dat 65/65; `npm run test:frontend` dat 215/215; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` dat voi canh bao chunk App lon hon 500 KB da co; `npm run build:production` dat khi chay rieng; `git diff --check` dat.
+- Kiem tra production: Archive `/opt/deploy/chat/incoming/vichat-conversation-background-973815d.tar.gz` SHA-256 `6a97fb674cffa799259ee5df938d57c762df8a09633bb07c8570001d4ecb48ab` khop; `docker compose config --quiet` va build `chat` dat; release `/opt/deploy/chat/releases/conversation-background-973815d-20260824-131805` dang la `current`, `previous` tro `/opt/deploy/chat/releases/unread-indicator-228ae42-20260824-1945`; image ChatUI `sha256:aac0eda579c6416971130b5bdab3b24c41a6614f762b8cb95adb730589130606`, container `48f237ca0ab4` healthy; local/public `/healthz` tra `ok`; Chatmgt auth health HTTP 200/status `ok`; `sudo -n nginx -t` dat; public bundle `App-BEU7BicL.js` co marker background event/upload/scope; log ChatUI 10 phut khong co fatal/panic/traceback/critical/emerg/uncaught; cac service ngoai `chat` giu nguyen container ID.
 - Rui ro con lai: Chua UAT production bang hai tai khoan that cho shared/local group, shared/local direct va upload anh protected; can hard refresh sau deploy.
-- Viec tiep theo: Commit, push, deploy release chi recreate `chat`, kiem tra health/bundle/log va UAT realtime hai viewer; rollback chi tro `previous` va recreate `chat`, khong reset Tinode/topic/message hay database.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT hai tai khoan cho shared/local group, shared/local direct va upload anh protected; neu loi chi tro `current` ve `previous` va recreate rieng `chat`, khong reset Tinode/topic/message hay database.
+- Trien khai: Source `973815d` da push `origin/master`; chi recreate `chat` voi `--no-deps --force-recreate --no-build`; rollback tag `songhong-production-chat:rollback-before-conversation-background-973815d-20260824-131805` giu image cu `sha256:371a141ebb26096abe768781cb28c1e24ce903311090c54256b6a71dc5ff5430`; Chatmgt, Tinode bridge, webhook, ChatAPI, PostgreSQL, Redis va Coturn khong bi restart.
+- Commit/PR: Source `973815d`; deployment follow-up dang tao.
 
 ## 2026-08-24-26 - Hoan thien thong bao tin chua doc va nut ve tin moi nhat
 
