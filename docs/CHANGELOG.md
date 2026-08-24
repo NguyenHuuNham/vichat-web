@@ -8,19 +8,20 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-24-24 - Loading khoi phuc phien va chuyen cong ty
 
-- Thoi gian: 2026-08-24 18:23 (Asia/Saigon)
+- Thoi gian: 2026-08-24 18:40 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | UI | Kiem thu | Tai lieu
-- Trang thai: Dang thuc hien
+- Trang thai: Da commit va deploy production; san sang UAT
 - Muc tieu: Hien spinner khi F5/khôi phuc session va khi chuyen tenant, khong day nguoi dung vao Login trong luc request tam thoi that bai.
 - Pham vi: ChatUI bootstrap auth, overlay switch tenant, i18n, CSS va source-contract tests; khong thay doi Chatmgt, Tinode, admin, message, directory hay realtime.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
 - Noi dung: Them man hinh `Dang tai Chat...` trong khi `GET /api/v1/auth/me` dang khoi phuc cookie session; loi mang/5xx giu man hinh nay va cho Thu lai, chi HTTP 401 moi mo Login. Them overlay `Dang chuyen cong ty...` phu toan bo giao dien, giu current user va khong goi logout khi switch tenant thanh cong truoc khi reload.
 - Quyet dinh ky thuat: Dung state bootstrap rieng va phan biet auth failure 401 voi loi ket noi; reset guard trong cleanup de khong bi React StrictMode giu loading vo han. Khi reload tenant thanh cong, giu `isSwitchingTenant` den luc navigation bat dau de khong nhay ve giao dien cu.
 - Database/API/cau hinh: Khong migration, endpoint, schema, secret, bien moi truong hay thay doi kien truc; chi tai su dung `/api/v1/auth/me` va `/api/v1/auth/switch-tenant` hien co.
-- Kiem thu: `npm run test:frontend` dat 209/209; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` dat voi canh bao chunk App lon hon 500 KB; `npm run build:production` dat voi canh bao chunk App lon hon 500 KB; `git diff --check` dat.
-- Rui ro con lai: Chua UAT visual bang browser production voi session cookie that, loi mang tam thoi va hai tai khoan co nhieu tenant; can kiem tra spinner, nut Thu lai, F5 va switch tenant tren desktop/mobile.
-- Viec tiep theo: Commit, push va deploy rieng service `chat`; sau deploy hard refresh `https://chat.upgo.vn` va UAT hai luong, neu loi chi tro `current` ve `previous` va recreate lai `chat`.
-- Commit/PR: Chua tao
+- Kiem thu: `npm run test:frontend` dat 209/209; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` dat voi canh bao chunk App lon hon 500 KB; `npm run build:production` dat voi canh bao chunk App lon hon 500 KB; `git diff --check` dat. Production archive SHA-256 `c1f7b29453092e1c8392665f1138feef64681c7c30e91c37af50865e25df5339` khop; Compose config va build `chat` dat; local/public `/healthz` tra `ok`; Chatmgt auth health HTTP 200; `sudo -n nginx -t` dat; public bundle co marker `session-bootstrap-screen` va `tenant-switch-loading-backdrop`; log ChatUI 10 phut khong co fatal marker.
+- Rui ro con lai: Chua UAT visual bang browser production voi session cookie that, loi mang tam thoi va hai tai khoan co nhieu tenant; can kiem tra spinner, nut Thu lai, F5 va switch tenant tren desktop/mobile. Browser smoke test khong chay duoc trong phien nay vi runtime Browser khong duoc expose.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT hai luong; neu loi chi tro `current` ve `previous` (`tenant-carousel-e258b09-20260824-1727`) va recreate lai `chat`, khong reset Tinode/topic/message hay database.
+- Trien khai: Source commit `e5efe2c` da push `origin/master`; archive `/opt/deploy/chat/incoming/vichat-auth-bootstrap-e5efe2c.tar.gz`; release `/opt/deploy/chat/releases/auth-bootstrap-e5efe2c-20260824-112946` dang la `current`, `previous` tro `/opt/deploy/chat/releases/tenant-carousel-e258b09-20260824-1727`; image ChatUI `sha256:30211b3abfa8f230c7aa610f5ed5c1477be162d89e124b81dcd245bd6313515d`, container `56da2c92638d`; chi recreate service `chat`, Chatmgt `5aa69e4f4129`, bridge `7d9c0e317719`, webhook `2882b6109176`, ChatAPI `8476615ad4ac`, Redis `ceef7df23feb`, PostgreSQL `78a434b49404`/`9f6e4dcc9c2f`, Coturn `aa680d35fdc0` giu nguyen ID.
+- Commit/PR: `e5efe2c`
 
 ## 2026-08-24-23 - Carousel chon cong ty khong tran man hinh
 
