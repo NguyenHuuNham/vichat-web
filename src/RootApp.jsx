@@ -37,17 +37,29 @@ class AppErrorBoundary extends React.Component {
   }
 }
 
-function ChatMaintenanceScreen({ loading = false, message = CHAT_MAINTENANCE_MESSAGE }) {
+function ChatMaintenanceScreen({ loading = false, message = CHAT_MAINTENANCE_MESSAGE, title = '', description = '' }) {
+  const heading = title || (loading ? 'ĐANG KIỂM TRA TRẠNG THÁI HỆ THỐNG' : message);
+  const detail = description || (loading ? 'Vui lòng chờ trong giây lát...' : 'Hệ thống sẽ tự động hoạt động trở lại sau khi cập nhật xong.');
   return (
     <main className="chat-maintenance-screen" aria-busy={loading}>
       <section className="chat-maintenance-card" role="status" aria-live="assertive">
         <div className="chat-maintenance-gear" aria-hidden="true">
-          <i className="fa-solid fa-gear fa-spin"></i>
+          <i className="fa-solid fa-gear fa-spin vichat-loading-icon"></i>
         </div>
-        <h1>{loading ? 'ĐANG KIỂM TRA TRẠNG THÁI HỆ THỐNG' : message}</h1>
-        <p>{loading ? 'Vui lòng chờ trong giây lát...' : 'Hệ thống sẽ tự động hoạt động trở lại sau khi cập nhật xong.'}</p>
+        <h1>{heading}</h1>
+        <p>{detail}</p>
       </section>
     </main>
+  );
+}
+
+function ChatLoadingFallback() {
+  return (
+    <ChatMaintenanceScreen
+      loading
+      title="ĐANG TẢI CHAT"
+      description="Đang khởi tạo giao diện và phiên làm việc của bạn..."
+    />
   );
 }
 
@@ -129,7 +141,7 @@ export default function RootApp() {
 
   return (
     <AppErrorBoundary>
-      <Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: '#f6f2ea' }}></div>}>
+      <Suspense fallback={<ChatLoadingFallback />}>
         {isManagementSurface
           ? <ActiveApp />
           : <ChatMaintenanceGate><ActiveApp /></ChatMaintenanceGate>}

@@ -2524,7 +2524,7 @@ function SessionBootstrapScreen({ copy, status = 'loading', onRetry }) {
     <div className="session-bootstrap-screen" aria-busy={!hasError}>
       <section className="session-bootstrap-card" role={hasError ? 'alert' : 'status'} aria-live="polite">
         <div className={`session-bootstrap-spinner ${hasError ? 'error' : ''}`} aria-hidden="true">
-          <i className={`fa-solid ${hasError ? 'fa-triangle-exclamation' : 'fa-spinner fa-spin'}`}></i>
+          <i className={`fa-solid ${hasError ? 'fa-triangle-exclamation' : 'fa-spinner vichat-loading-icon'}`}></i>
         </div>
         <h1>{copy.t(hasError ? 'Không thể tải Chat' : 'Đang tải Chat...')}</h1>
         <p>{copy.t(hasError
@@ -2546,7 +2546,7 @@ function TenantSwitchLoadingOverlay({ copy }) {
     <div className="tenant-switch-loading-backdrop" aria-busy="true">
       <section className="tenant-switch-loading-card" role="status" aria-live="polite">
         <div className="tenant-switch-loading-spinner" aria-hidden="true">
-          <i className="fa-solid fa-spinner fa-spin"></i>
+          <i className="fa-solid fa-spinner vichat-loading-icon"></i>
         </div>
         <h2>{copy.t('Đang chuyển công ty...')}</h2>
         <p>{copy.t('Đang chuẩn bị dữ liệu cho công ty mới. Vui lòng chờ...')}</p>
@@ -3335,6 +3335,9 @@ function App() {
   const currentTenantOption = tenantOptions.find(option => String(option.id) === currentTenantId)
     || tenantOptions[0]
     || null;
+  const tenantMenuOptions = currentTenantOption
+    ? [currentTenantOption, ...tenantOptions.filter(option => String(option.id) !== String(currentTenantOption.id))]
+    : tenantOptions;
 
   useEffect(() => {
     if (!canSwitchTenant || workspacePanel !== 'profile') setTenantSwitcherOpen(false);
@@ -12298,7 +12301,7 @@ function App() {
                           {tenantSwitcherOpen && (
                             <div className="tenant-switcher-menu" role="menu" aria-label={appCopy.t('Chọn công ty')}>
                               <div className="tenant-switcher-menu-list">
-                                {tenantOptions.map(option => {
+                                {tenantMenuOptions.map(option => {
                                   const isCurrent = String(option.id) === currentTenantId;
                                   return (
                                     <button
@@ -12330,7 +12333,7 @@ function App() {
                           )}
                         </div>
                         {tenantSwitchNotice && <div className="tenant-switcher-notice" role="alert"><i className="fa-solid fa-triangle-exclamation"></i><span>{tenantSwitchNotice}</span></div>}
-                        {isSwitchingTenant && <div className="tenant-switcher-loading"><i className="fa-solid fa-spinner fa-spin"></i>{appCopy.t('Đang chuyển công ty...')}</div>}
+                        {isSwitchingTenant && <div className="tenant-switcher-loading"><i className="fa-solid fa-spinner vichat-loading-icon"></i>{appCopy.t('Đang chuyển công ty...')}</div>}
                       </div>
                     )}
                   </>

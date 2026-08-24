@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-25-02 - Thu gon bo chuyen cong ty va them hieu ung loading
+
+- Thoi gian: 2026-08-25 00:26 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Web | UI | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; chua commit/deploy
+- Muc tieu: Lam menu chuyen cong ty ngan gon, hien ba dong gan nhat roi cho phep cuon; cac man hinh loading khi tai Chat, F5, chuyen cong ty va maintenance phai co animation ro rang.
+- Pham vi: ChatUI tenant switcher, RootApp fallback loading, session restore, tenant switch overlay, maintenance gear, CSS responsive va source-contract test; khong doi API, session, Tinode, realtime, danh ba hay database.
+- File da thay doi: `src/app/App.jsx`, `src/RootApp.jsx`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`.
+- Noi dung: Dua cong ty hien tai len dau menu, gioi han menu o muc vua hien ba cong ty voi scrollbar doc cho cac cong ty con lai, thu gon control hien tai tren man hinh nho. Them keyframe xoay/pulse/card reveal noi bo cho gear va cac spinner de giao dien van co hieu ung khi Font Awesome CDN cham hoac khong tai.
+- Quyet dinh ky thuat: Chi them state view-derived `tenantMenuOptions` va CSS animation local; khong thay doi luong xac nhan/chuyen tenant, khong them endpoint, cache hay phu thuoc backend.
+- Database/API/cau hinh: Khong migration, schema, API, secret hoac bien moi truong moi.
+- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js src/features/maintenance/chatMaintenanceService.test.js` dat 42/42; `npm run test:frontend` dat 229/229; `npm run lint` exit 0 voi warning legacy da co; `npm run build:production` dat voi canh bao chunk App lon hon 500 KB da co; `git diff --check` dat.
+- Rui ro con lai: Chua UAT visual production tren desktop/mobile voi tai khoan co nhieu cong ty; can hard refresh de nhan bundle moi.
+- Viec tiep theo: UAT menu ba dong/cuon va quan sat animation loading Chat, chuyen cong ty, maintenance; neu can rollback chi recreate ChatUI, khong restart Chatmgt/Tinode/Redis/PostgreSQL.
+- Commit/PR: Chua tao.
+
 ## 2026-08-25-01 - Tach danh ba theo tenant va chan snapshot thieu tenant
 
 - Thoi gian: 2026-08-25 (Asia/Saigon)

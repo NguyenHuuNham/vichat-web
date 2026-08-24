@@ -3518,10 +3518,12 @@ input:checked + .slider:before {
     box-shadow: 0 24px 70px rgba(10, 45, 40, .15);
     text-align: center;
     backdrop-filter: blur(10px);
+    animation: vichatLoadingCardIn .3s ease-out both;
 }
 
 .session-bootstrap-spinner,
 .tenant-switch-loading-spinner {
+    position: relative;
     display: grid;
     width: 58px;
     height: 58px;
@@ -3532,6 +3534,12 @@ input:checked + .slider:before {
     color: var(--vichat-blue);
     background: var(--vichat-blue-light);
     font-size: 25px;
+    animation: vichatLoadingPulse 1.8s ease-in-out infinite;
+}
+
+.session-bootstrap-spinner:not(.error) .vichat-loading-icon,
+.tenant-switch-loading-spinner .vichat-loading-icon {
+    animation: vichatLoadingSpin .85s linear infinite;
 }
 
 .session-bootstrap-spinner.error {
@@ -3581,6 +3589,21 @@ input:checked + .slider:before {
     background: var(--bg-white);
     box-shadow: 0 28px 80px rgba(6, 28, 26, .28);
     text-align: center;
+    animation: vichatLoadingCardIn .3s ease-out both;
+}
+
+@keyframes vichatLoadingCardIn {
+    from { opacity: 0; transform: translateY(10px) scale(.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes vichatLoadingSpin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes vichatLoadingPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(244, 81, 30, .08), 0 12px 28px rgba(18, 59, 57, .08); }
+    50% { box-shadow: 0 0 0 8px rgba(244, 81, 30, .02), 0 16px 34px rgba(18, 59, 57, .14); }
 }
 
 /* Workspace panels stay modal so the active chat remains visible underneath. */
@@ -3631,7 +3654,7 @@ input:checked + .slider:before {
 .tenant-switcher-caption { display: inline-flex; height: 32px; min-width: 0; align-items: center; gap: 5px; padding: 0 3px; border: 0; border-radius: 0; color: var(--text-muted); background: transparent; font-size: 10px; font-weight: 800; letter-spacing: .02em; white-space: nowrap; }
 .tenant-switcher-caption i { color: var(--vichat-blue); font-size: 12px; }
 .tenant-switcher-control { position: relative; display: flex; min-width: 0; align-items: center; }
-.tenant-switcher-current { display: inline-flex; width: min(190px, 27vw); max-width: 190px; min-width: 118px; height: 30px; align-items: center; gap: 7px; padding: 3px 8px 3px 4px; border: 1px solid rgba(18, 59, 57, .2); border-radius: 8px; color: var(--text-body); background: var(--bg-white); font: inherit; text-align: left; cursor: default; transition: var(--transition-fast); }
+.tenant-switcher-current { display: inline-flex; width: min(180px, 25vw); max-width: 180px; min-width: 114px; height: 30px; align-items: center; gap: 7px; padding: 3px 8px 3px 4px; border: 1px solid rgba(18, 59, 57, .2); border-radius: 8px; color: var(--text-body); background: var(--bg-white); font: inherit; text-align: left; cursor: default; transition: var(--transition-fast); }
 .tenant-switcher-current:hover { border-color: rgba(18, 59, 57, .3); background: var(--vichat-blue-light); }
 .tenant-switcher-current:focus-visible { outline: 3px solid rgba(244, 81, 30, .14); outline-offset: 2px; }
 .tenant-switcher-current-copy { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; gap: 0; }
@@ -3645,7 +3668,7 @@ input:checked + .slider:before {
 .tenant-switcher-toggle:hover:not(:disabled), .tenant-switcher-toggle[aria-expanded="true"] { border-color: var(--vichat-blue); background: var(--vichat-blue-light); }
 .tenant-switcher-toggle:focus-visible { outline: 3px solid rgba(244, 81, 30, .14); outline-offset: 2px; }
 .tenant-switcher-toggle:disabled { cursor: default; opacity: .6; }
-.tenant-switcher-menu { position: absolute; top: calc(100% + 7px); right: 0; z-index: 95; width: min(320px, calc(100vw - 32px)); max-height: min(360px, calc(100vh - 96px)); box-sizing: border-box; overflow-y: auto; padding: 6px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-white); box-shadow: 0 16px 34px rgba(6, 28, 26, .2); overscroll-behavior: contain; }
+.tenant-switcher-menu { position: absolute; top: calc(100% + 7px); right: 0; z-index: 95; width: min(320px, calc(100vw - 32px)); max-height: min(158px, calc(100vh - 96px)); box-sizing: border-box; overflow-y: auto; padding: 6px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-white); box-shadow: 0 16px 34px rgba(6, 28, 26, .2); overscroll-behavior: contain; scrollbar-gutter: stable; }
 .tenant-switcher-menu-list { display: flex; flex-direction: column; gap: 4px; }
 .tenant-switcher-menu-option { position: relative; display: flex; width: 100%; min-height: 44px; box-sizing: border-box; align-items: center; gap: 9px; padding: 5px 34px 5px 6px; border: 1px solid var(--border-color); border-radius: 9px; color: var(--text-body); background: var(--bg-app); font: inherit; text-align: left; cursor: pointer; transition: var(--transition-fast); }
 .tenant-switcher-menu-option:hover:not(:disabled), .tenant-switcher-menu-option:focus-visible { border-color: var(--vichat-blue); background: var(--vichat-blue-light); transform: translateY(-1px); outline: none; }
@@ -3661,7 +3684,7 @@ input:checked + .slider:before {
 .tenant-switcher-menu-option-copy small { color: var(--text-muted); font-size: 10px; line-height: 1.2; }
 .tenant-switcher-menu-check { position: absolute; top: 50%; right: 9px; display: grid; width: 16px; height: 16px; place-items: center; border: 2px solid var(--bg-white); border-radius: 50%; color: var(--status-online); background: var(--bg-white); font-size: 8px; transform: translateY(-50%); }
 .tenant-switcher-loading, .tenant-switcher-notice { position: absolute; top: calc(100% + 8px); right: 0; z-index: 96; display: flex; width: min(300px, calc(100vw - 32px)); box-sizing: border-box; align-items: flex-start; gap: 7px; padding: 8px 9px; border: 1px solid var(--border-color); border-radius: 9px; color: var(--text-muted); background: var(--bg-white); box-shadow: 0 12px 24px rgba(6, 28, 26, .14); font-size: 11px; line-height: 1.4; }
-.tenant-switcher-loading i { color: var(--vichat-blue); }
+.tenant-switcher-loading i { color: var(--vichat-blue); animation: vichatLoadingSpin .85s linear infinite; }
 .tenant-switcher-notice { color: #9a3412; background: #fff3ed; }
 .tenant-switcher-notice i { margin-top: 2px; }
 .workspace-search-row { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid var(--border-color); border-radius: 10px; color: var(--text-muted); background: var(--bg-app); }
@@ -4233,6 +4256,7 @@ input:checked + .slider:before {
     .workspace-logout-button span { display: none; }
     .tenant-switcher { flex: 0 0 auto; }
     .tenant-switcher-caption span { display: none; }
+    .tenant-switcher-current { width: min(180px, calc(100vw - 154px)); min-width: 0; }
 }
 
 .conv-avatar.chatbot-avatar,
@@ -6531,6 +6555,11 @@ html[data-theme="dark"] select option { color: var(--text-main); background: var
     background: linear-gradient(145deg, #fff6ee, #e7f5ef);
     box-shadow: 0 16px 34px rgba(18, 59, 57, .12);
     font-size: 43px;
+    animation: vichatLoadingPulse 1.8s ease-in-out infinite;
+}
+
+.chat-maintenance-gear .vichat-loading-icon {
+    animation: vichatLoadingSpin 1.05s linear infinite;
 }
 
 .chat-maintenance-card h1 {

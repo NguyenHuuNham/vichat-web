@@ -215,10 +215,15 @@ test('requires explicit confirmation before switching tenants', () => {
   assert.match(stylesSource, /\.tenant-switcher-toggle \{/);
   assert.match(stylesSource, /\.tenant-switcher-menu-list \{ display: flex; flex-direction: column;/);
   assert.match(stylesSource, /\.tenant-switcher-menu-option \{/);
-  assert.match(stylesSource, /max-height: min\(360px, calc\(100vh - 96px\)\)/);
+  assert.match(stylesSource, /max-height: min\(158px, calc\(100vh - 96px\)\)/);
+  assert.match(stylesSource, /scrollbar-gutter: stable/);
   assert.match(appSource, /data-tenant-current=\{isCurrent \? 'true' : 'false'\}/);
   assert.match(appSource, /TenantSwitchLoadingOverlay/);
   assert.match(appSource, /Đang chuyển công ty\.\.\./);
+  assert.match(appSource, /tenantMenuOptions/);
+  assert.match(appSource, /vichat-loading-icon/);
+  assert.match(stylesSource, /@keyframes vichatLoadingSpin/);
+  assert.match(stylesSource, /@keyframes vichatLoadingPulse/);
   assert.match(appSource, /reloadStarted/);
   assert.match(stylesSource, /\.tenant-switch-loading-backdrop \{/);
 });
