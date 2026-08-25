@@ -12319,39 +12319,33 @@ function App() {
                         <span className="tenant-switcher-caption"><i className="fa-solid fa-building" aria-hidden="true"></i><span>{appCopy.t('Công ty')}</span></span>
                         <div className="tenant-switcher-control">
                           {currentTenantOption && (
-                            <button
-                              type="button"
-                              className="tenant-switcher-current"
-                              title={currentTenantOption.name}
-                              aria-label={`${appCopy.t('Công ty hiện tại')}: ${currentTenantOption.name}`}
-                              aria-expanded={tenantSwitcherOpen}
-                              aria-haspopup="menu"
-                              onClick={() => setTenantSwitcherOpen(previous => !previous)}
-                              disabled={isSwitchingTenant}
-                            >
+                            <div className="tenant-switcher-current" title={currentTenantOption.name}>
                               <span className="tenant-switcher-current-icon">
                                 <TenantLogo src={currentTenantOption.logo} name={currentTenantOption.name} version={currentTenantOption.logoVersion} />
                               </span>
                               <span className="tenant-switcher-current-copy">
-                                <strong>{currentTenantOption.name}</strong>
+                                <span className="tenant-switcher-current-name">
+                                  <strong>{currentTenantOption.name}</strong>
+                                  <button
+                                    type="button"
+                                    className="tenant-switcher-toggle"
+                                    title={appCopy.t('Chọn công ty')}
+                                    aria-label={appCopy.t('Chọn công ty')}
+                                    aria-expanded={tenantSwitcherOpen}
+                                    aria-controls="tenant-switcher-menu"
+                                    aria-haspopup="menu"
+                                    onClick={() => setTenantSwitcherOpen(previous => !previous)}
+                                    disabled={isSwitchingTenant}
+                                  >
+                                    <i className={`fa-solid ${tenantSwitcherOpen ? 'fa-chevron-up' : 'fa-chevron-down'}`} aria-hidden="true"></i>
+                                  </button>
+                                </span>
                                 <small>{appCopy.t('Đang dùng')}</small>
                               </span>
-                            </button>
+                            </div>
                           )}
-                          <button
-                            type="button"
-                            className="tenant-switcher-toggle"
-                            title={appCopy.t('Chọn công ty')}
-                            aria-label={appCopy.t('Chọn công ty')}
-                            aria-expanded={tenantSwitcherOpen}
-                            aria-haspopup="menu"
-                            onClick={() => setTenantSwitcherOpen(previous => !previous)}
-                            disabled={isSwitchingTenant}
-                          >
-                            <i className={`fa-solid ${tenantSwitcherOpen ? 'fa-chevron-up' : 'fa-chevron-down'}`} aria-hidden="true"></i>
-                          </button>
                           {tenantSwitcherOpen && (
-                            <div className="tenant-switcher-menu" role="menu" aria-label={appCopy.t('Chọn công ty')}>
+                            <div id="tenant-switcher-menu" className="tenant-switcher-menu" role="menu" aria-label={appCopy.t('Chọn công ty')}>
                               <div className="tenant-switcher-menu-list">
                                 {tenantMenuOptions.map(option => {
                                   const isCurrent = String(option.id) === currentTenantId;

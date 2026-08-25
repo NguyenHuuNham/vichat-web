@@ -188,6 +188,14 @@ test('keeps only safe active tenant options and switches without logout', () => 
   assert.match(appSource, /<TenantLogo src=\{currentTenantOption\.logo\}/);
   assert.match(appSource, /tenant-switcher-current-copy/);
   assert.match(appSource, /tenant-switcher-toggle/);
+  const tenantSwitcherUiSource = appSource.split('{canSwitchTenant && (')[1].split('{tenantSwitchNotice &&')[0];
+  const tenantToggleSource = tenantSwitcherUiSource.split('className="tenant-switcher-toggle"')[1].split('</button>')[0];
+  assert.match(tenantSwitcherUiSource, /<div className="tenant-switcher-current"/);
+  assert.match(tenantSwitcherUiSource, /tenant-switcher-current-name/);
+  assert.equal((tenantSwitcherUiSource.match(/setTenantSwitcherOpen\(previous => !previous\)/g) || []).length, 1);
+  assert.match(tenantToggleSource, /aria-controls="tenant-switcher-menu"/);
+  assert.match(tenantToggleSource, /onClick=\{\(\) => setTenantSwitcherOpen\(previous => !previous\)\}/);
+  assert.match(tenantSwitcherUiSource, /id="tenant-switcher-menu"/);
   assert.match(appSource, /const \[tenantSwitcherOpen, setTenantSwitcherOpen\] = useState\(false\)/);
   assert.match(appSource, /data-tenant-name=\{option\.name\}/);
   assert.match(appSource, /tenant-switcher-menu-list/);

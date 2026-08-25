@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-25-04 - Dua mui ten chuyen cong ty sat ten hien tai
+
+- Thoi gian: 2026-08-25 12:59 (Asia/Saigon)
+- Loai: Sua loi | Web | UI | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; cho commit va deploy production
+- Muc tieu: Dat mui ten chuyen cong ty ngay ben canh ten cong ty hien tai va chi cho phep mo danh sach tenant khi bam dung icon nay.
+- Pham vi: ChatUI profile tenant switcher, responsive/dark-theme CSS, source-contract test va production bundle; khong doi modal xac nhan, API switch tenant, session, logout, Tinode, avatar nhom, read cursor, unread hoac notification.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Chuyen logo/ten/trang thai cong ty hien tai tu button thanh block hien thi khong click; dua chevron 18 px vao cung dong ten cong ty. Chi nut `tenant-switcher-toggle` con handler mo/dong menu, co `aria-controls` tro den menu; click logo, ten hoac trang thai khong con mo danh sach.
+- Quyet dinh ky thuat: Giu nguyen `tenantSwitcherOpen`, dong menu khi click ngoai/Escape, danh sach cuon, `requestTenantSwitch(option)` va modal xac nhan. Thay doi chi o lop presentation/interaction de tranh anh huong luong tenant, session va realtime hien co; khong cap nhat tai lieu kien truc vi ranh gioi dich vu va luong du lieu khong doi.
+- Database/API/cau hinh: Khong migration, endpoint, schema, secret hoac bien moi truong moi.
+- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js` dat 40/40; `npm run test:frontend` dat 234/234; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi entry `index-_VUBUus4.js`, CSS `index-Cl2OiDpd.css` va canh bao chunk `App` lon hon 500 KB da co; `git diff --check` dat.
+- Rui ro con lai: Chua UAT pixel-level bang browser vi cong cu browser khong duoc expose trong phien; can hard refresh va kiem tra desktop/mobile voi tai khoan co nhieu cong ty.
+- Viec tiep theo: Commit, push va deploy rieng ChatUI; sau deploy xac minh health, public bundle, menu chevron va container backend/stateful giu nguyen.
+- Commit/PR: Chua tao.
+
 ## 2026-08-25-03 - Bao toan avatar nhom va cursor da doc Tinode
 
 - Thoi gian: 2026-08-25 01:18 (Asia/Saigon)

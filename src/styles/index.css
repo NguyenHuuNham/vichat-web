@@ -3654,17 +3654,16 @@ input:checked + .slider:before {
 .tenant-switcher-caption { display: inline-flex; height: 32px; min-width: 0; align-items: center; gap: 5px; padding: 0 3px; border: 0; border-radius: 0; color: var(--text-muted); background: transparent; font-size: 10px; font-weight: 800; letter-spacing: .02em; white-space: nowrap; }
 .tenant-switcher-caption i { color: var(--vichat-blue); font-size: 12px; }
 .tenant-switcher-control { position: relative; display: flex; min-width: 0; align-items: center; }
-.tenant-switcher-current { display: inline-flex; width: min(180px, 25vw); max-width: 180px; min-width: 114px; height: 30px; align-items: center; gap: 7px; padding: 3px 8px 3px 4px; border: 1px solid rgba(18, 59, 57, .2); border-radius: 8px; color: var(--text-body); background: var(--bg-white); font: inherit; text-align: left; cursor: default; transition: var(--transition-fast); }
-.tenant-switcher-current:hover { border-color: rgba(18, 59, 57, .3); background: var(--vichat-blue-light); }
-.tenant-switcher-current:focus-visible { outline: 3px solid rgba(244, 81, 30, .14); outline-offset: 2px; }
+.tenant-switcher-current { display: inline-flex; width: min(180px, 25vw); max-width: 180px; min-width: 114px; height: 30px; align-items: center; gap: 7px; padding: 3px 6px 3px 4px; border: 1px solid rgba(18, 59, 57, .2); border-radius: 8px; color: var(--text-body); background: var(--bg-white); font: inherit; text-align: left; cursor: default; }
 .tenant-switcher-current-copy { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; gap: 0; }
 .tenant-switcher-current-copy strong, .tenant-switcher-current-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tenant-switcher-current-copy strong { color: var(--text-main); font-size: 11px; line-height: 1.2; }
+.tenant-switcher-current-name { display: flex; min-width: 0; align-items: center; gap: 3px; }
+.tenant-switcher-current-copy strong { min-width: 0; color: var(--text-main); font-size: 11px; line-height: 1.2; }
 .tenant-switcher-current-copy small { color: var(--text-muted); font-size: 9px; line-height: 1.15; }
 .tenant-switcher-current-icon { display: grid; width: 23px; height: 23px; flex: 0 0 23px; place-items: center; overflow: hidden; border-radius: 6px; color: var(--vichat-blue); background: var(--bg-app); }
 .tenant-switcher-current-icon img { display: block; width: 100%; height: 100%; object-fit: contain; border-radius: inherit; }
 .tenant-switcher-current-icon > i { font-size: 11px; }
-.tenant-switcher-toggle { display: grid; width: 28px; height: 30px; flex: 0 0 28px; place-items: center; padding: 0; border: 1px solid rgba(18, 59, 57, .2); border-radius: 8px; color: var(--vichat-blue); background: var(--bg-white); font: inherit; font-size: 10px; cursor: pointer; transition: var(--transition-fast); }
+.tenant-switcher-toggle { display: grid; width: 18px; height: 18px; flex: 0 0 18px; place-items: center; padding: 0; border: 0; border-radius: 5px; color: var(--vichat-blue); background: transparent; font: inherit; font-size: 9px; cursor: pointer; transition: var(--transition-fast); }
 .tenant-switcher-toggle:hover:not(:disabled), .tenant-switcher-toggle[aria-expanded="true"] { border-color: var(--vichat-blue); background: var(--vichat-blue-light); }
 .tenant-switcher-toggle:focus-visible { outline: 3px solid rgba(244, 81, 30, .14); outline-offset: 2px; }
 .tenant-switcher-toggle:disabled { cursor: default; opacity: .6; }
@@ -6382,14 +6381,12 @@ html[data-theme="dark"] .workspace-logout-button { border-color: rgba(224, 68, 4
 html[data-theme="dark"] .workspace-logout-button:hover { background: #4b3030; }
 html[data-theme="dark"] .tenant-switcher-caption { border-color: #3b5659; color: #aabfc0; background: #2b3c42; }
 html[data-theme="dark"] .tenant-switcher-current { border-color: #3b5659; color: #9ddbd2; background: #2b3c42; }
-html[data-theme="dark"] .tenant-switcher-current:hover:not(:disabled),
-html[data-theme="dark"] .tenant-switcher-current[aria-expanded="true"] { border-color: #79c7bd; background: #29494b; }
 html[data-theme="dark"] .tenant-switcher-current-icon { color: #9ddbd2; background: #21383b; }
 html[data-theme="dark"] .tenant-switcher-current-copy strong,
 html[data-theme="dark"] .tenant-switcher-menu-option-copy strong { color: #e3f1ee; }
 html[data-theme="dark"] .tenant-switcher-current-copy small,
 html[data-theme="dark"] .tenant-switcher-menu-option-copy small { color: #aabfc0; }
-html[data-theme="dark"] .tenant-switcher-toggle { border-color: #3b5659; color: #9ddbd2; background: #2b3c42; }
+html[data-theme="dark"] .tenant-switcher-toggle { color: #9ddbd2; background: transparent; }
 html[data-theme="dark"] .tenant-switcher-toggle:hover:not(:disabled),
 html[data-theme="dark"] .tenant-switcher-toggle[aria-expanded="true"] { border-color: #79c7bd; background: #29494b; }
 html[data-theme="dark"] .tenant-switcher-menu { border-color: #3b5659; background: #27363c; }
