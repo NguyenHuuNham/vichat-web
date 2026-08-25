@@ -2613,13 +2613,25 @@ export const tinodeClient = {
   },
 
   async sendSticker(topicName, sticker, clientId, metadata = {}) {
-    if (!sticker?.src || !sticker?.id || !sticker?.packId) {
+    if ((!sticker?.src && !sticker?.blob) || !sticker?.id || !sticker?.packId) {
       throw new Error('Sticker không hợp lệ.');
     }
-    const response = await fetch(sticker.src);
-    if (!response.ok) throw new Error('Không thể tải asset sticker.');
-    const blob = await response.blob();
-    const file = new File([blob], `${sticker.id}.png`, { type: blob.type || sticker.mime || 'image/png' });
+    let blob = sticker.blob && typeof sticker.blob.slice === 'function' ? sticker.blob : null;
+    if (!blob) {
+      const response = await fetch(sticker.src);
+      if (!response.ok) throw new Error('Không thể tải asset sticker.');
+      blob = await response.blob();
+    }
+    if (!Number(blob.size) || !/^image\/(?:avif|gif|jpeg|png|webp)$/i.test(String(blob.type || sticker.mime || ''))) {
+      throw new Error('Sticker không hợp lệ.');
+    }
+    if (Number(blob.size) > 2 * 1024 * 1024) {
+      throw new Error('Mỗi sticker phải nhỏ hơn hoặc bằng 2 MB.');
+    }
+    const mime = blob.type || sticker.mime || 'image/png';
+    const extension = mime.split('/')[1]?.split('+')[0]?.replace('jpeg', 'jpg') || 'png';
+    const fileName = String(sticker.fileName || `${sticker.id}.${extension}`).slice(0, 140);
+    const file = new File([blob], fileName, { type: mime });
     return this.sendFile(topicName, file, clientId, {
       ...metadata,
       sticker: {

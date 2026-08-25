@@ -8935,7 +8935,7 @@ function App() {
 
   const handleSendSticker = sticker => {
     if (!allowDirectMessagingAttempt(activeChat)) return;
-    if (!sticker?.src || !sticker?.id || !sticker?.packId) {
+    if ((!sticker?.src && !sticker?.blob) || !sticker?.id || !sticker?.packId) {
       setChatError('Sticker không hợp lệ.');
       return;
     }
@@ -8952,6 +8952,23 @@ function App() {
       return;
     }
     setChatError('');
+    const stickerBlob = sticker.blob && typeof sticker.blob.slice === 'function' ? sticker.blob : null;
+    const optimisticStickerUrl = stickerBlob && typeof URL !== 'undefined' && URL.createObjectURL
+      ? URL.createObjectURL(stickerBlob)
+      : '';
+    const stickerSource = optimisticStickerUrl || sticker.src;
+    const stickerMime = String(sticker.mime || stickerBlob?.type || 'image/png');
+    const stickerExtension = stickerMime.split('/')[1]?.split('+')[0]?.replace('jpeg', 'jpg') || 'png';
+    const stickerMetadata = {
+      id: String(sticker.id).slice(0, 80),
+      stickerId: String(sticker.stickerId || sticker.id).slice(0, 80),
+      packId: String(sticker.packId).slice(0, 80),
+      label: String(sticker.label || 'Sticker').slice(0, 120),
+      version: String(sticker.version || '1').slice(0, 24),
+      mime: stickerMime,
+      src: stickerSource,
+      custom: sticker.custom === true,
+    };
     const replyMeta = replyingTo ? { ...replyingTo } : null;
     const sharedReplyMeta = replyMetadataForTransport(replyMeta, directoryAccounts);
     const timeStr = getTimeString();
@@ -8963,14 +8980,14 @@ function App() {
       senderId: currentUser?.id || currentUser?.uid,
       senderName: currentUser?.name,
       avatar: currentUser?.avatar,
-      sticker: { ...sticker },
-      image: sticker.src,
+      sticker: stickerMetadata,
+      image: stickerSource,
       file: {
-        name: `${sticker.id}.png`,
-        mime: sticker.mime || 'image/png',
+        name: String(sticker.fileName || `${sticker.id}.${stickerExtension}`).slice(0, 140),
+        mime: stickerMime,
         ext: 'sticker',
         size: 'Sticker',
-        url: sticker.src,
+        url: stickerSource,
       },
       replyTo: replyMeta,
       time: timeStr,
@@ -9016,8 +9033,13 @@ function App() {
           failed: false,
           seq: newMsg.seq || result.ctrl?.params?.seq,
           image: result.file.url,
+          sticker: {
+            ...newMsg.sticker,
+            src: result.file.url,
+          },
           file: {
             ...newMsg.file,
+            name: result.file.name || newMsg.file.name,
             url: result.file.url,
             mime: result.file.mime || newMsg.file.mime,
           },
@@ -9033,9 +9055,11 @@ function App() {
             },
           };
         });
+        if (optimisticStickerUrl) window.setTimeout(() => URL.revokeObjectURL(optimisticStickerUrl), 0);
       })
       .catch(error => {
         const blocked = handleDirectMessageBlockedError(error, roomId);
+        if (optimisticStickerUrl) URL.revokeObjectURL(optimisticStickerUrl);
         setConversations(previous => {
           const currentRoom = previous[roomId];
           if (!currentRoom) return previous;

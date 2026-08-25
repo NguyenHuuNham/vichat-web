@@ -4,7 +4,10 @@ import {
   STICKER_ITEMS,
   STICKER_PACKS,
   filterStickers,
+  forgetStickerId,
+  readRecentStickerIds,
   recentStickerStorageKey,
+  rememberStickerId,
   stickerById,
   stickerPackById,
   suggestStickersForText,
@@ -45,4 +48,24 @@ test('suggests stickers from the current message without changing the catalog', 
 test('scopes recent sticker storage by account', () => {
   assert.equal(recentStickerStorageKey('account-1'), 'vichat.stickers.recent.v1:account-1');
   assert.notEqual(recentStickerStorageKey('account-1'), recentStickerStorageKey('account-2'));
+});
+
+test('keeps custom sticker ids in recent history and removes them with the library item', () => {
+  const previousWindow = globalThis.window;
+  const values = new Map();
+  globalThis.window = {
+    localStorage: {
+      getItem(key) { return values.get(key) || null; },
+      setItem(key, value) { values.set(key, value); },
+    },
+  };
+  try {
+    assert.deepEqual(rememberStickerId('account-1', 'custom-one'), ['custom-one']);
+    assert.deepEqual(rememberStickerId('account-1', 'positive-1'), ['positive-1', 'custom-one']);
+    assert.deepEqual(readRecentStickerIds('account-1'), ['positive-1', 'custom-one']);
+    assert.deepEqual(forgetStickerId('account-1', 'custom-one'), ['positive-1']);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
 });

@@ -505,12 +505,17 @@ export function recentStickerStorageKey(scope = 'anonymous') {
   return `${RECENT_STORAGE_PREFIX}:${String(scope || 'anonymous')}`;
 }
 
+export function isRememberedStickerId(id) {
+  const stickerId = String(id || '').trim();
+  return stickerId.length <= 80 && (Boolean(stickerById(stickerId)) || /^custom-[a-z0-9-]+$/i.test(stickerId));
+}
+
 export function readRecentStickerIds(scope = 'anonymous') {
   if (typeof window === 'undefined') return [];
   try {
     const value = JSON.parse(window.localStorage.getItem(recentStickerStorageKey(scope)) || '[]');
     return Array.isArray(value)
-      ? value.map(id => String(id || '')).filter(id => Boolean(stickerById(id))).slice(0, 24)
+      ? value.map(id => String(id || '')).filter(isRememberedStickerId).slice(0, 24)
       : [];
   } catch {
     return [];
@@ -519,12 +524,24 @@ export function readRecentStickerIds(scope = 'anonymous') {
 
 export function rememberStickerId(scope, id) {
   const stickerId = String(id || '');
-  if (!stickerById(stickerId) || typeof window === 'undefined') return readRecentStickerIds(scope);
+  if (!isRememberedStickerId(stickerId) || typeof window === 'undefined') return readRecentStickerIds(scope);
   const next = [stickerId, ...readRecentStickerIds(scope).filter(value => value !== stickerId)].slice(0, 24);
   try {
     window.localStorage.setItem(recentStickerStorageKey(scope), JSON.stringify(next));
   } catch {
     // Recent stickers are optional and must never block sending.
+  }
+  return next;
+}
+
+export function forgetStickerId(scope, id) {
+  if (typeof window === 'undefined') return [];
+  const stickerId = String(id || '');
+  const next = readRecentStickerIds(scope).filter(value => value !== stickerId);
+  try {
+    window.localStorage.setItem(recentStickerStorageKey(scope), JSON.stringify(next));
+  } catch {
+    // Removing a recent shortcut is optional and must not block library cleanup.
   }
   return next;
 }

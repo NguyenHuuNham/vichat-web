@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-25-12 - Them kho sticker ca nhan tren web
+
+- Thoi gian: 2026-08-25 23:08 (Asia/Saigon)
+- Loai: Tinh nang | Web | UX | Realtime | Luu tru cuc bo | Bao mat | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; chua commit va chua deploy production
+- Muc tieu: Them muc `Sticker cua toi` de moi user co the tai mot/nhieu anh sticker rieng, dung lai sau F5 va gui nhu sticker co san ma khong thay doi cac luong chat khac.
+- Pham vi: Sticker picker ChatUI web, kho Blob IndexedDB theo tai khoan, recent sticker, optimistic preview, Tinode sticker upload/header, i18n, light/dark/responsive CSS, test va tai lieu. Giu nguyen catalog PuppySoft, emoji, sticker suggestion, direct/group/reply/block, backend va khong sua file nao trong `mobile/`.
+- File da thay doi: `src/features/chat/components/StickerPicker.jsx`, `src/features/chat/services/customStickerStore.js`, `src/features/chat/services/customStickerStore.test.js`, `src/features/chat/services/stickerCatalog.js`, `src/features/chat/services/stickerCatalog.test.js`, `src/features/chat/services/tinodeClient.js`, `src/app/App.jsx`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `package.json`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Picker co them pack `Sticker cua toi`, nut upload nhieu anh, trang thai dang luu/doc, so dem kho, tim kiem, thumbnail, xoa co xac nhan va thong bao loi than thien. Ho tro PNG/JPG/WEBP/GIF/AVIF toi da 2 MB moi anh, 48 sticker va 32 MB moi tai khoan/trinh duyet; bo qua file trung dua tren ten/MIME/kich thuoc/lastModified. Sticker custom duoc dua vao `Gan day`, xoa khoi kho cung xoa shortcut recent nhung khong xoa tin nhan da gui.
+- Quyet dinh ky thuat: Blob goc duoc luu trong IndexedDB `vichat-custom-stickers.v1` theo viewer; khong luu data URL vao localStorage. Picker tao/revoke object URL theo vong doi component, con khi bam gui App tao preview optimistic rieng va `tinodeClient.sendSticker` doc Blob truc tiep, nen dong picker khong lam hong upload dang chay. Tinode tiep tuc upload nhu image attachment va dung header `x-vichat-sticker` cu; receiver, history va mobile nhan cung format cu. Chi chap nhan raster MIME co allow-list va rang buoc count/size de tranh SVG active content va browser storage khong gioi han.
+- Database/API/cau hinh: Khong migration, endpoint, schema server, dependency, secret hay bien moi truong moi. Chi tao IndexedDB origin-local tren browser web; kho custom khong dong bo cross-device va khong duoc Chatmgt luu. Mobile khong co UI upload moi.
+- Kiem thu: Target custom sticker/catalog/i18n dat 30/30; `npm run test:frontend` dat 272/272; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` dat voi entry `index-DPLEK5dE.js`, App `App-fT_kPmNr.js`, CSS `index-TRVrL6Xj.css` va canh bao chunk App lon hon 500 KB co san; `git diff --check` dat; `git diff -- mobile` sach. Browser skill da duoc doc nhung phien nay khong expose cong cu dieu khien browser, nen chua tu dong UAT file picker/IndexedDB truc quan.
+- Rui ro con lai: Can UAT tren Chrome/Edge/Firefox that cho upload nhieu anh, GIF dong, file sai loai/qua gioi han, F5, doi tai khoan, xoa va gui direct/group/reply/block. Quota IndexedDB tuy browser; khi bi tu choi UI se giu luong chat cu va hien loi, khong tu xoa catalog hay tin nhan.
+- Viec tiep theo: Chay gate diff cuoi, commit/push `master`, deploy/recreate rieng `chat`, xac minh health/public bundle va hard refresh UAT.
+- Commit/PR: Chua tao.
+
 ## 2026-08-25-11 - Giu anh va tep paste o ban nhap cho den khi user tu gui
 
 - Thoi gian: 2026-08-25 22:23 (Asia/Saigon); deploy production 22:35-22:44 (Asia/Saigon)

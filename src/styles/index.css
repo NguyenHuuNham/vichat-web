@@ -5137,6 +5137,67 @@ input:checked + .slider:before {
     font-size: 12px;
 }
 
+.custom-sticker-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 10px 8px;
+    padding: 9px 10px;
+    border: 1px solid rgba(244, 81, 30, .18);
+    border-radius: 12px;
+    background:
+        radial-gradient(circle at 12% 0%, rgba(255, 190, 130, .24), transparent 42%),
+        linear-gradient(135deg, #fff8f2 0%, #f5fbf8 100%);
+}
+
+.custom-sticker-toolbar-copy {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.custom-sticker-toolbar-copy strong { color: var(--text-main); font-size: 11px; }
+.custom-sticker-toolbar-copy small { color: var(--text-muted); font-size: 9.5px; line-height: 1.35; }
+
+.custom-sticker-upload-button {
+    display: inline-flex;
+    min-height: 32px;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 9px;
+    color: #fff;
+    background: linear-gradient(135deg, #f4511e, #e06b2d);
+    box-shadow: 0 6px 14px rgba(244, 81, 30, .2);
+    font: inherit;
+    font-size: 10px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.custom-sticker-upload-button:hover,
+.custom-sticker-upload-button:focus-visible { outline: none; filter: brightness(.97); transform: translateY(-1px); }
+.custom-sticker-upload-button:disabled { box-shadow: none; cursor: not-allowed; opacity: .56; transform: none; }
+
+.custom-sticker-notice {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 10px 8px;
+    padding: 7px 9px;
+    border-radius: 9px;
+    font-size: 10px;
+    line-height: 1.35;
+}
+
+.custom-sticker-notice.success { color: #17633b; background: #eaf8f0; }
+.custom-sticker-notice.error { color: #a43131; background: #fff0f0; }
+
 .sticker-picker-body {
     min-height: 0;
     overflow-y: auto;
@@ -5194,16 +5255,82 @@ input:checked + .slider:before {
     object-fit: contain;
 }
 
+.custom-sticker-option {
+    position: relative;
+    aspect-ratio: 1 / .86;
+    min-width: 0;
+}
+
+.custom-sticker-send {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    place-items: center;
+    padding: 5px;
+    border: 1px solid rgba(244, 81, 30, .16);
+    border-radius: 11px;
+    background:
+        linear-gradient(135deg, rgba(255, 248, 242, .96), rgba(241, 249, 246, .92));
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease, transform .15s ease;
+}
+
+.custom-sticker-send:hover,
+.custom-sticker-send:focus-visible {
+    border-color: rgba(244, 81, 30, .38);
+    outline: none;
+    background: var(--vichat-blue-light);
+    transform: translateY(-1px);
+}
+
+.custom-sticker-send img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.custom-sticker-delete {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    display: grid;
+    width: 20px;
+    height: 20px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid rgba(164, 49, 49, .16);
+    border-radius: 50%;
+    color: #9c3535;
+    background: rgba(255, 255, 255, .92);
+    box-shadow: 0 3px 8px rgba(56, 31, 24, .12);
+    font-size: 9px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .15s ease, transform .15s ease, background .15s ease;
+}
+
+.custom-sticker-option:hover .custom-sticker-delete,
+.custom-sticker-delete:focus-visible { opacity: 1; }
+.custom-sticker-delete:hover { background: #fff0f0; transform: scale(1.06); }
+.custom-sticker-delete:disabled { cursor: wait; opacity: .7; }
+
 .sticker-empty {
     display: grid;
     grid-column: 1 / -1;
     min-height: 96px;
     place-items: center;
+    align-content: center;
+    gap: 6px;
     padding: 16px;
     color: var(--text-muted);
     font-size: 12px;
     text-align: center;
 }
+
+.sticker-empty > i { color: var(--vichat-blue); font-size: 24px; }
+.sticker-empty small { max-width: 230px; font-size: 9.5px; line-height: 1.4; }
 
 .sticker-pack-tabs {
     display: flex;
@@ -5243,6 +5370,9 @@ input:checked + .slider:before {
 .sticker-pack-tabs button > i { position: absolute; right: 2px; bottom: 2px; display: grid; width: 14px; height: 14px; place-items: center; border-radius: 50%; color: #fff; background: var(--sticker-pack-color, var(--vichat-blue)); font-size: 8px; }
 .sticker-pack-tabs button:first-child > i { position: static; width: auto; height: auto; color: var(--vichat-blue); background: transparent; font-size: 15px; }
 .sticker-pack-tabs button:first-child { color: var(--vichat-blue); }
+.sticker-pack-tabs button.custom-sticker-pack-tab { overflow: visible; color: #f4511e; }
+.sticker-pack-tabs button.custom-sticker-pack-tab > i { position: static; width: auto; height: auto; color: #f4511e; background: transparent; font-size: 16px; }
+.custom-sticker-pack-plus { position: absolute; right: -2px; bottom: -2px; display: grid; width: 16px; height: 16px; place-items: center; border: 2px solid var(--bg-white); border-radius: 50%; color: #fff; background: #f4511e; font-size: 7px; }
 .sticker-pack-tab-preview { display: grid; width: 31px; height: 31px; place-items: center; }
 .sticker-pack-tab-preview img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .sticker-emoji-grid { display: grid; flex: 1 1 auto; min-height: 0; max-height: min(390px, calc(100vh - 220px)); overflow-y: auto; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; padding: 13px; scrollbar-width: thin; }
@@ -5266,6 +5396,9 @@ input:checked + .slider:before {
 
 @media (max-width: 576px) {
     .sticker-picker-panel { left: -4px; width: min(350px, calc(100vw - 24px)); }
+    .custom-sticker-toolbar { align-items: stretch; flex-direction: column; gap: 7px; }
+    .custom-sticker-upload-button { width: 100%; }
+    .custom-sticker-delete { opacity: 1; }
     .sticker-emoji-grid { max-height: min(360px, calc(100vh - 210px)); }
     .sticker-message-content { width: min(190px, calc(100vw - 96px)); }
     .sticker-message-stack { max-width: 190px; }
@@ -6734,10 +6867,17 @@ html[data-theme="dark"] .message-mention { color: #8ec5ff; }
 html[data-theme="dark"] .sticker-picker-panel { border-color: #3b4b54; background: #202c32; box-shadow: 0 16px 38px rgba(0, 0, 0, .34); }
 html[data-theme="dark"] .sticker-picker-tabs,
 html[data-theme="dark"] .sticker-pack-tabs { border-color: #3b4b54; }
+html[data-theme="dark"] .custom-sticker-toolbar { border-color: #554438; background: linear-gradient(135deg, #302a27, #263632); }
+html[data-theme="dark"] .custom-sticker-notice.success { color: #a8e3bf; background: #203c2d; }
+html[data-theme="dark"] .custom-sticker-notice.error { color: #ffb5b5; background: #472a2a; }
 html[data-theme="dark"] .sticker-search { border-color: #3b4b54; background: #27363c; }
 html[data-theme="dark"] .sticker-search:focus-within { background: #202c32; }
 html[data-theme="dark"] .sticker-option:hover,
 html[data-theme="dark"] .sticker-option:focus-visible { background: #2b4549; }
+html[data-theme="dark"] .custom-sticker-send { border-color: #4a4f4a; background: linear-gradient(135deg, #302f2d, #293b37); }
+html[data-theme="dark"] .custom-sticker-send:hover,
+html[data-theme="dark"] .custom-sticker-send:focus-visible { border-color: #85513e; background: #3b342f; }
+html[data-theme="dark"] .custom-sticker-delete { border-color: #6d4949; color: #ffb2a4; background: rgba(39, 54, 60, .95); }
 html[data-theme="dark"] .sticker-suggestion-option { border-color: #3b4b54; background: #27363c; }
 html[data-theme="dark"] .sticker-suggestion-option:hover,
 html[data-theme="dark"] .sticker-suggestion-option:focus-visible { background: #2b4549; }
@@ -6745,6 +6885,7 @@ html[data-theme="dark"] .sticker-pack-tabs button { border-color: #3b4b54; backg
 html[data-theme="dark"] .sticker-pack-tabs button:hover,
 html[data-theme="dark"] .sticker-pack-tabs button:focus-visible,
 html[data-theme="dark"] .sticker-pack-tabs button.active { background: #202c32; }
+html[data-theme="dark"] .custom-sticker-pack-plus { border-color: #202c32; }
 html[data-theme="dark"] .sticker-bubble { border-color: #3b4b54; background: rgba(37, 52, 58, .86); box-shadow: 0 7px 18px rgba(0, 0, 0, .2); }
 html[data-theme="dark"] .message-item.outgoing .sticker-bubble { border-color: #6a4030; background: #4a2e24; }
 /* Keep transparent sticker artwork on a clean card in dark mode. */

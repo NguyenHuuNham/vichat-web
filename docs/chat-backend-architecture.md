@@ -655,12 +655,21 @@ acknowledgement changes only receipt metadata: it never recalls, deletes or
 rewrites message/file content, and Tinode remains the durable receipt source.
 
 Sticker messages stay within the same Tinode file path as ordinary image
-attachments. ChatUI uploads the selected static `/stickers/puppysoft/*.png`
-asset through the authenticated Tinode relay and adds the bounded
+attachments. ChatUI can upload either a selected static
+`/stickers/puppysoft/*.png` asset or a viewer-owned custom sticker Blob through
+the authenticated Tinode relay, then adds the same bounded
 `x-vichat-sticker` header (`stickerId`, `packId`, label and version) so the
-receiver and history projection can render it as a sticker. Sticker assets and
-recent-selection IDs remain frontend-local; Chatmgt does not store sticker
-content or metadata, and no separate API or database migration is required.
+receiver and history projection render both sources identically. On web, the
+`Sticker cua toi` library is stored in origin-scoped IndexedDB by account and
+accepts multiple PNG/JPG/WEBP/GIF/AVIF files, each at most 2 MB, with a maximum
+of 48 records and 32 MB total. Object URLs exist only while the picker or an
+optimistic message needs a preview; the Tinode upload consumes the stored Blob
+directly so closing the picker cannot break an in-flight send. Deleting a
+custom sticker removes only that local library item and its recent shortcut;
+already-sent Tinode messages remain intact. The custom library is not synced
+between browsers/devices, the native mobile picker is unchanged, Chatmgt does
+not store sticker content or metadata, and no separate API or database
+migration is required.
 
 While the web runtime is active, an incoming Tinode message can trigger a
 browser desktop notification and a configurable built-in sound when the viewer
