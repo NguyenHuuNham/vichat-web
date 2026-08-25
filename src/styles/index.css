@@ -3654,7 +3654,7 @@ input:checked + .slider:before {
 .tenant-switcher-caption { display: inline-flex; height: 32px; min-width: 0; align-items: center; gap: 5px; padding: 0 3px; border: 0; border-radius: 0; color: var(--text-muted); background: transparent; font-size: 10px; font-weight: 800; letter-spacing: .02em; white-space: nowrap; }
 .tenant-switcher-caption i { color: var(--vichat-blue); font-size: 12px; }
 .tenant-switcher-control { position: relative; display: flex; min-width: 0; align-items: center; }
-.tenant-switcher-current { display: inline-flex; width: min(180px, 25vw); max-width: 180px; min-width: 114px; height: 30px; align-items: center; gap: 7px; padding: 3px 6px 3px 4px; border: 1px solid rgba(18, 59, 57, .2); border-radius: 8px; color: var(--text-body); background: var(--bg-white); font: inherit; text-align: left; cursor: default; }
+.tenant-switcher-current { display: inline-flex; width: min(154px, 22vw); max-width: 154px; min-width: 132px; height: 30px; align-items: center; gap: 7px; padding: 3px 6px 3px 4px; border: 1px solid rgba(18, 59, 57, .2); border-radius: 8px; color: var(--text-body); background: var(--bg-white); font: inherit; text-align: left; cursor: default; }
 .tenant-switcher-current-copy { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; gap: 0; }
 .tenant-switcher-current-copy strong, .tenant-switcher-current-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tenant-switcher-current-name { display: flex; min-width: 0; align-items: center; gap: 3px; }
@@ -4255,7 +4255,7 @@ input:checked + .slider:before {
     .workspace-logout-button span { display: none; }
     .tenant-switcher { flex: 0 0 auto; }
     .tenant-switcher-caption span { display: none; }
-    .tenant-switcher-current { width: min(180px, calc(100vw - 154px)); min-width: 0; }
+    .tenant-switcher-current { width: min(154px, calc(100vw - 154px)); max-width: 154px; min-width: 0; }
 }
 
 .conv-avatar.chatbot-avatar,

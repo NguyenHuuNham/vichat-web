@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-25-05 - Thu gon control chuyen cong ty
+
+- Thoi gian: 2026-08-25 13:24 (Asia/Saigon)
+- Loai: Sua loi | Web | UI | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Thu ngan khoi cong ty hien tai de khong tao khoang trong dai nhu mau UI khong mong muon.
+- Pham vi: CSS tenant switcher desktop/mobile va source-contract test; khong doi chevron click-only, menu, modal xac nhan, session, Tinode, avatar nhom hay read cursor.
+- File da thay doi: `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `docs/CHANGELOG.md`.
+- Noi dung: Giam chieu rong current tenant tu 180px xuong 154px, giu toi thieu 132px cho ten ngan/dai va dong bo gioi han responsive; ten dai van ellipsis thay vi day header.
+- Quyet dinh ky thuat: Chi dieu chinh presentation width, khong thay state/handler/API de tranh lam roi luong switch tenant hien co.
+- Database/API/cau hinh: Khong migration, endpoint, schema, secret hoac bien moi truong moi.
+- Kiem thu: Chua chay; se chay targeted test, full frontend test, lint, production build va diff check truoc khi deploy.
+- Rui ro con lai: Chua UAT pixel-level bang browser trong phien nay.
+- Viec tiep theo: Kiem thu, commit, push va deploy rieng ChatUI sau khi xac minh bundle.
+- Commit/PR: Chua tao.
+
 ## 2026-08-25-04 - Dua mui ten chuyen cong ty sat ten hien tai
 
 - Thoi gian: 2026-08-25 12:59 (Asia/Saigon); deploy production 2026-08-25 13:15-13:21 (Asia/Saigon)
