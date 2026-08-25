@@ -8,9 +8,9 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-25-05 - Thu gon control chuyen cong ty
 
-- Thoi gian: 2026-08-25 13:24 (Asia/Saigon)
+- Thoi gian: 2026-08-25 13:24 (Asia/Saigon); deploy production 13:40-13:44 (Asia/Saigon)
 - Loai: Sua loi | Web | UI | Kiem thu | Tai lieu
-- Trang thai: Hoan tat local; cho commit va deploy production
+- Trang thai: Da commit va deploy production; san sang UAT
 - Muc tieu: Thu ngan khoi cong ty hien tai de khong tao khoang trong dai nhu mau UI khong mong muon.
 - Pham vi: CSS tenant switcher desktop/mobile va source-contract test; khong doi chevron click-only, menu, modal xac nhan, session, Tinode, avatar nhom hay read cursor.
 - File da thay doi: `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `docs/CHANGELOG.md`, `dist/index.html`.
@@ -18,9 +18,11 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Chi dieu chinh presentation width, khong thay state/handler/API de tranh lam roi luong switch tenant hien co.
 - Database/API/cau hinh: Khong migration, endpoint, schema, secret hoac bien moi truong moi.
 - Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js` dat 40/40; `npm run test:frontend` dat 234/234; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi entry `index-DH1SjPLx.js`, CSS `index-B3autpXX.css` va canh bao chunk `App` lon hon 500 KB da co; `git diff --check` dat.
-- Rui ro con lai: Chua UAT pixel-level bang browser trong phien nay.
-- Viec tiep theo: Commit, push va deploy rieng ChatUI sau khi xac minh bundle.
-- Commit/PR: Commit trung gian `b705cd6` da push; ban compact 128px chua tao commit.
+- Kiem tra production: Archive `/opt/deploy/chat/incoming/vichat-tenant-tight-b5bd160.tar.gz` SHA-256 `c40a2610b63ab57e06cb5ee5d01ef4813aa01644a3f1152ba8808b18301733d0`; Compose preflight va image preflight dat; container ChatUI `ab17528bdb6a` healthy voi image `sha256:1b954694a7c407366a390a06f11075bac268d57ae09d250fe7037ff0ccdf94dc`; local/public `/healthz` va Chatmgt auth health tra OK; public entry `/assets/index-dl32OAfk.js`, App `/assets/App-B1ZmBXu4.js` va CSS `/assets/index-B3autpXX.css` HTTP 200, co marker `tenant-switcher-toggle`, `tenant-switcher-menu`, `tenant-switcher-current-name`, `width:min(128px,18vw)` va responsive `width:min(128px,100vw - 154px)`; `sudo -n nginx -t` dat; log ChatUI/Chatmgt 10 phut khong co marker fatal/panic/traceback/uncaught/critical/emerg.
+- Trien khai: Source commit `b5bd160` da push `origin/master`; release `/opt/deploy/chat/releases/tenant-tight-b5bd160-20260825-1340` dang la `current`, `previous` tro `/opt/deploy/chat/releases/tenant-arrow-bf9e67f-20260825-1309`; chi recreate `chat` voi `--no-deps --force-recreate --no-build`, khong migration/reset database, Tinode, avatar, read cursor hay volume. Rollback tag `songhong-production-chat:rollback-before-tenant-tight-b5bd160` giu image cu `sha256:9a816e66c68c28fb60962f1ecd4f69389091100410f29b985b780a9889670502`; Chatmgt `09ce43ebc155`, webhook `2882b6109176`, account bridge `7d9c0e317719`, ChatAPI `8476615ad4ac`, Coturn `aa680d35fdc0`, Chat PostgreSQL `78a434b49404`, Tinode PostgreSQL `9f6e4dcc9c2f` va Redis `ceef7df23feb` giu nguyen container ID.
+- Rui ro con lai: Chua UAT pixel-level bang browser trong phien nay vi cong cu browser khong duoc expose; can hard refresh va kiem tra desktop/mobile voi tai khoan co nhieu cong ty.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, bam logo/ten/trang thai de xac nhan khong mo menu, bam chevron de mo/dong, chon cong ty khac va xac nhan modal; neu loi chi tro `current` ve `previous` va recreate rieng `chat`.
+- Commit/PR: Source commit `b5bd160`; deployment follow-up docs commit duoc tao sau khi cap nhat muc nay.
 
 ## 2026-08-25-04 - Dua mui ten chuyen cong ty sat ten hien tai
 
