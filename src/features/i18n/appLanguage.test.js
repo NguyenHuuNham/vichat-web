@@ -54,6 +54,13 @@ test('translates the latest-message jump label', () => {
   assert.equal(translateUiText('Đi tới tin nhắn mới nhất', 'en'), 'Go to latest messages');
 });
 
+test('translates conversation category management labels', () => {
+  assert.equal(translateUiText('Quản lý thẻ phân loại', 'en'), 'Manage category tags');
+  assert.equal(translateUiText('Thêm mới thẻ phân loại', 'en'), 'Add a new category tag');
+  assert.equal(translateUiText('Hội thoại được gắn thẻ', 'en'), 'Tagged conversations');
+  assert.equal(translateUiText('Trả lời sau', 'en'), 'Reply later');
+});
+
 test('translates message receipt empty states', () => {
   assert.equal(translateUiText('Chưa có ai xem tin nhắn này', 'en'), 'No one has seen this message yet');
   assert.equal(translateUiText('Chưa có ai nhận tin nhắn này', 'en'), 'No one has received this message yet');

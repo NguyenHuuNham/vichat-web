@@ -20,6 +20,7 @@ const appSource = readFileSync(new URL('../../../app/App.jsx', import.meta.url),
 const stylesSource = readFileSync(new URL('../../../styles/index.css', import.meta.url), 'utf8');
 const tinodeSource = readFileSync(new URL('./tinodeClient.js', import.meta.url), 'utf8');
 const avatarCropSource = readFileSync(new URL('../../contacts/components/AvatarCropModal.jsx', import.meta.url), 'utf8');
+const categoryManagerSource = readFileSync(new URL('../components/ConversationCategoryManager.jsx', import.meta.url), 'utf8');
 const managementServiceSource = readFileSync(new URL('./chatManagementService.js', import.meta.url), 'utf8');
 const mobileStoreSource = readFileSync(new URL('../../../../mobile/src/store/appStore.ts', import.meta.url), 'utf8');
 const mobileConversationListSource = readFileSync(new URL('../../../../mobile/src/screens/chat/ConversationListScreen.tsx', import.meta.url), 'utf8');
@@ -435,6 +436,19 @@ test('group lifecycle actions confirm before leaving and expose owner-only disso
   assert.match(appSource, /Bạn có chắc muốn rời nhóm/);
   assert.match(appSource, /Bạn có chắc muốn xóa hội thoại/);
   assert.match(stylesSource, /\.group-management-danger-zone/);
+});
+
+test('conversation categories expose viewer-scoped management without touching chat transport', () => {
+  assert.match(appSource, /<ConversationCategoryManager/);
+  assert.match(appSource, /Quản lý thẻ phân loại/);
+  assert.match(appSource, /saveManagedConversationCategory/);
+  assert.match(appSource, /setCategoryConversations/);
+  assert.match(categoryManagerSource, /Danh sách thẻ phân loại/);
+  assert.match(categoryManagerSource, /Hội thoại được gắn thẻ/);
+  assert.match(categoryManagerSource, /Mỗi hội thoại dùng một thẻ/);
+  assert.match(stylesSource, /\.conversation-category-manager-backdrop/);
+  assert.match(stylesSource, /\.conversation-category-color-popover/);
+  assert.doesNotMatch(categoryManagerSource, /tinodeClient|chatManagementService|fetch\(/);
 });
 
 test('group message pinning announces the actor without changing direct-chat pin behavior', () => {

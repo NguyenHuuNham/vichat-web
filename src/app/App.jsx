@@ -5,6 +5,7 @@ import ConversationErrorBoundary from '../components/ConversationErrorBoundary';
 import EnterpriseWorkspace from '../features/workspace/components/EnterpriseWorkspace';
 import CallOverlay from '../features/chat/components/CallOverlay';
 import StickerPicker from '../features/chat/components/StickerPicker';
+import ConversationCategoryManager from '../features/chat/components/ConversationCategoryManager';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation, normalizeTinodeMediaUrl } from '../features/chat/services/tinodeClient';
 import { shouldRetryProtectedMediaAfterSession } from '../features/chat/services/mediaRetryPolicy';
 import {
@@ -63,7 +64,11 @@ import {
 import {
   CONVERSATION_CATEGORY_OPTIONS,
   applyLocalConversationCategories,
-  readConversationCategories,
+  readConversationCategoryState,
+  removeConversationCategory,
+  reorderConversationCategories,
+  saveConversationCategory,
+  setCategoryConversations,
   setConversationCategory,
 } from '../features/chat/services/conversationCategoryPolicy';
 import { resolveCallsEnabled } from '../features/chat/services/callSignaling';
@@ -2706,6 +2711,10 @@ function App() {
   const [messageMenu, setMessageMenu] = useState(null);
   const [conversationMenu, setConversationMenu] = useState(null);
   const [conversationCategoryMenuOpen, setConversationCategoryMenuOpen] = useState(false);
+  const [conversationCategoryManagerOpen, setConversationCategoryManagerOpen] = useState(false);
+  const [conversationCategoryOptions, setConversationCategoryOptions] = useState(() => (
+    CONVERSATION_CATEGORY_OPTIONS.map(category => ({ ...category }))
+  ));
   const [conversationCategories, setConversationCategories] = useState({});
   const [replyingTo, setReplyingTo] = useState(null);
   const [profileContact, setProfileContact] = useState(null);
@@ -3113,7 +3122,7 @@ function App() {
   const conversationCategoryFor = room => {
     const key = String(room?.managementId || room?.id || '');
     const categoryId = conversationCategories[key] || room?.category || '';
-    return CONVERSATION_CATEGORY_OPTIONS.find(option => option.id === categoryId) || null;
+    return conversationCategoryOptions.find(option => option.id === categoryId) || null;
   };
   const activeChatMuted = isConversationMuted(activeChat.notificationMutedUntil, notificationClock);
   const activeChatMuteLabel = notificationMuteLabel(activeChat.notificationMutedUntil, notificationClock, settings.language === 'en' ? 'en-US' : 'vi-VN');
@@ -3272,6 +3281,21 @@ function App() {
     : 'Kho tri thức doanh nghiệp';
   const accountProfileReadOnly = isAccountManaged(currentUser) || chatManagementService.accountManaged;
   const appCopy = createLocalizedCopy(APP_LANGUAGE_COPY[settings.language] || APP_LANGUAGE_COPY.vi, settings.language);
+  const conversationCategoryLabel = category => (
+    category?.builtIn ? appCopy.t(category.label) : String(category?.label || '')
+  );
+  const categoryManagerConversations = safeConversationValues(renderConversations)
+    .filter(room => room?.id && room.id !== 'empty' && !room.isChatbot)
+    .map(room => ({
+      id: String(room.managementId || room.id),
+      name: conversationDisplayName(
+        room.isGroup ? { ...room, members: [] } : room,
+        room.isGroup ? appCopy.t('Nhóm') : appCopy.t('Cuộc trò chuyện cá nhân'),
+      ),
+      isGroup: Boolean(room.isGroup),
+    }))
+    .filter((conversation, index, values) => values.findIndex(item => item.id === conversation.id) === index)
+    .sort((first, second) => first.name.localeCompare(second.name, 'vi', { sensitivity: 'base' }));
   const selectedLanguage = APP_LANGUAGE_OPTIONS.find(option => option.id === settings.language)
     || APP_LANGUAGE_OPTIONS[0];
   const pinViewerId = currentUser?.id || currentUser?.uid || '';
@@ -3741,8 +3765,13 @@ function App() {
   }, [notificationSettingsViewerId]);
 
   useEffect(() => {
-    setConversationCategories(managementViewerId ? readConversationCategories(managementViewerId) : {});
+    const categoryState = managementViewerId
+      ? readConversationCategoryState(managementViewerId)
+      : { categories: CONVERSATION_CATEGORY_OPTIONS.map(category => ({ ...category })), assignments: {} };
+    setConversationCategoryOptions(categoryState.categories);
+    setConversationCategories(categoryState.assignments);
     setConversationCategoryMenuOpen(false);
+    setConversationCategoryManagerOpen(false);
   }, [managementViewerId]);
 
   const conversationBackgroundViewerId = managementViewerId || viewerId || '';
@@ -5098,7 +5127,9 @@ function App() {
     setIsUpdatingNotificationMute(false);
     setNotificationClock(Date.now());
     setConversationCategories({});
+    setConversationCategoryOptions(CONVERSATION_CATEGORY_OPTIONS.map(category => ({ ...category })));
     setConversationCategoryMenuOpen(false);
+    setConversationCategoryManagerOpen(false);
     setMediaBrowserOpen(false);
     setDirectoryAccounts([]);
     setContactNicknames({});
@@ -7263,22 +7294,54 @@ function App() {
     setConversationMenu(null);
   };
 
+  const applyConversationCategoryState = categoryState => {
+    setConversationCategoryOptions(categoryState.categories);
+    setConversationCategories(categoryState.assignments);
+    setConversations(previous => {
+      const next = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
+        const key = String(room.managementId || room.id || id);
+        return [id, { ...room, category: categoryState.assignments[key] || '' }];
+      }));
+      conversationsRef.current = next;
+      return next;
+    });
+  };
+
   const updateConversationCategory = (room, categoryId) => {
     if (!room) return;
     const viewerKey = managementViewerId || viewerId;
+    if (!viewerKey) return;
     const conversationId = room.managementId || room.id;
-    const nextCategories = setConversationCategory(viewerKey, conversationId, categoryId);
-    setConversationCategories(nextCategories);
-    setConversations(previous => {
-      const previousRoom = previous[room.id] === null || previous[room.id] === undefined
-        ? null
-        : safeNormalizeConversationForRender(previous[room.id], room.id);
-      return previousRoom
-        ? { ...previous, [room.id]: { ...previousRoom, category: categoryId || '' } }
-        : previous;
-    });
+    setConversationCategory(viewerKey, conversationId, categoryId);
+    applyConversationCategoryState(readConversationCategoryState(viewerKey));
     setConversationCategoryMenuOpen(false);
     setConversationMenu(null);
+  };
+
+  const saveManagedConversationCategory = draft => {
+    const viewerKey = managementViewerId || viewerId;
+    if (!viewerKey) return { error: 'viewer_required' };
+    const saved = saveConversationCategory(viewerKey, draft);
+    if (saved.error || !saved.category) return saved;
+    const nextState = setCategoryConversations(
+      viewerKey,
+      saved.category.id,
+      draft.conversationIds,
+    );
+    applyConversationCategoryState(nextState);
+    return { ...saved, state: nextState };
+  };
+
+  const deleteManagedConversationCategory = categoryId => {
+    const viewerKey = managementViewerId || viewerId;
+    if (!viewerKey) return;
+    applyConversationCategoryState(removeConversationCategory(viewerKey, categoryId));
+  };
+
+  const reorderManagedConversationCategories = orderedIds => {
+    const viewerKey = managementViewerId || viewerId;
+    if (!viewerKey) return;
+    applyConversationCategoryState(reorderConversationCategories(viewerKey, orderedIds));
   };
 
   const handleConversationMenuAction = async (action, room, value = '') => {
@@ -10660,7 +10723,7 @@ function App() {
                       <span className={`conv-name ${hasUnread ? 'unread' : ''}`}>
                         {room.pinned && <i className="fa-solid fa-thumbtack conv-pinned-icon" title={appCopy.t('Đã ghim')} aria-label={appCopy.t('Đã ghim')}></i>}
                         {roomName}
-                        {roomCategory && <span className={`conversation-category-tag category-${roomCategory.id}`} style={{ '--category-color': roomCategory.color }} title={`${appCopy.t('Phân loại')}: ${appCopy.t(roomCategory.label)}`}>{appCopy.t(roomCategory.label)}</span>}
+                        {roomCategory && <span className={`conversation-category-tag category-${roomCategory.id}`} style={{ '--category-color': roomCategory.color }} title={`${appCopy.t('Phân loại')}: ${conversationCategoryLabel(roomCategory)}`}>{conversationCategoryLabel(roomCategory)}</span>}
                       </span>
                       <span
                         className={hasDraft ? 'conv-draft-status' : 'conv-time'}
@@ -10732,11 +10795,19 @@ function App() {
                     <i className="fa-solid fa-xmark"></i><span>{appCopy.t('Bỏ phân loại')}</span>
                   </button>
                 )}
-                {CONVERSATION_CATEGORY_OPTIONS.map(category => (
+                {conversationCategoryOptions.map(category => (
                   <button type="button" role="menuitem" className={`conversation-category-option ${menuCategory?.id === category.id ? 'selected' : ''}`} key={category.id} onClick={() => handleConversationMenuAction('category', menuRoom, category.id)}>
-                  <span className="conversation-category-dot" style={{ backgroundColor: category.color }}></span><span>{appCopy.t(category.label)}</span>{menuCategory?.id === category.id && <i className="fa-solid fa-check category-check"></i>}
+                  <span className="conversation-category-shape" style={{ backgroundColor: category.color }}></span><span>{conversationCategoryLabel(category)}</span>{menuCategory?.id === category.id && <i className="fa-solid fa-check category-check"></i>}
                   </button>
                 ))}
+                <div className="conversation-category-submenu-divider"></div>
+                <button type="button" role="menuitem" className="conversation-category-manage" onClick={() => {
+                  setConversationCategoryMenuOpen(false);
+                  setConversationMenu(null);
+                  setConversationCategoryManagerOpen(true);
+                }}>
+                  <i className="fa-solid fa-sliders"></i><span>{appCopy.t('Quản lý thẻ phân loại')}</span>
+                </button>
               </div>
             )}
             <button type="button" role="menuitem" className="danger" onClick={() => handleConversationMenuAction('delete', menuRoom)}>
@@ -13468,6 +13539,18 @@ function App() {
           </form>
         </div>
       )}
+
+      <ConversationCategoryManager
+        open={conversationCategoryManagerOpen}
+        categories={conversationCategoryOptions}
+        assignments={conversationCategories}
+        conversations={categoryManagerConversations}
+        copy={appCopy}
+        onClose={() => setConversationCategoryManagerOpen(false)}
+        onSave={saveManagedConversationCategory}
+        onDelete={deleteManagedConversationCategory}
+        onReorder={reorderManagedConversationCategories}
+      />
 
       {notificationMuteDialog && (
         <div className="modal-backdrop notification-mute-backdrop" role="presentation" onMouseDown={(event) => {

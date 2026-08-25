@@ -183,6 +183,19 @@ Tinode, broadcast in realtime profile events, or included in another viewer's
 response. Existing legacy mention metadata is resolved against the current
 viewer directory before rendering when the target identity is available.
 
+Conversation category tags are also viewer-local presentation preferences.
+Each ChatUI account may create, rename, recolor, reorder or remove its own tag
+definitions and assign one tag to each visible direct/group conversation. The
+versioned `vichat.conversation-categories.v2.<viewer-id>` localStorage record
+contains only tag definitions and Chatmgt conversation IDs; it contains no
+message text, credential, Tinode token or shared group metadata. Existing
+`vichat.conversation-categories.v1.<viewer-id>` assignments are migrated on
+read and kept updated as a rollback-compatible assignment map. Renaming or
+deleting a tag updates only that viewer's local presentation, never the
+conversation record, membership, read cursor, notification, avatar, pin or
+Tinode topic. Category tags therefore survive refresh in the same browser but
+do not synchronize across browsers/devices.
+
 Conversation backgrounds follow a separate scope because they are presentation
 preferences rather than message content. ChatUI asks whether a selection is
 viewer-local or shared. A local selection is stored in
