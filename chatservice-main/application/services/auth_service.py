@@ -1391,6 +1391,7 @@ async def tinode_reconcile_topic_members(
     expected_access_modes=None,
     member_tokens=None,
     remove_extra_members=True,
+    access_scope_uids=None,
 ):
     """Make a management-owned topic match Chatmgt after a membership change."""
     expected = {str(uid) for uid in expected_member_uids if uid}
@@ -1410,6 +1411,12 @@ async def tinode_reconcile_topic_members(
         for uid, value in dict(member_tokens or {}).items()
         if uid and value
     }
+    access_scope = (
+        expected
+        if access_scope_uids is None
+        else expected & {str(uid) for uid in access_scope_uids if uid}
+    )
+    membership_scope = expected if remove_extra_members else access_scope
 
     attempts = max(1, int(max_attempts))
     for attempt in range(attempts):
@@ -1419,17 +1426,22 @@ async def tinode_reconcile_topic_members(
             member_uid: required_mode
             for member_uid, required_mode in required_modes.items()
             if member_uid in expected
+            and member_uid in access_scope
             and member_uid in actual
             and not set(required_mode).issubset(
                 set(_tinode_access_mode((access_by_uid.get(member_uid) or {}).get("mode")))
             )
         }
-        membership_matches = actual == expected if remove_extra_members else expected.issubset(actual)
+        membership_matches = (
+            actual == expected
+            if remove_extra_members
+            else membership_scope.issubset(actual)
+        )
         if membership_matches and not access_mismatches:
             return actual
 
         extra = sorted(actual - expected) if remove_extra_members else []
-        missing = sorted(expected - actual)
+        missing = sorted(membership_scope - actual)
         if str(expected_uid) in extra:
             raise AuthError("Tinode authenticated a user outside Chatmgt membership.", 409)
         for member_uid in extra:

@@ -1309,7 +1309,14 @@ def _serialize_conversation(item, viewer_id):
     ) if is_group else None
     pending_participants = []
     pending_accounts_by_id = {}
-    if is_group and viewer_membership is not None and viewer_membership.role == "OWNER":
+    viewer_can_approve_members = bool(
+        viewer_membership is not None
+        and (
+            str(viewer_membership.role or "").upper() in ("OWNER", "ADMIN")
+            or _is_admin({"role": getattr(viewer_account, "role", "")})
+        )
+    )
+    if is_group and viewer_can_approve_members:
         pending_participants = ConversationParticipant.query.filter(
             ConversationParticipant.tenant_id == item.tenant_id,
             ConversationParticipant.conversation_id == item.id,
@@ -4870,6 +4877,7 @@ async def conversation_participant_add(request, conversation_id):
     approval_required = (
         bool(group_settings["approveMembers"])
         and str(membership.role or "").upper() not in ("OWNER", "ADMIN")
+        and not _is_admin(current_user)
     )
     activated_ids = [
         requested_id for requested_id in requested_ids
@@ -4894,29 +4902,27 @@ async def conversation_participant_add(request, conversation_id):
                 return json({"error_code": "TINODE_ACCOUNT_UNPREPARED", "error_message": "The current Tinode account is not prepared."}, status=409)
             if current_user.get("auth_method") == "account_sso":
                 await _validated_account_identity(request, actor_account)
-            participants, accounts_by_id = _active_conversation_accounts(item)
-            owner_participant = next(
-                (participant for participant in participants if participant.role == "OWNER"),
-                None,
-            )
-            owner_account = accounts_by_id.get(owner_participant.participant_id) if owner_participant else None
-            if owner_account is None:
-                raise AuthError("The group has no active owner.", 409)
-            tinode_operator_uid = await _ensure_tinode_account(owner_account)
-            owner_auth = await tinode_sso_login(
-                _tinode_account_identity(owner_account),
-                owner_account.tinode_username,
-                tinode_operator_uid,
-            )
-            tinode_token = str(owner_auth.get("token") or "").strip()
+            tinode_operator_uid = await _ensure_tinode_account(actor_account)
+            actor_auth = tinode_auth_from_request(request)
+            if (
+                not actor_auth
+                or str(actor_auth.get("uid") or "") != tinode_operator_uid
+                or tinode_auth_expired(actor_auth)
+            ):
+                actor_auth = await tinode_sso_login(
+                    _tinode_account_identity(actor_account),
+                    actor_account.tinode_username,
+                    tinode_operator_uid,
+                )
+            tinode_token = str(actor_auth.get("token") or "").strip()
             if not tinode_token:
-                raise AuthError("Tinode could not authenticate the group owner.", 502)
+                raise AuthError("Tinode could not authenticate the acting group member.", 502)
             existing_tinode_member_uids = await tinode_topic_member_uids(
                 tinode_token,
                 tinode_operator_uid,
                 item.tinode_topic,
             )
-            actor_tinode_uid = await _ensure_tinode_account(actor_account)
+            actor_tinode_uid = tinode_operator_uid
             prepared_uids = await _ensure_tinode_accounts(
                 requested_accounts_by_id[requested_id] for requested_id in activated_ids
             )
@@ -4978,6 +4984,8 @@ async def conversation_participant_add(request, conversation_id):
                 expected_member_uids,
                 expected_access_modes=expected_access_modes,
                 member_tokens=added_member_tokens,
+                access_scope_uids=added_tinode_uids,
+                remove_extra_members=False,
             )
         db.session.commit()
         database_committed = True
@@ -5066,8 +5074,8 @@ async def conversation_participant_approval(request, conversation_id, participan
         return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
     if not bool((item.properties or {}).get("is_group")):
         return json({"error_code": "PARAM_ERROR", "error_message": "Member approval is only available for a group."}, status=400)
-    if membership.role != "OWNER":
-        return json({"error_code": "OWNER_REQUIRED", "error_message": "Only the group owner can approve members."}, status=403)
+    if str(membership.role or "").upper() not in ("OWNER", "ADMIN") and not _is_admin(current_user):
+        return json({"error_code": "OWNER_REQUIRED", "error_message": "Only a group owner/admin or tenant administrator can approve members."}, status=403)
 
     approved = (request.json or {}).get("approved")
     if not isinstance(approved, bool):
@@ -5088,13 +5096,13 @@ async def conversation_participant_approval(request, conversation_id, participan
         return json({"error_code": "MEMBER_APPROVAL_STALE", "error_message": "This member approval request is no longer pending."}, status=409)
 
     now = int(time.time())
-    owner_account = _account_by_id(tenant_id, user_id)
+    actor_account = _account_by_id(tenant_id, user_id)
     target_account = _account_by_id(tenant_id, str(participant_id))
-    if approved and (owner_account is None or target_account is None):
+    if approved and (actor_account is None or target_account is None):
         return json({"error_code": "TENANT_VIOLATION", "error_message": "The member is no longer active in this tenant."}, status=409)
 
     tinode_token = ""
-    owner_uid = ""
+    tinode_operator_uid = ""
     target_uid = ""
     target_token = ""
     existing_tinode_member_uids = set()
@@ -5103,18 +5111,24 @@ async def conversation_participant_approval(request, conversation_id, participan
     try:
         if approved:
             if current_user.get("auth_method") == "account_sso":
-                await _validated_account_identity(request, owner_account)
+                await _validated_account_identity(request, actor_account)
             if item.tinode_topic:
                 target_uid = await _ensure_tinode_account(target_account)
-                owner_uid = await _ensure_tinode_account(owner_account)
-                owner_auth = await tinode_sso_login(
-                    _tinode_account_identity(owner_account),
-                    owner_account.tinode_username,
-                    owner_uid,
-                )
-                tinode_token = str(owner_auth.get("token") or "").strip()
+                tinode_operator_uid = await _ensure_tinode_account(actor_account)
+                actor_auth = tinode_auth_from_request(request)
+                if (
+                    not actor_auth
+                    or str(actor_auth.get("uid") or "") != tinode_operator_uid
+                    or tinode_auth_expired(actor_auth)
+                ):
+                    actor_auth = await tinode_sso_login(
+                        _tinode_account_identity(actor_account),
+                        actor_account.tinode_username,
+                        tinode_operator_uid,
+                    )
+                tinode_token = str(actor_auth.get("token") or "").strip()
                 if not tinode_token:
-                    raise AuthError("Tinode could not authenticate the group owner.", 502)
+                    raise AuthError("Tinode could not authenticate the approving group administrator.", 502)
                 target_auth = await tinode_sso_login(
                     _tinode_account_identity(target_account),
                     target_account.tinode_username,
@@ -5125,7 +5139,7 @@ async def conversation_participant_approval(request, conversation_id, participan
                     raise AuthError("Tinode could not authenticate the approved member.", 502)
                 existing_tinode_member_uids = await tinode_topic_member_uids(
                     tinode_token,
-                    owner_uid,
+                    tinode_operator_uid,
                     item.tinode_topic,
                 )
 
@@ -5140,7 +5154,7 @@ async def conversation_participant_approval(request, conversation_id, participan
             if item.tinode_topic:
                 _updated_tinode_uids, created_tinode_uids = await tinode_add_topic_members(
                     tinode_token,
-                    owner_uid,
+                    tinode_operator_uid,
                     item.tinode_topic,
                     [target_uid],
                     return_created=True,
@@ -5152,11 +5166,13 @@ async def conversation_participant_approval(request, conversation_id, participan
                 expected_access_modes = _expected_tinode_access_modes(item, active_participants, active_accounts)
                 await tinode_reconcile_topic_members(
                     tinode_token,
-                    owner_uid,
+                    tinode_operator_uid,
                     item.tinode_topic,
                     expected_member_uids,
                     expected_access_modes=expected_access_modes,
                     member_tokens={target_uid: target_token},
+                    access_scope_uids={target_uid},
+                    remove_extra_members=False,
                 )
         else:
             target.active = False
@@ -5171,12 +5187,12 @@ async def conversation_participant_approval(request, conversation_id, participan
             try:
                 await tinode_publish_system_event(
                     tinode_token,
-                    owner_uid,
+                    tinode_operator_uid,
                     item.tinode_topic,
                     {
                         "action": "member_approved",
-                        "actorId": owner_uid or user_id,
-                        "actorName": owner_account.full_name or owner_account.username or user_id,
+                        "actorId": tinode_operator_uid or user_id,
+                        "actorName": actor_account.full_name or actor_account.username or user_id,
                         "targets": [{
                             "id": target_uid or str(participant_id),
                             "name": target_account.full_name or target_account.username or str(participant_id),
@@ -5198,7 +5214,7 @@ async def conversation_participant_approval(request, conversation_id, participan
         db.session.rollback()
         if tinode_member_added and not database_committed:
             try:
-                await tinode_remove_topic_member(tinode_token, owner_uid, item.tinode_topic, target_uid)
+                await tinode_remove_topic_member(tinode_token, tinode_operator_uid, item.tinode_topic, target_uid)
             except AuthError:
                 logger.warning("Could not roll back the approved Tinode member %s.", target_uid)
         return json({"error_code": "TINODE_MEMBERSHIP_FAILED", "error_message": str(error)}, status=error.status_code)
@@ -5206,7 +5222,7 @@ async def conversation_participant_approval(request, conversation_id, participan
         db.session.rollback()
         if tinode_member_added and not database_committed:
             try:
-                await tinode_remove_topic_member(tinode_token, owner_uid, item.tinode_topic, target_uid)
+                await tinode_remove_topic_member(tinode_token, tinode_operator_uid, item.tinode_topic, target_uid)
             except AuthError:
                 logger.warning("Could not roll back the approved Tinode member %s.", target_uid)
         logger.exception("Could not update group member approval: %s", error)

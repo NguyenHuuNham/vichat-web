@@ -497,6 +497,112 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
             mode="+JRW",
         )
 
+    async def test_topic_member_reconciliation_can_scope_access_checks_to_new_members(self):
+        observed = AsyncMock(side_effect=[
+            {
+                "usrLegacyOwner": {"mode": "PAS", "given": "PAS", "want": "PAS"},
+                "usrActor": {"mode": "JRWPAS", "given": "JRWPAS", "want": "JRWPAS"},
+                "usrNew": {"mode": "PAS", "given": "PAS", "want": "JRWPAS"},
+            },
+            {
+                "usrLegacyOwner": {"mode": "PAS", "given": "PAS", "want": "PAS"},
+                "usrActor": {"mode": "JRWPAS", "given": "JRWPAS", "want": "JRWPAS"},
+                "usrNew": {"mode": "JRWPAS", "given": "JRWPAS", "want": "JRWPAS"},
+            },
+        ])
+        with patch.object(auth_service, "tinode_topic_member_access", observed), patch.object(
+            auth_service,
+            "tinode_add_topic_members",
+            AsyncMock(),
+        ) as add, patch.object(
+            auth_service,
+            "tinode_accept_topic_access",
+            AsyncMock(),
+        ) as accept, patch.object(
+            auth_service,
+            "tinode_remove_topic_member",
+            AsyncMock(),
+        ) as remove:
+            members = await auth_service.tinode_reconcile_topic_members(
+                "actor-token",
+                "usrActor",
+                "grpRoom",
+                {"usrLegacyOwner", "usrActor", "usrNew"},
+                expected_access_modes={
+                    "usrLegacyOwner": "JRWPASO",
+                    "usrActor": "JRWPAS",
+                    "usrNew": "JRWPAS",
+                },
+                member_tokens={"usrNew": "new-token"},
+                access_scope_uids={"usrNew"},
+                remove_extra_members=False,
+            )
+
+        self.assertEqual(members, {"usrLegacyOwner", "usrActor", "usrNew"})
+        add.assert_awaited_once_with(
+            "actor-token",
+            "usrActor",
+            "grpRoom",
+            ["usrNew"],
+            mode="+JRW",
+        )
+        accept.assert_not_awaited()
+        remove.assert_not_awaited()
+
+    async def test_scoped_add_does_not_restore_unrelated_missing_legacy_members(self):
+        observed = AsyncMock(side_effect=[
+            {
+                "usrActor": {"mode": "JRWPAS", "given": "JRWPAS", "want": "JRWPAS"},
+            },
+            {
+                "usrActor": {"mode": "JRWPAS", "given": "JRWPAS", "want": "JRWPAS"},
+                "usrNew": {"mode": "JRWPAS", "given": "JRWPAS", "want": "JRWPAS"},
+            },
+        ])
+        with patch.object(auth_service, "tinode_topic_member_access", observed), patch.object(
+            auth_service,
+            "tinode_add_topic_members",
+            AsyncMock(),
+        ) as add, patch.object(
+            auth_service,
+            "tinode_accept_topic_access",
+            AsyncMock(),
+        ) as accept, patch.object(
+            auth_service,
+            "tinode_remove_topic_member",
+            AsyncMock(),
+        ) as remove:
+            members = await auth_service.tinode_reconcile_topic_members(
+                "actor-token",
+                "usrActor",
+                "grpRoom",
+                {"usrLegacyOwner", "usrActor", "usrNew"},
+                expected_access_modes={
+                    "usrLegacyOwner": "JRWPASO",
+                    "usrActor": "JRWPAS",
+                    "usrNew": "JRWPAS",
+                },
+                member_tokens={"usrNew": "new-token"},
+                access_scope_uids={"usrNew"},
+                remove_extra_members=False,
+            )
+
+        self.assertEqual(members, {"usrActor", "usrNew"})
+        add.assert_awaited_once_with(
+            "actor-token",
+            "usrActor",
+            "grpRoom",
+            ["usrNew"],
+            mode="JRWPAS",
+        )
+        accept.assert_awaited_once_with(
+            "new-token",
+            "usrNew",
+            "grpRoom",
+            mode="+JRWPAS",
+        )
+        remove.assert_not_awaited()
+
     async def test_add_member_uses_the_authenticated_owner_token(self):
         socket = FakeSocket([
             {"ctrl": {"id": "1", "code": 201}},

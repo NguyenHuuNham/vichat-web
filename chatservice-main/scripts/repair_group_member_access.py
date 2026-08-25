@@ -31,7 +31,6 @@ from application.services.auth_service import (  # noqa: E402
     AuthError,
     tinode_login,
     tinode_reconcile_topic_members,
-    tinode_sso_login,
     tinode_sso_password,
     tinode_topic_member_access,
 )
@@ -60,15 +59,19 @@ def account_identity(account):
     }
 
 
-async def login_account(account, repair_credentials=False):
+def account_realtime_eligible(account):
+    auth_source = str((account.properties or {}).get("auth_source") or "local").strip().lower()
+    if bool(app.config.get("CHAT_ACCOUNT_SSO_ENABLED", False)):
+        return auth_source == "account"
+    return auth_source in ("account", "local")
+
+
+async def login_account(account):
     identity = account_identity(account)
-    if repair_credentials:
-        auth = await tinode_sso_login(identity, account.tinode_username, account.tinode_uid)
-    else:
-        auth = await tinode_login(
-            account.tinode_username,
-            tinode_sso_password(identity, account.tinode_username),
-        )
+    auth = await tinode_login(
+        account.tinode_username,
+        tinode_sso_password(identity, account.tinode_username),
+    )
     authenticated_uid = str(auth.get("uid") or "").strip()
     if authenticated_uid != str(account.tinode_uid or ""):
         raise AuthError("Tinode authenticated a different user.", 409)
@@ -96,18 +99,14 @@ def group_state(item):
     if set(participant_ids) != set(accounts_by_id):
         raise AuthError("An active group participant has no active account.", 409)
 
-    owner = next(
-        (participant for participant in participants if str(participant.role or "").upper() == "OWNER"),
-        None,
-    )
-    owner_account = accounts_by_id.get(owner.participant_id) if owner else None
-    if owner_account is None or not owner_account.tinode_uid:
-        raise AuthError("The active group owner has no Tinode mapping.", 409)
-
     access_modes = {}
     accounts_by_uid = {}
+    legacy_participants = 0
     for participant in participants:
         account = accounts_by_id[participant.participant_id]
+        if not account_realtime_eligible(account):
+            legacy_participants += 1
+            continue
         tinode_uid = str(account.tinode_uid or "").strip()
         if not tinode_uid:
             raise AuthError("An active group member has no Tinode mapping.", 409)
@@ -123,7 +122,33 @@ def group_state(item):
     if properties.get("chatbot_enabled") and chatbot_uid:
         access_modes[chatbot_uid] = REQUIRED_MEMBER_MODE
 
-    return owner_account, access_modes, accounts_by_uid
+    return access_modes, accounts_by_uid, legacy_participants
+
+
+async def group_operator(item, accounts_by_uid):
+    tokens = {}
+    failures = 0
+    for tinode_uid, account in accounts_by_uid.items():
+        try:
+            tokens[tinode_uid] = await login_account(account)
+        except Exception:
+            failures += 1
+    if failures:
+        raise AuthError("An active Account member has invalid Tinode credentials.", 409)
+
+    for tinode_uid, token in tokens.items():
+        try:
+            access_by_uid = await tinode_topic_member_access(
+                token,
+                tinode_uid,
+                item.tinode_topic,
+            )
+        except Exception:
+            continue
+        operator_mode = str((access_by_uid.get(tinode_uid) or {}).get("mode") or "")
+        if {"A", "S"}.issubset(set(operator_mode)):
+            return tinode_uid, token, tokens, access_by_uid
+    raise AuthError("No active Account member can manage the Tinode group.", 409)
 
 
 def access_problems(access_by_uid, required_modes):
@@ -157,6 +182,8 @@ async def inspect_groups(args):
         "members_with_partial_access": 0,
         "groups_repaired": 0,
         "groups_failed": 0,
+        "groups_skipped_legacy_only": 0,
+        "legacy_participants_ignored": 0,
         "dry_run": not args.apply,
     }
     for item in query.all():
@@ -164,12 +191,14 @@ async def inspect_groups(args):
             continue
         summary["groups_scanned"] += 1
         try:
-            owner_account, required_modes, accounts_by_uid = group_state(item)
-            owner_token = await login_account(owner_account, repair_credentials=args.apply)
-            access_by_uid = await tinode_topic_member_access(
-                owner_token,
-                owner_account.tinode_uid,
-                item.tinode_topic,
+            required_modes, accounts_by_uid, legacy_participants = group_state(item)
+            summary["legacy_participants_ignored"] += legacy_participants
+            if not accounts_by_uid:
+                summary["groups_skipped_legacy_only"] += 1
+                continue
+            operator_uid, operator_token, tokens, access_by_uid = await group_operator(
+                item,
+                accounts_by_uid,
             )
             missing, deficient = access_problems(access_by_uid, required_modes)
             if not missing and not deficient:
@@ -187,29 +216,16 @@ async def inspect_groups(args):
             if not args.apply:
                 continue
 
-            tokens = {}
-            for tinode_uid in sorted(set(missing) | set(deficient)):
-                account = accounts_by_uid.get(tinode_uid)
-                if account is None:
-                    continue
-                try:
-                    tokens[tinode_uid] = await login_account(account, repair_credentials=True)
-                except Exception as error:
-                    print("GROUP_MEMBER_TOKEN_WARNING", json.dumps({
-                        "conversation_id": str(item.id),
-                        "uid": tinode_uid,
-                        "error": str(error),
-                    }, sort_keys=True))
-
             await tinode_reconcile_topic_members(
-                owner_token,
-                owner_account.tinode_uid,
+                operator_token,
+                operator_uid,
                 item.tinode_topic,
                 set(required_modes),
                 max_attempts=5,
                 expected_access_modes=required_modes,
                 member_tokens=tokens,
                 remove_extra_members=False,
+                access_scope_uids=set(required_modes),
             )
             summary["groups_repaired"] += 1
         except Exception as error:

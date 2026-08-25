@@ -91,7 +91,7 @@ test('membership mutations retry exactly once with a forced Tinode refresh', asy
   assert.deepEqual(attempts, [false, true]);
 });
 
-test('managed group additions rely on the server-side owner bridge', () => {
+test('managed group additions rely on the server-side actor bridge', () => {
   const addSource = managementServiceSource
     .split('async addConversationParticipants')[1]
     .split('async removeConversationParticipant')[0];
@@ -105,6 +105,8 @@ test('exposes group member approval snapshots and mutations through Chatmgt', ()
   assert.match(managementServiceSource, /pendingParticipantIds/);
   assert.match(managementServiceSource, /participants\/\$\{encodeURIComponent\(participantId\)\}\/approval/);
   assert.match(appSource, /activePendingMembers/);
+  assert.match(appSource, /canApproveGroupMembers/);
+  assert.match(appSource, /canApproveActiveGroupMembers/);
   assert.match(appSource, /handleGroupMemberApproval/);
   assert.match(appSource, /Danh sách cần duyệt/);
   assert.match(appSource, /pending-member-action approve/);

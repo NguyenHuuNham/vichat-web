@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  canApproveGroupMembers,
   canManageGroupMembers,
   canRemoveGroupMember,
   companyDirectoryContacts,
@@ -405,6 +406,20 @@ test('only the creator can remove another member and the owner cannot remove the
   assert.equal(canRemoveGroupMember(room, accounts, creator, member), true);
   assert.equal(canRemoveGroupMember(room, accounts, member, creator), false);
   assert.equal(canRemoveGroupMember(room, accounts, creator, creator), false);
+});
+
+test('tenant administrators can approve membership without receiving owner-only group controls', () => {
+  const owner = { id: 'account-owner', tinodeUid: 'usr-owner', name: 'Owner', role: 'member' };
+  const tenantAdmin = { id: 'account-admin', tinodeUid: 'usr-admin', name: 'Admin', role: 'admin' };
+  const room = {
+    isGroup: true,
+    adminId: owner.id,
+    members: [owner, tenantAdmin],
+  };
+
+  assert.equal(canManageGroupMembers(room, [owner, tenantAdmin], tenantAdmin), false);
+  assert.equal(canApproveGroupMembers(room, [owner, tenantAdmin], tenantAdmin), true);
+  assert.equal(canApproveGroupMembers(room, [owner, tenantAdmin], { ...tenantAdmin, role: 'member' }), false);
 });
 
 test('direct conversations resolve the other account for the current viewer', () => {

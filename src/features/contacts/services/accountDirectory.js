@@ -418,6 +418,12 @@ export function canManageGroupMembers(room, accounts, currentUser) {
   return !adminId && Boolean(room.admin) && room.admin === currentUser.name;
 }
 
+export function canApproveGroupMembers(room, accounts, currentUser) {
+  if (canManageGroupMembers(room, accounts, currentUser)) return true;
+  return room?.isGroup
+    && ['admin', 'owner', 'superadmin'].includes(String(currentUser?.role || '').toLowerCase());
+}
+
 export function canRemoveGroupMember(room, accounts, currentUser, member) {
   if (!member?.id || !canManageGroupMembers(room, accounts, currentUser)) return false;
   const administrator = resolveGroupAdministrator(room, accounts);

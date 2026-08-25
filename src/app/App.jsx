@@ -151,6 +151,7 @@ import {
   parseTimestamp,
 } from '../features/chat/services/timeFormatting';
 import {
+  canApproveGroupMembers,
   canManageGroupMembers,
   canRemoveGroupMember,
   companyDirectoryContacts,
@@ -3441,7 +3442,9 @@ function App() {
     : normalizeGroupSettings();
   const isActiveGroupAdmin = activeChat.isGroup
     && canManageGroupMembers(activeChat, directoryAccounts, currentUser);
-  const activePendingMembers = activeChat.isGroup && isActiveGroupAdmin
+  const canApproveActiveGroupMembers = activeChat.isGroup
+    && canApproveGroupMembers(activeChat, directoryAccounts, currentUser);
+  const activePendingMembers = activeChat.isGroup && canApproveActiveGroupMembers
     ? (Array.isArray(activeChat.pendingMembers) ? activeChat.pendingMembers : [])
       .map(member => {
         const identity = member?.id || member?.uid || member?.tinodeUid || member?.tinode_uid;
@@ -8365,7 +8368,7 @@ function App() {
     if (
       approvingMemberId
       || !activeChat.isGroup
-      || !isActiveGroupAdmin
+      || !canApproveActiveGroupMembers
       || !usesManagementData
     ) return;
     const memberId = String(member?.id || member?.uid || member?.tinodeUid || member?.tinode_uid || '').trim();
@@ -13174,7 +13177,7 @@ function App() {
                         </div>
                       </div>
                     )}
-                    {isActiveGroupAdmin && (activePendingMembers.length > 0 || groupSettingEnabled(activeGroupSettings, 'approveMembers')) && (
+                    {canApproveActiveGroupMembers && (activePendingMembers.length > 0 || groupSettingEnabled(activeGroupSettings, 'approveMembers')) && (
                       <section className="pending-members-section" aria-labelledby="pending-members-heading">
                         <div className="members-list-heading pending-members-heading">
                           <strong id="pending-members-heading">

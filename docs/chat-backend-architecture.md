@@ -429,15 +429,17 @@ employee search endpoint.
 The group information panel keeps notification mute and conversation pin
 viewer-scoped. Any active group member may add another active employee from the
 same tenant; Chatmgt performs that Tinode mutation with a short-lived
-server-side owner bridge credential, so legacy member permissions cannot block
-the feature and no owner token is returned to the browser. When the group's
+server-side credential for the authenticated actor, so a stale legacy owner
+credential cannot block an otherwise authorized group and no Tinode token is
+returned to the browser. When the group's
 `groupSettings.approveMembers` flag is enabled, only a request made by an
 ordinary member is persisted as
-`conversation_participant.approval_status = PENDING`; an owner or group-admin
-addition remains immediate. A pending row stays inactive and is omitted from
-`participantIds`/Tinode subscribers until the owner approves it. Owner-only
-conversation snapshots include `pendingMembers`; the owner can approve or
-reject each request through the approval endpoint. Approval adds the member to
+`conversation_participant.approval_status = PENDING`; a group owner/admin or
+tenant administrator addition remains immediate. A pending row stays inactive
+and is omitted from `participantIds`/Tinode subscribers until a group owner/admin
+or tenant administrator approves it. Their conversation snapshots include
+`pendingMembers` and the web UI exposes the approve/reject controls without
+granting unrelated owner-only group controls. Approval adds the member to
 Tinode and publishes a `member_approved` system event after the membership
 commit; rejection soft-deletes the pending row. An immediate add publishes the
 single authoritative `member_added` event from Chatmgt after commit, so the new
@@ -455,8 +457,13 @@ membership transaction is committed only after effective `J/R/W` access is
 visible, which restores realtime delivery and allows a newly added member to
 read existing group history when `newMemberHistory` is enabled. The operational
 repair command `scripts/repair_group_member_access.py` uses the same checks for
-existing bound groups; its apply mode never removes extra subscribers or
-permissions and does not mutate Chatmgt rows, messages, topics, avatars, read
+existing bound groups that contain Account-authenticated users; groups made only
+of legacy local identities are counted separately because those users cannot
+obtain a chat session in Account SSO mode. Immediate add/approval scopes the
+access gate to the affected users and never removes unrelated subscribers, so
+stale legacy access cannot roll back a healthy new membership. Repair apply mode
+likewise never removes extra subscribers or permissions and does not mutate
+Chatmgt rows, messages, topics, avatars, read
 cursors, or user settings. Normal add/approve rollback first compares the
 pre-mutation subscriber set, so an existing subscription which Tinode reports
 as updated is never mistaken for a newly created subscription and deleted.
@@ -918,8 +925,8 @@ history, role-aware actions and a message-to-task shortcut.
 | `POST` | `/api/v1/conversation/<id>/tinode-prepare` | Prepare Tinode participant mappings |
 | `PUT` | `/api/v1/conversation/<id>/tinode-topic` | Verify/bind the topic to exact membership |
 | `POST` | `/api/v1/conversation/<id>/dissolve` | Owner-only group dissolution; remove all active members and close the group |
-| `POST` | `/api/v1/conversation/<id>/participants` | Add same-tenant active employees; owner/admin additions are immediate, while an ordinary member requires owner approval when `approveMembers` is enabled |
-| `PUT` | `/api/v1/conversation/<id>/participants/<participant-id>/approval` | Owner-only approve or reject a pending group member; approval reconciles Tinode |
+| `POST` | `/api/v1/conversation/<id>/participants` | Add same-tenant active employees; group owner/admin or tenant-admin additions are immediate, while an ordinary member requires approval when `approveMembers` is enabled |
+| `PUT` | `/api/v1/conversation/<id>/participants/<participant-id>/approval` | Group owner/admin or tenant-admin approve/reject of a pending member; approval reconciles Tinode through the authenticated actor |
 | `DELETE` | `/api/v1/conversation/<id>/participants/<participant-id>` | Remove another member as the group owner; replacement candidates and survivors must also have an active same-tenant Account projection |
 | `DELETE` | `/api/v1/conversation/<id>/self` | Remove the authenticated user's membership; `replacement_id` is required only for an owner while another eligible employee survives, otherwise the final active employee closes the group |
 | `POST` | `/api/v1/internal/direct-message-policy` | Internal relay-only decision for a Tinode direct publish; never exposed to browser sessions |
