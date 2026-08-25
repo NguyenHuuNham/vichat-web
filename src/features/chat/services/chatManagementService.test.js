@@ -580,10 +580,12 @@ test('managed direct deletion keeps the topic and reopens after a post-delete me
 
 test('managed member addition keeps the Chatmgt id separate from the UI room key', () => {
   const addSource = appSource.split('const handleAddGroupMembers')[1].split('const closeCreateGroupModal')[0];
+  const managedBranch = addSource.split('if (usesManagementData)')[1].split('} else if (chatMode === \'tinode\')')[0];
   assert.match(addSource, /const stateConversationId = activeChat\.id/);
   assert.match(addSource, /const managementConversationId = activeChat\.managementId \|\| stateConversationId/);
   assert.match(addSource, /addConversationParticipants\(\s*managementConversationId/);
   assert.match(addSource, /\[stateConversationId\]: safeMergeTinodeConversation/);
+  assert.doesNotMatch(managedBranch, /sendSystemEvent/);
 });
 
 test('marks Chatmgt conversation responses as authoritative membership snapshots', () => {

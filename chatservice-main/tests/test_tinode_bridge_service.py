@@ -332,6 +332,34 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(members, {"usrOwner", "usrMember"})
         self.assertEqual(socket.sent[-1]["get"]["what"], "sub")
 
+    async def test_topic_member_access_includes_effective_granted_and_wanted_modes(self):
+        socket = FakeSocket([
+            {"ctrl": {"id": "1", "code": 201}},
+            {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrOwner"}}},
+            {"ctrl": {"id": "3", "code": 200}},
+            {"meta": {"id": "4", "topic": "grpRoom", "sub": [
+                {"user": "usrOwner", "acs": {"want": "JRWPASO", "given": "JRWPASDO", "mode": "JRWPASO"}},
+                {"user": "usrMember", "acs": {"want": "JRWPAS", "given": "PAS", "mode": "PAS"}},
+            ]}},
+        ])
+        with self.config(), patch.object(
+            auth_service.aiohttp,
+            "ClientSession",
+            self.client_session(socket),
+        ):
+            access = await auth_service.tinode_topic_member_access(
+                "short-token",
+                "usrOwner",
+                "grpRoom",
+            )
+
+        self.assertEqual(access["usrOwner"]["mode"], "JRWPASO")
+        self.assertEqual(access["usrMember"], {
+            "mode": "PAS",
+            "given": "PAS",
+            "want": "JRWPAS",
+        })
+
     async def test_group_binding_rejects_an_extra_tinode_subscriber(self):
         socket = FakeSocket([
             {"ctrl": {"id": "1", "code": 201}},
@@ -360,10 +388,17 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_topic_member_reconciliation_removes_stale_tinode_subscriber(self):
         observed = AsyncMock(side_effect=[
-            {"usrOwner", "usrMember", "usrStale"},
-            {"usrOwner", "usrMember"},
+            {
+                "usrOwner": {"mode": "JRWPASO", "given": "JRWPASO", "want": "JRWPASO"},
+                "usrMember": {"mode": "JRWPAS", "given": "JRWPAS", "want": "JRWPAS"},
+                "usrStale": {"mode": "JRWPAS", "given": "JRWPAS", "want": "JRWPAS"},
+            },
+            {
+                "usrOwner": {"mode": "JRWPASO", "given": "JRWPASO", "want": "JRWPASO"},
+                "usrMember": {"mode": "JRWPAS", "given": "JRWPAS", "want": "JRWPAS"},
+            },
         ])
-        with patch.object(auth_service, "tinode_topic_member_uids", observed), patch.object(
+        with patch.object(auth_service, "tinode_topic_member_access", observed), patch.object(
             auth_service,
             "tinode_remove_topic_member",
             AsyncMock(),
@@ -381,6 +416,85 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
             "usrOwner",
             "grpRoom",
             "usrStale",
+        )
+
+    async def test_topic_member_reconciliation_adds_missing_access_without_removing_permissions(self):
+        observed = AsyncMock(side_effect=[
+            {
+                "usrOwner": {"mode": "JRWPASO", "given": "JRWPASDO", "want": "JRWPASO"},
+                "usrMember": {"mode": "PAS", "given": "PAS", "want": "JRWPAS"},
+            },
+            {
+                "usrOwner": {"mode": "JRWPASO", "given": "JRWPASDO", "want": "JRWPASO"},
+                "usrMember": {"mode": "JRWPAS", "given": "JRWPAS", "want": "JRWPAS"},
+            },
+        ])
+        with patch.object(auth_service, "tinode_topic_member_access", observed), patch.object(
+            auth_service,
+            "tinode_add_topic_members",
+            AsyncMock(),
+        ) as add, patch.object(
+            auth_service,
+            "tinode_accept_topic_access",
+            AsyncMock(),
+        ) as accept, patch.object(
+            auth_service,
+            "tinode_remove_topic_member",
+            AsyncMock(),
+        ) as remove:
+            members = await auth_service.tinode_reconcile_topic_members(
+                "owner-token",
+                "usrOwner",
+                "grpRoom",
+                {"usrOwner", "usrMember"},
+                member_tokens={"usrMember": "member-token"},
+            )
+
+        self.assertEqual(members, {"usrOwner", "usrMember"})
+        add.assert_awaited_once_with(
+            "owner-token",
+            "usrOwner",
+            "grpRoom",
+            ["usrMember"],
+            mode="+JRW",
+        )
+        accept.assert_not_awaited()
+        remove.assert_not_awaited()
+
+    async def test_topic_member_reconciliation_repairs_the_members_requested_mode(self):
+        observed = AsyncMock(side_effect=[
+            {
+                "usrOwner": {"mode": "JRWPASO", "given": "JRWPASDO", "want": "JRWPASO"},
+                "usrMember": {"mode": "PAS", "given": "JRWPAS", "want": "PAS"},
+            },
+            {
+                "usrOwner": {"mode": "JRWPASO", "given": "JRWPASDO", "want": "JRWPASO"},
+                "usrMember": {"mode": "JRWPAS", "given": "JRWPAS", "want": "JRWPAS"},
+            },
+        ])
+        with patch.object(auth_service, "tinode_topic_member_access", observed), patch.object(
+            auth_service,
+            "tinode_add_topic_members",
+            AsyncMock(),
+        ) as add, patch.object(
+            auth_service,
+            "tinode_accept_topic_access",
+            AsyncMock(),
+        ) as accept:
+            await auth_service.tinode_reconcile_topic_members(
+                "owner-token",
+                "usrOwner",
+                "grpRoom",
+                {"usrOwner", "usrMember"},
+                member_tokens={"usrMember": "member-token"},
+            )
+
+        add.assert_not_awaited()
+        accept.assert_awaited_once_with(
+            "member-token",
+            "usrMember",
+            "grpRoom",
+            mode="+JRW",
         )
 
     async def test_add_member_uses_the_authenticated_owner_token(self):
@@ -429,12 +543,37 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(added, ["usrMember"])
 
+    async def test_add_member_reports_only_new_subscriptions_for_safe_rollback(self):
+        socket = FakeSocket([
+            {"ctrl": {"id": "1", "code": 201}},
+            {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrOwner"}}},
+            {"ctrl": {"id": "3", "code": 200}},
+            {"ctrl": {"id": "4", "code": 200}},
+            {"ctrl": {"id": "5", "code": 200}},
+        ])
+        with self.config(), patch.object(
+            auth_service.aiohttp,
+            "ClientSession",
+            self.client_session(socket),
+        ):
+            updated, created = await auth_service.tinode_add_topic_members(
+                "short-token",
+                "usrOwner",
+                "grpRoom",
+                ["usrExisting", "usrCreated"],
+                return_created=True,
+                known_existing_member_uids={"usrExisting"},
+            )
+
+        self.assertEqual(updated, ["usrExisting", "usrCreated"])
+        self.assertEqual(created, ["usrCreated"])
+
     async def test_add_member_does_not_roll_back_an_existing_subscription_after_later_failure(self):
         socket = FakeSocket([
             {"ctrl": {"id": "1", "code": 201}},
             {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrOwner"}}},
             {"ctrl": {"id": "3", "code": 200}},
-            {"ctrl": {"id": "4", "code": 304, "text": "not modified"}},
+            {"ctrl": {"id": "4", "code": 200}},
             {"ctrl": {"id": "5", "code": 403, "text": "permission denied"}},
         ])
         with self.config(), patch.object(
@@ -448,6 +587,7 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
                     "usrOwner",
                     "grpRoom",
                     ["usrExisting", "usrRejected"],
+                    known_existing_member_uids={"usrExisting"},
                 )
 
         self.assertFalse(any("del" in packet for packet in socket.sent))
@@ -475,6 +615,29 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
             "topic": "grpRoom",
             "sub": {"mode": "JRWPASO"},
         })
+        self.assertEqual(socket.sent[-2]["sub"]["set"], {
+            "sub": {"mode": "JRWPASO"},
+        })
+
+    async def test_existing_member_access_acceptance_treats_not_modified_as_success(self):
+        socket = FakeSocket([
+            {"ctrl": {"id": "1", "code": 201}},
+            {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrMember"}}},
+            {"ctrl": {"id": "3", "code": 200}},
+            {"ctrl": {"id": "4", "code": 304, "text": "not modified"}},
+        ])
+        with self.config(), patch.object(
+            auth_service.aiohttp,
+            "ClientSession",
+            self.client_session(socket),
+        ):
+            result = await auth_service.tinode_accept_topic_access(
+                "member-token",
+                "usrMember",
+                "grpRoom",
+            )
+
+        self.assertEqual(result["code"], 304)
 
     async def test_group_leave_event_is_published_by_a_surviving_user(self):
         socket = FakeSocket([

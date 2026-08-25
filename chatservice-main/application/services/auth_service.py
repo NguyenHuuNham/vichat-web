@@ -981,7 +981,35 @@ async def tinode_history_window(
             }
 
 
-async def tinode_topic_member_uids(token, expected_uid, topic_name, include_members=True):
+def _tinode_access_mode(value):
+    permissions = set(str(value or "").upper())
+    return "".join(
+        permission for permission in "JRWPASDO"
+        if permission in permissions
+    )
+
+
+def _tinode_effective_access(given, want):
+    granted = set(_tinode_access_mode(given))
+    requested = set(_tinode_access_mode(want))
+    return "".join(permission for permission in "JRWPASDO" if permission in granted & requested)
+
+
+def _tinode_missing_access(required, current):
+    available = set(_tinode_access_mode(current))
+    return "".join(
+        permission for permission in _tinode_access_mode(required)
+        if permission not in available
+    )
+
+
+async def tinode_topic_member_uids(
+    token,
+    expected_uid,
+    topic_name,
+    include_members=True,
+    include_access=False,
+):
     base_url = str(app.config.get("TINODE_INTERNAL_WS_URL") or "").rstrip("?")
     api_key = str(app.config.get("TINODE_API_KEY") or "")
     if not base_url or not api_key or not token:
@@ -1038,7 +1066,7 @@ async def tinode_topic_member_uids(token, expected_uid, topic_name, include_memb
                     "what": "sub",
                 },
             })
-            actual_member_uids = None
+            actual_members = None
             for _attempt in range(60):
                 packet = await socket.receive_json()
                 meta = packet.get("meta") or {}
@@ -1046,11 +1074,36 @@ async def tinode_topic_member_uids(token, expected_uid, topic_name, include_memb
                     subscriptions = meta.get("sub") or []
                     if isinstance(subscriptions, dict):
                         subscriptions = [subscriptions]
-                    actual_member_uids = {
-                        str(subscription.get("user") or subscription.get("topic") or "")
-                        for subscription in subscriptions
-                        if subscription.get("user") or subscription.get("topic")
-                    }
+                    actual_members = {}
+                    for subscription in subscriptions:
+                        member_uid = str(
+                            subscription.get("user") or subscription.get("topic") or ""
+                        ).strip()
+                        if not member_uid:
+                            continue
+                        access = subscription.get("acs") or {}
+                        if not isinstance(access, dict):
+                            access = {}
+                        given = _tinode_access_mode(
+                            access.get("given")
+                            or subscription.get("given")
+                            or subscription.get("modeGiven")
+                        )
+                        want = _tinode_access_mode(
+                            access.get("want")
+                            or subscription.get("want")
+                            or subscription.get("modeWant")
+                        )
+                        mode = _tinode_access_mode(
+                            access.get("mode") or subscription.get("mode")
+                        )
+                        if not mode and given and want:
+                            mode = _tinode_effective_access(given, want)
+                        actual_members[member_uid] = {
+                            "mode": mode,
+                            "given": given,
+                            "want": want,
+                        }
                     break
                 ctrl = packet.get("ctrl") or {}
                 if str(ctrl.get("id") or "") != "4":
@@ -1058,12 +1111,21 @@ async def tinode_topic_member_uids(token, expected_uid, topic_name, include_memb
                 if int(ctrl.get("code") or 500) >= 300:
                     raise AuthError("Tinode rejected the topic membership check.", 409)
                 if int((ctrl.get("params") or {}).get("count") or -1) == 0:
-                    actual_member_uids = set()
+                    actual_members = {}
                     break
-            if actual_member_uids is None:
+            if actual_members is None:
                 raise AuthError("Tinode did not return the topic membership.", 502)
 
-            return actual_member_uids
+            return actual_members if include_access else set(actual_members)
+
+
+async def tinode_topic_member_access(token, expected_uid, topic_name):
+    return await tinode_topic_member_uids(
+        token,
+        expected_uid,
+        topic_name,
+        include_access=True,
+    )
 
 
 async def tinode_verify_topic_access(token, expected_uid, topic_name, expected_member_uids=None):
@@ -1078,10 +1140,23 @@ async def tinode_verify_topic_access(token, expected_uid, topic_name, expected_m
     return actual_member_uids
 
 
-async def tinode_add_topic_members(token, expected_uid, topic_name, member_uids, mode="JRWPAS"):
+async def tinode_add_topic_members(
+    token,
+    expected_uid,
+    topic_name,
+    member_uids,
+    mode="JRWPAS",
+    return_created=False,
+    known_existing_member_uids=None,
+):
     base_url = str(app.config.get("TINODE_INTERNAL_WS_URL") or "").rstrip("?")
     api_key = str(app.config.get("TINODE_API_KEY") or "")
     members = list(dict.fromkeys(str(uid) for uid in member_uids if uid))
+    known_existing = (
+        {str(uid) for uid in known_existing_member_uids if uid}
+        if known_existing_member_uids is not None
+        else None
+    )
     if not base_url or not api_key or not token:
         raise AuthError("Tinode topic membership is not configured.", 503)
     if not members:
@@ -1130,7 +1205,10 @@ async def tinode_add_topic_members(token, expected_uid, topic_name, member_uids,
                     })
                     ctrl = await receive_ctrl(socket, str(index), accepted_codes={304})
                     updated.append(member_uid)
-                    if int(ctrl.get("code") or 500) < 300:
+                    if (
+                        int(ctrl.get("code") or 500) < 300
+                        and (known_existing is None or member_uid not in known_existing)
+                    ):
                         created.append(member_uid)
             except AuthError:
                 for rollback_index, member_uid in enumerate(reversed(created), start=100):
@@ -1151,11 +1229,11 @@ async def tinode_add_topic_members(token, expected_uid, topic_name, member_uids,
                     except AuthError:
                         pass
                 raise
-            return updated
+            return (updated, created) if return_created else updated
 
 
-async def tinode_accept_topic_owner(token, expected_uid, topic_name, mode="JRWPASO"):
-    """Accept an owner invitation from the replacement user's Tinode session."""
+async def tinode_accept_topic_access(token, expected_uid, topic_name, mode="+JRWPAS"):
+    """Update a member's requested mode from that member's own Tinode session."""
     base_url = str(app.config.get("TINODE_INTERNAL_WS_URL") or "").rstrip("?")
     api_key = str(app.config.get("TINODE_API_KEY") or "")
     if not base_url or not api_key or not token:
@@ -1164,19 +1242,21 @@ async def tinode_accept_topic_owner(token, expected_uid, topic_name, mode="JRWPA
     url = "{}{}apikey={}".format(base_url, separator, quote(api_key, safe=""))
     timeout = aiohttp.ClientTimeout(total=int(app.config.get("TINODE_AUTH_TIMEOUT", 10)))
 
-    async def receive_ctrl(socket, request_id):
+    async def receive_ctrl(socket, request_id, accepted_codes=None):
+        accepted = set(accepted_codes or ())
         for _attempt in range(30):
             packet = await socket.receive_json()
             ctrl = packet.get("ctrl") or {}
             if str(ctrl.get("id") or "") != str(request_id):
                 continue
-            if int(ctrl.get("code") or 500) >= 300:
+            code = int(ctrl.get("code") or 500)
+            if code >= 300 and code not in accepted:
                 raise AuthError(
-                    ctrl.get("text") or "Tinode rejected the owner transfer.",
+                    ctrl.get("text") or "Tinode rejected the membership acceptance.",
                     409,
                 )
             return ctrl
-        raise AuthError("Tinode did not confirm the owner transfer.", 502)
+        raise AuthError("Tinode did not confirm the membership acceptance.", 502)
 
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.ws_connect(url, headers=_tinode_bridge_headers()) as socket:
@@ -1187,8 +1267,15 @@ async def tinode_accept_topic_owner(token, expected_uid, topic_name, mode="JRWPA
             authenticated_uid = str((login_ctrl.get("params") or {}).get("user") or "")
             if expected_uid and authenticated_uid != str(expected_uid):
                 raise AuthError("Tinode authenticated a different user.", 409)
-            await socket.send_json({"sub": {"id": "3", "topic": topic_name, "get": {"what": "desc"}}})
-            await receive_ctrl(socket, "3")
+            await socket.send_json({
+                "sub": {
+                    "id": "3",
+                    "topic": topic_name,
+                    "set": {"sub": {"mode": mode}},
+                    "get": {"what": "desc"},
+                },
+            })
+            await receive_ctrl(socket, "3", accepted_codes={304})
             await socket.send_json({
                 "set": {
                     "id": "4",
@@ -1196,7 +1283,12 @@ async def tinode_accept_topic_owner(token, expected_uid, topic_name, mode="JRWPA
                     "sub": {"mode": mode},
                 },
             })
-            return await receive_ctrl(socket, "4")
+            return await receive_ctrl(socket, "4", accepted_codes={304})
+
+
+async def tinode_accept_topic_owner(token, expected_uid, topic_name, mode="JRWPASO"):
+    """Accept an owner invitation from the replacement user's Tinode session."""
+    return await tinode_accept_topic_access(token, expected_uid, topic_name, mode=mode)
 
 
 async def tinode_remove_topic_member(token, expected_uid, topic_name, member_uid):
@@ -1296,39 +1388,109 @@ async def tinode_reconcile_topic_members(
     topic_name,
     expected_member_uids,
     max_attempts=4,
+    expected_access_modes=None,
+    member_tokens=None,
+    remove_extra_members=True,
 ):
     """Make a management-owned topic match Chatmgt after a membership change."""
     expected = {str(uid) for uid in expected_member_uids if uid}
     if not expected:
         raise AuthError("The Chatmgt topic membership is empty.", 409)
+    required_modes = {
+        member_uid: "JRWPASO" if member_uid == str(expected_uid) else "JRWPAS"
+        for member_uid in expected
+    }
+    required_modes.update({
+        str(uid): _tinode_access_mode(mode)
+        for uid, mode in dict(expected_access_modes or {}).items()
+        if uid and _tinode_access_mode(mode)
+    })
+    access_tokens = {
+        str(uid): str(value or "").strip()
+        for uid, value in dict(member_tokens or {}).items()
+        if uid and value
+    }
 
     attempts = max(1, int(max_attempts))
     for attempt in range(attempts):
-        actual = await tinode_topic_member_uids(token, expected_uid, topic_name)
-        if actual == expected:
+        access_by_uid = await tinode_topic_member_access(token, expected_uid, topic_name)
+        actual = set(access_by_uid)
+        access_mismatches = {
+            member_uid: required_mode
+            for member_uid, required_mode in required_modes.items()
+            if member_uid in expected
+            and member_uid in actual
+            and not set(required_mode).issubset(
+                set(_tinode_access_mode((access_by_uid.get(member_uid) or {}).get("mode")))
+            )
+        }
+        membership_matches = actual == expected if remove_extra_members else expected.issubset(actual)
+        if membership_matches and not access_mismatches:
             return actual
 
-        extra = sorted(actual - expected)
+        extra = sorted(actual - expected) if remove_extra_members else []
         missing = sorted(expected - actual)
         if str(expected_uid) in extra:
             raise AuthError("Tinode authenticated a user outside Chatmgt membership.", 409)
         for member_uid in extra:
             await tinode_remove_topic_member(token, expected_uid, topic_name, member_uid)
         if str(expected_uid) in missing:
+            await tinode_accept_topic_access(
+                access_tokens.get(str(expected_uid)) or token,
+                expected_uid,
+                topic_name,
+                mode=required_modes.get(str(expected_uid), "JRWPASO"),
+            )
+            missing.remove(str(expected_uid))
+        for member_uid in missing:
+            required_mode = required_modes.get(member_uid, "JRWPAS")
             await tinode_add_topic_members(
                 token,
                 expected_uid,
                 topic_name,
-                [str(expected_uid)],
-                mode="JRWPASO",
+                [member_uid],
+                mode=required_mode,
             )
-            missing.remove(str(expected_uid))
-        if missing:
-            await tinode_add_topic_members(token, expected_uid, topic_name, missing)
+            target_token = access_tokens.get(member_uid)
+            if target_token:
+                await tinode_accept_topic_access(
+                    target_token,
+                    member_uid,
+                    topic_name,
+                    mode="+{}".format(required_mode),
+                )
+        for member_uid, required_mode in sorted(access_mismatches.items()):
+            member_access = access_by_uid.get(member_uid) or {}
+            missing_given = _tinode_missing_access(required_mode, member_access.get("given"))
+            missing_want = _tinode_missing_access(required_mode, member_access.get("want"))
+            if missing_given and member_uid != str(expected_uid):
+                await tinode_add_topic_members(
+                    token,
+                    expected_uid,
+                    topic_name,
+                    [member_uid],
+                    mode="+{}".format(missing_given),
+                )
+            if missing_want and member_uid == str(expected_uid):
+                await tinode_accept_topic_access(
+                    access_tokens.get(member_uid) or token,
+                    member_uid,
+                    topic_name,
+                    mode="+{}".format(missing_want),
+                )
+                continue
+            target_token = access_tokens.get(member_uid)
+            if missing_want and target_token:
+                await tinode_accept_topic_access(
+                    target_token,
+                    member_uid,
+                    topic_name,
+                    mode="+{}".format(missing_want),
+                )
         if attempt + 1 < attempts:
             await asyncio.sleep(0.1 * (attempt + 1))
 
-    raise AuthError("Tinode topic members do not match Chatmgt.", 409)
+    raise AuthError("Tinode topic members or access modes do not match Chatmgt.", 409)
 
 
 async def tinode_publish_system_event(token, expected_uid, topic_name, event):

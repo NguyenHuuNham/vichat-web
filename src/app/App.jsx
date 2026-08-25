@@ -3706,7 +3706,17 @@ function App() {
   const desktopNotificationPermission = typeof window !== 'undefined' && 'Notification' in window
     ? window.Notification.permission
     : 'unsupported';
-  const notificationSettingsViewerId = currentUser?.id || currentUser?.uid || viewerId;
+  const notificationSettingsIdentity = useMemo(() => {
+    const ids = [...new Set([
+      currentUser?.id,
+      currentUser?.uid,
+      currentUser?.tinodeUid,
+      viewerId,
+    ].map(value => String(value || '').trim()).filter(Boolean))];
+    return { viewerId: ids[0] || '', aliases: ids.slice(1) };
+  }, [currentUser?.id, currentUser?.uid, currentUser?.tinodeUid, viewerId]);
+  const notificationSettingsViewerId = notificationSettingsIdentity.viewerId;
+  const notificationSettingsViewerAliases = notificationSettingsIdentity.aliases;
   const unreadViewerId = chatMode === 'tinode' ? viewerId : managementViewerId;
 
   const conversationUnreadIndicators = room => {
@@ -3853,10 +3863,17 @@ function App() {
   const updateNotificationSettings = useCallback(patch => {
     setSettings(previous => {
       const next = normalizeNotificationSettings({ ...previous, ...patch });
-      if (notificationSettingsViewerId) writeNotificationSettings(notificationSettingsViewerId, next);
+      if (notificationSettingsViewerId) {
+        writeNotificationSettings(
+          notificationSettingsViewerId,
+          next,
+          undefined,
+          notificationSettingsViewerAliases,
+        );
+      }
       return next;
     });
-  }, [notificationSettingsViewerId]);
+  }, [notificationSettingsViewerAliases, notificationSettingsViewerId]);
 
   useEffect(() => {
     if (!notificationSettingsViewerId) {
@@ -3864,9 +3881,13 @@ function App() {
       setNotificationSettingsNotice('');
       return;
     }
-    setSettings(readNotificationSettings(notificationSettingsViewerId));
+    setSettings(readNotificationSettings(
+      notificationSettingsViewerId,
+      undefined,
+      notificationSettingsViewerAliases,
+    ));
     setNotificationSettingsNotice('');
-  }, [notificationSettingsViewerId]);
+  }, [notificationSettingsViewerAliases, notificationSettingsViewerId]);
 
   const updateKeyboardShortcutSettings = useCallback(nextValue => {
     const next = normalizeKeyboardShortcutSettings(nextValue);
@@ -4039,7 +4060,11 @@ function App() {
     setIsLoadingCustomNotificationSound(Boolean(notificationSettingsViewerId));
     if (!notificationSettingsViewerId) return undefined;
 
-    readCustomNotificationSound(notificationSettingsViewerId)
+    readCustomNotificationSound(
+      notificationSettingsViewerId,
+      undefined,
+      notificationSettingsViewerAliases,
+    )
       .then(sound => {
         if (active) setCustomNotificationSound(sound);
       })
@@ -4056,7 +4081,7 @@ function App() {
     return () => {
       active = false;
     };
-  }, [notificationSettingsViewerId]);
+  }, [notificationSettingsViewerAliases, notificationSettingsViewerId]);
 
   useEffect(() => {
     if (!customNotificationSound?.blob || typeof URL === 'undefined' || !URL.createObjectURL) {
@@ -4090,7 +4115,12 @@ function App() {
     setIsSavingCustomNotificationSound(true);
     setNotificationSettingsNotice('');
     try {
-      const savedSound = await writeCustomNotificationSound(notificationSettingsViewerId, file);
+      const savedSound = await writeCustomNotificationSound(
+        notificationSettingsViewerId,
+        file,
+        undefined,
+        notificationSettingsViewerAliases,
+      );
       setCustomNotificationSound(savedSound);
       updateNotificationSettings({ sound: CUSTOM_NOTIFICATION_SOUND_ID, sounds: true });
       setNotificationSettingsNotice(`Đã lưu âm báo "${savedSound.name}" trên thiết bị này.`);
@@ -4099,14 +4129,18 @@ function App() {
     } finally {
       setIsSavingCustomNotificationSound(false);
     }
-  }, [notificationSettingsViewerId, updateNotificationSettings]);
+  }, [notificationSettingsViewerAliases, notificationSettingsViewerId, updateNotificationSettings]);
 
   const handleRemoveCustomNotificationSound = useCallback(async () => {
     if (!notificationSettingsViewerId || isSavingCustomNotificationSound) return;
     setIsSavingCustomNotificationSound(true);
     setNotificationSettingsNotice('');
     try {
-      await deleteCustomNotificationSound(notificationSettingsViewerId);
+      await deleteCustomNotificationSound(
+        notificationSettingsViewerId,
+        undefined,
+        notificationSettingsViewerAliases,
+      );
       setCustomNotificationSound(null);
       updateNotificationSettings({ sound: DEFAULT_NOTIFICATION_SETTINGS.sound });
       setNotificationSettingsNotice('Đã xóa âm báo tùy chỉnh khỏi thiết bị này.');
@@ -4115,7 +4149,12 @@ function App() {
     } finally {
       setIsSavingCustomNotificationSound(false);
     }
-  }, [isSavingCustomNotificationSound, notificationSettingsViewerId, updateNotificationSettings]);
+  }, [
+    isSavingCustomNotificationSound,
+    notificationSettingsViewerAliases,
+    notificationSettingsViewerId,
+    updateNotificationSettings,
+  ]);
 
   const pinValidationMessage = useCallback(errorCode => {
     if (errorCode === PIN_VALIDATION_ERRORS.REQUIRED) return appCopy.pinRequired;
@@ -8255,15 +8294,6 @@ function App() {
               managementId: managementConversationId,
             });
           const realtimeRoom = await tinodeClient.openConversation(topicName);
-          await tinodeClient.sendSystemEvent(topicName, {
-            action: 'member_added',
-            actorId: tinodeActorId,
-            actorName: currentUser?.name,
-            targets: approvedSelectedMembers.map(member => ({
-              id: member.tinodeUid || member.tinode_uid || member.uid || member.id,
-              name: mentionCanonicalText(member),
-            })),
-          }).catch(() => {});
           updatedRoom = {
             ...normalizeTinodeConversation(realtimeRoom),
             ...managedRoom,

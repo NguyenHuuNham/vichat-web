@@ -36,6 +36,18 @@ function notificationSettingsStorageKey(viewerId) {
   return `${NOTIFICATION_SETTINGS_STORAGE_PREFIX}.${encodeURIComponent(String(viewerId || 'anonymous'))}`;
 }
 
+function notificationViewerIds(viewerId, aliasViewerIds = []) {
+  return [...new Set([viewerId, ...aliasViewerIds]
+    .map(value => String(value || '').trim())
+    .filter(Boolean))];
+}
+
+function notificationSettingsDifference(settings) {
+  return Object.keys(DEFAULT_NOTIFICATION_SETTINGS)
+    .filter(key => settings[key] !== DEFAULT_NOTIFICATION_SETTINGS[key])
+    .length;
+}
+
 export function normalizeNotificationSettings(value = {}) {
   const sound = MESSAGE_SOUND_OPTIONS.some(option => option.id === value?.sound)
     || value?.sound === CUSTOM_NOTIFICATION_SOUND_ID
@@ -57,23 +69,61 @@ export function normalizeNotificationSettings(value = {}) {
   };
 }
 
-export function readNotificationSettings(viewerId, storage = globalThis?.localStorage) {
+export function readNotificationSettings(viewerId, storage = globalThis?.localStorage, aliasViewerIds = []) {
   if (!viewerId || !storage) return { ...DEFAULT_NOTIFICATION_SETTINGS };
-  try {
-    const raw = storage.getItem(notificationSettingsStorageKey(viewerId));
-    return normalizeNotificationSettings(raw ? JSON.parse(raw) : DEFAULT_NOTIFICATION_SETTINGS);
-  } catch {
-    return { ...DEFAULT_NOTIFICATION_SETTINGS };
+  const viewerIds = notificationViewerIds(viewerId, aliasViewerIds);
+  const records = [];
+  for (const [index, candidateId] of viewerIds.entries()) {
+    try {
+      const raw = storage.getItem(notificationSettingsStorageKey(candidateId));
+      if (!raw) continue;
+      const value = JSON.parse(raw);
+      const settings = normalizeNotificationSettings(value);
+      records.push({
+        candidateId,
+        index,
+        settings,
+        updatedAt: Number(value?.updatedAt) || 0,
+        difference: notificationSettingsDifference(settings),
+      });
+    } catch {
+      // A corrupt alias must not hide a valid record stored under another identity.
+    }
   }
+  if (records.length === 0) return { ...DEFAULT_NOTIFICATION_SETTINGS };
+  const timestamped = records.filter(record => record.updatedAt > 0);
+  const selected = timestamped.length > 0
+    ? timestamped.sort((left, right) => right.updatedAt - left.updatedAt || left.index - right.index)[0]
+    : (records.find(record => record.difference > 0) || records[0]);
+  if (selected.candidateId !== viewerIds[0]) {
+    try {
+      storage.setItem(notificationSettingsStorageKey(viewerIds[0]), JSON.stringify({
+        ...selected.settings,
+        ...(selected.updatedAt > 0 ? { updatedAt: selected.updatedAt } : {}),
+      }));
+    } catch {
+      // Reading a valid legacy alias must still work when copy-on-read is unavailable.
+    }
+  }
+  return selected.settings;
 }
 
-export function writeNotificationSettings(viewerId, value, storage = globalThis?.localStorage) {
-  const next = normalizeNotificationSettings(value);
+export function writeNotificationSettings(viewerId, value, storage = globalThis?.localStorage, aliasViewerIds = []) {
+  const viewerIds = notificationViewerIds(viewerId, aliasViewerIds);
+  const current = readNotificationSettings(viewerId, storage, aliasViewerIds);
+  const patch = Object.fromEntries(
+    Object.entries(value && typeof value === 'object' ? value : {})
+      .filter(([, fieldValue]) => fieldValue !== undefined),
+  );
+  const next = normalizeNotificationSettings({ ...current, ...patch });
   if (viewerId && storage) {
-    try {
-      storage.setItem(notificationSettingsStorageKey(viewerId), JSON.stringify(next));
-    } catch {
-      // Preferences remain active for the current tab when storage is unavailable.
+    const record = JSON.stringify({ ...next, updatedAt: Date.now() });
+    for (const candidateId of viewerIds) {
+      try {
+        storage.setItem(notificationSettingsStorageKey(candidateId), record);
+      } catch {
+        // Preferences remain active for the current tab when storage is unavailable.
+      }
     }
   }
   return next;
@@ -144,34 +194,65 @@ export function validateCustomNotificationSoundFile(file) {
   return '';
 }
 
-export async function readCustomNotificationSound(viewerId, factory = indexedDbFactory()) {
-  if (!viewerId) return null;
-  const database = await openNotificationSoundDatabase(factory);
-  if (!database) return null;
+function requestResult(request, fallbackMessage) {
   return new Promise((resolve, reject) => {
-    let request;
-    try {
-      request = database
-        .transaction(NOTIFICATION_SOUND_STORE_NAME, 'readonly')
-        .objectStore(NOTIFICATION_SOUND_STORE_NAME)
-        .get(String(viewerId));
-    } catch (error) {
-      closeDatabase(database);
-      reject(error);
-      return;
-    }
-    request.onsuccess = () => {
-      closeDatabase(database);
-      resolve(normalizedCustomNotificationSound(request.result));
-    };
-    request.onerror = () => {
-      closeDatabase(database);
-      reject(request.error || new Error('Không thể đọc file âm báo.'));
-    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error(fallbackMessage));
   });
 }
 
-export async function writeCustomNotificationSound(viewerId, file, factory = indexedDbFactory()) {
+function writeCustomSoundRecords(database, record, viewerIds) {
+  return new Promise((resolve, reject) => {
+    let transaction;
+    try {
+      transaction = database.transaction(NOTIFICATION_SOUND_STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(NOTIFICATION_SOUND_STORE_NAME);
+      viewerIds.forEach(candidateId => store.put({ ...record, viewerId: candidateId }));
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    transaction.oncomplete = () => resolve(normalizedCustomNotificationSound(record));
+    transaction.onerror = () => reject(transaction.error || new Error('Không thể lưu file âm báo.'));
+    transaction.onabort = () => reject(transaction.error || new Error('Không thể lưu file âm báo.'));
+  });
+}
+
+export async function readCustomNotificationSound(viewerId, factory = indexedDbFactory(), aliasViewerIds = []) {
+  if (!viewerId) return null;
+  const database = await openNotificationSoundDatabase(factory);
+  if (!database) return null;
+  const viewerIds = notificationViewerIds(viewerId, aliasViewerIds);
+  try {
+    for (const candidateId of viewerIds) {
+      const request = database
+        .transaction(NOTIFICATION_SOUND_STORE_NAME, 'readonly')
+        .objectStore(NOTIFICATION_SOUND_STORE_NAME)
+        .get(candidateId);
+      const result = await requestResult(request, 'Không thể đọc file âm báo.');
+      const sound = normalizedCustomNotificationSound(result);
+      if (!sound) continue;
+      if (candidateId !== viewerIds[0]) {
+        try {
+          await writeCustomSoundRecords(database, sound, [viewerIds[0]]);
+        } catch {
+          // Keep the legacy sound usable even if this browser blocks copy-on-read.
+        }
+      }
+      return sound;
+    }
+    return null;
+  } finally {
+    closeDatabase(database);
+  }
+}
+
+export async function writeCustomNotificationSound(
+  viewerId,
+  file,
+  factory = indexedDbFactory(),
+  aliasViewerIds = [],
+) {
   if (!viewerId) throw new Error('Thiếu tài khoản để lưu file âm báo.');
   const validationError = validateCustomNotificationSoundFile(file);
   if (validationError) throw new Error(validationError);
@@ -185,52 +266,47 @@ export async function writeCustomNotificationSound(viewerId, file, factory = ind
     size: Number(file.size),
     lastModified: Number(file.lastModified) || 0,
   };
-  return new Promise((resolve, reject) => {
-    let request;
-    try {
-      request = database
-        .transaction(NOTIFICATION_SOUND_STORE_NAME, 'readwrite')
-        .objectStore(NOTIFICATION_SOUND_STORE_NAME)
-        .put(record);
-    } catch (error) {
-      closeDatabase(database);
-      reject(error);
-      return;
-    }
-    request.onsuccess = () => {
-      closeDatabase(database);
-      resolve(normalizedCustomNotificationSound(record));
-    };
-    request.onerror = () => {
-      closeDatabase(database);
-      reject(request.error || new Error('Không thể lưu file âm báo.'));
-    };
-  });
+  try {
+    return await writeCustomSoundRecords(
+      database,
+      record,
+      notificationViewerIds(viewerId, aliasViewerIds),
+    );
+  } finally {
+    closeDatabase(database);
+  }
 }
 
-export async function deleteCustomNotificationSound(viewerId, factory = indexedDbFactory()) {
+export async function deleteCustomNotificationSound(
+  viewerId,
+  factory = indexedDbFactory(),
+  aliasViewerIds = [],
+) {
   if (!viewerId) return false;
   const database = await openNotificationSoundDatabase(factory);
   if (!database) return false;
   return new Promise((resolve, reject) => {
-    let request;
+    let transaction;
     try {
-      request = database
-        .transaction(NOTIFICATION_SOUND_STORE_NAME, 'readwrite')
-        .objectStore(NOTIFICATION_SOUND_STORE_NAME)
-        .delete(String(viewerId));
+      transaction = database.transaction(NOTIFICATION_SOUND_STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(NOTIFICATION_SOUND_STORE_NAME);
+      notificationViewerIds(viewerId, aliasViewerIds).forEach(candidateId => store.delete(candidateId));
     } catch (error) {
       closeDatabase(database);
       reject(error);
       return;
     }
-    request.onsuccess = () => {
+    transaction.oncomplete = () => {
       closeDatabase(database);
       resolve(true);
     };
-    request.onerror = () => {
+    transaction.onerror = () => {
       closeDatabase(database);
-      reject(request.error || new Error('Không thể xóa file âm báo.'));
+      reject(transaction.error || new Error('Không thể xóa file âm báo.'));
+    };
+    transaction.onabort = () => {
+      closeDatabase(database);
+      reject(transaction.error || new Error('Không thể xóa file âm báo.'));
     };
   });
 }

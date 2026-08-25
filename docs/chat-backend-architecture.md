@@ -431,15 +431,35 @@ viewer-scoped. Any active group member may add another active employee from the
 same tenant; Chatmgt performs that Tinode mutation with a short-lived
 server-side owner bridge credential, so legacy member permissions cannot block
 the feature and no owner token is returned to the browser. When the group's
-`groupSettings.approveMembers` flag is enabled, a new add request is persisted
-as `conversation_participant.approval_status = PENDING`, remains inactive and
-is omitted from `participantIds`/Tinode subscribers until the owner approves
-it. Owner-only conversation snapshots include `pendingMembers`; the owner can
-approve or reject each request through the approval endpoint. Approval adds the
-member to Tinode and publishes a `member_approved` system event after the
-membership commit; rejection soft-deletes the pending row. Disabling the flag
-preserves the existing immediate-add flow. Opening or saving group management
-settings and removing another member remain owner-only.
+`groupSettings.approveMembers` flag is enabled, only a request made by an
+ordinary member is persisted as
+`conversation_participant.approval_status = PENDING`; an owner or group-admin
+addition remains immediate. A pending row stays inactive and is omitted from
+`participantIds`/Tinode subscribers until the owner approves it. Owner-only
+conversation snapshots include `pendingMembers`; the owner can approve or
+reject each request through the approval endpoint. Approval adds the member to
+Tinode and publishes a `member_approved` system event after the membership
+commit; rejection soft-deletes the pending row. An immediate add publishes the
+single authoritative `member_added` event from Chatmgt after commit, so the new
+member and every open web session receive the same activity without relying on
+the actor's browser. Opening or saving group management settings and removing
+another member remain owner-only.
+
+Chatmgt verifies group membership by both subscriber identity and effective
+Tinode access. Active members require `JRWPAS`, while the owner requires
+`JRWPASO`; reconciliation reads `acs.mode`, `acs.given` and `acs.want`, adds
+only missing permissions, and uses the affected member's short-lived
+server-side token when their requested mode must also be repaired. A subscriber
+which exists with only `PAS` is therefore not accepted as healthy. The
+membership transaction is committed only after effective `J/R/W` access is
+visible, which restores realtime delivery and allows a newly added member to
+read existing group history when `newMemberHistory` is enabled. The operational
+repair command `scripts/repair_group_member_access.py` uses the same checks for
+existing bound groups; its apply mode never removes extra subscribers or
+permissions and does not mutate Chatmgt rows, messages, topics, avatars, read
+cursors, or user settings. Normal add/approve rollback first compares the
+pre-mutation subscriber set, so an existing subscription which Tinode reports
+as updated is never mistaken for a newly created subscription and deleted.
 For active group snapshots, Chatmgt also requires the corresponding
 `ManagementAccount` projection to remain active before exposing a participant
 in `participantIds`, `members`, replacement-owner choices or survivor counts.
@@ -723,7 +743,14 @@ browser desktop notification and a configurable built-in sound when the viewer
 is away from that conversation. The viewer must grant browser permission and
 can enable/disable desktop notifications, mute the sound, or choose a sound
 profile in ChatUI Settings. Conversation mute suppresses both alerts; these
-preferences are viewer-local and contain no message or credential data.
+preferences are viewer-local and contain no message or credential data. Web
+preference writes merge with the existing record instead of normalizing absent
+fields back to defaults. ChatUI reads the stable Chatmgt account ID first and
+uses the current Tinode UID as a non-destructive alias; a record or custom sound
+found under either identity is copied forward without deleting the original.
+The storage prefix `vichat.notification-settings.v1` and IndexedDB database
+`vichat-notification-sounds.v1` remain unchanged across releases, and a custom
+sound is deleted only through the explicit remove action in Settings.
 
 Mobile group creation first creates the tenant-scoped Chatmgt conversation,
 prepares every participant's Tinode UID, creates a Tinode `grp` topic, uploads
@@ -891,7 +918,7 @@ history, role-aware actions and a message-to-task shortcut.
 | `POST` | `/api/v1/conversation/<id>/tinode-prepare` | Prepare Tinode participant mappings |
 | `PUT` | `/api/v1/conversation/<id>/tinode-topic` | Verify/bind the topic to exact membership |
 | `POST` | `/api/v1/conversation/<id>/dissolve` | Owner-only group dissolution; remove all active members and close the group |
-| `POST` | `/api/v1/conversation/<id>/participants` | Add same-tenant active employees; any active group member may request this, with owner approval when `approveMembers` is enabled |
+| `POST` | `/api/v1/conversation/<id>/participants` | Add same-tenant active employees; owner/admin additions are immediate, while an ordinary member requires owner approval when `approveMembers` is enabled |
 | `PUT` | `/api/v1/conversation/<id>/participants/<participant-id>/approval` | Owner-only approve or reject a pending group member; approval reconciles Tinode |
 | `DELETE` | `/api/v1/conversation/<id>/participants/<participant-id>` | Remove another member as the group owner; replacement candidates and survivors must also have an active same-tenant Account projection |
 | `DELETE` | `/api/v1/conversation/<id>/self` | Remove the authenticated user's membership; `replacement_id` is required only for an owner while another eligible employee survives, otherwise the final active employee closes the group |

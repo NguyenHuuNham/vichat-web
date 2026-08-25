@@ -17,6 +17,7 @@ PRODUCTION_COMPOSE_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / "c
 PRODUCTION_NGINX_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / "nginx.conf"
 PRODUCTION_NGINX_MGMT_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / "nginx-host-chatmgt.conf"
 TINODE_BRIDGE_PATH = PROJECT_ROOT / "scripts" / "tinode_account_bridge.py"
+GROUP_ACCESS_REPAIR_PATH = PROJECT_ROOT / "scripts" / "repair_group_member_access.py"
 PRODUCTION_ENV_EXAMPLE_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / ".env.example"
 PRESENCE_SERVICE_PATH = PROJECT_ROOT / "application" / "services" / "presence_service.py"
 HAS_REPOSITORY_SOURCES = all(path.is_file() for path in (
@@ -412,6 +413,9 @@ class ChatAuthContractTests(unittest.TestCase):
 
         self.assertIn("tinode_add_topic_members", add_source)
         self.assertIn("tinode_reconcile_topic_members", add_source)
+        self.assertIn("expected_access_modes=expected_access_modes", add_source)
+        self.assertIn("member_tokens=added_member_tokens", add_source)
+        self.assertIn("known_existing_member_uids=existing_tinode_member_uids", add_source)
         self.assertIn("_tinode_account_identity(owner_account)", add_source)
         self.assertIn("tinode_sso_login", add_source)
         self.assertIn("tinode_operator_uid", add_source)
@@ -438,6 +442,14 @@ class ChatAuthContractTests(unittest.TestCase):
                 leave_source.index("sendSystemEvent"),
             )
 
+    def test_group_access_repair_is_additive_and_does_not_mutate_chatmgt(self):
+        repair_source = GROUP_ACCESS_REPAIR_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("tinode_topic_member_access", repair_source)
+        self.assertIn("remove_extra_members=False", repair_source)
+        self.assertNotIn("tinode_remove_topic_member", repair_source)
+        self.assertNotIn("db.session.commit", repair_source)
+
     def test_group_member_approval_stays_out_of_active_tinode_membership_until_approved(self):
         controller_source = CONTROLLER_PATH.read_text(encoding="utf-8")
         model_source = (PROJECT_ROOT / "application" / "models" / "models.py").read_text(encoding="utf-8")
@@ -453,7 +465,9 @@ class ChatAuthContractTests(unittest.TestCase):
 
         self.assertIn("approval_status", model_source)
         self.assertIn("ADD COLUMN IF NOT EXISTS approval_status", migration_source)
-        self.assertIn('approval_required = bool(group_settings["approveMembers"])', add_source)
+        self.assertIn('bool(group_settings["approveMembers"])', add_source)
+        self.assertIn('membership.role or ""', add_source)
+        self.assertIn('not in ("OWNER", "ADMIN")', add_source)
         self.assertIn('approval_status="PENDING"', add_source)
         self.assertIn('active=not requires_approval', add_source)
         self.assertIn('ConversationParticipant.approval_status == "APPROVED"', controller_source)
@@ -461,7 +475,11 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('target.approval_status = "APPROVED"', approval_source)
         self.assertIn('target.approval_status = "REJECTED"', approval_source)
         self.assertIn("tinode_add_topic_members", approval_source)
+        self.assertIn("member_tokens={target_uid: target_token}", approval_source)
+        self.assertIn("known_existing_member_uids=existing_tinode_member_uids", approval_source)
         self.assertIn("tinode_publish_system_event", approval_source)
+        self.assertIn('"action": "member_added"', add_source)
+        self.assertIn("expected_access_modes=expected_access_modes", add_source)
 
     def test_owner_leave_requires_a_replacement_only_while_active_members_survive(self):
         _controller_source, remove_source = function_source(

@@ -8,6 +8,7 @@ import {
   CUSTOM_NOTIFICATION_SOUND_MAX_BYTES,
   DEFAULT_NOTIFICATION_SETTINGS,
   MESSAGE_SOUND_OPTIONS,
+  NOTIFICATION_SETTINGS_STORAGE_PREFIX,
   NOTIFICATION_MUTE_OPTIONS,
   deleteCustomNotificationSound,
   isConversationMuted,
@@ -20,8 +21,62 @@ import {
   readNotificationSettings,
   resolveNotificationMuteUntil,
   validateCustomNotificationSoundFile,
+  writeCustomNotificationSound,
   writeNotificationSettings,
 } from './conversationNotifications.js';
+
+function createIndexedDbStub() {
+  const records = new Map();
+  let storeCreated = false;
+
+  const createStore = () => ({
+    get(viewerId) {
+      const request = {};
+      queueMicrotask(() => {
+        request.result = records.get(viewerId);
+        request.onsuccess?.();
+      });
+      return request;
+    },
+    put(record) {
+      records.set(record.viewerId, structuredClone(record));
+      return {};
+    },
+    delete(viewerId) {
+      records.delete(viewerId);
+      return {};
+    },
+  });
+
+  const database = {
+    objectStoreNames: { contains: () => storeCreated },
+    createObjectStore() {
+      storeCreated = true;
+      return createStore();
+    },
+    transaction() {
+      const transaction = { objectStore: () => createStore() };
+      queueMicrotask(() => transaction.oncomplete?.());
+      return transaction;
+    },
+    close() {},
+  };
+
+  return {
+    records,
+    factory: {
+      open() {
+        const request = {};
+        queueMicrotask(() => {
+          request.result = database;
+          if (!storeCreated) request.onupgradeneeded?.();
+          request.onsuccess?.();
+        });
+        return request;
+      },
+    },
+  };
+}
 
 test('normalizes persisted notification mute deadlines', () => {
   assert.equal(normalizeNotificationMuteUntil(null), null);
@@ -112,6 +167,38 @@ test('normalizes and persists per-viewer desktop notification preferences', () =
   assert.notDeepEqual(readNotificationSettings('usrB', storage), saved);
 });
 
+test('merges partial preference writes and preserves settings across account aliases', () => {
+  const storage = {
+    values: new Map(),
+    getItem(key) { return this.values.get(key) || null; },
+    setItem(key, value) { this.values.set(key, value); },
+  };
+  const legacySettings = {
+    desktopNotifications: false,
+    sounds: false,
+    sound: 'bell',
+    language: 'en',
+    theme: 'dark',
+    stickerSuggestions: false,
+  };
+  storage.setItem(
+    `${NOTIFICATION_SETTINGS_STORAGE_PREFIX}.accountStable`,
+    JSON.stringify(DEFAULT_NOTIFICATION_SETTINGS),
+  );
+  storage.setItem(
+    `${NOTIFICATION_SETTINGS_STORAGE_PREFIX}.usrTinode`,
+    JSON.stringify(legacySettings),
+  );
+
+  const migrated = readNotificationSettings('accountStable', storage, ['usrTinode']);
+  assert.equal(migrated.sound, 'bell');
+  assert.equal(migrated.theme, 'dark');
+  const saved = writeNotificationSettings('accountStable', { sounds: true }, storage, ['usrTinode']);
+  assert.deepEqual(saved, { ...migrated, sounds: true });
+  assert.deepEqual(readNotificationSettings('usrTinode', storage), saved);
+  assert.deepEqual(readNotificationSettings('accountStable', storage), saved);
+});
+
 test('supports custom sound selection and validates uploaded audio files', async () => {
   assert.equal(
     normalizeNotificationSettings({ sound: CUSTOM_NOTIFICATION_SOUND_ID }).sound,
@@ -125,6 +212,25 @@ test('supports custom sound selection and validates uploaded audio files', async
   );
   assert.equal(await readCustomNotificationSound('usrA', null), null);
   assert.equal(await deleteCustomNotificationSound('usrA', null), false);
+});
+
+test('copies custom sounds across stable aliases without deleting the old record', async () => {
+  const { factory, records } = createIndexedDbStub();
+  const original = new File(['first'], 'first.mp3', { type: 'audio/mpeg', lastModified: 10 });
+  await writeCustomNotificationSound('usrTinode', original, factory);
+
+  const migrated = await readCustomNotificationSound('accountStable', factory, ['usrTinode']);
+  assert.equal(migrated.name, 'first.mp3');
+  assert.equal(records.has('accountStable'), true);
+  assert.equal(records.has('usrTinode'), true);
+
+  const replacement = new File(['second'], 'second.ogg', { type: 'audio/ogg', lastModified: 20 });
+  await writeCustomNotificationSound('accountStable', replacement, factory, ['usrTinode']);
+  assert.equal(records.get('accountStable').name, 'second.ogg');
+  assert.equal(records.get('usrTinode').name, 'second.ogg');
+
+  await deleteCustomNotificationSound('accountStable', factory, ['usrTinode']);
+  assert.equal(records.size, 0);
 });
 
 test('exposes notification sound profiles and concise message bodies', () => {
