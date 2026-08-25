@@ -8,9 +8,9 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-25-09 - Quan ly the phan loai hoi thoai tuy chinh
 
-- Thoi gian: 2026-08-25 17:36 (Asia/Saigon)
-- Loai: Tinh nang | Web | UX | Kiem thu | Tai lieu
-- Trang thai: Hoan tat local; san sang commit va deploy
+- Thoi gian: 2026-08-25 17:36 (Asia/Saigon); deploy production 17:43-17:50 (Asia/Saigon)
+- Loai: Tinh nang | Web | UX | Kiem thu | Tai lieu | Trien khai
+- Trang thai: Da commit va deploy production; san sang UAT
 - Muc tieu: Them muc quan ly ngay trong submenu Phan loai de moi nguoi co the tao, sua ten/mau, sap xep, xoa va gan the cho nhieu hoi thoai theo giao dien mau, ma khong anh huong luong chat hien co.
 - Pham vi: ChatUI menu ba cham, submenu Phan loai, modal quan ly/them-sua the, local preference theo viewer, responsive/dark theme, i18n va test; giu nguyen message, read cursor, unread, avatar, pin, notification, membership, tenant, Chatmgt va Tinode.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/components/ConversationCategoryManager.jsx`, `src/features/chat/services/conversationCategoryPolicy.js`, `src/features/chat/services/conversationCategoryPolicy.test.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
@@ -18,9 +18,11 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Nang storage viewer-local tu assignment map v1 len record v2 gom category definitions va assignments. Doc tu dong migrate v1, con moi lan ghi v2 van mirror assignment ve v1 de rollback ChatUI khong lam mat cac the co dinh. Ten tuy chinh khong di qua i18n; state category chi cap nhat presentation cua sidebar, khong goi API hay transport realtime.
 - Database/API/cau hinh: Khong migration, endpoint, schema, dependency, secret hoac bien moi truong moi. The van song trong `localStorage` theo viewer va chua dong bo giua browser/thiet bi.
 - Kiem thu: Targeted category/i18n/source contract dat 66/66; `npm run test:frontend` dat 249/249; Chatmgt auth contract dat 48/48; `npm run lint` exit 0, chi con warning legacy/vendor co san; `npm run build:production` dat voi entry `index-CrQzYFEi.js`, App `App-BPfXqtzu.js`, CSS `index-8FEik51U.css` va canh bao chunk App lon hon 500 KB da co; `git diff --check` dat. Khong chay duoc visual browser automation vi browser runtime tool khong duoc expose trong phien nay.
+- Kiem tra production: Archive `/opt/deploy/chat/incoming/vichat-conversation-categories-bda3e1f.tar.gz` 44857665 bytes co SHA-256 `2cee7d8dfe30eb4e92f1aad2edb365db3430460617277798fbc5a4b5bd8373fa` khop local/remote; Compose config, build rieng image `chat` va `nginx -t` preflight deu dat. ChatUI `33e0ad01125d` healthy voi image `sha256:5e17a2a6ee9d6007bd383ea0869000edce09cad5e2556930038e02ecba4dcd8e`; local `http://127.0.0.1:8094/healthz`, public `https://chat.upgo.vn/healthz` va Chatmgt auth health deu tra OK. Public `/assets/index-CH5sy2cH.js`, `/assets/App-BexGFA9t.js` va `/assets/index-8FEik51U.css` khop SHA-256 tung byte voi container; App co marker `Quan ly the phan loai` va `vichat.conversation-categories.v2`, CSS co marker modal/color picker. `sudo -n nginx -t` dat; log ChatUI/Chatmgt/bridge/webhook 10 phut co 0 marker fatal/panic/traceback/uncaught/critical/emerg.
+- Trien khai: Source commit `bda3e1f` da push `origin/master`; release `/opt/deploy/chat/releases/conversation-categories-bda3e1f-20260825-1043` dang la `current`, `previous` tro `/opt/deploy/chat/releases/final-owner-leave-17214c2-20260825-1000`. Chi recreate `chat` bang `--no-deps --force-recreate --no-build`; khong migration, backup/reset database, Compose `down`, restart Chatmgt hay thay doi Tinode/message/read cursor/avatar/pin. Rollback tag `songhong-production-chat:rollback-before-conversation-categories-bda3e1f` giu image cu `sha256:ed57f4caef37b1276a22551d84e01314e7f2db4ed16a4a99ab26d0e29333d907`. Chatmgt `e246a8dc1eea`, Chat PostgreSQL `78a434b49404`, ChatAPI `8476615ad4ac`, Coturn `aa680d35fdc0`, Redis `ceef7df23feb`, account bridge `7d9c0e317719`, webhook `2882b6109176` va Tinode PostgreSQL `9f6e4dcc9c2f` giu nguyen container ID.
 - Rui ro con lai: Can UAT visual production tren desktop/mobile va dark mode; category definitions/assignments chi dong bo trong cung browser cua viewer nhu luong cu, khong cross-device.
-- Viec tiep theo: Commit/push, deploy immutable release chi recreate ChatUI, hard refresh va UAT tao/sua/xoa/sap xep the, gan/doi/bo the cho direct va group.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT desktop/mobile/dark mode: tao, sua ten/mau, xoa, keo sap xep, gan/doi/bo the cho ca direct va group; xac nhan F5 giu assignment trong cung browser.
+- Commit/PR: Source commit `bda3e1f`; deployment follow-up docs commit duoc tao sau khi cap nhat muc nay; khong co PR.
 
 ## 2026-08-25-08 - Cho phep thanh vien cuoi cung roi nhom
 
