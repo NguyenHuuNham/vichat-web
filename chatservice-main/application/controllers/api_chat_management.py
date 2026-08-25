@@ -478,6 +478,78 @@ def _tinode_bridge_request(request):
     return bool(expected and supplied and hmac.compare_digest(expected, supplied))
 
 
+def _direct_message_policy(sender_uid, topic_name):
+    sender_uid = str(sender_uid or "").strip()
+    topic_name = str(topic_name or "").strip()
+    default = {
+        "managed": False,
+        "allowed": True,
+        "blockedBySender": False,
+        "blockedByPeer": False,
+    }
+    if (
+        sender_uid == topic_name
+        or not valid_tinode_topic(sender_uid, False)
+        or not valid_tinode_topic(topic_name, False)
+    ):
+        return default
+
+    sender = ManagementAccount.query.filter(
+        ManagementAccount.tinode_uid == sender_uid,
+        ManagementAccount.active.is_(True),
+    ).first()
+    if sender is None:
+        return default
+    peer = ManagementAccount.query.filter(
+        ManagementAccount.tenant_id == sender.tenant_id,
+        ManagementAccount.tinode_uid == topic_name,
+        ManagementAccount.active.is_(True),
+    ).first()
+    if peer is None or str(peer.id) == str(sender.id):
+        return default
+
+    participant_ids = sorted((str(sender.id), str(peer.id)))
+    direct_key = ":".join(participant_ids)
+    items = Conversation.query.filter(
+        Conversation.tenant_id == sender.tenant_id,
+        Conversation.deleted.is_(False),
+        Conversation.properties.contains({"direct_key": direct_key}),
+    ).all()
+    direct_items = [item for item in items if not bool((item.properties or {}).get("is_group"))]
+    if not direct_items:
+        return default
+
+    blocked_by_sender = False
+    blocked_by_peer = False
+    for item in direct_items:
+        participants = _direct_block_participants(item)
+        participants_by_id = {
+            str(participant.participant_id): participant for participant in participants
+        }
+        if set(participants_by_id) != set(participant_ids):
+            return {
+                **default,
+                "managed": True,
+                "allowed": False,
+                "errorCode": "DIRECT_MESSAGE_POLICY_INVALID",
+            }
+        blocked_by_sender = (
+            blocked_by_sender
+            or participants_by_id[str(sender.id)].blocked_at is not None
+        )
+        blocked_by_peer = (
+            blocked_by_peer
+            or participants_by_id[str(peer.id)].blocked_at is not None
+        )
+    return {
+        "managed": True,
+        "allowed": not (blocked_by_sender or blocked_by_peer),
+        "blockedBySender": blocked_by_sender,
+        "blockedByPeer": blocked_by_peer,
+        **({"errorCode": "DIRECT_MESSAGE_BLOCKED"} if blocked_by_sender or blocked_by_peer else {}),
+    }
+
+
 def _sso_account(identity, mark_login=True, authoritative_avatar=None):
     identity = dict(identity)
     account_username = identity["username"]
@@ -1060,6 +1132,83 @@ def _participant_approval_status(participant):
     return str(getattr(participant, "approval_status", "APPROVED") or "APPROVED").upper()
 
 
+def _direct_block_participants(item):
+    return ConversationParticipant.query.filter(
+        ConversationParticipant.tenant_id == item.tenant_id,
+        ConversationParticipant.conversation_id == item.id,
+        ConversationParticipant.approval_status == "APPROVED",
+        ConversationParticipant.deleted.is_(False),
+    ).order_by(ConversationParticipant.created_at.asc()).all()
+
+
+def _direct_block_state(item, viewer_id, participants=None):
+    if bool((item.properties or {}).get("is_group")):
+        return {
+            "blockedByViewer": False,
+            "blockedByPeer": False,
+            "directMessagingBlocked": False,
+        }
+    if participants is None:
+        participants = _direct_block_participants(item)
+    viewer_id = str(viewer_id or "")
+    viewer_membership = next(
+        (participant for participant in participants if participant.participant_id == viewer_id),
+        None,
+    )
+    peer_membership = next(
+        (participant for participant in participants if participant.participant_id != viewer_id),
+        None,
+    )
+    blocked_by_viewer = bool(
+        viewer_membership is not None and viewer_membership.blocked_at is not None
+    )
+    blocked_by_peer = bool(
+        peer_membership is not None and peer_membership.blocked_at is not None
+    )
+    return {
+        "blockedByViewer": blocked_by_viewer,
+        "blockedByPeer": blocked_by_peer,
+        "directMessagingBlocked": blocked_by_viewer or blocked_by_peer,
+    }
+
+
+def _valid_direct_block_participants(item, viewer_id):
+    if bool((item.properties or {}).get("is_group")):
+        return None
+    participants = _direct_block_participants(item)
+    participant_ids = [str(participant.participant_id) for participant in participants]
+    if (
+        len(participants) != 2
+        or len(set(participant_ids)) != 2
+        or str(viewer_id or "") not in participant_ids
+    ):
+        return None
+    return participants
+
+
+def _direct_block_payload(item, viewer_id, participants=None):
+    return {
+        "conversationId": str(item.id),
+        **_direct_block_state(item, viewer_id, participants),
+    }
+
+
+def _ensure_direct_key(item, participants):
+    properties = dict(item.properties or {})
+    if properties.get("direct_key"):
+        return False
+    participant_ids = sorted({
+        str(participant.participant_id or "").strip()
+        for participant in participants
+        if str(participant.participant_id or "").strip()
+    })
+    if len(participant_ids) != 2:
+        return False
+    properties["direct_key"] = ":".join(participant_ids)
+    item.properties = properties
+    return True
+
+
 def _audit(request, event_name, success=True, tenant_id=None, user_id=None, properties=None):
     try:
         db.session.add(SecurityAuditLog(
@@ -1159,6 +1308,7 @@ def _serialize_conversation(item, viewer_id):
         ),
         None,
     ) if not is_group else None
+    direct_block_state = _direct_block_state(item, viewer_id, participants)
     direct_deleted_at = _conversation_deleted_at(item, viewer_id, viewer_membership) if not is_group else ""
     public_properties = dict(properties)
     public_properties.pop(DIRECT_DELETED_AT_PROPERTY, None)
@@ -1199,6 +1349,7 @@ def _serialize_conversation(item, viewer_id):
         "notificationsMuted": notifications_muted,
         "pinned": pinned_at is not None,
         "pinnedAt": pinned_at,
+        **direct_block_state,
     }
 
 
@@ -2126,6 +2277,34 @@ async def bridge_tinode_token(request):
         return json({
             "error_code": "TINODE_TOKEN_FAILED",
             "error_message": "Tinode token exchange is temporarily unavailable.",
+        }, status=503)
+
+
+@app.route('/api/v1/internal/direct-message-policy', methods=['POST'])
+async def bridge_direct_message_policy(request):
+    """Authorize one direct Tinode publish before the relay forwards it."""
+    if not _tinode_bridge_request(request):
+        return json({
+            "error_code": "FORBIDDEN",
+            "error_message": "Tinode bridge authentication is required.",
+        }, status=403)
+    body = request.json if isinstance(request.json, dict) else {}
+    sender_uid = str(body.get("sender_uid") or "").strip()
+    topic_name = str(body.get("topic") or "").strip()
+    if not sender_uid or not topic_name:
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "The Tinode sender and direct topic are required.",
+        }, status=400)
+    try:
+        response = json(_direct_message_policy(sender_uid, topic_name))
+        response.headers["Cache-Control"] = "no-store"
+        return response
+    except Exception:
+        logger.exception("Could not evaluate direct message blocking policy")
+        return json({
+            "error_code": "DIRECT_MESSAGE_POLICY_UNAVAILABLE",
+            "error_message": "Direct message policy is temporarily unavailable.",
         }, status=503)
 
 
@@ -3614,6 +3793,104 @@ async def conversation_notification_settings(request, conversation_id):
 
     membership.notification_muted_until = mute_until
     membership.updated_at = int(time.time())
+    db.session.commit()
+    return json(_serialize_conversation(item, user_id))
+
+
+@app.route('/api/v1/conversation/direct-block-state', methods=['GET'])
+@app.route('/api/v1/chat/threads/direct-block-state', methods=['GET'])
+async def conversation_direct_block_state(request):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    if management_session_requested(request):
+        return json({
+            "error_code": "CHAT_SESSION_REQUIRED",
+            "error_message": "Direct message blocking is only available from a Chat user session.",
+        }, status=403)
+    user_id = _user_id(current_user)
+    items = Conversation.query.join(
+        ConversationParticipant,
+        ConversationParticipant.conversation_id == Conversation.id,
+    ).filter(
+        Conversation.tenant_id == tenant_id,
+        Conversation.deleted.is_(False),
+        ConversationParticipant.tenant_id == tenant_id,
+        ConversationParticipant.participant_id == user_id,
+        ConversationParticipant.active.is_(True),
+        ConversationParticipant.approval_status == "APPROVED",
+        ConversationParticipant.deleted.is_(False),
+    ).all()
+    direct_items = [
+        item for item in items if not bool((item.properties or {}).get("is_group"))
+    ]
+    if not direct_items:
+        response = json({"objects": []})
+        response.headers["Cache-Control"] = "no-store"
+        return response
+    item_ids = [item.id for item in direct_items]
+    participant_rows = ConversationParticipant.query.filter(
+        ConversationParticipant.tenant_id == tenant_id,
+        ConversationParticipant.conversation_id.in_(item_ids),
+        ConversationParticipant.approval_status == "APPROVED",
+        ConversationParticipant.deleted.is_(False),
+    ).order_by(ConversationParticipant.created_at.asc()).all()
+    participants_by_conversation = {}
+    for participant in participant_rows:
+        participants_by_conversation.setdefault(participant.conversation_id, []).append(participant)
+    response = json({
+        "objects": [
+            _direct_block_payload(
+                item,
+                user_id,
+                participants_by_conversation.get(item.id, []),
+            )
+            for item in direct_items
+        ],
+    })
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.route('/api/v1/conversation/<conversation_id>/block', methods=['PUT'])
+@app.route('/api/v1/chat/threads/<conversation_id>/block', methods=['PUT'])
+async def conversation_direct_block(request, conversation_id):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    if management_session_requested(request):
+        return json({
+            "error_code": "CHAT_SESSION_REQUIRED",
+            "error_message": "Direct message blocking is only available from a Chat user session.",
+        }, status=403)
+    try:
+        conversation_uuid = uuid.UUID(str(conversation_id))
+    except (ValueError, TypeError, AttributeError):
+        return json({"error_code": "NOT_FOUND", "error_message": "Invalid conversation."}, status=404)
+
+    user_id = _user_id(current_user)
+    item, membership = _conversation_and_membership(tenant_id, conversation_uuid, user_id)
+    if item is None or membership is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
+    participants = _valid_direct_block_participants(item, user_id)
+    if participants is None:
+        return json({
+            "error_code": "DIRECT_BLOCK_ONLY",
+            "error_message": "Only one-to-one conversations can block messages.",
+        }, status=409)
+
+    body = request.json if isinstance(request.json, dict) else {}
+    blocked = body.get("blocked")
+    if not isinstance(blocked, bool):
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "The blocked state must be boolean.",
+        }, status=400)
+
+    now = int(time.time())
+    _ensure_direct_key(item, participants)
+    membership.blocked_at = now if blocked else None
+    membership.updated_at = now
     db.session.commit()
     return json(_serialize_conversation(item, user_id))
 

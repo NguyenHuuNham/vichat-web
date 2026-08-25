@@ -4,6 +4,7 @@ import { normalizeImageBatch } from './imageBatchLayout.js';
 import { normalizePoll, normalizePollEvent } from './poll.js';
 import { mergeReceiptUsers, normalizeReceiptUsers } from './messageReceipts.js';
 import { conversationActivityTimestamp, parseTimestamp } from './timeFormatting.js';
+import { normalizeDirectMessageBlockState } from './directMessageBlocking.js';
 
 export const TINODE_CONTACT_SYNC_DELAYS_MS = Object.freeze([120, 600, 1800]);
 
@@ -467,6 +468,24 @@ export function normalizeConversationShape(conversation) {
     : Object.prototype.hasOwnProperty.call(source, 'isPinned')
       ? source.isPinned
       : properties.pinned;
+  const hasDirectBlockExplicitMarker = Object.prototype.hasOwnProperty.call(source, 'directBlockExplicit');
+  const hasDirectBlockValue = hasDirectBlockExplicitMarker
+    ? normalizeConversationFlag(source.directBlockExplicit)
+    : [
+      'blockedByViewer',
+      'blocked_by_viewer',
+      'blockedByPeer',
+      'blocked_by_peer',
+      'directMessagingBlocked',
+      'direct_messaging_blocked',
+    ].some(key => Object.prototype.hasOwnProperty.call(source, key));
+  const directBlockState = hasDirectBlockValue
+    ? normalizeDirectMessageBlockState(source)
+    : {
+      blockedByViewer: false,
+      blockedByPeer: false,
+      directMessagingBlocked: false,
+    };
   const managementId = conversationText(source.managementId) || conversationText(source.management_id);
   const tinodeTopic = conversationText(source.tinodeTopic) || conversationText(source.tinode_topic);
   const participantIds = conversationArray(source.participantIds)
@@ -552,6 +571,9 @@ export function normalizeConversationShape(conversation) {
     // Realtime Tinode snapshots do not carry the viewer's Chatmgt pin.
     pinned: hasPinnedValue ? normalizeConversationFlag(pinnedValue) : false,
     pinnedExplicit: hasPinnedValue,
+    ...directBlockState,
+    // Tinode snapshots never own Chatmgt's viewer-scoped direct block state.
+    directBlockExplicit: hasDirectBlockValue,
   };
 }
 

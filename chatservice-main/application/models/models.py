@@ -167,6 +167,8 @@ class ConversationParticipant(CommonModel):
     notification_muted_until = db.Column(BigInteger())
     # NULL means the conversation is not pinned for this participant.
     pinned_at = db.Column(BigInteger())
+    # NULL means direct messaging is allowed; otherwise this participant blocked the peer.
+    blocked_at = db.Column(BigInteger())
 
 class ChatAgent(CommonModel):
     __tablename__ = "chat_agent"

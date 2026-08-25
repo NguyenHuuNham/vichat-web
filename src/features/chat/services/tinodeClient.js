@@ -1602,6 +1602,29 @@ async function subscribeTopic(topicName, {
   return topic;
 }
 
+function publishTopicMessage(topic, draft) {
+  const isDirect = topic?.isP2PType?.() || String(topic?.name || '').startsWith('usr');
+  // Tinode SDK 0.25.3 swallows Topic.publishMessage rejections. Direct sends
+  // use the client promise so the bridge's block response reaches the UI.
+  if (!isDirect) return topic.publishMessage(draft);
+  const Drafty = getDrafty();
+  const attachments = [];
+  if (Drafty?.hasEntities?.(draft?.content)) {
+    Drafty.entities(draft.content, data => {
+      if (data?.ref) attachments.push(data.ref);
+      if (data?.preref) attachments.push(data.preref);
+    });
+  }
+  return getClient().publishMessage(draft, attachments.length > 0 ? attachments : undefined);
+}
+
+function publishTopicContent(topic, content, noEcho = false) {
+  const isDirect = topic?.isP2PType?.() || String(topic?.name || '').startsWith('usr');
+  return isDirect
+    ? getClient().publishMessage(topic.createMessage(content, noEcho))
+    : topic.publish(content, noEcho);
+}
+
 function sessionToken(value) {
   return value?.token || value || '';
 }
@@ -2297,7 +2320,7 @@ export const tinodeClient = {
       head['x-mentions'] = JSON.stringify(metadata.mentions.slice(0, 50));
     }
     draft.head = head;
-    return topic.publishMessage(draft);
+    return publishTopicMessage(topic, draft);
   },
 
   async sendPoll(topicName, poll, clientId) {
@@ -2351,7 +2374,7 @@ export const tinodeClient = {
       active: Boolean(active),
     };
     if (!event.targetId || !event.emoji) throw new Error('Thiếu tin nhắn hoặc biểu cảm.');
-    return topic.publish(`${REACTION_EVENT_PREFIX}${JSON.stringify(event)}`);
+    return publishTopicContent(topic, `${REACTION_EVENT_PREFIX}${JSON.stringify(event)}`);
   },
 
   async recallMessage(topicName, message = {}, mode = 'all') {
@@ -2372,7 +2395,7 @@ export const tinodeClient = {
       'x-client-id': `web-recall-${event.targetSeq || event.targetId}-${Date.now()}`,
       'x-sender-id': actorId,
     };
-    const result = await topic.publishMessage(draft);
+    const result = await publishTopicMessage(topic, draft);
     if (!result) throw new Error('Tinode khong xac nhan su kien thu hoi.');
     emitConversation(topic);
     return event;
@@ -2386,7 +2409,7 @@ export const tinodeClient = {
 
   async sendSystemEvent(topicName, event) {
     const topic = await subscribeTopic(topicName);
-    return topic.publish(`${SYSTEM_EVENT_PREFIX}${JSON.stringify(event)}`);
+    return publishTopicContent(topic, `${SYSTEM_EVENT_PREFIX}${JSON.stringify(event)}`);
   },
 
   async updateConversationBackground(topicName, background = null) {
@@ -2443,7 +2466,7 @@ export const tinodeClient = {
       'x-client-id': `web-background-${Date.now()}`,
       'x-sender-id': actorId,
     };
-    const result = await topic.publishMessage(draft);
+    const result = await publishTopicMessage(topic, draft);
     if (!result || result.code >= 300) throw new Error(result?.text || 'Tinode không xác nhận thay đổi hình nền.');
     emitConversation(topic);
     return normalized ? { ...normalized, scope: CONVERSATION_BACKGROUND_SCOPES.SHARED } : normalized;
@@ -2497,7 +2520,7 @@ export const tinodeClient = {
       note: String(note || '').trim().slice(0, 500),
       createdAt,
     };
-    await topic.publish(`${FRIEND_EVENT_PREFIX}${JSON.stringify(event)}`);
+    await publishTopicContent(topic, `${FRIEND_EVENT_PREFIX}${JSON.stringify(event)}`);
     return event;
   },
 
@@ -2524,7 +2547,7 @@ export const tinodeClient = {
       responderName: currentProfile.name || 'Một người dùng',
       createdAt: new Date().toISOString(),
     };
-    await topic.publish(`${FRIEND_EVENT_PREFIX}${JSON.stringify(event)}`);
+    await publishTopicContent(topic, `${FRIEND_EVENT_PREFIX}${JSON.stringify(event)}`);
     topic.noteRead();
     return event;
   },
@@ -2565,7 +2588,7 @@ export const tinodeClient = {
       });
     }
     if (Number(metadata.voiceDuration) > 0) draft.head['x-voice-duration'] = String(Math.round(metadata.voiceDuration));
-    const result = await topic.publishMessage(draft);
+    const result = await publishTopicMessage(topic, draft);
     if (!result) throw new Error('Tinode không xác nhận tin nhắn đính kèm.');
     return {
       ctrl: result,

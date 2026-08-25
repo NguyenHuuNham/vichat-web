@@ -418,6 +418,33 @@ conversation changes only that employee's ordering, survives refresh, and does
 not change the other employee's sidebar. Unpin it and confirm the conversation
 returns to normal recency ordering.
 
+## Direct message blocking acceptance test
+
+Revision `20260825_13` adds the viewer-scoped
+`conversation_participant.blocked_at` field. Back up Chatmgt PostgreSQL and run
+`alembic upgrade head` before recreating `chatmgt`, `tinode-account-bridge` and
+`chat`. The web UI is the only blocking control added in this release; do not
+rebuild or modify the mobile source for UI acceptance.
+
+Use two active employees in the same tenant and keep both web sessions open:
+
+1. In a direct chat, confirm `Chặn` appears immediately below `Tắt thông báo`;
+   group detail must not show the control.
+2. Turn on `Chặn` as user A. User A's composer must become `Bạn đã chặn tin
+   nhắn` with a `Bỏ chặn` action.
+3. Before the three-second state poll and again after it, let user B try text,
+   image/file, sticker, reaction, recall, forward and a direct call. Every
+   publish attempt must show `Người dùng đã chặn tin nhắn.` and no rejected
+   message/event may appear in either Tinode history.
+4. Confirm user A also cannot publish to user B while the block is active.
+5. Confirm an unrelated group can still send text/files/reactions and call
+   controls remain unchanged for supported direct chats.
+6. Turn off `Chặn` as user A. Within one poll interval both users must send and
+   receive normally again without refreshing.
+7. Verify `alembic current` reports `20260825_13`, all three new indexes exist,
+   and the ChatUI, Chatmgt and bridge health checks pass. Compare unaffected
+   container IDs before and after the release.
+
 ## Rollback
 
 Every migration release requires a pre-migration `pg_dump -Fc` and tagged prior

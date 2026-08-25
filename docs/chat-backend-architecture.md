@@ -21,7 +21,8 @@ tenant, role, or user IDs supplied after the session is issued.
   short-lived token returned by Chatmgt.
 - `chatmgt` (`chatservice-main`): owns the read-only employee projection,
   deterministic Tinode mappings, directory/friend/conversation metadata, tenant
-  authorization, audit records and the HttpOnly chat/management sessions.
+  authorization, viewer-scoped direct-message block state, audit records and
+  the HttpOnly chat/management sessions.
 - `web.vichat.net` (central Tinode): owns message/file content, topics,
   presence, typing, reactions, delivery/read receipts and call signaling.
   ChatUI reaches it through the TLS-safe `chat.upgo.vn` Nginx relay, while
@@ -488,6 +489,18 @@ the group membership and group deletion flows are unchanged. Legacy direct rows
 left inactive by the previous behavior are reactivated when the pair is
 prepared or bound.
 
+Direct-message blocking is also viewer-scoped Chatmgt metadata, but unlike
+deletion it closes both send directions for the pair while either participant
+has a non-null `conversation_participant.blocked_at`. Alembic revision
+`20260825_13` adds that column and supporting indexes. The web detail panel
+places `Chặn` below notification mute; the blocker sees a locked composer with
+`Bỏ chặn`, while the blocked peer may still attempt a send and receives
+`Người dùng đã chặn tin nhắn.` for every rejected attempt. ChatUI polls the
+cache-free direct block snapshot every three seconds so unblock changes reach
+the other open web session without a reload. Group conversations and chatbot
+topics do not expose or consume this state. This release does not add or change
+the mobile blocking UI.
+
 Chatmgt never uses browser localStorage as a fallback message store. If Tinode
 is unavailable, the directory and conversation metadata remain visible while
 realtime message/file inputs stay disabled and show the connection state.
@@ -547,6 +560,19 @@ containers. The UpGO password is not sent to the central Tinode server or
 logged by the bridge. This keeps Tinode Web and ChatUI on the same central
 UID/topic/message store.
 
+For authenticated non-internal clients, the relay additionally inspects each
+outgoing Tinode `pub` whose topic starts with `usr`. Before forwarding it, the
+relay sends the authenticated sender UID and peer topic to the internal,
+key-protected `POST /api/v1/internal/direct-message-policy` endpoint. Chatmgt
+resolves the same-tenant direct pair by deterministic `direct_key` and rejects
+the publish when either participant has `blocked_at`; the relay returns Tinode
+control code `403` with `DIRECT_MESSAGE_BLOCKED` and never forwards that packet,
+so it cannot enter central Tinode history. Policy errors fail closed for managed
+direct sends. Group `grp*` publishes and trusted internal bridge clients keep
+their existing path. The transport check remains authoritative even though the
+current user-facing block controls are web-only, preventing another normal
+client from bypassing a block.
+
 The central Tinode hello must advertise its own WebRTC/ICE configuration before
 calls are enabled. The bridge reads the protected production
 `runtime/ice-servers.json` and may fill `ctrl.params.iceServers` when the
@@ -554,8 +580,9 @@ upstream hello omits deployment-local TURN for browser connectivity, but it
 also sets `webrtcEnabled=false` because that fallback cannot enable call
 handling inside the authoritative Tinode server. Once central Tinode is
 configured with the same ICE/TURN records, the bridge marks the response as
-`webrtcEnabled=true`. It never replaces authoritative ICE and does not inspect
-or rewrite later message, presence or call packets.
+`webrtcEnabled=true`. It never replaces authoritative ICE. Outside the bounded
+direct `pub` policy check described above, it does not rewrite message,
+presence or call packets.
 
 `POST /api/v1/conversation/<id>/tinode-prepare` prepares missing UID mappings
 from current Chatmgt membership. Group topic binding and add/remove/leave
@@ -786,6 +813,8 @@ history, role-aware actions and a message-to-task shortcut.
 | `GET/POST` | `/api/v1/friend-request` | Tenant-scoped friendship metadata |
 | `GET/POST` | `/api/v1/conversation` | Tenant-scoped conversation metadata |
 | `PUT` | `/api/v1/conversation/<id>/pin` | Set or clear the current user's conversation pin |
+| `GET` | `/api/v1/conversation/direct-block-state` | Return cache-free viewer/peer block state for the current user's direct conversations |
+| `PUT` | `/api/v1/conversation/<id>/block` | Set or clear the current user's direct-message block; group conversations are rejected |
 | `PUT` | `/api/v1/conversation/<id>/group-settings` | Owner/member-authorized group name, avatar and boolean settings update |
 | `POST` | `/api/v1/conversation/<id>/tinode-prepare` | Prepare Tinode participant mappings |
 | `PUT` | `/api/v1/conversation/<id>/tinode-topic` | Verify/bind the topic to exact membership |
@@ -794,6 +823,7 @@ history, role-aware actions and a message-to-task shortcut.
 | `PUT` | `/api/v1/conversation/<id>/participants/<participant-id>/approval` | Owner-only approve or reject a pending group member; approval reconciles Tinode |
 | `DELETE` | `/api/v1/conversation/<id>/participants/<participant-id>` | Remove self, or remove another member as the group owner; owner self-removal requires `replacement_id` only while another active, approved member survives, otherwise the empty group is closed |
 | `DELETE` | `/api/v1/conversation/<id>/self` | Remove the current user's conversation membership; the final group owner may omit `replacement_id`, which closes the empty group |
+| `POST` | `/api/v1/internal/direct-message-policy` | Internal relay-only decision for a Tinode direct publish; never exposed to browser sessions |
 | `GET` | `/api/v1/workspace/items` | List tenant-visible Workspace items and summary |
 | `POST` | `/api/v1/workspace/items` | Create a validated task, announcement, approval, ticket, wiki, event or integration entry |
 | `GET/PUT/DELETE` | `/api/v1/workspace/items/<id>` | Read, update or archive one tenant-scoped item |
@@ -846,6 +876,10 @@ The Workspace migration is `20260804_10` and must be applied after
 database backup procedure; the migration is intentionally marked irreversible
 because production data must be restored from the verified PostgreSQL backup
 when a rollback requires removing Workspace rows.
+
+Direct-message blocking requires revision `20260825_13` after `20260824_12`.
+Rollback of that schema change also uses the verified pre-migration PostgreSQL
+backup because the revision is intentionally irreversible.
 
 The real production `.env` is never committed or printed. Account employee
 login is tenant-routed from the verified active UpGO membership, so the same

@@ -1,6 +1,7 @@
 import { normalizeNotificationMuteUntil } from './conversationNotifications.js';
 import { normalizeConversationFlag, normalizeConversationShape } from './chatRealtime.js';
 import { normalizeGroupSettings } from './groupSettings.js';
+import { normalizeDirectMessageBlockState } from './directMessageBlocking.js';
 import {
   filterAccountsByTenant,
   normalizeAccountShape,
@@ -360,6 +361,7 @@ function normalizeConversation(record) {
   const notificationMutedUntil = normalizeNotificationMuteUntil(
     record?.notificationMutedUntil ?? record?.notification_muted_until,
   );
+  const directBlockState = normalizeDirectMessageBlockState(record);
   return normalizeConversationShape({
     id: managementId,
     managementId,
@@ -392,6 +394,7 @@ function normalizeConversation(record) {
     notificationMutedUntil,
     pinned: normalizeConversationFlag(record?.pinned ?? record?.isPinned ?? properties.pinned),
     pinnedAt: record?.pinnedAt || record?.pinned_at || properties.pinnedAt || null,
+    ...directBlockState,
     groupSettings: record?.groupSettings
       || record?.group_settings
       || properties.groupSettings
@@ -836,6 +839,24 @@ export const chatManagementService = {
     const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/notification-settings`, {
       method: 'PUT',
       body: JSON.stringify({ muted_until: mutedUntil }),
+    });
+    return normalizeConversation(payload);
+  },
+
+  async listDirectBlockStates() {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const payload = await apiRequest('/api/v1/conversation/direct-block-state');
+    return responseItems(payload).map(record => ({
+      conversationId: String(record?.conversationId || record?.conversation_id || ''),
+      ...normalizeDirectMessageBlockState(record),
+    })).filter(record => record.conversationId);
+  },
+
+  async updateDirectMessageBlock(conversationId, blocked) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/block`, {
+      method: 'PUT',
+      body: JSON.stringify({ blocked: Boolean(blocked) }),
     });
     return normalizeConversation(payload);
   },

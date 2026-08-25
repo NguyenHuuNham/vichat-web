@@ -72,6 +72,10 @@ import {
   setConversationCategory,
 } from '../features/chat/services/conversationCategoryPolicy';
 import { resolveCallsEnabled } from '../features/chat/services/callSignaling';
+import {
+  DIRECT_MESSAGE_BLOCKED_TEXT,
+  isDirectMessageBlockedError,
+} from '../features/chat/services/directMessageBlocking';
 import { attachmentConversationPreview } from '../features/chat/services/messagePreview';
 import {
   createUnreadBoundary,
@@ -1514,6 +1518,10 @@ function safeNormalizeConversationForRender(conversation, fallbackId = '') {
       updatedAt: '',
       deletedAt: '',
       notificationMutedUntil: null,
+      blockedByViewer: false,
+      blockedByPeer: false,
+      directMessagingBlocked: false,
+      directBlockExplicit: false,
       badge: 0,
       pinned: false,
     };
@@ -1647,6 +1655,16 @@ function mergeTinodeConversation(existing, incoming) {
     pinned: safeIncoming.pinnedExplicit ? safeIncoming.pinned : safeExisting.pinned,
     pinnedAt: safeIncoming.pinnedExplicit ? (safeIncoming.pinnedAt || null) : safeExisting.pinnedAt,
     pinnedExplicit: safeExisting.pinnedExplicit || safeIncoming.pinnedExplicit,
+    blockedByViewer: safeIncoming.directBlockExplicit
+      ? safeIncoming.blockedByViewer
+      : safeExisting.blockedByViewer,
+    blockedByPeer: safeIncoming.directBlockExplicit
+      ? safeIncoming.blockedByPeer
+      : safeExisting.blockedByPeer,
+    directMessagingBlocked: safeIncoming.directBlockExplicit
+      ? safeIncoming.directMessagingBlocked
+      : safeExisting.directMessagingBlocked,
+    directBlockExplicit: safeExisting.directBlockExplicit || safeIncoming.directBlockExplicit,
     lastMsg,
     time: activity.time,
     updatedAt: activity.updatedAt,
@@ -2734,6 +2752,7 @@ function App() {
   const [notificationMuteDialog, setNotificationMuteDialog] = useState(null);
   const [notificationMuteOption, setNotificationMuteOption] = useState(NOTIFICATION_MUTE_OPTIONS.ONE_HOUR);
   const [isUpdatingNotificationMute, setIsUpdatingNotificationMute] = useState(false);
+  const [isUpdatingDirectBlock, setIsUpdatingDirectBlock] = useState(false);
   const [notificationClock, setNotificationClock] = useState(() => Date.now());
   const [displayClock, setDisplayClock] = useState(() => Date.now());
   const [settings, setSettings] = useState(() => ({ ...DEFAULT_NOTIFICATION_SETTINGS }));
@@ -3126,6 +3145,12 @@ function App() {
   };
   const activeChatMuted = isConversationMuted(activeChat.notificationMutedUntil, notificationClock);
   const activeChatMuteLabel = notificationMuteLabel(activeChat.notificationMutedUntil, notificationClock, settings.language === 'en' ? 'en-US' : 'vi-VN');
+  const activeChatBlockedByViewer = !activeChat.isGroup
+    && !activeChat.isChatbot
+    && activeChat.blockedByViewer === true;
+  const activeChatBlockedByPeer = !activeChat.isGroup
+    && !activeChat.isChatbot
+    && activeChat.blockedByPeer === true;
   const activeMessageCount = roomMessages(activeChat).length;
   const usesManagementData = chatManagementService.remote && chatMode !== 'demo';
   const activeSearchConversationId = String(activeChat.managementId || activeChat.id || '').trim();
@@ -3409,6 +3434,9 @@ function App() {
     if (activeCall) return { available: false, reason: 'Bạn đang có một cuộc gọi khác.' };
     if (activeChat.isChatbot) return { available: false, reason: 'Không thể gọi trợ lý chatbot.' };
     if (activeChat.isGroup) return { available: false, reason: 'Tinode 0.25.3 chỉ hỗ trợ cuộc gọi 1-1.' };
+    if (activeChatBlockedByViewer) return { available: false, reason: 'Bạn cần bỏ chặn trước khi gọi.' };
+    if (activeChatBlockedByPeer) return { available: false, reason: DIRECT_MESSAGE_BLOCKED_TEXT };
+    if (activeChat.directMessagingBlocked) return { available: false, reason: DIRECT_MESSAGE_BLOCKED_TEXT };
     if (!activeChatMembers.length) return { available: false, reason: 'Cuộc trò chuyện chưa có người nhận.' };
     const topicName = tinodeTopicName(activeChat);
     return tinodeClient.getCallCapability(
@@ -4223,6 +4251,60 @@ function App() {
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!isLoggedIn || !chatManagementService.remote || !managementViewerId) return undefined;
+    const accountSession = accountSessionRef.current;
+    let cancelled = false;
+    let syncing = false;
+    const syncDirectBlockStates = async () => {
+      if (cancelled || syncing || accountSessionRef.current !== accountSession) return;
+      syncing = true;
+      try {
+        const states = await chatManagementService.listDirectBlockStates();
+        if (cancelled || accountSessionRef.current !== accountSession) return;
+        const statesById = new Map(states.map(state => [String(state.conversationId), state]));
+        setConversations(previous => {
+          let changed = false;
+          const next = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
+            if (room.isGroup || room.isChatbot) return [id, room];
+            const state = statesById.get(String(room.managementId || room.id));
+            if (!state) return [id, room];
+            const blockedByViewer = state.blockedByViewer === true;
+            const blockedByPeer = state.blockedByPeer === true;
+            const directMessagingBlocked = state.directMessagingBlocked === true;
+            if (
+              room.blockedByViewer === blockedByViewer
+              && room.blockedByPeer === blockedByPeer
+              && room.directMessagingBlocked === directMessagingBlocked
+              && room.directBlockExplicit === true
+            ) return [id, room];
+            changed = true;
+            return [id, {
+              ...room,
+              blockedByViewer,
+              blockedByPeer,
+              directMessagingBlocked,
+              directBlockExplicit: true,
+            }];
+          }));
+          if (!changed) return previous;
+          conversationsRef.current = next;
+          return next;
+        });
+      } catch {
+        // Bridge enforcement remains authoritative during a transient poll failure.
+      } finally {
+        syncing = false;
+      }
+    };
+    void syncDirectBlockStates();
+    const timer = window.setInterval(syncDirectBlockStates, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isLoggedIn, managementViewerId]);
+
   useEffect(() => () => {
     if (groupAvatarPreview) URL.revokeObjectURL(groupAvatarPreview);
   }, [groupAvatarPreview]);
@@ -4448,7 +4530,9 @@ function App() {
       activeCallRef.current = nextCall;
       setActiveCall(nextCall);
     } catch (error) {
-      setChatError(error?.message || 'Không thể bắt đầu cuộc gọi.');
+      if (!handleDirectMessageBlockedError(error, room.id || currentChatIdRef.current)) {
+        setChatError(error?.message || 'Không thể bắt đầu cuộc gọi.');
+      }
     }
   };
 
@@ -4743,6 +4827,10 @@ function App() {
           .filter(([, room]) => room.accountSession === accountSession)
           .find(([, room]) => room.tinodeTopic === event.topic);
         const room = managedEntry?.[1];
+        if (room?.directMessagingBlocked) {
+          tinodeClient.sendCallSignal(event.topic, event.seq, 'hang-up').catch(() => {});
+          return;
+        }
         const capability = tinodeClient.getCallCapability(event.topic, {
           isGroup: Boolean(room?.isGroup),
           isChatbot: Boolean(room?.isChatbot),
@@ -7231,6 +7319,94 @@ function App() {
     }
   };
 
+  const patchConversationDirectBlockState = (conversationId, state) => {
+    setConversations(previous => {
+      const previousRoom = previous[conversationId] === null || previous[conversationId] === undefined
+        ? null
+        : safeNormalizeConversationForRender(previous[conversationId], conversationId);
+      if (!previousRoom || previousRoom.isGroup || previousRoom.isChatbot) return previous;
+      const next = {
+        ...previous,
+        [conversationId]: {
+          ...previousRoom,
+          blockedByViewer: state.blockedByViewer === true,
+          blockedByPeer: state.blockedByPeer === true,
+          directMessagingBlocked: state.directMessagingBlocked === true,
+          directBlockExplicit: true,
+        },
+      };
+      conversationsRef.current = next;
+      return next;
+    });
+  };
+
+  const handleDirectMessageBlockedError = (error, conversationId = currentChatIdRef.current) => {
+    if (!isDirectMessageBlockedError(error)) return false;
+    const rawRoom = conversationsRef.current[conversationId];
+    const room = rawRoom === null || rawRoom === undefined
+      ? null
+      : safeNormalizeConversationForRender(rawRoom, conversationId);
+    if (room && !room.isGroup && !room.isChatbot) {
+      patchConversationDirectBlockState(conversationId, {
+        blockedByViewer: room.blockedByViewer,
+        blockedByPeer: room.blockedByViewer ? room.blockedByPeer : true,
+        directMessagingBlocked: true,
+      });
+    }
+    setChatError(DIRECT_MESSAGE_BLOCKED_TEXT);
+    return true;
+  };
+
+  const updateConversationDirectBlock = async (room, blocked) => {
+    if (!room || room.isGroup || room.isChatbot || room.id === 'empty') return false;
+    const conversationId = room.id;
+    const managementConversationId = room.managementId || room.id;
+    const previousState = {
+      blockedByViewer: room.blockedByViewer === true,
+      blockedByPeer: room.blockedByPeer === true,
+      directMessagingBlocked: room.directMessagingBlocked === true,
+    };
+    const optimisticState = {
+      blockedByViewer: Boolean(blocked),
+      blockedByPeer: previousState.blockedByPeer,
+      directMessagingBlocked: Boolean(blocked) || previousState.blockedByPeer,
+    };
+    setIsUpdatingDirectBlock(true);
+    setChatError('');
+    patchConversationDirectBlockState(conversationId, optimisticState);
+    if (blocked) {
+      setShowEmojiPicker(false);
+      setMentionContext(null);
+      setReplyingTo(null);
+      if (isRecordingVoice) stopVoiceRecording(true);
+    }
+    try {
+      let persistedState = optimisticState;
+      if (chatManagementService.remote && chatMode !== 'demo') {
+        if (!isManagementConversationId(managementConversationId)) {
+          throw new Error('Chatmgt chưa xác nhận cuộc trò chuyện này.');
+        }
+        const updated = await chatManagementService.updateDirectMessageBlock(
+          managementConversationId,
+          blocked,
+        );
+        persistedState = {
+          blockedByViewer: updated.blockedByViewer === true,
+          blockedByPeer: updated.blockedByPeer === true,
+          directMessagingBlocked: updated.directMessagingBlocked === true,
+        };
+      }
+      patchConversationDirectBlockState(conversationId, persistedState);
+      return true;
+    } catch (error) {
+      patchConversationDirectBlockState(conversationId, previousState);
+      setChatError(error?.message || 'Không thể cập nhật trạng thái chặn tin nhắn.');
+      return false;
+    } finally {
+      setIsUpdatingDirectBlock(false);
+    }
+  };
+
   const updateConversationPin = async room => {
     if (!room || room.isChatbot || room.id === 'empty') return false;
     const nextPinned = !normalizeConversationFlag(room.pinned);
@@ -7386,6 +7562,13 @@ function App() {
     void updateConversationMute(activeChat.id, null);
   };
 
+  const handleConversationDirectBlockToggle = event => {
+    const shouldBlock = typeof event?.target?.checked === 'boolean'
+      ? event.target.checked
+      : !activeChatBlockedByViewer;
+    void updateConversationDirectBlock(activeChat, shouldBlock);
+  };
+
   const handleNotificationMuteSubmit = async event => {
     event.preventDefault();
     if (!notificationMuteDialog) return;
@@ -7489,6 +7672,7 @@ function App() {
     const selected = conversationBackgroundSelection;
     const requestedSharedScope = chatMode !== 'demo'
       && conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.SHARED;
+    if (requestedSharedScope && !allowDirectMessagingAttempt(activeChat)) return;
     if (requestedSharedScope && activeChat.isGroup && !canEditActiveGroupInfo) {
       setConversationBackgroundScope(CONVERSATION_BACKGROUND_SCOPES.LOCAL);
       setConversationBackgroundNotice(GROUP_INFO_PERMISSION_MESSAGE);
@@ -7608,7 +7792,11 @@ function App() {
       setConversationBackgroundSelection(viewerBackground?.cleared ? null : viewerBackground);
       setIsConversationBackgroundOpen(false);
     } catch (error) {
-      setConversationBackgroundNotice(groupInfoErrorMessage(error, 'Không thể cập nhật hình nền cuộc trò chuyện.'));
+      if (handleDirectMessageBlockedError(error, activeChat.id)) {
+        setConversationBackgroundNotice(DIRECT_MESSAGE_BLOCKED_TEXT);
+      } else {
+        setConversationBackgroundNotice(groupInfoErrorMessage(error, 'Không thể cập nhật hình nền cuộc trò chuyện.'));
+      }
     } finally {
       setIsSavingConversationBackground(false);
     }
@@ -8207,8 +8395,24 @@ function App() {
     if (message) appendDemoDirectMessage(directId, toStoredMessage(message));
   };
 
+  const directMessagingError = room => {
+    if (!room || room.isGroup || room.isChatbot) return '';
+    if (room.blockedByViewer === true) return 'Bạn đã chặn tin nhắn. Hãy bỏ chặn để tiếp tục.';
+    if (room.blockedByPeer === true || room.directMessagingBlocked === true) return DIRECT_MESSAGE_BLOCKED_TEXT;
+    return '';
+  };
+
+  const allowDirectMessagingAttempt = room => {
+    const message = directMessagingError(room);
+    if (!message) return true;
+    setChatError('');
+    window.setTimeout(() => setChatError(message), 0);
+    return false;
+  };
+
   // --- Attach & Gửi tệp tin ---
   const openAttachmentPicker = inputRef => {
+    if (!allowDirectMessagingAttempt(activeChat)) return;
     if (activeChat.isChatbot) {
       setChatError('Trợ lý AI hiện chỉ nhận tin nhắn văn bản.');
       return;
@@ -8231,6 +8435,7 @@ function App() {
 
   const handleSendFile = (file, { voiceDuration = 0, imageBatch = null } = {}) => {
     if (!file) return;
+    if (!allowDirectMessagingAttempt(activeChat)) return;
     if (activeChat?.isChatbot) {
       setChatError('Trợ lý AI hiện chỉ nhận tin nhắn văn bản.');
       return;
@@ -8373,12 +8578,13 @@ function App() {
         })
         .catch(err => {
           if (previewUrl) URL.revokeObjectURL(previewUrl);
+          const blocked = handleDirectMessageBlockedError(err, roomId);
           setConversations(previous => {
             const currentRoom = previous[roomId];
             if (!currentRoom) return previous;
             return {
               ...previous,
-              [roomId]: {
+              [roomId]: blocked ? removeMessageFromConversation(currentRoom, newMsg) : {
                 ...currentRoom,
                 messages: roomMessages(currentRoom).map(message => message.id === newMsg.id
                   ? { ...message, pending: false, failed: true }
@@ -8386,7 +8592,7 @@ function App() {
               },
             };
           });
-        setChatError(err?.message || 'Không thể tải tệp lên Tinode.');
+        if (!blocked) setChatError(err?.message || 'Không thể tải tệp lên Tinode.');
       });
     }
   };
@@ -8632,6 +8838,7 @@ function App() {
   };
 
   const handleSendSticker = sticker => {
+    if (!allowDirectMessagingAttempt(activeChat)) return;
     if (!sticker?.src || !sticker?.id || !sticker?.packId) {
       setChatError('Sticker không hợp lệ.');
       return;
@@ -8732,12 +8939,13 @@ function App() {
         });
       })
       .catch(error => {
+        const blocked = handleDirectMessageBlockedError(error, roomId);
         setConversations(previous => {
           const currentRoom = previous[roomId];
           if (!currentRoom) return previous;
           return {
             ...previous,
-            [roomId]: {
+            [roomId]: blocked ? removeMessageFromConversation(currentRoom, newMsg) : {
               ...currentRoom,
               messages: roomMessages(currentRoom).map(message => message.id === newMsg.id
                 ? { ...message, pending: false, failed: true }
@@ -8745,12 +8953,13 @@ function App() {
             },
           };
         });
-        setChatError(error?.message || 'Không thể gửi sticker.');
+        if (!blocked) setChatError(error?.message || 'Không thể gửi sticker.');
       });
   };
 
   const startVoiceRecording = async () => {
     if (isRecordingVoice || mediaRecorderRef.current) return;
+    if (!allowDirectMessagingAttempt(activeChat)) return;
     setShowEmojiPicker(false);
     if (activeChat?.isChatbot) {
       setChatError('Trợ lý AI hiện chỉ nhận tin nhắn văn bản.');
@@ -8961,7 +9170,7 @@ function App() {
       return { ...previous, [currentChatId]: nextMentions };
     });
     const room = conversations[currentChatId];
-    if (chatMode === 'tinode' && value.trim()) {
+    if (chatMode === 'tinode' && value.trim() && !directMessagingError(room)) {
       const topicKey = readyTinodeTypingTopic(room, tinodeClient.authenticated);
       if (!topicKey) return;
       const now = Date.now();
@@ -9233,6 +9442,10 @@ function App() {
     setMessageMenu(null);
     setMessageReactionPickerKey(null);
     if (!message || message.recalled) return;
+    if (
+      ['reaction', 'recall', 'recall-self', 'recall-all'].includes(action)
+      && !allowDirectMessagingAttempt(activeChat)
+    ) return;
     const isOwnMessage = message.senderId === viewerId || message.sender === 'outgoing';
     try {
       if (action === 'create-task') {
@@ -9396,12 +9609,15 @@ function App() {
         setShareMessage(message);
       }
     } catch (error) {
-      setChatError(error?.message || 'Không thể thực hiện thao tác với tin nhắn.');
+      if (!handleDirectMessageBlockedError(error, activeChat.id)) {
+        setChatError(error?.message || 'Không thể thực hiện thao tác với tin nhắn.');
+      }
     }
   };
 
   const shareMessageTo = async target => {
     if (!shareMessage || !target || target.id === activeChat.id) return;
+    if (!allowDirectMessagingAttempt(target)) return;
     if (usesManagementData && chatMode !== 'tinode') {
       setShareMessage(null);
       setChatError('Chia sẻ tin nhắn cần kết nối realtime Tinode.');
@@ -9477,7 +9693,9 @@ function App() {
       }));
       setShareMessage(null);
     } catch (error) {
-      setChatError(error?.message || 'Không thể chia sẻ tin nhắn.');
+      if (!handleDirectMessageBlockedError(error, target.id)) {
+        setChatError(error?.message || 'Không thể chia sẻ tin nhắn.');
+      }
     }
   };
 
@@ -9485,6 +9703,7 @@ function App() {
   const handleSendMessage = async (textToSend = null) => {
     const text = (textToSend !== null ? textToSend : inputText).trim();
     if (!text || (activeChat.isChatbot && isTyping)) return;
+    if (!allowDirectMessagingAttempt(activeChat)) return;
     if (!canSendInActiveGroup) {
       setChatError('Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.');
       return;
@@ -9678,12 +9897,13 @@ function App() {
           });
         })
         .catch(err => {
+          const blocked = handleDirectMessageBlockedError(err, roomId);
           setConversations(previous => {
             const currentRoom = previous[roomId];
             if (!currentRoom) return previous;
             return {
               ...previous,
-              [roomId]: {
+              [roomId]: blocked ? removeMessageFromConversation(currentRoom, newMsg) : {
                 ...currentRoom,
                 messages: roomMessages(currentRoom).map(message => message.id === newMsg.id
                   ? { ...message, pending: false, failed: true }
@@ -9691,7 +9911,8 @@ function App() {
               },
             };
           });
-          setChatError(err?.message || 'Không thể gửi tin nhắn.');
+          if (blocked && textToSend === null) updateCurrentDraft(text);
+          if (!blocked) setChatError(err?.message || 'Không thể gửi tin nhắn.');
         });
     }
   };
@@ -11588,7 +11809,7 @@ function App() {
             );
           })()}
 
-          {activeRemoteTyping && (
+          {activeRemoteTyping && !activeChat.directMessagingBlocked && (
             <div className="message-item incoming remote-typing-indicator">
               <div className="message-avatar"><SafeAvatar src={roomMembers(activeChat).find(member => identitiesOverlap(member, { id: activeRemoteTyping.uid }))?.avatar || ''} name={activeRemoteTyping.name} /></div>
               <div className="message-content-wrapper">
@@ -11630,6 +11851,23 @@ function App() {
             <span>{appCopy.t('Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.')}</span>
           </div>
         )}
+        {activeChatBlockedByViewer ? (
+          <div className="direct-blocked-composer" role="status">
+            <span className="direct-blocked-composer-icon"><i className="fa-solid fa-user-slash"></i></span>
+            <span className="direct-blocked-composer-copy">
+              <strong>{appCopy.t('Bạn đã chặn tin nhắn')}</strong>
+              <small>{appCopy.t('Bỏ chặn để tiếp tục nhắn tin với người này.')}</small>
+            </span>
+            <button
+              type="button"
+              onClick={() => void updateConversationDirectBlock(activeChat, false)}
+              disabled={isUpdatingDirectBlock}
+            >
+              {isUpdatingDirectBlock && <i className="fa-solid fa-spinner fa-spin"></i>}
+              {appCopy.t('Bỏ chặn')}
+            </button>
+          </div>
+        ) : (
         <div className="chat-main-input">
           {replyingTo && (
             <div className="replying-banner">
@@ -11807,6 +12045,7 @@ function App() {
           </div>
           <button className="btn-send-message-sh" disabled={realtimeMessagingPending || !canSendInActiveGroup || isRecordingVoice || (activeChat.isChatbot && isTyping)} onClick={() => handleSendMessage()}>{appCopy.t(activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi')}</button>
         </div>
+        )}
         {pollComposer && (
           <div
             className="poll-composer-modal modal-backdrop"
@@ -12551,6 +12790,27 @@ function App() {
                     checked={activeChatMuted}
                     onChange={handleConversationMuteToggle}
                     disabled={isUpdatingNotificationMute}
+                  />
+                  <span className="slider round"></span>
+                </label>
+              </div>
+            )}
+
+            {!activeChat.isChatbot && activeChat.id !== 'empty' && !activeChat.isGroup && (
+              <div className={`action-row direct-block-action ${activeChatBlockedByViewer ? 'active' : ''}`}>
+                <div className="action-label">
+                  <i className="fa-solid fa-user-slash"></i>
+                  <span className="action-label-copy">
+                    <strong>{appCopy.t('Chặn')}</strong>
+                    {activeChatBlockedByViewer && <small>{appCopy.t('Bạn đã chặn tin nhắn')}</small>}
+                  </span>
+                </div>
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={activeChatBlockedByViewer}
+                    onChange={handleConversationDirectBlockToggle}
+                    disabled={isUpdatingDirectBlock}
                   />
                   <span className="slider round"></span>
                 </label>

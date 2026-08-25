@@ -3095,6 +3095,55 @@ body {
 
 .group-send-disabled-notice i { flex: 0 0 auto; }
 
+.direct-blocked-composer {
+    display: flex;
+    box-sizing: border-box;
+    min-height: 68px;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 16px;
+    border-top: 1px solid rgba(190, 48, 38, .16);
+    color: #7f2f27;
+    background:
+        radial-gradient(circle at 12% 20%, rgba(224, 68, 45, .10), transparent 38%),
+        linear-gradient(135deg, #fff8f6, #fff2ee);
+}
+
+.direct-blocked-composer-icon {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    place-items: center;
+    border-radius: 13px;
+    color: #fff;
+    background: #c44335;
+    box-shadow: 0 7px 16px rgba(169, 50, 40, .18);
+}
+
+.direct-blocked-composer-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.direct-blocked-composer-copy strong { font-size: 13px; font-weight: 750; }
+.direct-blocked-composer-copy small { color: #9a5b54; font-size: 10.5px; line-height: 1.4; }
+.direct-blocked-composer button {
+    display: inline-flex;
+    min-height: 36px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 8px 13px;
+    border: 1px solid rgba(190, 48, 38, .28);
+    border-radius: 11px;
+    color: #a13429;
+    background: rgba(255, 255, 255, .82);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 750;
+    cursor: pointer;
+}
+.direct-blocked-composer button:hover { border-color: #b63d31; background: #fff; }
+.direct-blocked-composer button:disabled { cursor: wait; opacity: .6; }
+
 .action-row {
     display: flex;
     align-items: center;
@@ -3113,6 +3162,12 @@ body {
     box-shadow: 0 7px 18px rgba(21, 46, 44, .09);
     transform: translateY(-1px);
 }
+
+.direct-block-action.active {
+    border-color: rgba(196, 67, 53, .32);
+    background: linear-gradient(135deg, #fff8f6, #fff0ec);
+}
+.direct-block-action.active .action-label i { color: #b83f33; background: #ffe2dc; }
 
 .action-label {
     display: flex;
@@ -6669,6 +6724,22 @@ html[data-theme="dark"] .group-leave-member.selected { border-color: #8c5b48; ba
 html[data-theme="dark"] .group-leave-radio-indicator { border-color: #53636a; background: #27363c; }
 html[data-theme="dark"] .group-owner-avatar-badge { border-color: var(--bg-chat); color: #f6d783; background: #4b3d1f; }
 html[data-theme="dark"] .group-send-disabled-notice { border-color: #704342; color: #ffb0a0; background: #3d2928; }
+html[data-theme="dark"] .direct-blocked-composer {
+  border-color: #704342;
+  color: #ffd2c8;
+  background:
+    radial-gradient(circle at 12% 20%, rgba(224, 68, 45, .16), transparent 38%),
+    linear-gradient(135deg, #3d2928, #302527);
+}
+html[data-theme="dark"] .direct-blocked-composer-copy small { color: #d9aaa2; }
+html[data-theme="dark"] .direct-blocked-composer button {
+  border-color: #75483f;
+  color: #ffc0b2;
+  background: #452f2d;
+}
+html[data-theme="dark"] .direct-blocked-composer button:hover { border-color: #a66556; background: #513532; }
+html[data-theme="dark"] .direct-block-action.active { border-color: #75483f; background: linear-gradient(135deg, #3d2928, #302527); }
+html[data-theme="dark"] .direct-block-action.active .action-label i { color: #ffb09f; background: #52322e; }
 html[data-theme="dark"] .btn-secondary:hover { background: #354149; }
 html[data-theme="dark"] .chatbot-context-strip {
   border-bottom-color: #35464c;

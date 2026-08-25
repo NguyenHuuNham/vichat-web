@@ -2,7 +2,7 @@
 
 Tinode Web sends a basic login packet over the WebSocket. The relay validates
 those credentials through Chatmgt, replaces the packet with a short-lived
-Tinode token login, and proxies all later packets without inspecting them.
+Tinode token login, and checks direct publishes before forwarding them.
 """
 
 import asyncio
@@ -32,12 +32,15 @@ INTERNAL_KEY = str(os.getenv("TINODE_BRIDGE_INTERNAL_KEY", "")).strip()
 ICE_SERVERS_FILE = str(os.getenv("TINODE_BRIDGE_ICE_SERVERS_FILE", "")).strip()
 ACCOUNT_SESSION_COOKIE_NAME = str(os.getenv("ACCOUNT_SESSION_COOKIE_NAME", "session")).strip() or "session"
 CHAT_ACCESS_COOKIE_NAME = str(os.getenv("CHAT_ACCESS_COOKIE_NAME", "vichat_access_token")).strip() or "vichat_access_token"
+DIRECT_MESSAGE_BLOCKED_TEXT = "Ng\u01b0\u1eddi d\u00f9ng \u0111\u00e3 ch\u1eb7n tin nh\u1eafn."
+DIRECT_MESSAGE_POLICY_UNAVAILABLE_TEXT = "Kh\u00f4ng th\u1ec3 x\u00e1c minh tr\u1ea1ng th\u00e1i ch\u1eb7n. Vui l\u00f2ng th\u1eed l\u1ea1i."
 
 
 class BridgeError(Exception):
-    def __init__(self, message, status_code=401):
+    def __init__(self, message, status_code=401, error_code=""):
         super().__init__(message)
         self.status_code = status_code
+        self.error_code = str(error_code or "")
 
 
 def _tinode_url():
@@ -160,7 +163,7 @@ async def _account_tinode_token(identity, password):
             token = str(tinode_auth.get("token") or "").strip()
             if not token:
                 raise BridgeError("Chatmgt returned no Tinode token.", 503)
-            return token
+            return token, str(tinode_auth.get("uid") or "").strip()
     except BridgeError:
         raise
     except (aiohttp.ClientError, asyncio.TimeoutError) as error:
@@ -169,17 +172,23 @@ async def _account_tinode_token(identity, password):
         await client.close()
 
 
-async def _rewrite_login(packet, allow_internal_basic=False):
+async def _rewrite_login(packet, allow_internal_basic=False, session_state=None):
     login = packet.get("login") if isinstance(packet, dict) else None
-    if not isinstance(login, dict) or str(login.get("scheme") or "").lower() != "basic":
+    if not isinstance(login, dict):
+        return packet
+    if session_state is not None and login.get("id") is not None:
+        session_state["login_request_id"] = str(login.get("id"))
+    if str(login.get("scheme") or "").lower() != "basic":
         return packet
     if allow_internal_basic:
         return packet
     identity, password = _basic_credentials(login.get("secret"))
     try:
-        token = await _account_tinode_token(identity, password)
+        token, tinode_uid = await _account_tinode_token(identity, password)
     finally:
         password = ""
+    if session_state is not None and tinode_uid:
+        session_state["tinode_uid"] = tinode_uid
     rewritten = dict(packet)
     rewritten_login = dict(login)
     rewritten_login["scheme"] = "token"
@@ -189,11 +198,16 @@ async def _rewrite_login(packet, allow_internal_basic=False):
 
 
 def _error_packet(request_id, error):
+    ctrl = {
+        "id": request_id,
+        "code": int(error.status_code),
+        "text": str(error),
+    }
+    if error.error_code:
+        ctrl["params"] = {"error_code": error.error_code}
     return {
         "ctrl": {
-            "id": request_id,
-            "code": int(error.status_code),
-            "text": str(error),
+            **ctrl,
         },
     }
 
@@ -240,7 +254,92 @@ def _rewrite_hello_response(packet, ice_servers):
     return rewritten
 
 
-async def _relay_client_to_tinode(client, upstream, allow_internal_basic=False):
+def _capture_tinode_identity(packet, session_state):
+    ctrl = packet.get("ctrl") if isinstance(packet, dict) else None
+    if not isinstance(ctrl, dict) or not 200 <= int(ctrl.get("code") or 0) < 300:
+        return
+    params = ctrl.get("params")
+    if not isinstance(params, dict) or not params.get("user"):
+        return
+    login_request_id = str(session_state.get("login_request_id") or "")
+    response_id = str(ctrl.get("id") or "")
+    if login_request_id and response_id and response_id != login_request_id:
+        return
+    session_state["tinode_uid"] = str(params.get("user") or "").strip()
+
+
+def _direct_publish(packet):
+    publish = packet.get("pub") if isinstance(packet, dict) else None
+    if not isinstance(publish, dict):
+        return None
+    topic_name = str(publish.get("topic") or "").strip()
+    return publish if topic_name.startswith("usr") else None
+
+
+async def _check_direct_publish(policy_session, session_state, publish):
+    sender_uid = str(session_state.get("tinode_uid") or "").strip()
+    request_id = publish.get("id")
+    topic_name = str(publish.get("topic") or "").strip()
+    if not sender_uid:
+        raise BridgeError(
+            DIRECT_MESSAGE_POLICY_UNAVAILABLE_TEXT,
+            503,
+            "DIRECT_MESSAGE_POLICY_UNAVAILABLE",
+        )
+    try:
+        async with policy_session.post(
+            CHATMGT_URL + "/api/v1/internal/direct-message-policy",
+            headers={
+                "Accept": "application/json",
+                "X-Vichat-Tinode-Internal": INTERNAL_KEY,
+                "User-Agent": "VICHAT-TINODE-BRIDGE/1.0",
+            },
+            json={"sender_uid": sender_uid, "topic": topic_name},
+            timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
+        ) as response:
+            try:
+                policy = await response.json(content_type=None)
+            except (aiohttp.ContentTypeError, ValueError):
+                policy = {}
+            if response.status != 200:
+                LOGGER.warning(
+                    "Chatmgt direct message policy returned status %s for request %s",
+                    response.status,
+                    request_id,
+                )
+                raise BridgeError(
+                    DIRECT_MESSAGE_POLICY_UNAVAILABLE_TEXT,
+                    503,
+                    "DIRECT_MESSAGE_POLICY_UNAVAILABLE",
+                )
+    except BridgeError:
+        raise
+    except (aiohttp.ClientError, asyncio.TimeoutError) as error:
+        raise BridgeError(
+            DIRECT_MESSAGE_POLICY_UNAVAILABLE_TEXT,
+            503,
+            "DIRECT_MESSAGE_POLICY_UNAVAILABLE",
+        ) from error
+
+    if not isinstance(policy, dict) or policy.get("allowed") is not True:
+        error_code = str((policy or {}).get("errorCode") or "DIRECT_MESSAGE_POLICY_INVALID")
+        if error_code == "DIRECT_MESSAGE_BLOCKED":
+            raise BridgeError(DIRECT_MESSAGE_BLOCKED_TEXT, 403, error_code)
+        raise BridgeError(
+            DIRECT_MESSAGE_POLICY_UNAVAILABLE_TEXT,
+            503,
+            error_code,
+        )
+
+
+async def _relay_client_to_tinode(
+    client,
+    upstream,
+    allow_internal_basic=False,
+    policy_session=None,
+    session_state=None,
+):
+    session_state = session_state if session_state is not None else {}
     async for message in client:
         if message.type == aiohttp.WSMsgType.TEXT:
             try:
@@ -249,11 +348,29 @@ async def _relay_client_to_tinode(client, upstream, allow_internal_basic=False):
                 await upstream.send_str(message.data)
                 continue
             try:
-                packet = await _rewrite_login(packet, allow_internal_basic)
+                packet = await _rewrite_login(packet, allow_internal_basic, session_state)
+                publish = None if allow_internal_basic else _direct_publish(packet)
+                if publish is not None:
+                    if policy_session is None:
+                        raise BridgeError(
+                            DIRECT_MESSAGE_POLICY_UNAVAILABLE_TEXT,
+                            503,
+                            "DIRECT_MESSAGE_POLICY_UNAVAILABLE",
+                        )
+                    await _check_direct_publish(policy_session, session_state, publish)
             except BridgeError as error:
-                request_id = (packet.get("login") or {}).get("id") if isinstance(packet, dict) else None
+                command = (
+                    (packet.get("login") or packet.get("pub") or {})
+                    if isinstance(packet, dict)
+                    else {}
+                )
+                request_id = command.get("id")
                 await client.send_json(_error_packet(request_id, error))
-                LOGGER.warning("Tinode Web Account login rejected with status %s", error.status_code)
+                LOGGER.warning(
+                    "Tinode client packet rejected with status %s and code %s",
+                    error.status_code,
+                    error.error_code or "unspecified",
+                )
                 continue
             await upstream.send_json(packet)
         elif message.type == aiohttp.WSMsgType.BINARY:
@@ -264,17 +381,20 @@ async def _relay_client_to_tinode(client, upstream, allow_internal_basic=False):
             break
 
 
-async def _relay_tinode_to_client(upstream, client, ice_servers=None):
+async def _relay_tinode_to_client(upstream, client, ice_servers=None, session_state=None):
+    session_state = session_state if session_state is not None else {}
     async for message in upstream:
         if message.type == aiohttp.WSMsgType.TEXT:
-            if ice_servers:
-                try:
-                    packet = _rewrite_hello_response(json.loads(message.data), ice_servers)
-                except (TypeError, ValueError):
-                    packet = None
-                if packet is not None:
-                    await client.send_json(packet)
-                    continue
+            try:
+                packet = json.loads(message.data)
+            except (TypeError, ValueError):
+                packet = None
+            if packet is not None:
+                _capture_tinode_identity(packet, session_state)
+                if ice_servers:
+                    packet = _rewrite_hello_response(packet, ice_servers)
+                await client.send_json(packet)
+                continue
             await client.send_str(message.data)
         elif message.type == aiohttp.WSMsgType.BINARY:
             await client.send_bytes(message.data)
@@ -292,6 +412,7 @@ async def channels(request):
     internal_header = str(request.headers.get("X-Vichat-Tinode-Internal") or "")
     allow_internal_basic = bool(INTERNAL_KEY and hmac.compare_digest(internal_header, INTERNAL_KEY))
     ice_servers = _load_ice_servers()
+    session_state = {}
     timeout = aiohttp.ClientTimeout(total=None, sock_read=None)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -302,10 +423,21 @@ async def channels(request):
                 max_msg_size=16 * 1024 * 1024,
             ) as upstream:
                 client_task = asyncio.create_task(
-                    _relay_client_to_tinode(client, upstream, allow_internal_basic)
+                    _relay_client_to_tinode(
+                        client,
+                        upstream,
+                        allow_internal_basic,
+                        session,
+                        session_state,
+                    )
                 )
                 tinode_task = asyncio.create_task(
-                    _relay_tinode_to_client(upstream, client, ice_servers)
+                    _relay_tinode_to_client(
+                        upstream,
+                        client,
+                        ice_servers,
+                        session_state,
+                    )
                 )
                 done, pending = await asyncio.wait(
                     (client_task, tinode_task),

@@ -54,6 +54,19 @@ test('translates the latest-message jump label', () => {
   assert.equal(translateUiText('Đi tới tin nhắn mới nhất', 'en'), 'Go to latest messages');
 });
 
+test('translates direct message blocking labels and notices', () => {
+  assert.equal(translateUiText('Chặn', 'en'), 'Block');
+  assert.equal(translateUiText('Bỏ chặn', 'en'), 'Unblock');
+  assert.equal(
+    translateUiText('Bạn đã chặn tin nhắn. Hãy bỏ chặn để tiếp tục.', 'en'),
+    'You blocked messages. Unblock to continue.',
+  );
+  assert.equal(
+    translateUiText('Người dùng đã chặn tin nhắn.', 'en'),
+    'The user has blocked messages.',
+  );
+});
+
 test('translates conversation category management labels', () => {
   assert.equal(translateUiText('Quản lý thẻ phân loại', 'en'), 'Manage category tags');
   assert.equal(translateUiText('Thêm mới thẻ phân loại', 'en'), 'Add a new category tag');

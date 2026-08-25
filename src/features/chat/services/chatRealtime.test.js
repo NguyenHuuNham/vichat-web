@@ -84,6 +84,23 @@ test('Tinode snapshots without pin metadata preserve their non-authoritative mar
   assert.equal(management.pinnedExplicit, true);
 });
 
+test('Tinode snapshots cannot clear viewer-scoped direct block metadata', () => {
+  const realtime = normalizeConversationShape({ id: 'usrPeer123456', messages: [] });
+  const management = normalizeConversationShape({
+    id: 'direct-managed',
+    managementSnapshot: true,
+    blockedByViewer: true,
+    blockedByPeer: false,
+    directMessagingBlocked: true,
+  });
+
+  assert.equal(realtime.directBlockExplicit, false);
+  assert.equal(realtime.directMessagingBlocked, false);
+  assert.equal(management.directBlockExplicit, true);
+  assert.equal(management.blockedByViewer, true);
+  assert.equal(management.directMessagingBlocked, true);
+});
+
 test('management placeholders cannot erase an existing conversation preview', () => {
   assert.equal(resolveConversationPreview({
     existingPreview: 'Bạn: Tin moi',
