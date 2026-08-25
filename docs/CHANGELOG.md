@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Rui ro con lai: Can UAT tren Chrome/Edge/Firefox that cho upload nhieu anh, GIF dong, file sai loai/qua gioi han, F5, doi tai khoan, xoa va gui direct/group/reply/block. Quota IndexedDB tuy browser; khi bi tu choi UI se giu luong chat cu va hien loi, khong tu xoa catalog hay tin nhan.
 - Trien khai: Source commit `3f2a89b` da push `origin/master`; release `/opt/deploy/chat/releases/custom-stickers-3f2a89b-20260825-2316` dang la `current`, `previous` tro `/opt/deploy/chat/releases/paste-draft-8b8d4c8-20260825-2235`. Chi recreate `chat` bang `--no-deps --force-recreate --no-build`; ChatUI container `d0bf6494b6cd`, image `sha256:fac45cbf13243f3ab7d605ef3db3bece3df51bb9de8e677b7913d7cffd8aeaa5`. Rollback tag `songhong-production-chat:rollback-before-custom-stickers-3f2a89b` giu image cu `sha256:0e7d54ac9c0000a59adbb9b61765b2632a35d8d616a1217ef232706fe7f4d385`. Chatmgt `b7a60904794b`, bridge `1129c4c10151`, webhook `2882b6109176`, Chat PostgreSQL `78a434b49404`, ChatAPI `8476615ad4ac`, Coturn `aa680d35fdc0`, Redis `ceef7df23feb` va Tinode PostgreSQL `9f6e4dcc9c2f` giu nguyen container ID; khong migration, backup/reset database, `compose down` hay restart backend.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo sticker picker -> `Sticker cua toi`, UAT upload mot/nhieu anh, GIF dong, file sai loai/qua gioi han, F5, doi tai khoan, xoa va gui trong direct/group/reply/block tren Chrome/Edge/Firefox.
-- Commit/PR: Source commit `3f2a89b`; deployment follow-up docs commit chua tao; khong co PR.
+- Commit/PR: Source commit `3f2a89b`; deployment follow-up docs commit `613decf`; khong co PR.
 
 ## 2026-08-25-11 - Giu anh va tep paste o ban nhap cho den khi user tu gui
 
