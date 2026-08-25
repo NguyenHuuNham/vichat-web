@@ -8,19 +8,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-25-04 - Dua mui ten chuyen cong ty sat ten hien tai
 
-- Thoi gian: 2026-08-25 12:59 (Asia/Saigon)
+- Thoi gian: 2026-08-25 12:59 (Asia/Saigon); deploy production 2026-08-25 13:15-13:21 (Asia/Saigon)
 - Loai: Sua loi | Web | UI | Kiem thu | Tai lieu
-- Trang thai: Hoan tat local; cho commit va deploy production
+- Trang thai: Da commit va deploy production; san sang UAT
 - Muc tieu: Dat mui ten chuyen cong ty ngay ben canh ten cong ty hien tai va chi cho phep mo danh sach tenant khi bam dung icon nay.
 - Pham vi: ChatUI profile tenant switcher, responsive/dark-theme CSS, source-contract test va production bundle; khong doi modal xac nhan, API switch tenant, session, logout, Tinode, avatar nhom, read cursor, unread hoac notification.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `docs/CHANGELOG.md`, `dist/index.html`.
 - Noi dung: Chuyen logo/ten/trang thai cong ty hien tai tu button thanh block hien thi khong click; dua chevron 18 px vao cung dong ten cong ty. Chi nut `tenant-switcher-toggle` con handler mo/dong menu, co `aria-controls` tro den menu; click logo, ten hoac trang thai khong con mo danh sach.
 - Quyet dinh ky thuat: Giu nguyen `tenantSwitcherOpen`, dong menu khi click ngoai/Escape, danh sach cuon, `requestTenantSwitch(option)` va modal xac nhan. Thay doi chi o lop presentation/interaction de tranh anh huong luong tenant, session va realtime hien co; khong cap nhat tai lieu kien truc vi ranh gioi dich vu va luong du lieu khong doi.
 - Database/API/cau hinh: Khong migration, endpoint, schema, secret hoac bien moi truong moi.
-- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js` dat 40/40; `npm run test:frontend` dat 234/234; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi entry `index-_VUBUus4.js`, CSS `index-Cl2OiDpd.css` va canh bao chunk `App` lon hon 500 KB da co; `git diff --check` dat.
+- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js` dat 40/40; `npm run test:frontend` dat 234/234; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` dat voi entry `index-_VUBUus4.js`, CSS `index-Cl2OiDpd.css` va canh bao chunk `App` lon hon 500 KB da co; `git diff --check` dat. Preflight image doc lap healthy va bundle co marker tenant switcher.
+- Kiem tra production: Archive `/opt/deploy/chat/incoming/vichat-tenant-arrow-bf9e67f.tar.gz` SHA-256 `00a08d52ab8b15d3f23c9f4e4fcd37a418b12592dfed173b173606e7f9cab5b1`; local/public ChatUI `/healthz` va Chatmgt auth health HTTP 200/status `ok`; public App `App-8GzIWTo1.js` va CSS `index-Cl2OiDpd.css` co marker `tenant-switcher-current-name`, `tenant-switcher-toggle`, `tenant-switcher-menu` va CSS `width:18px`; `sudo -n nginx -t` dat; log ChatUI/Chatmgt 15 phut co 0 marker fatal/panic/traceback/uncaught/critical/emerg.
+- Trien khai: Source commit `bf9e67f` da push `origin/master`; release `/opt/deploy/chat/releases/tenant-arrow-bf9e67f-20260825-1309` dang la `current`, `previous` tro `/opt/deploy/chat/releases/avatar-read-28e0c96-20260825-0150`; chi recreate `chat` voi `--no-deps --force-recreate --no-build`, khong migration/reset database, Tinode, avatar, read cursor hay volume. Image ChatUI moi `sha256:9a816e66c68c28fb60962f1ecd4f69389091100410f29b985b780a9889670502`, container `f04e5d2bedfa`; rollback tag `songhong-production-chat:rollback-before-tenant-arrow-bf9e67f` giu image cu `sha256:f0841946ee67ccb2cc7c1252be0760e9b9e932aa64cbc898c4b670328a874e0c`; Chatmgt, Tinode bridge, webhook, ChatAPI, PostgreSQL, Redis va Coturn giu nguyen container ID.
 - Rui ro con lai: Chua UAT pixel-level bang browser vi cong cu browser khong duoc expose trong phien; can hard refresh va kiem tra desktop/mobile voi tai khoan co nhieu cong ty.
-- Viec tiep theo: Commit, push va deploy rieng ChatUI; sau deploy xac minh health, public bundle, menu chevron va container backend/stateful giu nguyen.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, bam logo/ten/trang thai de xac nhan khong mo menu, bam chevron de mo/dong, chon cong ty khac va xac nhan modal; neu loi chi tro `current` ve `previous` va recreate rieng `chat`.
+- Commit/PR: Source commit `bf9e67f`; deployment follow-up docs commit dang tao.
 
 ## 2026-08-25-03 - Bao toan avatar nhom va cursor da doc Tinode
 
