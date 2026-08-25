@@ -31,10 +31,10 @@ test('recognizes the bridge rejection shown for every blocked direct publish', (
   assert.equal(isDirectMessageBlockedError(new Error('Temporary network failure')), false);
 });
 
-test('web keeps group transport unchanged and removes rejected direct optimistic messages', () => {
-  assert.match(tinodeSource, /if \(!isDirect\) return topic\.publishMessage\(draft\)/);
+test('web surfaces publish rejections and removes blocked optimistic messages', () => {
+  assert.match(tinodeSource, /function publishTopicMessage\(topic, draft\)/);
   assert.match(tinodeSource, /return getClient\(\)\.publishMessage\(draft/);
-  assert.match(appSource, /blocked \? removeMessageFromConversation\(currentRoom, newMsg\)/);
+  assert.match(appSource, /\(blocked \|\| spamBlocked\) \? removeMessageFromConversation\(currentRoom, newMsg, previousActivity\)/);
   assert.match(appSource, /window\.setInterval\(syncDirectBlockStates, 3000\)/);
   assert.match(appSource, /if \(requestedSharedScope && !allowDirectMessagingAttempt\(activeChat\)\) return/);
   assert.doesNotMatch(appSource, /openConversationBackgroundPicker = \(\) => \{[\s\S]{0,240}!allowDirectMessagingAttempt/);

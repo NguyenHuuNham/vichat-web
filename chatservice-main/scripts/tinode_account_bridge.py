@@ -2,7 +2,8 @@
 
 Tinode Web sends a basic login packet over the WebSocket. The relay validates
 those credentials through Chatmgt, replaces the packet with a short-lived
-Tinode token login, and checks direct publishes before forwarding them.
+Tinode token login, checks direct publishes, and rate-limits web group spam
+before forwarding packets to the authoritative Tinode server.
 """
 
 import asyncio
@@ -11,7 +12,9 @@ import binascii
 import hmac
 import json
 import logging
+import math
 import os
+import time
 from http.cookies import SimpleCookie
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -34,13 +37,40 @@ ACCOUNT_SESSION_COOKIE_NAME = str(os.getenv("ACCOUNT_SESSION_COOKIE_NAME", "sess
 CHAT_ACCESS_COOKIE_NAME = str(os.getenv("CHAT_ACCESS_COOKIE_NAME", "vichat_access_token")).strip() or "vichat_access_token"
 DIRECT_MESSAGE_BLOCKED_TEXT = "Ng\u01b0\u1eddi d\u00f9ng \u0111\u00e3 ch\u1eb7n tin nh\u1eafn."
 DIRECT_MESSAGE_POLICY_UNAVAILABLE_TEXT = "Kh\u00f4ng th\u1ec3 x\u00e1c minh tr\u1ea1ng th\u00e1i ch\u1eb7n. Vui l\u00f2ng th\u1eed l\u1ea1i."
+GROUP_SPAM_ERROR_CODE = "GROUP_SPAM_COOLDOWN"
+GROUP_SPAM_WINDOW_SECONDS = 5
+GROUP_SPAM_ACTION_LIMIT = 4
+GROUP_SPAM_BASE_COOLDOWN_SECONDS = 5
+GROUP_SPAM_MAX_COOLDOWN_SECONDS = 5 * 60
+GROUP_SPAM_RECOVERY_SECONDS = 60
+GROUP_SPAM_ACTION_TTL_SECONDS = 30
+GROUP_SPAM_ACTION_REPEAT_LIMIT = 100
+GROUP_SPAM_STATE_TTL_SECONDS = 60 * 60
+GROUP_SPAM_PRUNE_INTERVAL_SECONDS = 5 * 60
+GROUP_ACTION_HEAD = "x-vichat-group-action"
+SYSTEM_EVENT_PREFIX = "__VICHAT_SYSTEM_EVENT__:"
+GROUP_SPAM_EXEMPT_SYSTEM_ACTIONS = frozenset({
+    "conversation_background_changed",
+    "group_avatar_changed",
+    "group_created",
+    "group_dissolved",
+    "group_name_changed",
+    "group_settings_changed",
+    "member_added",
+    "member_left",
+    "member_removed",
+})
+
+_GROUP_SPAM_STATES = {}
+_GROUP_SPAM_LAST_PRUNE = 0.0
 
 
 class BridgeError(Exception):
-    def __init__(self, message, status_code=401, error_code=""):
+    def __init__(self, message, status_code=401, error_code="", params=None):
         super().__init__(message)
         self.status_code = status_code
         self.error_code = str(error_code or "")
+        self.params = dict(params or {})
 
 
 def _tinode_url():
@@ -203,8 +233,11 @@ def _error_packet(request_id, error):
         "code": int(error.status_code),
         "text": str(error),
     }
+    params = dict(error.params)
     if error.error_code:
-        ctrl["params"] = {"error_code": error.error_code}
+        params["error_code"] = error.error_code
+    if params:
+        ctrl["params"] = params
     return {
         "ctrl": {
             **ctrl,
@@ -268,12 +301,147 @@ def _capture_tinode_identity(packet, session_state):
     session_state["tinode_uid"] = str(params.get("user") or "").strip()
 
 
+def _capture_client_platform(packet, session_state):
+    hello = packet.get("hi") if isinstance(packet, dict) else None
+    if not isinstance(hello, dict):
+        return
+    platform = str(hello.get("platf") or "").strip().lower()
+    if platform:
+        session_state["client_platform"] = platform[:24]
+
+
 def _direct_publish(packet):
     publish = packet.get("pub") if isinstance(packet, dict) else None
     if not isinstance(publish, dict):
         return None
     topic_name = str(publish.get("topic") or "").strip()
     return publish if topic_name.startswith("usr") else None
+
+
+def _group_publish(packet):
+    publish = packet.get("pub") if isinstance(packet, dict) else None
+    if not isinstance(publish, dict):
+        return None
+    topic_name = str(publish.get("topic") or "").strip()
+    return publish if topic_name.startswith("grp") else None
+
+
+def _group_action_id(publish):
+    head = publish.get("head") if isinstance(publish, dict) else None
+    value = head.get(GROUP_ACTION_HEAD) if isinstance(head, dict) else ""
+    action_id = str(value or "").strip()
+    if not action_id:
+        action_id = "request:{}".format(str((publish or {}).get("id") or "").strip())
+    return action_id[:96]
+
+
+def _group_publish_counts_for_spam(publish):
+    content = publish.get("content") if isinstance(publish, dict) else None
+    if not isinstance(content, str) or not content.startswith(SYSTEM_EVENT_PREFIX):
+        return True
+    try:
+        event = json.loads(content[len(SYSTEM_EVENT_PREFIX):])
+    except (TypeError, ValueError):
+        return True
+    action = str(event.get("action") or "").strip().lower() if isinstance(event, dict) else ""
+    return action not in GROUP_SPAM_EXEMPT_SYSTEM_ACTIONS
+
+
+def _prune_group_spam_states(now):
+    global _GROUP_SPAM_LAST_PRUNE
+    if now - _GROUP_SPAM_LAST_PRUNE < GROUP_SPAM_PRUNE_INTERVAL_SECONDS:
+        return
+    _GROUP_SPAM_LAST_PRUNE = now
+    cutoff = now - GROUP_SPAM_STATE_TTL_SECONDS
+    stale_keys = [
+        key for key, state in _GROUP_SPAM_STATES.items()
+        if float(state.get("last_activity_at") or 0) < cutoff
+    ]
+    for key in stale_keys:
+        _GROUP_SPAM_STATES.pop(key, None)
+
+
+def _check_group_spam_publish(session_state, publish, now=None):
+    if str(session_state.get("client_platform") or "").strip().lower() != "web":
+        return
+    if not _group_publish_counts_for_spam(publish):
+        return
+    sender_uid = str(session_state.get("tinode_uid") or "").strip()
+    topic_name = str((publish or {}).get("topic") or "").strip()
+    if not sender_uid or not topic_name.startswith("grp"):
+        return
+
+    timestamp = float(time.monotonic() if now is None else now)
+    _prune_group_spam_states(timestamp)
+    key = (sender_uid, topic_name)
+    state = _GROUP_SPAM_STATES.setdefault(key, {
+        "action_times": [],
+        "penalty_level": 0,
+        "blocked_until": 0.0,
+        "last_violation_at": 0.0,
+        "last_activity_at": timestamp,
+        "recent_actions": {},
+    })
+    state["action_times"] = [
+        value for value in state.get("action_times", [])
+        if timestamp - float(value) < GROUP_SPAM_WINDOW_SECONDS
+    ]
+    state["recent_actions"] = {
+        action_id: record for action_id, record in state.get("recent_actions", {}).items()
+        if timestamp - float(record.get("at") or 0) < GROUP_SPAM_ACTION_TTL_SECONDS
+    }
+
+    blocked_until = float(state.get("blocked_until") or 0)
+    if blocked_until > 0 and timestamp >= blocked_until + GROUP_SPAM_RECOVERY_SECONDS:
+        state.update({
+            "action_times": [],
+            "penalty_level": 0,
+            "blocked_until": 0.0,
+            "last_violation_at": 0.0,
+        })
+        blocked_until = 0.0
+
+    action_id = _group_action_id(publish)
+    duplicate = state["recent_actions"].get(action_id) if action_id else None
+    if duplicate and int(duplicate.get("repeats") or 1) < GROUP_SPAM_ACTION_REPEAT_LIMIT:
+        duplicate["repeats"] = int(duplicate.get("repeats") or 1) + 1
+        state["last_activity_at"] = timestamp
+        return
+
+    if blocked_until > timestamp:
+        retry_seconds = max(1, int(math.ceil(blocked_until - timestamp)))
+        state["last_activity_at"] = timestamp
+        raise BridgeError(
+            "B\u1ea1n \u0111ang g\u1eedi qu\u00e1 nhanh. C\u00f3 th\u1ec3 g\u1eedi l\u1ea1i sau {} gi\u00e2y.".format(retry_seconds),
+            429,
+            GROUP_SPAM_ERROR_CODE,
+            {"retry_after": retry_seconds},
+        )
+
+    if len(state["action_times"]) >= GROUP_SPAM_ACTION_LIMIT:
+        penalty_level = max(0, int(state.get("penalty_level") or 0))
+        cooldown_seconds = min(
+            GROUP_SPAM_BASE_COOLDOWN_SECONDS * (2 ** penalty_level),
+            GROUP_SPAM_MAX_COOLDOWN_SECONDS,
+        )
+        state.update({
+            "action_times": [],
+            "penalty_level": min(16, penalty_level + 1),
+            "blocked_until": timestamp + cooldown_seconds,
+            "last_violation_at": timestamp,
+            "last_activity_at": timestamp,
+        })
+        raise BridgeError(
+            "B\u1ea1n \u0111ang g\u1eedi qu\u00e1 nhanh. C\u00f3 th\u1ec3 g\u1eedi l\u1ea1i sau {} gi\u00e2y.".format(cooldown_seconds),
+            429,
+            GROUP_SPAM_ERROR_CODE,
+            {"retry_after": cooldown_seconds},
+        )
+
+    state["action_times"].append(timestamp)
+    state["last_activity_at"] = timestamp
+    if action_id:
+        state["recent_actions"][action_id] = {"at": timestamp, "repeats": 1}
 
 
 async def _check_direct_publish(policy_session, session_state, publish):
@@ -348,16 +516,20 @@ async def _relay_client_to_tinode(
                 await upstream.send_str(message.data)
                 continue
             try:
+                _capture_client_platform(packet, session_state)
                 packet = await _rewrite_login(packet, allow_internal_basic, session_state)
-                publish = None if allow_internal_basic else _direct_publish(packet)
-                if publish is not None:
+                direct_publish = None if allow_internal_basic else _direct_publish(packet)
+                if direct_publish is not None:
                     if policy_session is None:
                         raise BridgeError(
                             DIRECT_MESSAGE_POLICY_UNAVAILABLE_TEXT,
                             503,
                             "DIRECT_MESSAGE_POLICY_UNAVAILABLE",
                         )
-                    await _check_direct_publish(policy_session, session_state, publish)
+                    await _check_direct_publish(policy_session, session_state, direct_publish)
+                group_publish = None if allow_internal_basic else _group_publish(packet)
+                if group_publish is not None:
+                    _check_group_spam_publish(session_state, group_publish)
             except BridgeError as error:
                 command = (
                     (packet.get("login") or packet.get("pub") or {})

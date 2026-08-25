@@ -27,6 +27,7 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Bạn đã chặn tin nhắn. Hãy bỏ chặn để tiếp tục.': 'You blocked messages. Unblock to continue.',
   'Bỏ chặn để tiếp tục nhắn tin với người này.': 'Unblock to continue messaging this person.',
   'Người dùng đã chặn tin nhắn.': 'The user has blocked messages.',
+  'Đang tạm khóa gửi tin nhắn': 'Sending temporarily paused',
   'Phân loại': 'Category',
   'Bỏ phân loại': 'Clear category',
   'Quản lý thẻ phân loại': 'Manage category tags',
@@ -1013,6 +1014,7 @@ const ENGLISH_PATTERN_TRANSLATIONS = [
   [/^đã từ chối lời mời kết bạn\.$/u, () => 'declined your friend request.'],
   [/^(\d+) mục không phải ảnh đã được bỏ qua\.$/u, count => `${count} non-image item${Number(count) === 1 ? '' : 's'} were skipped.`],
   [/^(\d+) ảnh đã được bỏ qua; hãy dùng nút gửi ảnh\.$/u, count => `${count} image${Number(count) === 1 ? '' : 's'} were skipped; use the image button.`],
+  [/^Bạn đang gửi quá nhanh\. Có thể gửi lại sau (\d+) giây\.$/u, seconds => `You are sending too quickly. Try again in ${seconds} second${Number(seconds) === 1 ? '' : 's'}.`],
 ];
 
 export function translateUiText(value, language = 'vi') {

@@ -76,6 +76,17 @@ import {
   DIRECT_MESSAGE_BLOCKED_TEXT,
   isDirectMessageBlockedError,
 } from '../features/chat/services/directMessageBlocking';
+import {
+  GROUP_SPAM_BASE_COOLDOWN_MS,
+  applyGroupSpamCooldown,
+  createGroupSpamActionId,
+  createGroupSpamState,
+  groupSpamCooldownMessage,
+  groupSpamErrorRetryAfterMs,
+  groupSpamRemainingSeconds,
+  isGroupSpamCooldownError,
+  registerGroupSpamAttempt,
+} from '../features/chat/services/groupSpamPolicy';
 import { attachmentConversationPreview } from '../features/chat/services/messagePreview';
 import {
   createUnreadBoundary,
@@ -1559,7 +1570,15 @@ function safeConversationList(conversations) {
     .filter(room => room?.id);
 }
 
-function removeMessageFromConversation(room, message) {
+function conversationActivitySnapshot(room) {
+  return {
+    lastMsg: room?.lastMsg || '',
+    time: room?.time || '',
+    updatedAt: room?.updatedAt || '',
+  };
+}
+
+function removeMessageFromConversation(room, message, fallbackActivity = null) {
   if (!room || !message) return room;
   const messages = roomMessages(room).filter(item => (
     item.id !== message.id
@@ -1569,9 +1588,9 @@ function removeMessageFromConversation(room, message) {
   return {
     ...room,
     messages,
-    lastMsg: attachmentConversationPreview(latestMessage) || latestMessage?.text || '',
-    time: latestMessage?.time || '',
-    updatedAt: latestMessage?.createdAt || room.updatedAt,
+    lastMsg: attachmentConversationPreview(latestMessage) || latestMessage?.text || fallbackActivity?.lastMsg || '',
+    time: latestMessage?.time || fallbackActivity?.time || '',
+    updatedAt: latestMessage?.createdAt || fallbackActivity?.updatedAt || room.updatedAt,
   };
 }
 
@@ -2672,6 +2691,7 @@ function App() {
   const [chatMode, setChatMode] = useState('demo');
   const [connectionStatus, setConnectionStatus] = useState(isTinodeConfigured ? 'ready' : 'demo');
   const [chatError, setChatError] = useState('');
+  const [groupSpamClock, setGroupSpamClock] = useState(() => Date.now());
   const [managementConversationSession, setManagementConversationSession] = useState(0);
 
   // Group creation state. The same modal works with Tinode and demo fallback.
@@ -2849,6 +2869,7 @@ function App() {
   const imageInputRef = useRef(null);
   const pastedAttachmentDraftsRef = useRef(pastedAttachmentDrafts);
   const pastedAttachmentSubmitRef = useRef(false);
+  const groupSpamStatesRef = useRef(new Map());
   const mentionPickerRef = useRef(null);
   const languageMenuRef = useRef(null);
   const tenantSwitcherRef = useRef(null);
@@ -3453,6 +3474,33 @@ function App() {
     || groupSettingEnabled(activeGroupSettings, 'allowPinMessages');
   const canCreatePollInActiveGroup = activeChat.isGroup
     && (isActiveGroupAdmin || groupSettingEnabled(activeGroupSettings, 'allowPolls'));
+  const activeGroupSpamKey = activeChat.isGroup ? String(activeChat.tinodeTopic || activeChat.id || '') : '';
+  const activeGroupSpamState = activeGroupSpamKey
+    ? (groupSpamStatesRef.current.get(activeGroupSpamKey) || createGroupSpamState())
+    : createGroupSpamState();
+  const activeGroupSpamBlockedUntil = activeGroupSpamState.blockedUntil;
+  const activeGroupSpamRemaining = activeChat.isGroup
+    ? groupSpamRemainingSeconds(activeGroupSpamState, groupSpamClock)
+    : 0;
+  const activeGroupSpamBlocked = activeGroupSpamRemaining > 0;
+  useEffect(() => {
+    if (!activeGroupSpamKey || activeGroupSpamBlockedUntil <= Date.now()) return undefined;
+    let timer = null;
+    const tick = () => {
+      const now = Date.now();
+      setGroupSpamClock(now);
+      if (now >= activeGroupSpamBlockedUntil && timer) {
+        window.clearInterval(timer);
+        timer = null;
+        setChatError(previous => /gửi quá nhanh/iu.test(previous) ? '' : previous);
+      }
+    };
+    tick();
+    timer = window.setInterval(tick, 250);
+    return () => {
+      if (timer) window.clearInterval(timer);
+    };
+  }, [activeGroupSpamBlockedUntil, activeGroupSpamKey]);
   const pendingGroupLeaveRoom = (() => {
     const pendingRoom = pendingGroupLeave?.room;
     if (!pendingRoom?.isGroup) return null;
@@ -5275,6 +5323,8 @@ function App() {
     setForcedLogoutSeconds(null);
     clearAllPastedAttachments();
     pastedAttachmentSubmitRef.current = false;
+    groupSpamStatesRef.current.clear();
+    setGroupSpamClock(Date.now());
     setDrafts({});
     setMessageMentions({});
     setMentionContext(null);
@@ -5711,6 +5761,8 @@ function App() {
     setDrafts({});
     clearAllPastedAttachments();
     pastedAttachmentSubmitRef.current = false;
+    groupSpamStatesRef.current.clear();
+    setGroupSpamClock(Date.now());
     setMessageMentions({});
     setMentionContext(null);
     setInputText('');
@@ -8484,9 +8536,61 @@ function App() {
     return false;
   };
 
+  const groupSpamStateKey = room => String(room?.tinodeTopic || room?.id || '').trim();
+
+  const announceGroupSpamCooldown = (state, now = Date.now()) => {
+    const remaining = groupSpamRemainingSeconds(state, now);
+    if (remaining <= 0) return false;
+    setGroupSpamClock(now);
+    setChatError(groupSpamCooldownMessage(remaining));
+    setShowEmojiPicker(false);
+    return true;
+  };
+
+  const allowGroupSendDuringCooldown = room => {
+    if (!room?.isGroup) return true;
+    const key = groupSpamStateKey(room);
+    const state = groupSpamStatesRef.current.get(key) || createGroupSpamState();
+    return !announceGroupSpamCooldown(state);
+  };
+
+  const registerGroupSendAttempt = (room, requestedActionId = '') => {
+    if (!room?.isGroup) return { allowed: true, groupActionId: '' };
+    const key = groupSpamStateKey(room);
+    if (!key) return { allowed: true, groupActionId: '' };
+    const groupActionId = requestedActionId || createGroupSpamActionId('web-group');
+    const now = Date.now();
+    const result = registerGroupSpamAttempt(groupSpamStatesRef.current.get(key), {
+      now,
+      actionId: groupActionId,
+    });
+    groupSpamStatesRef.current.set(key, result.state);
+    setGroupSpamClock(now);
+    if (!result.allowed) announceGroupSpamCooldown(result.state, now);
+    else setChatError(previous => /gửi quá nhanh/iu.test(previous) ? '' : previous);
+    return { ...result, groupActionId };
+  };
+
+  const handleGroupSpamCooldownError = (error, conversationId = currentChatIdRef.current) => {
+    if (!isGroupSpamCooldownError(error)) return false;
+    const rawRoom = conversationsRef.current[conversationId];
+    const room = rawRoom === null || rawRoom === undefined
+      ? null
+      : safeNormalizeConversationForRender(rawRoom, conversationId);
+    if (!room?.isGroup) return false;
+    const key = groupSpamStateKey(room);
+    const now = Date.now();
+    const retryAfterMs = groupSpamErrorRetryAfterMs(error) || GROUP_SPAM_BASE_COOLDOWN_MS;
+    const state = applyGroupSpamCooldown(groupSpamStatesRef.current.get(key), retryAfterMs, now);
+    groupSpamStatesRef.current.set(key, state);
+    announceGroupSpamCooldown(state, now);
+    return true;
+  };
+
   // --- Attach & Gửi tệp tin ---
   const openAttachmentPicker = inputRef => {
     if (!allowDirectMessagingAttempt(activeChat)) return;
+    if (!allowGroupSendDuringCooldown(activeChat)) return;
     if (activeChat.isChatbot) {
       setChatError('Trợ lý AI hiện chỉ nhận tin nhắn văn bản.');
       return;
@@ -8513,6 +8617,7 @@ function App() {
       imageBatch = null,
       caption = '',
       mentions = [],
+      groupActionId = '',
     } = options;
     if (!file) return;
     if (!allowDirectMessagingAttempt(activeChat)) return;
@@ -8533,6 +8638,9 @@ function App() {
       setChatError(validationError);
       return;
     }
+    const groupSpamAttempt = registerGroupSendAttempt(activeChat, groupActionId);
+    if (!groupSpamAttempt.allowed) return;
+    const resolvedGroupActionId = groupSpamAttempt.groupActionId;
     setChatError('');
     const replyMeta = Object.prototype.hasOwnProperty.call(options, 'replyMeta')
       ? options.replyMeta
@@ -8578,6 +8686,7 @@ function App() {
     const timeStr = getTimeString();
     const createdAt = new Date().toISOString();
     const normalizedImageBatch = isImage ? normalizeImageBatch(imageBatch) : null;
+    const previousActivity = conversationActivitySnapshot(conversations[currentChatId]);
     const newMsg = {
       id: `me-file-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       type: isImage ? "image" : "file",
@@ -8641,6 +8750,7 @@ function App() {
             imageBatch: normalizedImageBatch,
             caption: captionText,
             mentions: captionMentions,
+            groupActionId: resolvedGroupActionId,
           });
           const confirmedIsImage = /^image\//i.test(result.file.mime || '') || isImage;
           const confirmedMessage = {
@@ -8674,13 +8784,14 @@ function App() {
         })
         .catch(err => {
           if (previewUrl) URL.revokeObjectURL(previewUrl);
+          const spamBlocked = handleGroupSpamCooldownError(err, roomId);
           const blocked = handleDirectMessageBlockedError(err, roomId);
           setConversations(previous => {
             const currentRoom = previous[roomId];
             if (!currentRoom) return previous;
             return {
               ...previous,
-              [roomId]: blocked ? removeMessageFromConversation(currentRoom, newMsg) : {
+              [roomId]: (blocked || spamBlocked) ? removeMessageFromConversation(currentRoom, newMsg, previousActivity) : {
                 ...currentRoom,
                 messages: roomMessages(currentRoom).map(message => message.id === newMsg.id
                   ? { ...message, pending: false, failed: true }
@@ -8688,8 +8799,8 @@ function App() {
               },
             };
           });
-        if (!blocked) setChatError(err?.message || 'Không thể tải tệp lên Tinode.');
-      });
+          if (!blocked && !spamBlocked) setChatError(err?.message || 'Không thể tải tệp lên Tinode.');
+        });
     }
   };
 
@@ -8697,6 +8808,7 @@ function App() {
 
   const openPollComposer = () => {
     if (!activeChat?.isGroup) return;
+    if (!allowGroupSendDuringCooldown(activeChat)) return;
     if (!canCreatePollInActiveGroup) {
       setChatError('Quản trị viên đã tắt quyền tạo bình chọn trong nhóm.');
       return;
@@ -8769,6 +8881,8 @@ function App() {
       setChatError('Nhóm chưa sẵn sàng để cập nhật bình chọn.');
       return;
     }
+    const groupSpamAttempt = registerGroupSendAttempt(activeChat, createGroupSpamActionId('poll-event'));
+    if (!groupSpamAttempt.allowed) return;
     const actorId = tinodeClient.currentUserId || currentUser?.tinodeUid || viewerId;
     const normalizedEvent = {
       ...event,
@@ -8779,13 +8893,20 @@ function App() {
       createdAt: new Date().toISOString(),
       clientId: `poll-event-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     };
-    applyLocalPollEvent(message, normalizedEvent);
-    if (chatMode !== 'tinode') return;
+    if (chatMode !== 'tinode') {
+      applyLocalPollEvent(message, normalizedEvent);
+      return;
+    }
     try {
       const topicName = await ensureTinodeConversationTopic(activeChat);
-      await tinodeClient.sendPollEvent(topicName, normalizedEvent, normalizedEvent.clientId);
+      await tinodeClient.sendPollEvent(topicName, normalizedEvent, normalizedEvent.clientId, {
+        groupActionId: groupSpamAttempt.groupActionId,
+      });
+      applyLocalPollEvent(message, normalizedEvent);
     } catch (error) {
-      setChatError(error?.message || 'Không thể cập nhật bình chọn.');
+      if (!handleGroupSpamCooldownError(error, activeChat.id)) {
+        setChatError(error?.message || 'Không thể cập nhật bình chọn.');
+      }
     }
   };
 
@@ -8832,6 +8953,9 @@ function App() {
       setChatError('Bình chọn cần ít nhất 2 phương án.');
       return;
     }
+    const groupSpamAttempt = registerGroupSendAttempt(activeChat, createGroupSpamActionId('poll-create'));
+    if (!groupSpamAttempt.allowed) return;
+    const pollComposerSnapshot = pollComposer;
     setIsCreatingPoll(true);
     setChatError('');
     const pollId = `poll-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -8857,6 +8981,7 @@ function App() {
     const roomId = currentChatId;
     const time = getTimeString();
     const createdAt = new Date().toISOString();
+    const previousActivity = conversationActivitySnapshot(conversations[roomId]);
     const newMessage = {
       id: pollId,
       type: 'poll',
@@ -8895,7 +9020,9 @@ function App() {
         return;
       }
       const topicName = await ensureTinodeConversationTopic(room);
-      const result = await tinodeClient.sendPoll(topicName, poll, newMessage.id);
+      const result = await tinodeClient.sendPoll(topicName, poll, newMessage.id, {
+        groupActionId: groupSpamAttempt.groupActionId,
+      });
       const sequence = result?.ctrl?.params?.seq || result?.params?.seq;
       setConversations(previous => ({
         ...previous,
@@ -8915,42 +9042,48 @@ function App() {
           messageId: newMessage.id,
           messageSeq: Number(sequence) || 0,
           messagePreview: `Bình chọn: ${question}`,
-        });
+        }, { groupActionId: groupSpamAttempt.groupActionId });
       }
     } catch (error) {
+      const spamBlocked = handleGroupSpamCooldownError(error, roomId);
       setConversations(previous => ({
         ...previous,
-        [roomId]: {
-          ...previous[roomId],
-          messages: roomMessages(previous[roomId]).map(message => message.id === newMessage.id
-            ? { ...message, pending: false, failed: true }
-            : message),
-        },
+        [roomId]: spamBlocked
+          ? removeMessageFromConversation(previous[roomId], newMessage, previousActivity)
+          : {
+            ...previous[roomId],
+            messages: roomMessages(previous[roomId]).map(message => message.id === newMessage.id
+              ? { ...message, pending: false, failed: true }
+              : message),
+          },
       }));
-      setChatError(error?.message || 'Không thể tạo bình chọn.');
+      if (spamBlocked && currentChatIdRef.current === roomId) setPollComposer(pollComposerSnapshot);
+      if (!spamBlocked) setChatError(error?.message || 'Không thể tạo bình chọn.');
     } finally {
       setIsCreatingPoll(false);
     }
   };
 
   const handleSendSticker = sticker => {
-    if (!allowDirectMessagingAttempt(activeChat)) return;
+    if (!allowDirectMessagingAttempt(activeChat)) return false;
     if ((!sticker?.src && !sticker?.blob) || !sticker?.id || !sticker?.packId) {
       setChatError('Sticker không hợp lệ.');
-      return;
+      return false;
     }
     if (activeChat?.isChatbot) {
       setChatError('Trợ lý AI hiện chỉ nhận tin nhắn văn bản.');
-      return;
+      return false;
     }
     if (realtimeMessagingPending) {
       setChatError('Kết nối realtime Tinode chưa sẵn sàng; dữ liệu Chatmgt vẫn đang hoạt động.');
-      return;
+      return false;
     }
     if (!canSendInActiveGroup) {
       setChatError('Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.');
-      return;
+      return false;
     }
+    const groupSpamAttempt = registerGroupSendAttempt(activeChat, createGroupSpamActionId('sticker'));
+    if (!groupSpamAttempt.allowed) return false;
     setChatError('');
     const stickerBlob = sticker.blob && typeof sticker.blob.slice === 'function' ? sticker.blob : null;
     const optimisticStickerUrl = stickerBlob && typeof URL !== 'undefined' && URL.createObjectURL
@@ -8973,6 +9106,7 @@ function App() {
     const sharedReplyMeta = replyMetadataForTransport(replyMeta, directoryAccounts);
     const timeStr = getTimeString();
     const createdAt = new Date().toISOString();
+    const previousActivity = conversationActivitySnapshot(conversations[currentChatId]);
     const newMsg = {
       id: `me-sticker-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       type: 'sticker',
@@ -9021,12 +9155,15 @@ function App() {
     setMentionContext(null);
     setShowEmojiPicker(false);
 
-    if (chatMode !== 'tinode') return;
+    if (chatMode !== 'tinode') return true;
     const roomId = currentChatId;
     const room = conversations[roomId];
     ensureTinodeConversationTopic(room)
       .then(async topicName => {
-        const result = await tinodeClient.sendSticker(topicName, sticker, newMsg.id, { replyTo: sharedReplyMeta });
+        const result = await tinodeClient.sendSticker(topicName, sticker, newMsg.id, {
+          replyTo: sharedReplyMeta,
+          groupActionId: groupSpamAttempt.groupActionId,
+        });
         const confirmedMessage = {
           ...newMsg,
           pending: false,
@@ -9058,6 +9195,7 @@ function App() {
         if (optimisticStickerUrl) window.setTimeout(() => URL.revokeObjectURL(optimisticStickerUrl), 0);
       })
       .catch(error => {
+        const spamBlocked = handleGroupSpamCooldownError(error, roomId);
         const blocked = handleDirectMessageBlockedError(error, roomId);
         if (optimisticStickerUrl) URL.revokeObjectURL(optimisticStickerUrl);
         setConversations(previous => {
@@ -9065,7 +9203,7 @@ function App() {
           if (!currentRoom) return previous;
           return {
             ...previous,
-            [roomId]: blocked ? removeMessageFromConversation(currentRoom, newMsg) : {
+            [roomId]: (blocked || spamBlocked) ? removeMessageFromConversation(currentRoom, newMsg, previousActivity) : {
               ...currentRoom,
               messages: roomMessages(currentRoom).map(message => message.id === newMsg.id
                 ? { ...message, pending: false, failed: true }
@@ -9073,13 +9211,15 @@ function App() {
             },
           };
         });
-        if (!blocked) setChatError(error?.message || 'Không thể gửi sticker.');
+        if (!blocked && !spamBlocked) setChatError(error?.message || 'Không thể gửi sticker.');
       });
+    return true;
   };
 
   const startVoiceRecording = async () => {
     if (isRecordingVoice || mediaRecorderRef.current) return;
     if (!allowDirectMessagingAttempt(activeChat)) return;
+    if (!allowGroupSendDuringCooldown(activeChat)) return;
     setShowEmojiPicker(false);
     if (activeChat?.isChatbot) {
       setChatError('Trợ lý AI hiện chỉ nhận tin nhắn văn bản.');
@@ -9155,13 +9295,20 @@ function App() {
   const handleAttachmentChange = (event, source) => {
     const selection = splitAttachmentSelection(event.target.files, source);
     event.target.value = '';
+    const groupSpamAttempt = selection.accepted.length > 0
+      ? registerGroupSendAttempt(activeChat, createGroupSpamActionId(`${source}-batch`))
+      : { allowed: true, groupActionId: '' };
+    if (!groupSpamAttempt.allowed) return;
     const imageBatchId = source === 'image' && selection.accepted.length > 1
       ? `image-batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
       : '';
     selection.accepted.forEach((file, index) => {
       void handleSendFile(file, imageBatchId
-        ? { imageBatch: { id: imageBatchId, index, size: selection.accepted.length } }
-        : undefined);
+        ? {
+          imageBatch: { id: imageBatchId, index, size: selection.accepted.length },
+          groupActionId: groupSpamAttempt.groupActionId,
+        }
+        : { groupActionId: groupSpamAttempt.groupActionId });
     });
     if (selection.rejected.length > 0) {
       const rejectedCount = selection.rejected.length;
@@ -9371,9 +9518,10 @@ function App() {
   };
 
   const handleStickerSuggestionSelect = sticker => {
+    const sent = handleSendSticker(sticker);
+    if (!sent) return;
     updateCurrentDraft('');
     setMentionContext(null);
-    handleSendSticker(sticker);
     requestAnimationFrame(() => messageInputRef.current?.focus());
   };
 
@@ -9665,6 +9813,8 @@ function App() {
           setChatError('Quản trị viên đã tắt quyền ghim tin nhắn trong nhóm.');
           return;
         }
+        const groupSpamAttempt = registerGroupSendAttempt(activeChat, createGroupSpamActionId('pin'));
+        if (!groupSpamAttempt.allowed) return;
         const key = messageActionKey(activeChat.id, message.id);
         const nextPinned = !messageActions[key]?.pinned;
         const pinEvent = {
@@ -9680,7 +9830,9 @@ function App() {
         };
         if (activeChat.isGroup && chatMode === 'tinode') {
           const topicName = await ensureTinodeConversationTopic(activeChat);
-          await tinodeClient.sendSystemEvent(topicName, pinEvent);
+          await tinodeClient.sendSystemEvent(topicName, pinEvent, {
+            groupActionId: groupSpamAttempt.groupActionId,
+          });
         } else if (activeChat.isGroup && chatMode === 'demo') {
           const systemMessage = {
             id: `system-pin-${Date.now()}`,
@@ -9699,6 +9851,8 @@ function App() {
         return;
       }
       if (action === 'reaction') {
+        const groupSpamAttempt = registerGroupSendAttempt(activeChat, createGroupSpamActionId('reaction'));
+        if (!groupSpamAttempt.allowed) return;
         const key = messageActionKey(activeChat.id, message.id);
         const current = chatMode === 'tinode' ? {} : (messageActions[key]?.reactions || {});
         const reactionActorId = tinodeClient.currentUserId || viewerId;
@@ -9737,7 +9891,9 @@ function App() {
         }
         if (chatMode === 'tinode') {
           const topicName = await ensureTinodeConversationTopic(activeChat);
-          await tinodeClient.sendReaction(topicName, message.id, emoji, active);
+          await tinodeClient.sendReaction(topicName, message.id, emoji, active, {
+            groupActionId: groupSpamAttempt.groupActionId,
+          });
         }
         saveMessageAction(message, { reactions: nextReactions, reactionUsers: nextReactionUsers });
         applyMessagePatch(message, { reactions: nextReactions, reactionUsers: nextReactionUsers });
@@ -9753,10 +9909,14 @@ function App() {
           setChatError('Chỉ có thể thu hồi sau khi tin nhắn hoặc tệp đã được gửi thành công.');
           return;
         }
+        const groupSpamAttempt = registerGroupSendAttempt(activeChat, createGroupSpamActionId('recall'));
+        if (!groupSpamAttempt.allowed) return;
         if (chatMode === 'tinode') {
           const topicName = await ensureTinodeConversationTopic(activeChat);
           const mode = action === 'recall-self' ? 'self' : 'all';
-          await tinodeClient.recallMessage(topicName, message, mode);
+          await tinodeClient.recallMessage(topicName, message, mode, {
+            groupActionId: groupSpamAttempt.groupActionId,
+          });
           if (mode === 'self') {
             setConversations(previous => {
               const room = previous[activeChat.id];
@@ -9786,7 +9946,8 @@ function App() {
         setShareMessage(message);
       }
     } catch (error) {
-      if (!handleDirectMessageBlockedError(error, activeChat.id)) {
+      const spamBlocked = handleGroupSpamCooldownError(error, activeChat.id);
+      if (!spamBlocked && !handleDirectMessageBlockedError(error, activeChat.id)) {
         setChatError(error?.message || 'Không thể thực hiện thao tác với tin nhắn.');
       }
     }
@@ -9800,6 +9961,8 @@ function App() {
       setChatError('Chia sẻ tin nhắn cần kết nối realtime Tinode.');
       return;
     }
+    const groupSpamAttempt = registerGroupSendAttempt(target, createGroupSpamActionId('forward'));
+    if (!groupSpamAttempt.allowed) return;
     const sourceSender = findAccountByIdentities(directoryAccounts, [
       shareMessage.senderId,
       shareMessage.raw?.from,
@@ -9826,6 +9989,7 @@ function App() {
           const sourceFile = await tinodeClient.fetchFile(sourceAttachment);
           const result = await tinodeClient.sendFile(topicName, sourceFile, shared.id, {
             sharedFrom: shareMessage.id,
+            groupActionId: groupSpamAttempt.groupActionId,
           });
           const forwardedAttachment = {
             ...sourceAttachment,
@@ -9843,7 +10007,10 @@ function App() {
             image: forwardedIsImage ? forwardedAttachment.url : undefined,
           };
         } else {
-          await tinodeClient.sendText(topicName, text, shared.id, { sharedFrom: shareMessage.id });
+          await tinodeClient.sendText(topicName, text, shared.id, {
+            sharedFrom: shareMessage.id,
+            groupActionId: groupSpamAttempt.groupActionId,
+          });
         }
       } else {
         forwarded = sourceAttachment
@@ -9870,7 +10037,8 @@ function App() {
       }));
       setShareMessage(null);
     } catch (error) {
-      if (!handleDirectMessageBlockedError(error, target.id)) {
+      const spamBlocked = handleGroupSpamCooldownError(error, target.id);
+      if (!spamBlocked && !handleDirectMessageBlockedError(error, target.id)) {
         setChatError(error?.message || 'Không thể chia sẻ tin nhắn.');
       }
     }
@@ -9889,6 +10057,8 @@ function App() {
       setChatError('Danh bạ và cuộc trò chuyện đã được lưu ở Chatmgt, nhưng realtime Tinode chưa kết nối.');
       return;
     }
+    const groupSpamAttempt = registerGroupSendAttempt(activeChat, createGroupSpamActionId('text'));
+    if (!groupSpamAttempt.allowed) return;
 
     const timeStr = getTimeString();
     const createdAt = new Date().toISOString();
@@ -9898,6 +10068,7 @@ function App() {
       .filter(mention => mentionTokenExists(text, mention.token))
       .map(serializeMentionForTransport)
       .filter(Boolean);
+    const previousActivity = conversationActivitySnapshot(conversations[currentChatId]);
     const newMsg = {
       id: `me-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       type: "text",
@@ -10058,7 +10229,11 @@ function App() {
               setChatError(chatbotError?.message || 'ViChat AI chua san sang trong nhom.');
             }
           }
-          const result = await tinodeClient.sendText(topicName, text, newMsg.id, { ...(sharedReplyMeta ? { replyTo: sharedReplyMeta } : {}), mentions });
+          const result = await tinodeClient.sendText(topicName, text, newMsg.id, {
+            ...(sharedReplyMeta ? { replyTo: sharedReplyMeta } : {}),
+            mentions,
+            groupActionId: groupSpamAttempt.groupActionId,
+          });
           setConversations(previous => {
             const currentRoom = previous[roomId];
             if (!currentRoom) return previous;
@@ -10074,13 +10249,14 @@ function App() {
           });
         })
         .catch(err => {
+          const spamBlocked = handleGroupSpamCooldownError(err, roomId);
           const blocked = handleDirectMessageBlockedError(err, roomId);
           setConversations(previous => {
             const currentRoom = previous[roomId];
             if (!currentRoom) return previous;
             return {
               ...previous,
-              [roomId]: blocked ? removeMessageFromConversation(currentRoom, newMsg) : {
+              [roomId]: (blocked || spamBlocked) ? removeMessageFromConversation(currentRoom, newMsg, previousActivity) : {
                 ...currentRoom,
                 messages: roomMessages(currentRoom).map(message => message.id === newMsg.id
                   ? { ...message, pending: false, failed: true }
@@ -10088,8 +10264,8 @@ function App() {
               },
             };
           });
-          if (blocked && textToSend === null) updateCurrentDraft(text);
-          if (!blocked) setChatError(err?.message || 'Không thể gửi tin nhắn.');
+          if ((blocked || spamBlocked) && textToSend === null) updateCurrentDraft(text);
+          if (!blocked && !spamBlocked) setChatError(err?.message || 'Không thể gửi tin nhắn.');
         });
     }
   };
@@ -10118,6 +10294,8 @@ function App() {
     const conversationId = currentChatId;
     const replyMeta = replyingTo ? { ...replyingTo } : null;
     const captionMentions = messageMentions[conversationId] || [];
+    const groupSpamAttempt = registerGroupSendAttempt(activeChat, createGroupSpamActionId('paste-batch'));
+    if (!groupSpamAttempt.allowed) return;
     const batchId = `paste-batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const sendPlan = pasteAttachmentSendPlan(attachments, inputText, batchId);
     pastedAttachmentSubmitRef.current = true;
@@ -10127,6 +10305,7 @@ function App() {
         caption: item.caption,
         mentions: index === 0 ? captionMentions : [],
         replyMeta: index === 0 ? replyMeta : null,
+        groupActionId: groupSpamAttempt.groupActionId,
       });
     });
 
@@ -12092,6 +12271,16 @@ function App() {
             <span>{appCopy.t('Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.')}</span>
           </div>
         )}
+        {activeGroupSpamBlocked && (
+          <div className="group-spam-cooldown-notice" role="status" aria-live="polite">
+            <span className="group-spam-cooldown-icon"><i className="fa-solid fa-hourglass-half"></i></span>
+            <span className="group-spam-cooldown-copy">
+              <strong>{appCopy.t('Đang tạm khóa gửi tin nhắn')}</strong>
+              <small>{appCopy.t(groupSpamCooldownMessage(activeGroupSpamRemaining))}</small>
+            </span>
+            <strong className="group-spam-cooldown-countdown">{activeGroupSpamRemaining}s</strong>
+          </div>
+        )}
         {activeChatBlockedByViewer ? (
           <div className="direct-blocked-composer" role="status">
             <span className="direct-blocked-composer-icon"><i className="fa-solid fa-user-slash"></i></span>
@@ -12167,6 +12356,7 @@ function App() {
             && !activeChat.isChatbot
             && !realtimeMessagingPending
             && !isRecordingVoice
+            && !activeGroupSpamBlocked
             && canSendInActiveGroup && (
             <div className="sticker-suggestion-bar" role="list" aria-label={appCopy.t('Gợi ý Sticker')}>
               <span className="sticker-suggestion-heading"><i className="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>{appCopy.t('Gợi ý Sticker')}</span>
@@ -12190,7 +12380,7 @@ function App() {
             </div>
           )}
           <div className="input-actions-left">
-            <button className="btn-input-action image-input-action" title={appCopy.t(activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều ảnh')} aria-label={appCopy.t('Gửi nhiều ảnh')} onClick={handleImageAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup}>
+            <button className="btn-input-action image-input-action" title={appCopy.t(activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều ảnh')} aria-label={appCopy.t('Gửi nhiều ảnh')} onClick={handleImageAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup || activeGroupSpamBlocked}>
               <i className="fa-regular fa-image"></i>
             </button>
             <input
@@ -12201,7 +12391,7 @@ function App() {
               style={{ display: "none" }}
               onChange={handleImageChange}
             />
-            <button className="btn-input-action file-input-action" title={appCopy.t(activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều file')} aria-label={appCopy.t('Gửi nhiều file')} onClick={handleAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup}>
+            <button className="btn-input-action file-input-action" title={appCopy.t(activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều file')} aria-label={appCopy.t('Gửi nhiều file')} onClick={handleAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup || activeGroupSpamBlocked}>
               <i className="fa-solid fa-paperclip"></i>
             </button>
             <input
@@ -12211,7 +12401,7 @@ function App() {
               style={{ display: "none" }}
               onChange={handleFileChange}
             />
-            <button type="button" className="btn-input-action" title={appCopy.t('Sticker và biểu cảm')} aria-label={appCopy.t('Mở sticker và biểu cảm')} aria-expanded={showEmojiPicker} onClick={() => { if (!showEmojiPicker) { setComposerPickerTab('stickers'); setMentionContext(null); } setShowEmojiPicker(previous => !previous); }} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup}>
+            <button type="button" className="btn-input-action" title={appCopy.t('Sticker và biểu cảm')} aria-label={appCopy.t('Mở sticker và biểu cảm')} aria-expanded={showEmojiPicker} onClick={() => { if (!showEmojiPicker) { setComposerPickerTab('stickers'); setMentionContext(null); } setShowEmojiPicker(previous => !previous); }} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup || activeGroupSpamBlocked}>
               <i className="fa-regular fa-smile"></i>
             </button>
             {showEmojiPicker && (
@@ -12230,7 +12420,7 @@ function App() {
               title={appCopy.t(isRecordingVoice ? 'Dừng và gửi tin nhắn thoại' : 'Ghi tin nhắn thoại')}
               aria-label={appCopy.t(isRecordingVoice ? 'Dừng và gửi tin nhắn thoại' : 'Ghi tin nhắn thoại')}
               onClick={() => (isRecordingVoice ? stopVoiceRecording(false) : startVoiceRecording())}
-              disabled={realtimeMessagingPending || activeChat.isChatbot || !canSendInActiveGroup}
+              disabled={realtimeMessagingPending || activeChat.isChatbot || !canSendInActiveGroup || activeGroupSpamBlocked}
             >
               <i className={`fa-solid ${isRecordingVoice ? 'fa-stop' : 'fa-microphone'}`}></i>
             </button>
@@ -12241,7 +12431,7 @@ function App() {
                 title={appCopy.t(canCreatePollInActiveGroup ? 'Tạo bình chọn' : 'Chỉ quản trị viên mới có thể tạo bình chọn trong nhóm.')}
                 aria-label={appCopy.t('Tạo bình chọn')}
                 onClick={openPollComposer}
-                disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup || !canCreatePollInActiveGroup}
+                disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup || !canCreatePollInActiveGroup || activeGroupSpamBlocked}
               >
                 <i className="fa-solid fa-square-poll-vertical"></i>
               </button>
@@ -12324,7 +12514,7 @@ function App() {
               </>
             )}
           </div>
-          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || !canSendInActiveGroup || isRecordingVoice || (activeChat.isChatbot && isTyping)} onClick={handleComposerSubmit}>{appCopy.t(activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi')}</button>
+          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || !canSendInActiveGroup || activeGroupSpamBlocked || isRecordingVoice || (activeChat.isChatbot && isTyping)} onClick={handleComposerSubmit}>{appCopy.t(activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi')}</button>
         </div>
         )}
         {pollComposer && (
@@ -12434,7 +12624,7 @@ function App() {
               )}
               <div className="poll-composer-footer">
                 <button type="button" className="btn-secondary" onClick={closePollComposer} disabled={isCreatingPoll}>{appCopy.t('Hủy')}</button>
-                <button type="submit" className="btn-primary" disabled={isCreatingPoll || !pollComposer.question.trim()}>
+                <button type="submit" className="btn-primary" disabled={isCreatingPoll || activeGroupSpamBlocked || !pollComposer.question.trim()}>
                   <i className={`fa-solid ${isCreatingPoll ? 'fa-spinner fa-spin' : 'fa-square-poll-vertical'}`}></i>{isCreatingPoll ? appCopy.t('Đang tạo...') : appCopy.t('Tạo bình chọn')}
                 </button>
               </div>

@@ -101,6 +101,7 @@ const STICKER_HEAD = 'x-vichat-sticker';
 const POLL_HEAD = 'x-vichat-poll';
 const POLL_EVENT_PREFIX = '__VICHAT_POLL_EVENT__:';
 const IMAGE_BATCH_HEAD = 'x-vichat-image-batch';
+const GROUP_ACTION_HEAD = 'x-vichat-group-action';
 const CONVERSATION_BACKGROUND_AUX_KEY = 'x-vichat-conversation-background';
 const TINODE_DELETE_CHAR = Tinode?.DEL_CHAR || '\u2421';
 const MEDIA_PROXY_PREFIX = '/tinode-media';
@@ -1603,11 +1604,17 @@ async function subscribeTopic(topicName, {
   return topic;
 }
 
+function applyGroupActionHead(topic, draft, metadata = {}) {
+  const isGroup = topic?.isGroupType?.() || String(topic?.name || '').startsWith('grp');
+  const groupActionId = String(metadata?.groupActionId || '').trim().slice(0, 96);
+  if (!isGroup || !groupActionId) return draft;
+  draft.head = { ...(draft.head || {}), [GROUP_ACTION_HEAD]: groupActionId };
+  return draft;
+}
+
 function publishTopicMessage(topic, draft) {
-  const isDirect = topic?.isP2PType?.() || String(topic?.name || '').startsWith('usr');
-  // Tinode SDK 0.25.3 swallows Topic.publishMessage rejections. Direct sends
-  // use the client promise so the bridge's block response reaches the UI.
-  if (!isDirect) return topic.publishMessage(draft);
+  // Tinode SDK 0.25.3 swallows Topic.publishMessage rejections. Use the
+  // client-level promise so bridge policy responses reach the web UI.
   const Drafty = getDrafty();
   const attachments = [];
   if (Drafty?.hasEntities?.(draft?.content)) {
@@ -1619,11 +1626,9 @@ function publishTopicMessage(topic, draft) {
   return getClient().publishMessage(draft, attachments.length > 0 ? attachments : undefined);
 }
 
-function publishTopicContent(topic, content, noEcho = false) {
-  const isDirect = topic?.isP2PType?.() || String(topic?.name || '').startsWith('usr');
-  return isDirect
-    ? getClient().publishMessage(topic.createMessage(content, noEcho))
-    : topic.publish(content, noEcho);
+function publishTopicContent(topic, content, noEcho = false, metadata = {}) {
+  const draft = applyGroupActionHead(topic, topic.createMessage(content, noEcho), metadata);
+  return publishTopicMessage(topic, draft);
 }
 
 function sessionToken(value) {
@@ -2321,10 +2326,11 @@ export const tinodeClient = {
       head['x-mentions'] = JSON.stringify(metadata.mentions.slice(0, 50));
     }
     draft.head = head;
+    applyGroupActionHead(topic, draft, metadata);
     return publishTopicMessage(topic, draft);
   },
 
-  async sendPoll(topicName, poll, clientId) {
+  async sendPoll(topicName, poll, clientId, metadata = {}) {
     const topic = await subscribeTopic(topicName);
     if (!topic.isGroupType?.() && !String(topic.name || '').startsWith('grp')) {
       throw new Error('Bình chọn chỉ khả dụng trong nhóm.');
@@ -2339,10 +2345,11 @@ export const tinodeClient = {
       ...(clientId ? { 'x-client-id': clientId } : {}),
       'x-sender-id': actorId,
     };
-    return topic.publishMessage(draft);
+    applyGroupActionHead(topic, draft, metadata);
+    return publishTopicMessage(topic, draft);
   },
 
-  async sendPollEvent(topicName, event, clientId) {
+  async sendPollEvent(topicName, event, clientId, metadata = {}) {
     const topic = await subscribeTopic(topicName);
     if (!topic.isGroupType?.() && !String(topic.name || '').startsWith('grp')) {
       throw new Error('Bình chọn chỉ khả dụng trong nhóm.');
@@ -2360,10 +2367,11 @@ export const tinodeClient = {
       ...(clientId ? { 'x-client-id': clientId } : {}),
       'x-sender-id': actorId,
     };
-    return topic.publishMessage(draft);
+    applyGroupActionHead(topic, draft, metadata);
+    return publishTopicMessage(topic, draft);
   },
 
-  async sendReaction(topicName, targetId, emoji, active = true) {
+  async sendReaction(topicName, targetId, emoji, active = true, metadata = {}) {
     const topic = await subscribeTopic(topicName);
     const actorId = getClient().getCurrentUserID();
     const event = {
@@ -2375,10 +2383,10 @@ export const tinodeClient = {
       active: Boolean(active),
     };
     if (!event.targetId || !event.emoji) throw new Error('Thiếu tin nhắn hoặc biểu cảm.');
-    return publishTopicContent(topic, `${REACTION_EVENT_PREFIX}${JSON.stringify(event)}`);
+    return publishTopicContent(topic, `${REACTION_EVENT_PREFIX}${JSON.stringify(event)}`, false, metadata);
   },
 
-  async recallMessage(topicName, message = {}, mode = 'all') {
+  async recallMessage(topicName, message = {}, mode = 'all', metadata = {}) {
     if (!canRecallDeliveredMessage(message)) {
       throw new Error('Chỉ có thể thu hồi sau khi tin nhắn hoặc tệp đã được gửi thành công.');
     }
@@ -2396,6 +2404,7 @@ export const tinodeClient = {
       'x-client-id': `web-recall-${event.targetSeq || event.targetId}-${Date.now()}`,
       'x-sender-id': actorId,
     };
+    applyGroupActionHead(topic, draft, metadata);
     const result = await publishTopicMessage(topic, draft);
     if (!result) throw new Error('Tinode khong xac nhan su kien thu hoi.');
     emitConversation(topic);
@@ -2408,9 +2417,9 @@ export const tinodeClient = {
     return topic.delMessagesList([Number(seq)], Boolean(hard));
   },
 
-  async sendSystemEvent(topicName, event) {
+  async sendSystemEvent(topicName, event, metadata = {}) {
     const topic = await subscribeTopic(topicName);
-    return publishTopicContent(topic, `${SYSTEM_EVENT_PREFIX}${JSON.stringify(event)}`);
+    return publishTopicContent(topic, `${SYSTEM_EVENT_PREFIX}${JSON.stringify(event)}`, false, metadata);
   },
 
   async updateConversationBackground(topicName, background = null) {
@@ -2597,6 +2606,7 @@ export const tinodeClient = {
       });
     }
     if (Number(metadata.voiceDuration) > 0) draft.head['x-voice-duration'] = String(Math.round(metadata.voiceDuration));
+    applyGroupActionHead(topic, draft, metadata);
     const result = await publishTopicMessage(topic, draft);
     if (!result) throw new Error('Tinode không xác nhận tin nhắn đính kèm.');
     return {

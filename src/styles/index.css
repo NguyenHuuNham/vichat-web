@@ -3271,6 +3271,49 @@ body {
 
 .group-send-disabled-notice i { flex: 0 0 auto; }
 
+.group-spam-cooldown-notice {
+    display: flex;
+    min-height: 54px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 16px;
+    border-top: 1px solid #e7b154;
+    border-bottom: 1px solid #f1d49f;
+    color: #71430a;
+    background:
+        radial-gradient(circle at 8% 25%, rgba(245, 158, 11, .16), transparent 34%),
+        linear-gradient(110deg, #fff8e8, #fffdf7);
+}
+
+.group-spam-cooldown-icon {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    place-items: center;
+    border-radius: 11px;
+    color: #fff;
+    background: #d97706;
+    box-shadow: 0 7px 16px rgba(180, 83, 9, .18);
+}
+
+.group-spam-cooldown-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+.group-spam-cooldown-copy strong { font-size: 12px; font-weight: 800; }
+.group-spam-cooldown-copy small { color: #8b5a1d; font-size: 10.5px; line-height: 1.4; }
+.group-spam-cooldown-countdown {
+    min-width: 42px;
+    padding: 5px 8px;
+    border: 1px solid rgba(180, 83, 9, .24);
+    border-radius: 999px;
+    color: #9a4d08;
+    background: rgba(255, 255, 255, .78);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+
 .direct-blocked-composer {
     display: flex;
     box-sizing: border-box;
@@ -7054,6 +7097,15 @@ html[data-theme="dark"] .group-leave-member.selected { border-color: #8c5b48; ba
 html[data-theme="dark"] .group-leave-radio-indicator { border-color: #53636a; background: #27363c; }
 html[data-theme="dark"] .group-owner-avatar-badge { border-color: var(--bg-chat); color: #f6d783; background: #4b3d1f; }
 html[data-theme="dark"] .group-send-disabled-notice { border-color: #704342; color: #ffb0a0; background: #3d2928; }
+html[data-theme="dark"] .group-spam-cooldown-notice {
+  border-color: #765d2a;
+  color: #f4d89a;
+  background:
+    radial-gradient(circle at 8% 25%, rgba(245, 158, 11, .15), transparent 34%),
+    linear-gradient(110deg, #3a3020, #2b2922);
+}
+html[data-theme="dark"] .group-spam-cooldown-copy small { color: #d7b978; }
+html[data-theme="dark"] .group-spam-cooldown-countdown { border-color: #765d2a; color: #ffd17a; background: #30291d; }
 html[data-theme="dark"] .direct-blocked-composer {
   border-color: #704342;
   color: #ffd2c8;

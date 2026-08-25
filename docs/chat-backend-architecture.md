@@ -584,10 +584,35 @@ resolves the same-tenant direct pair by deterministic `direct_key` and rejects
 the publish when either participant has `blocked_at`; the relay returns Tinode
 control code `403` with `DIRECT_MESSAGE_BLOCKED` and never forwards that packet,
 so it cannot enter central Tinode history. Policy errors fail closed for managed
-direct sends. Group `grp*` publishes and trusted internal bridge clients keep
-their existing path. The transport check remains authoritative even though the
-current user-facing block controls are web-only, preventing another normal
-client from bypassing a block.
+direct sends. The transport check remains authoritative even though the current
+user-facing block controls are web-only, preventing another normal client from
+bypassing a block.
+
+Explicit web clients also receive a bounded group-publish anti-spam policy at
+the relay. The state is in-memory and keyed by authenticated Tinode UID plus
+`grp*` topic: four logical actions are allowed in a rolling five-second window,
+the next action is rejected before central Tinode with control code `429` and
+`GROUP_SPAM_COOLDOWN`, and the cooldown starts at five seconds. Each later burst
+after a cooldown doubles the penalty (`10`, `20`, `40` seconds and so on) up to
+five minutes; sixty seconds of normal activity after the cooldown resets the
+next penalty to five seconds. ChatUI runs the same guard before optimistic
+insertion or file upload and shows a live countdown, but the relay remains the
+final enforcement point for stale tabs, refreshes and concurrent publishes.
+
+Text, stickers, attachments/voice, polls, poll activity, reactions, recalls,
+group message pin activity and forwards consume the same budget. ChatUI stamps
+each action with the bounded `x-vichat-group-action` head so a multi-file picker
+or clipboard batch counts once even though Tinode stores each attachment as a
+separate message. Group-management announcements such as name/avatar/settings,
+background and membership changes are exempt because they are consequences of
+separately authorized mutations rather than composer spam; message pin/unpin
+announcements are deliberately not exempt. The policy applies only when the
+Tinode hello explicitly identifies `platform=web`; native mobile and trusted
+internal bridge publishes keep their previous path. It adds no Chatmgt API,
+database row, message copy or persistent rate-limit store. Tinode SDK 0.25.3
+does not propagate rejected `Topic.publishMessage` promises reliably, so ChatUI
+uses the client-level publish promise for all message drafts and can remove a
+rejected optimistic item while preserving the user's text draft.
 
 The central Tinode hello must advertise its own WebRTC/ICE configuration before
 calls are enabled. The bridge reads the protected production
@@ -597,8 +622,8 @@ also sets `webrtcEnabled=false` because that fallback cannot enable call
 handling inside the authoritative Tinode server. Once central Tinode is
 configured with the same ICE/TURN records, the bridge marks the response as
 `webrtcEnabled=true`. It never replaces authoritative ICE. Outside the bounded
-direct `pub` policy check described above, it does not rewrite message,
-presence or call packets.
+direct and web-group `pub` policy checks described above, it does not rewrite
+message, presence or call packets.
 
 `POST /api/v1/conversation/<id>/tinode-prepare` prepares missing UID mappings
 from current Chatmgt membership. Group topic binding and add/remove/leave

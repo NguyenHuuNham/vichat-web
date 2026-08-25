@@ -454,7 +454,7 @@ test('conversation categories expose viewer-scoped management without touching c
 test('group message pinning announces the actor without changing direct-chat pin behavior', () => {
   assert.match(appSource, /message_pinned/);
   assert.match(appSource, /message_unpinned/);
-  assert.match(appSource, /tinodeClient\.sendSystemEvent\(topicName, pinEvent\)/);
+  assert.match(appSource, /tinodeClient\.sendSystemEvent\(topicName, pinEvent, \{\s*groupActionId:/);
   assert.match(appSource, /appendDemoGroupMessage\(activeChat\.id, systemMessage\)/);
   assert.match(appSource, /activeChat\.isGroup && chatMode === 'tinode'/);
   assert.match(appSource, /activeChat\.isGroup && chatMode === 'demo'/);

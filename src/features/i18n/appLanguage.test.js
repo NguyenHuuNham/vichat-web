@@ -73,6 +73,14 @@ test('translates direct message blocking labels and notices', () => {
   );
 });
 
+test('translates the live group spam cooldown countdown', () => {
+  assert.equal(translateUiText('Đang tạm khóa gửi tin nhắn', 'en'), 'Sending temporarily paused');
+  assert.equal(
+    translateUiText('Bạn đang gửi quá nhanh. Có thể gửi lại sau 5 giây.', 'en'),
+    'You are sending too quickly. Try again in 5 seconds.',
+  );
+});
+
 test('translates conversation category management labels', () => {
   assert.equal(translateUiText('Quản lý thẻ phân loại', 'en'), 'Manage category tags');
   assert.equal(translateUiText('Thêm mới thẻ phân loại', 'en'), 'Add a new category tag');
