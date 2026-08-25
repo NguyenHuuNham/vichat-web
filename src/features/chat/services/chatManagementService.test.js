@@ -528,7 +528,11 @@ test('renders the group owner key on incoming owner avatars only', () => {
 });
 
 test('conversation actions use the authoritative Chatmgt id on web and mobile', () => {
-  assert.match(appSource, /deleteConversationForCurrentUser\(activeChat\.managementId \|\| activeChat\.id\)/);
+  const deleteSource = appSource.split('const handleDeleteConversation')[1].split('const updateConversationMute')[0];
+  assert.match(deleteSource, /const overrideConversationId = conversationFallbackId\(roomOverride\?\.id\)/);
+  assert.match(deleteSource, /safeNormalizeConversationForRender\(rawTargetRoom, overrideConversationId \|\| selectedConversationId\)/);
+  assert.match(deleteSource, /deleteConversationForCurrentUser\(\s*activeChat\.managementId \|\| activeChat\.id/);
+  assert.match(appSource, /onClick=\{\(\) => void handleDeleteConversation\(\)\}/);
   assert.match(appSource, /const managementConversationId = room\.managementId \|\| room\.id;/);
   assert.match(mobileStoreSource, /conversation\.managementId \|\| conversation\.id,[\s\S]*until,/);
   assert.match(mobileStoreSource, /deleteConversationForCurrentUser\(conversation\.managementId \|\| conversation\.id, tinodeAuth\.token, replacementId\)/);
@@ -549,8 +553,22 @@ test('managed direct chats hydrate Tinode history before committing the room sta
 });
 
 test('managed direct deletion keeps the topic and reopens after a post-delete message', () => {
+  const deleteSource = appSource.split('const handleDeleteConversation')[1].split('const updateConversationMute')[0];
+  const managedDeleteSource = deleteSource.split('if (isManagedDirect) {')[1].split('\n      } else {')[0];
+  const selfDeleteSource = managementServiceSource
+    .split('async deleteConversationForCurrentUser')[1]
+    .split('async updateConversationNotifications')[0];
   assert.match(appSource, /const isManagedDirect = usesManagementData && !activeChat\.isGroup/);
-  assert.match(appSource, /tinodeClient\.deleteConversation\(removedTopic, \{ isGroup: false \}\)/);
+  assert.match(managedDeleteSource, /tinodeClient\.deleteConversation\(removedTopic, \{ isGroup: false \}\)/);
+  assert.doesNotMatch(managedDeleteSource, /ensureTinodeConversationTopic/);
+  assert.ok(
+    managedDeleteSource.indexOf('deleteConversationForCurrentUser')
+      < managedDeleteSource.indexOf('tinodeClient.deleteConversation'),
+  );
+  assert.match(managedDeleteSource, /direct Tinode history cleanup failed after Chatmgt deletion/);
+  assert.match(selfDeleteSource, /activeSession\?\.tinodeAuth\?\.token \|\| ''/);
+  assert.match(selfDeleteSource, /shouldRetryTinodeMembership\(error\)/);
+  assert.match(selfDeleteSource, /getFreshTinodeAuth\(\{ force: true \}\)/);
   assert.match(appSource, /if \(removedTopic && isManagedDirect\) tinodeClient\.allowConversationTopic\(removedTopic\)/);
   assert.match(appSource, /const reopenDirectConversation = async/);
   assert.match(appSource, /chatManagementService\.createConversation\(\{[\s\S]*participantIds: \[peerId\]/);

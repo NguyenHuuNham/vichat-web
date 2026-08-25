@@ -5225,6 +5225,125 @@ async def conversation_participant_remove(request, conversation_id, participant_
             ConversationParticipant.joined_at.asc().nullslast(),
             ConversationParticipant.participant_id.asc(),
         ).first()
+
+    if close_after_leave:
+        topic_owner = ConversationParticipant.query.filter(
+            ConversationParticipant.tenant_id == tenant_id,
+            ConversationParticipant.conversation_id == item.id,
+            ConversationParticipant.role == "OWNER",
+            ConversationParticipant.approval_status == "APPROVED",
+            ConversationParticipant.deleted.is_(False),
+        ).order_by(
+            ConversationParticipant.active.desc(),
+            ConversationParticipant.joined_at.asc().nullslast(),
+        ).first()
+        topic_owner_id = str(topic_owner.participant_id) if topic_owner is not None else ""
+        try:
+            all_participants = ConversationParticipant.query.filter(
+                ConversationParticipant.tenant_id == tenant_id,
+                ConversationParticipant.conversation_id == item.id,
+            ).all()
+            for participant in all_participants:
+                participant.active = False
+                participant.left_at = participant.left_at or now
+                participant.deleted = True
+            item.status = "CLOSED"
+            item.closed_at = now
+            item.deleted = True
+            item.updated_at = now
+            db.session.commit()
+        except Exception as error:
+            db.session.rollback()
+            logger.exception("Could not close a final-member Chatmgt group: %s", error)
+            return json({
+                "error_code": "CONVERSATION_PARTICIPANT_ERROR",
+                "error_message": "Could not close the conversation.",
+            }, status=503)
+
+        final_tinode_cleanup_status = "not_bound"
+        if item.tinode_topic:
+            final_tinode_cleanup_status = "failed"
+            try:
+                actor_account = _account_by_id(tenant_id, user_id)
+                if actor_account is None or not actor_account.tinode_uid:
+                    raise AuthError("The current Tinode account is not prepared.", 409)
+
+                dissolve_tinode_uid = str(actor_account.tinode_uid or "").strip()
+                dissolve_tinode_token = str(request_payload.get("tinode_token") or "").strip()
+                try:
+                    actor_auth = await tinode_sso_login(
+                        _tinode_account_identity(actor_account),
+                        actor_account.tinode_username,
+                        actor_account.tinode_uid,
+                    )
+                    dissolve_tinode_token = str(actor_auth.get("token") or "").strip() or dissolve_tinode_token
+                except Exception:
+                    if not dissolve_tinode_token:
+                        raise
+
+                topic_owner_account = None
+                if topic_owner_id and topic_owner_id != user_id:
+                    topic_owner_account = _account_by_id(tenant_id, topic_owner_id)
+                    if topic_owner_account is not None and topic_owner_account.tinode_uid:
+                        try:
+                            topic_owner_auth = await tinode_sso_login(
+                                _tinode_account_identity(topic_owner_account),
+                                topic_owner_account.tinode_username,
+                                topic_owner_account.tinode_uid,
+                            )
+                            topic_owner_token = str(topic_owner_auth.get("token") or "").strip()
+                            if topic_owner_token:
+                                dissolve_tinode_token = topic_owner_token
+                                dissolve_tinode_uid = str(topic_owner_account.tinode_uid)
+                        except Exception as error:
+                            logger.warning("Could not prepare the stored Tinode owner for final group cleanup: %s", error)
+
+                if not dissolve_tinode_token or not dissolve_tinode_uid:
+                    raise AuthError("Tinode authentication is unavailable for final group cleanup.", 409)
+                expected_member_uids = _expected_tinode_member_uids(
+                    item,
+                    [target],
+                    {participant_id: actor_account},
+                )
+                if topic_owner_account is not None and topic_owner_account.tinode_uid:
+                    expected_member_uids.add(str(topic_owner_account.tinode_uid))
+                actual_member_uids = await tinode_topic_member_uids(
+                    dissolve_tinode_token,
+                    dissolve_tinode_uid,
+                    item.tinode_topic,
+                )
+                tinode_dissolve_member_uids = list(dict.fromkeys([
+                    *actual_member_uids,
+                    *expected_member_uids,
+                    dissolve_tinode_uid,
+                ]))
+                await tinode_dissolve_topic(
+                    dissolve_tinode_token,
+                    dissolve_tinode_uid,
+                    item.tinode_topic,
+                    tinode_dissolve_member_uids,
+                )
+                final_tinode_cleanup_status = "completed"
+            except Exception as error:
+                logger.warning(
+                    "Final-member group closed in Chatmgt but Tinode cleanup could not complete: %s",
+                    error,
+                )
+
+        _audit(
+            request,
+            "CONVERSATION_GROUP_EMPTY_CLOSE",
+            True,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            properties={
+                "conversation_id": str(item.id),
+                "reason": "last_member_left",
+                "tinode_cleanup": final_tinode_cleanup_status,
+            },
+        )
+        return json(_serialize_conversation(item, user_id))
+
     try:
         tinode_token = ""
         actor_account = None
@@ -5237,8 +5356,6 @@ async def conversation_participant_remove(request, conversation_id, participant_
         replacement_tinode_token = ""
         owner_transfer_accepted = False
         tinode_target_removed = False
-        dissolve_tinode_token = ""
-        dissolve_tinode_uid = ""
 
         async def rollback_tinode_owner_transfer():
             if not replacement_uid or actor_account is None or not tinode_token:
@@ -5303,8 +5420,6 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 return json({"error_code": "TINODE_ACCOUNT_UNPREPARED", "error_message": "The target Tinode account is not prepared."}, status=409)
             if current_user.get("auth_method") == "account_sso":
                 await _validated_account_identity(request, actor_account)
-            dissolve_tinode_token = tinode_token
-            dissolve_tinode_uid = str(actor_account.tinode_uid or "").strip()
             if is_group and event_sender_participant is not None:
                 event_sender_account = _account_by_id(tenant_id, event_sender_participant.participant_id)
                 if event_sender_account is not None:
@@ -5331,47 +5446,6 @@ async def conversation_participant_remove(request, conversation_id, participant_
                     ) if event_sender_account is not None else replacement.participant_id
                     if not replacement_uid or not replacement_tinode_token:
                         raise AuthError("Tinode could not prepare the replacement owner.", 502)
-            if close_after_leave:
-                topic_owner = ConversationParticipant.query.filter(
-                    ConversationParticipant.tenant_id == tenant_id,
-                    ConversationParticipant.conversation_id == item.id,
-                    ConversationParticipant.role == "OWNER",
-                    ConversationParticipant.approval_status == "APPROVED",
-                    ConversationParticipant.deleted.is_(False),
-                ).order_by(
-                    ConversationParticipant.active.desc(),
-                    ConversationParticipant.joined_at.asc().nullslast(),
-                ).first()
-                if topic_owner is not None and topic_owner.participant_id != participant_id:
-                    topic_owner_account = ManagementAccount.query.filter(
-                        ManagementAccount.tenant_id == tenant_id,
-                        ManagementAccount.id == topic_owner.participant_id,
-                    ).first()
-                    if topic_owner_account is not None and topic_owner_account.tinode_uid:
-                        topic_owner_auth = await tinode_sso_login(
-                            _tinode_account_identity(topic_owner_account),
-                            topic_owner_account.tinode_username,
-                            topic_owner_account.tinode_uid,
-                        )
-                        topic_owner_token = str(topic_owner_auth.get("token") or "").strip()
-                        if topic_owner_token:
-                            dissolve_tinode_token = topic_owner_token
-                            dissolve_tinode_uid = str(topic_owner_account.tinode_uid)
-                expected_member_uids = _expected_tinode_member_uids(
-                    item,
-                    [target],
-                    {participant_id: actor_account},
-                )
-                actual_member_uids = await tinode_topic_member_uids(
-                    dissolve_tinode_token,
-                    dissolve_tinode_uid,
-                    item.tinode_topic,
-                )
-                tinode_dissolve_member_uids = list(dict.fromkeys([
-                    *actual_member_uids,
-                    *expected_member_uids,
-                    dissolve_tinode_uid,
-                ]))
 
         target.active = False
         target.left_at = now
@@ -5380,14 +5454,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
         item.updated_at = now
         db.session.flush()
 
-        if item.tinode_topic and close_after_leave:
-            await tinode_dissolve_topic(
-                dissolve_tinode_token,
-                dissolve_tinode_uid,
-                item.tinode_topic,
-                tinode_dissolve_member_uids,
-            )
-        elif item.tinode_topic:
+        if item.tinode_topic:
             if replacement_uid:
                 await tinode_add_topic_members(
                     tinode_token,
@@ -5410,7 +5477,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 target_account.tinode_uid,
             )
             tinode_target_removed = True
-            if is_group and not close_after_leave:
+            if is_group:
                 active_participants, active_accounts = _active_conversation_accounts(item)
                 expected_member_uids = _expected_tinode_member_uids(item, active_participants, active_accounts)
                 verification_token = replacement_tinode_token or event_sender_tinode_token or tinode_token
@@ -5422,30 +5489,9 @@ async def conversation_participant_remove(request, conversation_id, participant_
                         item.tinode_topic,
                         expected_member_uids,
                     )
-        if close_after_leave:
-            all_participants = ConversationParticipant.query.filter(
-                ConversationParticipant.tenant_id == tenant_id,
-                ConversationParticipant.conversation_id == item.id,
-            ).all()
-            for participant in all_participants:
-                participant.active = False
-                participant.left_at = participant.left_at or now
-                participant.deleted = True
-            item.status = "CLOSED"
-            item.closed_at = now
-            item.deleted = True
         item.updated_at = now
         db.session.commit()
-        if close_after_leave:
-            _audit(
-                request,
-                "CONVERSATION_GROUP_EMPTY_CLOSE",
-                True,
-                tenant_id=tenant_id,
-                user_id=user_id,
-                properties={"conversation_id": str(item.id), "reason": "last_member_left"},
-            )
-        if is_group and participant_id == user_id and event_sender_tinode_token and not close_after_leave:
+        if is_group and participant_id == user_id and event_sender_tinode_token:
             try:
                 await tinode_publish_system_event(
                     event_sender_tinode_token,

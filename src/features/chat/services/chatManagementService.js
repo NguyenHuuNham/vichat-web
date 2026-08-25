@@ -824,11 +824,25 @@ export const chatManagementService = {
 
   async deleteConversationForCurrentUser(conversationId, { replacementId = '' } = {}) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
-    const payload = await membershipApiRequest(
-      `/api/v1/conversation/${encodeURIComponent(conversationId)}/self`,
-      'DELETE',
-      replacementId ? { replacement_id: replacementId } : {},
-    );
+    const path = `/api/v1/conversation/${encodeURIComponent(conversationId)}/self`;
+    const body = replacementId ? { replacement_id: replacementId } : {};
+    const request = tinodeToken => apiRequest(path, {
+      method: 'DELETE',
+      body: JSON.stringify({
+        ...body,
+        tinode_token: String(tinodeToken || '').trim(),
+      }),
+    });
+    let payload;
+    try {
+      // Direct deletion and final-member group closure are authoritative in
+      // Chatmgt and must not be blocked by a Tinode token refresh.
+      payload = await request(activeSession?.tinodeAuth?.token || '');
+    } catch (error) {
+      if (!activeSession || !shouldRetryTinodeMembership(error)) throw error;
+      const tinodeAuth = await this.getFreshTinodeAuth({ force: true });
+      payload = await request(tinodeAuth?.token || '');
+    }
     return normalizeConversation(payload);
   },
 

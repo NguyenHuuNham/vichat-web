@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-26-03 - Sua triet de nut xoa hoi thoai va roi nhom cuoi
+
+- Thoi gian: 2026-08-26 01:31-01:46 (Asia/Saigon)
+- Loai: Sua loi | Web | API | Realtime | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; cho commit va deploy production
+- Muc tieu: Nut xoa chat 1-1 phai hoat dong tu ca panel thong tin va menu sidebar; thanh vien hop le cuoi cung phai roi/xoa nhom duoc ngay ca khi Tinode tra `permission denied`, ma khong noi long luong nhom con thanh vien.
+- Pham vi: ChatUI web conversation action handler, Chatmgt `/conversation/<id>/self`, Tinode cleanup sau xoa/roi, regression contract va tai lieu kien truc. Giu nguyen message, avatar, read cursor, notification, direct block, spam cooldown, tenant, database schema va toan bo `mobile/`.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Nut xoa trong panel khong con truyen React click event nhu mot room gia, va handler dung ID cua chinh room khi xoa tu sidebar. Xoa direct ghi marker viewer-scoped vao Chatmgt truoc, sau do moi don lich su Tinode best-effort va khong prepare/re-bind topic cu. Request `/self` thu token Tinode dang co ma khong ep refresh truoc; chi nhom con survivor moi refresh/retry khi backend yeu cau. Voi nhom khong con tai khoan hop le khac, backend dong conversation va danh dau moi participant inactive/deleted, commit truoc khi thu dissolve Tinode; loi quyen/token cleanup chi duoc log/audit va khong rollback viec roi nhom.
+- Quyet dinh ky thuat: Chatmgt la source of truth cho viewer direct deletion va final-member group closure. Tinode van la buoc bat buoc, co rollback, cho leave/remove khi nhom con thanh vien; chi cleanup sau hai mutation khong con doi tac moi la best-effort. Topic direct van duoc allow de tin nhan moi that su co the mo lai cung cap hoi thoai.
+- Database/API/cau hinh: Khong migration, schema, endpoint, dependency, secret hay bien moi truong moi. Hop dong route `/self` giu nguyen; audit `CONVERSATION_GROUP_EMPTY_CLOSE` them trang thai `tinode_cleanup` khong chua token hay du lieu ca nhan.
+- Kiem thu: Target ChatUI service dat 43/43; Chatmgt auth contract dat 49/49; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/tests/test_chat_auth_contract.py` dat; `npm run test:frontend` dat 281/281; `python -m unittest discover -s chatservice-main/tests -q` dat 214 test, skip 79 theo dependency/runtime; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build` va `npm run build:production` dat, production entry `index-DpHwQdFm.js`, App `App-CgLBadix.js`, CSS `index-CgZBfmbc.css`, canh bao chunk App lon hon 500 KB co san; `git diff --check` va `git diff -- mobile` sach.
+- Rui ro con lai: Chua UAT bang phien dang nhap production vi browser runtime khong duoc expose trong phien; Tinode topic cu co the con orphan neu cleanup best-effort bi tu choi, nhung Chatmgt da dong/xoa dung theo viewer va khong con hien hoi thoai cu.
+- Viec tiep theo: Commit/push, deploy rieng `chatmgt` va `chat` tu release bat bien, sau do hard refresh va UAT nut xoa direct o ca sidebar/panel cung hai nut roi/xoa tren nhom chi con mot Account active.
+- Commit/PR: Chua tao; khong co PR.
+
 ## 2026-08-26-02 - Gom badge chua doc va hien dung mention cua nguoi xem
 
 - Thoi gian: 2026-08-26 00:58-01:12 (Asia/Saigon); deploy production 01:14-01:25

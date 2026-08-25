@@ -7322,9 +7322,13 @@ function App() {
   };
 
   const handleDeleteConversation = async (roomOverride = null) => {
-    const rawTargetRoom = roomOverride || conversationsRef.current[currentChatId] || conversations[currentChatId];
+    const selectedConversationId = currentChatIdRef.current || currentChatId;
+    const overrideConversationId = conversationFallbackId(roomOverride?.id);
+    const rawTargetRoom = overrideConversationId
+      ? roomOverride
+      : conversationsRef.current[selectedConversationId] || conversations[selectedConversationId];
     const targetRoom = rawTargetRoom
-      ? safeNormalizeConversationForRender(rawTargetRoom, currentChatId)
+      ? safeNormalizeConversationForRender(rawTargetRoom, overrideConversationId || selectedConversationId)
       : null;
     const activeChat = targetRoom;
     if (!targetRoom?.id || targetRoom.isChatbot || isDeletingConversation) return;
@@ -7352,30 +7356,37 @@ function App() {
       .map(String);
     if (!isManagedDirect) deletedKeys.forEach(key => deletedConversationIdsRef.current.add(key));
     try {
-      let removedTopic = '';
+      let removedTopic = activeChat.tinodeTopic || '';
       let deletedAt = '';
-      if (chatMode === 'tinode') {
-        removedTopic = await ensureTinodeConversationTopic(activeChat);
-        if (isManagedDirect) {
-          const deletion = await tinodeClient.deleteConversation(removedTopic, { isGroup: false });
-          deletedAt = deletion?.deletedAt || '';
+      if (isManagedDirect) {
+        const deletedConversation = await chatManagementService.deleteConversationForCurrentUser(
+          activeChat.managementId || activeChat.id,
+        );
+        deletedAt = deletedConversation?.deletedAt || '';
+        if (chatMode === 'tinode' && removedTopic) {
+          try {
+            const deletion = await tinodeClient.deleteConversation(removedTopic, { isGroup: false });
+            deletedAt = deletedAt || deletion?.deletedAt || '';
+          } catch (cleanupError) {
+            console.warn('ViChat: direct Tinode history cleanup failed after Chatmgt deletion', cleanupError);
+          }
         }
-        if (activeChat.isGroup && !usesManagementData) {
-          await tinodeClient.sendSystemEvent(removedTopic, {
-            action: 'member_left',
-            actorId: viewerId,
-            actorName: currentUser?.name,
-          });
-        }
-      }
-      if (usesManagementData) {
-        if (chatMode === 'tinode') await chatManagementService.getFreshTinodeAuth();
-        const deletedConversation = await chatManagementService.deleteConversationForCurrentUser(activeChat.managementId || activeChat.id);
-        deletedAt = deletedConversation?.deletedAt || deletedAt;
-      } else if (activeChat.isGroup) {
-        deleteDemoGroupForUser(conversationId, viewerId, currentUser?.name);
       } else {
-        deleteDemoDirectForUser(conversationId, viewerId);
+        if (chatMode === 'tinode') {
+          removedTopic = await ensureTinodeConversationTopic(activeChat);
+          if (activeChat.isGroup && !usesManagementData) {
+            await tinodeClient.sendSystemEvent(removedTopic, {
+              action: 'member_left',
+              actorId: viewerId,
+              actorName: currentUser?.name,
+            });
+          }
+        }
+        if (activeChat.isGroup) {
+          deleteDemoGroupForUser(conversationId, viewerId, currentUser?.name);
+        } else {
+          deleteDemoDirectForUser(conversationId, viewerId);
+        }
       }
       if (removedTopic && isManagedDirect) tinodeClient.allowConversationTopic(removedTopic);
       else if (removedTopic) tinodeClient.disallowConversationTopic(removedTopic);
@@ -7411,12 +7422,15 @@ function App() {
       });
       clearPastedAttachments(conversationId);
       setInputText('');
+      const currentConversationMap = conversationsRef.current || conversations;
       const remainingRooms = Object.fromEntries(
-        safeConversationEntries(conversations).filter(([id]) => id !== conversationId),
+        safeConversationEntries(currentConversationMap).filter(([id]) => id !== conversationId),
       );
       const nextId = firstVisibleConversationId(remainingRooms, drafts, CHATBOT_ACCOUNT.id);
-      setCurrentChatId(nextId);
-      setIsDetailOpen(false);
+      if (String(selectedConversationId) === String(conversationId)) {
+        setCurrentChatId(nextId);
+        setIsDetailOpen(false);
+      }
       setTimeout(() => deletedKeys.forEach(key => deletedConversationIdsRef.current.delete(key)), 5000);
     } catch (error) {
       deletedKeys.forEach(key => deletedConversationIdsRef.current.delete(key));
@@ -13332,7 +13346,7 @@ function App() {
               </button>
             )}
             {!activeChat.isChatbot && activeChat.id !== 'empty' && (
-              <button className="btn-delete-conversation" onClick={handleDeleteConversation} disabled={isDeletingConversation}>
+              <button type="button" className="btn-delete-conversation" onClick={() => void handleDeleteConversation()} disabled={isDeletingConversation}>
                 <i className={`fa-solid ${isDeletingConversation ? 'fa-spinner fa-spin' : 'fa-trash-can'}`}></i>
                 <span>{isDeletingConversation ? appCopy.t('Đang xóa...') : appCopy.t('Xóa cuộc trò chuyện')}</span>
               </button>

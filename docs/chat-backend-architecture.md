@@ -446,6 +446,13 @@ in `participantIds`, `members`, replacement-owner choices or survivor counts.
 An old active participant row for a disabled/deleted employee is retained only
 as cleanup history; it cannot force the remaining employee to transfer group
 ownership to an account which can no longer sign in.
+When no other valid active member survives a leave, Chatmgt closes the group and
+soft-deletes every participant row before attempting Tinode topic cleanup. The
+authenticated tenant membership still gates the request, but a missing, stale,
+or permission-limited Tinode token cannot roll back the authoritative Chatmgt
+closure. Tinode cleanup is audited as best-effort. Leaves and removals which
+still have surviving members remain strict: their Chatmgt mutation succeeds only
+when the Tinode membership and any owner transfer stay consistent.
 Renaming/changing the group avatar is also owner-only
 unless the owner explicitly enables `allowMembersEditInfo`. Chatmgt
 persists the group subject, avatar reference, and whitelisted boolean
@@ -501,9 +508,12 @@ Tinode mapping without copying message content into Chatmgt.
 Deleting a direct conversation is viewer-scoped. Chatmgt keeps both approved
 participant rows active and stores only the viewer's deletion timestamp in the
 conversation JSON property `direct_deleted_at_by_user`; it never applies the
-group leave/deactivation path to a direct pair. Tinode removes the viewer's
-message copy with a non-hard delete and records a private `vichatDeletedAt`
-boundary. Nicknames remain in the viewer's account properties and shared
+group leave/deactivation path to a direct pair. ChatUI writes this authoritative
+Chatmgt marker before attempting any Tinode cleanup and does not prepare or
+re-bind a topic solely for deletion. Tinode then removes the viewer's message
+copy best-effort with a non-hard delete and records a private `vichatDeletedAt`
+boundary; a stale browser/Tinode session cannot restore or block the successful
+Chatmgt deletion. Nicknames remain in the viewer's account properties and shared
 conversation backgrounds remain in Tinode auxiliary metadata. When a direct
 topic receives a message after that boundary, ChatUI reuses the same Chatmgt
 pair, clears both viewer-scoped markers, and merges only post-delete messages;

@@ -491,6 +491,22 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('item.status = "CLOSED"', remove_source)
         self.assertIn("participant.deleted = True", remove_source)
         self.assertIn('"reason": "last_member_left"', remove_source)
+        final_close_index = remove_source.index("if close_after_leave:")
+        final_commit_index = remove_source.index("db.session.commit()", final_close_index)
+        final_cleanup_index = remove_source.index("await tinode_dissolve_topic", final_commit_index)
+        final_return_index = remove_source.index(
+            "return json(_serialize_conversation(item, user_id))",
+            final_cleanup_index,
+        )
+        self.assertLess(final_commit_index, final_cleanup_index)
+        self.assertLess(final_cleanup_index, final_return_index)
+        final_close_source = remove_source[final_close_index:final_return_index]
+        self.assertIn("final_tinode_cleanup_status", final_close_source)
+        self.assertIn("Final-member group closed in Chatmgt", final_close_source)
+        self.assertIn('"tinode_cleanup": final_tinode_cleanup_status', final_close_source)
+        strict_membership_source = remove_source[final_return_index:]
+        self.assertIn("except AuthError as error:", strict_membership_source)
+        self.assertIn('"error_code": "TINODE_MEMBERSHIP_FAILED"', strict_membership_source)
         self.assertLess(
             remove_source.index("tinode_accept_topic_owner"),
             remove_source.index("tinode_remove_topic_member"),
