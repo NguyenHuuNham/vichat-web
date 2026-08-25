@@ -7,6 +7,7 @@ import {
   normalizeConversationShape,
   resolveTinodePresenceOnline,
   resolveTopicReadState,
+  resolveTopicViewerReadSeq,
   topicReceiptSequence,
 } from './chatRealtime';
 import {
@@ -1124,9 +1125,18 @@ function toConversation(topic, tinode) {
     ? { ...rawConversationBackground, url: normalizeAvatar(rawConversationBackground.url) }
     : rawConversationBackground;
   const topicSequence = Math.max(Number(topic.seq) || 0, topicReceiptSequence(topic));
+  const latestTopicMessage = topic.latestMessage?.() || null;
   const topicReadState = resolveTopicReadState({
     topicSequence,
-    serverReadSeq: topic.read,
+    // topic.onData fires before Tinode advances topic.read for our own echo.
+    // Treat the viewer's newest outgoing sequence as read immediately so it
+    // cannot create an unread boundary for the sender.
+    serverReadSeq: resolveTopicViewerReadSeq({
+      serverReadSeq: topic.read,
+      latestMessage: latestTopicMessage,
+      viewerId: tinode.getCurrentUserID(),
+      isChannel: Boolean(topic.isChannelType?.()),
+    }),
     localReadFloor: topicReadFloors.get(topic.name),
     explicitUnreadCount: topic.unread,
   });

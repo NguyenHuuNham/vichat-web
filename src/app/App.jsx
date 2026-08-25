@@ -5247,14 +5247,6 @@ function App() {
           }, stateId);
         }
         if (
-          stateId === currentChatIdRef.current
-          && conversationWithReadState.badge > 0
-          && document.visibilityState !== 'hidden'
-          && !unreadBoundariesRef.current[stateId]
-        ) {
-          tinodeClient.markRead(conversation.id).catch(() => {});
-        }
-        if (
           currentRoom?.isGroup
           && conversation.avatarUrl
           && conversation.avatarUrl !== currentRoom.avatarUrl
@@ -5650,20 +5642,24 @@ function App() {
         ? null
         : safeNormalizeConversationForRender(prev[id], id);
       if (!previousRoom) return prev;
-      return {
-        ...prev,
-        [id]: {
-          ...previousRoom,
-          badge: 0,
-          unreadFromSeq: 0,
-        },
-      };
+      return pendingUnreadBoundary
+        ? prev
+        : {
+          ...prev,
+          [id]: {
+            ...previousRoom,
+            badge: 0,
+            unreadFromSeq: 0,
+          },
+        };
     });
     if (chatMode === 'demo') {
       const userId = currentUser?.id || currentUser?.uid;
       if (!room?.isChatbot) {
-        if (room?.isGroup) markDemoGroupRead(id, userId);
-        else markDemoDirectRead(id, userId);
+        if (!pendingUnreadBoundary) {
+          if (room?.isGroup) markDemoGroupRead(id, userId);
+          else markDemoDirectRead(id, userId);
+        }
       }
     }
     if (chatMode === 'tinode' && (!room?.isChatbot || room?.tinodeTopic)) {
@@ -5671,7 +5667,6 @@ function App() {
         const topicName = room.isChatbot
           ? room.tinodeTopic
           : await ensureTinodeConversationTopic(room);
-        const acknowledgedReadSeq = await tinodeClient.markRead(topicName);
         const openedRoom = personalizeConversationForViewer(
           normalizeTinodeConversation(await tinodeClient.openConversation(topicName)),
           directoryAccountsRef.current,
@@ -5690,34 +5685,31 @@ function App() {
           : { ...openedRoom, id, managementId: room.managementId || id, tinodeTopic: topicName };
         pendingUnreadBoundary = pendingUnreadBoundary || rememberUnreadBoundary(managedRoom, id);
         pendingUnreadBoundary = dismissUnreadBoundaryIndicator(id, pendingUnreadBoundary);
-        if (pendingUnreadBoundary) {
-          delete unreadBoundariesRef.current[id];
-          unreadCompletionRequestsRef.current.delete(id);
-          unreadBoundaryJumpedRef.current.delete(id);
-          setUnreadBoundaries(previous => {
-            if (!previous[id]) return previous;
-            const next = { ...previous };
-            delete next[id];
-            return next;
-          });
+        let selectedRoom = managedRoom;
+        if (!pendingUnreadBoundary) {
+          const acknowledgedReadSeq = await tinodeClient.markRead(topicName);
+          selectedRoom = {
+            ...managedRoom,
+            badge: 0,
+            unreadFromSeq: 0,
+            readSeq: Math.max(
+              Number(managedRoom.readSeq) || 0,
+              Number(acknowledgedReadSeq) || 0,
+            ),
+          };
         }
-        const acknowledgedRoom = {
-          ...managedRoom,
-          badge: 0,
-          unreadFromSeq: 0,
-          readSeq: Math.max(
-            Number(managedRoom.readSeq) || 0,
-            Number(acknowledgedReadSeq) || 0,
-          ),
-        };
-        setConversations(prev => ({
-          ...prev,
-          [id]: {
-            ...safeMergeTinodeConversation(prev[id], acknowledgedRoom),
-            directProvisioning: 'ready',
-            pendingDirect: false,
-          },
-        }));
+        setConversations(prev => {
+          const next = {
+            ...prev,
+            [id]: {
+              ...safeMergeTinodeConversation(prev[id], selectedRoom),
+              directProvisioning: 'ready',
+              pendingDirect: false,
+            },
+          };
+          conversationsRef.current = next;
+          return next;
+        });
       } catch (err) {
         setConnectionStatus(tinodeClient.authenticated ? 'online' : 'offline');
         setChatError(err?.message || 'Không mở được cuộc trò chuyện.');

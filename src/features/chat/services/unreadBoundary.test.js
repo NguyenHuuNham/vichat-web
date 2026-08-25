@@ -92,3 +92,18 @@ test('returns only the unread tail when a conversation has no durable cursor', (
     ['three', 'four'],
   );
 });
+
+test('keeps the durable first unread sequence when bounded history starts later', () => {
+  const boundary = createUnreadBoundary(messages.slice(2), {
+    viewerId: 'me',
+    firstUnreadSeq: 2,
+    unreadCount: 3,
+  });
+
+  assert.equal(boundary.firstUnreadSeq, 2);
+  assert.equal(boundary.firstUnreadId, '');
+  assert.equal(boundary.firstUnreadAt, '');
+  assert.equal(boundary.lastUnreadId, 'four');
+  assert.equal(boundary.unreadCount, 3);
+  assert.equal(unreadBoundaryStartIndex(messages.slice(2), boundary), 0);
+});

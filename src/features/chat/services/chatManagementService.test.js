@@ -137,7 +137,11 @@ test('keeps unread emphasis and latest-message navigation in the ChatUI layer', 
   assert.match(appSource, /indicatorCleared/);
   assert.match(appSource, /latest-message-jump-button/);
   assert.match(appSource, /chatIsNearBottomRef/);
-  assert.match(appSource, /const acknowledgedReadSeq = await tinodeClient\.markRead\(topicName\)/);
+  const conversationSelectionSource = appSource
+    .split('const handleConversationSelect = async')[1]
+    .split('notificationOpenHandlerRef.current')[0];
+  assert.match(conversationSelectionSource, /if \(!pendingUnreadBoundary\) \{\s*const acknowledgedReadSeq = await tinodeClient\.markRead\(topicName\)/);
+  assert.doesNotMatch(conversationSelectionSource, /delete unreadBoundariesRef\.current\[id\]/);
   assert.match(appSource, /const notificationFloor = Math\.max/);
   assert.match(appSource, /openingConversationRef\.current !== String\(stateId\)/);
   assert.match(tinodeSource, /const topicReadFloors = new Map\(\)/);

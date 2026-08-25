@@ -629,6 +629,23 @@ export function topicReceiptSequence(topic) {
   return Number.isFinite(latestSequence) && latestSequence > 0 ? latestSequence : 0;
 }
 
+export function resolveTopicViewerReadSeq({
+  serverReadSeq = 0,
+  latestMessage = null,
+  viewerId = '',
+  isChannel = false,
+} = {}) {
+  const serverRead = Math.max(0, Number(serverReadSeq) || 0);
+  const latestSequence = Math.max(0, Number(latestMessage?.seq) || 0);
+  const senderId = String(
+    latestMessage?.from || latestMessage?.head?.['x-sender-id'] || '',
+  ).trim();
+  const isOutgoing = latestSequence > 0 && (
+    senderId ? senderId === String(viewerId || '') : !isChannel
+  );
+  return Math.max(serverRead, isOutgoing ? latestSequence : 0);
+}
+
 export function resolveTopicReadState({
   topicSequence = 0,
   serverReadSeq = 0,
@@ -641,13 +658,13 @@ export function resolveTopicReadState({
   const readSeq = Math.max(serverRead, readFloor);
   const derivedUnreadCount = Math.max(0, sequence - readSeq);
   const explicitUnread = Number(explicitUnreadCount);
-  let badge = Number.isFinite(explicitUnread)
-    ? Math.max(0, explicitUnread)
-    : derivedUnreadCount;
-
-  if ((sequence > 0 && readSeq >= sequence) || readFloor > 0) {
-    badge = derivedUnreadCount;
-  }
+  // Tinode invokes topic.onData before refreshing topic.unread. The newest
+  // sequence and the monotonic read cursor are therefore the authoritative
+  // pair whenever a sequence is available; explicitUnread is only a fallback
+  // for metadata snapshots which do not expose one.
+  const badge = sequence > 0
+    ? derivedUnreadCount
+    : Number.isFinite(explicitUnread) ? Math.max(0, explicitUnread) : 0;
 
   return {
     readSeq,

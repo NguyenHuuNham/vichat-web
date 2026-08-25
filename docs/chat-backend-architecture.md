@@ -721,12 +721,23 @@ bounded avatar stack and the message-information panel. No receipt data is
 copied to Chatmgt or stored in the message transport.
 
 The web viewer's own read cursor is monotonic for the active Tinode session.
-Opening a conversation immediately sends `read` at the latest known topic
-sequence and keeps an in-memory floor until Tinode reflects that cursor. Older
-topic or Chatmgt snapshots cannot lower the cursor, recreate an unread badge or
-trigger a desktop/sound notification for a sequence at or below it. This
-acknowledgement changes only receipt metadata: it never recalls, deletes or
-rewrites message/file content, and Tinode remains the durable receipt source.
+Tinode invokes a topic `onData` callback before refreshing its cached `unread`
+field, so ChatUI derives unread state from the newest known topic sequence and
+the effective viewer read cursor whenever both are available; the cached unread
+count is only a fallback when no sequence exists. The same callback ordering
+also delays Tinode's local `read` update for an outgoing echo, so ChatUI treats
+the viewer's newest outgoing sequence as read immediately while keeping an
+incoming sender's sequence unread. Opening a conversation with
+an unread boundary preserves that boundary and does not send `read` until the
+viewer reveals the unread range and reaches its end. Opening a conversation
+without pending unread still acknowledges the latest known sequence and keeps
+an in-memory floor until Tinode reflects that cursor. Bounded history also keeps
+the durable first-unread sequence even when that message must be fetched before
+the divider can be shown. Older topic or Chatmgt snapshots cannot lower the
+cursor, recreate an acknowledged unread badge or trigger a desktop/sound
+notification for a sequence at or below it. A read acknowledgement changes only
+receipt metadata: it never recalls, deletes or rewrites message/file content,
+and Tinode remains the durable receipt source.
 
 Sticker messages stay within the same Tinode file path as ordinary image
 attachments. ChatUI can upload either a selected static

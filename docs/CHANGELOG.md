@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-26-06 - Khoi phuc unread realtime va khong danh dau da doc qua som
+
+- Thoi gian: 2026-08-26 04:24-04:41 (Asia/Saigon)
+- Loai: Sua loi | Web | Realtime | UX | Kiem thu | Tai lieu
+- Trang thai: Code va kiem thu local da dat; dang cho commit va deploy production
+- Muc tieu: Tin moi trong chat 1-1 va nhom phai tang unread ngay khi den; mo hoi thoai khong duoc xoa moc unread hay gui receipt da doc truoc khi nguoi xem di qua cum tin chua doc; lich su gioi han van nhay dung ve sequence chua doc dau tien.
+- Pham vi: ChatUI web unread projection, Tinode topic callback/read cursor, unread boundary, source-contract test, production bundle va tai lieu. Giu nguyen message/file content, receipt nguoi khac, mention `@`, mute, pin, avatar, membership, Chatmgt API/database, notification preference va toan bo `mobile/`.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/unreadBoundary.js`, `src/features/chat/services/unreadBoundary.test.js`, `src/features/chat/services/chatManagementService.test.js`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Tinode SDK goi `topic.onData` sau khi cap nhat max sequence nhung truoc khi cap nhat `topic.unread` va truoc khi nang local `read` cho echo do viewer gui. ChatUI nay tinh badge tu sequence moi nhat tru read cursor hieu luc, xem sequence outgoing moi nhat cua viewer la da doc, va chi dung explicit unread lam fallback khi khong co sequence. Khi room dang co unread, thao tac mo chi an indicator cua room active va giu boundary/receipt; `markRead` khong chay som cho pending boundary ma chi chay khi viewer hoan tat boundary. Neu history nen bat dau sau first-unread sequence, boundary giu sequence ben vung de tai dung tin dau thay vi nham tin dau cua cua so 100 tin.
+- Quyet dinh ky thuat: Tinode van la source of truth cho message va read receipt; UI chi sua cach chieu state trong bo nho. Read cursor van monotonic de snapshot cu khong hoi sinh unread da acknowledge, nhung khong duoc dung monotonic floor de danh dau mot cum unread moi la da doc truoc thao tac nguoi dung.
+- Database/API/cau hinh: Khong migration, endpoint, schema, dependency, secret, bien moi truong hay storage key moi. Deploy chi can recreate ChatUI; cam reset topic/message/read cursor/database/volume va khong sua `.env`.
+- Kiem thu: Target unread/realtime/source-contract dat 85/85; `npm run test:frontend` dat 287/287; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build` va `npm run build:production` dat, production entry `index-DbLyiT-3.js`, App `App-CNR8K89T.js`, CSS `index-CgZBfmbc.css` va warning chunk App lon hon 500 KB co san; `git diff --check` dat va `git diff -- mobile` sach.
+- Rui ro con lai: Chua UAT production bang hai browser dang nhap that cho callback realtime, tab an/hien, mo room co nhieu hon 100 unread va chu ky bam `Tin chua doc` den khi receipt duoc gui.
+- Viec tiep theo: Commit/push, tao release bat bien, build candidate ChatUI, kiem tra health/Nginx/bundle marker, recreate rieng `chat`, sau do UAT 1-1 va group bang hai tai khoan; khong restart backend/stateful service.
+- Commit/PR: Chua tao; khong co PR.
+
 ## 2026-08-26-05 - Hoan thien actor-token va quyen tenant admin khi them thanh vien
 
 - Thoi gian: 2026-08-26 03:28-04:19 (Asia/Saigon); deploy production 04:12-04:19

@@ -23,6 +23,7 @@ import {
   resolveMergedConversationActivity,
   resolvePreparedTinodeTopic,
   resolveTopicReadState,
+  resolveTopicViewerReadSeq,
   resolveTinodePresenceOnline,
   shouldShowConversation,
   topicReceiptSequence,
@@ -238,6 +239,72 @@ test('local read floors override stale explicit Tinode unread counters', () => {
     unreadFromSeq: 101,
     badge: 20,
   });
+});
+
+test('new data derives unread from the latest sequence before Tinode refreshes topic.unread', () => {
+  assert.deepEqual(resolveTopicReadState({
+    topicSequence: 101,
+    serverReadSeq: 100,
+    localReadFloor: 0,
+    explicitUnreadCount: 0,
+  }), {
+    readSeq: 100,
+    unreadFromSeq: 101,
+    badge: 1,
+  });
+
+  assert.deepEqual(resolveTopicReadState({
+    topicSequence: 0,
+    explicitUnreadCount: 3,
+  }), {
+    readSeq: 0,
+    unreadFromSeq: 1,
+    badge: 3,
+  });
+});
+
+test('the viewer own echo advances read state without hiding an incoming message', () => {
+  const outgoingReadSeq = resolveTopicViewerReadSeq({
+    serverReadSeq: 100,
+    latestMessage: { seq: 101, from: 'usr-me' },
+    viewerId: 'usr-me',
+  });
+  const incomingReadSeq = resolveTopicViewerReadSeq({
+    serverReadSeq: 100,
+    latestMessage: { seq: 101, from: 'usr-peer' },
+    viewerId: 'usr-me',
+  });
+  assert.equal(outgoingReadSeq, 101);
+  assert.equal(incomingReadSeq, 100);
+  assert.deepEqual(resolveTopicReadState({
+    topicSequence: 101,
+    serverReadSeq: outgoingReadSeq,
+    explicitUnreadCount: 0,
+  }), {
+    readSeq: 101,
+    unreadFromSeq: 0,
+    badge: 0,
+  });
+  assert.deepEqual(resolveTopicReadState({
+    topicSequence: 101,
+    serverReadSeq: incomingReadSeq,
+    explicitUnreadCount: 0,
+  }), {
+    readSeq: 100,
+    unreadFromSeq: 101,
+    badge: 1,
+  });
+  assert.equal(resolveTopicViewerReadSeq({
+    serverReadSeq: 100,
+    latestMessage: { seq: 101, head: { 'x-sender-id': 'usr-me' } },
+    viewerId: 'usr-me',
+  }), 101);
+  assert.equal(resolveTopicViewerReadSeq({
+    serverReadSeq: 100,
+    latestMessage: { seq: 101 },
+    viewerId: 'usr-me',
+    isChannel: true,
+  }), 100);
 });
 
 test('Tinode contacts sync retries only while an unknown topic and account session remain active', () => {

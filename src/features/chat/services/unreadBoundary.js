@@ -57,11 +57,16 @@ export function createUnreadBoundary(messages = [], {
   const first = candidates[0];
   const last = candidates.at(-1);
   const normalizedFirstSequence = Number(firstUnreadSeq) > 0 ? Number(firstUnreadSeq) : messageSequence(first);
+  const firstCandidateSequence = messageSequence(first);
+  const firstCandidateIsBoundary = normalizedFirstSequence <= 0
+    || firstCandidateSequence === normalizedFirstSequence;
   if (count <= 0 && normalizedFirstSequence <= 0) return null;
   return {
-    firstUnreadId: String(first?.id || ''),
-    firstUnreadSeq: messageSequence(first) || normalizedFirstSequence,
-    firstUnreadAt: first?.createdAt || first?.raw?.ts || '',
+    // Keep the durable cursor even when the bounded history currently starts
+    // after it. The UI can then fetch and reveal the actual first unread item.
+    firstUnreadId: firstCandidateIsBoundary ? String(first?.id || '') : '',
+    firstUnreadSeq: normalizedFirstSequence,
+    firstUnreadAt: firstCandidateIsBoundary ? (first?.createdAt || first?.raw?.ts || '') : '',
     lastUnreadId: String(last?.id || ''),
     lastUnreadSeq: messageSequence(last),
     lastUnreadAt: last?.createdAt || last?.raw?.ts || '',
