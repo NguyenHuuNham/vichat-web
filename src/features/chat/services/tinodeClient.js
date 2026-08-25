@@ -718,6 +718,7 @@ function toMessage(msg, tinode, topic = null) {
   const poll = parsePollMetadata(msg.head);
   const imageBatch = parseImageBatchMetadata(msg.head);
   const content = typeof msg.content === 'string' ? msg.content : (msg.content?.txt || '');
+  const visibleContent = attachment ? content.trim() : content;
   const pollEvent = parsePollEventMetadata(content);
   let systemEvent = null;
   let friendEvent = null;
@@ -844,7 +845,7 @@ function toMessage(msg, tinode, topic = null) {
     mentions,
     sources: chatbotSources,
     grounded: msg.head?.['x-vichat-chatbot-grounded'] === '1',
-    text: call ? callHistoryLabel(call, isOutgoing) : poll ? poll.question : pollEvent ? '' : friendEvent ? (friendEvent.note || '') : systemEvent ? formatSystemEvent(systemEvent, tinode.getCurrentUserID()) : content,
+    text: call ? callHistoryLabel(call, isOutgoing) : poll ? poll.question : pollEvent ? '' : friendEvent ? (friendEvent.note || '') : systemEvent ? formatSystemEvent(systemEvent, tinode.getCurrentUserID()) : visibleContent,
     image: isImageAttachment ? attachmentUrl : undefined,
     imageBatch: imageBatch || undefined,
     file: attachment ? {
@@ -2555,6 +2556,10 @@ export const tinodeClient = {
   async sendFile(topicName, file, clientId, metadata = {}) {
     const tinode = getClient();
     const topic = await subscribeTopic(topicName);
+    const caption = String(metadata.caption || '').trim();
+    if (new TextEncoder().encode(caption).length > CENTRAL_MESSAGE_TEXT_LIMIT) {
+      throw new Error('Mô tả tệp vượt quá giới hạn 120 KB của máy chủ Tinode.');
+    }
     const url = await uploadFile(tinode, file);
     const Drafty = getDrafty();
     const isImage = /^image\//i.test(file.type || '') || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(file.name || '');
@@ -2569,14 +2574,18 @@ export const tinodeClient = {
     };
     // Use Tinode's image entity so recipients render an image preview instead
     // of receiving a generic EX/file attachment.
+    const baseContent = caption ? { txt: caption } : null;
     const content = isImage
-      ? Drafty.appendImage(null, attachment)
-      : Drafty.attachFile(null, attachment);
+      ? Drafty.appendImage(baseContent, attachment)
+      : Drafty.attachFile(baseContent, attachment);
     const draft = topic.createMessage(content, false);
     draft.head = { ...(draft.head || {}), 'x-sender-id': tinode.getCurrentUserID() };
     if (clientId) draft.head['x-client-id'] = clientId;
     if (metadata.replyTo) draft.head['x-reply-to'] = JSON.stringify(metadata.replyTo);
     if (metadata.sharedFrom) draft.head['x-shared-from'] = String(metadata.sharedFrom);
+    if (Array.isArray(metadata.mentions) && metadata.mentions.length > 0) {
+      draft.head['x-mentions'] = JSON.stringify(metadata.mentions.slice(0, 50));
+    }
     const imageBatch = normalizeImageBatch(metadata.imageBatch);
     if (imageBatch) draft.head[IMAGE_BATCH_HEAD] = JSON.stringify(imageBatch);
     if (metadata.sticker?.stickerId && metadata.sticker?.packId) {

@@ -1846,6 +1846,46 @@ body {
     padding: 6px 4px 1px;
 }
 
+.image-bubble-footer.has-caption {
+    align-items: flex-end;
+    justify-content: space-between;
+}
+
+.image-bubble-footer p,
+.attachment-caption p,
+.image-batch-caption p {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.image-bubble-footer.has-caption p {
+    flex: 1;
+    color: var(--text-main);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.attachment-caption,
+.image-batch-caption {
+    padding: 8px 11px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    color: var(--text-main);
+    background: var(--bg-white);
+    box-shadow: var(--shadow-sm);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.message-item.outgoing .attachment-caption,
+.message-item.outgoing .image-batch-caption {
+    background: var(--vichat-blue-light);
+}
+
+.image-batch-caption { margin-top: 6px; }
+
 .image-bubble-footer .message-time {
     flex: 0 0 auto;
     margin-top: 0;
@@ -2146,6 +2186,142 @@ body {
     border-left: 3px solid var(--vichat-blue);
     border-radius: 7px;
     background: var(--bg-chat);
+}
+
+.pasted-attachment-drafts {
+    display: flex;
+    min-width: 0;
+    flex: 0 0 100%;
+    order: -1;
+    box-sizing: border-box;
+    flex-direction: column;
+    gap: 8px;
+    padding: 9px 10px;
+    border: 1px solid #cddceb;
+    border-radius: 14px;
+    background:
+        radial-gradient(circle at 0 0, rgba(61, 134, 207, .13), transparent 38%),
+        linear-gradient(135deg, #f8fbff 0%, #f2f7fb 100%);
+}
+
+.pasted-attachment-drafts-header {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 9px;
+}
+
+.pasted-attachment-drafts-title {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 6px;
+    color: #285f91;
+    font-size: 11px;
+}
+
+.pasted-attachment-drafts-title i { font-size: 13px; }
+.pasted-attachment-drafts-title small {
+    display: grid;
+    min-width: 19px;
+    height: 19px;
+    place-items: center;
+    padding: 0 4px;
+    border-radius: 999px;
+    color: #fff;
+    background: #3d86cf;
+    font-size: 9px;
+    font-weight: 800;
+}
+
+.pasted-attachment-drafts-hint {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pasted-attachment-drafts-header > button {
+    flex: 0 0 auto;
+    padding: 4px 7px;
+    border: 0;
+    border-radius: 7px;
+    color: #a74343;
+    background: rgba(190, 65, 65, .08);
+    cursor: pointer;
+    font: inherit;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.pasted-attachment-drafts-header > button:hover { background: rgba(190, 65, 65, .14); }
+
+.pasted-attachment-drafts-list {
+    display: flex;
+    min-width: 0;
+    gap: 7px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+}
+
+.pasted-attachment-draft {
+    display: flex;
+    width: 190px;
+    min-width: 190px;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    border: 1px solid rgba(109, 144, 174, .28);
+    border-radius: 11px;
+    background: rgba(255, 255, 255, .9);
+    box-shadow: 0 4px 12px rgba(32, 69, 99, .07);
+}
+
+.pasted-attachment-draft-preview {
+    display: grid;
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    overflow: hidden;
+    place-items: center;
+    border-radius: 9px;
+    color: #3d86cf;
+    background: #e8f2fb;
+}
+
+.pasted-attachment-draft-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.pasted-attachment-draft-preview i { font-size: 18px; }
+.pasted-attachment-draft-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.pasted-attachment-draft-copy strong { overflow: hidden; color: var(--text-main); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+.pasted-attachment-draft-copy small { color: var(--text-muted); font-size: 9px; }
+.pasted-attachment-draft > button {
+    display: grid;
+    width: 25px;
+    height: 25px;
+    flex: 0 0 25px;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    color: #9f5656;
+    background: transparent;
+    cursor: pointer;
+}
+
+.pasted-attachment-draft > button:hover { color: #b72f2f; background: #fff0f0; }
+
+@media (max-width: 576px) {
+    .pasted-attachment-drafts { padding: 8px; }
+    .pasted-attachment-drafts-hint { display: none; }
+    .pasted-attachment-draft { width: 168px; min-width: 168px; }
 }
 
 .sticker-suggestion-bar {
@@ -6611,6 +6787,19 @@ html[data-theme="dark"] .message-item.outgoing .image-bubble { border-color: #48
 html[data-theme="dark"] .image-preview-button { background: #243238; }
 html[data-theme="dark"] .image-preview-placeholder { color: #a9b8bf; background: linear-gradient(135deg, #222d34, #1b252b); }
 html[data-theme="dark"] .image-preview-placeholder.image-preview-error { color: #f0a18d; background: linear-gradient(135deg, #3a2522, #2e2020); }
+html[data-theme="dark"] .attachment-caption,
+html[data-theme="dark"] .image-batch-caption { border-color: #40515a; background: #25343b; }
+html[data-theme="dark"] .message-item.outgoing .attachment-caption,
+html[data-theme="dark"] .message-item.outgoing .image-batch-caption { background: #463b36; }
+html[data-theme="dark"] .pasted-attachment-drafts {
+    border-color: #405761;
+    background:
+        radial-gradient(circle at 0 0, rgba(81, 151, 214, .17), transparent 38%),
+        linear-gradient(135deg, #22323a 0%, #1d2a30 100%);
+}
+html[data-theme="dark"] .pasted-attachment-draft { border-color: #405761; background: rgba(37, 52, 59, .94); }
+html[data-theme="dark"] .pasted-attachment-draft-preview { color: #8bc2f0; background: #2b4657; }
+html[data-theme="dark"] .pasted-attachment-drafts-title { color: #9ac9ee; }
 html[data-theme="dark"] .message-item.incoming .file-bubble { border-color: #3b4b54; background: linear-gradient(145deg, #1d272d 0%, #182126 100%); box-shadow: 0 8px 20px rgba(0, 0, 0, .24); }
 html[data-theme="dark"] .message-item.outgoing .file-bubble { border-color: #6a4030; background: linear-gradient(145deg, #4a2e24 0%, #382822 100%); }
 html[data-theme="dark"] .file-bubble.pdf,

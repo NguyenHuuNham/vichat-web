@@ -101,6 +101,14 @@ import {
   normalizeImageBatch,
 } from '../features/chat/services/imageBatchLayout';
 import {
+  MAX_PASTED_ATTACHMENTS,
+  clipboardAttachmentFiles,
+  formatPasteAttachmentSize,
+  isPastedImageFile,
+  normalizePastedFile,
+  pasteAttachmentSendPlan,
+} from '../features/chat/services/pasteAttachmentDraft';
+import {
   canRecallDeliveredMessage,
   chatAttachmentValidationError,
 } from '../features/chat/services/messagePolicy';
@@ -2197,6 +2205,7 @@ function ImageBatchMessage({
   openMessageMenu,
   messageElementsRef,
   deliveryStatusIcon,
+  renderMessageText,
 }) {
   const firstMessage = messages[0];
   const firstSenderId = firstMessage.senderId || firstMessage.raw?.from || firstMessage.raw?.head?.['x-sender-id'];
@@ -2204,6 +2213,7 @@ function ImageBatchMessage({
     || Boolean(firstSenderId && viewerId && firstSenderId === viewerId);
   const isOwnerMessage = activeChat.isGroup && identitiesOverlap({ id: firstSenderId }, activeAdminAccount);
   const layoutClass = imageBatchLayoutClass(messages.length);
+  const captionMessage = messages.find(message => String(message?.text || '').trim());
 
   return (
     <div className={`message-item image-batch-message ${isOutgoing ? 'outgoing' : 'incoming'} ${highlightedMessageKey === messageActionKey(activeChatId, firstMessage.id) ? 'message-pinned-highlight' : ''}`}>
@@ -2310,6 +2320,11 @@ function ImageBatchMessage({
               );
             })}
           </div>
+          {captionMessage && (
+            <div className="image-batch-caption">
+              <p>{renderMessageText(captionMessage.text, captionMessage.mentions)}</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -2643,6 +2658,7 @@ function App() {
   const [typingByTopic, setTypingByTopic] = useState({});
   const [inputText, setInputText] = useState("");
   const [drafts, setDrafts] = useState({});
+  const [pastedAttachmentDrafts, setPastedAttachmentDrafts] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
 
   // Trạng thái xác thực (Auth State)
@@ -2831,6 +2847,8 @@ function App() {
   const conversationSearchInputRef = useRef(null);
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
+  const pastedAttachmentDraftsRef = useRef(pastedAttachmentDrafts);
+  const pastedAttachmentSubmitRef = useRef(false);
   const mentionPickerRef = useRef(null);
   const languageMenuRef = useRef(null);
   const tenantSwitcherRef = useRef(null);
@@ -2886,6 +2904,53 @@ function App() {
   directoryAccountsRef.current = directoryAccounts;
   contactNicknamesRef.current = contactNicknames;
   unreadBoundariesRef.current = unreadBoundaries;
+  pastedAttachmentDraftsRef.current = pastedAttachmentDrafts;
+
+  const revokePastedAttachmentPreview = attachment => {
+    if (!attachment?.previewUrl || typeof URL === 'undefined') return;
+    URL.revokeObjectURL(attachment.previewUrl);
+  };
+
+  const replacePastedAttachmentDrafts = next => {
+    pastedAttachmentDraftsRef.current = next;
+    setPastedAttachmentDrafts(next);
+  };
+
+  const clearPastedAttachments = conversationId => {
+    const id = String(conversationId || '');
+    const current = pastedAttachmentDraftsRef.current;
+    const attachments = current[id] || [];
+    if (attachments.length === 0) return;
+    attachments.forEach(revokePastedAttachmentPreview);
+    const next = { ...current };
+    delete next[id];
+    replacePastedAttachmentDrafts(next);
+  };
+
+  const clearAllPastedAttachments = () => {
+    const current = pastedAttachmentDraftsRef.current;
+    Object.values(current).flat().forEach(revokePastedAttachmentPreview);
+    replacePastedAttachmentDrafts({});
+  };
+
+  const migratePastedAttachments = (previousId, nextId) => {
+    const fromId = String(previousId || '');
+    const toId = String(nextId || '');
+    if (!fromId || !toId || fromId === toId) return;
+    const current = pastedAttachmentDraftsRef.current;
+    const attachments = current[fromId] || [];
+    if (attachments.length === 0) return;
+    const next = {
+      ...current,
+      [toId]: [...(current[toId] || []), ...attachments],
+    };
+    delete next[fromId];
+    replacePastedAttachmentDrafts(next);
+  };
+
+  useEffect(() => () => {
+    Object.values(pastedAttachmentDraftsRef.current).flat().forEach(revokePastedAttachmentPreview);
+  }, []);
 
   const rememberAvatarOverride = (entity, avatar) => {
     const value = String(avatar || '').trim();
@@ -3045,6 +3110,7 @@ function App() {
     time: '',
     badge: 0,
   };
+  const activePastedAttachments = pastedAttachmentDrafts[currentChatId] || [];
   const reactionDetailsMessage = reactionDetails
     ? roomMessages(activeChat).find(message => message?.id === reactionDetails.messageId) || reactionDetails.message
     : null;
@@ -5207,6 +5273,8 @@ function App() {
     forcedLogoutRef.current = false;
     isLoggingOutRef.current = false;
     setForcedLogoutSeconds(null);
+    clearAllPastedAttachments();
+    pastedAttachmentSubmitRef.current = false;
     setDrafts({});
     setMessageMentions({});
     setMentionContext(null);
@@ -5641,6 +5709,8 @@ function App() {
     setPinUnlockValue('');
     setPinUnlockNotice('');
     setDrafts({});
+    clearAllPastedAttachments();
+    pastedAttachmentSubmitRef.current = false;
     setMessageMentions({});
     setMentionContext(null);
     setInputText('');
@@ -6488,6 +6558,7 @@ function App() {
           delete next[previousId];
           return next;
         });
+        migratePastedAttachments(previousId, nextId);
         if (currentChatIdRef.current === previousId) {
           currentChatIdRef.current = nextId;
           setCurrentChatId(nextId);
@@ -6999,6 +7070,7 @@ function App() {
       );
       setConversations(remainingRooms);
       conversationsRef.current = remainingRooms;
+      clearPastedAttachments(targetRoom.id);
       setCurrentChatId(firstVisibleConversationId(remainingRooms, drafts, CHATBOT_ACCOUNT.id));
       setIsDetailOpen(false);
       setIsGroupManagementOpen(false);
@@ -7080,6 +7152,7 @@ function App() {
         safeConversationEntries(currentConversationMap).filter(([id]) => id !== targetRoom.id),
       );
       const nextId = firstVisibleConversationId(remainingRooms, drafts, CHATBOT_ACCOUNT.id);
+      clearPastedAttachments(targetRoom.id);
       setCurrentChatId(nextId);
       setIsDetailOpen(false);
       setPendingGroupLeave(null);
@@ -7257,6 +7330,7 @@ function App() {
         delete next[conversationId];
         return next;
       });
+      clearPastedAttachments(conversationId);
       setInputText('');
       const remainingRooms = Object.fromEntries(
         safeConversationEntries(conversations).filter(([id]) => id !== conversationId),
@@ -8433,7 +8507,13 @@ function App() {
   const handleAttachClick = () => openAttachmentPicker(fileInputRef);
   const handleImageAttachClick = () => openAttachmentPicker(imageInputRef);
 
-  const handleSendFile = (file, { voiceDuration = 0, imageBatch = null } = {}) => {
+  const handleSendFile = (file, options = {}) => {
+    const {
+      voiceDuration = 0,
+      imageBatch = null,
+      caption = '',
+      mentions = [],
+    } = options;
     if (!file) return;
     if (!allowDirectMessagingAttempt(activeChat)) return;
     if (activeChat?.isChatbot) {
@@ -8454,8 +8534,17 @@ function App() {
       return;
     }
     setChatError('');
-    const replyMeta = replyingTo ? { ...replyingTo } : null;
+    const replyMeta = Object.prototype.hasOwnProperty.call(options, 'replyMeta')
+      ? options.replyMeta
+      : replyingTo ? { ...replyingTo } : null;
     const sharedReplyMeta = replyMetadataForTransport(replyMeta, directoryAccounts);
+    const captionText = String(caption || '').trim();
+    const captionMentions = captionText
+      ? (Array.isArray(mentions) ? mentions : [])
+        .filter(mention => mentionTokenExists(captionText, mention.token))
+        .map(serializeMentionForTransport)
+        .filter(Boolean)
+      : [];
 
     const mime = file.type || 'application/octet-stream';
     const isUnnamedClipboardFile = !String(file.name || '').trim();
@@ -8505,6 +8594,8 @@ function App() {
       },
       image: previewUrl || undefined,
       imageBatch: normalizedImageBatch || undefined,
+      text: captionText,
+      mentions: captionMentions,
       replyTo: replyMeta,
       voiceDuration: Number(voiceDuration) || 0,
       time: timeStr,
@@ -8515,12 +8606,15 @@ function App() {
     // 1. Thêm vào conversations state
     setConversations(prev => {
       const room = prev[currentChatId];
+      const attachmentPreview = normalizedImageBatch?.index > 0 && !captionText && room?.lastMsg
+        ? room.lastMsg
+        : attachmentConversationPreview(newMsg);
       return {
         ...prev,
         [currentChatId]: {
           ...room,
           messages: [...roomMessages(room), newMsg],
-          lastMsg: attachmentConversationPreview(newMsg),
+          lastMsg: attachmentPreview,
           time: timeStr,
           updatedAt: createdAt,
         }
@@ -8545,6 +8639,8 @@ function App() {
             replyTo: sharedReplyMeta,
             voiceDuration,
             imageBatch: normalizedImageBatch,
+            caption: captionText,
+            mentions: captionMentions,
           });
           const confirmedIsImage = /^image\//i.test(result.file.mime || '') || isImage;
           const confirmedMessage = {
@@ -9055,6 +9151,86 @@ function App() {
   const handleFileChange = event => handleAttachmentChange(event, 'file');
   const handleImageChange = event => handleAttachmentChange(event, 'image');
 
+  const queuePastedAttachments = files => {
+    const sourceFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+    if (sourceFiles.length === 0) return;
+    if (!allowDirectMessagingAttempt(activeChat)) return;
+    if (activeChat.isChatbot) {
+      setChatError('Trợ lý AI hiện chỉ nhận tin nhắn văn bản.');
+      return;
+    }
+    if (realtimeMessagingPending) {
+      setChatError('Kết nối realtime Tinode chưa sẵn sàng; dữ liệu Chatmgt vẫn đang hoạt động.');
+      return;
+    }
+    if (!canSendInActiveGroup) {
+      setChatError('Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.');
+      return;
+    }
+
+    const conversationId = String(currentChatId);
+    const existing = pastedAttachmentDraftsRef.current[conversationId] || [];
+    const availableSlots = Math.max(0, MAX_PASTED_ATTACHMENTS - existing.length);
+    const accepted = [];
+    const errors = [];
+    const timestamp = Date.now();
+
+    sourceFiles.slice(0, availableSlots).forEach((sourceFile, index) => {
+      const file = normalizePastedFile(sourceFile, index, timestamp);
+      const validationError = chatAttachmentValidationError(file);
+      if (validationError) {
+        errors.push(validationError);
+        return;
+      }
+      const isImage = isPastedImageFile(file);
+      let previewUrl = '';
+      if (isImage && typeof URL !== 'undefined' && URL.createObjectURL) {
+        try {
+          previewUrl = URL.createObjectURL(file);
+        } catch {
+          previewUrl = '';
+        }
+      }
+      accepted.push({
+        id: `paste-${timestamp}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+        file,
+        isImage,
+        previewUrl,
+        name: file.name || 'Tệp đính kèm',
+        mime: file.type || 'application/octet-stream',
+        sizeLabel: formatPasteAttachmentSize(file.size),
+      });
+    });
+
+    if (sourceFiles.length > availableSlots) {
+      errors.push(`Chỉ có thể giữ tối đa ${MAX_PASTED_ATTACHMENTS} ảnh hoặc tệp đang chờ.`);
+    }
+    if (accepted.length > 0) {
+      replacePastedAttachmentDrafts({
+        ...pastedAttachmentDraftsRef.current,
+        [conversationId]: [...existing, ...accepted],
+      });
+      setMentionContext(null);
+      requestAnimationFrame(() => messageInputRef.current?.focus());
+    }
+    setChatError(errors[0] || '');
+  };
+
+  const removePastedAttachment = attachmentId => {
+    const conversationId = String(currentChatId);
+    const current = pastedAttachmentDraftsRef.current;
+    const attachments = current[conversationId] || [];
+    const removed = attachments.find(item => item.id === attachmentId);
+    if (!removed) return;
+    revokePastedAttachmentPreview(removed);
+    const remaining = attachments.filter(item => item.id !== attachmentId);
+    const next = { ...current };
+    if (remaining.length > 0) next[conversationId] = remaining;
+    else delete next[conversationId];
+    replacePastedAttachmentDrafts(next);
+    requestAnimationFrame(() => messageInputRef.current?.focus());
+  };
+
   const handleMessagePaste = event => {
     if (event.defaultPrevented) return;
     const target = event.target;
@@ -9063,34 +9239,11 @@ function App() {
     const clipboard = event.clipboardData;
     if (!clipboard) return;
 
-    const clipboardItems = Array.from(clipboard.items || []);
-    const fileItem = clipboardItems.find(item => item.kind === 'file');
-    const clipboardFile = fileItem?.getAsFile?.() || clipboard.files?.[0];
-    if (clipboardFile) {
+    const clipboardFiles = clipboardAttachmentFiles(clipboard);
+    if (clipboardFiles.length > 0) {
       event.preventDefault();
-      handleSendFile(clipboardFile);
-      return;
+      queuePastedAttachments(clipboardFiles);
     }
-
-    const pastedText = clipboard.getData?.('text/plain') || '';
-    if (!pastedText.trim()) {
-      if (!navigator.clipboard?.read) return;
-      event.preventDefault();
-      void navigator.clipboard.read().then(async clipboardEntries => {
-        for (const entry of clipboardEntries) {
-          const fileType = entry.types?.find(type => !['text/plain', 'text/html'].includes(type));
-          if (!fileType) continue;
-          const blob = await entry.getType(fileType);
-          handleSendFile(blob);
-          break;
-        }
-      }).catch(() => {});
-      return;
-    }
-    if (activeChat.isChatbot && isTyping) return;
-    event.preventDefault();
-    const nextText = `${inputText}${pastedText}`.trim();
-    void handleSendMessage(nextText);
   };
 
   const handleFileDownload = async (file) => {
@@ -9257,7 +9410,7 @@ function App() {
     }
     if (event.key === 'Enter') {
       event.preventDefault();
-      handleSendMessage();
+      handleComposerSubmit();
     }
   };
 
@@ -9915,6 +10068,62 @@ function App() {
           if (!blocked) setChatError(err?.message || 'Không thể gửi tin nhắn.');
         });
     }
+  };
+
+  const handleComposerSubmit = () => {
+    if (pastedAttachmentSubmitRef.current) return;
+    const attachments = pastedAttachmentDraftsRef.current[currentChatId] || [];
+    if (attachments.length === 0) {
+      void handleSendMessage();
+      return;
+    }
+    if (!allowDirectMessagingAttempt(activeChat)) return;
+    if (activeChat.isChatbot) {
+      setChatError('Trợ lý AI hiện chỉ nhận tin nhắn văn bản.');
+      return;
+    }
+    if (realtimeMessagingPending) {
+      setChatError('Kết nối realtime Tinode chưa sẵn sàng; dữ liệu Chatmgt vẫn đang hoạt động.');
+      return;
+    }
+    if (!canSendInActiveGroup) {
+      setChatError('Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.');
+      return;
+    }
+
+    const conversationId = currentChatId;
+    const replyMeta = replyingTo ? { ...replyingTo } : null;
+    const captionMentions = messageMentions[conversationId] || [];
+    const batchId = `paste-batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const sendPlan = pasteAttachmentSendPlan(attachments, inputText, batchId);
+    pastedAttachmentSubmitRef.current = true;
+    sendPlan.forEach((item, index) => {
+      void handleSendFile(item.attachment.file, {
+        imageBatch: item.imageBatch,
+        caption: item.caption,
+        mentions: index === 0 ? captionMentions : [],
+        replyMeta: index === 0 ? replyMeta : null,
+      });
+    });
+
+    clearPastedAttachments(conversationId);
+    setInputText('');
+    setReplyingTo(null);
+    setDrafts(previous => {
+      const next = { ...previous };
+      delete next[conversationId];
+      return next;
+    });
+    setMessageMentions(previous => {
+      const next = { ...previous };
+      delete next[conversationId];
+      return next;
+    });
+    setMentionContext(null);
+    requestAnimationFrame(() => {
+      pastedAttachmentSubmitRef.current = false;
+      messageInputRef.current?.focus();
+    });
   };
 
   const displayMentionToken = (mention, fallbackToken = '') => {
@@ -11314,6 +11523,7 @@ function App() {
                     openMessageMenu={openMessageMenu}
                     messageElementsRef={messageElementsRef}
                     deliveryStatusIcon={deliveryStatusIcon}
+                    renderMessageText={renderMessageText}
                   />
                 </React.Fragment>
               );
@@ -11499,6 +11709,7 @@ function App() {
               ? { ...attachmentFile, url: imagePreviewSource }
               : attachmentFile;
             const isAudioMessage = isAudioAttachment(attachmentFile, msg.type) || Number(msg.voiceDuration) > 0;
+            const attachmentCaption = String(msg.text || '').trim();
             const attachmentStatus = msg.pending
               ? appCopy.t('Đang tải lên...')
               : attachmentFile?.url ? appCopy.t('Đã có trên Cloud') : appCopy.t('Có sẵn trên máy');
@@ -11648,7 +11859,8 @@ function App() {
                           />
                           <span className="image-view-hint"><i className="fa-solid fa-expand"></i>{appCopy.t('Xem ảnh')}</span>
                         </button>
-                        <div className="image-bubble-footer">
+                        <div className={`image-bubble-footer ${attachmentCaption ? 'has-caption' : ''}`}>
+                          {attachmentCaption && <p>{renderMessageText(attachmentCaption, msg.mentions)}</p>}
                           <span className="message-time">{formatMessageTime(msg, msg.time, appCopy.locale)} {isOutgoing && deliveryStatusIcon(msg)}</span>
                         </div>
                         </div>
@@ -11685,6 +11897,11 @@ function App() {
                           </span>
                         </span>
                         </div>
+                        {attachmentCaption && (
+                          <div className="attachment-caption">
+                            <p>{renderMessageText(attachmentCaption, msg.mentions)}</p>
+                          </div>
+                        )}
                       </div>
                     )}
                     {msg.type !== 'text' && reactionPills}
@@ -11879,6 +12096,46 @@ function App() {
               <button type="button" onClick={() => setReplyingTo(null)} aria-label={appCopy.t('Hủy trả lời')}><i className="fa-solid fa-xmark"></i></button>
             </div>
           )}
+          {activePastedAttachments.length > 0 && (
+            <section className="pasted-attachment-drafts" aria-label={appCopy.t('Ảnh và tệp đang chờ gửi')}>
+              <div className="pasted-attachment-drafts-header">
+                <span className="pasted-attachment-drafts-title">
+                  <i className="fa-regular fa-clipboard" aria-hidden="true"></i>
+                  <strong>{appCopy.t('Đang chờ gửi')}</strong>
+                  <small>{activePastedAttachments.length}</small>
+                </span>
+                <span className="pasted-attachment-drafts-hint">{appCopy.t('Nhập mô tả rồi bấm Enter hoặc Gửi.')}</span>
+                <button type="button" onClick={() => clearPastedAttachments(currentChatId)}>
+                  {appCopy.t('Xóa tất cả')}
+                </button>
+              </div>
+              <div className="pasted-attachment-drafts-list">
+                {activePastedAttachments.map(attachment => (
+                  <article className="pasted-attachment-draft" key={attachment.id}>
+                    <span className={`pasted-attachment-draft-preview ${attachment.isImage ? 'image' : 'file'}`}>
+                      {attachment.isImage && attachment.previewUrl ? (
+                        <img src={attachment.previewUrl} alt="" />
+                      ) : (
+                        <i className={`fa-solid ${attachment.isImage ? 'fa-image' : 'fa-file-lines'}`} aria-hidden="true"></i>
+                      )}
+                    </span>
+                    <span className="pasted-attachment-draft-copy">
+                      <strong title={attachment.name}>{attachment.name}</strong>
+                      <small>{attachment.sizeLabel}</small>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removePastedAttachment(attachment.id)}
+                      aria-label={`${appCopy.t('Xóa')} ${attachment.name}`}
+                      title={appCopy.t('Xóa khỏi danh sách chờ')}
+                    >
+                      <i className="fa-solid fa-xmark" aria-hidden="true"></i>
+                    </button>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
           {settings.stickerSuggestions
             && suggestedStickers.length > 0
             && inputText.trim()
@@ -12026,7 +12283,7 @@ function App() {
               aria-controls={mentionContext && activeChat.isGroup ? 'message-mention-picker' : undefined}
               aria-expanded={Boolean(mentionContext && activeChat.isGroup)}
               aria-activedescendant={mentionOptions.length > 0 ? `message-mention-option-${mentionActiveIndex}` : undefined}
-              placeholder={appCopy.t(realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : activeChat.isChatbot ? 'Hỏi ViChat AI về quy trình, chính sách, tài liệu...' : 'Nhập tin nhắn...')}
+              placeholder={appCopy.t(realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : activeChat.isChatbot ? 'Hỏi ViChat AI về quy trình, chính sách, tài liệu...' : activePastedAttachments.length > 0 ? 'Nhập mô tả cho ảnh hoặc tệp...' : 'Nhập tin nhắn...')}
               value={inputText}
               disabled={realtimeMessagingPending || !canSendInActiveGroup || (activeChat.isChatbot && isTyping)}
               onChange={handleMessageInputChange}
@@ -12043,7 +12300,7 @@ function App() {
               </>
             )}
           </div>
-          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || !canSendInActiveGroup || isRecordingVoice || (activeChat.isChatbot && isTyping)} onClick={() => handleSendMessage()}>{appCopy.t(activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi')}</button>
+          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || !canSendInActiveGroup || isRecordingVoice || (activeChat.isChatbot && isTyping)} onClick={handleComposerSubmit}>{appCopy.t(activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi')}</button>
         </div>
         )}
         {pollComposer && (

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-25-11 - Giu anh va tep paste o ban nhap cho den khi user tu gui
+
+- Thoi gian: 2026-08-25 22:23 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Web | UX | Realtime | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; chua commit va chua deploy production
+- Muc tieu: Ctrl+V van ban chi chen vao o soan; Ctrl+V mot/nhieu anh hoac tep chi tao preview cho, cho phep nhap mo ta va chi upload khi user tu bam Enter hoac Gui.
+- Pham vi: ChatUI web composer/paste, preview URL, caption Drafty Tinode, image-batch presentation, i18n, CSS, test va tai lieu. Giu nguyen file picker gui ngay, direct/group/chatbot/block/reply/realtime va khong sua file nao trong `mobile/`.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/pasteAttachmentDraft.js`, `src/features/chat/services/pasteAttachmentDraft.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/messagePreview.js`, `src/features/chat/services/messagePreview.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `package.json`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Bo moi loi goi `handleSendMessage`/`handleSendFile` khoi handler paste. Van ban dung hanh vi paste native tai caret; tat ca file clipboard duoc validate va xep vao queue toi da 100 muc theo tung hoi thoai, co thumbnail/ten/dung luong, xoa tung muc hoac xoa tat ca. Enter va nut Gui dung chung `handleComposerSubmit`; mo ta, mention va reply chi gan vao attachment dau tien, con mot lan paste toan anh van dung metadata batch cu. Caption hien cung anh/tep va duoc khoi phuc tu Drafty sau reload.
+- Quyet dinh ky thuat: Clipboard draft chi song trong memory cua tab va khong upload truoc submit. Object URL duoc revoke khi xoa/gui/logout/unmount/xoa hoi thoai; queue duoc migrate cung optimistic direct id de khong gui nham topic. Chon file bang nut giu hanh vi cu de khoanh dung pham vi yeu cau; Tinode van la source of truth va Chatmgt/mobile khong nhan state moi.
+- Database/API/cau hinh: Khong migration, endpoint, schema, dependency, secret hoac bien moi truong moi. Chi mo rong noi dung Drafty attachment va header mention da co; deploy chi can recreate rieng ChatUI.
+- Kiem thu: Target paste/preview/i18n dat 33/33; `npm run test:frontend` dat 265/265; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` dat voi entry `index-_Kx2Lw7v.js`, App `App-_zQ5C1p9.js`, CSS `index-CZLOF7OQ.css` va canh bao chunk App lon hon 500 KB co san; `git diff --check` dat; `git diff -- mobile` sach. Khong co browser runtime callable trong phien de UAT clipboard visual tu dong.
+- Rui ro con lai: Can UAT tren browser that cho clipboard mot anh, nhieu anh, tep, van ban tai caret, caption/reply/mention va direct block; clipboard API/ten file co the khac nhau giua Chrome/Edge/Firefox nhung deu di qua cung DataTransfer policy.
+- Viec tiep theo: Chay gate cuoi, commit/push `master`, deploy/recreate rieng `chat`, xac minh health/public bundle va hard refresh UAT.
+- Commit/PR: Chua tao.
+
 ## 2026-08-25-10 - Chan tin nhan chat 1-1 tren web
 
 - Thoi gian: 2026-08-25 21:41 (Asia/Saigon); deploy production 21:47-21:58 (Asia/Saigon)

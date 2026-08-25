@@ -36,6 +36,18 @@ test('formats a sticker as a lightweight conversation preview', () => {
   );
 });
 
+test('uses an attachment caption as the conversation preview', () => {
+  assert.equal(
+    attachmentConversationPreview({
+      type: 'image',
+      sender: 'outgoing',
+      text: 'Ảnh hiện trường',
+      file: { name: 'site.png', mime: 'image/png' },
+    }),
+    'Bạn: Ảnh hiện trường',
+  );
+});
+
 test('leaves text messages to the existing text preview flow', () => {
   assert.equal(attachmentConversationPreview({ type: 'text', text: 'Xin chào' }), '');
 });

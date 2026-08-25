@@ -236,6 +236,22 @@ contiguous image messages from the same sender and explicit batch for a compact
 grid. Stickers, files, legacy messages and separately sent images are not
 grouped, and no Chatmgt schema, API or database migration is required.
 
+Clipboard attachments on ChatUI web follow an explicit draft step. A plain-text
+paste is left to the controlled message input and never invokes a publish
+handler. One or more pasted images/files are validated and held in an
+object-URL preview queue scoped to the current conversation; switching rooms
+does not move that queue to another topic. The user may remove individual
+items, add a caption, and must press Enter or the Send button before ChatUI
+uploads anything. An all-image paste uses the existing bounded image-batch
+metadata, while mixed files remain independent attachments. The optional
+caption is encoded as the Drafty text of only the first attachment so it is not
+duplicated across a batch; mention metadata and a reply target likewise belong
+only to that first attachment. The existing image/file picker still publishes
+immediately, and the native mobile composer is unchanged. Preview URLs are
+revoked when an item is removed, sent, deleted with its conversation, migrated
+from a provisional direct-chat id, logged out, or unmounted. Tinode remains the
+message/file source of truth and Chatmgt receives no clipboard draft data.
+
 Group polls use the same Tinode topic as ordinary messages and are deliberately
 not enabled for P2P conversations. The poll root message carries bounded JSON
 metadata in the `x-vichat-poll` head. Votes, member-added options and creator

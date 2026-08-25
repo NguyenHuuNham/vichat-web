@@ -29,6 +29,12 @@ test('translates the reply composer heading', () => {
   assert.equal(translateUiText('Trả lời', 'en'), 'Reply to');
 });
 
+test('translates pasted attachment draft controls', () => {
+  assert.equal(translateUiText('Đang chờ gửi', 'en'), 'Waiting to send');
+  assert.equal(translateUiText('Nhập mô tả rồi bấm Enter hoặc Gửi.', 'en'), 'Add a caption, then press Enter or Send.');
+  assert.equal(translateUiText('Xóa tất cả', 'en'), 'Remove all');
+});
+
 test('translates tenant switch labels', () => {
   assert.equal(translateUiText('Chuyển công ty', 'en'), 'Switch company');
   assert.equal(translateUiText('Công ty', 'en'), 'Company');

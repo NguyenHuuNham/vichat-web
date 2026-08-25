@@ -22,5 +22,7 @@ export function attachmentConversationPreview(message) {
   const sender = message.sender === 'outgoing'
     ? 'Bạn'
     : (message.senderName || 'Thành viên');
+  const caption = String(message.text || '').trim();
+  if (caption) return `${sender}: ${caption}`;
   return `${sender} đã gửi ${isAudioAttachment(message.file, message.type) ? 'tin nhắn thoại' : image ? '1 ảnh' : '1 tệp'}`;
 }
