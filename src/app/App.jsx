@@ -92,8 +92,10 @@ import {
   createUnreadBoundary,
   isUnreadBoundaryEnd,
   mergeUnreadBoundary,
+  unreadBadgeLabel,
   unreadCountForConversation,
   unreadBoundaryStartIndex,
+  unreadMessagesForConversation,
 } from '../features/chat/services/unreadBoundary';
 import {
   normalizeReceiptUsers,
@@ -135,6 +137,7 @@ import {
   mentionCanonicalText,
   mentionCandidateText,
   mentionDisplayTokenFor,
+  messageMentionsViewer,
   serializeMentionForTransport,
   mentionTokenExists,
   mentionTokenFor,
@@ -3705,6 +3708,23 @@ function App() {
     : 'unsupported';
   const notificationSettingsViewerId = currentUser?.id || currentUser?.uid || viewerId;
   const unreadViewerId = chatMode === 'tinode' ? viewerId : managementViewerId;
+
+  const conversationUnreadIndicators = room => {
+    const roomId = String(room?.id || '');
+    const boundary = unreadBoundaries[roomId] || null;
+    const count = unreadCountForConversation(room, boundary);
+    const hasUnread = !(roomId === String(currentChatId) && boundary?.indicatorCleared) && count > 0;
+    const hasMention = Boolean(room?.isGroup && hasUnread && unreadMessagesForConversation(room, boundary, {
+      viewerId: unreadViewerId,
+    }).some(message => messageMentionsViewer(message, currentUser)));
+    return {
+      boundary,
+      count,
+      label: unreadBadgeLabel(count),
+      hasUnread,
+      hasMention,
+    };
+  };
 
   const rememberUnreadBoundary = useCallback((room, conversationId = room?.id) => {
     if (!room || room.isChatbot || room.id === 'empty' || !conversationId) return null;
@@ -11340,9 +11360,8 @@ function App() {
             const hasDraft = Boolean(draft.trim());
             const roomMuted = isConversationMuted(room.notificationMutedUntil, notificationClock);
             const roomCategory = conversationCategoryFor(room);
-            const roomUnreadBoundary = unreadBoundaries[id] || null;
-            const roomUnreadCount = unreadCountForConversation(room, roomUnreadBoundary);
-            const hasUnread = !(isActive && roomUnreadBoundary?.indicatorCleared) && roomUnreadCount > 0;
+            const roomUnread = conversationUnreadIndicators(room);
+            const hasUnread = roomUnread.hasUnread;
             return (
               <ConversationErrorBoundary
                 key={id}
@@ -11374,14 +11393,25 @@ function App() {
                     </div>
                     <div className="conv-message">
                       <span className={`conv-last-msg ${hasDraft ? 'draft' : ''} ${hasUnread ? 'unread' : ''}`}>{hasDraft ? draft : localizedConversationPreview(room, appCopy, directoryAccounts, viewerId)}</span>
-                      {roomMuted && (
-                        <i
-                          className="fa-solid fa-bell-slash conv-muted-icon"
-                          title={notificationMuteLabel(room.notificationMutedUntil, notificationClock, appCopy.locale)}
-                          aria-label={appCopy.t('Đã tắt thông báo')}
-                        ></i>
+                      {(roomMuted || roomUnread.hasMention || hasUnread) && (
+                        <span className="conv-indicators">
+                          {roomMuted && (
+                            <i
+                              className="fa-solid fa-bell-slash conv-muted-icon"
+                              title={notificationMuteLabel(room.notificationMutedUntil, notificationClock, appCopy.locale)}
+                              aria-label={appCopy.t('Đã tắt thông báo')}
+                            ></i>
+                          )}
+                          {roomUnread.hasMention && (
+                            <span className="conv-mention-indicator" title={appCopy.t('Bạn được nhắc đến')} aria-label={appCopy.t('Bạn được nhắc đến')}>@</span>
+                          )}
+                          {hasUnread && (
+                            <span className="conv-badge" aria-label={`${roomUnread.label} ${appCopy.t('Tin chưa đọc')}`} title={`${roomUnread.label} ${appCopy.t('Tin chưa đọc')}`}>
+                              {roomUnread.label}
+                            </span>
+                          )}
+                        </span>
                       )}
-                      {hasUnread && <span className="conv-badge" aria-label={`${roomUnreadCount} ${appCopy.t('Tin chưa đọc')}`} title={`${roomUnreadCount} ${appCopy.t('Tin chưa đọc')}`}>{roomUnreadCount}</span>}
                     </div>
                   </div>
                   {!room.isChatbot && (
@@ -13669,13 +13699,23 @@ function App() {
                 )}
                 {notifications.length === 0 && friendNotifications.length === 0 ? <div className="workspace-empty"><i className="fa-regular fa-bell-slash"></i><span>{appCopy.t('Không có thông báo mới.')}</span></div> : notifications.length > 0 && (
                   <div className="workspace-list">
-                    {notifications.map(room => (
-                      <button type="button" className="workspace-list-item" key={room.id} onClick={() => { closeWorkspacePanel(); handleConversationSelect(room.id); }}>
-                        <span className="workspace-file-icon"><i className="fa-solid fa-message"></i></span>
-                        <span className="workspace-list-copy"><strong>{room.name}</strong><small>{localizedConversationPreview(room, appCopy, directoryAccounts, viewerId) || appCopy.t('Có cập nhật mới')} · {formatConversationListTime(room, displayClock, appCopy.locale)}</small></span>
-                        {room.badge > 0 && <span className="workspace-unread">{room.badge}</span>}
-                      </button>
-                    ))}
+                    {notifications.map(room => {
+                      const roomUnread = conversationUnreadIndicators(room);
+                      const roomMuted = isConversationMuted(room.notificationMutedUntil, notificationClock);
+                      return (
+                        <button type="button" className="workspace-list-item" key={room.id} onClick={() => { closeWorkspacePanel(); handleConversationSelect(room.id); }}>
+                          <span className="workspace-file-icon"><i className="fa-solid fa-message"></i></span>
+                          <span className="workspace-list-copy"><strong>{room.name}</strong><small>{localizedConversationPreview(room, appCopy, directoryAccounts, viewerId) || appCopy.t('Có cập nhật mới')} · {formatConversationListTime(room, displayClock, appCopy.locale)}</small></span>
+                          {(roomMuted || roomUnread.hasMention || roomUnread.hasUnread) && (
+                            <span className="workspace-conversation-indicators">
+                              {roomMuted && <i className="fa-solid fa-bell-slash conv-muted-icon" title={notificationMuteLabel(room.notificationMutedUntil, notificationClock, appCopy.locale)} aria-label={appCopy.t('Đã tắt thông báo')}></i>}
+                              {roomUnread.hasMention && <span className="conv-mention-indicator" title={appCopy.t('Bạn được nhắc đến')} aria-label={appCopy.t('Bạn được nhắc đến')}>@</span>}
+                              {roomUnread.hasUnread && <span className="workspace-unread" aria-label={`${roomUnread.label} ${appCopy.t('Tin chưa đọc')}`}>{roomUnread.label}</span>}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </>

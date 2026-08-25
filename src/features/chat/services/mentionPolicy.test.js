@@ -8,6 +8,8 @@ import {
   mentionCanonicalText,
   mentionDisplayTokenFor,
   mentionCandidateText,
+  messageMentionsViewer,
+  mentionTargetsViewer,
   serializeMentionForTransport,
   mentionTokenExists,
   mentionTokenFor,
@@ -88,4 +90,22 @@ test('uses the compact ViChat AI token and matches its aliases', () => {
   assert.equal(mentionTokenFor(bot), '@ViChatAI');
   assert.equal(matchesMentionCandidate(bot, 'VichatAI'), true);
   assert.equal(mentionTokenExists('Tra loi @ViChatAI nhe', '@ViChatAI'), true);
+});
+
+test('marks only all mentions or mentions targeting the current viewer', () => {
+  const viewer = {
+    id: 'account-me',
+    tinodeUid: 'usrMe',
+    defaultName: 'Nguyen Van Minh',
+    name: 'Minh',
+  };
+
+  assert.equal(mentionTargetsViewer({ id: ALL_MENTION_ID, token: '@All', isAll: true }, viewer), true);
+  assert.equal(mentionTargetsViewer({ id: 'account-me', tinodeUid: 'usrMe', token: '@Nguyen Van Minh' }, viewer), true);
+  assert.equal(mentionTargetsViewer({ id: 'account-other', tinodeUid: 'usrOther', token: '@Nguoi Khac' }, viewer), false);
+  assert.equal(mentionTargetsViewer({ token: '@Nguyen Van Minh', name: 'Nguyen Van Minh' }, viewer), true);
+  assert.equal(messageMentionsViewer({
+    mentions: [{ id: 'account-other' }, { id: 'account-me' }],
+  }, viewer), true);
+  assert.equal(messageMentionsViewer({ mentions: [{ id: 'account-other' }] }, viewer), false);
 });

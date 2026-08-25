@@ -10,6 +10,7 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Đã ghim': 'Pinned',
   'Chưa gửi': 'Draft',
   'Đã tắt thông báo': 'Notifications muted',
+  'Bạn được nhắc đến': 'You were mentioned',
   'Tùy chọn hội thoại': 'Conversation options',
   'Bỏ ghim hội thoại': 'Unpin conversation',
   'Ghim hội thoại': 'Pin conversation',

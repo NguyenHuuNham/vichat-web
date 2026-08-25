@@ -129,6 +129,9 @@ test('restores a cookie-backed session after a full page reload', () => {
 
 test('keeps unread emphasis and latest-message navigation in the ChatUI layer', () => {
   assert.match(appSource, /unreadCountForConversation/);
+  assert.match(appSource, /unreadBadgeLabel/);
+  assert.match(appSource, /unreadMessagesForConversation/);
+  assert.match(appSource, /messageMentionsViewer/);
   assert.match(appSource, /indicatorCleared/);
   assert.match(appSource, /latest-message-jump-button/);
   assert.match(appSource, /chatIsNearBottomRef/);
@@ -142,6 +145,8 @@ test('keeps unread emphasis and latest-message navigation in the ChatUI layer', 
     .split('async sendTyping')[0];
   assert.doesNotMatch(markReadSource, /delMessages|deleteMessage/);
   assert.match(stylesSource, /\.conversation-item\.unread/);
+  assert.match(stylesSource, /\.conv-indicators/);
+  assert.match(stylesSource, /\.conv-mention-indicator/);
   assert.match(stylesSource, /\.latest-message-jump-button/);
 });
 

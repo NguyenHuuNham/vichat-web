@@ -7,6 +7,15 @@ function messageTimestamp(message) {
   return Date.parse(String(message?.createdAt || message?.raw?.ts || '')) || 0;
 }
 
+export const UNREAD_BADGE_CAP = 5;
+
+export function unreadBadgeLabel(value, cap = UNREAD_BADGE_CAP) {
+  const count = Math.max(Math.trunc(Number(value) || 0), 0);
+  const limit = Math.max(Math.trunc(Number(cap) || UNREAD_BADGE_CAP), 1);
+  if (count <= 0) return '';
+  return count >= limit ? `${limit}+` : String(count);
+}
+
 function isIncomingMessage(message, viewerId) {
   if (!message) return false;
   if (message.sender === 'outgoing') return false;
@@ -70,6 +79,33 @@ export function unreadCountForConversation(room = null, boundary = null) {
     || Number(boundary?.firstUnreadSeq) > 0
     || Boolean(boundary?.firstUnreadId);
   return Math.max(roomBadge, boundaryCount, hasUnreadCursor ? 1 : 0);
+}
+
+export function unreadMessagesForConversation(room = null, boundary = null, {
+  viewerId = '',
+} = {}) {
+  const messages = Array.isArray(room?.messages) ? room.messages : [];
+  const firstUnreadSeq = Number(boundary?.firstUnreadSeq) > 0
+    ? Number(boundary.firstUnreadSeq)
+    : Number(room?.unreadFromSeq) > 0
+      ? Number(room.unreadFromSeq)
+      : Number(room?.readSeq) > 0 ? Number(room.readSeq) + 1 : 0;
+  const firstUnreadId = String(boundary?.firstUnreadId || '').trim();
+  const lastReadAt = room?.readAt || room?.readBy?.[viewerId] || '';
+  const firstUnreadIndex = !firstUnreadSeq && firstUnreadId
+    ? messages.findIndex(message => String(message?.id || '') === firstUnreadId)
+    : -1;
+  const scopedMessages = firstUnreadIndex >= 0 ? messages.slice(firstUnreadIndex) : messages;
+  const candidates = unreadMessagesForBoundary(scopedMessages, {
+    viewerId,
+    firstUnreadSeq,
+    lastReadAt,
+  });
+  if (firstUnreadSeq > 0 || firstUnreadIndex >= 0 || Date.parse(String(lastReadAt || ''))) {
+    return candidates;
+  }
+  const unreadCount = unreadCountForConversation(room, boundary);
+  return unreadCount > 0 ? candidates.slice(-unreadCount) : [];
 }
 
 export function mergeUnreadBoundary(existing, incoming) {

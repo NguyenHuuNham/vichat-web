@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-26-02 - Gom badge chua doc va hien dung mention cua nguoi xem
+
+- Thoi gian: 2026-08-26 00:58-01:12 (Asia/Saigon)
+- Loai: Sua loi | Web | UI | Realtime | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; cho commit va deploy production
+- Muc tieu: Khi chat 1-1 hoac nhom co tu 5 tin chua doc, badge chi hien `5+`; can gon icon tat thong bao va chi hien dau `@` xanh cho tin nhom chua doc tag `@All` hoac tag dung tai khoan dang xem.
+- Pham vi: ChatUI web sidebar va workspace notifications, unread presentation, mention metadata, i18n, CSS va test. Giu nguyen message transport, read cursor, desktop notification, mute policy, direct/group messaging, backend, database va mobile.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/unreadBoundary.js`, `src/features/chat/services/unreadBoundary.test.js`, `src/features/chat/services/mentionPolicy.js`, `src/features/chat/services/mentionPolicy.test.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Sidebar va workspace notifications dung chung state unread cua tung hoi thoai. Badge hien so 1-4 va chuyen thanh `5+` tu moc 5; bell-slash, mention va badge duoc gom thanh cum chi bao can thang hang. Voi nhom, ChatUI chi bat `@` xanh khi tap tin chua doc theo sequence/timestamp/boundary co metadata `@All` hoac identity cua viewer; mention co ID cua nguoi khac khong fallback theo ten nen khong hien nham.
+- Quyet dinh ky thuat: Uu tien account ID va Tinode UID de doi chieu mention; chi fallback ten cho metadata legacy khong co stable ID. Dau mention duoc tinh tren toan bo phan chua doc dang con hieu luc, khong chi tin cuoi, va bien mat theo unread indicator/read boundary hien co. Day la presentation web; khong sua payload Tinode hay cach server ghi receipt.
+- Database/API/cau hinh: Khong migration, schema, endpoint, dependency, secret hoac bien moi truong moi; khong can cap nhat kien truc backend.
+- Kiem thu: Targeted unread/mention/ChatUI-contract/i18n dat 76/76; `npm run test:frontend` dat 281/281; `npm run lint` exit 0, chi warning legacy/vendor co san; `npm run build:production` dat voi entry `index-D_4R2y79.js`, App `App-BxaQjdMu.js`, CSS `index-CgZBfmbc.css` va canh bao chunk App lon hon 500 KB co san; `git diff --check` va `git diff -- mobile` sach. Browser skill da duoc doc nhung phien khong expose Node browser runtime, nen chua tu dong UAT pixel-level.
+- Rui ro con lai: Can UAT bang tai khoan that cho nhom co lan luot tag `@All`, tag viewer va tag nguoi khac, dong thoi kiem tra cum bell/badge tren light/dark theme. Metadata mention legacy khong co ID van phai fallback theo ten de tuong thich nguoc.
+- Viec tiep theo: Commit, push, deploy rieng service `chat`, verify health/bundle/WebSocket/log; sau do hard refresh production va UAT cac moc unread 1, 4, 5 va lon hon 5.
+- Commit/PR: Chua tao.
+
 ## 2026-08-26-01 - Cho phep thanh vien hop le cuoi cung roi hoac xoa nhom
 
 - Thoi gian: 2026-08-26 00:19-00:38 (Asia/Saigon); deploy production 00:40-00:56

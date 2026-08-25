@@ -4,8 +4,10 @@ import {
   createUnreadBoundary,
   isUnreadBoundaryEnd,
   mergeUnreadBoundary,
+  unreadBadgeLabel,
   unreadCountForConversation,
   unreadBoundaryStartIndex,
+  unreadMessagesForConversation,
 } from './unreadBoundary.js';
 
 const messages = [
@@ -70,4 +72,23 @@ test('keeps a visible unread count when the server exposes only a cursor', () =>
   assert.equal(unreadCountForConversation({ unreadFromSeq: 42 }), 1);
   assert.equal(unreadCountForConversation({}, { firstUnreadSeq: 42 }), 1);
   assert.equal(unreadCountForConversation({}, null), 0);
+});
+
+test('caps visible unread badges at five messages', () => {
+  assert.equal(unreadBadgeLabel(0), '');
+  assert.equal(unreadBadgeLabel(1), '1');
+  assert.equal(unreadBadgeLabel(4), '4');
+  assert.equal(unreadBadgeLabel(5), '5+');
+  assert.equal(unreadBadgeLabel(57), '5+');
+});
+
+test('returns only the unread tail when a conversation has no durable cursor', () => {
+  assert.deepEqual(
+    unreadMessagesForConversation({ messages, badge: 2 }, null, { viewerId: 'me' }).map(message => message.id),
+    ['three', 'four'],
+  );
+  assert.deepEqual(
+    unreadMessagesForConversation({ messages, unreadFromSeq: 3 }, null, { viewerId: 'me' }).map(message => message.id),
+    ['three', 'four'],
+  );
 });

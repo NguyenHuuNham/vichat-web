@@ -4,6 +4,7 @@ import { createLocalizedCopy, translateUiText } from './appLanguage.js';
 
 test('translates exact UI labels and keeps Vietnamese as the default', () => {
   assert.equal(translateUiText('Cài đặt', 'en'), 'Settings');
+  assert.equal(translateUiText('Bạn được nhắc đến', 'en'), 'You were mentioned');
   assert.equal(translateUiText('Cài đặt', 'vi'), 'Cài đặt');
   assert.equal(translateUiText('Cài đặt'), 'Cài đặt');
 });

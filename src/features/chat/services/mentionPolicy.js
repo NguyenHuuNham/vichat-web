@@ -126,3 +126,56 @@ export function mentionTokenExists(text, token) {
   const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`(?:^|[\\s([{])${escaped}(?=$|[\\s.,!?;:])`, 'iu').test(value);
 }
+
+function mentionIdentityValues(entity) {
+  return [...new Set([
+    entity?.id,
+    entity?.uid,
+    entity?.tinodeUid,
+    entity?.tinode_uid,
+    entity?.userId,
+    entity?.user_id,
+  ].filter(Boolean).map(value => String(value).trim()).filter(Boolean))];
+}
+
+function mentionNameValues(entity) {
+  return [...new Set([
+    entity?.name,
+    entity?.defaultName,
+    entity?.default_name,
+    entity?.fullName,
+    entity?.full_name,
+    entity?.username,
+    entity?.email,
+  ]
+    .filter(Boolean)
+    .map(value => normalizeMentionSearch(String(value).replace(/^@+/u, '')).trim())
+    .filter(Boolean))];
+}
+
+export function mentionTargetsViewer(mention, viewer) {
+  if (!mention || typeof mention !== 'object' || Array.isArray(mention) || !viewer) return false;
+  const normalizedToken = normalizeMentionSearch(mention.token).trim();
+  if (
+    mention.isAll
+    || mention.id === ALL_MENTION_ID
+    || normalizedToken === '@all'
+  ) return true;
+
+  const viewerIdentities = new Set(mentionIdentityValues(viewer));
+  const mentionIdentities = mentionIdentityValues(mention);
+  if (mentionIdentities.some(identity => viewerIdentities.has(identity))) return true;
+  if (mentionIdentities.length > 0) return false;
+
+  const viewerNames = new Set(mentionNameValues(viewer));
+  const legacyMentionNames = mentionNameValues({
+    ...mention,
+    name: mention.name || String(mention.token || '').replace(/^@+/u, ''),
+  });
+  return legacyMentionNames.some(name => viewerNames.has(name));
+}
+
+export function messageMentionsViewer(message, viewer) {
+  return (Array.isArray(message?.mentions) ? message.mentions : [])
+    .some(mention => mentionTargetsViewer(mention, viewer));
+}
