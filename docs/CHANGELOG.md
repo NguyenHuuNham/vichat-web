@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Trien khai: Source commit `bda3e1f` da push `origin/master`; release `/opt/deploy/chat/releases/conversation-categories-bda3e1f-20260825-1043` dang la `current`, `previous` tro `/opt/deploy/chat/releases/final-owner-leave-17214c2-20260825-1000`. Chi recreate `chat` bang `--no-deps --force-recreate --no-build`; khong migration, backup/reset database, Compose `down`, restart Chatmgt hay thay doi Tinode/message/read cursor/avatar/pin. Rollback tag `songhong-production-chat:rollback-before-conversation-categories-bda3e1f` giu image cu `sha256:ed57f4caef37b1276a22551d84e01314e7f2db4ed16a4a99ab26d0e29333d907`. Chatmgt `e246a8dc1eea`, Chat PostgreSQL `78a434b49404`, ChatAPI `8476615ad4ac`, Coturn `aa680d35fdc0`, Redis `ceef7df23feb`, account bridge `7d9c0e317719`, webhook `2882b6109176` va Tinode PostgreSQL `9f6e4dcc9c2f` giu nguyen container ID.
 - Rui ro con lai: Can UAT visual production tren desktop/mobile va dark mode; category definitions/assignments chi dong bo trong cung browser cua viewer nhu luong cu, khong cross-device.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT desktop/mobile/dark mode: tao, sua ten/mau, xoa, keo sap xep, gan/doi/bo the cho ca direct va group; xac nhan F5 giu assignment trong cung browser.
-- Commit/PR: Source commit `bda3e1f`; deployment follow-up docs commit duoc tao sau khi cap nhat muc nay; khong co PR.
+- Commit/PR: Source commit `bda3e1f`; deployment follow-up docs commit `43e7208`; khong co PR.
 
 ## 2026-08-25-08 - Cho phep thanh vien cuoi cung roi nhom
 
