@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Trien khai: Source commit `8b8d4c8` da push `origin/master`; release `/opt/deploy/chat/releases/paste-draft-8b8d4c8-20260825-2235` dang la `current`, `previous` tro `/opt/deploy/chat/releases/direct-block-e0041d7-20260825-1446`. Chi build va force-recreate `chat` bang `--no-deps --force-recreate --no-build`; container moi `86e0d5e10c0e`, image `sha256:0e7d54ac9c0000a59adbb9b61765b2632a35d8d616a1217ef232706fe7f4d385`, healthy. Rollback tag `songhong-production-chat:rollback-before-paste-draft-8b8d4c8` giu image cu `sha256:db8d7e81937188753a1d1dd22b42eea83208b032c4ca0c1fb6371f10d13055d7`. Chatmgt `b7a60904794b`, bridge `1129c4c10151`, webhook `2882b6109176`, Chat PostgreSQL `78a434b49404`, ChatAPI `8476615ad4ac`, Coturn `aa680d35fdc0`, Redis `ceef7df23feb` va Tinode PostgreSQL `9f6e4dcc9c2f` giu nguyen container ID; khong migration, backup/reset database, Compose `down` hoac restart dich vu backend.
 - Rui ro con lai: Can UAT tren browser that cho clipboard mot anh, nhieu anh, tep, van ban tai caret, caption/reply/mention va direct block; clipboard API/ten file co the khac nhau giua Chrome/Edge/Firefox nhung deu di qua cung DataTransfer policy.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn`, UAT Ctrl+V van ban tai caret, mot/nhieu anh va tep; xac nhan khong upload/gui truoc khi bam Enter hoac Gui, mo ta/reply/mention chi nam tren attachment dau tien, xoa preview khong gui va mobile giu nguyen.
-- Commit/PR: Source commit `8b8d4c8`; deployment follow-up docs commit chua tao; khong co PR.
+- Commit/PR: Source commit `8b8d4c8`; deployment follow-up docs commit `833badf`; khong co PR.
 
 ## 2026-08-25-10 - Chan tin nhan chat 1-1 tren web
 
