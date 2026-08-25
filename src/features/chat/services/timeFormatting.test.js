@@ -5,6 +5,7 @@ import {
   formatFullMessageDateTime,
   formatMessageDateLabel,
   formatMessageTime,
+  parseTimestamp,
 } from './timeFormatting.js';
 
 const NOW = new Date(2026, 7, 11, 15, 30, 0).getTime();
@@ -12,6 +13,13 @@ const NOW = new Date(2026, 7, 11, 15, 30, 0).getTime();
 test('formats recent conversation activity as compact relative time', () => {
   assert.equal(formatConversationListTime(NOW - 5 * 60 * 1000, NOW), '5 phút');
   assert.equal(formatConversationListTime(NOW - 2 * 60 * 60 * 1000, NOW), '2 giờ');
+});
+
+test('accepts Chatmgt Unix timestamps in seconds and numeric strings', () => {
+  const seconds = Math.floor(NOW / 1000);
+  assert.equal(parseTimestamp(seconds), seconds * 1000);
+  assert.equal(parseTimestamp(String(seconds)), seconds * 1000);
+  assert.equal(formatConversationListTime({ updatedAt: String(seconds) }, NOW), 'Vừa xong');
 });
 
 test('uses yesterday and day counts before switching to calendar dates', () => {

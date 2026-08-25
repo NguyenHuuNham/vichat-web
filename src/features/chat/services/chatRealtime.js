@@ -3,10 +3,50 @@ import { normalizeConversationBackground } from './conversationBackground.js';
 import { normalizeImageBatch } from './imageBatchLayout.js';
 import { normalizePoll, normalizePollEvent } from './poll.js';
 import { mergeReceiptUsers, normalizeReceiptUsers } from './messageReceipts.js';
+import { conversationActivityTimestamp, parseTimestamp } from './timeFormatting.js';
 
 export const TINODE_CONTACT_SYNC_DELAYS_MS = Object.freeze([120, 600, 1800]);
 
 const MANAGEMENT_CONVERSATION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function normalizeConversationFlag(value) {
+  if (value === true || value === 1) return true;
+  if (typeof value === 'string') return ['true', '1', 'yes', 'on'].includes(value.trim().toLowerCase());
+  return false;
+}
+
+export function messageActivityTimestamp(message) {
+  return Math.max(
+    parseTimestamp(message?.createdAt || message?.created_at),
+    parseTimestamp(message?.raw?.ts),
+    parseTimestamp(message?.pollActivityAt || message?.poll_activity_at),
+  );
+}
+
+export function latestConversationMessage(messages = []) {
+  const list = Array.isArray(messages) ? messages : [];
+  let latest = null;
+  let latestTimestamp = 0;
+  let latestSequence = 0;
+  let latestIndex = -1;
+  list.forEach((message, index) => {
+    if (!message) return;
+    const timestamp = messageActivityTimestamp(message);
+    const sequence = Number(message?.seq) || 0;
+    if (
+      latest === null
+      || timestamp > latestTimestamp
+      || (timestamp === latestTimestamp && sequence > latestSequence)
+      || (timestamp === latestTimestamp && sequence === latestSequence && index > latestIndex)
+    ) {
+      latest = message;
+      latestTimestamp = timestamp;
+      latestSequence = sequence;
+      latestIndex = index;
+    }
+  });
+  return latest;
+}
 
 export function isManagementConversationId(value) {
   return MANAGEMENT_CONVERSATION_ID_PATTERN.test(String(value || ''));
@@ -140,6 +180,51 @@ function conversationText(value) {
   if (typeof value === 'string') return value.trim();
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   return '';
+}
+
+const EMPTY_CONVERSATION_PREVIEWS = new Set([
+  'Chưa có tin nhắn',
+  'Bắt đầu cuộc trò chuyện',
+  'Nhóm mới được tạo',
+]);
+
+function meaningfulConversationPreview(value) {
+  const preview = conversationText(value);
+  return EMPTY_CONVERSATION_PREVIEWS.has(preview) ? '' : preview;
+}
+
+export function resolveConversationPreview({
+  existingPreview = '',
+  incomingPreview = '',
+  latestMessagePreview = '',
+  incomingManagementSnapshot = false,
+} = {}) {
+  const latest = meaningfulConversationPreview(latestMessagePreview);
+  const existing = meaningfulConversationPreview(existingPreview);
+  const incoming = meaningfulConversationPreview(incomingPreview);
+  if (latest) return latest;
+  if (incomingManagementSnapshot) return existing || incoming || conversationText(incomingPreview) || conversationText(existingPreview);
+  return incoming || existing || conversationText(incomingPreview) || conversationText(existingPreview);
+}
+
+export function resolveMergedConversationActivity(existing = {}, incoming = {}, messages = []) {
+  const latestMessage = latestConversationMessage(messages);
+  const existingTimestamp = conversationActivityTimestamp(existing);
+  const incomingTimestamp = conversationActivityTimestamp(incoming);
+  const latestMessageTimestamp = messageActivityTimestamp(latestMessage);
+  const timestamp = Math.max(existingTimestamp, incomingTimestamp, latestMessageTimestamp);
+  const metadataTime = incomingTimestamp >= existingTimestamp
+    ? conversationText(incoming?.time) || conversationText(existing?.time)
+    : conversationText(existing?.time) || conversationText(incoming?.time);
+
+  return {
+    latestMessage,
+    timestamp,
+    updatedAt: timestamp > 0
+      ? new Date(timestamp).toISOString()
+      : conversationText(incoming?.updatedAt) || conversationText(existing?.updatedAt),
+    time: conversationText(latestMessage?.time) || metadataTime,
+  };
 }
 
 function conversationObject(value) {
@@ -370,6 +455,18 @@ function normalizeMessage(value, index) {
 // Normalize untrusted API/Tinode snapshots before any React code iterates them.
 export function normalizeConversationShape(conversation) {
   const source = conversationObject(conversation) || {};
+  const properties = conversationObject(source.properties) || {};
+  const hasPinnedExplicitMarker = Object.prototype.hasOwnProperty.call(source, 'pinnedExplicit');
+  const hasPinnedValue = hasPinnedExplicitMarker
+    ? normalizeConversationFlag(source.pinnedExplicit)
+    : Object.prototype.hasOwnProperty.call(source, 'pinned')
+      || Object.prototype.hasOwnProperty.call(source, 'isPinned')
+      || Object.prototype.hasOwnProperty.call(properties, 'pinned');
+  const pinnedValue = Object.prototype.hasOwnProperty.call(source, 'pinned')
+    ? source.pinned
+    : Object.prototype.hasOwnProperty.call(source, 'isPinned')
+      ? source.isPinned
+      : properties.pinned;
   const managementId = conversationText(source.managementId) || conversationText(source.management_id);
   const tinodeTopic = conversationText(source.tinodeTopic) || conversationText(source.tinode_topic);
   const participantIds = conversationArray(source.participantIds)
@@ -452,7 +549,9 @@ export function normalizeConversationShape(conversation) {
     category: conversationText(source.category),
     notificationMutedUntil: mutedUntil,
     badge: Number.isFinite(badge) ? badge : 0,
-    pinned: Boolean(source.pinned),
+    // Realtime Tinode snapshots do not carry the viewer's Chatmgt pin.
+    pinned: hasPinnedValue ? normalizeConversationFlag(pinnedValue) : false,
+    pinnedExplicit: hasPinnedValue,
   };
 }
 

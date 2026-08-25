@@ -24,6 +24,11 @@ import {
   mergeConversationReadState,
   mergeManagementAvatar,
   normalizeConversationShape,
+  normalizeConversationFlag,
+  messageActivityTimestamp,
+  latestConversationMessage,
+  resolveConversationPreview,
+  resolveMergedConversationActivity,
   readyTinodeTypingTopic,
   resolveConversationDeletedAt,
   resolvePreparedTinodeTopic,
@@ -108,9 +113,11 @@ import {
 } from '../features/chat/services/mentionPolicy';
 import {
   formatConversationListTime,
+  conversationActivityTimestamp,
   formatFullMessageDateTime,
   formatMessageDateLabel,
   formatMessageTime,
+  parseTimestamp,
 } from '../features/chat/services/timeFormatting';
 import {
   canManageGroupMembers,
@@ -1285,25 +1292,15 @@ function canAccessRoomFiles(room, user, accounts, mode) {
 }
 
 function isConversationHiddenAfterDelete(room) {
-  const deletedAt = Date.parse(room?.deletedAt || '') || 0;
+  const deletedAt = parseTimestamp(room?.deletedAt);
   if (!deletedAt) return false;
   const latestMessageAt = Math.max(0, ...roomMessages(room).map(message => messageTimestamp(message)));
-  const latestActivityAt = Math.max(latestMessageAt, Date.parse(room?.updatedAt || '') || 0);
+  const latestActivityAt = Math.max(latestMessageAt, conversationActivityTimestamp(room));
   return latestActivityAt <= deletedAt;
 }
 
 function conversationTimestamp(room) {
-  const storedTimestamp = Date.parse(room?.updatedAt || '');
-  if (storedTimestamp) return storedTimestamp;
-  const time = String(room?.time || '');
-  const clock = time.match(/^(\d{1,2}):(\d{2})$/);
-  if (clock) {
-    const date = new Date();
-    date.setHours(Number(clock[1]), Number(clock[2]), 0, 0);
-    return date.getTime();
-  }
-  if (time.toLowerCase().includes('hôm qua')) return Date.now() - 24 * 60 * 60 * 1000;
-  return 0;
+  return conversationActivityTimestamp(room);
 }
 
 function collectFriendshipRecords(conversations, viewerId) {
@@ -1329,10 +1326,7 @@ function collectFriendshipRecords(conversations, viewerId) {
 }
 
 function messageTimestamp(message) {
-  return Math.max(
-    Date.parse(message?.createdAt || message?.raw?.ts || '') || 0,
-    Date.parse(message?.pollActivityAt || '') || 0,
-  );
+  return messageActivityTimestamp(message);
 }
 
 function messagePayloadKey(message) {
@@ -1501,7 +1495,7 @@ function removeMessageFromConversation(room, message) {
     item.id !== message.id
     && !(Number.isFinite(message.seq) && Number.isFinite(item?.seq) && item.seq === message.seq)
   ));
-  const latestMessage = messages.at(-1);
+  const latestMessage = latestConversationMessage(messages);
   return {
     ...room,
     messages,
@@ -1516,13 +1510,12 @@ function mergeTinodeConversation(existing, incoming) {
   const safeExisting = normalizeConversationShape(existing);
   const safeIncoming = normalizeConversationShape(incoming);
   const deletedAt = resolveConversationDeletedAt(safeExisting, safeIncoming);
-  const deletedTimestamp = Date.parse(deletedAt) || 0;
+  const deletedTimestamp = parseTimestamp(deletedAt);
   const visibleAfterDelete = messages => deletedTimestamp
-    ? messages.filter(message => (Date.parse(message.createdAt || '') || 0) > deletedTimestamp)
+    ? messages.filter(message => messageTimestamp(message) > deletedTimestamp)
     : messages;
   const messages = visibleAfterDelete(mergeTinodeMessages(safeExisting.messages, safeIncoming.messages));
   const friendEvents = visibleAfterDelete(mergeTinodeMessages(safeExisting.friendEvents, safeIncoming.friendEvents));
-  const latestAttachmentPreview = attachmentConversationPreview(messages.at(-1));
   const {
     managementOwned,
     incomingManagementSnapshot,
@@ -1531,6 +1524,17 @@ function mergeTinodeConversation(existing, incoming) {
     managementSnapshot: safeIncoming.managementSnapshot
       || incoming?.managementSnapshot
       || incoming?.management_snapshot,
+  });
+  const activity = resolveMergedConversationActivity(safeExisting, safeIncoming, messages);
+  const latestAttachmentPreview = attachmentConversationPreview(activity.latestMessage);
+  const latestTextPreview = activity.latestMessage?.type === 'poll'
+    ? `Bình chọn: ${activity.latestMessage.poll?.question || activity.latestMessage.pollData?.question || activity.latestMessage.text || ''}`
+    : activity.latestMessage?.text || '';
+  const lastMsg = resolveConversationPreview({
+    existingPreview: safeExisting.lastMsg,
+    incomingPreview: safeIncoming.lastMsg,
+    latestMessagePreview: latestAttachmentPreview || latestTextPreview,
+    incomingManagementSnapshot,
   });
   const snapshotMembers = incomingManagementSnapshot
     ? safeIncoming.members
@@ -1586,9 +1590,12 @@ function mergeTinodeConversation(existing, incoming) {
     messages,
     friendEvents,
     ...readState,
-    lastMsg: latestAttachmentPreview || safeIncoming.lastMsg || safeExisting.lastMsg,
-    time: safeIncoming.time || safeExisting.time,
-    updatedAt: safeIncoming.updatedAt || safeExisting.updatedAt || messages[messages.length - 1]?.createdAt,
+    pinned: safeIncoming.pinnedExplicit ? safeIncoming.pinned : safeExisting.pinned,
+    pinnedAt: safeIncoming.pinnedExplicit ? (safeIncoming.pinnedAt || null) : safeExisting.pinnedAt,
+    pinnedExplicit: safeExisting.pinnedExplicit || safeIncoming.pinnedExplicit,
+    lastMsg,
+    time: activity.time,
+    updatedAt: activity.updatedAt,
   };
 }
 
@@ -2463,8 +2470,8 @@ function managementRoomsForSession(managed, accounts, user, accountSession) {
         } : {}),
         name: roomName,
         messages: [],
-        lastMsg: 'Chưa có tin nhắn',
-        time: '',
+        lastMsg: room.lastMsg || 'Chưa có tin nhắn',
+        time: room.time || '',
         badge: 0,
       };
     });
@@ -6966,7 +6973,7 @@ function App() {
 
   const updateConversationPin = async room => {
     if (!room || room.isChatbot || room.id === 'empty') return false;
-    const nextPinned = !room.pinned;
+    const nextPinned = !normalizeConversationFlag(room.pinned);
     const managementConversationId = room.managementId || room.id;
     setChatError('');
     try {
@@ -6980,7 +6987,7 @@ function App() {
           managementConversationId,
           nextPinned,
         );
-        persistedPinned = Boolean(updated.pinned);
+        persistedPinned = normalizeConversationFlag(updated.pinned);
         persistedPinnedAt = updated.pinnedAt || null;
       } else {
         toggleConversationPinIds(managementViewerId, managementConversationId, nextPinned);
@@ -6996,6 +7003,7 @@ function App() {
             ...previousRoom,
             pinned: persistedPinned,
             pinnedAt: persistedPinnedAt,
+            pinnedExplicit: true,
           },
         };
         conversationsRef.current = next;
@@ -9431,8 +9439,8 @@ function App() {
     .filter(id => shouldShowConversation(renderConversations[id], drafts[id]))
     .filter(id => String(conversationDisplayName(renderConversations[id], '') || '').toLocaleLowerCase('vi').includes(normalizedConversationSearch))
     .sort((firstId, secondId) => {
-      const firstPinned = Boolean(renderConversations[firstId].pinned);
-      const secondPinned = Boolean(renderConversations[secondId].pinned);
+      const firstPinned = normalizeConversationFlag(renderConversations[firstId].pinned);
+      const secondPinned = normalizeConversationFlag(renderConversations[secondId].pinned);
       if (firstPinned !== secondPinned) return firstPinned ? -1 : 1;
       const firstTimestamp = conversationTimestamp(renderConversations[firstId]);
       const secondTimestamp = conversationTimestamp(renderConversations[secondId]);

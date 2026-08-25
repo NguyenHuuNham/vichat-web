@@ -11,11 +11,16 @@ import {
   mergeManagementAvatar,
   mergeConversationReadState,
   mergeDeliveryStatus,
+  latestConversationMessage,
+  messageActivityTimestamp,
+  normalizeConversationFlag,
   normalizeConversationShape,
   messageForDeliveryStatus,
   modeWithRealtimePresence,
   readyTinodeTypingTopic,
   resolveConversationDeletedAt,
+  resolveConversationPreview,
+  resolveMergedConversationActivity,
   resolvePreparedTinodeTopic,
   resolveTopicReadState,
   resolveTinodePresenceOnline,
@@ -23,6 +28,7 @@ import {
   topicReceiptSequence,
   tinodeContactsSyncDelay,
 } from './chatRealtime.js';
+import { conversationActivityTimestamp } from './timeFormatting.js';
 
 test('prepared Chatmgt group topic is reused instead of creating a conflicting topic', () => {
   assert.equal(resolvePreparedTinodeTopic(
@@ -34,6 +40,56 @@ test('prepared Chatmgt group topic is reused instead of creating a conflicting t
     { tinodeTopic: 'grpExisting123' },
     { isGroup: true, tinodeTopic: 'grpPrepared123' },
   ), 'grpExisting123');
+});
+
+test('conversation activity prefers the newest message over a stale metadata timestamp', () => {
+  const stale = '2026-08-25T08:00:00.000Z';
+  const fresh = '2026-08-25T08:05:00.000Z';
+  const latest = latestConversationMessage([
+    { id: 'old', createdAt: stale, text: 'Cu', seq: 10 },
+    { id: 'new', createdAt: fresh, text: 'Moi', seq: 11 },
+  ]);
+  const activity = resolveMergedConversationActivity(
+    { updatedAt: stale, lastMsg: 'Cu' },
+    { updatedAt: stale, lastMsg: 'Cu' },
+    [{ id: 'old', createdAt: stale, text: 'Cu', seq: 10 }, { id: 'new', createdAt: fresh, text: 'Moi', seq: 11 }],
+  );
+
+  assert.equal(latest.id, 'new');
+  assert.equal(messageActivityTimestamp(latest), Date.parse(fresh));
+  assert.equal(activity.updatedAt, fresh);
+  assert.equal(activity.latestMessage.text, 'Moi');
+  assert.equal(resolveConversationPreview({
+    existingPreview: 'Cu',
+    incomingPreview: 'Cu',
+    latestMessagePreview: activity.latestMessage.text,
+  }), 'Moi');
+  assert.equal(conversationActivityTimestamp({ updatedAt: stale, messages: [{ createdAt: fresh }] }), Date.parse(fresh));
+});
+
+test('conversation pin normalization rejects string false values', () => {
+  assert.equal(normalizeConversationFlag('false'), false);
+  assert.equal(normalizeConversationFlag('true'), true);
+  assert.equal(normalizeConversationShape({ pinned: 'false' }).pinned, false);
+  assert.equal(normalizeConversationShape({ pinned: 'true' }).pinned, true);
+});
+
+test('Tinode snapshots without pin metadata preserve their non-authoritative marker', () => {
+  const realtime = normalizeConversationShape({ id: 'grp-live', messages: [] });
+  const normalizedAgain = normalizeConversationShape(realtime);
+  const management = normalizeConversationShape({ id: 'managed', pinned: false, managementSnapshot: true });
+
+  assert.equal(realtime.pinnedExplicit, false);
+  assert.equal(normalizedAgain.pinnedExplicit, false);
+  assert.equal(management.pinnedExplicit, true);
+});
+
+test('management placeholders cannot erase an existing conversation preview', () => {
+  assert.equal(resolveConversationPreview({
+    existingPreview: 'Bạn: Tin moi',
+    incomingPreview: 'Chưa có tin nhắn',
+    incomingManagementSnapshot: true,
+  }), 'Bạn: Tin moi');
 });
 
 test('persisted group avatars win over stale Tinode-only metadata', () => {

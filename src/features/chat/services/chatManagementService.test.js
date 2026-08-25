@@ -143,6 +143,13 @@ test('keeps unread emphasis and latest-message navigation in the ChatUI layer', 
   assert.match(stylesSource, /\.latest-message-jump-button/);
 });
 
+test('conversation activity ordering is monotonic and pin values are strict', () => {
+  assert.match(appSource, /conversationActivityTimestamp\(room\)/);
+  assert.match(appSource, /resolveMergedConversationActivity\(safeExisting, safeIncoming, messages\)/);
+  assert.match(appSource, /pinned: safeIncoming\.pinnedExplicit \? safeIncoming\.pinned : safeExisting\.pinned/);
+  assert.match(managementServiceSource, /normalizeConversationFlag\(record\?\.pinned/);
+});
+
 test('automatic topic binding never sends an empty group avatar', () => {
   const bindSource = managementServiceSource
     .split('async bindTinodeTopic')[1]

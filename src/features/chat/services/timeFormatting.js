@@ -3,16 +3,24 @@ const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 const LEGACY_TIME_LABELS = new Set(['Hôm nay', 'Hôm qua', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật']);
 
-function parseTimestamp(value) {
+function normalizeEpoch(value) {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  // Chatmgt serializes Unix seconds while browser dates use milliseconds.
+  return value < 10_000_000_000 ? value * 1000 : value;
+}
+
+export function parseTimestamp(value) {
   if (value instanceof Date) return value.getTime();
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return normalizeEpoch(value);
 
   const source = typeof value === 'object' && value !== null
     ? value.createdAt || value.updatedAt || value.timestamp || value.time
     : value;
-  if (typeof source === 'number' && Number.isFinite(source)) return source;
-  if (LEGACY_TIME_LABELS.has(String(source || '').trim())) return 0;
-  const parsed = Date.parse(String(source || ''));
+  if (typeof source === 'number' && Number.isFinite(source)) return normalizeEpoch(source);
+  const text = String(source || '').trim();
+  if (/^[+-]?\d+(?:\.\d+)?$/.test(text)) return normalizeEpoch(Number(text));
+  if (LEGACY_TIME_LABELS.has(text)) return 0;
+  const parsed = Date.parse(text);
   if (Number.isFinite(parsed)) return parsed;
 
   const clock = String(source || '').match(/^(\d{1,2}):(\d{2})$/);
@@ -20,6 +28,34 @@ function parseTimestamp(value) {
   const today = new Date();
   today.setHours(Number(clock[1]), Number(clock[2]), 0, 0);
   return today.getTime();
+}
+
+export function conversationActivityTimestamp(room) {
+  if (!room || typeof room !== 'object') return 0;
+  const timestamps = [];
+  const addTimestamp = value => {
+    const timestamp = parseTimestamp(value);
+    if (timestamp > 0) timestamps.push(timestamp);
+  };
+
+  // Prefer concrete activity dates. A clock-only label is used only when a
+  // snapshot has no machine-readable activity value at all.
+  addTimestamp(room.updatedAt);
+  addTimestamp(room.updated_at);
+  addTimestamp(room.lastMessageAt);
+  addTimestamp(room.last_message_at);
+  addTimestamp(room.pollActivityAt);
+  addTimestamp(room.poll_activity_at);
+  [...(Array.isArray(room.messages) ? room.messages : []), ...(Array.isArray(room.friendEvents) ? room.friendEvents : [])]
+    .forEach(message => {
+      addTimestamp(message?.createdAt);
+      addTimestamp(message?.created_at);
+      addTimestamp(message?.raw?.ts);
+      addTimestamp(message?.pollActivityAt);
+      addTimestamp(message?.poll_activity_at);
+    });
+  if (timestamps.length > 0) return Math.max(...timestamps);
+  return parseTimestamp({ time: room.time }) || 0;
 }
 
 function calendarDayDifference(timestamp, now) {

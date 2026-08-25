@@ -1,5 +1,5 @@
 import { normalizeNotificationMuteUntil } from './conversationNotifications.js';
-import { normalizeConversationShape } from './chatRealtime.js';
+import { normalizeConversationFlag, normalizeConversationShape } from './chatRealtime.js';
 import { normalizeGroupSettings } from './groupSettings.js';
 import {
   filterAccountsByTenant,
@@ -382,11 +382,15 @@ function normalizeConversation(record) {
     messages: [],
     lastMsg: record?.lastMsg || properties.lastMessage || '',
     time: record?.time || properties.time || '',
-    updatedAt: record?.updatedAt || record?.last_message_at || properties.updatedAt,
+    updatedAt: record?.updatedAt
+      || record?.last_message_at
+      || record?.updated_at
+      || properties.updatedAt
+      || properties.updated_at,
     deletedAt: record?.deletedAt || record?.deleted_at || properties.deletedAt || properties.deleted_at || '',
     badge: record?.badge || properties.unreadCount || 0,
     notificationMutedUntil,
-    pinned: Boolean(record?.pinned ?? record?.isPinned ?? properties.pinned),
+    pinned: normalizeConversationFlag(record?.pinned ?? record?.isPinned ?? properties.pinned),
     pinnedAt: record?.pinnedAt || record?.pinned_at || properties.pinnedAt || null,
     groupSettings: record?.groupSettings
       || record?.group_settings

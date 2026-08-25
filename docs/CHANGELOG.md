@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-25-06 - Cap nhat thu tu hoi thoai sau tin nhan moi
+
+- Thoi gian: 2026-08-25 14:26 (Asia/Saigon)
+- Loai: Sua loi | Web | Realtime | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; cho commit va deploy production
+- Muc tieu: Tin nhan moi phai cap nhat preview/time va dua hoi thoai len dung vi tri; hoi thoai khong ghim khong duoc bi day len dau.
+- Pham vi: ChatUI merge/sort activity, Chatmgt timestamp normalization, conversation pin normalization; giu nguyen avatar, read cursor, Tinode, session, tenant switch va notification handlers.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/timeFormatting.js`, cac file test lien quan, `dist/index.html`.
+- Noi dung: Dung mốc hoat dong lon nhat giua `updatedAt`, Unix timestamp va message moi nhat; preview/time duoc suy ra tu message sau khi merge va khong bi placeholder `Chua co tin nhan` ghi de. Pin chi nhan gia tri boolean an toan, Tinode snapshot khong co pin khong ghi de pin Chatmgt.
+- Quyet dinh ky thuat: Tach helper timestamp/pin khoi luong merge, giu merge activity tang dan va coi Chatmgt la nguon chuan cua pin; khong sua receipt, avatar persistence hay transport message.
+- Database/API/cau hinh: Khong migration, endpoint, schema, secret hoac bien moi truong moi.
+- Kiem thu: `node --test src/features/chat/services/chatRealtime.test.js src/features/chat/services/timeFormatting.test.js src/features/chat/services/chatManagementService.test.js` dat 78/78; `npm run test:frontend` dat 240/240; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` dat; `npm run build:production` dat voi entry `index-JVkezxBm.js`, App `App-9HnB7pRK.js`, CSS `index-B3autpXX.css` va canh bao chunk App lon hon 500 KB da co; `git diff --check` dat.
+- Rui ro con lai: Chua UAT production voi hai tai khoan that cho chat moi, sticker va pin theo viewer.
+- Viec tiep theo: Commit/push, deploy rieng ChatUI, kiem tra health/bundle/log va xac nhan container backend/Tinode khong restart.
+- Commit/PR: Chua tao.
+
 ## 2026-08-25-05 - Thu gon control chuyen cong ty
 
 - Thoi gian: 2026-08-25 13:24 (Asia/Saigon); deploy production 13:40-13:44 (Asia/Saigon)
