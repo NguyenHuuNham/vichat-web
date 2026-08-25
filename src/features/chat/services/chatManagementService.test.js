@@ -238,8 +238,8 @@ test('requires explicit confirmation before switching tenants', () => {
   assert.match(stylesSource, /\.tenant-switcher-control \{/);
   assert.doesNotMatch(stylesSource, /\.tenant-switcher-viewport \{|\.tenant-switcher-track \{/);
   assert.match(stylesSource, /\.tenant-switcher-current \{/);
-  assert.match(stylesSource, /\.tenant-switcher-current \{[^}]*width: min\(154px, 22vw\);[^}]*max-width: 154px;[^}]*min-width: 132px;/);
-  assert.match(stylesSource, /\.tenant-switcher-current \{ width: min\(154px, calc\(100vw - 154px\)\); max-width: 154px; min-width: 0; \}/);
+  assert.match(stylesSource, /\.tenant-switcher-current \{[^}]*width: min\(128px, 18vw\);[^}]*max-width: 128px;[^}]*min-width: 124px;/);
+  assert.match(stylesSource, /\.tenant-switcher-current \{ width: min\(128px, calc\(100vw - 154px\)\); max-width: 128px; min-width: 0; \}/);
   assert.match(stylesSource, /\.tenant-switcher-toggle \{/);
   assert.match(stylesSource, /\.tenant-switcher-menu-list \{ display: flex; flex-direction: column;/);
   assert.match(stylesSource, /\.tenant-switcher-menu-option \{/);
