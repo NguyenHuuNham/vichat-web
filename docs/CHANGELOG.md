@@ -8,9 +8,9 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-25-06 - Cap nhat thu tu hoi thoai sau tin nhan moi
 
-- Thoi gian: 2026-08-25 14:26 (Asia/Saigon)
+- Thoi gian: 2026-08-25 14:26 (Asia/Saigon); deploy production 14:52-14:56 (Asia/Saigon)
 - Loai: Sua loi | Web | Realtime | Kiem thu | Tai lieu
-- Trang thai: Hoan tat local; cho commit va deploy production
+- Trang thai: Da commit va deploy production; san sang UAT
 - Muc tieu: Tin nhan moi phai cap nhat preview/time va dua hoi thoai len dung vi tri; hoi thoai khong ghim khong duoc bi day len dau.
 - Pham vi: ChatUI merge/sort activity, Chatmgt timestamp normalization, conversation pin normalization; giu nguyen avatar, read cursor, Tinode, session, tenant switch va notification handlers.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/timeFormatting.js`, cac file test lien quan, `dist/index.html`.
@@ -18,9 +18,11 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Tach helper timestamp/pin khoi luong merge, giu merge activity tang dan va coi Chatmgt la nguon chuan cua pin; khong sua receipt, avatar persistence hay transport message.
 - Database/API/cau hinh: Khong migration, endpoint, schema, secret hoac bien moi truong moi.
 - Kiem thu: `node --test src/features/chat/services/chatRealtime.test.js src/features/chat/services/timeFormatting.test.js src/features/chat/services/chatManagementService.test.js` dat 78/78; `npm run test:frontend` dat 240/240; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build` dat; `npm run build:production` dat voi entry `index-JVkezxBm.js`, App `App-9HnB7pRK.js`, CSS `index-B3autpXX.css` va canh bao chunk App lon hon 500 KB da co; `git diff --check` dat.
+- Kiem tra production: Archive `/opt/deploy/chat/incoming/vichat-conversation-sync-a321772.tar.gz` SHA-256 `f730b84b19a12e712981aa416d0ce7c370c922be75d5a06add0180762d2f206a`; Compose config va image preflight tren network production dat. ChatUI `6fb4490add61` healthy voi image `sha256:a3c37306850ad3dca22ce84ec5e86389646d8f110463002a00ae421ec61d1e1e`; local/public `/healthz` va Chatmgt auth health tra OK; public entry `/assets/index-d-Hz3v2w.js`, App `/assets/App-7eTOilMI.js` va CSS `/assets/index-B3autpXX.css` HTTP 200, App co marker `last_message_at` va `pinnedExplicit`; `sudo -n nginx -t` dat; log ChatUI/Chatmgt khong co marker fatal/panic/traceback/uncaught/critical/emerg.
+- Trien khai: Source commit `a321772` da push `origin/master`; release `/opt/deploy/chat/releases/conversation-sync-a321772-20260825-0738` dang la `current`, `previous` tro `/opt/deploy/chat/releases/tenant-tight-b5bd160-20260825-1340`; chi recreate `chat` voi `--no-deps --force-recreate --no-build`, khong migration/reset database, Tinode, avatar, read cursor, message, topic hay volume. Rollback tag `songhong-production-chat:rollback-before-conversation-sync-a321772` giu image cu `sha256:1b954694a7c407366a390a06f11075bac268d57ae09d250fe7037ff0ccdf94dc`; Chatmgt `09ce43ebc155`, webhook `2882b6109176`, account bridge `7d9c0e317719`, ChatAPI `8476615ad4ac`, Coturn `aa680d35fdc0`, Chat PostgreSQL `78a434b49404`, Tinode PostgreSQL `9f6e4dcc9c2f` va Redis `ceef7df23feb` giu nguyen container ID.
 - Rui ro con lai: Chua UAT production voi hai tai khoan that cho chat moi, sticker va pin theo viewer.
-- Viec tiep theo: Commit/push, deploy rieng ChatUI, kiem tra health/bundle/log va xac nhan container backend/Tinode khong restart.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, gui tin moi vao hoi thoai `nham` va xac nhan preview/time cap nhat ngay, hoi thoai len tren cac hoi thoai khong ghim cu hon; pin/bo pin `Cong Ty Minh` de xac nhan chi pin that moi duoc uu tien.
+- Commit/PR: Source commit `a321772`; deployment follow-up docs commit duoc tao sau khi cap nhat muc nay.
 
 ## 2026-08-25-05 - Thu gon control chuyen cong ty
 
