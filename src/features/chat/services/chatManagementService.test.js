@@ -22,6 +22,7 @@ const tinodeSource = readFileSync(new URL('./tinodeClient.js', import.meta.url),
 const avatarCropSource = readFileSync(new URL('../../contacts/components/AvatarCropModal.jsx', import.meta.url), 'utf8');
 const managementServiceSource = readFileSync(new URL('./chatManagementService.js', import.meta.url), 'utf8');
 const mobileStoreSource = readFileSync(new URL('../../../../mobile/src/store/appStore.ts', import.meta.url), 'utf8');
+const mobileConversationListSource = readFileSync(new URL('../../../../mobile/src/screens/chat/ConversationListScreen.tsx', import.meta.url), 'utf8');
 
 test('sends only manual UpGO credentials for employee login', () => {
   const payload = employeeLoginPayload({
@@ -403,15 +404,23 @@ test('chat header uses a stateful information panel control for direct and group
   assert.match(stylesSource, /\.btn-header-detail\.is-open/);
 });
 
-test('group owner departure requires an explicit replacement and announces the transfer', () => {
+test('group owner departure transfers to survivors but lets the final member close the group', () => {
   assert.match(appSource, /pendingGroupLeave/);
   assert.match(appSource, /groupLeaveReplacementId/);
   assert.match(appSource, /Chọn trưởng nhóm mới/);
   assert.match(appSource, /replacementId/);
   assert.match(appSource, /Chuyển quyền và rời nhóm/);
+  assert.match(appSource, /ownerReplacementMembers\.length > 0 && !replacementId/);
+  assert.match(appSource, /function groupOwnerReplacementMembers[\s\S]*roomParticipantIds\(room\)/);
+  assert.match(appSource, /const groupLeaveMembers = pendingGroupLeaveRoom[\s\S]*const groupLeaveCandidates = \[\.\.\.groupLeaveMembers\][\s\S]*matchesCompanyDirectoryContact/);
+  assert.match(appSource, /Bạn là thành viên cuối cùng\. Rời nhóm sẽ đóng nhóm này\./);
+  assert.match(appSource, /void executeGroupLeave\(targetRoom, '', '', mode\)/);
   assert.match(managementServiceSource, /replacement_id/);
   assert.match(appSource, /replacementName/);
   assert.match(appSource, /leaveDemoGroup\(targetRoom\.id, actorId, replacementId\)/);
+  assert.match(mobileConversationListSource, /candidates\.length === 0/);
+  assert.match(mobileConversationListSource, /Bạn là thành viên cuối cùng\. Rời nhóm sẽ đóng nhóm này\./);
+  assert.match(mobileConversationListSource, /\(\) => deleteConversation\(item\.id\)/);
   assert.doesNotMatch(appSource, /randomMemberId/);
 });
 

@@ -1141,6 +1141,38 @@ function roomParticipantIds(room) {
   return Array.isArray(room?.participantIds) ? room.participantIds : [];
 }
 
+function groupOwnerReplacementMembers(room, accounts, currentUser) {
+  if (!room?.isGroup) return [];
+  const administrator = resolveGroupAdministrator(room, accounts);
+  const members = [
+    ...roomMembers(room),
+    ...roomParticipantIds(room).map(identity => (
+      findAccount(accounts, identity) || { id: identity, name: identity }
+    )),
+  ];
+  return members.reduce((candidates, member) => {
+    const identity = member?.id || member?.uid || member?.tinodeUid || member?.tinode_uid || member?.name;
+    const account = findAccount(accounts, identity) || member;
+    const id = String(
+      account?.id || account?.uid || account?.tinodeUid || account?.tinode_uid || identity || '',
+    ).trim();
+    if (
+      !id
+      || identitiesOverlap(account, currentUser)
+      || identitiesOverlap(account, administrator)
+      || candidates.some(candidate => candidate.id === id || identitiesOverlap(candidate, account))
+    ) return candidates;
+    candidates.push({
+      ...member,
+      ...account,
+      id,
+      name: account?.name || member?.name || id,
+      avatar: account?.avatar || member?.avatar || '',
+    });
+    return candidates;
+  }, []);
+}
+
 function roomFriendEvents(room) {
   return Array.isArray(room?.friendEvents) ? room.friendEvents : [];
 }
@@ -3306,31 +3338,26 @@ function App() {
     || groupSettingEnabled(activeGroupSettings, 'allowPinMessages');
   const canCreatePollInActiveGroup = activeChat.isGroup
     && (isActiveGroupAdmin || groupSettingEnabled(activeGroupSettings, 'allowPolls'));
-  const groupLeaveCandidates = (() => {
-    if (!pendingGroupLeave?.room?.isGroup) return [];
-    const pendingGroupAdmin = resolveGroupAdministrator(pendingGroupLeave.room, directoryAccounts);
-    const seen = new Set();
-    return roomMembers(pendingGroupLeave.room)
-      .map(member => {
-        const account = findAccount(
-          directoryAccounts,
-          member.id || member.uid || member.tinodeUid || member.tinode_uid || member.name,
-        ) || member;
-        const id = String(account.id || account.uid || account.tinodeUid || account.tinode_uid || member.id || '').trim();
-        if (!id || identitiesOverlap(account, currentUser) || identitiesOverlap(account, pendingGroupAdmin) || seen.has(id)) return null;
-        seen.add(id);
-        return {
-          ...member,
-          ...account,
-          id,
-          name: account.name || member.name || id,
-          avatar: account.avatar || member.avatar || '',
-        };
-      })
-      .filter(Boolean)
-      .filter(member => matchesCompanyDirectoryContact(member, groupLeaveSearch))
-      .sort((first, second) => String(first.name).localeCompare(String(second.name), 'vi', { sensitivity: 'base' }));
+  const pendingGroupLeaveRoom = (() => {
+    const pendingRoom = pendingGroupLeave?.room;
+    if (!pendingRoom?.isGroup) return null;
+    const pendingKeys = new Set([
+      pendingRoom.id,
+      pendingRoom.managementId,
+      pendingRoom.tinodeTopic,
+    ].filter(Boolean).map(String));
+    return safeConversationValues(renderConversations).find(room => [
+      room.id,
+      room.managementId,
+      room.tinodeTopic,
+    ].filter(Boolean).some(key => pendingKeys.has(String(key)))) || pendingRoom;
   })();
+  const groupLeaveMembers = pendingGroupLeaveRoom
+    ? groupOwnerReplacementMembers(pendingGroupLeaveRoom, directoryAccounts, currentUser)
+    : [];
+  const groupLeaveCandidates = [...groupLeaveMembers]
+    .filter(member => matchesCompanyDirectoryContact(member, groupLeaveSearch))
+    .sort((first, second) => String(first.name).localeCompare(String(second.name), 'vi', { sensitivity: 'base' }));
   const messageSearchSenderOptions = [currentUser, ...activeChatMembers]
     .reduce((options, account) => {
       const id = messageSearchSenderId(account);
@@ -6870,7 +6897,10 @@ function App() {
     if (!targetRoom?.isGroup || isLeavingGroup) return false;
     const actorId = currentUser?.id || currentUser?.uid;
     const isOwner = canManageGroupMembers(targetRoom, directoryAccounts, currentUser);
-    if (isOwner && !replacementId) {
+    const ownerReplacementMembers = isOwner
+      ? groupOwnerReplacementMembers(targetRoom, directoryAccounts, currentUser)
+      : [];
+    if (isOwner && ownerReplacementMembers.length > 0 && !replacementId) {
       setGroupLeaveNotice('Quản trị viên phải chọn một thành viên mới trước khi rời nhóm.');
       return false;
     }
@@ -6967,11 +6997,20 @@ function App() {
   const requestGroupLeave = (targetRoom, mode = 'leave') => {
     if (!targetRoom?.isGroup || isLeavingGroup) return;
     const isOwner = canManageGroupMembers(targetRoom, directoryAccounts, currentUser);
+    const ownerReplacementMembers = isOwner
+      ? groupOwnerReplacementMembers(targetRoom, directoryAccounts, currentUser)
+      : [];
+    const closesEmptyGroup = isOwner && ownerReplacementMembers.length === 0;
+    const soleOwnerEffect = appCopy.t('Bạn là thành viên cuối cùng. Rời nhóm sẽ đóng nhóm này.');
     const confirmText = mode === 'delete'
-      ? `${appCopy.t('Bạn có chắc muốn xóa hội thoại')} "${targetRoom.name}"?\n\n${appCopy.t('Bạn sẽ rời nhóm sau khi chọn trưởng nhóm mới.')}`
-      : `${appCopy.t('Bạn có chắc muốn rời nhóm')} "${targetRoom.name}"?`;
+      ? `${appCopy.t('Bạn có chắc muốn xóa hội thoại')} "${targetRoom.name}"?\n\n${closesEmptyGroup ? soleOwnerEffect : appCopy.t('Bạn sẽ rời nhóm sau khi chọn trưởng nhóm mới.')}`
+      : `${appCopy.t('Bạn có chắc muốn rời nhóm')} "${targetRoom.name}"?${closesEmptyGroup ? `\n\n${soleOwnerEffect}` : ''}`;
     if (isOwner) {
       if (!window.confirm(confirmText)) return;
+      if (closesEmptyGroup) {
+        void executeGroupLeave(targetRoom, '', '', mode);
+        return;
+      }
       setPendingGroupLeave({ room: targetRoom, mode });
       setGroupLeaveSearch('');
       setGroupLeaveReplacementId('');
@@ -6987,15 +7026,21 @@ function App() {
 
   const handleGroupLeaveSubmit = async event => {
     event.preventDefault();
-    if (!pendingGroupLeave?.room || isLeavingGroup) return;
-    if (!groupLeaveReplacementId) {
+    const targetRoom = pendingGroupLeaveRoom || pendingGroupLeave?.room;
+    if (!targetRoom || isLeavingGroup) return;
+    if (groupLeaveMembers.length === 0) {
+      await executeGroupLeave(targetRoom, '', '', pendingGroupLeave.mode || 'leave');
+      return;
+    }
+    const selectedReplacement = groupLeaveMembers.find(member => member.id === groupLeaveReplacementId);
+    if (!selectedReplacement) {
       setGroupLeaveNotice('Hãy chọn một thành viên để trở thành trưởng nhóm mới.');
       return;
     }
     await executeGroupLeave(
-      pendingGroupLeave.room,
-      groupLeaveReplacementId,
-      groupLeaveReplacementName,
+      targetRoom,
+      selectedReplacement.id,
+      selectedReplacement.name || groupLeaveReplacementName,
       pendingGroupLeave.mode || 'leave',
     );
   };
@@ -13317,7 +13362,7 @@ function App() {
         </div>
       )}
 
-      {pendingGroupLeave?.room?.isGroup && (
+      {pendingGroupLeaveRoom?.isGroup && (
         <div className="modal-backdrop group-leave-backdrop" role="presentation" onMouseDown={event => {
           if (event.target === event.currentTarget) closeGroupLeaveDialog();
         }}>
@@ -13331,8 +13376,8 @@ function App() {
           >
             <div className="group-modal-header">
               <div>
-                <span className="group-modal-kicker">{appCopy.t('CHUYỂN QUYỀN NHÓM')}</span>
-                <h2 id="group-leave-title">{appCopy.t('Chọn trưởng nhóm mới')}</h2>
+                <span className="group-modal-kicker">{appCopy.t(groupLeaveMembers.length > 0 ? 'CHUYỂN QUYỀN NHÓM' : 'RỜI NHÓM')}</span>
+                <h2 id="group-leave-title">{appCopy.t(groupLeaveMembers.length > 0 ? 'Chọn trưởng nhóm mới' : 'Rời nhóm cuối cùng')}</h2>
               </div>
               <button type="button" className="btn-close-detail" onClick={closeGroupLeaveDialog} aria-label={appCopy.t('Đóng')} disabled={isLeavingGroup}>
                 <i className="fa-solid fa-xmark"></i>
@@ -13343,24 +13388,28 @@ function App() {
               <span className="group-leave-intro-icon"><i className="fa-solid fa-user-shield"></i></span>
               <div>
                 <strong>{appCopy.t('Bạn đang là trưởng nhóm')}</strong>
-                <p>{appCopy.t('Hãy chọn một thành viên còn lại làm trưởng nhóm mới trước khi rời nhóm. Người được chọn sẽ nhận đầy đủ quyền quản trị như bạn.')}</p>
+                <p>{appCopy.t(groupLeaveMembers.length > 0
+                  ? 'Hãy chọn một thành viên còn lại làm trưởng nhóm mới trước khi rời nhóm. Người được chọn sẽ nhận đầy đủ quyền quản trị như bạn.'
+                  : 'Bạn là thành viên cuối cùng. Rời nhóm sẽ đóng nhóm này.')}</p>
               </div>
             </div>
 
-            <label className="group-form-field group-leave-search-field">
-              <span>{appCopy.t('Tìm thành viên')}</span>
-              <div className="group-leave-search-wrap">
-                <i className="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                <input
-                  value={groupLeaveSearch}
-                  onChange={event => setGroupLeaveSearch(event.target.value)}
-                  placeholder={appCopy.t('Tìm theo tên hoặc tài khoản')}
-                  aria-label={appCopy.t('Tìm thành viên')}
-                  autoFocus
-                  disabled={isLeavingGroup}
-                />
-              </div>
-            </label>
+            {groupLeaveMembers.length > 0 && (
+              <label className="group-form-field group-leave-search-field">
+                <span>{appCopy.t('Tìm thành viên')}</span>
+                <div className="group-leave-search-wrap">
+                  <i className="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                  <input
+                    value={groupLeaveSearch}
+                    onChange={event => setGroupLeaveSearch(event.target.value)}
+                    placeholder={appCopy.t('Tìm theo tên hoặc tài khoản')}
+                    aria-label={appCopy.t('Tìm thành viên')}
+                    autoFocus
+                    disabled={isLeavingGroup}
+                  />
+                </div>
+              </label>
+            )}
 
             <div className="group-leave-list" role="radiogroup" aria-label={appCopy.t('Danh sách thành viên có thể làm trưởng nhóm')}>
               {groupLeaveCandidates.length > 0 ? groupLeaveCandidates.map(member => {
@@ -13392,23 +13441,27 @@ function App() {
                 <p className="group-form-hint group-leave-empty">
                   {groupLeaveSearch.trim()
                     ? appCopy.t('Không tìm thấy thành viên phù hợp.')
-                    : appCopy.t('Nhóm chưa có thành viên khác để chuyển quyền. Hãy thêm thành viên trước khi rời nhóm.')}
+                    : appCopy.t('Không còn thành viên khác. Bạn có thể rời nhóm và nhóm sẽ được đóng.')}
                 </p>
               )}
             </div>
 
             <p className="group-leave-notice" role="status">
               <i className="fa-solid fa-circle-info"></i>
-              <span>{appCopy.t('Việc chuyển quyền và rời nhóm sẽ được thông báo tới mọi thành viên.')}</span>
+              <span>{appCopy.t(groupLeaveMembers.length > 0
+                ? 'Việc chuyển quyền và rời nhóm sẽ được thông báo tới mọi thành viên.'
+                : 'Nhóm sẽ được đóng vì không còn thành viên nào sau khi bạn rời.')}</span>
             </p>
             {groupLeaveNotice && <div className="group-management-notice error" role="alert"><i className="fa-solid fa-circle-exclamation"></i>{appCopy.t(groupLeaveNotice)}</div>}
 
             <div className="group-modal-footer actions-only">
               <div className="group-modal-actions">
                 <button type="button" className="btn-secondary" onClick={closeGroupLeaveDialog} disabled={isLeavingGroup}>{appCopy.t('Hủy')}</button>
-                <button type="submit" className="btn-primary" disabled={isLeavingGroup || !groupLeaveReplacementId}>
+                <button type="submit" className="btn-primary" disabled={isLeavingGroup || (groupLeaveMembers.length > 0 && !groupLeaveReplacementId)}>
                   {isLeavingGroup ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-arrow-right-from-bracket"></i>}
-                  {isLeavingGroup ? appCopy.t('Đang chuyển quyền...') : appCopy.t('Chuyển quyền và rời nhóm')}
+                  {isLeavingGroup
+                    ? appCopy.t(groupLeaveMembers.length > 0 ? 'Đang chuyển quyền...' : 'Đang rời nhóm...')
+                    : appCopy.t(groupLeaveMembers.length > 0 ? 'Chuyển quyền và rời nhóm' : 'Rời nhóm và đóng nhóm')}
                 </button>
               </div>
             </div>

@@ -88,7 +88,21 @@ export function ConversationListScreen({ navigation }: Props) {
 
     const candidates = (item.members || []).filter(member => !currentIds.has(String(member.id || member.uid)));
     if (candidates.length === 0) {
-      Alert.alert('Không thể rời nhóm', 'Nhóm cần có một thành viên khác để nhận quyền trưởng nhóm.');
+      Alert.alert(
+        'Rời nhóm cuối cùng?',
+        'Bạn là thành viên cuối cùng. Rời nhóm sẽ đóng nhóm này.',
+        [
+          { text: 'Hủy', style: 'cancel' },
+          {
+            text: 'Rời nhóm',
+            style: 'destructive',
+            onPress: () => void runConversationAction(
+              () => deleteConversation(item.id),
+              'Không thể rời và đóng nhóm.',
+            ),
+          },
+        ],
+      );
       return;
     }
     Alert.alert(

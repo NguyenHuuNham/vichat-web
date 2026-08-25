@@ -4840,6 +4840,21 @@ async def conversation_participant_remove(request, conversation_id, participant_
 
     now = int(time.time())
     request_payload = request.json if isinstance(request.json, dict) else {}
+    active_survivors = []
+    if is_group:
+        active_survivors = ConversationParticipant.query.filter(
+            ConversationParticipant.tenant_id == tenant_id,
+            ConversationParticipant.conversation_id == item.id,
+            ConversationParticipant.participant_id != participant_id,
+            ConversationParticipant.active.is_(True),
+            ConversationParticipant.approval_status == "APPROVED",
+            ConversationParticipant.deleted.is_(False),
+        ).all()
+    close_after_leave = bool(
+        is_group
+        and target.role == "OWNER"
+        and not active_survivors
+    )
     if not is_group:
         deleted_at = datetime.datetime.fromtimestamp(
             now,
@@ -4865,7 +4880,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
 
     replacement_id = str(request_payload.get("replacement_id") or "").strip()
     replacement = None
-    if is_group and target.role == "OWNER":
+    if is_group and target.role == "OWNER" and not close_after_leave:
         if participant_id != user_id:
             return json({"error_code": "OWNER_REQUIRED", "error_message": "The group owner cannot be removed."}, status=409)
         if not replacement_id:
@@ -4892,7 +4907,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 "error_message": "The selected replacement is not an active member of this group.",
             }, status=409)
     event_sender_participant = replacement
-    if is_group and participant_id == user_id and event_sender_participant is None:
+    if is_group and participant_id == user_id and event_sender_participant is None and not close_after_leave:
         event_sender_participant = ConversationParticipant.query.filter(
             ConversationParticipant.tenant_id == tenant_id,
             ConversationParticipant.conversation_id == item.id,
@@ -5006,6 +5021,23 @@ async def conversation_participant_remove(request, conversation_id, participant_
                     ) if event_sender_account is not None else replacement.participant_id
                     if not replacement_uid or not replacement_tinode_token:
                         raise AuthError("Tinode could not prepare the replacement owner.", 502)
+            if close_after_leave:
+                active_participants, active_accounts = _active_conversation_accounts(item)
+                expected_member_uids = _expected_tinode_member_uids(
+                    item,
+                    active_participants,
+                    active_accounts,
+                )
+                actual_member_uids = await tinode_topic_member_uids(
+                    tinode_token,
+                    actor_account.tinode_uid,
+                    item.tinode_topic,
+                )
+                tinode_dissolve_member_uids = list(dict.fromkeys([
+                    *actual_member_uids,
+                    *expected_member_uids,
+                    actor_account.tinode_uid,
+                ]))
 
         target.active = False
         target.left_at = now
@@ -5014,7 +5046,14 @@ async def conversation_participant_remove(request, conversation_id, participant_
         item.updated_at = now
         db.session.flush()
 
-        if item.tinode_topic:
+        if item.tinode_topic and close_after_leave:
+            await tinode_dissolve_topic(
+                tinode_token,
+                actor_account.tinode_uid,
+                item.tinode_topic,
+                tinode_dissolve_member_uids,
+            )
+        elif item.tinode_topic:
             if replacement_uid:
                 await tinode_add_topic_members(
                     tinode_token,
@@ -5037,7 +5076,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 target_account.tinode_uid,
             )
             tinode_target_removed = True
-            if is_group:
+            if is_group and not close_after_leave:
                 active_participants, active_accounts = _active_conversation_accounts(item)
                 expected_member_uids = _expected_tinode_member_uids(item, active_participants, active_accounts)
                 verification_token = replacement_tinode_token or event_sender_tinode_token or tinode_token
@@ -5049,8 +5088,30 @@ async def conversation_participant_remove(request, conversation_id, participant_
                         item.tinode_topic,
                         expected_member_uids,
                     )
+        if close_after_leave:
+            all_participants = ConversationParticipant.query.filter(
+                ConversationParticipant.tenant_id == tenant_id,
+                ConversationParticipant.conversation_id == item.id,
+            ).all()
+            for participant in all_participants:
+                participant.active = False
+                participant.left_at = participant.left_at or now
+                participant.deleted = True
+            item.status = "CLOSED"
+            item.closed_at = now
+            item.deleted = True
+        item.updated_at = now
         db.session.commit()
-        if is_group and participant_id == user_id and event_sender_tinode_token:
+        if close_after_leave:
+            _audit(
+                request,
+                "CONVERSATION_GROUP_EMPTY_CLOSE",
+                True,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                properties={"conversation_id": str(item.id), "reason": "last_member_left"},
+            )
+        if is_group and participant_id == user_id and event_sender_tinode_token and not close_after_leave:
             try:
                 await tinode_publish_system_event(
                     event_sender_tinode_token,

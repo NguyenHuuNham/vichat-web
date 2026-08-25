@@ -74,6 +74,10 @@ test('translates the group owner transfer system event', () => {
     translateUiText('Lan đã rời khỏi nhóm. Minh đã trở thành trưởng nhóm mới', 'en'),
     'Lan left the group. Minh is now the group owner',
   );
+  assert.equal(
+    translateUiText('Bạn là thành viên cuối cùng. Rời nhóm sẽ đóng nhóm này.', 'en'),
+    'You are the final member. Leaving will close this group.',
+  );
 });
 
 test('localized copy exposes the correct locale and translator', () => {

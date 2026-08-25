@@ -461,13 +461,15 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("tinode_add_topic_members", approval_source)
         self.assertIn("tinode_publish_system_event", approval_source)
 
-    def test_owner_leave_requires_an_explicit_active_replacement(self):
+    def test_owner_leave_requires_a_replacement_only_while_active_members_survive(self):
         _controller_source, remove_source = function_source(
             CONTROLLER_PATH,
             "conversation_participant_remove",
         )
 
         self.assertIn("ConversationParticipant.active.is_(True)", remove_source)
+        self.assertIn("active_survivors = ConversationParticipant.query.filter", remove_source)
+        self.assertIn("and not active_survivors", remove_source)
         self.assertIn("replacement_id = str(request_payload.get(\"replacement_id\") or \"\").strip()", remove_source)
         self.assertIn("OWNER_REPLACEMENT_REQUIRED", remove_source)
         self.assertIn("OWNER_REPLACEMENT_INVALID", remove_source)
@@ -479,6 +481,10 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('"replacementId": replacement.participant_id', remove_source)
         self.assertIn('"replacementName": replacement_name or replacement.participant_id', remove_source)
         self.assertIn('mode="JRWPASO"', remove_source)
+        self.assertIn("tinode_dissolve_topic", remove_source)
+        self.assertIn('item.status = "CLOSED"', remove_source)
+        self.assertIn("participant.deleted = True", remove_source)
+        self.assertIn('"reason": "last_member_left"', remove_source)
         self.assertLess(
             remove_source.index("tinode_accept_topic_owner"),
             remove_source.index("tinode_remove_topic_member"),

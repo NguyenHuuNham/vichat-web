@@ -180,7 +180,7 @@ export function leaveDemoGroup(groupId, userId, replacementId = '') {
   const memberIds = uniqueIds(group.memberIds || []).filter(id => id !== userId);
   const isOwner = group.ownerId === userId;
   const nextOwnerId = String(replacementId || '').trim();
-  if (isOwner && (!nextOwnerId || !memberIds.includes(nextOwnerId))) {
+  if (isOwner && memberIds.length > 0 && (!nextOwnerId || !memberIds.includes(nextOwnerId))) {
     throw new Error('Quản trị viên phải chọn một thành viên mới trước khi rời nhóm.');
   }
   const ownerId = isOwner ? nextOwnerId : group.ownerId;
@@ -206,7 +206,7 @@ export function deleteDemoGroupForUser(groupId, userId, userName = 'Một thành
   const memberIds = uniqueIds(group.memberIds || []).filter(id => id !== userId);
   const isOwner = group.ownerId === userId;
   const nextOwnerId = String(replacementId || '').trim();
-  if (isOwner && (!nextOwnerId || !memberIds.includes(nextOwnerId))) {
+  if (isOwner && memberIds.length > 0 && (!nextOwnerId || !memberIds.includes(nextOwnerId))) {
     throw new Error('Quản trị viên phải chọn một thành viên mới trước khi rời nhóm.');
   }
   const ownerId = isOwner ? nextOwnerId : group.ownerId;

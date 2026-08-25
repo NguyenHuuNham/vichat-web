@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-25-08 - Cho phep thanh vien cuoi cung roi nhom
+
+- Thoi gian: 2026-08-25 16:51 (Asia/Saigon)
+- Loai: Sua loi | Web | Mobile | API | Realtime | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; san sang commit va deploy
+- Muc tieu: Cho phep truong nhom roi khi ho la thanh vien active/approved cuoi cung, nhung van bat buoc chuyen quyen ro rang neu nhom con thanh vien khac.
+- Pham vi: ChatUI leave/delete confirmation va modal chuyen quyen, ViChat Mobile delete action, demo group store, Chatmgt participant removal/Tinode cleanup, i18n, contract/unit test va tai lieu; giu nguyen kick thanh vien, owner transfer khi con nguoi, message/read/avatar, tenant va notification.
+- File da thay doi: `src/app/App.jsx`, `src/features/demo/services/demoGroupStore.js`, `src/features/demo/services/demoGroupStore.test.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `mobile/src/screens/chat/ConversationListScreen.tsx`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `package.json`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: UI xac dinh ung vien chuyen quyen tu ca member snapshot va `participantIds`, khong dung ket qua tim kiem de ket luan nhom rong. Neu khong con ung vien, web/mobile xac nhan roi va dong nhom; neu con nguoi, modal va payload `replacement_id` van bat buoc. Backend tu kiem tra active + approved + not-deleted survivors; nhanh thanh vien cuoi cung dong conversation, danh dau moi participant inactive/deleted va don toan bo subscription Tinode voi owner cuoi cung. Demo store cung chi yeu cau replacement khi con member.
+- Quyet dinh ky thuat: Chatmgt la source of truth cho dieu kien nhom con nguoi; pending/inactive/deleted participant khong du dieu kien nhan quyen. Khong chon successor ngau nhien. Nhom rong duoc dong theo cung co che trang thai `CLOSED`/`deleted` cua dissolve, nhung khong phat activity event vi khong con thanh vien nhan su kien.
+- Database/API/cau hinh: Khong migration, schema, endpoint, secret hoac bien moi truong moi. Hop dong DELETE giu tuong thich nguoc; `replacement_id` chi chuyen tu bat buoc vo dieu kien sang bat buoc khi con active approved survivor.
+- Kiem thu: Test dich web/demo dat 43/43; `npm run test:frontend` dat 243/243; Chatmgt auth contract dat 48/48; full backend `python -m unittest discover -s chatservice-main/tests -q` dat 193 test, skip 67 do dependency runtime; `python -m py_compile` dat; `npm run lint` exit 0 voi warning legacy/vendor da co; mobile `typecheck` va ESLint dat. `npm --prefix mobile run test` co 29 test dat nhung mot suite `workspaceService.test.ts` khong khoi dong do Vitest/Rolldown khong parse Flow trong `react-native/index.js`, khong di qua code thay doi nay. `npm run build:production` dat voi canh bao chunk App lon hon 500 KB da co; `git diff --check` dat.
+- Rui ro con lai: Chua UAT production bang tai khoan that cho ca hai nhanh sole-owner va owner con survivor; mobile Vitest con loi cau hinh parser React Native neu can chay du 12 suite.
+- Viec tiep theo: Commit/push, backup Chatmgt PostgreSQL, deploy release bat bien va verify production; sau do hard refresh va UAT hai nhanh rời/chuyển quyền.
+- Commit/PR: Chua tao.
+
 ## 2026-08-25-07 - Dong bo quyen sua thong tin nhom realtime
 
 - Thoi gian: 2026-08-25 15:50 (Asia/Saigon); deploy production 16:15-16:29 (Asia/Saigon)
