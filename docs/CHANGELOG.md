@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Trien khai: Source commit `17214c2` da push `origin/master`; release `/opt/deploy/chat/releases/final-owner-leave-17214c2-20260825-1000` dang la `current`, `previous` tro `/opt/deploy/chat/releases/group-info-permissions-c2742fc-20260825-0915`. Chi recreate `chatmgt` roi `chat` bang `--no-deps --force-recreate --no-build`; khong migration, khong `down`, khong reset database/volume/topic/message/read cursor/avatar. Rollback tags `songhong-production-chat:rollback-before-final-owner-leave-17214c2` va `songhong-production-chatmgt:rollback-before-final-owner-leave-17214c2` giu image cu. Chat PostgreSQL `78a434b49404`, ChatAPI `8476615ad4ac`, Coturn `aa680d35fdc0`, Redis `ceef7df23feb`, account bridge `7d9c0e317719`, webhook `2882b6109176` va Tinode PostgreSQL `9f6e4dcc9c2f` giu nguyen container ID.
 - Rui ro con lai: Chua UAT production bang tai khoan that cho ca hai nhanh sole-owner va owner con survivor; mobile Vitest con loi cau hinh parser React Native neu can chay du 12 suite.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn`; UAT hai nhanh: owner la thanh vien hop le cuoi cung co the roi va nhom bien mat, con owner cua nhom van co survivor thi van bat buoc chon nguoi nhan quyen.
-- Commit/PR: Source commit `17214c2`; deployment follow-up docs commit duoc tao sau khi cap nhat muc nay; khong co PR.
+- Commit/PR: Source commit `17214c2`; deployment follow-up docs commit `1d5e9f9`; khong co PR.
 
 ## 2026-08-25-07 - Dong bo quyen sua thong tin nhom realtime
 
