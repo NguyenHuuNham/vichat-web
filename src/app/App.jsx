@@ -1169,16 +1169,20 @@ function roomParticipantIds(room) {
   return Array.isArray(room?.participantIds) ? room.participantIds : [];
 }
 
-function groupOwnerReplacementMembers(room, accounts, currentUser) {
+function groupActiveMembers(room, accounts) {
   if (!room?.isGroup) return [];
-  const administrator = resolveGroupAdministrator(room, accounts);
+  const participantMembers = roomParticipantIds(room).map(identity => {
+    const account = findAccount(accounts, identity);
+    // Chatmgt snapshots list only active Account members. Do not turn an
+    // unknown/stale participant ID into a selectable replacement owner.
+    if (room.managementSnapshot) return account;
+    return account || { id: identity, name: identity };
+  }).filter(Boolean);
   const members = [
     ...roomMembers(room),
-    ...roomParticipantIds(room).map(identity => (
-      findAccount(accounts, identity) || { id: identity, name: identity }
-    )),
+    ...participantMembers,
   ];
-  return members.reduce((candidates, member) => {
+  return members.reduce((activeMembers, member) => {
     const identity = member?.id || member?.uid || member?.tinodeUid || member?.tinode_uid || member?.name;
     const account = findAccount(accounts, identity) || member;
     const id = String(
@@ -1186,19 +1190,25 @@ function groupOwnerReplacementMembers(room, accounts, currentUser) {
     ).trim();
     if (
       !id
-      || identitiesOverlap(account, currentUser)
-      || identitiesOverlap(account, administrator)
-      || candidates.some(candidate => candidate.id === id || identitiesOverlap(candidate, account))
-    ) return candidates;
-    candidates.push({
+      || activeMembers.some(candidate => candidate.id === id || identitiesOverlap(candidate, account))
+    ) return activeMembers;
+    activeMembers.push({
       ...member,
       ...account,
       id,
       name: account?.name || member?.name || id,
       avatar: account?.avatar || member?.avatar || '',
     });
-    return candidates;
+    return activeMembers;
   }, []);
+}
+
+function groupOwnerReplacementMembers(room, accounts, currentUser) {
+  const administrator = resolveGroupAdministrator(room, accounts);
+  return groupActiveMembers(room, accounts).filter(member => (
+    !identitiesOverlap(member, currentUser)
+    && !identitiesOverlap(member, administrator)
+  ));
 }
 
 function roomFriendEvents(room) {
@@ -7170,9 +7180,8 @@ function App() {
     try {
       let departedTopic = '';
       if (usesManagementData) {
-        await chatManagementService.removeConversationParticipant(
+        await chatManagementService.deleteConversationForCurrentUser(
           targetRoom.managementId || targetRoom.id,
-          actorId,
           { replacementId },
         );
         departedTopic = targetRoom.tinodeTopic || '';
@@ -7241,13 +7250,11 @@ function App() {
   const requestGroupLeave = (targetRoom, mode = 'leave') => {
     if (!targetRoom?.isGroup || isLeavingGroup) return;
     const isOwner = canManageGroupMembers(targetRoom, directoryAccounts, currentUser);
-    const ownerReplacementMembers = isOwner
-      ? groupOwnerReplacementMembers(targetRoom, directoryAccounts, currentUser)
-      : [];
-    const closesEmptyGroup = isOwner && ownerReplacementMembers.length === 0;
+    const closesEmptyGroup = groupActiveMembers(targetRoom, directoryAccounts)
+      .every(member => identitiesOverlap(member, currentUser));
     const soleOwnerEffect = appCopy.t('Bạn là thành viên cuối cùng. Rời nhóm sẽ đóng nhóm này.');
     const confirmText = mode === 'delete'
-      ? `${appCopy.t('Bạn có chắc muốn xóa hội thoại')} "${targetRoom.name}"?\n\n${closesEmptyGroup ? soleOwnerEffect : appCopy.t('Bạn sẽ rời nhóm sau khi chọn trưởng nhóm mới.')}`
+      ? `${appCopy.t('Bạn có chắc muốn xóa hội thoại')} "${targetRoom.name}"?\n\n${closesEmptyGroup ? soleOwnerEffect : (isOwner ? appCopy.t('Bạn sẽ rời nhóm sau khi chọn trưởng nhóm mới.') : appCopy.t('Bạn sẽ rời khỏi nhóm và hội thoại sẽ được gỡ khỏi danh sách của bạn.'))}`
       : `${appCopy.t('Bạn có chắc muốn rời nhóm')} "${targetRoom.name}"?${closesEmptyGroup ? `\n\n${soleOwnerEffect}` : ''}`;
     if (isOwner) {
       if (!window.confirm(confirmText)) return;
@@ -7263,8 +7270,8 @@ function App() {
       setChatError('');
       return;
     }
-    if (window.confirm(appCopy.t(`Bạn có chắc muốn rời nhóm "${targetRoom.name}"?`))) {
-      void executeGroupLeave(targetRoom);
+    if (window.confirm(confirmText)) {
+      void executeGroupLeave(targetRoom, '', '', mode);
     }
   };
 
@@ -7301,7 +7308,7 @@ function App() {
       : null;
     const activeChat = targetRoom;
     if (!targetRoom?.id || targetRoom.isChatbot || isDeletingConversation) return;
-    if (activeChat.isGroup && canManageGroupMembers(activeChat, directoryAccounts, currentUser)) {
+    if (activeChat.isGroup) {
       requestGroupLeave(activeChat, 'delete');
       return;
     }

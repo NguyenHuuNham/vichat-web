@@ -213,7 +213,10 @@ class DirectMessageBlockingSourceContractTests(unittest.TestCase):
         self.assertIn("/api/v1/conversation/direct-block-state", service)
         self.assertIn("/block", service)
         self.assertIn("return getClient().publishMessage(draft", tinode)
-        self.assertIn("if (!isDirect) return topic.publishMessage(draft)", tinode)
+        publish_source = tinode.split("function publishTopicMessage", 1)[1].split(
+            "function publishTopicContent", 1
+        )[0]
+        self.assertNotIn("topic.publishMessage(draft)", publish_source)
 
 
 if __name__ == "__main__":

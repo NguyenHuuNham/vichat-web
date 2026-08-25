@@ -440,6 +440,12 @@ member to Tinode and publishes a `member_approved` system event after the
 membership commit; rejection soft-deletes the pending row. Disabling the flag
 preserves the existing immediate-add flow. Opening or saving group management
 settings and removing another member remain owner-only.
+For active group snapshots, Chatmgt also requires the corresponding
+`ManagementAccount` projection to remain active before exposing a participant
+in `participantIds`, `members`, replacement-owner choices or survivor counts.
+An old active participant row for a disabled/deleted employee is retained only
+as cleanup history; it cannot force the remaining employee to transfer group
+ownership to an account which can no longer sign in.
 Renaming/changing the group avatar is also owner-only
 unless the owner explicitly enables `allowMembersEditInfo`. Chatmgt
 persists the group subject, avatar reference, and whitelisted boolean
@@ -628,15 +634,21 @@ message, presence or call packets.
 `POST /api/v1/conversation/<id>/tinode-prepare` prepares missing UID mappings
 from current Chatmgt membership. Group topic binding and add/remove/leave
 operations verify the exact tenant member set before committing Chatmgt
-metadata. A group owner who leaves while another active, approved member
-survives must send an explicit `replacement_id` for one of those members;
-Chatmgt never chooses a successor randomly and rejects the leave when the
-selection is missing or invalid. When no other active, approved member remains,
-the owner may leave without a replacement. Chatmgt then closes and soft-deletes
-the empty conversation, deactivates/deletes every participant row (including
-stale pending rows), unions the expected and actual Tinode subscriber sets, and
-removes every subscription with the owner last. It does not publish a leave
-activity event because no group member remains to receive it. Add-member requests are authorized by the current Chatmgt
+metadata. ChatUI sends every self-leave and group-delete action through
+`DELETE /api/v1/conversation/<id>/self`; the authenticated session supplies the
+participant identity, so a browser-side Account/Tinode ID mismatch cannot turn
+a valid self-removal into a participant 404. A group owner who leaves while
+another active, approved participant with an active same-tenant Account
+projection survives must send an explicit `replacement_id` for one of those
+members. Chatmgt never chooses a successor randomly and rejects the leave when
+the selection is missing or invalid. When no other eligible employee remains,
+the final active employee may leave regardless of stale role metadata. Chatmgt
+then closes and soft-deletes the empty conversation, deactivates/deletes every
+participant row (including stale inactive-Account and pending rows), unions the
+expected and actual Tinode subscriber sets, and removes every subscription with
+the authenticated cleanup identity last when the topic is bound. It does not
+publish a leave activity event because no group member remains to receive it.
+Add-member requests are authorized by the current Chatmgt
 membership and use the active owner bridge credential server-side; the browser
 does not need to supply an owner token. If a bound group has a stale Tinode
 subscriber snapshot, Chatmgt uses the surviving owner bridge credential to
@@ -871,8 +883,8 @@ history, role-aware actions and a message-to-task shortcut.
 | `POST` | `/api/v1/conversation/<id>/dissolve` | Owner-only group dissolution; remove all active members and close the group |
 | `POST` | `/api/v1/conversation/<id>/participants` | Add same-tenant active employees; any active group member may request this, with owner approval when `approveMembers` is enabled |
 | `PUT` | `/api/v1/conversation/<id>/participants/<participant-id>/approval` | Owner-only approve or reject a pending group member; approval reconciles Tinode |
-| `DELETE` | `/api/v1/conversation/<id>/participants/<participant-id>` | Remove self, or remove another member as the group owner; owner self-removal requires `replacement_id` only while another active, approved member survives, otherwise the empty group is closed |
-| `DELETE` | `/api/v1/conversation/<id>/self` | Remove the current user's conversation membership; the final group owner may omit `replacement_id`, which closes the empty group |
+| `DELETE` | `/api/v1/conversation/<id>/participants/<participant-id>` | Remove another member as the group owner; replacement candidates and survivors must also have an active same-tenant Account projection |
+| `DELETE` | `/api/v1/conversation/<id>/self` | Remove the authenticated user's membership; `replacement_id` is required only for an owner while another eligible employee survives, otherwise the final active employee closes the group |
 | `POST` | `/api/v1/internal/direct-message-policy` | Internal relay-only decision for a Tinode direct publish; never exposed to browser sessions |
 | `GET` | `/api/v1/workspace/items` | List tenant-visible Workspace items and summary |
 | `POST` | `/api/v1/workspace/items` | Create a validated task, announcement, approval, ticket, wiki, event or integration entry |

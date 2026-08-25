@@ -391,6 +391,7 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Tất cả thành viên sẽ bị đưa ra khỏi nhóm và thao tác này không thể khôi phục.': 'All members will be removed from the group and this action cannot be undone.',
   'Bạn có chắc muốn xóa hội thoại': 'Are you sure you want to delete the conversation',
   'Bạn sẽ rời nhóm sau khi chọn trưởng nhóm mới.': 'You will leave the group after choosing a new group owner.',
+  'Bạn sẽ rời khỏi nhóm và hội thoại sẽ được gỡ khỏi danh sách của bạn.': 'You will leave the group and the conversation will be removed from your list.',
   'Cho phép thành viên đổi tên, ảnh và hình nền nhóm': 'Allow members to change the group name, photo and background',
   'Thành viên có thể đổi tên, ảnh đại diện hoặc hình nền nhóm.': 'Members can change the group name, photo or shared background.',
   'Cho phép ghim tin nhắn': 'Allow message pinning',

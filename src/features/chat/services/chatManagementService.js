@@ -822,15 +822,13 @@ export const chatManagementService = {
     return normalizeConversation(payload);
   },
 
-  async deleteConversationForCurrentUser(conversationId) {
+  async deleteConversationForCurrentUser(conversationId, { replacementId = '' } = {}) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
-    const tinodeAuth = activeSession?.tinodeAuth
-      ? await this.getFreshTinodeAuth()
-      : null;
-    const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/self`, {
-      method: 'DELETE',
-      body: JSON.stringify({ tinode_token: tinodeAuth?.token || '' }),
-    });
+    const payload = await membershipApiRequest(
+      `/api/v1/conversation/${encodeURIComponent(conversationId)}/self`,
+      'DELETE',
+      replacementId ? { replacement_id: replacementId } : {},
+    );
     return normalizeConversation(payload);
   },
 

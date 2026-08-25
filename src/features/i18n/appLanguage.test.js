@@ -112,6 +112,10 @@ test('translates the group owner transfer system event', () => {
     translateUiText('Bạn là thành viên cuối cùng. Rời nhóm sẽ đóng nhóm này.', 'en'),
     'You are the final member. Leaving will close this group.',
   );
+  assert.equal(
+    translateUiText('Bạn sẽ rời khỏi nhóm và hội thoại sẽ được gỡ khỏi danh sách của bạn.', 'en'),
+    'You will leave the group and the conversation will be removed from your list.',
+  );
 });
 
 test('localized copy exposes the correct locale and translator', () => {

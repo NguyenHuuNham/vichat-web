@@ -431,8 +431,10 @@ class ChatAuthContractTests(unittest.TestCase):
                 "const handleDeleteConversation", 1
             )[0]
             self.assertIn("replacementId", leave_source)
+            self.assertIn("deleteConversationForCurrentUser", leave_source)
+            self.assertNotIn("removeConversationParticipant(", leave_source)
             self.assertLess(
-                leave_source.index("removeConversationParticipant"),
+                leave_source.index("deleteConversationForCurrentUser"),
                 leave_source.index("sendSystemEvent"),
             )
 
@@ -468,8 +470,10 @@ class ChatAuthContractTests(unittest.TestCase):
         )
 
         self.assertIn("ConversationParticipant.active.is_(True)", remove_source)
-        self.assertIn("active_survivors = ConversationParticipant.query.filter", remove_source)
+        self.assertIn("active_survivors = ConversationParticipant.query.join", remove_source)
+        self.assertIn("ManagementAccount.active.is_(True)", remove_source)
         self.assertIn("and not active_survivors", remove_source)
+        self.assertNotIn('and target.role == "OWNER"\n        and not active_survivors', remove_source)
         self.assertIn("replacement_id = str(request_payload.get(\"replacement_id\") or \"\").strip()", remove_source)
         self.assertIn("OWNER_REPLACEMENT_REQUIRED", remove_source)
         self.assertIn("OWNER_REPLACEMENT_INVALID", remove_source)
@@ -482,6 +486,8 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('"replacementName": replacement_name or replacement.participant_id', remove_source)
         self.assertIn('mode="JRWPASO"', remove_source)
         self.assertIn("tinode_dissolve_topic", remove_source)
+        self.assertIn("topic_owner_account", remove_source)
+        self.assertIn("dissolve_tinode_token", remove_source)
         self.assertIn('item.status = "CLOSED"', remove_source)
         self.assertIn("participant.deleted = True", remove_source)
         self.assertIn('"reason": "last_member_left"', remove_source)
@@ -489,6 +495,22 @@ class ChatAuthContractTests(unittest.TestCase):
             remove_source.index("tinode_accept_topic_owner"),
             remove_source.index("tinode_remove_topic_member"),
         )
+
+    def test_group_snapshots_and_leave_candidates_ignore_inactive_accounts(self):
+        _controller_source, serialize_source = function_source(
+            CONTROLLER_PATH,
+            "_serialize_conversation",
+        )
+        self.assertIn("ManagementAccount.active.is_(True)", serialize_source)
+        self.assertIn("if str(participant.participant_id) in accounts_by_id", serialize_source)
+
+        if CHAT_APP_PATH.exists():
+            app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
+            active_members_source = app_source.split("function groupActiveMembers", 1)[1].split(
+                "function groupOwnerReplacementMembers", 1
+            )[0]
+            self.assertIn("room.managementSnapshot", active_members_source)
+            self.assertIn("if (room.managementSnapshot) return account;", active_members_source)
 
     def test_group_dissolve_is_owner_only_and_removes_every_tinode_subscription(self):
         controller_source, dissolve_source = function_source(

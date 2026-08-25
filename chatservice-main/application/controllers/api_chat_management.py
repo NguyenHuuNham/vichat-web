@@ -1245,6 +1245,15 @@ def _serialize_conversation(item, viewer_id):
         ManagementAccount.active.is_(True),
     ).all() if participant_ids else []
     accounts_by_id = {str(account.id): account for account in accounts}
+    if is_group:
+        # An active participant row whose Account projection is disabled is not
+        # a usable group member or replacement owner.
+        participants = [
+            participant
+            for participant in participants
+            if str(participant.participant_id) in accounts_by_id
+        ]
+        participant_ids = [str(participant.participant_id) for participant in participants]
     viewer_account = _account_by_id(item.tenant_id, viewer_id)
     owner = next((participant for participant in participants if participant.role == "OWNER"), None)
     viewer_membership = next(
@@ -5119,17 +5128,23 @@ async def conversation_participant_remove(request, conversation_id, participant_
     request_payload = request.json if isinstance(request.json, dict) else {}
     active_survivors = []
     if is_group:
-        active_survivors = ConversationParticipant.query.filter(
+        active_survivors = ConversationParticipant.query.join(
+            ManagementAccount,
+            and_(
+                ManagementAccount.tenant_id == ConversationParticipant.tenant_id,
+                ManagementAccount.id == ConversationParticipant.participant_id,
+            ),
+        ).filter(
             ConversationParticipant.tenant_id == tenant_id,
             ConversationParticipant.conversation_id == item.id,
             ConversationParticipant.participant_id != participant_id,
             ConversationParticipant.active.is_(True),
             ConversationParticipant.approval_status == "APPROVED",
             ConversationParticipant.deleted.is_(False),
+            ManagementAccount.active.is_(True),
         ).all()
     close_after_leave = bool(
         is_group
-        and target.role == "OWNER"
         and not active_survivors
     )
     if not is_group:
@@ -5170,13 +5185,20 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 "error_code": "OWNER_REPLACEMENT_INVALID",
                 "error_message": "The replacement owner must be another active group member.",
             }, status=409)
-        replacement = ConversationParticipant.query.filter(
+        replacement = ConversationParticipant.query.join(
+            ManagementAccount,
+            and_(
+                ManagementAccount.tenant_id == ConversationParticipant.tenant_id,
+                ManagementAccount.id == ConversationParticipant.participant_id,
+            ),
+        ).filter(
             ConversationParticipant.tenant_id == tenant_id,
             ConversationParticipant.conversation_id == item.id,
             ConversationParticipant.participant_id == replacement_id,
             ConversationParticipant.active.is_(True),
             ConversationParticipant.approval_status == "APPROVED",
             ConversationParticipant.deleted.is_(False),
+            ManagementAccount.active.is_(True),
         ).first()
         if replacement is None:
             return json({
@@ -5185,13 +5207,20 @@ async def conversation_participant_remove(request, conversation_id, participant_
             }, status=409)
     event_sender_participant = replacement
     if is_group and participant_id == user_id and event_sender_participant is None and not close_after_leave:
-        event_sender_participant = ConversationParticipant.query.filter(
+        event_sender_participant = ConversationParticipant.query.join(
+            ManagementAccount,
+            and_(
+                ManagementAccount.tenant_id == ConversationParticipant.tenant_id,
+                ManagementAccount.id == ConversationParticipant.participant_id,
+            ),
+        ).filter(
             ConversationParticipant.tenant_id == tenant_id,
             ConversationParticipant.conversation_id == item.id,
             ConversationParticipant.participant_id != participant_id,
             ConversationParticipant.active.is_(True),
             ConversationParticipant.approval_status == "APPROVED",
             ConversationParticipant.deleted.is_(False),
+            ManagementAccount.active.is_(True),
         ).order_by(
             ConversationParticipant.joined_at.asc().nullslast(),
             ConversationParticipant.participant_id.asc(),
@@ -5208,6 +5237,8 @@ async def conversation_participant_remove(request, conversation_id, participant_
         replacement_tinode_token = ""
         owner_transfer_accepted = False
         tinode_target_removed = False
+        dissolve_tinode_token = ""
+        dissolve_tinode_uid = ""
 
         async def rollback_tinode_owner_transfer():
             if not replacement_uid or actor_account is None or not tinode_token:
@@ -5272,6 +5303,8 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 return json({"error_code": "TINODE_ACCOUNT_UNPREPARED", "error_message": "The target Tinode account is not prepared."}, status=409)
             if current_user.get("auth_method") == "account_sso":
                 await _validated_account_identity(request, actor_account)
+            dissolve_tinode_token = tinode_token
+            dissolve_tinode_uid = str(actor_account.tinode_uid or "").strip()
             if is_group and event_sender_participant is not None:
                 event_sender_account = _account_by_id(tenant_id, event_sender_participant.participant_id)
                 if event_sender_account is not None:
@@ -5299,21 +5332,45 @@ async def conversation_participant_remove(request, conversation_id, participant_
                     if not replacement_uid or not replacement_tinode_token:
                         raise AuthError("Tinode could not prepare the replacement owner.", 502)
             if close_after_leave:
-                active_participants, active_accounts = _active_conversation_accounts(item)
+                topic_owner = ConversationParticipant.query.filter(
+                    ConversationParticipant.tenant_id == tenant_id,
+                    ConversationParticipant.conversation_id == item.id,
+                    ConversationParticipant.role == "OWNER",
+                    ConversationParticipant.approval_status == "APPROVED",
+                    ConversationParticipant.deleted.is_(False),
+                ).order_by(
+                    ConversationParticipant.active.desc(),
+                    ConversationParticipant.joined_at.asc().nullslast(),
+                ).first()
+                if topic_owner is not None and topic_owner.participant_id != participant_id:
+                    topic_owner_account = ManagementAccount.query.filter(
+                        ManagementAccount.tenant_id == tenant_id,
+                        ManagementAccount.id == topic_owner.participant_id,
+                    ).first()
+                    if topic_owner_account is not None and topic_owner_account.tinode_uid:
+                        topic_owner_auth = await tinode_sso_login(
+                            _tinode_account_identity(topic_owner_account),
+                            topic_owner_account.tinode_username,
+                            topic_owner_account.tinode_uid,
+                        )
+                        topic_owner_token = str(topic_owner_auth.get("token") or "").strip()
+                        if topic_owner_token:
+                            dissolve_tinode_token = topic_owner_token
+                            dissolve_tinode_uid = str(topic_owner_account.tinode_uid)
                 expected_member_uids = _expected_tinode_member_uids(
                     item,
-                    active_participants,
-                    active_accounts,
+                    [target],
+                    {participant_id: actor_account},
                 )
                 actual_member_uids = await tinode_topic_member_uids(
-                    tinode_token,
-                    actor_account.tinode_uid,
+                    dissolve_tinode_token,
+                    dissolve_tinode_uid,
                     item.tinode_topic,
                 )
                 tinode_dissolve_member_uids = list(dict.fromkeys([
                     *actual_member_uids,
                     *expected_member_uids,
-                    actor_account.tinode_uid,
+                    dissolve_tinode_uid,
                 ]))
 
         target.active = False
@@ -5325,8 +5382,8 @@ async def conversation_participant_remove(request, conversation_id, participant_
 
         if item.tinode_topic and close_after_leave:
             await tinode_dissolve_topic(
-                tinode_token,
-                actor_account.tinode_uid,
+                dissolve_tinode_token,
+                dissolve_tinode_uid,
                 item.tinode_topic,
                 tinode_dissolve_member_uids,
             )

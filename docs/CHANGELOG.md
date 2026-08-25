@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-26-01 - Cho phep thanh vien hop le cuoi cung roi hoac xoa nhom
+
+- Thoi gian: 2026-08-26 00:19-00:38 (Asia/Saigon)
+- Loai: Sua loi | Web | API | Realtime | Kiem thu | Tai lieu
+- Trang thai: Da kiem thu local; cho commit va deploy
+- Muc tieu: Bao dam khi nhom chi con mot tai khoan dang hoat dong, nguoi do luon co the roi nhom hoac xoa hoi thoai khoi danh sach ma khong bi participant cu cua tai khoan da vo hieu hoa ep chuyen quyen.
+- Pham vi: ChatUI web leave/delete group, Chatmgt serializer va participant-removal policy, Tinode cleanup cho nhom rong, i18n, contract test va tai lieu; giu nguyen direct chat, message, read cursor, avatar, notification, spam cooldown, mobile va database schema.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `chatservice-main/tests/test_direct_message_blocking.py`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`.
+- Noi dung: ChatUI gom ca nut roi nhom va xoa hoi thoai nhom vao mot luong `/self`, khong dua ID participant tu browser vao URL; snapshot quan ly khong tao ung vien chuyen quyen tu ID khong con Account active. Chatmgt chi tinh survivor/replacement khi ca participant va Account cung active, va dong nhom khi khong con tai khoan hop le khac ke ca khi row owner cu van con.
+- Quyet dinh ky thuat: Khong xoa tu dong row lich su khi dong bo Account. Cac row cu chi bi danh dau inactive/deleted trong thao tac roi nhom ro rang; neu topic Tinode da bind, backend uu tien credential owner topic con dung de don subscription truoc khi commit closure. Cap nhat source-contract direct blocking da cu de chap nhan client-level Tinode publish promise hien hanh; khong doi runtime direct block.
+- Database/API/cau hinh: Khong migration, schema, endpoint hay bien moi truong moi; mo rong payload tuy chon `replacement_id` tren route `/self` da co.
+- Kiem thu: Truy van production chi doc xac nhan 4 nhom dang co `raw_active=2` nhung chi `valid_active=1`, tat ca 4 chua bind Tinode; targeted frontend/i18n dat 63/63; `npm run test:frontend` dat 278/278; Chatmgt auth contract dat 49/49; full backend dat 214 test, skip 79 theo dependency/runtime; `python -m py_compile ...` dat; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` dat voi entry `index-D8LUh1hj.js`, App `App-CPkFsmZs.js`, CSS `index-vAv_DGKY.css` va canh bao chunk App lon hon 500 KB co san; `git diff --check` va `git diff -- mobile` sach.
+- Rui ro con lai: Browser skill da doc nhung phien khong expose Node browser runtime de tu dong UAT tai khoan that; can UAT sau deploy tren mot trong 4 nhom co participant Account inactive. Buoc chan doan khong sua du lieu production.
+- Viec tiep theo: Commit/push, deploy ChatUI + Chatmgt, xac minh health/log/bundle va UAT thu cong luong nhom con mot tai khoan.
+- Commit/PR: Chua tao.
+
 ## 2026-08-25-13 - Chong spam gui lien tuc trong nhom tren web
 
 - Thoi gian: 2026-08-25 23:31 - 2026-08-26 00:15 (Asia/Saigon); deploy production 00:12-00:15
