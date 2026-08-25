@@ -84,6 +84,7 @@ const privateGroupTopics = new Set();
 const callInviteKeys = new Set();
 const conversationEmitTimers = new Map();
 const topicReceiptCursors = new Map();
+const groupSettingsSnapshots = new Map();
 // A local read floor protects the UI from an older Tinode snapshot arriving
 // after markRead. The server remains the durable source of the receipt.
 const topicReadFloors = new Map();
@@ -496,6 +497,32 @@ function conversationBackgroundFromAux(topic) {
   }
 }
 
+function groupSettingsFromTopic(topic) {
+  if (!topic?.isGroupType?.() && !String(topic?.name || '').startsWith('grp')) return null;
+  return topic.public?.vichat?.groupSettings
+    || topic.public?.vichat?.group_settings
+    || topic.public?.groupSettings
+    || topic.public?.group_settings
+    || null;
+}
+
+function emitGroupSettingsChange(topic, tinode) {
+  if (!topic || tinode !== client || !allowedConversationTopics.has(topic.name)) return;
+  const rawSettings = groupSettingsFromTopic(topic);
+  const settings = normalizeGroupSettings(rawSettings);
+  const snapshot = JSON.stringify(settings);
+  const previous = groupSettingsSnapshots.get(topic.name);
+  groupSettingsSnapshots.set(topic.name, snapshot);
+  // The first metadata packet establishes a baseline; only later changes are
+  // realtime permission updates for an already-open conversation.
+  if (previous === undefined || previous === snapshot) return;
+  listeners.forEach(listener => listener({
+    type: 'group-settings',
+    topic: topic.name,
+    groupSettings: settings,
+  }));
+}
+
 function formatSystemEvent(event, viewerId) {
   const actorName = event.actorName || event.actorId || 'Một thành viên';
   const targets = event.targets || [];
@@ -539,11 +566,25 @@ function formatSystemEvent(event, viewerId) {
   if (event.action === 'group_dissolved') {
     return event.actorId === viewerId ? 'Bạn đã giải tán nhóm' : `${actorName} đã giải tán nhóm`;
   }
+  if (event.action === 'group_name_changed') {
+    const nextName = String(event.newName || event.name || '').trim();
+    const actorText = event.actorId === viewerId ? 'Bạn đã' : `${actorName} đã`;
+    return nextName ? `${actorText} đổi tên nhóm thành “${nextName}”` : `${actorText} đổi tên nhóm`;
+  }
+  if (event.action === 'group_avatar_changed') {
+    const actorText = event.actorId === viewerId ? 'Bạn đã' : `${actorName} đã`;
+    return `${actorText} đổi ảnh đại diện nhóm`;
+  }
+  if (event.action === 'group_settings_changed') {
+    const actorText = event.actorId === viewerId ? 'Bạn đã' : `${actorName} đã`;
+    return `${actorText} cập nhật quyền của nhóm`;
+  }
   if (event.action === 'conversation_background_changed') {
     const actorText = event.actorId === viewerId ? 'Bạn đã' : `${actorName} đã`;
+    const target = event.isGroup ? 'nhóm' : 'cuộc trò chuyện';
     return event.backgroundUrl
-      ? `${actorText} đổi hình nền cuộc trò chuyện`
-      : `${actorText} xóa hình nền cuộc trò chuyện`;
+      ? `${actorText} đổi hình nền ${target}`
+      : `${actorText} xóa hình nền ${target}`;
   }
   if (event.action === 'poll_vote') {
     const actorText = event.actorId === viewerId ? 'Bạn' : actorName;
@@ -1361,7 +1402,10 @@ function wireTopic(topic) {
     emitCallInvite(topic, data, topicClient);
     emitConversation(topic, topicClient);
   };
-  topic.onMetaDesc = () => emitConversation(topic, topicClient);
+  topic.onMetaDesc = () => {
+    emitGroupSettingsChange(topic, topicClient);
+    emitConversation(topic, topicClient);
+  };
   topic.onMetaSub = () => emitConversation(topic, topicClient);
   topic.onSubsUpdated = () => emitConversation(topic, topicClient);
   topic.onAuxUpdated = () => emitConversation(topic, topicClient);
@@ -1553,6 +1597,7 @@ async function subscribeTopic(topicName, {
     }
     await fullHistoryRequests.get(topicName);
   }
+  emitGroupSettingsChange(topic, tinode);
   if (emit) emitConversation(topic);
   return topic;
 }
@@ -1611,6 +1656,7 @@ function resetSessionState({ clearEventListeners = false } = {}) {
   conversationEmitTimers.clear();
   topicReceiptCursors.clear();
   topicReadFloors.clear();
+  groupSettingsSnapshots.clear();
   conversationListRequest = null;
   contactsEventQueued = false;
   allowedConversationTopics = new Set();
@@ -1994,7 +2040,11 @@ export const tinodeClient = {
   },
 
   setAllowedConversationTopics(topicNames = []) {
-    allowedConversationTopics = new Set((topicNames || []).filter(Boolean).map(String));
+    const nextAllowedTopics = new Set((topicNames || []).filter(Boolean).map(String));
+    groupSettingsSnapshots.forEach((_, topicName) => {
+      if (!nextAllowedTopics.has(topicName)) groupSettingsSnapshots.delete(topicName);
+    });
+    allowedConversationTopics = nextAllowedTopics;
     conversationListRequest = null;
   },
 
@@ -2004,7 +2054,11 @@ export const tinodeClient = {
   },
 
   disallowConversationTopic(topicName) {
-    if (topicName) allowedConversationTopics.delete(String(topicName));
+    if (topicName) {
+      const normalizedTopicName = String(topicName);
+      allowedConversationTopics.delete(normalizedTopicName);
+      groupSettingsSnapshots.delete(normalizedTopicName);
+    }
     conversationListRequest = null;
   },
 
@@ -2180,6 +2234,7 @@ export const tinodeClient = {
       };
     }
     await topic.setMeta({ desc: { public: publicMetadata } });
+    if (settings !== undefined) emitGroupSettingsChange(topic, getClient());
     emitConversation(topic);
     return toConversation(topic, getClient());
   },
@@ -2346,6 +2401,7 @@ export const tinodeClient = {
       scope: CONVERSATION_BACKGROUND_SCOPES.SHARED,
       actorId,
       actorName,
+      isGroup: topic.isGroupType?.() || topic.name?.startsWith('grp'),
       backgroundId: normalized?.id || '',
       backgroundUrl: normalized?.url || '',
       backgroundLabel: normalized?.label || '',
@@ -2359,7 +2415,7 @@ export const tinodeClient = {
         url: tinodeMediaPath(normalized.url) || normalized.url,
       }
       : null;
-    const isGroupTopic = topic.isGroupType?.() || topic.name?.startsWith('grp');
+    const isGroupTopic = event.isGroup;
     if (isGroupTopic) {
       const publicMetadata = { ...(topic.public || {}) };
       const publicVichat = {
@@ -2629,6 +2685,7 @@ export const tinodeClient = {
     if (topic) await topic.delTopic(true);
     tinode.cacheRemTopic?.(topicName);
     allowedConversationTopics.delete(String(topicName));
+    groupSettingsSnapshots.delete(String(topicName));
     topicSubscriptionRequests.delete(topicName);
     topicReadFloors.delete(String(topicName));
     fullHistoryRequests.delete(topicName);

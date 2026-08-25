@@ -160,6 +160,8 @@ import { createLocalizedCopy } from '../features/i18n/appLanguage';
 import { workspacePanelFromPath, workspacePathForPanel } from '../features/workspace/services/workspaceRouting';
 import {
   DEFAULT_GROUP_SETTINGS,
+  GROUP_INFO_PERMISSION_MESSAGE,
+  groupInfoErrorMessage,
   groupSettingEnabled,
   normalizeGroupSettings,
 } from '../features/chat/services/groupSettings';
@@ -391,7 +393,7 @@ const HISTORY_SEARCH_TYPE_OPTIONS = Object.freeze([
 ]);
 
 const GROUP_MANAGEMENT_OPTIONS = Object.freeze([
-  Object.freeze({ key: 'allowMembersEditInfo', icon: 'fa-pen-to-square', label: 'Cho phép thành viên đổi tên/ảnh nhóm', description: 'Thành viên có thể đổi tên hoặc ảnh nhóm.' }),
+  Object.freeze({ key: 'allowMembersEditInfo', icon: 'fa-pen-to-square', label: 'Cho phép thành viên đổi tên, ảnh và hình nền nhóm', description: 'Thành viên có thể đổi tên, ảnh đại diện hoặc hình nền nhóm.' }),
   Object.freeze({ key: 'allowPinMessages', icon: 'fa-thumbtack', label: 'Cho phép ghim tin nhắn', description: 'Thành viên được ghim tin nhắn để xem lại nhanh.' }),
   Object.freeze({ key: 'allowMessages', icon: 'fa-message', label: 'Cho phép gửi tin nhắn', description: 'Thành viên được gửi tin nhắn và tệp.' }),
   Object.freeze({ key: 'allowPolls', icon: 'fa-square-poll-vertical', label: 'Cho phép thành viên tạo bình chọn', description: 'Thành viên được tạo bình chọn trong nhóm.' }),
@@ -1028,11 +1030,26 @@ function personalizeGroupSystemText(message, accounts, viewerId) {
       ? 'Bạn đã giải tán nhóm'
       : `${actorName} đã giải tán nhóm`;
   }
+  if (message.action === 'group_name_changed') {
+    const event = message.systemEvent || message;
+    const nextName = String(event.newName || event.name || '').trim();
+    const actorText = message.senderId === viewerId ? 'Bạn đã' : `${actorName} đã`;
+    return nextName ? `${actorText} đổi tên nhóm thành “${nextName}”` : `${actorText} đổi tên nhóm`;
+  }
+  if (message.action === 'group_avatar_changed') {
+    const actorText = message.senderId === viewerId ? 'Bạn đã' : `${actorName} đã`;
+    return `${actorText} đổi ảnh đại diện nhóm`;
+  }
+  if (message.action === 'group_settings_changed') {
+    const actorText = message.senderId === viewerId ? 'Bạn đã' : `${actorName} đã`;
+    return `${actorText} cập nhật quyền của nhóm`;
+  }
   if (message.action === 'conversation_background_changed') {
     const actorText = message.senderId === viewerId ? 'Bạn đã' : `${actorName} đã`;
+    const isGroupBackground = Boolean(message.isGroup || message.systemEvent?.isGroup);
     return message.backgroundUrl || message.systemEvent?.backgroundUrl
-      ? `${actorText} đổi hình nền cuộc trò chuyện`
-      : `${actorText} xóa hình nền cuộc trò chuyện`;
+      ? `${actorText} đổi hình nền ${isGroupBackground ? 'nhóm' : 'cuộc trò chuyện'}`
+      : `${actorText} xóa hình nền ${isGroupBackground ? 'nhóm' : 'cuộc trò chuyện'}`;
   }
   if (message.action === 'poll_vote') {
     const actorText = message.senderId === viewerId ? 'Bạn' : actorName;
@@ -2770,6 +2787,7 @@ function App() {
   const avatarOverridesRef = useRef(new Map());
   const groupAvatarSyncRef = useRef(new Map());
   const groupAvatarRefreshRef = useRef(new Map());
+  const groupNameRefreshRef = useRef(new Set());
   const messageSearchRequestRef = useRef(0);
   const typingNoticeAtRef = useRef(new Map());
   const typingClearTimersRef = useRef(new Map());
@@ -3259,6 +3277,23 @@ function App() {
     : [];
   const canEditActiveGroupInfo = activeChat.isGroup
     && (isActiveGroupAdmin || groupSettingEnabled(activeGroupSettings, 'allowMembersEditInfo'));
+  useEffect(() => {
+    if (!activeChat.isGroup || canEditActiveGroupInfo) return;
+    setIsGroupRenameOpen(false);
+    if (
+      isConversationBackgroundOpen
+      && conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.SHARED
+    ) {
+      setConversationBackgroundScope(CONVERSATION_BACKGROUND_SCOPES.LOCAL);
+      setConversationBackgroundNotice(GROUP_INFO_PERMISSION_MESSAGE);
+    }
+  }, [
+    activeChat.id,
+    activeChat.isGroup,
+    canEditActiveGroupInfo,
+    conversationBackgroundScope,
+    isConversationBackgroundOpen,
+  ]);
   const canSendInActiveGroup = !activeChat.isGroup
     || isActiveGroupAdmin
     || groupSettingEnabled(activeGroupSettings, 'allowMessages');
@@ -4547,6 +4582,22 @@ function App() {
         applyPresenceSnapshot(event.snapshot || {});
         return;
       }
+      if (event.type === 'group-settings' && event.topic) {
+        const nextSettings = normalizeGroupSettings(event.groupSettings);
+        setConversations(previous => {
+          let changed = false;
+          const next = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
+            const roomTopic = room.tinodeTopic || room.topic?.name || room.id;
+            if (room.accountSession !== accountSession || roomTopic !== event.topic || !room.isGroup) return [id, room];
+            if (JSON.stringify(normalizeGroupSettings(room.groupSettings)) === JSON.stringify(nextSettings)) return [id, room];
+            changed = true;
+            return [id, { ...room, groupSettings: nextSettings }];
+          }));
+          if (changed) conversationsRef.current = next;
+          return changed ? next : previous;
+        });
+        return;
+      }
       if (event.type === 'receipt') {
         const receiptSequence = Number(event.seq);
         if (!event.topic || !Number.isFinite(receiptSequence) || receiptSequence <= 0) return;
@@ -4771,6 +4822,56 @@ function App() {
           return;
         }
         const currentRoom = safeNormalizeConversationForRender(currentRooms[stateId], stateId);
+        const latestConversationActivity = roomMessages(conversation).at(-1);
+        const latestGroupNameActivity = latestConversationActivity?.type === 'system'
+          && latestConversationActivity.action === 'group_name_changed'
+          ? latestConversationActivity
+          : null;
+        const latestGroupAvatarActivity = latestConversationActivity?.type === 'system'
+          && latestConversationActivity.action === 'group_avatar_changed'
+          ? latestConversationActivity
+          : null;
+        if (
+          currentRoom?.isGroup
+          && latestGroupAvatarActivity
+          && conversation.avatarUrl
+          && conversation.avatarUrl !== currentRoom.avatarUrl
+        ) {
+          const avatarEvent = latestGroupAvatarActivity.systemEvent || latestGroupAvatarActivity;
+          const announcedAvatar = String(avatarEvent.avatarUrl || '').trim();
+          if (!announcedAvatar || announcedAvatar === conversation.avatarUrl) {
+            groupAvatarRefreshRef.current.delete(
+              `${currentRoom.managementId || currentRoom.id}:${conversation.avatarUrl}`,
+            );
+          }
+        }
+        if (
+          currentRoom?.isGroup
+          && latestGroupNameActivity
+          && chatManagementService.remote
+          && isManagementConversationId(currentRoom.managementId || currentRoom.id)
+        ) {
+          const activityEvent = latestGroupNameActivity.systemEvent || latestGroupNameActivity;
+          const activityKey = [
+            conversation.id,
+            latestGroupNameActivity.seq
+              || latestGroupNameActivity.id
+              || latestGroupNameActivity.createdAt,
+          ].join(':');
+          const renamedTo = String(activityEvent.newName || activityEvent.name || '').trim();
+          const metadataDiffers = Boolean(
+            conversation.name
+            && conversation.name !== currentRoom.name
+            && (!renamedTo || renamedTo === conversation.name)
+          );
+          if (metadataDiffers && !groupNameRefreshRef.current.has(activityKey)) {
+            groupNameRefreshRef.current.add(activityKey);
+            refreshManagementConversations(accountSession).catch(error => {
+              groupNameRefreshRef.current.delete(activityKey);
+              console.warn('ViChat: group name activity refresh failed', error);
+            });
+          }
+        }
         void reopenDirectConversation(stateId, currentRoom, conversation);
         // Merge the read cursor before deriving notifications or boundaries.
         // A delayed Tinode snapshot must not make an already-read message look
@@ -4980,6 +5081,7 @@ function App() {
     avatarOverridesRef.current.clear();
     groupAvatarSyncRef.current.clear();
     groupAvatarRefreshRef.current.clear();
+    groupNameRefreshRef.current.clear();
     setConversationMenu(null);
     setWorkspaceResults([]);
     setEnterpriseTaskSeed(null);
@@ -5409,6 +5511,7 @@ function App() {
     tinodeSessionRequestRef.current = null;
     deletedConversationIdsRef.current.clear();
     groupAvatarSyncRef.current.clear();
+    groupNameRefreshRef.current.clear();
     notificationBaselineRef.current.clear();
     typingNoticeAtRef.current.clear();
     typingClearTimersRef.current.forEach(timer => clearTimeout(timer));
@@ -6434,7 +6537,7 @@ function App() {
 
   const openGroupRename = () => {
     if (!canEditActiveGroupInfo) {
-      setChatError('Bạn chưa được cấp quyền đổi tên nhóm.');
+      setChatError(GROUP_INFO_PERMISSION_MESSAGE);
       return;
     }
     setGroupRenameValue(activeChat.name || '');
@@ -6549,7 +6652,7 @@ function App() {
     if (!nextName || isRenamingGroup || !activeChat.isGroup) return;
     if (!canEditActiveGroupInfo) {
       setIsGroupRenameOpen(false);
-      setChatError('Bạn chưa được cấp quyền đổi tên nhóm.');
+      setChatError(GROUP_INFO_PERMISSION_MESSAGE);
       return;
     }
     setIsRenamingGroup(true);
@@ -6573,6 +6676,42 @@ function App() {
         });
         updatedRoom = demoGroupToConversation(group, directoryAccounts, viewerId);
       }
+      const actorId = chatMode === 'tinode' ? (tinodeClient.currentUserId || viewerId) : viewerId;
+      const activityEvent = {
+        action: 'group_name_changed',
+        actorId,
+        actorName: currentUser?.name || 'Một thành viên',
+        previousName: activeChat.name || '',
+        newName: nextName,
+        updatedAt: new Date().toISOString(),
+      };
+      if (chatMode === 'tinode') {
+        const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
+        await tinodeClient.sendSystemEvent(topicName, activityEvent).catch(error => {
+          console.warn('ViChat: group rename activity announcement failed', error);
+        });
+        const realtimeRoom = await tinodeClient.openConversation(topicName).catch(() => null);
+        if (realtimeRoom) {
+          updatedRoom = {
+            ...updatedRoom,
+            ...normalizeTinodeConversation(realtimeRoom),
+            messages: roomMessages(realtimeRoom),
+          };
+        }
+      } else if (chatMode === 'demo') {
+        const systemMessage = {
+          id: `system-group-name-${Date.now()}`,
+          type: 'system',
+          ...activityEvent,
+          senderId: actorId,
+          senderName: currentUser?.name || 'Một thành viên',
+          text: personalizeGroupSystemText({ ...activityEvent, type: 'system' }, directoryAccounts, viewerId),
+          time: getTimeString(),
+          createdAt: new Date().toISOString(),
+        };
+        const groupWithEvent = appendDemoGroupMessage(activeChat.id, systemMessage);
+        updatedRoom = demoGroupToConversation(groupWithEvent, directoryAccounts, viewerId);
+      }
       updateActiveGroupRoom({
         ...updatedRoom,
         name: nextName,
@@ -6580,7 +6719,7 @@ function App() {
       });
       setIsGroupRenameOpen(false);
     } catch (error) {
-      setChatError(error?.message || 'Không thể cập nhật tên nhóm.');
+      setChatError(groupInfoErrorMessage(error, 'Không thể cập nhật tên nhóm.'));
     } finally {
       setIsRenamingGroup(false);
     }
@@ -6595,6 +6734,13 @@ function App() {
       return;
     }
     const nextSettings = normalizeGroupSettings(groupManagementDraft);
+    const changedSettings = GROUP_MANAGEMENT_OPTIONS
+      .filter(option => activeGroupSettings[option.key] !== nextSettings[option.key])
+      .map(option => ({
+        key: option.key,
+        enabled: nextSettings[option.key],
+        label: option.label,
+      }));
     setIsUpdatingGroupManagement(true);
     setGroupManagementNotice('');
     setChatError('');
@@ -6617,11 +6763,49 @@ function App() {
         });
         updatedRoom = demoGroupToConversation(group, directoryAccounts, viewerId);
       }
+      if (changedSettings.length > 0) {
+        const actorId = chatMode === 'tinode' ? (tinodeClient.currentUserId || viewerId) : viewerId;
+        const activityEvent = {
+          action: 'group_settings_changed',
+          actorId,
+          actorName: currentUser?.name || 'Quản trị viên',
+          changes: changedSettings,
+          groupSettings: nextSettings,
+          updatedAt: new Date().toISOString(),
+        };
+        if (chatMode === 'tinode') {
+          const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
+          await tinodeClient.sendSystemEvent(topicName, activityEvent).catch(error => {
+            console.warn('ViChat: group settings activity announcement failed', error);
+          });
+          const realtimeRoom = await tinodeClient.openConversation(topicName).catch(() => null);
+          if (realtimeRoom) {
+            updatedRoom = {
+              ...normalizeTinodeConversation(realtimeRoom),
+              ...updatedRoom,
+              messages: roomMessages(realtimeRoom),
+            };
+          }
+        } else if (chatMode === 'demo') {
+          const systemMessage = {
+            id: `system-group-settings-${Date.now()}`,
+            type: 'system',
+            ...activityEvent,
+            senderId: actorId,
+            senderName: currentUser?.name || 'Quản trị viên',
+            text: personalizeGroupSystemText({ ...activityEvent, type: 'system' }, directoryAccounts, viewerId),
+            time: getTimeString(),
+            createdAt: activityEvent.updatedAt,
+          };
+          const groupWithEvent = appendDemoGroupMessage(activeChat.id, systemMessage);
+          updatedRoom = demoGroupToConversation(groupWithEvent, directoryAccounts, viewerId);
+        }
+      }
       setGroupManagementDraft(nextSettings);
       updateActiveGroupRoom({ ...updatedRoom, groupSettings: nextSettings });
       setGroupManagementNotice('Đã lưu thiết lập quản lý nhóm.');
     } catch (error) {
-      setChatError(error?.message || 'Không thể lưu thiết lập quản lý nhóm.');
+      setChatError(groupInfoErrorMessage(error, 'Không thể lưu thiết lập quản lý nhóm.'));
     } finally {
       setIsUpdatingGroupManagement(false);
     }
@@ -7124,14 +7308,33 @@ function App() {
 
   const openConversationBackgroundPicker = () => {
     if (!activeChat || activeChat.id === 'empty' || activeChat.isChatbot) return;
-    const scope = chatMode === 'demo'
+    const preferredScope = chatMode === 'demo'
       ? CONVERSATION_BACKGROUND_SCOPES.LOCAL
       : activeBackgroundPreference?.scope
       || (activeChat.isGroup ? CONVERSATION_BACKGROUND_SCOPES.LOCAL : CONVERSATION_BACKGROUND_SCOPES.SHARED);
+    const scope = activeChat.isGroup
+      && !canEditActiveGroupInfo
+      && preferredScope === CONVERSATION_BACKGROUND_SCOPES.SHARED
+      ? CONVERSATION_BACKGROUND_SCOPES.LOCAL
+      : preferredScope;
     setConversationBackgroundScope(scope);
     setConversationBackgroundSelection(activeConversationBackground || null);
     setConversationBackgroundNotice('');
     setIsConversationBackgroundOpen(true);
+  };
+
+  const selectConversationBackgroundScope = scope => {
+    if (
+      scope === CONVERSATION_BACKGROUND_SCOPES.SHARED
+      && activeChat.isGroup
+      && !canEditActiveGroupInfo
+    ) {
+      setConversationBackgroundScope(CONVERSATION_BACKGROUND_SCOPES.LOCAL);
+      setConversationBackgroundNotice(GROUP_INFO_PERMISSION_MESSAGE);
+      return;
+    }
+    setConversationBackgroundScope(scope);
+    setConversationBackgroundNotice('');
   };
 
   const selectConversationBackgroundPreset = preset => {
@@ -7176,12 +7379,18 @@ function App() {
     event.preventDefault();
     if (isSavingConversationBackground || !activeChat || activeChat.id === 'empty' || activeChat.isChatbot) return;
     const selected = conversationBackgroundSelection;
+    const requestedSharedScope = chatMode !== 'demo'
+      && conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.SHARED;
+    if (requestedSharedScope && activeChat.isGroup && !canEditActiveGroupInfo) {
+      setConversationBackgroundScope(CONVERSATION_BACKGROUND_SCOPES.LOCAL);
+      setConversationBackgroundNotice(GROUP_INFO_PERMISSION_MESSAGE);
+      return;
+    }
     setIsSavingConversationBackground(true);
     setConversationBackgroundNotice('');
     setChatError('');
     try {
-      const sharedScope = chatMode !== 'demo'
-        && conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.SHARED;
+      const sharedScope = requestedSharedScope;
       const selectedUpload = selected?.file || selected?.blob;
       if (selectedUpload) {
         const uploadValidationError = validateConversationBackgroundFile(selectedUpload, { localOnly: !sharedScope });
@@ -7291,7 +7500,7 @@ function App() {
       setConversationBackgroundSelection(viewerBackground?.cleared ? null : viewerBackground);
       setIsConversationBackgroundOpen(false);
     } catch (error) {
-      setConversationBackgroundNotice(error?.message || 'Không thể cập nhật hình nền cuộc trò chuyện.');
+      setConversationBackgroundNotice(groupInfoErrorMessage(error, 'Không thể cập nhật hình nền cuộc trò chuyện.'));
     } finally {
       setIsSavingConversationBackground(false);
     }
@@ -7441,7 +7650,7 @@ function App() {
     event.target.value = '';
     if (!file || !activeChat.isGroup || isUpdatingGroupAvatar) return;
     if (!canEditActiveGroupInfo) {
-      setChatError('Bạn chưa được cấp quyền đổi ảnh nhóm.');
+      setChatError(GROUP_INFO_PERMISSION_MESSAGE);
       return;
     }
     if (!file.type.startsWith('image/')) {
@@ -7461,10 +7670,10 @@ function App() {
     try {
       if (chatMode === 'demo') {
         const avatarUrl = await readFileAsDataUrl(file);
-      const memberIds = roomMembers(activeChat)
+        const memberIds = roomMembers(activeChat)
           .map(member => findAccount(directoryAccounts, member.id || member.uid || member.name)?.id || member.id)
           .filter(Boolean);
-        const group = saveDemoGroup({
+        saveDemoGroup({
           id: activeChat.id,
           name: activeChat.name,
           description: activeChat.description || '',
@@ -7472,12 +7681,25 @@ function App() {
           ownerId: activeChat.adminId || viewerId,
           memberIds,
         });
-        const updatedRoom = demoGroupToConversation(group, directoryAccounts, viewerId);
-        setConversations(previous => {
-          const next = { ...previous, [activeChat.id]: updatedRoom };
-          conversationsRef.current = next;
-          return next;
-        });
+        const activityEvent = {
+          action: 'group_avatar_changed',
+          actorId: viewerId,
+          actorName: currentUser?.name || 'Một thành viên',
+          avatarUrl,
+          updatedAt: new Date().toISOString(),
+        };
+        const systemMessage = {
+          id: `system-group-avatar-${Date.now()}`,
+          type: 'system',
+          ...activityEvent,
+          senderId: viewerId,
+          senderName: currentUser?.name || 'Một thành viên',
+          text: personalizeGroupSystemText({ ...activityEvent, type: 'system' }, directoryAccounts, viewerId),
+          time: getTimeString(),
+          createdAt: activityEvent.updatedAt,
+        };
+        const groupWithEvent = appendDemoGroupMessage(activeChat.id, systemMessage);
+        updateActiveGroupRoom(demoGroupToConversation(groupWithEvent, directoryAccounts, viewerId));
         return;
       }
       const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
@@ -7498,9 +7720,24 @@ function App() {
       }
       groupAvatarSyncRef.current.set(activeChat.id, persistedAvatarUrl);
       groupAvatarSyncRef.current.set(topicName, persistedAvatarUrl);
-      updateActiveGroupRoom({ avatarUrl: persistedAvatarUrl });
+      const activityEvent = {
+        action: 'group_avatar_changed',
+        actorId: tinodeClient.currentUserId || viewerId,
+        actorName: currentUser?.name || 'Một thành viên',
+        avatarUrl: persistedAvatarUrl,
+        updatedAt: new Date().toISOString(),
+      };
+      await tinodeClient.sendSystemEvent(topicName, activityEvent).catch(error => {
+        console.warn('ViChat: group avatar activity announcement failed', error);
+      });
+      const realtimeRoom = await tinodeClient.openConversation(topicName).catch(() => null);
+      updateActiveGroupRoom({
+        ...(realtimeRoom ? normalizeTinodeConversation(realtimeRoom) : {}),
+        avatarUrl: persistedAvatarUrl,
+        ...(realtimeRoom ? { messages: roomMessages(realtimeRoom) } : {}),
+      });
     } catch (error) {
-      setChatError(error?.message || 'Không thể cập nhật ảnh nhóm.');
+      setChatError(groupInfoErrorMessage(error, 'Không thể cập nhật ảnh nhóm.'));
     } finally {
       setIsUpdatingGroupAvatar(false);
     }
@@ -10760,9 +10997,13 @@ function App() {
                       ? 'fa-thumbtack'
                       : msg.action === 'conversation_background_changed'
                         ? 'fa-image'
-                        : msg.action === 'group_dissolved'
-                          ? 'fa-triangle-exclamation'
-                          : 'fa-user-plus';
+                       : ['group_name_changed', 'group_settings_changed'].includes(msg.action)
+                         ? 'fa-pen-to-square'
+                         : msg.action === 'group_avatar_changed'
+                           ? 'fa-camera'
+                           : msg.action === 'group_dissolved'
+                             ? 'fa-triangle-exclamation'
+                             : 'fa-user-plus';
               return (
                 <React.Fragment key={msg.id}>
                   {activeUnreadBoundary?.revealed && unreadBoundaryStart === messageIndex && (
@@ -12987,25 +13228,26 @@ function App() {
                     name="conversation-background-scope"
                     value={CONVERSATION_BACKGROUND_SCOPES.LOCAL}
                     checked={conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.LOCAL}
-                    onChange={() => setConversationBackgroundScope(CONVERSATION_BACKGROUND_SCOPES.LOCAL)}
+                    onChange={() => selectConversationBackgroundScope(CONVERSATION_BACKGROUND_SCOPES.LOCAL)}
                     disabled={isSavingConversationBackground}
                   />
                   <span>
                     <strong>{appCopy.t('Chỉ mình tôi')}</strong>
                   </span>
                 </label>
-                <label className={`conversation-background-scope-option ${conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.SHARED ? 'selected' : ''}`}>
+                <label className={`conversation-background-scope-option ${conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.SHARED ? 'selected' : ''} ${activeChat.isGroup && !canEditActiveGroupInfo ? 'locked' : ''}`}>
                   <input
                     type="radio"
                     name="conversation-background-scope"
                     value={CONVERSATION_BACKGROUND_SCOPES.SHARED}
                     checked={conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.SHARED}
-                    onChange={() => setConversationBackgroundScope(CONVERSATION_BACKGROUND_SCOPES.SHARED)}
+                    onChange={() => selectConversationBackgroundScope(CONVERSATION_BACKGROUND_SCOPES.SHARED)}
                     disabled={isSavingConversationBackground}
                   />
                   <span>
                     <strong>{appCopy.t(activeChat.isGroup ? 'Chia sẻ với cả nhóm' : 'Chia sẻ với người bên kia')}</strong>
                   </span>
+                  {activeChat.isGroup && !canEditActiveGroupInfo && <i className="fa-solid fa-lock" aria-hidden="true"></i>}
                 </label>
               </div>
             )}
@@ -13348,7 +13590,7 @@ function App() {
         </div>
       )}
 
-      {isGroupRenameOpen && activeChat.isGroup && (
+      {isGroupRenameOpen && activeChat.isGroup && canEditActiveGroupInfo && (
         <div className="modal-backdrop group-rename-backdrop" role="presentation" onMouseDown={event => {
           if (event.target === event.currentTarget && !isRenamingGroup) setIsGroupRenameOpen(false);
         }}>

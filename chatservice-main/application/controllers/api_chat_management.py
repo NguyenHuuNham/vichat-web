@@ -418,6 +418,13 @@ def _forbidden_error():
     return json({"error_code": "FORBIDDEN", "error_message": "Administrator permission is required."}, status=403)
 
 
+def _group_info_permission_error():
+    return json({
+        "error_code": "GROUP_INFO_PERMISSION_REQUIRED",
+        "error_message": "Bạn chưa được admin cấp phép.",
+    }, status=403)
+
+
 def _management_scope_error():
     return json({
         "error_code": "FORBIDDEN",
@@ -3679,7 +3686,7 @@ async def conversation_group_settings(request, conversation_id):
         or "settings" in body
         or not existing_settings["allowMembersEditInfo"]
     ):
-        return _forbidden_error()
+        return _group_info_permission_error()
 
     if not isinstance(body, dict) or not any(key in body for key in ("name", "avatar", "settings")):
         return json({

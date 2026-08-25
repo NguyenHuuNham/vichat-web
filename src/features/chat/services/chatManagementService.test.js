@@ -455,6 +455,23 @@ test('keeps conversation background scope isolated from the message and presence
   assert.match(tinodeSource, /scope: CONVERSATION_BACKGROUND_SCOPES\.SHARED/);
 });
 
+test('group info controls follow realtime permission changes and publish visible activity events', () => {
+  assert.match(appSource, /canEditActiveGroupInfo/);
+  assert.match(appSource, /activeChat\.isGroup && activeChat\.id !== 'empty' && canEditActiveGroupInfo/);
+  assert.match(appSource, /isGroupRenameOpen && activeChat\.isGroup && canEditActiveGroupInfo/);
+  assert.match(appSource, /event\.type === 'group-settings'/);
+  assert.match(appSource, /groupNameRefreshRef/);
+  assert.match(appSource, /refreshManagementConversations\(accountSession\)/);
+  assert.match(appSource, /groupInfoErrorMessage\(error, 'Không thể cập nhật hình nền cuộc trò chuyện\.'\)/);
+  assert.match(appSource, /setConversationBackgroundNotice\(GROUP_INFO_PERMISSION_MESSAGE\)/);
+  assert.match(appSource, /action: 'group_name_changed'/);
+  assert.match(appSource, /action: 'group_avatar_changed'/);
+  assert.match(appSource, /action: 'group_settings_changed'/);
+  assert.match(tinodeSource, /emitGroupSettingsChange\(topic, topicClient\)/);
+  assert.match(tinodeSource, /type: 'group-settings'/);
+  assert.match(tinodeSource, /isGroup: topic\.isGroupType\?\.\(\) \|\| topic\.name\?\.startsWith\('grp'\)/);
+});
+
 test('group mute and reaction controls preserve the existing checkbox flow and expose actor details', () => {
   const muteSource = appSource.split('const handleConversationMuteToggle')[1].split('const handleNotificationMuteSubmit')[0];
   assert.match(muteSource, /typeof event\?\.target\?\.checked === 'boolean'/);

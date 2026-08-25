@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-25-07 - Dong bo quyen sua thong tin nhom realtime
+
+- Thoi gian: 2026-08-25 15:50 (Asia/Saigon)
+- Loai: Sua loi | Quyen | Web | Realtime | API | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; san sang commit va deploy production
+- Muc tieu: Thanh vien khong duoc cap quyen khong thay nut doi ten/anh nhom, khong nhin thay loi 403 tho, va nhan lai day du control ngay khi admin cap quyen; moi thay doi metadata nhom co thong bao hoat dong hien trong luong chat.
+- Pham vi: ChatUI group info/background picker, Chatmgt group-settings permission response, Tinode group metadata/activity event, i18n, CSS, contract/unit test va tai lieu; giu nguyen Tinode message transport, read cursor, receipt, avatar replace-only, conversation ordering, tenant switch, notification va database.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/groupSettings.js`, `src/features/chat/services/groupSettings.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Chuan hoa moi loi 403/forbidden cua doi ten, avatar va hinh nen nhom thanh `Bạn chưa được admin cấp phép.`; an nut doi ten/anh va tu dong dong modal rename khi quyen bi thu hoi. Scope hinh nen shared bi khoa nhung local background van dung duoc. Tinode theo doi snapshot `groupSettings`, phat event realtime de control an/hien khong can F5, va thong bao `group_name_changed`, `group_avatar_changed`, `group_settings_changed`, `conversation_background_changed` hien trong timeline. Client ket hop activity va metadata Tinode de tai lai snapshot Chatmgt cho ten/anh, trong khi event setting cap nhat control ngay lap tuc.
+- Quyet dinh ky thuat: Chatmgt tiep tuc la source of truth cua ten, avatar va `groupSettings`; Tinode chi mang metadata trigger, message va activity realtime. Snapshot group setting duoc baseline theo topic va xoa khi topic/session bi loai de khong ro quyen qua tenant. System activity khong duoc dua vao desktop notification thong thuong, nen khong lam song lai thong bao cua tin da doc.
+- Database/API/cau hinh: Khong migration, schema, endpoint, secret hoac bien moi truong moi. Endpoint group-settings hien co tra HTTP 403 voi `GROUP_INFO_PERMISSION_REQUIRED` va message than thien cho thanh vien khong co `allowMembersEditInfo`.
+- Kiem thu: Targeted frontend dat 98/98; kiem tra lai nhom lien quan dat 67/67; `npm run test:frontend` dat 242/242; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 48/48; `python -m unittest discover -s chatservice-main/tests -q` dat 193 test, skip 67 theo dependency runtime; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/tests/test_chat_auth_contract.py` dat; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build` va `npm run build:production` dat, production entry `index-BUDRK_Tn.js`, App `App-Ypo4S1rW.js`, CSS `index-CISnHTLs.css`, canh bao chunk App lon hon 500 KB da co; `docker compose --env-file infrastructure/production/.env.example -f infrastructure/production/compose.yaml config --quiet` voi bien test tam dat; `git diff --check` dat. Mot lan `npm run build` chay dong thoi voi production build bi tranh chap thu muc `dist`; chay lai tuan tu dat va bundle production duoc khoi phuc dung. Chua UAT browser tu dong vi phien nay khong co browser runtime callable.
+- Rui ro con lai: Can UAT production bang owner va member tren hai session de xac nhan revoke/grant control realtime, friendly permission message, activity timeline va metadata ten/anh sau hard refresh.
+- Viec tiep theo: Commit/push, tao release bat bien, backup Chatmgt PostgreSQL, recreate rieng `chatmgt` va `chat`, giu nguyen Tinode, bridge, webhook, ChatAPI, PostgreSQL, Redis, Coturn, message, receipt va avatar; sau do kiem tra health, bundle, Nginx va log.
+- Commit/PR: Chua tao.
+
 ## 2026-08-25-06 - Cap nhat thu tu hoi thoai sau tin nhan moi
 
 - Thoi gian: 2026-08-25 14:26 (Asia/Saigon); deploy production 14:52-14:56 (Asia/Saigon)

@@ -5625,6 +5625,13 @@ input:checked + .slider:before {
     color: var(--text-main);
     font-size: 11px;
 }
+.conversation-background-scope-option.locked {
+    opacity: .72;
+}
+.conversation-background-scope-option.locked > i {
+    margin-left: auto;
+    color: #9a6b58;
+}
 .conversation-background-grid {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));

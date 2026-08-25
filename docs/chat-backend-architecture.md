@@ -201,6 +201,13 @@ The realtime projection also applies the newest shared background event before
 the accompanying Tinode metadata packet when those packets cross in flight;
 the persisted topic metadata remains the recovery source after reload. Local
 changes never upload, write topic metadata, or publish a system event.
+For group topics, the shared-background choice uses the same
+`groupSettings.allowMembersEditInfo` capability as member name and avatar
+changes. ChatUI hides the name/avatar controls when that capability is off and
+locks the shared-background scope with the friendly
+`Bạn chưa được admin cấp phép.` message; a realtime group-settings metadata
+update closes or restores those controls without a page reload. A stale Tinode
+403 is normalized to the same message rather than exposed as a transport code.
 The message list keeps the background in a sticky layer inside the full
 scrollable message content. Light mode leaves the image sharp and uses
 translucent readable message surfaces; dark mode adds a light contrast veil and
@@ -407,12 +414,24 @@ Renaming/changing the group avatar is also owner-only
 unless the owner explicitly enables `allowMembersEditInfo`. Chatmgt
 persists the group subject, avatar reference, and whitelisted boolean
 `groupSettings` in the existing `Conversation.subject`/`properties` columns.
+The same flag governs member changes to the shared group background. Tinode
+`onMetaDesc` packets are reduced to a per-topic group-settings snapshot and
+broadcast to open ChatUI sessions, so controls disappear immediately when an
+owner revokes the flag and return when it is enabled again. After a successful
+group name, avatar, permission, or shared-background mutation with realtime
+available, ChatUI publishes a visible Tinode activity event; system activity
+is excluded from ordinary desktop message notifications. Chatmgt remains
+authoritative for persisted
+group name/avatar/settings, while Tinode remains authoritative for message
+content and realtime delivery.
 `PUT /api/v1/conversation/<id>/group-settings` (and the
 `/api/v1/chat/threads/<id>/group-settings` alias) rejects management-scope
 sessions, non-members, non-groups, unauthorized members, unknown settings, and
 non-boolean values. Tinode public metadata is updated in realtime mode before
 the Chatmgt write, with a best-effort Tinode rollback if the authoritative
-Chatmgt update fails. The group-management whitelist contains
+Chatmgt update fails; the API returns `GROUP_INFO_PERMISSION_REQUIRED` with
+HTTP 403 for a member without the flag, and ChatUI maps that response to the
+friendly message above. The group-management whitelist contains
 only member info, pinning, message sending, poll creation, member approval and
 new-member history; notes, reminders and group-leader message marking are not
 supported settings. `allowPolls` defaults to enabled for backwards
@@ -748,6 +767,7 @@ history, role-aware actions and a message-to-task shortcut.
 | `GET/POST` | `/api/v1/friend-request` | Tenant-scoped friendship metadata |
 | `GET/POST` | `/api/v1/conversation` | Tenant-scoped conversation metadata |
 | `PUT` | `/api/v1/conversation/<id>/pin` | Set or clear the current user's conversation pin |
+| `PUT` | `/api/v1/conversation/<id>/group-settings` | Owner/member-authorized group name, avatar and boolean settings update |
 | `POST` | `/api/v1/conversation/<id>/tinode-prepare` | Prepare Tinode participant mappings |
 | `PUT` | `/api/v1/conversation/<id>/tinode-topic` | Verify/bind the topic to exact membership |
 | `POST` | `/api/v1/conversation/<id>/dissolve` | Owner-only group dissolution; remove all active members and close the group |
