@@ -135,6 +135,8 @@ test('keeps unread emphasis and latest-message navigation in the ChatUI layer', 
   assert.match(appSource, /unreadMessagesForConversation/);
   assert.match(appSource, /messageMentionsViewer/);
   assert.match(appSource, /indicatorCleared/);
+  assert.match(appSource, /const hasUnread = !boundary\?\.indicatorCleared && count > 0;/);
+  assert.doesNotMatch(appSource, /roomId === String\(currentChatId\) && boundary\?\.indicatorCleared/);
   assert.match(appSource, /latest-message-jump-button/);
   assert.match(appSource, /chatIsNearBottomRef/);
   assert.match(appSource, /const queueConversationLatestScroll =/);

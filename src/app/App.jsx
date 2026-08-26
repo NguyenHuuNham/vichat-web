@@ -3735,7 +3735,9 @@ function App() {
     const roomId = String(room?.id || '');
     const boundary = unreadBoundaries[roomId] || null;
     const count = unreadCountForConversation(room, boundary);
-    const hasUnread = !(roomId === String(currentChatId) && boundary?.indicatorCleared) && count > 0;
+    // Once the viewer has dismissed this boundary, do not resurrect its
+    // sidebar highlight when they move to another conversation.
+    const hasUnread = !boundary?.indicatorCleared && count > 0;
     const hasMention = Boolean(room?.isGroup && hasUnread && unreadMessagesForConversation(room, boundary, {
       viewerId: unreadViewerId,
     }).some(message => messageMentionsViewer(message, currentUser)));
