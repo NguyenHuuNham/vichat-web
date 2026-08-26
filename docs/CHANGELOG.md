@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem tra deploy: Lan wrapper dau dung sau khi recreate va tu rollback ve ChatUI cu do ky tu CR thua tu PowerShell pipe; lan `r2` build/recreate thanh cong, symlink current da switch, sau do verify doc lap health/bundle/public/WSS/log va khong thay doi stateful service. Khong migration, khong Compose `down`, khong reset database/volume/topic/message/read cursor.
 - Rui ro con lai: Chua UAT visual bang tai khoan that; browser runtime khong duoc expose trong phien nay. Can xac nhan ca boundary cu da xem, tin moi chua xem, mention nhom va phong dang mo.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo phong co unread, xem den cuoi roi doi phong; gui them tin moi chua xem va xac nhan phong do bat lai day du highlight, dong thoi ten nguoi gui van doc ro.
-- Commit/PR: Source commit `a0acc35`; deployment follow-up docs commit `Chua tao`.
+- Commit/PR: Source commit `a0acc35`; deployment follow-up docs commit `e14e46c`.
 
 ## 2026-08-26-10 - Khong hoi sinh highlight unread sau khi da xem
 
