@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-26 15:20 (Asia/Saigon)
 - Loai: Sua loi | Web | UX | Realtime | Kiem thu | Tai lieu | Trien khai
-- Trang thai: Dang thuc hien; code va kiem thu local dat, chua commit/deploy
+- Trang thai: Da commit, push, deploy production; san sang UAT visual
 - Muc tieu: Sau khi viewer da xem den cuoi boundary unread va chuyen sang phong khac, phong vua xem khong duoc quay lai highlight/badge unread.
 - Pham vi: ChatUI unread boundary projection, sidebar conversation indicators, source-contract regression test va production bundle; giu nguyen active selection mau cam, read cursor, Tinode message, Chatmgt, mobile va cac luong chat khac.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `docs/CHANGELOG.md`, `dist/index.html`.
@@ -18,9 +18,11 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Unread boundary la state scoped theo conversation/viewer va phai giu `indicatorCleared` qua viec doi room. Khong xoa boundary/read cursor hay sua Tinode transport; chi sua cach sidebar chieu state da xem.
 - Database/API/cau hinh: Khong co migration, endpoint, schema, dependency, secret, bien moi truong hay storage key moi.
 - Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js src/features/chat/services/unreadBoundary.test.js` dat 51/51; `npm run test:frontend` dat 287/287; `npm run lint` exit 0 voi warning legacy/vendor da co san; `npm run build:production` dat voi entry `index-CUO8KuMV.js`, App `App-DQD27PD_.js`, CSS `index-BEAPZ7sy.css`; `git diff --check` dat.
+- Trien khai: Source commit `d308da6` da push `origin/master`; archive `/opt/deploy/chat/incoming/vichat-unread-highlight-d308da6.tar.gz` co SHA-256 `b0eb6d2837bf9b71a95cfff86dd4d475debded02ad60a61b28abc60c93fa73c7`; release `/opt/deploy/chat/releases/unread-highlight-d308da6-r2-20260826-1528` dang la `current`, `previous` tro `/opt/deploy/chat/releases/chat-scroll-5fbe349-r11-20260826-1525`. Chi recreate ChatUI: container `d46cf70feb86e7d67192f156f4f453ff8bf63522feff520d1229abb43f821b7e`, image `sha256:f651feefa3035ed25ea38b42dc28e57ba660c29afa4a5987941d81eb63306e5c`; 9/9 service healthy, ChatUI health HTTP 200, Chatmgt health HTTP 200, public JS/CSS co marker moi va WSS HTTP 101. Chatmgt `d1d39832e50b`, ChatAPI `fbfce2f344fa`, Chat PostgreSQL `01ddef09138b`, Tinode PostgreSQL `bb7c9ad0e93a`, Redis `b6ff2c115f3a`, bridge `f6628f4fadfe`, webhook `96529bc57905`, Coturn `8a3624d19603` giu nguyen container ID; khong migration, khong Compose `down`, khong reset state.
+- Kiem tra deploy: Lan gate dau tu dong rollback do preflight script thieu `/assets/` trong duong dan JS; lan `r2` build/recreate candidate dat. Wrapper PowerShell thoat `1` sau khi switch vi CRLF thua, nhung verify doc lap bang script LF dat `current`, 9/9 service, marker container/public, health, WSS va log scan; CSS public lan nay co marker `font-weight:650`.
 - Rui ro con lai: Chua UAT visual bang tai khoan that; can hard refresh, mo room co unread, xem den cuoi, chuyen room va xac nhan phong cu khong hien unread highlight lai. Browser runtime khong duoc expose trong phien nay.
 - Viec tiep theo: Commit/push, tao release sach va deploy chi ChatUI tren `192.168.80.20` qua jump host `103.74.122.206`, sau do verify health/public bundle va UAT luong unread.
-- Commit/PR: Chua tao.
+- Commit/PR: Source commit `d308da6`; deployment follow-up docs commit `Chua tao`; khong co PR.
 
 ## 2026-08-26-09 - Sua vi tri mo chat va do tuong phan ten nguoi gui
 
