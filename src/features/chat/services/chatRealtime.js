@@ -100,15 +100,17 @@ function incomingConversationSequenceFloor(conversation, viewerId = '') {
   const normalizedViewerId = String(viewerId || '').trim();
   return (Array.isArray(conversation?.messages) ? conversation.messages : [])
     .filter(message => {
-      if (message?.sender === 'outgoing') return false;
       const senderId = String(
         message?.senderId
           || message?.raw?.from
           || message?.raw?.head?.['x-sender-id']
           || '',
       ).trim();
+      // A concrete sender ID is authoritative. Without one, retain an
+      // explicit local outgoing marker; all other packets remain incoming.
       if (normalizedViewerId && senderId) return senderId !== normalizedViewerId;
-      return message?.sender === 'incoming';
+      if (!senderId) return message?.sender !== 'outgoing';
+      return message?.sender !== 'outgoing';
     })
     .reduce((maximum, message) => Math.max(
       maximum,
@@ -136,9 +138,9 @@ export function mergeConversationReadState(existing = {}, incoming = {}, { viewe
   const incomingLatestIncomingSeq = incomingConversationSequenceFloor(incoming, viewerId);
   const incomingHasNewMessages = incomingLatestSeq > existingLatestSeq;
   const incomingHasExplicitUnread = incomingUnreadFromSeq > 0 || incomingBadge > 0;
-  const incomingHasNewUnread = incomingHasNewMessages
-    && incomingLatestSeq > readSeq
-    && (incomingHasExplicitUnread || incomingLatestIncomingSeq > readSeq);
+  const incomingHasUnreadAfterRead = incomingLatestIncomingSeq > readSeq;
+  const incomingHasNewUnread = incomingHasUnreadAfterRead
+    || (incomingHasNewMessages && incomingLatestSeq > readSeq && incomingHasExplicitUnread);
   const existingHasUnread = existingUnreadFromSeq > existingReadSeq || existingBadge > 0;
   const existingHasReadState = Boolean(existingReadSeq || existingUnreadFromSeq || existingBadge);
   const incomingCursorAdvanced = incomingReadSeq > existingReadSeq;

@@ -724,11 +724,12 @@ The web viewer's own read cursor is monotonic for the active Tinode session.
 Tinode invokes a topic `onData` callback before refreshing its cached `unread`
 field, so ChatUI derives unread state from the newest known topic sequence and
 the effective viewer read cursor whenever both are available; the cached unread
-count is only a fallback when no sequence exists. If a realtime packet has a
-newer incoming message but still carries a stale zero unread count, ChatUI also
-uses the message sender/sequence pair to retain the unread boundary. Missing
-sender metadata is treated as ambiguous rather than outgoing; only a sender ID
-that matches the viewer can advance the local read projection. The same callback
+count is only a fallback when no sequence exists. If a realtime packet has an
+incoming message at a sequence above the effective read cursor, ChatUI also
+keeps the unread boundary even when the packet still carries a zero unread count
+or that message was already present in an earlier callback. Missing sender
+metadata is treated as ambiguous rather than outgoing; only a sender ID that
+matches the viewer can advance the local read projection. The same callback
 ordering also delays Tinode's local `read` update for an outgoing echo, so ChatUI
 treats the viewer's newest outgoing sequence as read immediately while keeping an
 incoming sender's sequence unread. Opening a conversation with

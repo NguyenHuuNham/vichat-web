@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-26-13 - Dung mat highlight khi realtime merge bi lap snapshot
+
+- Thoi gian: 2026-08-26 16:39 (Asia/Saigon)
+- Loai: Sua loi | Web | Realtime | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien; local checks da dat, chua commit/push/deploy
+- Muc tieu: Tin nhan moi tu nguoi khac khi chua xem phai bat day du highlight, ten/preview/time dam va badge; tin cua viewer va tin da doc khong duoc bi danh dau unread.
+- Pham vi: ChatUI read-state merge, unread boundary projection, Tinode realtime snapshot race, regression test va tai lieu kien truc; khong doi Chatmgt, database, API, mobile hay luong gui tin.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/unreadBoundary.js`, `src/features/chat/services/unreadBoundary.test.js`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Read-state nay duoc tinh theo message incoming co sequence lon hon read cursor, khong phu thuoc viec snapshot truoc da chua message do hay Tinode da kip cap nhat badge chua. Sender ID khop viewer moi duoc coi la outgoing; sender sai presentation side hoac thieu metadata khong lam an tin peer. Cac merge quan trong cua ChatUI truyen viewer ID de giu cung quy tac.
+- Quyet dinh ky thuat: Dung read cursor lam moc doc chuan va sequence/sender lam fallback realtime; khong nang read cursor tu mot message khong xac dinh sender. Boundary da xem van giu hanh vi cu, chi rearm khi co tail incoming moi.
+- Database/API/cau hinh: Khong co migration, endpoint, schema, dependency, secret, bien moi truong hoac storage key moi.
+- Kiem thu: `node --test src/features/chat/services/chatRealtime.test.js src/features/chat/services/unreadBoundary.test.js` dat 46/46; `npm run test:frontend` dat 291/291; `npm run lint` exit 0 voi warning legacy/vendor da co san; `npm run build:production` dat voi entry `index-Dv0-owrV.js`, App `App-Cvb4opGT.js`, CSS `index-BEAPZ7sy.css`; `git diff --check` dat truoc khi cap nhat muc changelog nay.
+- Rui ro con lai: Chua UAT visual bang hai tai khoan that va chua deploy ban nay; can xac nhan direct/group, nhieu tin lien tiep, tin thieu sender metadata, tin cua viewer, boundary da xem roi va ten nguoi gui tren anh nen.
+- Viec tiep theo: Commit/push, tao archive va deploy ChatUI qua jump host `103.74.122.206` vao server dich `192.168.80.20`; chi recreate service `chat`, verify health/public asset/WSS/log va ghi release thuc te.
+- Commit/PR: Chua tao.
+
 ## 2026-08-26-12 - Giu highlight unread khi payload realtime thieu metadata
 
 - Thoi gian: 2026-08-26 16:25 (Asia/Saigon)

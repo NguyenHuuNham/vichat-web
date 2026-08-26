@@ -254,6 +254,73 @@ test('derives unread from a newer incoming message when Tinode unread metadata i
     unreadFromSeq: 0,
     badge: 0,
   });
+
+  assert.deepEqual(mergeConversationReadState({
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+    messages: [{ seq: 101, sender: 'outgoing' }],
+  }, {
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+    messages: [{ seq: 101, sender: 'outgoing' }],
+  }, { viewerId: 'usr-me' }), {
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+  });
+
+  assert.deepEqual(mergeConversationReadState({
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+    // The message can already be present after the first onData callback.
+    messages: [{ seq: 101, sender: 'incoming', senderId: 'usr-peer' }],
+  }, {
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+    messages: [{ seq: 101, sender: 'incoming', senderId: 'usr-peer' }],
+  }, { viewerId: 'usr-me' }), {
+    readSeq: 100,
+    unreadFromSeq: 101,
+    badge: 1,
+  });
+
+  assert.deepEqual(mergeConversationReadState({
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+    // A prior realtime merge may already contain the packet while read
+    // metadata is still stale.
+    messages: [{ seq: 101, sender: 'outgoing', senderId: 'usr-peer' }],
+  }, {
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+    messages: [{ seq: 101, sender: 'outgoing', senderId: 'usr-peer' }],
+  }, { viewerId: 'usr-me' }), {
+    readSeq: 100,
+    unreadFromSeq: 101,
+    badge: 1,
+  });
+
+  assert.deepEqual(mergeConversationReadState({
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+    messages: [{ seq: 101, sender: 'incoming', senderId: 'usr-me' }],
+  }, {
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+    messages: [{ seq: 101, sender: 'incoming', senderId: 'usr-me' }],
+  }, { viewerId: 'usr-me' }), {
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+  });
 });
 
 test('local read floors override stale explicit Tinode unread counters', () => {

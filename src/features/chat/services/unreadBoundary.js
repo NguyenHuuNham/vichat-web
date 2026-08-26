@@ -18,9 +18,12 @@ export function unreadBadgeLabel(value, cap = UNREAD_BADGE_CAP) {
 
 function isIncomingMessage(message, viewerId) {
   if (!message) return false;
-  if (message.sender === 'outgoing') return false;
   const senderId = String(message.senderId || message.raw?.from || message.raw?.head?.['x-sender-id'] || '').trim();
-  return !viewerId || !senderId || senderId !== String(viewerId);
+  // A concrete sender ID overrides the presentation side. Without one, keep
+  // the explicit local outgoing marker out of the unread candidate list.
+  if (viewerId && senderId) return senderId !== String(viewerId);
+  if (!senderId) return message.sender !== 'outgoing';
+  return message.sender !== 'outgoing';
 }
 
 export function unreadMessagesForBoundary(messages = [], {

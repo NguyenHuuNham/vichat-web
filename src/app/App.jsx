@@ -1610,7 +1610,7 @@ function removeMessageFromConversation(room, message, fallbackActivity = null) {
   };
 }
 
-function mergeTinodeConversation(existing, incoming) {
+function mergeTinodeConversation(existing, incoming, { viewerId = '' } = {}) {
   if (!existing) return normalizeConversationShape(incoming);
   const safeExisting = normalizeConversationShape(existing);
   const safeIncoming = normalizeConversationShape(incoming);
@@ -1656,7 +1656,7 @@ function mergeTinodeConversation(existing, incoming) {
   const existingName = existingExplicitName || existingPeerName;
   const incomingName = incomingExplicitName || (!existingName ? incomingPeerName : '');
   const fallbackName = safeExisting.isGroup || safeIncoming.isGroup ? 'Nhóm' : 'Cuộc trò chuyện cá nhân';
-  const readState = mergeConversationReadState(safeExisting, safeIncoming);
+  const readState = mergeConversationReadState(safeExisting, safeIncoming, { viewerId });
   return {
     ...safeExisting,
     ...safeIncoming,
@@ -1717,10 +1717,10 @@ function mergeTinodeConversation(existing, incoming) {
 // Defensive wrapper: if merge crashes due to malformed data from Chatmgt or
 // Tinode, return the best safe fallback instead of propagating the exception
 // into a React render and triggering the global ErrorBoundary.
-function safeMergeTinodeConversation(existing, incoming) {
+function safeMergeTinodeConversation(existing, incoming, options = {}) {
   try {
     return safeNormalizeConversationForRender(
-      mergeTinodeConversation(existing, incoming),
+      mergeTinodeConversation(existing, incoming, options),
       existing?.id || incoming?.id,
     );
   } catch (mergeError) {
@@ -5332,7 +5332,7 @@ function App() {
           };
           const next = {
             ...prev,
-            [stateId]: safeMergeTinodeConversation(previousRoom, incoming),
+            [stateId]: safeMergeTinodeConversation(previousRoom, incoming, { viewerId }),
           };
           conversationsRef.current = next;
           return next;
@@ -5753,7 +5753,7 @@ function App() {
           const next = {
             ...prev,
             [id]: {
-              ...safeMergeTinodeConversation(prev[id], selectedRoom),
+              ...safeMergeTinodeConversation(prev[id], selectedRoom, { viewerId }),
               directProvisioning: 'ready',
               pendingDirect: false,
             },
@@ -10799,7 +10799,7 @@ function App() {
               tinodeTopic: activeChat.tinodeTopic,
               accountSession: currentRoom.accountSession,
             };
-            const next = { ...previous, [roomId]: safeMergeTinodeConversation(currentRoom, incoming) };
+            const next = { ...previous, [roomId]: safeMergeTinodeConversation(currentRoom, incoming, { viewerId }) };
             conversationsRef.current = next;
             return next;
           });
@@ -10889,7 +10889,7 @@ function App() {
             };
             const next = {
               ...previous,
-              [boundaryKey]: safeMergeTinodeConversation(currentRoom, incoming),
+              [boundaryKey]: safeMergeTinodeConversation(currentRoom, incoming, { viewerId }),
             };
             conversationsRef.current = next;
             return next;

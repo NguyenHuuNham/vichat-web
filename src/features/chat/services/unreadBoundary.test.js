@@ -148,3 +148,17 @@ test('keeps the durable first unread sequence when bounded history starts later'
   assert.equal(boundary.unreadCount, 3);
   assert.equal(unreadBoundaryStartIndex(messages.slice(2), boundary), 0);
 });
+
+test('uses sender identity before the presentation side when finding unread messages', () => {
+  const boundary = createUnreadBoundary([
+    { id: 'peer-message', seq: 9, sender: 'outgoing', senderId: 'peer' },
+  ], {
+    viewerId: 'me',
+    firstUnreadSeq: 9,
+  });
+
+  assert.equal(boundary.firstUnreadId, 'peer-message');
+  assert.deepEqual(unreadMessagesForConversation({ messages: [
+    { id: 'peer-message', seq: 9, sender: 'outgoing', senderId: 'peer' },
+  ] }, boundary, { viewerId: 'me' }).map(message => message.id), ['peer-message']);
+});
