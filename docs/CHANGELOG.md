@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-26-07 - Tu dong xac nhan tin da xem trong phong chat
+
+- Thoi gian: 2026-08-26 09:08 (Asia/Saigon)
+- Loai: Sua loi | Web | Realtime | UX | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; chua commit/deploy
+- Muc tieu: Badge thong bao phai bien mat sau khi nguoi dung mo phong chat va that su xem den tin chua doc cuoi cung.
+- Pham vi: ChatUI unread boundary observer va source-contract test; giu nguyen Tinode message, read cursor, mention, mute, pin, mobile va Chatmgt API/database.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Bo dieu kien chi kich hoat observer sau khi bam `Tin chua doc`. Observer nay van cho tin chua doc cuoi cung hien trong viewport trong 900 ms roi moi goi `markRead`, nen viec mo phong chat o vi tri tin moi nhat cung xac nhan duoc da xem ma khong lam mat boundary qua som.
+- Quyet dinh ky thuat: Chi thay doi diem kich hoat theo doi; Tinode van la source of truth va read floor/sequence monotonic van duoc giu nguyen. Nut nhay toi tin chua doc, divider va lich su gioi han khong doi.
+- Database/API/cau hinh: Khong co migration, endpoint, schema, dependency, secret, bien moi truong hay storage key moi.
+- Kiem thu: `npm run test:frontend` dat 287/287; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` dat voi entry `index-CusTt-ID.js`, App `App-DjUSD1tm.js`, CSS `index-CgZBfmbc.css` va warning chunk App lon hon 500 KB co san; `git diff --check` dat.
+- Rui ro con lai: Chua UAT hai browser dang nhap that; browser runtime khong duoc expose trong phien nay. Neu tin cuoi chua nam trong history hien tai, nguoi dung van can dung nut `Tin chua doc` de tai boundary dau tien.
+- Viec tiep theo: UAT mo phong co badge, doc den tin cuoi, roi chuyen phong va kiem tra badge/receipt khong hoi sinh.
+- Commit/PR: Chua tao.
+
 ## 2026-08-26-06 - Khoi phuc unread realtime va khong danh dau da doc qua som
 
 - Thoi gian: 2026-08-26 04:24-04:41 (Asia/Saigon); deploy production 04:49-04:52

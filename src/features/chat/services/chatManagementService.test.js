@@ -137,6 +137,7 @@ test('keeps unread emphasis and latest-message navigation in the ChatUI layer', 
   assert.match(appSource, /indicatorCleared/);
   assert.match(appSource, /latest-message-jump-button/);
   assert.match(appSource, /chatIsNearBottomRef/);
+  assert.doesNotMatch(appSource, /if \(!unreadBoundaryJumpedRef\.current\.has\(String\(activeChat\.id\)\)\) return undefined;/);
   const conversationSelectionSource = appSource
     .split('const handleConversationSelect = async')[1]
     .split('notificationOpenHandlerRef.current')[0];

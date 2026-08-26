@@ -10864,7 +10864,8 @@ function App() {
 
   useEffect(() => {
     if (!activeUnreadBoundary || activeChat.isChatbot || messageSearchQuery.trim()) return undefined;
-    if (!unreadBoundaryJumpedRef.current.has(String(activeChat.id))) return undefined;
+    // Normal room opens land at the latest message, so observe the unread tail
+    // even when the user did not use the explicit unread-jump control.
     let observer;
     let timer;
     let frame;
@@ -10902,7 +10903,7 @@ function App() {
       if (timer) window.clearTimeout(timer);
       observer?.disconnect();
     };
-  }, [activeChat.id, activeChat.isChatbot, activeUnreadBoundary, completeUnreadBoundary, messageSearchQuery]);
+  }, [activeChat.id, activeChat.isChatbot, activeMessageCount, activeUnreadBoundary, completeUnreadBoundary, messageSearchQuery]);
 
   const deliveryStatusIcon = message => {
     if (message.failed || message.deliveryStatus === 'failed') {

@@ -729,9 +729,11 @@ also delays Tinode's local `read` update for an outgoing echo, so ChatUI treats
 the viewer's newest outgoing sequence as read immediately while keeping an
 incoming sender's sequence unread. Opening a conversation with
 an unread boundary preserves that boundary and does not send `read` until the
-viewer reveals the unread range and reaches its end. Opening a conversation
-without pending unread still acknowledges the latest known sequence and keeps
-an in-memory floor until Tinode reflects that cursor. Bounded history also keeps
+last known unread message is visible in the active message viewport; this also
+covers the normal bottom-of-chat view without requiring the `Tin chua doc`
+jump control. Opening a conversation without pending unread still acknowledges
+the latest known sequence and keeps an in-memory floor until Tinode reflects
+that cursor. Bounded history also keeps
 the durable first-unread sequence even when that message must be fetched before
 the divider can be shown. Older topic or Chatmgt snapshots cannot lower the
 cursor, recreate an acknowledged unread badge or trigger a desktop/sound
