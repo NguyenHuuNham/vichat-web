@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Trien khai: Release `/opt/deploy/chat/releases/unread-auto-read-0126808-20260826-022756` dang la `current`, `previous` tro `/opt/deploy/chat/releases/unread-realtime-45570c7-20260826-0439`; ChatUI container `06987d763ce6` healthy, restart count 0, image `sha256:d54957e293889c70f9221f25d125f9021cc746a360561cc3ca98aa74ffc89c93`; Chatmgt `bcd005ea49a8`, bridge `13c037dc06f7`, webhook `2882b6109176`, ChatAPI `8476615ad4ac`, Chat PostgreSQL `78a434b49404`, Tinode PostgreSQL `9f6e4dcc9c2f`, Redis `ceef7df23feb`, Coturn `aa680d35fdc0` giu nguyen container ID; rollback tag `songhong-production-chat:rollback-before-unread-auto-read-0126808` giu image cu `sha256:a2bb71e4995208fc5051cec27b6c2b2073eca5c835cbeda66a5bb12635a76b26`; production `.env` giu nguyen mode `0600`, SHA-256 `cc4d4240bbfdfd3de6b94c51c08ba289b3a8746bda5abbeb3042022fe7d497c3`.
 - Rui ro con lai: Chua UAT hai browser dang nhap that; browser runtime khong duoc expose trong phien nay. Neu tin cuoi chua nam trong history hien tai, nguoi dung van can dung nut `Tin chua doc` de tai boundary dau tien.
 - Viec tiep theo: UAT mo phong co badge, doc den tin cuoi, roi chuyen phong va kiem tra badge/receipt khong hoi sinh.
-- Commit/PR: Source commit `0126808`; deployment follow-up docs commit dang tao.
+- Commit/PR: Source commit `0126808`; deployment follow-up docs commit `11d593a`; khong co PR.
 
 ## 2026-08-26-06 - Khoi phuc unread realtime va khong danh dau da doc qua som
 
