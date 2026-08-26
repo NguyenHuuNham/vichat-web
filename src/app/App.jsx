@@ -92,9 +92,11 @@ import {
   createUnreadBoundary,
   isUnreadBoundaryEnd,
   mergeUnreadBoundary,
+  markUnreadBoundaryIndicatorCleared,
   unreadBadgeLabel,
   unreadCountForConversation,
   unreadBoundaryStartIndex,
+  unreadIndicatorVisible,
   unreadMessagesForConversation,
 } from '../features/chat/services/unreadBoundary';
 import {
@@ -3735,9 +3737,9 @@ function App() {
     const roomId = String(room?.id || '');
     const boundary = unreadBoundaries[roomId] || null;
     const count = unreadCountForConversation(room, boundary);
-    // Once the viewer has dismissed this boundary, do not resurrect its
-    // sidebar highlight when they move to another conversation.
-    const hasUnread = !boundary?.indicatorCleared && count > 0;
+    // Hide only the boundary already viewed; a newer unread tail must light up
+    // again even when it is merged into the same conversation boundary.
+    const hasUnread = unreadIndicatorVisible(boundary, count);
     const hasMention = Boolean(room?.isGroup && hasUnread && unreadMessagesForConversation(room, boundary, {
       viewerId: unreadViewerId,
     }).some(message => messageMentionsViewer(message, currentUser)));
@@ -3776,8 +3778,15 @@ function App() {
   const dismissUnreadBoundaryIndicator = useCallback((conversationId, boundary = null) => {
     const key = String(conversationId || '');
     const current = unreadBoundariesRef.current[key] || boundary;
-    if (!key || !current || current.indicatorCleared) return current;
-    const dismissed = { ...current, indicatorCleared: true };
+    if (!key || !current) return current;
+    const dismissed = markUnreadBoundaryIndicatorCleared(current);
+    if (
+      current.indicatorCleared
+      && current.indicatorClearedThroughSeq === dismissed.indicatorClearedThroughSeq
+      && current.indicatorClearedThroughId === dismissed.indicatorClearedThroughId
+      && current.indicatorClearedThroughAt === dismissed.indicatorClearedThroughAt
+      && current.indicatorClearedThroughCount === dismissed.indicatorClearedThroughCount
+    ) return current;
     unreadBoundariesRef.current = { ...unreadBoundariesRef.current, [key]: dismissed };
     setUnreadBoundaries(previous => (
       previous[key] === dismissed ? previous : { ...previous, [key]: dismissed }

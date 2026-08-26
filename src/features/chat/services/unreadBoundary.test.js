@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import {
   createUnreadBoundary,
   isUnreadBoundaryEnd,
+  markUnreadBoundaryIndicatorCleared,
   mergeUnreadBoundary,
   unreadBadgeLabel,
   unreadCountForConversation,
   unreadBoundaryStartIndex,
+  unreadIndicatorVisible,
   unreadMessagesForConversation,
 } from './unreadBoundary.js';
 
@@ -54,16 +56,55 @@ test('keeps the first boundary while extending its unread tail', () => {
   assert.equal(merged.revealed, false);
 });
 
-test('preserves the dismissed sidebar indicator while extending the boundary', () => {
-  const first = {
-    ...createUnreadBoundary(messages.slice(1, 3), { viewerId: 'me', firstUnreadSeq: 2 }),
-    indicatorCleared: true,
-  };
+test('keeps an old boundary dismissed but shows a newer unread tail', () => {
+  const first = markUnreadBoundaryIndicatorCleared(
+    createUnreadBoundary(messages.slice(1, 3), { viewerId: 'me', firstUnreadSeq: 2 }),
+  );
   const next = createUnreadBoundary(messages, { viewerId: 'me', firstUnreadSeq: 2 });
   const merged = mergeUnreadBoundary(first, next);
 
   assert.equal(merged.indicatorCleared, true);
+  assert.equal(merged.indicatorClearedThroughSeq, 3);
+  assert.equal(unreadIndicatorVisible(merged, unreadCountForConversation({}, merged)), true);
   assert.equal(merged.revealed, false);
+});
+
+test('does not resurrect a dismissed boundary when only a stale snapshot arrives', () => {
+  const cleared = markUnreadBoundaryIndicatorCleared(
+    createUnreadBoundary(messages, { viewerId: 'me', firstUnreadSeq: 2, unreadCount: 3 }),
+  );
+  const merged = mergeUnreadBoundary(
+    cleared,
+    createUnreadBoundary(messages, { viewerId: 'me', firstUnreadSeq: 2, unreadCount: 3 }),
+  );
+
+  assert.equal(unreadIndicatorVisible(merged, unreadCountForConversation({}, merged)), false);
+});
+
+test('does not treat a late history snapshot as a newer message after clearing an empty tail', () => {
+  const cleared = markUnreadBoundaryIndicatorCleared(
+    createUnreadBoundary([], { viewerId: 'me', firstUnreadSeq: 10, unreadCount: 3 }),
+  );
+  const staleHistory = createUnreadBoundary([
+    { id: 'ten', seq: 10, senderId: 'peer' },
+    { id: 'eleven', seq: 11, senderId: 'peer' },
+    { id: 'twelve', seq: 12, senderId: 'peer' },
+  ], { viewerId: 'me', firstUnreadSeq: 10, unreadCount: 3 });
+  const merged = mergeUnreadBoundary(cleared, staleHistory);
+
+  assert.equal(unreadIndicatorVisible(merged, unreadCountForConversation({}, merged)), false);
+  assert.equal(
+    unreadIndicatorVisible(
+      mergeUnreadBoundary(cleared, createUnreadBoundary([
+        { id: 'ten', seq: 10, senderId: 'peer' },
+        { id: 'eleven', seq: 11, senderId: 'peer' },
+        { id: 'twelve', seq: 12, senderId: 'peer' },
+        { id: 'thirteen', seq: 13, senderId: 'peer' },
+      ], { viewerId: 'me', firstUnreadSeq: 10, unreadCount: 4 })),
+      4,
+    ),
+    true,
+  );
 });
 
 test('keeps a visible unread count when the server exposes only a cursor', () => {

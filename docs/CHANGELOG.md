@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-26-11 - Bat lai highlight khi co tin moi sau khi da xem
+
+- Thoi gian: 2026-08-26 15:53 (Asia/Saigon)
+- Loai: Sua loi | Web | UX | Realtime | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien; local checks da dat, chua commit/push/deploy
+- Muc tieu: An highlight cua boundary da xem khi doi phong, nhung bat lai day du highlight khi phong do co tin moi chua xem.
+- Pham vi: ChatUI unread boundary, sidebar conversation indicators va regression test; khong doi read cursor, Tinode transport, Chatmgt, database, mobile hay mau active cua phong dang mo.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/unreadBoundary.js`, `src/features/chat/services/unreadBoundary.test.js`, `src/features/chat/services/chatManagementService.test.js`, `docs/CHANGELOG.md`.
+- Noi dung: Luu moc `sequence/id/time/count` ma viewer da xem thay cho viec coi `indicatorCleared` la trang thai vinh vien. Snapshot cu khong lam song lai badge; tail unread moi hon moc da xem se bat lai class `unread`, ten dam, preview dam, thoi gian va badge/mention.
+- Quyet dinh ky thuat: Trang thai dismiss phai scoped toi tail da xem, khong scoped toi toan bo conversation. Khi boundary duoc merge tu snapshot realtime, moc da xem duoc giu rieng de phan biet tin cu va tin moi; tuong thich voi boundary cu khong co moc.
+- Database/API/cau hinh: Khong co migration, endpoint, schema, dependency, secret, bien moi truong hay storage key moi.
+- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js src/features/chat/services/unreadBoundary.test.js` dat 53/53; `npm run test:frontend` dat 289/289; `npm run lint` exit 0 voi warning legacy/vendor da co san; `npm run build:production` dat voi entry `index-iO0JISJ3.js`, App `App-9MUphv5Q.js`, CSS `index-BEAPZ7sy.css`; `git diff --check` dat.
+- Rui ro con lai: Chua UAT visual bang tai khoan that va chua deploy ban nay; can xac nhan ca luong boundary cu da xem, tin moi chua xem, mention nhom va phong dang mo.
+- Viec tiep theo: Commit/push, deploy chi ChatUI tren `192.168.80.20` qua jump host `103.74.122.206`, verify health/public bundle va UAT unread.
+- Commit/PR: Chua tao.
+
 ## 2026-08-26-10 - Khong hoi sinh highlight unread sau khi da xem
 
 - Thoi gian: 2026-08-26 15:20 (Asia/Saigon)

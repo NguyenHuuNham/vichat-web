@@ -73,6 +73,10 @@ export function createUnreadBoundary(messages = [], {
     unreadCount: count,
     topicName: String(topicName || ''),
     indicatorCleared: false,
+    indicatorClearedThroughSeq: 0,
+    indicatorClearedThroughId: '',
+    indicatorClearedThroughAt: '',
+    indicatorClearedThroughCount: 0,
     revealed: false,
   };
 }
@@ -84,6 +88,61 @@ export function unreadCountForConversation(room = null, boundary = null) {
     || Number(boundary?.firstUnreadSeq) > 0
     || Boolean(boundary?.firstUnreadId);
   return Math.max(roomBadge, boundaryCount, hasUnreadCursor ? 1 : 0);
+}
+
+export function markUnreadBoundaryIndicatorCleared(boundary = null) {
+  if (!boundary) return boundary;
+  return {
+    ...boundary,
+    indicatorCleared: true,
+    indicatorClearedThroughSeq: Math.max(
+      Number(boundary.indicatorClearedThroughSeq) || 0,
+      Number(boundary.lastUnreadSeq) || 0,
+    ),
+    indicatorClearedThroughId: String(
+      boundary.lastUnreadId || boundary.indicatorClearedThroughId || '',
+    ),
+    indicatorClearedThroughAt: boundary.lastUnreadAt || boundary.indicatorClearedThroughAt || '',
+    indicatorClearedThroughCount: Math.max(
+      Number(boundary.indicatorClearedThroughCount) || 0,
+      Number(boundary.unreadCount) || 0,
+    ),
+  };
+}
+
+export function unreadIndicatorVisible(boundary = null, count = 0) {
+  const unreadCount = Math.max(Number(count) || 0, 0);
+  if (unreadCount <= 0) return false;
+  if (!boundary?.indicatorCleared) return true;
+
+  const clearedThroughCount = Number(boundary.indicatorClearedThroughCount) || 0;
+  const lastUnreadSeq = Number(boundary.lastUnreadSeq) || 0;
+  const clearedThroughSeq = Number(boundary.indicatorClearedThroughSeq) || 0;
+  const hasClearMarker = clearedThroughSeq > 0
+    || Boolean(boundary.indicatorClearedThroughId)
+    || Boolean(boundary.indicatorClearedThroughAt)
+    || clearedThroughCount > 0;
+  // Boundaries created before the marker fields were introduced are already
+  // dismissed; a later realtime merge will populate a marker if it advances.
+  if (!hasClearMarker) return false;
+  if (clearedThroughSeq > 0 && lastUnreadSeq > clearedThroughSeq) return true;
+  if (clearedThroughSeq > 0) {
+    if (unreadCount > clearedThroughCount) return true;
+    return false;
+  }
+
+  const lastUnreadId = String(boundary.lastUnreadId || '');
+  const clearedThroughId = String(boundary.indicatorClearedThroughId || '');
+  if (clearedThroughId) {
+    if (lastUnreadId && lastUnreadId !== clearedThroughId) return true;
+    if (unreadCount > clearedThroughCount) return true;
+    return false;
+  }
+
+  const lastUnreadAt = Date.parse(String(boundary.lastUnreadAt || '')) || 0;
+  const clearedThroughAt = Date.parse(String(boundary.indicatorClearedThroughAt || '')) || 0;
+  if (clearedThroughAt > 0 && lastUnreadAt > clearedThroughAt) return true;
+  return unreadCount > clearedThroughCount;
 }
 
 export function unreadMessagesForConversation(room = null, boundary = null, {
@@ -119,6 +178,18 @@ export function mergeUnreadBoundary(existing, incoming) {
   const existingLastSeq = Number(existing.lastUnreadSeq) || 0;
   const incomingLastSeq = Number(incoming.lastUnreadSeq) || 0;
   const useIncomingLast = incomingLastSeq >= existingLastSeq;
+  const existingClearedSeq = Number(existing.indicatorClearedThroughSeq)
+    || (existing.indicatorCleared ? existingLastSeq : 0);
+  const incomingClearedSeq = Number(incoming.indicatorClearedThroughSeq) || 0;
+  const existingClearedId = String(
+    existing.indicatorClearedThroughId || (existing.indicatorCleared ? existing.lastUnreadId : '') || '',
+  );
+  const existingClearedAt = existing.indicatorClearedThroughAt
+    || (existing.indicatorCleared ? existing.lastUnreadAt : '')
+    || '';
+  const existingClearedCount = Number(existing.indicatorClearedThroughCount)
+    || (existing.indicatorCleared ? Number(existing.unreadCount) || 0 : 0);
+  const clearedMarker = incomingClearedSeq > existingClearedSeq ? incoming : existing;
   return {
     ...existing,
     firstUnreadId: existing.firstUnreadId || incoming.firstUnreadId,
@@ -132,6 +203,24 @@ export function mergeUnreadBoundary(existing, incoming) {
     unreadCount: Math.max(Number(existing.unreadCount) || 0, Number(incoming.unreadCount) || 0),
     topicName: existing.topicName || incoming.topicName || '',
     indicatorCleared: Boolean(existing.indicatorCleared || incoming.indicatorCleared),
+    indicatorClearedThroughSeq: Math.max(existingClearedSeq, incomingClearedSeq),
+    indicatorClearedThroughId: String(
+      clearedMarker.indicatorClearedThroughId
+        || (clearedMarker === existing ? existingClearedId : '')
+        || existingClearedId
+        || incoming.indicatorClearedThroughId
+        || '',
+    ),
+    indicatorClearedThroughAt: clearedMarker.indicatorClearedThroughAt
+      || (clearedMarker === existing ? existingClearedAt : '')
+      || existingClearedAt
+      || existing.indicatorClearedThroughAt
+      || incoming.indicatorClearedThroughAt
+      || '',
+    indicatorClearedThroughCount: Math.max(
+      existingClearedCount,
+      Number(incoming.indicatorClearedThroughCount) || 0,
+    ),
     revealed: Boolean(existing.revealed || incoming.revealed),
   };
 }
