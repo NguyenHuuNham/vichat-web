@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem tra deploy: Lan gate dau tu dong rollback do preflight script thieu `/assets/` trong duong dan JS; lan `r2` build/recreate candidate dat. Wrapper PowerShell thoat `1` sau khi switch vi CRLF thua, nhung verify doc lap bang script LF dat `current`, 9/9 service, marker container/public, health, WSS va log scan; CSS public lan nay co marker `font-weight:650`.
 - Rui ro con lai: Chua UAT visual bang tai khoan that; can hard refresh, mo room co unread, xem den cuoi, chuyen room va xac nhan phong cu khong hien unread highlight lai. Browser runtime khong duoc expose trong phien nay.
 - Viec tiep theo: Commit/push, tao release sach va deploy chi ChatUI tren `192.168.80.20` qua jump host `103.74.122.206`, sau do verify health/public bundle va UAT luong unread.
-- Commit/PR: Source commit `d308da6`; deployment follow-up docs commit `Chua tao`; khong co PR.
+- Commit/PR: Source commit `d308da6`; deployment follow-up docs commit `f9e28bf`; khong co PR.
 
 ## 2026-08-26-09 - Sua vi tri mo chat va do tuong phan ten nguoi gui
 
