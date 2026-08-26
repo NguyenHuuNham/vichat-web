@@ -12,6 +12,20 @@ relay. Production is ready only after all four stages pass:
 
 ## Server preparation
 
+### Production SSH routing
+
+The production runtime is on the private server `192.168.80.20`. Reach it
+through the public jump host with two explicit SSH hops:
+
+```bash
+ssh ubuntu@103.74.122.206
+ssh ubuntu@192.168.80.20
+```
+
+The first host is only the jump host and Nginx relay. Run production
+Compose/build/release/rollback commands only after the second hop on
+`192.168.80.20`; do not deploy the application stack on `103.74.122.206`.
+
 Run on Ubuntu from an administrator account:
 
 ```bash

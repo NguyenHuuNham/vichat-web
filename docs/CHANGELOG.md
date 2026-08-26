@@ -9,18 +9,20 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 ## 2026-08-26-09 - Sua vi tri mo chat va do tuong phan ten nguoi gui
 
 - Thoi gian: 2026-08-26 13:52 (Asia/Saigon)
-- Loai: Sua loi | Web | UX | Realtime | Kiem thu | Tai lieu
-- Trang thai: Hoan tat; can UAT visual
+- Loai: Sua loi | Web | UX | Realtime | Kiem thu | Tai lieu | Trien khai
+- Trang thai: Da commit, push, deploy production; can UAT visual
 - Muc tieu: Khi mo cuoc tro chuyen co tin moi, ChatUI phai hien thi den tin nhan moi nhat thay vi mac ket o doan lich su phia tren; ten nguoi gui tren anh nen phai doc ro.
 - Pham vi: ChatUI cuon khi chon conversation, snapshot Tinode den muon, unread boundary hien co va style ten nguoi gui; khong thay doi read cursor, tin nhan, thong bao, mobile hay Chatmgt.
-- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `src/styles/index.css`, `docs/CHANGELOG.md`, `dist/index.html`.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `src/styles/index.css`, `docs/CHANGELOG.md`, `infrastructure/production/README.md`, `dist/index.html`.
 - Noi dung: Them lich cuon den cuoi sau hai frame render khi chon room va lap lai sau khi snapshot Tinode cap nhat, dong thoi chi ap dung trong luc mo room de khong cuon chen vao thao tac doc lich su cua user. Cuon nut `Tin nhan moi nhat` dung cung helper; ten nguoi gui dung mau chu chinh, dam hon va co text-shadow phu hop anh nen/dark mode.
 - Quyet dinh ky thuat: Cuon truc tiep tren container `.chat-messages` thay vi chi phu thuoc vao `scrollIntoView` cua sentinel va co kiem tra room hien tai, nen snapshot den muon khong de lai vi tri cu. Unread boundary va `markRead` duoc giu nguyen; khong them storage hay timer nghiep vu.
 - Database/API/cau hinh: Khong co migration, endpoint, schema, dependency, secret hoac bien moi truong moi.
 - Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js src/features/chat/services/unreadBoundary.test.js` dat 51/51; `npm run test:frontend` dat 287/287; `npm run lint` exit 0 voi cac warning legacy da co san trong `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat voi entry `index-C8LqBkwG.js`, App `App-PkAv1o-P.js`, CSS `index-BEAPZ7sy.css` va warning chunk App lon hon 500 KB co san; `git diff --check` dat sau khi hoan tat code va tai lieu.
+- Trien khai: Source commit `5fbe3498cf6146f6f82a711b16c58df0576816e4` da push `origin/master`; release `/opt/deploy/chat/releases/chat-scroll-5fbe349-r11-20260826-1525` dang la `current`, `previous` tro release `/opt/deploy/chat/releases/migration-f2a4027-v2`; ChatUI container `ef736dc53fa7`, image `sha256:fefb701bf12cc92707e12cf0144f3963c13a9ec27f4ef86ec45eaaf4d7375`, healthy; 9/9 service healthy, ChatUI health HTTP 200, Chatmgt health HTTP 200, public JS khop build moi va WSS handshake HTTP 101. Archive release co SHA-256 `bdceb786ba849e99d6c84659ce5ff6cb69cfc193d5a00ecc3c7f70eb749da07b`.
+- Luong truy cap deploy: Phai vao `ssh ubuntu@103.74.122.206` roi `ssh ubuntu@192.168.80.20`; `.206` chi la jump host/Nginx relay, khong phai dich den Compose. Public CSS thinh thoang con gap edge/cache tra fallback HTML body 30 byte, trong khi CSS trong container dung; can theo doi edge distribution rieng, khong phai loi build ChatUI.
 - Rui ro con lai: Chua UAT visual bang tai khoan that tren desktop/mobile va dark mode trong phien nay; can xac nhan lai room co unread, room khong unread, dang doc lich su, anh nen va chat 1-1/group.
 - Viec tiep theo: Hard refresh ChatUI, gui tin tu cua so khac, chuyen qua room roi mo lai room co tin moi; kiem tra vi tri o tin cuoi, unread/receipt khong thay doi sai va ten `Minh` doc ro tren anh nen.
-- Commit/PR: Chua tao.
+- Commit/PR: Source commit `5fbe349`; deployment follow-up docs commit `Chua tao`; khong co PR.
 
 ## 2026-08-26-08 - Di chuyen production sang may chu 192.168.80.20
 
