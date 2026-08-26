@@ -119,7 +119,7 @@ test('restores a cookie-backed session after a full page reload', () => {
   assert.equal(isSessionRestoreAuthFailure({ status: 401 }), true);
   assert.equal(isSessionRestoreAuthFailure({ status: 403 }), false);
   assert.equal(isSessionRestoreAuthFailure(new Error('network timeout')), false);
-  assert.match(managementServiceSource, /apiRequest\('\/api\/v1\/auth\/me'\)/);
+  assert.match(managementServiceSource, /apiRequest\('\/api\/v1\/auth\/me'(, \{ cache: 'no-store' \})?\)/);
   assert.match(appSource, /managementAuthClient\.restoreSession\(\)/);
   assert.match(appSource, /sessionRestoreAttemptedRef/);
   assert.match(appSource, /sessionRestoreState/);
@@ -214,6 +214,7 @@ test('keeps only safe active tenant options and switches without logout', () => 
     logo: 'https://account.upgo.vn/company-a.png',
   }]);
   assert.equal(typeof chatManagementService.switchTenant, 'function');
+  assert.match(appSource, /const canSwitchTenant = tenantOptions\.length > 0/);
   assert.match(managementServiceSource, /apiRequest\('\/api\/v1\/auth\/switch-tenant'/);
   assert.match(managementServiceSource, /activeTinodePassword = ''/);
   assert.match(appSource, /chatManagementService\.switchTenant\(requestedTenantId\)/);
@@ -237,6 +238,10 @@ test('keeps only safe active tenant options and switches without logout', () => 
   assert.match(appSource, /tenant-switcher-menu-list/);
   assert.match(appSource, /<strong>\{option\.name\}<\/strong>/);
   assert.match(appSource, /requestTenantSwitch\(option\)/);
+  assert.match(appSource, /tenantMenuOptions = currentTenantOption/);
+  assert.match(appSource, /tenantOptions\.filter\(option => String\(option\.id\) !== String\(currentTenantOption\.id\)\)/);
+  assert.match(appSource, /tenantMenuOptions\.length === 0/);
+  assert.match(appSource, /Chưa có công ty khác/);
   assert.doesNotMatch(appSource, /tenantSwitcherIndex|shiftTenantSwitcher|tenant-switcher-viewport|tenant-switcher-track/);
 });
 
@@ -295,6 +300,8 @@ test('requires explicit confirmation before switching tenants', () => {
 test('refreshes company logo metadata without resetting the active chat session', () => {
   assert.equal(typeof chatManagementService.refreshSessionMetadata, 'function');
   assert.match(managementServiceSource, /async refreshSessionMetadata\(\)/);
+  assert.match(managementServiceSource, /apiRequest\('\/api\/v1\/auth\/me', \{ cache: 'no-store' \}\)/);
+  assert.match(managementServiceSource, /async restoreSession\(\)/);
   assert.match(managementServiceSource, /hydrateActiveSession\(payload, \{ preserveExisting: true \}\)/);
   assert.match(appSource, /chatManagementService\.refreshSessionMetadata\(\)/);
   assert.match(appSource, /tenantOptions: nextTenantOptions/);

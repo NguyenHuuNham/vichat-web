@@ -3979,6 +3979,8 @@ input:checked + .slider:before {
 .tenant-switcher-toggle:disabled { cursor: default; opacity: .6; }
 .tenant-switcher-menu { position: absolute; top: calc(100% + 7px); right: 0; z-index: 95; width: min(320px, calc(100vw - 32px)); max-height: min(158px, calc(100vh - 96px)); box-sizing: border-box; overflow-y: auto; padding: 6px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-white); box-shadow: 0 16px 34px rgba(6, 28, 26, .2); overscroll-behavior: contain; scrollbar-gutter: stable; }
 .tenant-switcher-menu-list { display: flex; flex-direction: column; gap: 4px; }
+.tenant-switcher-empty { display: flex; min-height: 36px; box-sizing: border-box; align-items: center; gap: 8px; padding: 8px 9px; color: var(--text-muted); font-size: 11px; line-height: 1.35; }
+.tenant-switcher-empty i { color: var(--vichat-blue); }
 .tenant-switcher-menu-option { position: relative; display: flex; width: 100%; min-height: 44px; box-sizing: border-box; align-items: center; gap: 9px; padding: 5px 34px 5px 6px; border: 1px solid var(--border-color); border-radius: 9px; color: var(--text-body); background: var(--bg-app); font: inherit; text-align: left; cursor: pointer; transition: var(--transition-fast); }
 .tenant-switcher-menu-option:hover:not(:disabled), .tenant-switcher-menu-option:focus-visible { border-color: var(--vichat-blue); background: var(--vichat-blue-light); transform: translateY(-1px); outline: none; }
 .tenant-switcher-menu-option:focus-visible { box-shadow: 0 0 0 3px rgba(244, 81, 30, .14); }

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-27-02 - Hien thi cong ty cho tai khoan mot tenant va dong bo tenant moi
+
+- Thoi gian: 2026-08-27 01:00 (Asia/Saigon)
+- Loai: Sua loi | Web | Tenant | Realtime | UX | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien; local checks da dat, cho commit va deploy production
+- Muc tieu: Tai khoan co mot tenant van thay cong ty hien tai; menu mui ten khong lap lai cong ty dang dung va tenant moi xuat hien sau khi Account cap nhat.
+- Pham vi: ChatUI profile company switcher, refresh `/api/v1/auth/me` va nhan dien menu tenant; khong thay doi Tinode, unread highlight, directory, auth token, Chatmgt API hay database.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Switcher duoc hien khi co it nhat mot active tenant; cong ty hien tai van hien trong profile. Menu chi render cac tenant khac, hien trang thai rong khi chua co cong ty khac va tu hien tenant moi khi refresh realtime 5 giay nhan snapshot moi. Request auth refresh/restore dung `cache: 'no-store'` de khong giu snapshot tenant cu.
+- Quyet dinh ky thuat: Tach current tenant khoi danh sach lua chon de single-tenant khong tao lua chon gia; giu nguyen polling/focus refresh va chi cap nhat `tenantOptions` trong memory, khong reset room, Tinode hay session. Khong sua endpoint chuyen tenant va van giu guard xac nhan hien co.
+- Database/API/cau hinh: Khong co migration, schema, endpoint, secret hay bien moi truong moi; chi thay doi cache policy cua client khi doc `/api/v1/auth/me`. Khong can rebuild Chatmgt.
+- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js src/features/i18n/appLanguage.test.js` dat 63/63; `npm run test:frontend` dat 294/294; `npm run lint` exit 0 voi warning legacy/vendor da co san; `npm run build:production` dat voi entry `index-Bbs5AhNT.js`, App `App-BvG3IFpZ.js`, CSS `index-CR6IwdSS.css`; `git diff --check` dat.
+- Rui ro con lai: Chua UAT visual production bang tai khoan that trong phien nay vi browser runtime khong duoc expose; can kiem tra single-tenant, tenant moi duoc cap realtime va chuyen tenant nhieu tenant sau deploy.
+- Viec tiep theo: Commit/push, tao release ChatUI va deploy qua jump host `103.74.122.206` vao server dich `192.168.80.20`; chi recreate container `chat`, sau do verify health/public bundle/WSS/log.
+- Commit/PR: Chua tao.
+
 ## 2026-08-27-01 - Giu highlight khi tin moi den trong luc dang xac nhan da doc
 
 - Thoi gian: 2026-08-27 00:29 (Asia/Saigon)

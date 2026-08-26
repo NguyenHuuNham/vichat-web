@@ -490,13 +490,13 @@ export const chatManagementService = {
 
   async refreshSessionMetadata() {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
-    const payload = await apiRequest('/api/v1/auth/me');
+    const payload = await apiRequest('/api/v1/auth/me', { cache: 'no-store' });
     return hydrateActiveSession(payload, { preserveExisting: true });
   },
 
   async restoreSession() {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
-    const payload = await apiRequest('/api/v1/auth/me');
+    const payload = await apiRequest('/api/v1/auth/me', { cache: 'no-store' });
     return hydrateActiveSession(payload, { preserveExisting: false });
   },
 

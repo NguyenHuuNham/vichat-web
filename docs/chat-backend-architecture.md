@@ -75,8 +75,11 @@ SSE route so an on/off change reaches open tabs immediately.
 4. Chatmgt issues the HttpOnly chat cookie and returns only public user/tenant
    fields; it never returns an Account password or Tinode secret.
 5. ChatUI loads Step 3 metadata, then calls `POST /api/v1/auth/tinode-token`.
-6. When the Account identity has more than one active membership, ChatUI shows
-   a company switcher in the profile. `POST /api/v1/auth/switch-tenant` first
+6. When the Account identity has at least one active membership, ChatUI shows
+   the current company in the profile, including for a single-tenant account.
+   The down-arrow menu contains only other active memberships, so a
+   single-tenant account has no company choice until Account reports a new
+   membership. `POST /api/v1/auth/switch-tenant` first
    validates the requested membership against `/current_user`, calls Account's
    `/api/v1/tenant/set_current_tenant` with the existing Account session, and
    re-reads `/current_user` before rotating only the Chatmgt cookie. It does not
@@ -95,10 +98,11 @@ SSE route so an on/off change reaches open tabs immediately.
 When the web page reloads, ChatUI uses `GET /api/v1/auth/me` with the existing
 HttpOnly cookie to rebuild its in-memory account session before loading
 Chatmgt/Tinode data. While an account is active, the same endpoint is checked
-when the tab regains focus/visibility and every five seconds. Chatmgt therefore
-re-reads the current Account membership logos; ChatUI updates only the in-memory
-tenant option metadata (using the optional logo version for cache invalidation)
-and does not reset conversations, Tinode, or realtime state. No token or
+without browser caching when the tab regains focus/visibility and every five
+seconds. Chatmgt therefore re-reads the current Account membership list and
+logos; ChatUI updates only the in-memory tenant option metadata (using the
+optional logo version for cache invalidation), so a newly active tenant becomes
+available without resetting conversations, Tinode, or realtime state. No token or
 password is persisted in browser storage.
 
 ### Mobile client session
@@ -1022,6 +1026,9 @@ domain/deployment only when an enterprise isolation policy requires it.
   A to B in ChatUI without Account logout or re-entering credentials; the Account
   current tenant, Chatmgt JWT, directory projection and Tinode mapping all move
   to B before the next directory read.
+- An Account identity with one active membership still shows its current company;
+  opening the arrow has no alternative company item until a newly active
+  membership is returned by the periodic/focus refresh.
 - A tenant-A session cannot list, search, open, add, update or remove tenant-B
   users, conversations, groups, participants or audit records.
 - Invalid credentials return `401`; rate limits are scoped by tenant, identity

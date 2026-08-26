@@ -3596,13 +3596,15 @@ function App() {
     ? currentUser.tenantOptions
     : Array.isArray(currentUser?.tenant_options) ? currentUser.tenant_options : [])
     .filter(option => option?.id && option.active !== false);
-  const canSwitchTenant = tenantOptions.length > 1;
+  // Keep the current company visible for a single-tenant account; only other
+  // active memberships are valid choices in the opened menu.
+  const canSwitchTenant = tenantOptions.length > 0;
   const currentTenantId = String(profileAccount.tenantId || profileAccount.tenant_id || '').trim();
   const currentTenantOption = tenantOptions.find(option => String(option.id) === currentTenantId)
     || tenantOptions[0]
     || null;
   const tenantMenuOptions = currentTenantOption
-    ? [currentTenantOption, ...tenantOptions.filter(option => String(option.id) !== String(currentTenantOption.id))]
+    ? tenantOptions.filter(option => String(option.id) !== String(currentTenantOption.id))
     : tenantOptions;
 
   useEffect(() => {
@@ -13590,7 +13592,12 @@ function App() {
                           {tenantSwitcherOpen && (
                             <div id="tenant-switcher-menu" className="tenant-switcher-menu" role="menu" aria-label={appCopy.t('Chọn công ty')}>
                               <div className="tenant-switcher-menu-list">
-                                {tenantMenuOptions.map(option => {
+                                {tenantMenuOptions.length === 0 ? (
+                                  <div className="tenant-switcher-empty" role="status">
+                                    <i className="fa-solid fa-circle-info" aria-hidden="true"></i>
+                                    <span>{appCopy.t('Chưa có công ty khác')}</span>
+                                  </div>
+                                ) : tenantMenuOptions.map(option => {
                                   const isCurrent = String(option.id) === currentTenantId;
                                   return (
                                     <button

@@ -296,6 +296,7 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Công ty tiếp theo': 'Next company',
   'Đang dùng': 'Current',
   'Chọn': 'Choose',
+  'Chưa có công ty khác': 'No other companies yet.',
   'Chọn công ty để làm việc': 'Choose a company to work in',
   'Công ty hiện tại': 'Current company',
   'Đang chuyển công ty...': 'Switching company...',
