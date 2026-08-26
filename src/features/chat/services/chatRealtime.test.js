@@ -218,6 +218,44 @@ test('a newer read cursor clears unread state while a genuinely newer message re
   });
 });
 
+test('derives unread from a newer incoming message when Tinode unread metadata is stale', () => {
+  assert.deepEqual(mergeConversationReadState({
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+    messages: [{ seq: 100, sender: 'incoming', senderId: 'usr-peer' }],
+  }, {
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+    // Tinode can deliver this message before refreshing topic.unread.
+    messages: [
+      { seq: 100, sender: 'incoming', senderId: 'usr-peer' },
+      { seq: 101, sender: 'incoming', senderId: 'usr-peer' },
+    ],
+  }, { viewerId: 'usr-me' }), {
+    readSeq: 100,
+    unreadFromSeq: 101,
+    badge: 1,
+  });
+
+  assert.deepEqual(mergeConversationReadState({
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+    messages: [{ seq: 100, sender: 'incoming', senderId: 'usr-peer' }],
+  }, {
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+    messages: [{ seq: 100, sender: 'incoming', senderId: 'usr-peer' }, { seq: 101, sender: 'outgoing', senderId: 'usr-me' }],
+  }, { viewerId: 'usr-me' }), {
+    readSeq: 100,
+    unreadFromSeq: 0,
+    badge: 0,
+  });
+});
+
 test('local read floors override stale explicit Tinode unread counters', () => {
   assert.deepEqual(resolveTopicReadState({
     topicSequence: 100,
@@ -299,6 +337,21 @@ test('the viewer own echo advances read state without hiding an incoming message
     latestMessage: { seq: 101, head: { 'x-sender-id': 'usr-me' } },
     viewerId: 'usr-me',
   }), 101);
+  const unknownSenderReadSeq = resolveTopicViewerReadSeq({
+    serverReadSeq: 100,
+    latestMessage: { seq: 101 },
+    viewerId: 'usr-me',
+  });
+  assert.equal(unknownSenderReadSeq, 100);
+  assert.deepEqual(resolveTopicReadState({
+    topicSequence: 101,
+    serverReadSeq: unknownSenderReadSeq,
+    explicitUnreadCount: 0,
+  }), {
+    readSeq: 100,
+    unreadFromSeq: 101,
+    badge: 1,
+  });
   assert.equal(resolveTopicViewerReadSeq({
     serverReadSeq: 100,
     latestMessage: { seq: 101 },

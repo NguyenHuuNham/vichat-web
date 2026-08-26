@@ -5255,7 +5255,7 @@ function App() {
         // Merge the read cursor before deriving notifications or boundaries.
         // A delayed Tinode snapshot must not make an already-read message look
         // new again.
-        const effectiveReadState = mergeConversationReadState(currentRoom, conversation);
+        const effectiveReadState = mergeConversationReadState(currentRoom, conversation, { viewerId });
         const conversationWithReadState = {
           ...conversation,
           ...effectiveReadState,
@@ -5360,11 +5360,11 @@ function App() {
         if (!cancelled && Array.isArray(tinodeConversations)) {
           const knownRooms = safeConversationEntries(conversationsRef.current);
           tinodeConversations.forEach(conversation => {
-            if (!conversation || (Number(conversation.badge) <= 0 && Number(conversation.unreadFromSeq) <= 0)) return;
+            if (!conversation) return;
             const managedEntry = knownRooms.find(([, room]) => room.tinodeTopic === conversation.id);
             if (!managedEntry) return;
             const stateId = managedEntry[0];
-            const mergedReadState = mergeConversationReadState(managedEntry[1], conversation);
+            const mergedReadState = mergeConversationReadState(managedEntry[1], conversation, { viewerId });
             if (mergedReadState.badge <= 0 && mergedReadState.unreadFromSeq <= 0) return;
             rememberUnreadBoundary({
               ...conversation,
@@ -5413,7 +5413,7 @@ function App() {
         }
       });
     return () => { cancelled = true; };
-  }, [isLoggedIn, chatMode, managementConversationSession, ensureTinodeSession, applyPresenceSnapshot, rememberUnreadBoundary]);
+  }, [isLoggedIn, chatMode, managementConversationSession, ensureTinodeSession, applyPresenceSnapshot, rememberUnreadBoundary, viewerId]);
 
   const handleLoginSuccess = async (user, { source = 'credentials' } = {}) => {
     clearActiveCall();

@@ -96,12 +96,34 @@ function conversationSequenceFloor(conversation) {
     ), 0);
 }
 
+function incomingConversationSequenceFloor(conversation, viewerId = '') {
+  const normalizedViewerId = String(viewerId || '').trim();
+  return (Array.isArray(conversation?.messages) ? conversation.messages : [])
+    .filter(message => {
+      if (message?.sender === 'outgoing') return false;
+      const senderId = String(
+        message?.senderId
+          || message?.raw?.from
+          || message?.raw?.head?.['x-sender-id']
+          || '',
+      ).trim();
+      if (normalizedViewerId && senderId) return senderId !== normalizedViewerId;
+      return message?.sender === 'incoming';
+    })
+    .reduce((maximum, message) => Math.max(
+      maximum,
+      Number(message?.seq) || 0,
+      Number(message?.raw?.seq) || 0,
+      Number(message?.pollActivitySeq) || 0,
+    ), 0);
+}
+
 /**
  * Merge viewer read state monotonically. Tinode can emit an older topic
  * snapshot after a local markRead; that snapshot must never resurrect an
  * unread badge or boundary which was already acknowledged.
  */
-export function mergeConversationReadState(existing = {}, incoming = {}) {
+export function mergeConversationReadState(existing = {}, incoming = {}, { viewerId = '' } = {}) {
   const existingReadSeq = Math.max(0, Number(existing?.readSeq) || 0);
   const incomingReadSeq = Math.max(0, Number(incoming?.readSeq) || 0);
   const readSeq = Math.max(existingReadSeq, incomingReadSeq);
@@ -111,11 +133,12 @@ export function mergeConversationReadState(existing = {}, incoming = {}) {
   const incomingBadge = Math.max(0, Number(incoming?.badge) || 0);
   const existingLatestSeq = conversationSequenceFloor(existing);
   const incomingLatestSeq = conversationSequenceFloor(incoming);
+  const incomingLatestIncomingSeq = incomingConversationSequenceFloor(incoming, viewerId);
   const incomingHasNewMessages = incomingLatestSeq > existingLatestSeq;
   const incomingHasExplicitUnread = incomingUnreadFromSeq > 0 || incomingBadge > 0;
   const incomingHasNewUnread = incomingHasNewMessages
     && incomingLatestSeq > readSeq
-    && incomingHasExplicitUnread;
+    && (incomingHasExplicitUnread || incomingLatestIncomingSeq > readSeq);
   const existingHasUnread = existingUnreadFromSeq > existingReadSeq || existingBadge > 0;
   const existingHasReadState = Boolean(existingReadSeq || existingUnreadFromSeq || existingBadge);
   const incomingCursorAdvanced = incomingReadSeq > existingReadSeq;
@@ -633,16 +656,18 @@ export function resolveTopicViewerReadSeq({
   serverReadSeq = 0,
   latestMessage = null,
   viewerId = '',
-  isChannel = false,
 } = {}) {
   const serverRead = Math.max(0, Number(serverReadSeq) || 0);
   const latestSequence = Math.max(0, Number(latestMessage?.seq) || 0);
   const senderId = String(
     latestMessage?.from || latestMessage?.head?.['x-sender-id'] || '',
   ).trim();
-  const isOutgoing = latestSequence > 0 && (
-    senderId ? senderId === String(viewerId || '') : !isChannel
-  );
+  // Missing sender metadata is ambiguous. Treat it as incoming until the
+  // server/read cursor confirms it; otherwise a new peer message can advance
+  // the viewer cursor and suppress the unread indicator.
+  const isOutgoing = latestSequence > 0
+    && Boolean(senderId)
+    && senderId === String(viewerId || '');
   return Math.max(serverRead, isOutgoing ? latestSequence : 0);
 }
 
