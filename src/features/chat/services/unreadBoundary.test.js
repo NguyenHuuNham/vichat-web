@@ -6,6 +6,8 @@ import {
   markUnreadBoundaryIndicatorCleared,
   mergeUnreadBoundary,
   unreadBadgeLabel,
+  unreadBoundaryHasNewerTail,
+  unreadBoundaryReadSequence,
   unreadCountForConversation,
   unreadBoundaryStartIndex,
   unreadIndicatorVisible,
@@ -67,6 +69,30 @@ test('keeps an old boundary dismissed but shows a newer unread tail', () => {
   assert.equal(merged.indicatorClearedThroughSeq, 3);
   assert.equal(unreadIndicatorVisible(merged, unreadCountForConversation({}, merged)), true);
   assert.equal(merged.revealed, false);
+});
+
+test('keeps read acknowledgement at the completed unread tail', () => {
+  const completed = createUnreadBoundary(messages.slice(1, 3), {
+    viewerId: 'me',
+    firstUnreadSeq: 2,
+  });
+
+  assert.equal(unreadBoundaryReadSequence(completed, [...messages, { id: 'five', seq: 5 }]), 3);
+  assert.equal(unreadBoundaryReadSequence({ lastUnreadSeq: 0 }, [{ id: 'five', seq: 5 }]), 5);
+});
+
+test('detects a new tail while the previous unread acknowledgement is pending', () => {
+  const completed = markUnreadBoundaryIndicatorCleared(
+    createUnreadBoundary(messages.slice(1, 3), { viewerId: 'me', firstUnreadSeq: 2 }),
+  );
+  const duplicate = createUnreadBoundary(messages.slice(1, 3), { viewerId: 'me', firstUnreadSeq: 2 });
+  const newer = mergeUnreadBoundary(
+    completed,
+    createUnreadBoundary(messages, { viewerId: 'me', firstUnreadSeq: 2 }),
+  );
+
+  assert.equal(unreadBoundaryHasNewerTail(duplicate, completed), false);
+  assert.equal(unreadBoundaryHasNewerTail(newer, completed), true);
 });
 
 test('does not resurrect a dismissed boundary when only a stale snapshot arrives', () => {

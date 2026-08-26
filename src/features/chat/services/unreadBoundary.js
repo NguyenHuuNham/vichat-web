@@ -148,6 +148,34 @@ export function unreadIndicatorVisible(boundary = null, count = 0) {
   return unreadCount > clearedThroughCount;
 }
 
+export function unreadBoundaryReadSequence(boundary = null, messages = []) {
+  const boundarySequence = Number(boundary?.lastUnreadSeq) || 0;
+  if (boundarySequence > 0) return boundarySequence;
+  return (Array.isArray(messages) ? messages : [])
+    .reduce((maximum, message) => Math.max(maximum, messageSequence(message)), 0);
+}
+
+export function unreadBoundaryHasNewerTail(current = null, completed = null) {
+  if (!current || !completed) return false;
+  const currentSequence = Number(current.lastUnreadSeq) || 0;
+  const completedSequence = Number(completed.lastUnreadSeq) || 0;
+  if (currentSequence > 0 || completedSequence > 0) {
+    return currentSequence > completedSequence;
+  }
+
+  const currentCount = Number(current.unreadCount) || 0;
+  const completedCount = Number(completed.unreadCount) || 0;
+  if (currentCount !== completedCount) return currentCount > completedCount;
+
+  const currentId = String(current.lastUnreadId || '');
+  const completedId = String(completed.lastUnreadId || '');
+  if (currentId !== completedId) return Boolean(currentId);
+
+  const currentAt = messageTimestamp({ createdAt: current.lastUnreadAt });
+  const completedAt = messageTimestamp({ createdAt: completed.lastUnreadAt });
+  return currentAt > completedAt;
+}
+
 export function unreadMessagesForConversation(room = null, boundary = null, {
   viewerId = '',
 } = {}) {

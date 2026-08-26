@@ -368,6 +368,31 @@ test('new data derives unread from the latest sequence before Tinode refreshes t
   });
 });
 
+test('incoming read cap prevents an SDK auto-read from hiding a peer packet', () => {
+  assert.deepEqual(resolveTopicReadState({
+    topicSequence: 101,
+    serverReadSeq: 101,
+    localReadFloor: 0,
+    incomingReadCap: 100,
+    explicitUnreadCount: 0,
+  }), {
+    readSeq: 100,
+    unreadFromSeq: 101,
+    badge: 1,
+  });
+  assert.deepEqual(resolveTopicReadState({
+    topicSequence: 101,
+    serverReadSeq: 101,
+    localReadFloor: 101,
+    incomingReadCap: 100,
+    explicitUnreadCount: 0,
+  }), {
+    readSeq: 101,
+    unreadFromSeq: 0,
+    badge: 0,
+  });
+});
+
 test('the viewer own echo advances read state without hiding an incoming message', () => {
   const outgoingReadSeq = resolveTopicViewerReadSeq({
     serverReadSeq: 100,

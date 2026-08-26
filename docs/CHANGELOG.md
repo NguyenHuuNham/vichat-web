@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-27-01 - Giu highlight khi tin moi den trong luc dang xac nhan da doc
+
+- Thoi gian: 2026-08-27 00:29 (Asia/Saigon)
+- Loai: Sua loi | Web | Realtime | UX | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien; local checks da dat, chua commit/push/deploy
+- Muc tieu: Tin peer moi den sau khi viewer da xem room cu phai bat lai day du highlight; tin cu da xem khong duoc hoi sinh highlight.
+- Pham vi: ChatUI unread boundary completion, Tinode read acknowledgement race, sequence projection va regression test; khong doi luong gui tin, receipt nguoi khac, mobile, Chatmgt, database hay volume.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/unreadBoundary.js`, `src/features/chat/services/unreadBoundary.test.js`, `src/features/chat/services/chatManagementService.test.js`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Callback observer truyen boundary da that su nam trong viewport; `markRead` nhan moc sequence gioi han va chup sequence truoc `await`. Tinode SDK co the tu tang `topic.read` cho packet thieu `from`, nen ChatUI chup read cursor truoc callback, gioi han snapshot realtime va giu lai mốc local da doc. Neu packet peer moi den trong luc acknowledge dang cho, boundary moi duoc giu lai/re-arm va state khong bi ghi de ve badge 0.
+- Quyet dinh ky thuat: Khong bo qua realtime event khi dang completion; so sanh tail moi voi boundary dang hoan tat, chi xoa boundary cu va chi nang read cursor toi sequence da thay. Incoming read cap chi ha server cursor tam thoi, khong ha `localReadFloor`, nen tin da doc khong hoi sinh va tin moi van highlight. Tin cua viewer van khong tao unread vi read-state merge loc theo sender ID.
+- Database/API/cau hinh: Khong co migration, endpoint, schema, dependency, secret, bien moi truong hay thay doi volume. Thay doi `markRead` chi la hop dong noi bo cua ChatUI/Tinode client.
+- Kiem thu: `node --test src/features/chat/services/chatRealtime.test.js src/features/chat/services/unreadBoundary.test.js src/features/chat/services/chatManagementService.test.js` dat 92/92; `npm run test:frontend` dat 294/294; `npm run lint` exit 0 voi warning legacy/vendor da co san; `npm run build:production` dat voi entry `index-2mojosJ8.js`, App `App-BRj-yMG6.js`, CSS `index-BEAPZ7sy.css`; `git diff --check` dat sau khi cap nhat code va test.
+- Rui ro con lai: Chua UAT production bang hai tai khoan/browser that trong phien nay vi browser runtime khong duoc expose; can xac nhan direct/group, tin den khi room khac dang mo, tin viewer gui, boundary cu da xem va reconnect.
+- Viec tiep theo: Commit/push, tao release va deploy chi ChatUI qua jump host `103.74.122.206` vao `192.168.80.20`; khong chay Compose tren `.206`, sau do verify health/public bundle/WSS/log va UAT unread.
+- Commit/PR: Chua tao.
+
 ## 2026-08-26-13 - Dung mat highlight khi realtime merge bi lap snapshot
 
 - Thoi gian: 2026-08-26 16:39; deploy 16:52-16:55 (Asia/Saigon)

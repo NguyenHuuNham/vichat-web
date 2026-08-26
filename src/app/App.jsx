@@ -95,6 +95,8 @@ import {
   markUnreadBoundaryIndicatorCleared,
   unreadBadgeLabel,
   unreadCountForConversation,
+  unreadBoundaryHasNewerTail,
+  unreadBoundaryReadSequence,
   unreadBoundaryStartIndex,
   unreadIndicatorVisible,
   unreadMessagesForConversation,
@@ -3755,7 +3757,6 @@ function App() {
   const rememberUnreadBoundary = useCallback((room, conversationId = room?.id) => {
     if (!room || room.isChatbot || room.id === 'empty' || !conversationId) return null;
     const key = String(conversationId);
-    if (unreadCompletionRequestsRef.current.has(key)) return null;
     const firstUnreadSeq = Number(room.unreadFromSeq) > 0
       ? Number(room.unreadFromSeq)
       : Number(room.readSeq) > 0 ? Number(room.readSeq) + 1 : 0;
@@ -3794,22 +3795,36 @@ function App() {
     return dismissed;
   }, []);
 
-  const completeUnreadBoundary = useCallback(async conversationId => {
+  const completeUnreadBoundary = useCallback(async (conversationId, boundaryOverride = null) => {
     const key = String(conversationId || '');
-    const boundary = unreadBoundariesRef.current[key];
+    const boundary = boundaryOverride || unreadBoundariesRef.current[key];
     if (!key || !boundary || unreadCompletionRequestsRef.current.has(key)) return;
     unreadCompletionRequestsRef.current.add(key);
     const completedAt = new Date().toISOString();
     try {
       const rawRoom = conversationsRef.current[key] || conversationsRef.current[conversationId];
       const room = rawRoom ? safeNormalizeConversationForRender(rawRoom, key) : null;
+      const completionReadSequence = unreadBoundaryReadSequence(boundary, roomMessages(room));
+      let acknowledgedReadSeq = 0;
       if (chatMode === 'tinode') {
         const topicName = boundary.topicName || room?.tinodeTopic;
-        if (topicName) await tinodeClient.markRead(topicName);
+        if (topicName) {
+          acknowledgedReadSeq = await tinodeClient.markRead(topicName, {
+            throughSequence: completionReadSequence,
+          });
+        }
       } else if (room?.isGroup) {
         markDemoGroupRead(key, unreadViewerId);
       } else {
         markDemoDirectRead(key, unreadViewerId);
+      }
+      const currentBoundary = unreadBoundariesRef.current[key];
+      if (unreadBoundaryHasNewerTail(currentBoundary, boundary)) {
+        // A peer message arrived while the previous read acknowledgement was
+        // pending. Keep the new boundary and let it remain visible.
+        unreadCompletionRequestsRef.current.delete(key);
+        unreadBoundaryJumpedRef.current.delete(key);
+        return;
       }
       unreadCompletionRequestsRef.current.delete(key);
       unreadBoundaryJumpedRef.current.delete(key);
@@ -3825,11 +3840,9 @@ function App() {
           ? safeNormalizeConversationForRender(previous[key], key)
           : null;
         if (!previousRoom) return previous;
-        const latestSequence = roomMessages(previousRoom)
-          .reduce((maximum, message) => Math.max(maximum, Number(message?.seq) || 0), 0);
         const readSeq = Math.max(
           Number(previousRoom.readSeq) || 0,
-          latestSequence,
+          Number(acknowledgedReadSeq) || 0,
           Number(boundary.lastUnreadSeq) || 0,
           Number(boundary.firstUnreadSeq) || 0,
         );
@@ -10947,7 +10960,9 @@ function App() {
         if (timer) return;
         timer = window.setTimeout(() => {
           timer = null;
-          if (document.visibilityState !== 'hidden') void completeUnreadBoundary(activeChat.id);
+          if (document.visibilityState !== 'hidden') {
+            void completeUnreadBoundary(activeChat.id, activeUnreadBoundary);
+          }
         }, 900);
       }, { root, threshold: [0.35, 0.7] });
       observer.observe(target);

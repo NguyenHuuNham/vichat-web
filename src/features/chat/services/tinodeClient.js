@@ -89,6 +89,9 @@ const groupSettingsSnapshots = new Map();
 // A local read floor protects the UI from an older Tinode snapshot arriving
 // after markRead. The server remains the durable source of the receipt.
 const topicReadFloors = new Map();
+// Tinode's SDK can advance topic.read for an incoming packet which has no
+// sender field. Keep the pre-packet read cursor until that packet is read.
+const topicUnreadReadSnapshots = new Map();
 const mediaObjectUrlVersions = new Map();
 let conversationListRequest = null;
 let fndDiscoveryRequest = Promise.resolve();
@@ -1126,6 +1129,7 @@ function toConversation(topic, tinode) {
     : rawConversationBackground;
   const topicSequence = Math.max(Number(topic.seq) || 0, topicReceiptSequence(topic));
   const latestTopicMessage = topic.latestMessage?.() || null;
+  const unreadReadSnapshot = topicUnreadReadSnapshots.get(topic.name);
   const topicReadState = resolveTopicReadState({
     topicSequence,
     // topic.onData fires before Tinode advances topic.read for our own echo.
@@ -1138,6 +1142,7 @@ function toConversation(topic, tinode) {
       isChannel: Boolean(topic.isChannelType?.()),
     }),
     localReadFloor: topicReadFloors.get(topic.name),
+    incomingReadCap: unreadReadSnapshot?.readCap,
     explicitUnreadCount: topic.unread,
   });
 
@@ -1399,6 +1404,57 @@ function emitPresenceSnapshot(tinode = getClient()) {
   listeners.forEach(listener => listener({ type: 'presence-snapshot', snapshot }));
 }
 
+function rememberTopicUnreadReadSnapshot(topic, data, tinode) {
+  const sequence = Number(data?.seq) || 0;
+  if (!topic?.name || sequence <= 0) return;
+  const senderId = String(data?.from || data?.head?.['x-sender-id'] || '').trim();
+  const isOutgoing = Boolean(senderId) && tinode?.isMe?.(senderId);
+  const existingSnapshot = topicUnreadReadSnapshots.get(topic.name);
+  const previousRead = existingSnapshot
+    ? existingSnapshot.readCap
+    : Math.max(
+      Number(topic.read) || 0,
+      Number(topicReadFloors.get(topic.name)) || 0,
+    );
+
+  if (isOutgoing) {
+    if (existingSnapshot && sequence > existingSnapshot.latestIncomingSeq) {
+      topicUnreadReadSnapshots.delete(topic.name);
+    }
+    return;
+  }
+  if (sequence <= previousRead) return;
+
+  // Capture the cursor before Topic._routeData can optimistically advance it
+  // for a packet which lacks `from`.
+  topicUnreadReadSnapshots.set(
+    topic.name,
+    existingSnapshot
+      ? {
+        readCap: Math.min(existingSnapshot.readCap, previousRead),
+        latestIncomingSeq: Math.max(existingSnapshot.latestIncomingSeq, sequence),
+      }
+      : { readCap: previousRead, latestIncomingSeq: sequence },
+  );
+}
+
+function advanceTopicUnreadReadSnapshot(topicName, throughSequence) {
+  const sequence = Number(throughSequence) || 0;
+  const snapshot = topicUnreadReadSnapshots.get(topicName);
+  if (!snapshot || sequence <= 0) return;
+  if (snapshot.latestIncomingSeq <= sequence) {
+    topicUnreadReadSnapshots.delete(topicName);
+    return;
+  }
+  topicUnreadReadSnapshots.set(topicName, {
+    readCap: Math.max(
+      snapshot.readCap,
+      Math.min(sequence, snapshot.latestIncomingSeq - 1),
+    ),
+    latestIncomingSeq: snapshot.latestIncomingSeq,
+  });
+}
+
 function emitContactsSoon() {
   if (contactsEventQueued) return;
   contactsEventQueued = true;
@@ -1411,6 +1467,7 @@ function emitContactsSoon() {
 function wireTopic(topic) {
   const topicClient = topic?._tinode || getClient();
   topic.onData = data => {
+    rememberTopicUnreadReadSnapshot(topic, data, topicClient);
     emitCallInvite(topic, data, topicClient);
     emitConversation(topic, topicClient);
   };
@@ -1695,6 +1752,7 @@ function resetSessionState({ clearEventListeners = false } = {}) {
   conversationEmitTimers.clear();
   topicReceiptCursors.clear();
   topicReadFloors.clear();
+  topicUnreadReadSnapshots.clear();
   groupSettingsSnapshots.clear();
   conversationListRequest = null;
   contactsEventQueued = false;
@@ -2290,27 +2348,46 @@ export const tinodeClient = {
     emitConversation(topic);
   },
 
-  async markRead(topicName) {
+  async markRead(topicName, { throughSequence = 0 } = {}) {
+    const requestedSequence = Math.max(0, Number(throughSequence) || 0);
     const cachedTopic = client?.getTopic?.(topicName);
+    const cachedUnreadReadSnapshot = topicUnreadReadSnapshots.get(topicName);
     const cachedSequence = cachedTopic
       ? Math.max(Number(cachedTopic.seq) || 0, topicReceiptSequence(cachedTopic))
       : 0;
-    if (cachedSequence > 0) {
-      topicReadFloors.set(topicName, Math.max(
-        Number(topicReadFloors.get(topicName)) || 0,
-        cachedSequence,
-      ));
+    const cachedReadSequence = cachedUnreadReadSnapshot
+      ? Math.min(
+        Number(cachedTopic?.read) || 0,
+        cachedUnreadReadSnapshot.readCap,
+      )
+      : Number(cachedTopic?.read) || 0;
+    const initialReadSequence = Math.max(
+      Number(topicReadFloors.get(topicName)) || 0,
+      cachedReadSequence,
+      requestedSequence || (cachedUnreadReadSnapshot ? cachedUnreadReadSnapshot.readCap : cachedSequence),
+    );
+    const hasReadSnapshot = initialReadSequence > 0;
+    if (hasReadSnapshot) {
+      topicReadFloors.set(topicName, initialReadSequence);
     }
     const topic = await subscribeTopic(topicName, { emit: false });
+    // Keep the sequence captured before subscription. A peer packet can arrive
+    // while subscribeTopic is awaiting metadata; it must remain unread.
+    const unreadReadSnapshot = topicUnreadReadSnapshots.get(topicName);
+    const topicReadSequence = Number(topic.read) || 0;
     const readSequence = Math.max(
       Number(topicReadFloors.get(topicName)) || 0,
-      Number(topic.read) || 0,
-      Number(topic.seq) || 0,
-      topicReceiptSequence(topic),
+      unreadReadSnapshot
+        ? Math.min(topicReadSequence, unreadReadSnapshot.readCap)
+        : topicReadSequence,
+      requestedSequence,
+      hasReadSnapshot || unreadReadSnapshot ? 0 : Number(topic.seq) || 0,
+      hasReadSnapshot || unreadReadSnapshot ? 0 : topicReceiptSequence(topic),
     );
     if (readSequence > 0) {
       topicReadFloors.set(topicName, readSequence);
       topic.noteRead(readSequence);
+      advanceTopicUnreadReadSnapshot(topicName, readSequence);
     }
     emitConversation(topic);
     return readSequence;
@@ -2752,6 +2829,7 @@ export const tinodeClient = {
     groupSettingsSnapshots.delete(String(topicName));
     topicSubscriptionRequests.delete(topicName);
     topicReadFloors.delete(String(topicName));
+    topicUnreadReadSnapshots.delete(String(topicName));
     fullHistoryRequests.delete(topicName);
     fullHistoryTopics.delete(topicName);
     conversationListRequest = null;
@@ -2786,6 +2864,7 @@ export const tinodeClient = {
     const topic = tinode.getTopic(topicName);
     if (topic) await topic.leave(true);
     topicReadFloors.delete(String(topicName));
+    topicUnreadReadSnapshots.delete(String(topicName));
     topicSubscriptionRequests.delete(topicName);
     fullHistoryRequests.delete(topicName);
     fullHistoryTopics.delete(topicName);
@@ -2802,6 +2881,7 @@ export const tinodeClient = {
       await topic.leave(true);
       tinode.cacheRemTopic?.(topicName);
       topicReadFloors.delete(String(topicName));
+      topicUnreadReadSnapshots.delete(String(topicName));
       topicSubscriptionRequests.delete(topicName);
       fullHistoryRequests.delete(topicName);
       fullHistoryTopics.delete(topicName);

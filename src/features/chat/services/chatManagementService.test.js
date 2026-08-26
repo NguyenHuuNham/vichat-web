@@ -156,6 +156,14 @@ test('keeps unread emphasis and latest-message navigation in the ChatUI layer', 
     .split('async markRead')[1]
     .split('async sendTyping')[0];
   assert.doesNotMatch(markReadSource, /delMessages|deleteMessage/);
+  assert.match(markReadSource, /throughSequence = 0/);
+  assert.match(markReadSource, /const initialReadSequence/);
+  assert.match(markReadSource, /const hasReadSnapshot/);
+  assert.match(markReadSource, /hasReadSnapshot \|\| unreadReadSnapshot \? 0 : Number\(topic\.seq\)/);
+  assert.match(appSource, /throughSequence: completionReadSequence/);
+  assert.match(appSource, /unreadBoundaryHasNewerTail\(currentBoundary, boundary\)/);
+  assert.match(appSource, /completeUnreadBoundary\(activeChat\.id, activeUnreadBoundary\)/);
+  assert.doesNotMatch(appSource, /if \(unreadCompletionRequestsRef\.current\.has\(key\)\) return null;/);
   assert.match(stylesSource, /\.conversation-item\.unread/);
   assert.match(stylesSource, /\.conv-indicators/);
   assert.match(stylesSource, /\.conv-mention-indicator/);

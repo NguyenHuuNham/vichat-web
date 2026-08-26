@@ -738,7 +738,10 @@ last known unread message is visible in the active message viewport; this also
 covers the normal bottom-of-chat view without requiring the `Tin chua doc`
 jump control. Opening a conversation without pending unread still acknowledges
 the latest known sequence and keeps an in-memory floor until Tinode reflects
-that cursor. Bounded history also keeps
+that cursor. The read acknowledgement captures its sequence before any
+asynchronous subscription work; a newer peer message arriving while that
+acknowledgement is pending is kept as a new unread tail and cannot be included
+in the completed read range. Bounded history also keeps
 the durable first-unread sequence even when that message must be fetched before
 the divider can be shown. Older topic or Chatmgt snapshots cannot lower the
 cursor, recreate an acknowledged unread badge or trigger a desktop/sound

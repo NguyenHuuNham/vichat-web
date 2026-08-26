@@ -677,12 +677,23 @@ export function resolveTopicReadState({
   topicSequence = 0,
   serverReadSeq = 0,
   localReadFloor = 0,
+  incomingReadCap = null,
   explicitUnreadCount,
 } = {}) {
   const sequence = Math.max(0, Number(topicSequence) || 0);
   const serverRead = Math.max(0, Number(serverReadSeq) || 0);
   const readFloor = Math.max(0, Number(localReadFloor) || 0);
-  const readSeq = Math.max(serverRead, readFloor);
+  const parsedIncomingReadCap = Number(incomingReadCap);
+  const hasIncomingReadCap = incomingReadCap !== null
+    && incomingReadCap !== undefined
+    && Number.isFinite(parsedIncomingReadCap)
+    && parsedIncomingReadCap >= 0;
+  // The SDK can advance topic.read for an incoming packet with no sender ID.
+  // A cap captured before that callback keeps the peer packet unread.
+  const effectiveServerRead = hasIncomingReadCap
+    ? Math.min(serverRead, parsedIncomingReadCap)
+    : serverRead;
+  const readSeq = Math.max(effectiveServerRead, readFloor);
   const derivedUnreadCount = Math.max(0, sequence - readSeq);
   const explicitUnread = Number(explicitUnreadCount);
   // Tinode invokes topic.onData before refreshing topic.unread. The newest
