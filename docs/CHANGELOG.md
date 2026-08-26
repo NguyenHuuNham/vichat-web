@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Luong truy cap deploy: Phai vao `ssh ubuntu@103.74.122.206` roi `ssh ubuntu@192.168.80.20`; `.206` chi la jump host/Nginx relay, khong phai dich den Compose. Public CSS thinh thoang con gap edge/cache tra fallback HTML body 30 byte, trong khi CSS trong container dung; can theo doi edge distribution rieng, khong phai loi build ChatUI.
 - Rui ro con lai: Chua UAT visual bang tai khoan that tren desktop/mobile va dark mode trong phien nay; can xac nhan lai room co unread, room khong unread, dang doc lich su, anh nen va chat 1-1/group.
 - Viec tiep theo: Hard refresh ChatUI, gui tin tu cua so khac, chuyen qua room roi mo lai room co tin moi; kiem tra vi tri o tin cuoi, unread/receipt khong thay doi sai va ten `Minh` doc ro tren anh nen.
-- Commit/PR: Source commit `5fbe349`; deployment follow-up docs commit `Chua tao`; khong co PR.
+- Commit/PR: Source commit `5fbe349`; deployment follow-up docs commit `b67f2e2`; khong co PR.
 
 ## 2026-08-26-08 - Di chuyen production sang may chu 192.168.80.20
 
