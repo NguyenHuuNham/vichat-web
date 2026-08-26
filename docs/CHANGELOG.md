@@ -8,19 +8,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-26-07 - Tu dong xac nhan tin da xem trong phong chat
 
-- Thoi gian: 2026-08-26 09:08 (Asia/Saigon)
-- Loai: Sua loi | Web | Realtime | UX | Kiem thu | Tai lieu
-- Trang thai: Hoan tat local; chua commit/deploy
+- Thoi gian: 2026-08-26 09:08 (Asia/Saigon); deploy production 09:27-10:20 (Asia/Saigon)
+- Loai: Sua loi | Web | Realtime | UX | Kiem thu | Tai lieu | Trien khai
+- Trang thai: Da commit, push, deploy production; san sang UAT
 - Muc tieu: Badge thong bao phai bien mat sau khi nguoi dung mo phong chat va that su xem den tin chua doc cuoi cung.
 - Pham vi: ChatUI unread boundary observer va source-contract test; giu nguyen Tinode message, read cursor, mention, mute, pin, mobile va Chatmgt API/database.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
 - Noi dung: Bo dieu kien chi kich hoat observer sau khi bam `Tin chua doc`. Observer nay van cho tin chua doc cuoi cung hien trong viewport trong 900 ms roi moi goi `markRead`, nen viec mo phong chat o vi tri tin moi nhat cung xac nhan duoc da xem ma khong lam mat boundary qua som.
 - Quyet dinh ky thuat: Chi thay doi diem kich hoat theo doi; Tinode van la source of truth va read floor/sequence monotonic van duoc giu nguyen. Nut nhay toi tin chua doc, divider va lich su gioi han khong doi.
 - Database/API/cau hinh: Khong co migration, endpoint, schema, dependency, secret, bien moi truong hay storage key moi.
-- Kiem thu: `npm run test:frontend` dat 287/287; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` dat voi entry `index-CusTt-ID.js`, App `App-DjUSD1tm.js`, CSS `index-CgZBfmbc.css` va warning chunk App lon hon 500 KB co san; `git diff --check` dat.
+- Kiem thu: `npm run test:frontend` dat 287/287; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` dat voi entry local `index-CusTt-ID.js`, App `App-DjUSD1tm.js`, CSS `index-CgZBfmbc.css` va warning chunk App lon hon 500 KB co san; `git diff --check` dat. Archive production `/opt/deploy/chat/incoming/vichat-unread-auto-read-0126808.tar.gz` 44924333 bytes, SHA-256 `86a62d17ed710a72bf23e56bf8173a3d29d327f9c1ca1f33b57ce5497fe22fad`; candidate remote build tao entry `index-DgRLBOOO.js`, App `App-BXhQR_va.js`, CSS `index-CgZBfmbc.css`; sau switch local/public ChatUI `/healthz` va Chatmgt auth health HTTP 200, `sudo -n nginx -t` dat, public WebSocket handshake HTTP 101, Alembic `20260825_13 (head)`, public JS/CSS khop byte voi container voi SHA-256 entry `ef1ee02633d9bc718892c8b27dd80419e04a320314e610141f40a1c08fd4b8b7`, App `0218ee549573a805ae7d2c3c77441ac78b47b8d9a30e77fdc0acd86ca20fb8a2`, CSS `baf6b513836e95a9bacaea51dc18f2cbd3bf053700bdf0e4d5958f0e3ffc14e3`; log ChatUI/Chatmgt/bridge/webhook 15 phut khong co marker fatal/panic/traceback/uncaught/critical/emerg.
+- Kiem tra an toan release: Cac gate thu nghiem khong dat deu tu dong dua rieng ChatUI ve image cu; production sau moi lan van healthy, khong migration, khong Compose `down`, khong reset database/volume/topic/message/read cursor/avatar va khong recreate service ngoai `chat`.
+- Trien khai: Release `/opt/deploy/chat/releases/unread-auto-read-0126808-20260826-022756` dang la `current`, `previous` tro `/opt/deploy/chat/releases/unread-realtime-45570c7-20260826-0439`; ChatUI container `06987d763ce6` healthy, restart count 0, image `sha256:d54957e293889c70f9221f25d125f9021cc746a360561cc3ca98aa74ffc89c93`; Chatmgt `bcd005ea49a8`, bridge `13c037dc06f7`, webhook `2882b6109176`, ChatAPI `8476615ad4ac`, Chat PostgreSQL `78a434b49404`, Tinode PostgreSQL `9f6e4dcc9c2f`, Redis `ceef7df23feb`, Coturn `aa680d35fdc0` giu nguyen container ID; rollback tag `songhong-production-chat:rollback-before-unread-auto-read-0126808` giu image cu `sha256:a2bb71e4995208fc5051cec27b6c2b2073eca5c835cbeda66a5bb12635a76b26`; production `.env` giu nguyen mode `0600`, SHA-256 `cc4d4240bbfdfd3de6b94c51c08ba289b3a8746bda5abbeb3042022fe7d497c3`.
 - Rui ro con lai: Chua UAT hai browser dang nhap that; browser runtime khong duoc expose trong phien nay. Neu tin cuoi chua nam trong history hien tai, nguoi dung van can dung nut `Tin chua doc` de tai boundary dau tien.
 - Viec tiep theo: UAT mo phong co badge, doc den tin cuoi, roi chuyen phong va kiem tra badge/receipt khong hoi sinh.
-- Commit/PR: Chua tao.
+- Commit/PR: Source commit `0126808`; deployment follow-up docs commit dang tao.
 
 ## 2026-08-26-06 - Khoi phuc unread realtime va khong danh dau da doc qua som
 
