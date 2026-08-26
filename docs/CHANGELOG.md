@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-26 16:39 (Asia/Saigon)
 - Loai: Sua loi | Web | Realtime | Kiem thu | Tai lieu
-- Trang thai: Dang thuc hien; local checks da dat, chua commit/push/deploy
+- Trang thai: Da commit; local checks da dat, chua deploy
 - Muc tieu: Tin nhan moi tu nguoi khac khi chua xem phai bat day du highlight, ten/preview/time dam va badge; tin cua viewer va tin da doc khong duoc bi danh dau unread.
 - Pham vi: ChatUI read-state merge, unread boundary projection, Tinode realtime snapshot race, regression test va tai lieu kien truc; khong doi Chatmgt, database, API, mobile hay luong gui tin.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/unreadBoundary.js`, `src/features/chat/services/unreadBoundary.test.js`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
@@ -19,8 +19,8 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong co migration, endpoint, schema, dependency, secret, bien moi truong hoac storage key moi.
 - Kiem thu: `node --test src/features/chat/services/chatRealtime.test.js src/features/chat/services/unreadBoundary.test.js` dat 46/46; `npm run test:frontend` dat 291/291; `npm run lint` exit 0 voi warning legacy/vendor da co san; `npm run build:production` dat voi entry `index-Dv0-owrV.js`, App `App-Cvb4opGT.js`, CSS `index-BEAPZ7sy.css`; `git diff --check` dat truoc khi cap nhat muc changelog nay.
 - Rui ro con lai: Chua UAT visual bang hai tai khoan that va chua deploy ban nay; can xac nhan direct/group, nhieu tin lien tiep, tin thieu sender metadata, tin cua viewer, boundary da xem roi va ten nguoi gui tren anh nen.
-- Viec tiep theo: Commit/push, tao archive va deploy ChatUI qua jump host `103.74.122.206` vao server dich `192.168.80.20`; chi recreate service `chat`, verify health/public asset/WSS/log va ghi release thuc te.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Push commit, tao archive va deploy ChatUI qua jump host `103.74.122.206` vao server dich `192.168.80.20`; chi recreate service `chat`, verify health/public asset/WSS/log va cap nhat release thuc te.
+- Commit/PR: Source commit `c38ad14`; deployment follow-up docs commit dang cho tao.
 
 ## 2026-08-26-12 - Giu highlight unread khi payload realtime thieu metadata
 
