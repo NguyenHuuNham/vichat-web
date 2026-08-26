@@ -8,19 +8,20 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-26-13 - Dung mat highlight khi realtime merge bi lap snapshot
 
-- Thoi gian: 2026-08-26 16:39 (Asia/Saigon)
+- Thoi gian: 2026-08-26 16:39; deploy 16:52-16:55 (Asia/Saigon)
 - Loai: Sua loi | Web | Realtime | Kiem thu | Tai lieu
-- Trang thai: Da commit; local checks da dat, chua deploy
+- Trang thai: Hoan tat; da commit, push va deploy production; san sang UAT
 - Muc tieu: Tin nhan moi tu nguoi khac khi chua xem phai bat day du highlight, ten/preview/time dam va badge; tin cua viewer va tin da doc khong duoc bi danh dau unread.
 - Pham vi: ChatUI read-state merge, unread boundary projection, Tinode realtime snapshot race, regression test va tai lieu kien truc; khong doi Chatmgt, database, API, mobile hay luong gui tin.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/unreadBoundary.js`, `src/features/chat/services/unreadBoundary.test.js`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
 - Noi dung: Read-state nay duoc tinh theo message incoming co sequence lon hon read cursor, khong phu thuoc viec snapshot truoc da chua message do hay Tinode da kip cap nhat badge chua. Sender ID khop viewer moi duoc coi la outgoing; sender sai presentation side hoac thieu metadata khong lam an tin peer. Cac merge quan trong cua ChatUI truyen viewer ID de giu cung quy tac.
 - Quyet dinh ky thuat: Dung read cursor lam moc doc chuan va sequence/sender lam fallback realtime; khong nang read cursor tu mot message khong xac dinh sender. Boundary da xem van giu hanh vi cu, chi rearm khi co tail incoming moi.
 - Database/API/cau hinh: Khong co migration, endpoint, schema, dependency, secret, bien moi truong hoac storage key moi.
-- Kiem thu: `node --test src/features/chat/services/chatRealtime.test.js src/features/chat/services/unreadBoundary.test.js` dat 46/46; `npm run test:frontend` dat 291/291; `npm run lint` exit 0 voi warning legacy/vendor da co san; `npm run build:production` dat voi entry `index-Dv0-owrV.js`, App `App-Cvb4opGT.js`, CSS `index-BEAPZ7sy.css`; `git diff --check` dat truoc khi cap nhat muc changelog nay.
-- Rui ro con lai: Chua UAT visual bang hai tai khoan that va chua deploy ban nay; can xac nhan direct/group, nhieu tin lien tiep, tin thieu sender metadata, tin cua viewer, boundary da xem roi va ten nguoi gui tren anh nen.
-- Viec tiep theo: Push commit, tao archive va deploy ChatUI qua jump host `103.74.122.206` vao server dich `192.168.80.20`; chi recreate service `chat`, verify health/public asset/WSS/log va cap nhat release thuc te.
-- Commit/PR: Source commit `c38ad14`; deployment follow-up docs commit dang cho tao.
+- Kiem thu: `node --test src/features/chat/services/chatRealtime.test.js src/features/chat/services/unreadBoundary.test.js` dat 46/46; `npm run test:frontend` dat 291/291; `npm run lint` exit 0 voi warning legacy/vendor da co san; `npm run build:production` dat voi entry `index-Dv0-owrV.js`, App `App-Cvb4opGT.js`, CSS `index-BEAPZ7sy.css`; `git diff --check` dat truoc khi cap nhat muc changelog nay. Tren production, `chat` health HTTP 200, Chatmgt auth health HTTP 200, public entry `/assets/index-BEsOzLCs.js`, App `App-DFycqc5x.js`, CSS `/assets/index-BEAPZ7sy.css`, public App marker co va WSS `/v0/channels` tra HTTP 101; 9/9 service dang Up, cac container ngoai `chat` khong doi ID.
+- Trien khai: Source archive `vichat-unread-highlight-eca4cb8.tar.gz` co SHA-256 `c22577284b10045dcb83dde3fa2e4edb952c51975d1c145596b2b9f13d9195bc`; release `/opt/deploy/chat/releases/unread-highlight-eca4cb8-20260826-1645-r1` dang la `current`, `previous` tro `/opt/deploy/chat/releases/unread-highlight-a0acc35-20260826-1600-r2`; chi recreate ChatUI tren `.20`; container `d27354988e2d`, image `sha256:419957d6ef49e9f0d45ba5dc434c361324773960e56dfe722280d336c01b7760`; deploy qua `.206` -> `.20`, khong chay Compose tren `.206`. Wrapper truyen qua PowerShell co mot dong CRLF thua (`bash: line 132: $'\\r': command not found`), nhung release da switch thanh cong va da verify doc lap sau do.
+- Rui ro con lai: Chua UAT visual bang hai tai khoan that; can xac nhan direct/group, nhieu tin lien tiep, tin thieu sender metadata, tin cua viewer, boundary da xem roi va ten nguoi gui tren anh nen.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, gui tin tu tai khoan thu hai khi tai khoan thu nhat dang o phong khac, xac nhan phong chua xem bat class unread/name/preview/time dam va badge; sau khi xem roi doi phong, xac nhan khong hoi sinh highlight cu.
+- Commit/PR: Source commit `c38ad14`; docs follow-up commit `eca4cb8`; production release `unread-highlight-eca4cb8-20260826-1645-r1`.
 
 ## 2026-08-26-12 - Giu highlight unread khi payload realtime thieu metadata
 
