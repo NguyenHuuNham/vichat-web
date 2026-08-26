@@ -6,6 +6,38 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-26-09 - Sua vi tri mo chat va do tuong phan ten nguoi gui
+
+- Thoi gian: 2026-08-26 13:52 (Asia/Saigon)
+- Loai: Sua loi | Web | UX | Realtime | Kiem thu | Tai lieu
+- Trang thai: Hoan tat; can UAT visual
+- Muc tieu: Khi mo cuoc tro chuyen co tin moi, ChatUI phai hien thi den tin nhan moi nhat thay vi mac ket o doan lich su phia tren; ten nguoi gui tren anh nen phai doc ro.
+- Pham vi: ChatUI cuon khi chon conversation, snapshot Tinode den muon, unread boundary hien co va style ten nguoi gui; khong thay doi read cursor, tin nhan, thong bao, mobile hay Chatmgt.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `src/styles/index.css`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Them lich cuon den cuoi sau hai frame render khi chon room va lap lai sau khi snapshot Tinode cap nhat, dong thoi chi ap dung trong luc mo room de khong cuon chen vao thao tac doc lich su cua user. Cuon nut `Tin nhan moi nhat` dung cung helper; ten nguoi gui dung mau chu chinh, dam hon va co text-shadow phu hop anh nen/dark mode.
+- Quyet dinh ky thuat: Cuon truc tiep tren container `.chat-messages` thay vi chi phu thuoc vao `scrollIntoView` cua sentinel va co kiem tra room hien tai, nen snapshot den muon khong de lai vi tri cu. Unread boundary va `markRead` duoc giu nguyen; khong them storage hay timer nghiep vu.
+- Database/API/cau hinh: Khong co migration, endpoint, schema, dependency, secret hoac bien moi truong moi.
+- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js src/features/chat/services/unreadBoundary.test.js` dat 51/51; `npm run test:frontend` dat 287/287; `npm run lint` exit 0 voi cac warning legacy da co san trong `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat voi entry `index-C8LqBkwG.js`, App `App-PkAv1o-P.js`, CSS `index-BEAPZ7sy.css` va warning chunk App lon hon 500 KB co san; `git diff --check` dat sau khi hoan tat code va tai lieu.
+- Rui ro con lai: Chua UAT visual bang tai khoan that tren desktop/mobile va dark mode trong phien nay; can xac nhan lai room co unread, room khong unread, dang doc lich su, anh nen va chat 1-1/group.
+- Viec tiep theo: Hard refresh ChatUI, gui tin tu cua so khac, chuyen qua room roi mo lai room co tin moi; kiem tra vi tri o tin cuoi, unread/receipt khong thay doi sai va ten `Minh` doc ro tren anh nen.
+- Commit/PR: Chua tao.
+
+## 2026-08-26-08 - Di chuyen production sang may chu 192.168.80.20
+
+- Thoi gian: 2026-08-26 13:29 (Asia/Saigon)
+- Loai: Van hanh | Ha tang | Du lieu | Tai lieu
+- Trang thai: Hoan tat; san sang UAT
+- Muc tieu: Dung mot ban trien khai ViChat doc lap tren may chu `192.168.80.20`, giu nguyen source, du lieu va kha nang quay lui trong khi may `.206` van duoc bao toan.
+- Pham vi: Docker Compose production, source release, PostgreSQL Chatmgt/Tinode, Redis, Tinode uploads/bot state, runtime secret va reverse proxy; khong thay doi source feature hay schema.
+- File da thay doi: `docs/CHANGELOG.md`.
+- Noi dung: Release `/opt/deploy/chat/releases/migration-f2a4027-v2` da duoc dat lam `current` tren `.20`; ChatUI chay tai `192.168.80.20:8094`, Chatmgt bind tai `192.168.80.20:8081`, cung bridge, webhook, PostgreSQL, Redis, Tinode ChatAPI va Coturn. `.206` chi con Nginx relay vao `.20` va cac container rollback cu khong nhan traffic web. Public DNS van tro toi edge `103.74.122.218`.
+- Quyet dinh ky thuat: Dung archive migration co SHA-256 `af1355f534de4dffe9b36c37f60626b752977181578b9dcf5ea07e7d0fd47861`, restore `.env` mode `0600` va runtime tu backup; dung named volume hien huu, khong dung `docker compose down`, khong reset topic/message/read cursor/volume va khong ghi secret vao nhat ky.
+- Database/API/cau hinh: Khong co migration moi; production dang o Alembic `20260825_13 (head)`. `.env` giu nguyen gia tri production, chi dung bind noi bo `192.168.80.20`; Nginx host `.206` relay ChatUI toi `8094` va Chatmgt toi `8081`.
+- Kiem thu: Tren `.20`, `docker compose config -q` PASS, 9/9 service dang `Up` va 7 service co healthcheck deu `healthy`, `/healthz` ChatUI `ok`, auth health Chatmgt noi bo HTTP 200, Chatmgt `alembic current` la `20260825_13 (head)`, Chatmgt co `88` conversation/`147` account/`210` participant, Tinode co `14` user/`40` topic/`177` message, Redis co `6` key. Public `https://chat.upgo.vn/healthz`, hai auth health deu HTTP 200; WSS `/v0/channels` tra HTTP 101; public bundle `index-DgRLBOOO.js` va `index-CgZBfmbc.css` khop ten/kich thuoc voi container; `sudo nginx -t` tren `.206` dat; log 15 phut cua ChatUI/Chatmgt/bridge/webhook co 0 marker `fatal|panic|traceback|uncaught|critical|emerg`.
+- Rui ro con lai: Chua UAT bang hai tai khoan/browser that. Ket noi TCP tu may kiem tra toi TURN `103.74.122.246:3478` dang that, can mo/kiem tra NAT-provider firewall truoc khi ket luan voice/video; Nginx `.206` phai duoc giu lai cho den khi DNS/NAT edge duoc chuyen truc tiep.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, UAT login/directory/direct/group/file/sticker/call bang hai tai khoan; sau khi UAT va TURN dat, co the dung rieng cac container stateful rollback cu tren `.206` nhung van giu Nginx relay va backup.
+- Commit/PR: Chua tao.
+
 ## 2026-08-26-07 - Tu dong xac nhan tin da xem trong phong chat
 
 - Thoi gian: 2026-08-26 09:08 (Asia/Saigon); deploy production 09:27-10:20 (Asia/Saigon)

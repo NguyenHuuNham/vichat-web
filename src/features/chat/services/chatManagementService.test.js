@@ -137,6 +137,8 @@ test('keeps unread emphasis and latest-message navigation in the ChatUI layer', 
   assert.match(appSource, /indicatorCleared/);
   assert.match(appSource, /latest-message-jump-button/);
   assert.match(appSource, /chatIsNearBottomRef/);
+  assert.match(appSource, /const queueConversationLatestScroll =/);
+  assert.match(appSource, /queueConversationLatestScroll\(id\)/);
   assert.doesNotMatch(appSource, /if \(!unreadBoundaryJumpedRef\.current\.has\(String\(activeChat\.id\)\)\) return undefined;/);
   const conversationSelectionSource = appSource
     .split('const handleConversationSelect = async')[1]
@@ -155,6 +157,8 @@ test('keeps unread emphasis and latest-message navigation in the ChatUI layer', 
   assert.match(stylesSource, /\.conv-indicators/);
   assert.match(stylesSource, /\.conv-mention-indicator/);
   assert.match(stylesSource, /\.latest-message-jump-button/);
+  assert.match(stylesSource, /\.sender-name \{[\s\S]*font-weight: 650;[\s\S]*color: var\(--text-main\);/);
+  assert.match(stylesSource, /\.chat-messages\.has-conversation-background \.sender-name/);
 });
 
 test('conversation activity ordering is monotonic and pin values are strict', () => {

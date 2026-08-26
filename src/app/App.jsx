@@ -2911,6 +2911,7 @@ function App() {
   const voiceTimerRef = useRef(null);
   const notificationBaselineRef = useRef(new Map());
   const openingConversationRef = useRef('');
+  const conversationScrollFrameRef = useRef(null);
   const unreadBoundariesRef = useRef({});
   const unreadCompletionRequestsRef = useRef(new Set());
   const unreadBoundaryJumpedRef = useRef(new Set());
@@ -3252,7 +3253,15 @@ function App() {
   const activeChatBlockedByPeer = !activeChat.isGroup
     && !activeChat.isChatbot
     && activeChat.blockedByPeer === true;
-  const activeMessageCount = roomMessages(activeChat).length;
+  const activeMessages = roomMessages(activeChat);
+  const activeMessageCount = activeMessages.length;
+  const activeMessageTail = activeMessages.at(-1);
+  const activeMessageTailKey = [
+    activeMessageTail?.id || '',
+    activeMessageTail?.seq || '',
+    activeMessageTail?.createdAt || '',
+    activeChat.updatedAt || '',
+  ].join('|');
   const usesManagementData = chatManagementService.remote && chatMode !== 'demo';
   const activeSearchConversationId = String(activeChat.managementId || activeChat.id || '').trim();
   const messageSearchHasFilters = Boolean(
@@ -4372,11 +4381,40 @@ function App() {
     }
   };
 
-  const scrollToLatestMessage = () => {
+  const scrollToLatestConversation = (conversationId, behavior = 'auto') => {
+    if (String(currentChatIdRef.current) !== String(conversationId)) return;
+    const root = chatMessagesRef.current;
+    if (!root) return;
+    if (typeof root.scrollTo === 'function') {
+      root.scrollTo({ top: root.scrollHeight, behavior });
+    } else {
+      root.scrollTop = root.scrollHeight;
+    }
     chatIsNearBottomRef.current = true;
     setShowLatestMessageButton(false);
-    chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   };
+
+  const queueConversationLatestScroll = conversationId => {
+    if (conversationScrollFrameRef.current) {
+      window.cancelAnimationFrame(conversationScrollFrameRef.current);
+    }
+    conversationScrollFrameRef.current = window.requestAnimationFrame(() => {
+      conversationScrollFrameRef.current = window.requestAnimationFrame(() => {
+        conversationScrollFrameRef.current = null;
+        scrollToLatestConversation(conversationId);
+      });
+    });
+  };
+
+  const scrollToLatestMessage = () => {
+    scrollToLatestConversation(currentChatIdRef.current, 'smooth');
+  };
+
+  useEffect(() => () => {
+    if (conversationScrollFrameRef.current) {
+      window.cancelAnimationFrame(conversationScrollFrameRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     chatIsNearBottomRef.current = true;
@@ -4391,7 +4429,7 @@ function App() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [activeMessageCount, currentChatId, isTyping]);
+  }, [activeMessageCount, activeMessageTailKey, currentChatId, isTyping]);
 
   useEffect(() => {
     const closeMenus = event => {
@@ -5622,9 +5660,11 @@ function App() {
       setChatError('Cuoc tro chuyen khong con kha dung. Vui long tai lai danh ba.');
       return;
     }
+    const shouldScrollToLatestOnOpen = String(currentChatIdRef.current) !== String(id);
     currentChatIdRef.current = id;
     openingConversationRef.current = String(id);
     setCurrentChatId(id);
+    if (shouldScrollToLatestOnOpen) queueConversationLatestScroll(id);
     setInputText(drafts[id] || '');
     setIsMobileChatActive(true);
     setChatError('');
@@ -5714,10 +5754,14 @@ function App() {
         setConnectionStatus(tinodeClient.authenticated ? 'online' : 'offline');
         setChatError(err?.message || 'Không mở được cuộc trò chuyện.');
       } finally {
-        if (openingConversationRef.current === String(id)) openingConversationRef.current = '';
+        if (openingConversationRef.current === String(id)) {
+          openingConversationRef.current = '';
+          if (shouldScrollToLatestOnOpen) queueConversationLatestScroll(id);
+        }
       }
     } else if (openingConversationRef.current === String(id)) {
       openingConversationRef.current = '';
+      if (shouldScrollToLatestOnOpen) queueConversationLatestScroll(id);
     }
   };
 

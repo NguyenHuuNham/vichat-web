@@ -890,7 +890,8 @@ body {
 .chat-messages.has-conversation-background .sender-name,
 .chat-messages.has-conversation-background .chatbot-starter-heading,
 .chat-messages.has-conversation-background .chatbot-starter-eyebrow {
-    text-shadow: 0 1px 3px rgba(255, 255, 255, .9);
+    color: var(--text-main);
+    text-shadow: 0 1px 3px rgba(255, 255, 255, .95);
 }
 
 .chat-messages.has-conversation-background .message-bubble {
@@ -1182,8 +1183,8 @@ body {
 
 .sender-name {
     font-size: 12px;
-    font-weight: 500;
-    color: var(--text-muted);
+    font-weight: 650;
+    color: var(--text-main);
     margin-left: 4px;
 }
 
@@ -6881,6 +6882,7 @@ html[data-theme="dark"] .chat-messages.has-conversation-background .date-divider
 html[data-theme="dark"] .chat-messages.has-conversation-background .sender-name,
 html[data-theme="dark"] .chat-messages.has-conversation-background .chatbot-starter-heading,
 html[data-theme="dark"] .chat-messages.has-conversation-background .chatbot-starter-eyebrow {
+  color: var(--text-main);
   text-shadow: 0 1px 3px rgba(0, 0, 0, .92);
 }
 html[data-theme="dark"] .chat-messages.has-conversation-background .message-bubble {
