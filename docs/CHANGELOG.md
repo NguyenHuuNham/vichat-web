@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Backup/bao toan state: Backup PostgreSQL `/opt/deploy/chat/backups/logo-e1a33df-20260827-2325-r3/chatservice-predeploy.dump` mode `0600`, 171256 bytes, restore list 114 dong; `.env` backup mode `0600`, checksum truoc/sau giong nhau `4ae2d1cf4af80b4289cd07b15d55b5979eb926d613513d69ece8de8225c6fcb0`; Alembic van `20260825_13`; khong migration, khong `docker compose down -v`, khong reset browser storage/IndexedDB, runtime, named volume, database, Tinode topic/message, read cursor, avatar hay setting user.
 - Rui ro con lai: Chua UAT visual bang tai khoan that trong browser; fallback SVG da bao phu truong hop asset loi va public asset da tra HTTP 200. Can hard refresh `https://chat.upgo.vn`, kiem tra logo tren login/sidebar va xac nhan setting user, realtime, mention, notification va link van giu nguyen.
 - Viec tiep theo: Hard refresh va UAT login/sidebar; neu phat sinh loi thi chi tro `current` ve `previous` va recreate rieng `chat` theo release cu.
-- Commit/PR: Source `e1a33df`; deployment follow-up docs commit (this commit); khong co PR
+- Commit/PR: Source `e1a33df`; deployment follow-up docs commit `aaf55c9`; khong co PR
 
 ## 2026-08-27-08 - Tu dong lien ket URL trong tin nhan
 
