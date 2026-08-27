@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Backup/bao toan state: Backup PostgreSQL `/opt/deploy/chat/backups/url-links-4095daf-20260827-r2/chatservice-predeploy.dump` 167868 bytes, mode `0600`, SHA-256 `9d1b2946a4a81be8ad4c14887f803960e51ad065363ff63a48ecfa4a2cdf2b23`, restore list 114 dong; `.env` backup mode `0600`, checksum giu nguyen `4ae2d1cf4af80b4289cd07b15d55b5979eb926d613513d69ece8de8225c6fcb0`. Rollback tag `songhong-production-chat:rollback-before-url-links-4095daf` giu image cu. Khong migration, khong `docker compose down`, khong reset browser storage/IndexedDB, runtime, named volume, database, Tinode topic/message, read cursor, avatar hay setting user.
 - Rui ro con lai: Chua UAT visual tren browser that vi browser runtime khong duoc expose; hostname Unicode, localhost khong co dau cham va URL khong co hostname hop le van hien text thuong theo policy an toan. Can hard refresh va UAT voi tin nhan `example.com`, `https://...`, caption anh, mention, email/scheme la va ca theme/notification/shortcut setting.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn`, gui tin nhan link tu tai khoan khac, bam mo tab moi va xac nhan setting viewer van con sau deploy; neu loi chi tro `current` ve `previous` va recreate rieng `chat`.
-- Commit/PR: Source `4095daf`; deployment follow-up docs commit dang tao; khong co PR.
+- Commit/PR: Source `4095daf`; deployment follow-up docs commit `77c36fe`; khong co PR.
 
 ## 2026-08-27-07 - Khoi phuc icon mention khi tin legacy thieu metadata
 
