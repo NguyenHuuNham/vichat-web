@@ -23,12 +23,22 @@ ACCOUNT_DIRECTORY_MAX_PAGES = 100
 class AccountDirectorySnapshot(list):
     """List-compatible directory data with authoritative snapshot metadata."""
 
-    def __init__(self, identities, *, complete=False, total=None, pages=0, raw_count=0):
+    def __init__(
+        self,
+        identities,
+        *,
+        complete=False,
+        total=None,
+        pages=0,
+        raw_count=0,
+        ambiguous_count=0,
+    ):
         super().__init__(identities or [])
         self.complete = bool(complete)
         self.total = total
         self.pages = int(pages or 0)
         self.raw_count = int(raw_count or 0)
+        self.ambiguous_count = int(ambiguous_count or 0)
 
 
 ACCOUNT_PROFILE_UPDATE_FIELDS = (
@@ -696,6 +706,7 @@ async def account_directory(request, identity):
     seen_account_user_ids = set()
     seen_usernames = {}
     seen_emails = {}
+    ambiguous_account_user_ids = set()
     raw_count = 0
     total = None
     complete = False
@@ -806,23 +817,15 @@ async def account_directory(request, identity):
             username_key = str(directory_identity.get("username") or "").strip().lower()
             previous_username_id = seen_usernames.get(username_key)
             if previous_username_id and previous_username_id != account_user_id:
-                raise AccountSSOError(
-                    "Account directory contains an ambiguous username.",
-                    502,
-                    "ACCOUNT_DIRECTORY_DUPLICATE_IDENTITY",
-                )
+                ambiguous_account_user_ids.update((previous_username_id, account_user_id))
             if username_key:
-                seen_usernames[username_key] = account_user_id
+                seen_usernames.setdefault(username_key, account_user_id)
             email_key = str(directory_identity.get("email") or "").strip().lower()
             previous_email_id = seen_emails.get(email_key)
             if email_key and previous_email_id and previous_email_id != account_user_id:
-                raise AccountSSOError(
-                    "Account directory contains an ambiguous email identity.",
-                    502,
-                    "ACCOUNT_DIRECTORY_DUPLICATE_IDENTITY",
-                )
+                ambiguous_account_user_ids.update((previous_email_id, account_user_id))
             if email_key:
-                seen_emails[email_key] = account_user_id
+                seen_emails.setdefault(email_key, account_user_id)
             seen_account_user_ids.add(account_user_id)
             identities.append(directory_identity)
             page_new_identities += 1
@@ -842,14 +845,34 @@ async def account_directory(request, identity):
     else:
         complete = False
 
-    if not identities and raw_count:
+    current_account_user_id = str(identity.get("account_user_id") or "").strip()
+    ambiguous_count = 0
+    if ambiguous_account_user_ids:
+        filtered_identities = []
+        for directory_identity in identities:
+            account_user_id = str(directory_identity.get("account_user_id") or "").strip()
+            if (
+                account_user_id in ambiguous_account_user_ids
+                and account_user_id != current_account_user_id
+            ):
+                ambiguous_count += 1
+                continue
+            filtered_identities.append(directory_identity)
+        identities = filtered_identities
+        complete = False
+        logger.warning(
+            "Omitted %s ambiguous Account directory records; authenticated viewer retained=%s",
+            ambiguous_count,
+            bool(current_account_user_id in ambiguous_account_user_ids),
+        )
+
+    if not identities and raw_count and not ambiguous_account_user_ids:
         raise AccountSSOError(
             "Account directory contained no valid users.",
             502,
             "ACCOUNT_DIRECTORY_INVALID",
         )
     snapshot_complete = bool(complete and total == len(identities))
-    current_account_user_id = str(identity.get("account_user_id") or "")
     if snapshot_complete and current_account_user_id and current_account_user_id not in {
         str(item.get("account_user_id") or "") for item in identities
     }:
@@ -864,6 +887,7 @@ async def account_directory(request, identity):
         total=total,
         pages=pages,
         raw_count=raw_count,
+        ambiguous_count=ambiguous_count,
     )
 
 

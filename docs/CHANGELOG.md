@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-27-05 - Cach ly identity Account mo ho thay vi chan ca danh ba
+
+- Thoi gian: 2026-08-27 14:39-15:10 (Asia/Saigon)
+- Loai: Sua loi | Bao mat | Backend | Tenant | Du lieu | Kiem thu | Tai lieu | Trien khai
+- Trang thai: Dang thuc hien; kiem tra local da dat, chua commit/push/deploy
+- Muc tieu: Khi Account tra ve nhieu ID khac nhau cung dung mot username/email, `/api/v1/chat/users` van tai duoc cac thanh vien an toan cua dung cong ty, tuyet doi khong gop identity/danh ba va khong lam hong luong chat khac.
+- Pham vi: Doc va chuan hoa Account directory, snapshot metadata, dong bo/visibility cache cua endpoint danh ba, audit va contract test; giu nguyen ChatUI, Tinode bridge, conversation, message, membership, file va schema database.
+- File da thay doi: `chatservice-main/application/services/account_sso_service.py`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_account_sso_service.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`.
+- Noi dung: Thay loi `ACCOUNT_DIRECTORY_DUPLICATE_IDENTITY` chan toan bo snapshot bang cach ly theo ban ghi. Chatmgt thu thap cac Account ID cung claim username/email; giu dung viewer da xac minh theo Account ID, bo moi claimant mo ho con lai va van project cac thanh vien unique. Snapshot co ambiguity luon la `partial`, khong duoc reconcile/deactivate co tham quyen va khong duoc tron lai cac ID tu complete visibility cache cu. Response `directory_sync` va audit `ACCOUNT_DIRECTORY_SYNC` ghi count `ambiguous`; log chi co so luong va co/khong giu viewer, khong ghi PII.
+- Quyet dinh ky thuat: Fail-closed theo tung identity de khong nhap hai Account ID, nhung khong fail ca danh ba khi van con record an toan. Chi viewer khop Account session + current tenant moi duoc uu tien; khong xoa/deactivate projection chi vi snapshot mo ho, khong doi Tinode UID va khong cham conversation/message/membership/file. Partial ambiguity khong duoc danh dau la safe cache, nen co the sync lai thuong xuyen cho den khi du lieu Account duoc sua.
+- Database/API/cau hinh: Khong migration, dependency, secret hoac bien moi truong moi. `GET /api/v1/chat/users` giu endpoint/status contract va bo sung `directory_sync.ambiguous` la so record mo ho da bo; audit thanh cong cung bo sung aggregate `ambiguous`.
+- Kiem thu: `python -m py_compile application/controllers/api_chat_management.py application/services/account_sso_service.py tests/test_account_sso_service.py tests/test_chat_auth_contract.py` dat; `python -m unittest tests.test_chat_auth_contract -q` dat 54/54; `python -m unittest discover -s tests -q` dat 254 test, skip 101 do dependency/runtime tuy chon khong co trong Python local; rieng `tests.test_account_sso_service` skip 34/34 vi local thieu `aiohttp`; `git diff --check` dat voi warning LF/CRLF cua working copy. Chua chay full non-skip suite trong production image.
+- Rui ro con lai: Can chay 254 test trong image Chatmgt production co `aiohttp`, verify response bang Account session that va theo doi audit/log sau deploy. Khi ambiguity con ton tai, directory co the goi Account lai o moi request sau TTL de tranh coi du lieu mo ho la authoritative.
+- Viec tiep theo: Commit/push source, tao release bat bien, test candidate voi Redis tam cach ly, backup PostgreSQL va deploy chi `chatmgt` qua `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`; sau do verify health, Alembic, container ID ngoai pham vi va UAT hard refresh.
+- Commit/PR: Chua tao.
+
 ## 2026-08-27-04 - Chan tuyet doi danh ba dung chung giua cac cong ty
 
 - Thoi gian: 2026-08-27 13:07-14:34 (Asia/Saigon)

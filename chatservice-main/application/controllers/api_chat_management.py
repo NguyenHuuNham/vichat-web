@@ -3011,6 +3011,7 @@ async def management_users(request):
     sync_status = "cached" if employee_account_directory else "local"
     synced_count = 0
     skipped_count = 0
+    ambiguous_count = 0
     deactivated_count = 0
     released_conflict_count = 0
     tinode_provisioned = 0
@@ -3048,6 +3049,7 @@ async def management_users(request):
                 if identity is None:
                     identity = await _validated_account_identity(request, account)
                 directory_snapshot = await account_directory(request, identity)
+                ambiguous_count = directory_snapshot.ambiguous_count
                 # Recheck after the directory request so a concurrent Account tenant
                 # switch cannot project the new tenant's users into the old JWT tenant.
                 await _validated_account_identity(request, account)
@@ -3163,9 +3165,14 @@ async def management_users(request):
                     and not skipped_count
                     and synced_account_user_ids == snapshot_account_user_ids
                 )
-                if not authoritative_snapshot and had_verified_snapshot:
-                    # Keep the last complete safe set while this response is
-                    # only a partial/additive refresh.
+                if (
+                    not authoritative_snapshot
+                    and had_verified_snapshot
+                    and not ambiguous_count
+                ):
+                    # Keep the last complete safe set for ordinary partial
+                    # refreshes. An ambiguity must quarantine the current
+                    # claims even if they appeared in an older safe snapshot.
                     visible_account_ids.update(cached_visible_account_ids or [])
                 db.session.commit()
                 if reconciled:
@@ -3191,6 +3198,7 @@ async def management_users(request):
                         "snapshot_received": directory_snapshot.raw_count,
                         "synced": synced_count,
                         "skipped": skipped_count,
+                        "ambiguous": ambiguous_count,
                         "deactivated": deactivated_count,
                         "released_conflicts": released_conflict_count,
                         "tinode_provisioned": tinode_provisioned,
@@ -3242,6 +3250,7 @@ async def management_users(request):
             )
             synced_count = 0
             skipped_count = 0
+            ambiguous_count = 0
             deactivated_count = 0
             released_conflict_count = 0
             tinode_provisioned = 0
@@ -3275,6 +3284,7 @@ async def management_users(request):
             )
             synced_count = 0
             skipped_count = 0
+            ambiguous_count = 0
             deactivated_count = 0
             released_conflict_count = 0
             tinode_provisioned = 0
@@ -3319,6 +3329,7 @@ async def management_users(request):
             "status": sync_status,
             "synced": synced_count,
             "skipped": skipped_count,
+            "ambiguous": ambiguous_count,
             "deactivated": deactivated_count,
             "released_conflicts": released_conflict_count,
             "tinode_provisioned": tinode_provisioned,

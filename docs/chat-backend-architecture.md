@@ -173,9 +173,15 @@ Account directory reads fail closed across tenant boundaries. Chatmgt verifies
 the actual Account user and current tenant before and after `/api/v1/tenant_user`;
 an explicitly foreign tenant envelope/record or a record whose supplied
 membership list omits the verified tenant aborts the response instead of being
-merged. Duplicate Account IDs make the snapshot partial, while a username or
-email claimed by different Account IDs is treated as an ambiguous identity and
-fails closed.
+merged. Duplicate Account IDs make the snapshot partial. When different Account
+IDs claim the same normalized username or email, Chatmgt quarantines every
+conflicting non-viewer record instead of merging identities or rejecting the
+whole directory. The exact authenticated viewer may be retained only by its
+already verified Account ID; all other conflicting claimants are omitted. Such
+a snapshot is always partial, cannot drive authoritative deactivation, and does
+not merge the previous complete visibility cache back into the response. The
+directory response and `ACCOUNT_DIRECTORY_SYNC` audit store only the aggregate
+omitted count, never the conflicting username, email or Account ID.
 Chatmgt follows Account's `total`/`num_results` metadata across all pages and
 marks a snapshot complete only when the exact unique record count is collected
 without an invalid record, duplicate page or pagination stall.

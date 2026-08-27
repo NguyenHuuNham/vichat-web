@@ -870,6 +870,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertNotIn("preferred_tenant_id", validation_source)
         self.assertIn('"ACCOUNT_DIRECTORY_TENANT_MISMATCH"', validation_source)
         self.assertIn("account_directory", directory_source)
+        self.assertIn("directory_snapshot.ambiguous_count", directory_source)
         self.assertIn("directory_snapshot.complete", directory_source)
         self.assertIn("authoritative_snapshot", directory_source)
         self.assertIn("if authoritative_snapshot:", directory_source)
@@ -887,6 +888,7 @@ class ChatAuthContractTests(unittest.TestCase):
             directory_source.index("for directory_identity in directory_snapshot"),
         )
         self.assertIn("visible_account_ids", directory_source)
+        self.assertIn("and not ambiguous_count", directory_source)
         self.assertIn("_ensure_tinode_accounts_best_effort", directory_source)
         self.assertIn('"tinode_provisioned"', directory_source)
         self.assertIn('sync_status = "partial"', directory_source)
@@ -894,6 +896,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('ManagementAccount.properties.contains({"auth_source": "account"})', directory_source)
         self.assertIn('"ACCOUNT_DIRECTORY_SYNC"', directory_source)
         self.assertIn('"snapshot_total"', directory_source)
+        self.assertIn('"ambiguous"', directory_source)
         self.assertIn('"deactivated"', directory_source)
         self.assertIn("revoke_request_token(request)", directory_source)
         self.assertIn("clear_account_cookie(response)", directory_source)

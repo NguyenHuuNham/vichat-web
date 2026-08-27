@@ -329,57 +329,141 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(error.exception.error_code, "ACCOUNT_DIRECTORY_TENANT_MISMATCH")
 
-    async def test_directory_duplicate_username_fails_closed(self):
-        payload = {"total": 2, "objects": [
+    async def test_directory_duplicate_username_keeps_verified_viewer_only(self):
+        payload = {"total": 3, "objects": [
             {"id": "account-user-1", "user_name": "shared.identity"},
             {"id": "account-user-2", "user_name": "shared.identity"},
+            {"id": "account-user-3", "user_name": "safe.member"},
         ]}
         with patch.object(
             account_sso_service,
             "_account_request",
             AsyncMock(return_value=(200, payload)),
         ):
-            with self.assertRaises(account_sso_service.AccountSSOError) as error:
-                await account_sso_service.account_directory(types.SimpleNamespace(), {
+            snapshot = await account_sso_service.account_directory(
+                types.SimpleNamespace(),
+                {
                     "account_user_id": "account-user-1",
                     "tenant_id": "tenant-a",
                     "tenant_name": "Tenant A",
-                })
+                },
+            )
 
+        self.assertFalse(snapshot.complete)
         self.assertEqual(
-            error.exception.error_code,
-            "ACCOUNT_DIRECTORY_DUPLICATE_IDENTITY",
+            [item["account_user_id"] for item in snapshot],
+            ["account-user-1", "account-user-3"],
         )
+        self.assertEqual(snapshot.ambiguous_count, 1)
+        self.assertEqual(snapshot.raw_count, 3)
 
-    async def test_directory_duplicate_email_fails_closed(self):
-        payload = {"total": 2, "objects": [
+    async def test_directory_duplicate_email_username_fallback_keeps_exact_viewer(self):
+        payload = {"total": 3, "objects": [
+            {
+                "id": "account-user-1",
+                "display_name": "Verified Viewer",
+                "email": "shared@example.vn",
+            },
+            {
+                "id": "account-user-2",
+                "display_name": "Conflicting Record",
+                "email": "shared@example.vn",
+            },
+            {
+                "id": "account-user-3",
+                "display_name": "Safe Member",
+                "email": "safe@example.vn",
+            },
+        ]}
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(200, payload)),
+        ):
+            snapshot = await account_sso_service.account_directory(
+                types.SimpleNamespace(),
+                {
+                    "account_user_id": "account-user-1",
+                    "tenant_id": "tenant-a",
+                    "tenant_name": "Tenant A",
+                },
+            )
+
+        self.assertFalse(snapshot.complete)
+        self.assertEqual(
+            [item["account_user_id"] for item in snapshot],
+            ["account-user-1", "account-user-3"],
+        )
+        self.assertEqual(snapshot[0]["username"], "shared@example.vn")
+        self.assertEqual(snapshot.ambiguous_count, 1)
+
+    async def test_directory_duplicate_email_omits_every_nonviewer_claim(self):
+        payload = {"total": 3, "objects": [
             {
                 "id": "account-user-1",
                 "user_name": "viewer",
-                "email": "shared@example.vn",
+                "email": "viewer@example.vn",
             },
             {
                 "id": "account-user-2",
                 "user_name": "member.two",
                 "email": "shared@example.vn",
             },
+            {
+                "id": "account-user-3",
+                "user_name": "member.three",
+                "email": "shared@example.vn",
+            },
         ]}
         with patch.object(
             account_sso_service,
             "_account_request",
             AsyncMock(return_value=(200, payload)),
         ):
-            with self.assertRaises(account_sso_service.AccountSSOError) as error:
-                await account_sso_service.account_directory(types.SimpleNamespace(), {
+            snapshot = await account_sso_service.account_directory(
+                types.SimpleNamespace(),
+                {
                     "account_user_id": "account-user-1",
                     "tenant_id": "tenant-a",
                     "tenant_name": "Tenant A",
-                })
+                },
+            )
 
+        self.assertFalse(snapshot.complete)
         self.assertEqual(
-            error.exception.error_code,
-            "ACCOUNT_DIRECTORY_DUPLICATE_IDENTITY",
+            [item["account_user_id"] for item in snapshot],
+            ["account-user-1"],
         )
+        self.assertEqual(snapshot.ambiguous_count, 2)
+
+    async def test_directory_all_ambiguous_nonviewer_records_return_empty_partial_snapshot(self):
+        payload = {"total": 2, "objects": [
+            {
+                "id": "account-user-2",
+                "email": "shared@example.vn",
+            },
+            {
+                "id": "account-user-3",
+                "email": "shared@example.vn",
+            },
+        ]}
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(200, payload)),
+        ):
+            snapshot = await account_sso_service.account_directory(
+                types.SimpleNamespace(),
+                {
+                    "account_user_id": "account-user-1",
+                    "tenant_id": "tenant-a",
+                    "tenant_name": "Tenant A",
+                },
+            )
+
+        self.assertFalse(snapshot.complete)
+        self.assertEqual(list(snapshot), [])
+        self.assertEqual(snapshot.ambiguous_count, 2)
 
     async def test_directory_session_expiry_requires_account_login(self):
         with patch.object(
