@@ -57,10 +57,15 @@ def _membership_id(membership):
     value = _first(
         membership,
         "id",
+        "tenantId",
         "tenant_id",
+        "companyId",
         "company_id",
+        "brandId",
         "brand_id",
+        "organizationId",
         "organization_id",
+        "workspaceId",
         "workspace_id",
     )
     if isinstance(value, dict):
@@ -267,6 +272,36 @@ def _directory_text(value):
     return str(value or "").strip()
 
 
+def _directory_tenant_id(payload):
+    if not isinstance(payload, dict):
+        return ""
+    value = _first(
+        payload,
+        "tenant_id",
+        "tenantId",
+        "current_tenant_id",
+        "currentTenantId",
+        "companyId",
+        "company_id",
+        "brandId",
+        "brand_id",
+        "organizationId",
+        "organization_id",
+        "workspaceId",
+        "workspace_id",
+    )
+    if isinstance(value, dict):
+        value = _membership_id(value)
+    if value:
+        return str(value).strip()
+    for name in ("tenant", "company", "brand", "organization", "workspace"):
+        nested = payload.get(name)
+        nested_id = _membership_id(nested)
+        if nested_id:
+            return nested_id
+    return ""
+
+
 def normalize_account_directory_record(payload, tenant_id, tenant_name=""):
     if not isinstance(payload, dict):
         raise SSOIdentityError("Account directory returned an invalid user record.")
@@ -279,16 +314,7 @@ def normalize_account_directory_record(payload, tenant_id, tenant_name=""):
     if not tenant_id or len(tenant_id) > 50:
         raise SSOIdentityError("Account directory tenant is invalid.")
 
-    record_tenant = _first(
-        payload,
-        "tenant_id",
-        "current_tenant_id",
-        "company_id",
-        "brand_id",
-        "organization_id",
-    )
-    if isinstance(record_tenant, dict):
-        record_tenant = _membership_id(record_tenant)
+    record_tenant = _directory_tenant_id(payload)
     if record_tenant and str(record_tenant).strip() != tenant_id:
         raise SSOIdentityError("Account directory record is outside the verified tenant.")
 

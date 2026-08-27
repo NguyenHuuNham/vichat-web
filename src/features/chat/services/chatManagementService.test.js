@@ -262,6 +262,16 @@ test('keeps Chatmgt directory responses isolated to the active tenant', () => {
   );
   assert.match(appSource, /filterAccountsByTenant\(\s*directoryAccountsRef\.current/);
   assert.match(appSource, /filterAccountsByTenant\(\s*accounts,\s*currentUserRef\.current \|\| currentUser/);
+  assert.match(managementServiceSource, /cache: 'no-store'/);
+  assert.match(managementServiceSource, /captureDirectoryScope\(\)/);
+  assert.match(managementServiceSource, /assertDirectoryScope\(directoryScope\)/);
+  assert.match(managementServiceSource, /lastDirectorySyncByTenant/);
+  assert.match(managementServiceSource, /directorySessionGeneration/);
+  assert.match(managementServiceSource, /function activeSessionUserId\(\)/);
+  assert.match(managementServiceSource, /activeSessionUserId\(\) !== scope\.userId/);
+  assert.doesNotMatch(managementServiceSource, /activeSession !== scope\.session/);
+  assert.match(appSource, /directorySearchRequestRef/);
+  assert.match(appSource, /accountTenantId\(latestViewer\) !== requestTenantId/);
 });
 
 test('requires explicit confirmation before switching tenants', () => {

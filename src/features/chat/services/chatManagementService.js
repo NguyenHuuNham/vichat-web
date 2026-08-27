@@ -3,6 +3,7 @@ import { normalizeConversationFlag, normalizeConversationShape } from './chatRea
 import { normalizeGroupSettings } from './groupSettings.js';
 import { normalizeDirectMessageBlockState } from './directMessageBlocking.js';
 import {
+  accountTenantId,
   filterAccountsByTenant,
   normalizeAccountShape,
   normalizeTenantShape,
@@ -31,8 +32,9 @@ const presenceSessionId = createPresenceSessionId();
 
 let activeSession = null;
 let activeTinodePassword = '';
-let lastDirectorySync = null;
+const lastDirectorySyncByTenant = new Map();
 let tinodeTokenRequest = null;
+let directorySessionGeneration = 0;
 
 function tinodeTokenExpiresSoon(auth, skewSeconds = 30) {
   if (!auth?.token) return true;
@@ -95,19 +97,45 @@ function writeStorage(key, value) {
 }
 
 function accountTenant(account) {
-  const value = [account?.tenantId, account?.tenant_id, account?.tenant?.id]
-    .map(item => typeof item === 'string' || typeof item === 'number' ? String(item).trim() : '')
-    .find(Boolean);
-  return value || '';
+  return accountTenantId(account);
 }
 
 function activeSessionTenantId() {
-  return [
-    activeSession?.tenant?.id,
-    activeSession?.user?.tenantId,
-    activeSession?.user?.tenant_id,
-  ].map(scalarText).find(Boolean)
+  return scalarText(activeSession?.tenant?.id)
+    || accountTenantId(activeSession?.user)
     || (authMode === 'password' ? tenantId : '');
+}
+
+function activeSessionUserId() {
+  return [
+    activeSession?.user?.id,
+    activeSession?.user?.uid,
+    activeSession?.user?.tinodeUid,
+    activeSession?.user?.tinode_uid,
+    activeSession?.user?.username,
+  ].map(scalarText).find(Boolean) || '';
+}
+
+function captureDirectoryScope() {
+  return {
+    generation: directorySessionGeneration,
+    tenantId: activeSessionTenantId(),
+    userId: activeSessionUserId(),
+  };
+}
+
+function assertDirectoryScope(scope) {
+  if (
+    !scope
+    || directorySessionGeneration !== scope.generation
+    || activeSessionTenantId() !== scope.tenantId
+    || activeSessionUserId() !== scope.userId
+  ) {
+    const error = new Error('Directory response belongs to a previous company session.');
+    error.code = 'DIRECTORY_SCOPE_CHANGED';
+    error.status = 409;
+    throw error;
+  }
 }
 
 function accountsForActiveTenant(accounts) {
@@ -425,7 +453,7 @@ export const chatManagementService = {
   },
 
   get directorySync() {
-    return lastDirectorySync;
+    return lastDirectorySyncByTenant.get(activeSessionTenantId()) || null;
   },
 
   get presenceSessionId() {
@@ -434,10 +462,12 @@ export const chatManagementService = {
 
   async login(credentials = {}) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    directorySessionGeneration += 1;
     const passwordLogin = authMode === 'password';
     const accountCredentialLogin = authMode === 'account_password';
     const credentialLogin = passwordLogin || accountCredentialLogin;
     activeTinodePassword = '';
+    lastDirectorySyncByTenant.clear();
     const payload = await apiRequest(
       accountCredentialLogin
         ? '/api/v1/auth/account-login'
@@ -496,12 +526,14 @@ export const chatManagementService = {
 
   async restoreSession() {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    directorySessionGeneration += 1;
     const payload = await apiRequest('/api/v1/auth/me', { cache: 'no-store' });
     return hydrateActiveSession(payload, { preserveExisting: false });
   },
 
   async switchTenant(nextTenantId) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    directorySessionGeneration += 1;
     const requestedTenantId = String(nextTenantId || '').trim();
     if (!requestedTenantId) throw new Error('A company is required.');
     const payload = await apiRequest('/api/v1/auth/switch-tenant', {
@@ -510,7 +542,7 @@ export const chatManagementService = {
     });
     activeTinodePassword = '';
     tinodeTokenRequest = null;
-    lastDirectorySync = null;
+    lastDirectorySyncByTenant.clear();
     return hydrateActiveSession(payload, { preserveExisting: false });
   },
 
@@ -559,6 +591,7 @@ export const chatManagementService = {
   },
 
   async logout({ throwOnError = false } = {}) {
+    directorySessionGeneration += 1;
     let payload = null;
     let logoutError = null;
     if (apiBase && remoteAuth) {
@@ -577,7 +610,7 @@ export const chatManagementService = {
     }
     activeSession = null;
     activeTinodePassword = '';
-    lastDirectorySync = null;
+    lastDirectorySyncByTenant.clear();
     tinodeTokenRequest = null;
     if (logoutError && throwOnError) throw logoutError;
     return payload;
@@ -643,8 +676,12 @@ export const chatManagementService = {
 
   async listUsers() {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
-    const payload = await apiRequest('/api/v1/chat/users?results_per_page=1000');
-    lastDirectorySync = payload?.directory_sync || null;
+    const directoryScope = captureDirectoryScope();
+    const payload = await apiRequest('/api/v1/chat/users?results_per_page=1000', { cache: 'no-store' });
+    assertDirectoryScope(directoryScope);
+    if (directoryScope.tenantId) {
+      lastDirectorySyncByTenant.set(directoryScope.tenantId, payload?.directory_sync || null);
+    }
     return accountsForActiveTenant(responseItems(payload).map(publicAccount).filter(Boolean));
   },
 
@@ -696,9 +733,11 @@ export const chatManagementService = {
     const value = String(query || '').trim();
     if (!value) return [];
     if (apiBase && remoteAuth) {
+      const directoryScope = captureDirectoryScope();
       const params = new URLSearchParams({ q: value, results_per_page: '50' });
       if (excludeUserId) params.set('exclude_user_id', excludeUserId);
-      const payload = await apiRequest(`/api/v1/chat/users?${params}`);
+      const payload = await apiRequest(`/api/v1/chat/users?${params}`, { cache: 'no-store' });
+      assertDirectoryScope(directoryScope);
       return accountsForActiveTenant(responseItems(payload).map(publicAccount))
         .filter(account => account?.id !== excludeUserId);
     }

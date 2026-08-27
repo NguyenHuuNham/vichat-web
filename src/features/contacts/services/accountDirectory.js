@@ -76,8 +76,16 @@ export function normalizeAccountShape(account) {
     .map(avatarText)
     .find(Boolean) || '';
   const tenant = normalizeTenantShape(account.tenant);
-  const tenantId = firstText(account.tenantId, account.tenant_id, tenant?.id);
-  const tenantName = firstText(account.tenantName, account.tenant_name, tenant?.name);
+  const tenantId = firstText(
+    tenantValue(account.tenantId),
+    tenantValue(account.tenant_id),
+    tenant?.id,
+  );
+  const tenantName = firstText(
+    scalarText(account.tenantName),
+    scalarText(account.tenant_name),
+    tenant?.name,
+  );
   const authSource = firstText(account.authSource, account.auth_source).toLowerCase();
   const hasAccountManaged = account.accountManaged !== undefined || account.account_managed !== undefined;
   const accountManaged = hasAccountManaged
@@ -142,18 +150,35 @@ export function identitiesOverlap(first, second) {
   return identityValues(first).some(value => secondValues.has(value));
 }
 
-function tenantId(entity) {
-  return String(entity?.tenantId || entity?.tenant_id || entity?.tenant?.id || '').trim();
+function tenantValue(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return firstText(value.id, value.tenantId, value.tenant_id);
+  }
+  return scalarText(value);
+}
+
+export function accountTenantId(entity) {
+  return firstText(
+    tenantValue(entity?.tenantId),
+    tenantValue(entity?.tenant_id),
+    tenantValue(entity?.tenant),
+  );
+}
+
+function tenantsCompatible(first, second) {
+  const firstTenantId = accountTenantId(first);
+  const secondTenantId = accountTenantId(second);
+  return !firstTenantId || !secondTenantId || firstTenantId === secondTenantId;
 }
 
 // A directory snapshot without an active tenant is not safe to display or retain.
 export function filterAccountsByTenant(accounts, currentTenantOrUser) {
   const currentTenantId = typeof currentTenantOrUser === 'string' || typeof currentTenantOrUser === 'number'
     ? String(currentTenantOrUser).trim()
-    : tenantId(currentTenantOrUser);
+    : accountTenantId(currentTenantOrUser);
   if (!currentTenantId) return [];
   return (Array.isArray(accounts) ? accounts : []).filter(account => (
-    tenantId(account) === currentTenantId
+    accountTenantId(account) === currentTenantId
   ));
 }
 
@@ -225,7 +250,7 @@ export function updateAccountPresence(accounts, snapshot, currentUser) {
 }
 
 export function mergeRealtimeAccountProfile(entity, profile) {
-  if (!entity || !profile || !identitiesOverlap(entity, profile)) return entity;
+  if (!entity || !profile || !tenantsCompatible(entity, profile) || !identitiesOverlap(entity, profile)) return entity;
   const nextDefaultName = firstText(profile.defaultName, profile.default_name, profile.name, entity.defaultName, entity.name);
   const nextNickname = firstText(entity.nickname, profile.nickname);
   const nextName = nextNickname || nextDefaultName;
@@ -249,14 +274,17 @@ export function mergeRealtimeAccountProfile(entity, profile) {
   };
 }
 
-export function updateAccountProfiles(accounts, profile) {
+export function updateAccountProfiles(accounts, profile, currentTenantOrUser) {
   let changed = false;
-  const next = (accounts || []).map(account => {
+  const source = currentTenantOrUser === undefined
+    ? (accounts || [])
+    : filterAccountsByTenant(accounts, currentTenantOrUser);
+  const next = source.map(account => {
     const updated = mergeRealtimeAccountProfile(account, profile);
     if (updated !== account) changed = true;
     return updated;
   });
-  return changed ? next : accounts;
+  return changed ? next : source;
 }
 
 export function applyContactNicknames(accounts, nicknames = {}) {
@@ -290,9 +318,17 @@ export function applyContactNicknames(accounts, nicknames = {}) {
   return changed ? next : accounts;
 }
 
-export function mergeDirectoryAccountSnapshots(previousAccounts = [], incomingAccounts = []) {
-  const previous = Array.isArray(previousAccounts) ? previousAccounts : [];
-  const incoming = Array.isArray(incomingAccounts) ? incomingAccounts : [];
+export function mergeDirectoryAccountSnapshots(
+  previousAccounts = [],
+  incomingAccounts = [],
+  currentTenantOrUser,
+) {
+  const previous = currentTenantOrUser === undefined
+    ? (Array.isArray(previousAccounts) ? previousAccounts : [])
+    : filterAccountsByTenant(previousAccounts, currentTenantOrUser);
+  const incoming = currentTenantOrUser === undefined
+    ? (Array.isArray(incomingAccounts) ? incomingAccounts : [])
+    : filterAccountsByTenant(incomingAccounts, currentTenantOrUser);
   let changed = false;
   const next = incoming.map(account => {
     const previousAccount = findAccount(previous, account?.id || account?.uid || account?.tinodeUid || account?.tinode_uid);

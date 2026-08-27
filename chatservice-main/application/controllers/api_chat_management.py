@@ -2952,7 +2952,7 @@ async def management_users(request):
         ))
     accounts = query.order_by(ManagementAccount.full_name.asc()).limit(1000).all()
     viewer_account = _account_by_id(tenant_id, _user_id(current_user))
-    return json({
+    response = json({
         "objects": [
             _public_account(account, viewer_account=viewer_account)
             for account in accounts
@@ -2967,6 +2967,11 @@ async def management_users(request):
             "tinode_failed": tinode_failed,
         },
     })
+    # Directory results vary by the authenticated tenant; never let a browser
+    # or intermediary reuse one company's response for another company.
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 def _maintenance_public_response(state=None):

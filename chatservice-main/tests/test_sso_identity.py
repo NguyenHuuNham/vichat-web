@@ -239,6 +239,14 @@ class SSOIdentityTests(unittest.TestCase):
                 "tenant_id": "tenant-b",
             }, "tenant-a", "Tenant A")
 
+    def test_directory_record_with_nested_foreign_tenant_is_rejected(self):
+        with self.assertRaisesRegex(SSOIdentityError, "outside the verified tenant"):
+            normalize_account_directory_record({
+                "id": "account-user-2",
+                "user_name": "other.user",
+                "company": {"tenantId": "tenant-b", "name": "Tenant B"},
+            }, "tenant-a", "Tenant A")
+
     def test_explicit_tenant_without_active_memberships_is_rejected(self):
         with self.assertRaisesRegex(SSOIdentityError, "no active tenant membership"):
             normalize_account_session(account_payload("tenant-a", "Tenant A", status="disabled"))

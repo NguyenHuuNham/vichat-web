@@ -158,6 +158,7 @@ import {
   canApproveGroupMembers,
   canManageGroupMembers,
   canRemoveGroupMember,
+  accountTenantId,
   companyDirectoryContacts,
   companyDirectoryHeading,
   countGroupPresence,
@@ -2927,6 +2928,7 @@ function App() {
   const notificationOpenHandlerRef = useRef(null);
   const contactsSyncTimerRef = useRef(null);
   const contactsSyncRequestRef = useRef(0);
+  const directorySearchRequestRef = useRef(0);
   const logoutHandlerRef = useRef(null);
   const forcedLogoutHandlerRef = useRef(null);
   const forcedLogoutRef = useRef(false);
@@ -2945,6 +2947,26 @@ function App() {
   contactNicknamesRef.current = contactNicknames;
   unreadBoundariesRef.current = unreadBoundaries;
   pastedAttachmentDraftsRef.current = pastedAttachmentDrafts;
+
+  const updateDirectoryAccounts = useCallback(updater => {
+    setDirectoryAccounts(previous => {
+      const viewer = currentUserRef.current;
+      const scopedPrevious = filterAccountsByTenant(previous, viewer);
+      const candidate = typeof updater === 'function' ? updater(scopedPrevious) : updater;
+      const next = filterAccountsByTenant(candidate, viewer);
+      directoryAccountsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const updateDirectoryResults = useCallback(updater => {
+    setWorkspaceResults(previous => {
+      const viewer = currentUserRef.current;
+      const scopedPrevious = filterAccountsByTenant(previous, viewer);
+      const candidate = typeof updater === 'function' ? updater(scopedPrevious) : updater;
+      return filterAccountsByTenant(candidate, viewer);
+    });
+  }, []);
 
   const revokePastedAttachmentPreview = attachment => {
     if (!attachment?.previewUrl || typeof URL === 'undefined') return;
@@ -3009,6 +3031,10 @@ function App() {
     if (!previousUser || !snapshot) return false;
     const snapshotProfile = normalizeAccountShape(snapshot);
     if (!snapshotProfile) return false;
+    // A profile refresh can observe a tenant switch made in another tab.
+    // Scope directory updates to the snapshot so the old company's records
+    // cannot survive while React catches up with the new session metadata.
+    const directoryScope = accountTenantId(snapshotProfile) ? snapshotProfile : previousUser;
     const previousAvatar = String(previousUser.avatar || '').trim();
     const profileValue = String(snapshotProfile.avatar || '').trim();
     const effectiveAvatar = profileValue || previousAvatar;
@@ -3049,21 +3075,22 @@ function App() {
         tenant_id: profile.tenant_id || previous.tenant_id,
         tenantName: profile.tenantName || previous.tenantName,
         tenant_name: profile.tenant_name || previous.tenant_name,
+        tenant: profile.tenant || previous.tenant,
         uid: previous.uid || profile.uid,
         tinodeUid: previous.tinodeUid || profile.tinodeUid,
       };
-      const changed = ['name', 'avatar', 'email', 'title', 'department', 'accountManaged', 'authSource']
+      const changed = ['name', 'avatar', 'email', 'title', 'department', 'accountManaged', 'authSource', 'tenantId', 'tenantName']
         .some(key => next[key] !== previous[key]);
       if (!changed) return previous;
       currentUserRef.current = next;
       return next;
     });
     setDirectoryAccounts(previous => {
-      const next = updateAccountProfiles(previous, profile);
+      const next = updateAccountProfiles(previous, profile, directoryScope);
       directoryAccountsRef.current = next;
       return next;
     });
-    setWorkspaceResults(previous => updateAccountProfiles(previous, profile));
+    setWorkspaceResults(previous => updateAccountProfiles(previous, profile, directoryScope));
     setConversations(previous => {
       let changed = false;
       const next = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
@@ -4333,17 +4360,8 @@ function App() {
       directoryAccountsRef.current,
       currentAccount,
     );
-    setDirectoryAccounts(previous => {
-      const scopedPrevious = filterAccountsByTenant(previous, currentAccount);
-      const next = updateAccountPresence(scopedPrevious, snapshot, currentAccount);
-      directoryAccountsRef.current = next;
-      return next;
-    });
-    setWorkspaceResults(previous => updateAccountPresence(
-      filterAccountsByTenant(previous, currentAccount),
-      snapshot,
-      currentAccount,
-    ));
+    updateDirectoryAccounts(previous => updateAccountPresence(previous, snapshot, currentAccount));
+    updateDirectoryResults(previous => updateAccountPresence(previous, snapshot, currentAccount));
     setConversations(previous => {
       let changed = false;
       const next = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
@@ -4368,7 +4386,7 @@ function App() {
       }));
       return changed ? next : previous;
     });
-  }, []);
+  }, [updateDirectoryAccounts, updateDirectoryResults]);
 
   useEffect(() => {
     if (!currentUser || directoryAccounts.length === 0) return;
@@ -5133,8 +5151,8 @@ function App() {
           }));
         }
         const updateAccount = account => mergeRealtimeAccountProfile(account, profile);
-        setDirectoryAccounts(previous => updateAccountProfiles(previous, profile));
-        setWorkspaceResults(previous => updateAccountProfiles(previous, profile));
+        updateDirectoryAccounts(previous => updateAccountProfiles(previous, profile, currentUserRef.current));
+        updateDirectoryResults(previous => updateAccountProfiles(previous, profile, currentUserRef.current));
         setConversations(previous => Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
           const members = roomMembers(room).map(updateAccount);
           const peer = !room.isGroup ? members.find(member => identitiesOverlap(member, profile)) : null;
@@ -5358,7 +5376,7 @@ function App() {
         return;
       }
     });
-  }, [isLoggedIn, chatMode, managementConversationSession, currentUser, directoryAccounts, applyPresenceSnapshot, clearActiveCall, refreshManagementConversations, showIncomingNotification, viewerId, managementViewerId, rememberUnreadBoundary]);
+  }, [isLoggedIn, chatMode, managementConversationSession, currentUser, directoryAccounts, applyPresenceSnapshot, clearActiveCall, refreshManagementConversations, showIncomingNotification, viewerId, managementViewerId, rememberUnreadBoundary, updateDirectoryAccounts, updateDirectoryResults]);
 
   // Keep every known Tinode topic subscribed after login. This is the piece
   // that makes unread badges and notifications realtime before a chat is opened.
@@ -5435,6 +5453,7 @@ function App() {
     if (!EXTERNAL_CHAT_ONLY) await tinodeClient.logout();
     setLoginNotice('');
     const accountSession = ++accountSessionRef.current;
+    directorySearchRequestRef.current += 1;
     managementConversationSessionRef.current = 0;
     setManagementConversationSession(0);
     const managementUserId = String(user.id || user.uid || '');
@@ -5465,6 +5484,7 @@ function App() {
     setConversationCategoryMenuOpen(false);
     setConversationCategoryManagerOpen(false);
     setMediaBrowserOpen(false);
+    directoryAccountsRef.current = [];
     setDirectoryAccounts([]);
     setContactNicknames({});
     setContactNicknameDialog(null);
@@ -5532,6 +5552,7 @@ function App() {
         if (accountSessionRef.current !== accountSession) return;
         contactNicknamesRef.current = nicknameMap;
         setContactNicknames(nicknameMap);
+        directoryAccountsRef.current = accounts;
         setDirectoryAccounts(accounts);
         if (chatManagementService.directorySync?.status === 'stale') {
           setChatError('Account đang tạm thời không trả được danh bạ mới; Chatmgt đang hiển thị dữ liệu đồng bộ gần nhất.');
@@ -5796,6 +5817,7 @@ function App() {
   const resetWorkspaceNavigationState = () => {
     setWorkspaceQuery('');
     setWorkspaceResults([]);
+    directorySearchRequestRef.current += 1;
     setTenantSwitchNotice('');
     messageSearchRequestRef.current += 1;
     setMessageSearchQuery('');
@@ -5887,6 +5909,7 @@ function App() {
       : 'Bạn đã đăng xuất khỏi Chat.');
     setIsLoggedIn(false);
     setCurrentUser(null);
+    directorySearchRequestRef.current += 1;
     setPinLockConfig(null);
     setPinLockReady(true);
     setIsPinTabUnlocked(true);
@@ -6166,7 +6189,7 @@ function App() {
         uid: previous?.uid,
         tinodeUid: previous?.tinodeUid,
       }));
-      setDirectoryAccounts(previous => previous.map(account => (
+      updateDirectoryAccounts(previous => previous.map(account => (
         account.id === updated.id
           ? { ...account, ...updated, avatar: updated.avatar || account.avatar || '' }
           : account
@@ -6244,11 +6267,10 @@ function App() {
       const targetAccount = updated || currentUser;
       if (!isAccountManaged(targetAccount)) rememberAvatarOverride(targetAccount, nextAvatar);
       setCurrentUser(previous => ({ ...previous, avatar: nextAvatar }));
-      setDirectoryAccounts(previous => {
+      updateDirectoryAccounts(previous => {
         const next = previous.map(account => (
           identitiesOverlap(account, targetAccount) ? { ...account, avatar: nextAvatar } : account
         ));
-        directoryAccountsRef.current = next;
         return next;
       });
       setConversations(previous => Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => [id, {
@@ -6291,22 +6313,38 @@ function App() {
   const handleWorkspaceSearch = async (event) => {
     const value = event.target.value;
     setWorkspaceQuery(value);
+    const requestId = ++directorySearchRequestRef.current;
+    const requestSession = accountSessionRef.current;
+    const requestViewer = currentUserRef.current || currentUser;
+    const requestTenantId = accountTenantId(requestViewer);
     if (workspacePanel !== 'contacts' || value.trim().length < 2) {
       setWorkspaceResults([]);
+      setIsWorkspaceLoading(false);
+      return;
+    }
+    if (!requestTenantId) {
+      setWorkspaceResults([]);
+      setIsWorkspaceLoading(false);
       return;
     }
     setIsWorkspaceLoading(true);
     try {
       const results = await chatManagementService.searchUsers(value, {
-        excludeUserId: currentUser?.id || currentUser?.uid,
+        excludeUserId: requestViewer?.id || requestViewer?.uid,
       });
+      const latestViewer = currentUserRef.current || currentUser;
+      if (
+        directorySearchRequestRef.current !== requestId
+        || accountSessionRef.current !== requestSession
+        || accountTenantId(latestViewer) !== requestTenantId
+      ) return;
       const scopedResults = filterAccountsByTenant(
         results,
-        currentUserRef.current || currentUser,
+        latestViewer,
       );
       const knownAccounts = filterAccountsByTenant(
         directoryAccountsRef.current,
-        currentUserRef.current || currentUser,
+        latestViewer,
       );
       setWorkspaceResults(scopedResults.map(result => {
         const known = findAccount(knownAccounts, result.id || result.uid || result.tinodeUid);
@@ -6315,9 +6353,14 @@ function App() {
           : result;
       }));
     } catch (err) {
+      if (
+        directorySearchRequestRef.current !== requestId
+        || accountSessionRef.current !== requestSession
+        || accountTenantId(currentUserRef.current || currentUser) !== requestTenantId
+      ) return;
       setChatError(err?.message || 'Không thể tìm danh bạ.');
     } finally {
-      setIsWorkspaceLoading(false);
+      if (directorySearchRequestRef.current === requestId) setIsWorkspaceLoading(false);
     }
   };
 
@@ -6370,18 +6413,28 @@ function App() {
   useEffect(() => {
     if (!isLoggedIn || !chatManagementService.remote || !managementViewerId) return undefined;
     const accountSession = accountSessionRef.current;
+    const directoryTenantId = accountTenantId(currentUserRef.current || currentUser);
     let cancelled = false;
     let syncing = false;
 
     const syncManagementDirectory = async () => {
-      if (cancelled || syncing || accountSessionRef.current !== accountSession) return;
+      if (
+        cancelled
+        || syncing
+        || accountSessionRef.current !== accountSession
+        || accountTenantId(currentUserRef.current || currentUser) !== directoryTenantId
+      ) return;
       syncing = true;
       try {
         const [accounts, requests] = await Promise.all([
           chatManagementService.listUsers(),
           chatManagementService.listFriendRequests(managementViewerId),
         ]);
-        if (cancelled || accountSessionRef.current !== accountSession) return;
+        if (
+          cancelled
+          || accountSessionRef.current !== accountSession
+          || accountTenantId(currentUserRef.current || currentUser) !== directoryTenantId
+        ) return;
 
         const rawPreviousAccounts = Array.isArray(directoryAccountsRef.current)
           ? directoryAccountsRef.current
@@ -6394,7 +6447,12 @@ function App() {
           accounts,
           currentUserRef.current || currentUser,
         );
-        const mergedAccounts = mergeDirectoryAccountSnapshots(previousAccounts, scopedAccounts);
+        const currentDirectoryUser = currentUserRef.current || currentUser;
+        const mergedAccounts = mergeDirectoryAccountSnapshots(
+          previousAccounts,
+          scopedAccounts,
+          currentDirectoryUser,
+        );
         const nextAccounts = filterAccountsByTenant(mergedAccounts.map(account => {
           const previous = findAccount(previousAccounts, account.id || account.uid || account.tinodeUid);
           const override = isAccountManaged(account) ? '' : avatarOverrideFor(account);
@@ -6402,7 +6460,7 @@ function App() {
           return previous && typeof previous.online === 'boolean'
             ? { ...next, online: previous.online }
             : next;
-        }), currentUserRef.current || currentUser);
+        }), currentDirectoryUser);
         const nextNicknames = Object.fromEntries(
           nextAccounts
             .filter(account => account?.id && account?.nickname)
@@ -6571,17 +6629,30 @@ function App() {
   useEffect(() => {
     if (!isLoggedIn || !chatManagementService.remote || !managementViewerId) return undefined;
     const accountSession = accountSessionRef.current;
+    const directoryTenantId = accountTenantId(currentUserRef.current || currentUser);
     let cancelled = false;
     let syncing = false;
     const syncDirectoryPresence = async () => {
-      if (cancelled || syncing || accountSessionRef.current !== accountSession) return;
+      if (
+        cancelled
+        || syncing
+        || accountSessionRef.current !== accountSession
+        || accountTenantId(currentUserRef.current || currentUser) !== directoryTenantId
+      ) return;
       syncing = true;
       try {
-        const accountIds = directoryAccountsRef.current
+        const accountIds = filterAccountsByTenant(
+          directoryAccountsRef.current,
+          currentUserRef.current || currentUser,
+        )
           .map(account => account?.id || account?.uid)
           .filter(Boolean);
         const payload = await chatManagementService.heartbeatPresence(accountIds);
-        if (!cancelled && accountSessionRef.current === accountSession) {
+        if (
+          !cancelled
+          && accountSessionRef.current === accountSession
+          && accountTenantId(currentUserRef.current || currentUser) === directoryTenantId
+        ) {
           applyPresenceSnapshot(payload?.presence || {});
         }
       } catch {
@@ -6608,7 +6679,7 @@ function App() {
       window.removeEventListener('focus', syncWhenVisible);
       window.removeEventListener('pagehide', clearPresenceOnPageHide);
     };
-  }, [isLoggedIn, managementViewerId, directoryAccounts.length, applyPresenceSnapshot]);
+  }, [isLoggedIn, managementViewerId, currentUser, directoryAccounts.length, applyPresenceSnapshot]);
 
   const handleFriendRequestResponse = async (record, accepted) => {
     if (!record?.event?.requestId || respondingFriendRequestId) return;

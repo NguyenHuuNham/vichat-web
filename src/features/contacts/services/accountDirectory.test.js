@@ -5,6 +5,7 @@ import {
   canApproveGroupMembers,
   canManageGroupMembers,
   canRemoveGroupMember,
+  accountTenantId,
   companyDirectoryContacts,
   companyDirectoryHeading,
   countGroupPresence,
@@ -108,6 +109,49 @@ test('tenant directory keeps only explicitly matching tenant records', () => {
     filterAccountsByTenant(accounts, 'tenant-a').map(account => account.id),
     ['same-company'],
   );
+});
+
+test('tenant directory accepts nested tenant metadata without falling back to another company', () => {
+  assert.equal(accountTenantId({ tenantId: { id: 'tenant-a' } }), 'tenant-a');
+  assert.equal(
+    normalizeAccountShape({ id: 'nested-account', tenantId: { id: 'tenant-a' } }).tenantId,
+    'tenant-a',
+  );
+  assert.deepEqual(
+    filterAccountsByTenant([
+      { id: 'same-company', tenantId: { id: 'tenant-a' } },
+      { id: 'other-company', tenantId: { id: 'tenant-b' } },
+    ], { tenant: { id: 'tenant-a' } }).map(account => account.id),
+    ['same-company'],
+  );
+});
+
+test('tenant-scoped directory snapshots discard old-company rows before merging', () => {
+  const currentUser = { id: 'viewer-a', tenantId: 'tenant-a' };
+  const result = mergeDirectoryAccountSnapshots([
+    { id: 'old-company', tenantId: 'tenant-b', name: 'Tenant B' },
+    { id: 'same-company', tenantId: 'tenant-a', name: 'Old name' },
+  ], [
+    { id: 'old-company', tenantId: 'tenant-b', name: 'Still Tenant B' },
+    { id: 'same-company', tenantId: 'tenant-a', name: 'New name' },
+  ], currentUser);
+
+  assert.deepEqual(result.map(account => account.id), ['same-company']);
+  assert.equal(result[0].name, 'New name');
+});
+
+test('tenant-scoped realtime profile updates cannot cross company boundaries', () => {
+  const currentUser = { id: 'viewer-a', tenantId: 'tenant-a' };
+  const account = { id: 'shared-id', tenantId: 'tenant-a', name: 'Tenant A name' };
+
+  const result = updateAccountProfiles(
+    [account],
+    { id: 'shared-id', tenantId: 'tenant-b', name: 'Tenant B name' },
+    currentUser,
+  );
+
+  assert.strictEqual(result[0], account);
+  assert.equal(result[0].name, 'Tenant A name');
 });
 
 test('company directory contact filtering is local and ignores Vietnamese accents', () => {

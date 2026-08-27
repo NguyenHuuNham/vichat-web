@@ -416,6 +416,16 @@ search results, cached state and presence input instead of being assigned the
 build-time default tenant. This defense does not change conversation, message,
 Tinode or presence protocols for valid same-tenant records.
 
+The users endpoint and ChatUI directory/search requests are explicitly
+`no-store` because the response varies by the authenticated tenant. ChatUI
+also captures the active account identity and tenant before each directory
+request and discards a response received after either scope changes. Periodic
+`/auth/me` metadata refreshes keep the same identity scope, so they do not
+cancel a valid directory response merely by rebuilding the in-memory session
+object. Account directory records with a nested tenant/company/brand
+identifier are validated against the verified tenant before they are
+projected into Chatmgt.
+
 Employee message-history search uses the authenticated
 `POST /api/v1/conversation/<conversation_id>/search` endpoint (with the
 `/api/v1/chat/threads/<conversation_id>/search` compatibility alias). Chatmgt

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-27-03 - Tach cach ly danh ba theo tung cong ty
+
+- Thoi gian: 2026-08-27 10:05 (Asia/Saigon)
+- Loai: Sua loi | Bao mat | Web | Backend | Tenant | Realtime | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Moi cong ty chi hien danh ba cua tenant dang dang nhap; khong cho snapshot, cache hoac response cu cua cong ty khac chen vao.
+- Pham vi: ChatUI danh ba/search/presence state, Chatmgt users endpoint va Account directory normalization; giu nguyen chat, unread, Tinode, membership va database schema.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/services/sso_identity.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `chatservice-main/tests/test_sso_identity.py`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html`.
+- Noi dung: Bo sung loc fail-closed theo tenant cho snapshot va profile; chong race khi request danh ba/search tra ve sau khi doi session/tenant; them request/cache `no-store`; tach cache sync theo tenant; validate tenant nested cua record Account va khong cho header HTTP dung lai response cong ty khac. Guard directory dung generation + tenant ID + user ID, khong so sanh object session de tranh loai nham request khi `/auth/me` refresh metadata.
+- Quyet dinh ky thuat: Dung tenant va session identity snapshot lam scope cua moi response, bo ket qua cu thay vi merge vao state moi; giu fallback backend cho record khong co tenant vi endpoint Account da duoc goi trong session tenant, nhung reject ro rang record co tenant khac. Khong doi giao thuc Tinode hay reset room.
+- Database/API/cau hinh: Khong migration, khong them bien moi truong; response `GET /api/v1/chat/users` them `Cache-Control: no-store` va `Pragma: no-cache`.
+- Kiem thu: `npm run test:frontend` dat 297/297; `python -m unittest discover -s chatservice-main/tests -q` dat 224 test, 86 skipped; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/application/services/sso_identity.py chatservice-main/tests/test_chat_auth_contract.py chatservice-main/tests/test_sso_identity.py` dat; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` dat voi entry `index-CsJ_3exp.js`, App `App-D1YP4ygz.js`, CSS `index-CR6IwdSS.css` va warning chunk App lon hon 500 KB; `git diff --check` dat.
+- Rui ro con lai: Chua commit/push/deploy; can verify UAT voi hai tai khoan o hai tenant va kiem tra response cache sau khi chuyen cong ty.
+- Viec tiep theo: Hoan tat full test/build, commit/push, deploy qua `ubuntu@103.74.122.206` vao `ubuntu@192.168.80.20`, chi recreate container `chat`, sau do verify health/public bundle/WSS/log.
+- Commit/PR: Chua tao.
+
 ## 2026-08-27-02 - Hien thi cong ty cho tai khoan mot tenant va dong bo tenant moi
 
 - Thoi gian: 2026-08-27 01:00 (Asia/Saigon)

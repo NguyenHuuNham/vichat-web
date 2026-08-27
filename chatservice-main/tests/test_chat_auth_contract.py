@@ -877,6 +877,16 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("_public_account(account, viewer_account=viewer_account)", directory_source)
         self.assertNotIn("ManagementAccount.query.all()", directory_source)
 
+    @repository_source_test
+    def test_directory_endpoint_disables_cross_tenant_http_caching(self):
+        _controller_source, directory_source = function_source(
+            CONTROLLER_PATH,
+            "management_users",
+        )
+
+        self.assertIn('response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"', directory_source)
+        self.assertIn('response.headers["Pragma"] = "no-cache"', directory_source)
+
     def test_management_admin_conversation_metadata_is_hidden(self):
         _controller_source, endpoint_source = function_source(
             CONTROLLER_PATH,
