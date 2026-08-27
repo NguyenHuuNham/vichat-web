@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-27-08 - Tu dong lien ket URL trong tin nhan
+
+- Thoi gian: 2026-08-27 22:29-22:43 (Asia/Saigon)
+- Loai: Tinh nang | Web | Bao mat | Kiem thu | Tai lieu
+- Trang thai: Hoan tat; da test, chua commit, chua deploy
+- Muc tieu: URL trong tin nhan hien mau xanh va co the mo nhanh trong tab moi, khong lam thay doi cac luong chat hien co.
+- Pham vi: Renderer tin nhan va caption anh tren ChatUI; khong doi payload, Tinode, unread, mention, notification hay storage setting cua user.
+- File da thay doi: `src/features/chat/services/messageLinkPolicy.js`, `src/features/chat/services/messageLinkPolicy.test.js`, `src/app/App.jsx`, `src/styles/index.css`, `package.json`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Nhan dien URL `http/https`, `www.` va ten mien dang tran nhu `example.com` trong tin nhan text/caption, hien mau xanh co gach chan va mo tab moi khi bam; ten mien dang tran tu dong dung `https://`, dau cau cuoi cau duoc giu ngoai href. Renderer van dung React text node, khong chen HTML tu noi dung tin nhan.
+- Quyet dinh ky thuat: Chi cho phep link `http`/`https` hop le va hostname ASCII co hau to dang ten mien; link mo tab moi voi `noopener noreferrer`; email, scheme la va token nam trong tu bi bo qua; khong dung HTML tu tin nhan de tranh XSS.
+- Database/API/cau hinh: Khong co migration, endpoint, secret, bien moi truong hoac thay doi storage.
+- Kiem thu: `node --test src/features/chat/services/messageLinkPolicy.test.js` dat 7/7; `npm run test:frontend` dat 317/317; `npm run lint` exit 0 voi warning legacy/vendor da co san; `npm run build:production` exit 0 voi bundle `index-BbC96tXw.js`, `App-DPAs2hOv.js`, `index-St-ReOoa.css` va warning chunk App lon hon 500 KB; `git diff --check` dat voi warning LF/CRLF cua working copy.
+- Rui ro con lai: Chua UAT visual tren browser that vi browser runtime khong duoc expose; hostname Unicode, localhost khong co dau cham va URL khong co hostname hop le van hien text thuong theo policy an toan.
+- Viec tiep theo: Commit/push, deploy qua `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`, sau do verify public bundle, health, WSS va khong reset setting/volume/database.
+- Commit/PR: Chua tao.
+
 ## 2026-08-27-07 - Khoi phuc icon mention khi tin legacy thieu metadata
 
 - Thoi gian: 2026-08-27 16:31; deploy production 17:18-17:29 (Asia/Saigon)

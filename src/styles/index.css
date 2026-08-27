@@ -1282,6 +1282,8 @@ body {
 .message-reply-preview-copy strong { color: var(--text-main); font-size: 11px; }
 .message-mention { padding: 0; border: 0; color: #1d6fe8; background: transparent; font: inherit; font-weight: 650; cursor: pointer; }
 .message-mention:hover { text-decoration: underline; }
+.message-link { color: #1677e8; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.message-link:hover, .message-link:focus-visible { color: #0f5ec4; }
 .recalled-label { color: var(--text-muted); font-style: italic; }
 .replying-banner { display: flex; align-items: flex-start; justify-content: flex-start; gap: 9px; width: 100%; padding: 7px 12px; border: 1px solid var(--border-color); border-radius: 9px; background: var(--bg-gray); font-size: 12px; }
 .replying-banner-icon { display: grid; width: 22px; height: 22px; flex: 0 0 22px; place-items: center; margin-top: 1px; color: var(--vichat-blue); font-size: 16px; }
@@ -6950,6 +6952,8 @@ html[data-theme="dark"] .message-item.outgoing .message-bubble {
 html[data-theme="dark"] .message-item.outgoing .message-time { color: #d7b8aa; }
 html[data-theme="dark"] .message-reply-preview { background: rgba(244, 81, 30, .14); }
 html[data-theme="dark"] .message-mention { color: #8ec5ff; }
+html[data-theme="dark"] .message-link { color: #8ec5ff; }
+html[data-theme="dark"] .message-link:hover, html[data-theme="dark"] .message-link:focus-visible { color: #b5dcff; }
 html[data-theme="dark"] .sticker-picker-panel { border-color: #3b4b54; background: #202c32; box-shadow: 0 16px 38px rgba(0, 0, 0, .34); }
 html[data-theme="dark"] .sticker-picker-tabs,
 html[data-theme="dark"] .sticker-pack-tabs { border-color: #3b4b54; }

@@ -129,6 +129,7 @@ import {
   canRecallDeliveredMessage,
   chatAttachmentValidationError,
 } from '../features/chat/services/messagePolicy';
+import { splitMessageLinks } from '../features/chat/services/messageLinkPolicy';
 import {
   MESSAGE_QUICK_REACTIONS,
   pinnedMessagesForRoom,
@@ -10690,36 +10691,61 @@ function App() {
       ? new RegExp(`(${mentionTokens.map(escapeRegExp).join('|')})`, 'gu')
       : null;
 
+    const renderMentionText = (value, keyPrefix) => {
+      const mentionParts = mentionPattern ? String(value).split(mentionPattern) : [String(value)];
+      return mentionParts.flatMap((part, index) => {
+        if (!mentionTokens.includes(part)) {
+          return String(part).split('\n').map((line, lineIndex, lines) => (
+            <React.Fragment key={`${keyPrefix}-line-${index}-${lineIndex}`}>
+              {line}
+              {lineIndex < lines.length - 1 && <br />}
+            </React.Fragment>
+          ));
+        }
+        const mention = (mentions || []).find(candidate => String(candidate?.token || '') === part);
+        if (mention?.isAll) return [<span key={`${keyPrefix}-mention-${index}`} className="message-mention">{part}</span>];
+        const displayToken = displayMentionToken(mention, part);
+        return [
+          <button
+            type="button"
+            key={`${keyPrefix}-mention-${index}`}
+            className="message-mention"
+            onClick={() => openProfileFor(mention)}
+            title={`${appCopy.t('Xem thông tin')} ${displayToken || mention?.name || part}`}
+          >
+            {displayToken || part}
+          </button>,
+        ];
+      });
+    };
+
+    const renderInlineText = (value, keyPrefix) => splitMessageLinks(value).flatMap((part, partIndex) => {
+      if (part.type === 'link') {
+        return [
+          <a
+            key={`${keyPrefix}-link-${partIndex}`}
+            className="message-link"
+            href={part.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={event => event.stopPropagation()}
+          >
+            {part.value}
+          </a>,
+        ];
+      }
+      return renderMentionText(part.value, `${keyPrefix}-text-${partIndex}`);
+    });
+
     const renderPlainText = (value, keyPrefix) => String(value).split(/(\*\*.*?\*\*)/g).flatMap((part, index) => {
       if (!part) return [];
       if (part.startsWith('**') && part.endsWith('**')) {
-        return [<strong key={`${keyPrefix}-bold-${index}`}>{part.slice(2, -2)}</strong>];
+        return [<strong key={`${keyPrefix}-bold-${index}`}>{renderInlineText(part.slice(2, -2), `${keyPrefix}-bold-${index}`)}</strong>];
       }
-      return part.split('\n').map((line, lineIndex, lines) => (
-        <React.Fragment key={`${keyPrefix}-line-${index}-${lineIndex}`}>
-          {line}
-          {lineIndex < lines.length - 1 && <br />}
-        </React.Fragment>
-      ));
+      return renderInlineText(part, `${keyPrefix}-plain-${index}`);
     });
 
-    return (mentionPattern ? String(text).split(mentionPattern) : [String(text)]).flatMap((part, index) => {
-      if (!mentionTokens.includes(part)) return renderPlainText(part, `text-${index}`);
-      const mention = (mentions || []).find(candidate => String(candidate?.token || '') === part);
-      if (mention?.isAll) return [<span key={`mention-${index}`} className="message-mention">{part}</span>];
-      const displayToken = displayMentionToken(mention, part);
-      return [
-        <button
-          type="button"
-          key={`mention-${index}`}
-          className="message-mention"
-          onClick={() => openProfileFor(mention)}
-          title={`${appCopy.t('Xem thông tin')} ${displayToken || mention?.name || part}`}
-        >
-          {displayToken || part}
-        </button>,
-      ];
-    });
+    return renderPlainText(String(text), 'text');
   };
 
   // Filter conversations
