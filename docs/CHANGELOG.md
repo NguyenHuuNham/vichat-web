@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-27 16:31 (Asia/Saigon)
 - Loai: Sua loi | Web | Realtime | Kiem thu | Tai lieu
-- Trang thai: Hoan tat; chua commit, chua deploy
+- Trang thai: Hoan tat; da commit, chua deploy
 - Muc tieu: Khi tin nhan moi trong nhom hien token `@Ten` nhung khong co `x-mentions`, sidebar van hien dung icon mention mau xanh ma khong lam thay doi unread boundary, badge hoac notification hien co.
 - Pham vi: Chinh sach nhan dien mention cua unread conversation; khong doi giao dien tin nhan, payload gui di, API, Tinode protocol, database hay storage setting cua user.
 - File da thay doi: `src/features/chat/services/mentionPolicy.js`, `src/features/chat/services/mentionPolicy.test.js`, `docs/CHANGELOG.md`.
@@ -20,8 +20,8 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong migration database, khong doi endpoint, secret, bien moi truong, storage key, commit hay deploy. Cac setting user va luong commit/deploy an toan cua muc `2026-08-27-06` duoc giu nguyen.
 - Kiem thu: `node --test src/features/chat/services/mentionPolicy.test.js` dat 8/8; `npm run test:frontend` dat 310/310; `npm run lint` exit 0 voi warning legacy/vendor tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` exit 0 voi warning chunk `App-DSDukVwY.js` lon hon 500 KB; `git diff --check` dat voi warning LF/CRLF cua working copy.
 - Rui ro con lai: Client legacy khong gui metadata va dung ten hien thi khac moi ten viewer da biet co the khong duoc nhan dien; fallback co the khong phan biet duoc ten trung khi server khong cung cap identity.
-- Viec tiep theo: Chay UAT tren trinh duyet voi tin nhan tu client moi va legacy; neu phat hanh thi commit/push va deploy theo workflow, khong reset browser storage, volume hay database.
-- Commit/PR: Chua tao
+- Viec tiep theo: Push commit va deploy theo workflow; sau do chay UAT tren trinh duyet voi tin nhan tu client moi va legacy, khong reset browser storage, volume hay database.
+- Commit/PR: `071a3ac1761c`
 
 ## 2026-08-27-06 - Bao toan setting viewer khi doi identity va deploy
 
