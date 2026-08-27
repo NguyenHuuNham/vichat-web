@@ -8,19 +8,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-27-09 - Khoi phuc logo khi static asset bi 403
 
-- Thoi gian: 2026-08-27 23:21 (Asia/Saigon); dang chuan bi deploy production
+- Thoi gian: 2026-08-27 23:21-23:38; deploy production 23:37-23:38 (Asia/Saigon)
 - Loai: Sua loi | Web | Bao mat | Van hanh | Kiem thu | Tai lieu
-- Trang thai: Dang thuc hien
+- Trang thai: Hoan tat; da test, da commit, push va deploy production; san sang UAT
 - Muc tieu: Khoi phuc logo tren man hinh dang nhap, ChatUI va man hinh quan tri ma khong lam thay doi luong chat hay setting cua user.
 - Pham vi: Component logo dung chung, static asset trong image Nginx va release ChatUI; khong doi API, database, Tinode, unread, mention, notification hay storage.
 - File da thay doi: `src/components/ChatLogo.jsx`, `src/features/auth/components/Login.jsx`, `src/app/App.jsx`, `src/features/management/ManagementApp.jsx`, `src/features/management/management.css`, `infrastructure/production/Dockerfile`, `dist/index.html`, `docs/CHANGELOG.md`.
 - Noi dung: Production dang tra `403` cho `/chat-logo.svg` va `/favicon.svg` vi file trong image co mode `0600`, Nginx worker khong doc duoc. Them fallback SVG noi tuyen de logo van hien khi asset khong tai duoc; dong thoi chuan hoa quyen doc static file trong Docker image cho cac release sau.
 - Quyet dinh ky thuat: Dung component logo nho, khong phu thuoc them API hoac storage; fallback chi kich hoat khi tai asset that bai. Docker chi sua quyen tren thu muc static da duoc copy vao image; chi recreate service `chat` khi phat hanh.
 - Database/API/cau hinh: Khong migration, endpoint, secret, bien moi truong hay thay doi storage; giu nguyen `.env`, runtime, named volume va du lieu user.
-- Kiem thu: `npm run test:frontend` dat 317/317; `npm run lint` exit 0 voi warning legacy/vendor da co san; `npm run build:production` exit 0 voi warning chunk App lon hon 500 KB; production chua deploy o thoi diem ghi muc nay.
-- Rui ro con lai: Can xac nhan asset tra HTTP 200, mode file trong container la readable, logo hien tren login/sidebar sau deploy va cac container ngoai `chat` giu nguyen.
-- Viec tiep theo: Commit/push, build va recreate rieng `chat` qua tuyen `.206` -> `.20`, verify health/public asset/WSS va cap nhat muc nay bang ket qua thuc te.
-- Commit/PR: Chua tao
+- Kiem thu: `npm run test:frontend` dat 317/317; `npm run lint` exit 0 voi warning legacy/vendor da co san; `npm run build:production` exit 0 voi warning chunk App lon hon 500 KB; `git diff --check` dat; release `r3` build thanh cong, ChatUI healthy restart 0, Nginx `-t` dat, asset trong container mode `644`, `/chat-logo.svg` va `/favicon.svg` public HTTP 200, ChatUI `/healthz` va Chatmgt auth health HTTP 200, host Nginx `-t` dat, WSS HTTP 101, log ChatUI khong co marker fatal/panic/traceback/uncaught/critical/emerg.
+- Trien khai: Source commit `e1a33df` da push `origin/master`; archive `/opt/deploy/chat/incoming/vichat-logo-e1a33df.tar.gz` 44972874 bytes, SHA-256 `bd8a73586b2fd0a4a16e299d811d2d618e6fc0c6b0d4b0be756fb28a4be692c0`; dung tuyen `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`. Hai lan preflight `r1`/`r2` dung truoc khi recreate do quyen thu muc backup root, `current` va container khong doi; `r3` thanh cong: release `/opt/deploy/chat/releases/logo-e1a33df-20260827-2325-r3` dang la `current`, `previous` tro `/opt/deploy/chat/releases/url-links-4095daf-20260827-r2`, container moi `0118c24fe63b`, image `sha256:19f6d029144dfd8ffb5b8a84cb7a160464fbcfdd82e8a9bd008426b51ef49b64`; chi recreate `chat`, container ngoai `chat` giu nguyen ID.
+- Backup/bao toan state: Backup PostgreSQL `/opt/deploy/chat/backups/logo-e1a33df-20260827-2325-r3/chatservice-predeploy.dump` mode `0600`, 171256 bytes, restore list 114 dong; `.env` backup mode `0600`, checksum truoc/sau giong nhau `4ae2d1cf4af80b4289cd07b15d55b5979eb926d613513d69ece8de8225c6fcb0`; Alembic van `20260825_13`; khong migration, khong `docker compose down -v`, khong reset browser storage/IndexedDB, runtime, named volume, database, Tinode topic/message, read cursor, avatar hay setting user.
+- Rui ro con lai: Chua UAT visual bang tai khoan that trong browser; fallback SVG da bao phu truong hop asset loi va public asset da tra HTTP 200. Can hard refresh `https://chat.upgo.vn`, kiem tra logo tren login/sidebar va xac nhan setting user, realtime, mention, notification va link van giu nguyen.
+- Viec tiep theo: Hard refresh va UAT login/sidebar; neu phat sinh loi thi chi tro `current` ve `previous` va recreate rieng `chat` theo release cu.
+- Commit/PR: Source `e1a33df`; deployment follow-up docs commit (this commit); khong co PR
 
 ## 2026-08-27-08 - Tu dong lien ket URL trong tin nhan
 
