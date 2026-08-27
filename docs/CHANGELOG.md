@@ -8,19 +8,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-27-08 - Tu dong lien ket URL trong tin nhan
 
-- Thoi gian: 2026-08-27 22:29-22:43 (Asia/Saigon)
+- Thoi gian: 2026-08-27 22:29-23:08; deploy production 23:01-23:05 (Asia/Saigon)
 - Loai: Tinh nang | Web | Bao mat | Kiem thu | Tai lieu
-- Trang thai: Hoan tat; da test, chua commit, chua deploy
+- Trang thai: Hoan tat; da test, da commit, push va deploy production; san sang UAT
 - Muc tieu: URL trong tin nhan hien mau xanh va co the mo nhanh trong tab moi, khong lam thay doi cac luong chat hien co.
 - Pham vi: Renderer tin nhan va caption anh tren ChatUI; khong doi payload, Tinode, unread, mention, notification hay storage setting cua user.
 - File da thay doi: `src/features/chat/services/messageLinkPolicy.js`, `src/features/chat/services/messageLinkPolicy.test.js`, `src/app/App.jsx`, `src/styles/index.css`, `package.json`, `dist/index.html`, `docs/CHANGELOG.md`.
 - Noi dung: Nhan dien URL `http/https`, `www.` va ten mien dang tran nhu `example.com` trong tin nhan text/caption, hien mau xanh co gach chan va mo tab moi khi bam; ten mien dang tran tu dong dung `https://`, dau cau cuoi cau duoc giu ngoai href. Renderer van dung React text node, khong chen HTML tu noi dung tin nhan.
 - Quyet dinh ky thuat: Chi cho phep link `http`/`https` hop le va hostname ASCII co hau to dang ten mien; link mo tab moi voi `noopener noreferrer`; email, scheme la va token nam trong tu bi bo qua; khong dung HTML tu tin nhan de tranh XSS.
 - Database/API/cau hinh: Khong co migration, endpoint, secret, bien moi truong hoac thay doi storage.
-- Kiem thu: `node --test src/features/chat/services/messageLinkPolicy.test.js` dat 7/7; `npm run test:frontend` dat 317/317; `npm run lint` exit 0 voi warning legacy/vendor da co san; `npm run build:production` exit 0 voi bundle `index-BbC96tXw.js`, `App-DPAs2hOv.js`, `index-St-ReOoa.css` va warning chunk App lon hon 500 KB; `git diff --check` dat voi warning LF/CRLF cua working copy.
-- Rui ro con lai: Chua UAT visual tren browser that vi browser runtime khong duoc expose; hostname Unicode, localhost khong co dau cham va URL khong co hostname hop le van hien text thuong theo policy an toan.
-- Viec tiep theo: Commit/push, deploy qua `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`, sau do verify public bundle, health, WSS va khong reset setting/volume/database.
-- Commit/PR: Chua tao.
+- Kiem thu: `node --test src/features/chat/services/messageLinkPolicy.test.js` dat 7/7; `npm run test:frontend` dat 317/317; `npm run lint` exit 0 voi warning legacy/vendor da co san; `npm run build:production` exit 0 voi bundle local `index-BbC96tXw.js`, `App-DPAs2hOv.js`, `index-St-ReOoa.css` va warning chunk App lon hon 500 KB; `git diff --check` dat voi warning LF/CRLF cua working copy. Production candidate co marker `message-link`/`noopener noreferrer`, ChatUI health OK, public bundle khop candidate, auth health `status=ok`, `sudo -n nginx -t` dat, WSS tra HTTP 101, log ChatUI 10 phut khong co marker fatal/panic/traceback/uncaught/critical/emerg.
+- Trien khai: Source commit `4095daf` da push `origin/master`; archive `/opt/deploy/chat/incoming/vichat-url-links-4095daf.tar.gz` 44972227 bytes, SHA-256 `8594fb53ebfbd2c123b43d147b269003adf4ff8a5dcf1bbaf1d35954dda212ae`; deploy dung tuyen `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`. Lan release `r1` dung truoc khi switch `current` do race giua HTTP health va Docker healthcheck, trap tu rollback ve image cu; khong restart/recreate container ngoai `chat`. Lan `r2` thanh cong: release `/opt/deploy/chat/releases/url-links-4095daf-20260827-r2` dang la `current`, `previous` tro `/opt/deploy/chat/releases/viewer-settings-44e82e2-20260827-r1`; chi recreate `chat` voi `--no-deps --no-build --force-recreate`, container moi `5dad4706cb4a`, image `sha256:a40e89ed90f14a7adc404e44a139a79a17edec45026c709eb52d78574137e7da`; container ngoai `chat` giu nguyen ID. Public assets `/assets/index-C4yK2GQx.js`, `App-CtK9c59s.js`, `/assets/index-St-ReOoa.css` khop candidate; Alembic van `20260825_13`, ChatUI healthy restart 0, WSS HTTP 101.
+- Backup/bao toan state: Backup PostgreSQL `/opt/deploy/chat/backups/url-links-4095daf-20260827-r2/chatservice-predeploy.dump` 167868 bytes, mode `0600`, SHA-256 `9d1b2946a4a81be8ad4c14887f803960e51ad065363ff63a48ecfa4a2cdf2b23`, restore list 114 dong; `.env` backup mode `0600`, checksum giu nguyen `4ae2d1cf4af80b4289cd07b15d55b5979eb926d613513d69ece8de8225c6fcb0`. Rollback tag `songhong-production-chat:rollback-before-url-links-4095daf` giu image cu. Khong migration, khong `docker compose down`, khong reset browser storage/IndexedDB, runtime, named volume, database, Tinode topic/message, read cursor, avatar hay setting user.
+- Rui ro con lai: Chua UAT visual tren browser that vi browser runtime khong duoc expose; hostname Unicode, localhost khong co dau cham va URL khong co hostname hop le van hien text thuong theo policy an toan. Can hard refresh va UAT voi tin nhan `example.com`, `https://...`, caption anh, mention, email/scheme la va ca theme/notification/shortcut setting.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, gui tin nhan link tu tai khoan khac, bam mo tab moi va xac nhan setting viewer van con sau deploy; neu loi chi tro `current` ve `previous` va recreate rieng `chat`.
+- Commit/PR: Source `4095daf`; deployment follow-up docs commit dang tao; khong co PR.
 
 ## 2026-08-27-07 - Khoi phuc icon mention khi tin legacy thieu metadata
 
