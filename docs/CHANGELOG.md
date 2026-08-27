@@ -10,33 +10,35 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-28 03:20 (Asia/Saigon)
 - Loai: Sua loi | Van hanh | Web | Kiem thu | Tai lieu
-- Trang thai: Da test local; san sang commit, push va deploy production
+- Trang thai: Hoan tat; da test, commit, push va deploy production; san sang UAT
 - Muc tieu: Dam bao trinh duyet production tai dung CSS cua release sua tin nhan, khong nhan SPA fallback cu tu edge cache sau khi deploy.
 - Pham vi: CSS ChatUI va gate kiem tra public asset; khong doi logic message edit, Tinode, API, database, volume, unread, notification hay setting user.
 - File da thay doi: `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
 - Noi dung: Them mot CSS custom property khong co tac dong hien thi de tao content-hash moi cho stylesheet. Public edge da giu fallback HTML cho ten CSS hash cu trong chuoi deploy rollback; content-hash moi buoc browser tai file CSS that.
 - Quyet dinh ky thuat: Cache-bust bang thay doi CSS vo hieu thay vi sua luong chat hoac xoa cache runtime; release van chi recreate `chat` va co trap rollback.
 - Database/API/cau hinh: Khong migration, schema, endpoint, secret, bien moi truong, volume hay thay doi setting user.
-- Kiem thu: `npm run test:frontend` dat 322/322; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` exit 0 voi bundle `index-bgsCe7N5.js`, `App-DSHy1ZEv.js`, `index-CwRWfTw_.css` va warning chunk App lon hon 500 KB; `git diff --check` dat voi warning LF/CRLF cua working copy.
-- Rui ro con lai: Can xac nhan build tao CSS hash moi va public URL khop candidate; neu gate fail, release khong duoc switch.
-- Viec tiep theo: Commit/push, tao archive moi, deploy qua `.206` -> `.20`, verify va cap nhat muc nay voi ket qua thuc te.
-- Commit/PR: Chua tao.
+- Kiem thu: `npm run test:frontend` dat 322/322; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` exit 0 voi bundle `index-CkTFBWBN.js`, `App-CtdO0D2C.js`, `index-CwRWfTw_.css` va warning chunk App lon hon 500 KB; `git diff --check` dat. Production public JS/CSS khop candidate, co marker edit va logo/favicon; ChatUI healthy restart 0; Nginx trong candidate va `sudo -n nginx -t` tren `.206` deu dat; WSS tra `HTTP/1.1 101 Switching Protocols`; log ChatUI khong co marker fatal/panic/traceback/uncaught/critical/emerg.
+- Trien khai: Source commit `2a5d094` va cache-bust commit `3c11b6f` da push `origin/master`; archive `/opt/deploy/chat/incoming/vichat-message-edit-3c11b6f.tar.gz`, SHA-256 `b94d577884b730594cb46968a5e5592dc91035b819c5f58e477738db02472267`; deploy dung tuyen `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`. Release `/opt/deploy/chat/releases/message-edit-3c11b6f-20260828-r2` dang la `current`, `previous` tro `/opt/deploy/chat/releases/logo-e1a33df-20260827-2325-r3`; chi recreate ChatUI, container moi `1acb9a9881c43953aacf52cf49490ca0f79483123d0844623c1f1354dcf51c69`, image `sha256:2060e9d1b41490de6234dae45978d29c0acbbae17e9ff5cd3e34147e73738483`; cac container ngoai chat khong doi.
+- Backup/bao toan state: PostgreSQL backup `/opt/deploy/chat/backups/message-edit-3c11b6f-20260828-r2/chatservice-predeploy.dump`, SHA-256 `ee205c3544e98363168c23a46a4eb372d230b8f9457b85243bebca7473c69112`; `.env` mode `600`, checksum truoc/sau khong doi `4ae2d1cf4af80b4289cd07b15d55b5979eb926d613513d69ece8de8225c6fcb0`; Alembic van `20260825_13`; khong migration, khong reset browser storage/IndexedDB, runtime, named volume, database, Tinode topic/message, read cursor, avatar hay setting user.
+- Rui ro con lai: Chua UAT production bang hai tai khoan that; can hard refresh de nap bundle moi va xac nhan sua tin, realtime, dong `Da chinh sua` va lich su tin cu.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, UAT voi hai tai khoan that; neu loi chi tro `current` ve `previous` va recreate rieng ChatUI theo release cu.
+- Commit/PR: Source `2a5d094`; cache-bust `3c11b6f`; deployment follow-up docs commit se ghi o lan cap nhat nay.
 
 ## 2026-08-28-01 - Sua tin nhan realtime
 
 - Thoi gian: 2026-08-28 (Asia/Saigon)
 - Loai: Tinh nang | Web | Mobile | Realtime | Kiem thu | Tai lieu
-- Trang thai: Da test local; san sang commit, push va deploy production
+- Trang thai: Hoan tat; da test, commit, push va deploy production; san sang UAT
 - Muc tieu: Cho sender sua tin nhan van ban da gui thanh cong; user ben kia nhan ban sua theo realtime, thay dong `Da chinh sua` va xem duoc phien ban cu ma khong lam song lai unread, highlight, notification hay thay doi setting user.
 - Pham vi: ChatUI va mobile message action/render, Tinode client/realtime projection, i18n, CSS, type/state va regression test; khong doi Chatmgt, API, database, schema, migration, `.env`, storage hay Tinode packet goc.
 - File da thay doi: `dist/index.html`, `docs/chat-backend-architecture.md`, `mobile/src/components/MessageActionSheet.tsx`, `mobile/src/components/MessageBubble.tsx`, `mobile/src/screens/chat/ChatDetailScreen.tsx`, `mobile/src/services/tinodeClient.ts`, `mobile/src/store/appStore.ts`, `mobile/src/types/index.ts`, `mobile/src/utils/messagePolicy.test.ts`, `mobile/src/utils/messagePolicy.ts`, `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/messagePolicy.js`, `src/features/chat/services/messagePolicy.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `docs/CHANGELOG.md`.
 - Noi dung: Chi sender cua tin text da delivered moi thay duoc; edit event append-only duoc dong bo theo Tinode sequence, idempotent khi replay va ho tro nhieu lan sua. Ban goc khong bi mutate/delete; projected message co `edited`, `editedAt`, `editHistory`, hien nhan `Da chinh sua` va modal lich su. Edit event bi loai khoi timeline, unread, badge va desktop notification; UI va client deu fail-closed khi khong xac minh sender.
 - Quyet dinh ky thuat: Dung control event prefixed `__VICHAT_EDIT_EVENT__:` lam lop overlay chung cho web/mobile, de Tinode van la nguon realtime va giu nguyen history packet; khong them endpoint, migration, cache hay state dai han. Payload duoc kiem tra kich thuoc, target sequence va actor de tranh replay/cross-user edit.
 - Database/API/cau hinh: Khong migration, schema, endpoint, secret, bien moi truong, volume hoac thay doi setting user.
-- Kiem thu: `npm run test:frontend` dat 322/322; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` exit 0 voi warning bundle App lon hon 500 KB; mobile typecheck va lint dat; mobile test muc tieu dat 7/7; full mobile test co 32 test pass nhung mot suite khong chay duoc do Vitest/RN parser trong `node_modules/react-native/index.js` khong ho tro Flow; `git diff --check` dat voi canh bao LF/CRLF cua working copy.
+- Kiem thu: `npm run test:frontend` dat 322/322; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` exit 0 voi warning chunk App lon hon 500 KB; mobile typecheck va lint dat; mobile test muc tieu dat 7/7; full mobile test co 32 test pass nhung mot suite khong chay duoc do Vitest/RN parser trong `node_modules/react-native/index.js` khong ho tro Flow; `git diff --check` dat. Production verification va backup/rollback duoc ghi o muc `2026-08-28-02`.
 - Rui ro con lai: Chua UAT production bang hai tai khoan that cho sua tin tren web/mobile va chua xac nhan history khi reconnect; can hard refresh de nap bundle moi.
-- Viec tiep theo: Commit/push, tao release bat bien, backup theo quy trinh, chi recreate service ChatUI can thiet, giu nguyen `.env`, database, volume, Tinode topic/message, read cursor, unread va setting user; sau do verify health, bundle, WSS, Nginx va log.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh va UAT voi hai tai khoan that; kiem tra setting user van con sau refresh va reconnect.
+- Commit/PR: Source `2a5d094`; cache-bust `3c11b6f`; deployment details o muc `2026-08-28-02`.
 
 ## 2026-08-27-09 - Khoi phuc logo khi static asset bi 403
 
