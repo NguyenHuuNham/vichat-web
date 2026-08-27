@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Backup/bao toan state: PostgreSQL backup `/opt/deploy/chat/backups/message-edit-3c11b6f-20260828-r2/chatservice-predeploy.dump`, SHA-256 `ee205c3544e98363168c23a46a4eb372d230b8f9457b85243bebca7473c69112`; `.env` mode `600`, checksum truoc/sau khong doi `4ae2d1cf4af80b4289cd07b15d55b5979eb926d613513d69ece8de8225c6fcb0`; Alembic van `20260825_13`; khong migration, khong reset browser storage/IndexedDB, runtime, named volume, database, Tinode topic/message, read cursor, avatar hay setting user.
 - Rui ro con lai: Chua UAT production bang hai tai khoan that; can hard refresh de nap bundle moi va xac nhan sua tin, realtime, dong `Da chinh sua` va lich su tin cu.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn`, UAT voi hai tai khoan that; neu loi chi tro `current` ve `previous` va recreate rieng ChatUI theo release cu.
-- Commit/PR: Source `2a5d094`; cache-bust `3c11b6f`; deployment follow-up docs commit se ghi o lan cap nhat nay.
+- Commit/PR: Source `2a5d094`; cache-bust `3c11b6f`; deployment follow-up docs commit `5936ed6`; khong co PR.
 
 ## 2026-08-28-01 - Sua tin nhan realtime
 
