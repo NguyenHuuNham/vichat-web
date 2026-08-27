@@ -154,6 +154,13 @@ class SSOIdentityTests(unittest.TestCase):
         self.assertEqual(identity["role"], "member")
         self.assertEqual(identity["account_role"], "member")
 
+    def test_strict_current_tenant_rejects_unknown_membership_instead_of_falling_back(self):
+        payload = account_payload("tenant-a", "Tenant A", role="admin")
+        payload["tenants"] = account_payload("tenant-b", "Tenant B", role="member")["tenants"]
+
+        with self.assertRaisesRegex(SSOIdentityError, "current Account tenant membership"):
+            normalize_account_session(payload, require_current_tenant=True)
+
     def test_inactive_current_tenant_falls_back_to_first_active_membership(self):
         payload = account_payload("tenant-a", "Tenant A", role="admin", status="pending")
         payload["tenants"].append({
@@ -247,6 +254,36 @@ class SSOIdentityTests(unittest.TestCase):
                 "company": {"tenantId": "tenant-b", "name": "Tenant B"},
             }, "tenant-a", "Tenant A")
 
+        with self.assertRaisesRegex(SSOIdentityError, "outside the verified tenant"):
+            normalize_account_directory_record({
+                "id": "account-user-3",
+                "user_name": "other.current.user",
+                "current_company": {"companyId": "tenant-b", "name": "Tenant B"},
+            }, "tenant-a", "Tenant A")
+
+    def test_directory_record_without_verified_tenant_membership_is_rejected(self):
+        with self.assertRaisesRegex(SSOIdentityError, "no membership in the verified tenant"):
+            normalize_account_directory_record({
+                "id": "account-user-2",
+                "user_name": "other.user",
+                "tenants": [{"id": "tenant-b", "status": "active"}],
+            }, "tenant-a", "Tenant A")
+
+    def test_directory_record_uses_verified_tenant_membership_role_and_status(self):
+        identity = normalize_account_directory_record({
+            "id": "account-user-2",
+            "user_name": "member.user",
+            "role": "admin",
+            "active": True,
+            "tenants": [
+                {"id": "tenant-a", "role": "member", "status": "active"},
+                {"id": "tenant-b", "role": "admin", "status": "disabled"},
+            ],
+        }, "tenant-a", "Tenant A")
+
+        self.assertEqual(identity["role"], "member")
+        self.assertTrue(identity["active"])
+
     def test_explicit_tenant_without_active_memberships_is_rejected(self):
         with self.assertRaisesRegex(SSOIdentityError, "no active tenant membership"):
             normalize_account_session(account_payload("tenant-a", "Tenant A", status="disabled"))
@@ -260,6 +297,24 @@ class SSOIdentityTests(unittest.TestCase):
 
         self.assertEqual(identity["tenant_id"], "tenant-a")
         self.assertEqual(identity["tenant_name"], "Tenant A")
+        self.assertEqual(identity["role"], "admin")
+
+    def test_strict_current_tenant_rejects_a_missing_current_tenant(self):
+        payload = account_payload("tenant-a", "Tenant A", role="admin")
+        payload["current_tenant_id"] = None
+        payload["current_tenant_role"] = None
+
+        with self.assertRaisesRegex(SSOIdentityError, "no current tenant"):
+            normalize_account_session(payload, require_current_tenant=True)
+
+    def test_strict_current_tenant_accepts_the_nested_current_tenant(self):
+        payload = account_payload("tenant-a", "Tenant A", role="admin")
+        payload["current_tenant_id"] = None
+        payload["current_tenant"] = payload["tenants"][0]
+
+        identity = normalize_account_session(payload, require_current_tenant=True)
+
+        self.assertEqual(identity["tenant_id"], "tenant-a")
         self.assertEqual(identity["role"], "admin")
 
     def test_fallback_tenant_uses_membership_role_instead_of_stale_current_role(self):

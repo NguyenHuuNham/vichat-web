@@ -1,8 +1,10 @@
+import ast
 import json
 import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -17,6 +19,18 @@ tinode_message_text = protocol.tinode_message_text
 tinode_message_mentions_bot = protocol.tinode_message_mentions_bot
 tinode_strip_bot_mention = protocol.tinode_strip_bot_mention
 tinode_websocket_url = protocol.tinode_websocket_url
+
+
+def isolated_function(path, name, namespace=None):
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(path))
+    function = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == name
+    )
+    scope = dict(namespace or {})
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), "exec"), scope)
+    return scope[name]
 
 
 class TinodeChatbotProtocolTests(unittest.TestCase):
@@ -80,6 +94,45 @@ class TinodeChatbotProtocolTests(unittest.TestCase):
 
 
 class TinodeChatbotContractTests(unittest.TestCase):
+    def test_chatbot_sender_uid_must_map_to_exactly_one_active_account(self):
+        controller_path = PROJECT_ROOT / "application" / "controllers" / "api_chatbot.py"
+
+        class Column:
+            def __eq__(self, _value):
+                return object()
+
+            def is_(self, _value):
+                return object()
+
+        class Query:
+            def __init__(self, values):
+                self.values = values
+
+            def filter(self, *_conditions):
+                return self
+
+            def all(self):
+                return list(self.values)
+
+        column = Column()
+        first = SimpleNamespace(id="account-a", active=True)
+        second = SimpleNamespace(id="account-b", active=True)
+        inactive = SimpleNamespace(id="account-disabled", active=False)
+
+        def resolve(values):
+            return isolated_function(controller_path, "_active_tinode_account", {
+                "ManagementAccount": SimpleNamespace(
+                    query=Query(values),
+                    tinode_uid=column,
+                    active=column,
+                ),
+            })("usrSender1")
+
+        self.assertIs(resolve([first]), first)
+        self.assertIsNone(resolve([]))
+        self.assertIsNone(resolve([first, second]))
+        self.assertIsNone(resolve([inactive]))
+
     def test_chatmgt_does_not_create_asyncio_lock_during_module_import(self):
         service = (
             PROJECT_ROOT / "application" / "services" / "tinode_chatbot_service.py"
@@ -103,6 +156,7 @@ class TinodeChatbotContractTests(unittest.TestCase):
         self.assertIn('"history": history[-20:]', worker)
         self.assertIn('X-Vichat-Chatbot-Webhook', controller)
         self.assertIn('ManagementAccount.tinode_uid == sender_uid', controller)
+        self.assertIn('account = _active_tinode_account(sender_uid)', controller)
         self.assertIn("room?.isChatbot && chatMode === 'tinode' && room.tinodeTopic", app)
         self.assertIn("tinode-chatbot-webhook:", compose)
         self.assertIn('"x-vichat-chatbot-sources"', worker)

@@ -8,6 +8,10 @@ class SSOIdentityError(ValueError):
     pass
 
 
+class SSOIdentityTenantError(SSOIdentityError):
+    """The upstream directory explicitly identified a different tenant."""
+
+
 def _first(payload, *names):
     for name in names:
         value = payload.get(name)
@@ -294,12 +298,58 @@ def _directory_tenant_id(payload):
         value = _membership_id(value)
     if value:
         return str(value).strip()
-    for name in ("tenant", "company", "brand", "organization", "workspace"):
+    for name in (
+        "tenant",
+        "company",
+        "brand",
+        "organization",
+        "workspace",
+        "current_tenant",
+        "current_company",
+        "current_brand",
+        "current_organization",
+        "current_workspace",
+    ):
         nested = payload.get(name)
         nested_id = _membership_id(nested)
         if nested_id:
             return nested_id
     return ""
+
+
+def directory_tenant_id(payload):
+    """Return an optional tenant marker supplied by a directory payload."""
+    tenant_id = _directory_tenant_id(payload)
+    if tenant_id or not isinstance(payload, dict):
+        return tenant_id
+    for name in ("data", "meta", "metadata", "pagination"):
+        value = payload.get(name)
+        if isinstance(value, dict):
+            tenant_id = directory_tenant_id(value)
+            if tenant_id:
+                return tenant_id
+    return ""
+
+
+def _directory_memberships(payload):
+    if not isinstance(payload, dict):
+        return None
+    for name in ("tenants", "companies", "brands", "organizations", "memberships"):
+        if name not in payload:
+            continue
+        value = payload.get(name)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+        if isinstance(value, dict):
+            if _membership_id(value):
+                return [value]
+            return [
+                {"id": membership_id, **item}
+                for membership_id, item in value.items()
+                if isinstance(item, dict)
+            ]
+        return []
+    return None
 
 
 def normalize_account_directory_record(payload, tenant_id, tenant_name=""):
@@ -316,7 +366,21 @@ def normalize_account_directory_record(payload, tenant_id, tenant_name=""):
 
     record_tenant = _directory_tenant_id(payload)
     if record_tenant and str(record_tenant).strip() != tenant_id:
-        raise SSOIdentityError("Account directory record is outside the verified tenant.")
+        raise SSOIdentityTenantError("Account directory record is outside the verified tenant.")
+
+    target_membership = None
+    memberships = _directory_memberships(payload)
+    if memberships is not None:
+        memberships_by_id = {
+            _membership_id(membership): membership
+            for membership in memberships
+            if _membership_id(membership)
+        }
+        if tenant_id not in memberships_by_id:
+            raise SSOIdentityTenantError(
+                "Account directory user has no membership in the verified tenant."
+            )
+        target_membership = memberships_by_id[tenant_id]
 
     username = str(_first(payload, "user_name", "username", "email", "phone") or "").strip().lower()
     if not username:
@@ -332,7 +396,18 @@ def normalize_account_directory_record(payload, tenant_id, tenant_name=""):
         _first(payload, "full_name", "display_name", "name", "user_name", "username")
         or username
     ).strip()[:255]
-    raw_role = _first(payload, "current_tenant_role", "tenant_role", "role")
+    raw_role = (
+        _first(
+            target_membership or {},
+            "role",
+            "tenant_role",
+            "company_role",
+            "brand_role",
+            "organization_role",
+            "workspace_role",
+        )
+        or _first(payload, "current_tenant_role", "tenant_role", "role")
+    )
 
     return {
         "account_user_id": account_user_id,
@@ -346,7 +421,10 @@ def normalize_account_directory_record(payload, tenant_id, tenant_name=""):
         "department": _directory_text(payload.get("department"))[:255],
         "title": _directory_text(payload.get("title"))[:255],
         "avatar": str(_first(payload, "avatar_url", "avatar", "photo") or "").strip(),
-        "active": _directory_active(payload),
+        "active": bool(
+            _directory_active(payload)
+            and (target_membership is None or _membership_active(target_membership))
+        ),
         "directory_projection": True,
         "role_present": raw_role is not None,
         "email_present": "email" in payload,
@@ -356,7 +434,11 @@ def normalize_account_directory_record(payload, tenant_id, tenant_name=""):
     }
 
 
-def normalize_account_session(payload, preferred_tenant_id=None):
+def normalize_account_session(
+    payload,
+    preferred_tenant_id=None,
+    require_current_tenant=False,
+):
     if not isinstance(payload, dict):
         raise SSOIdentityError("Account returned an invalid session payload.")
 
@@ -367,28 +449,38 @@ def normalize_account_session(payload, preferred_tenant_id=None):
         "current_company",
         "current_brand",
         "current_organization",
+        "current_workspace",
     )
     raw_tenant = _first(
         payload,
         "current_tenant_id",
-        "tenant_id",
         "current_company_id",
-        "company_id",
         "current_brand_id",
+        "current_organization_id",
+        "current_workspace_id",
+        "tenant_id",
+        "company_id",
         "brand_id",
         "organization_id",
+        "workspace_id",
     )
     if isinstance(raw_tenant, dict):
         current_tenant = raw_tenant
         tenant_id = _membership_id(raw_tenant)
     else:
         tenant_id = str(raw_tenant or "").strip()
+        if not tenant_id and isinstance(current_tenant, dict):
+            tenant_id = _membership_id(current_tenant)
     has_explicit_tenant = bool(tenant_id)
     preferred_tenant_id = str(preferred_tenant_id or "").strip()
     if preferred_tenant_id and len(preferred_tenant_id) > 50:
         raise SSOIdentityError("Requested Account tenant ID exceeds the Chatmgt limit.")
+    if preferred_tenant_id and require_current_tenant:
+        raise SSOIdentityError("Account tenant selection cannot require another current tenant.")
     if not user_id:
         raise SSOIdentityError("Account session has no user ID.")
+    if require_current_tenant and not tenant_id:
+        raise SSOIdentityError("Account session has no current tenant.")
 
     memberships = None
     for key in ("tenants", "companies", "brands", "organizations", "memberships"):
@@ -463,6 +555,8 @@ def normalize_account_session(payload, preferred_tenant_id=None):
     else:
         membership = active_memberships.get(tenant_id)
         if membership is None or not _membership_active(membership):
+            if require_current_tenant:
+                raise SSOIdentityError("The current Account tenant membership is not active.")
             if not active_memberships:
                 raise SSOIdentityError("Account session has no active tenant membership.")
             tenant_id, membership = next(iter(active_memberships.items()))

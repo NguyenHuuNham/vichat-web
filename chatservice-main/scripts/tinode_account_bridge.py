@@ -161,12 +161,17 @@ async def _account_tinode_token(identity, password):
             chat_token = str(cookies.get(CHAT_ACCESS_COOKIE_NAME) or "").strip()
             if not chat_token:
                 raise BridgeError("Chatmgt did not issue a login session.", 503)
+            if not str(cookies.get(ACCOUNT_SESSION_COOKIE_NAME) or "").strip():
+                raise BridgeError("Chatmgt did not issue an Account session.", 503)
+            # The token exchange rechecks the Account user and current tenant.
+            account_cookie_header = _cookie_header(login_response)
 
         async with client.post(
             CHATMGT_URL + "/api/v1/auth/tinode-token-bridge",
             headers={
                 "Accept": "application/json",
                 "Authorization": "Bearer " + chat_token,
+                "Cookie": account_cookie_header,
                 "X-Vichat-Tinode-Internal": INTERNAL_KEY,
                 "User-Agent": "VICHAT-TINODE-BRIDGE/1.0",
             },

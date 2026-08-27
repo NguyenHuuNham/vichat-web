@@ -114,6 +114,17 @@ from application.services.chat_maintenance_service import (
 logger = logging.getLogger(__name__)
 ACCOUNT_SSO_PASSWORD_MARKER = "!account-sso-only"
 _ACCOUNT_DIRECTORY_SYNC_CACHE = {}
+_ACCOUNT_DIRECTORY_VISIBLE_CACHE = {}
+ACCOUNT_SESSION_REVOCATION_ERRORS = frozenset({
+    "ACCOUNT_LOGIN_REQUIRED",
+    "ACCOUNT_COOKIE_AMBIGUOUS",
+    "ACCOUNT_SESSION_INVALID",
+    "ACCOUNT_SESSION_MISMATCH",
+    "ACCOUNT_TENANT_INVALID",
+    "ACCOUNT_ROLE_CHANGED",
+    "ACCOUNT_DIRECTORY_TENANT_MISMATCH",
+    "ACCOUNT_DIRECTORY_VIEWER_INVALID",
+})
 
 GROUP_SETTING_DEFAULTS = {
     "allowMembersEditInfo": False,
@@ -487,6 +498,12 @@ def _direct_message_policy(sender_uid, topic_name):
         "blockedBySender": False,
         "blockedByPeer": False,
     }
+    invalid = {
+        **default,
+        "managed": True,
+        "allowed": False,
+        "errorCode": "DIRECT_MESSAGE_POLICY_INVALID",
+    }
     if (
         sender_uid == topic_name
         or not valid_tinode_topic(sender_uid, False)
@@ -494,18 +511,27 @@ def _direct_message_policy(sender_uid, topic_name):
     ):
         return default
 
-    sender = ManagementAccount.query.filter(
+    senders = ManagementAccount.query.filter(
         ManagementAccount.tinode_uid == sender_uid,
-        ManagementAccount.active.is_(True),
-    ).first()
-    if sender is None:
+    ).all()
+    if len(senders) > 1:
+        return invalid
+    if not senders:
         return default
-    peer = ManagementAccount.query.filter(
-        ManagementAccount.tenant_id == sender.tenant_id,
+    sender = senders[0]
+    if not sender.active:
+        return invalid
+    peers = ManagementAccount.query.filter(
         ManagementAccount.tinode_uid == topic_name,
-        ManagementAccount.active.is_(True),
-    ).first()
-    if peer is None or str(peer.id) == str(sender.id):
+    ).all()
+    if len(peers) > 1:
+        return invalid
+    if not peers:
+        return default
+    peer = peers[0]
+    if not peer.active or str(peer.tenant_id) != str(sender.tenant_id):
+        return invalid
+    if str(peer.id) == str(sender.id):
         return default
 
     participant_ids = sorted((str(sender.id), str(peer.id)))
@@ -527,12 +553,7 @@ def _direct_message_policy(sender_uid, topic_name):
             str(participant.participant_id): participant for participant in participants
         }
         if set(participants_by_id) != set(participant_ids):
-            return {
-                **default,
-                "managed": True,
-                "allowed": False,
-                "errorCode": "DIRECT_MESSAGE_POLICY_INVALID",
-            }
+            return invalid
         blocked_by_sender = (
             blocked_by_sender
             or participants_by_id[str(sender.id)].blocked_at is not None
@@ -706,7 +727,9 @@ def _sso_account(identity, mark_login=True, authoritative_avatar=None):
     elif str(identity.get("avatar") or "").strip():
         account.avatar = str(identity.get("avatar") or "").strip()
     account.password_hash = ACCOUNT_SSO_PASSWORD_MARKER
-    account.active = bool(identity.get("active", True))
+    projected_active = bool(identity.get("active", True))
+    active_changed = bool(account.active) != projected_active
+    account.active = projected_active
     account.updated_at = now
     _repair_unprovisioned_tinode_username(account, identity)
     if mark_login:
@@ -719,10 +742,16 @@ def _sso_account(identity, mark_login=True, authoritative_avatar=None):
     if identity.get("directory_projection"):
         properties["directory_synced_at"] = now
     if account.active:
-        # Clear the marker left by the former incomplete-snapshot path after
-        # Account has supplied a confirmed active identity.
+        # A later authoritative Account identity can safely restore a
+        # projection removed by a complete directory snapshot.
         properties.pop("directory_removed_at", None)
     properties.setdefault("auth_version", 0)
+    if active_changed:
+        # Active-state changes revoke older Chatmgt JWTs. A later Account login
+        # can restore the same projection and receives the new version.
+        properties["auth_version"] = int(properties.get("auth_version") or 0) + 1
+    if account.active:
+        properties.pop("directory_identity_released", None)
     account.properties = properties
     return tenant, account
 
@@ -730,8 +759,23 @@ def _sso_account(identity, mark_login=True, authoritative_avatar=None):
 async def _validated_account_identity(request, account):
     identity = await current_account_session(
         request,
-        preferred_tenant_id=str(account.tenant_id or "").strip(),
+        require_current_tenant=True,
     )
+    expected_account_user_id = str(
+        (account.properties or {}).get("account_user_id") or ""
+    ).strip()
+    if str(identity.get("account_user_id") or "").strip() != expected_account_user_id:
+        raise AccountSSOError(
+            "The Account user does not match the Chatmgt session.",
+            401,
+            "ACCOUNT_SESSION_MISMATCH",
+        )
+    if str(identity.get("tenant_id") or "").strip() != str(account.tenant_id or "").strip():
+        raise AccountSSOError(
+            "The Account current company does not match the Chatmgt session.",
+            401,
+            "ACCOUNT_DIRECTORY_TENANT_MISMATCH",
+        )
     if not account_session_matches(account.properties, identity):
         raise AccountSSOError(
             "The Account session does not match the Chatmgt session.",
@@ -754,7 +798,7 @@ async def _validated_account_identity(request, account):
 
 
 async def _restore_directory_removed_account(request):
-    """Repair only projections previously disabled by an incomplete snapshot."""
+    """Repair legacy removals that predate active-state session revocation."""
     try:
         token_user = current_jwt_user(request)
     except Exception:
@@ -786,26 +830,132 @@ async def _restore_directory_removed_account(request):
         return None
 
     try:
-        await _validated_account_identity(request, account)
+        identity = await _validated_account_identity(request, account)
     except AccountSSOError as error:
         if error.status_code == 503:
             return _account_sso_error(error)
         return None
 
-    account.active = True
-    properties.pop("directory_removed_at", None)
-    account.properties = properties
-    account.updated_at = int(time.time())
     try:
+        # Rehydrate released username/email fields from the verified Account
+        # identity before making the legacy row visible again.
+        account.active = True
+        properties.pop("directory_removed_at", None)
+        account.properties = properties
+        _tenant, restored_account = _sso_account(identity, mark_login=False)
+        if str(restored_account.id) != str(account.id):
+            db.session.rollback()
+            return None
         db.session.commit()
     except Exception as error:
         db.session.rollback()
         logger.exception("Could not restore Account directory projection %s: %s", account.id, error)
+        _audit(
+            request,
+            "ACCOUNT_DIRECTORY_RESTORE",
+            False,
+            tenant_id=tenant_id,
+            user_id=str(account.id),
+            properties={"error_code": "ACCOUNT_PROJECTION_RESTORE_UNAVAILABLE"},
+        )
         return json({
             "error_code": "ACCOUNT_PROJECTION_RESTORE_UNAVAILABLE",
             "error_message": "The account session is temporarily unavailable.",
         }, status=503)
+    _audit(
+        request,
+        "ACCOUNT_DIRECTORY_RESTORE",
+        True,
+        tenant_id=tenant_id,
+        user_id=str(account.id),
+        properties={"legacy_projection": True},
+    )
     return None
+
+
+def _directory_removed_username(tenant_id, account_id):
+    fingerprint = uuid.uuid5(
+        uuid.NAMESPACE_URL,
+        "vichat-directory-removed:{}:{}".format(tenant_id, account_id),
+    ).hex
+    return "directory_removed_{}".format(fingerprint)
+
+
+def _deactivate_missing_account_projections(tenant_id, snapshot_identities):
+    snapshot_account_user_ids = {
+        str(identity.get("account_user_id") or "").strip()
+        for identity in snapshot_identities
+        if str(identity.get("account_user_id") or "").strip()
+    }
+    snapshot_usernames = {
+        str(identity.get("username") or "").strip().lower()
+        for identity in snapshot_identities
+        if str(identity.get("username") or "").strip()
+    }
+    snapshot_emails = {
+        str(identity.get("email") or "").strip().lower()
+        for identity in snapshot_identities
+        if str(identity.get("email") or "").strip()
+    }
+    missing_accounts = ManagementAccount.query.filter(
+        ManagementAccount.tenant_id == tenant_id,
+        ManagementAccount.properties.contains({"auth_source": "account"}),
+    ).all()
+    now = int(time.time())
+    deactivated = 0
+    released_conflicts = 0
+    for missing_account in missing_accounts:
+        properties = dict(missing_account.properties or {})
+        account_user_id = str(properties.get("account_user_id") or "").strip()
+        if not account_user_id or account_user_id in snapshot_account_user_ids:
+            continue
+        was_active = bool(missing_account.active)
+        if was_active:
+            missing_account.active = False
+            properties["auth_version"] = int(properties.get("auth_version") or 0) + 1
+            deactivated += 1
+        released_identity = False
+        if str(missing_account.username or "").strip().lower() in snapshot_usernames:
+            missing_account.username = _directory_removed_username(
+                tenant_id,
+                missing_account.id,
+            )
+            released_identity = True
+        if str(missing_account.email or "").strip().lower() in snapshot_emails:
+            missing_account.email = None
+            released_identity = True
+        if released_identity:
+            # Keep the row and historical references, but free unique identity
+            # fields so the authoritative Account user can be projected.
+            properties["directory_identity_released"] = True
+            released_conflicts += 1
+        if was_active or not properties.get("directory_removed_at") or released_identity:
+            properties["directory_removed_at"] = now
+            missing_account.updated_at = now
+        missing_account.properties = properties
+    return deactivated, released_conflicts
+
+
+def _deactivate_directory_viewer(account):
+    """Revoke a viewer rejected by the authoritative Account directory."""
+    if account is None:
+        return False
+    properties = dict(account.properties or {})
+    now = int(time.time())
+    was_active = bool(account.active)
+    if was_active:
+        account.active = False
+        properties["auth_version"] = int(properties.get("auth_version") or 0) + 1
+    properties["directory_removed_at"] = now
+    account.updated_at = now
+    account.properties = properties
+    return was_active
+
+
+def _clear_account_directory_cache(tenant_id, account_id):
+    directory_cache_key = (str(tenant_id), str(account_id))
+    _ACCOUNT_DIRECTORY_SYNC_CACHE.pop(directory_cache_key, None)
+    _ACCOUNT_DIRECTORY_VISIBLE_CACHE.pop(directory_cache_key, None)
 
 
 def _account_projection_matches_identity(account, identity):
@@ -2093,7 +2243,10 @@ async def management_switch_tenant(request):
             request,
             requested_tenant_id,
         )
-        switched_identity = await current_account_session(request)
+        switched_identity = await current_account_session(
+            request,
+            require_current_tenant=True,
+        )
         if (
             str(switched_identity.get("account_user_id") or "").strip()
             != str(identity.get("account_user_id") or "").strip()
@@ -2300,6 +2453,7 @@ async def bridge_tinode_token(request):
     if account is None:
         return _auth_error()
     try:
+        await _validated_account_identity(request, account)
         identity = _tinode_account_identity(account)
         _repair_unprovisioned_tinode_username(account, identity)
         tinode_auth = await tinode_sso_login(
@@ -2321,6 +2475,14 @@ async def bridge_tinode_token(request):
         })
         response.headers["Cache-Control"] = "no-store"
         return response
+    except AccountSSOError as error:
+        db.session.rollback()
+        if error.status_code != 503:
+            revoke_request_token(request)
+            revoked_error = AccountSSOError(str(error), 401, error.error_code)
+            response = clear_auth_cookie(_account_sso_error(revoked_error), request)
+            return clear_account_cookie(response)
+        return _account_sso_error(error)
     except AuthError as error:
         db.session.rollback()
         return json({"error_code": "TINODE_AUTH_FAILED", "error_message": str(error)}, status=error.status_code)
@@ -2717,11 +2879,7 @@ async def management_update_profile(request):
                 user_id=str(account.id),
                 properties={"error_code": error.error_code},
             )
-            if error.error_code in (
-                "ACCOUNT_LOGIN_REQUIRED",
-                "ACCOUNT_SESSION_MISMATCH",
-                "ACCOUNT_TENANT_INVALID",
-            ):
+            if error.error_code in ACCOUNT_SESSION_REVOCATION_ERRORS:
                 revoke_request_token(request)
                 response = clear_auth_cookie(_account_sso_error(error), request)
                 return clear_account_cookie(response)
@@ -2823,11 +2981,7 @@ async def management_update_avatar(request):
             user_id=str(account.id),
             properties={"error_code": error.error_code},
         )
-        if error.error_code in (
-            "ACCOUNT_LOGIN_REQUIRED",
-            "ACCOUNT_SESSION_MISMATCH",
-            "ACCOUNT_TENANT_INVALID",
-        ):
+        if error.error_code in ACCOUNT_SESSION_REVOCATION_ERRORS:
             revoke_request_token(request)
             response = clear_auth_cookie(_account_sso_error(error), request)
             return clear_account_cookie(response)
@@ -2858,35 +3012,128 @@ async def management_users(request):
     synced_count = 0
     skipped_count = 0
     deactivated_count = 0
+    released_conflict_count = 0
     tinode_provisioned = 0
     tinode_failed = 0
-    if employee_account_directory and not query_text:
+    visible_account_ids = None
+    if employee_account_directory:
         account = _account_by_id(tenant_id, _user_id(current_user))
         if account is None:
             return _auth_error()
+        directory_cache_key = (str(tenant_id), str(account.id))
         sync_ttl = max(0, int(app.config.get("ACCOUNT_SSO_DIRECTORY_SYNC_TTL", 10)))
-        last_sync = float(_ACCOUNT_DIRECTORY_SYNC_CACHE.get(tenant_id) or 0)
-        should_sync = sync_ttl == 0 or time.time() - last_sync >= sync_ttl
+        last_sync = float(_ACCOUNT_DIRECTORY_SYNC_CACHE.get(directory_cache_key) or 0)
+        cached_visible_account_ids = _ACCOUNT_DIRECTORY_VISIBLE_CACHE.get(directory_cache_key)
+        visible_account_ids = (
+            set(cached_visible_account_ids)
+            if cached_visible_account_ids is not None
+            else None
+        )
+        had_verified_snapshot = bool(last_sync and visible_account_ids is not None)
+        should_sync = (
+            not had_verified_snapshot
+            or sync_ttl == 0
+            or time.time() - last_sync >= sync_ttl
+        )
         try:
+            validated_identity = None
+            if not should_sync:
+                # Even a cached response must be bound to the Account tenant
+                # that is current at the time it is served.
+                validated_identity = await _validated_account_identity(request, account)
             if not should_sync:
                 sync_status = "cached"
             else:
-                identity = await _validated_account_identity(request, account)
-                identities = await account_directory(request, identity)
+                identity = validated_identity
+                if identity is None:
+                    identity = await _validated_account_identity(request, account)
+                directory_snapshot = await account_directory(request, identity)
                 # Recheck after the directory request so a concurrent Account tenant
                 # switch cannot project the new tenant's users into the old JWT tenant.
                 await _validated_account_identity(request, account)
-                # Account directory responses may be partial or paginated; omission
-                # is not proof that an existing membership was revoked.
+                snapshot_account_user_ids = {
+                    str(item.get("account_user_id") or "").strip()
+                    for item in directory_snapshot
+                    if str(item.get("account_user_id") or "").strip()
+                }
+                viewer_account_user_id = str(
+                    (account.properties or {}).get("account_user_id") or ""
+                ).strip()
+                viewer_directory_identity = next(
+                    (
+                        item for item in directory_snapshot
+                        if str(item.get("account_user_id") or "").strip()
+                        == viewer_account_user_id
+                    ),
+                    None,
+                )
+                if not viewer_account_user_id:
+                    raise AccountSSOError(
+                        "Account directory rejected the authenticated viewer.",
+                        401,
+                        "ACCOUNT_DIRECTORY_VIEWER_INVALID",
+                    )
+                if viewer_directory_identity is None:
+                    if directory_snapshot.complete:
+                        raise AccountSSOError(
+                            "Account directory rejected the authenticated viewer.",
+                            401,
+                            "ACCOUNT_DIRECTORY_VIEWER_INVALID",
+                        )
+                if (
+                    viewer_directory_identity is not None
+                    and not bool(viewer_directory_identity.get("active", True))
+                ):
+                    raise AccountSSOError(
+                        "Account directory rejected the authenticated viewer.",
+                        401,
+                        "ACCOUNT_DIRECTORY_VIEWER_INVALID",
+                    )
+                authoritative_snapshot = bool(
+                    directory_snapshot.complete
+                    and viewer_account_user_id
+                    and viewer_account_user_id in snapshot_account_user_ids
+                )
+                if authoritative_snapshot:
+                    # Retire omitted rows before projection so a stale mixed-
+                    # tenant username/email cannot block the authoritative row.
+                    retired_count, released_conflict_count = (
+                        _deactivate_missing_account_projections(
+                            tenant_id,
+                            directory_snapshot,
+                        )
+                    )
+                    deactivated_count += retired_count
+                    if retired_count or released_conflict_count:
+                        db.session.flush()
+                synced_account_user_ids = set()
+                synced_accounts_by_user_id = {}
+                visible_account_ids = set()
                 tinode_candidates = []
-                for directory_identity in identities:
+                for directory_identity in directory_snapshot:
                     try:
                         _tenant, synced_account = _sso_account(directory_identity, mark_login=False)
+                        synced_account_user_ids.add(
+                            str(directory_identity.get("account_user_id") or "").strip()
+                        )
+                        synced_accounts_by_user_id[
+                            str(directory_identity.get("account_user_id") or "").strip()
+                        ] = synced_account
+                        visible_account_ids.add(str(synced_account.id))
                         tinode_candidates.append(synced_account)
                         synced_count += 1
                         if not synced_account.active:
                             deactivated_count += 1
                     except AccountSSOError as error:
+                        if (
+                            str(directory_identity.get("account_user_id") or "").strip()
+                            == viewer_account_user_id
+                        ):
+                            raise AccountSSOError(
+                                "Account directory could not project the authenticated viewer.",
+                                401,
+                                "ACCOUNT_DIRECTORY_VIEWER_INVALID",
+                            ) from error
                         skipped_count += 1
                         logger.warning(
                             "Skipped Account directory projection for tenant %s: %s",
@@ -2902,35 +3149,143 @@ async def management_users(request):
                         account_id,
                         error,
                     )
+                if viewer_directory_identity is not None and (
+                    viewer_account_user_id not in synced_account_user_ids
+                    or not synced_accounts_by_user_id[viewer_account_user_id].active
+                ):
+                    raise AccountSSOError(
+                        "Account directory did not return a usable authenticated viewer.",
+                        401,
+                        "ACCOUNT_DIRECTORY_VIEWER_INVALID",
+                    )
+                reconciled = bool(
+                    authoritative_snapshot
+                    and not skipped_count
+                    and synced_account_user_ids == snapshot_account_user_ids
+                )
+                if not authoritative_snapshot and had_verified_snapshot:
+                    # Keep the last complete safe set while this response is
+                    # only a partial/additive refresh.
+                    visible_account_ids.update(cached_visible_account_ids or [])
                 db.session.commit()
-                _ACCOUNT_DIRECTORY_SYNC_CACHE[tenant_id] = time.time()
-                sync_status = "partial" if tinode_failed else "fresh"
+                if reconciled:
+                    _ACCOUNT_DIRECTORY_SYNC_CACHE[directory_cache_key] = time.time()
+                    _ACCOUNT_DIRECTORY_VISIBLE_CACHE[directory_cache_key] = set(
+                        visible_account_ids
+                    )
+                sync_status = "partial" if (
+                    tinode_failed
+                    or skipped_count
+                    or not directory_snapshot.complete
+                    or not reconciled
+                ) else "fresh"
+                _audit(
+                    request,
+                    "ACCOUNT_DIRECTORY_SYNC",
+                    True,
+                    tenant_id=tenant_id,
+                    user_id=str(account.id),
+                    properties={
+                        "pages": directory_snapshot.pages,
+                        "snapshot_total": directory_snapshot.total,
+                        "snapshot_received": directory_snapshot.raw_count,
+                        "synced": synced_count,
+                        "skipped": skipped_count,
+                        "deactivated": deactivated_count,
+                        "released_conflicts": released_conflict_count,
+                        "tinode_provisioned": tinode_provisioned,
+                        "tinode_failed": tinode_failed,
+                        "complete": bool(directory_snapshot.complete),
+                        "authoritative": authoritative_snapshot,
+                        "reconciled": reconciled,
+                        "status": sync_status,
+                    },
+                )
         except AccountSSOError as error:
             db.session.rollback()
+            viewer_deactivated = False
+            viewer_invalid = error.error_code == "ACCOUNT_DIRECTORY_VIEWER_INVALID"
+            if viewer_invalid:
+                _clear_account_directory_cache(tenant_id, account.id)
+                visible_account_ids = None
+                try:
+                    persisted_account = ManagementAccount.query.filter(
+                        ManagementAccount.id == str(account.id),
+                        ManagementAccount.tenant_id == tenant_id,
+                    ).first()
+                    viewer_deactivated = _deactivate_directory_viewer(persisted_account)
+                    db.session.commit()
+                except Exception as deactivation_error:
+                    db.session.rollback()
+                    logger.exception(
+                        "Could not persist Account directory viewer revocation %s: %s",
+                        account.id,
+                        deactivation_error,
+                    )
+            else:
+                visible_account_ids = (
+                    set(_ACCOUNT_DIRECTORY_VISIBLE_CACHE.get(directory_cache_key) or [])
+                    if had_verified_snapshot
+                    else None
+                )
+            _audit(
+                request,
+                "ACCOUNT_DIRECTORY_SYNC",
+                False,
+                tenant_id=tenant_id,
+                user_id=str(account.id),
+                properties={
+                    "error_code": error.error_code,
+                    "cached_fallback": bool(had_verified_snapshot and not viewer_invalid),
+                    "viewer_deactivated": viewer_deactivated,
+                },
+            )
             synced_count = 0
             skipped_count = 0
             deactivated_count = 0
+            released_conflict_count = 0
             tinode_provisioned = 0
             tinode_failed = 0
-            if error.error_code in (
-                "ACCOUNT_LOGIN_REQUIRED",
-                "ACCOUNT_SESSION_INVALID",
-                "ACCOUNT_SESSION_MISMATCH",
-                "ACCOUNT_TENANT_INVALID",
-                "ACCOUNT_ROLE_CHANGED",
-            ):
+            if error.error_code in ACCOUNT_SESSION_REVOCATION_ERRORS:
+                revoke_request_token(request)
+                revoked_error = AccountSSOError(str(error), 401, error.error_code)
+                response = clear_auth_cookie(_account_sso_error(revoked_error), request)
+                return clear_account_cookie(response)
+            if not had_verified_snapshot:
                 return _account_sso_error(error)
             sync_status = "stale"
             logger.warning("Account directory sync failed for tenant %s: %s", tenant_id, error)
         except Exception as error:
             db.session.rollback()
+            visible_account_ids = (
+                set(_ACCOUNT_DIRECTORY_VISIBLE_CACHE.get(directory_cache_key) or [])
+                if had_verified_snapshot
+                else None
+            )
+            _audit(
+                request,
+                "ACCOUNT_DIRECTORY_SYNC",
+                False,
+                tenant_id=tenant_id,
+                user_id=str(account.id),
+                properties={
+                    "error_code": "ACCOUNT_DIRECTORY_UNAVAILABLE",
+                    "cached_fallback": bool(had_verified_snapshot),
+                },
+            )
             synced_count = 0
             skipped_count = 0
             deactivated_count = 0
+            released_conflict_count = 0
             tinode_provisioned = 0
             tinode_failed = 0
             sync_status = "stale"
             logger.exception("Account directory sync failed for tenant %s: %s", tenant_id, error)
+            if not had_verified_snapshot:
+                return json({
+                    "error_code": "ACCOUNT_DIRECTORY_UNAVAILABLE",
+                    "error_message": "The company directory is temporarily unavailable.",
+                }, status=503)
     exclude_user_id = str(request.args.get("exclude_user_id") or "")
     include_inactive = _is_admin(current_user) and str(
         request.args.get("include_inactive") or ""
@@ -2938,6 +3293,8 @@ async def management_users(request):
     query = ManagementAccount.query.filter(ManagementAccount.tenant_id == tenant_id)
     if employee_account_directory:
         query = query.filter(ManagementAccount.properties.contains({"auth_source": "account"}))
+        if visible_account_ids is not None:
+            query = query.filter(ManagementAccount.id.in_(visible_account_ids))
     if not include_inactive:
         query = query.filter(ManagementAccount.active.is_(True))
     if exclude_user_id:
@@ -2963,6 +3320,7 @@ async def management_users(request):
             "synced": synced_count,
             "skipped": skipped_count,
             "deactivated": deactivated_count,
+            "released_conflicts": released_conflict_count,
             "tinode_provisioned": tinode_provisioned,
             "tinode_failed": tinode_failed,
         },

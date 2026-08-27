@@ -67,11 +67,16 @@ SSE route so an on/off change reaches open tabs immediately.
 3. Chatmgt verifies the returned Account session and active tenant/company/
    brand memberships. A valid Account `current_tenant_id` remains authoritative.
    If the field is missing, stale, or inactive, Chatmgt selects the first active
-   membership in Account order and uses that membership's role; it rejects the
-   session only when no active membership exists. The employee never has to
-   choose a tenant in ChatUI. Chatmgt then projects the verified identity to a
-   stable tenant-scoped `management_account` row and forwards the Account
-   session cookie to later server-side Account checks.
+   membership in Account order only while normalizing the initial login. Once a
+   Chatmgt session exists, protected Account checks require the actual current
+   tenant returned by `/current_user` to match both the Account user and the
+   tenant stored in the Chatmgt JWT; they never select the JWT tenant from the
+   membership list. A mismatch revokes the stale Chatmgt token and clears both
+   browser session cookies instead of allowing other protected flows to continue
+   under the old company. The employee never has to choose a tenant in ChatUI.
+   Chatmgt then projects the verified identity to a stable tenant-scoped
+   `management_account` row and forwards the Account session cookie to later
+   server-side Account checks.
 4. Chatmgt issues the HttpOnly chat cookie and returns only public user/tenant
    fields; it never returns an Account password or Tinode secret.
 5. ChatUI loads Step 3 metadata, then calls `POST /api/v1/auth/tinode-token`.
@@ -82,8 +87,9 @@ SSE route so an on/off change reaches open tabs immediately.
    membership. `POST /api/v1/auth/switch-tenant` first
    validates the requested membership against `/current_user`, calls Account's
    `/api/v1/tenant/set_current_tenant` with the existing Account session, and
-   re-reads `/current_user` before rotating only the Chatmgt cookie. It does not
-   log out Account or require the employee to enter credentials again. Each
+   re-reads the actual `/current_user` current tenant before rotating only the
+   Chatmgt cookie. It does not log out Account or require the employee to enter
+   credentials again. Each
    public option may also carry the Account-provided company/brand logo URL
    and optional logo version; ChatUI renders the active logo, company name and
    current status in a compact control beside a separate down-arrow toggle.
@@ -137,8 +143,9 @@ session is revoked.
 
 Account-backed profile edits follow the same source-of-truth rule: Chatmgt
 validates the Account cookie, forwards only editable public fields to the
-configured Account user-update endpoint, re-reads `/current_user`, and refreshes
-the tenant projection. Chatmgt does not persist a competing profile value and
+configured Account user-update endpoint, re-reads the explicit current tenant
+from `/current_user`, and refreshes the tenant projection only when it still
+matches the Chatmgt session. Chatmgt does not persist a competing profile value and
 does not forward passwords or other secrets. If Account rejects an update as
 read-only, Chatmgt returns `ACCOUNT_PROFILE_READ_ONLY` instead of treating the
 authorization response as an expired login or writing a local fallback value.
@@ -162,14 +169,45 @@ serializer also reads `avatar_url` and `avatarUrl` for older records, while ever
 new group update writes the canonical pair so a reload, tenant switch, reconnect,
 or deployment cannot fall back to a stale Tinode-only value.
 
-Account directory synchronization is additive: a directory response may be
-paginated or otherwise partial, so an existing Chatmgt projection is never
-deactivated merely because its Account user is absent from one snapshot. A
-projection is deactivated only when Account returns that user with an explicit
-inactive/deleted status or when the authenticated Account membership check
-rejects the current session. Projections marked by the former incomplete-
-snapshot path are repaired only after the current Account session confirms the
-same tenant membership; no inactive or cross-tenant account is revived.
+Account directory reads fail closed across tenant boundaries. Chatmgt verifies
+the actual Account user and current tenant before and after `/api/v1/tenant_user`;
+an explicitly foreign tenant envelope/record or a record whose supplied
+membership list omits the verified tenant aborts the response instead of being
+merged. Duplicate Account IDs make the snapshot partial, while a username or
+email claimed by different Account IDs is treated as an ambiguous identity and
+fails closed.
+Chatmgt follows Account's `total`/`num_results` metadata across all pages and
+marks a snapshot complete only when the exact unique record count is collected
+without an invalid record, duplicate page or pagination stall.
+
+A complete snapshot becomes authoritative for removals when the authenticated
+viewer is among the successfully projected identities. Chatmgt then deactivates
+active, same-tenant Account projections whose Account user ID is omitted by
+setting `directory_removed_at` and increments `auth_version`, so older Chatmgt
+JWTs are rejected. If an omitted projection holds a username/email now assigned
+to an authoritative identity, Chatmgt replaces only that historical row's
+username with a deterministic `directory_removed_*` value and clears its email;
+the row, Account mapping, Tinode UID and all references remain intact. The
+response cache is keyed by `(tenant, viewer)` and marked fully reconciled only
+when every normalized identity is projected successfully. Chatmgt does not
+delete account rows, Tinode mappings, conversations, messages, memberships or
+files, and it never touches legacy/local accounts. A later verified Account
+identity can safely rehydrate and restore the same projection.
+
+Partial or metadata-free snapshots remain additive and cannot deactivate an
+omitted account; their response is limited to identities verified in that
+snapshot (or the last complete safe snapshot for that tenant/viewer), so older
+mixed projections are not exposed. Before the first complete safe snapshot, an
+Account failure returns an error instead of falling back to unverified rows.
+An explicitly inactive viewer, a viewer omitted by a complete snapshot, or a
+viewer record that cannot be projected is different from an ordinary partial
+omission: Chatmgt purges that viewer's directory cache, deactivates the
+projection, increments `auth_version`, revokes the current JWT and clears both
+Chatmgt and Account cookies. It never serves the last cached directory after
+that authoritative viewer rejection.
+Each sync writes `ACCOUNT_DIRECTORY_SYNC` with counts/status only, and a legacy
+projection repair writes `ACCOUNT_DIRECTORY_RESTORE`; neither custom payload
+contains usernames, emails, cookies or secrets.
 
 Private contact nicknames are a separate viewer preference owned by Chatmgt.
 They are stored in the current account's tenant-scoped
@@ -627,23 +665,30 @@ from ChatUI pass through unchanged, while Tinode Web `scheme=basic` packets are
 decoded only at the trusted bridge. The bridge first calls
 `POST /api/v1/auth/account-login`, then exchanges the returned Chatmgt bearer
 session through the internal, key-protected
-`POST /api/v1/auth/tinode-token-bridge` endpoint. This second exchange does not
-depend on the Account browser `session` cookie being forwarded between
-containers. The UpGO password is not sent to the central Tinode server or
-logged by the bridge. This keeps Tinode Web and ChatUI on the same central
-UID/topic/message store.
+`POST /api/v1/auth/tinode-token-bridge` endpoint. The trusted bridge forwards
+the fresh Account session cookie returned by that same server-side credential
+login together with the Chatmgt bearer; Chatmgt re-reads `/current_user` and
+requires its Account user/current tenant to match the JWT before issuing a
+Tinode token. This does not depend on a pre-existing Account browser cookie.
+The UpGO password is not sent to the central Tinode server or logged by the
+bridge. This keeps Tinode Web and ChatUI on the same central UID/topic/message
+store without permitting a stale company session to mint a new token.
 
 For authenticated non-internal clients, the relay additionally inspects each
 outgoing Tinode `pub` whose topic starts with `usr`. Before forwarding it, the
 relay sends the authenticated sender UID and peer topic to the internal,
 key-protected `POST /api/v1/internal/direct-message-policy` endpoint. Chatmgt
-resolves the same-tenant direct pair by deterministic `direct_key` and rejects
-the publish when either participant has `blocked_at`; the relay returns Tinode
-control code `403` with `DIRECT_MESSAGE_BLOCKED` and never forwards that packet,
-so it cannot enter central Tinode history. Policy errors fail closed for managed
-direct sends. The transport check remains authoritative even though the current
-user-facing block controls are web-only, preventing another normal client from
-bypassing a block.
+requires the sender UID to map to exactly one active Chatmgt account. A mapped
+peer UID must also be unique, active and in the same tenant; ambiguous,
+deactivated or cross-tenant mappings fail closed before Tinode. An unmapped peer
+remains compatible with explicitly unmanaged Tinode identities such as the
+configured bot. For a valid pair, Chatmgt resolves the deterministic
+`direct_key` and rejects the publish when either participant has `blocked_at`;
+the relay returns Tinode control code `403` with `DIRECT_MESSAGE_BLOCKED` and
+never forwards that packet, so it cannot enter central Tinode history. Policy
+errors fail closed for managed direct sends. The transport check remains
+authoritative even though the current user-facing block controls are web-only,
+preventing another normal client from bypassing a block.
 
 Explicit web clients also receive a bounded group-publish anti-spam policy at
 the relay. The state is in-memory and keyed by authenticated Tinode UID plus
@@ -1049,7 +1094,18 @@ domain/deployment only when an enterprise isolation policy requires it.
   available to the browser.
 - An UpGO Account membership returned as explicitly removed/disabled deactivates
   the projection, revokes the old Chatmgt session, and prevents new Tinode
-  tokens; a partial directory snapshot must not deactivate omitted projections.
+  tokens. A complete, strictly verified tenant snapshot deactivates omitted
+  Account projections; a partial snapshot neither deactivates nor exposes
+  omitted cached projections.
+- An authenticated viewer rejected by an inactive record, a complete snapshot
+  omission or an unusable projection receives no cached fallback; its
+  per-viewer directory cache and both browser sessions are revoked.
+- A stale Tinode sender mapped to an inactive projection and a direct peer UID
+  mapped to another tenant are rejected by the relay before the publish reaches
+  central Tinode; unmanaged bot identities remain usable.
+- The Tinode Web bridge can exchange the just-created Chatmgt session only while
+  the freshly issued Account session still reports the same Account user and
+  current tenant; a mismatch is rejected before Tinode token issuance.
 - Token reconnect works from the signed Chatmgt session without recovering the
   original employee password.
 - Logout invalidates the session and all protected endpoints reject the old

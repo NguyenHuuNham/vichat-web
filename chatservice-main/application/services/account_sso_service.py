@@ -9,12 +9,27 @@ import aiohttp
 from application.server import app
 from application.services.sso_identity import (
     SSOIdentityError,
+    SSOIdentityTenantError,
+    directory_tenant_id,
     normalize_account_directory_record,
     normalize_account_session,
 )
 
 
 logger = logging.getLogger(__name__)
+ACCOUNT_DIRECTORY_MAX_PAGES = 100
+
+
+class AccountDirectorySnapshot(list):
+    """List-compatible directory data with authoritative snapshot metadata."""
+
+    def __init__(self, identities, *, complete=False, total=None, pages=0, raw_count=0):
+        super().__init__(identities or [])
+        self.complete = bool(complete)
+        self.total = total
+        self.pages = int(pages or 0)
+        self.raw_count = int(raw_count or 0)
+
 
 ACCOUNT_PROFILE_UPDATE_FIELDS = (
     "id",
@@ -378,7 +393,10 @@ async def update_account_profile(request, identity, changes):
             error_code,
         )
 
-    updated_identity = await current_account_session(request)
+    updated_identity = await current_account_session(
+        request,
+        require_current_tenant=True,
+    )
     if (
         str(updated_identity.get("account_user_id") or "") != account_user_id
         or str(updated_identity.get("tenant_id") or "") != str(identity.get("tenant_id") or "")
@@ -491,7 +509,10 @@ async def update_account_avatar(request, identity, upload):
             "ACCOUNT_AVATAR_UPDATE_FAILED",
         )
 
-    updated_identity = await current_account_session(request)
+    updated_identity = await current_account_session(
+        request,
+        require_current_tenant=True,
+    )
     if (
         str(updated_identity.get("account_user_id") or "") != account_user_id
         or str(updated_identity.get("tenant_id") or "") != str(identity.get("tenant_id") or "")
@@ -514,7 +535,13 @@ async def update_account_avatar(request, identity, upload):
         fresh_profile = _validate_account_self_profile(status, fresh_profile)
         _ensure_account_identity_matches(fresh_profile, identity)
         if str(fresh_profile.get("avatar_url") or fresh_profile.get("avatar") or "").strip() == avatar_url:
-            updated_identity = normalize_account_session(fresh_profile)
+            # Keep the strict /current_user tenant identity. /me confirms only
+            # the uploaded avatar and may not carry authoritative tenant state.
+            updated_identity = {
+                **updated_identity,
+                "avatar": avatar_url,
+                "avatar_present": True,
+            }
             confirmed_avatar = avatar_url
     if confirmed_avatar != avatar_url:
         raise AccountSSOError(
@@ -525,7 +552,11 @@ async def update_account_avatar(request, identity, upload):
     return updated_identity
 
 
-async def current_account_session(request, preferred_tenant_id=None):
+async def current_account_session(
+    request,
+    preferred_tenant_id=None,
+    require_current_tenant=False,
+):
     status, payload = await _account_request(
         request,
         "GET",
@@ -543,7 +574,11 @@ async def current_account_session(request, preferred_tenant_id=None):
     if status >= 300:
         raise AccountSSOError("Account rejected the session.", 401, "ACCOUNT_SESSION_INVALID")
     try:
-        return normalize_account_session(payload, preferred_tenant_id=preferred_tenant_id)
+        return normalize_account_session(
+            payload,
+            preferred_tenant_id=preferred_tenant_id,
+            require_current_tenant=require_current_tenant,
+        )
     except SSOIdentityError as error:
         user_id, user_name, current_tenant_id, tenant_ids = _account_session_log_fields(payload)
         logger.warning(
@@ -624,60 +659,212 @@ def _directory_items(payload):
     )
 
 
-def _directory_path():
+def _directory_total(payload):
+    if not isinstance(payload, dict):
+        return None
+    for name in ("total", "num_results"):
+        if name not in payload:
+            continue
+        value = payload.get(name)
+        if isinstance(value, bool):
+            return None
+        try:
+            total = int(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        return total if total >= 0 else None
+    for name in ("meta", "metadata", "pagination", "data"):
+        value = payload.get(name)
+        if isinstance(value, dict):
+            total = _directory_total(value)
+            if total is not None:
+                return total
+    return None
+
+
+def _directory_path(page=1):
     configured_path = app.config.get("ACCOUNT_SSO_DIRECTORY_PATH") or "/api/v1/tenant_user"
     parts = urlsplit(str(configured_path))
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
-    query.setdefault("page", "1")
+    query["page"] = str(max(1, int(page)))
     query.setdefault("results_per_page", "1000")
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
 async def account_directory(request, identity):
-    status, payload = await _account_request(request, "GET", _directory_path())
-    error_code = str((payload or {}).get("error_code") or "") if isinstance(payload, dict) else ""
-    if status in (401, 403, 520) or error_code in ("SESSION_EXPIRED", "AUTH_ERROR"):
-        raise AccountSSOError("Account login is required.", 401, "ACCOUNT_LOGIN_REQUIRED")
-    if status >= 500:
-        raise AccountSSOError(
-            "Account directory is temporarily unavailable.",
-            503,
-            "ACCOUNT_DIRECTORY_UNAVAILABLE",
-        )
-    if status >= 300:
-        raise AccountSSOError(
-            "Account rejected the directory request.",
-            502,
-            "ACCOUNT_DIRECTORY_FAILED",
-        )
-
-    items = _directory_items(payload)
     identities = []
-    for record in items:
+    seen_account_user_ids = set()
+    seen_usernames = {}
+    seen_emails = {}
+    raw_count = 0
+    total = None
+    complete = False
+    pages = 0
+
+    for page in range(1, ACCOUNT_DIRECTORY_MAX_PAGES + 1):
         try:
-            identities.append(normalize_account_directory_record(
-                record,
-                identity["tenant_id"],
-                identity.get("tenant_name") or identity["tenant_id"],
-            ))
-        except SSOIdentityError as error:
-            logger.warning("Skipped invalid Account directory record: %s", error)
-    if not identities and items:
+            status, payload = await _account_request(request, "GET", _directory_path(page))
+        except AccountSSOError as error:
+            if pages and error.error_code in (
+                "ACCOUNT_DIRECTORY_UNAVAILABLE",
+                "ACCOUNT_DIRECTORY_FAILED",
+                "ACCOUNT_SERVICE_UNAVAILABLE",
+            ):
+                complete = False
+                break
+            raise
+        error_code = str((payload or {}).get("error_code") or "") if isinstance(payload, dict) else ""
+        if status in (401, 403, 520) or error_code in ("SESSION_EXPIRED", "AUTH_ERROR"):
+            raise AccountSSOError("Account login is required.", 401, "ACCOUNT_LOGIN_REQUIRED")
+        if status >= 500:
+            if pages:
+                complete = False
+                break
+            raise AccountSSOError(
+                "Account directory is temporarily unavailable.",
+                503,
+                "ACCOUNT_DIRECTORY_UNAVAILABLE",
+            )
+        if status >= 300:
+            if pages:
+                complete = False
+                break
+            raise AccountSSOError(
+                "Account rejected the directory request.",
+                502,
+                "ACCOUNT_DIRECTORY_FAILED",
+            )
+
+        try:
+            items = _directory_items(payload)
+        except AccountSSOError:
+            if pages:
+                complete = False
+                break
+            raise
+        pages += 1
+        payload_tenant_id = directory_tenant_id(payload)
+        if (
+            payload_tenant_id
+            and str(payload_tenant_id).strip()
+            != str(identity.get("tenant_id") or "").strip()
+        ):
+            raise AccountSSOError(
+                "Account directory returned users outside the verified company.",
+                502,
+                "ACCOUNT_DIRECTORY_TENANT_MISMATCH",
+            )
+        page_total = _directory_total(payload)
+        if pages == 1:
+            total = page_total
+            complete = total is not None
+        elif page_total is not None and page_total != total:
+            complete = False
+            break
+
+        page_new_identities = 0
+        for record in items:
+            raw_count += 1
+            try:
+                directory_identity = normalize_account_directory_record(
+                    record,
+                    identity["tenant_id"],
+                    identity.get("tenant_name") or identity["tenant_id"],
+                )
+            except SSOIdentityTenantError as error:
+                raise AccountSSOError(
+                    "Account directory returned users outside the verified company.",
+                    502,
+                    "ACCOUNT_DIRECTORY_TENANT_MISMATCH",
+                ) from error
+            except SSOIdentityError as error:
+                record_account_user_id = str(
+                    (
+                        record.get("id")
+                        or record.get("uid")
+                        or record.get("user_id")
+                        or ""
+                    )
+                    if isinstance(record, dict)
+                    else ""
+                ).strip()
+                if record_account_user_id == str(
+                    identity.get("account_user_id") or ""
+                ).strip():
+                    raise AccountSSOError(
+                        "Account directory returned an invalid authenticated viewer.",
+                        401,
+                        "ACCOUNT_DIRECTORY_VIEWER_INVALID",
+                    ) from error
+                complete = False
+                logger.warning("Skipped invalid Account directory record: %s", error)
+                continue
+            account_user_id = str(directory_identity.get("account_user_id") or "")
+            if account_user_id in seen_account_user_ids:
+                complete = False
+                continue
+            username_key = str(directory_identity.get("username") or "").strip().lower()
+            previous_username_id = seen_usernames.get(username_key)
+            if previous_username_id and previous_username_id != account_user_id:
+                raise AccountSSOError(
+                    "Account directory contains an ambiguous username.",
+                    502,
+                    "ACCOUNT_DIRECTORY_DUPLICATE_IDENTITY",
+                )
+            if username_key:
+                seen_usernames[username_key] = account_user_id
+            email_key = str(directory_identity.get("email") or "").strip().lower()
+            previous_email_id = seen_emails.get(email_key)
+            if email_key and previous_email_id and previous_email_id != account_user_id:
+                raise AccountSSOError(
+                    "Account directory contains an ambiguous email identity.",
+                    502,
+                    "ACCOUNT_DIRECTORY_DUPLICATE_IDENTITY",
+                )
+            if email_key:
+                seen_emails[email_key] = account_user_id
+            seen_account_user_ids.add(account_user_id)
+            identities.append(directory_identity)
+            page_new_identities += 1
+
+        if total is None:
+            break
+        if raw_count > total:
+            complete = False
+            break
+        if raw_count == total:
+            if len(identities) != total:
+                complete = False
+            break
+        if not items or page_new_identities == 0:
+            complete = False
+            break
+    else:
+        complete = False
+
+    if not identities and raw_count:
         raise AccountSSOError(
             "Account directory contained no valid users.",
             502,
             "ACCOUNT_DIRECTORY_INVALID",
         )
+    snapshot_complete = bool(complete and total == len(identities))
     current_account_user_id = str(identity.get("account_user_id") or "")
-    if current_account_user_id and current_account_user_id not in {
+    if snapshot_complete and current_account_user_id and current_account_user_id not in {
         str(item.get("account_user_id") or "") for item in identities
     }:
         raise AccountSSOError(
             "Account directory omitted the authenticated user.",
-            502,
-            "ACCOUNT_DIRECTORY_INVALID",
+            401,
+            "ACCOUNT_DIRECTORY_VIEWER_INVALID",
         )
-    return identities
+    return AccountDirectorySnapshot(
+        identities,
+        complete=snapshot_complete,
+        total=total,
+        pages=pages,
+        raw_count=raw_count,
+    )
 
 
 async def logout_account_session(request):

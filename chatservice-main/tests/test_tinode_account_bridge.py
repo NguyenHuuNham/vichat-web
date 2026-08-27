@@ -3,6 +3,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 try:
     import aiohttp  # noqa: F401
@@ -44,6 +45,47 @@ class FakePolicySession:
         self.calls.append((url, kwargs))
         response = self.responses.pop(0) if self.responses else FakePolicyResponse()
         return response
+
+
+class FakeHeaders:
+    def __init__(self, set_cookie=None):
+        self.set_cookie = list(set_cookie or [])
+
+    def getall(self, name, default=None):
+        if str(name).lower() == "set-cookie":
+            return list(self.set_cookie)
+        return list(default or [])
+
+
+class FakeHttpResponse:
+    def __init__(self, status=200, payload=None, set_cookie=None):
+        self.status = status
+        self.payload = payload or {}
+        self.headers = FakeHeaders(set_cookie)
+        self.cookies = {}
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, _error_type, _error, _traceback):
+        return False
+
+    async def json(self, content_type=None):
+        return self.payload
+
+
+class FakeHttpSession:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+        self.closed = False
+
+    def post(self, url, **kwargs):
+        self.calls.append((url, kwargs))
+        return self.responses.pop(0)
+
+    async def close(self):
+        self.closed = True
 
 
 class FakeWebSocket:
@@ -230,6 +272,45 @@ class TinodeAccountBridgeAsyncTests(unittest.IsolatedAsyncioTestCase):
             "type": bridge.aiohttp.WSMsgType.TEXT,
             "data": json.dumps(packet),
         })()
+
+    async def test_account_token_exchange_forwards_the_fresh_account_cookie(self):
+        session = FakeHttpSession([
+            FakeHttpResponse(set_cookie=[
+                "session=account-session; Path=/; HttpOnly",
+                "vichat_access_token=chat-token; Path=/; HttpOnly",
+            ]),
+            FakeHttpResponse(payload={
+                "tinode_auth": {"token": "tinode-token", "uid": "usrAccount"},
+            }),
+        ])
+
+        with patch.object(bridge.aiohttp, "ClientSession", return_value=session):
+            token, uid = await bridge._account_tinode_token("employee@example.vn", "secret")
+
+        self.assertEqual((token, uid), ("tinode-token", "usrAccount"))
+        self.assertEqual(len(session.calls), 2)
+        token_headers = session.calls[1][1]["headers"]
+        self.assertEqual(token_headers["Authorization"], "Bearer chat-token")
+        self.assertEqual(
+            token_headers["Cookie"],
+            "session=account-session; vichat_access_token=chat-token",
+        )
+        self.assertTrue(session.closed)
+
+    async def test_account_token_exchange_rejects_a_missing_account_cookie(self):
+        session = FakeHttpSession([
+            FakeHttpResponse(set_cookie=[
+                "vichat_access_token=chat-token; Path=/; HttpOnly",
+            ]),
+        ])
+
+        with patch.object(bridge.aiohttp, "ClientSession", return_value=session):
+            with self.assertRaises(bridge.BridgeError) as error:
+                await bridge._account_tinode_token("employee@example.vn", "secret")
+
+        self.assertEqual(error.exception.status_code, 503)
+        self.assertEqual(len(session.calls), 1)
+        self.assertTrue(session.closed)
 
     async def test_allowed_direct_publish_is_forwarded_after_policy_check(self):
         client = FakeWebSocket([self.message({"pub": {

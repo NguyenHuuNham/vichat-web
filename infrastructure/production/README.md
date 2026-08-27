@@ -297,8 +297,15 @@ the local rollback ChatAPI default remains separate.
 Disable or remove an employee in UpGO Account and wait for the directory sync
 interval. When Account returns an explicit inactive/deleted record, Chatmgt
 must mark the projection inactive and the next Chatmgt or Tinode request must
-reject the old session. A user omitted from a partial/paginated directory
-snapshot must remain usable until Account confirms the membership change.
+reject the old session. Omission from a complete, count-matched snapshot that
+contains the authenticated viewer also deactivates the projection while keeping
+its conversations, messages, memberships, files and Tinode UID for history. A
+user omitted from a partial/paginated directory snapshot must remain usable,
+but must not be added to that response unless it belongs to the last complete
+safe snapshot for the same tenant and viewer. If the authenticated viewer is
+explicitly inactive, omitted by a complete snapshot, or cannot be projected,
+Chatmgt must purge that viewer's cache, deactivate the projection, revoke the
+JWT and clear both session cookies instead of serving a stale directory.
 Account administrator login remains at `chatmgt.upgo.vn`; a normal employee
 cannot obtain the management scope.
 
@@ -366,8 +373,10 @@ from the same tenant in separate browser profiles:
    `wss://chat.upgo.vn/v0/channels` without sending an Account password.
 3. Open the single Tinode Web UI at `https://web.vichat.net/#`, set Server to
    `chat.upgo.vn`, and sign in with the same invited UpGO email/password. The
-   login is translated by the relay bridge; it must open the same Tinode UID
-   and show the same conversations/messages as ChatUI.
+   login is translated by the relay bridge; the bridge must forward the fresh
+   Account cookie from that login so Chatmgt can revalidate the exact current
+   tenant before issuing the token. It must open the same Tinode UID and show
+   the same conversations/messages as ChatUI.
 4. Open a direct conversation before the peer has previously used Chat. Confirm
    Chatmgt prepares the peer UID, both users see the same Chatmgt conversation,
    and text/file/presence/typing/read state works after refresh.
@@ -380,7 +389,11 @@ from the same tenant in separate browser profiles:
    write demo messages. Restore `chat` and confirm reconnect uses a fresh token;
    the old local `chatapi` is not this test path.
 7. Repeat with a second tenant and attempt a copied topic ID from the first
-   tenant. Binding/access must be rejected.
+   tenant. Binding/access and direct publish must be rejected. Also confirm an
+   old Tinode session for a deactivated Account projection cannot publish a
+   direct message, a stale bridge exchange whose Account current tenant no
+   longer matches its Chatmgt JWT cannot mint a new Tinode token, and the
+   configured unmapped bot topic remains usable.
 8. Log out and confirm ChatUI disconnects Tinode, clears local state, revokes the
    Chatmgt session, and cannot reopen protected data after refresh.
 

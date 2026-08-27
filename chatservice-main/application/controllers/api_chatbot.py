@@ -41,6 +41,13 @@ def _tinode_webhook_request(request):
     return bool(expected and supplied and hmac.compare_digest(expected, supplied))
 
 
+def _active_tinode_account(sender_uid):
+    matches = ManagementAccount.query.filter(
+        ManagementAccount.tinode_uid == sender_uid,
+    ).all()
+    return matches[0] if len(matches) == 1 and matches[0].active else None
+
+
 def _tinode_message_ref(topic, sequence):
     topic_digest = hashlib.sha256(str(topic or "").encode("utf-8")).hexdigest()[:32]
     return "tinode:{}:{}".format(topic_digest, int(sequence))
@@ -74,6 +81,10 @@ def _current_user(request):
             ManagementAccount.active.is_(True),
         ).first()
         if account is None:
+            return None
+        if int(current_user.get("auth_version") or 0) != int(
+            (account.properties or {}).get("auth_version") or 0
+        ):
             return None
         return {
             **current_user,
@@ -452,10 +463,7 @@ async def chatbot_tinode_webhook(request):
             "error_message": "ViChat AI only answers explicitly mentioned group messages.",
         }, status=400)
 
-    account = ManagementAccount.query.filter(
-        ManagementAccount.tinode_uid == sender_uid,
-        ManagementAccount.active.is_(True),
-    ).first()
+    account = _active_tinode_account(sender_uid)
     if account is None:
         return json({
             "error_code": "TINODE_SENDER_NOT_ALLOWED",

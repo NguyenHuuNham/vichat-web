@@ -141,7 +141,7 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
             "tenant_id": "tenant-a",
             "tenant_name": "Tenant A",
         }
-        payload = {"objects": [{
+        payload = {"total": 1, "objects": [{
             "id": "account-user-2",
             "user_name": "lan.tran",
             "display_name": "Tran Thi Lan",
@@ -155,6 +155,9 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(users[0]["account_user_id"], "account-user-2")
         self.assertEqual(users[0]["tenant_id"], "tenant-a")
+        self.assertTrue(users.complete)
+        self.assertEqual(users.total, 1)
+        self.assertEqual(users.pages, 1)
         account_request.assert_awaited_once_with(
             request,
             "GET",
@@ -184,6 +187,199 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(users[0]["username"], "test.user@example.vn")
         self.assertEqual(users[0]["full_name"], "Test User")
         self.assertTrue(users[0]["active"])
+        self.assertFalse(users.complete)
+
+    async def test_directory_fetches_every_page_before_marking_the_snapshot_complete(self):
+        identity = {
+            "account_user_id": "account-user-1",
+            "tenant_id": "tenant-a",
+            "tenant_name": "Tenant A",
+        }
+        pages = [
+            (200, {"total": 3, "page": 1, "total_pages": 2, "next_page": 2, "objects": [
+                {"id": "account-user-1", "user_name": "viewer"},
+                {"id": "account-user-2", "user_name": "member.two"},
+            ]}),
+            (200, {"total": 3, "page": 2, "total_pages": 2, "next_page": None, "objects": [
+                {"id": "account-user-3", "user_name": "member.three"},
+            ]}),
+        ]
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(side_effect=pages),
+        ) as account_request:
+            snapshot = await account_sso_service.account_directory(
+                types.SimpleNamespace(),
+                identity,
+            )
+
+        self.assertEqual([item["account_user_id"] for item in snapshot], [
+            "account-user-1",
+            "account-user-2",
+            "account-user-3",
+        ])
+        self.assertTrue(snapshot.complete)
+        self.assertEqual(snapshot.total, 3)
+        self.assertEqual(snapshot.pages, 2)
+        self.assertEqual(snapshot.raw_count, 3)
+        self.assertEqual(account_request.await_args_list, [
+            call(types.SimpleNamespace(), "GET", "/api/v1/tenant_user?page=1&results_per_page=1000"),
+            call(types.SimpleNamespace(), "GET", "/api/v1/tenant_user?page=2&results_per_page=1000"),
+        ])
+
+    async def test_directory_without_total_metadata_remains_partial(self):
+        request = types.SimpleNamespace()
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(200, {"objects": [
+                {"id": "account-user-1", "user_name": "viewer"},
+            ]})),
+        ) as account_request:
+            snapshot = await account_sso_service.account_directory(request, {
+                "account_user_id": "account-user-1",
+                "tenant_id": "tenant-a",
+                "tenant_name": "Tenant A",
+            })
+
+        self.assertFalse(snapshot.complete)
+        self.assertIsNone(snapshot.total)
+        self.assertEqual(snapshot.pages, 1)
+        account_request.assert_awaited_once()
+
+    async def test_directory_duplicate_page_is_partial_and_stops(self):
+        request = types.SimpleNamespace()
+        repeated = {"id": "account-user-1", "user_name": "viewer"}
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(side_effect=[
+                (200, {"total": 3, "objects": [repeated]}),
+                (200, {"total": 3, "objects": [repeated]}),
+            ]),
+        ) as account_request:
+            snapshot = await account_sso_service.account_directory(request, {
+                "account_user_id": "account-user-1",
+                "tenant_id": "tenant-a",
+                "tenant_name": "Tenant A",
+            })
+
+        self.assertFalse(snapshot.complete)
+        self.assertEqual(len(snapshot), 1)
+        self.assertEqual(snapshot.pages, 2)
+        self.assertEqual(account_request.await_count, 2)
+
+    async def test_directory_later_page_failure_preserves_a_partial_snapshot(self):
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(side_effect=[
+                (200, {"total": 2, "objects": [
+                    {"id": "account-user-1", "user_name": "viewer"},
+                ]}),
+                (503, {}),
+            ]),
+        ):
+            snapshot = await account_sso_service.account_directory(types.SimpleNamespace(), {
+                "account_user_id": "account-user-1",
+                "tenant_id": "tenant-a",
+                "tenant_name": "Tenant A",
+            })
+
+        self.assertFalse(snapshot.complete)
+        self.assertEqual(snapshot.pages, 1)
+        self.assertEqual([item["account_user_id"] for item in snapshot], ["account-user-1"])
+
+    async def test_directory_explicit_foreign_tenant_fails_closed(self):
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(200, {"total": 1, "objects": [{
+                "id": "account-user-1",
+                "user_name": "viewer",
+                "tenant_id": "tenant-b",
+            }]})),
+        ):
+            with self.assertRaises(account_sso_service.AccountSSOError) as error:
+                await account_sso_service.account_directory(types.SimpleNamespace(), {
+                    "account_user_id": "account-user-1",
+                    "tenant_id": "tenant-a",
+                    "tenant_name": "Tenant A",
+                })
+
+        self.assertEqual(error.exception.error_code, "ACCOUNT_DIRECTORY_TENANT_MISMATCH")
+
+    async def test_directory_foreign_tenant_envelope_fails_closed(self):
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(200, {
+                "tenant_id": "tenant-b",
+                "total": 1,
+                "objects": [{"id": "account-user-1", "user_name": "viewer"}],
+            })),
+        ):
+            with self.assertRaises(account_sso_service.AccountSSOError) as error:
+                await account_sso_service.account_directory(types.SimpleNamespace(), {
+                    "account_user_id": "account-user-1",
+                    "tenant_id": "tenant-a",
+                    "tenant_name": "Tenant A",
+                })
+
+        self.assertEqual(error.exception.error_code, "ACCOUNT_DIRECTORY_TENANT_MISMATCH")
+
+    async def test_directory_duplicate_username_fails_closed(self):
+        payload = {"total": 2, "objects": [
+            {"id": "account-user-1", "user_name": "shared.identity"},
+            {"id": "account-user-2", "user_name": "shared.identity"},
+        ]}
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(200, payload)),
+        ):
+            with self.assertRaises(account_sso_service.AccountSSOError) as error:
+                await account_sso_service.account_directory(types.SimpleNamespace(), {
+                    "account_user_id": "account-user-1",
+                    "tenant_id": "tenant-a",
+                    "tenant_name": "Tenant A",
+                })
+
+        self.assertEqual(
+            error.exception.error_code,
+            "ACCOUNT_DIRECTORY_DUPLICATE_IDENTITY",
+        )
+
+    async def test_directory_duplicate_email_fails_closed(self):
+        payload = {"total": 2, "objects": [
+            {
+                "id": "account-user-1",
+                "user_name": "viewer",
+                "email": "shared@example.vn",
+            },
+            {
+                "id": "account-user-2",
+                "user_name": "member.two",
+                "email": "shared@example.vn",
+            },
+        ]}
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(200, payload)),
+        ):
+            with self.assertRaises(account_sso_service.AccountSSOError) as error:
+                await account_sso_service.account_directory(types.SimpleNamespace(), {
+                    "account_user_id": "account-user-1",
+                    "tenant_id": "tenant-a",
+                    "tenant_name": "Tenant A",
+                })
+
+        self.assertEqual(
+            error.exception.error_code,
+            "ACCOUNT_DIRECTORY_DUPLICATE_IDENTITY",
+        )
 
     async def test_directory_session_expiry_requires_account_login(self):
         with patch.object(
@@ -207,7 +403,7 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(
             account_sso_service,
             "_account_request",
-            AsyncMock(return_value=(200, {"objects": [{
+            AsyncMock(return_value=(200, {"total": 1, "objects": [{
                 "id": "someone-else",
                 "user_name": "someone.else",
             }]})),
@@ -222,7 +418,49 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
                     },
                 )
 
-        self.assertEqual(error.exception.error_code, "ACCOUNT_DIRECTORY_INVALID")
+        self.assertEqual(error.exception.error_code, "ACCOUNT_DIRECTORY_VIEWER_INVALID")
+
+    async def test_partial_directory_missing_viewer_remains_additive(self):
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(200, {"objects": [{
+                "id": "someone-else",
+                "user_name": "someone.else",
+            }]})),
+        ):
+            snapshot = await account_sso_service.account_directory(
+                types.SimpleNamespace(),
+                {
+                    "account_user_id": "account-user-1",
+                    "tenant_id": "tenant-a",
+                    "tenant_name": "Tenant A",
+                },
+            )
+
+        self.assertFalse(snapshot.complete)
+        self.assertEqual([item["account_user_id"] for item in snapshot], ["someone-else"])
+
+    async def test_invalid_authenticated_viewer_record_fails_closed(self):
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(200, {"total": 1, "objects": [{
+                "id": "account-user-1",
+            }]})),
+        ):
+            with self.assertRaises(account_sso_service.AccountSSOError) as error:
+                await account_sso_service.account_directory(
+                    types.SimpleNamespace(),
+                    {
+                        "account_user_id": "account-user-1",
+                        "tenant_id": "tenant-a",
+                        "tenant_name": "Tenant A",
+                    },
+                )
+
+        self.assertEqual(error.exception.status_code, 401)
+        self.assertEqual(error.exception.error_code, "ACCOUNT_DIRECTORY_VIEWER_INVALID")
 
     async def test_valid_account_session_is_normalized(self):
         request = types.SimpleNamespace()
@@ -237,6 +475,23 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(identity["tenant_id"], "tenant-a")
         self.assertEqual(identity["avatar"], account_payload()["avatar_url"])
         account_request.assert_awaited_once_with(request, "GET", "/current_user")
+
+    async def test_strict_account_session_rejects_membership_fallback_without_current_tenant(self):
+        profile = account_payload()
+        profile["current_tenant_id"] = None
+        profile["current_tenant_role"] = None
+        with patch.object(
+            account_sso_service,
+            "_account_request",
+            AsyncMock(return_value=(200, profile)),
+        ):
+            with self.assertRaises(account_sso_service.AccountSSOError) as error:
+                await account_sso_service.current_account_session(
+                    types.SimpleNamespace(),
+                    require_current_tenant=True,
+                )
+
+        self.assertEqual(error.exception.error_code, "ACCOUNT_TENANT_INVALID")
 
     async def test_current_account_session_can_select_a_verified_membership(self):
         request = types.SimpleNamespace()
@@ -452,6 +707,14 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
         stale = account_payload()
         fresh = dict(stale)
         fresh["avatar_url"] = "https://service.upgo.vn/accounts/new-avatar.png"
+        fresh["current_tenant_id"] = "tenant-b"
+        fresh["current_tenant_role"] = "admin"
+        fresh["tenants"] = [{
+            "id": "tenant-b",
+            "tenant_name": "Tenant B",
+            "role": "admin",
+            "status": "active",
+        }]
         upload = types.SimpleNamespace(name="avatar.png", type="image/png", body=b"avatar-bytes")
         with patch.object(
             account_sso_service,
@@ -470,6 +733,8 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
             result = await account_sso_service.update_account_avatar(request, identity, upload)
 
         self.assertEqual(result["avatar"], fresh["avatar_url"])
+        self.assertEqual(result["tenant_id"], "tenant-a")
+        self.assertEqual(result["role"], "member")
         self.assertEqual(account_request.await_args_list[3], call(request, "GET", "/me"))
 
     async def test_avatar_update_rejects_when_account_never_confirms_uploaded_url(self):

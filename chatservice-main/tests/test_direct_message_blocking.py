@@ -103,9 +103,10 @@ class DirectMessagePolicyTests(unittest.TestCase):
             return object()
 
     class Query:
-        def __init__(self, first_values=None, all_values=None):
+        def __init__(self, first_values=None, all_values=None, all_batches=None):
             self.first_values = list(first_values or [])
             self.all_values = list(all_values or [])
+            self.all_batches = list(all_batches or [])
 
         def filter(self, *_conditions):
             return self
@@ -114,11 +115,13 @@ class DirectMessagePolicyTests(unittest.TestCase):
             return self.first_values.pop(0) if self.first_values else None
 
         def all(self):
+            if self.all_batches:
+                return list(self.all_batches.pop(0))
             return list(self.all_values)
 
     def test_duplicate_direct_rows_fail_closed_when_either_row_is_blocked(self):
-        sender = SimpleNamespace(id="sender", tenant_id="tenant-a")
-        peer = SimpleNamespace(id="peer", tenant_id="tenant-a")
+        sender = SimpleNamespace(id="sender", tenant_id="tenant-a", active=True)
+        peer = SimpleNamespace(id="peer", tenant_id="tenant-a", active=True)
         first_item = SimpleNamespace(id="first", properties={"direct_key": "peer:sender"})
         second_item = SimpleNamespace(id="second", properties={"direct_key": "peer:sender"})
         memberships = {
@@ -131,7 +134,7 @@ class DirectMessagePolicyTests(unittest.TestCase):
                 SimpleNamespace(participant_id="peer", blocked_at=200),
             ],
         }
-        account_query = self.Query(first_values=[sender, peer])
+        account_query = self.Query(all_batches=[[sender], [peer]])
         conversation_query = self.Query(all_values=[first_item, second_item])
         column = self.Column()
         policy = isolated_function(CONTROLLER_PATH, "_direct_message_policy", {
@@ -160,6 +163,123 @@ class DirectMessagePolicyTests(unittest.TestCase):
         self.assertFalse(state["blockedBySender"])
         self.assertTrue(state["blockedByPeer"])
         self.assertEqual(state["errorCode"], "DIRECT_MESSAGE_BLOCKED")
+
+    def test_duplicate_cross_tenant_sender_uid_fails_closed(self):
+        first_sender = SimpleNamespace(id="sender-a", tenant_id="tenant-a", active=True)
+        second_sender = SimpleNamespace(id="sender-b", tenant_id="tenant-b", active=True)
+        account_query = self.Query(all_batches=[[first_sender, second_sender]])
+        column = self.Column()
+        policy = isolated_function(CONTROLLER_PATH, "_direct_message_policy", {
+            "valid_tinode_topic": lambda value, is_group: (
+                not is_group and str(value).startswith("usr")
+            ),
+            "ManagementAccount": SimpleNamespace(
+                query=account_query,
+                tinode_uid=column,
+                active=column,
+                tenant_id=column,
+            ),
+            "Conversation": SimpleNamespace(
+                query=self.Query(),
+                tenant_id=column,
+                deleted=column,
+                properties=column,
+            ),
+            "_direct_block_participants": lambda _item: [],
+        })
+
+        state = policy("usrSender1", "usrPeer123")
+
+        self.assertTrue(state["managed"])
+        self.assertFalse(state["allowed"])
+        self.assertEqual(state["errorCode"], "DIRECT_MESSAGE_POLICY_INVALID")
+
+    def test_cross_tenant_peer_uid_fails_closed(self):
+        sender = SimpleNamespace(id="sender", tenant_id="tenant-a", active=True)
+        peer = SimpleNamespace(id="peer", tenant_id="tenant-b", active=True)
+        account_query = self.Query(all_batches=[[sender], [peer]])
+        column = self.Column()
+        policy = isolated_function(CONTROLLER_PATH, "_direct_message_policy", {
+            "valid_tinode_topic": lambda value, is_group: (
+                not is_group and str(value).startswith("usr")
+            ),
+            "ManagementAccount": SimpleNamespace(
+                query=account_query,
+                tinode_uid=column,
+                active=column,
+                tenant_id=column,
+            ),
+            "Conversation": SimpleNamespace(
+                query=self.Query(),
+                tenant_id=column,
+                deleted=column,
+                properties=column,
+            ),
+            "_direct_block_participants": lambda _item: [],
+        })
+
+        state = policy("usrSender1", "usrPeer123")
+
+        self.assertTrue(state["managed"])
+        self.assertFalse(state["allowed"])
+        self.assertEqual(state["errorCode"], "DIRECT_MESSAGE_POLICY_INVALID")
+
+    def test_inactive_sender_uid_fails_closed(self):
+        sender = SimpleNamespace(id="sender", tenant_id="tenant-a", active=False)
+        account_query = self.Query(all_batches=[[sender]])
+        column = self.Column()
+        policy = isolated_function(CONTROLLER_PATH, "_direct_message_policy", {
+            "valid_tinode_topic": lambda value, is_group: (
+                not is_group and str(value).startswith("usr")
+            ),
+            "ManagementAccount": SimpleNamespace(
+                query=account_query,
+                tinode_uid=column,
+                active=column,
+                tenant_id=column,
+            ),
+            "Conversation": SimpleNamespace(
+                query=self.Query(),
+                tenant_id=column,
+                deleted=column,
+                properties=column,
+            ),
+            "_direct_block_participants": lambda _item: [],
+        })
+
+        state = policy("usrSender1", "usrPeer123")
+
+        self.assertTrue(state["managed"])
+        self.assertFalse(state["allowed"])
+        self.assertEqual(state["errorCode"], "DIRECT_MESSAGE_POLICY_INVALID")
+
+    def test_unmanaged_peer_uid_remains_compatible(self):
+        sender = SimpleNamespace(id="sender", tenant_id="tenant-a", active=True)
+        account_query = self.Query(all_batches=[[sender], []])
+        column = self.Column()
+        policy = isolated_function(CONTROLLER_PATH, "_direct_message_policy", {
+            "valid_tinode_topic": lambda value, is_group: (
+                not is_group and str(value).startswith("usr")
+            ),
+            "ManagementAccount": SimpleNamespace(
+                query=account_query,
+                tinode_uid=column,
+                active=column,
+                tenant_id=column,
+            ),
+            "Conversation": SimpleNamespace(
+                query=self.Query(),
+                tenant_id=column,
+                deleted=column,
+                properties=column,
+            ),
+            "_direct_block_participants": lambda _item: [],
+        })
+
+        state = policy("usrSender1", "usrBot1234")
+
+        self.assertFalse(state["managed"])
+        self.assertTrue(state["allowed"])
 
 
 class DirectMessageBlockingSourceContractTests(unittest.TestCase):

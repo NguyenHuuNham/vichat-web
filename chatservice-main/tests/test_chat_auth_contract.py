@@ -20,6 +20,7 @@ TINODE_BRIDGE_PATH = PROJECT_ROOT / "scripts" / "tinode_account_bridge.py"
 GROUP_ACCESS_REPAIR_PATH = PROJECT_ROOT / "scripts" / "repair_group_member_access.py"
 PRODUCTION_ENV_EXAMPLE_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / ".env.example"
 PRESENCE_SERVICE_PATH = PROJECT_ROOT / "application" / "services" / "presence_service.py"
+ACCOUNT_SSO_SERVICE_PATH = PROJECT_ROOT / "application" / "services" / "account_sso_service.py"
 HAS_REPOSITORY_SOURCES = all(path.is_file() for path in (
     LOGIN_PATH,
     CHAT_SERVICE_PATH,
@@ -143,6 +144,8 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertNotIn("tinode_auth", sso_source)
         self.assertIn('ACCOUNT_SSO_PASSWORD_MARKER = "!account-sso-only"', controller_source)
         self.assertIn("password_hash=ACCOUNT_SSO_PASSWORD_MARKER", projection_source)
+        self.assertIn("active_changed", projection_source)
+        self.assertIn('properties["auth_version"]', projection_source)
 
     def test_employee_tenant_switch_rotates_chat_only_after_membership_validation(self):
         _controller_source, switch_source = function_source(
@@ -157,7 +160,8 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("await switch_account_tenant(", switch_source)
         self.assertIn("switched_account_cookie", switch_source)
         self.assertIn("set_account_cookie(response, switched_account_cookie)", switch_source)
-        self.assertIn("switched_identity = await current_account_session(request)", switch_source)
+        self.assertIn("switched_identity = await current_account_session(", switch_source)
+        self.assertIn("require_current_tenant=True", switch_source)
         self.assertIn("ACCOUNT_TENANT_SWITCH_UNCONFIRMED", switch_source)
         self.assertIn('issue_access_token(account, auth_method="account_sso")', switch_source)
         self.assertIn("revoke_request_token(request)", switch_source)
@@ -192,6 +196,8 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('"/api/v1/auth/account-login"', bridge_source)
         self.assertIn('"/api/v1/auth/tinode-token-bridge"', bridge_source)
         self.assertIn('"X-Vichat-Tinode-Internal"', bridge_source)
+        self.assertIn("cookies.get(ACCOUNT_SESSION_COOKIE_NAME)", bridge_source)
+        self.assertIn('"Cookie": account_cookie_header', bridge_source)
         self.assertIn('rewritten_login["scheme"] = "token"', bridge_source)
         self.assertIn('rewritten_login["secret"] = token', bridge_source)
         self.assertIn('getattr(response, "cookies", None)', bridge_source)
@@ -837,7 +843,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("replyMetadataForTransport", app_source)
         self.assertIn("contact nicknames", architecture_source)
 
-    def test_directory_sync_revalidates_tenant_without_deactivating_missing_snapshots(self):
+    def test_directory_sync_reconciles_only_complete_strictly_verified_snapshots(self):
         controller_source, directory_source = function_source(
             CONTROLLER_PATH,
             "management_users",
@@ -846,22 +852,79 @@ class ChatAuthContractTests(unittest.TestCase):
             CONTROLLER_PATH,
             "_restore_directory_removed_account",
         )
+        _controller_source, deactivate_source = function_source(
+            CONTROLLER_PATH,
+            "_deactivate_missing_account_projections",
+        )
+        _controller_source, viewer_deactivate_source = function_source(
+            CONTROLLER_PATH,
+            "_deactivate_directory_viewer",
+        )
+        _controller_source, validation_source = function_source(
+            CONTROLLER_PATH,
+            "_validated_account_identity",
+        )
 
         self.assertGreaterEqual(directory_source.count("_validated_account_identity"), 2)
+        self.assertIn("require_current_tenant=True", validation_source)
+        self.assertNotIn("preferred_tenant_id", validation_source)
+        self.assertIn('"ACCOUNT_DIRECTORY_TENANT_MISMATCH"', validation_source)
         self.assertIn("account_directory", directory_source)
+        self.assertIn("directory_snapshot.complete", directory_source)
+        self.assertIn("authoritative_snapshot", directory_source)
+        self.assertIn("if authoritative_snapshot:", directory_source)
+        self.assertIn("if reconciled:", directory_source)
+        self.assertIn("snapshot_account_user_ids", directory_source)
+        self.assertIn("viewer_account_user_id in snapshot_account_user_ids", directory_source)
+        self.assertIn("viewer_account_user_id not in synced_account_user_ids", directory_source)
+        self.assertIn("synced_accounts_by_user_id[viewer_account_user_id].active", directory_source)
+        self.assertIn('"ACCOUNT_DIRECTORY_VIEWER_INVALID"', directory_source)
+        self.assertIn("_clear_account_directory_cache", directory_source)
+        self.assertIn("_deactivate_directory_viewer", directory_source)
+        self.assertIn("_deactivate_missing_account_projections", directory_source)
+        self.assertLess(
+            directory_source.index("_deactivate_missing_account_projections"),
+            directory_source.index("for directory_identity in directory_snapshot"),
+        )
+        self.assertIn("visible_account_ids", directory_source)
         self.assertIn("_ensure_tinode_accounts_best_effort", directory_source)
         self.assertIn('"tinode_provisioned"', directory_source)
         self.assertIn('sync_status = "partial"', directory_source)
         self.assertIn('sync_status = "cached"', directory_source)
         self.assertIn('ManagementAccount.properties.contains({"auth_source": "account"})', directory_source)
-        self.assertNotIn("missing_accounts", directory_source)
-        self.assertNotIn("synced_account_ids", directory_source)
+        self.assertIn('"ACCOUNT_DIRECTORY_SYNC"', directory_source)
+        self.assertIn('"snapshot_total"', directory_source)
+        self.assertIn('"deactivated"', directory_source)
+        self.assertIn("revoke_request_token(request)", directory_source)
+        self.assertIn("clear_account_cookie(response)", directory_source)
+        self.assertIn('properties["directory_removed_at"] = now', deactivate_source)
+        self.assertIn('properties["auth_version"]', deactivate_source)
+        self.assertIn("_directory_removed_username", deactivate_source)
+        self.assertIn("missing_account.email = None", deactivate_source)
+        self.assertIn('properties["directory_identity_released"] = True', deactivate_source)
+        self.assertNotIn("db.session.delete", deactivate_source)
+        self.assertIn('properties["auth_version"]', viewer_deactivate_source)
+        self.assertIn('properties["directory_removed_at"]', viewer_deactivate_source)
+        self.assertNotIn("tinode_uid", viewer_deactivate_source)
         self.assertIn("_restore_directory_removed_account", controller_source)
         self.assertIn("directory_removed_at", controller_source)
         self.assertIn("await _validated_account_identity(request, account)", restore_source)
         self.assertIn('properties.get("auth_source") != "account"', restore_source)
         self.assertIn('properties.pop("directory_removed_at", None)', restore_source)
         self.assertIn("account.active = True", restore_source)
+
+    def test_account_profile_writes_recheck_the_explicit_current_tenant(self):
+        _service_source, profile_source = function_source(
+            ACCOUNT_SSO_SERVICE_PATH,
+            "update_account_profile",
+        )
+        _service_source, avatar_source = function_source(
+            ACCOUNT_SSO_SERVICE_PATH,
+            "update_account_avatar",
+        )
+
+        self.assertIn("require_current_tenant=True", profile_source)
+        self.assertIn("require_current_tenant=True", avatar_source)
 
     def test_directory_endpoint_remains_scoped_to_the_verified_tenant(self):
         _controller_source, directory_source = function_source(
@@ -876,6 +939,35 @@ class ChatAuthContractTests(unittest.TestCase):
         )
         self.assertIn("_public_account(account, viewer_account=viewer_account)", directory_source)
         self.assertNotIn("ManagementAccount.query.all()", directory_source)
+
+    def test_directory_cache_and_tinode_policy_are_identity_scoped(self):
+        controller_source = CONTROLLER_PATH.read_text(encoding="utf-8")
+        users_source = function_source(CONTROLLER_PATH, "management_users")[1]
+        policy_source = function_source(CONTROLLER_PATH, "_direct_message_policy")[1]
+        chatbot_source = (
+            PROJECT_ROOT / "application" / "controllers" / "api_chatbot.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("directory_cache_key = (str(tenant_id), str(account.id))", users_source)
+        self.assertIn("ManagementAccount.tinode_uid == sender_uid", policy_source)
+        self.assertIn("if len(senders) > 1", policy_source)
+        self.assertIn('"DIRECT_MESSAGE_POLICY_INVALID"', policy_source)
+        self.assertIn("def _active_tinode_account(sender_uid):", chatbot_source)
+        self.assertIn("if len(matches) == 1", chatbot_source)
+        self.assertIn('"auth_version"', chatbot_source)
+        self.assertIn("ManagementAccount.tenant_id == tenant_id", controller_source)
+
+    def test_tinode_bridge_revalidates_the_current_account_tenant(self):
+        _controller_source, bridge_source = function_source(
+            CONTROLLER_PATH,
+            "bridge_tinode_token",
+        )
+
+        self.assertIn("await _validated_account_identity(request, account)", bridge_source)
+        self.assertIn("except AccountSSOError as error", bridge_source)
+        self.assertIn("revoke_request_token(request)", bridge_source)
+        self.assertIn("clear_auth_cookie", bridge_source)
+        self.assertIn("clear_account_cookie", bridge_source)
 
     @repository_source_test
     def test_directory_endpoint_disables_cross_tenant_http_caching(self):
