@@ -23,7 +23,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Backup/rollback: Backup `/opt/deploy/chat/backups/viewer-settings-44e82e2-20260827-r1/chatservice-predeploy.dump` mode `0600`, 158248 byte; restore list 114 dong; `.env` mode `0600`, SHA-256 truoc/sau/backup giong nhau `4ae2d1cf4af80b4289cd07b15d55b5979eb926d613513d69ece8de8225c6fcb0`. Khong dung `docker compose down -v`, khong reset browser storage, IndexedDB, runtime, named volume, database, Tinode topic/message, read cursor, avatar hoac setting user.
 - Rui ro con lai: Chua UAT visual production bang tai khoan that vi browser runtime khong duoc expose; client legacy khong gui metadata va dung ten hien thi khac moi ten viewer da biet co the khong duoc nhan dien, fallback khong phan biet duoc ten trung khi server thieu identity.
 - Viec tiep theo: Hard refresh va UAT voi tin nhan tu client moi/legacy de xac nhan icon mention mau xanh; kiem tra setting user van con sau refresh va release tiep theo. Neu legacy khong co metadata va khong trung ten da biet, can bo sung identity metadata tu nguon gui.
-- Commit/PR: Source `071a3ac1761c`; deployment follow-up docs commit se duoc tao rieng, khong amend commit source.
+- Commit/PR: Source `071a3ac1761c`; deployment follow-up docs commit `392494c`; khong co PR.
 
 ## 2026-08-27-06 - Bao toan setting viewer khi doi identity va deploy
 
