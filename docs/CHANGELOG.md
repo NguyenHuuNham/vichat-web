@@ -8,9 +8,9 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-27-07 - Khoi phuc icon mention khi tin legacy thieu metadata
 
-- Thoi gian: 2026-08-27 16:31 (Asia/Saigon)
+- Thoi gian: 2026-08-27 16:31; deploy production 17:18-17:29 (Asia/Saigon)
 - Loai: Sua loi | Web | Realtime | Kiem thu | Tai lieu
-- Trang thai: Hoan tat; da commit, chua deploy
+- Trang thai: Hoan tat; da commit, push va deploy production; san sang UAT
 - Muc tieu: Khi tin nhan moi trong nhom hien token `@Ten` nhung khong co `x-mentions`, sidebar van hien dung icon mention mau xanh ma khong lam thay doi unread boundary, badge hoac notification hien co.
 - Pham vi: Chinh sach nhan dien mention cua unread conversation; khong doi giao dien tin nhan, payload gui di, API, Tinode protocol, database hay storage setting cua user.
 - File da thay doi: `src/features/chat/services/mentionPolicy.js`, `src/features/chat/services/mentionPolicy.test.js`, `docs/CHANGELOG.md`.
@@ -18,10 +18,12 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Noi dung: `messageMentionsViewer` tiep tuc uu tien metadata mention hop le; chi khi metadata vang/malformed moi fallback match token trong `message.text`/caption theo ten viewer, co boundary cho token, accent-insensitive va ho tro `@All`. Metadata mention nguoi khac van la nguon chuan va khong bi fallback ghi de.
 - Quyet dinh ky thuat: Sua tai helper policy dung chung thay vi chen logic vao component sidebar; giu nguyen loc tin incoming va unread boundary o `App.jsx`, nen icon chi xuat hien cho tin moi chua doc.
 - Database/API/cau hinh: Khong migration database, khong doi endpoint, secret, bien moi truong, storage key, commit hay deploy. Cac setting user va luong commit/deploy an toan cua muc `2026-08-27-06` duoc giu nguyen.
-- Kiem thu: `node --test src/features/chat/services/mentionPolicy.test.js` dat 8/8; `npm run test:frontend` dat 310/310; `npm run lint` exit 0 voi warning legacy/vendor tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` exit 0 voi warning chunk `App-DSDukVwY.js` lon hon 500 KB; `git diff --check` dat voi warning LF/CRLF cua working copy.
-- Rui ro con lai: Client legacy khong gui metadata va dung ten hien thi khac moi ten viewer da biet co the khong duoc nhan dien; fallback co the khong phan biet duoc ten trung khi server khong cung cap identity.
-- Viec tiep theo: Push commit va deploy theo workflow; sau do chay UAT tren trinh duyet voi tin nhan tu client moi va legacy, khong reset browser storage, volume hay database.
-- Commit/PR: `071a3ac1761c`
+- Kiem thu: `node --test src/features/chat/services/mentionPolicy.test.js` dat 8/8; `npm run test:frontend` dat 310/310; `npm run lint` exit 0 voi warning legacy/vendor tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` exit 0 voi warning chunk `App-DSDukVwY.js` lon hon 500 KB; `git diff --check` dat voi warning LF/CRLF cua working copy. Production `chat` healthy, `/healthz` va auth health HTTP 200, Alembic `20260825_13`, Nginx trong container va `sudo -n nginx -t` tren `.206` dat, log `chat`/`chatmgt`/bridge/webhook 15 phut co 0 marker fatal/panic/traceback/uncaught/critical/emerg`. WSS upgrade tra HTTP 101; curl ket thuc voi ma 28 sau khi handshake vi ket noi WebSocket giu mo. Public entry/CSS khop tung byte voi container: entry `index-wGwM3FAG.js` SHA-256 `f195dd443d684a33643ed2edf1ff54b05883b2f3cd6eee9d4f6a29fb76cf8fe0`, CSS `index-CR6IwdSS.css` SHA-256 `5366b494cd5b4927fc8f4c0043e188c3852267d1fbb2af30a02942882a265d3d`, co marker `conv-mention-indicator`; cac container ngoai `chat` giu nguyen ID.
+- Trien khai: Source commit `071a3ac1761c` da push `origin/master`; archive `/opt/deploy/chat/incoming/vichat-viewer-settings-44e82e2.tar.gz` 44970258 byte, SHA-256 `cc77ad5bd42e7de53a193b386b240b77fd43b498a0eb4c1ff181e5673c0ed403`; deploy qua dung tuyen `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`. Chi recreate `chat` bang `--no-deps --force-recreate`; release `/opt/deploy/chat/releases/viewer-settings-44e82e2-20260827-r1` dang la `current`, `previous` tro `/opt/deploy/chat/releases/directory-ambiguity-992844f-20260827-1510-r1`; container `f85aa4973865c2b6ef618b7733c909954120345bdef4d34b631da96dc6c74da1`, image `sha256:81e27ff2a346f44bca541e0a94a6901f99b04fb7a571c394819b4ef6c65a5bc6`.
+- Backup/rollback: Backup `/opt/deploy/chat/backups/viewer-settings-44e82e2-20260827-r1/chatservice-predeploy.dump` mode `0600`, 158248 byte; restore list 114 dong; `.env` mode `0600`, SHA-256 truoc/sau/backup giong nhau `4ae2d1cf4af80b4289cd07b15d55b5979eb926d613513d69ece8de8225c6fcb0`. Khong dung `docker compose down -v`, khong reset browser storage, IndexedDB, runtime, named volume, database, Tinode topic/message, read cursor, avatar hoac setting user.
+- Rui ro con lai: Chua UAT visual production bang tai khoan that vi browser runtime khong duoc expose; client legacy khong gui metadata va dung ten hien thi khac moi ten viewer da biet co the khong duoc nhan dien, fallback khong phan biet duoc ten trung khi server thieu identity.
+- Viec tiep theo: Hard refresh va UAT voi tin nhan tu client moi/legacy de xac nhan icon mention mau xanh; kiem tra setting user van con sau refresh va release tiep theo. Neu legacy khong co metadata va khong trung ten da biet, can bo sung identity metadata tu nguon gui.
+- Commit/PR: Source `071a3ac1761c`; deployment follow-up docs commit se duoc tao rieng, khong amend commit source.
 
 ## 2026-08-27-06 - Bao toan setting viewer khi doi identity va deploy
 
