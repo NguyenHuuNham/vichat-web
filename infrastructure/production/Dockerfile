@@ -54,5 +54,7 @@ FROM nginx:1.28.1-alpine@sha256:52e3ada4d978443601f286cc2f9e7b95c82aa3ad5a78ce9c
 
 COPY infrastructure/production/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
+# Release archives can preserve restrictive source modes; nginx workers need to read public assets.
+RUN chmod -R a+rX /usr/share/nginx/html
 
 EXPOSE 80

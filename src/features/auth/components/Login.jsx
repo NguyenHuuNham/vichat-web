@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { managementAuthClient } from '../../chat/services/chatManagementService';
+import ChatLogo from '../../../components/ChatLogo';
 
 const ACCOUNT_RETURN_PARAM = 'account_sso';
 
@@ -104,7 +105,7 @@ function Login({ copy = { t: value => value }, onLoginSuccess, initialNotice = '
       <div className="login-bg-decor decor-2"></div>
       <div className="login-card">
         <div className="login-card-header">
-          <div className="login-logo"><img src="/chat-logo.svg" className="brand-mark-image" alt="CHAT" /></div>
+          <div className="login-logo"><ChatLogo alt="CHAT" /></div>
           <h2>Chat - Power by Gon Platform</h2>
         </div>
 

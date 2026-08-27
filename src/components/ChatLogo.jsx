@@ -1,0 +1,32 @@
+import React, { useState } from 'react';
+
+const LOGO_PATHS = [
+  'M330 80c-32-15-70-24-111-24C120 56 43 122 43 211c0 67 43 123 113 151l31-60c-48-19-76-54-76-92 0-57 49-94 111-94 30 0 58 6 83 18l25-54Z',
+  'M368 93c63 33 93 78 93 127 0 57-36 105-87 131l79 74-126-42c-47 13-102 14-150-2l28-59c44 14 101 11 139-9 34-18 51-51 51-89 0-37-21-67-55-84l28-47Z',
+];
+
+function ChatLogo({ alt = 'CHAT', className = 'brand-mark-image', decorative = false }) {
+  const [failed, setFailed] = useState(false);
+  const accessibleProps = decorative
+    ? { alt: '', 'aria-hidden': true }
+    : { alt, role: 'img' };
+
+  if (failed) {
+    return (
+      <svg
+        className={className}
+        viewBox="0 0 500 500"
+        fill="none"
+        focusable="false"
+        {...(decorative ? { 'aria-hidden': true } : { role: 'img', 'aria-label': alt })}
+      >
+        <title>{decorative ? '' : alt}</title>
+        {LOGO_PATHS.map(path => <path key={path} fill="#F4511E" d={path} />)}
+      </svg>
+    );
+  }
+
+  return <img src="/chat-logo.svg" className={className} onError={() => setFailed(true)} {...accessibleProps} />;
+}
+
+export default ChatLogo;

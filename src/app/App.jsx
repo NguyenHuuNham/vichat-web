@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import Login from '../features/auth/components/Login';
+import ChatLogo from '../components/ChatLogo';
 import ConversationErrorBoundary from '../components/ConversationErrorBoundary';
 import EnterpriseWorkspace from '../features/workspace/components/EnterpriseWorkspace';
 import CallOverlay from '../features/chat/components/CallOverlay';
@@ -11597,7 +11598,7 @@ function App() {
         </button>
         <div className="brand-container">
           <div className="brand-logo">
-            <img src="/chat-logo.svg" className="brand-mark-image" alt="" aria-hidden="true" />
+            <ChatLogo decorative />
           </div>
           <h1 className="brand-name">CHAT</h1>
         </div>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { managementAdminService } from './services/managementAdminService.js';
 import { subscribeChatMaintenance } from '../maintenance/chatMaintenanceService.js';
+import ChatLogo from '../../components/ChatLogo';
 import './management.css';
 
 const ADMIN_ROLES = ['admin', 'superadmin', 'owner'];
@@ -61,7 +62,7 @@ function auditLabel(eventName) {
 function BrandLogo() {
   return (
     <span className="management-brand-mark">
-      <img src="/chat-logo.svg" alt="ACSI" />
+      <ChatLogo alt="ACSI" />
     </span>
   );
 }

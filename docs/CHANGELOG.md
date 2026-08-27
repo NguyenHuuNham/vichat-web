@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-27-09 - Khoi phuc logo khi static asset bi 403
+
+- Thoi gian: 2026-08-27 23:21 (Asia/Saigon); dang chuan bi deploy production
+- Loai: Sua loi | Web | Bao mat | Van hanh | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Khoi phuc logo tren man hinh dang nhap, ChatUI va man hinh quan tri ma khong lam thay doi luong chat hay setting cua user.
+- Pham vi: Component logo dung chung, static asset trong image Nginx va release ChatUI; khong doi API, database, Tinode, unread, mention, notification hay storage.
+- File da thay doi: `src/components/ChatLogo.jsx`, `src/features/auth/components/Login.jsx`, `src/app/App.jsx`, `src/features/management/ManagementApp.jsx`, `src/features/management/management.css`, `infrastructure/production/Dockerfile`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Production dang tra `403` cho `/chat-logo.svg` va `/favicon.svg` vi file trong image co mode `0600`, Nginx worker khong doc duoc. Them fallback SVG noi tuyen de logo van hien khi asset khong tai duoc; dong thoi chuan hoa quyen doc static file trong Docker image cho cac release sau.
+- Quyet dinh ky thuat: Dung component logo nho, khong phu thuoc them API hoac storage; fallback chi kich hoat khi tai asset that bai. Docker chi sua quyen tren thu muc static da duoc copy vao image; chi recreate service `chat` khi phat hanh.
+- Database/API/cau hinh: Khong migration, endpoint, secret, bien moi truong hay thay doi storage; giu nguyen `.env`, runtime, named volume va du lieu user.
+- Kiem thu: `npm run test:frontend` dat 317/317; `npm run lint` exit 0 voi warning legacy/vendor da co san; `npm run build:production` exit 0 voi warning chunk App lon hon 500 KB; production chua deploy o thoi diem ghi muc nay.
+- Rui ro con lai: Can xac nhan asset tra HTTP 200, mode file trong container la readable, logo hien tren login/sidebar sau deploy va cac container ngoai `chat` giu nguyen.
+- Viec tiep theo: Commit/push, build va recreate rieng `chat` qua tuyen `.206` -> `.20`, verify health/public asset/WSS va cap nhat muc nay bang ket qua thuc te.
+- Commit/PR: Chua tao
+
 ## 2026-08-27-08 - Tu dong lien ket URL trong tin nhan
 
 - Thoi gian: 2026-08-27 22:29-23:08; deploy production 23:01-23:05 (Asia/Saigon)

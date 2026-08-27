@@ -133,7 +133,8 @@
   box-shadow: 0 10px 26px rgba(0, 0, 0, .2);
 }
 
-.management-brand-mark img {
+.management-brand-mark img,
+.management-brand-mark svg {
   display: block;
   width: 100%;
   height: 100%;
