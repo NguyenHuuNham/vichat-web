@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem tra production: Tren `.20`, `chat`/`chatmgt` healthy, `/healthz` ChatUI va auth health noi bo HTTP 200, origin co marker tenant-scope/no-store, public entry/App/CSS khop origin va co marker, auth health public HTTP 200, WSS upgrade HTTP 101, `nginx -t` tren `.206` dat, log `chat`/`chatmgt` 10 phut khong co marker loi nghiem trong.
 - Rui ro con lai: Chua UAT visual bang hai tai khoan that o hai tenant trong phien nay vi browser runtime khong duoc expose; can kiem tra hard refresh/cache, danh ba/search/presence cua tung tenant va xac nhan chat, unread, Tinode, membership khong doi.
 - Viec tiep theo: UAT voi hai tai khoan o hai cong ty; neu dat thi khong can migration hay thay doi cau hinh. Rollback tro `previous` va chi recreate service lien quan neu can.
-- Commit/PR: Source `6a04eb7` da commit va push; deployment follow-up docs dang cap nhat.
+- Commit/PR: Source `6a04eb7`; deployment follow-up docs `5b8c089`, da commit va push `origin/master`.
 
 ## 2026-08-27-02 - Hien thi cong ty cho tai khoan mot tenant va dong bo tenant moi
 
