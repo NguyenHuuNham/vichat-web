@@ -128,6 +128,7 @@ import {
 } from '../features/chat/services/pasteAttachmentDraft';
 import {
   canRecallDeliveredMessage,
+  canEditDeliveredMessage,
   chatAttachmentValidationError,
 } from '../features/chat/services/messagePolicy';
 import { splitMessageLinks } from '../features/chat/services/messageLinkPolicy';
@@ -1463,6 +1464,103 @@ function messagePayloadKey(message) {
   ].join('|');
 }
 
+function editHistoryEntryKey(entry) {
+  const eventId = String(entry?.eventId || '').trim();
+  if (eventId) return `event:${eventId}`;
+  const sequence = Number(entry?.seq) || 0;
+  if (sequence > 0) return `seq:${sequence}`;
+  return [
+    'version',
+    String(entry?.editedAt || ''),
+    String(entry?.text || ''),
+    JSON.stringify(Array.isArray(entry?.mentions) ? entry.mentions : []),
+  ].join(':');
+}
+
+function editHistoryEntriesEqual(first, second) {
+  const firstEventId = String(first?.eventId || '').trim();
+  const secondEventId = String(second?.eventId || '').trim();
+  if (firstEventId && secondEventId && firstEventId === secondEventId) return true;
+  const firstSeq = Number(first?.seq) || 0;
+  const secondSeq = Number(second?.seq) || 0;
+  if (firstSeq > 0 && secondSeq > 0 && firstSeq === secondSeq) return true;
+  return editHistoryEntryKey(first) === editHistoryEntryKey(second);
+}
+
+function editStateTimestamp(message) {
+  return Math.max(
+    Date.parse(String(message?.editedAt || '')) || 0,
+    ...(Array.isArray(message?.editHistory)
+      ? message.editHistory.map(entry => Date.parse(String(entry?.editedAt || '')) || 0)
+      : []),
+  );
+}
+
+function compareEditState(previous, incoming) {
+  const previousEditSeq = Math.max(
+    0,
+    ...(Array.isArray(previous?.editHistory) ? previous.editHistory.map(entry => Number(entry?.seq) || 0) : []),
+  );
+  const incomingEditSeq = Math.max(
+    0,
+    ...(Array.isArray(incoming?.editHistory) ? incoming.editHistory.map(entry => Number(entry?.seq) || 0) : []),
+  );
+  // Server-assigned event sequences are authoritative even when client
+  // clocks differ between devices.
+  if (previousEditSeq !== incomingEditSeq) return incomingEditSeq - previousEditSeq;
+  const previousTime = editStateTimestamp(previous);
+  const incomingTime = editStateTimestamp(incoming);
+  if (previousTime !== incomingTime) return incomingTime - previousTime;
+  const previousSeq = Number(previous?.seq) || 0;
+  const incomingSeq = Number(incoming?.seq) || 0;
+  if (previousSeq !== incomingSeq) return incomingSeq - previousSeq;
+  return (Array.isArray(incoming?.editHistory) ? incoming.editHistory.length : 0)
+    - (Array.isArray(previous?.editHistory) ? previous.editHistory.length : 0);
+}
+
+function mergeEditState(previous = {}, incoming = {}) {
+  const previousHistory = Array.isArray(previous.editHistory) ? previous.editHistory : [];
+  const incomingHistory = Array.isArray(incoming.editHistory) ? incoming.editHistory : [];
+  const previousEdited = Boolean(previous.edited || previousHistory.length > 0);
+  const incomingEdited = Boolean(incoming.edited || incomingHistory.length > 0);
+  if (!previousEdited && !incomingEdited) return {};
+  const history = [...previousHistory, ...incomingHistory]
+    .reduce((entries, entry) => {
+      const existingIndex = entries.findIndex(existing => editHistoryEntriesEqual(existing, entry));
+      if (existingIndex < 0) return [...entries, entry];
+      const existing = entries[existingIndex];
+      const entryIsRicher = Boolean(
+        (entry?.eventId && !existing?.eventId)
+        || (Number(entry?.seq) > 0 && !(Number(existing?.seq) > 0)),
+      );
+      if (!entryIsRicher) return entries;
+      return entries.map((current, index) => index === existingIndex ? entry : current);
+    }, [])
+    .sort((first, second) => (
+      (Date.parse(first?.editedAt || '') || 0) - (Date.parse(second?.editedAt || '') || 0)
+      || (Number(first?.seq) || 0) - (Number(second?.seq) || 0)
+    ));
+
+  // A delayed Tinode snapshot may still contain the pre-edit text. Keep the
+  // state with the newest accepted edit while retaining history from both
+  // snapshots so realtime echoes cannot roll the UI backward.
+  const current = compareEditState(previous, incoming) >= 0 ? incoming : previous;
+  if (!previousEdited || (incomingEdited && current === incoming)) {
+    return {
+      edited: true,
+      ...(current.editedAt || incoming.editedAt || previous.editedAt ? { editedAt: current.editedAt || incoming.editedAt || previous.editedAt } : {}),
+      editHistory: history,
+    };
+  }
+  return {
+    text: previous.text,
+    mentions: previous.mentions,
+    edited: true,
+    editedAt: current.editedAt || previous.editedAt || incoming.editedAt,
+    editHistory: history,
+  };
+}
+
 function mergeTinodeMessages(existingMessages = [], incomingMessages = []) {
   const merged = [];
   const indexes = new Map();
@@ -1521,6 +1619,7 @@ function mergeTinodeMessages(existingMessages = [], incomingMessages = []) {
           file: message.file || previous.file,
           image: message.image || previous.image,
           sticker: message.sticker || previous.sticker,
+          ...mergeEditState(previous, message),
         };
       if (previousKey && previousKey !== key) indexes.delete(previousKey);
       if (key) indexes.set(key, index);
@@ -2817,10 +2916,13 @@ function App() {
   ));
   const [conversationCategories, setConversationCategories] = useState({});
   const [replyingTo, setReplyingTo] = useState(null);
+  const [editingMessage, setEditingMessage] = useState(null);
+  const [isSavingMessageEdit, setIsSavingMessageEdit] = useState(false);
   const [profileContact, setProfileContact] = useState(null);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [voiceRecordingSeconds, setVoiceRecordingSeconds] = useState(0);
   const [messageDetails, setMessageDetails] = useState(null);
+  const [editHistoryMessage, setEditHistoryMessage] = useState(null);
   const [reactionDetails, setReactionDetails] = useState(null);
   const [shareMessage, setShareMessage] = useState(null);
   const [messageActions, setMessageActions] = useState({});
@@ -5542,6 +5644,9 @@ function App() {
     setMessageMentions({});
     setMentionContext(null);
     setInputText('');
+    setEditingMessage(null);
+    setIsSavingMessageEdit(false);
+    setEditHistoryMessage(null);
     setNotificationMuteDialog(null);
     setIsUpdatingNotificationMute(false);
     setNotificationClock(Date.now());
@@ -5996,6 +6101,9 @@ function App() {
     setMessageMentions({});
     setMentionContext(null);
     setInputText('');
+    setEditingMessage(null);
+    setIsSavingMessageEdit(false);
+    setEditHistoryMessage(null);
     setChatMode('demo');
     setConnectionStatus(isTinodeConfigured ? 'ready' : 'demo');
     setChatError('');
@@ -9718,6 +9826,7 @@ function App() {
 
   const handleMessagePaste = event => {
     if (event.defaultPrevented) return;
+    if (editingMessage) return;
     const target = event.target;
     const isEditableTarget = target?.matches?.('input, textarea, [contenteditable="true"]');
     if (target !== messageInputRef.current && isEditableTarget) return;
@@ -9795,6 +9904,15 @@ function App() {
 
   const updateCurrentDraft = (value) => {
     setInputText(value);
+    if (editingMessage) {
+      setMessageMentions(previous => {
+        const currentMentions = previous[currentChatId] || [];
+        const nextMentions = currentMentions.filter(mention => mentionTokenExists(value, mention.token));
+        if (nextMentions.length === currentMentions.length) return previous;
+        return { ...previous, [currentChatId]: nextMentions };
+      });
+      return;
+    }
     setDrafts(prev => {
       const next = { ...prev };
       if (value) next[currentChatId] = value;
@@ -9909,6 +10027,15 @@ function App() {
 
   const messageActionKey = (roomId, messageId) => `${roomId}:${messageId}`;
 
+  const messageIsOwnedByViewer = message => {
+    if (!message || message.sender !== 'outgoing') return false;
+    const senderId = String(message.senderId || '').trim();
+    const authenticatedId = String(
+      chatMode === 'tinode' ? tinodeClient.currentUserId : viewerId,
+    ).trim();
+    return Boolean(senderId && authenticatedId && senderId === authenticatedId);
+  };
+
   const reactionDetailState = reactionDetailsMessage && chatMode !== 'tinode'
     ? messageActions[messageActionKey(activeChat.id, reactionDetailsMessage.id)] || {}
     : {};
@@ -9970,10 +10097,12 @@ function App() {
     const gap = 6;
     const width = Math.min(245, Math.max(0, window.innerWidth - (gutter * 2)));
     const isOwnMessage = message.senderId === viewerId || message.sender === 'outgoing';
+    const canEditMessage = messageIsOwnedByViewer(message) && canEditDeliveredMessage(message);
     const canRecallMessage = isOwnMessage && canRecallDeliveredMessage(message);
     const hasManagementAction = !activeChat.isChatbot
       && isManagementConversationId(activeChat.managementId || activeChat.id);
     const menuItemCount = 3
+      + (canEditMessage ? 1 : 0)
       + (canPinActiveGroupMessages ? 1 : 0)
       + (hasManagementAction ? 1 : 0)
       + (canRecallMessage ? 2 : 0);
@@ -10069,6 +10198,183 @@ function App() {
     persistMessagePatch(message, patch);
   };
 
+  const cancelMessageEdit = useCallback(() => {
+    const snapshot = editingMessage;
+    if (!snapshot) return;
+    setEditingMessage(null);
+    setIsSavingMessageEdit(false);
+    setMentionContext(null);
+    setMentionActiveIndex(0);
+    if (String(currentChatId) !== String(snapshot.conversationId)) return;
+    const restoredDraft = snapshot.previousDraft || '';
+    setInputText(restoredDraft);
+    setDrafts(previous => {
+      const next = { ...previous };
+      if (restoredDraft) next[snapshot.conversationId] = restoredDraft;
+      else delete next[snapshot.conversationId];
+      return next;
+    });
+    setMessageMentions(previous => {
+      const next = { ...previous };
+      if (snapshot.previousMentions?.length) next[snapshot.conversationId] = snapshot.previousMentions;
+      else delete next[snapshot.conversationId];
+      return next;
+    });
+  }, [currentChatId, editingMessage]);
+
+  const beginMessageEdit = message => {
+    if (!message || message.recalled) return;
+    if (!messageIsOwnedByViewer(message) || !canEditDeliveredMessage(message)) {
+      setChatError('Chỉ người gửi mới có thể sửa tin nhắn văn bản đã gửi thành công.');
+      return;
+    }
+    if (activePastedAttachments.length > 0) {
+      setChatError('Hãy gửi hoặc xóa tệp đang chờ trước khi sửa tin nhắn.');
+      return;
+    }
+    const currentMentions = messageMentions[currentChatId] || [];
+    const messageMentionsForEdit = (message.mentions || [])
+      .filter(mention => mention?.token && mentionTokenExists(message.text, mention.token));
+    setEditingMessage({
+      message,
+      conversationId: currentChatId,
+      previousDraft: inputText,
+      previousMentions: currentMentions,
+    });
+    setReplyingTo(null);
+    setInputText(message.text || '');
+    setDrafts(previous => {
+      const next = { ...previous };
+      delete next[currentChatId];
+      return next;
+    });
+    setMessageMentions(previous => ({ ...previous, [currentChatId]: messageMentionsForEdit }));
+    setMentionContext(null);
+    setMentionActiveIndex(0);
+    requestAnimationFrame(() => {
+      const input = messageInputRef.current;
+      input?.focus();
+      input?.setSelectionRange?.(message.text?.length || 0, message.text?.length || 0);
+    });
+  };
+
+  const handleEditMessage = async () => {
+    const snapshot = editingMessage;
+    if (!snapshot || isSavingMessageEdit) return;
+    const roomId = snapshot.conversationId;
+    const room = conversations[roomId];
+    const snapshotTarget = snapshot.message;
+    const target = roomMessages(room).find(message => (
+      message.id === snapshotTarget.id
+      || (Number(snapshotTarget.seq) > 0 && Number(message.seq) === Number(snapshotTarget.seq))
+    )) || snapshotTarget;
+    const text = String(inputText || '').trim();
+    if (!room || !canEditDeliveredMessage(target) || !messageIsOwnedByViewer(target)) {
+      setChatError('Tin nhắn này không còn đủ điều kiện để sửa.');
+      return;
+    }
+    if (!text) {
+      setChatError('Nội dung sửa không được để trống.');
+      return;
+    }
+    const mentions = (messageMentions[roomId] || [])
+      .filter(mention => mention?.token && mentionTokenExists(text, mention.token))
+      .map(serializeMentionForTransport)
+      .filter(Boolean);
+    const sameMentions = JSON.stringify(mentions) === JSON.stringify(target.mentions || []);
+    if (text === String(target.text || '').trim() && sameMentions) {
+      cancelMessageEdit();
+      return;
+    }
+    if (!allowDirectMessagingAttempt(room)) return;
+    if (realtimeMessagingPending || !canSendInActiveGroup) {
+      setChatError(realtimeMessagingPending
+        ? 'Kết nối realtime Tinode chưa sẵn sàng.'
+        : 'Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.');
+      return;
+    }
+    const groupSpamAttempt = registerGroupSendAttempt(room, createGroupSpamActionId('edit'));
+    if (!groupSpamAttempt.allowed) return;
+    setIsSavingMessageEdit(true);
+    setChatError('');
+    const editedAt = new Date().toISOString();
+    const editHistoryEntry = {
+      text: String(target.text || ''),
+      mentions: Array.isArray(target.mentions) ? target.mentions : [],
+      editedAt,
+    };
+    const patch = {
+      text,
+      mentions,
+      edited: true,
+      editedAt,
+      editHistory: [...(Array.isArray(target.editHistory) ? target.editHistory : []), editHistoryEntry],
+    };
+    try {
+      if (chatMode === 'tinode') {
+        const topicName = await ensureTinodeConversationTopic(room);
+        const event = await tinodeClient.editMessage(topicName, target, text, mentions, {
+          groupActionId: groupSpamAttempt.groupActionId,
+        });
+        patch.editedAt = event?.createdAt || editedAt;
+        patch.editHistory = [
+          ...(Array.isArray(target.editHistory) ? target.editHistory : []),
+          {
+            ...editHistoryEntry,
+            ...(event?.eventId ? { eventId: event.eventId } : {}),
+            ...(Number(event?.seq) > 0 ? { seq: Number(event.seq) } : {}),
+            editedAt: patch.editedAt,
+          },
+        ];
+      } else if (chatMode !== 'demo') {
+        throw new Error('Sửa tin nhắn cần kết nối realtime Tinode.');
+      } else if (room.isGroup) {
+        updateDemoGroupMessage(room.id, target.id, patch);
+      } else {
+        updateDemoDirectMessage(room.id, target.id, patch);
+      }
+      setConversations(previous => {
+        const currentRoom = previous[roomId];
+        if (!currentRoom) return previous;
+        const currentMessages = roomMessages(currentRoom);
+        const nextMessages = currentMessages.map(message => (
+          message.id === target.id ? { ...message, ...patch } : message
+        ));
+        const latest = nextMessages.at(-1);
+        const isLatest = latest?.id === target.id;
+        const next = {
+          ...previous,
+          [roomId]: {
+            ...currentRoom,
+            messages: nextMessages,
+            ...(isLatest ? {
+              lastMsg: patch.text,
+              time: formatMessageTime(patch.editedAt, currentRoom.time, appCopy.locale),
+            } : {}),
+            updatedAt: patch.editedAt || currentRoom.updatedAt,
+          },
+        };
+        conversationsRef.current = next;
+        return next;
+      });
+      cancelMessageEdit();
+    } catch (error) {
+      const spamBlocked = handleGroupSpamCooldownError(error, roomId);
+      const blocked = handleDirectMessageBlockedError(error, roomId);
+      if (!spamBlocked && !blocked) setChatError(error?.message || 'Không thể sửa tin nhắn.');
+    } finally {
+      setIsSavingMessageEdit(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!editingMessage || String(editingMessage.conversationId) === String(currentChatId)) return;
+    setEditingMessage(null);
+    setIsSavingMessageEdit(false);
+    setMentionContext(null);
+    setInputText(drafts[currentChatId] || '');
+  }, [currentChatId, drafts, editingMessage]);
+
   const openMessageReceiptDetails = useCallback(message => {
     if (!message) return;
     setMessageDetails({
@@ -10083,7 +10389,7 @@ function App() {
     setMessageReactionPickerKey(null);
     if (!message || message.recalled) return;
     if (
-      ['reaction', 'recall', 'recall-self', 'recall-all'].includes(action)
+      ['reaction', 'edit', 'recall', 'recall-self', 'recall-all'].includes(action)
       && !allowDirectMessagingAttempt(activeChat)
     ) return;
     const isOwnMessage = message.senderId === viewerId || message.sender === 'outgoing';
@@ -10108,6 +10414,10 @@ function App() {
       }
       if (action === 'copy') {
         await copyTextToClipboard(message.text || message.file?.name || '');
+        return;
+      }
+      if (action === 'edit') {
+        beginMessageEdit(message);
         return;
       }
       if (action === 'reply') {
@@ -10587,6 +10897,10 @@ function App() {
 
   const handleComposerSubmit = () => {
     if (pastedAttachmentSubmitRef.current) return;
+    if (editingMessage) {
+      void handleEditMessage();
+      return;
+    }
     const attachments = pastedAttachmentDraftsRef.current[currentChatId] || [];
     if (attachments.length === 0) {
       void handleSendMessage();
@@ -11278,6 +11592,15 @@ function App() {
       setMessageDetails(null);
       return true;
     }
+    if (editHistoryMessage) {
+      setEditHistoryMessage(null);
+      return true;
+    }
+    if (editingMessage) {
+      if (isSavingMessageEdit) return true;
+      cancelMessageEdit();
+      return true;
+    }
     if (profileContact) {
       setProfileContact(null);
       return true;
@@ -11372,6 +11695,7 @@ function App() {
     isRenamingGroup,
     isSavingContactNickname,
     isSavingConversationBackground,
+    isSavingMessageEdit,
     isUpdatingGroupManagement,
     isUpdatingNotificationMute,
     isUpdatingProfileAvatar,
@@ -11380,6 +11704,8 @@ function App() {
     mentionContext,
     messageActionHoverKey,
     messageDetails,
+    editHistoryMessage,
+    editingMessage,
     messageMenu,
     messageReactionPickerKey,
     notificationMuteDialog,
@@ -11396,6 +11722,7 @@ function App() {
     tenantSwitcherOpen,
     workspacePanel,
     keyboardShortcutActionHandlersRef,
+    cancelMessageEdit,
   ]);
 
   const executeKeyboardShortcut = useCallback((actionId, options = {}) => {
@@ -12353,6 +12680,19 @@ function App() {
                             {msg.grounded && <small>{appCopy.t('Đã đối chiếu nguồn')}</small>}
                           </div>
                         )}
+                        {msg.edited && (
+                          <button
+                            type="button"
+                            className="edited-message-label"
+                            onClick={event => {
+                              event.stopPropagation();
+                              setEditHistoryMessage(msg);
+                            }}
+                          >
+                            <i className="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+                            {appCopy.t('Đã chỉnh sửa')}
+                          </button>
+                        )}
                         <p>{renderMessageText(msg.isWelcome ? appCopy.t(msg.text) : msg.text, msg.mentions)}</p>
                         {reactionPills}
                         {Array.isArray(msg.sources) && msg.sources.length > 0 && (
@@ -12562,6 +12902,7 @@ function App() {
            {messageMenu && !messageMenu.message.recalled && (() => {
             const menuMessage = messageMenu.message;
             const isOwnMessage = menuMessage.senderId === viewerId || menuMessage.sender === 'outgoing';
+            const canEditMessage = messageIsOwnedByViewer(menuMessage) && canEditDeliveredMessage(menuMessage);
             const canRecallMessage = isOwnMessage && canRecallDeliveredMessage(menuMessage);
             const menuMessageState = messageActions[messageActionKey(activeChat.id, menuMessage.id)] || {};
             const marked = menuMessageState.marked;
@@ -12569,6 +12910,7 @@ function App() {
             return createPortal(
               <div className="message-context-menu" style={{ left: messageMenu.left, top: messageMenu.top }} onClick={event => event.stopPropagation()}>
                 <button type="button" onClick={() => handleMessageAction('copy', menuMessage)}><i className="fa-regular fa-copy"></i>{appCopy.t('Copy tin nhắn')}</button>
+                {canEditMessage && <button type="button" onClick={() => handleMessageAction('edit', menuMessage)}><i className="fa-solid fa-pen-to-square"></i>{appCopy.t('Sửa tin nhắn')}</button>}
                 <button type="button" onClick={() => handleMessageAction('mark', menuMessage)}><i className={`fa-${marked ? 'solid' : 'regular'} fa-star`}></i>{appCopy.t(marked ? 'Bỏ đánh dấu' : 'Đánh dấu tin nhắn')}</button>
                 {canPinActiveGroupMessages && <button type="button" onClick={() => handleMessageAction('pin', menuMessage)}><i className="fa-solid fa-thumbtack"></i>{appCopy.t(menuMessageState.pinned ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn')}</button>}
                 {!activeChat.isChatbot && isManagementConversationId(activeChat.managementId || activeChat.id) && <button type="button" onClick={() => handleMessageAction('create-task', menuMessage)}><i className="fa-solid fa-list-check"></i>{appCopy.t('Giao việc từ tin nhắn')}</button>}
@@ -12652,6 +12994,16 @@ function App() {
           </div>
         ) : (
         <div className="chat-main-input">
+          {editingMessage && (
+            <div className="editing-banner" role="status">
+              <span className="editing-banner-icon" aria-hidden="true"><i className="fa-solid fa-pen-to-square"></i></span>
+              <div className="editing-banner-copy">
+                <strong>{appCopy.t('Sửa tin nhắn')}</strong>
+                <small>{editingMessage.message?.text || ''}</small>
+              </div>
+              <button type="button" onClick={cancelMessageEdit} disabled={isSavingMessageEdit} aria-label={appCopy.t('Hủy sửa')}><i className="fa-solid fa-xmark"></i></button>
+            </div>
+          )}
           {replyingTo && (
             <div className="replying-banner">
               <span className="replying-banner-icon" aria-hidden="true"><i className="fa-solid fa-quote-left"></i></span>
@@ -12705,6 +13057,7 @@ function App() {
           {settings.stickerSuggestions
             && suggestedStickers.length > 0
             && inputText.trim()
+            && !editingMessage
             && !mentionContext
             && !activeChat.isChatbot
             && !realtimeMessagingPending
@@ -12851,7 +13204,7 @@ function App() {
               aria-controls={mentionContext && activeChat.isGroup ? 'message-mention-picker' : undefined}
               aria-expanded={Boolean(mentionContext && activeChat.isGroup)}
               aria-activedescendant={mentionOptions.length > 0 ? `message-mention-option-${mentionActiveIndex}` : undefined}
-              placeholder={appCopy.t(realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : activeChat.isChatbot ? 'Hỏi ViChat AI về quy trình, chính sách, tài liệu...' : activePastedAttachments.length > 0 ? 'Nhập mô tả cho ảnh hoặc tệp...' : 'Nhập tin nhắn...')}
+              placeholder={appCopy.t(editingMessage ? 'Nhập nội dung mới...' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : activeChat.isChatbot ? 'Hỏi ViChat AI về quy trình, chính sách, tài liệu...' : activePastedAttachments.length > 0 ? 'Nhập mô tả cho ảnh hoặc tệp...' : 'Nhập tin nhắn...')}
               value={inputText}
               disabled={realtimeMessagingPending || !canSendInActiveGroup || (activeChat.isChatbot && isTyping)}
               onChange={handleMessageInputChange}
@@ -12868,7 +13221,7 @@ function App() {
               </>
             )}
           </div>
-          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || !canSendInActiveGroup || activeGroupSpamBlocked || isRecordingVoice || (activeChat.isChatbot && isTyping)} onClick={handleComposerSubmit}>{appCopy.t(activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi')}</button>
+          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || !canSendInActiveGroup || activeGroupSpamBlocked || isRecordingVoice || isSavingMessageEdit || (activeChat.isChatbot && isTyping)} onClick={handleComposerSubmit}>{appCopy.t(editingMessage ? (isSavingMessageEdit ? 'Đang lưu...' : 'Lưu thay đổi') : activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi')}</button>
         </div>
         )}
         {pollComposer && (
@@ -13047,6 +13400,37 @@ function App() {
             </div>
           );
         })()}
+        {editHistoryMessage && (
+          <div
+            className="message-details-modal edit-history-modal"
+            role="presentation"
+            onMouseDown={event => {
+              if (event.target === event.currentTarget) setEditHistoryMessage(null);
+            }}
+          >
+            <section className="message-details-card edit-history-card" role="dialog" aria-modal="true" aria-labelledby="edit-history-title">
+              <div className="message-details-header">
+                <strong id="edit-history-title">{appCopy.t('Lịch sử chỉnh sửa')}</strong>
+                <button type="button" onClick={() => setEditHistoryMessage(null)} aria-label={appCopy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button>
+              </div>
+              <div className="edit-history-current">
+                <span>{appCopy.t('Nội dung hiện tại')}</span>
+                <p>{renderMessageText(editHistoryMessage.text, editHistoryMessage.mentions)}</p>
+              </div>
+              <div className="edit-history-list">
+                {(editHistoryMessage.editHistory || []).map((entry, index) => (
+                  <article className="edit-history-entry" key={`${entry.eventId || entry.seq || entry.editedAt || 'entry'}-${index}`}>
+                    <div className="edit-history-entry-heading">
+                      <strong>{appCopy.t('Nội dung cũ')} {index + 1}</strong>
+                      {entry.editedAt && <time>{formatFullMessageDateTime(entry.editedAt, '', appCopy.locale)}</time>}
+                    </div>
+                    <p>{renderMessageText(entry.text, entry.mentions)}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
         {reactionDetails && reactionDetailsMessage && (
           <div
             className="message-details-modal reaction-details-modal"

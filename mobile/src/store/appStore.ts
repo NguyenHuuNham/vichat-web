@@ -34,6 +34,7 @@ interface AppStore {
   sendText: (conversationId: string, text: string, replyTo?: ChatMessage['replyTo']) => Promise<void>;
   sendFile: (conversationId: string, file: any) => Promise<void>;
   sendReaction: (conversationId: string, message: ChatMessage, emoji: string) => Promise<void>;
+  editMessage: (conversationId: string, message: ChatMessage, text: string) => Promise<void>;
   recallMessage: (conversationId: string, message: ChatMessage, mode?: RecallMode) => Promise<void>;
   sendTyping: (conversationId: string) => Promise<void>;
   markRead: (conversationId: string) => Promise<void>;
@@ -350,6 +351,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const conversation = conversationForId(get().conversations, conversationId);
     if (!conversation?.tinodeTopic) return;
     await tinodeClient.sendReaction(conversation.tinodeTopic, message, emoji);
+    await get().openConversation(conversationId);
+  },
+
+  async editMessage(conversationId, message, text) {
+    const conversation = conversationForId(get().conversations, conversationId);
+    if (!conversation?.tinodeTopic) throw new Error('Cuộc trò chuyện chưa sẵn sàng realtime.');
+    await tinodeClient.editMessage(conversation.tinodeTopic, message, text, message.mentions || []);
     await get().openConversation(conversationId);
   },
 

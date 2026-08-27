@@ -3,11 +3,17 @@ import { config } from '../constants/config';
 import { ChatMessage, Conversation, FileAttachment, PickerFile, RecallMode, TinodeAuth } from '../types';
 import { installIntlSegmenterPolyfill } from '../polyfills/intlSegmenter';
 import {
+  EDIT_EVENT_PREFIX,
   REACTION_EVENT_PREFIX,
   RECALL_EVENT_PREFIX,
   SYSTEM_EVENT_PREFIX,
+  applyEditToMessage,
+  buildEditEvent,
   buildRecallEvent,
+  canEditMessage,
   canRecallMessage,
+  editActorMatchesMessage,
+  editTargetsMessage,
   recallAppliesToViewer,
 } from '../utils/messagePolicy';
 import { formatMessageTime } from '../utils/timeFormatting';
@@ -27,6 +33,8 @@ export const CALL_SIGNAL_EVENTS = Object.freeze({
   ICE_CANDIDATE: 'ice-candidate',
   HANG_UP: 'hang-up',
 });
+
+const CENTRAL_MESSAGE_TEXT_LIMIT = 120 * 1024;
 
 function callEntity(content: any) {
   return content?.ent?.find?.((entity: any) => entity?.tp === 'VC')?.data || null;
@@ -123,6 +131,15 @@ function tokenExpiry(value: unknown) {
 function messageContent(raw: any) {
   if (typeof raw?.content === 'string') return raw.content;
   return String(raw?.content?.txt || '');
+}
+
+function utf8ByteLength(value: string) {
+  try {
+    if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(value).length;
+  } catch {
+    // Fall through to the conservative character count on older runtimes.
+  }
+  return String(value).length;
 }
 
 function normalizeMediaValue(value: any, mime = 'image/jpeg') {
@@ -235,6 +252,7 @@ function normalizeMessage(raw: any, client: any, topic: any, receiptCursor?: Rec
   const call = parseCallMessage(raw.content, raw.head, !outgoing);
   const reaction = parseEvent(content, REACTION_EVENT_PREFIX);
   const recall = parseEvent(content, RECALL_EVENT_PREFIX);
+  const edit = parseEvent(content, EDIT_EVENT_PREFIX);
   const system = parseEvent(content, SYSTEM_EVENT_PREFIX);
   const attachment = rawAttachment(raw);
   const id = String(raw.head?.['x-client-id'] || `${senderId || 'system'}-${raw.seq || raw.ts || Date.now()}`);
@@ -247,6 +265,11 @@ function normalizeMessage(raw: any, client: any, topic: any, receiptCursor?: Rec
   if (recall) return {
     id, seq: raw.seq, type: 'recall', sender: outgoing ? 'outgoing' : 'incoming', senderId,
     senderName: '', text: '', createdAt: raw.ts, raw: { ...raw, recallEvent: recall },
+  };
+  if (edit) return {
+    id, seq: raw.seq, type: 'edit', sender: outgoing ? 'outgoing' : 'incoming', senderId,
+    senderName: '', text: '', createdAt: raw.ts ? new Date(raw.ts).toISOString() : undefined,
+    raw: { ...raw, editEvent: edit },
   };
   const type = call ? 'call' : system ? 'system' : attachment ? (attachment.isImage ? 'image' : 'file') : 'text';
   return {
@@ -294,13 +317,38 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
     if (event?.targetId) recalls.set(String(event.targetId), event);
     if (event?.targetSeq) recalls.set(`seq:${event.targetSeq}`, event);
   });
+  const editMessages = loaded
+    .filter(message => message.type === 'edit')
+    .sort((first, second) => (Number(first.seq) || 0) - (Number(second.seq) || 0));
+  const editsById = new Map<string, ChatMessage[]>();
+  const editsBySeq = new Map<number, ChatMessage[]>();
+  editMessages.forEach(message => {
+    const event = message.raw?.editEvent || {};
+    const targetId = String(event.targetId || '').trim();
+    const targetSeq = Number(event.targetSeq) || 0;
+    if (targetId) editsById.set(targetId, [...(editsById.get(targetId) || []), message]);
+    if (targetSeq > 0) editsBySeq.set(targetSeq, [...(editsBySeq.get(targetSeq) || []), message]);
+  });
   const appliedRecallIds = new Set<string>();
+  const appliedEditIds = new Set<string>();
   const messages = loaded
-    .filter(message => !['reaction', 'recall'].includes(message.type))
+    .filter(message => !['reaction', 'recall', 'edit'].includes(message.type))
     .map(message => {
-      const recall = recalls.get(String(message.id)) || recalls.get(`seq:${message.seq}`);
+      const editCandidates = [
+        ...(editsById.get(String(message.id || '')) || []),
+        ...(editsBySeq.get(Number(message.seq) || 0) || []),
+      ]
+        .filter((candidate, index, all) => all.findIndex(item => item.id === candidate.id) === index)
+        .sort((first, second) => (Number(first.seq) || 0) - (Number(second.seq) || 0));
+      const projected = editCandidates.reduce((current, editMessage) => {
+        if (!editTargetsMessage(editMessage, current) || !editActorMatchesMessage(editMessage, current)) return current;
+        const next = applyEditToMessage(current, editMessage);
+        if (next !== current) appliedEditIds.add(editMessage.id);
+        return next;
+      }, message);
+      const recall = recalls.get(String(projected.id)) || recalls.get(`seq:${projected.seq}`);
       const reactions: Record<string, number> = {};
-      Object.entries(reactionState.get(String(message.id)) || {}).forEach(([key, active]) => {
+      Object.entries(reactionState.get(String(projected.id)) || {}).forEach(([key, active]) => {
         if (active) {
           const emoji = key.slice(key.indexOf(':') + 1);
           reactions[emoji] = (reactions[emoji] || 0) + 1;
@@ -311,7 +359,7 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
         if (recallMessage) appliedRecallIds.add(recallMessage.id);
         if (recall.mode === 'self' && client.isMe?.(recall.actorId)) return null;
         return {
-          ...message,
+          ...projected,
           type: 'text' as const,
           text: 'Tin nhắn đã được thu hồi',
           recalled: true,
@@ -322,9 +370,9 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
           raw: undefined,
         };
       }
-      return message.replyTo && (recalls.has(String(message.replyTo.id)) || recalls.has(`seq:${message.replyTo.id}`))
-        ? { ...message, replyTo: undefined, reactions }
-        : { ...message, reactions };
+      return projected.replyTo && (recalls.has(String(projected.replyTo.id)) || recalls.has(`seq:${projected.replyTo.id}`))
+        ? { ...projected, replyTo: undefined, reactions }
+        : { ...projected, reactions };
     })
     .filter(Boolean) as ChatMessage[];
   visibleRecallMessages.forEach(message => {
@@ -373,6 +421,17 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
   }
   messages.sort((a, b) => (Number(a.seq || 0) - Number(b.seq || 0)) || ((Date.parse(a.createdAt || '') || 0) - (Date.parse(b.createdAt || '') || 0)));
   const latest = messages[messages.length - 1];
+  const latestEdit = editMessages.filter(message => appliedEditIds.has(message.id)).at(-1);
+  const latestActivityAt = (Date.parse(latestEdit?.raw?.editEvent?.createdAt || latestEdit?.createdAt || '') || 0)
+    > (Date.parse(latest?.createdAt || '') || 0)
+    ? latestEdit?.raw?.editEvent?.createdAt || latestEdit?.createdAt
+    : latest?.createdAt;
+  const topicSequence = Number(topic.maxMsgSeq?.() || 0);
+  const topicRead = Number(topic.read) || 0;
+  const unreadEditCount = editMessages.filter(message => {
+    const sequence = Number(message.seq) || 0;
+    return sequence > topicRead && (!topicSequence || sequence <= topicSequence);
+  }).length;
   const directPeer = members.find(item => item.id !== client.getCurrentUserID?.()) || members[0];
   const owner = members.find(member => String(member.mode || '').includes('O'));
   return {
@@ -390,8 +449,10 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
     messages,
     lastMsg: latest?.file ? `${latest.sender === 'outgoing' ? 'Bạn' : 'Thành viên'} đã gửi tệp` : latest?.text || '',
     time: latest?.time || '',
-    updatedAt: latest?.createdAt,
-    badge: Math.max(0, Number(topic.unread || 0)),
+    updatedAt: latestActivityAt,
+    // Edit packets are stored in Tinode history but are control data, not
+    // user-facing messages, so they must not add unread state.
+    badge: Math.max(0, Number(topic.unread || 0) - unreadEditCount),
   };
 }
 
@@ -457,7 +518,7 @@ export class TinodeMobileClient {
 
   private emitIncomingMessage(topic: any, raw: any, conversation?: Conversation) {
     const message = normalizeMessage(raw, this.client, topic);
-    if (!message || message.sender !== 'incoming' || ['reaction', 'recall', 'system'].includes(message.type)) return;
+    if (!message || message.sender !== 'incoming' || ['reaction', 'recall', 'edit', 'system'].includes(message.type)) return;
     const seq = Number(message.seq || 0);
     const notifiedSeq = this.notifiedSeqByTopic.get(topic.name) || 0;
     if (seq > 0 && seq <= notifiedSeq) return;
@@ -821,7 +882,7 @@ export class TinodeMobileClient {
     } else if (latestSeq > previousMaxSeq) {
       const missed = conversation.messages.filter(message =>
         message.sender === 'incoming'
-        && !['reaction', 'recall', 'system'].includes(message.type)
+        && !['reaction', 'recall', 'edit', 'system'].includes(message.type)
         && Number(message.seq || 0) > previousMaxSeq,
       ).at(-1);
       if (missed) this.emitIncomingMessage(topic, missed.raw, conversation);
@@ -917,6 +978,38 @@ export class TinodeMobileClient {
       actorId: this.currentUserId,
       active: true,
     })}`);
+  }
+
+  async editMessage(topicName: string, message: ChatMessage, text: string, mentions: any[] = []) {
+    if (!canEditMessage(message)) throw new Error('Chỉ có thể sửa tin nhắn văn bản đã gửi thành công.');
+    if (message.sender !== 'outgoing' || !this.client?.isMe?.(message.senderId)) {
+      throw new Error('Chỉ người gửi mới có thể sửa tin nhắn này.');
+    }
+    const nextText = String(text || '').trim();
+    if (!nextText) throw new Error('Nội dung sửa không được để trống.');
+    await this.subscribeTopic(topicName, 0);
+    const topic = this.getTopic(topicName);
+    const event = buildEditEvent(message, this.currentUserId, nextText, mentions);
+    if (!event.targetId && !event.targetSeq) throw new Error('Tin nhắn không có định danh để sửa.');
+    const clientId = `mobile-edit-${event.targetSeq || event.targetId}-${Date.now()}`;
+    let content = `${EDIT_EVENT_PREFIX}${JSON.stringify(event)}`;
+    if (utf8ByteLength(content) > CENTRAL_MESSAGE_TEXT_LIMIT) {
+      const compactEvent: Record<string, unknown> = { ...event };
+      delete compactEvent.previousText;
+      delete compactEvent.previousMentions;
+      content = `${EDIT_EVENT_PREFIX}${JSON.stringify(compactEvent)}`;
+    }
+    if (utf8ByteLength(content) > CENTRAL_MESSAGE_TEXT_LIMIT) {
+      throw new Error('Tin nhắn sửa vượt quá giới hạn 120 KB của máy chủ Tinode.');
+    }
+    const result = await publishControlEvent(
+      topic,
+      content,
+      clientId,
+      this.currentUserId,
+    );
+    const sequence = Number(result?.params?.seq || result?.ctrl?.params?.seq || result?.seq) || 0;
+    return { ...event, eventId: clientId, ...(sequence > 0 ? { seq: sequence } : {}) };
   }
 
   async recallMessage(topicName: string, message: ChatMessage, mode: RecallMode = 'all') {

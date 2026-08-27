@@ -56,7 +56,7 @@ export interface FileAttachment {
   ext?: string;
 }
 
-export type MessageType = 'text' | 'image' | 'file' | 'system' | 'reaction' | 'recall' | 'call';
+export type MessageType = 'text' | 'image' | 'file' | 'system' | 'reaction' | 'recall' | 'edit' | 'call';
 export type DeliveryStatus = 'none' | 'sending' | 'sent' | 'received' | 'read' | 'failed';
 export type RecallMode = 'self' | 'all';
 
@@ -76,6 +76,16 @@ export interface ChatMessage {
   pending?: boolean;
   failed?: boolean;
   recalled?: boolean;
+  edited?: boolean;
+  editedAt?: string;
+  mentions?: any[];
+  editHistory?: Array<{
+    eventId?: string;
+    seq?: number;
+    text: string;
+    mentions?: any[];
+    editedAt?: string;
+  }>;
   deliveryStatus?: DeliveryStatus;
   reactions?: Record<string, number>;
   replyTo?: { id: string; text: string; senderName: string };

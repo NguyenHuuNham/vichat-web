@@ -30,6 +30,17 @@ test('translates the reply composer heading', () => {
   assert.equal(translateUiText('Trả lời', 'en'), 'Reply to');
 });
 
+test('translates message editing labels', () => {
+  assert.equal(translateUiText('Sửa tin nhắn', 'en'), 'Edit message');
+  assert.equal(translateUiText('Hủy sửa', 'en'), 'Cancel edit');
+  assert.equal(translateUiText('Nhập nội dung mới...', 'en'), 'Enter new content...');
+  assert.equal(translateUiText('Đã chỉnh sửa', 'en'), 'Edited');
+  assert.equal(translateUiText('Lịch sử chỉnh sửa', 'en'), 'Edit history');
+  assert.equal(translateUiText('Nội dung hiện tại', 'en'), 'Current content');
+  assert.equal(translateUiText('Nội dung cũ', 'en'), 'Previous content');
+  assert.equal(translateUiText('Đang lưu...', 'en'), 'Saving...');
+});
+
 test('translates pasted attachment draft controls', () => {
   assert.equal(translateUiText('Đang chờ gửi', 'en'), 'Waiting to send');
   assert.equal(translateUiText('Nhập mô tả rồi bấm Enter hoặc Gửi.', 'en'), 'Add a caption, then press Enter or Send.');

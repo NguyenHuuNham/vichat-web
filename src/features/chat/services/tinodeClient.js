@@ -33,9 +33,14 @@ import {
 import { fetchProtectedMediaWithRetry } from './mediaRetryPolicy';
 import {
   applyRecallToMessage,
+  applyEditToMessage,
   buildRecallEvent,
+  buildEditEvent,
+  canEditDeliveredMessage,
   canRecallDeliveredMessage,
   compactMessages,
+  editActorMatchesMessage,
+  editTargetsMessage,
   recallAppliesToViewer,
   recallPlaceholderSenderId,
 } from './messagePolicy';
@@ -101,6 +106,7 @@ const SYSTEM_EVENT_PREFIX = '__VICHAT_SYSTEM_EVENT__:';
 const FRIEND_EVENT_PREFIX = '__SONGHONG_FRIEND_EVENT__:';
 const REACTION_EVENT_PREFIX = '__VICHAT_REACTION_EVENT__:';
 const RECALL_EVENT_PREFIX = '__VICHAT_RECALL_EVENT__:';
+const EDIT_EVENT_PREFIX = '__VICHAT_EDIT_EVENT__:';
 const STICKER_HEAD = 'x-vichat-sticker';
 const POLL_HEAD = 'x-vichat-poll';
 const POLL_EVENT_PREFIX = '__VICHAT_POLL_EVENT__:';
@@ -725,10 +731,12 @@ function toMessage(msg, tinode, topic = null) {
   const content = typeof msg.content === 'string' ? msg.content : (msg.content?.txt || '');
   const visibleContent = attachment ? content.trim() : content;
   const pollEvent = parsePollEventMetadata(content);
+  const isEditEvent = content.startsWith(EDIT_EVENT_PREFIX);
   let systemEvent = null;
   let friendEvent = null;
   let reactionEvent = null;
   let recallEvent = null;
+  let editEvent = null;
   if (content.startsWith(SYSTEM_EVENT_PREFIX)) {
     try {
       systemEvent = JSON.parse(content.slice(SYSTEM_EVENT_PREFIX.length));
@@ -752,6 +760,12 @@ function toMessage(msg, tinode, topic = null) {
       recallEvent = JSON.parse(content.slice(RECALL_EVENT_PREFIX.length));
     } catch {
       recallEvent = null;
+    }
+  } else if (content.startsWith(EDIT_EVENT_PREFIX)) {
+    try {
+      editEvent = JSON.parse(content.slice(EDIT_EVENT_PREFIX.length));
+    } catch {
+      editEvent = null;
     }
   }
   const attachmentData = attachment?.data;
@@ -822,7 +836,7 @@ function toMessage(msg, tinode, topic = null) {
       ? `friend-${friendEvent.action}-${friendEvent.requestId}`
       : clientId || `${msg.from || 'system'}-${msg.seq || msg.ts || Date.now()}`,
     seq: msg.seq,
-    type: call ? 'call' : poll ? 'poll' : pollEvent ? 'poll_event' : friendEvent ? 'friend_event' : reactionEvent ? 'reaction_event' : recallEvent ? 'recall_event' : systemEvent ? 'system' : attachment ? (sticker ? 'sticker' : isImageAttachment ? 'image' : 'file') : 'text',
+    type: call ? 'call' : poll ? 'poll' : pollEvent ? 'poll_event' : friendEvent ? 'friend_event' : reactionEvent ? 'reaction_event' : recallEvent ? 'recall_event' : isEditEvent ? 'edit_event' : systemEvent ? 'system' : attachment ? (sticker ? 'sticker' : isImageAttachment ? 'image' : 'file') : 'text',
     action: friendEvent?.action || systemEvent?.action || pollEvent?.action,
     sender: isOutgoing ? 'outgoing' : 'incoming',
     senderId: friendActorId
@@ -843,6 +857,7 @@ function toMessage(msg, tinode, topic = null) {
     friendEvent,
     reactionEvent,
     recallEvent,
+    editEvent,
     call,
     replyTo,
     sticker: sticker || undefined,
@@ -881,6 +896,9 @@ function toConversation(topic, tinode) {
   const friendEvents = loadedMessages.filter(message => message.type === 'friend_event');
   const reactionEvents = loadedMessages.filter(message => message.type === 'reaction_event');
   const recallEvents = loadedMessages.filter(message => message.type === 'recall_event');
+  const editEvents = loadedMessages
+    .filter(message => message.type === 'edit_event')
+    .sort((first, second) => (Number(first.seq) || 0) - (Number(second.seq) || 0));
   const pollEventsById = new Map();
   loadedMessages.filter(message => message.type === 'poll_event').forEach(eventMessage => {
     const pollId = eventMessage.pollEvent?.pollId;
@@ -893,6 +911,16 @@ function toConversation(topic, tinode) {
     (Number(first.seq) || 0) - (Number(second.seq) || 0)
   )));
   const visibleRecallEvents = recallEvents.filter(message => recallAppliesToViewer(message.recallEvent, tinode));
+  const editEventsById = new Map();
+  const editEventsBySeq = new Map();
+  editEvents.forEach(eventMessage => {
+    const event = eventMessage.editEvent || {};
+    const targetId = String(event.targetId || '').trim();
+    const targetSeq = Number(event.targetSeq) || 0;
+    if (targetId) editEventsById.set(targetId, [...(editEventsById.get(targetId) || []), eventMessage]);
+    if (targetSeq > 0) editEventsBySeq.set(targetSeq, [...(editEventsBySeq.get(targetSeq) || []), eventMessage]);
+  });
+  const appliedEditEvents = new Set();
   const reactionState = new Map();
   reactionEvents.forEach(event => {
     const targetId = event.reactionEvent?.targetId;
@@ -939,8 +967,23 @@ function toConversation(topic, tinode) {
     if (Number(event.targetSeq) > 0) recallsBySeq.set(Number(event.targetSeq), message);
   });
   const appliedRecallEvents = new Set();
-  const chatMessages = compactMessages(loadedMessages
-    .filter(message => !['friend_event', 'reaction_event', 'recall_event', 'poll_event'].includes(message.type))
+  const messagesWithEdits = loadedMessages
+    .filter(message => !['friend_event', 'reaction_event', 'recall_event', 'edit_event', 'poll_event'].includes(message.type))
+    .map(message => {
+      const candidates = [
+        ...(editEventsById.get(String(message.id || '')) || []),
+        ...(editEventsBySeq.get(Number(message.seq) || 0) || []),
+      ]
+        .filter((candidate, index, all) => all.findIndex(item => item.id === candidate.id) === index)
+        .sort((first, second) => (Number(first.seq) || 0) - (Number(second.seq) || 0));
+      return candidates.reduce((current, editMessage) => {
+        if (!editTargetsMessage(editMessage, current) || !editActorMatchesMessage(editMessage, current)) return current;
+        const next = applyEditToMessage(current, editMessage);
+        if (next !== current) appliedEditEvents.add(editMessage.id);
+        return next;
+      }, message);
+    });
+  const chatMessages = compactMessages(messagesWithEdits
     .map(message => {
       const recallMessage = recallsById.get(String(message.id)) || recallsBySeq.get(Number(message.seq));
       if (recallMessage) {
@@ -1069,6 +1112,13 @@ function toConversation(topic, tinode) {
     : projectedMessages;
   const latestMapped = finalMessages[finalMessages.length - 1];
   const latestMappedActivityAt = latestMapped?.pollActivityAt || latestMapped?.createdAt;
+  const latestEditEvent = editEvents
+    .filter(message => appliedEditEvents.has(message.id))
+    .at(-1);
+  const latestEditActivityAt = latestEditEvent?.editEvent?.createdAt || latestEditEvent?.createdAt;
+  const latestActivityAt = (Date.parse(latestEditActivityAt || '') || 0) > (Date.parse(latestMappedActivityAt || '') || 0)
+    ? latestEditActivityAt
+    : latestMappedActivityAt;
   const latestMappedTime = latestMapped?.pollActivityAt
     ? new Date(latestMapped.pollActivityAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
     : latestMapped?.time;
@@ -1144,6 +1194,7 @@ function toConversation(topic, tinode) {
     localReadFloor: topicReadFloors.get(topic.name),
     incomingReadCap: unreadReadSnapshot?.readCap,
     explicitUnreadCount: topic.unread,
+    ignoredSequences: editEvents.map(message => message.seq),
   });
 
   return {
@@ -1167,7 +1218,7 @@ function toConversation(topic, tinode) {
       ? `Bình chọn: ${latestMapped.text || latestMapped.poll?.question || ''}`
       : attachmentConversationPreview(latestMapped) || latestMapped?.text || '',
     time: latestMappedTime || '',
-    updatedAt: latestMappedActivityAt || (topic.touched ? new Date(topic.touched).toISOString() : undefined),
+    updatedAt: latestActivityAt || (topic.touched ? new Date(topic.touched).toISOString() : undefined),
     ...(conversationBackground !== undefined ? { conversationBackground } : {}),
     readSeq: topicReadState.readSeq,
     unreadFromSeq: finalMessages.length > 0 ? topicReadState.unreadFromSeq : 0,
@@ -1407,6 +1458,8 @@ function emitPresenceSnapshot(tinode = getClient()) {
 function rememberTopicUnreadReadSnapshot(topic, data, tinode) {
   const sequence = Number(data?.seq) || 0;
   if (!topic?.name || sequence <= 0) return;
+  const content = typeof data?.content === 'string' ? data.content : (data?.content?.txt || '');
+  if (content.startsWith(EDIT_EVENT_PREFIX)) return;
   const senderId = String(data?.from || data?.head?.['x-sender-id'] || '').trim();
   const isOutgoing = Boolean(senderId) && tinode?.isMe?.(senderId);
   const existingSnapshot = topicUnreadReadSnapshots.get(topic.name);
@@ -2471,6 +2524,51 @@ export const tinodeClient = {
     };
     if (!event.targetId || !event.emoji) throw new Error('Thiếu tin nhắn hoặc biểu cảm.');
     return publishTopicContent(topic, `${REACTION_EVENT_PREFIX}${JSON.stringify(event)}`, false, metadata);
+  },
+
+  async editMessage(topicName, message = {}, text = '', mentions = [], metadata = {}) {
+    if (!canEditDeliveredMessage(message)) {
+      throw new Error('Chỉ có thể sửa tin nhắn văn bản đã gửi thành công.');
+    }
+    const tinode = getClient();
+    if (message.sender !== 'outgoing' || !message.senderId || !tinode.isMe(message.senderId)) {
+      throw new Error('Chỉ người gửi mới có thể sửa tin nhắn này.');
+    }
+    const nextText = String(text || '').trim();
+    if (!nextText) throw new Error('Nội dung sửa không được để trống.');
+    const topic = await subscribeTopic(topicName);
+    const actorId = tinode.getCurrentUserID();
+    let event = buildEditEvent(message, actorId, nextText, mentions, new Date().toISOString());
+    if (!event.targetId && !event.targetSeq) throw new Error('Tin nhắn không có định danh để sửa.');
+    let content = `${EDIT_EVENT_PREFIX}${JSON.stringify(event)}`;
+    // Large edits keep the original Tinode packet as the first history item;
+    // omit the duplicated fallback copy when the event envelope is too large.
+    if (new TextEncoder().encode(content).length > CENTRAL_MESSAGE_TEXT_LIMIT) {
+      event = { ...event };
+      delete event.previousText;
+      delete event.previousMentions;
+      content = `${EDIT_EVENT_PREFIX}${JSON.stringify(event)}`;
+    }
+    if (new TextEncoder().encode(content).length > CENTRAL_MESSAGE_TEXT_LIMIT) {
+      throw new Error('Tin nhắn sửa vượt quá giới hạn 120 KB của máy chủ Tinode.');
+    }
+    const clientId = `web-edit-${event.targetSeq || event.targetId}-${Date.now()}`;
+    const draft = topic.createMessage(content, false);
+    draft.head = {
+      ...(draft.head || {}),
+      'x-client-id': clientId,
+      'x-sender-id': actorId,
+    };
+    applyGroupActionHead(topic, draft, metadata);
+    const result = await publishTopicMessage(topic, draft);
+    if (!result) throw new Error('Tinode không xác nhận sự kiện chỉnh sửa.');
+    emitConversation(topic);
+    const sequence = Number(result?.params?.seq || result?.ctrl?.params?.seq || result?.seq) || 0;
+    return {
+      ...event,
+      eventId: clientId,
+      ...(sequence > 0 ? { seq: sequence } : {}),
+    };
   },
 
   async recallMessage(topicName, message = {}, mode = 'all', metadata = {}) {

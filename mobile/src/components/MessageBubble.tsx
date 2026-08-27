@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { BookOpen, CheckCircle2, Download, FileText, ImageOff, Phone, RotateCcw, Video, X } from 'lucide-react-native';
+import { BookOpen, CheckCircle2, Download, FileText, ImageOff, Pencil, Phone, RotateCcw, Video, X } from 'lucide-react-native';
 import { beginTrustedExternalActivity } from '../services/appLifecycleService';
 import { normalizeMediaUrl, tinodeClient } from '../services/tinodeClient';
 import { ChatMessage, FileAttachment } from '../types';
@@ -11,9 +11,10 @@ import { formatMessageTime } from '../utils/timeFormatting';
 interface Props {
   message: ChatMessage;
   onLongPress: () => void;
+  onShowEditHistory: (message: ChatMessage) => void;
 }
 
-export function MessageBubble({ message, onLongPress }: Props) {
+export function MessageBubble({ message, onLongPress, onShowEditHistory }: Props) {
   if (message.type === 'system') return <Text style={styles.system}>{message.text}</Text>;
   if (message.type === 'call' && message.call) {
     return <View style={[styles.line, message.sender === 'outgoing' ? styles.outgoingLine : styles.incomingLine]}><View style={[styles.bubble, message.sender === 'outgoing' ? styles.outgoing : styles.incoming]}><View style={styles.callHistory}><View style={styles.callIcon}>{message.call.audioOnly ? <Phone color={message.sender === 'outgoing' ? '#fff' : colors.accent} size={19} /> : <Video color={message.sender === 'outgoing' ? '#fff' : colors.accent} size={19} />}</View><View style={{ flex: 1 }}><Text style={[styles.text, message.sender === 'outgoing' && styles.outgoingText]}>{message.text}</Text><Text style={[styles.fileMeta, message.sender === 'outgoing' && styles.outgoingSub]}>{message.call.audioOnly ? 'Cuộc gọi thoại' : 'Cuộc gọi video'}</Text></View></View><View style={styles.meta}><Text style={[styles.time, message.sender === 'outgoing' && styles.outgoingSub]}>{formatMessageTime(message.createdAt || message.time)}</Text></View></View></View>;
@@ -34,6 +35,7 @@ export function MessageBubble({ message, onLongPress }: Props) {
             <View style={{ flex: 1 }}><Text numberOfLines={1} style={[styles.fileName, outgoing && styles.outgoingText]}>{message.file.name}</Text><Text style={[styles.fileMeta, outgoing && styles.outgoingSub]}>{message.file.mime} · {message.file.size ? `${Math.round(message.file.size / 1024)} KB` : 'Tệp'}</Text></View>
           </Pressable>
         ) : null}
+        {message.edited ? <Pressable onPress={() => onShowEditHistory(message)} style={styles.editedLabel}><Pencil color={outgoing ? '#D9F2FF' : colors.accent} size={11} /><Text style={[styles.editedLabelText, outgoing && styles.outgoingSub]}>Đã chỉnh sửa</Text></Pressable> : null}
         {message.text && !message.recalled ? <Text style={[styles.text, outgoing && styles.outgoingText]}>{message.text}</Text> : null}
         {!outgoing && message.grounded ? <View style={styles.grounded}><CheckCircle2 color={colors.online} size={13} /><Text style={styles.groundedText}>Đã đối chiếu nguồn</Text></View> : null}
         {!outgoing && message.sources?.length ? <View style={styles.sources}><View style={styles.sourcesTitle}><BookOpen color={colors.accent} size={14} /><Text style={styles.sourcesTitleText}>Nguồn tham khảo</Text></View>{message.sources.map((source, index) => <View key={`${source.title || source.file_name || index}`} style={styles.sourceCard}><Text style={styles.sourceIndex}>{index + 1}</Text><View style={{ flex: 1 }}><Text numberOfLines={1} style={styles.sourceName}>{source.title || source.file_name || `Nguồn ${index + 1}`}</Text>{source.snippet ? <Text numberOfLines={2} style={styles.sourceSnippet}>{source.snippet}</Text> : null}</View></View>)}</View> : null}
@@ -126,6 +128,8 @@ const styles = StyleSheet.create({
   receiptRead: { color: '#BCEBFF' },
   recalled: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   recalledText: { ...typography.caption, color: colors.muted, fontStyle: 'italic' },
+  editedLabel: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', marginBottom: 4, paddingVertical: 1 },
+  editedLabelText: { ...typography.caption, color: colors.accent, fontSize: 10.5, textDecorationLine: 'underline' },
   callHistory: { flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 210 },
   callIcon: { width: 36, height: 36, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
   reply: { borderLeftWidth: 3, borderLeftColor: colors.accent, backgroundColor: colors.accentWash, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, marginBottom: 7 },

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-28-01 - Sua tin nhan realtime
+
+- Thoi gian: 2026-08-28 (Asia/Saigon)
+- Loai: Tinh nang | Web | Mobile | Realtime | Kiem thu | Tai lieu
+- Trang thai: Da test local; san sang commit, push va deploy production
+- Muc tieu: Cho sender sua tin nhan van ban da gui thanh cong; user ben kia nhan ban sua theo realtime, thay dong `Da chinh sua` va xem duoc phien ban cu ma khong lam song lai unread, highlight, notification hay thay doi setting user.
+- Pham vi: ChatUI va mobile message action/render, Tinode client/realtime projection, i18n, CSS, type/state va regression test; khong doi Chatmgt, API, database, schema, migration, `.env`, storage hay Tinode packet goc.
+- File da thay doi: `dist/index.html`, `docs/chat-backend-architecture.md`, `mobile/src/components/MessageActionSheet.tsx`, `mobile/src/components/MessageBubble.tsx`, `mobile/src/screens/chat/ChatDetailScreen.tsx`, `mobile/src/services/tinodeClient.ts`, `mobile/src/store/appStore.ts`, `mobile/src/types/index.ts`, `mobile/src/utils/messagePolicy.test.ts`, `mobile/src/utils/messagePolicy.ts`, `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/messagePolicy.js`, `src/features/chat/services/messagePolicy.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `docs/CHANGELOG.md`.
+- Noi dung: Chi sender cua tin text da delivered moi thay duoc; edit event append-only duoc dong bo theo Tinode sequence, idempotent khi replay va ho tro nhieu lan sua. Ban goc khong bi mutate/delete; projected message co `edited`, `editedAt`, `editHistory`, hien nhan `Da chinh sua` va modal lich su. Edit event bi loai khoi timeline, unread, badge va desktop notification; UI va client deu fail-closed khi khong xac minh sender.
+- Quyet dinh ky thuat: Dung control event prefixed `__VICHAT_EDIT_EVENT__:` lam lop overlay chung cho web/mobile, de Tinode van la nguon realtime va giu nguyen history packet; khong them endpoint, migration, cache hay state dai han. Payload duoc kiem tra kich thuoc, target sequence va actor de tranh replay/cross-user edit.
+- Database/API/cau hinh: Khong migration, schema, endpoint, secret, bien moi truong, volume hoac thay doi setting user.
+- Kiem thu: `npm run test:frontend` dat 322/322; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` exit 0 voi warning bundle App lon hon 500 KB; mobile typecheck va lint dat; mobile test muc tieu dat 7/7; full mobile test co 32 test pass nhung mot suite khong chay duoc do Vitest/RN parser trong `node_modules/react-native/index.js` khong ho tro Flow; `git diff --check` dat voi canh bao LF/CRLF cua working copy.
+- Rui ro con lai: Chua UAT production bang hai tai khoan that cho sua tin tren web/mobile va chua xac nhan history khi reconnect; can hard refresh de nap bundle moi.
+- Viec tiep theo: Commit/push, tao release bat bien, backup theo quy trinh, chi recreate service ChatUI can thiet, giu nguyen `.env`, database, volume, Tinode topic/message, read cursor, unread va setting user; sau do verify health, bundle, WSS, Nginx va log.
+- Commit/PR: Chua tao.
+
 ## 2026-08-27-09 - Khoi phuc logo khi static asset bi 403
 
 - Thoi gian: 2026-08-27 23:21-23:38; deploy production 23:37-23:38 (Asia/Saigon)

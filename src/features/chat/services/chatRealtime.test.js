@@ -368,6 +368,29 @@ test('new data derives unread from the latest sequence before Tinode refreshes t
   });
 });
 
+test('edit event sequences do not create unread messages', () => {
+  assert.deepEqual(resolveTopicReadState({
+    topicSequence: 43,
+    serverReadSeq: 42,
+    explicitUnreadCount: 1,
+    ignoredSequences: [43],
+  }), {
+    readSeq: 42,
+    unreadFromSeq: 0,
+    badge: 0,
+  });
+  assert.deepEqual(resolveTopicReadState({
+    topicSequence: 44,
+    serverReadSeq: 42,
+    explicitUnreadCount: 2,
+    ignoredSequences: [43],
+  }), {
+    readSeq: 42,
+    unreadFromSeq: 44,
+    badge: 1,
+  });
+});
+
 test('incoming read cap prevents an SDK auto-read from hiding a peer packet', () => {
   assert.deepEqual(resolveTopicReadState({
     topicSequence: 101,

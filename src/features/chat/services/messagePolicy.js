@@ -1,4 +1,5 @@
 export const MAX_CHAT_ATTACHMENT_BYTES = 500 * 1024 * 1024;
+export const EDIT_EVENT_PREFIX = '__VICHAT_EDIT_EVENT__:';
 
 export function chatAttachmentValidationError(file) {
   const size = Number(file?.size) || 0;
@@ -16,6 +17,109 @@ export function canRecallDeliveredMessage(message) {
     && !message.failed
     && message.deliveryStatus !== 'sending'
   );
+}
+
+export function canEditDeliveredMessage(message) {
+  return Boolean(
+    message
+    && message.type === 'text'
+    && String(message.text || '').trim()
+    && !message.recalled
+    && !message.pending
+    && !message.failed
+    && message.deliveryStatus !== 'sending'
+  );
+}
+
+export function buildEditEvent(
+  message,
+  actorId,
+  text,
+  mentions = [],
+  createdAt = new Date().toISOString(),
+) {
+  return {
+    targetId: String(message?.id || '').trim(),
+    targetSeq: Number(message?.seq) || 0,
+    actorId: String(actorId || '').trim(),
+    text: String(text || '').trim(),
+    mentions: Array.isArray(mentions) ? mentions.slice(0, 50) : [],
+    // Keep the old version in normal-sized events so history remains useful
+    // even when an older client did not retain the original packet locally.
+    previousText: String(message?.text || ''),
+    previousMentions: Array.isArray(message?.mentions) ? message.mentions.slice(0, 50) : [],
+    createdAt,
+  };
+}
+
+export function editEventActorId(editMessage) {
+  return String(
+    editMessage?.senderId
+      || editMessage?.raw?.from
+      || editMessage?.raw?.head?.['x-sender-id']
+      || '',
+  ).trim();
+}
+
+export function editTargetsMessage(editMessage, message) {
+  const event = editMessage?.editEvent || editMessage?.raw?.editEvent || {};
+  const targetId = String(event.targetId || '').trim();
+  const targetSeq = Number(event.targetSeq) || 0;
+  const messageId = String(message?.id || '').trim();
+  const messageSeq = Number(message?.seq) || Number(message?.raw?.seq) || 0;
+  const idMatches = Boolean(targetId && targetId === messageId);
+  const sequenceMatches = Boolean(targetSeq > 0 && targetSeq === messageSeq);
+  // Tinode sequences are unique within a topic and remain stable when a
+  // client-generated message ID changes between legacy and current clients.
+  // Prefer the sequence when both packets expose it; use the ID only for
+  // optimistic/legacy packets which do not have a usable sequence.
+  if (targetSeq > 0 && messageSeq > 0) return Boolean(message && sequenceMatches);
+  return Boolean(message && idMatches);
+}
+
+export function editActorMatchesMessage(editMessage, message) {
+  const actorId = editEventActorId(editMessage);
+  const senderId = String(
+    message?.senderId
+      || message?.raw?.from
+      || message?.raw?.head?.['x-sender-id']
+      || '',
+  ).trim();
+  return Boolean(actorId && senderId && actorId === senderId);
+}
+
+export function applyEditToMessage(message, editMessage) {
+  if (!message || message.recalled || message.type !== 'text' || !editMessage) return message;
+  const event = editMessage.editEvent || editMessage.raw?.editEvent || {};
+  const nextText = String(event.text || '').trim();
+  if (!nextText) return message;
+  const eventId = String(editMessage.id || '').trim();
+  const eventSeq = Number(editMessage.seq) || 0;
+  const history = Array.isArray(message.editHistory) ? message.editHistory : [];
+  if (
+    (eventId && history.some(item => String(item?.eventId || '').trim() === eventId))
+    || (eventSeq > 0 && history.some(item => Number(item?.seq) === eventSeq))
+  ) return message;
+  const previousText = typeof event.previousText === 'string' ? event.previousText : String(message.text || '');
+  const previousMentions = Array.isArray(event.previousMentions)
+    ? event.previousMentions.slice(0, 50)
+    : (Array.isArray(message.mentions) ? message.mentions.slice(0, 50) : []);
+  const editedAt = String(event.createdAt || editMessage.createdAt || new Date().toISOString());
+  const historyEntry = {
+    ...(eventId ? { eventId } : {}),
+    ...(eventSeq > 0 ? { seq: eventSeq } : {}),
+    text: previousText,
+    mentions: previousMentions,
+    editedAt,
+  };
+  return {
+    ...message,
+    text: nextText,
+    mentions: Array.isArray(event.mentions) ? event.mentions.slice(0, 50) : [],
+    edited: true,
+    editedAt,
+    editHistory: [...history, historyEntry],
+  };
 }
 
 export function buildRecallEvent(message, actorId, createdAt = new Date().toISOString(), mode = 'all') {

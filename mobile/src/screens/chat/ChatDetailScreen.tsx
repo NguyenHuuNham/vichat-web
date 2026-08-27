@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
@@ -8,14 +8,14 @@ import * as ImagePicker from 'expo-image-picker';
 import { BookOpen, Camera, ChevronLeft, FilePlus2, ImagePlus, Info, Search, Send, ShieldCheck, Phone, Video, WifiOff, X } from 'lucide-react-native';
 import { RootStackParamList } from '../../navigation/types';
 import { useAppStore, getConversation } from '../../store/appStore';
-import { colors } from '../../theme/colors';
+import { colors, shadow } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import { Avatar } from '../../components/Avatar';
 import { MessageBubble } from '../../components/MessageBubble';
 import { MessageActionSheet } from '../../components/MessageActionSheet';
 import { TypingIndicator } from '../../components/TypingIndicator';
 import { ChatMessage, PickerFile, RecallMode } from '../../types';
-import { attachmentValidationError, canInteractWithMessage } from '../../utils/messagePolicy';
+import { attachmentValidationError, canEditMessage, canInteractWithMessage } from '../../utils/messagePolicy';
 import { directPeerOnline } from '../../utils/tinodeState';
 import { formatMessageDateLabel } from '../../utils/timeFormatting';
 import { beginTrustedExternalActivity } from '../../services/appLifecycleService';
@@ -46,8 +46,11 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [selectedMessage, setSelectedMessage] = useState<ChatMessage | null>(null);
+  const [editingMessage, setEditingMessage] = useState<{ message: ChatMessage; previousText: string; previousReply?: ChatMessage['replyTo'] } | null>(null);
+  const [editHistoryMessage, setEditHistoryMessage] = useState<ChatMessage | null>(null);
   const [replyingTo, setReplyingTo] = useState<ChatMessage['replyTo']>();
   const listRef = useRef<FlatList<ChatMessage>>(null);
+  const inputRef = useRef<TextInput>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingAt = useRef(0);
 
@@ -75,9 +78,48 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   }, [markRead, openConversation, route.params.conversationId]);
 
   const messages = useMemo(() => conversation?.messages || [], [conversation?.messages]);
+  const restoreEditDraft = (snapshot: typeof editingMessage) => {
+    if (!snapshot) return;
+    setEditingMessage(null);
+    setText(snapshot.previousText);
+    setReplyingTo(snapshot.previousReply);
+  };
+  const beginEdit = (message: ChatMessage) => {
+    if (!canEditMessage(message) || message.sender !== 'outgoing') return;
+    setEditingMessage({ message, previousText: text, previousReply: replyingTo });
+    setText(message.text);
+    setReplyingTo(undefined);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
   const submitText = async (suggestedText = '') => {
     const value = (suggestedText || text).trim();
     if (!value || busy || !conversation) return;
+    if (editingMessage) {
+      const snapshot = editingMessage;
+      const target = conversation.messages.find(message => (
+        message.id === snapshot.message.id
+        || (Number(snapshot.message.seq) > 0 && Number(message.seq) === Number(snapshot.message.seq))
+      )) || snapshot.message;
+      if (!canEditMessage(target) || target.sender !== 'outgoing') {
+        setError('Tin nhắn này không còn đủ điều kiện để sửa.');
+        return;
+      }
+      if (value === String(target.text || '').trim()) {
+        restoreEditDraft(snapshot);
+        return;
+      }
+      setBusy(true); setError('');
+      try {
+        await useAppStore.getState().editMessage(conversation.id, target, value);
+        restoreEditDraft(snapshot);
+      } catch (valueError) {
+        setError(valueError instanceof Error ? valueError.message : 'Không sửa được tin nhắn.');
+        setText(value);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     setText(''); setBusy(true); setError('');
     const reply = replyingTo && conversation.messages.some(message => message.id === replyingTo.id && !message.recalled)
       ? replyingTo
@@ -184,7 +226,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
           renderItem={({ item, index }) => {
             const currentDay = formatMessageDateLabel(item.createdAt);
             const previousDay = index > 0 ? formatMessageDateLabel(messages[index - 1].createdAt) : '';
-            return <View>{currentDay && currentDay !== previousDay ? <Text style={styles.date}>{currentDay}</Text> : null}<MessageBubble message={item} onLongPress={() => { if (!item.recalled) setSelectedMessage(item); }} /></View>;
+            return <View>{currentDay && currentDay !== previousDay ? <Text style={styles.date}>{currentDay}</Text> : null}<MessageBubble message={item} onLongPress={() => { if (!item.recalled) setSelectedMessage(item); }} onShowEditHistory={message => setEditHistoryMessage(message)} /></View>;
           }}
           contentContainerStyle={styles.messageList}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
@@ -196,14 +238,15 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         />
         <TypingIndicator visible={Boolean(typing)} />
         {error ? <Pressable onPress={() => setError('')} style={styles.error}><Text style={styles.errorText}>{error}</Text></Pressable> : null}
-        {replyingTo ? <View style={styles.replyComposer}><View style={styles.replyBar} /><View style={styles.replyBody}><Text numberOfLines={1} style={styles.replyName}>Đang trả lời {replyingTo.senderName}</Text><Text numberOfLines={1} style={styles.replyText}>{replyingTo.text}</Text></View><Pressable onPress={() => setReplyingTo(undefined)} style={styles.replyClose}><X color={colors.inkSoft} size={18} /></Pressable></View> : null}
+        {editingMessage ? <View style={styles.editComposer}><View style={styles.replyBar} /><View style={styles.replyBody}><Text numberOfLines={1} style={styles.replyName}>Sửa tin nhắn</Text><Text numberOfLines={1} style={styles.replyText}>{editingMessage.message.text}</Text></View><Pressable disabled={busy} onPress={() => restoreEditDraft(editingMessage)} style={styles.replyClose}><X color={colors.inkSoft} size={18} /></Pressable></View> : null}
+        {!editingMessage && replyingTo ? <View style={styles.replyComposer}><View style={styles.replyBar} /><View style={styles.replyBody}><Text numberOfLines={1} style={styles.replyName}>Đang trả lời {replyingTo.senderName}</Text><Text numberOfLines={1} style={styles.replyText}>{replyingTo.text}</Text></View><Pressable onPress={() => setReplyingTo(undefined)} style={styles.replyClose}><X color={colors.inkSoft} size={18} /></Pressable></View> : null}
         <View style={styles.composer}>
           {!conversation.isChatbot ? <View style={styles.attachGroup}>
-            <Pressable accessibilityLabel="Chụp ảnh" onPress={() => void takePhoto()} disabled={busy} style={styles.attach}><Camera color={colors.accent} size={18} /></Pressable>
-            <Pressable accessibilityLabel="Chọn ảnh" onPress={() => void chooseFile(true)} disabled={busy} style={styles.attach}><ImagePlus color={colors.accent} size={19} /></Pressable>
-            <Pressable accessibilityLabel="Chọn tệp" onPress={() => void chooseFile(false)} disabled={busy} style={styles.attach}><FilePlus2 color={colors.accent} size={18} /></Pressable>
+            <Pressable accessibilityLabel="Chụp ảnh" onPress={() => void takePhoto()} disabled={busy || Boolean(editingMessage)} style={styles.attach}><Camera color={colors.accent} size={18} /></Pressable>
+            <Pressable accessibilityLabel="Chọn ảnh" onPress={() => void chooseFile(true)} disabled={busy || Boolean(editingMessage)} style={styles.attach}><ImagePlus color={colors.accent} size={19} /></Pressable>
+            <Pressable accessibilityLabel="Chọn tệp" onPress={() => void chooseFile(false)} disabled={busy || Boolean(editingMessage)} style={styles.attach}><FilePlus2 color={colors.accent} size={18} /></Pressable>
           </View> : null}
-          <TextInput value={text} onChangeText={value => { setText(value); if (value && conversation.tinodeTopic) signalTyping(conversation.id); }} placeholder={conversation.isChatbot ? 'Hỏi về quy trình, chính sách, tài liệu...' : 'Viết tin nhắn...'} placeholderTextColor={colors.muted} multiline maxLength={120000} style={styles.input} editable={!busy} />
+          <TextInput ref={inputRef} value={text} onChangeText={value => { setText(value); if (value && conversation.tinodeTopic && !editingMessage) signalTyping(conversation.id); }} placeholder={editingMessage ? 'Nhập nội dung mới...' : conversation.isChatbot ? 'Hỏi về quy trình, chính sách, tài liệu...' : 'Viết tin nhắn...'} placeholderTextColor={colors.muted} multiline maxLength={120000} style={styles.input} editable={!busy} />
           <Pressable onPress={() => void submitText()} disabled={busy || !text.trim()} style={[styles.send, (!text.trim() || busy) && styles.sendDisabled]}><Send color="#fff" size={18} /></Pressable>
         </View>
         {conversation.isChatbot ? <Text style={styles.aiNote}>Kiểm tra nguồn trước khi dùng thông tin để ra quyết định.</Text> : null}
@@ -216,9 +259,20 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         onShare={shareMessage}
         onDownload={downloadMessage}
         onDetails={showMessageDetails}
+        onEdit={beginEdit}
         onReaction={(message, emoji) => void sendReaction(conversation.id, message, emoji).catch(value => setError(value instanceof Error ? value.message : 'Không thêm được biểu cảm.'))}
         onRecall={message => requestRecall(message)}
       />
+      <Modal visible={Boolean(editHistoryMessage)} transparent animationType="fade" onRequestClose={() => setEditHistoryMessage(null)} statusBarTranslucent>
+        <View style={styles.historyOverlay}>
+          <Pressable style={styles.historyBackdrop} onPress={() => setEditHistoryMessage(null)} />
+          {editHistoryMessage ? <View style={styles.historyCard}>
+            <View style={styles.historyHeader}><Text style={styles.historyTitle}>Lịch sử chỉnh sửa</Text><Pressable onPress={() => setEditHistoryMessage(null)} style={styles.historyClose}><X color={colors.inkSoft} size={19} /></Pressable></View>
+            <View style={styles.historyCurrent}><Text style={styles.historyLabel}>Nội dung hiện tại</Text><Text style={styles.historyText}>{editHistoryMessage.text}</Text></View>
+            <ScrollView style={styles.historyList} contentContainerStyle={styles.historyListContent}>{(editHistoryMessage.editHistory || []).map((entry, index) => <View key={`${entry.eventId || entry.seq || entry.editedAt || index}`} style={styles.historyEntry}><View style={styles.historyEntryHeading}><Text style={styles.historyEntryTitle}>Nội dung cũ {index + 1}</Text>{entry.editedAt ? <Text style={styles.historyEntryTime}>{new Date(entry.editedAt).toLocaleString('vi-VN')}</Text> : null}</View><Text style={styles.historyText}>{entry.text}</Text></View>)}</ScrollView>
+          </View> : null}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -252,6 +306,7 @@ const styles = StyleSheet.create({
   error: { marginHorizontal: 14, marginBottom: 7, borderRadius: 12, backgroundColor: '#FDECEC', padding: 9 },
   errorText: { ...typography.caption, color: colors.danger },
   replyComposer: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 15, paddingVertical: 8, backgroundColor: colors.paper, borderTopWidth: 1, borderTopColor: colors.line },
+  editComposer: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 15, paddingVertical: 8, backgroundColor: '#FFF5EF', borderTopWidth: 1, borderTopColor: '#F2D3C4' },
   replyBar: { width: 3, alignSelf: 'stretch', borderRadius: 2, backgroundColor: colors.accent },
   replyBody: { flex: 1 },
   replyName: { ...typography.caption, color: colors.accentDeep },
@@ -264,5 +319,20 @@ const styles = StyleSheet.create({
   send: { width: 46, height: 46, borderRadius: 16, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   sendDisabled: { opacity: 0.38 },
   aiNote: { ...typography.caption, paddingHorizontal: 16, paddingBottom: 8, color: colors.muted, textAlign: 'center', backgroundColor: colors.paper, fontSize: 10 },
+  historyOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
+  historyBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(12,20,27,0.45)' },
+  historyCard: { width: '100%', maxHeight: '82%', borderRadius: 22, padding: 17, backgroundColor: colors.canvas, ...shadow },
+  historyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 11, borderBottomWidth: 1, borderBottomColor: colors.line },
+  historyTitle: { ...typography.title, color: colors.ink },
+  historyClose: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper },
+  historyCurrent: { marginTop: 14, padding: 11, borderRadius: 13, borderWidth: 1, borderColor: '#F2D3C4', backgroundColor: '#FFF5EF' },
+  historyLabel: { ...typography.caption, color: colors.accentDeep, fontFamily: 'BeVietnamPro_700Bold' },
+  historyText: { ...typography.body, color: colors.ink, marginTop: 6 },
+  historyList: { maxHeight: 320, marginTop: 12 },
+  historyListContent: { gap: 9, paddingBottom: 2 },
+  historyEntry: { padding: 11, borderRadius: 13, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.paper },
+  historyEntryHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  historyEntryTitle: { ...typography.caption, color: colors.ink, fontFamily: 'BeVietnamPro_700Bold' },
+  historyEntryTime: { ...typography.caption, color: colors.muted, fontSize: 9 },
   missing: { ...typography.body, color: colors.inkSoft, padding: 30 },
 });

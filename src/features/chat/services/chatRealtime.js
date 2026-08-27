@@ -471,6 +471,20 @@ function normalizeMessage(value, index) {
     }).filter(Boolean),
     reactions: normalizeReactions(message.reactions),
     reactionUsers: normalizeReactionUsers(message.reactionUsers),
+    ...(message.edited ? { edited: true } : {}),
+    ...(message.editedAt || message.edited_at ? { editedAt: conversationText(message.editedAt || message.edited_at) } : {}),
+    editHistory: conversationArray(message.editHistory || message.edit_history).map(entry => {
+      const normalized = conversationObject(entry);
+      if (!normalized) return null;
+      return {
+        ...normalized,
+        eventId: conversationIdentity(normalized.eventId || normalized.event_id),
+        seq: Number(normalized.seq) > 0 ? Number(normalized.seq) : undefined,
+        text: conversationText(normalized.text),
+        mentions: conversationArray(normalized.mentions).map(normalizeMention).filter(Boolean),
+        editedAt: conversationText(normalized.editedAt || normalized.edited_at),
+      };
+    }).filter(entry => entry && entry.text),
     receiptUsers: normalizeReceiptUsers(message.receiptUsers || message.receipts),
     systemEvent: normalizeEvent(message.systemEvent),
     friendEvent: normalizeEvent(message.friendEvent),
@@ -679,6 +693,7 @@ export function resolveTopicReadState({
   localReadFloor = 0,
   incomingReadCap = null,
   explicitUnreadCount,
+  ignoredSequences = [],
 } = {}) {
   const sequence = Math.max(0, Number(topicSequence) || 0);
   const serverRead = Math.max(0, Number(serverReadSeq) || 0);
@@ -694,7 +709,10 @@ export function resolveTopicReadState({
     ? Math.min(serverRead, parsedIncomingReadCap)
     : serverRead;
   const readSeq = Math.max(effectiveServerRead, readFloor);
-  const derivedUnreadCount = Math.max(0, sequence - readSeq);
+  const ignoredUnreadSequences = new Set((Array.isArray(ignoredSequences) ? ignoredSequences : [])
+    .map(value => Number(value))
+    .filter(value => Number.isFinite(value) && value > readSeq && value <= sequence));
+  const derivedUnreadCount = Math.max(0, sequence - readSeq - ignoredUnreadSequences.size);
   const explicitUnread = Number(explicitUnreadCount);
   // Tinode invokes topic.onData before refreshing topic.unread. The newest
   // sequence and the monotonic read cursor are therefore the authoritative
@@ -703,10 +721,15 @@ export function resolveTopicReadState({
   const badge = sequence > 0
     ? derivedUnreadCount
     : Number.isFinite(explicitUnread) ? Math.max(0, explicitUnread) : 0;
+  let unreadFromSeq = 0;
+  if (badge > 0) {
+    unreadFromSeq = readSeq + 1;
+    while (unreadFromSeq <= sequence && ignoredUnreadSequences.has(unreadFromSeq)) unreadFromSeq += 1;
+  }
 
   return {
     readSeq,
-    unreadFromSeq: badge > 0 ? readSeq + 1 : 0,
+    unreadFromSeq: sequence > 0 && unreadFromSeq > sequence ? 0 : unreadFromSeq,
     badge,
   };
 }

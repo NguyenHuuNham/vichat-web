@@ -3,11 +3,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   MAX_CHAT_ATTACHMENT_BYTES,
+  applyEditToMessage,
   applyRecallToMessage,
+  canEditDeliveredMessage,
   buildRecallEvent,
   canRecallDeliveredMessage,
   chatAttachmentValidationError,
   compactMessages,
+  editActorMatchesMessage,
+  editTargetsMessage,
   recallAppliesToViewer,
   recallPlaceholderSenderId,
 } from './messagePolicy.js';
@@ -52,6 +56,89 @@ test('recall events use the authenticated Tinode author instead of an optimistic
     actorId: 'usrTinodeAuthor',
     originalSenderId: 'management-account-id',
   }), 'usrTinodeAuthor');
+});
+
+test('only a delivered text message can be edited by its authenticated sender', () => {
+  const delivered = {
+    id: 'message-1',
+    seq: 42,
+    type: 'text',
+    sender: 'outgoing',
+    senderId: 'usr-author',
+    text: 'Nội dung cũ',
+    pending: false,
+    failed: false,
+    deliveryStatus: 'sent',
+  };
+  assert.equal(canEditDeliveredMessage(delivered), true);
+  assert.equal(canEditDeliveredMessage({ ...delivered, pending: true }), false);
+  assert.equal(canEditDeliveredMessage({ ...delivered, failed: true }), false);
+  assert.equal(canEditDeliveredMessage({ ...delivered, type: 'file' }), false);
+  assert.equal(canEditDeliveredMessage({ ...delivered, recalled: true }), false);
+  assert.equal(editActorMatchesMessage({ senderId: 'usr-author' }, delivered), true);
+  assert.equal(editActorMatchesMessage({ senderId: 'usr-other' }, delivered), false);
+});
+
+test('edit events use Tinode sequence when client message IDs differ', () => {
+  assert.equal(editTargetsMessage({ editEvent: { targetId: 'legacy-id', targetSeq: 42 } }, {
+    id: 'current-id',
+    seq: 42,
+  }), true);
+  assert.equal(editTargetsMessage({ editEvent: { targetId: 'current-id', targetSeq: 41 } }, {
+    id: 'current-id',
+    seq: 42,
+  }), false);
+  assert.equal(editTargetsMessage({ editEvent: { targetId: 'legacy-id' } }, {
+    id: 'current-id',
+    seq: 42,
+  }), false);
+});
+
+test('replaying edit events builds ordered history and ignores duplicate events', () => {
+  const original = {
+    id: 'message-1',
+    seq: 42,
+    type: 'text',
+    sender: 'incoming',
+    senderId: 'usr-author',
+    text: 'Bản đầu',
+    mentions: [],
+  };
+  const firstEdit = {
+    id: 'edit-1',
+    seq: 43,
+    senderId: 'usr-author',
+    createdAt: '2026-08-28T01:00:00.000Z',
+    editEvent: {
+      targetId: 'message-1',
+      targetSeq: 42,
+      actorId: 'spoofed-value',
+      text: 'Bản hai',
+      previousText: 'Bản đầu',
+      mentions: [],
+      createdAt: '2026-08-28T01:00:00.000Z',
+    },
+  };
+  const secondEdit = {
+    id: 'edit-2',
+    seq: 44,
+    senderId: 'usr-author',
+    createdAt: '2026-08-28T01:01:00.000Z',
+    editEvent: {
+      targetId: 'message-1',
+      targetSeq: 42,
+      text: 'Bản ba',
+      previousText: 'Bản hai',
+      mentions: [],
+      createdAt: '2026-08-28T01:01:00.000Z',
+    },
+  };
+  const afterFirst = applyEditToMessage(original, firstEdit);
+  const afterSecond = applyEditToMessage(afterFirst, secondEdit);
+  const afterDuplicate = applyEditToMessage(afterSecond, { ...secondEdit, id: 'different-client-id' });
+  assert.equal(afterSecond.text, 'Bản ba');
+  assert.deepEqual(afterSecond.editHistory.map(entry => entry.text), ['Bản đầu', 'Bản hai']);
+  assert.equal(afterDuplicate, afterSecond);
 });
 
 test('self recall applies only to the author while all recall applies to everyone', () => {

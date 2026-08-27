@@ -426,6 +426,21 @@ recalled target. A self-only recall projects the removed message as `null`, so
 clients must compact that projection before ordering or reading Tinode sequence
 fields. Missing `mode` is treated as `all` for legacy clients.
 
+Message editing uses the same append-only overlay pattern and is shared by
+mobile and ChatUI. The sender publishes a text control event prefixed with
+`__VICHAT_EDIT_EVENT__:` containing the target Tinode sequence, the optional
+client ID, the new text, mentions, the previous text/mentions and the edit
+timestamp. Clients never mutate or delete the original Tinode packet. During
+projection, the Tinode packet sender is authoritative for actor validation and
+the target sequence is authoritative when a legacy client ID differs; an edit
+is accepted only when the actor is the original message sender and the target
+is a delivered text message. Edit events are hidden from the timeline,
+notifications and unread counts, while the projected message exposes
+`edited`, `editedAt` and an ordered `editHistory` so the UI can show the
+current content and every prior version. Replaying the same event is
+idempotent, multiple edits are applied in Tinode sequence order, and no
+Chatmgt schema, API endpoint or database migration is introduced.
+
 Production uses `CHAT_ACCOUNT_SSO_ENABLED=true` and
 `CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED=true`. The cookie-based
 `POST /api/v1/auth/sso` endpoint remains available for compatible clients. The legacy
