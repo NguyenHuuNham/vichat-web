@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-28-02 - Cache-bust CSS cho release sua tin nhan
+
+- Thoi gian: 2026-08-28 03:20 (Asia/Saigon)
+- Loai: Sua loi | Van hanh | Web | Kiem thu | Tai lieu
+- Trang thai: Da test local; san sang commit, push va deploy production
+- Muc tieu: Dam bao trinh duyet production tai dung CSS cua release sua tin nhan, khong nhan SPA fallback cu tu edge cache sau khi deploy.
+- Pham vi: CSS ChatUI va gate kiem tra public asset; khong doi logic message edit, Tinode, API, database, volume, unread, notification hay setting user.
+- File da thay doi: `src/styles/index.css`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Them mot CSS custom property khong co tac dong hien thi de tao content-hash moi cho stylesheet. Public edge da giu fallback HTML cho ten CSS hash cu trong chuoi deploy rollback; content-hash moi buoc browser tai file CSS that.
+- Quyet dinh ky thuat: Cache-bust bang thay doi CSS vo hieu thay vi sua luong chat hoac xoa cache runtime; release van chi recreate `chat` va co trap rollback.
+- Database/API/cau hinh: Khong migration, schema, endpoint, secret, bien moi truong, volume hay thay doi setting user.
+- Kiem thu: `npm run test:frontend` dat 322/322; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` exit 0 voi bundle `index-bgsCe7N5.js`, `App-DSHy1ZEv.js`, `index-CwRWfTw_.css` va warning chunk App lon hon 500 KB; `git diff --check` dat voi warning LF/CRLF cua working copy.
+- Rui ro con lai: Can xac nhan build tao CSS hash moi va public URL khop candidate; neu gate fail, release khong duoc switch.
+- Viec tiep theo: Commit/push, tao archive moi, deploy qua `.206` -> `.20`, verify va cap nhat muc nay voi ket qua thuc te.
+- Commit/PR: Chua tao.
+
 ## 2026-08-28-01 - Sua tin nhan realtime
 
 - Thoi gian: 2026-08-28 (Asia/Saigon)

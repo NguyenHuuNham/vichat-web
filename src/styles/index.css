@@ -4,6 +4,7 @@
 
 /* --- CSS Variables & Design System --- */
 :root {
+    --vichat-message-edit-release: 1;
     --vichat-blue-dark: #123b39;
     --vichat-blue: #f4511e;
     --vichat-blue-light: #fff0e9;
