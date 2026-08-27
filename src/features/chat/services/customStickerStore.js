@@ -1,3 +1,5 @@
+import { viewerStorageIds } from './viewerPreferenceStorage.js';
+
 export const CUSTOM_STICKER_PACK_ID = 'custom';
 export const CUSTOM_STICKER_MAX_ITEMS = 48;
 export const CUSTOM_STICKER_MAX_BYTES = 2 * 1024 * 1024;
@@ -194,49 +196,101 @@ export function normalizeCustomStickerRecord(record) {
   };
 }
 
-export async function readCustomStickers(viewerId, factory = indexedDbFactory()) {
+function requestResult(request, fallbackMessage) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error(fallbackMessage));
+  });
+}
+
+function stickerForViewer(record, viewerId) {
+  const normalized = normalizeCustomStickerRecord(record);
+  if (!normalized) return null;
+  return {
+    ...normalized,
+    key: customStickerKey(viewerId, normalized.id),
+    viewerId,
+  };
+}
+
+function copyCustomStickerRecords(database, viewerId, records) {
+  if (records.length === 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    let transaction;
+    try {
+      transaction = database.transaction(STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      records.forEach(record => store.put({
+        ...record,
+        key: customStickerKey(viewerId, record.id),
+        viewerId,
+      }));
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('CUSTOM_STICKER_COPY_FAILED'));
+    transaction.onabort = () => reject(transaction.error || new Error('CUSTOM_STICKER_COPY_FAILED'));
+  });
+}
+
+function boundedStickers(stickers) {
+  const bounded = [];
+  let totalBytes = 0;
+  stickers
+    .sort((first, second) => second.createdAt.localeCompare(first.createdAt))
+    .forEach(sticker => {
+      if (bounded.length >= CUSTOM_STICKER_MAX_ITEMS) return;
+      if (sticker.size <= 0 || sticker.size > CUSTOM_STICKER_MAX_BYTES) return;
+      if (totalBytes + sticker.size > CUSTOM_STICKER_TOTAL_MAX_BYTES) return;
+      bounded.push(sticker);
+      totalBytes += sticker.size;
+    });
+  return bounded;
+}
+
+export async function readCustomStickers(viewerId, factory = indexedDbFactory(), aliasViewerIds = []) {
   const normalizedViewerId = String(viewerId || '').trim();
   if (!normalizedViewerId) return [];
   const database = await openCustomStickerDatabase(factory);
   if (!database) return [];
-  return new Promise((resolve, reject) => {
-    let request;
-    try {
-      request = database
+  const viewerIds = viewerStorageIds(normalizedViewerId, aliasViewerIds);
+  try {
+    const stickers = [];
+    const copiedIds = new Set();
+    for (const [index, candidateId] of viewerIds.entries()) {
+      const request = database
         .transaction(STORE_NAME, 'readonly')
         .objectStore(STORE_NAME)
         .index(VIEWER_INDEX_NAME)
-        .getAll(normalizedViewerId);
-    } catch (error) {
-      closeDatabase(database);
-      reject(error);
-      return;
-    }
-    request.onsuccess = () => {
-      closeDatabase(database);
-      const stickers = Array.from(request.result || [])
-        .map(normalizeCustomStickerRecord)
-        .filter(Boolean)
-        .sort((first, second) => second.createdAt.localeCompare(first.createdAt));
-      const bounded = [];
-      let totalBytes = 0;
-      stickers.forEach(sticker => {
-        if (bounded.length >= CUSTOM_STICKER_MAX_ITEMS) return;
-        if (sticker.size <= 0 || sticker.size > CUSTOM_STICKER_MAX_BYTES) return;
-        if (totalBytes + sticker.size > CUSTOM_STICKER_TOTAL_MAX_BYTES) return;
-        bounded.push(sticker);
-        totalBytes += sticker.size;
+        .getAll(candidateId);
+      const records = await requestResult(request, 'Không thể đọc kho sticker cá nhân.');
+      (Array.isArray(records) ? records : []).forEach(record => {
+        const sticker = stickerForViewer(record, normalizedViewerId);
+        const id = String(sticker?.id || '').trim();
+        if (!sticker || !id || stickers.some(item => item.id === id)) return;
+        stickers.push(sticker);
+        if (index > 0) copiedIds.add(id);
       });
-      resolve(bounded);
-    };
-    request.onerror = () => {
-      closeDatabase(database);
-      reject(request.error || new Error('Không thể đọc kho sticker cá nhân.'));
-    };
-  });
+    }
+    if (copiedIds.size > 0) {
+      const records = stickers
+        .filter(sticker => copiedIds.has(sticker.id))
+        .map(sticker => ({ ...sticker, viewerId: normalizedViewerId }));
+      try {
+        await copyCustomStickerRecords(database, normalizedViewerId, records);
+      } catch {
+        // The alias records remain available if copy-on-read is blocked.
+      }
+    }
+    return boundedStickers(stickers);
+  } finally {
+    closeDatabase(database);
+  }
 }
 
-export async function writeCustomStickerFiles(viewerId, files, factory = indexedDbFactory()) {
+export async function writeCustomStickerFiles(viewerId, files, factory = indexedDbFactory(), aliasViewerIds = []) {
   const normalizedViewerId = String(viewerId || '').trim();
   if (!normalizedViewerId) throw new Error('Thiếu tài khoản để lưu sticker cá nhân.');
   const sourceFiles = Array.from(files || []).filter(Boolean);
@@ -246,7 +300,7 @@ export async function writeCustomStickerFiles(viewerId, files, factory = indexed
     if (validationError) throw new Error(validationError);
   });
 
-  const existing = await readCustomStickers(normalizedViewerId, factory);
+  const existing = await readCustomStickers(normalizedViewerId, factory, aliasViewerIds);
   const existingFingerprints = new Set(existing.map(sticker => sticker.fingerprint));
   const uniqueFiles = [];
   let duplicateCount = 0;
@@ -307,31 +361,36 @@ export async function writeCustomStickerFiles(viewerId, files, factory = indexed
   });
 }
 
-export async function deleteCustomSticker(viewerId, stickerId, factory = indexedDbFactory()) {
+export async function deleteCustomSticker(viewerId, stickerId, factory = indexedDbFactory(), aliasViewerIds = []) {
   const normalizedViewerId = String(viewerId || '').trim();
   const normalizedStickerId = String(stickerId || '').trim();
   if (!normalizedViewerId || !normalizedStickerId) return false;
   const database = await openCustomStickerDatabase(factory);
   if (!database) return false;
   return new Promise((resolve, reject) => {
-    let request;
+    let transaction;
     try {
-      request = database
-        .transaction(STORE_NAME, 'readwrite')
-        .objectStore(STORE_NAME)
-        .delete(customStickerKey(normalizedViewerId, normalizedStickerId));
+      transaction = database.transaction(STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      viewerStorageIds(normalizedViewerId, aliasViewerIds).forEach(candidateId => {
+        store.delete(customStickerKey(candidateId, normalizedStickerId));
+      });
     } catch (error) {
       closeDatabase(database);
       reject(error);
       return;
     }
-    request.onsuccess = () => {
+    transaction.oncomplete = () => {
       closeDatabase(database);
       resolve(true);
     };
-    request.onerror = () => {
+    transaction.onerror = () => {
       closeDatabase(database);
-      reject(request.error || new Error('Không thể xóa sticker cá nhân.'));
+      reject(transaction.error || new Error('Không thể xóa sticker cá nhân.'));
+    };
+    transaction.onabort = () => {
+      closeDatabase(database);
+      reject(transaction.error || new Error('Không thể xóa sticker cá nhân.'));
     };
   });
 }

@@ -1,3 +1,5 @@
+import { viewerStorageIds } from './viewerPreferenceStorage.js';
+
 const LEGACY_STORAGE_PREFIX = 'vichat.conversation-categories.v1';
 const STORAGE_PREFIX = 'vichat.conversation-categories.v2';
 const STORAGE_VERSION = 2;
@@ -127,6 +129,31 @@ function writeStorage(key, value) {
   }
 }
 
+function categoryStateDifference(state) {
+  const defaults = defaultState();
+  return Number(JSON.stringify(state.categories) !== JSON.stringify(defaults.categories))
+    + Number(Object.keys(state.assignments).length > 0);
+}
+
+function categoryRecord(viewerId) {
+  const legacy = legacyAssignments(viewerId);
+  const stored = readStorage(storageKey(STORAGE_PREFIX, viewerId));
+  const state = normalizedState(stored, legacy);
+  return {
+    viewerId,
+    state,
+    updatedAt: Number(stored?.updatedAt) || 0,
+    difference: categoryStateDifference(state),
+    hasData: Boolean(stored) || Object.keys(legacy).length > 0,
+  };
+}
+
+function writeCategoryStateForViewer(viewerId, state) {
+  writeStorage(storageKey(STORAGE_PREFIX, viewerId), { ...state, updatedAt: Date.now() });
+  // Keep fixed legacy assignments available if a ChatUI rollback is needed.
+  writeStorage(storageKey(LEGACY_STORAGE_PREFIX, viewerId), state.assignments);
+}
+
 function newCategoryId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return `category-${crypto.randomUUID()}`;
@@ -134,19 +161,26 @@ function newCategoryId() {
   return `category-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function readConversationCategoryState(viewerId) {
+export function readConversationCategoryState(viewerId, aliasViewerIds = []) {
   if (!viewerId) return defaultState();
-  const legacy = legacyAssignments(viewerId);
-  const stored = readStorage(storageKey(STORAGE_PREFIX, viewerId));
-  return normalizedState(stored, legacy);
+  const viewerIds = viewerStorageIds(viewerId, aliasViewerIds);
+  const records = viewerIds
+    .map(categoryRecord)
+    .filter(record => record.hasData);
+  if (records.length === 0) return defaultState();
+  const order = new Map(viewerIds.map((candidateId, index) => [candidateId, index]));
+  const timestamped = records.filter(record => record.updatedAt > 0);
+  const selected = timestamped.length > 0
+    ? timestamped.sort((left, right) => right.updatedAt - left.updatedAt || order.get(left.viewerId) - order.get(right.viewerId))[0]
+    : (records.find(record => record.difference > 0) || records[0]);
+  if (selected.viewerId !== String(viewerId).trim()) writeCategoryStateForViewer(viewerId, selected.state);
+  return selected.state;
 }
 
-export function writeConversationCategoryState(viewerId, value) {
+export function writeConversationCategoryState(viewerId, value, aliasViewerIds = []) {
   const state = normalizedState(value);
   if (viewerId) {
-    writeStorage(storageKey(STORAGE_PREFIX, viewerId), state);
-    // Keep fixed legacy assignments available if a ChatUI rollback is needed.
-    writeStorage(storageKey(LEGACY_STORAGE_PREFIX, viewerId), state.assignments);
+    viewerStorageIds(viewerId, aliasViewerIds).forEach(candidateId => writeCategoryStateForViewer(candidateId, state));
   }
   return state;
 }
@@ -156,32 +190,32 @@ export function normalizeConversationCategory(value, categories = CONVERSATION_C
   return categories.some(category => category.id === normalized) ? normalized : '';
 }
 
-export function readConversationCategories(viewerId) {
+export function readConversationCategories(viewerId, aliasViewerIds = []) {
   if (!viewerId) return {};
-  return readConversationCategoryState(viewerId).assignments;
+  return readConversationCategoryState(viewerId, aliasViewerIds).assignments;
 }
 
-export function writeConversationCategories(viewerId, categories) {
-  const state = readConversationCategoryState(viewerId);
+export function writeConversationCategories(viewerId, categories, aliasViewerIds = []) {
+  const state = readConversationCategoryState(viewerId, aliasViewerIds);
   return writeConversationCategoryState(viewerId, {
     ...state,
     assignments: categories,
-  }).assignments;
+  }, aliasViewerIds).assignments;
 }
 
-export function setConversationCategory(viewerId, conversationId, value) {
-  const state = readConversationCategoryState(viewerId);
+export function setConversationCategory(viewerId, conversationId, value, aliasViewerIds = []) {
+  const state = readConversationCategoryState(viewerId, aliasViewerIds);
   const next = { ...state.assignments };
   const key = String(conversationId || '').trim();
   const normalized = normalizeConversationCategory(value, state.categories);
   if (!key) return next;
   if (normalized) next[key] = normalized;
   else delete next[key];
-  return writeConversationCategoryState(viewerId, { ...state, assignments: next }).assignments;
+  return writeConversationCategoryState(viewerId, { ...state, assignments: next }, aliasViewerIds).assignments;
 }
 
-export function saveConversationCategory(viewerId, value) {
-  const state = readConversationCategoryState(viewerId);
+export function saveConversationCategory(viewerId, value, aliasViewerIds = []) {
+  const state = readConversationCategoryState(viewerId, aliasViewerIds);
   const id = categoryId(value?.id) || newCategoryId();
   const label = categoryName(value?.label || value?.name);
   if (!label) return { state, category: null, error: 'name_required' };
@@ -202,21 +236,21 @@ export function saveConversationCategory(viewerId, value) {
   const categories = existing
     ? state.categories.map(item => item.id === id ? category : item)
     : [...state.categories, category];
-  const nextState = writeConversationCategoryState(viewerId, { ...state, categories });
+  const nextState = writeConversationCategoryState(viewerId, { ...state, categories }, aliasViewerIds);
   return { state: nextState, category, error: '' };
 }
 
-export function removeConversationCategory(viewerId, value) {
-  const state = readConversationCategoryState(viewerId);
+export function removeConversationCategory(viewerId, value, aliasViewerIds = []) {
+  const state = readConversationCategoryState(viewerId, aliasViewerIds);
   const id = categoryId(value);
   const categories = state.categories.filter(category => category.id !== id);
   const assignments = Object.fromEntries(Object.entries(state.assignments)
     .filter(([, assignedCategoryId]) => assignedCategoryId !== id));
-  return writeConversationCategoryState(viewerId, { ...state, categories, assignments });
+  return writeConversationCategoryState(viewerId, { ...state, categories, assignments }, aliasViewerIds);
 }
 
-export function reorderConversationCategories(viewerId, orderedIds) {
-  const state = readConversationCategoryState(viewerId);
+export function reorderConversationCategories(viewerId, orderedIds, aliasViewerIds = []) {
+  const state = readConversationCategoryState(viewerId, aliasViewerIds);
   const byId = new Map(state.categories.map(category => [category.id, category]));
   const categories = [];
   (Array.isArray(orderedIds) ? orderedIds : []).forEach(value => {
@@ -226,11 +260,11 @@ export function reorderConversationCategories(viewerId, orderedIds) {
     byId.delete(category.id);
   });
   categories.push(...byId.values());
-  return writeConversationCategoryState(viewerId, { ...state, categories });
+  return writeConversationCategoryState(viewerId, { ...state, categories }, aliasViewerIds);
 }
 
-export function setCategoryConversations(viewerId, value, conversationIds) {
-  const state = readConversationCategoryState(viewerId);
+export function setCategoryConversations(viewerId, value, conversationIds, aliasViewerIds = []) {
+  const state = readConversationCategoryState(viewerId, aliasViewerIds);
   const id = normalizeConversationCategory(value, state.categories);
   if (!id) return state;
   const selected = new Set((Array.isArray(conversationIds) ? conversationIds : [])
@@ -241,11 +275,11 @@ export function setCategoryConversations(viewerId, value, conversationIds) {
   selected.forEach(conversationId => {
     assignments[conversationId] = id;
   });
-  return writeConversationCategoryState(viewerId, { ...state, assignments });
+  return writeConversationCategoryState(viewerId, { ...state, assignments }, aliasViewerIds);
 }
 
-export function applyLocalConversationCategories(rooms, viewerId) {
-  const categories = readConversationCategories(viewerId);
+export function applyLocalConversationCategories(rooms, viewerId, aliasViewerIds = []) {
+  const categories = readConversationCategories(viewerId, aliasViewerIds);
   return Object.fromEntries(Object.entries(rooms || {}).map(([id, room]) => {
     const key = String(room?.managementId || room?.id || id);
     return [id, { ...room, category: categories[key] || '' }];

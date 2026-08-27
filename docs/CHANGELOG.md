@@ -6,6 +6,39 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-27-07 - Khoi phuc icon mention khi tin legacy thieu metadata
+
+- Thoi gian: 2026-08-27 16:31 (Asia/Saigon)
+- Loai: Sua loi | Web | Realtime | Kiem thu | Tai lieu
+- Trang thai: Hoan tat; chua commit, chua deploy
+- Muc tieu: Khi tin nhan moi trong nhom hien token `@Ten` nhung khong co `x-mentions`, sidebar van hien dung icon mention mau xanh ma khong lam thay doi unread boundary, badge hoac notification hien co.
+- Pham vi: Chinh sach nhan dien mention cua unread conversation; khong doi giao dien tin nhan, payload gui di, API, Tinode protocol, database hay storage setting cua user.
+- File da thay doi: `src/features/chat/services/mentionPolicy.js`, `src/features/chat/services/mentionPolicy.test.js`, `docs/CHANGELOG.md`.
+- Nguyen nhan: Tin tu client/luong legacy co the giu noi dung `@Ten` nhung thieu metadata `message.mentions`; preview van hien noi dung nhung dieu kien icon khong co target de match.
+- Noi dung: `messageMentionsViewer` tiep tuc uu tien metadata mention hop le; chi khi metadata vang/malformed moi fallback match token trong `message.text`/caption theo ten viewer, co boundary cho token, accent-insensitive va ho tro `@All`. Metadata mention nguoi khac van la nguon chuan va khong bi fallback ghi de.
+- Quyet dinh ky thuat: Sua tai helper policy dung chung thay vi chen logic vao component sidebar; giu nguyen loc tin incoming va unread boundary o `App.jsx`, nen icon chi xuat hien cho tin moi chua doc.
+- Database/API/cau hinh: Khong migration database, khong doi endpoint, secret, bien moi truong, storage key, commit hay deploy. Cac setting user va luong commit/deploy an toan cua muc `2026-08-27-06` duoc giu nguyen.
+- Kiem thu: `node --test src/features/chat/services/mentionPolicy.test.js` dat 8/8; `npm run test:frontend` dat 310/310; `npm run lint` exit 0 voi warning legacy/vendor tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` exit 0 voi warning chunk `App-DSDukVwY.js` lon hon 500 KB; `git diff --check` dat voi warning LF/CRLF cua working copy.
+- Rui ro con lai: Client legacy khong gui metadata va dung ten hien thi khac moi ten viewer da biet co the khong duoc nhan dien; fallback co the khong phan biet duoc ten trung khi server khong cung cap identity.
+- Viec tiep theo: Chay UAT tren trinh duyet voi tin nhan tu client moi va legacy; neu phat hanh thi commit/push va deploy theo workflow, khong reset browser storage, volume hay database.
+- Commit/PR: Chua tao
+
+## 2026-08-27-06 - Bao toan setting viewer khi doi identity va deploy
+
+- Thoi gian: 2026-08-27 16:06 (Asia/Saigon)
+- Loai: Sua loi | Web | Du lieu | Bao mat | Kiem thu | Tai lieu | Van hanh
+- Trang thai: Hoan tat; chua commit, chua deploy
+- Muc tieu: Khong lam mat setting local da cai dat khi Account/Tinode doi cach bieu dien identity, refresh frontend, commit hoac deploy lai.
+- Pham vi: Keyboard shortcuts, notification/theme, conversation category, conversation pin, local background, custom/recent sticker, message action va web PIN lock; khong doi noi dung Tinode, Chatmgt, API hoac database.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/components/StickerPicker.jsx`, `src/features/chat/services/viewerPreferenceStorage.js`, `src/features/chat/services/keyboardShortcuts.js`, `src/features/chat/services/keyboardShortcuts.test.js`, `src/features/chat/services/conversationCategoryPolicy.js`, `src/features/chat/services/conversationCategoryPolicy.test.js`, `src/features/chat/services/conversationPinPolicy.js`, `src/features/chat/services/conversationPinPolicy.test.js`, `src/features/chat/services/conversationBackground.js`, `src/features/chat/services/conversationBackground.test.js`, `src/features/chat/services/customStickerStore.js`, `src/features/chat/services/customStickerStore.test.js`, `src/features/chat/services/stickerCatalog.js`, `src/features/chat/services/stickerCatalog.test.js`, `src/features/chat/services/messageActionStorage.js`, `src/features/chat/services/messageActionStorage.test.js`, `src/features/security/services/pinLock.js`, `src/features/security/services/pinLock.test.js`, `package.json`, `README.md`, `dist/index.html`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`.
+- Noi dung: Giu nguyen ten localStorage/IndexedDB hien co; dung Account ID on dinh lam key chinh, doc UID/identity cu nhu alias va copy record hop le sang key chinh ma khong xoa key cu. Cac thao tac ghi preference co alias dong bo ban ghi; custom sticker doc merge alias truoc khi ghi item moi; thao tac xoa, bo ghim, clear hoac logout don dep marker PIN session tren tat ca alias da biet. Them test cho alias-only migration, partial write, explicit false action, clear marker va delete.
+- Quyet dinh ky thuat: Migration chi copy-on-read va uu tien record hop le cua identity hien tai/record moi hon theo policy tung preference; khong doi storage contract, khong dua preference len backend va khong dung commit/deploy de reset browser storage. Clear/delete la hanh dong chu dong cua user; primary local background clear marker van uu tien alias cu.
+- Database/API/cau hinh: Khong migration database, khong doi API, Tinode protocol, secret hay bien moi truong. Khi deploy production chi recreate stateless service can thiet; phai giu `.env`, runtime files, named volumes, database/upload va khong dung `docker compose down -v`.
+- Kiem thu: Da chay targeted alias tests dat 53/53; `npm run test:frontend` dat 308/308; `npm run lint` exit 0, chi con warning legacy/vendor tai `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` exit 0 voi bundle `index-BASnJ3Fp.js`, `App-AFjndrvJ.js`, CSS `index-CR6IwdSS.css` va warning chunk App lon hon 500 KB; `git diff --check` dat voi warning LF/CRLF cua working copy.
+- Rui ro con lai: Chua UAT tren trinh duyet production; mot record hu hong hoac storage het dung luong van chi co the doc/copy best-effort. Chua commit va chua deploy trong lan nay.
+- Viec tiep theo: Neu phat hanh, tao commit/push theo workflow, backup/verify release va chi recreate service stateless; giu nguyen `.env`, runtime va named volumes.
+- Commit/PR: Chua tao
+
 ## 2026-08-27-05 - Cach ly identity Account mo ho thay vi chan ca danh ba
 
 - Thoi gian: 2026-08-27 14:39-15:18 (Asia/Saigon)

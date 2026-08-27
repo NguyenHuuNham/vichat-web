@@ -69,3 +69,35 @@ test('keeps custom sticker ids in recent history and removes them with the libra
     else globalThis.window = previousWindow;
   }
 });
+
+test('merges recent stickers from an identity alias and synchronizes removals', () => {
+  const previousWindow = globalThis.window;
+  const values = new Map([
+    [recentStickerStorageKey('account-1'), JSON.stringify(['positive-1'])],
+    [recentStickerStorageKey('legacy-uid'), JSON.stringify(['custom-one', 'positive-1'])],
+  ]);
+  globalThis.window = {
+    localStorage: {
+      getItem: key => values.get(key) || null,
+      setItem: (key, value) => values.set(key, value),
+    },
+  };
+
+  try {
+    assert.deepEqual(readRecentStickerIds('account-1', ['legacy-uid']), ['positive-1', 'custom-one']);
+    assert.deepEqual(
+      JSON.parse(values.get(recentStickerStorageKey('account-1'))),
+      ['positive-1', 'custom-one'],
+    );
+    assert.deepEqual(forgetStickerId('account-1', 'custom-one', ['legacy-uid']), ['positive-1']);
+    assert.deepEqual(JSON.parse(values.get(recentStickerStorageKey('legacy-uid'))), ['positive-1']);
+    assert.deepEqual(rememberStickerId('account-1', 'custom-one', ['legacy-uid']), ['custom-one', 'positive-1']);
+    assert.deepEqual(
+      JSON.parse(values.get(recentStickerStorageKey('legacy-uid'))),
+      ['custom-one', 'positive-1'],
+    );
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});

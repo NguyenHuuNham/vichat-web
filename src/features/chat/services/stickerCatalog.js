@@ -1,3 +1,5 @@
+import { viewerStorageIds } from './viewerPreferenceStorage.js';
+
 const STICKER_ROOT = '/stickers/puppysoft';
 const RECENT_STORAGE_PREFIX = 'vichat.stickers.recent.v1';
 
@@ -510,38 +512,57 @@ export function isRememberedStickerId(id) {
   return stickerId.length <= 80 && (Boolean(stickerById(stickerId)) || /^custom-[a-z0-9-]+$/i.test(stickerId));
 }
 
-export function readRecentStickerIds(scope = 'anonymous') {
+export function readRecentStickerIds(scope = 'anonymous', aliasScopes = []) {
   if (typeof window === 'undefined') return [];
-  try {
-    const value = JSON.parse(window.localStorage.getItem(recentStickerStorageKey(scope)) || '[]');
-    return Array.isArray(value)
-      ? value.map(id => String(id || '')).filter(isRememberedStickerId).slice(0, 24)
-      : [];
-  } catch {
-    return [];
+  const scopes = viewerStorageIds(scope, aliasScopes);
+  const recentIds = [];
+  let readAlias = false;
+  scopes.forEach((candidateScope, index) => {
+    try {
+      const value = JSON.parse(window.localStorage.getItem(recentStickerStorageKey(candidateScope)) || '[]');
+      if (!Array.isArray(value)) return;
+      if (index > 0) readAlias = true;
+      value.map(id => String(id || '')).filter(isRememberedStickerId).forEach(id => {
+        if (!recentIds.includes(id) && recentIds.length < 24) recentIds.push(id);
+      });
+    } catch {
+      // A corrupt alias must not hide valid recent stickers.
+    }
+  });
+  if (readAlias && recentIds.length > 0) {
+    try {
+      window.localStorage.setItem(recentStickerStorageKey(scopes[0]), JSON.stringify(recentIds));
+    } catch {
+      // The alias remains usable when copy-on-read is unavailable.
+    }
   }
+  return recentIds;
 }
 
-export function rememberStickerId(scope, id) {
+export function rememberStickerId(scope, id, aliasScopes = []) {
   const stickerId = String(id || '');
-  if (!isRememberedStickerId(stickerId) || typeof window === 'undefined') return readRecentStickerIds(scope);
-  const next = [stickerId, ...readRecentStickerIds(scope).filter(value => value !== stickerId)].slice(0, 24);
-  try {
-    window.localStorage.setItem(recentStickerStorageKey(scope), JSON.stringify(next));
-  } catch {
-    // Recent stickers are optional and must never block sending.
-  }
+  if (!isRememberedStickerId(stickerId) || typeof window === 'undefined') return readRecentStickerIds(scope, aliasScopes);
+  const next = [stickerId, ...readRecentStickerIds(scope, aliasScopes).filter(value => value !== stickerId)].slice(0, 24);
+  viewerStorageIds(scope, aliasScopes).forEach(candidateScope => {
+    try {
+      window.localStorage.setItem(recentStickerStorageKey(candidateScope), JSON.stringify(next));
+    } catch {
+      // Recent stickers are optional and must never block sending.
+    }
+  });
   return next;
 }
 
-export function forgetStickerId(scope, id) {
+export function forgetStickerId(scope, id, aliasScopes = []) {
   if (typeof window === 'undefined') return [];
   const stickerId = String(id || '');
-  const next = readRecentStickerIds(scope).filter(value => value !== stickerId);
-  try {
-    window.localStorage.setItem(recentStickerStorageKey(scope), JSON.stringify(next));
-  } catch {
-    // Removing a recent shortcut is optional and must not block library cleanup.
-  }
+  const next = readRecentStickerIds(scope, aliasScopes).filter(value => value !== stickerId);
+  viewerStorageIds(scope, aliasScopes).forEach(candidateScope => {
+    try {
+      window.localStorage.setItem(recentStickerStorageKey(candidateScope), JSON.stringify(next));
+    } catch {
+      // Removing a recent shortcut is optional and must not block library cleanup.
+    }
+  });
   return next;
 }

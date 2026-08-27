@@ -1,3 +1,5 @@
+import { viewerStorageIds } from './viewerPreferenceStorage.js';
+
 const STORAGE_PREFIX = 'vichat.conversation-backgrounds.v1';
 
 export const CONVERSATION_BACKGROUND_MAX_BYTES = 8 * 1024 * 1024;
@@ -76,6 +78,82 @@ function storageKey(viewerId, tenantId, conversationId) {
     .join(':');
 }
 
+function backgroundViewerIds(viewerId, aliasViewerIds = []) {
+  return viewerStorageIds(viewerId, aliasViewerIds);
+}
+
+function parseStoredBackground(raw) {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const nested = value.background && typeof value.background === 'object' ? value.background : value;
+    const scope = text(value.scope || nested?.scope) === CONVERSATION_BACKGROUND_SCOPES.SHARED
+      ? CONVERSATION_BACKGROUND_SCOPES.SHARED
+      : CONVERSATION_BACKGROUND_SCOPES.LOCAL;
+    const background = value.cleared === true ? null : normalizeConversationBackground(nested);
+    if (value.cleared !== true && !background) return null;
+    return {
+      scope,
+      background: background ? { ...background, scope } : null,
+      cleared: value.cleared === true,
+      updatedAt: text(value.updatedAt),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function readStoredBackground(storage, viewerId, tenantId, conversationId) {
+  try {
+    const raw = storage.getItem(storageKey(viewerId, tenantId, conversationId));
+    const preference = parseStoredBackground(raw);
+    return preference ? { viewerId, preference } : null;
+  } catch {
+    return null;
+  }
+}
+
+function backgroundForViewer(background, viewerId, tenantId, conversationId) {
+  if (!background?.customKey) return background;
+  const key = backgroundFileKey(viewerId, tenantId, conversationId);
+  return {
+    ...background,
+    customKey: key,
+    url: `indexeddb://${key}`,
+  };
+}
+
+function writeStoredBackground(storage, viewerId, tenantId, conversationId, preference) {
+  const background = preference.background
+    ? backgroundForViewer(preference.background, viewerId, tenantId, conversationId)
+    : null;
+  storage.setItem(storageKey(viewerId, tenantId, conversationId), JSON.stringify({
+    scope: preference.scope,
+    background,
+    cleared: !background,
+    ...(preference.updatedAt ? { updatedAt: preference.updatedAt } : {}),
+  }));
+}
+
+function selectStoredBackground(viewerId, tenantId, conversationId, storage, aliasViewerIds = []) {
+  if (!storage) return null;
+  const viewerIds = backgroundViewerIds(viewerId, aliasViewerIds);
+  for (const [index, candidateId] of viewerIds.entries()) {
+    const record = readStoredBackground(storage, candidateId, tenantId, conversationId);
+    if (!record) continue;
+    if (index > 0) {
+      try {
+        writeStoredBackground(storage, viewerIds[0], tenantId, conversationId, record.preference);
+      } catch {
+        // The alias remains usable when copy-on-read is unavailable.
+      }
+    }
+    return { ...record, index };
+  }
+  return null;
+}
+
 export function normalizeConversationBackground(value) {
   if (!value || typeof value !== 'object') return null;
   const scope = text(value.scope || value.visibility || value.backgroundScope);
@@ -97,34 +175,35 @@ export function normalizeConversationBackground(value) {
   };
 }
 
-export function readConversationBackground(viewerId, tenantId, conversationId, storage = globalThis?.localStorage) {
-  if (!viewerId || !conversationId || !storage) return null;
-  try {
-    const raw = storage.getItem(storageKey(viewerId, tenantId, conversationId));
-    const parsed = raw ? JSON.parse(raw) : null;
-    const backgroundValue = parsed?.background && typeof parsed.background === 'object' ? parsed.background : parsed;
-    const normalized = parsed?.cleared === true
-      ? createClearedConversationBackground(CONVERSATION_BACKGROUND_SCOPES.LOCAL, parsed.updatedAt)
-      : normalizeConversationBackground(backgroundValue);
-    const scope = text(parsed?.scope || backgroundValue?.scope) === CONVERSATION_BACKGROUND_SCOPES.SHARED
-      ? CONVERSATION_BACKGROUND_SCOPES.SHARED
-      : CONVERSATION_BACKGROUND_SCOPES.LOCAL;
-    return normalized && !normalized.cleared
-      ? { ...normalized, scope }
-      : null;
-  } catch {
-    return null;
-  }
+export function readConversationBackground(
+  viewerId,
+  tenantId,
+  conversationId,
+  storage = globalThis?.localStorage,
+  aliasViewerIds = [],
+) {
+  const record = selectStoredBackground(viewerId, tenantId, conversationId, storage, aliasViewerIds);
+  return record?.preference.background || null;
 }
 
-export function writeConversationBackground(viewerId, tenantId, conversationId, value, storage = globalThis?.localStorage) {
+export function writeConversationBackground(
+  viewerId,
+  tenantId,
+  conversationId,
+  value,
+  storage = globalThis?.localStorage,
+  aliasViewerIds = [],
+) {
   const normalized = normalizeConversationBackground(value);
   if (!normalized || !viewerId || !conversationId || !storage) return normalized;
-  try {
-    storage.setItem(storageKey(viewerId, tenantId, conversationId), JSON.stringify(normalized));
-  } catch {
-    // A local preference must not block the active chat if storage is full.
-  }
+  const preference = { scope: normalized.scope || CONVERSATION_BACKGROUND_SCOPES.LOCAL, background: normalized };
+  backgroundViewerIds(viewerId, aliasViewerIds).forEach(candidateId => {
+    try {
+      writeStoredBackground(storage, candidateId, tenantId, conversationId, preference);
+    } catch {
+      // A local preference must not block the active chat if storage is full.
+    }
+  });
   return normalized;
 }
 
@@ -144,26 +223,19 @@ export function createClearedConversationBackground(
   };
 }
 
-export function readConversationBackgroundPreference(viewerId, tenantId, conversationId, storage = globalThis?.localStorage) {
-  if (!viewerId || !conversationId || !storage) return null;
-  try {
-    const raw = storage.getItem(storageKey(viewerId, tenantId, conversationId));
-    if (!raw) return null;
-    const value = JSON.parse(raw);
-    const nested = value?.background && typeof value.background === 'object' ? value.background : value;
-    const scope = text(value?.scope || nested?.scope) === CONVERSATION_BACKGROUND_SCOPES.SHARED
-      ? CONVERSATION_BACKGROUND_SCOPES.SHARED
-      : CONVERSATION_BACKGROUND_SCOPES.LOCAL;
-    const backgroundValue = value?.cleared === true
-      ? null
-      : normalizeConversationBackground(nested);
-    return {
-      scope,
-      background: backgroundValue ? { ...backgroundValue, scope } : null,
-    };
-  } catch {
-    return null;
-  }
+export function readConversationBackgroundPreference(
+  viewerId,
+  tenantId,
+  conversationId,
+  storage = globalThis?.localStorage,
+  aliasViewerIds = [],
+) {
+  const record = selectStoredBackground(viewerId, tenantId, conversationId, storage, aliasViewerIds);
+  if (!record?.preference) return null;
+  return {
+    scope: record.preference.scope,
+    background: record.preference.background,
+  };
 }
 
 export function writeConversationBackgroundPreference(
@@ -173,33 +245,46 @@ export function writeConversationBackgroundPreference(
   scope,
   value,
   storage = globalThis?.localStorage,
+  aliasViewerIds = [],
 ) {
   const normalizedScope = scope === CONVERSATION_BACKGROUND_SCOPES.SHARED
     ? CONVERSATION_BACKGROUND_SCOPES.SHARED
     : CONVERSATION_BACKGROUND_SCOPES.LOCAL;
   const normalized = value ? normalizeConversationBackground({ ...value, scope: normalizedScope }) : null;
   if (!viewerId || !conversationId || !storage) return normalized;
-  try {
-    storage.setItem(storageKey(viewerId, tenantId, conversationId), JSON.stringify({
-      scope: normalizedScope,
-      background: normalized,
-      cleared: !normalized,
-      updatedAt: new Date().toISOString(),
-    }));
-  } catch {
-    // A local preference must not block the active chat if storage is full.
-  }
+  const preference = {
+    scope: normalizedScope,
+    background: normalized,
+    updatedAt: new Date().toISOString(),
+  };
+  backgroundViewerIds(viewerId, aliasViewerIds).forEach(candidateId => {
+    try {
+      writeStoredBackground(storage, candidateId, tenantId, conversationId, preference);
+    } catch {
+      // A local preference must not block the active chat if storage is full.
+    }
+  });
   return normalized;
 }
 
-export function clearConversationBackground(viewerId, tenantId, conversationId, storage = globalThis?.localStorage) {
+export function clearConversationBackground(
+  viewerId,
+  tenantId,
+  conversationId,
+  storage = globalThis?.localStorage,
+  aliasViewerIds = [],
+) {
   if (!viewerId || !conversationId || !storage) return false;
-  try {
-    storage.removeItem(storageKey(viewerId, tenantId, conversationId));
-    return true;
-  } catch {
-    return false;
+  let cleared = false;
+  for (const candidateId of backgroundViewerIds(viewerId, aliasViewerIds)) {
+    try {
+      storage.removeItem(storageKey(candidateId, tenantId, conversationId));
+      cleared = true;
+    } catch {
+      // Keep clearing other identity aliases.
+    }
   }
+  return cleared;
 }
 
 export function validateConversationBackgroundFile(file, { localOnly = false } = {}) {
@@ -299,42 +384,94 @@ function backgroundFileRecord(record) {
   return background ? { ...background, blob: record.blob } : null;
 }
 
-export async function readConversationBackgroundFile(viewerId, tenantId, conversationId, factory = indexedDbFactory()) {
-  const metadata = readConversationBackground(viewerId, tenantId, conversationId);
-  if (!metadata?.customKey) return null;
-  const database = await openBackgroundDatabase(factory);
-  if (!database) return null;
+function requestResult(request, fallbackMessage) {
   return new Promise((resolve, reject) => {
-    let request;
-    try {
-      request = database
-        .transaction(STORE_NAME, 'readonly')
-        .objectStore(STORE_NAME)
-        .get(metadata.customKey);
-    } catch (error) {
-      closeDatabase(database);
-      reject(error);
-      return;
-    }
-    request.onsuccess = () => {
-      closeDatabase(database);
-      const record = backgroundFileRecord(request.result);
-      resolve(record ? { ...record, ...metadata } : null);
-    };
-    request.onerror = () => {
-      closeDatabase(database);
-      reject(request.error || new Error('Không thể đọc ảnh nền đã lưu.'));
-    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error(fallbackMessage));
   });
 }
 
-export async function writeConversationBackgroundFile(viewerId, tenantId, conversationId, file, factory = indexedDbFactory()) {
+function copyBackgroundFileRecord(database, targetKey, sourceRecord) {
+  return new Promise((resolve, reject) => {
+    let transaction;
+    try {
+      transaction = database.transaction(STORE_NAME, 'readwrite');
+      transaction.objectStore(STORE_NAME).put({ ...sourceRecord, key: targetKey });
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('BACKGROUND_COPY_FAILED'));
+    transaction.onabort = () => reject(transaction.error || new Error('BACKGROUND_COPY_FAILED'));
+  });
+}
+
+export async function readConversationBackgroundFile(
+  viewerId,
+  tenantId,
+  conversationId,
+  factory = indexedDbFactory(),
+  aliasViewerIds = [],
+) {
+  const selected = selectStoredBackground(
+    viewerId,
+    tenantId,
+    conversationId,
+    globalThis?.localStorage,
+    aliasViewerIds,
+  );
+  const metadata = selected?.preference.background;
+  if (!metadata?.customKey) return null;
+  const database = await openBackgroundDatabase(factory);
+  if (!database) return null;
+  const viewerIds = backgroundViewerIds(viewerId, aliasViewerIds);
+  const keys = [...new Set([
+    metadata.customKey,
+    ...viewerIds.map(candidateId => backgroundFileKey(candidateId, tenantId, conversationId)),
+  ])];
+  try {
+    for (const key of keys) {
+      const request = database
+        .transaction(STORE_NAME, 'readonly')
+        .objectStore(STORE_NAME)
+        .get(key);
+      const sourceRecord = await requestResult(request, 'BACKGROUND_READ_FAILED');
+      const record = backgroundFileRecord(sourceRecord);
+      if (!record) continue;
+      const primaryKey = backgroundFileKey(viewerIds[0], tenantId, conversationId);
+      if (key !== primaryKey) {
+        try {
+          await copyBackgroundFileRecord(database, primaryKey, sourceRecord);
+        } catch {
+          // The legacy file remains available when copy-on-read is blocked.
+        }
+      }
+      const primaryMetadata = backgroundForViewer(metadata, viewerIds[0], tenantId, conversationId);
+      return { ...record, ...primaryMetadata };
+    }
+    return null;
+  } finally {
+    closeDatabase(database);
+  }
+}
+
+export async function writeConversationBackgroundFile(
+  viewerId,
+  tenantId,
+  conversationId,
+  file,
+  factory = indexedDbFactory(),
+  aliasViewerIds = [],
+) {
   const validationError = validateConversationBackgroundFile(file, { localOnly: true });
   if (validationError) throw new Error(validationError);
   if (!viewerId || !conversationId) throw new Error('Thiếu cuộc trò chuyện để lưu hình nền.');
   const database = await openBackgroundDatabase(factory);
   if (!database) throw new Error('Trình duyệt không hỗ trợ lưu ảnh hình nền.');
-  const key = backgroundFileKey(viewerId, tenantId, conversationId);
+  const normalizedViewerId = String(viewerId).trim();
+  const viewerIds = backgroundViewerIds(normalizedViewerId, aliasViewerIds);
+  const key = backgroundFileKey(normalizedViewerId, tenantId, conversationId);
   const metadata = normalizeConversationBackground({
     id: 'custom',
     customKey: key,
@@ -351,49 +488,70 @@ export async function writeConversationBackgroundFile(viewerId, tenantId, conver
     size: Number(file.size) || 0,
     updatedAt: metadata.updatedAt,
   };
+  const records = viewerIds.map(candidateId => ({
+    ...record,
+    key: backgroundFileKey(candidateId, tenantId, conversationId),
+  }));
   return new Promise((resolve, reject) => {
-    let request;
+    let transaction;
     try {
-      request = database.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).put(record);
+      transaction = database.transaction(STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      records.forEach(candidateRecord => store.put(candidateRecord));
     } catch (error) {
       closeDatabase(database);
       reject(error);
       return;
     }
-    request.onsuccess = () => {
+    transaction.oncomplete = () => {
       closeDatabase(database);
       resolve({ ...metadata, blob: record.blob });
     };
-    request.onerror = () => {
+    transaction.onerror = () => {
       closeDatabase(database);
-      reject(request.error || new Error('Không thể lưu ảnh hình nền.'));
+      reject(transaction.error || new Error('BACKGROUND_WRITE_FAILED'));
+    };
+    transaction.onabort = () => {
+      closeDatabase(database);
+      reject(transaction.error || new Error('BACKGROUND_WRITE_FAILED'));
     };
   });
 }
 
-export async function deleteConversationBackgroundFile(viewerId, tenantId, conversationId, factory = indexedDbFactory()) {
+export async function deleteConversationBackgroundFile(
+  viewerId,
+  tenantId,
+  conversationId,
+  factory = indexedDbFactory(),
+  aliasViewerIds = [],
+) {
   if (!viewerId || !conversationId) return false;
   const database = await openBackgroundDatabase(factory);
   if (!database) return false;
   return new Promise((resolve, reject) => {
-    let request;
+    let transaction;
     try {
-      request = database
-        .transaction(STORE_NAME, 'readwrite')
-        .objectStore(STORE_NAME)
-        .delete(backgroundFileKey(viewerId, tenantId, conversationId));
+      transaction = database.transaction(STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      backgroundViewerIds(viewerId, aliasViewerIds).forEach(candidateId => {
+        store.delete(backgroundFileKey(candidateId, tenantId, conversationId));
+      });
     } catch (error) {
       closeDatabase(database);
       reject(error);
       return;
     }
-    request.onsuccess = () => {
+    transaction.oncomplete = () => {
       closeDatabase(database);
       resolve(true);
     };
-    request.onerror = () => {
+    transaction.onerror = () => {
       closeDatabase(database);
-      reject(request.error || new Error('Không thể xóa ảnh hình nền.'));
+      reject(transaction.error || new Error('BACKGROUND_DELETE_FAILED'));
+    };
+    transaction.onabort = () => {
+      closeDatabase(database);
+      reject(transaction.error || new Error('BACKGROUND_DELETE_FAILED'));
     };
   });
 }

@@ -109,3 +109,32 @@ test('marks only all mentions or mentions targeting the current viewer', () => {
   }, viewer), true);
   assert.equal(messageMentionsViewer({ mentions: [{ id: 'account-other' }] }, viewer), false);
 });
+
+test('recovers a legacy text mention when x-mentions metadata is absent', () => {
+  const viewer = {
+    id: 'account-me',
+    tinodeUid: 'usr-me',
+    name: '\u004e\u0067\u0075\u0079\u1ec5\u006e \u0048\u1ed3\u006e\u0067 \u0048\u1eef\u0075 \u004e\u0068\u00e2\u006d',
+  };
+
+  assert.equal(messageMentionsViewer({ text: 'dev: @Nguyen Hong Huu Nham,' }, viewer), true);
+  assert.equal(messageMentionsViewer({ text: 'dev: @All' }, viewer), true);
+  assert.equal(messageMentionsViewer({ text: 'email abc@Nguyen Hong Huu Nham' }, viewer), false);
+  assert.equal(messageMentionsViewer({ text: 'dev: @Ng\u01b0\u1eddi kh\u00e1c' }, viewer), false);
+});
+
+test('keeps explicit mention metadata authoritative over text fallback', () => {
+  const viewer = {
+    id: 'account-me',
+    name: '\u004e\u0067\u0075\u0079\u1ec5\u006e \u0048\u1ed3\u006e\u0067 \u0048\u1eef\u0075 \u004e\u0068\u00e2\u006d',
+  };
+
+  assert.equal(messageMentionsViewer({
+    text: 'dev: @Nguy\u1ec5n H\u1ed3ng H\u1eef\u0075 Nh\u00e2m',
+    mentions: [{ id: 'account-other', token: '@Ng\u01b0\u1eddi kh\u00e1c' }],
+  }, viewer), false);
+  assert.equal(messageMentionsViewer({
+    text: 'dev: @Nguy\u1ec5n H\u1ed3ng H\u1eef\u0075 Nh\u00e2m',
+    mentions: [null, {}],
+  }, viewer), true);
+});

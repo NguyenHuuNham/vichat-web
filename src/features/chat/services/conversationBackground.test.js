@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   CONVERSATION_BACKGROUND_PRESETS,
   CONVERSATION_BACKGROUND_SCOPES,
+  conversationBackgroundStorageKey,
   latestSharedConversationBackground,
   normalizeConversationBackground,
   readConversationBackground,
@@ -15,6 +16,7 @@ import {
 function memoryStorage() {
   const values = new Map();
   return {
+    values,
     getItem: key => values.get(key) || null,
     setItem: (key, value) => values.set(key, String(value)),
     removeItem: key => values.delete(key),
@@ -58,6 +60,53 @@ test('a local clear keeps a viewer override over a shared background', () => {
     { scope: CONVERSATION_BACKGROUND_SCOPES.LOCAL, background: null },
   );
   assert.equal(readConversationBackground('viewer-a', 'tenant-a', 'conversation-1', storage), null);
+});
+
+test('copies a legacy viewer background to the stable identity without deleting the alias', () => {
+  const storage = memoryStorage();
+  const preset = normalizeConversationBackground({ ...CONVERSATION_BACKGROUND_PRESETS[0], kind: 'preset' });
+  writeConversationBackgroundPreference(
+    'legacy-uid',
+    'tenant-a',
+    'conversation-1',
+    CONVERSATION_BACKGROUND_SCOPES.LOCAL,
+    preset,
+    storage,
+  );
+
+  assert.equal(
+    readConversationBackground('account-1', 'tenant-a', 'conversation-1', storage, ['legacy-uid']).id,
+    preset.id,
+  );
+  assert.equal(storage.values.has(conversationBackgroundStorageKey('account-1', 'tenant-a', 'conversation-1')), true);
+  assert.equal(storage.values.has(conversationBackgroundStorageKey('legacy-uid', 'tenant-a', 'conversation-1')), true);
+});
+
+test('keeps a primary clear marker authoritative over a stale alias background', () => {
+  const storage = memoryStorage();
+  const preset = normalizeConversationBackground({ ...CONVERSATION_BACKGROUND_PRESETS[1], kind: 'preset' });
+  writeConversationBackgroundPreference(
+    'legacy-uid',
+    'tenant-a',
+    'conversation-1',
+    CONVERSATION_BACKGROUND_SCOPES.LOCAL,
+    preset,
+    storage,
+  );
+  writeConversationBackgroundPreference(
+    'account-1',
+    'tenant-a',
+    'conversation-1',
+    CONVERSATION_BACKGROUND_SCOPES.LOCAL,
+    null,
+    storage,
+  );
+
+  assert.equal(readConversationBackground('account-1', 'tenant-a', 'conversation-1', storage, ['legacy-uid']), null);
+  assert.deepEqual(
+    readConversationBackgroundPreference('account-1', 'tenant-a', 'conversation-1', storage, ['legacy-uid']),
+    { scope: CONVERSATION_BACKGROUND_SCOPES.LOCAL, background: null },
+  );
 });
 
 test('shared preferences retain the shared scope without hiding the value', () => {

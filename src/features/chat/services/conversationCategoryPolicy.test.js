@@ -44,6 +44,21 @@ test('migrates viewer-scoped legacy assignments and keeps rollback data', () => 
   });
 }));
 
+test('migrates a versioned category record from an identity alias without deleting it', () => withLocalStorage([
+  ['vichat.conversation-categories.v2.legacy-uid', JSON.stringify({
+    version: 2,
+    categories: [{ id: 'vip', label: 'VIP', color: '#734fd1', builtIn: false }],
+    assignments: { 'room-1': 'vip' },
+    updatedAt: 100,
+  })],
+], values => {
+  const state = readConversationCategoryState('account-1', ['legacy-uid']);
+  assert.equal(state.categories[0].id, 'vip');
+  assert.deepEqual(state.assignments, { 'room-1': 'vip' });
+  assert.equal(values.has('vichat.conversation-categories.v2.account-1'), true);
+  assert.equal(values.has('vichat.conversation-categories.v2.legacy-uid'), true);
+}));
+
 test('applies categories without changing room identity or unrelated data', () => withLocalStorage([
   ['vichat.conversation-categories.v1.viewer-1', JSON.stringify({ 'room-2': 'work' })],
 ], () => {

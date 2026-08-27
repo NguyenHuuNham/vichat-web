@@ -1,3 +1,5 @@
+import { viewerStorageIds } from './viewerPreferenceStorage.js';
+
 export const KEYBOARD_SHORTCUTS_STORAGE_PREFIX = 'vichat.keyboard-shortcuts.v1';
 
 export const SHORTCUT_ACTIONS = Object.freeze([
@@ -166,23 +168,74 @@ function shortcutStorageKey(viewerId) {
   return `${KEYBOARD_SHORTCUTS_STORAGE_PREFIX}.${encodeURIComponent(String(viewerId || 'anonymous'))}`;
 }
 
-export function readKeyboardShortcutSettings(viewerId, storage = globalThis?.localStorage) {
-  if (!viewerId || !storage) return normalizeKeyboardShortcutSettings(DEFAULT_KEYBOARD_SHORTCUT_SETTINGS);
-  try {
-    const raw = storage.getItem(shortcutStorageKey(viewerId));
-    return normalizeKeyboardShortcutSettings(raw ? JSON.parse(raw) : DEFAULT_KEYBOARD_SHORTCUT_SETTINGS);
-  } catch {
-    return normalizeKeyboardShortcutSettings(DEFAULT_KEYBOARD_SHORTCUT_SETTINGS);
-  }
+function shortcutSettingsDifference(settings) {
+  return Number(settings?.enabled !== DEFAULT_KEYBOARD_SHORTCUT_SETTINGS.enabled)
+    + SHORTCUT_ACTIONS.reduce((count, action) => (
+      count + Number(settings?.bindings?.[action.id] !== DEFAULT_KEYBOARD_SHORTCUT_SETTINGS.bindings[action.id])
+    ), 0);
 }
 
-export function writeKeyboardShortcutSettings(viewerId, value, storage = globalThis?.localStorage) {
-  const next = normalizeKeyboardShortcutSettings(value);
-  if (viewerId && storage) {
+export function readKeyboardShortcutSettings(viewerId, storage = globalThis?.localStorage, aliasViewerIds = []) {
+  if (!viewerId || !storage) return normalizeKeyboardShortcutSettings(DEFAULT_KEYBOARD_SHORTCUT_SETTINGS);
+  const viewerIds = viewerStorageIds(viewerId, aliasViewerIds);
+  const records = [];
+  for (const [index, candidateId] of viewerIds.entries()) {
     try {
-      storage.setItem(shortcutStorageKey(viewerId), JSON.stringify(next));
+      const raw = storage.getItem(shortcutStorageKey(candidateId));
+      if (!raw) continue;
+      const value = JSON.parse(raw);
+      const settings = normalizeKeyboardShortcutSettings(value);
+      records.push({
+        candidateId,
+        index,
+        settings,
+        updatedAt: Number(value?.updatedAt) || 0,
+        difference: shortcutSettingsDifference(settings),
+      });
     } catch {
-      // Keep the active tab usable when browser storage is unavailable.
+      // A corrupt alias must not hide a valid shortcut record.
+    }
+  }
+  if (records.length === 0) return normalizeKeyboardShortcutSettings(DEFAULT_KEYBOARD_SHORTCUT_SETTINGS);
+  const timestamped = records.filter(record => record.updatedAt > 0);
+  const selected = timestamped.length > 0
+    ? timestamped.sort((left, right) => right.updatedAt - left.updatedAt || left.index - right.index)[0]
+    : (records.find(record => record.difference > 0) || records[0]);
+  if (selected.candidateId !== viewerIds[0]) {
+    try {
+      storage.setItem(shortcutStorageKey(viewerIds[0]), JSON.stringify({
+        ...selected.settings,
+        ...(selected.updatedAt > 0 ? { updatedAt: selected.updatedAt } : {}),
+      }));
+    } catch {
+      // Reading a valid legacy alias must still work when copy-on-read is unavailable.
+    }
+  }
+  return selected.settings;
+}
+
+export function writeKeyboardShortcutSettings(viewerId, value, storage = globalThis?.localStorage, aliasViewerIds = []) {
+  const viewerIds = viewerStorageIds(viewerId, aliasViewerIds);
+  const current = readKeyboardShortcutSettings(viewerId, storage, aliasViewerIds);
+  const patch = Object.fromEntries(
+    Object.entries(value && typeof value === 'object' ? value : {})
+      .filter(([, fieldValue]) => fieldValue !== undefined),
+  );
+  const next = normalizeKeyboardShortcutSettings({
+    ...current,
+    ...patch,
+    ...(patch.bindings && typeof patch.bindings === 'object' && !Array.isArray(patch.bindings)
+      ? { bindings: { ...current.bindings, ...patch.bindings } }
+      : {}),
+  });
+  if (viewerId && storage) {
+    const record = JSON.stringify({ ...next, updatedAt: Date.now() });
+    for (const candidateId of viewerIds) {
+      try {
+        storage.setItem(shortcutStorageKey(candidateId), record);
+      } catch {
+        // Keep the active tab usable when browser storage is unavailable.
+      }
     }
   }
   return next;

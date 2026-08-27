@@ -232,6 +232,18 @@ Tinode, broadcast in realtime profile events, or included in another viewer's
 response. Existing legacy mention metadata is resolved against the current
 viewer directory before rendering when the target identity is available.
 
+Browser-only viewer preferences are kept compatible across frontend releases.
+The existing localStorage keys and IndexedDB database names remain the storage
+contract; ChatUI does not clear browser storage during login, refresh, build or
+deployment. The stable Chatmgt Account ID is the primary viewer key. Previous
+Account/Tinode UID values are read as non-destructive aliases and valid records
+are copied forward to the primary key without deleting the old record. New
+writes keep known aliases synchronized where the preference supports it; custom
+sticker reads merge aliases before writing new items to the primary library.
+Explicit user removal clears the primary and alias copies. These preferences
+remain viewer-local and are never promoted to Chatmgt, Tinode message data or
+the database.
+
 Conversation category tags are also viewer-local presentation preferences.
 Each ChatUI account may create, rename, recolor, reorder or remove its own tag
 definitions and assign one tag to each visible direct/group conversation. The
@@ -243,7 +255,9 @@ read and kept updated as a rollback-compatible assignment map. Renaming or
 deleting a tag updates only that viewer's local presentation, never the
 conversation record, membership, read cursor, notification, avatar, pin or
 Tinode topic. Category tags therefore survive refresh in the same browser but
-do not synchronize across browsers/devices.
+do not synchronize across browsers/devices. The v1/v2 category records retain
+their names for rollback compatibility while the stable Account ID and any
+known legacy UID aliases are read and migrated without deleting the source.
 
 Conversation backgrounds follow a separate scope because they are presentation
 preferences rather than message content. ChatUI asks whether a selection is
@@ -259,6 +273,12 @@ remains reserved for the user profile, while group topics use the existing
 public `vichat.conversationBackground` metadata. Direct participants or group
 members therefore restore a shared background after reload and receive the
 actor notification; local group preferences remain viewer-scoped.
+Local background metadata and custom file records use the stable Account ID as
+the primary key and read prior UID aliases on migration. A valid alias record
+or file is copied to the primary key without deleting the alias; an explicit
+clear/delete removes the known copies. A primary local clear marker remains
+authoritative over a stale alias so an older browser cannot unexpectedly
+restore a background the viewer removed.
 The realtime projection also applies the newest shared background event before
 the accompanying Tinode metadata packet when those packets cross in flight;
 the persisted topic metadata remains the recovery source after reload. Local
@@ -829,7 +849,9 @@ custom sticker removes only that local library item and its recent shortcut;
 already-sent Tinode messages remain intact. The custom library is not synced
 between browsers/devices, the native mobile picker is unchanged, Chatmgt does
 not store sticker content or metadata, and no separate API or database
-migration is required.
+migration is required. Recent sticker IDs and the custom library read prior
+viewer aliases and copy valid records forward without deleting the source;
+explicit deletion clears all known local copies.
 
 While the web runtime is active, an incoming Tinode message can trigger a
 browser desktop notification and a configurable built-in sound when the viewer

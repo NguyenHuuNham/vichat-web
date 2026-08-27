@@ -52,9 +52,21 @@ test('creates, persists and verifies a salted PIN hash per viewer', async () => 
 test('keeps tab access separate from the persisted PIN configuration', () => {
   const sessionStorage = memoryStorage();
   assert.equal(hasPinTabAccess('usrA', sessionStorage), false);
-  assert.equal(markPinTabUnlocked('usrA', sessionStorage), true);
-  assert.equal(hasPinTabAccess('usrA', sessionStorage), true);
+  assert.equal(markPinTabUnlocked('legacy-uid', sessionStorage), true);
+  assert.equal(hasPinTabAccess('usrA', sessionStorage, ['legacy-uid']), true);
+  assert.equal(sessionStorage.getItem('vichat.pin-tab.v1.usrA'), 'unlocked');
   assert.equal(hasPinTabAccess('usrB', sessionStorage), false);
-  assert.equal(clearPinTabAccess('usrA', sessionStorage), true);
-  assert.equal(hasPinTabAccess('usrA', sessionStorage), false);
+  assert.equal(clearPinTabAccess('usrA', sessionStorage, ['legacy-uid']), true);
+  assert.equal(hasPinTabAccess('usrA', sessionStorage, ['legacy-uid']), false);
+});
+
+test('migrates PIN configuration from an identity alias and removes all copies explicitly', async () => {
+  const localStorage = memoryStorage();
+  const config = await createPinConfig('0123', webcrypto);
+  assert.equal(writePinConfig('legacy-uid', config, localStorage), true);
+  assert.deepEqual(readPinConfig('account-1', localStorage, ['legacy-uid']), config);
+  assert.equal(localStorage.getItem('vichat.pin-lock.v1.account-1') !== null, true);
+  assert.equal(localStorage.getItem('vichat.pin-lock.v1.legacy-uid') !== null, true);
+  assert.equal(removePinConfig('account-1', localStorage, ['legacy-uid']), true);
+  assert.equal(readPinConfig('account-1', localStorage, ['legacy-uid']), null);
 });

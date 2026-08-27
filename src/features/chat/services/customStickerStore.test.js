@@ -68,6 +68,7 @@ function createIndexedDbStub() {
   };
 
   return {
+    records,
     open() {
       const request = {};
       queueMicrotask(() => {
@@ -165,12 +166,29 @@ test('rejects a batch that would exceed the per-account library limit', async ()
 });
 
 test('wires upload, delete and blob transport into the web picker without changing mobile', () => {
-  assert.match(pickerSource, /writeCustomStickerFiles\(uploadScope, files\)/);
-  assert.match(pickerSource, /deleteCustomSticker\(deleteScope, sticker\.id\)/);
+  assert.match(pickerSource, /writeCustomStickerFiles\(uploadScope, files, undefined, uploadScopeAliases\)/);
+  assert.match(pickerSource, /deleteCustomSticker\(deleteScope, sticker\.id, undefined, deleteScopeAliases\)/);
   assert.match(pickerSource, /multiple/);
   assert.match(pickerSource, /CUSTOM_STICKER_PACK_ID/);
   assert.match(appSource, /const stickerBlob = sticker\.blob/);
   assert.match(appSource, /sticker: stickerMetadata/);
   assert.match(tinodeSource, /let blob = sticker\.blob/);
   assert.doesNotMatch(mobileComposerSource, /customSticker|Sticker của tôi|CUSTOM_STICKER/);
+});
+
+test('copies custom stickers from an identity alias and deletes all identity copies', async () => {
+  const indexedDb = createIndexedDbStub();
+  const file = new File(['legacy'], 'legacy.png', { type: 'image/png', lastModified: 8 });
+  const saved = await writeCustomStickerFiles('legacy-uid', [file], indexedDb);
+  const stickerId = saved.added[0].id;
+
+  const migrated = await readCustomStickers('account-1', indexedDb, ['legacy-uid']);
+  assert.equal(migrated.length, 1);
+  assert.equal(migrated[0].id, stickerId);
+  assert.equal(indexedDb.records.has(`account-1:${stickerId}`), true);
+  assert.equal(indexedDb.records.has(`legacy-uid:${stickerId}`), true);
+
+  await deleteCustomSticker('account-1', stickerId, indexedDb, ['legacy-uid']);
+  assert.equal(indexedDb.records.has(`account-1:${stickerId}`), false);
+  assert.equal(indexedDb.records.has(`legacy-uid:${stickerId}`), false);
 });

@@ -138,6 +138,12 @@ message content remain outside both browser stores.
 The same per-viewer preference record stores the selected UI language (`vi` or
 `en`), with Vietnamese as the default, so the choice survives refresh and is
 isolated between accounts on the same device.
+Frontend releases keep the existing browser preference keys and IndexedDB
+stores. ChatUI uses the stable Account ID as the primary key and reads older
+Account/Tinode UID values as non-destructive aliases, so a commit or stateless
+frontend redeploy does not reset installed preferences. Explicit deletion is
+the only operation that removes the known local copies; production deploys
+must preserve the existing `.env`, runtime files and named data volumes.
 
 If Tinode is unavailable, ChatUI remains in `management` mode with the Step 3
 directory and conversations available; realtime inputs stay disabled instead

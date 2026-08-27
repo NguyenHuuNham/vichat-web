@@ -52,13 +52,14 @@ export default function StickerPicker({
   onSelectSticker = () => {},
   onSelectEmoji = () => {},
   scope = 'anonymous',
+  scopeAliases = [],
   copy = { t: value => value },
 }) {
   const [selectedPack, setSelectedPack] = useState(() => (
-    readRecentStickerIds(scope).length > 0 ? 'recent' : STICKER_PACKS[0]?.id || 'recent'
+    readRecentStickerIds(scope, scopeAliases).length > 0 ? 'recent' : STICKER_PACKS[0]?.id || 'recent'
   ));
   const [query, setQuery] = useState('');
-  const [recentIds, setRecentIds] = useState(() => readRecentStickerIds(scope));
+  const [recentIds, setRecentIds] = useState(() => readRecentStickerIds(scope, scopeAliases));
   const [customStickers, setCustomStickers] = useState([]);
   const [customLoading, setCustomLoading] = useState(false);
   const [customSaving, setCustomSaving] = useState(false);
@@ -85,7 +86,7 @@ export default function StickerPicker({
     setCustomNotice('');
     setCustomError('');
     setCustomLoading(true);
-    readCustomStickers(scope)
+    readCustomStickers(scope, undefined, scopeAliases)
       .then(stickers => {
         if (active) setCustomStickers(stickers);
       })
@@ -98,16 +99,16 @@ export default function StickerPicker({
     return () => {
       active = false;
     };
-  }, [scope]);
+  }, [scope, scopeAliases]);
 
   const stickerLookup = useMemo(() => new Map(
     [...STICKER_ITEMS, ...customStickers].map(sticker => [sticker.id, sticker]),
   ), [customStickers]);
 
   useEffect(() => {
-    const nextRecentIds = readRecentStickerIds(scope).filter(id => stickerLookup.has(id));
+    const nextRecentIds = readRecentStickerIds(scope, scopeAliases).filter(id => stickerLookup.has(id));
     setRecentIds(nextRecentIds);
-  }, [scope, stickerLookup]);
+  }, [scope, scopeAliases, stickerLookup]);
 
   const selectedPackData = useMemo(
     () => STICKER_PACKS.find(pack => pack.id === selectedPack) || null,
@@ -140,13 +141,14 @@ export default function StickerPicker({
   };
 
   const selectSticker = sticker => {
-    const nextRecentIds = rememberStickerId(scope, sticker.id);
+    const nextRecentIds = rememberStickerId(scope, sticker.id, scopeAliases);
     setRecentIds(nextRecentIds);
     onSelectSticker(sticker);
   };
 
   const handleCustomStickerUpload = async event => {
     const uploadScope = scope;
+    const uploadScopeAliases = scopeAliases;
     const files = Array.from(event.target.files || []);
     event.target.value = '';
     if (files.length === 0) return;
@@ -154,8 +156,8 @@ export default function StickerPicker({
     setCustomNotice('');
     setCustomError('');
     try {
-      const result = await writeCustomStickerFiles(uploadScope, files);
-      const next = await readCustomStickers(uploadScope);
+      const result = await writeCustomStickerFiles(uploadScope, files, undefined, uploadScopeAliases);
+      const next = await readCustomStickers(uploadScope, undefined, uploadScopeAliases);
       if (!mountedRef.current || scopeRef.current !== uploadScope) return;
       setCustomStickers(next);
       setSelectedPack(CUSTOM_STICKER_PACK_ID);
@@ -174,14 +176,15 @@ export default function StickerPicker({
     if (!sticker?.id || deletingStickerId) return;
     if (typeof window !== 'undefined' && !window.confirm(copy.t('Xóa sticker này khỏi thiết bị?'))) return;
     const deleteScope = scope;
+    const deleteScopeAliases = scopeAliases;
     setDeletingStickerId(sticker.id);
     setCustomNotice('');
     setCustomError('');
     try {
-      await deleteCustomSticker(deleteScope, sticker.id);
+      await deleteCustomSticker(deleteScope, sticker.id, undefined, deleteScopeAliases);
       if (!mountedRef.current || scopeRef.current !== deleteScope) return;
       setCustomStickers(previous => previous.filter(item => item.id !== sticker.id));
-      setRecentIds(forgetStickerId(deleteScope, sticker.id));
+      setRecentIds(forgetStickerId(deleteScope, sticker.id, deleteScopeAliases));
       setCustomNotice('Đã xóa sticker khỏi thiết bị này.');
     } catch (error) {
       if (mountedRef.current && scopeRef.current === deleteScope) {

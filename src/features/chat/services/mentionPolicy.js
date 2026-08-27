@@ -153,6 +153,33 @@ function mentionNameValues(entity) {
     .filter(Boolean))];
 }
 
+function mentionMetadataEntryIsUsable(mention) {
+  if (!mention || typeof mention !== 'object' || Array.isArray(mention)) return false;
+  return Boolean(
+    mention.isAll
+      || mention.id
+      || mention.uid
+      || mention.tinodeUid
+      || mention.tinode_uid
+      || mention.userId
+      || mention.user_id
+      || mention.token
+      || mention.name
+      || mention.defaultName
+      || mention.default_name
+      || mention.username
+      || mention.email,
+  );
+}
+
+function mentionTokenExistsInText(text, token) {
+  const normalizedText = normalizeMentionSearch(text);
+  const normalizedToken = normalizeMentionSearch(token).replace(/^@+/u, '').trim();
+  if (!normalizedText || !normalizedToken) return false;
+  const escapedToken = normalizedToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[\\s([{])@${escapedToken}(?=$|[\\s\\p{P}])`, 'u').test(normalizedText);
+}
+
 export function mentionTargetsViewer(mention, viewer) {
   if (!mention || typeof mention !== 'object' || Array.isArray(mention) || !viewer) return false;
   const normalizedToken = normalizeMentionSearch(mention.token).trim();
@@ -176,6 +203,18 @@ export function mentionTargetsViewer(mention, viewer) {
 }
 
 export function messageMentionsViewer(message, viewer) {
-  return (Array.isArray(message?.mentions) ? message.mentions : [])
-    .some(mention => mentionTargetsViewer(mention, viewer));
+  const mentions = Array.isArray(message?.mentions) ? message.mentions : [];
+  const usableMentions = mentions.filter(mentionMetadataEntryIsUsable);
+  if (usableMentions.length > 0) {
+    return usableMentions.some(mention => mentionTargetsViewer(mention, viewer));
+  }
+
+  // Older/external senders can preserve the literal token without x-mentions.
+  const text = String(message?.text || message?.caption || '');
+  if (!text || !viewer) return false;
+  if (mentionTokenExistsInText(text, '@All')) return true;
+  return mentionNameValues(viewer)
+    .filter(name => !name.includes('@'))
+    .sort((first, second) => second.length - first.length)
+    .some(name => mentionTokenExistsInText(text, `@${name}`));
 }

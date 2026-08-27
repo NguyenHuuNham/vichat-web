@@ -241,6 +241,10 @@ import {
   shortcutFromKeyboardEvent,
   writeKeyboardShortcutSettings,
 } from '../features/chat/services/keyboardShortcuts';
+import {
+  readMessageActions,
+  writeMessageActions,
+} from '../features/chat/services/messageActionStorage';
 import { suggestStickersForText } from '../features/chat/services/stickerCatalog';
 
 const CALLS_ENABLED = resolveCallsEnabled(import.meta.env.VITE_CALLS_ENABLED);
@@ -248,6 +252,27 @@ const CALLS_ENABLED = resolveCallsEnabled(import.meta.env.VITE_CALLS_ENABLED);
 function isEditableKeyboardTarget(target) {
   const tagName = String(target?.tagName || '').toLowerCase();
   return Boolean(target?.isContentEditable || ['input', 'textarea', 'select'].includes(tagName));
+}
+
+function viewerPreferenceIdentityFromValues(id, uid, tinodeUid, tinodeUidSnake, fallbackId = '') {
+  const ids = [...new Set([
+    id,
+    uid,
+    tinodeUid,
+    tinodeUidSnake,
+    fallbackId,
+  ].map(value => String(value || '').trim()).filter(Boolean))];
+  return { viewerId: ids[0] || '', aliases: ids.slice(1) };
+}
+
+function viewerPreferenceIdentity(user, fallbackId = '') {
+  return viewerPreferenceIdentityFromValues(
+    user?.id,
+    user?.uid,
+    user?.tinodeUid,
+    user?.tinode_uid,
+    fallbackId,
+  );
 }
 
 const APP_LANGUAGE_COPY = Object.freeze({
@@ -3464,7 +3489,17 @@ function App() {
     .sort((first, second) => first.name.localeCompare(second.name, 'vi', { sensitivity: 'base' }));
   const selectedLanguage = APP_LANGUAGE_OPTIONS.find(option => option.id === settings.language)
     || APP_LANGUAGE_OPTIONS[0];
-  const pinViewerId = currentUser?.id || currentUser?.uid || '';
+  const pinViewerIdentity = useMemo(
+    () => viewerPreferenceIdentityFromValues(
+      currentUser?.id,
+      currentUser?.uid,
+      currentUser?.tinodeUid,
+      currentUser?.tinode_uid,
+    ),
+    [currentUser?.id, currentUser?.uid, currentUser?.tinodeUid, currentUser?.tinode_uid],
+  );
+  const pinViewerId = pinViewerIdentity.viewerId;
+  const pinViewerAliases = pinViewerIdentity.aliases;
   const isCurrentUserOnline = Boolean(
     isLoggedIn && currentUser && (chatMode !== 'tinode' || connectionStatus === 'online')
   );
@@ -3700,16 +3735,16 @@ function App() {
     }
     let active = true;
     setPinLockReady(false);
-    const config = readPinConfig(pinViewerId);
+    const config = readPinConfig(pinViewerId, undefined, pinViewerAliases);
     if (active) {
       setPinLockConfig(config);
-      setIsPinTabUnlocked(!config || hasPinTabAccess(pinViewerId));
+      setIsPinTabUnlocked(!config || hasPinTabAccess(pinViewerId, undefined, pinViewerAliases));
       setPinLockReady(true);
       setPinUnlockValue('');
       setPinUnlockNotice('');
     }
     return () => { active = false; };
-  }, [pinViewerId]);
+  }, [pinViewerAliases, pinViewerId]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
@@ -3751,15 +3786,16 @@ function App() {
   const desktopNotificationPermission = typeof window !== 'undefined' && 'Notification' in window
     ? window.Notification.permission
     : 'unsupported';
-  const notificationSettingsIdentity = useMemo(() => {
-    const ids = [...new Set([
+  const notificationSettingsIdentity = useMemo(
+    () => viewerPreferenceIdentityFromValues(
       currentUser?.id,
       currentUser?.uid,
       currentUser?.tinodeUid,
+      currentUser?.tinode_uid,
       viewerId,
-    ].map(value => String(value || '').trim()).filter(Boolean))];
-    return { viewerId: ids[0] || '', aliases: ids.slice(1) };
-  }, [currentUser?.id, currentUser?.uid, currentUser?.tinodeUid, viewerId]);
+    ),
+    [currentUser?.id, currentUser?.uid, currentUser?.tinodeUid, currentUser?.tinode_uid, viewerId],
+  );
   const notificationSettingsViewerId = notificationSettingsIdentity.viewerId;
   const notificationSettingsViewerAliases = notificationSettingsIdentity.aliases;
   const unreadViewerId = chatMode === 'tinode' ? viewerId : managementViewerId;
@@ -3956,11 +3992,18 @@ function App() {
 
   const updateKeyboardShortcutSettings = useCallback(nextValue => {
     const next = normalizeKeyboardShortcutSettings(nextValue);
-    if (notificationSettingsViewerId) writeKeyboardShortcutSettings(notificationSettingsViewerId, next);
+    if (notificationSettingsViewerId) {
+      writeKeyboardShortcutSettings(
+        notificationSettingsViewerId,
+        next,
+        undefined,
+        notificationSettingsViewerAliases,
+      );
+    }
     setKeyboardShortcutSettings(next);
     setKeyboardShortcutNotice('');
     return next;
-  }, [notificationSettingsViewerId]);
+  }, [notificationSettingsViewerAliases, notificationSettingsViewerId]);
 
   const updateKeyboardShortcutBinding = useCallback((actionId, shortcut) => {
     const normalized = normalizeShortcut(shortcut);
@@ -4017,22 +4060,27 @@ function App() {
       setCapturingShortcutAction('');
       return;
     }
-    setKeyboardShortcutSettings(readKeyboardShortcutSettings(notificationSettingsViewerId));
+    setKeyboardShortcutSettings(readKeyboardShortcutSettings(
+      notificationSettingsViewerId,
+      undefined,
+      notificationSettingsViewerAliases,
+    ));
     setKeyboardShortcutNotice('');
     setCapturingShortcutAction('');
-  }, [notificationSettingsViewerId]);
+  }, [notificationSettingsViewerAliases, notificationSettingsViewerId]);
 
   useEffect(() => {
     const categoryState = managementViewerId
-      ? readConversationCategoryState(managementViewerId)
+      ? readConversationCategoryState(managementViewerId, notificationSettingsViewerAliases)
       : { categories: CONVERSATION_CATEGORY_OPTIONS.map(category => ({ ...category })), assignments: {} };
     setConversationCategoryOptions(categoryState.categories);
     setConversationCategories(categoryState.assignments);
     setConversationCategoryMenuOpen(false);
     setConversationCategoryManagerOpen(false);
-  }, [managementViewerId]);
+  }, [managementViewerId, notificationSettingsViewerAliases]);
 
   const conversationBackgroundViewerId = managementViewerId || viewerId || '';
+  const conversationBackgroundViewerAliases = notificationSettingsViewerAliases;
   const conversationBackgroundTenantId = String(
     currentUser?.tenantId
       || currentUser?.tenant_id
@@ -4074,6 +4122,8 @@ function App() {
       conversationBackgroundViewerId,
       conversationBackgroundTenantId,
       activeBackgroundConversationId,
+      undefined,
+      conversationBackgroundViewerAliases,
     );
     const shared = activeChat.conversationBackground !== undefined
       ? normalizeConversationBackground({
@@ -4097,6 +4147,8 @@ function App() {
       conversationBackgroundViewerId,
       conversationBackgroundTenantId,
       activeBackgroundConversationId,
+      undefined,
+      conversationBackgroundViewerAliases,
     )
       .then(fileRecord => {
         if (!active) return;
@@ -4111,6 +4163,7 @@ function App() {
     return () => { active = false; };
   }, [
     conversationBackgroundViewerId,
+    conversationBackgroundViewerAliases,
     conversationBackgroundTenantId,
     activeBackgroundConversationId,
     activeBackgroundStateKey,
@@ -4244,13 +4297,13 @@ function App() {
         setPinUnlockNotice(appCopy.pinWrong);
         return;
       }
-      markPinTabUnlocked(pinViewerId);
+      markPinTabUnlocked(pinViewerId, undefined, pinViewerAliases);
       setIsPinTabUnlocked(true);
       setPinUnlockValue('');
     } finally {
       setIsVerifyingPin(false);
     }
-  }, [appCopy.pinWrong, isVerifyingPin, pinLockConfig, pinValidationMessage, pinUnlockValue, pinViewerId]);
+  }, [appCopy.pinWrong, isVerifyingPin, pinLockConfig, pinValidationMessage, pinUnlockValue, pinViewerAliases, pinViewerId]);
 
   const handleDesktopNotificationToggle = useCallback(async enabled => {
     if (!enabled) {
@@ -4400,16 +4453,19 @@ function App() {
       if (changed) conversationsRef.current = next;
       return changed ? next : previous;
     });
-  }, [currentUser, directoryAccounts]);
+  }, [currentUser, directoryAccounts, notificationSettingsViewerAliases]);
 
   useEffect(() => {
-    if (!viewerId) return;
-    try {
-      setMessageActions(JSON.parse(window.localStorage.getItem(`songhong.message-actions.${viewerId}`) || '{}'));
-    } catch {
+    if (!notificationSettingsViewerId) {
       setMessageActions({});
+      return;
     }
-  }, [viewerId]);
+    setMessageActions(readMessageActions(
+      notificationSettingsViewerId,
+      undefined,
+      notificationSettingsViewerAliases,
+    ));
+  }, [notificationSettingsViewerAliases, notificationSettingsViewerId]);
   const activeAdminAccount = resolveGroupAdministrator(activeChat, directoryAccounts);
   const activeAdminName = activeAdminAccount?.name || activeChat.admin || appCopy.t('Chưa xác định');
   const isActiveGroupOwner = activeChat.isGroup
@@ -4631,8 +4687,9 @@ function App() {
     const managedRooms = applyLocalConversationCategories(
       chatManagementService.remote
         ? managedRoomsSnapshot
-        : applyLocalConversationPins(managedRoomsSnapshot, managementUserId),
+        : applyLocalConversationPins(managedRoomsSnapshot, managementUserId, notificationSettingsViewerAliases),
       managementUserId,
+      notificationSettingsViewerAliases,
     );
     const previousRooms = Object.fromEntries(safeConversationEntries(conversationsRef.current));
     const nextRooms = Object.fromEntries(safeConversationEntries(previousRooms).filter(([, room]) => (
@@ -4655,7 +4712,7 @@ function App() {
       setCurrentChatId(firstVisibleConversationId(nextRooms, {}, CHATBOT_ACCOUNT.id));
     }
     return managedRooms;
-  }, [currentUser, directoryAccounts]);
+  }, [currentUser, directoryAccounts, notificationSettingsViewerAliases]);
 
   const ensureTinodeConversationTopic = async (room, { avatarFile = null } = {}) => {
     if (!room || room.isChatbot || chatMode !== 'tinode') return room?.id || '';
@@ -5376,7 +5433,7 @@ function App() {
         return;
       }
     });
-  }, [isLoggedIn, chatMode, managementConversationSession, currentUser, directoryAccounts, applyPresenceSnapshot, clearActiveCall, refreshManagementConversations, showIncomingNotification, viewerId, managementViewerId, rememberUnreadBoundary, updateDirectoryAccounts, updateDirectoryResults]);
+  }, [isLoggedIn, chatMode, managementConversationSession, currentUser, directoryAccounts, applyPresenceSnapshot, clearActiveCall, refreshManagementConversations, showIncomingNotification, viewerId, managementViewerId, notificationSettingsViewerAliases, rememberUnreadBoundary, updateDirectoryAccounts, updateDirectoryResults]);
 
   // Keep every known Tinode topic subscribed after login. This is the piece
   // that makes unread badges and notifications realtime before a chat is opened.
@@ -5457,12 +5514,19 @@ function App() {
     managementConversationSessionRef.current = 0;
     setManagementConversationSession(0);
     const managementUserId = String(user.id || user.uid || '');
+    const loginPreferenceIdentity = viewerPreferenceIdentity(user, managementUserId);
     setPinLockReady(false);
     setPinLockConfig(null);
     setIsPinTabUnlocked(false);
     setPinUnlockValue('');
     setPinUnlockNotice('');
-    if (source !== 'restore' && managementUserId) markPinTabUnlocked(managementUserId);
+    if (source !== 'restore' && managementUserId) {
+      markPinTabUnlocked(
+        loginPreferenceIdentity.viewerId,
+        undefined,
+        loginPreferenceIdentity.aliases,
+      );
+    }
     const initialChatbot = createChatbotConversation(loadChatbotMessages(managementUserId));
     const initialRooms = { [CHATBOT_ACCOUNT.id]: initialChatbot };
     forcedLogoutRef.current = false;
@@ -5565,8 +5629,9 @@ function App() {
         const managedRooms = applyLocalConversationCategories(
           chatManagementService.remote
             ? managedRoomsSnapshot
-            : applyLocalConversationPins(managedRoomsSnapshot, managementUserId),
+            : applyLocalConversationPins(managedRoomsSnapshot, managementUserId, loginPreferenceIdentity.aliases),
           managementUserId,
+          loginPreferenceIdentity.aliases,
         );
         const next = {
           ...managedRooms,
@@ -5877,8 +5942,14 @@ function App() {
   const handleLogout = async () => {
     if (isLoggingOutRef.current) return;
     isLoggingOutRef.current = true;
-    const loggedOutViewerId = currentUser?.id || currentUser?.uid || '';
-    if (loggedOutViewerId) clearPinTabAccess(loggedOutViewerId);
+    const loggedOutPreferenceIdentity = viewerPreferenceIdentity(currentUser, viewerId);
+    if (loggedOutPreferenceIdentity.viewerId) {
+      clearPinTabAccess(
+        loggedOutPreferenceIdentity.viewerId,
+        undefined,
+        loggedOutPreferenceIdentity.aliases,
+      );
+    }
     accountSessionRef.current += 1;
     managementConversationSessionRef.current = 0;
     setManagementConversationSession(0);
@@ -7768,7 +7839,12 @@ function App() {
         persistedPinned = normalizeConversationFlag(updated.pinned);
         persistedPinnedAt = updated.pinnedAt || null;
       } else {
-        toggleConversationPinIds(managementViewerId, managementConversationId, nextPinned);
+        toggleConversationPinIds(
+          managementViewerId,
+          managementConversationId,
+          nextPinned,
+          notificationSettingsViewerAliases,
+        );
       }
       setConversations(previous => {
         const previousRoom = previous[room.id] === null || previous[room.id] === undefined
@@ -7830,8 +7906,16 @@ function App() {
     const viewerKey = managementViewerId || viewerId;
     if (!viewerKey) return;
     const conversationId = room.managementId || room.id;
-    setConversationCategory(viewerKey, conversationId, categoryId);
-    applyConversationCategoryState(readConversationCategoryState(viewerKey));
+    setConversationCategory(
+      viewerKey,
+      conversationId,
+      categoryId,
+      notificationSettingsViewerAliases,
+    );
+    applyConversationCategoryState(readConversationCategoryState(
+      viewerKey,
+      notificationSettingsViewerAliases,
+    ));
     setConversationCategoryMenuOpen(false);
     setConversationMenu(null);
   };
@@ -7839,12 +7923,13 @@ function App() {
   const saveManagedConversationCategory = draft => {
     const viewerKey = managementViewerId || viewerId;
     if (!viewerKey) return { error: 'viewer_required' };
-    const saved = saveConversationCategory(viewerKey, draft);
+    const saved = saveConversationCategory(viewerKey, draft, notificationSettingsViewerAliases);
     if (saved.error || !saved.category) return saved;
     const nextState = setCategoryConversations(
       viewerKey,
       saved.category.id,
       draft.conversationIds,
+      notificationSettingsViewerAliases,
     );
     applyConversationCategoryState(nextState);
     return { ...saved, state: nextState };
@@ -7853,13 +7938,21 @@ function App() {
   const deleteManagedConversationCategory = categoryId => {
     const viewerKey = managementViewerId || viewerId;
     if (!viewerKey) return;
-    applyConversationCategoryState(removeConversationCategory(viewerKey, categoryId));
+    applyConversationCategoryState(removeConversationCategory(
+      viewerKey,
+      categoryId,
+      notificationSettingsViewerAliases,
+    ));
   };
 
   const reorderManagedConversationCategories = orderedIds => {
     const viewerKey = managementViewerId || viewerId;
     if (!viewerKey) return;
-    applyConversationCategoryState(reorderConversationCategories(viewerKey, orderedIds));
+    applyConversationCategoryState(reorderConversationCategories(
+      viewerKey,
+      orderedIds,
+      notificationSettingsViewerAliases,
+    ));
   };
 
   const handleConversationMenuAction = async (action, room, value = '') => {
@@ -8046,6 +8139,8 @@ function App() {
             conversationBackgroundTenantId,
             activeBackgroundConversationId,
             selected.file,
+            undefined,
+            conversationBackgroundViewerAliases,
           );
           nextBackground = { ...fileRecord, scope: CONVERSATION_BACKGROUND_SCOPES.LOCAL };
         }
@@ -8054,6 +8149,8 @@ function App() {
             conversationBackgroundViewerId,
             conversationBackgroundTenantId,
             activeBackgroundConversationId,
+            undefined,
+            conversationBackgroundViewerAliases,
           ).catch(() => {});
         }
         writeConversationBackgroundPreference(
@@ -8062,6 +8159,8 @@ function App() {
           activeBackgroundConversationId,
           CONVERSATION_BACKGROUND_SCOPES.LOCAL,
           nextBackground,
+          undefined,
+          conversationBackgroundViewerAliases,
         );
         if (!activeChat.isGroup && chatMode === 'demo') {
           const systemMessage = {
@@ -8091,6 +8190,8 @@ function App() {
           conversationBackgroundViewerId,
           conversationBackgroundTenantId,
           activeBackgroundConversationId,
+          undefined,
+          conversationBackgroundViewerAliases,
         );
         if (realtimeMessagingPending) throw new Error('Kết nối realtime Tinode chưa sẵn sàng.');
         const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
@@ -8119,12 +8220,16 @@ function App() {
             conversationBackgroundViewerId,
             conversationBackgroundTenantId,
             activeBackgroundConversationId,
+            undefined,
+            conversationBackgroundViewerAliases,
           ).catch(() => {});
         }
         clearConversationBackground(
           conversationBackgroundViewerId,
           conversationBackgroundTenantId,
           activeBackgroundConversationId,
+          undefined,
+          conversationBackgroundViewerAliases,
         );
       }
       const viewerBackground = sharedScope
@@ -9828,11 +9933,12 @@ function App() {
     const key = messageActionKey(currentChatId, message.id);
     setMessageActions(previous => {
       const next = { ...previous, [key]: { ...(previous[key] || {}), ...patch } };
-      try {
-        window.localStorage.setItem(`songhong.message-actions.${viewerId}`, JSON.stringify(next));
-      } catch {
-        // Local storage is optional; the current view still updates.
-      }
+      writeMessageActions(
+        notificationSettingsViewerId,
+        next,
+        undefined,
+        notificationSettingsViewerAliases,
+      );
       return next;
     });
   };
@@ -12630,7 +12736,8 @@ function App() {
                 onTabChange={setComposerPickerTab}
                 onSelectSticker={handleSendSticker}
                 onSelectEmoji={insertEmoji}
-                scope={currentUser?.id || currentUser?.uid || 'anonymous'}
+                scope={notificationSettingsViewerId || 'anonymous'}
+                scopeAliases={notificationSettingsViewerAliases}
                 copy={appCopy}
               />
             )}
