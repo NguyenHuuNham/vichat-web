@@ -215,11 +215,12 @@ import {
   applyPollEvent,
   normalizePoll,
   normalizePollEvent,
-  projectPollsWithMembers,
   pollCanViewerLock,
   pollIsClosed,
   pollOptionVoteCounts,
+  projectPollsWithMembers,
   pollTotalVoters,
+  pollVoterDetails,
   pollViewerIdentities,
 } from '../features/chat/services/poll';
 import {
@@ -2177,19 +2178,38 @@ function PollMessageCard({
   const [selectedOptionIds, setSelectedOptionIds] = useState(viewerVote?.optionIds || []);
   const [newOption, setNewOption] = useState('');
   const [isAddingOption, setIsAddingOption] = useState(false);
+  const [voterDetailsOptionId, setVoterDetailsOptionId] = useState('');
   const [, setPollClock] = useState(Date.now());
   const closed = pollIsClosed(poll);
   const counts = pollOptionVoteCounts(poll);
   const totalVoters = pollTotalVoters(poll);
   const canLock = pollCanViewerLock(poll, viewerIdentities, groupMembers);
   const showResults = !poll?.settings?.hideResultsUntilVote || Boolean(viewerVote) || closed || canLock;
+  const canViewVoters = showResults && !poll?.settings?.hideVoters;
   const maxCount = Math.max(1, ...Object.values(counts));
   const viewerVoteCreatedAt = viewerVote?.createdAt || '';
   const viewerVoteOptionIds = (viewerVote?.optionIds || []).join('|');
+  const voterDetailsOption = poll?.options?.find(option => option.id === voterDetailsOptionId) || null;
+  const voterDetails = voterDetailsOption
+    ? pollVoterDetails(poll, voterDetailsOption.id, groupMembers)
+    : null;
 
   useEffect(() => {
     setSelectedOptionIds(viewerVoteOptionIds ? viewerVoteOptionIds.split('|') : []);
   }, [message?.id, viewerVoteCreatedAt, viewerVoteOptionIds]);
+
+  useEffect(() => {
+    setVoterDetailsOptionId('');
+  }, [message?.id, poll?.id]);
+
+  useEffect(() => {
+    if (!voterDetailsOptionId) return undefined;
+    const handleKeyDown = event => {
+      if (event.key === 'Escape') setVoterDetailsOptionId('');
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [voterDetailsOptionId]);
 
   useEffect(() => {
     const expiresAt = Date.parse(poll?.settings?.expiresAt || '');
@@ -2244,31 +2264,91 @@ function PollMessageCard({
           const count = counts[option.id] || 0;
           const selected = selectedOptionIds.includes(option.id);
           const percentage = totalVoters > 0 ? Math.round((count / totalVoters) * 100) : 0;
+          const canViewOptionVoters = canViewVoters && (groupMembers.length > 0 || count > 0);
+          const detailsOpen = voterDetailsOptionId === option.id;
           return (
-            <button
-              type="button"
-              key={option.id}
-              className={`poll-option ${selected ? 'selected' : ''}`}
-              onClick={() => toggleOption(option.id)}
-              disabled={closed}
-              aria-pressed={selected}
-            >
-              <span className={`poll-option-marker ${poll.settings.allowMultiple ? 'multiple' : ''}`} aria-hidden="true">
-                {selected && <i className="fa-solid fa-check"></i>}
-              </span>
-              <span className="poll-option-copy">
-                <span className="poll-option-label">{option.text}</span>
-                {showResults && (
-                  <span className="poll-option-progress" aria-hidden="true">
-                    <span style={{ width: `${Math.min(100, (count / maxCount) * 100)}%` }}></span>
-                  </span>
-                )}
-              </span>
-              {showResults && <strong className="poll-option-count">{count} <small>{percentage}%</small></strong>}
-            </button>
+            <div className={`poll-option-row ${selected ? 'selected' : ''}`} key={option.id}>
+              <button
+                type="button"
+                className={`poll-option ${selected ? 'selected' : ''}`}
+                onClick={() => toggleOption(option.id)}
+                disabled={closed}
+                aria-pressed={selected}
+              >
+                <span className={`poll-option-marker ${poll.settings.allowMultiple ? 'multiple' : ''}`} aria-hidden="true">
+                  {selected && <i className="fa-solid fa-check"></i>}
+                </span>
+                <span className="poll-option-copy">
+                  <span className="poll-option-label">{option.text}</span>
+                  {showResults && (
+                    <span className="poll-option-progress" aria-hidden="true">
+                      <span style={{ width: `${Math.min(100, (count / maxCount) * 100)}%` }}></span>
+                    </span>
+                  )}
+                </span>
+                {showResults && !canViewOptionVoters && <strong className="poll-option-count">{count} <small>{percentage}%</small></strong>}
+              </button>
+              {showResults && canViewOptionVoters && (
+                <button
+                  type="button"
+                  className={`poll-option-count poll-option-details-trigger ${detailsOpen ? 'expanded' : ''}`}
+                  onClick={() => setVoterDetailsOptionId(previous => previous === option.id ? '' : option.id)}
+                  aria-expanded={detailsOpen}
+                  aria-label={`${copy.t('Xem danh sách bình chọn')}: ${option.text}`}
+                  title={copy.t('Xem danh sách bình chọn')}
+                >
+                  {count} <small>{percentage}%</small>
+                  <i className={`fa-solid ${detailsOpen ? 'fa-chevron-up' : 'fa-users'}`} aria-hidden="true"></i>
+                </button>
+              )}
+            </div>
           );
         })}
       </div>
+      {voterDetailsOption && voterDetails && canViewVoters && (
+        <div className="poll-voter-details" aria-live="polite">
+          <div className="poll-voter-details-heading">
+            <span><i className="fa-solid fa-users" aria-hidden="true"></i>{copy.t('Danh sách bình chọn')}</span>
+            <button
+              type="button"
+              onClick={() => setVoterDetailsOptionId('')}
+              aria-label={copy.t('Đóng')}
+              title={copy.t('Đóng')}
+            ><i className="fa-solid fa-xmark" aria-hidden="true"></i></button>
+          </div>
+          <p className="poll-voter-details-option">{voterDetailsOption.text}</p>
+          {!groupMembers.length && (
+            <p className="poll-voter-details-notice">
+              <i className="fa-solid fa-circle-info" aria-hidden="true"></i>{copy.t('Chưa tải được danh sách thành viên nhóm; chỉ hiển thị dữ liệu bình chọn đã nhận.')}
+            </p>
+          )}
+          <div className="poll-voter-details-sections">
+            {[
+              ['selected', 'Đã chọn phương án này', 'Chưa có ai chọn phương án này.', 'fa-check'],
+              ['notVoted', 'Chưa bình chọn', 'Mọi thành viên đã bình chọn.', 'fa-hourglass-half'],
+              ['other', 'Đã chọn phương án khác', 'Không có thành viên nào chọn phương án khác.', 'fa-shuffle'],
+            ].map(([key, label, emptyLabel, icon]) => {
+              const users = voterDetails[key] || [];
+              return (
+                <section className={`poll-voter-details-section poll-voter-details-section-${key}`} key={key}>
+                  <div className="poll-voter-details-section-heading">
+                    <span><i className={`fa-solid ${icon}`} aria-hidden="true"></i>{copy.t(label)}</span>
+                    <strong>{users.length}</strong>
+                  </div>
+                  <div className="poll-voter-details-list">
+                    {users.length > 0 ? users.map((user, index) => (
+                      <div className="poll-voter-details-user" key={`${user.actorId || user.id || 'member'}-${index}`}>
+                        <SafeAvatar src={user.avatar || ''} name={user.name} className="poll-voter-details-avatar" />
+                        <span>{user.name || copy.t('Thành viên')}</span>
+                      </div>
+                    )) : <p className="poll-voter-details-empty">{copy.t(emptyLabel)}</p>}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {!showResults && <p className="poll-hidden-results"><i className="fa-solid fa-eye-slash"></i>{copy.t('Kết quả sẽ hiện sau khi bạn bình chọn')}</p>}
       {poll.settings.allowAddOptions && !closed && (
         <form className="poll-add-option" onSubmit={submitOption}>

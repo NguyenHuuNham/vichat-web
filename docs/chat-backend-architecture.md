@@ -334,6 +334,14 @@ Chatmgt endpoint, schema migration or database table is introduced. Local
 notifications derive the actor from the poll activity rather than the poll
 creator, so a vote by another member is not misattributed.
 
+When results are visible and `hideVoters` is false, ChatUI makes each option's
+count a viewer-only details control. It derives selected, not-voted and
+other-option lists from the replayed Tinode vote map plus the authoritative
+active group-member snapshot, matching Account and Tinode aliases without
+persisting a second voter index. If the member snapshot is still loading,
+received votes remain visible and the pending-member list stays empty until
+the snapshot arrives; no vote, message, setting or Chatmgt record is changed.
+
 Tinode media URLs from the central host are normalized to the authenticated
 `chat.upgo.vn/tinode-media` relay. The native client downloads protected message
 and avatar images with its short-lived Tinode token into the OS cache and passes

@@ -245,6 +245,40 @@ function normalizedPollMembers(members = []) {
   }, []);
 }
 
+function pollVoteEntries(poll) {
+  return Object.entries(poll?.votes || {}).map(([actorId, vote]) => ({
+    actorId,
+    vote: vote && typeof vote === 'object' && !Array.isArray(vote) ? vote : {},
+  }));
+}
+
+function pollVoteMember(member, actorId, vote) {
+  return {
+    id: member?.id || actorId,
+    actorId,
+    name: member?.name || textValue(vote?.name, 120) || actorId,
+    avatar: member?.avatar || textValue(vote?.avatar, 500),
+    optionIds: Array.isArray(vote?.optionIds) ? [...vote.optionIds] : [],
+  };
+}
+
+export function pollVoterDetails(poll, optionId, members = []) {
+  const targetOptionId = textValue(optionId, MAX_POLL_ID_LENGTH);
+  const groupMembers = normalizedPollMembers(members);
+  const votes = pollVoteEntries(poll);
+  const findMember = actorId => groupMembers.find(member => identitiesOverlap(member, { id: actorId }));
+  const selected = votes
+    .filter(({ vote }) => Array.isArray(vote.optionIds) && vote.optionIds.includes(targetOptionId))
+    .map(({ actorId, vote }) => pollVoteMember(findMember(actorId), actorId, vote));
+  const other = votes
+    .filter(({ vote }) => !Array.isArray(vote.optionIds) || !vote.optionIds.includes(targetOptionId))
+    .map(({ actorId, vote }) => pollVoteMember(findMember(actorId), actorId, vote));
+  const notVoted = groupMembers
+    .filter(member => !votes.some(({ actorId }) => identitiesOverlap(member, { id: actorId })))
+    .map(member => pollVoteMember(member, '', {}));
+  return { selected, other, notVoted };
+}
+
 // Tinode can replay poll cards before the Chatmgt member snapshot arrives.
 // Re-apply lock events only after the caller supplies that authoritative role
 // snapshot, so a client-published role claim cannot unlock a poll.

@@ -6,18 +6,34 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-29-02 - Xem chi tiet nguoi binh chon trong nhom
+
+- Thoi gian: 2026-08-29 13:54 (Asia/Saigon)
+- Loai: Tinh nang | Web | Realtime | UX | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Khi ket qua poll duoc hien thi, thanh vien co the bam vao so luot cua tung phuong an de xem ai da chon, ai chua binh chon va ai chon phuong an khac.
+- Pham vi: ChatUI poll card, projection vote Tinode, snapshot thanh vien nhom, i18n, CSS va regression test; khong doi luong gui tin, membership, Tinode topic, database hay setting user.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/poll.js`, `src/features/chat/services/poll.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`.
+- Noi dung: Them nut chi tiet ben canh tung phuong an; hien ba nhom `Da chon phuong an nay`, `Chua binh chon` va `Da chon phuong an khac`, co avatar/ten, dem so luong, dong bang Escape/nut dong va cap nhat theo vote realtime. Doi chieu ca Account ID va Tinode UID de khong nham nguoi trong group.
+- Quyet dinh ky thuat: Khong tao endpoint hay bang vote moi; tinh danh sach tai client tu vote map da replay va active group-member snapshot. Ton trong `hideVoters` va `hideResultsUntilVote`; neu snapshot thanh vien chua ve thi chi hien vote da nhan, khong tu suy dien thanh vien chua vote.
+- Database/API/cau hinh: Khong migration, schema, endpoint, bien moi truong, secret, volume hoac thay doi setting user.
+- Kiem thu: Da chay targeted `node --test src/features/chat/services/poll.test.js src/features/i18n/appLanguage.test.js` dat 33/33; full frontend `npm run test:frontend` dat 327/327; backend `python -m unittest discover -s tests -q` dat 255 pass, 101 skip do dependency/runtime local; `python -m py_compile application/controllers/api_chat_management.py application/models/models.py scripts/tinode_account_bridge.py tests/test_chat_auth_contract.py` dat; `npm run lint` exit 0 voi warning legacy; `npm run build:production` thanh cong voi warning chunk App lon hon 500 KB; production verification dang cho.
+- Rui ro con lai: Chua UAT production bang hai tai khoan that de xac nhan danh sach cap nhat sau vote realtime va khi snapshot member dang tai.
+- Viec tiep theo: Chay full test/lint/build, commit, push va deploy cung commit pho nhom; sau deploy kiem tra health, bundle, WSS, log va container state.
+- Commit/PR: Chua tao.
+
 ## 2026-08-29-01 - Bo nhiem pho nhom va dong bo quyen quan tri
 
 - Thoi gian: 2026-08-29 (Asia/Saigon)
 - Loai: Tinh nang | Bao mat | Web | Realtime | API | Kiem thu | Tai lieu
-- Trang thai: Dang hoan thien
+- Trang thai: Dang thuc hien
 - Muc tieu: Cho truong nhom bo nhiem/thu hoi pho nhom, phan biet bang key bac, cap quyen quan tri dong bo va bao dam pho nhom khong the giai tan nhom.
 - Pham vi: Chatmgt conversation participant role API, Tinode access synchronization, group activity realtime, ChatUI member menu/avatar/message badge, demo persistence, i18n, CSS va tests.
 - File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/models/models.py`, `chatservice-main/scripts/tinode_account_bridge.py`, `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/poll.js`, `src/features/chat/services/tinodeClient.js`, `src/features/contacts/services/accountDirectory.js`, `src/features/demo/services/demoGroupStore.js`, `src/features/contacts/services/accountDirectory.test.js`, `src/features/demo/services/demoGroupStore.test.js`, `src/features/chat/services/chatManagementService.test.js`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`.
 - Noi dung: Them role `OWNER`/`ADMIN`/`MEMBER` cho thanh vien nhom; owner va deputy dung chung manager gate cho quan tri, them/xoa thanh vien, cai dat, poll va phe duyet. Them endpoint doi role voi kiem tra tenant, tu khong cho doi role owner, dong bo mode Tinode bang credential server-side cua owner va phat `group_role_changed` sau commit. ChatUI cap nhat role realtime, cho phep appoint/revoke trong menu thanh vien, hien key vang cho truong nhom va key bac cho pho nhom; demo cung luu role. Route dissolve van dung owner gate rieng.
 - Quyet dinh ky thuat: Dung cot `ConversationParticipant.role` hien co, khong them migration; owner la nguon credential Tinode de deputy khong can credential owner tren browser. Tinode event chi la thong bao, Chatmgt snapshot sau commit la nguon quyen chuan; rollback role va access neu dong bo Tinode that bai.
 - Database/API/cau hinh: Them PUT role endpoint va alias; khong migration, khong doi schema, bien moi truong, volume, secret hoac setting user.
-- Kiem thu: Chua chay bo kiem tra cuoi; se ghi lenh va ket qua thuc te sau khi chay.
+- Kiem thu: Full frontend `npm run test:frontend` dat 327/327; backend `python -m unittest discover -s tests -q` dat 255 pass, 101 skip do dependency/runtime local; contract role `python -m unittest tests.test_chat_auth_contract -q` dat 55/55; `python -m py_compile application/controllers/api_chat_management.py application/models/models.py scripts/tinode_account_bridge.py tests/test_chat_auth_contract.py` dat; `npm run lint` exit 0 voi warning legacy; `npm run build:production` thanh cong voi warning chunk App lon hon 500 KB.
 - Rui ro con lai: Chua UAT production bang owner, deputy va member that; can xac nhan badge key bac, realtime event, quyen manager va owner-only dissolve.
 - Viec tiep theo: Chay full frontend/backend test, lint, production build, review diff, commit, push va deploy.
 - Commit/PR: Chua tao.

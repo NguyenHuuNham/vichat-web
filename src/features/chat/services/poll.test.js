@@ -8,6 +8,7 @@ import {
   pollCanViewerLock,
   pollIsClosed,
   pollOptionVoteCounts,
+  pollVoterDetails,
   pollViewerIdentities,
 } from './poll.js';
 
@@ -123,4 +124,45 @@ test('the poll creator and a deputy can lock a poll, but a member or claimed rol
 test('malformed poll events are ignored', () => {
   assert.equal(normalizePollEvent({ action: 'unknown' }), null);
   assert.deepEqual(applyPollEvent(basePoll, { action: 'poll_vote', pollId: 'other', optionIds: ['a'] }, 'usr-a'), basePoll);
+});
+
+test('voter details match account and Tinode identities without losing pending members', () => {
+  const voted = applyPollEvent(
+    applyPollEvent(basePoll, {
+      action: 'poll_vote', pollId: 'poll-1', optionIds: ['a'], actorName: 'A',
+    }, 'tinode-a', 14),
+    {
+      action: 'poll_vote', pollId: 'poll-1', optionIds: ['b'], actorName: 'B',
+    },
+    'tinode-b',
+    15,
+  );
+  const details = pollVoterDetails(voted, 'a', [
+    { id: 'account-a', tinodeUid: 'tinode-a', name: 'An' },
+    { id: 'account-b', tinodeUid: 'tinode-b', name: 'Bình' },
+    { id: 'account-c', tinodeUid: 'tinode-c', name: 'Chi' },
+  ]);
+  assert.deepEqual(details.selected.map(user => user.name), ['An']);
+  assert.deepEqual(details.other.map(user => user.name), ['Bình']);
+  assert.deepEqual(details.notVoted.map(user => user.name), ['Chi']);
+});
+
+test('multiple-choice voter details include a member in every selected option', () => {
+  const voted = applyPollEvent(normalizePoll({ ...basePoll, settings: { allowMultiple: true } }), {
+    action: 'poll_vote', pollId: 'poll-1', optionIds: ['a', 'b'], actorName: 'A',
+  }, 'tinode-a', 16);
+  const details = pollVoterDetails(voted, 'b', [
+    { id: 'account-a', tinodeUid: 'tinode-a', name: 'An' },
+    { id: 'account-b', tinodeUid: 'tinode-b', name: 'Bình' },
+  ]);
+  assert.deepEqual(details.selected.map(user => user.name), ['An']);
+  assert.deepEqual(details.other, []);
+  assert.deepEqual(details.notVoted.map(user => user.name), ['Bình']);
+});
+
+test('voter details tolerate malformed legacy vote records', () => {
+  const details = pollVoterDetails({ votes: { 'usr-legacy': null } }, 'a');
+  assert.deepEqual(details.other.map(user => user.name), ['usr-legacy']);
+  assert.deepEqual(details.selected, []);
+  assert.deepEqual(details.notVoted, []);
 });

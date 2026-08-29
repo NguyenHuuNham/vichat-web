@@ -23,6 +23,8 @@ test('translates poll composer and activity labels', () => {
   assert.equal(translateUiText('Tạo bình chọn', 'en'), 'Create poll');
   assert.equal(translateUiText('Cho phép chọn nhiều phương án', 'en'), 'Allow multiple choices');
   assert.equal(translateUiText('Khóa bình chọn', 'en'), 'Lock poll');
+  assert.equal(translateUiText('Xem danh sách bình chọn', 'en'), 'See voter list');
+  assert.equal(translateUiText('Chưa bình chọn', 'en'), 'Have not voted');
   assert.equal(translateUiText('Đã có người bình chọn trong nhóm.', 'en'), 'Someone voted in the group poll.');
 });
 
