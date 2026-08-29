@@ -8,25 +8,28 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-29-02 - Xem chi tiet nguoi binh chon trong nhom
 
-- Thoi gian: 2026-08-29 13:54 (Asia/Saigon)
+- Thoi gian: 2026-08-29 13:54-14:19 (Asia/Saigon)
 - Loai: Tinh nang | Web | Realtime | UX | Kiem thu | Tai lieu
-- Trang thai: Dang thuc hien
+- Trang thai: Hoan tat; da test, commit, push va deploy production; san sang UAT
 - Muc tieu: Khi ket qua poll duoc hien thi, thanh vien co the bam vao so luot cua tung phuong an de xem ai da chon, ai chua binh chon va ai chon phuong an khac.
 - Pham vi: ChatUI poll card, projection vote Tinode, snapshot thanh vien nhom, i18n, CSS va regression test; khong doi luong gui tin, membership, Tinode topic, database hay setting user.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/poll.js`, `src/features/chat/services/poll.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`.
 - Noi dung: Them nut chi tiet ben canh tung phuong an; hien ba nhom `Da chon phuong an nay`, `Chua binh chon` va `Da chon phuong an khac`, co avatar/ten, dem so luong, dong bang Escape/nut dong va cap nhat theo vote realtime. Doi chieu ca Account ID va Tinode UID de khong nham nguoi trong group.
 - Quyet dinh ky thuat: Khong tao endpoint hay bang vote moi; tinh danh sach tai client tu vote map da replay va active group-member snapshot. Ton trong `hideVoters` va `hideResultsUntilVote`; neu snapshot thanh vien chua ve thi chi hien vote da nhan, khong tu suy dien thanh vien chua vote.
 - Database/API/cau hinh: Khong migration, schema, endpoint, bien moi truong, secret, volume hoac thay doi setting user.
-- Kiem thu: Da chay targeted `node --test src/features/chat/services/poll.test.js src/features/i18n/appLanguage.test.js` dat 33/33; full frontend `npm run test:frontend` dat 327/327; backend `python -m unittest discover -s tests -q` dat 255 pass, 101 skip do dependency/runtime local; `python -m py_compile application/controllers/api_chat_management.py application/models/models.py scripts/tinode_account_bridge.py tests/test_chat_auth_contract.py` dat; `npm run lint` exit 0 voi warning legacy; `npm run build:production` thanh cong voi warning chunk App lon hon 500 KB; production verification dang cho.
-- Rui ro con lai: Chua UAT production bang hai tai khoan that de xac nhan danh sach cap nhat sau vote realtime va khi snapshot member dang tai.
-- Viec tiep theo: Chay full test/lint/build, commit, push va deploy cung commit pho nhom; sau deploy kiem tra health, bundle, WSS, log va container state.
-- Commit/PR: Chua tao.
+- Kiem thu: Targeted `node --test src/features/chat/services/poll.test.js src/features/i18n/appLanguage.test.js` dat 33/33; full frontend `npm run test:frontend` dat 327/327; backend local `python -m unittest discover -s tests -q` dat 255 pass, 101 skip do dependency/runtime local; candidate image production chay lai backend `255/255`; `python -m py_compile application/controllers/api_chat_management.py application/models/models.py scripts/tinode_account_bridge.py tests/test_chat_auth_contract.py` dat; `npm run lint` exit 0 voi warning legacy; `npm run build:production` va candidate Docker build thanh cong voi warning chunk App lon hon 500 KB; `git diff --check` dat.
+- Trien khai: Archive `/opt/deploy/chat/incoming/vichat-poll-be6f297.tar.gz` co SHA-256 `588fb6b3cddbfd271d38d44f65a86a7de774c10bacc541d433faa22e46554914`; deploy dung tuyen `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`. Release `/opt/deploy/chat/releases/poll-be6f297-20260829-r1` dang la `current`, `previous` tro `/opt/deploy/chat/releases/message-edit-3c11b6f-20260828-r2`; chi recreate `chatmgt`, `tinode-account-bridge` va `chat`, khong migration, khong `docker compose down -v`, khong reset DB/Redis/Tinode volume/topic/message hoac setting user.
+- Backup/bao toan state: PostgreSQL dump `/opt/deploy/chat/backups/poll-be6f297-20260829-r1/chatservice-predeploy.dump` mode `0600`, 196434 bytes, SHA-256 `976e29c704ddf8aa78cf6a37913a6796e52effc30f150c4f8109ab9a73eadd07`, `pg_restore -l` co 114 entries; production `.env` giu nguyen SHA-256 `4ae2d1cf4af80b4289cd07b15d55b5979eb926d613513d69ece8de8225c6fcb0`; Alembic van `20260825_13`.
+- Kiem tra production: `chatmgt` `daea0593e6ff28106a90152285c7861a3812c52920f15b3425d9f70272b768c9`, bridge `9d422de239544be68b18c40487b7b97dc137afc464ac645ed84588e344c9c08a`, ChatUI `2678363e190683c8757128826916a16766e1d482d2deb5859d3c61bbb4a5f3a9` deu healthy, restart count 0; image lan luot `sha256:dfa1a569565a75a04e906ac922d24a3fedde8ef44ce3ddcf96848288b08fbe07`, `sha256:1a55a2e09e26c041a3efe2b084cc2988d89b893c1a7cce55a4324e0ea56ffd9b`, `sha256:92d010fd72bf28dcf84ae30c7bfd81cde331924ab6f4ab7dff568e7f158edca3`; ChatUI/Chatmgt auth health noi bo va public HTTP 200, `nginx -t` tren `.206` dat, WSS HTTP 101; public assets `index-CVmh0aqa.js`, `App-DXiSo9ll.js`, `index-DhcOa2B6.css` khop byte voi container voi SHA-256 lan luot `610aaef76afc41ef2cfb86b8256896440b3a63d6be62573cee0fd97d248cb552`, `51cd5a796074e6fc10071213453bb857bcd1b6ef6aafda6bc40dae05918062cb`, `cc689d7dbd11aacc6b3f74381081eac9e54f3e4280813740e777cb5872cbce2f`; log 15 phut khong co marker fatal/panic/traceback/uncaught/critical/emerg; container ngoai 3 service muc tieu giu nguyen ID.
+- Rui ro con lai: Chua UAT production bang owner, deputy, member va hai tai khoan that de xac nhan vote realtime/danh sach nguoi chua binh chon; `npm ci` trong candidate build bao 2 dependency vulnerabilities (1 moderate, 1 high), chua chay `npm audit fix` de khong tu y doi lockfile.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, UAT bo nhiem/thu hoi pho nhom va bam so luot poll de kiem tra ba danh sach; neu loi chi tro `current` ve `previous` va recreate 3 service muc tieu theo image rollback.
+- Commit/PR: Source commits `2ef5a3d` (pho nhom) va `be6f297` (xem nguoi binh chon); khong co PR.
 
 ## 2026-08-29-01 - Bo nhiem pho nhom va dong bo quyen quan tri
 
 - Thoi gian: 2026-08-29 (Asia/Saigon)
 - Loai: Tinh nang | Bao mat | Web | Realtime | API | Kiem thu | Tai lieu
-- Trang thai: Dang thuc hien
+- Trang thai: Hoan tat; da test, commit, push va deploy production; san sang UAT
 - Muc tieu: Cho truong nhom bo nhiem/thu hoi pho nhom, phan biet bang key bac, cap quyen quan tri dong bo va bao dam pho nhom khong the giai tan nhom.
 - Pham vi: Chatmgt conversation participant role API, Tinode access synchronization, group activity realtime, ChatUI member menu/avatar/message badge, demo persistence, i18n, CSS va tests.
 - File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/models/models.py`, `chatservice-main/scripts/tinode_account_bridge.py`, `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/poll.js`, `src/features/chat/services/tinodeClient.js`, `src/features/contacts/services/accountDirectory.js`, `src/features/demo/services/demoGroupStore.js`, `src/features/contacts/services/accountDirectory.test.js`, `src/features/demo/services/demoGroupStore.test.js`, `src/features/chat/services/chatManagementService.test.js`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`.
@@ -35,8 +38,8 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Them PUT role endpoint va alias; khong migration, khong doi schema, bien moi truong, volume, secret hoac setting user.
 - Kiem thu: Full frontend `npm run test:frontend` dat 327/327; backend `python -m unittest discover -s tests -q` dat 255 pass, 101 skip do dependency/runtime local; contract role `python -m unittest tests.test_chat_auth_contract -q` dat 55/55; `python -m py_compile application/controllers/api_chat_management.py application/models/models.py scripts/tinode_account_bridge.py tests/test_chat_auth_contract.py` dat; `npm run lint` exit 0 voi warning legacy; `npm run build:production` thanh cong voi warning chunk App lon hon 500 KB.
 - Rui ro con lai: Chua UAT production bang owner, deputy va member that; can xac nhan badge key bac, realtime event, quyen manager va owner-only dissolve.
-- Viec tiep theo: Chay full frontend/backend test, lint, production build, review diff, commit, push va deploy.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh va UAT quyen owner/deputy/member; chi rollback 3 service muc tieu neu phat sinh loi.
+- Commit/PR: Source commit `2ef5a3d`; deployment duoc ghi trong muc `2026-08-29-02`; khong co PR.
 
 ## 2026-08-28-02 - Cache-bust CSS cho release sua tin nhan
 
