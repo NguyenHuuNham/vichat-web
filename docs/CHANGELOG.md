@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-29 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Bao mat | Web | Realtime | Du lieu | Tai lieu
-- Trang thai: Da kiem thu; cho phat hanh
+- Trang thai: Hoan tat; da test, commit, push va deploy production; san sang UAT
 - Muc tieu: Pho nhom dung duoc quyen quan tri ngay lap tuc; setting chat 1-1, nhom va giao dien khong bi mat hoac lan tenant; moi hoat dong nhom co thong bao den thanh vien.
 - Pham vi: Tinode ACL/metadata, Chatmgt group activity, ChatUI preference storage, notification va sticker; giu nguyen luong chat 1-1.
 - File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/services/auth_service.py`, `chatservice-main/scripts/repair_group_member_access.py`, `chatservice-main/scripts/tinode_account_bridge.py`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatRealtime.js`, `src/app/App.jsx`, cac module luu preference viewer trong `src/features/chat/services/`, `src/features/security/services/pinLock.js`, `src/features/chat/components/StickerPicker.jsx`, `package.json`, `dist/index.html`, `docs/chat-backend-architecture.md` va cac regression test lien quan.
@@ -18,9 +18,12 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Chatmgt va snapshot sau commit la nguon quyen nhom; owner la credential Tinode cho bridge, deputy khong duoc dissolve; preference trinh duyet dung khoa user + tenant va migration khong pha huy du lieu cu. Realtime ACL refresh chi tai metadata can thiet va co dedupe request.
 - Database/API/cau hinh: Khong migration/schema moi; dung cot role va properties hien co, them alias request `background` cho group settings va mirror metadata Tinode. Khong ghi secret vao nhat ky.
 - Kiem thu: `npm run test:frontend` dat 330/330; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` thanh cong voi warning chunk App lon hon 500 KB; `python -m unittest discover -s tests -q` dat 255 pass, 101 skip do dependency/runtime local; `python -m unittest tests.test_chat_auth_contract -q` dat 55/55; `python -m py_compile application/controllers/api_chat_management.py application/services/auth_service.py application/models/models.py scripts/tinode_account_bridge.py scripts/repair_group_member_access.py tests/test_chat_auth_contract.py` thanh cong; `git diff --check` dat.
+- Trien khai: Commit `6fada85` da push `origin/master`; archive `/opt/deploy/chat/incoming/vichat-deputy-6fada85.tar.gz` co SHA-256 `b35a13cf15ce742012c2f466535f50fcb19e12949054db0cd34f94b59da536b1`; deploy dung tuyen `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`. Release `/opt/deploy/chat/releases/deputy-6fada85-20260829-r1` dang la `current`, `previous` tro `/opt/deploy/chat/releases/poll-be6f297-20260829-r1`; chi recreate `chatmgt`, `tinode-account-bridge` va `chat`, khong migration, khong `docker compose down -v`, khong reset DB/Redis/Tinode volume/topic/message/cursor/setting user.
+- Backup/bao toan state: `/opt/deploy/chat/backups/deputy-6fada85-20260829-r1` luu `.env`, runtime, compose/nginx, container state va hai PostgreSQL dump dang `-Fc`; checksum dump Chatmgt `66e1c367b3a3931bcd7ec09c913e49b513761a5ae5b40ef0e271aeca55938d9a`, Tinode `2ff7496ecde19ec43be111d8f668150aa790fae193ff8a779280575412bb6df0`; `pg_restore --list` co 114 va 130 entries; schema van `20260825_13`, `.env` khong doi.
+- Kiem tra production: ba container moi healthy, restart count 0; cac container ngoai pham vi giu nguyen ID; public ChatUI/Chatmgt HTTP `200`, WSS `HTTP/1.1 101 Switching Protocols`, asset public khop, nginx `-t` dat, log 15 phut khong co fatal marker.
 - Rui ro con lai: Chua UAT production bang owner, deputy, member va hai tai khoan that; can xac nhan quyen manager realtime, activity group va preference sau tenant switch. Candidate build co 2 dependency vulnerabilities (1 moderate, 1 high) tu `npm ci`; khong tu dong chay `npm audit fix`.
-- Viec tiep theo: Commit, push, backup va deploy theo tuyen `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`, sau do verify health/public bundle/logs; UAT voi tai khoan that.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, UAT voi owner, deputy va member that de xac nhan quyen realtime, activity group va setting sau refresh/reconnect/tenant switch.
+- Commit/PR: Source `6fada85`; khong co PR.
 
 ## 2026-08-29-02 - Xem chi tiet nguoi binh chon trong nhom
 
