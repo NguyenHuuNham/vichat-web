@@ -329,7 +329,7 @@ votes, expiry and lock state after reconnect or reload. The poll card is
 projected after its latest activity so a new vote remains visible at the end
 of the group timeline, while the event remains a readable group activity
 notice. Tinode's authenticated sender is authoritative for the actor and only
-the poll creator can publish a lock event from the UI. No poll copy, vote index,
+the poll creator, group owner or deputy can publish a lock event from the UI. No poll copy, vote index,
 Chatmgt endpoint, schema migration or database table is introduced. Local
 notifications derive the actor from the poll activity rather than the poll
 creator, so a vote by another member is not misattributed.
@@ -537,8 +537,17 @@ Tinode and publishes a `member_approved` system event after the membership
 commit; rejection soft-deletes the pending row. An immediate add publishes the
 single authoritative `member_added` event from Chatmgt after commit, so the new
 member and every open web session receive the same activity without relying on
-the actor's browser. Opening or saving group management settings and removing
-another member remain owner-only.
+the actor's browser. Group memberships use the existing `OWNER`/`ADMIN`/
+`MEMBER` role column: the owner and deputy share group-management, member,
+message, poll, approval and metadata capabilities, while only the owner may
+dissolve the group. `PUT /api/v1/conversation/<id>/participants/<member_id>/role`
+(and the `/api/v1/chat/threads/...` alias) accepts only `ADMIN` or `MEMBER`,
+rejects changes to the owner, syncs the Tinode access contract, commits the
+role, and publishes a `group_role_changed` event so every open client refreshes
+its authoritative Chatmgt member snapshot. The role event is also projected
+immediately from realtime history so a stale browser does not retain old
+controls. Opening or saving group management settings and removing another
+member therefore use the owner/deputy manager gate; dissolve remains owner-only.
 
 Chatmgt verifies group membership by both subscriber identity and effective
 Tinode access. Active members require `JRWPAS`, while the owner requires

@@ -9,6 +9,7 @@ import { normalizeDirectMessageBlockState } from './directMessageBlocking.js';
 export const TINODE_CONTACT_SYNC_DELAYS_MS = Object.freeze([120, 600, 1800]);
 
 const MANAGEMENT_CONVERSATION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const GROUP_ROLE_VALUES = new Set(['OWNER', 'ADMIN', 'MEMBER']);
 
 export function normalizeConversationFlag(value) {
   if (value === true || value === 1) return true;
@@ -334,6 +335,8 @@ function normalizeMember(value) {
       || member.email,
   );
   const nickname = conversationText(member.nickname || member.contactNickname || member.contact_nickname);
+  const rawGroupRole = conversationText(member.groupRole || member.group_role).toUpperCase();
+  const groupRole = GROUP_ROLE_VALUES.has(rawGroupRole) ? rawGroupRole : '';
   return {
     ...member,
     id: conversationIdentity(member.id),
@@ -348,6 +351,7 @@ function normalizeMember(value) {
     title: conversationText(member.title),
     department: conversationText(member.department),
     avatar: conversationMedia(member.avatar || member.photo),
+    ...(groupRole ? { groupRole, group_role: groupRole } : {}),
   };
 }
 

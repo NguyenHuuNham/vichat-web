@@ -155,6 +155,7 @@ class ConversationParticipant(CommonModel):
     participant_id = db.Column(String(100), index=True)
     role = db.Column(String(30))
     # OWNER
+    # ADMIN (deputy group manager)
     # MEMBER
     # WATCHER
 

@@ -552,14 +552,15 @@ test('group mute and reaction controls preserve the existing checkbox flow and e
   assert.match(muteSource, /!activeChatMuted/);
   assert.match(appSource, /reactionUsers/);
   assert.match(appSource, /reaction-details-modal/);
-  assert.match(appSource, /activeChat\.isGroup\s*\n?\s*&& identitiesOverlap\(\{ id: messageSenderId \}/);
+  assert.match(appSource, /groupRoleForIdentity\(\{ \.\.\.activeChat, members: activeGroupMembers \}, messageSenderId\)/);
 });
 
 test('renders the group owner key on incoming owner avatars only', () => {
   const avatarBlock = appSource.split('{!isOutgoing && (')[1].split('</button>')[0];
-  assert.match(avatarBlock, /isOwnerMessage/);
-  assert.match(avatarBlock, /group-owner-avatar-badge/);
-  assert.match(avatarBlock, /fa-key/);
+  const roleBadgeSource = appSource.split('function GroupRoleBadge')[1].split('function MessageReceiptIndicator')[0];
+  assert.match(avatarBlock, /GroupRoleBadge/);
+  assert.match(roleBadgeSource, /group-owner-avatar-badge/);
+  assert.match(roleBadgeSource, /fa-key/);
   assert.doesNotMatch(appSource, /group-owner-message-badge/);
   assert.doesNotMatch(appSource, /isOutgoing && isOwnerMessage/);
   assert.match(stylesSource, /\.message-avatar \{[\s\S]*?position: relative;[\s\S]*?overflow: visible;/);
@@ -580,10 +581,14 @@ test('conversation actions use the authoritative Chatmgt id on web and mobile', 
 test('managed member removal does not re-bind an already bound topic first', () => {
   const removeSource = appSource.split('const handleRemoveGroupMember')[1].split('const persistDemoGroupMessage')[0];
   assert.match(removeSource, /activeChat\.tinodeTopic \|\| await ensureTinodeConversationTopic\(activeChat\)/);
-  assert.match(removeSource, /sendSystemEvent\(topicName, event\)\.catch/);
+  assert.match(removeSource, /chatManagementService\.removeConversationParticipant\(/);
   assert.match(removeSource, /openConversation\(topicName\)\.catch/);
   assert.match(removeSource, /\[stateConversationId\]: safeMergeTinodeConversation/);
   assert.match(removeSource, /messages: roomMessages\(realtimeRoom\)\.length > 0/);
+  assert.ok(
+    removeSource.indexOf('removeConversationParticipant')
+      < removeSource.indexOf('openConversation(topicName)'),
+  );
 });
 
 test('managed direct chats hydrate Tinode history before committing the room state', () => {

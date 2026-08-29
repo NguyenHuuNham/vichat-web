@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-29-01 - Bo nhiem pho nhom va dong bo quyen quan tri
+
+- Thoi gian: 2026-08-29 (Asia/Saigon)
+- Loai: Tinh nang | Bao mat | Web | Realtime | API | Kiem thu | Tai lieu
+- Trang thai: Dang hoan thien
+- Muc tieu: Cho truong nhom bo nhiem/thu hoi pho nhom, phan biet bang key bac, cap quyen quan tri dong bo va bao dam pho nhom khong the giai tan nhom.
+- Pham vi: Chatmgt conversation participant role API, Tinode access synchronization, group activity realtime, ChatUI member menu/avatar/message badge, demo persistence, i18n, CSS va tests.
+- File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/models/models.py`, `chatservice-main/scripts/tinode_account_bridge.py`, `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/poll.js`, `src/features/chat/services/tinodeClient.js`, `src/features/contacts/services/accountDirectory.js`, `src/features/demo/services/demoGroupStore.js`, `src/features/contacts/services/accountDirectory.test.js`, `src/features/demo/services/demoGroupStore.test.js`, `src/features/chat/services/chatManagementService.test.js`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`.
+- Noi dung: Them role `OWNER`/`ADMIN`/`MEMBER` cho thanh vien nhom; owner va deputy dung chung manager gate cho quan tri, them/xoa thanh vien, cai dat, poll va phe duyet. Them endpoint doi role voi kiem tra tenant, tu khong cho doi role owner, dong bo mode Tinode bang credential server-side cua owner va phat `group_role_changed` sau commit. ChatUI cap nhat role realtime, cho phep appoint/revoke trong menu thanh vien, hien key vang cho truong nhom va key bac cho pho nhom; demo cung luu role. Route dissolve van dung owner gate rieng.
+- Quyet dinh ky thuat: Dung cot `ConversationParticipant.role` hien co, khong them migration; owner la nguon credential Tinode de deputy khong can credential owner tren browser. Tinode event chi la thong bao, Chatmgt snapshot sau commit la nguon quyen chuan; rollback role va access neu dong bo Tinode that bai.
+- Database/API/cau hinh: Them PUT role endpoint va alias; khong migration, khong doi schema, bien moi truong, volume, secret hoac setting user.
+- Kiem thu: Chua chay bo kiem tra cuoi; se ghi lenh va ket qua thuc te sau khi chay.
+- Rui ro con lai: Chua UAT production bang owner, deputy va member that; can xac nhan badge key bac, realtime event, quyen manager va owner-only dissolve.
+- Viec tiep theo: Chay full frontend/backend test, lint, production build, review diff, commit, push va deploy.
+- Commit/PR: Chua tao.
+
 ## 2026-08-28-02 - Cache-bust CSS cho release sua tin nhan
 
 - Thoi gian: 2026-08-28 03:20 (Asia/Saigon)

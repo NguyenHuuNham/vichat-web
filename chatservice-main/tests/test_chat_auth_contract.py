@@ -423,15 +423,14 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("member_tokens=added_member_tokens", add_source)
         self.assertIn("access_scope_uids=added_tinode_uids", add_source)
         self.assertIn("known_existing_member_uids=existing_tinode_member_uids", add_source)
-        self.assertIn("_tinode_account_identity(actor_account)", add_source)
-        self.assertIn("tinode_auth_from_request(request)", add_source)
-        self.assertIn("tinode_sso_login", add_source)
+        self.assertIn("_ensure_tinode_account(actor_account)", add_source)
+        self.assertIn("_group_owner_tinode_credentials(", add_source)
         self.assertIn("tinode_operator_uid", add_source)
         self.assertIn("tinode_remove_topic_member", remove_source)
         self.assertIn("tinode_reconcile_topic_members", remove_source)
         self.assertNotIn('membership.role != "OWNER"', add_source)
         self.assertIn("tinode_accept_topic_owner", remove_source)
-        self.assertIn("tinode_publish_system_event", remove_source)
+        self.assertIn("_publish_group_activity_events", remove_source)
         self.assertIn("TINODE_TOKEN_REQUIRED", remove_source)
         self.assertIn('mode="JRWPASO"', remove_source)
         self.assertIn('mode="JRWPAS"', remove_source)
@@ -449,6 +448,34 @@ class ChatAuthContractTests(unittest.TestCase):
                 leave_source.index("deleteConversationForCurrentUser"),
                 leave_source.index("sendSystemEvent"),
             )
+
+    def test_group_deputy_role_is_authoritative_and_dissolve_stays_owner_only(self):
+        controller_source, role_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_participant_role",
+        )
+        _controller_source, dissolve_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_dissolve",
+        )
+        app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
+        directory_source = (
+            REPOSITORY_ROOT / "src" / "features" / "contacts" / "services" / "accountDirectory.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("/api/v1/conversation/<conversation_id>/participants/<participant_id>/role", controller_source)
+        self.assertIn("GROUP_ROLE_VALUES", controller_source)
+        self.assertIn("_is_group_manager(membership)", role_source)
+        self.assertIn('requested_role not in {"ADMIN", "MEMBER"}', role_source)
+        self.assertIn("_is_group_owner(target)", role_source)
+        self.assertIn("target.role = requested_role", role_source)
+        self.assertIn("tinode_reconcile_topic_members", role_source)
+        self.assertIn('"action": "group_role_changed"', role_source)
+        self.assertIn("_is_group_owner(membership)", dissolve_source)
+        self.assertIn("canAppointGroupDeputy", directory_source)
+        self.assertIn("canRevokeGroupDeputy", directory_source)
+        self.assertIn("GroupRoleBadge", app_source)
+        self.assertIn("updateConversationParticipantRole", app_source)
 
     def test_group_access_repair_is_additive_and_does_not_mutate_chatmgt(self):
         repair_source = GROUP_ACCESS_REPAIR_PATH.read_text(encoding="utf-8")
@@ -477,14 +504,14 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("approval_status", model_source)
         self.assertIn("ADD COLUMN IF NOT EXISTS approval_status", migration_source)
         self.assertIn('bool(group_settings["approveMembers"])', add_source)
-        self.assertIn('membership.role or ""', add_source)
-        self.assertIn('not in ("OWNER", "ADMIN")', add_source)
+        self.assertIn("_is_group_manager(membership)", add_source)
+        self.assertIn('not _is_group_manager(membership)', add_source)
         self.assertIn("not _is_admin(current_user)", add_source)
         self.assertIn('approval_status="PENDING"', add_source)
         self.assertIn('active=not requires_approval', add_source)
         self.assertIn('ConversationParticipant.approval_status == "APPROVED"', controller_source)
         self.assertIn("viewer_can_approve_members", controller_source)
-        self.assertIn('str(viewer_membership.role or "").upper() in ("OWNER", "ADMIN")', controller_source)
+        self.assertIn("_is_group_manager(viewer_membership)", controller_source)
         self.assertIn('_is_admin({"role": getattr(viewer_account, "role", "")})', controller_source)
         self.assertIn('target.approval_status = "APPROVED"', approval_source)
         self.assertIn('target.approval_status = "REJECTED"', approval_source)
@@ -492,10 +519,10 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("member_tokens={target_uid: target_token}", approval_source)
         self.assertIn("access_scope_uids={target_uid}", approval_source)
         self.assertIn("known_existing_member_uids=existing_tinode_member_uids", approval_source)
-        self.assertIn('str(membership.role or "").upper() not in ("OWNER", "ADMIN")', approval_source)
+        self.assertIn("not _is_group_manager(membership)", approval_source)
         self.assertIn("and not _is_admin(current_user)", approval_source)
-        self.assertIn("tinode_auth_from_request(request)", approval_source)
-        self.assertIn("tinode_publish_system_event", approval_source)
+        self.assertIn("_group_owner_tinode_credentials(", approval_source)
+        self.assertIn("_publish_group_activity_events", approval_source)
         self.assertIn('"action": "member_added"', add_source)
         self.assertIn("expected_access_modes=expected_access_modes", add_source)
 
@@ -574,7 +601,7 @@ class ChatAuthContractTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("/api/v1/conversation/<conversation_id>/dissolve", controller_source)
-        self.assertIn("membership.role != \"OWNER\"", dissolve_source)
+        self.assertIn("_is_group_owner(membership)", dissolve_source)
         self.assertIn("tinode_topic_member_uids", dissolve_source)
         self.assertIn("tinode_dissolve_topic", dissolve_source)
         self.assertIn('item.status = "CLOSED"', dissolve_source)
@@ -766,7 +793,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("/api/v1/conversation/<conversation_id>/group-settings", controller_source)
         self.assertIn("/api/v1/chat/threads/<conversation_id>/group-settings", controller_source)
         self.assertIn("management_session_requested", endpoint_source)
-        self.assertIn("is_owner = membership.role == \"OWNER\"", endpoint_source)
+        self.assertIn("is_group_manager = _is_group_manager(membership)", endpoint_source)
         self.assertIn("allowMembersEditInfo", endpoint_source)
         self.assertIn("_group_info_permission_error()", endpoint_source)
         self.assertIn("GROUP_INFO_PERMISSION_REQUIRED", controller_source)

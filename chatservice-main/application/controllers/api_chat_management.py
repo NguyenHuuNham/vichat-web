@@ -139,6 +139,7 @@ GROUP_SETTING_DEFAULTS = {
 # only the viewer's history boundary instead of disabling the shared member.
 DIRECT_DELETED_AT_PROPERTY = "direct_deleted_at_by_user"
 GROUP_SETTING_KEYS = frozenset(GROUP_SETTING_DEFAULTS)
+GROUP_ROLE_VALUES = frozenset({"OWNER", "ADMIN", "MEMBER"})
 
 HISTORY_SEARCH_TYPES = frozenset({
     "all",
@@ -173,6 +174,20 @@ def _normalized_group_settings(value=None):
         key: source[key] if isinstance(source.get(key), bool) else default
         for key, default in GROUP_SETTING_DEFAULTS.items()
     }
+
+
+def _group_role(value):
+    """Normalize the per-conversation role without touching Account role."""
+    role = str(value or "MEMBER").strip().upper()
+    return role if role in GROUP_ROLE_VALUES else "MEMBER"
+
+
+def _is_group_owner(participant):
+    return _group_role(getattr(participant, "role", "")) == "OWNER"
+
+
+def _is_group_manager(participant):
+    return _group_role(getattr(participant, "role", "")) in {"OWNER", "ADMIN"}
 
 
 def _conversation_avatar(properties):
@@ -1170,6 +1185,35 @@ async def _tinode_tokens_for_accounts(accounts_by_id, account_ids, prepared_uids
     return dict(authenticated)
 
 
+async def _group_owner_tinode_credentials(item, participants=None, accounts_by_id=None):
+    """Return the authoritative owner bridge used for group mutations."""
+    if not item.tinode_topic:
+        raise AuthError("The group is not bound to a Tinode topic.", 409)
+    if participants is None or accounts_by_id is None:
+        participants, accounts_by_id = _active_conversation_accounts(item)
+    owner_participant = next(
+        (participant for participant in participants if _is_group_owner(participant)),
+        None,
+    )
+    owner_account = (
+        accounts_by_id.get(str(owner_participant.participant_id))
+        if owner_participant is not None
+        else None
+    )
+    if owner_account is None:
+        raise AuthError("The group has no active owner.", 409)
+    owner_uid = await _ensure_tinode_account(owner_account)
+    owner_auth = await tinode_sso_login(
+        _tinode_account_identity(owner_account),
+        owner_account.tinode_username,
+        owner_uid,
+    )
+    owner_token = str(owner_auth.get("token") or "").strip()
+    if not owner_uid or not owner_token:
+        raise AuthError("Tinode could not authenticate the group owner.", 502)
+    return owner_account, owner_uid, owner_token
+
+
 async def _ensure_tinode_accounts_best_effort(accounts, concurrency=8):
     """Provision newly discovered Account users without blocking directory reads."""
     account_list = [account for account in accounts if account.active and not account.tinode_uid]
@@ -1304,7 +1348,7 @@ def _expected_tinode_member_uids(item, participants, accounts_by_id):
 def _expected_tinode_access_modes(item, participants, accounts_by_id):
     modes = {
         str(accounts_by_id[participant.participant_id].tinode_uid or ""):
-            "JRWPASO" if str(participant.role or "").upper() == "OWNER" else "JRWPAS"
+            "JRWPASO" if _is_group_owner(participant) else "JRWPAS"
         for participant in participants
     }
     properties = item.properties or {}
@@ -1413,6 +1457,41 @@ def _audit(request, event_name, success=True, tenant_id=None, user_id=None, prop
         logger.warning("Could not write security audit event %s: %s", event_name, error)
 
 
+async def _publish_group_activity_events(item, events):
+    """Broadcast committed group changes through the owner bridge."""
+    if not item or not item.tinode_topic or not events:
+        return
+    try:
+        participants, accounts_by_id = _active_conversation_accounts(item)
+        _owner_account, owner_uid, owner_token = await _group_owner_tinode_credentials(
+            item,
+            participants,
+            accounts_by_id,
+        )
+        for event in events:
+            try:
+                await tinode_publish_system_event(
+                    owner_token,
+                    owner_uid,
+                    item.tinode_topic,
+                    event,
+                )
+            except Exception as error:
+                # Chatmgt remains authoritative when an activity packet is
+                # delayed; clients refresh the committed snapshot separately.
+                logger.warning("Could not publish group activity event: %s", error)
+    except Exception as error:
+        logger.warning("Could not prepare the group activity publisher: %s", error)
+
+
+def _public_group_member(account, participant, viewer_account=None):
+    payload = _public_account(account, viewer_account=viewer_account)
+    role = _group_role(getattr(participant, "role", ""))
+    payload["groupRole"] = role
+    payload["group_role"] = role
+    return payload
+
+
 def _serialize_conversation(item, viewer_id):
     properties = item.properties or {}
     is_group = bool(properties.get("is_group"))
@@ -1442,7 +1521,7 @@ def _serialize_conversation(item, viewer_id):
         ]
         participant_ids = [str(participant.participant_id) for participant in participants]
     viewer_account = _account_by_id(item.tenant_id, viewer_id)
-    owner = next((participant for participant in participants if participant.role == "OWNER"), None)
+    owner = next((participant for participant in participants if _is_group_owner(participant)), None)
     viewer_membership = next(
         (participant for participant in participants if participant.participant_id == viewer_id),
         None,
@@ -1462,7 +1541,7 @@ def _serialize_conversation(item, viewer_id):
     viewer_can_approve_members = bool(
         viewer_membership is not None
         and (
-            str(viewer_membership.role or "").upper() in ("OWNER", "ADMIN")
+            _is_group_manager(viewer_membership)
             or _is_admin({"role": getattr(viewer_account, "role", "")})
         )
     )
@@ -1533,9 +1612,20 @@ def _serialize_conversation(item, viewer_id):
         "groupSettings": group_settings,
         "participantIds": participant_ids,
         "members": [
-            _public_account(accounts_by_id[participant_id], viewer_account=viewer_account)
-            for participant_id in participant_ids
-            if participant_id in accounts_by_id
+            (
+                _public_group_member(
+                    accounts_by_id[participant.participant_id],
+                    participant,
+                    viewer_account=viewer_account,
+                )
+                if is_group
+                else _public_account(
+                    accounts_by_id[participant.participant_id],
+                    viewer_account=viewer_account,
+                )
+            )
+            for participant in participants
+            if participant.participant_id in accounts_by_id
         ],
         "pendingParticipantIds": [
             participant.participant_id
@@ -1543,7 +1633,18 @@ def _serialize_conversation(item, viewer_id):
             if participant.participant_id in pending_accounts_by_id
         ],
         "pendingMembers": [
-            _public_account(pending_accounts_by_id[participant.participant_id], viewer_account=viewer_account)
+            (
+                _public_group_member(
+                    pending_accounts_by_id[participant.participant_id],
+                    participant,
+                    viewer_account=viewer_account,
+                )
+                if is_group
+                else _public_account(
+                    pending_accounts_by_id[participant.participant_id],
+                    viewer_account=viewer_account,
+                )
+            )
             for participant in pending_participants
             if participant.participant_id in pending_accounts_by_id
         ],
@@ -4379,13 +4480,13 @@ async def conversation_group_settings(request, conversation_id):
             "error_code": "PARAM_ERROR",
             "error_message": "Group settings can only be changed for a group.",
         }, status=400)
-    is_owner = membership.role == "OWNER"
+    is_group_manager = _is_group_manager(membership)
     existing_properties = item.properties or {}
     existing_settings = _normalized_group_settings(
         existing_properties.get("groupSettings") or existing_properties.get("group_settings")
     )
     body = request.json or {}
-    if not is_owner and (
+    if not is_group_manager and (
         not isinstance(body, dict)
         or "settings" in body
         or not existing_settings["allowMembersEditInfo"]
@@ -4477,7 +4578,7 @@ async def conversation_dissolve(request, conversation_id):
             "error_code": "PARAM_ERROR",
             "error_message": "Only groups can be dissolved.",
         }, status=400)
-    if membership.role != "OWNER":
+    if not _is_group_owner(membership):
         return json({
             "error_code": "OWNER_REQUIRED",
             "error_message": "Only the group owner can dissolve this group.",
@@ -4489,7 +4590,7 @@ async def conversation_dissolve(request, conversation_id):
     try:
         participants, accounts_by_id = _active_conversation_accounts(item)
         owner_participant = next(
-            (participant for participant in participants if participant.role == "OWNER"),
+            (participant for participant in participants if _is_group_owner(participant)),
             None,
         )
         owner_account = accounts_by_id.get(owner_participant.participant_id) if owner_participant else None
@@ -4535,7 +4636,7 @@ async def conversation_dissolve(request, conversation_id):
                 item.tinode_topic,
                 {
                     "action": "group_dissolved",
-                    "actorId": user_id,
+                    "actorId": owner_uid or user_id,
                     "actorName": owner_account.full_name or owner_account.username or user_id,
                     "groupName": item.subject or "",
                 },
@@ -5008,7 +5109,7 @@ async def conversation_bind_tinode(request, conversation_id):
                 raise
         if is_group:
             owner_participant = next(
-                (participant for participant in participants if participant.role == "OWNER"),
+                (participant for participant in participants if _is_group_owner(participant)),
                 None,
             )
             owner_account = accounts_by_id.get(owner_participant.participant_id) if owner_participant else None
@@ -5086,6 +5187,11 @@ async def conversation_enable_tinode_chatbot(request, conversation_id):
             "error_code": "PARAM_ERROR",
             "error_message": "The chatbot can only be enabled in a group.",
         }, status=400)
+    if not _is_group_manager(membership):
+        return json({
+            "error_code": "GROUP_MANAGER_REQUIRED",
+            "error_message": "Only the group owner or deputy can enable ViChat AI.",
+        }, status=403)
     if not item.tinode_topic or not valid_tinode_topic(item.tinode_topic, True):
         return json({
             "error_code": "TINODE_TOPIC_REQUIRED",
@@ -5120,7 +5226,7 @@ async def conversation_enable_tinode_chatbot(request, conversation_id):
                 "error_message": "Prepare all group members before enabling ViChat AI.",
             }, status=409)
         owner_participant = next(
-            (participant for participant in participants if participant.role == "OWNER"),
+            (participant for participant in participants if _is_group_owner(participant)),
             None,
         )
         owner_account = accounts_by_id.get(owner_participant.participant_id) if owner_participant else None
@@ -5250,7 +5356,7 @@ async def conversation_participant_add(request, conversation_id):
     )
     approval_required = (
         bool(group_settings["approveMembers"])
-        and str(membership.role or "").upper() not in ("OWNER", "ADMIN")
+        and not _is_group_manager(membership)
         and not _is_admin(current_user)
     )
     activated_ids = [
@@ -5270,33 +5376,27 @@ async def conversation_participant_add(request, conversation_id):
         tinode_members_added = False
         database_committed = False
         actor_account = None
-        if item.tinode_topic and activated_ids:
+        if item.tinode_topic:
             actor_account = _account_by_id(tenant_id, user_id)
             if actor_account is None:
                 return json({"error_code": "TINODE_ACCOUNT_UNPREPARED", "error_message": "The current Tinode account is not prepared."}, status=409)
             if current_user.get("auth_method") == "account_sso":
                 await _validated_account_identity(request, actor_account)
-            tinode_operator_uid = await _ensure_tinode_account(actor_account)
-            actor_auth = tinode_auth_from_request(request)
-            if (
-                not actor_auth
-                or str(actor_auth.get("uid") or "") != tinode_operator_uid
-                or tinode_auth_expired(actor_auth)
-            ):
-                actor_auth = await tinode_sso_login(
-                    _tinode_account_identity(actor_account),
-                    actor_account.tinode_username,
-                    tinode_operator_uid,
-                )
-            tinode_token = str(actor_auth.get("token") or "").strip()
+            actor_tinode_uid = await _ensure_tinode_account(actor_account)
+        if item.tinode_topic and activated_ids:
+            owner_participants, owner_accounts = _active_conversation_accounts(item)
+            _owner_account, tinode_operator_uid, tinode_token = await _group_owner_tinode_credentials(
+                item,
+                owner_participants,
+                owner_accounts,
+            )
             if not tinode_token:
-                raise AuthError("Tinode could not authenticate the acting group member.", 502)
+                raise AuthError("Tinode could not authenticate the group owner.", 502)
             existing_tinode_member_uids = await tinode_topic_member_uids(
                 tinode_token,
                 tinode_operator_uid,
                 item.tinode_topic,
             )
-            actor_tinode_uid = tinode_operator_uid
             prepared_uids = await _ensure_tinode_accounts(
                 requested_accounts_by_id[requested_id] for requested_id in activated_ids
             )
@@ -5364,30 +5464,63 @@ async def conversation_participant_add(request, conversation_id):
         db.session.commit()
         database_committed = True
         if item.tinode_topic and added_tinode_uids:
-            try:
-                await tinode_publish_system_event(
-                    tinode_token,
-                    tinode_operator_uid,
-                    item.tinode_topic,
+            await _publish_group_activity_events(item, [{
+                "action": "member_added",
+                "actorId": actor_tinode_uid or user_id,
+                "actorAccountId": user_id,
+                "actorName": actor_account.full_name or actor_account.username or user_id,
+                "targets": [
                     {
-                        "action": "member_added",
-                        "actorId": actor_tinode_uid or user_id,
-                        "actorName": actor_account.full_name or actor_account.username or user_id,
-                        "targets": [
-                            {
-                                "id": added_uid,
-                                "name": (
-                                    requested_accounts_by_id[requested_id].full_name
-                                    or requested_accounts_by_id[requested_id].username
-                                    or requested_id
-                                ),
-                            }
-                            for requested_id, added_uid in zip(activated_ids, added_tinode_uids)
-                        ],
-                    },
+                        "id": added_uid,
+                        "uid": added_uid,
+                        "tinodeUid": added_uid,
+                        "accountId": requested_id,
+                        "name": (
+                            requested_accounts_by_id[requested_id].full_name
+                            or requested_accounts_by_id[requested_id].username
+                            or requested_id
+                        ),
+                    }
+                    for requested_id, added_uid in zip(activated_ids, added_tinode_uids)
+                ],
+            }])
+        elif item.tinode_topic:
+            # Pending members are not subscribed yet, so announce the request
+            # through the active group owner bridge for every current member.
+            pending_ids = [
+                requested_id for requested_id in requested_ids
+                if requested_id not in activated_ids
+                and (
+                    existing_by_id.get(requested_id) is None
+                    or not existing_by_id[requested_id].active
                 )
-            except Exception as error:
-                logger.warning("Could not publish the group member addition event: %s", error)
+            ]
+            if pending_ids:
+                pending_events = [{
+                    "action": "member_pending",
+                    "actorId": (
+                        str(getattr(actor_account, "tinode_uid", "") or "").strip()
+                        if actor_account is not None
+                        else user_id
+                    ) or user_id,
+                    "actorAccountId": user_id,
+                    "actorName": (
+                        actor_account.full_name
+                        or actor_account.username
+                        or user_id
+                    ) if actor_account is not None else user_id,
+                    "targets": [{
+                        "id": str(getattr(requested_accounts_by_id[pending_id], "tinode_uid", "") or "").strip()
+                        or pending_id,
+                        "accountId": pending_id,
+                        "name": (
+                            requested_accounts_by_id[pending_id].full_name
+                            or requested_accounts_by_id[pending_id].username
+                            or pending_id
+                        ),
+                    } for pending_id in pending_ids],
+                }]
+                await _publish_group_activity_events(item, pending_events)
         return json(_serialize_conversation(item, user_id))
     except AccountSSOError as error:
         db.session.rollback()
@@ -5431,6 +5564,235 @@ async def conversation_participant_add(request, conversation_id):
         }, status=503)
 
 
+@app.route('/api/v1/conversation/<conversation_id>/participants/<participant_id>/role', methods=['PUT'])
+@app.route('/api/v1/chat/threads/<conversation_id>/participants/<participant_id>/role', methods=['PUT'])
+async def conversation_participant_role(request, conversation_id, participant_id):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    if management_session_requested(request):
+        return json({
+            "error_code": "CHAT_SESSION_REQUIRED",
+            "error_message": "Group roles can only be changed from a Chat user session.",
+        }, status=403)
+    try:
+        conversation_uuid = uuid.UUID(str(conversation_id))
+    except (ValueError, TypeError, AttributeError):
+        return json({"error_code": "NOT_FOUND", "error_message": "Invalid conversation."}, status=404)
+
+    user_id = _user_id(current_user)
+    item, membership = _conversation_and_membership(tenant_id, conversation_uuid, user_id)
+    if item is None or membership is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
+    if not bool((item.properties or {}).get("is_group")):
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "Group roles can only be changed for a group.",
+        }, status=400)
+    if not _is_group_manager(membership):
+        return json({
+            "error_code": "GROUP_MANAGER_REQUIRED",
+            "error_message": "Only the group owner or deputy can appoint or remove a deputy.",
+        }, status=403)
+
+    body = request.json if isinstance(request.json, dict) else {}
+    requested_role = str(body.get("role") or "").strip().upper()
+    if requested_role not in {"ADMIN", "MEMBER"}:
+        return json({
+            "error_code": "GROUP_ROLE_INVALID",
+            "error_message": "The group role must be ADMIN or MEMBER.",
+        }, status=400)
+
+    target_id = str(participant_id or "").strip()
+    if target_id == user_id:
+        return json({
+            "error_code": "GROUP_ROLE_SELF_TARGET",
+            "error_message": "A group manager cannot change their own group role.",
+        }, status=409)
+    target = ConversationParticipant.query.filter(
+        ConversationParticipant.tenant_id == tenant_id,
+        ConversationParticipant.conversation_id == item.id,
+        ConversationParticipant.participant_id == target_id,
+        ConversationParticipant.active.is_(True),
+        ConversationParticipant.approval_status == "APPROVED",
+        ConversationParticipant.deleted.is_(False),
+    ).first()
+    if target is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Active group member not found."}, status=404)
+    if _is_group_owner(target):
+        return json({
+            "error_code": "OWNER_ROLE_PROTECTED",
+            "error_message": "The group owner role cannot be changed here.",
+        }, status=409)
+
+    previous_role = _group_role(target.role)
+    if previous_role == requested_role:
+        return json(_serialize_conversation(item, user_id))
+
+    actor_account = _account_by_id(tenant_id, user_id)
+    target_account = _account_by_id(tenant_id, target_id)
+    if actor_account is None or target_account is None:
+        return json({
+            "error_code": "TENANT_VIOLATION",
+            "error_message": "The group member is no longer active in this tenant.",
+        }, status=409)
+
+    now = int(time.time())
+    tinode_token = ""
+    owner_uid = ""
+    actor_uid = ""
+    target_uid = ""
+    role_sync_attempted = False
+    previous_access_modes = None
+    expected_member_uids = None
+    member_tokens = None
+    try:
+        if current_user.get("auth_method") == "account_sso":
+            await _validated_account_identity(request, actor_account)
+        actor_uid = await _ensure_tinode_account(actor_account)
+        target_uid = await _ensure_tinode_account(target_account)
+
+        if item.tinode_topic:
+            participants, accounts_by_id = _active_conversation_accounts(item)
+            owner_account, owner_uid, tinode_token = await _group_owner_tinode_credentials(
+                item,
+                participants,
+                accounts_by_id,
+            )
+            prepared_uids = await _ensure_tinode_accounts(accounts_by_id.values())
+            member_tokens = await _tinode_tokens_for_accounts(
+                accounts_by_id,
+                list(accounts_by_id),
+                prepared_uids,
+            )
+            expected_member_uids = _expected_tinode_member_uids(
+                item,
+                participants,
+                accounts_by_id,
+            )
+            previous_access_modes = _expected_tinode_access_modes(
+                item,
+                participants,
+                accounts_by_id,
+            )
+            # Persist the new Chatmgt role in the transaction before deriving
+            # the Tinode access contract from the updated membership.
+            target.role = requested_role
+            item.updated_at = now
+            db.session.flush()
+            role_sync_attempted = True
+            await tinode_reconcile_topic_members(
+                tinode_token,
+                owner_uid,
+                item.tinode_topic,
+                expected_member_uids,
+                expected_access_modes=_expected_tinode_access_modes(
+                    item,
+                    participants,
+                    accounts_by_id,
+                ),
+                member_tokens=member_tokens,
+            )
+        else:
+            target.role = requested_role
+        item.updated_at = now
+        db.session.commit()
+        _audit(
+            request,
+            "CONVERSATION_GROUP_ROLE_CHANGED",
+            True,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            properties={
+                "conversation_id": str(item.id),
+                "target_account_id": target_id,
+                "previous_role": previous_role,
+                "role": requested_role,
+            },
+        )
+        if item.tinode_topic:
+            await _publish_group_activity_events(item, [{
+                "action": "group_role_changed",
+                "actorId": actor_uid or user_id,
+                "actorAccountId": user_id,
+                "actorName": actor_account.full_name or actor_account.username or user_id,
+                "targetId": target_uid or target_id,
+                "targetAccountId": target_id,
+                "previousRole": previous_role,
+                "role": requested_role,
+                "targets": [{
+                    "id": target_uid or target_id,
+                    "uid": target_uid or target_id,
+                    "tinodeUid": target_uid or target_id,
+                    "accountId": target_id,
+                    "name": target_account.full_name or target_account.username or target_id,
+                    "role": requested_role,
+                    "groupRole": requested_role,
+                }],
+            }])
+        return json(_serialize_conversation(item, user_id))
+    except AccountSSOError as error:
+        db.session.rollback()
+        if role_sync_attempted and item.tinode_topic and expected_member_uids and previous_access_modes is not None:
+            try:
+                target.role = previous_role
+                db.session.flush()
+                await tinode_reconcile_topic_members(
+                    tinode_token,
+                    owner_uid,
+                    item.tinode_topic,
+                    expected_member_uids,
+                    expected_access_modes=previous_access_modes,
+                    member_tokens=member_tokens,
+                )
+            except Exception as rollback_error:
+                logger.warning("Could not roll back Tinode group role access: %s", rollback_error)
+        if error.status_code != 503:
+            revoke_request_token(request)
+            revoked_error = AccountSSOError(str(error), 401, error.error_code)
+            response = clear_auth_cookie(_account_sso_error(revoked_error), request)
+            return clear_account_cookie(response)
+        return _account_sso_error(error)
+    except AuthError as error:
+        db.session.rollback()
+        if role_sync_attempted and item.tinode_topic and expected_member_uids and previous_access_modes is not None:
+            try:
+                target.role = previous_role
+                db.session.flush()
+                await tinode_reconcile_topic_members(
+                    tinode_token,
+                    owner_uid,
+                    item.tinode_topic,
+                    expected_member_uids,
+                    expected_access_modes=previous_access_modes,
+                    member_tokens=member_tokens,
+                )
+            except Exception as rollback_error:
+                logger.warning("Could not roll back Tinode group role access: %s", rollback_error)
+        return json({"error_code": "TINODE_ROLE_SYNC_FAILED", "error_message": str(error)}, status=error.status_code)
+    except Exception as error:
+        db.session.rollback()
+        if role_sync_attempted and item.tinode_topic and expected_member_uids and previous_access_modes is not None:
+            try:
+                target.role = previous_role
+                db.session.flush()
+                await tinode_reconcile_topic_members(
+                    tinode_token,
+                    owner_uid,
+                    item.tinode_topic,
+                    expected_member_uids,
+                    expected_access_modes=previous_access_modes,
+                    member_tokens=member_tokens,
+                )
+            except Exception as rollback_error:
+                logger.warning("Could not roll back Tinode group role access: %s", rollback_error)
+        logger.exception("Could not update the Chatmgt group role: %s", error)
+        return json({
+            "error_code": "CONVERSATION_GROUP_ROLE_ERROR",
+            "error_message": "Could not update the group role.",
+        }, status=503)
+
+
 @app.route('/api/v1/conversation/<conversation_id>/participants/<participant_id>/approval', methods=['PUT'])
 @app.route('/api/v1/chat/threads/<conversation_id>/participants/<participant_id>/approval', methods=['PUT'])
 async def conversation_participant_approval(request, conversation_id, participant_id):
@@ -5448,7 +5810,7 @@ async def conversation_participant_approval(request, conversation_id, participan
         return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
     if not bool((item.properties or {}).get("is_group")):
         return json({"error_code": "PARAM_ERROR", "error_message": "Member approval is only available for a group."}, status=400)
-    if str(membership.role or "").upper() not in ("OWNER", "ADMIN") and not _is_admin(current_user):
+    if not _is_group_manager(membership) and not _is_admin(current_user):
         return json({"error_code": "OWNER_REQUIRED", "error_message": "Only a group owner/admin or tenant administrator can approve members."}, status=403)
 
     approved = (request.json or {}).get("approved")
@@ -5477,6 +5839,7 @@ async def conversation_participant_approval(request, conversation_id, participan
 
     tinode_token = ""
     tinode_operator_uid = ""
+    actor_tinode_uid = ""
     target_uid = ""
     target_token = ""
     existing_tinode_member_uids = set()
@@ -5486,23 +5849,18 @@ async def conversation_participant_approval(request, conversation_id, participan
         if approved:
             if current_user.get("auth_method") == "account_sso":
                 await _validated_account_identity(request, actor_account)
+            if actor_account is not None and item.tinode_topic:
+                actor_tinode_uid = await _ensure_tinode_account(actor_account)
             if item.tinode_topic:
                 target_uid = await _ensure_tinode_account(target_account)
-                tinode_operator_uid = await _ensure_tinode_account(actor_account)
-                actor_auth = tinode_auth_from_request(request)
-                if (
-                    not actor_auth
-                    or str(actor_auth.get("uid") or "") != tinode_operator_uid
-                    or tinode_auth_expired(actor_auth)
-                ):
-                    actor_auth = await tinode_sso_login(
-                        _tinode_account_identity(actor_account),
-                        actor_account.tinode_username,
-                        tinode_operator_uid,
-                    )
-                tinode_token = str(actor_auth.get("token") or "").strip()
+                owner_participants, owner_accounts = _active_conversation_accounts(item)
+                _owner_account, tinode_operator_uid, tinode_token = await _group_owner_tinode_credentials(
+                    item,
+                    owner_participants,
+                    owner_accounts,
+                )
                 if not tinode_token:
-                    raise AuthError("Tinode could not authenticate the approving group administrator.", 502)
+                    raise AuthError("Tinode could not authenticate the group owner.", 502)
                 target_auth = await tinode_sso_login(
                     _tinode_account_identity(target_account),
                     target_account.tinode_username,
@@ -5558,23 +5916,39 @@ async def conversation_participant_approval(request, conversation_id, participan
         db.session.commit()
         database_committed = True
         if approved and item.tinode_topic:
-            try:
-                await tinode_publish_system_event(
-                    tinode_token,
-                    tinode_operator_uid,
-                    item.tinode_topic,
-                    {
-                        "action": "member_approved",
-                        "actorId": tinode_operator_uid or user_id,
-                        "actorName": actor_account.full_name or actor_account.username or user_id,
-                        "targets": [{
-                            "id": target_uid or str(participant_id),
-                            "name": target_account.full_name or target_account.username or str(participant_id),
-                        }],
-                    },
-                )
-            except Exception as error:
-                logger.warning("Could not publish the group member approval event: %s", error)
+            await _publish_group_activity_events(item, [{
+                "action": "member_approved",
+                "actorId": actor_tinode_uid or user_id,
+                "actorAccountId": user_id,
+                "actorName": actor_account.full_name or actor_account.username or user_id,
+                "targets": [{
+                    "id": target_uid or str(participant_id),
+                    "uid": target_uid or str(participant_id),
+                    "tinodeUid": target_uid or str(participant_id),
+                    "accountId": str(participant_id),
+                    "name": target_account.full_name or target_account.username or str(participant_id),
+                }],
+            }])
+        elif not approved and item.tinode_topic:
+            await _publish_group_activity_events(item, [{
+                "action": "member_rejected",
+                "actorId": actor_tinode_uid or user_id,
+                "actorAccountId": user_id,
+                "actorName": (
+                    actor_account.full_name
+                    or actor_account.username
+                    or user_id
+                ) if actor_account is not None else user_id,
+                "targets": [{
+                    "id": target_uid or str(participant_id),
+                    "accountId": str(participant_id),
+                    "name": (
+                        target_account.full_name
+                        or target_account.username
+                        or str(participant_id)
+                    ) if target_account is not None else str(participant_id),
+                }],
+            }])
         return json(_serialize_conversation(item, user_id))
     except AccountSSOError as error:
         db.session.rollback()
@@ -5624,7 +5998,8 @@ async def conversation_participant_remove(request, conversation_id, participant_
     if item is None or membership is None:
         return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
     participant_id = str(participant_id or user_id)
-    if participant_id != user_id and membership.role != "OWNER":
+    is_group = bool((item.properties or {}).get("is_group"))
+    if participant_id != user_id and (not is_group or not _is_group_manager(membership)):
         return _forbidden_error()
 
     target = ConversationParticipant.query.filter(
@@ -5649,9 +6024,8 @@ async def conversation_participant_remove(request, conversation_id, participant_
         ):
             return json(_serialize_conversation(item, user_id))
         return json({"error_code": "NOT_FOUND", "error_message": "Participant not found."}, status=404)
-    if target.role == "OWNER" and participant_id != user_id:
+    if _is_group_owner(target) and participant_id != user_id:
         return json({"error_code": "OWNER_REQUIRED", "error_message": "The group owner cannot be removed."}, status=409)
-    is_group = bool((item.properties or {}).get("is_group"))
     if not is_group and participant_id != user_id:
         return json({
             "error_code": "DIRECT_PARTICIPANTS_INVALID",
@@ -5706,7 +6080,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
 
     replacement_id = str(request_payload.get("replacement_id") or "").strip()
     replacement = None
-    if is_group and target.role == "OWNER" and not close_after_leave:
+    if is_group and _is_group_owner(target) and not close_after_leave:
         if participant_id != user_id:
             return json({"error_code": "OWNER_REQUIRED", "error_message": "The group owner cannot be removed."}, status=409)
         if not replacement_id:
@@ -5761,16 +6135,15 @@ async def conversation_participant_remove(request, conversation_id, participant_
         ).first()
 
     if close_after_leave:
-        topic_owner = ConversationParticipant.query.filter(
+        topic_owner = next((participant for participant in ConversationParticipant.query.filter(
             ConversationParticipant.tenant_id == tenant_id,
             ConversationParticipant.conversation_id == item.id,
-            ConversationParticipant.role == "OWNER",
             ConversationParticipant.approval_status == "APPROVED",
             ConversationParticipant.deleted.is_(False),
         ).order_by(
             ConversationParticipant.active.desc(),
             ConversationParticipant.joined_at.asc().nullslast(),
-        ).first()
+        ).all() if _is_group_owner(participant)), None)
         topic_owner_id = str(topic_owner.participant_id) if topic_owner is not None else ""
         try:
             all_participants = ConversationParticipant.query.filter(
@@ -5880,6 +6253,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
 
     try:
         tinode_token = ""
+        tinode_operator_uid = ""
         actor_account = None
         target_account = None
         event_sender_account = None
@@ -5905,13 +6279,13 @@ async def conversation_participant_remove(request, conversation_id, participant_
                     )
                     await tinode_accept_topic_owner(
                         tinode_token,
-                        actor_account.tinode_uid,
+                        tinode_operator_uid or actor_account.tinode_uid,
                         item.tinode_topic,
                         mode="JRWPASO",
                     )
                 await tinode_add_topic_members(
                     tinode_token,
-                    actor_account.tinode_uid,
+                    tinode_operator_uid or actor_account.tinode_uid,
                     item.tinode_topic,
                     [replacement_uid],
                     mode="JRWPAS",
@@ -5927,7 +6301,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 return
             restore_token = event_sender_tinode_token if participant_id == user_id else tinode_token
             restore_uid = event_sender_uid if participant_id == user_id else (
-                actor_account.tinode_uid if actor_account is not None else ""
+                tinode_operator_uid if is_group else (actor_account.tinode_uid if actor_account is not None else "")
             )
             if not restore_token or not restore_uid:
                 return
@@ -5943,17 +6317,28 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 logger.warning("Could not roll back the Tinode member removal.")
 
         if item.tinode_topic:
-            tinode_token = str(request_payload.get("tinode_token") or "").strip()
-            if not tinode_token:
-                return json({"error_code": "TINODE_TOKEN_REQUIRED", "error_message": "Tinode authentication is required."}, status=400)
             actor_account = _account_by_id(tenant_id, user_id)
             target_account = _account_by_id(tenant_id, participant_id)
-            if actor_account is None or not actor_account.tinode_uid:
+            if actor_account is None:
                 return json({"error_code": "TINODE_ACCOUNT_UNPREPARED", "error_message": "The current Tinode account is not prepared."}, status=409)
-            if target_account is None or not target_account.tinode_uid:
+            if target_account is None:
                 return json({"error_code": "TINODE_ACCOUNT_UNPREPARED", "error_message": "The target Tinode account is not prepared."}, status=409)
             if current_user.get("auth_method") == "account_sso":
                 await _validated_account_identity(request, actor_account)
+            actor_uid = await _ensure_tinode_account(actor_account)
+            target_uid = await _ensure_tinode_account(target_account)
+            if is_group:
+                owner_participants, owner_accounts = _active_conversation_accounts(item)
+                _owner_account, tinode_operator_uid, tinode_token = await _group_owner_tinode_credentials(
+                    item,
+                    owner_participants,
+                    owner_accounts,
+                )
+            else:
+                tinode_token = str(request_payload.get("tinode_token") or "").strip()
+                tinode_operator_uid = actor_uid
+                if not tinode_token:
+                    return json({"error_code": "TINODE_TOKEN_REQUIRED", "error_message": "Tinode authentication is required."}, status=400)
             if is_group and event_sender_participant is not None:
                 event_sender_account = _account_by_id(tenant_id, event_sender_participant.participant_id)
                 if event_sender_account is not None:
@@ -5992,7 +6377,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
             if replacement_uid:
                 await tinode_add_topic_members(
                     tinode_token,
-                    actor_account.tinode_uid,
+                    tinode_operator_uid,
                     item.tinode_topic,
                     [replacement_uid],
                     mode="JRWPASO",
@@ -6006,7 +6391,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 owner_transfer_accepted = True
             await tinode_remove_topic_member(
                 tinode_token,
-                actor_account.tinode_uid,
+                tinode_operator_uid,
                 item.tinode_topic,
                 target_account.tinode_uid,
             )
@@ -6037,26 +6422,39 @@ async def conversation_participant_remove(request, conversation_id, participant_
                     )
         item.updated_at = now
         db.session.commit()
-        if is_group and participant_id == user_id and event_sender_tinode_token:
-            try:
-                await tinode_publish_system_event(
-                    event_sender_tinode_token,
-                    event_sender_uid,
-                    item.tinode_topic,
-                    {
-                        "action": "member_left",
-                        "actorId": participant_id,
-                        "actorName": target_account.full_name or target_account.username or participant_id,
-                        **({
-                            "replacementId": replacement.participant_id,
-                            "replacementName": replacement_name or replacement.participant_id,
-                        } if replacement is not None else {}),
-                    },
-                )
-            except Exception as error:
-                # Membership is already authoritative; a missing activity event
-                # must not make a successful leave appear to have failed.
-                logger.warning("Could not publish the group leave event: %s", error)
+        if is_group and item.tinode_topic:
+            actor_account = actor_account or _account_by_id(tenant_id, user_id)
+            event_actor_account = target_account if participant_id == user_id else actor_account
+            event_actor_id = (
+                target_uid
+                if participant_id == user_id
+                else str(getattr(actor_account, "tinode_uid", "") or "").strip()
+            ) or (participant_id if participant_id == user_id else user_id)
+            event_actor_name = (
+                event_actor_account.full_name
+                or event_actor_account.username
+                or (participant_id if participant_id == user_id else user_id)
+            ) if event_actor_account is not None else (participant_id if participant_id == user_id else user_id)
+            activity_event = {
+                "action": "member_left" if participant_id == user_id else "member_removed",
+                "actorId": event_actor_id,
+                "actorAccountId": participant_id if participant_id == user_id else user_id,
+                "actorName": event_actor_name,
+                "targets": [] if participant_id == user_id else [{
+                    "id": target_uid or participant_id,
+                    "accountId": participant_id,
+                    "name": (
+                        target_account.full_name
+                        or target_account.username
+                        or participant_id
+                    ) if target_account is not None else participant_id,
+                }],
+                **({
+                    "replacementId": replacement.participant_id,
+                    "replacementName": replacement_name or replacement.participant_id,
+                } if replacement is not None else {}),
+            }
+            await _publish_group_activity_events(item, [activity_event])
         return json(_serialize_conversation(item, user_id))
     except AccountSSOError as error:
         db.session.rollback()

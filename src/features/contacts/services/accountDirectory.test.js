@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  canAppointGroupDeputy,
   canApproveGroupMembers,
   canManageGroupMembers,
   canRemoveGroupMember,
+  canRevokeGroupDeputy,
   accountTenantId,
   companyDirectoryContacts,
   companyDirectoryHeading,
@@ -14,6 +16,7 @@ import {
   findAccount,
   findAccountByIdentities,
   findDirectPeer,
+  groupRoleForIdentity,
   identitiesOverlap,
   identityValues,
   matchesCompanyDirectoryContact,
@@ -435,6 +438,27 @@ test('group administrator resolves a Tinode owner to the matching Chatmgt accoun
     name: 'Tên quản trị viên',
     mode: 'JRWPASO',
   });
+});
+
+test('group owners and deputies share management controls while the owner stays unique', () => {
+  const owner = { id: 'account-owner', tinodeUid: 'usr-owner', name: 'Owner', groupRole: 'OWNER' };
+  const deputy = { id: 'account-deputy', tinodeUid: 'usr-deputy', name: 'Deputy', groupRole: 'ADMIN' };
+  const member = { id: 'account-member', tinodeUid: 'usr-member', name: 'Member', groupRole: 'MEMBER' };
+  const room = {
+    isGroup: true,
+    adminId: owner.id,
+    members: [owner, deputy, member],
+  };
+  const accounts = [owner, deputy, member];
+
+  assert.equal(groupRoleForIdentity(room, owner, accounts), 'OWNER');
+  assert.equal(groupRoleForIdentity(room, deputy, accounts), 'ADMIN');
+  assert.equal(groupRoleForIdentity(room, member, accounts), 'MEMBER');
+  assert.equal(canManageGroupMembers(room, accounts, deputy), true);
+  assert.equal(canAppointGroupDeputy(room, accounts, deputy, member), true);
+  assert.equal(canRevokeGroupDeputy(room, accounts, owner, deputy), true);
+  assert.equal(canRemoveGroupMember(room, accounts, deputy, member), true);
+  assert.equal(canRemoveGroupMember(room, accounts, deputy, owner), false);
 });
 
 test('only the creator can remove another member and the owner cannot remove themselves', () => {

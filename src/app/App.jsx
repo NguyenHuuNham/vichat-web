@@ -158,9 +158,11 @@ import {
   parseTimestamp,
 } from '../features/chat/services/timeFormatting';
 import {
+  canAppointGroupDeputy,
   canApproveGroupMembers,
   canManageGroupMembers,
   canRemoveGroupMember,
+  canRevokeGroupDeputy,
   accountTenantId,
   companyDirectoryContacts,
   companyDirectoryHeading,
@@ -172,6 +174,8 @@ import {
   findDirectPeer,
   identitiesOverlap,
   identityValues,
+  groupRoleForIdentity,
+  normalizeGroupRole,
   matchesCompanyDirectoryContact,
   applyContactNicknames,
   mergeDirectoryAccountSnapshots,
@@ -184,7 +188,7 @@ import {
   updateAccountPresence,
 } from '../features/contacts/services/accountDirectory';
 import AvatarCropModal from '../features/contacts/components/AvatarCropModal';
-import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, dissolveDemoGroup, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
+import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, dissolveDemoGroup, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMemberRole, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
 import { CHATBOT_ACCOUNT, CHATBOT_STARTER_PROMPTS, EXTERNAL_CHAT_ONLY, applyTinodeChatbotConfig, loadChatbotMessages, loadChatbotMessagesFromServer, loadTinodeChatbotConfig, mergeChatbotMessages, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
 import {
@@ -211,6 +215,7 @@ import {
   applyPollEvent,
   normalizePoll,
   normalizePollEvent,
+  projectPollsWithMembers,
   pollCanViewerLock,
   pollIsClosed,
   pollOptionVoteCounts,
@@ -571,7 +576,7 @@ function pollEventForMessage(message) {
   return normalizePollEvent(event);
 }
 
-function projectDemoPollMessages(messages = []) {
+function projectDemoPollMessages(messages = [], members = []) {
   const source = Array.isArray(messages) ? messages : [];
   const eventsByPollId = new Map();
   source.forEach(message => {
@@ -598,6 +603,7 @@ function projectDemoPollMessages(messages = []) {
         event,
         eventMessage.senderId || event.actorId,
         Number(eventMessage.seq) || 0,
+        members,
       );
     });
     const latest = events.at(-1);
@@ -1068,6 +1074,19 @@ function personalizeGroupSystemText(message, accounts, viewerId) {
     if (targetIds.includes(viewerId)) return `${actorName} đã duyệt bạn vào nhóm`;
     return `${actorName} đã duyệt ${targetNames.join(', ')} vào nhóm`;
   }
+  if (message.action === 'member_pending') {
+    return `${actorName} đã gửi yêu cầu thêm ${targetNames.join(', ')} vào nhóm`;
+  }
+  if (message.action === 'member_rejected') {
+    return `${actorName} đã từ chối ${targetNames.join(', ')} vào nhóm`;
+  }
+  if (message.action === 'group_role_changed') {
+    const role = normalizeGroupRole(message.role || message.groupRole);
+    const actorText = message.senderId === viewerId ? 'Bạn đã' : `${actorName} đã`;
+    return role === 'ADMIN'
+      ? `${actorText} bổ nhiệm ${targetNames.join(', ')} làm phó nhóm`
+      : `${actorText} thu hồi quyền phó nhóm của ${targetNames.join(', ')}`;
+  }
   if (message.action === 'member_joined') {
     const joinedName = targetNames[0] || actorName;
     return message.senderId === viewerId || targetIds.includes(viewerId)
@@ -1238,6 +1257,29 @@ function groupActiveMembers(room, accounts) {
     });
     return activeMembers;
   }, []);
+}
+
+function applyGroupRoleEventToRoom(room, event) {
+  if (!room?.isGroup || event?.action !== 'group_role_changed') return room;
+  const role = normalizeGroupRole(event.role || event.groupRole);
+  const targets = [
+    ...(Array.isArray(event.targets) ? event.targets : []),
+    ...(event.targetId ? [{ id: event.targetId, accountId: event.targetAccountId }] : []),
+  ].filter(Boolean);
+  if (!['ADMIN', 'MEMBER'].includes(role) || targets.length === 0) return room;
+  let changed = false;
+  const members = roomMembers(room).map(member => {
+    const matched = targets.some(target => (
+      (target.accountId && identitiesOverlap(member, { id: target.accountId }))
+      || (target.id && identitiesOverlap(member, { id: target.id }))
+      || (target.uid && identitiesOverlap(member, { id: target.uid }))
+      || (target.tinodeUid && identitiesOverlap(member, { id: target.tinodeUid }))
+    ));
+    if (!matched || member.groupRole === role && member.group_role === role) return member;
+    changed = true;
+    return { ...member, groupRole: role, group_role: role };
+  });
+  return changed ? { ...room, members } : room;
 }
 
 function groupOwnerReplacementMembers(room, accounts, currentUser) {
@@ -1848,14 +1890,16 @@ function mergeTinodeConversation(existing, incoming, { viewerId = '' } = {}) {
 // into a React render and triggering the global ErrorBoundary.
 function safeMergeTinodeConversation(existing, incoming, options = {}) {
   try {
+    const merged = mergeTinodeConversation(existing, incoming, options);
     return safeNormalizeConversationForRender(
-      mergeTinodeConversation(existing, incoming, options),
+      projectPollsWithMembers(merged, merged?.members),
       existing?.id || incoming?.id,
     );
   } catch (mergeError) {
     console.error('ViChat: mergeTinodeConversation failed, using fallback', mergeError);
+    const fallback = existing || incoming;
     return safeNormalizeConversationForRender(
-      existing || incoming,
+      projectPollsWithMembers(fallback, fallback?.members),
       existing?.id || incoming?.id,
     );
   }
@@ -1921,6 +1965,23 @@ function SafeAvatar({ src, name, className = '' }) {
     return <span className={`${className} avatar-fallback`} aria-label={name || 'Ảnh đại diện'}>{name?.trim?.().slice(0, 1).toUpperCase() || '?'}</span>;
   }
   return <img src={resolvedSrc} alt={name || 'Ảnh đại diện'} className={className} onError={() => setFailed(true)} />;
+}
+
+function GroupRoleBadge({ role, copy = { t: value => value } }) {
+  const groupRole = normalizeGroupRole(role);
+  if (groupRole === 'MEMBER') return null;
+  const isOwner = groupRole === 'OWNER';
+  const label = copy.t(isOwner ? 'Trưởng nhóm' : 'Phó nhóm');
+  return (
+    <span
+      className={`group-owner-avatar-badge group-role-avatar-badge group-role-${groupRole.toLowerCase()}`}
+      title={label}
+      aria-label={label}
+      role="img"
+    >
+      <i className="fa-solid fa-key" aria-hidden="true"></i>
+    </span>
+  );
 }
 
 function MessageReceiptIndicator({ message, copy = { t: value => value }, onOpen }) {
@@ -2105,6 +2166,7 @@ function MessageReplyPreview({ reply, copy = { t: value => value }, onClick, sho
 function PollMessageCard({
   message,
   viewerIdentities = [],
+  groupMembers = [],
   copy = { t: value => value },
   onVote,
   onAddOption,
@@ -2119,7 +2181,7 @@ function PollMessageCard({
   const closed = pollIsClosed(poll);
   const counts = pollOptionVoteCounts(poll);
   const totalVoters = pollTotalVoters(poll);
-  const canLock = pollCanViewerLock(poll, viewerIdentities);
+  const canLock = pollCanViewerLock(poll, viewerIdentities, groupMembers);
   const showResults = !poll?.settings?.hideResultsUntilVote || Boolean(viewerVote) || closed || canLock;
   const maxCount = Math.max(1, ...Object.values(counts));
   const viewerVoteCreatedAt = viewerVote?.createdAt || '';
@@ -2348,7 +2410,7 @@ function ImageBatchMessage({
   activeChat,
   activeChatId,
   viewerId,
-  activeAdminAccount,
+  activeGroupMembers,
   copy = { t: value => value, locale: 'vi-VN' },
   chatMode,
   messageActions,
@@ -2375,7 +2437,9 @@ function ImageBatchMessage({
   const firstSenderId = firstMessage.senderId || firstMessage.raw?.from || firstMessage.raw?.head?.['x-sender-id'];
   const isOutgoing = firstMessage.sender === 'outgoing'
     || Boolean(firstSenderId && viewerId && firstSenderId === viewerId);
-  const isOwnerMessage = activeChat.isGroup && identitiesOverlap({ id: firstSenderId }, activeAdminAccount);
+  const senderGroupRole = activeChat.isGroup
+    ? groupRoleForIdentity({ ...activeChat, members: activeGroupMembers }, firstSenderId)
+    : 'MEMBER';
   const layoutClass = imageBatchLayoutClass(messages.length);
   const captionMessage = messages.find(message => String(message?.text || '').trim());
 
@@ -2384,11 +2448,7 @@ function ImageBatchMessage({
       {!isOutgoing && (
         <button type="button" className="message-avatar message-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(firstMessage))} title={`${copy.t('Xem thông tin')} ${firstMessage.senderName || copy.t('thành viên')}`}>
           <SafeAvatar src={firstMessage.avatar || ''} name={firstMessage.senderName} />
-          {isOwnerMessage && (
-            <span className="group-owner-avatar-badge" title={copy.t('Quản trị viên nhóm')} aria-label={copy.t('Quản trị viên nhóm')} role="img">
-              <i className="fa-solid fa-key" aria-hidden="true"></i>
-            </span>
-          )}
+          <GroupRoleBadge role={senderGroupRole} copy={copy} />
         </button>
       )}
 
@@ -2601,7 +2661,15 @@ function demoGroupToConversation(group, accounts, viewerId) {
       online: Boolean(account.online),
       username: account.username,
       email: account.email,
-    } : { id: memberId, name: memberId, online: false };
+      groupRole: group.groupRoles?.[memberId] || (memberId === group.ownerId ? 'OWNER' : 'MEMBER'),
+      group_role: group.groupRoles?.[memberId] || (memberId === group.ownerId ? 'OWNER' : 'MEMBER'),
+    } : {
+      id: memberId,
+      name: memberId,
+      online: false,
+      groupRole: group.groupRoles?.[memberId] || (memberId === group.ownerId ? 'OWNER' : 'MEMBER'),
+      group_role: group.groupRoles?.[memberId] || (memberId === group.ownerId ? 'OWNER' : 'MEMBER'),
+    };
   });
   const owner = findAccount(accounts, group.ownerId);
   const deletedBefore = Date.parse(group.deletedAtByUser?.[viewerId] || '') || 0;
@@ -2617,7 +2685,7 @@ function demoGroupToConversation(group, accounts, viewerId) {
       avatar: senderAccount?.avatar || message.avatar,
       text: message.type === 'system' ? personalizeGroupSystemText(message, accounts, viewerId) : message.text,
       };
-  }));
+  }), members);
   const lastMessage = messages[messages.length - 1];
   const lastAttachmentPreview = attachmentConversationPreview(lastMessage);
   const lastContent = lastMessage?.text || 'Nhóm mới được tạo';
@@ -2856,6 +2924,7 @@ function App() {
   const [isAddingGroupMembers, setIsAddingGroupMembers] = useState(false);
   const [approvingMemberId, setApprovingMemberId] = useState('');
   const [removingMemberId, setRemovingMemberId] = useState('');
+  const [updatingGroupMemberRoleId, setUpdatingGroupMemberRoleId] = useState('');
   const [isGroupMembersExpanded, setIsGroupMembersExpanded] = useState(false);
   const [isGroupBoardOpen, setIsGroupBoardOpen] = useState(false);
   const [groupMemberMenuId, setGroupMemberMenuId] = useState('');
@@ -3035,6 +3104,7 @@ function App() {
   const groupAvatarSyncRef = useRef(new Map());
   const groupAvatarRefreshRef = useRef(new Map());
   const groupNameRefreshRef = useRef(new Set());
+  const groupRoleRefreshRef = useRef(new Set());
   const messageSearchRequestRef = useRef(0);
   const typingNoticeAtRef = useRef(new Map());
   const typingClearTimersRef = useRef(new Map());
@@ -3616,6 +3686,9 @@ function App() {
   };
 
   const activeChatMembers = roomMembers(activeChat);
+  const activeGroupMembers = activeChat.isGroup
+    ? groupActiveMembers(activeChat, directoryAccounts)
+    : [];
   const activeGroupSettings = activeChat.isGroup
     ? normalizeGroupSettings(activeChat.groupSettings)
     : normalizeGroupSettings();
@@ -4573,7 +4646,7 @@ function App() {
   const activeAdminAccount = resolveGroupAdministrator(activeChat, directoryAccounts);
   const activeAdminName = activeAdminAccount?.name || activeChat.admin || appCopy.t('Chưa xác định');
   const isActiveGroupOwner = activeChat.isGroup
-    && identitiesOverlap(activeAdminAccount, currentUser);
+    && groupRoleForIdentity(activeChat, currentUser, directoryAccounts) === 'OWNER';
 
   // Do not auto-scroll while the unread boundary is being reviewed.
   const scrollToBottom = () => {
@@ -5404,6 +5477,11 @@ function App() {
           && latestConversationActivity.action === 'group_avatar_changed'
           ? latestConversationActivity
           : null;
+        const latestGroupRoleActivity = roomMessages(conversation).slice().reverse().find(message => (
+          message?.type === 'system' && message.action === 'group_role_changed'
+        )) || null;
+        const groupRoleActivityEvent = latestGroupRoleActivity?.systemEvent || latestGroupRoleActivity;
+        const roomWithRealtimeRole = applyGroupRoleEventToRoom(currentRoom, groupRoleActivityEvent);
         if (
           currentRoom?.isGroup
           && latestGroupAvatarActivity
@@ -5445,11 +5523,31 @@ function App() {
             });
           }
         }
+        if (
+          currentRoom?.isGroup
+          && latestGroupRoleActivity
+          && chatManagementService.remote
+          && isManagementConversationId(currentRoom.managementId || currentRoom.id)
+        ) {
+          const activityKey = [
+            conversation.id,
+            latestGroupRoleActivity.seq
+              || latestGroupRoleActivity.id
+              || latestGroupRoleActivity.createdAt,
+          ].join(':');
+          if (!groupRoleRefreshRef.current.has(activityKey)) {
+            groupRoleRefreshRef.current.add(activityKey);
+            refreshManagementConversations(accountSession).catch(error => {
+              groupRoleRefreshRef.current.delete(activityKey);
+              console.warn('ViChat: group role activity refresh failed', error);
+            });
+          }
+        }
         void reopenDirectConversation(stateId, currentRoom, conversation);
         // Merge the read cursor before deriving notifications or boundaries.
         // A delayed Tinode snapshot must not make an already-read message look
         // new again.
-        const effectiveReadState = mergeConversationReadState(currentRoom, conversation, { viewerId });
+        const effectiveReadState = mergeConversationReadState(roomWithRealtimeRole, conversation, { viewerId });
         const conversationWithReadState = {
           ...conversation,
           ...effectiveReadState,
@@ -5517,6 +5615,7 @@ function App() {
         setConversations(prev => {
           const previousRoom = safeNormalizeConversationForRender(prev[stateId], stateId);
           if (!previousRoom || previousRoom.accountSession !== accountSession || previousRoom.tinodeTopic !== conversation.id) return prev;
+          const previousRoomWithRole = applyGroupRoleEventToRoom(previousRoom, groupRoleActivityEvent);
           const incoming = {
             ...conversationWithReadState,
             id: stateId,
@@ -5526,7 +5625,7 @@ function App() {
           };
           const next = {
             ...prev,
-            [stateId]: safeMergeTinodeConversation(previousRoom, incoming, { viewerId }),
+            [stateId]: safeMergeTinodeConversation(previousRoomWithRole, incoming, { viewerId }),
           };
           conversationsRef.current = next;
           return next;
@@ -5665,6 +5764,7 @@ function App() {
     groupAvatarSyncRef.current.clear();
     groupAvatarRefreshRef.current.clear();
     groupNameRefreshRef.current.clear();
+    groupRoleRefreshRef.current.clear();
     setConversationMenu(null);
     setWorkspaceResults([]);
     setEnterpriseTaskSeed(null);
@@ -6118,6 +6218,7 @@ function App() {
     deletedConversationIdsRef.current.clear();
     groupAvatarSyncRef.current.clear();
     groupNameRefreshRef.current.clear();
+    groupRoleRefreshRef.current.clear();
     notificationBaselineRef.current.clear();
     typingNoticeAtRef.current.clear();
     typingClearTimersRef.current.forEach(timer => clearTimeout(timer));
@@ -7428,7 +7529,7 @@ function App() {
           groupSettings: nextSettings,
           updatedAt: new Date().toISOString(),
         };
-        if (chatMode === 'tinode') {
+        if (chatMode === 'tinode' && !usesManagementData) {
           const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
           await tinodeClient.sendSystemEvent(topicName, activityEvent).catch(error => {
             console.warn('ViChat: group settings activity announcement failed', error);
@@ -7525,7 +7626,7 @@ function App() {
   const executeGroupLeave = async (targetRoom, replacementId = '', replacementName = '', mode = 'leave') => {
     if (!targetRoom?.isGroup || isLeavingGroup) return false;
     const actorId = currentUser?.id || currentUser?.uid;
-    const isOwner = canManageGroupMembers(targetRoom, directoryAccounts, currentUser);
+    const isOwner = groupRoleForIdentity(targetRoom, currentUser, directoryAccounts) === 'OWNER';
     const ownerReplacementMembers = isOwner
       ? groupOwnerReplacementMembers(targetRoom, directoryAccounts, currentUser)
       : [];
@@ -7625,7 +7726,7 @@ function App() {
 
   const requestGroupLeave = (targetRoom, mode = 'leave') => {
     if (!targetRoom?.isGroup || isLeavingGroup) return;
-    const isOwner = canManageGroupMembers(targetRoom, directoryAccounts, currentUser);
+    const isOwner = groupRoleForIdentity(targetRoom, currentUser, directoryAccounts) === 'OWNER';
     const closesEmptyGroup = groupActiveMembers(targetRoom, directoryAccounts)
       .every(member => identitiesOverlap(member, currentUser));
     const soleOwnerEffect = appCopy.t('Bạn là thành viên cuối cùng. Rời nhóm sẽ đóng nhóm này.');
@@ -8580,9 +8681,11 @@ function App() {
         avatarUrl: persistedAvatarUrl,
         updatedAt: new Date().toISOString(),
       };
-      await tinodeClient.sendSystemEvent(topicName, activityEvent).catch(error => {
-        console.warn('ViChat: group avatar activity announcement failed', error);
-      });
+      if (!usesManagementData) {
+        await tinodeClient.sendSystemEvent(topicName, activityEvent).catch(error => {
+          console.warn('ViChat: group avatar activity announcement failed', error);
+        });
+      }
       const realtimeRoom = await tinodeClient.openConversation(topicName).catch(() => null);
       updateActiveGroupRoom({
         ...(realtimeRoom ? normalizeTinodeConversation(realtimeRoom) : {}),
@@ -8773,6 +8876,106 @@ function App() {
     }
   };
 
+  const handleGroupMemberRoleChange = async (member, nextRole) => {
+    if (
+      updatingGroupMemberRoleId
+      || !activeChat.isGroup
+      || !usesManagementData && chatMode !== 'demo'
+      || !isActiveGroupAdmin
+    ) return;
+    const memberId = String(member?.id || member?.uid || member?.tinodeUid || member?.tinode_uid || '').trim();
+    const role = normalizeGroupRole(nextRole);
+    if (!memberId || !['ADMIN', 'MEMBER'].includes(role)) return;
+    if (
+      role === 'ADMIN'
+      ? !canAppointGroupDeputy(activeChat, directoryAccounts, currentUser, member)
+      : !canRevokeGroupDeputy(activeChat, directoryAccounts, currentUser, member)
+    ) return;
+
+    const stateConversationId = activeChat.id;
+    const managementConversationId = activeChat.managementId || stateConversationId;
+    const previousRole = groupRoleForIdentity(activeChat, member, directoryAccounts);
+    if (previousRole === role) return;
+    setUpdatingGroupMemberRoleId(memberId);
+    setGroupMemberMenuId('');
+    setChatError('');
+    try {
+      let updatedRoom;
+      if (usesManagementData) {
+        const managedRoom = await chatManagementService.updateConversationParticipantRole(
+          managementConversationId,
+          memberId,
+          role,
+        );
+        updatedRoom = {
+          ...normalizeTinodeConversation(managedRoom),
+          ...managedRoom,
+          id: stateConversationId,
+          managementId: managementConversationId,
+          accountSession: accountSessionRef.current,
+          managementSnapshot: true,
+          messages: roomMessages(activeChat),
+        };
+        const topicName = activeChat.tinodeTopic || managedRoom.tinodeTopic;
+        if (chatMode === 'tinode' && topicName) {
+          const realtimeRoom = await tinodeClient.openConversation(topicName);
+          updatedRoom = {
+            ...normalizeTinodeConversation(realtimeRoom),
+            ...managedRoom,
+            id: stateConversationId,
+            managementId: managementConversationId,
+            tinodeTopic: topicName,
+            accountSession: accountSessionRef.current,
+            managementSnapshot: true,
+            messages: roomMessages(realtimeRoom).length > 0 ? roomMessages(realtimeRoom) : roomMessages(activeChat),
+          };
+        }
+      } else {
+        const group = updateDemoGroupMemberRole(
+          activeChat.id,
+          memberId,
+          currentUser?.id || currentUser?.uid,
+          role,
+        );
+        const actorId = currentUser?.id || currentUser?.uid || viewerId;
+        const targetName = member.name || member.username || memberId;
+        const activityMessage = {
+          id: `system-group-role-${Date.now()}`,
+          type: 'system',
+          action: 'group_role_changed',
+          senderId: actorId,
+          senderName: currentUser?.name || 'Trưởng nhóm',
+          targetId: memberId,
+          targetIds: [memberId],
+          previousRole,
+          role,
+          text: role === 'ADMIN'
+            ? `${currentUser?.name || 'Trưởng nhóm'} đã bổ nhiệm ${targetName} làm phó nhóm`
+            : `${currentUser?.name || 'Trưởng nhóm'} đã thu hồi quyền phó nhóm của ${targetName}`,
+          time: getTimeString(),
+          createdAt: new Date().toISOString(),
+        };
+        const groupWithEvent = appendDemoGroupMessage(group.id, activityMessage);
+        updatedRoom = demoGroupToConversation(groupWithEvent, directoryAccounts, actorId);
+      }
+      setConversations(previous => {
+        const currentRoom = previous[stateConversationId] || activeChat;
+        const next = {
+          ...previous,
+          [stateConversationId]: safeMergeTinodeConversation(currentRoom, updatedRoom),
+        };
+        conversationsRef.current = next;
+        return next;
+      });
+    } catch (error) {
+      setChatError(error?.message || (role === 'ADMIN'
+        ? 'Không thể bổ nhiệm phó nhóm.'
+        : 'Không thể thu hồi quyền phó nhóm.'));
+    } finally {
+      setUpdatingGroupMemberRoleId('');
+    }
+  };
+
   const closeCreateGroupModal = () => {
     if (isCreatingGroup) return;
     setIsCreateGroupOpen(false);
@@ -8823,7 +9026,6 @@ function App() {
             managementConversationId,
             memberAccount.id,
           );
-          await tinodeClient.sendSystemEvent(topicName, event).catch(() => {});
           const realtimeRoom = await tinodeClient.openConversation(topicName).catch(() => ({
           messages: roomMessages(activeChat),
           }));
@@ -9265,7 +9467,7 @@ function App() {
     const currentMessage = roomMessages(room).find(item => item.id === message?.id) || message;
     const currentPoll = normalizePoll(currentMessage?.poll || currentMessage?.pollData);
     if (!currentPoll || !actorId) return null;
-    const nextPoll = applyPollEvent(currentPoll, event, actorId, 0);
+    const nextPoll = applyPollEvent(currentPoll, event, actorId, 0, activeGroupMembers);
     const activity = pollActivityMessage(event, actorId, event.actorName || currentUser?.name || 'Thành viên', currentMessage);
     setConversations(previous => {
       const currentRoom = previous[activeChat.id] || room;
@@ -9352,7 +9554,7 @@ function App() {
   const handlePollLock = async message => {
     const poll = normalizePoll(message?.poll);
     const identities = [viewerId, managementViewerId, currentUser?.id, currentUser?.uid, currentUser?.tinodeUid].filter(Boolean);
-    if (!activeChat.isGroup || !poll || !pollCanViewerLock(poll, identities)) return;
+    if (!activeChat.isGroup || !poll || !pollCanViewerLock(poll, identities, activeGroupMembers)) return;
     await publishPollEvent(message, { action: 'poll_locked' });
   };
 
@@ -12385,7 +12587,7 @@ function App() {
                     activeChat={activeChat}
                     activeChatId={activeChat.id}
                     viewerId={viewerId}
-                    activeAdminAccount={activeAdminAccount}
+                    activeGroupMembers={activeGroupMembers}
                     copy={appCopy}
                     chatMode={chatMode}
                     messageActions={messageActions}
@@ -12415,8 +12617,14 @@ function App() {
               const systemEventClass = String(msg.action || 'activity').replace(/[^a-z0-9_-]/gi, '-');
               const systemEventIcon = ['poll_vote', 'poll_option_added', 'poll_locked'].includes(msg.action)
                 ? 'fa-square-poll-vertical'
+                : ['group_role_changed'].includes(msg.action)
+                  ? 'fa-key'
                 : msg.action === 'member_left'
                 ? 'fa-arrow-right-from-bracket'
+                : ['member_pending'].includes(msg.action)
+                  ? 'fa-user-clock'
+                : ['member_rejected'].includes(msg.action)
+                  ? 'fa-user-xmark'
                 : msg.action === 'member_removed'
                   ? 'fa-user-minus'
                     : msg.action === 'member_approved'
@@ -12464,7 +12672,10 @@ function App() {
                 || Boolean(explicitPollSenderId && viewerId && explicitPollSenderId === viewerId);
               const pollMessageKey = messageActionKey(activeChat.id, msg.id);
               const pollMessageState = messageActions[pollMessageKey] || {};
-              const pollOwnerMessage = identitiesOverlap({ id: explicitPollSenderId }, activeAdminAccount);
+              const pollSenderGroupRole = groupRoleForIdentity(
+                { ...activeChat, members: activeGroupMembers },
+                explicitPollSenderId,
+              );
               const pollViewerIdentities = [
                 viewerId,
                 managementViewerId,
@@ -12491,11 +12702,7 @@ function App() {
                     {!isPollOutgoing && (
                       <button type="button" className="message-avatar message-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))} title={`${appCopy.t('Xem thông tin')} ${msg.senderName || appCopy.t('thành viên')}`}>
                         <SafeAvatar src={msg.avatar || ''} name={msg.senderName} />
-                        {pollOwnerMessage && (
-                          <span className="group-owner-avatar-badge" title={appCopy.t('Quản trị viên nhóm')} aria-label={appCopy.t('Quản trị viên nhóm')} role="img">
-                            <i className="fa-solid fa-key" aria-hidden="true"></i>
-                          </span>
-                        )}
+                        <GroupRoleBadge role={pollSenderGroupRole} copy={appCopy} />
                       </button>
                     )}
                     <div className="message-content-wrapper poll-message-content">
@@ -12518,6 +12725,7 @@ function App() {
                         <PollMessageCard
                           message={msg}
                           viewerIdentities={pollViewerIdentities}
+                          groupMembers={activeGroupMembers}
                           copy={appCopy}
                           onVote={handlePollVote}
                           onAddOption={handlePollAddOption}
@@ -12552,8 +12760,9 @@ function App() {
             const messageSenderId = explicitMessageSenderId || (isOutgoing ? viewerId : '');
             const messageKey = messageActionKey(activeChat.id, msg.id);
             const messageState = messageActions[messageKey] || {};
-            const isOwnerMessage = activeChat.isGroup
-              && identitiesOverlap({ id: messageSenderId }, activeAdminAccount);
+            const messageSenderGroupRole = activeChat.isGroup
+              ? groupRoleForIdentity({ ...activeChat, members: activeGroupMembers }, messageSenderId)
+              : 'MEMBER';
             const reactions = chatMode === 'tinode'
               ? { ...(msg.reactions || {}) }
               : { ...(msg.reactions || {}), ...(messageState.reactions || {}) };
@@ -12615,11 +12824,7 @@ function App() {
                 {!isOutgoing && (
                   <button type="button" className="message-avatar message-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))} title={`${appCopy.t('Xem thông tin')} ${msg.senderName || appCopy.t('thành viên')}`}>
                     <SafeAvatar src={msg.avatar || ''} name={msg.senderName} />
-                    {isOwnerMessage && (
-                      <span className="group-owner-avatar-badge" title={appCopy.t('Quản trị viên nhóm')} aria-label={appCopy.t('Quản trị viên nhóm')} role="img">
-                        <i className="fa-solid fa-key" aria-hidden="true"></i>
-                      </span>
-                    )}
+                    <GroupRoleBadge role={messageSenderGroupRole} copy={appCopy} />
                   </button>
                 )}
 
@@ -13703,6 +13908,7 @@ function App() {
                           <PollMessageCard
                             message={pollMessage}
                             viewerIdentities={[viewerId, managementViewerId, currentUser?.id, currentUser?.uid, currentUser?.tinodeUid].filter(Boolean)}
+                            groupMembers={activeGroupMembers}
                             copy={appCopy}
                             onVote={handlePollVote}
                             onAddOption={handlePollAddOption}
@@ -13890,18 +14096,31 @@ function App() {
                 <div className="members-list">
                   {roomMembers(activeChat).map((member, idx) => {
                     const memberIdentity = String(member.id || member.uid || member.tinodeUid || member.tinode_uid || member.name || idx);
+                    const memberRole = groupRoleForIdentity(activeChat, member, directoryAccounts);
                     const canRemove = canRemoveGroupMember(activeChat, directoryAccounts, currentUser, member);
+                    const canAppointDeputy = (usesManagementData || chatMode === 'demo')
+                      && canAppointGroupDeputy(activeChat, directoryAccounts, currentUser, member);
+                    const canRevokeDeputy = (usesManagementData || chatMode === 'demo')
+                      && canRevokeGroupDeputy(activeChat, directoryAccounts, currentUser, member);
+                    const canShowMemberMenu = canRemove || canAppointDeputy || canRevokeDeputy;
                     return (
                       <div key={memberIdentity} className={`member-item ${groupMemberMenuId === memberIdentity ? 'menu-open' : ''}`}>
-                        <SafeAvatar src={typeof member.avatar === 'string' ? member.avatar : ''} name={member.name} className="member-avatar" />
+                        <span className="member-avatar-wrap">
+                          <SafeAvatar src={typeof member.avatar === 'string' ? member.avatar : ''} name={member.name} className="member-avatar" />
+                          <GroupRoleBadge role={memberRole} copy={appCopy} />
+                        </span>
                         <div className="member-info">
-                          <span className="member-name">{member.name}</span>
+                          <span className="member-name">
+                            {member.name}
+                            {memberRole === 'OWNER' && <small className="member-role-label">{appCopy.t('Trưởng nhóm')}</small>}
+                            {memberRole === 'ADMIN' && <small className="member-role-label">{appCopy.t('Phó nhóm')}</small>}
+                          </span>
                           <span className="member-status-text">
                             <span className={`status-dot ${chatMode === 'tinode' ? (isAccountOnline(member) ? 'online' : 'offline') : 'managed'}`}></span>
                             {accountPresenceLabel(member)}
                           </span>
                         </div>
-                        {canRemove && (
+                        {canShowMemberMenu && (
                           <div className="member-item-menu">
                             <button
                               type="button"
@@ -13910,7 +14129,7 @@ function App() {
                                 event.stopPropagation();
                                 setGroupMemberMenuId(previous => previous === memberIdentity ? '' : memberIdentity);
                               }}
-                              disabled={Boolean(removingMemberId)}
+                              disabled={Boolean(removingMemberId || updatingGroupMemberRoleId)}
                               title={appCopy.t('Tùy chọn thành viên')}
                               aria-label={appCopy.t('Tùy chọn thành viên')}
                               aria-expanded={groupMemberMenuId === memberIdentity}
@@ -13919,7 +14138,31 @@ function App() {
                             </button>
                             {groupMemberMenuId === memberIdentity && (
                               <div className="member-context-menu" role="menu" onClick={event => event.stopPropagation()}>
-                                <button
+                                {canAppointDeputy && (
+                                  <button
+                                    type="button"
+                                    className="member-context-menu-item"
+                                    role="menuitem"
+                                    onClick={() => void handleGroupMemberRoleChange(member, 'ADMIN')}
+                                    disabled={Boolean(removingMemberId || updatingGroupMemberRoleId)}
+                                  >
+                                    <i className={`fa-solid ${updatingGroupMemberRoleId === memberIdentity ? 'fa-spinner fa-spin' : 'fa-key'}`} aria-hidden="true"></i>
+                                    <span>{appCopy.t('Bổ nhiệm phó nhóm')}</span>
+                                  </button>
+                                )}
+                                {canRevokeDeputy && (
+                                  <button
+                                    type="button"
+                                    className="member-context-menu-item"
+                                    role="menuitem"
+                                    onClick={() => void handleGroupMemberRoleChange(member, 'MEMBER')}
+                                    disabled={Boolean(removingMemberId || updatingGroupMemberRoleId)}
+                                  >
+                                    <i className={`fa-solid ${updatingGroupMemberRoleId === memberIdentity ? 'fa-spinner fa-spin' : 'fa-key'}`} aria-hidden="true"></i>
+                                    <span>{appCopy.t('Thu hồi quyền phó nhóm')}</span>
+                                  </button>
+                                )}
+                                {canRemove && <button
                                   type="button"
                                   className="member-context-menu-item danger"
                                   role="menuitem"
@@ -13927,11 +14170,11 @@ function App() {
                                     setGroupMemberMenuId('');
                                     void handleRemoveGroupMember(member);
                                   }}
-                                  disabled={Boolean(removingMemberId)}
+                                  disabled={Boolean(removingMemberId || updatingGroupMemberRoleId)}
                                 >
                                   <i className={`fa-solid ${removingMemberId === memberIdentity ? 'fa-spinner fa-spin' : 'fa-user-minus'}`} aria-hidden="true"></i>
                                   <span>{appCopy.t('Xóa khỏi nhóm')}</span>
-                                </button>
+                                </button>}
                               </div>
                             )}
                           </div>

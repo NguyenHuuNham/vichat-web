@@ -548,6 +548,19 @@ function formatSystemEvent(event, viewerId) {
     if (targets.some(target => target.id === viewerId)) return `${actorName} đã duyệt bạn vào nhóm`;
     return `${actorName} đã duyệt ${targetNames.join(', ')} vào nhóm`;
   }
+  if (event.action === 'member_pending') {
+    return `${actorName} đã gửi yêu cầu thêm ${targetNames.join(', ')} vào nhóm`;
+  }
+  if (event.action === 'member_rejected') {
+    return `${actorName} đã từ chối ${targetNames.join(', ')} vào nhóm`;
+  }
+  if (event.action === 'group_role_changed') {
+    const role = String(event.role || event.groupRole || '').trim().toUpperCase();
+    const actorText = event.actorId === viewerId ? 'Bạn đã' : `${actorName} đã`;
+    return role === 'ADMIN'
+      ? `${actorText} bổ nhiệm ${targetNames.join(', ')} làm phó nhóm`
+      : `${actorText} thu hồi quyền phó nhóm của ${targetNames.join(', ')}`;
+  }
   if (event.action === 'member_joined') {
     const joinedName = targetNames[0] || actorName;
     return event.actorId === viewerId || targets.some(target => target.id === viewerId)

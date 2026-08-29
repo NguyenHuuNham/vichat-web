@@ -14,6 +14,25 @@ function firstMemberId(memberIds) {
   return uniqueIds(memberIds)[0] || '';
 }
 
+function normalizeStoredGroupRole(value, fallback = 'MEMBER') {
+  const role = String(value || '').trim().toUpperCase();
+  if (['OWNER', 'ADMIN', 'MEMBER'].includes(role)) return role;
+  const normalizedFallback = String(fallback || '').trim().toUpperCase();
+  return ['OWNER', 'ADMIN', 'MEMBER'].includes(normalizedFallback) ? normalizedFallback : 'MEMBER';
+}
+
+function normalizedGroupRoles(group, memberIds, ownerId) {
+  const source = group?.groupRoles && typeof group.groupRoles === 'object' && !Array.isArray(group.groupRoles)
+    ? group.groupRoles
+    : {};
+  return Object.fromEntries(uniqueIds(memberIds).map(memberId => [
+    memberId,
+    memberId === ownerId
+      ? 'OWNER'
+      : normalizeStoredGroupRole(source[memberId], 'MEMBER'),
+  ]));
+}
+
 function reconcileGroupMembership(group) {
   const messages = (group.messages || []).filter(isRealMessage);
   let memberIds = uniqueIds([
@@ -21,14 +40,28 @@ function reconcileGroupMembership(group) {
     ...messages.map(message => message.senderId),
   ]);
   let ownerId = group.ownerId;
+  const groupRoles = { ...(group.groupRoles || {}) };
   let ownerNeedsRecovery = false;
   for (const message of messages) {
     if (message.type !== 'system') continue;
     if (message.action === 'member_added') {
       memberIds = uniqueIds([...memberIds, ...(message.targetIds || [])]);
+      (message.targetIds || []).forEach(memberId => {
+        groupRoles[memberId] = 'MEMBER';
+      });
+    }
+    if (message.action === 'group_role_changed') {
+      const targetIds = uniqueIds([
+        message.targetId,
+        ...(message.targetIds || []),
+      ]);
+      targetIds.forEach(memberId => {
+        if (memberIds.includes(memberId)) groupRoles[memberId] = normalizeStoredGroupRole(message.role, 'MEMBER');
+      });
     }
     if (message.action === 'member_left' && message.senderId) {
       memberIds = memberIds.filter(id => id !== message.senderId);
+      delete groupRoles[message.senderId];
       if (message.senderId === ownerId) {
         const replacementId = String(message.replacementId || '').trim();
         if (replacementId && memberIds.includes(replacementId)) ownerId = replacementId;
@@ -36,11 +69,23 @@ function reconcileGroupMembership(group) {
       }
     }
     if (message.action === 'member_removed') {
-      memberIds = memberIds.filter(id => !(message.targetIds || []).includes(id));
+      const removedIds = uniqueIds([
+        message.targetId,
+        ...(message.targetIds || []),
+      ]);
+      memberIds = memberIds.filter(id => !removedIds.includes(id));
+      removedIds.forEach(memberId => delete groupRoles[memberId]);
     }
   }
   if (ownerNeedsRecovery || !memberIds.includes(ownerId)) ownerId = firstMemberId(memberIds);
-  return { ...group, memberIds, ownerId, messages };
+  if (ownerId) groupRoles[ownerId] = 'OWNER';
+  return {
+    ...group,
+    memberIds,
+    ownerId,
+    groupRoles: normalizedGroupRoles({ groupRoles }, memberIds, ownerId),
+    messages,
+  };
 }
 
 function readGroups() {
@@ -80,12 +125,18 @@ export function listDemoGroupsForUser(userId) {
   return groups.filter(group => group.memberIds?.includes(userId));
 }
 
-export function saveDemoGroup({ id, name, description = '', avatar = '', ownerId, memberIds = [], messages = [], groupSettings }) {
+export function saveDemoGroup({ id, name, description = '', avatar = '', ownerId, memberIds = [], messages = [], groupSettings, groupRoles = {} }) {
   const groups = readGroups();
   const now = new Date().toISOString();
   const groupId = id || `demo-grp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const previous = groups.find(group => group.id === groupId);
-  const effectiveOwnerId = previous?.ownerId || ownerId;
+  const effectiveMemberIds = previous
+    ? uniqueIds([...(previous.memberIds || []), ...memberIds])
+    : uniqueIds([ownerId, ...memberIds]);
+  const effectiveOwnerId = previous?.ownerId || ownerId || firstMemberId(effectiveMemberIds);
+  const nextGroupRoles = normalizedGroupRoles({
+    groupRoles: { ...(previous?.groupRoles || {}), ...groupRoles },
+  }, effectiveMemberIds, effectiveOwnerId);
   const record = reconcileGroupMembership({
     ...previous,
     id: groupId,
@@ -94,9 +145,8 @@ export function saveDemoGroup({ id, name, description = '', avatar = '', ownerId
     avatar: avatar || previous?.avatar || '',
     groupSettings: groupSettings || previous?.groupSettings,
     ownerId: effectiveOwnerId,
-    memberIds: previous
-      ? uniqueIds([...(previous.memberIds || []), ...memberIds])
-      : uniqueIds([effectiveOwnerId, ...memberIds]),
+    memberIds: effectiveMemberIds,
+    groupRoles: nextGroupRoles,
     messages: [
       ...(previous?.messages || []),
       ...messages.filter(message => isRealMessage(message) && !(previous?.messages || []).some(existing => existing.id === message.id)),
@@ -152,6 +202,9 @@ export function addDemoGroupMembers(groupId, memberIds) {
   const updated = {
     ...group,
     memberIds: uniqueIds([...(group.memberIds || []), ...memberIds]),
+    groupRoles: normalizedGroupRoles({
+      groupRoles: group.groupRoles,
+    }, uniqueIds([...(group.memberIds || []), ...memberIds]), group.ownerId),
     updatedAt: new Date().toISOString(),
   };
   writeGroups([...groups.filter(item => item.id !== groupId), updated]);
@@ -162,11 +215,40 @@ export function removeDemoGroupMember(groupId, memberId, ownerId) {
   const groups = readGroups();
   const group = groups.find(item => item.id === groupId);
   if (!group) throw new Error('Nhóm demo không còn tồn tại.');
-  if (group.ownerId !== ownerId) throw new Error('Chỉ quản trị viên của nhóm mới có thể xóa thành viên.');
-  if (memberId === ownerId) throw new Error('Quản trị viên không thể tự xóa mình.');
+  const managerRole = group.ownerId === ownerId
+    ? 'OWNER'
+    : normalizeStoredGroupRole(group.groupRoles?.[ownerId], 'MEMBER');
+  if (!['OWNER', 'ADMIN'].includes(managerRole)) throw new Error('Chỉ quản trị viên của nhóm mới có thể xóa thành viên.');
+  if (memberId === group.ownerId) throw new Error('Trưởng nhóm không thể bị xóa khỏi nhóm.');
   const updated = {
     ...group,
     memberIds: (group.memberIds || []).filter(id => id !== memberId),
+    groupRoles: Object.fromEntries(Object.entries(group.groupRoles || {}).filter(([id]) => id !== memberId)),
+    updatedAt: new Date().toISOString(),
+  };
+  writeGroups([...groups.filter(item => item.id !== groupId), updated]);
+  return updated;
+}
+
+export function updateDemoGroupMemberRole(groupId, memberId, ownerId, role) {
+  const groups = readGroups();
+  const group = groups.find(item => item.id === groupId);
+  if (!group) throw new Error('Nhóm demo không còn tồn tại.');
+  const managerRole = group.ownerId === ownerId
+    ? 'OWNER'
+    : normalizeStoredGroupRole(group.groupRoles?.[ownerId], 'MEMBER');
+  if (!['OWNER', 'ADMIN'].includes(managerRole)) throw new Error('Chỉ quản trị viên của nhóm mới có thể thay đổi vai trò.');
+  if (!group.memberIds?.includes(memberId) || memberId === group.ownerId) {
+    throw new Error('Không thể thay đổi vai trò của thành viên này.');
+  }
+  const nextRole = String(role || '').trim().toUpperCase();
+  if (!['ADMIN', 'MEMBER'].includes(nextRole)) throw new Error('Vai trò phó nhóm không hợp lệ.');
+  const updated = {
+    ...group,
+    groupRoles: {
+      ...normalizedGroupRoles(group, group.memberIds, group.ownerId),
+      [memberId]: nextRole,
+    },
     updatedAt: new Date().toISOString(),
   };
   writeGroups([...groups.filter(item => item.id !== groupId), updated]);
@@ -184,8 +266,11 @@ export function leaveDemoGroup(groupId, userId, replacementId = '') {
     throw new Error('Quản trị viên phải chọn một thành viên mới trước khi rời nhóm.');
   }
   const ownerId = isOwner ? nextOwnerId : group.ownerId;
+  const groupRoles = { ...normalizedGroupRoles(group, group.memberIds || [], group.ownerId) };
+  delete groupRoles[userId];
+  if (ownerId) groupRoles[ownerId] = 'OWNER';
   writeGroups(memberIds.length > 0
-    ? [...groups.filter(item => item.id !== groupId), { ...group, memberIds, ownerId, updatedAt: new Date().toISOString() }]
+    ? [...groups.filter(item => item.id !== groupId), { ...group, memberIds, ownerId, groupRoles, updatedAt: new Date().toISOString() }]
     : groups.filter(item => item.id !== groupId));
 }
 
@@ -210,6 +295,9 @@ export function deleteDemoGroupForUser(groupId, userId, userName = 'Một thành
     throw new Error('Quản trị viên phải chọn một thành viên mới trước khi rời nhóm.');
   }
   const ownerId = isOwner ? nextOwnerId : group.ownerId;
+  const groupRoles = { ...normalizedGroupRoles(group, group.memberIds || [], group.ownerId) };
+  delete groupRoles[userId];
+  if (ownerId) groupRoles[ownerId] = 'OWNER';
   const leaveMessage = {
     id: `system-delete-${Date.now()}`,
     type: 'system',
@@ -226,6 +314,7 @@ export function deleteDemoGroupForUser(groupId, userId, userName = 'Một thành
       ...group,
       memberIds,
       ownerId,
+      groupRoles,
       messages: [...(group.messages || []), leaveMessage],
       deletedAtByUser: { ...(group.deletedAtByUser || {}), [userId]: deletedAt },
       updatedAt: deletedAt,

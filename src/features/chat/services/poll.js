@@ -123,7 +123,7 @@ function eventTimestamp(event) {
   return validIsoDate(event?.createdAt) || new Date().toISOString();
 }
 
-export function applyPollEvent(poll, value, actorId = '', sequence = 0) {
+export function applyPollEvent(poll, value, actorId = '', sequence = 0, members = []) {
   const current = normalizePoll(poll);
   const event = normalizePollEvent(value);
   const actor = textValue(actorId || event?.actorId, MAX_POLL_ID_LENGTH);
@@ -140,7 +140,7 @@ export function applyPollEvent(poll, value, actorId = '', sequence = 0) {
   next.lastActivityAt = eventAt;
 
   if (event.action === 'poll_locked') {
-    if (!actor || !current.creatorId || actor !== current.creatorId) return current;
+    if (!pollCanViewerLock(current, [actor], members)) return current;
     next.locked = true;
     return next;
   }
@@ -199,6 +199,88 @@ export function pollTotalVoters(poll) {
   return Object.keys(poll?.votes || {}).length;
 }
 
+function identityValues(value) {
+  const source = value && typeof value === 'object' && !Array.isArray(value)
+    ? value
+    : { id: value };
+  return [...new Set([
+    source.id,
+    source.uid,
+    source.tinodeUid,
+    source.tinode_uid,
+    ...(Array.isArray(source.identities) ? source.identities : []),
+  ].map(identity => textValue(identity, MAX_POLL_ID_LENGTH)).filter(Boolean))];
+}
+
+function identitiesOverlap(first, second) {
+  const secondValues = new Set(identityValues(second));
+  return identityValues(first).some(identity => secondValues.has(identity));
+}
+
+function normalizePollMember(value) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const identities = identityValues(source);
+  const id = identities[0] || textValue(source.name || source.fullName || source.full_name, 120);
+  if (!id) return null;
+  const rawGroupRole = textValue(source.groupRole || source.group_role, 20).toUpperCase();
+  const groupRole = ['OWNER', 'ADMIN', 'MEMBER'].includes(rawGroupRole)
+    ? rawGroupRole
+    : String(source.mode || '').includes('O') ? 'OWNER' : 'MEMBER';
+  return {
+    id,
+    identities,
+    name: textValue(source.name || source.fullName || source.full_name || source.username, 120) || id,
+    avatar: textValue(source.avatar, 500),
+    groupRole,
+  };
+}
+
+function normalizedPollMembers(members = []) {
+  return (Array.isArray(members) ? members : []).reduce((result, member) => {
+    if (result.length >= 500) return result;
+    const normalized = normalizePollMember(member);
+    if (!normalized || result.some(existing => identitiesOverlap(existing, normalized))) return result;
+    result.push(normalized);
+    return result;
+  }, []);
+}
+
+// Tinode can replay poll cards before the Chatmgt member snapshot arrives.
+// Re-apply lock events only after the caller supplies that authoritative role
+// snapshot, so a client-published role claim cannot unlock a poll.
+export function projectPollsWithMembers(conversation, members = []) {
+  if (!conversation || !Array.isArray(conversation.messages)) return conversation;
+  const lockEventsByPollId = new Map();
+  conversation.messages.forEach(message => {
+    const event = normalizePollEvent(message?.pollEvent || message?.systemEvent);
+    if (!event || event.action !== 'poll_locked' || !event.pollId) return;
+    const events = lockEventsByPollId.get(event.pollId) || [];
+    events.push({ message, event });
+    lockEventsByPollId.set(event.pollId, events);
+  });
+  if (lockEventsByPollId.size === 0) return conversation;
+
+  let changed = false;
+  const messages = conversation.messages.map(message => {
+    const poll = normalizePoll(message?.poll || message?.pollData);
+    if (!poll) return message;
+    let nextPoll = poll;
+    (lockEventsByPollId.get(poll.id) || []).forEach(({ message: eventMessage, event }) => {
+      nextPoll = applyPollEvent(
+        nextPoll,
+        event,
+        eventMessage.senderId || event.actorId,
+        eventMessage.seq,
+        members,
+      );
+    });
+    if (nextPoll.locked === poll.locked) return message;
+    changed = true;
+    return { ...message, poll: nextPoll, text: nextPoll.question };
+  });
+  return changed ? { ...conversation, messages } : conversation;
+}
+
 export function pollIsClosed(poll, now = Date.now()) {
   if (!poll) return true;
   if (poll.locked) return true;
@@ -206,11 +288,17 @@ export function pollIsClosed(poll, now = Date.now()) {
   return Number.isFinite(expiresAt) && expiresAt <= Number(now);
 }
 
-export function pollCanViewerLock(poll, identities = []) {
+export function pollCanViewerLock(poll, identities = [], members = []) {
   const candidates = new Set((Array.isArray(identities) ? identities : [])
     .map(value => textValue(value, MAX_POLL_ID_LENGTH))
     .filter(Boolean));
-  return Boolean(poll?.creatorId && candidates.has(poll.creatorId) && !poll.locked);
+  if (poll?.locked || !poll?.creatorId || candidates.size === 0) return false;
+  if (candidates.has(poll.creatorId)) return true;
+  const groupMembers = normalizedPollMembers(members);
+  return groupMembers.some(member => (
+    member.groupRole && ['OWNER', 'ADMIN'].includes(member.groupRole)
+      && member.identities.some(identity => candidates.has(identity))
+  ));
 }
 
 export const POLL_LIMITS = Object.freeze({

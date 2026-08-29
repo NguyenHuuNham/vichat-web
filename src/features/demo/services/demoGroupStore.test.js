@@ -5,7 +5,9 @@ import {
   deleteDemoGroupForUser,
   leaveDemoGroup,
   listDemoGroupsForUser,
+  removeDemoGroupMember,
   saveDemoGroup,
+  updateDemoGroupMemberRole,
 } from './demoGroupStore.js';
 
 function memoryStorage() {
@@ -46,6 +48,30 @@ test('the final demo group owner may leave while groups with survivors still req
     const remainingGroup = listDemoGroupsForUser('member')[0];
     assert.equal(remainingGroup.ownerId, 'member');
     assert.deepEqual(remainingGroup.memberIds, ['member']);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});
+
+test('demo groups persist deputy roles and let deputies manage ordinary members', () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = { localStorage: memoryStorage() };
+  try {
+    saveDemoGroup({
+      id: 'deputy-group',
+      name: 'Deputy group',
+      ownerId: 'owner',
+      memberIds: ['deputy', 'member'],
+    });
+    updateDemoGroupMemberRole('deputy-group', 'deputy', 'owner', 'ADMIN');
+    assert.equal(listDemoGroupsForUser('deputy')[0].groupRoles.deputy, 'ADMIN');
+    assert.throws(
+      () => updateDemoGroupMemberRole('deputy-group', 'member', 'member', 'ADMIN'),
+      /quản trị viên của nhóm/,
+    );
+    removeDemoGroupMember('deputy-group', 'member', 'deputy');
+    assert.deepEqual(listDemoGroupsForUser('deputy')[0].memberIds, ['owner', 'deputy']);
   } finally {
     if (previousWindow === undefined) delete globalThis.window;
     else globalThis.window = previousWindow;

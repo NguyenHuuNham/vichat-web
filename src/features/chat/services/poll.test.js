@@ -92,15 +92,32 @@ test('expired votes and added options are ignored when replaying history', () =>
   assert.equal(afterOption.options.some(option => option.id === 'c'), false);
 });
 
-test('only the poll creator can lock a poll', () => {
+test('the poll creator and a deputy can lock a poll, but a member or claimed role cannot', () => {
   const unchanged = applyPollEvent(basePoll, {
     action: 'poll_locked', pollId: 'poll-1', actorId: 'usr-other',
   }, 'usr-other', 12);
   assert.equal(unchanged.locked, false);
+  const deputyLocked = applyPollEvent(basePoll, {
+    action: 'poll_locked', pollId: 'poll-1', actorId: 'usr-deputy', actorGroupRole: 'ADMIN',
+  }, 'usr-deputy', 13, [
+    { id: 'account-deputy', tinodeUid: 'usr-deputy', groupRole: 'ADMIN' },
+  ]);
+  assert.equal(deputyLocked.locked, true);
+  assert.equal(applyPollEvent(basePoll, {
+    action: 'poll_locked', pollId: 'poll-1', actorId: 'usr-member', actorGroupRole: 'ADMIN',
+  }, 'usr-member', 13, [
+    { id: 'account-member', tinodeUid: 'usr-member', groupRole: 'MEMBER' },
+  ]).locked, false);
   const locked = applyPollEvent(basePoll, {
     action: 'poll_locked', pollId: 'poll-1', actorId: 'usr-owner',
-  }, 'usr-owner', 13);
+  }, 'usr-owner', 14);
   assert.equal(locked.locked, true);
+  assert.equal(pollCanViewerLock(basePoll, ['usr-deputy'], [
+    { id: 'account-deputy', tinodeUid: 'usr-deputy', groupRole: 'ADMIN' },
+  ]), true);
+  assert.equal(pollCanViewerLock(basePoll, ['usr-member'], [
+    { id: 'account-member', tinodeUid: 'usr-member', groupRole: 'MEMBER' },
+  ]), false);
 });
 
 test('malformed poll events are ignored', () => {

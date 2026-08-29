@@ -45,6 +45,27 @@ function accountManagedValue(account) {
   );
 }
 
+export const GROUP_ROLE_OWNER = 'OWNER';
+export const GROUP_ROLE_ADMIN = 'ADMIN';
+export const GROUP_ROLE_MEMBER = 'MEMBER';
+const GROUP_ROLE_VALUES = new Set([GROUP_ROLE_OWNER, GROUP_ROLE_ADMIN, GROUP_ROLE_MEMBER]);
+
+export function normalizeGroupRole(value, fallback = GROUP_ROLE_MEMBER) {
+  const role = String(value || '').trim().toUpperCase();
+  if (GROUP_ROLE_VALUES.has(role)) return role;
+  const normalizedFallback = String(fallback || '').trim().toUpperCase();
+  return GROUP_ROLE_VALUES.has(normalizedFallback) ? normalizedFallback : GROUP_ROLE_MEMBER;
+}
+
+export function explicitGroupRole(entity) {
+  const role = String(entity?.groupRole ?? entity?.group_role ?? '').trim().toUpperCase();
+  return GROUP_ROLE_VALUES.has(role) ? role : '';
+}
+
+export function groupRoleOf(entity, fallback = GROUP_ROLE_MEMBER) {
+  return normalizeGroupRole(explicitGroupRole(entity), fallback);
+}
+
 export function normalizeTenantShape(tenant) {
   if (!tenant || typeof tenant !== 'object' || Array.isArray(tenant)) return null;
   const id = firstText(tenant.id, tenant.tenantId, tenant.tenant_id);
@@ -87,6 +108,7 @@ export function normalizeAccountShape(account) {
     tenant?.name,
   );
   const authSource = firstText(account.authSource, account.auth_source).toLowerCase();
+  const groupRole = explicitGroupRole(account);
   const hasAccountManaged = account.accountManaged !== undefined || account.account_managed !== undefined;
   const accountManaged = hasAccountManaged
     ? booleanValue(account.accountManaged ?? account.account_managed)
@@ -121,6 +143,7 @@ export function normalizeAccountShape(account) {
     tenant,
     role: firstText(account.role, account.accountRole, account.account_role),
     accountRole: firstText(account.accountRole, account.account_role, account.role),
+    ...(groupRole ? { groupRole, group_role: groupRole } : {}),
     active: booleanValue(account.active ?? account.is_active, true),
     ...(authSource || hasAccountManaged ? {
       authSource,
@@ -416,12 +439,41 @@ export function findDirectPeer(room, accounts, currentUser) {
     .find(account => account && !identitiesOverlap(account, currentUser)) || null;
 }
 
+export function groupRoleForIdentity(room, identity, accounts = []) {
+  if (!room?.isGroup || !identity) return GROUP_ROLE_MEMBER;
+  const probe = typeof identity === 'object' ? identity : { id: identity };
+  const members = Array.isArray(room.members) ? room.members : [];
+  const member = members.find(candidate => identitiesOverlap(candidate, probe)) || null;
+  const account = findAccount(accounts, identity) || null;
+  const explicitRole = explicitGroupRole(member) || explicitGroupRole(account);
+  if (explicitRole) return explicitRole;
+
+  const ownerId = String(room.adminId || '').trim();
+  if (ownerId && identitiesOverlap(probe, { id: ownerId })) return GROUP_ROLE_OWNER;
+  const tinodeOwner = members.find(candidate => String(candidate?.mode || '').includes('O'));
+  if (tinodeOwner && member && identitiesOverlap(member, tinodeOwner)) return GROUP_ROLE_OWNER;
+  return GROUP_ROLE_MEMBER;
+}
+
+export function isGroupOwnerMember(member) {
+  return groupRoleOf(member) === GROUP_ROLE_OWNER;
+}
+
+export function isGroupDeputyMember(member) {
+  return groupRoleOf(member) === GROUP_ROLE_ADMIN;
+}
+
 export function resolveGroupAdministrator(room, accounts = []) {
   if (!room?.isGroup) return null;
   const members = Array.isArray(room.members) ? room.members : [];
+  const roleOwner = members.find(member => explicitGroupRole(member) === GROUP_ROLE_OWNER) || null;
   const tinodeOwner = members.find(member => String(member?.mode || '').includes('O')) || null;
   const adminId = String(
     room.adminId
+    || roleOwner?.id
+    || roleOwner?.uid
+    || roleOwner?.tinodeUid
+    || roleOwner?.tinode_uid
     || tinodeOwner?.id
     || tinodeOwner?.uid
     || tinodeOwner?.tinodeUid
@@ -447,6 +499,7 @@ export function resolveGroupAdministrator(room, accounts = []) {
 
 export function canManageGroupMembers(room, accounts, currentUser) {
   if (!room?.isGroup || !currentUser) return false;
+  if ([GROUP_ROLE_OWNER, GROUP_ROLE_ADMIN].includes(groupRoleForIdentity(room, currentUser, accounts))) return true;
   const administrator = resolveGroupAdministrator(room, accounts);
   if (identitiesOverlap(administrator, currentUser)) return true;
   const adminId = String(room.adminId || '').trim();
@@ -461,9 +514,25 @@ export function canApproveGroupMembers(room, accounts, currentUser) {
 }
 
 export function canRemoveGroupMember(room, accounts, currentUser, member) {
-  if (!member?.id || !canManageGroupMembers(room, accounts, currentUser)) return false;
+  if (!identityValues(member).length || !canManageGroupMembers(room, accounts, currentUser)) return false;
   const administrator = resolveGroupAdministrator(room, accounts);
-  return !identitiesOverlap(member, currentUser) && !identitiesOverlap(member, administrator);
+  return !identitiesOverlap(member, currentUser)
+    && groupRoleForIdentity(room, member, accounts) !== GROUP_ROLE_OWNER
+    && !identitiesOverlap(member, administrator);
+}
+
+export function canAppointGroupDeputy(room, accounts, currentUser, member) {
+  if (!identityValues(member).length || !room?.isGroup) return false;
+  return canManageGroupMembers(room, accounts, currentUser)
+    && !identitiesOverlap(member, currentUser)
+    && groupRoleForIdentity(room, member, accounts) === GROUP_ROLE_MEMBER;
+}
+
+export function canRevokeGroupDeputy(room, accounts, currentUser, member) {
+  if (!identityValues(member).length || !room?.isGroup) return false;
+  return canManageGroupMembers(room, accounts, currentUser)
+    && !identitiesOverlap(member, currentUser)
+    && groupRoleForIdentity(room, member, accounts) === GROUP_ROLE_ADMIN;
 }
 
 export function findAccount(accounts, identity) {

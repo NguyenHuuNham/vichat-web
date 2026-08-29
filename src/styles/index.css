@@ -1215,6 +1215,15 @@ body {
     pointer-events: none;
 }
 
+.group-role-avatar-badge.group-role-admin {
+    border-color: var(--bg-chat);
+    color: #536273;
+    background: linear-gradient(145deg, #f3f6f8 0%, #b7c1ca 100%);
+    box-shadow: 0 1px 4px rgba(53, 66, 79, .3);
+}
+
+.group-role-avatar-badge.group-role-admin i { color: #4a5867; }
+
 .group-owner-avatar-badge i {
     color: #8b5f00;
     font-size: 8px;
@@ -1390,6 +1399,9 @@ body {
 .group-system-message-member_joined > .group-system-message-icon { color: #188b58; }
 .group-system-message-member_left > .group-system-message-icon { color: #c2410c; }
 .group-system-message-member_removed > .group-system-message-icon { color: #dc2626; }
+.group-system-message-group_role_changed > .group-system-message-icon { color: #8b6a1f; }
+.group-system-message-member_pending > .group-system-message-icon { color: #b7791f; }
+.group-system-message-member_rejected > .group-system-message-icon { color: #b42318; }
 .group-system-message-message_pinned > .group-system-message-icon { color: #c27a00; }
 .group-system-message-message_unpinned > .group-system-message-icon { color: #64748b; }
 
@@ -3200,6 +3212,17 @@ body {
     object-fit: cover;
 }
 
+.member-avatar-wrap {
+    position: relative;
+    display: inline-flex;
+    flex: 0 0 36px;
+}
+
+.member-avatar-wrap .group-owner-avatar-badge {
+    right: -4px;
+    bottom: -3px;
+}
+
 .avatar-fallback {
     display: inline-grid;
     place-items: center;
@@ -3288,6 +3311,14 @@ body {
     font-size: 13.5px;
     font-weight: 600;
     color: var(--text-main);
+}
+
+.member-role-label {
+    display: inline-block;
+    margin-left: 6px;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 700;
 }
 
 .member-status-text {
@@ -7042,6 +7073,9 @@ html[data-theme="dark"] .group-system-message-member_added > .group-system-messa
 html[data-theme="dark"] .group-system-message-member_joined > .group-system-message-icon { color: #72d69d; }
 html[data-theme="dark"] .group-system-message-member_left > .group-system-message-icon { color: #ff9c72; }
 html[data-theme="dark"] .group-system-message-member_removed > .group-system-message-icon { color: #ff8f8f; }
+html[data-theme="dark"] .group-system-message-group_role_changed > .group-system-message-icon { color: #e9c46a; }
+html[data-theme="dark"] .group-system-message-member_pending > .group-system-message-icon { color: #f0c674; }
+html[data-theme="dark"] .group-system-message-member_rejected > .group-system-message-icon { color: #ff9d95; }
 html[data-theme="dark"] .group-system-message-message_pinned > .group-system-message-icon { color: #ffd166; }
 html[data-theme="dark"] .group-system-message-message_unpinned > .group-system-message-icon { color: #b8c7d1; }
 html[data-theme="dark"] .image-bubble { border-color: #3b4b54; background: #1b242a; box-shadow: 0 8px 20px rgba(0, 0, 0, .24); }
@@ -7174,6 +7208,8 @@ html[data-theme="dark"] .group-leave-member:hover,
 html[data-theme="dark"] .group-leave-member.selected { border-color: #8c5b48; background: #4a2e24; }
 html[data-theme="dark"] .group-leave-radio-indicator { border-color: #53636a; background: #27363c; }
 html[data-theme="dark"] .group-owner-avatar-badge { border-color: var(--bg-chat); color: #f6d783; background: #4b3d1f; }
+html[data-theme="dark"] .group-role-avatar-badge.group-role-admin { border-color: var(--bg-chat); color: #d8e0e7; background: #5b6875; }
+html[data-theme="dark"] .group-role-avatar-badge.group-role-admin i { color: #f1f5f8; }
 html[data-theme="dark"] .group-send-disabled-notice { border-color: #704342; color: #ffb0a0; background: #3d2928; }
 html[data-theme="dark"] .group-spam-cooldown-notice {
   border-color: #765d2a;

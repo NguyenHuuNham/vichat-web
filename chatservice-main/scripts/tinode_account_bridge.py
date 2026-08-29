@@ -55,6 +55,7 @@ GROUP_SPAM_EXEMPT_SYSTEM_ACTIONS = frozenset({
     "group_created",
     "group_dissolved",
     "group_name_changed",
+    "group_role_changed",
     "group_settings_changed",
     "member_added",
     "member_left",

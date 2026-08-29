@@ -851,6 +851,22 @@ export const chatManagementService = {
     return normalizeConversation(payload);
   },
 
+  async updateConversationParticipantRole(conversationId, participantId, role) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const normalizedRole = String(role || '').trim().toUpperCase();
+    if (!['ADMIN', 'MEMBER'].includes(normalizedRole)) {
+      throw new Error('Vai trò phó nhóm không hợp lệ.');
+    }
+    const payload = await apiRequest(
+      `/api/v1/conversation/${encodeURIComponent(conversationId)}/participants/${encodeURIComponent(participantId)}/role`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ role: normalizedRole }),
+      },
+    );
+    return normalizeConversation(payload);
+  },
+
   async removeConversationParticipant(conversationId, participantId, { replacementId = '' } = {}) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const payload = await membershipApiRequest(
