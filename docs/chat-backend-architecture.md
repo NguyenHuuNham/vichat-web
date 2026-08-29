@@ -242,7 +242,10 @@ writes keep known aliases synchronized where the preference supports it; custom
 sticker reads merge aliases before writing new items to the primary library.
 Explicit user removal clears the primary and alias copies. These preferences
 remain viewer-local and are never promoted to Chatmgt, Tinode message data or
-the database.
+the database. Tenant-scoped browser keys include both the stable viewer and
+tenant ID. A legacy record is copied forward without deletion, and its
+migration marker is also scoped by viewer and tenant so switching companies
+cannot suppress migration in a second tenant or mix settings between tenants.
 
 Conversation category tags are also viewer-local presentation preferences.
 Each ChatUI account may create, rename, recolor, reorder or remove its own tag
@@ -558,8 +561,9 @@ controls. Opening or saving group management settings and removing another
 member therefore use the owner/deputy manager gate; dissolve remains owner-only.
 
 Chatmgt verifies group membership by both subscriber identity and effective
-Tinode access. Active members require `JRWPAS`, while the owner requires
-`JRWPASO`; reconciliation reads `acs.mode`, `acs.given` and `acs.want`, adds
+Tinode access. Active members require `JRWPAS`, deputies require `JRWPASD`,
+and the owner requires `JRWPASO`; reconciliation reads `acs.mode`,
+`acs.given` and `acs.want`, adds
 only missing permissions, and uses the affected member's short-lived
 server-side token when their requested mode must also be repaired. A subscriber
 which exists with only `PAS` is therefore not accepted as healthy. The

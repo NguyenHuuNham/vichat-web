@@ -1,3 +1,10 @@
+import {
+  markLegacyViewerPreferenceMigrated,
+  viewerStorageCandidates,
+  viewerStorageKeyId,
+  viewerStorageWriteCandidates,
+} from './viewerPreferenceStorage.js';
+
 const HOUR_MS = 60 * 60 * 1000;
 
 export const NOTIFICATION_SETTINGS_STORAGE_PREFIX = 'vichat.notification-settings.v1';
@@ -32,14 +39,21 @@ export const DEFAULT_NOTIFICATION_SETTINGS = Object.freeze({
   stickerSuggestions: true,
 });
 
-function notificationSettingsStorageKey(viewerId) {
-  return `${NOTIFICATION_SETTINGS_STORAGE_PREFIX}.${encodeURIComponent(String(viewerId || 'anonymous'))}`;
+function notificationSettingsStorageKey(viewerId, tenantId = '') {
+  const storageId = tenantId
+    ? viewerStorageKeyId(viewerId, tenantId)
+    : encodeURIComponent(String(viewerId || 'anonymous'));
+  return `${NOTIFICATION_SETTINGS_STORAGE_PREFIX}.${storageId}`;
 }
 
-function notificationViewerIds(viewerId, aliasViewerIds = []) {
-  return [...new Set([viewerId, ...aliasViewerIds]
-    .map(value => String(value || '').trim())
-    .filter(Boolean))];
+function notificationStorageCandidates(viewerId, aliasViewerIds = [], tenantId = '', storage) {
+  return viewerStorageCandidates(
+    NOTIFICATION_SETTINGS_STORAGE_PREFIX,
+    viewerId,
+    aliasViewerIds,
+    tenantId,
+    storage,
+  );
 }
 
 function notificationSettingsDifference(settings) {
@@ -69,19 +83,26 @@ export function normalizeNotificationSettings(value = {}) {
   };
 }
 
-export function readNotificationSettings(viewerId, storage = globalThis?.localStorage, aliasViewerIds = []) {
+export function readNotificationSettings(
+  viewerId,
+  storage = globalThis?.localStorage,
+  aliasViewerIds = [],
+  tenantId = '',
+) {
   if (!viewerId || !storage) return { ...DEFAULT_NOTIFICATION_SETTINGS };
-  const viewerIds = notificationViewerIds(viewerId, aliasViewerIds);
+  const candidates = notificationStorageCandidates(viewerId, aliasViewerIds, tenantId, storage);
   const records = [];
-  for (const [index, candidateId] of viewerIds.entries()) {
+  for (const candidate of candidates) {
     try {
-      const raw = storage.getItem(notificationSettingsStorageKey(candidateId));
+      const raw = storage.getItem(notificationSettingsStorageKey(
+        candidate.viewerId,
+        candidate.legacy ? '' : tenantId,
+      ));
       if (!raw) continue;
       const value = JSON.parse(raw);
       const settings = normalizeNotificationSettings(value);
       records.push({
-        candidateId,
-        index,
+        candidate,
         settings,
         updatedAt: Number(value?.updatedAt) || 0,
         difference: notificationSettingsDifference(settings),
@@ -91,16 +112,29 @@ export function readNotificationSettings(viewerId, storage = globalThis?.localSt
     }
   }
   if (records.length === 0) return { ...DEFAULT_NOTIFICATION_SETTINGS };
-  const timestamped = records.filter(record => record.updatedAt > 0);
+  // Once a tenant-scoped record exists, an old account-only record must not
+  // override it merely because its timestamp is newer.
+  const usableRecords = records.some(record => !record.candidate.legacy)
+    ? records.filter(record => !record.candidate.legacy)
+    : records;
+  const timestamped = usableRecords.filter(record => record.updatedAt > 0);
   const selected = timestamped.length > 0
-    ? timestamped.sort((left, right) => right.updatedAt - left.updatedAt || left.index - right.index)[0]
-    : (records.find(record => record.difference > 0) || records[0]);
-  if (selected.candidateId !== viewerIds[0]) {
+    ? timestamped.sort((left, right) => right.updatedAt - left.updatedAt || left.candidate.index - right.candidate.index)[0]
+    : (usableRecords.find(record => record.difference > 0) || usableRecords[0]);
+  if (selected.candidate.storageId !== candidates[0]?.storageId) {
     try {
-      storage.setItem(notificationSettingsStorageKey(viewerIds[0]), JSON.stringify({
+      storage.setItem(notificationSettingsStorageKey(viewerId, tenantId), JSON.stringify({
         ...selected.settings,
         ...(selected.updatedAt > 0 ? { updatedAt: selected.updatedAt } : {}),
       }));
+      if (selected.candidate.legacy) {
+        markLegacyViewerPreferenceMigrated(
+          NOTIFICATION_SETTINGS_STORAGE_PREFIX,
+          viewerId,
+          tenantId,
+          storage,
+        );
+      }
     } catch {
       // Reading a valid legacy alias must still work when copy-on-read is unavailable.
     }
@@ -108,9 +142,14 @@ export function readNotificationSettings(viewerId, storage = globalThis?.localSt
   return selected.settings;
 }
 
-export function writeNotificationSettings(viewerId, value, storage = globalThis?.localStorage, aliasViewerIds = []) {
-  const viewerIds = notificationViewerIds(viewerId, aliasViewerIds);
-  const current = readNotificationSettings(viewerId, storage, aliasViewerIds);
+export function writeNotificationSettings(
+  viewerId,
+  value,
+  storage = globalThis?.localStorage,
+  aliasViewerIds = [],
+  tenantId = '',
+) {
+  const current = readNotificationSettings(viewerId, storage, aliasViewerIds, tenantId);
   const patch = Object.fromEntries(
     Object.entries(value && typeof value === 'object' ? value : {})
       .filter(([, fieldValue]) => fieldValue !== undefined),
@@ -118,9 +157,9 @@ export function writeNotificationSettings(viewerId, value, storage = globalThis?
   const next = normalizeNotificationSettings({ ...current, ...patch });
   if (viewerId && storage) {
     const record = JSON.stringify({ ...next, updatedAt: Date.now() });
-    for (const candidateId of viewerIds) {
+    for (const candidate of viewerStorageWriteCandidates(viewerId, aliasViewerIds, tenantId)) {
       try {
-        storage.setItem(notificationSettingsStorageKey(candidateId), record);
+        storage.setItem(notificationSettingsStorageKey(candidate.viewerId, tenantId), record);
       } catch {
         // Preferences remain active for the current tab when storage is unavailable.
       }
@@ -218,23 +257,30 @@ function writeCustomSoundRecords(database, record, viewerIds) {
   });
 }
 
-export async function readCustomNotificationSound(viewerId, factory = indexedDbFactory(), aliasViewerIds = []) {
+export async function readCustomNotificationSound(viewerId, factory = indexedDbFactory(), aliasViewerIds = [], tenantId = '') {
   if (!viewerId) return null;
   const database = await openNotificationSoundDatabase(factory);
   if (!database) return null;
-  const viewerIds = notificationViewerIds(viewerId, aliasViewerIds);
+  const candidates = notificationStorageCandidates(viewerId, aliasViewerIds, tenantId);
   try {
-    for (const candidateId of viewerIds) {
+    for (const candidate of candidates) {
       const request = database
         .transaction(NOTIFICATION_SOUND_STORE_NAME, 'readonly')
         .objectStore(NOTIFICATION_SOUND_STORE_NAME)
-        .get(candidateId);
+        .get(candidate.storageId);
       const result = await requestResult(request, 'Không thể đọc file âm báo.');
       const sound = normalizedCustomNotificationSound(result);
       if (!sound) continue;
-      if (candidateId !== viewerIds[0]) {
+      if (candidate.storageId !== candidates[0]?.storageId) {
         try {
-          await writeCustomSoundRecords(database, sound, [viewerIds[0]]);
+          await writeCustomSoundRecords(database, sound, [candidates[0].storageId]);
+          if (candidate.legacy) {
+            markLegacyViewerPreferenceMigrated(
+              NOTIFICATION_SETTINGS_STORAGE_PREFIX,
+              viewerId,
+              tenantId,
+            );
+          }
         } catch {
           // Keep the legacy sound usable even if this browser blocks copy-on-read.
         }
@@ -252,6 +298,7 @@ export async function writeCustomNotificationSound(
   file,
   factory = indexedDbFactory(),
   aliasViewerIds = [],
+  tenantId = '',
 ) {
   if (!viewerId) throw new Error('Thiếu tài khoản để lưu file âm báo.');
   const validationError = validateCustomNotificationSoundFile(file);
@@ -270,7 +317,8 @@ export async function writeCustomNotificationSound(
     return await writeCustomSoundRecords(
       database,
       record,
-      notificationViewerIds(viewerId, aliasViewerIds),
+      viewerStorageWriteCandidates(viewerId, aliasViewerIds, tenantId)
+        .map(candidate => candidate.storageId),
     );
   } finally {
     closeDatabase(database);
@@ -281,6 +329,7 @@ export async function deleteCustomNotificationSound(
   viewerId,
   factory = indexedDbFactory(),
   aliasViewerIds = [],
+  tenantId = '',
 ) {
   if (!viewerId) return false;
   const database = await openNotificationSoundDatabase(factory);
@@ -290,7 +339,8 @@ export async function deleteCustomNotificationSound(
     try {
       transaction = database.transaction(NOTIFICATION_SOUND_STORE_NAME, 'readwrite');
       const store = transaction.objectStore(NOTIFICATION_SOUND_STORE_NAME);
-      notificationViewerIds(viewerId, aliasViewerIds).forEach(candidateId => store.delete(candidateId));
+      viewerStorageWriteCandidates(viewerId, aliasViewerIds, tenantId)
+        .forEach(candidate => store.delete(candidate.storageId));
     } catch (error) {
       closeDatabase(database);
       reject(error);

@@ -1,4 +1,9 @@
-import { viewerStorageIds } from './viewerPreferenceStorage.js';
+import {
+  markLegacyViewerPreferenceMigrated,
+  viewerStorageCandidates,
+  viewerStorageKeyId,
+  viewerStorageWriteCandidates,
+} from './viewerPreferenceStorage.js';
 
 const LEGACY_STORAGE_PREFIX = 'vichat.conversation-categories.v1';
 const STORAGE_PREFIX = 'vichat.conversation-categories.v2';
@@ -33,8 +38,11 @@ const LEGACY_OTHER_CATEGORY = Object.freeze({
   builtIn: true,
 });
 
-function storageKey(prefix, viewerId) {
-  return `${prefix}.${String(viewerId || 'anonymous')}`;
+function storageKey(prefix, viewerId, tenantId = '') {
+  const storageId = tenantId
+    ? viewerStorageKeyId(viewerId, tenantId)
+    : String(viewerId || 'anonymous');
+  return `${prefix}.${storageId}`;
 }
 
 function categoryId(value) {
@@ -115,7 +123,8 @@ function readStorage(key, fallback = null) {
   }
 }
 
-function legacyAssignments(viewerId) {
+function legacyAssignments(viewerId, tenantId = '', allowLegacy = true) {
+  if (tenantId && !allowLegacy) return {};
   const value = readStorage(storageKey(LEGACY_STORAGE_PREFIX, viewerId), {});
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
@@ -135,12 +144,16 @@ function categoryStateDifference(state) {
     + Number(Object.keys(state.assignments).length > 0);
 }
 
-function categoryRecord(viewerId) {
-  const legacy = legacyAssignments(viewerId);
-  const stored = readStorage(storageKey(STORAGE_PREFIX, viewerId));
+function categoryRecord(candidate, tenantId = '') {
+  const legacy = legacyAssignments(candidate.viewerId, tenantId, candidate.legacy || !tenantId);
+  const stored = readStorage(storageKey(
+    STORAGE_PREFIX,
+    candidate.viewerId,
+    candidate.legacy ? '' : tenantId,
+  ));
   const state = normalizedState(stored, legacy);
   return {
-    viewerId,
+    candidate,
     state,
     updatedAt: Number(stored?.updatedAt) || 0,
     difference: categoryStateDifference(state),
@@ -148,10 +161,10 @@ function categoryRecord(viewerId) {
   };
 }
 
-function writeCategoryStateForViewer(viewerId, state) {
-  writeStorage(storageKey(STORAGE_PREFIX, viewerId), { ...state, updatedAt: Date.now() });
-  // Keep fixed legacy assignments available if a ChatUI rollback is needed.
-  writeStorage(storageKey(LEGACY_STORAGE_PREFIX, viewerId), state.assignments);
+function writeCategoryStateForViewer(viewerId, state, tenantId = '') {
+  writeStorage(storageKey(STORAGE_PREFIX, viewerId, tenantId), { ...state, updatedAt: Date.now() });
+  // Keep fixed legacy assignments available only for the old unscoped API.
+  if (!tenantId) writeStorage(storageKey(LEGACY_STORAGE_PREFIX, viewerId), state.assignments);
 }
 
 function newCategoryId() {
@@ -161,26 +174,35 @@ function newCategoryId() {
   return `category-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function readConversationCategoryState(viewerId, aliasViewerIds = []) {
+export function readConversationCategoryState(viewerId, aliasViewerIds = [], tenantId = '') {
   if (!viewerId) return defaultState();
-  const viewerIds = viewerStorageIds(viewerId, aliasViewerIds);
-  const records = viewerIds
-    .map(categoryRecord)
+  const candidates = viewerStorageCandidates(STORAGE_PREFIX, viewerId, aliasViewerIds, tenantId);
+  const records = candidates
+    .map(candidate => categoryRecord(candidate, tenantId))
     .filter(record => record.hasData);
   if (records.length === 0) return defaultState();
-  const order = new Map(viewerIds.map((candidateId, index) => [candidateId, index]));
-  const timestamped = records.filter(record => record.updatedAt > 0);
+  const usableRecords = records.some(record => !record.candidate.legacy)
+    ? records.filter(record => !record.candidate.legacy)
+    : records;
+  const order = new Map(candidates.map((candidate, index) => [candidate.storageId, index]));
+  const timestamped = usableRecords.filter(record => record.updatedAt > 0);
   const selected = timestamped.length > 0
-    ? timestamped.sort((left, right) => right.updatedAt - left.updatedAt || order.get(left.viewerId) - order.get(right.viewerId))[0]
-    : (records.find(record => record.difference > 0) || records[0]);
-  if (selected.viewerId !== String(viewerId).trim()) writeCategoryStateForViewer(viewerId, selected.state);
+    ? timestamped.sort((left, right) => right.updatedAt - left.updatedAt || order.get(left.candidate.storageId) - order.get(right.candidate.storageId))[0]
+    : (usableRecords.find(record => record.difference > 0) || usableRecords[0]);
+  if (selected.candidate.storageId !== candidates[0]?.storageId) {
+    writeCategoryStateForViewer(viewerId, selected.state, tenantId);
+    if (selected.candidate.legacy) {
+      markLegacyViewerPreferenceMigrated(STORAGE_PREFIX, viewerId, tenantId);
+    }
+  }
   return selected.state;
 }
 
-export function writeConversationCategoryState(viewerId, value, aliasViewerIds = []) {
+export function writeConversationCategoryState(viewerId, value, aliasViewerIds = [], tenantId = '') {
   const state = normalizedState(value);
   if (viewerId) {
-    viewerStorageIds(viewerId, aliasViewerIds).forEach(candidateId => writeCategoryStateForViewer(candidateId, state));
+    viewerStorageWriteCandidates(viewerId, aliasViewerIds, tenantId)
+      .forEach(candidate => writeCategoryStateForViewer(candidate.viewerId, state, tenantId));
   }
   return state;
 }
@@ -190,32 +212,32 @@ export function normalizeConversationCategory(value, categories = CONVERSATION_C
   return categories.some(category => category.id === normalized) ? normalized : '';
 }
 
-export function readConversationCategories(viewerId, aliasViewerIds = []) {
+export function readConversationCategories(viewerId, aliasViewerIds = [], tenantId = '') {
   if (!viewerId) return {};
-  return readConversationCategoryState(viewerId, aliasViewerIds).assignments;
+  return readConversationCategoryState(viewerId, aliasViewerIds, tenantId).assignments;
 }
 
-export function writeConversationCategories(viewerId, categories, aliasViewerIds = []) {
-  const state = readConversationCategoryState(viewerId, aliasViewerIds);
+export function writeConversationCategories(viewerId, categories, aliasViewerIds = [], tenantId = '') {
+  const state = readConversationCategoryState(viewerId, aliasViewerIds, tenantId);
   return writeConversationCategoryState(viewerId, {
     ...state,
     assignments: categories,
-  }, aliasViewerIds).assignments;
+  }, aliasViewerIds, tenantId).assignments;
 }
 
-export function setConversationCategory(viewerId, conversationId, value, aliasViewerIds = []) {
-  const state = readConversationCategoryState(viewerId, aliasViewerIds);
+export function setConversationCategory(viewerId, conversationId, value, aliasViewerIds = [], tenantId = '') {
+  const state = readConversationCategoryState(viewerId, aliasViewerIds, tenantId);
   const next = { ...state.assignments };
   const key = String(conversationId || '').trim();
   const normalized = normalizeConversationCategory(value, state.categories);
   if (!key) return next;
   if (normalized) next[key] = normalized;
   else delete next[key];
-  return writeConversationCategoryState(viewerId, { ...state, assignments: next }, aliasViewerIds).assignments;
+  return writeConversationCategoryState(viewerId, { ...state, assignments: next }, aliasViewerIds, tenantId).assignments;
 }
 
-export function saveConversationCategory(viewerId, value, aliasViewerIds = []) {
-  const state = readConversationCategoryState(viewerId, aliasViewerIds);
+export function saveConversationCategory(viewerId, value, aliasViewerIds = [], tenantId = '') {
+  const state = readConversationCategoryState(viewerId, aliasViewerIds, tenantId);
   const id = categoryId(value?.id) || newCategoryId();
   const label = categoryName(value?.label || value?.name);
   if (!label) return { state, category: null, error: 'name_required' };
@@ -236,21 +258,21 @@ export function saveConversationCategory(viewerId, value, aliasViewerIds = []) {
   const categories = existing
     ? state.categories.map(item => item.id === id ? category : item)
     : [...state.categories, category];
-  const nextState = writeConversationCategoryState(viewerId, { ...state, categories }, aliasViewerIds);
+  const nextState = writeConversationCategoryState(viewerId, { ...state, categories }, aliasViewerIds, tenantId);
   return { state: nextState, category, error: '' };
 }
 
-export function removeConversationCategory(viewerId, value, aliasViewerIds = []) {
-  const state = readConversationCategoryState(viewerId, aliasViewerIds);
+export function removeConversationCategory(viewerId, value, aliasViewerIds = [], tenantId = '') {
+  const state = readConversationCategoryState(viewerId, aliasViewerIds, tenantId);
   const id = categoryId(value);
   const categories = state.categories.filter(category => category.id !== id);
   const assignments = Object.fromEntries(Object.entries(state.assignments)
     .filter(([, assignedCategoryId]) => assignedCategoryId !== id));
-  return writeConversationCategoryState(viewerId, { ...state, categories, assignments }, aliasViewerIds);
+  return writeConversationCategoryState(viewerId, { ...state, categories, assignments }, aliasViewerIds, tenantId);
 }
 
-export function reorderConversationCategories(viewerId, orderedIds, aliasViewerIds = []) {
-  const state = readConversationCategoryState(viewerId, aliasViewerIds);
+export function reorderConversationCategories(viewerId, orderedIds, aliasViewerIds = [], tenantId = '') {
+  const state = readConversationCategoryState(viewerId, aliasViewerIds, tenantId);
   const byId = new Map(state.categories.map(category => [category.id, category]));
   const categories = [];
   (Array.isArray(orderedIds) ? orderedIds : []).forEach(value => {
@@ -260,11 +282,11 @@ export function reorderConversationCategories(viewerId, orderedIds, aliasViewerI
     byId.delete(category.id);
   });
   categories.push(...byId.values());
-  return writeConversationCategoryState(viewerId, { ...state, categories }, aliasViewerIds);
+  return writeConversationCategoryState(viewerId, { ...state, categories }, aliasViewerIds, tenantId);
 }
 
-export function setCategoryConversations(viewerId, value, conversationIds, aliasViewerIds = []) {
-  const state = readConversationCategoryState(viewerId, aliasViewerIds);
+export function setCategoryConversations(viewerId, value, conversationIds, aliasViewerIds = [], tenantId = '') {
+  const state = readConversationCategoryState(viewerId, aliasViewerIds, tenantId);
   const id = normalizeConversationCategory(value, state.categories);
   if (!id) return state;
   const selected = new Set((Array.isArray(conversationIds) ? conversationIds : [])
@@ -275,11 +297,11 @@ export function setCategoryConversations(viewerId, value, conversationIds, alias
   selected.forEach(conversationId => {
     assignments[conversationId] = id;
   });
-  return writeConversationCategoryState(viewerId, { ...state, assignments }, aliasViewerIds);
+  return writeConversationCategoryState(viewerId, { ...state, assignments }, aliasViewerIds, tenantId);
 }
 
-export function applyLocalConversationCategories(rooms, viewerId, aliasViewerIds = []) {
-  const categories = readConversationCategories(viewerId, aliasViewerIds);
+export function applyLocalConversationCategories(rooms, viewerId, aliasViewerIds = [], tenantId = '') {
+  const categories = readConversationCategories(viewerId, aliasViewerIds, tenantId);
   return Object.fromEntries(Object.entries(rooms || {}).map(([id, room]) => {
     const key = String(room?.managementId || room?.id || id);
     return [id, { ...room, category: categories[key] || '' }];

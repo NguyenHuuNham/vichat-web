@@ -37,6 +37,7 @@ from application.services.auth_service import (  # noqa: E402
 
 
 REQUIRED_MEMBER_MODE = "JRWPAS"
+REQUIRED_DEPUTY_MODE = "JRWPASD"
 REQUIRED_OWNER_MODE = "JRWPASO"
 APPLY_CONFIRMATION = "add-missing-group-access"
 
@@ -113,6 +114,8 @@ def group_state(item):
         access_modes[tinode_uid] = (
             REQUIRED_OWNER_MODE
             if str(participant.role or "").upper() == "OWNER"
+            else REQUIRED_DEPUTY_MODE
+            if str(participant.role or "").upper() == "ADMIN"
             else REQUIRED_MEMBER_MODE
         )
         accounts_by_uid[tinode_uid] = account

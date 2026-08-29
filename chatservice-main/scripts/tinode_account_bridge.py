@@ -52,13 +52,17 @@ SYSTEM_EVENT_PREFIX = "__VICHAT_SYSTEM_EVENT__:"
 GROUP_SPAM_EXEMPT_SYSTEM_ACTIONS = frozenset({
     "conversation_background_changed",
     "group_avatar_changed",
+    "group_chatbot_enabled",
     "group_created",
     "group_dissolved",
     "group_name_changed",
     "group_role_changed",
     "group_settings_changed",
     "member_added",
+    "member_approved",
     "member_left",
+    "member_pending",
+    "member_rejected",
     "member_removed",
 })
 

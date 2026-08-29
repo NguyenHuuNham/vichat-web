@@ -546,6 +546,17 @@ test('group info controls follow realtime permission changes and publish visible
   assert.match(tinodeSource, /isGroup: topic\.isGroupType\?\.\(\) \|\| topic\.name\?\.startsWith\('grp'\)/);
 });
 
+test('reconciles an open group ACL after a realtime deputy update without loading history', () => {
+  const accessRefreshSource = tinodeSource
+    .split('function refreshOpenGroupAccess', 2)[1]
+    .split('function wireTopic', 2)[0];
+  assert.match(tinodeSource, /what === 'acs' && isGroupTopic\(contact\)/);
+  assert.match(tinodeSource, /emitConversation\(contact, tinode\);\s*refreshOpenGroupAccess\(contact, tinode\);/);
+  assert.match(accessRefreshSource, /withDesc\(\)\.withSub\(\)\.build\(\)/);
+  assert.match(accessRefreshSource, /topic\.getMeta\(query\)/);
+  assert.doesNotMatch(accessRefreshSource, /withEarlierData|withLaterData|withDel/);
+});
+
 test('group mute and reaction controls preserve the existing checkbox flow and expose actor details', () => {
   const muteSource = appSource.split('const handleConversationMuteToggle')[1].split('const handleNotificationMuteSubmit')[0];
   assert.match(muteSource, /typeof event\?\.target\?\.checked === 'boolean'/);

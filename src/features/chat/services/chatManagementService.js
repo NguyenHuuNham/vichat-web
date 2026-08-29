@@ -386,6 +386,17 @@ function normalizeConversation(record) {
   const properties = record?.properties || {};
   const tinodeTopic = record?.tinodeTopic || record?.tinode_topic || record?.channel_thread_id || '';
   const managementId = String(record?.managementId || record?.id || record?.conversation_no || tinodeTopic);
+  const hasConversationBackground = Object.prototype.hasOwnProperty.call(record || {}, 'conversationBackground')
+    || Object.prototype.hasOwnProperty.call(record || {}, 'conversation_background')
+    || Object.prototype.hasOwnProperty.call(properties, 'conversationBackground')
+    || Object.prototype.hasOwnProperty.call(properties, 'conversation_background');
+  const conversationBackground = record?.conversationBackground !== undefined
+    ? record.conversationBackground
+    : record?.conversation_background !== undefined
+      ? record.conversation_background
+      : properties.conversationBackground !== undefined
+        ? properties.conversationBackground
+        : properties.conversation_background;
   const notificationMutedUntil = normalizeNotificationMuteUntil(
     record?.notificationMutedUntil ?? record?.notification_muted_until,
   );
@@ -427,6 +438,7 @@ function normalizeConversation(record) {
       || record?.group_settings
       || properties.groupSettings
       || properties.group_settings,
+    ...(hasConversationBackground ? { conversationBackground } : {}),
   });
 }
 
@@ -937,11 +949,12 @@ export const chatManagementService = {
     return normalizeConversation(payload);
   },
 
-  async updateGroupSettings(conversationId, { name, settings } = {}) {
+  async updateGroupSettings(conversationId, { name, settings, background } = {}) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const body = {};
     if (name !== undefined) body.name = String(name || '').trim();
     if (settings !== undefined) body.settings = normalizeGroupSettings(settings);
+    if (background !== undefined) body.background = background;
     const payload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/group-settings`, {
       method: 'PUT',
       body: JSON.stringify(body),

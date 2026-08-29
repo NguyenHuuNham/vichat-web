@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-29-03 - Realtime pho nhom va bao toan setting theo tenant
+
+- Thoi gian: 2026-08-29 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Bao mat | Web | Realtime | Du lieu | Tai lieu
+- Trang thai: Da kiem thu; cho phat hanh
+- Muc tieu: Pho nhom dung duoc quyen quan tri ngay lap tuc; setting chat 1-1, nhom va giao dien khong bi mat hoac lan tenant; moi hoat dong nhom co thong bao den thanh vien.
+- Pham vi: Tinode ACL/metadata, Chatmgt group activity, ChatUI preference storage, notification va sticker; giu nguyen luong chat 1-1.
+- File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/services/auth_service.py`, `chatservice-main/scripts/repair_group_member_access.py`, `chatservice-main/scripts/tinode_account_bridge.py`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatRealtime.js`, `src/app/App.jsx`, cac module luu preference viewer trong `src/features/chat/services/`, `src/features/security/services/pinLock.js`, `src/features/chat/components/StickerPicker.jsx`, `package.json`, `dist/index.html`, `docs/chat-backend-architecture.md` va cac regression test lien quan.
+- Noi dung: Deputy duoc dong bo mode Tinode `JRWPASD` bang token server-side cua owner va tab dang mo nhan ACL moi qua `me.onContactUpdate('acs')`, sau do tai lai chi `desc+sub` de khong lam mat history. Moi thay doi role, thanh vien, ten, avatar, setting, hinh nen, chatbot, poll, pin va lifecycle cua group duoc phat system activity vao topic; chat 1-1 van giu luong hien tai. Preference localStorage/IndexedDB duoc khoa theo stable user + tenant, copy legacy khong xoa va marker migration tach theo tenant.
+- Quyet dinh ky thuat: Chatmgt va snapshot sau commit la nguon quyen nhom; owner la credential Tinode cho bridge, deputy khong duoc dissolve; preference trinh duyet dung khoa user + tenant va migration khong pha huy du lieu cu. Realtime ACL refresh chi tai metadata can thiet va co dedupe request.
+- Database/API/cau hinh: Khong migration/schema moi; dung cot role va properties hien co, them alias request `background` cho group settings va mirror metadata Tinode. Khong ghi secret vao nhat ky.
+- Kiem thu: `npm run test:frontend` dat 330/330; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` thanh cong voi warning chunk App lon hon 500 KB; `python -m unittest discover -s tests -q` dat 255 pass, 101 skip do dependency/runtime local; `python -m unittest tests.test_chat_auth_contract -q` dat 55/55; `python -m py_compile application/controllers/api_chat_management.py application/services/auth_service.py application/models/models.py scripts/tinode_account_bridge.py scripts/repair_group_member_access.py tests/test_chat_auth_contract.py` thanh cong; `git diff --check` dat.
+- Rui ro con lai: Chua UAT production bang owner, deputy, member va hai tai khoan that; can xac nhan quyen manager realtime, activity group va preference sau tenant switch. Candidate build co 2 dependency vulnerabilities (1 moderate, 1 high) tu `npm ci`; khong tu dong chay `npm audit fix`.
+- Viec tiep theo: Commit, push, backup va deploy theo tuyen `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`, sau do verify health/public bundle/logs; UAT voi tai khoan that.
+- Commit/PR: Chua tao.
+
 ## 2026-08-29-02 - Xem chi tiet nguoi binh chon trong nhom
 
 - Thoi gian: 2026-08-29 13:54-14:19 (Asia/Saigon)

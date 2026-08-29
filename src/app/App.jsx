@@ -255,6 +255,19 @@ import {
   writeMessageActions,
 } from '../features/chat/services/messageActionStorage';
 import { suggestStickersForText } from '../features/chat/services/stickerCatalog';
+import {
+  canMigrateLegacyViewerPreference,
+  markLegacyViewerPreferenceMigrated,
+  viewerStorageKeyId,
+} from '../features/chat/services/viewerPreferenceStorage.js';
+
+const PRIMARY_SIDEBAR_STORAGE_PREFIX = 'songhong.primary-sidebar-collapsed';
+
+function primarySidebarStorageKey(viewerId, tenantId = '') {
+  return tenantId
+    ? `${PRIMARY_SIDEBAR_STORAGE_PREFIX}.${viewerStorageKeyId(viewerId, tenantId)}`
+    : PRIMARY_SIDEBAR_STORAGE_PREFIX;
+}
 
 const CALLS_ENABLED = resolveCallsEnabled(import.meta.env.VITE_CALLS_ENABLED);
 
@@ -1124,6 +1137,10 @@ function personalizeGroupSystemText(message, accounts, viewerId) {
   if (message.action === 'group_avatar_changed') {
     const actorText = message.senderId === viewerId ? 'Bạn đã' : `${actorName} đã`;
     return `${actorText} đổi ảnh đại diện nhóm`;
+  }
+  if (message.action === 'group_chatbot_enabled') {
+    const actorText = message.senderId === viewerId ? 'Bạn đã' : `${actorName} đã`;
+    return `${actorText} bật ViChat AI trong nhóm`;
   }
   if (message.action === 'group_settings_changed') {
     const actorText = message.senderId === viewerId ? 'Bạn đã' : `${actorName} đã`;
@@ -3144,13 +3161,9 @@ function App() {
   const [isMobileChatActive, setIsMobileChatActive] = useState(false);
   const [isMobileSidebarOpen, _setIsMobileSidebarOpen] = useState(false);
   const [isPrimarySidebarCollapsed, setIsPrimarySidebarCollapsed] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    try {
-      return window.localStorage.getItem('songhong.primary-sidebar-collapsed') === 'true';
-    } catch {
-      return false;
-    }
+    return false;
   });
+  const [isPrimarySidebarPreferenceReady, setIsPrimarySidebarPreferenceReady] = useState(false);
 
   // References
   const chatMessagesEndRef = useRef(null);
@@ -3754,6 +3767,7 @@ function App() {
   );
   const pinViewerId = pinViewerIdentity.viewerId;
   const pinViewerAliases = pinViewerIdentity.aliases;
+  const preferenceTenantId = String(accountTenantId(currentUser) || '').trim();
   const isCurrentUserOnline = Boolean(
     isLoggedIn && currentUser && (chatMode !== 'tinode' || connectionStatus === 'online')
   );
@@ -3954,12 +3968,71 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const sidebarViewerId = String(currentUser?.id || currentUser?.uid || '').trim();
+    const sidebarTenantId = preferenceTenantId;
+    if (
+      typeof window === 'undefined'
+      || !isLoggedIn
+      || !sidebarViewerId
+      || !sidebarTenantId
+    ) {
+      setIsPrimarySidebarPreferenceReady(false);
+      return undefined;
+    }
+    let active = true;
     try {
-      window.localStorage.setItem('songhong.primary-sidebar-collapsed', String(isPrimarySidebarCollapsed));
+      const scopedKey = primarySidebarStorageKey(sidebarViewerId, sidebarTenantId);
+      let stored = window.localStorage.getItem(scopedKey);
+      if (
+        stored === null
+        && canMigrateLegacyViewerPreference(
+          PRIMARY_SIDEBAR_STORAGE_PREFIX,
+          sidebarViewerId,
+          sidebarTenantId,
+          window.localStorage,
+        )
+      ) {
+        const legacy = window.localStorage.getItem(PRIMARY_SIDEBAR_STORAGE_PREFIX);
+        if (legacy === 'true' || legacy === 'false') {
+          stored = legacy;
+          window.localStorage.setItem(scopedKey, legacy);
+          markLegacyViewerPreferenceMigrated(
+            PRIMARY_SIDEBAR_STORAGE_PREFIX,
+            sidebarViewerId,
+            sidebarTenantId,
+            window.localStorage,
+          );
+        }
+      }
+      if (active) {
+        setIsPrimarySidebarCollapsed(stored === 'true');
+        setIsPrimarySidebarPreferenceReady(true);
+      }
+    } catch {
+      if (active) setIsPrimarySidebarPreferenceReady(true);
+    }
+    return () => { active = false; };
+  }, [currentUser?.id, currentUser?.uid, isLoggedIn, preferenceTenantId]);
+
+  useEffect(() => {
+    const sidebarViewerId = String(currentUser?.id || currentUser?.uid || '').trim();
+    const sidebarTenantId = preferenceTenantId;
+    if (
+      !isPrimarySidebarPreferenceReady
+      || typeof window === 'undefined'
+      || !isLoggedIn
+      || !sidebarViewerId
+      || !sidebarTenantId
+    ) return;
+    try {
+      window.localStorage.setItem(
+        primarySidebarStorageKey(sidebarViewerId, sidebarTenantId),
+        String(isPrimarySidebarCollapsed),
+      );
     } catch {
       // The layout still works when browser storage is unavailable.
     }
-  }, [isPrimarySidebarCollapsed]);
+  }, [currentUser?.id, currentUser?.uid, isLoggedIn, isPrimarySidebarCollapsed, isPrimarySidebarPreferenceReady, preferenceTenantId]);
 
   useEffect(() => {
     if (typeof document !== 'undefined') document.documentElement.lang = settings.language;
@@ -3992,16 +4065,16 @@ function App() {
     }
     let active = true;
     setPinLockReady(false);
-    const config = readPinConfig(pinViewerId, undefined, pinViewerAliases);
+    const config = readPinConfig(pinViewerId, undefined, pinViewerAliases, preferenceTenantId);
     if (active) {
       setPinLockConfig(config);
-      setIsPinTabUnlocked(!config || hasPinTabAccess(pinViewerId, undefined, pinViewerAliases));
+      setIsPinTabUnlocked(!config || hasPinTabAccess(pinViewerId, undefined, pinViewerAliases, preferenceTenantId));
       setPinLockReady(true);
       setPinUnlockValue('');
       setPinUnlockNotice('');
     }
     return () => { active = false; };
-  }, [pinViewerAliases, pinViewerId]);
+  }, [pinViewerAliases, pinViewerId, preferenceTenantId]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
@@ -4227,11 +4300,12 @@ function App() {
           next,
           undefined,
           notificationSettingsViewerAliases,
+          preferenceTenantId,
         );
       }
       return next;
     });
-  }, [notificationSettingsViewerAliases, notificationSettingsViewerId]);
+  }, [notificationSettingsViewerAliases, notificationSettingsViewerId, preferenceTenantId]);
 
   useEffect(() => {
     if (!notificationSettingsViewerId) {
@@ -4243,9 +4317,10 @@ function App() {
       notificationSettingsViewerId,
       undefined,
       notificationSettingsViewerAliases,
+      preferenceTenantId,
     ));
     setNotificationSettingsNotice('');
-  }, [notificationSettingsViewerAliases, notificationSettingsViewerId]);
+  }, [notificationSettingsViewerAliases, notificationSettingsViewerId, preferenceTenantId]);
 
   const updateKeyboardShortcutSettings = useCallback(nextValue => {
     const next = normalizeKeyboardShortcutSettings(nextValue);
@@ -4255,12 +4330,13 @@ function App() {
         next,
         undefined,
         notificationSettingsViewerAliases,
+        preferenceTenantId,
       );
     }
     setKeyboardShortcutSettings(next);
     setKeyboardShortcutNotice('');
     return next;
-  }, [notificationSettingsViewerAliases, notificationSettingsViewerId]);
+  }, [notificationSettingsViewerAliases, notificationSettingsViewerId, preferenceTenantId]);
 
   const updateKeyboardShortcutBinding = useCallback((actionId, shortcut) => {
     const normalized = normalizeShortcut(shortcut);
@@ -4321,29 +4397,25 @@ function App() {
       notificationSettingsViewerId,
       undefined,
       notificationSettingsViewerAliases,
+      preferenceTenantId,
     ));
     setKeyboardShortcutNotice('');
     setCapturingShortcutAction('');
-  }, [notificationSettingsViewerAliases, notificationSettingsViewerId]);
+  }, [notificationSettingsViewerAliases, notificationSettingsViewerId, preferenceTenantId]);
 
   useEffect(() => {
     const categoryState = managementViewerId
-      ? readConversationCategoryState(managementViewerId, notificationSettingsViewerAliases)
+      ? readConversationCategoryState(managementViewerId, notificationSettingsViewerAliases, preferenceTenantId)
       : { categories: CONVERSATION_CATEGORY_OPTIONS.map(category => ({ ...category })), assignments: {} };
     setConversationCategoryOptions(categoryState.categories);
     setConversationCategories(categoryState.assignments);
     setConversationCategoryMenuOpen(false);
     setConversationCategoryManagerOpen(false);
-  }, [managementViewerId, notificationSettingsViewerAliases]);
+  }, [managementViewerId, notificationSettingsViewerAliases, preferenceTenantId]);
 
   const conversationBackgroundViewerId = managementViewerId || viewerId || '';
   const conversationBackgroundViewerAliases = notificationSettingsViewerAliases;
-  const conversationBackgroundTenantId = String(
-    currentUser?.tenantId
-      || currentUser?.tenant_id
-      || currentUser?.tenant?.id
-      || 'default',
-  );
+  const conversationBackgroundTenantId = preferenceTenantId || 'default';
   const activeBackgroundConversationId = String(activeChat.managementId || activeChat.id || '');
   const activeBackgroundStateKey = conversationBackgroundStorageKey(
     conversationBackgroundViewerId,
@@ -4422,6 +4494,7 @@ function App() {
     conversationBackgroundViewerId,
     conversationBackgroundViewerAliases,
     conversationBackgroundTenantId,
+    preferenceTenantId,
     activeBackgroundConversationId,
     activeBackgroundStateKey,
     activeChat.id,
@@ -4439,6 +4512,7 @@ function App() {
       notificationSettingsViewerId,
       undefined,
       notificationSettingsViewerAliases,
+      preferenceTenantId,
     )
       .then(sound => {
         if (active) setCustomNotificationSound(sound);
@@ -4456,7 +4530,7 @@ function App() {
     return () => {
       active = false;
     };
-  }, [notificationSettingsViewerAliases, notificationSettingsViewerId]);
+  }, [notificationSettingsViewerAliases, notificationSettingsViewerId, preferenceTenantId]);
 
   useEffect(() => {
     if (!customNotificationSound?.blob || typeof URL === 'undefined' || !URL.createObjectURL) {
@@ -4495,6 +4569,7 @@ function App() {
         file,
         undefined,
         notificationSettingsViewerAliases,
+        preferenceTenantId,
       );
       setCustomNotificationSound(savedSound);
       updateNotificationSettings({ sound: CUSTOM_NOTIFICATION_SOUND_ID, sounds: true });
@@ -4504,7 +4579,7 @@ function App() {
     } finally {
       setIsSavingCustomNotificationSound(false);
     }
-  }, [notificationSettingsViewerAliases, notificationSettingsViewerId, updateNotificationSettings]);
+  }, [notificationSettingsViewerAliases, notificationSettingsViewerId, preferenceTenantId, updateNotificationSettings]);
 
   const handleRemoveCustomNotificationSound = useCallback(async () => {
     if (!notificationSettingsViewerId || isSavingCustomNotificationSound) return;
@@ -4515,6 +4590,7 @@ function App() {
         notificationSettingsViewerId,
         undefined,
         notificationSettingsViewerAliases,
+        preferenceTenantId,
       );
       setCustomNotificationSound(null);
       updateNotificationSettings({ sound: DEFAULT_NOTIFICATION_SETTINGS.sound });
@@ -4528,6 +4604,7 @@ function App() {
     isSavingCustomNotificationSound,
     notificationSettingsViewerAliases,
     notificationSettingsViewerId,
+    preferenceTenantId,
     updateNotificationSettings,
   ]);
 
@@ -4554,13 +4631,13 @@ function App() {
         setPinUnlockNotice(appCopy.pinWrong);
         return;
       }
-      markPinTabUnlocked(pinViewerId, undefined, pinViewerAliases);
+      markPinTabUnlocked(pinViewerId, undefined, pinViewerAliases, preferenceTenantId);
       setIsPinTabUnlocked(true);
       setPinUnlockValue('');
     } finally {
       setIsVerifyingPin(false);
     }
-  }, [appCopy.pinWrong, isVerifyingPin, pinLockConfig, pinValidationMessage, pinUnlockValue, pinViewerAliases, pinViewerId]);
+  }, [appCopy.pinWrong, isVerifyingPin, pinLockConfig, pinValidationMessage, pinUnlockValue, pinViewerAliases, pinViewerId, preferenceTenantId]);
 
   const handleDesktopNotificationToggle = useCallback(async enabled => {
     if (!enabled) {
@@ -4721,8 +4798,9 @@ function App() {
       notificationSettingsViewerId,
       undefined,
       notificationSettingsViewerAliases,
+      preferenceTenantId,
     ));
-  }, [notificationSettingsViewerAliases, notificationSettingsViewerId]);
+  }, [notificationSettingsViewerAliases, notificationSettingsViewerId, preferenceTenantId]);
   const activeAdminAccount = resolveGroupAdministrator(activeChat, directoryAccounts);
   const activeAdminName = activeAdminAccount?.name || activeChat.admin || appCopy.t('Chưa xác định');
   const isActiveGroupOwner = activeChat.isGroup
@@ -4944,9 +5022,10 @@ function App() {
     const managedRooms = applyLocalConversationCategories(
       chatManagementService.remote
         ? managedRoomsSnapshot
-        : applyLocalConversationPins(managedRoomsSnapshot, managementUserId, notificationSettingsViewerAliases),
+        : applyLocalConversationPins(managedRoomsSnapshot, managementUserId, notificationSettingsViewerAliases, preferenceTenantId),
       managementUserId,
       notificationSettingsViewerAliases,
+      preferenceTenantId,
     );
     const previousRooms = Object.fromEntries(safeConversationEntries(conversationsRef.current));
     const nextRooms = Object.fromEntries(safeConversationEntries(previousRooms).filter(([, room]) => (
@@ -4969,7 +5048,7 @@ function App() {
       setCurrentChatId(firstVisibleConversationId(nextRooms, {}, CHATBOT_ACCOUNT.id));
     }
     return managedRooms;
-  }, [currentUser, directoryAccounts, notificationSettingsViewerAliases]);
+  }, [currentUser, directoryAccounts, notificationSettingsViewerAliases, preferenceTenantId]);
 
   const ensureTinodeConversationTopic = async (room, { avatarFile = null } = {}) => {
     if (!room || room.isChatbot || chatMode !== 'tinode') return room?.id || '';
@@ -5634,7 +5713,9 @@ function App() {
         };
         const notificationMessages = (conversation.messages || [])
           .filter(message => (
-            (message.type !== 'system' || ['poll_vote', 'poll_option_added', 'poll_locked'].includes(message.action))
+            (message.type !== 'system'
+              || currentRoom?.isGroup
+              || ['poll_vote', 'poll_option_added', 'poll_locked'].includes(message.action))
             && messageNotificationActorId(message) !== viewerId
             && messageNotificationSequence(message) > 0
           ))
@@ -5798,6 +5879,7 @@ function App() {
     setManagementConversationSession(0);
     const managementUserId = String(user.id || user.uid || '');
     const loginPreferenceIdentity = viewerPreferenceIdentity(user, managementUserId);
+    const loginPreferenceTenantId = String(accountTenantId(user) || '').trim();
     setPinLockReady(false);
     setPinLockConfig(null);
     setIsPinTabUnlocked(false);
@@ -5808,6 +5890,7 @@ function App() {
         loginPreferenceIdentity.viewerId,
         undefined,
         loginPreferenceIdentity.aliases,
+        loginPreferenceTenantId,
       );
     }
     const initialChatbot = createChatbotConversation(loadChatbotMessages(managementUserId));
@@ -5916,9 +5999,10 @@ function App() {
         const managedRooms = applyLocalConversationCategories(
           chatManagementService.remote
             ? managedRoomsSnapshot
-            : applyLocalConversationPins(managedRoomsSnapshot, managementUserId, loginPreferenceIdentity.aliases),
+            : applyLocalConversationPins(managedRoomsSnapshot, managementUserId, loginPreferenceIdentity.aliases, loginPreferenceTenantId),
           managementUserId,
           loginPreferenceIdentity.aliases,
+          loginPreferenceTenantId,
         );
         const next = {
           ...managedRooms,
@@ -6230,11 +6314,13 @@ function App() {
     if (isLoggingOutRef.current) return;
     isLoggingOutRef.current = true;
     const loggedOutPreferenceIdentity = viewerPreferenceIdentity(currentUser, viewerId);
+    const loggedOutPreferenceTenantId = String(accountTenantId(currentUser) || '').trim();
     if (loggedOutPreferenceIdentity.viewerId) {
       clearPinTabAccess(
         loggedOutPreferenceIdentity.viewerId,
         undefined,
         loggedOutPreferenceIdentity.aliases,
+        loggedOutPreferenceTenantId,
       );
     }
     accountSessionRef.current += 1;
@@ -7444,15 +7530,16 @@ function App() {
     }
   };
 
-  const persistGroupMetadata = async ({ name, settings } = {}) => {
+  const persistGroupMetadata = async ({ name, settings, background } = {}) => {
     const managementConversationId = activeChat.managementId || activeChat.id;
-    const tinodeMetadataChanged = chatMode === 'tinode';
+    const tinodeMetadataChanged = chatMode === 'tinode' && !usesManagementData;
     let topicName = '';
     let tinodeUpdated = false;
     let tinodeUpdatedRoom = null;
     const rollbackMetadata = {
       ...(name !== undefined ? { name: activeChat.name } : {}),
       ...(settings !== undefined ? { settings: activeGroupSettings } : {}),
+      ...(background !== undefined ? { background: activeChat.conversationBackground || null } : {}),
     };
 
     try {
@@ -7467,7 +7554,7 @@ function App() {
         }
         return chatManagementService.updateGroupSettings(
           managementConversationId,
-          { name, settings },
+          { name, settings, background },
         );
       }
       if (tinodeMetadataChanged) {
@@ -7521,7 +7608,7 @@ function App() {
         newName: nextName,
         updatedAt: new Date().toISOString(),
       };
-      if (chatMode === 'tinode') {
+      if (chatMode === 'tinode' && !usesManagementData) {
         const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
         await tinodeClient.sendSystemEvent(topicName, activityEvent).catch(error => {
           console.warn('ViChat: group rename activity announcement failed', error);
@@ -8135,6 +8222,7 @@ function App() {
           managementConversationId,
           nextPinned,
           notificationSettingsViewerAliases,
+          preferenceTenantId,
         );
       }
       setConversations(previous => {
@@ -8202,10 +8290,12 @@ function App() {
       conversationId,
       categoryId,
       notificationSettingsViewerAliases,
+      preferenceTenantId,
     );
     applyConversationCategoryState(readConversationCategoryState(
       viewerKey,
       notificationSettingsViewerAliases,
+      preferenceTenantId,
     ));
     setConversationCategoryMenuOpen(false);
     setConversationMenu(null);
@@ -8214,13 +8304,14 @@ function App() {
   const saveManagedConversationCategory = draft => {
     const viewerKey = managementViewerId || viewerId;
     if (!viewerKey) return { error: 'viewer_required' };
-    const saved = saveConversationCategory(viewerKey, draft, notificationSettingsViewerAliases);
+    const saved = saveConversationCategory(viewerKey, draft, notificationSettingsViewerAliases, preferenceTenantId);
     if (saved.error || !saved.category) return saved;
     const nextState = setCategoryConversations(
       viewerKey,
       saved.category.id,
       draft.conversationIds,
       notificationSettingsViewerAliases,
+      preferenceTenantId,
     );
     applyConversationCategoryState(nextState);
     return { ...saved, state: nextState };
@@ -8233,6 +8324,7 @@ function App() {
       viewerKey,
       categoryId,
       notificationSettingsViewerAliases,
+      preferenceTenantId,
     ));
   };
 
@@ -8243,6 +8335,7 @@ function App() {
       viewerKey,
       orderedIds,
       notificationSettingsViewerAliases,
+      preferenceTenantId,
     ));
   };
 
@@ -8485,11 +8578,15 @@ function App() {
           conversationBackgroundViewerAliases,
         );
         if (realtimeMessagingPending) throw new Error('Kết nối realtime Tinode chưa sẵn sàng.');
-        const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
+        let topicName = activeChat.tinodeTopic || '';
+        if (selected?.file || !(activeChat.isGroup && usesManagementData)) {
+          topicName = topicName || await ensureTinodeConversationTopic(activeChat);
+        }
         if (selected?.kind === 'custom' && !selectedUpload && String(selected?.url || '').startsWith('indexeddb://')) {
           throw new Error('Ảnh hình nền cục bộ không còn sẵn sàng. Hãy chọn lại ảnh từ máy tính.');
         }
         if (selectedUpload) {
+          if (!topicName) throw new Error('Nhóm chưa sẵn sàng tải hình nền lên Tinode.');
           const uploadedUrl = await tinodeClient.uploadConversationBackground(topicName, selectedUpload);
           if (!uploadedUrl) throw new Error('Không nhận được ảnh hình nền sau khi tải lên.');
           nextBackground = normalizeConversationBackground({
@@ -8500,7 +8597,20 @@ function App() {
             scope: CONVERSATION_BACKGROUND_SCOPES.SHARED,
           });
         }
-        nextBackground = await tinodeClient.updateConversationBackground(topicName, nextBackground);
+        if (activeChat.isGroup && usesManagementData) {
+          // Chatmgt owns managed group metadata. The upload may use the
+          // current member session, but the shared metadata update must use
+          // the server-side owner bridge.
+          const managedRoom = await chatManagementService.updateGroupSettings(
+            activeChat.managementId || activeChat.id,
+            { background: nextBackground },
+          );
+          nextBackground = managedRoom?.conversationBackground !== undefined
+            ? managedRoom.conversationBackground
+            : nextBackground;
+        } else {
+          nextBackground = await tinodeClient.updateConversationBackground(topicName, nextBackground);
+        }
         if (nextBackground?.url) nextBackground = {
           ...nextBackground,
           url: normalizeTinodeMediaUrl(nextBackground.url),
@@ -8738,7 +8848,11 @@ function App() {
       }
       const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
       const previousAvatarUrl = activeChat.avatarUrl || '';
-      const avatarUrl = await tinodeClient.updateGroupAvatar(topicName, file);
+      // Chatmgt owns managed group metadata. Deputies may upload through
+      // Tinode, but only the owner bridge writes the shared public metadata.
+      const avatarUrl = usesManagementData
+        ? await tinodeClient.uploadGroupAvatar(topicName, file)
+        : await tinodeClient.updateGroupAvatar(topicName, file);
       let persistedAvatarUrl = avatarUrl;
       try {
         if (usesManagementData && isManagementConversationId(activeChat.managementId || activeChat.id)) {
@@ -8749,7 +8863,9 @@ function App() {
           persistedAvatarUrl = persistedRoom?.avatarUrl || avatarUrl;
         }
       } catch (error) {
-        await tinodeClient.updateGroupMetadata(topicName, { avatar: previousAvatarUrl }).catch(() => {});
+        if (!usesManagementData) {
+          await tinodeClient.updateGroupMetadata(topicName, { avatar: previousAvatarUrl }).catch(() => {});
+        }
         throw error;
       }
       groupAvatarSyncRef.current.set(activeChat.id, persistedAvatarUrl);
@@ -10349,6 +10465,7 @@ function App() {
         next,
         undefined,
         notificationSettingsViewerAliases,
+        preferenceTenantId,
       );
       return next;
     });
@@ -12715,7 +12832,7 @@ function App() {
                       ? 'fa-thumbtack'
                       : msg.action === 'conversation_background_changed'
                         ? 'fa-image'
-                       : ['group_name_changed', 'group_settings_changed'].includes(msg.action)
+                       : ['group_name_changed', 'group_settings_changed', 'group_chatbot_enabled'].includes(msg.action)
                          ? 'fa-pen-to-square'
                          : msg.action === 'group_avatar_changed'
                            ? 'fa-camera'
@@ -13403,6 +13520,7 @@ function App() {
                 onSelectEmoji={insertEmoji}
                 scope={notificationSettingsViewerId || 'anonymous'}
                 scopeAliases={notificationSettingsViewerAliases}
+                tenantId={preferenceTenantId}
                 copy={appCopy}
               />
             )}

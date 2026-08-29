@@ -1,4 +1,9 @@
-import { viewerStorageIds } from './viewerPreferenceStorage.js';
+import {
+  markLegacyViewerPreferenceMigrated,
+  viewerStorageCandidates,
+  viewerStorageKeyId,
+  viewerStorageWriteCandidates,
+} from './viewerPreferenceStorage.js';
 
 export const CUSTOM_STICKER_PACK_ID = 'custom';
 export const CUSTOM_STICKER_MAX_ITEMS = 48;
@@ -8,6 +13,7 @@ export const CUSTOM_STICKER_TOTAL_MAX_BYTES = 32 * 1024 * 1024;
 const DATABASE_NAME = 'vichat-custom-stickers.v1';
 const STORE_NAME = 'stickers';
 const VIEWER_INDEX_NAME = 'viewerId';
+const STORAGE_SCOPE_PREFIX = DATABASE_NAME;
 const ALLOWED_MIME_TYPES = new Set([
   'image/avif',
   'image/gif',
@@ -250,36 +256,53 @@ function boundedStickers(stickers) {
   return bounded;
 }
 
-export async function readCustomStickers(viewerId, factory = indexedDbFactory(), aliasViewerIds = []) {
+export async function readCustomStickers(viewerId, factory = indexedDbFactory(), aliasViewerIds = [], tenantId = '') {
   const normalizedViewerId = String(viewerId || '').trim();
   if (!normalizedViewerId) return [];
   const database = await openCustomStickerDatabase(factory);
   if (!database) return [];
-  const viewerIds = viewerStorageIds(normalizedViewerId, aliasViewerIds);
+  const candidates = viewerStorageCandidates(
+    STORAGE_SCOPE_PREFIX,
+    normalizedViewerId,
+    aliasViewerIds,
+    tenantId,
+  );
+  const primaryStorageId = candidates[0]?.storageId || viewerStorageKeyId(normalizedViewerId, tenantId);
   try {
     const stickers = [];
     const copiedIds = new Set();
-    for (const [index, candidateId] of viewerIds.entries()) {
+    let copiedLegacy = false;
+    for (const candidate of candidates) {
       const request = database
         .transaction(STORE_NAME, 'readonly')
         .objectStore(STORE_NAME)
         .index(VIEWER_INDEX_NAME)
-        .getAll(candidateId);
+        .getAll(candidate.storageId);
       const records = await requestResult(request, 'Không thể đọc kho sticker cá nhân.');
       (Array.isArray(records) ? records : []).forEach(record => {
-        const sticker = stickerForViewer(record, normalizedViewerId);
+        const sticker = stickerForViewer(record, primaryStorageId);
         const id = String(sticker?.id || '').trim();
         if (!sticker || !id || stickers.some(item => item.id === id)) return;
         stickers.push(sticker);
-        if (index > 0) copiedIds.add(id);
+        if (candidate.storageId !== primaryStorageId) {
+          copiedIds.add(id);
+          copiedLegacy = copiedLegacy || candidate.legacy;
+        }
       });
     }
     if (copiedIds.size > 0) {
       const records = stickers
         .filter(sticker => copiedIds.has(sticker.id))
-        .map(sticker => ({ ...sticker, viewerId: normalizedViewerId }));
+        .map(sticker => ({ ...sticker, viewerId: primaryStorageId }));
       try {
-        await copyCustomStickerRecords(database, normalizedViewerId, records);
+        await copyCustomStickerRecords(database, primaryStorageId, records);
+        if (copiedLegacy) {
+          markLegacyViewerPreferenceMigrated(
+            STORAGE_SCOPE_PREFIX,
+            normalizedViewerId,
+            tenantId,
+          );
+        }
       } catch {
         // The alias records remain available if copy-on-read is blocked.
       }
@@ -290,7 +313,7 @@ export async function readCustomStickers(viewerId, factory = indexedDbFactory(),
   }
 }
 
-export async function writeCustomStickerFiles(viewerId, files, factory = indexedDbFactory(), aliasViewerIds = []) {
+export async function writeCustomStickerFiles(viewerId, files, factory = indexedDbFactory(), aliasViewerIds = [], tenantId = '') {
   const normalizedViewerId = String(viewerId || '').trim();
   if (!normalizedViewerId) throw new Error('Thiếu tài khoản để lưu sticker cá nhân.');
   const sourceFiles = Array.from(files || []).filter(Boolean);
@@ -300,7 +323,7 @@ export async function writeCustomStickerFiles(viewerId, files, factory = indexed
     if (validationError) throw new Error(validationError);
   });
 
-  const existing = await readCustomStickers(normalizedViewerId, factory, aliasViewerIds);
+  const existing = await readCustomStickers(normalizedViewerId, factory, aliasViewerIds, tenantId);
   const existingFingerprints = new Set(existing.map(sticker => sticker.fingerprint));
   const uniqueFiles = [];
   let duplicateCount = 0;
@@ -326,8 +349,9 @@ export async function writeCustomStickerFiles(viewerId, files, factory = indexed
   }
 
   const timestamp = Date.now();
+  const primaryStorageId = viewerStorageKeyId(normalizedViewerId, tenantId);
   const records = uniqueFiles.map((file, index) => createCustomStickerRecord(
-    normalizedViewerId,
+    primaryStorageId,
     file,
     index,
     timestamp + index,
@@ -361,7 +385,7 @@ export async function writeCustomStickerFiles(viewerId, files, factory = indexed
   });
 }
 
-export async function deleteCustomSticker(viewerId, stickerId, factory = indexedDbFactory(), aliasViewerIds = []) {
+export async function deleteCustomSticker(viewerId, stickerId, factory = indexedDbFactory(), aliasViewerIds = [], tenantId = '') {
   const normalizedViewerId = String(viewerId || '').trim();
   const normalizedStickerId = String(stickerId || '').trim();
   if (!normalizedViewerId || !normalizedStickerId) return false;
@@ -372,8 +396,8 @@ export async function deleteCustomSticker(viewerId, stickerId, factory = indexed
     try {
       transaction = database.transaction(STORE_NAME, 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
-      viewerStorageIds(normalizedViewerId, aliasViewerIds).forEach(candidateId => {
-        store.delete(customStickerKey(candidateId, normalizedStickerId));
+      viewerStorageWriteCandidates(normalizedViewerId, aliasViewerIds, tenantId).forEach(candidate => {
+        store.delete(customStickerKey(candidate.storageId, normalizedStickerId));
       });
     } catch (error) {
       closeDatabase(database);

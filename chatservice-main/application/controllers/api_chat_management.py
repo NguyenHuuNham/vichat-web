@@ -71,6 +71,7 @@ from application.services.auth_service import (
     tinode_remove_topic_member,
     tinode_reconcile_topic_members,
     tinode_publish_system_event,
+    tinode_update_topic_public_metadata,
     tinode_sso_password,
     tinode_sso_login,
     tinode_topic_member_uids,
@@ -140,6 +141,8 @@ GROUP_SETTING_DEFAULTS = {
 DIRECT_DELETED_AT_PROPERTY = "direct_deleted_at_by_user"
 GROUP_SETTING_KEYS = frozenset(GROUP_SETTING_DEFAULTS)
 GROUP_ROLE_VALUES = frozenset({"OWNER", "ADMIN", "MEMBER"})
+GROUP_BACKGROUND_PROPERTY_KEYS = ("conversationBackground", "conversation_background")
+GROUP_BACKGROUND_MAX_URL_LENGTH = 8192
 
 HISTORY_SEARCH_TYPES = frozenset({
     "all",
@@ -186,6 +189,10 @@ def _is_group_owner(participant):
     return _group_role(getattr(participant, "role", "")) == "OWNER"
 
 
+def _is_group_deputy(participant):
+    return _group_role(getattr(participant, "role", "")) == "ADMIN"
+
+
 def _is_group_manager(participant):
     return _group_role(getattr(participant, "role", "")) in {"OWNER", "ADMIN"}
 
@@ -199,6 +206,71 @@ def _conversation_avatar(properties):
             if str(source.get(key) or "").strip()
         ),
         "",
+    )
+
+
+def _normalized_group_background(value, updated_at=None):
+    """Normalize shared group background metadata before persisting it."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("The group background must be an object or null.")
+    url = str(
+        value.get("url")
+        or value.get("backgroundUrl")
+        or value.get("background_url")
+        or ""
+    ).strip()
+    if not url:
+        return None
+    if len(url) > GROUP_BACKGROUND_MAX_URL_LENGTH:
+        raise ValueError("The group background reference is too long.")
+    background = {
+        "id": str(value.get("id") or "").strip()[:120],
+        "url": url,
+        "label": str(
+            value.get("label")
+            or value.get("backgroundLabel")
+            or value.get("background_label")
+            or "Hinh nen cuoc tro chuyen"
+        ).strip()[:255],
+        "kind": str(
+            value.get("kind")
+            or value.get("backgroundKind")
+            or value.get("background_kind")
+            or "custom"
+        ).strip()[:40],
+        "scope": "shared",
+    }
+    timestamp = str(
+        updated_at
+        or value.get("updatedAt")
+        or value.get("updated_at")
+        or ""
+    ).strip()
+    if timestamp:
+        background["updatedAt"] = timestamp[:80]
+    return background
+
+
+def _conversation_background(properties):
+    source = properties if isinstance(properties, dict) else {}
+    for key in GROUP_BACKGROUND_PROPERTY_KEYS:
+        if key not in source:
+            continue
+        try:
+            return _normalized_group_background(source.get(key))
+        except ValueError:
+            return None
+    return None
+
+
+def _same_group_background(first, second):
+    first = first if isinstance(first, dict) else {}
+    second = second if isinstance(second, dict) else {}
+    return all(
+        str(first.get(key) or "").strip() == str(second.get(key) or "").strip()
+        for key in ("id", "url", "label", "kind", "scope")
     )
 
 
@@ -1348,7 +1420,9 @@ def _expected_tinode_member_uids(item, participants, accounts_by_id):
 def _expected_tinode_access_modes(item, participants, accounts_by_id):
     modes = {
         str(accounts_by_id[participant.participant_id].tinode_uid or ""):
-            "JRWPASO" if _is_group_owner(participant) else "JRWPAS"
+            "JRWPASO" if _is_group_owner(participant)
+            else "JRWPASD" if _is_group_deputy(participant)
+            else "JRWPAS"
         for participant in participants
     }
     properties = item.properties or {}
@@ -1468,6 +1542,18 @@ async def _publish_group_activity_events(item, events):
             participants,
             accounts_by_id,
         )
+        metadata_actions = {
+            "group_name_changed",
+            "group_avatar_changed",
+            "group_settings_changed",
+            "conversation_background_changed",
+        }
+        if any(event.get("action") in metadata_actions for event in events if isinstance(event, dict)):
+            try:
+                await _sync_group_tinode_metadata(item, owner_token, owner_uid)
+            except Exception as error:
+                # Chatmgt is already committed and remains the source of truth.
+                logger.warning("Could not sync group metadata to Tinode: %s", error)
         for event in events:
             try:
                 await tinode_publish_system_event(
@@ -1482,6 +1568,45 @@ async def _publish_group_activity_events(item, events):
                 logger.warning("Could not publish group activity event: %s", error)
     except Exception as error:
         logger.warning("Could not prepare the group activity publisher: %s", error)
+
+
+async def _sync_group_tinode_metadata(item, owner_token=None, owner_uid=None):
+    """Mirror committed Chatmgt group metadata without using a deputy token."""
+    if not item or not item.tinode_topic:
+        return None
+    if not owner_token or not owner_uid:
+        participants, accounts_by_id = _active_conversation_accounts(item)
+        _owner_account, owner_uid, owner_token = await _group_owner_tinode_credentials(
+            item,
+            participants,
+            accounts_by_id,
+        )
+
+    properties = item.properties or {}
+    public_updates = {}
+    group_name = str(item.subject or "").strip()
+    if group_name:
+        public_updates["fn"] = group_name
+    avatar = _conversation_avatar(properties)
+    if avatar:
+        public_updates["photo"] = {"ref": avatar}
+
+    group_vichat = {
+        "groupSettings": _normalized_group_settings(
+            properties.get("groupSettings") or properties.get("group_settings")
+        ),
+    }
+    if any(key in properties for key in GROUP_BACKGROUND_PROPERTY_KEYS):
+        # Null is an explicit clear; an absent property means preserve legacy
+        # Tinode metadata until Chatmgt receives a deliberate background edit.
+        group_vichat["conversationBackground"] = _conversation_background(properties)
+    public_updates["vichat"] = group_vichat
+    return await tinode_update_topic_public_metadata(
+        owner_token,
+        owner_uid,
+        item.tinode_topic,
+        public_updates,
+    )
 
 
 def _public_group_member(account, participant, viewer_account=None):
@@ -1536,6 +1661,7 @@ def _serialize_conversation(item, viewer_id):
     group_settings = _normalized_group_settings(
         properties.get("groupSettings") or properties.get("group_settings")
     ) if is_group else None
+    group_background = _conversation_background(properties) if is_group else None
     pending_participants = []
     pending_accounts_by_id = {}
     viewer_can_approve_members = bool(
@@ -1610,6 +1736,7 @@ def _serialize_conversation(item, viewer_id):
         "isGroup": is_group,
         "avatar": _conversation_avatar(properties),
         "groupSettings": group_settings,
+        **({"conversationBackground": group_background} if is_group else {}),
         "participantIds": participant_ids,
         "members": [
             (
@@ -4482,6 +4609,8 @@ async def conversation_group_settings(request, conversation_id):
         }, status=400)
     is_group_manager = _is_group_manager(membership)
     existing_properties = item.properties or {}
+    previous_name = str(item.subject or "")
+    previous_avatar = _conversation_avatar(existing_properties)
     existing_settings = _normalized_group_settings(
         existing_properties.get("groupSettings") or existing_properties.get("group_settings")
     )
@@ -4493,7 +4622,7 @@ async def conversation_group_settings(request, conversation_id):
     ):
         return _group_info_permission_error()
 
-    if not isinstance(body, dict) or not any(key in body for key in ("name", "avatar", "settings")):
+    if not isinstance(body, dict) or not any(key in body for key in ("name", "avatar", "settings", "background")):
         return json({
             "error_code": "PARAM_ERROR",
             "error_message": "At least one group setting is required.",
@@ -4516,6 +4645,7 @@ async def conversation_group_settings(request, conversation_id):
             return json({"error_code": "PARAM_ERROR", "error_message": "The group avatar reference is too long."}, status=400)
 
     next_settings = None
+    changed_settings = []
     if "settings" in body:
         requested_settings = body.get("settings")
         if not isinstance(requested_settings, dict):
@@ -4533,6 +4663,37 @@ async def conversation_group_settings(request, conversation_id):
             existing_properties.get("groupSettings") or existing_properties.get("group_settings")
         )
         next_settings.update(requested_settings)
+        changed_settings = [
+            {
+                "key": key,
+                "enabled": next_settings[key],
+            }
+            for key in GROUP_SETTING_DEFAULTS
+            if next_settings[key] != existing_settings[key]
+        ]
+
+    background_requested = "background" in body
+    next_background = None
+    if background_requested:
+        requested_background = body.get("background")
+        if requested_background is not None and not isinstance(requested_background, dict):
+            return json({
+                "error_code": "PARAM_ERROR",
+                "error_message": "The group background must be an object or null.",
+            }, status=400)
+        try:
+            next_background = _normalized_group_background(
+                requested_background,
+                updated_at=datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+            )
+        except ValueError as error:
+            return json({"error_code": "PARAM_ERROR", "error_message": str(error)}, status=400)
+        if requested_background is not None and next_background is None:
+            return json({
+                "error_code": "PARAM_ERROR",
+                "error_message": "The group background must include a URL.",
+            }, status=400)
+    previous_background = _conversation_background(existing_properties)
 
     properties = dict(item.properties or {})
     if next_name is not None:
@@ -4547,9 +4708,68 @@ async def conversation_group_settings(request, conversation_id):
             properties.pop(legacy_key, None)
     if next_settings is not None:
         properties["groupSettings"] = next_settings
+    if background_requested:
+        if next_background is None:
+            # Keep an explicit null marker so an older Tinode public snapshot
+            # cannot restore a background after the user clears it.
+            properties["conversationBackground"] = None
+            properties.pop("conversation_background", None)
+        else:
+            properties["conversationBackground"] = next_background
+            properties.pop("conversation_background", None)
     item.properties = properties
     item.updated_at = int(time.time())
     db.session.commit()
+    actor_account = _account_by_id(tenant_id, user_id)
+    actor_name = (
+        actor_account.full_name
+        or actor_account.username
+        or user_id
+    ) if actor_account is not None else user_id
+    actor_uid = str(actor_account.tinode_uid or "").strip() if actor_account is not None else ""
+    activity_events = []
+    if next_name is not None and next_name != previous_name:
+        activity_events.append({
+            "action": "group_name_changed",
+            "actorId": actor_uid or user_id,
+            "actorAccountId": user_id,
+            "actorName": actor_name,
+            "previousName": previous_name,
+            "newName": next_name,
+        })
+    if next_avatar and next_avatar != previous_avatar:
+        activity_events.append({
+            "action": "group_avatar_changed",
+            "actorId": actor_uid or user_id,
+            "actorAccountId": user_id,
+            "actorName": actor_name,
+            "previousAvatarUrl": previous_avatar,
+            "avatarUrl": next_avatar,
+        })
+    if changed_settings:
+        activity_events.append({
+            "action": "group_settings_changed",
+            "actorId": actor_uid or user_id,
+            "actorAccountId": user_id,
+            "actorName": actor_name,
+            "changes": changed_settings,
+            "groupSettings": next_settings,
+        })
+    if background_requested and not _same_group_background(previous_background, next_background):
+        activity_events.append({
+            "action": "conversation_background_changed",
+            "scope": "shared",
+            "isGroup": True,
+            "actorId": actor_uid or user_id,
+            "actorAccountId": user_id,
+            "actorName": actor_name,
+            "backgroundId": next_background.get("id", "") if next_background else "",
+            "backgroundUrl": next_background.get("url", "") if next_background else "",
+            "backgroundLabel": next_background.get("label", "") if next_background else "",
+            "backgroundKind": next_background.get("kind", "") if next_background else "",
+            "updatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+        })
+    await _publish_group_activity_events(item, activity_events)
     return json(_serialize_conversation(item, user_id))
 
 
@@ -5283,11 +5503,20 @@ async def conversation_enable_tinode_chatbot(request, conversation_id):
             )
 
         properties = dict(item.properties or {})
+        chatbot_was_enabled = bool(properties.get("chatbot_enabled"))
         properties["chatbot_enabled"] = True
         properties["chatbot_tinode_uid"] = chatbot_uid
         item.properties = properties
         item.updated_at = int(time.time())
         db.session.commit()
+        if not chatbot_was_enabled:
+            await _publish_group_activity_events(item, [{
+                "action": "group_chatbot_enabled",
+                "actorId": str(account.tinode_uid or "").strip() or user_id,
+                "actorAccountId": user_id,
+                "actorName": account.full_name or account.username or user_id,
+                "chatbotUid": chatbot_uid,
+            }])
         return json(_serialize_conversation(item, user_id))
     except AccountSSOError as error:
         db.session.rollback()
@@ -5692,6 +5921,7 @@ async def conversation_participant_role(request, conversation_id, participant_id
                     accounts_by_id,
                 ),
                 member_tokens=member_tokens,
+                replace_access_uids={target_uid},
             )
         else:
             target.role = requested_role
@@ -5744,6 +5974,7 @@ async def conversation_participant_role(request, conversation_id, participant_id
                     expected_member_uids,
                     expected_access_modes=previous_access_modes,
                     member_tokens=member_tokens,
+                    replace_access_uids={target_uid},
                 )
             except Exception as rollback_error:
                 logger.warning("Could not roll back Tinode group role access: %s", rollback_error)
@@ -5766,6 +5997,7 @@ async def conversation_participant_role(request, conversation_id, participant_id
                     expected_member_uids,
                     expected_access_modes=previous_access_modes,
                     member_tokens=member_tokens,
+                    replace_access_uids={target_uid},
                 )
             except Exception as rollback_error:
                 logger.warning("Could not roll back Tinode group role access: %s", rollback_error)
@@ -5783,6 +6015,7 @@ async def conversation_participant_role(request, conversation_id, participant_id
                     expected_member_uids,
                     expected_access_modes=previous_access_modes,
                     member_tokens=member_tokens,
+                    replace_access_uids={target_uid},
                 )
             except Exception as rollback_error:
                 logger.warning("Could not roll back Tinode group role access: %s", rollback_error)

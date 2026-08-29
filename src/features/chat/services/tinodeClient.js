@@ -86,6 +86,7 @@ const fullHistoryRequests = new Map();
 const fullHistoryTopics = new Set();
 const groupPermissionMigrationRequests = new Map();
 const groupPrivacyMigrationRequests = new Map();
+const groupAccessRefreshRequests = new Map();
 const privateGroupTopics = new Set();
 const callInviteKeys = new Set();
 const conversationEmitTimers = new Map();
@@ -517,6 +518,27 @@ function groupSettingsFromTopic(topic) {
     || null;
 }
 
+function groupBackgroundFromTopic(topic) {
+  if (!topic?.isGroupType?.() && !String(topic?.name || '').startsWith('grp')) return undefined;
+  const publicMetadata = topic.public && typeof topic.public === 'object' ? topic.public : {};
+  const sources = [
+    publicMetadata.vichat,
+    publicMetadata,
+  ];
+  for (const source of sources) {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) continue;
+    if (Object.prototype.hasOwnProperty.call(source, 'conversationBackground')) {
+      return normalizeConversationBackground(source.conversationBackground);
+    }
+    if (Object.prototype.hasOwnProperty.call(source, 'conversation_background')) {
+      return normalizeConversationBackground(source.conversation_background);
+    }
+  }
+  // An absent metadata key is different from an explicit clear. This keeps
+  // an older Tinode snapshot from erasing Chatmgt's authoritative value.
+  return undefined;
+}
+
 function emitGroupSettingsChange(topic, tinode) {
   if (!topic || tinode !== client || !allowedConversationTopics.has(topic.name)) return;
   const rawSettings = groupSettingsFromTopic(topic);
@@ -598,6 +620,10 @@ function formatSystemEvent(event, viewerId) {
   if (event.action === 'group_avatar_changed') {
     const actorText = event.actorId === viewerId ? 'Bạn đã' : `${actorName} đã`;
     return `${actorText} đổi ảnh đại diện nhóm`;
+  }
+  if (event.action === 'group_chatbot_enabled') {
+    const actorText = event.actorId === viewerId ? 'Bạn đã' : `${actorName} đã`;
+    return `${actorText} bật ViChat AI trong nhóm`;
   }
   if (event.action === 'group_settings_changed') {
     const actorText = event.actorId === viewerId ? 'Bạn đã' : `${actorName} đã`;
@@ -1145,7 +1171,9 @@ function toConversation(topic, tinode) {
         name: usableProfileName(sub.public?.fn || sub.public?.name) || cachedProfile.name || 'Thành viên',
         avatar: normalizeAvatar(sub.public?.photo || sub.public?.avatar) || cachedProfile.avatar || '',
         online: sub.online === true,
-        mode: sub.acs?.getMode?.() || sub.mode,
+        mode: sub.user === tinode.getCurrentUserID()
+          ? topic.acs?.getMode?.() || sub.acs?.getMode?.() || sub.mode
+          : sub.acs?.getMode?.() || sub.mode,
       });
     }
   });
@@ -1174,14 +1202,7 @@ function toConversation(topic, tinode) {
   // fallback when the bounded message history no longer contains the event.
   const latestBackground = latestSharedConversationBackground({ messages: finalMessages });
   const auxBackground = !isGroup ? conversationBackgroundFromAux(topic) : undefined;
-  const groupBackground = isGroup
-    ? normalizeConversationBackground(
-      topic.public?.vichat?.conversationBackground
-        || topic.public?.vichat?.conversation_background
-        || topic.public?.conversationBackground
-        || topic.public?.conversation_background,
-    )
-    : undefined;
+  const groupBackground = isGroup ? groupBackgroundFromTopic(topic) : undefined;
   const rawConversationBackground = latestBackground !== undefined
     ? latestBackground
     : isGroup
@@ -1530,6 +1551,36 @@ function emitContactsSoon() {
   });
 }
 
+function isGroupTopic(topic) {
+  return Boolean(topic?.isGroupType?.() || String(topic?.name || '').startsWith('grp'));
+}
+
+function refreshOpenGroupAccess(topic, tinode) {
+  if (
+    !topic
+    || tinode !== client
+    || !isGroupTopic(topic)
+    || !allowedConversationTopics.has(topic.name)
+    || !topic.isSubscribed?.()
+    || typeof topic.getMeta !== 'function'
+  ) return;
+  if (groupAccessRefreshRequests.has(topic.name)) return;
+  const queryBuilder = topic.startMetaQuery?.();
+  if (!queryBuilder?.withDesc || !queryBuilder.withSub || !queryBuilder.build) return;
+  const query = queryBuilder.withDesc().withSub().build();
+  if (!query) return;
+  const request = Promise.resolve()
+    .then(() => topic.getMeta(query))
+    .then(() => {
+      if (tinode === client && allowedConversationTopics.has(topic.name)) {
+        emitConversation(topic, tinode);
+      }
+    })
+    .catch(() => {})
+    .finally(() => groupAccessRefreshRequests.delete(topic.name));
+  groupAccessRefreshRequests.set(topic.name, request);
+}
+
 function wireTopic(topic) {
   const topicClient = topic?._tinode || getClient();
   topic.onData = data => {
@@ -1812,6 +1863,7 @@ function resetSessionState({ clearEventListeners = false } = {}) {
   fullHistoryTopics.clear();
   groupPermissionMigrationRequests.clear();
   groupPrivacyMigrationRequests.clear();
+  groupAccessRefreshRequests.clear();
   privateGroupTopics.clear();
   callInviteKeys.clear();
   conversationEmitTimers.forEach(timer => clearTimeout(timer));
@@ -1910,7 +1962,15 @@ async function initializeSession(tinode, fallbackLogin = '', preferredName = '')
       if (allowedConversationTopics.has(contact.name)) {
         subscribeTopic(contact.name, { historyLimit: BACKGROUND_HISTORY_LIMIT, newerOnly: true }).catch(() => {});
       }
-    } else if (['acs', 'gone', 'upd'].includes(what)) {
+    } else if (what === 'acs' && isGroupTopic(contact)) {
+      // Tinode has already applied contact.acs. Emit it before the metadata
+      // refresh so an open deputy tab can use the new permissions immediately.
+      if (allowedConversationTopics.has(contact.name)) {
+        emitConversation(contact, tinode);
+        refreshOpenGroupAccess(contact, tinode);
+      }
+      emitContactsSoon();
+    } else if (['gone', 'upd'].includes(what)) {
       emitContactsSoon();
     }
   };
@@ -2356,6 +2416,12 @@ export const tinodeClient = {
     });
     emitConversation(topic);
     return avatarUrl;
+  },
+
+  async uploadGroupAvatar(topicName, avatarFile) {
+    if (!topicName || !avatarFile) throw new Error('Vui lòng chọn ảnh nhóm.');
+    await subscribeTopic(topicName, { historyLimit: 0 });
+    return uploadFile(getClient(), avatarFile, topicName);
   },
 
   async updateGroupName(topicName, name) {

@@ -564,9 +564,18 @@ export function normalizeConversationShape(conversation) {
     ? source.readAt
     : undefined;
   const hasConversationBackground = Object.prototype.hasOwnProperty.call(source, 'conversationBackground')
-    || Object.prototype.hasOwnProperty.call(source, 'conversation_background');
+    || Object.prototype.hasOwnProperty.call(source, 'conversation_background')
+    || Object.prototype.hasOwnProperty.call(properties, 'conversationBackground')
+    || Object.prototype.hasOwnProperty.call(properties, 'conversation_background');
+  const rawConversationBackground = Object.prototype.hasOwnProperty.call(source, 'conversationBackground')
+    ? source.conversationBackground
+    : Object.prototype.hasOwnProperty.call(source, 'conversation_background')
+      ? source.conversation_background
+      : Object.prototype.hasOwnProperty.call(properties, 'conversationBackground')
+        ? properties.conversationBackground
+        : properties.conversation_background;
   const conversationBackground = hasConversationBackground
-    ? normalizeConversationBackground(source.conversationBackground || source.conversation_background)
+    ? normalizeConversationBackground(rawConversationBackground)
     : undefined;
   const directAvatar = conversationMedia(source.avatarUrl) || conversationMedia(source.avatar);
   const persistedAvatar = conversationMedia(

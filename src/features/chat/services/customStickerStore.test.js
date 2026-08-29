@@ -166,8 +166,8 @@ test('rejects a batch that would exceed the per-account library limit', async ()
 });
 
 test('wires upload, delete and blob transport into the web picker without changing mobile', () => {
-  assert.match(pickerSource, /writeCustomStickerFiles\(uploadScope, files, undefined, uploadScopeAliases\)/);
-  assert.match(pickerSource, /deleteCustomSticker\(deleteScope, sticker\.id, undefined, deleteScopeAliases\)/);
+  assert.match(pickerSource, /writeCustomStickerFiles\(uploadScope, files, undefined, uploadScopeAliases, uploadTenantId\)/);
+  assert.match(pickerSource, /deleteCustomSticker\(deleteScope, sticker\.id, undefined, deleteScopeAliases, deleteTenantId\)/);
   assert.match(pickerSource, /multiple/);
   assert.match(pickerSource, /CUSTOM_STICKER_PACK_ID/);
   assert.match(appSource, /const stickerBlob = sticker\.blob/);

@@ -1,4 +1,9 @@
-import { viewerStorageIds } from './viewerPreferenceStorage.js';
+import {
+  markLegacyViewerPreferenceMigrated,
+  viewerStorageCandidates,
+  viewerStorageKeyId,
+  viewerStorageWriteCandidates,
+} from './viewerPreferenceStorage.js';
 
 const STICKER_ROOT = '/stickers/puppysoft';
 const RECENT_STORAGE_PREFIX = 'vichat.stickers.recent.v1';
@@ -503,8 +508,11 @@ export function suggestStickersForText(text, limit = 4) {
     .map(result => result.item);
 }
 
-export function recentStickerStorageKey(scope = 'anonymous') {
-  return `${RECENT_STORAGE_PREFIX}:${String(scope || 'anonymous')}`;
+export function recentStickerStorageKey(scope = 'anonymous', tenantId = '') {
+  const storageId = tenantId
+    ? viewerStorageKeyId(scope, tenantId)
+    : String(scope || 'anonymous');
+  return `${RECENT_STORAGE_PREFIX}:${storageId}`;
 }
 
 export function isRememberedStickerId(id) {
@@ -512,26 +520,43 @@ export function isRememberedStickerId(id) {
   return stickerId.length <= 80 && (Boolean(stickerById(stickerId)) || /^custom-[a-z0-9-]+$/i.test(stickerId));
 }
 
-export function readRecentStickerIds(scope = 'anonymous', aliasScopes = []) {
+export function readRecentStickerIds(scope = 'anonymous', aliasScopes = [], tenantId = '') {
   if (typeof window === 'undefined') return [];
-  const scopes = viewerStorageIds(scope, aliasScopes);
-  const recentIds = [];
-  let readAlias = false;
-  scopes.forEach((candidateScope, index) => {
+  const candidates = viewerStorageCandidates(
+    RECENT_STORAGE_PREFIX,
+    scope,
+    aliasScopes,
+    tenantId,
+    window.localStorage,
+  );
+  const records = [];
+  candidates.forEach(candidate => {
     try {
-      const value = JSON.parse(window.localStorage.getItem(recentStickerStorageKey(candidateScope)) || '[]');
+      const value = JSON.parse(window.localStorage.getItem(recentStickerStorageKey(
+        candidate.viewerId,
+        candidate.legacy ? '' : tenantId,
+      )) || '[]');
       if (!Array.isArray(value)) return;
-      if (index > 0) readAlias = true;
-      value.map(id => String(id || '')).filter(isRememberedStickerId).forEach(id => {
-        if (!recentIds.includes(id) && recentIds.length < 24) recentIds.push(id);
-      });
+      records.push({ candidate, value });
     } catch {
       // A corrupt alias must not hide valid recent stickers.
     }
   });
-  if (readAlias && recentIds.length > 0) {
+  const usableRecords = records.some(record => !record.candidate.legacy)
+    ? records.filter(record => !record.candidate.legacy)
+    : records;
+  const recentIds = [];
+  usableRecords.forEach(record => {
+    record.value.map(id => String(id || '')).filter(isRememberedStickerId).forEach(id => {
+      if (!recentIds.includes(id) && recentIds.length < 24) recentIds.push(id);
+    });
+  });
+  if (usableRecords.some(record => record.candidate.storageId !== candidates[0]?.storageId)) {
     try {
-      window.localStorage.setItem(recentStickerStorageKey(scopes[0]), JSON.stringify(recentIds));
+      window.localStorage.setItem(recentStickerStorageKey(scope, tenantId), JSON.stringify(recentIds));
+      if (usableRecords.some(record => record.candidate.legacy)) {
+        markLegacyViewerPreferenceMigrated(RECENT_STORAGE_PREFIX, scope, tenantId, window.localStorage);
+      }
     } catch {
       // The alias remains usable when copy-on-read is unavailable.
     }
@@ -539,13 +564,13 @@ export function readRecentStickerIds(scope = 'anonymous', aliasScopes = []) {
   return recentIds;
 }
 
-export function rememberStickerId(scope, id, aliasScopes = []) {
+export function rememberStickerId(scope, id, aliasScopes = [], tenantId = '') {
   const stickerId = String(id || '');
-  if (!isRememberedStickerId(stickerId) || typeof window === 'undefined') return readRecentStickerIds(scope, aliasScopes);
-  const next = [stickerId, ...readRecentStickerIds(scope, aliasScopes).filter(value => value !== stickerId)].slice(0, 24);
-  viewerStorageIds(scope, aliasScopes).forEach(candidateScope => {
+  if (!isRememberedStickerId(stickerId) || typeof window === 'undefined') return readRecentStickerIds(scope, aliasScopes, tenantId);
+  const next = [stickerId, ...readRecentStickerIds(scope, aliasScopes, tenantId).filter(value => value !== stickerId)].slice(0, 24);
+  viewerStorageWriteCandidates(scope, aliasScopes, tenantId).forEach(candidate => {
     try {
-      window.localStorage.setItem(recentStickerStorageKey(candidateScope), JSON.stringify(next));
+      window.localStorage.setItem(recentStickerStorageKey(candidate.viewerId, tenantId), JSON.stringify(next));
     } catch {
       // Recent stickers are optional and must never block sending.
     }
@@ -553,13 +578,13 @@ export function rememberStickerId(scope, id, aliasScopes = []) {
   return next;
 }
 
-export function forgetStickerId(scope, id, aliasScopes = []) {
+export function forgetStickerId(scope, id, aliasScopes = [], tenantId = '') {
   if (typeof window === 'undefined') return [];
   const stickerId = String(id || '');
-  const next = readRecentStickerIds(scope, aliasScopes).filter(value => value !== stickerId);
-  viewerStorageIds(scope, aliasScopes).forEach(candidateScope => {
+  const next = readRecentStickerIds(scope, aliasScopes, tenantId).filter(value => value !== stickerId);
+  viewerStorageWriteCandidates(scope, aliasScopes, tenantId).forEach(candidate => {
     try {
-      window.localStorage.setItem(recentStickerStorageKey(candidateScope), JSON.stringify(next));
+      window.localStorage.setItem(recentStickerStorageKey(candidate.viewerId, tenantId), JSON.stringify(next));
     } catch {
       // Removing a recent shortcut is optional and must not block library cleanup.
     }

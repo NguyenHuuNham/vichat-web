@@ -1392,8 +1392,9 @@ async def tinode_reconcile_topic_members(
     member_tokens=None,
     remove_extra_members=True,
     access_scope_uids=None,
+    replace_access_uids=None,
 ):
-    """Make a management-owned topic match Chatmgt after a membership change."""
+    """Reconcile membership additively, with exact access only for role changes."""
     expected = {str(uid) for uid in expected_member_uids if uid}
     if not expected:
         raise AuthError("The Chatmgt topic membership is empty.", 409)
@@ -1416,18 +1417,34 @@ async def tinode_reconcile_topic_members(
         if access_scope_uids is None
         else expected & {str(uid) for uid in access_scope_uids if uid}
     )
+    replace_access = expected & {
+        str(uid) for uid in (replace_access_uids or ()) if uid
+    }
     membership_scope = expected if remove_extra_members else access_scope
 
     attempts = max(1, int(max_attempts))
     for attempt in range(attempts):
         access_by_uid = await tinode_topic_member_access(token, expected_uid, topic_name)
         actual = set(access_by_uid)
+        exact_access_mismatches = {
+            member_uid: required_mode
+            for member_uid, required_mode in required_modes.items()
+            if member_uid in access_scope
+            and member_uid in replace_access
+            and member_uid in actual
+            and (
+                _tinode_access_mode((access_by_uid.get(member_uid) or {}).get("mode")) != required_mode
+                or _tinode_access_mode((access_by_uid.get(member_uid) or {}).get("given")) != required_mode
+                or _tinode_access_mode((access_by_uid.get(member_uid) or {}).get("want")) != required_mode
+            )
+        }
         access_mismatches = {
             member_uid: required_mode
             for member_uid, required_mode in required_modes.items()
             if member_uid in expected
             and member_uid in access_scope
             and member_uid in actual
+            and member_uid not in replace_access
             and not set(required_mode).issubset(
                 set(_tinode_access_mode((access_by_uid.get(member_uid) or {}).get("mode")))
             )
@@ -1437,7 +1454,7 @@ async def tinode_reconcile_topic_members(
             if remove_extra_members
             else membership_scope.issubset(actual)
         )
-        if membership_matches and not access_mismatches:
+        if membership_matches and not access_mismatches and not exact_access_mismatches:
             return actual
 
         extra = sorted(actual - expected) if remove_extra_members else []
@@ -1469,8 +1486,28 @@ async def tinode_reconcile_topic_members(
                     target_token,
                     member_uid,
                     topic_name,
-                    mode="+{}".format(required_mode),
+                    mode=(required_mode if member_uid in replace_access else "+{}".format(required_mode)),
                 )
+        for member_uid, required_mode in sorted(exact_access_mismatches.items()):
+            await tinode_add_topic_members(
+                token,
+                expected_uid,
+                topic_name,
+                [member_uid],
+                mode=required_mode,
+            )
+            target_token = access_tokens.get(member_uid)
+            if not target_token:
+                raise AuthError(
+                    "Tinode member credentials are required for an exact role update.",
+                    409,
+                )
+            await tinode_accept_topic_access(
+                target_token,
+                member_uid,
+                topic_name,
+                mode=required_mode,
+            )
         for member_uid, required_mode in sorted(access_mismatches.items()):
             member_access = access_by_uid.get(member_uid) or {}
             missing_given = _tinode_missing_access(required_mode, member_access.get("given"))
@@ -1503,6 +1540,100 @@ async def tinode_reconcile_topic_members(
             await asyncio.sleep(0.1 * (attempt + 1))
 
     raise AuthError("Tinode topic members or access modes do not match Chatmgt.", 409)
+
+
+async def tinode_update_topic_public_metadata(token, expected_uid, topic_name, public_updates):
+    """Merge authoritative group metadata through the surviving owner session."""
+    base_url = str(app.config.get("TINODE_INTERNAL_WS_URL") or "").rstrip("?")
+    api_key = str(app.config.get("TINODE_API_KEY") or "")
+    topic = str(topic_name or "").strip()
+    updates = public_updates if isinstance(public_updates, dict) else {}
+    if not base_url or not api_key or not token:
+        raise AuthError("Tinode topic metadata is not configured.", 503)
+    if not topic:
+        raise AuthError("Tinode topic is required for metadata update.", 400)
+    if not updates:
+        return {}
+
+    separator = "&" if "?" in base_url else "?"
+    url = "{}{}apikey={}".format(base_url, separator, quote(api_key, safe=""))
+    timeout = aiohttp.ClientTimeout(total=int(app.config.get("TINODE_AUTH_TIMEOUT", 10)))
+
+    async def receive_ctrl(socket, request_id, metadata=None):
+        for _attempt in range(60):
+            packet = await socket.receive_json()
+            meta = packet.get("meta") or {}
+            if metadata is not None and (
+                str(meta.get("id") or "") == str(request_id)
+                or str(meta.get("topic") or "") == topic
+            ):
+                description = meta.get("desc")
+                if isinstance(description, dict):
+                    public = description.get("public")
+                    if isinstance(public, dict):
+                        metadata["public"] = public
+                        metadata["received"] = True
+            ctrl = packet.get("ctrl") or {}
+            if str(ctrl.get("id") or "") != str(request_id):
+                continue
+            code = int(ctrl.get("code") or 500)
+            if code >= 300:
+                raise AuthError(
+                    ctrl.get("text") or "Tinode rejected the group metadata update.",
+                    409,
+                )
+            params = ctrl.get("params") or {}
+            description = params.get("desc") if isinstance(params, dict) else None
+            if metadata is not None and isinstance(description, dict):
+                public = description.get("public")
+                if isinstance(public, dict):
+                    metadata["public"] = public
+                    metadata["received"] = True
+            return ctrl
+        raise AuthError("Tinode did not confirm the group metadata update.", 502)
+
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.ws_connect(url, headers=_tinode_bridge_headers()) as socket:
+            await socket.send_json({
+                "hi": {
+                    "id": "1",
+                    "ver": "0.25",
+                    "ua": "VICHAT-CHAT-SERVICE",
+                    "platf": "server",
+                    "lang": "vi",
+                },
+            })
+            await receive_ctrl(socket, "1")
+            await socket.send_json({
+                "login": {"id": "2", "scheme": "token", "secret": token},
+            })
+            login_ctrl = await receive_ctrl(socket, "2")
+            authenticated_uid = str((login_ctrl.get("params") or {}).get("user") or "")
+            if expected_uid and authenticated_uid != str(expected_uid):
+                raise AuthError("Tinode authenticated a different user.", 409)
+
+            metadata = {}
+            await socket.send_json({
+                "sub": {
+                    "id": "3",
+                    "topic": topic,
+                    "get": {"what": "desc"},
+                },
+            })
+            await receive_ctrl(socket, "3", metadata)
+            if not metadata.get("received"):
+                raise AuthError("Tinode did not return the group metadata.", 502)
+            current_public = metadata.get("public") or {}
+            merged_public = {**current_public, **updates}
+            await socket.send_json({
+                "set": {
+                    "id": "4",
+                    "topic": topic,
+                    "desc": {"public": merged_public},
+                },
+            })
+            await receive_ctrl(socket, "4")
+            return merged_public
 
 
 async def tinode_publish_system_event(token, expected_uid, topic_name, event):

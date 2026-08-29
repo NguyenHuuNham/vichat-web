@@ -1,4 +1,9 @@
-import { viewerStorageIds } from '../../chat/services/viewerPreferenceStorage.js';
+import {
+  markLegacyViewerPreferenceMigrated,
+  viewerStorageCandidates,
+  viewerStorageKeyId,
+  viewerStorageWriteCandidates,
+} from '../../chat/services/viewerPreferenceStorage.js';
 
 export const PIN_LOCK_STORAGE_PREFIX = 'vichat.pin-lock.v1';
 export const PIN_TAB_STORAGE_PREFIX = 'vichat.pin-tab.v1';
@@ -24,8 +29,11 @@ function browserCrypto(provider) {
   return provider || globalThis?.crypto || null;
 }
 
-function storageKey(prefix, viewerId) {
-  return `${prefix}.${encodeURIComponent(String(viewerId || ''))}`;
+function storageKey(prefix, viewerId, tenantId = '') {
+  const storageId = tenantId
+    ? viewerStorageKeyId(viewerId, tenantId)
+    : encodeURIComponent(String(viewerId || ''));
+  return `${prefix}.${storageId}`;
 }
 
 function encodeBase64(bytes) {
@@ -119,18 +127,31 @@ export async function createPinConfig(pin, cryptoProvider) {
   };
 }
 
-export function readPinConfig(viewerId, storage = browserStorage('localStorage'), aliasViewerIds = []) {
+export function readPinConfig(viewerId, storage = browserStorage('localStorage'), aliasViewerIds = [], tenantId = '') {
   if (!viewerId || !isStorageAvailable(storage)) return null;
-  const viewerIds = viewerStorageIds(viewerId, aliasViewerIds);
-  for (const [index, candidateId] of viewerIds.entries()) {
+  const candidates = viewerStorageCandidates(
+    PIN_LOCK_STORAGE_PREFIX,
+    viewerId,
+    aliasViewerIds,
+    tenantId,
+    storage,
+  );
+  for (const candidate of candidates) {
     try {
-      const raw = storage.getItem(storageKey(PIN_LOCK_STORAGE_PREFIX, candidateId));
+      const raw = storage.getItem(storageKey(
+        PIN_LOCK_STORAGE_PREFIX,
+        candidate.viewerId,
+        candidate.legacy ? '' : tenantId,
+      ));
       if (!raw) continue;
       const config = JSON.parse(raw);
       if (!isPinConfig(config)) continue;
-      if (index > 0) {
+      if (candidate.storageId !== candidates[0]?.storageId) {
         try {
-          storage.setItem(storageKey(PIN_LOCK_STORAGE_PREFIX, viewerIds[0]), raw);
+          storage.setItem(storageKey(PIN_LOCK_STORAGE_PREFIX, viewerId, tenantId), raw);
+          if (candidate.legacy) {
+            markLegacyViewerPreferenceMigrated(PIN_LOCK_STORAGE_PREFIX, viewerId, tenantId, storage);
+          }
         } catch {
           // The alias remains usable when copy-on-read is unavailable.
         }
@@ -143,13 +164,13 @@ export function readPinConfig(viewerId, storage = browserStorage('localStorage')
   return null;
 }
 
-export function writePinConfig(viewerId, config, storage = browserStorage('localStorage'), aliasViewerIds = []) {
+export function writePinConfig(viewerId, config, storage = browserStorage('localStorage'), aliasViewerIds = [], tenantId = '') {
   if (!viewerId || !isStorageAvailable(storage) || !isPinConfig(config)) return false;
   let written = false;
   const record = JSON.stringify(config);
-  for (const candidateId of viewerStorageIds(viewerId, aliasViewerIds)) {
+  for (const candidate of viewerStorageWriteCandidates(viewerId, aliasViewerIds, tenantId)) {
     try {
-      storage.setItem(storageKey(PIN_LOCK_STORAGE_PREFIX, candidateId), record);
+      storage.setItem(storageKey(PIN_LOCK_STORAGE_PREFIX, candidate.viewerId, tenantId), record);
       written = true;
     } catch {
       // Keep the PIN usable if one browser storage write is unavailable.
@@ -158,12 +179,12 @@ export function writePinConfig(viewerId, config, storage = browserStorage('local
   return written;
 }
 
-export function removePinConfig(viewerId, storage = browserStorage('localStorage'), aliasViewerIds = []) {
+export function removePinConfig(viewerId, storage = browserStorage('localStorage'), aliasViewerIds = [], tenantId = '') {
   if (!viewerId || !isStorageAvailable(storage)) return false;
   let removed = false;
-  for (const candidateId of viewerStorageIds(viewerId, aliasViewerIds)) {
+  for (const candidate of viewerStorageWriteCandidates(viewerId, aliasViewerIds, tenantId)) {
     try {
-      storage.removeItem(storageKey(PIN_LOCK_STORAGE_PREFIX, candidateId));
+      storage.removeItem(storageKey(PIN_LOCK_STORAGE_PREFIX, candidate.viewerId, tenantId));
       removed = true;
     } catch {
       // A failed cleanup must not mask other aliases.
@@ -187,15 +208,22 @@ export async function verifyPin(pin, config, cryptoProvider) {
   }
 }
 
-export function hasPinTabAccess(viewerId, storage = browserStorage('sessionStorage'), aliasViewerIds = []) {
+export function hasPinTabAccess(viewerId, storage = browserStorage('sessionStorage'), aliasViewerIds = [], tenantId = '') {
   if (!viewerId || !isStorageAvailable(storage)) return false;
-  const viewerIds = viewerStorageIds(viewerId, aliasViewerIds);
-  for (const [index, candidateId] of viewerIds.entries()) {
+  const candidates = viewerStorageCandidates(PIN_TAB_STORAGE_PREFIX, viewerId, aliasViewerIds, tenantId, storage);
+  for (const candidate of candidates) {
     try {
-      if (storage.getItem(storageKey(PIN_TAB_STORAGE_PREFIX, candidateId)) !== 'unlocked') continue;
-      if (index > 0) {
+      if (storage.getItem(storageKey(
+        PIN_TAB_STORAGE_PREFIX,
+        candidate.viewerId,
+        candidate.legacy ? '' : tenantId,
+      )) !== 'unlocked') continue;
+      if (candidate.storageId !== candidates[0]?.storageId) {
         try {
-          storage.setItem(storageKey(PIN_TAB_STORAGE_PREFIX, viewerIds[0]), 'unlocked');
+          storage.setItem(storageKey(PIN_TAB_STORAGE_PREFIX, viewerId, tenantId), 'unlocked');
+          if (candidate.legacy) {
+            markLegacyViewerPreferenceMigrated(PIN_TAB_STORAGE_PREFIX, viewerId, tenantId, storage);
+          }
         } catch {
           // The alias remains usable when copy-on-read is unavailable.
         }
@@ -208,12 +236,12 @@ export function hasPinTabAccess(viewerId, storage = browserStorage('sessionStora
   return false;
 }
 
-export function markPinTabUnlocked(viewerId, storage = browserStorage('sessionStorage'), aliasViewerIds = []) {
+export function markPinTabUnlocked(viewerId, storage = browserStorage('sessionStorage'), aliasViewerIds = [], tenantId = '') {
   if (!viewerId || !isStorageAvailable(storage)) return false;
   let written = false;
-  for (const candidateId of viewerStorageIds(viewerId, aliasViewerIds)) {
+  for (const candidate of viewerStorageWriteCandidates(viewerId, aliasViewerIds, tenantId)) {
     try {
-      storage.setItem(storageKey(PIN_TAB_STORAGE_PREFIX, candidateId), 'unlocked');
+      storage.setItem(storageKey(PIN_TAB_STORAGE_PREFIX, candidate.viewerId, tenantId), 'unlocked');
       written = true;
     } catch {
       // Keep the active tab usable if one browser storage write is unavailable.
@@ -222,12 +250,12 @@ export function markPinTabUnlocked(viewerId, storage = browserStorage('sessionSt
   return written;
 }
 
-export function clearPinTabAccess(viewerId, storage = browserStorage('sessionStorage'), aliasViewerIds = []) {
+export function clearPinTabAccess(viewerId, storage = browserStorage('sessionStorage'), aliasViewerIds = [], tenantId = '') {
   if (!viewerId || !isStorageAvailable(storage)) return false;
   let removed = false;
-  for (const candidateId of viewerStorageIds(viewerId, aliasViewerIds)) {
+  for (const candidate of viewerStorageWriteCandidates(viewerId, aliasViewerIds, tenantId)) {
     try {
-      storage.removeItem(storageKey(PIN_TAB_STORAGE_PREFIX, candidateId));
+      storage.removeItem(storageKey(PIN_TAB_STORAGE_PREFIX, candidate.viewerId, tenantId));
       removed = true;
     } catch {
       // Keep clearing other identity aliases.

@@ -53,13 +53,14 @@ export default function StickerPicker({
   onSelectEmoji = () => {},
   scope = 'anonymous',
   scopeAliases = [],
+  tenantId = '',
   copy = { t: value => value },
 }) {
   const [selectedPack, setSelectedPack] = useState(() => (
-    readRecentStickerIds(scope, scopeAliases).length > 0 ? 'recent' : STICKER_PACKS[0]?.id || 'recent'
+    readRecentStickerIds(scope, scopeAliases, tenantId).length > 0 ? 'recent' : STICKER_PACKS[0]?.id || 'recent'
   ));
   const [query, setQuery] = useState('');
-  const [recentIds, setRecentIds] = useState(() => readRecentStickerIds(scope, scopeAliases));
+  const [recentIds, setRecentIds] = useState(() => readRecentStickerIds(scope, scopeAliases, tenantId));
   const [customStickers, setCustomStickers] = useState([]);
   const [customLoading, setCustomLoading] = useState(false);
   const [customSaving, setCustomSaving] = useState(false);
@@ -69,7 +70,9 @@ export default function StickerPicker({
   const uploadInputRef = useRef(null);
   const mountedRef = useRef(true);
   const scopeRef = useRef(scope);
+  const tenantRef = useRef(tenantId);
   scopeRef.current = scope;
+  tenantRef.current = tenantId;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -86,7 +89,7 @@ export default function StickerPicker({
     setCustomNotice('');
     setCustomError('');
     setCustomLoading(true);
-    readCustomStickers(scope, undefined, scopeAliases)
+    readCustomStickers(scope, undefined, scopeAliases, tenantId)
       .then(stickers => {
         if (active) setCustomStickers(stickers);
       })
@@ -99,16 +102,16 @@ export default function StickerPicker({
     return () => {
       active = false;
     };
-  }, [scope, scopeAliases]);
+  }, [scope, scopeAliases, tenantId]);
 
   const stickerLookup = useMemo(() => new Map(
     [...STICKER_ITEMS, ...customStickers].map(sticker => [sticker.id, sticker]),
   ), [customStickers]);
 
   useEffect(() => {
-    const nextRecentIds = readRecentStickerIds(scope, scopeAliases).filter(id => stickerLookup.has(id));
+    const nextRecentIds = readRecentStickerIds(scope, scopeAliases, tenantId).filter(id => stickerLookup.has(id));
     setRecentIds(nextRecentIds);
-  }, [scope, scopeAliases, stickerLookup]);
+  }, [scope, scopeAliases, stickerLookup, tenantId]);
 
   const selectedPackData = useMemo(
     () => STICKER_PACKS.find(pack => pack.id === selectedPack) || null,
@@ -141,7 +144,7 @@ export default function StickerPicker({
   };
 
   const selectSticker = sticker => {
-    const nextRecentIds = rememberStickerId(scope, sticker.id, scopeAliases);
+    const nextRecentIds = rememberStickerId(scope, sticker.id, scopeAliases, tenantId);
     setRecentIds(nextRecentIds);
     onSelectSticker(sticker);
   };
@@ -149,6 +152,7 @@ export default function StickerPicker({
   const handleCustomStickerUpload = async event => {
     const uploadScope = scope;
     const uploadScopeAliases = scopeAliases;
+    const uploadTenantId = tenantId;
     const files = Array.from(event.target.files || []);
     event.target.value = '';
     if (files.length === 0) return;
@@ -156,19 +160,31 @@ export default function StickerPicker({
     setCustomNotice('');
     setCustomError('');
     try {
-      const result = await writeCustomStickerFiles(uploadScope, files, undefined, uploadScopeAliases);
-      const next = await readCustomStickers(uploadScope, undefined, uploadScopeAliases);
-      if (!mountedRef.current || scopeRef.current !== uploadScope) return;
+      const result = await writeCustomStickerFiles(uploadScope, files, undefined, uploadScopeAliases, uploadTenantId);
+      const next = await readCustomStickers(uploadScope, undefined, uploadScopeAliases, uploadTenantId);
+      if (
+        !mountedRef.current
+        || scopeRef.current !== uploadScope
+        || tenantRef.current !== uploadTenantId
+      ) return;
       setCustomStickers(next);
       setSelectedPack(CUSTOM_STICKER_PACK_ID);
       if (result.added.length > 0) setCustomNotice('Đã thêm sticker vào kho của bạn.');
       else if (result.duplicateCount > 0) setCustomNotice('Sticker này đã có trong kho của bạn.');
     } catch (error) {
-      if (mountedRef.current && scopeRef.current === uploadScope) {
+      if (
+        mountedRef.current
+        && scopeRef.current === uploadScope
+        && tenantRef.current === uploadTenantId
+      ) {
         setCustomError(error?.message || 'Không thể lưu sticker cá nhân.');
       }
     } finally {
-      if (mountedRef.current && scopeRef.current === uploadScope) setCustomSaving(false);
+      if (
+        mountedRef.current
+        && scopeRef.current === uploadScope
+        && tenantRef.current === uploadTenantId
+      ) setCustomSaving(false);
     }
   };
 
@@ -177,21 +193,34 @@ export default function StickerPicker({
     if (typeof window !== 'undefined' && !window.confirm(copy.t('Xóa sticker này khỏi thiết bị?'))) return;
     const deleteScope = scope;
     const deleteScopeAliases = scopeAliases;
+    const deleteTenantId = tenantId;
     setDeletingStickerId(sticker.id);
     setCustomNotice('');
     setCustomError('');
     try {
-      await deleteCustomSticker(deleteScope, sticker.id, undefined, deleteScopeAliases);
-      if (!mountedRef.current || scopeRef.current !== deleteScope) return;
+      await deleteCustomSticker(deleteScope, sticker.id, undefined, deleteScopeAliases, deleteTenantId);
+      if (
+        !mountedRef.current
+        || scopeRef.current !== deleteScope
+        || tenantRef.current !== deleteTenantId
+      ) return;
       setCustomStickers(previous => previous.filter(item => item.id !== sticker.id));
-      setRecentIds(forgetStickerId(deleteScope, sticker.id, deleteScopeAliases));
+      setRecentIds(forgetStickerId(deleteScope, sticker.id, deleteScopeAliases, deleteTenantId));
       setCustomNotice('Đã xóa sticker khỏi thiết bị này.');
     } catch (error) {
-      if (mountedRef.current && scopeRef.current === deleteScope) {
+      if (
+        mountedRef.current
+        && scopeRef.current === deleteScope
+        && tenantRef.current === deleteTenantId
+      ) {
         setCustomError(error?.message || 'Không thể xóa sticker cá nhân.');
       }
     } finally {
-      if (mountedRef.current && scopeRef.current === deleteScope) setDeletingStickerId('');
+      if (
+        mountedRef.current
+        && scopeRef.current === deleteScope
+        && tenantRef.current === deleteTenantId
+      ) setDeletingStickerId('');
     }
   };
 
