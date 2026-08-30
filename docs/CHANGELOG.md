@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Backup/bao toan state: PostgreSQL dump `/opt/deploy/chat/backups/synchronized-chat-86ecae9-20260830-r7/chatservice-predeploy.dump` co SHA-256 `ba7bcec78532162154b8bd6ffebe88d7c12c7a438f389e8556234ab52d894388`; `.env` giu nguyen SHA-256 `4ae2d1cf4af80b4289cd07b15d55b5979eb926d613513d69ece8de8225c6fcb0`; khong migration, khong `docker compose down -v`, khong reset database/Redis/Tinode topic/message/cursor/avatar/setting user. Lan deploy dau fail o gate hash, rollback ve release cu thanh cong truoc khi chay lai r7.
 - Rui ro con lai: Chua co browser runtime de tu dong UAT bang tai khoan that va gui tin tu man hinh; can hard refresh de loai cache trinh duyet. Neu UAT phat sinh loi, tro `current` ve `previous` va recreate rieng `chatmgt`/`chat` theo image rollback da tag.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo group dang bi loi va gui mot tin nhan tu tai khoan that de xac nhan khong con toast `malformed`/failed.
-- Commit/PR: Source `86ecae9` (gom sua `7c3f923` va `9c9a6e7`); khong co PR.
+- Commit/PR: Source `86ecae9` (gom sua `7c3f923` va `9c9a6e7`); docs/deploy record `ceba329`; khong co PR.
 
 ## 2026-08-30-02 - Sua loi Tinode mode delta gay malformed khi bind group
 
