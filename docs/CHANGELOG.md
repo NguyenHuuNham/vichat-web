@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-30-03 - Dong bo ChatUI production voi ban sua Tinode ACL
+
+- Thoi gian: 2026-08-30 15:26 (Asia/Saigon)
+- Loai: Sua loi | Realtime | Van hanh | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien; da xac dinh ChatUI production con phuc vu bundle cu, dang phat hanh dong bo
+- Muc tieu: Dam bao browser tai dung ChatUI co logic refresh topic va gui mode Tinode day du, dong bo voi Chatmgt dang chay ban `9c9a6e7`.
+- Pham vi: Release ChatUI/Chatmgt production; khong thay doi topic, message, cursor, database, Redis, volume hay setting nguoi dung.
+- File da thay doi: `docs/CHANGELOG.md`.
+- Noi dung: Public `https://chat.upgo.vn` dang tra entry `index-CgAQoocU.js`, trong khi source release hien tai build ra `index-D3gchlDW.js`; container ChatUI van duoc tao tu release `topic-7c3f923`. Phat hanh lai tu archive source `9c9a6e7` va recreate co kiem soat ca `chat` va `chatmgt` de hai service dung cung bo ma.
+- Quyet dinh ky thuat: Giu nguyen service stateful va chi recreate hai service stateless; backup `.env`, PostgreSQL va image rollback truoc khi switch release. Khong dung browser cache cu de danh gia ket qua.
+- Database/API/cau hinh: Khong migration, schema, secret hay bien moi truong moi; chi cap nhat image/release runtime.
+- Kiem thu: Chua chay xong; se ghi lenh va ket qua thuc te sau khi build, deploy va verify public.
+- Rui ro con lai: Neu public CDN/Nginx cache khong doi bundle, can kiem tra cache header va rollback release moi ma khong dong vao Tinode/database.
+- Viec tiep theo: Commit/push changelog, deploy qua `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`, verify bundle, health, WSS va bind topic.
+- Commit/PR: Chua tao.
+
 ## 2026-08-30-02 - Sua loi Tinode mode delta gay malformed khi bind group
 
 - Thoi gian: 2026-08-30 14:54 (Asia/Saigon)
