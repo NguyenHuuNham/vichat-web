@@ -10,17 +10,19 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-08-30 14:54 (Asia/Saigon)
 - Loai: Sua loi | Tich hop | Realtime | Kiem thu | Van hanh | Tai lieu
-- Trang thai: Dang thuc hien; da xac dinh nguyen nhan, sua code va can deploy/xac minh production
+- Trang thai: Hoan tat; da test, commit, push, deploy production va verify bind production
 - Muc tieu: Luong mo group va gui tin khong bi danh dau that bai khi Chatmgt dong bo quyen Tinode cho deputy/member.
 - Pham vi: Chatmgt reconciliation ACL Tinode, regression tests, tai lieu kien truc va release production; khong doi noi dung tin nhan hay schema database.
 - File da thay doi: `chatservice-main/application/services/auth_service.py`, `chatservice-main/tests/test_tinode_bridge_service.py`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`.
 - Noi dung: Tinode tra `400 malformed` vi code gui mode delta nhu `+D`, `+JRW`, `+JRWPAS` trong `sub.mode`; Tinode 0.25 yeu cau mode day du. Reconciliation nay gui mode day du sau khi hop nhat quyen hien tai voi quyen can them, giu quyen du hien co, va test rieng case deputy `JRWPAS` -> `JRWPASD`.
 - Quyet dinh ky thuat: Khong xoa topic, member, history hay reset du lieu. Sua bridge de tuan theo hop dong Tinode; tren topic production dang loi da repair additive quyen deputy bang mode day du, audit sau repair khong con group thieu access.
 - Database/API/cau hinh: Khong migration, schema, secret hay bien moi truong moi; thay doi chi o payload ACL noi bo giua Chatmgt va Tinode.
-- Kiem thu: `python -m unittest tests.test_chat_auth_contract -q` dat 56/56; `python -m py_compile application/services/auth_service.py tests/test_tinode_bridge_service.py` dat; `python -m unittest tests.test_tinode_bridge_service -q` chay 31 test nhung skip 31 do dependency runtime chi co trong image; production audit truoc sua phat hien deputy thieu `D`, sau repair dry-run bao `groups_with_missing_access=0`; gui thu mode day du tren topic that tra thanh cong.
-- Rui ro con lai: Chua build image/recreate service va chua UAT gui tin sau commit; can verify bind route, health, WSS, log va topic `grp2w8Rultl2v4` sau deploy.
-- Viec tiep theo: Chay full checks, commit/push, deploy qua `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`, sau do verify production va gui tin trong group `p`.
-- Commit/PR: Chua tao.
+- Kiem thu: Local `npm run test:frontend` dat 331/331; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` dat voi warning chunk App lon hon 500 KB; local `python -m unittest discover -s tests -q` dat 257 pass, 102 skip do dependency/runtime local; candidate image trong production dat `257 tests OK` va `python -m unittest tests.test_tinode_bridge_service -q` dat 31/31; `python -m unittest tests.test_chat_auth_contract -q` dat 56/56; `python -m py_compile application/services/auth_service.py tests/test_tinode_bridge_service.py` dat; `git diff --check` dat. Production audit group `p` bao `groups_with_missing_access=0`; bind endpoint that tra `HTTP 200` voi topic `grp2w8Rultl2v4`; private/public auth health `200`, WSS `101`, Alembic `20260825_13`, log 15 phut khong co fatal/bind marker.
+- Trien khai: Source commit `9c9a6e7` da push `origin/master`; archive `/opt/deploy/chat/incoming/vichat-complete-acl-9c9a6e7.tar.gz` 45010629 bytes, SHA-256 `01a484f798506e0847b3a840d0a87dd8d7bb4aa1f152dee38ef0f3e44a3da14c`; release `/opt/deploy/chat/releases/complete-acl-9c9a6e7-20260830-r2` dang la `current`, `previous` tro `/opt/deploy/chat/releases/topic-7c3f923-20260830-r2`; chi recreate `chatmgt`, container moi `d6275bf03c5d`, image `sha256:109f8db2707f31d6a69e6938b54531fb3aa31a9df83d88ef69eec09d7914be56`, cac service khac giu nguyen container ID.
+- Backup/bao toan state: Backup Chatmgt PostgreSQL `/opt/deploy/chat/backups/complete-acl-9c9a6e7-20260830-r2/chatservice-predeploy.dump` mode `0600`, SHA-256 `20c7a0698726a2467c1ca39e8fc5ce60cf53e1ce59832efabdf4e371952ba7d2`; backup `.env` mode `0600`, checksum `4ae2d1cf4af80b4289cd07b15d55b5979eb926d613513d69ece8de8225c6fcb0`; khong migration, khong `docker compose down -v`, khong reset database/Redis/Tinode topic/message/cursor/avatar/setting user.
+- Rui ro con lai: Chua co browser runtime de tu dong UAT bang tai khoan that va gui tin tu man hinh; backend bind/reconcile production da duoc verify bang endpoint that, topic khong con thieu ACL. Neu UAT phat sinh loi, tro `current` ve `previous` va recreate rieng `chatmgt` theo image rollback da tag.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo group `p` va gui mot tin nhan tu tai khoan that de xac nhan UI khong con toast `malformed`/failed.
+- Commit/PR: Source `9c9a6e7`; khong co PR.
 
 ## 2026-08-30-01 - Sua loi bind topic Tinode tu snapshot cu
 
