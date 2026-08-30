@@ -8,19 +8,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-08-30-03 - Dong bo ChatUI production voi ban sua Tinode ACL
 
-- Thoi gian: 2026-08-30 15:26 (Asia/Saigon)
+- Thoi gian: 2026-08-30 16:07 (Asia/Saigon)
 - Loai: Sua loi | Realtime | Van hanh | Kiem thu | Tai lieu
-- Trang thai: Dang thuc hien; da xac dinh ChatUI production con phuc vu bundle cu, dang phat hanh dong bo
+- Trang thai: Hoan tat; da build, deploy, rollback-safe verify va cap nhat public ChatUI/Chatmgt
 - Muc tieu: Dam bao browser tai dung ChatUI co logic refresh topic va gui mode Tinode day du, dong bo voi Chatmgt dang chay ban `9c9a6e7`.
 - Pham vi: Release ChatUI/Chatmgt production; khong thay doi topic, message, cursor, database, Redis, volume hay setting nguoi dung.
 - File da thay doi: `docs/CHANGELOG.md`.
-- Noi dung: Public `https://chat.upgo.vn` dang tra entry `index-CgAQoocU.js`, trong khi source release hien tai build ra `index-D3gchlDW.js`; container ChatUI van duoc tao tu release `topic-7c3f923`. Phat hanh lai tu archive source `9c9a6e7` va recreate co kiem soat ca `chat` va `chatmgt` de hai service dung cung bo ma.
-- Quyet dinh ky thuat: Giu nguyen service stateful va chi recreate hai service stateless; backup `.env`, PostgreSQL va image rollback truoc khi switch release. Khong dung browser cache cu de danh gia ket qua.
+- Noi dung: Phat hien production con phuc vu bundle ChatUI cu tu release `topic-7c3f923`; archive source `86ecae9` duoc build lai va recreate co kiem soat ca `chat` va `chatmgt`. Entry public sau deploy la `index-CgAQoocU.js`, App asset `App-DDKhtM7K.js`, CSS `index-DhcOa2B6.css`; cac asset nay da khop byte voi candidate trong container.
+- Quyet dinh ky thuat: Gate asset duoc doi tu hash local co dinh sang ten asset do Docker build thuc te tao ra, vi bien `VITE_*` production tu `.env` co the lam thay doi hash nhung khong thay doi source logic. Giu nguyen service stateful va chi recreate hai service stateless; backup `.env`, PostgreSQL va image rollback truoc khi switch release. Khong dung browser cache cu de danh gia ket qua.
 - Database/API/cau hinh: Khong migration, schema, secret hay bien moi truong moi; chi cap nhat image/release runtime.
-- Kiem thu: Chua chay xong; se ghi lenh va ket qua thuc te sau khi build, deploy va verify public.
-- Rui ro con lai: Neu public CDN/Nginx cache khong doi bundle, can kiem tra cache header va rollback release moi ma khong dong vao Tinode/database.
-- Viec tiep theo: Commit/push changelog, deploy qua `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`, verify bundle, health, WSS va bind topic.
-- Commit/PR: Chua tao.
+- Kiem thu: Local `npm run test:frontend` dat 331/331; `npm run lint` exit 0 voi warning legacy; `npm run build:production` thanh cong voi warning chunk App lon hon 500 KB; backend local `python -m unittest discover -s tests -q` dat 257 pass, 102 skip do dependency/runtime local; contract `python -m unittest tests.test_chat_auth_contract -q` dat 56/56; `python -m py_compile application/services/auth_service.py tests/test_tinode_bridge_service.py` dat; `git diff --check` dat. Candidate production `python -m unittest tests.test_tinode_bridge_service -q` dat 31/31; ChatUI/chatmgt healthy, restart count 0; ChatUI health `200`, auth health `200` voi `tinode_bridge_configured=true`, public WSS `101`, Alembic `20260825_13`, public asset checksum khop candidate (`entry=7d8a767dbb27d6eb86986426c943577df4c990e74c3b28abe9a4f65e92ea2133`, `App=4b5eae5a0f40cd3771f83452e81d36cdb019dd8a44d2d8ae59d37e897df4373a`, `CSS=cc689d7dbd11aacc6b3f74381081eac9e54f3e4280813740e777cb5872cbce2f`).
+- Trien khai: Archive `/opt/deploy/chat/incoming/vichat-synchronized-chat-86ecae9.tar.gz` co SHA-256 `743693ffa803e0b461a27abe0045300b33cf2f0b1f0b97d288242bcd8039bf93`; release `/opt/deploy/chat/releases/synchronized-chat-86ecae9-20260830-r7` dang la `current`, `previous` tro `/opt/deploy/chat/releases/complete-acl-9c9a6e7-20260830-r2`; container moi `chat=8c9180b85301`, `chatmgt=89b730132618`; image moi lan luot `sha256:c5390c3a6deba30b2de42304b2627612677f33e3910f01db509e4df755e65e45` va `sha256:2b86c7ddfe0fe436fe0da0bd2d0d04756153708d102fc7d6b0056a29e576a1c9`.
+- Backup/bao toan state: PostgreSQL dump `/opt/deploy/chat/backups/synchronized-chat-86ecae9-20260830-r7/chatservice-predeploy.dump` co SHA-256 `ba7bcec78532162154b8bd6ffebe88d7c12c7a438f389e8556234ab52d894388`; `.env` giu nguyen SHA-256 `4ae2d1cf4af80b4289cd07b15d55b5979eb926d613513d69ece8de8225c6fcb0`; khong migration, khong `docker compose down -v`, khong reset database/Redis/Tinode topic/message/cursor/avatar/setting user. Lan deploy dau fail o gate hash, rollback ve release cu thanh cong truoc khi chay lai r7.
+- Rui ro con lai: Chua co browser runtime de tu dong UAT bang tai khoan that va gui tin tu man hinh; can hard refresh de loai cache trinh duyet. Neu UAT phat sinh loi, tro `current` ve `previous` va recreate rieng `chatmgt`/`chat` theo image rollback da tag.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo group dang bi loi va gui mot tin nhan tu tai khoan that de xac nhan khong con toast `malformed`/failed.
+- Commit/PR: Source `86ecae9` (gom sua `7c3f923` va `9c9a6e7`); khong co PR.
 
 ## 2026-08-30-02 - Sua loi Tinode mode delta gay malformed khi bind group
 
