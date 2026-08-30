@@ -1003,6 +1003,15 @@ def _tinode_missing_access(required, current):
     )
 
 
+def _tinode_union_access_mode(current, required):
+    """Return a complete Tinode mode while preserving existing permissions."""
+    permissions = set(_tinode_access_mode(current)) | set(_tinode_access_mode(required))
+    return "".join(
+        permission for permission in "JRWPASDO"
+        if permission in permissions
+    )
+
+
 async def tinode_topic_member_uids(
     token,
     expected_uid,
@@ -1232,7 +1241,7 @@ async def tinode_add_topic_members(
             return (updated, created) if return_created else updated
 
 
-async def tinode_accept_topic_access(token, expected_uid, topic_name, mode="+JRWPAS"):
+async def tinode_accept_topic_access(token, expected_uid, topic_name, mode="JRWPAS"):
     """Update a member's requested mode from that member's own Tinode session."""
     base_url = str(app.config.get("TINODE_INTERNAL_WS_URL") or "").rstrip("?")
     api_key = str(app.config.get("TINODE_API_KEY") or "")
@@ -1486,7 +1495,7 @@ async def tinode_reconcile_topic_members(
                     target_token,
                     member_uid,
                     topic_name,
-                    mode=(required_mode if member_uid in replace_access else "+{}".format(required_mode)),
+                    mode=required_mode,
                 )
         for member_uid, required_mode in sorted(exact_access_mismatches.items()):
             await tinode_add_topic_members(
@@ -1518,14 +1527,20 @@ async def tinode_reconcile_topic_members(
                     expected_uid,
                     topic_name,
                     [member_uid],
-                    mode="+{}".format(missing_given),
+                    mode=_tinode_union_access_mode(
+                        member_access.get("given"),
+                        required_mode,
+                    ),
                 )
             if missing_want and member_uid == str(expected_uid):
                 await tinode_accept_topic_access(
                     access_tokens.get(member_uid) or token,
                     member_uid,
                     topic_name,
-                    mode="+{}".format(missing_want),
+                    mode=_tinode_union_access_mode(
+                        member_access.get("want"),
+                        required_mode,
+                    ),
                 )
                 continue
             target_token = access_tokens.get(member_uid)
@@ -1534,7 +1549,10 @@ async def tinode_reconcile_topic_members(
                     target_token,
                     member_uid,
                     topic_name,
-                    mode="+{}".format(missing_want),
+                    mode=_tinode_union_access_mode(
+                        member_access.get("want"),
+                        required_mode,
+                    ),
                 )
         if attempt + 1 < attempts:
             await asyncio.sleep(0.1 * (attempt + 1))

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-30-02 - Sua loi Tinode mode delta gay malformed khi bind group
+
+- Thoi gian: 2026-08-30 14:54 (Asia/Saigon)
+- Loai: Sua loi | Tich hop | Realtime | Kiem thu | Van hanh | Tai lieu
+- Trang thai: Dang thuc hien; da xac dinh nguyen nhan, sua code va can deploy/xac minh production
+- Muc tieu: Luong mo group va gui tin khong bi danh dau that bai khi Chatmgt dong bo quyen Tinode cho deputy/member.
+- Pham vi: Chatmgt reconciliation ACL Tinode, regression tests, tai lieu kien truc va release production; khong doi noi dung tin nhan hay schema database.
+- File da thay doi: `chatservice-main/application/services/auth_service.py`, `chatservice-main/tests/test_tinode_bridge_service.py`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`.
+- Noi dung: Tinode tra `400 malformed` vi code gui mode delta nhu `+D`, `+JRW`, `+JRWPAS` trong `sub.mode`; Tinode 0.25 yeu cau mode day du. Reconciliation nay gui mode day du sau khi hop nhat quyen hien tai voi quyen can them, giu quyen du hien co, va test rieng case deputy `JRWPAS` -> `JRWPASD`.
+- Quyet dinh ky thuat: Khong xoa topic, member, history hay reset du lieu. Sua bridge de tuan theo hop dong Tinode; tren topic production dang loi da repair additive quyen deputy bang mode day du, audit sau repair khong con group thieu access.
+- Database/API/cau hinh: Khong migration, schema, secret hay bien moi truong moi; thay doi chi o payload ACL noi bo giua Chatmgt va Tinode.
+- Kiem thu: `python -m unittest tests.test_chat_auth_contract -q` dat 56/56; `python -m py_compile application/services/auth_service.py tests/test_tinode_bridge_service.py` dat; `python -m unittest tests.test_tinode_bridge_service -q` chay 31 test nhung skip 31 do dependency runtime chi co trong image; production audit truoc sua phat hien deputy thieu `D`, sau repair dry-run bao `groups_with_missing_access=0`; gui thu mode day du tren topic that tra thanh cong.
+- Rui ro con lai: Chua build image/recreate service va chua UAT gui tin sau commit; can verify bind route, health, WSS, log va topic `grp2w8Rultl2v4` sau deploy.
+- Viec tiep theo: Chay full checks, commit/push, deploy qua `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`, sau do verify production va gui tin trong group `p`.
+- Commit/PR: Chua tao.
+
 ## 2026-08-30-01 - Sua loi bind topic Tinode tu snapshot cu
 
 - Thoi gian: 2026-08-30 (Asia/Saigon)

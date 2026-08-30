@@ -563,9 +563,10 @@ member therefore use the owner/deputy manager gate; dissolve remains owner-only.
 Chatmgt verifies group membership by both subscriber identity and effective
 Tinode access. Active members require `JRWPAS`, deputies require `JRWPASD`,
 and the owner requires `JRWPASO`; reconciliation reads `acs.mode`,
-`acs.given` and `acs.want`, adds
-only missing permissions, and uses the affected member's short-lived
-server-side token when their requested mode must also be repaired. A subscriber
+`acs.given` and `acs.want`, adds only missing permissions using complete Tinode
+mode strings (Tinode rejects `+D`-style delta strings in `sub.mode`), and uses
+the affected member's short-lived server-side token when their requested mode
+must also be repaired. A subscriber
 which exists with only `PAS` is therefore not accepted as healthy. The
 membership transaction is committed only after effective `J/R/W` access is
 visible, which restores realtime delivery and allows a newly added member to

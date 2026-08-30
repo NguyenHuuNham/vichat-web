@@ -456,7 +456,7 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
             "usrOwner",
             "grpRoom",
             ["usrMember"],
-            mode="+JRW",
+            mode="JRWPAS",
         )
         accept.assert_not_awaited()
         remove.assert_not_awaited()
@@ -494,7 +494,50 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
             "member-token",
             "usrMember",
             "grpRoom",
-            mode="+JRW",
+            mode="JRWPAS",
+        )
+
+    async def test_topic_member_reconciliation_repairs_deputy_with_a_complete_mode(self):
+        observed = AsyncMock(side_effect=[
+            {
+                "usrOwner": {"mode": "JRWPASO", "given": "JRWPASDO", "want": "JRWPASO"},
+                "usrDeputy": {"mode": "JRWPAS", "given": "JRWPAS", "want": "JRWPAS"},
+            },
+            {
+                "usrOwner": {"mode": "JRWPASO", "given": "JRWPASDO", "want": "JRWPASO"},
+                "usrDeputy": {"mode": "JRWPASD", "given": "JRWPASD", "want": "JRWPASD"},
+            },
+        ])
+        with patch.object(auth_service, "tinode_topic_member_access", observed), patch.object(
+            auth_service,
+            "tinode_add_topic_members",
+            AsyncMock(),
+        ) as add, patch.object(
+            auth_service,
+            "tinode_accept_topic_access",
+            AsyncMock(),
+        ) as accept:
+            await auth_service.tinode_reconcile_topic_members(
+                "owner-token",
+                "usrOwner",
+                "grpRoom",
+                {"usrOwner", "usrDeputy"},
+                expected_access_modes={"usrDeputy": "JRWPASD"},
+                member_tokens={"usrDeputy": "deputy-token"},
+            )
+
+        add.assert_awaited_once_with(
+            "owner-token",
+            "usrOwner",
+            "grpRoom",
+            ["usrDeputy"],
+            mode="JRWPASD",
+        )
+        accept.assert_awaited_once_with(
+            "deputy-token",
+            "usrDeputy",
+            "grpRoom",
+            mode="JRWPASD",
         )
 
     async def test_topic_member_reconciliation_can_scope_access_checks_to_new_members(self):
@@ -544,7 +587,7 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
             "usrActor",
             "grpRoom",
             ["usrNew"],
-            mode="+JRW",
+            mode="JRWPAS",
         )
         accept.assert_not_awaited()
         remove.assert_not_awaited()
@@ -599,7 +642,7 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
             "new-token",
             "usrNew",
             "grpRoom",
-            mode="+JRWPAS",
+            mode="JRWPAS",
         )
         remove.assert_not_awaited()
 
@@ -744,6 +787,8 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(result["code"], 304)
+        self.assertEqual(socket.sent[-2]["sub"]["set"]["sub"]["mode"], "JRWPAS")
+        self.assertEqual(socket.sent[-1]["set"]["sub"]["mode"], "JRWPAS")
 
     async def test_group_leave_event_is_published_by_a_surviving_user(self):
         socket = FakeSocket([
