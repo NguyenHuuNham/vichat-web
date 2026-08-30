@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-08-30-01 - Sua loi bind topic Tinode tu snapshot cu
+
+- Thoi gian: 2026-08-30 (Asia/Saigon)
+- Loai: Sua loi | Tich hop | Realtime | API | Kiem thu | Van hanh | Tai lieu
+- Trang thai: Dang thuc hien; da sua code, cho kiem thu va trien khai production
+- Muc tieu: Dam bao luong gui tin khong dung topic group cu trong browser de bind sai va bi danh dau that bai truoc khi publish.
+- Pham vi: ChatUI topic resolution/prepare, Chatmgt Tinode binding error handling, regression tests va tai lieu deploy; khong doi du lieu tin nhan.
+- File da thay doi: `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Snapshot thanh cong tu `tinode-prepare` duoc uu tien tuyet doi; remote ChatUI refresh Chatmgt truoc khi quyet dinh reuse/create topic, ke ca khi room dang giu topic stale. Loi ACL/auth van giu status va thong diep `AuthError`; loi transport/verify/reconcile bat ngo duoc log theo phase an toan va tra `TINODE_TOPIC_BIND_FAILED` HTTP 502 thay vi gia thanh conflict 409.
+- Quyet dinh ky thuat: Chatmgt va snapshot sau prepare tiep tuc la nguon topic chuan; topic room/cache chi la fallback khi chua co snapshot prepare. Khong retry mu loi 502 va khong xoa/reset topic Tinode cu trong release.
+- Database/API/cau hinh: Khong migration/schema moi; thay doi ma loi cua loi bind khong phai conflict sang `TINODE_TOPIC_BIND_FAILED` HTTP 502. Khong ghi secret vao nhat ky.
+- Kiem thu: `npm run test:frontend` dat 331/331; `npm run lint` exit 0 voi warning legacy/vendor da co san; `npm run build:production` thanh cong voi canh bao chunk App lon hon 500 KB, tao entry `index-D3gchlDW.js`, App `App-CeUdStme.js`, CSS `index-DhcOa2B6.css`; `python -m unittest discover -s tests -q` dat 256 pass, 101 skip do dependency/runtime local; `python -m unittest tests.test_chat_auth_contract -q` dat 56/56; `python -m py_compile application/controllers/api_chat_management.py tests/test_chat_auth_contract.py` thanh cong; `git diff --check` dat.
+- Rui ro con lai: Can kiem tra bundle public, WSS, health/logs va thu gui tin voi group dang bi loi sau deploy.
+- Viec tiep theo: Chay frontend/backend tests, commit/push, deploy qua `ubuntu@103.74.122.206` den `ubuntu@192.168.80.20`, sau do verify production va UAT.
+- Commit/PR: Chua tao.
+
 ## 2026-08-29-03 - Realtime pho nhom va bao toan setting theo tenant
 
 - Thoi gian: 2026-08-29 (Asia/Saigon)

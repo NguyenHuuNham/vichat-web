@@ -31,7 +31,7 @@ import {
 } from './chatRealtime.js';
 import { conversationActivityTimestamp } from './timeFormatting.js';
 
-test('prepared Chatmgt group topic is reused instead of creating a conflicting topic', () => {
+test('prepared Chatmgt topic wins over stale room and cache bindings', () => {
   assert.equal(resolvePreparedTinodeTopic(
     { tinodeTopic: '' },
     { isGroup: true, tinodeTopic: 'grpPrepared123' },
@@ -40,6 +40,16 @@ test('prepared Chatmgt group topic is reused instead of creating a conflicting t
   assert.equal(resolvePreparedTinodeTopic(
     { tinodeTopic: 'grpExisting123' },
     { isGroup: true, tinodeTopic: 'grpPrepared123' },
+  ), 'grpPrepared123');
+  assert.equal(resolvePreparedTinodeTopic(
+    { tinodeTopic: 'grpStale123' },
+    { isGroup: true, tinodeTopic: '' },
+    'grpCached123',
+  ), '');
+  assert.equal(resolvePreparedTinodeTopic(
+    { tinodeTopic: 'grpExisting123' },
+    null,
+    'grpCached123',
   ), 'grpExisting123');
 });
 

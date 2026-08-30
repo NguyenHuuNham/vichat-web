@@ -188,6 +188,12 @@ test('automatic topic binding never sends an empty group avatar', () => {
   assert.doesNotMatch(tinodeSource, /else delete publicMetadata\.photo/);
 });
 
+test('remote topic binding refreshes the authoritative Chatmgt snapshot first', () => {
+  assert.match(appSource, /const shouldPrepare = chatManagementService\.remote/);
+  assert.match(appSource, /prepareTinodeConversation\(managementConversationId\)/);
+  assert.match(appSource, /shouldPrepare \? preparedRoom : null/);
+});
+
 test('renders per-user message receipts without changing the Tinode receipt flow', () => {
   assert.match(tinodeSource, /receiptUsersForTopicMessage/);
   assert.match(tinodeSource, /subscriber\?\.read/);

@@ -5316,6 +5316,7 @@ async def conversation_bind_tinode(request, conversation_id):
     if not tinode_token:
         return json({"error_code": "TINODE_TOKEN_REQUIRED", "error_message": "Tinode authentication is required."}, status=400)
 
+    binding_phase = "verify_topic_access"
     try:
         try:
             await tinode_verify_topic_access(
@@ -5335,6 +5336,7 @@ async def conversation_bind_tinode(request, conversation_id):
             owner_account = accounts_by_id.get(owner_participant.participant_id) if owner_participant else None
             if owner_account is None:
                 raise AuthError("The group has no active owner.", 409)
+            binding_phase = "prepare_group_credentials"
             prepared_uids = await _ensure_tinode_accounts(accounts_by_id.values())
             member_tokens = await _tinode_tokens_for_accounts(
                 accounts_by_id,
@@ -5343,6 +5345,7 @@ async def conversation_bind_tinode(request, conversation_id):
             )
             owner_uid = prepared_uids[owner_participant.participant_id]
             owner_token = member_tokens[owner_uid]
+            binding_phase = "reconcile_group_members"
             await tinode_reconcile_topic_members(
                 owner_token,
                 owner_uid,
@@ -5355,12 +5358,14 @@ async def conversation_bind_tinode(request, conversation_id):
                 ),
                 member_tokens=member_tokens,
             )
+            binding_phase = "verify_reconciled_topic"
             await tinode_verify_topic_access(
                 tinode_token,
                 account.tinode_uid,
                 topic_name,
                 expected_member_uids=expected_member_uids,
             )
+        binding_phase = "persist_conversation_binding"
         incoming_avatar = str(body.get("avatar") or "").strip()
         if is_group and incoming_avatar:
             properties = dict(item.properties or {})
@@ -5377,9 +5382,19 @@ async def conversation_bind_tinode(request, conversation_id):
     except AuthError as error:
         db.session.rollback()
         return json({"error_code": "TINODE_TOPIC_REJECTED", "error_message": str(error)}, status=error.status_code)
-    except Exception:
+    except Exception as error:
         db.session.rollback()
-        return json({"error_code": "TINODE_TOPIC_CONFLICT", "error_message": "Could not bind the Tinode topic."}, status=409)
+        logger.exception(
+            "Tinode topic binding failed phase=%s conversation=%s topic_kind=%s: %s",
+            binding_phase,
+            str(conversation_uuid),
+            "group" if is_group else "direct",
+            error,
+        )
+        return json({
+            "error_code": "TINODE_TOPIC_BIND_FAILED",
+            "error_message": "Could not bind the Tinode topic.",
+        }, status=502)
 
 
 @app.route('/api/v1/conversation/<conversation_id>/tinode-chatbot', methods=['POST'])

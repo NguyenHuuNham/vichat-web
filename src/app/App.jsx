@@ -5063,24 +5063,23 @@ function App() {
     const managementUserId = currentUser?.id || currentUser?.uid;
     await ensureTinodeSession();
     if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
-    let topicName = resolvePreparedTinodeTopic(
-      room,
-      null,
-      chatManagementService.getTinodeTopic(managementUserId, managementConversationId),
-    );
     let preparedRoom = room;
     let createdGroupTopic = false;
     let createdGroupAvatar = '';
+    // Refresh the authoritative Chatmgt snapshot before trusting a remote
+    // topic; a browser room can retain a stale group binding.
+    const shouldPrepare = chatManagementService.remote
+      || !String(room?.tinodeTopic || '').trim();
 
-    if (!topicName) {
+    if (shouldPrepare) {
       preparedRoom = await chatManagementService.prepareTinodeConversation(managementConversationId);
       if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
-      topicName = resolvePreparedTinodeTopic(
-        room,
-        preparedRoom,
-        chatManagementService.getTinodeTopic(managementUserId, managementConversationId),
-      );
     }
+    let topicName = resolvePreparedTinodeTopic(
+      room,
+      shouldPrepare ? preparedRoom : null,
+      chatManagementService.getTinodeTopic(managementUserId, managementConversationId),
+    );
 
     if (!topicName && preparedRoom.isGroup) {
       const memberAccounts = roomMembers(preparedRoom)

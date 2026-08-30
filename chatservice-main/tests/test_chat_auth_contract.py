@@ -331,6 +331,17 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("tinode_verify_topic_access", binding_source)
         self.assertIn("expected_member_uids", binding_source)
 
+    @repository_source_test
+    def test_tinode_topic_binding_distinguishes_transport_failures_from_conflicts(self):
+        _controller_source, binding_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_bind_tinode",
+        )
+        self.assertIn('binding_phase = "verify_topic_access"', binding_source)
+        self.assertIn('"TINODE_TOPIC_BIND_FAILED"', binding_source)
+        self.assertIn('status=502', binding_source)
+        self.assertIn('logger.exception(', binding_source)
+
     def test_direct_tinode_topics_are_viewer_relative_and_not_persisted(self):
         _controller_source, serialize_source = function_source(
             CONTROLLER_PATH,

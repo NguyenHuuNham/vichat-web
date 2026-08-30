@@ -790,7 +790,11 @@ direct and web-group `pub` policy checks described above, it does not rewrite
 message, presence or call packets.
 
 `POST /api/v1/conversation/<id>/tinode-prepare` prepares missing UID mappings
-from current Chatmgt membership. Group topic binding and add/remove/leave
+from current Chatmgt membership and returns the authoritative conversation
+snapshot. Before a remote ChatUI binds or reuses a topic, it must use that
+snapshot: a blank group `tinode_topic` means the group is not bound and the
+browser must create a new topic, even if an older browser room or local cache
+still contains a topic. Group topic binding and add/remove/leave
 operations verify the exact tenant member set before committing Chatmgt
 metadata. ChatUI sends every self-leave and group-delete action through
 `DELETE /api/v1/conversation/<id>/self`; the authenticated session supplies the

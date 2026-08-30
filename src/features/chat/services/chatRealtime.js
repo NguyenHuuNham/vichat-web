@@ -75,7 +75,12 @@ export function conversationManagementMergePolicy(existing = {}, incoming = {}) 
 }
 
 export function resolvePreparedTinodeTopic(room, preparedRoom, cachedTopic = '') {
-  return String(room?.tinodeTopic || preparedRoom?.tinodeTopic || cachedTopic || '').trim();
+  // A successful Chatmgt preparation is authoritative, including an empty
+  // topic which means the caller may create and bind a new group topic.
+  if (preparedRoom !== null && preparedRoom !== undefined) {
+    return String(preparedRoom?.tinodeTopic || '').trim();
+  }
+  return String(room?.tinodeTopic || cachedTopic || '').trim();
 }
 
 export function mergeManagementAvatar(existingAvatar, incomingAvatar, { incomingManagementSnapshot = false } = {}) {
