@@ -13,6 +13,8 @@ const productionDefaults = {
   // Keep this empty so a local env file cannot reintroduce a fixed tenant.
   VITE_CHAT_TENANT_ID: '',
   VITE_CHAT_AUTH_MODE: 'account_password',
+  VITE_CHAT_MEDIA_STORAGE: 's3',
+  VITE_CHAT_MEDIA_FALLBACK_TO_TINODE: 'false',
   VITE_CALLS_ENABLED: 'true',
   VITE_CHAT_MODE: 'internal',
   VITE_CHATBOT_API_URL: 'https://chatmgt.upgo.vn/api/v1/chatbot/message',

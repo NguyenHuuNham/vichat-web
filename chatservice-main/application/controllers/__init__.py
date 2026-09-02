@@ -6,6 +6,7 @@ from sanic.response import file
 def init_controllers(app):
     # Chatmgt exposes only management APIs. Realtime chat stays in Tinode.
     import application.controllers.api_chat_management
+    import application.controllers.api_chat_media
     import application.controllers.api_enterprise_workspace
     if app.config.get("CHATBOT_ENABLED", False):
         import application.controllers.api_chatbot

@@ -4,6 +4,7 @@ export function normalizeMediaUrl(value: unknown) {
   const raw = String(value || '');
   if (!raw) return '';
   if (/^(?:data:|blob:|file:|content:)/i.test(raw)) return raw;
+  if (raw.startsWith('/api/v1/chat/media/')) return `${config.apiBase}${raw}`;
   if (raw.startsWith('/tinode-media/')) {
     return `${config.mediaBase}${raw.slice('/tinode-media'.length)}`;
   }

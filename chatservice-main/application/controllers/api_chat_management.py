@@ -110,6 +110,7 @@ from application.services.chat_maintenance_service import (
     read_maintenance_state,
     write_maintenance_state,
 )
+from application.services.chat_media_service import chat_media_status
 
 
 logger = logging.getLogger(__name__)
@@ -2861,6 +2862,11 @@ async def management_auth_health(request):
             "directory_endpoint": "/api/v1/chat/users",
             "conversation_endpoint": "/api/v1/conversation",
             "friend_request_endpoint": "/api/v1/friend-request",
+        },
+        "chat_media": {
+            **chat_media_status(app),
+            "upload_endpoint": "/api/v1/chat/media/uploads",
+            "legacy_tinode_media_preserved": True,
         },
         "management_session": {
             "isolated": True,

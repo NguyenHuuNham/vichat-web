@@ -18,4 +18,9 @@ describe('Tinode media URL', () => {
     expect(normalizeMediaUrl('https://cdn.example.com/photo.jpg')).toBe('https://cdn.example.com/photo.jpg');
   });
 
+  it('routes relative Chatmgt S3 references through the authenticated API host', () => {
+    expect(normalizeMediaUrl('/api/v1/chat/media/20260902-0123456789abcdef0123456789abcdef.jpg'))
+      .toBe('https://chatmgt.upgo.vn/api/v1/chat/media/20260902-0123456789abcdef0123456789abcdef.jpg');
+  });
+
 });

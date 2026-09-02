@@ -7,15 +7,41 @@ from .jinja import Jinja
 from application.database import db
 
 import asyncio
+from urllib.parse import urlsplit
 
 from gatco_acl.constants import FULL, ALL
 from minio import Minio
 minioclient = None
+minio_public_client = None
 
 auth = Auth()
 apimanager = APIManager()
 jinja = Jinja()
 racl = ACL()
+
+
+def _minio_endpoint(value, secure):
+    raw = str(value or "").strip().rstrip("/")
+    if not raw:
+        return "", bool(secure)
+    parsed = urlsplit(raw if "://" in raw else "//" + raw)
+    if not parsed.netloc or parsed.path not in ("", "/") or parsed.query or parsed.fragment:
+        raise RuntimeError("MinIO endpoints must contain only a host and optional port.")
+    if parsed.scheme and parsed.scheme not in ("http", "https"):
+        raise RuntimeError("MinIO endpoints must use HTTP or HTTPS.")
+    endpoint_secure = parsed.scheme == "https" if parsed.scheme else bool(secure)
+    return parsed.netloc, endpoint_secure
+
+
+def _create_minio_client(endpoint, access_key, secret_key, secure, region):
+    options = {
+        "access_key": access_key,
+        "secret_key": secret_key,
+        "secure": secure,
+    }
+    if region:
+        options["region"] = region
+    return Minio(endpoint, **options)
 
 
 def init_extensions(app):
@@ -47,16 +73,35 @@ def init_extensions(app):
         they.can("EDIT", 'Page', if_author)
         they.can("DELETE", 'Page', lambda a: a.author == "CDE")
     
-    global minioclient
+    global minioclient, minio_public_client
+    minioclient = None
+    minio_public_client = None
     minio_url = app.config.get('MINIO_URL')
     minio_access_key = app.config.get('MINIO_ACCESS_KEY')
     minio_secret_key = app.config.get('MINIO_SECRET_KEY')
     if any((minio_url, minio_access_key, minio_secret_key)):
         if not all((minio_url, minio_access_key, minio_secret_key)):
             raise RuntimeError('MINIO_URL, MINIO_ACCESS_KEY, and MINIO_SECRET_KEY must be configured together.')
-        minioclient = Minio(
+        minio_endpoint, minio_secure = _minio_endpoint(
             minio_url,
-            access_key=minio_access_key,
-            secret_key=minio_secret_key,
-            secure=app.config['MINIO_SECURE'],
+            app.config['MINIO_SECURE'],
+        )
+        public_endpoint, public_secure = _minio_endpoint(
+            app.config.get('MINIO_PUBLIC_DOMAIN') or minio_url,
+            minio_secure,
+        )
+        minio_region = str(app.config.get('MINIO_REGION') or '').strip()
+        minioclient = _create_minio_client(
+            minio_endpoint,
+            minio_access_key,
+            minio_secret_key,
+            minio_secure,
+            minio_region,
+        )
+        minio_public_client = _create_minio_client(
+            public_endpoint,
+            minio_access_key,
+            minio_secret_key,
+            public_secure,
+            minio_region,
         )

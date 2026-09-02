@@ -124,6 +124,26 @@ Normal Tinode messages and uploaded chat files are not copied into Chatmgt
 knowledge or Workspace previews. A Workspace task created from a message keeps
 only the Chatmgt conversation ID/name and Tinode message reference.
 
+## Chat media on S3
+
+New ChatUI and mobile chat attachments, Tinode-managed avatars, stickers sent
+as messages, and shared conversation backgrounds can use the private
+`s3.upgo.vn` bucket without moving message content into Chatmgt. The client asks
+Chatmgt for a short-lived, tenant-scoped upload ticket, uploads the bytes
+directly to a pending S3 key, and publishes only the stable authenticated
+Chatmgt reference inside the Tinode message or metadata. Chatmgt validates the
+signed ticket, object size, and content type, then server-side copies the object
+to an immutable completed key before the reference is accepted.
+
+Existing Tinode media is not rewritten or deleted. Historical
+`/tinode-media/...` references continue through the authenticated Tinode relay,
+while `/api/v1/chat/media/...` references obtain short-lived S3 download URLs
+from Chatmgt. Production disables fallback from S3 to the Tinode upload volume,
+so an S3 outage fails the new upload without filling local disk. A rollback may
+switch new uploads back to Tinode, but must retain the MinIO credentials so
+already-published S3 references remain readable. UpGO Account remains the
+owner of employee profile avatars uploaded through its profile API.
+
 Unread counts and the latest message preview still come from Tinode while a
 conversation is muted. Chatmgt stores only the current employee's mute deadline;
 ChatUI suppresses the custom sound and browser desktop notification until that

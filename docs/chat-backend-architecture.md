@@ -23,19 +23,57 @@ tenant, role, or user IDs supplied after the session is issued.
   deterministic Tinode mappings, directory/friend/conversation metadata, tenant
   authorization, viewer-scoped direct-message block state, audit records and
   the HttpOnly chat/management sessions.
-- `web.vichat.net` (central Tinode): owns message/file content, topics,
-  presence, typing, reactions, delivery/read receipts and call signaling.
+- `web.vichat.net` (central Tinode): owns message content, topics, stable media
+  references, legacy uploaded file bytes, presence, typing, reactions,
+  delivery/read receipts and call signaling.
   ChatUI reaches it through the TLS-safe `chat.upgo.vn` Nginx relay, while
   Chatmgt reaches the same relay at `ws://chat:80/v0/channels`. The old local
   `chatapi` container remains only for rollback until migration acceptance is
   complete. Tinode Web basic login is translated by the internal relay bridge
   through Chatmgt/UpGO Account before it reaches the central server. WebRTC
   media remains browser-to-browser or Coturn; Chatmgt never reads Tinode content.
+- `s3.upgo.vn` (private MinIO/S3 API): owns the bytes of new chat attachments,
+  Tinode-managed avatars and shared backgrounds after the S3 rollout. The
+  bucket is private; browsers receive short-lived PUT/GET signatures and never
+  receive the server credential. The MinIO console domain is not an S3 API
+  endpoint and must not be used for signing.
 
 The administrator page uses `POST /api/v1/admin/sso` and the separate
 `vichat_management_access_token`. It accepts only Account `admin`, `owner` or
 `superadmin` for the active tenant. Employee ChatUI sessions use
 `vichat_access_token` with `scp=chat`; the two scopes cannot cross surfaces.
+
+### Chat media boundary and compatibility
+
+Chatmgt exposes authenticated upload-ticket, completion, and download-signing
+routes under `/api/v1/chat/media`. The upload ticket binds a random media ID to
+the current tenant, expected byte count, normalized content type and a short
+expiry. The browser or native client PUTs directly to S3; completion rejects
+and removes an object whose size or content type differs from the signed
+ticket. The PUT signature is short-lived, while the separate completion ticket
+allows a longer bounded window for large transfers. Uploads first use the
+dedicated `_pending/` prefix. Completion copies a validated object to the stable
+key with an ETag precondition and removes the pending key; retries return the
+existing completed object instead of allowing a
+still-live PUT URL to overwrite media already published in Tinode. A bucket
+lifecycle rule expires abandoned `_pending/` objects after one day. Tinode then
+stores only the stable Chatmgt reference in Drafty or topic metadata. Chatmgt
+does not store the binary in PostgreSQL, Redis, knowledge, or Workspace.
+
+Downloads resolve the tenant from the authenticated Chatmgt session and return
+a short-lived S3 GET URL. Unsafe inline types such as SVG and text are forced to
+`application/octet-stream` attachment responses. Media IDs are tenant-scoped
+in the object key and do not expose the tenant ID. Account-managed employee
+avatars keep the existing UpGO Account upload contract; this S3 path covers
+chat/Tinode media only.
+
+Compatibility is additive. Existing `/tinode-media/...` URLs remain unchanged
+and the Tinode upload volume is preserved. New `/api/v1/chat/media/...` URLs
+remain readable whenever the MinIO read configuration is present, even if a
+rollback changes the new-upload mode back to `tinode`. Production uses
+`CHAT_MEDIA_FALLBACK_TO_TINODE=false`; a failed S3 upload cannot silently consume
+the rollback Tinode disk. No message, topic, cursor, database row, or historical
+file is migrated or deleted by this rollout.
 
 ### ChatUI maintenance control
 

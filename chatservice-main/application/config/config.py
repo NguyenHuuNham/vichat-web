@@ -132,8 +132,22 @@ class Config(object):
     MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY")
     MINIO_SECURE = env_bool("MINIO_SECURE", False)
     MINIO_BUCKET_NAME = os.environ.get("MINIO_BUCKET_NAME")
+    MINIO_PUBLIC_DOMAIN = os.environ.get("MINIO_PUBLIC_DOMAIN", "")
+    MINIO_REGION = os.environ.get("MINIO_REGION", "us-east-1")
     MINIO_STORED = os.environ.get("MINIO_STORED")
     S3_URL = os.getenv('S3_URL')
+    CHAT_MEDIA_STORAGE = os.getenv("CHAT_MEDIA_STORAGE", "tinode").strip().lower()
+    CHAT_MEDIA_OBJECT_PREFIX = os.getenv("CHAT_MEDIA_OBJECT_PREFIX", "vichat/chat-media")
+    CHAT_MEDIA_PUBLIC_BASE_URL = os.getenv("CHAT_MEDIA_PUBLIC_BASE_URL", "")
+    CHAT_MEDIA_SIGNING_SECRET = os.getenv("CHAT_MEDIA_SIGNING_SECRET", "")
+    CHAT_MEDIA_MAX_SIZE = int(os.getenv("CHAT_MEDIA_MAX_SIZE", 524288000))
+    CHAT_MEDIA_UPLOAD_URL_TTL = int(os.getenv("CHAT_MEDIA_UPLOAD_URL_TTL", 300))
+    CHAT_MEDIA_COMPLETION_TTL = int(os.getenv("CHAT_MEDIA_COMPLETION_TTL", 21600))
+    CHAT_MEDIA_DOWNLOAD_URL_TTL = int(os.getenv("CHAT_MEDIA_DOWNLOAD_URL_TTL", 300))
+    CHAT_MEDIA_FALLBACK_TO_TINODE = env_bool(
+        "CHAT_MEDIA_FALLBACK_TO_TINODE",
+        False,
+    )
 
     # Chatbot provider credentials stay in the server environment.
     CHATBOT_ENABLED = env_bool("CHATBOT_ENABLED", False)

@@ -21,6 +21,12 @@ import { mapTinodeDeliveryStatus, ReceiptCursor } from '../utils/tinodeState';
 import { normalizeMediaUrl } from '../utils/mediaUrl';
 import { shouldRetryProtectedMedia } from '../utils/mediaRetryPolicy';
 import { publishCallInvite } from '../utils/callSignaling';
+import {
+  isChatMediaReference,
+  resolveChatMediaDownloadUrl,
+  shouldFallbackToTinodeMedia,
+  uploadChatMedia,
+} from './chatMediaService';
 
 export { normalizeMediaUrl } from '../utils/mediaUrl';
 
@@ -626,7 +632,8 @@ export class TinodeMobileClient {
     // Tinode can reuse the same protected path after an avatar replacement.
     // Include the current auth token in the cache key so native images do not
     // remain stuck on the previous avatar.
-    const token = this.client?.getAuthToken?.()?.token || '';
+    const chatMediaReference = isChatMediaReference(url);
+    const token = chatMediaReference ? '' : this.client?.getAuthToken?.()?.token || '';
     const cacheKey = `${url}|${token}|${imageCacheVersions.get(url) || 0}`;
     if (!imageCacheRequests.has(cacheKey)) {
       const request = (async () => {
@@ -638,8 +645,11 @@ export class TinodeMobileClient {
         for (let index = 0; index < cacheKey.length; index += 1) hash = ((hash << 5) + hash) ^ cacheKey.charCodeAt(index);
         const extension = url.match(/\.(?:avif|bmp|gif|jpe?g|png|webp)(?:\?|$)/i)?.[0]?.replace(/\?.*$/, '') || '.jpg';
         const target = new fileSystem.File(fileSystem.Paths.cache, `vichat-image-${Math.abs(hash)}${extension}`);
-        const download = () => fileSystem.File.downloadFileAsync(url, target, {
-          headers: this.getMediaHeaders(),
+        const downloadUrl = chatMediaReference
+          ? await resolveChatMediaDownloadUrl(url)
+          : url;
+        const download = () => fileSystem.File.downloadFileAsync(downloadUrl, target, {
+          headers: chatMediaReference ? {} : this.getMediaHeaders(),
           idempotent: true,
         });
         let downloaded;
@@ -648,7 +658,7 @@ export class TinodeMobileClient {
         } catch (error: any) {
           // Protected media can outlive the short Tinode token; renew once,
           // then retry the same request without hiding other download errors.
-          if (!shouldRetryProtectedMedia(error)) throw error;
+          if (chatMediaReference || !shouldRetryProtectedMedia(error)) throw error;
           let refreshed = false;
           try { refreshed = await this.refreshMediaAuth(); } catch { /* Keep the original media error. */ }
           if (!refreshed) throw error;
@@ -671,12 +681,19 @@ export class TinodeMobileClient {
     const sharing: any = require('expo-sharing');
     if (!fileSystem.File?.downloadFileAsync || !fileSystem.Paths?.cache) throw new Error('Bộ nhớ tải tệp chưa sẵn sàng.');
     const target = new fileSystem.File(fileSystem.Paths.cache, `vichat-${Date.now()}-${safeName}`);
-    const download = () => fileSystem.File.downloadFileAsync(file.url, target, { headers: this.getMediaHeaders(), idempotent: true });
+    const chatMediaReference = isChatMediaReference(file.url);
+    const downloadUrl = chatMediaReference
+      ? await resolveChatMediaDownloadUrl(file.url, { download: true, fileName: file.name })
+      : file.url;
+    const download = () => fileSystem.File.downloadFileAsync(downloadUrl, target, {
+      headers: chatMediaReference ? {} : this.getMediaHeaders(),
+      idempotent: true,
+    });
     let downloaded;
     try {
       downloaded = await download();
     } catch (error) {
-      if (!shouldRetryProtectedMedia(error)) throw error;
+      if (chatMediaReference || !shouldRetryProtectedMedia(error)) throw error;
       let refreshed = false;
       try { refreshed = await this.refreshMediaAuth(); } catch { /* Keep the original media error. */ }
       if (!refreshed) throw error;
@@ -1035,7 +1052,7 @@ export class TinodeMobileClient {
     return String(this.client?.getAuthToken?.()?.token || '');
   }
 
-  private async uploadFile(file: PickerFile, topicName = '') {
+  private async uploadTinodeFile(file: PickerFile, topicName = '') {
     if (Number(file.size) > config.maxAttachmentBytes) throw new Error('File hoặc ảnh không được lớn hơn 500 MB.');
     const uploadUrl = `${config.mediaBase}/v0/file/u/`;
     const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -1084,6 +1101,17 @@ export class TinodeMobileClient {
       throw new Error(payload?.ctrl?.text || `Tinode từ chối file (HTTP ${uploadResponse.status || 'không xác định'}).`);
     }
     return normalizeMediaUrl(url);
+  }
+
+  private async uploadFile(file: PickerFile, topicName = '') {
+    if (Number(file.size) > config.maxAttachmentBytes) throw new Error('File hoặc ảnh không được lớn hơn 500 MB.');
+    if (config.chatMediaStorage !== 's3') return this.uploadTinodeFile(file, topicName);
+    try {
+      return normalizeMediaUrl(await uploadChatMedia(file));
+    } catch (error) {
+      if (!shouldFallbackToTinodeMedia(error)) throw error;
+      return this.uploadTinodeFile(file, topicName);
+    }
   }
 
   async updateCurrentProfile({ name = '', avatarFile = null as PickerFile | null, avatarUrl = '' } = {}) {
@@ -1155,10 +1183,12 @@ export class TinodeMobileClient {
     if (Number(file.size) > config.maxAttachmentBytes) throw new Error('File hoặc ảnh không được lớn hơn 500 MB.');
     await this.subscribeTopic(topicName, 0);
     const topic = this.getTopic(topicName);
-    const url = await this.uploadFile(file, topicName);
-    const attachment = { mime: file.type || 'application/octet-stream', filename: file.name || 'Tệp đính kèm', refurl: url, size: file.size || 0 };
-    const isImage = /^image\//i.test(attachment.mime) || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(attachment.filename);
+    const mime = file.type || 'application/octet-stream';
+    const filename = file.name || 'Tệp đính kèm';
+    const isImage = /^image\//i.test(mime) || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(filename);
     if (!Drafty || (isImage ? !Drafty.appendImage : !Drafty.attachFile)) throw new Error('Tinode SDK không hỗ trợ file trên thiết bị này.');
+    const url = await this.uploadFile(file, topicName);
+    const attachment = { mime, filename, refurl: url, size: file.size || 0 };
     const content = isImage ? Drafty.appendImage(null, attachment) : Drafty.attachFile(null, attachment);
     const draft = topic.createMessage(content, false);
     draft.head = { ...(draft.head || {}), 'x-client-id': clientId, 'x-sender-id': this.currentUserId };

@@ -60,6 +60,82 @@ The checked-in host configuration uses:
 - ChatUI upstream: `127.0.0.1:8094`
 - Chatmgt upstream: the configured private bind address on port `8081`
 
+## Private S3 chat media
+
+Future chat attachments and Tinode-managed chat images use the private
+`gonengage` bucket through the S3 API at `https://s3.upgo.vn`. Do not use
+`console.gonengage.com`: it is the management console, not the API endpoint
+used by presigned URLs. The application host must be able to reach the S3 API
+over TLS.
+
+Set the real credential only in the existing ignored mode-`0600`
+`infrastructure/production/.env`:
+
+```dotenv
+MINIO_URL=s3.upgo.vn
+MINIO_PUBLIC_DOMAIN=https://s3.upgo.vn
+MINIO_ACCESS_KEY=<private-s3-access-key>
+MINIO_SECRET_KEY=<private-s3-secret-key>
+MINIO_SECURE=true
+MINIO_REGION=us-east-1
+MINIO_BUCKET_NAME=gonengage
+CHAT_MEDIA_STORAGE=s3
+CHAT_MEDIA_OBJECT_PREFIX=vichat/chat-media
+CHAT_MEDIA_PUBLIC_BASE_URL=https://chatmgt.upgo.vn
+CHAT_MEDIA_SIGNING_SECRET=
+CHAT_MEDIA_MAX_SIZE=524288000
+CHAT_MEDIA_UPLOAD_URL_TTL=300
+CHAT_MEDIA_COMPLETION_TTL=21600
+CHAT_MEDIA_DOWNLOAD_URL_TTL=300
+CHAT_MEDIA_FALLBACK_TO_TINODE=false
+VITE_CHAT_MEDIA_STORAGE=s3
+VITE_CHAT_MEDIA_FALLBACK_TO_TINODE=false
+```
+
+Leave `CHAT_MEDIA_SIGNING_SECRET` empty only for the first `start.sh` run; the
+script generates it without printing it. Keep the bucket private and allow
+browser CORS from `https://chat.upgo.vn` for `PUT`, `GET` and `HEAD` with the
+`Content-Type` request header. With an `mc` alias named `upgo`, apply the checked
+in CORS policy and expire abandoned pending uploads without touching completed
+media:
+
+```bash
+mc cors set upgo/gonengage infrastructure/production/minio-cors.xml
+mc ilm rule add --prefix "vichat/chat-media/_pending/" upgo/gonengage --expire-days "1"
+```
+
+`mc cors set` replaces the bucket CORS document. If `gonengage` already serves
+another browser application, export its current CORS and merge the ViChat
+`CORSRule` instead of applying the sample as the whole policy.
+
+`start.sh` rejects an insecure/mismatched setup and writes, verifies, downloads,
+copies, then removes a one-byte S3 probe before changing application services.
+The deployment verifier separately checks the authenticated ticket and browser
+CORS preflight for `PUT`, `GET`, `HEAD`, and the `Content-Type` upload header.
+The S3 credential therefore needs bucket visibility plus object read, write,
+copy and delete permissions under `vichat/chat-media/`.
+
+Uploads enter `vichat/chat-media/_pending/` first. Chatmgt verifies size and MIME,
+copies the object to its stable tenant key with an ETag precondition, and removes
+the pending key. Completion retries reuse the immutable stable object, so the
+short-lived PUT URL cannot replace media already referenced by a message. The
+PUT signature remains valid for five minutes, while its signed completion ticket
+remains valid for six hours so a slow 500 MB transfer can still be finalized.
+
+The rollout does not change Tinode's single configured media handler and does
+not migrate its upload volume. Historical `/tinode-media/...` files therefore
+continue to load exactly as before. New messages store only an authenticated
+`/api/v1/chat/media/...` reference in Tinode; PostgreSQL stores no file bytes.
+If S3 is unavailable, the new message/file send fails before publish and never
+falls back to the Tinode disk.
+
+For rollback, set the web/mobile new-upload mode to `tinode` and rebuild the
+stateless clients, but keep every `MINIO_*` value on Chatmgt. This keeps S3
+references already present in Tinode messages readable. Never remove
+`tinode_uploads`, never run `docker compose down -v`, and never bulk-rewrite old
+message references. Rotate the initially supplied MinIO credential after the
+release because it was shared outside the private production environment.
+
 Install `nginx-host-chat.conf` and `nginx-host-chatmgt.conf` on the reverse
 proxy, obtain TLS certificates, run `sudo nginx -t`, then reload Nginx.
 

@@ -9,6 +9,8 @@ export const config = {
   tinodeTransport: env('EXPO_PUBLIC_TINODE_TRANSPORT', 'ws'),
   appName: env('EXPO_PUBLIC_TINODE_APP_NAME', 'VICHAT-MOBILE/1.0'),
   mediaBase: env('EXPO_PUBLIC_TINODE_MEDIA_BASE', 'https://chat.upgo.vn/tinode-media').replace(/\/+$/, ''),
+  chatMediaStorage: env('EXPO_PUBLIC_CHAT_MEDIA_STORAGE', 's3').toLowerCase(),
+  chatMediaFallbackToTinode: env('EXPO_PUBLIC_CHAT_MEDIA_FALLBACK_TO_TINODE', 'false').toLowerCase() === 'true',
   callsEnabled: env('EXPO_PUBLIC_CALLS_ENABLED', 'true').toLowerCase() === 'true',
   pushEnabled: env('EXPO_PUBLIC_PUSH_ENABLED', 'false').toLowerCase() === 'true',
   maxAttachmentBytes: 500 * 1024 * 1024,

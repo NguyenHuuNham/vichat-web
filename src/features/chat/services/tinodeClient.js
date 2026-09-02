@@ -32,6 +32,13 @@ import {
 } from './conversationBackground';
 import { fetchProtectedMediaWithRetry } from './mediaRetryPolicy';
 import {
+  fetchChatMedia,
+  isChatMediaReference,
+  isChatMediaStorageEnabled,
+  shouldFallbackToTinode,
+  uploadChatMedia,
+} from './chatMediaService';
+import {
   applyRecallToMessage,
   applyEditToMessage,
   buildRecallEvent,
@@ -211,17 +218,19 @@ async function refreshTinodeAuth(tinode) {
 }
 
 function fetchProtectedMedia(value, options = {}) {
+  if (isChatMediaReference(value)) return fetchChatMedia(value, options);
+  const { download: _download, fileName: _fileName, headers = {}, ...fetchOptions } = options;
   const tinode = getClient();
   return fetchProtectedMediaWithRetry({
     request: () => fetch(mediaProxyUrl(value), {
-      ...options,
-      headers: tinodeRequestHeaders(tinode),
+      ...fetchOptions,
+      headers: { ...headers, ...tinodeRequestHeaders(tinode) },
     }),
     refreshAuth: sessionTokenProvider ? () => refreshTinodeAuth(tinode) : null,
   });
 }
 
-async function uploadFile(tinode, file, avatarFor = '') {
+async function uploadTinodeFile(tinode, file, avatarFor = '') {
   const form = new FormData();
   form.append('file', file, file.name || 'tep-dinh-kem');
   form.set('id', tinode.getNextUniqueId());
@@ -249,6 +258,18 @@ async function uploadFile(tinode, file, avatarFor = '') {
     throw new Error(`Tinode từ chối file: ${detail}`);
   }
   return url;
+}
+
+async function uploadFile(tinode, file, avatarFor = '') {
+  if (!isChatMediaStorageEnabled()) return uploadTinodeFile(tinode, file, avatarFor);
+  try {
+    return await uploadChatMedia(file);
+  } catch (error) {
+    if (!shouldFallbackToTinode(error)) {
+      throw new Error(error?.message || 'Không thể tải file lên S3.', { cause: error });
+    }
+    return uploadTinodeFile(tinode, file, avatarFor);
+  }
 }
 
 function assertConfigured() {
@@ -392,7 +413,7 @@ function mediaCacheKey(value) {
 
 function invalidateProtectedMedia(value) {
   const normalized = normalizeAvatar(value);
-  if (!normalized || !normalized.startsWith(MEDIA_PROXY_PREFIX)) return;
+  if (!normalized || (!normalized.startsWith(MEDIA_PROXY_PREFIX) && !isChatMediaReference(normalized))) return;
   mediaObjectUrlVersions.set(normalized, (mediaObjectUrlVersions.get(normalized) || 0) + 1);
   [...mediaObjectUrlCache.entries()]
     .filter(([key]) => key.startsWith(`${normalized}|`))
@@ -405,7 +426,7 @@ function invalidateProtectedMedia(value) {
 
 async function resolveProtectedMedia(value) {
   const normalized = normalizeAvatar(value);
-  if (!normalized || !normalized.startsWith(MEDIA_PROXY_PREFIX)) return normalized;
+  if (!normalized || (!normalized.startsWith(MEDIA_PROXY_PREFIX) && !isChatMediaReference(normalized))) return normalized;
   const cacheKey = mediaCacheKey(normalized);
   if (!mediaObjectUrlCache.has(cacheKey)) {
     const request = (async () => {
@@ -2833,12 +2854,12 @@ export const tinodeClient = {
     if (new TextEncoder().encode(caption).length > CENTRAL_MESSAGE_TEXT_LIMIT) {
       throw new Error('Mô tả tệp vượt quá giới hạn 120 KB của máy chủ Tinode.');
     }
-    const url = await uploadFile(tinode, file);
     const Drafty = getDrafty();
     const isImage = /^image\//i.test(file.type || '') || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(file.name || '');
     if (!Drafty || (isImage ? !Drafty.appendImage : !Drafty.attachFile)) {
       throw new Error('Không tải được bộ đóng gói file của Tinode.');
     }
+    const url = await uploadFile(tinode, file);
     const attachment = {
       mime: file.type || 'application/octet-stream',
       filename: file.name || 'Tệp đính kèm',
@@ -2920,7 +2941,10 @@ export const tinodeClient = {
 
   async downloadFile(file) {
     if (!file?.url) throw new Error('File này chưa có đường dẫn tải xuống.');
-    const response = await fetchProtectedMedia(file.url);
+    const response = await fetchProtectedMedia(file.url, {
+      download: true,
+      fileName: file.name || '',
+    });
     if (!response.ok) throw new Error(`Không thể tải file (HTTP ${response.status}).`);
     const blob = await response.blob();
     const objectUrl = URL.createObjectURL(blob);
@@ -2954,7 +2978,10 @@ export const tinodeClient = {
 
   async fetchFile(file) {
     if (!file?.url) throw new Error('File này chưa có đường dẫn tải xuống.');
-    const response = await fetchProtectedMedia(file.url);
+    const response = await fetchProtectedMedia(file.url, {
+      download: true,
+      fileName: file.name || '',
+    });
     if (!response.ok) throw new Error(`Không thể tải file (HTTP ${response.status}).`);
     const blob = await response.blob();
     return new File([blob], file.name || 'tep-chat', {

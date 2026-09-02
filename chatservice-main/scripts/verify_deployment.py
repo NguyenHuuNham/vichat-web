@@ -56,6 +56,64 @@ def configured_origin():
     return str(values[0])
 
 
+def verify_chat_media_upload_ticket(base_url, headers, origin):
+    response = requests.post(
+        base_url + "/api/v1/chat/media/uploads",
+        json={
+            "file_name": "deployment-check.txt",
+            "content_type": "text/plain",
+            "size": 1,
+        },
+        headers=headers,
+        timeout=20,
+    )
+    if response.status_code != 201:
+        raise RuntimeError("Chat media upload ticket returned HTTP {}.".format(response.status_code))
+    payload = response.json() if response.content else {}
+    required = ("upload_id", "upload_url", "upload_token", "ref")
+    if any(not str(payload.get(field) or "").strip() for field in required):
+        raise RuntimeError("Chat media upload ticket is incomplete.")
+
+    upload_url = urlparse(str(payload["upload_url"]))
+    public_endpoint = urlparse(str(os.getenv("MINIO_PUBLIC_DOMAIN") or ""))
+    if upload_url.scheme != "https" or not upload_url.netloc:
+        raise RuntimeError("Chat media upload URL is not public HTTPS.")
+    if public_endpoint.netloc and upload_url.netloc != public_endpoint.netloc:
+        raise RuntimeError("Chat media upload URL does not use MINIO_PUBLIC_DOMAIN.")
+    if "/api/v1/chat/media/" not in str(payload["ref"]):
+        raise RuntimeError("Chat media reference is not stable.")
+
+    for method in ("PUT", "GET", "HEAD"):
+        preflight_headers = {
+            "Origin": origin,
+            "Access-Control-Request-Method": method,
+        }
+        if method == "PUT":
+            preflight_headers["Access-Control-Request-Headers"] = "content-type"
+        try:
+            preflight = requests.options(
+                str(payload["upload_url"]),
+                headers=preflight_headers,
+                timeout=20,
+            )
+        except requests.RequestException:
+            raise RuntimeError("S3 browser {} preflight failed.".format(method)) from None
+        allowed_origin = str(preflight.headers.get("Access-Control-Allow-Origin") or "")
+        allowed_methods = str(preflight.headers.get("Access-Control-Allow-Methods") or "").upper()
+        allowed_headers = str(preflight.headers.get("Access-Control-Allow-Headers") or "").lower()
+        if preflight.status_code < 200 or preflight.status_code >= 300:
+            raise RuntimeError("S3 browser {} preflight returned HTTP {}.".format(
+                method,
+                preflight.status_code,
+            ))
+        if allowed_origin not in (origin, "*") or method not in allowed_methods:
+            raise RuntimeError(
+                "S3 browser CORS does not allow the ChatUI origin and {}.".format(method)
+            )
+        if method == "PUT" and "*" not in allowed_headers and "content-type" not in allowed_headers:
+            raise RuntimeError("S3 browser CORS does not allow the Content-Type upload header.")
+
+
 def is_account_projection(row):
     properties = row.properties if isinstance(row.properties, dict) else {}
     return properties.get("auth_source") == "account"
@@ -112,6 +170,8 @@ def verify_database(alembic_ini):
     require_secret("SESSION_COOKIE_SALT")
     require_secret("CHAT_AUTH_JWT_SECRET")
     require_secret("TINODE_SSO_SECRET")
+    if str(os.getenv("CHAT_MEDIA_STORAGE") or "tinode").lower() == "s3":
+        require_secret("CHAT_MEDIA_SIGNING_SECRET")
     tinode_token_ttl = int(os.getenv("TINODE_TOKEN_EXPIRE_IN", 300))
     if tinode_token_ttl < 60 or tinode_token_ttl > 900:
         raise RuntimeError("TINODE_TOKEN_EXPIRE_IN must be between 60 and 900 seconds.")
@@ -526,6 +586,14 @@ def _verify_http(base_url, origin, management_account):
             raise RuntimeError("Chatmgt local administrator password login is still enabled.")
         if management_session.get("password_owner") != "account":
             raise RuntimeError("UpGO Account is not reported as the administrator password owner.")
+    chat_media = health_payload.get("chat_media") or {}
+    if str(os.getenv("CHAT_MEDIA_STORAGE") or "tinode").lower() == "s3":
+        if chat_media.get("mode") != "s3" or not chat_media.get("configured"):
+            raise RuntimeError("Chatmgt S3 media storage is not fully configured.")
+        if chat_media.get("fallback_to_tinode"):
+            raise RuntimeError("Chatmgt S3 media can still fall back to the Tinode upload volume.")
+        if not chat_media.get("legacy_tinode_media_preserved"):
+            raise RuntimeError("Chatmgt does not report legacy Tinode media compatibility.")
 
     username = management_account["username"]
     password = management_account["password"]
@@ -617,6 +685,19 @@ def _verify_http(base_url, origin, management_account):
         or management_conversation_payload.get("error_code") != "MANAGEMENT_CHAT_METADATA_HIDDEN"
     ):
         raise RuntimeError("Management control plane exposed conversation metadata.")
+
+    management_media = requests.post(
+        base_url + "/api/v1/chat/media/uploads",
+        json={
+            "file_name": "management-scope-check.txt",
+            "content_type": "text/plain",
+            "size": 1,
+        },
+        headers=management_headers,
+        timeout=10,
+    )
+    if management_media.status_code not in (401, 403):
+        raise RuntimeError("Management control plane received a Chat media upload ticket.")
 
     if account_sso_enabled:
         sso_challenge = requests.post(
@@ -710,6 +791,8 @@ def _verify_http(base_url, origin, management_account):
     )
     if profile.status_code != 200:
         raise RuntimeError("Authenticated profile check returned HTTP {}.".format(profile.status_code))
+    if str(os.getenv("CHAT_MEDIA_STORAGE") or "tinode").lower() == "s3":
+        verify_chat_media_upload_ticket(base_url, authenticated_headers, origin)
 
     tinode_token_response = requests.post(
         base_url + "/api/v1/auth/tinode-token",

@@ -1,0 +1,11 @@
+<CORSConfiguration>
+  <CORSRule>
+    <AllowedOrigin>https://chat.upgo.vn</AllowedOrigin>
+    <AllowedMethod>GET</AllowedMethod>
+    <AllowedMethod>PUT</AllowedMethod>
+    <AllowedMethod>HEAD</AllowedMethod>
+    <AllowedHeader>Content-Type</AllowedHeader>
+    <ExposeHeader>ETag</ExposeHeader>
+    <MaxAgeSeconds>3600</MaxAgeSeconds>
+  </CORSRule>
+</CORSConfiguration>
