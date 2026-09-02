@@ -1,6 +1,13 @@
+import sys
 import uuid
+from pathlib import Path
 
 import requests
+
+
+APPLICATION_ROOT = Path(__file__).resolve().parents[1]
+if str(APPLICATION_ROOT) not in sys.path:
+    sys.path.insert(0, str(APPLICATION_ROOT))
 
 from application import extensions
 from application.server import app
