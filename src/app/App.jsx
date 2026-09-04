@@ -1808,7 +1808,11 @@ function mergeTinodeConversation(existing, incoming, { viewerId = '' } = {}) {
   const visibleAfterDelete = messages => deletedTimestamp
     ? messages.filter(message => messageTimestamp(message) > deletedTimestamp)
     : messages;
-  const messages = visibleAfterDelete(mergeTinodeMessages(safeExisting.messages, safeIncoming.messages));
+  const messages = visibleAfterDelete(
+    safeExisting.isChatbot || safeIncoming.isChatbot
+      ? mergeChatbotMessages(safeExisting.messages, safeIncoming.messages)
+      : mergeTinodeMessages(safeExisting.messages, safeIncoming.messages),
+  );
   const friendEvents = visibleAfterDelete(mergeTinodeMessages(safeExisting.friendEvents, safeIncoming.friendEvents));
   const {
     managementOwned,
@@ -1849,6 +1853,7 @@ function mergeTinodeConversation(existing, incoming, { viewerId = '' } = {}) {
   return {
     ...safeExisting,
     ...safeIncoming,
+    isChatbot: safeExisting.isChatbot || safeIncoming.isChatbot,
     managementSnapshot: safeExisting.managementSnapshot || safeIncoming.managementSnapshot,
     deletedAt,
     name: managementOwned && !incomingManagementSnapshot
@@ -12568,7 +12573,7 @@ function App() {
                   <i className="fa-solid fa-image"></i>
                 </button>
               )}
-              {CALLS_ENABLED && (
+              {CALLS_ENABLED && !activeChat.isChatbot && (
                 <>
                   <button
                     type="button"
@@ -13394,7 +13399,7 @@ function App() {
             </button>
           </div>
         ) : (
-        <div className="chat-main-input">
+        <div className={`chat-main-input ${activeChat.isChatbot ? 'chatbot-composer' : ''}`}>
           {editingMessage && (
             <div className="editing-banner" role="status">
               <span className="editing-banner-icon" aria-hidden="true"><i className="fa-solid fa-pen-to-square"></i></span>
@@ -13486,7 +13491,7 @@ function App() {
               </div>
             </div>
           )}
-          <div className="input-actions-left">
+          {!activeChat.isChatbot && <div className="input-actions-left">
             <button className="btn-input-action image-input-action" title={appCopy.t(activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều ảnh')} aria-label={appCopy.t('Gửi nhiều ảnh')} onClick={handleImageAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup || activeGroupSpamBlocked}>
               <i className="fa-regular fa-image"></i>
             </button>
@@ -13545,7 +13550,7 @@ function App() {
                 <i className="fa-solid fa-square-poll-vertical"></i>
               </button>
             )}
-          </div>
+          </div>}
           <div className={`input-text-container ${isRecordingVoice ? 'voice-recording-container' : ''}`}>
             {isRecordingVoice ? (
               <div className="voice-recording-bar" role="status">
@@ -13947,9 +13952,9 @@ function App() {
         scope="conversation details"
         fallback={<aside className="sidebar-detail conversation-render-error" role="alert">Conversation details unavailable.</aside>}
       >
-      <aside id="conversation-details-sidebar" className={`sidebar-detail ${isDetailOpen ? '' : 'collapsed'}`}>
+      <aside id="conversation-details-sidebar" className={`sidebar-detail ${isDetailOpen ? 'open' : 'collapsed'} ${activeChat.isChatbot ? 'chatbot-detail-sidebar' : ''}`}>
         <div className="detail-header">
-          <h3>{appCopy.t(activeChat.isGroup ? 'Thông tin nhóm' : 'Thông tin cá nhân')}</h3>
+          <h3>{appCopy.t(activeChat.isChatbot ? 'Thông tin ViChat AI' : activeChat.isGroup ? 'Thông tin nhóm' : 'Thông tin cá nhân')}</h3>
           <button className="btn-close-detail" title={appCopy.t('Đóng')} onClick={() => setIsDetailOpen(false)}>
             <i className="fa-solid fa-xmark"></i>
           </button>
@@ -14003,6 +14008,33 @@ function App() {
               )}
             </div>
           </div>
+
+          {activeChat.isChatbot && (
+            <section className="chatbot-detail-card" aria-label={appCopy.t('Thông tin ViChat AI')}>
+              <div className="chatbot-detail-status">
+                <span className="chatbot-detail-status-icon" aria-hidden="true"><i className="fa-solid fa-sparkles"></i></span>
+                <span>
+                  <strong>{appCopy.t(chatbotStatus)}</strong>
+                  <small>{appCopy.t('Trợ lý tri thức doanh nghiệp')}</small>
+                </span>
+              </div>
+              <p className="chatbot-detail-description">{appCopy.t(activeChat.description || 'Trợ lý AI dùng dữ liệu doanh nghiệp đã được phê duyệt.')}</p>
+              <div className="chatbot-detail-capabilities">
+                <div className="chatbot-detail-capability">
+                  <i className="fa-solid fa-shield-halved" aria-hidden="true"></i>
+                  <span><strong>{appCopy.t('Dữ liệu đã phê duyệt')}</strong><small>{appCopy.t('Tra cứu trong kho tri thức doanh nghiệp được phép truy cập.')}</small></span>
+                </div>
+                <div className="chatbot-detail-capability">
+                  <i className="fa-solid fa-book-open-reader" aria-hidden="true"></i>
+                  <span><strong>{appCopy.t('Nguồn kiểm chứng')}</strong><small>{appCopy.t('Nguồn tham khảo xuất hiện ngay dưới câu trả lời.')}</small></span>
+                </div>
+                <div className="chatbot-detail-capability">
+                  <i className="fa-solid fa-keyboard" aria-hidden="true"></i>
+                  <span><strong>{appCopy.t('Câu hỏi văn bản')}</strong><small>{appCopy.t('ViChat AI tập trung vào trao đổi bằng văn bản.')}</small></span>
+                </div>
+              </div>
+            </section>
+          )}
 
           {!activeChat.isChatbot && activeChat.id !== 'empty' && activeChat.isGroup && (
             <div className="group-detail-quick-actions" role="group" aria-label={appCopy.t('Thao tác nhóm')}>
@@ -14131,7 +14163,7 @@ function App() {
             </section>
           )}
 
-          <div className={`detail-section members-section ${activeChat.isGroup ? 'group-members-section' : ''}`}>
+          {!activeChat.isChatbot && <div className={`detail-section members-section ${activeChat.isGroup ? 'group-members-section' : ''}`}>
             {activeChat.isGroup ? (
               isGroupMembersExpanded ? (
                 <div className="group-members-expanded-heading">
@@ -14382,7 +14414,7 @@ function App() {
                 </div>
               </div>
             )}
-          </div>
+          </div>}
 
           {!activeChat.isChatbot && activeChat.id !== 'empty' && (
             <section className="detail-section shared-media-section">

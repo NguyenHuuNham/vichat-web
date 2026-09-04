@@ -38,6 +38,7 @@ import {
   shouldFallbackToTinode,
   uploadChatMedia,
 } from './chatMediaService';
+import { CHATBOT_ACCOUNT, chatbotMessageCorrelationKey } from '../../chatbot/services/chatbotService';
 import {
   applyRecallToMessage,
   applyEditToMessage,
@@ -849,6 +850,22 @@ function toMessage(msg, tinode, topic = null) {
     ? 'pdf'
     : (/(spreadsheet|excel|csv)/i.test(attachmentMime) || /\.(xlsx?|csv)$/i.test(attachmentName) ? 'excel' : 'file');
   const clientId = msg.head?.['x-client-id'] || msg.head?.clientId;
+  const chatbotSourceSequence = Number(msg.head?.['x-vichat-chatbot-source-seq']);
+  const hasChatbotSourceSequence = Number.isFinite(chatbotSourceSequence) && chatbotSourceSequence > 0;
+  const chatbotTopic = String(topic?.name || '').trim();
+  const chatbotTinodeUid = String(CHATBOT_ACCOUNT.tinodeUid || '').trim();
+  const isChatbotPacket = msg.head?.['x-vichat-chatbot'] === '1'
+    || Boolean(chatbotTinodeUid && !chatbotTopic.startsWith('grp') && chatbotTopic === chatbotTinodeUid);
+  const chatbotCounterpartTopic = chatbotTopic.startsWith('grp')
+    ? ''
+    : String(tinode.getCurrentUserID?.() || '').trim();
+  const chatbotCorrelationKey = isChatbotPacket ? chatbotMessageCorrelationKey({
+    role: isOutgoing ? 'user' : hasChatbotSourceSequence ? 'assistant' : '',
+    topic: chatbotTopic,
+    counterpartTopic: chatbotCounterpartTopic,
+    sourceSequence: chatbotSourceSequence,
+    sequence: msg.seq,
+  }) : '';
   let replyTo = null;
   if (msg.head?.['x-reply-to']) {
     try { replyTo = JSON.parse(msg.head['x-reply-to']); } catch { replyTo = null; }
@@ -925,6 +942,12 @@ function toMessage(msg, tinode, topic = null) {
     mentions,
     sources: chatbotSources,
     grounded: msg.head?.['x-vichat-chatbot-grounded'] === '1',
+    ...(chatbotCorrelationKey ? {
+      correlationKey: chatbotCorrelationKey,
+      chatbotTopic,
+      chatbotCounterpartTopic: chatbotCounterpartTopic || undefined,
+      chatbotSourceSequence: hasChatbotSourceSequence ? chatbotSourceSequence : undefined,
+    } : {}),
     text: call ? callHistoryLabel(call, isOutgoing) : poll ? poll.question : pollEvent ? '' : friendEvent ? (friendEvent.note || '') : systemEvent ? formatSystemEvent(systemEvent, tinode.getCurrentUserID()) : visibleContent,
     image: isImageAttachment ? attachmentUrl : undefined,
     imageBatch: imageBatch || undefined,

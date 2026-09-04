@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-04-01 - Sua giao dien va dong bo lich su ViChat AI
+
+- Thoi gian: 2026-09-04 15:54 (Asia/Saigon)
+- Loai: Sua loi | Web | Realtime | Kiem thu | Tai lieu
+- Trang thai: Hoan tat tai local; chua deploy production va chua UAT visual trong browser
+- Muc tieu: Loai bo tin nhan ViChat AI bi lap khi lich su Chatmgt va Tinode cung hydrate, dong thoi sua cac thanh phan giao dien chatbot khong phu hop ma khong thay doi hanh vi chat ca nhan, nhom, file, sticker, goi hay setting dang hoat dong.
+- Pham vi: ChatUI ViChat AI, anh xa message Tinode, merge lich su chatbot, composer/header/sidebar thong tin, CSS responsive/dark theme, i18n, regression test va production bundle; khong sua backend, mobile, API, database, schema, bien moi truong hay du lieu nguoi dung.
+- File da thay doi: `src/features/chatbot/services/chatbotService.js`, `src/features/chat/services/tinodeClient.js`, `src/app/App.jsx`, `src/styles/index.css`, `src/features/i18n/appLanguage.js`, `src/features/chatbot/services/chatbotService.test.js`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Dung correlation key theo topic, role va sequence nguon de hop nhat ban ghi cung mot cau hoi/cau tra loi tu Chatmgt va Tinode; giu lai ID on dinh, Tinode `seq`/`raw`, delivery state, nguon tham khao va metadata hien thi thay vi bo ca ban sao. Hai cau hoi giong nhau co sequence khac van duoc giu rieng. Header/composer chi an nut goi, anh, file, sticker, ghi am va poll trong rieng ViChat AI; chat thuong van dung controls cu. Sidebar AI co thong tin rieng, sidebar responsive nhan dung class `open`, va cau tra loi dai/nhieu dong duoc wrap an toan.
+- Quyet dinh ky thuat: Direct-chat correlation sap xep hai Tinode UID de browser va worker tao cung mot scope; group dung nguyen topic de khong va cham sequence giua cac nhom. Fingerprint noi dung trong cua so 5 giay chi la fallback khi it nhat mot ban ghi chua co correlation scope; hai key day du khac nhau khong duoc gop. Tinode chi gan metadata nay cho topic/header chatbot, con hoi thoai thuong tiep tuc qua `mergeTinodeMessages` nhu cu.
+- Database/API/cau hinh: Khong co migration, endpoint, hop dong API hay bien cau hinh moi. Production build chi cap nhat content hash trong `dist/index.html` thanh entry `index-G8wyw39D.js`, App `App-uBtx_9Wb.js` va CSS `index-6tLvXvo4.css`.
+- Kiem thu: `node --test src/features/chatbot/services/chatbotService.test.js` dat 12/12; `npm run test:frontend` dat 340/340; `npm run lint` exit 0, chi con warning legacy/vendor co san trong `src/App.jsx` va `public/ChatBotWidget/tinode.js`; `npm run build:production` dat, co warning App chunk lon hon 500 KB; `git diff --check` exit 0, chi thong bao chuyen LF/CRLF va khong co whitespace error.
+- Rui ro con lai: Phien nay khong co browser-control runtime nen chua UAT visual responsive/dark theme hoac luong gui/reload/reconnect bang tai khoan that; production chua duoc cap nhat.
+- Viec tiep theo: Khi phat hanh, hard refresh va UAT ViChat AI voi mot cau hoi, hai cau hoi giong nhau gui lien tiep, reload/reconnect lich su, mo dong sidebar tren desktop/mobile; dong thoi smoke-test chat ca nhan/nhom, file, sticker va cuoc goi de xac nhan khong co hoi quy.
+- Commit/PR: Chua tao
+
 ## 2026-09-02-01 - Luu media chat moi tren MinIO S3 va giu nguyen file cu
 
 - Thoi gian: 2026-09-02 16:29-18:12 (Asia/Saigon)

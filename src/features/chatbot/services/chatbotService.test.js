@@ -6,11 +6,13 @@ import {
   CHATBOT_ACCOUNT,
   CHATBOT_STARTER_PROMPTS,
   applyTinodeChatbotConfig,
+  chatbotMessageCorrelationKey,
   mergeChatbotMessages,
 } from './chatbotService.js';
 
 const appSource = readFileSync(new URL('../../../app/App.jsx', import.meta.url), 'utf8');
 const serviceSource = readFileSync(new URL('./chatbotService.js', import.meta.url), 'utf8');
+const tinodeClientSource = readFileSync(new URL('../../chat/services/tinodeClient.js', import.meta.url), 'utf8');
 const productionBuildSource = readFileSync(new URL('../../../../scripts/build-production.mjs', import.meta.url), 'utf8');
 
 
@@ -87,4 +89,176 @@ test('merges legacy and Tinode history without duplicating the same message', ()
   }]);
 
   assert.deepEqual(result.map(message => message.id), ['legacy-1', 'tinode-2']);
+});
+
+test('builds the same direct correlation key from either Tinode participant perspective', () => {
+  const browserKey = chatbotMessageCorrelationKey({
+    role: 'assistant',
+    topic: 'usrBot',
+    counterpartTopic: 'usrViewer',
+    sourceSequence: 42,
+  });
+  const workerKey = chatbotMessageCorrelationKey({
+    role: 'assistant',
+    topic: 'usrViewer',
+    counterpartTopic: 'usrBot',
+    sourceSequence: 42,
+  });
+
+  assert.equal(browserKey, workerKey);
+  assert.equal(browserKey, 'direct:usrBot~usrViewer|assistant:42');
+});
+
+test('reconciles correlated Chatmgt and Tinode assistant copies without losing realtime metadata', () => {
+  const correlationKey = chatbotMessageCorrelationKey({
+    role: 'assistant',
+    topic: 'usrViewer',
+    counterpartTopic: 'usrBot',
+    sourceSequence: 18,
+  });
+  const historyCopy = {
+    id: 'history-assistant-18',
+    sender: 'incoming',
+    senderId: CHATBOT_ACCOUNT.id,
+    senderName: CHATBOT_ACCOUNT.name,
+    avatar: '/vichat-ai.svg',
+    text: 'Use the approved leave form.',
+    createdAt: '2026-09-04T08:00:00.000Z',
+    correlationKey,
+    chatbotTopic: 'usrViewer',
+    chatbotCounterpartTopic: 'usrBot',
+    chatbotSourceSequence: 18,
+    grounded: true,
+    sources: [{ title: 'Leave policy', snippet: 'Approved form and routing details.' }],
+  };
+  const tinodeCopy = {
+    id: 'usrBot-19',
+    seq: 19,
+    sender: 'incoming',
+    senderId: 'usrBot',
+    text: 'Use the approved leave form.',
+    createdAt: '2026-09-04T08:00:14.000Z',
+    correlationKey,
+    chatbotTopic: 'usrBot',
+    chatbotCounterpartTopic: 'usrViewer',
+    chatbotSourceSequence: 18,
+    pending: false,
+    deliveryStatus: 'received',
+    raw: { seq: 19 },
+  };
+
+  const result = mergeChatbotMessages([historyCopy], [tinodeCopy]);
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].id, historyCopy.id);
+  assert.equal(result[0].seq, 19);
+  assert.equal(result[0].pending, false);
+  assert.equal(result[0].deliveryStatus, 'received');
+  assert.deepEqual(result[0].raw, { seq: 19 });
+  assert.equal(result[0].grounded, true);
+  assert.deepEqual(result[0].sources, historyCopy.sources);
+  assert.equal(result[0].senderName, CHATBOT_ACCOUNT.name);
+  assert.equal(result[0].avatar, '/vichat-ai.svg');
+});
+
+test('does not correlate identical source sequences from different chatbot topics', () => {
+  const first = {
+    id: 'group-a-answer',
+    sender: 'incoming',
+    text: 'The same answer',
+    createdAt: '2026-09-04T08:00:00.000Z',
+    correlationKey: chatbotMessageCorrelationKey({
+      role: 'assistant',
+      topic: 'grpAlpha',
+      sourceSequence: 7,
+    }),
+  };
+  const second = {
+    id: 'group-b-answer',
+    sender: 'incoming',
+    text: 'The same answer',
+    createdAt: '2026-09-04T08:00:01.000Z',
+    correlationKey: chatbotMessageCorrelationKey({
+      role: 'assistant',
+      topic: 'grpBeta',
+      sourceSequence: 7,
+    }),
+  };
+
+  assert.deepEqual(
+    mergeChatbotMessages([first], [second]).map(message => message.id),
+    ['group-a-answer', 'group-b-answer'],
+  );
+});
+
+test('keeps repeated chatbot messages when their authoritative sequences differ', () => {
+  const first = {
+    id: 'question-41',
+    sender: 'outgoing',
+    text: 'Please check this policy.',
+    createdAt: '2026-09-04T08:00:00.000Z',
+    correlationKey: chatbotMessageCorrelationKey({
+      role: 'user',
+      topic: 'usrBot',
+      counterpartTopic: 'usrViewer',
+      sequence: 41,
+    }),
+  };
+  const second = {
+    id: 'question-42',
+    sender: 'outgoing',
+    text: 'Please check this policy.',
+    createdAt: '2026-09-04T08:00:01.000Z',
+    correlationKey: chatbotMessageCorrelationKey({
+      role: 'user',
+      topic: 'usrBot',
+      counterpartTopic: 'usrViewer',
+      sequence: 42,
+    }),
+  };
+
+  assert.deepEqual(
+    mergeChatbotMessages([first], [second]).map(message => message.id),
+    ['question-41', 'question-42'],
+  );
+});
+
+test('replaces a pending chatbot copy with its delivered Tinode state', () => {
+  const pending = {
+    id: 'me-pending',
+    sender: 'outgoing',
+    text: 'Where is the leave form?',
+    createdAt: '2026-09-04T08:00:00.000Z',
+    pending: true,
+    deliveryStatus: 'sending',
+  };
+  const delivered = {
+    ...pending,
+    seq: 18,
+    pending: false,
+    failed: false,
+    deliveryStatus: 'sent',
+    raw: { seq: 18 },
+  };
+
+  const result = mergeChatbotMessages([pending], [delivered]);
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].id, pending.id);
+  assert.equal(result[0].pending, false);
+  assert.equal(result[0].failed, false);
+  assert.equal(result[0].seq, 18);
+  assert.equal(result[0].deliveryStatus, 'sent');
+});
+
+test('Tinode and conversation hydration keep chatbot correlation isolated from normal rooms', () => {
+  assert.match(tinodeClientSource, /\['x-vichat-chatbot-source-seq'\]/);
+  assert.match(tinodeClientSource, /const chatbotTinodeUid = String\(CHATBOT_ACCOUNT\.tinodeUid/);
+  assert.match(tinodeClientSource, /const isChatbotPacket = [\s\S]*?Boolean\(chatbotTinodeUid/);
+  assert.match(tinodeClientSource, /chatbotMessageCorrelationKey\(/);
+  assert.match(appSource, /safeExisting\.isChatbot \|\| safeIncoming\.isChatbot[\s\S]*?mergeChatbotMessages/);
+  assert.match(appSource, /isChatbot: safeExisting\.isChatbot \|\| safeIncoming\.isChatbot/);
+  assert.match(appSource, /CALLS_ENABLED && !activeChat\.isChatbot/);
+  assert.match(appSource, /!activeChat\.isChatbot && <div className="input-actions-left">/);
+  assert.match(appSource, /isDetailOpen \? 'open' : 'collapsed'/);
 });

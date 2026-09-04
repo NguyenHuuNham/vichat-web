@@ -114,31 +114,168 @@ function chatbotMessageFingerprint(message) {
   return `${sender}|${text}`;
 }
 
+function normalizedChatbotRole(value) {
+  const role = String(value || '').trim().toLowerCase();
+  if (role === 'user' || role === 'outgoing') return 'user';
+  if (role === 'assistant' || role === 'incoming') return 'assistant';
+  return '';
+}
+
+function positiveSequence(value) {
+  const sequence = Number(value);
+  return Number.isFinite(sequence) && sequence > 0 ? sequence : 0;
+}
+
+function chatbotTopicScope(topic, counterpartTopic = '') {
+  const primary = String(topic || '').trim();
+  const counterpart = String(counterpartTopic || '').trim();
+  if (!primary) return '';
+  if (primary.startsWith('grp')) return `group:${primary}`;
+  const participants = [...new Set([primary, counterpart].filter(Boolean))].sort();
+  return `${participants.length > 1 ? 'direct' : 'topic'}:${participants.join('~')}`;
+}
+
+export function chatbotMessageCorrelationKey({
+  role,
+  sender,
+  topic,
+  counterpartTopic,
+  sourceSequence,
+  sequence,
+} = {}) {
+  const normalizedRole = normalizedChatbotRole(role || sender);
+  const normalizedSequence = normalizedRole === 'assistant'
+    ? positiveSequence(sourceSequence)
+    : positiveSequence(sequence);
+  const scope = chatbotTopicScope(topic, counterpartTopic);
+  return normalizedRole && normalizedSequence && scope
+    ? `${scope}|${normalizedRole}:${normalizedSequence}`
+    : '';
+}
+
+function resolvedChatbotCorrelationKey(message) {
+  const derived = chatbotMessageCorrelationKey({
+    sender: message?.sender,
+    topic: message?.chatbotTopic,
+    counterpartTopic: message?.chatbotCounterpartTopic,
+    sourceSequence: message?.chatbotSourceSequence,
+    sequence: message?.seq,
+  });
+  if (derived) return derived;
+  return String(message?.correlationKey || '').trim();
+}
+
+function chatbotMessageScope(message) {
+  const correlationKey = resolvedChatbotCorrelationKey(message);
+  const separator = correlationKey.indexOf('|');
+  return separator > 0 ? correlationKey.slice(0, separator) : '';
+}
+
+function richerChatbotArray(previousValue, incomingValue) {
+  const previous = Array.isArray(previousValue) ? previousValue : [];
+  const incoming = Array.isArray(incomingValue) ? incomingValue : [];
+  if (previous.length !== incoming.length) return previous.length > incoming.length ? previous : incoming;
+  try {
+    return JSON.stringify(previous).length >= JSON.stringify(incoming).length ? previous : incoming;
+  } catch {
+    return previous.length > 0 ? previous : incoming;
+  }
+}
+
+function mergeChatbotDeliveryStatus(previousStatus, incomingStatus) {
+  const statusRank = { failed: 0, none: 1, sending: 2, sent: 3, received: 4, read: 5 };
+  const previousRank = statusRank[previousStatus] ?? -1;
+  const incomingRank = statusRank[incomingStatus] ?? -1;
+  return previousRank >= incomingRank ? previousStatus : incomingStatus;
+}
+
+function mergeChatbotMessage(previous, incoming) {
+  const hasSuccessfulCopy = [previous, incoming].some(message => (
+    message?.pending !== true && message?.failed !== true
+  ));
+  const hasFailedCopy = Boolean(previous?.failed || incoming?.failed);
+  const pending = hasSuccessfulCopy || hasFailedCopy
+    ? false
+    : Boolean(previous?.pending || incoming?.pending);
+  const failed = hasSuccessfulCopy ? false : hasFailedCopy;
+  const previousCorrelationKey = resolvedChatbotCorrelationKey(previous);
+  const incomingCorrelationKey = resolvedChatbotCorrelationKey(incoming);
+  return {
+    ...previous,
+    ...incoming,
+    id: previous?.id || incoming?.id,
+    sender: previous?.sender || incoming?.sender,
+    senderId: previous?.senderId || incoming?.senderId,
+    senderName: previous?.senderName || incoming?.senderName,
+    avatar: previous?.avatar || incoming?.avatar,
+    text: incoming?.text || previous?.text,
+    time: previous?.time || incoming?.time,
+    createdAt: previous?.createdAt || incoming?.createdAt,
+    seq: positiveSequence(incoming?.seq) || positiveSequence(previous?.seq) || undefined,
+    correlationKey: previousCorrelationKey.includes('|')
+      ? previousCorrelationKey
+      : incomingCorrelationKey || previousCorrelationKey || undefined,
+    chatbotTopic: previous?.chatbotTopic || incoming?.chatbotTopic,
+    chatbotCounterpartTopic: previous?.chatbotCounterpartTopic || incoming?.chatbotCounterpartTopic,
+    chatbotSourceSequence: positiveSequence(previous?.chatbotSourceSequence)
+      || positiveSequence(incoming?.chatbotSourceSequence)
+      || undefined,
+    source: incoming?.source || previous?.source,
+    sources: richerChatbotArray(previous?.sources, incoming?.sources),
+    grounded: Boolean(previous?.grounded || incoming?.grounded),
+    deliveryStatus: mergeChatbotDeliveryStatus(previous?.deliveryStatus, incoming?.deliveryStatus),
+    receiptUsers: richerChatbotArray(previous?.receiptUsers, incoming?.receiptUsers),
+    raw: incoming?.raw || previous?.raw,
+    pending,
+    failed,
+  };
+}
+
 // Merge legacy HTTP history with Tinode history without duplicating messages.
 export function mergeChatbotMessages(...sources) {
   const merged = [];
-  const ids = new Set();
+  const ids = new Map();
+  const correlationKeys = new Map();
   const fingerprints = new Map();
   sources.forEach((source, sourceIndex) => {
     (Array.isArray(source) ? source : []).forEach(message => {
       if (!message || typeof message !== 'object') return;
       const id = String(message.id || '').trim();
+      const correlationKey = resolvedChatbotCorrelationKey(message);
       const fingerprint = chatbotMessageFingerprint(message);
+      const scope = chatbotMessageScope(message);
       const createdAt = Date.parse(message.createdAt || '') || 0;
-      const duplicate = fingerprint && (fingerprints.get(fingerprint) || []).some(previous => (
-        previous.sourceIndex !== sourceIndex
-        && createdAt > 0
-        && previous.createdAt > 0
-        && Math.abs(createdAt - previous.createdAt) <= 5000
-      ));
-      if ((id && ids.has(id)) || duplicate) return;
-      if (id) ids.add(id);
+      let index = id ? ids.get(id) : undefined;
+      if (index === undefined && correlationKey) index = correlationKeys.get(correlationKey);
+      if (index === undefined && fingerprint) {
+        index = (fingerprints.get(fingerprint) || []).find(previous => (
+          previous.sourceIndex !== sourceIndex
+          && (!correlationKey || !previous.correlationKey || !scope || !previous.scope)
+          && (!scope || !previous.scope || scope === previous.scope)
+          && createdAt > 0
+          && previous.createdAt > 0
+          && Math.abs(createdAt - previous.createdAt) <= 5000
+        ))?.index;
+      }
+
+      if (index !== undefined) {
+        merged[index] = mergeChatbotMessage(merged[index], message);
+      } else {
+        index = merged.length;
+        merged.push(message);
+      }
+
+      if (id) ids.set(id, index);
+      const stableId = String(merged[index]?.id || '').trim();
+      if (stableId) ids.set(stableId, index);
+      if (correlationKey) correlationKeys.set(correlationKey, index);
+      const stableCorrelationKey = resolvedChatbotCorrelationKey(merged[index]);
+      if (stableCorrelationKey) correlationKeys.set(stableCorrelationKey, index);
       if (fingerprint) {
         const matches = fingerprints.get(fingerprint) || [];
-        matches.push({ sourceIndex, createdAt });
+        matches.push({ sourceIndex, createdAt, scope, correlationKey, index });
         fingerprints.set(fingerprint, matches);
       }
-      merged.push(message);
     });
   });
   return merged
@@ -192,23 +329,40 @@ export async function loadChatbotMessagesFromServer(user, conversationId = CHATB
     return (payload.objects || []).map((item, index) => {
       const historySequence = Number(item.properties?.seq);
       const hasSequence = Number.isFinite(historySequence) && historySequence > 0;
+      const historyTopic = String(item.properties?.topic || '').trim();
+      const viewerTinodeUid = String(user?.tinodeUid || user?.tinode_uid || '').trim();
+      const botTinodeUid = String(CHATBOT_ACCOUNT.tinodeUid || '').trim();
+      const isGroupHistory = Boolean(item.properties?.is_group || historyTopic.startsWith('grp'));
+      const counterpartTopic = isGroupHistory
+        ? ''
+        : historyTopic === botTinodeUid ? viewerTinodeUid : botTinodeUid || viewerTinodeUid;
+      const correlationKey = hasSequence ? chatbotMessageCorrelationKey({
+        role: item.role,
+        topic: historyTopic,
+        counterpartTopic,
+        sourceSequence: historySequence,
+        sequence: historySequence,
+      }) : '';
       return {
-      id: item.message_ref || item.id || `bot-history-${index}`,
-      type: 'text',
-      sender: item.role === 'user' ? 'outgoing' : 'incoming',
-      senderId: item.role === 'user' ? (user?.id || user?.uid) : CHATBOT_ACCOUNT.id,
-      senderName: item.role === 'user' ? user?.name : CHATBOT_ACCOUNT.name,
-      avatar: item.role === 'user' ? user?.avatar : CHATBOT_ACCOUNT.avatar,
-      text: item.content,
-      time: item.created_at ? new Date(item.created_at * 1000).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
-      createdAt: item.created_at ? new Date(item.created_at * 1000).toISOString() : undefined,
-      source: item.properties?.provider,
-      sources: Array.isArray(item.properties?.sources) ? item.properties.sources : [],
-      grounded: Boolean(item.properties?.grounded),
-      ...(hasSequence ? {
-        seq: item.role === 'user' ? historySequence : undefined,
-        correlationKey: `${item.role === 'user' ? 'user' : 'assistant'}:${historySequence}`,
-      } : {}),
+        id: item.message_ref || item.id || `bot-history-${index}`,
+        type: 'text',
+        sender: item.role === 'user' ? 'outgoing' : 'incoming',
+        senderId: item.role === 'user' ? (user?.id || user?.uid) : CHATBOT_ACCOUNT.id,
+        senderName: item.role === 'user' ? user?.name : CHATBOT_ACCOUNT.name,
+        avatar: item.role === 'user' ? user?.avatar : CHATBOT_ACCOUNT.avatar,
+        text: item.content,
+        time: item.created_at ? new Date(item.created_at * 1000).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
+        createdAt: item.created_at ? new Date(item.created_at * 1000).toISOString() : undefined,
+        source: item.properties?.provider,
+        sources: Array.isArray(item.properties?.sources) ? item.properties.sources : [],
+        grounded: Boolean(item.properties?.grounded),
+        ...(hasSequence ? {
+          seq: item.role === 'user' ? historySequence : undefined,
+          chatbotTopic: historyTopic || undefined,
+          chatbotCounterpartTopic: counterpartTopic || undefined,
+          chatbotSourceSequence: item.role === 'assistant' ? historySequence : undefined,
+          correlationKey: correlationKey || undefined,
+        } : {}),
       };
     });
   } catch {
