@@ -120,8 +120,12 @@ are sent to Chatmgt, which updates the Tinode subscription and Chatmgt membershi
 as one controlled bridge operation. The browser does not independently invent
 or persist membership state.
 
-Normal Tinode messages and uploaded chat files are not copied into Chatmgt
-knowledge or Workspace previews. A Workspace task created from a message keeps
+Normal Tinode messages and uploaded chat files are not persisted in Chatmgt
+knowledge or Workspace previews. On web only, after Tinode confirms a supported
+document upload, ChatUI may relay that same file to authenticated Chatmgt so its
+text can be extracted in memory and sent to the external RAG index. Tinode
+remains the source of the message and file; an indexing failure never changes
+the successful Tinode delivery. A Workspace task created from a message keeps
 only the Chatmgt conversation ID/name and Tinode message reference.
 
 ## Chat media on S3
@@ -179,14 +183,29 @@ Chatmgt, while the isolated `tinode-chatbot-webhook` worker receives direct
 mention. Chatmgt validates the sender's tenant/group membership, keeps a
 bounded recent group history for tone and context, and calls the
 `https://knowledge-ai.gonapp.net/api/v1/chat` endpoint with the server-side
-`X-API-Key`. Retrieval requests include only the question, `top_k` and at most
+`X-API-Key`. Retrieval requests include the server-verified company
+`tenant_id`, the same value in `X-Tenant-Id`, the question, `top_k` and at most
 the recent role/content turns; if the provider rejects the optional history,
-Chatmgt retries the legacy retrieval shape. Returned answers or document
-snippets are published back to Tinode as sourced replies.
+Chatmgt retries without `history` but keeps the tenant boundary. Returned
+document snippets are cross-checked against the provider `/api/v1/files`
+manifest and only unambiguous files owned by that tenant are published back to
+Tinode. A missing manifest, foreign file or filename shared by multiple tenants
+fails closed instead of exposing an unverified snippet.
 Normal employee/group/file flows never pass through the worker unless a group
 member explicitly mentions the bot. Configure the bot credentials and shared webhook key in the private production `.env`; see
 `infrastructure/production/.env.example` and
 `infrastructure/production/README.md`.
+
+For web direct and group chats, supported PDF, DOCX, XLS/XLSX, TXT, Markdown,
+CSV and JSON documents up to 20 MB are indexed only after Tinode returns a
+positive publish sequence. Chatmgt verifies the authenticated session, active
+conversation membership and matching Tinode topic, derives `tenant_id` from
+that session, then sends `file_name`, extracted `text_content`, `source`, a
+stable `file_id` and bounded metadata to the RAG provider. The browser cannot
+choose a tenant. The configured `/api/v1/ingest` route is attempted first; the
+currently published provider returns `404`, so Chatmgt falls back only for
+`404/405` to `/api/v1/dataroom/callback`. Other HTTP or body-level provider
+errors are diagnostic-only and do not mark the Tinode file failed.
 
 `CHATBOT_PROVIDER=external-webhook` remains the server-side provider setting and
 the existing authenticated `/api/v1/chatbot/message` endpoint remains a

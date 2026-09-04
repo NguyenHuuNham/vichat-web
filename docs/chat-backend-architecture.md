@@ -999,16 +999,79 @@ authenticated tenant and group membership, and persists the group bot opt-in
 so later membership reconciliation does not remove the bot. It then calls the
 fixed `CHATBOT_API_URL`, currently `https://knowledge-ai.gonapp.net/api/v1/chat`.
 In `CHATBOT_EXTERNAL_REQUEST_MODE=knowledge-retrieval`, Chatmgt authenticates
-with the server-only `X-API-Key`, sends `message`, bounded `top_k`, and when
-`CHATBOT_RETRIEVAL_INCLUDE_HISTORY=true` at most six recent role/content turns
-with each turn limited to 800 characters. This bounded context lets a provider
-match the group's language and tone without sending employee identity,
-credentials, tenant secrets or local knowledge records. If an older retrieval
-endpoint rejects the optional history field, Chatmgt retries with the legacy
-`message`/`top_k` payload. Provider answers are preferred when returned;
-otherwise `sources[].snippet` objects are normalized into a grounded reply with
-source metadata. The worker publishes the reply back to the same Tinode topic and
-persists a cursor/idempotency key so reconnects do not duplicate replies.
+with the server-only `X-API-Key`, sends the tenant from the verified Chatmgt
+session/Tinode account in both JSON `tenant_id` and `X-Tenant-Id`, plus
+`message`, bounded `top_k`, and when `CHATBOT_RETRIEVAL_INCLUDE_HISTORY=true`
+at most six recent role/content turns with each turn limited to 800 characters.
+This bounded context lets a provider match the group's language and tone
+without sending employee identity, credentials, tenant secrets or local
+knowledge records. If an older retrieval endpoint rejects the optional history
+field, Chatmgt retries without `history` while retaining both tenant values.
+Because the current provider searches a shared collection, Chatmgt requests up
+to 20 candidates and fetches `CHATBOT_FILES_URL` after each retrieval. It builds
+a tenant ownership manifest from `file_id` and normalized `file_name`, discards
+foreign and unknown sources, and also discards a filename owned by more than one
+tenant because the source response cannot distinguish them. Provider-generated
+answer text is not trusted in this mode; only verified `sources[].snippet`
+objects are normalized into a grounded reply, capped by
+`CHATBOT_RETRIEVAL_LIMIT`. A missing/invalid manifest or missing verified tenant
+fails closed. The worker publishes the safe reply back to the same Tinode topic
+and persists a cursor/idempotency key so reconnects do not duplicate replies.
+
+Web document indexing is an additive side path after successful Tinode publish.
+ChatUI calls authenticated `POST /api/v1/chatbot/knowledge/chat-files` only for
+PDF, DOCX, XLS/XLSX, TXT, Markdown, CSV or JSON documents up to 20 MB and only
+after Tinode returns a positive message sequence. Images, audio, video,
+stickers, unsupported files, oversized files and failed Tinode publishes never
+enter this path. Forwarding a supported document follows the same post-publish
+rule. Mobile is unchanged.
+
+Chatmgt ignores any client tenant value and derives `tenant_id` from the
+verified session. It confirms that the sender is an active approved participant
+of the tenant-scoped Chatmgt conversation and that the supplied Tinode topic is
+the bound group topic or the direct peer UID. It extracts text in request memory
+and sends this server-to-server payload without persisting the uploaded bytes or
+extracted text in Chatmgt PostgreSQL, Redis, Workspace or local knowledge:
+
+```json
+{
+  "file_name": "Quy_trinh_bao_tri_2026.pdf",
+  "text_content": "Toan van noi dung tai lieu...",
+  "tenant_id": "verified-company-id",
+  "source": "vichat_web",
+  "file_id": "vichat_<sha256>",
+  "metadata": {
+    "category": "chat_attachment",
+    "author": "Verified sender",
+    "department": "Verified department",
+    "conversation_id": "verified-conversation-id",
+    "conversation_type": "direct-or-group",
+    "tinode_sequence": 42,
+    "allowed_user_ids": ["verified-participant-ids"]
+  }
+}
+```
+
+`file_id` is deterministic for tenant, Chatmgt conversation and Tinode
+sequence, making a safe retry idempotent for providers which honor that key.
+Chatmgt first calls `CHATBOT_INGEST_URL`; it falls back to
+`CHATBOT_INGEST_FALLBACK_URL` only when the primary route returns `404/405`.
+The provider deployment observed on 2026-09-04 returned `404` for
+`/api/v1/ingest` and published `/api/v1/dataroom/callback`, so production keeps
+both values configurable. HTTP failures and a 2xx response whose body reports
+`status=error` are treated as indexing failures. Because the browser starts the
+request fire-and-forget after Tinode delivery, those failures are logged without
+changing the delivered message/file state.
+
+The provider's published `/api/v1/chat` OpenAPI contract currently documents
+only `message` and `top_k`; it does not document tenant filtering. A read-only
+2026-09-04 probe sent the same nonce query with two different tenant values and
+received the same source fingerprint, confirming the provider currently ignores
+both tenant inputs. `CHATBOT_TENANT_FILTER_REQUIRED=true` therefore keeps the
+Chatmgt manifest filter mandatory. This compatibility filter prevents a foreign
+snippet from reaching a browser/Tinode reply, but provider-native filtering is
+still required for complete recall and efficient tenant isolation: global top
+20 results may not contain a lower-ranked relevant file from the current tenant.
 
 The product-facing assistant identity is `ViChat AI` on both web and mobile.
 The synthetic client conversation key is `vichat-ai`; the actual Tinode UID

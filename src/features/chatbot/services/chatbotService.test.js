@@ -6,7 +6,9 @@ import {
   CHATBOT_ACCOUNT,
   CHATBOT_STARTER_PROMPTS,
   applyTinodeChatbotConfig,
+  canIngestChatDocument,
   chatbotMessageCorrelationKey,
+  ingestChatDocument,
   mergeChatbotMessages,
 } from './chatbotService.js';
 
@@ -52,6 +54,45 @@ test('ViChat AI UI and fallback request do not expose knowledge management or RA
   assert.equal(serviceSource.includes('knowledge_base_id: KNOWLEDGE_BASE_ID'), false);
   assert.equal(serviceSource.includes('listKnowledgeBases'), false);
   assert.equal(serviceSource.includes('uploadKnowledgeDocument'), false);
+});
+
+test('web chat indexes supported documents without touching media attachments', () => {
+  assert.equal(canIngestChatDocument({ name: 'quy-trinh.pdf', type: 'application/pdf', size: 1024 }), true);
+  assert.equal(canIngestChatDocument({ name: 'bao-cao.XLSX', type: '', size: 2048 }), true);
+  assert.equal(canIngestChatDocument({ name: 'anh.pdf', type: 'image/png', size: 1024 }), false);
+  assert.equal(canIngestChatDocument({ name: 'video.mp4', type: 'video/mp4', size: 1024 }), false);
+  assert.equal(canIngestChatDocument({ name: 'lon.pdf', type: 'application/pdf', size: 21 * 1024 * 1024 }), false);
+  assert.match(appSource, /tinodeClient\.sendFile[\s\S]*?ingestChatDocument\(\{/);
+  assert.match(serviceSource, /\/knowledge\/chat-files/);
+  assert.doesNotMatch(serviceSource, /tenant_id.*FormData|body\.append\(['"]tenant_id/);
+});
+
+test('chat document upload sends conversation proof but never a browser tenant', async () => {
+  const originalFetch = globalThis.fetch;
+  let request;
+  globalThis.fetch = async (url, options) => {
+    request = { url, options };
+    return { ok: true, status: 202, json: async () => ({ accepted: true }) };
+  };
+  try {
+    const result = await ingestChatDocument({
+      file: new File(['noi dung'], 'quy-trinh.txt', { type: 'text/plain' }),
+      conversationId: 'conversation-1',
+      tinodeTopic: 'usrPeer123456',
+      sequence: 42,
+      caption: 'Quy trinh moi',
+    });
+
+    assert.equal(result.accepted, true);
+    assert.equal(request.url, '/api/v1/chatbot/knowledge/chat-files');
+    assert.equal(request.options.credentials, 'include');
+    assert.equal(request.options.body.get('conversation_id'), 'conversation-1');
+    assert.equal(request.options.body.get('tinode_topic'), 'usrPeer123456');
+    assert.equal(request.options.body.get('sequence'), '42');
+    assert.equal(request.options.body.has('tenant_id'), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('production build keeps the ViChat AI identity instead of legacy external defaults', () => {

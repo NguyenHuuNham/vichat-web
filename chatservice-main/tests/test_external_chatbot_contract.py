@@ -56,6 +56,39 @@ class ExternalChatbotContractTests(unittest.TestCase):
         self.assertIn("CHATBOT_EXTERNAL_API_KEY", config)
         self.assertIn("CHATBOT_EXTERNAL_KNOWLEDGE_BASE_ID", config)
 
+    def test_web_chat_documents_are_ingested_with_server_owned_tenant(self):
+        controller = read(CONTROLLER_PATH)
+        config = read(CONFIG_PATH)
+        service = read(CHATBOT_SERVICE_PATH)
+        route = controller.split("async def knowledge_chat_file", 1)[1].split(
+            "async def knowledge_bases_list", 1
+        )[0]
+
+        self.assertIn("current_user = _current_user(request)", route)
+        self.assertIn('current_user.get("current_tenant_id")', route)
+        self.assertNotIn('form.get("tenant_id")', route)
+        self.assertIn("_chat_file_conversation(", route)
+        self.assertIn("knowledge_service.extract_file(", route)
+        self.assertIn('"source": "vichat_web"', route)
+        self.assertIn('"metadata": metadata', route)
+        self.assertIn("await chatbot_service.ingest_document(", route)
+        self.assertIn("CHATBOT_INGEST_ENABLED", config)
+        self.assertIn("CHATBOT_INGEST_FALLBACK_URL", config)
+        self.assertIn('headers["X-Tenant-Id"]', service)
+
+    def test_retrieval_tenant_is_forwarded_from_verified_user_context(self):
+        service = read(CHATBOT_SERVICE_PATH)
+        config = read(CONFIG_PATH)
+
+        self.assertIn('safe_user.get("current_tenant_id")', service)
+        self.assertIn('payload["tenant_id"] = tenant_id[:255]', service)
+        self.assertIn('self._external_headers(request_payload.get("tenant_id"))', service)
+        self.assertIn("_tenant_source_manifest", service)
+        self.assertIn("_source_matches_tenant", service)
+        self.assertIn('provider_answer = None if tenant_manifest is not None', service)
+        self.assertIn("CHATBOT_TENANT_FILTER_REQUIRED", config)
+        self.assertIn("CHATBOT_FILES_URL", config)
+
     def test_external_boundary_excludes_chat_derived_documents(self):
         knowledge = read(KNOWLEDGE_PATH)
 
@@ -95,6 +128,8 @@ class ExternalChatbotContractTests(unittest.TestCase):
         self.assertIn("https://knowledge-ai.gonapp.net/api/v1/chat", compose)
         self.assertIn("CHATBOT_EXTERNAL_AUTH_HEADER: ${CHATBOT_EXTERNAL_AUTH_HEADER:-X-API-Key}", compose)
         self.assertIn("CHATBOT_EXTERNAL_REQUEST_MODE: ${CHATBOT_EXTERNAL_REQUEST_MODE:-knowledge-retrieval}", compose)
+        self.assertIn("CHATBOT_TENANT_FILTER_REQUIRED: ${CHATBOT_TENANT_FILTER_REQUIRED:-true}", compose)
+        self.assertIn("CHATBOT_FILES_URL: ${CHATBOT_FILES_URL:-https://knowledge-ai.gonapp.net/api/v1/files}", compose)
 
     def test_external_provider_accepts_common_response_shapes(self):
         service = chatbot_service.ChatbotService(SimpleNamespace(config={}))

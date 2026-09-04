@@ -160,6 +160,21 @@ class Config(object):
     CHATBOT_EXTERNAL_AUTH_SCHEME = os.getenv("CHATBOT_EXTERNAL_AUTH_SCHEME", "Bearer")
     CHATBOT_EXTERNAL_REQUEST_MODE = os.getenv("CHATBOT_EXTERNAL_REQUEST_MODE", "chat")
     CHATBOT_RETRIEVAL_INCLUDE_HISTORY = env_bool("CHATBOT_RETRIEVAL_INCLUDE_HISTORY", True)
+    CHATBOT_TENANT_FILTER_REQUIRED = env_bool("CHATBOT_TENANT_FILTER_REQUIRED", True)
+    CHATBOT_FILES_URL = os.getenv(
+        "CHATBOT_FILES_URL",
+        "https://knowledge-ai.gonapp.net/api/v1/files",
+    )
+    CHATBOT_INGEST_ENABLED = env_bool("CHATBOT_INGEST_ENABLED", False)
+    CHATBOT_INGEST_URL = os.getenv(
+        "CHATBOT_INGEST_URL",
+        "https://knowledge-ai.gonapp.net/api/v1/ingest",
+    )
+    CHATBOT_INGEST_FALLBACK_URL = os.getenv(
+        "CHATBOT_INGEST_FALLBACK_URL",
+        "https://knowledge-ai.gonapp.net/api/v1/dataroom/callback",
+    )
+    CHATBOT_INGEST_TIMEOUT = int(os.getenv("CHATBOT_INGEST_TIMEOUT", 45))
     CHATBOT_EXTERNAL_API_KEY = os.getenv("CHATBOT_EXTERNAL_API_KEY", "")
     CHATBOT_EXTERNAL_TENANT = os.getenv("CHATBOT_EXTERNAL_TENANT", "")
     CHATBOT_EXTERNAL_KNOWLEDGE_BASE_ID = os.getenv("CHATBOT_EXTERNAL_KNOWLEDGE_BASE_ID", "")

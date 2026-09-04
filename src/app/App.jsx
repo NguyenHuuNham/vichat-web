@@ -190,7 +190,7 @@ import {
 import AvatarCropModal from '../features/contacts/components/AvatarCropModal';
 import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, dissolveDemoGroup, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMemberRole, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
-import { CHATBOT_ACCOUNT, CHATBOT_STARTER_PROMPTS, EXTERNAL_CHAT_ONLY, applyTinodeChatbotConfig, loadChatbotMessages, loadChatbotMessagesFromServer, loadTinodeChatbotConfig, mergeChatbotMessages, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
+import { CHATBOT_ACCOUNT, CHATBOT_STARTER_PROMPTS, EXTERNAL_CHAT_ONLY, applyTinodeChatbotConfig, ingestChatDocument, loadChatbotMessages, loadChatbotMessagesFromServer, loadTinodeChatbotConfig, mergeChatbotMessages, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
 import {
   PIN_VALIDATION_ERRORS,
   clearPinTabAccess,
@@ -9604,6 +9604,16 @@ function App() {
               },
             };
           });
+          void ingestChatDocument({
+            file: uploadFile,
+            conversationId: room.managementId || room.id,
+            tinodeTopic: topicName,
+            sequence: result.ctrl?.params?.seq,
+            caption: captionText,
+          }).catch(error => {
+            // RAG indexing is best-effort and must never change file delivery.
+            console.warn('ViChat: chat document indexing failed', error);
+          });
           if (previewUrl) URL.revokeObjectURL(previewUrl);
         })
         .catch(err => {
@@ -11018,6 +11028,14 @@ function App() {
           const result = await tinodeClient.sendFile(topicName, sourceFile, shared.id, {
             sharedFrom: shareMessage.id,
             groupActionId: groupSpamAttempt.groupActionId,
+          });
+          void ingestChatDocument({
+            file: sourceFile,
+            conversationId: target.managementId || target.id,
+            tinodeTopic: topicName,
+            sequence: result.ctrl?.params?.seq,
+          }).catch(error => {
+            console.warn('ViChat: forwarded document indexing failed', error);
           });
           const forwardedAttachment = {
             ...sourceAttachment,
@@ -12612,9 +12630,9 @@ function App() {
 
         {activeChat.isChatbot && (
           <div className="chatbot-context-strip" role="status">
-            <span><i className="fa-solid fa-shield-halved"></i> {appCopy.t('AI riêng tư')}</span>
-            <span><i className="fa-solid fa-book-open-reader"></i> {appCopy.t(chatbotStatus)}</span>
-            <span><i className="fa-solid fa-link"></i> {appCopy.t('Trích dẫn nguồn')}</span>
+            <span><i className="fa-solid fa-building-shield"></i> {appCopy.t('Phạm vi công ty hiện tại')}</span>
+            <span><i className="fa-solid fa-file-circle-check"></i> {appCopy.t('Đọc tài liệu đã chia sẻ')}</span>
+            <span><i className="fa-solid fa-link"></i> {appCopy.t('Câu trả lời kèm nguồn')}</span>
           </div>
         )}
 
@@ -13288,20 +13306,32 @@ function App() {
 
           {activeChat.isChatbot && visibleMessages.length <= 1 && (
             <section className="chatbot-starter" aria-label={appCopy.t('Gợi ý câu hỏi cho ViChat AI')}>
-              <div className="chatbot-starter-heading">
-                <span className="chatbot-starter-eyebrow">{appCopy.t('Bắt đầu nhanh')}</span>
-                <h3>{appCopy.t('Bạn muốn tìm gì trong tri thức doanh nghiệp?')}</h3>
-                <p>{appCopy.t('ViChat AI chỉ dùng nội dung được tìm thấy và luôn cho bạn biết nguồn tham khảo.')}</p>
+              <div className="chatbot-starter-hero">
+                <span className="chatbot-starter-mark" aria-hidden="true">
+                  <img src={CHATBOT_ACCOUNT.avatar} alt="" />
+                  <i className="fa-solid fa-sparkles"></i>
+                </span>
+                <div className="chatbot-starter-heading">
+                  <span className="chatbot-starter-eyebrow">{appCopy.t('TRỢ LÝ NỘI BỘ THEO CÔNG TY')}</span>
+                  <h3>{appCopy.t('Hỏi như đang trao đổi với một đồng nghiệp hiểu tài liệu')}</h3>
+                  <p>{appCopy.t('ViChat AI tìm trong tài liệu của công ty hiện tại, tóm tắt câu trả lời và chỉ rõ nguồn để bạn kiểm tra.')}</p>
+                </div>
+              </div>
+              <div className="chatbot-starter-assurance" aria-label={appCopy.t('Phạm vi trả lời của ViChat AI')}>
+                <span><i className="fa-solid fa-shield-halved"></i>{appCopy.t('Tách biệt theo công ty')}</span>
+                <span><i className="fa-solid fa-file-pdf"></i>{appCopy.t('PDF, Word, Excel và văn bản')}</span>
+                <span><i className="fa-solid fa-book-open-reader"></i>{appCopy.t('Có nguồn đối chiếu')}</span>
               </div>
               <div className="chatbot-starter-grid">
                 {CHATBOT_STARTER_PROMPTS.map(item => (
-                  <button type="button" key={item.title} onClick={() => handleSendMessage(appCopy.t(item.prompt))} disabled={isTyping || realtimeMessagingPending}>
+                  <button type="button" key={item.title} title={appCopy.t(item.prompt)} onClick={() => handleSendMessage(appCopy.t(item.prompt))} disabled={isTyping || realtimeMessagingPending}>
                     <span className="chatbot-starter-icon"><i className={`fa-solid ${item.icon}`}></i></span>
-                    <span><strong>{appCopy.t(item.title)}</strong><small>{appCopy.t(item.prompt)}</small></span>
-                    <i className="fa-solid fa-arrow-up-right-from-square"></i>
+                    <span><strong>{appCopy.t(item.title)}</strong><small>{appCopy.t(item.hint || item.prompt)}</small></span>
+                    <i className="fa-solid fa-arrow-right"></i>
                   </button>
                 ))}
               </div>
+              <p className="chatbot-starter-tip"><i className="fa-regular fa-lightbulb"></i>{appCopy.t('Mẹo: nêu tên tài liệu, phòng ban hoặc mốc thời gian để nhận kết quả sát hơn.')}</p>
             </section>
           )}
 
@@ -13602,6 +13632,9 @@ function App() {
                 {inputText && (messageMentions[currentChatId] || []).length > 0 && (
                   <div className="input-text-preview" aria-hidden="true">{renderComposerText(inputText, messageMentions[currentChatId] || [])}</div>
                 )}
+                {activeChat.isChatbot && (
+                  <span className="chatbot-input-icon" aria-hidden="true"><i className="fa-solid fa-sparkles"></i></span>
+                )}
                 <input
                   className={(messageMentions[currentChatId] || []).length > 0 ? 'has-styled-mentions' : ''}
               type="text"
@@ -13628,7 +13661,10 @@ function App() {
               </>
             )}
           </div>
-          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || !canSendInActiveGroup || activeGroupSpamBlocked || isRecordingVoice || isSavingMessageEdit || (activeChat.isChatbot && isTyping)} onClick={handleComposerSubmit}>{appCopy.t(editingMessage ? (isSavingMessageEdit ? 'Đang lưu...' : 'Lưu thay đổi') : activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi')}</button>
+          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || !canSendInActiveGroup || activeGroupSpamBlocked || isRecordingVoice || isSavingMessageEdit || (activeChat.isChatbot && isTyping)} onClick={handleComposerSubmit}>
+            {activeChat.isChatbot && <i className={`fa-solid ${isTyping ? 'fa-spinner fa-spin' : 'fa-arrow-up'}`} aria-hidden="true"></i>}
+            {appCopy.t(editingMessage ? (isSavingMessageEdit ? 'Đang lưu...' : 'Lưu thay đổi') : activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi')}
+          </button>
         </div>
         )}
         {pollComposer && (
@@ -13745,7 +13781,7 @@ function App() {
             </form>
           </div>
         )}
-        {activeChat.isChatbot && <p className="chatbot-composer-note"><i className="fa-solid fa-circle-info"></i> {appCopy.t('ViChat AI có thể chưa bao quát mọi tài liệu. Hãy kiểm tra nguồn trước khi ra quyết định.')}</p>}
+        {activeChat.isChatbot && <p className="chatbot-composer-note"><i className="fa-solid fa-shield-halved"></i> {appCopy.t('Câu trả lời bám theo tài liệu của công ty hiện tại. Luôn kiểm tra nguồn khi ra quyết định.')}</p>}
         {messageDetails && (() => {
           const receiptUsers = normalizeReceiptUsers(messageDetails.receiptUsers);
           const previewText = messageDetails.text
@@ -14021,16 +14057,16 @@ function App() {
               <p className="chatbot-detail-description">{appCopy.t(activeChat.description || 'Trợ lý AI dùng dữ liệu doanh nghiệp đã được phê duyệt.')}</p>
               <div className="chatbot-detail-capabilities">
                 <div className="chatbot-detail-capability">
-                  <i className="fa-solid fa-shield-halved" aria-hidden="true"></i>
-                  <span><strong>{appCopy.t('Dữ liệu đã phê duyệt')}</strong><small>{appCopy.t('Tra cứu trong kho tri thức doanh nghiệp được phép truy cập.')}</small></span>
+                  <i className="fa-solid fa-building-shield" aria-hidden="true"></i>
+                  <span><strong>{appCopy.t('Phạm vi công ty')}</strong><small>{appCopy.t('Công ty được xác định tự động từ phiên đăng nhập của bạn.')}</small></span>
+                </div>
+                <div className="chatbot-detail-capability">
+                  <i className="fa-solid fa-file-arrow-up" aria-hidden="true"></i>
+                  <span><strong>{appCopy.t('Tài liệu từ cuộc trò chuyện')}</strong><small>{appCopy.t('File tài liệu gửi trên web được phân tích sau khi Tinode xác nhận gửi thành công.')}</small></span>
                 </div>
                 <div className="chatbot-detail-capability">
                   <i className="fa-solid fa-book-open-reader" aria-hidden="true"></i>
-                  <span><strong>{appCopy.t('Nguồn kiểm chứng')}</strong><small>{appCopy.t('Nguồn tham khảo xuất hiện ngay dưới câu trả lời.')}</small></span>
-                </div>
-                <div className="chatbot-detail-capability">
-                  <i className="fa-solid fa-keyboard" aria-hidden="true"></i>
-                  <span><strong>{appCopy.t('Câu hỏi văn bản')}</strong><small>{appCopy.t('ViChat AI tập trung vào trao đổi bằng văn bản.')}</small></span>
+                  <span><strong>{appCopy.t('Nguồn kiểm chứng')}</strong><small>{appCopy.t('Nguồn tham khảo xuất hiện ngay dưới câu trả lời để dễ đối chiếu.')}</small></span>
                 </div>
               </div>
             </section>

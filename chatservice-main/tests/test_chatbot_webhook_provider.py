@@ -85,7 +85,7 @@ class ChatbotWebhookProviderTests(unittest.TestCase):
 
         self.assertNotIn("context", payload)
 
-    def test_knowledge_retrieval_payload_keeps_bounded_history_without_identity(self):
+    def test_knowledge_retrieval_payload_keeps_tenant_and_bounded_history_without_identity(self):
         payload = self.service(
             CHATBOT_EXTERNAL_REQUEST_MODE="knowledge-retrieval",
             CHATBOT_RETRIEVAL_LIMIT=50,
@@ -93,12 +93,17 @@ class ChatbotWebhookProviderTests(unittest.TestCase):
             message="  Quy trinh nghi phep  ",
             conversation_id="must-not-leave-chatmgt",
             history=[{"role": "user", "content": "private history"}],
-            user={"id": "private-user", "email": "private@example.com"},
+            user={
+                "id": "private-user",
+                "email": "private@example.com",
+                "tenant_id": "tenant-a",
+            },
         )
 
         self.assertEqual(payload, {
             "message": "Quy trinh nghi phep",
             "top_k": 20,
+            "tenant_id": "tenant-a",
             "history": [{"role": "user", "content": "private history"}],
         })
         self.assertNotIn("private-user", str(payload))
@@ -234,6 +239,19 @@ class ChatbotKnowledgeRetrievalRequestTests(unittest.IsolatedAsyncioTestCase):
                 captured.update({"url": url, "json": json, "headers": headers})
                 return FakeResponse()
 
+            def get(self, url, headers):
+                captured.update({"files_url": url, "files_headers": headers})
+
+                class ManifestResponse(FakeResponse):
+                    async def json(self, **_kwargs):
+                        return {"total": 1, "files": [{
+                            "file_name": "quy-trinh.pdf",
+                            "tenant_id": "tenant-a",
+                            "file_id": "file-1",
+                        }]}
+
+                return ManifestResponse()
+
         service = chatbot_service.ChatbotService(SimpleNamespace(config={
             "CHATBOT_ENABLED": True,
             "CHATBOT_PROVIDER": "external-webhook",
@@ -249,20 +267,351 @@ class ChatbotKnowledgeRetrievalRequestTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(chatbot_service.aiohttp, "ClientSession", FakeSession, create=True):
             result = await service.reply(
                 "quy trinh nghi phep",
-                user={"id": "private-user"},
+                user={"id": "private-user", "tenant_id": "tenant-a"},
                 history=[{"role": "user", "content": "private history"}],
             )
 
         self.assertEqual(captured["json"], {
             "message": "quy trinh nghi phep",
-            "top_k": 6,
+            "top_k": 20,
+            "tenant_id": "tenant-a",
             "history": [{"role": "user", "content": "private history"}],
         })
         self.assertEqual(captured["headers"]["X-API-Key"], "server-secret")
+        self.assertEqual(captured["headers"]["X-Tenant-Id"], "tenant-a")
+        self.assertEqual(captured["files_url"], "https://knowledge-ai.gonapp.net/api/v1/files")
+        self.assertEqual(captured["files_headers"]["X-Tenant-Id"], "tenant-a")
         self.assertNotIn("private-user", str(captured["json"]))
         self.assertNotIn("private/hr", str(result))
         self.assertTrue(result["grounded"])
         self.assertEqual(result["usage"]["retrieval_time_ms"], 12)
+
+    async def test_chat_document_ingest_falls_back_only_when_primary_route_is_missing(self):
+        calls = []
+
+        class FakeResponse(object):
+            def __init__(self, status, payload):
+                self.status = status
+                self.payload = payload
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+            async def json(self, **_kwargs):
+                return self.payload
+
+            async def text(self):
+                return ""
+
+        class FakeSession(object):
+            def __init__(self, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+            def post(self, url, json, headers):
+                calls.append({"url": url, "json": json, "headers": headers})
+                if url.endswith("/ingest"):
+                    return FakeResponse(404, {"detail": "Not Found"})
+                return FakeResponse(200, {
+                    "status": "accepted",
+                    "file_id": json["file_id"],
+                    "chunks_processed": 3,
+                })
+
+        service = chatbot_service.ChatbotService(SimpleNamespace(config={
+            "CHATBOT_INGEST_ENABLED": True,
+            "CHATBOT_INGEST_URL": "https://knowledge.example/api/v1/ingest",
+            "CHATBOT_INGEST_FALLBACK_URL": "https://knowledge.example/api/v1/dataroom/callback",
+            "CHATBOT_INGEST_TIMEOUT": 30,
+            "CHATBOT_API_KEY": "server-secret",
+            "CHATBOT_EXTERNAL_AUTH_HEADER": "X-API-Key",
+            "CHATBOT_EXTERNAL_AUTH_SCHEME": "",
+        }))
+        payload = {
+            "file_name": "quy-trinh.pdf",
+            "text_content": "Noi dung quy trinh",
+            "tenant_id": "tenant-a",
+            "source": "vichat_web",
+            "file_id": "vichat_file_1",
+            "metadata": {"category": "chat_attachment"},
+        }
+
+        with patch.object(chatbot_service.aiohttp, "ClientSession", FakeSession, create=True):
+            result = await service.ingest_document(payload)
+
+        self.assertEqual([call["url"] for call in calls], [
+            "https://knowledge.example/api/v1/ingest",
+            "https://knowledge.example/api/v1/dataroom/callback",
+        ])
+        self.assertTrue(all(call["json"] == payload for call in calls))
+        self.assertTrue(all(call["headers"]["X-Tenant-Id"] == "tenant-a" for call in calls))
+        self.assertEqual(result["status"], "accepted")
+        self.assertEqual(result["chunks_processed"], 3)
+
+    async def test_retrieval_schema_error_without_history_is_not_silently_ignored(self):
+        class FakeResponse(object):
+            status = 422
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+            async def json(self, **_kwargs):
+                return {"error": "tenant_id is required"}
+
+            async def text(self):
+                return ""
+
+        class FakeSession(object):
+            def __init__(self, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+            def post(self, *_args, **_kwargs):
+                return FakeResponse()
+
+        service = chatbot_service.ChatbotService(SimpleNamespace(config={
+            "CHATBOT_ENABLED": True,
+            "CHATBOT_PROVIDER": "external-webhook",
+            "CHATBOT_API_URL": "https://knowledge.example/api/v1/chat",
+            "CHATBOT_API_KEY": "server-secret",
+            "CHATBOT_EXTERNAL_REQUEST_MODE": "knowledge-retrieval",
+            "CHATBOT_RETRIEVAL_INCLUDE_HISTORY": True,
+            "CHATBOT_TENANT_FILTER_REQUIRED": False,
+        }))
+
+        with patch.object(chatbot_service.aiohttp, "ClientSession", FakeSession, create=True):
+            with self.assertRaisesRegex(chatbot_service.ChatbotServiceError, "tenant_id is required"):
+                await service.reply("quy trinh nghi phep", user={"tenant_id": "tenant-a"})
+
+    async def test_retrieval_drops_foreign_and_ambiguous_sources(self):
+        class FakeResponse(object):
+            status = 200
+
+            def __init__(self, payload):
+                self.payload = payload
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+            async def json(self, **_kwargs):
+                return self.payload
+
+            async def text(self):
+                return ""
+
+        class FakeSession(object):
+            def __init__(self, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+            def post(self, *_args, **_kwargs):
+                return FakeResponse({
+                    "answer": "Untrusted cross-tenant provider answer",
+                    "sources": [
+                        {"file_name": "allowed.pdf", "snippet": "Allowed tenant text"},
+                        {"file_name": "foreign.pdf", "snippet": "Foreign tenant text"},
+                        {"file_name": "duplicate.pdf", "snippet": "Ambiguous tenant text"},
+                    ],
+                })
+
+            def get(self, *_args, **_kwargs):
+                return FakeResponse({
+                    "total": 4,
+                    "files": [
+                        {"file_name": "allowed.pdf", "tenant_id": "tenant-a", "file_id": "a-1"},
+                        {"file_name": "foreign.pdf", "tenant_id": "tenant-b", "file_id": "b-1"},
+                        {"file_name": "duplicate.pdf", "tenant_id": "tenant-a", "file_id": "a-2"},
+                        {"file_name": "duplicate.pdf", "tenant_id": "tenant-b", "file_id": "b-2"},
+                    ],
+                })
+
+        service = chatbot_service.ChatbotService(SimpleNamespace(config={
+            "CHATBOT_ENABLED": True,
+            "CHATBOT_PROVIDER": "external-webhook",
+            "CHATBOT_API_URL": "https://knowledge.example/api/v1/chat",
+            "CHATBOT_FILES_URL": "https://knowledge.example/api/v1/files",
+            "CHATBOT_API_KEY": "server-secret",
+            "CHATBOT_EXTERNAL_REQUEST_MODE": "knowledge-retrieval",
+            "CHATBOT_RETRIEVAL_LIMIT": 6,
+        }))
+
+        with patch.object(chatbot_service.aiohttp, "ClientSession", FakeSession, create=True):
+            result = await service.reply("quy trinh", user={"tenant_id": "tenant-a"})
+
+        self.assertTrue(result["grounded"])
+        self.assertEqual([item["file_name"] for item in result["sources"]], ["allowed.pdf"])
+        self.assertIn("Allowed tenant text", result["reply"])
+        self.assertNotIn("Foreign tenant text", str(result))
+        self.assertNotIn("Ambiguous tenant text", str(result))
+        self.assertNotIn("Untrusted cross-tenant provider answer", str(result))
+
+    async def test_retrieval_requires_a_verified_tenant_when_filtering(self):
+        class FakeSession(object):
+            def __init__(self, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+            def post(self, *_args, **_kwargs):
+                class FakeResponse(object):
+                    status = 200
+
+                    async def __aenter__(self):
+                        return self
+
+                    async def __aexit__(self, *_args):
+                        return False
+
+                    async def json(self, **_kwargs):
+                        return {"sources": []}
+
+                    async def text(self):
+                        return ""
+
+                return FakeResponse()
+
+        service = chatbot_service.ChatbotService(SimpleNamespace(config={
+            "CHATBOT_ENABLED": True,
+            "CHATBOT_PROVIDER": "external-webhook",
+            "CHATBOT_API_URL": "https://knowledge.example/api/v1/chat",
+            "CHATBOT_API_KEY": "server-secret",
+            "CHATBOT_EXTERNAL_REQUEST_MODE": "knowledge-retrieval",
+        }))
+
+        with patch.object(chatbot_service.aiohttp, "ClientSession", FakeSession, create=True):
+            with self.assertRaisesRegex(chatbot_service.ChatbotServiceError, "Verified tenant"):
+                await service.reply("quy trinh", user={})
+
+    async def test_retrieval_rejects_an_incomplete_tenant_manifest(self):
+        class FakeResponse(object):
+            status = 200
+
+            def __init__(self, payload):
+                self.payload = payload
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+            async def json(self, **_kwargs):
+                return self.payload
+
+            async def text(self):
+                return ""
+
+        class FakeSession(object):
+            def __init__(self, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+            def post(self, *_args, **_kwargs):
+                return FakeResponse({"sources": []})
+
+            def get(self, *_args, **_kwargs):
+                return FakeResponse({"total": 2, "files": [
+                    {"file_name": "one.pdf", "tenant_id": "tenant-a", "file_id": "one"},
+                ]})
+
+        service = chatbot_service.ChatbotService(SimpleNamespace(config={
+            "CHATBOT_ENABLED": True,
+            "CHATBOT_PROVIDER": "external-webhook",
+            "CHATBOT_API_URL": "https://knowledge.example/api/v1/chat",
+            "CHATBOT_API_KEY": "server-secret",
+            "CHATBOT_EXTERNAL_REQUEST_MODE": "knowledge-retrieval",
+        }))
+
+        with patch.object(chatbot_service.aiohttp, "ClientSession", FakeSession, create=True):
+            with self.assertRaisesRegex(chatbot_service.ChatbotServiceError, "manifest is incomplete"):
+                await service.reply("quy trinh", user={"tenant_id": "tenant-a"})
+
+    async def test_chat_document_ingest_rejects_error_status_in_success_response(self):
+        calls = []
+
+        class FakeResponse(object):
+            status = 200
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+            async def json(self, **_kwargs):
+                return {"status": "error", "message": "Document parsing failed"}
+
+            async def text(self):
+                return ""
+
+        class FakeSession(object):
+            def __init__(self, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+            def post(self, url, json, headers):
+                calls.append({"url": url, "json": json, "headers": headers})
+                return FakeResponse()
+
+        service = chatbot_service.ChatbotService(SimpleNamespace(config={
+            "CHATBOT_INGEST_ENABLED": True,
+            "CHATBOT_INGEST_URL": "https://knowledge.example/api/v1/ingest",
+            "CHATBOT_INGEST_FALLBACK_URL": "https://knowledge.example/api/v1/dataroom/callback",
+            "CHATBOT_INGEST_TIMEOUT": 30,
+        }))
+        payload = {
+            "file_name": "quy-trinh.pdf",
+            "text_content": "Noi dung quy trinh",
+            "tenant_id": "tenant-a",
+            "source": "vichat_web",
+            "file_id": "vichat_file_1",
+            "metadata": {"category": "chat_attachment"},
+        }
+
+        with patch.object(chatbot_service.aiohttp, "ClientSession", FakeSession, create=True):
+            with self.assertRaisesRegex(chatbot_service.ChatbotServiceError, "Document parsing failed"):
+                await service.ingest_document(payload)
+
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(calls[0]["url"].endswith("/ingest"))
 
 
 if __name__ == "__main__":

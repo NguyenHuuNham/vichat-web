@@ -268,6 +268,12 @@ CHATBOT_EXTERNAL_AUTH_HEADER=X-API-Key
 CHATBOT_EXTERNAL_AUTH_SCHEME=
 CHATBOT_EXTERNAL_REQUEST_MODE=knowledge-retrieval
 CHATBOT_RETRIEVAL_INCLUDE_HISTORY=true
+CHATBOT_TENANT_FILTER_REQUIRED=true
+CHATBOT_FILES_URL=https://knowledge-ai.gonapp.net/api/v1/files
+CHATBOT_INGEST_ENABLED=true
+CHATBOT_INGEST_URL=https://knowledge-ai.gonapp.net/api/v1/ingest
+CHATBOT_INGEST_FALLBACK_URL=https://knowledge-ai.gonapp.net/api/v1/dataroom/callback
+CHATBOT_INGEST_TIMEOUT=45
 CHATBOT_KNOWLEDGE_ONLY=false
 CHATBOT_EXTERNAL_API_KEY=<separate-inbound-key>
 CHATBOT_EXTERNAL_TENANT=tn6913580727957397
@@ -284,11 +290,15 @@ TINODE_CHATBOT_WEBHOOK_URL=http://chatmgt:8093/api/v1/chatbot/tinode-webhook
 ```
 
 Chatmgt calls `https://knowledge-ai.gonapp.net/api/v1/chat` server-side with
-`X-API-Key`. In retrieval mode it sends `message`, bounded `top_k` and at most
-six recent role/content turns (each at most 800 characters) so the provider can
-match the conversation tone; employee identity and credentials are not sent.
-If an older provider rejects `history`, Chatmgt retries with the legacy
-`message`/`top_k` payload and uses the returned snippets. The browser and
+`X-API-Key`. In retrieval mode it sends the authenticated company `tenant_id`
+in both JSON and `X-Tenant-Id`, `message`, bounded `top_k` and at most six recent
+role/content turns (each at most 800 characters) so the provider can match the
+conversation tone; employee identity and credentials are not sent. If an older
+provider rejects `history`, Chatmgt retries without that field but preserves the
+tenant in both locations. Chatmgt then checks returned sources against
+`CHATBOT_FILES_URL`, keeps only filenames/file IDs uniquely owned by the current
+tenant, and ignores provider-generated answer text. Missing manifests, unknown
+sources and filenames present in more than one tenant fail closed. The browser and
 Tinode worker must continue to call Chatmgt instead of the partner service
 directly. The legacy knowledge APIs remain separate compatibility integrations.
 The worker is started as `tinode-chatbot-webhook`, persists its cursor in the
@@ -297,7 +307,25 @@ group topics only after a member explicitly mentions `@ViChatAI`. Chatmgt
 validates group membership and keeps the bot in the Tinode member set after
 the opt-in.
 
-Do not copy the example placeholders into production. After deployment, verify
+For supported web document messages, ChatUI waits for Tinode to return a
+positive sequence before sending the document to Chatmgt for in-memory text
+extraction and RAG relay. Chatmgt validates the current session, tenant,
+conversation membership and direct/group Tinode topic; the browser never sends
+or selects `tenant_id`. Tinode retains the only chat message/file record and an
+ingest failure is fire-and-forget, so it cannot roll back delivery. The primary
+`/api/v1/ingest` route is attempted first; because the provider deployment
+observed on 2026-09-04 returns `404` there, fallback to the published
+`/api/v1/dataroom/callback` occurs only for `404/405`. Do not point both values at
+independent accepting endpoints unless the provider treats the stable
+`file_id` idempotently.
+
+Do not copy the example placeholders into production. The provider's current
+`/api/v1/chat` OpenAPI does not document tenant filtering, and a read-only
+2026-09-04 probe returned the same source fingerprint for two different tenant
+values. Keep `CHATBOT_TENANT_FILTER_REQUIRED=true`; disabling it would expose
+shared-provider results without a ViChat tenant check. The manifest filter is a
+safe compatibility boundary but may reduce recall because the provider returns
+only the global top 20. After deployment, verify
 `GET /api/v1/chatbot/health`, `GET /api/v1/chatbot/tinode-config` with an
 authenticated employee session, and `tinode-chatbot-webhook/healthz`. Send a
 test message to the bot and confirm the response appears in the same Tinode
@@ -310,6 +338,22 @@ not copied into ordinary employee messages or sent to the browser as a secret.
 Rollback only disables `TINODE_CHATBOT_ENABLED` and recreates
 `chatmgt`/`tinode-chatbot-webhook`; no database migration or Tinode topic reset
 is involved.
+
+Document-ingest acceptance requires two web employees and two tenants:
+
+1. Send one supported document in a direct topic and one in a group; confirm
+   both Tinode messages deliver before the Chatmgt ingest request starts.
+2. Confirm the RAG request contains the session tenant in JSON and
+   `X-Tenant-Id`, a stable `file_id`, the verified conversation metadata and no
+   client-provided tenant selector.
+3. Ask ViChat AI about each document and confirm tenant A returns only tenant A
+   sources while tenant B cannot retrieve the text or filename.
+4. Force the ingest provider to fail and confirm ordinary file delivery,
+   direct/group text, presence, receipts, reactions, calls and forwarding remain
+   operational. Images/audio/video and files over 20 MB must not call ingest.
+5. For rollback, set `CHATBOT_INGEST_ENABLED=false` and recreate only `chatmgt`;
+   no database migration, Tinode reset, volume deletion or file rewrite is
+   required.
 
 ## Startup guarantees
 

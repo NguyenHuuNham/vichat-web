@@ -4,19 +4,22 @@ export const EXTERNAL_CHAT_ONLY = String(env.VITE_CHAT_MODE || 'internal').toLow
 
 export const CHATBOT_STARTER_PROMPTS = [
   {
-    icon: 'fa-file-shield',
-    title: 'Tìm quy trình',
-    prompt: 'Tóm tắt quy trình nghỉ phép và các bước cần thực hiện.',
+    icon: 'fa-file-lines',
+    title: 'Tóm tắt tài liệu',
+    hint: 'Nắm nhanh ý chính và việc cần làm',
+    prompt: 'Tóm tắt tài liệu quy trình mới nhất và liệt kê các bước tôi cần thực hiện.',
   },
   {
-    icon: 'fa-clipboard-check',
-    title: 'Tra cứu chính sách',
-    prompt: 'Các chính sách nội bộ quan trọng mà nhân viên mới cần biết là gì?',
+    icon: 'fa-route',
+    title: 'Tìm đúng quy trình',
+    hint: 'Tra cứu theo công việc hoặc phòng ban',
+    prompt: 'Tìm giúp tôi quy trình nội bộ liên quan đến công việc đang cần xử lý.',
   },
   {
-    icon: 'fa-magnifying-glass-chart',
-    title: 'Tìm nhanh tài liệu',
-    prompt: 'Hãy giúp tôi tìm tài liệu liên quan đến quy trình phê duyệt công việc.',
+    icon: 'fa-scale-balanced',
+    title: 'Đối chiếu chính sách',
+    hint: 'So sánh điều kiện, phạm vi và lưu ý',
+    prompt: 'Đối chiếu các chính sách nội bộ liên quan và chỉ rõ điểm tôi cần lưu ý.',
   },
 ];
 
@@ -64,7 +67,12 @@ if (EXTERNAL_CHAT_ONLY) {
 const API_URL = String(env.VITE_CHATBOT_API_URL || '/api/v1/chatbot/message').trim();
 const API_ROOT = API_URL.replace(/\/message\/?$/, '');
 const TINODE_CHATBOT_CONFIG_URL = API_ROOT ? `${API_ROOT}/tinode-config` : '';
+const CHAT_FILE_INGEST_URL = API_ROOT ? `${API_ROOT}/knowledge/chat-files` : '';
 const WITH_CREDENTIALS = String(env.VITE_CHATBOT_WITH_CREDENTIALS || 'true').toLowerCase() === 'true';
+const CHAT_FILE_INGEST_MAX_SIZE = 20 * 1024 * 1024;
+const CHAT_FILE_INGEST_EXTENSIONS = new Set([
+  'pdf', 'txt', 'md', 'markdown', 'csv', 'json', 'docx', 'xlsx', 'xls',
+]);
 const STORAGE_PREFIX = `vichat.chatbot.${CHATBOT_ACCOUNT.id}.messages.`;
 const LEGACY_STORAGE_PREFIXES = CHATBOT_ACCOUNT.id === 'vichat-ai'
   ? ['vichat.chatbot.bot-songhong.messages.']
@@ -301,6 +309,56 @@ export function saveChatbotMessage(userId, message) {
 
 function query(extra = {}) {
   return new URLSearchParams(extra);
+}
+
+export function canIngestChatDocument(file) {
+  const name = String(file?.name || '').trim().toLowerCase();
+  const extension = name.includes('.') ? name.split('.').pop() : '';
+  const mime = String(file?.type || '').trim().toLowerCase();
+  return Boolean(
+    name
+    && Number(file?.size) > 0
+    && Number(file.size) <= CHAT_FILE_INGEST_MAX_SIZE
+    && !/^(?:audio|image|video)\//u.test(mime)
+    && CHAT_FILE_INGEST_EXTENSIONS.has(extension),
+  );
+}
+
+export async function ingestChatDocument({
+  file,
+  conversationId,
+  tinodeTopic,
+  sequence,
+  caption = '',
+} = {}) {
+  if (!CHAT_FILE_INGEST_URL || !canIngestChatDocument(file)) {
+    return { accepted: false, skipped: true };
+  }
+  const normalizedConversationId = String(conversationId || '').trim();
+  const normalizedTopic = String(tinodeTopic || '').trim();
+  const normalizedSequence = Number(sequence);
+  if (!normalizedConversationId || !normalizedTopic || !Number.isInteger(normalizedSequence) || normalizedSequence <= 0) {
+    return { accepted: false, skipped: true };
+  }
+
+  const body = new FormData();
+  body.append('file', file, file.name);
+  body.append('conversation_id', normalizedConversationId);
+  body.append('tinode_topic', normalizedTopic);
+  body.append('sequence', String(normalizedSequence));
+  const normalizedCaption = String(caption || '').trim();
+  if (normalizedCaption) body.append('caption', normalizedCaption);
+
+  const response = await fetch(CHAT_FILE_INGEST_URL, {
+    method: 'POST',
+    credentials: WITH_CREDENTIALS ? 'include' : 'omit',
+    body,
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error_message || `Chat file ingest returned ${response.status}.`);
+  }
+  return payload;
 }
 
 export async function loadTinodeChatbotConfig() {

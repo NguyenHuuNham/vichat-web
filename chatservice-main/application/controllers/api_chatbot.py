@@ -259,9 +259,14 @@ def _knowledge_admin_error(request, current_user=None):
 
 
 def _chatbot_identity(request, body=None):
-    body = body or {}
     current_user = _current_user(request)
-    return current_user, _tenant_id(request, current_user, body)
+    if current_user is not None:
+        return current_user, str(
+            current_user.get("current_tenant_id") or current_user.get("tenant_id") or ""
+        )
+    # Public development mode may use a fixed server-side tenant, but a
+    # browser-supplied header/body value must never select another company.
+    return None, str(app.config.get("CHATBOT_DEFAULT_TENANT") or "")
 
 
 def _user_ref(user):
@@ -289,6 +294,7 @@ def _conversation_participants(tenant_id, conversation_ref, current_user):
             ConversationParticipant.tenant_id == tenant_id,
             ConversationParticipant.conversation_id == conversation_id,
             ConversationParticipant.active.is_(True),
+            ConversationParticipant.approval_status == "APPROVED",
             ConversationParticipant.deleted.is_(False),
         ).all()
         participant_ids = {str(row.participant_id) for row in rows if row.participant_id}
@@ -296,6 +302,54 @@ def _conversation_participants(tenant_id, conversation_ref, current_user):
             raise KnowledgeServiceError("You are not a participant in this conversation.", 403)
         allowed.update(participant_ids)
     return sorted(value for value in allowed if value and value != "demo-user")
+
+
+def _chat_file_conversation(tenant_id, conversation_ref, topic_name, current_user):
+    try:
+        conversation_id = uuid.UUID(str(conversation_ref))
+    except (ValueError, TypeError, AttributeError):
+        raise KnowledgeServiceError("Conversation is invalid.", 404)
+
+    conversation = Conversation.query.filter(
+        Conversation.id == conversation_id,
+        Conversation.tenant_id == tenant_id,
+        Conversation.deleted.is_(False),
+    ).first()
+    if conversation is None:
+        raise KnowledgeServiceError("Conversation not found in this tenant.", 404)
+
+    current_user_id = _user_ref(current_user)
+    participants = ConversationParticipant.query.filter(
+        ConversationParticipant.tenant_id == tenant_id,
+        ConversationParticipant.conversation_id == conversation.id,
+        ConversationParticipant.active.is_(True),
+        ConversationParticipant.approval_status == "APPROVED",
+        ConversationParticipant.deleted.is_(False),
+    ).all()
+    participant_ids = [str(row.participant_id) for row in participants if row.participant_id]
+    if current_user_id not in participant_ids:
+        raise KnowledgeServiceError("You are not an active participant in this conversation.", 403)
+
+    topic_name = str(topic_name or "").strip()
+    is_group = bool((conversation.properties or {}).get("is_group"))
+    expected_prefix = "grp" if is_group else "usr"
+    if not topic_name.startswith(expected_prefix) or len(topic_name) > 255:
+        raise KnowledgeServiceError("Tinode topic is invalid for this conversation.", 409)
+    if is_group:
+        if not conversation.tinode_topic or str(conversation.tinode_topic) != topic_name:
+            raise KnowledgeServiceError("Tinode group does not match this conversation.", 409)
+    else:
+        peer_ids = [value for value in participant_ids if value != current_user_id]
+        if len(participant_ids) != 2 or len(peer_ids) != 1:
+            raise KnowledgeServiceError("Direct conversation participants are invalid.", 409)
+        peer = ManagementAccount.query.filter(
+            ManagementAccount.id == peer_ids[0],
+            ManagementAccount.tenant_id == tenant_id,
+            ManagementAccount.active.is_(True),
+        ).first()
+        if peer is None or str(peer.tinode_uid or "") != topic_name:
+            raise KnowledgeServiceError("Tinode direct topic does not match this conversation.", 409)
+    return conversation, is_group
 
 
 def _serialize_history_message(item):
@@ -389,8 +443,19 @@ async def chatbot_health(request):
         "model": app.config.get("CHATBOT_MODEL"),
         "request_mode": app.config.get("CHATBOT_EXTERNAL_REQUEST_MODE", "chat"),
         "provider_configured": chatbot_service.enabled,
+        "tenant_filter": {
+            "required": bool(app.config.get("CHATBOT_TENANT_FILTER_REQUIRED", True)),
+            "manifest_configured": bool(str(app.config.get("CHATBOT_FILES_URL") or "").strip()),
+        },
         "knowledge_enabled": True,
         "knowledge_only": app.config.get("CHATBOT_KNOWLEDGE_ONLY", True),
+        "chat_file_ingest": {
+            "enabled": bool(app.config.get("CHATBOT_INGEST_ENABLED", False)),
+            "configured": bool(
+                str(app.config.get("CHATBOT_INGEST_URL") or "").strip()
+                and str(app.config.get("CHATBOT_API_KEY") or "").strip()
+            ),
+        },
         "tinode_webhook": {
             "configured": tinode_chatbot_enabled(app),
             "webhook_url": bool(str(app.config.get("TINODE_CHATBOT_WEBHOOK_URL") or "").strip()),
@@ -717,7 +782,7 @@ async def chatbot_message(request):
         )
         result = await chatbot_service.reply(
             message=message,
-            user=current_user or body.get("user") or {},
+            user=current_user or {"tenant_id": tenant_id},
             conversation_id=conversation_ref,
             history=body.get("history") if isinstance(body.get("history"), list) else [],
             include_context=False,
@@ -796,10 +861,101 @@ async def knowledge_chat_event(request):
 
 @app.route('/api/v1/chatbot/knowledge/chat-files', methods=['POST'])
 async def knowledge_chat_file(request):
-    return json({
-        "error_code": "TINODE_CONTENT_ONLY",
-        "error_message": "Tin nhan va tep chat chi duoc luu tai Tinode.",
-    }, status=410)
+    current_user = _current_user(request)
+    if current_user is None:
+        return json({
+            "error_code": "SESSION_EXPIRED",
+            "error_message": "Phien lam viec het han.",
+        }, status=401)
+
+    tenant_id = str(
+        current_user.get("current_tenant_id") or current_user.get("tenant_id") or ""
+    ).strip()
+    try:
+        upload = request.files.get("file") if request.files else None
+        if upload is None:
+            raise KnowledgeServiceError("Vui long chon tep can phan tich.")
+        form = request.form or {}
+        conversation_ref = str(form.get("conversation_id") or "").strip()
+        topic_name = str(form.get("tinode_topic") or "").strip()
+        try:
+            sequence = int(form.get("sequence") or 0)
+        except (TypeError, ValueError):
+            sequence = 0
+        if sequence <= 0:
+            raise KnowledgeServiceError("Tinode message sequence is required.")
+
+        conversation, is_group = _chat_file_conversation(
+            tenant_id,
+            conversation_ref,
+            topic_name,
+            current_user,
+        )
+        file_name = str(upload.name or "").replace("\\", "/").rsplit("/", 1)[-1][:500]
+        content, mime_type = knowledge_service.extract_file(
+            file_name,
+            upload.type,
+            upload.body,
+        )
+        user_id = _user_ref(current_user)
+        account = ManagementAccount.query.filter(
+            ManagementAccount.id == user_id,
+            ManagementAccount.tenant_id == tenant_id,
+            ManagementAccount.active.is_(True),
+        ).first()
+        if account is None:
+            raise KnowledgeServiceError("Authenticated account is unavailable.", 401)
+
+        file_identity = "{}|{}|{}".format(
+            tenant_id,
+            str(conversation.id),
+            sequence,
+        )
+        file_id = "vichat_{}".format(
+            hashlib.sha256(file_identity.encode("utf-8")).hexdigest()
+        )
+        participant_ids = _conversation_participants(tenant_id, str(conversation.id), current_user)
+        caption = str(form.get("caption") or "").strip()[:1000]
+        metadata = {
+            "category": "chat_attachment",
+            "author": str(account.full_name or account.username or "")[:255],
+            "department": str(account.department or "")[:255],
+            "sender_id": user_id,
+            "conversation_id": str(conversation.id),
+            "conversation_type": "group" if is_group else "direct",
+            "tinode_sequence": sequence,
+            "mime_type": mime_type,
+            "allowed_user_ids": participant_ids,
+        }
+        if caption:
+            metadata["caption"] = caption
+        result = await chatbot_service.ingest_document({
+            "file_name": file_name,
+            "text_content": content,
+            "tenant_id": tenant_id,
+            "source": "vichat_web",
+            "file_id": file_id,
+            "metadata": metadata,
+        })
+        return json({
+            "accepted": True,
+            "file_id": file_id,
+            "provider_status": result.get("status") if isinstance(result, dict) else None,
+            "chunks_processed": result.get("chunks_processed", 0) if isinstance(result, dict) else 0,
+        }, status=202)
+    except KnowledgeServiceError as error:
+        return _error_response(error, "CHAT_FILE_INGEST_ERROR")
+    except ChatbotServiceError as error:
+        logger.warning(
+            "Chat file RAG ingest failed tenant=%s conversation=%s: %s",
+            tenant_id,
+            str((request.form or {}).get("conversation_id") or "")[:64],
+            error,
+        )
+        return _error_response(error, "CHAT_FILE_INGEST_ERROR")
+    except Exception as error:
+        logger.exception("Chat file RAG ingest failed")
+        return _error_response(error, "CHAT_FILE_INGEST_ERROR")
 
 
 @app.route('/api/v1/chatbot/knowledge/bases', methods=['GET'])

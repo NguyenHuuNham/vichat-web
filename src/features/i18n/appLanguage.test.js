@@ -9,6 +9,16 @@ test('translates exact UI labels and keeps Vietnamese as the default', () => {
   assert.equal(translateUiText('Cài đặt'), 'Cài đặt');
 });
 
+test('translates the tenant-scoped ViChat AI guidance', () => {
+  assert.equal(translateUiText('Phạm vi công ty hiện tại', 'en'), 'Current company scope');
+  assert.equal(translateUiText('Tách biệt theo công ty', 'en'), 'Isolated by company');
+  assert.equal(translateUiText('Tóm tắt tài liệu', 'en'), 'Summarize a document');
+  assert.equal(
+    translateUiText('Câu trả lời bám theo tài liệu của công ty hiện tại. Luôn kiểm tra nguồn khi ra quyết định.', 'en'),
+    'Answers follow the current company documents. Always verify sources before making decisions.',
+  );
+});
+
 test('translates message pin labels for the English UI', () => {
   assert.equal(translateUiText('Ghim tin nhắn', 'en'), 'Pin message');
   assert.equal(translateUiText('Bỏ ghim tin nhắn', 'en'), 'Unpin message');
