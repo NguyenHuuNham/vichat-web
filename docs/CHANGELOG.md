@@ -6,11 +6,25 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-07-02 - Trien khai ViChat AI guidance len production
+
+- Thoi gian: 2026-09-07 01:18-01:38 (Asia/Saigon)
+- Loai: Trien khai | Web | Backend | Bao mat | Kiem thu | Van hanh
+- Trang thai: Hoan tat; source `a1405a96a23363df7385efe0aa5d3bc30dc67035` da commit/push va production da verify
+- Pham vi: Deploy dung tuyen `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20` (`chat-server`); chi build/recreate `chatmgt` va `chat`, giu nguyen Tinode bridge, chatbot webhook, ChatAPI, Coturn, PostgreSQL va Redis.
+- Artifact: Archive `/opt/deploy/chat/incoming/vichat-ai-guidance-a1405a9.tar.gz`, 45076624 bytes, SHA-256 `9d3b96267b7219b1f0cc9f8c3dc7140f1ed9969921aebc23d13d0c4612ea2566`.
+- Phat hanh: `current` tro `/opt/deploy/chat/releases/vichat-ai-guidance-a1405a9-20260907-r2`; `previous` tro `/opt/deploy/chat/releases/sender-name-948917c-20260906-r2`. Chat container moi `ca792e97125a`, image `sha256:a9b1fcf8afb884dfdfd48c2ae678469c736bfc2e3b29429e577d0db0d3b0a2f4`; Chatmgt container moi `8f8498eb7d4a`, image `sha256:3a5c46399aaa92c32b2b5ae904a4b446aedc5486aabecd1e0c5bdec16ce06174`.
+- Backup va an toan: Backup truoc deploy nam tai `/opt/deploy/chat/backups/vichat-ai-guidance-a1405a9-20260907-r2/`, gom `.env`, runtime, dump Chatservice va Tinode; `sha256sum -c` va `pg_restore -l` deu dat. Alembic van `20260825_13`; env hash khong doi; volume va 7 service khong thuoc pham vi giu nguyen ID/image/restart count.
+- Kiem thu production: Candidate backend trong image `32/32`; Chatmgt/ChatUI healthy, restart `0`; auth/chatbot health private va public HTTP 200; Nginx config dat; public bundle khop exact hash (`/assets/index-CP7jh-p4.js`, `App-Da7mzldR.js`, `/assets/index-D_3NWJVV.css`); public WSS tra `HTTP/1.1 101 Switching Protocols`; log scan sach. Verifier doc lap tren `chat-server` va `sudo nginx -t` tren jump host deu dat.
+- Xu ly rollback: Candidate `r1` duoc rollback tu dong tai gate log vi Docker CLI production khong ho tro tuy chon `docker logs --no-color`; khong co thay doi ung dung hay du lieu bi bo lai. Sau khi sua verifier, candidate `r2` dat toan bo gate.
+- Database/API/cau hinh: Khong migration, khong `docker compose down -v`, khong reset PostgreSQL/Redis/Tinode volume/topic/message; khong them secret hay bien moi truong.
+- Rui ro con lai: Chua UAT bang tai khoan Account that trong browser va chua doi chieu cau tra loi voi tai lieu that; can thuc hien sau khi co browser/session hop le.
+
 ## 2026-09-07-01 - Lam ro trich loc va hoi tiep trong ViChat AI
 
 - Thoi gian: 2026-09-07 00:54 (Asia/Saigon)
 - Loai: Sua loi | Web | Backend | Bao mat | UX | Kiem thu | Tai lieu
-- Trang thai: Hoan tat tai local; da ra soat, cho commit/push va deploy production
+- Trang thai: Hoan tat; source da commit/push va production da deploy/verify (xem muc `2026-09-07-02`)
 - Muc tieu: Giup ViChat AI huong dan dung ro hon, xu ly cau hoi phu thuoc nhu `Noi ro hon`/`Tom tat ngan hon`, tra ve cac doan trich ngan co danh so va cho nguoi dung mo nguon de doi chieu ma khong bo sung mo hinh sinh noi dung.
 - Pham vi: Adapter Knowledge AI retrieval trong Chatmgt, HTTP fallback va giao dien ViChat AI tren web, i18n, timeout/huy request, regression test, tai lieu kien truc va production bundle; khong doi Tinode worker, mobile, chat ca nhan/nhom, file, call, presence, database, migration, secret hay bien moi truong.
 - File da thay doi: `README.md`, `chatservice-main/application/services/chatbot_service.py`, `chatservice-main/tests/test_chatbot_webhook_provider.py`, `src/app/App.jsx`, `src/features/chatbot/services/chatbotService.js`, `src/features/chatbot/services/chatbotService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `docs/chat-backend-architecture.md`, `dist/index.html`, `docs/CHANGELOG.md`.
@@ -19,8 +33,8 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong migration, schema, endpoint, secret hoac bien moi truong moi. Hop dong response cu duoc giu, chi chuan hoa chat reply/sources/fallback chat phia web; deploy Chatmgt va ChatUI cung nhau.
 - Kiem thu: `node --test src/features/chatbot/services/chatbotService.test.js src/features/i18n/appLanguage.test.js` dat 48/48; `npm run test:frontend` dat 369/369; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` dat voi entry `index-B5i85ehC.js`, App `App-3LmgKNI_.js`, CSS `index-D_3NWJVV.css` va warning App chunk tren 500 KB. Tai `chatservice-main`, `py -3.8 -m unittest tests.test_chatbot_webhook_provider -v` dat 32/32; `py -3.8 -m unittest discover -s tests -q` chay 299, dat 198 va skip 101 dependency/runtime tuy chon; `py -3.8 -m py_compile application/services/chatbot_service.py tests/test_chatbot_webhook_provider.py` dat; `git diff --check` dat, chi co canh bao LF/CRLF cua worktree Windows.
 - Rui ro con lai: Chua UAT production bang phien Account that va chua doi chieu cau tra loi voi tai lieu that trong browser. Manifest Chatmgt van fail-closed nhung provider chua co tenant filter native, nen recall co the thieu khi tai lieu dung tenant khong nam trong global top 20. Dependency build van co canh bao chunk lon va cac warning lint vendor cu.
-- Viec tiep theo: Commit/push `master`, deploy release bat bien qua `ubuntu@103.74.122.206` den `ubuntu@192.168.80.20`, chi recreate `chatmgt` va `chat`, sau do kiem tra health, chatbot, public bundle, WSS, log va bao toan service stateful.
-- Commit/PR: Chua tao.
+- Viec tiep theo: UAT browser bang tai khoan Account that va doi chieu cau tra loi voi tai lieu production.
+- Commit/PR: `a1405a96a23363df7385efe0aa5d3bc30dc67035`.
 
 ## 2026-09-06-05 - Tang tuong phan ten nguoi gui tren hinh nen
 
