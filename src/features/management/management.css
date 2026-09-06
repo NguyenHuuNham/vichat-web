@@ -15,8 +15,8 @@
   --mgmt-muted: #6e7f7a;
   --mgmt-green: #14845c;
   --mgmt-red: #c94c3c;
-  --mgmt-font-body: "Times New Roman", Times, serif;
-  --mgmt-font-display: "Times New Roman", Times, serif;
+  --mgmt-font-body: Inter, "Segoe UI", sans-serif;
+  --mgmt-font-display: Inter, "Segoe UI", sans-serif;
   --mgmt-font-mono: "IBM Plex Mono", Consolas, "Courier New", monospace;
   --mgmt-shadow-sm: 0 10px 26px rgba(7, 31, 30, .06);
   --mgmt-shadow-md: 0 18px 48px rgba(7, 31, 30, .09);

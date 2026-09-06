@@ -24,7 +24,7 @@ class AppErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: '#f6f2ea', color: '#1f2937', fontFamily: '"Times New Roman", Times, serif' }}>
+        <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: '#f6f2ea', color: '#1f2937', fontFamily: 'system-ui, sans-serif' }}>
           <section style={{ maxWidth: 460, padding: 28, borderRadius: 20, background: '#fff', boxShadow: '0 18px 50px rgba(31, 41, 55, .12)', textAlign: 'center' }}>
             <h1 style={{ margin: '0 0 10px', fontSize: 22 }}>Chat dang tam dung</h1>
             <p style={{ margin: '0 0 20px', lineHeight: 1.5 }}>Du lieu cuoc tro chuyen khong hop le. Hay tai lai trang de dong bo lai.</p>

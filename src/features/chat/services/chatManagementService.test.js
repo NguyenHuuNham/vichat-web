@@ -357,12 +357,12 @@ test('uses the Chatmgt heartbeat for directory presence and cleans it up on logo
   assert.doesNotMatch(appSource, /getDirectoryPresence\(/);
 });
 
-test('uses Times New Roman and renders a green indicator only for online presence', () => {
-  assert.match(stylesSource, /font-family:\s*"Times New Roman", Times, serif/);
-  assert.match(legacyStylesSource, /font-family:\s*"Times New Roman", Times, serif/);
-  assert.match(managementStylesSource, /--mgmt-font-body:\s*"Times New Roman", Times, serif/);
-  assert.match(rootAppSource, /fontFamily:\s*'"Times New Roman", Times, serif'/);
-  assert.doesNotMatch(indexSource, /fonts\.googleapis\.com|family=Inter/);
+test('uses the previous Inter font and renders a green indicator only for online presence', () => {
+  assert.match(stylesSource, /font-family:\s*'Inter', -apple-system, BlinkMacSystemFont/);
+  assert.match(legacyStylesSource, /font-family:\s*'Inter', -apple-system, BlinkMacSystemFont/);
+  assert.match(managementStylesSource, /--mgmt-font-body:\s*Inter, "Segoe UI", sans-serif/);
+  assert.match(rootAppSource, /fontFamily:\s*'system-ui, sans-serif'/);
+  assert.match(indexSource, /fonts\.googleapis\.com\/css2\?family=Inter/);
   assert.match(stylesSource, /\.chat-header-status\.direct-presence\.online::before/);
   assert.match(appSource, /formatOfflineDuration/);
   assert.match(appSource, /isCurrentUserOnline \? 'Trực tuyến' : 'Ngoại tuyến'/);
