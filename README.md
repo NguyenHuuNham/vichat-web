@@ -214,6 +214,25 @@ longer exposes the knowledge manager or sends a knowledge-base selection.
 Legacy approved RAG APIs remain isolated integration endpoints; they are not
 used by the ViChat AI conversation and never include employee chat content.
 
+ViChat AI's retrieval mode now provides usage guidance for greetings/help and
+asks for a document/topic when the question is too vague. Recognized follow-ups
+such as `Nói rõ hơn` or `Tóm tắt ngắn hơn` reuse the latest substantive user
+question within the bounded recent history; unrelated questions stay unchanged.
+Turning off `CHATBOT_RETRIEVAL_INCLUDE_HISTORY` also disables this expansion.
+Replies contain numbered, keyword-selected extracts, not a generated summary
+of a whole document. Requests for a shorter answer reduce the extracts while
+keeping the verified source list available. Web source cards expand to show the
+bounded original snippets. Starter suggestions fill an editable draft and
+select the topic placeholder rather than immediately sending a vague question.
+
+`CHATBOT_TIMEOUT` (30 seconds by default) bounds the entire retrieval operation,
+including the optional schema retry and tenant-manifest check. The web HTTP
+fallback has a separate 45-second request/body timeout, cancels on account or
+company changes, and ignores stale replies. It never automatically resends a
+question. No new model, endpoint, migration or credential is required; deploy
+Chatmgt and ChatUI together. The Tinode worker, ordinary messages, calls, media,
+presence and mobile flows are unchanged.
+
 ## Enterprise Workspace
 
 The ChatUI Workspace panel adds tenant-scoped tasks, mandatory announcements,

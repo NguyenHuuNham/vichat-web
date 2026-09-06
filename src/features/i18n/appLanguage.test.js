@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createLocalizedCopy, translateUiText } from './appLanguage.js';
+import { CHATBOT_STARTER_PROMPTS } from '../chatbot/services/chatbotService.js';
 
 test('translates exact UI labels and keeps Vietnamese as the default', () => {
   assert.equal(translateUiText('Cài đặt', 'en'), 'Settings');
@@ -16,6 +17,23 @@ test('translates the tenant-scoped ViChat AI guidance', () => {
   assert.equal(
     translateUiText('Câu trả lời bám theo tài liệu của công ty hiện tại. Luôn kiểm tra nguồn khi ra quyết định.', 'en'),
     'Answers follow the current company documents. Always verify sources before making decisions.',
+  );
+});
+
+test('translates editable AI prompts and expandable source labels', () => {
+  for (const item of CHATBOT_STARTER_PROMPTS) {
+    for (const text of [item.title, item.hint, item.prompt]) {
+      assert.notEqual(translateUiText(text, 'en'), text);
+      assert.equal(translateUiText(text, 'vi'), text);
+    }
+    assert.match(translateUiText(item.prompt, 'en'), /\[[^\]]+\]/u);
+  }
+  assert.equal(translateUiText('Trích lọc từ tài liệu', 'en'), 'Extracts from documents');
+  assert.equal(translateUiText('Xem đoạn trích nguồn', 'en'), 'View source excerpt');
+  assert.equal(translateUiText('Chưa có đoạn trích cho nguồn này.', 'en'), 'No excerpt is available for this source.');
+  assert.equal(
+    translateUiText('Chọn gợi ý, thay phần trong ngoặc vuông bằng chủ đề của bạn rồi nhấn Gửi.', 'en'),
+    'Choose a suggestion, replace the text in brackets with your topic, then press Send.',
   );
 });
 

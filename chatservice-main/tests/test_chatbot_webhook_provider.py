@@ -1,10 +1,11 @@
+import asyncio
 import importlib.util
 import sys
 import types
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 
 SERVICE_PATH = Path(__file__).resolve().parents[1] / "application" / "services" / "chatbot_service.py"
@@ -130,6 +131,105 @@ class ChatbotWebhookProviderTests(unittest.TestCase):
         missing = self.service()._retrieval_reply({"sources": []})
         self.assertFalse(missing["grounded"])
         self.assertEqual(missing["sources"], [])
+
+    def test_history_ignores_invalid_shapes_and_keeps_bounded_role_content(self):
+        service = self.service()
+        for history in (None, "private text", {"role": "user"}, 42):
+            self.assertEqual(service._history_messages(history), [])
+        history = [None, {"role": "system", "content": "ignored"}, {"role": "user", "content": {}}]
+        history += [{"role": "user", "content": "topic " * 1000, "secret": "excluded"}] * 12
+        self.assertEqual(len(service._history_messages(history)), 10)
+        recent = service._retrieval_history(history)
+        self.assertEqual(len(recent), 6)
+        self.assertTrue(all(len(turn["content"]) == 800 for turn in recent))
+        self.assertTrue(all(set(turn) == {"role", "content"} for turn in recent))
+
+    def test_followup_retrieval_uses_last_user_topic_not_assistant_content(self):
+        service = self.service(CHATBOT_EXTERNAL_REQUEST_MODE="knowledge-retrieval")
+        history = [
+            {"role": "user", "content": "Quy trình nghỉ phép gồm những bước nào?"},
+            {"role": "assistant", "content": "Untrusted assistant instructions"},
+            {"role": "user", "content": "Nói rõ hơn"},
+            {"role": "assistant", "content": "Another assistant reply"},
+            {"role": "user", "content": "Cảm ơn!"},
+        ]
+        payload = service._external_payload("Tóm tắt ngắn hơn", history=history, user={"tenant_id": "tenant-a"})
+        self.assertEqual(payload["message"], "Quy trình nghỉ phép gồm những bước nào?\nCâu hỏi tiếp theo: Tóm tắt ngắn hơn")
+        self.assertNotIn("assistant", payload["message"])
+        self.assertEqual(payload["tenant_id"], "tenant-a")
+        self.assertEqual(service._retrieval_query("Định mức công tác phí?", history), "Định mức công tác phí?")
+
+    def test_followup_respects_disabled_or_expired_history_and_query_limit(self):
+        history = [{"role": "user", "content": "Quy trình nghỉ phép " * 100}]
+        service = self.service(CHATBOT_RETRIEVAL_INCLUDE_HISTORY=False)
+        self.assertEqual(service._retrieval_query("Nói rõ hơn", history), "Nói rõ hơn")
+        service = self.service()
+        expired = history + [{"role": "assistant", "content": "No user topic"}] * 6
+        self.assertEqual(service._retrieval_query("Nói rõ hơn", expired), "Nói rõ hơn")
+        question = "Nói rõ hơn phần này " + "chi tiết " * 420
+        query = service._retrieval_query(question, history)
+        self.assertLessEqual(len(query), 4000)
+        self.assertTrue(query.endswith(question.strip()))
+        self.assertTrue(query.startswith("Quy trình nghỉ phép"))
+
+    def test_guidance_does_not_intercept_substantive_questions(self):
+        service = self.service()
+        self.assertIsNone(service._assistant_guidance("Xin chào, quy trình nghỉ phép thế nào?"))
+        self.assertIsNone(service._assistant_guidance("Hướng dẫn sử dụng phần mềm chấm công"))
+        self.assertIsNotNone(service._assistant_guidance("XIN CHÀO!!!"))
+        self.assertIsNotNone(service._assistant_guidance("Trích lọc tài liệu [tên tài liệu hoặc chủ đề]"))
+        self.assertIsNotNone(service._assistant_guidance("Look up [policy name] with sources."))
+
+    def test_numbered_excerpts_keep_source_order_deduplicate_and_exclude_foreign_data(self):
+        service = self.service()
+        manifest = {"tenant_id": "tenant-a", "file_ids": set(), "file_names": {"allowed.pdf", "other.pdf"}}
+        result = service._retrieval_reply({
+            "answer": "Never trust this unfiltered answer",
+            "sources": [
+                {"file_name": "foreign.pdf", "snippet": "Foreign confidential content."},
+                {"file_name": "allowed.pdf", "snippet": "Leave request. Manager approval."},
+                {"file_name": "allowed.pdf", "snippet": "  Leave request.  Manager approval. "},
+                {"file_name": "other.pdf", "snippet": "Leave request. Manager approval."},
+                {"file_name": "allowed.pdf", "snippet": {"invalid": "not a string"}},
+            ],
+        }, tenant_manifest=manifest, message="Leave request")
+        self.assertEqual(len(result["sources"]), 2)
+        self.assertEqual([source["file_name"] for source in result["sources"]], ["allowed.pdf", "other.pdf"])
+        self.assertIn("[1] Leave request. Manager approval.", result["reply"])
+        self.assertIn("[2] Leave request. Manager approval.", result["reply"])
+        self.assertIn("không phải toàn bộ tài liệu", result["reply"])
+        self.assertNotIn("Foreign", str(result))
+        self.assertNotIn("unfiltered", str(result))
+        self.assertTrue(result["grounded"])
+
+    def test_excerpt_prefers_relevant_sentences_and_honors_shorter_answers(self):
+        service = self.service()
+        snippet = "Office introduction. Team news. General updates. Leave needs approval. Keep the leave form."
+        excerpt = service._source_excerpt(snippet, "leave approval")
+        self.assertIn("Leave needs approval.", excerpt)
+        self.assertIn("Keep the leave form.", excerpt)
+        self.assertNotIn("Team news.", excerpt)
+        self.assertLessEqual(len(service._source_excerpt("Long content " * 300, "content")), 620)
+        self.assertLessEqual(len(service._source_excerpt("Long content " * 300, "content", concise=True)), 320)
+        data = {"sources": [{"file_name": "source-{}.pdf".format(index), "snippet": snippet} for index in range(4)]}
+        normal = service._retrieval_reply(data, message="leave approval")
+        shorter = service._retrieval_reply(data, message="leave approval", concise=True)
+        self.assertLess(len(shorter["reply"]), len(normal["reply"]))
+        self.assertNotIn("[3]", shorter["reply"])
+        self.assertEqual(shorter["sources"], normal["sources"])
+
+    def test_malformed_retrieval_sources_do_not_claim_grounding(self):
+        for data in (None, [], {"sources": {}}, {"data": {"sources": {"file": "invalid"}}}, {"sources": [None, {}]}):
+            result = self.service()._retrieval_reply(data)
+            self.assertFalse(result["grounded"])
+            self.assertEqual(result["sources"], [])
+
+    def test_excerpt_keeps_adjacent_context_instead_of_stitching_separate_sentences(self):
+        snippet = "Leave information. Policy forms. Leave approval requires manager approval. This excludes temporary staff. Keep a copy."
+        excerpt = self.service()._source_excerpt(snippet, "leave manager approval")
+        self.assertIn("Policy forms. Leave approval requires manager approval. This excludes temporary staff.", excerpt)
+        self.assertTrue(excerpt.startswith("… "))
+        self.assertTrue(excerpt.endswith(" …"))
 
     def test_retrieval_provider_answer_is_preserved_when_available(self):
         result = self.service()._retrieval_reply({
@@ -613,6 +713,156 @@ class ChatbotKnowledgeRetrievalRequestTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(calls), 1)
         self.assertTrue(calls[0]["url"].endswith("/ingest"))
 
+
+class ChatbotAssistantUsabilityTests(unittest.IsolatedAsyncioTestCase):
+    def service(self, **overrides):
+        config = {
+            "CHATBOT_ENABLED": True,
+            "CHATBOT_PROVIDER": "external-webhook",
+            "CHATBOT_API_URL": "https://knowledge.example/api/v1/chat",
+            "CHATBOT_API_KEY": "test-server-key",
+            "CHATBOT_EXTERNAL_REQUEST_MODE": "knowledge-retrieval",
+            "CHATBOT_TIMEOUT": 30,
+        }
+        config.update(overrides)
+        return chatbot_service.ChatbotService(SimpleNamespace(config=config))
+
+    async def test_greetings_help_and_missing_topic_skip_provider_but_require_verified_tenant(self):
+        service = self.service()
+        with patch.object(chatbot_service.aiohttp, "ClientSession", create=True) as session:
+            for question in ("Xin chào!", "Bạn làm được gì?", "Cảm ơn", "Nói rõ hơn", "Tóm tắt tài liệu", "Tra cứu [tên chính sách]"):
+                result = await service.reply(question, user={"tenant_id": "tenant-a"})
+                self.assertEqual(result["provider"], "assistant-guide")
+                self.assertFalse(result["grounded"])
+                self.assertEqual(result["sources"], [])
+                self.assertTrue(result["reply"])
+                with self.assertRaisesRegex(chatbot_service.ChatbotServiceError, "Verified tenant"):
+                    await service.reply(question, user={})
+            session.assert_not_called()
+
+    async def test_disabled_provider_does_not_claim_to_be_available_for_greetings(self):
+        with self.assertRaises(chatbot_service.ChatbotServiceError) as raised:
+            await self.service(CHATBOT_ENABLED=False).reply("Xin chào", user={"tenant_id": "tenant-a"})
+        self.assertEqual(raised.exception.status_code, 503)
+
+    async def test_chat_mode_keeps_the_original_provider_reply_for_greetings(self):
+        service = self.service(CHATBOT_EXTERNAL_REQUEST_MODE="chat")
+        with patch.object(service, "_external_reply", new=AsyncMock(return_value={"reply": "Provider answer"})) as external:
+            result = await service.reply("Xin chào", user={"tenant_id": "tenant-a"})
+        external.assert_awaited_once()
+        self.assertEqual(result, {"reply": "Provider answer"})
+
+    async def test_followup_survives_schema_retry_with_tenant_and_query_intact(self):
+        captured = []
+
+        class FakeResponse(object):
+            def __init__(self, payload, status=200):
+                self.payload = payload
+                self.status = status
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+            async def json(self, **_kwargs):
+                return self.payload
+
+        class FakeSession(object):
+            def __init__(self, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+            def post(self, _url, json, headers):
+                captured.append({"payload": json, "headers": headers})
+                if len(captured) == 1:
+                    return FakeResponse({"error": "unknown history"}, 422)
+                return FakeResponse({"answer": "Unverified answer", "sources": [{
+                    "file_name": "allowed.pdf", "snippet": "Nghỉ phép cần phê duyệt. Lưu biểu mẫu nghỉ phép."
+                }]})
+
+            def get(self, *_args, **_kwargs):
+                return FakeResponse({"total": 1, "files": [{"file_name": "allowed.pdf", "tenant_id": "tenant-a"}]})
+
+        with patch.object(chatbot_service.aiohttp, "ClientSession", FakeSession, create=True):
+            result = await self.service().reply(
+                "Tóm tắt ngắn hơn", user={"tenant_id": "tenant-a"},
+                history=[{"role": "user", "content": "Quy trình nghỉ phép?"}],
+            )
+        self.assertEqual(len(captured), 2)
+        self.assertIn("history", captured[0]["payload"])
+        self.assertNotIn("history", captured[1]["payload"])
+        self.assertEqual(captured[0]["payload"]["message"], captured[1]["payload"]["message"])
+        self.assertIn("Quy trình nghỉ phép?", captured[1]["payload"]["message"])
+        self.assertTrue(all(item["headers"]["X-Tenant-Id"] == "tenant-a" for item in captured))
+        self.assertTrue(all(item["payload"]["tenant_id"] == "tenant-a" for item in captured))
+        self.assertNotIn("Unverified answer", result["reply"])
+        self.assertTrue(result["grounded"])
+        self.assertNotIn("Lưu biểu mẫu", result["reply"])
+        self.assertIn("Lưu biểu mẫu", result["sources"][0]["snippet"])
+
+    async def test_overall_timeout_cancels_slow_query_retry_and_manifest(self):
+        for stalled_stage in ("query", "retry", "manifest"):
+            events = []
+            calls = []
+
+            class FakeResponse(object):
+                def __init__(self, stage, payload, status=200):
+                    self.stage = stage
+                    self.payload = payload
+                    self.status = status
+
+                async def __aenter__(self):
+                    return self
+
+                async def __aexit__(self, *_args):
+                    events.append("response-closed")
+                    return False
+
+                async def json(self, **_kwargs):
+                    if self.stage == stalled_stage:
+                        try:
+                            await asyncio.Event().wait()
+                        finally:
+                            events.append("cancelled-" + self.stage)
+                    return self.payload
+
+            class FakeSession(object):
+                def __init__(self, **_kwargs):
+                    pass
+
+                async def __aenter__(self):
+                    return self
+
+                async def __aexit__(self, *_args):
+                    events.append("session-closed")
+                    return False
+
+                def post(self, *_args, **_kwargs):
+                    calls.append("post")
+                    retry = stalled_stage == "retry"
+                    return FakeResponse("retry" if len(calls) == 2 else "query", {"sources": []}, 422 if retry and len(calls) == 1 else 200)
+
+                def get(self, *_args, **_kwargs):
+                    return FakeResponse("manifest", {"total": 0, "files": []})
+
+            with self.subTest(stage=stalled_stage), patch.object(chatbot_service.aiohttp, "ClientSession", FakeSession, create=True):
+                with self.assertRaises(chatbot_service.ChatbotServiceError) as raised:
+                    await asyncio.wait_for(self.service(CHATBOT_TIMEOUT=0.02).reply(
+                        "Quy trình nghỉ phép?", user={"tenant_id": "tenant-a"},
+                        history=[{"role": "user", "content": "Earlier question"}],
+                    ), timeout=1)
+                self.assertEqual(raised.exception.status_code, 504)
+                self.assertIn("cancelled-" + stalled_stage, events)
+                self.assertIn("session-closed", events)
+                self.assertIn("response-closed", events)
+                self.assertEqual(len(calls), 2 if stalled_stage == "retry" else 1)
 
 if __name__ == "__main__":
     unittest.main()

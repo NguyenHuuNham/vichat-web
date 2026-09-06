@@ -3235,6 +3235,7 @@ function App() {
   const forcedLogoutRef = useRef(false);
   const isLoggingOutRef = useRef(false);
   const accountSessionRef = useRef(0);
+  const chatbotRequestRef = useRef(null);
   const managementConversationSessionRef = useRef(0);
   const activeCallRef = useRef(null);
   const sessionRestoreAttemptedRef = useRef(false);
@@ -4891,6 +4892,14 @@ function App() {
       window.cancelAnimationFrame(conversationScrollFrameRef.current);
     }
   }, []);
+
+  useEffect(() => {
+    setIsTyping(false);
+    return () => {
+      chatbotRequestRef.current?.controller.abort();
+      chatbotRequestRef.current = null;
+    };
+  }, [isLoggedIn, managementViewerId, currentUser?.tenantId]);
 
   useEffect(() => {
     chatIsNearBottomRef.current = true;
@@ -11130,7 +11139,11 @@ function App() {
   // --- Send Message Action ---
   const handleSendMessage = async (textToSend = null) => {
     const text = (textToSend !== null ? textToSend : inputText).trim();
-    if (!text || (activeChat.isChatbot && isTyping)) return;
+    if (!text || (activeChat.isChatbot && (isTyping || chatbotRequestRef.current))) return;
+    if (activeChat.isChatbot && text.length > 4000) {
+      setChatError('Câu hỏi cho ViChat AI không được vượt quá 4000 ký tự.');
+      return;
+    }
     if (!allowDirectMessagingAttempt(activeChat)) return;
     if (!canSendInActiveGroup) {
       setChatError('Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.');
@@ -11164,7 +11177,7 @@ function App() {
       mentions,
       time: timeStr,
       createdAt,
-      pending: chatMode === 'tinode',
+      pending: chatMode === 'tinode' && (!activeChat.isChatbot || Boolean(activeChat.tinodeTopic)),
     };
 
     // 1. Cập nhật state tin nhắn gửi đi
@@ -11242,6 +11255,8 @@ function App() {
       return;
     }
     if (room?.isChatbot) {
+      const chatbotRequest = { controller: new AbortController(), session: accountSessionRef.current };
+      chatbotRequestRef.current = chatbotRequest;
       setIsTyping(true);
       try {
         const response = await requestChatbotReply({
@@ -11249,14 +11264,16 @@ function App() {
           messageId: newMsg.id,
           conversationId: room.id,
           user: currentUser,
+          signal: chatbotRequest.controller.signal,
           history: roomMessages(room)
-            .filter(item => item.type === 'text' && item.text)
+            .filter(item => item.type === 'text' && item.text && !item.failed && !item.fallback)
             .slice(-10)
             .map(item => ({
               role: item.sender === 'outgoing' ? 'user' : 'assistant',
               content: item.text,
             })),
         });
+        if (chatbotRequestRef.current !== chatbotRequest || accountSessionRef.current !== chatbotRequest.session) return;
         const replyCreatedAt = new Date().toISOString();
         const botMessage = {
           id: `bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -11271,9 +11288,11 @@ function App() {
           source: response.source,
           sources: response.sources,
           grounded: response.grounded,
+          fallback: Boolean(response.fallback),
         };
         saveChatbotMessage(currentUser?.id || currentUser?.uid, botMessage);
         setConversations(prev => {
+          if (accountSessionRef.current !== chatbotRequest.session) return prev;
           const chatbotRoom = prev[room.id];
           if (!chatbotRoom) return prev;
           return {
@@ -11289,14 +11308,19 @@ function App() {
           };
         });
       } catch (err) {
-        setChatError(err?.message || 'Trợ lý AI chưa thể phản hồi. Vui lòng thử lại.');
+        if (chatbotRequestRef.current === chatbotRequest && accountSessionRef.current === chatbotRequest.session) {
+          setChatError(err?.message || 'Trợ lý AI chưa thể phản hồi. Vui lòng thử lại.');
+        }
       } finally {
-        setIsTyping(false);
+        if (chatbotRequestRef.current === chatbotRequest) {
+          chatbotRequestRef.current = null;
+          setIsTyping(false);
+        }
       }
       return;
     }
 
-    setIsTyping(false);
+    if (!chatbotRequestRef.current) setIsTyping(false);
 
     if (chatMode === 'tinode') {
       const roomId = currentChatId;
@@ -13137,7 +13161,7 @@ function App() {
                         <MessageReplyPreview reply={msg.replyTo} copy={appCopy} onClick={reply => scrollToMessageById(reply.id)} />
                         {activeChat.isChatbot && !isOutgoing && (
                           <div className="chatbot-answer-label">
-                            <span><i className="fa-solid fa-sparkles"></i>{msg.grounded ? appCopy.t('Tóm tắt từ tài liệu') : msg.isWelcome ? 'ViChat AI' : appCopy.t('Phản hồi AI')}</span>
+                            <span><i className="fa-solid fa-sparkles"></i>{msg.grounded ? appCopy.t('Trích lọc từ tài liệu') : msg.isWelcome ? 'ViChat AI' : appCopy.t('Phản hồi AI')}</span>
                             {msg.grounded && <small>{appCopy.t('Đã đối chiếu nguồn')}</small>}
                           </div>
                         )}
@@ -13160,13 +13184,16 @@ function App() {
                           <div className="chatbot-sources">
                             <strong><i className="fa-solid fa-book-bookmark"></i>{appCopy.t('Nguồn tham khảo')}</strong>
                             {msg.sources.map((source, index) => (
-                              <div className="chatbot-source-card" key={`${source.document_id || source.title}-${index}`}>
-                                <span className="chatbot-source-index">{index + 1}</span>
-                                <span className="chatbot-source-copy">
-                                  <b>{source.title || source.file_name || `Nguồn ${index + 1}`}</b>
-                                  {source.snippet && <small>{source.snippet}</small>}
-                                </span>
-                              </div>
+                              <details className="chatbot-source-card" key={`${source.document_id || source.title}-${index}`}>
+                                <summary>
+                                  <span className="chatbot-source-index">{index + 1}</span>
+                                  <span className="chatbot-source-copy">
+                                    <b>{source.title || source.file_name || `Nguồn ${index + 1}`}</b>
+                                    <small>{appCopy.t('Xem đoạn trích nguồn')}</small>
+                                  </span>
+                                </summary>
+                                <p className="chatbot-source-snippet">{source.snippet || appCopy.t('Chưa có đoạn trích cho nguồn này.')}</p>
+                              </details>
                             ))}
                           </div>
                         )}
@@ -13351,7 +13378,7 @@ function App() {
                 <div className="chatbot-starter-heading">
                   <span className="chatbot-starter-eyebrow">{appCopy.t('TRỢ LÝ NỘI BỘ THEO CÔNG TY')}</span>
                   <h3>{appCopy.t('Hỏi như đang trao đổi với một đồng nghiệp hiểu tài liệu')}</h3>
-                  <p>{appCopy.t('ViChat AI tìm trong tài liệu của công ty hiện tại, tóm tắt câu trả lời và chỉ rõ nguồn để bạn kiểm tra.')}</p>
+                  <p>{appCopy.t('ViChat AI tìm trong tài liệu của công ty hiện tại, trích lọc nội dung liên quan và chỉ rõ nguồn để bạn kiểm tra.')}</p>
                 </div>
               </div>
               <div className="chatbot-starter-assurance" aria-label={appCopy.t('Phạm vi trả lời của ViChat AI')}>
@@ -13361,14 +13388,31 @@ function App() {
               </div>
               <div className="chatbot-starter-grid">
                 {CHATBOT_STARTER_PROMPTS.map(item => (
-                  <button type="button" key={item.title} title={appCopy.t(item.prompt)} onClick={() => handleSendMessage(appCopy.t(item.prompt))} disabled={isTyping || realtimeMessagingPending}>
+                  <button
+                    type="button"
+                    key={item.title}
+                    title={appCopy.t(item.prompt)}
+                    onClick={() => {
+                      const prompt = appCopy.t(item.prompt);
+                      setInputText(prompt);
+                      setDrafts(previous => ({ ...previous, [currentChatId]: prompt }));
+                      window.setTimeout(() => {
+                        const input = messageInputRef.current;
+                        if (currentChatIdRef.current !== currentChatId || input?.value !== prompt) return;
+                        input.focus();
+                        const placeholder = prompt.match(/\[[^\]]+\]/u);
+                        if (placeholder) input.setSelectionRange(placeholder.index, placeholder.index + placeholder[0].length);
+                      }, 0);
+                    }}
+                    disabled={isTyping || realtimeMessagingPending}
+                  >
                     <span className="chatbot-starter-icon"><i className={`fa-solid ${item.icon}`}></i></span>
                     <span><strong>{appCopy.t(item.title)}</strong><small>{appCopy.t(item.hint || item.prompt)}</small></span>
                     <i className="fa-solid fa-arrow-right"></i>
                   </button>
                 ))}
               </div>
-              <p className="chatbot-starter-tip"><i className="fa-regular fa-lightbulb"></i>{appCopy.t('Mẹo: nêu tên tài liệu, phòng ban hoặc mốc thời gian để nhận kết quả sát hơn.')}</p>
+              <p className="chatbot-starter-tip"><i className="fa-regular fa-lightbulb"></i>{appCopy.t('Chọn gợi ý, thay phần trong ngoặc vuông bằng chủ đề của bạn rồi nhấn Gửi.')}</p>
             </section>
           )}
 

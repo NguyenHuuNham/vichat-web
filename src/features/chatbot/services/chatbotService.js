@@ -5,21 +5,21 @@ export const EXTERNAL_CHAT_ONLY = String(env.VITE_CHAT_MODE || 'internal').toLow
 export const CHATBOT_STARTER_PROMPTS = [
   {
     icon: 'fa-file-lines',
-    title: 'Tóm tắt tài liệu',
-    hint: 'Nắm nhanh ý chính và việc cần làm',
-    prompt: 'Tóm tắt tài liệu quy trình mới nhất và liệt kê các bước tôi cần thực hiện.',
+    title: 'Trích lọc tài liệu',
+    hint: 'Điền tên tài liệu để tìm ý liên quan',
+    prompt: 'Trích lọc các ý chính trong tài liệu về [tên tài liệu hoặc chủ đề], kèm nguồn để kiểm tra.',
   },
   {
     icon: 'fa-route',
     title: 'Tìm đúng quy trình',
     hint: 'Tra cứu theo công việc hoặc phòng ban',
-    prompt: 'Tìm giúp tôi quy trình nội bộ liên quan đến công việc đang cần xử lý.',
+    prompt: 'Tìm quy trình về [công việc hoặc phòng ban] và trích dẫn các bước cần thực hiện.',
   },
   {
     icon: 'fa-scale-balanced',
-    title: 'Đối chiếu chính sách',
-    hint: 'So sánh điều kiện, phạm vi và lưu ý',
-    prompt: 'Đối chiếu các chính sách nội bộ liên quan và chỉ rõ điểm tôi cần lưu ý.',
+    title: 'Tra cứu chính sách',
+    hint: 'Tìm điều kiện, phạm vi và lưu ý',
+    prompt: 'Tra cứu [tên chính sách] và trích dẫn điều kiện áp dụng, kèm nguồn để kiểm tra.',
   },
 ];
 
@@ -69,6 +69,7 @@ const API_ROOT = API_URL.replace(/\/message\/?$/, '');
 const TINODE_CHATBOT_CONFIG_URL = API_ROOT ? `${API_ROOT}/tinode-config` : '';
 const CHAT_FILE_INGEST_URL = API_ROOT ? `${API_ROOT}/knowledge/chat-files` : '';
 const WITH_CREDENTIALS = String(env.VITE_CHATBOT_WITH_CREDENTIALS || 'true').toLowerCase() === 'true';
+export const CHATBOT_REQUEST_TIMEOUT_MS = 45_000;
 const CHAT_FILE_INGEST_MAX_SIZE = 20 * 1024 * 1024;
 const CHAT_FILE_INGEST_EXTENSIONS = new Set([
   'pdf', 'txt', 'md', 'markdown', 'csv', 'json', 'docx', 'xlsx', 'xls',
@@ -78,10 +79,15 @@ const LEGACY_STORAGE_PREFIXES = CHATBOT_ACCOUNT.id === 'vichat-ai'
   ? ['vichat.chatbot.bot-songhong.messages.']
   : [];
 
-function unavailableReply() {
+function unavailableReply(reason = 'unavailable') {
   return {
-    text: 'Chatbot hiện không kết nối được dịch vụ nội bộ. Vui lòng thử lại sau.',
+    text: reason === 'timeout'
+      ? 'ViChat AI phản hồi quá lâu. Bạn có thể thử lại sau.'
+      : reason === 'session'
+        ? 'Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại để hỏi ViChat AI.'
+        : 'Chatbot hiện không kết nối được dịch vụ nội bộ. Vui lòng thử lại sau.',
     source: 'unavailable',
+    errorCode: reason,
     sources: [],
     grounded: false,
     fallback: true,
@@ -428,35 +434,55 @@ export async function loadChatbotMessagesFromServer(user, conversationId = CHATB
   }
 }
 
-export async function requestChatbotReply({ message, messageId, conversationId, history = [] }) {
+export async function requestChatbotReply({ message, messageId, conversationId, history = [], signal, timeoutMs = CHATBOT_REQUEST_TIMEOUT_MS }) {
+  if (typeof message !== 'string' || !message.trim()) throw new Error('Vui lòng nhập câu hỏi cho ViChat AI.');
+  if (message.trim().length > 4000) throw new Error('Câu hỏi cho ViChat AI không được vượt quá 4000 ký tự.');
   if (!API_URL) return unavailableReply();
-  let response;
+  const controller = new AbortController();
+  const abortRequest = () => controller.abort();
+  if (signal?.aborted) return unavailableReply('cancelled');
+  signal?.addEventListener('abort', abortRequest, { once: true });
+  let timedOut = false;
+  const timeoutId = globalThis.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, Number.isFinite(timeoutMs) ? Math.max(1, Math.min(timeoutMs, CHATBOT_REQUEST_TIMEOUT_MS)) : CHATBOT_REQUEST_TIMEOUT_MS);
   try {
-    response = await fetch(API_URL, {
+    const response = await fetch(API_URL, {
       method: 'POST',
       credentials: WITH_CREDENTIALS ? 'include' : 'omit',
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
       body: JSON.stringify({
-        message,
+        message: message.trim(),
         message_id: messageId,
         conversation_id: conversationId,
-        history,
+        history: (Array.isArray(history) ? history : [])
+          .filter(item => ['user', 'assistant'].includes(item?.role) && typeof item.content === 'string' && item.content.trim())
+          .slice(-10)
+          .map(item => ({ role: item.role, content: item.content.trim().slice(0, 4000) })),
       }),
     });
+    const payload = await response.json().catch(() => ({}));
+    if (controller.signal.aborted) return unavailableReply(timedOut ? 'timeout' : 'cancelled');
+    if (!response.ok) return unavailableReply([401, 403].includes(response.status) ? 'session' : [408, 504].includes(response.status) ? 'timeout' : 'unavailable');
+    const reply = payload?.reply || payload?.message || payload?.text;
+    if (typeof reply !== 'string' || !reply.trim()) return unavailableReply();
+    const sources = (Array.isArray(payload.sources) ? payload.sources : [])
+      .filter(item => item && typeof item === 'object' && (
+        (typeof item.title === 'string' && item.title.trim()) || (typeof item.file_name === 'string' && item.file_name.trim())
+      ))
+      .slice(0, 20)
+      .map(item => ({
+        title: typeof item.title === 'string' ? item.title.trim().slice(0, 500) : '',
+        file_name: typeof item.file_name === 'string' ? item.file_name.trim().slice(0, 500) : '',
+        snippet: typeof item.snippet === 'string' ? item.snippet.slice(0, 2000) : '',
+      }));
+    return { text: reply.trim(), source: 'api', sources, grounded: payload.grounded === true && sources.length > 0 };
   } catch {
-    return unavailableReply();
+    return unavailableReply(timedOut ? 'timeout' : signal?.aborted ? 'cancelled' : 'unavailable');
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', abortRequest);
   }
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    if ([401, 403, 404, 502, 503, 504].includes(response.status)) return unavailableReply();
-    throw new Error(payload.error_message || `Chatbot API tra ve ${response.status}.`);
-  }
-  const reply = payload.reply || payload.message || payload.text;
-  if (!reply) return unavailableReply();
-  return {
-    text: String(reply),
-    source: 'api',
-    sources: Array.isArray(payload.sources) ? payload.sources : [],
-    grounded: Boolean(payload.grounded),
-  };
 }

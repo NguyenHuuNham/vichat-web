@@ -1,3 +1,4 @@
+import asyncio
 import re
 import unicodedata
 
@@ -11,7 +12,7 @@ class ChatbotServiceError(Exception):
 
 
 class ChatbotService(object):
-    """Model or webhook client. Retrieval is handled by ChatManagerService."""
+    """Model/webhook client with tenant-verified external retrieval."""
 
     def __init__(self, app):
         self.app = app
@@ -61,6 +62,8 @@ class ChatbotService(object):
     @staticmethod
     def _history_messages(history):
         messages = []
+        if not isinstance(history, (list, tuple)):
+            return messages
         for item in (history or [])[-10:]:
             if not isinstance(item, dict):
                 continue
@@ -79,6 +82,88 @@ class ChatbotService(object):
             {"role": item["role"], "content": item["content"][:800]}
             for item in self._history_messages(history)[-6:]
         ]
+
+    @staticmethod
+    def _question_key(message):
+        normalized = unicodedata.normalize("NFKD", str(message or "").casefold().replace("đ", "d"))
+        normalized = "".join(character for character in normalized if not unicodedata.combining(character))
+        return " ".join(re.sub(r"[^a-z0-9]+", " ", normalized).split())
+
+    @classmethod
+    def _assistant_guidance(cls, message):
+        question = cls._question_key(message)
+        if question in {"hi", "hello", "hey", "chao", "xin chao", "chao ban", "xin chao ban", "alo"}:
+            return (
+                "Chào bạn! Mình là ViChat AI. Mình giúp tra cứu và trích lọc tài liệu của công ty hiện tại. "
+                "Bạn hãy nêu tên tài liệu hoặc chủ đề, ví dụ: Quy trình xin nghỉ phép gồm những bước nào?"
+            )
+        if question in {"cam on", "cam on ban", "cam on ai", "thanks", "thank you", "ok", "oke"}:
+            return "Rất vui được hỗ trợ bạn. Bạn có thể hỏi tiếp về tài liệu vừa tra cứu hoặc nêu một chủ đề mới."
+        if question in {"help", "giup do", "huong dan", "huong dan su dung", "ban lam duoc gi", "ban la ai", "cach dung ai"}:
+            return (
+                "Bạn có thể hỏi theo ba cách:\n"
+                "1. Tra cứu: Quy trình xin nghỉ phép gồm những bước nào?\n"
+                "2. Trích lọc: Tóm tắt tài liệu [tên tài liệu hoặc chủ đề].\n"
+                "3. Hỏi tiếp: Nói rõ hơn phần đó, hoặc Tóm tắt ngắn hơn.\n\n"
+                "Mình chỉ sử dụng nguồn đã xác minh thuộc công ty hiện tại. "
+                "Khi thiếu nguồn, mình sẽ nói rõ thay vì tự đặt ra chính sách."
+            )
+        if question in {"tom tat", "tom tat tai lieu", "trich loc tai lieu", "tim tai lieu", "tim quy trinh", "tra cuu chinh sach"} or re.search(
+            r"\[(?:tên tài liệu hoặc chủ đề|công việc hoặc phòng ban|tên chính sách|document name or topic|task or department|policy name)\]",
+            str(message), re.IGNORECASE,
+        ):
+            return (
+                "Bạn hãy nêu tên tài liệu hoặc chủ đề cụ thể; nếu dùng mẫu gợi ý, hãy thay phần trong ngoặc vuông. "
+                "Ví dụ: Trích lọc các bước trong quy trình xin nghỉ phép của phòng nhân sự."
+            )
+        return None
+
+    @classmethod
+    def _is_retrieval_followup(cls, message):
+        question = cls._question_key(message)
+        return question in {
+            "noi ro hon", "noi ro hon phan do", "giai thich them", "chi tiet hon", "tiep tuc",
+            "tom tat ngan hon", "tom tat lai", "tom tat ngan gon", "con gi nua", "can luu y gi",
+            "more details", "tell me more", "summarize it", "make it shorter", "continue",
+        } or bool(re.search(r"\b(?:tai lieu|quy trinh|chinh sach|noi dung|phan) (?:nay|do|tren)\b", question))
+
+    def _retrieval_query(self, message, history):
+        message = str(message or "").strip()
+        if not self._is_retrieval_followup(message):
+            return message
+        for turn in reversed(self._retrieval_history(history)):
+            previous = turn["content"]
+            if turn["role"] != "user" or self._assistant_guidance(previous) or self._is_retrieval_followup(previous):
+                continue
+            if self._question_key(previous) == self._question_key(message):
+                continue
+            separator = "\nCâu hỏi tiếp theo: "
+            available = 4000 - len(separator) - len(message)
+            return previous[:available] + separator + message if available > 0 else message
+        return message
+
+    @classmethod
+    def _source_excerpt(cls, snippet, question, concise=False):
+        sentences = [" ".join(part.split()) for part in re.split(r"(?<=[.!?])\s+|\n+", snippet) if part.strip()]
+        ignored = {"toi", "ban", "minh", "giup", "cho", "ve", "va", "cua", "la", "nhung", "cac", "tom", "tat", "tai", "lieu", "the", "a", "an", "of", "and"}
+        keywords = set(cls._question_key(question).split()) - ignored
+        ranked = sorted(enumerate(sentences), key=lambda item: (
+            -len(keywords.intersection(cls._question_key(item[1]).split())), item[0],
+        ))
+        sentence_limit = 1 if concise else 3
+        best_index = ranked[0][0] if ranked else 0
+        start_index = max(0, min(best_index - (0 if concise else 1), len(sentences) - sentence_limit))
+        selected = sentences[start_index:start_index + sentence_limit]
+        excerpt = " ".join(selected)
+        if start_index:
+            excerpt = "… " + excerpt
+        if start_index + sentence_limit < len(sentences):
+            excerpt += " …"
+        character_limit = 320 if concise else 620
+        if len(excerpt) > character_limit:
+            clipped = excerpt[:character_limit - 1]
+            excerpt = (clipped.rsplit(" ", 1)[0] if " " in clipped else clipped) + "…"
+        return excerpt
 
     @staticmethod
     def _response_content(data):
@@ -174,7 +259,7 @@ class ChatbotService(object):
                 safe_user.get("current_tenant_id") or safe_user.get("tenant_id") or ""
             ).strip()
             payload = {
-                "message": str(message or "").strip(),
+                "message": self._retrieval_query(message, history),
                 # The provider currently searches a shared collection. Request
                 # its maximum candidates, then return only verified tenant files.
                 "top_k": 20 if self._tenant_filter_required() else self._retrieval_limit(),
@@ -298,7 +383,10 @@ class ChatbotService(object):
         if not isinstance(raw_sources, list):
             nested = data.get("data")
             raw_sources = nested.get("sources") if isinstance(nested, dict) else []
+        if not isinstance(raw_sources, list):
+            return []
         sources = []
+        seen = set()
         for item in (raw_sources or [])[:20]:
             if not isinstance(item, dict):
                 continue
@@ -308,11 +396,16 @@ class ChatbotService(object):
             relative_path = str(item.get("relative_path") or "").strip()
             path_name = relative_path.replace("\\", "/").rsplit("/", 1)[-1]
             title = str(item.get("title") or file_name or path_name or "Tài liệu").strip()
-            snippet = str(
+            snippet = (
                 item.get("snippet") or item.get("content") or item.get("text") or ""
-            ).strip()
-            if not snippet:
+            )
+            if not isinstance(snippet, str) or not snippet.strip():
                 continue
+            snippet = snippet.strip()
+            fingerprint = (cls._file_key(file_name or title), " ".join(snippet.casefold().split()))
+            if fingerprint in seen:
+                continue
+            seen.add(fingerprint)
             sources.append({
                 "title": title[:500],
                 "file_name": file_name[:500] if file_name else None,
@@ -322,7 +415,7 @@ class ChatbotService(object):
         return sources
 
     @classmethod
-    def _retrieval_reply(cls, data, tenant_manifest=None, limit=20):
+    def _retrieval_reply(cls, data, tenant_manifest=None, limit=20, message="", concise=False):
         sources = cls._retrieval_sources(data, tenant_manifest=tenant_manifest)[:limit]
         provider_answer = None if tenant_manifest is not None else cls._response_content(data)
         if provider_answer:
@@ -340,23 +433,15 @@ class ChatbotService(object):
                 "sources": [],
                 "grounded": False,
             }
-        unique_snippets = []
-        seen = set()
-        for item in sources:
-            snippet = " ".join(str(item.get("snippet") or "").split())
-            key = snippet.casefold()
-            if not snippet or key in seen:
-                continue
-            seen.add(key)
-            unique_snippets.append(snippet)
         summary = "\n\n".join(
-            "{}. {}".format(index, snippet)
-            for index, snippet in enumerate(unique_snippets[:5], 1)
+            "[{}] {}".format(index, cls._source_excerpt(item["snippet"], message, concise=concise))
+            for index, item in enumerate(sources[:2 if concise else 5], 1)
         )
         return {
             "reply": (
-                "Mình đã đối chiếu kho tri thức và tìm thấy các nội dung liên quan:\n\n{}\n\n"
-                "Bạn có thể mở phần Nguồn tham khảo để kiểm tra tài liệu gốc."
+                "Các ý liên quan được trích lọc từ tài liệu của công ty:\n\n{}\n\n"
+                "Số [n] tương ứng với Nguồn tham khảo bên dưới. Đây là các đoạn trích, "
+                "không phải toàn bộ tài liệu; hãy kiểm tra đầy đủ trước khi áp dụng."
             ).format(summary)[:8000].rstrip(),
             "sources": sources,
             "grounded": True,
@@ -464,6 +549,12 @@ class ChatbotService(object):
         )
         if retrieval_mode and self._tenant_filter_required() and not payload.get("tenant_id"):
             raise ChatbotServiceError("Verified tenant is required for RAG retrieval.", 503)
+        if retrieval_mode:
+            guidance = self._assistant_guidance(message)
+            if not guidance and self._is_retrieval_followup(message) and payload["message"] == str(message).strip():
+                guidance = "Bạn muốn hỏi tiếp về tài liệu hoặc chủ đề nào? Hãy nêu tên hoặc nội dung cần làm rõ để mình tra cứu đúng nguồn."
+            if guidance:
+                return {"reply": guidance, "sources": [], "grounded": False, "model": None, "provider": "assistant-guide", "usage": {}}
         if retrieval_mode and payload.get("history"):
             # Older retrieval endpoints reject unknown fields. Retry without
             # context only for schema errors so the existing AI flow survives.
@@ -505,6 +596,8 @@ class ChatbotService(object):
                                 data,
                                 tenant_manifest=tenant_manifest,
                                 limit=self._retrieval_limit(),
+                                message=request_payload["message"],
+                                concise=bool(re.search(r"\b(?:ngan hon|ngan gon|shorter|brief)\b", self._question_key(message))),
                             )
                             return {
                                 **retrieval,
@@ -550,7 +643,7 @@ class ChatbotService(object):
         if provider == "local":
             return await self._local_reply(context=context)
         if provider in ("external", "external-webhook", "webhook"):
-            return await self._external_reply(
+            external_reply = self._external_reply(
                 message=message,
                 user=user,
                 conversation_id=conversation_id,
@@ -558,6 +651,12 @@ class ChatbotService(object):
                 history=history,
                 include_context=include_context,
             )
+            if self._external_request_mode() not in ("knowledge-retrieval", "retrieval", "rag"):
+                return await external_reply
+            try:
+                return await asyncio.wait_for(external_reply, timeout=float(self.app.config.get("CHATBOT_TIMEOUT", 30)))
+            except asyncio.TimeoutError:
+                raise ChatbotServiceError("ViChat AI chờ nguồn tài liệu quá lâu. Vui lòng thử lại sau.", 504)
 
         api_url = self.app.config.get("CHATBOT_API_URL")
         api_key = self.app.config.get("CHATBOT_API_KEY")

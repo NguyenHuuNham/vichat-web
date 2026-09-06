@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-07-01 - Lam ro trich loc va hoi tiep trong ViChat AI
+
+- Thoi gian: 2026-09-07 00:54 (Asia/Saigon)
+- Loai: Sua loi | Web | Backend | Bao mat | UX | Kiem thu | Tai lieu
+- Trang thai: Hoan tat tai local; da ra soat, cho commit/push va deploy production
+- Muc tieu: Giup ViChat AI huong dan dung ro hon, xu ly cau hoi phu thuoc nhu `Noi ro hon`/`Tom tat ngan hon`, tra ve cac doan trich ngan co danh so va cho nguoi dung mo nguon de doi chieu ma khong bo sung mo hinh sinh noi dung.
+- Pham vi: Adapter Knowledge AI retrieval trong Chatmgt, HTTP fallback va giao dien ViChat AI tren web, i18n, timeout/huy request, regression test, tai lieu kien truc va production bundle; khong doi Tinode worker, mobile, chat ca nhan/nhom, file, call, presence, database, migration, secret hay bien moi truong.
+- File da thay doi: `README.md`, `chatservice-main/application/services/chatbot_service.py`, `chatservice-main/tests/test_chatbot_webhook_provider.py`, `src/app/App.jsx`, `src/features/chatbot/services/chatbotService.js`, `src/features/chatbot/services/chatbotService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/styles/index.css`, `docs/chat-backend-architecture.md`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Cau chao, cam on, huong dan va mau chua dien duoc xu ly bang thong diep huong dan xac dinh ma khong goi provider. Cau hoi phu thuoc duoc ghep voi cau hoi nguoi dung co noi dung gan nhat trong lich su gioi han; cau hoi moi van giu nguyen. Nguon da xac minh duoc loai trung, chon cac cau lien quan theo tu khoa, danh so `[n]`, gioi han do dai va rut gon them khi nguoi dung yeu cau ngan hon. Web doi cac the nguon thanh `details/summary`, mau goi y chi dien vao draft va chon placeholder de nguoi dung sua truoc khi gui. HTTP fallback gioi han cau hoi/lich su/nguon, co timeout 45 giay, huy khi doi account/cong ty va khong dua loi/fallback vao lich su hoi tiep.
+- Quyet dinh ky thuat: Tiep tuc coi snippet da qua manifest tenant cua Chatmgt la nguon duy nhat; bo qua provider answer trong retrieval mode va khong tong hop chinh sach moi. `CHATBOT_TIMEOUT` bao phu toan bo query, schema retry va manifest check o backend; client co ngan sach rieng de bao phu ca doc body. Khong tu dong retry cau hoi de tranh gui lap va khong luu them server-side memory.
+- Database/API/cau hinh: Khong migration, schema, endpoint, secret hoac bien moi truong moi. Hop dong response cu duoc giu, chi chuan hoa chat reply/sources/fallback chat phia web; deploy Chatmgt va ChatUI cung nhau.
+- Kiem thu: `node --test src/features/chatbot/services/chatbotService.test.js src/features/i18n/appLanguage.test.js` dat 48/48; `npm run test:frontend` dat 369/369; `npm run lint` exit 0 voi warning legacy/vendor co san; `npm run build:production` dat voi entry `index-B5i85ehC.js`, App `App-3LmgKNI_.js`, CSS `index-D_3NWJVV.css` va warning App chunk tren 500 KB. Tai `chatservice-main`, `py -3.8 -m unittest tests.test_chatbot_webhook_provider -v` dat 32/32; `py -3.8 -m unittest discover -s tests -q` chay 299, dat 198 va skip 101 dependency/runtime tuy chon; `py -3.8 -m py_compile application/services/chatbot_service.py tests/test_chatbot_webhook_provider.py` dat; `git diff --check` dat, chi co canh bao LF/CRLF cua worktree Windows.
+- Rui ro con lai: Chua UAT production bang phien Account that va chua doi chieu cau tra loi voi tai lieu that trong browser. Manifest Chatmgt van fail-closed nhung provider chua co tenant filter native, nen recall co the thieu khi tai lieu dung tenant khong nam trong global top 20. Dependency build van co canh bao chunk lon va cac warning lint vendor cu.
+- Viec tiep theo: Commit/push `master`, deploy release bat bien qua `ubuntu@103.74.122.206` den `ubuntu@192.168.80.20`, chi recreate `chatmgt` va `chat`, sau do kiem tra health, chatbot, public bundle, WSS, log va bao toan service stateful.
+- Commit/PR: Chua tao.
+
 ## 2026-09-06-05 - Tang tuong phan ten nguoi gui tren hinh nen
 
 - Thoi gian: 2026-09-06 22:14-23:10 (Asia/Saigon)

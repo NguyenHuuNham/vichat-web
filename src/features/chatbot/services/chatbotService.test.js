@@ -4,12 +4,14 @@ import test from 'node:test';
 
 import {
   CHATBOT_ACCOUNT,
+  CHATBOT_REQUEST_TIMEOUT_MS,
   CHATBOT_STARTER_PROMPTS,
   applyTinodeChatbotConfig,
   canIngestChatDocument,
   chatbotMessageCorrelationKey,
   ingestChatDocument,
   mergeChatbotMessages,
+  requestChatbotReply,
 } from './chatbotService.js';
 
 const appSource = readFileSync(new URL('../../../app/App.jsx', import.meta.url), 'utf8');
@@ -44,6 +46,177 @@ test('ViChat AI defaults use the new product identity and useful starter prompts
   assert.equal(CHATBOT_ACCOUNT.avatar, '/vichat-ai.svg');
   assert.equal(CHATBOT_STARTER_PROMPTS.length, 3);
   assert.ok(CHATBOT_STARTER_PROMPTS.every(item => item.title && item.prompt));
+  assert.ok(CHATBOT_STARTER_PROMPTS.every(item => /\[[^\]]+\]/u.test(item.prompt)));
+});
+
+test('AI starter suggestions fill editable drafts without sending messages', () => {
+  const starterSource = appSource.split('{CHATBOT_STARTER_PROMPTS.map(item => (')[1].split('chatbot-starter-tip')[0];
+  assert.match(starterSource, /setInputText\(prompt\)/);
+  assert.match(starterSource, /setDrafts\(previous => \(\{ \.\.\.previous, \[currentChatId\]: prompt \}\)\)/);
+  assert.match(starterSource, /input\.setSelectionRange\(placeholder\.index/);
+  assert.match(starterSource, /currentChatIdRef\.current !== currentChatId/);
+  assert.doesNotMatch(starterSource, /handleSendMessage|requestChatbotReply/);
+});
+
+test('AI HTTP replies are session guarded and sources are keyboard-expandable', () => {
+  const fallbackSource = appSource.split('const chatbotRequest = { controller: new AbortController()')[1].split("if (chatMode === 'tinode')")[0];
+  assert.match(appSource, /chatbotRequestRef\.current\?\.controller\.abort\(\)/);
+  assert.match(appSource, /\[isLoggedIn, managementViewerId, currentUser\?\.tenantId\]/);
+  assert.match(fallbackSource, /signal: chatbotRequest\.controller\.signal/);
+  assert.match(fallbackSource, /if \(chatbotRequestRef\.current !== chatbotRequest \|\| accountSessionRef\.current !== chatbotRequest\.session\) return;/);
+  assert.match(fallbackSource, /!item\.failed && !item\.fallback/);
+  assert.match(fallbackSource, /fallback: Boolean\(response\.fallback\)/);
+  assert.match(fallbackSource, /setConversations\(prev => \{\s*if \(accountSessionRef\.current !== chatbotRequest\.session\) return prev;/);
+  assert.match(fallbackSource, /if \(chatbotRequestRef\.current === chatbotRequest\) \{[\s\S]*?setIsTyping\(false\)/);
+  assert.match(appSource, /pending: chatMode === 'tinode' && \(!activeChat\.isChatbot \|\| Boolean\(activeChat\.tinodeTopic\)\)/);
+  assert.match(appSource, /<details className="chatbot-source-card"[\s\S]*?<summary>[\s\S]*?className="chatbot-source-snippet"/);
+  assert.match(appSource, /Trích lọc từ tài liệu/);
+});
+
+test('AI HTTP request preserves credentials and message ids but bounds history and sources', async context => {
+  let captured;
+  context.mock.method(globalThis, 'fetch', async (url, options) => {
+    captured = { url, options, body: JSON.parse(options.body) };
+    return {
+      ok: true,
+      json: async () => ({
+        reply: '  Verified excerpt  ',
+        grounded: true,
+        sources: [null, { title: ' ' }, { title: 3 }, ...Array.from({ length: 22 }, () => ({
+          title: 'Document '.repeat(80), file_name: 'policy.pdf', snippet: 'content '.repeat(350),
+        }))],
+      }),
+    };
+  });
+  const result = await requestChatbotReply({
+    message: '  Leave policy?  ', messageId: 'message-1', conversationId: 'vichat-ai',
+    history: [null, { role: 'system', content: 'Never forward' }, ...Array.from({ length: 12 }, (_, index) => ({
+      role: index % 2 ? 'assistant' : 'user', content: `turn-${index} ${'content '.repeat(700)}`,
+    })), { role: 'assistant', content: {} }],
+  });
+  assert.equal(captured.url, '/api/v1/chatbot/message');
+  assert.equal(captured.options.credentials, 'include');
+  assert.equal(captured.options.headers['Content-Type'], 'application/json');
+  assert.deepEqual(Object.keys(captured.body).sort(), ['conversation_id', 'history', 'message', 'message_id']);
+  assert.equal(captured.body.message, 'Leave policy?');
+  assert.equal(captured.body.message_id, 'message-1');
+  assert.equal(captured.body.conversation_id, 'vichat-ai');
+  assert.equal(captured.body.history.length, 10);
+  assert.ok(captured.body.history.every(item => item.content.length === 4000 && ['user', 'assistant'].includes(item.role)));
+  assert.ok(captured.body.history[0].content.startsWith('turn-2 '));
+  assert.equal(result.text, 'Verified excerpt');
+  assert.equal(result.grounded, true);
+  assert.equal(result.sources.length, 20);
+  assert.ok(result.sources.every(item => item.title.length === 500 && item.snippet.length === 2000));
+});
+
+test('AI rejects invalid or oversized questions before fetch and never truncates a question', async context => {
+  const fetchMock = context.mock.method(globalThis, 'fetch', async () => ({ ok: true, json: async () => ({ reply: 'OK' }) }));
+  for (const message of [null, {}, '', '   ', 'a'.repeat(4001)]) {
+    await assert.rejects(requestChatbotReply({ message }), /ViChat AI/);
+  }
+  assert.equal(fetchMock.mock.callCount(), 0);
+  await requestChatbotReply({ message: 'a'.repeat(4000), history: { role: 'user' } });
+  const body = JSON.parse(fetchMock.mock.calls[0].arguments[1].body);
+  assert.equal(body.message.length, 4000);
+  assert.deepEqual(body.history, []);
+});
+
+test('AI distinguishes session expiry and provider timeout without retrying', async context => {
+  let status = 401;
+  const fetchMock = context.mock.method(globalThis, 'fetch', async () => ({ ok: false, status, json: async () => ({ error_message: 'private upstream diagnostic' }) }));
+  for (const [nextStatus, expected] of [[401, 'session'], [403, 'session'], [408, 'timeout'], [504, 'timeout'], [502, 'unavailable']]) {
+    status = nextStatus;
+    const result = await requestChatbotReply({ message: 'Policy?' });
+    assert.equal(result.errorCode, expected);
+    assert.equal(result.fallback, true);
+    assert.equal(result.grounded, false);
+    assert.doesNotMatch(result.text, /private upstream diagnostic/);
+  }
+  assert.equal(fetchMock.mock.callCount(), 5);
+});
+
+test('AI ignores malformed responses and does not claim grounding without valid sources', async context => {
+  let payload;
+  context.mock.method(globalThis, 'fetch', async () => ({ ok: true, json: async () => payload }));
+  for (const invalid of [null, [], {}, { reply: {} }, { reply: '  ' }]) {
+    payload = invalid;
+    assert.equal((await requestChatbotReply({ message: 'Policy?' })).fallback, true);
+  }
+  payload = { reply: 'No verified source.', grounded: true, sources: [null, { title: ' ' }, { title: 7 }] };
+  assert.equal((await requestChatbotReply({ message: 'Policy?' })).grounded, false);
+  payload = { reply: 'Answer.', grounded: 'false', sources: [{ title: 'Source' }] };
+  assert.equal((await requestChatbotReply({ message: 'Policy?' })).grounded, false);
+});
+
+test('AI handles network and malformed JSON failures and clears its timeout', async context => {
+  const clearTimeoutMock = context.mock.method(globalThis, 'clearTimeout');
+  const fetchMock = context.mock.method(globalThis, 'fetch', async () => { throw new TypeError('network failure'); });
+  assert.equal((await requestChatbotReply({ message: 'Policy?' })).fallback, true);
+  fetchMock.mock.mockImplementation(async () => ({ ok: true, json: async () => { throw new SyntaxError('invalid json'); } }));
+  assert.equal((await requestChatbotReply({ message: 'Policy?' })).fallback, true);
+  assert.equal(clearTimeoutMock.mock.callCount(), 2);
+});
+
+test('AI pre-cancelled requests never start fetch or a timeout', async context => {
+  const controller = new AbortController();
+  controller.abort();
+  const fetchMock = context.mock.method(globalThis, 'fetch', async () => { throw new Error('must not fetch'); });
+  const timerMock = context.mock.method(globalThis, 'setTimeout');
+  const result = await requestChatbotReply({ message: 'Policy?', signal: controller.signal });
+  assert.equal(result.errorCode, 'cancelled');
+  assert.equal(fetchMock.mock.callCount(), 0);
+  assert.equal(timerMock.mock.callCount(), 0);
+});
+
+test('AI caller cancellation aborts fetch and removes its listener', async context => {
+  const controller = new AbortController();
+  const removeListenerMock = context.mock.method(controller.signal, 'removeEventListener');
+  let requestSignal;
+  context.mock.method(globalThis, 'fetch', (_url, options) => new Promise((_resolve, reject) => {
+    requestSignal = options.signal;
+    options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+  }));
+  const pending = requestChatbotReply({ message: 'Policy?', signal: controller.signal });
+  controller.abort();
+  const result = await pending;
+  assert.equal(requestSignal.aborted, true);
+  assert.equal(result.errorCode, 'cancelled');
+  assert.equal(removeListenerMock.mock.callCount(), 1);
+});
+
+test('AI timeout covers a stalled response body and clears the request timer', { timeout: 1500 }, async context => {
+  let requestSignal;
+  const clearTimeoutMock = context.mock.method(globalThis, 'clearTimeout');
+  context.mock.method(globalThis, 'fetch', async (_url, options) => {
+    requestSignal = options.signal;
+    return {
+      ok: true,
+      json: () => new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+      }),
+    };
+  });
+  const result = await requestChatbotReply({ message: 'Policy?', timeoutMs: 10 });
+  assert.equal(CHATBOT_REQUEST_TIMEOUT_MS, 45000);
+  assert.equal(result.errorCode, 'timeout');
+  assert.equal(result.fallback, true);
+  assert.equal(requestSignal.aborted, true);
+  assert.equal(clearTimeoutMock.mock.callCount(), 1);
+});
+
+test('AI successful replies clear the bounded timer and cancellation listener', async context => {
+  const controller = new AbortController();
+  const timerMock = context.mock.method(globalThis, 'setTimeout');
+  const clearTimeoutMock = context.mock.method(globalThis, 'clearTimeout');
+  const removeListenerMock = context.mock.method(controller.signal, 'removeEventListener');
+  context.mock.method(globalThis, 'fetch', async () => ({ ok: true, json: async () => ({ reply: 'OK' }) }));
+  for (const timeoutMs of [Infinity, NaN, 999999, -1]) {
+    await requestChatbotReply({ message: 'Policy?', signal: controller.signal, timeoutMs });
+  }
+  assert.deepEqual(timerMock.mock.calls.map(call => call.arguments[1]), [45000, 45000, 45000, 1]);
+  assert.equal(clearTimeoutMock.mock.callCount(), 4);
+  assert.equal(removeListenerMock.mock.callCount(), 4);
 });
 
 test('ViChat AI UI and fallback request do not expose knowledge management or RAG selection', () => {

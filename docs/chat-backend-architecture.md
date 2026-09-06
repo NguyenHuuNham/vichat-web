@@ -1035,10 +1035,19 @@ with the server-only `X-API-Key`, sends the tenant from the verified Chatmgt
 session/Tinode account in both JSON `tenant_id` and `X-Tenant-Id`, plus
 `message`, bounded `top_k`, and when `CHATBOT_RETRIEVAL_INCLUDE_HISTORY=true`
 at most six recent role/content turns with each turn limited to 800 characters.
-This bounded context lets a provider match the group's language and tone
-without sending employee identity, credentials, tenant secrets or local
-knowledge records. If an older retrieval endpoint rejects the optional history
-field, Chatmgt retries without `history` while retaining both tenant values.
+No employee identity, credentials, tenant secrets or local knowledge records
+are added to this bounded context. The provider's documented search contract
+does not promise to use optional history. For recognized dependent questions
+such as `Nói rõ hơn`, Chatmgt therefore prepends the most recent substantive
+user question from those six turns directly to `message`, keeping the combined
+query within 4,000 characters. Assistant answers, greetings and earlier vague
+follow-ups are not used as the topic. A new substantive question is sent as-is;
+history disabled, missing or expired means no expansion. Greetings/help and
+topic-less follow-ups receive deterministic guidance with `grounded=false`
+after the verified-tenant requirement, without fetching provider documents.
+If an older retrieval endpoint rejects the optional history field, Chatmgt
+retries without `history` while retaining both tenant values and the expanded
+query. This does not introduce server-side memory beyond existing history.
 Because the current provider searches a shared collection, Chatmgt requests up
 to 20 candidates and fetches `CHATBOT_FILES_URL` after each retrieval. It builds
 a tenant ownership manifest from `file_id` and normalized `file_name`, discards
@@ -1049,6 +1058,31 @@ objects are normalized into a grounded reply, capped by
 `CHATBOT_RETRIEVAL_LIMIT`. A missing/invalid manifest or missing verified tenant
 fails closed. The worker publishes the safe reply back to the same Tinode topic
 and persists a cursor/idempotency key so reconnects do not duplicate replies.
+
+Verified sources are deduplicated by file and normalized snippet before
+numbering. The answer shows at most five extracts, each keeping up to three
+adjacent sentences around a keyword match and bounded to 620 characters;
+ellipsis marks omitted context rather than stitching disjoint sentences.
+A request for a shorter answer
+shows at most two extracts of one sentence/320 characters. The original bounded
+source list (2,000 characters per snippet) remains available for inspection.
+The UI labels these as extracts rather than a generated document summary and
+allows keyboard expansion of each source card. No unverified provider answer
+or assistant-history text is used to synthesize policy. This remains retrieval,
+not an added LLM generation service or a guarantee of full-document coverage.
+
+In retrieval mode, the existing `CHATBOT_TIMEOUT` is also the end-to-end budget
+for provider fetch, an optional schema retry, and tenant-manifest verification.
+Cancellation closes the HTTP session and reports a safe 504 error; other
+provider modes keep their existing request flow. ChatUI's direct HTTP fallback
+validates the 4,000-character question before sending, limits history/sources,
+uses a 45-second timeout through body parsing, and aborts on account/tenant
+changes or unmount. An account-session/request-identity guard prevents stale
+answers or errors from entering a new session. Failed/fallback messages do not
+enter subsequent client history, and automatic message retries are not added.
+Only HTTP fallback messages avoid the Tinode pending flag when no bot topic
+exists. Tinode topic routing, group mention gating, worker state, ordinary
+messages, presence, calls, document ingest and mobile are not changed.
 
 Web document indexing is an additive side path after successful Tinode publish.
 ChatUI calls authenticated `POST /api/v1/chatbot/knowledge/chat-files` only for
