@@ -9,6 +9,8 @@ from application.server import app
 
 PRESENCE_KEY_PREFIX = "vichat:presence:"
 LAST_SEEN_KEY_PREFIX = "vichat:last-seen:"
+PRESENCE_SEQUENCE_KEY_PREFIX = "vichat:presence-sequence:"
+PRESENCE_SEQUENCE_TTL = 24 * 60 * 60
 DEFAULT_PRESENCE_TTL = 8
 MAX_PRESENCE_TTL = 60
 # Keep enough history for an offline duration without turning Redis into a
@@ -27,6 +29,20 @@ if (not current) or incoming > current then
   return 1
 end
 return 0
+"""
+
+_PRESENCE_SEQUENCE_SCRIPT = """
+local incoming = tonumber(ARGV[1])
+local current = tonumber(redis.call('GET', KEYS[2]))
+if current and incoming <= current then
+  return 0
+end
+redis.call('SETEX', KEYS[2], ARGV[2], ARGV[1])
+if ARGV[3] == 'online' then
+  redis.call('SETEX', KEYS[1], ARGV[4], '1')
+  return 1
+end
+return redis.call('DEL', KEYS[1])
 """
 
 
@@ -104,21 +120,49 @@ def _write_last_seen(redisdb, tenant_id, account_id, now_ms=None):
     redisdb.setex(key, LAST_SEEN_TTL, str(timestamp))
 
 
-def mark_online(tenant_id, account_id, session_id, now_ms=None):
+def _update_lease(redisdb, tenant_id, account_id, session_id, online, sequence):
+    key = _presence_key(tenant_id, account_id, session_id)
+    if sequence is not None:
+        if type(sequence) is not int or not 0 < sequence <= 9007199254740991:
+            raise ValueError("Invalid presence sequence")
+        sequence_key = "{}{}".format(
+            PRESENCE_SEQUENCE_KEY_PREFIX, key[len(PRESENCE_KEY_PREFIX):],
+        )
+        evaluator = getattr(redisdb, "eval", None)
+        if callable(evaluator):
+            return bool(evaluator(
+                _PRESENCE_SEQUENCE_SCRIPT,
+                2,
+                key,
+                sequence_key,
+                str(sequence),
+                str(PRESENCE_SEQUENCE_TTL),
+                "online" if online else "offline",
+                str(presence_ttl()),
+            ))
+        current = redisdb.get(sequence_key)
+        if current is not None and sequence <= int(current):
+            return False
+        redisdb.setex(sequence_key, PRESENCE_SEQUENCE_TTL, str(sequence))
+    if online:
+        redisdb.setex(key, presence_ttl(), "1")
+        return True
+    return bool(redisdb.delete(key))
+
+def mark_online(tenant_id, account_id, session_id, now_ms=None, sequence=None):
     """Refresh one browser session lease without failing the chat request."""
     redisdb = database.redisdb
     if redisdb is None or not tenant_id or not account_id or not session_id:
         return False
+    timestamp = _timestamp_ms(now_ms)
     try:
-        redisdb.setex(
-            _presence_key(tenant_id, account_id, session_id),
-            presence_ttl(),
-            "1",
-        )
+        changed = _update_lease(redisdb, tenant_id, account_id, session_id, True, sequence)
     except Exception:
         return False
+    if not changed:
+        return True
     try:
-        _write_last_seen(redisdb, tenant_id, account_id, now_ms)
+        _write_last_seen(redisdb, tenant_id, account_id, timestamp)
     except Exception:
         # Last-seen is additive metadata; a write failure must not invalidate
         # the presence lease that keeps the active session online.
@@ -126,17 +170,20 @@ def mark_online(tenant_id, account_id, session_id, now_ms=None):
     return True
 
 
-def mark_offline(tenant_id, account_id, session_id, now_ms=None):
+def mark_offline(tenant_id, account_id, session_id, now_ms=None, sequence=None):
     """Remove only this session lease so another tab/device stays online."""
     redisdb = database.redisdb
     if redisdb is None or not tenant_id or not account_id or not session_id:
         return False
+    timestamp = _timestamp_ms(now_ms)
     try:
-        redisdb.delete(_presence_key(tenant_id, account_id, session_id))
+        changed = _update_lease(redisdb, tenant_id, account_id, session_id, False, sequence)
     except Exception:
         return False
+    if not changed:
+        return True
     try:
-        _write_last_seen(redisdb, tenant_id, account_id, now_ms)
+        _write_last_seen(redisdb, tenant_id, account_id, timestamp)
     except Exception:
         # Removing the lease is the authoritative offline operation. Keep the
         # endpoint successful when only optional elapsed-time metadata fails.

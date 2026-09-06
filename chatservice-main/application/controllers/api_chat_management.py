@@ -3737,6 +3737,11 @@ def _presence_session_id(current_user, body):
         or len(jwt_session_id) > 128
     ):
         return ""
+    sequence = body.get("sequence")
+    if sequence is not None and (
+        type(sequence) is not int or not 0 < sequence <= 9007199254740991
+    ):
+        return ""
     # Keep tabs independent while binding a lease to the authenticated JWT.
     return "{}.{}".format(jwt_session_id, browser_session_id)
 
@@ -3801,7 +3806,7 @@ async def chat_presence_heartbeat(request):
             "error_message": "A browser presence session is required.",
         }, status=400)
     account_id = _user_id(current_user)
-    if not mark_online(tenant_id, account_id, session_id):
+    if not mark_online(tenant_id, account_id, session_id, sequence=body.get("sequence")):
         return _presence_unavailable_error()
     requested_ids = _tenant_presence_ids(tenant_id, _presence_account_ids(body))
     snapshot = presence_snapshot(tenant_id, requested_ids)
@@ -3844,13 +3849,14 @@ async def chat_presence_offline(request):
     session_error = _chat_session_required_for_presence(request)
     if session_error is not None:
         return session_error
-    session_id = _presence_session_id(current_user, _presence_request_body(request))
+    body = _presence_request_body(request)
+    session_id = _presence_session_id(current_user, body)
     if not session_id:
         return json({
             "error_code": "PARAM_ERROR",
             "error_message": "A browser presence session is required.",
         }, status=400)
-    if not mark_offline(tenant_id, _user_id(current_user), session_id):
+    if not mark_offline(tenant_id, _user_id(current_user), session_id, sequence=body.get("sequence")):
         return _presence_unavailable_error()
     return json({"offline": True})
 

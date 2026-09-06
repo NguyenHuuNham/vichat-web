@@ -26,6 +26,7 @@ const tinodeSource = readFileSync(new URL('./tinodeClient.js', import.meta.url),
 const avatarCropSource = readFileSync(new URL('../../contacts/components/AvatarCropModal.jsx', import.meta.url), 'utf8');
 const categoryManagerSource = readFileSync(new URL('../components/ConversationCategoryManager.jsx', import.meta.url), 'utf8');
 const managementServiceSource = readFileSync(new URL('./chatManagementService.js', import.meta.url), 'utf8');
+const browserPresenceSource = readFileSync(new URL('./browserPresence.js', import.meta.url), 'utf8');
 const mobileStoreSource = readFileSync(new URL('../../../../mobile/src/store/appStore.ts', import.meta.url), 'utf8');
 const mobileConversationListSource = readFileSync(new URL('../../../../mobile/src/screens/chat/ConversationListScreen.tsx', import.meta.url), 'utf8');
 
@@ -353,8 +354,16 @@ test('uses the Chatmgt heartbeat for directory presence and cleans it up on logo
   assert.match(managementServiceSource, /\/api\/v1\/chat\/presence\/offline/);
   assert.match(appSource, /last_seen_at \|\| payload\?\.lastSeenAt/);
   assert.match(appSource, /chatManagementService\.heartbeatPresence\(accountIds\)/);
-  assert.match(appSource, /setInterval\(syncDirectoryPresence, 2000\)/);
+  assert.match(appSource, /return startBrowserPresence\(/);
+  assert.match(browserPresenceSource, /setInterval\(syncDirectoryPresence, 2000\)/);
+  assert.match(managementServiceSource, /sequence: \+\+presenceSequence/g);
   assert.doesNotMatch(appSource, /getDirectoryPresence\(/);
+});
+
+test('Tinode offline observations never fabricate a last-seen timestamp on the viewing browser', () => {
+  const eventHandler = appSource.split("if (event.type === 'presence') {")[1].split("if (event.type === 'presence-snapshot')")[0];
+  assert.match(eventHandler, /applyPresenceSnapshot\(\{ \[event\.uid\]: Boolean\(event\.online\) \}\)/);
+  assert.doesNotMatch(eventHandler, /Date\.now|new Date|lastSeen|last_seen/);
 });
 
 test('uses the previous Inter font and renders a green indicator only for online presence', () => {

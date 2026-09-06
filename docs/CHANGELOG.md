@@ -6,6 +6,38 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-06-04 - Phat hanh ban sua moc ngoai tuyen qua hai chang SSH
+
+- Thoi gian: 2026-09-06 16:07 (Asia/Saigon)
+- Loai: Van hanh | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien; nguoi dung da yeu cau commit va deploy
+- Muc tieu: Dua ban sua presence tai muc `2026-09-06-03` len production, khong anh huong du lieu va cac luong chat khac.
+- Pham vi: Commit/push `master`, build va recreate rieng Chatmgt/ChatUI tren `192.168.80.20`, di qua `ubuntu@103.74.122.206` roi `ubuntu@192.168.80.20`.
+- File da thay doi: `docs/CHANGELOG.md`; release gom cac file da liet ke tai muc `2026-09-06-03`.
+- Noi dung: Da xac nhan host dich `chat-server`, release dang chay `font-restore-0af5eb4-20260906-r2`, ChatUI/Chatmgt healthy; cac service stateful, Tinode bridge, chatbot va Coturn giu nguyen.
+- Quyet dinh ky thuat: Release bat bien tu git archive cua source commit; sao luu `.env`, runtime va PostgreSQL truoc khi thay container, tag image rollback, test candidate va Redis Lua truoc khi switch. Khong chay bootstrap/start.sh hoac reset/migrate database cho ban sua nay.
+- Database/API/cau hinh: Khong migration hoac cau hinh moi; body presence them sequence tuy chon nhu muc `2026-09-06-03`.
+- Kiem thu: Chay lai `npm run test:frontend` dat 357/357; `npm run lint` va `npm run build:production` exit 0, warning legacy/vendor va chunk >500 KB co san. `py -3.8 -m unittest discover -s tests -q` chay 286, dat 185, skip 101 do runtime tuy chon; `py -3.14 -m unittest tests.test_presence_service -q` voi PYTHONPATH test dependency rieng dat 14/14 gom Lua. `py_compile` cac file presence/controller/test dat; `git fetch origin` thanh cong, local/remote `master` khong lech truoc commit. Candidate va public verify se duoc cap nhat sau deploy.
+- Rui ro con lai: Chua deploy o thoi diem bat dau muc nay; UAT browser bang tai khoan that can xac nhan sau phat hanh.
+- Viec tiep theo: Hoan tat test, commit/push, backup/deploy, verify public bundle/health/WSS/API/tenant isolation, cap nhat muc nay va tao commit tai lieu ban giao.
+- Commit/PR: Chua tao.
+
+## 2026-09-06-03 - Tinh ngoai tuyen tu moc roi web, khong tu gio nhan su kien
+
+- Thoi gian: 2026-09-06 15:58 (Asia/Saigon)
+- Loai: Sua loi | Web | Backend | API | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; chua commit, push, deploy production hoac UAT browser bang tai khoan that
+- Muc tieu: Nguoi da roi web nhieu ngay khong bi hien ngoai tuyen mot gio chi vi nguoi xem mo web/reconnect; thoi gian phai dua tren moc hoat dong/roi web do server ghi nhan.
+- Pham vi: Presence va last-seen cua ChatUI/Chatmgt; giu nguyen Tinode message, topic, membership, upload, sticker, call, authentication, Workspace, mobile va font Inter.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/browserPresence.js`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/chat/services/directoryPresence.test.js`, `chatservice-main/application/services/presence_service.py`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_presence_service.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`, `dist/index.html` tu production build.
+- Noi dung: Tim thay handler Tinode `presence/off` gan `Date.now()` tren trinh duyet nguoi xem cho last-seen cua nguoi khac. Contact offline tu truoc van phat su kien luc dong bo/reconnect, va phep merge lay moc moi nhat giu lai moc gia thay vi moc server cu. Bo timestamp tu tao; su kien Tinode chi doi boolean, thoi luong lay tu Chatmgt, thieu du lieu thi chi hien ngoai tuyen. Tach vong doi browser presence: an tab/roi trang gui offline keepalive mot lan va dung heartbeat; hien lai/pageshow tiep tuc, bo response tre tu vong doi cu. Offline lap, session chua tung online hoac lease da het han khong cap nhat last-seen. Khong dung thoi gian tin nhan de suy doan lan roi web.
+- Quyet dinh ky thuat: Giu nguyen boolean Tinode de tranh thay doi cac luong realtime dang co; chi Chatmgt cung cap moc tinh thoi luong. Them sequence theo browser-session de Redis Lua bo qua heartbeat/offline trung hoac den sai thu tu, tranh heartbeat tre lam online lai sau khi roi web va offline tre xoa lease khi da quay lai. Sequence tach theo tenant/account/JWT/browser, TTL 24 gio; online TTL 8 giay, last-seen TTL 90 ngay va monotonic compare-and-set giu nguyen. Khong disconnect Tinode khi an tab, khong doi session, conversation hay browser preference. Test service co the chay voi stub dependency trong bo nho neu thieu runtime Chatmgt, khong sua dependency production.
+- Database/API/cau hinh: Khong migration, schema PostgreSQL, secret hay bien moi truong moi. Body heartbeat/offline them `sequence` tuy chon la so nguyen duong <= 9007199254740991; client cu khong gui van tuong thich, response giu nguyen. Them key Redis `vichat:presence-sequence:` tu het han; khong xoa/reset du lieu cu.
+- Kiem thu: `node --test src/features/chat/services/directoryPresence.test.js src/features/chat/services/chatManagementService.test.js src/features/contacts/services/accountDirectory.test.js src/features/chat/services/timeFormatting.test.js` dat 107/107; `npm run test:frontend` dat 357/357; `npm run lint` exit 0, warning legacy/vendor co san; `npm run build:production` dat, entry `index-JH_gVovt.js`, App `App-BYUvBBpA.js`, CSS Inter giu nguyen `index-DMJdiIuh.css`, warning App chunk >500 KB co san. Tai `chatservice-main`, `py -3.8 -m unittest tests.test_presence_service tests.test_chat_auth_contract -q` chay 70, dat 69, skip 1 test Lua tuy chon; `py -3.8 -m unittest discover -s tests -q` chay 286, dat 185, skip 101 vi dependency/runtime tuy chon. `py -3.8 -m py_compile application/services/presence_service.py application/controllers/api_chat_management.py tests/test_presence_service.py tests/test_chat_auth_contract.py` dat. Cai rieng test dependency bang `py -3.14 -m pip install --disable-pip-version-check --target "$env:TEMP/vichat-presence-lua-20260906" 'fakeredis[lua]'`; dat `PYTHONPATH` toi thu muc do va chay `py -3.14 -m unittest tests.test_presence_service -v` dat 14/14, gom thuc thi Lua qua fakeredis/lupa, khong chi test nhanh fallback. Test bao phu roi web 3 ngay, khong co moc, tab an tu luc restore, nhieu tab/tenant, cleanup lap, lease het han, heartbeat/offline tre, response sau doi account/tenant, Loi Redis va giu luong chat doc lap. `git diff --check` dat.
+- Rui ro con lai: Chua UAT browser that vi phien nay khong co cong cu dieu khien browser, khong co Docker local de chay image production; fakeredis/Lua khong thay the Redis integration tren production. Mat mang/crash khong gui duoc offline thi dung heartbeat cuoi, sai so theo chu ky heartbeat thay vi tu tao gio hien tai. Lich su chua tung duoc server luu hoac het TTL khong the khoi phuc tu tin nhan; moc Redis da bi cleanup cu ghi sai khong tu sua bang du doan. Tab con dung bundle cu can reload.
+- Viec tiep theo: Khi duoc yeu cau phat hanh, commit/push va deploy Chatmgt truoc/kem ChatUI, khong reset PostgreSQL/Redis/Tinode/storage; rollback code hai service stateless neu can, key sequence tu het han. UAT hai tai khoan: mo web xem nguoi offline lau, an/dong tab roi quay lai, thu nhieu tab, reconnect/mat mang va kiem tra chat ca nhan/nhom, file, sticker, call, chuyen tenant. Chua thay doi website production trong lan lam viec nay.
+- Commit/PR: Chua tao.
+
 ## 2026-09-06-02 - Khoi phuc font Inter cu cho ChatUI
 
 - Thoi gian: 2026-09-06 13:57-14:17 (Asia/Saigon)

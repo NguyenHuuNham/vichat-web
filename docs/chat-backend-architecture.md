@@ -447,15 +447,29 @@ the existing topic API.
 
 Web ChatUI keeps Tinode as the source of presence for subscribed conversations,
 but directory-wide presence uses an independent Chatmgt lease. Each authenticated
-browser sends a heartbeat every two seconds to
+visible browser sends a heartbeat every two seconds to
 `POST /api/v1/chat/presence/heartbeat`; Chatmgt stores a tenant-scoped,
 session-scoped Redis key with an eight-second TTL and a separate tenant/account
 last-seen key with a bounded 90-day TTL. The session lease is authoritative;
 last-seen writes are best-effort so an optional metadata failure cannot invalidate
 a successful online refresh or offline cleanup. Heartbeat and logout updates use
 an atomic Redis compare-and-set so a delayed older request cannot move the stored
-activity boundary backwards. Logout and `pagehide` remove only
-the current browser lease and then attempt to store the final timestamp. The
+activity boundary backwards. Hidden tabs stop heartbeats; `visibilitychange`
+to hidden, logout and `pagehide` remove only the current browser lease. A
+successful removal records the server timestamp as the departure boundary;
+repeated cleanup, unknown sessions and already-expired leases must not advance
+last-seen. Other visible tabs/devices keep their independent leases. Becoming
+visible or restoring a page through `pageshow` resumes heartbeats without
+disconnecting Tinode, calls, messages or other background features.
+
+Heartbeat/offline bodies accept an optional positive safe-integer `sequence`,
+monotonically incremented by the browser for its presence session. Redis applies
+it atomically with the lease mutation and retains the last sequence for 24 hours
+after the latest accepted event. A delayed heartbeat cannot revive a departed
+tab, and delayed offline cleanup cannot remove a resumed tab. Invalid sequences
+are rejected as request errors; legacy clients without a sequence remain
+compatible. Client timestamps are never used to set the activity boundary.
+Responses from a previous visibility/account/tenant lifecycle are ignored. The
 response keeps the existing boolean `presence` map and adds a parallel
 `last_seen_at` map, so older clients remain compatible while ChatUI can render
 elapsed offline time. The optional batch endpoint reads the same snapshot
@@ -474,6 +488,13 @@ offline labels use the last activity boundary when available and fall back to
 This does not subscribe to P2P topics, create conversations, change membership,
 or copy presence into Chatmgt/PostgreSQL. Tinode `me` `on`/`off` events still apply
 immediately when a P2P subscription exists.
+Those Tinode events update the online boolean only: initial contact sync and
+reconnect may report an account that has already been offline for days. Receiving
+that event must never set last-seen to the observer's current time. Only retained
+Chatmgt activity timestamps determine the offline duration; neither message time,
+directory refresh nor the observer opening ChatUI can create a departure time.
+If no server timestamp was retained, ChatUI shows the plain offline label rather
+than inventing elapsed time.
 
 Recall is an event overlay shared by mobile and ChatUI. `mode=all` hides the
 original content and attachment for every participant and keeps a

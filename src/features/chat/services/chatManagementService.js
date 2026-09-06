@@ -29,6 +29,7 @@ function createPresenceSessionId() {
 }
 
 const presenceSessionId = createPresenceSessionId();
+let presenceSequence = 0;
 
 let activeSession = null;
 let activeTinodePassword = '';
@@ -706,6 +707,7 @@ export const chatManagementService = {
       method: 'POST',
       body: JSON.stringify({
         session_id: presenceSessionId,
+        sequence: ++presenceSequence,
         account_ids: ids,
       }),
     });
@@ -727,7 +729,7 @@ export const chatManagementService = {
     return apiRequest('/api/v1/chat/presence/offline', {
       method: 'POST',
       keepalive,
-      body: JSON.stringify({ session_id: presenceSessionId }),
+      body: JSON.stringify({ session_id: presenceSessionId, sequence: ++presenceSequence }),
     });
   },
 

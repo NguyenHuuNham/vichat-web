@@ -1181,7 +1181,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("/api/v1/chat/presence/offline", controller_source)
         self.assertIn("ManagementAccount.tenant_id == tenant_id", controller_source)
         self.assertIn("ManagementAccount.id.in_(requested_ids)", controller_source)
-        self.assertIn("mark_online(tenant_id, account_id, session_id)", controller_source)
+        self.assertIn('mark_online(tenant_id, account_id, session_id, sequence=body.get("sequence"))', controller_source)
         self.assertIn("presence_snapshot", controller_source)
         self.assertIn("last_seen_at", controller_source)
         self.assertIn("LAST_SEEN_TTL", presence_source)

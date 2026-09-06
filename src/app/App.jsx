@@ -9,6 +9,7 @@ import StickerPicker from '../features/chat/components/StickerPicker';
 import ConversationCategoryManager from '../features/chat/components/ConversationCategoryManager';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation, normalizeTinodeMediaUrl } from '../features/chat/services/tinodeClient';
 import { shouldRetryProtectedMediaAfterSession } from '../features/chat/services/mediaRetryPolicy';
+import { startBrowserPresence } from '../features/chat/services/browserPresence';
 import {
   chatManagementService,
   isAccountManaged,
@@ -5416,11 +5417,7 @@ function App() {
       if (tinodeClient.authenticated) setConnectionStatus('online');
       if (event.type === 'presence') {
         if (event.uid) {
-          const online = Boolean(event.online);
-          applyPresenceSnapshot(
-            { [event.uid]: online },
-            online ? {} : { [event.uid]: Date.now() },
-          );
+          applyPresenceSnapshot({ [event.uid]: Boolean(event.online) });
         }
         return;
       }
@@ -7142,58 +7139,26 @@ function App() {
     if (!isLoggedIn || !chatManagementService.remote || !managementViewerId) return undefined;
     const accountSession = accountSessionRef.current;
     const directoryTenantId = accountTenantId(currentUserRef.current || currentUser);
-    let cancelled = false;
-    let syncing = false;
-    const syncDirectoryPresence = async () => {
-      if (
-        cancelled
-        || syncing
-        || accountSessionRef.current !== accountSession
-        || accountTenantId(currentUserRef.current || currentUser) !== directoryTenantId
-      ) return;
-      syncing = true;
-      try {
+    return startBrowserPresence({
+      documentTarget: document,
+      windowTarget: window,
+      isCurrentSession: () => accountSessionRef.current === accountSession
+        && accountTenantId(currentUserRef.current || currentUser) === directoryTenantId,
+      heartbeat: () => {
         const accountIds = filterAccountsByTenant(
           directoryAccountsRef.current,
           currentUserRef.current || currentUser,
         )
           .map(account => account?.id || account?.uid)
           .filter(Boolean);
-        const payload = await chatManagementService.heartbeatPresence(accountIds);
-        if (
-          !cancelled
-          && accountSessionRef.current === accountSession
-          && accountTenantId(currentUserRef.current || currentUser) === directoryTenantId
-        ) {
-          applyPresenceSnapshot(
-            payload?.presence || {},
-            payload?.last_seen_at || payload?.lastSeenAt || {},
-          );
-        }
-      } catch {
-        // Presence is best-effort and must not interrupt login or messaging.
-      } finally {
-        syncing = false;
-      }
-    };
-    void syncDirectoryPresence();
-    const timer = window.setInterval(syncDirectoryPresence, 2000);
-    const syncWhenVisible = () => {
-      if (document.visibilityState !== 'hidden') void syncDirectoryPresence();
-    };
-    const clearPresenceOnPageHide = () => {
-      void chatManagementService.clearPresence({ keepalive: true }).catch(() => {});
-    };
-    document.addEventListener('visibilitychange', syncWhenVisible);
-    window.addEventListener('focus', syncWhenVisible);
-    window.addEventListener('pagehide', clearPresenceOnPageHide);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', syncWhenVisible);
-      window.removeEventListener('focus', syncWhenVisible);
-      window.removeEventListener('pagehide', clearPresenceOnPageHide);
-    };
+        return chatManagementService.heartbeatPresence(accountIds);
+      },
+      clearPresence: options => chatManagementService.clearPresence(options),
+      applySnapshot: payload => applyPresenceSnapshot(
+        payload?.presence || {},
+        payload?.last_seen_at || payload?.lastSeenAt || {},
+      ),
+    });
   }, [isLoggedIn, managementViewerId, currentUser, directoryAccounts.length, applyPresenceSnapshot]);
 
   const handleFriendRequestResponse = async (record, accepted) => {
