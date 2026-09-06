@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-06-05 - Tang tuong phan ten nguoi gui tren hinh nen
+
+- Thoi gian: 2026-09-06 22:14 (Asia/Saigon)
+- Loai: Sua loi | Web | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; cho commit, push, deploy va UAT browser
+- Muc tieu: Ten nguoi gui phai doc ro tren moi hinh nen, ke ca nen toi, nen co nhieu chi tiet, che do sang/toi va tin nhan sticker/anh.
+- Pham vi: ChatUI presentation cua nhan ten nguoi gui; giu nguyen hinh nen da chon, tin nhan, realtime, profile click, attachment va cac luong presence.
+- File da thay doi: `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `docs/CHANGELOG.md`, `dist/index.html` neu production build cap nhat bundle.
+- Noi dung: Them nen trang gan dac, vien, bo goc tron, chu toi va bong nhe cho `.sender-name` chi khi hoi thoai dang dung hinh nen. Selector dung chung cho tin chu, sticker, anh, lo anh, poll va ten trang thai dang nhap; khong doi JSX hay du lieu background.
+- Quyet dinh ky thuat: Dung mot lop nen doc lap thay vi tiep tuc phu thuoc vao text-shadow tren mau anh bat ky; che do toi van dung nen trang va chu toi de giu tuong phan on dinh. Khong thay toan bo preset/upload va khong sua luong tin nhan.
+- Database/API/cau hinh: Khong co.
+- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js src/features/chat/services/conversationBackground.test.js src/features/chat/services/messagePresentation.test.js src/features/chat/services/imageBatchLayout.test.js` dat 64/64; `npm run test:frontend` dat 357/357; `npm run lint` exit 0 voi canh bao legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` >500 KB da co; `git diff --check` dat.
+- Rui ro con lai: Chua UAT bang tai khoan that tren moi preset/custom wallpaper; can hard refresh sau deploy de tai bundle moi. Khong co thay doi backend/database.
+- Viec tiep theo: Commit/push source, recreate rieng ChatUI tren `192.168.80.20` qua `ubuntu@103.74.122.206`, kiem tra health/public asset va UAT tin chu, sticker, anh tren nen sang/toi.
+- Commit/PR: Chua tao.
+
 ## 2026-09-06-04 - Phat hanh ban sua moc ngoai tuyen qua hai chang SSH
 
 - Thoi gian: 2026-09-06 16:07-17:22 (Asia/Saigon)

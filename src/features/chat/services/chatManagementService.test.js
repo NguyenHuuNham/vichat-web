@@ -174,7 +174,8 @@ test('keeps unread emphasis and latest-message navigation in the ChatUI layer', 
   assert.match(stylesSource, /\.conv-mention-indicator/);
   assert.match(stylesSource, /\.latest-message-jump-button/);
   assert.match(stylesSource, /\.sender-name \{[\s\S]*font-weight: 650;[\s\S]*color: var\(--text-main\);/);
-  assert.match(stylesSource, /\.chat-messages\.has-conversation-background \.sender-name/);
+  assert.match(stylesSource, /\.chat-messages\.has-conversation-background \.sender-name \{[\s\S]*background: rgba\(255, 255, 255, \.94\)[\s\S]*text-shadow: none;/);
+  assert.match(stylesSource, /html\[data-theme="dark"\] \.chat-messages\.has-conversation-background \.sender-name \{[\s\S]*color: #152e2c;[\s\S]*background: rgba\(255, 255, 255, \.94\)/);
 });
 
 test('conversation activity ordering is monotonic and pin values are strict', () => {

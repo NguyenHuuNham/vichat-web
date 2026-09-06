@@ -893,11 +893,26 @@ body {
     text-shadow: 0 1px 3px rgba(255, 255, 255, .72);
 }
 
-.chat-messages.has-conversation-background .sender-name,
 .chat-messages.has-conversation-background .chatbot-starter-heading,
 .chat-messages.has-conversation-background .chatbot-starter-eyebrow {
     color: var(--text-main);
     text-shadow: 0 1px 3px rgba(255, 255, 255, .95);
+}
+
+.chat-messages.has-conversation-background .sender-name {
+    display: inline-flex;
+    width: fit-content;
+    max-width: 100%;
+    align-items: center;
+    margin-left: 4px;
+    padding: 2px 8px;
+    border: 1px solid rgba(255, 255, 255, .78);
+    border-radius: 999px;
+    color: #152e2c;
+    background: rgba(255, 255, 255, .94);
+    box-shadow: 0 1px 4px rgba(13, 35, 32, .24);
+    text-shadow: none;
+    line-height: 1.35;
 }
 
 .chat-messages.has-conversation-background .message-bubble {
@@ -7224,6 +7239,12 @@ html[data-theme="dark"] .chat-messages.has-conversation-background .chatbot-star
 html[data-theme="dark"] .chat-messages.has-conversation-background .chatbot-starter-eyebrow {
   color: var(--text-main);
   text-shadow: 0 1px 3px rgba(0, 0, 0, .92);
+}
+html[data-theme="dark"] .chat-messages.has-conversation-background .sender-name {
+  color: #152e2c;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .38);
+  text-shadow: none;
 }
 html[data-theme="dark"] .chat-messages.has-conversation-background .message-bubble {
   background: rgba(37, 52, 58, .88);
