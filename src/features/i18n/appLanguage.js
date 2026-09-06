@@ -290,6 +290,7 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Offline': 'Offline',
   'Thông tin cá nhân': 'Personal information',
   'Đang hoạt động': 'Active',
+  'Trực tuyến': 'Online',
   'Ngoại tuyến': 'Offline',
   'Tài khoản': 'Account',
   'Tên đăng nhập': 'Username',

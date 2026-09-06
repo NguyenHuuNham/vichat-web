@@ -119,6 +119,7 @@ test('translates message receipt empty states', () => {
 });
 
 test('translates dynamic system text without translating user content', () => {
+  assert.equal(translateUiText('Trực tuyến', 'en'), 'Online');
   assert.equal(
     translateUiText('Nguyễn đã xóa Lan khỏi nhóm', 'en'),
     'Nguyễn removed Lan from the group',

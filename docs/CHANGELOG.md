@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-06-01 - Hien thi thoi gian ngoai tuyen va font de doc
+
+- Thoi gian: 2026-09-06 13:08 (Asia/Saigon)
+- Loai: Tinh nang | Sua loi | Web | Backend | API | Kiem thu | Tai lieu
+- Trang thai: Hoan tat; da test local, chua deploy production
+- Muc tieu: Doi giao dien sang Times New Roman, hien thi dau xanh khi tai khoan truc tuyen va cho biet tai khoan da ngoai tuyen bao lau tu lan heartbeat chat cuoi.
+- Pham vi: ChatUI presence/directory/profile/header, Chatmgt Redis presence metadata va tai lieu kien truc; khong thay doi message, topic, membership, database hay luong realtime chat.
+- File da thay doi: `index.html`, `src/index.css`, `src/styles/index.css`, `src/features/management/management.css`, `src/RootApp.jsx`, `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/contacts/services/accountDirectory.js`, `src/features/chat/services/timeFormatting.js`, `src/features/i18n/appLanguage.js`, `chatservice-main/application/services/presence_service.py`, `chatservice-main/application/controllers/api_chat_management.py`, `docs/chat-backend-architecture.md`, cac file test presence/time formatting/directory/contract va `dist/index.html` tu production build.
+- Noi dung: Giu nguyen map `presence` boolean de tuong thich nguoc, bo sung map `last_seen_at` tu Redis voi TTL 90 ngay. ChatUI chi hien `Truc tuyen` kem cham xanh khi online; khi offline hien `Ngoai tuyen` kem phut/gio/ngay/thang/nam da troi qua neu co moc luu tru, va van fallback an toan neu chua co moc.
+- Quyet dinh ky thuat: Tach key last-seen theo tenant/account khoi lease theo session; heartbeat/pagehide cap nhat moc hoat dong nhung khong ghi PostgreSQL hay Tinode. Redis dung Lua compare-and-set atomic de request heartbeat/logout den tre khong ghi de moc moi hon; fallback read/compare/set chi danh cho test double khong co `EVAL`. Lease online/offline la thao tac chinh, con ghi last-seen la best-effort de loi metadata khong lam hong heartbeat hay logout. Font duoc dat o body va control ke thua de khong bo sot input/button; bo tai Google Inter khong con su dung; presence metadata duoc merge theo moc moi nhat de khong lam mat state hoi thoai.
+- Database/API/cau hinh: Khong migration, schema, secret hay bien moi truong moi. Hai endpoint presence giu response cu va them `last_seen_at`/`lastSeenAt`; key Redis tu het han sau 90 ngay.
+- Kiem thu: `npm run test:frontend` dat 347/347; `npm run lint` exit 0 voi warning legacy/vendor da co san; `npm run build:production` thanh cong voi canh bao chunk App lon hon 500 KB; `py -3.8 -m unittest discover -s tests -q` dat 276 test, 104 skip do dependency/runtime tuy chon; `py -3.8 -m unittest tests.test_chat_auth_contract -q` dat 56/56; `py -3.8 -m unittest tests.test_presence_service -q` chay 4 test nhung skip do may local thieu dependency Chatmgt, gom ca test moc cu khong ghi de moc moi; `py -3.8 -m py_compile application/services/presence_service.py application/controllers/api_chat_management.py tests/test_presence_service.py tests/test_chat_auth_contract.py` dat; `git diff --check` khong co whitespace error.
+- Rui ro con lai: Chua UAT visual voi tai khoan that vi moi truong nay khong co browser runtime; cac test presence phu thuoc dependency van can chay trong image Chatmgt. Tai khoan khong co heartbeat luu truoc release se chi hien `Ngoai tuyen` cho den lan online dau tien.
+- Viec tiep theo: Hard refresh va UAT header/danh ba/profile voi tai khoan that truoc deploy; neu phat sinh loi chi rollback ChatUI/Chatmgt, khong dong vao service stateful.
+- Commit/PR: Chua tao
+
 ## 2026-09-04-02 - Ingest tai lieu chat theo tenant va lam moi ViChat AI
 
 - Thoi gian: 2026-09-04 17:10-20:02 (Asia/Saigon)

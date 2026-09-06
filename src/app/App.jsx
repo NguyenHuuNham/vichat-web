@@ -152,6 +152,7 @@ import {
 import {
   formatConversationListTime,
   conversationActivityTimestamp,
+  formatOfflineDuration,
   formatFullMessageDateTime,
   formatMessageDateLabel,
   formatMessageTime,
@@ -174,6 +175,7 @@ import {
   findDirectPeer,
   identitiesOverlap,
   identityValues,
+  latestTimestampValue,
   groupRoleForIdentity,
   normalizeGroupRole,
   matchesCompanyDirectoryContact,
@@ -183,6 +185,7 @@ import {
   mergeRealtimeMemberPresence,
   normalizeAccountShape,
   resolveGroupAdministrator,
+  snapshotLastSeenAt,
   snapshotPresence,
   updateAccountProfiles,
   updateAccountPresence,
@@ -2840,7 +2843,7 @@ function demoDirectToConversation(direct, accounts, viewerId) {
     isGroup: false,
     avatarHtml: other?.avatar ? <img src={other.avatar} alt={otherName} /> : <span>{otherName.slice(0, 1).toUpperCase() || '?'}</span>,
     avatarClass: '',
-    membersCount: other?.online ? 'Đang hoạt động' : 'Ngoại tuyến',
+    membersCount: other?.online ? 'Trực tuyến' : 'Ngoại tuyến',
     description: '',
     admin: '',
     members: other ? [{ ...other }] : [],
@@ -2885,7 +2888,7 @@ function managementRoomsForSession(managed, accounts, user, accountSession) {
         ...(peer ? {
           avatarHtml: undefined,
           avatarUrl: peer.avatar || '',
-          membersCount: peer.online ? 'Đang hoạt động' : 'Ngoại tuyến',
+          membersCount: peer.online ? 'Trực tuyến' : 'Ngoại tuyến',
           description: '',
           members: [{ ...peer }],
         } : {}),
@@ -3781,8 +3784,21 @@ function App() {
     : Boolean(account?.online);
 
   const accountPresenceLabel = account => {
-    return appCopy.t(isAccountOnline(account) ? 'Đang hoạt động' : 'Ngoại tuyến');
+    if (isAccountOnline(account)) return appCopy.t('Trực tuyến');
+    const lastSeenAt = latestTimestampValue(
+      account?.lastSeenAt,
+      account?.last_seen_at,
+    );
+    const duration = formatOfflineDuration(
+      lastSeenAt,
+      displayClock,
+      appCopy.locale,
+    );
+    return duration
+      ? `${appCopy.t('Ngoại tuyến')} ${duration}`
+      : appCopy.t('Ngoại tuyến');
   };
+  const accountPresenceTone = account => (isAccountOnline(account) ? 'online' : 'offline');
 
   const activeChatMembers = roomMembers(activeChat);
   const activeGroupMembers = activeChat.isGroup
@@ -3907,7 +3923,7 @@ function App() {
   const activeChatPresenceLabel = activeGroupPresence
     ? appCopy.t(`${activeGroupPresence.memberCount} thành viên • ${activeGroupPresence.onlineCount} đang online`)
     : activeDirectPeer
-      ? appCopy.t(isAccountOnline(activeDirectPeer) ? 'Đang hoạt động' : 'Ngoại tuyến')
+      ? accountPresenceLabel(activeDirectPeer)
     : appCopy.t(activeChat.membersCount);
   const callActionCapability = (() => {
     if (!CALLS_ENABLED) return { available: false, reason: 'Tính năng cuộc gọi đang tạm ẩn theo cấu hình doanh nghiệp.' };
@@ -4746,14 +4762,14 @@ function App() {
     setMentionActiveIndex(0);
   }, [currentChatId]);
 
-  const applyPresenceSnapshot = useCallback(snapshot => {
+  const applyPresenceSnapshot = useCallback((snapshot, lastSeenSnapshot = {}) => {
     const currentAccount = currentUserRef.current;
     const accounts = filterAccountsByTenant(
       directoryAccountsRef.current,
       currentAccount,
     );
-    updateDirectoryAccounts(previous => updateAccountPresence(previous, snapshot, currentAccount));
-    updateDirectoryResults(previous => updateAccountPresence(previous, snapshot, currentAccount));
+    updateDirectoryAccounts(previous => updateAccountPresence(previous, snapshot, currentAccount, lastSeenSnapshot));
+    updateDirectoryResults(previous => updateAccountPresence(previous, snapshot, currentAccount, lastSeenSnapshot));
     setConversations(previous => {
       let changed = false;
       const next = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
@@ -4764,14 +4780,33 @@ function App() {
           const online = isCurrentAccount
             ? undefined
             : snapshotPresence(member, snapshot) ?? snapshotPresence(account, snapshot);
-          if (online === undefined || member.online === online) return member;
+          const incomingLastSeenAt = isCurrentAccount
+            ? undefined
+            : latestTimestampValue(
+              snapshotLastSeenAt(member, lastSeenSnapshot),
+              snapshotLastSeenAt(account, lastSeenSnapshot),
+            ) || undefined;
+          const lastSeenAt = incomingLastSeenAt === undefined
+            ? undefined
+            : latestTimestampValue(member.lastSeenAt ?? member.last_seen_at, incomingLastSeenAt);
+          const onlineChanged = online !== undefined && member.online !== online;
+          const lastSeenChanged = online === false
+            && lastSeenAt !== undefined
+            && (member.lastSeenAt ?? member.last_seen_at) !== lastSeenAt;
+          if (!onlineChanged && !lastSeenChanged) return member;
           membersChanged = true;
-          return { ...member, online };
+          return {
+            ...member,
+            ...(online !== undefined ? { online } : {}),
+            ...(lastSeenChanged ? { lastSeenAt, last_seen_at: lastSeenAt } : {}),
+          };
         });
         const peer = !room.isGroup && !room.isChatbot
           ? members.find(member => !identitiesOverlap(member, currentAccount)) || members[0]
           : null;
-        const membersCount = peer ? (peer.online ? 'Đang hoạt động' : 'Ngoại tuyến') : room.membersCount;
+        const membersCount = peer ? (
+          peer.online ? 'Trực tuyến' : 'Ngoại tuyến'
+        ) : room.membersCount;
         if (!membersChanged && membersCount === room.membersCount) return [id, room];
         changed = true;
         return [id, { ...room, members, membersCount }];
@@ -5380,11 +5415,17 @@ function App() {
       }
       if (tinodeClient.authenticated) setConnectionStatus('online');
       if (event.type === 'presence') {
-        if (event.uid) applyPresenceSnapshot({ [event.uid]: Boolean(event.online) });
+        if (event.uid) {
+          const online = Boolean(event.online);
+          applyPresenceSnapshot(
+            { [event.uid]: online },
+            online ? {} : { [event.uid]: Date.now() },
+          );
+        }
         return;
       }
       if (event.type === 'presence-snapshot') {
-        applyPresenceSnapshot(event.snapshot || {});
+        applyPresenceSnapshot(event.snapshot || {}, event.lastSeenAt || event.last_seen_at || {});
         return;
       }
       if (event.type === 'group-settings' && event.topic) {
@@ -6800,8 +6841,12 @@ function App() {
       );
       setWorkspaceResults(scopedResults.map(result => {
         const known = findAccount(knownAccounts, result.id || result.uid || result.tinodeUid);
-        return known && typeof known.online === 'boolean'
-          ? { ...result, online: known.online }
+        return known && (typeof known.online === 'boolean' || known.lastSeenAt)
+          ? {
+            ...result,
+            ...(typeof known.online === 'boolean' ? { online: known.online } : {}),
+            ...(known.lastSeenAt ? { lastSeenAt: known.lastSeenAt, last_seen_at: known.lastSeenAt } : {}),
+          }
           : result;
       }));
     } catch (err) {
@@ -6839,7 +6884,7 @@ function App() {
         isGroup: false,
         avatarUrl: contact?.avatar || '',
         avatarClass: '',
-        membersCount: contact?.online ? 'Đang hoạt động' : 'Ngoại tuyến',
+        membersCount: contact?.online ? 'Trực tuyến' : 'Ngoại tuyến',
         description: '',
         admin: '',
         members: contact ? [contact] : [],
@@ -6909,8 +6954,12 @@ function App() {
           const previous = findAccount(previousAccounts, account.id || account.uid || account.tinodeUid);
           const override = isAccountManaged(account) ? '' : avatarOverrideFor(account);
           const next = override ? { ...account, avatar: override } : account;
-          return previous && typeof previous.online === 'boolean'
-            ? { ...next, online: previous.online }
+          return previous && (typeof previous.online === 'boolean' || previous.lastSeenAt)
+            ? {
+              ...next,
+              ...(typeof previous.online === 'boolean' ? { online: previous.online } : {}),
+              ...(previous.lastSeenAt ? { lastSeenAt: previous.lastSeenAt, last_seen_at: previous.lastSeenAt } : {}),
+            }
             : next;
         }), currentDirectoryUser);
         const nextNicknames = Object.fromEntries(
@@ -6927,7 +6976,7 @@ function App() {
           || previousAccounts.length !== nextAccounts.length
           || nextAccounts.some(account => {
             const previous = findAccount(previousAccounts, account.id || account.uid || account.tinodeUid);
-            return !previous || ['id', 'uid', 'tinodeUid', 'username', 'name', 'defaultName', 'nickname', 'avatar', 'email', 'title', 'department', 'active', 'online']
+            return !previous || ['id', 'uid', 'tinodeUid', 'username', 'name', 'defaultName', 'nickname', 'avatar', 'email', 'title', 'department', 'active', 'online', 'lastSeenAt']
               .some(key => previous[key] !== account[key]);
           });
         const effectiveAccounts = accountsChanged ? nextAccounts : previousAccounts;
@@ -6943,8 +6992,9 @@ function App() {
             ...result,
             ...account,
             ...(typeof knownOnline === 'boolean' ? { online: knownOnline } : {}),
+            ...(account.lastSeenAt ? { lastSeenAt: account.lastSeenAt, last_seen_at: account.lastSeenAt } : {}),
           };
-          return ['name', 'defaultName', 'nickname', 'avatar', 'email', 'title', 'department', 'active', 'online'].some(key => result[key] !== next[key])
+          return ['name', 'defaultName', 'nickname', 'avatar', 'email', 'title', 'department', 'active', 'online', 'lastSeenAt'].some(key => result[key] !== next[key])
             ? next
             : result;
         });
@@ -6997,10 +7047,20 @@ function App() {
               avatar: isAccountManaged(account) ? (account.avatar || '') : (account.avatar || member.avatar || ''),
               online: member.online,
             };
+            const lastSeenAt = latestTimestampValue(
+              account.lastSeenAt ?? account.last_seen_at,
+              member.lastSeenAt ?? member.last_seen_at,
+            );
+            if (lastSeenAt) {
+              updated.lastSeenAt = lastSeenAt;
+              updated.last_seen_at = lastSeenAt;
+            }
             return updated.name === member.name
               && updated.defaultName === member.defaultName
               && updated.nickname === member.nickname
               && updated.avatar === member.avatar
+              && updated.lastSeenAt === member.lastSeenAt
+              && updated.last_seen_at === member.last_seen_at
               ? member
               : updated;
           });
@@ -7105,7 +7165,10 @@ function App() {
           && accountSessionRef.current === accountSession
           && accountTenantId(currentUserRef.current || currentUser) === directoryTenantId
         ) {
-          applyPresenceSnapshot(payload?.presence || {});
+          applyPresenceSnapshot(
+            payload?.presence || {},
+            payload?.last_seen_at || payload?.lastSeenAt || {},
+          );
         }
       } catch {
         // Presence is best-effort and must not interrupt login or messaging.
@@ -7400,7 +7463,15 @@ function App() {
       title: merged.title || '',
       department: merged.department || '',
       role: merged.role || merged.accountRole || '',
-      online: isCurrentAccount ? isCurrentUserOnline : Boolean(merged.online),
+      online: isCurrentAccount
+        ? isCurrentUserOnline
+        : typeof account?.online === 'boolean' ? account.online : Boolean(merged.online),
+      lastSeenAt: latestTimestampValue(
+        account?.lastSeenAt,
+        account?.last_seen_at,
+        merged.lastSeenAt,
+        merged.last_seen_at,
+      ) || '',
       isCurrentAccount,
     };
   };
@@ -7409,6 +7480,7 @@ function App() {
     const profile = publicProfileFor(entity);
     if (profile) setProfileContact(profile);
   };
+  const activeProfileContact = profileContact ? publicProfileFor(profileContact) : null;
 
   const messageSenderProfile = message => publicProfileFor({
     id: message?.senderId || message?.raw?.from || message?.raw?.head?.['x-sender-id'],
@@ -11583,7 +11655,7 @@ function App() {
                 >
                   <span className="picker-check"><i className={`fa-solid ${selected ? 'fa-check' : 'fa-plus'}`}></i></span>
                   <span className="picker-name">{member.name}</span>
-                  <span className="picker-status">{accountPresenceLabel(member)}{directoryUsernameMeta(member)}</span>
+                  <span className={`picker-status account-presence ${accountPresenceTone(member)}`}>{accountPresenceLabel(member)}{directoryUsernameMeta(member)}</span>
                 </button>
               );
             })}
@@ -12382,7 +12454,7 @@ function App() {
             <div className="user-info">
               <span className="user-name">{currentUser?.name || "Mai Thành Lâm"}</span>
               <span className={`user-status ${isCurrentUserOnline ? 'online' : 'offline'}`}>
-                {appCopy.t(isCurrentUserOnline ? 'Đang hoạt động' : 'Ngoại tuyến')}
+                {appCopy.t(isCurrentUserOnline ? 'Trực tuyến' : 'Ngoại tuyến')}
               </span>
             </div>
           </div>
@@ -12571,7 +12643,7 @@ function App() {
               </div>
               <div className="chat-header-meta">
                 <h2 className="chat-header-name">{activeChat.name}</h2>
-                <span className={`chat-header-status ${activeChat.isGroup ? 'group-presence' : ''}`}>
+                <span className={`chat-header-status ${activeChat.isGroup ? 'group-presence' : activeDirectPeer ? `direct-presence ${accountPresenceTone(activeDirectPeer)}` : ''}`}>
                   {activeChatPresenceLabel}
                 </span>
               </div>
@@ -13933,7 +14005,7 @@ function App() {
             </section>
           </div>
         )}
-        {profileContact && (
+        {activeProfileContact && (
           <div className="profile-contact-modal" role="presentation" onMouseDown={event => {
             if (event.target === event.currentTarget) setProfileContact(null);
           }}>
@@ -13943,20 +14015,20 @@ function App() {
                 <button type="button" onClick={() => setProfileContact(null)} aria-label={appCopy.t('Đóng thông tin cá nhân')}><i className="fa-solid fa-xmark"></i></button>
               </div>
               <div className="profile-contact-hero">
-                <SafeAvatar src={profileContact.avatar} name={profileContact.name} className="profile-contact-avatar" />
-                <h2 id="profile-contact-title">{profileContact.name}</h2>
-                <span className={`profile-contact-status ${profileContact.online ? '' : 'offline'}`}><i className="fa-solid fa-circle"></i>{appCopy.t(profileContact.online ? 'Đang hoạt động' : 'Ngoại tuyến')}</span>
+                <SafeAvatar src={activeProfileContact.avatar} name={activeProfileContact.name} className="profile-contact-avatar" />
+                <h2 id="profile-contact-title">{activeProfileContact.name}</h2>
+                <span className={`profile-contact-status ${accountPresenceTone(activeProfileContact)}`}>{isAccountOnline(activeProfileContact) && <i className="fa-solid fa-circle"></i>}{accountPresenceLabel(activeProfileContact)}</span>
               </div>
               <div className="profile-contact-details">
-                {profileContact.username && <div className="profile-contact-row"><i className="fa-solid fa-at"></i><span><small>{appCopy.t('Tài khoản')}</small><strong>@{profileContact.username.replace(/^@+/, '').split('@')[0]}</strong></span></div>}
-                {profileContact.title && <div className="profile-contact-row"><i className="fa-solid fa-briefcase"></i><span><small>{appCopy.t('Chức vụ')}</small><strong>{profileContact.title}</strong></span></div>}
-                {profileContact.department && <div className="profile-contact-row"><i className="fa-solid fa-building"></i><span><small>{appCopy.t('Phòng ban')}</small><strong>{profileContact.department}</strong></span></div>}
-                {profileContact.email && <div className="profile-contact-row"><i className="fa-regular fa-envelope"></i><span><small>Email</small><strong>{profileContact.email}</strong></span></div>}
-                {profileContact.role && <div className="profile-contact-row"><i className="fa-solid fa-shield-halved"></i><span><small>{appCopy.t('Vai trò')}</small><strong>{profileContact.role}</strong></span></div>}
+                {activeProfileContact.username && <div className="profile-contact-row"><i className="fa-solid fa-at"></i><span><small>{appCopy.t('Tài khoản')}</small><strong>@{activeProfileContact.username.replace(/^@+/, '').split('@')[0]}</strong></span></div>}
+                {activeProfileContact.title && <div className="profile-contact-row"><i className="fa-solid fa-briefcase"></i><span><small>{appCopy.t('Chức vụ')}</small><strong>{activeProfileContact.title}</strong></span></div>}
+                {activeProfileContact.department && <div className="profile-contact-row"><i className="fa-solid fa-building"></i><span><small>{appCopy.t('Phòng ban')}</small><strong>{activeProfileContact.department}</strong></span></div>}
+                {activeProfileContact.email && <div className="profile-contact-row"><i className="fa-regular fa-envelope"></i><span><small>Email</small><strong>{activeProfileContact.email}</strong></span></div>}
+                {activeProfileContact.role && <div className="profile-contact-row"><i className="fa-solid fa-shield-halved"></i><span><small>{appCopy.t('Vai trò')}</small><strong>{activeProfileContact.role}</strong></span></div>}
               </div>
-              {!profileContact.isCurrentAccount && profileContact.id && (
+              {!activeProfileContact.isCurrentAccount && activeProfileContact.id && (
                 <button type="button" className="btn-primary profile-contact-chat-button" onClick={() => {
-                  const contact = findAccount(directoryAccounts, profileContact.id) || profileContact;
+                  const contact = findAccount(directoryAccounts, activeProfileContact.id) || activeProfileContact;
                   setProfileContact(null);
                   void handleStartDirectChat(contact);
                 }}>
@@ -14381,7 +14453,7 @@ function App() {
                             {memberRole === 'ADMIN' && <small className="member-role-label">{appCopy.t('Phó nhóm')}</small>}
                           </span>
                           <span className="member-status-text">
-                            <span className={`status-dot ${chatMode === 'tinode' ? (isAccountOnline(member) ? 'online' : 'offline') : 'managed'}`}></span>
+                            {isAccountOnline(member) && <span className="status-dot online"></span>}
                             {accountPresenceLabel(member)}
                           </span>
                         </div>
@@ -14759,7 +14831,7 @@ function App() {
                     </label>
                   </div>
                   <h3>{profileAccount.name || appCopy.t('Tài khoản hiện tại')}</h3>
-                  <span className={`profile-status ${isCurrentUserOnline ? '' : 'offline'}`}><i className="fa-solid fa-circle"></i> {appCopy.t(isCurrentUserOnline ? 'Đang hoạt động' : 'Ngoại tuyến')}</span>
+                  <span className={`profile-status ${isCurrentUserOnline ? '' : 'offline'}`}>{isCurrentUserOnline && <i className="fa-solid fa-circle"></i>} {appCopy.t(isCurrentUserOnline ? 'Trực tuyến' : 'Ngoại tuyến')}</span>
                 </div>
                 <div className="profile-details profile-readonly-details">
                   <div className="profile-detail-row"><i className="fa-solid fa-at"></i><div><small>{appCopy.t('Tên đăng nhập')}</small><strong>{profileAccount.username || appCopy.t('Chưa cập nhật')}</strong></div></div>
@@ -14800,7 +14872,7 @@ function App() {
                             <SafeAvatar src={contact.avatar} name={contact.name} className="workspace-avatar" />
                             <span className="workspace-list-copy">
                               <strong>{contact.name}</strong>
-                              <small>{accountPresenceLabel(contact)}{directoryUsernameMeta(contact)}</small>
+                              <small className={`account-presence ${accountPresenceTone(contact)}`}>{accountPresenceLabel(contact)}{directoryUsernameMeta(contact)}</small>
                             </span>
                           </button>
                           <button type="button" className="btn-friend chat" onClick={() => handleStartDirectChat(contact)}>
@@ -14826,7 +14898,7 @@ function App() {
                       <div className="workspace-list-item contact-result" key={contact.id || contact.name}>
                         <button type="button" className="contact-result-main" onClick={() => handleStartDirectChat(contact)}>
                           <SafeAvatar src={contact.avatar} name={contact.name} className="workspace-avatar" />
-                          <span className="workspace-list-copy"><strong>{contact.name}</strong><small>{accountPresenceLabel(contact)}{contact.id ? ` · ${contact.id}` : ''}</small></span>
+                          <span className="workspace-list-copy"><strong>{contact.name}</strong><small className={`account-presence ${accountPresenceTone(contact)}`}>{accountPresenceLabel(contact)}{contact.id ? ` · ${contact.id}` : ''}</small></span>
                         </button>
                         <button type="button" className="btn-friend chat" onClick={() => handleStartDirectChat(contact)}>
                           <i className="fa-solid fa-message"></i>

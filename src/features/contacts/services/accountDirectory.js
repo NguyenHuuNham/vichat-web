@@ -36,6 +36,39 @@ function booleanValue(value, fallback = false) {
   return fallback;
 }
 
+function timestampValue(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString();
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+  const text = scalarText(value);
+  if (!text) return '';
+  const numeric = Number(text);
+  if (Number.isFinite(numeric) && numeric > 0) return text;
+  return Number.isFinite(Date.parse(text)) ? text : '';
+}
+
+function timestampMilliseconds(value) {
+  const normalized = timestampValue(value);
+  if (!normalized) return 0;
+  const numeric = Number(normalized);
+  if (Number.isFinite(numeric)) return numeric < 10_000_000_000 ? numeric * 1000 : numeric;
+  const parsed = Date.parse(String(normalized));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function newerTimestamp(first, second) {
+  const firstValue = timestampValue(first);
+  const secondValue = timestampValue(second);
+  if (!firstValue) return secondValue;
+  if (!secondValue) return firstValue;
+  return timestampMilliseconds(secondValue) > timestampMilliseconds(firstValue)
+    ? secondValue
+    : firstValue;
+}
+
+export function latestTimestampValue(...values) {
+  return values.reduce((latest, value) => newerTimestamp(latest, value), '') || undefined;
+}
+
 function accountManagedValue(account) {
   return Boolean(
     account?.accountManaged
@@ -108,6 +141,7 @@ export function normalizeAccountShape(account) {
     tenant?.name,
   );
   const authSource = firstText(account.authSource, account.auth_source).toLowerCase();
+  const lastSeenAt = timestampValue(account.lastSeenAt ?? account.last_seen_at ?? account.last_seen);
   const groupRole = explicitGroupRole(account);
   const hasAccountManaged = account.accountManaged !== undefined || account.account_managed !== undefined;
   const accountManaged = hasAccountManaged
@@ -153,6 +187,10 @@ export function normalizeAccountShape(account) {
     } : {}),
   };
   if (account.online !== undefined) safe.online = booleanValue(account.online);
+  if (lastSeenAt) {
+    safe.lastSeenAt = lastSeenAt;
+    safe.last_seen_at = lastSeenAt;
+  }
   if (account.mustChangePassword !== undefined || account.must_change_password !== undefined) {
     safe.mustChangePassword = booleanValue(account.mustChangePassword ?? account.must_change_password);
   }
@@ -261,13 +299,33 @@ export function snapshotPresence(entity, snapshot) {
   return undefined;
 }
 
-export function updateAccountPresence(accounts, snapshot, currentUser) {
+export function snapshotLastSeenAt(entity, snapshot) {
+  let latest = '';
+  for (const value of identityValues(entity)) {
+    if (!Object.prototype.hasOwnProperty.call(snapshot || {}, value)) continue;
+    const timestamp = timestampValue(snapshot[value]);
+    latest = newerTimestamp(latest, timestamp);
+  }
+  return latest || undefined;
+}
+
+export function updateAccountPresence(accounts, snapshot, currentUser, lastSeenSnapshot = {}) {
   let changed = false;
   const next = (accounts || []).map(account => {
     const online = identitiesOverlap(account, currentUser) ? undefined : snapshotPresence(account, snapshot);
-    if (online === undefined || account?.online === online) return account;
+    const lastSeenAt = online === false
+      ? latestTimestampValue(account?.lastSeenAt ?? account?.last_seen_at, snapshotLastSeenAt(account, lastSeenSnapshot))
+      : undefined;
+    const onlineChanged = online !== undefined && account?.online !== online;
+    const lastSeenChanged = lastSeenAt !== undefined
+      && (account?.lastSeenAt ?? account?.last_seen_at) !== lastSeenAt;
+    if (!onlineChanged && !lastSeenChanged) return account;
     changed = true;
-    return { ...account, online };
+    return {
+      ...account,
+      ...(online !== undefined ? { online } : {}),
+      ...(lastSeenAt !== undefined ? { lastSeenAt, last_seen_at: lastSeenAt } : {}),
+    };
   });
   return changed ? next : accounts;
 }
@@ -359,6 +417,10 @@ export function mergeDirectoryAccountSnapshots(
     const avatar = account.avatar || previousAccount.avatar || '';
     const hasIncomingNickname = Object.prototype.hasOwnProperty.call(account || {}, 'nickname');
     const hasIncomingOnline = Object.prototype.hasOwnProperty.call(account || {}, 'online');
+    const lastSeenAt = latestTimestampValue(
+      account.lastSeenAt ?? account.last_seen_at,
+      previousAccount.lastSeenAt ?? previousAccount.last_seen_at,
+    );
     const nickname = hasIncomingNickname
       ? scalarText(account.nickname)
       : scalarText(previousAccount.nickname);
@@ -389,12 +451,14 @@ export function mergeDirectoryAccountSnapshots(
             : account.online === true,
         }
         : {}),
+      ...(lastSeenAt ? { lastSeenAt, last_seen_at: lastSeenAt } : {}),
     };
     const accountChanged = name !== account.name
       || defaultName !== account.defaultName
       || nickname !== scalarText(account.nickname)
       || avatar !== account.avatar
-      || merged.online !== account.online;
+      || merged.online !== account.online
+      || merged.lastSeenAt !== account.lastSeenAt;
     if (accountChanged) changed = true;
     return accountChanged ? merged : account;
   });
@@ -408,11 +472,22 @@ export function mergeRealtimeMemberPresence(members, realtimeMembers) {
   let changed = false;
   const next = members.map(member => {
     const realtimeMember = realtimeMembers.find(candidate => identitiesOverlap(member, candidate));
-    if (!realtimeMember || typeof realtimeMember.online !== 'boolean' || member.online === realtimeMember.online) {
-      return member;
-    }
+    if (!realtimeMember) return member;
+    const hasOnline = typeof realtimeMember.online === 'boolean';
+    const lastSeenAt = latestTimestampValue(
+      member.lastSeenAt ?? member.last_seen_at,
+      realtimeMember.lastSeenAt ?? realtimeMember.last_seen_at,
+    );
+    const onlineChanged = hasOnline && member.online !== realtimeMember.online;
+    const lastSeenChanged = Boolean(lastSeenAt)
+      && (member.lastSeenAt ?? member.last_seen_at) !== lastSeenAt;
+    if (!onlineChanged && !lastSeenChanged) return member;
     changed = true;
-    return { ...member, online: realtimeMember.online };
+    return {
+      ...member,
+      ...(hasOnline ? { online: realtimeMember.online } : {}),
+      ...(lastSeenAt ? { lastSeenAt, last_seen_at: lastSeenAt } : {}),
+    };
   });
   return changed ? next : members;
 }

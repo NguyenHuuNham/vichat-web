@@ -109,6 +109,38 @@ export function formatConversationListTime(value, now = Date.now(), locale = 'vi
   return locale.startsWith('en') ? `${hours} hour${hours === 1 ? '' : 's'}` : `${hours} giờ`;
 }
 
+// Presence needs an elapsed duration even after the calendar day changes.
+export function formatOfflineDuration(value, now = Date.now(), locale = 'vi-VN') {
+  const timestamp = parseTimestamp(value);
+  if (!timestamp || timestamp > now + MINUTE_MS) return '';
+
+  const elapsed = Math.max(0, now - timestamp);
+  if (elapsed < MINUTE_MS) return locale.startsWith('en') ? 'just now' : 'vừa xong';
+  if (elapsed < HOUR_MS) {
+    const minutes = Math.max(1, Math.floor(elapsed / MINUTE_MS));
+    return locale.startsWith('en')
+      ? `${minutes} minute${minutes === 1 ? '' : 's'} ago`
+      : `${minutes} phút trước`;
+  }
+  if (elapsed < DAY_MS) {
+    const hours = Math.max(1, Math.floor(elapsed / HOUR_MS));
+    return locale.startsWith('en')
+      ? `${hours} hour${hours === 1 ? '' : 's'} ago`
+      : `${hours} giờ trước`;
+  }
+
+  const days = Math.max(1, Math.floor(elapsed / DAY_MS));
+  if (days < 30) return locale.startsWith('en') ? `${days} day${days === 1 ? '' : 's'} ago` : `${days} ngày trước`;
+  const months = Math.max(1, Math.floor(days / 30));
+  if (months < 12) return locale.startsWith('en')
+    ? `${months} month${months === 1 ? '' : 's'} ago`
+    : `${months} tháng trước`;
+  const years = Math.max(1, Math.floor(months / 12));
+  return locale.startsWith('en')
+    ? `${years} year${years === 1 ? '' : 's'} ago`
+    : `${years} năm trước`;
+}
+
 export function formatMessageTime(value, fallback = '', locale = 'vi-VN') {
   const timestamp = parseTimestamp(value);
   if (!timestamp) return formatFallbackTime(fallback || value, locale);

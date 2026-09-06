@@ -448,20 +448,31 @@ the existing topic API.
 Web ChatUI keeps Tinode as the source of presence for subscribed conversations,
 but directory-wide presence uses an independent Chatmgt lease. Each authenticated
 browser sends a heartbeat every two seconds to
-`POST /api/v1/chat/presence/heartbeat`; Chatmgt stores only a tenant-scoped,
-session-scoped Redis key with an eight-second TTL. The heartbeat response includes
-the requested same-tenant account states, and the optional batch endpoint can read
-the same snapshot without refreshing the caller's lease. Logout and `pagehide`
-remove the current browser lease best-effort; a crashed tab or network loss becomes
-offline automatically when the TTL expires. Redis failures leave the last UI state
-in place and never block login, messages, membership, or admin actions.
+`POST /api/v1/chat/presence/heartbeat`; Chatmgt stores a tenant-scoped,
+session-scoped Redis key with an eight-second TTL and a separate tenant/account
+last-seen key with a bounded 90-day TTL. The session lease is authoritative;
+last-seen writes are best-effort so an optional metadata failure cannot invalidate
+a successful online refresh or offline cleanup. Heartbeat and logout updates use
+an atomic Redis compare-and-set so a delayed older request cannot move the stored
+activity boundary backwards. Logout and `pagehide` remove only
+the current browser lease and then attempt to store the final timestamp. The
+response keeps the existing boolean `presence` map and adds a parallel
+`last_seen_at` map, so older clients remain compatible while ChatUI can render
+elapsed offline time. The optional batch endpoint reads the same snapshot
+without refreshing the caller's lease. A crashed tab or network loss becomes
+offline automatically when the lease TTL expires, with its last successful
+heartbeat as the activity boundary. Redis failures leave the last UI state in
+place and never block login, messages, membership, or admin actions.
 
 The server validates every requested account ID against the authenticated JWT
-tenant before reading Redis. The client merges only `online`, never lets a stale
-Chatmgt directory snapshot overwrite a newer lease, and sorts online employees
-before offline employees with name ordering inside each group. This does not
-subscribe to P2P topics, create conversations, change membership, or copy
-presence into Chatmgt/PostgreSQL. Tinode `me` `on`/`off` events still apply
+tenant before reading Redis. The client merges `online` plus the bounded last-seen
+value, never lets a stale Chatmgt directory snapshot overwrite newer presence
+metadata, and sorts online employees before offline employees with name ordering
+inside each group. Online labels show only a green indicator and `Trực tuyến`;
+offline labels use the last activity boundary when available and fall back to
+`Ngoại tuyến` for accounts that have not produced a retained heartbeat yet.
+This does not subscribe to P2P topics, create conversations, change membership,
+or copy presence into Chatmgt/PostgreSQL. Tinode `me` `on`/`off` events still apply
 immediately when a P2P subscription exists.
 
 Recall is an event overlay shared by mobile and ChatUI. `mode=all` hides the
@@ -1161,8 +1172,8 @@ history, role-aware actions and a message-to-task shortcut.
 | `POST` | `/api/v1/auth/tinode-token` | Issue/refresh a short-lived Tinode token |
 | `POST` | `/api/v1/admin/sso` | Account SSO for current-tenant administrators |
 | `GET` | `/api/v1/chat/users...` | Tenant employee directory projection and Tinode readiness |
-| `POST` | `/api/v1/chat/presence/heartbeat` | Refresh the current ChatUI presence lease and return requested same-tenant states |
-| `POST` | `/api/v1/chat/presence/batch` | Read requested same-tenant ephemeral presence states |
+| `POST` | `/api/v1/chat/presence/heartbeat` | Refresh the current ChatUI presence lease, attempt last-seen metadata, and return requested same-tenant states |
+| `POST` | `/api/v1/chat/presence/batch` | Read requested same-tenant online and bounded last-seen states |
 | `POST` | `/api/v1/chat/presence/offline` | Remove the current browser presence lease best-effort |
 | `GET/PUT` | `/api/v1/chat/contact-nicknames...` | Read or update private viewer-scoped 1-1 contact nicknames |
 | `POST` | `/api/v1/chat/users/<id>/revoke-session` | Revoke a tenant employee session |

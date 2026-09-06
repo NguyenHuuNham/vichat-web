@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatConversationListTime,
+  formatOfflineDuration,
   formatFullMessageDateTime,
   formatMessageDateLabel,
   formatMessageTime,
@@ -20,6 +21,14 @@ test('accepts Chatmgt Unix timestamps in seconds and numeric strings', () => {
   assert.equal(parseTimestamp(seconds), seconds * 1000);
   assert.equal(parseTimestamp(String(seconds)), seconds * 1000);
   assert.equal(formatConversationListTime({ updatedAt: String(seconds) }, NOW), 'Vừa xong');
+});
+
+test('formats offline duration without adding a duration to online state', () => {
+  assert.equal(formatOfflineDuration(NOW - 5 * 60 * 1000, NOW), '5 phút trước');
+  assert.equal(formatOfflineDuration(NOW - 2 * 60 * 60 * 1000, NOW), '2 giờ trước');
+  assert.equal(formatOfflineDuration(NOW - 24 * 60 * 60 * 1000, NOW, 'en-US'), '1 day ago');
+  assert.equal(formatOfflineDuration(NOW - 3 * 24 * 60 * 60 * 1000, NOW, 'en-US'), '3 days ago');
+  assert.equal(formatOfflineDuration('', NOW), '');
 });
 
 test('uses yesterday and day counts before switching to calendar dates', () => {

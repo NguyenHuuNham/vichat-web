@@ -99,7 +99,7 @@ from application.services.tinode_chatbot_service import (
 from application.services.presence_service import (
     mark_offline,
     mark_online,
-    online_snapshot,
+    presence_snapshot,
     presence_ttl,
 )
 from application.services.chat_maintenance_service import (
@@ -3804,11 +3804,13 @@ async def chat_presence_heartbeat(request):
     if not mark_online(tenant_id, account_id, session_id):
         return _presence_unavailable_error()
     requested_ids = _tenant_presence_ids(tenant_id, _presence_account_ids(body))
-    snapshot = online_snapshot(tenant_id, requested_ids)
+    snapshot = presence_snapshot(tenant_id, requested_ids)
     if snapshot is None:
         return _presence_unavailable_error()
     return json({
-        "presence": snapshot,
+        "presence": snapshot["presence"],
+        "last_seen_at": snapshot["last_seen"],
+        "lastSeenAt": snapshot["last_seen"],
         "online": True,
         "expires_in": presence_ttl(),
     })
@@ -3823,11 +3825,13 @@ async def chat_presence_batch(request):
     if session_error is not None:
         return session_error
     requested_ids = _tenant_presence_ids(tenant_id, _presence_account_ids(_presence_request_body(request)))
-    snapshot = online_snapshot(tenant_id, requested_ids)
+    snapshot = presence_snapshot(tenant_id, requested_ids)
     if snapshot is None:
         return _presence_unavailable_error()
     return json({
-        "presence": snapshot,
+        "presence": snapshot["presence"],
+        "last_seen_at": snapshot["last_seen"],
+        "lastSeenAt": snapshot["last_seen"],
         "expires_in": presence_ttl(),
     })
 

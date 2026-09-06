@@ -17,7 +17,11 @@ import {
 } from './chatManagementService.js';
 
 const appSource = readFileSync(new URL('../../../app/App.jsx', import.meta.url), 'utf8');
+const rootAppSource = readFileSync(new URL('../../../RootApp.jsx', import.meta.url), 'utf8');
+const legacyStylesSource = readFileSync(new URL('../../../index.css', import.meta.url), 'utf8');
 const stylesSource = readFileSync(new URL('../../../styles/index.css', import.meta.url), 'utf8');
+const managementStylesSource = readFileSync(new URL('../../management/management.css', import.meta.url), 'utf8');
+const indexSource = readFileSync(new URL('../../../../index.html', import.meta.url), 'utf8');
 const tinodeSource = readFileSync(new URL('./tinodeClient.js', import.meta.url), 'utf8');
 const avatarCropSource = readFileSync(new URL('../../contacts/components/AvatarCropModal.jsx', import.meta.url), 'utf8');
 const categoryManagerSource = readFileSync(new URL('../components/ConversationCategoryManager.jsx', import.meta.url), 'utf8');
@@ -347,9 +351,23 @@ test('uses the Chatmgt heartbeat for directory presence and cleans it up on logo
   assert.match(managementServiceSource, /\/api\/v1\/chat\/presence\/heartbeat/);
   assert.match(managementServiceSource, /\/api\/v1\/chat\/presence\/batch/);
   assert.match(managementServiceSource, /\/api\/v1\/chat\/presence\/offline/);
+  assert.match(appSource, /last_seen_at \|\| payload\?\.lastSeenAt/);
   assert.match(appSource, /chatManagementService\.heartbeatPresence\(accountIds\)/);
   assert.match(appSource, /setInterval\(syncDirectoryPresence, 2000\)/);
   assert.doesNotMatch(appSource, /getDirectoryPresence\(/);
+});
+
+test('uses Times New Roman and renders a green indicator only for online presence', () => {
+  assert.match(stylesSource, /font-family:\s*"Times New Roman", Times, serif/);
+  assert.match(legacyStylesSource, /font-family:\s*"Times New Roman", Times, serif/);
+  assert.match(managementStylesSource, /--mgmt-font-body:\s*"Times New Roman", Times, serif/);
+  assert.match(rootAppSource, /fontFamily:\s*'"Times New Roman", Times, serif'/);
+  assert.doesNotMatch(indexSource, /fonts\.googleapis\.com|family=Inter/);
+  assert.match(stylesSource, /\.chat-header-status\.direct-presence\.online::before/);
+  assert.match(appSource, /formatOfflineDuration/);
+  assert.match(appSource, /isCurrentUserOnline \? 'Trực tuyến' : 'Ngoại tuyến'/);
+  assert.match(appSource, /isAccountOnline\(member\) && <span className="status-dot online">/);
+  assert.match(appSource, /isAccountOnline\(activeProfileContact\) && <i className="fa-solid fa-circle">/);
 });
 
 test('routes Account-managed profiles through the Account avatar contract', () => {

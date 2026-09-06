@@ -26,7 +26,9 @@ import {
   mergeRealtimeMemberPresence,
   normalizeAccountShape,
   normalizeTenantShape,
+  latestTimestampValue,
   resolveGroupAdministrator,
+  snapshotLastSeenAt,
   updateAccountProfiles,
   updateAccountPresence,
 } from './accountDirectory.js';
@@ -36,6 +38,8 @@ import {
   avatarCropMetrics,
   avatarCropSourceRect,
 } from './avatarCrop.js';
+
+const NOW_LAST_SEEN = '2026-09-06T10:00:00.000Z';
 
 test('company directory lists every other active employee without friendship data', () => {
   const viewer = { id: 'account-viewer', tinodeUid: 'usr-viewer', name: 'Viewer', tenantId: 'tenant-a' };
@@ -231,6 +235,36 @@ test('presence update changes only accounts with a new Tinode state', () => {
   assert.equal(result[1].online, true);
 });
 
+test('presence update keeps the latest offline activity timestamp', () => {
+  const account = { id: 'account-2', tinodeUid: 'usr-two', online: true };
+  const result = updateAccountPresence(
+    [account],
+    { 'usr-two': false },
+    { id: 'viewer' },
+    { 'account-2': NOW_LAST_SEEN },
+  );
+
+  assert.equal(result[0].online, false);
+  assert.equal(result[0].lastSeenAt, NOW_LAST_SEEN);
+  assert.equal(snapshotLastSeenAt(account, { 'usr-two': NOW_LAST_SEEN }), NOW_LAST_SEEN);
+});
+
+test('presence metadata never moves an offline timestamp backwards', () => {
+  const newer = '2026-09-06T10:05:00.000Z';
+  const older = '2026-09-06T10:00:00.000Z';
+  const account = { id: 'account-2', online: false, lastSeenAt: newer };
+  const result = updateAccountPresence(
+    [account],
+    { 'account-2': false },
+    { id: 'viewer' },
+    { 'account-2': older },
+  );
+
+  assert.equal(result[0], account);
+  assert.equal(latestTimestampValue(newer, older), newer);
+  assert.equal(latestTimestampValue(1_788_688_000, 1_788_687_900_000), 1_788_688_000);
+});
+
 test('presence update never overwrites the current account state', () => {
   const viewer = { id: 'account-1', tinodeUid: 'usr-one', online: true };
   const accounts = [viewer];
@@ -286,13 +320,14 @@ test('directory polling keeps the latest known avatar when the server snapshot i
 });
 
 test('directory metadata never clears a newer presence lease', () => {
-  const previous = [{ id: 'account-1', name: 'One', online: true }];
+  const previous = [{ id: 'account-1', name: 'One', online: true, lastSeenAt: NOW_LAST_SEEN }];
   const incoming = [{ id: 'account-1', name: 'One updated' }];
 
   const result = mergeDirectoryAccountSnapshots(previous, incoming);
 
   assert.equal(result[0].name, 'One updated');
   assert.equal(result[0].online, true);
+  assert.equal(result[0].lastSeenAt, NOW_LAST_SEEN);
 });
 
 test('Account-managed avatar snapshots cannot clear a confirmed avatar', () => {
@@ -359,13 +394,14 @@ test('realtime group presence overlays Chatmgt members without replacing their i
 
   const result = mergeRealtimeMemberPresence(members, [
     { id: 'usr-one', online: true },
-    { id: 'usr-two', online: false },
+    { id: 'usr-two', online: false, lastSeenAt: NOW_LAST_SEEN },
   ]);
 
   assert.notStrictEqual(result, members);
   assert.equal(result[0].id, 'account-1');
   assert.equal(result[0].online, true);
   assert.equal(result[1].online, false);
+  assert.equal(result[1].lastSeenAt, NOW_LAST_SEEN);
 });
 
 test('a refreshed Chatmgt member list retains known presence only for unchanged members', () => {

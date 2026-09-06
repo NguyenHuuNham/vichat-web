@@ -1281,7 +1281,7 @@ function toConversation(topic, tinode) {
     isGroup,
     avatarUrl: avatarFromTopic(topic),
     avatarClass: isGroup ? 'group blue' : '',
-    membersCount: isGroup ? `${members.length || 1} thành viên` : (directPeer?.online ? 'Đang hoạt động' : 'Ngoại tuyến'),
+    membersCount: isGroup ? `${members.length || 1} thành viên` : (directPeer?.online ? 'Trực tuyến' : 'Ngoại tuyến'),
     description: topic.public?.note || topic.public?.fn || '',
     groupSettings: topic.public?.vichat?.groupSettings
       || topic.public?.vichat?.group_settings
