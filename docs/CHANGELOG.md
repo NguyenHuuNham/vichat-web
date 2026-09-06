@@ -8,19 +8,24 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-09-06-05 - Tang tuong phan ten nguoi gui tren hinh nen
 
-- Thoi gian: 2026-09-06 22:14 (Asia/Saigon)
+- Thoi gian: 2026-09-06 22:14-23:10 (Asia/Saigon)
 - Loai: Sua loi | Web | Kiem thu | Tai lieu
-- Trang thai: Hoan tat local; cho commit, push, deploy va UAT browser
+- Trang thai: Hoan tat; source da commit/push va production da deploy/verify; chua UAT browser bang tai khoan that
 - Muc tieu: Ten nguoi gui phai doc ro tren moi hinh nen, ke ca nen toi, nen co nhieu chi tiet, che do sang/toi va tin nhan sticker/anh.
 - Pham vi: ChatUI presentation cua nhan ten nguoi gui; giu nguyen hinh nen da chon, tin nhan, realtime, profile click, attachment va cac luong presence.
-- File da thay doi: `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `docs/CHANGELOG.md`, `dist/index.html` neu production build cap nhat bundle.
+- File da thay doi: `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `docs/CHANGELOG.md`, `dist/index.html` duoc cap nhat tu production build.
 - Noi dung: Them nen trang gan dac, vien, bo goc tron, chu toi va bong nhe cho `.sender-name` chi khi hoi thoai dang dung hinh nen. Selector dung chung cho tin chu, sticker, anh, lo anh, poll va ten trang thai dang nhap; khong doi JSX hay du lieu background.
 - Quyet dinh ky thuat: Dung mot lop nen doc lap thay vi tiep tuc phu thuoc vao text-shadow tren mau anh bat ky; che do toi van dung nen trang va chu toi de giu tuong phan on dinh. Khong thay toan bo preset/upload va khong sua luong tin nhan.
 - Database/API/cau hinh: Khong co.
 - Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js src/features/chat/services/conversationBackground.test.js src/features/chat/services/messagePresentation.test.js src/features/chat/services/imageBatchLayout.test.js` dat 64/64; `npm run test:frontend` dat 357/357; `npm run lint` exit 0 voi canh bao legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` >500 KB da co; `git diff --check` dat.
-- Rui ro con lai: Chua UAT bang tai khoan that tren moi preset/custom wallpaper; can hard refresh sau deploy de tai bundle moi. Khong co thay doi backend/database.
-- Viec tiep theo: Commit/push source, recreate rieng ChatUI tren `192.168.80.20` qua `ubuntu@103.74.122.206`, kiem tra health/public asset va UAT tin chu, sticker, anh tren nen sang/toi.
-- Commit/PR: Chua tao.
+- Rui ro con lai: Chua UAT bang tai khoan that tren moi preset/custom wallpaper vi phien nay khong co cong cu dieu khien browser; can hard refresh `https://chat.upgo.vn` de tai bundle moi. Khong co thay doi backend/database; WSS 101 chi xac nhan handshake, khong phai UAT goi. Gioi han WebRTC co san van duoc ghi tai muc `2026-09-06-04`.
+- Viec tiep theo: UAT tin chu, sticker, anh/lo anh va poll tren nen sang/toi; neu trinh duyet con bundle cu thi hard refresh hoac mo lai tab.
+- Commit/PR: Source `948917cd0721657cbce8dbf9cb45bfd633068d52`, da push `origin/master`; production release `/opt/deploy/chat/releases/sender-name-948917c-20260906-r2`.
+
+- Phat hanh production: Di qua `ubuntu@103.74.122.206` roi `ubuntu@192.168.80.20` (`chat-server`); chi build/recreate `chat`. Release candidate `r1` da tu rollback truoc khi switch vi snapshot mount Docker doi thu tu mang cua `chatmgt`; khong co thay doi ngoai y muon. `r2` so sanh ID/image/restart va deploy thanh cong; probe rieng sau deploy chuan hoa thu tu mount va doi chieu du 8 container voi baseline `r1`. ChatUI container moi `03bb2597ff3c872ce3382cb1f79be0f5ce6ad73f98163af8cb360a57c797fa69`, image `sha256:86cbf65e111a6e237093df9ef4dec51773c5d0eccdb5d601b45538d7ce40c32e`; `current` tro release `r2`, `previous` tro release presence truoc do.
+- Kiem tra production: Candidate CSS xac nhan ca theme sang/toi co nen trang, chu toi, `text-shadow: none`; ChatUI health healthy, Nginx config dat, public health ChatUI/Chatmgt dat, WSS tra `101 Switching Protocols`. Public asset khop byte/hash voi container: `/assets/index-DR25tm3Y.js` SHA-256 `ef1330f290a49ed6beb98d7acea796dc0661119fd6efdf6dbb3fcb38f5bd2212`, `App-rrV8s8oL.js` SHA-256 `51ad280cef50a98fe4d6a922ebf6ea076976ca06de59484f59d5f2588b919402`, `/assets/index-lRx1CMMS.css` SHA-256 `1066406399c1a987aa12cc9c2b99bc140b706bb41e470331d83f3b4f85ed584e`. ID/image/restart/mount cua 8 container ngoai ChatUI da doi chieu, volume khong doi, Alembic van `20260825_13`, env SHA van `4ae2d1cf4af80b4289cd07b15d55b5979eb926d613513d69ece8de8225c6fcb0`.
+- Xac minh doc lap: `Invoke-WebRequest` tu may local tra HTTP 200 cho trang public va CSS moi; kiem tra rieng ca hai rule `.sender-name` co chu `#152e2c`, nen `#fffffff0`, khong text-shadow. Day la kiem tra asset, khong thay the kiem thu hinh anh/browser.
+- Backup/rollback: `/opt/deploy/chat/backups/sender-name-948917c-20260906-r2` giu env/runtime, PostgreSQL dump da kiem tra `pg_restore -l`, snapshot truoc/sau, `result.txt` va `mount-verification.txt`. Image truoc release duoc tag `songhong-production-chat:rollback-before-sender-name-948917c-r1` (tag dung chung cho ca hai lan thu); rollback bang image/compose/env trong `runtime-state.txt` va chi recreate `chat`, khong restore database hay xoa volume. File tam moi local duoc giu ngoai commit vi thao tac cleanup bi chan; khong thay doi 57 file untracked co san.
 
 ## 2026-09-06-04 - Phat hanh ban sua moc ngoai tuyen qua hai chang SSH
 
