@@ -8,19 +8,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-09-06-02 - Khoi phuc font Inter cu cho ChatUI
 
-- Thoi gian: 2026-09-06 13:57-14:06 (Asia/Saigon)
-- Loai: Sua loi | Web | Giao dien | Kiem thu | Tai lieu
-- Trang thai: Da sua va test local; cho commit/push va deploy production
+- Thoi gian: 2026-09-06 13:57-14:17 (Asia/Saigon)
+- Loai: Sua loi | Web | Giao dien | Kiem thu | Van hanh | Tai lieu
+- Trang thai: Hoan tat; da test, commit, push, deploy production va xac minh doc lap; chua UAT visual bang tai khoan that trong browser
 - Muc tieu: Dua giao dien ve font Inter/system nhu truoc release presence vi Times New Roman lam noi dung chat kho doc, dong thoi giu nguyen tinh nang cham xanh truc tuyen va thoi gian ngoai tuyen.
 - Pham vi: HTML tai font, font-family ChatUI/Chatmgt UI, error boundary va regression test giao dien; khong sua backend, API, Redis presence, message, topic, membership, database hay cac luong chat dang hoat dong.
 - File da thay doi: `index.html`, `src/index.css`, `src/styles/index.css`, `src/features/management/management.css`, `src/RootApp.jsx`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html` tu production build va `docs/CHANGELOG.md`.
 - Noi dung: Khoi phuc Google Inter va font stack cu cho body/management; error boundary quay lai system UI. Regression test tiep tuc bat buoc cac marker `last_seen_at`, format thoi gian ngoai tuyen va cham xanh online, nen viec doi font khong duoc loai bo logic presence.
 - Quyet dinh ky thuat: Doi chieu truc tiep voi baseline `5585e6a` va chi hoan tac nhung dong font cua `41a52b4`; cac thay doi CSS/React presence van duoc giu nguyen. Production se chi recreate service `chat` neu diff va test xac nhan backend khong doi.
 - Database/API/cau hinh: Khong migration, endpoint, hop dong API, secret hay bien moi truong moi.
-- Kiem thu: `npm run test:frontend` dat 347/347, gom regression xac nhan font Inter va toan bo marker presence; `npm run lint` exit 0, chi warning legacy/vendor co san; `npm run build:production` dat voi entry `index-QHC5xfZK.js`, App `App-ZjbLbBkU.js`, CSS `index-DMJdiIuh.css` va warning App chunk lon hon 500 KB co san. Bundle co `last_seen_at`, source/build khong con `Times New Roman`; `git diff -- chatservice-main` rong va `git diff --check` dat.
-- Rui ro con lai: Chua UAT visual bang tai khoan that; can hard refresh sau deploy de trinh duyet bo CSS cu.
-- Viec tiep theo: Commit/push va deploy rieng ChatUI qua jump host; xac minh public bundle, health, WSS, log va container stateful khong doi.
-- Commit/PR: Chua tao
+- Kiem thu: `npm run test:frontend` dat 347/347, gom regression xac nhan font Inter va toan bo marker presence; `npm run lint` exit 0, chi warning legacy/vendor co san; `npm run build:production` dat voi entry `index-QHC5xfZK.js`, App `App-ZjbLbBkU.js`, CSS `index-DMJdiIuh.css` va warning App chunk lon hon 500 KB co san. Bundle co `last_seen_at`, source/build khong con `Times New Roman`; `git diff -- chatservice-main` rong va `git diff --check` dat. Candidate production `r1` dung truoc recreate vi `nginx -t` chay ngoai Docker network khong phan giai duoc `chatmgt`; current/container cu van healthy va khong doi. `r2` chay preflight trong network production, build va marker font/presence dat; sau deploy ChatUI/Chatmgt healthy, restart count 0, private health dat, public ChatUI/Chatmgt HTTP 200, WSS HTTP 101, Nginx jump host dat, public asset khop container va log 15 phut co 0 marker `fatal|panic|traceback|uncaught|critical|emerg`.
+- Trien khai: Source `0af5eb4` da push `origin/master`; archive `/opt/deploy/chat/incoming/vichat-font-restore-0af5eb4.tar.gz` 45058434 byte, SHA-256 `9ec82ffe87b64279929ee06a9c2a46b20ac5ba60ada962f8351bafc885f37358`, deploy qua `ubuntu@103.74.122.206` roi SSH tiep `ubuntu@192.168.80.20`. Release `/opt/deploy/chat/releases/font-restore-0af5eb4-20260906-r2` dang la `current`, `previous` tro `/opt/deploy/chat/releases/presence-font-41a52b4-20260906-r4`; chi build/recreate `chat`.
+- Public bundle: Entry `/assets/index-DYVkGkYt.js` SHA-256 `adb52845676872aa88e730b57a2c7b35372eb888c7ebc1be3c6fe6521b7993bcb`; App `App-xke9JlbV.js` SHA-256 `82f42a7b20312efbf29f0bf1aac965d783e4bc8ae2320659d8b8f711284d288c4`; CSS `/assets/index-DMJdiIuh.css` SHA-256 `19676855118cc5cc7590da87efc625127945a4dd58d4ffa0e51abf6521fb955f5`; management CSS `ManagementApp-BKgeVkrA.css` SHA-256 `bed2257d6d343eff7fd6b38872b9eba47251dad4611f5ee1a555a7c8f42ebe5c`. HTML/CSS public co Inter, khong con Times New Roman; App/CSS van co `last_seen_at` va cham xanh online.
+- Backup/bao toan state: Backup PostgreSQL `/opt/deploy/chat/backups/font-restore-0af5eb4-20260906-r2/chatservice-predeploy.dump` 305161 byte, mode `0600`, SHA-256 `dea4fa53a55abb3c7042f0de93823240ac59fdb45ac29190188339010fb02cef`; `.env` giu nguyen SHA-256 `4ae2d1cf4af80b4289cd07b15d55b5979eb926d613513d69ece8de8225c6fcb0`; Alembic van `20260825_13`. ChatUI doi sang container `6185e751c91a`, image `sha256:aa9c467c00b2ecbc0625426c3a456d9eefb851389efb6ac9c53b413239e99239`; `chatmgt=49387bbd76e0` va moi service khac giu nguyen container ID. Khong migration/reset database, Redis, Tinode topic/message/cursor, volume, browser storage hay setting nguoi dung.
+- Rui ro con lai: Chua UAT visual bang tai khoan that; browser dang giu CSS cu co the can hard refresh.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, xac nhan font trong danh sach hoi thoai/message/sidebar da de doc va smoke-test online/offline, gui tin, file, sticker va goi.
+- Commit/PR: Source `0af5eb4`; ban ghi deploy nam trong commit tai lieu follow-up; khong co PR
 
 ## 2026-09-06-01 - Hien thi thoi gian ngoai tuyen va font de doc
 
