@@ -6,6 +6,37 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-07-04 - Phat hanh ban sua hop chia se tin nhan
+
+- Thoi gian: 2026-09-07 09:52 (Asia/Saigon)
+- Loai: Trien khai | Web | Kiem thu | Van hanh | Tai lieu
+- Trang thai: Dang thuc hien theo yeu cau commit/push/deploy cua nguoi dung.
+- Muc tieu: Dua ban sua avatar/vung cuon modal chia se len production ma khong thay doi backend, cau hinh hay du lieu.
+- Pham vi: Dung hai hop `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20` (`chat-server`); chi build/recreate service `chat` tu release bat bien. Chatmgt, Tinode bridge/webhook, ChatAPI, Coturn, PostgreSQL va Redis giu nguyen.
+- File da thay doi: Ban sua o muc `2026-09-07-03`; muc nay ghi lai qua trinh phat hanh trong `docs/CHANGELOG.md`.
+- Quyet dinh ky thuat: Khong chay `start.sh` hay migration cho thay doi giao dien. Sao luu `.env`, runtime, database va image cu; verify candidate, health/public bundle/WSS, container ngoai pham vi va volume truoc khi chuyen symlink `current`; rollback rieng ChatUI neu gate that bai.
+- Database/API/cau hinh: Khong thay doi, khong reset topic/tin nhan, khong xoa volume.
+- Kiem thu: Chay lai `npm run test:frontend` dat 372/372; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` dat voi warning chunk App >500 KB; `git diff --check` dat. Hai hop SSH da xac nhan `devserver` -> `chat-server`; production hien tai `vichat-ai-guidance-a1405a9-20260907-r2`, 9 service running, cac service co healthcheck deu healthy va restart 0. `git fetch origin master` xac nhan nhanh local/remote dong bo truoc commit.
+- Rui ro con lai: Chua kich hoat candidate hay verify production; chua UAT bang tai khoan Account/Tinode that.
+- Viec tiep theo: Commit/push dung 5 file da ra soat, tao archive tu commit, backup/deploy/verify tren chat-server, ghi lai ma commit va ket qua that.
+- Commit/PR: Chua tao.
+
+## 2026-09-07-03 - Gioi han avatar va vung cuon trong hop chia se tin nhan
+
+- Thoi gian: 2026-09-07 09:43 (Asia/Saigon)
+- Loai: Sua loi | Web | UX | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code va kiem thu local; chua commit/push/deploy production.
+- Muc tieu: Khong de anh dai dien kich thuoc lon lam tran hop chon nguoi/nhom nhan khi chia se tin nhan.
+- Pham vi: JSX va CSS rieng cua modal chia se, test hoi quy frontend va production build; khong doi Chatmgt, Tinode, mobile, API hay du lieu.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Modal truoc day render `ConversationAvatar` truc tiep trong button, thieu wrapper `.conv-avatar` ma CSS dang dung de gioi han anh. Them wrapper 32x32, giu `avatarClass`, fallback va co che tai anh bao ve hien co. Ten hoi thoai dai duoc rut gon bang ellipsis; danh sach nhan cuon rieng trong card, giu tieu de/nut dong hien thi va khong co hang khi danh sach dai. Them nhan truy cap cho dialog.
+- Quyet dinh ky thuat: Tai su dung khung avatar hien co va chi scope CSS moi vao modal chia se, khong sua `SafeAvatar`, `ConversationAvatar` hay `shareMessageTo`. Giu nguyen loc hoi thoai hien tai/chatbot, chon dich den, dong bang nut X/nen/Escape, chan tin ca nhan, chong spam nhom, gui text/file va dong bo lich su. Khong doi kien truc hay nguon du lieu chuan.
+- Database/API/cau hinh: Khong co migration, endpoint, bien moi truong hay dependency moi. Build lai frontend theo cau hinh production hien co.
+- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js src/features/chat/services/chatRealtime.test.js src/features/chat/services/messageActionPolicy.test.js src/features/chat/services/messagePresentation.test.js src/features/chat/services/directMessageBlocking.test.js src/features/chat/services/groupSpamPolicy.test.js` dat 101/101. `npm run test:frontend` dat 372/372, gom 3 test cau truc hoi quy moi cho wrapper avatar, vung cuon/ten dai va chon/dong modal. `npm run lint` exit 0 voi canh bao legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk App >500 KB da co. Doi chieu than ham `shareMessageTo`, `SafeAvatar`, `ConversationAvatar` voi Git HEAD bang Node assert: khong doi. `git diff --check` dat.
+- Rui ro con lai: Chua UAT truc quan va gui tin end-to-end bang tai khoan Account/Tinode that do khong co phien browser kiem thu da xac thuc trong cong cu hien tai; test cau truc khong thay the kiem tra render tren thiet bi that. Chua deploy, nen website production chua nhan ban sua nay.
+- Viec tiep theo: Khi duoc yeu cau phat hanh, commit/push va build/redeploy rieng ChatUI theo quy trinh. UAT chia se text/anh/file sang ca nhan va nhom voi avatar anh lon, avatar loi/fallback, ten dai, danh sach nhieu dong va man hinh hep; xac nhan nut dong/Escape va cac luong chat thuong, tra loi, cam xuc van hoat dong. Khong can migration hay khoi dong lai backend.
+- Commit/PR: Chua tao.
+
 ## 2026-09-07-02 - Trien khai ViChat AI guidance len production
 
 - Thoi gian: 2026-09-07 01:18-01:38 (Asia/Saigon)

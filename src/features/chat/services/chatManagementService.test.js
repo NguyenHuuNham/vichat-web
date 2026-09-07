@@ -600,6 +600,35 @@ test('group mute and reaction controls preserve the existing checkbox flow and e
   assert.match(appSource, /groupRoleForIdentity\(\{ \.\.\.activeChat, members: activeGroupMembers \}, messageSenderId\)/);
 });
 
+test('frames every share recipient avatar without changing the shared avatar renderer', () => {
+  const shareSource = appSource.split('{shareMessage && (', 2)[1].split('</section>', 2)[0];
+  assert.match(shareSource, /<span className=\{`conv-avatar \$\{room\.avatarClass \|\| ''\}`\} aria-hidden="true"><ConversationAvatar room=\{room\} \/><\/span>/);
+  assert.match(stylesSource, /\.share-conversation-list \.conv-avatar \{[^}]*width: 32px;[^}]*height: 32px;[^}]*flex: 0 0 32px;/);
+  assert.match(stylesSource, /\n\.conv-avatar \{[^}]*width: 40px;[^}]*height: 40px;[^}]*overflow: hidden;/);
+  assert.match(stylesSource, /\.conv-avatar img \{[^}]*width: 100%;[^}]*height: 100%;[^}]*object-fit: cover;/);
+  assert.match(stylesSource, /\.conv-avatar > \.avatar-fallback,[^{]+\{[^}]*width: 100%;[^}]*height: 100%;/);
+});
+
+test('bounds the share list and long recipient names without scrolling away the close button', () => {
+  assert.match(appSource, /className="share-conversation-name">\{room\.name\}<\/span>/);
+  assert.match(stylesSource, /\.message-share-card \{[^}]*display: flex;[^}]*min-width: 0;[^}]*flex-direction: column;[^}]*overflow: hidden;/);
+  assert.match(stylesSource, /\.message-share-card \.message-details-header \{[^}]*flex: 0 0 auto;/);
+  assert.match(stylesSource, /\.share-conversation-list \{[^}]*min-height: 0;[^}]*overflow-y: auto;[^}]*overscroll-behavior: contain;/);
+  assert.match(stylesSource, /\.share-conversation-list button \{[^}]*min-width: 0;[^}]*flex: 0 0 auto;/);
+  assert.match(stylesSource, /\.share-conversation-name \{[^}]*min-width: 0;[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;/);
+});
+
+test('preserves share recipient filtering, selection and dismissal', () => {
+  const shareSource = appSource.split('{shareMessage && (', 2)[1].split('</section>', 2)[0];
+  assert.match(shareSource, /role="dialog" aria-modal="true" aria-labelledby="share-message-title"/);
+  assert.match(shareSource, /id="share-message-title"/);
+  assert.match(shareSource, /Object\.values\(renderConversations\)\.filter\(room => room\.id !== activeChat\.id && !room\.isChatbot\)/);
+  assert.match(shareSource, /key=\{room\.id\} onClick=\{\(\) => shareMessageTo\(room\)\}/);
+  assert.match(shareSource, /className="message-share-card" onClick=\{event => event\.stopPropagation\(\)\}/);
+  assert.equal(shareSource.match(/onClick=\{\(\) => setShareMessage\(null\)\}/g)?.length, 2);
+  assert.match(appSource, /if \(shareMessage\) \{\s*setShareMessage\(null\);\s*return true;/);
+});
+
 test('renders the group owner key on incoming owner avatars only', () => {
   const avatarBlock = appSource.split('{!isOutgoing && (')[1].split('</button>')[0];
   const roleBadgeSource = appSource.split('function GroupRoleBadge')[1].split('function MessageReceiptIndicator')[0];

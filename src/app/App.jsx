@@ -14048,12 +14048,15 @@ function App() {
           </div>
         )}
         {shareMessage && (
-          <div className="message-details-modal" role="dialog" onClick={() => setShareMessage(null)}>
+          <div className="message-details-modal" role="dialog" aria-modal="true" aria-labelledby="share-message-title" onClick={() => setShareMessage(null)}>
             <div className="message-share-card" onClick={event => event.stopPropagation()}>
-              <div className="message-details-header"><strong>{appCopy.t('Chia sẻ tin nhắn tới')}</strong><button type="button" onClick={() => setShareMessage(null)} aria-label={appCopy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button></div>
+              <div className="message-details-header"><strong id="share-message-title">{appCopy.t('Chia sẻ tin nhắn tới')}</strong><button type="button" onClick={() => setShareMessage(null)} aria-label={appCopy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button></div>
               <div className="share-conversation-list">
                 {Object.values(renderConversations).filter(room => room.id !== activeChat.id && !room.isChatbot).map(room => (
-                  <button type="button" key={room.id} onClick={() => shareMessageTo(room)}><ConversationAvatar room={room} /><span>{room.name}</span></button>
+                  <button type="button" key={room.id} onClick={() => shareMessageTo(room)}>
+                    <span className={`conv-avatar ${room.avatarClass || ''}`} aria-hidden="true"><ConversationAvatar room={room} /></span>
+                    <span className="share-conversation-name">{room.name}</span>
+                  </button>
                 ))}
               </div>
             </div>
