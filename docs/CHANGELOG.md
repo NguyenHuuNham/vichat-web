@@ -8,18 +8,24 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-09-07-04 - Phat hanh ban sua hop chia se tin nhan
 
-- Thoi gian: 2026-09-07 09:52 (Asia/Saigon)
+- Thoi gian: 2026-09-07 09:52-10:10 (Asia/Saigon)
 - Loai: Trien khai | Web | Kiem thu | Van hanh | Tai lieu
-- Trang thai: Dang thuc hien theo yeu cau commit/push/deploy cua nguoi dung.
+- Trang thai: Hoan tat; source `8edf1093c116642a72be0f3d69ceb0e02c6d014c` da commit/push `origin/master`, production da deploy va verify.
 - Muc tieu: Dua ban sua avatar/vung cuon modal chia se len production ma khong thay doi backend, cau hinh hay du lieu.
 - Pham vi: Dung hai hop `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20` (`chat-server`); chi build/recreate service `chat` tu release bat bien. Chatmgt, Tinode bridge/webhook, ChatAPI, Coturn, PostgreSQL va Redis giu nguyen.
-- File da thay doi: Ban sua o muc `2026-09-07-03`; muc nay ghi lai qua trinh phat hanh trong `docs/CHANGELOG.md`.
-- Quyet dinh ky thuat: Khong chay `start.sh` hay migration cho thay doi giao dien. Sao luu `.env`, runtime, database va image cu; verify candidate, health/public bundle/WSS, container ngoai pham vi va volume truoc khi chuyen symlink `current`; rollback rieng ChatUI neu gate that bai.
-- Database/API/cau hinh: Khong thay doi, khong reset topic/tin nhan, khong xoa volume.
-- Kiem thu: Chay lai `npm run test:frontend` dat 372/372; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` dat voi warning chunk App >500 KB; `git diff --check` dat. Hai hop SSH da xac nhan `devserver` -> `chat-server`; production hien tai `vichat-ai-guidance-a1405a9-20260907-r2`, 9 service running, cac service co healthcheck deu healthy va restart 0. `git fetch origin master` xac nhan nhanh local/remote dong bo truoc commit.
-- Rui ro con lai: Chua kich hoat candidate hay verify production; chua UAT bang tai khoan Account/Tinode that.
-- Viec tiep theo: Commit/push dung 5 file da ra soat, tao archive tu commit, backup/deploy/verify tren chat-server, ghi lai ma commit va ket qua that.
-- Commit/PR: Chua tao.
+- File da thay doi: Ban sua o muc `2026-09-07-03`; muc nay ghi lai qua trinh phat hanh trong `docs/CHANGELOG.md`. Script deploy/verifier local nam trong `outputs/message-share-8edf109/` (ignored), ban da chay tren server nam tai `/opt/deploy/chat/incoming/message-share-8edf109-r2-deploy.sh` va `/opt/deploy/chat/incoming/message-share-8edf109-verify.py`.
+- Artifact: Archive tao bang `git archive` tu source commit, `/opt/deploy/chat/incoming/vichat-message-share-8edf109.tar.gz`, 45079335 bytes, SHA-256 `865c1f344e1e5ba294d48ea6717834a878df9cb5d16c5f7e4c23fba621a61306`; checksum local va server khop. Cac file source ngoai 5 file cua ban sua duoc doi chieu byte voi release truoc khi build.
+- Phat hanh: `current` tro `/opt/deploy/chat/releases/message-share-8edf109-20260907-r2`; `previous` tro `/opt/deploy/chat/releases/vichat-ai-guidance-a1405a9-20260907-r2`. Chat container moi `ee2b188a2839`, image `sha256:54e630e74ba7ec2a3c075b779ac4961c6d75fa7c0944502bfcc5bd6b5c4b0a2e`; Chatmgt van `8f8498eb7d4a`. Su dung `docker compose ... up -d --no-deps --no-build --force-recreate --wait --wait-timeout 180 chat`.
+- Backup va an toan: `/opt/deploy/chat/backups/message-share-8edf109-20260907-r2/` (mode 0700) luu `.env`, runtime, Chatservice/Tinode `pg_dump -Fc`, image va thong tin rollback; `pg_restore -l` va `sha256sum -c` dat. Rollback image tag `songhong-production-chat:rollback-before-message-share-8edf109-r2`. `.env` moi/cu/backup khop hash; 8 service ngoai `chat` giu nguyen ID, image, restart count va mount theo so sanh JSON chuan hoa; danh sach volume khong doi.
+- Quyet dinh ky thuat: Khong chay `start.sh` hay migration cho thay doi giao dien. Giu lock deploy va trap rollback rieng ChatUI; chi chuyen symlink `current` sau khi candidate, public bundle, WSS, service va volume gate dat.
+- Xu ly rollback: Candidate `r1` da rollback tu dong tai gate so sanh mount vi Docker tra cung danh sach mount ChatAPI theo thu tu khac nhau. Doi chieu xac nhan ca 8 service khong doi ID/image/restart hay noi dung mount; health va public bundle cua image cu duoc verify lai sau rollback. Chuan hoa thu tu mount va khoa JSON, van giu kiem tra thay doi mount that, roi chay `r2` thanh cong; khong sua them code ung dung hay du lieu.
+- Database/API/cau hinh: Khong thay doi, Alembic van `20260825_13`; khong reset topic/tin nhan, khong xoa volume, khong them dependency hay secret.
+- Kiem thu local: Chay lai `npm run test:frontend` dat 372/372; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` dat voi warning chunk App >500 KB; `git diff --check` dat. `git fetch origin master` va `git ls-remote origin refs/heads/master` xac nhan dong bo truoc commit va source commit da push.
+- Kiem thu production: `bash -n /opt/deploy/chat/incoming/message-share-8edf109-r2-deploy.sh` dat; candidate Nginx va compiled JSX/CSS cho avatar 32x32, cuon rieng, ten dai va avatar dung chung dat. `python3 /opt/deploy/chat/incoming/message-share-8edf109-verify.py` dat: 9 service running, 7 service co healthcheck deu healthy, restart 0; PostgreSQL/Redis/Alembic, private/public auth-chatbot health, env/backup/volume/mount deu dat. Public WSS `101`, fatal log scan sach; `sudo -n nginx -t` tren jump host dat.
+- Public bundle: `/assets/index-Bxijs6P7.js`, `/assets/App-GZUCwFwE.js`, `/assets/index-CIzR3C23.css` khop SHA-256 voi image dang chay; Node fetch tu may Windows cung verify ca 3 hash. App/CSS public chua `share-message-title`, `share-conversation-name` va avatar 32x32; khong chi dua vao viec push hay health HTTP 200.
+- Rui ro con lai: Chua UAT truc quan va gui tin end-to-end bang tai khoan Account/Tinode that; verifier chi xac nhan artifact, ha tang va hop dong hien co, khong thay the thao tac nguoi dung tren browser.
+- Viec tiep theo: Hard refresh ChatUI va UAT chia se text/anh/file sang ca nhan/nhom voi avatar lon, fallback, ten dai, danh sach nhieu dong va man hinh hep. Giu release `previous`, rollback image va backup; khong can migration hay khoi dong lai backend.
+- Commit/PR: Source `8edf109`; khong co PR. Nhat ky nay duoc commit/push rieng sau khi verify production.
 
 ## 2026-09-07-03 - Gioi han avatar va vung cuon trong hop chia se tin nhan
 
