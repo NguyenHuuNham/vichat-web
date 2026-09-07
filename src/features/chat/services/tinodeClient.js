@@ -1,4 +1,5 @@
 import tinodeSdk from 'tinode-sdk';
+import { createConversationDelivery, createLatestHistoryLoader, fetchTopicData } from './tinodeDelivery';
 import {
   acknowledgeTopicReceived,
   deliveryStatusFromReceiptCursor,
@@ -90,14 +91,14 @@ const userProfilesLoaded = new Set();
 const topicSubscriptionRequests = new Map();
 const conversationBackgroundAuxRequests = new Map();
 const conversationBackgroundAuxTopics = new Set();
-const fullHistoryRequests = new Map();
 const fullHistoryTopics = new Set();
+const latestHistory = createLatestHistoryLoader();
 const groupPermissionMigrationRequests = new Map();
 const groupPrivacyMigrationRequests = new Map();
 const groupAccessRefreshRequests = new Map();
 const privateGroupTopics = new Set();
 const callInviteKeys = new Set();
-const conversationEmitTimers = new Map();
+const conversationDelivery = createConversationDelivery();
 const topicReceiptCursors = new Map();
 const groupSettingsSnapshots = new Map();
 // A local read floor protects the UI from an older Tinode snapshot arriving
@@ -1299,8 +1300,12 @@ function toConversation(topic, tinode) {
     updatedAt: latestActivityAt || (topic.touched ? new Date(topic.touched).toISOString() : undefined),
     ...(conversationBackground !== undefined ? { conversationBackground } : {}),
     readSeq: topicReadState.readSeq,
-    unreadFromSeq: finalMessages.length > 0 ? topicReadState.unreadFromSeq : 0,
-    badge: finalMessages.length > 0 ? topicReadState.badge : 0,
+    latestSeq: topicSequence,
+    unreadThroughSeq: topicSequence > topicReceiptSequence(topic)
+      ? topicSequence
+      : finalMessages.reduce((maximum, message) => Math.max(maximum, Number(message.seq) || 0), 0),
+    unreadFromSeq: topicReadState.unreadFromSeq,
+    badge: topicReadState.badge,
     deletedAt,
     topic,
   };
@@ -1456,22 +1461,12 @@ function emitConversation(topic, tinode = topic?._tinode || getClient()) {
   cacheTopicProfiles(topic);
   const sessionUid = tinode.getCurrentUserID();
   const eventKey = `${sessionUid}:${topic.name}`;
-  const pendingTimer = conversationEmitTimers.get(eventKey);
-  if (pendingTimer) clearTimeout(pendingTimer);
-  conversationEmitTimers.set(eventKey, setTimeout(() => {
-    conversationEmitTimers.delete(eventKey);
-    if (tinode !== client || sessionUid !== currentSession?.uid) return;
-    enrichConversationProfiles(toConversation(topic, tinode), tinode)
-      .then(next => {
-        if (tinode !== client || sessionUid !== currentSession?.uid) return;
-        listeners.forEach(listener => listener({ type: 'conversation', conversation: next, sessionUid }));
-      })
-      .catch(() => {
-        if (tinode !== client || sessionUid !== currentSession?.uid) return;
-        const next = toConversation(topic, tinode);
-        listeners.forEach(listener => listener({ type: 'conversation', conversation: next, sessionUid }));
-      });
-  }, 20));
+  conversationDelivery.enqueue(eventKey, {
+    isCurrent: () => tinode === client && sessionUid === currentSession?.uid && allowedConversationTopics.has(topic.name),
+    snapshot: () => toConversation(topic, tinode),
+    enrich: conversation => enrichConversationProfiles(conversation, tinode),
+    emit: conversation => listeners.forEach(listener => listener({ type: 'conversation', conversation, sessionUid })),
+  });
 }
 
 function emitCallInvite(topic, data, tinode) {
@@ -1673,6 +1668,9 @@ function wireTopic(topic) {
     // Read/received receipts update Tinode's per-message status. Re-emit the
     // conversation so the React view can replace its check mark immediately.
     if (['read', 'recv'].includes(info.what)) {
+      if (info.what === 'read' && info.from === topicClient.getCurrentUserID()) {
+        advanceTopicUnreadReadSnapshot(topic.name, Number(info.seq) || 0);
+      }
       rememberTopicReceipt(topic.name, info.what, info.seq);
       listeners.forEach(listener => listener({
         type: 'receipt',
@@ -1777,17 +1775,10 @@ async function subscribeTopic(topicName, {
           .withDesc()
           .withSub();
         if (topic.isP2PType?.()) queryBuilder.withAux();
-        if (historyLimit > 0) {
-          if (newerOnly) {
-            queryBuilder.withLaterData(historyLimit).withLaterDel(historyLimit);
-          } else {
-            queryBuilder.withEarlierData(historyLimit).withDel(undefined, historyLimit);
-          }
-        }
         const query = queryBuilder.build();
         await topic.subscribe(query);
+        if (tinode !== client) throw new Error('Tinode session changed.');
         if (topic.isP2PType?.()) conversationBackgroundAuxTopics.add(topicName);
-        if (!newerOnly && historyLimit >= 1000) fullHistoryTopics.add(topicName);
       })().finally(() => topicSubscriptionRequests.delete(topicName));
       topicSubscriptionRequests.set(topicName, request);
     }
@@ -1813,20 +1804,14 @@ async function subscribeTopic(topicName, {
   await ensureGroupInvitePermissions(topic).catch(() => false);
   acknowledgeTopicReceived(topic);
 
-  if (!newerOnly && historyLimit >= 1000 && !fullHistoryTopics.has(topicName)) {
-    if (!fullHistoryRequests.has(topicName)) {
-      const request = (async () => {
-        const query = topic.startMetaQuery()
-          .withEarlierData(historyLimit)
-          .withDel(undefined, historyLimit)
-          .build();
-        await topic.getMeta(query);
-        fullHistoryTopics.add(topicName);
-      })().finally(() => fullHistoryRequests.delete(topicName));
-      fullHistoryRequests.set(topicName, request);
-    }
-    await fullHistoryRequests.get(topicName);
+  if (historyLimit > 0 && (newerOnly || historyLimit >= OPEN_HISTORY_LIMIT || !topicReceiptSequence(topic))) {
+    const loadFullHistory = !newerOnly && historyLimit >= OPEN_HISTORY_LIMIT && !fullHistoryTopics.has(topicName);
+    await latestHistory.load(topic, loadFullHistory ? historyLimit : Math.min(historyLimit, BACKGROUND_HISTORY_LIMIT));
+    if (tinode !== client) throw new Error('Tinode session changed.');
+    if (loadFullHistory) fullHistoryTopics.add(topicName);
   }
+  if (tinode !== client) throw new Error('Tinode session changed.');
+  acknowledgeTopicReceived(topic);
   emitGroupSettingsChange(topic, tinode);
   if (emit) emitConversation(topic);
   return topic;
@@ -1903,15 +1888,14 @@ function resetSessionState({ clearEventListeners = false } = {}) {
   topicSubscriptionRequests.clear();
   conversationBackgroundAuxRequests.clear();
   conversationBackgroundAuxTopics.clear();
-  fullHistoryRequests.clear();
   fullHistoryTopics.clear();
+  latestHistory.clear();
   groupPermissionMigrationRequests.clear();
   groupPrivacyMigrationRequests.clear();
   groupAccessRefreshRequests.clear();
   privateGroupTopics.clear();
   callInviteKeys.clear();
-  conversationEmitTimers.forEach(timer => clearTimeout(timer));
-  conversationEmitTimers.clear();
+  conversationDelivery.clear();
   topicReceiptCursors.clear();
   topicReadFloors.clear();
   topicUnreadReadSnapshots.clear();
@@ -2003,9 +1987,11 @@ async function initializeSession(tinode, fallbackLogin = '', preferredName = '')
     emitContactPresence(contact, what);
     if (what === 'msg' && contact?.isCommType?.()) {
       emitContactsSoon();
-      if (allowedConversationTopics.has(contact.name)) {
+      if (allowedConversationTopics.has(contact.name) && topicReceiptSequence(contact) < Number(contact.seq)) {
         subscribeTopic(contact.name, { historyLimit: BACKGROUND_HISTORY_LIMIT, newerOnly: true }).catch(() => {});
       }
+    } else if (['read', 'recv'].includes(what) && allowedConversationTopics.has(contact?.name)) {
+      emitConversation(tinode.getTopic(contact.name), tinode);
     } else if (what === 'acs' && isGroupTopic(contact)) {
       // Tinode has already applied contact.acs. Emit it before the metadata
       // refresh so an open deputy tab can use the new permissions immediately.
@@ -2019,6 +2005,10 @@ async function initializeSession(tinode, fallbackLogin = '', preferredName = '')
     }
   };
   meTopic.onPres = presence => {
+    if (presence?.what === 'read' && allowedConversationTopics.has(presence.src)) {
+      advanceTopicUnreadReadSnapshot(presence.src, Number(presence.seq) || 0);
+      emitConversation(tinode.getTopic(presence.src), tinode);
+    }
     if (presence?.src && (presence.what === 'on' || presence.what === 'off')) {
       emitPresence(presence.src, presence.what === 'on');
     }
@@ -2421,19 +2411,40 @@ export const tinodeClient = {
   },
 
   async openConversation(topicName) {
+    const tinode = getClient();
     const topic = await subscribeTopic(topicName, { historyLimit: OPEN_HISTORY_LIMIT });
-    return enrichConversationProfiles(toConversation(topic, getClient()), getClient());
+    if (tinode !== client) throw new Error('Tinode session changed.');
+    return toConversation(topic, tinode);
   },
 
   async loadConversationMessages(topicName, sequences = []) {
+    const tinode = getClient();
     const normalizedSequences = [...new Set((sequences || [])
       .map(sequence => Number(sequence))
       .filter(sequence => Number.isFinite(sequence) && sequence > 0))];
     if (!topicName || normalizedSequences.length === 0) return null;
     const topic = await subscribeTopic(topicName, { historyLimit: 0 });
-    await topic.getMeta(topic.startMetaQuery().withDataList(normalizedSequences).build());
+    await fetchTopicData(topic, topic.startMetaQuery().withDataList(normalizedSequences).build());
+    if (tinode !== client) throw new Error('Tinode session changed.');
     emitConversation(topic);
-    return enrichConversationProfiles(toConversation(topic, getClient()), getClient());
+    return toConversation(topic, tinode);
+  },
+
+  async loadUnreadMessages(topicName, firstSequence) {
+    const tinode = getClient();
+    const since = Math.max(1, Math.trunc(Number(firstSequence) || 1));
+    const topic = await subscribeTopic(topicName, { historyLimit: 0 });
+    await fetchTopicData(topic, topic.startMetaQuery().withData(since, since + BACKGROUND_HISTORY_LIMIT, BACKGROUND_HISTORY_LIMIT).build());
+    if (tinode !== client) throw new Error('Tinode session changed.');
+    emitConversation(topic);
+    return toConversation(topic, tinode);
+  },
+
+  async refreshConversation(topicName) {
+    const tinode = getClient();
+    const topic = await subscribeTopic(topicName, { newerOnly: true });
+    if (tinode !== client) throw new Error('Tinode session changed.');
+    return toConversation(topic, tinode);
   },
 
   async getConversationAvatar(topicName) {
@@ -2525,6 +2536,7 @@ export const tinodeClient = {
   },
 
   async markRead(topicName, { throughSequence = 0 } = {}) {
+    const tinode = getClient();
     const requestedSequence = Math.max(0, Number(throughSequence) || 0);
     const cachedTopic = client?.getTopic?.(topicName);
     const cachedUnreadReadSnapshot = topicUnreadReadSnapshots.get(topicName);
@@ -2543,15 +2555,16 @@ export const tinodeClient = {
       requestedSequence || (cachedUnreadReadSnapshot ? cachedUnreadReadSnapshot.readCap : cachedSequence),
     );
     const hasReadSnapshot = initialReadSequence > 0;
-    if (hasReadSnapshot) {
-      topicReadFloors.set(topicName, initialReadSequence);
+    const topic = await subscribeTopic(topicName, { historyLimit: 0, emit: false });
+    if (tinode !== client || !tinode.isConnected() || !topic.isSubscribed?.()) {
+      throw new Error('Tinode session is not connected.');
     }
-    const topic = await subscribeTopic(topicName, { emit: false });
     // Keep the sequence captured before subscription. A peer packet can arrive
     // while subscribeTopic is awaiting metadata; it must remain unread.
     const unreadReadSnapshot = topicUnreadReadSnapshots.get(topicName);
     const topicReadSequence = Number(topic.read) || 0;
     const readSequence = Math.max(
+      initialReadSequence,
       Number(topicReadFloors.get(topicName)) || 0,
       unreadReadSnapshot
         ? Math.min(topicReadSequence, unreadReadSnapshot.readCap)
@@ -2561,8 +2574,8 @@ export const tinodeClient = {
       hasReadSnapshot || unreadReadSnapshot ? 0 : topicReceiptSequence(topic),
     );
     if (readSequence > 0) {
-      topicReadFloors.set(topicName, readSequence);
       topic.noteRead(readSequence);
+      topicReadFloors.set(topicName, readSequence);
       advanceTopicUnreadReadSnapshot(topicName, readSequence);
     }
     emitConversation(topic);
@@ -3057,7 +3070,7 @@ export const tinodeClient = {
     topicSubscriptionRequests.delete(topicName);
     topicReadFloors.delete(String(topicName));
     topicUnreadReadSnapshots.delete(String(topicName));
-    fullHistoryRequests.delete(topicName);
+    latestHistory.remove(topic);
     fullHistoryTopics.delete(topicName);
     conversationListRequest = null;
   },
@@ -3093,7 +3106,7 @@ export const tinodeClient = {
     topicReadFloors.delete(String(topicName));
     topicUnreadReadSnapshots.delete(String(topicName));
     topicSubscriptionRequests.delete(topicName);
-    fullHistoryRequests.delete(topicName);
+    latestHistory.remove(topic);
     fullHistoryTopics.delete(topicName);
   },
 
@@ -3110,7 +3123,7 @@ export const tinodeClient = {
       topicReadFloors.delete(String(topicName));
       topicUnreadReadSnapshots.delete(String(topicName));
       topicSubscriptionRequests.delete(topicName);
-      fullHistoryRequests.delete(topicName);
+      latestHistory.remove(topic);
       fullHistoryTopics.delete(topicName);
     } else {
       await topic.setMeta({

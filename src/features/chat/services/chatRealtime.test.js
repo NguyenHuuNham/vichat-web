@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createConversationDelivery, createLatestHistoryLoader, fetchTopicData } from './tinodeDelivery.js';
 import {
   acknowledgeTopicReceived,
   applyReceiptToMessages,
@@ -30,6 +31,201 @@ import {
   tinodeContactsSyncDelay,
 } from './chatRealtime.js';
 import { conversationActivityTimestamp } from './timeFormatting.js';
+
+function createHistoryTopic(sequence = 10) {
+  return {
+    seq: sequence,
+    loadedSequence: 0,
+    queries: [],
+    isSubscribed: () => true,
+    maxMsgSeq() { return this.loadedSequence; },
+    startMetaQuery() {
+      const query = {};
+      return {
+        withData(since, before, limit) { query.data = { since, before, limit }; return this; },
+        withDel(since, limit) { query.del = { since, limit }; return this; },
+        withLaterDel(limit) { query.del = { since: 1, limit }; return this; },
+        build() { return { ...query, what: Object.keys(query).join(' ') }; },
+      };
+    },
+    async getMeta(query) {
+      this.queries.push(query);
+      if (query.what === 'data') this.loadedSequence = this.seq;
+      return { code: 200 };
+    },
+  };
+}
+
+test('already subscribed topics fetch a fresh bounded tail instead of reusing stale history', async () => {
+  const loader = createLatestHistoryLoader();
+  const topic = createHistoryTopic();
+  await loader.load(topic, 100);
+  topic.seq = 20;
+  await loader.load(topic, 100);
+  assert.equal(topic.loadedSequence, 20);
+  assert.deepEqual(topic.queries.filter(query => query.what === 'data').map(query => query.data), [
+    { since: undefined, before: undefined, limit: 100 },
+    { since: undefined, before: undefined, limit: 100 },
+  ]);
+});
+
+test('overlapping history requests coalesce and an open upgrades background history only once', async () => {
+  const loader = createLatestHistoryLoader();
+  const topic = createHistoryTopic();
+  await Promise.all([loader.load(topic, 100), loader.load(topic, 100), loader.load(topic, 1000)]);
+  assert.deepEqual(topic.queries.filter(query => query.what === 'data').map(query => query.data.limit), [100, 1000]);
+});
+
+test('message metadata arriving during a refresh receives a follow-up catch-up', async () => {
+  const loader = createLatestHistoryLoader();
+  const topic = createHistoryTopic();
+  const originalGetMeta = topic.getMeta.bind(topic);
+  let finishFirst;
+  const first = new Promise(resolve => { finishFirst = resolve; });
+  topic.getMeta = async query => {
+    const result = await originalGetMeta(query);
+    if (topic.queries.length === 1) await first;
+    return result;
+  };
+  const pending = loader.load(topic, 100);
+  topic.seq = 12;
+  finishFirst();
+  await pending;
+  assert.equal(topic.loadedSequence, 12);
+  assert.equal(topic.queries.filter(query => query.what === 'data').length, 2);
+});
+
+test('session reset and leaving a topic cancel pending history without starting more requests', async () => {
+  for (const cancel of ['clear', 'remove']) {
+    const loader = createLatestHistoryLoader();
+    const topic = createHistoryTopic();
+    let finish;
+    const response = new Promise(resolve => { finish = resolve; });
+    topic.getMeta = async query => { topic.queries.push(query); return response; };
+    const pending = assert.rejects(loader.load(topic, 100), /cancelled/);
+    loader[cancel](topic);
+    topic.seq = 12;
+    finish({ code: 200 });
+    await pending;
+    assert.equal(topic.queries.filter(query => query.what === 'data').length, 1);
+  }
+});
+
+test('late partial read snapshots cannot erase newer unread messages already received', () => {
+  const existing = { readSeq: 10, latestSeq: 15, unreadFromSeq: 11, badge: 5, messages: [{ seq: 15 }] };
+  assert.deepEqual(mergeConversationReadState(existing, {
+    readSeq: 12, latestSeq: 12, unreadFromSeq: 0, badge: 0, messages: [{ seq: 12 }],
+  }), { readSeq: 12, unreadFromSeq: 13, badge: 3 });
+});
+
+test('history waits for SDK data dispatch after the control response', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const messages = [];
+  const query = { data: { since: 42, before: 142, limit: 100 } };
+  const topic = {
+    async getMeta(request) {
+      assert.deepEqual(request, { what: 'data', data: query.data });
+      setTimeout(() => messages.push({ seq: 42 }), 0);
+      return { code: 200, params: { what: 'data', count: 1 } };
+    },
+  };
+  const request = fetchTopicData(topic, query);
+  await Promise.resolve();
+  assert.equal(messages.length, 0);
+  context.mock.timers.tick(0);
+  await request;
+  assert.equal(messages[0].seq, 42);
+});
+
+test('history errors propagate instead of returning stale cached content', async () => {
+  const failure = new Error('history unavailable');
+  await assert.rejects(fetchTopicData({ getMeta: async () => { throw failure; } }, {}), failure);
+});
+
+test('deletion metadata cannot resolve a history request before its data finishes', async () => {
+  const requests = [];
+  const topic = { async getMeta(query) { requests.push(query); return { code: 200 }; } };
+  await fetchTopicData(topic, { what: 'data del', data: { limit: 100 }, del: { since: 4 } });
+  assert.deepEqual(requests, [
+    { what: 'data', data: { limit: 100 } },
+    { what: 'del', del: { since: 4 } },
+  ]);
+});
+
+test('new message metadata retains unread state before the body is loaded', () => {
+  const existing = { readSeq: 10, latestSeq: 10, unreadFromSeq: 0, badge: 0, messages: [] };
+  const incoming = { readSeq: 10, latestSeq: 13, unreadFromSeq: 11, badge: 3, messages: [] };
+  assert.deepEqual(mergeConversationReadState(existing, incoming, { viewerId: 'me' }), {
+    readSeq: 10, unreadFromSeq: 11, badge: 3,
+  });
+});
+
+test('message delivery does not wait for slow profiles or starve during continuous traffic', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const delivery = createConversationDelivery();
+  const emitted = [];
+  let sequence = 1;
+  let finishProfile;
+  const profile = new Promise(resolve => { finishProfile = resolve; });
+  const callbacks = {
+    snapshot: () => ({ seq: sequence }),
+    enrich: () => profile,
+    emit: value => emitted.push(value),
+    isCurrent: () => true,
+  };
+  delivery.enqueue('room', callbacks);
+  context.mock.timers.tick(10);
+  sequence = 2;
+  delivery.enqueue('room', callbacks);
+  context.mock.timers.tick(10);
+  assert.deepEqual(emitted, [{ seq: 2 }]);
+  finishProfile({ seq: 2, name: 'resolved' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(emitted.at(-1), { seq: 2, name: 'resolved' });
+  delivery.clear();
+});
+
+test('stale profile completion cannot overwrite newer messages or read state', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const delivery = createConversationDelivery();
+  const emitted = [];
+  let finishOldProfile;
+  const oldProfile = new Promise(resolve => { finishOldProfile = resolve; });
+  const callbacks = {
+    snapshot: () => ({ seq: 1, readSeq: 0 }),
+    enrich: () => oldProfile,
+    emit: value => emitted.push(value),
+    isCurrent: () => true,
+  };
+  delivery.enqueue('room', callbacks);
+  context.mock.timers.tick(20);
+  delivery.enqueue('room', { ...callbacks, snapshot: () => ({ seq: 2, readSeq: 2 }), enrich: async value => value });
+  finishOldProfile({ seq: 1, readSeq: 0, name: 'stale' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(emitted, [{ seq: 1, readSeq: 0 }]);
+  context.mock.timers.tick(20);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(emitted.at(-1).seq, 2);
+  assert.equal(emitted.at(-1).readSeq, 2);
+  delivery.clear();
+});
+
+test('logout cancels queued snapshots and in-flight profile results', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const delivery = createConversationDelivery();
+  const emitted = [];
+  let finishProfile;
+  const profile = new Promise(resolve => { finishProfile = resolve; });
+  const callbacks = { snapshot: () => ({}), enrich: () => profile, emit: value => emitted.push(value), isCurrent: () => true };
+  delivery.enqueue('room', callbacks);
+  context.mock.timers.tick(20);
+  delivery.enqueue('other', callbacks);
+  delivery.clear();
+  finishProfile({ stale: true });
+  context.mock.timers.tick(20);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(emitted, [{}]);
+});
 
 test('prepared Chatmgt topic wins over stale room and cache bindings', () => {
   assert.equal(resolvePreparedTinodeTopic(

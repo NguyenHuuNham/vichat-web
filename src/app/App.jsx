@@ -93,8 +93,9 @@ import { attachmentConversationPreview } from '../features/chat/services/message
 import {
   createUnreadBoundary,
   isUnreadBoundaryEnd,
+  isUnreadMessageVisible,
   mergeUnreadBoundary,
-  markUnreadBoundaryIndicatorCleared,
+  reconcileUnreadBoundary,
   unreadBadgeLabel,
   unreadCountForConversation,
   unreadBoundaryHasNewerTail,
@@ -3219,7 +3220,8 @@ function App() {
   const openingConversationRef = useRef('');
   const conversationScrollFrameRef = useRef(null);
   const unreadBoundariesRef = useRef({});
-  const unreadCompletionRequestsRef = useRef(new Set());
+  const unreadCompletionRequestsRef = useRef(new Map());
+  const conversationNavigationRef = useRef(0);
   const unreadBoundaryJumpedRef = useRef(new Set());
   const visibleMessagesRef = useRef([]);
   const notificationAudioContextRef = useRef(null);
@@ -4175,49 +4177,44 @@ function App() {
   const rememberUnreadBoundary = useCallback((room, conversationId = room?.id) => {
     if (!room || room.isChatbot || room.id === 'empty' || !conversationId) return null;
     const key = String(conversationId);
+    const knownRoom = conversationsRef.current[key];
+    if (room.tinodeTopic && knownRoom?.tinodeTopic === room.tinodeTopic) {
+      room = {
+        ...room,
+        ...mergeConversationReadState(knownRoom, room, { viewerId: unreadViewerId }),
+        unreadThroughSeq: Math.max(Number(knownRoom.unreadThroughSeq) || 0, Number(room.unreadThroughSeq) || 0),
+      };
+    }
+    const hasUnread = Number(room.badge) > 0 || Number(room.unreadFromSeq) > 0;
     const firstUnreadSeq = Number(room.unreadFromSeq) > 0
       ? Number(room.unreadFromSeq)
       : Number(room.readSeq) > 0 ? Number(room.readSeq) + 1 : 0;
-    const boundary = createUnreadBoundary(roomMessages(room), {
+    const boundary = hasUnread ? createUnreadBoundary(roomMessages(room), {
       viewerId: unreadViewerId,
       unreadCount: room.badge,
       firstUnreadSeq,
+      lastUnreadSeq: room.unreadThroughSeq,
       lastReadAt: room.readAt || room.readBy?.[unreadViewerId] || '',
       topicName: room.tinodeTopic || '',
-    });
-    if (!boundary) return null;
-    const merged = mergeUnreadBoundary(unreadBoundariesRef.current[key], boundary);
-    unreadBoundariesRef.current = { ...unreadBoundariesRef.current, [key]: merged };
-    setUnreadBoundaries(previous => (
-      previous[key] === merged ? previous : { ...previous, [key]: merged }
-    ));
+    }) : null;
+    const existing = reconcileUnreadBoundary(unreadBoundariesRef.current[key], room, { viewerId: unreadViewerId });
+    const merged = mergeUnreadBoundary(existing, boundary);
+    if (merged === unreadBoundariesRef.current[key]) return merged;
+    const next = { ...unreadBoundariesRef.current };
+    if (merged) next[key] = merged;
+    else delete next[key];
+    unreadBoundariesRef.current = next;
+    setUnreadBoundaries(next);
     return merged;
   }, [unreadViewerId]);
-
-  const dismissUnreadBoundaryIndicator = useCallback((conversationId, boundary = null) => {
-    const key = String(conversationId || '');
-    const current = unreadBoundariesRef.current[key] || boundary;
-    if (!key || !current) return current;
-    const dismissed = markUnreadBoundaryIndicatorCleared(current);
-    if (
-      current.indicatorCleared
-      && current.indicatorClearedThroughSeq === dismissed.indicatorClearedThroughSeq
-      && current.indicatorClearedThroughId === dismissed.indicatorClearedThroughId
-      && current.indicatorClearedThroughAt === dismissed.indicatorClearedThroughAt
-      && current.indicatorClearedThroughCount === dismissed.indicatorClearedThroughCount
-    ) return current;
-    unreadBoundariesRef.current = { ...unreadBoundariesRef.current, [key]: dismissed };
-    setUnreadBoundaries(previous => (
-      previous[key] === dismissed ? previous : { ...previous, [key]: dismissed }
-    ));
-    return dismissed;
-  }, []);
 
   const completeUnreadBoundary = useCallback(async (conversationId, boundaryOverride = null) => {
     const key = String(conversationId || '');
     const boundary = boundaryOverride || unreadBoundariesRef.current[key];
-    if (!key || !boundary || unreadCompletionRequestsRef.current.has(key)) return;
-    unreadCompletionRequestsRef.current.add(key);
+    if (!key || !boundary || String(currentChatIdRef.current) !== key || unreadCompletionRequestsRef.current.has(key)) return;
+    const accountSession = accountSessionRef.current;
+    const request = Symbol(key);
+    unreadCompletionRequestsRef.current.set(key, request);
     const completedAt = new Date().toISOString();
     try {
       const rawRoom = conversationsRef.current[key] || conversationsRef.current[conversationId];
@@ -4226,65 +4223,60 @@ function App() {
       let acknowledgedReadSeq = 0;
       if (chatMode === 'tinode') {
         const topicName = boundary.topicName || room?.tinodeTopic;
-        if (topicName) {
-          acknowledgedReadSeq = await tinodeClient.markRead(topicName, {
-            throughSequence: completionReadSequence,
-          });
-        }
+        if (!topicName || completionReadSequence <= 0) return;
+        acknowledgedReadSeq = await tinodeClient.markRead(topicName, {
+          throughSequence: completionReadSequence,
+        });
+        if (acknowledgedReadSeq <= 0) return;
       } else if (room?.isGroup) {
         markDemoGroupRead(key, unreadViewerId);
       } else {
         markDemoDirectRead(key, unreadViewerId);
       }
+      if (accountSessionRef.current !== accountSession) return;
       const currentBoundary = unreadBoundariesRef.current[key];
-      if (unreadBoundaryHasNewerTail(currentBoundary, boundary)) {
-        // A peer message arrived while the previous read acknowledgement was
-        // pending. Keep the new boundary and let it remain visible.
-        unreadCompletionRequestsRef.current.delete(key);
-        unreadBoundaryJumpedRef.current.delete(key);
-        return;
-      }
-      unreadCompletionRequestsRef.current.delete(key);
+      if (chatMode === 'demo' && unreadBoundaryHasNewerTail(currentBoundary, boundary)) return;
       unreadBoundaryJumpedRef.current.delete(key);
-      delete unreadBoundariesRef.current[key];
-      setUnreadBoundaries(previous => {
-        if (!previous[key]) return previous;
-        const next = { ...previous };
-        delete next[key];
-        return next;
-      });
+      const currentRoom = conversationsRef.current[key];
+      if (!currentRoom) return;
+      const readSeq = Math.max(Number(currentRoom.readSeq) || 0, acknowledgedReadSeq);
+      const remainingBoundary = chatMode === 'tinode'
+        ? reconcileUnreadBoundary(currentBoundary, { ...currentRoom, readSeq }, { viewerId: unreadViewerId })
+        : null;
+      const badge = chatMode === 'tinode'
+        ? Math.max(Number(remainingBoundary?.unreadCount) || 0,
+          Math.min(Number(currentRoom.badge) || 0, Math.max(0, (Number(currentRoom.unreadThroughSeq) || 0) - readSeq)))
+        : 0;
+      const readState = { readSeq, badge, unreadFromSeq: badge > 0 ? readSeq + 1 : 0,
+        ...(chatMode === 'demo' ? { readAt: completedAt } : {}) };
+      rememberUnreadBoundary({ ...currentRoom, ...readState }, key);
       setConversations(previous => {
+        if (accountSessionRef.current !== accountSession) return previous;
         const previousRoom = previous[key]
           ? safeNormalizeConversationForRender(previous[key], key)
           : null;
         if (!previousRoom) return previous;
-        const readSeq = Math.max(
-          Number(previousRoom.readSeq) || 0,
-          Number(acknowledgedReadSeq) || 0,
-          Number(boundary.lastUnreadSeq) || 0,
-          Number(boundary.firstUnreadSeq) || 0,
-        );
         const nextRoom = {
           ...previousRoom,
-          badge: 0,
-          unreadFromSeq: 0,
-          ...(readSeq > 0 ? { readSeq } : {}),
-          ...(chatMode === 'demo' ? { readAt: completedAt } : {}),
+          ...readState,
+          ...(chatMode === 'tinode' ? mergeConversationReadState(previousRoom, readState, { viewerId: unreadViewerId }) : {}),
         };
         const next = { ...previous, [key]: nextRoom };
         conversationsRef.current = next;
         return next;
       });
     } catch (error) {
-      unreadCompletionRequestsRef.current.delete(key);
       console.warn('ViChat: failed to acknowledge unread boundary', error);
+    } finally {
+      if (unreadCompletionRequestsRef.current.get(key) === request) unreadCompletionRequestsRef.current.delete(key);
     }
-  }, [chatMode, unreadViewerId]);
+  }, [chatMode, unreadViewerId, rememberUnreadBoundary]);
 
   useEffect(() => {
     unreadBoundariesRef.current = {};
     unreadCompletionRequestsRef.current.clear();
     unreadBoundaryJumpedRef.current.clear();
+    conversationNavigationRef.current += 1;
     setUnreadBoundaries({});
   }, [unreadViewerId, managementConversationSession]);
 
@@ -4295,23 +4287,21 @@ function App() {
   const activeUnreadRoomBadge = activeChat.badge;
   const activeUnreadRoomCursor = activeChat.unreadFromSeq;
   const activeUnreadRoomReadAt = activeChat.readAt;
+  const activeUnreadRoomReadSeq = activeChat.readSeq;
   useEffect(() => {
     if (activeUnreadRoomIsChatbot || activeUnreadRoomId === 'empty') return;
     const room = conversationsRef.current[activeUnreadRoomId];
     if (!room) return;
-    if (Number(activeUnreadRoomBadge) > 0 || Number(activeUnreadRoomCursor) > 0) {
-      const boundary = rememberUnreadBoundary(room, activeUnreadRoomId);
-      dismissUnreadBoundaryIndicator(activeUnreadRoomId, boundary);
-    }
+    rememberUnreadBoundary(room, activeUnreadRoomId);
   }, [
     activeUnreadRoomId,
     activeUnreadRoomIsChatbot,
     activeUnreadRoomBadge,
     activeUnreadRoomCursor,
     activeUnreadRoomReadAt,
+    activeUnreadRoomReadSeq,
     activeMessageCount,
     rememberUnreadBoundary,
-    dismissUnreadBoundaryIndicator,
   ]);
 
   const updateNotificationSettings = useCallback(patch => {
@@ -4871,21 +4861,95 @@ function App() {
     setShowLatestMessageButton(false);
   };
 
-  const queueConversationLatestScroll = conversationId => {
+  const queueConversationLatestScroll = (conversationId, navigation = conversationNavigationRef.current) => {
     if (conversationScrollFrameRef.current) {
       window.cancelAnimationFrame(conversationScrollFrameRef.current);
     }
     conversationScrollFrameRef.current = window.requestAnimationFrame(() => {
       conversationScrollFrameRef.current = window.requestAnimationFrame(() => {
         conversationScrollFrameRef.current = null;
+        if (navigation !== conversationNavigationRef.current) return;
         scrollToLatestConversation(conversationId);
       });
     });
   };
 
-  const scrollToLatestMessage = () => {
-    scrollToLatestConversation(currentChatIdRef.current, 'smooth');
+  const scrollToLatestMessage = async () => {
+    const key = String(currentChatIdRef.current);
+    const accountSession = accountSessionRef.current;
+    const navigation = ++conversationNavigationRef.current;
+    const isCurrent = () => accountSessionRef.current === accountSession
+      && String(currentChatIdRef.current) === key
+      && conversationNavigationRef.current === navigation;
+    try {
+      const room = conversationsRef.current[key];
+      if (chatMode === 'tinode' && room?.tinodeTopic) {
+        const loaded = await tinodeClient.refreshConversation(room.tinodeTopic);
+        if (!isCurrent()) return;
+        setConversations(previous => {
+          if (!isCurrent() || !previous[key]) return previous;
+          const incoming = { ...loaded, id: key, tinodeTopic: room.tinodeTopic, accountSession: room.accountSession };
+          const next = { ...previous, [key]: safeMergeTinodeConversation(previous[key], incoming, { viewerId }) };
+          conversationsRef.current = next;
+          return next;
+        });
+      }
+      await new Promise(resolve => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
+      if (!isCurrent()) return;
+      const boundary = unreadBoundariesRef.current[key];
+      if (boundary) {
+        const next = { ...unreadBoundariesRef.current, [key]: { ...boundary, revealed: false } };
+        unreadBoundariesRef.current = next;
+        setUnreadBoundaries(next);
+      }
+      scrollToLatestConversation(key);
+      await new Promise(resolve => window.requestAnimationFrame(resolve));
+      if (!isCurrent() || document.visibilityState === 'hidden') return;
+      const latest = visibleMessagesRef.current.at(-1);
+      const latestSequence = Math.max(Number(latest?.seq) || 0, Number(latest?.pollActivitySeq) || 0);
+      const target = latest && messageElementsRef.current.get(messageActionKey(key, latest.id));
+      const root = chatMessagesRef.current;
+      if (latest && (chatMode !== 'tinode' || latestSequence > 0) && root
+        && isUnreadMessageVisible(target?.getBoundingClientRect(), root.getBoundingClientRect())) {
+        const pending = unreadBoundariesRef.current[key];
+        if (pending) await completeUnreadBoundary(key, {
+          ...pending,
+          lastUnreadId: latest.id,
+          lastUnreadSeq: latestSequence,
+          lastUnreadAt: latest.createdAt || '',
+        });
+      }
+    } catch (error) {
+      if (isCurrent()) setChatError(error?.message || 'Không tải được tin nhắn mới nhất. Vui lòng thử lại.');
+    }
   };
+
+  const updateMessageScrollState = useCallback(() => {
+    const root = chatMessagesRef.current;
+    if (!root) return;
+    const isNearBottom = root.scrollHeight - root.scrollTop - root.clientHeight <= 72;
+    chatIsNearBottomRef.current = isNearBottom;
+    setShowLatestMessageButton(previous => previous === !isNearBottom ? previous : !isNearBottom);
+  }, []);
+
+  const interruptConversationNavigation = () => {
+    conversationNavigationRef.current += 1;
+  };
+
+  useEffect(() => {
+    const root = chatMessagesRef.current;
+    if (!root || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(() => {
+      if (chatIsNearBottomRef.current && !unreadBoundariesRef.current[currentChatIdRef.current]?.revealed) {
+        root.scrollTop = root.scrollHeight;
+      }
+      updateMessageScrollState();
+    });
+    observer.observe(root);
+    const content = root.querySelector('.chat-messages-content');
+    if (content) observer.observe(content);
+    return () => observer.disconnect();
+  }, [currentChatId, updateMessageScrollState]);
 
   useEffect(() => () => {
     if (conversationScrollFrameRef.current) {
@@ -5792,13 +5856,11 @@ function App() {
           }
         }
 
-        if (conversationWithReadState.badge > 0 || Number(conversationWithReadState.unreadFromSeq) > 0) {
-          rememberUnreadBoundary({
-            ...conversationWithReadState,
-            id: stateId,
-            tinodeTopic: conversation.id,
-          }, stateId);
-        }
+        rememberUnreadBoundary({
+          ...conversationWithReadState,
+          id: stateId,
+          tinodeTopic: conversation.id,
+        }, stateId);
         if (
           currentRoom?.isGroup
           && conversation.avatarUrl
@@ -6195,10 +6257,15 @@ function App() {
       return;
     }
     const shouldScrollToLatestOnOpen = String(currentChatIdRef.current) !== String(id);
+    const accountSession = accountSessionRef.current;
+    const navigation = ++conversationNavigationRef.current;
+    const isCurrent = () => accountSessionRef.current === accountSession
+      && String(currentChatIdRef.current) === String(id)
+      && conversationNavigationRef.current === navigation;
     currentChatIdRef.current = id;
     openingConversationRef.current = String(id);
     setCurrentChatId(id);
-    if (shouldScrollToLatestOnOpen) queueConversationLatestScroll(id);
+    if (shouldScrollToLatestOnOpen) queueConversationLatestScroll(id, navigation);
     setInputText(drafts[id] || '');
     setIsMobileChatActive(true);
     setChatError('');
@@ -6209,24 +6276,12 @@ function App() {
       || Number(room.unreadFromSeq) > 0;
     if (hasSelectionUnreadCursor) {
       pendingUnreadBoundary = rememberUnreadBoundary(room, id);
-      pendingUnreadBoundary = dismissUnreadBoundaryIndicator(id, pendingUnreadBoundary);
     }
-    setConversations(prev => {
-      const previousRoom = prev[id] === null || prev[id] === undefined
-        ? null
-        : safeNormalizeConversationForRender(prev[id], id);
-      if (!previousRoom) return prev;
-      return pendingUnreadBoundary
-        ? prev
-        : {
-          ...prev,
-          [id]: {
-            ...previousRoom,
-            badge: 0,
-            unreadFromSeq: 0,
-          },
-        };
-    });
+    if (room.isChatbot) {
+      setConversations(previous => previous[id]
+        ? { ...previous, [id]: { ...previous[id], badge: 0, unreadFromSeq: 0 } }
+        : previous);
+    }
     if (chatMode === 'demo') {
       const userId = currentUser?.id || currentUser?.uid;
       if (!room?.isChatbot) {
@@ -6241,11 +6296,13 @@ function App() {
         const topicName = room.isChatbot
           ? room.tinodeTopic
           : await ensureTinodeConversationTopic(room);
+        if (accountSessionRef.current !== accountSession) return;
         const openedRoom = personalizeConversationForViewer(
           normalizeTinodeConversation(await tinodeClient.openConversation(topicName)),
           directoryAccountsRef.current,
           currentUser,
         );
+        if (accountSessionRef.current !== accountSession) return;
         const managedRoom = room.isChatbot
           ? {
             ...openedRoom,
@@ -6257,22 +6314,16 @@ function App() {
             accountSession: room.accountSession,
           }
           : { ...openedRoom, id, managementId: room.managementId || id, tinodeTopic: topicName };
-        pendingUnreadBoundary = pendingUnreadBoundary || rememberUnreadBoundary(managedRoom, id);
-        pendingUnreadBoundary = dismissUnreadBoundaryIndicator(id, pendingUnreadBoundary);
+        rememberUnreadBoundary(managedRoom, id);
         let selectedRoom = managedRoom;
-        if (!pendingUnreadBoundary) {
-          const acknowledgedReadSeq = await tinodeClient.markRead(topicName);
-          selectedRoom = {
-            ...managedRoom,
-            badge: 0,
-            unreadFromSeq: 0,
-            readSeq: Math.max(
-              Number(managedRoom.readSeq) || 0,
-              Number(acknowledgedReadSeq) || 0,
-            ),
-          };
+        if (room.isChatbot && isCurrent()) {
+          const acknowledgedReadSeq = await tinodeClient.markRead(topicName, {
+            throughSequence: roomMessages(managedRoom).reduce((maximum, message) => Math.max(maximum, Number(message.seq) || 0), 0),
+          });
+          selectedRoom = { ...managedRoom, badge: 0, unreadFromSeq: 0, readSeq: acknowledgedReadSeq };
         }
         setConversations(prev => {
+          if (accountSessionRef.current !== accountSession) return prev;
           const next = {
             ...prev,
             [id]: {
@@ -6285,17 +6336,18 @@ function App() {
           return next;
         });
       } catch (err) {
+        if (!isCurrent()) return;
         setConnectionStatus(tinodeClient.authenticated ? 'online' : 'offline');
         setChatError(err?.message || 'Không mở được cuộc trò chuyện.');
       } finally {
         if (openingConversationRef.current === String(id)) {
           openingConversationRef.current = '';
-          if (shouldScrollToLatestOnOpen) queueConversationLatestScroll(id);
+          if (shouldScrollToLatestOnOpen && isCurrent()) queueConversationLatestScroll(id, navigation);
         }
       }
     } else if (openingConversationRef.current === String(id)) {
       openingConversationRef.current = '';
-      if (shouldScrollToLatestOnOpen) queueConversationLatestScroll(id);
+      if (shouldScrollToLatestOnOpen && isCurrent()) queueConversationLatestScroll(id, navigation);
     }
   };
 
@@ -11866,10 +11918,15 @@ function App() {
 
   const scrollToUnreadBoundary = async () => {
     if (!activeUnreadBoundary) return;
+    const accountSession = accountSessionRef.current;
+    const navigation = ++conversationNavigationRef.current;
+    const boundaryKey = String(activeChat.id);
+    const isCurrent = () => accountSessionRef.current === accountSession
+      && String(currentChatIdRef.current) === boundaryKey
+      && conversationNavigationRef.current === navigation;
     chatIsNearBottomRef.current = false;
     setShowLatestMessageButton(true);
-    const boundaryKey = String(activeChat.id);
-    const revealedBoundary = { ...activeUnreadBoundary, indicatorCleared: true, revealed: true };
+    const revealedBoundary = { ...activeUnreadBoundary, revealed: true };
     unreadBoundariesRef.current = { ...unreadBoundariesRef.current, [boundaryKey]: revealedBoundary };
     setUnreadBoundaries(previous => ({ ...previous, [boundaryKey]: revealedBoundary }));
     unreadBoundaryJumpedRef.current.add(String(activeChat.id));
@@ -11885,15 +11942,17 @@ function App() {
     let targetId = exactFirstMessage || !needsHistoryLoad ? firstVisibleMessage?.id || '' : '';
     if (needsHistoryLoad) {
       try {
-        const loadedConversation = await tinodeClient.loadConversationMessages(
+        const loadedConversation = await tinodeClient.loadUnreadMessages(
           activeChat.tinodeTopic,
-          [firstUnreadSequence],
+          firstUnreadSequence,
         );
+        if (!isCurrent()) return;
         const loadedMessage = roomMessages(loadedConversation)
-          .find(message => Number(message?.seq) === firstUnreadSequence);
+          .find(message => Number(message?.seq) >= firstUnreadSequence);
         targetId = loadedMessage?.id || '';
         if (loadedConversation) {
           setConversations(previous => {
+            if (!isCurrent()) return previous;
             const currentRoom = previous[boundaryKey] || activeChat;
             const incoming = {
               ...loadedConversation,
@@ -11910,7 +11969,7 @@ function App() {
             return next;
           });
         }
-        if (targetId) {
+        if (targetId && unreadBoundariesRef.current[boundaryKey]) {
           const nextBoundary = {
             ...unreadBoundariesRef.current[boundaryKey],
             firstUnreadId: targetId,
@@ -11921,9 +11980,12 @@ function App() {
         }
       } catch (error) {
         console.warn('ViChat: failed to load the first unread message', error);
+        if (isCurrent()) setChatError(error?.message || 'Không tải được tin chưa đọc. Vui lòng thử lại.');
+        return;
       }
     }
     window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      if (!isCurrent()) return;
       const firstKey = targetId ? messageActionKey(activeChat.id, targetId) : '';
       const target = (firstKey && messageElementsRef.current.get(firstKey))
         || chatMessagesRef.current?.querySelector('[data-unread-boundary="true"]');
@@ -11934,27 +11996,26 @@ function App() {
 
   useEffect(() => {
     if (!activeUnreadBoundary || activeChat.isChatbot || messageSearchQuery.trim()) return undefined;
-    // Normal room opens land at the latest message, so observe the unread tail
-    // even when the user did not use the explicit unread-jump control.
     let observer;
     let timer;
-    let frame;
+    let root;
+    let checkVisibility;
+    const accountSession = accountSessionRef.current;
     const observeLastUnread = () => {
       const currentMessages = visibleMessagesRef.current;
-      const exactTarget = currentMessages.find(message => isUnreadBoundaryEnd(message, activeUnreadBoundary));
-      const lastSequence = Number(activeUnreadBoundary.lastUnreadSeq) || 0;
-      const sequenceTarget = lastSequence > 0
-        ? currentMessages.filter(message => Number(message?.seq) > 0 && Number(message.seq) <= lastSequence).at(-1)
-        : null;
-      const targetMessage = exactTarget || sequenceTarget || (lastSequence > 0 ? null : currentMessages.at(-1));
+      const targetMessage = currentMessages.find(message => isUnreadBoundaryEnd(message, activeUnreadBoundary));
       const target = targetMessage
         ? messageElementsRef.current.get(messageActionKey(activeChat.id, targetMessage.id))
         : null;
-      const root = chatMessagesRef.current;
-      if (!target || !root || typeof IntersectionObserver === 'undefined') return;
-      observer = new IntersectionObserver(entries => {
-        const entry = entries[0];
-        if (!entry?.isIntersecting || entry.intersectionRatio < 0.35) {
+      root = chatMessagesRef.current;
+      if (!target || !root) return;
+      const isVisible = () => accountSessionRef.current === accountSession
+        && String(currentChatIdRef.current) === String(activeChat.id)
+        && document.visibilityState !== 'hidden'
+        && target.isConnected
+        && isUnreadMessageVisible(target.getBoundingClientRect(), root.getBoundingClientRect());
+      checkVisibility = () => {
+        if (!isVisible()) {
           if (timer) window.clearTimeout(timer);
           timer = null;
           return;
@@ -11962,18 +12023,29 @@ function App() {
         if (timer) return;
         timer = window.setTimeout(() => {
           timer = null;
-          if (document.visibilityState !== 'hidden') {
+          if (isVisible()) {
             void completeUnreadBoundary(activeChat.id, activeUnreadBoundary);
           }
         }, 900);
-      }, { root, threshold: [0.35, 0.7] });
-      observer.observe(target);
+      };
+      root.addEventListener('scroll', checkVisibility, { passive: true });
+      document.addEventListener('visibilitychange', checkVisibility);
+      if (typeof ResizeObserver !== 'undefined') {
+        observer = new ResizeObserver(checkVisibility);
+        observer.observe(root);
+        observer.observe(target);
+      }
+      checkVisibility();
     };
-    frame = window.requestAnimationFrame(observeLastUnread);
+    const frame = window.requestAnimationFrame(observeLastUnread);
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
       if (timer) window.clearTimeout(timer);
       observer?.disconnect();
+      if (checkVisibility) {
+        root?.removeEventListener('scroll', checkVisibility);
+        document.removeEventListener('visibilitychange', checkVisibility);
+      }
     };
   }, [activeChat.id, activeChat.isChatbot, activeMessageCount, activeUnreadBoundary, completeUnreadBoundary, messageSearchQuery]);
 
@@ -12797,26 +12869,7 @@ function App() {
           scope="active conversation"
           fallback={<div className="chat-messages conversation-render-error" role="alert">Conversation data could not be displayed.</div>}
         >
-          <div
-            ref={chatMessagesRef}
-            className={`chat-messages ${activeChat.isChatbot ? 'chatbot-messages' : ''} ${activeConversationBackground ? 'has-conversation-background' : ''}`}
-            style={activeConversationBackgroundSource
-              ? { '--conversation-background-image': `url("${activeConversationBackgroundSource.replaceAll('"', '\\"')}")` }
-              : undefined}
-            onScroll={event => {
-              const root = event.currentTarget;
-              if (root) {
-                const distanceFromBottom = root.scrollHeight - root.scrollTop - root.clientHeight;
-                const isNearBottom = distanceFromBottom <= 72;
-                chatIsNearBottomRef.current = isNearBottom;
-                setShowLatestMessageButton(previous => {
-                  const next = !isNearBottom;
-                  return previous === next ? previous : next;
-                });
-              }
-              if (messageMenu) setMessageMenu(null);
-            }}
-          >
+          <div className="chat-message-viewport">
           {activeUnreadBoundary && !activeUnreadBoundary.revealed && !messageSearchQuery.trim() && (
             <button
               type="button"
@@ -12830,7 +12883,7 @@ function App() {
               <i className="fa-solid fa-chevron-down" aria-hidden="true"></i>
             </button>
           )}
-          {showLatestMessageButton && !messageSearchQuery.trim() && visibleMessages.length > 0 && (
+          {(showLatestMessageButton || activeUnreadBoundary?.revealed) && !messageSearchQuery.trim() && visibleMessages.length > 0 && (
             <button
               type="button"
               className="latest-message-jump-button"
@@ -12841,6 +12894,20 @@ function App() {
               <i className="fa-solid fa-angles-down" aria-hidden="true"></i>
             </button>
           )}
+          <div
+            ref={chatMessagesRef}
+            className={`chat-messages ${activeChat.isChatbot ? 'chatbot-messages' : ''} ${activeConversationBackground ? 'has-conversation-background' : ''}`}
+            style={activeConversationBackgroundSource
+              ? { '--conversation-background-image': `url("${activeConversationBackgroundSource.replaceAll('"', '\\"')}")` }
+              : undefined}
+            onWheel={interruptConversationNavigation}
+            onTouchMove={interruptConversationNavigation}
+            onPointerDown={interruptConversationNavigation}
+            onScroll={() => {
+              updateMessageScrollState();
+              if (messageMenu) setMessageMenu(null);
+            }}
+          >
           <div className="chat-messages-content">
           {!hasDatedMessages && (
             <div className="date-divider"><span>{appCopy.t(currentChatId === 'dieu-hanh' ? 'Hôm nay' : 'Hội thoại trực tuyến')}</span></div>
@@ -13466,6 +13533,7 @@ function App() {
           )}
 
             <div ref={chatMessagesEndRef} />
+          </div>
           </div>
           </div>
         </ConversationErrorBoundary>

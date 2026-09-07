@@ -48,6 +48,7 @@ export function createUnreadBoundary(messages = [], {
   viewerId = '',
   unreadCount = 0,
   firstUnreadSeq = 0,
+  lastUnreadSeq = 0,
   lastReadAt = '',
   topicName = '',
 } = {}) {
@@ -63,6 +64,8 @@ export function createUnreadBoundary(messages = [], {
   const firstCandidateSequence = messageSequence(first);
   const firstCandidateIsBoundary = normalizedFirstSequence <= 0
     || firstCandidateSequence === normalizedFirstSequence;
+  const tailSequence = Math.max(Number(lastUnreadSeq) || 0, messageSequence(last));
+  const lastCandidateIsBoundary = tailSequence <= 0 || messageSequence(last) === tailSequence;
   if (count <= 0 && normalizedFirstSequence <= 0) return null;
   return {
     // Keep the durable cursor even when the bounded history currently starts
@@ -70,9 +73,9 @@ export function createUnreadBoundary(messages = [], {
     firstUnreadId: firstCandidateIsBoundary ? String(first?.id || '') : '',
     firstUnreadSeq: normalizedFirstSequence,
     firstUnreadAt: firstCandidateIsBoundary ? (first?.createdAt || first?.raw?.ts || '') : '',
-    lastUnreadId: String(last?.id || ''),
-    lastUnreadSeq: messageSequence(last),
-    lastUnreadAt: last?.createdAt || last?.raw?.ts || '',
+    lastUnreadId: lastCandidateIsBoundary ? String(last?.id || '') : '',
+    lastUnreadSeq: tailSequence,
+    lastUnreadAt: lastCandidateIsBoundary ? (last?.createdAt || last?.raw?.ts || '') : '',
     unreadCount: count,
     topicName: String(topicName || ''),
     indicatorCleared: false,
@@ -151,8 +154,39 @@ export function unreadIndicatorVisible(boundary = null, count = 0) {
 export function unreadBoundaryReadSequence(boundary = null, messages = []) {
   const boundarySequence = Number(boundary?.lastUnreadSeq) || 0;
   if (boundarySequence > 0) return boundarySequence;
-  return (Array.isArray(messages) ? messages : [])
+  const loadedSequence = (Array.isArray(messages) ? messages : [])
     .reduce((maximum, message) => Math.max(maximum, messageSequence(message)), 0);
+  return loadedSequence >= (Number(boundary?.firstUnreadSeq) || 0) ? loadedSequence : 0;
+}
+
+export function reconcileUnreadBoundary(boundary, room, { viewerId = '' } = {}) {
+  if (!boundary || !room) return boundary || null;
+  const readSequence = Math.max(0, Number(room.readSeq) || 0);
+  const firstSequence = Number(boundary.firstUnreadSeq) || 0;
+  const lastSequence = Number(boundary.lastUnreadSeq) || firstSequence;
+  if (firstSequence > 0) {
+    if (readSequence < firstSequence) return boundary;
+    if (readSequence >= lastSequence) return null;
+    const next = createUnreadBoundary(room.messages, {
+      viewerId,
+      firstUnreadSeq: readSequence + 1,
+      lastUnreadSeq: lastSequence,
+      unreadCount: Math.min(Number(boundary.unreadCount) || 0, lastSequence - readSequence),
+      topicName: boundary.topicName,
+    });
+    return next ? { ...next, revealed: boundary.revealed } : null;
+  }
+  const readTimestamp = Date.parse(String(room.readAt || room.readBy?.[viewerId] || '')) || 0;
+  const lastTimestamp = messageTimestamp({ createdAt: boundary.lastUnreadAt });
+  if (readTimestamp && lastTimestamp && readTimestamp >= lastTimestamp) return null;
+  return boundary;
+}
+
+export function isUnreadMessageVisible(target, viewport) {
+  if (!target || !viewport || target.height <= 0 || viewport.height <= 0) return false;
+  const visibleHeight = Math.min(target.bottom, viewport.bottom) - Math.max(target.top, viewport.top);
+  const visibleWidth = Math.min(target.right, viewport.right) - Math.max(target.left, viewport.left);
+  return visibleWidth > 0 && visibleHeight >= Math.min(48, target.height, viewport.height * 0.35);
 }
 
 export function unreadBoundaryHasNewerTail(current = null, completed = null) {
@@ -227,9 +261,9 @@ export function mergeUnreadBoundary(existing, incoming) {
     firstUnreadSeq: Number(existing.firstUnreadSeq) || Number(incoming.firstUnreadSeq) || 0,
     firstUnreadAt: existing.firstUnreadAt || incoming.firstUnreadAt || '',
     ...(useIncomingLast ? {
-      lastUnreadId: incoming.lastUnreadId || existing.lastUnreadId,
+      lastUnreadId: incoming.lastUnreadId || (incomingLastSeq === existingLastSeq ? existing.lastUnreadId : ''),
       lastUnreadSeq: incomingLastSeq || existingLastSeq,
-      lastUnreadAt: incoming.lastUnreadAt || existing.lastUnreadAt || '',
+      lastUnreadAt: incoming.lastUnreadAt || (incomingLastSeq === existingLastSeq ? existing.lastUnreadAt : '') || '',
     } : {}),
     unreadCount: Math.max(Number(existing.unreadCount) || 0, Number(incoming.unreadCount) || 0),
     topicName: existing.topicName || incoming.topicName || '',

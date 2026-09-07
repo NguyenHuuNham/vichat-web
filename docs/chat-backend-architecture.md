@@ -674,11 +674,25 @@ The same flag governs member changes to the shared group background. Tinode
 broadcast to open ChatUI sessions, so controls disappear immediately when an
 owner revokes the flag and return when it is enabled again. After a successful
 group name, avatar, permission, or shared-background mutation with realtime
-available, ChatUI publishes a visible Tinode activity event; system activity
-is excluded from ordinary desktop message notifications. Chatmgt remains
-authoritative for persisted
+available, managed groups use Chatmgt's common activity publisher after the
+authoritative commit; unmanaged/demo groups retain their client-side path.
+The activity is stored in Tinode history, not synthesized only for the actor.
+Chatmgt remains authoritative for persisted
 group name/avatar/settings, while Tinode remains authoritative for message
 content and realtime delivery.
+
+The server-side group activity websocket performs handshake, token login,
+identity verification, and attachment to the existing group before publishing.
+Attachment does not modify membership or permissions; a denied attachment or
+wrong identity prevents publication. A successful publication must return a
+positive sequence. This shared path serves member addition/removal/leave,
+deputy appointment/revocation, approval/rejection, metadata/settings/background,
+chatbot enablement and dissolution events. Group creation, message pin/unpin and
+poll activities retain their existing publishers. Personal mute, conversation
+pin, read and typing state do not create public group notices. The controller
+still logs publication failures after an authoritative commit; there is no
+durable retry outbox, so delivery during a Tinode/credential outage is not
+guaranteed by this change.
 `PUT /api/v1/conversation/<id>/group-settings` (and the
 `/api/v1/chat/threads/<id>/group-settings` alias) rejects management-scope
 sessions, non-members, non-groups, unauthorized members, unknown settings, and
@@ -932,9 +946,9 @@ incoming sender's sequence unread. Opening a conversation with
 an unread boundary preserves that boundary and does not send `read` until the
 last known unread message is visible in the active message viewport; this also
 covers the normal bottom-of-chat view without requiring the `Tin chua doc`
-jump control. Opening a conversation without pending unread still acknowledges
-the latest known sequence and keeps an in-memory floor until Tinode reflects
-that cursor. The read acknowledgement captures its sequence before any
+jump control. Selecting an ordinary conversation no longer dismisses its badge
+or sends a read receipt before content is visible. The chatbot selection path
+retains its separate receipt behavior. The read acknowledgement captures its sequence before any
 asynchronous subscription work; a newer peer message arriving while that
 acknowledgement is pending is kept as a new unread tail and cannot be included
 in the completed read range. Bounded history also keeps
@@ -943,7 +957,34 @@ the divider can be shown. Older topic or Chatmgt snapshots cannot lower the
 cursor, recreate an acknowledged unread badge or trigger a desktop/sound
 notification for a sequence at or below it. A read acknowledgement changes only
 receipt metadata: it never recalls, deletes or rewrites message/file content,
-and Tinode remains the durable receipt source.
+and Tinode remains the durable receipt source. The local read floor advances
+only after attachment succeeds and the connected SDK sends the read note;
+it is not a separate durable receipt store. Remote self-read presence/info
+events trim or clear existing boundaries, including partially completed tails.
+Peer receipts cannot clear the viewer's unread protection.
+
+The unread and latest-message controls are siblings of the scrolling message
+list inside a bounded viewport. Content/viewport resize observation keeps the
+latest control usable after images load. Clicking latest refreshes a bounded
+tail, waits for rendering, and reads only through visible delivered content;
+session/navigation guards prevent an old history request from scrolling a new
+room or overriding a later navigation. Passive completion requires the exact
+unread tail to remain visible for 900 ms in the active document; pixel overlap
+relative to the viewport supports tall messages without acknowledging an older
+fallback message.
+
+Tinode history requests separate data from deletion metadata and wait for the
+SDK's deferred routing after the data completion response. Open history is
+bounded at 1000 messages once per session, subsequent latest/catch-up requests
+at 100, and the unread jump fetches a 100-sequence window from its durable
+cursor, selecting an available message when the first sequence was deleted.
+Concurrent tail requests coalesce and can upgrade the initial history limit;
+metadata advancing during a request triggers a bounded follow-up. Live packets
+already in the cache do not trigger redundant catch-up requests. Message and
+unread snapshots emit without waiting for profile resolution, using a bounded
+coalescing interval rather than a reset-on-every-packet debounce. Later profile
+enrichment is session/revision guarded so it cannot replace newer content or
+read state. Missing message bodies do not suppress server unread metadata.
 
 Sticker messages stay within the same Tinode file path as ordinary image
 attachments. ChatUI can upload either a selected static

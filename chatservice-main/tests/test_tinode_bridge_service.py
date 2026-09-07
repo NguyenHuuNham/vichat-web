@@ -795,7 +795,7 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
             {"ctrl": {"id": "1", "code": 201}},
             {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrMember"}}},
             {"ctrl": {"id": "3", "code": 200}},
-            {"ctrl": {"id": "3", "code": 200, "params": {"seq": 44}}},
+            {"ctrl": {"id": "4", "code": 200, "params": {"seq": 44}}},
         ])
         event = {
             "action": "member_left",
@@ -815,11 +815,68 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
             )
 
         content = socket.sent[-1]["pub"]["content"]
+        self.assertEqual([next(iter(packet)) for packet in socket.sent], ["hi", "login", "sub", "pub"])
+        self.assertEqual(socket.sent[-2]["sub"], {"id": "3", "topic": "grpRoom"})
         self.assertTrue(content.startswith("__VICHAT_SYSTEM_EVENT__:"))
         self.assertEqual(
             json.loads(content.split(":", 1)[1]),
             event,
         )
+
+    async def test_group_events_attach_without_changing_member_permissions(self):
+        for action in (
+            "group_role_changed", "group_name_changed", "group_avatar_changed",
+            "group_settings_changed", "conversation_background_changed", "member_added",
+            "member_removed", "member_pending", "member_approved", "member_rejected",
+            "group_dissolved",
+        ):
+            with self.subTest(action=action):
+                socket = FakeSocket([
+                    {"ctrl": {"id": "1", "code": 201}},
+                    {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrOwner"}}},
+                    {"pres": {"topic": "grpRoom", "what": "on"}},
+                    {"ctrl": {"id": "3", "code": 200}},
+                    {"data": {"topic": "grpRoom", "seq": 43}},
+                    {"ctrl": {"id": "4", "code": 200, "params": {"seq": 44}}},
+                ])
+                event = {"action": action, "role": "ADMIN", "previousRole": "MEMBER"}
+                with self.config(), patch.object(auth_service.aiohttp, "ClientSession", self.client_session(socket)):
+                    result = await auth_service.tinode_publish_system_event("owner-token", "usrOwner", "grpRoom", event)
+                self.assertEqual(result["params"]["seq"], 44)
+                self.assertEqual(socket.sent[2], {"sub": {"id": "3", "topic": "grpRoom"}})
+                self.assertEqual(json.loads(socket.sent[3]["pub"]["content"].split(":", 1)[1]), event)
+
+    async def test_group_event_does_not_publish_when_attachment_is_denied(self):
+        socket = FakeSocket([
+            {"ctrl": {"id": "1", "code": 201}},
+            {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrOwner"}}},
+            {"ctrl": {"id": "3", "code": 403, "text": "permission denied"}},
+        ])
+        with self.config(), patch.object(auth_service.aiohttp, "ClientSession", self.client_session(socket)):
+            with self.assertRaises(auth_service.AuthError):
+                await auth_service.tinode_publish_system_event("owner-token", "usrOwner", "grpRoom", {"action": "group_role_changed"})
+        self.assertFalse(any("pub" in packet for packet in socket.sent))
+
+    async def test_group_event_rejects_wrong_identity_before_attaching(self):
+        socket = FakeSocket([
+            {"ctrl": {"id": "1", "code": 201}},
+            {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrOther"}}},
+        ])
+        with self.config(), patch.object(auth_service.aiohttp, "ClientSession", self.client_session(socket)):
+            with self.assertRaises(auth_service.AuthError):
+                await auth_service.tinode_publish_system_event("owner-token", "usrOwner", "grpRoom", {})
+        self.assertFalse(any("sub" in packet or "pub" in packet for packet in socket.sent))
+
+    async def test_group_event_requires_a_persisted_sequence(self):
+        socket = FakeSocket([
+            {"ctrl": {"id": "1", "code": 201}},
+            {"ctrl": {"id": "2", "code": 200, "params": {"user": "usrOwner"}}},
+            {"ctrl": {"id": "3", "code": 200}},
+            {"ctrl": {"id": "4", "code": 200}},
+        ])
+        with self.config(), patch.object(auth_service.aiohttp, "ClientSession", self.client_session(socket)):
+            with self.assertRaises(auth_service.AuthError):
+                await auth_service.tinode_publish_system_event("owner-token", "usrOwner", "grpRoom", {})
 
     async def test_self_removal_unsubscribes_the_current_tinode_user(self):
         socket = FakeSocket([

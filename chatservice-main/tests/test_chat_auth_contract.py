@@ -488,6 +488,28 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("GroupRoleBadge", app_source)
         self.assertIn("updateConversationParticipantRole", app_source)
 
+    def test_shared_group_mutations_keep_the_common_activity_publisher(self):
+        expected_actions = {
+            "conversation_group_settings": (
+                "group_name_changed", "group_avatar_changed", "group_settings_changed",
+                "conversation_background_changed",
+            ),
+            "conversation_participant_role": ("group_role_changed",),
+            "conversation_participant_add": ("member_added", "member_pending"),
+            "conversation_participant_approval": ("member_approved", "member_rejected"),
+            "conversation_enable_tinode_chatbot": ("group_chatbot_enabled",),
+        }
+        for function_name, actions in expected_actions.items():
+            with self.subTest(function=function_name):
+                _source, mutation = function_source(CONTROLLER_PATH, function_name)
+                self.assertIn("await _publish_group_activity_events", mutation)
+                for action in actions:
+                    self.assertIn('"action": "{}"'.format(action), mutation)
+                self.assertLess(mutation.index("db.session.commit()"), mutation.index("await _publish_group_activity_events"))
+        for function_name in ("conversation_notification_settings", "conversation_pin"):
+            _source, personal_mutation = function_source(CONTROLLER_PATH, function_name)
+            self.assertNotIn("_publish_group_activity_events", personal_mutation)
+
     def test_group_access_repair_is_additive_and_does_not_mutate_chatmgt(self):
         repair_source = GROUP_ACCESS_REPAIR_PATH.read_text(encoding="utf-8")
 

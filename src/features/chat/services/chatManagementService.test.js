@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
+import { isUnreadMessageVisible } from './unreadBoundary.js';
 
 import {
   chatManagementService,
@@ -29,6 +31,130 @@ const managementServiceSource = readFileSync(new URL('./chatManagementService.js
 const browserPresenceSource = readFileSync(new URL('./browserPresence.js', import.meta.url), 'utf8');
 const mobileStoreSource = readFileSync(new URL('../../../../mobile/src/store/appStore.ts', import.meta.url), 'utf8');
 const mobileConversationListSource = readFileSync(new URL('../../../../mobile/src/screens/chat/ConversationListScreen.tsx', import.meta.url), 'utf8');
+
+function readReceiptHarness(subscribe = async context => context.topic) {
+  const topic = { seq: 10, read: 5, isSubscribed: () => true, noteRead: sequence => context.notes.push(sequence) };
+  const client = { getTopic: () => topic, isConnected: () => true };
+  const context = {
+    topic,
+    client,
+    notes: [],
+    getClient: () => context.client,
+    topicReadFloors: new Map(),
+    topicUnreadReadSnapshots: new Map(),
+    topicReceiptSequence: current => current.seq,
+    subscribeTopic: async () => subscribe(context),
+    advanceTopicUnreadReadSnapshot: () => {},
+    emitConversation: () => {},
+  };
+  const method = tinodeSource.split('  async markRead(')[1].split('  async sendTyping(')[0].trim().replace(/,$/, '');
+  context.markRead = runInNewContext(`({ async markRead(${method} }).markRead`, context);
+  return context;
+}
+
+test('failed subscription does not advance the real markRead local floor', async () => {
+  const context = readReceiptHarness(async () => { throw new Error('denied'); });
+  await assert.rejects(context.markRead('room', { throughSequence: 10 }), /denied/);
+  assert.equal(context.topicReadFloors.size, 0);
+  assert.deepEqual(context.notes, []);
+});
+
+test('real markRead keeps a peer message arriving during subscription unread', async () => {
+  const context = readReceiptHarness(async current => { current.topic.seq = 11; return current.topic; });
+  assert.equal(await context.markRead('room', { throughSequence: 10 }), 10);
+  assert.equal(context.topicReadFloors.get('room'), 10);
+  assert.deepEqual(context.notes, [10]);
+});
+
+test('real markRead rejects session changes, lost connections and detached topics', async () => {
+  for (const change of [
+    current => { current.client = { ...current.client }; },
+    current => { current.client.isConnected = () => false; },
+    current => { current.topic.isSubscribed = () => false; },
+  ]) {
+    const context = readReceiptHarness(async current => { change(current); return current.topic; });
+    await assert.rejects(context.markRead('room', { throughSequence: 10 }), /not connected/);
+    assert.equal(context.topicReadFloors.size, 0);
+    assert.deepEqual(context.notes, []);
+  }
+});
+
+test('real markRead leaves the local floor untouched when sending the read note fails', async () => {
+  const context = readReceiptHarness();
+  context.topic.noteRead = () => { throw new Error('socket closed'); };
+  await assert.rejects(context.markRead('room', { throughSequence: 10 }), /socket closed/);
+  assert.equal(context.topicReadFloors.size, 0);
+});
+
+function latestNavigationHarness() {
+  const geometry = { top: 0, bottom: 400, left: 0, right: 400, height: 400 };
+  const context = {
+    currentChatIdRef: { current: 'room' },
+    accountSessionRef: { current: 1 },
+    conversationNavigationRef: { current: 0 },
+    conversationsRef: { current: { room: { id: 'room', tinodeTopic: 'grpRoom', accountSession: 1 } } },
+    unreadBoundariesRef: { current: { room: { firstUnreadSeq: 10, lastUnreadSeq: 12, revealed: true } } },
+    visibleMessagesRef: { current: [] },
+    messageElementsRef: { current: new Map([['room:new', { getBoundingClientRect: () => geometry }]]) },
+    chatMessagesRef: { current: { getBoundingClientRect: () => geometry } },
+    document: { visibilityState: 'visible' },
+    window: { requestAnimationFrame: callback => queueMicrotask(callback) },
+    chatMode: 'tinode',
+    viewerId: 'me',
+    calls: [],
+    tinodeClient: { refreshConversation: async () => ({ messages: [{ id: 'new', seq: 12 }] }) },
+    safeMergeTinodeConversation: (room, incoming) => ({ ...room, ...incoming }),
+    setConversations: update => {
+      context.conversationsRef.current = update(context.conversationsRef.current);
+      context.visibleMessagesRef.current = context.conversationsRef.current.room.messages || [];
+    },
+    setUnreadBoundaries: next => { context.unreadBoundariesRef.current = next; },
+    scrollToLatestConversation: key => context.calls.push({ type: 'scroll', key }),
+    completeUnreadBoundary: async (key, boundary) => context.calls.push({ type: 'read', key, seq: boundary.lastUnreadSeq }),
+    setChatError: message => context.calls.push({ type: 'error', message }),
+    messageActionKey: (key, messageId) => `${key}:${messageId}`,
+    isUnreadMessageVisible,
+  };
+  const handler = appSource.split('  const scrollToLatestMessage = ')[1].split('  const updateMessageScrollState')[0];
+  context.jump = runInNewContext(`const jump = ${handler}; jump`, context);
+  return context;
+}
+
+test('latest click waits for refreshed rendered content before reading its sequence', async () => {
+  const context = latestNavigationHarness();
+  await context.jump();
+  assert.deepEqual(context.calls, [{ type: 'scroll', key: 'room' }, { type: 'read', key: 'room', seq: 12 }]);
+  assert.equal(context.unreadBoundariesRef.current.room.revealed, false);
+});
+
+test('latest click cannot scroll or acknowledge after a room/session change or later navigation', async () => {
+  for (const change of [
+    current => { current.currentChatIdRef.current = 'other'; },
+    current => { current.accountSessionRef.current += 1; },
+    current => { current.conversationNavigationRef.current += 1; },
+  ]) {
+    const context = latestNavigationHarness();
+    context.tinodeClient.refreshConversation = async () => { change(context); return { messages: [{ id: 'new', seq: 12 }] }; };
+    await context.jump();
+    assert.deepEqual(context.calls, []);
+  }
+});
+
+test('latest click does not acknowledge hidden or missing content and reports refresh failure', async () => {
+  for (const change of [
+    current => { current.document.visibilityState = 'hidden'; },
+    current => { current.messageElementsRef.current.clear(); },
+  ]) {
+    const context = latestNavigationHarness();
+    change(context);
+    await context.jump();
+    assert.equal(context.calls.filter(call => call.type === 'read').length, 0);
+  }
+  const failed = latestNavigationHarness();
+  failed.tinodeClient.refreshConversation = async () => { throw new Error('offline'); };
+  await failed.jump();
+  assert.deepEqual(failed.calls, [{ type: 'error', message: 'offline' }]);
+});
 
 test('sends only manual UpGO credentials for employee login', () => {
   const payload = employeeLoginPayload({
@@ -139,19 +265,23 @@ test('keeps unread emphasis and latest-message navigation in the ChatUI layer', 
   assert.match(appSource, /unreadBadgeLabel/);
   assert.match(appSource, /unreadMessagesForConversation/);
   assert.match(appSource, /messageMentionsViewer/);
-  assert.match(appSource, /indicatorCleared/);
+  assert.doesNotMatch(appSource, /indicatorCleared: true/);
   assert.match(appSource, /const hasUnread = unreadIndicatorVisible\(boundary, count\);/);
-  assert.match(appSource, /markUnreadBoundaryIndicatorCleared\(current\)/);
+  assert.match(appSource, /reconcileUnreadBoundary/);
   assert.doesNotMatch(appSource, /roomId === String\(currentChatId\) && boundary\?\.indicatorCleared/);
   assert.match(appSource, /latest-message-jump-button/);
   assert.match(appSource, /chatIsNearBottomRef/);
   assert.match(appSource, /const queueConversationLatestScroll =/);
-  assert.match(appSource, /queueConversationLatestScroll\(id\)/);
+  assert.match(appSource, /queueConversationLatestScroll\(id, navigation\)/);
   assert.doesNotMatch(appSource, /if \(!unreadBoundaryJumpedRef\.current\.has\(String\(activeChat\.id\)\)\) return undefined;/);
   const conversationSelectionSource = appSource
     .split('const handleConversationSelect = async')[1]
     .split('notificationOpenHandlerRef.current')[0];
-  assert.match(conversationSelectionSource, /if \(!pendingUnreadBoundary\) \{\s*const acknowledgedReadSeq = await tinodeClient\.markRead\(topicName\)/);
+  assert.doesNotMatch(conversationSelectionSource, /dismissUnreadBoundaryIndicator/);
+  assert.match(conversationSelectionSource, /if \(room\.isChatbot && isCurrent\(\)\) \{\s*const acknowledgedReadSeq = await tinodeClient\.markRead/);
+  assert.match(appSource, /mergeConversationReadState\(knownRoom, room, \{ viewerId: unreadViewerId \}\)/);
+  assert.match(conversationSelectionSource, /accountSessionRef\.current !== accountSession/);
+  assert.match(conversationSelectionSource, /shouldScrollToLatestOnOpen && isCurrent\(\)/);
   assert.doesNotMatch(conversationSelectionSource, /delete unreadBoundariesRef\.current\[id\]/);
   assert.match(appSource, /const notificationFloor = Math\.max/);
   assert.match(appSource, /openingConversationRef\.current !== String\(stateId\)/);
@@ -164,6 +294,8 @@ test('keeps unread emphasis and latest-message navigation in the ChatUI layer', 
   assert.match(markReadSource, /throughSequence = 0/);
   assert.match(markReadSource, /const initialReadSequence/);
   assert.match(markReadSource, /const hasReadSnapshot/);
+  assert.ok(markReadSource.indexOf('topicReadFloors.set') > markReadSource.indexOf('await subscribeTopic'));
+  assert.match(markReadSource, /tinode !== client \|\| !tinode\.isConnected\(\)/);
   assert.match(markReadSource, /hasReadSnapshot \|\| unreadReadSnapshot \? 0 : Number\(topic\.seq\)/);
   assert.match(appSource, /throughSequence: completionReadSequence/);
   assert.match(appSource, /unreadBoundaryHasNewerTail\(currentBoundary, boundary\)/);
@@ -173,6 +305,19 @@ test('keeps unread emphasis and latest-message navigation in the ChatUI layer', 
   assert.match(stylesSource, /\.conv-indicators/);
   assert.match(stylesSource, /\.conv-mention-indicator/);
   assert.match(stylesSource, /\.latest-message-jump-button/);
+  assert.match(stylesSource, /\.chat-message-viewport \{[^}]*position: relative;[^}]*min-height: 0;[^}]*overflow: hidden;/);
+  const viewportSource = appSource.split('<div className="chat-message-viewport">')[1].split('</ConversationErrorBoundary>')[0];
+  assert.ok(viewportSource.indexOf('latest-message-jump-button') < viewportSource.indexOf('ref={chatMessagesRef}'));
+  assert.ok(viewportSource.indexOf('unread-jump-button') < viewportSource.indexOf('ref={chatMessagesRef}'));
+  assert.match(appSource, /await tinodeClient\.refreshConversation\(room\.tinodeTopic\)/);
+  assert.match(appSource, /await tinodeClient\.loadUnreadMessages/);
+  assert.match(tinodeSource, /allowedConversationTopics\.has\(contact\.name\) && topicReceiptSequence\(contact\) < Number\(contact\.seq\)/);
+  assert.match(tinodeSource, /await latestHistory\.load\(topic,/);
+  assert.doesNotMatch(tinodeSource, /fullHistoryRequests|conversationEmitTimers/);
+  assert.doesNotMatch(tinodeSource, /badge: finalMessages\.length > 0/);
+  assert.match(appSource, /new ResizeObserver\(checkVisibility\)/);
+  assert.match(appSource, /isUnreadMessageVisible\(target\.getBoundingClientRect\(\), root\.getBoundingClientRect\(\)\)/);
+  assert.doesNotMatch(appSource, /intersectionRatio < 0\.35/);
   assert.match(stylesSource, /\.sender-name \{[\s\S]*font-weight: 650;[\s\S]*color: var\(--text-main\);/);
   assert.match(stylesSource, /\.chat-messages\.has-conversation-background \.sender-name \{[\s\S]*background: rgba\(255, 255, 255, \.94\)[\s\S]*text-shadow: none;/);
   assert.match(stylesSource, /html\[data-theme="dark"\] \.chat-messages\.has-conversation-background \.sender-name \{[\s\S]*color: #152e2c;[\s\S]*background: rgba\(255, 255, 255, \.94\)/);

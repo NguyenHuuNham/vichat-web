@@ -855,6 +855,15 @@ body {
 }
 
 /* Chat Messages Display List */
+.chat-message-viewport {
+    position: relative;
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
 .chat-messages {
     flex: 1;
     position: relative;

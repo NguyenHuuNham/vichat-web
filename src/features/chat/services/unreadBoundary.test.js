@@ -5,6 +5,8 @@ import {
   isUnreadBoundaryEnd,
   markUnreadBoundaryIndicatorCleared,
   mergeUnreadBoundary,
+  reconcileUnreadBoundary,
+  isUnreadMessageVisible,
   unreadBadgeLabel,
   unreadBoundaryHasNewerTail,
   unreadBoundaryReadSequence,
@@ -20,6 +22,50 @@ const messages = [
   { id: 'three', seq: 3, senderId: 'peer', sender: 'incoming', createdAt: '2026-08-24T08:02:00.000Z' },
   { id: 'four', seq: 4, senderId: 'peer', sender: 'incoming', createdAt: '2026-08-24T08:03:00.000Z' },
 ];
+
+test('remote read clears an existing unread boundary', () => {
+  const boundary = createUnreadBoundary(messages, { viewerId: 'me', firstUnreadSeq: 2 });
+  assert.equal(reconcileUnreadBoundary(boundary, { messages, readSeq: 4 }, { viewerId: 'me' }), null);
+});
+
+test('partial acknowledgement keeps only the newer unread tail', () => {
+  const boundary = createUnreadBoundary(messages, { viewerId: 'me', firstUnreadSeq: 2 });
+  const next = reconcileUnreadBoundary(boundary, { messages, readSeq: 3 }, { viewerId: 'me' });
+  assert.equal(next.firstUnreadSeq, 4);
+  assert.equal(next.firstUnreadId, 'four');
+  assert.equal(next.unreadCount, 1);
+  assert.equal(next.lastUnreadSeq, 4);
+});
+
+test('missing content keeps its durable tail and cannot acknowledge an older message', () => {
+  const boundary = createUnreadBoundary(messages, { viewerId: 'me', firstUnreadSeq: 10, lastUnreadSeq: 12, unreadCount: 3 });
+  assert.equal(boundary.lastUnreadSeq, 12);
+  assert.equal(boundary.lastUnreadId, '');
+  assert.equal(unreadBoundaryReadSequence({ firstUnreadSeq: 10 }, messages), 0);
+  const next = reconcileUnreadBoundary(boundary, { readSeq: 10, messages }, { viewerId: 'me' });
+  assert.equal(next.firstUnreadSeq, 11);
+  assert.equal(next.lastUnreadSeq, 12);
+  assert.equal(next.unreadCount, 2);
+});
+
+test('stale reads do not clear or rewind an unread boundary', () => {
+  const boundary = createUnreadBoundary(messages, { viewerId: 'me', firstUnreadSeq: 3 });
+  assert.equal(reconcileUnreadBoundary(boundary, { readSeq: 1, messages }), boundary);
+});
+
+test('demo read timestamps clear the boundary across sessions', () => {
+  const boundary = createUnreadBoundary([{ id: 'demo', senderId: 'peer', createdAt: '2026-09-07T03:00:00Z' }], { viewerId: 'me' });
+  assert.equal(reconcileUnreadBoundary(boundary, { readAt: '2026-09-07T03:01:00Z' }), null);
+});
+
+test('read visibility handles tall images, short messages and offscreen content', () => {
+  const viewport = { top: 100, bottom: 700, left: 0, right: 400, height: 600 };
+  assert.equal(isUnreadMessageVisible({ top: 120, bottom: 3120, left: 0, right: 200, height: 3000 }, viewport), true);
+  assert.equal(isUnreadMessageVisible({ top: 130, bottom: 150, left: 0, right: 200, height: 20 }, viewport), true);
+  assert.equal(isUnreadMessageVisible({ top: 690, bottom: 750, left: 0, right: 200, height: 60 }, viewport), false);
+  assert.equal(isUnreadMessageVisible({ top: 710, bottom: 800, left: 0, right: 200, height: 90 }, viewport), false);
+  assert.equal(isUnreadMessageVisible({ top: 120, bottom: 180, left: 410, right: 610, height: 60 }, viewport), false);
+});
 
 test('creates a sequence-based boundary at the first message after the read cursor', () => {
   const boundary = createUnreadBoundary(messages, {

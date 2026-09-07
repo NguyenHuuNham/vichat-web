@@ -1690,14 +1690,19 @@ async def tinode_publish_system_event(token, expected_uid, topic_name, event):
             authenticated_uid = str((login_ctrl.get("params") or {}).get("user") or "")
             if expected_uid and authenticated_uid != str(expected_uid):
                 raise AuthError("Tinode authenticated a different user.", 409)
+            await socket.send_json({"sub": {"id": "3", "topic": topic_name}})
+            await receive_ctrl(socket, "3")
             await socket.send_json({
                 "pub": {
-                    "id": "3",
+                    "id": "4",
                     "topic": topic_name,
                     "content": content,
                 },
             })
-            return await receive_ctrl(socket, "3")
+            published = await receive_ctrl(socket, "4")
+            if int((published.get("params") or {}).get("seq") or 0) <= 0:
+                raise AuthError("Tinode did not persist the group event.", 502)
+            return published
 
 
 async def tinode_change_password(username, current_password, new_password, new_username=None):

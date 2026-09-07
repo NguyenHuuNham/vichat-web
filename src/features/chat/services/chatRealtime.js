@@ -99,7 +99,7 @@ function conversationSequenceFloor(conversation) {
       Number(message?.seq) || 0,
       Number(message?.raw?.seq) || 0,
       Number(message?.pollActivitySeq) || 0,
-    ), 0);
+    ), Math.max(0, Number(conversation?.latestSeq) || 0));
 }
 
 function incomingConversationSequenceFloor(conversation, viewerId = '') {
@@ -172,6 +172,12 @@ export function mergeConversationReadState(existing = {}, incoming = {}, { viewe
       unreadFromSeq = incomingUnreadFromSeq > readSeq ? incomingUnreadFromSeq : 0;
       badge = incomingBadge;
     }
+  }
+
+  if (existingHasUnread && existingLatestSeq > incomingLatestSeq && existingLatestSeq > readSeq) {
+    badge = Math.max(badge, Math.min(existingBadge, existingLatestSeq - readSeq));
+    const remainingFirstSeq = existingUnreadFromSeq > readSeq ? existingUnreadFromSeq : readSeq + 1;
+    unreadFromSeq = unreadFromSeq > readSeq ? Math.min(unreadFromSeq, remainingFirstSeq) : remainingFirstSeq;
   }
 
   // A boundary at or below the effective read cursor is never unread. Keep
