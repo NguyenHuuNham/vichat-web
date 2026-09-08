@@ -472,7 +472,7 @@ test('Tinode and conversation hydration keep chatbot correlation isolated from n
   assert.match(tinodeClientSource, /chatbotMessageCorrelationKey\(/);
   assert.match(appSource, /safeExisting\.isChatbot \|\| safeIncoming\.isChatbot[\s\S]*?mergeChatbotMessages/);
   assert.match(appSource, /isChatbot: safeExisting\.isChatbot \|\| safeIncoming\.isChatbot/);
-  assert.match(appSource, /CALLS_ENABLED && !activeChat\.isChatbot/);
+  assert.doesNotMatch(appSource, /CALLS_ENABLED && !activeChat\.isChatbot/);
   assert.match(appSource, /!activeChat\.isChatbot && <div className="input-actions-left">/);
   assert.match(appSource, /isDetailOpen \? 'open' : 'collapsed'/);
 });

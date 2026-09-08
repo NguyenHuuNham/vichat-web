@@ -12883,28 +12883,6 @@ function App() {
                   <i className="fa-solid fa-image"></i>
                 </button>
               )}
-              {CALLS_ENABLED && !activeChat.isChatbot && (
-                <>
-                  <button
-                    type="button"
-                    className="btn-header-action"
-                    title={callActionCapability.available ? appCopy.t('Gọi thoại') : appCopy.t(callActionCapability.reason)}
-                    onClick={() => handleStartCall(true)}
-                    disabled={!callActionCapability.available}
-                  >
-                    <i className="fa-solid fa-phone"></i>
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-header-action"
-                    title={callActionCapability.available ? appCopy.t('Gọi video') : appCopy.t(callActionCapability.reason)}
-                    onClick={() => handleStartCall(false)}
-                    disabled={!callActionCapability.available}
-                  >
-                    <i className="fa-solid fa-video"></i>
-                  </button>
-                </>
-              )}
               <button
                 type="button"
                 className={`btn-header-action btn-header-detail ${isDetailOpen ? 'active is-open' : 'is-closed'}`}

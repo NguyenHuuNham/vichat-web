@@ -624,6 +624,9 @@ test('chat header uses a stateful information panel control for direct and group
   assert.match(appSource, /fa-table-columns/);
   assert.match(appSource, /aria-expanded=\{isDetailOpen\}/);
   assert.match(appSource, /id="conversation-details-sidebar"/);
+  assert.doesNotMatch(appSource, /onClick=\{\(\) => handleStartCall\(true\)\}/);
+  assert.doesNotMatch(appSource, /onClick=\{\(\) => handleStartCall\(false\)\}/);
+  assert.match(appSource, /call-history-redial/);
   assert.match(stylesSource, /\.btn-header-detail\.is-closed/);
   assert.match(stylesSource, /\.btn-header-detail\.is-open/);
 });

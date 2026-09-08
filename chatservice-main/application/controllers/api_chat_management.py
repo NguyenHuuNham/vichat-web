@@ -1667,10 +1667,7 @@ def _serialize_conversation(item, viewer_id):
     pending_accounts_by_id = {}
     viewer_can_approve_members = bool(
         viewer_membership is not None
-        and (
-            _is_group_manager(viewer_membership)
-            or _is_admin({"role": getattr(viewer_account, "role", "")})
-        )
+        and _is_group_manager(viewer_membership)
     )
     if is_group and viewer_can_approve_members:
         pending_participants = ConversationParticipant.query.filter(
@@ -6074,8 +6071,8 @@ async def conversation_participant_approval(request, conversation_id, participan
         return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
     if not bool((item.properties or {}).get("is_group")):
         return json({"error_code": "PARAM_ERROR", "error_message": "Member approval is only available for a group."}, status=400)
-    if not _is_group_manager(membership) and not _is_admin(current_user):
-        return json({"error_code": "OWNER_REQUIRED", "error_message": "Only a group owner/admin or tenant administrator can approve members."}, status=403)
+    if not _is_group_manager(membership):
+        return json({"error_code": "OWNER_REQUIRED", "error_message": "Only a group owner or deputy can approve members."}, status=403)
 
     approved = (request.json or {}).get("approved")
     if not isinstance(approved, bool):

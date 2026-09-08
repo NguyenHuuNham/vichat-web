@@ -491,6 +491,9 @@ test('group owners and deputies share management controls while the owner stays 
   assert.equal(groupRoleForIdentity(room, deputy, accounts), 'ADMIN');
   assert.equal(groupRoleForIdentity(room, member, accounts), 'MEMBER');
   assert.equal(canManageGroupMembers(room, accounts, deputy), true);
+  assert.equal(canApproveGroupMembers(room, accounts, owner), true);
+  assert.equal(canApproveGroupMembers(room, accounts, deputy), true);
+  assert.equal(canApproveGroupMembers(room, accounts, member), false);
   assert.equal(canAppointGroupDeputy(room, accounts, deputy, member), true);
   assert.equal(canRevokeGroupDeputy(room, accounts, owner, deputy), true);
   assert.equal(canRemoveGroupMember(room, accounts, deputy, member), true);
@@ -512,7 +515,7 @@ test('only the creator can remove another member and the owner cannot remove the
   assert.equal(canRemoveGroupMember(room, accounts, creator, creator), false);
 });
 
-test('tenant administrators can approve membership without receiving owner-only group controls', () => {
+test('tenant administrators cannot approve membership without a group manager role', () => {
   const owner = { id: 'account-owner', tinodeUid: 'usr-owner', name: 'Owner', role: 'member' };
   const tenantAdmin = { id: 'account-admin', tinodeUid: 'usr-admin', name: 'Admin', role: 'admin' };
   const room = {
@@ -522,7 +525,7 @@ test('tenant administrators can approve membership without receiving owner-only 
   };
 
   assert.equal(canManageGroupMembers(room, [owner, tenantAdmin], tenantAdmin), false);
-  assert.equal(canApproveGroupMembers(room, [owner, tenantAdmin], tenantAdmin), true);
+  assert.equal(canApproveGroupMembers(room, [owner, tenantAdmin], tenantAdmin), false);
   assert.equal(canApproveGroupMembers(room, [owner, tenantAdmin], { ...tenantAdmin, role: 'member' }), false);
 });
 

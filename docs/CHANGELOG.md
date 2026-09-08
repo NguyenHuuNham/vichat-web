@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-08-05 - Gioi han muc duyet thanh vien nhom
+
+- Thoi gian: 2026-09-08 13:43 (Asia/Saigon)
+- Loai: Sua loi | Bao mat | Web | Chatmgt | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; dang cho commit/push va deploy production.
+- Muc tieu: Chi truong nhom va pho nhom duoc xem hoac xu ly danh sach thanh vien cho duyet; bo hai nut goi thoai/video khoi header chat.
+- Pham vi: Quyen hien thi/duyet pending member trong group info va hai action icon trong header ChatUI; giu nguyen luong them thanh vien, goi lai tu lich su, Tinode, mobile va cac luong chat khac.
+- File da thay doi: `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `src/app/App.jsx`, `src/features/chatbot/services/chatbotService.test.js`, `src/features/chat/services/chatManagementService.test.js`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`.
+- Noi dung: Loai bo fallback quyen admin/owner/superadmin cua tenant khoi approval gate; Chatmgt chi serialize `pendingMembers` va chap nhan PUT approval cho membership role `OWNER`/`ADMIN`. Tenant admin van giu quyen them truc tiep nhu hop dong hien tai. Hai nut goi tren header duoc bo, con nut goi lai trong lich su tin nhan va co che goi khong doi.
+- Quyet dinh ky thuat: Kiem tra quyen o ca ChatUI va Chatmgt de khong chi an giao dien; khong doi database schema hay endpoint, khong dong vao membership add bypass.
+- Database/API/cau hinh: Khong migration, endpoint moi, secret hay bien moi truong; thay doi authorization cua endpoint approval hien co, tenant admin se nhan 403 neu khong la owner/deputy cua nhom.
+- Kiem thu: `node --test src/features/contacts/services/accountDirectory.test.js src/features/chat/services/chatManagementService.test.js src/features/chatbot/services/chatbotService.test.js` dat 123/123; `python -m unittest chatservice-main.tests.test_chat_auth_contract` dat 57/57; `npm run test:frontend` dat 409/409; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB da co; `git diff --check` dat. `python -m unittest discover -s tests -v` chay 296 test, 105 skip do dependency runtime va 1 loi import local `itsdangerous` tai `test_chat_media_service`, khong lien quan thay doi nay.
+- Rui ro con lai: Chua deploy/UAT; can xac nhan owner, deputy, member va tenant admin tren production sau release. Local full backend suite can chay lai trong Chatmgt image co day du dependency.
+- Viec tiep theo: Chay kiem thu, commit/push va deploy ChatUI + Chatmgt neu cac gate dat.
+- Commit/PR: Chua tao.
+
 ## 2026-09-08-04 - Sua danh sach hoi thoai khi sua phan loai
 
 - Thoi gian: 2026-09-08 12:50 (Asia/Saigon)

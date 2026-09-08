@@ -583,9 +583,8 @@ export function canManageGroupMembers(room, accounts, currentUser) {
 }
 
 export function canApproveGroupMembers(room, accounts, currentUser) {
-  if (canManageGroupMembers(room, accounts, currentUser)) return true;
-  return room?.isGroup
-    && ['admin', 'owner', 'superadmin'].includes(String(currentUser?.role || '').toLowerCase());
+  // Approval is a group role, not a tenant-wide administration capability.
+  return canManageGroupMembers(room, accounts, currentUser);
 }
 
 export function canRemoveGroupMember(room, accounts, currentUser, member) {
