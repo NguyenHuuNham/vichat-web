@@ -8,9 +8,9 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-09-08-08 - Dong bo dem va thao tac doc cua thong bao hoi thoai
 
-- Thoi gian: 2026-09-08 18:39 (Asia/Saigon)
+- Thoi gian: 2026-09-08 18:39-19:37 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | UX | Kiem thu | Tai lieu
-- Trang thai: Hoan tat code va kiem thu local; chua commit/deploy.
+- Trang thai: Hoan tat; source `55b6b0731011274a6a6b9ecab55775e678713755` da commit/push `origin/master`, production da deploy va verify qua hai hop SSH.
 - Muc tieu: Hien thi dung so luong unread, doi menu sang `Danh dau da doc` sau khi danh dau chua doc, va cho phep doc lai ca hoi thoai Tinode/demo.
 - Pham vi: Chi trang thai unread va menu thao tac cua danh sach hoi thoai ChatUI; giu nguyen realtime, Tinode, Chatmgt, chat nhom/direct va cac luong khac.
 - File da thay doi: `src/app/App.jsx`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`, `docs/CHANGELOG.md`.
@@ -18,9 +18,11 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Khong them API, storage hoac migration. Read action dung `tinodeClient.markRead` va cac store demo hien co, co session guard va kiem tra tail moi de khong xoa unread moi.
 - Database/API/cau hinh: Khong co thay doi.
 - Kiem thu: `node --test --test-concurrency=1 src/features/i18n/appLanguage.test.js src/features/chat/services/unreadBoundary.test.js src/features/chat/services/chatManagementService.test.js` dat 101/101; `npm run test:frontend -- --test-concurrency=1` dat 411/411; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB; `git diff --check` dat.
-- Rui ro con lai: Chua UAT truc quan tren trinh duyet va tai khoan Tinode/demo that; chua commit/deploy.
-- Viec tiep theo: UAT menu hoi thoai, badge so luong va mark read/unread tren direct/group; sau khi xac nhan thi commit/push/deploy ChatUI.
-- Commit/PR: Chua tao.
+- Rui ro con lai: Chua UAT truc quan tren trinh duyet voi tai khoan Tinode/demo that; cac gate production da dat nhung van can xac nhan thao tac menu tren direct/group.
+- Viec tiep theo: UAT menu hoi thoai, badge so luong va mark read/unread tren direct/group; khong can migration hay cau hinh moi.
+- Commit/PR: Source `55b6b0731011274a6a6b9ecab55775e678713755`, da push `origin/master`; production release `/opt/deploy/chat/releases/unread-notification-55b6b07-20260908-r2`, previous `/opt/deploy/chat/releases/conversation-list-71b1b3a-20260908-r2`.
+- Artifact/phat hanh: Archive `/opt/deploy/chat/incoming/vichat-unread-notification-55b6b07.tar.gz`, SHA-256 `5155588c490842d1885572a32ef3ce2373e8ec7a8c769cca67b5a784b64c14f1`; backup `/opt/deploy/chat/backups/unread-notification-55b6b07-20260908-r2`; chi recreate ChatUI `chat`, giu nguyen Chatmgt/Tinode/database/Redis/volume.
+- Kiem thu production: Deploy script r2 dat; ChatUI/Chatmgt healthy, restart `0`, local/public health dat, WSS tra `101`, bundle public co marker `Danh dau da doc` va `markRead`, Alembic `20260825_13`, volume/service ngoai pham vi khong doi, log ChatUI khong co fatal/panic/traceback.
 
 ## 2026-09-08-07 - Can le thoi gian va them vao nhom tu danh sach hoi thoai
 
