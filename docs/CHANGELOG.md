@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-08 10:07 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | UX | Kiem thu | Tai lieu
-- Trang thai: Hoan tat code va kiem thu local; chua commit, push, deploy production hoac UAT browser.
+- Trang thai: Hoan tat code va kiem thu local; source da commit `70ac846`, dang cho push/deploy production va UAT browser.
 - Muc tieu: Loai bo khung hinh nen bi nhap nhay khi doi preset trong chat nhom va cho phep nguoi dung tu can anh tai len truoc khi ap dung.
 - Pham vi: ChatUI conversation background picker, preload/cache nguon preset, modal can chinh anh tai len, luu local IndexedDB va luong upload nen shared hien co; khong sua Chatmgt, Tinode contract, mobile, database hay migration.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/components/ConversationBackgroundCropModal.jsx`, `src/features/chat/services/conversationBackgroundCrop.js`, `src/features/chat/services/conversationBackgroundCrop.test.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `package.json`, `dist/index.html`, `docs/CHANGELOG.md`.
@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `npm run test:frontend` dat 400/400; `npm run lint` exit 0 voi canh bao legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB da co; `git diff --check` dat. Browser UAT chua chay vi phien nay khong expose cong cu dieu khien trinh duyet.
 - Rui ro con lai: Chua xac nhan truc quan bang tai khoan that thao tac preset, keo/zoom, Huy/Ap dung va ca hai scope tren desktop/mobile; bundle production chua duoc deploy.
 - Viec tiep theo: UAT tren chat nhom voi hard refresh, doi nhieu preset lien tiep, tai anh ngang/doc, keo/zoom, Huy va Ap dung cho local/shared; sau do commit/push/deploy theo quy trinh neu ket qua dat.
-- Commit/PR: Chua tao.
+- Commit/PR: Source `70ac846`; changelog follow-up dang cho commit.
 
 ## 2026-09-07-06 - Phat hanh web: tin chua doc va thong bao nhom
 
