@@ -10,17 +10,19 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-08 12:50 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | UX | Kiem thu | Tai lieu
-- Trang thai: Hoan tat code va kiem thu; chua commit/deploy.
+- Trang thai: Hoan tat; source `d6636547a84f9a0686597e3af2008271ad4bc076` da commit/push `origin/master`, production da deploy va verify qua hai hop SSH.
 - Muc tieu: Modal `Sua the phan loai` khong lap direct contact, phan biet duoc hai tai khoan trung ten va khong lam mat assignment hien tai.
 - Pham vi: Chi danh sach hoi thoai trong ChatUI category manager; giu nguyen persistence category, luong chia se tin nhan, chat realtime, Chatmgt, Tinode, mobile va database.
 - File da thay doi: `src/features/chat/services/conversationCategoryConversations.js`, `src/features/chat/services/conversationCategoryConversations.test.js`, `src/app/App.jsx`, `src/features/chat/components/ConversationCategoryManager.jsx`, `src/features/chat/services/chatManagementService.test.js`, `src/styles/index.css`, `package.json`, `dist/index.html`, `docs/CHANGELOG.md`.
 - Noi dung: Direct room duoc nhan dien bang account identity thay vi display name; duplicate room cung mot account duoc gom hien thi nhung van gui tat ca `managementId` khi luu; tai khoan khac nhau trung ten hien `@username`, email hoac identity de phan biet; group trung subject van giu rieng. Bo loc tim kiem cung tim theo metadata phan biet.
 - Quyet dinh ky thuat: Helper chi lam projection cho modal. Storage van giu assignment theo conversation ID va `setCategoryConversations` khong doi. Khong dua directory-only contact vao category vi category hien tai la tag cua hoi thoai, tranh thay doi contract va luong tao phong.
 - Database/API/cau hinh: Khong co migration, endpoint, secret, bien moi truong hay thay doi backend.
-- Kiem thu: `node --test src/features/chat/services/conversationCategoryConversations.test.js src/features/chat/services/conversationCategoryPolicy.test.js src/features/chat/services/chatManagementService.test.js` dat 67/67; `npm run test:frontend` dat 409/409; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB da co; `git diff --check` dat.
+- Kiem thu local: `node --test src/features/chat/services/conversationCategoryConversations.test.js src/features/chat/services/conversationCategoryPolicy.test.js src/features/chat/services/chatManagementService.test.js` dat 67/67; `npm run test:frontend` dat 409/409; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB da co; `git diff --check` dat.
+- Artifact/deploy: Archive `vichat-conversation-category-d663654.tar.gz`, SHA-256 `16a6f337466aa285e597f8bfc3b9114b847fca20bb94f50ce594d3b3b4e88fd0`; release `/opt/deploy/chat/releases/conversation-category-d663654-20260908-r3`; backup `/opt/deploy/chat/backups/conversation-category-d663654-20260908-r3`; chi recreate ChatUI `chat`, khong recreate Chatmgt/Tinode/database.
+- Kiem thu production: ChatUI container `b00d987389bb`, image `sha256:193b940ad48d47fcc5f998e473184fde917aea692151ebdc738d8535880329f3`, healthy, restart 0; Chatmgt giu container `4e5157d93c3e`, image `sha256:5dc16450eb4eec7c0d6df5a311f9daacdf0b6547fc3d76bdc0a8eafb53c5de9a`; local/public health `ok`, public bundle/CSS marker dung, WSS `101`, Alembic van `20260825_13`, service ngoai ChatUI va volume khong doi. Hai gate r1/r2 dung truoc activate/tu rollback; r3 activate thanh cong.
 - Rui ro con lai: Chua UAT truc quan tren production bang tai khoan that; danh sach category van phu thuoc snapshot hoi thoai hien tai, khong tu tao room moi cho contact chua co hoi thoai.
-- Viec tiep theo: Commit/push va deploy chi ChatUI sau khi doi chieu diff; UAT modal sua category voi hai tai khoan trung ten va duplicate room.
-- Commit/PR: Chua tao.
+- Viec tiep theo: UAT modal sua category voi hai tai khoan trung ten va duplicate room; hard refresh de xac nhan asset moi.
+- Commit/PR: Source `d6636547a84f9a0686597e3af2008271ad4bc076`; production release `conversation-category-d663654-20260908-r3`; changelog release commit se tao sau verify.
 
 ## 2026-09-08-03 - Sua danh sach nguoi nhan khi chia se tin nhan
 
