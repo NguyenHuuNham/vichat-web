@@ -8,19 +8,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-09-08-07 - Can le thoi gian va them vao nhom tu danh sach hoi thoai
 
-- Thoi gian: 2026-09-08 16:11 (Asia/Saigon)
+- Thoi gian: 2026-09-08 16:11-17:25 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | UX | Kiem thu | Tai lieu
-- Trang thai: Hoan tat local; chua commit/push va chua deploy production.
+- Trang thai: Hoan tat; source `71b1b3a` da commit/push `origin/master`, production da deploy va verify qua hai hop SSH.
 - Muc tieu: Dua thoi gian hoi thoai sat mep phai, thay thoi gian bang nut ba cham khi hover va cho phep them nguoi trong chat 1-1 vao luong tao nhom.
 - Pham vi: Chi danh sach hoi thoai ChatUI, menu thao tac cua direct chat va regression assertion; giu nguyen chat realtime, chat nhom, phan loai, quyen, Tinode va Chatmgt.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`, `docs/CHANGELOG.md`.
 - Noi dung: Bo phan dem ben phai cua item de timestamp co the can sat mep; lop action menu nam de len phan thoi gian va chi hien dau ba cham khi hover/focus/menu mo. Menu cua chat 1-1 them `Them vao nhom`, tai su dung modal tao nhom hien co va tu dong chon truoc peer bang identity on dinh.
 - Quyet dinh ky thuat: Khong tao API hoac membership flow moi; tai su dung create-group flow hien co de tranh anh huong them vao nhom, gui tin, realtime va du lieu. Chatbot khong hien menu thao tac nhu truoc.
 - Database/API/cau hinh: Khong co migration, endpoint, secret, bien moi truong hay thay doi kien truc.
-- Kiem thu: `node --test --test-concurrency=1 src/features/chat/services/chatManagementService.test.js` dat 59/59; `npm run test:frontend -- --test-concurrency=1` dat 411/411; `npm run lint` exit 0 voi warning legacy/vendor da co; `node --max-old-space-size=2048 scripts/build-production.mjs` thanh cong voi canh bao chunk `App` lon hon 500 KB; `git diff --check` dat.
+- Kiem thu: `node --test --test-concurrency=1 src/features/chat/services/chatManagementService.test.js` dat 59/59; `npm run test:frontend -- --test-concurrency=1` dat 411/411; `npm run lint` exit 0 voi warning legacy/vendor da co; `node --max-old-space-size=2048 scripts/build-production.mjs` thanh cong voi canh bao chunk `App` lon hon 500 KB; `git diff --check` dat. Production local/public health `ok`, Chatmgt auth health `ok`, WSS tra `101`, asset public khop candidate va 670 file ngoai pham vi khong doi; service ngoai `chat`, volume, Alembic `20260825_13` va `.env` giu nguyen.
+- Artifact/phat hanh: Archive `/opt/deploy/chat/incoming/vichat-conversation-list-71b1b3a.tar.gz`, SHA-256 `bc127931393628f04874f174c9987e2ee92e0c4258e89600bf674bf7d4a3db70`; deploy qua `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`; release `/opt/deploy/chat/releases/conversation-list-71b1b3a-20260908-r2`; previous `/opt/deploy/chat/releases/group-approval-poll-dark-5cefd90-20260908-r1`; backup `/opt/deploy/chat/backups/conversation-list-71b1b3a-20260908-r2`; chi recreate service `chat`.
+- Image/container: ChatUI `2ceffdb1757b8642e2cd9ca8d1013539176296d4dafe88b09f02a9f8194b65c8`, image `sha256:c6b7e765181a28c72ae38a62ba54a9007b8de33b7dd98ff0edf6cc5b81f245a2`, healthy/restart 0; Chatmgt giu container `43b5de78de8bdf68a8b088fc350a36214241acd30899ece25f64a4dae0244398`, cung cac service du lieu va volume.
+- Xu ly phat hanh: Helper duoc chay qua stdin do server tu don file `incoming`; sau khi activate va cac gate public dat, CRLF o dong cuoi lam script thoat `127` tai `switch` va trap dua symlink ve release cu. Da xac minh container candidate healthy, khong co rollback du lieu, roi hoan tat switch nguyen tu sang `r2`; khong migration, `down -v` hay recreate service ngoai `chat`.
 - Rui ro con lai: Chua UAT truc quan bang trinh duyet va tai khoan that; thao tac `Them vao nhom` hien mo tao nhom moi va chon san peer, chua phai bo chon mot nhom da ton tai.
-- Viec tiep theo: UAT timestamp/hover tren desktop va mobile, thu menu direct/group, sau do commit/push/deploy neu duoc yeu cau.
-- Commit/PR: Chua tao.
+- Viec tiep theo: UAT timestamp/hover tren desktop va mobile, thu menu direct/group va hard refresh de nap bundle moi.
+- Commit/PR: Source `71b1b3a`; changelog release record commit rieng sau khi verify production.
 
 ## 2026-09-08-06 - Sua mau binh chon trong che do toi
 
