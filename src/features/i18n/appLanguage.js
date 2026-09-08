@@ -15,6 +15,7 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Bỏ ghim hội thoại': 'Unpin conversation',
   'Ghim hội thoại': 'Pin conversation',
   'Đánh dấu chưa đọc': 'Mark as unread',
+  'Đánh dấu đã đọc': 'Mark as read',
   'Tin chưa đọc': 'Unread messages',
   'Tin nhắn chưa đọc': 'Unread messages',
   'TIN NHẮN CHƯA ĐỌC': 'UNREAD MESSAGES',

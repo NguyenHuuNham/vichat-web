@@ -266,7 +266,15 @@ test('keeps unread emphasis and latest-message navigation in the ChatUI layer', 
   assert.match(appSource, /unreadMessagesForConversation/);
   assert.match(appSource, /messageMentionsViewer/);
   assert.doesNotMatch(appSource, /indicatorCleared: true/);
-  assert.match(appSource, /const hasUnread = unreadIndicatorVisible\(boundary, count\);/);
+  assert.match(appSource, /const manuallyUnread = manualUnreadConversationIds\.has\(roomId\);/);
+  assert.match(appSource, /Math\.max\(1, unreadCountForConversation\(room, boundary\)\)/);
+  assert.match(appSource, /const hasUnread = manuallyUnread \|\| unreadIndicatorVisible\(boundary, count\);/);
+  assert.match(appSource, /const markConversationRead = async room =>/);
+  assert.match(appSource, /tinodeClient\.markRead\(topicName, \{\s*throughSequence: startedSequence,/);
+  assert.match(appSource, /chatMode === 'demo'[\s\S]*markDemoGroupRead\(key, unreadViewerId\)/);
+  assert.match(appSource, /chatMode === 'demo'[\s\S]*markDemoDirectRead\(key, unreadViewerId\)/);
+  assert.match(appSource, /handleConversationMenuAction\(menuRoomUnread\.hasUnread \? 'read' : 'unread', menuRoom\)/);
+  assert.match(appSource, /appCopy\.t\(menuRoomUnread\.hasUnread \? 'Đánh dấu đã đọc' : 'Đánh dấu chưa đọc'\)/);
   assert.match(appSource, /reconcileUnreadBoundary/);
   assert.doesNotMatch(appSource, /roomId === String\(currentChatId\) && boundary\?\.indicatorCleared/);
   assert.match(appSource, /latest-message-jump-button/);

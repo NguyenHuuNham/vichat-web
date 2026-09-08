@@ -3180,6 +3180,7 @@ function App() {
   const [shareMessage, setShareMessage] = useState(null);
   const [messageActions, setMessageActions] = useState({});
   const [unreadBoundaries, setUnreadBoundaries] = useState({});
+  const [manualUnreadConversationIds, setManualUnreadConversationIds] = useState(() => new Set());
   const [showLatestMessageButton, setShowLatestMessageButton] = useState(false);
   const [messageReactionPickerKey, setMessageReactionPickerKey] = useState(null);
   const [messageActionHoverKey, setMessageActionHoverKey] = useState(null);
@@ -4230,10 +4231,13 @@ function App() {
   const conversationUnreadIndicators = room => {
     const roomId = String(room?.id || '');
     const boundary = unreadBoundaries[roomId] || null;
-    const count = unreadCountForConversation(room, boundary);
+    const manuallyUnread = manualUnreadConversationIds.has(roomId);
+    const count = manuallyUnread
+      ? Math.max(1, unreadCountForConversation(room, boundary))
+      : unreadCountForConversation(room, boundary);
     // Hide only the boundary already viewed; a newer unread tail must light up
     // again even when it is merged into the same conversation boundary.
-    const hasUnread = unreadIndicatorVisible(boundary, count);
+    const hasUnread = manuallyUnread || unreadIndicatorVisible(boundary, count);
     const hasMention = Boolean(room?.isGroup && hasUnread && unreadMessagesForConversation(room, boundary, {
       viewerId: unreadViewerId,
     }).some(message => messageMentionsViewer(message, currentUser)));
@@ -4243,6 +4247,7 @@ function App() {
       label: unreadBadgeLabel(count),
       hasUnread,
       hasMention,
+      manuallyUnread,
     };
   };
 
@@ -4308,6 +4313,12 @@ function App() {
       if (accountSessionRef.current !== accountSession) return;
       const currentBoundary = unreadBoundariesRef.current[key];
       if (chatMode === 'demo' && unreadBoundaryHasNewerTail(currentBoundary, boundary)) return;
+      setManualUnreadConversationIds(previous => {
+        if (!previous.has(key)) return previous;
+        const next = new Set(previous);
+        next.delete(key);
+        return next;
+      });
       unreadBoundaryJumpedRef.current.delete(key);
       const currentRoom = conversationsRef.current[key];
       if (!currentRoom) return;
@@ -4348,6 +4359,7 @@ function App() {
     unreadBoundariesRef.current = {};
     unreadCompletionRequestsRef.current.clear();
     unreadBoundaryJumpedRef.current.clear();
+    setManualUnreadConversationIds(new Set());
     conversationNavigationRef.current += 1;
     setUnreadBoundaries({});
   }, [unreadViewerId, managementConversationSession]);
@@ -8434,19 +8446,130 @@ function App() {
 
   const markConversationUnread = room => {
     if (!room || room.isChatbot) return;
+    const key = String(room.id || '');
+    if (!key) return;
+    setManualUnreadConversationIds(previous => {
+      if (previous.has(key)) return previous;
+      const next = new Set(previous);
+      next.add(key);
+      return next;
+    });
     setConversations(previous => {
-      const previousRoom = previous[room.id] === null || previous[room.id] === undefined
+      const previousRoom = previous[key] === null || previous[key] === undefined
         ? null
-        : safeNormalizeConversationForRender(previous[room.id], room.id);
+        : safeNormalizeConversationForRender(previous[key], key);
       if (!previousRoom) return previous;
       const next = {
         ...previous,
-        [room.id]: { ...previousRoom, badge: Math.max(1, previousRoom.badge || 0) },
+        [key]: { ...previousRoom, badge: Math.max(1, previousRoom.badge || 0) },
       };
       conversationsRef.current = next;
       return next;
     });
     setConversationMenu(null);
+  };
+
+  const markConversationRead = async room => {
+    if (!room || room.isChatbot) return;
+    const key = String(room.id || '');
+    if (!key || unreadCompletionRequestsRef.current.has(key)) return;
+    setConversationMenu(null);
+    const accountSession = accountSessionRef.current;
+    const request = Symbol(key);
+    unreadCompletionRequestsRef.current.set(key, request);
+    const startedRoom = conversationsRef.current[key]
+      ? safeNormalizeConversationForRender(conversationsRef.current[key], key)
+      : safeNormalizeConversationForRender(room, key);
+    const startedBoundary = unreadBoundariesRef.current[key] || null;
+    const startedMessages = roomMessages(startedRoom);
+    const startedSequence = Math.max(
+      Number(startedRoom?.latestSeq) || 0,
+      Number(startedRoom?.unreadThroughSeq) || 0,
+      Number(startedBoundary?.lastUnreadSeq) || 0,
+      startedMessages.reduce((maximum, message) => Math.max(
+        maximum,
+        Number(message?.seq) || 0,
+        Number(message?.pollActivitySeq) || 0,
+      ), 0),
+    );
+    const completedAt = new Date().toISOString();
+    try {
+      let acknowledgedReadSeq = Number(startedRoom?.readSeq) || 0;
+      if (chatMode === 'tinode') {
+        const topicName = startedRoom?.tinodeTopic || startedBoundary?.topicName;
+        if (!topicName) return;
+        acknowledgedReadSeq = await tinodeClient.markRead(topicName, {
+          throughSequence: startedSequence,
+        });
+      } else if (chatMode === 'demo') {
+        if (startedRoom?.isGroup) markDemoGroupRead(key, unreadViewerId);
+        else markDemoDirectRead(key, unreadViewerId);
+      }
+      if (accountSessionRef.current !== accountSession) return;
+
+      const currentRoom = conversationsRef.current[key]
+        ? safeNormalizeConversationForRender(conversationsRef.current[key], key)
+        : startedRoom;
+      if (!currentRoom) return;
+      const currentBoundary = unreadBoundariesRef.current[key] || null;
+      const readSeq = Math.max(Number(currentRoom.readSeq) || 0, Number(acknowledgedReadSeq) || 0);
+      const currentSequence = Math.max(
+        Number(currentRoom.latestSeq) || 0,
+        Number(currentRoom.unreadThroughSeq) || 0,
+        Number(currentBoundary?.lastUnreadSeq) || 0,
+        roomMessages(currentRoom).reduce((maximum, message) => Math.max(
+          maximum,
+          Number(message?.seq) || 0,
+          Number(message?.pollActivitySeq) || 0,
+        ), 0),
+      );
+      const currentUnreadFromSeq = Number(currentRoom.unreadFromSeq) || 0;
+      const hasNewerUnread = chatMode === 'tinode'
+        && (currentUnreadFromSeq > readSeq
+          || (Number(currentRoom.badge) > 0 && currentSequence > readSeq)
+          || Number(currentBoundary?.lastUnreadSeq) > readSeq);
+      const remainingBoundary = hasNewerUnread
+        ? reconcileUnreadBoundary(currentBoundary, { ...currentRoom, readSeq }, { viewerId: unreadViewerId })
+        : null;
+      const badge = hasNewerUnread
+        ? Math.max(
+          Number(remainingBoundary?.unreadCount) || 0,
+          Math.min(Number(currentRoom.badge) || 0, Math.max(0, currentSequence - readSeq)),
+          1,
+        )
+        : 0;
+      const readState = {
+        readSeq,
+        badge,
+        unreadFromSeq: badge > 0 ? Math.max(readSeq + 1, Number(remainingBoundary?.firstUnreadSeq) || 0) : 0,
+        ...(chatMode === 'demo' ? { readAt: completedAt } : {}),
+      };
+      const nextBoundaries = { ...unreadBoundariesRef.current };
+      if (remainingBoundary) nextBoundaries[key] = remainingBoundary;
+      else delete nextBoundaries[key];
+      unreadBoundariesRef.current = nextBoundaries;
+      setUnreadBoundaries(nextBoundaries);
+      setManualUnreadConversationIds(previous => {
+        if (!previous.has(key)) return previous;
+        const next = new Set(previous);
+        next.delete(key);
+        return next;
+      });
+      unreadBoundaryJumpedRef.current.delete(key);
+      setConversations(previous => {
+        const previousRoom = previous[key]
+          ? safeNormalizeConversationForRender(previous[key], key)
+          : null;
+        if (!previousRoom || accountSessionRef.current !== accountSession) return previous;
+        const next = { ...previous, [key]: { ...previousRoom, ...readState } };
+        conversationsRef.current = next;
+        return next;
+      });
+    } catch (error) {
+      console.warn('ViChat: failed to mark conversation as read', error);
+    } finally {
+      if (unreadCompletionRequestsRef.current.get(key) === request) unreadCompletionRequestsRef.current.delete(key);
+    }
   };
 
   const applyConversationCategoryState = categoryState => {
@@ -8537,6 +8660,10 @@ function App() {
     }
     if (action === 'unread') {
       markConversationUnread(room);
+      return;
+    }
+    if (action === 'read') {
+      await markConversationRead(room);
       return;
     }
     if (action === 'mute') {
@@ -11931,7 +12058,7 @@ function App() {
     .filter(room => !isSelfDirectConversation(room, currentUser, directoryAccounts))
     .filter(room => !isConversationHiddenAfterDelete(room))
     .filter(room => shouldShowConversation(room, drafts[room.id]))
-    .filter(room => room.lastMsg || room.badge > 0)
+    .filter(room => room.lastMsg || room.badge > 0 || conversationUnreadIndicators(room).hasUnread)
     .sort((a, b) => conversationTimestamp(b) - conversationTimestamp(a))
     .slice(0, 20);
 
@@ -12821,6 +12948,7 @@ function App() {
 
       {conversationMenu && renderConversations[conversationMenu.roomId] && (() => {
         const menuRoom = renderConversations[conversationMenu.roomId];
+        const menuRoomUnread = conversationUnreadIndicators(menuRoom);
         const menuRoomMuted = isConversationMuted(menuRoom.notificationMutedUntil, notificationClock);
         const menuCategory = conversationCategoryFor(menuRoom);
         return (
@@ -12833,8 +12961,8 @@ function App() {
             <button type="button" role="menuitem" onClick={() => handleConversationMenuAction('pin', menuRoom)}>
               <i className="fa-solid fa-thumbtack"></i>{appCopy.t(menuRoom.pinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại')}
             </button>
-            <button type="button" role="menuitem" onClick={() => handleConversationMenuAction('unread', menuRoom)}>
-              <i className="fa-regular fa-envelope"></i>{appCopy.t('Đánh dấu chưa đọc')}
+            <button type="button" role="menuitem" onClick={() => handleConversationMenuAction(menuRoomUnread.hasUnread ? 'read' : 'unread', menuRoom)}>
+              <i className="fa-regular fa-envelope"></i>{appCopy.t(menuRoomUnread.hasUnread ? 'Đánh dấu đã đọc' : 'Đánh dấu chưa đọc')}
             </button>
             <button type="button" role="menuitem" onClick={() => handleConversationMenuAction('mute', menuRoom)}>
               <i className={`fa-regular ${menuRoomMuted ? 'fa-bell' : 'fa-bell-slash'}`}></i>{appCopy.t(menuRoomMuted ? 'Bật thông báo' : 'Tắt thông báo')}
