@@ -702,6 +702,9 @@ test('keeps dark stickers crisp and group activity announcements readable', () =
 
 test('keeps conversation background scope isolated from the message and presence flows', () => {
   assert.match(appSource, /writeConversationBackgroundPreference\([\s\S]*CONVERSATION_BACKGROUND_SCOPES\.LOCAL/);
+  assert.match(appSource, /ConversationBackgroundCropModal/);
+  assert.match(appSource, /setConversationBackgroundCropFile\(file\)/);
+  assert.match(stylesSource, /\.conversation-background-crop-backdrop \{ z-index: 260; \}/);
   assert.match(appSource, /tinodeClient\.uploadConversationBackground\(topicName, selectedUpload\)/);
   assert.match(appSource, /tinodeClient\.updateConversationBackground\(topicName, nextBackground\)/);
   assert.match(tinodeSource, /const latestBackground = latestSharedConversationBackground\(\{ messages: finalMessages \}\)/);

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-08-01 - Sua nhap nhay va them can chinh hinh nen hoi thoai
+
+- Thoi gian: 2026-09-08 10:07 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Web | UX | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code va kiem thu local; chua commit, push, deploy production hoac UAT browser.
+- Muc tieu: Loai bo khung hinh nen bi nhap nhay khi doi preset trong chat nhom va cho phep nguoi dung tu can anh tai len truoc khi ap dung.
+- Pham vi: ChatUI conversation background picker, preload/cache nguon preset, modal can chinh anh tai len, luu local IndexedDB va luong upload nen shared hien co; khong sua Chatmgt, Tinode contract, mobile, database hay migration.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/components/ConversationBackgroundCropModal.jsx`, `src/features/chat/services/conversationBackgroundCrop.js`, `src/features/chat/services/conversationBackgroundCrop.test.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `package.json`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Preset duoc preload va cache; khi thay nen, nguon dang hien thi duoc giu cho den khi anh moi tai xong de tranh flash blank. Anh tai tu tep mo modal can chinh nam de len picker, ho tro keo, zoom bang thanh truot/banh xe, xem truoc theo khung chu nhat va chi thay doi sau nut `Ap dung` cuoi cung. Huy crop hoac dong picker giu nguyen nen cu. Gioi han file cu van duoc giu: 2 MB cho local va 8 MB cho shared.
+- Quyet dinh ky thuat: Chi can chinh anh tai tu tep; output duoc ve JPEG rong 1280px theo ti le preview de giu dung luong va tuong thich voi luong luu/upload hien tai. Modal crop dung `z-index: 260`, cao hon picker `115`; request anh cu bi bo qua khi doi phong/tenant va object URL duoc thu hoi khi khong con dung. Khong doi nguon du lieu chuan hay ranh gioi dich vu.
+- Database/API/cau hinh: Khong co migration, endpoint, secret, bien moi truong hay thay doi hop dong API.
+- Kiem thu: `npm run test:frontend` dat 400/400; `npm run lint` exit 0 voi canh bao legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB da co; `git diff --check` dat. Browser UAT chua chay vi phien nay khong expose cong cu dieu khien trinh duyet.
+- Rui ro con lai: Chua xac nhan truc quan bang tai khoan that thao tac preset, keo/zoom, Huy/Ap dung va ca hai scope tren desktop/mobile; bundle production chua duoc deploy.
+- Viec tiep theo: UAT tren chat nhom voi hard refresh, doi nhieu preset lien tiep, tai anh ngang/doc, keo/zoom, Huy va Ap dung cho local/shared; sau do commit/push/deploy theo quy trinh neu ket qua dat.
+- Commit/PR: Chua tao.
+
 ## 2026-09-07-06 - Phat hanh web: tin chua doc va thong bao nhom
 
 - Thoi gian: 2026-09-07 15:26-15:29 (Asia/Saigon)

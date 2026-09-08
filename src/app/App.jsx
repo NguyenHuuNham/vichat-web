@@ -6,6 +6,7 @@ import ConversationErrorBoundary from '../components/ConversationErrorBoundary';
 import EnterpriseWorkspace from '../features/workspace/components/EnterpriseWorkspace';
 import CallOverlay from '../features/chat/components/CallOverlay';
 import StickerPicker from '../features/chat/components/StickerPicker';
+import ConversationBackgroundCropModal from '../features/chat/components/ConversationBackgroundCropModal';
 import ConversationCategoryManager from '../features/chat/components/ConversationCategoryManager';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation, normalizeTinodeMediaUrl } from '../features/chat/services/tinodeClient';
 import { shouldRetryProtectedMediaAfterSession } from '../features/chat/services/mediaRetryPolicy';
@@ -230,6 +231,8 @@ import {
 } from '../features/chat/services/poll';
 import {
   CONVERSATION_BACKGROUND_PRESETS,
+  CONVERSATION_BACKGROUND_LOCAL_MAX_BYTES,
+  CONVERSATION_BACKGROUND_MAX_BYTES,
   CONVERSATION_BACKGROUND_SCOPES,
   clearConversationBackground,
   createClearedConversationBackground,
@@ -2718,33 +2721,104 @@ function ConversationAvatar({ room }) {
   return <span>{room?.name?.trim?.().slice(0, 1).toUpperCase() || '?'}</span>;
 }
 
-function useConversationBackgroundSource(background) {
+const conversationBackgroundPreloadCache = new Map();
+
+function preloadConversationBackgroundSource(source) {
+  const normalizedSource = String(source || '');
+  if (!normalizedSource || typeof Image === 'undefined') return Promise.resolve(normalizedSource);
+  const cacheable = /^https?:/i.test(normalizedSource);
+  if (cacheable && conversationBackgroundPreloadCache.has(normalizedSource)) {
+    return conversationBackgroundPreloadCache.get(normalizedSource);
+  }
+  const request = new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.onload = () => resolve(normalizedSource);
+    image.onerror = () => reject(new Error('Không thể tải hình nền.'));
+    image.src = normalizedSource;
+  }).catch(error => {
+    if (cacheable) conversationBackgroundPreloadCache.delete(normalizedSource);
+    throw error;
+  });
+  if (cacheable) conversationBackgroundPreloadCache.set(normalizedSource, request);
+  return request;
+}
+
+function useConversationBackgroundSource(background, backgroundKey = '') {
   const [resolvedSource, setResolvedSource] = useState('');
+  const backgroundKeyRef = useRef(backgroundKey);
+  const objectUrlsRef = useRef(new Set());
+
+  const releaseObjectUrls = useCallback((keep = '') => {
+    objectUrlsRef.current.forEach(source => {
+      if (source === keep) return;
+      try {
+        URL.revokeObjectURL(source);
+      } catch {
+        // Object URL cleanup is best-effort.
+      }
+      objectUrlsRef.current.delete(source);
+    });
+  }, []);
+
+  useEffect(() => () => {
+    objectUrlsRef.current.forEach(source => {
+      try {
+        URL.revokeObjectURL(source);
+      } catch {
+        // Object URL cleanup is best-effort.
+      }
+    });
+    objectUrlsRef.current.clear();
+  }, []);
 
   useEffect(() => {
     let active = true;
-    let objectUrl = '';
-    setResolvedSource('');
+    const rawSource = String(background?.url || '');
+    const canRenderImmediately = /^(?:https?:|data:|blob:)/i.test(rawSource);
+    const conversationChanged = backgroundKeyRef.current !== backgroundKey;
+    backgroundKeyRef.current = backgroundKey;
+    if (conversationChanged || !background?.url) {
+      setResolvedSource('');
+      releaseObjectUrls();
+    }
     if (!background?.url) return () => { active = false; };
 
     if (background.blob && typeof URL !== 'undefined' && URL.createObjectURL) {
-      objectUrl = URL.createObjectURL(background.blob);
-      setResolvedSource(objectUrl);
+      const objectUrl = URL.createObjectURL(background.blob);
+      objectUrlsRef.current.add(objectUrl);
+      preloadConversationBackgroundSource(objectUrl)
+        .then(() => {
+          if (!active) return;
+          setResolvedSource(objectUrl);
+          releaseObjectUrls(objectUrl);
+        })
+        .catch(() => {});
       return () => {
         active = false;
-        URL.revokeObjectURL(objectUrl);
       };
     }
 
+    // IndexedDB metadata is resolved by the conversation effect. Do not turn
+    // the storage key into a CSS URL while that Blob is still loading.
+    if (background.customKey && !background.blob) return () => { active = false; };
+
+    // Public presets render from their stable URL while protected media is
+    // resolved through Tinode below. This avoids a blank frame on room open.
+    if (canRenderImmediately) setResolvedSource(previous => previous || rawSource);
     tinodeClient.resolveMediaUrl(background.url)
+      .then(url => preloadConversationBackgroundSource(url || ''))
       .then(url => {
-        if (active) setResolvedSource(url || '');
+        if (!active) return;
+        setResolvedSource(url || '');
+        releaseObjectUrls();
       })
       .catch(() => {
-        if (active) setResolvedSource('');
+        // Keep the last rendered source if the replacement is temporarily
+        // unavailable; a room should not flash blank during a retry.
       });
     return () => { active = false; };
-  }, [background?.url, background?.blob]);
+  }, [background?.url, background?.blob, background?.customKey, backgroundKey, releaseObjectUrls]);
 
   return resolvedSource;
 }
@@ -3042,6 +3116,7 @@ function App() {
   const [groupManagementNotice, setGroupManagementNotice] = useState('');
   const [isConversationBackgroundOpen, setIsConversationBackgroundOpen] = useState(false);
   const [conversationBackgroundSelection, setConversationBackgroundSelection] = useState(null);
+  const [conversationBackgroundCropFile, setConversationBackgroundCropFile] = useState(null);
   const [conversationBackgroundScope, setConversationBackgroundScope] = useState(CONVERSATION_BACKGROUND_SCOPES.SHARED);
   const [conversationBackgrounds, setConversationBackgrounds] = useState({});
   const [isSavingConversationBackground, setIsSavingConversationBackground] = useState(false);
@@ -4449,13 +4524,21 @@ function App() {
   const activeConversationBackground = activeBackgroundPreference?.cleared
     ? null
     : activeBackgroundPreference;
-  const activeConversationBackgroundSource = useConversationBackgroundSource(activeConversationBackground);
+  const activeConversationBackgroundSource = useConversationBackgroundSource(
+    activeConversationBackground,
+    activeBackgroundStateKey,
+  );
 
   useEffect(() => {
     setConversationBackgrounds({});
     setIsConversationBackgroundOpen(false);
     setConversationBackgroundSelection(null);
+    setConversationBackgroundCropFile(null);
   }, [conversationBackgroundViewerId, conversationBackgroundTenantId]);
+
+  useEffect(() => {
+    setConversationBackgroundCropFile(null);
+  }, [activeBackgroundConversationId]);
 
   useEffect(() => {
     if (!conversationBackgroundViewerId || !activeBackgroundConversationId || activeChat.id === 'empty') return undefined;
@@ -8572,18 +8655,26 @@ function App() {
       setConversationBackgroundNotice(validationError);
       return;
     }
+    setConversationBackgroundNotice('');
+    setConversationBackgroundCropFile(file);
+  };
+
+  const handleConversationBackgroundCropSave = async croppedFile => {
     try {
-      const previewUrl = await readFileAsDataUrl(file);
+      const previewUrl = await readFileAsDataUrl(croppedFile);
       setConversationBackgroundSelection({
         id: 'custom',
         url: previewUrl,
-        label: file.name || 'Ảnh tải lên',
+        label: conversationBackgroundCropFile?.name || 'Ảnh đã căn chỉnh',
         kind: 'custom',
-        file,
+        file: croppedFile,
       });
+      setConversationBackgroundCropFile(null);
       setConversationBackgroundNotice('');
+      return true;
     } catch (error) {
       setConversationBackgroundNotice(error?.message || 'Không thể đọc ảnh hình nền.');
+      return false;
     }
   };
 
@@ -12090,6 +12181,10 @@ function App() {
       setTenantSwitcherOpen(false);
       return true;
     }
+    if (conversationBackgroundCropFile) {
+      setConversationBackgroundCropFile(null);
+      return true;
+    }
     if (isConversationBackgroundOpen) {
       if (isSavingConversationBackground) return true;
       setIsConversationBackgroundOpen(false);
@@ -12227,6 +12322,7 @@ function App() {
     avatarCropFile,
     activeCall,
     conversationCategoryMenuOpen,
+    conversationBackgroundCropFile,
     conversationMenu,
     contactNicknameDialog,
     forcedLogoutSeconds,
@@ -12460,6 +12556,18 @@ function App() {
           isSaving={isUpdatingProfileAvatar}
           onCancel={() => setAvatarCropFile(null)}
           onSave={handleProfileAvatarCropSave}
+        />
+      )}
+      {conversationBackgroundCropFile && (
+        <ConversationBackgroundCropModal
+          file={conversationBackgroundCropFile}
+          copy={appCopy}
+          maxBytes={chatMode === 'demo' || conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.LOCAL
+            ? CONVERSATION_BACKGROUND_LOCAL_MAX_BYTES
+            : CONVERSATION_BACKGROUND_MAX_BYTES}
+          isSaving={isSavingConversationBackground}
+          onCancel={() => setConversationBackgroundCropFile(null)}
+          onSave={handleConversationBackgroundCropSave}
         />
       )}
 
