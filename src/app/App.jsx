@@ -74,6 +74,7 @@ import {
   setCategoryConversations,
   setConversationCategory,
 } from '../features/chat/services/conversationCategoryPolicy';
+import { buildConversationCategoryConversations } from '../features/chat/services/conversationCategoryConversations';
 import { resolveCallsEnabled } from '../features/chat/services/callSignaling';
 import {
   DIRECT_MESSAGE_BLOCKED_TEXT,
@@ -3830,18 +3831,13 @@ function App() {
   const conversationCategoryLabel = category => (
     category?.builtIn ? appCopy.t(category.label) : String(category?.label || '')
   );
-  const categoryManagerConversations = safeConversationValues(renderConversations)
-    .filter(room => room?.id && room.id !== 'empty' && !room.isChatbot)
-    .map(room => ({
-      id: String(room.managementId || room.id),
-      name: conversationDisplayName(
-        room.isGroup ? { ...room, members: [] } : room,
-        room.isGroup ? appCopy.t('Nhóm') : appCopy.t('Cuộc trò chuyện cá nhân'),
-      ),
-      isGroup: Boolean(room.isGroup),
-    }))
-    .filter((conversation, index, values) => values.findIndex(item => item.id === conversation.id) === index)
-    .sort((first, second) => first.name.localeCompare(second.name, 'vi', { sensitivity: 'base' }));
+  const categoryManagerConversations = buildConversationCategoryConversations({
+    conversations: safeConversationValues(renderConversations),
+    accounts: directoryAccounts,
+    currentUser,
+    groupFallback: appCopy.t('Nhóm'),
+    directFallback: appCopy.t('Cuộc trò chuyện cá nhân'),
+  });
   const selectedLanguage = APP_LANGUAGE_OPTIONS.find(option => option.id === settings.language)
     || APP_LANGUAGE_OPTIONS[0];
   const pinViewerIdentity = useMemo(

@@ -9,6 +9,13 @@ const EMPTY_DRAFT = Object.freeze({
   conversationIds: [],
 });
 
+function conversationIdsFor(conversation) {
+  const ids = Array.isArray(conversation?.conversationIds)
+    ? conversation.conversationIds
+    : [conversation?.id];
+  return [...new Set(ids.map(id => String(id || '').trim()).filter(Boolean))];
+}
+
 function categoryErrorMessage(error, copy) {
   if (error === 'name_required') return copy.t('Vui lòng nhập tên thẻ phân loại.');
   if (error === 'name_duplicate') return copy.t('Tên thẻ phân loại đã tồn tại.');
@@ -64,11 +71,24 @@ export default function ConversationCategoryManager({
 
   const filteredConversations = useMemo(() => {
     const query = conversationSearch.trim().toLocaleLowerCase('vi');
-    if (!query) return conversations;
-    return conversations.filter(conversation => (
-      String(conversation.name || '').toLocaleLowerCase('vi').includes(query)
+    const values = Array.isArray(conversations) ? conversations : [];
+    if (!query) return values;
+    return values.filter(conversation => (
+      `${conversation.name || ''} ${conversation.meta || ''}`.toLocaleLowerCase('vi').includes(query)
     ));
   }, [conversationSearch, conversations]);
+
+  const selectedConversationCount = useMemo(() => {
+    const selected = new Set(draft.conversationIds);
+    return (Array.isArray(conversations) ? conversations : [])
+      .filter(conversation => conversationIdsFor(conversation).some(id => selected.has(id)))
+      .length;
+  }, [conversations, draft.conversationIds]);
+
+  const categoryConversationCount = category => (Array.isArray(conversations) ? conversations : [])
+    .filter(conversation => conversationIdsFor(conversation)
+      .some(id => assignments[id] === category.id))
+    .length;
 
   if (!open) return null;
 
@@ -82,13 +102,14 @@ export default function ConversationCategoryManager({
   };
 
   const openEdit = category => {
+    const assignedIds = Object.entries(assignments)
+      .filter(([, categoryId]) => categoryId === category.id)
+      .map(([conversationId]) => conversationId);
     setDraft({
       id: category.id,
       label: category.label,
       color: category.color,
-      conversationIds: Object.entries(assignments)
-        .filter(([, categoryId]) => categoryId === category.id)
-        .map(([conversationId]) => conversationId),
+      conversationIds: [...new Set(assignedIds)],
     });
     setNotice('');
     setColorPickerOpen(false);
@@ -120,12 +141,13 @@ export default function ConversationCategoryManager({
     setNotice('');
   };
 
-  const toggleConversation = conversationId => {
+  const toggleConversation = conversation => {
+    const conversationIds = conversationIdsFor(conversation);
     setDraft(previous => ({
       ...previous,
-      conversationIds: previous.conversationIds.includes(conversationId)
-        ? previous.conversationIds.filter(id => id !== conversationId)
-        : [...previous.conversationIds, conversationId],
+      conversationIds: conversationIds.some(id => previous.conversationIds.includes(id))
+        ? previous.conversationIds.filter(id => !conversationIds.includes(id))
+        : [...previous.conversationIds, ...conversationIds],
     }));
   };
 
@@ -181,7 +203,7 @@ export default function ConversationCategoryManager({
                     <button type="button" className="conversation-category-manager-edit" onClick={() => openEdit(category)}>
                       <span className="conversation-category-shape" style={{ backgroundColor: category.color }}></span>
                       <span>{category.builtIn ? copy.t(category.label) : category.label}</span>
-                      <small>{Object.values(assignments).filter(categoryId => categoryId === category.id).length} {copy.t('hội thoại')}</small>
+                      <small>{categoryConversationCount(category)} {copy.t('hội thoại')}</small>
                       <i className="fa-solid fa-pen" aria-hidden="true"></i>
                     </button>
                   </div>
@@ -262,7 +284,7 @@ export default function ConversationCategoryManager({
                 <div className="conversation-category-conversations-heading">
                   <div>
                     <strong id="conversation-category-conversations-title">{copy.t('Hội thoại được gắn thẻ')}</strong>
-                    <small>{draft.conversationIds.length} {copy.t('hội thoại đã chọn')}</small>
+                    <small>{selectedConversationCount} {copy.t('hội thoại đã chọn')}</small>
                   </div>
                   <button type="button" onClick={() => setConversationPickerOpen(previous => !previous)}>
                     <i className={`fa-solid ${conversationPickerOpen ? 'fa-chevron-up' : 'fa-plus'}`}></i>
@@ -278,20 +300,22 @@ export default function ConversationCategoryManager({
                     </label>
                     <div>
                       {filteredConversations.map(conversation => {
-                        const selected = draft.conversationIds.includes(conversation.id);
-                        const currentCategory = categories.find(category => category.id === assignments[conversation.id]);
+                        const conversationIds = conversationIdsFor(conversation);
+                        const selected = conversationIds.some(id => draft.conversationIds.includes(id));
+                        const currentCategory = categories.find(category => conversationIds.some(id => assignments[id] === category.id));
                         return (
                           <button
                             type="button"
                             className={selected ? 'selected' : ''}
                             key={conversation.id}
-                            onClick={() => toggleConversation(conversation.id)}
+                            onClick={() => toggleConversation(conversation)}
                             role="checkbox"
                             aria-checked={selected}
                           >
                             <span className="conversation-category-conversation-icon"><i className={`fa-solid ${conversation.isGroup ? 'fa-user-group' : 'fa-user'}`}></i></span>
                             <span className="conversation-category-conversation-copy">
                               <strong>{conversation.name}</strong>
+                              {conversation.meta && <small className="conversation-category-conversation-identity">{conversation.meta}</small>}
                               <small>{currentCategory ? `${copy.t('Đang gắn')}: ${currentCategory.builtIn ? copy.t(currentCategory.label) : currentCategory.label}` : copy.t('Chưa phân loại')}</small>
                             </span>
                             <span className="conversation-category-checkbox">{selected && <i className="fa-solid fa-check"></i>}</span>

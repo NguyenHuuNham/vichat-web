@@ -670,6 +670,7 @@ test('group lifecycle actions confirm before leaving and expose owner-only disso
 
 test('conversation categories expose viewer-scoped management without touching chat transport', () => {
   assert.match(appSource, /<ConversationCategoryManager/);
+  assert.match(appSource, /buildConversationCategoryConversations/);
   assert.match(appSource, /Quản lý thẻ phân loại/);
   assert.match(appSource, /saveManagedConversationCategory/);
   assert.match(appSource, /setCategoryConversations/);
@@ -677,6 +678,8 @@ test('conversation categories expose viewer-scoped management without touching c
   assert.match(categoryManagerSource, /Hội thoại được gắn thẻ/);
   assert.match(categoryManagerSource, /Mỗi hội thoại dùng một thẻ/);
   assert.match(stylesSource, /\.conversation-category-manager-backdrop/);
+  assert.match(categoryManagerSource, /conversationIdsFor/);
+  assert.match(categoryManagerSource, /conversation\.meta/);
   assert.match(stylesSource, /\.conversation-category-color-popover/);
   assert.doesNotMatch(categoryManagerSource, /tinodeClient|chatManagementService|fetch\(/);
 });

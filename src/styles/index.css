@@ -4567,6 +4567,7 @@ input:checked + .slider:before {
 .conversation-category-conversation-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
 .conversation-category-conversation-copy strong, .conversation-category-conversation-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conversation-category-conversation-copy strong { font-size: 12px; }
+.conversation-category-conversation-copy .conversation-category-conversation-identity { color: var(--text-body); font-weight: 650; }
 .conversation-category-conversation-copy small { color: var(--text-muted); font-size: 10px; }
 .conversation-category-checkbox { display: grid; width: 18px; height: 18px; flex: 0 0 18px; place-items: center; border: 1px solid var(--border-color); border-radius: 5px; color: #fff; font-size: 10px; }
 .conversation-category-conversation-picker button.selected .conversation-category-checkbox { border-color: var(--vichat-blue); background: var(--vichat-blue); }
