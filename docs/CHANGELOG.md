@@ -6,11 +6,25 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-08-02 - Phat hanh sua nhap nhay va can chinh hinh nen hoi thoai
+
+- Thoi gian: 2026-09-08 10:45:38 (Asia/Saigon)
+- Loai: Van hanh | Trien khai | Web | Kiem thu | Tai lieu
+- Trang thai: Hoan tat; source `67098fb` da co tren `origin/master`, production da deploy va verify qua hai hop SSH.
+- Pham vi: Chi recreate ChatUI `chat`; Chatmgt, Tinode, ChatAPI, Coturn, PostgreSQL, Redis va cac volume khong doi. Khong co migration, endpoint, secret, bien moi truong hay thay doi hop dong API.
+- Artifact: Archive `vichat-conversation-background-67098fb.tar.gz`, SHA-256 `b967372852f0cd675ef092f482f148e7bd6e9c41f2553b15ade50a0267eecee5`; release `/opt/deploy/chat/releases/conversation-background-67098fb-20260908-r3`; `current` tro toi release nay, `previous` tro toi `/opt/deploy/chat/releases/unread-group-9b165b5-20260907-r3`.
+- Backup/rollback: `/opt/deploy/chat/backups/conversation-background-67098fb-20260908-r3` luu `.env`, runtime, pg_dump Chatservice/Tinode, checksum va runtime state; backup checksum va `pg_restore -l` deu dat. Khi verify that bai, helper tu dong phuc hoi image/container cu; symlink chi doi sau khi cac gate dat.
+- Image/container: ChatUI container `958592ab1079b530a297798bf6c2745149ac686d2f858966af4d564f3576829b`, image `sha256:d3373f18623e8ff4a6741cc52730751d3ca2464d5f0a91ec5745020b16066ec6`; Chatmgt giu container `4e5157d93c3e`. ChatUI va Chatmgt healthy, restart count cua ChatUI bang 0.
+- Kiem thu production: Preflight doi chieu 661 file ngoai pham vi khong doi; candidate `nginx -t` dat; local/public `/healthz`, Chatmgt auth health, HTML asset name va SHA-256 entry/App/CSS khop; WSS tra `101`; log ChatUI khong co fatal/panic/traceback; 8 service khong lien quan va danh sach volume khong doi; Alembic van `20260825_13`; `.env` khong doi.
+- Xu ly khi phat hanh: Lan `r1` dung o Nginx test do dung network `none`; lan `r2` dung truoc activate vi gate ten ham bi minify. Khong co lan nao thay doi service production; `r3` dung network production va gate class/CSS on dinh, sau do activate thanh cong.
+- Rui ro con lai: Chua UAT truc quan bang tai khoan that; can hard refresh chat nhom de kiem tra preset, anh ngang/doc, keo/zoom, Huy va Ap dung tren local/shared. Kiem thu HTTP/bundle/WSS khong thay the thao tac browser thuc te.
+- Commit/PR: Source `67098fb`; muc changelog phat hanh nay duoc commit rieng sau khi verify production.
+
 ## 2026-09-08-01 - Sua nhap nhay va them can chinh hinh nen hoi thoai
 
 - Thoi gian: 2026-09-08 10:07 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | UX | Kiem thu | Tai lieu
-- Trang thai: Hoan tat code va kiem thu local; source da commit `70ac846`, dang cho push/deploy production va UAT browser.
+- Trang thai: Hoan tat code va kiem thu local; source commit `70ac846`, da push/deploy production theo muc phat hanh `2026-09-08-02`; UAT browser van con lai.
 - Muc tieu: Loai bo khung hinh nen bi nhap nhay khi doi preset trong chat nhom va cho phep nguoi dung tu can anh tai len truoc khi ap dung.
 - Pham vi: ChatUI conversation background picker, preload/cache nguon preset, modal can chinh anh tai len, luu local IndexedDB va luong upload nen shared hien co; khong sua Chatmgt, Tinode contract, mobile, database hay migration.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/components/ConversationBackgroundCropModal.jsx`, `src/features/chat/services/conversationBackgroundCrop.js`, `src/features/chat/services/conversationBackgroundCrop.test.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `package.json`, `dist/index.html`, `docs/CHANGELOG.md`.
@@ -19,8 +33,8 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong co migration, endpoint, secret, bien moi truong hay thay doi hop dong API.
 - Kiem thu: `npm run test:frontend` dat 400/400; `npm run lint` exit 0 voi canh bao legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB da co; `git diff --check` dat. Browser UAT chua chay vi phien nay khong expose cong cu dieu khien trinh duyet.
 - Rui ro con lai: Chua xac nhan truc quan bang tai khoan that thao tac preset, keo/zoom, Huy/Ap dung va ca hai scope tren desktop/mobile; bundle production chua duoc deploy.
-- Viec tiep theo: UAT tren chat nhom voi hard refresh, doi nhieu preset lien tiep, tai anh ngang/doc, keo/zoom, Huy va Ap dung cho local/shared; sau do commit/push/deploy theo quy trinh neu ket qua dat.
-- Commit/PR: Source `70ac846`; changelog follow-up dang cho commit.
+- Viec tiep theo: UAT tren chat nhom voi hard refresh, doi nhieu preset lien tiep, tai anh ngang/doc, keo/zoom, Huy va Ap dung cho local/shared.
+- Commit/PR: Source `70ac846`; changelog code `67098fb`; phat hanh production tai muc `2026-09-08-02`.
 
 ## 2026-09-07-06 - Phat hanh web: tin chua doc va thong bao nhom
 
