@@ -8523,6 +8523,10 @@ function App() {
 
   const handleConversationMenuAction = async (action, room, value = '') => {
     if (!room) return;
+    if (action === 'add-to-group') {
+      openCreateGroupWithDirectPeer(room);
+      return;
+    }
     if (action === 'category') {
       updateConversationCategory(room, value);
       return;
@@ -8549,6 +8553,30 @@ function App() {
       setConversationMenu(null);
       await handleDeleteConversation(room);
     }
+  };
+
+  const openCreateGroupWithDirectPeer = room => {
+    if (!room || room.isGroup || room.isChatbot) return;
+    const peer = findDirectPeer(room, directoryAccounts, currentUser)
+      || roomMembers(room).find(member => !identitiesOverlap(member, currentUser))
+      || null;
+    const peerId = String(peer?.id || peer?.uid || peer?.tinodeUid || peer?.tinode_uid || '').trim();
+    if (!peerId) {
+      setConversationMenu(null);
+      setChatError('Không xác định được thành viên để thêm vào nhóm.');
+      return;
+    }
+    setConversationMenu(null);
+    setConversationCategoryMenuOpen(false);
+    setGroupName('');
+    setGroupDescription('');
+    setGroupAvatarFile(null);
+    setGroupAvatarPreview('');
+    setGroupMemberIds([peerId]);
+    setGroupMemberProfiles({ [peerId]: peer });
+    setGroupMemberSearch('');
+    setChatError('');
+    setIsCreateGroupOpen(true);
   };
 
   const handleConversationMuteToggle = event => {
@@ -10733,7 +10761,7 @@ function App() {
     event.stopPropagation();
     const rect = event.currentTarget.getBoundingClientRect();
     const width = 252;
-    const height = 410;
+    const height = room?.isGroup ? 410 : 455;
     setMessageMenu(null);
     setConversationCategoryMenuOpen(false);
     setConversationMenu({
@@ -12725,7 +12753,7 @@ function App() {
                 fallback={<div className="conversation-item conversation-item-error" role="alert">Conversation unavailable</div>}
               >
                 <div
-                  className={`conversation-item ${isActive ? 'active' : ''} ${hasUnread ? 'unread' : ''} ${conversationMenu?.roomId === id ? 'menu-open' : ''}`}
+                  className={`conversation-item ${!room.isChatbot ? 'has-conversation-menu' : ''} ${isActive ? 'active' : ''} ${hasUnread ? 'unread' : ''} ${conversationMenu?.roomId === id ? 'menu-open' : ''}`}
                   onClick={() => {
                     handleConversationSelect(id);
                   }}
@@ -12741,7 +12769,7 @@ function App() {
                         {roomCategory && <span className={`conversation-category-tag category-${roomCategory.id}`} style={{ '--category-color': roomCategory.color }} title={`${appCopy.t('Phân loại')}: ${conversationCategoryLabel(roomCategory)}`}>{conversationCategoryLabel(roomCategory)}</span>}
                       </span>
                       <span
-                        className={hasDraft ? 'conv-draft-status' : 'conv-time'}
+                        className={hasDraft ? 'conv-draft-status conv-time' : 'conv-time'}
                         title={hasDraft ? undefined : formatFullMessageDateTime(room, room.time, appCopy.locale)}
                       >
                         {hasDraft ? appCopy.t('Chưa gửi') : formatConversationListTime(room, displayClock, appCopy.locale)}
@@ -12811,6 +12839,11 @@ function App() {
             <button type="button" role="menuitem" onClick={() => handleConversationMenuAction('mute', menuRoom)}>
               <i className={`fa-regular ${menuRoomMuted ? 'fa-bell' : 'fa-bell-slash'}`}></i>{appCopy.t(menuRoomMuted ? 'Bật thông báo' : 'Tắt thông báo')}
             </button>
+            {!menuRoom.isGroup && !menuRoom.isChatbot && (
+              <button type="button" role="menuitem" onClick={() => handleConversationMenuAction('add-to-group', menuRoom)}>
+                <i className="fa-solid fa-user-plus"></i>{appCopy.t('Thêm vào nhóm')}
+              </button>
+            )}
             <button type="button" role="menuitem" className="conversation-category-trigger" aria-expanded={conversationCategoryMenuOpen} onClick={() => setConversationCategoryMenuOpen(previous => !previous)}>
               <i className="fa-solid fa-tags"></i><span>{appCopy.t('Phân loại')}</span><i className="fa-solid fa-chevron-right submenu-arrow"></i>
             </button>

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-08-07 - Can le thoi gian va them vao nhom tu danh sach hoi thoai
+
+- Thoi gian: 2026-09-08 16:11 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Web | UX | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; chua commit/push va chua deploy production.
+- Muc tieu: Dua thoi gian hoi thoai sat mep phai, thay thoi gian bang nut ba cham khi hover va cho phep them nguoi trong chat 1-1 vao luong tao nhom.
+- Pham vi: Chi danh sach hoi thoai ChatUI, menu thao tac cua direct chat va regression assertion; giu nguyen chat realtime, chat nhom, phan loai, quyen, Tinode va Chatmgt.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Bo phan dem ben phai cua item de timestamp co the can sat mep; lop action menu nam de len phan thoi gian va chi hien dau ba cham khi hover/focus/menu mo. Menu cua chat 1-1 them `Them vao nhom`, tai su dung modal tao nhom hien co va tu dong chon truoc peer bang identity on dinh.
+- Quyet dinh ky thuat: Khong tao API hoac membership flow moi; tai su dung create-group flow hien co de tranh anh huong them vao nhom, gui tin, realtime va du lieu. Chatbot khong hien menu thao tac nhu truoc.
+- Database/API/cau hinh: Khong co migration, endpoint, secret, bien moi truong hay thay doi kien truc.
+- Kiem thu: `node --test --test-concurrency=1 src/features/chat/services/chatManagementService.test.js` dat 59/59; `npm run test:frontend -- --test-concurrency=1` dat 411/411; `npm run lint` exit 0 voi warning legacy/vendor da co; `node --max-old-space-size=2048 scripts/build-production.mjs` thanh cong voi canh bao chunk `App` lon hon 500 KB; `git diff --check` dat.
+- Rui ro con lai: Chua UAT truc quan bang trinh duyet va tai khoan that; thao tac `Them vao nhom` hien mo tao nhom moi va chon san peer, chua phai bo chon mot nhom da ton tai.
+- Viec tiep theo: UAT timestamp/hover tren desktop va mobile, thu menu direct/group, sau do commit/push/deploy neu duoc yeu cau.
+- Commit/PR: Chua tao.
+
 ## 2026-09-08-06 - Sua mau binh chon trong che do toi
 
 - Thoi gian: 2026-09-08 15:10 (Asia/Saigon)

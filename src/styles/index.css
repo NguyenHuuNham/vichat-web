@@ -470,7 +470,7 @@ body {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 9px 38px 9px 9px;
+    padding: 9px;
     border-radius: 12px;
     cursor: pointer;
     margin-bottom: 1px;
@@ -488,10 +488,20 @@ body {
 .conv-actions {
     position: absolute;
     top: 50%;
-    right: 8px;
+    right: 4px;
     z-index: 2;
+    padding-left: 4px;
+    border-radius: 8px;
     transform: translateY(-50%);
 }
+
+.conversation-item:hover .conv-actions,
+.conversation-item:focus-within .conv-actions,
+.conversation-item.menu-open .conv-actions {
+    background: var(--bg-gray);
+}
+
+.conversation-item.active .conv-actions { background: var(--vichat-blue-light); }
 
 .conv-menu-button {
     display: grid;
@@ -553,6 +563,7 @@ body {
 
 .conv-details {
     flex: 1;
+    min-width: 0;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -561,11 +572,15 @@ body {
 
 .conv-header {
     display: flex;
+    min-width: 0;
     justify-content: space-between;
     align-items: center;
+    gap: 8px;
 }
 
 .conv-name {
+    min-width: 0;
+    flex: 1 1 auto;
     font-weight: 600;
     font-size: 13.5px;
     color: var(--text-main);
@@ -586,8 +601,20 @@ body {
 }
 
 .conv-time {
+    flex: 0 0 auto;
+    margin-left: auto;
     font-size: 11px;
     color: var(--text-muted);
+    opacity: 1;
+    transition: opacity var(--transition-fast), visibility var(--transition-fast);
+}
+
+.conversation-item.has-conversation-menu:hover .conv-time,
+.conversation-item.has-conversation-menu:focus-within .conv-time,
+.conversation-item.has-conversation-menu.active .conv-time,
+.conversation-item.has-conversation-menu.menu-open .conv-time {
+    visibility: hidden;
+    opacity: 0;
 }
 
 .conv-draft-status {

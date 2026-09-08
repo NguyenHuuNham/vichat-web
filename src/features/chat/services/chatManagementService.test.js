@@ -610,6 +610,18 @@ test('poll message surfaces keep readable contrast in dark mode', () => {
   }
 });
 
+test('conversation list gives timestamps the full row and preselects direct peers for group creation', () => {
+  assert.match(appSource, /const openCreateGroupWithDirectPeer = room =>/);
+  assert.match(appSource, /action === 'add-to-group'/);
+  assert.match(appSource, /setGroupMemberIds\(\[peerId\]\)/);
+  assert.match(appSource, /!menuRoom\.isGroup && !menuRoom\.isChatbot/);
+  assert.match(appSource, /appCopy\.t\('Thêm vào nhóm'\)/);
+  assert.match(stylesSource, /\.conversation-item \{[\s\S]*padding: 9px;/);
+  assert.match(stylesSource, /\.conversation-item:hover \.conv-actions,[\s\S]*\.conversation-item\.menu-open \.conv-actions/);
+  assert.match(stylesSource, /\.conversation-item\.has-conversation-menu:hover \.conv-time,[\s\S]*\.conversation-item\.has-conversation-menu\.menu-open \.conv-time/);
+  assert.match(stylesSource, /\.conv-details \{[\s\S]*min-width: 0;/);
+});
+
 test('group information exposes a poll-only board without changing direct-chat details', () => {
   assert.match(appSource, /const \[isGroupBoardOpen, setIsGroupBoardOpen\] = useState\(false\)/);
   assert.match(appSource, /const groupBoardPolls = activeChat\.isGroup/);
