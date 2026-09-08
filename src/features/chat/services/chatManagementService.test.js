@@ -595,6 +595,21 @@ test('group poll creation follows the administrator setting while voting remains
   assert.match(appSource, /poll-input-action/);
 });
 
+test('poll message surfaces keep readable contrast in dark mode', () => {
+  for (const selector of [
+    'html[data-theme="dark"] .poll-message-card',
+    'html[data-theme="dark"] .message-item.outgoing .poll-message-card',
+    'html[data-theme="dark"] .poll-status-badge',
+    'html[data-theme="dark"] .poll-option-count',
+    'html[data-theme="dark"] .poll-add-option button',
+    'html[data-theme="dark"] .poll-message-actions button',
+    'html[data-theme="dark"] .poll-message-actions .poll-vote-button',
+    'html[data-theme="dark"] .poll-voter-details-section-heading strong',
+  ]) {
+    assert.equal(stylesSource.includes(selector), true, selector);
+  }
+});
+
 test('group information exposes a poll-only board without changing direct-chat details', () => {
   assert.match(appSource, /const \[isGroupBoardOpen, setIsGroupBoardOpen\] = useState\(false\)/);
   assert.match(appSource, /const groupBoardPolls = activeChat\.isGroup/);

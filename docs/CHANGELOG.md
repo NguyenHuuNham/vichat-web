@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-08-06 - Sua mau binh chon trong che do toi
+
+- Thoi gian: 2026-09-08 15:10 (Asia/Saigon)
+- Loai: Sua loi | Web | UX | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; chua deploy production.
+- Muc tieu: Dam bao the binh chon va cac dieu khien binh chon co tuong phan de doc khi nguoi dung bat che do toi.
+- Pham vi: Chi CSS dark mode cua poll message va regression assertion; khong doi du lieu, luong gui phieu, realtime, group board hay poll composer.
+- File da thay doi: `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Them nen gradient toi, vien, mau chu, mau thanh tien trinh, so luot chon, badge trang thai, nut them lua chon va nut thao tac cho poll incoming/outgoing trong `html[data-theme="dark"]`. Khac phuc tinh trang the nen sang lam chu che do toi bi mo va kho doc.
+- Quyet dinh ky thuat: Chi ghi de cac selector dark theme cua poll tai lop CSS hien co; khong sua component React hay hop dong binh chon de giu nguyen hanh vi va cac luong khac.
+- Database/API/cau hinh: Khong co migration, endpoint, secret, bien moi truong hay thay doi kien truc.
+- Kiem thu: `node --test --test-concurrency=1 src/features/chat/services/chatManagementService.test.js src/features/chat/services/poll.test.js` dat 70/70; lenh tuong duong toan bo `test:frontend` voi `--test-concurrency=1` dat 410/410; `npm run lint` exit 0 voi warning legacy/vendor da co; `node --max-old-space-size=2048 scripts/build-production.mjs` thanh cong voi canh bao chunk `App` lon hon 500 KB da co; `git diff --check` dat. Lan chay `npm run test:frontend` mac dinh dung song song bi Node het bo nho, sau do da chay lai tuan tu thanh cong.
+- Rui ro con lai: Chua UAT truc quan tren trinh duyet va chua deploy production; can hard refresh sau khi phat hanh de nap bundle/CSS moi.
+- Viec tiep theo: Neu can, commit/push va deploy rieng ChatUI sau khi xac nhan UAT poll incoming/outgoing, xem ket qua va them lua chon trong dark mode.
+- Commit/PR: Chua tao.
+
 ## 2026-09-08-05 - Gioi han muc duyet thanh vien nhom
 
 - Thoi gian: 2026-09-08 13:43 (Asia/Saigon)
