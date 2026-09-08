@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-08 11:33 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | UX | Kiem thu | Tai lieu
-- Trang thai: Hoan tat code va kiem thu local; chua commit/push/deploy production.
+- Trang thai: Hoan tat; source `964671a7934d05d7f6264c754b75381ae5de1d62` da commit/push `origin/master`, production da deploy va verify qua hai hop SSH.
 - Muc tieu: Modal chia se hien day du danh ba nhan vien cung tenant, khong lap nguoi trung ten va van gui duoc den nguoi chua co hoi thoai.
 - Pham vi: ChatUI message-share recipients, tao direct conversation on-demand qua Chatmgt, regression tests va production bundle; khong sua Chatmgt backend, Tinode, mobile hay du lieu tin nhan.
 - Nguyen nhan: Modal cu chi lay `renderConversations`, nen bo qua nhan vien chi co trong danh ba; dedupe theo room id lam cac phong truc tiep trung mot tai khoan xuat hien nhieu lan va ten hien thi trung nhau khong phan biet duoc.
@@ -18,10 +18,12 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Noi dung: Dung danh ba active cung tenant lam nguon recipient, giu group hien co, dedupe direct theo identity on dinh (`id`/`uid`/Tinode UID), loai current user va chatbot, hien username/email phu khi trung ten. Recipient chua co room duoc tao qua Chatmgt truoc khi bind topic Tinode va forward; cac guard block, session, group spam, attachment va demo duoc giu nguyen.
 - Quyet dinh ky thuat: Ghep recipient theo identity thay vi display name/room id; tai su dung phong da co neu tim thay dung tai khoan de tranh tao phong trung. Khong doi nguon du lieu chuan, API contract hay kien truc; them test cho full directory, duplicate room, duplicate name, active contact va chatbot.
 - Database/API/cau hinh: Khong co migration, endpoint, secret, bien moi truong, thay doi Chatmgt/Tinode hay thay doi cau hinh production.
-- Kiem thu: `npm run test:message-share` dat 5/5; `npm run test:frontend` dat 405/405; `npm run lint` exit 0 voi cac warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB da co; `git diff --check` dat. Chua UAT browser voi tai khoan that.
+- Artifact/deploy: Archive `vichat-message-share-964671a.tar.gz`, SHA-256 `e0730de7633d3f41ad2cdc61e0a75aefad5007dbe184342198ebe9b992ff0374`; release `/opt/deploy/chat/releases/message-share-964671a-20260908-r1`; backup `/opt/deploy/chat/backups/message-share-964671a-20260908-r1`; chi recreate ChatUI `chat`, khong recreate Chatmgt/Tinode/database.
+- Kiem thu local: `npm run test:message-share` dat 5/5; `npm run test:frontend` dat 405/405; `npm run lint` exit 0 voi cac warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB da co; `git diff --check` dat.
+- Kiem thu production: Candidate build/Nginx dat; ChatUI container `046cad75d4de0052d1d3b7f2eeb1b8ca0a4f38bf475b80df365852b216b40cb9`, image `sha256:dc3c9662b1a2051cc2345a36aa5b01673c12434c6911618380f7d4580d4bd38a`; 9 container running, 7 healthcheck healthy, 8 service ngoai ChatUI va volumes khong doi; health private/public, bundle/hash, PostgreSQL/Redis/Alembic `20260825_13`, WSS `101`, log fatal scan deu dat. Hai lan gate helper deploy dung truoc activate do checksum/marker script, production khong bi doi; lan chay cuoi thanh cong.
 - Rui ro con lai: Chua UAT truc quan end-to-end tren browser production bang hai tai khoan; danh ba phu thuoc snapshot active cua Chatmgt/Account, con chuc nang tao phong va gui Tinode duoc bao ve boi cac contract hien co.
-- Viec tiep theo: Commit, push va deploy rieng ChatUI qua jump host `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`; khong migration, khong recreate Chatmgt/Tinode/database.
-- Commit/PR: Chua tao.
+- Viec tiep theo: UAT browser bang hai tai khoan trong cung tenant: mo modal chia se, kiem tra full danh ba, hai nguoi trung ten hien username/email, gui text/anh/file den nguoi chua co phong va nhom; hard refresh sau deploy. Khong can migration hay cau hinh moi.
+- Commit/PR: Source `964671a7934d05d7f6264c754b75381ae5de1d62`; production release `message-share-964671a-20260908-r1`; changelog record commit rieng sau deploy.
 
 ## 2026-09-08-02 - Phat hanh sua nhap nhay va can chinh hinh nen hoi thoai
 
