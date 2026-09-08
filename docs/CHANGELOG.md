@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu production: ChatUI container `b00d987389bb`, image `sha256:193b940ad48d47fcc5f998e473184fde917aea692151ebdc738d8535880329f3`, healthy, restart 0; Chatmgt giu container `4e5157d93c3e`, image `sha256:5dc16450eb4eec7c0d6df5a311f9daacdf0b6547fc3d76bdc0a8eafb53c5de9a`; local/public health `ok`, public bundle/CSS marker dung, WSS `101`, Alembic van `20260825_13`, service ngoai ChatUI va volume khong doi. Hai gate r1/r2 dung truoc activate/tu rollback; r3 activate thanh cong.
 - Rui ro con lai: Chua UAT truc quan tren production bang tai khoan that; danh sach category van phu thuoc snapshot hoi thoai hien tai, khong tu tao room moi cho contact chua co hoi thoai.
 - Viec tiep theo: UAT modal sua category voi hai tai khoan trung ten va duplicate room; hard refresh de xac nhan asset moi.
-- Commit/PR: Source `d6636547a84f9a0686597e3af2008271ad4bc076`; production release `conversation-category-d663654-20260908-r3`; changelog release commit se tao sau verify.
+- Commit/PR: Source `d6636547a84f9a0686597e3af2008271ad4bc076`; production release `conversation-category-d663654-20260908-r3`; changelog release commit `05e69a5`.
 
 ## 2026-09-08-03 - Sua danh sach nguoi nhan khi chia se tin nhan
 
