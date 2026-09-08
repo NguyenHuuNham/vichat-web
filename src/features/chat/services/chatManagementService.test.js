@@ -770,8 +770,12 @@ test('preserves share recipient filtering, selection and dismissal', () => {
   const shareSource = appSource.split('{shareMessage && (', 2)[1].split('</section>', 2)[0];
   assert.match(shareSource, /role="dialog" aria-modal="true" aria-labelledby="share-message-title"/);
   assert.match(shareSource, /id="share-message-title"/);
-  assert.match(shareSource, /Object\.values\(renderConversations\)\.filter\(room => room\.id !== activeChat\.id && !room\.isChatbot\)/);
-  assert.match(shareSource, /key=\{room\.id\} onClick=\{\(\) => shareMessageTo\(room\)\}/);
+  assert.match(appSource, /buildMessageShareRecipients\(\{/);
+  assert.match(shareSource, /messageShareRecipients\.map\(room =>/);
+  assert.match(shareSource, /key=\{room\.shareRecipientKey\} onClick=\{\(\) => shareMessageTo\(room\)\}/);
+  assert.match(appSource, /companyDirectoryContacts\(directoryAccounts, currentUser\)/);
+  assert.match(appSource, /chatManagementService\.createConversation\(\{[\s\S]*participantIds: \[contactId\]/);
+  assert.match(appSource, /shareRecipientMeta/);
   assert.match(shareSource, /className="message-share-card" onClick=\{event => event\.stopPropagation\(\)\}/);
   assert.equal(shareSource.match(/onClick=\{\(\) => setShareMessage\(null\)\}/g)?.length, 2);
   assert.match(appSource, /if \(shareMessage\) \{\s*setShareMessage\(null\);\s*return true;/);

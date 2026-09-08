@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-08-03 - Sua danh sach nguoi nhan khi chia se tin nhan
+
+- Thoi gian: 2026-09-08 11:33 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Web | UX | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code va kiem thu local; chua commit/push/deploy production.
+- Muc tieu: Modal chia se hien day du danh ba nhan vien cung tenant, khong lap nguoi trung ten va van gui duoc den nguoi chua co hoi thoai.
+- Pham vi: ChatUI message-share recipients, tao direct conversation on-demand qua Chatmgt, regression tests va production bundle; khong sua Chatmgt backend, Tinode, mobile hay du lieu tin nhan.
+- Nguyen nhan: Modal cu chi lay `renderConversations`, nen bo qua nhan vien chi co trong danh ba; dedupe theo room id lam cac phong truc tiep trung mot tai khoan xuat hien nhieu lan va ten hien thi trung nhau khong phan biet duoc.
+- File da thay doi: `src/features/chat/services/messageShareRecipients.js`, `src/features/chat/services/messageShareRecipients.test.js`, `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `package.json`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Dung danh ba active cung tenant lam nguon recipient, giu group hien co, dedupe direct theo identity on dinh (`id`/`uid`/Tinode UID), loai current user va chatbot, hien username/email phu khi trung ten. Recipient chua co room duoc tao qua Chatmgt truoc khi bind topic Tinode va forward; cac guard block, session, group spam, attachment va demo duoc giu nguyen.
+- Quyet dinh ky thuat: Ghep recipient theo identity thay vi display name/room id; tai su dung phong da co neu tim thay dung tai khoan de tranh tao phong trung. Khong doi nguon du lieu chuan, API contract hay kien truc; them test cho full directory, duplicate room, duplicate name, active contact va chatbot.
+- Database/API/cau hinh: Khong co migration, endpoint, secret, bien moi truong, thay doi Chatmgt/Tinode hay thay doi cau hinh production.
+- Kiem thu: `npm run test:message-share` dat 5/5; `npm run test:frontend` dat 405/405; `npm run lint` exit 0 voi cac warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB da co; `git diff --check` dat. Chua UAT browser voi tai khoan that.
+- Rui ro con lai: Chua UAT truc quan end-to-end tren browser production bang hai tai khoan; danh ba phu thuoc snapshot active cua Chatmgt/Account, con chuc nang tao phong va gui Tinode duoc bao ve boi cac contract hien co.
+- Viec tiep theo: Commit, push va deploy rieng ChatUI qua jump host `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`; khong migration, khong recreate Chatmgt/Tinode/database.
+- Commit/PR: Chua tao.
+
 ## 2026-09-08-02 - Phat hanh sua nhap nhay va can chinh hinh nen hoi thoai
 
 - Thoi gian: 2026-09-08 10:45:38 (Asia/Saigon)

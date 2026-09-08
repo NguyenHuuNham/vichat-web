@@ -1401,7 +1401,10 @@ body {
 .share-conversation-list button { display: flex; min-width: 0; flex: 0 0 auto; align-items: center; gap: 10px; padding: 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text-main); text-align: left; cursor: pointer; }
 .share-conversation-list button:hover { background: var(--bg-gray); }
 .share-conversation-list .conv-avatar { width: 32px; height: 32px; flex: 0 0 32px; }
+.share-conversation-copy { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; gap: 2px; }
 .share-conversation-name { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-conversation-meta { overflow: hidden; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.share-conversation-empty { margin: 12px 0 4px; padding: 20px 10px; color: var(--text-muted); text-align: center; }
 
 .group-system-message {
     align-self: center;

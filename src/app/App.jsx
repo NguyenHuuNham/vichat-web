@@ -121,6 +121,7 @@ import {
   imageBatchLayoutClass,
   normalizeImageBatch,
 } from '../features/chat/services/imageBatchLayout';
+import { buildMessageShareRecipients, messageShareRecipientMatchesContact } from '../features/chat/services/messageShareRecipients';
 import {
   MAX_PASTED_ATTACHMENTS,
   clipboardAttachmentFiles,
@@ -11182,14 +11183,13 @@ function App() {
 
   const shareMessageTo = async target => {
     if (!shareMessage || !target || target.id === activeChat.id) return;
-    if (!allowDirectMessagingAttempt(target)) return;
     if (usesManagementData && chatMode !== 'tinode') {
       setShareMessage(null);
       setChatError('Chia sẻ tin nhắn cần kết nối realtime Tinode.');
       return;
     }
-    const groupSpamAttempt = registerGroupSendAttempt(target, createGroupSpamActionId('forward'));
-    if (!groupSpamAttempt.allowed) return;
+    let shareTarget = target;
+    let groupSpamAttempt = null;
     const sourceSender = findAccountByIdentities(directoryAccounts, [
       shareMessage.senderId,
       shareMessage.raw?.from,
@@ -11210,8 +11210,54 @@ function App() {
     let forwarded = shared;
 
     try {
+      if (!target.isGroup && target.shareRecipientType === 'directory') {
+        const contactId = String(target.directContactId || target.shareContact?.id || '').trim();
+        const existingRoom = safeConversationValues(conversationsRef.current).find(room => (
+          !room.isGroup
+          && !room.isChatbot
+          && messageShareRecipientMatchesContact(room, target.shareContact)
+        ));
+        if (existingRoom) {
+          shareTarget = existingRoom;
+        } else if (contactId) {
+          if (usesManagementData) {
+            const created = await chatManagementService.createConversation({
+              subject: target.name,
+              participantIds: [contactId],
+              properties: {},
+            });
+            const createdId = String(created?.managementId || created?.id || '').trim();
+            if (!createdId) throw new Error('Chatmgt khong tra ve ma cuoc tro chuyen.');
+            shareTarget = {
+              ...target,
+              ...created,
+              id: createdId,
+              managementId: created?.managementId || createdId,
+              name: target.name,
+              members: created?.members?.length ? created.members : [currentUser, target.shareContact].filter(Boolean),
+              participantIds: created?.participantIds?.length
+                ? created.participantIds
+                : [managementViewerId, contactId].filter(Boolean),
+              accountSession: accountSessionRef.current,
+              directContactId: contactId,
+              shareContact: target.shareContact,
+            };
+          } else {
+            shareTarget = {
+              ...target,
+              id: directConversationId(managementViewerId, contactId),
+              participantIds: [managementViewerId, contactId].filter(Boolean),
+              members: [currentUser, target.shareContact].filter(Boolean),
+              shareRecipientType: 'conversation',
+            };
+          }
+        }
+      }
+      if (!allowDirectMessagingAttempt(shareTarget)) return;
+      groupSpamAttempt = registerGroupSendAttempt(shareTarget, createGroupSpamActionId('forward'));
+      if (!groupSpamAttempt.allowed) return;
       if (chatMode === 'tinode') {
-        const topicName = await ensureTinodeConversationTopic(target);
+        const topicName = await ensureTinodeConversationTopic(shareTarget);
         if (sourceAttachment?.url) {
           const sourceFile = await tinodeClient.fetchFile(sourceAttachment);
           const result = await tinodeClient.sendFile(topicName, sourceFile, shared.id, {
@@ -11220,7 +11266,7 @@ function App() {
           });
           void ingestChatDocument({
             file: sourceFile,
-            conversationId: target.managementId || target.id,
+            conversationId: shareTarget.managementId || shareTarget.id,
             tinodeTopic: topicName,
             sequence: result.ctrl?.params?.seq,
           }).catch(error => {
@@ -11257,14 +11303,15 @@ function App() {
             image: isImageAttachment(sourceAttachment) ? sourceAttachment.url : undefined,
           }
           : shared;
-        if (target.isGroup) persistDemoGroupMessage(target, forwarded);
-        else persistDemoDirectMessage(target, forwarded);
+        if (shareTarget.isGroup) persistDemoGroupMessage(shareTarget, forwarded);
+        else persistDemoDirectMessage(shareTarget, forwarded);
       }
       setConversations(previous => ({
         ...previous,
-        [target.id]: {
-          ...previous[target.id],
-          messages: [...roomMessages(previous[target.id]), forwarded],
+        [shareTarget.id]: {
+          ...previous[shareTarget.id],
+          ...shareTarget,
+          messages: [...roomMessages(previous[shareTarget.id]), forwarded],
           lastMsg: forwarded.type === 'text' ? `Bạn: ${text}` : attachmentConversationPreview(forwarded),
           time: forwarded.time,
           updatedAt: forwarded.createdAt,
@@ -11272,8 +11319,8 @@ function App() {
       }));
       setShareMessage(null);
     } catch (error) {
-      const spamBlocked = handleGroupSpamCooldownError(error, target.id);
-      if (!spamBlocked && !handleDirectMessageBlockedError(error, target.id)) {
+      const spamBlocked = handleGroupSpamCooldownError(error, shareTarget.id);
+      if (!spamBlocked && !handleDirectMessageBlockedError(error, shareTarget.id)) {
         setChatError(error?.message || 'Không thể chia sẻ tin nhắn.');
       }
     }
@@ -11705,6 +11752,14 @@ function App() {
     });
 
   const companyContacts = companyDirectoryContacts(directoryAccounts, currentUser);
+  const messageShareRecipients = buildMessageShareRecipients({
+    conversations: safeConversationValues(renderConversations),
+    accounts: directoryAccounts,
+    currentUser,
+    activeConversation: activeChat,
+    accountSession: accountSessionRef.current,
+    chatbotId: CHATBOT_ACCOUNT.id,
+  });
   const groupCandidates = companyContacts
     .filter(member => member.type !== 'bot')
     .filter(member => matchesCompanyDirectoryContact(member, groupMemberSearch));
@@ -14227,14 +14282,19 @@ function App() {
           <div className="message-details-modal" role="dialog" aria-modal="true" aria-labelledby="share-message-title" onClick={() => setShareMessage(null)}>
             <div className="message-share-card" onClick={event => event.stopPropagation()}>
               <div className="message-details-header"><strong id="share-message-title">{appCopy.t('Chia sẻ tin nhắn tới')}</strong><button type="button" onClick={() => setShareMessage(null)} aria-label={appCopy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button></div>
-              <div className="share-conversation-list">
-                {Object.values(renderConversations).filter(room => room.id !== activeChat.id && !room.isChatbot).map(room => (
-                  <button type="button" key={room.id} onClick={() => shareMessageTo(room)}>
-                    <span className={`conv-avatar ${room.avatarClass || ''}`} aria-hidden="true"><ConversationAvatar room={room} /></span>
-                    <span className="share-conversation-name">{room.name}</span>
-                  </button>
-                ))}
-              </div>
+              {messageShareRecipients.length > 0 ? (
+                <div className="share-conversation-list">
+                  {messageShareRecipients.map(room => (
+                    <button type="button" key={room.shareRecipientKey} onClick={() => shareMessageTo(room)}>
+                      <span className={`conv-avatar ${room.avatarClass || ''}`} aria-hidden="true"><ConversationAvatar room={room} /></span>
+                      <span className="share-conversation-copy">
+                        <span className="share-conversation-name">{room.name}</span>
+                        {room.shareRecipientMeta && <small className="share-conversation-meta">{room.shareRecipientMeta}</small>}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : <p className="share-conversation-empty">{appCopy.t('Chưa có người nhận phù hợp.')}</p>}
             </div>
           </div>
         )}
