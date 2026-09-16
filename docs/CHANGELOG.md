@@ -10,17 +10,17 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-17 (Asia/Saigon)
 - Loai: Sua loi | Backend | Tinode | Kiem thu | Trien khai | Tai lieu
-- Trang thai: Dang thuc hien
+- Trang thai: Hoan tat; production da deploy va verify, con cho UAT group bang tai khoan UpGo that
 - Muc tieu: Cho thanh vien mo nhom moi co the bind topic va su dung day du thao tac them, xoa, roi nhom ma khong lam loi cac luong chat dang hoat dong.
 - Pham vi: Chi endpoint bind topic nhom moi, regression contract, tai lieu kien truc va release Chatmgt; khong doi direct chat, message transport, Account SSO, ChatUI hoac Tinode data store.
 - File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`, `docs/chat-backend-architecture.md`, va `docs/CHANGELOG.md`.
-- Noi dung: Khi topic Tinode moi duoc browser tao boi nguoi xem, Chatmgt chuyen quyen owner sang chu nhom authoritative truoc khi reconcile subscriber/access. Neu reconcile hoac persist that bai, server co gang rollback transfer de khong de lai topic o trang thai ban phan.
+- Noi dung: Khi topic Tinode moi duoc browser tao boi nguoi xem, Chatmgt chuyen quyen owner sang chu nhom authoritative truoc khi reconcile subscriber/access. Neu reconcile hoac persist that bai, server co gang rollback transfer de khong de lai topic o trang thai ban phan. Sau khi chay lai cac gate deploy, release `group-fix-d5c9397-20260917-r5` chi recreate `chatmgt` va `chat`; bridge, Tinode/ChatAPI, PostgreSQL, Redis, Coturn, volume va du lieu Tinode giu nguyen.
 - Quyet dinh ky thuat: Chi ap dung transfer cho group chua co `tinode_topic`; group da bind, direct chat va cac mutation khac giu nguyen. Loi rollback duoc bat lai an toan de khong che loi Tinode goc.
 - Database/API/cau hinh: Khong migration, khong doi public endpoint/schema, khong reset mapping/topic/history/media va khong doi secret.
-- Kiem thu: Backend contract `python -m unittest discover -s chatservice-main/tests -p test_chat_auth_contract.py -q` dat 57/57; frontend `npm run test:frontend -- --test-concurrency=1` dat 412/412; `npm run build:production` thanh cong; `npm run lint` exit 0 voi warning legacy/vendor da co; `py_compile` va `git diff --check` dat. Full backend local chua dat do may thieu `itsdangerous` va mot test HTTP local bi `WinError 10053`, chay 297 test co 2 error va 105 skip.
-- Rui ro con lai: Chua commit, deploy va UAT group bang tai khoan UpGo that.
-- Viec tiep theo: Chay bo kiem thu cuoi, commit/push, deploy rieng Chatmgt, verify health/WSS/log va UAT tao mo group, them/xoa/roi thanh vien.
-- Commit/PR: Chua tao.
+- Kiem thu: Backend contract `57/57`; frontend `412/412`; `npm run build:production`, `npm run lint`, `py_compile` va `git diff --check` dat. Deploy candidate dat contract `57/57`, Nginx syntax, health target, public health `200`, public WSS `101`, Alembic `20260825_13`, bundle candidate/public `cmp`, log target khong co marker loi; 7 service ngoai pham vi va volume khong doi. Hai gate candidate truoc rollback an toan do checksum script sai, source mount test thieu va health probe dung loopback sai bind; khong co candidate nao switch dang do. Browser runtime khong kha dung nen chua UAT tai khoan that.
+- Rui ro con lai: Chua UAT bang tai khoan UpGo that cho mo nhom bang member khong phai owner, them/xoa/roi/chuyen owner va doi chieu Tinode Web; cac gate tu dong va production probe da dat.
+- Viec tiep theo: UAT group va Tinode Web voi tai khoan that; neu phat hien loi moi chi sua dung luong loi do.
+- Commit/PR: `d5c9397` (source fix, da push); production release `group-fix-d5c9397-20260917-r5`.
 
 ## 2026-09-16-04 - Sua dang nhap Tinode Web khong phu thuoc Account cookie
 
