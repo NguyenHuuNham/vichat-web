@@ -6,6 +6,19 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-16-03 - Bo sung central Tinode URL cho Chatmgt
+
+- Thoi gian: 2026-09-16 (Asia/Saigon)
+- Loai: Cau hinh | Van hanh | Kiem thu | Bao mat
+- Trang thai: Dang chuan bi deploy lai production
+- Muc tieu: Dam bao job reset fresh-data nhan dung endpoint `chatapi.gonplatform.com` khi chay trong container `chatmgt`.
+- Noi dung: Khai bao `TINODE_CENTRAL_WS_URL` truc tiep trong environment cua `chatmgt`, giu default production an toan va dong bo voi bridge/guard hien co. Khong doi schema, API auth, Account UpGo, tenant, conversation ID hoac membership.
+- Quyet dinh ky thuat: Khong dung `-e` tam thoi cho lenh reset; cau hinh phai nam trong Compose candidate de build, deploy va rollback co cung hanh vi.
+- Kiem thu: Se ghi bo sung ket qua test local va production sau khi archive moi duoc deploy.
+- Rui ro con lai: Chua activate candidate production; reset Tinode chi duoc chay sau khi backup va probe dat.
+- Viec tiep theo: Chay regression, commit/push, tao archive moi, backup lai production va deploy theo hai hop SSH.
+- Commit/PR: Dang chuan bi.
+
 ## 2026-09-16-02 - Chuyen kho tin nhan Tinode sang chatapi.gonplatform.com
 
 - Thoi gian: 2026-09-16 (Asia/Saigon)

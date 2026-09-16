@@ -190,6 +190,10 @@ class ChatAuthContractTests(unittest.TestCase):
 
         self.assertIn("tinode-account-bridge:", compose_source)
         self.assertIn("TINODE_CENTRAL_WS_URL", compose_source)
+        self.assertIn(
+            "TINODE_CENTRAL_WS_URL: ${TINODE_CENTRAL_WS_URL:-wss://chatapi.gonplatform.com/v0/channels}",
+            compose_source,
+        )
         self.assertIn("TINODE_BRIDGE_ICE_SERVERS_FILE", compose_source)
         self.assertIn("location = /v0/channels", nginx_source)
         self.assertIn("proxy_pass http://tinode-account-bridge:8095/v0/channels", nginx_source)
