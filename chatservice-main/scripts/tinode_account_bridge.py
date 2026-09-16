@@ -33,7 +33,6 @@ LISTEN_HOST = str(os.getenv("TINODE_BRIDGE_HOST", "0.0.0.0"))
 LISTEN_PORT = int(os.getenv("TINODE_BRIDGE_PORT", "8095"))
 INTERNAL_KEY = str(os.getenv("TINODE_BRIDGE_INTERNAL_KEY", "")).strip()
 ICE_SERVERS_FILE = str(os.getenv("TINODE_BRIDGE_ICE_SERVERS_FILE", "")).strip()
-ACCOUNT_SESSION_COOKIE_NAME = str(os.getenv("ACCOUNT_SESSION_COOKIE_NAME", "session")).strip() or "session"
 CHAT_ACCESS_COOKIE_NAME = str(os.getenv("CHAT_ACCESS_COOKIE_NAME", "vichat_access_token")).strip() or "vichat_access_token"
 DIRECT_MESSAGE_BLOCKED_TEXT = "Ng\u01b0\u1eddi d\u00f9ng \u0111\u00e3 ch\u1eb7n tin nh\u1eafn."
 DIRECT_MESSAGE_POLICY_UNAVAILABLE_TEXT = "Kh\u00f4ng th\u1ec3 x\u00e1c minh tr\u1ea1ng th\u00e1i ch\u1eb7n. Vui l\u00f2ng th\u1eed l\u1ea1i."
@@ -114,17 +113,6 @@ def _response_cookies(response):
     }
 
 
-def _cookie_header(response):
-    cookies = _response_cookies(response)
-    ordered_names = [ACCOUNT_SESSION_COOKIE_NAME, CHAT_ACCESS_COOKIE_NAME]
-    ordered_names.extend(name for name in cookies if name not in ordered_names)
-    return "; ".join(
-        "{}={}".format(name, cookies[name])
-        for name in ordered_names
-        if cookies.get(name)
-    )
-
-
 def _basic_credentials(secret):
     value = str(secret or "").strip()
     if not value:
@@ -175,17 +163,14 @@ async def _account_tinode_token(identity, password):
             chat_token = str(cookies.get(CHAT_ACCESS_COOKIE_NAME) or "").strip()
             if not chat_token:
                 raise BridgeError("Chatmgt did not issue a login session.", 503)
-            if not str(cookies.get(ACCOUNT_SESSION_COOKIE_NAME) or "").strip():
-                raise BridgeError("Chatmgt did not issue an Account session.", 503)
-            # The token exchange rechecks the Account user and current tenant.
-            account_cookie_header = _cookie_header(login_response)
+            # account-login already verified the UpGo credentials and current
+            # tenant before issuing this signed Chatmgt bearer.
 
         async with client.post(
             CHATMGT_URL + "/api/v1/auth/tinode-token-bridge",
             headers={
                 "Accept": "application/json",
                 "Authorization": "Bearer " + chat_token,
-                "Cookie": account_cookie_header,
                 "X-Vichat-Tinode-Internal": INTERNAL_KEY,
                 "User-Agent": "VICHAT-TINODE-BRIDGE/1.0",
             },

@@ -200,12 +200,11 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('"/api/v1/auth/account-login"', bridge_source)
         self.assertIn('"/api/v1/auth/tinode-token-bridge"', bridge_source)
         self.assertIn('"X-Vichat-Tinode-Internal"', bridge_source)
-        self.assertIn("cookies.get(ACCOUNT_SESSION_COOKIE_NAME)", bridge_source)
-        self.assertIn('"Cookie": account_cookie_header', bridge_source)
+        self.assertNotIn("cookies.get(ACCOUNT_SESSION_COOKIE_NAME)", bridge_source)
+        self.assertNotIn('"Cookie": account_cookie_header', bridge_source)
         self.assertIn('rewritten_login["scheme"] = "token"', bridge_source)
         self.assertIn('rewritten_login["secret"] = token', bridge_source)
         self.assertIn('getattr(response, "cookies", None)', bridge_source)
-        self.assertIn("ACCOUNT_SESSION_COOKIE_NAME", bridge_source)
         self.assertIn("CHAT_ACCESS_COOKIE_NAME", bridge_source)
         self.assertNotIn("DEFAULT_TENANT", bridge_source)
         self.assertNotIn('"tenant_id": DEFAULT_TENANT', bridge_source)
@@ -1028,13 +1027,16 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('"auth_version"', chatbot_source)
         self.assertIn("ManagementAccount.tenant_id == tenant_id", controller_source)
 
-    def test_tinode_bridge_revalidates_the_current_account_tenant(self):
+    def test_tinode_bridge_uses_the_fresh_chatmgt_session_without_account_cookie(self):
         _controller_source, bridge_source = function_source(
             CONTROLLER_PATH,
             "bridge_tinode_token",
         )
 
-        self.assertIn("await _validated_account_identity(request, account)", bridge_source)
+        self.assertIn("current_user, tenant_id = _identity(request)", bridge_source)
+        self.assertIn('current_user.get("auth_method") != "account_sso"', bridge_source)
+        self.assertIn("_account_by_id(tenant_id, _user_id(current_user))", bridge_source)
+        self.assertNotIn("_validated_account_identity(request, account)", bridge_source)
         self.assertIn("except AccountSSOError as error", bridge_source)
         self.assertIn("revoke_request_token(request)", bridge_source)
         self.assertIn("clear_auth_cookie", bridge_source)

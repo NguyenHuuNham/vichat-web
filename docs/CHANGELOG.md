@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-16-04 - Sua dang nhap Tinode Web khong phu thuoc Account cookie
+
+- Thoi gian: 2026-09-16 (Asia/Saigon)
+- Loai: Sua loi | Bao mat | Backend | Tinode Web | Kiem thu | Tai lieu
+- Trang thai: Dang sua va cho deploy production
+- Muc tieu: Cho Tinode Web dang nhap bang tai khoan UpGo hop le sau khi loi Chatmgt did not issue an Account session (503) chan basic login.
+- Pham vi: Chi token bridge cua Tinode Web; giu nguyen ChatUI, Account login, tenant, conversation, Tinode mapping, message store va cac service stateful.
+- File da thay doi: `chatservice-main/scripts/tinode_account_bridge.py`, `chatservice-main/application/controllers/api_chat_management.py`, hai test auth/bridge, `docs/chat-backend-architecture.md`, `infrastructure/production/README.md` va `docs/CHANGELOG.md`.
+- Nguyen nhan: Bridge kiem tra va gui lai cookie Account session sau account-login; viec phu thuoc vao Set-Cookie da chan Tinode Web du response da co Chatmgt bearer hop le.
+- Quyet dinh ky thuat: Tin vao Chatmgt JWT vua duoc cap sau khi account-login da xac minh UpGo credentials/current tenant; token bridge van kiem tra signature, session scope, auth method, account active va tenant/auth version qua _identity. Khong gui password sang Tinode va khong can cookie Account trong buoc token exchange.
+- Database/API/cau hinh: Khong migration, khong doi endpoint public, khong reset mapping/topic/history, khong doi secret. Chi bo check cookie du thua va cap nhat tai lieu/regression test.
+- Kiem thu: Se ghi lenh va ket qua thuc te sau khi chay test local va verifier production.
+- Rui ro con lai: Can UAT dang nhap Tinode Web bang tai khoan UpGo that sau deploy; ChatUI va cac luong khac phai duoc kiem tra health/reconnect.
+- Viec tiep theo: Chay test bridge/auth contract, build image chatmgt va tinode-account-bridge, recreate rieng hai service stateless, sau do kiem tra health/WSS/log va dang nhap Tinode Web.
+- Commit/PR: Chua tao.
+
 ## 2026-09-16-03 - Bo sung central Tinode URL cho Chatmgt
 
 - Thoi gian: 2026-09-16 22:41-22:54 (Asia/Saigon)

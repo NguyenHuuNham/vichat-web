@@ -2679,7 +2679,6 @@ async def bridge_tinode_token(request):
     if account is None:
         return _auth_error()
     try:
-        await _validated_account_identity(request, account)
         identity = _tinode_account_identity(account)
         _repair_unprovisioned_tinode_username(account, identity)
         tinode_auth = await tinode_sso_login(

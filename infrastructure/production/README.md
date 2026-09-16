@@ -493,9 +493,9 @@ from the same tenant in separate browser profiles:
    `wss://chat.upgo.vn/v0/channels` without sending an Account password.
 3. Open the single Tinode Web UI at `https://chatapi.gonplatform.com/#`, set
    Server to `chat.upgo.vn`, and sign in with the same invited UpGO email/password. The
-   login is translated by the relay bridge; the bridge must forward the fresh
-   Account cookie from that login so Chatmgt can revalidate the exact current
-   tenant before issuing the token. It must open the same newly provisioned
+   login is translated by the relay bridge; the bridge exchanges the fresh
+   Chatmgt bearer issued after Account credential verification, without relying
+   on browser-cookie propagation. It must open the same newly provisioned
    Tinode UID and show the same new conversations/messages as ChatUI; old
    history is intentionally not expected.
 4. Open a direct conversation before the peer has previously used Chat. Confirm

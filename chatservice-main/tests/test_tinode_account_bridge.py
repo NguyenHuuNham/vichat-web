@@ -273,7 +273,7 @@ class TinodeAccountBridgeAsyncTests(unittest.IsolatedAsyncioTestCase):
             "data": json.dumps(packet),
         })()
 
-    async def test_account_token_exchange_forwards_the_fresh_account_cookie(self):
+    async def test_account_token_exchange_forwards_only_the_chatmgt_bearer(self):
         session = FakeHttpSession([
             FakeHttpResponse(set_cookie=[
                 "session=account-session; Path=/; HttpOnly",
@@ -291,25 +291,27 @@ class TinodeAccountBridgeAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(session.calls), 2)
         token_headers = session.calls[1][1]["headers"]
         self.assertEqual(token_headers["Authorization"], "Bearer chat-token")
-        self.assertEqual(
-            token_headers["Cookie"],
-            "session=account-session; vichat_access_token=chat-token",
-        )
+        self.assertNotIn("Cookie", token_headers)
         self.assertTrue(session.closed)
 
-    async def test_account_token_exchange_rejects_a_missing_account_cookie(self):
+    async def test_account_token_exchange_does_not_require_an_account_cookie(self):
         session = FakeHttpSession([
             FakeHttpResponse(set_cookie=[
                 "vichat_access_token=chat-token; Path=/; HttpOnly",
             ]),
+            FakeHttpResponse(payload={
+                "tinode_auth": {"token": "tinode-token", "uid": "usrAccount"},
+            }),
         ])
 
         with patch.object(bridge.aiohttp, "ClientSession", return_value=session):
-            with self.assertRaises(bridge.BridgeError) as error:
-                await bridge._account_tinode_token("employee@example.vn", "secret")
+            token, uid = await bridge._account_tinode_token("employee@example.vn", "secret")
 
-        self.assertEqual(error.exception.status_code, 503)
-        self.assertEqual(len(session.calls), 1)
+        self.assertEqual((token, uid), ("tinode-token", "usrAccount"))
+        self.assertEqual(len(session.calls), 2)
+        token_headers = session.calls[1][1]["headers"]
+        self.assertEqual(token_headers["Authorization"], "Bearer chat-token")
+        self.assertNotIn("Cookie", token_headers)
         self.assertTrue(session.closed)
 
     async def test_allowed_direct_publish_is_forwarded_after_policy_check(self):

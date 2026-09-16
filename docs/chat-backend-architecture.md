@@ -816,10 +816,11 @@ decoded only at the trusted bridge. The bridge first calls
 `POST /api/v1/auth/account-login`, then exchanges the returned Chatmgt bearer
 session through the internal, key-protected
 `POST /api/v1/auth/tinode-token-bridge` endpoint. The trusted bridge forwards
-the fresh Account session cookie returned by that same server-side credential
-login together with the Chatmgt bearer; Chatmgt re-reads `/current_user` and
-requires its Account user/current tenant to match the JWT before issuing a
-Tinode token. This does not depend on a pre-existing Account browser cookie.
+the Chatmgt bearer from that same server-side credential login; Chatmgt checks
+the signed JWT, active account projection, tenant and auth version before
+issuing a Tinode token. The bridge does not require or forward an Account
+browser cookie, so Tinode Web is not blocked by cookie propagation while the
+normal ChatUI session can still retain its Account cookie for later SSO checks.
 The UpGO password is not sent to the central Tinode server or logged by the
 bridge. This keeps Tinode Web and ChatUI on the same central UID/topic/message
 store without permitting a stale company session to mint a new token.
