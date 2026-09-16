@@ -10,17 +10,19 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-16 (Asia/Saigon)
 - Loai: Sua loi | Bao mat | Backend | Tinode Web | Kiem thu | Tai lieu
-- Trang thai: Dang sua va cho deploy production
+- Trang thai: Hoan tat; production da deploy va verify, con cho UAT dang nhap Tinode Web bang tai khoan that
 - Muc tieu: Cho Tinode Web dang nhap bang tai khoan UpGo hop le sau khi loi Chatmgt did not issue an Account session (503) chan basic login.
 - Pham vi: Chi token bridge cua Tinode Web; giu nguyen ChatUI, Account login, tenant, conversation, Tinode mapping, message store va cac service stateful.
 - File da thay doi: `chatservice-main/scripts/tinode_account_bridge.py`, `chatservice-main/application/controllers/api_chat_management.py`, hai test auth/bridge, `docs/chat-backend-architecture.md`, `infrastructure/production/README.md` va `docs/CHANGELOG.md`.
 - Nguyen nhan: Bridge kiem tra va gui lai cookie Account session sau account-login; viec phu thuoc vao Set-Cookie da chan Tinode Web du response da co Chatmgt bearer hop le.
 - Quyet dinh ky thuat: Tin vao Chatmgt JWT vua duoc cap sau khi account-login da xac minh UpGo credentials/current tenant; token bridge van kiem tra signature, session scope, auth method, account active va tenant/auth version qua _identity. Khong gui password sang Tinode va khong can cookie Account trong buoc token exchange.
 - Database/API/cau hinh: Khong migration, khong doi endpoint public, khong reset mapping/topic/history, khong doi secret. Chi bo check cookie du thua va cap nhat tai lieu/regression test.
-- Kiem thu: Se ghi lenh va ket qua thuc te sau khi chay test local va verifier production.
-- Rui ro con lai: Can UAT dang nhap Tinode Web bang tai khoan UpGo that sau deploy; ChatUI va cac luong khac phai duoc kiem tra health/reconnect.
-- Viec tiep theo: Chay test bridge/auth contract, build image chatmgt va tinode-account-bridge, recreate rieng hai service stateless, sau do kiem tra health/WSS/log va dang nhap Tinode Web.
-- Commit/PR: Chua tao.
+- Kiem thu: Local `python -m unittest discover -s chatservice-main/tests -p test_chat_auth_contract.py -q` dat 57/57; `py_compile` va `git diff --check` dat; bridge local 16 test duoc skip do Python Windows thieu `aiohttp`. Trong production image, bridge dat 16/16, hai contract Tinode dat 2/2 (1 skip vi image backend khong co source frontend), verifier database/auth/health/CORS/directory/conversation/Tinode WebSocket/login/logout dat, tenant isolation dat, Nginx `-t` dat, Alembic van `20260825_13`, public WSS tra `101`, log target khong co fatal marker.
+- Trien khai: Archive `vichat-tinode-cookie-fix-175ea4d.tar.gz`, SHA-256 `8c55e37c179a7aab47fcb7d9b5d08ded1db13f14f6eac568aa5a24c508f3ba6a`; release `/opt/deploy/chat/releases/tinode-cookie-fix-175ea4d-20260916-r2` dang la `current`, `previous` tro `/opt/deploy/chat/releases/tinode-fresh-4ec50d9-20260916-r2`; backup `/opt/deploy/chat/incoming/tinode-cookie-fix-175ea4d-20260916-r2-backup`; chi recreate `chatmgt` va `tinode-account-bridge`, container moi healthy; ChatUI, webhook, ChatAPI, PostgreSQL, Redis, volume va Tinode data giu nguyen.
+- Bao toan: Khong migration, khong reset UID/topic, khong restore/xoa Tinode history/media, khong `docker compose down -v`; backup Chatmgt PostgreSQL va production env da checksum OK.
+- Rui ro con lai: Chua nhap tai khoan UpGo that trong browser cua phien nay; can UAT Tinode Web basic login va doi chieu cung UID/message moi voi ChatUI.
+- Viec tiep theo: Mo `https://chatapi.gonplatform.com/#`, dat Server `chat.upgo.vn`, dang nhap lai bang tai khoan UpGo; neu van loi, gui lai thoi diem va ma loi, khong gui mat khau/cookie.
+- Commit/PR: Dang cap nhat commit tai lieu sau deploy.
 
 ## 2026-09-16-03 - Bo sung central Tinode URL cho Chatmgt
 
