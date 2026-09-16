@@ -385,7 +385,7 @@ def verify_tinode_websocket(login_payload, origin):
         raise RuntimeError("Tinode WebSocket verification is not configured.")
     if internal_url != "ws://chat:80/v0/channels":
         raise RuntimeError(
-            "Tinode WebSocket is not routed through the central web.vichat.net relay."
+            "Tinode WebSocket is not routed through the central chatapi.gonplatform.com relay."
         )
 
     asyncio.run(_verify_tinode_socket(

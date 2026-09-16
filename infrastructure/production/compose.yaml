@@ -181,8 +181,8 @@ services:
       CHAT_MEDIA_DOWNLOAD_URL_TTL: ${CHAT_MEDIA_DOWNLOAD_URL_TTL:-300}
       CHAT_MEDIA_FALLBACK_TO_TINODE: ${CHAT_MEDIA_FALLBACK_TO_TINODE:-false}
       # Chatmgt reaches the central Tinode through the ChatUI Nginx relay.
-      # This keeps the browser and server-side bridge on one authoritative
-      # Tinode endpoint while the old ChatAPI remains available for rollback.
+      # Keep the existing UpGo identity/tenant/conversation/membership records
+      # while changing only the Tinode message store behind the relay.
       TINODE_INTERNAL_WS_URL: ${TINODE_INTERNAL_WS_URL:-ws://chat:80/v0/channels}
       TINODE_API_KEY: ${TINODE_API_KEY:?TINODE_API_KEY is required}
       TINODE_AUTH_TIMEOUT: ${TINODE_AUTH_TIMEOUT:-10}
@@ -271,7 +271,7 @@ services:
       ACCOUNT_SESSION_COOKIE_NAME: ${ACCOUNT_SESSION_COOKIE_NAME:-session}
       CHAT_ACCESS_COOKIE_NAME: vichat_access_token
       TINODE_API_KEY: ${TINODE_API_KEY:?TINODE_API_KEY is required}
-      TINODE_CENTRAL_WS_URL: ${TINODE_CENTRAL_WS_URL:-wss://web.vichat.net/v0/channels}
+      TINODE_CENTRAL_WS_URL: ${TINODE_CENTRAL_WS_URL:-wss://chatapi.gonplatform.com/v0/channels}
       TINODE_BRIDGE_INTERNAL_KEY: ${TINODE_BRIDGE_INTERNAL_KEY:?TINODE_BRIDGE_INTERNAL_KEY is required}
       TINODE_BRIDGE_ICE_SERVERS_FILE: /app/deploy/runtime/ice-servers.json
 

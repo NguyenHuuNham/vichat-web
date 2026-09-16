@@ -1,13 +1,14 @@
-"""Reset Chatmgt Tinode mappings before switching to the central Tinode.
+"""Reset Chatmgt Tinode mappings for a fresh central Tinode switch.
 
 This is a one-time destructive data operation. Chatmgt accounts, tenants,
 conversation IDs and memberships are preserved; Tinode UIDs/topics and
 automatic chat-derived knowledge copies are intentionally discarded.
+Use it only after the new chatapi.gonplatform.com Tinode endpoint is ready.
 
 Dry run:
     python scripts/switch_tinode_central.py
 Apply only after a verified database backup:
-    python scripts/switch_tinode_central.py --apply --confirm web.vichat.net
+    python scripts/switch_tinode_central.py --apply --confirm chatapi.gonplatform.com
 """
 import argparse
 import os
@@ -30,6 +31,7 @@ from application.services.enterprise_workspace_service import build_search_text
 
 
 CENTRAL_WS_URL = "ws://chat:80/v0/channels"
+TARGET_CENTRAL_WS_URL = "wss://chatapi.gonplatform.com/v0/channels"
 
 
 def _tenant_filter(query, model, tenant_id):
@@ -147,7 +149,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--tenant", default="", help="Reset only one tenant; default is all tenants.")
     parser.add_argument("--apply", action="store_true", help="Apply the destructive reset.")
-    parser.add_argument("--confirm", default="", help="Must equal web.vichat.net when applying.")
+    parser.add_argument(
+        "--confirm",
+        default="",
+        help="Must equal chatapi.gonplatform.com when applying.",
+    )
     args = parser.parse_args()
 
     configured_url = str(os.getenv("TINODE_INTERNAL_WS_URL") or "")
@@ -155,14 +161,23 @@ def main():
         raise RuntimeError(
             "TINODE_INTERNAL_WS_URL must be {} before applying the reset.".format(CENTRAL_WS_URL)
         )
+    configured_central_url = str(os.getenv("TINODE_CENTRAL_WS_URL") or "").strip()
+    if args.apply and configured_central_url != TARGET_CENTRAL_WS_URL:
+        raise RuntimeError(
+            "TINODE_CENTRAL_WS_URL must be {} before applying the fresh-data reset.".format(
+                TARGET_CENTRAL_WS_URL
+            )
+        )
 
     counts = collect_counts(args.tenant or None)
     print("CENTRAL_TINODE_RESET_PLAN", counts)
     if not args.apply:
         print("DRY_RUN_ONLY")
         return
-    if args.confirm != "web.vichat.net":
-        raise RuntimeError("Pass --confirm web.vichat.net to apply this destructive reset.")
+    if args.confirm != "chatapi.gonplatform.com":
+        raise RuntimeError(
+            "Pass --confirm chatapi.gonplatform.com to apply this destructive reset."
+        )
     result = apply_reset(args.tenant or None)
     print("CENTRAL_TINODE_RESET_APPLIED", result)
 

@@ -26,7 +26,7 @@ LOGGER = logging.getLogger("tinode-account-bridge")
 CHATMGT_URL = str(os.getenv("CHATMGT_INTERNAL_URL", "http://chatmgt:8093")).rstrip("/")
 TINODE_API_KEY = str(os.getenv("TINODE_API_KEY", "")).strip()
 TINODE_CENTRAL_WS_URL = str(
-    os.getenv("TINODE_CENTRAL_WS_URL", "wss://web.vichat.net/v0/channels")
+    os.getenv("TINODE_CENTRAL_WS_URL", "wss://chatapi.gonplatform.com/v0/channels")
 ).strip()
 REQUEST_TIMEOUT = max(5, int(os.getenv("TINODE_BRIDGE_TIMEOUT", "15")))
 LISTEN_HOST = str(os.getenv("TINODE_BRIDGE_HOST", "0.0.0.0"))
@@ -84,6 +84,15 @@ def _tinode_url():
     if TINODE_API_KEY and "apikey" not in query:
         query["apikey"] = TINODE_API_KEY
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
+def _central_upstream_headers():
+    parts = urlsplit(TINODE_CENTRAL_WS_URL)
+    origin_scheme = "https" if parts.scheme == "wss" else "http"
+    return {
+        "Host": parts.netloc,
+        "Origin": urlunsplit((origin_scheme, parts.netloc, "", "", "")),
+    }
 
 
 def _response_cookies(response):
@@ -600,8 +609,7 @@ async def channels(request):
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.ws_connect(
                 _tinode_url(),
-                ssl=False,
-                headers={"Host": "web.vichat.net", "Origin": "https://web.vichat.net"},
+                headers=_central_upstream_headers(),
                 max_msg_size=16 * 1024 * 1024,
             ) as upstream:
                 client_task = asyncio.create_task(

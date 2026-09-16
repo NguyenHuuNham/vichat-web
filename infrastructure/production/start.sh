@@ -284,9 +284,17 @@ fi
 
 tinode_internal_ws_url="$(env_value TINODE_INTERNAL_WS_URL)"
 if [[ "$tinode_internal_ws_url" != "ws://chat:80/v0/channels" ]]; then
-  echo "TINODE_INTERNAL_WS_URL must be ws://chat:80/v0/channels for the central web.vichat.net relay." >&2
+  echo "TINODE_INTERNAL_WS_URL must be ws://chat:80/v0/channels for the central chatapi.gonplatform.com relay." >&2
   exit 1
 fi
+
+tinode_central_ws_url="$(env_value TINODE_CENTRAL_WS_URL)"
+tinode_central_ws_url="${tinode_central_ws_url:-wss://chatapi.gonplatform.com/v0/channels}"
+if [[ "$tinode_central_ws_url" != "wss://chatapi.gonplatform.com/v0/channels" ]]; then
+  echo "TINODE_CENTRAL_WS_URL must be wss://chatapi.gonplatform.com/v0/channels for the fresh-data switch." >&2
+  exit 1
+fi
+set_env TINODE_CENTRAL_WS_URL "$tinode_central_ws_url"
 
 allow_insecure="$(env_value ALLOW_INSECURE_HTTP)"
 if [[ "${allow_insecure,,}" != "true" ]]; then

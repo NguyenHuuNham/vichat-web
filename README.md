@@ -50,12 +50,13 @@ authoritative on `/auth/me`, directory, profile and Tinode-token requests.
 
 Mobile conversation metadata and Workspace records remain in Chatmgt. Tinode
 continues to own realtime messages, files, presence, receipts and reactions;
-both web and mobile therefore see the same topics and history. The mobile
-directory is the active employee projection for the authenticated tenant and
-does not require friendship acceptance. Calls and push are capability-gated
-until native credentials are configured, and the removed knowledge manager is
-not exposed. Run mobile checks from `mobile/`; signed Android/iOS builds need
-JDK/SDK or EAS plus store credentials.
+both web and mobile therefore see the same new topics and history. The central
+Tinode store is intentionally fresh: old Tinode messages and file history are
+not restored into it. The mobile directory is the active employee projection
+for the authenticated tenant and does not require friendship acceptance.
+Calls and push are capability-gated until native credentials are configured,
+and the removed knowledge manager is not exposed. Run mobile checks from
+`mobile/`; signed Android/iOS builds need JDK/SDK or EAS plus store credentials.
 
 Protected Tinode images are fetched through the authenticated
 `chat.upgo.vn/tinode-media` relay into the native cache before rendering. An
@@ -99,20 +100,23 @@ For explicit local/recovery accounts, `TINODE_MIRROR_LOCAL_CREDENTIALS=true`
 provisions the local Chatmgt credential into Tinode. Active UpGO Account
 employees use a deterministic Tinode credential derived server-side from
 `TINODE_SSO_SECRET`; the Account password is accepted only by the Account
-`/login` endpoint and is discarded immediately after authentication. Existing
-deterministic identities are migrated in place by UID on the next login.
+`/login` endpoint and is discarded immediately after authentication. During the
+fresh-store switch, Chatmgt keeps the Account, tenant, conversation and
+membership records, clears only Tinode UID/topic mappings, and reprovisions the
+deterministic identities on the target at the next login/open. The old central
+Tinode message history is intentionally not copied.
 `POST /api/v1/auth/tinode-token` returns the token bound to that session when a
 reconnect needs it and re-verifies that volatile password when renewal is
 required. ChatUI and Chatmgt both reach the
-central `web.vichat.net` Tinode through the `chat.upgo.vn` Nginx relay for
+central `chatapi.gonplatform.com` Tinode through the `chat.upgo.vn` Nginx relay for
 messages, files, presence, typing, reactions, receipts, and direct calls.
-Tinode Web at `https://web.vichat.net/#` remains the single UI used to inspect
-the central message store. Set its Server to `chat.upgo.vn` so its basic login
+Tinode Web at `https://chatapi.gonplatform.com/#` remains the single UI used to
+inspect the central message store. Set its Server to `chat.upgo.vn` so its basic login
 packet is translated server-side from UpGO Account credentials to a short-lived
-Tinode token. ChatUI obtains its own short-lived token for the same deterministic
-Tinode UID; the two clients therefore share topics and message history without
-passing a browser token between them or sending an UpGO password to central
-Tinode.
+Tinode token. ChatUI obtains its own short-lived token for the same newly
+provisioned deterministic Tinode UID; the two clients therefore share new topics
+and message history without passing a browser token between them or sending an
+UpGO password to central Tinode.
 
 Chatmgt prepares participant Tinode UID mappings and validates every topic
 binding against the current tenant conversation. Group add/remove/leave actions
@@ -139,10 +143,11 @@ Chatmgt reference inside the Tinode message or metadata. Chatmgt validates the
 signed ticket, object size, and content type, then server-side copies the object
 to an immutable completed key before the reference is accepted.
 
-Existing Tinode media is not rewritten or deleted. Historical
-`/tinode-media/...` references continue through the authenticated Tinode relay,
-while `/api/v1/chat/media/...` references obtain short-lived S3 download URLs
-from Chatmgt. Production disables fallback from S3 to the Tinode upload volume,
+Existing Tinode media is not rewritten or deleted in the old rollback store.
+Because the active central store is fresh, historical `/tinode-media/...`
+references are not restored into its conversations. New
+`/api/v1/chat/media/...` references obtain short-lived S3 download URLs from
+Chatmgt. Production disables fallback from S3 to the Tinode upload volume,
 so an S3 outage fails the new upload without filling local disk. A rollback may
 switch new uploads back to Tinode, but must retain the MinIO credentials so
 already-published S3 references remain readable. UpGO Account remains the

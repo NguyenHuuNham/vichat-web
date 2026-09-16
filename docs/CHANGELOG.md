@@ -6,6 +6,54 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-16-02 - Chuyen kho tin nhan Tinode sang chatapi.gonplatform.com
+
+- Thoi gian: 2026-09-16 (Asia/Saigon)
+- Loai: Tai cau truc | Van hanh | Du lieu | Bao mat | Web | Backend | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code; fresh-data reset va deploy production dang cho operator
+- Muc tieu: Dua kho tin nhan Tinode sang `chatapi.gonplatform.com` voi du lieu moi, giu nguyen lien ket tai khoan UpGo va cac luong Chatmgt hien co.
+- Pham vi: Relay Nginx, Tinode account bridge, cau hinh production, verifier, tai lieu va regression contract; khong restore lich su Tinode cu.
+- File da thay doi: `infrastructure/production/nginx.conf`, `infrastructure/production/compose.yaml`, `infrastructure/production/.env.example`, `infrastructure/production/start.sh`, `chatservice-main/scripts/tinode_account_bridge.py`, `chatservice-main/scripts/verify_deployment.py`, `chatservice-main/scripts/switch_tinode_central.py`, `chatservice-main/tests/test_tinode_central_switch.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `README.md`, `chatservice-main/README.md`, `docs/chat-backend-architecture.md`, `infrastructure/production/README.md`, `docs/CHANGELOG.md`.
+- Noi dung: Chuyen upstream `/v0/` va `/tinode-media/` sang `chatapi.gonplatform.com`; bridge tu suy ra Host/Origin theo URL va bat xac minh TLS. Giu `chat.upgo.vn` lam relay public de basic login UpGo van duoc Chatmgt doi sang Tinode token. Target dung kho Tinode moi; lich su/tin nhan/media cu khong duoc copy.
+- Quyet dinh ky thuat: Dung `switch_tinode_central.py` sau khi probe target de xoa mapping `tinode_uid`/`tinode_topic` va cac ban sao chat-derived, nhung giu nguyen Account, tenant, conversation ID va membership. Giu `TINODE_SSO_SECRET` de tai khoan UpGo van duoc dan xuat cung credential; login/open tiep theo se provision lai account/topic trong kho moi.
+- Database/API/cau hinh: Khong migration schema, khong thay doi API auth, tenant hoac membership; backup Tinode/Chatmgt cu chi dung cho rollback. Cap nhat URL trung tam va them guard production de chan endpoint cu va buoc reset dung nham dich.
+- Kiem thu: Probe DNS/HTTPS/WebSocket `chatapi.gonplatform.com` nhan Tinode hello 0.25; `python -m unittest discover -s chatservice-main/tests -p test_tinode_central_switch.py -q` dat 8/8 va `python -m unittest discover -s chatservice-main/tests -p test_chat_auth_contract.py -q` dat 57/57; `npm run test:frontend -- --test-concurrency=1` dat 411/411; `npm run lint` exit 0 voi warning legacy da co; `npm run build:production` thanh cong voi canh bao chunk lon da co; `python -m py_compile` va `bash -n infrastructure/production/start.sh` dat; `git diff --check` dat. `docker compose config` chua chay vi may khong co Docker.
+- Rui ro con lai: Chua chay fresh-data reset hoac deploy/UAT production vi khong co production DB/runtime credential trong workspace; old Tinode history/media chi con o rollback store. Sau reset, moi account/topic phai duoc provision lai qua UpGo login.
+- Viec tiep theo: Operator backup du lieu cu cho rollback, cap nhat private `.env`, probe target, chay dry-run va ap dung `python scripts/switch_tinode_central.py --apply --confirm chatapi.gonplatform.com`, sau do verifier va UAT hai tai khoan UpGo cung tenant.
+- Commit/PR: Chua tao.
+
+## 2026-09-16-01 - Kich hoat media chat tren S3
+
+- Thoi gian: 2026-09-16 16:27-16:41 (Asia/Saigon)
+- Loai: Van hanh | Cau hinh | Bao mat | Web | Backend | Du lieu | Kiem thu | Tai lieu
+- Trang thai: Hoan tat cau hinh va kich hoat media S3; verifier Tinode tong the con can xu ly.
+- Muc tieu: Dua anh/file chat moi vao bucket private `chatupgo` ma khong di chuyen media Tinode lich su.
+- Pham vi: Production `.env` tren `192.168.80.20`, Chatmgt, ChatUI, backup va S3 probe; khong sua source, khong reset database/Tinode.
+- File da thay doi: Runtime `.env` tai `/opt/deploy/chat/current/infrastructure/production/.env`, backup cau hinh trong `infrastructure/production/backups`, va `docs/CHANGELOG.md`.
+- Noi dung: Cau hinh endpoint `s3.gonapp.net`, bucket `chatupgo`, bat `CHAT_MEDIA_STORAGE=s3` va frontend S3, giu `CHAT_MEDIA_FALLBACK_TO_TINODE=false`; da sinh signing secret noi bo, rebuild va recreate `chatmgt`/`chat`. Credential khong ghi vao source hoac nhat ky.
+- Quyet dinh ky thuat: Dung `MINIO_PUBLIC_DOMAIN=https://s3.gonapp.net` va `MINIO_SECURE=true` vi endpoint HTTP tra `503` va guard production bat buoc HTTPS; media Tinode cu van duoc giu nguyen.
+- Database/API/cau hinh: Khong co migration schema; `alembic upgrade head` khong tao thay doi; da tao backup PostgreSQL truoc khi activate. Gioi han media van la 500 MiB, URL ky ngan han va khong fallback ve volume Tinode.
+- Kiem thu: S3 probe sau restart dat upload, complete/copy, download va cleanup; Chatmgt auth health tra `mode=s3`, `configured=true`, `s3_read_configured=true`; ChatUI `/healthz` dat; tenant isolation dat. `verify_deployment.py` chua dat vi Tinode token refresh tra `503`; gate bootstrap ban dau gap WebSocket Tinode dong `1000`, khong reset du lieu de vuot qua gate nay.
+- Rui ro con lai: Chua UAT bang tai khoan that voi mot anh va mot file; Tinode token refresh `503` va webhook chatbot unhealthy van can dieu tra. S3 probe khong thay the UAT publish message end-to-end.
+- Viec tiep theo: Xu ly relay/Tinode trung tam, chay lai verifier tong the va UAT anh/file tren web; rotate credential vi credential da duoc chia se trong phien lam viec.
+- Commit/PR: Chua tao; runtime production da ap dung.
+
+## 2026-09-14-01 - Khoi phuc backend production sau reboot
+
+- Thoi gian: 2026-09-14 16:14-16:50 (Asia/Saigon)
+- Loai: Van hanh | Trien khai | Du lieu | Kiem thu | Tai lieu
+- Trang thai: Hoan tat phan ChatUI/Chatmgt chinh; webhook chatbot con can xac minh.
+- Muc tieu: Khoi phuc production sau khi `chat.upgo.vn` va `chatmgt.upgo.vn` tra 502.
+- Pham vi: Backend Compose tren `192.168.80.20`, reverse proxy tren `103.74.122.206`, ChatUI, Chatmgt, Tinode bridge, PostgreSQL, Redis va cac volume production; khong sua source ung dung.
+- File da thay doi: `docs/CHANGELOG.md`.
+- Noi dung: Nguyen nhan la may `.20` reboot luc 07:00 UTC nhung production app containers/images khong duoc khoi dong lai; Nginx tren jump host van tro dung den `.20` nhung upstream `8094/8081` khong lang nghe. Dung release hien tai `/opt/deploy/chat/current`, build lai cac image ung dung, khoi phuc Chatservice/Tinode tu backup `unread-notification-55b6b07-20260908-r2`, sau do start lai Compose tren `.20`. Khong chuyen app sang jump host va khong doi upstream Nginx.
+- Quyet dinh ky thuat: Khong start stack voi database rong; dung dump da kiem tra de nap vao cac volume production moi sau reboot. Giu Nginx proxy qua `.20` theo topology chuan.
+- Database/API/cau hinh: Khong migration; `alembic current` van `20260825_13 (head)`. Khong them endpoint hay secret.
+- Kiem thu: Build `chatmgt`, `tinode-account-bridge`, `tinode-chatbot-webhook`, `chat` thanh cong; `.20` ChatUI/Chatmgt/bridge healthy; public `/` HTTP 200, `/healthz` HTTP 200, Chatmgt auth health HTTP 200, WSS HTTP 101. Webhook chatbot van unhealthy vi ket noi Tinode nhan close `1000` va `/healthz` HTTP 503.
+- Rui ro con lai: Du lieu database duoc phuc hoi tu backup ngay 2026-09-08; can UAT tai khoan that va doi chieu media sau khi production online. Chatbot webhook chua san sang.
+- Viec tiep theo: Dieu tra webhook auth/WSS voi central Tinode va them co che tu dong start Compose production sau reboot; khong chay `docker compose down -v`.
+- Commit/PR: Chua tao.
+
 ## 2026-09-08-08 - Dong bo dem va thao tac doc cua thong bao hoi thoai
 
 - Thoi gian: 2026-09-08 18:39-19:37 (Asia/Saigon)

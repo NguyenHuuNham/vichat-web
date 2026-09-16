@@ -2,7 +2,7 @@
 
 This stack deploys ChatUI, Chatmgt, a rollback Tinode/ChatAPI, two PostgreSQL
 databases, Redis, and the container Nginx. The authoritative Tinode is
-`web.vichat.net`, reached by both ChatUI and Chatmgt through the ChatUI Nginx
+`chatapi.gonplatform.com`, reached by both ChatUI and Chatmgt through the ChatUI Nginx
 relay. Production is ready only after all four stages pass:
 
 1. Infrastructure, Alembic, domains, HTTPS, WSS, CORS, backup, and rollback.
@@ -123,9 +123,10 @@ PUT signature remains valid for five minutes, while its signed completion ticket
 remains valid for six hours so a slow 500 MB transfer can still be finalized.
 
 The rollout does not change Tinode's single configured media handler and does
-not migrate its upload volume. Historical `/tinode-media/...` files therefore
-continue to load exactly as before. New messages store only an authenticated
-`/api/v1/chat/media/...` reference in Tinode; PostgreSQL stores no file bytes.
+not migrate the old upload volume. Historical `/tinode-media/...` files remain
+in the old rollback store and are not restored into the fresh central store.
+New messages store only an authenticated `/api/v1/chat/media/...` reference in
+Tinode; PostgreSQL stores no file bytes.
 If S3 is unavailable, the new message/file send fails before publish and never
 falls back to the Tinode disk.
 
@@ -139,58 +140,56 @@ release because it was shared outside the private production environment.
 Install `nginx-host-chat.conf` and `nginx-host-chatmgt.conf` on the reverse
 proxy, obtain TLS certificates, run `sudo nginx -t`, then reload Nginx.
 
-## One-time central Tinode switch
+## Tinode data switch
 
-The central endpoint currently presents an expired TLS certificate. Browsers
-must not connect to it directly. The container Nginx keeps the valid public
-`chat.upgo.vn` certificate and proxies `/v0/` plus `/tinode-media/` to
-`https://web.vichat.net` with SNI/Host pinned to that hostname. Upstream verify
-is temporarily disabled only for this relay and must be re-enabled after the
-central certificate is renewed.
+The new authoritative endpoint is `chatapi.gonplatform.com`. The container
+Nginx keeps the public `chat.upgo.vn` certificate and proxies `/v0/` plus
+`/tinode-media/` to `https://chatapi.gonplatform.com` with SNI/Host pinned to
+that hostname. Upstream certificate verification is enabled for this endpoint.
+The target is intentionally a fresh Tinode store; old messages and old Tinode
+media are not restored into it.
 
-Before the switch, update the private mode-`0600` `.env` without printing its
-secrets:
+Before the switch, back up the old Chatmgt/Tinode databases, upload objects,
+`.env`, runtime bootstrap files and image IDs using the existing protected
+procedure. These backups are for rollback only. Do not restore the old Tinode
+PostgreSQL data or upload objects into `chatapi.gonplatform.com`.
+
+Update the private mode-`0600` `.env` without printing its secrets:
 
 ```dotenv
 TINODE_INTERNAL_WS_URL=ws://chat:80/v0/channels
-TINODE_CENTRAL_WS_URL=wss://web.vichat.net/v0/channels
+TINODE_CENTRAL_WS_URL=wss://chatapi.gonplatform.com/v0/channels
 TINODE_BRIDGE_TIMEOUT=15
 ```
 
-Then follow this order. Do not reset mappings before the new proxy and account
-provisioning work:
+Keep `TINODE_SSO_SECRET` unchanged so the same UpGO Account still derives the
+same deterministic Tinode credential. Build/recreate the stateless services,
+probe the target through `ws://chat:80/v0/channels`, and confirm the Tinode
+hello succeeds before changing Chatmgt mappings.
 
-1. Back up Chatmgt PostgreSQL and the old Tinode PostgreSQL with `pg_dump -Fc`;
-   copy `.env`, runtime bootstrap files and image IDs into the same protected
-   rollback directory.
-2. Build the new `chat` and `chatmgt` images, start `chat`, and verify a Tinode
-   hello plus a temporary new account through `ws://chat:80/v0/channels`.
-3. Preview the destructive reset:
+Preview the fresh-data reset and record its counts:
 
-   ```bash
-   docker compose --env-file infrastructure/production/.env \
-     -f infrastructure/production/compose.yaml run --rm --no-deps chatmgt \
-     python scripts/switch_tinode_central.py
-   ```
+```bash
+docker compose --env-file infrastructure/production/.env \
+  -f infrastructure/production/compose.yaml run --rm --no-deps chatmgt \
+  python scripts/switch_tinode_central.py
+```
 
-4. After the counts and backup are verified, apply it once:
+After the backup, target probe and preview are verified, apply the reset once:
 
-   ```bash
-   docker compose --env-file infrastructure/production/.env \
-     -f infrastructure/production/compose.yaml run --rm --no-deps chatmgt \
-     python scripts/switch_tinode_central.py --apply --confirm web.vichat.net
-   ```
+```bash
+docker compose --env-file infrastructure/production/.env \
+  -f infrastructure/production/compose.yaml run --rm --no-deps chatmgt \
+  python scripts/switch_tinode_central.py --apply --confirm chatapi.gonplatform.com
+```
 
-The command sets only `management_account.tinode_uid` and
-`conversation.tinode_topic` to `NULL`, deletes automatic `CHAT_*` knowledge
-documents/chunks, and removes stored message previews from Workspace tasks. It
-does not change account IDs, passwords, tenant IDs, conversation IDs, group
-membership, Workspace ownership or chatbot history. New Tinode users/topics
-are created lazily on the central server after login/open.
-
-Keep the old `chatapi` and Tinode PostgreSQL running during acceptance for a
-fast rollback, but no ChatUI or Chatmgt request should reach them after the
-switch.
+The guarded command preserves Chatmgt Account, tenant, conversation and
+membership IDs. It clears Tinode UID/topic mappings and automatic chat-derived
+copies so the next UpGO login/open provisions fresh Tinode accounts and topics.
+No old message history is copied, and the local `chatapi`/Tinode PostgreSQL
+services remain available only as the rollback path during acceptance. Continue
+with the deployment verifier and browser UAT after the reset; do not run
+`docker compose down -v`.
 
 ## Voice and video calls
 
@@ -219,7 +218,8 @@ on the host network, and starts the local rollback ChatAPI with
 `WEBRTC_ENABLED=true`. Never commit either the real `.env` or the rendered ICE
 file.
 
-The authoritative server is `web.vichat.net`, not the rollback ChatAPI. Its
+The authoritative server is `chatapi.gonplatform.com`, not the local rollback
+ChatAPI. Its
 Tinode configuration must also contain a `webrtc` block with
 `enabled=true` and the same valid STUN/TURN records (or an
 `ice_servers_file`) before the central service is restarted. The relay may add
@@ -491,12 +491,13 @@ from the same tenant in separate browser profiles:
 2. Confirm ChatUI next calls `/api/v1/auth/tinode-token`, receives
    `connection: tinode`, and connects to
    `wss://chat.upgo.vn/v0/channels` without sending an Account password.
-3. Open the single Tinode Web UI at `https://web.vichat.net/#`, set Server to
-   `chat.upgo.vn`, and sign in with the same invited UpGO email/password. The
+3. Open the single Tinode Web UI at `https://chatapi.gonplatform.com/#`, set
+   Server to `chat.upgo.vn`, and sign in with the same invited UpGO email/password. The
    login is translated by the relay bridge; the bridge must forward the fresh
    Account cookie from that login so Chatmgt can revalidate the exact current
-   tenant before issuing the token. It must open the same Tinode UID and show
-   the same conversations/messages as ChatUI.
+   tenant before issuing the token. It must open the same newly provisioned
+   Tinode UID and show the same new conversations/messages as ChatUI; old
+   history is intentionally not expected.
 4. Open a direct conversation before the peer has previously used Chat. Confirm
    Chatmgt prepares the peer UID, both users see the same Chatmgt conversation,
    and text/file/presence/typing/read state works after refresh.

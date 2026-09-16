@@ -18,6 +18,7 @@ WORKSPACE_PATH = (
 )
 NGINX_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / "nginx.conf"
 COMPOSE_PATH = REPOSITORY_ROOT / "infrastructure" / "production" / "compose.yaml"
+BRIDGE_PATH = CHATMGT_ROOT / "scripts" / "tinode_account_bridge.py"
 
 
 class TinodeCentralSwitchTests(unittest.TestCase):
@@ -63,7 +64,9 @@ class TinodeCentralSwitchTests(unittest.TestCase):
         self.assertIn("ManagementAccount.tinode_uid: None", source)
         self.assertIn("Conversation.tinode_topic: None", source)
         self.assertIn('KnowledgeDocument.source_type.like("CHAT_%")', source)
-        self.assertIn('args.confirm != "web.vichat.net"', source)
+        self.assertIn('args.confirm != "chatapi.gonplatform.com"', source)
+        self.assertIn('TARGET_CENTRAL_WS_URL = "wss://chatapi.gonplatform.com/v0/channels"', source)
+        self.assertIn("fresh-data reset", source)
         self.assertNotIn("ManagementAccount.id: None", source)
         self.assertNotIn("Conversation.id: None", source)
 
@@ -89,15 +92,27 @@ class TinodeCentralSwitchTests(unittest.TestCase):
         self.assertNotIn("source_message_preview: form.sourceMessagePreview", workspace_source)
 
     @unittest.skipUnless(NGINX_PATH.is_file(), "production infrastructure is not included in the runtime image")
-    def test_production_routes_both_tinode_clients_to_web_vichat(self):
+    def test_production_routes_both_tinode_clients_to_chatapi_gonplatform(self):
         nginx_source = NGINX_PATH.read_text(encoding="utf-8")
         compose_source = COMPOSE_PATH.read_text(encoding="utf-8")
 
-        self.assertGreaterEqual(nginx_source.count("proxy_pass https://web.vichat.net"), 2)
-        self.assertIn("proxy_ssl_name web.vichat.net", nginx_source)
-        self.assertIn("proxy_ssl_verify off", nginx_source)
-        self.assertIn("proxy_set_header Origin https://web.vichat.net", nginx_source)
+        self.assertGreaterEqual(nginx_source.count("proxy_pass https://chatapi.gonplatform.com"), 2)
+        self.assertIn("proxy_ssl_name chatapi.gonplatform.com", nginx_source)
+        self.assertGreaterEqual(nginx_source.count("proxy_ssl_verify on"), 2)
+        self.assertIn("proxy_set_header Origin https://chatapi.gonplatform.com", nginx_source)
         self.assertIn("ws://chat:80/v0/channels", compose_source)
+
+    def test_account_bridge_derives_upstream_headers_from_the_central_url(self):
+        bridge_source = BRIDGE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn(
+            'os.getenv("TINODE_CENTRAL_WS_URL", "wss://chatapi.gonplatform.com/v0/channels")',
+            bridge_source,
+        )
+        self.assertIn("def _central_upstream_headers():", bridge_source)
+        self.assertIn('"Host": parts.netloc', bridge_source)
+        self.assertIn('"Origin": urlunsplit((origin_scheme, parts.netloc, "", "", ""))', bridge_source)
+        self.assertNotIn('"Host": "web.vichat.net"', bridge_source)
 
     @unittest.skipUnless(NGINX_PATH.is_file(), "production infrastructure is not included in the runtime image")
     def test_production_sets_browser_security_headers(self):

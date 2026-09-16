@@ -2,7 +2,7 @@
 
 Chatmgt stores management accounts, tenant-scoped metadata, security audit
 events, organization data, and explicitly uploaded chatbot knowledge in its own
-PostgreSQL database. The central Tinode at `web.vichat.net` remains the sole
+PostgreSQL database. The central Tinode at `chatapi.gonplatform.com` remains the sole
 source of normal realtime messages and uploaded chat files; legacy automatic
 chat-ingestion routes return `410 TINODE_CONTENT_ONLY`.
 

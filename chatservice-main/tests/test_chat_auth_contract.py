@@ -123,7 +123,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("CHATBOT_EXTERNAL_REQUEST_MODE=knowledge-retrieval", env_source)
         self.assertIn("TINODE_SSO_SECRET: ${TINODE_SSO_SECRET:?TINODE_SSO_SECRET is required}", compose_source)
         self.assertIn("TINODE_BRIDGE_INTERNAL_KEY: ${TINODE_BRIDGE_INTERNAL_KEY:?TINODE_BRIDGE_INTERNAL_KEY is required}", compose_source)
-        self.assertIn("TINODE_CENTRAL_WS_URL=wss://web.vichat.net/v0/channels", env_source)
+        self.assertIn("TINODE_CENTRAL_WS_URL=wss://chatapi.gonplatform.com/v0/channels", env_source)
         self.assertIn("TINODE_BRIDGE_INTERNAL_KEY=", env_source)
         self.assertIn("TINODE_MIRROR_LOCAL_CREDENTIALS: ${TINODE_MIRROR_LOCAL_CREDENTIALS:-true}", compose_source)
         self.assertIn("TINODE_MIRROR_LOCAL_CREDENTIALS=true", env_source)

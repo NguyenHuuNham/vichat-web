@@ -23,14 +23,14 @@ tenant, role, or user IDs supplied after the session is issued.
   deterministic Tinode mappings, directory/friend/conversation metadata, tenant
   authorization, viewer-scoped direct-message block state, audit records and
   the HttpOnly chat/management sessions.
-- `web.vichat.net` (central Tinode): owns message content, topics, stable media
-  references, legacy uploaded file bytes, presence, typing, reactions,
+- `chatapi.gonplatform.com` (central Tinode): owns message content, topics, stable media
+  references, uploaded file bytes, presence, typing, reactions,
   delivery/read receipts and call signaling.
   ChatUI reaches it through the TLS-safe `chat.upgo.vn` Nginx relay, while
-  Chatmgt reaches the same relay at `ws://chat:80/v0/channels`. The old local
-  `chatapi` container remains only for rollback until migration acceptance is
-  complete. Tinode Web basic login is translated by the internal relay bridge
-  through Chatmgt/UpGO Account before it reaches the central server. WebRTC
+  Chatmgt reaches the same relay at `ws://chat:80/v0/channels`. The local
+  `chatapi` container remains only as a rollback target. Tinode Web basic login
+  is translated by the internal relay bridge through Chatmgt/UpGO Account before
+  it reaches the central server. WebRTC
   media remains browser-to-browser or Coturn; Chatmgt never reads Tinode content.
 - `s3.upgo.vn` (private MinIO/S3 API): owns the bytes of new chat attachments,
   Tinode-managed avatars and shared backgrounds after the S3 rollout. The
@@ -67,13 +67,13 @@ in the object key and do not expose the tenant ID. Account-managed employee
 avatars keep the existing UpGO Account upload contract; this S3 path covers
 chat/Tinode media only.
 
-Compatibility is additive. Existing `/tinode-media/...` URLs remain unchanged
-and the Tinode upload volume is preserved. New `/api/v1/chat/media/...` URLs
-remain readable whenever the MinIO read configuration is present, even if a
-rollback changes the new-upload mode back to `tinode`. Production uses
-`CHAT_MEDIA_FALLBACK_TO_TINODE=false`; a failed S3 upload cannot silently consume
-the rollback Tinode disk. No message, topic, cursor, database row, or historical
-file is migrated or deleted by this rollout.
+Existing `/tinode-media/...` URLs and the old Tinode upload volume are preserved
+for rollback, but the fresh central store does not receive those historical
+objects. New `/api/v1/chat/media/...` URLs remain readable whenever the MinIO
+read configuration is present, even if a rollback changes the new-upload mode
+back to `tinode`. Production uses `CHAT_MEDIA_FALLBACK_TO_TINODE=false`; a
+failed S3 upload cannot silently consume the rollback Tinode disk. No old
+message, topic, cursor or historical file is migrated into the fresh store.
 
 ### ChatUI maintenance control
 
@@ -797,17 +797,19 @@ the same employee username receive different management IDs and Tinode
 identities.
 Tinode basic usernames are global per Tinode server and must satisfy Tinode's
 letters/numbers/dot/underscore policy. The deterministic `upgo_*` mapping keeps
-the same UID stable across Account profile changes; group subscriptions and
-message history remain on that UID. The signed Chatmgt JWT carries only the
-short-lived Tinode token for reconnects; no reversible employee password is
-persisted.
+the same UID stable across Account profile changes within the active Tinode
+store; group subscriptions and new message history remain on that UID. The
+signed Chatmgt JWT carries only the short-lived Tinode token for reconnects; no
+reversible employee password is persisted.
 
 The standalone Tinode Web client connects to `wss://chat.upgo.vn/v0/channels`.
-The single Tinode Web UI remains `https://web.vichat.net/#`; its Settings >
-Server value must be `chat.upgo.vn` so the login reaches the Account bridge.
+The single Tinode Web UI remains `https://chatapi.gonplatform.com/#`; its
+Settings > Server value must be `chat.upgo.vn` so the login reaches the Account
+bridge.
 ChatUI does not import a browser token from Tinode Web. It requests its own
-short-lived token for the same deterministic Tinode UID, which keeps topics and
-message history shared while keeping browser sessions isolated.
+short-lived token for the same deterministic Tinode UID in the fresh central
+store, which keeps new topics and message history shared while keeping browser
+sessions isolated.
 The Nginx relay sends that path to `tinode-account-bridge`: token login packets
 from ChatUI pass through unchanged, while Tinode Web `scheme=basic` packets are
 decoded only at the trusted bridge. The bridge first calls
@@ -821,6 +823,17 @@ Tinode token. This does not depend on a pre-existing Account browser cookie.
 The UpGO password is not sent to the central Tinode server or logged by the
 bridge. This keeps Tinode Web and ChatUI on the same central UID/topic/message
 store without permitting a stale company session to mint a new token.
+
+The central endpoint switch intentionally starts a fresh Tinode data store; it
+is not a history migration. The operator backs up the old Tinode PostgreSQL,
+upload objects and Chatmgt database for rollback only, but does not restore
+those Tinode records into the new endpoint. Chatmgt keeps the Account, tenant,
+conversation and membership IDs, while `switch_tinode_central.py` clears the
+old Tinode UID/topic mappings and automatic chat-derived copies. Keeping
+`TINODE_SSO_SECRET` unchanged preserves the deterministic UpGo credential
+linkage, and the next login/open provisions the accounts and topics in the new
+store. Old Tinode messages and legacy media are intentionally not visible in
+the fresh store.
 
 For authenticated non-internal clients, the relay additionally inspects each
 outgoing Tinode `pub` whose topic starts with `usr`. Before forwarding it, the
@@ -1315,7 +1328,7 @@ TINODE_MIRROR_LOCAL_CREDENTIALS=true
 TINODE_ADMIN_USERNAME=<server-side-tinode-admin>
 TINODE_ADMIN_PASSWORD=<server-side-tinode-admin-password>
 TINODE_INTERNAL_WS_URL=ws://chat:80/v0/channels
-TINODE_CENTRAL_WS_URL=wss://web.vichat.net/v0/channels
+TINODE_CENTRAL_WS_URL=wss://chatapi.gonplatform.com/v0/channels
 TINODE_BRIDGE_TIMEOUT=15
 TINODE_TOKEN_EXPIRE_IN=300
 ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user
@@ -1325,15 +1338,17 @@ ACCOUNT_SSO_LOGIN_PATH=/login
 ```
 
 The ChatUI Nginx proxies `/v0/` and `/tinode-media/` to
-`https://web.vichat.net`. Upstream certificate verification is temporarily
-disabled because that endpoint's certificate is expired; SNI and `Host` remain
-pinned to `web.vichat.net`. Renewing the upstream certificate and re-enabling
-verification is a required follow-up.
+`https://chatapi.gonplatform.com` with SNI and `Host` pinned to that hostname.
+Upstream certificate verification is enabled for the new endpoint.
 
-The one-time switch runs `scripts/switch_tinode_central.py` only after a
-verified Chatmgt backup and a successful proxy/provisioning probe. It clears
-only Tinode UID/topic mappings and automatic `CHAT_*` knowledge copies; account,
-tenant, conversation and membership IDs are preserved.
+The endpoint switch uses the target's fresh data. A verified backup of the old
+Tinode/Chatmgt data is required only for rollback; no old Tinode PostgreSQL or
+upload object restore is required. After a successful target probe, run the
+dry-run and then the guarded `switch_tinode_central.py` apply command. It clears
+only Tinode UID/topic mappings and automatic chat-derived copies; Account,
+tenant, conversation and membership IDs remain available for lazy
+reprovisioning. `TINODE_SSO_SECRET` must remain unchanged so UpGo identities
+continue to derive the same credentials.
 
 The Workspace migration is `20260804_10` and must be applied after
 `20260803_09` before recreating Chatmgt. Rollback uses the existing release and
