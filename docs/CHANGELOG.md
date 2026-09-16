@@ -19,7 +19,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Bao toan: Khong `docker compose down -v`, khong restore Tinode history/media cu; PostgreSQL/Redis/upload volume duoc backup truoc reset. Sau verifier, kho moi co 21 account mappings provision moi va 0 topic mapping; khong co lich su tin nhan cu duoc copy.
 - Rui ro con lai: Chua UAT bang hai tai khoan UpGo that de gui tin end-to-end; can hard refresh va dang nhap lai de provision account/topic moi tren web.
 - Viec tiep theo: UAT hai tai khoan UpGo cung tenant, kiem tra direct/group text, media S3, read/unread, realtime va logout; rollback dung backup r2 neu gate UAT that bai.
-- Commit/PR: Source `4ec50d9` da push `origin/master`; changelog deploy record dang commit.
+- Commit/PR: Source `4ec50d9` va changelog deploy record `6cd1b51` da push `origin/master`.
 
 ## 2026-09-16-02 - Chuyen kho tin nhan Tinode sang chatapi.gonplatform.com
 
