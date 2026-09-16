@@ -1778,6 +1778,13 @@ function safeConversationValues(conversations) {
   return safeConversationEntries(conversations).map(([, room]) => room);
 }
 
+function conversationMatchesDeletedKeys(id, room, deletedKeys = []) {
+  const keys = new Set(deletedKeys.filter(Boolean).map(String));
+  return [id, room?.id, room?.managementId, room?.tinodeTopic]
+    .filter(Boolean)
+    .some(value => keys.has(String(value)));
+}
+
 function safeConversationList(conversations) {
   if (!Array.isArray(conversations)) return [];
   return conversations
@@ -7966,10 +7973,11 @@ function App() {
       if (removedTopic) tinodeClient.disallowConversationTopic(removedTopic);
       const currentConversationMap = conversationsRef.current || conversations;
       const remainingRooms = Object.fromEntries(
-        safeConversationEntries(currentConversationMap).filter(([id]) => id !== targetRoom.id),
+        safeConversationEntries(currentConversationMap)
+          .filter(([id, room]) => !conversationMatchesDeletedKeys(id, room, deletedKeys)),
       );
-      setConversations(remainingRooms);
       conversationsRef.current = remainingRooms;
+      setConversations(remainingRooms);
       clearPastedAttachments(targetRoom.id);
       setCurrentChatId(firstVisibleConversationId(remainingRooms, drafts, CHATBOT_ACCOUNT.id));
       setIsDetailOpen(false);
@@ -8041,15 +8049,13 @@ function App() {
         }
       }
       if (departedTopic) tinodeClient.disallowConversationTopic(departedTopic);
-      setConversations(previous => {
-        const next = { ...previous };
-        delete next[targetRoom.id];
-        return next;
-      });
       const currentConversationMap = conversationsRef.current || conversations;
       const remainingRooms = Object.fromEntries(
-        safeConversationEntries(currentConversationMap).filter(([id]) => id !== targetRoom.id),
+        safeConversationEntries(currentConversationMap)
+          .filter(([id, room]) => !conversationMatchesDeletedKeys(id, room, deletedKeys)),
       );
+      conversationsRef.current = remainingRooms;
+      setConversations(remainingRooms);
       const nextId = firstVisibleConversationId(remainingRooms, drafts, CHATBOT_ACCOUNT.id);
       clearPastedAttachments(targetRoom.id);
       setCurrentChatId(nextId);

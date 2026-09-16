@@ -333,6 +333,15 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("TINODE_TOKEN_REQUIRED", binding_source)
         self.assertIn("tinode_verify_topic_access", binding_source)
         self.assertIn("expected_member_uids", binding_source)
+        self.assertIn("is_new_group_binding = is_group and not item.tinode_topic", binding_source)
+        self.assertIn("if is_new_group_binding and viewer_uid and owner_uid != viewer_uid", binding_source)
+        self.assertIn("tinode_accept_topic_owner", binding_source)
+        self.assertIn("rollback_tinode_owner_transfer", binding_source)
+        self.assertIn('mode="JRWPASO"', binding_source)
+        self.assertIn("except Exception as error:", binding_source)
+        transfer_index = binding_source.index("if is_new_group_binding and viewer_uid and owner_uid != viewer_uid")
+        reconcile_index = binding_source.index('binding_phase = "reconcile_group_members"')
+        self.assertLess(transfer_index, reconcile_index)
 
     @repository_source_test
     def test_tinode_topic_binding_distinguishes_transport_failures_from_conflicts(self):

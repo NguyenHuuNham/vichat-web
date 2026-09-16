@@ -896,7 +896,12 @@ snapshot: a blank group `tinode_topic` means the group is not bound and the
 browser must create a new topic, even if an older browser room or local cache
 still contains a topic. Group topic binding and add/remove/leave
 operations verify the exact tenant member set before committing Chatmgt
-metadata. ChatUI sends every self-leave and group-delete action through
+metadata. A newly created browser topic may initially belong to the viewer. When that
+viewer is not the Chatmgt group owner, the bind endpoint first grants the
+authoritative owner full Tinode owner access and has that owner accept it,
+then reconciles the complete member/access set. If a later bind step fails, the
+server attempts to restore the viewer as owner before returning the error.
+ChatUI sends every self-leave and group-delete action through
 `DELETE /api/v1/conversation/<id>/self`; the authenticated session supplies the
 participant identity, so a browser-side Account/Tinode ID mismatch cannot turn
 a valid self-removal into a participant 404. A group owner who leaves while

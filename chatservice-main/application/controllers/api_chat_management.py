@@ -5328,6 +5328,52 @@ async def conversation_bind_tinode(request, conversation_id):
     if not tinode_token:
         return json({"error_code": "TINODE_TOKEN_REQUIRED", "error_message": "Tinode authentication is required."}, status=400)
 
+    # A fresh browser-created topic is initially owned by the viewer. Transfer
+    # it to the authoritative Chatmgt owner before server-side reconciliation.
+    is_new_group_binding = is_group and not item.tinode_topic
+    owner_transfer = {
+        "requested": False,
+        "accepted": False,
+        "viewer_uid": "",
+        "owner_uid": "",
+        "owner_token": "",
+    }
+
+    async def rollback_tinode_owner_transfer():
+        if not owner_transfer["requested"]:
+            return
+        viewer_uid = owner_transfer["viewer_uid"]
+        owner_uid = owner_transfer["owner_uid"]
+        owner_token = owner_transfer["owner_token"]
+        try:
+            if owner_transfer["accepted"]:
+                await tinode_add_topic_members(
+                    owner_token,
+                    owner_uid,
+                    topic_name,
+                    [viewer_uid],
+                    mode="JRWPASO",
+                )
+                await tinode_accept_topic_owner(
+                    tinode_token,
+                    viewer_uid,
+                    topic_name,
+                    mode="JRWPASO",
+                )
+            await tinode_add_topic_members(
+                tinode_token,
+                viewer_uid,
+                topic_name,
+                [owner_uid],
+                mode="JRWPAS",
+            )
+        except Exception as error:
+            logger.warning(
+                "Could not roll back the Tinode owner transfer for conversation=%s: %s",
+                str(conversation_uuid),
+                error,
+            )
+
     binding_phase = "verify_topic_access"
     try:
         try:
@@ -5357,6 +5403,29 @@ async def conversation_bind_tinode(request, conversation_id):
             )
             owner_uid = prepared_uids[owner_participant.participant_id]
             owner_token = member_tokens[owner_uid]
+            viewer_uid = str(account.tinode_uid or "").strip()
+            if is_new_group_binding and viewer_uid and owner_uid != viewer_uid:
+                binding_phase = "transfer_group_owner"
+                owner_transfer.update({
+                    "requested": True,
+                    "viewer_uid": viewer_uid,
+                    "owner_uid": owner_uid,
+                    "owner_token": owner_token,
+                })
+                await tinode_add_topic_members(
+                    tinode_token,
+                    viewer_uid,
+                    topic_name,
+                    [owner_uid],
+                    mode="JRWPASO",
+                )
+                await tinode_accept_topic_owner(
+                    owner_token,
+                    owner_uid,
+                    topic_name,
+                    mode="JRWPASO",
+                )
+                owner_transfer["accepted"] = True
             binding_phase = "reconcile_group_members"
             await tinode_reconcile_topic_members(
                 owner_token,
@@ -5393,9 +5462,11 @@ async def conversation_bind_tinode(request, conversation_id):
         return json(_serialize_conversation(item, user_id))
     except AuthError as error:
         db.session.rollback()
+        await rollback_tinode_owner_transfer()
         return json({"error_code": "TINODE_TOPIC_REJECTED", "error_message": str(error)}, status=error.status_code)
     except Exception as error:
         db.session.rollback()
+        await rollback_tinode_owner_transfer()
         logger.exception(
             "Tinode topic binding failed phase=%s conversation=%s topic_kind=%s: %s",
             binding_phase,

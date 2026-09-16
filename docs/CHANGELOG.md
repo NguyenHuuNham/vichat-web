@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-17-01 - Sua loi bind nhom Tinode khi nguoi xem khong phai chu nhom
+
+- Thoi gian: 2026-09-17 (Asia/Saigon)
+- Loai: Sua loi | Backend | Tinode | Kiem thu | Trien khai | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Cho thanh vien mo nhom moi co the bind topic va su dung day du thao tac them, xoa, roi nhom ma khong lam loi cac luong chat dang hoat dong.
+- Pham vi: Chi endpoint bind topic nhom moi, regression contract, tai lieu kien truc va release Chatmgt; khong doi direct chat, message transport, Account SSO, ChatUI hoac Tinode data store.
+- File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`, `docs/chat-backend-architecture.md`, va `docs/CHANGELOG.md`.
+- Noi dung: Khi topic Tinode moi duoc browser tao boi nguoi xem, Chatmgt chuyen quyen owner sang chu nhom authoritative truoc khi reconcile subscriber/access. Neu reconcile hoac persist that bai, server co gang rollback transfer de khong de lai topic o trang thai ban phan.
+- Quyet dinh ky thuat: Chi ap dung transfer cho group chua co `tinode_topic`; group da bind, direct chat va cac mutation khac giu nguyen. Loi rollback duoc bat lai an toan de khong che loi Tinode goc.
+- Database/API/cau hinh: Khong migration, khong doi public endpoint/schema, khong reset mapping/topic/history/media va khong doi secret.
+- Kiem thu: Backend contract `python -m unittest discover -s chatservice-main/tests -p test_chat_auth_contract.py -q` dat 57/57; frontend `npm run test:frontend -- --test-concurrency=1` dat 412/412; `npm run build:production` thanh cong; `npm run lint` exit 0 voi warning legacy/vendor da co; `py_compile` va `git diff --check` dat. Full backend local chua dat do may thieu `itsdangerous` va mot test HTTP local bi `WinError 10053`, chay 297 test co 2 error va 105 skip.
+- Rui ro con lai: Chua commit, deploy va UAT group bang tai khoan UpGo that.
+- Viec tiep theo: Chay bo kiem thu cuoi, commit/push, deploy rieng Chatmgt, verify health/WSS/log va UAT tao mo group, them/xoa/roi thanh vien.
+- Commit/PR: Chua tao.
+
 ## 2026-09-16-04 - Sua dang nhap Tinode Web khong phu thuoc Account cookie
 
 - Thoi gian: 2026-09-16 (Asia/Saigon)

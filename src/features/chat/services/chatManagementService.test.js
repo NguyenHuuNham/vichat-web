@@ -693,6 +693,15 @@ test('group owner departure transfers to survivors but lets the final member clo
   assert.doesNotMatch(appSource, /randomMemberId/);
 });
 
+test('group departure removes every state alias before selecting the next room', () => {
+  const leaveSource = appSource.split('const executeGroupLeave')[1].split('const closeGroupLeaveDialog')[0];
+  const dissolveSource = appSource.split('const handleDissolveGroup')[1].split('const executeGroupLeave')[0];
+  assert.match(appSource, /function conversationMatchesDeletedKeys\(id, room, deletedKeys = \[\]\)/);
+  assert.match(leaveSource, /filter\(\(\[id, room\]\) => !conversationMatchesDeletedKeys\(id, room, deletedKeys\)\)/);
+  assert.match(leaveSource, /conversationsRef\.current = remainingRooms;\s*setConversations\(remainingRooms\);/);
+  assert.match(dissolveSource, /filter\(\(\[id, room\]\) => !conversationMatchesDeletedKeys\(id, room, deletedKeys\)\)/);
+});
+
 test('group lifecycle actions confirm before leaving and expose owner-only dissolve controls', () => {
   assert.equal(typeof chatManagementService.dissolveGroup, 'function');
   assert.match(managementServiceSource, /async dissolveGroup\(conversationId\)/);
