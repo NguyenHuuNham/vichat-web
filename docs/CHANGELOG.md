@@ -8,16 +8,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-09-16-03 - Bo sung central Tinode URL cho Chatmgt
 
-- Thoi gian: 2026-09-16 (Asia/Saigon)
+- Thoi gian: 2026-09-16 22:41-22:54 (Asia/Saigon)
 - Loai: Cau hinh | Van hanh | Kiem thu | Bao mat
-- Trang thai: Dang chuan bi deploy lai production
+- Trang thai: Hoan tat; production da deploy va verify
 - Muc tieu: Dam bao job reset fresh-data nhan dung endpoint `chatapi.gonplatform.com` khi chay trong container `chatmgt`.
 - Noi dung: Khai bao `TINODE_CENTRAL_WS_URL` truc tiep trong environment cua `chatmgt`, giu default production an toan va dong bo voi bridge/guard hien co. Khong doi schema, API auth, Account UpGo, tenant, conversation ID hoac membership.
 - Quyet dinh ky thuat: Khong dung `-e` tam thoi cho lenh reset; cau hinh phai nam trong Compose candidate de build, deploy va rollback co cung hanh vi.
-- Kiem thu: Se ghi bo sung ket qua test local va production sau khi archive moi duoc deploy.
-- Rui ro con lai: Chua activate candidate production; reset Tinode chi duoc chay sau khi backup va probe dat.
-- Viec tiep theo: Chay regression, commit/push, tao archive moi, backup lai production va deploy theo hai hop SSH.
-- Commit/PR: Dang chuan bi.
+- Kiem thu local: `python -m unittest discover -s chatservice-main/tests -p test_chat_auth_contract.py -q` dat 57/57; `npm run test:frontend -- --test-concurrency=1` dat 411/411; `bash -n outputs/deploy-tinode-fresh-200db0c.sh` va `git diff --check` dat; archive commit `4ec50d9` co SHA-256 `D76D9ED866952B6BBA8F1E5BE1D2922820A873C8BE7A2AD4F162337BA1DB97D6`.
+- Kiem thu production: Release `/opt/deploy/chat/releases/tinode-fresh-4ec50d9-20260916-r2`, backup `/opt/deploy/chat/incoming/tinode-fresh-4ec50d9-20260916-r2-backup`; build `chatmgt`/bridge/ChatUI dat; HTTPS central `200`, WSS Tinode hello dat; reset `161` account mappings va `36` conversation topics, khong xoa document/chunk/task preview; verifier database/credential policy/health/CORS/directory/conversation/WSS/login/logout dat; private/public health dat; Nginx `-t` dat; 4 service stateless healthy va log scan khong co `traceback/panic/fatal/critical`.
+- Bao toan: Khong `docker compose down -v`, khong restore Tinode history/media cu; PostgreSQL/Redis/upload volume duoc backup truoc reset. Sau verifier, kho moi co 21 account mappings provision moi va 0 topic mapping; khong co lich su tin nhan cu duoc copy.
+- Rui ro con lai: Chua UAT bang hai tai khoan UpGo that de gui tin end-to-end; can hard refresh va dang nhap lai de provision account/topic moi tren web.
+- Viec tiep theo: UAT hai tai khoan UpGo cung tenant, kiem tra direct/group text, media S3, read/unread, realtime va logout; rollback dung backup r2 neu gate UAT that bai.
+- Commit/PR: Source `4ec50d9` da push `origin/master`; changelog deploy record dang commit.
 
 ## 2026-09-16-02 - Chuyen kho tin nhan Tinode sang chatapi.gonplatform.com
 
