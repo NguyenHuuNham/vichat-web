@@ -4,10 +4,13 @@ import test from 'node:test';
 
 import {
   clipboardAttachmentFiles,
+  clipboardAttachmentSignature,
   formatPasteAttachmentSize,
+  isDuplicateClipboardPaste,
   isPastedImageFile,
   normalizePastedFile,
   pasteAttachmentSendPlan,
+  resolveClipboardAttachments,
 } from './pasteAttachmentDraft.js';
 
 const appSource = readFileSync(new URL('../../../app/App.jsx', import.meta.url), 'utf8');
@@ -39,9 +42,9 @@ test('keeps additional files exposed only by the clipboard file list', () => {
   }), [first, second]);
 });
 
-test('removes a file repeated inside one clipboard event', () => {
+test('removes a file repeated inside one clipboard event', async () => {
   const first = new File(['same-image'], 'image.png', { type: 'image/png', lastModified: 7 });
-  const duplicate = new File(['same-image'], 'image.png', { type: 'image/png', lastModified: 7 });
+  const duplicate = new File(['same-image'], 'image.png', { type: 'image/png', lastModified: 8 });
 
   const files = clipboardAttachmentFiles({
     items: [
@@ -51,7 +54,44 @@ test('removes a file repeated inside one clipboard event', () => {
     files: [first, duplicate],
   });
 
-  assert.deepEqual(files, [first]);
+  const resolved = await resolveClipboardAttachments(files);
+  assert.deepEqual(resolved.files, [first]);
+});
+
+test('recognizes duplicate paste events without blocking a later paste', () => {
+  const file = new File(['same-image'], 'image.png', { type: 'image/png', lastModified: 7 });
+  const signature = clipboardAttachmentSignature([file]);
+  const clipboard = {};
+  const target = {};
+  const first = { clipboard, target, signature, timestamp: 1000 };
+
+  assert.equal(isDuplicateClipboardPaste(first, {
+    clipboard,
+    target,
+    signature,
+    timestamp: 1000,
+  }, 1000), true);
+  assert.equal(isDuplicateClipboardPaste(first, {
+    clipboard: {},
+    target,
+    signature,
+    timestamp: 1100,
+  }, 1100), true);
+  assert.equal(isDuplicateClipboardPaste(first, {
+    clipboard: {},
+    target,
+    signature,
+    timestamp: 1300,
+  }, 2100), false);
+});
+
+test('deduplicates clipboard files with different browser metadata', async () => {
+  const first = new File(['same-image'], 'image.png', { type: 'image/png', lastModified: 7 });
+  const duplicate = new File(['same-image'], '', { type: 'image/png', lastModified: 8 });
+  const resolved = await resolveClipboardAttachments([first, duplicate]);
+
+  assert.deepEqual(resolved.files, [first]);
+  assert.match(resolved.signature, /^image\/png\|10\|/);
 });
 
 test('keeps text-only clipboard data out of the attachment queue', () => {
@@ -102,7 +142,10 @@ test('web paste stages attachments and leaves plain text to the controlled input
     .split('const handleFileDownload')[0];
 
   assert.match(pasteSource, /clipboardAttachmentFiles\(clipboard\)/);
-  assert.match(pasteSource, /queuePastedAttachments\(clipboardFiles\)/);
+  assert.match(pasteSource, /queuePastedAttachments\(files\)/);
+  assert.match(pasteSource, /isDuplicateClipboardPaste\(recentClipboardPasteRef\.current, currentPaste, now\)/);
+  assert.match(pasteSource, /resolveClipboardAttachments\(clipboardFiles\)/);
+  assert.match(pasteSource, /event\.stopPropagation\(\)/);
   assert.doesNotMatch(pasteSource, /handleSendFile|handleSendMessage|navigator\.clipboard/);
   assert.match(appSource, /onKeyDown=\{handleMessageInputKeyDown\}/);
   assert.match(appSource, /onClick=\{handleComposerSubmit\}/);

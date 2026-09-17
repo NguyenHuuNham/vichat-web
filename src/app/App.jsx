@@ -126,10 +126,13 @@ import { buildMessageShareRecipients, messageShareRecipientMatchesContact } from
 import {
   MAX_PASTED_ATTACHMENTS,
   clipboardAttachmentFiles,
+  clipboardAttachmentSignature,
   formatPasteAttachmentSize,
+  isDuplicateClipboardPaste,
   isPastedImageFile,
   normalizePastedFile,
   pasteAttachmentSendPlan,
+  resolveClipboardAttachments,
 } from '../features/chat/services/pasteAttachmentDraft';
 import {
   canRecallDeliveredMessage,
@@ -3274,6 +3277,8 @@ function App() {
   const imageInputRef = useRef(null);
   const pastedAttachmentDraftsRef = useRef(pastedAttachmentDrafts);
   const pastedAttachmentSubmitRef = useRef(false);
+  const recentClipboardPasteRef = useRef(null);
+  const recentResolvedClipboardPasteRef = useRef(null);
   const groupSpamStatesRef = useRef(new Map());
   const mentionPickerRef = useRef(null);
   const languageMenuRef = useRef(null);
@@ -10595,7 +10600,33 @@ function App() {
     const clipboardFiles = clipboardAttachmentFiles(clipboard);
     if (clipboardFiles.length > 0) {
       event.preventDefault();
-      queuePastedAttachments(clipboardFiles);
+      event.stopPropagation();
+      const now = Date.now();
+      const conversationId = String(currentChatId);
+      const currentPaste = {
+        clipboard,
+        conversationId,
+        target,
+        signature: clipboardAttachmentSignature(clipboardFiles),
+        timestamp: now,
+      };
+      if (isDuplicateClipboardPaste(recentClipboardPasteRef.current, currentPaste, now)) return;
+      recentClipboardPasteRef.current = currentPaste;
+      void resolveClipboardAttachments(clipboardFiles).then(({ files, signature }) => {
+        if (files.length === 0) return;
+        const resolvedPaste = {
+          ...currentPaste,
+          signature,
+        };
+        if (isDuplicateClipboardPaste(
+          recentResolvedClipboardPasteRef.current,
+          resolvedPaste,
+          Date.now(),
+        )) return;
+        recentResolvedClipboardPasteRef.current = resolvedPaste;
+        if (String(currentChatIdRef.current) !== conversationId) return;
+        queuePastedAttachments(files);
+      });
     }
   };
 

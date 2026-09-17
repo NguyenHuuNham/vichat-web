@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-17-05 - Chan paste event lap tao draft anh thu hai
+
+- Thoi gian: 2026-09-17 (Asia/Saigon)
+- Loai: Sua loi | Web | UX | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; cho commit/push va deploy production
+- Muc tieu: Chan truong hop mot thao tac `Ctrl+V` tao hai event giong nhau va hien hai the `image.png` trong muc dang cho gui.
+- Pham vi: Chi ChatUI composer paste va helper regression; khong doi file picker, paste van ban, handleSendFile, Tinode, backend, mobile hay sticker flow.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/pasteAttachmentDraft.js`, `src/features/chat/services/pasteAttachmentDraft.test.js`, `dist/index.html`, va `docs/CHANGELOG.md`.
+- Nguyen nhan bo sung: Sau khi dedupe cac file trong cung clipboard event, trinh duyet van co the phat hai event co cung chu ky trong thoi gian rat ngan hoac tra cung anh voi ten/lastModified khac nhau; queue cu append ca hai lan.
+- Quyet dinh ky thuat: Chan event trung lap theo metadata trong cua so 1 giay va doi chieu mau noi dung dau/cuoi anh de nhan dien cung anh khi metadata thay doi; khong dedupe cac lan paste cach nhau hon cua so nay.
+- Database/API/cau hinh: Khong co migration, endpoint, schema, secret hoac cau hinh.
+- Kiem thu: `node --test --test-concurrency=1 src/features/chat/services/pasteAttachmentDraft.test.js` dat 12/12; `npm run test:frontend -- --test-concurrency=1` dat 415/415; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB da co; `git diff --check` dat.
+- Rui ro con lai: Browser bridge khong kha dung de UAT truc tiep trong phien nay; can hard refresh production va paste lai anh.
+- Viec tiep theo: Commit, push, deploy chi ChatUI va verify public bundle/health/WSS; khong restart Chatmgt/Tinode/database/Redis.
+- Commit/PR: Chua tao.
+
 ## 2026-09-17-04 - Chan lap anh trong cung mot clipboard event
 
 - Thoi gian: 2026-09-17 (Asia/Saigon)
