@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-17 (Asia/Saigon)
 - Loai: Sua loi | Web | UX | Kiem thu | Tai lieu
-- Trang thai: Dang thuc hien
+- Trang thai: Hoan tat; source `5ed6b66` da commit/push `origin/master`, production da deploy va verify qua hai hop SSH
 - Muc tieu: Hien thi lai avatar cua tung nhan vien trong danh sach chon thanh vien khi tao nhom va hien nhan dang nhap ngan gon la `Dang nhap`.
 - Pham vi: ChatUI login label va create-group member picker; khong doi endpoint/authentication, Chatmgt, Tinode, database, mobile hay luong gui tin.
 - File da thay doi: `src/features/auth/components/Login.jsx`, `src/app/App.jsx`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`, va file nay.
 - Noi dung: Dung nhan dang nhap chung cho ca che do credential hien tai; them `SafeAvatar` vao picker tao nhom va tai su dung nguon avatar directory da co. Avatar fallback van duoc hien thi neu anh that khong tai duoc.
 - Quyet dinh ky thuat: Chi thay doi presentation tai hai diem dang loi; giu nguyen payload credential, API tao nhom va picker them thanh vien trong group de tranh regression luong khac.
 - Database/API/cau hinh: Khong co migration, endpoint, schema, secret hoac cau hinh.
-- Kiem thu: Targeted `chatManagementService.test.js` dat 62/62; full `npm run test:frontend -- --test-concurrency=1` dat 417/417; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi warning chunk `App` lon hon 500 KB; `git diff --check` dat.
+- Kiem thu: Targeted `chatManagementService.test.js` dat 62/62; full `npm run test:frontend -- --test-concurrency=1` dat 417/417; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi warning chunk `App` lon hon 500 KB; `git diff --check` dat. Production: backup/checksum pass, candidate Nginx `-t`, ChatUI moi healthy restart 0, public ChatUI/Chatmgt health `200`, bundle public co nhan `Đăng nhập`, `mention-avatar` va marker paste dedupe, WSS tra `101`, 7 service ngoai `chat` va volume khong doi.
 - Rui ro con lai: Chua UAT truc tiep bang browser trong phien nay; can hard refresh production va kiem tra login/group picker voi tai khoan that.
-- Viec tiep theo: Commit, push va deploy rieng ChatUI; verify public bundle/health/WSS, sau do hard refresh de UAT.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, kiem tra nut `Đăng nhập`, mo tao nhom va xac nhan avatar tung nhan vien; khong can migration hay cau hinh moi.
+- Artifact/phat hanh: Archive `vichat-login-group-avatar-5ed6b66.tar.gz`, SHA-256 `21d6ce1a24f1eb71d313379bd4492c4f67c0e47b099468890b995e1678fa6efd`; release `/opt/deploy/chat/releases/login-group-avatar-5ed6b66-20260917-r1`; previous `/opt/deploy/chat/releases/paste-event-63d2bc2-20260917-r1`; backup `/opt/deploy/chat/backups/login-group-avatar-5ed6b66-20260917-r1`; chi recreate ChatUI `chat`, giu nguyen Chatmgt/Tinode/PostgreSQL/Redis va volume.
+- Commit/PR: Source `5ed6b66`; docs follow-up commit sau deploy.
 
 ## 2026-09-17-05 - Chan paste event lap tao draft anh thu hai
 
