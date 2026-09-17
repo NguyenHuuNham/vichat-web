@@ -6,6 +6,38 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-17-03 - Sua Ctrl+V anh bi them hai lan vao danh sach cho
+
+- Thoi gian: 2026-09-17 (Asia/Saigon)
+- Loai: Sua loi | Web | UX | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; chua deploy
+- Muc tieu: Moi lan dan nhanh mot anh bang `Ctrl+V` chi tao mot muc cho gui, khong tu dong nhan thanh hai anh giong nhau.
+- Pham vi: Chi ChatUI web composer/paste va regression test; giu nguyen file picker gui ngay, luong upload, Tinode, backend, mobile va cac attachment khac.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/pasteAttachmentDraft.test.js`, `dist/index.html`, `docs/CHANGELOG.md`.
+- Noi dung: Bo handler paste trung tren container `chat-main` (capture/bubble), giu mot diem nhan paste tai o nhap de tranh cung mot native paste event duoc queue lai hai lan. Khong doi `handleSendFile`, payload Tinode hay co che submit draft.
+- Quyet dinh ky thuat: Chon chan duplicate o ranh gioi event cua composer, khong dedupe mu quang trong hang doi de van cho phep user paste hai file that su giong nhau o hai lan khac nhau.
+- Database/API/cau hinh: Khong co migration, endpoint, schema, secret hoac cau hinh.
+- Kiem thu: `node --test --test-concurrency=1 src/features/chat/services/pasteAttachmentDraft.test.js` dat 9/9; `npm run test:frontend -- --test-concurrency=1` dat 412/412; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong; `git diff --check` khong co loi noi dung, chi canh bao chuan hoa LF/CRLF.
+- Rui ro con lai: Chua UAT Ctrl+V tren browser local vi browser bridge khong kha dung trong phien nay.
+- Viec tiep theo: Hard refresh web va thu Ctrl+V mot anh, nhieu anh, van ban tai caret; deploy chi khi UAT dat.
+- Commit/PR: Chua tao.
+
+## 2026-09-17-02 - Sua crop sticker pink-bunny bi lo anh ke ben
+
+- Thoi gian: 2026-09-17 (Asia/Saigon)
+- Loai: Sua loi | Web | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; chua deploy
+- Muc tieu: Dam bao sticker pink-bunny trong picker chi hien dung artwork cua no, khong lo caption hoac vien anh cua sticker ke ben.
+- Pham vi: Chi asset PNG cua pack `puppysoft/pink-bunny`; khong doi StickerPicker, luong gui tin, Tinode, Chatmgt, API hoac backend.
+- File da thay doi: `public/stickers/puppysoft/pink-bunny-1.png`, `pink-bunny-2.png`, `pink-bunny-3.png`, `pink-bunny-4.png`, `pink-bunny-5.png`, `pink-bunny-7.png`, `pink-bunny-8.png`, `pink-bunny-9.png`, `pink-bunny-10.png`, `pink-bunny-11.png`, `pink-bunny-12.png`, va `docs/CHANGELOG.md`.
+- Noi dung: Cat bo cac manh artwork/caption bi tran o dau crop cua 5, 7-12; phuc hoi phan caption o cuoi cua 1, 3, 4 tu cac manh anh ke ben trong sprite crop. `pink-bunny-2` khong co source goc trong repo/Git history nen da cat bo chu bi cut va ve lai caption `Tu ky` co vien/gradient tim tuong thich, tranh de lai chu cut trong thumbnail.
+- Quyet dinh ky thuat: Chi thay binary asset, giu nguyen kich thuoc/cach render va luong chon-gui sticker de tranh regression ngoai pham vi; phan chu `pink-bunny-2` la fallback asset-local co chu ro rang, khong dung cho logic tim kiem hay transport.
+- Database/API/cau hinh: Khong co migration, thay doi API, secret hoac cau hinh.
+- Kiem thu: `node --test --test-concurrency=1 src/features/chat/services/stickerCatalog.test.js` dat 6/6; `npm run test:frontend -- --test-concurrency=1` dat 412/412; `npm run lint` exit 0 voi cac warning legacy da co; `npm run build:production` thanh cong; `git diff --check` khong co loi noi dung, chi canh bao chuan hoa LF/CRLF cua changelog.
+- Rui ro con lai: Caption `pink-bunny-2` la phan ve lai fallback, co the can thay bang source goc neu tim duoc; browser UAT chua chay vi browser bridge local khong kha dung.
+- Viec tiep theo: Neu co sprite source goc, uu tien thay fallback caption cua `pink-bunny-2`; sau do UAT picker tren browser local va deploy theo quy trinh neu can.
+- Commit/PR: Chua tao.
+
 ## 2026-09-17-01 - Sua loi bind nhom Tinode khi nguoi xem khong phai chu nhom
 
 - Thoi gian: 2026-09-17 (Asia/Saigon)

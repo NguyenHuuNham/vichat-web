@@ -13013,7 +13013,7 @@ function App() {
       {/* ==========================================================================
          CỘT 3: CHAT MAIN AREA (Khung chat chính)
          ========================================================================== */}
-      <section className="chat-main" onPasteCapture={handleMessagePaste} onPaste={handleMessagePaste}>
+      <section className="chat-main">
         {/* Header khung chat */}
         <ConversationErrorBoundary
           key={`${activeChat.id}:header`}

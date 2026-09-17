@@ -91,6 +91,8 @@ test('web paste stages attachments and leaves plain text to the controlled input
   assert.doesNotMatch(pasteSource, /handleSendFile|handleSendMessage|navigator\.clipboard/);
   assert.match(appSource, /onKeyDown=\{handleMessageInputKeyDown\}/);
   assert.match(appSource, /onClick=\{handleComposerSubmit\}/);
+  assert.equal((appSource.match(/onPasteCapture=\{handleMessagePaste\}/g) || []).length, 0);
+  assert.equal((appSource.match(/onPaste=\{handleMessagePaste\}/g) || []).length, 1);
 });
 
 test('only the explicit composer submit flushes the staged paste queue', () => {
