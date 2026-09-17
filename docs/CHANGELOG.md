@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Rui ro con lai: Chua UAT production bang browser/tai khoan that cho upload, download, delete, owner/tenant scope, tenant switch/logout va responsive sidebar; WSS/Tinode real-user flow khong doi trong release nhung chua UAT phien nay.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn`, dang nhap tai khoan that va UAT Cloud cua toi; xac nhan file cua owner khong doc duoc o tai khoan/tenant khac, upload/download/delete va logout/chuyen tenant khong de lo state cu.
 - Artifact/phat hanh: Archive `vichat-personal-cloud-e9f009c.tar.gz`, SHA-256 `910222F564D9BB2CEFB4A0EE7796518B28C3A96BAF04B766BF63AC94B4753E7D`; release `/opt/deploy/chat/releases/personal-cloud-e9f009c-20260917-r1`; previous `/opt/deploy/chat/releases/login-group-avatar-5ed6b66-20260917-r1`; backup `/opt/deploy/chat/backups/personal-cloud-e9f009c-20260917-r1`; partial failed artifacts moved to `.failed-candidate`; recreate `chatmgt` va `chat`, giu nguyen Tinode/PostgreSQL/Redis va volume.
-- Commit/PR: Source commit `2fe4d3c`; deploy record commit se cap nhat sau khi commit.
+- Commit/PR: Source commit `2fe4d3c`; deploy record commit `46eb555`.
 
 ## 2026-09-17-06 - Hien thi avatar trong picker tao nhom va don gian hoa nut dang nhap
 
