@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-17 (Asia/Saigon)
 - Loai: Tinh nang | Web | Backend | UX | Database | Kiem thu | Tai lieu
-- Trang thai: Hoan tat source; chua deploy
+- Trang thai: Hoan tat source; da commit; chua deploy
 - Muc tieu: Cho phep moi tai khoan luu file rieng trong `Cloud cua toi`, chi tai khoan hien tai xem/quyen ly duoc; them cac tab `Tat ca`, `Nhom`, `Phan loai` va menu loc theo trang thai, the, nguoi la.
 - Pham vi: ChatUI workspace/sidebar, Chatmgt private-cloud API/S3 namespace va migration metadata; khong doi Tinode conversation, media chat hien tai, luong gui tin, group, mobile hay sticker.
 - Noi dung: Them route `/my-cloud`, upload PUT truc tiep S3 voi ticket owner-scoped, list/download/delete theo `(tenant, owner)`; shortcut Cloud nam tren danh sach chat. Toolbar loc chi loc danh sach hien thi, giu nguyen thu tu pin/thoi gian va tach Cloud khoi bo loc. Bo sung guard theo account session de reset loading/upload va bo qua link Cloud tre sau logout/chuyen tai khoan.
@@ -19,7 +19,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `npm run test:frontend -- --test-concurrency=1` dat 421/421; `python -m unittest discover -s chatservice-main/tests -p 'test_*.py'` dat 308 pass, 105 skipped; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB; `python -m py_compile chatservice-main/application/controllers/api_personal_cloud.py chatservice-main/application/services/chat_media_service.py chatservice-main/application/models/models.py chatservice-main/alembic/versions/20260917_14_personal_cloud_files.py` dat; `git diff --check` dat.
 - Rui ro con lai: Chua deploy/UAT production; browser bridge local khong khoi tao duoc do native pipe khong san sang, can verify migration, S3 CORS, upload/download owner scope, tenant switch/logout va responsive sidebar tren browser that.
 - Viec tiep theo: Review diff, commit; khi trien khai can chay migration `20260917_14`, verify health/S3 owner scope truoc khi bat UI cho nguoi dung.
-- Commit/PR: Chua tao.
+- Commit/PR: Source commit `2fe4d3c`; chua push/deploy.
 
 ## 2026-09-17-06 - Hien thi avatar trong picker tao nhom va don gian hoa nut dang nhap
 
