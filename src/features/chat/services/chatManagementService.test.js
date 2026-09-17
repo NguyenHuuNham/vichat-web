@@ -19,6 +19,7 @@ import {
 } from './chatManagementService.js';
 
 const appSource = readFileSync(new URL('../../../app/App.jsx', import.meta.url), 'utf8');
+const loginSource = readFileSync(new URL('../../auth/components/Login.jsx', import.meta.url), 'utf8');
 const rootAppSource = readFileSync(new URL('../../../RootApp.jsx', import.meta.url), 'utf8');
 const legacyStylesSource = readFileSync(new URL('../../../index.css', import.meta.url), 'utf8');
 const stylesSource = readFileSync(new URL('../../../styles/index.css', import.meta.url), 'utf8');
@@ -331,6 +332,12 @@ test('keeps unread emphasis and latest-message navigation in the ChatUI layer', 
   assert.match(stylesSource, /html\[data-theme="dark"\] \.chat-messages\.has-conversation-background \.sender-name \{[\s\S]*color: #152e2c;[\s\S]*background: rgba\(255, 255, 255, \.94\)/);
 });
 
+test('keeps the employee login action label generic without changing authentication mode', () => {
+  assert.match(loginSource, /<span>\{copy\.t\('Đăng nhập'\)\}<\/span>/);
+  assert.doesNotMatch(loginSource, /Đăng nhập bằng UpGO Account/);
+  assert.match(loginSource, /managementAuthClient\.login\(credentials\)/);
+});
+
 test('conversation activity ordering is monotonic and pin values are strict', () => {
   assert.match(appSource, /conversationActivityTimestamp\(room\)/);
   assert.match(appSource, /resolveMergedConversationActivity\(safeExisting, safeIncoming, messages\)/);
@@ -628,6 +635,14 @@ test('conversation list gives timestamps the full row and preselects direct peer
   assert.match(stylesSource, /\.conversation-item:hover \.conv-actions,[\s\S]*\.conversation-item\.menu-open \.conv-actions/);
   assert.match(stylesSource, /\.conversation-item\.has-conversation-menu:hover \.conv-time,[\s\S]*\.conversation-item\.has-conversation-menu\.menu-open \.conv-time/);
   assert.match(stylesSource, /\.conv-details \{[\s\S]*min-width: 0;/);
+});
+
+test('group creation keeps member avatars in the directory picker', () => {
+  const createGroupSource = appSource
+    .split('const renderCreateGroupForm = variant => (')[1]
+    .split('const sharedFiles')[0];
+  assert.match(createGroupSource, /<SafeAvatar src=\{member\.avatar \|\| ''\} name=\{member\.name\} className="mention-avatar" \/>/);
+  assert.match(stylesSource, /\.mention-avatar \{[\s\S]*width: 34px;[\s\S]*height: 34px;/);
 });
 
 test('group information exposes a poll-only board without changing direct-chat details', () => {

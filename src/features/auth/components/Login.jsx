@@ -135,7 +135,7 @@ function Login({ copy = { t: value => value }, onLoginSuccess, initialNotice = '
           <button type="submit" className="btn-login-submit" disabled={isLoading}>
             {isLoading
               ? <><div className="login-spinner"></div><span>{copy.t('Đang xác thực...')}</span></>
-              : <><i className="fa-solid fa-arrow-right-to-bracket"></i><span>{managementAuthClient.mode === 'password' ? copy.t('Đăng nhập') : copy.t('Đăng nhập bằng UpGO Account')}</span></>}
+              : <><i className="fa-solid fa-arrow-right-to-bracket"></i><span>{copy.t('Đăng nhập')}</span></>}
           </button>
         </form>
 

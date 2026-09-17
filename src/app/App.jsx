@@ -12029,6 +12029,7 @@ function App() {
                   aria-pressed={selected}
                 >
                   <span className="picker-check"><i className={`fa-solid ${selected ? 'fa-check' : 'fa-plus'}`}></i></span>
+                  <SafeAvatar src={member.avatar || ''} name={member.name} className="mention-avatar" />
                   <span className="picker-name">{member.name}</span>
                   <span className={`picker-status account-presence ${accountPresenceTone(member)}`}>{accountPresenceLabel(member)}{directoryUsernameMeta(member)}</span>
                 </button>
