@@ -8,6 +8,8 @@ import CallOverlay from '../features/chat/components/CallOverlay';
 import StickerPicker from '../features/chat/components/StickerPicker';
 import ConversationBackgroundCropModal from '../features/chat/components/ConversationBackgroundCropModal';
 import ConversationCategoryManager from '../features/chat/components/ConversationCategoryManager';
+import ConversationListToolbar from '../features/chat/components/ConversationListToolbar';
+import PersonalCloudPanel from '../features/chat/components/PersonalCloudPanel';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation, normalizeTinodeMediaUrl } from '../features/chat/services/tinodeClient';
 import { shouldRetryProtectedMediaAfterSession } from '../features/chat/services/mediaRetryPolicy';
 import { startBrowserPresence } from '../features/chat/services/browserPresence';
@@ -75,6 +77,7 @@ import {
   setConversationCategory,
 } from '../features/chat/services/conversationCategoryPolicy';
 import { buildConversationCategoryConversations } from '../features/chat/services/conversationCategoryConversations';
+import { filterConversationIds } from '../features/chat/services/conversationListFilter';
 import { resolveCallsEnabled } from '../features/chat/services/callSignaling';
 import {
   DIRECT_MESSAGE_BLOCKED_TEXT,
@@ -3178,6 +3181,16 @@ function App() {
     CONVERSATION_CATEGORY_OPTIONS.map(category => ({ ...category }))
   ));
   const [conversationCategories, setConversationCategories] = useState({});
+  const [conversationListTab, setConversationListTab] = useState('all');
+  const [conversationListCategoryMenuOpen, setConversationListCategoryMenuOpen] = useState(false);
+  const [conversationListMoreMenuOpen, setConversationListMoreMenuOpen] = useState(false);
+  const [conversationListStatus, setConversationListStatus] = useState('all');
+  const [conversationListCategoryIds, setConversationListCategoryIds] = useState([]);
+  const [conversationListStrangersOnly, setConversationListStrangersOnly] = useState(false);
+  const [personalCloudFiles, setPersonalCloudFiles] = useState([]);
+  const [personalCloudLoading, setPersonalCloudLoading] = useState(false);
+  const [personalCloudUploading, setPersonalCloudUploading] = useState(false);
+  const [personalCloudNotice, setPersonalCloudNotice] = useState('');
   const [replyingTo, setReplyingTo] = useState(null);
   const [editingMessage, setEditingMessage] = useState(null);
   const [isSavingMessageEdit, setIsSavingMessageEdit] = useState(false);
@@ -3327,6 +3340,7 @@ function App() {
   const forcedLogoutRef = useRef(false);
   const isLoggingOutRef = useRef(false);
   const accountSessionRef = useRef(0);
+  const personalCloudRequestRef = useRef(0);
   const chatbotRequestRef = useRef(null);
   const managementConversationSessionRef = useRef(0);
   const activeCallRef = useRef(null);
@@ -4263,6 +4277,118 @@ function App() {
     };
   };
 
+  const resetConversationListFilters = () => {
+    setConversationListStatus('all');
+    setConversationListCategoryIds([]);
+    setConversationListStrangersOnly(false);
+    setConversationListCategoryMenuOpen(false);
+    setConversationListMoreMenuOpen(false);
+  };
+
+  const handleConversationListTabChange = nextTab => {
+    setConversationListTab(nextTab);
+    setConversationListCategoryMenuOpen(false);
+    setConversationListMoreMenuOpen(false);
+    if (nextTab === 'all' || nextTab === 'groups') resetConversationListFilters();
+  };
+
+  const toggleConversationListCategoryMenu = () => {
+    setConversationListTab('categories');
+    setConversationListMoreMenuOpen(false);
+    setConversationListCategoryMenuOpen(previous => !previous);
+  };
+
+  const toggleConversationListMoreMenu = () => {
+    setConversationListMoreMenuOpen(previous => !previous);
+    setConversationListCategoryMenuOpen(false);
+  };
+
+  const openConversationCategoryManager = () => {
+    setConversationListCategoryMenuOpen(false);
+    setConversationListMoreMenuOpen(false);
+    setConversationCategoryManagerOpen(true);
+  };
+
+  useEffect(() => {
+    const requestId = ++personalCloudRequestRef.current;
+    if (!isLoggedIn || !chatManagementService.remote || !managementViewerId) {
+      setPersonalCloudFiles([]);
+      setPersonalCloudLoading(false);
+      setPersonalCloudUploading(false);
+      setPersonalCloudNotice('');
+      return undefined;
+    }
+    let cancelled = false;
+    setPersonalCloudLoading(true);
+    setPersonalCloudNotice('');
+    chatManagementService.listPersonalCloudFiles()
+      .then(files => {
+        if (cancelled || requestId !== personalCloudRequestRef.current || accountSessionRef.current <= 0) return;
+        setPersonalCloudFiles(files);
+      })
+      .catch(error => {
+        if (cancelled || requestId !== personalCloudRequestRef.current) return;
+        setPersonalCloudFiles([]);
+        setPersonalCloudNotice(error?.message || 'Không thể tải Cloud của tôi.');
+      })
+      .finally(() => {
+        if (!cancelled && requestId === personalCloudRequestRef.current) setPersonalCloudLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [isLoggedIn, managementViewerId, preferenceTenantId]);
+
+  const handlePersonalCloudUpload = async file => {
+    if (!file || personalCloudUploading || !chatManagementService.remote) return;
+    const requestSession = accountSessionRef.current;
+    setPersonalCloudUploading(true);
+    setPersonalCloudNotice('');
+    try {
+      const uploaded = await chatManagementService.uploadPersonalCloudFile(file);
+      if (requestSession !== accountSessionRef.current || !uploaded) return;
+      setPersonalCloudFiles(previous => [uploaded, ...previous.filter(item => item.id !== uploaded.id)]);
+    } catch (error) {
+      if (requestSession === accountSessionRef.current) {
+        setPersonalCloudNotice(error?.message || 'Không thể tải file lên Cloud của tôi.');
+      }
+    } finally {
+      if (requestSession === accountSessionRef.current) setPersonalCloudUploading(false);
+    }
+  };
+
+  const openPersonalCloudUrl = async (file, download = false) => {
+    if (!file?.id) return;
+    const requestSession = accountSessionRef.current;
+    const popup = typeof window !== 'undefined' ? window.open('', '_blank', 'noopener,noreferrer') : null;
+    try {
+      const url = await chatManagementService.getPersonalCloudDownloadUrl(file.id, { download });
+      if (requestSession !== accountSessionRef.current) {
+        popup?.close?.();
+        return;
+      }
+      if (popup && !popup.closed) popup.location.href = url;
+      else if (typeof window !== 'undefined') window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      popup?.close?.();
+      if (requestSession === accountSessionRef.current) {
+        setPersonalCloudNotice(error?.message || 'Không thể mở file Cloud của tôi.');
+      }
+    }
+  };
+
+  const handlePersonalCloudDelete = async file => {
+    if (!file?.id || personalCloudUploading) return;
+    if (typeof window !== 'undefined' && !window.confirm(`${appCopy.t('Xóa file')} "${file.fileName}"?`)) return;
+    const requestSession = accountSessionRef.current;
+    setPersonalCloudNotice('');
+    try {
+      await chatManagementService.deletePersonalCloudFile(file.id);
+      if (requestSession !== accountSessionRef.current) return;
+      setPersonalCloudFiles(previous => previous.filter(item => item.id !== file.id));
+    } catch (error) {
+      if (requestSession === accountSessionRef.current) setPersonalCloudNotice(error?.message || 'Không thể xóa file Cloud của tôi.');
+    }
+  };
+
   const rememberUnreadBoundary = useCallback((room, conversationId = room?.id) => {
     if (!room || room.isChatbot || room.id === 'empty' || !conversationId) return null;
     const key = String(conversationId);
@@ -5092,6 +5218,8 @@ function App() {
       setConversationMenu(null);
       setGroupMemberMenuId('');
       setConversationCategoryMenuOpen(false);
+      setConversationListCategoryMenuOpen(false);
+      setConversationListMoreMenuOpen(false);
       if (event.type === 'keydown') {
         setProfileContact(null);
         setReactionDetails(null);
@@ -6133,6 +6261,17 @@ function App() {
     setConversationCategoryOptions(CONVERSATION_CATEGORY_OPTIONS.map(category => ({ ...category })));
     setConversationCategoryMenuOpen(false);
     setConversationCategoryManagerOpen(false);
+    setConversationListTab('all');
+    setConversationListCategoryMenuOpen(false);
+    setConversationListMoreMenuOpen(false);
+    setConversationListStatus('all');
+    setConversationListCategoryIds([]);
+    setConversationListStrangersOnly(false);
+    personalCloudRequestRef.current += 1;
+    setPersonalCloudFiles([]);
+    setPersonalCloudLoading(false);
+    setPersonalCloudUploading(false);
+    setPersonalCloudNotice('');
     setMediaBrowserOpen(false);
     directoryAccountsRef.current = [];
     setDirectoryAccounts([]);
@@ -6587,6 +6726,17 @@ function App() {
     setIsUpdatingNotificationMute(false);
     setNotificationClock(Date.now());
     setConversationMenu(null);
+    setConversationListTab('all');
+    setConversationListCategoryMenuOpen(false);
+    setConversationListMoreMenuOpen(false);
+    setConversationListStatus('all');
+    setConversationListCategoryIds([]);
+    setConversationListStrangersOnly(false);
+    personalCloudRequestRef.current += 1;
+    setPersonalCloudFiles([]);
+    setPersonalCloudLoading(false);
+    setPersonalCloudUploading(false);
+    setPersonalCloudNotice('');
     tinodeSessionRequestRef.current = null;
     deletedConversationIdsRef.current.clear();
     groupAvatarSyncRef.current.clear();
@@ -11925,7 +12075,7 @@ function App() {
 
   // Filter conversations
   const normalizedConversationSearch = String(searchQuery || '').trim().toLocaleLowerCase('vi');
-  const filteredChatIds = Object.keys(renderConversations)
+  const baseFilteredChatIds = Object.keys(renderConversations)
     .filter(id => !isSelfDirectConversation(renderConversations[id], currentUser, directoryAccounts))
     .filter(id => !isConversationHiddenAfterDelete(renderConversations[id]))
     .filter(id => shouldShowConversation(renderConversations[id], drafts[id]))
@@ -11938,6 +12088,28 @@ function App() {
       const secondTimestamp = conversationTimestamp(renderConversations[secondId]);
       return secondTimestamp - firstTimestamp;
     });
+  const filterableConversations = Object.fromEntries(
+    Object.entries(renderConversations).map(([id, room]) => [id, {
+      ...room,
+      categoryId: conversationCategoryFor(room)?.id || '',
+    }]),
+  );
+  const isConversationFromStranger = room => {
+    if (!room || room.isGroup || room.isChatbot) return false;
+    const peer = findDirectPeer(room, directoryAccounts, currentUser);
+    if (!peer) return false;
+    return !findAccount(directoryAccounts, peer?.id || peer?.uid || peer?.tinodeUid || peer?.tinode_uid || peer?.name);
+  };
+  const filteredChatIds = filterConversationIds({
+    baseIds: baseFilteredChatIds,
+    conversations: filterableConversations,
+    tab: conversationListTab,
+    status: conversationListStatus,
+    categoryIds: conversationListCategoryIds,
+    strangersOnly: conversationListStrangersOnly,
+    isUnread: room => conversationUnreadIndicators(room).hasUnread,
+    isStranger: isConversationFromStranger,
+  });
 
   const companyContacts = companyDirectoryContacts(directoryAccounts, currentUser);
   const messageShareRecipients = buildMessageShareRecipients({
@@ -12524,11 +12696,13 @@ function App() {
       setMentionActiveIndex(0);
       return true;
     }
-    if (messageMenu || pinnedMessageMenu || conversationMenu || conversationCategoryMenuOpen || groupMemberMenuId) {
+    if (messageMenu || pinnedMessageMenu || conversationMenu || conversationCategoryMenuOpen || groupMemberMenuId || conversationListCategoryMenuOpen || conversationListMoreMenuOpen) {
       setMessageMenu(null);
       setPinnedMessageMenu(null);
       setConversationMenu(null);
       setConversationCategoryMenuOpen(false);
+      setConversationListCategoryMenuOpen(false);
+      setConversationListMoreMenuOpen(false);
       setGroupMemberMenuId('');
       return true;
     }
@@ -12566,6 +12740,8 @@ function App() {
     avatarCropFile,
     activeCall,
     conversationCategoryMenuOpen,
+    conversationListCategoryMenuOpen,
+    conversationListMoreMenuOpen,
     conversationBackgroundCropFile,
     conversationMenu,
     contactNicknameDialog,
@@ -12895,6 +13071,34 @@ function App() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
+          <button type="button" className={`personal-cloud-shortcut ${workspacePanel === 'cloud' ? 'active' : ''}`} onClick={() => openWorkspacePanel('cloud')}>
+            <span className="personal-cloud-shortcut-icon"><i className="fa-solid fa-cloud" aria-hidden="true"></i></span>
+            <span className="personal-cloud-shortcut-copy"><strong>{appCopy.t('Cloud của tôi')}</strong><small>{appCopy.t('Chỉ mình tôi')}</small></span>
+            <i className="fa-solid fa-chevron-right" aria-hidden="true"></i>
+          </button>
+          <ConversationListToolbar
+            copy={appCopy}
+            tab={conversationListTab}
+            onTabChange={handleConversationListTabChange}
+            categoryOptions={conversationCategoryOptions}
+            categoryMenuOpen={conversationListCategoryMenuOpen}
+            onToggleCategoryMenu={toggleConversationListCategoryMenu}
+            status={conversationListStatus}
+            onStatusChange={nextStatus => { setConversationListStatus(nextStatus); setConversationListTab('categories'); }}
+            selectedCategoryIds={conversationListCategoryIds}
+            onToggleCategory={categoryId => {
+              setConversationListTab('categories');
+              setConversationListCategoryIds(previous => previous.includes(categoryId)
+                ? previous.filter(id => id !== categoryId)
+                : [...previous, categoryId]);
+            }}
+            strangersOnly={conversationListStrangersOnly}
+            onToggleStrangers={() => { setConversationListTab('categories'); setConversationListStrangersOnly(previous => !previous); }}
+            onManageCategories={openConversationCategoryManager}
+            moreMenuOpen={conversationListMoreMenuOpen}
+            onToggleMoreMenu={toggleConversationListMoreMenu}
+            onResetFilters={resetConversationListFilters}
+          />
         </div>
 
         <div className="conversations-list">
@@ -15140,7 +15344,7 @@ function App() {
           <section className={`workspace-panel ${workspacePanel === 'enterprise' ? 'enterprise-shell-panel' : ''} ${workspacePanel === 'settings' ? 'settings-shell-panel' : ''}`} role="dialog" aria-modal="true" aria-labelledby="workspace-panel-title" data-workspace-panel={workspacePanel}>
             <div className="workspace-panel-header">
               <div>
-                <h2 id="workspace-panel-title">{appCopy.t(workspacePanel === 'groups' ? appCopy.groups : workspacePanel === 'profile' ? 'Hồ sơ cá nhân' : workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'enterprise' ? appCopy.work : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : appCopy.settings)}</h2>
+                <h2 id="workspace-panel-title">{appCopy.t(workspacePanel === 'groups' ? appCopy.groups : workspacePanel === 'profile' ? 'Hồ sơ cá nhân' : workspacePanel === 'cloud' ? 'Cloud của tôi' : workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'enterprise' ? appCopy.work : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : appCopy.settings)}</h2>
               </div>
               <div className="workspace-panel-header-actions">
                 {workspacePanel === 'profile' && (
@@ -15270,6 +15474,21 @@ function App() {
                   </button>
                 </form>
               </div>
+            )}
+
+            {workspacePanel === 'cloud' && (
+              <PersonalCloudPanel
+                copy={appCopy}
+                available={Boolean(chatManagementService.remote && managementViewerId)}
+                files={personalCloudFiles}
+                loading={personalCloudLoading}
+                uploading={personalCloudUploading}
+                notice={personalCloudNotice}
+                onUpload={handlePersonalCloudUpload}
+                onOpen={file => openPersonalCloudUrl(file)}
+                onDownload={file => openPersonalCloudUrl(file, true)}
+                onDelete={handlePersonalCloudDelete}
+              />
             )}
 
             {workspacePanel === 'contacts' && (

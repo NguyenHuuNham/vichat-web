@@ -465,6 +465,60 @@ body {
     padding: 0 6px 6px 6px;
 }
 
+.personal-cloud-shortcut {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 10px;
+    border: 1px solid rgba(244, 81, 30, .16);
+    border-radius: 13px;
+    color: var(--text-body);
+    background: linear-gradient(120deg, rgba(244, 81, 30, .08), rgba(43, 166, 111, .08));
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+.personal-cloud-shortcut:hover,
+.personal-cloud-shortcut.active { border-color: rgba(244, 81, 30, .42); background: var(--vichat-blue-light); transform: translateY(-1px); }
+.personal-cloud-shortcut-icon { display: grid; width: 31px; height: 31px; flex: 0 0 31px; place-items: center; border-radius: 10px; color: var(--vichat-blue); background: var(--bg-white); box-shadow: 0 4px 10px rgba(20, 70, 66, .08); }
+.personal-cloud-shortcut-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+.personal-cloud-shortcut-copy strong { overflow: hidden; color: var(--text-main); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.personal-cloud-shortcut-copy small { color: var(--text-muted); font-size: 10px; }
+.personal-cloud-shortcut > .fa-chevron-right { color: var(--text-muted); font-size: 10px; }
+
+.conversation-list-toolbar { position: relative; z-index: 4; min-width: 0; }
+.conversation-list-tabs { display: flex; min-width: 0; align-items: center; gap: 3px; padding: 0 1px; }
+.conversation-list-tabs > button { display: inline-flex; min-width: 0; height: 31px; align-items: center; justify-content: center; gap: 4px; padding: 0 8px; border: 0; border-radius: 8px; color: var(--text-muted); background: transparent; font: inherit; font-size: 11px; font-weight: 750; white-space: nowrap; cursor: pointer; transition: var(--transition-fast); }
+.conversation-list-tabs > button:hover,
+.conversation-list-tabs > button.active { color: var(--vichat-blue); background: var(--vichat-blue-light); }
+.conversation-list-tabs > button strong { display: inline-grid; min-width: 16px; height: 16px; padding: 0 3px; place-items: center; border-radius: 999px; color: var(--vichat-blue); background: var(--bg-white); font-size: 9px; line-height: 1; }
+.conversation-list-tabs .conversation-list-more { width: 30px; flex: 0 0 30px; padding: 0; font-size: 13px; }
+.conversation-list-filter-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; display: flex; width: min(260px, calc(100vw - 28px)); max-height: min(430px, calc(100vh - 220px)); flex-direction: column; gap: 2px; overflow-y: auto; padding: 8px; border: 1px solid var(--border-color); border-radius: 13px; background: var(--bg-white); box-shadow: 0 16px 34px rgba(6, 28, 26, .18); overscroll-behavior: contain; }
+.conversation-list-more-menu { left: auto; right: 0; width: min(230px, calc(100vw - 28px)); }
+.conversation-list-filter-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 5px 7px; border-bottom: 1px solid var(--border-color); }
+.conversation-list-filter-heading strong { color: var(--text-main); font-size: 12px; }
+.conversation-list-filter-heading button { padding: 2px 0; border: 0; color: var(--vichat-blue); background: transparent; font: inherit; font-size: 10px; font-weight: 750; cursor: pointer; }
+.conversation-list-filter-section { display: flex; flex-direction: column; gap: 2px; padding: 6px 0 3px; }
+.conversation-list-filter-label { padding: 2px 7px 4px; color: var(--text-muted); font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.conversation-filter-choice,
+.conversation-filter-manage { display: flex; width: 100%; min-height: 30px; box-sizing: border-box; align-items: center; gap: 8px; padding: 6px 7px; border: 0; border-radius: 8px; color: var(--text-body); background: transparent; font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
+.conversation-filter-choice:hover,
+.conversation-filter-choice.active,
+.conversation-filter-manage:hover { color: var(--text-main); background: var(--bg-gray); }
+.conversation-filter-choice > i:first-child { width: 13px; color: var(--text-muted); font-size: 10px; text-align: center; }
+.conversation-filter-choice.active > i:first-child { color: var(--vichat-blue); }
+.conversation-filter-choice > span:not(.conversation-filter-tag) { min-width: 0; flex: 1; }
+.conversation-filter-choice > i:last-child { margin-left: auto; color: var(--status-online); font-size: 10px; }
+.conversation-filter-tag { width: 15px; height: 10px; flex: 0 0 15px; clip-path: polygon(0 0, 74% 0, 100% 50%, 74% 100%, 0 100%); }
+.conversation-filter-choice.stranger { margin-top: 4px; }
+.conversation-filter-choice.stranger > i:first-child { color: var(--vichat-blue); }
+.conversation-list-filter-divider { height: 1px; margin: 5px 3px; background: var(--border-color); }
+.conversation-filter-manage { color: var(--text-main); font-weight: 750; }
+.conversation-filter-manage > i { width: 13px; color: var(--vichat-blue); text-align: center; }
+
 .conversation-item {
     position: relative;
     display: flex;
@@ -4172,6 +4226,36 @@ input:checked + .slider:before {
 .workspace-hint { margin: 13px 0 17px; color: var(--text-muted); font-size: 12px; line-height: 1.55; }
 .workspace-empty { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 150px; color: var(--text-muted); font-size: 13px; text-align: center; }
 .workspace-empty i { font-size: 22px; color: var(--vichat-blue); }
+.personal-cloud-panel { width: min(680px, 100%); margin: 0 auto; }
+.personal-cloud-hero { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 13px; padding: 16px; border: 1px solid rgba(244, 81, 30, .16); border-radius: 17px; background: linear-gradient(135deg, rgba(244, 81, 30, .08), rgba(43, 166, 111, .06)); }
+.personal-cloud-hero-icon { display: grid; width: 52px; height: 52px; place-items: center; border-radius: 16px; color: var(--vichat-blue); background: var(--bg-white); box-shadow: 0 8px 20px rgba(20, 70, 66, .1); font-size: 22px; }
+.personal-cloud-eyebrow { color: var(--vichat-blue); font-size: 9px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+.personal-cloud-hero h3 { margin: 3px 0 3px; color: var(--text-main); font-size: 20px; }
+.personal-cloud-hero p { margin: 0; color: var(--text-muted); font-size: 11px; line-height: 1.45; }
+.personal-cloud-upload-button { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; gap: 7px; padding: 0 12px; border: 1px solid rgba(244, 81, 30, .25); border-radius: 10px; color: #fff; background: var(--vichat-blue); font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; transition: var(--transition-fast); }
+.personal-cloud-upload-button:hover:not(.disabled) { background: var(--vichat-blue-dark); transform: translateY(-1px); }
+.personal-cloud-upload-button.disabled { cursor: default; opacity: .58; }
+.personal-cloud-upload-button input { display: none; }
+.personal-cloud-notice { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; padding: 9px 10px; border: 1px solid rgba(244, 81, 30, .18); border-radius: 10px; color: var(--text-muted); background: rgba(244, 81, 30, .06); font-size: 11px; line-height: 1.45; }
+.personal-cloud-notice i { margin-top: 1px; color: var(--vichat-blue); }
+.personal-cloud-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 20px 0 9px; }
+.personal-cloud-section-heading > div { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.personal-cloud-section-heading strong { color: var(--text-main); font-size: 14px; }
+.personal-cloud-section-heading small { color: var(--text-muted); font-size: 10px; }
+.personal-cloud-section-heading > i { color: var(--vichat-blue); font-size: 13px; }
+.personal-cloud-file-list { display: flex; flex-direction: column; gap: 7px; }
+.personal-cloud-file { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--border-color); border-radius: 13px; background: var(--bg-white); transition: var(--transition-fast); }
+.personal-cloud-file:hover { border-color: rgba(244, 81, 30, .28); background: var(--bg-app); transform: translateY(-1px); }
+.personal-cloud-file-main { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: 10px; min-width: 0; padding: 0; border: 0; color: inherit; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.personal-cloud-file-icon { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 11px; color: var(--vichat-blue); background: var(--vichat-blue-light); font-size: 17px; }
+.personal-cloud-file-copy { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.personal-cloud-file-copy strong { overflow: hidden; color: var(--text-main); font-size: 12px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.personal-cloud-file-copy small { overflow: hidden; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.personal-cloud-file-actions { display: flex; align-items: center; gap: 3px; }
+.personal-cloud-file-actions button { display: grid; width: 29px; height: 29px; place-items: center; padding: 0; border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-muted); background: var(--bg-white); cursor: pointer; transition: var(--transition-fast); }
+.personal-cloud-file-actions button:hover { border-color: rgba(244, 81, 30, .3); color: var(--vichat-blue); background: var(--vichat-blue-light); }
+.personal-cloud-file-actions button.danger:hover { border-color: rgba(224, 68, 45, .28); color: var(--vichat-red); background: var(--vichat-red-light); }
+.personal-cloud-empty { min-height: 180px; flex-direction: column; gap: 8px; border: 1px dashed var(--border-color); border-radius: 13px; }
 .workspace-list { display: flex; flex-direction: column; gap: 5px; }
 .workspace-list-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px; border: 1px solid transparent; border-radius: 10px; color: var(--text-body); background: transparent; text-align: left; cursor: pointer; }
 .workspace-list-item:hover { border-color: var(--border-color); background: var(--bg-app); }
@@ -4299,6 +4383,19 @@ input:checked + .slider:before {
     .workspace-file-copy strong { font-size: 12px; }
     .workspace-file-meta > small { font-size: 10px; }
     .workspace-file-action { width: 28px; height: 28px; }
+}
+
+@media (max-width: 576px) {
+    .personal-cloud-hero { grid-template-columns: auto minmax(0, 1fr); padding: 13px; }
+    .personal-cloud-upload-button { grid-column: 1 / -1; width: 100%; }
+    .personal-cloud-hero-icon { width: 44px; height: 44px; border-radius: 13px; font-size: 19px; }
+    .personal-cloud-hero h3 { font-size: 18px; }
+    .personal-cloud-file { gap: 5px; }
+    .personal-cloud-file-main { grid-template-columns: 35px minmax(0, 1fr); gap: 8px; }
+    .personal-cloud-file-icon { width: 35px; height: 35px; border-radius: 9px; font-size: 15px; }
+    .personal-cloud-file-actions button { width: 27px; height: 27px; }
+    .conversation-list-tabs > button { padding-inline: 7px; font-size: 10.5px; }
+    .conversation-list-filter-menu { max-height: min(390px, calc(100vh - 190px)); }
 }
 .workspace-conversation-indicators { margin-left: auto; }
 .workspace-unread { display: grid; min-width: 21px; height: 21px; padding: 0 5px; place-items: center; border: 1px solid #cddff1; border-radius: 11px; color: #285f91; background: #eaf3fc; font-size: 11px; font-weight: 700; line-height: 1; }
@@ -7330,6 +7427,14 @@ html[data-theme="dark"] .sidebar-secondary,
 html[data-theme="dark"] .sidebar-detail,
 html[data-theme="dark"] .chat-main-header,
 html[data-theme="dark"] .chat-main-input { background-color: var(--bg-white); }
+html[data-theme="dark"] .personal-cloud-shortcut { border-color: rgba(244, 81, 30, .24); background: linear-gradient(120deg, rgba(244, 81, 30, .14), rgba(43, 166, 111, .12)); }
+html[data-theme="dark"] .personal-cloud-shortcut-icon,
+html[data-theme="dark"] .personal-cloud-file-actions button { background: var(--bg-app); }
+html[data-theme="dark"] .conversation-list-filter-menu { box-shadow: 0 18px 38px rgba(0, 0, 0, .42); }
+html[data-theme="dark"] .personal-cloud-hero { border-color: rgba(244, 81, 30, .28); background: linear-gradient(135deg, rgba(244, 81, 30, .14), rgba(43, 166, 111, .12)); }
+html[data-theme="dark"] .personal-cloud-hero-icon { background: var(--bg-app); }
+html[data-theme="dark"] .personal-cloud-file { background: var(--bg-white); }
+html[data-theme="dark"] .personal-cloud-file:hover { background: var(--bg-app); }
 html[data-theme="dark"] .editing-banner { border-color: #6a4030; background: #2b2524; }
 html[data-theme="dark"] .edited-message-label { color: #b6c4c5; }
 html[data-theme="dark"] .edit-history-current { border-color: #6a4030; background: #4a2e24; }

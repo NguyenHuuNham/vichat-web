@@ -975,3 +975,17 @@ test('directory chat navigates before remote provisioning can reject', () => {
   assert.match(directChatSource, /migrateOptimisticRoom/);
   assert.match(appSource, /selectedRoom = previousRooms\[currentChatIdRef\.current\]/);
 });
+
+test('personal cloud stays on owner-scoped Chatmgt routes and uses credential-free direct upload', () => {
+  assert.equal(typeof chatManagementService.listPersonalCloudFiles, 'function');
+  assert.equal(typeof chatManagementService.uploadPersonalCloudFile, 'function');
+  assert.equal(typeof chatManagementService.getPersonalCloudDownloadUrl, 'function');
+  assert.equal(typeof chatManagementService.deletePersonalCloudFile, 'function');
+  assert.match(managementServiceSource, /\/api\/v1\/chat\/cloud\/uploads/);
+  assert.match(managementServiceSource, /credentials: 'omit'/);
+  assert.match(managementServiceSource, /upload_token/);
+  assert.match(appSource, /openWorkspacePanel\('cloud'\)/);
+  assert.match(appSource, /<PersonalCloudPanel/);
+  assert.match(stylesSource, /\.personal-cloud-shortcut/);
+  assert.match(stylesSource, /\.personal-cloud-file/);
+});

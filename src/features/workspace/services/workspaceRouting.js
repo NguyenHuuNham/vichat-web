@@ -5,6 +5,7 @@ const WORKSPACE_ROUTE_BY_PANEL = Object.freeze({
   settings: '/settings',
   profile: '/profile',
   files: '/files',
+  cloud: '/my-cloud',
   notifications: '/notifications',
   search: '/search',
 });

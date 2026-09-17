@@ -472,6 +472,22 @@ class ManagementAccount(db.Model):
     )
 
 
+class PersonalCloudFile(CommonModel):
+    __tablename__ = "personal_cloud_file"
+    tenant_id = db.Column(String(50), nullable=False, index=True)
+    owner_id = db.Column(String(100), nullable=False, index=True)
+    upload_id = db.Column(String(64), nullable=False)
+    file_name = db.Column(String(500), nullable=False)
+    mime_type = db.Column(String(255), nullable=False)
+    size = db.Column(BigInteger(), nullable=False)
+    media_ref = db.Column(Text(), nullable=False)
+    etag = db.Column(String(255))
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "upload_id", name="uq_personal_cloud_file_upload"),
+        Index("ix_personal_cloud_file_owner_updated", "tenant_id", "owner_id", "updated_at"),
+    )
+
+
 class EnterpriseItem(CommonModel):
     __tablename__ = "enterprise_item"
     tenant_id = db.Column(String(50), nullable=False, index=True)

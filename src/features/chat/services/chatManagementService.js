@@ -342,6 +342,25 @@ function responseItems(payload) {
   return [];
 }
 
+function normalizePersonalCloudFile(record) {
+  if (!record || typeof record !== 'object') return null;
+  const id = scalarText(record.id || record.fileId || record.file_id);
+  const uploadId = scalarText(record.uploadId || record.upload_id);
+  if (!id || !uploadId) return null;
+  const size = Number(record.size);
+  const createdAt = Number(record.createdAt || record.created_at);
+  const updatedAt = Number(record.updatedAt || record.updated_at);
+  return {
+    id,
+    uploadId,
+    fileName: scalarText(record.fileName || record.file_name) || 'tep-dinh-kem',
+    mimeType: scalarText(record.mimeType || record.mime_type) || 'application/octet-stream',
+    size: Number.isFinite(size) && size >= 0 ? size : 0,
+    createdAt: Number.isFinite(createdAt) ? createdAt : 0,
+    updatedAt: Number.isFinite(updatedAt) ? updatedAt : 0,
+  };
+}
+
 async function apiRequest(path, options = {}) {
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const response = await fetch(`${apiBase}${path}`, {
@@ -696,6 +715,72 @@ export const chatManagementService = {
       lastDirectorySyncByTenant.set(directoryScope.tenantId, payload?.directory_sync || null);
     }
     return accountsForActiveTenant(responseItems(payload).map(publicAccount).filter(Boolean));
+  },
+
+  async listPersonalCloudFiles() {
+    if (!apiBase || !remoteAuth) return [];
+    const payload = await apiRequest('/api/v1/chat/cloud/files?limit=200', { cache: 'no-store' });
+    return responseItems(payload).map(normalizePersonalCloudFile).filter(Boolean);
+  },
+
+  async uploadPersonalCloudFile(file, { onProgress } = {}) {
+    if (!apiBase || !remoteAuth) throw new Error('Personal cloud storage is not configured.');
+    if (!file || typeof file.size !== 'number' || file.size <= 0) {
+      throw new Error('Vui long chon mot file khong rong.');
+    }
+    const prepared = await apiRequest('/api/v1/chat/cloud/uploads', {
+      method: 'POST',
+      body: JSON.stringify({
+        file_name: String(file.name || 'tep-dinh-kem'),
+        content_type: String(file.type || 'application/octet-stream'),
+        size: file.size,
+      }),
+    });
+    const uploadUrl = scalarText(prepared?.upload_url || prepared?.uploadUrl);
+    if (!uploadUrl) throw new Error('May chu khong tra ve dia chi tai file.');
+    const uploadResponse = await fetch(uploadUrl, {
+      method: String(prepared.method || 'PUT').toUpperCase(),
+      credentials: 'omit',
+      headers: prepared.headers || {},
+      body: file,
+    });
+    if (!uploadResponse.ok) {
+      const error = new Error(`Cloud storage HTTP ${uploadResponse.status}`);
+      error.status = uploadResponse.status;
+      error.code = 'PERSONAL_CLOUD_UPLOAD_FAILED';
+      throw error;
+    }
+    onProgress?.(1);
+    const uploadId = scalarText(prepared.upload_id || prepared.uploadId);
+    const completed = await apiRequest(`/api/v1/chat/cloud/uploads/${encodeURIComponent(uploadId)}/complete`, {
+      method: 'POST',
+      body: JSON.stringify({
+        size: file.size,
+        upload_token: prepared.upload_token || prepared.uploadToken || '',
+      }),
+    });
+    return normalizePersonalCloudFile(completed);
+  },
+
+  async getPersonalCloudDownloadUrl(fileId, { download = false } = {}) {
+    if (!apiBase || !remoteAuth) throw new Error('Personal cloud storage is not configured.');
+    const params = new URLSearchParams({ format: 'json' });
+    if (download) params.set('download', '1');
+    const payload = await apiRequest(
+      `/api/v1/chat/cloud/files/${encodeURIComponent(fileId)}/download?${params}`,
+      { cache: 'no-store' },
+    );
+    const url = scalarText(payload?.url);
+    if (!url) throw new Error('May chu khong tra ve dia chi file.');
+    return url;
+  },
+
+  async deletePersonalCloudFile(fileId) {
+    if (!apiBase || !remoteAuth) throw new Error('Personal cloud storage is not configured.');
+    const payload = await apiRequest(`/api/v1/chat/cloud/files/${encodeURIComponent(fileId)}`, {
+      method: 'DELETE',
+    });
+    return payload;
   },
 
   async heartbeatPresence(accountIds = []) {

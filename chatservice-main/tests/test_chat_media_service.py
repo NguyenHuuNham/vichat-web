@@ -12,6 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = PROJECT_ROOT.parent
 SERVICE_PATH = PROJECT_ROOT / "application" / "services" / "chat_media_service.py"
 CONTROLLER_PATH = PROJECT_ROOT / "application" / "controllers" / "api_chat_media.py"
+PERSONAL_CLOUD_CONTROLLER_PATH = PROJECT_ROOT / "application" / "controllers" / "api_personal_cloud.py"
 extensions = SimpleNamespace(minioclient=None, minio_public_client=None)
 application_stub = types.ModuleType("application")
 application_stub.extensions = extensions
@@ -23,10 +24,15 @@ with mock.patch.dict(sys.modules, {"application": application_stub}):
 ChatMediaError = service_module.ChatMediaError
 _object_name = service_module._object_name
 _pending_object_name = service_module._pending_object_name
+_personal_cloud_object_name = service_module._personal_cloud_object_name
+_personal_cloud_pending_object_name = service_module._personal_cloud_pending_object_name
 chat_media_status = service_module.chat_media_status
 complete_chat_media_upload = service_module.complete_chat_media_upload
 create_chat_media_upload = service_module.create_chat_media_upload
 resolve_chat_media_download = service_module.resolve_chat_media_download
+complete_personal_cloud_upload = service_module.complete_personal_cloud_upload
+create_personal_cloud_upload = service_module.create_personal_cloud_upload
+resolve_personal_cloud_download = service_module.resolve_personal_cloud_download
 
 
 def function_source(path, function_name):
@@ -80,6 +86,21 @@ class ChatMediaDeploymentContractTests(unittest.TestCase):
         self.assertIn("management_session_requested(request)", identity_source)
         for route_name in ("create_media_upload", "complete_media_upload", "get_chat_media"):
             self.assertIn("_chat_media_identity(request)", function_source(CONTROLLER_PATH, route_name))
+
+    def test_personal_cloud_routes_keep_owner_scope_in_the_session(self):
+        source = PERSONAL_CLOUD_CONTROLLER_PATH.read_text(encoding="utf-8")
+        self.assertIn("_user_id(current_user)", source)
+        self.assertIn("PersonalCloudFile.owner_id == owner_id", source)
+        self.assertIn("resolve_personal_cloud_download", source)
+        self.assertIn("remove_personal_cloud_media", source)
+        for route_name in (
+            "create_personal_cloud_media_upload",
+            "complete_personal_cloud_media_upload",
+            "list_personal_cloud_files",
+            "download_personal_cloud_file",
+            "delete_personal_cloud_file",
+        ):
+            self.assertIn("_cloud_identity(request)", function_source(PERSONAL_CLOUD_CONTROLLER_PATH, route_name))
 
     def test_production_uses_public_s3_without_replacing_legacy_tinode_storage(self):
         compose = (REPOSITORY_ROOT / "infrastructure" / "production" / "compose.yaml").read_text(encoding="utf-8")
@@ -159,6 +180,16 @@ class ChatMediaServiceTests(unittest.TestCase):
             self.app,
             tenant,
             "photo.png",
+            content_type,
+            size,
+        )
+
+    def prepare_cloud(self, tenant="tenant-a", owner="user-a", size=5, content_type="image/png"):
+        return create_personal_cloud_upload(
+            self.app,
+            tenant,
+            owner,
+            "private-photo.png",
             content_type,
             size,
         )
@@ -313,6 +344,75 @@ class ChatMediaServiceTests(unittest.TestCase):
         resolved = resolve_chat_media_download(
             self.app,
             "tenant-a",
+            prepared["upload_id"],
+        )
+        self.assertTrue(resolved["url"].startswith("https://s3.upgo.vn/"))
+
+    def test_personal_cloud_upload_path_and_ticket_are_owner_scoped(self):
+        prepared = self.prepare_cloud(size=5)
+        pending_object_name = _personal_cloud_pending_object_name(
+            self.app,
+            "tenant-a",
+            "user-a",
+            prepared["upload_id"],
+        )
+        completed_object_name = _personal_cloud_object_name(
+            self.app,
+            "tenant-a",
+            "user-a",
+            prepared["upload_id"],
+        )
+        self.assertIn("/_personal/", prepared["upload_url"])
+        self.assertIn("/_personal/_pending/", pending_object_name)
+        self.assertNotIn("user-a", prepared["upload_url"])
+        self.client.objects[pending_object_name] = SimpleNamespace(
+            size=5,
+            content_type="image/png",
+            etag="private-etag",
+        )
+
+        completed = complete_personal_cloud_upload(
+            self.app,
+            "tenant-a",
+            "user-a",
+            prepared["upload_id"],
+            5,
+            prepared["upload_token"],
+        )
+
+        self.assertEqual(completed["size"], 5)
+        self.assertIn(completed_object_name, self.client.objects)
+        self.assertNotIn(pending_object_name, self.client.objects)
+        with self.assertRaisesRegex(ChatMediaError, "ticket is invalid"):
+            complete_personal_cloud_upload(
+                self.app,
+                "tenant-a",
+                "user-b",
+                prepared["upload_id"],
+                5,
+                prepared["upload_token"],
+            )
+
+    def test_generic_chat_media_resolver_cannot_read_a_personal_cloud_object(self):
+        prepared = self.prepare_cloud(size=4)
+        object_name = _personal_cloud_object_name(
+            self.app,
+            "tenant-a",
+            "user-a",
+            prepared["upload_id"],
+        )
+        self.client.objects[object_name] = SimpleNamespace(
+            size=4,
+            content_type="application/pdf",
+            etag="private-etag",
+        )
+
+        with self.assertRaisesRegex(ChatMediaError, "not found"):
+            resolve_chat_media_download(self.app, "tenant-a", prepared["upload_id"])
+        resolved = resolve_personal_cloud_download(
+            self.app,
+            "tenant-a",
+            "user-a",
             prepared["upload_id"],
         )
         self.assertTrue(resolved["url"].startswith("https://s3.upgo.vn/"))

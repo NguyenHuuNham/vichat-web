@@ -75,6 +75,25 @@ back to `tinode`. Production uses `CHAT_MEDIA_FALLBACK_TO_TINODE=false`; a
 failed S3 upload cannot silently consume the rollback Tinode disk. No old
 message, topic, cursor or historical file is migrated into the fresh store.
 
+### Personal cloud boundary
+
+`Cloud của tôi` is a private file workspace, not a Tinode conversation and not
+shared chat media. Chatmgt stores only owner-scoped metadata in
+`personal_cloud_file` and derives the owner from the authenticated session;
+the browser cannot submit another owner or tenant ID. List, download-signing,
+completion and delete operations all require the current `(tenant, owner)`
+scope.
+
+Personal cloud objects use a separate S3 namespace under
+`<prefix>/_personal/<tenant-hash>/<owner-hash>/...`; pending uploads use the
+matching `_personal/_pending/` namespace. The upload/completion ticket has a
+separate signing salt and binds both tenant and owner hashes, so a normal chat
+media ticket cannot read or complete a private cloud upload. The frontend sends
+the file directly to the short-lived S3 PUT URL without Chatmgt cookies and
+then calls the owner-scoped completion endpoint. Private downloads return
+short-lived `private, no-store` GET signatures. Logout and tenant changes clear
+the in-memory cloud list before another account can load it.
+
 ### ChatUI maintenance control
 
 Chatmgt has a global maintenance control for protecting ChatUI during a
