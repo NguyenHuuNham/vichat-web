@@ -367,8 +367,6 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Thành viên': 'Member',
   'Họ và tên': 'Full name',
   'Email': 'Email',
-  'Thông tin sẽ được lưu qua UpGO Account và đồng bộ lại cho các thiết bị.': 'Changes are saved through UpGO Account and synced to your devices.',
-  'Lưu hồ sơ': 'Save profile',
   'Chưa có nhân viên nào khác trong công ty.': 'There are no other employees in the company.',
   'Không tìm thấy tài khoản phù hợp.': 'No matching account found.',
   'Kết quả tìm kiếm': 'Search results',

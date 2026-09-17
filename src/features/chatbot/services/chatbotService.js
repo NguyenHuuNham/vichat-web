@@ -1,6 +1,7 @@
 const env = import.meta.env || {};
 
 export const EXTERNAL_CHAT_ONLY = String(env.VITE_CHAT_MODE || 'internal').toLowerCase() === 'external';
+export const CHATBOT_DEFAULT_AVATAR = '/vichat-ai.svg';
 
 export const CHATBOT_STARTER_PROMPTS = [
   {
@@ -31,7 +32,7 @@ export const CHATBOT_ACCOUNT = {
   role: 'assistant',
   department: 'GON Platform',
   title: 'Trợ lý tri thức doanh nghiệp',
-  avatar: String(env.VITE_CHATBOT_DISPLAY_AVATAR || '/vichat-ai.svg'),
+  avatar: CHATBOT_DEFAULT_AVATAR,
   online: true,
   type: 'bot',
 };
@@ -45,7 +46,7 @@ export function applyTinodeChatbotConfig(config = {}) {
       name: String(config.name || CHATBOT_ACCOUNT.name),
       title: String(config.title || CHATBOT_ACCOUNT.title),
       department: String(config.organization || CHATBOT_ACCOUNT.department),
-      avatar: String(config.avatar || CHATBOT_ACCOUNT.avatar),
+      avatar: CHATBOT_DEFAULT_AVATAR,
       online: true,
     });
   }
@@ -60,7 +61,7 @@ if (EXTERNAL_CHAT_ONLY) {
     name: String(env.VITE_CHATBOT_DISPLAY_NAME || 'ViChat AI'),
     title: String(env.VITE_CHATBOT_DISPLAY_TITLE || 'Trợ lý tri thức doanh nghiệp'),
     department: String(env.VITE_CHATBOT_DISPLAY_ORGANIZATION || 'GON Platform'),
-    avatar: String(env.VITE_CHATBOT_DISPLAY_AVATAR || CHATBOT_ACCOUNT.avatar),
+    avatar: CHATBOT_DEFAULT_AVATAR,
   });
 }
 
@@ -133,6 +134,47 @@ function normalizedChatbotRole(value) {
   if (role === 'user' || role === 'outgoing') return 'user';
   if (role === 'assistant' || role === 'incoming') return 'assistant';
   return '';
+}
+
+function chatbotIdentityMatches(value) {
+  const identity = String(value || '').trim().toLowerCase();
+  if (!identity) return false;
+  return [CHATBOT_ACCOUNT.id, CHATBOT_ACCOUNT.tinodeUid, CHATBOT_ACCOUNT.username]
+    .filter(Boolean)
+    .some(candidate => identity === String(candidate).trim().toLowerCase());
+}
+
+function isChatbotAssistantMessage(message) {
+  return normalizedChatbotRole(message?.role || message?.sender) === 'assistant'
+    || [message?.senderId, message?.sender_id, message?.uid, message?.tinodeUid, message?.tinode_uid]
+      .some(chatbotIdentityMatches);
+}
+
+// Old local/Tinode copies may contain a configurable bot avatar. Normalize
+// those copies at the storage boundary so every session renders one identity.
+export function normalizeChatbotMessage(message) {
+  if (!message || typeof message !== 'object') return message;
+  const replyTo = message.replyTo || message.reply_to;
+  const replyIsChatbot = chatbotIdentityMatches(
+    replyTo?.senderId || replyTo?.sender_id || replyTo?.uid || replyTo?.tinodeUid || replyTo?.tinode_uid,
+  );
+  const isAssistant = isChatbotAssistantMessage(message);
+  const assistantAvatarNeedsNormalization = isAssistant && message.avatar !== CHATBOT_DEFAULT_AVATAR;
+  const replyAvatarNeedsNormalization = replyIsChatbot && replyTo && replyTo.avatar !== CHATBOT_DEFAULT_AVATAR;
+  const legacyReplyAvatarNeedsNormalization = replyIsChatbot
+    && message.reply_to
+    && message.reply_to.avatar !== CHATBOT_DEFAULT_AVATAR;
+  if (!assistantAvatarNeedsNormalization && !replyAvatarNeedsNormalization && !legacyReplyAvatarNeedsNormalization) {
+    return message;
+  }
+  return {
+    ...message,
+    ...(assistantAvatarNeedsNormalization ? { avatar: CHATBOT_DEFAULT_AVATAR } : {}),
+    ...(replyIsChatbot && replyTo && (replyAvatarNeedsNormalization || legacyReplyAvatarNeedsNormalization) ? {
+      replyTo: { ...replyTo, avatar: CHATBOT_DEFAULT_AVATAR },
+      ...(message.reply_to ? { reply_to: { ...message.reply_to, avatar: CHATBOT_DEFAULT_AVATAR } } : {}),
+    } : {}),
+  };
 }
 
 function positiveSequence(value) {
@@ -214,7 +256,7 @@ function mergeChatbotMessage(previous, incoming) {
   const failed = hasSuccessfulCopy ? false : hasFailedCopy;
   const previousCorrelationKey = resolvedChatbotCorrelationKey(previous);
   const incomingCorrelationKey = resolvedChatbotCorrelationKey(incoming);
-  return {
+  return normalizeChatbotMessage({
     ...previous,
     ...incoming,
     id: previous?.id || incoming?.id,
@@ -242,7 +284,7 @@ function mergeChatbotMessage(previous, incoming) {
     raw: incoming?.raw || previous?.raw,
     pending,
     failed,
-  };
+  });
 }
 
 // Merge legacy HTTP history with Tinode history without duplicating messages.
@@ -252,7 +294,8 @@ export function mergeChatbotMessages(...sources) {
   const correlationKeys = new Map();
   const fingerprints = new Map();
   sources.forEach((source, sourceIndex) => {
-    (Array.isArray(source) ? source : []).forEach(message => {
+    (Array.isArray(source) ? source : []).forEach(rawMessage => {
+      const message = normalizeChatbotMessage(rawMessage);
       if (!message || typeof message !== 'object') return;
       const id = String(message.id || '').trim();
       const correlationKey = resolvedChatbotCorrelationKey(message);
@@ -306,7 +349,7 @@ export function mergeChatbotMessages(...sources) {
 
 export function saveChatbotMessage(userId, message) {
   try {
-    const next = [...loadChatbotMessages(userId), message].slice(-200);
+    const next = [...loadChatbotMessages(userId), normalizeChatbotMessage(message)].slice(-200);
     window.localStorage.setItem(storageKey(userId), JSON.stringify(next));
   } catch {
     // Browser storage can be disabled; the active conversation still works in memory.
@@ -413,7 +456,7 @@ export async function loadChatbotMessagesFromServer(user, conversationId = CHATB
         sender: item.role === 'user' ? 'outgoing' : 'incoming',
         senderId: item.role === 'user' ? (user?.id || user?.uid) : CHATBOT_ACCOUNT.id,
         senderName: item.role === 'user' ? user?.name : CHATBOT_ACCOUNT.name,
-        avatar: item.role === 'user' ? user?.avatar : CHATBOT_ACCOUNT.avatar,
+        avatar: item.role === 'user' ? user?.avatar : CHATBOT_DEFAULT_AVATAR,
         text: item.content,
         time: item.created_at ? new Date(item.created_at * 1000).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
         createdAt: item.created_at ? new Date(item.created_at * 1000).toISOString() : undefined,

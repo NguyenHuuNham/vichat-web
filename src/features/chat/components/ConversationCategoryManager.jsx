@@ -33,6 +33,7 @@ export default function ConversationCategoryManager({
   onSave,
   onDelete,
   onReorder,
+  requestAppConfirmation = () => Promise.resolve(false),
 }) {
   const [screen, setScreen] = useState('list');
   const [draft, setDraft] = useState(EMPTY_DRAFT);
@@ -133,9 +134,15 @@ export default function ConversationCategoryManager({
     setNotice('');
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!draft.id) return;
-    if (!window.confirm(copy.t('Xóa thẻ này và bỏ thẻ khỏi các hội thoại đang gắn?'))) return;
+    const confirmed = await requestAppConfirmation({
+      title: copy.t('Xóa thẻ phân loại?'),
+      message: copy.t('Thẻ sẽ bị xóa và gỡ khỏi các hội thoại đang được gắn thẻ.'),
+      confirmLabel: copy.t('Xóa thẻ'),
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     onDelete(draft.id);
     setScreen('list');
     setNotice('');

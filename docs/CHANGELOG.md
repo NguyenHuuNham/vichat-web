@@ -6,6 +6,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-18-01 - Don gian hoa ho so, khoa avatar ViChat AI va lam moi dialog Workspace
+
+- Thoi gian: 2026-09-18 (Asia/Saigon)
+- Loai: Sua loi | Web | UX | Kiem thu | Trien khai | Tai lieu
+- Trang thai: Da kiem thu local; cho commit, push va deploy production
+- Muc tieu: Bo thong tin thong bao da luu va nut `Luu ho so` trong ho so ca nhan; khoa avatar ViChat AI ve `/vichat-ai.svg` tren moi phien chat; thay confirm/alert native bang dialog trong ung dung; bo tron cac popup; lam lai giao dien Workspace.
+- Pham vi: ChatUI active va legacy entry, ManagementApp, chatbot history/render, ConversationCategoryManager, StickerPicker va EnterpriseWorkspace; khong doi API, database, Tinode transport, mobile hay migration.
+- Noi dung: Ho so hien thi thong tin dong bo chi-doc va van cho phep doi avatar ca nhan; dialog dung promise resolver tai ranh gioi App/Management, co focus trap, Escape va khoa cuon; avatar bot duoc chuan hoa tai storage/merge/render de loai avatar legacy; modal mobile dung safe viewport va khoang dem bo tron; Workspace duoc co lai responsive, dark theme va focus state.
+- Quyet dinh ky thuat: Khong sua payload/profile contract; giu upload avatar ca nhan qua luong hien tai. Confirmation duoc truyen vao component con thay vi de component tu goi browser API, tranh tach luong va giu action sau khi user chap nhan. Khong thay doi ranh gioi du lieu hoac nguon su that.
+- Database/API/cau hinh: Khong co migration, endpoint, schema, secret hoac cau hinh moi.
+- Kiem thu: `npm run test:frontend -- --test-concurrency=1` dat 422/422; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB; `git diff --check` dat. Browser UAT chua chay duoc trong phien nay do browser bridge khong kha dung.
+- Rui ro con lai: Can hard refresh production va UAT bang tai khoan that cho ho so/avatar bot, roi nhom/xoa hoi thoai, sticker/cloud confirmation, popup mobile va cac module Workspace; khong co thay doi backend can migration.
+- Viec tiep theo: Commit/push `master`, deploy qua `ssh ubuntu@103.74.122.206` roi `ssh ubuntu@192.168.80.20`, chi recreate ChatUI/ManagementApp neu quy trinh yeu cau, verify health/public bundle va cap nhat trang thai sau deploy.
+- Commit/PR: Chua tao.
+
 ## 2026-09-17-07 - Them Cloud cua toi va bo loc danh sach hoi thoai
 
 - Thoi gian: 2026-09-17 21:06-21:10 (Asia/Saigon)

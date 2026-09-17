@@ -161,7 +161,7 @@ function FormField({ label, wide = false, children }) {
   return <label className={wide ? 'wide' : ''}><span>{label}</span>{children}</label>;
 }
 
-export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: value => value, locale: 'vi-VN' }, taskSeed, onTaskSeedConsumed, onError }) {
+export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: value => value, locale: 'vi-VN' }, taskSeed, onTaskSeedConsumed, onError, requestAppConfirmation = () => Promise.resolve(false) }) {
   const userId = String(user?.id || user?.uid || '');
   const isAdmin = ['admin', 'owner', 'superadmin'].includes(String(user?.role || '').toLowerCase());
   const [activeType, setActiveType] = useState('OVERVIEW');
@@ -282,7 +282,16 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
 
   const applyAction = async action => {
     if (!selectedItem || actionBusy) return;
-    if (['REJECT', 'CANCEL', 'ARCHIVE'].includes(action) && !window.confirm(copy.t('Xác nhận thực hiện thao tác này?'))) return;
+    if (['REJECT', 'CANCEL', 'ARCHIVE'].includes(action)) {
+      const label = ACTION_LABELS[action]?.[0] || action;
+      const confirmed = await requestAppConfirmation({
+        title: `${copy.t(label)}?`,
+        message: copy.t('Thao tác này sẽ cập nhật trạng thái của mục công việc.'),
+        confirmLabel: copy.t(label),
+        tone: 'danger',
+      });
+      if (!confirmed) return;
+    }
     setActionBusy(action);
     try {
       await enterpriseWorkspaceService.applyAction(selectedItem.id, action, comment.trim());
@@ -297,7 +306,14 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
   };
 
   const archiveItem = async () => {
-    if (!selectedItem?.canEdit || !window.confirm(copy.t('Lưu trữ mục này khỏi Workspace?'))) return;
+    if (!selectedItem?.canEdit) return;
+    const confirmed = await requestAppConfirmation({
+      title: copy.t('Ẩn mục khỏi Workspace?'),
+      message: copy.t('Mục này sẽ được lưu trữ và không còn xuất hiện trong danh sách đang theo dõi.'),
+      confirmLabel: copy.t('Lưu trữ'),
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     setActionBusy('DELETE');
     try {
       await enterpriseWorkspaceService.archiveItem(selectedItem.id);

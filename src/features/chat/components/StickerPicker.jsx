@@ -55,6 +55,7 @@ export default function StickerPicker({
   scopeAliases = [],
   tenantId = '',
   copy = { t: value => value },
+  requestAppConfirmation = () => Promise.resolve(false),
 }) {
   const [selectedPack, setSelectedPack] = useState(() => (
     readRecentStickerIds(scope, scopeAliases, tenantId).length > 0 ? 'recent' : STICKER_PACKS[0]?.id || 'recent'
@@ -190,7 +191,13 @@ export default function StickerPicker({
 
   const handleCustomStickerDelete = async sticker => {
     if (!sticker?.id || deletingStickerId) return;
-    if (typeof window !== 'undefined' && !window.confirm(copy.t('Xóa sticker này khỏi thiết bị?'))) return;
+    const confirmed = await requestAppConfirmation({
+      title: copy.t('Xóa sticker khỏi thiết bị?'),
+      message: copy.t('Sticker này sẽ bị xóa khỏi kho cá nhân trên thiết bị hiện tại.'),
+      confirmLabel: copy.t('Xóa sticker'),
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     const deleteScope = scope;
     const deleteScopeAliases = scopeAliases;
     const deleteTenantId = tenantId;

@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import {
   CHATBOT_ACCOUNT,
+  CHATBOT_DEFAULT_AVATAR,
   CHATBOT_REQUEST_TIMEOUT_MS,
   CHATBOT_STARTER_PROMPTS,
   applyTinodeChatbotConfig,
@@ -11,6 +12,7 @@ import {
   chatbotMessageCorrelationKey,
   ingestChatDocument,
   mergeChatbotMessages,
+  normalizeChatbotMessage,
   requestChatbotReply,
 } from './chatbotService.js';
 
@@ -34,10 +36,34 @@ test('Tinode chatbot config keeps the synthetic UI id and assigns the runtime to
   assert.equal(CHATBOT_ACCOUNT.id, original.id);
   assert.equal(CHATBOT_ACCOUNT.tinodeUid, 'usrBotRuntime');
   assert.equal(CHATBOT_ACCOUNT.name, 'GON AI');
+  assert.equal(CHATBOT_ACCOUNT.avatar, CHATBOT_DEFAULT_AVATAR);
 
   assert.equal(applyTinodeChatbotConfig({ enabled: false }), false);
   assert.equal(CHATBOT_ACCOUNT.tinodeUid, '');
   Object.assign(CHATBOT_ACCOUNT, original);
+});
+
+test('normalizes legacy chatbot avatars in messages and reply previews', () => {
+  const normalized = normalizeChatbotMessage({
+    id: 'legacy-bot-message',
+    sender: 'incoming',
+    senderId: CHATBOT_ACCOUNT.id,
+    avatar: '/old-bot.svg',
+    replyTo: {
+      id: 'legacy-reply',
+      senderId: CHATBOT_ACCOUNT.id,
+      avatar: '/old-bot.svg',
+    },
+  });
+  assert.equal(normalized.avatar, CHATBOT_DEFAULT_AVATAR);
+  assert.equal(normalized.replyTo.avatar, CHATBOT_DEFAULT_AVATAR);
+  assert.equal(normalizeChatbotMessage(normalized), normalized);
+
+  const merged = mergeChatbotMessages([normalized], [{
+    ...normalized,
+    avatar: '/another-old-bot.svg',
+  }]);
+  assert.equal(merged[0].avatar, CHATBOT_DEFAULT_AVATAR);
 });
 
 test('ViChat AI defaults use the new product identity and useful starter prompts', () => {

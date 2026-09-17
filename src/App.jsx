@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Login from './components/Login';
+import ConfirmDialog from './components/ConfirmDialog';
 
 // --- Initial Conversions Data ---
 const INITIAL_CHAT_DATA = {
@@ -189,6 +190,8 @@ function App() {
   // Mobile navigation state
   const [isMobileChatActive, setIsMobileChatActive] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [legacyNotice, setLegacyNotice] = useState('');
+  const [legacyLogoutConfirmOpen, setLegacyLogoutConfirmOpen] = useState(false);
 
   // References
   const chatMessagesEndRef = useRef(null);
@@ -428,26 +431,26 @@ function App() {
             <i className="fa-solid fa-comment-dots"></i>
             <span>Chat</span>
           </a>
-          <a href="#" className="nav-item" onClick={(e) => { e.preventDefault(); alert("Chức năng [Danh bạ] yêu cầu môi trường Enterprise."); }}>
+          <a href="#" className="nav-item" onClick={(e) => { e.preventDefault(); setLegacyNotice("Chức năng [Danh bạ] yêu cầu môi trường Enterprise."); }}>
             <i className="fa-solid fa-address-book"></i>
             <span>Danh bạ</span>
           </a>
-          <a href="#" className="nav-item" onClick={(e) => { e.preventDefault(); alert("Chức năng [Nhóm] yêu cầu môi trường Enterprise."); }}>
+          <a href="#" className="nav-item" onClick={(e) => { e.preventDefault(); setLegacyNotice("Chức năng [Nhóm] yêu cầu môi trường Enterprise."); }}>
             <i className="fa-solid fa-users"></i>
             <span>Nhóm</span>
           </a>
-          <a href="#" className="nav-item" onClick={(e) => { e.preventDefault(); alert("Chức năng [File dùng chung] yêu cầu môi trường Enterprise."); }}>
+          <a href="#" className="nav-item" onClick={(e) => { e.preventDefault(); setLegacyNotice("Chức năng [File dùng chung] yêu cầu môi trường Enterprise."); }}>
             <i className="fa-solid fa-folder-open"></i>
             <span>File dùng chung</span>
           </a>
-          <a href="#" className="nav-item" onClick={(e) => { e.preventDefault(); alert("Chức năng [Thông báo] yêu cầu môi trường Enterprise."); }}>
+          <a href="#" className="nav-item" onClick={(e) => { e.preventDefault(); setLegacyNotice("Chức năng [Thông báo] yêu cầu môi trường Enterprise."); }}>
             <div className="icon-badge-wrapper">
               <i className="fa-solid fa-bell"></i>
               <span className="badge-count">3</span>
             </div>
             <span>Thông báo</span>
           </a>
-          <a href="#" className="nav-item" onClick={(e) => { e.preventDefault(); alert("Chức năng [Cài đặt] yêu cầu môi trường Enterprise."); }}>
+          <a href="#" className="nav-item" onClick={(e) => { e.preventDefault(); setLegacyNotice("Chức năng [Cài đặt] yêu cầu môi trường Enterprise."); }}>
             <i className="fa-solid fa-gear"></i>
             <span>Cài đặt</span>
           </a>
@@ -461,12 +464,7 @@ function App() {
               <span className="user-status online">Online</span>
             </div>
           </div>
-          <button className="btn-logout-footer" onClick={() => {
-            if (window.confirm("Bạn có chắc chắn muốn đăng xuất khỏi VICHAT?")) {
-              setIsLoggedIn(false);
-              setCurrentUser(null);
-            }
-          }} title="Đăng xuất">
+          <button className="btn-logout-footer" onClick={() => setLegacyLogoutConfirmOpen(true)} title="Đăng xuất">
             <i className="fa-solid fa-arrow-right-from-bracket"></i>
           </button>
         </div>
@@ -480,7 +478,7 @@ function App() {
           <div className="header-top">
             <h2>Cuộc trò chuyện</h2>
             <button className="btn-action" title="Tạo cuộc trò chuyện mới" onClick={() => {
-              alert("Tính năng tạo cuộc trò chuyện mới đang được liên kết danh bạ doanh nghiệp.");
+              setLegacyNotice("Tính năng tạo cuộc trò chuyện mới đang được liên kết danh bạ doanh nghiệp.");
             }}>
               <i className="fa-solid fa-plus"></i>
             </button>
@@ -547,13 +545,13 @@ function App() {
             </div>
           </div>
           <div className="chat-header-actions">
-            <button className="btn-header-action" title="Tìm kiếm" onClick={() => alert("Tính năng tìm kiếm đang được phát triển.")}>
+            <button className="btn-header-action" title="Tìm kiếm" onClick={() => setLegacyNotice("Tính năng tìm kiếm đang được phát triển.")}>
               <i className="fa-solid fa-magnifying-glass"></i>
             </button>
-            <button className="btn-header-action" title="Gọi điện" onClick={() => alert("Đang kết nối thiết bị gọi thoại...")}>
+            <button className="btn-header-action" title="Gọi điện" onClick={() => setLegacyNotice("Đang kết nối thiết bị gọi thoại...")}>
               <i className="fa-solid fa-phone"></i>
             </button>
-            <button className="btn-header-action" title="Gọi video" onClick={() => alert("Đang kết nối camera gọi thoại...")}>
+            <button className="btn-header-action" title="Gọi video" onClick={() => setLegacyNotice("Đang kết nối camera gọi thoại...")}>
               <i className="fa-solid fa-video"></i>
             </button>
             <button className="btn-header-action" title="Thông tin nhóm" onClick={() => setIsDetailOpen(!isDetailOpen)}>
@@ -645,7 +643,7 @@ function App() {
               style={{ display: "none" }} 
               onChange={handleFileChange} 
             />
-            <button className="btn-input-action" title="Biểu cảm" onClick={() => alert("Tính năng chọn Emoji đang được phát triển.")}>
+            <button className="btn-input-action" title="Biểu cảm" onClick={() => setLegacyNotice("Tính năng chọn Emoji đang được phát triển.")}>
               <i className="fa-regular fa-smile"></i>
             </button>
           </div>
@@ -732,7 +730,7 @@ function App() {
             </div>
 
             {activeChat.isGroup && (
-              <button className="btn-leave-group" onClick={() => alert("Tính năng rời khỏi nhóm đang được liên kết hệ thống.")}>
+              <button className="btn-leave-group" onClick={() => setLegacyNotice("Tính năng rời khỏi nhóm đang được liên kết hệ thống.")}>
                 <i className="fa-solid fa-trash-can"></i>
                 <span>Rời khỏi nhóm</span>
               </button>
@@ -741,6 +739,34 @@ function App() {
         </div>
       </aside>
 
+      {legacyNotice && (
+        <ConfirmDialog
+          open
+          title="Thông báo"
+          message={legacyNotice}
+          confirmLabel="Đã hiểu"
+          cancelLabel="Đóng"
+          tone="neutral"
+          onCancel={() => setLegacyNotice('')}
+          onConfirm={() => setLegacyNotice('')}
+        />
+      )}
+      {legacyLogoutConfirmOpen && (
+        <ConfirmDialog
+          open
+          title="Đăng xuất khỏi VICHAT?"
+          message="Bạn có chắc chắn muốn đăng xuất khỏi VICHAT?"
+          confirmLabel="Đăng xuất"
+          cancelLabel="Hủy"
+          tone="danger"
+          onCancel={() => setLegacyLogoutConfirmOpen(false)}
+          onConfirm={() => {
+            setLegacyLogoutConfirmOpen(false);
+            setIsLoggedIn(false);
+            setCurrentUser(null);
+          }}
+        />
+      )}
     </div>
   );
 }

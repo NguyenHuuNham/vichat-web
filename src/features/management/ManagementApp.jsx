@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { managementAdminService } from './services/managementAdminService.js';
 import { subscribeChatMaintenance } from '../maintenance/chatMaintenanceService.js';
 import ChatLogo from '../../components/ChatLogo';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import './management.css';
 
 const ADMIN_ROLES = ['admin', 'superadmin', 'owner'];
@@ -169,6 +170,24 @@ export default function ManagementApp() {
   const [chatUiMaintenanceSaving, setChatUiMaintenanceSaving] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const confirmResolverRef = useRef(null);
+
+  const requestConfirmation = useCallback(options => {
+    if (!options) return Promise.resolve(false);
+    return new Promise(resolve => {
+      confirmResolverRef.current?.(false);
+      confirmResolverRef.current = resolve;
+      setConfirmDialog(options);
+    });
+  }, []);
+
+  const resolveConfirmation = useCallback(result => {
+    const resolve = confirmResolverRef.current;
+    confirmResolverRef.current = null;
+    setConfirmDialog(null);
+    resolve?.(Boolean(result));
+  }, []);
 
   useEffect(() => {
     document.title = 'Trung tâm quản trị Chatmgt';
@@ -290,7 +309,13 @@ export default function ManagementApp() {
   };
 
   const revokeSessions = async user => {
-    if (!window.confirm(`Bắt ${user.name} đăng xuất khỏi Chat? Toàn bộ phiên Chatmgt hiện tại sẽ bị thu hồi và người dùng phải đăng nhập lại.`)) return;
+    const confirmed = await requestConfirmation({
+      title: 'Thu hồi phiên Chat?',
+      message: `Toàn bộ phiên Chatmgt hiện tại của ${user.name} sẽ bị thu hồi và người dùng phải đăng nhập lại.`,
+      confirmLabel: 'Thu hồi phiên',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     setActionUserId(user.id);
     try {
       await managementAdminService.revokeSessions(user.id);
@@ -305,7 +330,13 @@ export default function ManagementApp() {
 
   const toggleChatUiMaintenance = async enabled => {
     const action = enabled ? 'tạm dừng toàn bộ Chat UI' : 'mở lại Chat UI';
-    if (!window.confirm(`Bạn có chắc muốn ${action}? Thay đổi sẽ áp dụng realtime cho mọi người đang dùng Chat UI.`)) return;
+    const confirmed = await requestConfirmation({
+      title: `${enabled ? 'Bật chế độ bảo trì' : 'Mở lại Chat UI'}?`,
+      message: `Bạn có chắc muốn ${action}? Thay đổi sẽ áp dụng realtime cho mọi người đang dùng Chat UI.`,
+      confirmLabel: enabled ? 'Bật bảo trì' : 'Mở lại Chat UI',
+      tone: enabled ? 'danger' : 'neutral',
+    });
+    if (!confirmed) return;
     setChatUiMaintenanceSaving(true);
     try {
       const nextState = await managementAdminService.setChatUiMaintenance(enabled);
@@ -493,6 +524,19 @@ export default function ManagementApp() {
           )}
         </div>
       </main>
+
+      {confirmDialog && (
+        <ConfirmDialog
+          open
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmLabel={confirmDialog.confirmLabel}
+          cancelLabel={confirmDialog.cancelLabel || 'Hủy'}
+          tone={confirmDialog.tone}
+          onCancel={() => resolveConfirmation(false)}
+          onConfirm={() => resolveConfirmation(true)}
+        />
+      )}
 
     </div>
   );

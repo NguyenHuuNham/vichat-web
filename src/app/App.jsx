@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import Login from '../features/auth/components/Login';
 import ChatLogo from '../components/ChatLogo';
+import ConfirmDialog from '../components/ConfirmDialog';
 import ConversationErrorBoundary from '../components/ConversationErrorBoundary';
 import EnterpriseWorkspace from '../features/workspace/components/EnterpriseWorkspace';
 import CallOverlay from '../features/chat/components/CallOverlay';
@@ -204,7 +205,7 @@ import {
 import AvatarCropModal from '../features/contacts/components/AvatarCropModal';
 import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, dissolveDemoGroup, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMemberRole, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
 import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
-import { CHATBOT_ACCOUNT, CHATBOT_STARTER_PROMPTS, EXTERNAL_CHAT_ONLY, applyTinodeChatbotConfig, ingestChatDocument, loadChatbotMessages, loadChatbotMessagesFromServer, loadTinodeChatbotConfig, mergeChatbotMessages, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
+import { CHATBOT_ACCOUNT, CHATBOT_DEFAULT_AVATAR, CHATBOT_STARTER_PROMPTS, EXTERNAL_CHAT_ONLY, applyTinodeChatbotConfig, ingestChatDocument, loadChatbotMessages, loadChatbotMessagesFromServer, loadTinodeChatbotConfig, mergeChatbotMessages, normalizeChatbotMessage, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
 import {
   PIN_VALIDATION_ERRORS,
   clearPinTabAccess,
@@ -1002,6 +1003,76 @@ function ImageViewer({ source, file = null, message = null, copy = { t: value =>
 // --- Initial Conversions Data ---
 const INITIAL_CHAT_DATA = {};
 
+function isChatbotIdentity(value) {
+  const identity = String(value || '').trim().toLowerCase();
+  if (!identity) return false;
+  return [CHATBOT_ACCOUNT.id, CHATBOT_ACCOUNT.tinodeUid, CHATBOT_ACCOUNT.username]
+    .filter(Boolean)
+    .some(candidate => identity === String(candidate).trim().toLowerCase());
+}
+
+function chatbotAvatarHtmlSource(value) {
+  if (typeof value === 'string') return value.match(/src=["']([^"']+)["']/i)?.[1] || '';
+  return React.isValidElement(value) ? String(value.props?.src || '') : '';
+}
+
+function normalizeChatbotConversation(conversation) {
+  if (!conversation || typeof conversation !== 'object') return conversation;
+  const conversationId = String(conversation.id || '').trim();
+  const isChatbot = Boolean(
+    conversation.isChatbot
+      || conversationId.toLowerCase() === CHATBOT_ACCOUNT.id.toLowerCase()
+      || isChatbotIdentity(conversation.tinodeTopic),
+  );
+  if (!isChatbot) return conversation;
+
+  const messages = roomMessages(conversation).map(normalizeChatbotMessage);
+  const members = roomMembers(conversation).map(member => {
+    const memberIsChatbot = member?.type === 'bot'
+      || isChatbotIdentity(member?.id)
+      || isChatbotIdentity(member?.uid)
+      || isChatbotIdentity(member?.tinodeUid)
+      || isChatbotIdentity(member?.tinode_uid)
+      || String(member?.name || '').trim().toLowerCase() === CHATBOT_ACCOUNT.name.toLowerCase();
+    if (!memberIsChatbot) return member;
+    const next = {
+      ...member,
+      name: CHATBOT_ACCOUNT.name,
+      avatar: CHATBOT_DEFAULT_AVATAR,
+      type: 'bot',
+    };
+    return next.name === member.name && next.avatar === member.avatar && next.type === member.type ? member : next;
+  });
+  const next = {
+    ...conversation,
+    id: conversationId || CHATBOT_ACCOUNT.id,
+    name: CHATBOT_ACCOUNT.name,
+    isGroup: false,
+    isChatbot: true,
+    avatarUrl: CHATBOT_DEFAULT_AVATAR,
+    avatarHtml: <img src={CHATBOT_DEFAULT_AVATAR} alt={CHATBOT_ACCOUNT.name} />,
+    members: members.length > 0 ? members : [CHATBOT_ACCOUNT],
+    messages,
+  };
+  const sameAvatarHtml = chatbotAvatarHtmlSource(conversation.avatarHtml) === CHATBOT_DEFAULT_AVATAR;
+  const sameMembers = members.length === roomMembers(conversation).length
+    && members.every((member, index) => member === roomMembers(conversation)[index]);
+  const sameMessages = messages.length === roomMessages(conversation).length
+    && messages.every((message, index) => message === roomMessages(conversation)[index]);
+  if (
+    conversation.id === next.id
+      && conversation.name === next.name
+      && conversation.isGroup === next.isGroup
+      && conversation.isChatbot === next.isChatbot
+      && conversation.avatarUrl === next.avatarUrl
+      && sameAvatarHtml
+      && sameMembers
+      && sameMessages
+      && roomMembers(conversation).length > 0
+  ) return conversation;
+  return next;
+}
+
 function createChatbotConversation(messages = [], { accountSession = 0, useTinode = false } = {}) {
   const welcomeMessage = {
     id: 'bot-welcome',
@@ -1009,7 +1080,7 @@ function createChatbotConversation(messages = [], { accountSession = 0, useTinod
     sender: 'incoming',
     senderId: CHATBOT_ACCOUNT.id,
     senderName: CHATBOT_ACCOUNT.name,
-    avatar: CHATBOT_ACCOUNT.avatar,
+    avatar: CHATBOT_DEFAULT_AVATAR,
     text: 'Chào bạn! Mình là ViChat AI. Mình tìm câu trả lời trong kho tri thức doanh nghiệp và luôn hiển thị nguồn để bạn kiểm chứng.',
     time: '',
     isWelcome: true,
@@ -1017,20 +1088,20 @@ function createChatbotConversation(messages = [], { accountSession = 0, useTinod
   if (EXTERNAL_CHAT_ONLY) {
     welcomeMessage.text = `Xin chào! ${CHATBOT_ACCOUNT.name} đã sẵn sàng hỗ trợ bạn.`;
   }
-  const conversationMessages = [welcomeMessage, ...messages.filter(message => message.id !== welcomeMessage.id)];
-  const lastMessage = messages[messages.length - 1] || welcomeMessage;
+  const conversationMessages = [welcomeMessage, ...messages.map(normalizeChatbotMessage).filter(message => message && message.id !== welcomeMessage.id && !message.isWelcome)];
+  const lastMessage = conversationMessages[conversationMessages.length - 1] || welcomeMessage;
   const lastContent = lastMessage?.text || 'Hỏi đáp và hỗ trợ nội bộ bằng AI';
   return {
     id: CHATBOT_ACCOUNT.id,
     name: CHATBOT_ACCOUNT.name,
     isGroup: false,
     isChatbot: true,
-    avatarHtml: <img src={CHATBOT_ACCOUNT.avatar} alt={CHATBOT_ACCOUNT.name} />,
+    avatarHtml: <img src={CHATBOT_DEFAULT_AVATAR} alt={CHATBOT_ACCOUNT.name} />,
     avatarClass: 'chatbot-avatar',
     membersCount: 'Tra cứu tri thức · Có nguồn kiểm chứng',
     description: 'Trợ lý AI dùng dữ liệu doanh nghiệp đã được phê duyệt.',
     admin: '',
-    members: [CHATBOT_ACCOUNT],
+    members: [{ ...CHATBOT_ACCOUNT, avatar: CHATBOT_DEFAULT_AVATAR, type: 'bot' }],
     participantIds: [CHATBOT_ACCOUNT.id, useTinode ? CHATBOT_ACCOUNT.tinodeUid : ''].filter(Boolean),
     tinodeTopic: useTinode ? CHATBOT_ACCOUNT.tinodeUid : '',
     accountSession: useTinode ? accountSession : undefined,
@@ -1053,11 +1124,15 @@ function ensureDefaultChatbotConversation(conversations, { accountSession = 0, u
   const source = conversations && typeof conversations === 'object' && !Array.isArray(conversations)
     ? conversations
     : {};
-  const existing = source[CHATBOT_ACCOUNT.id];
+  const existing = normalizeChatbotConversation(source[CHATBOT_ACCOUNT.id]);
   const existingMessages = roomMessages(existing);
   const hasWelcomeMessage = existingMessages.some(message => message?.id === 'bot-welcome' || message?.isWelcome);
   const hasRequiredTinodeTopic = !useTinode || Boolean(existing?.tinodeTopic);
-  if (existing?.isChatbot && hasWelcomeMessage && hasRequiredTinodeTopic) return source;
+  if (existing?.isChatbot && hasWelcomeMessage && hasRequiredTinodeTopic) {
+    return existing === source[CHATBOT_ACCOUNT.id]
+      ? source
+      : { ...source, [CHATBOT_ACCOUNT.id]: existing };
+  }
 
   const fallback = createChatbotConversation(existingMessages, {
     accountSession: existing?.accountSession ?? accountSession,
@@ -1074,7 +1149,8 @@ function ensureDefaultChatbotConversation(conversations, { accountSession = 0, u
       name: CHATBOT_ACCOUNT.name,
       isGroup: false,
       isChatbot: true,
-      avatarHtml: existing.avatarHtml || fallback.avatarHtml,
+      avatarUrl: CHATBOT_DEFAULT_AVATAR,
+      avatarHtml: <img src={CHATBOT_DEFAULT_AVATAR} alt={CHATBOT_ACCOUNT.name} />,
       avatarClass: existing.avatarClass || fallback.avatarClass,
       membersCount: existing.membersCount || fallback.membersCount,
       description: existing.description || fallback.description,
@@ -2726,6 +2802,9 @@ function PinnedMessageItem({ message, copy, preview, onClick, featured = false, 
 }
 
 function ConversationAvatar({ room }) {
+  if (room?.isChatbot || isChatbotIdentity(room?.id) || isChatbotIdentity(room?.tinodeTopic)) {
+    return <SafeAvatar src={CHATBOT_DEFAULT_AVATAR} name={CHATBOT_ACCOUNT.name} />;
+  }
   const legacySource = typeof room?.avatarHtml === 'string'
     ? room.avatarHtml.match(/src=["']([^"']+)["']/i)?.[1]
     : '';
@@ -3240,12 +3319,10 @@ function App() {
   const [isUpdatingProfileAvatar, setIsUpdatingProfileAvatar] = useState(false);
   const [avatarCropFile, setAvatarCropFile] = useState(null);
   const [isUpdatingGroupAvatar, setIsUpdatingGroupAvatar] = useState(false);
-  const [profileForm, setProfileForm] = useState({ name: '', email: '' });
-  const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [profileNotice, setProfileNotice] = useState('');
   const [isSwitchingTenant, setIsSwitchingTenant] = useState(false);
   const [tenantSwitchNotice, setTenantSwitchNotice] = useState('');
   const [pendingTenantSwitch, setPendingTenantSwitch] = useState(null);
+  const [appConfirmDialog, setAppConfirmDialog] = useState(null);
   const [tenantSwitcherOpen, setTenantSwitcherOpen] = useState(false);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const [forcedLogoutSeconds, setForcedLogoutSeconds] = useState(null);
@@ -3342,6 +3419,7 @@ function App() {
   const accountSessionRef = useRef(0);
   const personalCloudRequestRef = useRef(0);
   const chatbotRequestRef = useRef(null);
+  const appConfirmResolverRef = useRef(null);
   const managementConversationSessionRef = useRef(0);
   const activeCallRef = useRef(null);
   const sessionRestoreAttemptedRef = useRef(false);
@@ -3355,6 +3433,22 @@ function App() {
   contactNicknamesRef.current = contactNicknames;
   unreadBoundariesRef.current = unreadBoundaries;
   pastedAttachmentDraftsRef.current = pastedAttachmentDrafts;
+
+  const requestAppConfirmation = useCallback(options => {
+    if (!options) return Promise.resolve(false);
+    return new Promise(resolve => {
+      appConfirmResolverRef.current?.(false);
+      appConfirmResolverRef.current = resolve;
+      setAppConfirmDialog(options);
+    });
+  }, []);
+
+  const resolveAppConfirmation = useCallback(result => {
+    const resolve = appConfirmResolverRef.current;
+    appConfirmResolverRef.current = null;
+    setAppConfirmDialog(null);
+    resolve?.(Boolean(result));
+  }, []);
 
   const updateDirectoryAccounts = useCallback(updater => {
     setDirectoryAccounts(previous => {
@@ -4224,14 +4318,6 @@ function App() {
     };
   }, [settings.theme]);
 
-  useEffect(() => {
-    if (workspacePanel !== 'profile') return;
-    setProfileForm({
-      name: profileAccount.name || '',
-      email: profileAccount.email || '',
-    });
-    setProfileNotice('');
-  }, [workspacePanel, profileAccount.name, profileAccount.email]);
   const viewerId = chatMode === 'tinode'
     ? (currentUser?.tinodeUid || currentUser?.uid || currentUser?.id)
     : (currentUser?.id || currentUser?.uid);
@@ -4377,7 +4463,13 @@ function App() {
 
   const handlePersonalCloudDelete = async file => {
     if (!file?.id || personalCloudUploading) return;
-    if (typeof window !== 'undefined' && !window.confirm(`${appCopy.t('Xóa file')} "${file.fileName}"?`)) return;
+    const confirmed = await requestAppConfirmation({
+      title: appCopy.t('Xóa file khỏi Cloud của tôi?'),
+      message: `${appCopy.t('Bạn có chắc muốn xóa')} "${file.fileName}"?`,
+      confirmLabel: appCopy.t('Xóa file'),
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     const requestSession = accountSessionRef.current;
     setPersonalCloudNotice('');
     try {
@@ -6552,7 +6644,8 @@ function App() {
             id,
             isChatbot: true,
             name: CHATBOT_ACCOUNT.name,
-            avatarHtml: <img src={CHATBOT_ACCOUNT.avatar} alt={CHATBOT_ACCOUNT.name} />,
+            avatarUrl: CHATBOT_DEFAULT_AVATAR,
+            avatarHtml: <img src={CHATBOT_DEFAULT_AVATAR} alt={CHATBOT_ACCOUNT.name} />,
             tinodeTopic: topicName,
             accountSession: room.accountSession,
           }
@@ -6659,6 +6752,7 @@ function App() {
   const handleLogout = async () => {
     if (isLoggingOutRef.current) return;
     isLoggingOutRef.current = true;
+    resolveAppConfirmation(false);
     const loggedOutPreferenceIdentity = viewerPreferenceIdentity(currentUser, viewerId);
     const loggedOutPreferenceTenantId = String(accountTenantId(currentUser) || '').trim();
     if (loggedOutPreferenceIdentity.viewerId) {
@@ -6757,8 +6851,14 @@ function App() {
     isLoggingOutRef.current = false;
   };
 
-  const requestLogout = () => {
-    if (!window.confirm(appCopy.t('Bạn có chắc chắn muốn đăng xuất khỏi Chat?'))) return;
+  const requestLogout = async () => {
+    const confirmed = await requestAppConfirmation({
+      title: appCopy.t('Đăng xuất khỏi Chat?'),
+      message: appCopy.t('Phiên làm việc hiện tại sẽ được đóng trên thiết bị này.'),
+      confirmLabel: appCopy.t('Đăng xuất'),
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     closeWorkspacePanel({ replace: true });
     handleLogout();
   };
@@ -6973,61 +7073,6 @@ function App() {
     }
   };
 
-  const handleProfileSave = async event => {
-    event.preventDefault();
-    setChatError('');
-    setProfileNotice('');
-    if (!profileForm.name.trim()) {
-      setChatError('Vui lòng nhập họ tên hiển thị.');
-      return;
-    }
-    setIsSavingProfile(true);
-    try {
-      const updated = await chatManagementService.updateProfile({
-        name: profileForm.name.trim(),
-        email: profileForm.email.trim(),
-      });
-      setCurrentUser(previous => ({
-        ...previous,
-        ...updated,
-        avatar: updated.avatar || previous?.avatar || '',
-        uid: previous?.uid,
-        tinodeUid: previous?.tinodeUid,
-      }));
-      updateDirectoryAccounts(previous => previous.map(account => (
-        account.id === updated.id
-          ? { ...account, ...updated, avatar: updated.avatar || account.avatar || '' }
-          : account
-      )));
-      setConversations(previous => Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => [id, {
-        ...room,
-        members: roomMembers(room).map(member => identitiesOverlap(member, currentUser)
-          ? { ...member, name: updated.name, avatar: updated.avatar || member.avatar }
-          : member),
-        messages: roomMessages(room).map(message => identitiesOverlap(message, currentUser)
-          ? { ...message, senderName: updated.name, avatar: updated.avatar || message.avatar }
-          : message),
-      }])));
-      setProfileForm({
-        name: updated.name || '',
-        email: updated.email || '',
-      });
-      if (chatMode === 'tinode') {
-        try {
-          await ensureTinodeSession();
-          await tinodeClient.updateCurrentProfile({ name: updated.name });
-        } catch (tinodeError) {
-          setChatError(tinodeError?.message || 'Hồ sơ đã lưu nhưng tên hiển thị Tinode chưa đồng bộ.');
-        }
-      }
-      setProfileNotice('Thông tin hồ sơ đã được lưu trên service quản lý.');
-    } catch (error) {
-      setChatError(error?.message || 'Không thể cập nhật hồ sơ.');
-    } finally {
-      setIsSavingProfile(false);
-    }
-  };
-
   const uploadProfileAvatar = async file => {
     if (!file) return false;
     setIsUpdatingProfileAvatar(true);
@@ -7083,7 +7128,6 @@ function App() {
         members: roomMembers(room).map(member => identitiesOverlap(member, currentUser) ? { ...member, avatar: nextAvatar } : member),
         messages: roomMessages(room).map(message => identitiesOverlap(message, currentUser) ? { ...message, avatar: nextAvatar } : message),
       }])));
-      setProfileNotice('Ảnh đại diện đã được cập nhật.');
       return true;
     } catch (error) {
       setChatError(error?.message || 'Không thể cập nhật ảnh đại diện.');
@@ -8093,9 +8137,12 @@ function App() {
   const handleDissolveGroup = async () => {
     if (!activeChat?.isGroup || !isActiveGroupOwner || isDissolvingGroup) return;
     const groupName = activeChat.name || appCopy.t('Nhóm');
-    const confirmed = window.confirm(
-      `${appCopy.t('Bạn có chắc muốn giải tán nhóm')} "${groupName}"?\n\n${appCopy.t('Tất cả thành viên sẽ bị đưa ra khỏi nhóm và thao tác này không thể khôi phục.')}`,
-    );
+    const confirmed = await requestAppConfirmation({
+      title: appCopy.t('Giải tán nhóm?'),
+      message: `${appCopy.t('Bạn có chắc muốn giải tán nhóm')} "${groupName}"?\n\n${appCopy.t('Tất cả thành viên sẽ bị đưa ra khỏi nhóm và thao tác này không thể khôi phục.')}`,
+      confirmLabel: appCopy.t('Giải tán nhóm'),
+      tone: 'danger',
+    });
     if (!confirmed) return;
 
     const targetRoom = safeNormalizeConversationForRender(activeChat, activeChat.id);
@@ -8246,7 +8293,7 @@ function App() {
     setGroupLeaveNotice('');
   };
 
-  const requestGroupLeave = (targetRoom, mode = 'leave') => {
+  const requestGroupLeave = async (targetRoom, mode = 'leave') => {
     if (!targetRoom?.isGroup || isLeavingGroup) return;
     const isOwner = groupRoleForIdentity(targetRoom, currentUser, directoryAccounts) === 'OWNER';
     const closesEmptyGroup = groupActiveMembers(targetRoom, directoryAccounts)
@@ -8255,8 +8302,14 @@ function App() {
     const confirmText = mode === 'delete'
       ? `${appCopy.t('Bạn có chắc muốn xóa hội thoại')} "${targetRoom.name}"?\n\n${closesEmptyGroup ? soleOwnerEffect : (isOwner ? appCopy.t('Bạn sẽ rời nhóm sau khi chọn trưởng nhóm mới.') : appCopy.t('Bạn sẽ rời khỏi nhóm và hội thoại sẽ được gỡ khỏi danh sách của bạn.'))}`
       : `${appCopy.t('Bạn có chắc muốn rời nhóm')} "${targetRoom.name}"?${closesEmptyGroup ? `\n\n${soleOwnerEffect}` : ''}`;
+    const confirmed = await requestAppConfirmation({
+      title: appCopy.t(mode === 'delete' ? 'Xóa hội thoại?' : 'Rời nhóm?'),
+      message: confirmText,
+      confirmLabel: appCopy.t(mode === 'delete' ? 'Xóa hội thoại' : 'Rời nhóm'),
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     if (isOwner) {
-      if (!window.confirm(confirmText)) return;
       if (closesEmptyGroup) {
         void executeGroupLeave(targetRoom, '', '', mode);
         return;
@@ -8269,9 +8322,7 @@ function App() {
       setChatError('');
       return;
     }
-    if (window.confirm(confirmText)) {
-      void executeGroupLeave(targetRoom, '', '', mode);
-    }
+    void executeGroupLeave(targetRoom, '', '', mode);
   };
 
   const handleGroupLeaveSubmit = async event => {
@@ -8320,9 +8371,12 @@ function App() {
     const deleteEffect = usesManagementData
       ? `${localizedKind} ${appCopy.t('sẽ được gỡ khỏi Chatmgt và phiên realtime Tinode của bạn.')}`
       : `${appCopy.t('Toàn bộ tin nhắn và tệp trong')} ${localizedKind} ${appCopy.t('này sẽ bị xóa khỏi tài khoản của bạn và không thể khôi phục.')}`;
-    const confirmed = window.confirm(
-      `${appCopy.t('Bạn có chắc muốn xóa')} ${localizedKind} "${activeChat.name}"?\n\n${deleteEffect}`,
-    );
+    const confirmed = await requestAppConfirmation({
+      title: `${appCopy.t('Xóa')} ${localizedKind}?`,
+      message: `${appCopy.t('Bạn có chắc muốn xóa')} ${localizedKind} "${activeChat.name}"?\n\n${deleteEffect}`,
+      confirmLabel: appCopy.t('Xóa hội thoại'),
+      tone: 'danger',
+    });
     if (!confirmed) return;
 
     const conversationId = activeChat.id;
@@ -9692,7 +9746,13 @@ function App() {
 
   const handleRemoveGroupMember = async (member) => {
     if (removingMemberId || !canRemoveGroupMember(activeChat, directoryAccounts, currentUser, member)) return;
-    if (!window.confirm(appCopy.t(`Bạn có chắc muốn xóa ${member.name} khỏi nhóm "${activeChat.name}"?`))) return;
+    const confirmed = await requestAppConfirmation({
+      title: appCopy.t('Xóa thành viên khỏi nhóm?'),
+      message: appCopy.t(`Bạn có chắc muốn xóa ${member.name} khỏi nhóm "${activeChat.name}"?`),
+      confirmLabel: appCopy.t('Xóa thành viên'),
+      tone: 'danger',
+    });
+    if (!confirmed) return;
 
     const stateConversationId = activeChat.id;
     const managementConversationId = activeChat.managementId || stateConversationId;
@@ -11809,7 +11869,7 @@ function App() {
           sender: 'incoming',
           senderId: CHATBOT_ACCOUNT.id,
           senderName: CHATBOT_ACCOUNT.name,
-          avatar: CHATBOT_ACCOUNT.avatar,
+          avatar: CHATBOT_DEFAULT_AVATAR,
           text: response.text,
           time: getTimeString(),
           createdAt: replyCreatedAt,
@@ -12585,6 +12645,10 @@ function App() {
 
   const closeTopmostKeyboardLayer = useCallback(({ allowNavigation = true } = {}) => {
     if (forcedLogoutSeconds !== null) return false;
+    if (appConfirmDialog) {
+      resolveAppConfirmation(false);
+      return true;
+    }
     if (activeCall) {
       keyboardShortcutActionHandlersRef.current.closeActiveCall?.();
       return true;
@@ -12737,6 +12801,7 @@ function App() {
     }
     return false;
   }, [
+    appConfirmDialog,
     avatarCropFile,
     activeCall,
     conversationCategoryMenuOpen,
@@ -12793,6 +12858,7 @@ function App() {
     workspacePanel,
     keyboardShortcutActionHandlersRef,
     cancelMessageEdit,
+    resolveAppConfirmation,
   ]);
 
   const executeKeyboardShortcut = useCallback((actionId, options = {}) => {
@@ -12941,6 +13007,19 @@ function App() {
             <button type="button" className="btn-primary forced-logout-confirm" onClick={handleForcedLogout}>OK</button>
           </section>
         </div>
+      )}
+      {appConfirmDialog && (
+        <ConfirmDialog
+          open
+          title={appConfirmDialog.title}
+          message={appConfirmDialog.message}
+          confirmLabel={appConfirmDialog.confirmLabel}
+          cancelLabel={appConfirmDialog.cancelLabel || appCopy.t('Hủy')}
+          tone={appConfirmDialog.tone}
+          copy={appCopy.t}
+          onCancel={() => resolveAppConfirmation(false)}
+          onConfirm={() => resolveAppConfirmation(true)}
+        />
       )}
       {(chatError || showTinodeConnectionNotice) && (
         <div className={`chat-system-banner ${chatError ? 'error' : 'info'}`} role="status">
@@ -13979,7 +14058,7 @@ function App() {
             <section className="chatbot-starter" aria-label={appCopy.t('Gợi ý câu hỏi cho ViChat AI')}>
               <div className="chatbot-starter-hero">
                 <span className="chatbot-starter-mark" aria-hidden="true">
-                  <img src={CHATBOT_ACCOUNT.avatar} alt="" />
+                  <img src={CHATBOT_DEFAULT_AVATAR} alt="" />
                   <i className="fa-solid fa-sparkles"></i>
                 </span>
                 <div className="chatbot-starter-heading">
@@ -14062,7 +14141,7 @@ function App() {
 
           {activeChat.isChatbot && isTyping && (
             <div className="message-item incoming chatbot-typing">
-              <div className="message-avatar"><img src={CHATBOT_ACCOUNT.avatar} alt={CHATBOT_ACCOUNT.name} /></div>
+              <div className="message-avatar"><img src={CHATBOT_DEFAULT_AVATAR} alt={CHATBOT_ACCOUNT.name} /></div>
               <div className="message-content-wrapper">
                 <span className="sender-name">{CHATBOT_ACCOUNT.name}</span>
                 <div className="message-bubble chatbot-typing-bubble" aria-label={appCopy.t('Trợ lý đang trả lời')}>
@@ -14241,6 +14320,7 @@ function App() {
                 onTabChange={setComposerPickerTab}
                 onSelectSticker={handleSendSticker}
                 onSelectEmoji={insertEmoji}
+                requestAppConfirmation={requestAppConfirmation}
                 scope={notificationSettingsViewerId || 'anonymous'}
                 scopeAliases={notificationSettingsViewerAliases}
                 tenantId={preferenceTenantId}
@@ -15439,6 +15519,7 @@ function App() {
                 user={currentUser}
                 accounts={directoryAccounts}
                 copy={appCopy}
+                requestAppConfirmation={requestAppConfirmation}
                 taskSeed={enterpriseTaskSeed}
                 onTaskSeedConsumed={() => setEnterpriseTaskSeed(null)}
                 onError={setChatError}
@@ -15457,23 +15538,15 @@ function App() {
                   </div>
                   <h3>{profileAccount.name || appCopy.t('Tài khoản hiện tại')}</h3>
                   <span className={`profile-status ${isCurrentUserOnline ? '' : 'offline'}`}>{isCurrentUserOnline && <i className="fa-solid fa-circle"></i>} {appCopy.t(isCurrentUserOnline ? 'Trực tuyến' : 'Ngoại tuyến')}</span>
-                </div>
-                <div className="profile-details profile-readonly-details">
-                  <div className="profile-detail-row"><i className="fa-solid fa-at"></i><div><small>{appCopy.t('Tên đăng nhập')}</small><strong>{profileAccount.username || appCopy.t('Chưa cập nhật')}</strong></div></div>
-                  <div className="profile-detail-row"><i className="fa-solid fa-shield-halved"></i><div><small>{appCopy.t('Vai trò')}</small><strong>{profileAccount.role || appCopy.t('Thành viên')}</strong></div></div>
-                  <div className="profile-detail-row profile-current-tenant"><i className="fa-solid fa-building"></i><div><small>{appCopy.t('Công ty hiện tại')}</small><strong>{profileAccount.tenantName || profileAccount.tenant_name || profileAccount.tenant?.name || appCopy.t('Chưa cập nhật')}</strong></div></div>
-                </div>
-                <form className="profile-edit-form" onSubmit={handleProfileSave}>
-                  <label><span>{appCopy.t('Họ và tên')}</span><input value={profileForm.name} onChange={event => setProfileForm(previous => ({ ...previous, name: event.target.value }))} maxLength="255" required /></label>
-                  <label><span>{appCopy.t('Email')}</span><input type="email" value={profileForm.email} onChange={event => setProfileForm(previous => ({ ...previous, email: event.target.value }))} maxLength="255" /></label>
-                  {accountProfileReadOnly && <div className="profile-save-notice"><i className="fa-solid fa-building-shield"></i>{appCopy.t('Thông tin sẽ được lưu qua UpGO Account và đồng bộ lại cho các thiết bị.')}</div>}
-                  {profileNotice && <div className="profile-save-notice"><i className="fa-solid fa-circle-check"></i>{appCopy.t(profileNotice)}</div>}
-                  <button type="submit" className="btn-primary profile-save-button" disabled={isSavingProfile}>
-                    <i className={`fa-solid ${isSavingProfile ? 'fa-spinner fa-spin' : 'fa-floppy-disk'}`}></i>
-                    {isSavingProfile ? appCopy.t('Đang lưu...') : appCopy.t('Lưu hồ sơ')}
-                  </button>
-                </form>
-              </div>
+                 </div>
+                 <div className="profile-details profile-readonly-details">
+                   <div className="profile-detail-row"><i className="fa-solid fa-user"></i><div><small>{appCopy.t('Họ và tên')}</small><strong>{profileAccount.name || appCopy.t('Chưa cập nhật')}</strong></div></div>
+                   <div className="profile-detail-row"><i className="fa-solid fa-envelope"></i><div><small>{appCopy.t('Email')}</small><strong>{profileAccount.email || appCopy.t('Chưa cập nhật')}</strong></div></div>
+                   <div className="profile-detail-row"><i className="fa-solid fa-at"></i><div><small>{appCopy.t('Tên đăng nhập')}</small><strong>{profileAccount.username || appCopy.t('Chưa cập nhật')}</strong></div></div>
+                   <div className="profile-detail-row"><i className="fa-solid fa-shield-halved"></i><div><small>{appCopy.t('Vai trò')}</small><strong>{profileAccount.role || appCopy.t('Thành viên')}</strong></div></div>
+                   <div className="profile-detail-row profile-current-tenant"><i className="fa-solid fa-building"></i><div><small>{appCopy.t('Công ty hiện tại')}</small><strong>{profileAccount.tenantName || profileAccount.tenant_name || profileAccount.tenant?.name || appCopy.t('Chưa cập nhật')}</strong></div></div>
+                 </div>
+               </div>
             )}
 
             {workspacePanel === 'cloud' && (
@@ -16250,6 +16323,7 @@ function App() {
         assignments={conversationCategories}
         conversations={categoryManagerConversations}
         copy={appCopy}
+        requestAppConfirmation={requestAppConfirmation}
         onClose={() => setConversationCategoryManagerOpen(false)}
         onSave={saveManagedConversationCategory}
         onDelete={deleteManagedConversationCategory}
