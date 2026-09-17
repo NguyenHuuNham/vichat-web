@@ -39,6 +39,21 @@ test('keeps additional files exposed only by the clipboard file list', () => {
   }), [first, second]);
 });
 
+test('removes a file repeated inside one clipboard event', () => {
+  const first = new File(['same-image'], 'image.png', { type: 'image/png', lastModified: 7 });
+  const duplicate = new File(['same-image'], 'image.png', { type: 'image/png', lastModified: 7 });
+
+  const files = clipboardAttachmentFiles({
+    items: [
+      { kind: 'file', getAsFile: () => first },
+      { kind: 'file', getAsFile: () => duplicate },
+    ],
+    files: [first, duplicate],
+  });
+
+  assert.deepEqual(files, [first]);
+});
+
 test('keeps text-only clipboard data out of the attachment queue', () => {
   assert.deepEqual(clipboardAttachmentFiles({ items: [], files: [] }), []);
   assert.deepEqual(clipboardAttachmentFiles(null), []);

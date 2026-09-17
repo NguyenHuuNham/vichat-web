@@ -27,21 +27,16 @@ export function clipboardAttachmentFiles(clipboard) {
     .map(item => item.getAsFile?.())
     .filter(Boolean);
   const listedFiles = Array.from(clipboard.files || []).filter(Boolean);
-  if (itemFiles.length === 0) return listedFiles;
-
-  const duplicateCounts = new Map();
-  itemFiles.forEach(file => {
+  const seen = new Set();
+  const uniqueFiles = [];
+  // Browsers can expose one clipboard image repeatedly in the same event.
+  [...itemFiles, ...listedFiles].forEach(file => {
     const signature = [file.name, file.type, file.size, file.lastModified].join('|');
-    duplicateCounts.set(signature, (duplicateCounts.get(signature) || 0) + 1);
+    if (seen.has(signature)) return;
+    seen.add(signature);
+    uniqueFiles.push(file);
   });
-  const extraFiles = listedFiles.filter(file => {
-    const signature = [file.name, file.type, file.size, file.lastModified].join('|');
-    const duplicateCount = duplicateCounts.get(signature) || 0;
-    if (duplicateCount <= 0) return true;
-    duplicateCounts.set(signature, duplicateCount - 1);
-    return false;
-  });
-  return [...itemFiles, ...extraFiles];
+  return uniqueFiles;
 }
 
 export function normalizePastedFile(file, index = 0, timestamp = Date.now()) {

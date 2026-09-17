@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-17-04 - Chan lap anh trong cung mot clipboard event
+
+- Thoi gian: 2026-09-17 (Asia/Saigon)
+- Loai: Sua loi | Web | UX | Kiem thu | Tai lieu
+- Trang thai: Hoan tat local; cho commit/push va deploy production
+- Muc tieu: Mot lan `Ctrl+V` anh chi tao mot draft trong muc `Dang cho gui`, ke ca khi trinh duyet tra cung file nhieu lan trong clipboard event.
+- Pham vi: Chi ham thu thap file clipboard cua ChatUI web va regression test; giu nguyen paste van ban, file picker, luong gui Tinode, mobile va cac attachment khac.
+- File da thay doi: `src/features/chat/services/pasteAttachmentDraft.js`, `src/features/chat/services/pasteAttachmentDraft.test.js`, `dist/index.html`, va `docs/CHANGELOG.md`.
+- Nguyen nhan: Code cu loai ban trung giua `clipboard.items` va `clipboard.files` nhung van giu hai item giong nhau ngay trong `clipboard.items`, tao hai draft cung ten/kich thuoc.
+- Quyet dinh ky thuat: Dedupe theo bo metadata `name/type/size/lastModified` trong pham vi mot clipboard event; khong dung dedupe toan cuc theo thoi gian de hai lan paste rieng biet van tao hai draft hop le.
+- Database/API/cau hinh: Khong co migration, endpoint, schema, secret hoac cau hinh.
+- Kiem thu: `node --test --test-concurrency=1 src/features/chat/services/pasteAttachmentDraft.test.js` dat 10/10; `npm run test:frontend -- --test-concurrency=1` dat 413/413; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB da co; `git diff --check` se chay truoc commit.
+- Rui ro con lai: Chua UAT truc tiep tren browser production trong phien nay; can hard refresh va thu lai Ctrl+V anh.
+- Viec tiep theo: Commit, push, deploy chi ChatUI va verify bundle/public marker; khong restart Chatmgt/Tinode/database/Redis.
+- Commit/PR: Chua tao.
+
 ## 2026-09-17-03 - Sua Ctrl+V anh bi them hai lan vao danh sach cho
 
 - Thoi gian: 2026-09-17 (Asia/Saigon)
