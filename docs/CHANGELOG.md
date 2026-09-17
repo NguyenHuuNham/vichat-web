@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-17 (Asia/Saigon)
 - Loai: Sua loi | Web | UX | Kiem thu | Tai lieu
-- Trang thai: Hoan tat local; cho commit/push va deploy production
+- Trang thai: Hoan tat; source `63d2bc2` da commit/push `origin/master`, production da deploy va verify qua hai hop SSH
 - Muc tieu: Chan truong hop mot thao tac `Ctrl+V` tao hai event giong nhau va hien hai the `image.png` trong muc dang cho gui.
 - Pham vi: Chi ChatUI composer paste va helper regression; khong doi file picker, paste van ban, handleSendFile, Tinode, backend, mobile hay sticker flow.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/pasteAttachmentDraft.js`, `src/features/chat/services/pasteAttachmentDraft.test.js`, `dist/index.html`, va `docs/CHANGELOG.md`.
 - Nguyen nhan bo sung: Sau khi dedupe cac file trong cung clipboard event, trinh duyet van co the phat hai event co cung chu ky trong thoi gian rat ngan hoac tra cung anh voi ten/lastModified khac nhau; queue cu append ca hai lan.
-- Quyet dinh ky thuat: Chan event trung lap theo metadata trong cua so 1 giay va doi chieu mau noi dung dau/cuoi anh de nhan dien cung anh khi metadata thay doi; khong dedupe cac lan paste cach nhau hon cua so nay.
+- Quyet dinh ky thuat: Chan event trung lap theo metadata trong cua so 1 giay va doi chieu mau noi dung dau/cuoi anh de nhan dien cung anh khi metadata thay doi; khong dedupe cac lan paste cach nhau hon cua so nay. Deployment chi recreate service `chat`; helper doi chieu 7 service khong bi anh huong va tat provenance attestation de image candidate duoc tag dung.
 - Database/API/cau hinh: Khong co migration, endpoint, schema, secret hoac cau hinh.
-- Kiem thu: `node --test --test-concurrency=1 src/features/chat/services/pasteAttachmentDraft.test.js` dat 12/12; `npm run test:frontend -- --test-concurrency=1` dat 415/415; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB da co; `git diff --check` dat.
+- Kiem thu: `node --test --test-concurrency=1 src/features/chat/services/pasteAttachmentDraft.test.js` dat 12/12; `npm run test:frontend -- --test-concurrency=1` dat 415/415; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB da co; `git diff --check` dat. Production: source validation 670 file khong doi, backup PostgreSQL/env va checksum; candidate Nginx `-t`, ChatUI moi healthy restart 0, Chatmgt container giu nguyen, health public tra thanh cong, bundle public co content-fingerprint (`arrayBuffer`, `Math.imul`, `16777619`), WSS tra `101`, log ChatUI khong co fatal marker, 7 service ngoai `chat` va volume khong doi.
 - Rui ro con lai: Browser bridge khong kha dung de UAT truc tiep trong phien nay; can hard refresh production va paste lai anh.
-- Viec tiep theo: Commit, push, deploy chi ChatUI va verify public bundle/health/WSS; khong restart Chatmgt/Tinode/database/Redis.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh production va paste mot anh mot lan, sau do paste lai cung anh o lan rieng; khong can migration hay cau hinh moi.
+- Artifact/phat hanh: Archive `vichat-paste-event-63d2bc2.tar.gz`, SHA-256 `03cf182236b42a321ebe0e0b3f0fdc7836ab4b13c3570523d67f7484402ec849`; release `/opt/deploy/chat/releases/paste-event-63d2bc2-20260917-r1`; previous `/opt/deploy/chat/releases/paste-dedupe-9c53658-20260917-r1`; backup `/opt/deploy/chat/backups/paste-event-63d2bc2-20260917-r1`; chi recreate ChatUI `chat`, giu nguyen Chatmgt/Tinode/PostgreSQL/Redis va volume.
+- Commit/PR: Source `63d2bc2`; docs follow-up commit sau deploy.
 
 ## 2026-09-17-04 - Chan lap anh trong cung mot clipboard event
 
