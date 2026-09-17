@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-17 (Asia/Saigon)
 - Loai: Sua loi | Web | UX | Kiem thu | Tai lieu
-- Trang thai: Hoan tat local; cho commit/push va deploy production
+- Trang thai: Hoan tat; source `9c53658` da commit/push `origin/master`, production da deploy va verify qua hai hop SSH
 - Muc tieu: Mot lan `Ctrl+V` anh chi tao mot draft trong muc `Dang cho gui`, ke ca khi trinh duyet tra cung file nhieu lan trong clipboard event.
 - Pham vi: Chi ham thu thap file clipboard cua ChatUI web va regression test; giu nguyen paste van ban, file picker, luong gui Tinode, mobile va cac attachment khac.
 - File da thay doi: `src/features/chat/services/pasteAttachmentDraft.js`, `src/features/chat/services/pasteAttachmentDraft.test.js`, `dist/index.html`, va `docs/CHANGELOG.md`.
 - Nguyen nhan: Code cu loai ban trung giua `clipboard.items` va `clipboard.files` nhung van giu hai item giong nhau ngay trong `clipboard.items`, tao hai draft cung ten/kich thuoc.
 - Quyet dinh ky thuat: Dedupe theo bo metadata `name/type/size/lastModified` trong pham vi mot clipboard event; khong dung dedupe toan cuc theo thoi gian de hai lan paste rieng biet van tao hai draft hop le.
 - Database/API/cau hinh: Khong co migration, endpoint, schema, secret hoac cau hinh.
-- Kiem thu: `node --test --test-concurrency=1 src/features/chat/services/pasteAttachmentDraft.test.js` dat 10/10; `npm run test:frontend -- --test-concurrency=1` dat 413/413; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB da co; `git diff --check` se chay truoc commit.
-- Rui ro con lai: Chua UAT truc tiep tren browser production trong phien nay; can hard refresh va thu lai Ctrl+V anh.
-- Viec tiep theo: Commit, push, deploy chi ChatUI va verify bundle/public marker; khong restart Chatmgt/Tinode/database/Redis.
-- Commit/PR: Chua tao.
+- Kiem thu local: `node --test --test-concurrency=1 src/features/chat/services/pasteAttachmentDraft.test.js` dat 10/10; `npm run test:frontend -- --test-concurrency=1` dat 413/413; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB da co; `git diff --check` dat. Production: source validation 671 file khong doi, backup Chatservice PostgreSQL/env va checksum; ChatUI/Chatmgt healthy restart 0, health `ok`, Nginx `-t`, public bundle co `lastModified` va khong co `onPasteCapture`, WSS tra `101`, log ChatUI khong co fatal marker, service ngoai `chat` va volume khong doi.
+- Rui ro con lai: Chua UAT truc tiep tren browser production trong phien nay; can hard refresh va thu lai Ctrl+V anh de xac nhan hanh vi giao dien.
+- Viec tiep theo: Hard refresh production va paste mot anh mot lan, sau do paste lai cung anh o lan rieng; khong can migration hay cau hinh moi.
+- Artifact/phat hanh: Archive `vichat-paste-dedupe-9c53658.tar.gz`, SHA-256 `7f3ab593a7d20f1e929fc0b879fefc4524e777b931b8a47d70156e055a4ada5c`; release `/opt/deploy/chat/releases/paste-dedupe-9c53658-20260917-r1`; previous `/opt/deploy/chat/releases/paste-sticker-5c045e1-20260917-r1`; backup `/opt/deploy/chat/backups/paste-dedupe-9c53658-20260917-r1`; chi recreate ChatUI `chat`.
+- Commit/PR: Source `9c53658`; docs follow-up commit sau deploy.
 
 ## 2026-09-17-03 - Sua Ctrl+V anh bi them hai lan vao danh sach cho
 
