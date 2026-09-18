@@ -1481,6 +1481,10 @@ html[data-theme="dark"] .message-reaction-chip.is-selected { color: var(--vichat
 .reaction-details-avatar { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 50%; }
 .reaction-details-user-name { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--text-main); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .reaction-details-user-emojis { color: var(--text-muted); font-size: 16px; }
+.reaction-details-remove-actions { display: inline-flex; align-items: center; gap: 4px; }
+.reaction-details-remove { display: inline-flex; align-items: center; gap: 3px; padding: 3px 6px; border: 1px solid rgba(244, 81, 30, .34); border-radius: 999px; color: var(--vichat-blue-dark); background: var(--vichat-blue-light); font: inherit; font-size: 13px; line-height: 1; cursor: pointer; }
+.reaction-details-remove:hover, .reaction-details-remove:focus-visible { border-color: var(--vichat-blue); background: rgba(244, 81, 30, .16); outline: none; }
+.reaction-details-remove i { font-size: 9px; }
 .reaction-details-empty { padding: 20px 0 8px; text-align: center; }
 .message-share-card { display: flex; min-width: 0; flex-direction: column; overflow: hidden; }
 .message-share-card .message-details-header { flex: 0 0 auto; gap: 10px; }

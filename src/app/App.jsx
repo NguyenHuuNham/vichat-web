@@ -741,8 +741,8 @@ function reactionEmojiCounts(reactionUsers = {}) {
     .filter(([, count]) => count > 0));
 }
 
-function reactionBelongsToViewer(users, viewerId, currentUser) {
-  return (Array.isArray(users) ? users : []).some(user => (
+function reactionUserBelongsToViewer(user, viewerId, currentUser) {
+  return Boolean(user && (
     identitiesOverlap(user, { id: viewerId }) || identitiesOverlap(user, currentUser)
   ));
 }
@@ -750,35 +750,25 @@ function reactionBelongsToViewer(users, viewerId, currentUser) {
 function MessageReactionPills({
   message,
   reactions = {},
-  reactionUsers = {},
-  viewerId,
-  currentUser,
   copy = { t: value => value },
-  onToggle,
   onDetails,
 }) {
   const entries = reactionEntries(reactions);
   if (entries.length === 0) return null;
-  const usersByEmoji = mergeReactionUsers(reactionUsers);
 
   return (
     <div className="message-reactions" role="group" aria-label={copy.t('Cảm xúc trên tin nhắn')}>
       {entries.map(([emoji, count]) => {
-        const viewerReacted = reactionBelongsToViewer(usersByEmoji[emoji], viewerId, currentUser);
-        const actionLabel = viewerReacted ? copy.t('Gỡ cảm xúc') : copy.t('Xem người đã thả cảm xúc');
+        const actionLabel = copy.t('Xem người đã thả cảm xúc');
         return (
           <button
             type="button"
             key={emoji}
-            className={`message-reaction-chip${viewerReacted ? ' is-selected' : ''}`}
+            className="message-reaction-chip"
             title={`${actionLabel} ${emoji}`}
             aria-label={`${actionLabel} ${emoji}`}
-            aria-pressed={viewerReacted}
             data-reaction-emoji={emoji}
-            onClick={() => {
-              if (viewerReacted) onToggle?.(message, emoji);
-              else onDetails?.(message, emoji);
-            }}
+            onClick={() => onDetails?.(message, emoji)}
             onContextMenu={event => {
               event.preventDefault();
               event.stopPropagation();
@@ -2741,7 +2731,6 @@ function ImageBatchMessage({
   activeChat,
   activeChatId,
   viewerId,
-  currentUser,
   activeGroupMembers,
   copy = { t: value => value, locale: 'vi-VN' },
   chatMode,
@@ -2798,19 +2787,11 @@ function ImageBatchMessage({
               const reactions = chatMode === 'tinode'
                 ? { ...(message.reactions || {}) }
                 : { ...(message.reactions || {}), ...(messageState.reactions || {}) };
-              const reactionUsers = mergeReactionUsers(
-                message.reactionUsers || {},
-                messageState.reactionUsers || {},
-              );
               const reactionPills = (
                 <MessageReactionPills
                   message={message}
                   reactions={reactions}
-                  reactionUsers={reactionUsers}
-                  viewerId={viewerId}
-                  currentUser={currentUser}
                   copy={copy}
-                  onToggle={(target, emoji) => handleMessageAction('reaction', target, emoji)}
                   onDetails={(target, emoji) => setReactionDetails({ messageId: target.id, message: target, emoji })}
                 />
               );
@@ -11498,6 +11479,7 @@ function App() {
     ...reactionDetailCounts,
   };
   const reactionDetailSelectedEmoji = reactionDetails?.emoji || 'all';
+  const reactionDetailViewerId = chatMode === 'tinode' ? tinodeClient.currentUserId : viewerId;
   const reactionDetailUsers = reactionUserRecords(
     reactionDetailUsersByEmoji,
     reactionDetailSelectedEmoji,
@@ -11844,7 +11826,7 @@ function App() {
     setMessageReactionPickerKey(null);
     if (!message || message.recalled) return;
     if (
-      ['reaction', 'edit', 'recall', 'recall-self', 'recall-all'].includes(action)
+      ['reaction', 'remove-reaction', 'edit', 'recall', 'recall-self', 'recall-all'].includes(action)
       && !allowDirectMessagingAttempt(activeChat)
     ) return;
     const isOwnMessage = message.senderId === viewerId || message.sender === 'outgoing';
@@ -11930,7 +11912,8 @@ function App() {
         saveMessageAction(message, { pinned: nextPinned });
         return;
       }
-      if (action === 'reaction') {
+      if (action === 'reaction' || action === 'remove-reaction') {
+        const removingReaction = action === 'remove-reaction';
         const groupSpamAttempt = registerGroupSendAttempt(activeChat, createGroupSpamActionId('reaction'));
         if (!groupSpamAttempt.allowed) return;
         const key = messageActionKey(activeChat.id, message.id);
@@ -11945,8 +11928,8 @@ function App() {
           : [];
         const viewerAlreadyReacted = currentReactionUsers.some(user => identitiesOverlap(user, { id: reactionActorId })
           || identitiesOverlap(user, currentUser));
-        const hasLocalReactionState = Object.prototype.hasOwnProperty.call(current, emoji);
-        const active = hasLocalReactionState ? !current[emoji] : !viewerAlreadyReacted;
+        if (removingReaction ? !viewerAlreadyReacted : viewerAlreadyReacted) return;
+        const active = !removingReaction;
         const serverCount = Math.max(0, Number(message.reactions?.[emoji]) || 0);
         const nextReactions = {
           ...current,
@@ -14023,7 +14006,6 @@ function App() {
                     activeChat={activeChat}
                     activeChatId={activeChat.id}
                     viewerId={viewerId}
-                    currentUser={currentUser}
                     activeGroupMembers={activeGroupMembers}
                     copy={appCopy}
                     chatMode={chatMode}
@@ -14203,19 +14185,11 @@ function App() {
             const reactions = chatMode === 'tinode'
               ? { ...(msg.reactions || {}) }
               : { ...(msg.reactions || {}), ...(messageState.reactions || {}) };
-            const reactionUsers = mergeReactionUsers(
-              msg.reactionUsers || {},
-              messageState.reactionUsers || {},
-            );
             const reactionPills = (
               <MessageReactionPills
                 message={msg}
                 reactions={reactions}
-                reactionUsers={reactionUsers}
-                viewerId={viewerId}
-                currentUser={currentUser}
                 copy={appCopy}
-                onToggle={(target, emoji) => handleMessageAction('reaction', target, emoji)}
                 onDetails={(target, emoji) => setReactionDetails({ messageId: target.id, message: target, emoji })}
               />
             );
@@ -15163,9 +15137,26 @@ function App() {
                   <div className="reaction-details-user" key={user.id}>
                     <SafeAvatar src={user.avatar || ''} name={user.name} className="reaction-details-avatar" />
                     <span className="reaction-details-user-name">{user.name || appCopy.t('Thành viên')}</span>
-                    {reactionDetailSelectedEmoji === 'all' && user.emojis.length > 0 && (
+                    {reactionUserBelongsToViewer(user, reactionDetailViewerId, currentUser) && user.emojis.length > 0 ? (
+                      <span className="reaction-details-user-emojis reaction-details-remove-actions">
+                        {user.emojis.map(emoji => (
+                          <button
+                            type="button"
+                            key={emoji}
+                            className="reaction-details-remove"
+                            data-reaction-remove={emoji}
+                            title={`${appCopy.t('Gỡ cảm xúc')} ${emoji}`}
+                            aria-label={`${appCopy.t('Gỡ cảm xúc')} ${emoji}`}
+                            onClick={() => { void handleMessageAction('remove-reaction', reactionDetailsMessage, emoji); }}
+                          >
+                            <span aria-hidden="true">{emoji}</span>
+                            <i className="fa-solid fa-xmark" aria-hidden="true"></i>
+                          </button>
+                        ))}
+                      </span>
+                    ) : reactionDetailSelectedEmoji === 'all' && user.emojis.length > 0 ? (
                       <span className="reaction-details-user-emojis">{user.emojis.join(' ')}</span>
-                    )}
+                    ) : null}
                   </div>
                 )) : (
                   <p className="reaction-details-empty">{appCopy.t('Chưa có người thả cảm xúc')}</p>
