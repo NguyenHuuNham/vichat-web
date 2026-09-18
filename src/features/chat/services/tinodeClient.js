@@ -51,6 +51,7 @@ import {
   editActorMatchesMessage,
   editTargetsMessage,
   MAX_MESSAGE_TEXT_BYTES,
+  MESSAGE_TEXT_TOO_LONG_ERROR,
   messageTextByteLength,
   messageTextValidationError,
   recallAppliesToViewer,
@@ -2688,7 +2689,7 @@ export const tinodeClient = {
       content = `${EDIT_EVENT_PREFIX}${JSON.stringify(event)}`;
     }
     if (messageTextByteLength(content, CENTRAL_MESSAGE_TEXT_LIMIT) > CENTRAL_MESSAGE_TEXT_LIMIT) {
-      throw new Error('Tin nhắn sửa vượt quá giới hạn 120 KB của máy chủ Tinode.');
+      throw new Error(MESSAGE_TEXT_TOO_LONG_ERROR);
     }
     const clientId = `web-edit-${event.targetSeq || event.targetId}-${Date.now()}`;
     const draft = topic.createMessage(content, false);

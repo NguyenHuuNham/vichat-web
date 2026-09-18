@@ -39,7 +39,9 @@ test('rejects oversized message text before it reaches UI state or Tinode', () =
 
   const emojiText = '\u{1F600}'.repeat(Math.floor(MAX_MESSAGE_TEXT_BYTES / 4) + 1);
   assert.equal(messageTextByteLength('\u{1F600}'), 4);
-  assert.match(messageTextValidationError(emojiText), /120 KB/);
+  assert.equal(messageTextValidationError(emojiText), MESSAGE_TEXT_TOO_LONG_ERROR);
+  assert.doesNotMatch(MESSAGE_TEXT_TOO_LONG_ERROR, /120 KB/i);
+  assert.match(messageTextValidationError('x'.repeat(MAX_MESSAGE_TEXT_BYTES + 1), 'Mô tả tệp'), /Mô tả tệp quá dài/);
   assert.equal(messageTextByteLength('x'.repeat(MAX_MESSAGE_TEXT_BYTES + 1), MAX_MESSAGE_TEXT_BYTES), MAX_MESSAGE_TEXT_BYTES + 1);
   assert.match(appSource, /if \(!updateCurrentDraft\(value\)\)/);
   assert.match(appSource, /maxLength=\{MAX_MESSAGE_TEXT_CHARACTERS\}/);

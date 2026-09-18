@@ -289,6 +289,18 @@ Tinode, broadcast in realtime profile events, or included in another viewer's
 response. Existing legacy mention metadata is resolved against the current
 viewer directory before rendering when the target identity is available.
 
+Conversation-only nicknames use a separate `Conversation.properties.conversation_nicknames`
+JSON object keyed first by the viewer account ID and then by the active
+conversation member ID. Chatmgt returns only the authenticated viewer's bounded
+map as `conversationNicknames`; the raw property is removed from serialized
+conversation properties. `PUT /api/v1/conversation/<id>/nicknames/<target-id>`
+requires both participants to be active in the same tenant-scoped conversation,
+locks the conversation row during the JSON update, and returns the refreshed
+viewer-specific snapshot. ChatUI keeps the official name and global contact
+nickname separate so clearing the local value restores the global/default name.
+This reuses existing conversation metadata and requires no migration or Tinode
+message/profile event.
+
 Browser-only viewer preferences are kept compatible across frontend releases.
 The existing localStorage keys and IndexedDB database names remain the storage
 contract; ChatUI does not clear browser storage during login, refresh, build or
@@ -759,7 +771,8 @@ Chatmgt marker before attempting any Tinode cleanup and does not prepare or
 re-bind a topic solely for deletion. Tinode then removes the viewer's message
 copy best-effort with a non-hard delete and records a private `vichatDeletedAt`
 boundary; a stale browser/Tinode session cannot restore or block the successful
-Chatmgt deletion. Nicknames remain in the viewer's account properties and shared
+Chatmgt deletion. Global nicknames remain in the viewer's account properties,
+while conversation-only nicknames remain in the conversation properties; shared
 conversation backgrounds remain in Tinode auxiliary metadata. When a direct
 topic receives a message after that boundary, ChatUI reuses the same Chatmgt
 pair, clears both viewer-scoped markers, and merges only post-delete messages;
@@ -1320,7 +1333,7 @@ history, role-aware actions and a message-to-task shortcut.
 | `POST` | `/api/v1/chat/presence/heartbeat` | Refresh the current ChatUI presence lease, attempt last-seen metadata, and return requested same-tenant states |
 | `POST` | `/api/v1/chat/presence/batch` | Read requested same-tenant online and bounded last-seen states |
 | `POST` | `/api/v1/chat/presence/offline` | Remove the current browser presence lease best-effort |
-| `GET/PUT` | `/api/v1/chat/contact-nicknames...` | Read or update private viewer-scoped 1-1 contact nicknames |
+| `GET/PUT` | `/api/v1/chat/contact-nicknames...` | Read or update private viewer-scoped global contact nicknames |
 | `POST` | `/api/v1/chat/users/<id>/revoke-session` | Revoke a tenant employee session |
 | `GET/POST` | `/api/v1/friend-request` | Tenant-scoped friendship metadata |
 | `GET/POST` | `/api/v1/conversation` | Tenant-scoped conversation metadata |
@@ -1328,6 +1341,7 @@ history, role-aware actions and a message-to-task shortcut.
 | `GET` | `/api/v1/conversation/direct-block-state` | Return cache-free viewer/peer block state for the current user's direct conversations |
 | `PUT` | `/api/v1/conversation/<id>/block` | Set or clear the current user's direct-message block; group conversations are rejected |
 | `PUT` | `/api/v1/conversation/<id>/group-settings` | Owner/member-authorized group name, avatar and boolean settings update |
+| `PUT` | `/api/v1/conversation/<id>/nicknames/<target-id>` | Set or clear a viewer-only nickname for an active member in one conversation |
 | `POST` | `/api/v1/conversation/<id>/tinode-prepare` | Prepare Tinode participant mappings |
 | `PUT` | `/api/v1/conversation/<id>/tinode-topic` | Verify/bind the topic to exact membership |
 | `POST` | `/api/v1/conversation/<id>/dissolve` | Owner-only group dissolution; remove all active members and close the group |

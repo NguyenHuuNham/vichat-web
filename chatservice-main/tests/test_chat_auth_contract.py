@@ -931,6 +931,8 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("management_session_requested(request)", update_source)
         self.assertIn("CONTACT_NICKNAMES_PROPERTY", update_source)
         self.assertIn("_account_by_id(tenant_id, target_id)", update_source)
+        self.assertIn("ManagementAccount.query.filter", update_source)
+        self.assertIn("with_for_update()", update_source)
         self.assertIn("viewer.properties = properties", update_source)
         self.assertIn("_audit", update_source)
         self.assertIn("defaultName", update_source)
@@ -941,12 +943,43 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("message.raw?.from", app_source)
         self.assertIn("knownAccounts", app_source)
         self.assertIn("contactNicknameDialog", app_source)
-        self.assertIn("setContactNicknameValue(contact.nickname || defaultName)", app_source)
+        self.assertIn("setContactNicknameValue(globalNickname)", app_source)
         self.assertIn("contact-nickname-edit-button", app_source)
         self.assertIn("mentionCanonicalText", app_source)
         self.assertIn("serializeMentionForTransport", app_source)
         self.assertIn("replyMetadataForTransport", app_source)
         self.assertIn("contact nicknames", architecture_source)
+
+    @repository_source_test
+    def test_conversation_nicknames_are_private_to_the_viewer_and_conversation(self):
+        controller_source, update_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_nickname_update",
+        )
+        app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
+        service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")
+        realtime_source = (
+            REPOSITORY_ROOT / "src" / "features" / "chat" / "services" / "chatRealtime.js"
+        ).read_text(encoding="utf-8")
+        architecture_source = (
+            REPOSITORY_ROOT / "docs" / "chat-backend-architecture.md"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("/api/v1/conversation/<conversation_id>/nicknames/<target_id>", controller_source)
+        self.assertIn("/api/v1/chat/threads/<conversation_id>/nicknames/<target_id>", controller_source)
+        self.assertIn("management_session_requested(request)", update_source)
+        self.assertIn("CONVERSATION_NICKNAMES_PROPERTY", update_source)
+        self.assertIn("with_for_update()", update_source)
+        self.assertIn("ConversationParticipant.query.filter", update_source)
+        self.assertIn("Conversation member is no longer active.", update_source)
+        self.assertIn("conversationNickname", controller_source)
+        self.assertIn("updateConversationNickname", service_source)
+        self.assertIn("conversationNicknames", service_source)
+        self.assertIn("contactNickname", realtime_source)
+        self.assertIn("contactNicknameScope", app_source)
+        self.assertIn("contact-nickname-scope-option", app_source)
+        self.assertIn("conversationNicknames", app_source)
+        self.assertIn("conversation_nicknames", architecture_source)
 
     def test_directory_sync_reconciles_only_complete_strictly_verified_snapshots(self):
         controller_source, directory_source = function_source(

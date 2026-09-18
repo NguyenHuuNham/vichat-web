@@ -168,6 +168,9 @@ HISTORY_INTERNAL_MESSAGE_PREFIXES = (
 CONTACT_NICKNAMES_PROPERTY = "contact_nicknames"
 CONTACT_NICKNAME_MAX_LENGTH = 80
 CONTACT_NICKNAME_MAX_COUNT = 1000
+CONVERSATION_NICKNAMES_PROPERTY = "conversation_nicknames"
+CONVERSATION_NICKNAME_MAX_LENGTH = 80
+CONVERSATION_NICKNAME_MAX_COUNT = 1000
 AUTHORITATIVE_AVATAR_PROPERTY = "chat_authoritative_avatar"
 GROUP_AVATAR_PROPERTY_KEYS = ("group_avatar", "avatar", "avatar_url", "avatarUrl")
 
@@ -1627,6 +1630,27 @@ def _public_group_member(account, participant, viewer_account=None):
     return payload
 
 
+def _public_conversation_member(account, participant, viewer_account, nicknames, is_group=False):
+    """Overlay a viewer's conversation-only nickname without leaking the map."""
+    payload = (
+        _public_group_member(account, participant, viewer_account=viewer_account)
+        if is_group
+        else _public_account(account, viewer_account=viewer_account)
+    )
+    global_nickname = str(payload.get("nickname") or "").strip()
+    local_nickname = str(nicknames.get(str(account.id), "") or "").strip()
+    payload["contactNickname"] = global_nickname
+    payload["contact_nickname"] = global_nickname
+    payload["conversationNickname"] = local_nickname
+    payload["conversation_nickname"] = local_nickname
+    if local_nickname:
+        payload["name"] = local_nickname
+        payload["displayName"] = local_nickname
+        payload["display_name"] = local_nickname
+        payload["nickname"] = local_nickname
+    return payload
+
+
 def _serialize_conversation(item, viewer_id):
     properties = item.properties or {}
     is_group = bool(properties.get("is_group"))
@@ -1656,6 +1680,7 @@ def _serialize_conversation(item, viewer_id):
         ]
         participant_ids = [str(participant.participant_id) for participant in participants]
     viewer_account = _account_by_id(item.tenant_id, viewer_id)
+    conversation_nicknames = _conversation_nicknames(item, viewer_id)
     owner = next((participant for participant in participants if _is_group_owner(participant)), None)
     viewer_membership = next(
         (participant for participant in participants if participant.participant_id == viewer_id),
@@ -1715,6 +1740,7 @@ def _serialize_conversation(item, viewer_id):
         )
     if peer_account is not None:
         conversation_name, _nickname = _account_display_name(peer_account, viewer_account)
+        conversation_name = conversation_nicknames.get(str(peer_account.id), "") or conversation_name
     direct_peer = next(
         (
             participant
@@ -1727,6 +1753,7 @@ def _serialize_conversation(item, viewer_id):
     direct_deleted_at = _conversation_deleted_at(item, viewer_id, viewer_membership) if not is_group else ""
     public_properties = dict(properties)
     public_properties.pop(DIRECT_DELETED_AT_PROPERTY, None)
+    public_properties.pop(CONVERSATION_NICKNAMES_PROPERTY, None)
     return {
         "id": str(item.id),
         "conversation_no": item.conversation_no,
@@ -1740,6 +1767,7 @@ def _serialize_conversation(item, viewer_id):
         "last_message_at": item.last_message_at,
         "updated_at": item.updated_at,
         "properties": public_properties,
+        "conversationNicknames": conversation_nicknames,
         "isGroup": is_group,
         "avatar": _conversation_avatar(properties),
         "groupSettings": group_settings,
@@ -1747,15 +1775,12 @@ def _serialize_conversation(item, viewer_id):
         "participantIds": participant_ids,
         "members": [
             (
-                _public_group_member(
+                _public_conversation_member(
                     accounts_by_id[participant.participant_id],
                     participant,
-                    viewer_account=viewer_account,
-                )
-                if is_group
-                else _public_account(
-                    accounts_by_id[participant.participant_id],
-                    viewer_account=viewer_account,
+                    viewer_account,
+                    conversation_nicknames,
+                    is_group=is_group,
                 )
             )
             for participant in participants
@@ -1768,15 +1793,12 @@ def _serialize_conversation(item, viewer_id):
         ],
         "pendingMembers": [
             (
-                _public_group_member(
+                _public_conversation_member(
                     pending_accounts_by_id[participant.participant_id],
                     participant,
-                    viewer_account=viewer_account,
-                )
-                if is_group
-                else _public_account(
-                    pending_accounts_by_id[participant.participant_id],
-                    viewer_account=viewer_account,
+                    viewer_account,
+                    conversation_nicknames,
+                    is_group=is_group,
                 )
             )
             for participant in pending_participants
@@ -1838,6 +1860,28 @@ def _contact_nicknames(account):
             and value
             and len(value) <= CONTACT_NICKNAME_MAX_LENGTH
             and len(result) < CONTACT_NICKNAME_MAX_COUNT
+        ):
+            result[contact_key] = value
+    return result
+
+
+def _conversation_nicknames(item, viewer_id):
+    """Return only this viewer's bounded, conversation-local nicknames."""
+    raw = (item.properties or {}).get(CONVERSATION_NICKNAMES_PROPERTY)
+    if not isinstance(raw, dict):
+        return {}
+    viewer_values = raw.get(str(viewer_id))
+    if not isinstance(viewer_values, dict):
+        return {}
+    result = {}
+    for contact_id, nickname in viewer_values.items():
+        contact_key = str(contact_id or "").strip()
+        value = str(nickname or "").strip()
+        if (
+            contact_key
+            and value
+            and len(value) <= CONVERSATION_NICKNAME_MAX_LENGTH
+            and len(result) < CONVERSATION_NICKNAME_MAX_COUNT
         ):
             result[contact_key] = value
     return result
@@ -3928,7 +3972,11 @@ async def contact_nickname_update(request, contact_id):
             "error_message": "The nickname is too long.",
         }, status=400)
 
-    viewer = _account_by_id(tenant_id, viewer_id)
+    viewer = ManagementAccount.query.filter(
+        ManagementAccount.tenant_id == tenant_id,
+        ManagementAccount.id == viewer_id,
+        ManagementAccount.active.is_(True),
+    ).with_for_update().first()
     if viewer is None:
         return _auth_error()
     properties = dict(viewer.properties or {})
@@ -3962,6 +4010,125 @@ async def contact_nickname_update(request, contact_id):
         "nickname": nickname,
         "defaultName": _account_default_name(target),
     })
+
+
+@app.route('/api/v1/conversation/<conversation_id>/nicknames/<target_id>', methods=['PUT'])
+@app.route('/api/v1/chat/threads/<conversation_id>/nicknames/<target_id>', methods=['PUT'])
+async def conversation_nickname_update(request, conversation_id, target_id):
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    if management_session_requested(request):
+        return json({
+            "error_code": "CHAT_SESSION_REQUIRED",
+            "error_message": "Conversation nicknames can only be changed from a Chat user session.",
+        }, status=403)
+    try:
+        conversation_uuid = uuid.UUID(str(conversation_id))
+    except (ValueError, TypeError, AttributeError):
+        return json({"error_code": "NOT_FOUND", "error_message": "Invalid conversation."}, status=404)
+
+    viewer_id = _user_id(current_user)
+    target_id = str(target_id or "").strip()
+    if not target_id or target_id == viewer_id:
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "A conversation nickname can only be set for another member.",
+        }, status=400)
+
+    item, membership = _conversation_and_membership(tenant_id, conversation_uuid, viewer_id)
+    if item is None or membership is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
+    target = _account_by_id(tenant_id, target_id)
+    if target is None:
+        return json({
+            "error_code": "NOT_FOUND",
+            "error_message": "Member not found in this tenant.",
+        }, status=404)
+
+    body = request.json or {}
+    if not isinstance(body, dict) or not isinstance(body.get("nickname"), str):
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "The nickname must be text.",
+        }, status=400)
+    nickname = body["nickname"].strip()
+    if len(nickname) > CONVERSATION_NICKNAME_MAX_LENGTH:
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "The nickname is too long.",
+        }, status=400)
+
+    is_group = bool((item.properties or {}).get("is_group"))
+    # Serialize concurrent edits to the same JSON metadata document so one tab
+    # cannot silently discard a nickname saved by another tab.
+    locked_item = Conversation.query.filter(
+        Conversation.id == conversation_uuid,
+        Conversation.tenant_id == tenant_id,
+        Conversation.deleted.is_(False),
+    ).with_for_update().first()
+    if locked_item is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
+    item = locked_item
+    membership = ConversationParticipant.query.filter(
+        ConversationParticipant.tenant_id == tenant_id,
+        ConversationParticipant.conversation_id == item.id,
+        ConversationParticipant.participant_id == viewer_id,
+        ConversationParticipant.deleted.is_(False),
+        ConversationParticipant.approval_status == "APPROVED",
+        ConversationParticipant.active.is_(True),
+    ).with_for_update().first()
+    target_membership = ConversationParticipant.query.filter(
+        ConversationParticipant.tenant_id == tenant_id,
+        ConversationParticipant.conversation_id == item.id,
+        ConversationParticipant.participant_id == target_id,
+        ConversationParticipant.deleted.is_(False),
+        ConversationParticipant.approval_status == "APPROVED",
+        ConversationParticipant.active.is_(True),
+    ).with_for_update().first()
+    if membership is None or target_membership is None:
+        return json({
+            "error_code": "NOT_FOUND",
+            "error_message": "Conversation member is no longer active.",
+        }, status=404)
+    properties = dict(item.properties or {})
+    raw_nicknames = properties.get(CONVERSATION_NICKNAMES_PROPERTY)
+    all_nicknames = dict(raw_nicknames) if isinstance(raw_nicknames, dict) else {}
+    viewer_nicknames = _conversation_nicknames(item, viewer_id)
+    if nickname:
+        if target_id not in viewer_nicknames and len(viewer_nicknames) >= CONVERSATION_NICKNAME_MAX_COUNT:
+            return json({
+                "error_code": "PARAM_ERROR",
+                "error_message": "Too many conversation nicknames are stored for this account.",
+            }, status=400)
+        viewer_nicknames[target_id] = nickname
+    else:
+        viewer_nicknames.pop(target_id, None)
+    if viewer_nicknames:
+        all_nicknames[viewer_id] = viewer_nicknames
+    else:
+        all_nicknames.pop(viewer_id, None)
+    if all_nicknames:
+        properties[CONVERSATION_NICKNAMES_PROPERTY] = all_nicknames
+    else:
+        properties.pop(CONVERSATION_NICKNAMES_PROPERTY, None)
+    item.properties = properties
+    item.updated_at = int(time.time())
+    db.session.commit()
+    _audit(
+        request,
+        "CONVERSATION_NICKNAME_UPDATED",
+        True,
+        tenant_id=tenant_id,
+        user_id=viewer_id,
+        properties={
+            "conversation_id": str(conversation_uuid),
+            "target_id": target_id,
+            "cleared": not bool(nickname),
+            "group": is_group,
+        },
+    )
+    return json(_serialize_conversation(item, viewer_id))
 
 
 @app.route('/api/v1/chat/users', methods=['POST'])

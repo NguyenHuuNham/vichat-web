@@ -436,6 +436,11 @@ function normalizeConversation(record) {
     admin: record?.admin || properties.admin || '',
     adminId: record?.adminId || properties.adminId || '',
     members: record?.members || properties.members || [],
+    conversationNicknames: record?.conversationNicknames
+      || record?.conversation_nicknames
+      || properties.conversationNicknames
+      || properties.conversation_nicknames
+      || {},
     participantIds: record?.participantIds || properties.participantIds || [],
     pendingMembers: record?.pendingMembers || record?.pending_members || properties.pendingMembers || properties.pending_members || [],
     pendingParticipantIds: record?.pendingParticipantIds || record?.pending_participant_ids || properties.pendingParticipantIds || properties.pending_participant_ids || [],
@@ -826,6 +831,21 @@ export const chatManagementService = {
       method: 'PUT',
       body: JSON.stringify({ nickname: String(nickname || '').trim() }),
     });
+  },
+
+  async updateConversationNickname(conversationId, targetId, nickname) {
+    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const conversationKey = String(conversationId || '').trim();
+    const memberKey = String(targetId || '').trim();
+    if (!conversationKey || !memberKey) throw new Error('Conversation member information is missing.');
+    const payload = await apiRequest(
+      `/api/v1/chat/threads/${encodeURIComponent(conversationKey)}/nicknames/${encodeURIComponent(memberKey)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ nickname: String(nickname || '').trim() }),
+      },
+    );
+    return normalizeConversation(payload);
   },
 
   async searchUsers(query, { excludeUserId = '' } = {}) {

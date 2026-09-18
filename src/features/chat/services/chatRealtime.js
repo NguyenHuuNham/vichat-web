@@ -345,7 +345,13 @@ function normalizeMember(value) {
       || member.username
       || member.email,
   );
-  const nickname = conversationText(member.nickname || member.contactNickname || member.contact_nickname);
+  const contactNickname = conversationText(
+    member.contactNickname || member.contact_nickname || member.nickname,
+  );
+  const conversationNickname = conversationText(
+    member.conversationNickname || member.conversation_nickname,
+  );
+  const nickname = conversationNickname || contactNickname;
   const rawGroupRole = conversationText(member.groupRole || member.group_role).toUpperCase();
   const groupRole = GROUP_ROLE_VALUES.has(rawGroupRole) ? rawGroupRole : '';
   return {
@@ -357,6 +363,10 @@ function normalizeMember(value) {
     defaultName,
     default_name: defaultName,
     nickname,
+    contactNickname,
+    contact_nickname: contactNickname,
+    conversationNickname,
+    conversation_nickname: conversationNickname,
     username: conversationText(member.username),
     email: conversationText(member.email),
     title: conversationText(member.title),
@@ -550,7 +560,30 @@ export function normalizeConversationShape(conversation) {
   )
     .map(value => conversationIdentity(conversationObject(value)?.id || value))
     .filter(Boolean);
-  const members = conversationArray(source.members).map(normalizeMember).filter(Boolean);
+  const conversationNicknames = Object.fromEntries(
+    Object.entries(
+      conversationObject(source.conversationNicknames)
+        || conversationObject(source.conversation_nicknames)
+        || {},
+    )
+      .slice(0, 1000)
+      .map(([identity, value]) => [conversationIdentity(identity), conversationText(value)])
+      .filter(([identity, value]) => identity && value && value.length <= 80),
+  );
+  const members = conversationArray(source.members).map(normalizeMember).filter(Boolean).map(member => {
+    const localNickname = [member.id, member.uid, member.tinodeUid, member.tinode_uid]
+      .map(conversationIdentity)
+      .map(identity => conversationNicknames[identity] || '')
+      .find(Boolean) || '';
+    if (!localNickname || member.conversationNickname === localNickname) return member;
+    return {
+      ...member,
+      name: localNickname,
+      nickname: localNickname,
+      conversationNickname: localNickname,
+      conversation_nickname: localNickname,
+    };
+  });
   const pendingMembers = conversationArray(
     source.pendingMembers || source.pending_members,
   ).map(normalizeMember).filter(Boolean);
@@ -595,7 +628,6 @@ export function normalizeConversationShape(conversation) {
   const hasConversationAvatar = Object.prototype.hasOwnProperty.call(source, 'avatarUrl')
     || Object.prototype.hasOwnProperty.call(source, 'avatar')
     || Boolean(persistedAvatar);
-
   return {
     ...source,
     id: conversationIdentity(source.id),
@@ -615,6 +647,7 @@ export function normalizeConversationShape(conversation) {
     admin: conversationText(source.admin),
     adminId: conversationIdentity(source.adminId),
     members,
+    conversationNicknames,
     participantIds,
     pendingMembers,
     pendingParticipantIds,

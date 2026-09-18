@@ -1,9 +1,8 @@
 export const MAX_CHAT_ATTACHMENT_BYTES = 500 * 1024 * 1024;
-// Tinode rejects text packets above 120 KiB. The character ceiling prevents a
-// multi-megabyte paste from reaching React before the byte check runs.
+// Keep multi-megabyte pastes out of React before the byte check runs.
 export const MAX_MESSAGE_TEXT_BYTES = 120 * 1024;
 export const MAX_MESSAGE_TEXT_CHARACTERS = MAX_MESSAGE_TEXT_BYTES;
-export const MESSAGE_TEXT_TOO_LONG_ERROR = 'Tin nhắn vượt quá giới hạn 120 KB của máy chủ Tinode.';
+export const MESSAGE_TEXT_TOO_LONG_ERROR = 'Tin nhắn quá dài. Vui lòng rút gọn nội dung rồi thử lại.';
 export const EDIT_EVENT_PREFIX = '__VICHAT_EDIT_EVENT__:';
 
 export function messageTextByteLength(value, maxBytes = Number.POSITIVE_INFINITY) {
@@ -37,10 +36,12 @@ export function messageTextValidationError(value, label = 'Tin nhắn') {
   if (text.length > MAX_MESSAGE_TEXT_CHARACTERS) {
     return label === 'Tin nhắn'
       ? MESSAGE_TEXT_TOO_LONG_ERROR
-      : `${label} vượt quá giới hạn 120 KB của máy chủ Tinode.`;
+      : `${label} quá dài. Vui lòng rút gọn nội dung rồi thử lại.`;
   }
   if (messageTextByteLength(text, MAX_MESSAGE_TEXT_BYTES) > MAX_MESSAGE_TEXT_BYTES) {
-    return `${label} vượt quá giới hạn 120 KB của máy chủ Tinode.`;
+    return label === 'Tin nhắn'
+      ? MESSAGE_TEXT_TOO_LONG_ERROR
+      : `${label} quá dài. Vui lòng rút gọn nội dung rồi thử lại.`;
   }
   return '';
 }

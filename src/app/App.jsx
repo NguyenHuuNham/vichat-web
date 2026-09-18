@@ -1362,11 +1362,28 @@ function groupActiveMembers(room, accounts) {
       !id
       || activeMembers.some(candidate => candidate.id === id || identitiesOverlap(candidate, account))
     ) return activeMembers;
+    const conversationNickname = String(
+      member?.conversationNickname || member?.conversation_nickname || '',
+    ).trim();
+    const contactNickname = String(
+      account?.contactNickname
+        || account?.contact_nickname
+        || account?.nickname
+        || member?.contactNickname
+        || member?.contact_nickname
+        || '',
+    ).trim();
     activeMembers.push({
       ...member,
       ...account,
       id,
-      name: account?.name || member?.name || id,
+      name: conversationNickname || account?.name || member?.name || id,
+      nickname: conversationNickname || contactNickname,
+      contactNickname,
+      contact_nickname: contactNickname,
+      conversationNickname,
+      conversation_nickname: conversationNickname,
+      defaultName: account?.defaultName || member?.defaultName || member?.name || id,
       avatar: account?.avatar || member?.avatar || '',
     });
     return activeMembers;
@@ -1482,10 +1499,38 @@ function personalizeConversationForViewer(room, accounts, viewer) {
     if (!account) return member;
     return {
       ...member,
-      name: account.name || member.name,
+      name: String(member?.conversationNickname || member?.conversation_nickname || '').trim()
+        || account.name || member.name,
       defaultName: account.defaultName || member.defaultName || member.name,
       default_name: account.default_name || member.default_name || member.name,
-      nickname: account.nickname || '',
+      nickname: String(
+        member?.conversationNickname
+          || member?.conversation_nickname
+          || account?.nickname
+          || account?.contactNickname
+          || account?.contact_nickname
+          || member?.contactNickname
+          || member?.contact_nickname
+          || '',
+      ).trim(),
+      contactNickname: String(
+        account?.nickname
+          || account?.contactNickname
+          || account?.contact_nickname
+          || member?.contactNickname
+          || member?.contact_nickname
+          || '',
+      ).trim(),
+      contact_nickname: String(
+        account?.nickname
+          || account?.contactNickname
+          || account?.contact_nickname
+          || member?.contactNickname
+          || member?.contact_nickname
+          || '',
+      ).trim(),
+      conversationNickname: String(member?.conversationNickname || member?.conversation_nickname || '').trim(),
+      conversation_nickname: String(member?.conversationNickname || member?.conversation_nickname || '').trim(),
       avatar: isAccountManaged(account) ? (account.avatar || '') : (account.avatar || member.avatar || ''),
       online: member.online,
     };
@@ -1945,6 +1990,11 @@ function mergeTinodeConversation(existing, incoming, { viewerId = '' } = {}) {
     : managementOwned
       ? mergeRealtimeMemberPresence(safeExisting.members, safeIncoming.members)
       : snapshotMembers;
+  const conversationNicknames = incomingManagementSnapshot
+    ? safeIncoming.conversationNicknames
+    : Object.keys(safeIncoming.conversationNicknames || {}).length > 0
+      ? safeIncoming.conversationNicknames
+      : safeExisting.conversationNicknames;
   const incomingExplicitName = conversationDisplayName({ ...safeIncoming, members: [] }, '');
   const existingExplicitName = conversationDisplayName({ ...safeExisting, members: [] }, '');
   const incomingPeerName = safeIncoming.isGroup ? '' : conversationDisplayName(safeIncoming, '');
@@ -1991,6 +2041,7 @@ function mergeTinodeConversation(existing, incoming, { viewerId = '' } = {}) {
     pendingParticipantIds: incomingManagementSnapshot ? safeIncoming.pendingParticipantIds : safeExisting.pendingParticipantIds,
     messages,
     friendEvents,
+    conversationNicknames,
     ...readState,
     pinned: safeIncoming.pinnedExplicit ? safeIncoming.pinned : safeExisting.pinned,
     pinnedAt: safeIncoming.pinnedExplicit ? (safeIncoming.pinnedAt || null) : safeExisting.pinnedAt,
@@ -3319,6 +3370,7 @@ function App() {
   const [contactNicknames, setContactNicknames] = useState({});
   const [contactNicknameDialog, setContactNicknameDialog] = useState(null);
   const [contactNicknameValue, setContactNicknameValue] = useState('');
+  const [contactNicknameScope, setContactNicknameScope] = useState('global');
   const [isSavingContactNickname, setIsSavingContactNickname] = useState(false);
   const [isUpdatingProfileAvatar, setIsUpdatingProfileAvatar] = useState(false);
   const [avatarCropFile, setAvatarCropFile] = useState(null);
@@ -3389,6 +3441,7 @@ function App() {
   const directoryAccountsRef = useRef(directoryAccounts);
   const keyboardShortcutActionHandlersRef = useRef({});
   const contactNicknamesRef = useRef(contactNicknames);
+  const chatErrorTimerRef = useRef(null);
   const avatarOverridesRef = useRef(new Map());
   const groupAvatarSyncRef = useRef(new Map());
   const groupAvatarRefreshRef = useRef(new Map());
@@ -3439,6 +3492,20 @@ function App() {
   contactNicknamesRef.current = contactNicknames;
   unreadBoundariesRef.current = unreadBoundaries;
   pastedAttachmentDraftsRef.current = pastedAttachmentDrafts;
+
+  useEffect(() => {
+    if (chatErrorTimerRef.current) window.clearTimeout(chatErrorTimerRef.current);
+    chatErrorTimerRef.current = null;
+    if (!chatError) return undefined;
+    chatErrorTimerRef.current = window.setTimeout(() => {
+      chatErrorTimerRef.current = null;
+      setChatError('');
+    }, 5600);
+    return () => {
+      if (chatErrorTimerRef.current) window.clearTimeout(chatErrorTimerRef.current);
+      chatErrorTimerRef.current = null;
+    };
+  }, [chatError]);
 
   const requestAppConfirmation = useCallback(options => {
     if (!options) return Promise.resolve(false);
@@ -5027,7 +5094,18 @@ function App() {
         ...(account || {}),
         id: account?.id || member?.id || member?.uid || member?.tinodeUid || member?.tinode_uid,
         tinodeUid: account?.tinodeUid || account?.tinode_uid || member?.tinodeUid || member?.tinode_uid || member?.id,
-        name: account?.name || member?.name || account?.username || member?.username,
+        name: member?.conversationNickname
+          || member?.conversation_nickname
+          || account?.name
+          || member?.name
+          || account?.username
+          || member?.username,
+        defaultName: account?.defaultName || account?.default_name || member?.defaultName || member?.name,
+        nickname: member?.conversationNickname
+          || member?.conversation_nickname
+          || account?.nickname
+          || member?.nickname
+          || '',
         avatar: account?.avatar || member?.avatar || '',
       };
       const identity = String(
@@ -6414,6 +6492,7 @@ function App() {
     setContactNicknames({});
     setContactNicknameDialog(null);
     setContactNicknameValue('');
+    setContactNicknameScope('global');
     setIsSavingContactNickname(false);
     avatarOverridesRef.current.clear();
     groupAvatarSyncRef.current.clear();
@@ -7809,17 +7888,24 @@ function App() {
   const publicProfileFor = entity => {
     if (!entity) return null;
     const identity = entity.id || entity.uid || entity.tinodeUid || entity.tinode_uid || entity.username || entity.name;
-    const account = findAccount(directoryAccounts, identity)
-      || findAccount(roomMembers(activeChat), identity)
+    const roomAccount = findAccount(roomMembers(activeChat), identity);
+    const directoryAccount = findAccount(directoryAccounts, identity);
+    const account = roomAccount
+      || directoryAccount
       || (identitiesOverlap(entity, currentUser) ? currentUser : null);
-    const merged = normalizeAccountShape({ ...(account || {}), ...(entity || {}) }) || {};
-    const viewerAccount = normalizeAccountShape(account);
+    const merged = normalizeAccountShape({ ...(directoryAccount || {}), ...(roomAccount || {}), ...(entity || {}) }) || {};
+    const conversationNickname = String(
+      roomAccount?.conversationNickname || roomAccount?.conversation_nickname || '',
+    ).trim();
+    const viewerAccount = normalizeAccountShape(directoryAccount || account);
     if (viewerAccount) {
-      merged.name = viewerAccount.name || merged.name;
-      merged.display_name = viewerAccount.name || merged.display_name;
+      merged.name = conversationNickname || viewerAccount.name || merged.name;
+      merged.display_name = merged.name || merged.display_name;
       merged.defaultName = viewerAccount.defaultName || merged.defaultName;
       merged.default_name = viewerAccount.default_name || merged.default_name;
-      merged.nickname = viewerAccount.nickname || '';
+      merged.nickname = conversationNickname || viewerAccount.nickname || '';
+      merged.conversationNickname = conversationNickname;
+      merged.conversation_nickname = conversationNickname;
     }
     const isCurrentAccount = identitiesOverlap(merged, currentUser);
     return {
@@ -7910,32 +7996,115 @@ function App() {
     setIsGroupRenameOpen(true);
   };
 
-  const openContactNicknameDialog = () => {
-    if (activeChat.isGroup || activeChat.isChatbot || !activeDirectPeer) return;
-    const contact = findAccount(
+  const openContactNicknameDialog = (member = activeDirectPeer) => {
+    if (!member || member.type === 'bot' || member.isChatbot || identitiesOverlap(member, currentUser)) return;
+    const memberId = member.id || member.uid || member.tinodeUid || member.tinode_uid || member.name;
+    const directoryContact = findAccount(directoryAccounts, memberId);
+    const contact = directoryContact || findAccount(
       directoryAccounts,
-      activeDirectPeer.id || activeDirectPeer.uid || activeDirectPeer.tinodeUid || activeDirectPeer.name,
-    ) || activeDirectPeer;
+      memberId,
+    ) || member;
     const defaultName = contact.defaultName || contact.default_name || contact.full_name || contact.name || contact.username || 'Người dùng';
+    const globalNickname = String(
+      directoryContact?.nickname
+        || directoryContact?.contactNickname
+        || directoryContact?.contact_nickname
+        || member.contactNickname
+        || member.contact_nickname
+        || (!member.conversationNickname ? member.nickname : '')
+        || '',
+    ).trim();
+    const conversationNickname = String(
+      member.conversationNickname || member.conversation_nickname || '',
+    ).trim();
     setContactNicknameDialog({
+      ...member,
       ...contact,
+      id: String(contact.id || member.id || member.uid || '').trim(),
       defaultName,
-      avatar: contact.avatar || activeDirectPeer.avatar || '',
+      globalNickname,
+      conversationNickname,
+      conversationId: activeChat.managementId || activeChat.id,
+      avatar: contact.avatar || member.avatar || '',
     });
-    setContactNicknameValue(contact.nickname || defaultName);
+    setContactNicknameScope('global');
+    setContactNicknameValue(globalNickname);
     setChatError('');
+  };
+
+  const handleContactNicknameScopeChange = scope => {
+    const nextScope = scope === 'conversation' ? 'conversation' : 'global';
+    setContactNicknameScope(nextScope);
+    setContactNicknameValue(nextScope === 'conversation'
+      ? String(contactNicknameDialog?.conversationNickname || '').trim()
+      : String(contactNicknameDialog?.globalNickname || '').trim());
   };
 
   const handleContactNicknameSubmit = async event => {
     event.preventDefault();
     const contact = contactNicknameDialog;
     const contactId = String(contact?.id || contact?.uid || '').trim();
+    const scope = contactNicknameScope === 'conversation' ? 'conversation' : 'global';
+    const conversationId = String(contact?.conversationId || '').trim();
     if (!contactId || isSavingContactNickname) return;
     const nickname = contactNicknameValue.trim().slice(0, 80);
     setIsSavingContactNickname(true);
     setChatError('');
     try {
       let savedNickname = nickname;
+      if (scope === 'conversation') {
+        if (chatManagementService.remote) {
+          if (!conversationId || !isManagementConversationId(conversationId)) {
+            throw new Error('Chatmgt chưa xác nhận cuộc trò chuyện này.');
+          }
+          await chatManagementService.updateConversationNickname(conversationId, contactId, nickname);
+        }
+        setConversations(previous => {
+          const next = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
+            const matchesConversation = [id, room.id, room.managementId, room.tinodeTopic]
+              .filter(Boolean)
+              .some(value => String(value) === conversationId);
+            if (!matchesConversation) return [id, room];
+            const conversationNicknames = { ...(room.conversationNicknames || {}) };
+            if (nickname) conversationNicknames[contactId] = nickname;
+            else delete conversationNicknames[contactId];
+            const members = roomMembers(room).map(memberItem => {
+              if (!identitiesOverlap(memberItem, { id: contactId })) return memberItem;
+              const contactNickname = String(
+                  memberItem.contactNickname
+                  || memberItem.contact_nickname
+                  || (!memberItem.conversationNickname ? memberItem.nickname : '')
+                  || '',
+              ).trim();
+              const defaultMemberName = memberItem.defaultName || memberItem.default_name || memberItem.name || '';
+              const nextName = nickname || contactNickname || defaultMemberName;
+              return {
+                ...memberItem,
+                name: nextName,
+                nickname: nickname || contactNickname,
+                contactNickname,
+                contact_nickname: contactNickname,
+                conversationNickname: nickname,
+                conversation_nickname: nickname,
+              };
+            });
+            const peer = !room.isGroup
+              ? members.find(memberItem => !identitiesOverlap(memberItem, currentUserRef.current || currentUser))
+              : null;
+            const nextRoom = safeNormalizeConversationForRender({
+              ...room,
+              members,
+              conversationNicknames,
+              ...(peer ? { name: peer.name || room.name } : {}),
+            }, id);
+            return [id, nextRoom];
+          }));
+          conversationsRef.current = next;
+          return next;
+        });
+        setContactNicknameDialog(null);
+        return;
+      }
       if (chatManagementService.remote) {
         const response = await chatManagementService.updateContactNickname(contactId, nickname);
         savedNickname = String(response?.nickname || '').trim();
@@ -13111,7 +13280,7 @@ function App() {
         />
       )}
       {(chatError || showTinodeConnectionNotice) && (
-        <div className={`chat-system-banner ${chatError ? 'error' : 'info'}`} role="status">
+        <div className={`chat-toast ${chatError ? 'error' : 'info'}`} role={chatError ? 'alert' : 'status'} aria-live="polite">
           <i className={`fa-solid ${chatError ? 'fa-triangle-exclamation' : 'fa-circle-info'}`}></i>
           <span>{chatError ? appCopy.t(chatError) : appCopy.t('Đang kết nối Tinode...')}</span>
           {chatError && <button type="button" onClick={() => setChatError('')} aria-label={appCopy.t('Đóng thông báo')}><i className="fa-solid fa-xmark"></i></button>}
@@ -13627,6 +13796,10 @@ function App() {
             const dateLabel = formatMessageDateLabel(msg, displayClock, appCopy.locale);
             const previousDateLabel = formatMessageDateLabel(visibleMessages[messageIndex - 1], displayClock, appCopy.locale);
             const showDateDivider = Boolean(dateLabel && dateLabel !== previousDateLabel);
+            const messageProfile = messageSenderProfile(msg);
+            const displayedSenderName = activeChat.isGroup
+              ? (messageProfile?.name || msg.senderName)
+              : msg.senderName;
             if (entry.kind === 'image-batch') {
               return (
                 <React.Fragment key={entry.key}>
@@ -13756,14 +13929,14 @@ function App() {
                   >
                     {!isPollOutgoing && (
                       <button type="button" className="message-avatar message-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))} title={`${appCopy.t('Xem thông tin')} ${msg.senderName || appCopy.t('thành viên')}`}>
-                        <SafeAvatar src={msg.avatar || ''} name={msg.senderName} />
+                        <SafeAvatar src={msg.avatar || ''} name={displayedSenderName} />
                         <GroupRoleBadge role={pollSenderGroupRole} copy={appCopy} />
                       </button>
                     )}
                     <div className="message-content-wrapper poll-message-content">
-                      {!isPollOutgoing && msg.senderName && (
+                      {!isPollOutgoing && displayedSenderName && (
                         <div className="sender-name-row">
-                          <button type="button" className="sender-name sender-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))}>{msg.senderName}</button>
+                          <button type="button" className="sender-name sender-profile-trigger" onClick={() => openProfileFor(messageProfile)}>{displayedSenderName}</button>
                         </div>
                       )}
                       {pollMessageState.pinned && (
@@ -13878,15 +14051,15 @@ function App() {
                 >
                 {!isOutgoing && (
                   <button type="button" className="message-avatar message-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))} title={`${appCopy.t('Xem thông tin')} ${msg.senderName || appCopy.t('thành viên')}`}>
-                    <SafeAvatar src={msg.avatar || ''} name={msg.senderName} />
+                    <SafeAvatar src={msg.avatar || ''} name={displayedSenderName} />
                     <GroupRoleBadge role={messageSenderGroupRole} copy={appCopy} />
                   </button>
                 )}
 
                 <div className={`message-content-wrapper ${imagePreviewSource ? 'image-message-content' : ''} ${isStickerMessage ? 'sticker-message-content' : ''}`}>
-                  {!isOutgoing && msg.senderName && (
+                  {!isOutgoing && displayedSenderName && (
                     <div className="sender-name-row">
-                      <button type="button" className="sender-name sender-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))}>{msg.senderName}</button>
+                      <button type="button" className="sender-name sender-profile-trigger" onClick={() => openProfileFor(messageProfile)}>{displayedSenderName}</button>
                     </div>
                   )}
                   {messageState.pinned && (
@@ -15234,7 +15407,10 @@ function App() {
                       && canAppointGroupDeputy(activeChat, directoryAccounts, currentUser, member);
                     const canRevokeDeputy = (usesManagementData || chatMode === 'demo')
                       && canRevokeGroupDeputy(activeChat, directoryAccounts, currentUser, member);
-                    const canShowMemberMenu = canRemove || canAppointDeputy || canRevokeDeputy;
+                    const canEditMemberNickname = !identitiesOverlap(member, currentUser)
+                      && member.type !== 'bot'
+                      && !member.isChatbot;
+                    const canShowMemberMenu = canRemove || canAppointDeputy || canRevokeDeputy || canEditMemberNickname;
                     return (
                       <div key={memberIdentity} className={`member-item ${groupMemberMenuId === memberIdentity ? 'menu-open' : ''}`}>
                         <span className="member-avatar-wrap">
@@ -15270,6 +15446,21 @@ function App() {
                             </button>
                             {groupMemberMenuId === memberIdentity && (
                               <div className="member-context-menu" role="menu" onClick={event => event.stopPropagation()}>
+                                {canEditMemberNickname && (
+                                  <button
+                                    type="button"
+                                    className="member-context-menu-item"
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setGroupMemberMenuId('');
+                                      openContactNicknameDialog(member);
+                                    }}
+                                    disabled={Boolean(removingMemberId || updatingGroupMemberRoleId)}
+                                  >
+                                    <i className="fa-solid fa-pen" aria-hidden="true"></i>
+                                    <span>{appCopy.t('Đổi biệt danh')}</span>
+                                  </button>
+                                )}
                                 {canAppointDeputy && (
                                   <button
                                     type="button"
@@ -16475,7 +16666,7 @@ function App() {
         </div>
       )}
 
-      {contactNicknameDialog && !activeChat.isGroup && (
+      {contactNicknameDialog && (
         <div className="modal-backdrop contact-nickname-backdrop" role="presentation" onMouseDown={event => {
           if (event.target === event.currentTarget && !isSavingContactNickname) setContactNicknameDialog(null);
         }}>
@@ -16503,6 +16694,31 @@ function App() {
               </p>
               <small>{appCopy.t('Lưu ý: Tên gợi nhớ sẽ chỉ hiển thị riêng với bạn.')}</small>
             </div>
+            <fieldset className="contact-nickname-scope">
+              <legend>{appCopy.t('Phạm vi biệt danh')}</legend>
+              <label className={`contact-nickname-scope-option ${contactNicknameScope === 'global' ? 'selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="contact-nickname-scope"
+                  value="global"
+                  checked={contactNicknameScope === 'global'}
+                  onChange={() => handleContactNicknameScopeChange('global')}
+                  disabled={isSavingContactNickname}
+                />
+                <span><strong>{appCopy.t('Toàn bộ Chat của tôi')}</strong><small>{appCopy.t('Hiển thị ở mọi cuộc trò chuyện của bạn.')}</small></span>
+              </label>
+              <label className={`contact-nickname-scope-option ${contactNicknameScope === 'conversation' ? 'selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="contact-nickname-scope"
+                  value="conversation"
+                  checked={contactNicknameScope === 'conversation'}
+                  onChange={() => handleContactNicknameScopeChange('conversation')}
+                  disabled={isSavingContactNickname}
+                />
+                <span><strong>{appCopy.t('Chỉ trong đoạn chat này')}</strong><small>{appCopy.t('Không thay đổi tên ở các cuộc trò chuyện khác.')}</small></span>
+              </label>
+            </fieldset>
             <label className="group-form-field contact-nickname-field">
               <span>{appCopy.t('Tên gợi nhớ')}</span>
               <input
