@@ -8,9 +8,9 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-09-18-09 - Gop va huy bieu tuong cam xuc tin nhan
 
-- Thoi gian: 2026-09-18 21:48 (Asia/Saigon)
+- Thoi gian: 2026-09-18 22:16 (Asia/Saigon)
 - Loai: Sua loi | Web | UX | Kiem thu | Tai lieu
-- Trang thai: Hoan tat code; chua commit/push va chua deploy production
+- Trang thai: Hoan tat; source `9a42307` da commit/push `origin/master`, production da deploy va verify qua hai hop SSH
 - Muc tieu: Cho phep huy reaction cua chinh minh va hien thi cac reaction theo mot hang gop gon, de doc tren ca nen sang/toi.
 - Pham vi: ChatUI reaction chip cho tin nhan thuong, file/anh va Tinode; khong doi API, database, event contract, mobile hay luong gui tin.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/messageActionPolicy.js`, `src/features/chat/services/messageActionPolicy.test.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `dist/index.html` va file nay.
@@ -18,9 +18,10 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Tai su dung event reaction hien co, khong them endpoint hay migration. Gop state o ranh gioi UI/policy va dedupe user theo identity de khong lam thay doi du lieu reaction goc.
 - Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi truong moi.
 - Kiem thu: `node --test --test-concurrency=1 src/features/i18n/appLanguage.test.js src/features/chat/services/messageActionPolicy.test.js` dat 27/27; `npm run test:frontend -- --test-concurrency=1` dat 434/434; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon; `git diff --check` dat.
-- Rui ro con lai: Chua UAT browser voi tai khoan that cho them/huy reaction tren direct/group, tin nhan thuong va anh; chua commit/push/deploy.
-- Viec tiep theo: UAT chip reaction tren nen sang/toi, click lai de huy, realtime hai tab va chuot phai xem chi tiet; sau do commit/push/deploy neu duoc yeu cau.
-- Commit/PR: Chua tao.
+- Kiem tra production: Candidate `r1` dung tai gate bundle truoc activate, khong recreate va khong doi `current`; candidate `r2` thanh cong. Archive `vichat-message-reactions-9a42307.tar.gz`, SHA-256 `04a5b222541a0c3494ece754d44b4a2ebbf3809b72c81e4f1d45dc886677cc74`; release `/opt/deploy/chat/releases/message-reactions-9a42307-20260918-r2`, previous `/opt/deploy/chat/releases/conversation-nickname-35be082-20260918-r1`, backup `/opt/deploy/chat/backups/message-reactions-9a42307-20260918-r2`; chi recreate ChatUI `chat`, giu nguyen Chatmgt, Tinode, ChatAPI, PostgreSQL, Redis, Coturn va volume. ChatUI healthy/restart 0, public health dat, WSS tra `101 Switching Protocols`, bundle public khop candidate (`/assets/index-DykYRsjI.js`, `App-ScpTBOUV.js`, `/assets/index-H_mVQ1GN.css`), Alembic giu `20260917_14`, env/checksum va log gate dat.
+- Rui ro con lai: Chua UAT browser voi tai khoan that cho them/huy reaction tren direct/group, tin nhan thuong va anh.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, sau do UAT chip reaction tren nen sang/toi, click lai de huy, realtime hai tab va chuot phai xem chi tiet.
+- Commit/PR: Source commit `9a42307`; deployment record dang cho commit.
 
 ## 2026-09-18-08 - Dong bo biet danh cong khai qua realtime
 
