@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-18 (Asia/Saigon)
 - Loai: Sua loi | Web | Backend | Tinode | Kiem thu | Tai lieu
-- Trang thai: Hoan tat code; chua deploy production
+- Trang thai: Hoan tat; source `2b534db` da commit/push `origin/master`, production da deploy va verify
 - Muc tieu: Cho phep chat nhom tiep tuc hoat dong khi membership con dong stale va ngan hai tab cung mo nhom tao hai topic/ghi de lich su.
 - Pham vi: Chatmgt group participant snapshot, endpoint bind topic Tinode, ChatUI flow mo topic; khong doi direct chat, schema, migration, mobile hay message store.
 - File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/app/App.jsx`, `dist/index.html`, `docs/chat-backend-architecture.md` va file nay.
 - Noi dung: Group bo qua participant tro toi Account da inactive khi tao snapshot realtime; direct chat van tu choi membership khong hop le. Bind group khoa hang trong transaction va nhan topic da bind lam canonical de request tu tab sau dung lai. ChatUI coalesce request mo topic trong cung tab va tu dong bo topic local tam neu tab khac da bind truoc.
 - Quyet dinh ky thuat: Khong xoa du lieu membership/Tinode. Chi loc stale group projection tai ranh gioi realtime, giu Chatmgt snapshot lam nguon su that va dung row lock de tranh race bind; request history/message khong thay doi.
 - Database/API/cau hinh: Khong migration; thay doi hanh vi endpoint bind Tinode de idempotent khi group da co topic canonical.
-- Kiem thu: `npm run test:frontend -- --test-concurrency=1` dat 424/424; `python -m unittest discover -s tests -v` dat 310, skip 105 do dependency chi co trong image Chatmgt; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` thanh cong voi warning chunk App lon; `python -m py_compile application/controllers/api_chat_management.py` dat; `git diff --check` dat.
-- Rui ro con lai: Chua UAT production bang nhieu tab va nhom co Account inactive; browser bridge khong khoi tao duoc trong phien nay; 105 backend test van skip neu khong chay trong image Chatmgt.
-- Viec tiep theo: Push va deploy rieng ChatUI/Chatmgt sau khi production preflight healthy; UAT lai group chat bang hai tab.
-- Commit/PR: `2b534db`.
+- Kiem thu: `npm run test:frontend -- --test-concurrency=1` dat 424/424; `python -m unittest discover -s tests -v` dat 310, skip 105 do dependency chi co trong image Chatmgt; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` thanh cong voi warning chunk App lon; `python -m py_compile application/controllers/api_chat_management.py` dat; `git diff --check` dat. Production: archive checksum khop; backup Chatservice/Tinode/env va checksum pass; candidate contract trong image dat 59/59; ChatUI/Chatmgt healthy restart 0; public ChatUI health va Chatmgt auth health deu `200`; public bundle khop candidate; WSS gate `101`; Alembic `20260917_14` giu nguyen; service ngoai pham vi va volume khong doi; Tinode data untouched.
+- Rui ro con lai: Chua UAT production bang nhieu tab va nhom co Account inactive; browser bridge khong khoi tao duoc trong phien nay; 105 backend test van skip neu khong chay trong image Chatmgt. Candidate helper lan dau dung truoc activate do thieu mount source, da quarantine release/backup partial `r1`.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, dang nhap tai khoan that va mo cung mot group tren hai tab; xac nhan ca hai tab load lich su, gui/nhan tin va khong tao topic duplicate.
+- Artifact/phat hanh: Archive `vichat-group-chat-tabs-2b534db.tar.gz`, SHA-256 `39b2e9d21d18602da602c3e64c120c9e274d16771abe338f1290d2001d1100c7`; release `/opt/deploy/chat/releases/group-chat-tabs-2b534db-20260918-r2`; previous `/opt/deploy/chat/releases/workspace-align-7822092-20260918-r1`; backup `/opt/deploy/chat/backups/group-chat-tabs-2b534db-20260918-r2`; partial r1 da chuyen vao `.failed-candidate`; chi recreate Chatmgt va Chat, giu nguyen Tinode/PostgreSQL/Redis va volume.
+- Commit/PR: Source `2b534db`; deploy record dang cap nhat.
 
 ## 2026-09-18-03 - Chan treo khi gui tin nhan qua dai
 
