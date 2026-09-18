@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Rui ro con lai: Can hard refresh production va UAT bang tai khoan that cho ho so/avatar bot, roi nhom/xoa hoi thoai, sticker/cloud confirmation, popup mobile va cac module Workspace; khong co thay doi backend can migration.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT bang tai khoan that cho ho so/avatar bot, roi nhom/xoa hoi thoai, sticker/cloud confirmation, popup mobile va cac module Workspace.
 - Artifact/phat hanh: Archive `vichat-profile-dialogs-b848ea9.tar.gz`, SHA-256 `e717a675c3693fbbf7b39299713d029bdbab4669f3533aa535992684943fc604`; release `/opt/deploy/chat/releases/profile-dialogs-b848ea9-20260918-r1`; previous `/opt/deploy/chat/releases/personal-cloud-e9f009c-20260917-r1`; backup `/opt/deploy/chat/backups/profile-dialogs-b848ea9-20260918-r1`; chi recreate ChatUI `chat`, giu nguyen Chatmgt/Tinode/PostgreSQL/Redis va volume.
-- Commit/PR: Source commit `b848ea9`; deploy record follow-up dang cho commit/push.
+- Commit/PR: Source commit `b848ea9`; deploy record commit `d347b51`.
 
 ## 2026-09-17-07 - Them Cloud cua toi va bo loc danh sach hoi thoai
 
