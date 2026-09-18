@@ -928,6 +928,7 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Phiên Tinode không khớp với tài khoản quản lý hiện tại.': 'The Tinode session does not match the current management account.',
   'Phiên đăng nhập chưa sẵn sàng.': 'The sign-in session is not ready.',
   'Tin nhắn vượt quá giới hạn 120 KB của máy chủ Tinode.': 'The message exceeds Tinode server\'s 120 KB limit.',
+  'Mô tả tệp vượt quá giới hạn 120 KB của máy chủ Tinode.': 'The file description exceeds Tinode server\'s 120 KB limit.',
   'Thiếu tin nhắn hoặc biểu cảm.': 'The message or reaction is missing.',
   'Chỉ người gửi mới có thể thu hồi tin nhắn này.': 'Only the sender can recall this message.',
   'Tin nhắn không có định danh để thu hồi.': 'The message has no identifier to recall.',

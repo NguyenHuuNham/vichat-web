@@ -139,9 +139,11 @@ import {
   resolveClipboardAttachments,
 } from '../features/chat/services/pasteAttachmentDraft';
 import {
+  MAX_MESSAGE_TEXT_CHARACTERS,
   canRecallDeliveredMessage,
   canEditDeliveredMessage,
   chatAttachmentValidationError,
+  messageTextValidationError,
 } from '../features/chat/services/messagePolicy';
 import { splitMessageLinks } from '../features/chat/services/messageLinkPolicy';
 import {
@@ -10024,6 +10026,12 @@ function App() {
       setChatError(validationError);
       return;
     }
+    const captionText = String(caption ?? '').trim();
+    const captionValidationError = messageTextValidationError(captionText, 'Mô tả tệp');
+    if (captionValidationError) {
+      setChatError(captionValidationError);
+      return;
+    }
     const groupSpamAttempt = registerGroupSendAttempt(activeChat, groupActionId);
     if (!groupSpamAttempt.allowed) return;
     const resolvedGroupActionId = groupSpamAttempt.groupActionId;
@@ -10032,7 +10040,6 @@ function App() {
       ? options.replyMeta
       : replyingTo ? { ...replyingTo } : null;
     const sharedReplyMeta = replyMetadataForTransport(replyMeta, directoryAccounts);
-    const captionText = String(caption || '').trim();
     const captionMentions = captionText
       ? (Array.isArray(mentions) ? mentions : [])
         .filter(mention => mentionTokenExists(captionText, mention.token))
@@ -10903,32 +10910,38 @@ function App() {
   };
 
   const updateCurrentDraft = (value) => {
-    setInputText(value);
+    const nextValue = String(value ?? '');
+    const validationError = messageTextValidationError(nextValue);
+    if (validationError) {
+      setChatError(validationError);
+      return false;
+    }
+    setInputText(nextValue);
     if (editingMessage) {
       setMessageMentions(previous => {
         const currentMentions = previous[currentChatId] || [];
-        const nextMentions = currentMentions.filter(mention => mentionTokenExists(value, mention.token));
+        const nextMentions = currentMentions.filter(mention => mentionTokenExists(nextValue, mention.token));
         if (nextMentions.length === currentMentions.length) return previous;
         return { ...previous, [currentChatId]: nextMentions };
       });
-      return;
+      return true;
     }
     setDrafts(prev => {
       const next = { ...prev };
-      if (value) next[currentChatId] = value;
+      if (nextValue) next[currentChatId] = nextValue;
       else delete next[currentChatId];
       return next;
     });
     setMessageMentions(previous => {
       const currentMentions = previous[currentChatId] || [];
-      const nextMentions = currentMentions.filter(mention => mentionTokenExists(value, mention.token));
+      const nextMentions = currentMentions.filter(mention => mentionTokenExists(nextValue, mention.token));
       if (nextMentions.length === currentMentions.length) return previous;
       return { ...previous, [currentChatId]: nextMentions };
     });
     const room = conversations[currentChatId];
-    if (chatMode === 'tinode' && value.trim() && !directMessagingError(room)) {
+    if (chatMode === 'tinode' && nextValue.trim() && !directMessagingError(room)) {
       const topicKey = readyTinodeTypingTopic(room, tinodeClient.authenticated);
-      if (!topicKey) return;
+      if (!topicKey) return true;
       const now = Date.now();
       const lastNotice = typingNoticeAtRef.current.get(topicKey) || 0;
       if (now - lastNotice >= 1200) {
@@ -10936,11 +10949,18 @@ function App() {
         tinodeClient.sendTyping(topicKey).catch(() => {});
       }
     }
+    return true;
   };
 
   const handleMessageInputChange = event => {
     const value = event.target.value;
-    updateCurrentDraft(value);
+    if (!updateCurrentDraft(value)) {
+      // Restore the last accepted value after a large paste before React
+      // re-renders the controlled input.
+      event.target.value = inputText;
+      setMentionContext(null);
+      return;
+    }
     if (!activeChat.isGroup) {
       setMentionContext(null);
       return;
@@ -10962,7 +10982,7 @@ function App() {
     const insertion = insertMentionAt(inputText, mentionContext, candidate);
     if (!insertion.token) return;
 
-    updateCurrentDraft(insertion.text);
+    if (!updateCurrentDraft(insertion.text)) return;
     setMessageMentions(previous => {
       const currentMentions = previous[currentChatId] || [];
       const mention = {
@@ -11019,7 +11039,7 @@ function App() {
   };
 
   const insertEmoji = emoji => {
-    updateCurrentDraft(`${inputText}${emoji}`);
+    if (!updateCurrentDraft(`${inputText}${emoji}`)) return;
     setMentionContext(null);
     setShowEmojiPicker(false);
     requestAnimationFrame(() => messageInputRef.current?.focus());
@@ -11160,7 +11180,7 @@ function App() {
           nextDraft = nextDraft.trim()
             ? `${token} ${nextDraft.trim()}`
             : `${token} `;
-          updateCurrentDraft(nextDraft);
+          if (!updateCurrentDraft(nextDraft)) return inputText;
         }
         setMessageMentions(previous => {
           const currentMentions = previous[currentChatId] || [];
@@ -11269,7 +11289,13 @@ function App() {
       message.id === snapshotTarget.id
       || (Number(snapshotTarget.seq) > 0 && Number(message.seq) === Number(snapshotTarget.seq))
     )) || snapshotTarget;
-    const text = String(inputText || '').trim();
+    const rawText = String(inputText ?? '');
+    const validationError = messageTextValidationError(rawText);
+    if (validationError) {
+      setChatError(validationError);
+      return;
+    }
+    const text = rawText.trim();
     if (!room || !canEditDeliveredMessage(target) || !messageIsOwnedByViewer(target)) {
       setChatError('Tin nhắn này không còn đủ điều kiện để sửa.');
       return;
@@ -11726,7 +11752,13 @@ function App() {
 
   // --- Send Message Action ---
   const handleSendMessage = async (textToSend = null) => {
-    const text = (textToSend !== null ? textToSend : inputText).trim();
+    const rawText = String((textToSend !== null ? textToSend : inputText) ?? '');
+    const validationError = messageTextValidationError(rawText);
+    if (validationError) {
+      setChatError(validationError);
+      return;
+    }
+    const text = rawText.trim();
     if (!text || (activeChat.isChatbot && (isTyping || chatbotRequestRef.current))) return;
     if (activeChat.isChatbot && text.length > 4000) {
       setChatError('Câu hỏi cho ViChat AI không được vượt quá 4000 ký tự.');
@@ -11993,6 +12025,11 @@ function App() {
     const conversationId = currentChatId;
     const replyMeta = replyingTo ? { ...replyingTo } : null;
     const captionMentions = messageMentions[conversationId] || [];
+    const captionValidationError = messageTextValidationError(inputText, 'Mô tả tệp');
+    if (captionValidationError) {
+      setChatError(captionValidationError);
+      return;
+    }
     const groupSpamAttempt = registerGroupSendAttempt(activeChat, createGroupSpamActionId('paste-batch'));
     if (!groupSpamAttempt.allowed) return;
     const batchId = `paste-batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -14413,6 +14450,7 @@ function App() {
               aria-controls={mentionContext && activeChat.isGroup ? 'message-mention-picker' : undefined}
               aria-expanded={Boolean(mentionContext && activeChat.isGroup)}
               aria-activedescendant={mentionOptions.length > 0 ? `message-mention-option-${mentionActiveIndex}` : undefined}
+              maxLength={MAX_MESSAGE_TEXT_CHARACTERS}
               placeholder={appCopy.t(editingMessage ? 'Nhập nội dung mới...' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : activeChat.isChatbot ? 'Hỏi ViChat AI về quy trình, chính sách, tài liệu...' : activePastedAttachments.length > 0 ? 'Nhập mô tả cho ảnh hoặc tệp...' : 'Nhập tin nhắn...')}
               value={inputText}
               disabled={realtimeMessagingPending || !canSendInActiveGroup || (activeChat.isChatbot && isTyping)}

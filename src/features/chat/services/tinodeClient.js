@@ -50,6 +50,9 @@ import {
   compactMessages,
   editActorMatchesMessage,
   editTargetsMessage,
+  MAX_MESSAGE_TEXT_BYTES,
+  messageTextByteLength,
+  messageTextValidationError,
   recallAppliesToViewer,
   recallPlaceholderSenderId,
 } from './messagePolicy';
@@ -133,7 +136,7 @@ const GROUP_DEFAULT_AUTH_MODE = 'N';
 const BACKGROUND_HISTORY_LIMIT = 100;
 const RECONNECT_HISTORY_LIMIT = 100;
 const OPEN_HISTORY_LIMIT = 1000;
-const CENTRAL_MESSAGE_TEXT_LIMIT = 120 * 1024;
+const CENTRAL_MESSAGE_TEXT_LIMIT = MAX_MESSAGE_TEXT_BYTES;
 
 // A host is enough to opt into Tinode mode; assertConfigured below provides a
 // useful error when the API key is missing instead of silently using demo mode.
@@ -2588,9 +2591,8 @@ export const tinodeClient = {
   },
 
   async sendText(topicName, text, clientId, metadata = {}) {
-    if (new TextEncoder().encode(String(text || '')).length > CENTRAL_MESSAGE_TEXT_LIMIT) {
-      throw new Error('Tin nhắn vượt quá giới hạn 120 KB của máy chủ Tinode.');
-    }
+    const textValidationError = messageTextValidationError(text);
+    if (textValidationError) throw new Error(textValidationError);
     const topic = await subscribeTopic(topicName);
     const draft = topic.createMessage(text, false);
     const head = { ...(draft.head || {}) };
@@ -2679,13 +2681,13 @@ export const tinodeClient = {
     let content = `${EDIT_EVENT_PREFIX}${JSON.stringify(event)}`;
     // Large edits keep the original Tinode packet as the first history item;
     // omit the duplicated fallback copy when the event envelope is too large.
-    if (new TextEncoder().encode(content).length > CENTRAL_MESSAGE_TEXT_LIMIT) {
+    if (messageTextByteLength(content, CENTRAL_MESSAGE_TEXT_LIMIT) > CENTRAL_MESSAGE_TEXT_LIMIT) {
       event = { ...event };
       delete event.previousText;
       delete event.previousMentions;
       content = `${EDIT_EVENT_PREFIX}${JSON.stringify(event)}`;
     }
-    if (new TextEncoder().encode(content).length > CENTRAL_MESSAGE_TEXT_LIMIT) {
+    if (messageTextByteLength(content, CENTRAL_MESSAGE_TEXT_LIMIT) > CENTRAL_MESSAGE_TEXT_LIMIT) {
       throw new Error('Tin nhắn sửa vượt quá giới hạn 120 KB của máy chủ Tinode.');
     }
     const clientId = `web-edit-${event.targetSeq || event.targetId}-${Date.now()}`;
@@ -2884,12 +2886,11 @@ export const tinodeClient = {
   },
 
   async sendFile(topicName, file, clientId, metadata = {}) {
+    const caption = String(metadata.caption || '').trim();
+    const captionValidationError = messageTextValidationError(caption, 'Mô tả tệp');
+    if (captionValidationError) throw new Error(captionValidationError);
     const tinode = getClient();
     const topic = await subscribeTopic(topicName);
-    const caption = String(metadata.caption || '').trim();
-    if (new TextEncoder().encode(caption).length > CENTRAL_MESSAGE_TEXT_LIMIT) {
-      throw new Error('Mô tả tệp vượt quá giới hạn 120 KB của máy chủ Tinode.');
-    }
     const Drafty = getDrafty();
     const isImage = /^image\//i.test(file.type || '') || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(file.name || '');
     if (!Drafty || (isImage ? !Drafty.appendImage : !Drafty.attachFile)) {

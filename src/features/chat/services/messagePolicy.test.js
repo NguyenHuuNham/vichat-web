@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  MAX_MESSAGE_TEXT_BYTES,
+  MAX_MESSAGE_TEXT_CHARACTERS,
+  MESSAGE_TEXT_TOO_LONG_ERROR,
   MAX_CHAT_ATTACHMENT_BYTES,
   applyEditToMessage,
   applyRecallToMessage,
@@ -12,6 +15,8 @@ import {
   compactMessages,
   editActorMatchesMessage,
   editTargetsMessage,
+  messageTextByteLength,
+  messageTextValidationError,
   recallAppliesToViewer,
   recallPlaceholderSenderId,
 } from './messagePolicy.js';
@@ -24,6 +29,25 @@ const productionHostNginxSource = readFileSync(
   new URL('../../../../infrastructure/production/nginx-host-chat.conf', import.meta.url),
   'utf8',
 );
+const appSource = readFileSync(new URL('../../../app/App.jsx', import.meta.url), 'utf8');
+const tinodeSource = readFileSync(new URL('./tinodeClient.js', import.meta.url), 'utf8');
+
+test('rejects oversized message text before it reaches UI state or Tinode', () => {
+  assert.equal(messageTextByteLength('a'.repeat(MAX_MESSAGE_TEXT_BYTES)), MAX_MESSAGE_TEXT_BYTES);
+  assert.equal(messageTextValidationError('a'.repeat(MAX_MESSAGE_TEXT_BYTES)), '');
+  assert.equal(messageTextValidationError('a'.repeat(MAX_MESSAGE_TEXT_CHARACTERS + 1)), MESSAGE_TEXT_TOO_LONG_ERROR);
+
+  const emojiText = '\u{1F600}'.repeat(Math.floor(MAX_MESSAGE_TEXT_BYTES / 4) + 1);
+  assert.equal(messageTextByteLength('\u{1F600}'), 4);
+  assert.match(messageTextValidationError(emojiText), /120 KB/);
+  assert.equal(messageTextByteLength('x'.repeat(MAX_MESSAGE_TEXT_BYTES + 1), MAX_MESSAGE_TEXT_BYTES), MAX_MESSAGE_TEXT_BYTES + 1);
+  assert.match(appSource, /if \(!updateCurrentDraft\(value\)\)/);
+  assert.match(appSource, /maxLength=\{MAX_MESSAGE_TEXT_CHARACTERS\}/);
+  assert.match(tinodeSource, /messageTextValidationError\(text\)/);
+  const sendSource = appSource.split('const handleSendMessage = async')[1].split('const handleComposerSubmit')[0];
+  assert.ok(sendSource.indexOf('messageTextValidationError') < sendSource.indexOf('registerGroupSendAttempt'));
+  assert.ok(sendSource.indexOf('messageTextValidationError') < sendSource.indexOf('setConversations'));
+});
 
 test('allows attachments through 500 MB and rejects larger files immediately', () => {
   assert.equal(chatAttachmentValidationError({ size: MAX_CHAT_ATTACHMENT_BYTES }), '');

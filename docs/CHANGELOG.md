@@ -6,6 +6,20 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-18-03 - Chan treo khi gui tin nhan qua dai
+
+- Thoi gian: 2026-09-18 (Asia/Saigon)
+- Loai: Sua loi | Web | Tinode | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code; chua deploy production
+- Muc tieu: Ngan noi dung tin nhan qua dai lam composer, optimistic state hoac phien web bi treo.
+- Pham vi: Policy do dai van ban, composer ChatUI, sendText, sua tin va caption file; khong doi backend, database, Tinode history, mobile hay cac luong thanh vien nhom.
+- Quyet dinh ky thuat: Kiem tra gioi han ky tu va UTF-8 truoc khi cap nhat draft, dang ky cooldown, tao optimistic message hoac goi Tinode; giu lai ban nhap khi bi chan. Tinode van kiem tra lai o transport de bao ve cac diem goi khac.
+- Database/API/cau hinh: Khong co migration, endpoint, schema, secret hoac cau hinh moi.
+- Kiem thu: Targeted `node --test --test-concurrency=1 src/features/chat/services/messagePolicy.test.js` dat 9/9; `npm run test:frontend -- --test-concurrency=1` dat 423/423; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi warning chunk `App` lon hon 500 KB; `git diff --check` dat.
+- Rui ro con lai: Chua UAT paste/guid tin nhan dai tren production browser.
+- Viec tiep theo: Commit/push va deploy rieng ChatUI, sau do hard refresh va UAT gui/paste tin nhan dai tren production browser.
+- Commit/PR: Chua tao.
+
 ## 2026-09-18-02 - Can chinh man Cong viec trong Workspace
 
 - Thoi gian: 2026-09-18 (Asia/Saigon)
