@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Rui ro con lai: Chua UAT production bang nhieu tab va nhom co Account inactive; browser bridge khong khoi tao duoc trong phien nay; 105 backend test van skip neu khong chay trong image Chatmgt. Candidate helper lan dau dung truoc activate do thieu mount source, da quarantine release/backup partial `r1`.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn`, dang nhap tai khoan that va mo cung mot group tren hai tab; xac nhan ca hai tab load lich su, gui/nhan tin va khong tao topic duplicate.
 - Artifact/phat hanh: Archive `vichat-group-chat-tabs-2b534db.tar.gz`, SHA-256 `39b2e9d21d18602da602c3e64c120c9e274d16771abe338f1290d2001d1100c7`; release `/opt/deploy/chat/releases/group-chat-tabs-2b534db-20260918-r2`; previous `/opt/deploy/chat/releases/workspace-align-7822092-20260918-r1`; backup `/opt/deploy/chat/backups/group-chat-tabs-2b534db-20260918-r2`; partial r1 da chuyen vao `.failed-candidate`; chi recreate Chatmgt va Chat, giu nguyen Tinode/PostgreSQL/Redis va volume.
-- Commit/PR: Source `2b534db`; deploy record dang cap nhat.
+- Commit/PR: Source `2b534db`; deploy record `544dc67`.
 
 ## 2026-09-18-03 - Chan treo khi gui tin nhan qua dai
 
