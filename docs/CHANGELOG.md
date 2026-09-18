@@ -19,8 +19,8 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong migration; thay doi hanh vi endpoint bind Tinode de idempotent khi group da co topic canonical.
 - Kiem thu: `npm run test:frontend -- --test-concurrency=1` dat 424/424; `python -m unittest discover -s tests -v` dat 310, skip 105 do dependency chi co trong image Chatmgt; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` thanh cong voi warning chunk App lon; `python -m py_compile application/controllers/api_chat_management.py` dat; `git diff --check` dat.
 - Rui ro con lai: Chua UAT production bang nhieu tab va nhom co Account inactive; browser bridge khong khoi tao duoc trong phien nay; 105 backend test van skip neu khong chay trong image Chatmgt.
-- Viec tiep theo: Commit/push va deploy rieng ChatUI/Chatmgt sau khi production preflight healthy; UAT lai group chat bang hai tab.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Push va deploy rieng ChatUI/Chatmgt sau khi production preflight healthy; UAT lai group chat bang hai tab.
+- Commit/PR: `2b534db`.
 
 ## 2026-09-18-03 - Chan treo khi gui tin nhan qua dai
 
