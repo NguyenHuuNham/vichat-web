@@ -1389,15 +1389,18 @@ body {
 .conversation-context-menu button.danger, .conversation-context-menu button.danger i { color: #dc2626; }
 .message-reaction-row { display: flex; gap: 4px; padding: 6px 4px; border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); }
 .message-reaction-row button { width: auto; justify-content: center; padding: 4px 6px; font-size: 18px; }
-.message-reactions { display: inline-flex; max-width: 100%; align-items: center; gap: 1px; margin-top: 5px; padding: 2px 4px; border: 1px solid rgba(113, 132, 129, .24); border-radius: 999px; background: rgba(113, 132, 129, .1); }
-.message-reaction-chip { display: inline-flex; min-width: 0; align-items: center; gap: 2px; padding: 1px 4px; border: 0; border-radius: 999px; color: var(--text-main); background: transparent; font: inherit; line-height: 1.1; cursor: pointer; }
+.message-reactions { display: inline-flex; max-width: 100%; align-items: center; gap: 3px; margin-top: 5px; padding: 3px 5px; border: 1px solid rgba(113, 132, 129, .24); border-radius: 999px; background: rgba(113, 132, 129, .1); box-shadow: 0 2px 6px rgba(26, 44, 43, .08); }
+.message-reaction-chip { display: inline-flex; min-width: 24px; align-items: center; justify-content: center; gap: 2px; padding: 2px 4px; border: 0; border-radius: 999px; color: var(--text-main); background: transparent; font: inherit; line-height: 1.1; cursor: pointer; }
 .message-reaction-chip:hover, .message-reaction-chip:focus-visible, .message-reaction-chip.is-selected { color: var(--vichat-blue-dark); background: var(--vichat-blue-light); outline: none; }
 .message-reaction-emoji { font-size: 13px; line-height: 1; }
 .message-reaction-count { color: var(--text-muted); font-size: 10px; font-weight: 750; }
+.message-reaction-overflow { display: inline-flex; min-width: 28px; align-items: center; justify-content: center; padding: 3px 6px; border: 0; border-radius: 999px; color: var(--vichat-blue-dark); background: var(--vichat-blue-light); font: inherit; font-size: 10px; font-weight: 800; line-height: 1; cursor: pointer; }
+.message-reaction-overflow:hover, .message-reaction-overflow:focus-visible { background: rgba(244, 81, 30, .2); outline: none; }
 html[data-theme="dark"] .message-reactions { border-color: rgba(212, 225, 225, .18); background: rgba(0, 0, 0, .18); }
 html[data-theme="dark"] .message-reaction-chip:hover,
 html[data-theme="dark"] .message-reaction-chip:focus-visible,
 html[data-theme="dark"] .message-reaction-chip.is-selected { color: var(--vichat-blue-dark); background: rgba(244, 81, 30, .2); }
+html[data-theme="dark"] .message-reaction-overflow { color: var(--vichat-blue-dark); background: rgba(244, 81, 30, .2); }
 .message-reply-preview { display: flex; align-items: center; gap: 7px; min-width: 0; margin-bottom: 7px; padding: 6px 8px; border-left: 3px solid var(--vichat-blue); border-radius: 4px; background: rgba(244, 81, 30, .08); color: var(--text-muted); font-size: 11px; }
 .message-reply-preview-action { width: 100%; border-top: 0; border-right: 0; border-bottom: 0; text-align: left; cursor: pointer; font: inherit; }
 .message-reply-preview-action:hover, .message-reply-preview-action:focus-visible { background: rgba(244, 81, 30, .14); outline: none; }
@@ -1916,6 +1919,12 @@ html[data-theme="dark"] .message-reaction-chip.is-selected { color: var(--vichat
 .image-batch-tile .message-reaction-chip {
     color: #fff;
     font-size: 10px;
+}
+
+.image-batch-tile .message-reaction-overflow {
+    color: #fff;
+    border-color: rgba(255, 255, 255, .55);
+    background: rgba(12, 27, 42, .72);
 }
 
 .image-batch-tile .message-reply-preview {

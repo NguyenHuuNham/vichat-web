@@ -148,8 +148,8 @@ import {
 import { splitMessageLinks } from '../features/chat/services/messageLinkPolicy';
 import {
   MESSAGE_QUICK_REACTIONS,
+  compactReactionEntries,
   mergeReactionUsers,
-  reactionEntries,
   pinnedMessagesForRoom,
 } from '../features/chat/services/messageActionPolicy';
 import {
@@ -753,33 +753,48 @@ function MessageReactionPills({
   copy = { t: value => value },
   onDetails,
 }) {
-  const entries = reactionEntries(reactions);
-  if (entries.length === 0) return null;
+  const { visible: entries, overflowCount } = compactReactionEntries(reactions, 2);
+  if (entries.length === 0 && overflowCount === 0) return null;
+  const actionLabel = copy.t('Xem người đã thả cảm xúc');
 
   return (
     <div className="message-reactions" role="group" aria-label={copy.t('Cảm xúc trên tin nhắn')}>
-      {entries.map(([emoji, count]) => {
-        const actionLabel = copy.t('Xem người đã thả cảm xúc');
-        return (
-          <button
-            type="button"
-            key={emoji}
-            className="message-reaction-chip"
-            title={`${actionLabel} ${emoji}`}
-            aria-label={`${actionLabel} ${emoji}`}
-            data-reaction-emoji={emoji}
-            onClick={() => onDetails?.(message, emoji)}
-            onContextMenu={event => {
-              event.preventDefault();
-              event.stopPropagation();
-              onDetails?.(message, emoji);
-            }}
-          >
-            <span className="message-reaction-emoji">{emoji}</span>
-            <span className="message-reaction-count">{count}</span>
-          </button>
-        );
-      })}
+      {entries.map(([emoji, count]) => (
+        <button
+          type="button"
+          key={emoji}
+          className="message-reaction-chip"
+          title={`${actionLabel} ${emoji}`}
+          aria-label={`${actionLabel} ${emoji}`}
+          data-reaction-emoji={emoji}
+          onClick={() => onDetails?.(message, emoji)}
+          onContextMenu={event => {
+            event.preventDefault();
+            event.stopPropagation();
+            onDetails?.(message, emoji);
+          }}
+        >
+          <span className="message-reaction-emoji">{emoji}</span>
+          <span className="message-reaction-count">{count}</span>
+        </button>
+      ))}
+      {overflowCount > 0 && (
+        <button
+          type="button"
+          className="message-reaction-overflow"
+          title={actionLabel}
+          aria-label={actionLabel}
+          data-reaction-overflow="true"
+          onClick={() => onDetails?.(message, '')}
+          onContextMenu={event => {
+            event.preventDefault();
+            event.stopPropagation();
+            onDetails?.(message, '');
+          }}
+        >
+          3+
+        </button>
+      )}
     </div>
   );
 }

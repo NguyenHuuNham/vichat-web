@@ -51,6 +51,15 @@ export function reactionEntries(reactions = {}) {
     .filter(([, count]) => count > 0);
 }
 
+export function compactReactionEntries(reactions = {}, maxVisible = 2) {
+  const entries = reactionEntries(reactions);
+  const visibleLimit = Math.max(0, Math.floor(Number(maxVisible) || 0));
+  return {
+    visible: entries.slice(0, visibleLimit),
+    overflowCount: Math.max(0, entries.length - visibleLimit),
+  };
+}
+
 export function messageActionKey(roomId, messageId) {
   return `${roomId}:${messageId}`;
 }

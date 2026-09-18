@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-18-11 - Thu gon danh sach reaction voi chip 3+
+
+- Thoi gian: 2026-09-18 22:55 (Asia/Saigon)
+- Loai: Sua loi | Web | UX | Kiem thu | Trien khai | Tai lieu
+- Trang thai: Dang thuc hien; cho commit va deploy production
+- Muc tieu: Chi hien thi toi da hai loai emoji reaction tren tin nhan; tu loai thu ba hien chip `3+` va mo bang chi tiet khi bam.
+- Pham vi: ChatUI reaction chip cho tin nhan thuong va image batch; khong doi API, database, Tinode, mobile hay luong gui tin.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/messageActionPolicy.js`, `src/features/chat/services/messageActionPolicy.test.js`, `src/styles/index.css`, `dist/index.html` va file nay.
+- Noi dung: Them policy `compactReactionEntries` de gioi han hai emoji dau tien, hien chip `3+` cho phan con lai, va cho moi chip mo bang chi tiet reaction. Quyen go reaction cua viewer van chi thuc hien trong bang chi tiet.
+- Quyet dinh ky thuat: Dung cung callback mo chi tiet cho chip emoji va chip overflow; chip `3+` truyen bo loc rong de hien toan bo reaction, khong thay doi event/state Tinode hien co.
+- Database/API/cau hinh: Khong co migration, endpoint, schema, secret hoac bien moi truong moi.
+- Kiem thu: Targeted `node --test --test-concurrency=1 src/features/chat/services/messageActionPolicy.test.js` dat 5/5; `npm run test:frontend -- --test-concurrency=1` dat 435/435; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon; `git diff --check` dat.
+- Rui ro con lai: Chua deploy/UAT production trong lan nay; release production hien tai thuc te la `tinode-cookie-fix-175ea4d-20260916-r1`, khac voi record cu nen gate se kiem tra dung symlink thuc te truoc khi kich hoat.
+- Viec tiep theo: Commit/push, deploy chi ChatUI, verify health/public bundle/WSS va don cac release cu khong nam trong current/previous.
+- Commit/PR: Chua tao.
+
 ## 2026-09-18-10 - Chi go reaction trong bang chi tiet
 
 - Thoi gian: 2026-09-18 22:40 (Asia/Saigon)
