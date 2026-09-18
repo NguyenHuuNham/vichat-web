@@ -17,7 +17,8 @@ test('keeps workspace sections in a shared modal over the active chat', () => {
 });
 
 test('keeps the enterprise workspace bounded inside the modal shell', () => {
-  assert.match(enterpriseStyles, /\.enterprise-shell-panel\s*\{[\s\S]*height:\s*min\(/);
+  assert.match(enterpriseStyles, /\.enterprise-shell-panel\s*\{[\s\S]*display:\s*flex;[\s\S]*height:\s*min\([\s\S]*flex-direction:\s*column;/);
+  assert.match(enterpriseStyles, /\.enterprise-shell-panel\s*>\s*\.enterprise-workspace\s*\{[\s\S]*height:\s*auto;[\s\S]*flex:\s*1 1 auto;/);
   assert.doesNotMatch(enterpriseStyles, /\.workspace-route-active \.enterprise-shell-panel/);
-  assert.match(enterpriseStyles, /\.enterprise-workspace\s*\{[\s\S]*height:\s*100%;/);
+  assert.match(enterpriseStyles, /\.enterprise-workspace\s*\{[\s\S]*height:\s*auto;/);
 });

@@ -1,9 +1,12 @@
 .enterprise-shell-panel {
+  display: flex;
+  box-sizing: border-box;
   width: min(1120px, calc(100vw - 48px));
   height: min(820px, calc(100dvh - 48px));
   max-height: calc(100dvh - 48px);
   padding: 18px;
   overflow: hidden;
+  flex-direction: column;
   border-radius: 26px;
   background:
     radial-gradient(circle at 100% 0, rgba(244, 81, 30, .08), transparent 34%),
@@ -12,14 +15,20 @@
 
 .enterprise-shell-panel > .workspace-panel-header {
   top: -18px;
+  flex: 0 0 auto;
   margin: -18px -18px 14px;
   padding: 14px 18px 12px;
+}
+
+.enterprise-shell-panel > .enterprise-workspace {
+  height: auto;
+  flex: 1 1 auto;
 }
 
 .enterprise-workspace {
   position: relative;
   display: flex;
-  height: 100%;
+  height: auto;
   min-height: 0;
   flex-direction: column;
   color: #183330;
@@ -392,8 +401,8 @@
 }
 
 .enterprise-item-topline { justify-content: space-between; }
-.enterprise-item-topline b { color: #f4511e; font-size: 9px; text-transform: uppercase; letter-spacing: .5px; }
-.enterprise-item-topline time { color: #8a9a97; font-size: 9px; }
+.enterprise-item-topline b { min-width: 0; overflow: hidden; color: #f4511e; font-size: 9px; text-overflow: ellipsis; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
+.enterprise-item-topline time { flex: 0 0 auto; color: #8a9a97; font-size: 9px; white-space: nowrap; }
 .enterprise-item-copy > strong { overflow: hidden; color: #183330; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .enterprise-item-copy > small { overflow: hidden; color: #718481; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .enterprise-item-footer { margin-top: 4px; flex-wrap: wrap; }
@@ -754,7 +763,7 @@
 @media (max-width: 640px) {
   .enterprise-shell-panel { width: 100%; height: calc(100dvh - 24px); max-height: calc(100dvh - 24px); padding: 14px; border-radius: 22px; }
   .enterprise-shell-panel > .workspace-panel-header { top: -14px; margin: -14px -14px 12px; padding: 12px 14px 10px; }
-  .enterprise-workspace { height: 100%; }
+  .enterprise-shell-panel > .workspace-panel-header-actions { width: auto; flex-wrap: nowrap; }
   .enterprise-commandbar { align-items: stretch; }
   .enterprise-create-main { width: 42px; padding: 0; }
   .enterprise-create-main span { display: none; }
