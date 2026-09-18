@@ -8,18 +8,19 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-09-18-10 - Chi go reaction trong bang chi tiet
 
-- Thoi gian: 2026-09-18 22:35 (Asia/Saigon)
+- Thoi gian: 2026-09-18 22:40 (Asia/Saigon)
 - Loai: Sua loi | Web | UX | Kiem thu | Tai lieu
-- Trang thai: Hoan tat code; chua commit/push va chua deploy production
+- Trang thai: Hoan tat; source `261f24e` da commit/push `origin/master`, production da deploy va verify qua hai hop SSH
 - Muc tieu: Cho phep xem danh sach nguoi tha reaction truoc khi go reaction cua chinh viewer.
 - Pham vi: ChatUI reaction chip, bang chi tiet reaction va luong them reaction nhanh; khong doi API, database, event contract, mobile hay luong gui tin.
 - Noi dung: Bam reaction chip luon mo bang chi tiet, khong go truc tiep; tai khoan hien tai chi thay nut go theo tung emoji trong bang chi tiet. Chon lai emoji da co trong thanh reaction nhanh khong con tu dong go; thao tac go dung action rieng `remove-reaction`.
 - Quyet dinh ky thuat: Tach action them va go reaction de khong de mot click ngoai bang chi tiet lam mat reaction; giu nguyen realtime Tinode va cap nhat optimistic hien co.
 - Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi truong moi.
 - Kiem thu: `npm run test:frontend -- --test-concurrency=1` dat 434/434; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon; `git diff --check` dat.
-- Rui ro con lai: Chua UAT browser voi tai khoan that cho mo chi tiet, go reaction cua minh va xem reaction cua nguoi khac tren direct/group, tin nhan thuong va anh; chua commit/push/deploy.
-- Viec tiep theo: UAT bang reaction chip va bang chi tiet; sau khi xac nhan thi commit/push/deploy rieng ban sua nay.
-- Commit/PR: Chua tao.
+- Kiem tra production: Archive `vichat-reaction-details-261f24e.tar.gz`, SHA-256 `b6ae4794fc786af31c113d334234c7733fd35f3648759b806890958909989700`; release `/opt/deploy/chat/releases/reaction-details-261f24e-20260918-r1`, previous `/opt/deploy/chat/releases/message-reactions-9a42307-20260918-r2`, backup `/opt/deploy/chat/backups/reaction-details-261f24e-20260918-r1`; chi recreate ChatUI `chat`, giu nguyen Chatmgt, Tinode, ChatAPI, PostgreSQL, Redis, Coturn va volume. ChatUI healthy/restart 0, public health dat, WSS tra `101 Switching Protocols`, bundle public khop candidate (`/assets/index-BsX6DUE4.js`, `App-BHDZYAdc.js`, `/assets/index-BzLri_0a.css`), Alembic giu `20260917_14`, env/checksum va log gate dat.
+- Rui ro con lai: Chua UAT browser voi tai khoan that cho mo chi tiet, go reaction cua minh va xem reaction cua nguoi khac tren direct/group, tin nhan thuong va anh.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, sau do UAT bang reaction chip va bang chi tiet tren direct/group, tin nhan thuong va anh.
+- Commit/PR: Source commit `261f24e`; deployment record dang cho commit.
 
 ## 2026-09-18-09 - Gop va huy bieu tuong cam xuc tin nhan
 
