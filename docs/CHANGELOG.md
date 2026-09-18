@@ -8,19 +8,20 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## 2026-09-18-08 - Dong bo biet danh cong khai qua realtime
 
-- Thoi gian: 2026-09-18 (Asia/Saigon)
+- Thoi gian: 2026-09-18 21:30 (Asia/Saigon)
 - Loai: Sua loi | Web | Backend | Tinode | Kiem thu | Tai lieu
-- Trang thai: Hoan tat code; chua commit/push va chua deploy production
+- Trang thai: Hoan tat; source `35be082` da commit/push `origin/master`, production da deploy va verify qua hai hop SSH
 - Muc tieu: Bao dam moi thanh vien trong chat 1-1/group thay ngay biet danh cong khai va thong bao sau khi co thay doi.
 - Pham vi: ChatUI realtime event, contract test nickname/directory va metadata conversation; khong migration, khong doi Tinode message store hay profile Account.
-- File da thay doi: `src/app/App.jsx`, `chatservice-main/tests/test_chat_auth_contract.py` va file nay.
+- File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `dist/index.html`, `docs/chat-backend-architecture.md`, `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/contacts/services/accountDirectory.js`, `src/features/contacts/services/accountDirectory.test.js`, `src/features/demo/services/demoDirectStore.js`, `src/features/demo/services/demoGroupStore.js`, `src/styles/index.css` va file nay.
 - Noi dung: Tab nhan event `conversation_nickname_changed` nay gop map nickname theo `targetAccountId` vao snapshot hien tai, bao gom ca thao tac xoa, de thanh vien khac cap nhat ten va message rendering ma khong can reload. Contract test duoc sua de chap nhan cleanup field legacy nhung van chan payload nickname rieng tu.
 - Quyet dinh ky thuat: Dung map public da commit trong Chatmgt lam nguon; merge patch realtime voi map hien tai de khong lam mat nickname cua thanh vien khac. Giu cleanup `contactNickname` legacy o ranh gioi normalize de tranh du lieu cu quay lai UI.
 - Database/API/cau hinh: Khong co migration, endpoint moi, secret hoac bien moi truong; su dung event `conversation_nickname_changed` hien co.
-- Kiem thu: `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -v` dat 59/59; `python -m unittest discover -s chatservice-main/tests -p "test_*.py"` dat 310 pass, 105 skip; `npm run test:frontend -- --test-concurrency=1` dat 432/432; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py` dat; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon; `git diff --check` dat.
-- Rui ro con lai: Chua UAT production bang browser voi hai tai khoan cho doi/clear biet danh trong direct va group; chua commit/push/deploy theo yeu cau moi.
-- Viec tiep theo: Neu duoc yeu cau, commit/push va deploy ChatUI/Chatmgt; sau do hard refresh va UAT hai tai khoan, hai tab, doi biet danh cho minh/nguoi khac va xoa biet danh.
-- Commit/PR: Chua tao.
+- Kiem thu: `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -v` dat 59/59; `python -m unittest discover -s chatservice-main/tests -p "test_*.py"` dat 310 pass, 105 skip; `npm run test:frontend -- --test-concurrency=1` dat 432/432; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py` dat; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon; `git diff --check` dat. Production: contract 59/59; `chat` va `chatmgt` healthy/restart 0; health public dat; WSS tra `101 Switching Protocols`; bundle public khop candidate (`/assets/index-CgodBPoi.js`, `/assets/App-VPqpoPWT.js`); Alembic giu `20260917_14`; Tinode/DB/Redis/Coturn va volume khong doi.
+- Rui ro con lai: Chua UAT production bang browser voi hai tai khoan cho doi/clear biet danh trong direct va group; can hard refresh sau deploy. Khong co migration can chay.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, sau do UAT hai tai khoan, hai tab, doi biet danh cho minh/nguoi khac, thong bao va xoa biet danh trong direct/group.
+- Artifact/phat hanh: Archive `vichat-conversation-nickname-35be082.tar.gz`, SHA-256 `7d97a8d4565349846253df93b4c622363b117c0b95ceec376f67944a5eb8e928`; release `/opt/deploy/chat/releases/conversation-nickname-35be082-20260918-r1`; previous `/opt/deploy/chat/releases/scoped-nickname-b4fd9dc-20260918-r1`; backup `/opt/deploy/chat/backups/conversation-nickname-35be082-20260918-r1`; chi recreate `chatmgt` va `chat`, giu nguyen Tinode/DB/Redis/Coturn va volume.
+- Commit/PR: Source commit `35be082`; production release `conversation-nickname-35be082-20260918-r1`.
 
 ## 2026-09-18-07 - Cho phep doi biet danh cua chinh minh
 
