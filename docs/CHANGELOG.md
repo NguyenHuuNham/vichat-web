@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-18 (Asia/Saigon)
 - Loai: Sua loi | Web | UX | Kiem thu | Trien khai | Tai lieu
-- Trang thai: Dang thuc hien; da sua va kiem thu local, cho commit, push va deploy production
+- Trang thai: Hoan tat; source `7822092` da commit/push `origin/master`, production da deploy va verify
 - Muc tieu: Giu man Cong viec can dung trong khung popup, khong bi day lech hoac cat noi dung khi doi kich thuoc man hinh.
 - Pham vi: `EnterpriseWorkspace` shell, header, danh sach muc cong viec va test layout; khong doi API, database, Tinode hay luong thao tac cong viec.
 - File da thay doi: `src/features/workspace/components/enterpriseWorkspace.css`, `src/features/workspace/services/workspaceLayout.test.js`, `dist/index.html` va file nay.
 - Noi dung: Chuyen shell sang flex column, cho Workspace chiem phan chieu cao con lai sau header, giu list/detail trong cung khung va chan nhan dai lam vo can hang tren card.
 - Quyet dinh ky thuat: Dung layout flex noi bo thay vi sua kich thuoc co dinh cua tung pane, de giu mot nguon kich thuoc va tranh overflow khi header/mobile thay doi.
 - Database/API/cau hinh: Khong co migration, endpoint, schema, secret hoac cau hinh moi.
-- Kiem thu: `node --test src/features/workspace/services/workspaceLayout.test.js` dat 2/2; `npm run test:frontend -- --test-concurrency=1` dat 422/422; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB; `git diff --check` dat. Browser UAT chua chay duoc do browser bridge khong kha dung.
-- Rui ro con lai: Can hard refresh va kiem tra man Cong viec tren desktop/mobile bang tai khoan that sau deploy.
-- Viec tiep theo: Commit, push, deploy rieng ChatUI va verify health/public bundle; khong chay migration.
-- Commit/PR: Chua tao.
+- Kiem thu: `node --test src/features/workspace/services/workspaceLayout.test.js` dat 2/2; `npm run test:frontend -- --test-concurrency=1` dat 422/422; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB; `git diff --check` dat. Production: archive checksum khop; candidate build va nginx config pass; ChatUI moi healthy; health local/public va Chatmgt auth/chatbot pass; bundle public khop candidate; WSS tra `101`; migration `20260917_14` giu nguyen; 7 service ngoai `chat` va volume khong doi. Browser UAT chua chay duoc do browser bridge khong kha dung.
+- Rui ro con lai: Can hard refresh va kiem tra man Cong viec tren desktop/mobile bang tai khoan that; khong co thay doi backend can migration.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT man Cong viec voi tai khoan that.
+- Artifact/phat hanh: Archive `vichat-workspace-align-7822092.tar.gz`, SHA-256 `619031c339f2fa275de3151340ee38c014a9c418a95e7821a428df4f3e199528`; release `/opt/deploy/chat/releases/workspace-align-7822092-20260918-r1`; previous `/opt/deploy/chat/releases/profile-dialogs-b848ea9-20260918-r1`; backup `/opt/deploy/chat/backups/workspace-align-7822092-20260918-r1`; chi recreate ChatUI `chat`, giu nguyen Chatmgt/Tinode/PostgreSQL/Redis va volume.
+- Commit/PR: Source commit `7822092`; deploy record follow-up dang cho commit/push.
 
 ## 2026-09-18-01 - Don gian hoa ho so, khoa avatar ViChat AI va lam moi dialog Workspace
 
