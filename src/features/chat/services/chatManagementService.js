@@ -1087,12 +1087,13 @@ export const chatManagementService = {
 
   async bindTinodeTopic(userId, conversationId, topicName, { avatarUrl = '' } = {}) {
     if (!conversationId || !topicName) return topicName;
+    let bindingPayload = null;
     if (apiBase && remoteAuth) {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(conversationId))) {
         throw new Error('Mã cuộc trò chuyện của chatmgt không hợp lệ.');
       }
       const tinodeAuth = await this.getFreshTinodeAuth();
-      await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/tinode-topic`, {
+      bindingPayload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/tinode-topic`, {
         method: 'PUT',
         body: JSON.stringify({
           tinode_topic: topicName,
@@ -1103,10 +1104,17 @@ export const chatManagementService = {
         }),
       });
     }
+    const canonicalTopic = scalarText(
+      bindingPayload?.tinodeTopic
+        || bindingPayload?.tinode_topic
+        || bindingPayload?.channel_thread_id,
+    ) || String(topicName).trim();
     const bindings = readStorage(topicBindingsKey, {});
-    bindings[bindingKey(userId, conversationId)] = topicName;
+    bindings[bindingKey(userId, conversationId)] = canonicalTopic;
     writeStorage(topicBindingsKey, bindings);
-    return topicName;
+    return bindingPayload
+      ? { ...bindingPayload, tinodeTopic: canonicalTopic, tinode_topic: canonicalTopic }
+      : canonicalTopic;
   },
 
   async enableTinodeChatbot(conversationId) {

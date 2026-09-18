@@ -640,6 +640,35 @@ class ChatAuthContractTests(unittest.TestCase):
             self.assertIn("room.managementSnapshot", active_members_source)
             self.assertIn("if (room.managementSnapshot) return account;", active_members_source)
 
+    def test_group_tinode_membership_ignores_stale_account_projections_but_direct_stays_strict(self):
+        _controller_source, active_accounts_source = function_source(
+            CONTROLLER_PATH,
+            "_active_conversation_accounts",
+        )
+        _controller_source, direct_accounts_source = function_source(
+            CONTROLLER_PATH,
+            "_direct_conversation_accounts",
+        )
+
+        self.assertIn('if bool((item.properties or {}).get("is_group"))', active_accounts_source)
+        self.assertIn("participants = [", active_accounts_source)
+        self.assertIn("elif set(participant_ids) != set(accounts_by_id):", active_accounts_source)
+        self.assertIn("set(participant_ids) != set(accounts_by_id)", direct_accounts_source)
+
+    def test_group_topic_binding_is_serialized_and_reuses_the_canonical_topic(self):
+        _controller_source, binding_source = function_source(
+            CONTROLLER_PATH,
+            "conversation_bind_tinode",
+        )
+
+        self.assertIn("with_for_update()", binding_source)
+        self.assertIn("requested_topic_name", binding_source)
+        self.assertIn("topic_name = str(item.tinode_topic).strip()", binding_source)
+        self.assertNotIn(
+            "The conversation is already bound to another Tinode topic.",
+            binding_source,
+        )
+
     def test_group_dissolve_is_owner_only_and_removes_every_tinode_subscription(self):
         controller_source, dissolve_source = function_source(
             CONTROLLER_PATH,

@@ -920,6 +920,16 @@ viewer is not the Chatmgt group owner, the bind endpoint first grants the
 authoritative owner full Tinode owner access and has that owner accept it,
 then reconciles the complete member/access set. If a later bind step fails, the
 server attempts to restore the viewer as owner before returning the error.
+Group binding locks the Chatmgt conversation row while it reconciles Tinode and
+persists the topic, so concurrent tabs reuse the first committed canonical
+topic instead of receiving a false binding conflict. ChatUI coalesces duplicate
+opens within a tab, adopts the canonical topic returned by Chatmgt, and removes
+any losing browser-created topic. This keeps the message source and membership
+contract unchanged while making refreshes and simultaneous tab opens
+idempotent. For group snapshots, an old participant row whose
+`ManagementAccount` projection is inactive or missing is omitted from the
+active Tinode member set; direct conversations remain fail-closed when either
+participant is no longer active.
 ChatUI sends every self-leave and group-delete action through
 `DELETE /api/v1/conversation/<id>/self`; the authenticated session supplies the
 participant identity, so a browser-side Account/Tinode ID mismatch cannot turn

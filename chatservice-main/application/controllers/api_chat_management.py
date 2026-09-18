@@ -1313,14 +1313,23 @@ def _active_conversation_accounts(item):
         ConversationParticipant.approval_status == "APPROVED",
         ConversationParticipant.deleted.is_(False),
     ).all()
-    participant_ids = [participant.participant_id for participant in participants]
+    participant_ids = [str(participant.participant_id) for participant in participants]
     accounts = ManagementAccount.query.filter(
         ManagementAccount.tenant_id == item.tenant_id,
         ManagementAccount.id.in_(participant_ids),
         ManagementAccount.active.is_(True),
     ).all() if participant_ids else []
     accounts_by_id = {str(account.id): account for account in accounts}
-    if set(participant_ids) != set(accounts_by_id):
+    if bool((item.properties or {}).get("is_group")):
+        # A group can outlive an Account directory projection. Ignore those
+        # stale rows so the surviving members can still open and use Tinode;
+        # the authoritative membership snapshot already hides them.
+        participants = [
+            participant
+            for participant in participants
+            if str(participant.participant_id) in accounts_by_id
+        ]
+    elif set(participant_ids) != set(accounts_by_id):
         raise AuthError("A Chatmgt participant is no longer active in this tenant.", 409)
     return participants, accounts_by_id
 
@@ -1333,7 +1342,7 @@ def _direct_conversation_accounts(item):
         ConversationParticipant.approval_status == "APPROVED",
         ConversationParticipant.deleted.is_(False),
     ).order_by(ConversationParticipant.created_at.asc()).all()
-    participant_ids = [participant.participant_id for participant in participants]
+    participant_ids = [str(participant.participant_id) for participant in participants]
     accounts = ManagementAccount.query.filter(
         ManagementAccount.tenant_id == item.tenant_id,
         ManagementAccount.id.in_(participant_ids),
@@ -5261,15 +5270,42 @@ async def conversation_bind_tinode(request, conversation_id):
     )
     if item is None or membership is None:
         return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
-    body = request.json or {}
-    topic_name = str(body.get("tinode_topic") or "").strip()
-    if not topic_name:
-        return json({"error_code": "PARAM_ERROR", "error_message": "Tinode topic is required."}, status=400)
     is_group = bool((item.properties or {}).get("is_group"))
-    if not valid_tinode_topic(topic_name, is_group):
+    if is_group:
+        # Opening a new group from two browser tabs can reach this endpoint at
+        # the same time. Serialize the bind so the second request observes the
+        # canonical topic committed by the first one.
+        locked_item = Conversation.query.filter(
+            Conversation.id == conversation_uuid,
+            Conversation.tenant_id == tenant_id,
+            Conversation.deleted.is_(False),
+        ).with_for_update().first()
+        if locked_item is not None:
+            item = locked_item
+            membership = ConversationParticipant.query.filter(
+                ConversationParticipant.tenant_id == tenant_id,
+                ConversationParticipant.conversation_id == item.id,
+                ConversationParticipant.participant_id == user_id,
+                ConversationParticipant.active.is_(True),
+                ConversationParticipant.approval_status == "APPROVED",
+                ConversationParticipant.deleted.is_(False),
+            ).first()
+            if membership is None:
+                return json({"error_code": "NOT_FOUND", "error_message": "Conversation not found."}, status=404)
+    body = request.json or {}
+    requested_topic_name = str(body.get("tinode_topic") or "").strip()
+    if not requested_topic_name:
+        return json({"error_code": "PARAM_ERROR", "error_message": "Tinode topic is required."}, status=400)
+    if not valid_tinode_topic(requested_topic_name, is_group):
         return json({"error_code": "TINODE_TOPIC_INVALID", "error_message": "Tinode topic type is invalid for this conversation."}, status=400)
-    if is_group and item.tinode_topic and item.tinode_topic != topic_name:
-        return json({"error_code": "TINODE_TOPIC_ALREADY_BOUND", "error_message": "The conversation is already bound to another Tinode topic."}, status=409)
+    topic_name = requested_topic_name
+    if is_group and item.tinode_topic and item.tinode_topic != requested_topic_name:
+        # Another tab won the race while this browser was creating a topic.
+        # Reconcile and return the persisted topic instead of rejecting the
+        # surviving chat with a false binding conflict.
+        topic_name = str(item.tinode_topic).strip()
+    if not valid_tinode_topic(topic_name, is_group):
+        return json({"error_code": "TINODE_TOPIC_INVALID", "error_message": "The persisted Tinode topic is invalid for this conversation."}, status=409)
     if is_group:
         conflict = Conversation.query.filter(
             Conversation.id != item.id,

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-18-04 - Sua chat nhom va dong bo khi mo nhieu tab
+
+- Thoi gian: 2026-09-18 (Asia/Saigon)
+- Loai: Sua loi | Web | Backend | Tinode | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code; chua deploy production
+- Muc tieu: Cho phep chat nhom tiep tuc hoat dong khi membership con dong stale va ngan hai tab cung mo nhom tao hai topic/ghi de lich su.
+- Pham vi: Chatmgt group participant snapshot, endpoint bind topic Tinode, ChatUI flow mo topic; khong doi direct chat, schema, migration, mobile hay message store.
+- File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/app/App.jsx`, `dist/index.html`, `docs/chat-backend-architecture.md` va file nay.
+- Noi dung: Group bo qua participant tro toi Account da inactive khi tao snapshot realtime; direct chat van tu choi membership khong hop le. Bind group khoa hang trong transaction va nhan topic da bind lam canonical de request tu tab sau dung lai. ChatUI coalesce request mo topic trong cung tab va tu dong bo topic local tam neu tab khac da bind truoc.
+- Quyet dinh ky thuat: Khong xoa du lieu membership/Tinode. Chi loc stale group projection tai ranh gioi realtime, giu Chatmgt snapshot lam nguon su that va dung row lock de tranh race bind; request history/message khong thay doi.
+- Database/API/cau hinh: Khong migration; thay doi hanh vi endpoint bind Tinode de idempotent khi group da co topic canonical.
+- Kiem thu: `npm run test:frontend -- --test-concurrency=1` dat 424/424; `python -m unittest discover -s tests -v` dat 310, skip 105 do dependency chi co trong image Chatmgt; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` thanh cong voi warning chunk App lon; `python -m py_compile application/controllers/api_chat_management.py` dat; `git diff --check` dat.
+- Rui ro con lai: Chua UAT production bang nhieu tab va nhom co Account inactive; browser bridge khong khoi tao duoc trong phien nay; 105 backend test van skip neu khong chay trong image Chatmgt.
+- Viec tiep theo: Commit/push va deploy rieng ChatUI/Chatmgt sau khi production preflight healthy; UAT lai group chat bang hai tab.
+- Commit/PR: Chua tao.
+
 ## 2026-09-18-03 - Chan treo khi gui tin nhan qua dai
 
 - Thoi gian: 2026-09-18 (Asia/Saigon)

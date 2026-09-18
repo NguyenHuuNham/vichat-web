@@ -3379,6 +3379,7 @@ function App() {
   const deletedConversationIdsRef = useRef(new Set());
   const reopeningDirectTopicsRef = useRef(new Set());
   const createGroupRequestRef = useRef(false);
+  const tinodeTopicEnsureRequestsRef = useRef(new Map());
   const tinodeSessionRequestRef = useRef(null);
   const conversationsRef = useRef(conversations);
   const currentUserRef = useRef(currentUser);
@@ -5490,7 +5491,7 @@ function App() {
     return managedRooms;
   }, [currentUser, directoryAccounts, notificationSettingsViewerAliases, preferenceTenantId]);
 
-  const ensureTinodeConversationTopic = async (room, { avatarFile = null } = {}) => {
+  const ensureTinodeConversationTopicInternal = async (room, { avatarFile = null } = {}) => {
     if (!room || room.isChatbot || chatMode !== 'tinode') return room?.id || '';
     const accountSession = accountSessionRef.current;
     const managementConversationId = room.managementId || room.id;
@@ -5559,12 +5560,23 @@ function App() {
     const persistedGroupAvatar = preparedRoom.avatarUrl || room.avatarUrl || cachedRoomAvatar || '';
     const effectiveGroupAvatar = persistedGroupAvatar || createdGroupAvatar || liveGroupAvatar || '';
     try {
-      await chatManagementService.bindTinodeTopic(
+      const binding = await chatManagementService.bindTinodeTopic(
         managementUserId,
         managementConversationId,
         topicName,
         { avatarUrl: effectiveGroupAvatar },
       );
+      const canonicalTopic = String(
+        binding?.tinodeTopic
+          || binding?.tinode_topic
+          || binding?.channel_thread_id
+          || '',
+      ).trim();
+      if (canonicalTopic && canonicalTopic !== topicName) {
+        if (createdGroupTopic) await tinodeClient.discardGroupTopic(topicName).catch(() => {});
+        topicName = canonicalTopic;
+        createdGroupTopic = false;
+      }
       if (!preparedRoom.isGroup) await tinodeClient.clearConversationDeletion(topicName).catch(() => {});
     } catch (error) {
       const bindingRejected = Number(error?.status) >= 400 && Number(error?.status) < 500;
@@ -5593,6 +5605,24 @@ function App() {
     setConversations(nextRooms);
     tinodeClient.allowConversationTopic(topicName);
     return topicName;
+  };
+
+  const ensureTinodeConversationTopic = async (room, options = {}) => {
+    if (!room || room.isChatbot || chatMode !== 'tinode') return room?.id || '';
+    const accountSession = accountSessionRef.current;
+    const managementConversationId = room.managementId || room.id;
+    const requestKey = `${accountSession}:${managementConversationId}`;
+    const pendingRequest = tinodeTopicEnsureRequestsRef.current.get(requestKey);
+    if (pendingRequest) return pendingRequest;
+    const request = ensureTinodeConversationTopicInternal(room, options);
+    tinodeTopicEnsureRequestsRef.current.set(requestKey, request);
+    try {
+      return await request;
+    } finally {
+      if (tinodeTopicEnsureRequestsRef.current.get(requestKey) === request) {
+        tinodeTopicEnsureRequestsRef.current.delete(requestKey);
+      }
+    }
   };
 
   const handleCallError = useCallback(error => {

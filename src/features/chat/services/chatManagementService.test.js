@@ -882,6 +882,17 @@ test('managed member removal does not re-bind an already bound topic first', () 
   );
 });
 
+test('group topic opening coalesces requests and adopts a canonical topic from another tab', () => {
+  assert.match(appSource, /tinodeTopicEnsureRequestsRef = useRef\(new Map\(\)\)/);
+  assert.match(appSource, /const ensureTinodeConversationTopicInternal = async/);
+  assert.match(appSource, /const pendingRequest = tinodeTopicEnsureRequestsRef\.current\.get\(requestKey\)/);
+  assert.match(appSource, /if \(canonicalTopic && canonicalTopic !== topicName\)/);
+  assert.match(appSource, /tinodeClient\.discardGroupTopic\(topicName\)/);
+  assert.match(managementServiceSource, /bindingPayload = await apiRequest\([^\n]+tinode-topic/);
+  assert.match(managementServiceSource, /bindingPayload\?\.tinode_topic/);
+  assert.match(managementServiceSource, /return bindingPayload/);
+});
+
 test('managed direct chats hydrate Tinode history before committing the room state', () => {
   assert.match(appSource, /const restoredRoom = await tinodeClient\.restoreConversation\(tinodeTopic\)/);
   assert.match(appSource, /\[stateConversationId\]: safeMergeTinodeConversation\(previousRoom, restoredStateRoom\)/);
