@@ -10,17 +10,19 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-18 22:55 (Asia/Saigon)
 - Loai: Sua loi | Web | UX | Kiem thu | Trien khai | Tai lieu
-- Trang thai: Dang thuc hien; cho commit va deploy production
+- Trang thai: Hoan tat; source `656ca5f` da commit/push `origin/master`, production da deploy va verify qua hai hop SSH
 - Muc tieu: Chi hien thi toi da hai loai emoji reaction tren tin nhan; tu loai thu ba hien chip `3+` va mo bang chi tiet khi bam.
 - Pham vi: ChatUI reaction chip cho tin nhan thuong va image batch; khong doi API, database, Tinode, mobile hay luong gui tin.
-- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/messageActionPolicy.js`, `src/features/chat/services/messageActionPolicy.test.js`, `src/styles/index.css`, `dist/index.html` va file nay.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/messageActionPolicy.js`, `src/features/chat/services/messageActionPolicy.test.js`, `src/styles/index.css`, `dist/index.html`, `outputs/deploy-compact-reactions-656ca5f.sh` va file nay.
 - Noi dung: Them policy `compactReactionEntries` de gioi han hai emoji dau tien, hien chip `3+` cho phan con lai, va cho moi chip mo bang chi tiet reaction. Quyen go reaction cua viewer van chi thuc hien trong bang chi tiet.
 - Quyet dinh ky thuat: Dung cung callback mo chi tiet cho chip emoji va chip overflow; chip `3+` truyen bo loc rong de hien toan bo reaction, khong thay doi event/state Tinode hien co.
 - Database/API/cau hinh: Khong co migration, endpoint, schema, secret hoac bien moi truong moi.
 - Kiem thu: Targeted `node --test --test-concurrency=1 src/features/chat/services/messageActionPolicy.test.js` dat 5/5; `npm run test:frontend -- --test-concurrency=1` dat 435/435; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon; `git diff --check` dat.
-- Rui ro con lai: Chua deploy/UAT production trong lan nay; release production hien tai thuc te la `tinode-cookie-fix-175ea4d-20260916-r1`, khac voi record cu nen gate se kiem tra dung symlink thuc te truoc khi kich hoat.
-- Viec tiep theo: Commit/push, deploy chi ChatUI, verify health/public bundle/WSS va don cac release cu khong nam trong current/previous.
-- Commit/PR: Chua tao.
+- Kiem tra production: Archive `vichat-compact-reactions-656ca5f.tar.gz`, SHA-256 `dcedb56685642ec66102770162e25244ac1c950ed8b1ffa7603514a6ad487812`; release `/opt/deploy/chat/releases/compact-reactions-656ca5f-20260918-r1`, previous `/opt/deploy/chat/releases/reaction-details-261f24e-20260918-r1`, backup `/opt/deploy/chat/backups/compact-reactions-656ca5f-20260918-r1`; ChatUI healthy/restart 0, public/local health dat, WSS tra `101 Switching Protocols`, bundle public khop candidate (`/assets/index-BDqKcOpO.js`, `App-Df1lAJLv.js`, `/assets/index-BPct5cnc.css`), Alembic giu `20260917_14`, service ngoai `chat` va volume khong doi. Gate source lan dau dung an toan truoc backup do archive thieu prefix, partial candidate da duoc quarantine trong `.failed-candidate`; lan chay lai dung format va hoan tat.
+- Van hanh: Da xoa 129 thu muc release cu khong phai `current`/`previous`, giai phong `6421876814` bytes; giu lai cac thu muc audit `.failed-candidate`, khong xoa volume, database, Tinode data hay backup rollback.
+- Rui ro con lai: Chua UAT browser production voi tai khoan that cho chip emoji, chip `3+`, mo bang chi tiet va go reaction cua viewer tren direct/group, tin nhan thuong va anh.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, sau do UAT cac luong reaction tren direct/group va hai tab.
+- Commit/PR: Source `656ca5f`; deployment record dang cho commit.
 
 ## 2026-09-18-10 - Chi go reaction trong bang chi tiet
 
