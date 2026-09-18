@@ -10,16 +10,17 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-18 (Asia/Saigon)
 - Loai: Sua loi | Web | UX | Kiem thu | Trien khai | Tai lieu
-- Trang thai: Da kiem thu local; cho commit, push va deploy production
+- Trang thai: Hoan tat; source `b848ea9` da commit/push `origin/master`, production da deploy va verify
 - Muc tieu: Bo thong tin thong bao da luu va nut `Luu ho so` trong ho so ca nhan; khoa avatar ViChat AI ve `/vichat-ai.svg` tren moi phien chat; thay confirm/alert native bang dialog trong ung dung; bo tron cac popup; lam lai giao dien Workspace.
 - Pham vi: ChatUI active va legacy entry, ManagementApp, chatbot history/render, ConversationCategoryManager, StickerPicker va EnterpriseWorkspace; khong doi API, database, Tinode transport, mobile hay migration.
 - Noi dung: Ho so hien thi thong tin dong bo chi-doc va van cho phep doi avatar ca nhan; dialog dung promise resolver tai ranh gioi App/Management, co focus trap, Escape va khoa cuon; avatar bot duoc chuan hoa tai storage/merge/render de loai avatar legacy; modal mobile dung safe viewport va khoang dem bo tron; Workspace duoc co lai responsive, dark theme va focus state.
 - Quyet dinh ky thuat: Khong sua payload/profile contract; giu upload avatar ca nhan qua luong hien tai. Confirmation duoc truyen vao component con thay vi de component tu goi browser API, tranh tach luong va giu action sau khi user chap nhan. Khong thay doi ranh gioi du lieu hoac nguon su that.
 - Database/API/cau hinh: Khong co migration, endpoint, schema, secret hoac cau hinh moi.
-- Kiem thu: `npm run test:frontend -- --test-concurrency=1` dat 422/422; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB; `git diff --check` dat. Browser UAT chua chay duoc trong phien nay do browser bridge khong kha dung.
+- Kiem thu: `npm run test:frontend -- --test-concurrency=1` dat 422/422; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon hon 500 KB; `git diff --check` dat. Production: archive checksum khop; candidate build va nginx config pass; ChatUI moi healthy restart 0; health local/public va Chatmgt auth/chatbot pass; bundle public khop candidate; WSS tra `101`; migration `20260917_14` giu nguyen; 7 service ngoai `chat` va volume khong doi. Browser UAT chua chay duoc trong phien nay do browser bridge khong kha dung.
 - Rui ro con lai: Can hard refresh production va UAT bang tai khoan that cho ho so/avatar bot, roi nhom/xoa hoi thoai, sticker/cloud confirmation, popup mobile va cac module Workspace; khong co thay doi backend can migration.
-- Viec tiep theo: Commit/push `master`, deploy qua `ssh ubuntu@103.74.122.206` roi `ssh ubuntu@192.168.80.20`, chi recreate ChatUI/ManagementApp neu quy trinh yeu cau, verify health/public bundle va cap nhat trang thai sau deploy.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT bang tai khoan that cho ho so/avatar bot, roi nhom/xoa hoi thoai, sticker/cloud confirmation, popup mobile va cac module Workspace.
+- Artifact/phat hanh: Archive `vichat-profile-dialogs-b848ea9.tar.gz`, SHA-256 `e717a675c3693fbbf7b39299713d029bdbab4669f3533aa535992684943fc604`; release `/opt/deploy/chat/releases/profile-dialogs-b848ea9-20260918-r1`; previous `/opt/deploy/chat/releases/personal-cloud-e9f009c-20260917-r1`; backup `/opt/deploy/chat/backups/profile-dialogs-b848ea9-20260918-r1`; chi recreate ChatUI `chat`, giu nguyen Chatmgt/Tinode/PostgreSQL/Redis va volume.
+- Commit/PR: Source commit `b848ea9`; deploy record follow-up dang cho commit/push.
 
 ## 2026-09-17-07 - Them Cloud cua toi va bo loc danh sach hoi thoai
 
