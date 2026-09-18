@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-18-09 - Gop va huy bieu tuong cam xuc tin nhan
+
+- Thoi gian: 2026-09-18 21:48 (Asia/Saigon)
+- Loai: Sua loi | Web | UX | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code; chua commit/push va chua deploy production
+- Muc tieu: Cho phep huy reaction cua chinh minh va hien thi cac reaction theo mot hang gop gon, de doc tren ca nen sang/toi.
+- Pham vi: ChatUI reaction chip cho tin nhan thuong, file/anh va Tinode; khong doi API, database, event contract, mobile hay luong gui tin.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/messageActionPolicy.js`, `src/features/chat/services/messageActionPolicy.test.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `dist/index.html` va file nay.
+- Noi dung: Tao `MessageReactionPills` dung chung cho tin nhan thuong va image batch; gop count/user trung theo emoji, chip cua viewer co trang thai selected va bam lai se gui reaction `active=false`. Click reaction cua nguoi khac van mo danh sach chi tiet; chuot phai mo chi tiet cho ca hai truong hop. Luong Tinode su dung them local reaction user state de khong mat kha nang huy trong luc realtime dang dong bo.
+- Quyet dinh ky thuat: Tai su dung event reaction hien co, khong them endpoint hay migration. Gop state o ranh gioi UI/policy va dedupe user theo identity de khong lam thay doi du lieu reaction goc.
+- Database/API/cau hinh: Khong co migration, endpoint, secret hoac bien moi truong moi.
+- Kiem thu: `node --test --test-concurrency=1 src/features/i18n/appLanguage.test.js src/features/chat/services/messageActionPolicy.test.js` dat 27/27; `npm run test:frontend -- --test-concurrency=1` dat 434/434; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon; `git diff --check` dat.
+- Rui ro con lai: Chua UAT browser voi tai khoan that cho them/huy reaction tren direct/group, tin nhan thuong va anh; chua commit/push/deploy.
+- Viec tiep theo: UAT chip reaction tren nen sang/toi, click lai de huy, realtime hai tab va chuot phai xem chi tiet; sau do commit/push/deploy neu duoc yeu cau.
+- Commit/PR: Chua tao.
+
 ## 2026-09-18-08 - Dong bo biet danh cong khai qua realtime
 
 - Thoi gian: 2026-09-18 21:30 (Asia/Saigon)

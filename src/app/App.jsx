@@ -148,6 +148,8 @@ import {
 import { splitMessageLinks } from '../features/chat/services/messageLinkPolicy';
 import {
   MESSAGE_QUICK_REACTIONS,
+  mergeReactionUsers,
+  reactionEntries,
   pinnedMessagesForRoom,
 } from '../features/chat/services/messageActionPolicy';
 import {
@@ -737,6 +739,59 @@ function reactionEmojiCounts(reactionUsers = {}) {
   return Object.fromEntries(Object.entries(reactionUsers || {})
     .map(([emoji, users]) => [emoji, Array.isArray(users) ? users.length : 0])
     .filter(([, count]) => count > 0));
+}
+
+function reactionBelongsToViewer(users, viewerId, currentUser) {
+  return (Array.isArray(users) ? users : []).some(user => (
+    identitiesOverlap(user, { id: viewerId }) || identitiesOverlap(user, currentUser)
+  ));
+}
+
+function MessageReactionPills({
+  message,
+  reactions = {},
+  reactionUsers = {},
+  viewerId,
+  currentUser,
+  copy = { t: value => value },
+  onToggle,
+  onDetails,
+}) {
+  const entries = reactionEntries(reactions);
+  if (entries.length === 0) return null;
+  const usersByEmoji = mergeReactionUsers(reactionUsers);
+
+  return (
+    <div className="message-reactions" role="group" aria-label={copy.t('Cảm xúc trên tin nhắn')}>
+      {entries.map(([emoji, count]) => {
+        const viewerReacted = reactionBelongsToViewer(usersByEmoji[emoji], viewerId, currentUser);
+        const actionLabel = viewerReacted ? copy.t('Gỡ cảm xúc') : copy.t('Xem người đã thả cảm xúc');
+        return (
+          <button
+            type="button"
+            key={emoji}
+            className={`message-reaction-chip${viewerReacted ? ' is-selected' : ''}`}
+            title={`${actionLabel} ${emoji}`}
+            aria-label={`${actionLabel} ${emoji}`}
+            aria-pressed={viewerReacted}
+            data-reaction-emoji={emoji}
+            onClick={() => {
+              if (viewerReacted) onToggle?.(message, emoji);
+              else onDetails?.(message, emoji);
+            }}
+            onContextMenu={event => {
+              event.preventDefault();
+              event.stopPropagation();
+              onDetails?.(message, emoji);
+            }}
+          >
+            <span className="message-reaction-emoji">{emoji}</span>
+            <span className="message-reaction-count">{count}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 function messageLinks(message) {
@@ -2686,6 +2741,7 @@ function ImageBatchMessage({
   activeChat,
   activeChatId,
   viewerId,
+  currentUser,
   activeGroupMembers,
   copy = { t: value => value, locale: 'vi-VN' },
   chatMode,
@@ -2742,21 +2798,21 @@ function ImageBatchMessage({
               const reactions = chatMode === 'tinode'
                 ? { ...(message.reactions || {}) }
                 : { ...(message.reactions || {}), ...(messageState.reactions || {}) };
-              const reactionEntries = Object.entries(reactions).filter(([, count]) => Number(count) > 0);
-              const reactionPills = reactionEntries.length > 0 && (
-                <div className="message-reactions">
-                  {reactionEntries.map(([emoji, count]) => (
-                    <button
-                      type="button"
-                      key={emoji}
-                      title={copy.t('Xem người đã thả cảm xúc')}
-                      aria-label={`${copy.t('Xem người đã thả cảm xúc')} ${emoji}`}
-                      onClick={() => setReactionDetails({ messageId: message.id, message, emoji })}
-                    >
-                      {emoji} {count}
-                    </button>
-                  ))}
-                </div>
+              const reactionUsers = mergeReactionUsers(
+                message.reactionUsers || {},
+                messageState.reactionUsers || {},
+              );
+              const reactionPills = (
+                <MessageReactionPills
+                  message={message}
+                  reactions={reactions}
+                  reactionUsers={reactionUsers}
+                  viewerId={viewerId}
+                  currentUser={currentUser}
+                  copy={copy}
+                  onToggle={(target, emoji) => handleMessageAction('reaction', target, emoji)}
+                  onDetails={(target, emoji) => setReactionDetails({ messageId: target.id, message: target, emoji })}
+                />
               );
               const attachmentFile = attachmentForMessage(message);
               const imagePreviewSource = isImageAttachment(attachmentFile, message.type)
@@ -11878,12 +11934,12 @@ function App() {
         const groupSpamAttempt = registerGroupSendAttempt(activeChat, createGroupSpamActionId('reaction'));
         if (!groupSpamAttempt.allowed) return;
         const key = messageActionKey(activeChat.id, message.id);
-        const current = chatMode === 'tinode' ? {} : (messageActions[key]?.reactions || {});
+        const current = messageActions[key]?.reactions || {};
         const reactionActorId = tinodeClient.currentUserId || viewerId;
-        const reactionUsersByEmoji = {
-          ...(message.reactionUsers || {}),
-          ...(chatMode === 'tinode' ? {} : (messageActions[key]?.reactionUsers || {})),
-        };
+        const reactionUsersByEmoji = mergeReactionUsers(
+          message.reactionUsers || {},
+          messageActions[key]?.reactionUsers || {},
+        );
         const currentReactionUsers = Array.isArray(reactionUsersByEmoji[emoji])
           ? reactionUsersByEmoji[emoji]
           : [];
@@ -13967,6 +14023,7 @@ function App() {
                     activeChat={activeChat}
                     activeChatId={activeChat.id}
                     viewerId={viewerId}
+                    currentUser={currentUser}
                     activeGroupMembers={activeGroupMembers}
                     copy={appCopy}
                     chatMode={chatMode}
@@ -14146,21 +14203,21 @@ function App() {
             const reactions = chatMode === 'tinode'
               ? { ...(msg.reactions || {}) }
               : { ...(msg.reactions || {}), ...(messageState.reactions || {}) };
-            const reactionEntries = Object.entries(reactions).filter(([, count]) => Number(count) > 0);
-            const reactionPills = reactionEntries.length > 0 && (
-              <div className="message-reactions">
-                {reactionEntries.map(([emoji, count]) => (
-                  <button
-                    type="button"
-                    key={emoji}
-                    title={appCopy.t('Xem người đã thả cảm xúc')}
-                    aria-label={`${appCopy.t('Xem người đã thả cảm xúc')} ${emoji}`}
-                    onClick={() => setReactionDetails({ messageId: msg.id, message: msg, emoji })}
-                  >
-                    {emoji} {count}
-                  </button>
-                ))}
-              </div>
+            const reactionUsers = mergeReactionUsers(
+              msg.reactionUsers || {},
+              messageState.reactionUsers || {},
+            );
+            const reactionPills = (
+              <MessageReactionPills
+                message={msg}
+                reactions={reactions}
+                reactionUsers={reactionUsers}
+                viewerId={viewerId}
+                currentUser={currentUser}
+                copy={appCopy}
+                onToggle={(target, emoji) => handleMessageAction('reaction', target, emoji)}
+                onDetails={(target, emoji) => setReactionDetails({ messageId: target.id, message: target, emoji })}
+              />
             );
             const isStickerMessage = msg.type === 'sticker' || Boolean(msg.sticker?.id || msg.sticker?.stickerId || msg.file?.ext === 'sticker');
             const attachmentFile = msg.file || ((msg.type === 'image' || isStickerMessage) && msg.image ? {

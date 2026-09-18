@@ -2,8 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MESSAGE_QUICK_REACTIONS,
+  mergeReactionCounts,
+  mergeReactionUsers,
   messageActionKey,
   pinnedMessagesForRoom,
+  reactionEntries,
 } from './messageActionPolicy.js';
 
 test('keeps pinned messages scoped to a room and excludes hidden/system entries', () => {
@@ -25,4 +28,23 @@ test('keeps pinned messages scoped to a room and excludes hidden/system entries'
 
 test('exposes the quick reaction order used by the message action bar', () => {
   assert.deepEqual(MESSAGE_QUICK_REACTIONS, ['👍', '❤️', '😂', '😮', '😢']);
+});
+
+test('groups reaction counts into one entry per emoji', () => {
+  const counts = mergeReactionCounts(
+    { '👍': 1, '❤️': 2 },
+    { '👍': 2, '😂': 0 },
+  );
+
+  assert.deepEqual(counts, { '👍': 3, '❤️': 2, '😂': 0 });
+  assert.deepEqual(reactionEntries(counts), [['👍', 3], ['❤️', 2]]);
+});
+
+test('deduplicates reaction users when local and realtime state overlap', () => {
+  const users = mergeReactionUsers(
+    { '👍': [{ id: 'user-a', name: 'A' }] },
+    { '👍': [{ uid: 'user-a', name: 'A updated' }, { id: 'user-b', name: 'B' }] },
+  );
+
+  assert.deepEqual(users['👍'].map(user => user.id || user.uid), ['user-a', 'user-b']);
 });

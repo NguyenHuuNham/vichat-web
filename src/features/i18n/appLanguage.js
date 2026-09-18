@@ -206,6 +206,7 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Chia sẻ tin nhắn': 'Share message',
   'Thêm biểu cảm': 'Add reaction',
   'Xem người đã thả cảm xúc': 'See who reacted',
+  'Gỡ cảm xúc': 'Remove reaction',
   'Cảm xúc trên tin nhắn': 'Reactions',
   'Lọc cảm xúc': 'Filter reactions',
   'Chưa có người thả cảm xúc': 'No reactions yet',
