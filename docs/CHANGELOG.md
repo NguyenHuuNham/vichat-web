@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-18 (Asia/Saigon)
 - Loai: Sua loi | Web | UX | Kiem thu | Tai lieu
-- Trang thai: Hoan tat code; chua commit/deploy production
+- Trang thai: Hoan tat; source `8353ee3` da commit/push `origin/master`, production da deploy va verify qua hai hop SSH
 - Muc tieu: Khi dang mention thanh vien trong group, ArrowUp/ArrowDown phai cap nhat dung muc dang chon va Enter/Tab phai chon dung nguoi.
-- Pham vi: Mention picker cua ChatUI va policy navigation; khong doi Tinode, Chatmgt, API, database, mobile hay luong gui tin thong thuong.
-- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/mentionPolicy.js`, `src/features/chat/services/mentionPolicy.test.js`, `dist/index.html` va file nay.
-- Noi dung: Giu chi so active trong ref de doc ngay ca khi keydown lien tiep, clamp lai khi danh sach loc thay doi, dung cung chi so cho Enter/Tab va tu dong cuon muc active vao vung hien thi.
+- Pham vi: Mention picker cua ChatUI va policy navigation; release cung dong bo toi uu `messageLinkPolicy` da co tren `origin/master` nhung chua nam trong production release truoc; khong doi Tinode, Chatmgt, API, database, mobile hay luong gui tin thong thuong.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/mentionPolicy.js`, `src/features/chat/services/mentionPolicy.test.js`, `src/features/chat/services/messageLinkPolicy.js`, `src/features/chat/services/messageLinkPolicy.test.js`, `dist/index.html` va file nay.
+- Noi dung: Giu chi so active trong ref de doc ngay ca khi keydown lien tiep, clamp lai khi danh sach loc thay doi, dung cung chi so cho Enter/Tab va tu dong cuon muc active vao vung hien thi. Candidate cung build phan toi uu link tu commit `417c874` de source production khop voi `origin/master`.
 - Quyet dinh ky thuat: Chi them state synchronization tai mention picker va ham pure cho cycle/clamp; giu cach wrap danh sach hien tai de khong thay doi hanh vi cac luong chat khac.
 - Database/API/cau hinh: Khong co migration, endpoint, schema, secret hoac cau hinh moi.
 - Kiem thu: `node --test --test-concurrency=1 src/features/chat/services/mentionPolicy.test.js` dat 9/9; `npm run test:frontend -- --test-concurrency=1` dat 430/430; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` thanh cong voi canh bao chunk `App` lon; `git diff --check` dat.
 - Rui ro con lai: Chua UAT truc tiep bang browser do browser bridge khong kha dung trong phien nay; can kiem tra tai khoan that voi group nhieu thanh vien va popup dai.
-- Viec tiep theo: Hard refresh ChatUI, mo group, go `@`, dung ArrowUp/ArrowDown va Enter/Tab; commit/push va deploy ChatUI khi duoc phe duyet.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo group, go `@`, dung ArrowUp/ArrowDown va Enter/Tab; UAT production bang tai khoan that.
+- Artifact/phat hanh: Archive `/opt/deploy/chat/incoming/vichat-mention-8353ee3.tar.gz`, SHA-256 `b2c23e5e31269c1b2eb6c79f72e0e37dec68d547fc0e7c21f8728e9876a72bdc`; release `/opt/deploy/chat/releases/mention-keyboard-8353ee3-20260918-r7`; previous `/opt/deploy/chat/releases/group-chat-tabs-2b534db-20260918-r2`; backup `/opt/deploy/chat/backups/mention-keyboard-8353ee3-20260918-r7`; chi recreate ChatUI `chat`, giu nguyen Chatmgt/Tinode/PostgreSQL/Redis va volume; cac candidate fail truoc activate da quarantine trong `.failed-candidate`.
+- Commit/PR: Source `8353ee3` da push `origin/master`; deploy record duoc ghi trong commit docs cua lan lam viec nay.
 
 ## 2026-09-18-04 - Sua chat nhom va dong bo khi mo nhieu tab
 
