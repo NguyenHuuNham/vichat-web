@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Van hanh: Da xoa 129 thu muc release cu khong phai `current`/`previous`, giai phong `6421876814` bytes; giu lai cac thu muc audit `.failed-candidate`, khong xoa volume, database, Tinode data hay backup rollback.
 - Rui ro con lai: Chua UAT browser production voi tai khoan that cho chip emoji, chip `3+`, mo bang chi tiet va go reaction cua viewer tren direct/group, tin nhan thuong va anh.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn`, sau do UAT cac luong reaction tren direct/group va hai tab.
-- Commit/PR: Source `656ca5f`; deployment record dang cho commit.
+- Commit/PR: Source `656ca5f`; deployment record `1df5ca1`; deploy helper `65c147e`.
 
 ## 2026-09-18-10 - Chi go reaction trong bang chi tiet
 
