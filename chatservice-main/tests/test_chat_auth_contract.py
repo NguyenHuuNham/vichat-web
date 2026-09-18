@@ -907,54 +907,14 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertNotIn("markOwnerMessages", controller_source)
 
     @repository_source_test
-    def test_contact_nicknames_are_private_chat_scope_metadata(self):
-        controller_source, list_source = function_source(
-            CONTROLLER_PATH,
-            "contact_nickname_list",
-        )
-        _controller_source, update_source = function_source(
-            CONTROLLER_PATH,
-            "contact_nickname_update",
-        )
-        app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
-        directory_source = (
-            REPOSITORY_ROOT / "src" / "features" / "contacts" / "services" / "accountDirectory.js"
-        ).read_text(encoding="utf-8")
-        service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")
-        architecture_source = (
-            REPOSITORY_ROOT / "docs" / "chat-backend-architecture.md"
-        ).read_text(encoding="utf-8")
-
-        self.assertIn("/api/v1/contact-nicknames", controller_source)
-        self.assertIn("/api/v1/chat/contact-nicknames", controller_source)
-        self.assertIn("management_session_requested(request)", list_source)
-        self.assertIn("management_session_requested(request)", update_source)
-        self.assertIn("CONTACT_NICKNAMES_PROPERTY", update_source)
-        self.assertIn("_account_by_id(tenant_id, target_id)", update_source)
-        self.assertIn("ManagementAccount.query.filter", update_source)
-        self.assertIn("with_for_update()", update_source)
-        self.assertIn("viewer.properties = properties", update_source)
-        self.assertIn("_audit", update_source)
-        self.assertIn("defaultName", update_source)
-        self.assertNotIn("_management_user_mutations_enabled", update_source)
-        self.assertIn("updateContactNickname", service_source)
-        self.assertIn("applyContactNicknames", directory_source)
-        self.assertIn("findAccountByIdentities", directory_source)
-        self.assertIn("message.raw?.from", app_source)
-        self.assertIn("knownAccounts", app_source)
-        self.assertIn("contactNicknameDialog", app_source)
-        self.assertIn("setContactNicknameValue(globalNickname)", app_source)
-        self.assertIn("contact-nickname-edit-button", app_source)
-        self.assertIn("mentionCanonicalText", app_source)
-        self.assertIn("serializeMentionForTransport", app_source)
-        self.assertIn("replyMetadataForTransport", app_source)
-        self.assertIn("contact nicknames", architecture_source)
-
-    @repository_source_test
-    def test_conversation_nicknames_are_private_to_the_viewer_and_conversation(self):
+    def test_nicknames_are_public_conversation_metadata(self):
         controller_source, update_source = function_source(
             CONTROLLER_PATH,
             "conversation_nickname_update",
+        )
+        _controller_source, direct_publish_source = function_source(
+            CONTROLLER_PATH,
+            "_publish_direct_activity_events",
         )
         app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
         service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")
@@ -969,17 +929,33 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("/api/v1/chat/threads/<conversation_id>/nicknames/<target_id>", controller_source)
         self.assertIn("management_session_requested(request)", update_source)
         self.assertIn("CONVERSATION_NICKNAMES_PROPERTY", update_source)
+        self.assertIn("all_nicknames = _conversation_nicknames(item)", update_source)
         self.assertIn("with_for_update()", update_source)
         self.assertIn("ConversationParticipant.query.filter", update_source)
         self.assertIn("Conversation member is no longer active.", update_source)
-        self.assertIn("conversationNickname", controller_source)
+        self.assertNotIn("target_id == viewer_id", update_source)
+        self.assertIn("conversation_nickname_changed", update_source)
+        self.assertIn("_publish_group_activity_events", update_source)
+        self.assertIn("_publish_direct_activity_events", update_source)
+        self.assertIn("targets", update_source)
+        self.assertIn("direct_peer_tinode_uid", direct_publish_source)
+        self.assertIn("tinode_publish_system_event", direct_publish_source)
+        self.assertIn("valid_tinode_topic", direct_publish_source)
         self.assertIn("updateConversationNickname", service_source)
+        self.assertNotIn("updateContactNickname", service_source)
         self.assertIn("conversationNicknames", service_source)
-        self.assertIn("contactNickname", realtime_source)
-        self.assertIn("contactNicknameScope", app_source)
-        self.assertIn("contact-nickname-scope-option", app_source)
-        self.assertIn("conversationNicknames", app_source)
-        self.assertIn("conversation_nicknames", architecture_source)
+        self.assertNotIn("contactNicknameScope", app_source)
+        self.assertNotIn("contact-nickname-scope-option", app_source)
+        self.assertIn("conversation_nickname_changed", app_source)
+        self.assertIn("conversationWithNickname", app_source)
+        self.assertIn("targetAccountId", app_source)
+        self.assertIn("conversationNickname", realtime_source)
+        self.assertNotIn("contactNickname:", realtime_source)
+        self.assertNotIn("contact_nickname:", realtime_source)
+        self.assertIn("delete normalized.contactNickname", realtime_source)
+        self.assertIn("delete normalized.contact_nickname", realtime_source)
+        self.assertIn("public conversation-scoped", architecture_source)
+        self.assertNotIn("/api/v1/chat/contact-nicknames", controller_source)
 
     def test_directory_sync_reconciles_only_complete_strictly_verified_snapshots(self):
         controller_source, directory_source = function_source(
@@ -1078,7 +1054,8 @@ class ChatAuthContractTests(unittest.TestCase):
             "ManagementAccount.query.filter(ManagementAccount.tenant_id == tenant_id)",
             directory_source,
         )
-        self.assertIn("_public_account(account, viewer_account=viewer_account)", directory_source)
+        self.assertIn("_public_account(account)", directory_source)
+        self.assertNotIn("viewer_account=viewer_account", directory_source)
         self.assertNotIn("ManagementAccount.query.all()", directory_source)
 
     def test_directory_cache_and_tinode_policy_are_identity_scoped(self):

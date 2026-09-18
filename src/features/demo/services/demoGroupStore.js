@@ -158,6 +158,26 @@ export function saveDemoGroup({ id, name, description = '', avatar = '', ownerId
   return record;
 }
 
+export function updateDemoGroupConversationNickname(groupId, targetId, nickname = '') {
+  const groups = readGroups();
+  const group = groups.find(item => item.id === groupId);
+  if (!group) throw new Error('Nhóm demo không còn tồn tại.');
+  const nicknames = Object.fromEntries(
+    Object.entries(group.conversationNicknames || {})
+      .filter(([key, value]) => typeof value === 'string' && key && value.trim()),
+  );
+  const value = String(nickname || '').trim().slice(0, 80);
+  if (value) nicknames[String(targetId)] = value;
+  else delete nicknames[String(targetId)];
+  const updated = {
+    ...group,
+    conversationNicknames: nicknames,
+    updatedAt: new Date().toISOString(),
+  };
+  writeGroups([...groups.filter(item => item.id !== groupId), updated]);
+  return updated;
+}
+
 export function appendDemoGroupMessage(groupId, message) {
   const groups = readGroups();
   const group = groups.find(item => item.id === groupId);

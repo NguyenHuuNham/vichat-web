@@ -195,7 +195,6 @@ import {
   groupRoleForIdentity,
   normalizeGroupRole,
   matchesCompanyDirectoryContact,
-  applyContactNicknames,
   mergeDirectoryAccountSnapshots,
   mergeRealtimeAccountProfile,
   mergeRealtimeMemberPresence,
@@ -207,8 +206,8 @@ import {
   updateAccountPresence,
 } from '../features/contacts/services/accountDirectory';
 import AvatarCropModal from '../features/contacts/components/AvatarCropModal';
-import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, dissolveDemoGroup, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupMemberRole, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
-import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
+import { addDemoGroupMembers, appendDemoGroupMessage, deleteDemoGroupForUser, dissolveDemoGroup, leaveDemoGroup, markDemoGroupRead, removeDemoGroupMember, saveDemoGroup, updateDemoGroupConversationNickname, updateDemoGroupMemberRole, updateDemoGroupMessage } from '../features/demo/services/demoGroupStore';
+import { appendDemoDirectMessage, deleteDemoDirectForUser, directConversationId, markDemoDirectRead, saveDemoDirect, updateDemoDirectConversationNickname, updateDemoDirectMessage } from '../features/demo/services/demoDirectStore';
 import { CHATBOT_ACCOUNT, CHATBOT_DEFAULT_AVATAR, CHATBOT_STARTER_PROMPTS, EXTERNAL_CHAT_ONLY, applyTinodeChatbotConfig, ingestChatDocument, loadChatbotMessages, loadChatbotMessagesFromServer, loadTinodeChatbotConfig, mergeChatbotMessages, normalizeChatbotMessage, requestChatbotReply, saveChatbotMessage } from '../features/chatbot/services/chatbotService';
 import {
   PIN_VALIDATION_ERRORS,
@@ -1224,6 +1223,20 @@ function personalizeGroupSystemText(message, accounts, viewerId) {
       ? 'Bạn đã giải tán nhóm'
       : `${actorName} đã giải tán nhóm`;
   }
+  if (message.action === 'conversation_nickname_changed') {
+    const event = message.systemEvent || message;
+    const targetName = String(
+      event.targetName
+        || event.targets?.[0]?.name
+        || targetIds[0]
+        || 'thanh vien',
+    ).trim();
+    const actorText = message.senderId === viewerId ? 'Ban' : actorName;
+    const nextNickname = String(event.newNickname || '').trim();
+    return nextNickname
+      ? `${actorText} da dat biet danh "${nextNickname}" cho ${targetName}`
+      : `${actorText} da xoa biet danh cua ${targetName}`;
+  }
   if (message.action === 'group_name_changed') {
     const event = message.systemEvent || message;
     const nextName = String(event.newName || event.name || '').trim();
@@ -1365,22 +1378,12 @@ function groupActiveMembers(room, accounts) {
     const conversationNickname = String(
       member?.conversationNickname || member?.conversation_nickname || '',
     ).trim();
-    const contactNickname = String(
-      account?.contactNickname
-        || account?.contact_nickname
-        || account?.nickname
-        || member?.contactNickname
-        || member?.contact_nickname
-        || '',
-    ).trim();
     activeMembers.push({
       ...member,
       ...account,
       id,
       name: conversationNickname || account?.name || member?.name || id,
-      nickname: conversationNickname || contactNickname,
-      contactNickname,
-      contact_nickname: contactNickname,
+      nickname: conversationNickname,
       conversationNickname,
       conversation_nickname: conversationNickname,
       defaultName: account?.defaultName || member?.defaultName || member?.name || id,
@@ -1429,7 +1432,7 @@ function accountForIdentity(accounts, identity) {
   return findAccountByIdentities(accounts, identity) || null;
 }
 
-function personalizeMessageForViewer(message, accounts) {
+function personalizeMessageForViewer(message, accounts, conversationNicknameFor = () => '') {
   if (!message) return message;
   const sender = accountForIdentity(accounts, [
     message.senderId,
@@ -1454,8 +1457,14 @@ function personalizeMessageForViewer(message, accounts) {
       ]);
       return account ? {
         ...user,
-        name: account.name,
-        nickname: account.nickname || '',
+        name: conversationNicknameFor([
+          user?.id,
+          user?.uid,
+          user?.tinodeUid,
+          user?.tinode_uid,
+          account.id,
+          account.tinodeUid,
+        ]) || account.name,
         avatar: isAccountManaged(account) ? (account.avatar || '') : (account.avatar || user.avatar || ''),
       } : user;
     }),
@@ -1464,7 +1473,13 @@ function personalizeMessageForViewer(message, accounts) {
   return {
     ...message,
     ...(sender ? {
-      senderName: sender.name,
+      senderName: conversationNicknameFor([
+        message.senderId,
+        message.raw?.from,
+        message.raw?.head?.['x-sender-id'],
+        sender.id,
+        sender.tinodeUid,
+      ]) || sender.name,
       avatar: isAccountManaged(sender) ? (sender.avatar || '') : (sender.avatar || message.avatar || ''),
     } : {}),
     ...(replySender && message.replyTo ? {
@@ -1476,7 +1491,12 @@ function personalizeMessageForViewer(message, accounts) {
           || replySender.uid
           || replySender.id
           || '',
-        senderName: replySender.name,
+        senderName: conversationNicknameFor([
+          message.replyTo?.senderId,
+          message.replyTo?.uid,
+          replySender.id,
+          replySender.tinodeUid,
+        ]) || replySender.name,
         avatar: isAccountManaged(replySender)
           ? (replySender.avatar || '')
           : (replySender.avatar || message.replyTo.avatar || ''),
@@ -1497,46 +1517,46 @@ function personalizeConversationForViewer(room, accounts, viewer) {
       member?.name,
     ]);
     if (!account) return member;
+    const memberIdentity = [member?.id, member?.uid, member?.tinodeUid, member?.tinode_uid]
+      .map(value => String(value || '').trim())
+      .find(Boolean) || '';
+    const conversationNickname = String(
+      room?.conversationNicknames?.[memberIdentity]
+        || member?.conversationNickname
+        || member?.conversation_nickname
+        || '',
+    ).trim();
     return {
       ...member,
-      name: String(member?.conversationNickname || member?.conversation_nickname || '').trim()
-        || account.name || member.name,
+      name: conversationNickname || account.name || member.name,
       defaultName: account.defaultName || member.defaultName || member.name,
       default_name: account.default_name || member.default_name || member.name,
-      nickname: String(
-        member?.conversationNickname
-          || member?.conversation_nickname
-          || account?.nickname
-          || account?.contactNickname
-          || account?.contact_nickname
-          || member?.contactNickname
-          || member?.contact_nickname
-          || '',
-      ).trim(),
-      contactNickname: String(
-        account?.nickname
-          || account?.contactNickname
-          || account?.contact_nickname
-          || member?.contactNickname
-          || member?.contact_nickname
-          || '',
-      ).trim(),
-      contact_nickname: String(
-        account?.nickname
-          || account?.contactNickname
-          || account?.contact_nickname
-          || member?.contactNickname
-          || member?.contact_nickname
-          || '',
-      ).trim(),
-      conversationNickname: String(member?.conversationNickname || member?.conversation_nickname || '').trim(),
-      conversation_nickname: String(member?.conversationNickname || member?.conversation_nickname || '').trim(),
+      nickname: conversationNickname,
+      conversationNickname,
+      conversation_nickname: conversationNickname,
       avatar: isAccountManaged(account) ? (account.avatar || '') : (account.avatar || member.avatar || ''),
       online: member.online,
     };
   });
-  const messages = roomMessages(room).map(message => personalizeMessageForViewer(message, accounts));
-  const friendEvents = roomFriendEvents(room).map(message => personalizeMessageForViewer(message, accounts));
+  const conversationNicknameFor = identities => {
+    const values = (Array.isArray(identities) ? identities : [identities])
+      .map(value => String(value || '').trim())
+      .filter(Boolean);
+    const member = roomMembers(room).find(candidate => values.some(value => identitiesOverlap(candidate, { id: value })));
+    return [
+      ...values,
+      member?.id,
+      member?.uid,
+      member?.tinodeUid,
+      member?.tinode_uid,
+    ]
+      .map(value => String(value || '').trim())
+      .map(identity => room.conversationNicknames?.[identity] || '')
+      .find(Boolean)
+      || String(member?.conversationNickname || member?.conversation_nickname || '').trim();
+  };
+  const messages = roomMessages(room).map(message => personalizeMessageForViewer(message, accounts, conversationNicknameFor));
+  const friendEvents = roomFriendEvents(room).map(message => personalizeMessageForViewer(message, accounts, conversationNicknameFor));
   const peer = !room.isGroup && !room.isChatbot
     ? members.find(member => !identitiesOverlap(member, viewer))
     : null;
@@ -2982,11 +3002,19 @@ function unreadMessageCount(messages, readBy, viewerId) {
 
 function demoGroupToConversation(group, accounts, viewerId) {
   const memberIds = Array.isArray(group.memberIds) ? group.memberIds : [];
+  const conversationNicknames = group.conversationNicknames && typeof group.conversationNicknames === 'object'
+    ? group.conversationNicknames
+    : {};
   const members = memberIds.map(memberId => {
     const account = findAccount(accounts, memberId);
+    const conversationNickname = String(conversationNicknames[memberId] || '').trim();
     return account ? {
       id: account.id,
-      name: account.name,
+      name: conversationNickname || account.name,
+      defaultName: account.defaultName || account.name,
+      nickname: conversationNickname,
+      conversationNickname,
+      conversation_nickname: conversationNickname,
       avatar: account.avatar,
       online: Boolean(account.online),
       username: account.username,
@@ -2995,7 +3023,10 @@ function demoGroupToConversation(group, accounts, viewerId) {
       group_role: group.groupRoles?.[memberId] || (memberId === group.ownerId ? 'OWNER' : 'MEMBER'),
     } : {
       id: memberId,
-      name: memberId,
+      name: conversationNickname || memberId,
+      nickname: conversationNickname,
+      conversationNickname,
+      conversation_nickname: conversationNickname,
       online: false,
       groupRole: group.groupRoles?.[memberId] || (memberId === group.ownerId ? 'OWNER' : 'MEMBER'),
       group_role: group.groupRoles?.[memberId] || (memberId === group.ownerId ? 'OWNER' : 'MEMBER'),
@@ -3008,10 +3039,11 @@ function demoGroupToConversation(group, accounts, viewerId) {
     .map(message => {
     const senderAccount = findAccount(accounts, message.senderId);
     const isOwnMessage = message.senderId === viewerId;
+    const senderNickname = String(conversationNicknames[message.senderId] || '').trim();
     return {
       ...message,
       sender: isOwnMessage ? 'outgoing' : 'incoming',
-      senderName: senderAccount?.name || message.senderName || message.senderId,
+      senderName: senderNickname || senderAccount?.name || message.senderName || message.senderId,
       avatar: senderAccount?.avatar || message.avatar,
       text: message.type === 'system' ? personalizeGroupSystemText(message, accounts, viewerId) : message.text,
       };
@@ -3032,6 +3064,7 @@ function demoGroupToConversation(group, accounts, viewerId) {
     admin: owner?.name || 'Quản trị viên',
     adminId: owner?.id || group.ownerId || '',
     members,
+    conversationNicknames,
     messages,
     readAt: group.readBy?.[viewerId] || '',
     lastMsg: lastMessage ? (lastMessage.type === 'system' ? lastContent : lastAttachmentPreview || `${lastMessage.sender === 'outgoing' ? 'Bạn' : lastMessage.senderName}: ${lastContent}`) : 'Nhóm mới được tạo',
@@ -3043,8 +3076,21 @@ function demoGroupToConversation(group, accounts, viewerId) {
 
 function demoDirectToConversation(direct, accounts, viewerId) {
   const other = findDirectPeer(direct, accounts, { id: viewerId });
+  const conversationNicknames = direct.conversationNicknames && typeof direct.conversationNicknames === 'object'
+    ? direct.conversationNicknames
+    : {};
+  const otherNickname = String(conversationNicknames[other?.id] || '').trim();
+  const displayOther = other
+    ? {
+      ...other,
+      name: otherNickname || other.name,
+      nickname: otherNickname,
+      conversationNickname: otherNickname,
+      conversation_nickname: otherNickname,
+    }
+    : other;
   const otherName = conversationDisplayName(
-    { ...direct, name: other?.name, members: other ? [other] : [] },
+    { ...direct, name: displayOther?.name, members: displayOther ? [displayOther] : [] },
     'Cuộc trò chuyện cá nhân',
   );
   const deletedBefore = Date.parse(direct.deletedAtByUser?.[viewerId] || '') || 0;
@@ -3052,10 +3098,11 @@ function demoDirectToConversation(direct, accounts, viewerId) {
     .filter(message => (Date.parse(message.createdAt || '') || 0) > deletedBefore)
     .map(message => {
     const sender = findAccount(accounts, message.senderId);
+    const senderNickname = String(conversationNicknames[message.senderId] || '').trim();
     return {
       ...message,
       sender: message.senderId === viewerId ? 'outgoing' : 'incoming',
-      senderName: sender?.name || message.senderName,
+      senderName: senderNickname || sender?.name || message.senderName,
       avatar: sender?.avatar || message.avatar,
     };
   });
@@ -3071,7 +3118,8 @@ function demoDirectToConversation(direct, accounts, viewerId) {
     membersCount: other?.online ? 'Trực tuyến' : 'Ngoại tuyến',
     description: '',
     admin: '',
-    members: other ? [{ ...other }] : [],
+    members: displayOther ? [{ ...displayOther }] : [],
+    conversationNicknames,
     participantIds: direct.participantIds,
     messages,
     readAt: direct.readBy?.[viewerId] || '',
@@ -3367,10 +3415,8 @@ function App() {
   const [pinUnlockNotice, setPinUnlockNotice] = useState('');
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
   const [directoryAccounts, setDirectoryAccounts] = useState([]);
-  const [contactNicknames, setContactNicknames] = useState({});
   const [contactNicknameDialog, setContactNicknameDialog] = useState(null);
   const [contactNicknameValue, setContactNicknameValue] = useState('');
-  const [contactNicknameScope, setContactNicknameScope] = useState('global');
   const [isSavingContactNickname, setIsSavingContactNickname] = useState(false);
   const [isUpdatingProfileAvatar, setIsUpdatingProfileAvatar] = useState(false);
   const [avatarCropFile, setAvatarCropFile] = useState(null);
@@ -3440,7 +3486,6 @@ function App() {
   const currentUserRef = useRef(currentUser);
   const directoryAccountsRef = useRef(directoryAccounts);
   const keyboardShortcutActionHandlersRef = useRef({});
-  const contactNicknamesRef = useRef(contactNicknames);
   const chatErrorTimerRef = useRef(null);
   const avatarOverridesRef = useRef(new Map());
   const groupAvatarSyncRef = useRef(new Map());
@@ -3489,7 +3534,6 @@ function App() {
   conversationsRef.current = conversations;
   currentUserRef.current = currentUser;
   directoryAccountsRef.current = directoryAccounts;
-  contactNicknamesRef.current = contactNicknames;
   unreadBoundariesRef.current = unreadBoundaries;
   pastedAttachmentDraftsRef.current = pastedAttachmentDrafts;
 
@@ -5103,7 +5147,6 @@ function App() {
         defaultName: account?.defaultName || account?.default_name || member?.defaultName || member?.name,
         nickname: member?.conversationNickname
           || member?.conversation_nickname
-          || account?.nickname
           || member?.nickname
           || '',
         avatar: account?.avatar || member?.avatar || '',
@@ -6189,6 +6232,40 @@ function App() {
         }
         const currentRoom = safeNormalizeConversationForRender(currentRooms[stateId], stateId);
         const latestConversationActivity = roomMessages(conversation).at(-1);
+        const latestConversationNicknameActivity = roomMessages(conversation).slice().reverse().find(message => (
+          message?.type === 'system' && message.action === 'conversation_nickname_changed'
+        )) || null;
+        const nicknameActivityEvent = latestConversationNicknameActivity?.systemEvent
+          || latestConversationNicknameActivity;
+        const nicknameTargetAccount = nicknameActivityEvent
+          ? findAccountByIdentities(directoryAccountsRef.current, [
+            nicknameActivityEvent.targetAccountId,
+            nicknameActivityEvent.targets?.[0]?.accountId,
+            nicknameActivityEvent.targetId,
+            nicknameActivityEvent.targets?.[0]?.id,
+          ])
+          : null;
+        const nicknameTargetAccountId = String(
+          nicknameActivityEvent?.targetAccountId
+            || nicknameActivityEvent?.targets?.[0]?.accountId
+            || nicknameTargetAccount?.id
+            || '',
+        ).trim();
+        const conversationWithNickname = nicknameActivityEvent && nicknameTargetAccountId
+          ? {
+            ...conversation,
+            conversationNicknames: (() => {
+              const nextNicknames = {
+                ...(currentRoom?.conversationNicknames || {}),
+                ...(conversation.conversationNicknames || {}),
+              };
+              const nextNickname = String(nicknameActivityEvent.newNickname || '').trim();
+              if (nextNickname) nextNicknames[nicknameTargetAccountId] = nextNickname;
+              else delete nextNicknames[nicknameTargetAccountId];
+              return nextNicknames;
+            })(),
+          }
+          : conversation;
         const latestGroupNameActivity = latestConversationActivity?.type === 'system'
           && latestConversationActivity.action === 'group_name_changed'
           ? latestConversationActivity
@@ -6337,15 +6414,52 @@ function App() {
           if (!previousRoom || previousRoom.accountSession !== accountSession || previousRoom.tinodeTopic !== conversation.id) return prev;
           const previousRoomWithRole = applyGroupRoleEventToRoom(previousRoom, groupRoleActivityEvent);
           const incoming = {
+            ...conversationWithNickname,
             ...conversationWithReadState,
+            conversationNicknames: conversationWithNickname.conversationNicknames,
             id: stateId,
             managementId: previousRoom.managementId,
             tinodeTopic: conversation.id,
             accountSession,
           };
+          const mergedRoom = safeMergeTinodeConversation(previousRoomWithRole, incoming, { viewerId });
+          const nextRoom = nicknameActivityEvent && nicknameTargetAccountId
+            ? (() => {
+              const nextNickname = String(nicknameActivityEvent.newNickname || '').trim();
+              const targetIdentities = [
+                nicknameTargetAccountId,
+                nicknameActivityEvent.targetId,
+                nicknameActivityEvent.targets?.[0]?.id,
+              ].filter(Boolean);
+              const targetDefaultName = String(
+                nicknameTargetAccount?.defaultName
+                  || nicknameTargetAccount?.default_name
+                  || nicknameTargetAccount?.name
+                  || nicknameActivityEvent.targetName
+                  || nicknameTargetAccountId,
+              ).trim();
+              const members = roomMembers(mergedRoom).map(member => {
+                const isTarget = targetIdentities.some(identity => identitiesOverlap(member, { id: identity }));
+                if (!isTarget) return member;
+                return {
+                  ...member,
+                  name: nextNickname || targetDefaultName,
+                  nickname: nextNickname,
+                  conversationNickname: nextNickname,
+                  conversation_nickname: nextNickname,
+                };
+              });
+              const normalized = safeNormalizeConversationForRender({
+                ...mergedRoom,
+                members,
+                conversationNicknames: conversationWithNickname.conversationNicknames,
+              }, stateId);
+              return personalizeConversationForViewer(normalized, directoryAccountsRef.current, currentUser);
+            })()
+            : mergedRoom;
           const next = {
             ...prev,
-            [stateId]: safeMergeTinodeConversation(previousRoomWithRole, incoming, { viewerId }),
+            [stateId]: nextRoom,
           };
           conversationsRef.current = next;
           return next;
@@ -6489,10 +6603,8 @@ function App() {
     setMediaBrowserOpen(false);
     directoryAccountsRef.current = [];
     setDirectoryAccounts([]);
-    setContactNicknames({});
     setContactNicknameDialog(null);
     setContactNicknameValue('');
-    setContactNicknameScope('global');
     setIsSavingContactNickname(false);
     avatarOverridesRef.current.clear();
     groupAvatarSyncRef.current.clear();
@@ -6549,14 +6661,7 @@ function App() {
             ...account,
             avatar: isAccountManaged(account) ? (account.avatar || '') : (avatarOverrideFor(account) || account.avatar || ''),
           }));
-        const nicknameMap = Object.fromEntries(
-          accounts
-            .filter(account => account?.id && account?.nickname)
-            .map(account => [String(account.id), String(account.nickname)]),
-        );
         if (accountSessionRef.current !== accountSession) return;
-        contactNicknamesRef.current = nicknameMap;
-        setContactNicknames(nicknameMap);
         directoryAccountsRef.current = accounts;
         setDirectoryAccounts(accounts);
         if (chatManagementService.directorySync?.status === 'stale') {
@@ -7441,21 +7546,11 @@ function App() {
             }
             : next;
         }), currentDirectoryUser);
-        const nextNicknames = Object.fromEntries(
-          nextAccounts
-            .filter(account => account?.id && account?.nickname)
-            .map(account => [String(account.id), String(account.nickname)]),
-        );
-        const nicknamesChanged = JSON.stringify(contactNicknamesRef.current) !== JSON.stringify(nextNicknames);
-        if (nicknamesChanged) {
-          contactNicknamesRef.current = nextNicknames;
-          setContactNicknames(nextNicknames);
-        }
         const accountsChanged = rawPreviousAccounts.length !== previousAccounts.length
           || previousAccounts.length !== nextAccounts.length
           || nextAccounts.some(account => {
             const previous = findAccount(previousAccounts, account.id || account.uid || account.tinodeUid);
-            return !previous || ['id', 'uid', 'tinodeUid', 'username', 'name', 'defaultName', 'nickname', 'avatar', 'email', 'title', 'department', 'active', 'online', 'lastSeenAt']
+            return !previous || ['id', 'uid', 'tinodeUid', 'username', 'name', 'defaultName', 'avatar', 'email', 'title', 'department', 'active', 'online', 'lastSeenAt']
               .some(key => previous[key] !== account[key]);
           });
         const effectiveAccounts = accountsChanged ? nextAccounts : previousAccounts;
@@ -7473,7 +7568,7 @@ function App() {
             ...(typeof knownOnline === 'boolean' ? { online: knownOnline } : {}),
             ...(account.lastSeenAt ? { lastSeenAt: account.lastSeenAt, last_seen_at: account.lastSeenAt } : {}),
           };
-          return ['name', 'defaultName', 'nickname', 'avatar', 'email', 'title', 'department', 'active', 'online', 'lastSeenAt'].some(key => result[key] !== next[key])
+          return ['name', 'defaultName', 'avatar', 'email', 'title', 'department', 'active', 'online', 'lastSeenAt'].some(key => result[key] !== next[key])
             ? next
             : result;
         });
@@ -7517,12 +7612,24 @@ function App() {
               member.name,
             ]);
             if (!account) return member;
+            const conversationNickname = [
+              member.id,
+              member.uid,
+              member.tinodeUid,
+              member.tinode_uid,
+            ]
+              .map(identity => String(identity || '').trim())
+              .map(identity => room.conversationNicknames?.[identity] || '')
+              .find(Boolean)
+              || String(member.conversationNickname || member.conversation_nickname || '').trim();
             const updated = {
               ...member,
-              name: account.name || member.name,
+              name: conversationNickname || account.name || member.name,
               defaultName: account.defaultName || member.defaultName || member.name,
               default_name: account.default_name || member.default_name || member.name,
-              nickname: account.nickname || '',
+              nickname: conversationNickname,
+              conversationNickname,
+              conversation_nickname: conversationNickname,
               avatar: isAccountManaged(account) ? (account.avatar || '') : (account.avatar || member.avatar || ''),
               online: member.online,
             };
@@ -7556,7 +7663,9 @@ function App() {
             if (!account) return message;
             const updated = {
               ...message,
-              senderName: account.name || message.senderName,
+              senderName: room.conversationNicknames?.[account.id]
+                || account.name
+                || message.senderName,
               avatar: isAccountManaged(account) ? (account.avatar || '') : (account.avatar || message.avatar || ''),
             };
             return updated.senderName === message.senderName && updated.avatar === message.avatar ? message : updated;
@@ -7997,147 +8106,190 @@ function App() {
   };
 
   const openContactNicknameDialog = (member = activeDirectPeer) => {
-    if (!member || member.type === 'bot' || member.isChatbot || identitiesOverlap(member, currentUser)) return;
+    if (!member || member.type === 'bot' || member.isChatbot) return;
     const memberId = member.id || member.uid || member.tinodeUid || member.tinode_uid || member.name;
-    const directoryContact = findAccount(directoryAccounts, memberId);
-    const contact = directoryContact || findAccount(
-      directoryAccounts,
-      memberId,
-    ) || member;
-    const defaultName = contact.defaultName || contact.default_name || contact.full_name || contact.name || contact.username || 'Người dùng';
-    const globalNickname = String(
-      directoryContact?.nickname
-        || directoryContact?.contactNickname
-        || directoryContact?.contact_nickname
-        || member.contactNickname
-        || member.contact_nickname
-        || (!member.conversationNickname ? member.nickname : '')
-        || '',
-    ).trim();
-    const conversationNickname = String(
-      member.conversationNickname || member.conversation_nickname || '',
-    ).trim();
+    const contact = findAccount(directoryAccounts, memberId) || member;
+    const defaultName = contact.defaultName
+      || contact.default_name
+      || contact.full_name
+      || contact.name
+      || contact.username
+      || 'Nguoi dung';
+    const conversationNickname = [
+      contact.id,
+      contact.uid,
+      contact.tinodeUid,
+      contact.tinode_uid,
+      member.id,
+      member.uid,
+      member.tinodeUid,
+      member.tinode_uid,
+    ]
+      .map(identity => String(identity || '').trim())
+      .map(identity => activeChat?.conversationNicknames?.[identity] || '')
+      .find(Boolean)
+      || String(member.conversationNickname || member.conversation_nickname || '').trim();
     setContactNicknameDialog({
       ...member,
       ...contact,
       id: String(contact.id || member.id || member.uid || '').trim(),
       defaultName,
-      globalNickname,
       conversationNickname,
       conversationId: activeChat.managementId || activeChat.id,
       avatar: contact.avatar || member.avatar || '',
     });
-    setContactNicknameScope('global');
-    setContactNicknameValue(globalNickname);
+    setContactNicknameValue(conversationNickname);
     setChatError('');
-  };
-
-  const handleContactNicknameScopeChange = scope => {
-    const nextScope = scope === 'conversation' ? 'conversation' : 'global';
-    setContactNicknameScope(nextScope);
-    setContactNicknameValue(nextScope === 'conversation'
-      ? String(contactNicknameDialog?.conversationNickname || '').trim()
-      : String(contactNicknameDialog?.globalNickname || '').trim());
   };
 
   const handleContactNicknameSubmit = async event => {
     event.preventDefault();
     const contact = contactNicknameDialog;
     const contactId = String(contact?.id || contact?.uid || '').trim();
-    const scope = contactNicknameScope === 'conversation' ? 'conversation' : 'global';
     const conversationId = String(contact?.conversationId || '').trim();
     if (!contactId || isSavingContactNickname) return;
     const nickname = contactNicknameValue.trim().slice(0, 80);
     setIsSavingContactNickname(true);
     setChatError('');
     try {
-      let savedNickname = nickname;
-      if (scope === 'conversation') {
-        if (chatManagementService.remote) {
-          if (!conversationId || !isManagementConversationId(conversationId)) {
-            throw new Error('Chatmgt chưa xác nhận cuộc trò chuyện này.');
-          }
-          await chatManagementService.updateConversationNickname(conversationId, contactId, nickname);
-        }
-        setConversations(previous => {
-          const next = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
-            const matchesConversation = [id, room.id, room.managementId, room.tinodeTopic]
-              .filter(Boolean)
-              .some(value => String(value) === conversationId);
-            if (!matchesConversation) return [id, room];
-            const conversationNicknames = { ...(room.conversationNicknames || {}) };
-            if (nickname) conversationNicknames[contactId] = nickname;
-            else delete conversationNicknames[contactId];
-            const members = roomMembers(room).map(memberItem => {
-              if (!identitiesOverlap(memberItem, { id: contactId })) return memberItem;
-              const contactNickname = String(
-                  memberItem.contactNickname
-                  || memberItem.contact_nickname
-                  || (!memberItem.conversationNickname ? memberItem.nickname : '')
-                  || '',
-              ).trim();
-              const defaultMemberName = memberItem.defaultName || memberItem.default_name || memberItem.name || '';
-              const nextName = nickname || contactNickname || defaultMemberName;
-              return {
-                ...memberItem,
-                name: nextName,
-                nickname: nickname || contactNickname,
-                contactNickname,
-                contact_nickname: contactNickname,
-                conversationNickname: nickname,
-                conversation_nickname: nickname,
-              };
-            });
-            const peer = !room.isGroup
-              ? members.find(memberItem => !identitiesOverlap(memberItem, currentUserRef.current || currentUser))
-              : null;
-            const nextRoom = safeNormalizeConversationForRender({
-              ...room,
-              members,
-              conversationNicknames,
-              ...(peer ? { name: peer.name || room.name } : {}),
-            }, id);
-            return [id, nextRoom];
-          }));
-          conversationsRef.current = next;
-          return next;
-        });
-        setContactNicknameDialog(null);
-        return;
-      }
+      if (!conversationId) throw new Error('Cuoc tro chuyen chua san sang.');
+      let updatedConversation = null;
       if (chatManagementService.remote) {
-        const response = await chatManagementService.updateContactNickname(contactId, nickname);
-        savedNickname = String(response?.nickname || '').trim();
+        if (!isManagementConversationId(conversationId)) {
+          throw new Error('Chatmgt chua xac nhan cuoc tro chuyen nay.');
+        }
+        updatedConversation = await chatManagementService.updateConversationNickname(
+          conversationId,
+          contactId,
+          nickname,
+        );
+      } else if (activeChat.isGroup) {
+        const updatedGroup = updateDemoGroupConversationNickname(activeChat.id, contactId, nickname);
+        const systemEvent = {
+          action: 'conversation_nickname_changed',
+          actorId: managementViewerId,
+          actorAccountId: managementViewerId,
+          actorName: currentUser?.name || managementViewerId,
+          targetId: contactId,
+          targetAccountId: contactId,
+          targetName: contact?.defaultName || contact?.name || contactId,
+          previousNickname: String(contact?.conversationNickname || '').trim(),
+          newNickname: nickname,
+          cleared: !nickname,
+          isGroup: true,
+          targets: [{
+            id: contactId,
+            accountId: contactId,
+            name: contact?.defaultName || contact?.name || contactId,
+          }],
+        };
+        const systemMessage = {
+          id: 'system-nickname-' + Date.now(),
+          type: 'system',
+          action: systemEvent.action,
+          senderId: managementViewerId,
+          senderName: systemEvent.actorName,
+          targetId: contactId,
+          targetIds: [contactId],
+          systemEvent,
+          text: personalizeGroupSystemText({ ...systemEvent, type: 'system' }, directoryAccounts, managementViewerId),
+          time: getTimeString(),
+          createdAt: new Date().toISOString(),
+        };
+        updatedConversation = demoGroupToConversation(
+          appendDemoGroupMessage(activeChat.id, systemMessage) || updatedGroup,
+          directoryAccounts,
+          managementViewerId,
+        );
+      } else {
+        const updatedDirect = updateDemoDirectConversationNickname(activeChat.id, contactId, nickname);
+        const systemEvent = {
+          action: 'conversation_nickname_changed',
+          actorId: managementViewerId,
+          actorAccountId: managementViewerId,
+          actorName: currentUser?.name || managementViewerId,
+          targetId: contactId,
+          targetAccountId: contactId,
+          targetName: contact?.defaultName || contact?.name || contactId,
+          previousNickname: String(contact?.conversationNickname || '').trim(),
+          newNickname: nickname,
+          cleared: !nickname,
+          isGroup: false,
+          targets: [{
+            id: contactId,
+            accountId: contactId,
+            name: contact?.defaultName || contact?.name || contactId,
+          }],
+        };
+        const systemMessage = {
+          id: 'system-nickname-' + Date.now(),
+          type: 'system',
+          action: systemEvent.action,
+          senderId: managementViewerId,
+          senderName: systemEvent.actorName,
+          targetId: contactId,
+          targetIds: [contactId],
+          systemEvent,
+          text: personalizeGroupSystemText({ ...systemEvent, type: 'system' }, directoryAccounts, managementViewerId),
+          time: getTimeString(),
+          createdAt: new Date().toISOString(),
+        };
+        updatedConversation = demoDirectToConversation(
+          appendDemoDirectMessage(activeChat.id, systemMessage) || updatedDirect,
+          directoryAccounts,
+          managementViewerId,
+        );
       }
-      const nextNicknames = { ...contactNicknamesRef.current };
-      if (savedNickname) nextNicknames[contactId] = savedNickname;
-      else delete nextNicknames[contactId];
-      contactNicknamesRef.current = nextNicknames;
-      setContactNicknames(nextNicknames);
-      const contactAccount = normalizeAccountShape(contact) || contact;
-      const knownAccounts = findAccountByIdentities(
-        directoryAccountsRef.current,
-        [contactId, contactAccount?.uid, contactAccount?.tinodeUid],
-      )
-        ? directoryAccountsRef.current
-        : [...directoryAccountsRef.current, contactAccount];
-      const nextAccounts = filterAccountsByTenant(
-        applyContactNicknames(knownAccounts, { [contactId]: savedNickname }),
-        currentUserRef.current || currentUser,
-      );
-      directoryAccountsRef.current = nextAccounts;
-      setDirectoryAccounts(nextAccounts);
+
       setConversations(previous => {
-        const next = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => [
-          id,
-          personalizeConversationForViewer(room, nextAccounts, currentUserRef.current),
-        ]));
+        const next = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
+          const matchesConversation = [id, room.id, room.managementId, room.tinodeTopic]
+            .filter(Boolean)
+            .some(value => String(value) === conversationId);
+          if (!matchesConversation) return [id, room];
+          const responseRoom = updatedConversation && updatedConversation.id
+            ? safeNormalizeConversationForRender(updatedConversation, id)
+            : null;
+          const baseRoom = responseRoom
+            ? safeMergeTinodeConversation(room, responseRoom, { viewerId: managementViewerId })
+            : room;
+          const conversationNicknames = { ...(baseRoom.conversationNicknames || {}) };
+          if (nickname) conversationNicknames[contactId] = nickname;
+          else delete conversationNicknames[contactId];
+          const members = roomMembers(baseRoom).map(memberItem => {
+            if (!identitiesOverlap(memberItem, { id: contactId })) return memberItem;
+            const defaultMemberName = memberItem.defaultName
+              || memberItem.default_name
+              || memberItem.name
+              || '';
+            const cleanMember = { ...memberItem };
+            delete cleanMember.contactNickname;
+            delete cleanMember.contact_nickname;
+            return {
+              ...cleanMember,
+              name: nickname || defaultMemberName,
+              nickname,
+              conversationNickname: nickname,
+              conversation_nickname: nickname,
+            };
+          });
+          const peer = !baseRoom.isGroup
+            ? members.find(memberItem => !identitiesOverlap(memberItem, currentUserRef.current || currentUser))
+            : null;
+          const nextRoom = safeNormalizeConversationForRender({
+            ...baseRoom,
+            members,
+            conversationNicknames,
+            ...(peer ? { name: peer.name || baseRoom.name } : {}),
+          }, id);
+          return [id, nextRoom];
+        }));
         conversationsRef.current = next;
         return next;
       });
       setContactNicknameDialog(null);
     } catch (error) {
-      setChatError(error?.message || 'Không thể lưu tên gợi nhớ.');
+      setChatError(error?.message || 'Khong the luu ten goi nho.');
     } finally {
       setIsSavingContactNickname(false);
     }
@@ -15407,8 +15559,7 @@ function App() {
                       && canAppointGroupDeputy(activeChat, directoryAccounts, currentUser, member);
                     const canRevokeDeputy = (usesManagementData || chatMode === 'demo')
                       && canRevokeGroupDeputy(activeChat, directoryAccounts, currentUser, member);
-                    const canEditMemberNickname = !identitiesOverlap(member, currentUser)
-                      && member.type !== 'bot'
+                    const canEditMemberNickname = member.type !== 'bot'
                       && !member.isChatbot;
                     const canShowMemberMenu = canRemove || canAppointDeputy || canRevokeDeputy || canEditMemberNickname;
                     return (
@@ -16681,7 +16832,7 @@ function App() {
             <div className="group-modal-header contact-nickname-header">
               <div>
                 <span className="group-modal-kicker">{appCopy.t('Thông tin hội thoại')}</span>
-                <h2 id="contact-nickname-title">{appCopy.t('Đặt tên gợi nhớ')}</h2>
+                <h2 id="contact-nickname-title">{appCopy.t('Đổi biệt danh')}</h2>
               </div>
               <button type="button" className="btn-close-detail" onClick={() => setContactNicknameDialog(null)} aria-label={appCopy.t('Đóng')} disabled={isSavingContactNickname}>
                 <i className="fa-solid fa-xmark"></i>
@@ -16690,37 +16841,12 @@ function App() {
             <div className="contact-nickname-hero">
               <SafeAvatar src={contactNicknameDialog.avatar || ''} name={contactNicknameDialog.defaultName} className="contact-nickname-avatar" />
               <p>
-                {appCopy.t('Hãy đặt cho')} <strong>{contactNicknameDialog.defaultName}</strong> {appCopy.t('một cái tên để nhớ.')}
+                {appCopy.t('Đặt biệt danh cho')} <strong>{contactNicknameDialog.defaultName}</strong> {appCopy.t('trong cuộc trò chuyện này.')}
               </p>
-              <small>{appCopy.t('Lưu ý: Tên gợi nhớ sẽ chỉ hiển thị riêng với bạn.')}</small>
+              <small>{appCopy.t('Biệt danh hiển thị với mọi thành viên trong cuộc trò chuyện và không áp dụng ở nơi khác.')}</small>
             </div>
-            <fieldset className="contact-nickname-scope">
-              <legend>{appCopy.t('Phạm vi biệt danh')}</legend>
-              <label className={`contact-nickname-scope-option ${contactNicknameScope === 'global' ? 'selected' : ''}`}>
-                <input
-                  type="radio"
-                  name="contact-nickname-scope"
-                  value="global"
-                  checked={contactNicknameScope === 'global'}
-                  onChange={() => handleContactNicknameScopeChange('global')}
-                  disabled={isSavingContactNickname}
-                />
-                <span><strong>{appCopy.t('Toàn bộ Chat của tôi')}</strong><small>{appCopy.t('Hiển thị ở mọi cuộc trò chuyện của bạn.')}</small></span>
-              </label>
-              <label className={`contact-nickname-scope-option ${contactNicknameScope === 'conversation' ? 'selected' : ''}`}>
-                <input
-                  type="radio"
-                  name="contact-nickname-scope"
-                  value="conversation"
-                  checked={contactNicknameScope === 'conversation'}
-                  onChange={() => handleContactNicknameScopeChange('conversation')}
-                  disabled={isSavingContactNickname}
-                />
-                <span><strong>{appCopy.t('Chỉ trong đoạn chat này')}</strong><small>{appCopy.t('Không thay đổi tên ở các cuộc trò chuyện khác.')}</small></span>
-              </label>
-            </fieldset>
             <label className="group-form-field contact-nickname-field">
-              <span>{appCopy.t('Tên gợi nhớ')}</span>
+              <span>{appCopy.t('Biệt danh trong cuộc trò chuyện')}</span>
               <input
                 value={contactNicknameValue}
                 onChange={event => setContactNicknameValue(event.target.value.slice(0, 80))}
@@ -16735,7 +16861,7 @@ function App() {
                 <button type="button" className="btn-secondary" onClick={() => setContactNicknameDialog(null)} disabled={isSavingContactNickname}>{appCopy.t('Hủy')}</button>
                 <button type="submit" className="btn-primary" disabled={isSavingContactNickname}>
                   {isSavingContactNickname ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-check"></i>}
-                  {isSavingContactNickname ? appCopy.t('Đang lưu tên gợi nhớ...') : appCopy.t('Lưu tên gợi nhớ')}
+                  {isSavingContactNickname ? appCopy.t('Đang lưu biệt danh...') : appCopy.t('Lưu biệt danh')}
                 </button>
               </div>
             </div>

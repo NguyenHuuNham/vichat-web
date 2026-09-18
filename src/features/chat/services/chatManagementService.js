@@ -823,16 +823,6 @@ export const chatManagementService = {
     });
   },
 
-  async updateContactNickname(contactId, nickname) {
-    if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
-    const targetId = String(contactId || '').trim();
-    if (!targetId) throw new Error('Contact information is missing.');
-    return apiRequest(`/api/v1/chat/contact-nicknames/${encodeURIComponent(targetId)}`, {
-      method: 'PUT',
-      body: JSON.stringify({ nickname: String(nickname || '').trim() }),
-    });
-  },
-
   async updateConversationNickname(conversationId, targetId, nickname) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const conversationKey = String(conversationId || '').trim();

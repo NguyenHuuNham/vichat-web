@@ -6,21 +6,34 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
-## 2026-09-18-06 - Them biet danh theo pham vi cuoc chat va chuyen canh bao thanh toast
+## 2026-09-18-08 - Dong bo biet danh cong khai qua realtime
+
+- Thoi gian: 2026-09-18 (Asia/Saigon)
+- Loai: Sua loi | Web | Backend | Tinode | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code; chua commit/push va chua deploy production
+- Muc tieu: Bao dam moi thanh vien trong chat 1-1/group thay ngay biet danh cong khai va thong bao sau khi co thay doi.
+- Pham vi: ChatUI realtime event, contract test nickname/directory va metadata conversation; khong migration, khong doi Tinode message store hay profile Account.
+- File da thay doi: `src/app/App.jsx`, `chatservice-main/tests/test_chat_auth_contract.py` va file nay.
+- Noi dung: Tab nhan event `conversation_nickname_changed` nay gop map nickname theo `targetAccountId` vao snapshot hien tai, bao gom ca thao tac xoa, de thanh vien khac cap nhat ten va message rendering ma khong can reload. Contract test duoc sua de chap nhan cleanup field legacy nhung van chan payload nickname rieng tu.
+- Quyet dinh ky thuat: Dung map public da commit trong Chatmgt lam nguon; merge patch realtime voi map hien tai de khong lam mat nickname cua thanh vien khac. Giu cleanup `contactNickname` legacy o ranh gioi normalize de tranh du lieu cu quay lai UI.
+- Database/API/cau hinh: Khong co migration, endpoint moi, secret hoac bien moi truong; su dung event `conversation_nickname_changed` hien co.
+- Kiem thu: `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -v` dat 59/59; `python -m unittest discover -s chatservice-main/tests -p "test_*.py"` dat 310 pass, 105 skip; `npm run test:frontend -- --test-concurrency=1` dat 432/432; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py` dat; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon; `git diff --check` dat.
+- Rui ro con lai: Chua UAT production bang browser voi hai tai khoan cho doi/clear biet danh trong direct va group; chua commit/push/deploy theo yeu cau moi.
+- Viec tiep theo: Neu duoc yeu cau, commit/push va deploy ChatUI/Chatmgt; sau do hard refresh va UAT hai tai khoan, hai tab, doi biet danh cho minh/nguoi khac va xoa biet danh.
+- Commit/PR: Chua tao.
+
+## 2026-09-18-07 - Cho phep doi biet danh cua chinh minh
 
 - Thoi gian: 2026-09-18 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Web | Backend | UX | Kiem thu | Tai lieu
 - Trang thai: Hoan tat code; chua commit/push va chua deploy production
-- Muc tieu: Cho phep doi biet danh theo hai pham vi `Toan bo Chat cua toi` hoac `Chi trong doan chat nay`, khong lam mat nickname khi dong bo nhieu tab, va bo dong canh bao 120 KB trong giao dien.
-- Pham vi: ChatUI nickname trong chat 1-1/group, Chatmgt conversation metadata, message length validation va toast; khong migration, khong doi Tinode message store hay mobile.
-- File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/messagePolicy.js`, `src/features/chat/services/messagePolicy.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/i18n/appLanguage.js`, `src/styles/index.css`, `dist/index.html`, `docs/chat-backend-architecture.md` va file nay.
-- Noi dung: Them API nickname rieng theo conversation, gioi han viewer/tenant/member active, row lock va re-check membership de tranh race. UI cho phep sua tu header direct hoac menu thanh vien group; nickname global/local duoc tach rieng va local duoc giu qua snapshot Tinode/danh ba. Loi tin nhan qua dai van duoc chan o policy/transport nhung hien thanh toast ngan gon, khong con chuoi hien thi `120 KB`.
-- Quyet dinh ky thuat: Global nickname van nam trong `ManagementAccount.properties.contact_nicknames`; local nickname nam trong `Conversation.properties.conversation_nicknames` theo viewer, khong dua nickname vao Tinode hay metadata mention outbound. Toast dung cung `chatError` de khong tao them inline warning lam day composer.
-- Database/API/cau hinh: Them hai route alias `PUT /api/v1/conversation/<id>/nicknames/<target-id>` va `PUT /api/v1/chat/threads/<id>/nicknames/<target-id>`; khong migration, khong secret va khong bien moi truong moi.
-- Kiem thu: `node --test --test-concurrency=1 src/features/chat/services/messagePolicy.test.js src/features/chat/services/chatRealtime.test.js` dat 60/60; `npm run test:frontend -- --test-concurrency=1` dat 432/432; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -v` dat 60/60; `python -m unittest discover -s chatservice-main/tests -p "test_*.py"` dat 311 pass, 105 skip; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py` dat; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` thanh cong voi canh bao chunk `App` lon; `git diff --check` dat.
-- Rui ro con lai: Chua UAT browser voi tai khoan that cho doi nickname global/local, hai tab, roi group va gui paste tin nhan dai; can hard refresh sau deploy. Khong co migration can chay.
-- Viec tiep theo: Review diff, commit/push va deploy rieng ChatUI/Chatmgt theo quy trinh; sau do UAT nickname, multi-tab va toast tren production.
-- Commit/PR: Chua tao.
+- Muc tieu: Cho phep tai khoan dat biet danh rieng cho chinh minh trong ca pham vi toan bo Chat va chi trong cuoc tro chuyen.
+- Pham vi: API nickname global/conversation, dialog va menu thanh vien ChatUI, directory display; khong migration, khong thay doi profile Account/Tinode, chatbot hay luong quan tri nhom.
+- Noi dung: Bo chan target trung viewer o hai route nickname; Chatmgt van kiem tra tenant, account active, membership va row lock. Dialog va menu thanh vien cho phep chon chinh viewer, bot van bi chan. Nickname tu minh van chi la metadata viewer-scoped va khong doi ten chinh thuc.
+- Quyet dinh ky thuat: Cho phep `_account_display_name` ap dung map nickname ca khi account dich la viewer, de nickname tu minh duoc tai lai sau refresh; khong ghi vao `full_name`, Account profile, Tinode hay metadata outbound.
+- Kiem thu: `node --test --test-concurrency=1 src/features/contacts/services/accountDirectory.test.js` dat 42/42; `npm run test:frontend -- --test-concurrency=1` dat 433/433; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -v` dat 60/60; `python -m unittest discover -s chatservice-main/tests -p "test_*.py"` dat 311 pass, 105 skip; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py` dat; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` thanh cong voi canh bao chunk `App` lon; `git diff --check` dat.
+- Rui ro con lai: Chua deploy/UAT production trong lan sua nay; can hard refresh va thu ca hai scope trong direct/group chat.
+- Viec tiep theo: Review diff, commit/push va deploy rieng ChatUI/Chatmgt sau khi co yeu cau; sau do hard refresh va UAT hai scope trong direct/group chat.
 
 ## 2026-09-18-05 - Dong bo chon thanh vien khi dieu huong mention bang ban phim
 

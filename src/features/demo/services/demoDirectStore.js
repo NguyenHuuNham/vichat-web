@@ -81,6 +81,26 @@ export function saveDemoDirect({ id, participantIds, messages = [] }) {
   return record;
 }
 
+export function updateDemoDirectConversationNickname(directId, targetId, nickname = '') {
+  const directs = readDirects();
+  const direct = directs.find(item => item.id === directId);
+  if (!direct) throw new Error('Cuộc trò chuyện không còn tồn tại.');
+  const nicknames = Object.fromEntries(
+    Object.entries(direct.conversationNicknames || {})
+      .filter(([key, value]) => typeof value === 'string' && key && value.trim()),
+  );
+  const value = String(nickname || '').trim().slice(0, 80);
+  if (value) nicknames[String(targetId)] = value;
+  else delete nicknames[String(targetId)];
+  const updated = {
+    ...direct,
+    conversationNicknames: nicknames,
+    updatedAt: new Date().toISOString(),
+  };
+  writeDirects([...directs.filter(item => item.id !== directId), updated]);
+  return updated;
+}
+
 export function appendDemoDirectMessage(id, message) {
   const directs = readDirects();
   const direct = directs.find(item => item.id === id);

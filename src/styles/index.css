@@ -6692,41 +6692,6 @@ input:checked + .slider:before {
     line-height: 1.45;
 }
 .contact-nickname-field { margin-bottom: 4px; }
-.contact-nickname-scope {
-    display: grid;
-    gap: 7px;
-    margin: 0 0 4px;
-    padding: 0;
-    border: 0;
-}
-.contact-nickname-scope legend {
-    margin-bottom: 5px;
-    color: var(--text-muted);
-    font-size: 11px;
-    font-weight: 750;
-}
-.contact-nickname-scope-option {
-    display: flex;
-    min-width: 0;
-    align-items: flex-start;
-    gap: 9px;
-    padding: 9px 10px;
-    border: 1px solid var(--border-color);
-    border-radius: 11px;
-    color: var(--text-body);
-    background: var(--bg-white);
-    cursor: pointer;
-}
-.contact-nickname-scope-option.selected,
-.contact-nickname-scope-option:hover {
-    border-color: rgba(244, 81, 30, .4);
-    background: var(--vichat-blue-light);
-}
-.contact-nickname-scope-option input { width: 16px; height: 16px; margin-top: 2px; accent-color: var(--vichat-blue); }
-.contact-nickname-scope-option > span { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
-.contact-nickname-scope-option strong { color: var(--text-main); font-size: 12px; }
-.contact-nickname-scope-option small { color: var(--text-muted); font-size: 10.5px; line-height: 1.4; }
-
 .conversation-background-backdrop { z-index: 115; }
 .conversation-background-modal {
     width: min(680px, 100%);

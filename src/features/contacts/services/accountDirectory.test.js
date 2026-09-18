@@ -20,7 +20,6 @@ import {
   identitiesOverlap,
   identityValues,
   matchesCompanyDirectoryContact,
-  applyContactNicknames,
   mergeDirectoryAccountSnapshots,
   mergeRealtimeAccountProfile,
   mergeRealtimeMemberPresence,
@@ -577,53 +576,62 @@ test('account snapshots convert malformed profile values to render-safe scalars'
   assert.equal(normalizeTenantShape({ id: 'tenant-a', name: { invalid: true } }).name, 'tenant-a');
 });
 
-test('contact nicknames override only the viewer display name and retain the official name', () => {
-  const accounts = [
-    { id: 'account-peer', uid: 'account-peer', name: 'Tên chính thức', defaultName: 'Tên chính thức' },
-    { id: 'account-other', uid: 'account-other', name: 'Người khác', defaultName: 'Người khác' },
-  ];
-
-  const result = applyContactNicknames(accounts, { 'account-peer': 'Anh thân' });
-
-  assert.equal(result[0].name, 'Anh thân');
-  assert.equal(result[0].nickname, 'Anh thân');
-  assert.equal(result[0].defaultName, 'Tên chính thức');
-  assert.equal(result[0].full_name, 'Tên chính thức');
-  assert.equal(result[1].name, 'Người khác');
-  assert.equal(result[1].nickname, '');
-});
-
-test('clearing a contact nickname restores the account default name', () => {
-  const account = {
+test('directory normalization ignores legacy private nickname fields', () => {
+  const account = normalizeAccountShape({
     id: 'account-peer',
-    name: 'Tên gợi nhớ',
-    defaultName: 'Tên chính thức',
-    nickname: 'Tên gợi nhớ',
-  };
+    name: 'Official name',
+    defaultName: 'Official name',
+    nickname: 'Legacy private name',
+    contactNickname: 'Legacy contact name',
+    contact_nickname: 'Legacy contact name',
+  });
 
-  const result = applyContactNicknames([account], {});
-
-  assert.equal(result[0].name, 'Tên chính thức');
-  assert.equal(result[0].nickname, '');
-  assert.equal(result[0].default_name, 'Tên chính thức');
+  assert.equal(account.name, 'Official name');
+  assert.equal(account.defaultName, 'Official name');
+  assert.equal(account.nickname, '');
+  assert.equal(Object.prototype.hasOwnProperty.call(account, 'contactNickname'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(account, 'contact_nickname'), false);
 });
 
-test('realtime profile merges preserve a viewer nickname while updating the official profile', () => {
+test('directory snapshots clear legacy aliases while retaining the official name', () => {
+  const previous = [{
+    id: 'account-1',
+    name: 'Legacy alias',
+    defaultName: 'Official name',
+    nickname: 'Legacy alias',
+    contactNickname: 'Legacy alias',
+  }];
+  const incoming = [{
+    id: 'account-1',
+    name: 'Official name',
+    defaultName: 'Official name',
+  }];
+
+  const result = mergeDirectoryAccountSnapshots(previous, incoming);
+
+  assert.equal(result[0].name, 'Official name');
+  assert.equal(result[0].nickname, '');
+  assert.equal(Object.prototype.hasOwnProperty.call(result[0], 'contactNickname'), false);
+});
+
+test('realtime profile merges update the official name without retaining an alias', () => {
   const account = {
     id: 'account-peer',
     uid: 'account-peer',
-    name: 'Tên gợi nhớ',
-    defaultName: 'Tên cũ',
-    nickname: 'Tên gợi nhớ',
+    name: 'Legacy alias',
+    defaultName: 'Old official name',
+    nickname: 'Legacy alias',
+    contactNickname: 'Legacy alias',
   };
 
   const result = mergeRealtimeAccountProfile(account, {
     id: 'account-peer',
-    name: 'Tên mới',
-    defaultName: 'Tên mới',
+    name: 'New official name',
+    defaultName: 'New official name',
   });
 
-  assert.equal(result.name, 'Tên gợi nhớ');
-  assert.equal(result.nickname, 'Tên gợi nhớ');
-  assert.equal(result.defaultName, 'Tên mới');
+  assert.equal(result.name, 'New official name');
+  assert.equal(result.nickname, '');
+  assert.equal(result.defaultName, 'New official name');
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'contactNickname'), false);
 });

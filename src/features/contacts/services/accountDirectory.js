@@ -118,13 +118,11 @@ export function normalizeAccountShape(account) {
   const defaultName = firstText(
     account.defaultName,
     account.default_name,
-    account.name,
     account.full_name,
+    account.name,
     account.display_name,
     username,
   );
-  const nickname = firstText(account.nickname, account.contactNickname, account.contact_nickname);
-  const name = nickname || defaultName;
   const email = firstText(account.email, account.mail);
   const avatar = [account.avatar, account.avatarUrl, account.avatar_url, account.photo]
     .map(avatarText)
@@ -157,12 +155,12 @@ export function normalizeAccountShape(account) {
     tinode_username: tinodeUsername,
     username,
     user_name: username,
-    name,
+    name: defaultName,
     full_name: defaultName,
-    display_name: name,
+    display_name: defaultName,
     defaultName,
     default_name: defaultName,
-    nickname,
+    nickname: '',
     email,
     title: firstText(account.title, account.job_title),
     department: firstText(account.department, account.department_name),
@@ -186,6 +184,8 @@ export function normalizeAccountShape(account) {
       account_managed: accountManaged,
     } : {}),
   };
+  delete safe.contactNickname;
+  delete safe.contact_nickname;
   if (account.online !== undefined) safe.online = booleanValue(account.online);
   if (lastSeenAt) {
     safe.lastSeenAt = lastSeenAt;
@@ -333,26 +333,28 @@ export function updateAccountPresence(accounts, snapshot, currentUser, lastSeenS
 export function mergeRealtimeAccountProfile(entity, profile) {
   if (!entity || !profile || !tenantsCompatible(entity, profile) || !identitiesOverlap(entity, profile)) return entity;
   const nextDefaultName = firstText(profile.defaultName, profile.default_name, profile.name, entity.defaultName, entity.name);
-  const nextNickname = firstText(entity.nickname, profile.nickname);
-  const nextName = nextNickname || nextDefaultName;
   // Account snapshots can briefly omit the avatar while the Account CDN/cache catches up.
   const nextAvatar = accountManagedValue(profile)
     ? (scalarText(profile.avatar) || scalarText(entity.avatar))
     : (profile.avatar || entity.avatar || '');
   if (
-    nextName === entity.name
+    nextDefaultName === entity.name
     && nextDefaultName === entity.defaultName
     && nextAvatar === entity.avatar
+    && entity.nickname === ''
   ) return entity;
-  return {
+  const next = {
     ...entity,
-    name: nextName,
+    name: nextDefaultName,
     full_name: nextDefaultName,
     defaultName: nextDefaultName,
     default_name: nextDefaultName,
-    nickname: nextNickname,
+    nickname: '',
     avatar: nextAvatar,
   };
+  delete next.contactNickname;
+  delete next.contact_nickname;
+  return next;
 }
 
 export function updateAccountProfiles(accounts, profile, currentTenantOrUser) {
@@ -366,37 +368,6 @@ export function updateAccountProfiles(accounts, profile, currentTenantOrUser) {
     return updated;
   });
   return changed ? next : source;
-}
-
-export function applyContactNicknames(accounts, nicknames = {}) {
-  const source = nicknames && typeof nicknames === 'object' && !Array.isArray(nicknames)
-    ? nicknames
-    : {};
-  let changed = false;
-  const next = (accounts || []).map(account => {
-    const identity = identityValues(account).find(value => (
-      Object.prototype.hasOwnProperty.call(source, value)
-    )) || '';
-    const defaultName = firstText(account?.defaultName, account?.default_name, account?.name, account?.username);
-    const nickname = scalarText(identity ? source[identity] : '');
-    const name = nickname || defaultName;
-    if (
-      account?.name === name
-      && account?.defaultName === defaultName
-      && account?.nickname === nickname
-    ) return account;
-    changed = true;
-    return {
-      ...account,
-      name,
-      full_name: defaultName,
-      display_name: name,
-      defaultName,
-      default_name: defaultName,
-      nickname,
-    };
-  });
-  return changed ? next : accounts;
 }
 
 export function mergeDirectoryAccountSnapshots(
@@ -415,33 +386,29 @@ export function mergeDirectoryAccountSnapshots(
     const previousAccount = findAccount(previous, account?.id || account?.uid || account?.tinodeUid || account?.tinode_uid);
     if (!previousAccount) return account;
     const avatar = account.avatar || previousAccount.avatar || '';
-    const hasIncomingNickname = Object.prototype.hasOwnProperty.call(account || {}, 'nickname');
     const hasIncomingOnline = Object.prototype.hasOwnProperty.call(account || {}, 'online');
     const lastSeenAt = latestTimestampValue(
       account.lastSeenAt ?? account.last_seen_at,
       previousAccount.lastSeenAt ?? previousAccount.last_seen_at,
     );
-    const nickname = hasIncomingNickname
-      ? scalarText(account.nickname)
-      : scalarText(previousAccount.nickname);
     const defaultName = firstText(
       account.defaultName,
       account.default_name,
+      account.full_name,
       previousAccount.defaultName,
       previousAccount.default_name,
+      previousAccount.full_name,
       account.name,
       previousAccount.name,
     );
-    const name = hasIncomingNickname
-      ? (nickname || defaultName)
-      : (nickname || account.name || previousAccount.name || defaultName);
+    const name = defaultName || account.name || previousAccount.name;
     const merged = {
       ...account,
       name,
       defaultName,
       default_name: defaultName,
       display_name: name,
-      nickname,
+      nickname: '',
       // Directory polling may briefly return an old/empty avatar after upload.
       avatar,
       ...(hasIncomingOnline || typeof previousAccount.online === 'boolean'
@@ -453,9 +420,11 @@ export function mergeDirectoryAccountSnapshots(
         : {}),
       ...(lastSeenAt ? { lastSeenAt, last_seen_at: lastSeenAt } : {}),
     };
+    delete merged.contactNickname;
+    delete merged.contact_nickname;
     const accountChanged = name !== account.name
       || defaultName !== account.defaultName
-      || nickname !== scalarText(account.nickname)
+      || scalarText(account.nickname) !== ''
       || avatar !== account.avatar
       || merged.online !== account.online
       || merged.lastSeenAt !== account.lastSeenAt;

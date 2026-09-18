@@ -272,35 +272,32 @@ Each sync writes `ACCOUNT_DIRECTORY_SYNC` with counts/status only, and a legacy
 projection repair writes `ACCOUNT_DIRECTORY_RESTORE`; neither custom payload
 contains usernames, emails, cookies or secrets.
 
-Private contact nicknames are a separate viewer preference owned by Chatmgt.
-They are stored in the current account's tenant-scoped
-`ManagementAccount.properties.contact_nicknames` JSON object, keyed by the
-target management account ID; no schema migration is required. The official
-Account/Tinode identity remains the source of truth in `defaultName`/
-`full_name`, while Chatmgt applies the nickname only when serializing data for
-the viewer who owns it. ChatUI applies the same viewer-specific name to
-conversation members, group message senders, replies, reactions, history
-results, and the group mention/composer picker. The picker and rendered message
-labels may show the viewer's nickname, but outbound mention text and `x-mentions`
-metadata use the official `defaultName` plus stable account/Tinode IDs. Reply
-metadata, forwarded sender labels, and member-event target labels follow the
-same allow-listed official-name rule, so a viewer nickname is never written to
-Tinode, broadcast in realtime profile events, or included in another viewer's
-response. Existing legacy mention metadata is resolved against the current
-viewer directory before rendering when the target identity is available.
+Conversation nicknames are public metadata owned by the conversation.
+They are stored in `Conversation.properties.conversation_nicknames` as a flat
+JSON object keyed by the target management account ID. Chatmgt returns the
+same bounded map and the same resolved member names to every active participant
+in that direct or group conversation. The official Account/Tinode identity
+remains the source of truth outside the conversation; the alias never changes
+the Account profile, directory-wide name, Tinode profile, mention transport or
+another conversation. No schema migration is required.
 
-Conversation-only nicknames use a separate `Conversation.properties.conversation_nicknames`
-JSON object keyed first by the viewer account ID and then by the active
-conversation member ID. Chatmgt returns only the authenticated viewer's bounded
-map as `conversationNicknames`; the raw property is removed from serialized
-conversation properties. `PUT /api/v1/conversation/<id>/nicknames/<target-id>`
-requires both participants to be active in the same tenant-scoped conversation,
-locks the conversation row during the JSON update, and returns the refreshed
-viewer-specific snapshot. ChatUI keeps the official name and global contact
-nickname separate so clearing the local value restores the global/default name.
-This reuses existing conversation metadata and requires no migration or Tinode
-message/profile event.
+`PUT /api/v1/conversation/<id>/nicknames/<target-id>` (and its ChatUI alias)
+requires both the authenticated actor and target to be active members of the
+same tenant-scoped conversation. Any participant may set, replace or clear the
+alias for any other participant, including their own account. The endpoint
+locks the conversation and both membership rows, updates the flat map, and
+returns the refreshed public snapshot. Legacy nested viewer-scoped maps are
+ignored and are replaced safely when the conversation receives its next alias
+update.
 
+Every actual alias change publishes a `conversation_nickname_changed` Tinode
+system event after the Chatmgt commit. Group events use the existing owner
+bridge; direct events use the authenticated actor direct topic. The event
+contains actor/target account identities, the previous and new alias and a
+clear marker, so all active participants see the same notification and the
+conversation list can use it as its latest preview. If Tinode delivery is
+temporarily unavailable, Chatmgt remains authoritative and the next metadata
+snapshot repairs the rendered state.
 Browser-only viewer preferences are kept compatible across frontend releases.
 The existing localStorage keys and IndexedDB database names remain the storage
 contract; ChatUI does not clear browser storage during login, refresh, build or
@@ -1333,7 +1330,6 @@ history, role-aware actions and a message-to-task shortcut.
 | `POST` | `/api/v1/chat/presence/heartbeat` | Refresh the current ChatUI presence lease, attempt last-seen metadata, and return requested same-tenant states |
 | `POST` | `/api/v1/chat/presence/batch` | Read requested same-tenant online and bounded last-seen states |
 | `POST` | `/api/v1/chat/presence/offline` | Remove the current browser presence lease best-effort |
-| `GET/PUT` | `/api/v1/chat/contact-nicknames...` | Read or update private viewer-scoped global contact nicknames |
 | `POST` | `/api/v1/chat/users/<id>/revoke-session` | Revoke a tenant employee session |
 | `GET/POST` | `/api/v1/friend-request` | Tenant-scoped friendship metadata |
 | `GET/POST` | `/api/v1/conversation` | Tenant-scoped conversation metadata |
@@ -1341,7 +1337,7 @@ history, role-aware actions and a message-to-task shortcut.
 | `GET` | `/api/v1/conversation/direct-block-state` | Return cache-free viewer/peer block state for the current user's direct conversations |
 | `PUT` | `/api/v1/conversation/<id>/block` | Set or clear the current user's direct-message block; group conversations are rejected |
 | `PUT` | `/api/v1/conversation/<id>/group-settings` | Owner/member-authorized group name, avatar and boolean settings update |
-| `PUT` | `/api/v1/conversation/<id>/nicknames/<target-id>` | Set or clear a viewer-only nickname for an active member in one conversation |
+| `PUT` | `/api/v1/conversation/<id>/nicknames/<target-id>` | Set or clear a public conversation-scoped nickname for any active member; broadcasts a visible nickname-change event |
 | `POST` | `/api/v1/conversation/<id>/tinode-prepare` | Prepare Tinode participant mappings |
 | `PUT` | `/api/v1/conversation/<id>/tinode-topic` | Verify/bind the topic to exact membership |
 | `POST` | `/api/v1/conversation/<id>/dissolve` | Owner-only group dissolution; remove all active members and close the group |

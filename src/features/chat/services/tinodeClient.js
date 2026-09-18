@@ -639,6 +639,14 @@ function formatSystemEvent(event, viewerId) {
   if (event.action === 'group_dissolved') {
     return event.actorId === viewerId ? 'Bạn đã giải tán nhóm' : `${actorName} đã giải tán nhóm`;
   }
+  if (event.action === 'conversation_nickname_changed') {
+    const target = event.targetName || event.targets?.[0]?.name || event.targetId || 'thanh vien';
+    const actorText = event.actorId === viewerId ? 'Ban' : actorName;
+    const nextNickname = String(event.newNickname || '').trim();
+    return nextNickname
+      ? `${actorText} da dat biet danh "${nextNickname}" cho ${target}`
+      : `${actorText} da xoa biet danh cua ${target}`;
+  }
   if (event.action === 'group_name_changed') {
     const nextName = String(event.newName || event.name || '').trim();
     const actorText = event.actorId === viewerId ? 'Bạn đã' : `${actorName} đã`;

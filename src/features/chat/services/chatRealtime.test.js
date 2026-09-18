@@ -809,44 +809,44 @@ test('normalizes sticker metadata without letting malformed fields reach the UI'
   assert.equal(room.messages[0].sticker.src, '/stickers/puppysoft/positive-1.png');
 });
 
-test('keeps global and conversation-only nicknames separate in a room snapshot', () => {
+test('applies the public conversation nickname map to every member snapshot', () => {
   const room = normalizeConversationShape({
     id: 'group-nickname',
     isGroup: true,
-    conversationNicknames: { 'account-peer': 'Chỉ trong nhóm' },
-    members: [{
-      id: 'account-peer',
-      name: 'Biệt danh toàn Chat',
-      nickname: 'Biệt danh toàn Chat',
-      contactNickname: 'Biệt danh toàn Chat',
-      conversationNickname: 'Chỉ trong nhóm',
-    }],
-  });
-
-  assert.equal(room.members[0].defaultName, 'Biệt danh toàn Chat');
-  assert.equal(room.members[0].contactNickname, 'Biệt danh toàn Chat');
-  assert.equal(room.members[0].conversationNickname, 'Chỉ trong nhóm');
-  assert.equal(room.members[0].name, 'Chỉ trong nhóm');
-  assert.deepEqual(room.conversationNicknames, { 'account-peer': 'Chỉ trong nhóm' });
-});
-
-test('applies the conversation nickname map when a member omits the alias fields', () => {
-  const room = normalizeConversationShape({
-    id: 'group-nickname-map',
-    isGroup: true,
-    conversationNicknames: { 'account-peer': 'Tên riêng trong nhóm' },
+    conversationNicknames: { 'account-peer': 'Tên chung trong nhóm' },
     members: [{
       id: 'account-peer',
       name: 'Tên chính thức',
       defaultName: 'Tên chính thức',
-      contactNickname: 'Tên toàn Chat',
+      contactNickname: 'Tên riêng cũ',
+      conversationNickname: 'Tên chung trong nhóm',
     }],
   });
 
   assert.equal(room.members[0].defaultName, 'Tên chính thức');
-  assert.equal(room.members[0].contactNickname, 'Tên toàn Chat');
-  assert.equal(room.members[0].conversationNickname, 'Tên riêng trong nhóm');
-  assert.equal(room.members[0].name, 'Tên riêng trong nhóm');
+  assert.equal(room.members[0].conversationNickname, 'Tên chung trong nhóm');
+  assert.equal(room.members[0].name, 'Tên chung trong nhóm');
+  assert.equal(Object.prototype.hasOwnProperty.call(room.members[0], 'contactNickname'), false);
+  assert.deepEqual(room.conversationNicknames, { 'account-peer': 'Tên chung trong nhóm' });
+});
+
+test('does not expose legacy viewer-scoped nickname maps', () => {
+  const room = normalizeConversationShape({
+    id: 'group-legacy-nickname',
+    isGroup: true,
+    conversationNicknames: {
+      'viewer-a': { 'account-peer': 'Tên riêng cũ' },
+    },
+    members: [{
+      id: 'account-peer',
+      name: 'Tên chính thức',
+      defaultName: 'Tên chính thức',
+    }],
+  });
+
+  assert.deepEqual(room.conversationNicknames, {});
+  assert.equal(room.members[0].name, 'Tên chính thức');
+  assert.equal(room.members[0].conversationNickname, '');
 });
 
 test('normalizes poll state and latest poll activity for realtime rendering', () => {

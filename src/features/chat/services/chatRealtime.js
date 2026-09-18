@@ -345,26 +345,20 @@ function normalizeMember(value) {
       || member.username
       || member.email,
   );
-  const contactNickname = conversationText(
-    member.contactNickname || member.contact_nickname || member.nickname,
-  );
   const conversationNickname = conversationText(
     member.conversationNickname || member.conversation_nickname,
   );
-  const nickname = conversationNickname || contactNickname;
   const rawGroupRole = conversationText(member.groupRole || member.group_role).toUpperCase();
   const groupRole = GROUP_ROLE_VALUES.has(rawGroupRole) ? rawGroupRole : '';
-  return {
+  const normalized = {
     ...member,
     id: conversationIdentity(member.id),
     uid: conversationIdentity(member.uid),
     tinodeUid: conversationIdentity(member.tinodeUid || member.tinode_uid),
-    name: nickname || defaultName,
+    name: conversationNickname || defaultName,
     defaultName,
     default_name: defaultName,
-    nickname,
-    contactNickname,
-    contact_nickname: contactNickname,
+    nickname: conversationNickname,
     conversationNickname,
     conversation_nickname: conversationNickname,
     username: conversationText(member.username),
@@ -374,6 +368,9 @@ function normalizeMember(value) {
     avatar: conversationMedia(member.avatar || member.photo),
     ...(groupRole ? { groupRole, group_role: groupRole } : {}),
   };
+  delete normalized.contactNickname;
+  delete normalized.contact_nickname;
+  return normalized;
 }
 
 function normalizeMention(value) {
