@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Rui ro con lai: Can hard refresh va kiem tra man Cong viec tren desktop/mobile bang tai khoan that; khong co thay doi backend can migration.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn` va UAT man Cong viec voi tai khoan that.
 - Artifact/phat hanh: Archive `vichat-workspace-align-7822092.tar.gz`, SHA-256 `619031c339f2fa275de3151340ee38c014a9c418a95e7821a428df4f3e199528`; release `/opt/deploy/chat/releases/workspace-align-7822092-20260918-r1`; previous `/opt/deploy/chat/releases/profile-dialogs-b848ea9-20260918-r1`; backup `/opt/deploy/chat/backups/workspace-align-7822092-20260918-r1`; chi recreate ChatUI `chat`, giu nguyen Chatmgt/Tinode/PostgreSQL/Redis va volume.
-- Commit/PR: Source commit `7822092`; deploy record follow-up dang cho commit/push.
+- Commit/PR: Source commit `7822092`; deploy record commit `d6a9210`.
 
 ## 2026-09-18-01 - Don gian hoa ho so, khoa avatar ViChat AI va lam moi dialog Workspace
 
