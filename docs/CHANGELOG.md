@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Rui ro con lai: Chua UAT truc tiep bang browser do browser bridge khong kha dung trong phien nay; can kiem tra tai khoan that voi group nhieu thanh vien va popup dai.
 - Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo group, go `@`, dung ArrowUp/ArrowDown va Enter/Tab; UAT production bang tai khoan that.
 - Artifact/phat hanh: Archive `/opt/deploy/chat/incoming/vichat-mention-8353ee3.tar.gz`, SHA-256 `b2c23e5e31269c1b2eb6c79f72e0e37dec68d547fc0e7c21f8728e9876a72bdc`; release `/opt/deploy/chat/releases/mention-keyboard-8353ee3-20260918-r7`; previous `/opt/deploy/chat/releases/group-chat-tabs-2b534db-20260918-r2`; backup `/opt/deploy/chat/backups/mention-keyboard-8353ee3-20260918-r7`; chi recreate ChatUI `chat`, giu nguyen Chatmgt/Tinode/PostgreSQL/Redis va volume; cac candidate fail truoc activate da quarantine trong `.failed-candidate`.
-- Commit/PR: Source `8353ee3` da push `origin/master`; deploy record duoc ghi trong commit docs cua lan lam viec nay.
+- Commit/PR: Source `8353ee3` da push `origin/master`; docs/deploy record `6ff39cf`.
 
 ## 2026-09-18-04 - Sua chat nhom va dong bo khi mo nhieu tab
 
