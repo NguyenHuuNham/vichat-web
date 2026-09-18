@@ -152,6 +152,8 @@ import {
 } from '../features/chat/services/messageActionPolicy';
 import {
   ALL_MENTION_ID,
+  clampMentionIndex,
+  cycleMentionIndex,
   getMentionContext,
   insertMentionAt,
   matchesMentionCandidate,
@@ -3373,6 +3375,7 @@ function App() {
   const recentResolvedClipboardPasteRef = useRef(null);
   const groupSpamStatesRef = useRef(new Map());
   const mentionPickerRef = useRef(null);
+  const mentionActiveIndexRef = useRef(0);
   const languageMenuRef = useRef(null);
   const tenantSwitcherRef = useRef(null);
   const currentChatIdRef = useRef(currentChatId);
@@ -5067,15 +5070,24 @@ function App() {
     : [];
 
   useEffect(() => {
-    if (!mentionContext || mentionOptions.length === 0) {
-      setMentionActiveIndex(0);
-      return;
-    }
-    setMentionActiveIndex(previous => Math.min(previous, mentionOptions.length - 1));
+    const nextIndex = mentionContext && mentionOptions.length > 0
+      ? clampMentionIndex(mentionActiveIndexRef.current, mentionOptions.length)
+      : 0;
+    mentionActiveIndexRef.current = nextIndex;
+    setMentionActiveIndex(previous => (previous === nextIndex ? previous : nextIndex));
   }, [mentionContext, mentionOptions.length]);
 
   useEffect(() => {
+    if (!mentionContext || mentionOptions.length === 0) return;
+    const activeOption = mentionPickerRef.current?.querySelector(
+      `#message-mention-option-${mentionActiveIndex}`,
+    );
+    activeOption?.scrollIntoView?.({ block: 'nearest' });
+  }, [mentionContext, mentionOptions.length, mentionActiveIndex]);
+
+  useEffect(() => {
     setMentionContext(null);
+    mentionActiveIndexRef.current = 0;
     setMentionActiveIndex(0);
   }, [currentChatId]);
 
@@ -10996,6 +11008,7 @@ function App() {
       return;
     }
     setMentionContext(getMentionContext(value, event.target.selectionStart));
+    mentionActiveIndexRef.current = 0;
     setMentionActiveIndex(0);
   };
 
@@ -11031,6 +11044,7 @@ function App() {
         : { ...previous, [currentChatId]: [...currentMentions, mention] };
     });
     setMentionContext(null);
+    mentionActiveIndexRef.current = 0;
     setMentionActiveIndex(0);
     requestAnimationFrame(() => {
       const input = messageInputRef.current;
@@ -11045,20 +11059,25 @@ function App() {
       if (event.key === 'Escape') {
         event.preventDefault();
         setMentionContext(null);
+        mentionActiveIndexRef.current = 0;
         setMentionActiveIndex(0);
         return;
       }
       if (mentionOptions.length > 0 && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
         event.preventDefault();
-        setMentionActiveIndex(previous => {
-          const offset = event.key === 'ArrowDown' ? 1 : -1;
-          return (previous + offset + mentionOptions.length) % mentionOptions.length;
-        });
+        const nextIndex = cycleMentionIndex(
+          mentionActiveIndexRef.current,
+          mentionOptions.length,
+          event.key === 'ArrowUp' ? 'up' : 'down',
+        );
+        mentionActiveIndexRef.current = nextIndex;
+        setMentionActiveIndex(nextIndex);
         return;
       }
       if (mentionOptions.length > 0 && (event.key === 'Enter' || event.key === 'Tab')) {
         event.preventDefault();
-        handleMentionSelect(mentionOptions[mentionActiveIndex]);
+        const activeIndex = clampMentionIndex(mentionActiveIndexRef.current, mentionOptions.length);
+        handleMentionSelect(mentionOptions[activeIndex]);
         return;
       }
     }
@@ -11255,6 +11274,7 @@ function App() {
     setEditingMessage(null);
     setIsSavingMessageEdit(false);
     setMentionContext(null);
+    mentionActiveIndexRef.current = 0;
     setMentionActiveIndex(0);
     if (String(currentChatId) !== String(snapshot.conversationId)) return;
     const restoredDraft = snapshot.previousDraft || '';
@@ -11301,6 +11321,7 @@ function App() {
     });
     setMessageMentions(previous => ({ ...previous, [currentChatId]: messageMentionsForEdit }));
     setMentionContext(null);
+    mentionActiveIndexRef.current = 0;
     setMentionActiveIndex(0);
     requestAnimationFrame(() => {
       const input = messageInputRef.current;
@@ -12824,6 +12845,7 @@ function App() {
     }
     if (mentionContext) {
       setMentionContext(null);
+      mentionActiveIndexRef.current = 0;
       setMentionActiveIndex(0);
       return true;
     }

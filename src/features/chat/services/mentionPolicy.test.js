@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ALL_MENTION_ID,
+  clampMentionIndex,
+  cycleMentionIndex,
   getMentionContext,
   insertMentionAt,
   matchesMentionCandidate,
@@ -24,6 +26,15 @@ test('finds a mention trigger at the caret without treating an email as a mentio
   });
   assert.equal(getMentionContext('mail@example.com', 16), null);
   assert.equal(getMentionContext('\u0111\u00e3 ch\u1ecdn @Ho\u00e0n r\u1ed3i'), null);
+});
+
+test('keeps keyboard navigation inside the filtered mention options', () => {
+  assert.equal(clampMentionIndex(8, 3), 2);
+  assert.equal(clampMentionIndex(-2, 3), 0);
+  assert.equal(cycleMentionIndex(0, 3, 'down'), 1);
+  assert.equal(cycleMentionIndex(0, 3, 'up'), 2);
+  assert.equal(cycleMentionIndex(2, 3, 'down'), 0);
+  assert.equal(cycleMentionIndex(0, 0, 'down'), 0);
 });
 
 test('filters member names, usernames and email addresses accent-insensitively', () => {

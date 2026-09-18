@@ -31,6 +31,24 @@ export function getMentionContext(value, caretPosition) {
   };
 }
 
+export function clampMentionIndex(index, optionCount) {
+  const count = Math.trunc(Number(optionCount));
+  if (!Number.isFinite(count) || count <= 0) return 0;
+
+  const numericIndex = Number(index);
+  if (!Number.isFinite(numericIndex)) return 0;
+  return Math.max(0, Math.min(Math.trunc(numericIndex), count - 1));
+}
+
+export function cycleMentionIndex(index, optionCount, direction = 'down') {
+  const count = Math.trunc(Number(optionCount));
+  if (!Number.isFinite(count) || count <= 0) return 0;
+
+  const currentIndex = clampMentionIndex(index, count);
+  const offset = direction === 'up' ? -1 : 1;
+  return (currentIndex + offset + count) % count;
+}
+
 export function mentionCandidateText(candidate) {
   return String(candidate?.name || candidate?.nickname || candidate?.username || candidate?.email || '').trim();
 }
