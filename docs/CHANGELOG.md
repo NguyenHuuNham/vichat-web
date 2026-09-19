@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-19 20:56 (Asia/Saigon)
 - Loai: Tinh nang | Web | Backend | UX | Kiem thu | Tai lieu
-- Trang thai: Hoan tat code; chua commit/push va chua deploy production
+- Trang thai: Hoan tat; source `634a7d1` da commit/push `origin/master`, production da deploy va verify qua hai hop SSH
 - Muc tieu: Dua ho so ca nhan ve bo cuc 2 cot giong mau tham chieu, cho xem avatar lon, va cho biet ai da mo ho so trong cung cong ty.
 - Pham vi: ChatUI workspace profile, avatar viewer, public profile opening flow, Chatmgt profile-view metadata; khong doi Tinode message/store, Account password, mobile hay group flow.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `dist/index.html`, `docs/chat-backend-architecture.md`, va file nay.
@@ -18,9 +18,10 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Tai su dung audit metadata thay vi them bang/migration; loi ghi nhan luot xem chi duoc canh bao trong console de khong lam chan mo ho so, chat, logout hoac chuyen cong ty.
 - Database/API/cau hinh: Them `POST/GET /api/v1/profile/views`; khong co migration, secret, bien moi truong hay thay doi API hien co.
 - Kiem thu: `npm run test:frontend -- --test-concurrency=1` dat 437/437; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 60/60; full `python -m unittest discover -s chatservice-main/tests -p "test_*.py"` dat 312 pass, 106 skip do dependency runtime; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/tests/test_chat_auth_contract.py` dat; `git diff --check` dat.
+- Kiem tra production: Archive `vichat-profile-viewers-634a7d1.tar.gz`, SHA-256 `5d06813fbd21e29e1257eee30aacc3fbfc724ba202d6e9973cfd1d61cb9491cb`; cac candidate r1-r4 dung truoc activate do gate helper, production khong doi; release thanh cong `/opt/deploy/chat/releases/profile-viewers-634a7d1-20260919-r5`, previous `/opt/deploy/chat/releases/tinode-uid-recovery-c82a517-20260919-r2`, backup `/opt/deploy/chat/backups/profile-viewers-634a7d1-20260919-r5`; ChatUI/Chatmgt healthy, restart 0; health noi bo/public dat, endpoint profile views chua auth tra `401`, WSS tra `101 Switching Protocols`, Alembic giu `20260917_14`, service ngoai pham vi va volume khong doi.
 - Rui ro con lai: Chua xac nhan UI bang browser production; danh sach chi hien thi tai khoan active cung tenant, va cac luot xem qua tai khoan khong con active se khong hien thi.
-- Viec tiep theo: Deploy ChatUI/Chatmgt dong bo, hard refresh va UAT hai tai khoan cung tenant cho mo ho so, xem avatar, icon nguoi xem va chuyen cong ty; khong can migration.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, sau do UAT hai tai khoan cung tenant cho mo ho so, xem avatar, icon nguoi xem va chuyen cong ty; khong can migration.
+- Commit/PR: Source `634a7d1` da commit/push `origin/master`; deployment record release r5 da verify.
 
 ## 2026-09-19-02 - Tu phuc hoi UID Tinode stale khi gui tin nhom
 
