@@ -4177,12 +4177,16 @@ input:checked + .slider:before {
 .workspace-panel-header h2 { margin: 2px 0 0; color: var(--text-main); font-size: 22px; line-height: 1.2; }
 .workspace-panel-header > div:first-child { min-width: 0; }
 .workspace-panel-header-actions { display: flex; max-width: 100%; min-width: 0; flex: 0 0 auto; align-items: center; gap: 8px; }
+.workspace-panel-header-actions > .tenant-switcher { order: 1; }
+.workspace-panel-header-actions > .workspace-logout-button { order: 2; }
+.workspace-panel-header-actions > .profile-viewers-button { order: 3; }
+.workspace-panel-header-actions > .btn-close-detail { order: 4; }
 .workspace-logout-button { display: inline-flex; height: 34px; align-items: center; justify-content: center; gap: 7px; padding: 0 12px; border: 1px solid rgba(224, 68, 45, .2); border-radius: 10px; color: var(--vichat-red); background: #fff5f2; font: inherit; font-size: 12px; font-weight: 750; cursor: pointer; transition: var(--transition-fast); }
 .workspace-logout-button:hover { border-color: rgba(224, 68, 45, .34); background: var(--vichat-red-light); transform: translateY(-1px); }
 .workspace-logout-button:focus-visible { outline: 3px solid rgba(224, 68, 45, .14); outline-offset: 2px; }
 .workspace-logout-button i { font-size: 13px; }
-.tenant-switcher { position: relative; display: inline-flex; min-width: 0; flex: 0 1 auto; align-items: center; gap: 5px; height: 34px; padding: 0 4px 0 8px; border: 1px solid rgba(18, 59, 57, .12); border-radius: 10px; background: var(--bg-app); }
-.tenant-switcher-caption { display: inline-flex; height: 32px; min-width: 0; align-items: center; gap: 5px; padding: 0 3px; border: 0; border-radius: 0; color: var(--text-muted); background: transparent; font-size: 10px; font-weight: 800; letter-spacing: .02em; white-space: nowrap; }
+.tenant-switcher { position: relative; display: inline-flex; min-width: 0; flex: 0 1 auto; align-items: center; gap: 5px; height: 34px; padding: 0; border: 0; border-radius: 10px; background: transparent; }
+.tenant-switcher-caption { display: none; height: 32px; min-width: 0; align-items: center; gap: 5px; padding: 0 3px; border: 0; border-radius: 0; color: var(--text-muted); background: transparent; font-size: 10px; font-weight: 800; letter-spacing: .02em; white-space: nowrap; }
 .tenant-switcher-caption i { color: var(--vichat-blue); font-size: 12px; }
 .tenant-switcher-control { position: relative; display: flex; min-width: 0; align-items: center; }
 .tenant-switcher-current { display: inline-flex; width: min(128px, 18vw); max-width: 128px; min-width: 124px; height: 30px; align-items: center; gap: 5px; padding: 3px 5px 3px 4px; border: 1px solid rgba(18, 59, 57, .2); border-radius: 8px; color: var(--text-body); background: var(--bg-white); font: inherit; text-align: left; cursor: default; }
@@ -5053,7 +5057,7 @@ input:checked + .slider:before {
     .workspace-logout-button span { display: none; }
     .tenant-switcher { flex: 0 0 auto; }
     .tenant-switcher-caption span { display: none; }
-    .tenant-switcher-current { width: min(128px, calc(100vw - 154px)); max-width: 128px; min-width: 0; }
+    .tenant-switcher-current { width: min(128px, calc(100vw - 106px)); max-width: 128px; min-width: 0; }
 }
 
 .conv-avatar.chatbot-avatar,

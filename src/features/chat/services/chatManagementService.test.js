@@ -462,7 +462,7 @@ test('requires explicit confirmation before switching tenants', () => {
   assert.doesNotMatch(stylesSource, /\.tenant-switcher-viewport \{|\.tenant-switcher-track \{/);
   assert.match(stylesSource, /\.tenant-switcher-current \{/);
   assert.match(stylesSource, /\.tenant-switcher-current \{[^}]*width: min\(128px, 18vw\);[^}]*max-width: 128px;[^}]*min-width: 124px;/);
-  assert.match(stylesSource, /\.tenant-switcher-current \{ width: min\(128px, calc\(100vw - 154px\)\); max-width: 128px; min-width: 0; \}/);
+  assert.match(stylesSource, /\.tenant-switcher-current \{ width: min\(128px, calc\(100vw - 106px\)\); max-width: 128px; min-width: 0; \}/);
   assert.match(stylesSource, /\.tenant-switcher-toggle \{/);
   assert.match(stylesSource, /\.tenant-switcher-menu-list \{ display: flex; flex-direction: column;/);
   assert.match(stylesSource, /\.tenant-switcher-menu-option \{/);
@@ -477,6 +477,15 @@ test('requires explicit confirmation before switching tenants', () => {
   assert.match(stylesSource, /@keyframes vichatLoadingPulse/);
   assert.match(appSource, /reloadStarted/);
   assert.match(stylesSource, /\.tenant-switch-loading-backdrop \{/);
+});
+
+test('keeps the compact profile header logo chip separate from logout and close actions', () => {
+  assert.match(stylesSource, /\.workspace-panel-header-actions > \.tenant-switcher \{ order: 1; \}/);
+  assert.match(stylesSource, /\.workspace-panel-header-actions > \.workspace-logout-button \{ order: 2; \}/);
+  assert.match(stylesSource, /\.workspace-panel-header-actions > \.profile-viewers-button \{ order: 3; \}/);
+  assert.match(stylesSource, /\.workspace-panel-header-actions > \.btn-close-detail \{ order: 4; \}/);
+  assert.match(stylesSource, /\.tenant-switcher \{[^}]*padding: 0;[^}]*border: 0;[^}]*background: transparent;/);
+  assert.match(stylesSource, /\.tenant-switcher-caption \{ display: none;/);
 });
 
 test('refreshes company logo metadata without resetting the active chat session', () => {

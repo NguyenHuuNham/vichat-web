@@ -6,6 +6,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-20-01 - Sua layout chip logo cong ty trong ho so
+
+- Thoi gian: 2026-09-20 (Asia/Saigon)
+- Loai: Sua loi | Web | UX | Responsive | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code; chua deploy production
+- Muc tieu: Dua selector cong ty tren man hinh nho ve dung bo cuc chip logo nhu mau tham chieu, khong lam roi logout, icon nguoi xem hoac nut dong.
+- Pham vi: Chi CSS responsive cua profile header va regression test; khong doi API, tenant switch handler, logout handler, profile viewer telemetry hay du lieu.
+- File da thay doi: `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`, va file nay.
+- Noi dung: An caption/icon Cong ty du tren mobile, dat chip logo cong ty truoc logout, giu icon nguoi xem va nut dong tach rieng, tang chieu rong chip de khong bi co sai; luong chuyen cong ty van giu nguyen.
+- Quyet dinh ky thuat: Chi dung flex order va kich thuoc responsive trong profile header; khong thay doi DOM handler/state chuyen tenant de tranh regression luong dang nhap, logout va reload sau khi doi cong ty.
+- Kiem thu: Targeted `node --test --test-concurrency=1 src/features/chat/services/chatManagementService.test.js` dat 66/66; `npm run test:frontend -- --test-concurrency=1` dat 438/438; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon; `git diff --check` dat.
+- Rui ro con lai: Browser visual khong chay duoc trong phien nay do moi truong thieu native browser bridge; can hard refresh va xem lai header profile tren mobile sau khi deploy.
+- Viec tiep theo: Deploy ban moi, sau do UAT chip logo, mo menu doi cong ty, logout, icon nguoi xem va nut dong tren desktop/mobile.
+- Commit/PR: Chua commit/deploy.
+
 ## 2026-09-19-03 - Lam moi ho so va them danh sach nguoi xem
 
 - Thoi gian: 2026-09-19 20:56 (Asia/Saigon)
