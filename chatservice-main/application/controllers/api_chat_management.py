@@ -5402,16 +5402,18 @@ async def conversation_bind_tinode(request, conversation_id):
     requested_topic_name = str(body.get("tinode_topic") or "").strip()
     if not requested_topic_name:
         return json({"error_code": "PARAM_ERROR", "error_message": "Tinode topic is required."}, status=400)
-    if not valid_tinode_topic(requested_topic_name, is_group):
-        return json({"error_code": "TINODE_TOPIC_INVALID", "error_message": "Tinode topic type is invalid for this conversation."}, status=400)
     topic_name = requested_topic_name
+    using_persisted_group_topic = False
     if is_group and item.tinode_topic and item.tinode_topic != requested_topic_name:
         # Another tab won the race while this browser was creating a topic.
         # Reconcile and return the persisted topic instead of rejecting the
-        # surviving chat with a false binding conflict.
+        # surviving chat with a stale direct/group topic type.
         topic_name = str(item.tinode_topic).strip()
+        using_persisted_group_topic = True
     if not valid_tinode_topic(topic_name, is_group):
-        return json({"error_code": "TINODE_TOPIC_INVALID", "error_message": "The persisted Tinode topic is invalid for this conversation."}, status=409)
+        if using_persisted_group_topic:
+            return json({"error_code": "TINODE_TOPIC_INVALID", "error_message": "The persisted Tinode topic is invalid for this conversation."}, status=409)
+        return json({"error_code": "TINODE_TOPIC_INVALID", "error_message": "Tinode topic type is invalid for this conversation."}, status=400)
     if is_group:
         conflict = Conversation.query.filter(
             Conversation.id != item.id,

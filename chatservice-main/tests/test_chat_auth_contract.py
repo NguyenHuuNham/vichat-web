@@ -664,6 +664,12 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("with_for_update()", binding_source)
         self.assertIn("requested_topic_name", binding_source)
         self.assertIn("topic_name = str(item.tinode_topic).strip()", binding_source)
+        self.assertIn("using_persisted_group_topic", binding_source)
+        reconcile_index = binding_source.index(
+            "if is_group and item.tinode_topic and item.tinode_topic != requested_topic_name:"
+        )
+        validation_index = binding_source.index("if not valid_tinode_topic(topic_name, is_group):")
+        self.assertLess(reconcile_index, validation_index)
         self.assertNotIn(
             "The conversation is already bound to another Tinode topic.",
             binding_source,
