@@ -10,16 +10,17 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-20 (Asia/Saigon)
 - Loai: Sua loi | Web | UX | Responsive | Kiem thu | Tai lieu
-- Trang thai: Hoan tat code; chua deploy production
+- Trang thai: Hoan tat; source `fade376` da commit/push `origin/master`, production da deploy va verify qua hai hop SSH
 - Muc tieu: Dua selector cong ty tren man hinh nho ve dung bo cuc chip logo nhu mau tham chieu, khong lam roi logout, icon nguoi xem hoac nut dong.
 - Pham vi: Chi CSS responsive cua profile header va regression test; khong doi API, tenant switch handler, logout handler, profile viewer telemetry hay du lieu.
 - File da thay doi: `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`, va file nay.
 - Noi dung: An caption/icon Cong ty du tren mobile, dat chip logo cong ty truoc logout, giu icon nguoi xem va nut dong tach rieng, tang chieu rong chip de khong bi co sai; luong chuyen cong ty van giu nguyen.
 - Quyet dinh ky thuat: Chi dung flex order va kich thuoc responsive trong profile header; khong thay doi DOM handler/state chuyen tenant de tranh regression luong dang nhap, logout va reload sau khi doi cong ty.
 - Kiem thu: Targeted `node --test --test-concurrency=1 src/features/chat/services/chatManagementService.test.js` dat 66/66; `npm run test:frontend -- --test-concurrency=1` dat 438/438; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi canh bao chunk `App` lon; `git diff --check` dat.
+- Kiem tra production: Archive `/opt/deploy/chat/incoming/vichat-tenant-header-fade376.tar.gz`, SHA-256 `f9304cb6a2701d5ca09aa49a354039981949ce0b3c3a16621475de4e8a5c2671`; contract test trong candidate dat 60/60; release `/opt/deploy/chat/releases/tenant-header-fade376-20260920-r1`, previous `/opt/deploy/chat/releases/profile-viewers-634a7d1-20260919-r5`, backup `/opt/deploy/chat/backups/tenant-header-fade376-20260920-r1`; ChatUI/Chatmgt healthy, restart 0, health noi bo/public dat, endpoint profile views chua auth tra `401`, WSS tra `101 Switching Protocols`, public bundle khop `index-Dx9_ukqh.js` va `index-DCFcAqRo.css`, Alembic giu `20260917_14`, service ngoai pham vi va volume khong doi.
 - Rui ro con lai: Browser visual khong chay duoc trong phien nay do moi truong thieu native browser bridge; can hard refresh va xem lai header profile tren mobile sau khi deploy.
 - Viec tiep theo: Deploy ban moi, sau do UAT chip logo, mo menu doi cong ty, logout, icon nguoi xem va nut dong tren desktop/mobile.
-- Commit/PR: Chua commit/deploy.
+- Commit/PR: Source `fade376` da commit/push `origin/master`; deployment record follow-up duoc cap nhat sau release r1.
 
 ## 2026-09-19-03 - Lam moi ho so va them danh sach nguoi xem
 
