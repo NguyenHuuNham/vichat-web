@@ -220,7 +220,7 @@ import {
   validatePin,
   verifyPin,
 } from '../features/security/services/pinLock';
-import { createLocalizedCopy } from '../features/i18n/appLanguage';
+import { createLocalizedCopy, translateUiText } from '../features/i18n/appLanguage';
 import { workspacePanelFromPath, workspacePathForPanel } from '../features/workspace/services/workspaceRouting';
 import {
   DEFAULT_GROUP_SETTINGS,
@@ -3429,6 +3429,10 @@ function App() {
   const [editingMessage, setEditingMessage] = useState(null);
   const [isSavingMessageEdit, setIsSavingMessageEdit] = useState(false);
   const [profileContact, setProfileContact] = useState(null);
+  const [profileViewers, setProfileViewers] = useState([]);
+  const [profileViewersLoading, setProfileViewersLoading] = useState(false);
+  const [profileViewersOpen, setProfileViewersOpen] = useState(false);
+  const [profileViewersNotice, setProfileViewersNotice] = useState('');
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [voiceRecordingSeconds, setVoiceRecordingSeconds] = useState(0);
   const [messageDetails, setMessageDetails] = useState(null);
@@ -4312,6 +4316,57 @@ function App() {
     ...(currentUser || {}),
     online: isCurrentUserOnline,
   };
+  const openOwnAvatarViewer = () => {
+    const source = String(profileAccount.avatar || '').trim();
+    if (source) setImageViewer({ source });
+  };
+  const refreshProfileViewers = useCallback(async () => {
+    if (!chatManagementService.remote || !profileAccount.id) return [];
+    const requestSession = accountSessionRef.current;
+    const requestTenant = preferenceTenantId;
+    setProfileViewersLoading(true);
+    setProfileViewersNotice('');
+    try {
+      const viewers = await chatManagementService.listProfileViewers();
+      if (
+        requestSession !== accountSessionRef.current
+        || accountTenantId(currentUserRef.current) !== requestTenant
+      ) return [];
+      setProfileViewers(viewers);
+      return viewers;
+    } catch (error) {
+      if (
+        requestSession === accountSessionRef.current
+        && accountTenantId(currentUserRef.current) === requestTenant
+      ) {
+        setProfileViewers([]);
+        setProfileViewersNotice(error?.message || translateUiText('Không thể tải danh sách người đã xem hồ sơ.', settings.language));
+      }
+      return [];
+    } finally {
+      if (
+        requestSession === accountSessionRef.current
+        && accountTenantId(currentUserRef.current) === requestTenant
+      ) setProfileViewersLoading(false);
+    }
+  }, [preferenceTenantId, profileAccount.id, settings.language]);
+  useEffect(() => {
+    if (
+      workspacePanel !== 'profile'
+      || !isLoggedIn
+      || !chatManagementService.remote
+      || !profileAccount.id
+    ) {
+      setProfileViewersOpen(false);
+      setProfileViewers([]);
+      setProfileViewersLoading(false);
+      setProfileViewersNotice('');
+      return undefined;
+    }
+    setProfileViewersOpen(false);
+    void refreshProfileViewers();
+    return undefined;
+  }, [isLoggedIn, profileAccount.id, refreshProfileViewers, workspacePanel]);
   const tenantOptions = (Array.isArray(currentUser?.tenantOptions)
     ? currentUser.tenantOptions
     : Array.isArray(currentUser?.tenant_options) ? currentUser.tenant_options : [])
@@ -6994,6 +7049,7 @@ function App() {
     setConversationCategoryMenuOpen(false);
     setMessageMenu(null);
     setProfileContact(null);
+    setProfileViewersOpen(false);
   };
 
   const navigateWorkspace = (panel, { replace = false } = {}) => {
@@ -8096,7 +8152,14 @@ function App() {
 
   const openProfileFor = entity => {
     const profile = publicProfileFor(entity);
-    if (profile) setProfileContact(profile);
+    if (!profile) return;
+    setProfileContact(profile);
+    if (!profile.isCurrentAccount && profile.id && chatManagementService.remote) {
+      void chatManagementService.recordProfileView(profile.id).catch(error => {
+        // Profile view telemetry must never block opening the contact card.
+        console.warn('ViChat: could not record profile view', error);
+      });
+    }
   };
   const activeProfileContact = profileContact ? publicProfileFor(profileContact) : null;
 
@@ -13196,6 +13259,10 @@ function App() {
       cancelMessageEdit();
       return true;
     }
+    if (profileViewersOpen) {
+      setProfileViewersOpen(false);
+      return true;
+    }
     if (profileContact) {
       setProfileContact(null);
       return true;
@@ -13316,6 +13383,7 @@ function App() {
     pinnedMessageMenu,
     pinnedMessagesExpanded,
     pollComposer,
+    profileViewersOpen,
     profileContact,
     reactionDetails,
     replyingTo,
@@ -15216,6 +15284,63 @@ function App() {
             </section>
           </div>
         )}
+        {profileViewersOpen && (
+          <div className="profile-viewers-modal" role="presentation" onMouseDown={event => {
+            if (event.target === event.currentTarget) setProfileViewersOpen(false);
+          }}>
+            <section className="profile-viewers-card" role="dialog" aria-modal="true" aria-labelledby="profile-viewers-title">
+              <div className="message-details-header">
+                <strong id="profile-viewers-title">{appCopy.t('Ai đã xem hồ sơ của bạn')}</strong>
+                <button type="button" onClick={() => setProfileViewersOpen(false)} aria-label={appCopy.t('Đóng')}>
+                  <i className="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+              <div className="profile-viewers-toolbar">
+                <span>{profileViewers.length} {appCopy.t('người')}</span>
+                <button type="button" onClick={() => void refreshProfileViewers()} disabled={profileViewersLoading || !chatManagementService.remote}>
+                  <i className={`fa-solid ${profileViewersLoading ? 'fa-spinner fa-spin' : 'fa-rotate'}`}></i>
+                  {appCopy.t('Làm mới')}
+                </button>
+              </div>
+              {!chatManagementService.remote && (
+                <div className="profile-viewers-empty">
+                  <i className="fa-solid fa-cloud-slash"></i>
+                  <span>{appCopy.t('Danh sách người xem cần kết nối máy chủ Chatmgt.')}</span>
+                </div>
+              )}
+              {chatManagementService.remote && profileViewersLoading && (
+                <div className="profile-viewers-empty"><i className="fa-solid fa-spinner fa-spin"></i><span>{appCopy.t('Đang tải danh sách người xem...')}</span></div>
+              )}
+              {chatManagementService.remote && !profileViewersLoading && profileViewersNotice && (
+                <div className="profile-viewers-error" role="alert"><i className="fa-solid fa-circle-exclamation"></i><span>{profileViewersNotice}</span></div>
+              )}
+              {chatManagementService.remote && !profileViewersLoading && !profileViewersNotice && profileViewers.length === 0 && (
+                <div className="profile-viewers-empty">
+                  <i className="fa-regular fa-eye-slash"></i>
+                  <span>{appCopy.t('Chưa có ai xem hồ sơ của bạn.')}</span>
+                </div>
+              )}
+              {chatManagementService.remote && !profileViewersLoading && profileViewers.length > 0 && (
+                <div className="profile-viewers-list">
+                  {profileViewers.map(viewer => (
+                    <article className="profile-viewer-item" key={viewer.id}>
+                      <SafeAvatar src={viewer.avatar} name={viewer.name} className="profile-viewer-avatar" />
+                      <span className="profile-viewer-copy">
+                        <strong>{viewer.name}</strong>
+                        <small>{[viewer.title, viewer.department].filter(Boolean).join(' · ') || appCopy.t('Thành viên')}</small>
+                      </span>
+                      <time dateTime={viewer.viewedAt || undefined}>
+                        {viewer.viewedAt && !Number.isNaN(Date.parse(viewer.viewedAt))
+                          ? new Date(viewer.viewedAt).toLocaleString(appCopy.locale || 'vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                          : appCopy.t('Vừa xem')}
+                      </time>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        )}
         {shareMessage && (
           <div className="message-details-modal" role="dialog" aria-modal="true" aria-labelledby="share-message-title" onClick={() => setShareMessage(null)}>
             <div className="message-share-card" onClick={event => event.stopPropagation()}>
@@ -15927,6 +16052,16 @@ function App() {
               <div className="workspace-panel-header-actions">
                 {workspacePanel === 'profile' && (
                   <>
+                    <button
+                      type="button"
+                      className="profile-viewers-button"
+                      onClick={() => setProfileViewersOpen(true)}
+                      title={appCopy.t('Ai đã xem hồ sơ của bạn')}
+                      aria-label={appCopy.t('Ai đã xem hồ sơ của bạn')}
+                    >
+                      <i className={`fa-solid ${profileViewersLoading ? 'fa-spinner fa-spin' : 'fa-eye'}`} aria-hidden="true"></i>
+                      <span className="profile-viewers-count">{profileViewers.length}</span>
+                    </button>
                     <button type="button" className="workspace-logout-button" onClick={requestLogout}>
                       <i className="fa-solid fa-arrow-right-from-bracket"></i>
                       <span>{appCopy.t('Đăng xuất')}</span>
@@ -16028,7 +16163,16 @@ function App() {
               <div className="profile-panel">
                 <div className="profile-hero">
                   <div className="profile-avatar-editor">
-                    <SafeAvatar src={profileAccount.avatar} name={profileAccount.name} className="profile-avatar-large" />
+                    <button
+                      type="button"
+                      className="profile-avatar-preview"
+                      onClick={openOwnAvatarViewer}
+                      disabled={!profileAccount.avatar}
+                      title={appCopy.t(profileAccount.avatar ? 'Xem ảnh đại diện' : 'Chưa có ảnh đại diện')}
+                      aria-label={appCopy.t(profileAccount.avatar ? 'Xem ảnh đại diện' : 'Chưa có ảnh đại diện')}
+                    >
+                      <SafeAvatar src={profileAccount.avatar} name={profileAccount.name} className="profile-avatar-large" />
+                    </button>
                     <label className={`profile-avatar-edit-button ${isUpdatingProfileAvatar ? 'loading' : ''}`} title={appCopy.t('Đổi ảnh đại diện')}>
                       <i className={`fa-solid ${isUpdatingProfileAvatar ? 'fa-spinner fa-spin' : 'fa-camera'}`}></i>
                       <input type="file" accept="image/*" onChange={handleProfileAvatarChange} disabled={isUpdatingProfileAvatar} />
@@ -16038,11 +16182,10 @@ function App() {
                   <span className={`profile-status ${isCurrentUserOnline ? '' : 'offline'}`}>{isCurrentUserOnline && <i className="fa-solid fa-circle"></i>} {appCopy.t(isCurrentUserOnline ? 'Trực tuyến' : 'Ngoại tuyến')}</span>
                  </div>
                  <div className="profile-details profile-readonly-details">
-                   <div className="profile-detail-row"><i className="fa-solid fa-user"></i><div><small>{appCopy.t('Họ và tên')}</small><strong>{profileAccount.name || appCopy.t('Chưa cập nhật')}</strong></div></div>
-                   <div className="profile-detail-row"><i className="fa-solid fa-envelope"></i><div><small>{appCopy.t('Email')}</small><strong>{profileAccount.email || appCopy.t('Chưa cập nhật')}</strong></div></div>
-                   <div className="profile-detail-row"><i className="fa-solid fa-at"></i><div><small>{appCopy.t('Tên đăng nhập')}</small><strong>{profileAccount.username || appCopy.t('Chưa cập nhật')}</strong></div></div>
-                   <div className="profile-detail-row"><i className="fa-solid fa-shield-halved"></i><div><small>{appCopy.t('Vai trò')}</small><strong>{profileAccount.role || appCopy.t('Thành viên')}</strong></div></div>
-                   <div className="profile-detail-row profile-current-tenant"><i className="fa-solid fa-building"></i><div><small>{appCopy.t('Công ty hiện tại')}</small><strong>{profileAccount.tenantName || profileAccount.tenant_name || profileAccount.tenant?.name || appCopy.t('Chưa cập nhật')}</strong></div></div>
+                   <div className="profile-detail-row profile-detail-name"><span className="profile-detail-icon"><i className="fa-solid fa-user"></i></span><div><small>{appCopy.t('Họ và tên')}</small><strong>{profileAccount.name || appCopy.t('Chưa cập nhật')}</strong></div></div>
+                   <div className="profile-detail-row profile-detail-email"><span className="profile-detail-icon"><i className="fa-solid fa-envelope"></i></span><div><small>{appCopy.t('Email')}</small><strong>{profileAccount.email || appCopy.t('Chưa cập nhật')}</strong></div></div>
+                   <div className="profile-detail-row profile-detail-role"><span className="profile-detail-icon"><i className="fa-solid fa-shield-halved"></i></span><div><small>{appCopy.t('Vai trò')}</small><strong>{profileAccount.role || appCopy.t('Thành viên')}</strong></div></div>
+                   <div className="profile-detail-row profile-detail-tenant"><span className="profile-detail-icon"><i className="fa-solid fa-building"></i></span><div><small>{appCopy.t('Công ty hiện tại')}</small><strong>{profileAccount.tenantName || profileAccount.tenant_name || profileAccount.tenant?.name || appCopy.t('Chưa cập nhật')}</strong></div></div>
                  </div>
                </div>
             )}

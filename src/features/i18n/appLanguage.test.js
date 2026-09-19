@@ -11,6 +11,14 @@ test('translates exact UI labels and keeps Vietnamese as the default', () => {
   assert.equal(translateUiText('Cài đặt'), 'Cài đặt');
 });
 
+test('translates profile viewer and avatar labels', () => {
+  assert.equal(translateUiText('Ai đã xem hồ sơ của bạn', 'en'), 'Who viewed your profile');
+  assert.equal(translateUiText('Đang tải danh sách người xem...', 'en'), 'Loading profile viewers...');
+  assert.equal(translateUiText('Chưa có ai xem hồ sơ của bạn.', 'en'), 'No one has viewed your profile yet.');
+  assert.equal(translateUiText('Xem ảnh đại diện', 'en'), 'View avatar');
+  assert.equal(translateUiText('Làm mới', 'en'), 'Refresh');
+});
+
 test('translates the tenant-scoped ViChat AI guidance', () => {
   assert.equal(translateUiText('Phạm vi công ty hiện tại', 'en'), 'Current company scope');
   assert.equal(translateUiText('Tách biệt theo công ty', 'en'), 'Isolated by company');

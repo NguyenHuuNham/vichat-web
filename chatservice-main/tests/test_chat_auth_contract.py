@@ -307,6 +307,34 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn('disabled={isUpdatingProfileAvatar}', profile_source)
 
     @repository_source_test
+    def test_profile_view_contract_is_tenant_scoped_and_non_blocking(self):
+        controller_source = CONTROLLER_PATH.read_text(encoding="utf-8")
+        _controller_source, record_source = function_source(
+            CONTROLLER_PATH,
+            "profile_view_record",
+        )
+        _controller_source, list_source = function_source(
+            CONTROLLER_PATH,
+            "profile_view_list",
+        )
+        service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")
+        app_source = CHAT_APP_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("@app.route('/api/v1/profile/views', methods=['POST'])", controller_source)
+        self.assertIn("@app.route('/api/v1/profile/views', methods=['GET'])", controller_source)
+        self.assertIn("_profile_view_query(", record_source)
+        self.assertIn("tenant_id,", record_source)
+        self.assertIn("profile_id == viewer_id", record_source)
+        self.assertIn('properties={"profile_id": profile_id}', record_source)
+        self.assertIn("ManagementAccount.tenant_id == tenant_id", list_source)
+        self.assertIn("ManagementAccount.active.is_(True)", list_source)
+        self.assertIn("/api/v1/profile/views", service_source)
+        self.assertIn("recordProfileView", app_source)
+        self.assertIn("could not record profile view", app_source)
+        self.assertIn("profile-viewers-button", app_source)
+        self.assertIn("profile-avatar-preview", app_source)
+
+    @repository_source_test
     def test_chatui_uses_upgo_account_employee_login_by_default(self):
         login_source = LOGIN_PATH.read_text(encoding="utf-8")
         service_source = CHAT_SERVICE_PATH.read_text(encoding="utf-8")

@@ -216,6 +216,15 @@ or reconnect. A later confirmed upload replaces the marker. Tinode receives the
 same confirmed URL for realtime rendering, but Tinode metadata is not allowed
 to overwrite the persisted Chatmgt/Account avatar on reconnect.
 
+Profile-view metadata is owned by Chatmgt. When an employee opens another
+employee's public profile, ChatUI sends `POST /api/v1/profile/views` with the
+target Account ID; Chatmgt accepts only an active account in the authenticated
+tenant, ignores self-views, and suppresses duplicate records from the same
+viewer for five minutes. `GET /api/v1/profile/views` returns the latest unique
+same-tenant viewers for the current account using the existing
+`security_audit_log` store, so this feature needs no schema migration. A
+failure to record a view is telemetry-only and never blocks opening a profile.
+
 `GET /api/v1/auth/me` revalidates the authenticated Account session on focus,
 visibility changes, and the ChatUI background interval. If UpGo Account changes
 the avatar outside ChatUI, Chatmgt refreshes the tenant projection and ChatUI

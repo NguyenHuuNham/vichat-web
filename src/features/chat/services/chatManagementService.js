@@ -361,6 +361,21 @@ function normalizePersonalCloudFile(record) {
   };
 }
 
+function normalizeProfileViewer(record) {
+  if (!record || typeof record !== 'object') return null;
+  const id = scalarText(record.id || record.viewerId || record.viewer_id);
+  if (!id) return null;
+  return {
+    id,
+    name: scalarText(record.name || record.fullName || record.full_name) || 'Thành viên',
+    avatar: avatarText(record.avatar || record.avatarUrl || record.avatar_url || record.photo),
+    title: scalarText(record.title),
+    department: scalarText(record.department),
+    role: scalarText(record.role),
+    viewedAt: scalarText(record.viewedAt || record.viewed_at),
+  };
+}
+
 async function apiRequest(path, options = {}) {
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const response = await fetch(`${apiBase}${path}`, {
@@ -705,6 +720,22 @@ export const chatManagementService = {
     const account = publicAccount(payload.user || payload);
     updateActiveSessionProfile(account);
     return account;
+  },
+
+  async recordProfileView(profileId) {
+    if (!apiBase || !remoteAuth) return null;
+    const id = String(profileId || '').trim();
+    if (!id) return null;
+    return apiRequest('/api/v1/profile/views', {
+      method: 'POST',
+      body: JSON.stringify({ profile_id: id }),
+    });
+  },
+
+  async listProfileViewers() {
+    if (!apiBase || !remoteAuth) return [];
+    const payload = await apiRequest('/api/v1/profile/views', { cache: 'no-store' });
+    return responseItems(payload).map(normalizeProfileViewer).filter(Boolean);
   },
 
   getTinodeAuth() {

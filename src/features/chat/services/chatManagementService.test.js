@@ -560,6 +560,18 @@ test('personal profile keeps only synced name and email fields and opens avatar 
   assert.match(managementServiceSource, /updateProfile\(profile\)/);
 });
 
+test('profile viewer telemetry is optional and isolated from the profile surface', () => {
+  assert.equal(typeof chatManagementService.recordProfileView, 'function');
+  assert.equal(typeof chatManagementService.listProfileViewers, 'function');
+  assert.match(managementServiceSource, /apiRequest\('\/api\/v1\/profile\/views'/);
+  assert.match(managementServiceSource, /method: 'POST'/);
+  assert.match(appSource, /profile-viewers-button/);
+  assert.match(appSource, /profileViewersOpen/);
+  assert.match(appSource, /could not record profile view/);
+  assert.match(stylesSource, /\.profile-avatar-preview/);
+  assert.match(stylesSource, /\.profile-viewers-card/);
+});
+
 test('group member controls use the synced company directory with owner-only mutations', () => {
   for (const removedBinding of [
     'isAddMembersOpen',

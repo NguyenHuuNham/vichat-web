@@ -4970,26 +4970,49 @@ input:checked + .slider:before {
 
 .user-profile { cursor: pointer; border-radius: 10px; transition: background .2s ease; }
 .user-profile:hover, .user-profile:focus-visible { background: rgba(255,255,255,.08); outline: none; }
-.profile-panel { display: flex; flex-direction: column; gap: 22px; }
-.profile-hero { text-align: center; border-bottom: 1px solid var(--border-color); padding-bottom: 22px; }
-.profile-avatar-large { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; border: 4px solid var(--vichat-blue-light); }
-.profile-avatar-editor { position: relative; width: 96px; height: 96px; margin: 0 auto; }
-.profile-avatar-edit-button { position: absolute; right: -2px; bottom: -2px; display: grid; width: 32px; height: 32px; place-items: center; border: 3px solid var(--bg-white); border-radius: 50%; color: #fff; background: var(--vichat-red); box-shadow: 0 4px 12px rgba(0,0,0,.18); cursor: pointer; }
+.profile-panel { display: flex; flex-direction: column; gap: 20px; }
+.profile-hero { padding: 8px 0 22px; text-align: center; border-bottom: 1px solid var(--border-color); }
+.profile-avatar-editor { position: relative; width: 104px; height: 104px; margin: 0 auto; }
+.profile-avatar-preview { display: grid; width: 104px; height: 104px; place-items: center; padding: 5px; border: 3px solid #f9dcc7; border-radius: 50%; background: #fffaf6; box-shadow: 0 9px 22px rgba(244, 81, 30, .1); cursor: pointer; transition: transform .18s ease, box-shadow .18s ease; }
+.profile-avatar-preview:hover:not(:disabled), .profile-avatar-preview:focus-visible { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(244, 81, 30, .18); outline: none; }
+.profile-avatar-preview:disabled { cursor: default; }
+.profile-avatar-large { width: 88px; height: 88px; border-radius: 50%; object-fit: cover; }
+.profile-avatar-edit-button { position: absolute; right: -1px; bottom: -1px; display: grid; width: 30px; height: 30px; place-items: center; border: 3px solid var(--bg-white); border-radius: 50%; color: #fff; background: var(--vichat-red); box-shadow: 0 4px 12px rgba(0,0,0,.18); cursor: pointer; }
 .profile-avatar-edit-button:hover { filter: brightness(.92); }
 .profile-avatar-edit-button.loading { cursor: wait; }
 .profile-avatar-edit-button input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
-.profile-hero h3 { margin: 12px 0 3px; color: var(--text-main); font-size: 20px; }
-.profile-status { color: var(--status-online); font-size: 12px; }
+.profile-hero h3 { margin: 13px 0 6px; color: var(--text-main); font-size: 20px; }
+.profile-status { display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border: 1px solid rgba(43, 166, 111, .18); border-radius: 999px; color: var(--status-online); background: #effbf5; font-size: 11px; }
 .profile-status.offline { color: var(--text-muted); }
-.profile-status i { font-size: 8px; margin-right: 5px; }
-.profile-details { display: flex; flex-direction: column; gap: 12px; }
-.profile-detail-row { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-app); }
-.profile-detail-row > i { width: 20px; color: var(--vichat-blue); text-align: center; }
+.profile-status i { font-size: 7px; }
+.profile-details { display: flex; flex-direction: column; gap: 10px; }
+.profile-detail-row { display: flex; min-height: 60px; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid rgba(18, 59, 57, .08); border-radius: 14px; background: linear-gradient(135deg, #fbfcfd, #f6f9fb); }
+.profile-detail-icon { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border-radius: 10px; color: #f97316; background: #fff1df; }
+.profile-detail-email .profile-detail-icon { color: #d97706; background: #fff5cf; }
+.profile-detail-role .profile-detail-icon { color: #ea580c; background: #ffeadf; }
+.profile-detail-tenant .profile-detail-icon { color: #ca8a04; background: #fff1bd; }
 .profile-detail-row div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .profile-detail-row small { color: var(--text-muted); font-size: 11px; }
 .profile-detail-row strong { color: var(--text-main); font-size: 13px; overflow-wrap: anywhere; }
 .profile-current-tenant { grid-column: 1 / -1; }
 .profile-readonly-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.profile-viewers-button { position: relative; display: inline-flex; width: 34px; height: 34px; align-items: center; justify-content: center; padding: 0; border: 1px solid rgba(18, 59, 57, .12); border-radius: 10px; color: var(--vichat-blue); background: var(--bg-app); cursor: pointer; transition: transform .16s ease, border-color .16s ease, background .16s ease; }
+.profile-viewers-button:hover, .profile-viewers-button:focus-visible { border-color: rgba(244, 81, 30, .32); background: #fff7f1; transform: translateY(-1px); outline: none; }
+.profile-viewers-count { position: absolute; top: -7px; right: -7px; display: grid; min-width: 17px; height: 17px; align-items: center; justify-content: center; padding: 0 4px; border: 2px solid var(--bg-white); border-radius: 999px; color: #fff; background: var(--vichat-red); font-size: 9px; font-weight: 800; line-height: 1; }
+.profile-viewers-modal { position: fixed; inset: 0; z-index: 180; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(15, 23, 42, .38); }
+.profile-viewers-card { width: min(430px, 100%); max-height: min(620px, 90vh); overflow-y: auto; padding: 18px; border: 1px solid var(--border-color); border-radius: 18px; background: var(--bg-white); box-shadow: 0 24px 70px rgba(15, 23, 42, .24); }
+.profile-viewers-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0; color: var(--text-muted); font-size: 12px; }
+.profile-viewers-toolbar button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid var(--border-color); border-radius: 9px; color: var(--vichat-blue); background: var(--bg-app); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.profile-viewers-toolbar button:disabled { cursor: wait; opacity: .6; }
+.profile-viewers-list { display: flex; flex-direction: column; gap: 8px; }
+.profile-viewer-item { display: flex; min-width: 0; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-app); }
+.profile-viewer-avatar { width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%; object-fit: cover; }
+.profile-viewer-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.profile-viewer-copy strong { overflow: hidden; color: var(--text-main); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.profile-viewer-copy small, .profile-viewer-item time { color: var(--text-muted); font-size: 10px; }
+.profile-viewer-item time { flex: 0 0 auto; text-align: right; }
+.profile-viewers-empty, .profile-viewers-error { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 100px; padding: 16px; border-radius: 12px; color: var(--text-muted); background: var(--bg-app); font-size: 12px; text-align: center; }
+.profile-viewers-error { color: #9a3412; background: #fff3ed; }
 /* Keep avatar cropping above the profile workspace that launched it. */
 .modal-backdrop.avatar-crop-backdrop { z-index: 240; }
 .avatar-crop-modal { width: min(430px, 100%); }
@@ -7881,6 +7904,13 @@ html[data-theme="dark"] .voice-recording-bar { border-color: rgba(248, 113, 113,
 html[data-theme="dark"] .voice-recording-copy strong { color: #fca5a5; }
 html[data-theme="dark"] .profile-contact-card { border-color: #3b4b54; background: var(--bg-white); box-shadow: 0 24px 70px rgba(0, 0, 0, .42); }
 html[data-theme="dark"] .profile-contact-row { border-color: #3b4b54; background: var(--bg-app); }
+html[data-theme="dark"] .profile-avatar-preview { border-color: #694433; background: #2d2420; }
+html[data-theme="dark"] .profile-status { border-color: rgba(96, 210, 150, .2); background: rgba(43, 166, 111, .14); }
+html[data-theme="dark"] .profile-detail-row { border-color: #3b4b54; background: linear-gradient(135deg, #202a30, #1c252b); }
+html[data-theme="dark"] .profile-viewers-button { border-color: #3b4b54; background: var(--bg-app); }
+html[data-theme="dark"] .profile-viewers-button:hover, html[data-theme="dark"] .profile-viewers-button:focus-visible { border-color: #8b5e48; background: #2b2828; }
+html[data-theme="dark"] .profile-viewers-card { border-color: #3b4b54; background: var(--bg-white); box-shadow: 0 24px 70px rgba(0, 0, 0, .42); }
+html[data-theme="dark"] .profile-viewer-item { border-color: #3b4b54; background: var(--bg-app); }
 html[data-theme="dark"] select option { color: var(--text-main); background: var(--bg-white); }
 
 .chat-maintenance-screen {
@@ -8489,6 +8519,7 @@ html[data-theme="dark"] .settings-shell-panel .notification-upload-button { colo
 .message-details-modal > .message-details-card,
 .message-details-modal > .message-share-card,
 .profile-contact-modal > .profile-contact-card,
+.profile-viewers-modal > .profile-viewers-card,
 .media-browser-overlay > .media-browser-panel,
 .conversation-category-manager-backdrop > .conversation-category-manager {
     border-radius: 24px;

@@ -1565,6 +1565,36 @@ def _audit(request, event_name, success=True, tenant_id=None, user_id=None, prop
         logger.warning("Could not write security audit event %s: %s", event_name, error)
 
 
+def _profile_view_query(tenant_id, profile_id=None, viewer_id=None):
+    query = SecurityAuditLog.query.filter(
+        SecurityAuditLog.tenant_id == tenant_id,
+        SecurityAuditLog.event_name == "PROFILE_VIEWED",
+        SecurityAuditLog.success.is_(True),
+        SecurityAuditLog.deleted.is_(False),
+    )
+    if profile_id:
+        query = query.filter(
+            SecurityAuditLog.properties.contains({"profile_id": str(profile_id)})
+        )
+    if viewer_id:
+        query = query.filter(SecurityAuditLog.user_id == str(viewer_id))
+    return query
+
+
+def _public_profile_viewer(account, viewed_at):
+    return {
+        "id": str(account.id),
+        "uid": str(account.id),
+        "name": _account_default_name(account),
+        "avatar": account.avatar or "",
+        "title": account.title or "",
+        "department": account.department or "",
+        "role": account.role or "member",
+        "viewedAt": _iso_timestamp(viewed_at),
+        "viewed_at": viewed_at,
+    }
+
+
 async def _publish_group_activity_events(item, events):
     """Broadcast committed group changes through the owner bridge."""
     if not item or not item.tinode_topic or not events:
@@ -3319,6 +3349,105 @@ async def management_update_avatar(request):
             "error_code": "ACCOUNT_AVATAR_UPDATE_FAILED",
             "error_message": "Avatar update failed.",
         }, status=500)
+
+
+@app.route('/api/v1/profile/views', methods=['POST'])
+async def profile_view_record(request):
+    if management_session_requested(request):
+        return _management_user_action_error()
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    body = request.json if isinstance(request.json, dict) else {}
+    profile_id = str(
+        body.get("profile_id") or body.get("profileId") or ""
+    ).strip()
+    if not profile_id:
+        return json({
+            "error_code": "PARAM_ERROR",
+            "error_message": "The profile account is required.",
+        }, status=400)
+    viewer_id = _user_id(current_user)
+    profile_account = _account_by_id(tenant_id, profile_id)
+    if profile_account is None:
+        return json({
+            "error_code": "NOT_FOUND",
+            "error_message": "The profile is not available in this tenant.",
+        }, status=404)
+    if profile_id == viewer_id:
+        return json({
+            "recorded": False,
+            "profile_id": profile_id,
+        })
+
+    now = int(time.time())
+    recent_view = _profile_view_query(
+        tenant_id,
+        profile_id=profile_id,
+        viewer_id=viewer_id,
+    ).filter(SecurityAuditLog.created_at >= now - 300).first()
+    recorded = recent_view is None
+    if recorded:
+        _audit(
+            request,
+            "PROFILE_VIEWED",
+            True,
+            tenant_id=tenant_id,
+            user_id=viewer_id,
+            properties={"profile_id": profile_id},
+        )
+    response = json({
+        "recorded": recorded,
+        "profile_id": profile_id,
+    })
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.route('/api/v1/profile/views', methods=['GET'])
+async def profile_view_list(request):
+    if management_session_requested(request):
+        return _management_user_action_error()
+    current_user, tenant_id = _identity(request)
+    if current_user is None:
+        return _auth_error()
+    profile_id = _user_id(current_user)
+    records = _profile_view_query(tenant_id, profile_id=profile_id).order_by(
+        SecurityAuditLog.created_at.desc()
+    ).limit(500).all()
+    viewer_ids = []
+    seen_viewers = set()
+    for record in records:
+        viewer_id = str(record.user_id or "").strip()
+        if not viewer_id or viewer_id == profile_id or viewer_id in seen_viewers:
+            continue
+        seen_viewers.add(viewer_id)
+        viewer_ids.append(viewer_id)
+    accounts = {}
+    if viewer_ids:
+        accounts = {
+            str(account.id): account
+            for account in ManagementAccount.query.filter(
+                ManagementAccount.tenant_id == tenant_id,
+                ManagementAccount.id.in_(viewer_ids),
+                ManagementAccount.active.is_(True),
+            ).all()
+        }
+    viewers = []
+    emitted_viewers = set()
+    for record in records:
+        viewer_id = str(record.user_id or "").strip()
+        account = accounts.get(viewer_id)
+        if not account or viewer_id in emitted_viewers:
+            continue
+        emitted_viewers.add(viewer_id)
+        viewers.append(_public_profile_viewer(account, record.created_at))
+    response = json({
+        "objects": viewers,
+        "count": len(viewers),
+    })
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.route('/api/v1/chat/users', methods=['GET'])
