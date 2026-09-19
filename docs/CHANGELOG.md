@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-19 12:15 (Asia/Saigon)
 - Loai: Sua loi | Backend | Tinode | Kiem thu | Trien khai | Tai lieu
-- Trang thai: Dang thuc hien
+- Trang thai: Hoan tat; source `dfcbbc2` da commit/push `origin/master`, production da deploy Chatmgt va verify qua hai hop SSH
 - Muc tieu: Khong chan gui tin khi tab cu gui topic direct cho group da co topic canonical.
 - Pham vi: Route bind topic Tinode cua Chatmgt va contract test; khong doi direct chat, schema, migration hay message store.
 - File da thay doi: `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_chat_auth_contract.py` va file nay.
 - Noi dung: Group uu tien topic da luu trong Chatmgt truoc khi validate type cua topic tu client; topic persisted sai van tra `409`, con topic client sai khi group chua co binding van tra `400`.
 - Quyet dinh ky thuat: Giai quyet stale topic o boundary Chatmgt de cac tab cu, tab moi va request retry dung cung canonical topic; direct conversation van validate topic viewer-relative nhu truoc.
 - Database/API/cau hinh: Khong migration, schema hay bien moi truong moi; chi lam idempotent hon route bind hien co.
-- Kiem thu: `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -v` dat 59/59; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py` thanh cong; `git diff --check` khong co loi.
-- Rui ro con lai: Chua deploy/UAT production trong muc nay; can kiem tra gui tin group, direct va hai tab sau deploy.
-- Viec tiep theo: Chay full test phu hop, commit/push, deploy rieng Chatmgt va verify health/WSS/log bind.
-- Commit/PR: Chua tao.
+- Kiem thu: `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -v` dat 59/59; full backend dat 310 pass, 105 skip do dependency image; frontend dat 435/435; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py` thanh cong; candidate Chatmgt trong image dat 59/59; `git diff --check` khong co loi.
+- Kiem tra production: Candidate `r1` fail o buoc curl local do bind host la `192.168.80.20` va da rollback tu dong; candidate `r2` thanh cong. Release `/opt/deploy/chat/releases/stale-topic-dfcbbc2-20260919-r2`, previous `/opt/deploy/chat/releases/compact-reactions-656ca5f-20260918-r1`, backup `/opt/deploy/chat/backups/stale-topic-dfcbbc2-20260919-r2`; Chatmgt healthy/restart 0, `/api/v1/auth/health` va ChatUI health dat, WSS tra `101 Switching Protocols`, Alembic giu `20260917_14`, ChatUI/Tinode/DB/Redis/volume va cac service khac khong doi.
+- Rui ro con lai: Chua UAT bang browser tai khoan that trong phien nay do browser bridge khong kha dung; can hard refresh va gui tin trong group loi, direct va hai tab.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, mo lai group va thu gui tin; neu can thi kiem tra them direct chat va hai tab.
+- Commit/PR: Source `dfcbbc2`; changelog/deploy record follow-up commit dang cho.
 
 ## 2026-09-18-11 - Thu gon danh sach reaction voi chip 3+
 
