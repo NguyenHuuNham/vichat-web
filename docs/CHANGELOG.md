@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-19 (Asia/Saigon)
 - Loai: Sua loi | Web | Backend | Tinode | Kiem thu | Tai lieu
-- Trang thai: Hoan tat code; dang cho commit va deploy production
+- Trang thai: Hoan tat; source `c82a517` da commit/push `origin/master`, production da deploy va verify qua hai hop SSH
 - Muc tieu: Khong de topic group bi bind hoac gui tin that bai khi Chatmgt con luu UID Tinode cua tai khoan da mat tren central Tinode.
 - Pham vi: Tinode SSO recovery, bind/prepare topic, cac luong them/duyet/xoa thanh vien, doi role, roi/giai tan group, chatbot group va browser session; khong doi schema, migration, message store hay mobile.
 - File da thay doi: `chatservice-main/application/services/auth_service.py`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_tinode_bridge_service.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/features/chat/services/chatManagementService.js`, `src/app/App.jsx`, `dist/index.html` va file nay.
@@ -18,9 +18,11 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Ghi nhan mapping moi tai boundary authenticate (`_record_tinode_uid`) va tinh lai danh sach UID sau `_tinode_tokens_for_accounts`; khong xoa topic/message hay tu dong reset du lieu Tinode.
 - Database/API/cau hinh: Khong co migration, endpoint moi, secret hay bien moi truong; endpoint token/bind hien co duoc dung lai.
 - Kiem thu: `python -m unittest discover -s chatservice-main/tests -p "test_*.py"` dat 311 pass, 106 skip do dependency runtime; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 59/59; `npm run test:frontend -- --test-concurrency=1` dat 435/435; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi warning chunk `App` lon; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/application/services/auth_service.py chatservice-main/tests/test_tinode_bridge_service.py` dat; `git diff --check` dat.
-- Rui ro con lai: Bridge tests day du can chay trong Chatmgt image; chua UAT production bang hai tai khoan that cho mo group, gui tin, hai tab va member mutation.
-- Viec tiep theo: Commit/push, deploy Chatmgt va ChatUI release bat bien, sau do bind lai conversation production `bb511cdf-6453-43be-8002-4a5c3d9b6acc` va xac nhan gui tin.
-- Commit/PR: Chua tao.
+- Kiem tra production: Archive `vichat-tinode-uid-recovery-c82a517.tar.gz`, SHA-256 `9f14b11e8892be46bc802ffb2d153ab2ea7f44f1ffa20ac389f8a466657a415d`; candidate r1 dung truoc activate do thieu `/mobile/src/services/tinodeClient.ts` va da quarantine trong `.failed-candidate`, production khong doi; candidate r2 contract trong image dat 59/59. Release `/opt/deploy/chat/releases/tinode-uid-recovery-c82a517-20260919-r2`, previous `/opt/deploy/chat/releases/stale-topic-dfcbbc2-20260919-r2`, backup `/opt/deploy/chat/backups/tinode-uid-recovery-c82a517-20260919-r2`; ChatUI `f0c14fdc187d`, Chatmgt `97047f039734`, ca hai healthy; health noi bo/public dat, WSS tra `101 Switching Protocols`, bundle public khop candidate (`/assets/index-C-AXL_6U.js`, `/assets/index-BPct5cnc.css`, `App-C8JHwvpq.js`, `ManagementApp-DC6FDu3U.js`), Alembic giu `20260917_14`, service ngoai pham vi va volume khong doi, Tinode data untouched.
+- UAT production: Bind conversation `bb511cdf-6453-43be-8002-4a5c3d9b6acc` tra HTTP 200 voi 21 active member; code tu sua 9 UID stale va xac nhan mapping day du. Owner Tinode publish group tra sequence `202`, hard-delete marker tra OK, history sau cleanup khong con marker smoke.
+- Rui ro con lai: Chua UAT bang browser voi hai tai khoan that cho mo group, gui tin hai tab va member mutation; backend bind/recovery va publish Tinode da duoc smoke test tren conversation production.
+- Viec tiep theo: Hard refresh `https://chat.upgo.vn`, sau do UAT group bang hai tai khoan, hai tab va cac luong them/xoa/doi role thanh vien.
+- Commit/PR: Source `c82a517` da commit/push `origin/master`; release r2 va changelog deploy record da verify.
 
 ## 2026-09-19-01 - Sua bind topic group khi tab gui topic stale
 
