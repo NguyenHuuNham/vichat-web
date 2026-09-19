@@ -5751,6 +5751,9 @@ function App() {
         topicName,
         { avatarUrl: effectiveGroupAvatar },
       );
+      // A bind can repair the viewer's stale Tinode UID. Reconcile the live
+      // browser session before subscribing or publishing with that topic.
+      await ensureTinodeSession();
       const canonicalTopic = String(
         binding?.tinodeTopic
           || binding?.tinode_topic

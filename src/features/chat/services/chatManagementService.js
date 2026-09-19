@@ -1102,12 +1102,16 @@ export const chatManagementService = {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(conversationId))) {
         throw new Error('Mã cuộc trò chuyện của chatmgt không hợp lệ.');
       }
-      const tinodeAuth = await this.getFreshTinodeAuth();
+      // Re-authenticate before a bind so a repaired Tinode UID from another
+      // tab cannot leave this request carrying an old member token.
+      const tinodeAuth = await this.getFreshTinodeAuth({ force: true });
+      const tinodeToken = String(tinodeAuth?.token || '').trim();
+      if (!tinodeToken) throw new Error('Chatmgt did not return a Tinode token.');
       bindingPayload = await apiRequest(`/api/v1/conversation/${encodeURIComponent(conversationId)}/tinode-topic`, {
         method: 'PUT',
         body: JSON.stringify({
           tinode_topic: topicName,
-          tinode_token: tinodeAuth?.token || '',
+          tinode_token: tinodeToken,
           ...(String(avatarUrl || '').trim()
             ? { avatar: String(avatarUrl).trim() }
             : {}),

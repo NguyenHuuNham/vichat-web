@@ -135,6 +135,52 @@ class TinodeBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
         login.assert_awaited_once_with("vichat_account_a", "derived-password")
         reset.assert_not_awaited()
 
+    async def test_sso_login_recreates_a_missing_stored_tinode_account(self):
+        identity = {
+            "tenant_id": "tenant-a",
+            "account_user_id": "account-a",
+            "full_name": "Account A",
+        }
+        created = {"uid": "usrRecreated", "token": "new-token"}
+        with patch.object(
+            auth_service,
+            "tinode_sso_password",
+            return_value="derived-password",
+        ), patch.object(
+            auth_service,
+            "tinode_login",
+            AsyncMock(side_effect=auth_service.AuthError("rejected", 401)),
+        ) as login, patch.object(
+            auth_service,
+            "tinode_admin_reset_password",
+            AsyncMock(side_effect=auth_service.AuthError("user not found", 400)),
+        ) as reset, patch.object(
+            auth_service,
+            "tinode_create_account",
+            AsyncMock(return_value=created),
+        ) as create:
+            result = await auth_service.tinode_sso_login(
+                identity,
+                "vichat_account_a",
+                "usrMissing",
+            )
+
+        self.assertEqual(
+            result,
+            {"uid": "usrRecreated", "token": "new-token", "username": "vichat_account_a"},
+        )
+        login.assert_awaited_once_with("vichat_account_a", "derived-password")
+        reset.assert_awaited_once_with(
+            "vichat_account_a",
+            "usrMissing",
+            "derived-password",
+        )
+        create.assert_awaited_once_with(
+            "vichat_account_a",
+            "derived-password",
+            "Account A",
+        )
+
     async def test_mirror_login_uses_the_chatmgt_password_for_an_existing_uid(self):
         expected = {"uid": "usrAccountA", "token": "short-token", "expires": "2099-01-01T00:00:00Z"}
         with patch.dict(auth_service.app.config, {"TINODE_MIRROR_LOCAL_CREDENTIALS": True}), patch.object(

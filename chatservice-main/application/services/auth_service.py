@@ -807,8 +807,27 @@ async def tinode_sso_login(identity, tinode_username, tinode_uid=None):
         if tinode_uid:
             # Existing deterministic credentials normally work without Tinode
             # administrator access. Use the administrator only as a repair path.
-            await tinode_admin_reset_password(tinode_username, tinode_uid, password)
-            return await tinode_login(tinode_username, password)
+            try:
+                await tinode_admin_reset_password(tinode_username, tinode_uid, password)
+                return await tinode_login(tinode_username, password)
+            except AuthError as reset_error:
+                # A fresh central Tinode store can lose an account while
+                # Chatmgt still retains its old UID mapping. Recreate that
+                # deterministic account so group membership can be repaired.
+                reset_message = " ".join(str(reset_error).strip().lower().split())
+                if reset_error.status_code != 400 or "not found" not in reset_message:
+                    raise
+                try:
+                    created = await tinode_create_account(
+                        tinode_username,
+                        password,
+                        identity.get("full_name") or tinode_username,
+                    )
+                except AuthError as create_error:
+                    if create_error.status_code != 409:
+                        raise
+                    created = await tinode_login(tinode_username, password)
+                return {**created, "username": tinode_username}
 
     try:
         return await tinode_create_account(tinode_username, password, identity.get("full_name") or tinode_username)

@@ -446,7 +446,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("member_tokens=added_member_tokens", add_source)
         self.assertIn("access_scope_uids=added_tinode_uids", add_source)
         self.assertIn("known_existing_member_uids=existing_tinode_member_uids", add_source)
-        self.assertIn("_ensure_tinode_account(actor_account)", add_source)
+        self.assertIn("_tinode_account_credentials(actor_account)", add_source)
         self.assertIn("_group_owner_tinode_credentials(", add_source)
         self.assertIn("tinode_operator_uid", add_source)
         self.assertIn("tinode_remove_topic_member", remove_source)

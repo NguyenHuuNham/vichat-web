@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-19-02 - Tu phuc hoi UID Tinode stale khi gui tin nhom
+
+- Thoi gian: 2026-09-19 (Asia/Saigon)
+- Loai: Sua loi | Web | Backend | Tinode | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code; dang cho commit va deploy production
+- Muc tieu: Khong de topic group bi bind hoac gui tin that bai khi Chatmgt con luu UID Tinode cua tai khoan da mat tren central Tinode.
+- Pham vi: Tinode SSO recovery, bind/prepare topic, cac luong them/duyet/xoa thanh vien, doi role, roi/giai tan group, chatbot group va browser session; khong doi schema, migration, message store hay mobile.
+- File da thay doi: `chatservice-main/application/services/auth_service.py`, `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/tests/test_tinode_bridge_service.py`, `chatservice-main/tests/test_chat_auth_contract.py`, `src/features/chat/services/chatManagementService.js`, `src/app/App.jsx`, `dist/index.html` va file nay.
+- Noi dung: Khi admin reset UID cu tra `not found`, Chatmgt tao lai tai khoan deterministic va ghi UID moi vao projection. Moi bridge operation dung UID sau authenticate thay vi UID da chuan bi truoc do; bind group bo qua verify stale truoc repair, sau do reconcile lai member/access snapshot. ChatUI lay token moi truoc bind va re-auth session Tinode neu UID viewer vua duoc sua.
+- Quyet dinh ky thuat: Ghi nhan mapping moi tai boundary authenticate (`_record_tinode_uid`) va tinh lai danh sach UID sau `_tinode_tokens_for_accounts`; khong xoa topic/message hay tu dong reset du lieu Tinode.
+- Database/API/cau hinh: Khong co migration, endpoint moi, secret hay bien moi truong; endpoint token/bind hien co duoc dung lai.
+- Kiem thu: `python -m unittest discover -s chatservice-main/tests -p "test_*.py"` dat 311 pass, 106 skip do dependency runtime; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 59/59; `npm run test:frontend -- --test-concurrency=1` dat 435/435; `npm run lint` exit 0 voi warning legacy/vendor da co; `npm run build:production` thanh cong voi warning chunk `App` lon; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/application/services/auth_service.py chatservice-main/tests/test_tinode_bridge_service.py` dat; `git diff --check` dat.
+- Rui ro con lai: Bridge tests day du can chay trong Chatmgt image; chua UAT production bang hai tai khoan that cho mo group, gui tin, hai tab va member mutation.
+- Viec tiep theo: Commit/push, deploy Chatmgt va ChatUI release bat bien, sau do bind lai conversation production `bb511cdf-6453-43be-8002-4a5c3d9b6acc` va xac nhan gui tin.
+- Commit/PR: Chua tao.
+
 ## 2026-09-19-01 - Sua bind topic group khi tab gui topic stale
 
 - Thoi gian: 2026-09-19 12:15 (Asia/Saigon)

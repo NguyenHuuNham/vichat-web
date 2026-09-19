@@ -1220,6 +1220,30 @@ async def _ensure_tinode_account(account):
     return tinode_uid
 
 
+def _record_tinode_uid(account, tinode_uid):
+    actual_uid = str(tinode_uid or "").strip()
+    if not actual_uid:
+        raise AuthError("Tinode did not return a user mapping.", 502)
+    if str(account.tinode_uid or "").strip() != actual_uid:
+        account.tinode_uid = actual_uid
+        account.updated_at = int(time.time())
+    return actual_uid
+
+
+async def _tinode_account_credentials(account):
+    expected_uid = await _ensure_tinode_account(account)
+    auth = await tinode_sso_login(
+        _tinode_account_identity(account),
+        account.tinode_username,
+        expected_uid,
+    )
+    actual_uid = _record_tinode_uid(account, auth.get("uid"))
+    token = str(auth.get("token") or "").strip()
+    if not token:
+        raise AuthError("Tinode could not authenticate the account.", 502)
+    return actual_uid, token
+
+
 async def _ensure_tinode_accounts(accounts, concurrency=8):
     account_list = list(accounts)
     semaphore = asyncio.Semaphore(max(1, int(concurrency)))
@@ -1244,10 +1268,12 @@ async def _tinode_tokens_for_accounts(accounts_by_id, account_ids, prepared_uids
                 account.tinode_username,
                 tinode_uid,
             )
+        actual_uid = _record_tinode_uid(account, auth.get("uid"))
+        prepared_uids[account_id] = actual_uid
         token = str(auth.get("token") or "").strip()
         if not token:
             raise AuthError("Tinode could not authenticate a group member.", 502)
-        return tinode_uid, token
+        return actual_uid, token
 
     authenticated = await asyncio.gather(*(
         authenticate(account_id) for account_id in account_ids
@@ -1278,6 +1304,7 @@ async def _group_owner_tinode_credentials(item, participants=None, accounts_by_i
         owner_account.tinode_username,
         owner_uid,
     )
+    owner_uid = _record_tinode_uid(owner_account, owner_auth.get("uid"))
     owner_token = str(owner_auth.get("token") or "").strip()
     if not owner_uid or not owner_token:
         raise AuthError("Tinode could not authenticate the group owner.", 502)
@@ -2659,7 +2686,7 @@ async def management_tinode_token(request):
                     }, status=401)
                 tinode_auth = await _local_tinode_login(account, password)
                 account.tinode_username = str(tinode_auth.get("username") or account.username)
-                account.tinode_uid = tinode_auth.get("uid") or account.tinode_uid
+                account.tinode_uid = _record_tinode_uid(account, tinode_auth.get("uid"))
                 account.updated_at = int(time.time())
                 db.session.commit()
                 refreshed_session = True
@@ -2683,7 +2710,7 @@ async def management_tinode_token(request):
                 account.tinode_username,
                 account.tinode_uid,
             )
-            account.tinode_uid = tinode_auth.get("uid") or account.tinode_uid
+            account.tinode_uid = _record_tinode_uid(account, tinode_auth.get("uid"))
             account.updated_at = int(time.time())
             db.session.commit()
         response_payload = {
@@ -2755,7 +2782,7 @@ async def bridge_tinode_token(request):
             account.tinode_username,
             account.tinode_uid,
         )
-        account.tinode_uid = tinode_auth.get("uid") or account.tinode_uid
+        account.tinode_uid = _record_tinode_uid(account, tinode_auth.get("uid"))
         account.updated_at = int(time.time())
         db.session.commit()
         response = json({
@@ -4950,18 +4977,18 @@ async def conversation_dissolve(request, conversation_id):
             await _validated_account_identity(request, owner_account)
 
         if item.tinode_topic:
-            await _ensure_tinode_accounts(accounts_by_id.values())
-            owner_uid = str(owner_account.tinode_uid or "").strip()
-            owner_auth = await tinode_sso_login(
-                _tinode_account_identity(owner_account),
-                owner_account.tinode_username,
-                owner_uid,
+            prepared_uids = await _ensure_tinode_accounts(accounts_by_id.values())
+            member_tokens = await _tinode_tokens_for_accounts(
+                accounts_by_id,
+                list(accounts_by_id),
+                prepared_uids,
             )
-            tinode_token = str(owner_auth.get("token") or "").strip()
+            owner_uid = prepared_uids[owner_participant.participant_id]
+            tinode_token = member_tokens[owner_uid]
             if not owner_uid or not tinode_token:
                 raise AuthError("Tinode could not authenticate the group owner.", 502)
             expected_tinode_uids = [
-                str(accounts_by_id[participant.participant_id].tinode_uid or "").strip()
+                prepared_uids[participant.participant_id]
                 for participant in participants
                 if participant.participant_id in accounts_by_id
             ]
@@ -5334,7 +5361,12 @@ async def conversation_prepare_tinode(request, conversation_id):
         if not bool((item.properties or {}).get("is_group")):
             _clear_direct_deleted_marker(item, user_id)
         _participants, accounts_by_id = _active_conversation_accounts(item)
-        await _ensure_tinode_accounts(accounts_by_id.values())
+        prepared_uids = await _ensure_tinode_accounts(accounts_by_id.values())
+        await _tinode_tokens_for_accounts(
+            accounts_by_id,
+            list(accounts_by_id),
+            prepared_uids,
+        )
         db.session.commit()
         return json(_serialize_conversation(item, user_id))
     except AccountSSOError as error:
@@ -5462,7 +5494,7 @@ async def conversation_bind_tinode(request, conversation_id):
             expected_member_uids = _expected_tinode_member_uids(item, participants, accounts_by_id)
         except AuthError as error:
             return json({"error_code": "TINODE_PARTICIPANTS_INVALID", "error_message": str(error)}, status=error.status_code)
-        if not expected_member_uids or "" in expected_member_uids:
+        if not expected_member_uids:
             return json({
                 "error_code": "TINODE_PARTICIPANTS_UNPREPARED",
                 "error_message": "Prepare all Chatmgt participants before binding the Tinode group.",
@@ -5520,16 +5552,13 @@ async def conversation_bind_tinode(request, conversation_id):
 
     binding_phase = "verify_topic_access"
     try:
-        try:
+        if not is_group:
             await tinode_verify_topic_access(
                 tinode_token,
                 account.tinode_uid,
                 topic_name,
                 expected_member_uids=expected_member_uids,
             )
-        except AuthError as error:
-            if not is_group or str(error) != "Tinode topic members do not match Chatmgt.":
-                raise
         if is_group:
             owner_participant = next(
                 (participant for participant in participants if _is_group_owner(participant)),
@@ -5544,6 +5573,11 @@ async def conversation_bind_tinode(request, conversation_id):
                 accounts_by_id,
                 list(accounts_by_id),
                 prepared_uids,
+            )
+            expected_member_uids = _expected_tinode_member_uids(
+                item,
+                participants,
+                accounts_by_id,
             )
             owner_uid = prepared_uids[owner_participant.participant_id]
             owner_token = member_tokens[owner_uid]
@@ -5678,8 +5712,14 @@ async def conversation_enable_tinode_chatbot(request, conversation_id):
             raise AuthError("Tinode chatbot account has no user mapping.", 503)
 
         participants, accounts_by_id = _active_conversation_accounts(item)
+        prepared_uids = await _ensure_tinode_accounts(accounts_by_id.values())
+        member_tokens = await _tinode_tokens_for_accounts(
+            accounts_by_id,
+            list(accounts_by_id),
+            prepared_uids,
+        )
         expected_member_uids = {
-            str(accounts_by_id[participant.participant_id].tinode_uid or "")
+            prepared_uids[participant.participant_id]
             for participant in participants
         }
         if not expected_member_uids or "" in expected_member_uids:
@@ -5694,13 +5734,8 @@ async def conversation_enable_tinode_chatbot(request, conversation_id):
         owner_account = accounts_by_id.get(owner_participant.participant_id) if owner_participant else None
         if owner_account is None:
             raise AuthError("The group has no active owner.", 409)
-        owner_uid = await _ensure_tinode_account(owner_account)
-        owner_auth = await tinode_sso_login(
-            _tinode_account_identity(owner_account),
-            owner_account.tinode_username,
-            owner_uid,
-        )
-        owner_token = str(owner_auth.get("token") or "").strip()
+        owner_uid = prepared_uids[owner_participant.participant_id]
+        owner_token = member_tokens[owner_uid]
         if not owner_token:
             raise AuthError("Tinode could not authenticate the group owner.", 502)
 
@@ -5712,12 +5747,6 @@ async def conversation_enable_tinode_chatbot(request, conversation_id):
         if chatbot_uid in actual_member_uids:
             expected_member_uids.add(chatbot_uid)
         if actual_member_uids != expected_member_uids:
-            prepared_uids = await _ensure_tinode_accounts(accounts_by_id.values())
-            member_tokens = await _tinode_tokens_for_accounts(
-                accounts_by_id,
-                list(accounts_by_id),
-                prepared_uids,
-            )
             await tinode_reconcile_topic_members(
                 owner_token,
                 owner_uid,
@@ -5853,7 +5882,7 @@ async def conversation_participant_add(request, conversation_id):
                 return json({"error_code": "TINODE_ACCOUNT_UNPREPARED", "error_message": "The current Tinode account is not prepared."}, status=409)
             if current_user.get("auth_method") == "account_sso":
                 await _validated_account_identity(request, actor_account)
-            actor_tinode_uid = await _ensure_tinode_account(actor_account)
+            actor_tinode_uid, _actor_tinode_token = await _tinode_account_credentials(actor_account)
         if item.tinode_topic and activated_ids:
             owner_participants, owner_accounts = _active_conversation_accounts(item)
             _owner_account, tinode_operator_uid, tinode_token = await _group_owner_tinode_credentials(
@@ -5877,6 +5906,10 @@ async def conversation_participant_add(request, conversation_id):
                 activated_ids,
                 prepared_uids,
             )
+            # Authentication may recreate a missing Tinode account and replace
+            # its UID, so use the post-authentication mapping for every bridge
+            # operation and activity event.
+            added_tinode_uids = [prepared_uids[requested_id] for requested_id in activated_ids]
 
         for requested_id in requested_ids:
             participant = existing_by_id.get(requested_id)
@@ -6120,8 +6153,12 @@ async def conversation_participant_role(request, conversation_id, participant_id
     try:
         if current_user.get("auth_method") == "account_sso":
             await _validated_account_identity(request, actor_account)
-        actor_uid = await _ensure_tinode_account(actor_account)
-        target_uid = await _ensure_tinode_account(target_account)
+        if item.tinode_topic:
+            actor_uid, _actor_tinode_token = await _tinode_account_credentials(actor_account)
+            target_uid, _target_tinode_token = await _tinode_account_credentials(target_account)
+        else:
+            actor_uid = await _ensure_tinode_account(actor_account)
+            target_uid = await _ensure_tinode_account(target_account)
 
         if item.tinode_topic:
             participants, accounts_by_id = _active_conversation_accounts(item)
@@ -6136,6 +6173,8 @@ async def conversation_participant_role(request, conversation_id, participant_id
                 list(accounts_by_id),
                 prepared_uids,
             )
+            actor_uid = prepared_uids.get(user_id, actor_uid)
+            target_uid = prepared_uids.get(target_id, target_uid)
             expected_member_uids = _expected_tinode_member_uids(
                 item,
                 participants,
@@ -6325,9 +6364,9 @@ async def conversation_participant_approval(request, conversation_id, participan
             if current_user.get("auth_method") == "account_sso":
                 await _validated_account_identity(request, actor_account)
             if actor_account is not None and item.tinode_topic:
-                actor_tinode_uid = await _ensure_tinode_account(actor_account)
+                actor_tinode_uid, _actor_tinode_token = await _tinode_account_credentials(actor_account)
             if item.tinode_topic:
-                target_uid = await _ensure_tinode_account(target_account)
+                target_uid, target_token = await _tinode_account_credentials(target_account)
                 owner_participants, owner_accounts = _active_conversation_accounts(item)
                 _owner_account, tinode_operator_uid, tinode_token = await _group_owner_tinode_credentials(
                     item,
@@ -6336,14 +6375,6 @@ async def conversation_participant_approval(request, conversation_id, participan
                 )
                 if not tinode_token:
                     raise AuthError("Tinode could not authenticate the group owner.", 502)
-                target_auth = await tinode_sso_login(
-                    _tinode_account_identity(target_account),
-                    target_account.tinode_username,
-                    target_uid,
-                )
-                target_token = str(target_auth.get("token") or "").strip()
-                if not target_token:
-                    raise AuthError("Tinode could not authenticate the approved member.", 502)
                 existing_tinode_member_uids = await tinode_topic_member_uids(
                     tinode_token,
                     tinode_operator_uid,
@@ -6647,46 +6678,28 @@ async def conversation_participant_remove(request, conversation_id, participant_
             final_tinode_cleanup_status = "failed"
             try:
                 actor_account = _account_by_id(tenant_id, user_id)
-                if actor_account is None or not actor_account.tinode_uid:
+                if actor_account is None:
                     raise AuthError("The current Tinode account is not prepared.", 409)
 
-                dissolve_tinode_uid = str(actor_account.tinode_uid or "").strip()
+                dissolve_tinode_uid, actor_tinode_token = await _tinode_account_credentials(actor_account)
                 dissolve_tinode_token = str(request_payload.get("tinode_token") or "").strip()
-                try:
-                    actor_auth = await tinode_sso_login(
-                        _tinode_account_identity(actor_account),
-                        actor_account.tinode_username,
-                        actor_account.tinode_uid,
-                    )
-                    dissolve_tinode_token = str(actor_auth.get("token") or "").strip() or dissolve_tinode_token
-                except Exception:
-                    if not dissolve_tinode_token:
-                        raise
+                dissolve_tinode_token = actor_tinode_token or dissolve_tinode_token
 
                 topic_owner_account = None
                 if topic_owner_id and topic_owner_id != user_id:
                     topic_owner_account = _account_by_id(tenant_id, topic_owner_id)
-                    if topic_owner_account is not None and topic_owner_account.tinode_uid:
+                    if topic_owner_account is not None:
                         try:
-                            topic_owner_auth = await tinode_sso_login(
-                                _tinode_account_identity(topic_owner_account),
-                                topic_owner_account.tinode_username,
-                                topic_owner_account.tinode_uid,
-                            )
-                            topic_owner_token = str(topic_owner_auth.get("token") or "").strip()
+                            topic_owner_uid, topic_owner_token = await _tinode_account_credentials(topic_owner_account)
                             if topic_owner_token:
                                 dissolve_tinode_token = topic_owner_token
-                                dissolve_tinode_uid = str(topic_owner_account.tinode_uid)
+                                dissolve_tinode_uid = topic_owner_uid
                         except Exception as error:
                             logger.warning("Could not prepare the stored Tinode owner for final group cleanup: %s", error)
 
                 if not dissolve_tinode_token or not dissolve_tinode_uid:
                     raise AuthError("Tinode authentication is unavailable for final group cleanup.", 409)
-                expected_member_uids = _expected_tinode_member_uids(
-                    item,
-                    [target],
-                    {participant_id: actor_account},
-                )
+                expected_member_uids = {dissolve_tinode_uid}
                 if topic_owner_account is not None and topic_owner_account.tinode_uid:
                     expected_member_uids.add(str(topic_owner_account.tinode_uid))
                 actual_member_uids = await tinode_topic_member_uids(
@@ -6785,7 +6798,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
                     restore_token,
                     restore_uid,
                     item.tinode_topic,
-                    [target_account.tinode_uid],
+                    [target_uid],
                     mode="JRWPAS",
                 )
             except AuthError:
@@ -6800,8 +6813,8 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 return json({"error_code": "TINODE_ACCOUNT_UNPREPARED", "error_message": "The target Tinode account is not prepared."}, status=409)
             if current_user.get("auth_method") == "account_sso":
                 await _validated_account_identity(request, actor_account)
-            actor_uid = await _ensure_tinode_account(actor_account)
-            target_uid = await _ensure_tinode_account(target_account)
+            actor_uid, actor_tinode_token = await _tinode_account_credentials(actor_account)
+            target_uid, _target_tinode_token = await _tinode_account_credentials(target_account)
             if is_group:
                 owner_participants, owner_accounts = _active_conversation_accounts(item)
                 _owner_account, tinode_operator_uid, tinode_token = await _group_owner_tinode_credentials(
@@ -6810,7 +6823,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
                     owner_accounts,
                 )
             else:
-                tinode_token = str(request_payload.get("tinode_token") or "").strip()
+                tinode_token = str(request_payload.get("tinode_token") or "").strip() or actor_tinode_token
                 tinode_operator_uid = actor_uid
                 if not tinode_token:
                     return json({"error_code": "TINODE_TOKEN_REQUIRED", "error_message": "Tinode authentication is required."}, status=400)
@@ -6818,13 +6831,7 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 event_sender_account = _account_by_id(tenant_id, event_sender_participant.participant_id)
                 if event_sender_account is not None:
                     try:
-                        event_sender_uid = await _ensure_tinode_account(event_sender_account)
-                        event_sender_auth = await tinode_sso_login(
-                            _tinode_account_identity(event_sender_account),
-                            event_sender_account.tinode_username,
-                            event_sender_account.tinode_uid,
-                        )
-                        event_sender_tinode_token = str(event_sender_auth.get("token") or "").strip()
+                        event_sender_uid, event_sender_tinode_token = await _tinode_account_credentials(event_sender_account)
                     except Exception:
                         if replacement is not event_sender_participant:
                             logger.warning("Could not prepare a surviving Tinode member for the leave event.")
@@ -6868,20 +6875,24 @@ async def conversation_participant_remove(request, conversation_id, participant_
                 tinode_token,
                 tinode_operator_uid,
                 item.tinode_topic,
-                target_account.tinode_uid,
+                target_uid,
             )
             tinode_target_removed = True
             if is_group:
                 active_participants, active_accounts = _active_conversation_accounts(item)
-                expected_member_uids = _expected_tinode_member_uids(item, active_participants, active_accounts)
                 verification_token = replacement_tinode_token or event_sender_tinode_token or tinode_token
-                verification_uid = replacement_uid or event_sender_uid or actor_account.tinode_uid
-                if verification_token and verification_uid and expected_member_uids:
+                verification_uid = replacement_uid or event_sender_uid or actor_uid
+                if verification_token and verification_uid:
                     prepared_uids = await _ensure_tinode_accounts(active_accounts.values())
                     member_tokens = await _tinode_tokens_for_accounts(
                         active_accounts,
                         list(active_accounts),
                         prepared_uids,
+                    )
+                    expected_member_uids = _expected_tinode_member_uids(
+                        item,
+                        active_participants,
+                        active_accounts,
                     )
                     await tinode_reconcile_topic_members(
                         verification_token,
