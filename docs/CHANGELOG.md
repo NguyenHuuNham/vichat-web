@@ -6,6 +6,19 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-20-02 - Don dep artifact production khong con su dung
+
+- Thoi gian: 2026-09-20 (Asia/Saigon)
+- Loai: Van hanh | Bao tri | Production | Kiem tra | Tai lieu
+- Trang thai: Hoan tat; da don dep qua hai hop SSH, khong recreate container va khong doi du lieu ung dung.
+- Muc tieu: Giam dung luong dia tren `192.168.80.20` ma khong anh huong release dang chay, rollback gan nhat, database, Redis, Tinode hoac volume.
+- Pham vi: Xoa artifact da deploy xong trong `/opt/deploy/chat/incoming`, release cu/failed ngoai `current` va `previous`, rollback image tag cu, dangling image, va binary/archive Tinode khong duoc container mount trong `/home/ubuntu`.
+- Bao toan: Giu `/opt/deploy/chat/releases/tenant-header-fade376-20260920-r1`, `/opt/deploy/chat/releases/profile-viewers-634a7d1-20260919-r5`, backup chinh, migration backup, `/home/ubuntu/chat`, `/home/ubuntu/tinode-8092-a4d12e3` dang duoc `upgo-chatapi-8092` mount, database, Redis va tat ca Docker volume.
+- Ket qua: `/opt/deploy/chat` giam tu khoang `3.7G` xuong `313M`; disk tu `25G used / 54G available` xuong `19G used / 59G available`; chi giu rollback tag gan nhat `rollback-before-tenant-header-fade376` cho ChatUI va Chatmgt.
+- Kiem tra sau don dep: ChatUI/Chatmgt va service stateful healthy, restart `0`, symlink `current`/`previous` dung, health noi bo/public dat, endpoint profile views chua auth tra `401`, WSS tra `101 Switching Protocols`, volume khong doi.
+- Quyet dinh ky thuat: Khong chay `docker volume prune`, khong xoa database dump/migration backup, khong xoa thu muc Tinode dang mount; cac thu muc failed backup rong con lai do parent production khong cho phep xoa, khong con file du lieu.
+- Commit/PR: Commit docs follow-up duoc day len `origin/master`; khong can deploy lai ung dung.
+
 ## 2026-09-20-01 - Sua layout chip logo cong ty trong ho so
 
 - Thoi gian: 2026-09-20 (Asia/Saigon)
