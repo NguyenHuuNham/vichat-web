@@ -10,14 +10,17 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-21 (Asia/Saigon)
 - Loai: Cau hinh | Van hanh | Web | Mobile | Bao mat | Kiem thu | Tai lieu
-- Trang thai: Dang thuc hien; chua deploy production.
+- Trang thai: Hoan tat; production release `domain-migration-05ac3d6-20260921-r7` da activate va verify.
 - Muc tieu: Doi ChatUI sang `https://chat.gonplatform.com` va Chatmgt sang `https://chatmgt.gonplatform.com`, dong thoi deploy cung ban da doi Account sang `https://account.gonplatform.com`.
 - Pham vi: Fallback frontend/mobile, Tinode WSS va media relay, Chatmgt API/admin callback, cookie/CORS/password reset, S3 CORS, compose/env, Nginx/HAProxy host routing, test va tai lieu.
-- Quyet dinh ky thuat: Dung `SESSION_COOKIE_DOMAIN=chatmgt.gonplatform.com` cho cookie Chatmgt va `.gonplatform.com` cho cookie Account de ba domain moi cung parent domain. Account backend/edge phai phat cookie hop le cho `.gonplatform.com`; response hien tai van con `Domain=.upgo.vn`, can xu ly trong luong Account/HAProxy truoc khi coi SSO end-to-end hoan tat.
+- Quyet dinh ky thuat: Dung `SESSION_COOKIE_DOMAIN=chatmgt.gonplatform.com` cho cookie Chatmgt va `.gonplatform.com` cho cookie Account de ba domain moi cung parent domain. Public response da xac nhan Chatmgt phat cookie `Domain=chatmgt.gonplatform.com` va Account phat cookie `Domain=.gonplatform.com`; browser SSO end-to-end van can UAT voi tai khoan that.
 - Kiem thu local: Targeted frontend dat 31/31; backend Account/auth/media dat 106 pass, 34 skip; `npm run build:production` thanh cong voi canh bao chunk `App` khoang 566 kB; `git diff --check` dat.
-- Rui ro con lai: Chua cap nhat production env, reverse proxy, bucket CORS, Account cookie edge hoac public UAT; old deployment van dung domain cu cho den khi release moi duoc activate.
-- Viec tiep theo: Commit/push, backup release va DB, cap nhat env + Nginx/HAProxy, rebuild ChatUI/Chatmgt, health/CORS/WSS check va UAT login hai tai khoan.
-- Commit/PR: Chua tao.
+- Kiem thu production: Archive `vichat-domain-migration-05ac3d6.tar.gz` SHA-256 `e81a14e8f3dbe19eb4b369b85e18420f2cca8c59e338db1adceaedea0a12a9db`; release `/opt/deploy/chat/releases/domain-migration-05ac3d6-20260921-r7`; previous `/opt/deploy/chat/releases/tenant-header-fade376-20260920-r1`; backup `/opt/deploy/chat/backups/domain-migration-05ac3d6-20260921-r7`; migration sau deploy `20260921_15`; ChatUI/Chatmgt healthy, restart `0`, volumes khong doi.
+- Smoke test public: `https://chat.gonplatform.com/healthz` va `https://chatmgt.gonplatform.com/api/v1/auth/health` tra `200`; OPTIONS CORS origin moi dat; S3 preflight `PUT/GET/HEAD` cho `https://chat.gonplatform.com` tra `204`; WSS tra `101 Switching Protocols`; CSP/form-action va cookie domain dung domain moi; asset graph khong con `chat.upgo.vn`, `chatmgt.upgo.vn` hoac `account.upgo.vn`.
+- Van hanh: Candidate `r4` va `r6` gap loi verify sau migration/activate nen harness rollback an toan; `r7` sua assertion revision Alembic va hoan tat. Khong downgrade migration va khong thay doi volume/stateful service.
+- Rui ro con lai: Chua chay browser UAT login/chat/media voi hai tai khoan that. `https://chat.upgo.vn` van dang tra site legacy, chua co redirect 301 sang domain moi; can xu ly o edge neu muon retire hostname cu.
+- Viec tiep theo: UAT browser voi hai tai khoan, sau do quyet dinh redirect/retire hostname legacy.
+- Commit/PR: Source `05ac3d6` da push; changelog follow-up dang cho commit.
 
 ## 2026-09-21-01 - Chuyen Account sang gonplatform.com
 
