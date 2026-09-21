@@ -371,6 +371,23 @@ function normalizePersonalCloudFile(record) {
   };
 }
 
+function normalizePersonalCloudMessage(record) {
+  if (!record || typeof record !== 'object') return null;
+  const id = scalarText(record.id || record.messageId || record.message_id);
+  if (!id) return null;
+  const text = typeof record.text === 'string'
+    ? record.text
+    : typeof record.content === 'string' ? record.content : '';
+  const createdAt = Number(record.createdAt || record.created_at);
+  const updatedAt = Number(record.updatedAt || record.updated_at);
+  return {
+    id,
+    text,
+    createdAt: Number.isFinite(createdAt) ? createdAt : 0,
+    updatedAt: Number.isFinite(updatedAt) ? updatedAt : 0,
+  };
+}
+
 function normalizeProfileViewer(record) {
   if (!record || typeof record !== 'object') return null;
   const id = scalarText(record.id || record.viewerId || record.viewer_id);
@@ -823,6 +840,38 @@ export const chatManagementService = {
     files.hasMore = Boolean(payload?.has_more ?? payload?.hasMore ?? files.nextCursor);
     files.total = Number.isFinite(Number(payload?.total ?? payload?.count)) ? Number(payload.total ?? payload.count) : null;
     return files;
+  },
+
+  async listPersonalCloudMessages({ signal, cursor = '', limit = 100 } = {}) {
+    if (!apiBase || !remoteAuth) return Object.assign([], { nextCursor: null, hasMore: false, total: 0 });
+    const scope = captureDirectoryScope();
+    const params = new URLSearchParams({ limit: String(Math.min(100, Math.max(1, Number(limit) || 100))) });
+    if (cursor) params.set('cursor', String(cursor));
+    const payload = await apiRequest(`/api/v1/chat/cloud/messages?${params.toString()}`, { signal, cache: 'no-store' });
+    assertDirectoryScope(scope);
+    const messages = responseItems(payload).map(normalizePersonalCloudMessage).filter(Boolean);
+    messages.nextCursor = responseNextCursor(payload);
+    messages.hasMore = Boolean(payload?.has_more ?? payload?.hasMore ?? messages.nextCursor);
+    messages.total = Number.isFinite(Number(payload?.total ?? payload?.count)) ? Number(payload.total ?? payload.count) : null;
+    return messages;
+  },
+
+  async sendPersonalCloudMessage(text) {
+    if (!apiBase || !remoteAuth) throw new Error('Personal cloud storage is not configured.');
+    const value = String(text || '').trim();
+    if (!value) throw new Error('Vui lòng nhập tin nhắn.');
+    const payload = await apiRequest('/api/v1/chat/cloud/messages', {
+      method: 'POST',
+      body: JSON.stringify({ text: value }),
+    });
+    return normalizePersonalCloudMessage(payload);
+  },
+
+  async deletePersonalCloudMessage(messageId) {
+    if (!apiBase || !remoteAuth) throw new Error('Personal cloud storage is not configured.');
+    return apiRequest(`/api/v1/chat/cloud/messages/${encodeURIComponent(messageId)}`, {
+      method: 'DELETE',
+    });
   },
 
   async uploadPersonalCloudFile(file, { onProgress } = {}) {

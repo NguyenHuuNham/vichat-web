@@ -10,7 +10,7 @@ from application.controllers.api_chat_management import (
     _user_id,
 )
 from application.database import db
-from application.models.models import PersonalCloudFile
+from application.models.models import PersonalCloudFile, PersonalCloudMessage
 from application.server import app
 from application.services.auth_service import management_session_requested
 from application.services.chat_media_service import (
@@ -74,6 +74,22 @@ def _file_by_id(tenant_id, owner_id, file_id):
     return _file_query(tenant_id, owner_id).filter(PersonalCloudFile.id == parsed_id).first()
 
 
+def _message_query(tenant_id, owner_id):
+    return PersonalCloudMessage.query.filter(
+        PersonalCloudMessage.tenant_id == tenant_id,
+        PersonalCloudMessage.owner_id == owner_id,
+        PersonalCloudMessage.deleted.is_(False),
+    )
+
+
+def _message_by_id(tenant_id, owner_id, message_id):
+    try:
+        parsed_id = uuid.UUID(str(message_id))
+    except (TypeError, ValueError, AttributeError):
+        return None
+    return _message_query(tenant_id, owner_id).filter(PersonalCloudMessage.id == parsed_id).first()
+
+
 def _serialize_file(item):
     return {
         "id": str(item.id),
@@ -81,6 +97,15 @@ def _serialize_file(item):
         "mimeType": item.mime_type,
         "size": int(item.size or 0),
         "uploadId": item.upload_id,
+        "createdAt": int(item.created_at or 0),
+        "updatedAt": int(item.updated_at or 0),
+    }
+
+
+def _serialize_message(item):
+    return {
+        "id": str(item.id),
+        "text": item.text,
         "createdAt": int(item.created_at or 0),
         "updatedAt": int(item.updated_at or 0),
     }
@@ -237,6 +262,103 @@ async def list_personal_cloud_files(request):
         ),
         "count": int(total),
     })
+
+
+@app.route('/api/v1/chat/cloud/messages', methods=['GET'])
+async def list_personal_cloud_messages(request):
+    current_user, tenant_id, owner_id = _cloud_identity(request)
+    if current_user is None:
+        return _current_session_error(request)
+    try:
+        limit = bounded_int(
+            request.args.get("limit"),
+            name="limit",
+            default=100,
+            minimum=1,
+            maximum=100,
+        )
+        cursor = decode_cursor(request.args.get("cursor")) if request.args.get("cursor") else None
+    except PaginationError as error:
+        return _cloud_error(ChatMediaError("PARAM_ERROR", str(error)))
+    query = _message_query(tenant_id, owner_id)
+    total = query.count()
+    if cursor:
+        try:
+            cursor_updated = int(cursor.get("updated") or 0)
+            cursor_created = int(cursor.get("created") or 0)
+            cursor_id = cursor_uuid(cursor.get("id"))
+        except (PaginationError, TypeError, ValueError):
+            return _cloud_error(ChatMediaError("PARAM_ERROR", "Cursor is invalid."))
+        query = query.filter(
+            (PersonalCloudMessage.updated_at < cursor_updated)
+            | ((PersonalCloudMessage.updated_at == cursor_updated) & (PersonalCloudMessage.created_at < cursor_created))
+            | ((PersonalCloudMessage.updated_at == cursor_updated) & (PersonalCloudMessage.created_at == cursor_created) & (PersonalCloudMessage.id < cursor_id))
+        )
+    items = query.order_by(
+        PersonalCloudMessage.updated_at.desc(),
+        PersonalCloudMessage.created_at.desc(),
+        PersonalCloudMessage.id.desc(),
+    ).limit(limit + 1).all()
+    has_more = len(items) > limit
+    items = items[:limit]
+    next_cursor = None
+    if has_more and items:
+        last = items[-1]
+        next_cursor = encode_cursor({
+            "v": 1,
+            "updated": int(last.updated_at or 0),
+            "created": int(last.created_at or 0),
+            "id": str(last.id),
+        })
+    return json({
+        **page_payload(
+            [_serialize_message(item) for item in items],
+            next_cursor=next_cursor,
+            limit=limit,
+            total=total,
+        ),
+        "count": int(total),
+    })
+
+
+@app.route('/api/v1/chat/cloud/messages', methods=['POST'])
+async def create_personal_cloud_message(request):
+    current_user, tenant_id, owner_id = _cloud_identity(request)
+    if current_user is None:
+        return _current_session_error(request)
+    body = request.json if isinstance(request.json, dict) else {}
+    text = body.get("text")
+    if not isinstance(text, str) or not text.strip():
+        return _cloud_error(ChatMediaError("PARAM_ERROR", "text must not be empty."))
+    item = PersonalCloudMessage(
+        tenant_id=tenant_id,
+        owner_id=owner_id,
+        text=text.strip(),
+    )
+    try:
+        db.session.add(item)
+        db.session.commit()
+        return json(_serialize_message(item), status=201)
+    except Exception as error:
+        db.session.rollback()
+        return _unexpected_cloud_error("message creation", error)
+
+
+@app.route('/api/v1/chat/cloud/messages/<message_id>', methods=['DELETE'])
+async def delete_personal_cloud_message(request, message_id):
+    current_user, tenant_id, owner_id = _cloud_identity(request)
+    if current_user is None:
+        return _current_session_error(request)
+    item = _message_by_id(tenant_id, owner_id, message_id)
+    if item is None:
+        return json({"error_code": "NOT_FOUND", "error_message": "Personal cloud message not found."}, status=404)
+    try:
+        item.deleted = True
+        db.session.commit()
+        return json({"deleted": True, "id": str(item.id)})
+    except Exception as error:
+        db.session.rollback()
+        return _unexpected_cloud_error("message deletion", error)
 
 
 @app.route('/api/v1/chat/cloud/files/<file_id>/download', methods=['GET'])

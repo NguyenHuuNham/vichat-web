@@ -95,12 +95,14 @@ object removal succeeds.
 
 ### Personal cloud boundary
 
-`Cloud của tôi` is a private file workspace, not a Tinode conversation and not
-shared chat media. Chatmgt stores only owner-scoped metadata in
-`personal_cloud_file` and derives the owner from the authenticated session;
-the browser cannot submit another owner or tenant ID. List, download-signing,
-completion and delete operations all require the current `(tenant, owner)`
-scope.
+`Cloud của tôi` is a private workspace, not a Tinode conversation and not
+shared chat media. Chatmgt stores owner-scoped file metadata in
+`personal_cloud_file` and private text messages in `personal_cloud_message`;
+both derive the owner from the authenticated session. The browser cannot
+submit another owner or tenant ID. Message list/create/delete, file
+list/download-signing/completion/delete operations all require the current
+`(tenant, owner)` scope. Cloud text never enters Tinode, notifications,
+conversation history or the shared Chatmgt message search.
 
 Personal cloud objects use a separate S3 namespace under
 `<prefix>/_personal/<tenant-hash>/<owner-hash>/...`; pending uploads use the
@@ -109,8 +111,9 @@ separate signing salt and binds both tenant and owner hashes, so a normal chat
 media ticket cannot read or complete a private cloud upload. The frontend sends
 the file directly to the short-lived S3 PUT URL without Chatmgt cookies and
 then calls the owner-scoped completion endpoint. Private downloads return
-short-lived `private, no-store` GET signatures. Logout and tenant changes clear
-the in-memory cloud list before another account can load it.
+short-lived `private, no-store` GET signatures. Logout and tenant changes abort
+cloud requests and clear the in-memory file and message lists before another
+account can load them.
 
 Cloud uploads accept any non-empty file type and, with
 `PERSONAL_CLOUD_MAX_SIZE=0` (the production default), do not inherit the
@@ -126,6 +129,14 @@ client request and clears the prior page set. Delete marks the row for cleanup
 before attempting S3 removal, and the same sweeper retries
 `PENDING_UPLOAD`/`PENDING_DELETE`/`RETRY` rows without exposing pending-delete
 files in the UI.
+
+Private text messages use the same cursor contract and owner/tenant session
+boundary. They are stored as plain text in PostgreSQL, rendered only in the
+Cloud panel, and can be sent with Enter or a button; Shift+Enter keeps a
+newline. The UI may soft-delete the current owner's messages, and a deleted
+message is excluded from later pages. This is intentionally a separate private
+store so adding Cloud chat cannot change normal Tinode message delivery,
+reactions, receipts, notifications or search.
 
 ### ChatUI maintenance control
 

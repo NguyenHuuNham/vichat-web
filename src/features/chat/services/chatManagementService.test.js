@@ -1021,14 +1021,20 @@ test('directory chat navigates before remote provisioning can reject', () => {
 
 test('personal cloud stays on owner-scoped Chatmgt routes and uses credential-free direct upload', () => {
   assert.equal(typeof chatManagementService.listPersonalCloudFiles, 'function');
+  assert.equal(typeof chatManagementService.listPersonalCloudMessages, 'function');
+  assert.equal(typeof chatManagementService.sendPersonalCloudMessage, 'function');
+  assert.equal(typeof chatManagementService.deletePersonalCloudMessage, 'function');
   assert.equal(typeof chatManagementService.uploadPersonalCloudFile, 'function');
   assert.equal(typeof chatManagementService.getPersonalCloudDownloadUrl, 'function');
   assert.equal(typeof chatManagementService.deletePersonalCloudFile, 'function');
   assert.match(managementServiceSource, /\/api\/v1\/chat\/cloud\/uploads/);
+  assert.match(managementServiceSource, /\/api\/v1\/chat\/cloud\/messages/);
   assert.match(managementServiceSource, /credentials: 'omit'/);
   assert.match(managementServiceSource, /upload_token/);
   assert.match(appSource, /openWorkspacePanel\('cloud'\)/);
   assert.match(appSource, /<PersonalCloudPanel/);
+  assert.match(appSource, /personalCloudMessagesRequestRef/);
+  assert.match(appSource, /onContextMenu=\{event => openMessageMenu\(event, msg\)\}/);
   assert.match(stylesSource, /\.personal-cloud-shortcut/);
   assert.match(stylesSource, /\.personal-cloud-file/);
 });

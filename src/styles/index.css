@@ -4265,6 +4265,23 @@ input:checked + .slider:before {
 .personal-cloud-upload-button input { display: none; }
 .personal-cloud-notice { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; padding: 9px 10px; border: 1px solid rgba(244, 81, 30, .18); border-radius: 10px; color: var(--text-muted); background: rgba(244, 81, 30, .06); font-size: 11px; line-height: 1.45; }
 .personal-cloud-notice i { margin-top: 1px; color: var(--vichat-blue); }
+.personal-cloud-messages { margin-top: 20px; }
+.personal-cloud-message-list { display: flex; max-height: 360px; flex-direction: column; gap: 7px; overflow-y: auto; padding: 2px 2px 2px 0; }
+.personal-cloud-message { display: flex; align-items: flex-end; justify-content: flex-end; gap: 6px; }
+.personal-cloud-message-bubble { max-width: min(88%, 560px); padding: 9px 11px 6px; border: 1px solid rgba(244, 81, 30, .2); border-radius: 14px 14px 4px 14px; color: var(--text-main); background: linear-gradient(135deg, rgba(244, 81, 30, .12), rgba(43, 166, 111, .1)); }
+.personal-cloud-message-bubble p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; }
+.personal-cloud-message-bubble time { display: block; margin-top: 4px; color: var(--text-muted); font-size: 9px; text-align: right; }
+.personal-cloud-message-delete { display: grid; width: 25px; height: 25px; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 8px; color: var(--text-muted); background: transparent; cursor: pointer; opacity: .45; transition: var(--transition-fast); }
+.personal-cloud-message:hover .personal-cloud-message-delete,
+.personal-cloud-message-delete:focus-visible { opacity: 1; }
+.personal-cloud-message-delete:hover { border-color: rgba(224, 68, 45, .28); color: var(--vichat-red); background: var(--vichat-red-light); }
+.personal-cloud-message-empty { min-height: 112px; flex-direction: column; gap: 7px; border: 1px dashed var(--border-color); border-radius: 13px; }
+.personal-cloud-composer { display: flex; align-items: flex-end; gap: 7px; margin-top: 9px; padding: 7px; border: 1px solid var(--border-color); border-radius: 13px; background: var(--bg-white); }
+.personal-cloud-composer textarea { min-height: 38px; flex: 1; resize: vertical; padding: 7px 8px; border: 0; outline: 0; color: var(--text-main); background: transparent; font: inherit; font-size: 12px; line-height: 1.45; }
+.personal-cloud-composer textarea::placeholder { color: var(--text-muted); }
+.personal-cloud-send { display: grid; width: 35px; height: 35px; flex: 0 0 35px; place-items: center; border: 0; border-radius: 10px; color: #fff; background: var(--vichat-blue); cursor: pointer; transition: var(--transition-fast); }
+.personal-cloud-send:hover:not(:disabled) { background: var(--vichat-blue-dark); transform: translateY(-1px); }
+.personal-cloud-send:disabled { cursor: default; opacity: .5; }
 .personal-cloud-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 20px 0 9px; }
 .personal-cloud-section-heading > div { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .personal-cloud-section-heading strong { color: var(--text-main); font-size: 14px; }
@@ -4427,6 +4444,8 @@ input:checked + .slider:before {
     .personal-cloud-file-main { grid-template-columns: 35px minmax(0, 1fr); gap: 8px; }
     .personal-cloud-file-icon { width: 35px; height: 35px; border-radius: 9px; font-size: 15px; }
     .personal-cloud-file-actions button { width: 27px; height: 27px; }
+    .personal-cloud-message-bubble { max-width: 84%; }
+    .personal-cloud-message-list { max-height: 320px; }
     .conversation-list-tabs > button { padding-inline: 7px; font-size: 10.5px; }
     .conversation-list-filter-menu { max-height: min(390px, calc(100vh - 190px)); }
 }
@@ -7535,6 +7554,8 @@ html[data-theme="dark"] .personal-cloud-hero { border-color: rgba(244, 81, 30, .
 html[data-theme="dark"] .personal-cloud-hero-icon { background: var(--bg-app); }
 html[data-theme="dark"] .personal-cloud-file { background: var(--bg-white); }
 html[data-theme="dark"] .personal-cloud-file:hover { background: var(--bg-app); }
+html[data-theme="dark"] .personal-cloud-composer { background: var(--bg-white); }
+html[data-theme="dark"] .personal-cloud-message-bubble { border-color: rgba(244, 81, 30, .34); background: linear-gradient(135deg, rgba(244, 81, 30, .2), rgba(43, 166, 111, .16)); }
 html[data-theme="dark"] .editing-banner { border-color: #6a4030; background: #2b2524; }
 html[data-theme="dark"] .edited-message-label { color: #b6c4c5; }
 html[data-theme="dark"] .edit-history-current { border-color: #6a4030; background: #4a2e24; }

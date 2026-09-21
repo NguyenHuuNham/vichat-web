@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-21-05 - Them chat chu rieng tu cho Cloud va sua menu chuot phai
+
+- Thoi gian: 2026-09-21 (Asia/Saigon)
+- Loai: Tinh nang | Sua loi | Bao mat | Web | Backend | Database | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Cho phep Cloud cua toi luu tin nhan chu rieng tu theo owner/tenant dang dang nhap, dong thoi mo menu hanh dong tin nhan hien co khi bam chuot phai ma khong lam doi luong Tinode.
+- Pham vi: Chatmgt personal cloud API/model/migration, ChatUI Cloud composer/history, owner/tenant reset guard, message context menu; khong doi Tinode transport, file S3, thong bao hoac cac luong group/direct message.
+- File da thay doi: `chatservice-main/application/controllers/api_personal_cloud.py`, `chatservice-main/application/models/models.py`, `chatservice-main/migrations/016_personal_cloud_messages.sql`, `chatservice-main/alembic/versions/20260921_16_personal_cloud_messages.py`, `chatservice-main/tests/test_chat_media_service.py`, `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `src/features/chat/components/PersonalCloudPanel.jsx`, `src/app/App.jsx`, `src/styles/index.css`, `src/features/i18n/appLanguage.js`, `docs/chat-backend-architecture.md`, va file nay.
+- Noi dung: Them bang va API list/create/delete tin nhan Cloud voi owner lay tu session, UI composer Enter/Shift+Enter, pagination/abort khi logout doi tenant, soft delete va hien thi trong khu vuc rieng tu. Cuong che context menu o root cua tin nhan, image batch/poll va bo xu ly chuot phai rieng cua reaction chip de dung cung menu 3 cham.
+- Quyet dinh ky thuat: Tin nhan Cloud luu rieng trong PostgreSQL, khong dua vao Tinode/topic/search/notification; migration moi la `20260921_16` va khong sua bang Tinode/S3. Giữ menu 3 cham hien co, chi mo rong diem bat su kien va khong them nhat ky/thong bao cho Cloud.
+- Database/API/cau hinh: Can apply Alembic `20260921_16`; them `GET/POST /api/v1/chat/cloud/messages` va `DELETE /api/v1/chat/cloud/messages/<id>`; khong them secret/env.
+- Kiem thu: `npm run test:frontend -- --test-concurrency=1` dat `441/441`; `python -m unittest discover -s tests -p "test_*.py" -q` dat `321` pass, `106` skip; `python -m unittest chatservice-main/tests/test_chat_media_service.py -q` dat `14/14`; `python -m py_compile` cac file Python thay doi dat; `alembic -c alembic.ini heads` tra `20260921_16 (head)`; `npm run lint` exit `0` voi warning legacy/vendor; `npm run build:production` thanh cong voi canh bao chunk App vuot 500 KB; `git diff --check` dat.
+- Rui ro con lai: Chua UAT browser voi tai khoan that, chua kiem tra API tin nhan sau migration tren production; chunk App van vuot nguong canh bao co san.
+- Viec tiep theo: Review diff, commit/push, backup PostgreSQL, apply migration va chi recreate `chatmgt`/`chat`, sau do health/UAT owner isolation va chuot phai.
+- Commit/PR: Chua tao.
+
 ## 2026-09-21-04 - Deploy sua Chatmgt va Cloud rieng tu
 
 - Thoi gian: 2026-09-21 (Asia/Saigon)

@@ -91,16 +91,30 @@ class ChatMediaDeploymentContractTests(unittest.TestCase):
         source = PERSONAL_CLOUD_CONTROLLER_PATH.read_text(encoding="utf-8")
         self.assertIn("_user_id(current_user)", source)
         self.assertIn("PersonalCloudFile.owner_id == owner_id", source)
+        self.assertIn("PersonalCloudMessage.owner_id == owner_id", source)
         self.assertIn("resolve_personal_cloud_download", source)
         self.assertIn("remove_personal_cloud_media", source)
         for route_name in (
             "create_personal_cloud_media_upload",
             "complete_personal_cloud_media_upload",
             "list_personal_cloud_files",
+            "list_personal_cloud_messages",
+            "create_personal_cloud_message",
+            "delete_personal_cloud_message",
             "download_personal_cloud_file",
             "delete_personal_cloud_file",
         ):
             self.assertIn("_cloud_identity(request)", function_source(PERSONAL_CLOUD_CONTROLLER_PATH, route_name))
+
+    def test_personal_cloud_messages_have_a_separate_owner_scoped_table(self):
+        model_source = (PROJECT_ROOT / "application" / "models" / "models.py").read_text(encoding="utf-8")
+        migration = (PROJECT_ROOT / "migrations" / "016_personal_cloud_messages.sql").read_text(encoding="utf-8")
+        self.assertIn("class PersonalCloudMessage", model_source)
+        self.assertIn('__tablename__ = "personal_cloud_message"', model_source)
+        self.assertIn("tenant_id", model_source)
+        self.assertIn("owner_id", model_source)
+        self.assertIn("CREATE TABLE IF NOT EXISTS personal_cloud_message", migration)
+        self.assertIn("CREATE INDEX IF NOT EXISTS ix_personal_cloud_message_owner_created", migration)
 
     def test_production_uses_public_s3_without_replacing_legacy_tinode_storage(self):
         compose = (REPOSITORY_ROOT / "infrastructure" / "production" / "compose.yaml").read_text(encoding="utf-8")

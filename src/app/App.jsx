@@ -769,11 +769,6 @@ function MessageReactionPills({
           aria-label={`${actionLabel} ${emoji}`}
           data-reaction-emoji={emoji}
           onClick={() => onDetails?.(message, emoji)}
-          onContextMenu={event => {
-            event.preventDefault();
-            event.stopPropagation();
-            onDetails?.(message, emoji);
-          }}
         >
           <span className="message-reaction-emoji">{emoji}</span>
           <span className="message-reaction-count">{count}</span>
@@ -787,11 +782,6 @@ function MessageReactionPills({
           aria-label={actionLabel}
           data-reaction-overflow="true"
           onClick={() => onDetails?.(message, '')}
-          onContextMenu={event => {
-            event.preventDefault();
-            event.stopPropagation();
-            onDetails?.(message, '');
-          }}
         >
           3+
         </button>
@@ -2840,7 +2830,7 @@ function ImageBatchMessage({
   const captionMessage = messages.find(message => String(message?.text || '').trim());
 
   return (
-    <div className={`message-item image-batch-message ${isOutgoing ? 'outgoing' : 'incoming'} ${highlightedMessageKey === messageActionKey(activeChatId, firstMessage.id) ? 'message-pinned-highlight' : ''}`}>
+    <div className={`message-item image-batch-message ${isOutgoing ? 'outgoing' : 'incoming'} ${highlightedMessageKey === messageActionKey(activeChatId, firstMessage.id) ? 'message-pinned-highlight' : ''}`} onContextMenu={event => openMessageMenu(event, firstMessage)}>
       {!isOutgoing && (
         <button type="button" className="message-avatar message-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(firstMessage))} title={`${copy.t('Xem thông tin')} ${firstMessage.senderName || copy.t('thành viên')}`}>
           <SafeAvatar src={firstMessage.avatar || ''} name={firstMessage.senderName} />
@@ -3425,6 +3415,14 @@ function RequiredPasswordScreen({ copy, user, onSubmit, onLogout }) {
   );
 }
 
+function sortPersonalCloudMessages(values) {
+  return [...(Array.isArray(values) ? values : [])].sort((left, right) => (
+    Number(left?.createdAt || 0) - Number(right?.createdAt || 0)
+      || Number(left?.updatedAt || 0) - Number(right?.updatedAt || 0)
+      || String(left?.id || '').localeCompare(String(right?.id || ''))
+  ));
+}
+
 function App() {
   const [currentChatId, setCurrentChatId] = useState(CHATBOT_ACCOUNT.id);
   const [conversations, setConversations] = useState(createInitialConversations);
@@ -3549,6 +3547,13 @@ function App() {
   const [personalCloudLoadingMore, setPersonalCloudLoadingMore] = useState(false);
   const [personalCloudTotal, setPersonalCloudTotal] = useState(null);
   const [personalCloudUploading, setPersonalCloudUploading] = useState(false);
+  const [personalCloudMessages, setPersonalCloudMessages] = useState([]);
+  const [personalCloudMessagesLoading, setPersonalCloudMessagesLoading] = useState(false);
+  const [, setPersonalCloudMessagesNextCursor] = useState(null);
+  const [personalCloudMessagesHasMore, setPersonalCloudMessagesHasMore] = useState(false);
+  const [personalCloudMessagesLoadingMore, setPersonalCloudMessagesLoadingMore] = useState(false);
+  const [personalCloudMessagesTotal, setPersonalCloudMessagesTotal] = useState(null);
+  const [personalCloudMessagesSending, setPersonalCloudMessagesSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
   const [editingMessage, setEditingMessage] = useState(null);
   const [isSavingMessageEdit, setIsSavingMessageEdit] = useState(false);
@@ -3709,6 +3714,9 @@ function App() {
   const personalCloudControllerRef = useRef(null);
   const personalCloudNextCursorRef = useRef(null);
   const personalCloudLoadingMoreRef = useRef(false);
+  const personalCloudMessagesControllerRef = useRef(null);
+  const personalCloudMessagesNextCursorRef = useRef(null);
+  const personalCloudMessagesLoadingMoreRef = useRef(false);
   const profileViewersControllerRef = useRef(null);
   const profileViewersNextCursorRef = useRef(null);
   const profileViewersLoadingMoreRef = useRef(false);
@@ -3722,6 +3730,7 @@ function App() {
   const isLoggingOutRef = useRef(false);
   const accountSessionRef = useRef(0);
   const personalCloudRequestRef = useRef(0);
+  const personalCloudMessagesRequestRef = useRef(0);
   const chatbotRequestRef = useRef(null);
   const appConfirmResolverRef = useRef(null);
   const managementConversationSessionRef = useRef(0);
@@ -4890,6 +4899,9 @@ function App() {
     const controller = new AbortController();
     personalCloudControllerRef.current?.abort();
     personalCloudControllerRef.current = controller;
+    setPersonalCloudFiles([]);
+    personalCloudLoadingMoreRef.current = false;
+    setPersonalCloudLoadingMore(false);
     personalCloudNextCursorRef.current = null;
     setPersonalCloudNextCursor(null);
     setPersonalCloudHasMore(false);
@@ -4916,6 +4928,54 @@ function App() {
       cancelled = true;
       controller.abort();
       if (personalCloudControllerRef.current === controller) personalCloudControllerRef.current = null;
+    };
+  }, [isLoggedIn, managementViewerId, preferenceTenantId]);
+
+  useEffect(() => {
+    const requestId = ++personalCloudMessagesRequestRef.current;
+    if (!isLoggedIn || !chatManagementService.remote || !managementViewerId) {
+      setPersonalCloudMessages([]);
+      setPersonalCloudMessagesLoading(false);
+      personalCloudMessagesNextCursorRef.current = null;
+      setPersonalCloudMessagesNextCursor(null);
+      setPersonalCloudMessagesHasMore(false);
+      setPersonalCloudMessagesTotal(null);
+      setPersonalCloudMessagesSending(false);
+      return undefined;
+    }
+    let cancelled = false;
+    const controller = new AbortController();
+    personalCloudMessagesControllerRef.current?.abort();
+    personalCloudMessagesControllerRef.current = controller;
+    setPersonalCloudMessages([]);
+    personalCloudMessagesLoadingMoreRef.current = false;
+    setPersonalCloudMessagesLoadingMore(false);
+    personalCloudMessagesNextCursorRef.current = null;
+    setPersonalCloudMessagesNextCursor(null);
+    setPersonalCloudMessagesHasMore(false);
+    setPersonalCloudMessagesTotal(null);
+    setPersonalCloudMessagesLoading(true);
+    chatManagementService.listPersonalCloudMessages({ signal: controller.signal })
+      .then(messages => {
+        if (cancelled || requestId !== personalCloudMessagesRequestRef.current || accountSessionRef.current <= 0) return;
+        setPersonalCloudMessages(sortPersonalCloudMessages(messages));
+        personalCloudMessagesNextCursorRef.current = messages?.nextCursor || null;
+        setPersonalCloudMessagesNextCursor(personalCloudMessagesNextCursorRef.current);
+        setPersonalCloudMessagesHasMore(Boolean(messages?.hasMore ?? personalCloudMessagesNextCursorRef.current));
+        setPersonalCloudMessagesTotal(Number.isFinite(Number(messages?.total)) ? Number(messages.total) : null);
+      })
+      .catch(error => {
+        if (cancelled || requestId !== personalCloudMessagesRequestRef.current || error?.name === 'AbortError') return;
+        setPersonalCloudMessages([]);
+        setChatError(error?.message || 'Không thể tải tin nhắn Cloud của tôi.');
+      })
+      .finally(() => {
+        if (!cancelled && requestId === personalCloudMessagesRequestRef.current) setPersonalCloudMessagesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (personalCloudMessagesControllerRef.current === controller) personalCloudMessagesControllerRef.current = null;
     };
   }, [isLoggedIn, managementViewerId, preferenceTenantId]);
 
@@ -4948,6 +5008,79 @@ function App() {
     } finally {
       personalCloudLoadingMoreRef.current = false;
       if (requestId === personalCloudRequestRef.current) setPersonalCloudLoadingMore(false);
+    }
+  };
+
+  const loadMorePersonalCloudMessages = async () => {
+    if (!personalCloudMessagesNextCursorRef.current || personalCloudMessagesLoadingMoreRef.current || !chatManagementService.remote) return;
+    const requestId = personalCloudMessagesRequestRef.current;
+    const requestSession = accountSessionRef.current;
+    const controller = new AbortController();
+    personalCloudMessagesLoadingMoreRef.current = true;
+    setPersonalCloudMessagesLoadingMore(true);
+    try {
+      const page = await chatManagementService.listPersonalCloudMessages({
+        cursor: personalCloudMessagesNextCursorRef.current,
+        signal: controller.signal,
+      });
+      if (requestId !== personalCloudMessagesRequestRef.current || requestSession !== accountSessionRef.current) return;
+      setPersonalCloudMessages(previous => sortPersonalCloudMessages([...previous, ...page]));
+      personalCloudMessagesNextCursorRef.current = page?.nextCursor || null;
+      setPersonalCloudMessagesNextCursor(personalCloudMessagesNextCursorRef.current);
+      setPersonalCloudMessagesHasMore(Boolean(page?.hasMore ?? personalCloudMessagesNextCursorRef.current));
+      if (Number.isFinite(Number(page?.total))) setPersonalCloudMessagesTotal(Number(page.total));
+    } catch (error) {
+      if (error?.name !== 'AbortError' && requestId === personalCloudMessagesRequestRef.current) {
+        setChatError(error?.message || 'Không thể tải thêm tin nhắn Cloud của tôi.');
+      }
+    } finally {
+      personalCloudMessagesLoadingMoreRef.current = false;
+      if (requestId === personalCloudMessagesRequestRef.current) setPersonalCloudMessagesLoadingMore(false);
+    }
+  };
+
+  const handlePersonalCloudSendMessage = async text => {
+    const value = String(text || '').trim();
+    if (!value || personalCloudMessagesSending || !chatManagementService.remote) return false;
+    const requestSession = accountSessionRef.current;
+    setPersonalCloudMessagesSending(true);
+    setChatError('');
+    setChatSuccess('');
+    try {
+      const message = await chatManagementService.sendPersonalCloudMessage(value);
+      if (!message || requestSession !== accountSessionRef.current) return false;
+      setPersonalCloudMessages(previous => sortPersonalCloudMessages([...previous, message]));
+      setPersonalCloudMessagesTotal(previous => Number.isFinite(Number(previous)) ? Number(previous) + 1 : previous);
+      setChatSuccess('Đã lưu tin nhắn riêng tư vào Cloud của tôi.');
+      return true;
+    } catch (error) {
+      if (requestSession === accountSessionRef.current) setChatError(error?.message || 'Không thể gửi tin nhắn Cloud của tôi.');
+      return false;
+    } finally {
+      if (requestSession === accountSessionRef.current) setPersonalCloudMessagesSending(false);
+    }
+  };
+
+  const handlePersonalCloudDeleteMessage = async message => {
+    if (!message?.id || personalCloudMessagesSending) return;
+    const confirmed = await requestAppConfirmation({
+      title: appCopy.t('Xóa tin nhắn khỏi Cloud của tôi?'),
+      message: appCopy.t('Bạn có chắc muốn xóa tin nhắn này?'),
+      confirmLabel: appCopy.t('Xóa tin nhắn'),
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    const requestSession = accountSessionRef.current;
+    setChatError('');
+    setChatSuccess('');
+    try {
+      await chatManagementService.deletePersonalCloudMessage(message.id);
+      if (requestSession !== accountSessionRef.current) return;
+      setPersonalCloudMessages(previous => previous.filter(item => item.id !== message.id));
+      setPersonalCloudMessagesTotal(previous => Number.isFinite(Number(previous)) ? Math.max(0, Number(previous) - 1) : previous);
+      setChatSuccess('Đã xóa tin nhắn khỏi Cloud của tôi.');
+    } catch (error) {
+      if (requestSession === accountSessionRef.current) setChatError(error?.message || 'Không thể xóa tin nhắn Cloud của tôi.');
     }
   };
 
@@ -7185,6 +7318,17 @@ function App() {
     setPersonalCloudFiles([]);
     setPersonalCloudLoading(false);
     setPersonalCloudUploading(false);
+    personalCloudMessagesRequestRef.current += 1;
+    personalCloudMessagesControllerRef.current?.abort();
+    personalCloudMessagesNextCursorRef.current = null;
+    personalCloudMessagesLoadingMoreRef.current = false;
+    setPersonalCloudMessages([]);
+    setPersonalCloudMessagesLoading(false);
+    setPersonalCloudMessagesNextCursor(null);
+    setPersonalCloudMessagesHasMore(false);
+    setPersonalCloudMessagesLoadingMore(false);
+    setPersonalCloudMessagesTotal(null);
+    setPersonalCloudMessagesSending(false);
     setMediaBrowserOpen(false);
     directoryAccountsRef.current = [];
     setDirectoryAccounts([]);
@@ -7689,6 +7833,17 @@ function App() {
     setPersonalCloudFiles([]);
     setPersonalCloudLoading(false);
     setPersonalCloudUploading(false);
+    personalCloudMessagesRequestRef.current += 1;
+    personalCloudMessagesControllerRef.current?.abort();
+    personalCloudMessagesNextCursorRef.current = null;
+    personalCloudMessagesLoadingMoreRef.current = false;
+    setPersonalCloudMessages([]);
+    setPersonalCloudMessagesLoading(false);
+    setPersonalCloudMessagesNextCursor(null);
+    setPersonalCloudMessagesHasMore(false);
+    setPersonalCloudMessagesLoadingMore(false);
+    setPersonalCloudMessagesTotal(null);
+    setPersonalCloudMessagesSending(false);
     tinodeSessionRequestRef.current = null;
     deletedConversationIdsRef.current.clear();
     groupAvatarSyncRef.current.clear();
@@ -12183,6 +12338,7 @@ function App() {
   const openMessageMenu = (event, message) => {
     if (!message || message.recalled || ['system', 'friend_event'].includes(message.type)) return;
     event.preventDefault();
+    event.stopPropagation();
     const gutter = 12;
     const gap = 6;
     const width = Math.min(245, Math.max(0, window.innerWidth - (gutter * 2)));
@@ -14837,6 +14993,7 @@ function App() {
                       else messageElementsRef.current.delete(pollMessageKey);
                     }}
                     className={`message-item ${isPollOutgoing ? 'outgoing' : 'incoming'} poll-message-item ${pollMessageState.pinned ? 'message-is-pinned' : ''} ${highlightedMessageKey === pollMessageKey ? 'message-pinned-highlight' : ''}`}
+                    onContextMenu={event => openMessageMenu(event, msg)}
                   >
                     {!isPollOutgoing && (
                       <button type="button" className="message-avatar message-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))} title={`${appCopy.t('Xem thông tin')} ${msg.senderName || appCopy.t('thành viên')}`}>
@@ -14857,7 +15014,6 @@ function App() {
                       )}
                       <div
                         className={`message-interactive ${messageActionHoverKey === pollMessageKey ? 'message-actions-visible' : ''}`}
-                        onContextMenu={event => openMessageMenu(event, msg)}
                         onMouseEnter={() => showMessageActions(pollMessageKey)}
                         onMouseLeave={() => hideMessageActionsLater(pollMessageKey)}
                       >
@@ -14951,6 +15107,7 @@ function App() {
                     else messageElementsRef.current.delete(messageKey);
                   }}
                   className={`message-item ${isOutgoing ? 'outgoing' : 'incoming'} ${activeChat.isChatbot ? 'chatbot-message-item' : ''} ${messageState.pinned ? 'message-is-pinned' : ''} ${highlightedMessageKey === messageKey ? 'message-pinned-highlight' : ''}`}
+                  onContextMenu={event => openMessageMenu(event, msg)}
                 >
                 {!isOutgoing && (
                   <button type="button" className="message-avatar message-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))} title={`${appCopy.t('Xem thông tin')} ${msg.senderName || appCopy.t('thành viên')}`}>
@@ -14974,7 +15131,6 @@ function App() {
 
                   <div
                     className={`message-interactive ${messageActionHoverKey === messageKey ? 'message-actions-visible' : ''}`}
-                    onContextMenu={event => openMessageMenu(event, msg)}
                     onMouseEnter={() => showMessageActions(messageKey)}
                     onMouseLeave={() => hideMessageActionsLater(messageKey)}
                   >
@@ -16839,6 +16995,12 @@ function App() {
                 <PersonalCloudPanel
                   copy={appCopy}
                   available={Boolean(chatManagementService.remote && managementViewerId)}
+                  messages={personalCloudMessages}
+                  messagesTotal={personalCloudMessagesTotal}
+                  messagesHasMore={personalCloudMessagesHasMore}
+                  messagesLoading={personalCloudMessagesLoading}
+                  messagesLoadingMore={personalCloudMessagesLoadingMore}
+                  messagesSending={personalCloudMessagesSending}
                   files={personalCloudFiles}
                   total={personalCloudTotal}
                   hasMore={personalCloudHasMore}
@@ -16850,6 +17012,9 @@ function App() {
                   onDownload={file => openPersonalCloudUrl(file, true)}
                   onDelete={handlePersonalCloudDelete}
                   onLoadMore={loadMorePersonalCloud}
+                  onLoadMoreMessages={loadMorePersonalCloudMessages}
+                  onSendMessage={handlePersonalCloudSendMessage}
+                  onDeleteMessage={handlePersonalCloudDeleteMessage}
                 />
               </Suspense>
             )}

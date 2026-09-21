@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 function formatSize(size) {
   const value = Number(size) || 0;
@@ -19,9 +19,25 @@ function fileIcon(file) {
   return 'fa-file-lines';
 }
 
+function formatMessageTime(timestamp) {
+  const value = Number(timestamp);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  try {
+    return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(new Date(value * 1000));
+  } catch {
+    return '';
+  }
+}
+
 export default function PersonalCloudPanel({
   copy,
   available,
+  messages = [],
+  messagesTotal = null,
+  messagesHasMore = false,
+  messagesLoading = false,
+  messagesLoadingMore = false,
+  messagesSending = false,
   files = [],
   total = null,
   hasMore = false,
@@ -33,7 +49,25 @@ export default function PersonalCloudPanel({
   onDownload,
   onDelete,
   onLoadMore,
+  onLoadMoreMessages,
+  onSendMessage,
+  onDeleteMessage,
 }) {
+  const [draft, setDraft] = useState('');
+
+  const submitMessage = async () => {
+    const value = draft.trim();
+    if (!value || messagesSending || !available) return;
+    const sent = await onSendMessage?.(value);
+    if (sent !== false) setDraft('');
+  };
+
+  const handleComposerKeyDown = event => {
+    if (event.key !== 'Enter' || event.shiftKey) return;
+    event.preventDefault();
+    submitMessage();
+  };
+
   return (
     <div className="personal-cloud-panel">
       <div className="personal-cloud-hero">
@@ -51,6 +85,63 @@ export default function PersonalCloudPanel({
       </div>
 
       {!available && <div className="personal-cloud-notice"><i className="fa-solid fa-server" aria-hidden="true"></i><span>{copy.t('Cloud cá nhân cần kết nối Chatmgt và S3.')}</span></div>}
+
+      <section className="personal-cloud-messages" aria-label={copy.t('Tin nhắn riêng tư')}>
+        <div className="personal-cloud-section-heading">
+          <div><strong>{copy.t('Tin nhắn riêng tư')}</strong><small>{messagesTotal ?? messages.length} {copy.t('tin nhắn')}</small></div>
+          <i className="fa-solid fa-message" title={copy.t('Chỉ mình tôi')} aria-label={copy.t('Chỉ mình tôi')}></i>
+        </div>
+        {messagesLoading ? (
+          <div className="workspace-empty personal-cloud-message-empty"><i className="fa-solid fa-spinner fa-spin"></i><span>{copy.t('Đang tải...')}</span></div>
+        ) : messages.length === 0 ? (
+          <div className="workspace-empty personal-cloud-message-empty"><i className="fa-regular fa-message"></i><span>{copy.t('Chưa có tin nhắn riêng tư nào.')}</span></div>
+        ) : (
+          <div className="personal-cloud-message-list">
+            {messages.map(message => (
+              <article className="personal-cloud-message" key={message.id}>
+                <div className="personal-cloud-message-bubble">
+                  <p>{message.text}</p>
+                  <time>{formatMessageTime(message.createdAt)}</time>
+                </div>
+                <button
+                  type="button"
+                  className="personal-cloud-message-delete"
+                  title={copy.t('Xóa tin nhắn')}
+                  aria-label={copy.t('Xóa tin nhắn')}
+                  onClick={() => onDeleteMessage?.(message)}
+                >
+                  <i className="fa-regular fa-trash-can" aria-hidden="true"></i>
+                </button>
+              </article>
+            ))}
+          </div>
+        )}
+        {messagesHasMore && <button type="button" className="personal-cloud-load-more" onClick={onLoadMoreMessages} disabled={messagesLoadingMore}>
+          <i className={`fa-solid ${messagesLoadingMore ? 'fa-spinner fa-spin' : 'fa-chevron-up'}`} aria-hidden="true"></i>
+          {messagesLoadingMore ? copy.t('Đang tải thêm...') : copy.t('Tải tin nhắn cũ hơn')}
+        </button>}
+        <div className="personal-cloud-composer">
+          <textarea
+            value={draft}
+            onChange={event => setDraft(event.target.value)}
+            onKeyDown={handleComposerKeyDown}
+            placeholder={copy.t('Nhập tin nhắn riêng tư...')}
+            aria-label={copy.t('Nhập tin nhắn riêng tư...')}
+            rows={2}
+            disabled={!available || messagesSending}
+          />
+          <button
+            type="button"
+            className="personal-cloud-send"
+            onClick={submitMessage}
+            disabled={!available || messagesSending || !draft.trim()}
+            title={copy.t('Gửi tin nhắn')}
+            aria-label={copy.t('Gửi tin nhắn')}
+          >
+            <i className={`fa-solid ${messagesSending ? 'fa-spinner fa-spin' : 'fa-paper-plane'}`} aria-hidden="true"></i>
+          </button>
+        </div>
+      </section>
 
       <div className="personal-cloud-section-heading">
           <div><strong>{copy.t('File của tôi')}</strong><small>{total ?? files.length} {copy.t('file')}</small></div>

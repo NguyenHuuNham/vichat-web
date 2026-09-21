@@ -495,6 +495,16 @@ class PersonalCloudFile(CommonModel):
     )
 
 
+class PersonalCloudMessage(CommonModel):
+    __tablename__ = "personal_cloud_message"
+    tenant_id = db.Column(String(50), nullable=False, index=True)
+    owner_id = db.Column(String(100), nullable=False, index=True)
+    text = db.Column(Text(), nullable=False)
+    __table_args__ = (
+        Index("ix_personal_cloud_message_owner_created", "tenant_id", "owner_id", "created_at"),
+    )
+
+
 class ChatMediaRegistry(CommonModel):
     """Server-side binding between an S3 object and its Chat conversation."""
 
