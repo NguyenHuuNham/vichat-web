@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-21-03 - Sua Chatmgt va Cloud rieng tu
+
+- Thoi gian: 2026-09-21 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Bao mat | Web | Backend | UX | Kiem thu | Tai lieu
+- Trang thai: Hoan tat trong source; chua commit, chua deploy production.
+- Muc tieu: Khac phuc loi Chatmgt khi mo danh sach nhan vien, cho Cloud cua toi nhan moi loai file voi nhieu file moi lan tai len, va dua thong bao loi/thanh cong/thong bao den ve cung popup moi.
+- Pham vi: Chatmgt management directory, personal Cloud owner/tenant scope, S3 upload cap ung dung, ChatUI incoming/error/success popup, ManagementApp toast va regression test; khong doi Tinode, message/group/Workspace/mobile/database.
+- Nguyen nhan: ManagementApp gui `results_per_page=1000` trong khi endpoint `/api/v1/chat/users` chi chap nhan toi da 100, nen backend tra `PARAM_ERROR`.
+- Noi dung: Doi management client sang `limit=100` va tu dong theo `next_cursor`; Cloud giu owner + tenant tu session, tach namespace voi chat media chung, cho nhieu file va moi MIME type; `PERSONAL_CLOUD_MAX_SIZE=0` mac dinh bo gioi han moi file o tang ung dung, con S3/provider quota van la gioi han vat ly; thong bao thao tac va tin nhan den dung popup moi, con ConfirmDialog van giu cho thao tac can xac nhan.
+- Quyet dinh ky thuat: Khong nang gioi han directory backend; client phan trang theo cursor. Cloud khong duoc doc qua management session, generic chat media route hoac owner/tenant khac; upload truc tiep S3 va completion van kiem tra ticket, size va MIME type.
+- File da thay doi: `chatservice-main/application/config/config.py`, `chatservice-main/application/services/chat_media_service.py`, `chatservice-main/tests/test_chat_media_service.py`, `docs/chat-backend-architecture.md`, `infrastructure/production/.env.example`, `infrastructure/production/compose.yaml`, `src/app/App.jsx`, `src/features/chat/components/PersonalCloudPanel.jsx`, `src/features/i18n/appLanguage.js`, `src/features/i18n/appLanguage.test.js`, `src/features/management/ManagementApp.jsx`, `src/features/management/management.css`, `src/features/management/services/managementAdminService.js`, `src/features/management/services/managementAdminService.test.js`, `src/styles/index.css`, `dist/index.html`.
+- Database/API/cau hinh: Khong co migration; them `PERSONAL_CLOUD_MAX_SIZE` vao config/compose/env example; khong them endpoint, secret hay thay doi schema.
+- Kiem thu: `npm run test:frontend -- --test-concurrency=1` dat `441/441`; `node --test --test-concurrency=1 src/features/i18n/appLanguage.test.js` dat `25/25`; `node --test --test-concurrency=1 src/features/management/services/managementAdminService.test.js` dat `5/5`; `python -m unittest chatservice-main/tests/test_chat_media_service.py -q` dat `13/13`; `python -m py_compile chatservice-main/application/config/config.py chatservice-main/application/services/chat_media_service.py chatservice-main/tests/test_chat_media_service.py` dat; `npm run lint` exit `0` voi warning legacy/vendor; `npm run build:production` thanh cong voi canh bao chunk `App` vuot nguong 500 kB; `git diff --check` dat.
+- Rui ro con lai: Chua deploy/UAT browser voi tai khoan that; S3/provider van co quota va gioi han kich thuoc vat ly; popup incoming hien thi thong bao moi nhat neu nhieu su kien den dong thoi.
+- Viec tiep theo: Review diff, commit/push va deploy rieng sau khi co phe duyet; sau deploy UAT Chatmgt directory, Cloud tai len nhieu loai file, tai/xoa, owner khac/tenant khac va popup tren desktop/mobile.
+- Commit/PR: Chua tao.
+
 ## 2026-09-21-02 - Chuyen ChatUI va Chatmgt sang gonplatform.com
 
 - Thoi gian: 2026-09-21 (Asia/Saigon)

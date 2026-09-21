@@ -6355,25 +6355,30 @@ input:checked + .slider:before {
     gap: 10px;
     width: min(520px, calc(100vw - 32px));
     box-sizing: border-box;
-    padding: 13px 15px;
-    border-radius: 16px;
-    box-shadow: var(--shadow-md);
+    padding: 12px 14px;
+    border: 1px solid rgba(244, 81, 30, .18);
+    border-radius: 18px;
+    box-shadow: 0 16px 36px rgba(20, 70, 66, .18), 0 3px 10px rgba(20, 70, 66, .08);
     font-size: 13px;
     color: var(--text-main);
-    background: var(--bg-white);
-    border: 1px solid var(--border-color);
+    background: linear-gradient(135deg, var(--bg-white), rgba(255, 249, 243, .96));
     animation: chat-toast-in .22s ease both;
 }
 
 .chat-toast.error {
     color: #8f2d24;
-    background: var(--vichat-red-light);
+    background: linear-gradient(135deg, #fff8f6, var(--vichat-red-light));
     border-color: #f3b7b0;
 }
 
 .chat-toast.info { color: var(--vichat-blue-dark); }
-.chat-toast > i { flex: 0 0 auto; }
-.chat-toast span { flex: 1; min-width: 0; overflow-wrap: anywhere; line-height: 1.45; }
+.chat-toast.success { color: #146b4d; border-color: #b9dfcc; background: linear-gradient(135deg, #f8fffb, #e9f8ef); }
+.chat-toast > i { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border-radius: 11px; color: var(--vichat-blue); background: rgba(244, 81, 30, .1); }
+.chat-toast.error > i { color: var(--vichat-red); background: rgba(224, 68, 45, .1); }
+.chat-toast.success > i { color: #16845d; background: rgba(22, 132, 93, .12); }
+.chat-toast-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; overflow-wrap: anywhere; line-height: 1.45; }
+.chat-toast-copy strong { color: currentColor; font-size: 11px; font-weight: 850; letter-spacing: .02em; }
+.chat-toast-copy span { color: currentColor; font-size: 12.5px; }
 .chat-toast button {
     border: 0;
     background: transparent;
@@ -6381,6 +6386,32 @@ input:checked + .slider:before {
     cursor: pointer;
     padding: 2px 4px;
 }
+
+.chat-incoming-popup {
+    position: fixed;
+    top: 92px;
+    right: 20px;
+    z-index: 299;
+    display: flex;
+    width: min(390px, calc(100vw - 32px));
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid rgba(43, 166, 111, .3);
+    border-radius: 18px;
+    color: var(--text-main);
+    background: linear-gradient(135deg, #f8fffc, #f1fbf6 58%, #fff9f2);
+    box-shadow: 0 18px 42px rgba(20, 70, 66, .2);
+    animation: chat-toast-in .22s ease both;
+}
+.chat-incoming-popup-icon { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border-radius: 11px; color: #16845d; background: rgba(22, 132, 93, .12); }
+.chat-incoming-popup-main { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
+.chat-incoming-popup-main:hover strong { color: var(--vichat-blue); }
+.chat-incoming-popup-kicker { color: #16845d; font-size: 9px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
+.chat-incoming-popup-main strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.chat-incoming-popup-main > span:last-child { overflow: hidden; color: var(--text-muted); font-size: 11.5px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.chat-incoming-popup-close { padding: 2px 3px; border: 0; color: var(--text-muted); background: transparent; cursor: pointer; }
+.chat-incoming-popup-close:hover { color: var(--vichat-red); }
 @keyframes chat-toast-in {
     from { opacity: 0; transform: translateY(-8px) scale(.98); }
     to { opacity: 1; transform: translateY(0) scale(1); }
@@ -7010,6 +7041,7 @@ input:checked + .slider:before {
 
 @media (max-width: 576px) {
     .chat-toast { top: 8px; right: 8px; width: calc(100vw - 16px); }
+    .chat-incoming-popup { top: 82px; right: 8px; width: calc(100vw - 16px); }
     .group-modal { padding: 18px; border-radius: 16px; }
     .group-management-danger-zone { align-items: stretch; flex-direction: column; }
     .group-dissolve-button { width: 100%; }

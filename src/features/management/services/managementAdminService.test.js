@@ -43,6 +43,9 @@ test('keeps the management user surface read-only except session revocation', as
   }
 
   assert.match(requests[0].url, /^\/api\/v1\/chat\/users\?/);
+  const firstUsersUrl = new URL(requests[0].url, 'https://chatmgt.gonplatform.com');
+  assert.equal(firstUsersUrl.searchParams.get('limit'), '100');
+  assert.equal(firstUsersUrl.searchParams.has('results_per_page'), false);
   assert.equal(requests[1].url, '/api/v1/chat/users/employee-1/revoke-session');
   assert.equal(requests[1].options.method, 'POST');
   assert.equal(requests.every(request => request.options.headers['X-Vichat-Session-Scope'] === 'management'), true);
@@ -51,6 +54,33 @@ test('keeps the management user surface read-only except session revocation', as
   assert.equal(typeof managementAdminService.updateUser, 'undefined');
   assert.equal(typeof managementAdminService.setUserActive, 'undefined');
   assert.equal(typeof managementAdminService.resetPassword, 'undefined');
+});
+
+test('follows the bounded management directory cursor', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options = {}) => {
+    requests.push({ url, options });
+    const page = requests.length === 1
+      ? { objects: [{ id: 'employee-1', name: 'Employee One' }], next_cursor: 'cursor-2' }
+      : { objects: [{ id: 'employee-2', name: 'Employee Two' }] };
+    return { ok: true, status: 200, json: async () => page };
+  };
+
+  try {
+    const users = await managementAdminService.listUsers();
+    assert.deepEqual(users.map(user => user.id), ['employee-1', 'employee-2']);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(requests.length, 2);
+  const firstUrl = new URL(requests[0].url, 'https://chatmgt.gonplatform.com');
+  const secondUrl = new URL(requests[1].url, 'https://chatmgt.gonplatform.com');
+  assert.equal(firstUrl.searchParams.get('limit'), '100');
+  assert.equal(firstUrl.searchParams.has('cursor'), false);
+  assert.equal(secondUrl.searchParams.get('limit'), '100');
+  assert.equal(secondUrl.searchParams.get('cursor'), 'cursor-2');
 });
 
 test('normalizes Account projections as read-only management users', () => {

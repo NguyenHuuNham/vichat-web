@@ -202,6 +202,17 @@ test('translates attachment, upload and connection status messages', () => {
   );
 });
 
+test('translates the new private Cloud and popup messages', () => {
+  assert.equal(
+    translateUiText('Chỉ bạn có thể xem và quản lý file tại đây. Nhận mọi loại file, không có hạn mức ứng dụng.', 'en'),
+    'Only you can view and manage files here. Any file type is accepted with no application-level limit.',
+  );
+  assert.equal(translateUiText('Thông báo mới', 'en'), 'New notification');
+  assert.equal(translateUiText('Không thể hoàn tất thao tác', 'en'), 'Unable to complete the action');
+  assert.equal(translateUiText('Đã lưu 2 file riêng tư vào Cloud của tôi.', 'en'), 'Saved 2 private files to My cloud.');
+  assert.equal(translateUiText('Đã xóa file khỏi Cloud của tôi.', 'en'), 'Removed the file from My cloud.');
+});
+
 test('translates sticker picker labels and previews for the English UI', () => {
   assert.equal(translateUiText('Sticker và biểu cảm', 'en'), 'Stickers and emoji');
   assert.equal(translateUiText('Tích cực', 'en'), 'Positive');

@@ -393,6 +393,31 @@ class ChatMediaServiceTests(unittest.TestCase):
                 prepared["upload_token"],
             )
 
+    def test_personal_cloud_does_not_inherit_the_chat_attachment_cap(self):
+        large_size = self.app.config["CHAT_MEDIA_MAX_SIZE"] + 1
+        prepared = self.prepare_cloud(size=large_size, content_type="application/octet-stream")
+        self.assertIsNone(prepared["max_size"])
+        pending_object_name = _personal_cloud_pending_object_name(
+            self.app,
+            "tenant-a",
+            "user-a",
+            prepared["upload_id"],
+        )
+        self.client.objects[pending_object_name] = SimpleNamespace(
+            size=large_size,
+            content_type="application/octet-stream",
+            etag="large-private-etag",
+        )
+        completed = complete_personal_cloud_upload(
+            self.app,
+            "tenant-a",
+            "user-a",
+            prepared["upload_id"],
+            large_size,
+            prepared["upload_token"],
+        )
+        self.assertEqual(completed["size"], large_size)
+
     def test_generic_chat_media_resolver_cannot_read_a_personal_cloud_object(self):
         prepared = self.prepare_cloud(size=4)
         object_name = _personal_cloud_object_name(

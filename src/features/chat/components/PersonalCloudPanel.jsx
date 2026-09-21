@@ -28,7 +28,6 @@ export default function PersonalCloudPanel({
   loadingMore = false,
   loading,
   uploading,
-  notice,
   onUpload,
   onOpen,
   onDownload,
@@ -42,17 +41,16 @@ export default function PersonalCloudPanel({
         <div>
           <span className="personal-cloud-eyebrow">{copy.t('Lưu trữ riêng tư')}</span>
           <h3>{copy.t('Cloud của tôi')}</h3>
-          <p>{copy.t('Chỉ bạn có thể xem và quản lý những file được lưu tại đây.')}</p>
+          <p>{copy.t('Chỉ bạn có thể xem và quản lý file tại đây. Nhận mọi loại file, không có hạn mức ứng dụng.')}</p>
         </div>
         <label className={`personal-cloud-upload-button ${!available || uploading ? 'disabled' : ''}`}>
           <i className={`fa-solid ${uploading ? 'fa-spinner fa-spin' : 'fa-cloud-arrow-up'}`} aria-hidden="true"></i>
           <span>{uploading ? copy.t('Đang tải lên...') : copy.t('Tải file lên')}</span>
-          <input type="file" onChange={event => { const file = event.target.files?.[0]; if (file) onUpload(file); event.target.value = ''; }} disabled={!available || uploading} />
+          <input type="file" multiple onChange={event => { const files = [...(event.target.files || [])]; if (files.length) onUpload(files); event.target.value = ''; }} disabled={!available || uploading} />
         </label>
       </div>
 
-      {notice && <div className="personal-cloud-notice" role="status"><i className="fa-solid fa-circle-info" aria-hidden="true"></i><span>{copy.t(notice)}</span></div>}
-      {!available && !notice && <div className="personal-cloud-notice"><i className="fa-solid fa-server" aria-hidden="true"></i><span>{copy.t('Cloud cá nhân cần kết nối Chatmgt và S3.')}</span></div>}
+      {!available && <div className="personal-cloud-notice"><i className="fa-solid fa-server" aria-hidden="true"></i><span>{copy.t('Cloud cá nhân cần kết nối Chatmgt và S3.')}</span></div>}
 
       <div className="personal-cloud-section-heading">
           <div><strong>{copy.t('File của tôi')}</strong><small>{total ?? files.length} {copy.t('file')}</small></div>

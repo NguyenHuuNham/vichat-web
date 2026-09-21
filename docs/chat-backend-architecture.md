@@ -112,6 +112,12 @@ then calls the owner-scoped completion endpoint. Private downloads return
 short-lived `private, no-store` GET signatures. Logout and tenant changes clear
 the in-memory cloud list before another account can load it.
 
+Cloud uploads accept any non-empty file type and, with
+`PERSONAL_CLOUD_MAX_SIZE=0` (the production default), do not inherit the
+separate 500 MB chat-attachment cap. The S3 service, bucket policy and any
+provider-level quota remain the final physical limits; an optional positive
+`PERSONAL_CLOUD_MAX_SIZE` can restore an application-level per-file cap.
+
 Cloud listing is cursor-paginated at the SQL query (`limit` is bounded at 100)
 and returns both the legacy `objects` field and `next_cursor`/`nextCursor`,
 `has_more`/`hasMore`, `limit` and `total`. The owner and tenant are derived from

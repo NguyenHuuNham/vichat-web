@@ -1319,17 +1319,23 @@
   align-items: center;
   gap: 10px;
   padding: 13px 16px;
-  border: 1px solid;
-  border-radius: 13px;
-  background: #fff;
-  box-shadow: 0 18px 44px rgba(16, 47, 45, .16);
-  font-size: 13px;
-  font-weight: 700;
+  border: 1px solid #d8e5df;
+  border-radius: 17px;
+  background: linear-gradient(135deg, #fff, #fffaf5);
+  box-shadow: 0 18px 44px rgba(16, 47, 45, .18), 0 4px 12px rgba(16, 47, 45, .08);
   animation: management-toast-in .25s ease both;
 }
 
-.management-toast.success { border-color: #b7ddca; color: var(--mgmt-green); }
-.management-toast.error { border-color: #edc0b7; color: var(--mgmt-red); }
+.management-toast.success { border-color: #b7ddca; color: var(--mgmt-green); background: linear-gradient(135deg, #fff, #f2fbf5); }
+.management-toast.error { border-color: #edc0b7; color: var(--mgmt-red); background: linear-gradient(135deg, #fff, #fff6f3); }
+.management-toast-icon { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border-radius: 11px; color: currentColor; background: rgba(22, 132, 93, .11); }
+.management-toast.error .management-toast-icon { background: rgba(201, 76, 60, .1); }
+.management-toast-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+.management-toast-copy small { color: currentColor; font-size: 9px; font-weight: 850; letter-spacing: .12em; }
+.management-toast-copy strong { color: #24423f; font-size: 12px; line-height: 1.45; }
+.management-toast.error .management-toast-copy strong { color: #7d3028; }
+.management-toast-close { padding: 3px; border: 0; color: currentColor; background: transparent; cursor: pointer; }
+.management-toast-close:hover { opacity: .72; }
 
 @keyframes management-toast-in {
   from { opacity: 0; transform: translateX(12px); }

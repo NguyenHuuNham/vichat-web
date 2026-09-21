@@ -49,6 +49,10 @@ function responseItems(payload) {
   return [];
 }
 
+function responseNextCursor(payload) {
+  return String(payload?.next_cursor || payload?.nextCursor || '').trim();
+}
+
 export function normalizeManagementUser(account) {
   if (!account) return null;
   const authSource = account.authSource || account.auth_source || 'local';
@@ -144,10 +148,27 @@ export const managementAdminService = {
   },
 
   async listUsers({ query = '' } = {}) {
-    const params = new URLSearchParams({ include_inactive: 'true', results_per_page: '1000' });
-    if (query.trim()) params.set('q', query.trim());
-    const payload = await apiRequest(`/api/v1/chat/users?${params}`);
-    return responseItems(payload).map(normalizeManagementUser).filter(Boolean);
+    const users = [];
+    const seenCursors = new Set();
+    let cursor = '';
+    let hasMore = true;
+
+    // Chatmgt bounds each directory page at 100; follow its cursor so the
+    // management view still shows the complete tenant directory.
+    while (hasMore) {
+      const params = new URLSearchParams({ include_inactive: 'true', limit: '100' });
+      if (query.trim()) params.set('q', query.trim());
+      if (cursor) params.set('cursor', cursor);
+      const payload = await apiRequest(`/api/v1/chat/users?${params}`);
+      users.push(...responseItems(payload).map(normalizeManagementUser).filter(Boolean));
+      const nextCursor = responseNextCursor(payload);
+      hasMore = Boolean(nextCursor) && !seenCursors.has(nextCursor);
+      if (!hasMore) break;
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
+    }
+
+    return users;
   },
 
   async revokeSessions(userId) {

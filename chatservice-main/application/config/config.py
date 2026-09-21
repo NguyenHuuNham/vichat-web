@@ -148,6 +148,9 @@ class Config(object):
     CHAT_MEDIA_PUBLIC_BASE_URL = os.getenv("CHAT_MEDIA_PUBLIC_BASE_URL", "")
     CHAT_MEDIA_SIGNING_SECRET = os.getenv("CHAT_MEDIA_SIGNING_SECRET", "")
     CHAT_MEDIA_MAX_SIZE = int(os.getenv("CHAT_MEDIA_MAX_SIZE", 524288000))
+    # A value of zero leaves personal Cloud free of an application-level
+    # per-file cap; storage-provider quotas still remain authoritative.
+    PERSONAL_CLOUD_MAX_SIZE = int(os.getenv("PERSONAL_CLOUD_MAX_SIZE", 0))
     CHAT_MEDIA_UPLOAD_URL_TTL = int(os.getenv("CHAT_MEDIA_UPLOAD_URL_TTL", 300))
     CHAT_MEDIA_COMPLETION_TTL = int(os.getenv("CHAT_MEDIA_COMPLETION_TTL", 21600))
     CHAT_MEDIA_DOWNLOAD_URL_TTL = int(os.getenv("CHAT_MEDIA_DOWNLOAD_URL_TTL", 300))

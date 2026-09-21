@@ -3448,6 +3448,8 @@ function App() {
   const [chatMode, setChatMode] = useState('demo');
   const [connectionStatus, setConnectionStatus] = useState(isTinodeConfigured ? 'ready' : 'demo');
   const [chatError, setChatError] = useState('');
+  const [chatSuccess, setChatSuccess] = useState('');
+  const [incomingPopup, setIncomingPopup] = useState(null);
   const [groupSpamClock, setGroupSpamClock] = useState(() => Date.now());
   const [managementConversationSession, setManagementConversationSession] = useState(0);
 
@@ -3507,7 +3509,6 @@ function App() {
   const [directoryHasMore, setDirectoryHasMore] = useState(false);
   const [directoryLoadingMore, setDirectoryLoadingMore] = useState(false);
   const [respondingFriendRequestId, setRespondingFriendRequestId] = useState('');
-  const [friendNotice, setFriendNotice] = useState('');
   const [messageSearchQuery, setMessageSearchQuery] = useState('');
   const [messageSearchSender, setMessageSearchSender] = useState('all');
   const [messageSearchType, setMessageSearchType] = useState('all');
@@ -3548,7 +3549,6 @@ function App() {
   const [personalCloudLoadingMore, setPersonalCloudLoadingMore] = useState(false);
   const [personalCloudTotal, setPersonalCloudTotal] = useState(null);
   const [personalCloudUploading, setPersonalCloudUploading] = useState(false);
-  const [personalCloudNotice, setPersonalCloudNotice] = useState('');
   const [replyingTo, setReplyingTo] = useState(null);
   const [editingMessage, setEditingMessage] = useState(null);
   const [isSavingMessageEdit, setIsSavingMessageEdit] = useState(false);
@@ -3582,7 +3582,6 @@ function App() {
   const [notificationClock, setNotificationClock] = useState(() => Date.now());
   const [displayClock, setDisplayClock] = useState(() => Date.now());
   const [settings, setSettings] = useState(() => ({ ...DEFAULT_NOTIFICATION_SETTINGS }));
-  const [notificationSettingsNotice, setNotificationSettingsNotice] = useState('');
   const [keyboardShortcutSettings, setKeyboardShortcutSettings] = useState(() => normalizeKeyboardShortcutSettings(DEFAULT_KEYBOARD_SHORTCUT_SETTINGS));
   const [keyboardShortcutNotice, setKeyboardShortcutNotice] = useState('');
   const [capturingShortcutAction, setCapturingShortcutAction] = useState('');
@@ -3670,6 +3669,8 @@ function App() {
   const directoryAccountsRef = useRef(directoryAccounts);
   const keyboardShortcutActionHandlersRef = useRef({});
   const chatErrorTimerRef = useRef(null);
+  const chatSuccessTimerRef = useRef(null);
+  const incomingPopupTimerRef = useRef(null);
   const avatarOverridesRef = useRef(new Map());
   const groupAvatarSyncRef = useRef(new Map());
   const groupAvatarRefreshRef = useRef(new Map());
@@ -3749,6 +3750,34 @@ function App() {
       chatErrorTimerRef.current = null;
     };
   }, [chatError]);
+
+  useEffect(() => {
+    if (chatSuccessTimerRef.current) window.clearTimeout(chatSuccessTimerRef.current);
+    chatSuccessTimerRef.current = null;
+    if (!chatSuccess) return undefined;
+    chatSuccessTimerRef.current = window.setTimeout(() => {
+      chatSuccessTimerRef.current = null;
+      setChatSuccess('');
+    }, 4200);
+    return () => {
+      if (chatSuccessTimerRef.current) window.clearTimeout(chatSuccessTimerRef.current);
+      chatSuccessTimerRef.current = null;
+    };
+  }, [chatSuccess]);
+
+  useEffect(() => {
+    if (incomingPopupTimerRef.current) window.clearTimeout(incomingPopupTimerRef.current);
+    incomingPopupTimerRef.current = null;
+    if (!incomingPopup) return undefined;
+    incomingPopupTimerRef.current = window.setTimeout(() => {
+      incomingPopupTimerRef.current = null;
+      setIncomingPopup(null);
+    }, 7000);
+    return () => {
+      if (incomingPopupTimerRef.current) window.clearTimeout(incomingPopupTimerRef.current);
+      incomingPopupTimerRef.current = null;
+    };
+  }, [incomingPopup]);
 
   const requestAppConfirmation = useCallback(options => {
     if (!options) return Promise.resolve(false);
@@ -4855,7 +4884,6 @@ function App() {
       setPersonalCloudHasMore(false);
       setPersonalCloudTotal(null);
       setPersonalCloudUploading(false);
-      setPersonalCloudNotice('');
       return undefined;
     }
     let cancelled = false;
@@ -4867,7 +4895,6 @@ function App() {
     setPersonalCloudHasMore(false);
     setPersonalCloudTotal(null);
     setPersonalCloudLoading(true);
-    setPersonalCloudNotice('');
     chatManagementService.listPersonalCloudFiles({ signal: controller.signal })
       .then(files => {
         if (cancelled || requestId !== personalCloudRequestRef.current || accountSessionRef.current <= 0) return;
@@ -4880,7 +4907,7 @@ function App() {
       .catch(error => {
         if (cancelled || requestId !== personalCloudRequestRef.current || error?.name === 'AbortError') return;
         setPersonalCloudFiles([]);
-        setPersonalCloudNotice(error?.message || 'Không thể tải Cloud của tôi.');
+        setChatError(error?.message || 'Không thể tải Cloud của tôi.');
       })
       .finally(() => {
         if (!cancelled && requestId === personalCloudRequestRef.current) setPersonalCloudLoading(false);
@@ -4916,7 +4943,7 @@ function App() {
       if (Number.isFinite(Number(page?.total))) setPersonalCloudTotal(Number(page.total));
     } catch (error) {
       if (error?.name !== 'AbortError' && requestId === personalCloudRequestRef.current) {
-        setPersonalCloudNotice(error?.message || 'Không thể tải thêm file Cloud của tôi.');
+        setChatError(error?.message || 'Không thể tải thêm file Cloud của tôi.');
       }
     } finally {
       personalCloudLoadingMoreRef.current = false;
@@ -4924,19 +4951,40 @@ function App() {
     }
   };
 
-  const handlePersonalCloudUpload = async file => {
-    if (!file || personalCloudUploading || !chatManagementService.remote) return;
+  const handlePersonalCloudUpload = async selectedFiles => {
+    const files = Array.isArray(selectedFiles)
+      ? selectedFiles.filter(Boolean)
+      : Array.from(selectedFiles || []).filter(Boolean);
+    if (!files.length || personalCloudUploading || !chatManagementService.remote) return;
     const requestSession = accountSessionRef.current;
     setPersonalCloudUploading(true);
-    setPersonalCloudNotice('');
+    setChatError('');
+    setChatSuccess('');
+    let uploadedCount = 0;
+    let firstError = null;
     try {
-      const uploaded = await chatManagementService.uploadPersonalCloudFile(file);
-      if (requestSession !== accountSessionRef.current || !uploaded) return;
-      setPersonalCloudFiles(previous => [uploaded, ...previous.filter(item => item.id !== uploaded.id)]);
-      setPersonalCloudTotal(previous => Number.isFinite(Number(previous)) ? Number(previous) + 1 : previous);
-    } catch (error) {
-      if (requestSession === accountSessionRef.current) {
-        setPersonalCloudNotice(error?.message || 'Không thể tải file lên Cloud của tôi.');
+      for (const file of files) {
+        if (requestSession !== accountSessionRef.current) return;
+        try {
+          const uploaded = await chatManagementService.uploadPersonalCloudFile(file);
+          if (!uploaded || requestSession !== accountSessionRef.current) return;
+          uploadedCount += 1;
+          setPersonalCloudFiles(previous => [uploaded, ...previous.filter(item => item.id !== uploaded.id)]);
+          setPersonalCloudTotal(previous => Number.isFinite(Number(previous)) ? Number(previous) + 1 : previous);
+        } catch (error) {
+          firstError ||= error;
+        }
+      }
+      if (requestSession !== accountSessionRef.current) return;
+      if (firstError) {
+        const prefix = uploadedCount
+          ? `Đã lưu ${uploadedCount}/${files.length} file. `
+          : '';
+        setChatError(`${prefix}${firstError.message || 'Không thể tải file lên Cloud của tôi.'}`);
+      } else if (uploadedCount) {
+        setChatSuccess(uploadedCount === 1
+          ? 'Đã lưu file riêng tư vào Cloud của tôi.'
+          : `Đã lưu ${uploadedCount} file riêng tư vào Cloud của tôi.`);
       }
     } finally {
       if (requestSession === accountSessionRef.current) setPersonalCloudUploading(false);
@@ -4958,7 +5006,7 @@ function App() {
     } catch (error) {
       popup?.close?.();
       if (requestSession === accountSessionRef.current) {
-        setPersonalCloudNotice(error?.message || 'Không thể mở file Cloud của tôi.');
+        setChatError(error?.message || 'Không thể mở file Cloud của tôi.');
       }
     }
   };
@@ -4973,14 +5021,16 @@ function App() {
     });
     if (!confirmed) return;
     const requestSession = accountSessionRef.current;
-    setPersonalCloudNotice('');
+    setChatError('');
+    setChatSuccess('');
     try {
       await chatManagementService.deletePersonalCloudFile(file.id);
       if (requestSession !== accountSessionRef.current) return;
       setPersonalCloudFiles(previous => previous.filter(item => item.id !== file.id));
       setPersonalCloudTotal(previous => Number.isFinite(Number(previous)) ? Math.max(0, Number(previous) - 1) : previous);
+      setChatSuccess('Đã xóa file khỏi Cloud của tôi.');
     } catch (error) {
-      if (requestSession === accountSessionRef.current) setPersonalCloudNotice(error?.message || 'Không thể xóa file Cloud của tôi.');
+      if (requestSession === accountSessionRef.current) setChatError(error?.message || 'Không thể xóa file Cloud của tôi.');
     }
   };
 
@@ -5140,7 +5190,6 @@ function App() {
   useEffect(() => {
     if (!notificationSettingsViewerId) {
       setSettings({ ...DEFAULT_NOTIFICATION_SETTINGS });
-      setNotificationSettingsNotice('');
       return;
     }
     setSettings(readNotificationSettings(
@@ -5149,7 +5198,6 @@ function App() {
       notificationSettingsViewerAliases,
       preferenceTenantId,
     ));
-    setNotificationSettingsNotice('');
   }, [notificationSettingsViewerAliases, notificationSettingsViewerId, preferenceTenantId]);
 
   const updateKeyboardShortcutSettings = useCallback(nextValue => {
@@ -5358,7 +5406,7 @@ function App() {
       .catch(() => {
         if (active) {
           setCustomNotificationSound(null);
-          setNotificationSettingsNotice('Không thể đọc âm báo đã tải lên trên thiết bị này.');
+          setChatError('Không thể đọc âm báo đã tải lên trên thiết bị này.');
         }
       })
       .finally(() => {
@@ -5394,13 +5442,14 @@ function App() {
     if (!file) return;
     const validationError = validateCustomNotificationSoundFile(file);
     if (validationError) {
-      setNotificationSettingsNotice(validationError);
+      setChatError(validationError);
       return;
     }
     if (!notificationSettingsViewerId) return;
 
     setIsSavingCustomNotificationSound(true);
-    setNotificationSettingsNotice('');
+    setChatError('');
+    setChatSuccess('');
     try {
       const savedSound = await writeCustomNotificationSound(
         notificationSettingsViewerId,
@@ -5411,9 +5460,9 @@ function App() {
       );
       setCustomNotificationSound(savedSound);
       updateNotificationSettings({ sound: CUSTOM_NOTIFICATION_SOUND_ID, sounds: true });
-      setNotificationSettingsNotice(`Đã lưu âm báo "${savedSound.name}" trên thiết bị này.`);
+      setChatSuccess(`Đã lưu âm báo "${savedSound.name}" trên thiết bị này.`);
     } catch (error) {
-      setNotificationSettingsNotice(error?.message || 'Không thể lưu file âm thanh trên thiết bị này.');
+      setChatError(error?.message || 'Không thể lưu file âm thanh trên thiết bị này.');
     } finally {
       setIsSavingCustomNotificationSound(false);
     }
@@ -5422,7 +5471,8 @@ function App() {
   const handleRemoveCustomNotificationSound = useCallback(async () => {
     if (!notificationSettingsViewerId || isSavingCustomNotificationSound) return;
     setIsSavingCustomNotificationSound(true);
-    setNotificationSettingsNotice('');
+    setChatError('');
+    setChatSuccess('');
     try {
       await deleteCustomNotificationSound(
         notificationSettingsViewerId,
@@ -5432,9 +5482,9 @@ function App() {
       );
       setCustomNotificationSound(null);
       updateNotificationSettings({ sound: DEFAULT_NOTIFICATION_SETTINGS.sound });
-      setNotificationSettingsNotice('Đã xóa âm báo tùy chỉnh khỏi thiết bị này.');
+      setChatSuccess('Đã xóa âm báo tùy chỉnh khỏi thiết bị này.');
     } catch (error) {
-      setNotificationSettingsNotice(error?.message || 'Không thể xóa file âm thanh.');
+      setChatError(error?.message || 'Không thể xóa file âm thanh.');
     } finally {
       setIsSavingCustomNotificationSound(false);
     }
@@ -5480,25 +5530,25 @@ function App() {
   const handleDesktopNotificationToggle = useCallback(async enabled => {
     if (!enabled) {
       updateNotificationSettings({ desktopNotifications: false });
-      setNotificationSettingsNotice('Thông báo desktop đã tắt trên tài khoản này.');
+      setChatSuccess('Thông báo desktop đã tắt trên tài khoản này.');
       return;
     }
     if (typeof window === 'undefined' || !('Notification' in window)) {
       updateNotificationSettings({ desktopNotifications: false });
-      setNotificationSettingsNotice('Trình duyệt hiện tại không hỗ trợ thông báo desktop.');
+      setChatError('Trình duyệt hiện tại không hỗ trợ thông báo desktop.');
       return;
     }
     let permission = window.Notification.permission;
     if (permission === 'default') permission = await window.Notification.requestPermission();
     if (permission === 'granted') {
       updateNotificationSettings({ desktopNotifications: true });
-      setNotificationSettingsNotice('Thông báo desktop đã được bật.');
+      setChatSuccess('Thông báo desktop đã được bật.');
     } else if (permission === 'denied') {
       updateNotificationSettings({ desktopNotifications: false });
-      setNotificationSettingsNotice('Trình duyệt đang chặn thông báo. Hãy cho phép thông báo trong cài đặt site.');
+      setChatError('Trình duyệt đang chặn thông báo. Hãy cho phép thông báo trong cài đặt site.');
     } else {
       updateNotificationSettings({ desktopNotifications: false });
-      setNotificationSettingsNotice('Chưa cấp quyền thông báo desktop.');
+      setChatError('Chưa cấp quyền thông báo desktop.');
     }
   }, [updateNotificationSettings]);
 
@@ -6345,10 +6395,19 @@ function App() {
     const notificationRoom = conversationsRef.current[stateId] || conversation;
     if (isConversationMuted(notificationRoom?.notificationMutedUntil)) return;
 
+    const senderName = message.pollActivityActorName || message.senderName || notificationRoom?.name || 'Tin nhắn mới';
+    const body = notificationMessageBody(message, appCopy.t);
+    setIncomingPopup({
+      id: `${stateId}:${messageNotificationSequence(message)}:${Date.now()}`,
+      stateId,
+      roomName: notificationRoom?.name || appCopy.t('ViChat'),
+      senderName,
+      body,
+    });
+
     if (settings.sounds) playNotificationSound(settings.sound);
     if (settings.desktopNotifications && desktopNotificationPermission === 'granted') {
       try {
-        const senderName = message.pollActivityActorName || message.senderName || notificationRoom?.name || 'Tin nhắn mới';
         const desktopNotification = new window.Notification(notificationRoom?.name || 'ViChat', {
           body: `${senderName}: ${notificationMessageBody(message, appCopy.t)}`,
           icon: '/chat-logo.svg',
@@ -7126,7 +7185,6 @@ function App() {
     setPersonalCloudFiles([]);
     setPersonalCloudLoading(false);
     setPersonalCloudUploading(false);
-    setPersonalCloudNotice('');
     setMediaBrowserOpen(false);
     directoryAccountsRef.current = [];
     setDirectoryAccounts([]);
@@ -7161,6 +7219,8 @@ function App() {
       ? 'external'
       : user.connection === 'tinode' ? 'ready' : user.connection === 'management' ? 'managed' : 'demo');
     setChatError('');
+    setChatSuccess('');
+    setIncomingPopup(null);
     setSessionRestoreState('ready');
     setIsLoggedIn(!mustChangePassword);
     if (mustChangePassword) return;
@@ -7593,7 +7653,8 @@ function App() {
     setChatMode('demo');
     setConnectionStatus(isTinodeConfigured ? 'ready' : 'demo');
     setChatError('');
-    setFriendNotice('');
+    setChatSuccess('');
+    setIncomingPopup(null);
     closeWorkspacePanel({ replace: true });
     setEnterpriseTaskSeed(null);
     setNotificationMuteDialog(null);
@@ -7628,7 +7689,6 @@ function App() {
     setPersonalCloudFiles([]);
     setPersonalCloudLoading(false);
     setPersonalCloudUploading(false);
-    setPersonalCloudNotice('');
     tinodeSessionRequestRef.current = null;
     deletedConversationIdsRef.current.clear();
     groupAvatarSyncRef.current.clear();
@@ -8401,7 +8461,7 @@ function App() {
         },
         response,
       );
-      setFriendNotice(accepted
+      setChatSuccess(accepted
         ? `Bạn và ${record.event.requesterName || 'người gửi'} đã trở thành bạn bè.`
         : `Đã từ chối lời mời của ${record.event.requesterName || 'người gửi'}.`);
     } catch (error) {
@@ -14090,8 +14150,42 @@ function App() {
       {(chatError || showTinodeConnectionNotice) && (
         <div className={`chat-toast ${chatError ? 'error' : 'info'}`} role={chatError ? 'alert' : 'status'} aria-live="polite">
           <i className={`fa-solid ${chatError ? 'fa-triangle-exclamation' : 'fa-circle-info'}`}></i>
-          <span>{chatError ? appCopy.t(chatError) : appCopy.t('Đang kết nối Tinode...')}</span>
+          <span className="chat-toast-copy">
+            <strong>{appCopy.t(chatError ? 'Không thể hoàn tất thao tác' : 'Đang khôi phục kết nối')}</strong>
+            <span>{chatError ? appCopy.t(chatError) : appCopy.t('Đang kết nối Tinode...')}</span>
+          </span>
           {chatError && <button type="button" onClick={() => setChatError('')} aria-label={appCopy.t('Đóng thông báo')}><i className="fa-solid fa-xmark"></i></button>}
+        </div>
+      )}
+      {chatSuccess && (
+        <div className="chat-toast success" role="status" aria-live="polite">
+          <i className="fa-solid fa-circle-check" aria-hidden="true"></i>
+          <span className="chat-toast-copy">
+            <strong>{appCopy.t('Đã hoàn tất')}</strong>
+            <span>{appCopy.t(chatSuccess)}</span>
+          </span>
+          <button type="button" onClick={() => setChatSuccess('')} aria-label={appCopy.t('Đóng thông báo')}><i className="fa-solid fa-xmark"></i></button>
+        </div>
+      )}
+      {incomingPopup && (
+        <div className="chat-incoming-popup" role="status" aria-live="polite">
+          <span className="chat-incoming-popup-icon" aria-hidden="true"><i className="fa-solid fa-message"></i></span>
+          <button
+            type="button"
+            className="chat-incoming-popup-main"
+            onClick={() => {
+              const stateId = incomingPopup.stateId;
+              setIncomingPopup(null);
+              notificationOpenHandlerRef.current?.(stateId);
+            }}
+          >
+            <span className="chat-incoming-popup-kicker">{appCopy.t('Thông báo mới')}</span>
+            <strong>{incomingPopup.roomName}</strong>
+            <span>{incomingPopup.senderName}: {incomingPopup.body}</span>
+          </button>
+          <button type="button" className="chat-incoming-popup-close" onClick={() => setIncomingPopup(null)} aria-label={appCopy.t('Đóng thông báo')}>
+            <i className="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
         </div>
       )}
       {CALLS_ENABLED && activeCall && (
@@ -16751,7 +16845,6 @@ function App() {
                   loadingMore={personalCloudLoadingMore}
                   loading={personalCloudLoading}
                   uploading={personalCloudUploading}
-                  notice={personalCloudNotice}
                   onUpload={handlePersonalCloudUpload}
                   onOpen={file => openPersonalCloudUrl(file)}
                   onDownload={file => openPersonalCloudUrl(file, true)}
@@ -16866,7 +16959,6 @@ function App() {
             {workspacePanel === 'notifications' && (
               <>
 
-                {friendNotice && <div className="friend-notice"><i className="fa-solid fa-circle-check"></i><span>{appCopy.t(friendNotice)}</span></div>}
                 {friendNotifications.length > 0 && (
                   <div className="friend-request-list">
                     {friendNotifications.map(record => {
@@ -17027,7 +17119,6 @@ function App() {
                             : appCopy.permissionReady}
                     </span>
                   </small>
-                  {notificationSettingsNotice && <div className="notification-settings-notice"><i className="fa-solid fa-circle-info"></i>{appCopy.t(notificationSettingsNotice)}</div>}
                 </section>
                 <section className="settings-card notification-sound-settings" aria-labelledby="notification-sound-title">
                   <div className="settings-card-heading notification-sound-heading">

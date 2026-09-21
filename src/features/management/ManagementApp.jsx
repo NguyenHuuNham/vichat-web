@@ -407,7 +407,16 @@ export default function ManagementApp() {
           </div>
         </header>
 
-        {notice && <div className={`management-toast ${notice.type}`} role="status"><i className={`fa-solid ${notice.type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'}`}></i>{notice.text}</div>}
+        {notice && (
+          <div className={`management-toast ${notice.type}`} role={notice.type === 'error' ? 'alert' : 'status'} aria-live="polite">
+            <span className="management-toast-icon" aria-hidden="true"><i className={`fa-solid ${notice.type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'}`}></i></span>
+            <span className="management-toast-copy">
+              <small>{notice.type === 'success' ? 'ĐÃ CẬP NHẬT' : 'CẦN KIỂM TRA'}</small>
+              <strong>{notice.text}</strong>
+            </span>
+            <button type="button" className="management-toast-close" onClick={() => setNotice(null)} aria-label="Đóng thông báo"><i className="fa-solid fa-xmark"></i></button>
+          </div>
+        )}
 
         <div className="management-content">
           {activeView === 'overview' && (

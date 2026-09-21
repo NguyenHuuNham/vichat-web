@@ -42,6 +42,19 @@ def _positive_int(value, default, minimum=1, maximum=None):
     return parsed
 
 
+def _optional_positive_int(value, default=0):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = int(default)
+    return max(0, parsed)
+
+
+def personal_cloud_max_size(app):
+    """Return the optional Cloud cap; zero means no app-level cap."""
+    return _optional_positive_int(_config(app, "PERSONAL_CLOUD_MAX_SIZE", 0))
+
+
 def chat_media_status(app):
     mode = str(_config(app, "CHAT_MEDIA_STORAGE", "tinode") or "tinode").strip().lower()
     s3_read_configured = bool(
@@ -613,14 +626,15 @@ def remove_chat_media(app, tenant_id, upload_id):
 
 
 def create_personal_cloud_upload(app, tenant_id, owner_id, file_name, content_type, size):
-    status = _require_upload_storage(app)
+    _require_upload_storage(app)
+    personal_max_size = personal_cloud_max_size(app)
     try:
         expected_size = int(size)
     except (TypeError, ValueError):
         expected_size = 0
     if expected_size <= 0:
         raise ChatMediaError("MEDIA_FILE_EMPTY", "The upload must contain a non-empty file.")
-    if expected_size > status["max_size"]:
+    if personal_max_size and expected_size > personal_max_size:
         raise ChatMediaError("MEDIA_FILE_TOO_LARGE", "The upload exceeds the configured size limit.", 413)
 
     safe_name = _safe_file_name(file_name)
@@ -652,7 +666,7 @@ def create_personal_cloud_upload(app, tenant_id, owner_id, file_name, content_ty
         "method": "PUT",
         "headers": {"Content-Type": normalized_type},
         "expires_in": ttl,
-        "max_size": status["max_size"],
+        "max_size": personal_max_size or None,
         "upload_token": _create_personal_cloud_upload_ticket(
             app,
             tenant_id,
@@ -666,7 +680,8 @@ def create_personal_cloud_upload(app, tenant_id, owner_id, file_name, content_ty
 
 
 def complete_personal_cloud_upload(app, tenant_id, owner_id, upload_id, expected_size, upload_token):
-    status = _require_upload_storage(app)
+    _require_upload_storage(app)
+    personal_max_size = personal_cloud_max_size(app)
     normalized_id, _date = _parse_upload_id(upload_id)
     ticket = _verify_personal_cloud_upload_ticket(
         app,
@@ -697,7 +712,7 @@ def complete_personal_cloud_upload(app, tenant_id, owner_id, upload_id, expected
             requested_size <= 0
             or requested_size != ticket_size
             or completed_size != ticket_size
-            or completed_size > status["max_size"]
+            or (personal_max_size and completed_size > personal_max_size)
         ):
             raise ChatMediaError("MEDIA_UPLOAD_SIZE_MISMATCH", "The completed object size is invalid.", 409)
         if completed_type != ticket_type:
@@ -729,7 +744,7 @@ def complete_personal_cloud_upload(app, tenant_id, owner_id, upload_id, expected
         requested_size <= 0
         or requested_size != ticket_size
         or actual_size != ticket_size
-        or actual_size > status["max_size"]
+        or (personal_max_size and actual_size > personal_max_size)
     ):
         try:
             _remove_object(app, pending_object_name)
