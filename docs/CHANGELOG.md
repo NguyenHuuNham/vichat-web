@@ -6,11 +6,25 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-21-04 - Deploy sua Chatmgt va Cloud rieng tu
+
+- Thoi gian: 2026-09-21 (Asia/Saigon)
+- Loai: Van hanh | Kiem thu | Bao mat | Tai lieu
+- Trang thai: Hoan tat; source commit `06353a4` da push va production release da activate/verify.
+- Muc tieu: Dua sua loi Cloud ca nhan, phan trang Chatmgt va popup thong bao moi len dung production ma khong anh huong Tinode, database, Redis hoac volume ngoai pham vi.
+- Pham vi: Chi build/recreate `chatmgt` va `chat`; khong chay migration, khong `docker compose down -v`, khong restart service stateful va khong thay doi `.env` production.
+- Noi dung van hanh: Archive `vichat-personal-cloud-popup-06353a4.tar.gz` co SHA-256 `8b337f39c755c2932d5025dc3ba66335929c5dd4fa50c3d30a17c722faf5552f`; release `/opt/deploy/chat/releases/personal-cloud-popup-06353a4-20260921-r2`; previous `/opt/deploy/chat/releases/domain-migration-05ac3d6-20260921-r7`; backup `/opt/deploy/chat/backups/personal-cloud-popup-06353a4-20260921-r2`.
+- Quyet dinh ky thuat: Dung release directory bat bien, copy `.env`/runtime tu release hien tai, backup ca hai PostgreSQL truoc build, snapshot service/volume ngoai pham vi va chi force-recreate hai service muc tieu. Candidate `r1` dung truoc activate vi test media trong container thieu mount `mobile`; giu lai release/backup loi de audit, sua runner mount read-only va hoan tat bang `r2`.
+- Kiem thu production: Source validation xac nhan 670 file khong doi; Nginx config dat; test trong image `73/73`; ChatUI/Chatmgt healthy, restart `0`; health public `chat.gonplatform.com/healthz` va `chatmgt.gonplatform.com/api/v1/auth/health` tra `200`; public bundle moi `/assets/index-mRKWJQ10.js` va `/assets/index-D56kIrAj.css`; WSS tra `101`; Alembic giu `20260921_15`; service ngoai pham vi va volume khong doi.
+- Rui ro con lai: Chua UAT browser bang tai khoan production that cho Cloud nhieu MIME/file, owner/tenant isolation va popup desktop/mobile; S3/provider quota vat ly van ton tai.
+- Viec tiep theo: Hard refresh, dang nhap hai tai khoan, thu Cloud ca nhan voi nhieu file/loai file, tai/xoa, doi owner/tenant va xac nhan popup moi; neu can thi chay UAT Chatmgt directory.
+- Commit/PR: Source `06353a4`; production release `personal-cloud-popup-06353a4-20260921-r2`.
+
 ## 2026-09-21-03 - Sua Chatmgt va Cloud rieng tu
 
 - Thoi gian: 2026-09-21 (Asia/Saigon)
 - Loai: Sua loi | Tinh nang | Bao mat | Web | Backend | UX | Kiem thu | Tai lieu
-- Trang thai: Hoan tat trong source; chua commit, chua deploy production.
+- Trang thai: Hoan tat; source commit `06353a4` da push, production deployment ghi tai muc `2026-09-21-04`.
 - Muc tieu: Khac phuc loi Chatmgt khi mo danh sach nhan vien, cho Cloud cua toi nhan moi loai file voi nhieu file moi lan tai len, va dua thong bao loi/thanh cong/thong bao den ve cung popup moi.
 - Pham vi: Chatmgt management directory, personal Cloud owner/tenant scope, S3 upload cap ung dung, ChatUI incoming/error/success popup, ManagementApp toast va regression test; khong doi Tinode, message/group/Workspace/mobile/database.
 - Nguyen nhan: ManagementApp gui `results_per_page=1000` trong khi endpoint `/api/v1/chat/users` chi chap nhan toi da 100, nen backend tra `PARAM_ERROR`.
@@ -20,8 +34,8 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong co migration; them `PERSONAL_CLOUD_MAX_SIZE` vao config/compose/env example; khong them endpoint, secret hay thay doi schema.
 - Kiem thu: `npm run test:frontend -- --test-concurrency=1` dat `441/441`; `node --test --test-concurrency=1 src/features/i18n/appLanguage.test.js` dat `25/25`; `node --test --test-concurrency=1 src/features/management/services/managementAdminService.test.js` dat `5/5`; `python -m unittest chatservice-main/tests/test_chat_media_service.py -q` dat `13/13`; `python -m py_compile chatservice-main/application/config/config.py chatservice-main/application/services/chat_media_service.py chatservice-main/tests/test_chat_media_service.py` dat; `npm run lint` exit `0` voi warning legacy/vendor; `npm run build:production` thanh cong voi canh bao chunk `App` vuot nguong 500 kB; `git diff --check` dat.
 - Rui ro con lai: Chua deploy/UAT browser voi tai khoan that; S3/provider van co quota va gioi han kich thuoc vat ly; popup incoming hien thi thong bao moi nhat neu nhieu su kien den dong thoi.
-- Viec tiep theo: Review diff, commit/push va deploy rieng sau khi co phe duyet; sau deploy UAT Chatmgt directory, Cloud tai len nhieu loai file, tai/xoa, owner khac/tenant khac va popup tren desktop/mobile.
-- Commit/PR: Chua tao.
+- Viec tiep theo: UAT Chatmgt directory, Cloud tai len nhieu loai file, tai/xoa, owner khac/tenant khac va popup tren desktop/mobile.
+- Commit/PR: Source `06353a4` da push; production release ghi tai muc `2026-09-21-04`.
 
 ## 2026-09-21-02 - Chuyen ChatUI va Chatmgt sang gonplatform.com
 
