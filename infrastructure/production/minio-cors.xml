@@ -1,6 +1,6 @@
 <CORSConfiguration>
   <CORSRule>
-    <AllowedOrigin>https://chat.upgo.vn</AllowedOrigin>
+    <AllowedOrigin>https://chat.gonplatform.com</AllowedOrigin>
     <AllowedMethod>GET</AllowedMethod>
     <AllowedMethod>PUT</AllowedMethod>
     <AllowedMethod>HEAD</AllowedMethod>

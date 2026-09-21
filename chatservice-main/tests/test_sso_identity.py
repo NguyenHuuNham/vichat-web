@@ -53,7 +53,7 @@ class SSOIdentityTests(unittest.TestCase):
             "email": "lan@example.vn",
             "department": {"name": "Kinh doanh"},
             "role": "admin",
-            "avatar_url": "https://account.upgo.vn/avatar/account-user-2.png",
+            "avatar_url": "https://account.gonplatform.com/avatar/account-user-2.png",
         }, "tenant-a", "Tenant A")
 
         self.assertEqual(identity["tenant_id"], "tenant-a")
@@ -200,7 +200,7 @@ class SSOIdentityTests(unittest.TestCase):
             "status": "active",
             "logo_updated_at": "2026-08-18T21:30:00Z",
             "company": {
-                "logo_url": "https://account.upgo.vn/company-b.svg",
+                "logo_url": "https://account.gonplatform.com/company-b.svg",
             },
         })
 
@@ -211,7 +211,7 @@ class SSOIdentityTests(unittest.TestCase):
         self.assertEqual(identity["role"], "member")
         self.assertEqual(
             next(option["logo"] for option in identity["tenant_options"] if option["id"] == "tenant-b"),
-            "https://account.upgo.vn/company-b.svg",
+            "https://account.gonplatform.com/company-b.svg",
         )
         self.assertEqual(
             next(option["logo_version"] for option in identity["tenant_options"] if option["id"] == "tenant-b"),
@@ -397,7 +397,7 @@ class SSOIdentityTests(unittest.TestCase):
 
     def test_avatar_url_is_used_as_the_account_profile_image(self):
         payload = account_payload("tenant-a", "Tenant A")
-        payload["avatar_url"] = "https://account.upgo.vn/avatar/user-shared-001.png"
+        payload["avatar_url"] = "https://account.gonplatform.com/avatar/user-shared-001.png"
 
         identity = normalize_account_session(payload)
 

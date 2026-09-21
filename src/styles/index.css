@@ -4271,6 +4271,8 @@ input:checked + .slider:before {
 .personal-cloud-section-heading small { color: var(--text-muted); font-size: 10px; }
 .personal-cloud-section-heading > i { color: var(--vichat-blue); font-size: 13px; }
 .personal-cloud-file-list { display: flex; flex-direction: column; gap: 7px; }
+.personal-cloud-load-more { display: inline-flex; width: 100%; min-height: 36px; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; border: 1px solid var(--border-soft); border-radius: 10px; color: var(--text-main); background: var(--surface); font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.personal-cloud-load-more:disabled { cursor: wait; opacity: .6; }
 .personal-cloud-file { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--border-color); border-radius: 13px; background: var(--bg-white); transition: var(--transition-fast); }
 .personal-cloud-file:hover { border-color: rgba(244, 81, 30, .28); background: var(--bg-app); transform: translateY(-1px); }
 .personal-cloud-file-main { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: 10px; min-width: 0; padding: 0; border: 0; color: inherit; background: transparent; font: inherit; text-align: left; cursor: pointer; }
@@ -4284,6 +4286,10 @@ input:checked + .slider:before {
 .personal-cloud-file-actions button.danger:hover { border-color: rgba(224, 68, 45, .28); color: var(--vichat-red); background: var(--vichat-red-light); }
 .personal-cloud-empty { min-height: 180px; flex-direction: column; gap: 8px; border: 1px dashed var(--border-color); border-radius: 13px; }
 .workspace-list { display: flex; flex-direction: column; gap: 5px; }
+.workspace-load-more { display: inline-flex; width: 100%; min-height: 36px; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; border: 1px solid var(--border-soft); border-radius: 10px; color: var(--text-main); background: var(--surface); font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.workspace-load-more:disabled { cursor: wait; opacity: .6; }
+.conversation-load-more { display: inline-flex; width: calc(100% - 20px); min-height: 34px; align-items: center; justify-content: center; gap: 8px; margin: 8px 10px 10px; border: 1px solid var(--border-soft); border-radius: 10px; color: var(--text-main); background: var(--surface); font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.conversation-load-more:disabled { cursor: wait; opacity: .6; }
 .workspace-list-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px; border: 1px solid transparent; border-radius: 10px; color: var(--text-body); background: transparent; text-align: left; cursor: pointer; }
 .workspace-list-item:hover { border-color: var(--border-color); background: var(--bg-app); }
 .workspace-list-item > img, .workspace-avatar { width: 36px; height: 36px; flex: 0 0 36px; border-radius: 50%; object-fit: cover; }
@@ -4490,6 +4496,19 @@ input:checked + .slider:before {
 .pin-lock-field input:focus { outline: 2px solid rgba(244, 81, 30, .22); outline-offset: 1px; border-color: var(--vichat-blue); }
 .pin-lock-submit { display: inline-flex; width: 100%; height: 38px; align-items: center; justify-content: center; gap: 7px; margin-top: 14px; }
 .pin-lock-notice { display: flex; align-items: flex-start; gap: 7px; margin-top: 9px; color: #b14436; font-size: 11px; line-height: 1.45; text-align: left; }
+.required-password-screen { display: grid; min-height: 100vh; place-items: center; padding: 24px; background: radial-gradient(circle at 20% 10%, rgba(244, 81, 30, .12), transparent 34%), var(--bg-app); }
+.required-password-card { display: flex; width: min(100%, 430px); flex-direction: column; gap: 12px; padding: 30px 28px 24px; border: 1px solid var(--border-color); border-radius: 18px; color: var(--text-main); background: var(--bg-white); box-shadow: var(--shadow-md); }
+.required-password-icon { display: grid; width: 48px; height: 48px; place-items: center; border-radius: 14px; color: var(--vichat-red); background: var(--vichat-red-light); font-size: 20px; }
+.required-password-eyebrow { color: var(--vichat-red); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.required-password-card h1 { margin: 0; font-size: 22px; line-height: 1.2; }
+.required-password-card > p { margin: 0 0 4px; color: var(--text-muted); font-size: 13px; line-height: 1.55; }
+.required-password-card label { display: flex; flex-direction: column; gap: 6px; color: var(--text-muted); font-size: 11px; font-weight: 700; }
+.required-password-card input { width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--border-color); border-radius: 9px; color: var(--text-main); background: var(--bg-app); font: inherit; font-size: 14px; }
+.required-password-card input:focus { outline: 2px solid rgba(244, 81, 30, .22); outline-offset: 1px; border-color: var(--vichat-red); }
+.required-password-notice { display: flex; align-items: flex-start; gap: 7px; color: #b14436; font-size: 12px; line-height: 1.45; }
+.required-password-submit { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; gap: 8px; margin-top: 4px; }
+.required-password-logout { align-self: center; padding: 5px 10px; border: 0; color: var(--text-muted); background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
+.required-password-logout:hover { color: var(--text-main); text-decoration: underline; }
 @media (max-width: 576px) {
     .language-picker { min-width: 128px; }
     .notification-sound-picker { flex-wrap: wrap; }
@@ -5009,6 +5028,8 @@ input:checked + .slider:before {
 .profile-viewers-toolbar button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid var(--border-color); border-radius: 9px; color: var(--vichat-blue); background: var(--bg-app); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
 .profile-viewers-toolbar button:disabled { cursor: wait; opacity: .6; }
 .profile-viewers-list { display: flex; flex-direction: column; gap: 8px; }
+.profile-viewers-load-more { display: inline-flex; width: 100%; min-height: 36px; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; border: 1px solid var(--border-color); border-radius: 10px; color: var(--vichat-blue); background: var(--bg-app); font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.profile-viewers-load-more:disabled { cursor: wait; opacity: .6; }
 .profile-viewer-item { display: flex; min-width: 0; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-app); }
 .profile-viewer-avatar { width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%; object-fit: cover; }
 .profile-viewer-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }

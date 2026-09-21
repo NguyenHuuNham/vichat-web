@@ -65,7 +65,7 @@ function Login({ copy = { t: value => value }, onLoginSuccess, initialNotice = '
         return;
       }
       if (loginError?.code === 'ACCOUNT_LOGIN_REQUIRED') {
-        setError(copy.t('Account chưa trả về phiên đăng nhập hợp lệ. Vui lòng đăng nhập lại tại account.upgo.vn.'));
+        setError(copy.t('Account chưa trả về phiên đăng nhập hợp lệ. Vui lòng đăng nhập lại tại account.gonplatform.com.'));
       } else if (loginError?.code === 'ACCOUNT_TENANT_INVALID') {
         setError(copy.t('Tài khoản UpGO chưa được mời vào doanh nghiệp hoặc membership chưa hoạt động.'));
       } else if (loginError?.code === 'LOGIN_FAILED') {
@@ -109,8 +109,8 @@ function Login({ copy = { t: value => value }, onLoginSuccess, initialNotice = '
           <h2>Chat - Power by Gon Platform</h2>
         </div>
 
-        {error && <div className="login-error-message"><i className="fa-solid fa-triangle-exclamation"></i><span>{error}</span></div>}
-        {notice && <div className="login-success-message"><i className="fa-solid fa-circle-check"></i><span>{notice}</span></div>}
+        {error && <div className="login-error-message" role="alert"><i className="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>{error}</span></div>}
+        {notice && <div className="login-success-message" role="status"><i className="fa-solid fa-circle-check" aria-hidden="true"></i><span>{notice}</span></div>}
 
         <form onSubmit={handleLogin} className="login-form">
           {credentialMode && (
@@ -118,16 +118,16 @@ function Login({ copy = { t: value => value }, onLoginSuccess, initialNotice = '
               <div className="login-form-group">
                 <label htmlFor="chat-identity">{copy.t('Tên đăng nhập hoặc email')}</label>
                 <div className="login-input-wrapper">
-                  <i className="fa-regular fa-user login-input-icon"></i>
+                  <i className="fa-regular fa-user login-input-icon" aria-hidden="true"></i>
                   <input id="chat-identity" name="username" type="text" autoComplete="username" value={identity} onChange={event => setIdentity(event.target.value)} disabled={isLoading} placeholder={copy.t('Nhập tài khoản được cấp...')} autoFocus />
                 </div>
               </div>
               <div className="login-form-group">
                 <label htmlFor="chat-password">{copy.t('Mật khẩu')}</label>
                 <div className="login-input-wrapper">
-                  <i className="fa-solid fa-lock login-input-icon"></i>
+                  <i className="fa-solid fa-lock login-input-icon" aria-hidden="true"></i>
                   <input id="chat-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} disabled={isLoading} placeholder={copy.t('Nhập mật khẩu...')} />
-                  <button type="button" className="btn-toggle-password" onClick={() => setShowPassword(previous => !previous)} disabled={isLoading} aria-label={showPassword ? copy.t('Ẩn mật khẩu') : copy.t('Hiện mật khẩu')}><i className={`fa-regular ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i></button>
+                  <button type="button" className="btn-toggle-password" aria-label={showPassword ? copy.t('Ẩn mật khẩu') : copy.t('Hiện mật khẩu')} onClick={() => setShowPassword(previous => !previous)} disabled={isLoading}><i className={`fa-regular ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`} aria-hidden="true"></i></button>
                 </div>
               </div>
             </>
@@ -135,7 +135,7 @@ function Login({ copy = { t: value => value }, onLoginSuccess, initialNotice = '
           <button type="submit" className="btn-login-submit" disabled={isLoading}>
             {isLoading
               ? <><div className="login-spinner"></div><span>{copy.t('Đang xác thực...')}</span></>
-              : <><i className="fa-solid fa-arrow-right-to-bracket"></i><span>{copy.t('Đăng nhập')}</span></>}
+              : <><i className="fa-solid fa-arrow-right-to-bracket" aria-hidden="true"></i><span>{copy.t('Đăng nhập')}</span></>}
           </button>
         </form>
 

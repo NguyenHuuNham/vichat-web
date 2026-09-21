@@ -18,7 +18,7 @@ export function normalizeChatAuthMode(value) {
   return String(value || '').trim().toLowerCase() === 'password' ? 'password' : 'account_password';
 }
 const authMode = normalizeChatAuthMode(env.VITE_CHAT_AUTH_MODE || 'account_password');
-const accountUrl = String(env.VITE_ACCOUNT_URL || 'https://account.upgo.vn').replace(/\/+$/, '');
+const accountUrl = String(env.VITE_ACCOUNT_URL || 'https://account.gonplatform.com').replace(/\/+$/, '');
 const topicBindingsKey = 'vichat.management.topic-bindings.v1';
 
 function createPresenceSessionId() {
@@ -286,22 +286,28 @@ function hydrateActiveSession(payload, { preserveExisting = true } = {}) {
   const tenant = normalizeTenantShape(payload?.tenant || account?.tenant);
   const rawTinodeAuth = payload?.tinode || payload?.tinode_auth || {};
   const hasTinodeToken = Boolean(rawTinodeAuth.token || payload?.tinode_token);
-  const tinodeAuth = previous?.tinodeAuth
+  // Fresh server credentials must win over a token retained by an older tab.
+  // /auth/me may omit Tinode credentials, in which case the current token is
+  // still valid and can be retained for the active session.
+  const tinodeAuth = hasTinodeToken
     ? {
-      ...previous.tinodeAuth,
-      displayName: account?.name || previous.tinodeAuth.displayName || '',
+      ...(previous?.tinodeAuth || {}),
+      ...rawTinodeAuth,
+      username: rawTinodeAuth.username || account?.tinodeUsername || account?.tinode_username || account?.username,
+      uid: rawTinodeAuth.uid || account?.tinodeUid || account?.tinode_uid,
+      token: rawTinodeAuth.token || payload?.tinode_token,
+      displayName: account?.name || '',
       avatar: account?.avatar || '',
+      tenantId: tenant?.id || account?.tenantId || account?.tenant_id || tenantId,
+      tenantName: tenant?.name || account?.tenantName || account?.tenant_name || '',
     }
-    : (hasTinodeToken ? {
-    ...rawTinodeAuth,
-    username: rawTinodeAuth.username || account?.tinodeUsername || account?.tinode_username || account?.username,
-    uid: rawTinodeAuth.uid || account?.tinodeUid || account?.tinode_uid,
-    token: rawTinodeAuth.token || payload?.tinode_token,
-    displayName: account?.name || '',
-    avatar: account?.avatar || '',
-    tenantId: tenant?.id || account?.tenantId || account?.tenant_id || tenantId,
-    tenantName: tenant?.name || account?.tenantName || account?.tenant_name || '',
-  } : null);
+    : (previous?.tinodeAuth
+      ? {
+        ...previous.tinodeAuth,
+        displayName: account?.name || previous.tinodeAuth.displayName || '',
+        avatar: account?.avatar || previous.tinodeAuth.avatar || '',
+      }
+      : null);
   const connection = previous?.connection || payload?.connection || (hasTinodeToken ? 'tinode' : 'management');
   activeSession = {
     ...(previous || {}),
@@ -342,6 +348,10 @@ function responseItems(payload) {
   return [];
 }
 
+function responseNextCursor(payload) {
+  return scalarText(payload?.next_cursor || payload?.nextCursor) || null;
+}
+
 function normalizePersonalCloudFile(record) {
   if (!record || typeof record !== 'object') return null;
   const id = scalarText(record.id || record.fileId || record.file_id);
@@ -374,6 +384,10 @@ function normalizeProfileViewer(record) {
     role: scalarText(record.role),
     viewedAt: scalarText(record.viewedAt || record.viewed_at),
   };
+}
+
+function activeTenantDirectoryAccounts(payload) {
+  return accountsForActiveTenant(responseItems(payload).map(publicAccount).filter(Boolean));
 }
 
 async function apiRequest(path, options = {}) {
@@ -686,10 +700,13 @@ export const chatManagementService = {
 
   async changePassword(currentPassword, newPassword) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
-    return apiRequest('/api/v1/auth/password', {
+    const payload = await apiRequest('/api/v1/auth/password', {
       method: 'POST',
       body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
     });
+    activeTinodePassword = String(newPassword || '');
+    if (payload?.user) hydrateActiveSession(payload, { preserveExisting: true });
+    return payload;
   },
 
   async updateProfile(profile) {
@@ -732,31 +749,80 @@ export const chatManagementService = {
     });
   },
 
-  async listProfileViewers() {
-    if (!apiBase || !remoteAuth) return [];
-    const payload = await apiRequest('/api/v1/profile/views', { cache: 'no-store' });
-    return responseItems(payload).map(normalizeProfileViewer).filter(Boolean);
+  async listProfileViewers({ signal, cursor = '', limit = 100 } = {}) {
+    if (!apiBase || !remoteAuth) {
+      return Object.assign([], { nextCursor: null, hasMore: false, total: 0 });
+    }
+    const scope = captureDirectoryScope();
+    const params = new URLSearchParams({
+      limit: String(Math.min(100, Math.max(1, Number(limit) || 100))),
+    });
+    if (cursor) params.set('cursor', String(cursor));
+    const payload = await apiRequest(`/api/v1/profile/views?${params.toString()}`, {
+      cache: 'no-store',
+      signal,
+    });
+    assertDirectoryScope(scope);
+    const latestByViewer = new Map();
+    responseItems(payload).map(normalizeProfileViewer).filter(Boolean).forEach(viewer => {
+      const previous = latestByViewer.get(viewer.id);
+      const previousTime = Date.parse(previous?.viewedAt || '') || 0;
+      const nextTime = Date.parse(viewer.viewedAt || '') || 0;
+      if (!previous || nextTime >= previousTime) latestByViewer.set(viewer.id, {
+        ...previous,
+        ...viewer,
+        name: viewer.name || previous.name,
+        avatar: viewer.avatar || previous.avatar,
+      });
+    });
+    const viewers = [...latestByViewer.values()].sort((first, second) => (
+      (Date.parse(second.viewedAt || '') || 0) - (Date.parse(first.viewedAt || '') || 0)
+    ));
+    viewers.nextCursor = responseNextCursor(payload);
+    viewers.hasMore = Boolean(payload?.has_more ?? payload?.hasMore ?? viewers.nextCursor);
+    viewers.total = Number.isFinite(Number(payload?.total ?? payload?.count))
+      ? Number(payload.total ?? payload.count)
+      : null;
+    return viewers;
   },
 
   getTinodeAuth() {
     return activeSession?.tinodeAuth || null;
   },
 
-  async listUsers() {
+  async listUsers({ signal, cursor = '', query = '', limit = 100 } = {}) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const directoryScope = captureDirectoryScope();
-    const payload = await apiRequest('/api/v1/chat/users?results_per_page=1000', { cache: 'no-store' });
+    const params = new URLSearchParams({ limit: String(Math.min(100, Math.max(1, Number(limit) || 100))) });
+    if (cursor) params.set('cursor', String(cursor));
+    if (String(query || '').trim()) params.set('q', String(query).trim());
+    const payload = await apiRequest(`/api/v1/chat/users?${params.toString()}`, {
+      cache: 'no-store',
+      signal,
+    });
     assertDirectoryScope(directoryScope);
+    const accounts = activeTenantDirectoryAccounts(payload);
+    accounts.nextCursor = responseNextCursor(payload);
+    accounts.hasMore = Boolean(payload?.has_more ?? payload?.hasMore ?? accounts.nextCursor);
+    accounts.total = Number.isFinite(Number(payload?.total)) ? Number(payload.total) : null;
     if (directoryScope.tenantId) {
       lastDirectorySyncByTenant.set(directoryScope.tenantId, payload?.directory_sync || null);
     }
-    return accountsForActiveTenant(responseItems(payload).map(publicAccount).filter(Boolean));
+    return accounts;
   },
 
-  async listPersonalCloudFiles() {
-    if (!apiBase || !remoteAuth) return [];
-    const payload = await apiRequest('/api/v1/chat/cloud/files?limit=200', { cache: 'no-store' });
-    return responseItems(payload).map(normalizePersonalCloudFile).filter(Boolean);
+  async listPersonalCloudFiles({ signal, cursor = '', limit = 100 } = {}) {
+    if (!apiBase || !remoteAuth) return Object.assign([], { nextCursor: null, hasMore: false, total: 0 });
+    const scope = captureDirectoryScope();
+    const params = new URLSearchParams({ limit: String(Math.min(100, Math.max(1, Number(limit) || 100))) });
+    if (cursor) params.set('cursor', String(cursor));
+    const payload = await apiRequest(`/api/v1/chat/cloud/files?${params.toString()}`, { signal, cache: 'no-store' });
+    assertDirectoryScope(scope);
+    const files = responseItems(payload).map(normalizePersonalCloudFile).filter(Boolean);
+    files.nextCursor = responseNextCursor(payload);
+    files.hasMore = Boolean(payload?.has_more ?? payload?.hasMore ?? files.nextCursor);
+    files.total = Number.isFinite(Number(payload?.total ?? payload?.count)) ? Number(payload.total ?? payload.count) : null;
+    return files;
   },
 
   async uploadPersonalCloudFile(file, { onProgress } = {}) {
@@ -869,14 +935,14 @@ export const chatManagementService = {
     return normalizeConversation(payload);
   },
 
-  async searchUsers(query, { excludeUserId = '' } = {}) {
+  async searchUsers(query, { excludeUserId = '', signal } = {}) {
     const value = String(query || '').trim();
     if (!value) return [];
     if (apiBase && remoteAuth) {
       const directoryScope = captureDirectoryScope();
-      const params = new URLSearchParams({ q: value, results_per_page: '50' });
+      const params = new URLSearchParams({ q: value, limit: '50' });
       if (excludeUserId) params.set('exclude_user_id', excludeUserId);
-      const payload = await apiRequest(`/api/v1/chat/users?${params}`, { cache: 'no-store' });
+      const payload = await apiRequest(`/api/v1/chat/users?${params}`, { cache: 'no-store', signal });
       assertDirectoryScope(directoryScope);
       return accountsForActiveTenant(responseItems(payload).map(publicAccount))
         .filter(account => account?.id !== excludeUserId);
@@ -905,21 +971,37 @@ export const chatManagementService = {
     });
   },
 
-  async listFriendRequests(userId) {
+  async listFriendRequests(userId, { signal, updatedSince = 0, cursor = '', limit = 100 } = {}) {
     if (!userId) return [];
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
-    const payload = await apiRequest('/api/v1/friend-request');
-    return responseItems(payload);
+    const scope = captureDirectoryScope();
+    const params = new URLSearchParams({ limit: String(Math.min(100, Math.max(1, Number(limit) || 100))) });
+    if (updatedSince) params.set('updated_since', String(Math.max(0, Number(updatedSince) || 0)));
+    if (cursor) params.set('cursor', String(cursor));
+    const payload = await apiRequest(`/api/v1/friend-request?${params}`, { cache: 'no-store', signal });
+    assertDirectoryScope(scope);
+    const records = responseItems(payload);
+    records.nextCursor = responseNextCursor(payload);
+    records.hasMore = Boolean(payload?.has_more ?? payload?.hasMore ?? records.nextCursor);
+    return records;
   },
 
-  async listConversations() {
+  async listConversations({ signal, cursor = '', limit = 100 } = {}) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
-    const payload = await apiRequest('/api/v1/conversation');
-    const conversations = responseItems(payload).map(normalizeConversation);
+    const scope = captureDirectoryScope();
+    const params = new URLSearchParams({ limit: String(Math.min(100, Math.max(1, Number(limit) || 100))) });
+    if (cursor) params.set('cursor', String(cursor));
+    const payload = await apiRequest(`/api/v1/conversation?${params.toString()}`, { signal, cache: 'no-store' });
+    assertDirectoryScope(scope);
+    const records = responseItems(payload);
+    const conversations = records.map(normalizeConversation);
     return {
       conversations,
       groups: [],
       directs: [],
+      nextCursor: responseNextCursor(payload),
+      hasMore: Boolean(payload?.has_more ?? payload?.hasMore ?? responseNextCursor(payload)),
+      total: Number.isFinite(Number(payload?.total)) ? Number(payload.total) : null,
     };
   },
 

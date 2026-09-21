@@ -11,7 +11,7 @@ from gatco_apimanager.views.sqlalchemy.helpers import to_dict
 from application.extensions import apimanager
 from application.controllers.helpers.helper_common import (auth_func, deny_request,get_current_user, get_tenant_id,
         gen_name_for_search,add_tenant_id,postprocess_gen_stt,
-        filter_tenant_id)
+        filter_tenant_id, outbound_request_options)
 
 from slugify import slugify
 import aiofiles
@@ -35,7 +35,12 @@ def get_users(tenant_id):
         "results_per_page": int(results_per_page),
         "tid": tenant_id
     }
-    resp = requests.get(url, params=params, headers=headers, verify=False)
+    resp = requests.get(
+        url,
+        params=params,
+        headers=headers,
+        **outbound_request_options("ACCOUNT_SSO_TIMEOUT", 10),
+    )
     return resp.json()
 
 def seed_bank_user_organization(tenant_id):

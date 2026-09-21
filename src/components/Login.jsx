@@ -61,8 +61,8 @@ function Login({ onLoginSuccess }) {
 
         <form onSubmit={handleSubmit} className="login-form">
           {error && (
-            <div className="login-error-message">
-              <i className="fa-solid fa-triangle-exclamation"></i>
+            <div className="login-error-message" role="alert">
+              <i className="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
               <span>{error}</span>
             </div>
           )}
@@ -100,8 +100,9 @@ function Login({ onLoginSuccess }) {
                 onClick={() => setShowPassword(!showPassword)}
                 disabled={isLoading}
                 title={showPassword ? "Ẩn mật khẩu" : "Hiển thị mật khẩu"}
+                aria-label={showPassword ? "Ẩn mật khẩu" : "Hiển thị mật khẩu"}
               >
-                <i className={`fa-regular ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                <i className={`fa-regular ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`} aria-hidden="true"></i>
               </button>
             </div>
           </div>
@@ -120,13 +121,13 @@ function Login({ onLoginSuccess }) {
 
         <div className="login-demo-accounts">
           <span className="login-demo-title">Tài khoản mẫu dùng nhanh</span>
-          <div className="demo-account-pill" onClick={selectDemoAccount}>
+          <button type="button" className="demo-account-pill" onClick={selectDemoAccount} disabled={isLoading} aria-label="Dùng tài khoản mẫu Mai Thành Lâm">
             <div>
               <span style={{ display: 'block', color: 'var(--text-main)', textAlign: 'left' }}>Mai Thành Lâm</span>
               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>admin@vichat.vn</span>
             </div>
             <code>Mật khẩu: 123456</code>
-          </div>
+          </button>
         </div>
       </div>
     </div>

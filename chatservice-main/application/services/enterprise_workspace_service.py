@@ -167,6 +167,22 @@ def sanitize_properties(item_type, value):
     return properties
 
 
+def merge_properties(item_type, existing, incoming):
+    """Merge a partial property patch while keeping explicit clears explicit."""
+    if incoming is None:
+        return {}
+    if not isinstance(incoming, dict):
+        raise WorkspaceValidationError("properties must be an object.")
+    sanitized = sanitize_properties(item_type, incoming)
+    merged = dict(existing or {}) if isinstance(existing, dict) else {}
+    for key, raw_value in incoming.items():
+        if raw_value in (None, "") or raw_value == []:
+            merged.pop(key, None)
+        elif key in sanitized:
+            merged[key] = sanitized[key]
+    return merged
+
+
 def validate_item_payload(body, existing_type=None, partial=False):
     if not isinstance(body, dict):
         raise WorkspaceValidationError("The request body must be an object.")

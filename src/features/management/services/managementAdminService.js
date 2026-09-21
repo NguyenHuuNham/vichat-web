@@ -3,7 +3,7 @@ import { normalizeChatMaintenanceState } from '../../maintenance/chatMaintenance
 const env = import.meta.env || {};
 const configuredBase = String(env.VITE_CHAT_MANAGEMENT_API_URL || '').replace(/\/$/, '');
 const tenantId = String(env.VITE_CHAT_TENANT_ID || '').trim();
-const accountUrl = String(env.VITE_ACCOUNT_URL || 'https://account.upgo.vn').replace(/\/+$/, '');
+const accountUrl = String(env.VITE_ACCOUNT_URL || 'https://account.gonplatform.com').replace(/\/+$/, '');
 const accountAdminCallbackMarker = 'vichat_admin_sso';
 
 const errorMessages = {
@@ -38,7 +38,7 @@ export function consumeAccountAdminCallback(currentUrl) {
 }
 
 function managementBaseUrl() {
-  if (typeof window !== 'undefined' && window.location.hostname === 'chatmgt.upgo.vn') return '';
+  if (typeof window !== 'undefined' && window.location.hostname === 'chatmgt.gonplatform.com') return '';
   return configuredBase;
 }
 

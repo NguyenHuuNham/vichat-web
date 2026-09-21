@@ -4,7 +4,15 @@ from application.models.models import *
 from gatco_apimanager.views.sqlalchemy.helpers import to_dict
 from application.extensions import apimanager
 from application.extensions import auth
-from application.controllers.helpers.helper_common import (data_validation,gen_name_for_search,postprocess_gen_stt, get_tenant_id, get_current_user)
+from application.controllers.helpers.helper_common import (
+    data_validation,
+    gen_name_for_search,
+    postprocess_gen_stt,
+    get_tenant_id,
+    get_current_user,
+    outbound_request_options,
+)
+from application.services.pagination import PaginationError, bounded_int
 from slugify import slugify
 from gatco.response import json, text, html
 from application.server import app
@@ -218,15 +226,35 @@ async def list_user(request):
     headers = {
         "access-token": app.config.get("INTERNAL_ACCESS_TOKEN")
     }
-    page = request.args.get("page", 1)
-    results_per_page = request.args.get("results_per_page", 20)
+    try:
+        page = bounded_int(
+            request.args.get("page"),
+            name="page",
+            default=1,
+            minimum=1,
+            maximum=100000,
+        )
+        results_per_page = bounded_int(
+            request.args.get("results_per_page"),
+            name="results_per_page",
+            default=20,
+            minimum=1,
+            maximum=100,
+        )
+    except PaginationError as error:
+        return json({"error_code": "PARAM_ERROR", "error_message": str(error)}, status=400)
     
     params = {
         "page": int(page),
         "results_per_page": int(results_per_page),
         "tid": current_tenant_id
     }
-    resp = requests.get(url, params=params, headers=headers, verify=False)
+    resp = requests.get(
+        url,
+        params=params,
+        headers=headers,
+        **outbound_request_options("ACCOUNT_SSO_TIMEOUT", 10),
+    )
     if resp.status_code == 200:
         data = resp.json()
         return json({
@@ -235,7 +263,10 @@ async def list_user(request):
     try:
         return json(resp.json(), status=resp.status_code)
     except Exception:
-        return json({"error": "Error from account API", "details": resp.text}, status=520)
+        return json({
+            "error_code": "ACCOUNT_SERVICE_INVALID_RESPONSE",
+            "error_message": "The account service returned an invalid response.",
+        }, status=502)
 
 @app.route('/api/v1/user_info/<user_id>', methods=['GET'])
 async def get_user_info_by_id(request, user_id):
@@ -253,7 +284,12 @@ async def get_user_info_by_id(request, user_id):
     headers = {"access-token": app.config.get("INTERNAL_ACCESS_TOKEN")}
     params = {"tid": get_tenant_id(request), "results_per_page": 1000}
     try:
-        resp = requests.get(url, params=params, headers=headers, verify=False)
+        resp = requests.get(
+            url,
+            params=params,
+            headers=headers,
+            **outbound_request_options("ACCOUNT_SSO_TIMEOUT", 10),
+        )
         if resp.status_code == 200:
             users = resp.json()
             for u in users:

@@ -130,7 +130,7 @@ class ChatMediaDeploymentContractTests(unittest.TestCase):
         self.assertIn("complete_chat_media_upload", storage_verifier)
         self.assertIn("requests.get", storage_verifier)
         self.assertIn("_remove_object", storage_verifier)
-        self.assertIn("<AllowedOrigin>https://chat.upgo.vn</AllowedOrigin>", cors_policy)
+        self.assertIn("<AllowedOrigin>https://chat.gonplatform.com</AllowedOrigin>", cors_policy)
         self.assertIn("<AllowedMethod>PUT</AllowedMethod>", cors_policy)
         self.assertIn("<AllowedMethod>GET</AllowedMethod>", cors_policy)
         self.assertIn("<AllowedMethod>HEAD</AllowedMethod>", cors_policy)
@@ -148,7 +148,7 @@ class ChatMediaServiceTests(unittest.TestCase):
             "CHAT_MEDIA_STORAGE": "s3",
             "CHAT_MEDIA_FALLBACK_TO_TINODE": False,
             "CHAT_MEDIA_SIGNING_SECRET": "test-signing-secret-with-more-than-32-bytes",
-            "CHAT_MEDIA_PUBLIC_BASE_URL": "https://chatmgt.upgo.vn",
+            "CHAT_MEDIA_PUBLIC_BASE_URL": "https://chatmgt.gonplatform.com",
             "CHAT_MEDIA_OBJECT_PREFIX": "vichat/chat-media",
             "CHAT_MEDIA_MAX_SIZE": 500 * 1024 * 1024,
             "CHAT_MEDIA_UPLOAD_URL_TTL": 300,
@@ -207,7 +207,7 @@ class ChatMediaServiceTests(unittest.TestCase):
     def test_upload_ticket_binds_size_reference_and_tenant(self):
         prepared = self.prepare(size=5)
         self.assertTrue(prepared["upload_url"].startswith("https://s3.upgo.vn/"))
-        self.assertTrue(prepared["ref"].startswith("https://chatmgt.upgo.vn/api/v1/chat/media/"))
+        self.assertTrue(prepared["ref"].startswith("https://chatmgt.gonplatform.com/api/v1/chat/media/"))
         self.assertTrue(prepared["upload_token"])
         self.assertNotIn("tenant-a", prepared["upload_url"])
         self.assertIn("/_pending/", prepared["upload_url"])

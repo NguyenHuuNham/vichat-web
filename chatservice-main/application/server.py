@@ -18,7 +18,7 @@ cors = CORS(
 
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; base-uri 'self'; object-src 'none'; "
-    "frame-ancestors 'self'; form-action 'self' https://account.upgo.vn; "
+    "frame-ancestors 'self'; form-action 'self' https://account.gonplatform.com; "
     "script-src 'self'; style-src 'self' 'unsafe-inline' "
     "https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
     "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; "

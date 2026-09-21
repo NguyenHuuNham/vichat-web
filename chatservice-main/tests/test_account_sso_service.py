@@ -19,7 +19,7 @@ if HAS_AIOHTTP:
     services_module = types.ModuleType("application.services")
     services_module.__path__ = [str(PROJECT_ROOT / "application" / "services")]
     fake_app = types.SimpleNamespace(config={
-        "ACCOUNT_URL": "https://account.upgo.vn",
+        "ACCOUNT_URL": "https://account.gonplatform.com",
         "ACCOUNT_SSO_PROFILE_PATH": "/current_user",
         "ACCOUNT_SSO_DIRECTORY_PATH": "/api/v1/tenant_user",
         "ACCOUNT_SSO_TENANT_SWITCH_PATH": "/api/v1/tenant/set_current_tenant",
@@ -30,7 +30,7 @@ if HAS_AIOHTTP:
         "ACCOUNT_SSO_TIMEOUT": 10,
         "ACCOUNT_AVATAR_UPLOAD_TIMEOUT": 60,
         "ACCOUNT_SESSION_COOKIE_NAME": "session",
-        "ACCOUNT_SESSION_COOKIE_DOMAIN": ".upgo.vn",
+        "ACCOUNT_SESSION_COOKIE_DOMAIN": ".gonplatform.com",
         "ACCOUNT_SESSION_COOKIE_SECURE": True,
     })
     server_module = types.ModuleType("application.server")
@@ -72,7 +72,7 @@ def account_payload(status="active"):
         "user_name": "nham.nguyen",
         "display_name": "Nguyen Huu Nham",
         "email": "nham@example.vn",
-        "avatar_url": "https://account.upgo.vn/avatar/account-user-1.png",
+        "avatar_url": "https://account.gonplatform.com/avatar/account-user-1.png",
         "current_tenant_id": "tenant-a",
         "current_tenant_role": "member",
         "tenants": [{
@@ -929,7 +929,7 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(header[0], "Set-Cookie")
         self.assertIn("session=", header[1])
-        self.assertIn("Domain=.upgo.vn", header[1])
+        self.assertIn("Domain=.gonplatform.com", header[1])
         self.assertIn("Max-Age=0", header[1])
         self.assertIn("Secure", header[1])
 
@@ -946,7 +946,7 @@ class AccountSSOServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(header[0], "Set-Cookie")
         self.assertIn("session=account-session-value", header[1])
         self.assertIn("Max-Age=3600", header[1])
-        self.assertIn("Domain=.upgo.vn", header[1])
+        self.assertIn("Domain=.gonplatform.com", header[1])
         self.assertIn("HttpOnly", header[1])
         self.assertIn("Secure", header[1])
 

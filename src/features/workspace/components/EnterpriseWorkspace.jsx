@@ -4,6 +4,7 @@ import {
   ENTERPRISE_TYPES,
   enterpriseWorkspaceService,
   formatWorkspaceDate,
+  mergeWorkspaceProperties,
   workspaceStatusLabel,
   workspaceTypeMeta,
 } from '../services/enterpriseWorkspaceService';
@@ -50,10 +51,11 @@ const ACTIVITY_LABELS = {
 function emptyForm(type = 'TASK', userId = '') {
   return {
     id: '', type, title: '', description: '', status: INITIAL_STATUS[type], priority: 'NORMAL',
-    visibility: 'COMPANY', ownerId: userId, dueAt: '', startsAt: '', endsAt: '', participantIds: [],
+    visibility: 'COMPANY', ownerId: userId, dueAt: '', startsAt: '', endsAt: '', participantIds: [], participantRoles: {},
     category: '', location: '', meetingUrl: '', provider: '', endpoint: '', requestKind: '',
-    requiresAck: type === 'ANNOUNCEMENT', pinned: false, tags: '',
+    requiresAck: type === 'ANNOUNCEMENT', pinned: false, allDay: false, syncDirection: 'BIDIRECTIONAL', tags: '',
     sourceConversationName: '', sourceMessagePreview: '', conversationId: '', sourceMessageRef: '',
+    originalProperties: {}, version: null,
   };
 }
 
@@ -91,16 +93,13 @@ function localizedWorkspaceValue(value, labels, copy) {
 }
 
 function propertiesForForm(form) {
-  if (form.type === 'TASK') return {
-    progress: 0,
-    source_conversation_name: form.sourceConversationName,
-  };
+  if (form.type === 'TASK') return { source_conversation_name: form.sourceConversationName };
   if (form.type === 'ANNOUNCEMENT') return { pinned: form.pinned, requires_ack: form.requiresAck };
   if (form.type === 'APPROVAL') return { request_kind: form.requestKind };
   if (form.type === 'TICKET') return { category: form.category };
   if (form.type === 'WIKI') return { category: form.category, tags: form.tags.split(',').map(tag => tag.trim()).filter(Boolean) };
-  if (form.type === 'EVENT') return { location: form.location, meeting_url: form.meetingUrl, all_day: false };
-  return { provider: form.provider, endpoint: form.endpoint, sync_direction: 'BIDIRECTIONAL' };
+  if (form.type === 'EVENT') return { location: form.location, meeting_url: form.meetingUrl, all_day: form.allDay };
+  return { provider: form.provider, endpoint: form.endpoint, sync_direction: form.syncDirection };
 }
 
 function formForItem(item, userId) {
@@ -118,6 +117,7 @@ function formForItem(item, userId) {
     startsAt: toLocalInput(item.startsAt),
     endsAt: toLocalInput(item.endsAt),
     participantIds: item.participants.map(participant => participant.accountId),
+    participantRoles: Object.fromEntries(item.participants.map(participant => [participant.accountId, participant.role])),
     category: properties.category || '',
     location: properties.location || '',
     meetingUrl: properties.meeting_url || '',
@@ -126,11 +126,15 @@ function formForItem(item, userId) {
     requestKind: properties.request_kind || '',
     requiresAck: Boolean(properties.requires_ack),
     pinned: Boolean(properties.pinned),
+    allDay: Boolean(properties.all_day),
+    syncDirection: properties.sync_direction || 'BIDIRECTIONAL',
     tags: Array.isArray(properties.tags) ? properties.tags.join(', ') : '',
     sourceConversationName: properties.source_conversation_name || '',
     sourceMessagePreview: properties.source_message_preview || '',
     conversationId: item.conversationId || '',
     sourceMessageRef: item.sourceMessageRef || '',
+    originalProperties: properties,
+    version: item.version,
   };
 }
 
@@ -147,13 +151,14 @@ function itemPayload(form, editing) {
     ends_at: fromLocalInput(form.endsAt),
     conversation_id: form.conversationId || null,
     source_message_ref: form.sourceMessageRef || null,
-    properties: propertiesForForm(form),
+    properties: mergeWorkspaceProperties(form.originalProperties, propertiesForForm(form)),
     participants: form.participantIds.map(accountId => ({
       account_id: accountId,
-      role: PARTICIPANT_ROLE[form.type],
+      role: form.participantRoles?.[accountId] || PARTICIPANT_ROLE[form.type],
     })),
   };
   if (!editing) payload.status = form.status;
+  else payload.version = form.version;
   return payload;
 }
 
@@ -175,8 +180,15 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
   const [saving, setSaving] = useState(false);
   const [actionBusy, setActionBusy] = useState('');
   const [comment, setComment] = useState('');
-  const refreshInFlight = useRef(false);
+  const [nextCursor, setNextCursor] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const requestGenerationRef = useRef(0);
+  const requestControllerRef = useRef(null);
+  const nextCursorRef = useRef(null);
   const selectedItemIdRef = useRef('');
+  const loadingMoreRef = useRef(false);
+  const detailGenerationRef = useRef(0);
 
   useEffect(() => {
     selectedItemIdRef.current = selectedItem?.id || '';
@@ -188,30 +200,72 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
     onError?.(message);
   }, [copy, onError]);
 
-  const refresh = useCallback(async ({ background = false } = {}) => {
-    if (refreshInFlight.current) return;
-    refreshInFlight.current = true;
-    if (!background) setLoading(true);
+  const refresh = useCallback(async ({ background = false, append = false } = {}) => {
+    if (append && (loadingMoreRef.current || !nextCursorRef.current)) return;
+    if (append) {
+      loadingMoreRef.current = true;
+      setLoadingMore(true);
+    } else {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+      nextCursorRef.current = null;
+      setNextCursor(null);
+      setHasMore(false);
+    }
+    requestControllerRef.current?.abort();
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+    const generation = ++requestGenerationRef.current;
+    if (!background && !append) setLoading(true);
     try {
-      const result = await enterpriseWorkspaceService.listItems({ limit: 200, q: query.trim() });
-      setItems(result.items);
+      const result = await enterpriseWorkspaceService.listItems({
+        limit: 100,
+        q: query.trim(),
+        ...(append && nextCursorRef.current ? { cursor: nextCursorRef.current } : {}),
+        signal: controller.signal,
+      });
+      if (generation !== requestGenerationRef.current || controller.signal.aborted) return;
+      setItems(previous => {
+        if (!append && !background) return result.items;
+        const byId = new Map(previous.map(item => [item.id, item]));
+        result.items.forEach(item => byId.set(item.id, item));
+        return [...byId.values()];
+      });
       setSummary(result.summary);
-      setNotice('');
+      if (!background || append) {
+        nextCursorRef.current = result.nextCursor;
+        setNextCursor(result.nextCursor);
+        setHasMore(result.hasMore);
+      }
+      if (!background || query.trim()) setNotice('');
       if (selectedItemIdRef.current) {
-        setSelectedItem(await enterpriseWorkspaceService.getItem(selectedItemIdRef.current));
+        const selected = await enterpriseWorkspaceService.getItem(selectedItemIdRef.current, { signal: controller.signal });
+        if (generation === requestGenerationRef.current && !controller.signal.aborted) setSelectedItem(selected);
       }
     } catch (error) {
-      reportError(error);
+      if (error?.name !== 'AbortError' && generation === requestGenerationRef.current) reportError(error);
     } finally {
-      refreshInFlight.current = false;
-      setLoading(false);
+      if (generation === requestGenerationRef.current) setLoading(false);
+      if (append) {
+        loadingMoreRef.current = false;
+        if (generation === requestGenerationRef.current) setLoadingMore(false);
+      }
     }
   }, [query, reportError]);
+
+  useEffect(() => () => {
+    requestControllerRef.current?.abort();
+    requestGenerationRef.current += 1;
+  }, [userId, user?.tenantId, user?.tenant_id]);
 
   useEffect(() => {
     const delay = window.setTimeout(() => refresh(), query.trim() ? 250 : 0);
     return () => window.clearTimeout(delay);
   }, [query, refresh]);
+
+  const loadMore = useCallback(() => {
+    if (hasMore && nextCursor && !loading && !loadingMore) void refresh({ append: true });
+  }, [hasMore, loading, loadingMore, nextCursor, refresh]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -252,11 +306,25 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
   };
 
   const openItem = async item => {
+    const generation = ++detailGenerationRef.current;
+    selectedItemIdRef.current = item.id;
     setSelectedItem(item);
     try {
-      setSelectedItem(await enterpriseWorkspaceService.getItem(item.id));
+      const detail = await enterpriseWorkspaceService.getItem(item.id);
+      if (generation === detailGenerationRef.current && selectedItemIdRef.current === item.id) setSelectedItem(detail);
     } catch (error) {
-      reportError(error);
+      if (generation === detailGenerationRef.current && selectedItemIdRef.current === item.id) reportError(error);
+    }
+  };
+
+  const reloadAfterConflict = async itemId => {
+    try {
+      const latest = await enterpriseWorkspaceService.getItem(itemId);
+      if (selectedItemIdRef.current === itemId) setSelectedItem(latest);
+      if (form?.id === itemId) setForm(formForItem(latest, userId));
+      setNotice(copy.t('Mục này đã được thay đổi. Đã tải bản mới nhất; hãy kiểm tra rồi lưu lại.'));
+    } catch (reloadError) {
+      reportError(reloadError);
     }
   };
 
@@ -274,7 +342,8 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
       setNotice(copy.t(editing ? 'Đã cập nhật nội dung.' : 'Đã tạo mục công việc mới.'));
       await refresh({ background: true });
     } catch (error) {
-      reportError(error);
+      if (error?.status === 409 && editing) await reloadAfterConflict(form.id);
+      else reportError(error);
     } finally {
       setSaving(false);
     }
@@ -294,12 +363,13 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
     }
     setActionBusy(action);
     try {
-      await enterpriseWorkspaceService.applyAction(selectedItem.id, action, comment.trim());
+      await enterpriseWorkspaceService.applyAction(selectedItem.id, action, comment.trim(), selectedItem.version);
       setComment('');
       setSelectedItem(await enterpriseWorkspaceService.getItem(selectedItem.id));
       await refresh({ background: true });
     } catch (error) {
-      reportError(error);
+      if (error?.status === 409) await reloadAfterConflict(selectedItem.id);
+      else reportError(error);
     } finally {
       setActionBusy('');
     }
@@ -316,11 +386,12 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
     if (!confirmed) return;
     setActionBusy('DELETE');
     try {
-      await enterpriseWorkspaceService.archiveItem(selectedItem.id);
+      await enterpriseWorkspaceService.archiveItem(selectedItem.id, selectedItem.version);
       setSelectedItem(null);
       await refresh({ background: true });
     } catch (error) {
-      reportError(error);
+      if (error?.status === 409) await reloadAfterConflict(selectedItem.id);
+      else reportError(error);
     } finally {
       setActionBusy('');
     }
@@ -405,6 +476,10 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
               })}
             </div>
           )}
+          {hasMore && <button type="button" className="enterprise-load-more" onClick={loadMore} disabled={loading || loadingMore}>
+            <i className={'fa-solid ' + (loadingMore ? 'fa-spinner fa-spin' : 'fa-chevron-down')}></i>
+            {loadingMore ? copy.t('Đang tải thêm...') : copy.t('Tải thêm')}
+          </button>}
         </div>
 
         <aside className={'enterprise-detail-pane' + (selectedItem ? ' open' : '')}>
@@ -474,6 +549,7 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
                 <FormField label={copy.t('Kết thúc')}><input type="datetime-local" value={form.endsAt} onChange={event => setForm(previous => ({ ...previous, endsAt: event.target.value }))} /></FormField>
                 <FormField label={copy.t('Địa điểm')}><input value={form.location} onChange={event => setForm(previous => ({ ...previous, location: event.target.value }))} maxLength="255" /></FormField>
                 <FormField label={copy.t('Link họp')}><input type="url" value={form.meetingUrl} onChange={event => setForm(previous => ({ ...previous, meetingUrl: event.target.value }))} /></FormField>
+                <label className="enterprise-inline-toggle"><input type="checkbox" checked={form.allDay} onChange={event => setForm(previous => ({ ...previous, allDay: event.target.checked }))} /><span>{copy.t('Cả ngày')}</span></label>
               </>}
               {['TICKET', 'WIKI'].includes(form.type) && <FormField label={copy.t('Danh mục')}><input value={form.category} onChange={event => setForm(previous => ({ ...previous, category: event.target.value }))} maxLength="255" /></FormField>}
               {form.type === 'WIKI' && <FormField label={copy.t('Thẻ, cách nhau bằng dấu phẩy')}><input value={form.tags} onChange={event => setForm(previous => ({ ...previous, tags: event.target.value }))} /></FormField>}
@@ -481,6 +557,7 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
               {form.type === 'INTEGRATION' && <>
                 <FormField label={copy.t('Nhà cung cấp')}><input value={form.provider} onChange={event => setForm(previous => ({ ...previous, provider: event.target.value }))} maxLength="255" required /></FormField>
                 <FormField label={copy.t('Endpoint công khai')}><input type="url" value={form.endpoint} onChange={event => setForm(previous => ({ ...previous, endpoint: event.target.value }))} placeholder="https://..." /></FormField>
+                <FormField label={copy.t('Chiều đồng bộ')}><select value={form.syncDirection} onChange={event => setForm(previous => ({ ...previous, syncDirection: event.target.value }))}><option value="BIDIRECTIONAL">{copy.t('Hai chiều')}</option><option value="INBOUND">{copy.t('Vào Workspace')}</option><option value="OUTBOUND">{copy.t('Ra hệ thống')}</option></select></FormField>
                 <p className="enterprise-security-note wide"><i className="fa-solid fa-shield-halved"></i>{copy.t('Workspace không lưu API key, token hoặc mật khẩu tích hợp.')}</p>
               </>}
               {form.type === 'ANNOUNCEMENT' && <div className="enterprise-toggle-row wide">
@@ -491,7 +568,15 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
                 <legend>{copy.t(form.type === 'APPROVAL' ? 'Người phê duyệt' : form.type === 'EVENT' ? 'Người tham dự' : 'Người liên quan')}</legend>
                 <div>{accounts.filter(account => account.id !== userId || form.type === 'EVENT').map(account => {
                   const selected = form.participantIds.includes(account.id);
-                  return <label key={account.id} className={selected ? 'selected' : ''}><input type="checkbox" checked={selected} onChange={() => setForm(previous => ({ ...previous, participantIds: selected ? previous.participantIds.filter(id => id !== account.id) : [...previous.participantIds, account.id] }))} /><Avatar account={account} small /><span><strong>{account.name}</strong><small>{account.department || account.title || account.username}</small></span><i className="fa-solid fa-check"></i></label>;
+                   return <label key={account.id} className={selected ? 'selected' : ''}><input type="checkbox" checked={selected} onChange={() => setForm(previous => {
+                     const participantIds = selected
+                       ? previous.participantIds.filter(id => id !== account.id)
+                       : [...previous.participantIds, account.id];
+                     const participantRoles = { ...(previous.participantRoles || {}) };
+                     if (selected) delete participantRoles[account.id];
+                     else participantRoles[account.id] = participantRoles[account.id] || PARTICIPANT_ROLE[form.type];
+                     return { ...previous, participantIds, participantRoles };
+                   })} /><Avatar account={account} small /><span><strong>{account.name}</strong><small>{account.department || account.title || account.username}</small></span><i className="fa-solid fa-check"></i></label>;
                 })}</div>
               </fieldset>
             </div>

@@ -79,6 +79,6 @@ def tinode_chatbot_public_config(app, uid=""):
         ),
         "avatar": str(
             app.config.get("TINODE_CHATBOT_DISPLAY_AVATAR")
-            or "https://chat.upgo.vn/vichat-ai.svg"
+            or "https://chat.gonplatform.com/vichat-ai.svg"
         ),
     }

@@ -374,7 +374,7 @@ test('renders per-user message receipts without changing the Tinode receipt flow
 
 test('keeps only safe active tenant options and switches without logout', () => {
   assert.deepEqual(normalizeTenantOptions([
-    { id: 'tenant-a', name: 'Tenant A', role: 'admin', active: true, logo_url: 'https://account.upgo.vn/company-a.png' },
+    { id: 'tenant-a', name: 'Tenant A', role: 'admin', active: true, logo_url: 'https://account.gonplatform.com/company-a.png' },
     { id: 'tenant-a', name: 'Duplicate', active: true },
     { id: 'tenant-disabled', name: 'Disabled', active: false },
   ]), [{
@@ -383,7 +383,7 @@ test('keeps only safe active tenant options and switches without logout', () => 
     role: 'admin',
     accountRole: 'member',
     active: true,
-    logo: 'https://account.upgo.vn/company-a.png',
+    logo: 'https://account.gonplatform.com/company-a.png',
   }]);
   assert.equal(typeof chatManagementService.switchTenant, 'function');
   assert.match(appSource, /const canSwitchTenant = tenantOptions\.length > 0/);
@@ -502,7 +502,7 @@ test('refreshes company logo metadata without resetting the active chat session'
   assert.deepEqual(normalizeTenantOptions([{
     id: 'tenant-a',
     name: 'Tenant A',
-    logo_url: 'https://account.upgo.vn/company-a.png',
+    logo_url: 'https://account.gonplatform.com/company-a.png',
     logo_updated_at: '2026-08-18T21:30:00Z',
   }]), [{
     id: 'tenant-a',
@@ -510,7 +510,7 @@ test('refreshes company logo metadata without resetting the active chat session'
     role: 'member',
     accountRole: 'member',
     active: true,
-    logo: 'https://account.upgo.vn/company-a.png',
+    logo: 'https://account.gonplatform.com/company-a.png',
     logoVersion: '2026-08-18T21:30:00Z',
   }]);
 });
@@ -579,6 +579,17 @@ test('profile viewer telemetry is optional and isolated from the profile surface
   assert.match(appSource, /could not record profile view/);
   assert.match(stylesSource, /\.profile-avatar-preview/);
   assert.match(stylesSource, /\.profile-viewers-card/);
+});
+
+test('profile and management controls expose keyboard-accessible labels and modal focus handling', () => {
+  const authLoginSource = readFileSync(new URL('../../auth/components/Login.jsx', import.meta.url), 'utf8');
+  const managementAppSource = readFileSync(new URL('../../management/ManagementApp.jsx', import.meta.url), 'utf8');
+  assert.match(authLoginSource, /login-error-message" role="alert"/);
+  assert.match(authLoginSource, /btn-toggle-password[^>]*aria-label=/);
+  assert.match(appSource, /function useDialogFocusTrap/);
+  assert.match(appSource, /profileViewersTotal \?\? profileViewers\.length/);
+  assert.match(managementAppSource, /management-icon-button[^>]*aria-label=/);
+  assert.match(managementAppSource, /management-logout[^>]*aria-label=/);
 });
 
 test('group member controls use the synced company directory with owner-only mutations', () => {

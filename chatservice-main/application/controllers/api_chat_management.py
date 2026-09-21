@@ -9,6 +9,7 @@ import uuid
 
 from gatco.response import json, stream
 from sqlalchemy import and_, func, or_
+from sqlalchemy.exc import IntegrityError
 
 from application import database
 from application.database import db
@@ -111,12 +112,59 @@ from application.services.chat_maintenance_service import (
     write_maintenance_state,
 )
 from application.services.chat_media_service import chat_media_status
+from application.services.pagination import (
+    PaginationError,
+    bounded_int,
+    cursor_uuid,
+    decode_cursor,
+    encode_cursor,
+    page_payload,
+)
 
 
 logger = logging.getLogger(__name__)
 ACCOUNT_SSO_PASSWORD_MARKER = "!account-sso-only"
 _ACCOUNT_DIRECTORY_SYNC_CACHE = {}
 _ACCOUNT_DIRECTORY_VISIBLE_CACHE = {}
+
+
+@app.middleware("request")
+async def enforce_required_password_change(request):
+    """Keep local accounts in the password-change flow until it succeeds."""
+    path = str(getattr(request, "path", "") or "").rstrip("/") or "/"
+    allowed_paths = {
+        "/api/v1/auth/me",
+        "/api/v1/auth/password",
+        "/api/v1/auth/logout",
+        "/api/v1/auth/login",
+        "/api/v1/auth/account-login",
+        "/api/v1/auth/sso",
+        "/api/v1/admin/sso",
+        "/login",
+        "/api/v1/auth/forgot-password",
+        "/api/v1/auth/reset-password",
+        "/api/v1/auth/health",
+    }
+    if path in allowed_paths or path.startswith("/api/v1/auth/reset-password/"):
+        return None
+    try:
+        token_user = current_jwt_user(request)
+    except Exception:
+        token_user = None
+    if not token_user or token_user.get("auth_method") == "account_sso":
+        return None
+    tenant_id = str(token_user.get("current_tenant_id") or token_user.get("tenant_id") or "")
+    account = ManagementAccount.query.filter(
+        ManagementAccount.id == _user_id(token_user),
+        ManagementAccount.tenant_id == tenant_id,
+        ManagementAccount.active.is_(True),
+    ).first()
+    if account is not None and bool((account.properties or {}).get("must_change_password")):
+        return json({
+            "error_code": "PASSWORD_CHANGE_REQUIRED",
+            "error_message": "You must change your password before using Chat.",
+        }, status=428)
+    return None
 ACCOUNT_SESSION_REVOCATION_ERRORS = frozenset({
     "ACCOUNT_LOGIN_REQUIRED",
     "ACCOUNT_COOKIE_AMBIGUOUS",
@@ -539,6 +587,13 @@ def _management_chat_metadata_error():
     return json({
         "error_code": "MANAGEMENT_CHAT_METADATA_HIDDEN",
         "error_message": "Chat metadata is not available in the management control plane.",
+    }, status=403)
+
+
+def _chat_session_required_error(message="This operation requires a Chat user session."):
+    return json({
+        "error_code": "CHAT_SESSION_REQUIRED",
+        "error_message": message,
     }, status=403)
 
 
@@ -1534,7 +1589,10 @@ def _direct_block_payload(item, viewer_id, participants=None):
 
 def _ensure_direct_key(item, participants):
     properties = dict(item.properties or {})
-    if properties.get("direct_key"):
+    existing_key = str(getattr(item, "direct_key", "") or properties.get("direct_key") or "").strip()
+    if existing_key:
+        if not getattr(item, "direct_key", None):
+            item.direct_key = existing_key
         return False
     participant_ids = sorted({
         str(participant.participant_id or "").strip()
@@ -1543,8 +1601,10 @@ def _ensure_direct_key(item, participants):
     })
     if len(participant_ids) != 2:
         return False
-    properties["direct_key"] = ":".join(participant_ids)
+    direct_key = ":".join(participant_ids)
+    properties["direct_key"] = direct_key
     item.properties = properties
+    item.direct_key = direct_key
     return True
 
 
@@ -2145,6 +2205,7 @@ def _friend_request_event(item):
         "note": item.note or "",
         "status": "pending",
         "createdAt": _iso_timestamp(item.created_at),
+        "updatedAt": _iso_timestamp(item.updated_at or item.created_at),
     }
 
 
@@ -3188,6 +3249,13 @@ async def management_change_password(request):
         account.updated_at = int(time.time())
         revoke_request_token(request)
         db.session.commit()
+        refreshed_token = issue_access_token(
+            account,
+            auth_method=current_user.get("auth_method") or "password",
+            session_scope=(MANAGEMENT_SESSION_SCOPE if management_scope else CHAT_SESSION_SCOPE),
+            tinode_auth=tinode_auth if not management_scope else None,
+        )
+        register_linked_session(request, refreshed_token)
         _audit(
             request,
             "AUTH_MANAGEMENT_PASSWORD_CHANGE" if management_scope else "AUTH_PASSWORD_CHANGE",
@@ -3195,7 +3263,20 @@ async def management_change_password(request):
             tenant_id=tenant_id,
             user_id=str(account.id),
         )
-        return clear_auth_cookie(json({"changed": True}), request)
+        response_payload = {
+            "changed": True,
+            "user": _public_account(account, _tenant_by_id(tenant_id)),
+            "tenant_id": tenant_id,
+            "connection": "tinode" if tinode_auth and not management_scope else "management",
+        }
+        if tinode_auth and not management_scope:
+            response_payload["tinode_auth"] = {
+                "username": tinode_auth.get("username") or account.tinode_username,
+                "uid": tinode_auth.get("uid") or account.tinode_uid,
+                "token": tinode_auth.get("token"),
+                "expires": tinode_auth.get("expires"),
+            }
+        return set_auth_cookie(json(response_payload), refreshed_token, request)
     except AuthError as error:
         db.session.rollback()
         _audit(request, "AUTH_PASSWORD_CHANGE", False, tenant_id=tenant_id, user_id=_user_id(current_user))
@@ -3412,9 +3493,35 @@ async def profile_view_list(request):
     if current_user is None:
         return _auth_error()
     profile_id = _user_id(current_user)
-    records = _profile_view_query(tenant_id, profile_id=profile_id).order_by(
-        SecurityAuditLog.created_at.desc()
-    ).limit(500).all()
+    try:
+        limit = bounded_int(
+            request.args.get("limit"),
+            name="limit",
+            default=100,
+            minimum=1,
+            maximum=100,
+        )
+        cursor = decode_cursor(request.args.get("cursor")) if request.args.get("cursor") else None
+    except PaginationError as error:
+        return json({"error_code": "PARAM_ERROR", "error_message": str(error)}, status=400)
+    query = _profile_view_query(tenant_id, profile_id=profile_id)
+    total = query.with_entities(func.count(func.distinct(SecurityAuditLog.user_id))).scalar() or 0
+    if cursor:
+        try:
+            cursor_created = int(cursor.get("created") or 0)
+            cursor_id = cursor_uuid(cursor.get("id"))
+        except (PaginationError, TypeError, ValueError):
+            return json({"error_code": "PARAM_ERROR", "error_message": "Cursor is invalid."}, status=400)
+        query = query.filter(or_(
+            SecurityAuditLog.created_at < cursor_created,
+            and_(SecurityAuditLog.created_at == cursor_created, SecurityAuditLog.id < cursor_id),
+        ))
+    records = query.order_by(
+        SecurityAuditLog.created_at.desc(),
+        SecurityAuditLog.id.desc(),
+    ).limit(limit + 1).all()
+    has_more = len(records) > limit
+    records = records[:limit]
     viewer_ids = []
     seen_viewers = set()
     for record in records:
@@ -3442,9 +3549,17 @@ async def profile_view_list(request):
             continue
         emitted_viewers.add(viewer_id)
         viewers.append(_public_profile_viewer(account, record.created_at))
+    next_cursor = None
+    if has_more and records:
+        last = records[-1]
+        next_cursor = encode_cursor({
+            "v": 1,
+            "created": int(last.created_at or 0),
+            "id": str(last.id),
+        })
     response = json({
-        "objects": viewers,
-        "count": len(viewers),
+        **page_payload(viewers, next_cursor=next_cursor, limit=limit, items=viewers),
+        "count": int(total),
     })
     response.headers["Cache-Control"] = "no-store"
     return response
@@ -3772,12 +3887,47 @@ async def management_users(request):
             func.lower(ManagementAccount.email).like(pattern),
             func.lower(ManagementAccount.department).like(pattern),
         ))
-    accounts = query.order_by(ManagementAccount.full_name.asc()).limit(1000).all()
+    try:
+        directory_limit = bounded_int(
+            request.args.get("limit") or request.args.get("results_per_page"),
+            name="limit",
+            default=100,
+            minimum=1,
+            maximum=100,
+        )
+        directory_cursor = decode_cursor(request.args.get("cursor")) if request.args.get("cursor") else None
+    except PaginationError as error:
+        return json({"error_code": "PARAM_ERROR", "error_message": str(error)}, status=400)
+    name_key = func.lower(ManagementAccount.full_name)
+    if directory_cursor:
+        try:
+            cursor_name = str(directory_cursor.get("name") or "").strip().lower()
+            cursor_id = str(directory_cursor.get("id") or "").strip()
+            if not cursor_name or not cursor_id:
+                raise ValueError
+        except (TypeError, ValueError):
+            return json({"error_code": "PARAM_ERROR", "error_message": "Cursor is invalid."}, status=400)
+        query = query.filter(or_(
+            name_key > cursor_name,
+            and_(name_key == cursor_name, ManagementAccount.id > cursor_id),
+        ))
+    accounts = query.order_by(name_key.asc(), ManagementAccount.id.asc()).limit(directory_limit + 1).all()
+    has_more = len(accounts) > directory_limit
+    accounts = accounts[:directory_limit]
+    next_cursor = None
+    if has_more and accounts:
+        last = accounts[-1]
+        next_cursor = encode_cursor({
+            "v": 1,
+            "name": str(last.full_name or "").strip().lower(),
+            "id": str(last.id),
+        })
     response = json({
-        "objects": [
-            _public_account(account)
-            for account in accounts
-        ],
+        **page_payload(
+            [_public_account(account) for account in accounts],
+            next_cursor=next_cursor,
+            limit=directory_limit,
+        ),
         "directory_sync": {
             "source": "account" if employee_account_directory else "local",
             "status": sync_status,
@@ -4329,7 +4479,11 @@ async def management_user_create(request):
         return json({"error_code": "ACCOUNT_CREATE_FAILED", "error_message": str(error)}, status=error.status_code)
     except Exception as error:
         db.session.rollback()
-        return json({"error_code": "ACCOUNT_CREATE_FAILED", "error_message": str(error)}, status=500)
+        logger.exception("Account creation failed for tenant %s", tenant_id)
+        return json({
+            "error_code": "ACCOUNT_CREATE_FAILED",
+            "error_message": "Could not create the account.",
+        }, status=500)
 
 
 @app.route('/api/v1/chat/users/<account_id>', methods=['PUT'])
@@ -4530,9 +4684,15 @@ async def management_audit_logs(request):
     if not _is_admin(current_user):
         return _forbidden_error()
     try:
-        limit = min(300, max(1, int(request.args.get("limit") or 100)))
-    except (TypeError, ValueError):
-        limit = 100
+        limit = bounded_int(
+            request.args.get("limit"),
+            name="limit",
+            default=100,
+            minimum=1,
+            maximum=300,
+        )
+    except PaginationError as error:
+        return json({"error_code": "PARAM_ERROR", "error_message": str(error)}, status=400)
     event_query = str(request.args.get("event") or "").strip().upper()
     query = SecurityAuditLog.query.filter(
         SecurityAuditLog.tenant_id == tenant_id,
@@ -4573,19 +4733,64 @@ async def friend_request_list(request):
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _auth_error()
+    if management_session_requested(request):
+        return _chat_session_required_error("Friend requests can only be managed from a Chat user session.")
     user_id = _user_id(current_user)
-    items = FriendRequest.query.filter(
+    try:
+        limit = bounded_int(
+            request.args.get("limit"),
+            name="limit",
+            default=100,
+            minimum=1,
+            maximum=100,
+        )
+        cursor = decode_cursor(request.args.get("cursor")) if request.args.get("cursor") else None
+        updated_since = bounded_int(
+            request.args.get("updated_since"),
+            name="updated_since",
+            default=0,
+            minimum=0,
+        )
+    except PaginationError as error:
+        return json({"error_code": "PARAM_ERROR", "error_message": str(error)}, status=400)
+    query = FriendRequest.query.filter(
         FriendRequest.tenant_id == tenant_id,
         FriendRequest.deleted.is_(False),
         or_(FriendRequest.requester_id == user_id, FriendRequest.recipient_id == user_id),
-    ).order_by(FriendRequest.created_at.desc()).all()
+    )
+    if updated_since:
+        query = query.filter(FriendRequest.updated_at >= updated_since)
+    if cursor:
+        try:
+            cursor_updated = int(cursor.get("updated") or 0)
+            cursor_id = cursor_uuid(cursor.get("id"))
+        except (PaginationError, TypeError, ValueError):
+            return json({"error_code": "PARAM_ERROR", "error_message": "Cursor is invalid."}, status=400)
+        query = query.filter(or_(
+            FriendRequest.updated_at < cursor_updated,
+            and_(FriendRequest.updated_at == cursor_updated, FriendRequest.id < cursor_id),
+        ))
+    items = query.order_by(
+        FriendRequest.updated_at.desc(),
+        FriendRequest.id.desc(),
+    ).limit(limit + 1).all()
+    has_more = len(items) > limit
+    items = items[:limit]
     events = []
     for item in items:
         events.append(_friend_request_event(item))
         response = _friend_response_event(item)
         if response is not None:
             events.append(response)
-    return json({"objects": events})
+    next_cursor = None
+    if has_more and items:
+        last = items[-1]
+        next_cursor = encode_cursor({
+            "v": 1,
+            "updated": int(last.updated_at or last.created_at or 0),
+            "id": str(last.id),
+        })
+    return json(page_payload(events, next_cursor=next_cursor, limit=limit, items=events))
 
 
 @app.route('/api/v1/friend-request', methods=['POST'])
@@ -4593,6 +4798,8 @@ async def friend_request_create(request):
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _auth_error()
+    if management_session_requested(request):
+        return _chat_session_required_error("Friend requests can only be managed from a Chat user session.")
     body = request.json or {}
     requester_id = _user_id(current_user)
     recipient_id = str(body.get("recipient_id") or "")
@@ -4624,7 +4831,14 @@ async def friend_request_create(request):
         properties={},
     )
     db.session.add(item)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return json({
+            "error_code": "FRIEND_REQUEST_EXISTS",
+            "error_message": "A friendship or pending request already exists.",
+        }, status=409)
     return json(_friend_request_event(item), status=201)
 
 
@@ -4633,6 +4847,8 @@ async def friend_request_respond(request, request_id):
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _auth_error()
+    if management_session_requested(request):
+        return _chat_session_required_error("Friend requests can only be managed from a Chat user session.")
     try:
         request_uuid = uuid.UUID(str(request_id))
     except (ValueError, TypeError, AttributeError):
@@ -4662,11 +4878,20 @@ async def conversation_list(request):
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _auth_error()
+    if management_session_requested(request):
+        return _chat_session_required_error("Conversations can only be opened from a Chat user session.")
     user_id = _user_id(current_user)
     try:
-        limit = min(200, max(1, int(request.args.get("limit") or 100)))
-    except (TypeError, ValueError):
-        limit = 100
+        limit = bounded_int(
+            request.args.get("limit"),
+            name="limit",
+            default=100,
+            minimum=1,
+            maximum=100,
+        )
+        cursor = decode_cursor(request.args.get("cursor")) if request.args.get("cursor") else None
+    except PaginationError as error:
+        return json({"error_code": "PARAM_ERROR", "error_message": str(error)}, status=400)
     query = Conversation.query.join(
         ConversationParticipant,
         ConversationParticipant.conversation_id == Conversation.id,
@@ -4678,11 +4903,50 @@ async def conversation_list(request):
         ConversationParticipant.active.is_(True),
         ConversationParticipant.approval_status == "APPROVED",
         ConversationParticipant.deleted.is_(False),
-    ).order_by(
-        ConversationParticipant.pinned_at.desc().nullslast(),
-        Conversation.updated_at.desc(),
     )
-    return json({"objects": [_serialize_conversation(item, user_id) for item in query.limit(limit).all()]})
+    pinned_key = func.coalesce(ConversationParticipant.pinned_at, 0)
+    if cursor:
+        try:
+            cursor_id = cursor_uuid(cursor.get("id"))
+            cursor_pinned = int(cursor.get("pinned") or 0)
+            cursor_updated = int(cursor.get("updated") or 0)
+        except (PaginationError, TypeError, ValueError):
+            return json({"error_code": "PARAM_ERROR", "error_message": "Cursor is invalid."}, status=400)
+        query = query.filter(or_(
+            pinned_key < cursor_pinned,
+            and_(pinned_key == cursor_pinned, Conversation.updated_at < cursor_updated),
+            and_(
+                pinned_key == cursor_pinned,
+                Conversation.updated_at == cursor_updated,
+                Conversation.id < cursor_id,
+            ),
+        ))
+    rows = query.order_by(
+        pinned_key.desc(),
+        Conversation.updated_at.desc(),
+        Conversation.id.desc(),
+    ).limit(limit + 1).all()
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    objects = [_serialize_conversation(item, user_id) for item in rows]
+    next_cursor = None
+    if has_more and rows:
+        last = rows[-1]
+        membership = ConversationParticipant.query.filter(
+            ConversationParticipant.tenant_id == tenant_id,
+            ConversationParticipant.conversation_id == last.id,
+            ConversationParticipant.participant_id == user_id,
+            ConversationParticipant.active.is_(True),
+            ConversationParticipant.approval_status == "APPROVED",
+            ConversationParticipant.deleted.is_(False),
+        ).first()
+        next_cursor = encode_cursor({
+            "v": 1,
+            "id": str(last.id),
+            "pinned": int((membership.pinned_at if membership else 0) or 0),
+            "updated": int(last.updated_at or 0),
+        })
+    return json(page_payload(objects, next_cursor=next_cursor, limit=limit))
 
 
 @app.route('/api/v1/conversation/<conversation_id>/notification-settings', methods=['PUT'])
@@ -5352,6 +5616,8 @@ async def conversation_create(request):
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _auth_error()
+    if management_session_requested(request):
+        return _chat_session_required_error("Conversations can only be created from a Chat user session.")
     body = request.json or {}
     owner_id = _user_id(current_user)
     requested_ids = [str(value) for value in (body.get("participant_ids") or []) if value]
@@ -5390,7 +5656,10 @@ async def conversation_create(request):
         existing = Conversation.query.filter(
             Conversation.tenant_id == tenant_id,
             Conversation.deleted.is_(False),
-            Conversation.properties.contains({"direct_key": direct_key}),
+            or_(
+                Conversation.direct_key == direct_key,
+                Conversation.properties.contains({"direct_key": direct_key}),
+            ),
         ).first()
         if existing is not None:
             now = int(time.time())
@@ -5433,6 +5702,7 @@ async def conversation_create(request):
         priority="NORMAL",
         last_message_at=int(time.time()),
         properties=properties,
+        direct_key=direct_key or None,
     )
     try:
         db.session.add(item)
@@ -5450,9 +5720,30 @@ async def conversation_create(request):
             ))
         db.session.commit()
         return json(_serialize_conversation(item, owner_id), status=201)
-    except Exception as error:
+    except IntegrityError:
         db.session.rollback()
-        return json({"error_code": "CONVERSATION_ERROR", "error_message": str(error)}, status=500)
+        if direct_key:
+            canonical = Conversation.query.filter(
+                Conversation.tenant_id == tenant_id,
+                Conversation.deleted.is_(False),
+                or_(
+                    Conversation.direct_key == direct_key,
+                    Conversation.properties.contains({"direct_key": direct_key}),
+                ),
+            ).order_by(Conversation.created_at.asc(), Conversation.id.asc()).first()
+            if canonical is not None:
+                return json(_serialize_conversation(canonical, owner_id))
+        return json({
+            "error_code": "CONVERSATION_CONFLICT",
+            "error_message": "The conversation could not be created safely. Please retry.",
+        }, status=409)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Conversation creation failed")
+        return json({
+            "error_code": "CONVERSATION_ERROR",
+            "error_message": "The conversation could not be created.",
+        }, status=500)
 
 
 @app.route('/api/v1/conversation/<conversation_id>/tinode-prepare', methods=['POST'])
@@ -5524,6 +5815,8 @@ async def conversation_bind_tinode(request, conversation_id):
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _auth_error()
+    if management_session_requested(request):
+        return _chat_session_required_error("Tinode topics can only be bound from a Chat user session.")
     try:
         conversation_uuid = uuid.UUID(str(conversation_id))
     except (ValueError, TypeError, AttributeError):
@@ -5944,6 +6237,8 @@ async def conversation_participant_add(request, conversation_id):
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _auth_error()
+    if management_session_requested(request):
+        return _chat_session_required_error("Group members can only be changed from a Chat user session.")
     try:
         conversation_uuid = uuid.UUID(str(conversation_id))
     except (ValueError, TypeError, AttributeError):
@@ -6442,6 +6737,8 @@ async def conversation_participant_approval(request, conversation_id, participan
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _auth_error()
+    if management_session_requested(request):
+        return _chat_session_required_error("Member approvals can only be changed from a Chat user session.")
     try:
         conversation_uuid = uuid.UUID(str(conversation_id))
     except (ValueError, TypeError, AttributeError):
@@ -6623,6 +6920,8 @@ async def conversation_participant_remove(request, conversation_id, participant_
     current_user, tenant_id = _identity(request)
     if current_user is None:
         return _auth_error()
+    if management_session_requested(request):
+        return _chat_session_required_error("Group membership can only be changed from a Chat user session.")
     try:
         conversation_uuid = uuid.UUID(str(conversation_id))
     except (ValueError, TypeError, AttributeError):

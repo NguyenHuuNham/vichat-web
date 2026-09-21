@@ -54,11 +54,16 @@ chmod +x infrastructure/production/start.sh
 
 The checked-in host configuration uses:
 
-- ChatUI: `https://chat.upgo.vn`
-- Chatmgt: `https://chatmgt.upgo.vn`
-- Employee and administrator login platform: UpGO Account at `https://account.upgo.vn`
+- ChatUI: `https://chat.gonplatform.com`
+- Chatmgt: `https://chatmgt.gonplatform.com`
+- Employee and administrator login platform: UpGO Account at `https://account.gonplatform.com`
 - ChatUI upstream: `127.0.0.1:8094`
 - Chatmgt upstream: the configured private bind address on port `8081`
+
+Outbound Account/API calls keep certificate verification enabled. Use
+`ACCOUNT_SSO_CA_BUNDLE` for a mounted custom CA bundle when required; leave it
+empty to use the system trust store. `CHAT_HTTP_TIMEOUT` and
+`ACCOUNT_SSO_TIMEOUT` are bounded request timeouts in seconds.
 
 ## Private S3 chat media
 
@@ -81,7 +86,7 @@ MINIO_REGION=us-east-1
 MINIO_BUCKET_NAME=gonengage
 CHAT_MEDIA_STORAGE=s3
 CHAT_MEDIA_OBJECT_PREFIX=vichat/chat-media
-CHAT_MEDIA_PUBLIC_BASE_URL=https://chatmgt.upgo.vn
+CHAT_MEDIA_PUBLIC_BASE_URL=https://chatmgt.gonplatform.com
 CHAT_MEDIA_SIGNING_SECRET=
 CHAT_MEDIA_MAX_SIZE=524288000
 CHAT_MEDIA_UPLOAD_URL_TTL=300
@@ -94,7 +99,7 @@ VITE_CHAT_MEDIA_FALLBACK_TO_TINODE=false
 
 Leave `CHAT_MEDIA_SIGNING_SECRET` empty only for the first `start.sh` run; the
 script generates it without printing it. Keep the bucket private and allow
-browser CORS from `https://chat.upgo.vn` for `PUT`, `GET` and `HEAD` with the
+browser CORS from `https://chat.gonplatform.com` for `PUT`, `GET` and `HEAD` with the
 `Content-Type` request header. With an `mc` alias named `upgo`, apply the checked
 in CORS policy and expire abandoned pending uploads without touching completed
 media:
@@ -143,7 +148,7 @@ proxy, obtain TLS certificates, run `sudo nginx -t`, then reload Nginx.
 ## Tinode data switch
 
 The new authoritative endpoint is `chatapi.gonplatform.com`. The container
-Nginx keeps the public `chat.upgo.vn` certificate and proxies `/v0/` plus
+Nginx keeps the public `chat.gonplatform.com` certificate and proxies `/v0/` plus
 `/tinode-media/` to `https://chatapi.gonplatform.com` with SNI/Host pinned to
 that hostname. Upstream certificate verification is enabled for this endpoint.
 The target is intentionally a fresh Tinode store; old messages and old Tinode
@@ -203,7 +208,7 @@ Set these values in the existing mode-`0600` production `.env`:
 WEBRTC_ENABLED=true
 TURN_HOST=103.74.122.206
 TURN_PORT=3478
-TURN_REALM=chat.upgo.vn
+TURN_REALM=chat.gonplatform.com
 TURN_USERNAME=vichat
 TURN_PASSWORD=replace-with-a-long-random-password
 TURN_EXTERNAL_IP=103.74.122.206/192.168.80.160
@@ -228,7 +233,7 @@ server-side `PUB` call path; without the authoritative block Tinode returns
 `501 not implemented` and the clients intentionally keep call buttons disabled.
 
 `TURN_HOST` must resolve directly to the machine running Coturn. At the time of
-this release `chat.upgo.vn` resolves to the separate `.218` web entry, so the
+this release `chat.gonplatform.com` resolves to the separate `.218` web entry, so the
 TURN endpoint on this deployment must use `103.74.122.206` (or a dedicated DNS
 record which resolves to that address), not the ChatUI hostname.
 
@@ -284,7 +289,7 @@ TINODE_CHATBOT_PASSWORD=<random-tinode-bot-password>
 TINODE_CHATBOT_DISPLAY_NAME=ViChat AI
 TINODE_CHATBOT_DISPLAY_TITLE=Tro ly tri thuc doanh nghiep
 TINODE_CHATBOT_DISPLAY_ORGANIZATION=GON Platform
-TINODE_CHATBOT_DISPLAY_AVATAR=https://chat.upgo.vn/vichat-ai.svg
+TINODE_CHATBOT_DISPLAY_AVATAR=https://chat.gonplatform.com/vichat-ai.svg
 TINODE_CHATBOT_WEBHOOK_KEY=<separate-random-webhook-key>
 TINODE_CHATBOT_WEBHOOK_URL=http://chatmgt:8093/api/v1/chatbot/tinode-webhook
 ```
@@ -400,10 +405,10 @@ Leave `TINODE_SSO_SECRET` empty only for the first `start.sh` run so it is
 generated securely, or set an independently generated value of at least 32
 characters. Never use a documentation placeholder as the real secret.
 
-In `chatmgt.upgo.vn`, sign in with an Account `admin`, `owner` or `superadmin`,
+In `chatmgt.gonplatform.com`, sign in with an Account `admin`, `owner` or `superadmin`,
 then invite employees from UpGO Account. Chatmgt must show the read-only Account
 directory projection, provision a deterministic Tinode UID for each active
-employee, and never offer local create/reset-password actions. In `chat.upgo.vn`,
+employee, and never offer local create/reset-password actions. In `chat.gonplatform.com`,
 the employee enters the email and password of the invited UpGO Account user.
 Chatmgt forwards those credentials only to Account `POST /login`, validates the
 returned session and tenant membership, then returns a Chatmgt session. The
@@ -426,7 +431,7 @@ safe snapshot for the same tenant and viewer. If the authenticated viewer is
 explicitly inactive, omitted by a complete snapshot, or cannot be projected,
 Chatmgt must purge that viewer's cache, deactivate the projection, revoke the
 JWT and clear both session cookies instead of serving a stale directory.
-Account administrator login remains at `chatmgt.upgo.vn`; a normal employee
+Account administrator login remains at `chatmgt.gonplatform.com`; a normal employee
 cannot obtain the management scope.
 
 Log out and confirm refresh cannot reopen the protected UI and
@@ -478,7 +483,7 @@ commit it. `TINODE_ADMIN_PASSWORD` must remain the current Tinode root password.
 After rebuilding, first check:
 
 ```bash
-curl -fsS https://chatmgt.upgo.vn/api/v1/auth/health
+curl -fsS https://chatmgt.gonplatform.com/api/v1/auth/health
 ```
 
 The response must contain
@@ -490,9 +495,9 @@ from the same tenant in separate browser profiles:
    Tinode secrets.
 2. Confirm ChatUI next calls `/api/v1/auth/tinode-token`, receives
    `connection: tinode`, and connects to
-   `wss://chat.upgo.vn/v0/channels` without sending an Account password.
+   `wss://chat.gonplatform.com/v0/channels` without sending an Account password.
 3. Open the single Tinode Web UI at `https://chatapi.gonplatform.com/#`, set
-   Server to `chat.upgo.vn`, and sign in with the same invited UpGO email/password. The
+   Server to `chat.gonplatform.com`, and sign in with the same invited UpGO email/password. The
    login is translated by the relay bridge; the bridge exchanges the fresh
    Chatmgt bearer issued after Account credential verification, without relying
    on browser-cookie propagation. It must open the same newly provisioned

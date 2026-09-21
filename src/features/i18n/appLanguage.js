@@ -505,7 +505,7 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Hủy chọn': 'Clear selection',
   'Tạo nhóm': 'Create group',
   'Chưa cấu hình dịch vụ xác thực Chatmgt.': 'Chatmgt authentication is not configured.',
-  'Account chưa trả về phiên đăng nhập hợp lệ. Vui lòng đăng nhập lại tại account.upgo.vn.': 'Account did not return a valid login session. Please sign in again at account.upgo.vn.',
+  'Account chưa trả về phiên đăng nhập hợp lệ. Vui lòng đăng nhập lại tại account.gonplatform.com.': 'Account did not return a valid login session. Please sign in again at account.gonplatform.com.',
   'Tài khoản UpGO chưa được mời vào doanh nghiệp hoặc membership chưa hoạt động.': 'This UpGO account has not been invited to the company or its membership is inactive.',
   'Tên đăng nhập hoặc mật khẩu không đúng.': 'The username or password is incorrect.',
   'Bạn đã thử đăng nhập quá nhiều lần. Vui lòng thử lại sau.': 'Too many login attempts. Please try again later.',

@@ -3,7 +3,7 @@ import time
 import uuid
 
 from gatco.response import json
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 
 from application.controllers.api_chat_management import (
     _account_by_id,
@@ -26,6 +26,14 @@ from application.models.models import (
     ManagementAccount,
 )
 from application.server import app
+from application.services.pagination import (
+    PaginationError,
+    bounded_int,
+    cursor_uuid,
+    decode_cursor,
+    encode_cursor,
+    page_payload,
+)
 from application.services.enterprise_workspace_service import (
     ITEM_STATUSES,
     ITEM_TYPES,
@@ -35,6 +43,7 @@ from application.services.enterprise_workspace_service import (
     can_create_type,
     can_edit_item,
     can_read_item,
+    merge_properties,
     normalize_item_type,
     normalize_participants,
     transition_for_action,
@@ -77,11 +86,12 @@ def _item_query(tenant_id):
     )
 
 
-def _item_by_id(tenant_id, item_id):
+def _item_by_id(tenant_id, item_id, lock=False):
     parsed_id = _uuid(item_id)
     if parsed_id is None:
         return None
-    return _item_query(tenant_id).filter(EnterpriseItem.id == parsed_id).first()
+    query = _item_query(tenant_id).filter(EnterpriseItem.id == parsed_id)
+    return query.with_for_update().first() if lock else query.first()
 
 
 def _participants(item_id, tenant_id):
@@ -220,44 +230,53 @@ def _visible_query(tenant_id, user_id, is_admin):
     query = _item_query(tenant_id)
     if is_admin:
         return query
-    participant_item_ids = [
-        row.item_id for row in EnterpriseItemParticipant.query.filter(
+    participant_item_ids = db.session.query(EnterpriseItemParticipant.item_id).filter(
             EnterpriseItemParticipant.tenant_id == tenant_id,
             EnterpriseItemParticipant.account_id == user_id,
             EnterpriseItemParticipant.deleted.is_(False),
-        ).all()
-    ]
+        )
     visibility_filters = [
         EnterpriseItem.visibility == "COMPANY",
         EnterpriseItem.created_by == user_id,
         EnterpriseItem.owner_id == user_id,
     ]
-    if participant_item_ids:
-        visibility_filters.append(EnterpriseItem.id.in_(participant_item_ids))
+    visibility_filters.append(EnterpriseItem.id.in_(participant_item_ids))
     return query.filter(or_(*visibility_filters))
 
 
-def _summary(items):
+def _summary(query):
     now = int(time.time())
     due_soon_at = now + (7 * 24 * 60 * 60)
     by_type = {item_type: 0 for item_type in ITEM_TYPES}
-    by_status = {}
-    overdue = 0
-    due_soon = 0
-    for item in items:
-        by_type[item.item_type] = by_type.get(item.item_type, 0) + 1
-        by_status[item.status] = by_status.get(item.status, 0) + 1
-        if item.due_at and item.status not in TERMINAL_STATUSES:
-            if item.due_at < now:
-                overdue += 1
-            elif item.due_at <= due_soon_at:
-                due_soon += 1
+    for item_type, count in query.with_entities(
+        EnterpriseItem.item_type,
+        func.count(EnterpriseItem.id),
+    ).group_by(EnterpriseItem.item_type).all():
+        by_type[item_type] = int(count or 0)
+    by_status = {
+        status: int(count or 0)
+        for status, count in query.with_entities(
+            EnterpriseItem.status,
+            func.count(EnterpriseItem.id),
+        ).group_by(EnterpriseItem.status).all()
+    }
+    active_due = query.filter(~EnterpriseItem.status.in_(TERMINAL_STATUSES))
+    overdue = active_due.filter(
+        EnterpriseItem.due_at.isnot(None),
+        EnterpriseItem.due_at < now,
+    ).with_entities(func.count(EnterpriseItem.id)).scalar() or 0
+    due_soon = active_due.filter(
+        EnterpriseItem.due_at.isnot(None),
+        EnterpriseItem.due_at >= now,
+        EnterpriseItem.due_at <= due_soon_at,
+    ).with_entities(func.count(EnterpriseItem.id)).scalar() or 0
+    total = query.with_entities(func.count(EnterpriseItem.id)).scalar() or 0
     return {
-        "total": len(items),
+        "total": int(total),
         "byType": by_type,
         "byStatus": by_status,
-        "overdue": overdue,
-        "dueSoon": due_soon,
+        "overdue": int(overdue),
+        "dueSoon": int(due_soon),
         "updatedAt": _iso_timestamp(now),
     }
 
@@ -320,10 +339,12 @@ def _replace_participants(item, tenant_id, participants):
         (entry["account_id"], entry["role"])
         for entry in participants
     }
+    removed = []
     for key, participant in active_by_key.items():
         if key not in desired_keys:
             participant.deleted = True
             participant.deleted_at = int(time.time())
+            removed.append({"account_id": key[0], "role": key[1]})
     for entry in participants:
         key = (entry["account_id"], entry["role"])
         participant = active_by_key.get(key) or historical_by_key.get(key)
@@ -344,6 +365,37 @@ def _replace_participants(item, tenant_id, participants):
                 participant.state = "PENDING"
                 participant.responded_at = None
                 participant.acknowledged_at = None
+    return removed
+
+
+def _participant_values_for_update(item, body, existing_participants):
+    """Fill omitted roles from the current row before applying a participant patch."""
+    if "participants" not in body and "participant_ids" not in body:
+        return None
+    roles_by_account = {}
+    for participant in existing_participants:
+        roles_by_account.setdefault(str(participant.account_id), participant.role)
+    source = body.get("participants")
+    if source is None:
+        source = body.get("participant_ids") or []
+    normalized = []
+    for entry in source:
+        if isinstance(entry, dict):
+            account_id = entry.get("account_id") or entry.get("id")
+            if "role" in entry and entry.get("role"):
+                normalized.append(entry)
+            else:
+                normalized.append({
+                    **entry,
+                    "account_id": account_id,
+                    "role": roles_by_account.get(str(account_id), None),
+                })
+        else:
+            normalized.append({
+                "account_id": entry,
+                "role": roles_by_account.get(str(entry), None),
+            })
+    return normalize_participants(item.item_type, {"participants": normalized})
 
 
 def _add_activity(item, actor_id, action, from_status=None, to_status=None, comment="", data=None):
@@ -357,6 +409,29 @@ def _add_activity(item, actor_id, action, from_status=None, to_status=None, comm
         comment=comment or None,
         data=data or {},
     ))
+
+
+def _expected_version(body):
+    if not isinstance(body, dict) or "version" not in body:
+        raise WorkspaceValidationError("version is required for this operation.")
+    try:
+        return bounded_int(
+            body.get("version"),
+            name="version",
+            default=0,
+            minimum=1,
+            maximum=2147483647,
+        )
+    except PaginationError as error:
+        raise WorkspaceValidationError(str(error)) from error
+
+
+def _version_conflict(item, current_version=None):
+    return json({
+        "error_code": "WORKSPACE_VERSION_CONFLICT",
+        "error_message": "This workspace item changed. Reload it before saving again.",
+        "current_version": int(current_version if current_version is not None else (item.version or 1)),
+    }, status=409)
 
 
 @app.route('/api/v1/workspace/items', methods=['GET'])
@@ -379,17 +454,53 @@ async def enterprise_item_list(request):
     if query_text:
         query = query.filter(func.lower(EnterpriseItem.search_text).like("%{}%".format(query_text[:200])))
     try:
-        updated_since = int(request.args.get("updated_since") or 0)
-        limit = min(200, max(1, int(request.args.get("limit") or 100)))
-    except (TypeError, ValueError):
-        return _error(WorkspaceValidationError("Invalid pagination or refresh cursor."))
+        updated_since = bounded_int(
+            request.args.get("updated_since"),
+            name="updated_since",
+            default=0,
+            minimum=0,
+            maximum=4102444800,
+        )
+        limit = bounded_int(
+            request.args.get("limit"),
+            name="limit",
+            default=100,
+            minimum=1,
+            maximum=100,
+        )
+        cursor = decode_cursor(request.args.get("cursor")) if request.args.get("cursor") else None
+    except PaginationError as error:
+        return _error(WorkspaceValidationError(str(error)))
     if updated_since > 0:
         query = query.filter(EnterpriseItem.updated_at > updated_since)
-    all_items = query.order_by(EnterpriseItem.updated_at.desc()).all()
-    visible_items = all_items[:limit]
+    summary = _summary(query)
+    if cursor:
+        try:
+            cursor_updated = int(cursor.get("updated") or 0)
+            cursor_id = cursor_uuid(cursor.get("id"))
+        except (PaginationError, TypeError, ValueError):
+            return _error(WorkspaceValidationError("Cursor is invalid."))
+        query = query.filter(or_(
+            EnterpriseItem.updated_at < cursor_updated,
+            and_(EnterpriseItem.updated_at == cursor_updated, EnterpriseItem.id < cursor_id),
+        ))
+    visible_items = query.order_by(
+        EnterpriseItem.updated_at.desc(),
+        EnterpriseItem.id.desc(),
+    ).limit(limit + 1).all()
+    has_more = len(visible_items) > limit
+    visible_items = visible_items[:limit]
     participants_by_item, accounts_by_id = _prefetch_items(visible_items, tenant_id)
+    next_cursor = None
+    if has_more and visible_items:
+        last = visible_items[-1]
+        next_cursor = encode_cursor({
+            "v": 1,
+            "updated": int(last.updated_at or 0),
+            "id": str(last.id),
+        })
     return json({
-        "objects": [
+        **page_payload([
             _serialize_item(
                 item,
                 user_id,
@@ -398,8 +509,8 @@ async def enterprise_item_list(request):
                 accounts_by_id,
             )
             for item in visible_items
-        ],
-        "summary": _summary(all_items),
+        ], next_cursor=next_cursor, limit=limit),
+        "summary": summary,
     })
 
 
@@ -408,8 +519,7 @@ async def enterprise_stats(request):
     current_user, tenant_id, user_id, auth_error = await _workspace_identity(request)
     if auth_error is not None:
         return auth_error
-    items = _visible_query(tenant_id, user_id, _is_admin(current_user)).all()
-    return json(_summary(items))
+    return json(_summary(_visible_query(tenant_id, user_id, _is_admin(current_user))))
 
 
 @app.route('/api/v1/workspace/search', methods=['GET'])
@@ -515,7 +625,7 @@ async def enterprise_item_update(request, item_id):
     current_user, tenant_id, user_id, auth_error = await _workspace_identity(request)
     if auth_error is not None:
         return auth_error
-    item = _item_by_id(tenant_id, item_id)
+    item = _item_by_id(tenant_id, item_id, lock=True)
     if item is None:
         return json({"error_code": "NOT_FOUND", "error_message": "Workspace item not found."}, status=404)
     participants = _participants(item.id, tenant_id)
@@ -525,12 +635,17 @@ async def enterprise_item_update(request, item_id):
         return json({"error_code": "FORBIDDEN", "error_message": "You cannot edit this workspace item."}, status=403)
     body = request.json or {}
     try:
+        expected_version = _expected_version(body)
+        current_version = int(item.version or 1)
+        if expected_version != current_version:
+            db.session.rollback()
+            return _version_conflict(item, current_version)
         values = validate_item_payload(body, existing_type=item.item_type, partial=True)
         values.pop("item_type", None)
         if "status" in values and values["status"] != item.status:
             raise WorkspaceValidationError("Use a workspace action to change status.")
         values.pop("status", None)
-        participant_values = normalize_participants(item.item_type, body)
+        participant_values = _participant_values_for_update(item, body, participants)
         owner_id = values.pop("owner_id", item.owner_id)
         if owner_id:
             _validate_account_ids(tenant_id, [owner_id])
@@ -545,6 +660,13 @@ async def enterprise_item_update(request, item_id):
         if "source_message_ref" in values:
             item.source_message_ref = values.pop("source_message_ref")
         changed_fields = []
+        removed_participants = []
+        if "properties" in body:
+            values["properties"] = merge_properties(
+                item.item_type,
+                item.properties,
+                body.get("properties"),
+            )
         for field_name, value in values.items():
             if getattr(item, field_name) != value:
                 setattr(item, field_name, value)
@@ -557,13 +679,14 @@ async def enterprise_item_update(request, item_id):
             ):
                 raise WorkspaceValidationError("An approval requires at least one approver.")
             _validate_account_ids(tenant_id, [entry["account_id"] for entry in participant_values])
-            _replace_participants(item, tenant_id, participant_values)
+            removed_participants = _replace_participants(item, tenant_id, participant_values)
             changed_fields.append("participants")
-        item.version = int(item.version or 1) + 1
+        item.version = expected_version + 1
         item.search_text = build_search_text(item.title, item.description, item.properties)
         _add_activity(item, user_id, "UPDATED", from_status=item.status, to_status=item.status, data={
             "fields": sorted(set(changed_fields)),
             "version": item.version,
+            "removedParticipants": removed_participants,
         })
         db.session.commit()
         _audit(request, "ENTERPRISE_ITEM_UPDATED", True, tenant_id, user_id, {
@@ -585,17 +708,27 @@ async def enterprise_item_delete(request, item_id):
     current_user, tenant_id, user_id, auth_error = await _workspace_identity(request)
     if auth_error is not None:
         return auth_error
-    item = _item_by_id(tenant_id, item_id)
+    item = _item_by_id(tenant_id, item_id, lock=True)
     if item is None:
         return json({"error_code": "NOT_FOUND", "error_message": "Workspace item not found."}, status=404)
     participants = _participants(item.id, tenant_id)
     is_admin = _is_admin(current_user)
     if not can_edit_item(item, user_id, is_admin, _participant_roles(participants, user_id)):
         return json({"error_code": "FORBIDDEN", "error_message": "You cannot archive this workspace item."}, status=403)
+    try:
+        expected_version = _expected_version(request.json or {})
+    except WorkspaceValidationError as error:
+        db.session.rollback()
+        return _error(error)
+    current_version = int(item.version or 1)
+    if expected_version != current_version:
+        db.session.rollback()
+        return _version_conflict(item, current_version)
     now = int(time.time())
     item.deleted = True
     item.deleted_at = now
     item.closed_at = item.closed_at or now
+    item.version = expected_version + 1
     _add_activity(item, user_id, "ARCHIVED", from_status=item.status, to_status="ARCHIVED")
     db.session.commit()
     _audit(request, "ENTERPRISE_ITEM_ARCHIVED", True, tenant_id, user_id, {
@@ -610,7 +743,7 @@ async def enterprise_item_action(request, item_id):
     current_user, tenant_id, user_id, auth_error = await _workspace_identity(request)
     if auth_error is not None:
         return auth_error
-    item = _item_by_id(tenant_id, item_id)
+    item = _item_by_id(tenant_id, item_id, lock=True)
     if item is None:
         return json({"error_code": "NOT_FOUND", "error_message": "Workspace item not found."}, status=404)
     participants = _participants(item.id, tenant_id)
@@ -618,6 +751,15 @@ async def enterprise_item_action(request, item_id):
     if not _viewer_can_read(item, user_id, is_admin, participants):
         return json({"error_code": "NOT_FOUND", "error_message": "Workspace item not found."}, status=404)
     body = request.json or {}
+    try:
+        expected_version = _expected_version(body)
+    except WorkspaceValidationError as error:
+        db.session.rollback()
+        return _error(error)
+    current_version = int(item.version or 1)
+    if expected_version != current_version:
+        db.session.rollback()
+        return _version_conflict(item, current_version)
     action = str(body.get("action") or "").strip().upper()
     comment = str(body.get("comment") or "").strip()
     if len(comment) > 5000:
@@ -683,13 +825,13 @@ async def enterprise_item_action(request, item_id):
                     new_status = "PENDING" if pending_approvers else "APPROVED"
         if new_status is not None and new_status != item.status:
             item.status = new_status
-            item.version = int(item.version or 1) + 1
             if new_status == "PUBLISHED":
                 item.published_at = now
             if new_status in TERMINAL_STATUSES:
                 item.closed_at = now
             elif action in ("REOPEN", "RESUME"):
                 item.closed_at = None
+        item.version = expected_version + 1
         _add_activity(
             item,
             user_id,

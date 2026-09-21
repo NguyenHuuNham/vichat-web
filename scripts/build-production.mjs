@@ -1,13 +1,13 @@
 import { build } from 'vite';
 
 const productionDefaults = {
-  VITE_TINODE_HOST: 'chat.upgo.vn',
+  VITE_TINODE_HOST: 'chat.gonplatform.com',
   VITE_TINODE_API_KEY: 'AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K',
   VITE_TINODE_SECURE: 'true',
   VITE_TINODE_TRANSPORT: 'ws',
   VITE_TINODE_PERSIST: 'false',
   VITE_TINODE_APP_NAME: 'SONGHONG/1.0',
-  VITE_CHAT_MANAGEMENT_API_URL: 'https://chatmgt.upgo.vn',
+  VITE_CHAT_MANAGEMENT_API_URL: 'https://chatmgt.gonplatform.com',
   VITE_CHAT_MANAGEMENT_REMOTE_AUTH: 'true',
   // Account login resolves the active tenant from the verified UpGo session.
   // Keep this empty so a local env file cannot reintroduce a fixed tenant.
@@ -17,7 +17,7 @@ const productionDefaults = {
   VITE_CHAT_MEDIA_FALLBACK_TO_TINODE: 'false',
   VITE_CALLS_ENABLED: 'true',
   VITE_CHAT_MODE: 'internal',
-  VITE_CHATBOT_API_URL: 'https://chatmgt.upgo.vn/api/v1/chatbot/message',
+  VITE_CHATBOT_API_URL: 'https://chatmgt.gonplatform.com/api/v1/chatbot/message',
   VITE_CHATBOT_WITH_CREDENTIALS: 'true',
   VITE_CHATBOT_ID: 'vichat-ai',
   VITE_CHATBOT_USERNAME: 'vichat_ai',

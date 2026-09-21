@@ -21,6 +21,7 @@ from application.services import (
     KnowledgeService,
     KnowledgeServiceError,
 )
+from application.services.pagination import PaginationError, bounded_int
 
 
 logger = logging.getLogger(__name__)
@@ -197,11 +198,16 @@ def _external_matches(body):
     base_id = _external_knowledge_base_id(body)
     if base_id:
         knowledge_service.get_base(tenant_id, base_id)
-    requested_limit = (body or {}).get("limit")
     try:
-        limit = min(max(int(requested_limit or app.config.get("CHATBOT_RETRIEVAL_LIMIT", 6)), 1), 20)
-    except (TypeError, ValueError):
-        raise KnowledgeServiceError("limit must be an integer between 1 and 20.")
+        limit = bounded_int(
+            (body or {}).get("limit"),
+            name="limit",
+            default=int(app.config.get("CHATBOT_RETRIEVAL_LIMIT", 6)),
+            minimum=1,
+            maximum=20,
+        )
+    except PaginationError as error:
+        raise KnowledgeServiceError(str(error), 400, "PARAM_ERROR") from error
     matches = knowledge_service.retrieve(
         query_text,
         tenant_id,
@@ -432,7 +438,10 @@ def _valid_uuid(value, field_name):
 
 
 def _error_response(error, code="KNOWLEDGE_ERROR"):
-    return json({"error_code": code, "error_message": str(error)}, status=getattr(error, "status_code", 500))
+    return json({
+        "error_code": getattr(error, "error_code", None) or code,
+        "error_message": str(error) if isinstance(error, (ChatbotServiceError, KnowledgeServiceError)) else "The chatbot service is temporarily unavailable.",
+    }, status=getattr(error, "status_code", 500))
 
 
 @app.route('/api/v1/chatbot/health', methods=['GET'])
@@ -813,7 +822,16 @@ async def chatbot_history(request):
         return json({"error_code": "SESSION_EXPIRED", "error_message": "Phiên làm việc hết hạn"}, status=401)
     conversation_ref = str(request.args.get("conversation_id") or DEFAULT_CHATBOT_CONVERSATION_REF)[:255]
     history_refs = _chatbot_history_refs(conversation_ref, current_user)
-    limit = min(max(int(request.args.get("limit", 200)), 1), 500)
+    try:
+        limit = bounded_int(
+            request.args.get("limit"),
+            name="limit",
+            default=200,
+            minimum=1,
+            maximum=500,
+        )
+    except PaginationError as error:
+        return json({"error_code": "PARAM_ERROR", "error_message": str(error)}, status=400)
     history_query = ChatbotMessage.query.filter(
         ChatbotMessage.tenant_id == tenant_id,
         ChatbotMessage.user_ref == _user_ref(current_user),
@@ -1091,6 +1109,16 @@ async def knowledge_search(request):
         if base_id:
             base_id = _valid_uuid(base_id, "knowledge_base_id")
         department_id = current_user.get("department_id") or current_user.get("organization_id")
+        try:
+            limit = bounded_int(
+                body.get("limit"),
+                name="limit",
+                default=int(app.config.get("CHATBOT_RETRIEVAL_LIMIT", 6)),
+                minimum=1,
+                maximum=100,
+            )
+        except PaginationError as error:
+            return json({"error_code": "PARAM_ERROR", "error_message": str(error)}, status=400)
         return json({"objects": knowledge_service.retrieve(
             query_text,
             tenant_id,
@@ -1099,7 +1127,7 @@ async def knowledge_search(request):
             user_ids=[current_user.get(name) for name in (
                 "id", "uid", "tinodeUid", "tinode_uid", "user_name", "username", "email",
             ) if current_user.get(name)],
-            limit=body.get("limit"),
+            limit=limit,
         )})
     except Exception as error:
         return _error_response(error)

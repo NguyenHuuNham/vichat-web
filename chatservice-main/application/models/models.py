@@ -139,6 +139,9 @@ class Conversation(CommonModel):
     assigned_agent_id = db.Column(UUID(as_uuid=True))
     assigned_queue_id = db.Column(UUID(as_uuid=True))
     properties = db.Column(JSONB)
+    # Dedicated key used by the partial unique index for direct conversations.
+    # The JSON property remains readable for older rows during migration.
+    direct_key = db.Column(String(255), index=True)
 
 class ConversationParticipant(CommonModel):
     __tablename__ = "conversation_participant"
@@ -482,9 +485,36 @@ class PersonalCloudFile(CommonModel):
     size = db.Column(BigInteger(), nullable=False)
     media_ref = db.Column(Text(), nullable=False)
     etag = db.Column(String(255))
+    cleanup_state = db.Column(String(30), nullable=False, default="ACTIVE", index=True)
+    cleanup_attempts = db.Column(Integer(), nullable=False, default=0)
+    cleanup_next_at = db.Column(BigInteger(), index=True)
+    cleanup_last_error = db.Column(String(255))
     __table_args__ = (
         UniqueConstraint("tenant_id", "upload_id", name="uq_personal_cloud_file_upload"),
         Index("ix_personal_cloud_file_owner_updated", "tenant_id", "owner_id", "updated_at"),
+    )
+
+
+class ChatMediaRegistry(CommonModel):
+    """Server-side binding between an S3 object and its Chat conversation."""
+
+    __tablename__ = "chat_media_registry"
+    tenant_id = db.Column(String(50), nullable=False, index=True)
+    conversation_id = db.Column(UUID(as_uuid=True), nullable=False, index=True)
+    upload_id = db.Column(String(64), nullable=False, index=True)
+    uploader_id = db.Column(String(100), nullable=False, index=True)
+    size = db.Column(BigInteger(), nullable=False)
+    content_type = db.Column(String(255), nullable=False)
+    state = db.Column(String(30), nullable=False, default="PENDING_MESSAGE", index=True)
+    message_ref = db.Column(String(255), index=True)
+    bound_at = db.Column(BigInteger())
+    expires_at = db.Column(BigInteger(), index=True)
+    cleanup_attempts = db.Column(Integer(), nullable=False, default=0)
+    cleanup_next_at = db.Column(BigInteger(), index=True)
+    cleanup_last_error = db.Column(String(255))
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "upload_id", name="uq_chat_media_registry_upload"),
+        Index("ix_chat_media_registry_conversation", "tenant_id", "conversation_id", "state"),
     )
 
 

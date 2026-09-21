@@ -33,6 +33,8 @@ import {
 } from './conversationBackground';
 import { fetchProtectedMediaWithRetry } from './mediaRetryPolicy';
 import {
+  bindChatMedia,
+  discardChatMedia,
   fetchChatMedia,
   isChatMediaReference,
   isChatMediaStorageEnabled,
@@ -95,11 +97,11 @@ const userProfilesLoaded = new Set();
 const topicSubscriptionRequests = new Map();
 const conversationBackgroundAuxRequests = new Map();
 const conversationBackgroundAuxTopics = new Set();
-const fullHistoryTopics = new Set();
 const latestHistory = createLatestHistoryLoader();
 const groupPermissionMigrationRequests = new Map();
 const groupPrivacyMigrationRequests = new Map();
 const groupAccessRefreshRequests = new Map();
+const earlierHistoryRequests = new Map();
 const privateGroupTopics = new Set();
 const callInviteKeys = new Set();
 const conversationDelivery = createConversationDelivery();
@@ -136,7 +138,9 @@ const GROUP_MEMBER_MODE = 'JRWPAS';
 const GROUP_DEFAULT_AUTH_MODE = 'N';
 const BACKGROUND_HISTORY_LIMIT = 100;
 const RECONNECT_HISTORY_LIMIT = 100;
-const OPEN_HISTORY_LIMIT = 1000;
+// Open only a bounded window. Older messages are fetched explicitly from the
+// sequence cursor when the user reaches the top of the viewport.
+const INITIAL_HISTORY_LIMIT = 100;
 const CENTRAL_MESSAGE_TEXT_LIMIT = MAX_MESSAGE_TEXT_BYTES;
 
 // A host is enough to opt into Tinode mode; assertConfigured below provides a
@@ -266,10 +270,10 @@ async function uploadTinodeFile(tinode, file, avatarFor = '') {
   return url;
 }
 
-async function uploadFile(tinode, file, avatarFor = '') {
+async function uploadFile(tinode, file, avatarFor = '', { conversationId = '' } = {}) {
   if (!isChatMediaStorageEnabled()) return uploadTinodeFile(tinode, file, avatarFor);
   try {
-    return await uploadChatMedia(file);
+    return await uploadChatMedia(file, { conversationId });
   } catch (error) {
     if (!shouldFallbackToTinode(error)) {
       throw new Error(error?.message || 'Không thể tải file lên S3.', { cause: error });
@@ -1816,17 +1820,45 @@ async function subscribeTopic(topicName, {
   await ensureGroupInvitePermissions(topic).catch(() => false);
   acknowledgeTopicReceived(topic);
 
-  if (historyLimit > 0 && (newerOnly || historyLimit >= OPEN_HISTORY_LIMIT || !topicReceiptSequence(topic))) {
-    const loadFullHistory = !newerOnly && historyLimit >= OPEN_HISTORY_LIMIT && !fullHistoryTopics.has(topicName);
-    await latestHistory.load(topic, loadFullHistory ? historyLimit : Math.min(historyLimit, BACKGROUND_HISTORY_LIMIT));
+  if (historyLimit > 0 && (newerOnly || !topicReceiptSequence(topic))) {
+    await latestHistory.load(topic, Math.min(historyLimit, INITIAL_HISTORY_LIMIT));
     if (tinode !== client) throw new Error('Tinode session changed.');
-    if (loadFullHistory) fullHistoryTopics.add(topicName);
   }
   if (tinode !== client) throw new Error('Tinode session changed.');
   acknowledgeTopicReceived(topic);
   emitGroupSettingsChange(topic, tinode);
   if (emit) emitConversation(topic);
   return topic;
+}
+
+async function loadEarlierTopicMessages(topicName, limit = INITIAL_HISTORY_LIMIT) {
+  const tinode = getClient();
+  if (!topicName) return null;
+  if (earlierHistoryRequests.has(topicName)) return earlierHistoryRequests.get(topicName);
+  const request = (async () => {
+    const topic = await subscribeTopic(topicName, { historyLimit: 0 });
+    if (tinode !== client) throw new Error('Tinode session changed.');
+    const before = Number(topic.minMsgSeq?.()) || Number(topic._minSeq) || 0;
+    if (before <= 1) {
+      return { conversation: toConversation(topic, tinode), hasEarlier: false, loaded: 0 };
+    }
+    const boundedLimit = Math.max(1, Math.min(INITIAL_HISTORY_LIMIT, Math.trunc(Number(limit) || INITIAL_HISTORY_LIMIT)));
+    const query = topic.startMetaQuery().withEarlierData(boundedLimit);
+    if (typeof query.withDel === 'function') query.withDel(undefined, boundedLimit);
+    await fetchTopicData(topic, query.build());
+    if (tinode !== client) throw new Error('Tinode session changed.');
+    const after = Number(topic.minMsgSeq?.()) || Number(topic._minSeq) || 0;
+    emitConversation(topic, tinode);
+    return {
+      conversation: toConversation(topic, tinode),
+      hasEarlier: after > 1 && after < before,
+      loaded: Math.max(0, before - after),
+    };
+  })().finally(() => {
+    if (earlierHistoryRequests.get(topicName) === request) earlierHistoryRequests.delete(topicName);
+  });
+  earlierHistoryRequests.set(topicName, request);
+  return request;
 }
 
 function applyGroupActionHead(topic, draft, metadata = {}) {
@@ -1900,7 +1932,7 @@ function resetSessionState({ clearEventListeners = false } = {}) {
   topicSubscriptionRequests.clear();
   conversationBackgroundAuxRequests.clear();
   conversationBackgroundAuxTopics.clear();
-  fullHistoryTopics.clear();
+  earlierHistoryRequests.clear();
   latestHistory.clear();
   groupPermissionMigrationRequests.clear();
   groupPrivacyMigrationRequests.clear();
@@ -2424,7 +2456,7 @@ export const tinodeClient = {
 
   async openConversation(topicName) {
     const tinode = getClient();
-    const topic = await subscribeTopic(topicName, { historyLimit: OPEN_HISTORY_LIMIT });
+    const topic = await subscribeTopic(topicName, { historyLimit: INITIAL_HISTORY_LIMIT });
     if (tinode !== client) throw new Error('Tinode session changed.');
     return toConversation(topic, tinode);
   },
@@ -2450,6 +2482,15 @@ export const tinodeClient = {
     if (tinode !== client) throw new Error('Tinode session changed.');
     emitConversation(topic);
     return toConversation(topic, tinode);
+  },
+
+  async loadEarlierMessages(topicName, options = {}) {
+    const result = await loadEarlierTopicMessages(topicName, options.limit || INITIAL_HISTORY_LIMIT);
+    if (!result) return null;
+    return {
+      ...result.conversation,
+      history: { hasEarlier: result.hasEarlier, loaded: result.loaded },
+    };
   },
 
   async refreshConversation(topicName) {
@@ -2536,7 +2577,7 @@ export const tinodeClient = {
   },
 
   async restoreConversation(topicName) {
-    const topic = await subscribeTopic(topicName, { historyLimit: OPEN_HISTORY_LIMIT });
+    const topic = await subscribeTopic(topicName, { historyLimit: INITIAL_HISTORY_LIMIT });
     return enrichConversationProfiles(toConversation(topic, getClient()), getClient());
   },
 
@@ -2756,7 +2797,7 @@ export const tinodeClient = {
 
   async updateConversationBackground(topicName, background = null) {
     if (!topicName) throw new Error('Cuộc trò chuyện chưa có topic Tinode.');
-    const topic = await subscribeTopic(topicName, { historyLimit: OPEN_HISTORY_LIMIT });
+    const topic = await subscribeTopic(topicName, { historyLimit: INITIAL_HISTORY_LIMIT });
     const normalized = background ? normalizeConversationBackground(background) : null;
     if (background && !normalized) throw new Error('Hình nền cuộc trò chuyện không hợp lệ.');
     const actorId = getClient().getCurrentUserID();
@@ -2905,7 +2946,8 @@ export const tinodeClient = {
     if (!Drafty || (isImage ? !Drafty.appendImage : !Drafty.attachFile)) {
       throw new Error('Không tải được bộ đóng gói file của Tinode.');
     }
-    const url = await uploadFile(tinode, file);
+    const conversationId = String(metadata.conversationId || '').trim();
+    const url = await uploadFile(tinode, file, '', { conversationId });
     const attachment = {
       mime: file.type || 'application/octet-stream',
       filename: file.name || 'Tệp đính kèm',
@@ -2938,8 +2980,31 @@ export const tinodeClient = {
     }
     if (Number(metadata.voiceDuration) > 0) draft.head['x-voice-duration'] = String(Math.round(metadata.voiceDuration));
     applyGroupActionHead(topic, draft, metadata);
-    const result = await publishTopicMessage(topic, draft);
-    if (!result) throw new Error('Tinode không xác nhận tin nhắn đính kèm.');
+    let result;
+    try {
+      result = await publishTopicMessage(topic, draft);
+    } catch (error) {
+      if (isChatMediaReference(url)) {
+        await discardChatMedia(url, { conversationId }).catch(() => {});
+      }
+      throw error;
+    }
+    if (!result) {
+      if (isChatMediaReference(url)) {
+        await discardChatMedia(url, { conversationId }).catch(() => {});
+      }
+      throw new Error('Tinode không xác nhận tin nhắn đính kèm.');
+    }
+    if (isChatMediaReference(url) && conversationId) {
+      const messageRef = String(clientId || result?.params?.seq || '').trim();
+      if (messageRef) {
+        // Binding is idempotent. A transient binding failure leaves the row
+        // pending for the server sweeper instead of deleting a published file.
+        await bindChatMedia(url, { conversationId, messageRef }).catch(error => {
+          console.warn('ViChat: media binding deferred', error?.code || 'MEDIA_BIND_FAILED');
+        });
+      }
+    }
     return {
       ctrl: result,
       file: {
@@ -3081,7 +3146,6 @@ export const tinodeClient = {
     topicReadFloors.delete(String(topicName));
     topicUnreadReadSnapshots.delete(String(topicName));
     latestHistory.remove(topic);
-    fullHistoryTopics.delete(topicName);
     conversationListRequest = null;
   },
 
@@ -3117,7 +3181,6 @@ export const tinodeClient = {
     topicUnreadReadSnapshots.delete(String(topicName));
     topicSubscriptionRequests.delete(topicName);
     latestHistory.remove(topic);
-    fullHistoryTopics.delete(topicName);
   },
 
   async deleteConversation(topicName, { isGroup = false, unsubscribe = false } = {}) {
@@ -3134,7 +3197,6 @@ export const tinodeClient = {
       topicUnreadReadSnapshots.delete(String(topicName));
       topicSubscriptionRequests.delete(topicName);
       latestHistory.remove(topic);
-      fullHistoryTopics.delete(topicName);
     } else {
       await topic.setMeta({
         desc: {

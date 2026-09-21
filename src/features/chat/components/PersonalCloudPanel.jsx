@@ -23,6 +23,9 @@ export default function PersonalCloudPanel({
   copy,
   available,
   files = [],
+  total = null,
+  hasMore = false,
+  loadingMore = false,
   loading,
   uploading,
   notice,
@@ -30,6 +33,7 @@ export default function PersonalCloudPanel({
   onOpen,
   onDownload,
   onDelete,
+  onLoadMore,
 }) {
   return (
     <div className="personal-cloud-panel">
@@ -51,7 +55,7 @@ export default function PersonalCloudPanel({
       {!available && !notice && <div className="personal-cloud-notice"><i className="fa-solid fa-server" aria-hidden="true"></i><span>{copy.t('Cloud cá nhân cần kết nối Chatmgt và S3.')}</span></div>}
 
       <div className="personal-cloud-section-heading">
-        <div><strong>{copy.t('File của tôi')}</strong><small>{files.length} {copy.t('file')}</small></div>
+          <div><strong>{copy.t('File của tôi')}</strong><small>{total ?? files.length} {copy.t('file')}</small></div>
         <i className="fa-solid fa-lock" title={copy.t('Chỉ mình tôi')} aria-label={copy.t('Chỉ mình tôi')}></i>
       </div>
 
@@ -76,6 +80,10 @@ export default function PersonalCloudPanel({
           ))}
         </div>
       )}
+      {hasMore && <button type="button" className="personal-cloud-load-more" onClick={onLoadMore} disabled={loadingMore}>
+        <i className={`fa-solid ${loadingMore ? 'fa-spinner fa-spin' : 'fa-chevron-down'}`} aria-hidden="true"></i>
+        {loadingMore ? copy.t('Đang tải thêm...') : copy.t('Tải thêm')}
+      </button>}
     </div>
   );
 }

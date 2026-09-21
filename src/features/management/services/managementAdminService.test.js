@@ -9,11 +9,11 @@ import {
 } from './managementAdminService.js';
 
 test('builds and consumes the Account admin SSO callback without credentials', () => {
-  const loginUrl = new URL(accountAdminLoginUrl('https://chatmgt.upgo.vn/?view=system'));
+  const loginUrl = new URL(accountAdminLoginUrl('https://chatmgt.gonplatform.com/?view=system'));
   const callbackUrl = new URL(loginUrl.searchParams.get('continue'));
 
-  assert.equal(loginUrl.origin, 'https://account.upgo.vn');
-  assert.equal(callbackUrl.origin, 'https://chatmgt.upgo.vn');
+  assert.equal(loginUrl.origin, 'https://account.gonplatform.com');
+  assert.equal(callbackUrl.origin, 'https://chatmgt.gonplatform.com');
   assert.equal(callbackUrl.searchParams.get('view'), 'system');
   assert.equal(callbackUrl.searchParams.get('vichat_admin_sso'), '1');
 

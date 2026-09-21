@@ -14,7 +14,7 @@ tenant, role, or user IDs supplied after the session is issued.
 
 ## Service boundaries
 
-- `account.upgo.vn`: authoritative identity, invitation, membership, profile,
+- `account.gonplatform.com`: authoritative identity, invitation, membership, profile,
   role, status, and password for every employee and administrator.
 - `chat` (React ChatUI): submits employee email/password to Chatmgt over HTTPS,
   stores only the public profile/session result, and uses Tinode only with a
@@ -26,7 +26,7 @@ tenant, role, or user IDs supplied after the session is issued.
 - `chatapi.gonplatform.com` (central Tinode): owns message content, topics, stable media
   references, uploaded file bytes, presence, typing, reactions,
   delivery/read receipts and call signaling.
-  ChatUI reaches it through the TLS-safe `chat.upgo.vn` Nginx relay, while
+  ChatUI reaches it through the TLS-safe `chat.gonplatform.com` Nginx relay, while
   Chatmgt reaches the same relay at `ws://chat:80/v0/channels`. The local
   `chatapi` container remains only as a rollback target. Tinode Web basic login
   is translated by the internal relay bridge through Chatmgt/UpGO Account before
@@ -75,6 +75,24 @@ back to `tinode`. Production uses `CHAT_MEDIA_FALLBACK_TO_TINODE=false`; a
 failed S3 upload cannot silently consume the rollback Tinode disk. No old
 message, topic, cursor or historical file is migrated into the fresh store.
 
+Every new chat upload also has a tenant-scoped `chat_media_registry` row. The
+row binds the upload ID to the conversation, uploader, byte count, content
+type, expiry and (after Tinode publish) the message reference. Upload,
+completion, bind, discard and download operations require an active approved
+member of that conversation; only the uploader can complete, bind or discard
+their pending upload. A registry row is checked again at download time, so a
+user who leaves a group loses access even when the object still exists in S3.
+Legacy references without a registry remain readable through the compatibility
+path, while a supplied conversation proof is still membership-checked.
+
+Unbound or discarded objects move through `PENDING_UPLOAD`,
+`PENDING_MESSAGE`, `PENDING_DELETE`, `RETRY` and `CLEANED` states. The bounded
+`scripts/sweep_chat_media_cleanup.py` job removes only expired/unbound rows,
+records exception type and exponential retry time, and never selects a
+`BOUND` row. Re-running the job is safe because missing S3 objects are treated
+as already removed and the registry row is marked cleaned only after the
+object removal succeeds.
+
 ### Personal cloud boundary
 
 `Cloud của tôi` is a private file workspace, not a Tinode conversation and not
@@ -93,6 +111,15 @@ the file directly to the short-lived S3 PUT URL without Chatmgt cookies and
 then calls the owner-scoped completion endpoint. Private downloads return
 short-lived `private, no-store` GET signatures. Logout and tenant changes clear
 the in-memory cloud list before another account can load it.
+
+Cloud listing is cursor-paginated at the SQL query (`limit` is bounded at 100)
+and returns both the legacy `objects` field and `next_cursor`/`nextCursor`,
+`has_more`/`hasMore`, `limit` and `total`. The owner and tenant are derived from
+the Chatmgt session for every page; changing tenant or logging out aborts the
+client request and clears the prior page set. Delete marks the row for cleanup
+before attempting S3 removal, and the same sweeper retries
+`PENDING_UPLOAD`/`PENDING_DELETE`/`RETRY` rows without exposing pending-delete
+files in the UI.
 
 ### ChatUI maintenance control
 
@@ -421,7 +448,7 @@ received votes remain visible and the pending-member list stays empty until
 the snapshot arrives; no vote, message, setting or Chatmgt record is changed.
 
 Tinode media URLs from the central host are normalized to the authenticated
-`chat.upgo.vn/tinode-media` relay. The native client downloads protected message
+`chat.gonplatform.com/tinode-media` relay. The native client downloads protected message
 and avatar images with its short-lived Tinode token into the OS cache and passes
 the same auth headers to native image rendering, so an expired central
 certificate, redirect, or missing `Image` request header cannot leave a blank
@@ -622,6 +649,28 @@ cancel a valid directory response merely by rebuilding the in-memory session
 object. Account directory records with a nested tenant/company/brand
 identifier are validated against the verified tenant before they are
 projected into Chatmgt.
+
+Directory responses use a bounded, stable cursor ordered by normalized full
+name and account ID. Search is applied before the SQL `LIMIT`, and only tenant
+admins may request inactive accounts. The response keeps the legacy
+`objects`/`items` shape while exposing both snake_case and camelCase cursor
+fields. ChatUI merges pages by account ID, keeps same-name accounts distinct,
+and aborts or ignores a page from an old account/tenant session.
+
+Conversation lists use the same bounded cursor contract, ordered by pinned
+state, `updated_at` and conversation ID. The backend reads only the current
+page and the frontend deduplicates page merges without removing the room that
+is currently open. Personal cloud, profile viewers and friend-request history
+use the same compatibility fields; profile viewers additionally count distinct
+same-tenant viewers and exclude self/deactivated records before the page is
+serialized.
+
+Chat-only conversation, participant, Tinode, media, notification, pin, block,
+group-settings and profile mutation routes reject a management-scope session
+with `CHAT_SESSION_REQUIRED`. Management routes use the separate management
+cookie/scope and are limited to administration, audit, read-only account
+projection and explicit session revocation. This allowlist is enforced at the
+server boundary, not only by ChatUI navigation.
 
 Employee message-history search uses the authenticated
 `POST /api/v1/conversation/<conversation_id>/search` endpoint (with the
@@ -840,9 +889,9 @@ store; group subscriptions and new message history remain on that UID. The
 signed Chatmgt JWT carries only the short-lived Tinode token for reconnects; no
 reversible employee password is persisted.
 
-The standalone Tinode Web client connects to `wss://chat.upgo.vn/v0/channels`.
+The standalone Tinode Web client connects to `wss://chat.gonplatform.com/v0/channels`.
 The single Tinode Web UI remains `https://chatapi.gonplatform.com/#`; its
-Settings > Server value must be `chat.upgo.vn` so the login reaches the Account
+Settings > Server value must be `chat.gonplatform.com` so the login reaches the Account
 bridge.
 ChatUI does not import a browser token from Tinode Web. It requests its own
 short-lived token for the same deterministic Tinode UID in the fresh central
@@ -1315,6 +1364,23 @@ participants. Announcements and integration registry mutations require a
 tenant administrator. Other types use creator/owner/participant roles for
 editing and state transitions. Every create, update, archive, action and
 comment writes an `enterprise_activity` row and a security audit event.
+
+Workspace list/search queries apply tenant, participant, type, status and text
+filters in SQL, order by `updated_at DESC, id DESC`, and fetch only
+`limit + 1` rows to construct an opaque cursor. Summary and stats use SQL
+`COUNT`/conditional aggregates rather than loading the result set into Python;
+the supporting indexes cover tenant, type, status, update time and due time.
+Participant serialization is a separate bounded prefetch for the returned
+items, so a large tenant does not turn the list endpoint into an unbounded
+`.all()` operation.
+
+Workspace updates and actions require the item `version`. The backend locks the
+row for the read/modify/commit window and returns `409 WORKSPACE_VERSION_CONFLICT`
+with the current version when the client's version is stale. Participant roles
+and existing properties are preserved when omitted from a patch; explicit
+participant/property changes are recorded in activity so the source of a
+mutation remains visible. ChatUI aborts stale search requests, guards results
+by tenant/session and reloads the item after a version conflict.
 
 ChatUI opens Workspace as an isolated panel and refreshes metadata every 15
 seconds while visible. This polling deliberately does not touch the Tinode

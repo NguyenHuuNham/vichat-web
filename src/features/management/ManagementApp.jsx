@@ -6,7 +6,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import './management.css';
 
 const ADMIN_ROLES = ['admin', 'superadmin', 'owner'];
-const ACCOUNT_ADMIN_URL = String(import.meta.env.VITE_ACCOUNT_URL || 'https://account.upgo.vn').replace(/\/$/, '');
+const ACCOUNT_ADMIN_URL = String(import.meta.env.VITE_ACCOUNT_URL || 'https://account.gonplatform.com').replace(/\/$/, '');
 
 function isAdmin(user) {
   return ADMIN_ROLES.includes(String(user?.role || '').toLowerCase());
@@ -114,7 +114,7 @@ function LoginScreen({ onLogin, error, loading }) {
       <section className="management-login-panel">
         <form className="management-login-card" onSubmit={submit}>
           <div className="management-login-heading">
-            <span className="management-eyebrow">chatmgt.upgo.vn</span>
+            <span className="management-eyebrow">chatmgt.gonplatform.com</span>
             <h2>Đăng nhập quản trị</h2>
 
           </div>
@@ -388,7 +388,7 @@ export default function ManagementApp() {
         </nav>
         <div className="management-sidebar-footer">
           <div className="management-sidebar-user"><ManagementAvatar user={currentAdmin} size="small" eager /><div><strong>{currentAdmin.name}</strong><span>Admin từ UpGO Account</span></div></div>
-          <button type="button" className="management-logout" onClick={handleLogout} title="Đăng xuất"><i className="fa-solid fa-arrow-right-from-bracket"></i></button>
+          <button type="button" className="management-logout" onClick={handleLogout} title="Đăng xuất" aria-label="Đăng xuất"><i className="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i></button>
         </div>
       </aside>
 
@@ -403,7 +403,7 @@ export default function ManagementApp() {
           </div>
           <div className="management-topbar-actions">
             <span className={`management-health-pill ${health?.status === 'ok' ? 'online' : ''}`} aria-live="polite"><i></i>{health?.status === 'ok' ? 'Hệ thống ổn định' : 'Đang đồng bộ'}</span>
-            <button type="button" className="management-icon-button" onClick={() => loadData()} title="Làm mới dữ liệu hiển thị" disabled={loadingData}><i className={`fa-solid fa-rotate ${loadingData ? 'fa-spin' : ''}`}></i></button>
+            <button type="button" className="management-icon-button" aria-label="Làm mới dữ liệu hiển thị" onClick={() => loadData()} title="Làm mới dữ liệu hiển thị" disabled={loadingData}><i className={`fa-solid fa-rotate ${loadingData ? 'fa-spin' : ''}`} aria-hidden="true"></i></button>
           </div>
         </header>
 
@@ -483,7 +483,7 @@ export default function ManagementApp() {
                           <td><span className={`management-status ${user.active ? 'active' : 'inactive'}`}><i></i>{user.active ? 'Đang hoạt động' : 'Đã khóa'}</span></td>
                           <td><span className={`management-status ${user.accountManaged ? 'inactive' : 'active'}`}><i></i>{user.accountManaged ? 'UpGO Account' : 'Chatmgt local'}</span></td>
                           <td><div className="management-tinode-account"><span className={`management-status ${user.tinodeUid ? 'active' : 'inactive'}`}><i></i>{user.tinodeUid ? 'Đã provision' : 'Chưa provision'}</span>{user.tinodeUid && user.tinodeUsername ? <code>{user.tinodeUsername}</code> : null}</div></td>
-                          <td><div className="management-row-actions"><button type="button" className="warn" onClick={() => revokeSessions(user)} title="Bắt đăng xuất khỏi Chat" disabled={busy || !user.active || String(user.id) === String(currentAdmin.id)}><i className={`fa-solid ${busy ? 'fa-spinner fa-spin' : 'fa-right-from-bracket'}`}></i></button></div></td>
+                          <td><div className="management-row-actions"><button type="button" className="warn" onClick={() => revokeSessions(user)} title="Bắt đăng xuất khỏi Chat" aria-label={`Bắt ${user.name || 'tài khoản này'} đăng xuất khỏi Chat`} disabled={busy || !user.active || String(user.id) === String(currentAdmin.id)}><i className={`fa-solid ${busy ? 'fa-spinner fa-spin' : 'fa-right-from-bracket'}`} aria-hidden="true"></i></button></div></td>
                         </tr>
                       );
                     })}

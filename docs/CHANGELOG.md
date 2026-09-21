@@ -6,6 +6,50 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-21-02 - Chuyen ChatUI va Chatmgt sang gonplatform.com
+
+- Thoi gian: 2026-09-21 (Asia/Saigon)
+- Loai: Cau hinh | Van hanh | Web | Mobile | Bao mat | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien; chua deploy production.
+- Muc tieu: Doi ChatUI sang `https://chat.gonplatform.com` va Chatmgt sang `https://chatmgt.gonplatform.com`, dong thoi deploy cung ban da doi Account sang `https://account.gonplatform.com`.
+- Pham vi: Fallback frontend/mobile, Tinode WSS va media relay, Chatmgt API/admin callback, cookie/CORS/password reset, S3 CORS, compose/env, Nginx/HAProxy host routing, test va tai lieu.
+- Quyet dinh ky thuat: Dung `SESSION_COOKIE_DOMAIN=chatmgt.gonplatform.com` cho cookie Chatmgt va `.gonplatform.com` cho cookie Account de ba domain moi cung parent domain. Account backend/edge phai phat cookie hop le cho `.gonplatform.com`; response hien tai van con `Domain=.upgo.vn`, can xu ly trong luong Account/HAProxy truoc khi coi SSO end-to-end hoan tat.
+- Kiem thu local: Targeted frontend dat 31/31; backend Account/auth/media dat 106 pass, 34 skip; `npm run build:production` thanh cong voi canh bao chunk `App` khoang 566 kB; `git diff --check` dat.
+- Rui ro con lai: Chua cap nhat production env, reverse proxy, bucket CORS, Account cookie edge hoac public UAT; old deployment van dung domain cu cho den khi release moi duoc activate.
+- Viec tiep theo: Commit/push, backup release va DB, cap nhat env + Nginx/HAProxy, rebuild ChatUI/Chatmgt, health/CORS/WSS check va UAT login hai tai khoan.
+- Commit/PR: Chua tao.
+
+## 2026-09-21-01 - Chuyen Account sang gonplatform.com
+
+- Thoi gian: 2026-09-21 (Asia/Saigon)
+- Loai: Cau hinh | Web | Mobile | Kiem thu | Tai lieu
+- Trang thai: Hoan tat trong source; chua deploy production.
+- Muc tieu: Doi toan bo diem vao Account tu `https://account.upgo.vn` sang `https://account.gonplatform.com`.
+- Pham vi: Cap nhat fallback `VITE_ACCOUNT_URL`, redirect login/admin SSO, CSP/form-action, thong bao loi, mobile profile, test, production docs/config va bundle `dist`.
+- Quyet dinh ky thuat: Giu `ACCOUNT_SESSION_COOKIE_DOMAIN=.upgo.vn` vi Chatmgt van chay tai `chatmgt.upgo.vn`; cookie `.gonplatform.com` khong the gui sang domain `.upgo.vn`. Admin SSO cross-domain can Account ho tro callback/token handoff hoac proxy cung parent domain truoc khi xac nhan end-to-end.
+- Kiem thu: Targeted frontend `node --test src/features/management/services/managementAdminService.test.js src/features/chat/services/chatManagementService.test.js src/features/i18n/appLanguage.test.js --test-concurrency=1` dat 95/95; backend SSO/auth/identity `python -m unittest tests.test_account_sso_service tests.test_chat_auth_contract tests.test_sso_identity -q` dat 126 pass, 34 skip; `npm run lint` exit 0 voi warning legacy/vendor; `npm run build:production` thanh cong, canh bao chunk `App` 566.26 kB vuot nguong 500 kB; `git diff --check` dat.
+- Rui ro con lai: Chua deploy/UAT tren browser; can xac nhan Account callback/token handoff cho luong admin SSO va test login that tren staging.
+- Commit/PR: Chua tao.
+
+## 2026-09-20-03 - Sua toan bo audit regression (hoan tat source)
+
+- Thoi gian: 2026-09-21 (Asia/Saigon)
+- Loai: Sua loi | Bao mat | Hieu nang | Kiem thu | Tai lieu
+- Trang thai: Hoan tat trong source; chua commit, chua deploy production.
+- Muc tieu: Xu ly cac loi audit ve phan trang du lieu lon, tenant/auth, race condition, media cleanup, Workspace, validation va accessibility ma khong lam regression login/chat/Tinode/S3/Profile.
+- Nguyen nhan: Mot so endpoint doc dataset lon bang mot lan, client khong co cursor/guard day du, media va Workspace thieu state/version boundary, va mot so route chua tach ro chat-scope voi management-scope.
+- Pham vi file: Backend gom `chatservice-main/application/controllers/api_chat_management.py`, `api_chat_media.py`, `api_chatbot.py`, `api_enterprise_workspace.py`, `api_personal_cloud.py`, `api_user.py`, `api_organization.py`, `helpers/helper_common.py`, `application/config/config.py`, `models.py`, cac service media/Workspace/knowledge, pagination helper va cleanup sweeper. Frontend gom `src/app/App.jsx`, auth/login, `chatManagementService.js`, `chatMediaService.js`, `tinodeClient.js`, `PersonalCloudPanel.jsx`, Workspace, ManagementApp, styles va regression tests. Cap nhat `dist/index.html`, infrastructure production docs/config, architecture docs va file nay.
+- Giai phap: Them cursor pagination tu SQL cho directory, conversation, friend request, profile viewers, personal cloud va Workspace voi ca field legacy `objects`/`items` va alias snake_case/camelCase; them request abort/session/tenant guards, dedupe va stale-response protection. Tinode history van dung sequence/catch-up co guard room/navigation. Media gan registry theo tenant/conversation/uploader, kiem tra membership o moi lan upload/download, cleanup idempotent voi retry sweeper. Workspace dung aggregate SQL, row locking, version conflict `409`, va giu properties/participant roles khi patch khong day du. Numeric inputs duoc bounded, lỗi client duoc sanitize, outbound HTTP bat TLS verification + CA/timeout, management session bi chan khoi chat routes, va cac control/profile modal duoc bo sung accessibility.
+- Quyet dinh ky thuat: Giu backward-compatible response fields va legacy Tinode media references; khong merge/xoa duplicate conversation tu dong. Migration chi tao unique direct key khi khong co duplicate, neu co thi tao report de operator xu ly. `PENDING_DELETE`/`RETRY` va version conflict duoc luu o boundary de retry/reload an toan thay vi nuot loi.
+- Database/migration: Them `chatservice-main/alembic/versions/20260921_15_audit_hardening.py` va `chatservice-main/migrations/015_audit_hardening.sql`; migration them `conversation.direct_key`, duplicate report/index an toan, `chat_media_registry`, cleanup fields/index cho `personal_cloud_file`. Chua chay migration tren production trong phien nay; downgrade duoc danh dau irreversible, rollback can restore DB backup va release truoc.
+- API/cau hinh: Pagination response them `next_cursor`/`nextCursor`, `has_more`/`hasMore`, `limit`, `total` theo endpoint; chat media registry endpoints giu legacy download path; management/chat scope tra `CHAT_SESSION_REQUIRED` hoac management error ro rang. Them CA bundle/timeout (`CHAT_HTTP_CA_BUNDLE`, `ACCOUNT_SSO_CA_BUNDLE`, `CHAT_HTTP_TIMEOUT`) va giu `CHAT_MEDIA_FALLBACK_TO_TINODE=false` trong production template.
+- Kiem thu thuc te: `npm run test:frontend -- --test-concurrency=1` dat `439/439`; targeted accessibility `node --test src/features/chat/services/chatManagementService.test.js --test-concurrency=1 --test-name-pattern="profile and management controls expose keyboard-accessible labels and modal focus handling"` dat `67/67`; full backend `python -m unittest discover -s tests -p "test_*.py" -q` trong `chatservice-main` dat `319` test, `106` skip, exit `0`; contract audit dat `7/7`; media service `12/12`; `npm run lint` exit `0` voi warning legacy/vendor; `npm run build:production` thanh cong, nhung App chunk `566.23 kB` van tren nguong canh bao 500 kB; `python -m py_compile` tren Python files thay doi dat; production code scan khong con `verify=False`; `git diff --check` exit `0`.
+- Browser UAT/deploy: Khong co browser automation kha dung trong phien nay nen chua xac nhan UAT visual/login/chat/media/Workspace/Profile tren browser. Khong backup/migration production, khong deploy, khong claim production health.
+- Rui ro con lai: Can UAT hai tai khoan cho tenant switch, room/history lon, media sau khi roi group, Workspace version conflict, profile viewer va mobile layout. Can chay migration tren staging truoc production va cau hinh CA bundle/secret theo moi truong.
+- Rollback: Source co the rollback ve release truoc; giu migration backup va khong tu dong downgrade `20260921_15`. Neu da migrate, operator phai dung DB backup/SQL rollback da review, giu registry/legacy media cho den khi xac minh, sau do moi switch release.
+- Viec tiep theo: Review diff cuoi, tao commit rieng theo nhom neu can, staging migration + smoke test, sau do moi xem xet deploy production.
+- Commit/PR: Chua tao.
+
 ## 2026-09-20-02 - Don dep artifact production khong con su dung
 
 - Thoi gian: 2026-09-20 (Asia/Saigon)

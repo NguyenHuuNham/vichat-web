@@ -17,6 +17,26 @@ from gatco.response import json
 from application.extensions import auth
 from application.services.auth_service import current_user as current_jwt_user
 
+
+def outbound_request_options(timeout_key="CHAT_HTTP_TIMEOUT", default_timeout=10):
+    """Return bounded timeout and verified CA settings for requests callers."""
+    configured_timeout = app.config.get(
+        timeout_key,
+        app.config.get("CHAT_HTTP_TIMEOUT", default_timeout),
+    )
+    try:
+        timeout = max(0.1, float(configured_timeout))
+    except (TypeError, ValueError, OverflowError):
+        timeout = float(default_timeout)
+    ca_bundle = str(
+        app.config.get("ACCOUNT_SSO_CA_BUNDLE")
+        or app.config.get("CHAT_HTTP_CA_BUNDLE")
+        or os.getenv("REQUESTS_CA_BUNDLE")
+        or os.getenv("CURL_CA_BUNDLE")
+        or ""
+    ).strip()
+    return {"timeout": timeout, "verify": ca_bundle or True}
+
 def auth_func(request=None, **kw):
     current_user = get_current_user(request)
     if current_user is None:
@@ -65,11 +85,15 @@ def get_current_user(request, **kw):
                 headers["X-USER-TOKEN"] = request.headers["X-USER-TOKEN"]
             try:
                 import requests
-                resp = requests.get(url, headers=headers, timeout=5, verify=False)
+                resp = requests.get(
+                    url,
+                    headers=headers,
+                    **outbound_request_options("ACCOUNT_SSO_TIMEOUT", 10),
+                )
                 if resp.status_code == 200:
                     current_user = resp.json()
-            except Exception as e:
-                print("Failed to fetch user from account service:", e)
+            except Exception:
+                print("Failed to fetch user from account service.")
     return current_user
     
 

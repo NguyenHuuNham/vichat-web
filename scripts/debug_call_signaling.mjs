@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const DEFAULT_WS = 'wss://chat.upgo.vn/v0/channels';
+const DEFAULT_WS = 'wss://chat.gonplatform.com/v0/channels';
 const wsUrl = process.env.VICHAT_TINODE_WS || DEFAULT_WS;
 const senderToken = String(process.env.VICHAT_TINODE_TOKEN || '').trim();
 const observerToken = String(process.env.VICHAT_TINODE_PEER_TOKEN || senderToken).trim();

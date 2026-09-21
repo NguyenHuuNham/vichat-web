@@ -339,6 +339,36 @@
   padding-right: 3px;
 }
 
+.enterprise-load-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 14px;
+  border: 1px solid #dce9e5;
+  border-radius: 12px;
+  color: #31514c;
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.enterprise-load-more:disabled { cursor: wait; opacity: .65; }
+
+.enterprise-inline-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  color: #31514c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .enterprise-item-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

@@ -32,6 +32,9 @@ class Config(object):
 
     REQUEST_TIMEOUT = 86400
     RESPONSE_TIMEOUT = 86400
+    # Shared defaults for synchronous integrations that use requests.
+    CHAT_HTTP_TIMEOUT = int(os.getenv("CHAT_HTTP_TIMEOUT", 10))
+    CHAT_HTTP_CA_BUNDLE = os.getenv("CHAT_HTTP_CA_BUNDLE", "")
 
     AUTH_LOGIN_ENDPOINT = 'login'
     AUTH_PASSWORD_HASH = 'sha512_crypt'
@@ -117,10 +120,14 @@ class Config(object):
         "https://service.upgo.vn/api/image/upload?path=accounts",
     )
     ACCOUNT_SSO_TIMEOUT = int(os.getenv("ACCOUNT_SSO_TIMEOUT", 10))
+    ACCOUNT_SSO_CA_BUNDLE = os.getenv(
+        "ACCOUNT_SSO_CA_BUNDLE",
+        os.getenv("CHAT_HTTP_CA_BUNDLE", ""),
+    )
     ACCOUNT_AVATAR_UPLOAD_TIMEOUT = int(os.getenv("ACCOUNT_AVATAR_UPLOAD_TIMEOUT", 60))
     ACCOUNT_SSO_DIRECTORY_SYNC_TTL = int(os.getenv("ACCOUNT_SSO_DIRECTORY_SYNC_TTL", 10))
     ACCOUNT_SESSION_COOKIE_NAME = os.getenv("ACCOUNT_SESSION_COOKIE_NAME", "session")
-    ACCOUNT_SESSION_COOKIE_DOMAIN = os.getenv("ACCOUNT_SESSION_COOKIE_DOMAIN", ".upgo.vn")
+    ACCOUNT_SESSION_COOKIE_DOMAIN = os.getenv("ACCOUNT_SESSION_COOKIE_DOMAIN", ".gonplatform.com")
     ACCOUNT_SESSION_COOKIE_SECURE = env_bool("ACCOUNT_SESSION_COOKIE_SECURE", True)
 
     DATAROOM_URL = os.getenv('DATAROOM_URL')
@@ -189,7 +196,7 @@ class Config(object):
         "TINODE_CHATBOT_DISPLAY_ORGANIZATION", "GON Platform"
     )
     TINODE_CHATBOT_DISPLAY_AVATAR = os.getenv(
-        "TINODE_CHATBOT_DISPLAY_AVATAR", "https://chat.upgo.vn/vichat-ai.svg"
+        "TINODE_CHATBOT_DISPLAY_AVATAR", "https://chat.gonplatform.com/vichat-ai.svg"
     )
     TINODE_CHATBOT_WEBHOOK_KEY = os.getenv("TINODE_CHATBOT_WEBHOOK_KEY", "")
     TINODE_CHATBOT_WEBHOOK_URL = os.getenv(

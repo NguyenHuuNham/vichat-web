@@ -1,6 +1,7 @@
 import hashlib
 import mimetypes
 import re
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -217,17 +218,23 @@ def _upload_ticket_serializer(app):
     return URLSafeTimedSerializer(secret, salt=UPLOAD_TICKET_SALT)
 
 
-def _create_upload_ticket(app, tenant_id, upload_id, size, content_type):
-    return _upload_ticket_serializer(app).dumps({
+def _create_upload_ticket(app, tenant_id, upload_id, size, content_type, conversation_id=None, uploader_id=None):
+    payload = {
         "v": 1,
         "tenant": _tenant_segment(tenant_id),
         "upload_id": upload_id,
         "size": int(size),
         "content_type": content_type,
-    })
+    }
+    if conversation_id and uploader_id:
+        payload.update({
+            "conversation_id": str(conversation_id),
+            "uploader_id": str(uploader_id),
+        })
+    return _upload_ticket_serializer(app).dumps(payload)
 
 
-def _verify_upload_ticket(app, tenant_id, upload_id, upload_token):
+def _verify_upload_ticket(app, tenant_id, upload_id, upload_token, conversation_id=None, uploader_id=None):
     token = str(upload_token or "").strip()
     if not token:
         raise ChatMediaError(
@@ -266,6 +273,10 @@ def _verify_upload_ticket(app, tenant_id, upload_id, upload_token):
             "MEDIA_UPLOAD_TICKET_INVALID",
             "The upload completion ticket is invalid.",
         )
+    if conversation_id and str(payload.get("conversation_id") or "") != str(conversation_id):
+        raise ChatMediaError("MEDIA_UPLOAD_TICKET_INVALID", "The upload completion ticket is invalid.")
+    if uploader_id and str(payload.get("uploader_id") or "") != str(uploader_id):
+        raise ChatMediaError("MEDIA_UPLOAD_TICKET_INVALID", "The upload completion ticket is invalid.")
     return payload
 
 
@@ -401,7 +412,12 @@ def _is_missing_object(error):
     }
 
 
-def create_chat_media_upload(app, tenant_id, file_name, content_type, size):
+def create_chat_media_upload(app, tenant_id, file_name, content_type, size, conversation_id=None, uploader_id=None):
+    if bool(conversation_id) != bool(uploader_id):
+        raise ChatMediaError(
+            "MEDIA_BINDING_INVALID",
+            "A conversation and uploader are required together.",
+        )
     status = _require_upload_storage(app)
     try:
         expected_size = int(size)
@@ -446,11 +462,22 @@ def create_chat_media_upload(app, tenant_id, file_name, content_type, size):
             upload_id,
             expected_size,
             normalized_type,
+            conversation_id=conversation_id,
+            uploader_id=uploader_id,
         ),
+        **({
+            "conversation_id": str(conversation_id),
+            "uploader_id": str(uploader_id),
+        } if conversation_id and uploader_id else {}),
     }
 
 
-def complete_chat_media_upload(app, tenant_id, upload_id, expected_size, upload_token):
+def complete_chat_media_upload(app, tenant_id, upload_id, expected_size, upload_token, conversation_id=None, uploader_id=None):
+    if bool(conversation_id) != bool(uploader_id):
+        raise ChatMediaError(
+            "MEDIA_BINDING_INVALID",
+            "A conversation and uploader are required together.",
+        )
     status = _require_upload_storage(app)
     normalized_id, _date = _parse_upload_id(upload_id)
     ticket = _verify_upload_ticket(
@@ -458,6 +485,8 @@ def complete_chat_media_upload(app, tenant_id, upload_id, expected_size, upload_
         tenant_id,
         normalized_id,
         upload_token,
+        conversation_id=conversation_id,
+        uploader_id=uploader_id,
     )
     object_name = _object_name(app, tenant_id, normalized_id)
     pending_object_name = _pending_object_name(app, tenant_id, normalized_id)
@@ -499,6 +528,10 @@ def complete_chat_media_upload(app, tenant_id, upload_id, expected_size, upload_
             "size": completed_size,
             "mime": completed_type,
             "etag": str(getattr(completed_stat, "etag", "") or ""),
+            **({
+                "conversation_id": str(ticket.get("conversation_id") or conversation_id),
+                "uploader_id": str(ticket.get("uploader_id") or uploader_id),
+            } if ticket.get("conversation_id") or conversation_id else {}),
         }
 
     try:
@@ -555,7 +588,28 @@ def complete_chat_media_upload(app, tenant_id, upload_id, expected_size, upload_
         "size": completed_size,
         "mime": completed_type,
         "etag": str(getattr(completed_stat, "etag", "") or ""),
+        **({
+            "conversation_id": str(ticket.get("conversation_id") or conversation_id),
+            "uploader_id": str(ticket.get("uploader_id") or uploader_id),
+        } if ticket.get("conversation_id") or conversation_id else {}),
     }
+
+
+def remove_chat_media(app, tenant_id, upload_id):
+    """Delete both pending and completed objects; repeated cleanup is safe."""
+    normalized_id, _date = _parse_upload_id(upload_id)
+    removed = False
+    for object_name in (
+        _object_name(app, tenant_id, normalized_id),
+        _pending_object_name(app, tenant_id, normalized_id),
+    ):
+        try:
+            removed = bool(_remove_object(app, object_name)) or removed
+        except Exception as error:
+            if _is_missing_object(error):
+                continue
+            raise
+    return removed
 
 
 def create_personal_cloud_upload(app, tenant_id, owner_id, file_name, content_type, size):
@@ -722,7 +776,79 @@ def complete_personal_cloud_upload(app, tenant_id, owner_id, upload_id, expected
 
 def remove_personal_cloud_media(app, tenant_id, owner_id, upload_id):
     normalized_id, _date = _parse_upload_id(upload_id)
-    return _remove_object(app, _personal_cloud_object_name(app, tenant_id, owner_id, normalized_id))
+    removed = False
+    for object_name in (
+        _personal_cloud_object_name(app, tenant_id, owner_id, normalized_id),
+        _personal_cloud_pending_object_name(app, tenant_id, owner_id, normalized_id),
+    ):
+        try:
+            removed = bool(_remove_object(app, object_name)) or removed
+        except Exception as error:
+            if _is_missing_object(error):
+                continue
+            raise
+    return removed
+
+
+def sweep_media_cleanup(app, limit=100, now=None):
+    """Retry bounded cleanup work without ever touching a bound chat object."""
+    from application.database import db
+    from application.models.models import ChatMediaRegistry, PersonalCloudFile
+
+    try:
+        batch_size = max(1, min(int(limit), 500))
+    except (TypeError, ValueError):
+        batch_size = 100
+    current_time = int(now if now is not None else time.time())
+    result = {"chat": {"cleaned": 0, "retried": 0}, "cloud": {"cleaned": 0, "retried": 0}}
+
+    chat_rows = ChatMediaRegistry.query.filter(
+        ChatMediaRegistry.deleted.is_(False),
+        ChatMediaRegistry.state.in_(("PENDING_UPLOAD", "PENDING_MESSAGE", "PENDING_DELETE", "RETRY")),
+        ChatMediaRegistry.cleanup_next_at.isnot(None),
+        ChatMediaRegistry.cleanup_next_at <= current_time,
+    ).order_by(ChatMediaRegistry.cleanup_next_at.asc()).limit(batch_size).all()
+    for row in chat_rows:
+        try:
+            remove_chat_media(app, row.tenant_id, row.upload_id)
+            row.deleted = True
+            row.deleted_at = current_time
+            row.state = "CLEANED"
+            row.cleanup_next_at = None
+            row.cleanup_last_error = None
+            result["chat"]["cleaned"] += 1
+        except Exception as error:
+            row.state = "RETRY"
+            row.cleanup_attempts = int(row.cleanup_attempts or 0) + 1
+            row.cleanup_last_error = type(error).__name__[:255]
+            row.cleanup_next_at = current_time + min(3600, 2 ** min(row.cleanup_attempts, 10))
+            result["chat"]["retried"] += 1
+
+    cloud_rows = PersonalCloudFile.query.filter(
+        PersonalCloudFile.deleted.is_(False),
+        PersonalCloudFile.cleanup_state.in_(("PENDING_UPLOAD", "PENDING_DELETE", "RETRY")),
+        PersonalCloudFile.cleanup_next_at.isnot(None),
+        PersonalCloudFile.cleanup_next_at <= current_time,
+    ).order_by(PersonalCloudFile.cleanup_next_at.asc()).limit(batch_size).all()
+    for row in cloud_rows:
+        try:
+            remove_personal_cloud_media(app, row.tenant_id, row.owner_id, row.upload_id)
+            row.deleted = True
+            row.deleted_at = current_time
+            row.cleanup_state = "DELETED"
+            row.cleanup_next_at = None
+            row.cleanup_last_error = None
+            result["cloud"]["cleaned"] += 1
+        except Exception as error:
+            row.cleanup_state = "RETRY"
+            row.cleanup_attempts = int(row.cleanup_attempts or 0) + 1
+            row.cleanup_last_error = type(error).__name__[:255]
+            row.cleanup_next_at = current_time + min(3600, 2 ** min(row.cleanup_attempts, 10))
+            result["cloud"]["retried"] += 1
+
+    if chat_rows or cloud_rows:
+        db.session.commit()
+    return result
 
 
 def _download_content_type(value):

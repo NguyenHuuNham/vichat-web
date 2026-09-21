@@ -1,4 +1,5 @@
 import logging
+import time
 import uuid
 
 from gatco.response import json, redirect
@@ -18,6 +19,14 @@ from application.services.chat_media_service import (
     create_personal_cloud_upload,
     remove_personal_cloud_media,
     resolve_personal_cloud_download,
+)
+from application.services.pagination import (
+    PaginationError,
+    bounded_int,
+    cursor_uuid,
+    decode_cursor,
+    encode_cursor,
+    page_payload,
 )
 
 
@@ -53,6 +62,7 @@ def _file_query(tenant_id, owner_id):
         PersonalCloudFile.tenant_id == tenant_id,
         PersonalCloudFile.owner_id == owner_id,
         PersonalCloudFile.deleted.is_(False),
+        PersonalCloudFile.cleanup_state == "ACTIVE",
     )
 
 
@@ -83,14 +93,32 @@ async def create_personal_cloud_media_upload(request):
         return _current_session_error(request)
     body = request.json or {}
     try:
-        return json(create_personal_cloud_upload(
+        try:
+            requested_size = int(body.get("size"))
+        except (TypeError, ValueError):
+            raise ChatMediaError("PARAM_ERROR", "size must be an integer.")
+        payload = create_personal_cloud_upload(
             app,
             tenant_id,
             owner_id,
             body.get("file_name"),
             body.get("content_type"),
-            body.get("size"),
-        ), status=201)
+            requested_size,
+        )
+        now = int(time.time())
+        db.session.add(PersonalCloudFile(
+            tenant_id=tenant_id,
+            owner_id=owner_id,
+            upload_id=payload["upload_id"],
+            file_name=payload.get("file_name") or "tep-dinh-kem",
+            mime_type=str((payload.get("headers") or {}).get("Content-Type") or "application/octet-stream"),
+            size=requested_size,
+            media_ref=payload["upload_id"],
+            cleanup_state="PENDING_UPLOAD",
+            cleanup_next_at=now + int(app.config.get("CHAT_MEDIA_COMPLETION_TTL", 21600)),
+        ))
+        db.session.commit()
+        return json(payload, status=201)
     except ChatMediaError as error:
         return _cloud_error(error)
     except Exception as error:
@@ -110,17 +138,21 @@ async def complete_personal_cloud_media_upload(request, upload_id):
             PersonalCloudFile.upload_id == str(upload_id or "").lower(),
             PersonalCloudFile.deleted.is_(False),
         ).first()
-        if existing is not None:
+        if existing is not None and existing.cleanup_state == "ACTIVE":
             return json(_serialize_file(existing))
+        try:
+            requested_size = int(body.get("size"))
+        except (TypeError, ValueError):
+            raise ChatMediaError("PARAM_ERROR", "size must be an integer.")
         completed = complete_personal_cloud_upload(
             app,
             tenant_id,
             owner_id,
             upload_id,
-            body.get("size"),
+            requested_size,
             body.get("upload_token"),
         )
-        item = PersonalCloudFile(
+        item = existing or PersonalCloudFile(
             tenant_id=tenant_id,
             owner_id=owner_id,
             upload_id=completed["upload_id"],
@@ -128,9 +160,18 @@ async def complete_personal_cloud_media_upload(request, upload_id):
             mime_type=completed["mime"],
             size=completed["size"],
             media_ref=completed["upload_id"],
-            etag=completed.get("etag") or None,
         )
-        db.session.add(item)
+        item.file_name = completed["file_name"]
+        item.mime_type = completed["mime"]
+        item.size = completed["size"]
+        item.media_ref = completed["upload_id"]
+        item.etag = completed.get("etag") or None
+        item.cleanup_state = "ACTIVE"
+        item.cleanup_attempts = 0
+        item.cleanup_next_at = None
+        item.cleanup_last_error = None
+        if existing is None:
+            db.session.add(item)
         db.session.commit()
         return json(_serialize_file(item), status=201)
     except ChatMediaError as error:
@@ -147,14 +188,55 @@ async def list_personal_cloud_files(request):
     if current_user is None:
         return _current_session_error(request)
     try:
-        limit = min(200, max(1, int(request.args.get("limit") or 100)))
-    except (TypeError, ValueError):
-        return _cloud_error(ChatMediaError("CLOUD_LIMIT_INVALID", "The file limit is invalid."))
-    items = _file_query(tenant_id, owner_id).order_by(
+        limit = bounded_int(
+            request.args.get("limit"),
+            name="limit",
+            default=100,
+            minimum=1,
+            maximum=100,
+        )
+        cursor = decode_cursor(request.args.get("cursor")) if request.args.get("cursor") else None
+    except PaginationError as error:
+        return _cloud_error(ChatMediaError("PARAM_ERROR", str(error)))
+    query = _file_query(tenant_id, owner_id)
+    total = query.count()
+    if cursor:
+        try:
+            cursor_updated = int(cursor.get("updated") or 0)
+            cursor_created = int(cursor.get("created") or 0)
+            cursor_id = cursor_uuid(cursor.get("id"))
+        except (PaginationError, TypeError, ValueError):
+            return _cloud_error(ChatMediaError("PARAM_ERROR", "Cursor is invalid."))
+        query = query.filter(
+            (PersonalCloudFile.updated_at < cursor_updated)
+            | ((PersonalCloudFile.updated_at == cursor_updated) & (PersonalCloudFile.created_at < cursor_created))
+            | ((PersonalCloudFile.updated_at == cursor_updated) & (PersonalCloudFile.created_at == cursor_created) & (PersonalCloudFile.id < cursor_id))
+        )
+    items = query.order_by(
         PersonalCloudFile.updated_at.desc(),
         PersonalCloudFile.created_at.desc(),
-    ).limit(limit).all()
-    return json({"objects": [_serialize_file(item) for item in items]})
+        PersonalCloudFile.id.desc(),
+    ).limit(limit + 1).all()
+    has_more = len(items) > limit
+    items = items[:limit]
+    next_cursor = None
+    if has_more and items:
+        last = items[-1]
+        next_cursor = encode_cursor({
+            "v": 1,
+            "updated": int(last.updated_at or 0),
+            "created": int(last.created_at or 0),
+            "id": str(last.id),
+        })
+    return json({
+        **page_payload(
+            [_serialize_file(item) for item in items],
+            next_cursor=next_cursor,
+            limit=limit,
+            total=total,
+        ),
+        "count": int(total),
+    })
 
 
 @app.route('/api/v1/chat/cloud/files/<file_id>/download', methods=['GET'])
@@ -196,10 +278,22 @@ async def delete_personal_cloud_file(request, file_id):
     item = _file_by_id(tenant_id, owner_id, file_id)
     if item is None:
         return json({"error_code": "NOT_FOUND", "error_message": "Personal cloud file not found."}, status=404)
-    item.deleted = True
+    item.cleanup_state = "PENDING_DELETE"
+    item.cleanup_last_error = None
+    item.cleanup_next_at = int(time.time())
     db.session.commit()
     try:
         remove_personal_cloud_media(app, tenant_id, owner_id, item.upload_id)
-    except Exception:
+    except Exception as error:
+        item.cleanup_state = "RETRY"
+        item.cleanup_attempts = int(item.cleanup_attempts or 0) + 1
+        item.cleanup_last_error = type(error).__name__[:255]
+        item.cleanup_next_at = int(time.time()) + min(3600, 2 ** min(item.cleanup_attempts, 10))
+        db.session.commit()
         logger.warning("Personal cloud object cleanup failed for %s", item.upload_id, exc_info=True)
+        return json({"deleted": False, "pending_delete": True, "id": str(item.id)}, status=202)
+    item.deleted = True
+    item.cleanup_state = "DELETED"
+    item.cleanup_next_at = None
+    db.session.commit()
     return json({"deleted": True, "id": str(item.id)})

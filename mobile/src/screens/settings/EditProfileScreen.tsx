@@ -36,7 +36,7 @@ export function EditProfileScreen({ navigation }: Props) {
       Alert.alert(
         'Không thể cập nhật',
         isAccountManaged
-          ? 'Hồ sơ của bạn được quản lý bởi UpGO Account. Vui lòng cập nhật tại account.upgo.vn.'
+          ? 'Hồ sơ của bạn được quản lý bởi UpGO Account. Vui lòng cập nhật tại account.gonplatform.com.'
           : message,
       );
     } finally {

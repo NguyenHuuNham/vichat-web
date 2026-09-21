@@ -109,7 +109,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("CHAT_ACCOUNT_CREDENTIAL_LOGIN_ENABLED=true", env_source)
         self.assertIn("CHATMGT_ADMIN_ACCOUNT_SSO_ENABLED=true", env_source)
         self.assertIn("VITE_CHAT_AUTH_MODE=account_password", env_source)
-        self.assertIn("ACCOUNT_URL=https://account.upgo.vn", env_source)
+        self.assertIn("ACCOUNT_URL=https://account.gonplatform.com", env_source)
         self.assertIn("ACCOUNT_SSO_LOGIN_PATH=/login", env_source)
         self.assertIn("ACCOUNT_SSO_DIRECTORY_PATH=/api/v1/tenant_user", env_source)
         self.assertIn("ACCOUNT_SSO_DIRECTORY_SYNC_TTL=10", env_source)

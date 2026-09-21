@@ -135,7 +135,7 @@ function ChatMaintenanceGate({ children }) {
 
 export default function RootApp() {
   const params = new URLSearchParams(window.location.search);
-  const isManagementSurface = window.location.hostname === 'chatmgt.upgo.vn'
+  const isManagementSurface = window.location.hostname === 'chatmgt.gonplatform.com'
     || params.get('surface') === 'management';
   const ActiveApp = isManagementSurface ? ManagementApp : ChatApp;
 

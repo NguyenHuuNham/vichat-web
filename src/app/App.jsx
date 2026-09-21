@@ -1,16 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import Login from '../features/auth/components/Login';
 import ChatLogo from '../components/ChatLogo';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ConversationErrorBoundary from '../components/ConversationErrorBoundary';
-import EnterpriseWorkspace from '../features/workspace/components/EnterpriseWorkspace';
-import CallOverlay from '../features/chat/components/CallOverlay';
-import StickerPicker from '../features/chat/components/StickerPicker';
-import ConversationBackgroundCropModal from '../features/chat/components/ConversationBackgroundCropModal';
-import ConversationCategoryManager from '../features/chat/components/ConversationCategoryManager';
 import ConversationListToolbar from '../features/chat/components/ConversationListToolbar';
-import PersonalCloudPanel from '../features/chat/components/PersonalCloudPanel';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation, normalizeTinodeMediaUrl } from '../features/chat/services/tinodeClient';
 import { shouldRetryProtectedMediaAfterSession } from '../features/chat/services/mediaRetryPolicy';
 import { startBrowserPresence } from '../features/chat/services/browserPresence';
@@ -222,6 +216,13 @@ import {
 } from '../features/security/services/pinLock';
 import { createLocalizedCopy, translateUiText } from '../features/i18n/appLanguage';
 import { workspacePanelFromPath, workspacePathForPanel } from '../features/workspace/services/workspaceRouting';
+
+const EnterpriseWorkspace = lazy(() => import('../features/workspace/components/EnterpriseWorkspace'));
+const CallOverlay = lazy(() => import('../features/chat/components/CallOverlay'));
+const StickerPicker = lazy(() => import('../features/chat/components/StickerPicker'));
+const ConversationBackgroundCropModal = lazy(() => import('../features/chat/components/ConversationBackgroundCropModal'));
+const ConversationCategoryManager = lazy(() => import('../features/chat/components/ConversationCategoryManager'));
+const PersonalCloudPanel = lazy(() => import('../features/chat/components/PersonalCloudPanel'));
 import {
   DEFAULT_GROUP_SETTINGS,
   GROUP_INFO_PERMISSION_MESSAGE,
@@ -923,25 +924,82 @@ function TinodeImagePreview({ source, alt, className = '', copy = { t: value => 
   );
 }
 
+const DIALOG_FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function useDialogFocusTrap(dialogRef, active, onClose) {
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
+  useEffect(() => {
+    if (!active || typeof document === 'undefined') return undefined;
+    const previousFocus = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const dialog = dialogRef.current;
+    const focusable = () => Array.from(dialog?.querySelectorAll(DIALOG_FOCUSABLE_SELECTOR) || [])
+      .filter(element => element instanceof HTMLElement && element.offsetParent !== null);
+    const focusInitial = () => {
+      const first = focusable()[0];
+      if (first) first.focus();
+      else dialog?.focus();
+    };
+    const handleKeyDown = event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeRef.current?.();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const elements = focusable();
+      if (!elements.length) {
+        event.preventDefault();
+        dialog?.focus();
+        return;
+      }
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    const focusFrame = window.requestAnimationFrame(focusInitial);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      window.cancelAnimationFrame(focusFrame);
+      if (previousFocus?.isConnected) window.requestAnimationFrame(() => previousFocus.focus());
+    };
+  }, [active, dialogRef]);
+}
+
 function ImageViewer({ source, file = null, message = null, copy = { t: value => value }, onClose, onDownload, onShare }) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const stageRef = useRef(null);
   const dragRef = useRef(null);
+  const dialogRef = useRef(null);
 
   useEffect(() => {
-    const handleKeyDown = event => {
-      if (event.key === 'Escape') onClose();
-    };
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
-      document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [onClose]);
+  }, []);
+
+  useDialogFocusTrap(dialogRef, true, onClose);
 
   useEffect(() => {
     setZoom(1);
@@ -1012,10 +1070,12 @@ function ImageViewer({ source, file = null, message = null, copy = { t: value =>
 
   return (
     <div
+      ref={dialogRef}
       className="image-viewer-overlay"
       role="dialog"
       aria-modal="true"
       aria-label={copy.t('Xem ảnh')}
+      tabIndex="-1"
       onMouseDown={event => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -2601,10 +2661,10 @@ function PollMessageCard({
                   </div>
                 </section>
               );
-            })}
-          </div>
-        </div>
-      )}
+             })}
+           </div>
+         </div>
+       )}
       {!showResults && <p className="poll-hidden-results"><i className="fa-solid fa-eye-slash"></i>{copy.t('Kết quả sẽ hiện sau khi bạn bình chọn')}</p>}
       {poll.settings.allowAddOptions && !closed && (
         <form className="poll-add-option" onSubmit={submitOption}>
@@ -3312,6 +3372,59 @@ function TenantSwitchLoadingOverlay({ copy }) {
   );
 }
 
+function RequiredPasswordScreen({ copy, user, onSubmit, onLogout }) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async event => {
+    event.preventDefault();
+    setNotice('');
+    if (!currentPassword || !newPassword) {
+      setNotice(copy.t('Vui lòng nhập mật khẩu hiện tại và mật khẩu mới.'));
+      return;
+    }
+    if (newPassword.length < 8) {
+      setNotice(copy.t('Mật khẩu mới phải có ít nhất 8 ký tự.'));
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setNotice(copy.t('Mật khẩu xác nhận không khớp.'));
+      return;
+    }
+    setBusy(true);
+    try {
+      await onSubmit(currentPassword, newPassword);
+    } catch (error) {
+      setNotice(copy.t(error?.message || 'Không thể đổi mật khẩu. Vui lòng thử lại.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <main className="required-password-screen">
+      <form className="required-password-card" onSubmit={submit} aria-describedby="required-password-help">
+        <div className="required-password-icon" aria-hidden="true"><i className="fa-solid fa-key"></i></div>
+        <span className="required-password-eyebrow">{copy.t('Bảo vệ tài khoản')}</span>
+        <h1>{copy.t('Cần đổi mật khẩu trước khi vào Chat')}</h1>
+        <p id="required-password-help">{copy.t(`Xin chào ${user?.name || user?.username || ''}. Mật khẩu hiện tại đã được đánh dấu cần thay đổi.`)}</p>
+        <label><span>{copy.t('Mật khẩu hiện tại')}</span><input type="password" autoComplete="current-password" value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} disabled={busy} autoFocus required /></label>
+        <label><span>{copy.t('Mật khẩu mới')}</span><input type="password" autoComplete="new-password" value={newPassword} onChange={event => setNewPassword(event.target.value)} disabled={busy} minLength={8} required /></label>
+        <label><span>{copy.t('Nhập lại mật khẩu mới')}</span><input type="password" autoComplete="new-password" value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} disabled={busy} minLength={8} required /></label>
+        {notice && <div className="required-password-notice" role="alert"><i className="fa-solid fa-circle-exclamation"></i><span>{notice}</span></div>}
+        <button type="submit" className="btn-primary required-password-submit" disabled={busy}>
+          <i className={`fa-solid ${busy ? 'fa-spinner fa-spin' : 'fa-shield-halved'}`}></i>
+          {busy ? copy.t('Đang cập nhật...') : copy.t('Đổi mật khẩu và tiếp tục')}
+        </button>
+        <button type="button" className="required-password-logout" onClick={onLogout} disabled={busy}>{copy.t('Đăng xuất')}</button>
+      </form>
+    </main>
+  );
+}
+
 function App() {
   const [currentChatId, setCurrentChatId] = useState(CHATBOT_ACCOUNT.id);
   const [conversations, setConversations] = useState(createInitialConversations);
@@ -3326,6 +3439,7 @@ function App() {
   // Trạng thái xác thực (Auth State)
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [passwordChangeRequired, setPasswordChangeRequired] = useState(false);
   const [loginNotice, setLoginNotice] = useState('');
   const [sessionRestoreState, setSessionRestoreState] = useState(() => (
     chatManagementService.remote ? 'loading' : 'ready'
@@ -3386,6 +3500,12 @@ function App() {
   const [workspaceQuery, setWorkspaceQuery] = useState('');
   const [workspaceResults, setWorkspaceResults] = useState([]);
   const [isWorkspaceLoading, setIsWorkspaceLoading] = useState(false);
+  const [, setConversationNextCursor] = useState(null);
+  const [conversationHasMore, setConversationHasMore] = useState(false);
+  const [conversationLoadingMore, setConversationLoadingMore] = useState(false);
+  const [, setDirectoryNextCursor] = useState(null);
+  const [directoryHasMore, setDirectoryHasMore] = useState(false);
+  const [directoryLoadingMore, setDirectoryLoadingMore] = useState(false);
   const [respondingFriendRequestId, setRespondingFriendRequestId] = useState('');
   const [friendNotice, setFriendNotice] = useState('');
   const [messageSearchQuery, setMessageSearchQuery] = useState('');
@@ -3423,6 +3543,10 @@ function App() {
   const [conversationListStrangersOnly, setConversationListStrangersOnly] = useState(false);
   const [personalCloudFiles, setPersonalCloudFiles] = useState([]);
   const [personalCloudLoading, setPersonalCloudLoading] = useState(false);
+  const [, setPersonalCloudNextCursor] = useState(null);
+  const [personalCloudHasMore, setPersonalCloudHasMore] = useState(false);
+  const [personalCloudLoadingMore, setPersonalCloudLoadingMore] = useState(false);
+  const [personalCloudTotal, setPersonalCloudTotal] = useState(null);
   const [personalCloudUploading, setPersonalCloudUploading] = useState(false);
   const [personalCloudNotice, setPersonalCloudNotice] = useState('');
   const [replyingTo, setReplyingTo] = useState(null);
@@ -3431,6 +3555,9 @@ function App() {
   const [profileContact, setProfileContact] = useState(null);
   const [profileViewers, setProfileViewers] = useState([]);
   const [profileViewersLoading, setProfileViewersLoading] = useState(false);
+  const [profileViewersHasMore, setProfileViewersHasMore] = useState(false);
+  const [profileViewersLoadingMore, setProfileViewersLoadingMore] = useState(false);
+  const [profileViewersTotal, setProfileViewersTotal] = useState(null);
   const [profileViewersOpen, setProfileViewersOpen] = useState(false);
   const [profileViewersNotice, setProfileViewersNotice] = useState('');
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
@@ -3559,6 +3686,8 @@ function App() {
   const notificationBaselineRef = useRef(new Map());
   const openingConversationRef = useRef('');
   const conversationScrollFrameRef = useRef(null);
+  const earlierHistoryRequestRef = useRef(null);
+  const earlierHistoryExhaustedRef = useRef(new Set());
   const unreadBoundariesRef = useRef({});
   const unreadCompletionRequestsRef = useRef(new Map());
   const conversationNavigationRef = useRef(0);
@@ -3572,6 +3701,20 @@ function App() {
   const contactsSyncTimerRef = useRef(null);
   const contactsSyncRequestRef = useRef(0);
   const directorySearchRequestRef = useRef(0);
+  const conversationNextCursorRef = useRef(null);
+  const conversationPageRequestRef = useRef(null);
+  const directoryPageRequestRef = useRef(null);
+  const directoryNextCursorRef = useRef(null);
+  const personalCloudControllerRef = useRef(null);
+  const personalCloudNextCursorRef = useRef(null);
+  const personalCloudLoadingMoreRef = useRef(false);
+  const profileViewersControllerRef = useRef(null);
+  const profileViewersNextCursorRef = useRef(null);
+  const profileViewersLoadingMoreRef = useRef(false);
+  const profileContactDialogRef = useRef(null);
+  const profileViewersDialogRef = useRef(null);
+  const friendRequestUpdatedSinceRef = useRef(0);
+  const friendRequestControllerRef = useRef(null);
   const logoutHandlerRef = useRef(null);
   const forcedLogoutHandlerRef = useRef(null);
   const forcedLogoutRef = useRef(false);
@@ -4324,32 +4467,108 @@ function App() {
     if (!chatManagementService.remote || !profileAccount.id) return [];
     const requestSession = accountSessionRef.current;
     const requestTenant = preferenceTenantId;
+    const controller = new AbortController();
+    profileViewersControllerRef.current?.abort?.();
+    profileViewersControllerRef.current = controller;
+    profileViewersNextCursorRef.current = null;
+    setProfileViewersHasMore(false);
+    setProfileViewersTotal(null);
     setProfileViewersLoading(true);
     setProfileViewersNotice('');
     try {
-      const viewers = await chatManagementService.listProfileViewers();
+      const viewers = await chatManagementService.listProfileViewers({ signal: controller.signal });
       if (
+        controller.signal.aborted
+        ||
         requestSession !== accountSessionRef.current
         || accountTenantId(currentUserRef.current) !== requestTenant
       ) return [];
       setProfileViewers(viewers);
+      profileViewersNextCursorRef.current = viewers?.nextCursor || null;
+      setProfileViewersHasMore(Boolean(viewers?.hasMore ?? profileViewersNextCursorRef.current));
+      setProfileViewersTotal(Number.isFinite(Number(viewers?.total)) ? Number(viewers.total) : viewers.length);
       return viewers;
     } catch (error) {
       if (
+        error?.name !== 'AbortError'
+        &&
         requestSession === accountSessionRef.current
         && accountTenantId(currentUserRef.current) === requestTenant
       ) {
         setProfileViewers([]);
+        profileViewersNextCursorRef.current = null;
+        setProfileViewersHasMore(false);
+        setProfileViewersTotal(null);
         setProfileViewersNotice(error?.message || translateUiText('Không thể tải danh sách người đã xem hồ sơ.', settings.language));
       }
       return [];
     } finally {
       if (
+        profileViewersControllerRef.current === controller
+        &&
         requestSession === accountSessionRef.current
         && accountTenantId(currentUserRef.current) === requestTenant
-      ) setProfileViewersLoading(false);
+      ) {
+        profileViewersControllerRef.current = null;
+        setProfileViewersLoading(false);
+      }
     }
   }, [preferenceTenantId, profileAccount.id, settings.language]);
+  const loadMoreProfileViewers = async () => {
+    if (
+      !profileViewersNextCursorRef.current
+      || profileViewersLoadingMoreRef.current
+      || !chatManagementService.remote
+    ) return;
+    const requestSession = accountSessionRef.current;
+    const requestTenant = preferenceTenantId;
+    const controller = new AbortController();
+    profileViewersLoadingMoreRef.current = true;
+    setProfileViewersLoadingMore(true);
+    try {
+      const page = await chatManagementService.listProfileViewers({
+        cursor: profileViewersNextCursorRef.current,
+        signal: controller.signal,
+      });
+      if (
+        controller.signal.aborted
+        || requestSession !== accountSessionRef.current
+        || accountTenantId(currentUserRef.current) !== requestTenant
+      ) return;
+      const merged = new Map();
+      [...profileViewers, ...page].forEach(viewer => {
+        const previous = merged.get(viewer.id);
+        const previousTime = Date.parse(previous?.viewedAt || '') || 0;
+        const nextTime = Date.parse(viewer.viewedAt || '') || 0;
+        if (!previous || nextTime >= previousTime) {
+          merged.set(viewer.id, {
+            ...previous,
+            ...viewer,
+            name: viewer.name || previous?.name,
+            avatar: viewer.avatar || previous?.avatar,
+          });
+        }
+      });
+      const nextViewers = [...merged.values()].sort((first, second) => (
+        (Date.parse(second.viewedAt || '') || 0) - (Date.parse(first.viewedAt || '') || 0)
+      ));
+      setProfileViewers(nextViewers);
+      profileViewersNextCursorRef.current = page?.nextCursor || null;
+      setProfileViewersHasMore(Boolean(page?.hasMore ?? profileViewersNextCursorRef.current));
+      if (Number.isFinite(Number(page?.total))) setProfileViewersTotal(Number(page.total));
+    } catch (error) {
+      if (
+        error?.name !== 'AbortError'
+        && requestSession === accountSessionRef.current
+        && accountTenantId(currentUserRef.current) === requestTenant
+      ) setProfileViewersNotice(error?.message || translateUiText('Không thể tải danh sách người đã xem hồ sơ.', settings.language));
+    } finally {
+      profileViewersLoadingMoreRef.current = false;
+      if (requestSession === accountSessionRef.current) setProfileViewersLoadingMore(false);
+    }
+  };
+  useDialogFocusTrap(profileContactDialogRef, Boolean(profileContact), () => setProfileContact(null));
+  useDialogFocusTrap(profileViewersDialogRef, profileViewersOpen, () => setProfileViewersOpen(false));
   useEffect(() => {
     if (
       workspacePanel !== 'profile'
@@ -4360,6 +4579,13 @@ function App() {
       setProfileViewersOpen(false);
       setProfileViewers([]);
       setProfileViewersLoading(false);
+      setProfileViewersHasMore(false);
+      setProfileViewersLoadingMore(false);
+      setProfileViewersTotal(null);
+      profileViewersControllerRef.current?.abort?.();
+      profileViewersControllerRef.current = null;
+      profileViewersNextCursorRef.current = null;
+      profileViewersLoadingMoreRef.current = false;
       setProfileViewersNotice('');
       return undefined;
     }
@@ -4624,28 +4850,79 @@ function App() {
     if (!isLoggedIn || !chatManagementService.remote || !managementViewerId) {
       setPersonalCloudFiles([]);
       setPersonalCloudLoading(false);
+      personalCloudNextCursorRef.current = null;
+      setPersonalCloudNextCursor(null);
+      setPersonalCloudHasMore(false);
+      setPersonalCloudTotal(null);
       setPersonalCloudUploading(false);
       setPersonalCloudNotice('');
       return undefined;
     }
     let cancelled = false;
+    const controller = new AbortController();
+    personalCloudControllerRef.current?.abort();
+    personalCloudControllerRef.current = controller;
+    personalCloudNextCursorRef.current = null;
+    setPersonalCloudNextCursor(null);
+    setPersonalCloudHasMore(false);
+    setPersonalCloudTotal(null);
     setPersonalCloudLoading(true);
     setPersonalCloudNotice('');
-    chatManagementService.listPersonalCloudFiles()
+    chatManagementService.listPersonalCloudFiles({ signal: controller.signal })
       .then(files => {
         if (cancelled || requestId !== personalCloudRequestRef.current || accountSessionRef.current <= 0) return;
         setPersonalCloudFiles(files);
+        personalCloudNextCursorRef.current = files?.nextCursor || null;
+        setPersonalCloudNextCursor(personalCloudNextCursorRef.current);
+        setPersonalCloudHasMore(Boolean(files?.hasMore ?? personalCloudNextCursorRef.current));
+        setPersonalCloudTotal(Number.isFinite(Number(files?.total)) ? Number(files.total) : null);
       })
       .catch(error => {
-        if (cancelled || requestId !== personalCloudRequestRef.current) return;
+        if (cancelled || requestId !== personalCloudRequestRef.current || error?.name === 'AbortError') return;
         setPersonalCloudFiles([]);
         setPersonalCloudNotice(error?.message || 'Không thể tải Cloud của tôi.');
       })
       .finally(() => {
         if (!cancelled && requestId === personalCloudRequestRef.current) setPersonalCloudLoading(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (personalCloudControllerRef.current === controller) personalCloudControllerRef.current = null;
+    };
   }, [isLoggedIn, managementViewerId, preferenceTenantId]);
+
+  const loadMorePersonalCloud = async () => {
+    if (!personalCloudNextCursorRef.current || personalCloudLoadingMoreRef.current || !chatManagementService.remote) return;
+    const requestId = personalCloudRequestRef.current;
+    const requestSession = accountSessionRef.current;
+    const controller = new AbortController();
+    personalCloudLoadingMoreRef.current = true;
+    setPersonalCloudLoadingMore(true);
+    try {
+      const page = await chatManagementService.listPersonalCloudFiles({
+        cursor: personalCloudNextCursorRef.current,
+        signal: controller.signal,
+      });
+      if (requestId !== personalCloudRequestRef.current || requestSession !== accountSessionRef.current) return;
+      setPersonalCloudFiles(previous => {
+        const byId = new Map(previous.map(file => [file.id, file]));
+        page.forEach(file => byId.set(file.id, file));
+        return [...byId.values()];
+      });
+      personalCloudNextCursorRef.current = page?.nextCursor || null;
+      setPersonalCloudNextCursor(personalCloudNextCursorRef.current);
+      setPersonalCloudHasMore(Boolean(page?.hasMore ?? personalCloudNextCursorRef.current));
+      if (Number.isFinite(Number(page?.total))) setPersonalCloudTotal(Number(page.total));
+    } catch (error) {
+      if (error?.name !== 'AbortError' && requestId === personalCloudRequestRef.current) {
+        setPersonalCloudNotice(error?.message || 'Không thể tải thêm file Cloud của tôi.');
+      }
+    } finally {
+      personalCloudLoadingMoreRef.current = false;
+      if (requestId === personalCloudRequestRef.current) setPersonalCloudLoadingMore(false);
+    }
+  };
 
   const handlePersonalCloudUpload = async file => {
     if (!file || personalCloudUploading || !chatManagementService.remote) return;
@@ -4656,6 +4933,7 @@ function App() {
       const uploaded = await chatManagementService.uploadPersonalCloudFile(file);
       if (requestSession !== accountSessionRef.current || !uploaded) return;
       setPersonalCloudFiles(previous => [uploaded, ...previous.filter(item => item.id !== uploaded.id)]);
+      setPersonalCloudTotal(previous => Number.isFinite(Number(previous)) ? Number(previous) + 1 : previous);
     } catch (error) {
       if (requestSession === accountSessionRef.current) {
         setPersonalCloudNotice(error?.message || 'Không thể tải file lên Cloud của tôi.');
@@ -4700,6 +4978,7 @@ function App() {
       await chatManagementService.deletePersonalCloudFile(file.id);
       if (requestSession !== accountSessionRef.current) return;
       setPersonalCloudFiles(previous => previous.filter(item => item.id !== file.id));
+      setPersonalCloudTotal(previous => Number.isFinite(Number(previous)) ? Math.max(0, Number(previous) - 1) : previous);
     } catch (error) {
       if (requestSession === accountSessionRef.current) setPersonalCloudNotice(error?.message || 'Không thể xóa file Cloud của tôi.');
     }
@@ -5497,6 +5776,60 @@ function App() {
     setShowLatestMessageButton(previous => previous === !isNearBottom ? previous : !isNearBottom);
   }, []);
 
+  const loadEarlierHistory = useCallback(async () => {
+    if (chatMode !== 'tinode') return;
+    const roomId = String(currentChatIdRef.current || '');
+    const room = conversationsRef.current[roomId];
+    const topicName = String(room?.tinodeTopic || '');
+    const root = chatMessagesRef.current;
+    if (!room || !topicName || !root || root.scrollTop > 72) return;
+    const accountSession = accountSessionRef.current;
+    const tenant = String(accountTenantId(currentUserRef.current) || '').trim();
+    const navigation = conversationNavigationRef.current;
+    const requestKey = `${accountSession}:${tenant}:${roomId}:${topicName}`;
+    if (earlierHistoryExhaustedRef.current.has(requestKey)) return;
+    if (earlierHistoryRequestRef.current?.key === requestKey) return;
+    const beforeHeight = root.scrollHeight;
+    const beforeTop = root.scrollTop;
+    const isCurrent = () => accountSessionRef.current === accountSession
+      && String(currentChatIdRef.current) === roomId
+      && String(accountTenantId(currentUserRef.current) || '').trim() === tenant
+      && conversationNavigationRef.current === navigation;
+    const request = { key: requestKey };
+    earlierHistoryRequestRef.current = request;
+    try {
+      const loaded = await tinodeClient.loadEarlierMessages(topicName, { limit: 100 });
+      if (!isCurrent()) return;
+      if (loaded?.history?.hasEarlier === false) earlierHistoryExhaustedRef.current.add(requestKey);
+      if (loaded?.history?.loaded > 0) {
+        setConversations(previous => {
+          const current = previous[roomId];
+          if (!current || !isCurrent()) return previous;
+          const next = {
+            ...previous,
+            [roomId]: safeMergeTinodeConversation(current, {
+              ...loaded,
+              id: roomId,
+              tinodeTopic: topicName,
+              accountSession: current.accountSession,
+            }, { viewerId }),
+          };
+          conversationsRef.current = next;
+          return next;
+        });
+        await new Promise(resolve => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
+        if (!isCurrent() || !chatMessagesRef.current) return;
+        const nextRoot = chatMessagesRef.current;
+        nextRoot.scrollTop = beforeTop + Math.max(0, nextRoot.scrollHeight - beforeHeight);
+        updateMessageScrollState();
+      }
+    } catch (error) {
+      if (isCurrent()) setChatError(error?.message || 'Không thể tải thêm tin nhắn cũ.');
+    } finally {
+      if (earlierHistoryRequestRef.current === request) earlierHistoryRequestRef.current = null;
+    }
+  }, [chatMode, updateMessageScrollState, viewerId]);
+
   const interruptConversationNavigation = () => {
     conversationNavigationRef.current += 1;
   };
@@ -5699,6 +6032,9 @@ function App() {
     if (!managementUserId) return {};
     const managed = await chatManagementService.listConversations();
     if (accountSessionRef.current !== accountSession || managementConversationSessionRef.current !== accountSession) return {};
+    conversationNextCursorRef.current = managed?.nextCursor || null;
+    setConversationNextCursor(conversationNextCursorRef.current);
+    setConversationHasMore(Boolean(managed?.hasMore ?? conversationNextCursorRef.current));
     const managedRoomsSnapshot = managementRoomsForSession(managed, directoryAccounts, currentUser, accountSession);
     const managedRooms = applyLocalConversationCategories(
       chatManagementService.remote
@@ -5709,12 +6045,15 @@ function App() {
       preferenceTenantId,
     );
     const previousRooms = Object.fromEntries(safeConversationEntries(conversationsRef.current));
-    const nextRooms = Object.fromEntries(safeConversationEntries(previousRooms).filter(([, room]) => (
+    const nextRooms = Object.fromEntries(safeConversationEntries(previousRooms).filter(([roomId, room]) => (
       room.isChatbot
       || (!room.managementId && !room.tinodeTopic && roomFriendEvents(room).length > 0)
       // Keep an optimistic direct room visible while the create/bind request
       // is still running, otherwise the refresh can select another room.
       || (room.pendingDirect && room.accountSession === accountSession)
+      // A room already open on a later page stays visible while page one is
+      // refreshed; the next explicit page request can remove stale rooms.
+      || roomId === currentChatIdRef.current
     )));
     safeConversationEntries(managedRooms).forEach(([id, room]) => {
       const previousRoom = previousRooms[id] || safeConversationValues(previousRooms)
@@ -5730,6 +6069,52 @@ function App() {
     }
     return managedRooms;
   }, [currentUser, directoryAccounts, notificationSettingsViewerAliases, preferenceTenantId]);
+
+  const loadMoreManagementConversations = async () => {
+    const accountSession = accountSessionRef.current;
+    if (
+      !conversationNextCursorRef.current
+      || conversationLoadingMore
+      || !accountSession
+      || managementConversationSessionRef.current !== accountSession
+      || !chatManagementService.remote
+    ) return;
+    const controller = new AbortController();
+    conversationPageRequestRef.current?.abort?.();
+    conversationPageRequestRef.current = controller;
+    setConversationLoadingMore(true);
+    try {
+      const managed = await chatManagementService.listConversations({
+        cursor: conversationNextCursorRef.current,
+        signal: controller.signal,
+      });
+      if (
+        controller.signal.aborted
+        || accountSessionRef.current !== accountSession
+        || managementConversationSessionRef.current !== accountSession
+      ) return;
+      const pageRooms = managementRoomsForSession(managed, directoryAccountsRef.current, currentUserRef.current || currentUser, accountSession);
+      const previousRooms = Object.fromEntries(safeConversationEntries(conversationsRef.current));
+      const nextRooms = { ...previousRooms };
+      safeConversationEntries(pageRooms).forEach(([id, room]) => {
+        const previousRoom = nextRooms[id] || safeConversationValues(nextRooms).find(candidate => room.tinodeTopic && candidate.tinodeTopic === room.tinodeTopic);
+        nextRooms[id] = safeMergeTinodeConversation(previousRoom, room);
+      });
+      conversationsRef.current = nextRooms;
+      setConversations(nextRooms);
+      tinodeClient.setAllowedConversationTopics(managedTinodeTopics(nextRooms));
+      conversationNextCursorRef.current = managed?.nextCursor || null;
+      setConversationNextCursor(conversationNextCursorRef.current);
+      setConversationHasMore(Boolean(managed?.hasMore ?? conversationNextCursorRef.current));
+    } catch (error) {
+      if (error?.name !== 'AbortError' && accountSessionRef.current === accountSession) {
+        setChatError(error?.message || 'Không thể tải thêm cuộc trò chuyện.');
+      }
+    } finally {
+      if (conversationPageRequestRef.current === controller) conversationPageRequestRef.current = null;
+      if (accountSessionRef.current === accountSession) setConversationLoadingMore(false);
+    }
+  };
 
   const ensureTinodeConversationTopicInternal = async (room, { avatarFile = null } = {}) => {
     if (!room || room.isChatbot || chatMode !== 'tinode') return room?.id || '';
@@ -6705,7 +7090,39 @@ function App() {
     setConversationListStatus('all');
     setConversationListCategoryIds([]);
     setConversationListStrangersOnly(false);
+    conversationPageRequestRef.current?.abort?.();
+    conversationNextCursorRef.current = null;
+    setConversationNextCursor(null);
+    setConversationHasMore(false);
+    setConversationLoadingMore(false);
     personalCloudRequestRef.current += 1;
+    personalCloudControllerRef.current?.abort();
+    personalCloudNextCursorRef.current = null;
+    personalCloudLoadingMoreRef.current = false;
+    setPersonalCloudNextCursor(null);
+    setPersonalCloudHasMore(false);
+    setPersonalCloudLoadingMore(false);
+    profileViewersControllerRef.current?.abort?.();
+    profileViewersControllerRef.current = null;
+    profileViewersNextCursorRef.current = null;
+    profileViewersLoadingMoreRef.current = false;
+    setProfileViewersHasMore(false);
+    setProfileViewersLoadingMore(false);
+    setProfileViewersTotal(null);
+    friendRequestControllerRef.current?.abort();
+    friendRequestUpdatedSinceRef.current = 0;
+    directoryPageRequestRef.current?.abort?.();
+    directoryNextCursorRef.current = null;
+    setDirectoryNextCursor(null);
+    setDirectoryHasMore(false);
+    setDirectoryLoadingMore(false);
+    profileViewersControllerRef.current?.abort?.();
+    profileViewersControllerRef.current = null;
+    profileViewersNextCursorRef.current = null;
+    profileViewersLoadingMoreRef.current = false;
+    setProfileViewersHasMore(false);
+    setProfileViewersLoadingMore(false);
+    setProfileViewersTotal(null);
     setPersonalCloudFiles([]);
     setPersonalCloudLoading(false);
     setPersonalCloudUploading(false);
@@ -6734,14 +7151,19 @@ function App() {
     if (contactsSyncTimerRef.current) clearTimeout(contactsSyncTimerRef.current);
     contactsSyncTimerRef.current = null;
     contactsSyncRequestRef.current = 0;
+    const mustChangePassword = Boolean(
+      user?.mustChangePassword || user?.must_change_password,
+    ) && !isAccountManaged(user);
     setCurrentUser(user);
-    setChatMode(EXTERNAL_CHAT_ONLY ? 'external' : (user.connection || 'demo'));
+    setPasswordChangeRequired(mustChangePassword);
+    setChatMode(mustChangePassword ? 'management' : (EXTERNAL_CHAT_ONLY ? 'external' : (user.connection || 'demo')));
     setConnectionStatus(EXTERNAL_CHAT_ONLY
       ? 'external'
       : user.connection === 'tinode' ? 'ready' : user.connection === 'management' ? 'managed' : 'demo');
     setChatError('');
     setSessionRestoreState('ready');
-    setIsLoggedIn(true);
+    setIsLoggedIn(!mustChangePassword);
+    if (mustChangePassword) return;
     if (EXTERNAL_CHAT_ONLY) {
       managementConversationSessionRef.current = accountSession;
       setManagementConversationSession(accountSession);
@@ -6755,7 +7177,7 @@ function App() {
     }
     try {
         rememberAvatarOverride(user, user.avatar);
-        const [directoryUsers, tinodeChatbotConfig] = await Promise.all([
+        const [directoryPage, tinodeChatbotConfig] = await Promise.all([
           chatManagementService.listUsers(),
           loadTinodeChatbotConfig(),
         ]);
@@ -6765,7 +7187,7 @@ function App() {
           { accountSession, useTinode: tinodeChatbotEnabled },
         );
         const accounts = filterAccountsByTenant(
-          mergeDirectoryAccountSnapshots([user], directoryUsers),
+          mergeDirectoryAccountSnapshots([user], directoryPage),
           user,
         ).map(account => ({
             ...account,
@@ -6774,6 +7196,9 @@ function App() {
         if (accountSessionRef.current !== accountSession) return;
         directoryAccountsRef.current = accounts;
         setDirectoryAccounts(accounts);
+        directoryNextCursorRef.current = directoryPage?.nextCursor || null;
+        setDirectoryNextCursor(directoryNextCursorRef.current);
+        setDirectoryHasMore(Boolean(directoryPage?.hasMore ?? directoryNextCursorRef.current));
         if (chatManagementService.directorySync?.status === 'stale') {
           setChatError('Account đang tạm thời không trả được danh bạ mới; Chatmgt đang hiển thị dữ liệu đồng bộ gần nhất.');
         }
@@ -6864,6 +7289,21 @@ function App() {
   };
 
   loginSuccessHandlerRef.current = handleLoginSuccess;
+
+  const handleRequiredPasswordChange = async (currentPassword, newPassword) => {
+    await chatManagementService.changePassword(currentPassword, newPassword);
+    const confirmed = await chatManagementService.refreshSessionMetadata();
+    const refreshedUser = {
+      ...(currentUserRef.current || {}),
+      ...(confirmed || {}),
+      mustChangePassword: Boolean(confirmed?.mustChangePassword || confirmed?.must_change_password),
+      must_change_password: Boolean(confirmed?.mustChangePassword || confirmed?.must_change_password),
+    };
+    if (refreshedUser.mustChangePassword && !isAccountManaged(refreshedUser)) {
+      throw new Error('Máy chủ chưa xác nhận việc đổi mật khẩu.');
+    }
+    await handleLoginSuccess(refreshedUser, { source: 'password-change' });
+  };
 
   useEffect(() => {
     if (!chatManagementService.remote || sessionRestoreAttemptedRef.current) return undefined;
@@ -7132,6 +7572,7 @@ function App() {
       : 'Bạn đã đăng xuất khỏi Chat.');
     setIsLoggedIn(false);
     setCurrentUser(null);
+    setPasswordChangeRequired(false);
     directorySearchRequestRef.current += 1;
     setPinLockConfig(null);
     setPinLockReady(true);
@@ -7165,7 +7606,25 @@ function App() {
     setConversationListStatus('all');
     setConversationListCategoryIds([]);
     setConversationListStrangersOnly(false);
+    conversationPageRequestRef.current?.abort?.();
+    conversationNextCursorRef.current = null;
+    setConversationNextCursor(null);
+    setConversationHasMore(false);
+    setConversationLoadingMore(false);
     personalCloudRequestRef.current += 1;
+    personalCloudControllerRef.current?.abort();
+    personalCloudNextCursorRef.current = null;
+    personalCloudLoadingMoreRef.current = false;
+    setPersonalCloudNextCursor(null);
+    setPersonalCloudHasMore(false);
+    setPersonalCloudLoadingMore(false);
+    friendRequestControllerRef.current?.abort();
+    friendRequestUpdatedSinceRef.current = 0;
+    directoryPageRequestRef.current?.abort?.();
+    directoryNextCursorRef.current = null;
+    setDirectoryNextCursor(null);
+    setDirectoryHasMore(false);
+    setDirectoryLoadingMore(false);
     setPersonalCloudFiles([]);
     setPersonalCloudLoading(false);
     setPersonalCloudUploading(false);
@@ -7556,6 +8015,46 @@ function App() {
     }
   };
 
+  const loadMoreDirectory = async () => {
+    if (!directoryNextCursorRef.current || directoryLoadingMore || !chatManagementService.remote) return;
+    const requestSession = accountSessionRef.current;
+    const requestTenantId = accountTenantId(currentUserRef.current || currentUser);
+    const controller = new AbortController();
+    directoryPageRequestRef.current?.abort?.();
+    directoryPageRequestRef.current = controller;
+    setDirectoryLoadingMore(true);
+    try {
+      const page = await chatManagementService.listUsers({
+        cursor: directoryNextCursorRef.current,
+        signal: controller.signal,
+      });
+      const latestViewer = currentUserRef.current || currentUser;
+      if (
+        controller.signal.aborted
+        || accountSessionRef.current !== requestSession
+        || accountTenantId(latestViewer) !== requestTenantId
+      ) return;
+      const previous = filterAccountsByTenant(directoryAccountsRef.current, latestViewer);
+      const scoped = filterAccountsByTenant(page, latestViewer);
+      const merged = mergeDirectoryAccountSnapshots(previous, scoped, latestViewer).map(account => {
+        const override = isAccountManaged(account) ? '' : avatarOverrideFor(account);
+        return override ? { ...account, avatar: override } : account;
+      });
+      directoryAccountsRef.current = merged;
+      setDirectoryAccounts(merged);
+      directoryNextCursorRef.current = page?.nextCursor || null;
+      setDirectoryNextCursor(directoryNextCursorRef.current);
+      setDirectoryHasMore(Boolean(page?.hasMore ?? directoryNextCursorRef.current));
+    } catch (error) {
+      if (error?.name !== 'AbortError' && accountSessionRef.current === requestSession) {
+        setChatError(error?.message || 'KhÃ´ng thá»ƒ táº£i thÃªm danh báº¡.');
+      }
+    } finally {
+      if (directoryPageRequestRef.current === controller) directoryPageRequestRef.current = null;
+      if (accountSessionRef.current === requestSession) setDirectoryLoadingMore(false);
+    }
+  };
+
   const appendLocalFriendEvent = useCallback((roomId, contact, event) => {
     if (!event?.requestId) return;
     const friendActorId = event.action === 'request' ? event.requesterId : event.responderId;
@@ -7608,19 +8107,27 @@ function App() {
     const directoryTenantId = accountTenantId(currentUserRef.current || currentUser);
     let cancelled = false;
     let syncing = false;
+    let latestFriendUpdate = friendRequestUpdatedSinceRef.current;
 
     const syncManagementDirectory = async () => {
       if (
         cancelled
         || syncing
+        || (typeof document !== 'undefined' && document.visibilityState === 'hidden')
         || accountSessionRef.current !== accountSession
         || accountTenantId(currentUserRef.current || currentUser) !== directoryTenantId
       ) return;
       syncing = true;
+      const controller = new AbortController();
+      friendRequestControllerRef.current?.abort?.();
+      friendRequestControllerRef.current = controller;
       try {
         const [accounts, requests] = await Promise.all([
-          chatManagementService.listUsers(),
-          chatManagementService.listFriendRequests(managementViewerId),
+          chatManagementService.listUsers({ signal: controller.signal }),
+          chatManagementService.listFriendRequests(managementViewerId, {
+            signal: controller.signal,
+            updatedSince: latestFriendUpdate,
+          }),
         ]);
         if (
           cancelled
@@ -7819,19 +8326,31 @@ function App() {
         requests.forEach(request => {
           const contactId = request.requesterId === managementViewerId ? request.recipientId : request.requesterId;
           appendLocalFriendEvent(contactId, findAccount(effectiveAccounts, contactId), request);
+          const updatedAt = Date.parse(request.updatedAt || request.respondedAt || request.createdAt || '') || 0;
+          latestFriendUpdate = Math.max(latestFriendUpdate, Math.floor(updatedAt / 1000));
         });
-      } catch {
+        friendRequestUpdatedSinceRef.current = latestFriendUpdate;
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
         // A background management sync failure must not interrupt chat.
       } finally {
+        if (friendRequestControllerRef.current === controller) friendRequestControllerRef.current = null;
         syncing = false;
       }
     };
 
     void syncManagementDirectory();
     const timer = window.setInterval(syncManagementDirectory, 5000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void syncManagementDirectory();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      friendRequestControllerRef.current?.abort?.();
+      friendRequestControllerRef.current = null;
     };
   }, [isLoggedIn, managementViewerId, currentUser, appendLocalFriendEvent]);
 
@@ -10625,6 +11144,7 @@ function App() {
             caption: captionText,
             mentions: captionMentions,
             groupActionId: resolvedGroupActionId,
+            conversationId: room.managementId || room.id,
           });
           const confirmedIsImage = /^image\//i.test(result.file.mime || '') || isImage;
           const confirmedMessage = {
@@ -12179,6 +12699,7 @@ function App() {
           const result = await tinodeClient.sendFile(topicName, sourceFile, shared.id, {
             sharedFrom: shareMessage.id,
             groupActionId: groupSpamAttempt.groupActionId,
+            conversationId: shareTarget.managementId || shareTarget.id,
           });
           void ingestChatDocument({
             file: sourceFile,
@@ -13473,6 +13994,16 @@ function App() {
   ]);
 
   if (!isLoggedIn) {
+    if (passwordChangeRequired && currentUser) {
+      return (
+        <RequiredPasswordScreen
+          copy={appCopy}
+          user={currentUser}
+          onSubmit={handleRequiredPasswordChange}
+          onLogout={handleLogout}
+        />
+      );
+    }
     if (chatManagementService.remote && sessionRestoreState !== 'ready') {
       return (
         <SessionBootstrapScreen
@@ -13564,13 +14095,15 @@ function App() {
         </div>
       )}
       {CALLS_ENABLED && activeCall && (
-        <CallOverlay
-          key={activeCall.id}
-          call={activeCall}
-          copy={appCopy}
-          onClose={handleCallClosed}
-          onError={handleCallError}
-        />
+        <Suspense fallback={null}>
+          <CallOverlay
+            key={activeCall.id}
+            call={activeCall}
+            copy={appCopy}
+            onClose={handleCallClosed}
+            onError={handleCallError}
+          />
+        </Suspense>
       )}
       {imageViewer && (
         <ImageViewer
@@ -13593,16 +14126,18 @@ function App() {
         />
       )}
       {conversationBackgroundCropFile && (
-        <ConversationBackgroundCropModal
-          file={conversationBackgroundCropFile}
-          copy={appCopy}
-          maxBytes={chatMode === 'demo' || conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.LOCAL
-            ? CONVERSATION_BACKGROUND_LOCAL_MAX_BYTES
-            : CONVERSATION_BACKGROUND_MAX_BYTES}
-          isSaving={isSavingConversationBackground}
-          onCancel={() => setConversationBackgroundCropFile(null)}
-          onSave={handleConversationBackgroundCropSave}
-        />
+        <Suspense fallback={null}>
+          <ConversationBackgroundCropModal
+            file={conversationBackgroundCropFile}
+            copy={appCopy}
+            maxBytes={chatMode === 'demo' || conversationBackgroundScope === CONVERSATION_BACKGROUND_SCOPES.LOCAL
+              ? CONVERSATION_BACKGROUND_LOCAL_MAX_BYTES
+              : CONVERSATION_BACKGROUND_MAX_BYTES}
+            isSaving={isSavingConversationBackground}
+            onCancel={() => setConversationBackgroundCropFile(null)}
+            onSave={handleConversationBackgroundCropSave}
+          />
+        </Suspense>
       )}
 
       {/* ==========================================================================
@@ -13671,8 +14206,8 @@ function App() {
         <div className="sidebar-header">
           <div className="header-top">
           <h2>{appCopy.t('Cuộc trò chuyện')}</h2>
-            <button className="btn-action" title={appCopy.t('Tạo nhóm mới')} onClick={() => setIsCreateGroupOpen(true)}>
-              <i className="fa-solid fa-plus"></i>
+            <button type="button" className="btn-action" title={appCopy.t('Tạo nhóm mới')} aria-label={appCopy.t('Tạo nhóm mới')} onClick={() => setIsCreateGroupOpen(true)}>
+              <i className="fa-solid fa-plus" aria-hidden="true"></i>
             </button>
           </div>
           <div className="search-box">
@@ -13800,6 +14335,10 @@ function App() {
             );
           })}
         </div>
+        {conversationHasMore && <button type="button" className="conversation-load-more" onClick={loadMoreManagementConversations} disabled={conversationLoadingMore}>
+          <i className={`fa-solid ${conversationLoadingMore ? 'fa-spinner fa-spin' : 'fa-chevron-down'}`} aria-hidden="true"></i>
+          {conversationLoadingMore ? appCopy.t('Đang tải thêm...') : appCopy.t('Tải thêm cuộc trò chuyện')}
+        </button>}
       </aside>
 
       {conversationMenu && renderConversations[conversationMenu.roomId] && (() => {
@@ -13872,8 +14411,8 @@ function App() {
         >
           <div className="chat-main-header">
             <div className="chat-header-info">
-              <button className="btn-back-mobile" onClick={() => setIsMobileChatActive(false)}>
-                <i className="fa-solid fa-arrow-left"></i>
+              <button type="button" className="btn-back-mobile" aria-label={appCopy.t('Quay lại danh sách hội thoại')} onClick={() => setIsMobileChatActive(false)}>
+                <i className="fa-solid fa-arrow-left" aria-hidden="true"></i>
               </button>
               <div className={`chat-header-avatar ${activeChat.avatarClass || ''}`}>
                 <ConversationAvatar room={activeChat} />
@@ -13886,8 +14425,8 @@ function App() {
               </div>
             </div>
             <div className="chat-header-actions">
-              <button className="btn-header-action" title={appCopy.t('Tìm kiếm')} onClick={() => openWorkspacePanel('search')}>
-                <i className="fa-solid fa-magnifying-glass"></i>
+              <button type="button" className="btn-header-action" title={appCopy.t('Tìm kiếm')} aria-label={appCopy.t('Tìm kiếm')} onClick={() => openWorkspacePanel('search')}>
+                <i className="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
               </button>
               {!activeChat.isChatbot && activeChat.id !== 'empty' && (
                 <button
@@ -14060,6 +14599,7 @@ function App() {
             onScroll={() => {
               updateMessageScrollState();
               if (messageMenu) setMessageMenu(null);
+              if (chatMessagesRef.current?.scrollTop <= 72) void loadEarlierHistory();
             }}
           >
           <div className="chat-messages-content">
@@ -14846,17 +15386,19 @@ function App() {
               <i className="fa-regular fa-smile"></i>
             </button>
             {showEmojiPicker && (
-              <StickerPicker
-                activeTab={composerPickerTab}
-                onTabChange={setComposerPickerTab}
-                onSelectSticker={handleSendSticker}
-                onSelectEmoji={insertEmoji}
-                requestAppConfirmation={requestAppConfirmation}
-                scope={notificationSettingsViewerId || 'anonymous'}
-                scopeAliases={notificationSettingsViewerAliases}
-                tenantId={preferenceTenantId}
-                copy={appCopy}
-              />
+              <Suspense fallback={<div className="composer-picker-loading" role="status">{appCopy.t('Đang tải...')}</div>}>
+                <StickerPicker
+                  activeTab={composerPickerTab}
+                  onTabChange={setComposerPickerTab}
+                  onSelectSticker={handleSendSticker}
+                  onSelectEmoji={insertEmoji}
+                  requestAppConfirmation={requestAppConfirmation}
+                  scope={notificationSettingsViewerId || 'anonymous'}
+                  scopeAliases={notificationSettingsViewerAliases}
+                  tenantId={preferenceTenantId}
+                  copy={appCopy}
+                />
+              </Suspense>
             )}
             <button
               type="button"
@@ -15255,7 +15797,7 @@ function App() {
           <div className="profile-contact-modal" role="presentation" onMouseDown={event => {
             if (event.target === event.currentTarget) setProfileContact(null);
           }}>
-            <section className="profile-contact-card" role="dialog" aria-modal="true" aria-labelledby="profile-contact-title">
+            <section ref={profileContactDialogRef} className="profile-contact-card" role="dialog" aria-modal="true" aria-labelledby="profile-contact-title" tabIndex="-1">
               <div className="message-details-header">
                 <strong>{appCopy.t('Thông tin cá nhân')}</strong>
                 <button type="button" onClick={() => setProfileContact(null)} aria-label={appCopy.t('Đóng thông tin cá nhân')}><i className="fa-solid fa-xmark"></i></button>
@@ -15288,7 +15830,7 @@ function App() {
           <div className="profile-viewers-modal" role="presentation" onMouseDown={event => {
             if (event.target === event.currentTarget) setProfileViewersOpen(false);
           }}>
-            <section className="profile-viewers-card" role="dialog" aria-modal="true" aria-labelledby="profile-viewers-title">
+            <section ref={profileViewersDialogRef} className="profile-viewers-card" role="dialog" aria-modal="true" aria-labelledby="profile-viewers-title" tabIndex="-1">
               <div className="message-details-header">
                 <strong id="profile-viewers-title">{appCopy.t('Ai đã xem hồ sơ của bạn')}</strong>
                 <button type="button" onClick={() => setProfileViewersOpen(false)} aria-label={appCopy.t('Đóng')}>
@@ -15296,7 +15838,7 @@ function App() {
                 </button>
               </div>
               <div className="profile-viewers-toolbar">
-                <span>{profileViewers.length} {appCopy.t('người')}</span>
+                <span>{profileViewersTotal ?? profileViewers.length} {appCopy.t('người')}</span>
                 <button type="button" onClick={() => void refreshProfileViewers()} disabled={profileViewersLoading || !chatManagementService.remote}>
                   <i className={`fa-solid ${profileViewersLoading ? 'fa-spinner fa-spin' : 'fa-rotate'}`}></i>
                   {appCopy.t('Làm mới')}
@@ -15337,6 +15879,12 @@ function App() {
                     </article>
                   ))}
                 </div>
+              )}
+              {chatManagementService.remote && !profileViewersLoading && profileViewersHasMore && (
+                <button type="button" className="profile-viewers-load-more" onClick={loadMoreProfileViewers} disabled={profileViewersLoadingMore}>
+                  <i className={`fa-solid ${profileViewersLoadingMore ? 'fa-spinner fa-spin' : 'fa-chevron-down'}`} aria-hidden="true"></i>
+                  {profileViewersLoadingMore ? appCopy.t('Đang tải thêm...') : appCopy.t('Tải thêm người xem')}
+                </button>
               )}
             </section>
           </div>
@@ -16060,7 +16608,7 @@ function App() {
                       aria-label={appCopy.t('Ai đã xem hồ sơ của bạn')}
                     >
                       <i className={`fa-solid ${profileViewersLoading ? 'fa-spinner fa-spin' : 'fa-eye'}`} aria-hidden="true"></i>
-                      <span className="profile-viewers-count">{profileViewers.length}</span>
+                      <span className="profile-viewers-count">{profileViewersTotal ?? profileViewers.length}</span>
                     </button>
                     <button type="button" className="workspace-logout-button" onClick={requestLogout}>
                       <i className="fa-solid fa-arrow-right-from-bracket"></i>
@@ -16148,15 +16696,17 @@ function App() {
             {workspacePanel === 'groups' && renderCreateGroupForm('page')}
 
             {workspacePanel === 'enterprise' && (
-              <EnterpriseWorkspace
-                user={currentUser}
-                accounts={directoryAccounts}
-                copy={appCopy}
-                requestAppConfirmation={requestAppConfirmation}
-                taskSeed={enterpriseTaskSeed}
-                onTaskSeedConsumed={() => setEnterpriseTaskSeed(null)}
-                onError={setChatError}
-              />
+              <Suspense fallback={<div className="workspace-empty" role="status"><i className="fa-solid fa-spinner fa-spin"></i> {appCopy.t('Đang tải Workspace...')}</div>}>
+                <EnterpriseWorkspace
+                  user={currentUser}
+                  accounts={directoryAccounts}
+                  copy={appCopy}
+                  requestAppConfirmation={requestAppConfirmation}
+                  taskSeed={enterpriseTaskSeed}
+                  onTaskSeedConsumed={() => setEnterpriseTaskSeed(null)}
+                  onError={setChatError}
+                />
+              </Suspense>
             )}
 
             {workspacePanel === 'profile' && (
@@ -16191,18 +16741,24 @@ function App() {
             )}
 
             {workspacePanel === 'cloud' && (
-              <PersonalCloudPanel
-                copy={appCopy}
-                available={Boolean(chatManagementService.remote && managementViewerId)}
-                files={personalCloudFiles}
-                loading={personalCloudLoading}
-                uploading={personalCloudUploading}
-                notice={personalCloudNotice}
-                onUpload={handlePersonalCloudUpload}
-                onOpen={file => openPersonalCloudUrl(file)}
-                onDownload={file => openPersonalCloudUrl(file, true)}
-                onDelete={handlePersonalCloudDelete}
-              />
+              <Suspense fallback={<div className="workspace-empty" role="status"><i className="fa-solid fa-spinner fa-spin"></i> {appCopy.t('Đang tải kho cá nhân...')}</div>}>
+                <PersonalCloudPanel
+                  copy={appCopy}
+                  available={Boolean(chatManagementService.remote && managementViewerId)}
+                  files={personalCloudFiles}
+                  total={personalCloudTotal}
+                  hasMore={personalCloudHasMore}
+                  loadingMore={personalCloudLoadingMore}
+                  loading={personalCloudLoading}
+                  uploading={personalCloudUploading}
+                  notice={personalCloudNotice}
+                  onUpload={handlePersonalCloudUpload}
+                  onOpen={file => openPersonalCloudUrl(file)}
+                  onDownload={file => openPersonalCloudUrl(file, true)}
+                  onDelete={handlePersonalCloudDelete}
+                  onLoadMore={loadMorePersonalCloud}
+                />
+              </Suspense>
             )}
 
             {workspacePanel === 'contacts' && (
@@ -16235,10 +16791,14 @@ function App() {
                           </button>
                         </div>
                       ))}
-                    </div>
-                  </div>
-                )}
-                {!isWorkspaceLoading && workspaceQuery.trim().length < 2 && companyContacts.length === 0 && (
+                     </div>
+                     {directoryHasMore && <button type="button" className="workspace-load-more" onClick={loadMoreDirectory} disabled={directoryLoadingMore}>
+                       <i className={`fa-solid ${directoryLoadingMore ? 'fa-spinner fa-spin' : 'fa-chevron-down'}`} aria-hidden="true"></i>
+                       {directoryLoadingMore ? appCopy.t('Đang tải thêm...') : appCopy.t('Tải thêm danh bạ')}
+                     </button>}
+                   </div>
+                 )}
+                 {!isWorkspaceLoading && workspaceQuery.trim().length < 2 && companyContacts.length === 0 && (
                   <div className="workspace-empty"><i className="fa-solid fa-user-group"></i><span>{appCopy.t('Chưa có nhân viên nào khác trong công ty.')}</span></div>
                 )}
                 {!isWorkspaceLoading && workspaceQuery.trim().length >= 2 && companySearchResults.length === 0 && (
@@ -16958,18 +17518,20 @@ function App() {
         </div>
       )}
 
-      <ConversationCategoryManager
-        open={conversationCategoryManagerOpen}
-        categories={conversationCategoryOptions}
-        assignments={conversationCategories}
-        conversations={categoryManagerConversations}
-        copy={appCopy}
-        requestAppConfirmation={requestAppConfirmation}
-        onClose={() => setConversationCategoryManagerOpen(false)}
-        onSave={saveManagedConversationCategory}
-        onDelete={deleteManagedConversationCategory}
-        onReorder={reorderManagedConversationCategories}
-      />
+      <Suspense fallback={null}>
+        <ConversationCategoryManager
+          open={conversationCategoryManagerOpen}
+          categories={conversationCategoryOptions}
+          assignments={conversationCategories}
+          conversations={categoryManagerConversations}
+          copy={appCopy}
+          requestAppConfirmation={requestAppConfirmation}
+          onClose={() => setConversationCategoryManagerOpen(false)}
+          onSave={saveManagedConversationCategory}
+          onDelete={deleteManagedConversationCategory}
+          onReorder={reorderManagedConversationCategories}
+        />
+      </Suspense>
 
       {notificationMuteDialog && (
         <div className="modal-backdrop notification-mute-backdrop" role="presentation" onMouseDown={(event) => {

@@ -14,7 +14,7 @@ const uploadId = '20260902-0123456789abcdef0123456789abcdef.jpg';
 test('recognizes stable Chatmgt media references without treating legacy Tinode URLs as S3', () => {
   assert.equal(chatMediaReferenceId(`/api/v1/chat/media/${uploadId}`), uploadId);
   assert.equal(
-    chatMediaReferenceId(`https://chatmgt.upgo.vn/api/v1/chat/media/${uploadId}?download=1`),
+    chatMediaReferenceId(`https://chatmgt.gonplatform.com/api/v1/chat/media/${uploadId}?download=1`),
     uploadId,
   );
   assert.equal(isChatMediaReference(`/tinode-media/v0/file/s/${uploadId}`), false);

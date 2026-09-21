@@ -29,7 +29,7 @@ and profile changes remain exclusively in UpGO Account.
 
 ## Production data flow
 
-1. A tenant admin enters `chatmgt.upgo.vn` through UpGO Account SSO.
+1. A tenant admin enters `chatmgt.gonplatform.com` through UpGO Account SSO.
 2. Chatmgt accepts only Account roles `admin`, `owner`, or `superadmin` and issues a separate management cookie for the active tenant.
 3. The admin invites or removes employees in UpGO Account; Chatmgt reads the tenant directory as a read-only source.
 4. ChatUI requires the employee's UpGO Account email/password; Chatmgt calls UpGO Account `POST /login`, automatically resolves the invited active tenant/company/brand membership, and exposes `POST /api/v1/auth/account-login` as the employee login contract.
@@ -59,7 +59,7 @@ and the removed knowledge manager is not exposed. Run mobile checks from
 `mobile/`; signed Android/iOS builds need JDK/SDK or EAS plus store credentials.
 
 Protected Tinode images are fetched through the authenticated
-`chat.upgo.vn/tinode-media` relay into the native cache before rendering. An
+`chat.gonplatform.com/tinode-media` relay into the native cache before rendering. An
 optional four-digit app PIN stores only a salted hash in SecureStore and locks
 the signed-in message surface after the app returns from the background; a
 forgotten PIN is reset only by clearing the local PIN and signing back in with
@@ -108,10 +108,10 @@ Tinode message history is intentionally not copied.
 `POST /api/v1/auth/tinode-token` returns the token bound to that session when a
 reconnect needs it and re-verifies that volatile password when renewal is
 required. ChatUI and Chatmgt both reach the
-central `chatapi.gonplatform.com` Tinode through the `chat.upgo.vn` Nginx relay for
+central `chatapi.gonplatform.com` Tinode through the `chat.gonplatform.com` Nginx relay for
 messages, files, presence, typing, reactions, receipts, and direct calls.
 Tinode Web at `https://chatapi.gonplatform.com/#` remains the single UI used to
-inspect the central message store. Set its Server to `chat.upgo.vn` so its basic login
+inspect the central message store. Set its Server to `chat.gonplatform.com` so its basic login
 packet is translated server-side from UpGO Account credentials to a short-lived
 Tinode token. ChatUI obtains its own short-lived token for the same newly
 provisioned deterministic Tinode UID; the two clients therefore share new topics

@@ -87,7 +87,7 @@ export function shouldFallbackToTinode(error) {
     || ['MEDIA_STORAGE_DISABLED', 'MEDIA_STORAGE_UNAVAILABLE'].includes(String(error?.code || ''));
 }
 
-export async function uploadChatMedia(file) {
+export async function uploadChatMedia(file, { conversationId = '', signal } = {}) {
   if (!isChatMediaStorageEnabled()) {
     throw new ChatMediaClientError('S3 media storage is disabled.', {
       code: 'MEDIA_STORAGE_DISABLED',
@@ -102,7 +102,9 @@ export async function uploadChatMedia(file) {
       file_name: String(file?.name || 'attachment'),
       content_type: contentType,
       size,
+      conversation_id: String(conversationId || '').trim(),
     }),
+    signal,
   });
   try {
     const uploadResponse = await fetch(prepared.upload_url, {
@@ -110,6 +112,7 @@ export async function uploadChatMedia(file) {
       headers: { 'Content-Type': contentType, ...(prepared.headers || {}) },
       body: file,
       credentials: 'omit',
+      signal,
     });
     if (!uploadResponse.ok) {
       throw new ChatMediaClientError(`S3 rejected the upload (HTTP ${uploadResponse.status}).`, {
@@ -119,6 +122,7 @@ export async function uploadChatMedia(file) {
       });
     }
   } catch (error) {
+    await discardChatMedia(prepared.ref || prepared.upload_id, { conversationId }).catch(() => {});
     if (error instanceof ChatMediaClientError) throw error;
     throw new ChatMediaClientError('The direct S3 upload failed.', {
       code: 'MEDIA_UPLOAD_FAILED',
@@ -126,16 +130,23 @@ export async function uploadChatMedia(file) {
     });
   }
 
-  const completed = await mediaApiRequest(
-    `/api/v1/chat/media/uploads/${encodeURIComponent(prepared.upload_id)}/complete`,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        size,
-        upload_token: prepared.upload_token,
-      }),
-    },
-  );
+  let completed;
+  try {
+    completed = await mediaApiRequest(
+      `/api/v1/chat/media/uploads/${encodeURIComponent(prepared.upload_id)}/complete`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          size,
+          upload_token: prepared.upload_token,
+        }),
+        signal,
+      },
+    );
+  } catch (error) {
+    await discardChatMedia(prepared.ref || prepared.upload_id, { conversationId }).catch(() => {});
+    throw error;
+  }
   const reference = completed.ref || prepared.ref;
   if (!reference) {
     throw new ChatMediaClientError('Chat media service did not return a stable reference.', {
@@ -146,7 +157,35 @@ export async function uploadChatMedia(file) {
   return reference;
 }
 
-export async function resolveChatMediaDownloadUrl(value, { download = false, fileName = '' } = {}) {
+export async function bindChatMedia(value, { conversationId = '', messageRef = '', signal } = {}) {
+  const uploadId = chatMediaReferenceId(value) || String(value || '').trim();
+  if (!UPLOAD_ID_PATTERN.test(uploadId)) {
+    throw new ChatMediaClientError('The chat media reference is invalid.', {
+      code: 'MEDIA_REFERENCE_INVALID',
+      status: 404,
+    });
+  }
+  return mediaApiRequest(`/api/v1/chat/media/${encodeURIComponent(uploadId)}/bind`, {
+    method: 'POST',
+    body: JSON.stringify({
+      conversation_id: String(conversationId || '').trim(),
+      message_ref: String(messageRef || '').trim(),
+    }),
+    signal,
+  });
+}
+
+export async function discardChatMedia(value, { conversationId = '', signal } = {}) {
+  const uploadId = chatMediaReferenceId(value) || String(value || '').trim();
+  if (!UPLOAD_ID_PATTERN.test(uploadId)) return null;
+  return mediaApiRequest(`/api/v1/chat/media/${encodeURIComponent(uploadId)}/discard`, {
+    method: 'POST',
+    body: JSON.stringify({ conversation_id: String(conversationId || '').trim() }),
+    signal,
+  });
+}
+
+export async function resolveChatMediaDownloadUrl(value, { download = false, fileName = '', conversationId = '' } = {}) {
   const uploadId = chatMediaReferenceId(value);
   if (!uploadId) {
     throw new ChatMediaClientError('The chat media reference is invalid.', {
@@ -157,6 +196,7 @@ export async function resolveChatMediaDownloadUrl(value, { download = false, fil
   const query = new URLSearchParams({ format: 'json' });
   if (download) query.set('download', '1');
   if (fileName) query.set('name', String(fileName).slice(0, 180));
+  if (conversationId) query.set('conversation_id', String(conversationId));
   const payload = await mediaApiRequest(
     `/api/v1/chat/media/${encodeURIComponent(uploadId)}?${query.toString()}`,
   );
@@ -170,10 +210,11 @@ export async function resolveChatMediaDownloadUrl(value, { download = false, fil
 }
 
 export async function fetchChatMedia(value, options = {}) {
-  const { download = false, fileName = '', ...fetchOptions } = options;
+  const { download = false, fileName = '', conversationId = '', ...fetchOptions } = options;
   const downloadUrl = await resolveChatMediaDownloadUrl(value, {
     download: Boolean(download),
     fileName,
+    conversationId,
   });
   return fetch(downloadUrl, {
     ...fetchOptions,

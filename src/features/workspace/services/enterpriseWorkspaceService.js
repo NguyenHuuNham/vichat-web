@@ -28,14 +28,15 @@ function assertConfigured() {
 
 async function apiRequest(path, options = {}) {
   assertConfigured();
+  const { headers: requestHeaders = {}, ...requestOptions } = options;
   const response = await fetch(`${apiBase}${path}`, {
+    ...requestOptions,
     credentials: 'include',
     headers: {
       Accept: 'application/json',
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(options.headers || {}),
+      ...requestHeaders,
     },
-    ...options,
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -77,12 +78,25 @@ export function normalizeWorkspaceItem(item = {}) {
     endsAt: normalizeTimestamp(item.endsAt),
     publishedAt: normalizeTimestamp(item.publishedAt),
     closedAt: normalizeTimestamp(item.closedAt),
+    version: Number.isFinite(Number(item.version)) ? Number(item.version) : 1,
     properties: item.properties && typeof item.properties === 'object' ? item.properties : {},
     participants: Array.isArray(item.participants) ? item.participants : [],
     activity: Array.isArray(item.activity) ? item.activity : [],
     allowedActions: Array.isArray(item.allowedActions) ? item.allowedActions : [],
     canEdit: Boolean(item.canEdit),
   };
+}
+
+export function mergeWorkspaceProperties(existing = {}, incoming = {}) {
+  const merged = existing && typeof existing === 'object' && !Array.isArray(existing)
+    ? { ...existing }
+    : {};
+  if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) return merged;
+  Object.entries(incoming).forEach(([key, value]) => {
+    if (value === null || value === '' || (Array.isArray(value) && value.length === 0)) delete merged[key];
+    else merged[key] = value;
+  });
+  return merged;
 }
 
 function queryString(params = {}) {
@@ -96,10 +110,14 @@ function queryString(params = {}) {
 
 export const enterpriseWorkspaceService = {
   async listItems(params = {}) {
-    const payload = await apiRequest(`/api/v1/workspace/items${queryString(params)}`);
+    const { signal, ...queryParams } = params || {};
+    const payload = await apiRequest(`/api/v1/workspace/items${queryString(queryParams)}`, { signal });
     return {
       items: responseItems(payload).map(normalizeWorkspaceItem),
       summary: payload?.summary || null,
+      nextCursor: payload?.next_cursor || payload?.nextCursor || null,
+      hasMore: Boolean(payload?.has_more ?? payload?.hasMore ?? payload?.next_cursor ?? payload?.nextCursor),
+      total: Number.isFinite(Number(payload?.total)) ? Number(payload.total) : null,
     };
   },
 
@@ -115,8 +133,8 @@ export const enterpriseWorkspaceService = {
     return apiRequest('/api/v1/workspace/meta');
   },
 
-  async getItem(itemId) {
-    const payload = await apiRequest(`/api/v1/workspace/items/${encodeURIComponent(itemId)}`);
+  async getItem(itemId, { signal } = {}) {
+    const payload = await apiRequest(`/api/v1/workspace/items/${encodeURIComponent(itemId)}`, { signal });
     return normalizeWorkspaceItem(payload);
   },
 
@@ -136,20 +154,23 @@ export const enterpriseWorkspaceService = {
     return normalizeWorkspaceItem(payload);
   },
 
-  async archiveItem(itemId) {
-    return apiRequest(`/api/v1/workspace/items/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
+  async archiveItem(itemId, version) {
+    return apiRequest(`/api/v1/workspace/items/${encodeURIComponent(itemId)}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ version }),
+    });
   },
 
-  async applyAction(itemId, action, comment = '') {
+  async applyAction(itemId, action, comment = '', version) {
     const payload = await apiRequest(`/api/v1/workspace/items/${encodeURIComponent(itemId)}/actions`, {
       method: 'POST',
-      body: JSON.stringify({ action, comment }),
+      body: JSON.stringify({ action, comment, version }),
     });
     return normalizeWorkspaceItem(payload);
   },
 
-  async listActivity(itemId) {
-    const payload = await apiRequest(`/api/v1/workspace/items/${encodeURIComponent(itemId)}/activity`);
+  async listActivity(itemId, { signal } = {}) {
+    const payload = await apiRequest(`/api/v1/workspace/items/${encodeURIComponent(itemId)}/activity`, { signal });
     return responseItems(payload);
   },
 };
