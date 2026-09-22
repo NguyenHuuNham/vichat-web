@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `cd mobile; npm run typecheck` dat; `npm test -- --reporter=dot` dat `14` test file, `38/38` test; `npm run lint` dat; `npm run export` dat web bundle; `git diff --check` dat. Native build chua chay.
 - Rui ro con lai: Chua co Android SDK/JDK/native device trong phien nay de build APK va UAT upload/download voi tai khoan production that; S3/provider quota vat ly van ton tai. Cac control Workspace nang cao va quan tri thanh vien nhom van tiep tuc theo lo trinh mobile rieng.
 - Viec tiep theo: Kiem tra `java -version`/Android SDK, build development APK, dang nhap hai tai khoan va UAT Cloud owner/tenant isolation, upload nhieu file, tai/xoa tren Android.
-- Commit/PR: Chua tao.
+- Commit/PR: Source commit `7da4c93`; docs follow-up commit pending.
 
 ## 2026-09-22-02 - Chan treo web va toi uu render ChatUI
 
