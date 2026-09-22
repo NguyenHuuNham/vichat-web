@@ -42,3 +42,10 @@ test('fetches a cache-free public maintenance snapshot', async () => {
   assert.equal(state.enabled, true);
   assert.equal(state.updatedAt, 456);
 });
+
+test('bounds a stalled maintenance request', async () => {
+  await assert.rejects(
+    fetchChatMaintenance(() => new Promise(() => {}), { timeoutMs: 10 }),
+    error => error?.code === 'MAINTENANCE_REQUEST_TIMEOUT' && error?.status === 408,
+  );
+});

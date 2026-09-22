@@ -4003,18 +4003,29 @@ function App() {
   // Normalize every room used by render paths, including the sidebar. A direct
   // snapshot can be malformed before it reaches the active-chat selector.
   const chatbotUseTinode = Boolean(isLoggedIn && chatMode === 'tinode' && CHATBOT_ACCOUNT.tinodeUid);
-  const renderConversations = ensureDefaultChatbotConversation(
-    Object.fromEntries(safeConversationEntries(conversations)),
+  const ensuredRenderConversations = useMemo(() => ensureDefaultChatbotConversation(
+    conversations,
     { accountSession: accountSessionRef.current, useTinode: chatbotUseTinode },
+  ), [chatbotUseTinode, conversations]);
+  const renderConversationEntries = useMemo(
+    () => safeConversationEntries(ensuredRenderConversations),
+    [ensuredRenderConversations],
   );
-  const rawActiveChatSource = renderConversations[currentChatId] || Object.values(renderConversations)[0];
-  const activeChatSource = rawActiveChatSource
-    ? safeNormalizeConversationForRender(rawActiveChatSource, currentChatId)
-    : null;
-  const activeChatNameSource = activeChatSource?.isGroup
-    ? { ...activeChatSource, members: [] }
-    : activeChatSource;
-  const activeChat = activeChatSource ? {
+  const renderConversations = useMemo(
+    () => Object.fromEntries(renderConversationEntries),
+    [renderConversationEntries],
+  );
+  const renderConversationValues = useMemo(
+    () => renderConversationEntries.map(([, room]) => room),
+    [renderConversationEntries],
+  );
+  const rawActiveChatSource = renderConversations[currentChatId] || renderConversationValues[0];
+  const activeChatSource = rawActiveChatSource || null;
+  const activeChat = useMemo(() => {
+    const activeChatNameSource = activeChatSource?.isGroup
+      ? { ...activeChatSource, members: [] }
+      : activeChatSource;
+    return activeChatSource ? {
     ...activeChatSource,
     name: conversationDisplayName(
       activeChatNameSource,
@@ -4034,7 +4045,8 @@ function App() {
     lastMsg: '',
     time: '',
     badge: 0,
-  };
+    };
+  }, [activeChatSource]);
   const activePastedAttachments = pastedAttachmentDrafts[currentChatId] || [];
   const reactionDetailsMessage = reactionDetails
     ? roomMessages(activeChat).find(message => message?.id === reactionDetails.messageId) || reactionDetails.message
@@ -4129,11 +4141,11 @@ function App() {
       messageReactionHideTimerRef.current = null;
     }, 240);
   };
-  const conversationCategoryFor = room => {
+  const conversationCategoryFor = useCallback(room => {
     const key = String(room?.managementId || room?.id || '');
     const categoryId = conversationCategories[key] || room?.category || '';
     return conversationCategoryOptions.find(option => option.id === categoryId) || null;
-  };
+  }, [conversationCategories, conversationCategoryOptions]);
   const activeChatMuted = isConversationMuted(activeChat.notificationMutedUntil, notificationClock);
   const activeChatMuteLabel = notificationMuteLabel(activeChat.notificationMutedUntil, notificationClock, settings.language === 'en' ? 'en-US' : 'vi-VN');
   const activeChatBlockedByViewer = !activeChat.isGroup
@@ -4304,17 +4316,20 @@ function App() {
     ? (connectionStatus === 'online' ? 'Đang kết nối kho tri thức' : 'Đang chờ kết nối realtime')
     : 'Kho tri thức doanh nghiệp';
   const accountProfileReadOnly = isAccountManaged(currentUser) || chatManagementService.accountManaged;
-  const appCopy = createLocalizedCopy(APP_LANGUAGE_COPY[settings.language] || APP_LANGUAGE_COPY.vi, settings.language);
+  const appCopy = useMemo(
+    () => createLocalizedCopy(APP_LANGUAGE_COPY[settings.language] || APP_LANGUAGE_COPY.vi, settings.language),
+    [settings.language],
+  );
   const conversationCategoryLabel = category => (
     category?.builtIn ? appCopy.t(category.label) : String(category?.label || '')
   );
-  const categoryManagerConversations = buildConversationCategoryConversations({
-    conversations: safeConversationValues(renderConversations),
+  const categoryManagerConversations = useMemo(() => buildConversationCategoryConversations({
+    conversations: renderConversationValues,
     accounts: directoryAccounts,
     currentUser,
     groupFallback: appCopy.t('Nhóm'),
     directFallback: appCopy.t('Cuộc trò chuyện cá nhân'),
-  });
+  }), [appCopy, currentUser, directoryAccounts, renderConversationValues]);
   const selectedLanguage = APP_LANGUAGE_OPTIONS.find(option => option.id === settings.language)
     || APP_LANGUAGE_OPTIONS[0];
   const pinViewerIdentity = useMemo(
@@ -4445,7 +4460,7 @@ function App() {
       pendingRoom.managementId,
       pendingRoom.tinodeTopic,
     ].filter(Boolean).map(String));
-    return safeConversationValues(renderConversations).find(room => [
+    return renderConversationValues.find(room => [
       room.id,
       room.managementId,
       room.tinodeTopic,
@@ -4830,7 +4845,7 @@ function App() {
   const notificationSettingsViewerAliases = notificationSettingsIdentity.aliases;
   const unreadViewerId = chatMode === 'tinode' ? viewerId : managementViewerId;
 
-  const conversationUnreadIndicators = room => {
+  const conversationUnreadIndicators = useCallback(room => {
     const roomId = String(room?.id || '');
     const boundary = unreadBoundaries[roomId] || null;
     const manuallyUnread = manualUnreadConversationIds.has(roomId);
@@ -4851,7 +4866,7 @@ function App() {
       hasMention,
       manuallyUnread,
     };
-  };
+  }, [currentUser, manualUnreadConversationIds, unreadBoundaries, unreadViewerId]);
 
   const resetConversationListFilters = () => {
     setConversationListStatus('all');
@@ -6093,7 +6108,7 @@ function App() {
   useEffect(() => {
     const now = Date.now();
     const nextExpiry = nextNotificationMuteExpiry(
-      safeConversationValues(conversations),
+      renderConversationValues,
       now,
     );
     if (nextExpiry === null) return undefined;
@@ -6102,7 +6117,7 @@ function App() {
       Math.max(0, Math.min(nextExpiry - now + 50, 2_147_483_647)),
     );
     return () => window.clearTimeout(timer);
-  }, [conversations, notificationClock]);
+  }, [notificationClock, renderConversationValues]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setDisplayClock(Date.now()), 60 * 1000);
@@ -7769,7 +7784,7 @@ function App() {
       chatLogoutFailed = true;
     }
     if (chatMode === 'demo') {
-      safeConversationValues(conversations)
+      renderConversationValues
         .filter(room => !room.isGroup && !room.isChatbot && roomMessages(room).length > 0)
         .forEach(room => persistDemoDirectMessage(room, null));
     }
@@ -13416,11 +13431,14 @@ function App() {
       const secondTimestamp = conversationTimestamp(renderConversations[secondId]);
       return secondTimestamp - firstTimestamp;
     });
-  const filterableConversations = Object.fromEntries(
-    Object.entries(renderConversations).map(([id, room]) => [id, {
-      ...room,
-      categoryId: conversationCategoryFor(room)?.id || '',
-    }]),
+  const filterableConversations = useMemo(
+    () => Object.fromEntries(
+      Object.entries(renderConversations).map(([id, room]) => [id, {
+        ...room,
+        categoryId: conversationCategoryFor(room)?.id || '',
+      }]),
+    ),
+    [conversationCategoryFor, renderConversations],
   );
   const isConversationFromStranger = room => {
     if (!room || room.isGroup || room.isChatbot) return false;
@@ -13440,14 +13458,14 @@ function App() {
   });
 
   const companyContacts = companyDirectoryContacts(directoryAccounts, currentUser);
-  const messageShareRecipients = buildMessageShareRecipients({
-    conversations: safeConversationValues(renderConversations),
+  const messageShareRecipients = useMemo(() => buildMessageShareRecipients({
+    conversations: renderConversationValues,
     accounts: directoryAccounts,
     currentUser,
     activeConversation: activeChat,
     accountSession: accountSessionRef.current,
     chatbotId: CHATBOT_ACCOUNT.id,
-  });
+  }), [activeChat, currentUser, directoryAccounts, renderConversationValues]);
   const groupCandidates = companyContacts
     .filter(member => member.type !== 'bot')
     .filter(member => matchesCompanyDirectoryContact(member, groupMemberSearch));
@@ -13592,47 +13610,69 @@ function App() {
   }, []);
   const mediaCounts = activeMediaEntries.reduce((counts, entry) => ({ ...counts, [entry.kind]: counts[entry.kind] + 1 }), { images: 0, files: 0, links: 0 });
 
-  const notifications = Object.values(renderConversations)
+  const notifications = useMemo(() => Object.values(renderConversations)
     .filter(room => !isSelfDirectConversation(room, currentUser, directoryAccounts))
     .filter(room => !isConversationHiddenAfterDelete(room))
     .filter(room => shouldShowConversation(room, drafts[room.id]))
     .filter(room => room.lastMsg || room.badge > 0 || conversationUnreadIndicators(room).hasUnread)
     .sort((a, b) => conversationTimestamp(b) - conversationTimestamp(a))
-    .slice(0, 20);
+    .slice(0, 20), [conversationUnreadIndicators, currentUser, directoryAccounts, drafts, renderConversations]);
 
-  const friendshipRecords = collectFriendshipRecords(renderConversations, managementViewerId);
-  const companySearchResults = companyDirectoryContacts(workspaceResults, currentUser);
+  const friendshipRecords = useMemo(
+    () => collectFriendshipRecords(renderConversations, managementViewerId),
+    [managementViewerId, renderConversations],
+  );
+  const companySearchResults = useMemo(
+    () => companyDirectoryContacts(workspaceResults, currentUser),
+    [currentUser, workspaceResults],
+  );
   const companyDirectoryTitle = appCopy.t(companyDirectoryHeading(currentUser));
-  const friendNotifications = friendshipRecords.filter(record => (
+  const friendNotifications = useMemo(() => friendshipRecords.filter(record => (
     record.event.recipientId === managementViewerId
     || (record.event.requesterId === managementViewerId && Boolean(record.response))
-  ));
-  const visibleMessages = roomMessages(activeChat).filter(Boolean).filter(message => {
-    if (messageActions[messageActionKey(activeChat.id, message.id)]?.hidden) return false;
-    if (!messageSearchQuery.trim()) return true;
-    return `${message.text || ''} ${message.senderName || ''}`.toLowerCase().includes(messageSearchQuery.toLowerCase());
-  });
+  )), [friendshipRecords, managementViewerId]);
+  const visibleMessages = useMemo(() => {
+    const normalizedQuery = messageSearchQuery.trim().toLowerCase();
+    return roomMessages(activeChat).filter(Boolean).filter(message => {
+      if (messageActions[messageActionKey(activeChat.id, message.id)]?.hidden) return false;
+      if (!normalizedQuery) return true;
+      return `${message.text || ''} ${message.senderName || ''}`.toLowerCase().includes(normalizedQuery);
+    });
+  }, [activeChat, messageActions, messageSearchQuery]);
   visibleMessagesRef.current = visibleMessages;
   const activeUnreadBoundary = unreadBoundaries[activeChat.id] || null;
   const unreadBoundaryStart = activeUnreadBoundary && !messageSearchQuery.trim()
     ? unreadBoundaryStartIndex(visibleMessages, activeUnreadBoundary)
     : -1;
-  const visibleMessageEntries = messageSearchQuery.trim()
-    ? visibleMessages.map((message, index) => ({ kind: 'message', key: message.id || `message:${index}`, message, index }))
-    : groupImageMessageEntries(visibleMessages, unreadBoundaryStart);
-  const localHistorySearchResults = messageSearchHasFilters
-    ? roomMessages(activeChat)
-      .filter(message => !messageActions[messageActionKey(activeChat.id, message.id)]?.hidden)
-      .filter(message => messageSearchMatchesLocal(message, {
-        query: messageSearchQuery,
-        senderId: messageSearchSender,
-        type: messageSearchType,
-        fromDate: messageSearchFromDate,
-        toDate: messageSearchToDate,
-      }))
-      .sort((first, second) => (Number(second?.seq) || 0) - (Number(first?.seq) || 0) || messageTimestamp(second) - messageTimestamp(first))
-      .slice(0, 100)
-    : [];
+  const visibleMessageEntries = useMemo(() => (
+    messageSearchQuery.trim()
+      ? visibleMessages.map((message, index) => ({ kind: 'message', key: message.id || `message:${index}`, message, index }))
+      : groupImageMessageEntries(visibleMessages, unreadBoundaryStart)
+  ), [messageSearchQuery, unreadBoundaryStart, visibleMessages]);
+  const localHistorySearchResults = useMemo(() => (
+    messageSearchHasFilters
+      ? roomMessages(activeChat)
+        .filter(message => !messageActions[messageActionKey(activeChat.id, message.id)]?.hidden)
+        .filter(message => messageSearchMatchesLocal(message, {
+          query: messageSearchQuery,
+          senderId: messageSearchSender,
+          type: messageSearchType,
+          fromDate: messageSearchFromDate,
+          toDate: messageSearchToDate,
+        }))
+        .sort((first, second) => (Number(second?.seq) || 0) - (Number(first?.seq) || 0) || messageTimestamp(second) - messageTimestamp(first))
+        .slice(0, 100)
+      : []
+  ), [
+    activeChat,
+    messageActions,
+    messageSearchFromDate,
+    messageSearchHasFilters,
+    messageSearchQuery,
+    messageSearchSender,
+    messageSearchToDate,
+    messageSearchType,
+  ]);
   const displayedHistorySearchResults = canSearchConversationHistory
     ? messageSearchResults
     : (!usesManagementData || chatMode !== 'tinode' ? localHistorySearchResults : []);

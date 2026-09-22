@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-22-02 - Chan treo web va toi uu render ChatUI
+
+- Thoi gian: 2026-09-22 (Asia/Saigon)
+- Loai: Sua loi | Web | UX | Hieu nang | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien; da sua va kiem thu local, cho commit/push/deploy production.
+- Muc tieu: Khong de man hinh Chat/maintenance hoac session bootstrap treo vo han khi API/network khong phan hoi, dong thoi giam chi phi render lap lai khi nguoi dung dang go tin nhan.
+- Pham vi: RootApp maintenance gate, request Chatmgt, normalization/filter render cua ChatUI; giu nguyen Tinode, Cloud, upload, message payload va luong mobile.
+- File da thay doi: `src/RootApp.jsx`, `src/app/App.jsx`, `src/features/chat/services/chatManagementService.js`, `src/features/maintenance/chatMaintenanceService.js`, `src/features/maintenance/chatMaintenanceService.test.js`, `dist/index.html`, va file nay.
+- Noi dung: Maintenance snapshot co timeout 4 giay va fail-open, polling khong chong request; moi request Chatmgt co timeout mac dinh 15 giay va van ho tro abort cua luong hien tai; ChatUI memo hoa map/entries/value hoi thoai, active room, unread indicator, search/message entries va cac danh sach derived de khong normalize/lap lai toan bo khi chi thay doi input/toast.
+- Quyet dinh ky thuat: Timeout chi ket thuc request bi treo voi ma `408` noi bo, khong retry mu va khong doi hop dong API; cac response den muon van bi bo qua theo co che abort/session guard san co. Khong sua Tinode transport, Cloud scope, database hay schema.
+- Database/API/cau hinh: Khong migration, schema, secret hoac bien moi truong moi; them client-side timeout bao ve request va khong thay doi endpoint/payload.
+- Kiem thu: `node --test src/features/maintenance/chatMaintenanceService.test.js` dat `4/4`; `npm run test:frontend -- --test-concurrency=1` dat `441/441`; `npm run lint` exit `0` voi warning legacy/vendor; `npm run build:production` thanh cong voi canh bao chunk App vuot 500 KB; `git diff --check` dat.
+- Rui ro con lai: Chua UAT browser production bang tai khoan that do browser bridge khong kha dung; neu Chatmgt that su cham qua 15 giay UI se nhan loi timeout de tiep tuc thay vi cho vo han; chunk App van lon va can hard refresh sau deploy.
+- Viec tiep theo: Commit/push, deploy production qua tuyen SSH da thong nhat, verify health/API/WSS va UAT thao tac chat/Cloud tren desktop/mobile.
+- Commit/PR: Chua tao.
+
 ## 2026-09-22-01 - Thu gon toast thong bao va them countdown
 
 - Thoi gian: 2026-09-22 (Asia/Saigon)

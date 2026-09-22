@@ -73,6 +73,7 @@ function ChatMaintenanceGate({ children }) {
     let closeStream = null;
     let reconnectTimer = null;
     let reconnectDelay = 1000;
+    let refreshInFlight = false;
 
     const applyState = nextState => {
       if (cancelled || !nextState) return;
@@ -81,13 +82,20 @@ function ChatMaintenanceGate({ children }) {
       reconnectDelay = 1000;
     };
 
-    const refresh = () => fetchChatMaintenance()
-      .then(applyState)
-      .catch(() => {
-        // The gate fails open when Chatmgt is temporarily unreachable; the
-        // next fallback poll or SSE reconnect can still activate maintenance.
-        if (!cancelled) setStatus(previous => previous === 'loading' ? 'ready' : previous);
-      });
+    const refresh = () => {
+      if (cancelled || refreshInFlight) return;
+      refreshInFlight = true;
+      fetchChatMaintenance()
+        .then(applyState)
+        .catch(() => {
+          // The gate fails open when Chatmgt is temporarily unreachable; the
+          // next fallback poll or SSE reconnect can still activate maintenance.
+          if (!cancelled) setStatus(previous => previous === 'loading' ? 'ready' : previous);
+        })
+        .finally(() => {
+          refreshInFlight = false;
+        });
+    };
 
     const scheduleReconnect = () => {
       if (cancelled || reconnectTimer) return;

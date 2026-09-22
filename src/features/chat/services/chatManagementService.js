@@ -20,6 +20,7 @@ export function normalizeChatAuthMode(value) {
 const authMode = normalizeChatAuthMode(env.VITE_CHAT_AUTH_MODE || 'account_password');
 const accountUrl = String(env.VITE_ACCOUNT_URL || 'https://account.gonplatform.com').replace(/\/+$/, '');
 const topicBindingsKey = 'vichat.management.topic-bindings.v1';
+const API_REQUEST_TIMEOUT_MS = 15000;
 
 function createPresenceSessionId() {
   if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
@@ -409,15 +410,67 @@ function activeTenantDirectoryAccounts(payload) {
 
 async function apiRequest(path, options = {}) {
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
-  const response = await fetch(`${apiBase}${path}`, {
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}),
-      ...(options.headers || {}),
-    },
-    ...options,
-  });
+  const requestedTimeout = Number(options.timeoutMs);
+  const timeoutMs = Number.isFinite(requestedTimeout) && requestedTimeout > 0
+    ? requestedTimeout
+    : API_REQUEST_TIMEOUT_MS;
+  const externalSignal = options.signal;
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  let timeoutId = null;
+  let timedOut = false;
+  let removeExternalAbortListener = null;
+  const {
+    signal: _signal,
+    timeoutMs: _timeoutMs,
+    ...requestOptions
+  } = options;
+
+  if (controller && externalSignal) {
+    if (externalSignal.aborted) controller.abort(externalSignal.reason);
+    else {
+      const abortRequest = () => controller.abort(externalSignal.reason);
+      externalSignal.addEventListener('abort', abortRequest, { once: true });
+      removeExternalAbortListener = () => externalSignal.removeEventListener('abort', abortRequest);
+    }
+  }
+
+  const requestSignal = controller?.signal || externalSignal;
+  let response;
+  try {
+    response = await Promise.race([
+      Promise.resolve().then(() => fetch(`${apiBase}${path}`, {
+        credentials: 'include',
+        headers: {
+          Accept: 'application/json',
+          ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}),
+          ...(options.headers || {}),
+        },
+        ...requestOptions,
+        ...(requestSignal ? { signal: requestSignal } : {}),
+      })),
+      new Promise((_, reject) => {
+        timeoutId = globalThis.setTimeout(() => {
+          timedOut = true;
+          controller?.abort();
+          const error = new Error('Management service request timed out.');
+          error.code = 'REQUEST_TIMEOUT';
+          error.status = 408;
+          reject(error);
+        }, timeoutMs);
+      }),
+    ]);
+  } catch (error) {
+    if (timedOut) {
+      const timeoutError = new Error('Management service request timed out.');
+      timeoutError.code = 'REQUEST_TIMEOUT';
+      timeoutError.status = 408;
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    if (timeoutId !== null) globalThis.clearTimeout(timeoutId);
+    removeExternalAbortListener?.();
+  }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(payload?.error_message || payload?.message || `Management service HTTP ${response.status}`);
