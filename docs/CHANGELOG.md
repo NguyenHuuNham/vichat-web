@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-22-07 - Them workflow Codemagic cho build mobile
+
+- Thoi gian: 2026-09-22 21:33 (Asia/Saigon)
+- Loai: Van hanh | Tai lieu | Mobile | Phat hanh
+- Trang thai: Hoan tat source; chua chay build tren Codemagic.
+- Muc tieu: Cho phep Codemagic tu dong tao native project Expo va build IPA iOS/TestFlight cung APK Android tu repo GitHub.
+- Pham vi: `codemagic.yaml`, quy trinh build mobile; khong doi ChatUI web, Chatmgt, Tinode, database hay API.
+- File da thay doi: `codemagic.yaml`, `docs/CHANGELOG.md`.
+- Noi dung: Them workflow `ios-testflight` voi Expo prebuild iOS, CocoaPods, Codemagic iOS signing, build IPA va submit TestFlight; them workflow `android-test` tao native Android va build `app-release.apk`. Build copy `.env.example` thanh `.env` de dung cau hinh public da co, khong ghi credential vao repository.
+- Quyet dinh ky thuat: Dung `app_store` cho iOS de phuc vu TestFlight; signing certificate/profile va App Store Connect integration do Codemagic quan ly. Android workflow chi tao APK test, khong them keystore vao source.
+- Database/API/cau hinh: Khong migration/API moi. Codemagic can App Store Connect integration, bundle ID `vn.upgo.vichat` va iOS signing asset; push iOS van can APNs/Tinode provider cau hinh rieng.
+- Kiem thu: Kiem tra cau hinh YAML va `git diff --check` se chay truoc commit; build native tren Codemagic chua chay do local Windows khong co Xcode.
+- Rui ro con lai: Neu chua ket noi Apple Developer/App Store Connect hoac chua co provisioning profile, workflow iOS se dung o buoc signing/publishing; neu khong can TestFlight co the bo phan submit sau khi build IPA.
+- Viec tiep theo: Push file len GitHub, bam `Check for configuration files` trong Codemagic, cau hinh Apple integration/signing va chay workflow `ios-testflight`.
+- Commit/PR: Chua tao.
+
 ## 2026-09-22-06 - Giam do mobile va phat hanh APK 1.0.12
 
 - Thoi gian: 2026-09-22 20:34 (Asia/Saigon)

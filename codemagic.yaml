@@ -1,0 +1,65 @@
+workflows:
+  ios-testflight:
+    name: ViChat iOS TestFlight
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    working_directory: mobile
+    environment:
+      node: 24.18.0
+      xcode: latest
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: vn.upgo.vichat
+      vars:
+        CI: "1"
+    scripts:
+      - name: Install JavaScript dependencies
+        script: npm ci
+      - name: Prepare Expo environment
+        script: cp .env.example .env
+      - name: Generate iOS native project
+        script: npx expo prebuild --platform ios --no-install
+      - name: Install CocoaPods dependencies
+        script: |
+          cd ios
+          pod install
+      - name: Configure iOS signing
+        script: xcode-project use-profiles
+      - name: Build IPA
+        script: |
+          IOS_WORKSPACE="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
+          test -n "$IOS_WORKSPACE"
+          IOS_SCHEME="$(basename "$IOS_WORKSPACE" .xcworkspace)"
+          xcode-project build-ipa --workspace "$IOS_WORKSPACE" --scheme "$IOS_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+
+  android-test:
+    name: ViChat Android test APK
+    max_build_duration: 90
+    instance_type: linux_x2
+    working_directory: mobile
+    environment:
+      node: 24.18.0
+      java: 17
+      vars:
+        CI: "1"
+    scripts:
+      - name: Install JavaScript dependencies
+        script: npm ci
+      - name: Prepare Expo environment
+        script: cp .env.example .env
+      - name: Generate Android native project
+        script: npx expo prebuild --platform android --no-install
+      - name: Build release APK
+        script: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleRelease --no-daemon --max-workers=2
+    artifacts:
+      - android/app/build/outputs/apk/release/app-release.apk
