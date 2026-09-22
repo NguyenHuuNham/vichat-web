@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: Kiem tra cau hinh YAML va `git diff --check` se chay truoc commit; build native tren Codemagic chua chay do local Windows khong co Xcode.
 - Rui ro con lai: Neu chua ket noi Apple Developer/App Store Connect hoac chua co provisioning profile, workflow iOS se dung o buoc signing/publishing; neu khong can TestFlight co the bo phan submit sau khi build IPA.
 - Viec tiep theo: Push file len GitHub, bam `Check for configuration files` trong Codemagic, cau hinh Apple integration/signing va chay workflow `ios-testflight`.
-- Commit/PR: Chua tao.
+- Commit/PR: Source commit `271c392`; changelog follow-up included in the next docs commit.
 
 ## 2026-09-22-06 - Giam do mobile va phat hanh APK 1.0.12
 
