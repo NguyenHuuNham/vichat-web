@@ -18,6 +18,7 @@ export type AuthStackParamList = {
 export type MainTabParamList = {
   Chats: undefined;
   Contacts: undefined;
+  Cloud: undefined;
   Workspace: undefined;
   Settings: undefined;
 };

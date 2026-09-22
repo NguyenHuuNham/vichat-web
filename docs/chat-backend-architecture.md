@@ -229,6 +229,15 @@ the UpGO password to Tinode. If Tinode is unavailable, mobile keeps
 Chatmgt directory/conversation metadata visible and disables only realtime
 message/file actions, matching ChatUI's management-mode fallback.
 
+The mobile `Cloud` tab matches the web's private Cloud surface. It lists and
+creates/deletes owner-scoped text records through
+`/api/v1/chat/cloud/messages`, uploads selected files through the
+`/api/v1/chat/cloud/uploads` S3 ticket and completion endpoints, and obtains
+short-lived signed URLs through `/api/v1/chat/cloud/files/<id>/download`.
+The bearer session is the only source of `tenant_id` and `owner_id`; no mobile
+request accepts a client-selected owner or tenant. Cloud records stay outside
+Tinode topics, realtime notifications, conversation search and Workspace.
+
 Chatmgt registers each issued chat JWT as a short-lived Redis linked-session
 record keyed by tenant, account and JWT `jti`. The record keeps only device kind,
 device name, platform, login time and last activity time. Authenticated requests

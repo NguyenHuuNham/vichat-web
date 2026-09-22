@@ -166,3 +166,20 @@ export interface PickerFile {
   type: string;
   size?: number;
 }
+
+export interface PersonalCloudFile {
+  id: string;
+  uploadId: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PersonalCloudMessage {
+  id: string;
+  text: string;
+  createdAt: number;
+  updatedAt: number;
+}

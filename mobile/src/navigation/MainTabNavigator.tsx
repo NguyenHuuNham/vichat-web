@@ -1,16 +1,17 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 import { BottomTabBarButtonProps, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { MessageCircleMore, ContactRound, Blocks, Settings } from 'lucide-react-native';
+import { MessageCircleMore, ContactRound, Cloud, Blocks, Settings } from 'lucide-react-native';
 import { MainTabParamList } from './types';
 import { ConversationListScreen } from '../screens/chat/ConversationListScreen';
 import { ContactsScreen } from '../screens/contacts/ContactsScreen';
+import { PersonalCloudScreen } from '../screens/cloud/PersonalCloudScreen';
 import { WorkspaceScreen } from '../screens/workspace/WorkspaceScreen';
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
 import { colors, shadow } from '../theme/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
-const icons = { Chats: MessageCircleMore, Contacts: ContactRound, Workspace: Blocks, Settings };
+const icons = { Chats: MessageCircleMore, Contacts: ContactRound, Cloud, Workspace: Blocks, Settings };
 
 export function MainTabNavigator() {
   const insets = useSafeAreaInsets();
@@ -32,6 +33,7 @@ export function MainTabNavigator() {
     }}>
       <Tab.Screen name="Chats" component={ConversationListScreen} options={{ title: 'Tin nhắn' }} />
       <Tab.Screen name="Contacts" component={ContactsScreen} options={{ title: 'Danh bạ' }} />
+      <Tab.Screen name="Cloud" component={PersonalCloudScreen} options={{ title: 'Cloud' }} />
       <Tab.Screen name="Workspace" component={WorkspaceScreen} options={{ title: 'Workspace' }} />
       <Tab.Screen name="Settings" component={SettingsScreen} options={{ title: 'Cài đặt' }} />
     </Tab.Navigator>

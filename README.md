@@ -58,6 +58,13 @@ Calls and push are capability-gated until native credentials are configured,
 and the removed knowledge manager is not exposed. Run mobile checks from
 `mobile/`; signed Android/iOS builds need JDK/SDK or EAS plus store credentials.
 
+Mobile also exposes `Cloud của tôi` as a separate private surface. Cloud text
+messages use `/api/v1/chat/cloud/messages`; files use the same short-lived S3
+upload-ticket/completion flow as the web under `/api/v1/chat/cloud/uploads` and
+signed download URLs under `/api/v1/chat/cloud/files/<id>/download`. The
+authenticated bearer session supplies the owner and tenant; the mobile client
+does not send either value as a selectable scope.
+
 Protected Tinode images are fetched through the authenticated
 `chat.gonplatform.com/tinode-media` relay into the native cache before rendering. An
 optional four-digit app PIN stores only a salted hash in SecureStore and locks

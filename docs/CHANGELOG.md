@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-22-03 - Mo rong app mobile voi Cloud rieng tu
+
+- Thoi gian: 2026-09-22 13:19 (Asia/Saigon)
+- Loai: Tinh nang | Mobile | Bao mat | Kiem thu | Tai lieu
+- Trang thai: Hoan tat phan source; chua tao native APK/AAB trong phien nay.
+- Muc tieu: Dua Cloud cua toi len app mobile de app co luong ghi chu, file va quyen rieng tu dong bo voi web ma khong lam doi Tinode/chat hien huu.
+- Pham vi: Mobile Cloud tab, service Chatmgt/S3, normalizer tests, Vitest test isolation va tai lieu luong du lieu; khong sua backend contract, database, Tinode hay cac luong chat khac.
+- File da thay doi: `mobile/src/screens/cloud/PersonalCloudScreen.tsx`, `mobile/src/services/personalCloudService.ts`, `mobile/src/services/personalCloudService.test.ts`, `mobile/src/services/chatMediaService.ts`, `mobile/src/types/index.ts`, `mobile/src/navigation/MainTabNavigator.tsx`, `mobile/src/navigation/types.ts`, `mobile/vitest.config.ts`, `mobile/src/test/reactNativeMock.ts`, `mobile/src/test/expoDeviceMock.ts`, `README.md`, `docs/chat-backend-architecture.md`, va file nay.
+- Noi dung: Them tab Cloud rieng voi tao/xoa tin nhan, chon nhieu file, upload truc tiep S3 theo ticket, mo/tai xuong/xoa file, cursor pagination, refresh, trang thai loading/error va hien thi ro pham vi "chi minh toi". Dung lai helper upload S3 cua chat media; mock `react-native`/`expo-device` chi trong Vitest de test khong nap Flow/native runtime.
+- Quyet dinh ky thuat: Giu owner/tenant server-derived tu bearer session; khong them query owner/tenant, khong luu Cloud vao app store Tinode, va khong dua Cloud vao thong bao/realtime. Native download uu tien cache/share; web mo signed URL de giu dung content-disposition cua backend.
+- Database/API/cau hinh: Khong them migration, secret hay endpoint; su dung cac API Cloud da co: `GET/POST/DELETE /api/v1/chat/cloud/messages`, upload ticket/completion va signed download/delete file.
+- Kiem thu: `cd mobile; npm run typecheck` dat; `npm test -- --reporter=dot` dat `14` test file, `38/38` test; `npm run lint` dat; `npm run export` dat web bundle; `git diff --check` dat. Native build chua chay.
+- Rui ro con lai: Chua co Android SDK/JDK/native device trong phien nay de build APK va UAT upload/download voi tai khoan production that; S3/provider quota vat ly van ton tai. Cac control Workspace nang cao va quan tri thanh vien nhom van tiep tuc theo lo trinh mobile rieng.
+- Viec tiep theo: Kiem tra `java -version`/Android SDK, build development APK, dang nhap hai tai khoan va UAT Cloud owner/tenant isolation, upload nhieu file, tai/xoa tren Android.
+- Commit/PR: Chua tao.
+
 ## 2026-09-22-02 - Chan treo web va toi uu render ChatUI
 
 - Thoi gian: 2026-09-22 (Asia/Saigon)

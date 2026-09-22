@@ -10,7 +10,7 @@ export {
   shouldFallbackToTinodeMedia,
 } from '../utils/chatMedia';
 
-type MediaTicket = {
+export type SignedUploadTicket = {
   upload_id: string;
   upload_url: string;
   upload_token: string;
@@ -27,7 +27,7 @@ function directUploadError(message: string, status = 0) {
   return error;
 }
 
-async function putFileToS3(file: PickerFile, ticket: MediaTicket) {
+export async function putFileToS3(file: PickerFile, ticket: SignedUploadTicket) {
   const contentType = file.type || 'application/octet-stream';
   if (Platform.OS === 'web') {
     const localResponse = await fetch(file.uri);
@@ -78,7 +78,7 @@ async function putFileToS3(file: PickerFile, ticket: MediaTicket) {
   }
 }
 
-async function selectedFileSize(file: PickerFile) {
+export async function selectedFileSize(file: PickerFile) {
   const declaredSize = Number(file.size) || 0;
   if (declaredSize > 0) return declaredSize;
   if (Platform.OS === 'web') {
@@ -102,7 +102,7 @@ export async function uploadChatMedia(file: PickerFile) {
     throw error;
   }
   const size = await selectedFileSize(file);
-  const ticket = await apiRequest<MediaTicket>('/api/v1/chat/media/uploads', {
+  const ticket = await apiRequest<SignedUploadTicket>('/api/v1/chat/media/uploads', {
     method: 'POST',
     body: JSON.stringify({
       file_name: file.name || 'tep-dinh-kem',
