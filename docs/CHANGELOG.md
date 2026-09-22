@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `npm run test:frontend -- --test-concurrency=1` dat `441/441`; `npm run lint` exit `0` voi warning legacy/vendor; `npm run build:production` thanh cong voi canh bao chunk App vuot 500 KB; `git diff --check` dat.
 - Rui ro con lai: Chua UAT browser production voi tai khoan that; progress bar dung CSS animation 5 giay va can hard refresh de tai bundle moi sau deploy.
 - Viec tiep theo: Commit/push va deploy production, sau do hard refresh kiem tra toast loi/thanh cong tren desktop/mobile.
-- Commit/PR: Chua tao.
+- Commit/PR: Source commit `26553fd`; chua deploy production.
 
 ## 2026-09-21-05 - Them chat chu rieng tu cho Cloud va sua menu chuot phai
 
