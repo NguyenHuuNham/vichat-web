@@ -499,8 +499,20 @@ while a newly opened tab requires the PIN. The PIN is never sent to Chatmgt,
 Tinode or UpGO Account; disabling or losing the local verifier requires the
 normal UpGO Account login to regain access.
 
-Notification delivery has two layers. A local notification is scheduled from
-an incoming Tinode event while the JavaScript/WebSocket runtime remains alive.
+Notification delivery has two layers. The mobile notification handler and
+Android channels are initialized at app startup, and a local notification is
+scheduled from every eligible incoming Tinode event, including while the app is
+foregrounded, while the JavaScript/WebSocket runtime remains alive. Native
+permission/token registration is retried when the app returns to foreground so
+an earlier denial or temporary token failure does not permanently disable the
+session.
+Realtime command paths such as typing, read receipts, reactions, edits, recalls and
+outgoing messages reuse the existing subscribed topic without rebuilding the full
+conversation snapshot. Snapshots remain reserved for initial sync, opening a room,
+history pagination and actual data events; the mobile chat list also preserves the
+visible scroll anchor while older history is prepended. This keeps Tinode as the
+authoritative message source without making every key press or send operation a
+full history render.
 When `EXPO_PUBLIC_PUSH_ENABLED=true` and the native Firebase/APNs client plus
 the matching Tinode push provider are configured, mobile obtains the native
 device token and registers it with the authenticated Tinode client through the

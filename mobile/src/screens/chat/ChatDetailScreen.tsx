@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { BookOpen, Camera, ChevronLeft, FilePlus2, ImagePlus, Info, Search, Send, ShieldCheck, Phone, Video, WifiOff, X } from 'lucide-react-native';
+import { BookOpen, Camera, ChevronLeft, FilePlus2, ImagePlus, Info, Search, Send, ShieldCheck, Phone, SmilePlus, Video, WifiOff, X } from 'lucide-react-native';
 import { RootStackParamList } from '../../navigation/types';
 import { useAppStore, getConversation } from '../../store/appStore';
 import { colors, shadow } from '../../theme/colors';
@@ -14,7 +14,8 @@ import { Avatar } from '../../components/Avatar';
 import { MessageBubble } from '../../components/MessageBubble';
 import { MessageActionSheet } from '../../components/MessageActionSheet';
 import { TypingIndicator } from '../../components/TypingIndicator';
-import { ChatMessage, PickerFile, RecallMode } from '../../types';
+import { Sticker, ChatMessage, PickerFile, RecallMode } from '../../types';
+import { StickerPicker } from '../../components/StickerPicker';
 import { attachmentValidationError, canEditMessage, canInteractWithMessage } from '../../utils/messagePolicy';
 import { directPeerOnline } from '../../utils/tinodeState';
 import { formatMessageDateLabel } from '../../utils/timeFormatting';
@@ -35,9 +36,11 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const connection = useAppStore(state => state.connection);
   const typing = useAppStore(state => state.typingByTopic[conversation?.tinodeTopic || '']);
   const openConversation = useAppStore(state => state.openConversation);
+  const loadEarlier = useAppStore(state => state.loadEarlier);
   const markRead = useAppStore(state => state.markRead);
   const sendText = useAppStore(state => state.sendText);
   const sendFile = useAppStore(state => state.sendFile);
+  const sendSticker = useAppStore(state => state.sendSticker);
   const sendReaction = useAppStore(state => state.sendReaction);
   const recallMessage = useAppStore(state => state.recallMessage);
   const startCall = useCallStore(state => state.startCall);
@@ -49,10 +52,22 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const [editingMessage, setEditingMessage] = useState<{ message: ChatMessage; previousText: string; previousReply?: ChatMessage['replyTo'] } | null>(null);
   const [editHistoryMessage, setEditHistoryMessage] = useState<ChatMessage | null>(null);
   const [replyingTo, setReplyingTo] = useState<ChatMessage['replyTo']>();
+  const [stickerPickerOpen, setStickerPickerOpen] = useState(false);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const [hasEarlier, setHasEarlier] = useState(true);
   const listRef = useRef<FlatList<ChatMessage>>(null);
+  const listHasLaidOut = useRef(false);
+  const listNearBottom = useRef(true);
+  const loadingEarlierRef = useRef(false);
   const inputRef = useRef<TextInput>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingAt = useRef(0);
+
+  useEffect(() => {
+    setHasEarlier(true);
+    listHasLaidOut.current = false;
+    listNearBottom.current = true;
+  }, [route.params.conversationId]);
 
   const signalTyping = useCallback((conversationId: string) => {
     const now = Date.now();
@@ -133,6 +148,25 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     if (validation) { setError(validation); return; }
     setBusy(true); setError('');
     try { await sendFile(conversation.id, file); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không gửi được tệp.'); } finally { setBusy(false); }
+  };
+  const submitSticker = async (sticker: Sticker) => {
+    if (!conversation || busy || editingMessage) return;
+    setBusy(true); setError('');
+    try { await sendSticker(conversation.id, sticker); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không gửi được sticker.'); } finally { setBusy(false); }
+  };
+  const loadEarlierMessages = async (event: any) => {
+    if (!conversation || !hasEarlier || loadingEarlier || loadingEarlierRef.current || Number(event?.nativeEvent?.contentOffset?.y || 0) > 48) return;
+    loadingEarlierRef.current = true;
+    setLoadingEarlier(true);
+    try { setHasEarlier(await loadEarlier(conversation.id, 100)); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không tải thêm được lịch sử chat.'); } finally { loadingEarlierRef.current = false; setLoadingEarlier(false); }
+  };
+  const handleListScroll = (event: any) => {
+    const nativeEvent = event?.nativeEvent || {};
+    const offsetY = Number(nativeEvent.contentOffset?.y || 0);
+    const contentHeight = Number(nativeEvent.contentSize?.height || 0);
+    const viewportHeight = Number(nativeEvent.layoutMeasurement?.height || 0);
+    listNearBottom.current = contentHeight - (offsetY + viewportHeight) < 96;
+    void loadEarlierMessages(event);
   };
   const chooseFile = async (imageOnly = false) => {
     try {
@@ -223,14 +257,30 @@ export function ChatDetailScreen({ route, navigation }: Props) {
           ref={listRef}
           data={messages}
           keyExtractor={item => `${item.id}-${item.seq || ''}`}
+          onScroll={handleListScroll}
+          scrollEventThrottle={120}
           renderItem={({ item, index }) => {
             const currentDay = formatMessageDateLabel(item.createdAt);
             const previousDay = index > 0 ? formatMessageDateLabel(messages[index - 1].createdAt) : '';
             return <View>{currentDay && currentDay !== previousDay ? <Text style={styles.date}>{currentDay}</Text> : null}<MessageBubble message={item} onLongPress={() => { if (!item.recalled) setSelectedMessage(item); }} onShowEditHistory={message => setEditHistoryMessage(message)} /></View>;
           }}
           contentContainerStyle={styles.messageList}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
-          onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
+          ListHeaderComponent={loadingEarlier ? <View style={styles.historyLoading}><ActivityIndicator color={colors.accent} /></View> : null}
+          onContentSizeChange={() => {
+            if (!listHasLaidOut.current || listNearBottom.current) listRef.current?.scrollToEnd({ animated: false });
+          }}
+          onLayout={() => {
+            if (!listHasLaidOut.current) {
+              listHasLaidOut.current = true;
+              listRef.current?.scrollToEnd({ animated: false });
+            }
+          }}
+          maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
+          removeClippedSubviews={Platform.OS === 'android'}
+          initialNumToRender={20}
+          maxToRenderPerBatch={12}
+          updateCellsBatchingPeriod={40}
+          windowSize={7}
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
@@ -245,6 +295,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
             <Pressable accessibilityLabel="Chụp ảnh" onPress={() => void takePhoto()} disabled={busy || Boolean(editingMessage)} style={styles.attach}><Camera color={colors.accent} size={18} /></Pressable>
             <Pressable accessibilityLabel="Chọn ảnh" onPress={() => void chooseFile(true)} disabled={busy || Boolean(editingMessage)} style={styles.attach}><ImagePlus color={colors.accent} size={19} /></Pressable>
             <Pressable accessibilityLabel="Chọn tệp" onPress={() => void chooseFile(false)} disabled={busy || Boolean(editingMessage)} style={styles.attach}><FilePlus2 color={colors.accent} size={18} /></Pressable>
+            <Pressable accessibilityLabel="Chọn sticker" onPress={() => setStickerPickerOpen(true)} disabled={busy || Boolean(editingMessage)} style={styles.attach}><SmilePlus color={colors.accent} size={18} /></Pressable>
           </View> : null}
           <TextInput ref={inputRef} value={text} onChangeText={value => { setText(value); if (value && conversation.tinodeTopic && !editingMessage) signalTyping(conversation.id); }} placeholder={editingMessage ? 'Nhập nội dung mới...' : conversation.isChatbot ? 'Hỏi về quy trình, chính sách, tài liệu...' : 'Viết tin nhắn...'} placeholderTextColor={colors.muted} multiline maxLength={120000} style={styles.input} editable={!busy} />
           <Pressable onPress={() => void submitText()} disabled={busy || !text.trim()} style={[styles.send, (!text.trim() || busy) && styles.sendDisabled]}><Send color="#fff" size={18} /></Pressable>
@@ -263,6 +314,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         onReaction={(message, emoji) => void sendReaction(conversation.id, message, emoji).catch(value => setError(value instanceof Error ? value.message : 'Không thêm được biểu cảm.'))}
         onRecall={message => requestRecall(message)}
       />
+      <StickerPicker visible={stickerPickerOpen} onClose={() => setStickerPickerOpen(false)} onSelect={sticker => { void submitSticker(sticker); }} />
       <Modal visible={Boolean(editHistoryMessage)} transparent animationType="fade" onRequestClose={() => setEditHistoryMessage(null)} statusBarTranslucent>
         <View style={styles.historyOverlay}>
           <Pressable style={styles.historyBackdrop} onPress={() => setEditHistoryMessage(null)} />
@@ -334,5 +386,6 @@ const styles = StyleSheet.create({
   historyEntryHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   historyEntryTitle: { ...typography.caption, color: colors.ink, fontFamily: 'BeVietnamPro_700Bold' },
   historyEntryTime: { ...typography.caption, color: colors.muted, fontSize: 9 },
+  historyLoading: { height: 36, alignItems: 'center', justifyContent: 'center' },
   missing: { ...typography.body, color: colors.inkSoft, padding: 30 },
 });

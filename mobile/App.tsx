@@ -7,7 +7,7 @@ import { useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAppStore } from './src/store/appStore';
 import { AppNavigator } from './src/navigation/AppNavigator';
-import { registerPushNotifications, subscribeToIncomingCallNotificationResponses, subscribeToPushTokenChanges } from './src/services/notificationService';
+import { prepareNotificationPresentation, registerPushNotifications, subscribeToIncomingCallNotificationResponses, subscribeToPushTokenChanges } from './src/services/notificationService';
 import { tinodeClient } from './src/services/tinodeClient';
 import { AppLockScreen } from './src/components/AppLockScreen';
 import { useAppLockStore } from './src/store/appLockStore';
@@ -34,6 +34,8 @@ export default function App() {
   const backgroundAt = useRef<number | null>(null);
 
   useEffect(() => {
+    // Install the foreground handler before Tinode can receive the first message.
+    void prepareNotificationPresentation();
     void boot();
     void initializeAppLock();
     const appState = AppState.addEventListener('change', state => {
@@ -46,6 +48,12 @@ export default function App() {
         if (!wasExternalActivity && backgroundAt.current) lockApp();
         backgroundAt.current = null;
         void reconnect();
+        const current = useAppStore.getState();
+        if (current.status === 'ready' && current.session?.user) {
+          void registerPushNotifications(current.session.user, { retry: true }).then(registration => {
+            if (registration) tinodeClient.setDeviceToken(registration.token);
+          });
+        }
       }
     });
     const network = NetInfo.addEventListener(state => {
@@ -100,15 +108,19 @@ export default function App() {
 
     void subscribeToPushTokenChanges(registration => tinodeClient.setDeviceToken(registration.token)).then(stop => { stopTokenListener = stop; });
     void subscribeToIncomingCallNotificationResponses(routeNotificationCall).then(stop => { stopCallResponseListener = stop; });
+    const registerCurrentUser = (retry = false) => {
+      const current = useAppStore.getState();
+      if (current.status !== 'ready' || !current.session?.user) return;
+      void registerPushNotifications(current.session.user, { retry }).then(registration => {
+        if (registration) tinodeClient.setDeviceToken(registration.token);
+      });
+    };
     const unsubscribe = useAppStore.subscribe(state => {
       if (state.status === 'signed_out') pendingCalls.clear();
-      if (state.status === 'ready' && state.session?.user) {
-        void registerPushNotifications(state.session.user).then(registration => {
-          if (registration) tinodeClient.setDeviceToken(registration.token);
-        });
-        void flushPendingCalls();
-      }
+      if (state.status === 'ready' && state.session?.user) void registerCurrentUser();
+      if (state.status === 'ready') void flushPendingCalls();
     });
+    registerCurrentUser();
     return () => {
       pendingCalls.clear();
       unsubscribe();

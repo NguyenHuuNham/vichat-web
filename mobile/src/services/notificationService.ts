@@ -9,12 +9,18 @@ import {
   parseIncomingCallNotification,
 } from '../utils/callNotificationPolicy';
 
-const MESSAGE_CHANNEL_ID = 'messages';
-const CALL_CHANNEL_ID = 'calls';
+const MESSAGE_CHANNEL_ID = 'messages-v2';
+const CALL_CHANNEL_ID = 'calls-v2';
+const PERMISSION_CACHE_MS = 30_000;
 let initializedForUser = '';
 let notificationHandlerReady = false;
 let notificationChannelsReady = false;
 let lastRegistration: PushRegistration | null = null;
+let registrationRequest: Promise<PushRegistration | null> | null = null;
+let registrationRequestUser = '';
+let notificationModulesRequest: Promise<any> | null = null;
+let notificationPermissionGranted: boolean | null = null;
+let notificationPermissionCheckedAt = 0;
 const incomingCallNotificationIds = new Map<string, string>();
 const dismissedIncomingCallKeys = new Set<string>();
 const dismissedIncomingCallTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -26,75 +32,130 @@ export interface PushRegistration {
 }
 
 async function loadNotificationModules() {
-  const [Notifications, Device] = await Promise.all([
-    import('expo-notifications'),
-    import('expo-device'),
-  ]);
-  if (!notificationHandlerReady) {
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-      }),
-    });
-    notificationHandlerReady = true;
+  if (notificationModulesRequest) return notificationModulesRequest;
+  notificationModulesRequest = (async () => {
+    const [Notifications, Device] = await Promise.all([
+      import('expo-notifications'),
+      import('expo-device'),
+    ]);
+    if (!notificationHandlerReady) {
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+          shouldShowBanner: true,
+          shouldShowList: true,
+        }),
+      });
+      notificationHandlerReady = true;
+    }
+    if (Platform.OS === 'android' && !notificationChannelsReady) {
+      await Notifications.setNotificationChannelAsync(MESSAGE_CHANNEL_ID, {
+        name: 'Tin nhắn ViChat',
+        description: 'Thông báo tin nhắn mới trong ViChat',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: 'default',
+        vibrationPattern: [0, 180, 120, 180],
+        lightColor: '#F4511E',
+        enableLights: true,
+        enableVibrate: true,
+        showBadge: true,
+      });
+      await Notifications.setNotificationChannelAsync(CALL_CHANNEL_ID, {
+        name: 'Cuộc gọi ViChat',
+        description: 'Thông báo cuộc gọi thoại và video đến',
+        importance: Notifications.AndroidImportance.MAX,
+        sound: 'default',
+        vibrationPattern: [0, 500, 250, 500, 250, 500],
+        lightColor: '#F4511E',
+        enableLights: true,
+        enableVibrate: true,
+        showBadge: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+      notificationChannelsReady = true;
+    }
+    return { Notifications, Device };
+  })();
+  try {
+    return await notificationModulesRequest;
+  } catch (error) {
+    notificationModulesRequest = null;
+    throw error;
   }
-  if (Platform.OS === 'android' && !notificationChannelsReady) {
-    await Notifications.setNotificationChannelAsync(MESSAGE_CHANNEL_ID, {
-      name: 'Tin nhắn ViChat',
-      description: 'Thông báo tin nhắn mới trong ViChat',
-      importance: Notifications.AndroidImportance.HIGH,
-      sound: 'default',
-      vibrationPattern: [0, 180, 120, 180],
-      lightColor: '#F4511E',
-      enableLights: true,
-      enableVibrate: true,
-      showBadge: true,
-    });
-    await Notifications.setNotificationChannelAsync(CALL_CHANNEL_ID, {
-      name: 'Cuộc gọi ViChat',
-      description: 'Thông báo cuộc gọi thoại và video đến',
-      importance: Notifications.AndroidImportance.MAX,
-      sound: 'default',
-      vibrationPattern: [0, 500, 250, 500, 250, 500],
-      lightColor: '#F4511E',
-      enableLights: true,
-      enableVibrate: true,
-      showBadge: true,
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    });
-    notificationChannelsReady = true;
-  }
-  return { Notifications, Device };
 }
 
-export async function registerPushNotifications(user?: User | null) {
-  if (!user?.id) return null;
-  if (initializedForUser === user.id) return lastRegistration;
+async function hasNotificationPermission(Notifications: any, force = false) {
+  const now = Date.now();
+  if (!force && notificationPermissionGranted !== null && now - notificationPermissionCheckedAt < PERMISSION_CACHE_MS) {
+    return notificationPermissionGranted;
+  }
+  const permission = await Notifications.getPermissionsAsync();
+  let status = permission.status;
+  if (status !== 'granted' && permission.canAskAgain !== false) {
+    status = (await Notifications.requestPermissionsAsync()).status;
+  }
+  notificationPermissionGranted = status === 'granted';
+  notificationPermissionCheckedAt = now;
+  return notificationPermissionGranted;
+}
+
+export async function prepareNotificationPresentation() {
   try {
-    const { Notifications, Device } = await loadNotificationModules();
-    const permission = await Notifications.getPermissionsAsync();
-    let status = permission.status;
-    if (status !== 'granted') status = (await Notifications.requestPermissionsAsync()).status;
-    if (status !== 'granted') return null;
-    if (!config.pushEnabled || !Device.isDevice) {
+    await loadNotificationModules();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function registerPushNotifications(user?: User | null, options: { retry?: boolean } = {}) {
+  if (!user?.id) return null;
+  const retry = options.retry === true;
+  if (initializedForUser && initializedForUser !== user.id) lastRegistration = null;
+  if (!retry && initializedForUser === user.id) return lastRegistration;
+  if (registrationRequest && registrationRequestUser === user.id) return registrationRequest;
+
+  registrationRequestUser = user.id;
+  registrationRequest = (async () => {
+    try {
+      const { Notifications, Device } = await loadNotificationModules();
+      if (!(await hasNotificationPermission(Notifications, retry))) {
+        initializedForUser = user.id;
+        return null;
+      }
+      if (!config.pushEnabled || !Device.isDevice) {
+        initializedForUser = user.id;
+        return null;
+      }
+      const token = await Notifications.getDevicePushTokenAsync();
+      lastRegistration = { token: String(token.data), platform: Platform.OS === 'ios' ? 'apns' : 'fcm' };
+      initializedForUser = user.id;
+      return lastRegistration;
+    } catch {
+      // Keep the next foreground transition eligible to retry native registration.
       initializedForUser = user.id;
       return null;
     }
-    const token = await Notifications.getDevicePushTokenAsync();
-    lastRegistration = { token: String(token.data), platform: Platform.OS === 'ios' ? 'apns' : 'fcm' };
-    initializedForUser = user.id;
-    return lastRegistration;
-  } catch {
-    return null;
+  })();
+  const request = registrationRequest;
+  try {
+    return await request;
+  } finally {
+    if (registrationRequest === request) {
+      registrationRequest = null;
+      registrationRequestUser = '';
+    }
   }
 }
 
 export function resetPushNotificationRegistration() {
   initializedForUser = '';
   lastRegistration = null;
+  registrationRequest = null;
+  registrationRequestUser = '';
+  notificationPermissionGranted = null;
+  notificationPermissionCheckedAt = 0;
   incomingCallNotificationIds.clear();
   scheduledIncomingCallExpiryTimers.forEach(timer => clearTimeout(timer));
   scheduledIncomingCallExpiryTimers.clear();
@@ -117,17 +178,18 @@ export async function subscribeToPushTokenChanges(onToken: (registration: PushRe
 }
 
 function notificationBody(message: ChatMessage) {
+  if (message.type === 'sticker' || message.sticker) return `Đã gửi sticker${message.sticker?.label ? `: ${message.sticker.label}` : ''}`;
   if (message.type === 'image') return 'Đã gửi một hình ảnh';
   if (message.type === 'file') return `Đã gửi tệp ${message.file?.name || ''}`.trim();
   return String(message.text || 'Bạn có tin nhắn mới').replace(/\s+/g, ' ').trim().slice(0, 180);
 }
 
 export async function notifyIncomingMessage(conversation: Conversation, message: ChatMessage) {
-  if (AppState.currentState === 'active' || message.sender !== 'incoming') return null;
+  if (message.sender !== 'incoming') return null;
   if (isConversationMuted(conversation.notificationMutedUntil)) return null;
   try {
     const { Notifications } = await loadNotificationModules();
-    if ((await Notifications.getPermissionsAsync()).status !== 'granted') return null;
+    if (!(await hasNotificationPermission(Notifications))) return null;
     return Notifications.scheduleNotificationAsync({
       content: {
         title: conversation.name || 'ViChat',
@@ -166,7 +228,7 @@ export async function notifyIncomingCall(
   if (dismissedIncomingCallKeys.has(key)) return null;
   try {
     const { Notifications } = await loadNotificationModules();
-    if ((await Notifications.getPermissionsAsync()).status !== 'granted') return null;
+    if (!(await hasNotificationPermission(Notifications))) return null;
     if (dismissedIncomingCallKeys.has(key)) return null;
     const peerName = String(peer.name || 'Người dùng ViChat');
     const previousId = incomingCallNotificationIds.get(key);

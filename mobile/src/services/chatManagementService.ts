@@ -3,6 +3,30 @@ import { apiRequest, responseItems } from './apiClient';
 import { normalizeUser } from './authService';
 import { normalizeMuteUntil } from '../utils/conversationNotifications';
 import { normalizeMediaUrl } from '../utils/mediaUrl';
+import { dedupeConversations } from '../utils/conversationSync';
+
+const CHAT_PAGE_SIZE = 100;
+const MAX_CHAT_PAGES = 1000;
+
+async function listAllPages(path: string, params: Record<string, string> = {}) {
+  const records: any[] = [];
+  const seenCursors = new Set<string>();
+  let cursor = '';
+
+  for (let page = 0; page < MAX_CHAT_PAGES; page += 1) {
+    const query = new URLSearchParams({ ...params, limit: String(CHAT_PAGE_SIZE) });
+    if (cursor) query.set('cursor', cursor);
+    const payload = await apiRequest(`${path}?${query.toString()}`);
+    records.push(...responseItems(payload));
+
+    const nextCursor = String(payload?.next_cursor || payload?.nextCursor || '').trim();
+    if (!nextCursor || seenCursors.has(nextCursor)) break;
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
+  }
+
+  return records;
+}
 
 function normalizeConversation(record: any): Conversation {
   const properties = record?.properties || {};
@@ -25,7 +49,7 @@ function normalizeConversation(record: any): Conversation {
     messages: [],
     lastMsg: String(record?.lastMsg || properties.lastMessage || ''),
     time: String(record?.time || properties.time || ''),
-    updatedAt: record?.updatedAt || record?.last_message_at || properties.updatedAt,
+    updatedAt: record?.updatedAt || record?.updated_at || record?.last_message_at || properties.updatedAt || properties.updated_at,
     badge: Number(record?.badge || properties.unreadCount || 0),
     notificationMutedUntil: normalizeMuteUntil(record?.notificationMutedUntil ?? record?.notification_muted_until),
   };
@@ -33,15 +57,15 @@ function normalizeConversation(record: any): Conversation {
 
 export const chatManagementService = {
   async listUsers(search = ''): Promise<User[]> {
-    const query = new URLSearchParams({ results_per_page: search ? '50' : '1000' });
-    if (search.trim()) query.set('q', search.trim());
-    const payload = await apiRequest(`/api/v1/chat/users?${query.toString()}`);
-    return responseItems(payload).map(normalizeUser).filter(user => user.active);
+    const params: Record<string, string> = {};
+    if (search.trim()) params.q = search.trim();
+    const records = await listAllPages('/api/v1/chat/users', params);
+    return records.map(normalizeUser).filter(user => user.active);
   },
 
   async listConversations(): Promise<Conversation[]> {
-    const payload = await apiRequest('/api/v1/conversation');
-    return responseItems(payload).map(normalizeConversation);
+    const records = await listAllPages('/api/v1/conversation');
+    return dedupeConversations(records.map(normalizeConversation));
   },
 
   async createConversation(input: {

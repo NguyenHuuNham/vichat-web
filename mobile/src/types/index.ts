@@ -56,7 +56,18 @@ export interface FileAttachment {
   ext?: string;
 }
 
-export type MessageType = 'text' | 'image' | 'file' | 'system' | 'reaction' | 'recall' | 'edit' | 'call';
+export interface Sticker {
+  id: string;
+  stickerId?: string;
+  packId: string;
+  label?: string;
+  src: string;
+  mime?: string;
+  version?: string;
+  fileName?: string;
+}
+
+export type MessageType = 'text' | 'image' | 'file' | 'sticker' | 'system' | 'reaction' | 'recall' | 'edit' | 'call';
 export type DeliveryStatus = 'none' | 'sending' | 'sent' | 'received' | 'read' | 'failed';
 export type RecallMode = 'self' | 'all';
 
@@ -71,6 +82,13 @@ export interface ChatMessage {
   text: string;
   file?: FileAttachment;
   image?: string;
+  sticker?: {
+    id: string;
+    stickerId?: string;
+    packId: string;
+    label?: string;
+    version?: string;
+  };
   createdAt?: string;
   time?: string;
   pending?: boolean;

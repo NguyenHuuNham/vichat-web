@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { retainAvailableConversations } from './conversationSync';
+import { dedupeConversations, retainAvailableConversations } from './conversationSync';
 
 const conversation = (id: string, tinodeTopic: string) => ({
   id,
@@ -20,5 +20,22 @@ describe('conversation sync', () => {
   it('preserves Chatmgt metadata when Tinode cannot verify any topic', () => {
     const conversations = [conversation('metadata', 'usr-metadata')];
     expect(retainAvailableConversations(conversations, new Set())).toBe(conversations);
+  });
+
+  it('keeps one canonical row when duplicate records share a Tinode topic', () => {
+    const duplicate = {
+      ...conversation('newer', 'usr-peer'),
+      name: 'Current name',
+      updatedAt: '2026-09-21T10:00:00Z',
+    };
+    const older = {
+      ...conversation('older', 'usr-peer'),
+      name: 'Old name',
+      updatedAt: '2026-09-20T10:00:00Z',
+    };
+
+    expect(dedupeConversations([older, duplicate])).toEqual([
+      expect.objectContaining({ id: 'newer', name: 'Current name', tinodeTopic: 'usr-peer' }),
+    ]);
   });
 });

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Bell, ChevronRight, LockKeyhole, LogOut, Pencil, ShieldCheck, Smartphone, Wifi } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -38,7 +38,7 @@ export function SettingsScreen({ navigation }: Props) {
         <Text style={styles.section}>Ứng dụng</Text>
         <View style={styles.menu}>
           <SettingRow icon={Wifi} label="Kết nối realtime" detail={connection === 'connected' ? 'Đang hoạt động' : 'Đang chờ kết nối'} color={connection === 'connected' ? colors.online : colors.warning} />
-          <SettingRow icon={Bell} label="Thông báo" detail="Tin nhắn mới trên thiết bị" last />
+          <SettingRow icon={Bell} label="Thông báo" detail="Tin nhắn mới trên thiết bị · chạm để kiểm tra quyền" onPress={() => void Linking.openSettings().catch(() => {})} last />
         </View>
 
         <Text style={styles.section}>Bảo mật thiết bị</Text>

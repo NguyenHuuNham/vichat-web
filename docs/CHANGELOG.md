@@ -6,6 +6,49 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-22-06 - Giam do mobile va phat hanh APK 1.0.12
+
+- Thoi gian: 2026-09-22 20:34 (Asia/Saigon)
+- Loai: Sua loi | Hieu nang | Mobile | Thong bao | Kiem thu | Phat hanh | Tai lieu
+- Trang thai: Hoan tat source va da tao APK test mobile; chua UAT tren thiet bi that.
+- Muc tieu: Giam hien tuong app mobile bi do/tre khi go tin, doc, gui tin, tai lich su va khoi dong thong bao; phat hanh ban co version moi de cai de khong bi nhan la ban cu.
+- Pham vi: `mobile/src/services/notificationService.ts`, `mobile/src/services/tinodeClient.ts`, `mobile/src/store/appStore.ts`, `mobile/src/screens/chat/ChatDetailScreen.tsx`, `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`, native manifest generated; khong sua web ChatUI, Chatmgt API, database hay Tinode server.
+- Noi dung: Cache module/quyen notification va tranh khoi tao channel lap lai; doi message/call channel sang `messages-v2`/`calls-v2`, dat `messages-v2` lam FCM default channel; cac thao tac typing/read/send/edit/recall/reaction/file/sticker chi dam bao subscription ma khong materialize lai toan bo snapshot; bo reload cuoc tro chuyen sau moi thao tac gui; giu vi tri cuon khi tai lich su cu va gioi han batch/window cua `FlatList`; chi reconnect khi Tinode thuc su mat ket noi.
+- Quyet dinh ky thuat: Tinode event van la nguon cap nhat message; snapshot chi phat khi dong bo/mo/tai lich su hoac nhan data realtime. Local notification van hoat dong khi JS/Tinode con song; push khi process bi kill van bat buoc co native Firebase config trong APK va provider Tinode tren server.
+- Database/API/cau hinh: Khong migration, khong doi API. Tang mobile version `1.0.12`, Android `versionCode=13`; manifest co `POST_NOTIFICATIONS` va default channel `messages-v2`.
+- Kiem thu: `npm run typecheck` dat; `npm test -- --reporter=dot` dat `16` file, `44/44`; `npm run lint` dat; `git diff --check` dat; `npx expo prebuild --platform android --no-install` dat; Gradle `assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a` dat; APK `D:\vichat-build\ViChat-1.0.12-performance-notification-fix-arm64.apk` co package `vn.upgo.vichat`, version `1.0.12`/code `13`, ABI `arm64-v8a`, permission `POST_NOTIFICATIONS`, ky v2, SHA-256 `B0686DD06F16AF287AF4E42CF4A551B12F7B7D8CFC10B0B6BB08B123D28D9285`.
+- Kiem tra production chi doc qua jump host: `FCM_PUSH_ENABLED=false`, `TNPG_PUSH_ENABLED=false`, va `FCM_CRED_FILE` trong container Tinode khong doc duoc; vi vay push khi thoat/kill app chua the hoat dong chi bang code mobile. May hien khong co thiet bi ADB de UAT truc tiep.
+- Rui ro con lai: Chua UAT thao tac tren thiet bi that; killed-app push se van mat cho den khi co `google-services.json` dung package Android, Firebase service-account credential cho Tinode va bat provider FCM tren production.
+- Viec tiep theo: Cap bo credential Firebase cho Android va Tinode, bat FCM provider roi test hai tai khoan o cac trang thai foreground/background/killed; sau do co the phat hanh lai APK cung version code neu can.
+- Commit/PR: Chua tao.
+
+## 2026-09-22-05 - Sua thong bao tin nhan mobile
+
+- Thoi gian: 2026-09-22 17:22 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Thong bao | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source va da tao APK test mobile; chua UAT tren thiet bi that.
+- Muc tieu: Hien thong bao khi co tin nhan moi ca luc app dang mo, dang o background hoac vua quay lai foreground; giu co hoi dang ky push native sau khi nguoi dung cap lai quyen.
+- Pham vi: `mobile/App.tsx`, `mobile/src/services/notificationService.ts`, `mobile/app.json`, native Android generated manifest; khong sua ChatUI, Chatmgt, Tinode server hay database.
+- Noi dung: Khoi tao notification handler/channel ngay khi app mo; bo chan thong bao foreground; tranh danh dau that bai vinh vien khi quyen/token native chua san sang; thu lai dang ky khi app quay lai foreground; materialize lai Android `POST_NOTIFICATIONS` bang Expo prebuild.
+- Quyet dinh ky thuat: Thong bao khi app song van la local notification tu Tinode event. Push khi process bi kill van phu thuoc credential Firebase/APNs va provider push cua Tinode; repository khong co cac credential nay nen khong tuyen bo da kich hoat killed-app push.
+- Database/API/cau hinh: Khong co migration/API moi. `EXPO_PUBLIC_PUSH_ENABLED` mac dinh bat; Android manifest generated da co `CAMERA`, `RECORD_AUDIO`, `POST_NOTIFICATIONS`.
+- Kiem thu: `npm run typecheck` dat; `npm test -- --reporter=dot` dat `16` file, `44/44`; `npm run lint` dat; `git diff --check` dat; `npx expo prebuild --platform android --no-install` dat va manifest co `POST_NOTIFICATIONS`; `assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a` dat; APK `D:\vichat-build\ViChat-1.0.11-notification-fix-arm64.apk` co package `vn.upgo.vichat`, version `1.0.11`, ABI `arm64-v8a`, SHA-256 `33EA76F6100EABCB7AD64D98DC77BCE8E1C58485C2934BEC3DEB9E6F816AD319`.
+- Rui ro con lai: Chua UAT tren thiet bi that; killed-app push can bo sung native Firebase/APNs credential va cau hinh provider Tinode tren moi truong chay that.
+- Viec tiep theo: Cai APK tren dien thoai; vao Settings > Thong bao cap quyen neu Android dang chan; thu tin nhan voi app mo/background/killed. Push khi process bi kill van can Firebase/APNs credential va provider Tinode tren moi truong chay that.
+- Commit/PR: Chua tao.
+
+## 2026-09-22-04 - Sua dong bo danh ba va lich su tren mobile
+
+- Thoi gian: 2026-09-22 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Chatmgt | Tinode | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source va da tao APK test mobile; chua UAT tren thiet bi that.
+- Muc tieu: Khoi phuc danh ba va danh sach hoi thoai mobile theo cung du lieu Chatmgt/Tinode ma web dang su dung.
+- Nguyen nhan: Mobile van gui `results_per_page=1000` cho `/api/v1/chat/users`, trong khi Chatmgt chi chap nhan toi da `100`; loi directory lam `Promise.all` bo qua ca lan nap conversation, khien mobile hien rong du lieu van con tren web.
+- Noi dung: Doi mobile sang cursor pagination voi `limit=100` cho danh ba va conversation, bao ve loop cursor lap, va doc them alias `updated_at` khi sap xep snapshot; khong doi backend, Tinode topic, schema, web hay Cloud.
+- Kiem thu: `npm run typecheck` dat; `npm test -- --reporter=dot` dat `15` file, `40/40`; `npm run lint` dat; `git diff --check` dat; Gradle `assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a` dat; APK ky v2 hop le, package `vn.upgo.vichat`, version `1.0.11`, bundle khong con `results_per_page`.
+- Rui ro con lai: Chua UAT lai tren thiet bi that sau khi cai APK moi; neu mot topic Tinode cu bi stale rieng le, can kiem tra them token/topic binding ma khong xoa lich su trung tam.
+- Viec tiep theo: Cai APK `D:\vichat-build\ViChat-1.0.11-sync-fix-arm64.apk` tren dien thoai, dang nhap lai va xac nhan danh ba, conversation cu va history.
+
 ## 2026-09-22-03 - Mo rong app mobile voi Cloud rieng tu
 
 - Thoi gian: 2026-09-22 13:19 (Asia/Saigon)
