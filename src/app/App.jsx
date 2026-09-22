@@ -3423,6 +3423,8 @@ function sortPersonalCloudMessages(values) {
   ));
 }
 
+const CHAT_TOAST_DURATION_MS = 5000;
+
 function App() {
   const [currentChatId, setCurrentChatId] = useState(CHATBOT_ACCOUNT.id);
   const [conversations, setConversations] = useState(createInitialConversations);
@@ -3753,7 +3755,7 @@ function App() {
     chatErrorTimerRef.current = window.setTimeout(() => {
       chatErrorTimerRef.current = null;
       setChatError('');
-    }, 5600);
+    }, CHAT_TOAST_DURATION_MS);
     return () => {
       if (chatErrorTimerRef.current) window.clearTimeout(chatErrorTimerRef.current);
       chatErrorTimerRef.current = null;
@@ -3767,7 +3769,7 @@ function App() {
     chatSuccessTimerRef.current = window.setTimeout(() => {
       chatSuccessTimerRef.current = null;
       setChatSuccess('');
-    }, 4200);
+    }, CHAT_TOAST_DURATION_MS);
     return () => {
       if (chatSuccessTimerRef.current) window.clearTimeout(chatSuccessTimerRef.current);
       chatSuccessTimerRef.current = null;
@@ -14304,7 +14306,7 @@ function App() {
         />
       )}
       {(chatError || showTinodeConnectionNotice) && (
-        <div className={`chat-toast ${chatError ? 'error' : 'info'}`} role={chatError ? 'alert' : 'status'} aria-live="polite">
+        <div key={`chat-error:${chatError}`} className={`chat-toast ${chatError ? 'error transient' : 'info'}`} role={chatError ? 'alert' : 'status'} aria-live="polite">
           <i className={`fa-solid ${chatError ? 'fa-triangle-exclamation' : 'fa-circle-info'}`}></i>
           <span className="chat-toast-copy">
             <strong>{appCopy.t(chatError ? 'Không thể hoàn tất thao tác' : 'Đang khôi phục kết nối')}</strong>
@@ -14314,7 +14316,7 @@ function App() {
         </div>
       )}
       {chatSuccess && (
-        <div className="chat-toast success" role="status" aria-live="polite">
+        <div key={`chat-success:${chatSuccess}`} className="chat-toast success transient" role="status" aria-live="polite">
           <i className="fa-solid fa-circle-check" aria-hidden="true"></i>
           <span className="chat-toast-copy">
             <strong>{appCopy.t('Đã hoàn tất')}</strong>

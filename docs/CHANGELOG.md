@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-22-01 - Thu gon toast thong bao va them countdown
+
+- Thoi gian: 2026-09-22 (Asia/Saigon)
+- Loai: Sua loi | Web | UX | Kiem thu | Tai lieu
+- Trang thai: Hoan tat trong source; chua deploy production.
+- Muc tieu: Dua toast loi/thanh cong ve goc phai, thu gon bang thong bao va cho nguoi dung thay ro thoi gian toast con hien thi.
+- Pham vi: ChatUI transient error/success toast; giu nguyen confirm dialog va thong bao trang thai ket noi.
+- File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `dist/index.html`, va file nay.
+- Noi dung: Dat cung mot moc tu dong an 5 giay cho toast loi/thanh cong, them progress bar chay tu trai sang phai theo countdown, remount khi noi dung moi de progress reset dung luot, va giam kich thuoc toast xuong toi da 380px responsive.
+- Quyet dinh ky thuat: Chi ap dung countdown cho thong bao transient; toast "dang khoi phuc ket noi" van ton tai theo trang thai realtime de khong che giau loi ket noi.
+- Database/API/cau hinh: Khong co.
+- Kiem thu: `npm run test:frontend -- --test-concurrency=1` dat `441/441`; `npm run lint` exit `0` voi warning legacy/vendor; `npm run build:production` thanh cong voi canh bao chunk App vuot 500 KB; `git diff --check` dat.
+- Rui ro con lai: Chua UAT browser production voi tai khoan that; progress bar dung CSS animation 5 giay va can hard refresh de tai bundle moi sau deploy.
+- Viec tiep theo: Commit/push va deploy production, sau do hard refresh kiem tra toast loi/thanh cong tren desktop/mobile.
+- Commit/PR: Chua tao.
+
 ## 2026-09-21-05 - Them chat chu rieng tu cho Cloud va sua menu chuot phai
 
 - Thoi gian: 2026-09-22 00:01 (Asia/Saigon)

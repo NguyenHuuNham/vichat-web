@@ -6366,22 +6366,42 @@ input:checked + .slider:before {
 /* Tinode connection and group creation UI */
 .chat-toast {
     position: fixed;
-    top: 18px;
-    right: 20px;
+    top: 14px;
+    right: 14px;
     z-index: 300;
     display: flex;
     align-items: center;
-    gap: 10px;
-    width: min(520px, calc(100vw - 32px));
+    gap: 8px;
+    width: min(380px, calc(100vw - 28px));
     box-sizing: border-box;
-    padding: 12px 14px;
+    padding: 10px 12px 12px;
     border: 1px solid rgba(244, 81, 30, .18);
-    border-radius: 18px;
+    border-radius: 14px;
+    overflow: hidden;
     box-shadow: 0 16px 36px rgba(20, 70, 66, .18), 0 3px 10px rgba(20, 70, 66, .08);
     font-size: 13px;
     color: var(--text-main);
     background: linear-gradient(135deg, var(--bg-white), rgba(255, 249, 243, .96));
     animation: chat-toast-in .22s ease both;
+}
+
+.chat-toast.transient::before,
+.chat-toast.transient::after {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    pointer-events: none;
+    content: "";
+}
+
+.chat-toast.transient::before { background: rgba(20, 70, 66, .1); }
+.chat-toast.transient::after {
+    background: currentColor;
+    transform: scaleX(1);
+    transform-origin: left center;
+    animation: chat-toast-progress 5s linear forwards;
 }
 
 .chat-toast.error {
@@ -6392,12 +6412,12 @@ input:checked + .slider:before {
 
 .chat-toast.info { color: var(--vichat-blue-dark); }
 .chat-toast.success { color: #146b4d; border-color: #b9dfcc; background: linear-gradient(135deg, #f8fffb, #e9f8ef); }
-.chat-toast > i { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border-radius: 11px; color: var(--vichat-blue); background: rgba(244, 81, 30, .1); }
+.chat-toast > i { display: grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; border-radius: 9px; color: var(--vichat-blue); background: rgba(244, 81, 30, .1); }
 .chat-toast.error > i { color: var(--vichat-red); background: rgba(224, 68, 45, .1); }
 .chat-toast.success > i { color: #16845d; background: rgba(22, 132, 93, .12); }
 .chat-toast-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; overflow-wrap: anywhere; line-height: 1.45; }
-.chat-toast-copy strong { color: currentColor; font-size: 11px; font-weight: 850; letter-spacing: .02em; }
-.chat-toast-copy span { color: currentColor; font-size: 12.5px; }
+.chat-toast-copy strong { color: currentColor; font-size: 10px; font-weight: 850; letter-spacing: .02em; }
+.chat-toast-copy span { color: currentColor; font-size: 12px; }
 .chat-toast button {
     border: 0;
     background: transparent;
@@ -6434,6 +6454,11 @@ input:checked + .slider:before {
 @keyframes chat-toast-in {
     from { opacity: 0; transform: translateY(-8px) scale(.98); }
     to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes chat-toast-progress {
+    from { transform: scaleX(1); }
+    to { transform: scaleX(0); }
 }
 
 .modal-backdrop {
