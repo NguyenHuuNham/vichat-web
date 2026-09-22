@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-22 (Asia/Saigon)
 - Loai: Sua loi | Web | UX | Kiem thu | Tai lieu
-- Trang thai: Hoan tat trong source; chua deploy production.
+- Trang thai: Hoan tat; source commit `26553fd` va docs commit `439c15d` da push, production release `chat-toast-439c15d-20260922-r2` da activate va verify.
 - Muc tieu: Dua toast loi/thanh cong ve goc phai, thu gon bang thong bao va cho nguoi dung thay ro thoi gian toast con hien thi.
 - Pham vi: ChatUI transient error/success toast; giu nguyen confirm dialog va thong bao trang thai ket noi.
 - File da thay doi: `src/app/App.jsx`, `src/styles/index.css`, `dist/index.html`, va file nay.
@@ -19,8 +19,10 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong co.
 - Kiem thu: `npm run test:frontend -- --test-concurrency=1` dat `441/441`; `npm run lint` exit `0` voi warning legacy/vendor; `npm run build:production` thanh cong voi canh bao chunk App vuot 500 KB; `git diff --check` dat.
 - Rui ro con lai: Chua UAT browser production voi tai khoan that; progress bar dung CSS animation 5 giay va can hard refresh de tai bundle moi sau deploy.
-- Viec tiep theo: Commit/push va deploy production, sau do hard refresh kiem tra toast loi/thanh cong tren desktop/mobile.
-- Commit/PR: Source commit `26553fd`; chua deploy production.
+- Trien khai: Archive production `vichat-chat-toast-439c15d-r2.tar.gz` co SHA-256 `3564d2f6bcaa8c8b5ad7923cf8ad14bb25a93c4d3cc46b38ddd3900f35be888a`; release `/opt/deploy/chat/releases/chat-toast-439c15d-20260922-r2` dang la `current`, backup `/opt/deploy/chat/backups/chat-toast-439c15d-20260922-r2`; source validation xac nhan 687 file khong doi ngoai pham vi.
+- Kiem tra production: Chat/Chatmgt healthy, restart count `0`; Alembic `20260921_16`; public health `200`, Cloud API khi chua xac thuc `401`, public WSS `101`; volume khong doi. Candidate `r1` bi dung o source validation do archive thieu root prefix, khong activate va khong restart service; release/backup loi giu lai de audit.
+- Viec tiep theo: Hard refresh va UAT toast loi/thanh cong tren desktop/mobile bang tai khoan production that; neu phat sinh loi, rollback `current` ve `previous` theo release da backup.
+- Commit/PR: Source commit `26553fd`; docs/deploy record `439c15d` va changelog follow-up.
 
 ## 2026-09-21-05 - Them chat chu rieng tu cho Cloud va sua menu chuot phai
 
