@@ -23,7 +23,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Trien khai: Archive `vichat-notification-race-c6596b7.tar.gz` co SHA-256 `3cff6cfecf0aa60174d6b5f7f41b11a65f9af3dfc0158fd49837966fcb8e813b`; release `/opt/deploy/chat/releases/notification-race-c6596b7-20260926-r4` dang la `current`, `previous` tro `/opt/deploy/chat/releases/chat-bootstrap-9259aa9-20260922-r1`, backup `/opt/deploy/chat/backups/notification-race-c6596b7-20260926-r4`; chi recreate service `chat`, giu nguyen Chatmgt/Tinode/PostgreSQL/Redis, service ngoai pham vi va volume.
 - Kiem tra production: ChatUI container `e1602f18a6e49edcbc85bf5e7b5c987c1348043e26a78d38923194c0a98a8f8c` healthy, restart `0`; public health `200`, WSS `101`; bundle `/assets/index-Cb3DYtAg.js` va `/assets/index-C1rian-2.css` khop candidate; source validation 687 file khong doi, service/volume ngoai `chat` khong doi. Ba candidate truoc dung o gate runner truoc activate va da rollback an toan.
 - Viec tiep theo: Hard refresh, sau do UAT bat/tat thong bao o group/direct trong luc polling va reconnect Tinode; khong can migration mobile.
-- Commit/PR: Source commit `c6596b7`; production release `notification-race-c6596b7-20260926-r4`; docs/deploy follow-up commit dang cho tao.
+- Commit/PR: Source commit `c6596b7`; production release `notification-race-c6596b7-20260926-r4`; docs/deploy follow-up commits `f189ba0`, `eb77c7f` da push.
 
 ## 2026-09-22-07 - Them workflow Codemagic cho build mobile
 
