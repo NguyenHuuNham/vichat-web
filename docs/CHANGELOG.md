@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-26 13:20 (Asia/Saigon)
 - Loai: Sua loi | Web | Thong bao | Tinode | Kiem thu | Tai lieu
-- Trang thai: Hoan tat source va bundle web; chua deploy production.
+- Trang thai: Hoan tat; source commit `c6596b7` da push len `github/fix/full-audit-regressions`; production release `notification-race-c6596b7-20260926-r4` da activate va verify.
 - Muc tieu: Bat/tat thong bao cua cuoc tro chuyen khong hien loi "Phien tai khoan da thay doi trong khi ket noi Tinode" va khong lam gian doan cac luong chat realtime khac.
 - Pham vi: ChatUI web refresh metadata, refresh token Tinode va endpoint notification-settings; khong sua `mobile/`, backend, database hay hop dong API.
 - File da thay doi: `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`, va file nay.
@@ -19,9 +19,11 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Chi chap nhan token response khi generation va scope van khop; token response luon ghi vao session dang active. Khong an loi phien that va khong thay doi message, membership, call, media hoac mobile flow.
 - Database/API/cau hinh: Khong migration, endpoint moi, bien moi truong hay thay doi contract; bundle web da build lai.
 - Kiem thu: Regression test scope/mute `3/3` dat; `npm run lint` exit `0` voi warning legacy/vendor va warning mobile da co; `npm run build:production` thanh cong voi canh bao chunk App vuot 500 KB; `git diff --check` dat. Full `npm run test:frontend -- --test-concurrency=1` con 1 test mobile da co san fail do assertion ky vong source mobile cu, khong lien quan thay doi web lan nay.
-- Rui ro con lai: Chua UAT tren tai khoan production va chua deploy web bundle; bo test tong van can duoc dong bo voi thay doi mobile dang co san neu muon dat xanh toan bo.
-- Viec tiep theo: Deploy rieng ChatUI, hard refresh, sau do UAT bat/tat thong bao o group/direct trong luc polling va reconnect Tinode; khong can migration mobile.
-- Commit/PR: Chua tao.
+- Rui ro con lai: Chua UAT bat/tat thong bao tren tai khoan production; bo test tong van can duoc dong bo voi thay doi mobile dang co san neu muon dat xanh toan bo.
+- Trien khai: Archive `vichat-notification-race-c6596b7.tar.gz` co SHA-256 `3cff6cfecf0aa60174d6b5f7f41b11a65f9af3dfc0158fd49837966fcb8e813b`; release `/opt/deploy/chat/releases/notification-race-c6596b7-20260926-r4` dang la `current`, `previous` tro `/opt/deploy/chat/releases/chat-bootstrap-9259aa9-20260922-r1`, backup `/opt/deploy/chat/backups/notification-race-c6596b7-20260926-r4`; chi recreate service `chat`, giu nguyen Chatmgt/Tinode/PostgreSQL/Redis, service ngoai pham vi va volume.
+- Kiem tra production: ChatUI container `e1602f18a6e49edcbc85bf5e7b5c987c1348043e26a78d38923194c0a98a8f8c` healthy, restart `0`; public health `200`, WSS `101`; bundle `/assets/index-Cb3DYtAg.js` va `/assets/index-C1rian-2.css` khop candidate; source validation 687 file khong doi, service/volume ngoai `chat` khong doi. Ba candidate truoc dung o gate runner truoc activate va da rollback an toan.
+- Viec tiep theo: Hard refresh, sau do UAT bat/tat thong bao o group/direct trong luc polling va reconnect Tinode; khong can migration mobile.
+- Commit/PR: Source commit `c6596b7`; production release `notification-race-c6596b7-20260926-r4`; docs/deploy follow-up commit dang cho tao.
 
 ## 2026-09-22-07 - Them workflow Codemagic cho build mobile
 
