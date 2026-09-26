@@ -102,20 +102,36 @@ function accountTenant(account) {
   return accountTenantId(account);
 }
 
+function sessionTenantId(session) {
+  return scalarText(session?.tenant?.id)
+    || accountTenantId(session?.user)
+    || scalarText(session?.tinodeAuth?.tenantId);
+}
+
+function sessionUserId(session) {
+  return [
+    session?.user?.id,
+    session?.user?.uid,
+    session?.user?.tinodeUid,
+    session?.user?.tinode_uid,
+    session?.user?.username,
+    session?.tinodeAuth?.uid,
+    session?.tinodeAuth?.username,
+  ].map(scalarText).find(Boolean) || '';
+}
+
+// Reconnect guards must use the authenticated account scope, not object
+// identity, because metadata refreshes can rebuild the session fields.
+export function sessionScopeKey(session) {
+  return `${sessionUserId(session)}|${sessionTenantId(session)}`;
+}
+
 function activeSessionTenantId() {
-  return scalarText(activeSession?.tenant?.id)
-    || accountTenantId(activeSession?.user)
-    || (authMode === 'password' ? tenantId : '');
+  return sessionTenantId(activeSession) || (authMode === 'password' ? tenantId : '');
 }
 
 function activeSessionUserId() {
-  return [
-    activeSession?.user?.id,
-    activeSession?.user?.uid,
-    activeSession?.user?.tinodeUid,
-    activeSession?.user?.tinode_uid,
-    activeSession?.user?.username,
-  ].map(scalarText).find(Boolean) || '';
+  return sessionUserId(activeSession);
 }
 
 function captureDirectoryScope() {
@@ -310,7 +326,7 @@ function hydrateActiveSession(payload, { preserveExisting = true } = {}) {
       }
       : null);
   const connection = previous?.connection || payload?.connection || (hasTinodeToken ? 'tinode' : 'management');
-  activeSession = {
+  const nextSession = {
     ...(previous || {}),
     user: account,
     tenant,
@@ -318,6 +334,14 @@ function hydrateActiveSession(payload, { preserveExisting = true } = {}) {
     connection,
     tinodeAuth,
   };
+  if (preserveExisting && previousSession) {
+    // Keep in-flight Tinode token requests attached to the same session while
+    // /auth/me refreshes harmless profile and tenant metadata.
+    Object.assign(previousSession, nextSession);
+    activeSession = previousSession;
+  } else {
+    activeSession = nextSession;
+  }
   return { ...account, tenant, tenantOptions, connection };
 }
 
@@ -656,7 +680,10 @@ export const chatManagementService = {
 
   async refreshSessionMetadata() {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
+    const scope = captureDirectoryScope();
     const payload = await apiRequest('/api/v1/auth/me', { cache: 'no-store' });
+    // A slow poll must not repaint a newer login, logout, or tenant switch.
+    assertDirectoryScope(scope);
     return hydrateActiveSession(payload, { preserveExisting: true });
   },
 
@@ -687,6 +714,8 @@ export const chatManagementService = {
     if (!activeSession) throw new Error('Phiên Chatmgt chưa sẵn sàng.');
     if (!tinodeTokenRequest) {
       const requestedSession = activeSession;
+      const requestedGeneration = directorySessionGeneration;
+      const requestedScope = sessionScopeKey(requestedSession);
       const request = apiRequest('/api/v1/auth/tinode-token', {
         method: 'POST',
         body: JSON.stringify(tinodeRefreshPayload(
@@ -695,21 +724,28 @@ export const chatManagementService = {
         )),
       })
         .then(payload => {
-          if (!requestedSession || activeSession !== requestedSession) {
-            throw new Error('Phiên tài khoản đã thay đổi trong khi kết nối Tinode.');
+          if (
+            !requestedSession
+            || !activeSession
+            || directorySessionGeneration !== requestedGeneration
+            || sessionScopeKey(activeSession) !== requestedScope
+          ) {
+            const error = new Error('Phiên tài khoản đã thay đổi trong khi kết nối Tinode.');
+            error.code = 'CHAT_SESSION_CHANGED';
+            throw error;
           }
           const tinodeAuth = payload.tinode_auth || payload.tinode || {};
           if (!tinodeAuth.token) throw new Error('Chatmgt did not return a Tinode token.');
           const mergedAuth = {
-            ...(requestedSession.tinodeAuth || {}),
+            ...(activeSession.tinodeAuth || {}),
             ...tinodeAuth,
-            displayName: requestedSession.user?.name || '',
-            avatar: requestedSession.user?.avatar || '',
-            tenantId: requestedSession.tenant?.id || requestedSession.user?.tenantId || tenantId,
-            tenantName: requestedSession.tenant?.name || requestedSession.user?.tenantName || '',
+            displayName: activeSession.user?.name || '',
+            avatar: activeSession.user?.avatar || '',
+            tenantId: activeSession.tenant?.id || activeSession.user?.tenantId || tenantId,
+            tenantName: activeSession.tenant?.name || activeSession.user?.tenantName || '',
           };
-          requestedSession.tinodeAuth = mergedAuth;
-          requestedSession.connection = payload.connection || 'tinode';
+          activeSession.tinodeAuth = mergedAuth;
+          activeSession.connection = payload.connection || 'tinode';
           return mergedAuth;
         })
         .finally(() => {

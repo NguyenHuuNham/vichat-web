@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-26-03 - Sua race refresh phien khi tat thong bao tren web
+
+- Thoi gian: 2026-09-26 13:20 (Asia/Saigon)
+- Loai: Sua loi | Web | Thong bao | Tinode | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source va bundle web; chua deploy production.
+- Muc tieu: Bat/tat thong bao cua cuoc tro chuyen khong hien loi "Phien tai khoan da thay doi trong khi ket noi Tinode" va khong lam gian doan cac luong chat realtime khac.
+- Pham vi: ChatUI web refresh metadata, refresh token Tinode va endpoint notification-settings; khong sua `mobile/`, backend, database hay hop dong API.
+- File da thay doi: `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`, va file nay.
+- Nguyen nhan: Polling `/api/v1/auth/me` co the rebuild object session trong luc request token Tinode dang chay; guard cu coi object moi la phien moi va day loi nen toast dung luc nguoi dung thao tac thong bao.
+- Noi dung: Dung scope on dinh theo user/tenant va generation de phan biet refresh metadata hop le voi login/logout/doi tenant that; giu object session hien tai khi chi refresh metadata; giu update notification mute la request Chatmgt doc lap, khong tu dong refresh Tinode.
+- Quyet dinh ky thuat: Chi chap nhan token response khi generation va scope van khop; token response luon ghi vao session dang active. Khong an loi phien that va khong thay doi message, membership, call, media hoac mobile flow.
+- Database/API/cau hinh: Khong migration, endpoint moi, bien moi truong hay thay doi contract; bundle web da build lai.
+- Kiem thu: Regression test scope/mute `3/3` dat; `npm run lint` exit `0` voi warning legacy/vendor va warning mobile da co; `npm run build:production` thanh cong voi canh bao chunk App vuot 500 KB; `git diff --check` dat. Full `npm run test:frontend -- --test-concurrency=1` con 1 test mobile da co san fail do assertion ky vong source mobile cu, khong lien quan thay doi web lan nay.
+- Rui ro con lai: Chua UAT tren tai khoan production va chua deploy web bundle; bo test tong van can duoc dong bo voi thay doi mobile dang co san neu muon dat xanh toan bo.
+- Viec tiep theo: Deploy rieng ChatUI, hard refresh, sau do UAT bat/tat thong bao o group/direct trong luc polling va reconnect Tinode; khong can migration mobile.
+- Commit/PR: Chua tao.
+
 ## 2026-09-22-07 - Them workflow Codemagic cho build mobile
 
 - Thoi gian: 2026-09-22 21:33 (Asia/Saigon)

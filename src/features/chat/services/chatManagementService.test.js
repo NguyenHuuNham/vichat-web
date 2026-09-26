@@ -13,6 +13,7 @@ import {
   normalizeChatAuthMode,
   normalizeTenantOptions,
   retryTinodeMembershipRequest,
+  sessionScopeKey,
   shouldRequestTinodeAuth,
   shouldRetryTinodeMembership,
   tinodeRefreshPayload,
@@ -259,6 +260,46 @@ test('restores a cookie-backed session after a full page reload', () => {
   assert.match(appSource, /if \(isSessionRestoreAuthFailure\(error\)\)/);
   assert.match(appSource, /setSessionRestoreState\('error'\)/);
   assert.match(appSource, /retrySessionRestore/);
+});
+
+test('keeps Tinode refresh attached when metadata refreshes the session object', () => {
+  const beforeRefresh = {
+    user: { id: 'account-42', name: 'Nguyen Van A' },
+    tenant: { id: 'tenant-7' },
+    tinodeAuth: { uid: 'usr-account-42' },
+  };
+  const afterMetadataRefresh = {
+    ...beforeRefresh,
+    user: { ...beforeRefresh.user, name: 'Nguyen Van A (updated)' },
+    tenant: { ...beforeRefresh.tenant, name: 'Tenant updated' },
+  };
+  const otherAccount = {
+    ...afterMetadataRefresh,
+    user: { ...afterMetadataRefresh.user, id: 'account-99' },
+  };
+  const otherTenant = {
+    ...afterMetadataRefresh,
+    tenant: { ...afterMetadataRefresh.tenant, id: 'tenant-8' },
+  };
+
+  assert.equal(sessionScopeKey(beforeRefresh), sessionScopeKey(afterMetadataRefresh));
+  assert.notEqual(sessionScopeKey(beforeRefresh), sessionScopeKey(otherAccount));
+  assert.notEqual(sessionScopeKey(beforeRefresh), sessionScopeKey(otherTenant));
+  assert.match(managementServiceSource, /if \(preserveExisting && previousSession\)/);
+  assert.match(managementServiceSource, /Object\.assign\(previousSession, nextSession\)/);
+  assert.match(managementServiceSource, /const scope = captureDirectoryScope\(\)/);
+  assert.match(managementServiceSource, /assertDirectoryScope\(scope\)/);
+  assert.match(managementServiceSource, /directorySessionGeneration !== requestedGeneration/);
+  assert.match(managementServiceSource, /sessionScopeKey\(activeSession\) !== requestedScope/);
+});
+
+test('keeps notification mute updates independent from Tinode membership refreshes', () => {
+  const notificationUpdateSource = managementServiceSource
+    .split('async updateConversationNotifications')[1]
+    .split('async listDirectBlockStates')[0];
+  assert.match(notificationUpdateSource, /notification-settings/);
+  assert.match(notificationUpdateSource, /muted_until/);
+  assert.doesNotMatch(notificationUpdateSource, /getFreshTinodeAuth|membershipApiRequest/);
 });
 
 test('keeps unread emphasis and latest-message navigation in the ChatUI layer', () => {
@@ -736,7 +777,8 @@ test('group owner departure transfers to survivors but lets the final member clo
   assert.match(appSource, /leaveDemoGroup\(targetRoom\.id, actorId, replacementId\)/);
   assert.match(mobileConversationListSource, /candidates\.length === 0/);
   assert.match(mobileConversationListSource, /Bạn là thành viên cuối cùng\. Rời nhóm sẽ đóng nhóm này\./);
-  assert.match(mobileConversationListSource, /\(\) => deleteConversation\(item\.id\)/);
+  assert.match(mobileConversationListSource, /\(\) => deleteConversation\(item\.id, String\(member\.id \|\| member\.uid\)\)/);
+  assert.match(mobileConversationListSource, /\(\) => deleteConversation\(request\.item\.id, request\.replacementId\)/);
   assert.doesNotMatch(appSource, /randomMemberId/);
 });
 
