@@ -17,6 +17,18 @@ export function normalizeConversationFlag(value) {
   return false;
 }
 
+function normalizeConversationNotificationMute(value) {
+  if (value === null) return null;
+  if (value === undefined || value === '' || typeof value === 'boolean') return undefined;
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized) || normalized < 0) return undefined;
+  return Math.trunc(normalized);
+}
+
+export function mergeConversationNotificationMute(existingValue, incomingValue) {
+  return incomingValue === undefined ? existingValue : incomingValue;
+}
+
 export function messageActivityTimestamp(message) {
   return Math.max(
     parseTimestamp(message?.createdAt || message?.created_at),
@@ -595,9 +607,10 @@ export function normalizeConversationShape(conversation) {
       || source.properties?.group_settings,
     )
     : undefined;
-  const mutedUntil = typeof source.notificationMutedUntil === 'string' || typeof source.notificationMutedUntil === 'number'
+  const rawNotificationMutedUntil = source.notificationMutedUntil !== undefined
     ? source.notificationMutedUntil
-    : undefined;
+    : source.notification_muted_until;
+  const mutedUntil = normalizeConversationNotificationMute(rawNotificationMutedUntil);
   const badge = Number(source.badge);
   const readSeq = Number(source.readSeq);
   const unreadFromSeq = Number(source.unreadFromSeq);

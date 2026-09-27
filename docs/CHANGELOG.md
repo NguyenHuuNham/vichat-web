@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-27-01 - Giu trang thai tat thong bao khi doi cuoc tro chuyen
+
+- Thoi gian: 2026-09-27 19:55 (Asia/Saigon)
+- Loai: Sua loi | Web | Mobile | Thong bao | Tinode | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source; chua deploy/UAT tai khoan that.
+- Muc tieu: Trang thai tat thong bao cua tung nguoi dung phai con nguyen khi mo cuoc tro chuyen khac roi quay lai tren web va mobile.
+- Pham vi: Merge snapshot Chatmgt/Tinode cua danh sach va chi tiet cuoc tro chuyen; khong doi endpoint, database hay kenh push.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `mobile/src/store/appStore.ts`, `mobile/src/utils/conversationSync.ts`, `mobile/src/utils/conversationMuteSync.test.ts`, `dist/index.html`, va file nay.
+- Nguyen nhan: Snapshot Tinode khong co truong mute theo viewer nhung merge cu coi truong thieu la `null`/gia tri moi, ghi de deadline hoac mute vinh vien da luu trong Chatmgt sau khi doi phong.
+- Noi dung: Web chi thay mute khi snapshot co gia tri explicit; mobile danh dau snapshot Tinode la realtime-only va giu mute Chatmgt qua ca merge store/list. Gia tri `null` tu Chatmgt van duoc chap nhan de bat lai thong bao; them regression test cho mute vinh vien, deadline, snapshot thieu truong va unmute.
+- Quyet dinh ky thuat: Chatmgt tiep tuc la nguon chuan cho cai dat thong bao theo viewer; Tinode chi cap realtime/history va khong duoc xoa metadata viewer-scoped.
+- Database/API/cau hinh: Khong migration, endpoint moi, bien moi truong hoac thay doi hop dong; da build lai bundle web.
+- Kiem thu: `node --test src/features/chat/services/chatRealtime.test.js src/features/chat/services/conversationNotifications.test.js` dat `62/62`; `cd mobile; npm test -- --reporter=dot` dat `23 file, 73/73`; `cd mobile; npm run typecheck` dat; `python -m unittest discover -s chatservice-main/tests -p test_chat_auth_contract.py -v` dat `60/60`; `npm run lint` exit `0` voi warning legacy da co; `npm run build:production` exit `0`; `git diff --check` dat. Full `npm run test:frontend -- --test-concurrency=1` con 1 contract test group owner departure da co san fail do source mobile workspace da doi callback, khong lien quan mute.
+- Rui ro con lai: Chua UAT web/mobile voi hai tai khoan that qua chu ky bat -> doi phong -> quay lai -> gui tin; push background/killed van phu thuoc credential/provider production.
+- Viec tiep theo: Hard refresh web va cai ban mobile hien tai, UAT direct/group voi ca mute deadline, mute den khi mo lai, unmute va thong bao tin moi; dong bo lai contract test group departure o lan sua mobile rieng.
+- Commit/PR: Chua tao.
+
 ## 2026-09-26-03 - Sua race refresh phien khi tat thong bao tren web
 
 - Thoi gian: 2026-09-26 13:20 (Asia/Saigon)

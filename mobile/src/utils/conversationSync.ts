@@ -7,6 +7,16 @@ function conversationTimestamp(conversation: Conversation) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+export function isTinodeConversationSnapshot(conversation: Partial<Conversation> = {}) {
+  const source = (conversation as any).snapshotSource;
+  return Boolean(
+    source === 'tinode'
+      || (source !== 'management'
+        && conversation.tinodeTopic
+        && conversation.managementId === conversation.tinodeTopic),
+  );
+}
+
 function conversationKey(conversation: Conversation) {
   const topic = String(conversation.tinodeTopic || '').trim();
   if (topic) return `topic:${topic}`;
@@ -43,6 +53,11 @@ function mergeDuplicateConversation(first: Conversation, second: Conversation) {
     members: preferred.members?.length ? preferred.members : fallback.members || [],
     participantIds: preferred.participantIds?.length ? preferred.participantIds : fallback.participantIds || [],
     messages: preferred.messages?.length ? preferred.messages : fallback.messages || [],
+    notificationMutedUntil: isTinodeConversationSnapshot(preferred)
+      ? fallback.notificationMutedUntil
+      : preferred.notificationMutedUntil !== undefined
+        ? preferred.notificationMutedUntil
+        : fallback.notificationMutedUntil,
   };
 }
 

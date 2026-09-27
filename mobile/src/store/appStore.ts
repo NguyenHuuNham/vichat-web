@@ -8,7 +8,7 @@ import { Conversation, ChatMessage, ConnectionState, LinkedDevice, PickerFile, R
 import { storageService } from '../services/storageService';
 import { notifyIncomingCall, notifyIncomingMessage, resetPushNotificationRegistration } from '../services/notificationService';
 import { applyPresenceToConversation } from '../utils/tinodeState';
-import { dedupeConversations } from '../utils/conversationSync';
+import { dedupeConversations, isTinodeConversationSnapshot } from '../utils/conversationSync';
 import { canKeepTinodeAvatarAfterProfileRejection } from '../utils/avatarPolicy';
 import { useCallStore } from './callStore';
 
@@ -59,6 +59,7 @@ function mergeConversation(previous: Conversation[], incoming: Conversation) {
   const index = previous.findIndex(item => item.id === incoming.id || (incoming.tinodeTopic && item.tinodeTopic === incoming.tinodeTopic));
   if (index < 0) return [incoming, ...previous];
   const next = [...previous];
+  const incomingTinodeSnapshot = isTinodeConversationSnapshot(incoming);
   next[index] = {
     ...next[index],
     ...incoming,
@@ -68,6 +69,11 @@ function mergeConversation(previous: Conversation[], incoming: Conversation) {
     name: incoming.name || next[index].name,
     avatarUrl: incoming.avatarUrl || next[index].avatarUrl,
     managementId: incoming.managementId !== incoming.tinodeTopic ? incoming.managementId : next[index].managementId,
+    notificationMutedUntil: incomingTinodeSnapshot
+      ? next[index].notificationMutedUntil
+      : incoming.notificationMutedUntil !== undefined
+        ? incoming.notificationMutedUntil
+        : next[index].notificationMutedUntil,
   };
   return next.sort((a, b) => (Date.parse(b.updatedAt || '') || 0) - (Date.parse(a.updatedAt || '') || 0));
 }

@@ -300,6 +300,9 @@ test('keeps notification mute updates independent from Tinode membership refresh
   assert.match(notificationUpdateSource, /notification-settings/);
   assert.match(notificationUpdateSource, /muted_until/);
   assert.doesNotMatch(notificationUpdateSource, /getFreshTinodeAuth|membershipApiRequest/);
+  assert.match(appSource, /notificationMutedUntil: mergeConversationNotificationMute\(/);
+  assert.match(mobileStoreSource, /isTinodeConversationSnapshot/);
+  assert.match(mobileStoreSource, /incomingTinodeSnapshot/);
 });
 
 test('keeps unread emphasis and latest-message navigation in the ChatUI layer', () => {

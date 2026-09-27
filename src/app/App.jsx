@@ -22,6 +22,7 @@ import {
   firstVisibleConversationId,
   isManagementConversationId,
   mergeDeliveryStatus,
+  mergeConversationNotificationMute,
   mergeConversationReadState,
   mergeManagementAvatar,
   normalizeConversationShape,
@@ -2186,6 +2187,12 @@ function mergeTinodeConversation(existing, incoming, { viewerId = '' } = {}) {
       ? safeIncoming.directMessagingBlocked
       : safeExisting.directMessagingBlocked,
     directBlockExplicit: safeExisting.directBlockExplicit || safeIncoming.directBlockExplicit,
+    // Tinode does not carry viewer-scoped mute state. Only an explicit value
+    // from Chatmgt may replace the persisted setting.
+    notificationMutedUntil: mergeConversationNotificationMute(
+      safeExisting.notificationMutedUntil,
+      safeIncoming.notificationMutedUntil,
+    ),
     lastMsg,
     time: activity.time,
     updatedAt: activity.updatedAt,

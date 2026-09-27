@@ -10,6 +10,7 @@ import {
   ensureConversationEntry,
   firstVisibleConversationId,
   mergeManagementAvatar,
+  mergeConversationNotificationMute,
   mergeConversationReadState,
   mergeDeliveryStatus,
   latestConversationMessage,
@@ -289,6 +290,16 @@ test('Tinode snapshots without pin metadata preserve their non-authoritative mar
   assert.equal(realtime.pinnedExplicit, false);
   assert.equal(normalizedAgain.pinnedExplicit, false);
   assert.equal(management.pinnedExplicit, true);
+});
+
+test('viewer-scoped notification mute survives Tinode snapshots and accepts explicit unmute', () => {
+  const muted = normalizeConversationShape({ notificationMutedUntil: 0 });
+  const realtime = normalizeConversationShape({ id: 'grp-live', snapshotSource: 'tinode' });
+  const unmuted = normalizeConversationShape({ notificationMutedUntil: null, managementSnapshot: true });
+
+  assert.equal(mergeConversationNotificationMute(muted.notificationMutedUntil, realtime.notificationMutedUntil), 0);
+  assert.equal(mergeConversationNotificationMute(muted.notificationMutedUntil, unmuted.notificationMutedUntil), null);
+  assert.equal(normalizeConversationShape({ notification_muted_until: '1785733200' }).notificationMutedUntil, 1785733200);
 });
 
 test('Tinode snapshots cannot clear viewer-scoped direct block metadata', () => {
