@@ -102,6 +102,7 @@ const groupPermissionMigrationRequests = new Map();
 const groupPrivacyMigrationRequests = new Map();
 const groupAccessRefreshRequests = new Map();
 const earlierHistoryRequests = new Map();
+const mediaHistoryRequests = new Map();
 const privateGroupTopics = new Set();
 const callInviteKeys = new Set();
 const conversationDelivery = createConversationDelivery();
@@ -141,6 +142,7 @@ const RECONNECT_HISTORY_LIMIT = 100;
 // Open only a bounded window. Older messages are fetched explicitly from the
 // sequence cursor when the user reaches the top of the viewport.
 const INITIAL_HISTORY_LIMIT = 100;
+const MEDIA_HISTORY_PAGE_LIMIT = INITIAL_HISTORY_LIMIT;
 const CENTRAL_MESSAGE_TEXT_LIMIT = MAX_MESSAGE_TEXT_BYTES;
 
 // A host is enough to opt into Tinode mode; assertConfigured below provides a
@@ -572,6 +574,7 @@ function groupBackgroundFromTopic(topic) {
 
 function emitGroupSettingsChange(topic, tinode) {
   if (!topic || tinode !== client || !allowedConversationTopics.has(topic.name)) return;
+  if (conversationEventsSuppressed(topic)) return;
   const rawSettings = groupSettingsFromTopic(topic);
   const settings = normalizeGroupSettings(rawSettings);
   const snapshot = JSON.stringify(settings);
@@ -984,12 +987,14 @@ function toMessage(msg, tinode, topic = null) {
   };
 }
 
-function toConversation(topic, tinode) {
+function toConversation(topic, tinode, { includeAll = false } = {}) {
   const isGroup = topic.isGroupType?.() || topic.name?.startsWith('grp');
   const deletedAt = topic.private?.vichatDeletedAt || '';
   const deletedTimestamp = Date.parse(deletedAt) || 0;
+  const visibleMinSeq = includeAll ? 0 : Number(topic.__vichatVisibleHistoryMinSeq) || 0;
   const loadedMessages = [];
   topic.messages?.(msg => {
+    if (visibleMinSeq > 0 && Number(msg?.seq) > 0 && Number(msg.seq) < visibleMinSeq) return;
     const mapped = toMessage(msg, tinode, topic);
     if (mapped) loadedMessages.push(mapped);
   });
@@ -1472,7 +1477,24 @@ async function enrichConversationProfiles(conversation, tinode = getClient()) {
   };
 }
 
+function conversationEventsSuppressed(topic) {
+  if (Number(topic?.__vichatConversationEventSuppression) <= 0) return false;
+  const scanMaxSeq = Number(topic.__vichatConversationEventSuppressionMaxSeq) || 0;
+  if (scanMaxSeq <= 0) return true;
+  return (Number(topic.maxMsgSeq?.()) || 0) <= scanMaxSeq;
+}
+
+function rememberVisibleHistoryFloor(topic, sequence) {
+  const nextSequence = Number(sequence) || 0;
+  if (!topic || nextSequence <= 0) return;
+  const previousSequence = Number(topic.__vichatVisibleHistoryMinSeq) || 0;
+  topic.__vichatVisibleHistoryMinSeq = previousSequence > 0
+    ? Math.min(previousSequence, nextSequence)
+    : nextSequence;
+}
+
 function emitConversation(topic, tinode = topic?._tinode || getClient()) {
+  if (conversationEventsSuppressed(topic)) return;
   if (!topic || tinode !== client || !allowedConversationTopics.has(topic.name)) return;
   cacheTopicProfiles(topic);
   const sessionUid = tinode.getCurrentUserID();
@@ -1486,6 +1508,7 @@ function emitConversation(topic, tinode = topic?._tinode || getClient()) {
 }
 
 function emitCallInvite(topic, data, tinode) {
+  if (conversationEventsSuppressed(topic)) return;
   if (!topic || !data || tinode !== client || !allowedConversationTopics.has(topic.name)) return;
   const latest = topic.latestMsgVersion?.(data.seq) || data;
   const invite = extractCallInvite(
@@ -1824,6 +1847,9 @@ async function subscribeTopic(topicName, {
     await latestHistory.load(topic, Math.min(historyLimit, INITIAL_HISTORY_LIMIT));
     if (tinode !== client) throw new Error('Tinode session changed.');
   }
+  if (historyLimit > 0 && !topic.__vichatMediaHistoryLoaded) {
+    rememberVisibleHistoryFloor(topic, topic.minMsgSeq?.() || topic._minSeq);
+  }
   if (tinode !== client) throw new Error('Tinode session changed.');
   acknowledgeTopicReceived(topic);
   emitGroupSettingsChange(topic, tinode);
@@ -1848,6 +1874,7 @@ async function loadEarlierTopicMessages(topicName, limit = INITIAL_HISTORY_LIMIT
     await fetchTopicData(topic, query.build());
     if (tinode !== client) throw new Error('Tinode session changed.');
     const after = Number(topic.minMsgSeq?.()) || Number(topic._minSeq) || 0;
+    rememberVisibleHistoryFloor(topic, after);
     emitConversation(topic, tinode);
     return {
       conversation: toConversation(topic, tinode),
@@ -1858,6 +1885,56 @@ async function loadEarlierTopicMessages(topicName, limit = INITIAL_HISTORY_LIMIT
     if (earlierHistoryRequests.get(topicName) === request) earlierHistoryRequests.delete(topicName);
   });
   earlierHistoryRequests.set(topicName, request);
+  return request;
+}
+
+async function loadAllTopicMessages(topicName, limit = MEDIA_HISTORY_PAGE_LIMIT) {
+  const tinode = getClient();
+  if (!topicName) return null;
+  if (mediaHistoryRequests.has(topicName)) return mediaHistoryRequests.get(topicName);
+
+  const boundedLimit = Math.max(1, Math.min(INITIAL_HISTORY_LIMIT, Math.trunc(Number(limit) || MEDIA_HISTORY_PAGE_LIMIT)));
+  const request = (async () => {
+    const topic = wireTopic(tinode.getTopic(topicName));
+    topic.__vichatConversationEventSuppression = (Number(topic.__vichatConversationEventSuppression) || 0) + 1;
+    topic.__vichatConversationEventSuppressionMaxSeq = Number(topic.maxMsgSeq?.()) || 0;
+    let completedConversation = null;
+    try {
+      // Load the normal latest window first, then walk the cursor backwards.
+      // Suppression keeps this background scan out of the visible message list.
+      await subscribeTopic(topicName, {
+        historyLimit: boundedLimit,
+        emit: false,
+      });
+      if (tinode !== client) throw new Error('Tinode session changed.');
+      topic.__vichatConversationEventSuppressionMaxSeq = Number(topic.maxMsgSeq?.()) || topic.__vichatConversationEventSuppressionMaxSeq;
+
+      let before = Number(topic.minMsgSeq?.()) || Number(topic._minSeq) || 0;
+      while (before > 1) {
+        const query = topic.startMetaQuery().withEarlierData(boundedLimit);
+        if (typeof query.withDel === 'function') query.withDel(undefined, boundedLimit);
+        await fetchTopicData(topic, query.build());
+        if (tinode !== client) throw new Error('Tinode session changed.');
+        const after = Number(topic.minMsgSeq?.()) || Number(topic._minSeq) || 0;
+        if (after <= 0 || after >= before) break;
+        before = after;
+      }
+      topic.__vichatMediaHistoryLoaded = true;
+      completedConversation = toConversation(topic, tinode, { includeAll: true });
+      return completedConversation;
+    } finally {
+      const remaining = (Number(topic.__vichatConversationEventSuppression) || 0) - 1;
+      if (remaining > 0) topic.__vichatConversationEventSuppression = remaining;
+      else {
+        delete topic.__vichatConversationEventSuppression;
+        delete topic.__vichatConversationEventSuppressionMaxSeq;
+        if (completedConversation && tinode === client) emitConversation(topic, tinode);
+      }
+    }
+  })().finally(() => {
+    if (mediaHistoryRequests.get(topicName) === request) mediaHistoryRequests.delete(topicName);
+  });
+  mediaHistoryRequests.set(topicName, request);
   return request;
 }
 
@@ -1933,6 +2010,7 @@ function resetSessionState({ clearEventListeners = false } = {}) {
   conversationBackgroundAuxRequests.clear();
   conversationBackgroundAuxTopics.clear();
   earlierHistoryRequests.clear();
+  mediaHistoryRequests.clear();
   latestHistory.clear();
   groupPermissionMigrationRequests.clear();
   groupPrivacyMigrationRequests.clear();
@@ -2470,6 +2548,7 @@ export const tinodeClient = {
     const topic = await subscribeTopic(topicName, { historyLimit: 0 });
     await fetchTopicData(topic, topic.startMetaQuery().withDataList(normalizedSequences).build());
     if (tinode !== client) throw new Error('Tinode session changed.');
+    rememberVisibleHistoryFloor(topic, Math.min(...normalizedSequences));
     emitConversation(topic);
     return toConversation(topic, tinode);
   },
@@ -2480,6 +2559,7 @@ export const tinodeClient = {
     const topic = await subscribeTopic(topicName, { historyLimit: 0 });
     await fetchTopicData(topic, topic.startMetaQuery().withData(since, since + BACKGROUND_HISTORY_LIMIT, BACKGROUND_HISTORY_LIMIT).build());
     if (tinode !== client) throw new Error('Tinode session changed.');
+    rememberVisibleHistoryFloor(topic, since);
     emitConversation(topic);
     return toConversation(topic, tinode);
   },
@@ -2491,6 +2571,12 @@ export const tinodeClient = {
       ...result.conversation,
       history: { hasEarlier: result.hasEarlier, loaded: result.loaded },
     };
+  },
+
+  async loadConversationMediaHistory(topicName, options = {}) {
+    const conversation = await loadAllTopicMessages(topicName, options.limit || MEDIA_HISTORY_PAGE_LIMIT);
+    if (!conversation) return null;
+    return { messages: conversation.messages || [] };
   },
 
   async refreshConversation(topicName) {

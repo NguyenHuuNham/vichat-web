@@ -122,6 +122,7 @@ import {
   normalizeImageBatch,
 } from '../features/chat/services/imageBatchLayout';
 import { buildMessageShareRecipients, messageShareRecipientMatchesContact } from '../features/chat/services/messageShareRecipients';
+import { mergeMediaHistoryMessages } from '../features/chat/services/mediaHistory';
 import {
   MAX_PASTED_ATTACHMENTS,
   clipboardAttachmentFiles,
@@ -3633,6 +3634,8 @@ function App() {
   const [mediaSearchQuery, setMediaSearchQuery] = useState('');
   const [mediaFromDate, setMediaFromDate] = useState('');
   const [mediaToDate, setMediaToDate] = useState('');
+  const [mediaHistoryByTopic, setMediaHistoryByTopic] = useState({});
+  const [mediaHistoryStatusByTopic, setMediaHistoryStatusByTopic] = useState({});
 
   useEffect(() => {
     if (!mediaBrowserOpen) return undefined;
@@ -3712,6 +3715,8 @@ function App() {
   const notificationCustomAudioRef = useRef(null);
   const notificationSoundFileInputRef = useRef(null);
   const conversationBackgroundFileInputRef = useRef(null);
+  const mediaHistoryCacheRef = useRef(new Map());
+  const mediaHistoryRequestsRef = useRef(new Map());
   const notificationOpenHandlerRef = useRef(null);
   const contactsSyncTimerRef = useRef(null);
   const contactsSyncRequestRef = useRef(0);
@@ -4054,6 +4059,68 @@ function App() {
     badge: 0,
     };
   }, [activeChatSource]);
+  const activeMediaHistoryTenant = String(accountTenantId(currentUser) || '').trim();
+  const activeMediaHistoryTopic = chatMode === 'tinode' && !activeChat.isChatbot
+    ? String(activeChat.tinodeTopic || '').trim()
+    : '';
+  const activeMediaHistoryKey = activeMediaHistoryTopic
+    ? `${accountSessionRef.current}:${activeMediaHistoryTenant}:${activeMediaHistoryTopic}`
+    : '';
+  const activeMediaHistoryLoading = mediaHistoryStatusByTopic[activeMediaHistoryKey] === 'loading';
+
+  useEffect(() => {
+    if (isLoggedIn) return;
+    mediaHistoryCacheRef.current.clear();
+    mediaHistoryRequestsRef.current.clear();
+    setMediaHistoryByTopic({});
+    setMediaHistoryStatusByTopic({});
+  }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (!isLoggedIn || chatMode !== 'tinode' || !activeMediaHistoryTopic || !activeMediaHistoryKey) return undefined;
+    if (mediaHistoryCacheRef.current.has(activeMediaHistoryKey)) return undefined;
+    if (mediaHistoryRequestsRef.current.has(activeMediaHistoryKey)) return undefined;
+
+    const requestSession = accountSessionRef.current;
+    const requestTenant = activeMediaHistoryTenant;
+    const topicName = activeMediaHistoryTopic;
+    const key = activeMediaHistoryKey;
+    setMediaHistoryStatusByTopic(previous => ({ ...previous, [key]: 'loading' }));
+    const request = tinodeClient.loadConversationMediaHistory(topicName, { limit: 100 })
+      .then(snapshot => {
+        if (
+          accountSessionRef.current !== requestSession
+          || String(accountTenantId(currentUserRef.current) || '').trim() !== requestTenant
+        ) return;
+        const messages = (Array.isArray(snapshot?.messages) ? snapshot.messages : [])
+          .filter(message => mediaEntriesForMessages([message]).length > 0);
+        mediaHistoryCacheRef.current.set(key, messages);
+        setMediaHistoryByTopic(previous => ({ ...previous, [key]: messages }));
+        setMediaHistoryStatusByTopic(previous => ({ ...previous, [key]: 'ready' }));
+      })
+      .catch(error => {
+        if (
+          accountSessionRef.current === requestSession
+          && String(accountTenantId(currentUserRef.current) || '').trim() === requestTenant
+        ) {
+          setMediaHistoryStatusByTopic(previous => ({ ...previous, [key]: 'error' }));
+          console.warn('ViChat: media history preload failed', error);
+        }
+      })
+      .finally(() => {
+        if (mediaHistoryRequestsRef.current.get(key) === request) mediaHistoryRequestsRef.current.delete(key);
+      });
+    mediaHistoryRequestsRef.current.set(key, request);
+    return undefined;
+  }, [
+    activeMediaHistoryKey,
+    activeMediaHistoryTenant,
+    activeMediaHistoryTopic,
+    chatMode,
+    connectionStatus,
+    isLoggedIn,
+    managementConversationSession,
+  ]);
   const activePastedAttachments = pastedAttachmentDrafts[currentChatId] || [];
   const reactionDetailsMessage = reactionDetails
     ? roomMessages(activeChat).find(message => message?.id === reactionDetails.messageId) || reactionDetails.message
@@ -13584,7 +13651,11 @@ function App() {
     .filter(message => !isStickerMessage(message) && (message.type === 'file' || message.type === 'image'))
     .map(message => ({ ...message, roomName: room.name, roomId: room.id })));
 
-  const activeMediaEntries = mediaEntriesForMessages(roomMessages(activeChat));
+  const activeMediaMessages = mergeMediaHistoryMessages(
+    roomMessages(activeChat),
+    mediaHistoryByTopic[activeMediaHistoryKey] || [],
+  );
+  const activeMediaEntries = mediaEntriesForMessages(activeMediaMessages);
   const mediaSenderOptions = [...new Map(activeMediaEntries
     .map(entry => [entry.senderId || `name:${entry.senderName}`, entry.senderName])
     .filter(([id, name]) => Boolean(id && name))).entries()]
@@ -16720,7 +16791,11 @@ function App() {
                 ))}
               </div>
               {mediaCounts[mediaBrowserTab] === 0 ? (
-                <div className="detail-media-empty">{appCopy.t('Chưa có nội dung trong mục này.')}</div>
+                <div className="detail-media-empty" role={activeMediaHistoryLoading ? 'status' : undefined}>
+                  {activeMediaHistoryLoading
+                    ? <><i className="fa-solid fa-spinner fa-spin"></i> {appCopy.t('Đang tải...')}</>
+                    : appCopy.t('Chưa có nội dung trong mục này.')}
+                </div>
               ) : (
                 <div className="detail-media-preview-grid">
                   {activeMediaEntries.filter(entry => entry.kind === mediaBrowserTab).slice(0, 4).map(entry => (
@@ -16847,7 +16922,9 @@ function App() {
 
             <div className="media-browser-summary"><span>{filteredMediaEntries.length} {appCopy.t('mục')}</span><span>{appCopy.t('Nhóm theo ngày gửi')}</span></div>
             <div className="media-browser-results">
-              {mediaGroups.length === 0 ? (
+              {activeMediaHistoryLoading && activeMediaEntries.length === 0 ? (
+                <div className="workspace-empty media-browser-empty" role="status"><i className="fa-solid fa-spinner fa-spin"></i><span>{appCopy.t('Đang tải...')}</span></div>
+              ) : mediaGroups.length === 0 ? (
                 <div className="workspace-empty media-browser-empty"><i className="fa-regular fa-folder-open"></i><span>{appCopy.t('Không có nội dung phù hợp với bộ lọc.')}</span></div>
               ) : mediaGroups.map(group => (
                 <section className="media-date-group" key={group.key}>
