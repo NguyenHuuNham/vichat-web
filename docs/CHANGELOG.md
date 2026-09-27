@@ -6,6 +6,24 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-27-02 - Nap day du anh file lien ket khi mo chat
+
+- Thoi gian: 2026-09-27 22:27 (Asia/Saigon)
+- Loai: Sua loi | Web | Tinode | Kiem thu | Tai lieu
+- Trang thai: Hoan tat; source da commit/push; web da deploy production va verify; chua UAT tai khoan that.
+- Muc tieu: Muc anh, file va lien ket trong chi tiet cuoc tro chuyen phai hien du ngay khi mo chat, khong phu thuoc vao viec nguoi dung cuon lich su.
+- Pham vi: Tai lich su Tinode cho media o nen va ghep vao panel chi tiet; khong mo rong danh sach tin nhan dang hien thi, unread, scroll, gui tin hoac mobile flow.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/mediaHistory.js`, `src/features/chat/services/mediaHistory.test.js`, `package.json`, `dist/index.html`, va file nay.
+- Nguyen nhan: Panel chi tinh media tu cua so 100 tin nhan dang nam trong room; Tinode chi tai tin cu khi nguoi dung cuon len.
+- Noi dung: Them loader phan trang Tinode doc im lang den dau lich su, luu rieng cac tin co media/lien ket theo session + tenant + topic, uu tien snapshot live khi merge va hien trang thai dang tai thay vi hien rong gia.
+- Quyet dinh ky thuat: Loader nen khong emit conversation snapshot va khong day toan bo lich su vao React message list; cache theo phien de tranh dung nham du lieu sau logout/doi tenant.
+- Database/API/cau hinh: Khong migration, endpoint moi, bien moi truong hoac thay doi hop dong.
+- Kiem thu: `node --test src/features/chat/services/mediaHistory.test.js src/features/chat/services/chatRealtime.test.js` dat `54/54`; `npm run test:frontend -- --test-concurrency=1` dat `446 pass, 1 fail`, failure tai `src/features/chat/services/chatManagementService.test.js:760` la assertion mobile group-owner departure da co san va khong lien quan lan sua nay; `npm run lint` exit `0` voi warning legacy/mobile/vendor; `npm run build:production` exit `0` voi canh bao chunk App vuot 500 KB; `cd mobile; npm test -- --reporter=dot` dat `23 file, 73/73`; `cd mobile; npm run typecheck` dat; `git diff --check` dat.
+- Trien khai: Archive `/opt/deploy/chat/incoming/vichat-media-history-b4c4325.tar.gz` co SHA-256 `DF6BE058A07EBE108889F113CE013314A98BCC77605F634FE91B7E149E1C7DDC`; release `/opt/deploy/chat/releases/media-history-b4c4325-20260927-r1` dang la `current`; ChatUI container `26fa1ba8ff54` healthy, non-chat containers khong doi; public ChatUI/Chatmgt health deu dat; public bundle `/assets/index-BvL9usWX.js`, `/assets/App-CV6F4F_0.js`, `/assets/tinodeClient-N8BAwNDz.js` co marker preload media history; log ChatUI candidate sach.
+- Rui ro con lai: Chua UAT tai khoan that voi chat co lich su media lon; browser bridge bao `privileged native pipe bridge is not available`; mobile khong co panel Anh, file va lien ket tuong ung nen chi da chay regression/typecheck, chua UAT attachment history tren thiet bi that.
+- Viec tiep theo: Hard refresh web, mo chat co anh/file/lien ket cu -> doi chat -> quay lai va xac nhan panel hien ngay; sau do cuon tin nhan, gui file moi, doi unread va kiem tra khong day lich su cu vao message list; UAT mobile attachment tren thiet bi neu can.
+- Commit/PR: Source commit `b4c4325` da push len `github/fix/full-audit-regressions`; production release `media-history-b4c4325-20260927-r1` dang active.
+
 ## 2026-09-27-01 - Giu trang thai tat thong bao khi doi cuoc tro chuyen
 
 - Thoi gian: 2026-09-27 19:55 (Asia/Saigon)
