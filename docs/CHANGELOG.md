@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-27 23:05 (Asia/Saigon)
 - Loai: Sua loi | Web | Tinode | Hieu nang | Kiem thu | Tai lieu
-- Trang thai: Da sua va kiem thu local; dang cho commit va deploy production.
+- Trang thai: Hoan tat; commit `240f712` da push; web da deploy production va verify; chua UAT tai khoan that.
 - Muc tieu: Tin nhan cua cua so chat phai hien theo cua so history gan nhat ngay khi mo, khong cho den khi quet toan bo media history.
 - Pham vi: Tinode topic event delivery, preload lich su media web, tinh toan panel Anh/file/lien ket; khong doi mobile transport, API, database hoac unread contract.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/mediaHistory.js`, `src/features/chat/services/mediaHistory.test.js`, `dist/index.html`, va file nay.
@@ -20,8 +20,8 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong migration, endpoint moi, bien moi truong hoac thay doi hop dong.
 - Kiem thu: `node --test src/features/chat/services/mediaHistory.test.js src/features/chat/services/chatRealtime.test.js` dat `55/55`; `npm run lint` exit `0` voi warning legacy; `npm run build:production` exit `0` voi canh bao chunk App vuot 500 KB; `npm test -- --reporter=dot` trong `mobile/` dat `23 file, 73/73`; `npm run typecheck` trong `mobile/` dat; full `npm run test:frontend -- --test-concurrency=1` con 1 failure cu tai `src/features/chat/services/chatManagementService.test.js:760`, khong lien quan; `git diff --check` dat.
 - Rui ro con lai: Chua UAT tai khoan production that voi chat co history lon; browser bridge van khong khoi tao duoc native pipe trong moi truong nay.
-- Viec tiep theo: Commit/push, deploy rieng ChatUI, hard refresh, mo chat co tin cu va tin moi dong thoi, roi xac nhan tin moi hien truoc khi media history quet xong.
-- Commit/PR: Chua tao.
+- Viec tiep theo: Hard refresh, mo chat co tin cu va tin moi dong thoi, roi xac nhan tin moi hien truoc khi media history quet xong.
+- Commit/PR: Source commit `240f712` da push len `github/fix/full-audit-regressions`; production release `live-messages-240f712-20260927-r1` dang active. Archive SHA-256 `3E8750E5F9081F3FE81F42D24C63F8800AF96DB7DD1009657935F09E191E4D05`; public bundle `/assets/index-DiccKpTU.js`, `/assets/App-C21UiOld.js`, `/assets/tinodeClient-CyBi6k0k.js` co marker live-message path.
 
 ## 2026-09-27-02 - Nap day du anh file lien ket khi mo chat
 
