@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-27 23:47 (Asia/Saigon)
 - Loai: Sua loi | Web | Thong bao | Phan loai | UI | Kiem thu | Tai lieu
-- Trang thai: Hoan tat source; chua commit va chua deploy.
+- Trang thai: Hoan tat; source commit `69a7f70` da push; web da deploy production va verify; mobile khong doi trong commit nay.
 - Muc tieu: Giu mute viewer-scoped qua moi snapshot Tinode, hien dung icon chuong im lang va cho phep gan/loc phan loai ma khong lam dong chat roi.
 - Pham vi: Merge conversation web, icon thong bao trong menu/chi tiet, key phan loai theo management conversation va badge phan loai trong sidebar; khong sua mobile transport, API, database, unread hay realtime message flow.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/conversationCategoryPolicy.js`, `src/features/chat/services/conversationCategoryPolicy.test.js`, `src/features/chat/services/conversationCategoryConversations.js`, `src/features/chat/services/chatManagementService.test.js`, `src/styles/index.css`, `dist/index.html`, va file nay.
@@ -19,9 +19,10 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Quyet dinh ky thuat: Chatmgt van la nguon chuan cho mute viewer-scoped; Tinode khong duoc ghi de metadata nay. Nhan phan loai van duoc giu trong menu/bo loc/manager de khong mat chuc nang, chi an chu o badge sidebar.
 - Database/API/cau hinh: Khong migration, endpoint, bien moi truong hoac thay doi contract.
 - Kiem thu: `node --test src/features/chat/services/chatRealtime.test.js src/features/chat/services/conversationCategoryPolicy.test.js src/features/chat/services/conversationCategoryConversations.test.js src/features/chat/services/conversationListFilter.test.js src/features/chat/services/chatManagementService.test.js` dat `136 pass, 1 fail`; failure cu tai `chatManagementService.test.js:760` ve callback mobile group-owner departure, khong lien quan. `npm run test:frontend -- --test-concurrency=1` dat `449 pass, 1 fail` voi cung failure cu; `npm run lint` exit `0` voi warning legacy da co; `npm run build:production` exit `0` voi canh bao chunk App vuot 500 KB; `git diff --check` dat.
-- Rui ro con lai: Chua UAT browser voi tai khoan that cho mute sau doi chat/reconnect va gan/loc category; Font Awesome van phu thuoc stylesheet CDN hien tai.
-- Viec tiep theo: Commit, push, deploy chi service `chat`, hard refresh va UAT mute/category tren web; khong can migration mobile.
-- Commit/PR: Chua tao.
+- Rui ro con lai: Chua UAT browser voi tai khoan that cho mute sau doi chat/reconnect va gan/loc category; Font Awesome van phu thuoc stylesheet CDN hien tai; mobile khong co thay doi/artifact moi trong lan nay.
+- Trien khai: Archive `vichat-mute-category-69a7f70.tar.gz` co SHA-256 `1AEC2473F38E9711FBF52A07E534AF24DD0BBB9005EA26AC7D2186F8E734BEF5`; r1/r2 rollback tu dong tai gate verifier public, khong thay doi service ngoai `chat`; r3 thanh cong, release `/opt/deploy/chat/releases/mute-category-69a7f70-20260927-r3` dang la `current`, `previous` tro `/opt/deploy/chat/releases/live-messages-240f712-20260927-r1`; container `e1701ea794a2` healthy, image `sha256:68de2b9650264851b7f3d313a067317221c8c647c62ef529a0102968edc9bccc`; local/public health `ok`, public WSS `101`, public entry `/assets/index-CuLp0V52.js`, CSS `/assets/index-B1sUJyGf.css`, non-chat containers khong doi.
+- Viec tiep theo: Hard refresh va UAT mute/category tren web voi tai khoan that; khong can migration hay deploy mobile cho commit nay.
+- Commit/PR: Source commit `69a7f70` da push len `github/fix/full-audit-regressions`; docs/deploy follow-up commit se ghi nhan release nay.
 
 ## 2026-09-27-03 - Khong de preload media lam tre tin nhan
 
