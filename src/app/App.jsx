@@ -65,6 +65,7 @@ import {
 import {
   CONVERSATION_CATEGORY_OPTIONS,
   applyLocalConversationCategories,
+  conversationCategoryKey,
   readConversationCategoryState,
   removeConversationCategory,
   reorderConversationCategories,
@@ -2189,11 +2190,12 @@ function mergeTinodeConversation(existing, incoming, { viewerId = '' } = {}) {
       ? safeIncoming.directMessagingBlocked
       : safeExisting.directMessagingBlocked,
     directBlockExplicit: safeExisting.directBlockExplicit || safeIncoming.directBlockExplicit,
-    // Tinode does not carry viewer-scoped mute state. Only an explicit value
-    // from Chatmgt may replace the persisted setting.
+    // Only a Chatmgt snapshot owns viewer-scoped mute metadata. Tinode may
+    // include a null/default field while refreshing a topic.
     notificationMutedUntil: mergeConversationNotificationMute(
       safeExisting.notificationMutedUntil,
       safeIncoming.notificationMutedUntil,
+      { authoritative: incomingManagementSnapshot },
     ),
     lastMsg,
     time: activity.time,
@@ -4246,7 +4248,7 @@ function App() {
     }, 240);
   };
   const conversationCategoryFor = useCallback(room => {
-    const key = String(room?.managementId || room?.id || '');
+    const key = conversationCategoryKey(room);
     const categoryId = conversationCategories[key] || room?.category || '';
     return conversationCategoryOptions.find(option => option.id === categoryId) || null;
   }, [conversationCategories, conversationCategoryOptions]);
@@ -10130,7 +10132,7 @@ function App() {
     setConversationCategories(categoryState.assignments);
     setConversations(previous => {
       const next = Object.fromEntries(safeConversationEntries(previous).map(([id, room]) => {
-        const key = String(room.managementId || room.id || id);
+        const key = conversationCategoryKey(room, id);
         return [id, { ...room, category: categoryState.assignments[key] || '' }];
       }));
       conversationsRef.current = next;
@@ -10142,7 +10144,7 @@ function App() {
     if (!room) return;
     const viewerKey = managementViewerId || viewerId;
     if (!viewerKey) return;
-    const conversationId = room.managementId || room.id;
+    const conversationId = conversationCategoryKey(room);
     setConversationCategory(
       viewerKey,
       conversationId,
@@ -14691,7 +14693,17 @@ function App() {
                       <span className={`conv-name ${hasUnread ? 'unread' : ''}`}>
                         {room.pinned && <i className="fa-solid fa-thumbtack conv-pinned-icon" title={appCopy.t('Đã ghim')} aria-label={appCopy.t('Đã ghim')}></i>}
                         {roomName}
-                        {roomCategory && <span className={`conversation-category-tag category-${roomCategory.id}`} style={{ '--category-color': roomCategory.color }} title={`${appCopy.t('Phân loại')}: ${conversationCategoryLabel(roomCategory)}`}>{conversationCategoryLabel(roomCategory)}</span>}
+                        {roomCategory && (
+                          <span
+                            className={`conversation-category-tag category-${roomCategory.id}`}
+                            style={{ '--category-color': roomCategory.color }}
+                            title={`${appCopy.t('Phân loại')}: ${conversationCategoryLabel(roomCategory)}`}
+                            role="img"
+                            aria-label={`${appCopy.t('Phân loại')}: ${conversationCategoryLabel(roomCategory)}`}
+                          >
+                            <i className="fa-solid fa-tag" aria-hidden="true"></i>
+                          </span>
+                        )}
                       </span>
                       <span
                         className={hasDraft ? 'conv-draft-status conv-time' : 'conv-time'}
@@ -14767,7 +14779,7 @@ function App() {
               <i className="fa-regular fa-envelope"></i>{appCopy.t(menuRoomUnread.hasUnread ? 'Đánh dấu đã đọc' : 'Đánh dấu chưa đọc')}
             </button>
             <button type="button" role="menuitem" onClick={() => handleConversationMenuAction('mute', menuRoom)}>
-              <i className={`fa-regular ${menuRoomMuted ? 'fa-bell' : 'fa-bell-slash'}`}></i>{appCopy.t(menuRoomMuted ? 'Bật thông báo' : 'Tắt thông báo')}
+              <i className={`fa-solid ${menuRoomMuted ? 'fa-bell' : 'fa-bell-slash'}`}></i>{appCopy.t(menuRoomMuted ? 'Bật thông báo' : 'Tắt thông báo')}
             </button>
             {!menuRoom.isGroup && !menuRoom.isChatbot && (
               <button type="button" role="menuitem" onClick={() => handleConversationMenuAction('add-to-group', menuRoom)}>
@@ -16418,7 +16430,7 @@ function App() {
                 onClick={handleConversationMuteToggle}
                 disabled={isUpdatingNotificationMute}
               >
-                <span className="group-detail-quick-icon"><i className={`fa-regular ${activeChatMuted ? 'fa-bell-slash' : 'fa-bell'}`}></i></span>
+                <span className="group-detail-quick-icon"><i className={`fa-solid ${activeChatMuted ? 'fa-bell-slash' : 'fa-bell'}`}></i></span>
                 <span>{appCopy.t('Tắt thông báo')}</span>
               </button>
               <button
@@ -16854,7 +16866,7 @@ function App() {
             {!activeChat.isChatbot && activeChat.id !== 'empty' && !activeChat.isGroup && (
               <div className="action-row">
                 <div className="action-label">
-                  <i className={`fa-regular ${activeChatMuted ? 'fa-bell-slash' : 'fa-bell'}`}></i>
+                  <i className={`fa-solid ${activeChatMuted ? 'fa-bell-slash' : 'fa-bell'}`}></i>
                   <span className="action-label-copy">
                     <strong>{appCopy.t('Tắt thông báo')}</strong>
                     {activeChatMuteLabel && <small>{activeChatMuteLabel}</small>}
@@ -17317,7 +17329,7 @@ function App() {
                     })}
                   </div>
                 )}
-                {notifications.length === 0 && friendNotifications.length === 0 ? <div className="workspace-empty"><i className="fa-regular fa-bell-slash"></i><span>{appCopy.t('Không có thông báo mới.')}</span></div> : notifications.length > 0 && (
+                {notifications.length === 0 && friendNotifications.length === 0 ? <div className="workspace-empty"><i className="fa-solid fa-bell-slash"></i><span>{appCopy.t('Không có thông báo mới.')}</span></div> : notifications.length > 0 && (
                   <div className="workspace-list">
                     {notifications.map(room => {
                       const roomUnread = conversationUnreadIndicators(room);

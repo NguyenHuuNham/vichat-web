@@ -212,6 +212,10 @@ export function normalizeConversationCategory(value, categories = CONVERSATION_C
   return categories.some(category => category.id === normalized) ? normalized : '';
 }
 
+export function conversationCategoryKey(room, fallbackId = '') {
+  return String(room?.managementId || room?.id || fallbackId || '').trim();
+}
+
 export function readConversationCategories(viewerId, aliasViewerIds = [], tenantId = '') {
   if (!viewerId) return {};
   return readConversationCategoryState(viewerId, aliasViewerIds, tenantId).assignments;
@@ -303,7 +307,7 @@ export function setCategoryConversations(viewerId, value, conversationIds, alias
 export function applyLocalConversationCategories(rooms, viewerId, aliasViewerIds = [], tenantId = '') {
   const categories = readConversationCategories(viewerId, aliasViewerIds, tenantId);
   return Object.fromEntries(Object.entries(rooms || {}).map(([id, room]) => {
-    const key = String(room?.managementId || room?.id || id);
+    const key = conversationCategoryKey(room, id);
     return [id, { ...room, category: categories[key] || '' }];
   }));
 }

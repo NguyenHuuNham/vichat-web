@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-27-04 - Sua icon tat thong bao va phan loai hoi thoai
+
+- Thoi gian: 2026-09-27 23:47 (Asia/Saigon)
+- Loai: Sua loi | Web | Thong bao | Phan loai | UI | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source; chua commit va chua deploy.
+- Muc tieu: Giu mute viewer-scoped qua moi snapshot Tinode, hien dung icon chuong im lang va cho phep gan/loc phan loai ma khong lam dong chat roi.
+- Pham vi: Merge conversation web, icon thong bao trong menu/chi tiet, key phan loai theo management conversation va badge phan loai trong sidebar; khong sua mobile transport, API, database, unread hay realtime message flow.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `src/features/chat/services/conversationCategoryPolicy.js`, `src/features/chat/services/conversationCategoryPolicy.test.js`, `src/features/chat/services/conversationCategoryConversations.js`, `src/features/chat/services/chatManagementService.test.js`, `src/styles/index.css`, `dist/index.html`, va file nay.
+- Nguyen nhan: Merge chi phan biet truong mute thieu hay co nhung chua chan gia tri mac dinh tu Tinode; icon `fa-regular fa-bell-slash` khong on dinh trong Font Awesome Free; mot so luong phan loai dung truc tiep room key thay vi mot helper chung.
+- Noi dung: Chi chap nhan mute tu management snapshot authoritative, giu nguyen mute khi Tinode gui null/default; doi icon mute sang `fa-solid`; dong chat chi con icon `fa-tag` co title/aria-label; dong bo key phan loai qua `conversationCategoryKey`.
+- Quyet dinh ky thuat: Chatmgt van la nguon chuan cho mute viewer-scoped; Tinode khong duoc ghi de metadata nay. Nhan phan loai van duoc giu trong menu/bo loc/manager de khong mat chuc nang, chi an chu o badge sidebar.
+- Database/API/cau hinh: Khong migration, endpoint, bien moi truong hoac thay doi contract.
+- Kiem thu: `node --test src/features/chat/services/chatRealtime.test.js src/features/chat/services/conversationCategoryPolicy.test.js src/features/chat/services/conversationCategoryConversations.test.js src/features/chat/services/conversationListFilter.test.js src/features/chat/services/chatManagementService.test.js` dat `136 pass, 1 fail`; failure cu tai `chatManagementService.test.js:760` ve callback mobile group-owner departure, khong lien quan. `npm run test:frontend -- --test-concurrency=1` dat `449 pass, 1 fail` voi cung failure cu; `npm run lint` exit `0` voi warning legacy da co; `npm run build:production` exit `0` voi canh bao chunk App vuot 500 KB; `git diff --check` dat.
+- Rui ro con lai: Chua UAT browser voi tai khoan that cho mute sau doi chat/reconnect va gan/loc category; Font Awesome van phu thuoc stylesheet CDN hien tai.
+- Viec tiep theo: Commit, push, deploy chi service `chat`, hard refresh va UAT mute/category tren web; khong can migration mobile.
+- Commit/PR: Chua tao.
+
 ## 2026-09-27-03 - Khong de preload media lam tre tin nhan
 
 - Thoi gian: 2026-09-27 23:05 (Asia/Saigon)

@@ -821,6 +821,15 @@ test('conversation categories expose viewer-scoped management without touching c
   assert.match(categoryManagerSource, /conversation\.meta/);
   assert.match(stylesSource, /\.conversation-category-color-popover/);
   assert.doesNotMatch(categoryManagerSource, /tinodeClient|chatManagementService|fetch\(/);
+  assert.match(appSource, /fa-solid fa-tag/);
+  assert.doesNotMatch(appSource, /conversation-category-tag[^>]*>\{conversationCategoryLabel\(roomCategory\)\}/);
+  assert.match(appSource, /conversationCategoryKey\(room, id\)/);
+});
+
+test('mute icons use the supported solid Font Awesome glyph in every active mute surface', () => {
+  assert.doesNotMatch(appSource, /fa-regular[^\n]*fa-bell-slash/);
+  assert.match(appSource, /fa-solid[^\n]*fa-bell-slash/);
+  assert.match(appSource, /authoritative: incomingManagementSnapshot/);
 });
 
 test('group message pinning announces the actor without changing direct-chat pin behavior', () => {

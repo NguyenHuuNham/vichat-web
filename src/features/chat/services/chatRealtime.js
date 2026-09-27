@@ -25,7 +25,8 @@ function normalizeConversationNotificationMute(value) {
   return Math.trunc(normalized);
 }
 
-export function mergeConversationNotificationMute(existingValue, incomingValue) {
+export function mergeConversationNotificationMute(existingValue, incomingValue, { authoritative = true } = {}) {
+  if (!authoritative) return existingValue;
   return incomingValue === undefined ? existingValue : incomingValue;
 }
 

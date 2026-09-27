@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   applyLocalConversationCategories,
+  conversationCategoryKey,
   readConversationCategories,
   readConversationCategoryState,
   removeConversationCategory,
@@ -135,3 +136,9 @@ test('sets and clears only valid categories', () => withLocalStorage([], () => {
   assert.deepEqual(setConversationCategory('viewer-1', 'room-1', ''), {});
   assert.deepEqual(setConversationCategory('viewer-1', 'room-1', 'unknown'), {});
 }));
+
+test('uses the management conversation key consistently for category assignments', () => {
+  assert.equal(conversationCategoryKey({ id: 'tinode-topic', managementId: 'managed-room' }), 'managed-room');
+  assert.equal(conversationCategoryKey({ id: 'room-only' }), 'room-only');
+  assert.equal(conversationCategoryKey(null, 'fallback-room'), 'fallback-room');
+});

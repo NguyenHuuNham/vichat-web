@@ -3,9 +3,10 @@ import {
   identitiesOverlap,
 } from '../../contacts/services/accountDirectory.js';
 import { conversationDisplayName } from './chatRealtime.js';
+import { conversationCategoryKey } from './conversationCategoryPolicy.js';
 
 function conversationId(room) {
-  return String(room?.managementId || room?.id || '').trim();
+  return conversationCategoryKey(room);
 }
 
 function displayNameKey(value) {

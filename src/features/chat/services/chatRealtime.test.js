@@ -299,6 +299,8 @@ test('viewer-scoped notification mute survives Tinode snapshots and accepts expl
 
   assert.equal(mergeConversationNotificationMute(muted.notificationMutedUntil, realtime.notificationMutedUntil), 0);
   assert.equal(mergeConversationNotificationMute(muted.notificationMutedUntil, unmuted.notificationMutedUntil), null);
+  assert.equal(mergeConversationNotificationMute(0, null, { authoritative: false }), 0);
+  assert.equal(mergeConversationNotificationMute(0, 1785733200, { authoritative: false }), 0);
   assert.equal(normalizeConversationShape({ notification_muted_until: '1785733200' }).notificationMutedUntil, 1785733200);
 });
 
