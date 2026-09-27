@@ -1,5 +1,6 @@
 import tinodeSdk from 'tinode-sdk';
 import { createConversationDelivery, createLatestHistoryLoader, fetchTopicData } from './tinodeDelivery';
+import { isMediaHistoryPacket } from './mediaHistory';
 import {
   acknowledgeTopicReceived,
   deliveryStatusFromReceiptCursor,
@@ -574,7 +575,6 @@ function groupBackgroundFromTopic(topic) {
 
 function emitGroupSettingsChange(topic, tinode) {
   if (!topic || tinode !== client || !allowedConversationTopics.has(topic.name)) return;
-  if (conversationEventsSuppressed(topic)) return;
   const rawSettings = groupSettingsFromTopic(topic);
   const settings = normalizeGroupSettings(rawSettings);
   const snapshot = JSON.stringify(settings);
@@ -1477,13 +1477,6 @@ async function enrichConversationProfiles(conversation, tinode = getClient()) {
   };
 }
 
-function conversationEventsSuppressed(topic) {
-  if (Number(topic?.__vichatConversationEventSuppression) <= 0) return false;
-  const scanMaxSeq = Number(topic.__vichatConversationEventSuppressionMaxSeq) || 0;
-  if (scanMaxSeq <= 0) return true;
-  return (Number(topic.maxMsgSeq?.()) || 0) <= scanMaxSeq;
-}
-
 function rememberVisibleHistoryFloor(topic, sequence) {
   const nextSequence = Number(sequence) || 0;
   if (!topic || nextSequence <= 0) return;
@@ -1494,7 +1487,6 @@ function rememberVisibleHistoryFloor(topic, sequence) {
 }
 
 function emitConversation(topic, tinode = topic?._tinode || getClient()) {
-  if (conversationEventsSuppressed(topic)) return;
   if (!topic || tinode !== client || !allowedConversationTopics.has(topic.name)) return;
   cacheTopicProfiles(topic);
   const sessionUid = tinode.getCurrentUserID();
@@ -1508,7 +1500,6 @@ function emitConversation(topic, tinode = topic?._tinode || getClient()) {
 }
 
 function emitCallInvite(topic, data, tinode) {
-  if (conversationEventsSuppressed(topic)) return;
   if (!topic || !data || tinode !== client || !allowedConversationTopics.has(topic.name)) return;
   const latest = topic.latestMsgVersion?.(data.seq) || data;
   const invite = extractCallInvite(
@@ -1663,6 +1654,9 @@ function wireTopic(topic) {
   const topicClient = topic?._tinode || getClient();
   topic.onData = data => {
     rememberTopicUnreadReadSnapshot(topic, data, topicClient);
+    // A media scan may replay old packets while walking backward. Skip only
+    // those packets; a newer live message must still update the chat now.
+    if (isMediaHistoryPacket(topic, data)) return;
     emitCallInvite(topic, data, topicClient);
     emitConversation(topic, topicClient);
   };
@@ -1896,18 +1890,15 @@ async function loadAllTopicMessages(topicName, limit = MEDIA_HISTORY_PAGE_LIMIT)
   const boundedLimit = Math.max(1, Math.min(INITIAL_HISTORY_LIMIT, Math.trunc(Number(limit) || MEDIA_HISTORY_PAGE_LIMIT)));
   const request = (async () => {
     const topic = wireTopic(tinode.getTopic(topicName));
-    topic.__vichatConversationEventSuppression = (Number(topic.__vichatConversationEventSuppression) || 0) + 1;
-    topic.__vichatConversationEventSuppressionMaxSeq = Number(topic.maxMsgSeq?.()) || 0;
-    let completedConversation = null;
     try {
-      // Load the normal latest window first, then walk the cursor backwards.
-      // Suppression keeps this background scan out of the visible message list.
+      // Load the normal latest window first so the chat gets a visible history
+      // floor before the background scan starts.
       await subscribeTopic(topicName, {
         historyLimit: boundedLimit,
         emit: false,
       });
       if (tinode !== client) throw new Error('Tinode session changed.');
-      topic.__vichatConversationEventSuppressionMaxSeq = Number(topic.maxMsgSeq?.()) || topic.__vichatConversationEventSuppressionMaxSeq;
+      topic.__vichatMediaHistoryScanMaxSeq = Number(topic.maxMsgSeq?.()) || 0;
 
       let before = Number(topic.minMsgSeq?.()) || Number(topic._minSeq) || 0;
       while (before > 1) {
@@ -1920,16 +1911,9 @@ async function loadAllTopicMessages(topicName, limit = MEDIA_HISTORY_PAGE_LIMIT)
         before = after;
       }
       topic.__vichatMediaHistoryLoaded = true;
-      completedConversation = toConversation(topic, tinode, { includeAll: true });
-      return completedConversation;
+      return toConversation(topic, tinode, { includeAll: true });
     } finally {
-      const remaining = (Number(topic.__vichatConversationEventSuppression) || 0) - 1;
-      if (remaining > 0) topic.__vichatConversationEventSuppression = remaining;
-      else {
-        delete topic.__vichatConversationEventSuppression;
-        delete topic.__vichatConversationEventSuppressionMaxSeq;
-        if (completedConversation && tinode === client) emitConversation(topic, tinode);
-      }
+      delete topic.__vichatMediaHistoryScanMaxSeq;
     }
   })().finally(() => {
     if (mediaHistoryRequests.get(topicName) === request) mediaHistoryRequests.delete(topicName);

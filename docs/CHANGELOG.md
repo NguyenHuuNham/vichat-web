@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-27-03 - Khong de preload media lam tre tin nhan
+
+- Thoi gian: 2026-09-27 23:05 (Asia/Saigon)
+- Loai: Sua loi | Web | Tinode | Hieu nang | Kiem thu | Tai lieu
+- Trang thai: Da sua va kiem thu local; dang cho commit va deploy production.
+- Muc tieu: Tin nhan cua cua so chat phai hien theo cua so history gan nhat ngay khi mo, khong cho den khi quet toan bo media history.
+- Pham vi: Tinode topic event delivery, preload lich su media web, tinh toan panel Anh/file/lien ket; khong doi mobile transport, API, database hoac unread contract.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/mediaHistory.js`, `src/features/chat/services/mediaHistory.test.js`, `dist/index.html`, va file nay.
+- Nguyen nhan: Preload quet lich su doc nguoc ngay luc mo topic va chan ca conversation event trong luc quet; App cung tinh lai toan bo danh sach media tren moi render.
+- Noi dung: Dat visible history floor truoc khi quet nen, chi bo qua packet lich su cu theo sequence floor, cho packet live di thang qua realtime; preload chay sau first render/idle va memo hoa merge/filter media.
+- Quyet dinh ky thuat: Khong dung mot co che suppression chung cho ca history va live; call invite cu trong page history van bi bo qua, nhung message moi hon scan floor khong bi tre.
+- Database/API/cau hinh: Khong migration, endpoint moi, bien moi truong hoac thay doi hop dong.
+- Kiem thu: `node --test src/features/chat/services/mediaHistory.test.js src/features/chat/services/chatRealtime.test.js` dat `55/55`; `npm run lint` exit `0` voi warning legacy; `npm run build:production` exit `0` voi canh bao chunk App vuot 500 KB; `npm test -- --reporter=dot` trong `mobile/` dat `23 file, 73/73`; `npm run typecheck` trong `mobile/` dat; full `npm run test:frontend -- --test-concurrency=1` con 1 failure cu tai `src/features/chat/services/chatManagementService.test.js:760`, khong lien quan; `git diff --check` dat.
+- Rui ro con lai: Chua UAT tai khoan production that voi chat co history lon; browser bridge van khong khoi tao duoc native pipe trong moi truong nay.
+- Viec tiep theo: Commit/push, deploy rieng ChatUI, hard refresh, mo chat co tin cu va tin moi dong thoi, roi xac nhan tin moi hien truoc khi media history quet xong.
+- Commit/PR: Chua tao.
+
 ## 2026-09-27-02 - Nap day du anh file lien ket khi mo chat
 
 - Thoi gian: 2026-09-27 22:27 (Asia/Saigon)

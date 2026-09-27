@@ -2,9 +2,19 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  isMediaHistoryPacket,
   mediaHistoryMessageKeys,
   mergeMediaHistoryMessages,
 } from './mediaHistory.js';
+
+test('media history scan ignores only old packets and keeps newer live packets', () => {
+  const topic = { __vichatMediaHistoryScanMaxSeq: 100 };
+
+  assert.equal(isMediaHistoryPacket(topic, { seq: 99 }), true);
+  assert.equal(isMediaHistoryPacket(topic, { seq: 100 }), true);
+  assert.equal(isMediaHistoryPacket(topic, { seq: 101 }), false);
+  assert.equal(isMediaHistoryPacket(topic, { seq: 0 }), false);
+});
 
 test('media history identities include both message id and Tinode sequence', () => {
   assert.deepEqual(mediaHistoryMessageKeys({ id: 'message-7', seq: 42 }), ['id:message-7', 'seq:42']);

@@ -287,6 +287,7 @@ import {
 } from '../features/chat/services/viewerPreferenceStorage.js';
 
 const PRIMARY_SIDEBAR_STORAGE_PREFIX = 'songhong.primary-sidebar-collapsed';
+const EMPTY_MEDIA_MESSAGES = Object.freeze([]);
 
 function primarySidebarStorageKey(viewerId, tenantId = '') {
   return tenantId
@@ -4067,6 +4068,7 @@ function App() {
     ? `${accountSessionRef.current}:${activeMediaHistoryTenant}:${activeMediaHistoryTopic}`
     : '';
   const activeMediaHistoryLoading = mediaHistoryStatusByTopic[activeMediaHistoryKey] === 'loading';
+  const activeMediaPreloadReady = roomMessages(activeChat).length > 0;
 
   useEffect(() => {
     if (isLoggedIn) return;
@@ -4077,48 +4079,76 @@ function App() {
   }, [isLoggedIn]);
 
   useEffect(() => {
-    if (!isLoggedIn || chatMode !== 'tinode' || !activeMediaHistoryTopic || !activeMediaHistoryKey) return undefined;
+    if (
+      !isLoggedIn
+      || chatMode !== 'tinode'
+      || !activeMediaHistoryTopic
+      || !activeMediaHistoryKey
+      || (!isDetailOpen && !mediaBrowserOpen)
+      || (!activeMediaPreloadReady && !mediaBrowserOpen)
+    ) return undefined;
     if (mediaHistoryCacheRef.current.has(activeMediaHistoryKey)) return undefined;
     if (mediaHistoryRequestsRef.current.has(activeMediaHistoryKey)) return undefined;
 
+    let cancelled = false;
+    let timeoutId = null;
+    let idleId = null;
     const requestSession = accountSessionRef.current;
     const requestTenant = activeMediaHistoryTenant;
     const topicName = activeMediaHistoryTopic;
     const key = activeMediaHistoryKey;
-    setMediaHistoryStatusByTopic(previous => ({ ...previous, [key]: 'loading' }));
-    const request = tinodeClient.loadConversationMediaHistory(topicName, { limit: 100 })
-      .then(snapshot => {
-        if (
-          accountSessionRef.current !== requestSession
-          || String(accountTenantId(currentUserRef.current) || '').trim() !== requestTenant
-        ) return;
-        const messages = (Array.isArray(snapshot?.messages) ? snapshot.messages : [])
-          .filter(message => mediaEntriesForMessages([message]).length > 0);
-        mediaHistoryCacheRef.current.set(key, messages);
-        setMediaHistoryByTopic(previous => ({ ...previous, [key]: messages }));
-        setMediaHistoryStatusByTopic(previous => ({ ...previous, [key]: 'ready' }));
-      })
-      .catch(error => {
-        if (
-          accountSessionRef.current === requestSession
-          && String(accountTenantId(currentUserRef.current) || '').trim() === requestTenant
-        ) {
-          setMediaHistoryStatusByTopic(previous => ({ ...previous, [key]: 'error' }));
-          console.warn('ViChat: media history preload failed', error);
-        }
-      })
-      .finally(() => {
-        if (mediaHistoryRequestsRef.current.get(key) === request) mediaHistoryRequestsRef.current.delete(key);
-      });
-    mediaHistoryRequestsRef.current.set(key, request);
-    return undefined;
+    const start = () => {
+      if (cancelled) return;
+      setMediaHistoryStatusByTopic(previous => ({ ...previous, [key]: 'loading' }));
+      const request = tinodeClient.loadConversationMediaHistory(topicName, { limit: 100 })
+        .then(snapshot => {
+          if (
+            accountSessionRef.current !== requestSession
+            || String(accountTenantId(currentUserRef.current) || '').trim() !== requestTenant
+          ) return;
+          const messages = (Array.isArray(snapshot?.messages) ? snapshot.messages : [])
+            .filter(message => mediaEntriesForMessages([message]).length > 0);
+          mediaHistoryCacheRef.current.set(key, messages);
+          setMediaHistoryByTopic(previous => ({ ...previous, [key]: messages }));
+          setMediaHistoryStatusByTopic(previous => ({ ...previous, [key]: 'ready' }));
+        })
+        .catch(error => {
+          if (
+            accountSessionRef.current === requestSession
+            && String(accountTenantId(currentUserRef.current) || '').trim() === requestTenant
+          ) {
+            setMediaHistoryStatusByTopic(previous => ({ ...previous, [key]: 'error' }));
+            console.warn('ViChat: media history preload failed', error);
+          }
+        })
+        .finally(() => {
+          if (mediaHistoryRequestsRef.current.get(key) === request) mediaHistoryRequestsRef.current.delete(key);
+        });
+      mediaHistoryRequestsRef.current.set(key, request);
+    };
+
+    if (mediaBrowserOpen) {
+      timeoutId = window.setTimeout(start, 0);
+    } else if (typeof window.requestIdleCallback === 'function') {
+      idleId = window.requestIdleCallback(start, { timeout: 1200 });
+    } else {
+      timeoutId = window.setTimeout(start, 600);
+    }
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      if (idleId !== null && typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(idleId);
+    };
   }, [
     activeMediaHistoryKey,
+    activeMediaPreloadReady,
     activeMediaHistoryTenant,
     activeMediaHistoryTopic,
     chatMode,
     connectionStatus,
+    isDetailOpen,
     isLoggedIn,
+    mediaBrowserOpen,
     managementConversationSession,
   ]);
   const activePastedAttachments = pastedAttachmentDrafts[currentChatId] || [];
@@ -13651,42 +13681,49 @@ function App() {
     .filter(message => !isStickerMessage(message) && (message.type === 'file' || message.type === 'image'))
     .map(message => ({ ...message, roomName: room.name, roomId: room.id })));
 
-  const activeMediaMessages = mergeMediaHistoryMessages(
-    roomMessages(activeChat),
-    mediaHistoryByTopic[activeMediaHistoryKey] || [],
+  const activeMediaHistoryMessages = mediaHistoryByTopic[activeMediaHistoryKey] || EMPTY_MEDIA_MESSAGES;
+  const activeMediaMessages = useMemo(
+    () => mergeMediaHistoryMessages(roomMessages(activeChat), activeMediaHistoryMessages),
+    [activeChat, activeMediaHistoryMessages],
   );
-  const activeMediaEntries = mediaEntriesForMessages(activeMediaMessages);
-  const mediaSenderOptions = [...new Map(activeMediaEntries
+  const activeMediaEntries = useMemo(
+    () => mediaEntriesForMessages(activeMediaMessages),
+    [activeMediaMessages],
+  );
+  const mediaSenderOptions = useMemo(() => [...new Map(activeMediaEntries
     .map(entry => [entry.senderId || `name:${entry.senderName}`, entry.senderName])
     .filter(([id, name]) => Boolean(id && name))).entries()]
     .map(([id, name]) => ({ id, name }))
-    .sort((first, second) => first.name.localeCompare(second.name, 'vi'));
-  const mediaDateStart = (() => {
+    .sort((first, second) => first.name.localeCompare(second.name, 'vi')), [activeMediaEntries]);
+  const mediaDateStart = useMemo(() => {
     if (mediaDateFilter === 'all') return 0;
     if (mediaDateFilter === 'custom') {
       return mediaFromDate ? new Date(`${mediaFromDate}T00:00:00`).getTime() : 0;
     }
     const days = mediaDateFilter === '7d' ? 7 : mediaDateFilter === '30d' ? 30 : 90;
     return Date.now() - days * 24 * 60 * 60 * 1000;
-  })();
+  }, [mediaDateFilter, mediaFromDate]);
   const mediaDateEnd = mediaDateFilter === 'custom' && mediaToDate
     ? new Date(`${mediaToDate}T23:59:59.999`).getTime()
     : Number.POSITIVE_INFINITY;
   const normalizedMediaSearch = mediaSearchQuery.trim().toLowerCase();
-  const filteredMediaEntries = activeMediaEntries.filter(entry => {
+  const filteredMediaEntries = useMemo(() => activeMediaEntries.filter(entry => {
     if (entry.kind !== mediaBrowserTab) return false;
     if (mediaSenderFilter !== 'all' && entry.senderId !== mediaSenderFilter && `name:${entry.senderName}` !== mediaSenderFilter) return false;
     if (mediaDateFilter !== 'all' && (!entry.timestamp || entry.timestamp < mediaDateStart || entry.timestamp > mediaDateEnd)) return false;
     return !normalizedMediaSearch || entry.searchText.includes(normalizedMediaSearch);
-  });
-  const mediaGroups = filteredMediaEntries.reduce((groups, entry) => {
+  }), [activeMediaEntries, mediaBrowserTab, mediaDateEnd, mediaDateFilter, mediaDateStart, mediaSenderFilter, normalizedMediaSearch]);
+  const mediaGroups = useMemo(() => filteredMediaEntries.reduce((groups, entry) => {
     const key = mediaDateKey(entry.timestamp);
     const current = groups.at(-1);
     if (!current || current.key !== key) groups.push({ key, label: formatMediaDateHeading(entry.timestamp, appCopy.locale), entries: [entry] });
     else current.entries.push(entry);
     return groups;
-  }, []);
-  const mediaCounts = activeMediaEntries.reduce((counts, entry) => ({ ...counts, [entry.kind]: counts[entry.kind] + 1 }), { images: 0, files: 0, links: 0 });
+  }, []), [appCopy.locale, filteredMediaEntries]);
+  const mediaCounts = useMemo(
+    () => activeMediaEntries.reduce((counts, entry) => ({ ...counts, [entry.kind]: counts[entry.kind] + 1 }), { images: 0, files: 0, links: 0 }),
+    [activeMediaEntries],
+  );
 
   const notifications = useMemo(() => Object.values(renderConversations)
     .filter(room => !isSelfDirectConversation(room, currentUser, directoryAccounts))
