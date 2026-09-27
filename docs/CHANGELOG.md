@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Trien khai: Archive `vichat-notification-mute-35be1c3.tar.gz` co SHA-256 `E3EE18EECD1BA12E9402727C3FE752D4CEEA412EC2E18C8E35E9E79435C3820D`; release `/opt/deploy/chat/releases/notification-mute-35be1c3-20260927-r2` dang la `current`; bundle public `/assets/index-DFeLyFlU.js`; ChatUI container healthy, Chat health/public health/Chatmgt health deu `200`; Chatmgt, Tinode, PostgreSQL va Redis khong doi.
 - Rui ro con lai: Chua UAT web/mobile voi hai tai khoan that qua chu ky bat -> doi phong -> quay lai -> gui tin; mobile chua co artifact APK/IPA va push background/killed van phu thuoc credential/provider production.
 - Viec tiep theo: Hard refresh web va UAT direct/group voi mute deadline, mute den khi mo lai, unmute va thong bao tin moi; kich hoat Codemagic de tao APK/IPA roi cai/test tren hai thiet bi; dong bo lai contract test group departure o lan sua mobile rieng.
-- Commit/PR: Source commit `35be1c3` da push len `github/fix/full-audit-regressions`; production release `notification-mute-35be1c3-20260927-r2`; docs/deploy follow-up dang cho commit/push.
+- Commit/PR: Source commit `35be1c3` da push len `github/fix/full-audit-regressions`; production release `notification-mute-35be1c3-20260927-r2`; docs/deploy follow-up commit `f6e26e3` da push.
 
 ## 2026-09-26-03 - Sua race refresh phien khi tat thong bao tren web
 
