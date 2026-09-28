@@ -93,6 +93,7 @@ services:
       dockerfile: infrastructure/production/Dockerfile.chatmgt
       args:
         VITE_CHAT_TENANT_ID: ${VITE_CHAT_TENANT_ID:-}
+    working_dir: /app
     restart: unless-stopped
     depends_on:
       chat-postgres:
@@ -264,6 +265,7 @@ services:
       dockerfile: infrastructure/production/Dockerfile.chatmgt
       args:
         VITE_CHAT_TENANT_ID: ${VITE_CHAT_TENANT_ID:-}
+    working_dir: /app
     restart: unless-stopped
     depends_on:
       chatmgt:
@@ -297,6 +299,7 @@ services:
       dockerfile: infrastructure/production/Dockerfile.chatmgt
       args:
         VITE_CHAT_TENANT_ID: ${VITE_CHAT_TENANT_ID:-}
+    working_dir: /app
     restart: unless-stopped
     depends_on:
       chatmgt:

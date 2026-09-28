@@ -1,4 +1,5 @@
 import ast
+import re
 import unittest
 from pathlib import Path
 
@@ -133,6 +134,17 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("ARG VITE_CHAT_AUTH_MODE=account_password", (PROJECT_ROOT.parent / "infrastructure" / "production" / "Dockerfile").read_text(encoding="utf-8"))
         self.assertIn("CHATBOT_DEFAULT_TENANT: ${CHATBOT_DEFAULT_TENANT:-}", compose_source)
         self.assertIn("CHATBOT_DEFAULT_TENANT=", env_source)
+
+    @repository_source_test
+    def test_production_python_services_pin_the_application_working_directory(self):
+        compose_source = PRODUCTION_COMPOSE_PATH.read_text(encoding="utf-8")
+        for service in ("chatmgt", "tinode-account-bridge", "tinode-chatbot-webhook"):
+            block = re.search(
+                r"(?ms)^  {}:\n(?P<block>.*?)(?=^  [a-z0-9-]+:|\Z)".format(service),
+                compose_source,
+            )
+            self.assertIsNotNone(block, service)
+            self.assertIn("working_dir: /app", block.group("block"))
 
     def test_account_sso_login_prepares_the_tinode_projection_without_returning_a_secret(self):
         controller_source, sso_source = function_source(CONTROLLER_PATH, "management_sso_login")
