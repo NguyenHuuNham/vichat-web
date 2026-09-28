@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-28-09 - Deploy production hardening web sau khi qua gate
+
+- Thoi gian: 2026-09-28 23:25 (Asia/Saigon)
+- Loai: Bao mat | Web | Van hanh | Trien khai | Kiem thu | Tai lieu
+- Trang thai: Hoan tat deploy production; con UAT browser voi tai khoan that.
+- Muc tieu: Dua ban web hardening da pin working directory cua cac Python service vao production, co rollback an toan va evidence sau deploy.
+- Pham vi: ChatUI, Chatmgt, tinode-account-bridge, tinode-chatbot-webhook va production deployment gate; khong thay doi mobile/push dang lam do.
+- File da thay doi: `infrastructure/production/compose.yaml`, `chatservice-main/tests/test_chat_auth_contract.py`, va muc nay trong `docs/CHANGELOG.md`.
+- Noi dung: Deploy source commit `cbbef3a`; compose pin `working_dir: /app` cho Python service; archive `/opt/deploy/chat/incoming/vichat-web-hardening-cbbef3a.tar.gz` co SHA-256 `48ac3e694db0abebed22a569009645ad8ba805c6a4e79ad760430e6f03234be5`.
+- Quyet dinh ky thuat: Vi `chat` dung `--no-deps` va Nginx resolve bridge theo IP container, activation/rollback phai recreate theo thu tu `chatmgt -> tinode-account-bridge -> chat -> tinode-chatbot-webhook`; thu tu nay da loai bo 502 stale bridge endpoint sau rollback.
+- Database/API/cau hinh: Khong migration, khong reset database/Redis/Tinode volume/topic/message; cac container stateful va non-target containers duoc giu nguyen.
+- Kiem thu: `docker compose config --quiet`, Nginx `-t`, `verify_deployment.py`, `verify_tenant_isolation.py`, Redis AUTH, security headers, health/cache headers, local/public/management health, bundle local/public khop (`/assets/index-D5_OAu-u.js`, `/assets/index-B1sUJyGf.css`), 4 target service healthy/restart `0`, va `non_target_containers_unchanged=ok`.
+- Trien khai: Release `/opt/deploy/chat/releases/web-hardening-cbbef3a-20260928-r4` dang la `current`; `previous` tro `/opt/deploy/chat/releases/group-spam-fe99308-20260928-r1`; source commit da push len `github/fix/full-audit-regressions`.
+- Rui ro con lai: Chua UAT browser voi hai tai khoan cho login, chat, upload, reaction/sticker burst va cac action mien tru spam; can hard refresh va chay ma tran UAT web.
+- Commit/PR: Source commit `cbbef3a` da push; docs/deploy follow-up commit se tao sau muc nay.
+
 ## 2026-09-28-06 - Trien khai hardening bao mat web theo ke hoach
 
 - Thoi gian: 2026-09-28 11:57 (Asia/Saigon)
