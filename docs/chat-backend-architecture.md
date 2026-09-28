@@ -519,6 +519,29 @@ device token and registers it with the authenticated Tinode client through the
 Tinode `hi.dev` field. This lets Tinode deliver while the app is suspended or
 killed. No device token is stored in Chatmgt. Without both credential halves,
 background/killed push remains unavailable and must not be reported as active.
+Tinode also creates a silent data push for a sender's offline other device so
+that device can catch up without a user-visible alert. The stock Tinode 0.25.3
+FCM Android adapter does not suppress its notification payload for
+`data.silent=true`, so this repository builds the pinned Tinode source with
+`infrastructure/tinode/fcm-silent-push.patch`; the patched image keeps silent
+sender/edit pushes data-only while leaving recipient and incoming-call alerts
+visible.
+Mobile starts native registration as soon as the authenticated session exists,
+not only after the rest of the remote data reaches `ready`. The mobile Tinode
+client seeds the token into the SDK before its first authenticated handshake
+and forces one authenticated update when a token changes during connect/login;
+this prevents a background transition from closing the socket before a
+last-second `hi.dev` update reaches Tinode.
+On transition to the background, mobile intentionally closes its live Tinode
+session while retaining the authenticated device registration. This prevents
+Tinode from treating a suspended JavaScript runtime as an online recipient and
+skipping FCM/APNs. On resume, mobile reconnects, synchronizes missed history,
+and suppresses local replay for messages already covered by the push path.
+The lifecycle handler waits for an in-flight native token registration before
+closing the session; if registration fails, it keeps the realtime connection as
+a fallback and retries on the next foreground/connected transition. Logout
+clears the device token from both the Tinode client and the local mobile state
+so a later account cannot inherit another account's push target.
 
 Incoming call invites use a separate high-priority local notification channel.
 The notification payload carries only the validated P2P topic, Tinode sequence,
@@ -988,14 +1011,14 @@ next penalty to five seconds. ChatUI runs the same guard before optimistic
 insertion or file upload and shows a live countdown, but the relay remains the
 final enforcement point for stale tabs, refreshes and concurrent publishes.
 
-Text, stickers, attachments/voice, polls, poll activity, reactions, recalls,
-group message pin activity and forwards consume the same budget. ChatUI stamps
-each action with the bounded `x-vichat-group-action` head so a multi-file picker
-or clipboard batch counts once even though Tinode stores each attachment as a
-separate message. Group-management announcements such as name/avatar/settings,
-background and membership changes are exempt because they are consequences of
-separately authorized mutations rather than composer spam; message pin/unpin
-announcements are deliberately not exempt. The policy applies only when the
+Only normal text publishes and publishes carrying `x-vichat-sticker` consume
+the budget. Reactions, attachments/voice, polls and poll activity, edits,
+recalls, pin/unpin events and forwards are ordinary actions and never consume
+message-spam capacity; this also means they remain usable while a text/sticker
+cooldown is active. ChatUI stamps only text and sticker sends with the bounded
+`x-vichat-group-action` head. The relay classifies the Tinode packet itself so
+stale tabs cannot make an exempt action count, and duplicate sticker packets
+from one logical send remain deduplicated. The policy applies only when the
 Tinode hello explicitly identifies `platform=web`; native mobile and trusted
 internal bridge publishes keep their previous path. It adds no Chatmgt API,
 database row, message copy or persistent rate-limit store. Tinode SDK 0.25.3

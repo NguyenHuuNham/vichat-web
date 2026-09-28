@@ -47,23 +47,17 @@ GROUP_SPAM_ACTION_REPEAT_LIMIT = 100
 GROUP_SPAM_STATE_TTL_SECONDS = 60 * 60
 GROUP_SPAM_PRUNE_INTERVAL_SECONDS = 5 * 60
 GROUP_ACTION_HEAD = "x-vichat-group-action"
+STICKER_HEAD = "x-vichat-sticker"
+POLL_HEAD = "x-vichat-poll"
+SHARED_FROM_HEAD = "x-shared-from"
 SYSTEM_EVENT_PREFIX = "__VICHAT_SYSTEM_EVENT__:"
-GROUP_SPAM_EXEMPT_SYSTEM_ACTIONS = frozenset({
-    "conversation_background_changed",
-    "group_avatar_changed",
-    "group_chatbot_enabled",
-    "group_created",
-    "group_dissolved",
-    "group_name_changed",
-    "group_role_changed",
-    "group_settings_changed",
-    "member_added",
-    "member_approved",
-    "member_left",
-    "member_pending",
-    "member_rejected",
-    "member_removed",
-})
+NON_MESSAGE_PREFIXES = (
+    SYSTEM_EVENT_PREFIX,
+    "__VICHAT_REACTION_EVENT__:",
+    "__VICHAT_RECALL_EVENT__:",
+    "__VICHAT_EDIT_EVENT__:",
+    "__VICHAT_POLL_EVENT__:",
+)
 
 _GROUP_SPAM_STATES = {}
 _GROUP_SPAM_LAST_PRUNE = 0.0
@@ -340,15 +334,19 @@ def _group_action_id(publish):
 
 
 def _group_publish_counts_for_spam(publish):
-    content = publish.get("content") if isinstance(publish, dict) else None
-    if not isinstance(content, str) or not content.startswith(SYSTEM_EVENT_PREFIX):
+    if not isinstance(publish, dict):
+        return False
+    head = publish.get("head")
+    head = head if isinstance(head, dict) else {}
+    if str(head.get(STICKER_HEAD) or "").strip():
         return True
-    try:
-        event = json.loads(content[len(SYSTEM_EVENT_PREFIX):])
-    except (TypeError, ValueError):
-        return True
-    action = str(event.get("action") or "").strip().lower() if isinstance(event, dict) else ""
-    return action not in GROUP_SPAM_EXEMPT_SYSTEM_ACTIONS
+    if any(str(head.get(key) or "").strip() for key in (POLL_HEAD, SHARED_FROM_HEAD)):
+        return False
+    content = publish.get("content")
+    if not isinstance(content, str):
+        # Drafty files, images and voice messages are structured content.
+        return False
+    return not content.startswith(NON_MESSAGE_PREFIXES)
 
 
 def _prune_group_spam_states(now):

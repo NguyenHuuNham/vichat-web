@@ -222,42 +222,56 @@ class TinodeAccountBridgeTests(unittest.TestCase):
             bridge._check_group_spam_publish(mobile_state, packet, now=now)
         self.assertNotIn(("usrMobile", "grpRoom"), bridge._GROUP_SPAM_STATES)
 
-    def test_one_multi_file_group_action_is_counted_once(self):
+    def test_only_text_and_sticker_group_publishes_consume_spam_budget(self):
         session_state = {"client_platform": "web", "tinode_uid": "usrBatch"}
-        for index in range(20):
+        for index in range(bridge.GROUP_SPAM_ACTION_LIMIT):
             bridge._check_group_spam_publish(session_state, {
-                "id": "batch-packet-{}".format(index),
+                "id": "text-{}".format(index),
                 "topic": "grpRoom",
-                "head": {bridge.GROUP_ACTION_HEAD: "batch-one"},
-                "content": "attachment",
+                "head": {bridge.GROUP_ACTION_HEAD: "text-{}".format(index)},
+                "content": "message {}".format(index),
             }, now=20 + index * 0.01)
 
         state = bridge._GROUP_SPAM_STATES[("usrBatch", "grpRoom")]
-        self.assertEqual(len(state["action_times"]), 1)
-        self.assertEqual(state["recent_actions"]["batch-one"]["repeats"], 20)
+        self.assertEqual(len(state["action_times"]), bridge.GROUP_SPAM_ACTION_LIMIT)
 
-    def test_group_management_announcements_do_not_consume_message_spam_budget(self):
-        session_state = {"client_platform": "web", "tinode_uid": "usrAdmin"}
-        for index in range(bridge.GROUP_SPAM_ACTION_LIMIT + 3):
+        bridge._GROUP_SPAM_STATES.clear()
+        for index in range(20):
             bridge._check_group_spam_publish(session_state, {
-                "id": "rename-{}".format(index),
+                "id": "sticker-packet-{}".format(index),
                 "topic": "grpRoom",
-                "content": "{}{}".format(
-                    bridge.SYSTEM_EVENT_PREFIX,
-                    json.dumps({"action": "group_name_changed"}),
-                ),
+                "head": {
+                    bridge.GROUP_ACTION_HEAD: "sticker-batch",
+                    bridge.STICKER_HEAD: json.dumps({"stickerId": "wave", "packId": "basic"}),
+                },
+                "content": {"ent": [{"tp": "IM", "data": {"ref": "file/wave.png"}}]},
             }, now=30 + index * 0.01)
 
+        state = bridge._GROUP_SPAM_STATES[("usrBatch", "grpRoom")]
+        self.assertEqual(len(state["action_times"]), 1)
+        self.assertEqual(state["recent_actions"]["sticker-batch"]["repeats"], 20)
+
+    def test_reactions_and_other_group_actions_do_not_consume_message_spam_budget(self):
+        session_state = {"client_platform": "web", "tinode_uid": "usrAdmin"}
+        packets = [
+            {"content": "__VICHAT_REACTION_EVENT__:{}"},
+            {"content": "__VICHAT_RECALL_EVENT__:{}"},
+            {"content": "__VICHAT_EDIT_EVENT__:{}"},
+            {"content": "__VICHAT_POLL_EVENT__:{}"},
+            {"content": "{}{}".format(bridge.SYSTEM_EVENT_PREFIX, json.dumps({"action": "message_pinned"}))},
+            {"content": {"ent": [{"tp": "EX", "data": {"ref": "file/report.pdf"}}]}},
+            {"head": {bridge.POLL_HEAD: json.dumps({"id": "poll-1"})}, "content": "question"},
+            {"head": {bridge.SHARED_FROM_HEAD: "source-message"}, "content": "forwarded text"},
+        ]
+        for index in range(40):
+            packet = {
+                "id": "action-{}".format(index),
+                "topic": "grpRoom",
+                **packets[index % len(packets)],
+            }
+            bridge._check_group_spam_publish(session_state, packet, now=40 + index * 0.01)
+
         self.assertNotIn(("usrAdmin", "grpRoom"), bridge._GROUP_SPAM_STATES)
-        bridge._check_group_spam_publish(session_state, {
-            "id": "pin-one",
-            "topic": "grpRoom",
-            "content": "{}{}".format(
-                bridge.SYSTEM_EVENT_PREFIX,
-                json.dumps({"action": "message_pinned"}),
-            ),
-        }, now=31)
-        self.assertEqual(len(bridge._GROUP_SPAM_STATES[("usrAdmin", "grpRoom")]["action_times"]), 1)
 
 
 @unittest.skipUnless(aiohttp is not None, "aiohttp is installed in the Chatmgt runtime image")

@@ -6,6 +6,38 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-28-02 - Build APK mobile gom cac ban sua chat moi nhat
+
+- Thoi gian: 2026-09-28 (Asia/Saigon)
+- Loai: Phat hanh | Mobile | Thong bao | Tinode | Kiem thu | Tai lieu
+- Trang thai: Hoan tat APK test; chua UAT tren thiet bi that.
+- Muc tieu: Tao APK moi khong nham voi ban cu, gom source mobile hien tai cho mute viewer-scoped, history/realtime, media auth, FCM lifecycle, thong bao dung nguoi gui va group settings.
+- Pham vi: Mobile Expo/Android; khong sua backend, database, API hay deploy production trong lan nay.
+- File da thay doi: `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`, `docs/CHANGELOG.md`.
+- Noi dung: Tang app version tu `1.0.23`/Android `versionCode=24` len `1.0.24`/`versionCode=25` truoc khi build universal release APK.
+- Quyet dinh ky thuat: Dung nguyen source mobile hien tai; khong them enforcement spam rieng cho reaction/file/poll vi policy nay da duoc gioi han o web/bridge va mobile khong co luong chan tuong ung.
+- Database/API/cau hinh: Khong co migration, endpoint moi, thay doi API hay production config.
+- Kiem thu: `cd mobile; npm test -- --reporter=dot` dat `23 file, 73/73`; `npm run typecheck` dat; `npm run lint` dat; `npx expo config --json --type public` nhan package `vn.upgo.vichat`, version `1.0.24`, versionCode `25`, Firebase config va quyen camera/micro/notification; `npx expo prebuild --platform android --no-install` dat; build staging ASCII `:app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a,x86_64` dat `BUILD SUCCESSFUL`; `aapt` xac nhan package/version, native code `arm64-v8a` va `x86_64`, `POST_NOTIFICATIONS`, Firebase messaging service; `apksigner verify --verbose --print-certs` dat v2; `zipalign -c -P 16 -v 4` dat; SHA-256 `BDA680868C8E83300D71499B5BB548FABD468C1E2138A5D84A08C6DF815F72C8`; `adb devices` khong co emulator/thiet bi de cai va smoke test.
+- Rui ro con lai: Chua UAT dang nhap, doi chat, mute/unmute, history media, realtime, reaction/sticker va push foreground/background/killed tren thiet bi that; APK dang dung Android Debug signer de test noi bo, khong phai ky phat hanh Play Store.
+- Viec tiep theo: Cai `D:\vichat-build\ViChat-1.0.24-full-fixes-universal.apk` tren hai thiet bi, UAT hai tai khoan theo cac luong chat/mute/media/group/push; neu phat hanh store thi ky lai bang release keystore.
+- Commit/PR: Chua tao.
+
+## 2026-09-28-01 - Thu hep pham vi chong spam tin nhan nhom
+
+- Thoi gian: 2026-09-28 (Asia/Saigon)
+- Loai: Sua loi | Web | Tinode | Chong spam | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source va bundle web; chua deploy production.
+- Muc tieu: Khong de thao tac reaction va cac hanh dong chat hop le bi danh nham la spam; chi chan burst tin nhan text hoac sticker.
+- Pham vi: ChatUI web va tinode-account-bridge; mobile khong doi, khong doi nguong cooldown hien co.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/groupSpamPolicy.test.js`, `src/features/chat/services/chatManagementService.test.js`, `chatservice-main/scripts/tinode_account_bridge.py`, `chatservice-main/tests/test_tinode_account_bridge.py`, `docs/chat-backend-architecture.md`, `dist/index.html`, va file nay.
+- Noi dung: Bo dang ky spam khoi reaction, file/anh/voice, poll, edit, recall, pin va forward; giu dang ky cho text/sticker. Bridge chi dem publish text thuong va packet co `x-vichat-sticker`, mien tru event/attachment/forward bang head va content classification. Cooldown text/sticker khong khoa picker reaction hay cac thao tac mien tru.
+- Quyet dinh ky thuat: Relay la diem enforcement cuoi cung va tu phan loai packet, khong tin vao action header tu client de quyet dinh mot action co phai message spam hay khong. Khong thay doi limit, cooldown, API, database, Tinode history hoac mobile policy.
+- Database/API/cau hinh: Khong migration, endpoint, bien moi truong hoac thay doi contract.
+- Kiem thu: `node --test src/features/chat/services/groupSpamPolicy.test.js` dat `6/6`; bridge smoke test va `python -m py_compile chatservice-main/scripts/tinode_account_bridge.py` dat; bridge unittest chay `16` test nhung deu skip do moi truong host thieu `aiohttp`; `npm run test:frontend -- --test-concurrency=1` cho `450 pass, 1 fail`, failure cu tai `src/features/chat/services/chatManagementService.test.js:783` ve regex luong mobile group departure khong lien quan; `npm run lint` exit `0` voi warning legacy/mobile da co; `npm run build:production` exit `0` voi canh bao chunk App vuot 500 KB; `cd mobile; npm test -- --reporter=dot` dat `23 file, 73/73`; `cd mobile; npm run typecheck` dat; `git diff --check` dat.
+- Rui ro con lai: Chua UAT production voi hai web session cho text/sticker burst, reaction lap nhanh va cac action mien tru; bridge unittest day du can chay trong runtime co `aiohttp`; chua deploy production.
+- Viec tiep theo: Deploy dong thoi bundle ChatUI va image `tinode-account-bridge`, health check, sau do UAT web text/sticker burst, reaction lap nhanh, file/poll/edit/recall/pin/forward va xac nhan mobile khong doi.
+- Commit/PR: Chua tao.
+
 ## 2026-09-27-04 - Sua icon tat thong bao va phan loai hoi thoai
 
 - Thoi gian: 2026-09-27 23:47 (Asia/Saigon)
@@ -66,7 +98,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Trang thai: Hoan tat; commit `35be1c3` da push; web da deploy production va verify; mobile source da push, chua co APK/IPA hoac store deployment do Codemagic chua chay; chua UAT tai khoan that.
 - Muc tieu: Trang thai tat thong bao cua tung nguoi dung phai con nguyen khi mo cuoc tro chuyen khac roi quay lai tren web va mobile.
 - Pham vi: Merge snapshot Chatmgt/Tinode cua danh sach va chi tiet cuoc tro chuyen; khong doi endpoint, database hay kenh push.
-- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `mobile/src/store/appStore.ts`, `mobile/src/utils/conversationSync.ts`, `mobile/src/utils/conversationMuteSync.test.ts`, `dist/index.html`, va file nay.
+- File da thay doi: `src/app/App.jsx`, `src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`, `mobile/src/store/appStore.ts`, `mobile/src/utils/conversationSync.ts`, `mobile/src/utils/conversationSync.test.ts`, `dist/index.html`, va file nay.
 - Nguyen nhan: Snapshot Tinode khong co truong mute theo viewer nhung merge cu coi truong thieu la `null`/gia tri moi, ghi de deadline hoac mute vinh vien da luu trong Chatmgt sau khi doi phong.
 - Noi dung: Web chi thay mute khi snapshot co gia tri explicit; mobile danh dau snapshot Tinode la realtime-only va giu mute Chatmgt qua ca merge store/list. Gia tri `null` tu Chatmgt van duoc chap nhan de bat lai thong bao; them regression test cho mute vinh vien, deadline, snapshot thieu truong va unmute.
 - Quyet dinh ky thuat: Chatmgt tiep tuc la nguon chuan cho cai dat thong bao theo viewer; Tinode chi cap realtime/history va khong duoc xoa metadata viewer-scoped.
@@ -95,6 +127,289 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem tra production: ChatUI container `e1602f18a6e49edcbc85bf5e7b5c987c1348043e26a78d38923194c0a98a8f8c` healthy, restart `0`; public health `200`, WSS `101`; bundle `/assets/index-Cb3DYtAg.js` va `/assets/index-C1rian-2.css` khop candidate; source validation 687 file khong doi, service/volume ngoai `chat` khong doi. Ba candidate truoc dung o gate runner truoc activate va da rollback an toan.
 - Viec tiep theo: Hard refresh, sau do UAT bat/tat thong bao o group/direct trong luc polling va reconnect Tinode; khong can migration mobile.
 - Commit/PR: Source commit `c6596b7`; production release `notification-race-c6596b7-20260926-r4`; docs/deploy follow-up commits `f189ba0`, `eb77c7f` da push.
+
+## 2026-09-26-02 - Sua thong bao nham nguoi gui mobile
+
+- Thoi gian: 2026-09-26 11:50 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Thong bao | Tinode | Phat hanh | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source va APK test; chua UAT hai tai khoan production.
+- Muc tieu: Khi mot tai khoan gui tin, chi tai khoan nhan hien thong bao; thiet bi khac cua nguoi gui khong hien thong bao nham.
+- Pham vi: Phan loai sender realtime mobile, local notification, FCM Android silent push va image Tinode authoritative.
+- File da thay doi: `mobile/src/services/tinodeClient.ts`, `mobile/src/utils/messageOrigin.ts`, `mobile/src/utils/messageOrigin.test.ts`, `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`, `infrastructure/tinode/Dockerfile`, `infrastructure/tinode/fcm-silent-push.patch`, `infrastructure/tinode/compose.yaml`, `infrastructure/production/compose.yaml`, `infrastructure/production/start.sh`, tai lieu kien truc va van hanh.
+- Nguyen nhan: Mobile chi uu tien `raw.from`, nen co the bo qua `x-sender-id` va phat own echo thanh incoming. Tinode co chu dich gui silent push cho thiet bi sender de dong bo; FCM Android adapter 0.25.3 van gan notification payload cho silent data, lam Android hien banner cho sender.
+- Noi dung: Giai quyet origin tu ca `from` va `x-sender-id`, chan local notification neu packet la own message; build Tinode binary co patch de silent Android push la data-only, nhung giu notification cho push nguoi nhan va cuoc goi; tang mobile len `1.0.23`/Android `versionCode=24`.
+- Quyet dinh ky thuat: Khong tat FCM notification chung vi se lam mat thong bao khi recipient bi kill. Chi bo notification payload voi `data.silent=true`; khong ap dung guard nay cho video call.
+- Database/API/cau hinh: Khong migration/API moi. Compose dung image Tinode local `vichat/tinode-postgres:0.25.3-silent-push`, build tu base image Tinode pin digest va source tag `v0.25.3`; production can build/recreate rieng `chatapi` sau khi cap nhat.
+- Kiem thu: `npm run typecheck` dat; `npm run lint` dat; `npm test -- --reporter=dot` dat `22` file, `71/71`; Gradle universal release build dat voi `arm64-v8a,x86_64`; `aapt` xac nhan package `vn.upgo.vichat`, version `1.0.23`, `versionCode=24`; `zipalign` dat; `apksigner verify` dat v2; APK cai va mo duoc tren `emulator-5554`, logcat khong co crash/FATAL; `git apply --check` dat voi source Tinode `v0.25.3`; `git diff --check` dat. Artifact `D:\vichat-build\ViChat-1.0.23-notification-routing-universal.apk`, SHA-256 `063FFB238F6062CEF6AFA4579D2369E92CF3512F9F2B2775D05CFF2FFA3C4EE3`.
+- Rui ro con lai: Chua deploy image patched len Tinode authoritative va chua UAT web -> mobile/mobile -> mobile o foreground/background/swiped/killed; Docker/Go khong co tren may build nen chua build image server tai day. Neu chi cai APK ma khong recreate `chatapi`, sender van co the thay banner silent tu server cu.
+- Viec tiep theo: Tren server build/recreate rieng `chatapi` tu image `vichat/tinode-postgres:0.25.3-silent-push`, kiem tra health/log, sau do test hai tai khoan va xac nhan recipient co thong bao con sender khong co banner.
+- Commit/PR: Chua tao.
+
+## 2026-09-26-01 - Sua quyen cai dat nhom va splash mobile
+
+- Thoi gian: 2026-09-26 10:05 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Nhom | Dang nhap | Phat hanh | Kiem thu
+- Trang thai: Hoan tat source va APK test; chua UAT nhom voi tai khoan that.
+- Muc tieu: Bao dam admin mobile khong mat quyen sau snapshot Tinode, cac cong tac nhom hoat dong dung, va luong khoi dong hien thi day du thuong hieu GON PLATFORM sau khi build lai.
+- Pham vi: Merge conversation/member mobile, nhan dien role nhom, cau hinh native splash va version Android; khong thay doi luong FCM/Tinode push.
+- File da thay doi: `mobile/src/types/index.ts`, `mobile/src/utils/conversationSync.ts`, `mobile/src/utils/conversationSync.test.ts`, `mobile/src/services/chatManagementService.ts`, `mobile/src/services/tinodeClient.ts`, `mobile/src/screens/chat/GroupInfoScreen.tsx`, `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`.
+- Nguyen nhan: Snapshot Tinode co the kem `groupSettings`, trong khi merge cu suy doan nguon du lieu theo truong nay va khong phan biet snapshot realtime voi snapshot Chatmgt authoritative; native project thieu `expo-splash-screen` plugin co tham so nen giu anh placeholder.
+- Noi dung: Gan `snapshotSource` cho snapshot Chatmgt/Tinode; snapshot Tinode luon union member de giu Account ID va `groupRole`, snapshot Chatmgt thay the danh sach member authoritative de phan anh member da bi xoa; role owner fallback so khop qua identity; them module/cau hinh splash voi asset logo that; dong bo app version `1.0.22`, Android `versionCode=23`.
+- Quyet dinh ky thuat: Chatmgt tiep tuc la nguon chuan cho membership/role/settings; Tinode chi bo sung realtime/member mode va khong duoc lam mat metadata Chatmgt. Khong tao foreground service va khong sua kenh thong bao nen.
+- Database/API/cau hinh: Khong migration, endpoint moi hoac thay doi hop dong backend. Them dependency `expo-splash-screen` phu hop SDK 57; native Android duoc regenerate tu app config local.
+- Kiem thu: `npm run typecheck` dat; `npm run lint` dat; `npm test -- --reporter=dot` dat `21` file, `68/68`; `git diff --check` dat; `npx expo config --json --type public` nhan version `1.0.22`, versionCode `23`, package `vn.upgo.vichat` va splash asset; Gradle universal release build dat; `aapt` xac nhan package/version/ABI va `POST_NOTIFICATIONS`; `apksigner verify` dat v2; `zipalign` dat; APK cai va chay tren `emulator-5554`, logcat khong co fatal exception; screenshot login xac nhan logo va chu `GON PLATFORM`; SHA-256 `F0EFD56C74FF4EE4E58FD4AD7BF4E2D656C8D9F24C366BF02410D701F7F98E4A`; artifact `D:\vichat-build\ViChat-1.0.22-group-settings-splash-universal.apk`.
+- Rui ro con lai: Chua UAT voi tai khoan admin that cho toggle settings, role, poll, ghim; chua xac nhan push foreground/background/swiped/killed tren APK moi bang hai tai khoan va thiet bi that.
+- Viec tiep theo: UAT group settings voi hai tai khoan theo ca thu tu snapshot web/mobile; sau do test FCM foreground/background/swiped/killed va notification tap tren thiet bi that.
+- Commit/PR: Chua tao.
+
+## 2026-09-25-09 - Sua dong bo va quyen chuc nang nhom tren mobile
+
+- Thoi gian: 2026-09-25 19:45 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Nhom | Dong bo | Kiem thu
+- Trang thai: Hoan tat source; chua build APK moi va chua UAT nhom tren thiet bi that.
+- Muc tieu: Bao dam cac luong them, duyet, doi vai tro, xoa/chuyen chu, cai dat, poll va ghim trong nhom khong bi mat du lieu khi snapshot Tinode va Chatmgt den khac thu tu.
+- Pham vi: `mobile/src/screens/chat/GroupInfoScreen.tsx`, `mobile/src/screens/chat/ConversationListScreen.tsx`, `mobile/src/services/tinodeClient.ts`, `mobile/src/store/appStore.ts`, `mobile/src/utils/conversationSync.ts`, `mobile/src/utils/groupSettings.ts`, `mobile/src/utils/identity.ts`, `mobile/src/utils/poll.ts`, `mobile/src/utils/tinodePublish.ts` va cac test lien quan.
+- Nguyen nhan: Mobile nhan dien pho nhom bang mode khong phu hop voi hop dong backend `JRWPASD`, ham merge tinh snapshot trung gian nhung lai tra ve du lieu cu, va mot so nut co the gui Tinode UID thay cho Account ID cho Chatmgt.
+- Noi dung: Dong bo role theo `groupRole`/mode Tinode, giu Account ID khi snapshot Tinode den truoc, chan thao tac khi chua giai duoc Account ID, tra cuu conversation theo ca management ID, va doc sequence tu cac dang phan hoi publish cua Tinode de ghim poll on dinh.
+- Quyet dinh ky thuat: Chatmgt van la nguon chuan cho membership/quyen; Tinode van la nguon realtime/message. Khong them endpoint, migration hay thay doi hop dong backend.
+- Database/API/cau hinh: Khong co thay doi; mobile tiep tuc gui Account ID cho endpoint participant va chi dung mode Tinode de fallback khi thieu groupRole.
+- Kiem thu: `cd mobile; npm run typecheck` dat; `npm run lint` dat; `npm test -- --reporter=dot` dat `21` file, `66/66`; `git diff --check` dat.
+- Rui ro con lai: Chua co UAT voi hai tai khoan tren APK moi cho cac luong duyet/doi role/chuyen chu/poll; Android push va backend production khong bi thay doi trong lan sua nay.
+- Viec tiep theo: Build APK moi tu source nay, cai tren hai thiet bi va UAT tung luong nhom voi ca thu tu snapshot mobile/web.
+- Commit/PR: Chua tao.
+
+## 2026-09-25-08 - Sua race dang ky FCM truoc khi mobile vao nen
+
+- Thoi gian: 2026-09-25 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Thong bao | Tinode | Phat hanh | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source, APK test va bat FCM tren Tinode authoritative; chua UAT push killed-app.
+- Muc tieu: Bao dam token FCM duoc dua vao Tinode truoc khi mobile dong socket khi ra nen hoac bi vuot khoi recent apps.
+- Pham vi: `mobile/App.tsx`, `mobile/src/services/notificationService.ts`, `mobile/src/services/tinodeClient.ts`, `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`, `docs/chat-backend-architecture.md`.
+- Nguyen nhan: Token native co the chi duoc gui qua `hi.dev` sau handshake; neu lifecycle dong socket ngay sau khi lay token, goi cap nhat khong co ACK co the bi cat truoc khi Tinode luu device.
+- Noi dung: Dang ky push ngay khi session mobile ton tai; nap token vao SDK truoc hello dau tien; ep cap nhat authenticated neu token den trong luc connect/login; van giu realtime fallback khi native token that bai; tang version len `1.0.21`/Android `versionCode=22`; cap nhat FCM authoritative de dung body `$content`, credential project `androi-app-77016`, khong dung icon/click action khong ton tai trong APK.
+- Quyet dinh ky thuat: Khong tao foreground service. FCM native va Tinode authoritative van la hai nua bat buoc cho killed-app push; chi disconnect websocket khi mobile da co device token.
+- Database/API/cau hinh: Khong migration/API moi; da backup `working.config`, dat service-account vao runtime authoritative voi mode `600`, bat FCM project `androi-app-77016`, credential `/data/runtime/firebase-service-account.json`, Android notification/sound va body `$content`; chi restart container Tinode `upgo-chatapi-8092`, khong restart PostgreSQL/Redis/ChatUI/Chatmgt.
+- Kiem thu: `cd mobile; npm run typecheck` dat; `npm run lint` dat; `npm test -- --reporter=dot` dat `19` file, `60/60`; `git diff --check` dat; Gradle `:app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a -x lintVitalRelease` dat `BUILD SUCCESSFUL`; APK dung package `vn.upgo.vichat`, version `1.0.21`, `versionCode=22`, Firebase resources, `POST_NOTIFICATIONS` va service FCM; `apksigner verify` dat v2; `zipalign -c -P 16 -v 4` dat; cai tren Samsung A24 dat; log co `[ViChat] Native push registration ready: fcm`; SHA-256 `7645D3AC5B9646A2AB6F1A32E0F4B9C977CF652C6AB94112D1918C2AF284CFE0`; artifact `D:\vichat-build\ViChat-1.0.21-fcm-handshake-arm64.apk`; sau restart container `healthy`, public `https://chatapi.gonplatform.com/` tra `200`.
+- Rui ro con lai: Da xac nhan provider FCM authoritative da bat va container healthy; van chua UAT hai tai khoan o foreground/background/swiped/killed va chua xac nhan notification tap mo dung man hinh chat.
+- Viec tiep theo: UAT hai tai khoan theo luong web -> mobile va mobile -> mobile o foreground/background/swiped/killed; neu Android bi dat Force stop tu Settings thi do he dieu hanh chan FCM, khong phai luong vuot recent apps.
+- Commit/PR: Chua tao.
+
+## 2026-09-25-07 - Build mobile voi Firebase push credentials
+
+- Thoi gian: 2026-09-25 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Thong bao | Phat hanh | Cau hinh | Kiem thu
+- Trang thai: Hoan tat APK test; chua UAT push killed-app.
+- Muc tieu: Tao ban Android co native FCM registration de Tinode co the gui thong bao khi app o nen hoac bi he dieu hanh dung.
+- Pham vi: `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`, credential local bi ignore va APK Android ARM64.
+- Noi dung: Da xac minh `google-services.json` va Firebase service account cung project `androi-app-77016`, package `vn.upgo.vichat`; dat vao cac thu muc local bi ignore; tang mobile len `1.0.19`/Android `versionCode=20`.
+- Quyet dinh ky thuat: Dung FCM native ket hop Tinode push provider; khong dung foreground service de gia lap thong bao.
+- Database/API/cau hinh: Khong migration/API moi. Production Tinode van phai bat FCM voi credential runtime va recreate authoritative provider.
+- Kiem thu: Parse hai JSON thanh cong; `npx expo config --json --type public` nhan dung package, version va `googleServicesFile`; Gradle `:app:assembleRelease` dat `BUILD SUCCESSFUL` sau 15m57s voi `CMAKE_BUILD_PARALLEL_LEVEL=1` va ARM64; `aapt dump badging` xac nhan package/version `vn.upgo.vichat`/`1.0.19`/`versionCode=20`/`arm64-v8a`; manifest co Firebase Messaging service va `POST_NOTIFICATIONS`; `apksigner verify --verbose` dat v2; `zipalign -c -v 4` dat; SHA-256 `3FC81A9FF9D2A73E2D60B4B48DF497DA5D3AD48726BCCE0EAB4C442A056273B0`; artifact `D:\vichat-build\ViChat-1.0.19-fcm-arm64.apk`.
+- Rui ro con lai: Chua restart Tinode production va chua UAT foreground/background/swiped/killed tren thiet bi that; APK co FCM client config nhung push killed-state van phu thuoc provider authoritative va quyen thong bao tren thiet bi.
+- Viec tiep theo: Cai APK tren thiet bi, cap credential runtime cho Tinode, recreate provider authoritative, roi test web -> mobile va mobile -> mobile o foreground/background/swiped/killed.
+- Commit/PR: Chua tao.
+
+## 2026-09-25-06 - Giu fallback realtime khi mobile chua co push token
+
+- Thoi gian: 2026-09-25 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Thong bao | Tinode | Phat hanh | Kiem thu | Tai lieu
+- Trang thai: Hoan tat APK test; chua UAT killed-app push.
+- Muc tieu: Khong lam mat ca thong bao realtime khi native FCM/APNs token chua duoc dang ky.
+- Pham vi: `mobile/src/services/tinodeClient.ts`, `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`.
+- Nguyen nhan: Luong vao background dong websocket truoc ca khi co device token; trong trang thai thieu credential/provider, Tinode khong co kenh push de thay the.
+- Noi dung: Chi suspend websocket khi client da giu native device token; neu chua co token thi giu fallback realtime va tang version len `1.0.18`/Android `versionCode=19`. Artifact tai `D:\vichat-build\ViChat-1.0.18-realtime-fallback-arm64.apk`.
+- Quyet dinh ky thuat: Khi da co token, van dong websocket de tranh Tinode danh dau thiet bi da nhan tin; khi chua co token, uu tien khong lam mat realtime. Khong tao foreground service.
+- Database/API/cau hinh: Khong migration, endpoint moi hoac secret moi.
+- Kiem thu: `cd mobile; npm run typecheck` dat; `npm run lint` dat; `npm test -- --reporter=dot` dat `18` file, `58/58`; Expo prebuild dat voi canh bao thieu `GOOGLE_SERVICES_JSON(_BASE64)`; Gradle `BUILD SUCCESSFUL` sau 18m13s; `aapt dump badging` xac nhan package/version/`arm64-v8a`/`POST_NOTIFICATIONS`; `apksigner verify --verbose` dat v2; `zipalign -c -v 4` dat; SHA-256 `BCC35503B0BBCA9715B3E7BDB6EF167F1DAF659B35242744495E0F68DEAFA77B`.
+- Rui ro con lai: Neu khong co Firebase native config va provider authoritative, killed-app push van khong the hoat dong; force-stop tu Settings van bi Android chan.
+- Viec tiep theo: Cai APK `1.0.18`, sau do cap credential/build co FCM va test foreground/background/recent/killed.
+- Commit/PR: Chua tao.
+
+## 2026-09-25-05 - Build APK mobile 1.0.17
+
+- Thoi gian: 2026-09-25 (Asia/Saigon)
+- Loai: Phat hanh | Mobile | Thong bao | Kiem thu | Tai lieu
+- Trang thai: Hoan tat APK test; chua UAT push tren thiet bi that.
+- Muc tieu: Tao APK release tu source moi nhat, bao gom suspend Tinode khi app vao nen va reconnect/catch-up khi mo lai.
+- Pham vi: Native Android ARM64; khong thay doi API, database hay production runtime.
+- Noi dung: Chay Expo prebuild va Gradle `:app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a` trong staging ASCII; artifact tai `D:\vichat-build\ViChat-1.0.17-background-push-fix-arm64.apk`.
+- Quyet dinh ky thuat: Dung package `vn.upgo.vichat`, version `1.0.17`, Android `versionCode=18`; build khong co Firebase `google-services.json` nen khong tuyen bo killed-app push da hoat dong.
+- Kiem thu: Gradle `BUILD SUCCESSFUL` sau 19m59s; `aapt dump badging` xac nhan package/version/`arm64-v8a`/`POST_NOTIFICATIONS`; `apksigner verify --verbose` dat v2; `zipalign -c -v 4` dat; SHA-256 `C60C3D2DDADD7045B61EF57DCD08E2FEB4D9A99CA42E86F854FAC210A56D8113`.
+- Rui ro con lai: Build hien canh bao thieu `GOOGLE_SERVICES_JSON(_BASE64)`; push khi app bi kill van can native Firebase credential va Tinode FCM/TNPG production provider; chua UAT tren dien thoai that.
+- Viec tiep theo: Cai APK tren hai thiet bi, cap credential qua secret runtime, recreate provider Tinode authoritative, roi test web -> mobile/mobile -> mobile o foreground/background/killed.
+- Commit/PR: Chua tao.
+
+## 2026-09-25-04 - Kich hoat suspend Tinode khi mobile vao nen
+
+- Thoi gian: 2026-09-25 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Thong bao | Tinode | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source; chua build APK/AAB va chua UAT push tren thiet bi that.
+- Muc tieu: Bao dam websocket mobile khong tiep tuc nhan tin khi ung dung da vao nen, de Tinode gui push cho thiet bi thay vi danh dau da nhan realtime.
+- Pham vi: `mobile/App.tsx`.
+- Noi dung: Goi `tinodeClient.suspendForBackground()` ngay khi React Native phat hien app vao `background`; khi quay lai, luong reconnect hien co se ket noi lai va catch-up history.
+- Quyet dinh ky thuat: Giu device token tren Tinode trong luc dong websocket; khong dung foreground service va khong thay doi message/API/database.
+- Database/API/cau hinh: Khong co migration, endpoint moi hoac secret moi.
+- Kiem thu: Da chay `cd mobile; npm run typecheck` dat; `npm run lint` dat; `npm test -- --reporter=dot` dat `18` file, `58/58`; `npm run export` dat (canh bao thieu `GOOGLE_SERVICES_JSON(_BASE64)`); `git diff --check` dat.
+- Rui ro con lai: Push khi app bi kill van can Firebase/APNs credential dung package va provider Tinode production; chua co thiet bi that de UAT.
+- Viec tiep theo: Build `1.0.17` voi credential, recreate provider authoritative va test web -> mobile/mobile -> mobile o foreground/background/killed.
+- Commit/PR: Chua tao.
+
+## 2026-09-25-03 - Tang version mobile cho ban build co push nen
+
+- Thoi gian: 2026-09-25 (Asia/Saigon)
+- Loai: Phat hanh | Mobile | Thong bao | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source; chua build APK/AAB va chua UAT push tren thiet bi that.
+- Muc tieu: Bao dam ban mobile phat hanh tiep theo khong bi nham voi APK `1.0.16` duoc build truoc khi hoan tat luong suspend Tinode/background push.
+- Pham vi: `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`.
+- Noi dung: Tang version ung dung tu `1.0.16`/Android `versionCode=17` len `1.0.17`/`versionCode=18` de Android chap nhan ban cap nhat chua cac thay doi dong bo va thong bao background.
+- Quyet dinh ky thuat: Chi tang version; khong thay doi API, database, message flow hay cau hinh credential.
+- Kiem thu: Chua chay build APK/AAB trong buoc nay; se kiem tra version metadata cung build release va UAT sau khi co credential push.
+- Rui ro con lai: Chua co `google-services.json`, Firebase service-account/TNPG credential, production `.env` va thiet bi that; push khi app bi kill chua duoc xac nhan.
+- Viec tiep theo: Build ban `1.0.17` voi Firebase config dung package `vn.upgo.vichat`, cau hinh provider Tinode authoritative, roi test web/mobile o foreground/background/killed.
+- Commit/PR: Chua tao.
+
+## 2026-09-25-02 - Buoc mobile suspend realtime de dam bao push background
+
+- Thoi gian: 2026-09-25 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Thong bao | Tinode | Cau hinh | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source; chua deploy va chua UAT push tren thiet bi that.
+- Muc tieu: Khong de Tinode thay mobile van online trong khi JavaScript da bi he dieu hanh suspend, lam mat FCM/APNs khi app ra background.
+- Nguyen nhan: Mobile chi tao local notification tu event realtime; websocket co the con song sau khi app vao background, Tinode danh dau device da nhan va bo qua push server.
+- Pham vi: `mobile/App.tsx`, `mobile/src/services/tinodeClient.ts`, `infrastructure/tinode/config.template`, `infrastructure/tinode/compose.yaml`, `infrastructure/tinode/.env.example`, `infrastructure/production/compose.yaml`, `infrastructure/production/.env.example`, `infrastructure/production/start.sh`, tai lieu kien truc/van hanh.
+- Noi dung: Dong websocket co chu dich khi vao background nhung giu device token tren Tinode; reconnect khi resume, catch-up history va khong phat lai local alert cho tin da nam trong khoang push; FCM Android dung body `$content`, mau/sound dung field Tinode hop le; them cau hinh APNs alert va validate bien iOS.
+- Quyet dinh ky thuat: Khong tao foreground service; push killed-state van la trach nhiem cua native Firebase/APNs credential va provider Tinode authoritative. Khi thieu credential, source chi dam bao fail-closed va dong bo khi resume, khong tuyen bo push da hoat dong.
+- Kiem thu: `cd mobile; npm run typecheck` dat; `npm run lint` dat; `npm test -- --reporter=dot` dat `18` file, `58/58`; `npm run export` dat nhung canh bao thieu `GOOGLE_SERVICES_JSON(_BASE64)`; `node --test src/features/chat/services/chatManagementService.test.js` dat `68/68`; `npm run test:frontend -- --test-concurrency=1` dat `443/443`; `npm run lint` root exit `0` voi warning legacy/vendor; kiem tra push template valid JSON va giu `$content`; `bash -n infrastructure/production/start.sh` dat; `git diff --check` dat.
+- Rui ro con lai: Workspace khong co `google-services.json`, Firebase service-account/TNPG credential, Docker hay thiet bi that; chua deploy Tinode production.
+- Viec tiep theo: Cap credential qua kenh bi mat, cau hinh `chatapi.gonplatform.com`, build mobile voi package `vn.upgo.vichat`, sau do test foreground/background/killed bang hai tai khoan.
+- Commit/PR: Chua tao.
+
+## 2026-09-25-01 - Sua guard reconnect web va khoa cau hinh push mobile
+
+- Thoi gian: 2026-09-25 (Asia/Saigon)
+- Loai: Sua loi | Web | Mobile | Thong bao | Tinode | Van hanh | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source va kiem thu local; chua deploy va chua UAT push tren thiet bi that.
+- Muc tieu: Khong de web hien sai loi phien tai khoan khi polling `/api/v1/auth/me` chay dong thoi voi refresh token Tinode; giu duong thong bao mobile ro rang khi app bi background hoac bi kill.
+- Nguyen nhan: `refreshSessionMetadata()` tao object session moi cho cung tai khoan/tenant, trong khi guard refresh token truoc do so sanh identity object; push khi process mobile bi dung van phu thuoc Firebase/APNs native credential va provider tren Tinode authoritative.
+- Pham vi: `src/features/chat/services/chatManagementService.js`, `src/features/chat/services/chatManagementService.test.js`, `infrastructure/production/start.sh`, `infrastructure/production/README.md`, va artifact `dist/index.html` duoc tao lai boi production build.
+- Noi dung: Dung khoa on dinh theo user + tenant va `directorySessionGeneration` de phan biet metadata refresh hop le voi login/logout/switch-tenant that; ghi token moi vao session dang active; them regression test; `start.sh` fail-closed neu bat FCM/TNPG nhung thieu credential/path hop le, khong in secret.
+- Quyet dinh ky thuat: Tinode trung tam `chatapi.gonplatform.com` van la nguon push authoritative; cau hinh provider tren container `chatapi` rollback local khong kich hoat push production. Khong tao foreground service de gia lap push va khong thay doi message/API/database.
+- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js` dat `68/68`; `npm run test:frontend -- --test-concurrency=1` dat `443/443`; `npm run lint` exit `0` voi warning legacy/vendor; `npm run build:production` thanh cong voi canh bao chunk App vuot 500 KB; `cd mobile; npm run typecheck` dat; `npm test -- --reporter=dot` dat `18` file, `58/58`; `npm run lint` dat; `npm run export` dat nhung canh bao thieu `GOOGLE_SERVICES_JSON(_BASE64)`; `bash -n infrastructure/production/start.sh` dat; `git diff --check` dat.
+- Rui ro con lai: May nay khong co Docker (`docker --version` khong chay), khong co credential Firebase/APNs/TNPG/FCM trong workspace, chua recreate Tinode authoritative va chua UAT background/killed push. Vi vay khong tuyen bo push khi app bi kill da hoat dong.
+- Viec tiep theo: Cap credential qua kenh bi mat, cau hinh provider tren `chatapi.gonplatform.com`, build lai mobile co `google-services.json` dung package `vn.upgo.vichat`, restart provider, roi test foreground/background/killed bang hai tai khoan; khong can migration.
+- Commit/PR: Chua tao.
+
+## 2026-09-24-04 - Build lai APK mobile 1.0.16
+
+- Thoi gian: 2026-09-24 17:30 (Asia/Saigon)
+- Loai: Phat hanh | Mobile | Kiem thu | Tai lieu
+- Trang thai: Hoan tat APK test; chua co credential push nen.
+- Muc tieu: Tao APK moi tu source mobile hien tai sau cac thay doi dong bo, thong bao, mention, call va cau hinh native push.
+- Pham vi: Native Android ARM64; khong thay doi API, database hay production runtime.
+- Noi dung: Tang version tu `1.0.15`/`versionCode=16` len `1.0.16`/`versionCode=17`, prebuild trong staging ASCII va chay `:app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a`; APK output tai `D:\vichat-build\ViChat-1.0.16-background-fix-arm64.apk`.
+- Quyet dinh ky thuat: Dung package `vn.upgo.vichat`; APK nay chua co Firebase `google-services.json` nen khong tuyen bo killed-app push da hoat dong.
+- Kiem thu: Gradle `BUILD SUCCESSFUL` sau 19m06s; `aapt dump badging` xac nhan package/version/`arm64-v8a`/`POST_NOTIFICATIONS`; `apksigner verify --verbose` dat v2; SHA-256 `1EE4C0F3837AC4FCDFFD5BF8A7CF06598C8937DB2C22D46A6084C48C208E6303`.
+- Rui ro con lai: Can cai tren thiet bi that de UAT; thong bao khi app bi kill van phu thuoc Firebase native credential va Tinode FCM/TNPG production dang chua bat.
+- Viec tiep theo: Cai APK va test chat/call/mention; sau khi cap credential thi build lai cung version code tang moi de Android chap nhan cap nhat va test background/killed push.
+- Commit/PR: Chua tao.
+
+## 2026-09-24-03 - Khoanh vung va san sang kich hoat push nen mobile
+
+- Thoi gian: 2026-09-24 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Thong bao | Tinode | Cau hinh | Van hanh | Kiem thu | Tai lieu
+- Trang thai: Can xac nhan credential production; source da san sang.
+- Muc tieu: Cho phep thong bao den Android khi app roi foreground hoac bi he dieu hanh dung, thay vi chi hien khi JavaScript/Tinode con song.
+- Pham vi: `mobile/app.config.js`, `infrastructure/tinode/config.template`, `infrastructure/production/compose.yaml`, `infrastructure/production/.env.example`, va file nay.
+- Nguyen nhan da xac nhan: APK truoc chua nhan `google-services.json`; container Tinode authoritative `songhong-production-chatapi-1` dang co `FCM_PUSH_ENABLED=false`, `TNPG_PUSH_ENABLED=false`, khong co `FCM_PROJECT_ID`, va `/data/runtime` khong co Firebase service-account.
+- Noi dung: Cho phep build mobile nhan Firebase Android config tu file local bi ignore, JSON inline hoac base64 qua `GOOGLE_SERVICES_JSON`, `EXPO_GOOGLE_SERVICES_JSON`, `GOOGLE_SERVICES_JSON_BASE64` hoac `EXPO_GOOGLE_SERVICES_JSON_BASE64`; bo icon/action Android Tinode khong ton tai va them fallback title/body hop le; them bien Compose/env cho FCM/TNPG de provider khong bi bo qua khi credential da duoc cap.
+- Quyet dinh ky thuat: Giu native device token va Tinode push provider lam duong thong bao nen; khong dung foreground service de gia lap push va khong bat provider voi credential rong. Thong bao foreground van la local notification, con app killed chi duoc xem la hoat dong sau khi build co credential native va Tinode provider production.
+- Database/API/cau hinh: Khong migration/API moi. Can dat Android Firebase app dung package `vn.upgo.vichat`, service-account JSON (hoac TNPG token) trong secret runtime, set `FCM_PUSH_ENABLED=true`/`FCM_PROJECT_ID`/`FCM_CRED_FILE` hoac cau hinh TNPG, sau do recreate container Tinode va build lai APK.
+- Kiem thu: `cd mobile; npm run typecheck` dat; `npm test -- --reporter=dot` dat `18` file, `58/58`; `npm run lint` dat; `npm run export` dat; `CI=1 npx expo prebuild --platform android --no-install --non-interactive` dat (Expo canh bao tham so `--non-interactive` khong can thiet); kiem tra inline Firebase config dat; validate interpolation JSON cua Tinode template dat; `git diff --check` exit `0`; production chi doc da xac nhan provider dang tat va credential file thieu.
+- Rui ro con lai: Chua the UAT background/killed push hoac tao APK co FCM khi credential chua duoc cap; production dang chay config Tinode cu va chua duoc recreate. Khong tuyen bo thong bao nen da hoat dong.
+- Viec tiep theo: Cap `google-services.json` cho package `vn.upgo.vichat` va Firebase service-account/TNPG credential qua kenh bi mat; build lai APK/AAB, cap nhat secret runtime, recreate Tinode, roi test foreground/background/killed tren thiet bi that.
+- Commit/PR: Chua tao.
+
+## 2026-09-24-02 - Chot mention canonical va dong bo Tinode background mobile
+
+- Thoi gian: 2026-09-24 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Tinode | Mention | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source va da tao APK test mobile ARM64; chua UAT tren thiet bi that.
+- Muc tieu: Khong de dropdown `@` mobile mat ngay khi dang go, dong bo mention voi web, va cap nhat history khi Tinode bao co tin moi trong background.
+- Nguyen nhan: `onSelectionChange` doc state text cu truoc khi React render lai; mobile chi tim ten mention o mot so truong; callback danh ba Tinode chi tao snapshot ma chua tai them message moi nhu web.
+- Pham vi: `mobile/src/screens/chat/ChatDetailScreen.tsx`, `mobile/src/utils/mentionPolicy.ts`, `mobile/src/utils/mentionPolicy.test.ts`, `mobile/src/services/tinodeClient.ts`, va file nay.
+- Noi dung: Giu text composer trong ref cho su kien selection; dung canonical `defaultName/default_name/fullName/full_name` khi tao `x-mentions`; subscribe history toi da 100 tin moi voi `newerOnly` khi contact co `msg`; khong ACK lap lai tung packet trong history catch-up.
+- Quyet dinh ky thuat: Ten chinh thuc la nguon chung cho metadata mention giua web/mobile, con nickname chi phuc vu hien thi; chi dong bo topic da duoc Chatmgt cho phep de tranh tu mo topic ngoai pham vi.
+- Database/API/cau hinh: Khong migration, endpoint, schema, secret hoac thay doi boundary; su dung lai hop dong Tinode hien co.
+- Kiem thu: `cd mobile; npm run typecheck` thanh cong; `npm test -- --reporter=dot` thanh cong `18` file, `58/58`; `npm run lint` thanh cong; `npm run export` thanh cong; `git diff --check` exit `0`; build staging ASCII bang `:app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a` thanh cong trong `8m21s`.
+- APK: `D:\vichat-build\ViChat-1.0.15-mention-background-fix-arm64.apk`, package `vn.upgo.vichat`, version `1.0.15`/code `16`, ABI `arm64-v8a`, co `POST_NOTIFICATIONS`, SHA-256 `EA9321BD8CE8A28F538FA7C73649C83A451DAD2F43E540842FCE56677972321A`.
+- Rui ro con lai: Chua UAT tren dien thoai that; push khi app bi kill van can native Firebase/APNs credential dung package va Tinode FCM/TNPG provider production; cuoc goi van can test hai thiet bi voi ICE/TURN that.
+- Viec tiep theo: Build APK/AAB co credential, cai tren hai thiet bi va test mention group, refresh/pending, foreground/background/killed notification va audio/video call.
+- Commit/PR: Chua tao.
+
+## 2026-09-24-01 - Fix dong bo mobile, mention, call va push background
+
+- Thoi gian: 2026-09-24 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Tinode | Mention | Goi dien | Thong bao | Cau hinh | Kiem thu
+- Trang thai: Hoan tat source; chua UAT tren thiet bi that va chua build APK trong phien nay.
+- Muc tieu: Khong mat tin nhan/room sau snapshot hoac refresh, cho mention nhom hoat dong nhu web, lam on dinh luong goi 1-1, hien chu Viet co dau va lam ro duong truyen push khi app bi suspend/killed.
+- Nguyen nhan: Mobile thay the message snapshot thay vi merge theo id/seq, chua gui `x-mentions`, danh sach room chi subscribe Tinode ma khong tai history gan nhat, ICE/candidate co the trung va danh sach room bi reset khi Chatmgt refresh; killed-app push con thieu ca credential native lan provider Tinode.
+- Pham vi: `mobile/src/utils/conversationSync.ts`, `mobile/src/utils/mentionPolicy.ts`, `mobile/src/screens/chat/ChatDetailScreen.tsx`, `mobile/src/components/MessageBubble.tsx`, `mobile/src/services/tinodeClient.ts`, `mobile/src/store/appStore.ts`, `mobile/src/store/callStore.ts`, `mobile/src/components/MobileCallOverlay.tsx`, `mobile/src/services/notificationService.ts`, `mobile/src/types/index.ts`, cac test mobile, `infrastructure/production/compose.yaml`, `infrastructure/production/.env.example`, va tai lieu.
+- Noi dung: Merge message theo id/seq de giu history, pending, mention va receipt; tai cua so history Tinode gan nhat khi hien danh sach nhu web, sort room theo pinned/activity va merge metadata Chatmgt thay vi xoa snapshot hien tai; hop nhat snapshot thanh vien mot phan nhung giu ca account ID va Tinode UID cho mention; port mention policy toi thieu cua web voi dropdown thanh vien, `x-mentions` canonical identity va render token; parse topic 1-1 hop le, normalize ICE/TURN, khu ICE trung, ho tro ca `ontrack`/`onaddstream`, gan remote stream cho ca call audio va tinh duration tu luc ket noi; kiem tra native token rong va noi day bien FCM/TNPG an toan qua Compose/env example; sua cac chuoi mobile hien thi khong dau.
+- Quyet dinh ky thuat: Tinode trung tam van la nguon message/realtime duy nhat, Chatmgt van la nguon membership/metadata; khong tao foreground service luon chay. Push khi app bi kill chi duoc xem la hoat dong sau khi build co Firebase/APNs credential dung package va production Tinode bat FCM/TNPG provider.
+- Database/API/cau hinh: Khong migration, khong doi endpoint/schema; them cac bien khong chua secret `FCM_PUSH_ENABLED`, `FCM_PROJECT_ID`, `FCM_CRED_FILE`, `FCM_INCLUDE_ANDROID_NOTIFICATION`, `TNPG_PUSH_ENABLED`, `TNPG_AUTH_TOKEN`, `TNPG_ORG` vao compose/env example; credential file van nam ngoai repository/runtime secret.
+- Kiem thu: `cd mobile; npm run typecheck` dat; `npm test -- --reporter=dot` dat `18` file, `57/57`; `npm run lint` dat; `npm run export` dat web bundle; `git diff --check` dat. Chua chay `docker compose ... config` vi may Windows hien khong co lenh Docker.
+- Rui ro con lai: Chua UAT tren dien thoai that, chua co ADB/native release trong phien nay; killed-app push van cho den khi cap native Firebase/APNs, dat file vao secret runtime va bat provider Tinode production; goi dien van can ICE/TURN authoritative va UAT hai thiet bi.
+- Viec tiep theo: Build lai APK/AAB co credential dung package, cai tren hai thiet bi, test foreground/background/killed, mention group, refresh khi dang co pending message va call audio/video 1-1.
+- Commit/PR: Chua tao.
+
+## 2026-09-23-03 - Sua danh tinh group, modal thao tac va san sang push mobile
+
+- Thoi gian: 2026-09-23 19:09 (Asia/Saigon)
+- Loai: Sua loi | UX | Mobile | Nhom | Thong bao | Hieu nang | Kiem thu | Phat hanh
+- Trang thai: Hoan tat source va da tao APK release ARM64; chua UAT tren thiet bi that.
+- Muc tieu: Khong mat ten/avatar nguoi gui trong tin nhan nhom, khong cho them trung thanh vien, thay hop thoai he dieu hanh bang modal mobile dong bo, va thu lai dang ky push sau khi Tinode authenticated.
+- Nguyen nhan: Message snapshot co the chi mang sender ID/generic name, bo loc them thanh vien chi so sanh mot dang ID, cac luong thu hoi/xoa van dung `Alert`, va token native co the duoc dang ky truoc khi realtime authenticated.
+- Pham vi: `mobile/App.tsx`, `mobile/app.config.js`, `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`, `mobile/src/components/ConfirmDialog.tsx`, `mobile/src/components/MessageBubble.tsx`, `mobile/src/screens/chat/ChatDetailScreen.tsx`, `mobile/src/screens/chat/ConversationListScreen.tsx`, `mobile/src/screens/chat/GroupInfoScreen.tsx`, `mobile/src/services/notificationService.ts`, `mobile/src/services/tinodeClient.ts`, `mobile/src/store/appStore.ts`, `mobile/src/utils/identity.ts`, va tai lieu.
+- Noi dung: Hop nhat id/userId/participantId/Tinode UID/username/email khi loc thanh vien va enrich message; hien Avatar + ten cho tin nhan/cuoc goi den trong group; them ConfirmDialog dark polished cho thu hoi va xoa/roi nhom; dang ky lai device token khi Tinode da authenticated; app config nhan `GOOGLE_SERVICES_JSON`/`EXPO_GOOGLE_SERVICES_JSON` hoac file local ma khong ghi secret vao repo; tang mobile version `1.0.15`, Android `versionCode=16`.
+- Quyet dinh ky thuat: Khong tao foreground service luon chay vi gay ton pin va khong giai quyet iOS/killed-app; push khi process bi he dieu hanh dung van can Firebase/APNs credential trong native build va push provider Tinode production.
+- Database/API/cau hinh: Khong migration, endpoint hay thay doi web; khong co `google-services.json` trong workspace nen APK nay chi co co che san sang tiep nhan credential khi build lai.
+- Kiem thu: `cd mobile; npm run typecheck` dat; `npm test -- --reporter=dot` dat `17` file, `47/47`; `npm run lint` dat; `npm run export` dat web bundle; `CI=1 npx expo prebuild --platform android --no-install` dat trong staging ASCII; Gradle `:app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a` dat (`BUILD SUCCESSFUL`, clean build 18m38s, incremental final rebuild 5m16s); `git diff --check` chay truoc khi ket thuc.
+- APK: `D:\vichat-build\ViChat-1.0.15-group-notification-ui-arm64.apk`, package `vn.upgo.vichat`, version `1.0.15`/code `16`, ABI `arm64-v8a`, co `POST_NOTIFICATIONS` va channel mac dinh `messages-v2`, ky v2 hop le, SHA-256 `9234973B200D5A4B050B8240A6F539D58C85257E1FC59D41313D6CC10232AE38`.
+- Rui ro con lai: Chua UAT tren thiet bi that; thong bao local phu thuoc JS/Tinode con song, con killed-app push can Firebase/APNs credential va Tinode push provider that; APK hien tai la ARM64.
+- Viec tiep theo: Cai APK tren dien thoai, dang nhap hai tai khoan va test them thanh vien da co, sender avatar/name group, thu hoi, xoa/roi nhom, foreground/background/killed; cau hinh provider push roi build lai neu can thong bao khi process bi kill.
+- Commit/PR: Chua tao.
+
+## 2026-09-23-02 - Sua loi mobile bi do va luong chat bi treo
+
+- Thoi gian: 2026-09-23 16:34 (Asia/Saigon)
+- Loai: Sua loi | Hieu nang | Mobile | Tinode | Kiem thu | Phat hanh
+- Trang thai: Hoan tat source va da tao APK release ARM64; chua UAT tren thiet bi that.
+- Muc tieu: Khong de app dung o man hinh trong, thao tac chat tao request treo hoac lap lai, va dam bao cac luong chay ro rang khi Tinode dang mat ket noi.
+- Nguyen nhan: Store mobile con luong legacy trung, khoi dong cho metadata Chatmgt truoc khi hien app, thieu timeout o cac buoc Tinode/API, va mot so thao tac van tao pending request khi realtime offline.
+- Pham vi: `mobile/src/store/appStore.ts`, `mobile/src/navigation/AppNavigator.tsx`, `mobile/src/screens/chat/ConversationListScreen.tsx`, `mobile/src/screens/chat/ChatDetailScreen.tsx`, `mobile/src/services/tinodeClient.ts`, `mobile/src/services/apiClient.ts`, `mobile/src/services/authService.ts`, `mobile/src/services/chatManagementService.ts`, version native mobile va tai lieu.
+- Noi dung: Cho app vao trang thai san sang ngay sau khi co session va tai metadata nen; deduplicate refresh; them timeout cho connect/login/subscribe/history/publish va API auth/metadata; chi cho phep gui/sua/thu hoi/file/reaction khi realtime authenticated; them reconnect va khong de pending request treo; tranh mo conversation trung va tranh render man hinh chinh rong khi session chua san sang.
+- Quyet dinh ky thuat: Tinode tiep tuc la nguon realtime; Chatmgt metadata duoc tai nen va khong chan giao dien. Khi offline, UI chan thao tac phu thuoc realtime va hien hanh dong reconnect thay vi im lang cho request vo han.
+- Database/API/cau hinh: Khong them migration, endpoint hoac secret; tang mobile version `1.0.14`, Android `versionCode=15`.
+- Kiem thu: `cd mobile; npm run typecheck` dat; `npm test -- --reporter=dot` dat `17` file, `47/47`; `npm run lint` dat; `npm run export` dat; `npx expo prebuild --platform android --no-install --non-interactive` dat; Gradle `:app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a` dat; `git diff --check` dat.
+- APK: `D:\vichat-build\ViChat-1.0.14-mobile-stability-arm64.apk`, package `vn.upgo.vichat`, version `1.0.14`/code `15`, ABI `arm64-v8a`, co `POST_NOTIFICATIONS`, ky v2 hop le, SHA-256 `723AAA549CE0CD06160121CCE789A15085EE7D8F92893096295FD0AFB9F99C56`.
+- Rui ro con lai: Chua UAT thao tac tren thiet bi that; push khi app bi kill van phu thuoc Firebase/APNs credential va provider Tinode production; APK hien tai la ARM64.
+- Viec tiep theo: Cai APK tren dien thoai, dang nhap hai tai khoan va thu danh sach hoi thoai, gui/sua/thu hoi, file/reaction, group/poll, foreground/background/killed; cau hinh push provider neu can thong bao khi process bi kill.
+- Commit/PR: Chua tao.
+
+## 2026-09-23-01 - Mo rong group mobile va toi uu realtime
+
+- Thoi gian: 2026-09-23 12:24 (Asia/Saigon)
+- Loai: Sua loi | Hieu nang | Mobile | Thong bao | Tinh nang | Phat hanh
+- Trang thai: Hoan tat source va da tao APK test mobile; chua UAT tren thiet bi that.
+- Muc tieu: Lam mobile muot hon, giam mat thong bao khi Tinode dang song va dua luong quan tri nhom/poll cot loi dang co tren web vao app mobile.
+- Pham vi: `mobile/`, version native mobile va tai lieu; su dung API Chatmgt/Tinode hien co, khong thay doi database hay secret.
+- File da thay doi: `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`, `mobile/src/components/ConversationRow.tsx`, `mobile/src/components/MessageBubble.tsx`, `mobile/src/components/PollComposer.tsx`, `mobile/src/navigation/AppNavigator.tsx`, `mobile/src/navigation/types.ts`, `mobile/src/screens/chat/ChatDetailScreen.tsx`, `mobile/src/screens/chat/GroupInfoScreen.tsx`, `mobile/src/services/chatManagementService.ts`, `mobile/src/services/notificationService.ts`, `mobile/src/services/tinodeClient.ts`, `mobile/src/store/appStore.ts`, `mobile/src/types/index.ts`, `mobile/src/utils/groupSettings.ts`, `mobile/src/utils/poll.ts`, `mobile/src/utils/poll.test.ts`, `docs/CHANGELOG.md`.
+- Noi dung: Bo sung quan tri nhom tren mobile (thanh vien, phe duyet, vai tro, doi ten/avatar, cai dat, ghim, roi/giai tan, tim lich su) va poll; dung `FlashList`/memo cho danh sach; hop nhat snapshot khong ghi de metadata Chatmgt; reconnect phat lai toi da 20 tin nhan bi lo; ap dung `allowMessages` cho input/tep/sticker/poll; on dinh local notification va kenh `messages-v2`.
+- Quyet dinh ky thuat: Mobile goi cung endpoint quan tri nhom ma web dang dung; Tinode van la nguon realtime va Chatmgt van la nguon quyen/thanh vien metadata. Build phat hanh dung native intermediates da build thanh cong truoc do vi full C++ rebuild tren may nay bi gioi han paging file; cac thay doi native can thiet (version, POST_NOTIFICATIONS, default channel) da duoc dong goi.
+- Database/API/cau hinh: Khong them migration, endpoint hoac secret; tang mobile version `1.0.13`, Android `versionCode=14`.
+- Kiem thu: `cd mobile; npm run typecheck` dat; `npm test -- --reporter=dot` dat `17` file, `47/47`; `npm run lint` dat; `git diff --check` dat; `npx expo prebuild --platform android --no-install` dat trong workspace ASCII; Gradle `assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a` dat; APK `D:\vichat-build\ViChat-1.0.13-group-mobile-fix-arm64.apk` co package `vn.upgo.vichat`, version `1.0.13`/code `14`, ABI `arm64-v8a`, `POST_NOTIFICATIONS`, channel mac dinh `messages-v2`, chu ky v2 hop le, SHA-256 `397514723A1E6ABC86E641AAB4A3CFE254EB84F3851C85F1059311157FD664CE`.
+- Rui ro con lai: Chua UAT thao tac tren thiet bi that; push khi app bi kill van phu thuoc native Firebase/APNs credential va provider Tinode production; APK hien tai la ARM64.
+- Viec tiep theo: Cai APK tren dien thoai, dang nhap hai tai khoan va test group/poll o foreground/background/killed; cau hinh Firebase/APNs va provider Tinode neu can push khi process bi kill.
+- Commit/PR: Chua tao.
 
 ## 2026-09-22-07 - Them workflow Codemagic cho build mobile
 

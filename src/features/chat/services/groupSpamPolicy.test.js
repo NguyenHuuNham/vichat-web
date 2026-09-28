@@ -85,3 +85,23 @@ test('wires the web guard and bridge enforcement without adding mobile policy', 
   assert.match(bridgeSource, /client_platform.*web/);
   assert.doesNotMatch(mobileSource, /GROUP_SPAM_COOLDOWN|groupSpam|x-vichat-group-action/);
 });
+
+test('counts only text and stickers in the web composer, never reaction actions', () => {
+  const reactionStart = appSource.indexOf("if (action === 'reaction' || action === 'remove-reaction')");
+  const reactionEnd = appSource.indexOf("if (action === 'hide')", reactionStart);
+  const reactionBlock = appSource.slice(reactionStart, reactionEnd);
+  assert.ok(reactionStart >= 0 && reactionEnd > reactionStart);
+  assert.doesNotMatch(reactionBlock, /registerGroupSendAttempt|groupActionId/);
+
+  const stickerStart = appSource.indexOf('const handleSendSticker = sticker =>');
+  const stickerEnd = appSource.indexOf('const startVoiceRecording', stickerStart);
+  const stickerBlock = appSource.slice(stickerStart, stickerEnd);
+  assert.match(stickerBlock, /registerGroupSendAttempt\(activeChat, createGroupSpamActionId\('sticker'\)\)/);
+
+  const textStart = appSource.indexOf('const handleSendMessage = async');
+  const textEnd = appSource.indexOf('const handleComposerSubmit', textStart);
+  const textBlock = appSource.slice(textStart, textEnd);
+  assert.match(textBlock, /registerGroupSendAttempt\(activeChat, createGroupSpamActionId\('text'\)\)/);
+  assert.match(bridgeSource, /STICKER_HEAD/);
+  assert.match(bridgeSource, /NON_MESSAGE_PREFIXES/);
+});

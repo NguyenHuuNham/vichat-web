@@ -4540,6 +4540,9 @@ function App() {
     ? groupSpamRemainingSeconds(activeGroupSpamState, groupSpamClock)
     : 0;
   const activeGroupSpamBlocked = activeGroupSpamRemaining > 0;
+  const activeGroupTextSendBlocked = activeGroupSpamBlocked
+    && !editingMessage
+    && activePastedAttachments.length === 0;
   useEffect(() => {
     if (!activeGroupSpamKey || activeGroupSpamBlockedUntil <= Date.now()) return undefined;
     let timer = null;
@@ -11273,13 +11276,6 @@ function App() {
     return true;
   };
 
-  const allowGroupSendDuringCooldown = room => {
-    if (!room?.isGroup) return true;
-    const key = groupSpamStateKey(room);
-    const state = groupSpamStatesRef.current.get(key) || createGroupSpamState();
-    return !announceGroupSpamCooldown(state);
-  };
-
   const registerGroupSendAttempt = (room, requestedActionId = '') => {
     if (!room?.isGroup) return { allowed: true, groupActionId: '' };
     const key = groupSpamStateKey(room);
@@ -11316,7 +11312,6 @@ function App() {
   // --- Attach & Gửi tệp tin ---
   const openAttachmentPicker = inputRef => {
     if (!allowDirectMessagingAttempt(activeChat)) return;
-    if (!allowGroupSendDuringCooldown(activeChat)) return;
     if (activeChat.isChatbot) {
       setChatError('Trợ lý AI hiện chỉ nhận tin nhắn văn bản.');
       return;
@@ -11343,7 +11338,6 @@ function App() {
       imageBatch = null,
       caption = '',
       mentions = [],
-      groupActionId = '',
     } = options;
     if (!file) return;
     if (!allowDirectMessagingAttempt(activeChat)) return;
@@ -11370,9 +11364,6 @@ function App() {
       setChatError(captionValidationError);
       return;
     }
-    const groupSpamAttempt = registerGroupSendAttempt(activeChat, groupActionId);
-    if (!groupSpamAttempt.allowed) return;
-    const resolvedGroupActionId = groupSpamAttempt.groupActionId;
     setChatError('');
     const replyMeta = Object.prototype.hasOwnProperty.call(options, 'replyMeta')
       ? options.replyMeta
@@ -11481,7 +11472,6 @@ function App() {
             imageBatch: normalizedImageBatch,
             caption: captionText,
             mentions: captionMentions,
-            groupActionId: resolvedGroupActionId,
             conversationId: room.managementId || room.id,
           });
           const confirmedIsImage = /^image\//i.test(result.file.mime || '') || isImage;
@@ -11550,7 +11540,6 @@ function App() {
 
   const openPollComposer = () => {
     if (!activeChat?.isGroup) return;
-    if (!allowGroupSendDuringCooldown(activeChat)) return;
     if (!canCreatePollInActiveGroup) {
       setChatError('Quản trị viên đã tắt quyền tạo bình chọn trong nhóm.');
       return;
@@ -11623,8 +11612,6 @@ function App() {
       setChatError('Nhóm chưa sẵn sàng để cập nhật bình chọn.');
       return;
     }
-    const groupSpamAttempt = registerGroupSendAttempt(activeChat, createGroupSpamActionId('poll-event'));
-    if (!groupSpamAttempt.allowed) return;
     const actorId = tinodeClient.currentUserId || currentUser?.tinodeUid || viewerId;
     const normalizedEvent = {
       ...event,
@@ -11641,9 +11628,7 @@ function App() {
     }
     try {
       const topicName = await ensureTinodeConversationTopic(activeChat);
-      await tinodeClient.sendPollEvent(topicName, normalizedEvent, normalizedEvent.clientId, {
-        groupActionId: groupSpamAttempt.groupActionId,
-      });
+      await tinodeClient.sendPollEvent(topicName, normalizedEvent, normalizedEvent.clientId);
       applyLocalPollEvent(message, normalizedEvent);
     } catch (error) {
       if (!handleGroupSpamCooldownError(error, activeChat.id)) {
@@ -11695,8 +11680,6 @@ function App() {
       setChatError('Bình chọn cần ít nhất 2 phương án.');
       return;
     }
-    const groupSpamAttempt = registerGroupSendAttempt(activeChat, createGroupSpamActionId('poll-create'));
-    if (!groupSpamAttempt.allowed) return;
     const pollComposerSnapshot = pollComposer;
     setIsCreatingPoll(true);
     setChatError('');
@@ -11762,9 +11745,7 @@ function App() {
         return;
       }
       const topicName = await ensureTinodeConversationTopic(room);
-      const result = await tinodeClient.sendPoll(topicName, poll, newMessage.id, {
-        groupActionId: groupSpamAttempt.groupActionId,
-      });
+      const result = await tinodeClient.sendPoll(topicName, poll, newMessage.id);
       const sequence = result?.ctrl?.params?.seq || result?.params?.seq;
       setConversations(previous => ({
         ...previous,
@@ -11784,7 +11765,7 @@ function App() {
           messageId: newMessage.id,
           messageSeq: Number(sequence) || 0,
           messagePreview: `Bình chọn: ${question}`,
-        }, { groupActionId: groupSpamAttempt.groupActionId });
+        });
       }
     } catch (error) {
       const spamBlocked = handleGroupSpamCooldownError(error, roomId);
@@ -11961,7 +11942,6 @@ function App() {
   const startVoiceRecording = async () => {
     if (isRecordingVoice || mediaRecorderRef.current) return;
     if (!allowDirectMessagingAttempt(activeChat)) return;
-    if (!allowGroupSendDuringCooldown(activeChat)) return;
     setShowEmojiPicker(false);
     if (activeChat?.isChatbot) {
       setChatError('Trợ lý AI hiện chỉ nhận tin nhắn văn bản.');
@@ -12037,10 +12017,6 @@ function App() {
   const handleAttachmentChange = (event, source) => {
     const selection = splitAttachmentSelection(event.target.files, source);
     event.target.value = '';
-    const groupSpamAttempt = selection.accepted.length > 0
-      ? registerGroupSendAttempt(activeChat, createGroupSpamActionId(`${source}-batch`))
-      : { allowed: true, groupActionId: '' };
-    if (!groupSpamAttempt.allowed) return;
     const imageBatchId = source === 'image' && selection.accepted.length > 1
       ? `image-batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
       : '';
@@ -12048,9 +12024,8 @@ function App() {
       void handleSendFile(file, imageBatchId
         ? {
           imageBatch: { id: imageBatchId, index, size: selection.accepted.length },
-          groupActionId: groupSpamAttempt.groupActionId,
         }
-        : { groupActionId: groupSpamAttempt.groupActionId });
+        : {});
     });
     if (selection.rejected.length > 0) {
       const rejectedCount = selection.rejected.length;
@@ -12670,8 +12645,6 @@ function App() {
         : 'Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.');
       return;
     }
-    const groupSpamAttempt = registerGroupSendAttempt(room, createGroupSpamActionId('edit'));
-    if (!groupSpamAttempt.allowed) return;
     setIsSavingMessageEdit(true);
     setChatError('');
     const editedAt = new Date().toISOString();
@@ -12690,9 +12663,7 @@ function App() {
     try {
       if (chatMode === 'tinode') {
         const topicName = await ensureTinodeConversationTopic(room);
-        const event = await tinodeClient.editMessage(topicName, target, text, mentions, {
-          groupActionId: groupSpamAttempt.groupActionId,
-        });
+        const event = await tinodeClient.editMessage(topicName, target, text, mentions);
         patch.editedAt = event?.createdAt || editedAt;
         patch.editHistory = [
           ...(Array.isArray(target.editHistory) ? target.editHistory : []),
@@ -12815,8 +12786,6 @@ function App() {
           setChatError('Quản trị viên đã tắt quyền ghim tin nhắn trong nhóm.');
           return;
         }
-        const groupSpamAttempt = registerGroupSendAttempt(activeChat, createGroupSpamActionId('pin'));
-        if (!groupSpamAttempt.allowed) return;
         const key = messageActionKey(activeChat.id, message.id);
         const nextPinned = !messageActions[key]?.pinned;
         const pinEvent = {
@@ -12832,9 +12801,7 @@ function App() {
         };
         if (activeChat.isGroup && chatMode === 'tinode') {
           const topicName = await ensureTinodeConversationTopic(activeChat);
-          await tinodeClient.sendSystemEvent(topicName, pinEvent, {
-            groupActionId: groupSpamAttempt.groupActionId,
-          });
+          await tinodeClient.sendSystemEvent(topicName, pinEvent);
         } else if (activeChat.isGroup && chatMode === 'demo') {
           const systemMessage = {
             id: `system-pin-${Date.now()}`,
@@ -12854,8 +12821,6 @@ function App() {
       }
       if (action === 'reaction' || action === 'remove-reaction') {
         const removingReaction = action === 'remove-reaction';
-        const groupSpamAttempt = registerGroupSendAttempt(activeChat, createGroupSpamActionId('reaction'));
-        if (!groupSpamAttempt.allowed) return;
         const key = messageActionKey(activeChat.id, message.id);
         const current = messageActions[key]?.reactions || {};
         const reactionActorId = tinodeClient.currentUserId || viewerId;
@@ -12894,9 +12859,7 @@ function App() {
         }
         if (chatMode === 'tinode') {
           const topicName = await ensureTinodeConversationTopic(activeChat);
-          await tinodeClient.sendReaction(topicName, message.id, emoji, active, {
-            groupActionId: groupSpamAttempt.groupActionId,
-          });
+          await tinodeClient.sendReaction(topicName, message.id, emoji, active);
         }
         saveMessageAction(message, { reactions: nextReactions, reactionUsers: nextReactionUsers });
         applyMessagePatch(message, { reactions: nextReactions, reactionUsers: nextReactionUsers });
@@ -12912,14 +12875,10 @@ function App() {
           setChatError('Chỉ có thể thu hồi sau khi tin nhắn hoặc tệp đã được gửi thành công.');
           return;
         }
-        const groupSpamAttempt = registerGroupSendAttempt(activeChat, createGroupSpamActionId('recall'));
-        if (!groupSpamAttempt.allowed) return;
         if (chatMode === 'tinode') {
           const topicName = await ensureTinodeConversationTopic(activeChat);
           const mode = action === 'recall-self' ? 'self' : 'all';
-          await tinodeClient.recallMessage(topicName, message, mode, {
-            groupActionId: groupSpamAttempt.groupActionId,
-          });
+          await tinodeClient.recallMessage(topicName, message, mode);
           if (mode === 'self') {
             setConversations(previous => {
               const room = previous[activeChat.id];
@@ -12964,7 +12923,6 @@ function App() {
       return;
     }
     let shareTarget = target;
-    let groupSpamAttempt = null;
     const sourceSender = findAccountByIdentities(directoryAccounts, [
       shareMessage.senderId,
       shareMessage.raw?.from,
@@ -13029,15 +12987,12 @@ function App() {
         }
       }
       if (!allowDirectMessagingAttempt(shareTarget)) return;
-      groupSpamAttempt = registerGroupSendAttempt(shareTarget, createGroupSpamActionId('forward'));
-      if (!groupSpamAttempt.allowed) return;
       if (chatMode === 'tinode') {
         const topicName = await ensureTinodeConversationTopic(shareTarget);
         if (sourceAttachment?.url) {
           const sourceFile = await tinodeClient.fetchFile(sourceAttachment);
           const result = await tinodeClient.sendFile(topicName, sourceFile, shared.id, {
             sharedFrom: shareMessage.id,
-            groupActionId: groupSpamAttempt.groupActionId,
             conversationId: shareTarget.managementId || shareTarget.id,
           });
           void ingestChatDocument({
@@ -13066,7 +13021,6 @@ function App() {
         } else {
           await tinodeClient.sendText(topicName, text, shared.id, {
             sharedFrom: shareMessage.id,
-            groupActionId: groupSpamAttempt.groupActionId,
           });
         }
       } else {
@@ -13382,8 +13336,6 @@ function App() {
       setChatError(captionValidationError);
       return;
     }
-    const groupSpamAttempt = registerGroupSendAttempt(activeChat, createGroupSpamActionId('paste-batch'));
-    if (!groupSpamAttempt.allowed) return;
     const batchId = `paste-batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const sendPlan = pasteAttachmentSendPlan(attachments, inputText, batchId);
     pastedAttachmentSubmitRef.current = true;
@@ -13393,7 +13345,6 @@ function App() {
         caption: item.caption,
         mentions: index === 0 ? captionMentions : [],
         replyMeta: index === 0 ? replyMeta : null,
-        groupActionId: groupSpamAttempt.groupActionId,
       });
     });
 
@@ -15780,7 +15731,7 @@ function App() {
             </div>
           )}
           {!activeChat.isChatbot && <div className="input-actions-left">
-            <button className="btn-input-action image-input-action" title={appCopy.t(activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều ảnh')} aria-label={appCopy.t('Gửi nhiều ảnh')} onClick={handleImageAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup || activeGroupSpamBlocked}>
+            <button className="btn-input-action image-input-action" title={appCopy.t(activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều ảnh')} aria-label={appCopy.t('Gửi nhiều ảnh')} onClick={handleImageAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup}>
               <i className="fa-regular fa-image"></i>
             </button>
             <input
@@ -15791,7 +15742,7 @@ function App() {
               style={{ display: "none" }}
               onChange={handleImageChange}
             />
-            <button className="btn-input-action file-input-action" title={appCopy.t(activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều file')} aria-label={appCopy.t('Gửi nhiều file')} onClick={handleAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup || activeGroupSpamBlocked}>
+            <button className="btn-input-action file-input-action" title={appCopy.t(activeChat.isChatbot ? 'ViChat AI hiện nhận câu hỏi văn bản' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : 'Gửi nhiều file')} aria-label={appCopy.t('Gửi nhiều file')} onClick={handleAttachClick} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup}>
               <i className="fa-solid fa-paperclip"></i>
             </button>
             <input
@@ -15801,7 +15752,7 @@ function App() {
               style={{ display: "none" }}
               onChange={handleFileChange}
             />
-            <button type="button" className="btn-input-action" title={appCopy.t('Sticker và biểu cảm')} aria-label={appCopy.t('Mở sticker và biểu cảm')} aria-expanded={showEmojiPicker} onClick={() => { if (!showEmojiPicker) { setComposerPickerTab('stickers'); setMentionContext(null); } setShowEmojiPicker(previous => !previous); }} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup || activeGroupSpamBlocked}>
+            <button type="button" className="btn-input-action" title={appCopy.t('Sticker và biểu cảm')} aria-label={appCopy.t('Mở sticker và biểu cảm')} aria-expanded={showEmojiPicker} onClick={() => { if (!showEmojiPicker) { setComposerPickerTab('stickers'); setMentionContext(null); } setShowEmojiPicker(previous => !previous); }} disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup}>
               <i className="fa-regular fa-smile"></i>
             </button>
             {showEmojiPicker && (
@@ -15825,7 +15776,7 @@ function App() {
               title={appCopy.t(isRecordingVoice ? 'Dừng và gửi tin nhắn thoại' : 'Ghi tin nhắn thoại')}
               aria-label={appCopy.t(isRecordingVoice ? 'Dừng và gửi tin nhắn thoại' : 'Ghi tin nhắn thoại')}
               onClick={() => (isRecordingVoice ? stopVoiceRecording(false) : startVoiceRecording())}
-              disabled={realtimeMessagingPending || activeChat.isChatbot || !canSendInActiveGroup || activeGroupSpamBlocked}
+              disabled={realtimeMessagingPending || activeChat.isChatbot || !canSendInActiveGroup}
             >
               <i className={`fa-solid ${isRecordingVoice ? 'fa-stop' : 'fa-microphone'}`}></i>
             </button>
@@ -15836,7 +15787,7 @@ function App() {
                 title={appCopy.t(canCreatePollInActiveGroup ? 'Tạo bình chọn' : 'Chỉ quản trị viên mới có thể tạo bình chọn trong nhóm.')}
                 aria-label={appCopy.t('Tạo bình chọn')}
                 onClick={openPollComposer}
-                disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup || !canCreatePollInActiveGroup || activeGroupSpamBlocked}
+                disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup || !canCreatePollInActiveGroup}
               >
                 <i className="fa-solid fa-square-poll-vertical"></i>
               </button>
@@ -15923,7 +15874,7 @@ function App() {
               </>
             )}
           </div>
-          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || !canSendInActiveGroup || activeGroupSpamBlocked || isRecordingVoice || isSavingMessageEdit || (activeChat.isChatbot && isTyping)} onClick={handleComposerSubmit}>
+          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || !canSendInActiveGroup || activeGroupTextSendBlocked || isRecordingVoice || isSavingMessageEdit || (activeChat.isChatbot && isTyping)} onClick={handleComposerSubmit}>
             {activeChat.isChatbot && <i className={`fa-solid ${isTyping ? 'fa-spinner fa-spin' : 'fa-arrow-up'}`} aria-hidden="true"></i>}
             {appCopy.t(editingMessage ? (isSavingMessageEdit ? 'Đang lưu...' : 'Lưu thay đổi') : activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi')}
           </button>
@@ -16036,7 +15987,7 @@ function App() {
               )}
               <div className="poll-composer-footer">
                 <button type="button" className="btn-secondary" onClick={closePollComposer} disabled={isCreatingPoll}>{appCopy.t('Hủy')}</button>
-                <button type="submit" className="btn-primary" disabled={isCreatingPoll || activeGroupSpamBlocked || !pollComposer.question.trim()}>
+                <button type="submit" className="btn-primary" disabled={isCreatingPoll || !pollComposer.question.trim()}>
                   <i className={`fa-solid ${isCreatingPoll ? 'fa-spinner fa-spin' : 'fa-square-poll-vertical'}`}></i>{isCreatingPoll ? appCopy.t('Đang tạo...') : appCopy.t('Tạo bình chọn')}
                 </button>
               </div>

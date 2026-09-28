@@ -780,7 +780,8 @@ test('group owner departure transfers to survivors but lets the final member clo
   assert.match(appSource, /leaveDemoGroup\(targetRoom\.id, actorId, replacementId\)/);
   assert.match(mobileConversationListSource, /candidates\.length === 0/);
   assert.match(mobileConversationListSource, /Bạn là thành viên cuối cùng\. Rời nhóm sẽ đóng nhóm này\./);
-  assert.match(mobileConversationListSource, /\(\) => deleteConversation\(item\.id, String\(member\.id \|\| member\.uid\)\)/);
+  assert.match(mobileConversationListSource, /accountIdForMember\(member, directory\)/);
+  assert.match(mobileConversationListSource, /\(\) => deleteConversation\(item\.id, accountId\)/);
   assert.match(mobileConversationListSource, /\(\) => deleteConversation\(request\.item\.id, request\.replacementId\)/);
   assert.doesNotMatch(appSource, /randomMemberId/);
 });
@@ -835,7 +836,8 @@ test('mute icons use the supported solid Font Awesome glyph in every active mute
 test('group message pinning announces the actor without changing direct-chat pin behavior', () => {
   assert.match(appSource, /message_pinned/);
   assert.match(appSource, /message_unpinned/);
-  assert.match(appSource, /tinodeClient\.sendSystemEvent\(topicName, pinEvent, \{\s*groupActionId:/);
+  assert.match(appSource, /tinodeClient\.sendSystemEvent\(topicName, pinEvent\)/);
+  assert.doesNotMatch(appSource, /tinodeClient\.sendSystemEvent\(topicName, pinEvent, \{\s*groupActionId:/);
   assert.match(appSource, /appendDemoGroupMessage\(activeChat\.id, systemMessage\)/);
   assert.match(appSource, /activeChat\.isGroup && chatMode === 'tinode'/);
   assert.match(appSource, /activeChat\.isGroup && chatMode === 'demo'/);
