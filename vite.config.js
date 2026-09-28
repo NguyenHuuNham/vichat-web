@@ -1,6 +1,26 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
+function silenceTinodeSdkLogger() {
+  const tinodeModule = '/node_modules/tinode-sdk/umd/tinode.prod.js'
+  const loggerCall = 'console.log("["+i+"]",e,t.join(" "))'
+
+  return {
+    name: 'silence-tinode-sdk-production-logger',
+    enforce: 'post',
+    transform(code, id) {
+      const normalizedId = id.replaceAll('\\', '/')
+      if (!normalizedId.includes(tinodeModule) || !code.includes(loggerCall)) {
+        return null
+      }
+      return {
+        code: code.replace(loggerCall, 'void 0'),
+        map: null,
+      }
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -23,7 +43,25 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
-    plugins: [react()],
+    plugins: [react(), ...(mode === 'production' ? [silenceTinodeSdkLogger()] : [])],
+    // Expose only the browser configuration allowlist; an unrelated VITE_*
+    // secret in a developer or CI environment must never enter the bundle.
+    envPrefix: [
+      'VITE_CHAT_',
+      'VITE_CHATBOT_',
+      'VITE_TINODE_HOST',
+      'VITE_TINODE_PUBLIC_APP_ID',
+      'VITE_TINODE_SECURE',
+      'VITE_TINODE_TRANSPORT',
+      'VITE_TINODE_PERSIST',
+      'VITE_TINODE_APP_NAME',
+      'VITE_ACCOUNT_URL',
+      'VITE_CALLS_ENABLED',
+    ],
+    build: {
+      // Production artifacts must not publish source maps or source paths.
+      sourcemap: false,
+    },
     server: { proxy: { ...mediaProxy, ...managementProxy } },
     preview: { proxy: { ...mediaProxy, ...managementProxy } },
   }

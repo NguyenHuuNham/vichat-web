@@ -580,12 +580,14 @@ test('Tinode offline observations never fabricate a last-seen timestamp on the v
   assert.doesNotMatch(eventHandler, /Date\.now|new Date|lastSeen|last_seen/);
 });
 
-test('uses the previous Inter font and renders a green indicator only for online presence', () => {
+test('keeps local font fallbacks and renders a green indicator only for online presence', () => {
   assert.match(stylesSource, /font-family:\s*'Inter', -apple-system, BlinkMacSystemFont/);
   assert.match(legacyStylesSource, /font-family:\s*'Inter', -apple-system, BlinkMacSystemFont/);
   assert.match(managementStylesSource, /--mgmt-font-body:\s*Inter, "Segoe UI", sans-serif/);
   assert.match(rootAppSource, /fontFamily:\s*'system-ui, sans-serif'/);
-  assert.match(indexSource, /fonts\.googleapis\.com\/css2\?family=Inter/);
+  assert.doesNotMatch(indexSource, /fonts\.googleapis\.com/);
+  assert.match(indexSource, /cdnjs\.cloudflare\.com\/ajax\/libs\/font-awesome\/6\.4\.0\/css\/all\.min\.css/);
+  assert.match(indexSource, /integrity="sha512-/);
   assert.match(stylesSource, /\.chat-header-status\.direct-presence\.online::before/);
   assert.match(appSource, /formatOfflineDuration/);
   assert.match(appSource, /isCurrentUserOnline \? 'Trực tuyến' : 'Ngoại tuyến'/);
@@ -620,7 +622,7 @@ test('profile viewer telemetry is optional and isolated from the profile surface
   assert.match(managementServiceSource, /method: 'POST'/);
   assert.match(appSource, /profile-viewers-button/);
   assert.match(appSource, /profileViewersOpen/);
-  assert.match(appSource, /could not record profile view/);
+  assert.match(appSource, /profile_view_record_failed/);
   assert.match(stylesSource, /\.profile-avatar-preview/);
   assert.match(stylesSource, /\.profile-viewers-card/);
 });
@@ -999,7 +1001,7 @@ test('managed direct deletion keeps the topic and reopens after a post-delete me
     managedDeleteSource.indexOf('deleteConversationForCurrentUser')
       < managedDeleteSource.indexOf('tinodeClient.deleteConversation'),
   );
-  assert.match(managedDeleteSource, /direct Tinode history cleanup failed after Chatmgt deletion/);
+  assert.match(managedDeleteSource, /direct_tinode_history_cleanup_failed/);
   assert.match(selfDeleteSource, /activeSession\?\.tinodeAuth\?\.token \|\| ''/);
   assert.match(selfDeleteSource, /shouldRetryTinodeMembership\(error\)/);
   assert.match(selfDeleteSource, /getFreshTinodeAuth\(\{ force: true \}\)/);

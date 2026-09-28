@@ -5304,8 +5304,8 @@
                             if (src.hasOwnProperty(prop) && prop != '_noForwarding') {
                                 try {
                                     dst[prop] = mergeObj(dst[prop], src[prop]);
-                                } catch (err) {
-                                    console.warn("Error merging property:", prop, err);
+                                } catch {
+                                    // Ignore malformed optional metadata; never expose packet details in the browser console.
                                 }
                             }
                         }
@@ -5932,7 +5932,7 @@
                     if (this._loggingEnabled) {
                         const d = new Date();
                         const dateString = ('0' + d.getUTCHours()).slice(-2) + ':' + ('0' + d.getUTCMinutes()).slice(-2) + ':' + ('0' + d.getUTCSeconds()).slice(-2) + '.' + ('00' + d.getUTCMilliseconds()).slice(-3);
-                        console.log('[' + dateString + ']', str, args.join(' '));
+                        // The widget logger is intentionally silent in production.
                     }
                 }
                 #makePromise(id) {

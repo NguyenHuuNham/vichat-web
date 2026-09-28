@@ -1,5 +1,6 @@
 import os
 import json
+from urllib.parse import quote
 
 
 def env_bool(name, default=False):
@@ -44,12 +45,17 @@ class Config(object):
 
     SESSION_COOKIE_DOMAIN = os.getenv('SESSION_COOKIE_DOMAIN')
     REDIS_ADDR = os.getenv('REDIS_ADDR')
-    REDIS_PORT= int(os.getenv('REDIS_PORT'))
-    REDIS_DB= int(os.getenv('REDIS_DB'))
+    REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
+    REDIS_DB = int(os.getenv('REDIS_DB', 0))
+    REDIS_PASSWORD = os.getenv('REDIS_PASSWORD', '')
 
-    SESSION_REDIS_URI = "redis://" + \
-        str(REDIS_ADDR)+":" + \
-        str(REDIS_PORT)+"/"+str(REDIS_DB)
+    REDIS_AUTH = "" if not REDIS_PASSWORD else ":{}@".format(quote(REDIS_PASSWORD, safe=""))
+    SESSION_REDIS_URI = "redis://{}{}:{}/{}".format(
+        REDIS_AUTH,
+        str(REDIS_ADDR),
+        str(REDIS_PORT),
+        str(REDIS_DB),
+    )
 
     INTERNAL_ACCESS_TOKEN = os.getenv('INTERNAL_ACCESS_TOKEN')
 
@@ -58,14 +64,26 @@ class Config(object):
         "CHAT_CORS_ORIGINS",
         ["http://127.0.0.1:5173"],
     )
-    CHAT_AUTH_ACCESS_TTL = int(os.getenv("CHAT_AUTH_ACCESS_TTL", 28800))
-    CHAT_AUTH_COOKIE_SECURE = env_bool("CHAT_AUTH_COOKIE_SECURE", False)
+    CHAT_CSRF_ORIGINS = env_list("CHAT_CSRF_ORIGINS", CHAT_CORS_ORIGINS)
+    CHAT_AUTH_ACCESS_TTL = int(os.getenv("CHAT_AUTH_ACCESS_TTL", 1800))
+    CHAT_AUTH_COOKIE_SECURE = env_bool(
+        "CHAT_AUTH_COOKIE_SECURE",
+        str(os.getenv("ENVIRONMENT") or "").lower() in ("production", "staging"),
+    )
     CHAT_PRESENCE_TTL = int(os.getenv("CHAT_PRESENCE_TTL", 8))
     CHAT_AUTH_MAX_FAILURES = int(os.getenv("CHAT_AUTH_MAX_FAILURES", 5))
     CHAT_AUTH_FAILURE_WINDOW = int(os.getenv("CHAT_AUTH_FAILURE_WINDOW", 900))
+    CHAT_AUTH_IP_MAX_FAILURES = int(os.getenv("CHAT_AUTH_IP_MAX_FAILURES", 100))
+    CHAT_AUTH_TENANT_MAX_FAILURES = int(os.getenv("CHAT_AUTH_TENANT_MAX_FAILURES", 1000))
     CHAT_PASSWORD_RESET_TTL = int(os.getenv("CHAT_PASSWORD_RESET_TTL", 1800))
     CHAT_PASSWORD_RESET_MAX_REQUESTS = int(os.getenv("CHAT_PASSWORD_RESET_MAX_REQUESTS", 3))
     CHAT_PASSWORD_RESET_WINDOW = int(os.getenv("CHAT_PASSWORD_RESET_WINDOW", 900))
+    CHAT_PASSWORD_RESET_IP_MAX_REQUESTS = int(os.getenv("CHAT_PASSWORD_RESET_IP_MAX_REQUESTS", 30))
+    CHAT_PASSWORD_RESET_TENANT_MAX_REQUESTS = int(os.getenv("CHAT_PASSWORD_RESET_TENANT_MAX_REQUESTS", 300))
+    CHAT_TINODE_TOKEN_MAX_REQUESTS = int(os.getenv("CHAT_TINODE_TOKEN_MAX_REQUESTS", 60))
+    CHAT_TINODE_TOKEN_WINDOW = int(os.getenv("CHAT_TINODE_TOKEN_WINDOW", 60))
+    CHAT_MEDIA_UPLOAD_MAX_REQUESTS = int(os.getenv("CHAT_MEDIA_UPLOAD_MAX_REQUESTS", 30))
+    CHAT_MEDIA_UPLOAD_WINDOW = int(os.getenv("CHAT_MEDIA_UPLOAD_WINDOW", 60))
     CHAT_PASSWORD_RESET_URL = os.getenv(
         "CHAT_PASSWORD_RESET_URL",
         "http://127.0.0.1:5173/?reset_token={token}",
@@ -148,9 +166,8 @@ class Config(object):
     CHAT_MEDIA_PUBLIC_BASE_URL = os.getenv("CHAT_MEDIA_PUBLIC_BASE_URL", "")
     CHAT_MEDIA_SIGNING_SECRET = os.getenv("CHAT_MEDIA_SIGNING_SECRET", "")
     CHAT_MEDIA_MAX_SIZE = int(os.getenv("CHAT_MEDIA_MAX_SIZE", 524288000))
-    # A value of zero leaves personal Cloud free of an application-level
-    # per-file cap; storage-provider quotas still remain authoritative.
-    PERSONAL_CLOUD_MAX_SIZE = int(os.getenv("PERSONAL_CLOUD_MAX_SIZE", 0))
+    PERSONAL_CLOUD_MAX_SIZE = int(os.getenv("PERSONAL_CLOUD_MAX_SIZE", 524288000))
+    PERSONAL_CLOUD_QUOTA = int(os.getenv("PERSONAL_CLOUD_QUOTA", 5368709120))
     CHAT_MEDIA_UPLOAD_URL_TTL = int(os.getenv("CHAT_MEDIA_UPLOAD_URL_TTL", 300))
     CHAT_MEDIA_COMPLETION_TTL = int(os.getenv("CHAT_MEDIA_COMPLETION_TTL", 21600))
     CHAT_MEDIA_DOWNLOAD_URL_TTL = int(os.getenv("CHAT_MEDIA_DOWNLOAD_URL_TTL", 300))

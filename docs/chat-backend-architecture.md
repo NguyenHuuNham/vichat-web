@@ -115,11 +115,13 @@ short-lived `private, no-store` GET signatures. Logout and tenant changes abort
 cloud requests and clear the in-memory file and message lists before another
 account can load them.
 
-Cloud uploads accept any non-empty file type and, with
-`PERSONAL_CLOUD_MAX_SIZE=0` (the production default), do not inherit the
-separate 500 MB chat-attachment cap. The S3 service, bucket policy and any
-provider-level quota remain the final physical limits; an optional positive
-`PERSONAL_CLOUD_MAX_SIZE` can restore an application-level per-file cap.
+Cloud uploads use the same centralized media allowlist and content-signature
+validation as chat attachments; browser-provided MIME metadata is only a
+precondition. Production sets `PERSONAL_CLOUD_MAX_SIZE` to 500 MiB per file
+and `PERSONAL_CLOUD_QUOTA` to 5 GiB per owner. The create-ticket, completion,
+S3 HEAD and owner-scoped download paths enforce these limits, and pending
+objects remain quarantined until validation succeeds. The S3 service, bucket
+policy and provider-level quota remain additional physical limits.
 
 Cloud listing is cursor-paginated at the SQL query (`limit` is bounded at 100)
 and returns both the legacy `objects` field and `next_cursor`/`nextCursor`,
@@ -153,10 +155,13 @@ presence or user sessions.
 ChatUI performs an initial snapshot fetch, subscribes to SSE and keeps a
 five-second fallback poll. When enabled it unmounts the ChatApp and shows the
 maintenance screen; the Chatmgt surface bypasses this gate so administrators
-can turn it off. Redis read errors fail open to protect existing login/chat
-flows, while the management write endpoint reports storage failures. Both
-production Nginx layers disable buffering and use a long read timeout for the
-SSE route so an on/off change reaches open tabs immediately.
+can turn it off. Redis read errors fail open only for this non-authenticated
+maintenance read, so an unavailable control plane cannot lock out existing
+users; the management write endpoint reports storage failures. Login,
+password-reset, Tinode-token and upload-ticket rate limits fail closed with a
+generic `503` and `Retry-After` when Redis cannot make an authoritative
+decision. Both production Nginx layers disable buffering and use a long read
+timeout for the SSE route so an on/off change reaches open tabs immediately.
 
 ## Step 2 employee authentication
 

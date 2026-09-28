@@ -330,7 +330,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("ManagementAccount.active.is_(True)", list_source)
         self.assertIn("/api/v1/profile/views", service_source)
         self.assertIn("recordProfileView", app_source)
-        self.assertIn("could not record profile view", app_source)
+        self.assertIn("profile_view_record_failed", app_source)
         self.assertIn("profile-viewers-button", app_source)
         self.assertIn("profile-avatar-preview", app_source)
 

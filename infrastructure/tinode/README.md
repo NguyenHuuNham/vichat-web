@@ -39,7 +39,7 @@ TrÃªn mÃ¡y chá»§ cÃ³ Docker, dÃ¹ng cÃ¹ng `compose.yaml`, Ä‘áº�
 
 ```dotenv
 VITE_TINODE_HOST=chat-api.ten-mien-cua-ban.vn
-VITE_TINODE_API_KEY=AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K
+VITE_TINODE_PUBLIC_APP_ID=<scoped-public-tinode-app-id>
 VITE_TINODE_SECURE=true
 VITE_TINODE_TRANSPORT=ws
 VITE_TINODE_PERSIST=false

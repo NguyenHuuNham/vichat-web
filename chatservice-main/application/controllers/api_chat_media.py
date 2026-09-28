@@ -13,7 +13,11 @@ from application.controllers.api_chat_management import (
 from application.database import db
 from application.models.models import ChatMediaRegistry, Conversation, ConversationParticipant
 from application.server import app
-from application.services.auth_service import management_session_requested
+from application.services.auth_service import (
+    RateLimitUnavailable,
+    consume_media_upload_rate_limit,
+    management_session_requested,
+)
 from application.services.chat_media_service import (
     ChatMediaError,
     complete_chat_media_upload,
@@ -39,6 +43,15 @@ def _unexpected_media_error(action, error):
         "error_code": "MEDIA_STORAGE_UNAVAILABLE",
         "error_message": "S3 media storage is temporarily unavailable.",
     }, status=503)
+
+
+def _media_rate_limit_error():
+    response = json({
+        "error_code": "MEDIA_RATE_LIMIT_UNAVAILABLE",
+        "error_message": "Upload protection is temporarily unavailable. Try again later.",
+    }, status=503)
+    response.headers["Retry-After"] = "15"
+    return response
 
 
 def _chat_media_identity(request):
@@ -109,6 +122,19 @@ async def create_media_upload(request):
     current_user, tenant_id = _chat_media_identity(request)
     if current_user is None:
         return _current_session_error(request)
+    try:
+        allowed = consume_media_upload_rate_limit(
+            tenant_id,
+            _user_id(current_user),
+            str(getattr(request, "ip", "") or "")[:100],
+        )
+    except RateLimitUnavailable:
+        return _media_rate_limit_error()
+    if not allowed:
+        return json({
+            "error_code": "MEDIA_RATE_LIMITED",
+            "error_message": "Too many upload requests. Try again later.",
+        }, status=429, headers={"Retry-After": "60"})
     body = request.json or {}
     try:
         conversation_id = _require_conversation_member(

@@ -66,6 +66,34 @@ class FakeMinioClient:
             raise error
         return self.objects[object_name]
 
+    @staticmethod
+    def _sample_bytes(content_type):
+        return {
+            "image/png": b"\x89PNG\r\n\x1a\n",
+            "image/jpeg": b"\xff\xd8\xff\xe0",
+            "application/pdf": b"%PDF-1.7",
+            "text/plain": b"plain text",
+        }.get(content_type, b"\x89PNG\r\n\x1a\n")
+
+    def get_object(self, bucket, object_name, offset=0, length=None):
+        value = self.objects[object_name]
+        payload = getattr(value, "data", None) or self._sample_bytes(value.content_type)
+
+        class Body:
+            def __init__(self, content):
+                self.content = content
+
+            def read(self, requested_length=None):
+                return self.content[:requested_length] if requested_length else self.content
+
+            def close(self):
+                return None
+
+            def release_conn(self):
+                return None
+
+        return Body(payload[offset:offset + length] if length else payload[offset:])
+
     def remove_object(self, bucket, object_name):
         self.removed.append((bucket, object_name))
         self.objects.pop(object_name, None)
@@ -189,21 +217,28 @@ class ChatMediaServiceTests(unittest.TestCase):
         self.copy_source.start()
         self.addCleanup(self.copy_source.stop)
 
-    def prepare(self, tenant="tenant-a", size=5, content_type="image/png"):
+    def prepare(self, tenant="tenant-a", file_name="photo.png", size=5, content_type="image/png"):
         return create_chat_media_upload(
             self.app,
             tenant,
-            "photo.png",
+            file_name,
             content_type,
             size,
         )
 
-    def prepare_cloud(self, tenant="tenant-a", owner="user-a", size=5, content_type="image/png"):
+    def prepare_cloud(
+        self,
+        tenant="tenant-a",
+        owner="user-a",
+        file_name="private-photo.png",
+        size=5,
+        content_type="image/png",
+    ):
         return create_personal_cloud_upload(
             self.app,
             tenant,
             owner,
-            "private-photo.png",
+            file_name,
             content_type,
             size,
         )
@@ -292,18 +327,18 @@ class ChatMediaServiceTests(unittest.TestCase):
         self.assertEqual(self.client.removed, [("gonengage", object_name)])
 
     def test_download_uses_short_lived_url_and_forces_text_to_attachment(self):
-        prepared = self.prepare(size=4, content_type="text/html")
+        prepared = self.prepare(file_name="note.txt", size=4, content_type="text/plain")
         object_name = _object_name(self.app, "tenant-a", prepared["upload_id"])
         self.client.objects[object_name] = SimpleNamespace(
             size=4,
-            content_type="text/html",
+            content_type="text/plain",
             etag="etag",
         )
         resolved = resolve_chat_media_download(
             self.app,
             "tenant-a",
             prepared["upload_id"],
-            file_name="report.html",
+            file_name="report.txt",
         )
         self.assertTrue(resolved["url"].startswith("https://s3.upgo.vn/"))
         self.assertEqual(resolved["mime"], "application/octet-stream")
@@ -408,9 +443,11 @@ class ChatMediaServiceTests(unittest.TestCase):
             )
 
     def test_personal_cloud_does_not_inherit_the_chat_attachment_cap(self):
-        large_size = self.app.config["CHAT_MEDIA_MAX_SIZE"] + 1
-        prepared = self.prepare_cloud(size=large_size, content_type="application/octet-stream")
-        self.assertIsNone(prepared["max_size"])
+        self.app.config["CHAT_MEDIA_MAX_SIZE"] = 1024
+        large_size = 1025
+        self.app.config["PERSONAL_CLOUD_MAX_SIZE"] = large_size
+        prepared = self.prepare_cloud(file_name="large.pdf", size=large_size, content_type="application/pdf")
+        self.assertEqual(prepared["max_size"], large_size)
         pending_object_name = _personal_cloud_pending_object_name(
             self.app,
             "tenant-a",
@@ -419,7 +456,7 @@ class ChatMediaServiceTests(unittest.TestCase):
         )
         self.client.objects[pending_object_name] = SimpleNamespace(
             size=large_size,
-            content_type="application/octet-stream",
+            content_type="application/pdf",
             etag="large-private-etag",
         )
         completed = complete_personal_cloud_upload(

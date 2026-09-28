@@ -39,6 +39,10 @@ class AuthError(Exception):
         self.status_code = status_code
 
 
+class RateLimitUnavailable(Exception):
+    """Raised when the security limiter cannot make an authoritative decision."""
+
+
 def _secret():
     value = str(app.config.get("CHAT_AUTH_JWT_SECRET") or "").strip()
     if len(value) < 32:
@@ -80,68 +84,165 @@ def verify_password(password, password_hash):
 
 
 def _login_attempt_key(tenant_id, identity, ip_address):
-    digest = hashlib.sha256("{}|{}|{}".format(tenant_id, identity, ip_address).encode("utf-8")).hexdigest()
-    return "auth:login-attempt:{}".format(digest)
+    return _rate_limit_key("auth:login-attempt:identity", tenant_id, identity, ip_address)
+
+
+def _rate_limit_key(prefix, *values):
+    digest = hashlib.sha256("|".join(str(value or "") for value in values).encode("utf-8")).hexdigest()
+    return "{}:{}".format(prefix, digest)
+
+
+def _config_int(name, default):
+    try:
+        return max(1, int(app.config.get(name, default)))
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _rate_limit_specs(prefix, tenant_id, identity, ip_address, limit, window, ip_limit, tenant_limit):
+    return [
+        (_rate_limit_key(prefix + ":identity", tenant_id, identity, ip_address), int(limit), int(window)),
+        (_rate_limit_key(prefix + ":ip", ip_address), int(ip_limit), int(window)),
+        (_rate_limit_key(prefix + ":tenant", tenant_id), int(tenant_limit), int(window)),
+    ]
+
+
+def _redis_rate_limit_client():
+    client = database.redisdb
+    if client is None or not callable(getattr(client, "pipeline", None)):
+        raise RateLimitUnavailable("The security rate limiter is unavailable.")
+    return client
+
+
+def _rate_limit_is_blocked(specs):
+    client = _redis_rate_limit_client()
+    pipeline = client.pipeline()
+    for key, _limit, _window in specs:
+        pipeline.get(key)
+    try:
+        values = pipeline.execute()
+    except Exception as error:
+        raise RateLimitUnavailable("The security rate limiter is unavailable.") from error
+    return any(int(value or 0) >= limit for value, (_key, limit, _window) in zip(values, specs))
+
+
+def _rate_limit_record(specs):
+    client = _redis_rate_limit_client()
+    pipeline = client.pipeline()
+    for key, _limit, window in specs:
+        pipeline.incr(key)
+        pipeline.expire(key, window)
+    try:
+        values = pipeline.execute()
+    except Exception as error:
+        raise RateLimitUnavailable("The security rate limiter is unavailable.") from error
+    counts = [int(values[index] or 0) for index in range(0, len(values), 2)]
+    return max(counts or [0])
+
+
+def _rate_limit_clear(specs):
+    client = _redis_rate_limit_client()
+    pipeline = client.pipeline()
+    for key, _limit, _window in specs:
+        pipeline.delete(key)
+    try:
+        pipeline.execute()
+    except Exception as error:
+        raise RateLimitUnavailable("The security rate limiter is unavailable.") from error
+
+
+def _login_rate_limit_specs(tenant_id, identity, ip_address):
+    limit = _config_int("CHAT_AUTH_MAX_FAILURES", 5)
+    return _rate_limit_specs(
+        "auth:login-attempt",
+        tenant_id,
+        identity,
+        ip_address,
+        limit,
+        _config_int("CHAT_AUTH_FAILURE_WINDOW", 900),
+        _config_int("CHAT_AUTH_IP_MAX_FAILURES", max(20, limit * 20)),
+        _config_int("CHAT_AUTH_TENANT_MAX_FAILURES", max(100, limit * 100)),
+    )
 
 
 def login_rate_limited(tenant_id, identity, ip_address):
-    if database.redisdb is None:
-        return False
-    try:
-        key = _login_attempt_key(tenant_id, identity, ip_address)
-        attempts = int(database.redisdb.get(key) or 0)
-        return attempts >= int(app.config.get("CHAT_AUTH_MAX_FAILURES", 5))
-    except Exception:
-        return False
+    return _rate_limit_is_blocked(_login_rate_limit_specs(tenant_id, identity, ip_address))
 
 
 def record_login_failure(tenant_id, identity, ip_address):
-    if database.redisdb is None:
-        return
-    try:
-        key = _login_attempt_key(tenant_id, identity, ip_address)
-        attempts = database.redisdb.incr(key)
-        if attempts == 1:
-            database.redisdb.expire(key, int(app.config.get("CHAT_AUTH_FAILURE_WINDOW", 900)))
-    except Exception:
-        return
+    return _rate_limit_record(_login_rate_limit_specs(tenant_id, identity, ip_address))
 
 
 def clear_login_failures(tenant_id, identity, ip_address):
-    if database.redisdb is None:
-        return
-    try:
-        database.redisdb.delete(_login_attempt_key(tenant_id, identity, ip_address))
-    except Exception:
-        return
+    return _rate_limit_clear(_login_rate_limit_specs(tenant_id, identity, ip_address))
 
 
 def _password_reset_attempt_key(tenant_id, identity, ip_address):
-    digest = hashlib.sha256("{}|{}|{}".format(tenant_id, identity, ip_address).encode("utf-8")).hexdigest()
-    return "auth:password-reset:{}".format(digest)
+    return _rate_limit_key("auth:password-reset:identity", tenant_id, identity, ip_address)
+
+
+def _password_reset_rate_limit_specs(tenant_id, identity, ip_address):
+    limit = _config_int("CHAT_PASSWORD_RESET_MAX_REQUESTS", 3)
+    return _rate_limit_specs(
+        "auth:password-reset",
+        tenant_id,
+        identity,
+        ip_address,
+        limit,
+        _config_int("CHAT_PASSWORD_RESET_WINDOW", 900),
+        _config_int("CHAT_PASSWORD_RESET_IP_MAX_REQUESTS", max(20, limit * 10)),
+        _config_int("CHAT_PASSWORD_RESET_TENANT_MAX_REQUESTS", max(100, limit * 100)),
+    )
 
 
 def password_reset_rate_limited(tenant_id, identity, ip_address):
-    if database.redisdb is None:
-        return False
-    try:
-        key = _password_reset_attempt_key(tenant_id, identity, ip_address)
-        attempts = int(database.redisdb.get(key) or 0)
-        return attempts >= int(app.config.get("CHAT_PASSWORD_RESET_MAX_REQUESTS", 3))
-    except Exception:
-        return False
+    return _rate_limit_is_blocked(_password_reset_rate_limit_specs(tenant_id, identity, ip_address))
 
 
 def record_password_reset_request(tenant_id, identity, ip_address):
-    if database.redisdb is None:
-        return
-    try:
-        key = _password_reset_attempt_key(tenant_id, identity, ip_address)
-        attempts = database.redisdb.incr(key)
-        if attempts == 1:
-            database.redisdb.expire(key, int(app.config.get("CHAT_PASSWORD_RESET_WINDOW", 900)))
-    except Exception:
-        return
+    return _rate_limit_record(_password_reset_rate_limit_specs(tenant_id, identity, ip_address))
+
+
+def _single_action_rate_limit_specs(prefix, tenant_id, identity, ip_address, limit_name, window_name, default_limit, default_window):
+    limit = _config_int(limit_name, default_limit)
+    return _rate_limit_specs(
+        prefix,
+        tenant_id,
+        identity,
+        ip_address,
+        limit,
+        _config_int(window_name, default_window),
+        limit,
+        limit,
+    )
+
+
+def consume_tinode_token_rate_limit(tenant_id, identity, ip_address):
+    specs = _single_action_rate_limit_specs(
+        "auth:tinode-token",
+        tenant_id,
+        identity,
+        ip_address,
+        "CHAT_TINODE_TOKEN_MAX_REQUESTS",
+        "CHAT_TINODE_TOKEN_WINDOW",
+        60,
+        60,
+    )
+    return _rate_limit_record(specs) <= specs[0][1]
+
+
+def consume_media_upload_rate_limit(tenant_id, identity, ip_address):
+    specs = _single_action_rate_limit_specs(
+        "auth:media-upload",
+        tenant_id,
+        identity,
+        ip_address,
+        "CHAT_MEDIA_UPLOAD_MAX_REQUESTS",
+        "CHAT_MEDIA_UPLOAD_WINDOW",
+        30,
+        60,
+    )
+    return _rate_limit_record(specs) <= specs[0][1]
 
 
 def issue_access_token(account, auth_method="password", session_scope=CHAT_SESSION_SCOPE, tinode_auth=None):

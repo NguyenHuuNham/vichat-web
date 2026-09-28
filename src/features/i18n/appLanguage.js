@@ -950,7 +950,7 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Âm báo tùy chỉnh': 'Custom sound',
   'Không kết nối được máy chủ upload': 'Unable to connect to the upload server',
   'Tinode từ chối file': 'Tinode rejected the file',
-  'Tinode chưa được cấu hình. Hãy khai báo VITE_TINODE_HOST và VITE_TINODE_API_KEY.': 'Tinode is not configured. Set VITE_TINODE_HOST and VITE_TINODE_API_KEY.',
+  'Tinode chưa được cấu hình. Hãy khai báo VITE_TINODE_HOST và VITE_TINODE_PUBLIC_APP_ID.': 'Tinode is not configured. Set VITE_TINODE_HOST and VITE_TINODE_PUBLIC_APP_ID.',
   'Không tải được package tinode-sdk. Hãy kiểm tra dependency của ứng dụng.': 'Unable to load the tinode-sdk package. Check the application dependency.',
   'Tinode chưa xác nhận tin nhắn đính kèm.': 'Tinode did not confirm the attachment message.',
   'Tinode không xác nhận tin nhắn đính kèm.': 'Tinode did not confirm the attachment message.',

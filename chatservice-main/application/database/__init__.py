@@ -24,4 +24,4 @@ def init_database(app):
     redisdb = redis.StrictRedis(host=app.config.get('REDIS_ADDR'),\
                             port=app.config.get('REDIS_PORT'),\
                             db=app.config.get('REDIS_DB'),\
-                            password=None)
+                            password=app.config.get('REDIS_PASSWORD') or None)

@@ -1,4 +1,5 @@
 import tinodeSdk from 'tinode-sdk';
+import { clientLogger } from '../../../services/clientLogger.js';
 import { createConversationDelivery, createLatestHistoryLoader, fetchTopicData } from './tinodeDelivery';
 import { isMediaHistoryPacket } from './mediaHistory';
 import {
@@ -74,7 +75,7 @@ const env = import.meta.env || {};
 
 const config = {
   host: env.VITE_TINODE_HOST || '',
-  apiKey: env.VITE_TINODE_API_KEY || '',
+  publicAppId: env.VITE_TINODE_PUBLIC_APP_ID || '',
   secure: env.VITE_TINODE_SECURE !== 'false',
   transport: env.VITE_TINODE_TRANSPORT || 'ws',
   appName: env.VITE_TINODE_APP_NAME || 'VICHAT/1.0',
@@ -148,7 +149,11 @@ const CENTRAL_MESSAGE_TEXT_LIMIT = MAX_MESSAGE_TEXT_BYTES;
 
 // A host is enough to opt into Tinode mode; assertConfigured below provides a
 // useful error when the API key is missing instead of silently using demo mode.
-export const isTinodeConfigured = Boolean(config.host);
+export const isTinodeConfigured = Boolean(
+  config.host
+  && config.publicAppId
+  && !config.publicAppId.startsWith('__CONFIGURE_'),
+);
 
 function emitEvent(event) {
   listeners.forEach(listener => listener(event));
@@ -203,7 +208,7 @@ function mediaProxyUrl(relativeUrl) {
 }
 
 function tinodeRequestHeaders(tinode) {
-  const headers = { 'X-Tinode-APIKey': config.apiKey };
+  const headers = { 'X-Tinode-APIKey': config.publicAppId };
   const token = tinode.getAuthToken?.()?.token;
   if (token) headers['X-Tinode-Auth'] = `Token ${token}`;
   return headers;
@@ -286,8 +291,8 @@ async function uploadFile(tinode, file, avatarFor = '', { conversationId = '' } 
 }
 
 function assertConfigured() {
-  if (!config.host || !config.apiKey) {
-    throw new Error('Tinode chưa được cấu hình. Hãy khai báo VITE_TINODE_HOST và VITE_TINODE_API_KEY.');
+  if (!config.host || !isTinodeConfigured) {
+    throw new Error('Tinode chưa được cấu hình. Hãy khai báo VITE_TINODE_HOST và VITE_TINODE_PUBLIC_APP_ID.');
   }
   if (!getTinodeConstructor()) {
     throw new Error('Không tải được package tinode-sdk. Hãy kiểm tra dependency của ứng dụng.');
@@ -373,7 +378,7 @@ function getClient() {
     const nextClient = new Tinode({
       appName: config.appName,
       host: config.host,
-      apiKey: config.apiKey,
+      apiKey: config.publicAppId,
       transport: config.transport,
       secure: config.secure,
       platform: 'web',
@@ -2244,7 +2249,7 @@ export const tinodeClient = {
     const raw = client?.getServerParam?.('iceServers', []);
     const servers = normalizeIceServers(raw);
     if (Array.isArray(raw) && raw.length > 0 && servers.length === 0) {
-      console.warn('[ViChat] Tinode returned no valid ICE servers.', { advertised: raw.length });
+      clientLogger.warn('tinode_ice_servers_invalid', { advertised: raw.length });
     }
     return servers;
   },
@@ -2293,7 +2298,7 @@ export const tinodeClient = {
       });
       return { seq: published.seq, topic: topicName, audioOnly: Boolean(audioOnly) };
     } catch (error) {
-      console.warn('[ViChat] Tinode rejected the call invite.', {
+      clientLogger.warn('tinode_call_invite_rejected', {
         topic: topicName,
         audioOnly: Boolean(audioOnly),
         code: Number(error?.code || error?.status || 0) || undefined,
@@ -3071,7 +3076,7 @@ export const tinodeClient = {
         // Binding is idempotent. A transient binding failure leaves the row
         // pending for the server sweeper instead of deleting a published file.
         await bindChatMedia(url, { conversationId, messageRef }).catch(error => {
-          console.warn('ViChat: media binding deferred', error?.code || 'MEDIA_BIND_FAILED');
+          clientLogger.warn('media_binding_deferred', error);
         });
       }
     }

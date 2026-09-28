@@ -155,6 +155,7 @@ ensure_secret TINODE_UID_ENCRYPTION_KEY base64 16
 ensure_secret TINODE_SSO_SECRET base64 48
 ensure_secret TINODE_BRIDGE_INTERNAL_KEY base64 48
 ensure_secret CHATSERVICE_DB_PASSWORD hex 32
+ensure_secret REDIS_PASSWORD base64 32
 ensure_secret APP_SECRET_KEY base64 48
 ensure_secret AUTH_PASSWORD_SALT base64 32
 ensure_secret SESSION_COOKIE_SALT base64 48
@@ -201,6 +202,10 @@ if [[ "$chat_media_storage" == "s3" ]]; then
   chat_media_completion_ttl="${chat_media_completion_ttl:-21600}"
   chat_media_download_ttl="$(env_value CHAT_MEDIA_DOWNLOAD_URL_TTL)"
   chat_media_download_ttl="${chat_media_download_ttl:-300}"
+  personal_cloud_max_size="$(env_value PERSONAL_CLOUD_MAX_SIZE)"
+  personal_cloud_max_size="${personal_cloud_max_size:-524288000}"
+  personal_cloud_quota="$(env_value PERSONAL_CLOUD_QUOTA)"
+  personal_cloud_quota="${personal_cloud_quota:-5368709120}"
 
   ! is_placeholder "$minio_url" || { echo "MINIO_URL must be the S3 API endpoint." >&2; exit 1; }
   ! is_placeholder "$minio_public_domain" || { echo "MINIO_PUBLIC_DOMAIN must be the public S3 API endpoint." >&2; exit 1; }
@@ -219,6 +224,8 @@ if [[ "$chat_media_storage" == "s3" ]]; then
   [[ "$chat_media_upload_ttl" =~ ^[0-9]+$ ]] && (( chat_media_upload_ttl >= 60 && chat_media_upload_ttl <= 3600 )) || { echo "CHAT_MEDIA_UPLOAD_URL_TTL must be between 60 and 3600 seconds." >&2; exit 1; }
   [[ "$chat_media_completion_ttl" =~ ^[0-9]+$ ]] && (( chat_media_completion_ttl >= chat_media_upload_ttl && chat_media_completion_ttl <= 86400 )) || { echo "CHAT_MEDIA_COMPLETION_TTL must be at least the upload URL TTL and no more than 86400 seconds." >&2; exit 1; }
   [[ "$chat_media_download_ttl" =~ ^[0-9]+$ ]] && (( chat_media_download_ttl >= 30 && chat_media_download_ttl <= 3600 )) || { echo "CHAT_MEDIA_DOWNLOAD_URL_TTL must be between 30 and 3600 seconds." >&2; exit 1; }
+  [[ "$personal_cloud_max_size" =~ ^[0-9]+$ ]] && (( personal_cloud_max_size >= 1 && personal_cloud_max_size <= chat_media_max_size )) || { echo "PERSONAL_CLOUD_MAX_SIZE must be between 1 and CHAT_MEDIA_MAX_SIZE." >&2; exit 1; }
+  [[ "$personal_cloud_quota" =~ ^[0-9]+$ ]] && (( personal_cloud_quota >= personal_cloud_max_size )) || { echo "PERSONAL_CLOUD_QUOTA must be at least PERSONAL_CLOUD_MAX_SIZE." >&2; exit 1; }
   [[ "$chat_media_fallback" == "false" ]] || { echo "Production S3 media must keep CHAT_MEDIA_FALLBACK_TO_TINODE=false." >&2; exit 1; }
 
   set_env MINIO_REGION "$minio_region"
@@ -227,6 +234,8 @@ if [[ "$chat_media_storage" == "s3" ]]; then
   set_env CHAT_MEDIA_UPLOAD_URL_TTL "$chat_media_upload_ttl"
   set_env CHAT_MEDIA_COMPLETION_TTL "$chat_media_completion_ttl"
   set_env CHAT_MEDIA_DOWNLOAD_URL_TTL "$chat_media_download_ttl"
+  set_env PERSONAL_CLOUD_MAX_SIZE "$personal_cloud_max_size"
+  set_env PERSONAL_CLOUD_QUOTA "$personal_cloud_quota"
 fi
 
 webrtc_enabled="$(env_value WEBRTC_ENABLED)"
@@ -281,6 +290,16 @@ if ! [[ "$tinode_token_expire" =~ ^[0-9]+$ ]] || (( tinode_token_expire < 60 || 
   echo "TINODE_TOKEN_EXPIRE_IN must be between 60 and 900 seconds." >&2
   exit 1
 fi
+
+tinode_public_app_id="$(env_value TINODE_PUBLIC_APP_ID)"
+! is_placeholder "$tinode_public_app_id" || {
+  echo "TINODE_PUBLIC_APP_ID must be a scoped public Tinode identifier." >&2
+  exit 1
+}
+(( ${#tinode_public_app_id} >= 8 && ${#tinode_public_app_id} <= 256 )) || {
+  echo "TINODE_PUBLIC_APP_ID has an invalid length." >&2
+  exit 1
+}
 
 tinode_internal_ws_url="$(env_value TINODE_INTERNAL_WS_URL)"
 if [[ "$tinode_internal_ws_url" != "ws://chat:80/v0/channels" ]]; then
@@ -338,6 +357,10 @@ if [[ "${allow_insecure,,}" != "true" ]]; then
   }
   [[ "$(env_value CHAT_CORS_ORIGINS)" == *https://* ]] || {
     echo "CHAT_CORS_ORIGINS must contain an HTTPS origin." >&2
+    exit 1
+  }
+  [[ "$(env_value CHAT_CORS_ORIGINS)" != *\** && "$(env_value CHAT_CSRF_ORIGINS)" != *\** ]] || {
+    echo "Credentialed browser origins must not use a wildcard." >&2
     exit 1
   }
   [[ "$(env_value TINODE_CORS_ORIGINS)" == *https://* ]] || {

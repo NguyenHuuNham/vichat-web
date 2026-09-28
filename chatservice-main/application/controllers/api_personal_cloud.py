@@ -3,6 +3,7 @@ import time
 import uuid
 
 from gatco.response import json, redirect
+from sqlalchemy import func
 
 from application.controllers.api_chat_management import (
     _current_session_error,
@@ -12,7 +13,11 @@ from application.controllers.api_chat_management import (
 from application.database import db
 from application.models.models import PersonalCloudFile, PersonalCloudMessage
 from application.server import app
-from application.services.auth_service import management_session_requested
+from application.services.auth_service import (
+    RateLimitUnavailable,
+    consume_media_upload_rate_limit,
+    management_session_requested,
+)
 from application.services.chat_media_service import (
     ChatMediaError,
     complete_personal_cloud_upload,
@@ -48,6 +53,15 @@ def _unexpected_cloud_error(action, error):
     }, status=503)
 
 
+def _cloud_rate_limit_error():
+    response = json({
+        "error_code": "MEDIA_RATE_LIMIT_UNAVAILABLE",
+        "error_message": "Upload protection is temporarily unavailable. Try again later.",
+    }, status=503)
+    response.headers["Retry-After"] = "15"
+    return response
+
+
 def _cloud_identity(request):
     if management_session_requested(request):
         return None, None, None
@@ -72,6 +86,30 @@ def _file_by_id(tenant_id, owner_id, file_id):
     except (TypeError, ValueError, AttributeError):
         return None
     return _file_query(tenant_id, owner_id).filter(PersonalCloudFile.id == parsed_id).first()
+
+
+def _ensure_personal_cloud_quota(tenant_id, owner_id, requested_size):
+    try:
+        quota = int(app.config.get("PERSONAL_CLOUD_QUOTA", 5368709120))
+    except (TypeError, ValueError):
+        quota = 0
+    if quota <= 0:
+        raise ChatMediaError(
+            "MEDIA_QUOTA_UNAVAILABLE",
+            "Personal cloud quota is not configured.",
+            503,
+        )
+    used = db.session.query(func.coalesce(func.sum(PersonalCloudFile.size), 0)).filter(
+        PersonalCloudFile.tenant_id == tenant_id,
+        PersonalCloudFile.owner_id == owner_id,
+        PersonalCloudFile.deleted.is_(False),
+    ).scalar() or 0
+    if int(used) + int(requested_size) > quota:
+        raise ChatMediaError(
+            "MEDIA_QUOTA_EXCEEDED",
+            "The personal cloud quota has been reached.",
+            413,
+        )
 
 
 def _message_query(tenant_id, owner_id):
@@ -116,12 +154,26 @@ async def create_personal_cloud_media_upload(request):
     current_user, tenant_id, owner_id = _cloud_identity(request)
     if current_user is None:
         return _current_session_error(request)
+    try:
+        allowed = consume_media_upload_rate_limit(
+            tenant_id,
+            owner_id,
+            str(getattr(request, "ip", "") or "")[:100],
+        )
+    except RateLimitUnavailable:
+        return _cloud_rate_limit_error()
+    if not allowed:
+        return json({
+            "error_code": "MEDIA_RATE_LIMITED",
+            "error_message": "Too many upload requests. Try again later.",
+        }, status=429, headers={"Retry-After": "60"})
     body = request.json or {}
     try:
         try:
             requested_size = int(body.get("size"))
         except (TypeError, ValueError):
             raise ChatMediaError("PARAM_ERROR", "size must be an integer.")
+        _ensure_personal_cloud_quota(tenant_id, owner_id, requested_size)
         payload = create_personal_cloud_upload(
             app,
             tenant_id,

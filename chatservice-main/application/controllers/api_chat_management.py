@@ -40,9 +40,12 @@ from application.services.auth_service import (
     AuthError,
     CHAT_SESSION_SCOPE,
     MANAGEMENT_SESSION_SCOPE,
+    RateLimitUnavailable,
     build_password_reset_url,
     clear_auth_cookie,
     clear_login_failures,
+    consume_media_upload_rate_limit,
+    consume_tinode_token_rate_limit,
     create_password_reset_token,
     decode_access_token,
     hash_password,
@@ -535,6 +538,15 @@ def _is_admin(user):
 
 def _auth_error():
     return json({"error_code": "SESSION_EXPIRED", "error_message": "Authentication is required."}, status=401)
+
+
+def _rate_limit_unavailable_error():
+    response = json({
+        "error_code": "AUTH_RATE_LIMIT_UNAVAILABLE",
+        "error_message": "Authentication protection is temporarily unavailable. Try again later.",
+    }, status=503)
+    response.headers["Retry-After"] = "15"
+    return response
 
 
 def _current_session_error(request):
@@ -2288,11 +2300,14 @@ async def employee_account_credential_login(request):
     rate_limit_tenant = "account"
     tenant_id = rate_limit_tenant
     ip_address = str(getattr(request, "ip", "") or "")[:100]
-    if login_rate_limited(rate_limit_tenant, identity_input.lower(), ip_address):
-        return json({
-            "error_code": "LOGIN_RATE_LIMITED",
-            "error_message": "Too many failed login attempts. Try again later.",
-        }, status=429)
+    try:
+        if login_rate_limited(rate_limit_tenant, identity_input.lower(), ip_address):
+            return json({
+                "error_code": "LOGIN_RATE_LIMITED",
+                "error_message": "Too many failed login attempts. Try again later.",
+            }, status=429)
+    except RateLimitUnavailable:
+        return _rate_limit_unavailable_error()
 
     try:
         identity, account_cookie = await login_account_with_credentials(
@@ -2343,9 +2358,15 @@ async def employee_account_credential_login(request):
             user_id=str(account.id),
         )
         return set_auth_cookie(response, token, request)
+    except RateLimitUnavailable:
+        db.session.rollback()
+        return _rate_limit_unavailable_error()
     except AccountSSOError as error:
         db.session.rollback()
-        record_login_failure(rate_limit_tenant, identity_input.lower(), ip_address)
+        try:
+            record_login_failure(rate_limit_tenant, identity_input.lower(), ip_address)
+        except RateLimitUnavailable:
+            return _rate_limit_unavailable_error()
         _audit(
             request,
             "AUTH_ACCOUNT_CREDENTIAL_LOGIN",
@@ -2370,8 +2391,11 @@ async def _password_login(request, session_scope=CHAT_SESSION_SCOPE):
     password = str(body.get("password") or "")
     tenant_id = str(body.get("tenant_id") or app.config.get("CHATMGT_DEFAULT_TENANT") or "").strip()
     ip_address = str(getattr(request, "ip", "") or "")[:100]
-    if login_rate_limited(tenant_id, identity, ip_address):
-        return json({"error_code": "LOGIN_RATE_LIMITED", "error_message": "Too many failed login attempts. Try again later."}, status=429)
+    try:
+        if login_rate_limited(tenant_id, identity, ip_address):
+            return json({"error_code": "LOGIN_RATE_LIMITED", "error_message": "Too many failed login attempts. Try again later."}, status=429)
+    except RateLimitUnavailable:
+        return _rate_limit_unavailable_error()
     try:
         tenant = _tenant_by_id(tenant_id)
         account = ManagementAccount.query.filter(
@@ -2394,7 +2418,10 @@ async def _password_login(request, session_scope=CHAT_SESSION_SCOPE):
         or (account.properties or {}).get("auth_source") == "account"
         or not verify_password(password, account.password_hash)
     ):
-        record_login_failure(tenant_id, identity, ip_address)
+        try:
+            record_login_failure(tenant_id, identity, ip_address)
+        except RateLimitUnavailable:
+            return _rate_limit_unavailable_error()
         _audit(request, "AUTH_LOGIN", False, tenant_id=tenant_id, properties={"identity": identity})
         return json({"error_code": "LOGIN_FAILED", "error_message": "Invalid username or password."}, status=401)
     try:
@@ -2435,6 +2462,9 @@ async def _password_login(request, session_scope=CHAT_SESSION_SCOPE):
         response = json(response_payload)
         _audit(request, "AUTH_LOGIN", True, tenant_id=tenant_id, user_id=str(account.id))
         return set_auth_cookie(response, token, request)
+    except RateLimitUnavailable:
+        db.session.rollback()
+        return _rate_limit_unavailable_error()
     except AuthError as error:
         db.session.rollback()
         _audit(
@@ -2751,6 +2781,18 @@ async def management_tinode_token(request):
     current_user, tenant_id = _identity(request)
     if current_user is None or management_session_requested(request):
         return _auth_error()
+    try:
+        if not consume_tinode_token_rate_limit(
+            tenant_id,
+            _user_id(current_user),
+            str(getattr(request, "ip", "") or "")[:100],
+        ):
+            return json({
+                "error_code": "TINODE_TOKEN_RATE_LIMITED",
+                "error_message": "Too many realtime token requests. Try again later.",
+            }, status=429, headers={"Retry-After": "60"})
+    except RateLimitUnavailable:
+        return _rate_limit_unavailable_error()
     account = _account_by_id(tenant_id, _user_id(current_user))
     if account is None:
         return _auth_error()
@@ -3083,9 +3125,12 @@ async def management_forgot_password(request):
     }
     if not identity or not tenant_id:
         return json(generic_response, status=202)
-    if password_reset_rate_limited(tenant_id, identity, ip_address):
-        return json(generic_response, status=202)
-    record_password_reset_request(tenant_id, identity, ip_address)
+    try:
+        if password_reset_rate_limited(tenant_id, identity, ip_address):
+            return json(generic_response, status=202)
+        record_password_reset_request(tenant_id, identity, ip_address)
+    except RateLimitUnavailable:
+        return _rate_limit_unavailable_error()
 
     account = ManagementAccount.query.filter(
         ManagementAccount.tenant_id == tenant_id,

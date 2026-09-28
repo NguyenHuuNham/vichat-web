@@ -1,4 +1,5 @@
 import React from 'react';
+import { clientLogger } from '../services/clientLogger.js';
 
 // Keep one malformed room from taking down the rest of the chat surface.
 export default class ConversationErrorBoundary extends React.Component {
@@ -9,7 +10,10 @@ export default class ConversationErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
-    console.error(`ViChat: ${this.props.scope || 'conversation'} render failed`, error, info);
+    clientLogger.error(`${this.props.scope || 'conversation'}_render_failed`, {
+      error,
+      componentStack: info?.componentStack,
+    });
   }
 
   handleRetry = () => {

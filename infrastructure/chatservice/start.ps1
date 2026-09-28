@@ -86,10 +86,11 @@ Ensure-Secret 'APP_SECRET_KEY' 48 32
 Ensure-Secret 'AUTH_PASSWORD_SALT' 32 16
 Ensure-Secret 'SESSION_COOKIE_SALT' 48 32
 Ensure-Secret 'CHAT_AUTH_JWT_SECRET' 48 32
+Ensure-Secret 'REDIS_PASSWORD' 32 32
 
 $envContent = Get-Content -Raw -LiteralPath $envPath
 if ($envContent -notmatch '(?m)^TINODE_API_KEY=.+$') {
-    Set-EnvValue $envPath 'TINODE_API_KEY' 'AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K'
+    throw 'Set TINODE_API_KEY in infrastructure/chatservice/.env before starting Chatmgt.'
 }
 
 $composeDbUser = "chatservice"

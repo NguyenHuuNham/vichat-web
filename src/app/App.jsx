@@ -1,5 +1,6 @@
 import React, { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { clientLogger } from '../services/clientLogger.js';
 import Login from '../features/auth/components/Login';
 import ChatLogo from '../components/ChatLogo';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -1995,7 +1996,7 @@ function safeNormalizeConversationForRender(conversation, fallbackId = '') {
     const normalizedId = normalized.id || id;
     return normalizedId ? { ...normalized, id: normalizedId } : normalized;
   } catch (error) {
-    console.error('ViChat: conversation normalization failed', error);
+    clientLogger.error('conversation_normalization_failed', error);
     if (!id) return null;
     return {
       id,
@@ -2034,7 +2035,7 @@ function safeConversationEntries(conversations) {
       .map(([id, room]) => [id, safeNormalizeConversationForRender(room, id)])
       .filter(([, room]) => room?.id);
   } catch (error) {
-    console.error('ViChat: conversation map normalization failed', error);
+    clientLogger.error('conversation_map_normalization_failed', error);
     return [];
   }
 }
@@ -2214,7 +2215,7 @@ function safeMergeTinodeConversation(existing, incoming, options = {}) {
       existing?.id || incoming?.id,
     );
   } catch (mergeError) {
-    console.error('ViChat: mergeTinodeConversation failed, using fallback', mergeError);
+    clientLogger.error('tinode_conversation_merge_failed', mergeError);
     const fallback = existing || incoming;
     return safeNormalizeConversationForRender(
       projectPollsWithMembers(fallback, fallback?.members),
@@ -4120,7 +4121,7 @@ function App() {
             && String(accountTenantId(currentUserRef.current) || '').trim() === requestTenant
           ) {
             setMediaHistoryStatusByTopic(previous => ({ ...previous, [key]: 'error' }));
-            console.warn('ViChat: media history preload failed', error);
+            clientLogger.warn('media_history_preload_failed', error);
           }
         })
         .finally(() => {
@@ -5391,7 +5392,7 @@ function App() {
         return next;
       });
     } catch (error) {
-      console.warn('ViChat: failed to acknowledge unread boundary', error);
+      clientLogger.warn('unread_boundary_ack_failed', error);
     } finally {
       if (unreadCompletionRequestsRef.current.get(key) === request) unreadCompletionRequestsRef.current.delete(key);
     }
@@ -6761,7 +6762,7 @@ function App() {
       } catch (error) {
         // The live message remains visible; the next open/send retries the
         // Chatmgt marker clear through the normal direct binding flow.
-        console.warn('ViChat: direct conversation reopen failed', error);
+        clientLogger.warn('direct_conversation_reopen_failed', error);
       } finally {
         reopeningDirectTopicsRef.current.delete(reopenKey);
       }
@@ -7129,7 +7130,7 @@ function App() {
             groupNameRefreshRef.current.add(activityKey);
             refreshManagementConversations(accountSession).catch(error => {
               groupNameRefreshRef.current.delete(activityKey);
-              console.warn('ViChat: group name activity refresh failed', error);
+              clientLogger.warn('group_name_activity_refresh_failed', error);
             });
           }
         }
@@ -7149,7 +7150,7 @@ function App() {
             groupRoleRefreshRef.current.add(activityKey);
             refreshManagementConversations(accountSession).catch(error => {
               groupRoleRefreshRef.current.delete(activityKey);
-              console.warn('ViChat: group role activity refresh failed', error);
+              clientLogger.warn('group_role_activity_refresh_failed', error);
             });
           }
         }
@@ -7278,7 +7279,7 @@ function App() {
           return next;
         });
         } catch (conversationEventError) {
-          console.error('ViChat: Failed to process conversation event', conversationEventError);
+          clientLogger.error('conversation_event_failed', conversationEventError);
         }
         return;
       }
@@ -9017,7 +9018,7 @@ function App() {
     if (!profile.isCurrentAccount && profile.id && chatManagementService.remote) {
       void chatManagementService.recordProfileView(profile.id).catch(error => {
         // Profile view telemetry must never block opening the contact card.
-        console.warn('ViChat: could not record profile view', error);
+        clientLogger.warn('profile_view_record_failed', error);
       });
     }
   };
@@ -9354,7 +9355,7 @@ function App() {
       if (chatMode === 'tinode' && !usesManagementData) {
         const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
         await tinodeClient.sendSystemEvent(topicName, activityEvent).catch(error => {
-          console.warn('ViChat: group rename activity announcement failed', error);
+          clientLogger.warn('group_rename_activity_announcement_failed', error);
         });
         const realtimeRoom = await tinodeClient.openConversation(topicName).catch(() => null);
         if (realtimeRoom) {
@@ -9442,7 +9443,7 @@ function App() {
         if (chatMode === 'tinode' && !usesManagementData) {
           const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
           await tinodeClient.sendSystemEvent(topicName, activityEvent).catch(error => {
-            console.warn('ViChat: group settings activity announcement failed', error);
+          clientLogger.warn('group_settings_activity_announcement_failed', error);
           });
           const realtimeRoom = await tinodeClient.openConversation(topicName).catch(() => null);
           if (realtimeRoom) {
@@ -9744,7 +9745,7 @@ function App() {
             const deletion = await tinodeClient.deleteConversation(removedTopic, { isGroup: false });
             deletedAt = deletedAt || deletion?.deletedAt || '';
           } catch (cleanupError) {
-            console.warn('ViChat: direct Tinode history cleanup failed after Chatmgt deletion', cleanupError);
+            clientLogger.warn('direct_tinode_history_cleanup_failed', cleanupError);
           }
         }
       } else {
@@ -10124,7 +10125,7 @@ function App() {
         return next;
       });
     } catch (error) {
-      console.warn('ViChat: failed to mark conversation as read', error);
+      clientLogger.warn('conversation_read_mark_failed', error);
     } finally {
       if (unreadCompletionRequestsRef.current.get(key) === request) unreadCompletionRequestsRef.current.delete(key);
     }
@@ -10782,7 +10783,7 @@ function App() {
       };
       if (!usesManagementData) {
         await tinodeClient.sendSystemEvent(topicName, activityEvent).catch(error => {
-          console.warn('ViChat: group avatar activity announcement failed', error);
+          clientLogger.warn('group_avatar_activity_announcement_failed', error);
         });
       }
       const realtimeRoom = await tinodeClient.openConversation(topicName).catch(() => null);
@@ -11510,7 +11511,7 @@ function App() {
             caption: captionText,
           }).catch(error => {
             // RAG indexing is best-effort and must never change file delivery.
-            console.warn('ViChat: chat document indexing failed', error);
+            clientLogger.warn('chat_document_indexing_failed', error);
           });
           if (previewUrl) URL.revokeObjectURL(previewUrl);
         })
@@ -13001,7 +13002,7 @@ function App() {
             tinodeTopic: topicName,
             sequence: result.ctrl?.params?.seq,
           }).catch(error => {
-            console.warn('ViChat: forwarded document indexing failed', error);
+            clientLogger.warn('forwarded_document_indexing_failed', error);
           });
           const forwardedAttachment = {
             ...sourceAttachment,
@@ -13922,7 +13923,7 @@ function App() {
           setUnreadBoundaries(previous => ({ ...previous, [boundaryKey]: nextBoundary }));
         }
       } catch (error) {
-        console.warn('ViChat: failed to load the first unread message', error);
+        clientLogger.warn('first_unread_load_failed', error);
         if (isCurrent()) setChatError(error?.message || 'Không tải được tin chưa đọc. Vui lòng thử lại.');
         return;
       }

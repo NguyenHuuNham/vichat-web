@@ -1,4 +1,5 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
+import { clientLogger } from './services/clientLogger.js';
 import {
   CHAT_MAINTENANCE_MESSAGE,
   DEFAULT_CHAT_MAINTENANCE_STATE,
@@ -18,7 +19,7 @@ class AppErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
-    console.error('ViChat render error', error, info);
+    clientLogger.error('render_failed', { error, componentStack: info?.componentStack });
   }
 
   render() {

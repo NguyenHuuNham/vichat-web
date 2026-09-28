@@ -1,4 +1,5 @@
 import hashlib
+import json
 import mimetypes
 import re
 import time
@@ -18,6 +19,34 @@ SAFE_EXTENSION_PATTERN = re.compile(r"^\.[a-z0-9]{1,10}$")
 DEFAULT_CONTENT_TYPE = "application/octet-stream"
 UPLOAD_TICKET_SALT = "vichat-chat-media-upload-v1"
 PERSONAL_CLOUD_UPLOAD_TICKET_SALT = "vichat-personal-cloud-upload-v1"
+
+UPLOAD_POLICIES = {
+    "image/jpeg": {"extensions": {".jpg", ".jpeg"}, "default_extension": ".jpg"},
+    "image/png": {"extensions": {".png"}, "default_extension": ".png"},
+    "image/gif": {"extensions": {".gif"}, "default_extension": ".gif"},
+    "image/webp": {"extensions": {".webp"}, "default_extension": ".webp"},
+    "audio/mpeg": {"extensions": {".mp3"}, "default_extension": ".mp3"},
+    "audio/wav": {"extensions": {".wav"}, "default_extension": ".wav"},
+    "audio/x-wav": {"extensions": {".wav"}, "default_extension": ".wav"},
+    "audio/ogg": {"extensions": {".ogg"}, "default_extension": ".ogg"},
+    "video/mp4": {"extensions": {".mp4"}, "default_extension": ".mp4"},
+    "video/webm": {"extensions": {".webm"}, "default_extension": ".webm"},
+    "application/pdf": {"extensions": {".pdf"}, "default_extension": ".pdf"},
+    "application/msword": {"extensions": {".doc"}, "default_extension": ".doc"},
+    "application/vnd.ms-excel": {"extensions": {".xls"}, "default_extension": ".xls"},
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {
+        "extensions": {".docx"},
+        "default_extension": ".docx",
+    },
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+        "extensions": {".xlsx"},
+        "default_extension": ".xlsx",
+    },
+    "text/plain": {"extensions": {".txt"}, "default_extension": ".txt"},
+    "text/markdown": {"extensions": {".md", ".markdown"}, "default_extension": ".md"},
+    "text/csv": {"extensions": {".csv"}, "default_extension": ".csv"},
+    "application/json": {"extensions": {".json"}, "default_extension": ".json"},
+}
 
 
 class ChatMediaError(Exception):
@@ -51,8 +80,12 @@ def _optional_positive_int(value, default=0):
 
 
 def personal_cloud_max_size(app):
-    """Return the optional Cloud cap; zero means no app-level cap."""
-    return _optional_positive_int(_config(app, "PERSONAL_CLOUD_MAX_SIZE", 0))
+    """Return a finite fail-safe Personal Cloud per-file cap."""
+    return _positive_int(
+        _config(app, "PERSONAL_CLOUD_MAX_SIZE", 524288000),
+        524288000,
+        maximum=524288000,
+    )
 
 
 def chat_media_status(app):
@@ -145,6 +178,24 @@ def _safe_extension(file_name, content_type):
         guessed = mimetypes.guess_extension(content_type, strict=False) or ""
         extension = guessed.lower() if SAFE_EXTENSION_PATTERN.match(guessed.lower()) else ""
     return ".jpg" if extension == ".jpe" else extension
+
+
+def _upload_policy(file_name, content_type):
+    normalized_type = _safe_content_type(content_type)
+    policy = UPLOAD_POLICIES.get(normalized_type)
+    if policy is None or normalized_type in ("text/html", "image/svg+xml"):
+        raise ChatMediaError(
+            "MEDIA_FILE_TYPE_UNSUPPORTED",
+            "The file type is not allowed.",
+        )
+    safe_name = _safe_file_name(file_name)
+    extension = _safe_extension(safe_name, normalized_type)
+    if extension and extension not in policy["extensions"]:
+        raise ChatMediaError(
+            "MEDIA_FILE_TYPE_MISMATCH",
+            "The file extension does not match the content type.",
+        )
+    return normalized_type, extension or policy["default_extension"]
 
 
 def _safe_file_name(file_name):
@@ -381,6 +432,86 @@ def _stat_object(app, object_name):
     raise ChatMediaError("MEDIA_STORAGE_UNAVAILABLE", "S3 media storage is unavailable.", 503)
 
 
+def _read_object_prefix(app, object_name, length=8192):
+    last_error = None
+    for client in _storage_clients():
+        getter = getattr(client, "get_object", None)
+        if not callable(getter):
+            continue
+        response = None
+        try:
+            response = getter(_bucket_name(app), object_name, offset=0, length=length)
+            return bytes(response.read(length))
+        except Exception as error:
+            last_error = error
+        finally:
+            if response is not None:
+                for method_name in ("close", "release_conn"):
+                    method = getattr(response, method_name, None)
+                    if callable(method):
+                        try:
+                            method()
+                        except Exception:
+                            pass
+    if last_error is not None:
+        raise ChatMediaError(
+            "MEDIA_CONTENT_UNAVAILABLE",
+            "The uploaded file could not be inspected.",
+            503,
+        ) from last_error
+    raise ChatMediaError(
+        "MEDIA_CONTENT_UNAVAILABLE",
+        "The uploaded file could not be inspected.",
+        503,
+    )
+
+
+def _magic_matches(content_type, data):
+    if not data:
+        return False
+    signatures = {
+        "image/jpeg": data.startswith(b"\xff\xd8\xff"),
+        "image/png": data.startswith(b"\x89PNG\r\n\x1a\n"),
+        "image/gif": data.startswith((b"GIF87a", b"GIF89a")),
+        "image/webp": data.startswith(b"RIFF") and data[8:12] == b"WEBP",
+        "audio/mpeg": data.startswith(b"ID3") or (len(data) >= 2 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0),
+        "audio/wav": data.startswith(b"RIFF") and data[8:12] == b"WAVE",
+        "audio/x-wav": data.startswith(b"RIFF") and data[8:12] == b"WAVE",
+        "audio/ogg": data.startswith(b"OggS"),
+        "video/mp4": len(data) >= 12 and data[4:8] == b"ftyp",
+        "video/webm": data.startswith(b"\x1a\x45\xdf\xa3"),
+        "application/pdf": data.startswith(b"%PDF-"),
+        "application/msword": data.startswith(b"\xd0\xcf\x11\xe0"),
+        "application/vnd.ms-excel": data.startswith(b"\xd0\xcf\x11\xe0"),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": data.startswith(b"PK\x03\x04"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": data.startswith(b"PK\x03\x04"),
+    }
+    if content_type in signatures:
+        return signatures[content_type]
+    try:
+        decoded = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    if "\x00" in decoded:
+        return False
+    if content_type == "application/json":
+        try:
+            json.loads(decoded)
+        except (TypeError, ValueError):
+            return False
+    return content_type in ("text/plain", "text/markdown", "text/csv", "application/json")
+
+
+def _validate_object_content(app, object_name, content_type):
+    prefix = _read_object_prefix(app, object_name)
+    if not _magic_matches(content_type, prefix):
+        raise ChatMediaError(
+            "MEDIA_CONTENT_INVALID",
+            "The uploaded file content does not match the declared type.",
+            409,
+        )
+
+
 def _remove_object(app, object_name):
     last_error = None
     for client in _storage_clients():
@@ -441,8 +572,7 @@ def create_chat_media_upload(app, tenant_id, file_name, content_type, size, conv
     if expected_size > status["max_size"]:
         raise ChatMediaError("MEDIA_FILE_TOO_LARGE", "The upload exceeds the configured size limit.", 413)
 
-    normalized_type = _safe_content_type(content_type)
-    extension = _safe_extension(file_name, normalized_type)
+    normalized_type, extension = _upload_policy(file_name, content_type)
     upload_id = "{}-{}{}".format(
         datetime.now(timezone.utc).strftime("%Y%m%d"),
         uuid.uuid4().hex,
@@ -573,6 +703,14 @@ def complete_chat_media_upload(app, tenant_id, upload_id, expected_size, upload_
         except Exception:
             pass
         raise ChatMediaError("MEDIA_UPLOAD_TYPE_MISMATCH", "The uploaded object type is invalid.", 409)
+    try:
+        _validate_object_content(app, pending_object_name, ticket_type)
+    except ChatMediaError:
+        try:
+            _remove_object(app, pending_object_name)
+        except Exception:
+            pass
+        raise
 
     _copy_object(
         app,
@@ -638,8 +776,7 @@ def create_personal_cloud_upload(app, tenant_id, owner_id, file_name, content_ty
         raise ChatMediaError("MEDIA_FILE_TOO_LARGE", "The upload exceeds the configured size limit.", 413)
 
     safe_name = _safe_file_name(file_name)
-    normalized_type = _safe_content_type(content_type)
-    extension = _safe_extension(safe_name, normalized_type)
+    normalized_type, extension = _upload_policy(safe_name, content_type)
     upload_id = "{}-{}{}".format(
         datetime.now(timezone.utc).strftime("%Y%m%d"),
         uuid.uuid4().hex,
@@ -757,6 +894,14 @@ def complete_personal_cloud_upload(app, tenant_id, owner_id, upload_id, expected
         except Exception:
             pass
         raise ChatMediaError("MEDIA_UPLOAD_TYPE_MISMATCH", "The uploaded object type is invalid.", 409)
+    try:
+        _validate_object_content(app, pending_object_name, ticket_type)
+    except ChatMediaError:
+        try:
+            _remove_object(app, pending_object_name)
+        except Exception:
+            pass
+        raise
 
     _copy_object(
         app,
