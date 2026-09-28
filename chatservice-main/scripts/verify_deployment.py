@@ -890,7 +890,7 @@ def _verify_http(base_url, origin, management_account):
     )
     users = requests.get(
         base_url + "/api/v1/chat/users",
-        params={"tenant_id": "untrusted-client-tenant", "results_per_page": 1000},
+        params={"tenant_id": "untrusted-client-tenant", "results_per_page": 100},
         headers=authenticated_headers,
         timeout=10,
     )
