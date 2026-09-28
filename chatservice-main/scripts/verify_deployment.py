@@ -56,13 +56,14 @@ def configured_origin():
     return str(values[0])
 
 
-def verify_chat_media_upload_ticket(base_url, headers, origin):
+def verify_chat_media_upload_ticket(base_url, headers, origin, conversation_id):
     response = requests.post(
         base_url + "/api/v1/chat/media/uploads",
         json={
             "file_name": "deployment-check.txt",
             "content_type": "text/plain",
             "size": 1,
+            "conversation_id": conversation_id,
         },
         headers=headers,
         timeout=20,
@@ -426,6 +427,7 @@ def create_management_verifier_account():
     password_hash = ACCOUNT_SSO_PASSWORD_MARKER
     now = int(time.time())
     engine = create_engine(database_uri)
+    probe_conversation_id = None
     try:
         with engine.begin() as connection:
             connection.execute(text("""
@@ -466,6 +468,40 @@ def create_management_verifier_account():
                     "auth_version": 0,
                 }),
             })
+            probe_conversation_id = connection.execute(text("""
+                INSERT INTO conversation (
+                    tenant_id, subject, status, priority, properties,
+                    created_at, updated_at, deleted
+                ) VALUES (
+                    :tenant_id, 'Deployment verifier media probe', 'OPEN',
+                    'NORMAL', CAST(:properties AS jsonb), :created_at,
+                    :updated_at, FALSE
+                )
+                RETURNING id
+            """), {
+                "tenant_id": tenant_id,
+                "properties": json.dumps({"deployment_verifier": True}),
+                "created_at": now,
+                "updated_at": now,
+            }).scalar()
+            connection.execute(text("""
+                INSERT INTO conversation_participant (
+                    tenant_id, conversation_id, participant_type,
+                    participant_id, role, joined_at, active,
+                    approval_status, created_at, updated_at, deleted
+                ) VALUES (
+                    :tenant_id, :conversation_id, 'USER', :participant_id,
+                    'OWNER', :joined_at, TRUE, 'APPROVED', :created_at,
+                    :updated_at, FALSE
+                )
+            """), {
+                "tenant_id": tenant_id,
+                "conversation_id": probe_conversation_id,
+                "participant_id": account_id,
+                "joined_at": now,
+                "created_at": now,
+                "updated_at": now,
+            })
     finally:
         engine.dispose()
     account_projection = SimpleNamespace(
@@ -498,6 +534,7 @@ def create_management_verifier_account():
         "password": password,
         "token": token,
         "chat_token": chat_token,
+        "probe_conversation_id": str(probe_conversation_id),
     }
 
 
@@ -510,6 +547,33 @@ def delete_management_verifier_account(account):
     engine = create_engine(database_uri)
     try:
         with engine.begin() as connection:
+            probe_conversation_id = str(account.get("probe_conversation_id") or "").strip()
+            if probe_conversation_id:
+                connection.execute(text("""
+                    DELETE FROM chat_media_registry
+                    WHERE tenant_id = :tenant_id
+                      AND conversation_id = CAST(:conversation_id AS uuid)
+                """), {
+                    "tenant_id": account["tenant_id"],
+                    "conversation_id": probe_conversation_id,
+                })
+                connection.execute(text("""
+                    DELETE FROM conversation_participant
+                    WHERE tenant_id = :tenant_id
+                      AND conversation_id = CAST(:conversation_id AS uuid)
+                """), {
+                    "tenant_id": account["tenant_id"],
+                    "conversation_id": probe_conversation_id,
+                })
+                connection.execute(text("""
+                    DELETE FROM conversation
+                    WHERE tenant_id = :tenant_id
+                      AND id = CAST(:conversation_id AS uuid)
+                      AND properties ->> 'deployment_verifier' = 'true'
+                """), {
+                    "tenant_id": account["tenant_id"],
+                    "conversation_id": probe_conversation_id,
+                })
             connection.execute(text("""
                 DELETE FROM security_audit_log
                 WHERE tenant_id = :tenant_id AND user_id = :account_id
@@ -792,7 +856,12 @@ def _verify_http(base_url, origin, management_account):
     if profile.status_code != 200:
         raise RuntimeError("Authenticated profile check returned HTTP {}.".format(profile.status_code))
     if str(os.getenv("CHAT_MEDIA_STORAGE") or "tinode").lower() == "s3":
-        verify_chat_media_upload_ticket(base_url, authenticated_headers, origin)
+        verify_chat_media_upload_ticket(
+            base_url,
+            authenticated_headers,
+            origin,
+            management_account.get("probe_conversation_id"),
+        )
 
     tinode_token_response = requests.post(
         base_url + "/api/v1/auth/tinode-token",
