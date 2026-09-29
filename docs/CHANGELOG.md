@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-29-05 - Chan snapshot storm khi tai lich su chat mobile
+
+- Thoi gian: 2026-09-29 16:25 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Chat | Hieu nang | UX | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source, APK test va UAT emulator; chua UAT du lieu tin chua doc that voi tai khoan thu.
+- Muc tieu: Khac phuc triet de loi keo len lich su lam tin nhan bien mat hoac vung chat trang, dong thoi giu nguyen nut den tin chua doc va nut ve tin moi nhat.
+- Pham vi: FlashList chat mobile, snapshot Tinode khi tai trang lich su, hop nhat message trong store va co che tai lich su; khong thay doi API, database hoac tenant ID.
+- File da thay doi: `mobile/src/screens/chat/ChatDetailScreen.tsx`, `mobile/src/services/tinodeClient.ts`, `mobile/src/store/appStore.ts`, va muc nay trong `docs/CHANGELOG.md`.
+- Noi dung: Chuyen tai lich su sang `onStartReached` sau khi danh sach da scroll ban dau, khoa request lap khi van o dau danh sach, hop nhat snapshot theo `id/seq` de khong thay the tap tin da tai bang snapshot ngan hon, va chan snapshot trung gian cua tung packet `getMeta()` cho den khi ca trang 40 tin san sang. Sau do client chi phat mot snapshot on dinh, tranh FlashList giu offset cu tren mang du lieu da bi co.
+- Quyet dinh ky thuat: Chi suppress snapshot trong cua so tai history; packet realtime binh thuong van di qua `onData`. Store giu cac message hien co va merge message moi de bao toan scroll position, khong sua hop dong Tinode hay them fallback du lieu.
+- Database/API/cau hinh: Khong co migration, endpoint moi, bien moi truong hoac thay doi hop dong.
+- Kiem thu: `cd mobile; npm test -- --reporter=dot --maxWorkers=1` dat 28 file, 106/106; `npm run typecheck` exit 0; `npm run lint` exit 0; `npm run export` exit 0, Exported `dist`; Gradle `:app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a,x86_64` dat 520 tasks. Cai APK `D:\vichat-build\ViChat-1.0.26-chat-scroll-stable-20260929.apk` len `emulator-5554` thanh cong; mo `Nhom GON-NERS - Members`, keo lich su 12 lan nhanh khong con vung trang va tin cu khong bien mat; nut `Di toi tin nhan moi nhat` xuat hien khi roi cuoi danh sach va bam thanh cong dua ve tin moi nhat; logcat khong co crash, `TypeError` hoac `Invariant Violation`.
+- Artifact: `D:\vichat-build\ViChat-1.0.26-chat-scroll-stable-20260929.apk`, package `vn.upgo.vichat`, version `1.0.26`, versionCode `27`, SHA-256 `461771F66122126816656716B5CAEFECAF0DAB7F4C572014E3DD8A6BCD6871A7`, signer Android Debug.
+- Rui ro con lai: Chua UAT nut den tin chua doc voi du lieu unread that, tai khoan A/B, offline/reconnect, thiet bi that va iOS; APK la ban test, chua ky store.
+- Viec tiep theo: UAT voi tai khoan A/B de tao tin chua doc va build lai bang release keystore khi phat hanh store.
+- Commit/PR: Chua tao.
+
 ## 2026-09-29-04 - On dinh cuon chat mobile va dieu huong tin nhan
 
 - Thoi gian: 2026-09-29 13:00 (Asia/Saigon)

@@ -9,7 +9,7 @@ import { Conversation, ChatMessage, ConnectionState, GroupSettings, LinkedDevice
 import { storageService } from '../services/storageService';
 import { notifyIncomingCall, notifyIncomingMessage, resetPushNotificationRegistration } from '../services/notificationService';
 import { applyPresenceToConversation } from '../utils/tinodeState';
-import { dedupeConversations, isDirectConversationForUser, isTinodeConversationSnapshot, mergeConversationIntoList } from '../utils/conversationSync';
+import { dedupeConversations, isDirectConversationForUser, isTinodeConversationSnapshot, mergeConversation as mergeConversationSnapshot, mergeConversationIntoList } from '../utils/conversationSync';
 import { canKeepTinodeAvatarAfterProfileRejection } from '../utils/avatarPolicy';
 import { useCallStore } from './callStore';
 import { canonicalAccountIds, identitiesOverlap, normalizeParticipant, tinodeUidForMember } from '../utils/identity';
@@ -114,6 +114,10 @@ function mergeConversation(previous: Conversation[], incoming: Conversation) {
     })
     : current.members;
   const membersForMessages = mergedMembers || [];
+  // Tinode may emit a partial snapshot while an earlier page is arriving.
+  // Keep the loaded range so FlashList cannot retain an offset past a shorter
+  // replacement array and render a blank viewport.
+  const mergedMessageSnapshot = mergeConversationSnapshot(current, incoming).messages;
   const enrichMessages = (messages: ChatMessage[]) => messages.map(message => {
     if (message.sender === 'outgoing') return message;
     const sender = membersForMessages.find(member => identitiesOverlap(member, { id: message.senderId, uid: message.senderId }));
@@ -132,7 +136,7 @@ function mergeConversation(previous: Conversation[], incoming: Conversation) {
     members: mergedMembers,
     pendingMembers: incoming.pendingMembers !== undefined ? incoming.pendingMembers : current.pendingMembers,
     participantIds: incoming.participantIds?.length ? incoming.participantIds : current.participantIds,
-    messages: enrichMessages(incoming.messages.length ? incoming.messages : current.messages),
+    messages: enrichMessages(mergedMessageSnapshot),
     name: incoming.name || current.name,
     avatarUrl: incoming.avatarUrl || current.avatarUrl,
     membersCount: incoming.membersCount || current.membersCount,

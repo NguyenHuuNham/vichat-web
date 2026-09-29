@@ -86,6 +86,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const lastMarkedReadSeqRef = useRef(0);
   const markingReadRef = useRef(false);
   const loadingEarlierRef = useRef(false);
+  const historyLoadArmedRef = useRef(true);
   const inputRef = useRef<TextInput>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingAt = useRef(0);
@@ -98,6 +99,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     latestMessageKeyRef.current = '';
     lastMarkedReadSeqRef.current = 0;
     markingReadRef.current = false;
+    historyLoadArmedRef.current = true;
     setIsNearBottom(true);
     setNewMessageCount(0);
     setUnreadJumpDismissed(false);
@@ -301,15 +303,17 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     setBusy(true); setError('');
     try { await lockPoll(conversation.id, message.poll.id); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không khóa được bình chọn.'); } finally { setBusy(false); }
   };
-  const loadEarlierMessages = async (event: any) => {
-    if (!conversation || !hasEarlier || loadingEarlier || loadingEarlierRef.current || Number(event?.nativeEvent?.contentOffset?.y || 0) > 48) return;
+  const loadEarlierMessages = async () => {
+    if (!conversation || messages.length === 0 || !initialScrollDoneRef.current || !hasEarlier || !historyLoadArmedRef.current || loadingEarlier || loadingEarlierRef.current) return;
+    historyLoadArmedRef.current = false;
     loadingEarlierRef.current = true;
     setLoadingEarlier(true);
-    try { setHasEarlier(await loadEarlier(conversation.id, 40)); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không tải thêm được lịch sử chat.'); } finally { loadingEarlierRef.current = false; setLoadingEarlier(false); }
+    try { setHasEarlier(await loadEarlier(conversation.id, 40)); } catch (valueError) { historyLoadArmedRef.current = true; setError(valueError instanceof Error ? valueError.message : 'Không tải thêm được lịch sử chat.'); } finally { loadingEarlierRef.current = false; setLoadingEarlier(false); }
   };
   const handleListScroll = (event: any) => {
     const nativeEvent = event?.nativeEvent || {};
     const offsetY = Number(nativeEvent.contentOffset?.y || 0);
+    if (offsetY > 96) historyLoadArmedRef.current = true;
     const contentHeight = Number(nativeEvent.contentSize?.height || 0);
     const viewportHeight = Number(nativeEvent.layoutMeasurement?.height || 0);
     const nearBottom = isNearChatBottom(offsetY, contentHeight, viewportHeight, CHAT_BOTTOM_THRESHOLD);
@@ -321,7 +325,6 @@ export function ChatDetailScreen({ route, navigation }: Props) {
       setNewMessageCount(0);
       markConversationRead();
     }
-    void loadEarlierMessages(event);
   };
   const jumpToUnread = () => {
     if (firstUnreadIndex === null) return;
@@ -440,6 +443,8 @@ export function ChatDetailScreen({ route, navigation }: Props) {
           data={messages}
           keyExtractor={(item, index) => messageKey(item) || `message-${index}`}
           onScroll={handleListScroll}
+          onStartReached={() => { void loadEarlierMessages(); }}
+          onStartReachedThreshold={0.08}
           scrollEventThrottle={120}
           onLoad={() => {
             listHasLaidOut.current = true;

@@ -1409,7 +1409,15 @@ export class TinodeMobileClient {
     const boundedLimit = Math.max(1, Math.min(50, Math.trunc(Number(limit) || HISTORY_PAGE_LIMIT)));
     const query = topic.startMetaQuery().withEarlierData(boundedLimit);
     if (typeof query.withDel === 'function') query.withDel(undefined, boundedLimit);
-    await withTimeout(topic.getMeta(query.build()), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi tải lịch sử trò chuyện.');
+    // Tinode delivers each history packet through onData. Suppress those
+    // intermediate snapshots and publish one stable page after the query.
+    const wasSyncing = Boolean(topic.__vichatMobileSyncing);
+    topic.__vichatMobileSyncing = true;
+    try {
+      await withTimeout(topic.getMeta(query.build()), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi tải lịch sử trò chuyện.');
+    } finally {
+      topic.__vichatMobileSyncing = wasSyncing;
+    }
     if (!this.isGenerationCurrent(generation)) throw new Error('Tinode history request is stale.');
     const after = Number(topic.minMsgSeq?.() || topic._minSeq || 0);
     const conversation = this.materialize(topic);
