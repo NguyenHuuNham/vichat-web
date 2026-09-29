@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Emulator: Cai lai va clear data tren `emulator-5554`. Frame native splash chi co logo; frame chuyen tiep khong con chu bi cat; sau khi React Native load, UI dump co `GON PLATFORM` day du va khong co node text `GON` doc lap.
 - Rui ro con lai: Chua dang nhap tai khoan that de UAT tenant khac, offline/reconnect, push background/killed, call va thiet bi iOS; APK dung debug keystore, chua phai artifact ky store.
 - Viec tiep theo: UAT voi tai khoan A/B tren thiet bi that, sau do build lai bang release keystore khi phat hanh store.
-- Commit/PR: Source commit `9e46f6bba781699c89e8f2a116c4cc4db64264aa`; docs follow-up commit se duoc tao ngay sau muc nay.
+- Commit/PR: Source commit `9e46f6bba781699c89e8f2a116c4cc4db64264aa`; docs follow-up commit `a80c441` da tao.
 
 ## 2026-09-29-02 - Khac phuc triet de ten thuong hieu mobile chi hien GON
 
