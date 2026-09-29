@@ -156,6 +156,7 @@ function mergeConversation(previous: Conversation[], incoming: Conversation) {
     lastMsg: incoming.lastMsg || current.lastMsg,
     time: incoming.time || current.time,
     badge: incoming.messages.length || incoming.lastMsg || incoming.updatedAt ? incoming.badge : current.badge,
+    readSeq: incoming.readSeq !== undefined ? incoming.readSeq : current.readSeq,
     updatedAt: incoming.updatedAt || current.updatedAt,
     managementId: incoming.managementId !== incoming.tinodeTopic ? incoming.managementId : current.managementId,
   };
@@ -883,7 +884,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const conversation = conversationForId(get().conversations, conversationId);
     if (conversation?.tinodeTopic && tinodeClient.connected) {
       await tinodeClient.markRead(conversation.tinodeTopic);
-      set({ conversations: get().conversations.map(item => item.id === conversationId ? { ...item, badge: 0 } : item) });
+      const readSeq = conversation.messages.reduce((latest, message) => Math.max(latest, Number(message.seq) || 0), Number(conversation.readSeq) || 0);
+      set({ conversations: get().conversations.map(item => item.id === conversationId ? { ...item, badge: 0, readSeq } : item) });
     }
   },
 

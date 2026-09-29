@@ -650,6 +650,7 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
     members,
     participantIds: members.map(member => member.id),
     messages: enrichedMessages,
+    readSeq: topicRead,
     lastMsg: latest?.poll
       ? `Bình chọn: ${latest.poll.question}`
       : latest?.sticker

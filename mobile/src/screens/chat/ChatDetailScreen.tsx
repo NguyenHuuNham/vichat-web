@@ -6,7 +6,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { FlashList, FlashListRef } from '@shopify/flash-list';
-import { BarChart3, BookOpen, Camera, ChevronLeft, FilePlus2, ImagePlus, Info, Search, Send, ShieldCheck, Phone, SmilePlus, Video, WifiOff, X } from 'lucide-react-native';
+import { ArrowDown, BarChart3, BookOpen, Camera, ChevronLeft, FilePlus2, ImagePlus, Info, Search, Send, ShieldCheck, Phone, SmilePlus, Video, WifiOff, X } from 'lucide-react-native';
 import { RootStackParamList } from '../../navigation/types';
 import { useAppStore, getConversation } from '../../store/appStore';
 import { colors, shadow } from '../../theme/colors';
@@ -29,6 +29,7 @@ import { groupSettingEnabled, memberIsAdmin } from '../../utils/groupSettings';
 import { pollCanViewerLock } from '../../utils/poll';
 import { getMentionContext, insertMentionAt, matchesMentionCandidate, mentionTokenFor, mentionTokenExists, serializeMentionForTransport } from '../../utils/mentionPolicy';
 import { identitiesOverlap } from '../../utils/identity';
+import { CHAT_BOTTOM_THRESHOLD, firstUnreadMessageIndex, isNearChatBottom, isUserVisibleMessage, messageKey } from '../../utils/chatScroll';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ChatDetail'>;
 
@@ -73,10 +74,17 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const [selectedMentions, setSelectedMentions] = useState<any[]>([]);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [hasEarlier, setHasEarlier] = useState(true);
+  const [isNearBottom, setIsNearBottom] = useState(true);
+  const [newMessageCount, setNewMessageCount] = useState(0);
+  const [unreadJumpDismissed, setUnreadJumpDismissed] = useState(false);
   const composerTextRef = useRef('');
   const listRef = useRef<FlashListRef<ChatMessage>>(null);
   const listHasLaidOut = useRef(false);
   const listNearBottom = useRef(true);
+  const initialScrollDoneRef = useRef(false);
+  const latestMessageKeyRef = useRef('');
+  const lastMarkedReadSeqRef = useRef(0);
+  const markingReadRef = useRef(false);
   const loadingEarlierRef = useRef(false);
   const inputRef = useRef<TextInput>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -86,6 +94,13 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     setHasEarlier(true);
     listHasLaidOut.current = false;
     listNearBottom.current = true;
+    initialScrollDoneRef.current = false;
+    latestMessageKeyRef.current = '';
+    lastMarkedReadSeqRef.current = 0;
+    markingReadRef.current = false;
+    setIsNearBottom(true);
+    setNewMessageCount(0);
+    setUnreadJumpDismissed(false);
   }, [route.params.conversationId]);
 
   const signalTyping = useCallback((conversationId: string) => {
@@ -107,11 +122,57 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   }, []);
 
   useEffect(() => {
-    void openConversation(route.params.conversationId).then(() => markRead(route.params.conversationId)).catch(() => {});
+    void openConversation(route.params.conversationId).catch(() => {});
     return () => { if (typingTimer.current) clearTimeout(typingTimer.current); };
-  }, [connection, markRead, openConversation, route.params.conversationId]);
+  }, [connection, openConversation, route.params.conversationId]);
 
   const messages = useMemo(() => conversation?.messages || [], [conversation?.messages]);
+  const firstUnreadIndex = useMemo(
+    () => firstUnreadMessageIndex(messages, conversation?.readSeq, conversation?.badge || 0),
+    [conversation?.badge, conversation?.readSeq, messages],
+  );
+  const unreadCount = Math.max(0, Number(conversation?.badge) || 0);
+  const latestMessage = messages[messages.length - 1];
+  const latestMessageKey = latestMessage ? messageKey(latestMessage) : '';
+  const firstUnreadKey = firstUnreadIndex === null ? '' : messageKey(messages[firstUnreadIndex]);
+
+  const markConversationRead = useCallback(() => {
+    if (!conversation?.id || !conversation.tinodeTopic || !initialScrollDoneRef.current || !listNearBottom.current || markingReadRef.current) return;
+    const latestSeq = messages.reduce((latest, message) => Math.max(latest, Number(message.seq) || 0), 0);
+    if (latestSeq <= 0 || latestSeq <= lastMarkedReadSeqRef.current) return;
+    lastMarkedReadSeqRef.current = latestSeq;
+    markingReadRef.current = true;
+    void markRead(conversation.id).catch(() => {
+      lastMarkedReadSeqRef.current = 0;
+    }).finally(() => {
+      markingReadRef.current = false;
+    });
+  }, [conversation?.id, conversation?.tinodeTopic, markRead, messages]);
+
+  const requestInitialScroll = useCallback(() => {
+    if (!listHasLaidOut.current || initialScrollDoneRef.current || messages.length === 0) return;
+    const targetIndex = firstUnreadIndex ?? messages.length - 1;
+    initialScrollDoneRef.current = true;
+    const viewPosition = firstUnreadIndex === null ? 1 : 0.18;
+    void listRef.current?.scrollToIndex({ index: targetIndex, animated: false, viewPosition }).catch(() => {
+      if (firstUnreadIndex === null) listRef.current?.scrollToEnd({ animated: false });
+    });
+  }, [firstUnreadIndex, messages.length]);
+
+  useEffect(() => {
+    if (latestMessageKeyRef.current && latestMessageKey && latestMessageKeyRef.current !== latestMessageKey && !listNearBottom.current && latestMessage?.sender === 'incoming' && isUserVisibleMessage(latestMessage)) {
+      setNewMessageCount(current => current + 1);
+    }
+    if (latestMessageKey) latestMessageKeyRef.current = latestMessageKey;
+  }, [latestMessage, latestMessageKey]);
+
+  useEffect(() => {
+    if (listHasLaidOut.current) requestInitialScroll();
+  }, [requestInitialScroll]);
+
+  useEffect(() => {
+    setUnreadJumpDismissed(false);
+  }, [firstUnreadKey]);
   const mentionCandidates = useMemo(() => {
     if (!conversation?.isGroup || editingMessage || !mentionContext) return [];
     const candidates: any[] = [
@@ -251,8 +312,30 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     const offsetY = Number(nativeEvent.contentOffset?.y || 0);
     const contentHeight = Number(nativeEvent.contentSize?.height || 0);
     const viewportHeight = Number(nativeEvent.layoutMeasurement?.height || 0);
-    listNearBottom.current = contentHeight - (offsetY + viewportHeight) < 96;
+    const nearBottom = isNearChatBottom(offsetY, contentHeight, viewportHeight, CHAT_BOTTOM_THRESHOLD);
+    if (listNearBottom.current !== nearBottom) {
+      listNearBottom.current = nearBottom;
+      setIsNearBottom(nearBottom);
+    }
+    if (nearBottom) {
+      setNewMessageCount(0);
+      markConversationRead();
+    }
     void loadEarlierMessages(event);
+  };
+  const jumpToUnread = () => {
+    if (firstUnreadIndex === null) return;
+    setUnreadJumpDismissed(true);
+    listNearBottom.current = false;
+    setIsNearBottom(false);
+    void listRef.current?.scrollToIndex({ index: firstUnreadIndex, animated: true, viewPosition: 0.18 }).catch(() => {});
+  };
+  const jumpToLatest = () => {
+    listNearBottom.current = true;
+    setIsNearBottom(true);
+    setNewMessageCount(0);
+    listRef.current?.scrollToEnd({ animated: true });
+    markConversationRead();
   };
   const chooseFile = async (imageOnly = false) => {
     try {
@@ -351,36 +434,38 @@ export function ChatDetailScreen({ route, navigation }: Props) {
       {conversation.isChatbot ? <View style={styles.aiStrip}><View style={styles.aiStripItem}><ShieldCheck color={colors.online} size={14} /><Text style={styles.aiStripText}>Riêng tư</Text></View><View style={styles.aiStripItem}><BookOpen color={colors.accent} size={14} /><Text style={styles.aiStripText}>Nguồn rõ ràng</Text></View></View> : null}
       {connection !== 'connected' ? <View style={styles.offline}><WifiOff color={colors.warning} size={15} /><Text style={styles.offlineText}>Realtime đang gián đoạn. Gửi tin nhắn tạm dừng đến khi kết nối lại.</Text><Pressable onPress={() => void reconnect()} style={styles.retry}><Text style={styles.retryText}>Thử lại</Text></Pressable></View> : null}
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}>
+        <View style={styles.listStage}>
         <FlashList
           ref={listRef}
           data={messages}
-          keyExtractor={item => `${item.id}-${item.seq || ''}`}
+          keyExtractor={(item, index) => messageKey(item) || `message-${index}`}
           onScroll={handleListScroll}
           scrollEventThrottle={120}
+          onLoad={() => {
+            listHasLaidOut.current = true;
+            requestInitialScroll();
+          }}
           renderItem={({ item, index }) => {
             const currentDay = formatMessageDateLabel(item.createdAt);
             const previousDay = index > 0 ? formatMessageDateLabel(messages[index - 1].createdAt) : '';
             return <View>{currentDay && currentDay !== previousDay ? <Text style={styles.date}>{currentDay}</Text> : null}<MessageBubble message={item} viewerIdentities={viewerIdentities} groupMembers={conversation.members || []} isGroup={conversation.isGroup} onLongPress={() => { if (!item.recalled) setSelectedMessage(item); }} onShowEditHistory={message => setEditHistoryMessage(message)} onPollVote={submitPollVote} onPollAddOption={submitPollOption} onPollLock={submitPollLock} /></View>;
           }}
           contentContainerStyle={styles.messageList}
-          ListHeaderComponent={loadingEarlier ? <View style={styles.historyLoading}><ActivityIndicator color={colors.accent} /></View> : null}
-          onContentSizeChange={() => {
-            if (!listHasLaidOut.current || listNearBottom.current) listRef.current?.scrollToEnd({ animated: false });
-          }}
           onLayout={() => {
-            if (!listHasLaidOut.current) {
-              listHasLaidOut.current = true;
-              listRef.current?.scrollToEnd({ animated: false });
-            }
+            if (!listHasLaidOut.current) listHasLaidOut.current = true;
           }}
-          maintainVisibleContentPosition={{ startRenderingFromBottom: true, autoscrollToBottomThreshold: 0.15, animateAutoScrollToBottom: false }}
-          removeClippedSubviews={Platform.OS === 'android'}
+          maintainVisibleContentPosition={{ autoscrollToBottomThreshold: 0.12, animateAutoScrollToBottom: false }}
+          removeClippedSubviews={false}
           getItemType={item => item.type}
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={conversation.isChatbot ? <View style={styles.aiEmpty}><View style={styles.aiEmptyIcon}><Search color="#fff" size={27} /></View><Text style={styles.aiEyebrow}>VICHAT AI</Text><Text style={styles.emptyTitle}>Hỏi kho tri thức doanh nghiệp</Text><Text style={styles.emptyText}>ViChat AI tìm nội dung liên quan và đưa nguồn để bạn kiểm chứng.</Text><View style={styles.aiStarters}>{AI_STARTERS.map((prompt, index) => <Pressable key={prompt} disabled={busy || connection !== 'connected'} onPress={() => void submitText(prompt)} style={styles.aiStarter}><Text style={styles.aiStarterIndex}>{index + 1}</Text><Text style={styles.aiStarterText}>{prompt}</Text></Pressable>)}</View></View> : <View style={styles.empty}><Text style={styles.emptyTitle}>Bắt đầu cuộc trò chuyện</Text><Text style={styles.emptyText}>Tin nhắn và tệp được đồng bộ realtime giữa mobile và web.</Text></View>}
         />
+        {loadingEarlier ? <View pointerEvents="none" style={styles.historyLoadingOverlay}><ActivityIndicator color={colors.accent} /></View> : null}
+        {firstUnreadIndex !== null && !unreadJumpDismissed ? <Pressable accessibilityLabel="Đi tới tin nhắn chưa đọc" onPress={jumpToUnread} style={styles.unreadJump}><Text style={styles.unreadJumpText}>{unreadCount > 0 ? `${unreadCount} tin chưa đọc` : 'Tin chưa đọc'}</Text><ArrowDown color={colors.accentDeep} size={15} /></Pressable> : null}
+        {!isNearBottom ? <Pressable accessibilityLabel="Đi tới tin nhắn mới nhất" onPress={jumpToLatest} style={styles.latestJump}><ArrowDown color="#fff" size={21} strokeWidth={2.5} />{newMessageCount > 0 ? <View style={styles.latestCount}><Text style={styles.latestCountText}>{newMessageCount > 99 ? '99+' : newMessageCount}</Text></View> : null}</Pressable> : null}
+        </View>
         <TypingIndicator visible={Boolean(typing)} />
         {conversation.isGroup && !canSendMessages ? <View style={styles.groupLocked}><Text style={styles.groupLockedText}>Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.</Text></View> : null}
         {error ? <Pressable onPress={() => setError('')} style={styles.error}><Text style={styles.errorText}>{error}</Text></Pressable> : null}
@@ -457,6 +542,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: colors.canvas },
   header: { minHeight: 82, paddingHorizontal: 10, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 9, borderBottomWidth: 1, borderBottomColor: colors.line, backgroundColor: colors.canvas },
+  listStage: { flex: 1, position: 'relative' },
   back: { width: 40, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, minWidth: 0 },
   name: { ...typography.title, color: colors.ink },
@@ -519,6 +605,11 @@ const styles = StyleSheet.create({
   historyEntryHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   historyEntryTitle: { ...typography.caption, color: colors.ink, fontFamily: 'BeVietnamPro_700Bold' },
   historyEntryTime: { ...typography.caption, color: colors.muted, fontSize: 9 },
-  historyLoading: { height: 36, alignItems: 'center', justifyContent: 'center' },
+  historyLoadingOverlay: { position: 'absolute', top: 8, left: 0, right: 0, height: 34, alignItems: 'center', justifyContent: 'center', zIndex: 3 },
+  unreadJump: { position: 'absolute', top: 12, left: '23%', right: '23%', minHeight: 36, paddingHorizontal: 13, borderRadius: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: colors.paper, borderWidth: 1, borderColor: '#C7DED4', shadowColor: '#123B39', shadowOpacity: 0.14, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+  unreadJumpText: { ...typography.caption, color: colors.accentDeep, fontFamily: 'BeVietnamPro_700Bold' },
+  latestJump: { position: 'absolute', right: 16, bottom: 16, width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent, shadowColor: '#123B39', shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
+  latestCount: { position: 'absolute', top: -3, right: -3, minWidth: 20, height: 20, paddingHorizontal: 4, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.danger, borderWidth: 2, borderColor: colors.canvas },
+  latestCountText: { color: '#fff', fontSize: 9, lineHeight: 12, fontFamily: 'BeVietnamPro_700Bold' },
   missing: { ...typography.body, color: colors.inkSoft, padding: 30 },
 });

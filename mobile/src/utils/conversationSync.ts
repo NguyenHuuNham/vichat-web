@@ -280,6 +280,7 @@ export function mergeConversation(first: Conversation, second: Conversation): Co
     time: latestMessage?.time || preferred.time || fallback.time,
     updatedAt: preferredUpdatedAt || (activity > 0 ? new Date(activity).toISOString() : undefined),
     badge: preferred.badge !== undefined ? preferred.badge : fallback.badge,
+    readSeq: preferred.readSeq !== undefined ? preferred.readSeq : fallback.readSeq,
     // Tinode snapshots do not contain viewer-scoped notification settings.
     notificationMutedUntil: incomingTinodeSnapshot
       ? first.notificationMutedUntil

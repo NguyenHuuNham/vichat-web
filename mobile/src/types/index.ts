@@ -215,6 +215,8 @@ export interface Conversation {
   time?: string;
   updatedAt?: string;
   badge: number;
+  /** Tinode read cursor for positioning the first unread message. */
+  readSeq?: number;
   notificationMutedUntil?: number | null;
   pinned?: boolean;
   groupSettings?: GroupSettings;
