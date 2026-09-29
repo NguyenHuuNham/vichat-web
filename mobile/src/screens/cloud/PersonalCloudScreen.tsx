@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as DocumentPicker from 'expo-document-picker';
-import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Cloud, Download, FileArchive, FileAudio, FileImage, FileText, FileVideo, HardDrive, LockKeyhole, MessageSquareText, Send, ShieldCheck, Trash2, UploadCloud } from 'lucide-react-native';
@@ -12,9 +12,11 @@ import { PersonalCloudFile, PersonalCloudMessage, PickerFile } from '../../types
 import { colors, shadow } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import { EmptyState } from '../../components/EmptyState';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { displayTenantName } from '../../utils/tenantDisplay';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Cloud'>;
+type DeleteTarget = { kind: 'message'; item: PersonalCloudMessage } | { kind: 'file'; item: PersonalCloudFile };
 
 function sortMessages(values: PersonalCloudMessage[]) {
   return [...values].sort((left, right) => (
@@ -81,6 +83,8 @@ export function PersonalCloudScreen(_props: Props) {
   const [busyFileId, setBusyFileId] = useState('');
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   useEffect(() => () => { mountedRef.current = false; }, []);
 
@@ -167,23 +171,7 @@ export function PersonalCloudScreen(_props: Props) {
   };
 
   const deleteMessage = (message: PersonalCloudMessage) => {
-    Alert.alert('Xóa tin nhắn riêng tư?', 'Tin nhắn này sẽ bị xóa khỏi Cloud của bạn.', [
-      { text: 'Hủy', style: 'cancel' },
-      {
-        text: 'Xóa',
-        style: 'destructive',
-        onPress: () => void (async () => {
-          try {
-            await personalCloudService.deleteMessage(message.id);
-            if (!mountedRef.current) return;
-            setMessages(current => current.filter(item => item.id !== message.id));
-            setMessagesTotal(current => current === null ? current : Math.max(0, current - 1));
-          } catch (value) {
-            if (mountedRef.current) setError(value instanceof Error ? value.message : 'Không thể xóa tin nhắn Cloud.');
-          }
-        })(),
-      },
-    ]);
+    setDeleteTarget({ kind: 'message', item: message });
   };
 
   const pickFiles = async () => {
@@ -250,23 +238,32 @@ export function PersonalCloudScreen(_props: Props) {
   };
 
   const deleteFile = (file: PersonalCloudFile) => {
-    Alert.alert('Xóa file riêng tư?', `${file.fileName} sẽ bị xóa khỏi Cloud của bạn.`, [
-      { text: 'Hủy', style: 'cancel' },
-      {
-        text: 'Xóa',
-        style: 'destructive',
-        onPress: () => void (async () => {
-          try {
-            await personalCloudService.deleteFile(file.id);
-            if (!mountedRef.current) return;
-            setFiles(current => current.filter(item => item.id !== file.id));
-            setFilesTotal(current => current === null ? current : Math.max(0, current - 1));
-          } catch (value) {
-            if (mountedRef.current) setError(value instanceof Error ? value.message : 'Không thể xóa file Cloud.');
-          }
-        })(),
-      },
-    ]);
+    setDeleteTarget({ kind: 'file', item: file });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget || deleteBusy) return;
+    setDeleteBusy(true);
+    try {
+      if (deleteTarget.kind === 'message') {
+        await personalCloudService.deleteMessage(deleteTarget.item.id);
+        if (mountedRef.current) {
+          setMessages(current => current.filter(item => item.id !== deleteTarget.item.id));
+          setMessagesTotal(current => current === null ? current : Math.max(0, current - 1));
+        }
+      } else {
+        await personalCloudService.deleteFile(deleteTarget.item.id);
+        if (mountedRef.current) {
+          setFiles(current => current.filter(item => item.id !== deleteTarget.item.id));
+          setFilesTotal(current => current === null ? current : Math.max(0, current - 1));
+        }
+      }
+      setDeleteTarget(null);
+    } catch (value) {
+      if (mountedRef.current) setError(value instanceof Error ? value.message : 'Không thể xóa khỏi Cloud.');
+    } finally {
+      setDeleteBusy(false);
+    }
   };
 
   const header = (
@@ -326,6 +323,17 @@ export function PersonalCloudScreen(_props: Props) {
           onEndReached={() => { if (fileCursor && !loadingMoreFiles) void loadMoreFiles(); }}
         />
       </KeyboardAvoidingView>
+      <ConfirmDialog
+        visible={Boolean(deleteTarget)}
+        title={deleteTarget?.kind === 'file' ? 'Xóa file riêng tư?' : 'Xóa tin nhắn riêng tư?'}
+        message={deleteTarget?.kind === 'file' ? `${deleteTarget.item.fileName} sẽ bị xóa khỏi Cloud của bạn.` : 'Tin nhắn này sẽ bị xóa khỏi Cloud của bạn.'}
+        eyebrow="CLOUD CỦA TÔI"
+        confirmLabel="Xóa"
+        tone="danger"
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => void confirmDelete()}
+        busy={deleteBusy}
+      />
     </SafeAreaView>
   );
 }

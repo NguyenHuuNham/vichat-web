@@ -18,6 +18,32 @@ export const colors = {
   darkLine: '#2B3942',
 } as const;
 
+export const darkColors = {
+  ink: '#F2F5F7',
+  inkSoft: '#B5C0C7',
+  accent: '#FF7043',
+  accentDeep: '#FF9879',
+  accentWash: '#3A2620',
+  canvas: '#10171C',
+  paper: '#1B252C',
+  line: '#33414A',
+  muted: '#84929B',
+  online: '#54C98B',
+  danger: '#FF7C7C',
+  warning: '#E4B65D',
+  bubbleOutgoing: '#C94B27',
+  bubbleIncoming: '#1B252C',
+  darkCanvas: '#10171C',
+  darkPaper: '#1B252C',
+  darkLine: '#33414A',
+} as const;
+
+export type ThemeColors = { [key in keyof typeof colors]: string };
+
+export function colorsForTheme(theme: 'light' | 'dark'): ThemeColors {
+  return theme === 'dark' ? darkColors : colors;
+}
+
 export const shadow = {
   shadowColor: '#17212B',
   shadowOpacity: 0.08,

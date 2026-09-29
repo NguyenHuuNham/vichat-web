@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-29-06 - Hoan thien chuyen cong ty, theme va chi tiet nhom mobile
+
+- Thoi gian: 2026-09-29 19:19 (Asia/Saigon)
+- Loai: Tinh nang | Sua loi | Mobile | Backend contract | UI | UX | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source, APK test va UAT cold-start emulator; chua UAT luong da dang nhap voi tai khoan that
+- Muc tieu: Hoan thien cac task mobile dang cho: chi tiet nhom co cac muc noi dung thuc thi duoc, chuyen cong ty co xac nhan, dialog dong bo theo theme va dark mode duoc luu theo thiet bi.
+- Pham vi: Mobile Settings, GroupInfo, ConversationList, Personal Cloud, AppLock, navigation/theme; Chatmgt tenant switch response; khong thay doi du lieu Tinode hay migration.
+- File da thay doi: `mobile/src/screens/settings/SettingsScreen.tsx`, `mobile/src/screens/chat/GroupInfoScreen.tsx`, `mobile/src/screens/chat/ConversationListScreen.tsx`, `mobile/src/screens/cloud/PersonalCloudScreen.tsx`, `mobile/src/components/ConfirmDialog.tsx`, `mobile/src/components/ChoiceDialog.tsx`, `mobile/src/components/AppLockScreen.tsx`, `mobile/src/store/themeStore.ts`, `mobile/src/store/themeStore.test.ts`, `mobile/src/test/reactNativeMock.ts`, `mobile/src/theme/colors.ts`, `mobile/src/services/authService.ts`, `mobile/src/store/appStore.ts`, `mobile/src/types/index.ts`, `mobile/App.tsx`, `mobile/src/navigation/AppNavigator.tsx`, `mobile/src/navigation/MainTabNavigator.tsx`, `chatservice-main/application/controllers/api_chat_management.py`, cac file test/version va muc nay.
+- Noi dung: Them normalizer va store cho `tenantOptions`, xoay va luu bearer token moi sau `POST /api/v1/auth/switch-tenant`, bootstrap lai Tinode/metadata theo tenant moi; them lua chon giao dien sang/toi/system va luu AsyncStorage; ConfirmDialog/ChoiceDialog dung palette hien tai; thay cac confirm Alert chinh bang modal; GroupInfo tong hop anh/file/link/tin ghim/binh chon tu message da tai va giu nguyen member/settings/search/dissolve. Khi UAT cold-start phat hien RN 0.86 Android crash voi `Appearance.setColorScheme(null)` o che do system, da bo loi goi native null va de store quan ly palette theo `Appearance` listener.
+- Quyet dinh ky thuat: Mobile khong hien nut gia cho calendar, link nhom, dich, tag hoac an hoi thoai khi chua co API/luong thuc thi. Noi dung GroupInfo ghi ro pham vi tin da tai. Chatmgt chi tra bearer token moi cho request co `X-Vichat-Client: mobile`; browser van dung HttpOnly cookie.
+- Database/API/cau hinh: Khong co migration. Contract switch tenant mobile bo sung `access_token` trong response; tang mobile version len `1.0.27`, Android `versionCode=28`.
+- Kiem thu: `cd mobile; npm test -- --reporter=dot --maxWorkers=1` dat 29 file, 110/110; `npm run typecheck` dat; `npm run lint` dat; `npm run export` dat; backend `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat 61/61; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/tests/test_chat_auth_contract.py` dat. `npx expo prebuild --platform android --no-install` dat; Gradle `:app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a,x86_64` dat 520 tasks. APK `D:\vichat-build\ViChat-1.0.27-tenant-theme-group-universal.apk` da verify package `vn.upgo.vichat`, version `1.0.27`, versionCode `28`, `zipalign` dat, APK Signature Scheme v2 dat; SHA-256 `E691414918CC00AF3B166A2DD0722DB909D5425D54BF666DACE973A8EFD876D7`. Cai va mo tren `emulator-5554` thanh cong; cold-start giu `vn.upgo.vichat/.MainActivity`, logcat khong co `FATAL EXCEPTION`, UI dump co `GON PLATFORM`, `Email cong ty`, `Mat khau` va `Dang nhap`. Emulator tung hien dialog `System UI isn't responding`, bam `Wait` thi app van giu foreground; day la van de system UI cua emulator, khong phai crash process ViChat.
+- Rui ro con lai: Cac style man hinh cu van con mau tinh light o mot so man hinh chua refactor dynamic; chua xac nhan tenant switch voi tai khoan co nhieu membership tren backend staging; chua UAT Settings/GroupInfo/dialog/theme bang tai khoan da dang nhap; APK la ban test ky Android Debug, chua ky store; chua UAT thiet bi that/iOS.
+- Viec tiep theo: UAT voi tai khoan A/B de xac nhan tenant switch, Settings/GroupInfo/dialog/theme va tin unread that; sau do build bang release keystore khi phat hanh store.
+- Commit/PR: Chua tao.
+
 ## 2026-09-29-05 - Chan snapshot storm khi tai lich su chat mobile
 
 - Thoi gian: 2026-09-29 16:25 (Asia/Saigon)

@@ -194,7 +194,9 @@ timeout for the SSE route so an on/off change reaches open tabs immediately.
    validates the requested membership against `/current_user`, calls Account's
    `/api/v1/tenant/set_current_tenant` with the existing Account session, and
    re-reads the actual `/current_user` current tenant before rotating only the
-   Chatmgt cookie. It does not log out Account or require the employee to enter
+   Chatmgt cookie. Browser clients keep the rotated HttpOnly cookie; explicitly
+   marked mobile clients also receive the rotated Chatmgt bearer token so the
+   native session can rebuild under the new tenant. It does not log out Account or require the employee to enter
    credentials again. Each
    public option may also carry the Account-provided company/brand logo URL
    and optional logo version; ChatUI renders the active logo, company name and

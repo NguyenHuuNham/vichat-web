@@ -2724,6 +2724,9 @@ async def management_switch_tenant(request):
         response_payload.update(_tenant_options_payload(identity))
         response_payload["switched"] = True
         response_payload["previous_tenant_id"] = str(current_tenant_id or "")
+        # Mobile authenticates with the bearer contract, so it also needs the
+        # rotated chat token returned by a tenant switch.
+        response_payload.update(mobile_access_token_payload(request, token))
         response = json(response_payload)
         response.headers["Cache-Control"] = "no-store"
         set_account_cookie(response, switched_account_cookie)

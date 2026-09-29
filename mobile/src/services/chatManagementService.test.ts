@@ -105,4 +105,28 @@ describe('mobile Chatmgt pagination', () => {
     expect(conversations[0].id).toBe('conversation-new');
     expect(conversations[0].name).toBe('Current name');
   });
+
+  it('sends the complete normalized group settings when a toggle is changed', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const settings = {
+      allowMembersEditInfo: true,
+      allowPinMessages: false,
+      allowMessages: true,
+      allowPolls: false,
+      approveMembers: true,
+      newMemberHistory: false,
+    };
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      id: 'conversation-1',
+      isGroup: true,
+      groupSettings: settings,
+    }));
+
+    const conversation = await chatManagementService.updateGroupSettings('conversation-1', { settings });
+    const [url, request] = fetchMock.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toContain('/api/v1/conversation/conversation-1/group-settings');
+    expect(JSON.parse(String(request.body))).toEqual({ settings });
+    expect(conversation.groupSettings).toEqual(settings);
+  });
 });

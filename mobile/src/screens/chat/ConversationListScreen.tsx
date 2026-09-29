@@ -12,6 +12,7 @@ import { SearchField } from '../../components/SearchField';
 import { ConversationRow } from '../../components/ConversationRow';
 import { EmptyState } from '../../components/EmptyState';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { ChoiceDialog, ChoiceDialogOption } from '../../components/ChoiceDialog';
 import { MessageCircleMore } from 'lucide-react-native';
 import { isConversationMuted } from '../../utils/conversationNotifications';
 import { Conversation } from '../../types';
@@ -21,6 +22,7 @@ import { displayTenantName } from '../../utils/tenantDisplay';
 type Props = BottomTabScreenProps<MainTabParamList, 'Chats'> & { navigation: any };
 type FilterKey = 'all' | 'unread' | 'groups';
 type DeleteRequest = { item: Conversation; title: string; message: string; confirmLabel: string; fallback: string; replacementId?: string };
+type ActionRequest = { title: string; message: string; options: ChoiceDialogOption[]; onSelect: (option: ChoiceDialogOption) => void };
 
 const filters: Array<{ key: FilterKey; label: string }> = [
   { key: 'all', label: 'Tất cả' },
@@ -44,6 +46,7 @@ export function ConversationListScreen({ navigation }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [deleteRequest, setDeleteRequest] = useState<DeleteRequest | null>(null);
+  const [actionRequest, setActionRequest] = useState<ActionRequest | null>(null);
 
   const filtered = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -105,20 +108,15 @@ export function ConversationListScreen({ navigation }: Props) {
       });
       return;
     }
-    Alert.alert(
-      'Chọn trưởng nhóm mới',
-      'Bạn phải chuyển quyền cho một thành viên trước khi rời nhóm.',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        ...candidates.map(({ member, accountId }) => ({
-          text: member.name || member.username || accountId,
-          onPress: () => void runConversationAction(
-            () => deleteConversation(item.id, accountId),
-            'Không thể chuyển quyền và rời nhóm.',
-          ),
-        })),
-      ],
-    );
+    setActionRequest({
+      title: 'Chọn trưởng nhóm mới',
+      message: 'Bạn phải chuyển quyền cho một thành viên trước khi rời nhóm.',
+      options: candidates.map(({ member, accountId }): ChoiceDialogOption => ({ id: accountId, label: member.name || member.username || accountId, detail: member.department || member.title || 'Thành viên trong nhóm' })),
+      onSelect: option => {
+        setActionRequest(null);
+        void runConversationAction(() => deleteConversation(item.id, option.id), 'Không thể chuyển quyền và rời nhóm.');
+      },
+    });
   }, [deleteConversation, directory, runConversationAction, session]);
 
   return (
@@ -167,28 +165,23 @@ export function ConversationListScreen({ navigation }: Props) {
           <ConversationRow
             conversation={item}
             onPress={() => navigation.navigate('ChatDetail', { conversationId: item.id })}
-            onLongPress={() => Alert.alert(
-              item.name,
-              'Chọn thao tác cho cuộc trò chuyện này.',
-              [
-                { text: 'Hủy', style: 'cancel' },
-                {
-                  text: isConversationMuted(item.notificationMutedUntil) ? 'Bật thông báo' : 'Tắt thông báo',
-                  onPress: () => {
-                    const muted = isConversationMuted(item.notificationMutedUntil);
-                    void runConversationAction(
-                      () => muteConversation(item.id, muted ? null : 0),
-                      'Không cập nhật được trạng thái thông báo.',
-                    );
-                  },
-                },
-                {
-                  text: 'Xóa phía tôi',
-                  style: 'destructive',
-                  onPress: () => requestConversationDelete(item),
-                },
+            onLongPress={() => setActionRequest({
+              title: item.name,
+              message: 'Chọn thao tác cho cuộc trò chuyện này.',
+              options: [
+                { id: 'mute', label: isConversationMuted(item.notificationMutedUntil) ? 'Bật thông báo' : 'Tắt thông báo', detail: 'Cập nhật thông báo trên thiết bị' },
+                { id: 'delete', label: 'Xóa phía tôi', detail: 'Xóa cuộc trò chuyện khỏi danh sách của bạn' },
               ],
-            )}
+              onSelect: option => {
+                setActionRequest(null);
+                if (option.id === 'delete') {
+                  requestConversationDelete(item);
+                  return;
+                }
+                const muted = isConversationMuted(item.notificationMutedUntil);
+                void runConversationAction(() => muteConversation(item.id, muted ? null : 0), 'Không cập nhật được trạng thái thông báo.');
+              },
+            })}
           />
         )}
         contentContainerStyle={filtered.length ? styles.list : styles.emptyList}
@@ -212,6 +205,16 @@ export function ConversationListScreen({ navigation }: Props) {
             request.fallback,
           ).finally(() => setDeleteRequest(null));
         }}
+        busy={actionBusy}
+      />
+
+      <ChoiceDialog
+        visible={Boolean(actionRequest)}
+        title={actionRequest?.title || ''}
+        message={actionRequest?.message || ''}
+        options={actionRequest?.options || []}
+        onCancel={() => setActionRequest(null)}
+        onSelect={option => actionRequest?.onSelect(option)}
         busy={actionBusy}
       />
 

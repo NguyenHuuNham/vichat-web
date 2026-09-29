@@ -176,6 +176,7 @@ class ChatAuthContractTests(unittest.TestCase):
         self.assertIn("require_current_tenant=True", switch_source)
         self.assertIn("ACCOUNT_TENANT_SWITCH_UNCONFIRMED", switch_source)
         self.assertIn('issue_access_token(account, auth_method="account_sso")', switch_source)
+        self.assertIn("mobile_access_token_payload(request, token)", switch_source)
         self.assertIn("revoke_request_token(request)", switch_source)
         self.assertIn("set_auth_cookie(response, token, request)", switch_source)
         self.assertNotIn("logout_account_session", switch_source)

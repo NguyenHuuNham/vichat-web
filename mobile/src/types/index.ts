@@ -7,6 +7,13 @@ export interface Tenant {
   active?: boolean;
 }
 
+export interface TenantOption extends Tenant {
+  role?: string;
+  accountRole?: string;
+  logo?: string;
+  logoVersion?: string;
+}
+
 export interface User {
   id: string;
   uid: string;
@@ -44,6 +51,7 @@ export interface LinkedDevice {
 export interface Session {
   user: User;
   tenant: Tenant | null;
+  tenantOptions?: TenantOption[];
   connection: string;
   tinodeAuth?: TinodeAuth | null;
   linkedDevices?: LinkedDevice[];

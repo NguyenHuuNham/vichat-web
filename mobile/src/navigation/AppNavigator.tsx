@@ -13,7 +13,8 @@ import { UserProfileScreen } from '../screens/contacts/UserProfileScreen';
 import { WorkspaceDetailScreen } from '../screens/workspace/WorkspaceDetailScreen';
 import { EditProfileScreen } from '../screens/settings/EditProfileScreen';
 import { LinkedDevicesScreen } from '../screens/settings/LinkedDevicesScreen';
-import { colors } from '../theme/colors';
+import { colorsForTheme } from '../theme/colors';
+import { useThemeStore } from '../store/themeStore';
 import { typography } from '../theme/typography';
 import { GonLogo } from '../components/GonLogo';
 import { config } from '../constants/config';
@@ -21,20 +22,20 @@ import { config } from '../constants/config';
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 
-function LaunchScreen({ fontsLoaded }: { fontsLoaded: boolean }) {
+function LaunchScreen({ fontsLoaded, palette }: { fontsLoaded: boolean; palette: ReturnType<typeof colorsForTheme> }) {
   return (
-    <View style={styles.launch}>
-      <View style={styles.mark}><GonLogo size={68} /></View>
+    <View style={[styles.launch, { backgroundColor: palette.canvas }]}>
+      <View style={[styles.mark, { backgroundColor: palette.paper }]}><GonLogo size={68} /></View>
       <Text
         allowFontScaling={false}
         adjustsFontSizeToFit
         minimumFontScale={0.78}
         numberOfLines={1}
-        style={[styles.brand, fontsLoaded && styles.brandFont]}
+        style={[styles.brand, { color: palette.ink }, fontsLoaded && styles.brandFont]}
       >
         {config.brandLabel}
       </Text>
-      <ActivityIndicator color={colors.accent} style={{ marginTop: 28 }} />
+      <ActivityIndicator color={palette.accent} style={{ marginTop: 28 }} />
     </View>
   );
 }
@@ -42,6 +43,8 @@ function LaunchScreen({ fontsLoaded }: { fontsLoaded: boolean }) {
 export function AppNavigator() {
   const status = useAppStore(state => state.status);
   const session = useAppStore(state => state.session);
+  const resolvedTheme = useThemeStore(state => state.resolved);
+  const palette = colorsForTheme(resolvedTheme);
   const [fontsLoaded] = useFonts({
     BeVietnamPro_400Regular,
     BeVietnamPro_500Medium,
@@ -50,7 +53,7 @@ export function AppNavigator() {
     BeVietnamPro_800ExtraBold,
   });
 
-  if (!fontsLoaded || status === 'booting' || (status === 'loading' && !session)) return <LaunchScreen fontsLoaded={fontsLoaded} />;
+  if (!fontsLoaded || status === 'booting' || (status === 'loading' && !session)) return <LaunchScreen fontsLoaded={fontsLoaded} palette={palette} />;
 
   if (status === 'signed_out') {
     return (
@@ -65,9 +68,10 @@ export function AppNavigator() {
     <RootStack.Navigator screenOptions={{
       headerShadowVisible: false,
       headerBackTitle: 'Quay lại',
-      headerStyle: { backgroundColor: colors.canvas },
-      headerTitleStyle: { fontFamily: 'BeVietnamPro_700Bold', color: colors.ink },
-      contentStyle: { backgroundColor: colors.canvas },
+      headerStyle: { backgroundColor: palette.canvas },
+      headerTitleStyle: { fontFamily: 'BeVietnamPro_700Bold', color: palette.ink },
+      headerTintColor: palette.ink,
+      contentStyle: { backgroundColor: palette.canvas },
     }}>
       <RootStack.Screen name="Main" component={MainTabNavigator} options={{ headerShown: false }} />
       <RootStack.Screen name="ChatDetail" component={ChatDetailScreen} options={{ headerShown: false, animation: 'slide_from_right' }} />
@@ -82,8 +86,8 @@ export function AppNavigator() {
 }
 
 const styles = StyleSheet.create({
-  launch: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.canvas, padding: 32 },
-  mark: { width: 92, height: 92, borderRadius: 28, backgroundColor: colors.paper, alignItems: 'center', justifyContent: 'center' },
-  brand: { color: colors.ink, fontSize: 22, lineHeight: 28, fontWeight: '700', letterSpacing: 1.7, marginTop: 18, includeFontPadding: false },
+  launch: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+  mark: { width: 92, height: 92, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+  brand: { fontSize: 22, lineHeight: 28, fontWeight: '700', letterSpacing: 1.7, marginTop: 18, includeFontPadding: false },
   brandFont: { fontFamily: 'BeVietnamPro_700Bold' },
 });

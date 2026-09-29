@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Delete, LockKeyhole } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -9,6 +9,7 @@ import { useAppStore } from '../store/appStore';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { config } from '../constants/config';
+import { ConfirmDialog } from './ConfirmDialog';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'delete'];
 
@@ -19,6 +20,7 @@ export function AppLockScreen() {
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [forgotOpen, setForgotOpen] = useState(false);
 
   useEffect(() => {
     if (pin.length !== 4 || busy) return;
@@ -41,18 +43,7 @@ export function AppLockScreen() {
     setPin(current => key === 'delete' ? current.slice(0, -1) : `${current}${key}`.slice(0, 4));
   };
 
-  const forgotPin = () => Alert.alert(
-    'Quên mã PIN?',
-    'Bạn cần đăng nhập lại UpGO Account để đặt mã PIN mới trên thiết bị này.',
-    [
-      { text: 'Hủy', style: 'cancel' },
-      {
-        text: 'Đăng xuất & đặt lại',
-        style: 'destructive',
-        onPress: () => void resetPin().then(() => logout()).catch(() => {}),
-      },
-    ],
-  );
+  const forgotPin = () => setForgotOpen(true);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']}>
@@ -73,6 +64,16 @@ export function AppLockScreen() {
         ) : <View key={`empty-${index}`} style={styles.keyEmpty} />)}
       </View>
       <Pressable onPress={forgotPin} style={styles.forgot}><Text style={styles.forgotText}>Quên mã PIN?</Text></Pressable>
+      <ConfirmDialog
+        visible={forgotOpen}
+        title="Quên mã PIN?"
+        message="Bạn cần đăng nhập lại UpGO Account để đặt mã PIN mới trên thiết bị này."
+        eyebrow="BẢO MẬT THIẾT BỊ"
+        confirmLabel="Đăng xuất & đặt lại"
+        tone="danger"
+        onCancel={() => setForgotOpen(false)}
+        onConfirm={() => void resetPin().then(() => logout()).catch(() => {}).finally(() => setForgotOpen(false))}
+      />
     </SafeAreaView>
   );
 }

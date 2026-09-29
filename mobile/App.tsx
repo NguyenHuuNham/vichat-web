@@ -3,7 +3,6 @@ import { useEffect, useRef } from 'react';
 import { AppState, View } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
-import { useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAppStore } from './src/store/appStore';
 import { AppNavigator } from './src/navigation/AppNavigator';
@@ -12,7 +11,8 @@ import { tinodeClient } from './src/services/tinodeClient';
 import { AppLockScreen } from './src/components/AppLockScreen';
 import { useAppLockStore } from './src/store/appLockStore';
 import { consumeTrustedExternalActivity } from './src/services/appLifecycleService';
-import { colors } from './src/theme/colors';
+import { colorsForTheme } from './src/theme/colors';
+import { useThemeStore } from './src/store/themeStore';
 import { MobileCallOverlay } from './src/components/MobileCallOverlay';
 import { routeMobileCallEvent } from './src/store/callStore';
 import {
@@ -30,7 +30,8 @@ async function syncCurrentPushRegistration(retry = false) {
 }
 
 export default function App() {
-  const scheme = useColorScheme();
+  const resolvedTheme = useThemeStore(state => state.resolved);
+  const initializeTheme = useThemeStore(state => state.initialize);
   const boot = useAppStore(state => state.boot);
   const reconnect = useAppStore(state => state.reconnect);
   const appStatus = useAppStore(state => state.status);
@@ -47,6 +48,7 @@ export default function App() {
     // Install the foreground handler before Tinode can receive the first message.
     void prepareNotificationPresentation();
     void boot();
+    void initializeTheme();
     void initializeAppLock();
     const appState = AppState.addEventListener('change', state => {
       appStateRef.current = state;
@@ -84,7 +86,7 @@ export default function App() {
       appState.remove();
       network();
     };
-  }, [boot, initializeAppLock, lockApp, reconnect]);
+  }, [boot, initializeAppLock, initializeTheme, lockApp, reconnect]);
 
   useEffect(() => {
     let stopTokenListener = () => {};
@@ -152,19 +154,20 @@ export default function App() {
     };
   }, [reconnect]);
 
-  const navigationTheme = scheme === 'dark'
-    ? { ...DarkTheme, colors: { ...DarkTheme.colors, primary: colors.accent } }
-    : { ...DefaultTheme, colors: { ...DefaultTheme.colors, primary: colors.accent, background: colors.canvas } };
+  const palette = colorsForTheme(resolvedTheme);
+  const navigationTheme = resolvedTheme === 'dark'
+    ? { ...DarkTheme, colors: { ...DarkTheme.colors, primary: palette.accent, background: palette.canvas, card: palette.paper, text: palette.ink, border: palette.line } }
+    : { ...DefaultTheme, colors: { ...DefaultTheme.colors, primary: palette.accent, background: palette.canvas, card: palette.paper, text: palette.ink, border: palette.line } };
 
   return (
     <SafeAreaProvider>
-      <View style={{ flex: 1, backgroundColor: colors.canvas }}>
+      <View style={{ flex: 1, backgroundColor: palette.canvas }}>
         <NavigationContainer theme={navigationTheme}>
           <AppNavigator />
         </NavigationContainer>
         {appStatus === 'ready' && appLockInitialized && appLockConfigured && appLocked ? <AppLockScreen /> : null}
         {appStatus === 'ready' ? <MobileCallOverlay /> : null}
-        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+        <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
       </View>
     </SafeAreaProvider>
   );

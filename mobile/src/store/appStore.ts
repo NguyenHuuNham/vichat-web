@@ -28,6 +28,7 @@ interface AppStore {
   activeConversationId: string;
   boot: () => Promise<void>;
   login: (identity: string, password: string) => Promise<void>;
+  switchTenant: (tenantId: string) => Promise<void>;
   logout: () => Promise<void>;
   reconnect: () => Promise<void>;
   refreshData: () => Promise<void>;
@@ -494,6 +495,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
       await bootstrapAuthenticated(set, get, session);
     } catch (error) {
       set({ status: 'signed_out', error: error instanceof Error ? error.message : 'Đăng nhập thất bại.' });
+      throw error;
+    }
+  },
+
+  async switchTenant(tenantId) {
+    const previousSession = get().session;
+    set({ status: 'loading', error: '' });
+    try {
+      const session = await authService.switchTenant(tenantId);
+      await bootstrapAuthenticated(set, get, session);
+    } catch (error) {
+      set({
+        status: previousSession ? 'ready' : 'error',
+        error: error instanceof Error ? error.message : 'Không thể chuyển công ty.',
+      });
       throw error;
     }
   },

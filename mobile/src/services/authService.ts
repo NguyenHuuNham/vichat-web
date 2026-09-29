@@ -1,6 +1,6 @@
 import { apiRequest, getAccessToken, setAccessToken } from './apiClient';
 import { config } from '../constants/config';
-import { LinkedDevice, Session, TinodeAuth, User } from '../types';
+import { LinkedDevice, Session, TenantOption, TinodeAuth, User } from '../types';
 import { storageService } from './storageService';
 import { resolveTenantDisplayName } from '../utils/tenantDisplay';
 
@@ -71,9 +71,13 @@ export function normalizeAuthPayload(payload: any, fallback?: Session | null): S
   );
   const tinodeAuth = normalizeTinodeAuth(payload?.tinode_auth || payload?.tinode);
   const linkedDevices = linkedDevicesFromPayload(payload) || (sameTenant ? fallback?.linkedDevices : null) || [];
+  const tenantOptions = normalizeTenantOptions(
+    payload?.tenantOptions || payload?.tenant_options || rawUser?.tenantOptions || rawUser?.tenant_options,
+  );
   return {
     user,
     tenant,
+    tenantOptions: tenantOptions.length ? tenantOptions : (sameTenant ? fallback?.tenantOptions || [] : []),
     connection: String(payload?.connection || 'management'),
     tinodeAuth,
     linkedDevices,
@@ -124,6 +128,25 @@ function normalizeTinodeAuth(value: any): TinodeAuth | null {
   };
 }
 
+function normalizeTenantOptions(value: unknown): TenantOption[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.flatMap((item: any) => {
+    const id = firstString(item?.id, item?.tenantId, item?.tenant_id);
+    if (!id || seen.has(id)) return [];
+    seen.add(id);
+    return [{
+      id,
+      name: firstString(item?.name, item?.tenantName, item?.tenant_name, id),
+      role: firstString(item?.role, 'member').toLowerCase(),
+      accountRole: firstString(item?.accountRole, item?.account_role, 'member').toLowerCase(),
+      active: item?.active ?? item?.is_active ?? true,
+      logo: firstString(item?.logo, item?.logoUrl, item?.logo_url, item?.companyLogo, item?.company_logo, item?.brandLogo, item?.brand_logo),
+      logoVersion: firstString(item?.logoVersion, item?.logo_version, item?.logoUpdatedAt, item?.logo_updated_at),
+    }];
+  });
+}
+
 let tinodeRefreshRequest: { accessToken: string; promise: Promise<TinodeAuth> } | null = null;
 
 export const authService = {
@@ -157,6 +180,23 @@ export const authService = {
       await apiRequest('/api/v1/auth/me', { timeoutMs: 12000 }),
       cached,
     ));
+  },
+
+  async switchTenant(tenantId: string): Promise<Session> {
+    const requestedTenantId = String(tenantId || '').trim();
+    if (!requestedTenantId) throw new Error('Vui lòng chọn công ty.');
+    const payload = await apiRequest<any>('/api/v1/auth/switch-tenant', {
+      method: 'POST',
+      body: JSON.stringify({ tenant_id: requestedTenantId }),
+    });
+    if (!payload?.access_token) {
+      throw new Error('Chatmgt chưa trả về phiên mobile mới sau khi chuyển công ty.');
+    }
+    setAccessToken(payload.access_token);
+    await storageService.saveAccessToken(payload.access_token);
+    const session = validateSession(normalizeAuthPayload(payload));
+    await storageService.savePublicSession(session);
+    return session;
   },
 
   async listLinkedDevices() {

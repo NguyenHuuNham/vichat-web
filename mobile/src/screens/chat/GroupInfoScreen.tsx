@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
-import { Bell, BellOff, Camera, Check, ChevronLeft, Crown, LogOut, Pin, Plus, Search, Settings2, Shield, Trash2, UserMinus, UserPlus, X } from 'lucide-react-native';
+import { BarChart3, Bell, BellOff, Camera, Check, ChevronLeft, Crown, FileText, Image as ImageIcon, Link2, LogOut, Pin, Plus, Search, Settings2, Shield, Trash2, UserMinus, UserPlus, X } from 'lucide-react-native';
 import { RootStackParamList } from '../../navigation/types';
 import { useAppStore, getConversation } from '../../store/appStore';
 import { Avatar } from '../../components/Avatar';
 import { SearchField } from '../../components/SearchField';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { ChoiceDialog, ChoiceDialogOption } from '../../components/ChoiceDialog';
 import { beginTrustedExternalActivity } from '../../services/appLifecycleService';
 import { colors, shadow } from '../../theme/colors';
 import { typography } from '../../theme/typography';
@@ -16,6 +18,8 @@ import { isConversationMuted } from '../../utils/conversationNotifications';
 import { accountIdForMember, canonicalAccountIds, identitiesOverlap, identityValues } from '../../utils/identity';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'GroupInfo'>;
+type ContentView = 'media' | 'files' | 'links' | 'pinned' | 'polls';
+type ConfirmRequest = { title: string; message: string; confirmLabel: string; eyebrow?: string; tone?: 'default' | 'danger'; onConfirm: () => void };
 
 const settingLabels: Array<{ key: keyof GroupSettings; label: string; hint: string }> = [
   { key: 'allowMembersEditInfo', label: 'Thành viên sửa thông tin', hint: 'Cho phép thành viên đổi tên và ảnh nhóm.' },
@@ -50,16 +54,23 @@ export function GroupInfoScreen({ route, navigation }: Props) {
   const [nameDraft, setNameDraft] = useState('');
   const [settingsDraft, setSettingsDraft] = useState<GroupSettings>(DEFAULT_GROUP_SETTINGS);
   const [settingsBusy, setSettingsBusy] = useState(false);
-  const settingsSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const settingsBeforeSave = useRef<GroupSettings | null>(null);
+  const settingsRequestRef = useRef(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
+  const [leaveCandidates, setLeaveCandidates] = useState<Array<{ member: ConversationMember; accountId: string }>>([]);
+  const [contentView, setContentView] = useState<ContentView | null>(null);
 
   useEffect(() => {
-    if (conversation?.groupSettings) setSettingsDraft(normalizeGroupSettings(conversation.groupSettings));
+    settingsRequestRef.current += 1;
+    setSettingsBusy(false);
+    setSettingsDraft(normalizeGroupSettings(conversation?.groupSettings));
     setNameDraft(conversation?.name || '');
-  }, [conversation?.groupSettings, conversation?.name]);
+    setConfirmRequest(null);
+    setLeaveCandidates([]);
+    setContentView(null);
+  }, [conversation?.id, conversation?.groupSettings, conversation?.name]);
 
   const currentMember = conversation?.members?.find(member => identitiesOverlap(member, session?.user));
   const isOwner = Boolean(currentMember && memberIsOwner(currentMember))
@@ -68,6 +79,30 @@ export function GroupInfoScreen({ route, navigation }: Props) {
   const canEditInfo = isAdmin || groupSettingEnabled(conversation?.groupSettings, 'allowMembersEditInfo');
   const members = conversation?.members || [];
   const pendingMembers = conversation?.pendingMembers || [];
+  const messages = conversation?.messages || [];
+  const sharedImages = messages.filter(message => Boolean(message.image));
+  const sharedFiles = messages.filter(message => Boolean(message.file));
+  const sharedLinks = messages.filter(message => /https?:\/\/\S+/i.test(message.text || ''));
+  const pinnedMessages = messages.filter(message => message.pinned);
+  const pollMessages = messages.filter(message => Boolean(message.poll));
+  const contentItems = contentView === 'media'
+    ? sharedImages
+    : contentView === 'files'
+      ? sharedFiles
+      : contentView === 'links'
+        ? sharedLinks
+        : contentView === 'pinned'
+          ? pinnedMessages
+          : pollMessages;
+  const contentTitle = contentView === 'media'
+    ? 'Ảnh đã chia sẻ'
+    : contentView === 'files'
+      ? 'File đã chia sẻ'
+      : contentView === 'links'
+        ? 'Link trong cuộc trò chuyện'
+        : contentView === 'pinned'
+          ? 'Tin nhắn đã ghim'
+          : 'Bình chọn trong nhóm';
   const existingIds = useMemo(() => new Set([...members, ...pendingMembers].flatMap(member => identityValues(member))), [members, pendingMembers]);
   const candidates = useMemo(() => directory.filter(user => {
     const identityMatches = identityValues(user).some(identity => existingIds.has(identity));
@@ -106,31 +141,24 @@ export function GroupInfoScreen({ route, navigation }: Props) {
     });
   };
 
-  const submitSettings = useCallback(async () => {
-    if (!conversation || settingsBusy) return;
-    // Debounce: clear any pending save timer.
-    if (settingsSaveTimer.current) {
-      clearTimeout(settingsSaveTimer.current);
-      settingsSaveTimer.current = null;
-    }
-    // Save current settings for rollback on failure.
-    settingsBeforeSave.current = conversation.groupSettings
-      ? normalizeGroupSettings(conversation.groupSettings)
-      : { ...DEFAULT_GROUP_SETTINGS };
+  const changeSetting = async (key: keyof GroupSettings, value: boolean) => {
+    if (!conversation || !isAdmin || settingsBusy || busy) return;
+    const previousSettings = normalizeGroupSettings(settingsDraft);
+    const nextSettings = { ...previousSettings, [key]: value };
+    const requestId = settingsRequestRef.current + 1;
+    settingsRequestRef.current = requestId;
+    setSettingsDraft(nextSettings);
     setSettingsBusy(true);
     try {
-      await updateGroupSettings(conversation.id, settingsDraft);
-    } catch (value) {
-      // Rollback to the settings before the failed save.
-      if (settingsBeforeSave.current) {
-        setSettingsDraft(settingsBeforeSave.current);
-      }
-      Alert.alert('Không thể lưu cài đặt', value instanceof Error ? value.message : 'Hãy thử lại sau.');
+      await updateGroupSettings(conversation.id, nextSettings);
+    } catch (error) {
+      if (settingsRequestRef.current !== requestId) return;
+      setSettingsDraft(previousSettings);
+      Alert.alert('Không thể lưu cài đặt', error instanceof Error ? error.message : 'Hãy thử lại sau.');
     } finally {
-      settingsBeforeSave.current = null;
-      setSettingsBusy(false);
+      if (settingsRequestRef.current === requestId) setSettingsBusy(false);
     }
-  }, [conversation, settingsDraft, settingsBusy, updateGroupSettings]);
+  };
 
   const addMembers = async () => {
     if (!conversation || selectedIds.length === 0) return;
@@ -157,30 +185,41 @@ export function GroupInfoScreen({ route, navigation }: Props) {
         Alert.alert('Chưa đồng bộ thành viên', 'Không xác định được Account ID của thành viên thay thế. Hãy tải lại nhóm rồi thử lại.');
         return;
       }
-      Alert.alert('Rời nhóm', 'Chọn người sẽ nhận quyền trưởng nhóm.', [
-        { text: 'Hủy', style: 'cancel' },
-        ...replacementOptions.slice(0, 8).map(({ member, accountId }) => ({
-          text: member.name,
-          onPress: () => void run('leave', async () => {
-            await deleteConversation(conversation.id, accountId);
-            navigation.popToTop();
-          }),
-        })),
-      ]);
+      setLeaveCandidates(replacementOptions.slice(0, 8));
       return;
     }
-    Alert.alert('Rời nhóm?', 'Bạn sẽ không còn thấy nhóm này trong danh sách.', [
-      { text: 'Hủy', style: 'cancel' },
-      { text: 'Rời nhóm', style: 'destructive', onPress: () => void run('leave', async () => { await deleteConversation(conversation.id); navigation.popToTop(); }) },
-    ]);
+    setConfirmRequest({
+      title: 'Rời nhóm?',
+      message: 'Bạn sẽ không còn thấy nhóm này trong danh sách.',
+      confirmLabel: 'Rời nhóm',
+      eyebrow: 'THÀNH VIÊN NHÓM',
+      tone: 'danger',
+      onConfirm: () => void run('leave', async () => { await deleteConversation(conversation.id); navigation.popToTop(); }).finally(() => setConfirmRequest(null)),
+    });
   };
 
   const handleDissolve = () => {
     if (!conversation) return;
-    Alert.alert('Giải tán nhóm?', 'Tất cả thành viên sẽ bị đưa ra khỏi nhóm.', [
-      { text: 'Hủy', style: 'cancel' },
-      { text: 'Giải tán', style: 'destructive', onPress: () => void run('dissolve', async () => { await dissolveGroup(conversation.id); navigation.popToTop(); }) },
-    ]);
+    setConfirmRequest({
+      title: 'Giải tán nhóm?',
+      message: 'Tất cả thành viên sẽ bị đưa ra khỏi nhóm và lịch sử nhóm sẽ không còn mở được.',
+      confirmLabel: 'Giải tán',
+      eyebrow: 'QUYỀN TRƯỞNG NHÓM',
+      tone: 'danger',
+      onConfirm: () => void run('dissolve', async () => { await dissolveGroup(conversation.id); navigation.popToTop(); }).finally(() => setConfirmRequest(null)),
+    });
+  };
+
+  const handleRemoveMember = (member: ConversationMember, accountId: string) => {
+    if (!conversation) return;
+    setConfirmRequest({
+      title: 'Xóa thành viên?',
+      message: `Xóa ${member.name} khỏi nhóm? Người này sẽ không còn gửi và xem tin nhắn nhóm.`,
+      confirmLabel: 'Xóa thành viên',
+      eyebrow: 'QUẢN TRỊ NHÓM',
+      tone: 'danger',
+      onConfirm: () => void run(`remove-${accountId}`, () => removeGroupMember(conversation.id, accountId)).finally(() => setConfirmRequest(null)),
+    });
   };
 
   const runSearch = async () => {
@@ -214,6 +253,16 @@ export function GroupInfoScreen({ route, navigation }: Props) {
           <Pressable onPress={handleLeave} style={styles.quickAction}><View style={styles.quickIcon}><LogOut color={colors.danger} size={18} /></View><Text style={[styles.quickText, styles.dangerText]}>Rời nhóm</Text></Pressable>
         </View>
 
+        <SectionTitle title="Nội dung & tiện ích" icon={BarChart3} />
+        <Text style={styles.sectionHint}>Các mục dưới đây tổng hợp những tin nhắn đã tải trên thiết bị.</Text>
+        <View style={styles.utilityGrid}>
+          <ContentTile icon={ImageIcon} label="Ảnh" count={sharedImages.length} onPress={sharedImages.length ? () => setContentView('media') : undefined} />
+          <ContentTile icon={FileText} label="File" count={sharedFiles.length} onPress={sharedFiles.length ? () => setContentView('files') : undefined} />
+          <ContentTile icon={Link2} label="Link" count={sharedLinks.length} onPress={sharedLinks.length ? () => setContentView('links') : undefined} />
+          <ContentTile icon={Pin} label="Tin đã ghim" count={pinnedMessages.length} onPress={pinnedMessages.length ? () => setContentView('pinned') : undefined} />
+          <ContentTile icon={BarChart3} label="Bình chọn" count={pollMessages.length} onPress={pollMessages.length ? () => setContentView('polls') : undefined} />
+        </View>
+
         <SectionTitle title="Thành viên" icon={UserPlus} />
         <Pressable onPress={() => setAddOpen(true)} style={styles.primaryAction} disabled={Boolean(busy)}><UserPlus color="#fff" size={18} /><Text style={styles.primaryText}>Thêm thành viên</Text></Pressable>
         {pendingMembers.length > 0 && isAdmin ? <View style={styles.pendingBox}><Text style={styles.sectionLabel}>Chờ duyệt ({pendingMembers.length})</Text>{pendingMembers.map(member => { const accountId = accountIdForMember(member, directory); return <MemberRow key={`pending-${accountId || identityValues(member).join('-')}`} member={member} pending onApprove={accountId ? () => void run(`approve-${accountId}`, () => approveGroupMember(conversation.id, accountId, true)) : undefined} onReject={accountId ? () => void run(`reject-${accountId}`, () => approveGroupMember(conversation.id, accountId, false)) : undefined} />; })}</View> : null}
@@ -222,13 +271,13 @@ export function GroupInfoScreen({ route, navigation }: Props) {
            const admin = memberIsAdmin(member);
             const self = identitiesOverlap(member, session?.user);
             const accountId = accountIdForMember(member, directory);
-            return <MemberRow key={accountId || identityValues(member).join('-')} member={member} owner={owner} admin={admin} self={self} canManage={isAdmin && !self && !owner && Boolean(accountId)} onRole={accountId ? () => void run(`role-${accountId}`, () => setGroupMemberRole(conversation.id, accountId, admin ? 'MEMBER' : 'ADMIN')) : undefined} onRemove={accountId ? () => Alert.alert('Xóa thành viên?', `Xóa ${member.name} khỏi nhóm?`, [{ text: 'Hủy', style: 'cancel' }, { text: 'Xóa', style: 'destructive', onPress: () => void run(`remove-${accountId}`, () => removeGroupMember(conversation.id, accountId)) }]) : undefined} />;
+            return <MemberRow key={accountId || identityValues(member).join('-')} member={member} owner={owner} admin={admin} self={self} canManage={isAdmin && !self && !owner && Boolean(accountId)} onRole={accountId ? () => void run(`role-${accountId}`, () => setGroupMemberRole(conversation.id, accountId, admin ? 'MEMBER' : 'ADMIN')) : undefined} onRemove={accountId ? () => handleRemoveMember(member, accountId) : undefined} />;
          })}</View>
 
         <SectionTitle title="Cài đặt nhóm" icon={Settings2} />
         <View style={styles.settingsBox}>
-          {settingLabels.map(item => <View key={item.key} style={styles.settingRow}><View style={styles.settingCopy}><Text style={styles.settingLabel}>{item.label}</Text><Text style={styles.settingHint}>{item.hint}</Text></View><Switch value={settingsDraft[item.key]} onValueChange={value => setSettingsDraft(current => ({ ...current, [item.key]: value }))} disabled={!isAdmin || settingsBusy || Boolean(busy)} trackColor={{ false: colors.line, true: '#FFB39B' }} thumbColor={settingsDraft[item.key] ? colors.accent : '#fff'} /></View>)}
-          {isAdmin ? <Pressable onPress={() => void submitSettings()} style={styles.saveButton} disabled={settingsBusy || Boolean(busy)}><Check color="#fff" size={18} /><Text style={styles.primaryText}>{settingsBusy ? 'Đang lưu...' : 'Lưu cài đặt'}</Text></Pressable> : null}
+          <Text style={isAdmin ? styles.settingsNotice : styles.settingsLockedNotice}>{isAdmin ? (settingsBusy ? 'Đang lưu thay đổi...' : 'Bật hoặc tắt để lưu ngay.') : 'Chỉ trưởng nhóm hoặc phó nhóm mới có thể thay đổi cài đặt.'}</Text>
+          {settingLabels.map(item => <View key={item.key} style={styles.settingRow}><View style={styles.settingCopy}><Text style={styles.settingLabel}>{item.label}</Text><Text style={styles.settingHint}>{item.hint}</Text></View><Switch testID={`group-setting-${item.key}`} accessibilityLabel={item.label} value={settingsDraft[item.key]} onValueChange={value => void changeSetting(item.key, value)} disabled={!isAdmin || settingsBusy || Boolean(busy)} trackColor={{ false: colors.line, true: '#FFB39B' }} thumbColor={settingsDraft[item.key] ? colors.accent : '#fff'} /></View>)}
         </View>
 
         <SectionTitle title="Tìm trong lịch sử" icon={Search} />
@@ -243,8 +292,43 @@ export function GroupInfoScreen({ route, navigation }: Props) {
       </Modal>
 
       <Modal visible={renameOpen} transparent animationType="fade" onRequestClose={() => setRenameOpen(false)}><View style={styles.modalOverlay}><Pressable style={styles.modalBackdrop} onPress={() => setRenameOpen(false)} /><View style={styles.renameCard}><Text style={styles.modalTitle}>Đổi tên nhóm</Text><TextInput value={nameDraft} onChangeText={setNameDraft} autoFocus maxLength={120} placeholder="Tên nhóm" placeholderTextColor={colors.muted} style={styles.nameInput} /><View style={styles.modalActions}><Pressable onPress={() => setRenameOpen(false)} style={styles.secondaryButton}><Text style={styles.secondaryText}>Hủy</Text></Pressable><Pressable onPress={() => void submitRename()} style={styles.primarySmall} disabled={!nameDraft.trim() || Boolean(busy)}><Check color="#fff" size={17} /><Text style={styles.primaryText}>{busy === 'rename' ? 'Đang lưu...' : 'Lưu'}</Text></Pressable></View></View></View></Modal>
+
+      <Modal visible={Boolean(contentView)} transparent animationType="slide" onRequestClose={() => setContentView(null)} statusBarTranslucent>
+        <View style={styles.modalOverlay}><Pressable style={styles.modalBackdrop} onPress={() => setContentView(null)} /><View style={styles.contentSheet}><View style={styles.modalHeader}><View><Text style={styles.sectionLabel}>NỘI DUNG NHÓM</Text><Text style={styles.modalTitle}>{contentTitle}</Text></View><Pressable onPress={() => setContentView(null)} style={styles.smallIcon}><X color={colors.inkSoft} size={19} /></Pressable></View><ScrollView contentContainerStyle={styles.contentItems}>{contentItems.length ? contentItems.map((message, index) => <View key={`${message.id || message.seq || index}`} style={styles.contentItem}><Text numberOfLines={3} style={styles.contentItemText}>{message.poll?.question || message.text || message.file?.name || (message.image ? 'Hình ảnh' : 'Nội dung đính kèm')}</Text><Text style={styles.contentItemMeta}>{message.senderName || 'Thành viên'}{message.createdAt ? ` · ${new Date(message.createdAt).toLocaleDateString('vi-VN')}` : ''}</Text></View>) : <Text style={styles.emptyList}>Chưa có nội dung trong phạm vi đã tải.</Text>}</ScrollView></View></View>
+      </Modal>
+
+      <ChoiceDialog
+        visible={leaveCandidates.length > 0}
+        title="Chọn trưởng nhóm mới"
+        message="Bạn phải chuyển quyền cho một thành viên trước khi rời nhóm."
+        options={leaveCandidates.map(({ member, accountId }): ChoiceDialogOption => ({ id: accountId, label: member.name || member.username || accountId, detail: member.department || member.title || 'Thành viên trong nhóm' }))}
+        onCancel={() => setLeaveCandidates([])}
+        onSelect={option => {
+          const candidate = leaveCandidates.find(item => item.accountId === option.id);
+          if (!candidate || !conversation) return;
+          setLeaveCandidates([]);
+          void run('leave', async () => { await deleteConversation(conversation.id, candidate.accountId); navigation.popToTop(); });
+        }}
+        busy={Boolean(busy)}
+      />
+
+      <ConfirmDialog
+        visible={Boolean(confirmRequest)}
+        title={confirmRequest?.title || ''}
+        message={confirmRequest?.message || ''}
+        eyebrow={confirmRequest?.eyebrow}
+        confirmLabel={confirmRequest?.confirmLabel || 'Xác nhận'}
+        tone={confirmRequest?.tone}
+        onCancel={() => setConfirmRequest(null)}
+        onConfirm={() => confirmRequest?.onConfirm()}
+        busy={Boolean(busy)}
+      />
     </View>
   );
+}
+
+function ContentTile({ icon: Icon, label, count, onPress }: { icon: any; label: string; count: number; onPress?: () => void }) {
+  return <Pressable disabled={!onPress} onPress={onPress} style={({ pressed }) => [styles.contentTile, !onPress && styles.contentTileDisabled, pressed && styles.contentTilePressed]}><View style={styles.contentTileIcon}><Icon color={onPress ? colors.accent : colors.muted} size={18} /></View><View style={styles.contentTileCopy}><Text style={styles.contentTileLabel}>{label}</Text><Text style={styles.contentTileCount}>{count ? `${count} mục` : 'Chưa có'}</Text></View></Pressable>;
 }
 
 function SectionTitle({ title, icon: Icon }: { title: string; icon: any }) {
@@ -275,6 +359,15 @@ const styles = StyleSheet.create({
   quickIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: colors.accentWash, alignItems: 'center', justifyContent: 'center' },
   quickText: { ...typography.caption, color: colors.ink, textAlign: 'center', fontSize: 10.5 },
   dangerText: { color: colors.danger },
+  sectionHint: { ...typography.caption, color: colors.inkSoft, marginTop: -4 },
+  utilityGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  contentTile: { width: '47%', minHeight: 67, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 10, borderRadius: 16, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.paper },
+  contentTileDisabled: { opacity: 0.62 },
+  contentTilePressed: { opacity: 0.7, transform: [{ scale: 0.985 }] },
+  contentTileIcon: { width: 31, height: 31, borderRadius: 10, backgroundColor: colors.accentWash, alignItems: 'center', justifyContent: 'center' },
+  contentTileCopy: { flex: 1, minWidth: 0 },
+  contentTileLabel: { ...typography.caption, color: colors.ink, fontFamily: 'BeVietnamPro_700Bold' },
+  contentTileCount: { ...typography.caption, color: colors.muted, marginTop: 1, fontSize: 10 },
   sectionHeading: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, marginBottom: 1 },
   sectionTitle: { ...typography.title, color: colors.ink },
   primaryAction: { minHeight: 48, borderRadius: 15, backgroundColor: colors.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 14 },
@@ -294,7 +387,8 @@ const styles = StyleSheet.create({
   settingCopy: { flex: 1, minWidth: 0 },
   settingLabel: { ...typography.bodyMedium, color: colors.ink },
   settingHint: { ...typography.caption, color: colors.inkSoft, marginTop: 2 },
-  saveButton: { minHeight: 45, marginTop: 12, borderRadius: 14, backgroundColor: colors.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  settingsNotice: { ...typography.caption, color: colors.accent, marginBottom: 4 },
+  settingsLockedNotice: { ...typography.caption, color: colors.warning, marginBottom: 4 },
   searchRow: { flexDirection: 'row', gap: 8 },
   historySearch: { flex: 1, height: 48, borderRadius: 15, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.paper, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
   historyInput: { flex: 1, color: colors.ink, fontFamily: 'BeVietnamPro_400Regular', fontSize: 13 },
@@ -325,4 +419,9 @@ const styles = StyleSheet.create({
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 14 },
   secondaryButton: { minHeight: 43, borderRadius: 13, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.line },
   secondaryText: { ...typography.bodyMedium, color: colors.inkSoft },
+  contentSheet: { maxHeight: '78%', borderTopLeftRadius: 27, borderTopRightRadius: 27, padding: 18, backgroundColor: colors.canvas, ...shadow },
+  contentItems: { paddingBottom: 20, gap: 8 },
+  contentItem: { padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.paper },
+  contentItemText: { ...typography.body, color: colors.ink },
+  contentItemMeta: { ...typography.caption, color: colors.muted, marginTop: 5 },
 });
