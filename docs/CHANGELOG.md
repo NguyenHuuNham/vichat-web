@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Emulator: Cai thanh cong tren `emulator-5554`, activity `vn.upgo.vichat/.MainActivity` resume thanh cong. Native splash chi hien logo trong frame dau; frame React Native sau khi load hien day du `GON PLATFORM`, UI dump man hinh da dang nhap co `GON Platform`, va UI dump sau khi clear data co `GON PLATFORM`; khong con ten thuong hieu bi cat trong APK moi.
 - Rui ro con lai: Chua dang nhap tai khoan that de UAT tenant khac, offline/reconnect, push background/killed, call va thiet bi iOS; APK dung debug keystore, chua phai artifact ky store.
 - Viec tiep theo: UAT voi tai khoan A/B tren thiet bi that, sau do build lai bang release keystore khi phat hanh store.
-- Commit/PR: Source commit `d3294b45cac3104869c4233e9a847f895e53bdd8`; docs follow-up commit se duoc tao ngay sau muc nay.
+- Commit/PR: Source commit `d3294b45cac3104869c4233e9a847f895e53bdd8`; docs follow-up commit `5847efc` da tao.
 
 ## 2026-09-29-01 - Chot audit mobile va artifact 1.0.26
 
