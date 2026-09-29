@@ -21,11 +21,19 @@ import { config } from '../constants/config';
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 
-function LaunchScreen() {
+function LaunchScreen({ fontsLoaded }: { fontsLoaded: boolean }) {
   return (
     <View style={styles.launch}>
       <View style={styles.mark}><GonLogo size={68} /></View>
-      <Text style={styles.brand}>{config.brandLabel}</Text>
+      <Text
+        allowFontScaling={false}
+        adjustsFontSizeToFit
+        minimumFontScale={0.78}
+        numberOfLines={1}
+        style={[styles.brand, fontsLoaded && styles.brandFont]}
+      >
+        {config.brandLabel}
+      </Text>
       <ActivityIndicator color={colors.accent} style={{ marginTop: 28 }} />
     </View>
   );
@@ -42,7 +50,7 @@ export function AppNavigator() {
     BeVietnamPro_800ExtraBold,
   });
 
-  if (!fontsLoaded || status === 'booting' || (status === 'loading' && !session)) return <LaunchScreen />;
+  if (!fontsLoaded || status === 'booting' || (status === 'loading' && !session)) return <LaunchScreen fontsLoaded={fontsLoaded} />;
 
   if (status === 'signed_out') {
     return (
@@ -76,5 +84,6 @@ export function AppNavigator() {
 const styles = StyleSheet.create({
   launch: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.canvas, padding: 32 },
   mark: { width: 92, height: 92, borderRadius: 28, backgroundColor: colors.paper, alignItems: 'center', justifyContent: 'center' },
-  brand: { ...typography.heading, color: colors.ink, letterSpacing: 1.7, marginTop: 18 },
+  brand: { color: colors.ink, fontSize: 22, lineHeight: 28, fontWeight: '700', letterSpacing: 1.7, marginTop: 18, includeFontPadding: false },
+  brandFont: { fontFamily: 'BeVietnamPro_700Bold' },
 });
