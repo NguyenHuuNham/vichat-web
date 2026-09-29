@@ -19,10 +19,10 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong migration, endpoint moi hoac thay doi hop dong API. `EXPO_PUBLIC_BRAND_NAME` va `EXPO_PUBLIC_BRAND_LABEL` van ho tro tuy bien, nhung gia tri legacy `GON`/`GonPlatform` bi fallback ve brand day du.
 - Kiem thu: `npm test -- --reporter=dot` dat `27 file, 102/102`; `npm run typecheck` exit `0`; `npm run lint` exit `0`; `npm run export` dat; `npx expo prebuild --platform android --no-install` dat; Gradle `:app:assembleRelease` dat `536 actionable tasks` (`61 executed`, `475 up-to-date`); `aapt` xac nhan package `vn.upgo.vichat`, version `1.0.26`, `versionCode=27`; `zipalign -c -P 16 -v 4` dat; `apksigner verify` xac nhan APK Signature Scheme v2.
 - Artifact: `D:\vichat-build\ViChat-1.0.26-brand-fix-20260929-r2-universal.apk`, SHA-256 `5964659E0E486F83C50C0F8E336C3D09BC984E3987B7F7FD89D9687EC4CEA1D3`; signer Android Debug, ban test universal.
-- Emulator: Cai thanh cong tren `emulator-5554`, activity `vn.upgo.vichat/.MainActivity` resume thanh cong. UI dump man hinh da dang nhap co `GON Platform`; UI dump sau khi clear data co `GON PLATFORM`; screenshot khong con ten thuong hieu bi cat.
+- Emulator: Cai thanh cong tren `emulator-5554`, activity `vn.upgo.vichat/.MainActivity` resume thanh cong. Native splash chi hien logo trong frame dau; frame React Native sau khi load hien day du `GON PLATFORM`, UI dump man hinh da dang nhap co `GON Platform`, va UI dump sau khi clear data co `GON PLATFORM`; khong con ten thuong hieu bi cat trong APK moi.
 - Rui ro con lai: Chua dang nhap tai khoan that de UAT tenant khac, offline/reconnect, push background/killed, call va thiet bi iOS; APK dung debug keystore, chua phai artifact ky store.
 - Viec tiep theo: UAT voi tai khoan A/B tren thiet bi that, sau do build lai bang release keystore khi phat hanh store.
-- Commit/PR: Se cap nhat ma commit ngay sau khi commit source va docs.
+- Commit/PR: Source commit `d3294b45cac3104869c4233e9a847f895e53bdd8`; docs follow-up commit se duoc tao ngay sau muc nay.
 
 ## 2026-09-29-01 - Chot audit mobile va artifact 1.0.26
 
