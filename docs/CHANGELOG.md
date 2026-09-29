@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Artifact: `D:\vichat-build\ViChat-1.0.26-chat-scroll-stable-20260929.apk`, package `vn.upgo.vichat`, version `1.0.26`, versionCode `27`, SHA-256 `461771F66122126816656716B5CAEFECAF0DAB7F4C572014E3DD8A6BCD6871A7`, signer Android Debug.
 - Rui ro con lai: Chua UAT nut den tin chua doc voi du lieu unread that, tai khoan A/B, offline/reconnect, thiet bi that va iOS; APK la ban test, chua ky store.
 - Viec tiep theo: UAT voi tai khoan A/B de tao tin chua doc va build lai bang release keystore khi phat hanh store.
-- Commit/PR: Chua tao.
+- Commit/PR: Source commit `daee163`; docs follow-up commit se tao ngay sau muc nay.
 
 ## 2026-09-29-04 - On dinh cuon chat mobile va dieu huong tin nhan
 
