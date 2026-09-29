@@ -22,7 +22,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Emulator: APK da cai va cold-start tren `emulator-5554`; UI dump co `GON PLATFORM`, `Email`, `Mat khau`, `Dang nhap`; khong phat hien `FATAL EXCEPTION`, `TypeError` hoac `Invariant Violation` trong log runtime da kiem tra.
 - Rui ro con lai: Chua UAT tenant switch, dialog va media dong bo bang tai khoan that tren hai cong ty; chua test thiet bi that/iOS, offline/reconnect, push background/killed; APK la ban test Android Debug, chua ky store.
 - Viec tiep theo: UAT voi tai khoan A/B de gui anh/file/sticker va doi cong ty qua lai, xac nhan stable media reference xem duoc tren ca web/mobile; khi phat hanh store thi build lai bang release keystore.
-- Commit/PR: Chua tao.
+- Commit/PR: Source commit `53e7424`; docs follow-up commit duoc tao sau do.
 
 ## 2026-09-29-08 - Dong bo dark mode cho cac luong cai dat mobile
 
