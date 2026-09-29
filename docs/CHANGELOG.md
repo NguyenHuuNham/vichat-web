@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-29-04 - On dinh cuon chat mobile va dieu huong tin nhan
+
+- Thoi gian: 2026-09-29 13:00 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Chat | UX | Hieu nang | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source, APK test va UAT emulator; chua UAT du lieu tin chua doc that voi tai khoan thu.
+- Muc tieu: Khong de man hinh chat tu nhay khi mo, tai them lich su hoac co tin moi; cho phep den tin chua doc va quay ve tin moi nhat.
+- Pham vi: FlashList mobile chat, read cursor Tinode, trang thai unread/badge va dieu huong lich su; khong thay doi API, database hoac tenant ID.
+- File da thay doi: `mobile/src/screens/chat/ChatDetailScreen.tsx`, `mobile/src/utils/chatScroll.ts`, `mobile/src/utils/chatScroll.test.ts`, `mobile/src/services/tinodeClient.ts`, `mobile/src/store/appStore.ts`, `mobile/src/types/index.ts`, `mobile/src/utils/conversationSync.ts`, va muc nay.
+- Noi dung: Bo cac lenh `scrollToEnd` vo dieu kien trong layout/content-size; chi cuon ban dau sau khi FlashList san sang, giu vi tri khi prepend lich su, dung key tin nhan on dinh, va chi mark-read khi nguoi dung ve gan cuoi danh sach. Them nut den tin chua doc, nut mui ten goc phai ve tin moi nhat, dem tin moi khi dang xem lich su, va spinner lich su dang overlay de khong doi chieu cao danh sach.
+- Quyet dinh ky thuat: Read cursor `topic.read` la nguon xac dinh tin chua doc; tin dieu khien (reaction/edit/poll/system/recall) khong tao diem nhay. FlashList giu `maintainVisibleContentPosition` khi tai trang truoc.
+- Database/API/cau hinh: Khong co migration, endpoint moi hoac thay doi hop dong; bo sung truong read cursor chi o model/store client.
+- Kiem thu: `cd mobile; npm test -- --reporter=dot` dat 28 file, 106/106; `npm run typecheck` exit 0; `npm run lint` exit 0; `npm run export` dat; `npx expo prebuild --platform android --no-install` dat; Gradle `:app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a,x86_64` dat 520 tasks; `zipalign` va `apksigner` dat. Emulator `emulator-5554`: APK cai va mo khong crash, mo lai chat dung o cuoi, keo tai lich su khong nhay loạn, nut mui ten co accessibility label `Di toi tin nhan moi nhat` va bam thanh cong dua ve cuoi; chua co du lieu unread that de UAT nut `Di toi tin nhan chua doc` bang thao tac emulator.
+- Artifact: `D:\vichat-build\ViChat-1.0.26-chat-scroll-20260929-universal.apk`, package `vn.upgo.vichat`, version `1.0.26`, versionCode `27`, SHA-256 `E21800AAF4DB7399A3A15F45909B41266DA7E76E9C117A636AC117941815A381`, signer Android Debug.
+- Rui ro con lai: Chua UAT voi hai tai khoan that de tao tin nhan unread, offline/reconnect, thiet bi that va iOS; APK la ban test, chua ky store.
+- Viec tiep theo: UAT voi tai khoan A/B va build lai bang release keystore khi phat hanh store.
+- Commit/PR: Source commit `018d1d9` da tao; docs follow-up commit tao trong cung lan lam viec.
+
 ## 2026-09-29-03 - Sua race font tren LaunchScreen mobile
 
 - Thoi gian: 2026-09-29 11:35 (Asia/Saigon)
