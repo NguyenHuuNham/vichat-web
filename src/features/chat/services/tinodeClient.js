@@ -278,10 +278,17 @@ async function uploadTinodeFile(tinode, file, avatarFor = '') {
   return url;
 }
 
-async function uploadFile(tinode, file, avatarFor = '', { conversationId = '' } = {}) {
+async function uploadFile(tinode, file, avatarFor = '', { conversationId = '', requireConversation = false } = {}) {
   if (!isChatMediaStorageEnabled()) return uploadTinodeFile(tinode, file, avatarFor);
+  const scopedConversationId = String(conversationId || '').trim();
+  if (!scopedConversationId) {
+    if (requireConversation) throw new Error('Thiếu cuộc trò chuyện để tải file lên S3.');
+    // Account avatars and legacy Tinode-only topics do not have a Chatmgt
+    // conversation scope; keep their existing Tinode media contract.
+    return uploadTinodeFile(tinode, file, avatarFor);
+  }
   try {
-    return await uploadChatMedia(file, { conversationId });
+    return await uploadChatMedia(file, { conversationId: scopedConversationId });
   } catch (error) {
     if (!shouldFallbackToTinode(error)) {
       throw new Error(error?.message || 'Không thể tải file lên S3.', { cause: error });
@@ -2601,10 +2608,23 @@ export const tinodeClient = {
     return avatarUrl;
   },
 
-  async uploadGroupAvatar(topicName, avatarFile) {
+  async bindChatMediaReference(value, conversationId, messageRef) {
+    if (!isChatMediaReference(value)) return null;
+    return bindChatMedia(value, { conversationId, messageRef });
+  },
+
+  async discardChatMediaReference(value, conversationId) {
+    if (!isChatMediaReference(value)) return null;
+    return discardChatMedia(value, { conversationId });
+  },
+
+  async uploadGroupAvatar(topicName, avatarFile, conversationId = '') {
     if (!topicName || !avatarFile) throw new Error('Vui lòng chọn ảnh nhóm.');
     await subscribeTopic(topicName, { historyLimit: 0 });
-    return uploadFile(getClient(), avatarFile, topicName);
+    return uploadFile(getClient(), avatarFile, topicName, {
+      conversationId,
+      requireConversation: Boolean(conversationId),
+    });
   },
 
   async updateGroupName(topicName, name) {
@@ -2934,10 +2954,13 @@ export const tinodeClient = {
     return this.updateConversationBackground(topicName, background);
   },
 
-  async uploadConversationBackground(topicName, file) {
+  async uploadConversationBackground(topicName, file, conversationId = '') {
     if (!topicName || !file) throw new Error('Thiếu ảnh hình nền hoặc cuộc trò chuyện.');
     const topic = await subscribeTopic(topicName, { historyLimit: 0 });
-    const uploadedUrl = await uploadFile(getClient(), file, topic.name);
+    const uploadedUrl = await uploadFile(getClient(), file, topic.name, {
+      conversationId,
+      requireConversation: Boolean(conversationId),
+    });
     const normalizedUrl = normalizeAvatar(uploadedUrl);
     if (!normalizedUrl) throw new Error('Tinode không trả về URL ảnh hình nền hợp lệ.');
     return normalizedUrl;
@@ -3022,7 +3045,10 @@ export const tinodeClient = {
       throw new Error('Không tải được bộ đóng gói file của Tinode.');
     }
     const conversationId = String(metadata.conversationId || '').trim();
-    const url = await uploadFile(tinode, file, '', { conversationId });
+    const url = await uploadFile(tinode, file, '', {
+      conversationId,
+      requireConversation: true,
+    });
     const attachment = {
       mime: file.type || 'application/octet-stream',
       filename: file.name || 'Tệp đính kèm',
@@ -3175,7 +3201,7 @@ export const tinodeClient = {
     });
   },
 
-  async createGroup({ name, description = '', memberIds = [], avatarFile = null }) {
+  async createGroup({ name, description = '', memberIds = [], avatarFile = null, conversationId = '' }) {
     const tinode = getClient();
     const topic = wireTopic(tinode.getTopic(tinode.newGroupTopicName(false)));
     const query = topic.startMetaQuery().withDesc().withSub().build();
@@ -3189,7 +3215,10 @@ export const tinodeClient = {
       },
     );
     if (avatarFile) {
-      const avatarUrl = await uploadFile(tinode, avatarFile, topic.name);
+      const avatarUrl = await uploadFile(tinode, avatarFile, topic.name, {
+        conversationId,
+        requireConversation: true,
+      });
       await topic.setMeta({
         desc: {
           public: {

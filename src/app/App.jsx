@@ -6471,6 +6471,7 @@ function App() {
         description: preparedRoom.description || '',
         memberIds,
         avatarFile,
+        conversationId: managementConversationId,
       });
       topicName = created.id;
       createdGroupTopic = true;
@@ -6516,6 +6517,15 @@ function App() {
         createdGroupTopic = false;
       }
       if (!preparedRoom.isGroup) await tinodeClient.clearConversationDeletion(topicName).catch(() => {});
+      if (createdGroupAvatar) {
+        await tinodeClient.bindChatMediaReference(
+          createdGroupAvatar,
+          managementConversationId,
+          `group-avatar:${managementConversationId}`,
+        ).catch(error => {
+          clientLogger.warn('group_avatar_media_binding_deferred', error);
+        });
+      }
     } catch (error) {
       const bindingRejected = Number(error?.status) >= 400 && Number(error?.status) < 500;
       if (createdGroupTopic && bindingRejected) {
@@ -10404,6 +10414,8 @@ function App() {
     setIsSavingConversationBackground(true);
     setConversationBackgroundNotice('');
     setChatError('');
+    let uploadedBackgroundUrl = '';
+    let backgroundMetadataPersisted = false;
     try {
       const sharedScope = requestedSharedScope;
       const selectedUpload = selected?.file || selected?.blob;
@@ -10491,8 +10503,16 @@ function App() {
         }
         if (selectedUpload) {
           if (!topicName) throw new Error('Nhóm chưa sẵn sàng tải hình nền lên Tinode.');
-          const uploadedUrl = await tinodeClient.uploadConversationBackground(topicName, selectedUpload);
+          const mediaConversationId = isManagementConversationId(activeChat.managementId || activeChat.id)
+            ? (activeChat.managementId || activeChat.id)
+            : '';
+          const uploadedUrl = await tinodeClient.uploadConversationBackground(
+            topicName,
+            selectedUpload,
+            mediaConversationId,
+          );
           if (!uploadedUrl) throw new Error('Không nhận được ảnh hình nền sau khi tải lên.');
+          uploadedBackgroundUrl = uploadedUrl;
           nextBackground = normalizeConversationBackground({
             id: 'custom',
             url: uploadedUrl,
@@ -10512,8 +10532,22 @@ function App() {
           nextBackground = managedRoom?.conversationBackground !== undefined
             ? managedRoom.conversationBackground
             : nextBackground;
+          backgroundMetadataPersisted = true;
         } else {
           nextBackground = await tinodeClient.updateConversationBackground(topicName, nextBackground);
+          backgroundMetadataPersisted = true;
+        }
+        if (uploadedBackgroundUrl) {
+          const mediaConversationId = isManagementConversationId(activeChat.managementId || activeChat.id)
+            ? (activeChat.managementId || activeChat.id)
+            : '';
+          await tinodeClient.bindChatMediaReference(
+            uploadedBackgroundUrl,
+            mediaConversationId,
+            `background:${mediaConversationId}`,
+          ).catch(error => {
+            clientLogger.warn('conversation_background_media_binding_deferred', error);
+          });
         }
         if (nextBackground?.url) nextBackground = {
           ...nextBackground,
@@ -10544,6 +10578,15 @@ function App() {
       setConversationBackgroundSelection(viewerBackground?.cleared ? null : viewerBackground);
       setIsConversationBackgroundOpen(false);
     } catch (error) {
+      if (uploadedBackgroundUrl && !backgroundMetadataPersisted) {
+        const mediaConversationId = isManagementConversationId(activeChat.managementId || activeChat.id)
+          ? (activeChat.managementId || activeChat.id)
+          : '';
+        await tinodeClient.discardChatMediaReference(
+          uploadedBackgroundUrl,
+          mediaConversationId,
+        ).catch(() => {});
+      }
       if (handleDirectMessageBlockedError(error, activeChat.id)) {
         setConversationBackgroundNotice(DIRECT_MESSAGE_BLOCKED_TEXT);
       } else {
@@ -10752,10 +10795,11 @@ function App() {
       }
       const topicName = activeChat.tinodeTopic || await ensureTinodeConversationTopic(activeChat);
       const previousAvatarUrl = activeChat.avatarUrl || '';
+      const managementConversationId = activeChat.managementId || activeChat.id;
       // Chatmgt owns managed group metadata. Deputies may upload through
       // Tinode, but only the owner bridge writes the shared public metadata.
       const avatarUrl = usesManagementData
-        ? await tinodeClient.uploadGroupAvatar(topicName, file)
+        ? await tinodeClient.uploadGroupAvatar(topicName, file, managementConversationId)
         : await tinodeClient.updateGroupAvatar(topicName, file);
       let persistedAvatarUrl = avatarUrl;
       try {
@@ -10769,8 +10813,19 @@ function App() {
       } catch (error) {
         if (!usesManagementData) {
           await tinodeClient.updateGroupMetadata(topicName, { avatar: previousAvatarUrl }).catch(() => {});
+        } else {
+          await tinodeClient.discardChatMediaReference(avatarUrl, managementConversationId).catch(() => {});
         }
         throw error;
+      }
+      if (usesManagementData && isManagementConversationId(managementConversationId)) {
+        await tinodeClient.bindChatMediaReference(
+          avatarUrl,
+          managementConversationId,
+          `group-avatar:${managementConversationId}`,
+        ).catch(error => {
+          clientLogger.warn('group_avatar_media_binding_deferred', error);
+        });
       }
       groupAvatarSyncRef.current.set(activeChat.id, persistedAvatarUrl);
       groupAvatarSyncRef.current.set(topicName, persistedAvatarUrl);

@@ -178,7 +178,9 @@ class ChatMediaDeploymentContractTests(unittest.TestCase):
         self.assertIn("<AllowedMethod>HEAD</AllowedMethod>", cors_policy)
         self.assertIn("tinode_uploads:/opt/tinode/uploads", compose)
         self.assertIn("config.chatMediaStorage !== 's3'", mobile_client)
-        self.assertIn("uploadChatMedia(file)", mobile_client)
+        self.assertIn("uploadChatMedia(file, { conversationId: scopedConversationId })", mobile_client)
+        self.assertIn("bindChatMediaReference", mobile_client)
+        self.assertIn("discardChatMediaReference", mobile_client)
         self.assertIn("resolveChatMediaDownloadUrl(url)", mobile_client)
         self.assertIn("resolveChatMediaDownloadUrl(file.url", mobile_client)
 

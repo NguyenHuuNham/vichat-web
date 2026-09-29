@@ -84,7 +84,7 @@ export function SettingsScreen({ navigation }: Props) {
           <Text style={[styles.dangerHint, { color: palette.inkSoft }]}>Đăng xuất khỏi tài khoản trên thiết bị này.</Text>
           <Pressable disabled={busy} onPress={confirmLogout} style={[styles.logout, { backgroundColor: palette.paper, borderColor: `${palette.danger}88` }, busy && { opacity: 0.5 }]}><Text style={[styles.logoutText, { color: palette.danger }]}>{busy ? 'Đang đăng xuất...' : 'Đăng xuất'}</Text></Pressable>
         </View>
-        <Text style={[styles.version, { color: palette.muted }]}>ViChat Mobile {Constants.expoConfig?.version || '1.0.29'} · {config.brandName}</Text>
+        <Text style={[styles.version, { color: palette.muted }]}>ViChat Mobile {Constants.expoConfig?.version || '1.0.30'} · {config.brandName}</Text>
       </ScrollView>
       <PinSettingsModal visible={pinSettingsOpen} onClose={() => setPinSettingsOpen(false)} />
       <TenantPickerModal visible={tenantPickerOpen} options={tenantOptions} palette={palette} onClose={() => setTenantPickerOpen(false)} onSelect={option => { setTenantPickerOpen(false); setPendingTenant(option); }} />

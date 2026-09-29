@@ -94,6 +94,13 @@ export async function uploadChatMedia(file, { conversationId = '', signal } = {}
       status: 503,
     });
   }
+  const scopedConversationId = String(conversationId || '').trim();
+  if (!scopedConversationId) {
+    throw new ChatMediaClientError('A conversation is required for S3 chat media.', {
+      code: 'MEDIA_CONVERSATION_REQUIRED',
+      status: 400,
+    });
+  }
   const size = Number(file?.size) || 0;
   const contentType = String(file?.type || 'application/octet-stream');
   const prepared = await mediaApiRequest('/api/v1/chat/media/uploads', {
@@ -102,7 +109,7 @@ export async function uploadChatMedia(file, { conversationId = '', signal } = {}
       file_name: String(file?.name || 'attachment'),
       content_type: contentType,
       size,
-      conversation_id: String(conversationId || '').trim(),
+      conversation_id: scopedConversationId,
     }),
     signal,
   });

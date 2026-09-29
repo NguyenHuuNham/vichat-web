@@ -94,11 +94,18 @@ export async function selectedFileSize(file: PickerFile) {
   }
 }
 
-export async function uploadChatMedia(file: PickerFile) {
+export async function uploadChatMedia(file: PickerFile, options: { conversationId?: string } = {}) {
   if (config.chatMediaStorage !== 's3') {
     const error: any = new Error('S3 media storage is disabled.');
     error.code = 'MEDIA_STORAGE_DISABLED';
     error.status = 503;
+    throw error;
+  }
+  const conversationId = String(options.conversationId || '').trim();
+  if (!conversationId) {
+    const error: any = new Error('Thiếu cuộc trò chuyện để gắn file S3.');
+    error.code = 'MEDIA_CONVERSATION_REQUIRED';
+    error.status = 400;
     throw error;
   }
   const size = await selectedFileSize(file);
@@ -108,27 +115,66 @@ export async function uploadChatMedia(file: PickerFile) {
       file_name: file.name || 'tep-dinh-kem',
       content_type: file.type || 'application/octet-stream',
       size,
+      conversation_id: conversationId,
     }),
   });
-  await putFileToS3(file, ticket);
-  const completed = await apiRequest<{ ref?: string }>(
-    `/api/v1/chat/media/uploads/${encodeURIComponent(ticket.upload_id)}/complete`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ size, upload_token: ticket.upload_token }),
-    },
-  );
+  try {
+    await putFileToS3(file, ticket);
+  } catch (error) {
+    await discardChatMedia(ticket.ref || ticket.upload_id, { conversationId }).catch(() => {});
+    throw error;
+  }
+  let completed: { ref?: string };
+  try {
+    completed = await apiRequest<{ ref?: string }>(
+      `/api/v1/chat/media/uploads/${encodeURIComponent(ticket.upload_id)}/complete`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ size, upload_token: ticket.upload_token }),
+      },
+    );
+  } catch (error) {
+    await discardChatMedia(ticket.ref || ticket.upload_id, { conversationId }).catch(() => {});
+    throw error;
+  }
   const reference = String(completed.ref || ticket.ref || '');
-  if (!reference) throw new Error('Chatmgt không trả về tham chiếu file S3.');
+  if (!reference) {
+    await discardChatMedia(ticket.ref || ticket.upload_id, { conversationId }).catch(() => {});
+    throw new Error('Chatmgt không trả về tham chiếu file S3.');
+  }
   return reference;
 }
 
-export async function resolveChatMediaDownloadUrl(value: string, options: { download?: boolean; fileName?: string } = {}) {
+export async function bindChatMedia(value: string, options: { conversationId: string; messageRef: string }) {
+  const uploadId = chatMediaReferenceId(value);
+  const conversationId = String(options.conversationId || '').trim();
+  const messageRef = String(options.messageRef || '').trim();
+  if (!uploadId || !conversationId || !messageRef) {
+    throw new Error('Thiếu thông tin để gắn file S3 vào tin nhắn.');
+  }
+  return apiRequest(`/api/v1/chat/media/${encodeURIComponent(uploadId)}/bind`, {
+    method: 'POST',
+    body: JSON.stringify({ conversation_id: conversationId, message_ref: messageRef }),
+  });
+}
+
+export async function discardChatMedia(value: string, options: { conversationId: string }) {
+  const uploadId = chatMediaReferenceId(value);
+  const conversationId = String(options.conversationId || '').trim();
+  if (!uploadId || !conversationId) return null;
+  return apiRequest(`/api/v1/chat/media/${encodeURIComponent(uploadId)}/discard`, {
+    method: 'POST',
+    body: JSON.stringify({ conversation_id: conversationId }),
+  });
+}
+
+export async function resolveChatMediaDownloadUrl(value: string, options: { download?: boolean; fileName?: string; conversationId?: string } = {}) {
   const uploadId = chatMediaReferenceId(value);
   if (!uploadId) return value;
   const query = new URLSearchParams({ format: 'json' });
   if (options.download) query.set('download', '1');
   if (options.fileName) query.set('name', options.fileName.slice(0, 180));
+  if (options.conversationId) query.set('conversation_id', options.conversationId);
   const payload = await apiRequest<{ url?: string }>(
     `/api/v1/chat/media/${encodeURIComponent(uploadId)}?${query.toString()}`,
   );

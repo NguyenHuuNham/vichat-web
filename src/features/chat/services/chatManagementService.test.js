@@ -783,7 +783,7 @@ test('group owner departure transfers to survivors but lets the final member clo
   assert.match(mobileConversationListSource, /candidates\.length === 0/);
   assert.match(mobileConversationListSource, /Bạn là thành viên cuối cùng\. Rời nhóm sẽ đóng nhóm này\./);
   assert.match(mobileConversationListSource, /accountIdForMember\(member, directory\)/);
-  assert.match(mobileConversationListSource, /\(\) => deleteConversation\(item\.id, accountId\)/);
+  assert.match(mobileConversationListSource, /\(\) => deleteConversation\(item\.id, option\.id\)/);
   assert.match(mobileConversationListSource, /\(\) => deleteConversation\(request\.item\.id, request\.replacementId\)/);
   assert.doesNotMatch(appSource, /randomMemberId/);
 });
@@ -860,7 +860,7 @@ test('keeps conversation background scope isolated from the message and presence
   assert.match(appSource, /ConversationBackgroundCropModal/);
   assert.match(appSource, /setConversationBackgroundCropFile\(file\)/);
   assert.match(stylesSource, /\.conversation-background-crop-backdrop \{ z-index: 260; \}/);
-  assert.match(appSource, /tinodeClient\.uploadConversationBackground\(topicName, selectedUpload\)/);
+  assert.match(appSource, /tinodeClient\.uploadConversationBackground\(\s*topicName,\s*selectedUpload,\s*mediaConversationId/);
   assert.match(appSource, /tinodeClient\.updateConversationBackground\(topicName, nextBackground\)/);
   assert.match(tinodeSource, /const latestBackground = latestSharedConversationBackground\(\{ messages: finalMessages \}\)/);
   assert.match(tinodeSource, /scope: CONVERSATION_BACKGROUND_SCOPES\.SHARED/);

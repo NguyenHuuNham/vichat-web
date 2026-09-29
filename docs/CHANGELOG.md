@@ -6,6 +6,24 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-29-09 - Dong bo chuyen cong ty va media S3 tren mobile/web
+
+- Thoi gian: 2026-09-29 23:03 (Asia/Saigon)
+- Loai: Tinh nang | Sua loi | Mobile | Web | Media | Backend contract | Phat hanh | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source, APK test va UAT cold-start emulator; chua UAT tai khoan that voi nhieu cong ty
+- Muc tieu: Them muc Chuyen cong ty trong Ho so ca nhan mobile va bao dam anh/file tao tu mobile hoac web deu dung cung nguon media S3, hien thi dong bo trong cuoc tro chuyen.
+- Pham vi: Tenant picker va dialog xac nhan mobile; upload, complete, bind, discard va download media theo conversation; anh dai dien nhom, hinh nen, anh/file dinh kem va sticker tren ca mobile/web; phien ban mobile `1.0.30`, Android `versionCode=31`.
+- File da thay doi: `mobile/src/screens/settings/EditProfileScreen.tsx`, `mobile/src/screens/settings/SettingsScreen.tsx`, `mobile/src/services/chatMediaService.ts`, `mobile/src/services/tinodeClient.ts`, `mobile/src/store/appStore.ts`, `src/app/App.jsx`, `src/features/chat/services/chatMediaService.js`, `src/features/chat/services/tinodeClient.js`, `chatservice-main/tests/test_chat_media_service.py`, `src/features/chat/services/chatManagementService.test.js`, `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`, `dist/index.html`.
+- Noi dung: Ho so mobile hien cong ty hien tai va cac membership dang hoat dong, hoi lai nguoi dung bang dialog theo theme truoc khi goi switch tenant; sau khi doi cong ty, bearer token moi duoc luu va du lieu Chatmgt/Tinode duoc tai lai theo tenant moi. Media chat duoc cap ticket S3 theo conversation, chi gan (`bind`) sau khi Tinode xac nhan tin nhan, huy (`discard`) khi upload/publish that bai; web va mobile cung doc stable reference nen file/anh gui tu mot nen tang co the xem tren nen tang con lai. Avatar ca nhan tiep tuc dung hop dong UpGO Account la nguon chuan nhu web.
+- Quyet dinh ky thuat: Khong dua binary vao Tinode metadata hoac PostgreSQL; Tinode chi luu stable media reference. Conversation ID la pham vi bat buoc cho chat media moi, giup kiem tra membership va tranh file mo nham tenant/cuoc tro chuyen. Fallback Tinode chi con cho luong legacy hoac khi cau hinh cho phep; avatar ca nhan khong bi chuyen sang chat-media S3.
+- Database/API/cau hinh: Khong co migration. Su dung cac endpoint media S3 hien co va hop dong switch tenant mobile; tang version mobile len `1.0.30`, Android `versionCode=31`. Build web cap nhat `dist/index.html` toi entry bundle moi.
+- Kiem thu: `cd mobile; npm test -- --reporter=dot --maxWorkers=1` dat 29 file, 110/110; `npm run typecheck`, `npm run lint`, `npm run export` dat; `npm run test:frontend -- --test-concurrency=1` dat 451/451; `npm run build:production` dat; `python -m unittest chatservice-main/tests/test_chat_media_service.py -q` dat 14/14; backend `py_compile` dat; `npx expo prebuild --platform android --no-install` dat; Gradle `:app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a,x86_64` dat 520 tasks va `BUILD SUCCESSFUL`; `zipalign` va APK Signature Scheme v2 dat.
+- Artifact: `D:\vichat-build\ViChat-1.0.30-s3-media-tenant-universal.apk`, package `vn.upgo.vichat`, version `1.0.30`, `versionCode=31`, ABI `arm64-v8a,x86_64`, SHA-256 `4649208837321378F2BB8464E92F00CC4CB8BF94A80C762D6CC9A35710A86EE9`.
+- Emulator: APK da cai va cold-start tren `emulator-5554`; UI dump co `GON PLATFORM`, `Email`, `Mat khau`, `Dang nhap`; khong phat hien `FATAL EXCEPTION`, `TypeError` hoac `Invariant Violation` trong log runtime da kiem tra.
+- Rui ro con lai: Chua UAT tenant switch, dialog va media dong bo bang tai khoan that tren hai cong ty; chua test thiet bi that/iOS, offline/reconnect, push background/killed; APK la ban test Android Debug, chua ky store.
+- Viec tiep theo: UAT voi tai khoan A/B de gui anh/file/sticker va doi cong ty qua lai, xac nhan stable media reference xem duoc tren ca web/mobile; khi phat hanh store thi build lai bang release keystore.
+- Commit/PR: Chua tao.
+
 ## 2026-09-29-08 - Dong bo dark mode cho cac luong cai dat mobile
 
 - Thoi gian: 2026-09-29 20:58 (Asia/Saigon)

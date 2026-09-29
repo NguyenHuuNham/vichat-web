@@ -4,7 +4,7 @@
     "slug": "vichat-mobile",
     "scheme": "vichat",
     "description": "ViChat doanh nghiệp - kết nối nội bộ an toàn",
-    "version": "1.0.29",
+    "version": "1.0.30",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {
@@ -28,7 +28,7 @@
     },
     "android": {
       "package": "vn.upgo.vichat",
-      "versionCode": 30,
+      "versionCode": 31,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",

@@ -28,6 +28,8 @@ import {
   normalizePollEvent,
 } from '../utils/poll';
 import {
+  bindChatMedia,
+  discardChatMedia,
   isChatMediaReference,
   resolveChatMediaDownloadUrl,
   shouldFallbackToTinodeMedia,
@@ -1604,21 +1606,39 @@ export class TinodeMobileClient {
     return normalizeMediaUrl(url);
   }
 
-  private async uploadFile(file: PickerFile, topicName = '') {
+  private async uploadFile(file: PickerFile, topicName = '', conversationId = '', requireConversation = false) {
     if (Number(file.size) > config.maxAttachmentBytes) throw new Error('File hoặc ảnh không được lớn hơn 500 MB.');
     if (config.chatMediaStorage !== 's3') return this.uploadTinodeFile(file, topicName);
+    const scopedConversationId = String(conversationId || '').trim();
+    if (!scopedConversationId) {
+      if (requireConversation) throw new Error('Thiếu cuộc trò chuyện để tải file lên S3.');
+      // Account/Tinode profile fallback remains available when the Account
+      // avatar contract rejects an upload; chat media must stay conversation-scoped.
+      return this.uploadTinodeFile(file, topicName);
+    }
     try {
-      return normalizeMediaUrl(await uploadChatMedia(file));
+      return normalizeMediaUrl(await uploadChatMedia(file, { conversationId: scopedConversationId }));
     } catch (error) {
       if (!shouldFallbackToTinodeMedia(error)) throw error;
       return this.uploadTinodeFile(file, topicName);
     }
   }
 
-  async uploadGroupAvatar(topicName: string, file: PickerFile) {
+  async uploadGroupAvatar(topicName: string, file: PickerFile, conversationId: string) {
     if (!topicName || !file) throw new Error('Vui lòng chọn ảnh nhóm.');
+    if (!conversationId) throw new Error('Nhóm chưa có định danh Chatmgt để lưu ảnh S3.');
     await this.subscribeTopic(topicName, 0, { emitSnapshot: false });
-    return this.uploadFile(file, topicName);
+    return this.uploadFile(file, topicName, conversationId, true);
+  }
+
+  async bindChatMediaReference(value: string, conversationId: string, messageRef: string) {
+    if (!isChatMediaReference(value)) return null;
+    return bindChatMedia(value, { conversationId, messageRef });
+  }
+
+  async discardChatMediaReference(value: string, conversationId: string) {
+    if (!isChatMediaReference(value)) return null;
+    return discardChatMedia(value, { conversationId });
   }
 
   async updateGroupMetadata(topicName: string, input: { name?: string; avatar?: string; settings?: unknown } = {}) {
@@ -1690,11 +1710,13 @@ export class TinodeMobileClient {
     description = '',
     memberIds = [],
     avatarFile = null,
+    conversationId = '',
   }: {
     name: string;
     description?: string;
     memberIds?: string[];
     avatarFile?: PickerFile | null;
+    conversationId?: string;
   }) {
     if (!this.client) throw new Error('Tinode chưa kết nối.');
     const topic = this.wireTopic(this.client.getTopic(this.client.newGroupTopicName(false)));
@@ -1704,7 +1726,7 @@ export class TinodeMobileClient {
     );
     let avatarUrl = '';
     if (avatarFile) {
-      avatarUrl = await this.uploadFile(avatarFile, topic.name);
+      avatarUrl = await this.uploadFile(avatarFile, topic.name, conversationId, true);
       await topic.setMeta({ desc: { public: {
         fn: name,
         note: description,
@@ -1724,7 +1746,7 @@ export class TinodeMobileClient {
     this.topics.delete(topicName);
   }
 
-  async sendFile(topicName: string, file: PickerFile, clientId: string, metadata: { sticker?: ChatMessage['sticker'] } = {}) {
+  async sendFile(topicName: string, file: PickerFile, clientId: string, metadata: { conversationId?: string; sticker?: ChatMessage['sticker'] } = {}) {
     if (Number(file.size) > config.maxAttachmentBytes) throw new Error('File hoặc ảnh không được lớn hơn 500 MB.');
     await this.subscribeTopic(topicName, 0, { emitSnapshot: false });
     const topic = this.getTopic(topicName);
@@ -1732,7 +1754,8 @@ export class TinodeMobileClient {
     const filename = file.name || 'Tệp đính kèm';
     const isImage = /^image\//i.test(mime) || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(filename);
     if (!Drafty || (isImage ? !Drafty.appendImage : !Drafty.attachFile)) throw new Error('Tinode SDK không hỗ trợ file trên thiết bị này.');
-    const url = await this.uploadFile(file, topicName);
+    const conversationId = String(metadata.conversationId || '').trim();
+    const url = await this.uploadFile(file, topicName, conversationId, true);
     const attachment = { mime, filename, refurl: url, size: file.size || 0 };
     const content = isImage ? Drafty.appendImage(null, attachment) : Drafty.attachFile(null, attachment);
     const draft = topic.createMessage(content, false);
@@ -1745,15 +1768,33 @@ export class TinodeMobileClient {
         version: String(metadata.sticker.version || '1').slice(0, 24),
       });
     }
-    const result = await withTimeout(topic.publishMessage(draft), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi gửi tệp.');
-    if (!result) throw new Error('Tinode không xác nhận tệp đính kèm.');
+    let result: any;
+    try {
+      result = await withTimeout(topic.publishMessage(draft), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi gửi tệp.');
+    } catch (error) {
+      await this.discardChatMediaReference(url, conversationId).catch(() => {});
+      throw error;
+    }
+    if (!result) {
+      await this.discardChatMediaReference(url, conversationId).catch(() => {});
+      throw new Error('Tinode không xác nhận tệp đính kèm.');
+    }
+    if (isChatMediaReference(url) && conversationId) {
+      const messageRef = String(clientId || publishSequence(result) || '').trim();
+      if (messageRef) {
+        // Binding is idempotent; keep a published message visible if this
+        // follow-up is temporarily unavailable and let the backend retry path handle it.
+        await this.bindChatMediaReference(url, conversationId, messageRef).catch(() => {});
+      }
+    }
     return { url: normalizeMediaUrl(url), file: { name: attachment.filename, mime: attachment.mime, size: attachment.size, url: normalizeMediaUrl(url) } };
   }
 
-  async sendSticker(topicName: string, sticker: Sticker, clientId: string) {
+  async sendSticker(topicName: string, sticker: Sticker, clientId: string, metadata: { conversationId?: string } = {}) {
     if (!sticker?.id || !sticker?.packId || !sticker?.src) throw new Error('Sticker không hợp lệ.');
     const file = await this.stickerFile(sticker);
     return this.sendFile(topicName, file, clientId, {
+      conversationId: metadata.conversationId,
       sticker: {
         id: sticker.id,
         stickerId: sticker.id,

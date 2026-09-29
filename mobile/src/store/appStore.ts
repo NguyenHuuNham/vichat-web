@@ -660,7 +660,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
         // Chatmgt owns the conversation first. Tinode is created only after
         // every selected Account ID has an explicit realtime mapping.
-        const realtimeGroup = await tinodeClient.createGroup({ name: subject, memberIds: [...new Set(memberIds)], avatarFile: avatarFile || null });
+        const realtimeGroup = await tinodeClient.createGroup({
+          name: subject,
+          memberIds: [...new Set(memberIds)],
+          avatarFile: avatarFile || null,
+          conversationId: created.managementId,
+        });
         topicName = realtimeGroup.tinodeTopic || realtimeGroup.id;
         const bound = await chatManagementService.bindTinodeTopic(
           created.managementId,
@@ -668,6 +673,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
           tinodeClient.getAuthTokenValue(),
           realtimeGroup.avatarUrl || '',
         );
+        if (realtimeGroup.avatarUrl) {
+          await tinodeClient.bindChatMediaReference(
+            realtimeGroup.avatarUrl,
+            created.managementId,
+            `group-avatar:${created.managementId}`,
+          ).catch(() => {});
+        }
         const canonicalTopic = bound.tinodeTopic || topicName;
         if (canonicalTopic !== topicName) await tinodeClient.discardGroupTopic(topicName).catch(() => {});
         const ready = {
@@ -748,8 +760,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
   async updateGroupAvatar(conversationId, file) {
     const conversation = conversationForId(get().conversations, conversationId);
     if (!conversation?.isGroup || !conversation.tinodeTopic) throw new Error('Nhóm chưa sẵn sàng realtime.');
-    const avatar = await tinodeClient.uploadGroupAvatar(conversation.tinodeTopic, file);
-    const managed = await chatManagementService.updateGroupProfile(conversation.managementId || conversation.id, { avatar });
+    const managementId = conversation.managementId || conversation.id;
+    const avatar = await tinodeClient.uploadGroupAvatar(conversation.tinodeTopic, file, managementId);
+    let managed;
+    try {
+      managed = await chatManagementService.updateGroupProfile(managementId, { avatar });
+    } catch (error) {
+      await tinodeClient.discardChatMediaReference(avatar, managementId).catch(() => {});
+      throw error;
+    }
+    await tinodeClient.bindChatMediaReference(avatar, managementId, `group-avatar:${managementId}`).catch(() => {});
     return mergeManagedConversation(set, get, conversation.id, managed);
   },
 
@@ -867,14 +887,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const conversation = conversationForId(get().conversations, conversationId);
     if (!conversation?.tinodeTopic || !tinodeClient.connected) throw new Error('Realtime chưa sẵn sàng. Hãy thử lại sau khi kết nối lại.');
     const clientId = `mobile-file-${Date.now()}`;
-    await tinodeClient.sendFile(conversation.tinodeTopic, file, clientId);
+    await tinodeClient.sendFile(conversation.tinodeTopic, file, clientId, {
+      conversationId: conversation.managementId || conversation.id,
+    });
   },
 
   async sendSticker(conversationId, sticker) {
     const conversation = conversationForId(get().conversations, conversationId);
     if (!conversation?.tinodeTopic || !tinodeClient.connected) throw new Error('Realtime chưa sẵn sàng. Hãy thử lại sau khi kết nối lại.');
     const clientId = `mobile-sticker-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    await tinodeClient.sendSticker(conversation.tinodeTopic, sticker, clientId);
+    await tinodeClient.sendSticker(conversation.tinodeTopic, sticker, clientId, {
+      conversationId: conversation.managementId || conversation.id,
+    });
   },
 
   async sendReaction(conversationId, message, emoji) {
