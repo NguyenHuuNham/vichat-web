@@ -19,7 +19,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Kiem thu: `cd mobile; npm test -- --reporter=dot --maxWorkers=1` dat 29 file, 110/110; `npm run typecheck` exit 0; `npm run lint` exit 0; `npm run export` dat; `npx expo config --json --type public` xac nhan version `1.0.28`, versionCode `29`; `npx expo prebuild --platform android --no-install` dat; Gradle `:app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a,x86_64` dat 520 tasks. APK `D:\vichat-build\ViChat-1.0.28-group-info-universal.apk` package `vn.upgo.vichat`, version `1.0.28`, versionCode `29`, ABI `arm64-v8a,x86_64`, `zipalign` dat, APK Signature Scheme v2 dat; SHA-256 `0716567FCA89A17687F0E38D529188F8705052183E1EACCB2111322D7C73D9F7`. APK cai thanh cong tren `emulator-5554`; clear data/cold-start giu `vn.upgo.vichat/.MainActivity` foreground, UI dump co `GON PLATFORM`, `Email cong ty`, `Mat khau`, `Dang nhap`, logcat 500 dong khong co `FATAL EXCEPTION`, `TypeError` hoac `Invariant Violation`.
 - Rui ro con lai: Chua dang nhap tai khoan test de UAT authenticated GroupInfo, dark mode, preview, member/settings va switch pin; chua test thiet bi that/iOS, offline/reconnect, push background/killed; APK la ban test ky Android Debug, chua ky store. Build co warning deprecated tu dependency Expo/RN nhung khong co failure.
 - Viec tiep theo: UAT voi tai khoan A/B tren emulator/thiet bi that de kiem tra cac row co du lieu that; neu muon bat lich/link/dich/the/an can chot API/persistence mobile truoc khi mo khoa.
-- Commit/PR: Source commit `a413726`; docs follow-up dang cho.
+- Commit/PR: Source commit `a413726`; docs follow-up `a663902`.
 
 ## 2026-09-29-06 - Hoan thien chuyen cong ty, theme va chi tiet nhom mobile
 
