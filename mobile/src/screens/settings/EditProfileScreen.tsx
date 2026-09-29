@@ -6,15 +6,18 @@ import * as ImagePicker from 'expo-image-picker';
 import { Camera, Save } from 'lucide-react-native';
 import { RootStackParamList } from '../../navigation/types';
 import { useAppStore } from '../../store/appStore';
-import { colors } from '../../theme/colors';
+import { colorsForTheme, ThemeColors } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import { Avatar } from '../../components/Avatar';
 import { beginTrustedExternalActivity } from '../../services/appLifecycleService';
 import { avatarUploadErrorMessage } from '../../utils/avatarPolicy';
+import { useThemeStore } from '../../store/themeStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EditProfile'>;
 
 export function EditProfileScreen({ navigation }: Props) {
+  const palette = colorsForTheme(useThemeStore(state => state.resolved));
+  const styles = createStyles(palette);
   const user = useAppStore(state => state.session?.user);
   const updateProfile = useAppStore(state => state.updateProfile);
   const updateAvatar = useAppStore(state => state.updateAvatar);
@@ -58,20 +61,22 @@ export function EditProfileScreen({ navigation }: Props) {
       setBusy(false);
     }
   };
-  return <SafeAreaView style={styles.screen} edges={['bottom', 'left', 'right']}><KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"><View style={styles.avatarWrap}><Avatar name={name} uri={avatar} size={100} /><Pressable onPress={() => void chooseAvatar()} style={styles.camera}><Camera color="#fff" size={17} /></Pressable></View><Text style={styles.hint}>Tên hiển thị được đồng bộ với UpGO Account.</Text><Text style={styles.label}>Tên hiển thị</Text><TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Tên của bạn" placeholderTextColor={colors.muted} /><Text style={styles.label}>Chức vụ</Text><TextInput value={title} onChangeText={setTitle} style={styles.input} placeholder="Chức vụ" placeholderTextColor={colors.muted} /><Text style={styles.label}>Email</Text><View style={[styles.input, styles.readonly]}><Text style={styles.readonlyText}>{user?.email || 'Được quản lý bởi UpGO Account'}</Text></View><Pressable disabled={busy} onPress={() => void save()} style={[styles.button, busy && { opacity: 0.55 }]}><Save color="#fff" size={19} /><Text style={styles.buttonText}>{busy ? 'Đang lưu...' : 'Lưu thay đổi'}</Text></Pressable></ScrollView></KeyboardAvoidingView></SafeAreaView>;
+  return <SafeAreaView style={styles.screen} edges={['bottom', 'left', 'right']}><KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"><View style={styles.avatarWrap}><Avatar name={name} uri={avatar} size={100} /><Pressable onPress={() => void chooseAvatar()} style={styles.camera}><Camera color="#fff" size={17} /></Pressable></View><Text style={styles.hint}>Tên hiển thị được đồng bộ với UpGO Account.</Text><Text style={styles.label}>Tên hiển thị</Text><TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Tên của bạn" placeholderTextColor={palette.muted} /><Text style={styles.label}>Chức vụ</Text><TextInput value={title} onChangeText={setTitle} style={styles.input} placeholder="Chức vụ" placeholderTextColor={palette.muted} /><Text style={styles.label}>Email</Text><View style={[styles.input, styles.readonly]}><Text style={styles.readonlyText}>{user?.email || 'Được quản lý bởi UpGO Account'}</Text></View><Pressable disabled={busy} onPress={() => void save()} style={[styles.button, busy && { opacity: 0.55 }]}><Save color="#fff" size={19} /><Text style={styles.buttonText}>{busy ? 'Đang lưu...' : 'Lưu thay đổi'}</Text></Pressable></ScrollView></KeyboardAvoidingView></SafeAreaView>;
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: colors.canvas },
-  content: { padding: 22, paddingBottom: 45 },
-  avatarWrap: { alignSelf: 'center', position: 'relative', marginTop: 15 },
-  camera: { position: 'absolute', right: -3, bottom: -2, width: 31, height: 31, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: colors.canvas },
-  hint: { ...typography.caption, color: colors.inkSoft, textAlign: 'center', marginTop: 14, marginBottom: 27 },
-  label: { ...typography.caption, color: colors.inkSoft, marginBottom: 7, marginTop: 13 },
-  input: { minHeight: 52, borderRadius: 16, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.paper, paddingHorizontal: 15, color: colors.ink, fontFamily: 'BeVietnamPro_400Regular', fontSize: 14 },
-  readonly: { justifyContent: 'center', backgroundColor: '#EEEAE3' },
-  readonlyText: { ...typography.body, color: colors.muted },
-  button: { height: 53, borderRadius: 16, backgroundColor: colors.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 25 },
-  buttonText: { ...typography.bodyMedium, color: '#fff' },
-});
+function createStyles(palette: ThemeColors) {
+  return StyleSheet.create({
+    flex: { flex: 1 },
+    screen: { flex: 1, backgroundColor: palette.canvas },
+    content: { padding: 22, paddingBottom: 45 },
+    avatarWrap: { alignSelf: 'center', position: 'relative', marginTop: 15 },
+    camera: { position: 'absolute', right: -3, bottom: -2, width: 31, height: 31, borderRadius: 12, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: palette.canvas },
+    hint: { ...typography.caption, color: palette.inkSoft, textAlign: 'center', marginTop: 14, marginBottom: 27 },
+    label: { ...typography.caption, color: palette.inkSoft, marginBottom: 7, marginTop: 13 },
+    input: { minHeight: 52, borderRadius: 16, borderWidth: 1, borderColor: palette.line, backgroundColor: palette.paper, paddingHorizontal: 15, color: palette.ink, fontFamily: 'BeVietnamPro_400Regular', fontSize: 14 },
+    readonly: { justifyContent: 'center', backgroundColor: palette.line },
+    readonlyText: { ...typography.body, color: palette.muted },
+    button: { height: 53, borderRadius: 16, backgroundColor: palette.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 25 },
+    buttonText: { ...typography.bodyMedium, color: '#fff' },
+  });
+}

@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-29-08 - Dong bo dark mode cho cac luong cai dat mobile
+
+- Thoi gian: 2026-09-29 20:58 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Mobile | UI | UX | Phat hanh | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source, APK test va UAT cold-start emulator; chua UAT luong da dang nhap voi tai khoan that
+- Muc tieu: Bao dam cac man hinh mo tu Ho so/Cai dat giu dung palette sang/toi sau khi nguoi dung chuyen giao dien, dong bo ban mobile moi nhat de test va phat hanh.
+- Pham vi: `mobile/src/components/AppLockScreen.tsx`, `mobile/src/components/PinSettingsModal.tsx`, `mobile/src/screens/settings/EditProfileScreen.tsx`, `mobile/src/screens/settings/LinkedDevicesScreen.tsx`, `mobile/src/screens/settings/SettingsScreen.tsx`, `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`; luong chuyen cong ty, dialog xac nhan va theme store da ghi o muc `2026-09-29-06`.
+- Noi dung: Thay cac mau hard-code trong App Lock, quan ly PIN, sua ho so va thiet bi lien ket bang `colorsForTheme(useThemeStore(...))`; dialog va form con lai tu dong doi mau theo theme hien tai, khong thay doi API hay luong session. Tang version mobile len `1.0.29`, Android `versionCode=30`.
+- Quyet dinh ky thuat: Dung palette da resolve tu store thay vi goi `Appearance.setColorScheme` truc tiep, tranh crash Android khi che do he thong tra ve `null`; cac thao tac xac nhan tiep tuc dung dialog rieng de giu layout va mau theo context.
+- Database/API/cau hinh: Khong co migration, endpoint moi, thay doi tenant ID hoac bien moi truong.
+- Kiem thu: `cd mobile; npm test -- --reporter=dot --maxWorkers=1` dat 29 file, 110/110; `npm run typecheck` exit 0; `npm run lint` exit 0; `npm run export` dat; `npx expo config --json --type public` xac nhan version `1.0.29`, versionCode `30`; `npx expo prebuild --platform android --no-install` dat; Gradle staging ASCII `:app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a,x86_64` dat 520 tasks, `BUILD SUCCESSFUL`; `zipalign` va APK Signature Scheme v2 dat.
+- Artifact: `D:\vichat-build\ViChat-1.0.29-settings-theme-universal.apk`, package `vn.upgo.vichat`, ABI `arm64-v8a,x86_64`, SHA-256 `BA62091025347B03DE0908C2061518124BF0A214542A723E945D5745AD3DB805`.
+- Emulator: APK cai thanh cong tren `emulator-5554`, clear data va cold-start vao `vn.upgo.vichat/.MainActivity`; UI dump co `GON PLATFORM`, `Email cong ty`, `Mat khau`, `Dang nhap`; logcat khong co `FATAL EXCEPTION`, `TypeError` hoac `Invariant Violation`.
+- Rui ro con lai: Chua UAT tenant switch, dialog va dark mode bang tai khoan that; chua test thiet bi that/iOS, offline/reconnect, push background/killed; APK la ban test dung Android Debug, chua ky store; mot so man hinh legacy ngoai luong Settings co the con mau co dinh.
+- Viec tiep theo: UAT voi tai khoan A/B de xac nhan chuyen cong ty, confirm dialog va palette sang/toi tren du lieu that; build lai bang release keystore khi phat hanh store.
+- Commit/PR: Chua tao.
+
 ## 2026-09-29-07 - Sap xep chi tiet nhom mobile theo nhom chuc nang
 
 - Thoi gian: 2026-09-29 19:26-20:08 (Asia/Saigon)
