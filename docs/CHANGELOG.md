@@ -6,6 +6,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-29-07 - Sap xep chi tiet nhom mobile theo nhom chuc nang
+
+- Thoi gian: 2026-09-29 19:26-20:08 (Asia/Saigon)
+- Loai: Tai cau truc | Tinh nang | Sua loi | Mobile | UI | UX | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source, APK test va UAT cold-start emulator; chua UAT man GroupInfo voi tai khoan that
+- Muc tieu: Sap xep man Chi tiet nhom theo nhom chuc nang ro rang, co preview noi dung, ho tro palette sang/toi va khong tao thao tac gia khi mobile chua co API.
+- Pham vi: `mobile/src/screens/chat/GroupInfoScreen.tsx`, `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json` va muc changelog nay; giu nguyen API, database, tenant ID va cac luong quan tri nhom dang hoat dong.
+- Noi dung: Refactor layout thanh Noi dung (anh/file/link co preview, lich nhom, tin ghim, binh chon), Thanh vien & nhom (xem thanh vien, link nhom), Cuoc tro chuyen (dich, ghim, muc hien thi, the, an) va Cai dat nhom; pin hoi thoai dung store/API hien co, member/settings/search/leave/dissolve duoc giu nguyen. Toan bo card, row, input, modal va switch cua GroupInfo dung `colorsForTheme` theo theme store; bo grid cu de can chinh hang muc tren mobile hep.
+- Quyet dinh ky thuat: Muc anh/file/link mo mot viewer co tab va preview tu tin nhan da tai; khong xem day la kho media server. Cac muc lich, link nhom, dich, muc hien thi, the phan loai va an hoi thoai hien ro `Chua kha dung tren mobile` vi chua co persistence/API end-to-end; khong expose Tinode topic lam link va khong tao switch gia.
+- Database/API/cau hinh: Khong co migration, endpoint moi hoac thay doi tenant ID. Tang mobile version len `1.0.28`, Android `versionCode=29`.
+- Kiem thu: `cd mobile; npm test -- --reporter=dot --maxWorkers=1` dat 29 file, 110/110; `npm run typecheck` exit 0; `npm run lint` exit 0; `npm run export` dat; `npx expo config --json --type public` xac nhan version `1.0.28`, versionCode `29`; `npx expo prebuild --platform android --no-install` dat; Gradle `:app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a,x86_64` dat 520 tasks. APK `D:\vichat-build\ViChat-1.0.28-group-info-universal.apk` package `vn.upgo.vichat`, version `1.0.28`, versionCode `29`, ABI `arm64-v8a,x86_64`, `zipalign` dat, APK Signature Scheme v2 dat; SHA-256 `0716567FCA89A17687F0E38D529188F8705052183E1EACCB2111322D7C73D9F7`. APK cai thanh cong tren `emulator-5554`; clear data/cold-start giu `vn.upgo.vichat/.MainActivity` foreground, UI dump co `GON PLATFORM`, `Email cong ty`, `Mat khau`, `Dang nhap`, logcat 500 dong khong co `FATAL EXCEPTION`, `TypeError` hoac `Invariant Violation`.
+- Rui ro con lai: Chua dang nhap tai khoan test de UAT authenticated GroupInfo, dark mode, preview, member/settings va switch pin; chua test thiet bi that/iOS, offline/reconnect, push background/killed; APK la ban test ky Android Debug, chua ky store. Build co warning deprecated tu dependency Expo/RN nhung khong co failure.
+- Viec tiep theo: UAT voi tai khoan A/B tren emulator/thiet bi that de kiem tra cac row co du lieu that; neu muon bat lich/link/dich/the/an can chot API/persistence mobile truoc khi mo khoa.
+- Commit/PR: Chua tao.
+
 ## 2026-09-29-06 - Hoan thien chuyen cong ty, theme va chi tiet nhom mobile
 
 - Thoi gian: 2026-09-29 19:19 (Asia/Saigon)
