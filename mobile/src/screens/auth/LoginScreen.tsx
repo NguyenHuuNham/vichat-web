@@ -9,6 +9,7 @@ import { colors, shadow } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import { useAppStore } from '../../store/appStore';
 import { GonLogo } from '../../components/GonLogo';
+import { config } from '../../constants/config';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
@@ -35,7 +36,7 @@ export function LoginScreen({ navigation }: Props) {
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <View style={styles.brand}>
               <View style={styles.logo}><GonLogo size={72} /></View>
-              <Text style={styles.brandName}>GON PLATFORM</Text>
+              <Text style={styles.brandName}>{config.brandLabel}</Text>
             </View>
             <View style={styles.card}>
               <View style={styles.field}>

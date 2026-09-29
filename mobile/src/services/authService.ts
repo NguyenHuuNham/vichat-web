@@ -2,6 +2,7 @@ import { apiRequest, getAccessToken, setAccessToken } from './apiClient';
 import { config } from '../constants/config';
 import { LinkedDevice, Session, TinodeAuth, User } from '../types';
 import { storageService } from './storageService';
+import { resolveTenantDisplayName } from '../utils/tenantDisplay';
 
 function firstString(...values: unknown[]) {
   return values.map(value => String(value ?? '').trim()).find(Boolean) || '';
@@ -48,11 +49,11 @@ function tenantFromPayload(payload: any, userPayload: any, fallback?: Session | 
     userPayload?.tenant_id,
   );
   const fallbackMatches = Boolean(id && fallback?.tenant?.id && id === fallback.tenant.id);
-  const name = firstString(
-    payload?.tenant?.name,
+  const name = resolveTenantDisplayName(
+    payload?.tenant,
     payload?.tenantName,
     payload?.tenant_name,
-    userPayload?.tenant?.name,
+    userPayload?.tenant,
     userPayload?.tenantName,
     userPayload?.tenant_name,
     fallbackMatches ? fallback?.tenant?.name : '',

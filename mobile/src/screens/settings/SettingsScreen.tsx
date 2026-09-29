@@ -11,6 +11,8 @@ import { Avatar } from '../../components/Avatar';
 import { PinSettingsModal } from '../../components/PinSettingsModal';
 import { useAppLockStore } from '../../store/appLockStore';
 import Constants from 'expo-constants';
+import { config } from '../../constants/config';
+import { displayTenantName } from '../../utils/tenantDisplay';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Settings'> & { navigation: any };
 
@@ -32,7 +34,7 @@ export function SettingsScreen({ navigation }: Props) {
           <Avatar name={session?.user.name} uri={session?.user.avatar} size={86} online />
           <Text numberOfLines={1} style={styles.profileName}>{session?.user.name || 'Nhân viên ViChat'}</Text>
           <Text numberOfLines={1} style={styles.profileEmail}>{session?.user.email || session?.user.username || 'Tài khoản nội bộ'}</Text>
-          <View style={styles.badges}><Text style={styles.badge}>{session?.user.role || 'Nhân viên'}</Text><Text style={styles.badge}>{session?.tenant?.name || 'Công ty'}</Text></View>
+          <View style={styles.badges}><Text style={styles.badge}>{session?.user.role || 'Nhân viên'}</Text><Text numberOfLines={1} ellipsizeMode="tail" style={styles.badge}>{displayTenantName(session?.tenant?.name, 'Công ty')}</Text></View>
           <View style={styles.editButton}><Pencil color={colors.accentDeep} size={15} /><Text style={styles.editText}>Chỉnh sửa hồ sơ</Text></View>
         </Pressable>
 
@@ -53,7 +55,7 @@ export function SettingsScreen({ navigation }: Props) {
           <Text style={styles.dangerHint}>Đăng xuất khỏi tài khoản trên thiết bị này.</Text>
           <Pressable disabled={busy} onPress={confirmLogout} style={[styles.logout, busy && { opacity: 0.5 }]}><Text style={styles.logoutText}>{busy ? 'Đang đăng xuất...' : 'Đăng xuất'}</Text></Pressable>
         </View>
-        <Text style={styles.version}>ViChat Mobile {Constants.expoConfig?.version || '1.0.26'} · Gon Platform</Text>
+        <Text style={styles.version}>ViChat Mobile {Constants.expoConfig?.version || '1.0.26'} · {config.brandName}</Text>
       </ScrollView>
       <PinSettingsModal visible={pinSettingsOpen} onClose={() => setPinSettingsOpen(false)} />
     </SafeAreaView>

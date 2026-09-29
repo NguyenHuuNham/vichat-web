@@ -47,6 +47,11 @@ describe('mobile auth normalization', () => {
     expect(refreshed.tenant?.name).not.toBe('Company A');
   });
 
+  it('expands the legacy GON tenant label before it reaches the UI', () => {
+    const session = normalizeAuthPayload({ user, tenant: { id: 'tenant-1', name: 'GonPlatform' } });
+    expect(session.tenant?.name).toBe('GON Platform');
+  });
+
   it('does not infer a Tinode UID from an Account ID', () => {
     expect(normalizeUser({ id: 'account-1', uid: 'account-1' }).uid).toBe('');
     expect(normalizeUser({ id: 'account-1', tinodeUid: 'usr-real' }).uid).toBe('usr-real');

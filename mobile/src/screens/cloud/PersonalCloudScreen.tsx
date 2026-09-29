@@ -12,6 +12,7 @@ import { PersonalCloudFile, PersonalCloudMessage, PickerFile } from '../../types
 import { colors, shadow } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import { EmptyState } from '../../components/EmptyState';
+import { displayTenantName } from '../../utils/tenantDisplay';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Cloud'>;
 
@@ -274,7 +275,7 @@ export function PersonalCloudScreen(_props: Props) {
         <View style={styles.headerCopy}>
           <Text style={styles.eyebrow}>PRIVATE STORAGE</Text>
           <Text style={styles.title}>Cloud của tôi</Text>
-          <Text numberOfLines={1} style={styles.subtitle}>{session?.tenant?.name || 'Không gian riêng tư của bạn'}</Text>
+          <Text numberOfLines={2} ellipsizeMode="tail" style={styles.subtitle}>{displayTenantName(session?.tenant?.name, 'Không gian riêng tư của bạn')}</Text>
         </View>
         <View style={styles.headerIcon}><Cloud color={colors.accent} size={24} /></View>
       </View>

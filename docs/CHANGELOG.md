@@ -6,6 +6,24 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-29-02 - Khac phuc triet de ten thuong hieu mobile chi hien GON
+
+- Thoi gian: 2026-09-29 11:15 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Branding | Auth/session | UI | Phat hanh | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source, static gate, APK test va UAT emulator; chua UAT tai khoan that tren thiet bi that.
+- Muc tieu: Khong de ten thuong hieu mobile bi rut gon thanh `GON` o bat ky man hinh nao, ke ca khi API hoac session cache tra ve alias legacy.
+- Pham vi: Mobile tenant display normalization, cau hinh branding, header Tin nhan, Danh ba, Cloud, Cai dat, login/launch/app lock; khong thay doi API, database hoac tenant ID.
+- File da thay doi: `mobile/src/utils/tenantDisplay.ts`, `mobile/src/utils/tenantDisplay.test.ts`, `mobile/src/services/authService.ts`, `mobile/src/services/authService.test.ts`, `mobile/src/constants/config.ts`, `mobile/src/screens/chat/ConversationListScreen.tsx`, `mobile/src/screens/contacts/ContactsScreen.tsx`, `mobile/src/screens/cloud/PersonalCloudScreen.tsx`, `mobile/src/screens/settings/SettingsScreen.tsx`, `mobile/src/screens/auth/LoginScreen.tsx`, `mobile/src/navigation/AppNavigator.tsx`, `mobile/src/components/AppLockScreen.tsx`, va muc nay trong `docs/CHANGELOG.md`.
+- Noi dung: Chuan hoa `GON`, `GonPlatform`, `GON Platform` va alias tu cac truong tenant display/company/brand thanh `GON Platform` tai auth boundary. Them lop bao ve khi render de session cache cu khong the hien lai `GON`; cho phep brand env tuy bien nhung tu dong sua alias legacy; header dai duoc phep xuong dong va ellipsis an toan tren man hinh hep.
+- Quyet dinh ky thuat: Chi thay doi gia tri hien thi, giu nguyen tenant ID va ten cong ty hop le; khong ghi de du lieu tenant tren backend. Logo accessibility label van dung ten day du.
+- Database/API/cau hinh: Khong migration, endpoint moi hoac thay doi hop dong API. `EXPO_PUBLIC_BRAND_NAME` va `EXPO_PUBLIC_BRAND_LABEL` van ho tro tuy bien, nhung gia tri legacy `GON`/`GonPlatform` bi fallback ve brand day du.
+- Kiem thu: `npm test -- --reporter=dot` dat `27 file, 102/102`; `npm run typecheck` exit `0`; `npm run lint` exit `0`; `npm run export` dat; `npx expo prebuild --platform android --no-install` dat; Gradle `:app:assembleRelease` dat `536 actionable tasks` (`61 executed`, `475 up-to-date`); `aapt` xac nhan package `vn.upgo.vichat`, version `1.0.26`, `versionCode=27`; `zipalign -c -P 16 -v 4` dat; `apksigner verify` xac nhan APK Signature Scheme v2.
+- Artifact: `D:\vichat-build\ViChat-1.0.26-brand-fix-20260929-r2-universal.apk`, SHA-256 `5964659E0E486F83C50C0F8E336C3D09BC984E3987B7F7FD89D9687EC4CEA1D3`; signer Android Debug, ban test universal.
+- Emulator: Cai thanh cong tren `emulator-5554`, activity `vn.upgo.vichat/.MainActivity` resume thanh cong. UI dump man hinh da dang nhap co `GON Platform`; UI dump sau khi clear data co `GON PLATFORM`; screenshot khong con ten thuong hieu bi cat.
+- Rui ro con lai: Chua dang nhap tai khoan that de UAT tenant khac, offline/reconnect, push background/killed, call va thiet bi iOS; APK dung debug keystore, chua phai artifact ky store.
+- Viec tiep theo: UAT voi tai khoan A/B tren thiet bi that, sau do build lai bang release keystore khi phat hanh store.
+- Commit/PR: Se cap nhat ma commit ngay sau khi commit source va docs.
+
 ## 2026-09-29-01 - Chot audit mobile va artifact 1.0.26
 
 - Thoi gian: 2026-09-29 09:35 (Asia/Saigon)

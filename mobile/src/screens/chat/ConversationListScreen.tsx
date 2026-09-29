@@ -16,6 +16,7 @@ import { MessageCircleMore } from 'lucide-react-native';
 import { isConversationMuted } from '../../utils/conversationNotifications';
 import { Conversation } from '../../types';
 import { accountIdForMember, identitiesOverlap } from '../../utils/identity';
+import { displayTenantName } from '../../utils/tenantDisplay';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Chats'> & { navigation: any };
 type FilterKey = 'all' | 'unread' | 'groups';
@@ -126,7 +127,7 @@ export function ConversationListScreen({ navigation }: Props) {
         <View style={styles.identity}>
           <Avatar name={session?.user.name} uri={session?.user.avatar} size={48} online={connection === 'connected'} />
           <View style={styles.identityText}>
-            <Text numberOfLines={1} ellipsizeMode="tail" style={styles.eyebrow}>{session?.tenant?.name || 'Không gian công ty'}</Text>
+            <Text numberOfLines={2} ellipsizeMode="tail" style={styles.eyebrow}>{displayTenantName(session?.tenant?.name, 'Không gian công ty')}</Text>
             <Text style={styles.title}>Tin nhắn</Text>
           </View>
         </View>

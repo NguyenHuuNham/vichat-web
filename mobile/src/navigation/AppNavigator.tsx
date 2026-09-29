@@ -16,6 +16,7 @@ import { LinkedDevicesScreen } from '../screens/settings/LinkedDevicesScreen';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { GonLogo } from '../components/GonLogo';
+import { config } from '../constants/config';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -24,7 +25,7 @@ function LaunchScreen() {
   return (
     <View style={styles.launch}>
       <View style={styles.mark}><GonLogo size={68} /></View>
-      <Text style={styles.brand}>GON PLATFORM</Text>
+      <Text style={styles.brand}>{config.brandLabel}</Text>
       <ActivityIndicator color={colors.accent} style={{ marginTop: 28 }} />
     </View>
   );

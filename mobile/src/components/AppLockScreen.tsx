@@ -8,6 +8,7 @@ import { useAppLockStore } from '../store/appLockStore';
 import { useAppStore } from '../store/appStore';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+import { config } from '../constants/config';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'delete'];
 
@@ -56,7 +57,7 @@ export function AppLockScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']}>
       <View style={styles.brandMark}><GonLogo size={52} /></View>
-      <Text style={styles.brand}>GON PLATFORM</Text>
+      <Text style={styles.brand}>{config.brandLabel}</Text>
       <View style={styles.lockIcon}><LockKeyhole color={colors.accent} size={25} /></View>
       <Text style={styles.title}>Mở khóa ViChat</Text>
       <Text style={styles.subtitle}>Nhập mã PIN 4 số để xem tin nhắn</Text>

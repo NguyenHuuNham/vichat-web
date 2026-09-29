@@ -1,5 +1,14 @@
 const env = (name: string, fallback: string) => String((globalThis as any)?.process?.env?.[name] || fallback).trim();
 
+function normalizeBrandValue(value: string, fallback: string) {
+  const candidate = value.replace(/\s+/g, ' ').trim();
+  const key = candidate.toLocaleLowerCase('en-US').replace(/[^a-z0-9]+/g, '');
+  return !candidate || key === 'gon' || key === 'gonplatform' ? fallback : candidate;
+}
+
+const brandName = normalizeBrandValue(env('EXPO_PUBLIC_BRAND_NAME', 'GON Platform'), 'GON Platform');
+const brandLabel = normalizeBrandValue(env('EXPO_PUBLIC_BRAND_LABEL', 'GON PLATFORM'), 'GON PLATFORM');
+
 export const config = {
   apiBase: env('EXPO_PUBLIC_CHATMGT_API_URL', 'https://chatmgt.gonplatform.com').replace(/\/+$/, ''),
   tenantId: env('EXPO_PUBLIC_CHAT_TENANT_ID', ''),
@@ -8,6 +17,8 @@ export const config = {
   tinodeSecure: env('EXPO_PUBLIC_TINODE_SECURE', 'true').toLowerCase() !== 'false',
   tinodeTransport: env('EXPO_PUBLIC_TINODE_TRANSPORT', 'ws'),
   appName: env('EXPO_PUBLIC_TINODE_APP_NAME', 'VICHAT-MOBILE/1.0'),
+  brandName,
+  brandLabel,
   mediaBase: env('EXPO_PUBLIC_TINODE_MEDIA_BASE', 'https://chat.gonplatform.com/tinode-media').replace(/\/+$/, ''),
   stickerBase: env('EXPO_PUBLIC_CHAT_WEB_URL', 'https://chat.gonplatform.com').replace(/\/+$/, ''),
   chatMediaStorage: env('EXPO_PUBLIC_CHAT_MEDIA_STORAGE', 's3').toLowerCase(),

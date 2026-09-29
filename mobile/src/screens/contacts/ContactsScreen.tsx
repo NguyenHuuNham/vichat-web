@@ -11,6 +11,7 @@ import { Avatar } from '../../components/Avatar';
 import { SearchField } from '../../components/SearchField';
 import { EmptyState } from '../../components/EmptyState';
 import { User } from '../../types';
+import { displayTenantName } from '../../utils/tenantDisplay';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Contacts'> & { navigation: any };
 
@@ -62,7 +63,7 @@ export function ContactsScreen({ navigation }: Props) {
       {showSearch ? <View style={styles.search}><SearchField value={query} onChangeText={setQuery} placeholder="Tên, phòng ban, chức vụ" /></View> : null}
 
       <View style={styles.summary}>
-        <View><Text style={styles.summaryTitle}>{contacts.length} đồng nghiệp</Text><Text style={styles.summaryHint}>{session?.tenant?.name || 'Công ty của bạn'} · nhân viên đang hoạt động</Text></View>
+        <View style={styles.summaryCopy}><Text style={styles.summaryTitle}>{contacts.length} đồng nghiệp</Text><Text numberOfLines={2} ellipsizeMode="tail" style={styles.summaryHint}>{displayTenantName(session?.tenant?.name, 'Công ty của bạn')} · nhân viên đang hoạt động</Text></View>
         <View style={styles.summaryStatus}><Check color={colors.online} size={16} /><Text style={styles.summaryStatusText}>Đồng bộ</Text></View>
       </View>
 
@@ -104,6 +105,7 @@ const styles = StyleSheet.create({
   groupButton: { backgroundColor: colors.accent, borderColor: colors.accent },
   search: { paddingHorizontal: 20, paddingBottom: 12 },
   summary: { marginHorizontal: 20, marginBottom: 10, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 17, backgroundColor: colors.accentWash, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  summaryCopy: { flex: 1, minWidth: 0, paddingRight: 10 },
   summaryTitle: { ...typography.bodyMedium, color: colors.ink },
   summaryHint: { ...typography.caption, color: colors.inkSoft, marginTop: 2 },
   summaryStatus: { flexDirection: 'row', alignItems: 'center', gap: 4 },
