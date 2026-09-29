@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-29-03 - Sua race font tren LaunchScreen mobile
+
+- Thoi gian: 2026-09-29 11:35 (Asia/Saigon)
+- Loai: Sua loi | Mobile | LaunchScreen | Branding | UI | Phat hanh | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source, build APK r3 va UAT emulator; chua UAT tai khoan that tren thiet bi that.
+- Muc tieu: Loai bo frame khoi dong chi hien `GON` khi font Be Vietnam Pro chua tai xong.
+- Pham vi: `mobile/src/navigation/AppNavigator.tsx` va muc nay trong `docs/CHANGELOG.md`; khong thay doi API, database hoac tenant ID.
+- Nguyen nhan: `LaunchScreen` dung font custom ngay trong luc `useFonts` dang loading; Android co the do text tam thoi khong day du. Khong phai loi du lieu tenant.
+- Noi dung: LaunchScreen dung font he thong an toan truoc khi custom font san sang, gioi han brand ve mot dong voi `adjustsFontSizeToFit`, tat font scaling he thong va chi ap dung Be Vietnam Pro sau khi font load xong.
+- Kiem thu: `npm test -- --reporter=dot` dat `27 file, 102/102`; `npm run typecheck` exit `0`; `npm run lint` exit `0`; `npm run export` dat; `npx expo prebuild --platform android --no-install` dat; Gradle `:app:assembleRelease` dat `536 actionable tasks` (`38 executed`, `498 up-to-date`); `aapt` xac nhan package `vn.upgo.vichat`, version `1.0.26`, `versionCode=27`; `zipalign -c -P 16 -v 4` exit `0`; `apksigner verify` xac nhan APK Signature Scheme v2.
+- Artifact: `D:\vichat-build\ViChat-1.0.26-brand-fix-20260929-r3-universal.apk`, SHA-256 `D9EE386CC7AA8B1F1B46FAB4B3F7031FEE051DFE37CDFE7BF25B92C27150BB07`; signer Android Debug, ban test universal.
+- Emulator: Cai lai va clear data tren `emulator-5554`. Frame native splash chi co logo; frame chuyen tiep khong con chu bi cat; sau khi React Native load, UI dump co `GON PLATFORM` day du va khong co node text `GON` doc lap.
+- Rui ro con lai: Chua dang nhap tai khoan that de UAT tenant khac, offline/reconnect, push background/killed, call va thiet bi iOS; APK dung debug keystore, chua phai artifact ky store.
+- Viec tiep theo: UAT voi tai khoan A/B tren thiet bi that, sau do build lai bang release keystore khi phat hanh store.
+- Commit/PR: Source commit `9e46f6bba781699c89e8f2a116c4cc4db64264aa`; docs follow-up commit se duoc tao ngay sau muc nay.
+
 ## 2026-09-29-02 - Khac phuc triet de ten thuong hieu mobile chi hien GON
 
 - Thoi gian: 2026-09-29 11:15 (Asia/Saigon)
