@@ -10,6 +10,7 @@ import { typography } from '../../theme/typography';
 import { Avatar } from '../../components/Avatar';
 import { PinSettingsModal } from '../../components/PinSettingsModal';
 import { useAppLockStore } from '../../store/appLockStore';
+import Constants from 'expo-constants';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Settings'> & { navigation: any };
 
@@ -52,7 +53,7 @@ export function SettingsScreen({ navigation }: Props) {
           <Text style={styles.dangerHint}>Đăng xuất khỏi tài khoản trên thiết bị này.</Text>
           <Pressable disabled={busy} onPress={confirmLogout} style={[styles.logout, busy && { opacity: 0.5 }]}><Text style={styles.logoutText}>{busy ? 'Đang đăng xuất...' : 'Đăng xuất'}</Text></Pressable>
         </View>
-        <Text style={styles.version}>ViChat Mobile 1.0.8 · Gon Platform</Text>
+        <Text style={styles.version}>ViChat Mobile {Constants.expoConfig?.version || '1.0.26'} · Gon Platform</Text>
       </ScrollView>
       <PinSettingsModal visible={pinSettingsOpen} onClose={() => setPinSettingsOpen(false)} />
     </SafeAreaView>

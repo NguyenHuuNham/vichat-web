@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Check, MessageSquarePlus, Search, UserRoundSearch, UsersRound, X } from 'lucide-react-native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -69,6 +69,11 @@ export function ContactsScreen({ navigation }: Props) {
       <SectionList
         sections={sections}
         keyExtractor={item => item.id}
+        initialNumToRender={12}
+        maxToRenderPerBatch={8}
+        updateCellsBatchingPeriod={50}
+        windowSize={7}
+        removeClippedSubviews={Platform.OS === 'android'}
         renderSectionHeader={({ section }) => <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{section.title}</Text><View style={styles.sectionLine} /></View>}
         renderItem={({ item }) => (
           <Pressable onPress={() => navigation.navigate('UserProfile', { user: item })} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>

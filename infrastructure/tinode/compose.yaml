@@ -21,7 +21,13 @@ services:
       - tinode_postgres_data:/var/lib/postgresql/data
 
   chatapi:
-    image: tinode/tinode-postgres:0.25.3@sha256:0df104ad2a96438b7581f71168518ffa103d0c9a5ec6ce2db6ef8649bd9e0ca5
+    image: vichat/tinode-postgres:0.25.3-silent-push
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TINODE_VERSION: 0.25.3
+        TINODE_BASE_IMAGE: tinode/tinode-postgres:0.25.3@sha256:0df104ad2a96438b7581f71168518ffa103d0c9a5ec6ce2db6ef8649bd9e0ca5
     restart: unless-stopped
     depends_on:
       postgres:
@@ -39,6 +45,14 @@ services:
       ACC_GC_ENABLED: "true"
       DEBUG_EMAIL_VERIFICATION_CODE: ""
       FS_CORS_ORIGINS: '${TINODE_CORS_ORIGINS:-["http://127.0.0.1:5173"]}'
+      TNPG_PUSH_ENABLED: "${TNPG_PUSH_ENABLED:-false}"
+      TNPG_AUTH_TOKEN: "${TNPG_AUTH_TOKEN:-}"
+      TNPG_ORG: "${TNPG_ORG:-}"
+      FCM_PUSH_ENABLED: "${FCM_PUSH_ENABLED:-false}"
+      FCM_PROJECT_ID: "${FCM_PROJECT_ID:-}"
+      FCM_CRED_FILE: "${FCM_CRED_FILE:-/data/runtime/firebase-service-account.json}"
+      FCM_INCLUDE_ANDROID_NOTIFICATION: "${FCM_INCLUDE_ANDROID_NOTIFICATION:-false}"
+      FCM_INCLUDE_IOS_NOTIFICATION: "${FCM_INCLUDE_IOS_NOTIFICATION:-false}"
     volumes:
       - ./config.template:/opt/tinode/config.template:ro
       - ./songhong-data.json:/data/songhong-data.json:ro

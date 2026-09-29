@@ -21,6 +21,14 @@ import {
   isIncomingCallNotificationFresh,
 } from './src/utils/callNotificationPolicy';
 
+async function syncCurrentPushRegistration(retry = false) {
+  const current = useAppStore.getState();
+  if (current.status === 'signed_out' || !current.session?.user) return null;
+  const registration = await registerPushNotifications(current.session.user, { retry });
+  if (registration) tinodeClient.setDeviceToken(registration.token);
+  return registration;
+}
+
 export default function App() {
   const scheme = useColorScheme();
   const boot = useAppStore(state => state.boot);
@@ -32,6 +40,8 @@ export default function App() {
   const appLocked = useAppLockStore(state => state.locked);
   const lockApp = useAppLockStore(state => state.lock);
   const backgroundAt = useRef<number | null>(null);
+  const appStateRef = useRef(AppState.currentState);
+  const backgroundTransition = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     // Install the foreground handler before Tinode can receive the first message.
@@ -39,25 +49,36 @@ export default function App() {
     void boot();
     void initializeAppLock();
     const appState = AppState.addEventListener('change', state => {
+      appStateRef.current = state;
       if (state === 'background') {
         backgroundAt.current = Date.now();
+        if (!backgroundTransition.current) {
+          const transition = (async () => {
+            // Finish native token registration before closing Tinode. Otherwise
+            // Android can suspend the JS runtime before FCM has a token.
+            await syncCurrentPushRegistration(true);
+            await tinodeClient.suspendForBackground();
+          })().catch(() => {});
+          backgroundTransition.current = transition;
+          void transition.then(() => {
+            if (backgroundTransition.current === transition) backgroundTransition.current = null;
+          });
+        }
         return;
       }
       if (state === 'active') {
         const wasExternalActivity = consumeTrustedExternalActivity();
         if (!wasExternalActivity && backgroundAt.current) lockApp();
         backgroundAt.current = null;
-        void reconnect();
-        const current = useAppStore.getState();
-        if (current.status === 'ready' && current.session?.user) {
-          void registerPushNotifications(current.session.user, { retry: true }).then(registration => {
-            if (registration) tinodeClient.setDeviceToken(registration.token);
-          });
-        }
+        void (async () => {
+          await backgroundTransition.current?.catch(() => {});
+          await syncCurrentPushRegistration(true);
+          await reconnect();
+        })().catch(() => {});
       }
     });
     const network = NetInfo.addEventListener(state => {
-      if (state.isConnected) void reconnect();
+      if (state.isConnected && appStateRef.current === 'active') void reconnect();
     });
     return () => {
       appState.remove();
@@ -109,21 +130,23 @@ export default function App() {
     void subscribeToPushTokenChanges(registration => tinodeClient.setDeviceToken(registration.token)).then(stop => { stopTokenListener = stop; });
     void subscribeToIncomingCallNotificationResponses(routeNotificationCall).then(stop => { stopCallResponseListener = stop; });
     const registerCurrentUser = (retry = false) => {
-      const current = useAppStore.getState();
-      if (current.status !== 'ready' || !current.session?.user) return;
-      void registerPushNotifications(current.session.user, { retry }).then(registration => {
-        if (registration) tinodeClient.setDeviceToken(registration.token);
-      });
+      void syncCurrentPushRegistration(retry);
     };
+    const unsubscribeConnection = tinodeClient.onEvent(event => {
+      if (event.type === 'connection' && event.state === 'connected' && tinodeClient.connected) registerCurrentUser(true);
+    });
     const unsubscribe = useAppStore.subscribe(state => {
       if (state.status === 'signed_out') pendingCalls.clear();
-      if (state.status === 'ready' && state.session?.user) void registerCurrentUser();
+      if (state.status !== 'booting' && state.status !== 'signed_out' && state.session?.user) {
+        void registerCurrentUser();
+      }
       if (state.status === 'ready') void flushPendingCalls();
     });
     registerCurrentUser();
     return () => {
       pendingCalls.clear();
       unsubscribe();
+      unsubscribeConnection();
       stopTokenListener();
       stopCallResponseListener();
     };

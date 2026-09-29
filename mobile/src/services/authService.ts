@@ -1,49 +1,105 @@
-import { apiRequest, setAccessToken } from './apiClient';
+import { apiRequest, getAccessToken, setAccessToken } from './apiClient';
 import { config } from '../constants/config';
 import { LinkedDevice, Session, TinodeAuth, User } from '../types';
 import { storageService } from './storageService';
 
-function normalizeUser(account: any): User {
+function firstString(...values: unknown[]) {
+  return values.map(value => String(value ?? '').trim()).find(Boolean) || '';
+}
+
+function isTinodeUid(value: unknown) {
+  return /^usr[a-z0-9_-]+$/i.test(String(value || '').trim());
+}
+
+export function normalizeUser(account: any, tenantId = ''): User {
+  const tinodeUid = firstString(
+    account?.tinodeUid,
+    account?.tinode_uid,
+    account?.tinode?.uid,
+    isTinodeUid(account?.uid) ? account.uid : '',
+  );
+  const id = firstString(account?.id, account?.userId, account?.user_id);
   return {
     ...account,
-    id: String(account?.id || account?.user_id || account?.uid || ''),
-    uid: String(account?.tinode_uid || account?.tinodeUid || account?.uid || account?.id || ''),
-    username: String(account?.username || account?.user_name || account?.login || ''),
-    name: String(account?.name || account?.full_name || account?.display_name || account?.username || 'Nhân viên'),
-    email: String(account?.email || ''),
-    avatar: String(account?.avatar || account?.photo || ''),
-    role: String(account?.role || 'member'),
-    department: String(account?.department || ''),
-    title: String(account?.title || ''),
+    id,
+    // Account IDs are valid only for Chatmgt permission/membership calls.
+    uid: tinodeUid,
+    tinodeUid,
+    username: firstString(account?.username, account?.user_name, account?.login),
+    name: firstString(account?.name, account?.fullName, account?.full_name, account?.displayName, account?.display_name, account?.username, 'Nhan vien'),
+    email: firstString(account?.email),
+    avatar: firstString(account?.avatar, account?.photo),
+    role: firstString(account?.role, 'member'),
+    department: firstString(account?.department),
+    title: firstString(account?.title),
     active: account?.active ?? account?.is_active ?? true,
-    tenantId: String(account?.tenantId || account?.tenant_id || config.tenantId),
+    tenantId: firstString(account?.tenantId, account?.tenant_id, account?.tenant?.id, tenantId),
   };
 }
 
-function normalizeSession(payload: any): Session {
-  const user = normalizeUser(payload?.user || payload?.current_user || payload);
+function tenantFromPayload(payload: any, userPayload: any, fallback?: Session | null) {
+  const id = firstString(
+    payload?.tenant?.id,
+    payload?.tenantId,
+    payload?.tenant_id,
+    payload?.current_tenant_id,
+    userPayload?.tenant?.id,
+    userPayload?.tenantId,
+    userPayload?.tenant_id,
+  );
+  const fallbackMatches = Boolean(id && fallback?.tenant?.id && id === fallback.tenant.id);
+  const name = firstString(
+    payload?.tenant?.name,
+    payload?.tenantName,
+    payload?.tenant_name,
+    userPayload?.tenant?.name,
+    userPayload?.tenantName,
+    userPayload?.tenant_name,
+    fallbackMatches ? fallback?.tenant?.name : '',
+  );
+  return id ? { id, name, active: payload?.tenant?.active ?? userPayload?.tenant?.active } : null;
+}
+
+export function normalizeAuthPayload(payload: any, fallback?: Session | null): Session {
+  const rawUser = payload?.user || payload?.current_user || payload || {};
+  const tenant = tenantFromPayload(payload, rawUser, fallback);
+  const sameTenant = Boolean(tenant?.id && fallback?.tenant?.id === tenant.id);
+  const user = normalizeUser(
+    sameTenant ? { ...fallback?.user, ...rawUser } : rawUser,
+    tenant?.id || '',
+  );
+  const tinodeAuth = normalizeTinodeAuth(payload?.tinode_auth || payload?.tinode);
+  const linkedDevices = linkedDevicesFromPayload(payload) || (sameTenant ? fallback?.linkedDevices : null) || [];
   return {
     user,
-    tenant: payload?.tenant ? {
-      id: String(payload.tenant.id || user.tenantId),
-      name: String(payload.tenant.name || ''),
-      active: payload.tenant.active,
-    } : null,
+    tenant,
     connection: String(payload?.connection || 'management'),
-    tinodeAuth: normalizeTinodeAuth(payload?.tinode_auth || payload?.tinode),
-    linkedDevices: normalizeLinkedDevices(payload?.linked_devices || payload?.linkedDevices || payload?.sessions),
+    tinodeAuth,
+    linkedDevices,
+    generation: Number(fallback?.generation || 0),
+    hydratedAt: Date.now(),
   };
+}
+
+export function validateSession(session: Session, requireTinode = false) {
+  if (!session.user.id || !session.tenant?.id || !session.tenant.name) {
+    throw new Error('Phien dang nhap thieu Account hoac cong ty hien tai. Hay dang nhap lai.');
+  }
+  if (requireTinode && !session.tinodeAuth?.uid && !session.user.tinodeUid) {
+    throw new Error('Phien realtime chua co dinh danh Tinode hop le. Hay thu dang nhap lai.');
+  }
+  return session;
 }
 
 function normalizeLinkedDevices(value: any): LinkedDevice[] {
   if (!Array.isArray(value)) return [];
   return value.map((item: any, index: number) => ({
-    id: String(item?.id || item?.jti || `linked-device-${index}`),
-    kind: ['web', 'mobile', 'tablet', 'desktop'].includes(String(item?.kind || item?.type || item?.client || '').toLowerCase())
-      ? String(item?.kind || item?.type || item?.client).toLowerCase() as LinkedDevice['kind']
+    id: firstString(item?.id, item?.jti, `linked-device-${index}`),
+    kind: ['web', 'mobile', 'tablet', 'desktop'].includes(firstString(item?.kind, item?.type, item?.client).toLowerCase())
+      ? firstString(item?.kind, item?.type, item?.client).toLowerCase() as LinkedDevice['kind']
       : 'unknown',
-    name: String(item?.name || item?.device_name || item?.device || item?.user_agent || 'Thiết bị không xác định'),
-    platform: String(item?.platform || item?.os || item?.client || ''),
+    name: firstString(item?.name, item?.device_name, item?.device, item?.user_agent, 'Unknown device'),
+    platform: firstString(item?.platform, item?.os, item?.client),
     createdAt: item?.created_at || item?.createdAt,
     lastActiveAt: item?.last_active_at || item?.lastActiveAt || item?.updated_at || item?.updatedAt || item?.created_at || item?.createdAt,
     current: Boolean(item?.current || item?.is_current),
@@ -58,14 +114,16 @@ function linkedDevicesFromPayload(payload: any): LinkedDevice[] | null {
 }
 
 function normalizeTinodeAuth(value: any): TinodeAuth | null {
-  if (!value?.token) return null;
+  if (!value?.token || !value?.uid) return null;
   return {
     token: String(value.token),
-    uid: String(value.uid || ''),
+    uid: String(value.uid),
     username: String(value.username || ''),
     expires: value.expires,
   };
 }
+
+let tinodeRefreshRequest: { accessToken: string; promise: Promise<TinodeAuth> } | null = null;
 
 export const authService = {
   async restoreToken() {
@@ -82,18 +140,22 @@ export const authService = {
       body: JSON.stringify({ identity: identity.trim(), password }),
     });
     if (!payload?.access_token) {
-      throw new Error('Chatmgt chưa bật phiên Bearer dành cho ứng dụng mobile.');
+      throw new Error('Chatmgt chua bat phien Bearer danh cho ung dung mobile.');
     }
     setAccessToken(payload.access_token);
     await storageService.saveAccessToken(payload.access_token);
     await storageService.saveSessionStartedAt(new Date().toISOString());
-    const session = normalizeSession(payload);
+    const session = validateSession(normalizeAuthPayload(payload));
     await storageService.savePublicSession(session);
     return session;
   },
 
   async currentSession() {
-    return normalizeSession(await apiRequest('/api/v1/auth/me'));
+    const cached = await storageService.loadPublicSession();
+    return validateSession(normalizeAuthPayload(
+      await apiRequest('/api/v1/auth/me', { timeoutMs: 12000 }),
+      cached,
+    ));
   },
 
   async listLinkedDevices() {
@@ -101,7 +163,7 @@ export const authService = {
       const payload = await apiRequest<any>('/api/v1/auth/devices');
       const devices = linkedDevicesFromPayload(payload);
       if (devices) return devices;
-      throw new Error('Máy chủ chưa trả về dữ liệu phiên đăng nhập.');
+      throw new Error('May chu chua tra ve du lieu phien dang nhap.');
     } catch (error) {
       // Older Chatmgt releases expose the same snapshot through /auth/me.
       let fallbackDevices: LinkedDevice[] | null = null;
@@ -115,17 +177,28 @@ export const authService = {
   },
 
   async refreshTinodeToken() {
-    const payload = await apiRequest<any>('/api/v1/auth/tinode-token', {
-      method: 'POST',
-      body: JSON.stringify({}),
+    const requestAccessToken = getAccessToken();
+    if (tinodeRefreshRequest?.accessToken === requestAccessToken) return tinodeRefreshRequest.promise;
+    const promise = (async () => {
+      const payload = await apiRequest<any>('/api/v1/auth/tinode-token', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      // A logout or a newer login may have replaced the bearer while this
+      // request was in flight. Do not let the stale response overwrite it.
+      if (getAccessToken() !== requestAccessToken) throw new Error('Phien dang nhap da thay doi trong luc lam moi Tinode.');
+      if (payload?.access_token) {
+        setAccessToken(payload.access_token);
+        await storageService.saveAccessToken(payload.access_token);
+      }
+      const auth = normalizeTinodeAuth(payload?.tinode_auth || payload?.tinode);
+      if (!auth) throw new Error('Chatmgt khong tra ve Tinode token hop le.');
+      return auth;
+    })().finally(() => {
+      if (tinodeRefreshRequest?.promise === promise) tinodeRefreshRequest = null;
     });
-    if (payload?.access_token) {
-      setAccessToken(payload.access_token);
-      await storageService.saveAccessToken(payload.access_token);
-    }
-    const auth = normalizeTinodeAuth(payload?.tinode_auth || payload?.tinode);
-    if (!auth) throw new Error('Chatmgt không trả về Tinode token hợp lệ.');
-    return auth;
+    tinodeRefreshRequest = { accessToken: requestAccessToken, promise };
+    return promise;
   },
 
   async logout() {
@@ -133,6 +206,7 @@ export const authService = {
       await apiRequest('/api/v1/auth/logout', { method: 'POST' });
     } finally {
       setAccessToken('');
+      tinodeRefreshRequest = null;
       await storageService.clear();
     }
   },
@@ -167,5 +241,3 @@ export const authService = {
     return normalizeUser(payload?.user || payload);
   },
 };
-
-export { normalizeUser };

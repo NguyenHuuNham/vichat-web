@@ -55,6 +55,24 @@ export function normalizeCallCandidate(payload: unknown): Record<string, unknown
   return record;
 }
 
+export function normalizeIceServers(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.map(server => {
+    if (!server || typeof server !== 'object') return null;
+    const source = server as Record<string, unknown>;
+    const urls = Array.isArray(source.urls) ? source.urls : [source.urls];
+    const validUrls = urls
+      .filter(url => typeof url === 'string')
+      .map(url => String(url).trim())
+      .filter(url => /^(?:stun|turn|turns):[^\s]+$/i.test(url));
+    if (!validUrls.length) return null;
+    return {
+      ...source,
+      urls: Array.isArray(source.urls) ? validUrls : validUrls[0],
+    };
+  }).filter(Boolean);
+}
+
 export function extractCallSequence(ctrl: any, draft: any = null) {
   for (const value of [ctrl?.params?.seq, draft?.seq]) {
     const sequence = Number(value);

@@ -161,6 +161,83 @@ ensure_secret AUTH_PASSWORD_SALT base64 32
 ensure_secret SESSION_COOKIE_SALT base64 48
 ensure_secret CHAT_AUTH_JWT_SECRET base64 48
 
+validate_push_config() {
+  local fcm_enabled tnpg_enabled android_notification ios_notification fcm_project fcm_cred_file
+  local tnpg_token tnpg_org credential_relative credential_host
+
+  fcm_enabled="$(env_value FCM_PUSH_ENABLED)"
+  fcm_enabled="${fcm_enabled:-false}"
+  fcm_enabled="${fcm_enabled,,}"
+  tnpg_enabled="$(env_value TNPG_PUSH_ENABLED)"
+  tnpg_enabled="${tnpg_enabled:-false}"
+  tnpg_enabled="${tnpg_enabled,,}"
+  android_notification="$(env_value FCM_INCLUDE_ANDROID_NOTIFICATION)"
+  android_notification="${android_notification:-true}"
+  android_notification="${android_notification,,}"
+  ios_notification="$(env_value FCM_INCLUDE_IOS_NOTIFICATION)"
+  ios_notification="${ios_notification:-true}"
+  ios_notification="${ios_notification,,}"
+
+  [[ "$fcm_enabled" == "true" || "$fcm_enabled" == "false" ]] || {
+    echo "FCM_PUSH_ENABLED must be true or false." >&2
+    exit 1
+  }
+  [[ "$tnpg_enabled" == "true" || "$tnpg_enabled" == "false" ]] || {
+    echo "TNPG_PUSH_ENABLED must be true or false." >&2
+    exit 1
+  }
+  [[ "$android_notification" == "true" || "$android_notification" == "false" ]] || {
+    echo "FCM_INCLUDE_ANDROID_NOTIFICATION must be true or false." >&2
+    exit 1
+  }
+  [[ "$ios_notification" == "true" || "$ios_notification" == "false" ]] || {
+    echo "FCM_INCLUDE_IOS_NOTIFICATION must be true or false." >&2
+    exit 1
+  }
+  set_env FCM_PUSH_ENABLED "$fcm_enabled"
+  set_env TNPG_PUSH_ENABLED "$tnpg_enabled"
+  set_env FCM_INCLUDE_ANDROID_NOTIFICATION "$android_notification"
+  set_env FCM_INCLUDE_IOS_NOTIFICATION "$ios_notification"
+
+  if [[ "$fcm_enabled" == "true" ]]; then
+    fcm_project="$(env_value FCM_PROJECT_ID)"
+    fcm_cred_file="$(env_value FCM_CRED_FILE)"
+    fcm_cred_file="${fcm_cred_file:-/data/runtime/firebase-service-account.json}"
+    ! is_placeholder "$fcm_project" || {
+      echo "FCM_PROJECT_ID must be configured when FCM_PUSH_ENABLED=true." >&2
+      exit 1
+    }
+    [[ "$fcm_cred_file" == /data/runtime/* ]] || {
+      echo "FCM_CRED_FILE must stay under /data/runtime when FCM is enabled." >&2
+      exit 1
+    }
+    credential_relative="${fcm_cred_file#/data/runtime/}"
+    [[ -n "$credential_relative" && "$credential_relative" != .. && "$credential_relative" != ../* && "$credential_relative" != */../* && "$credential_relative" != */.. ]] || {
+      echo "FCM_CRED_FILE contains an invalid runtime path." >&2
+      exit 1
+    }
+    credential_host="$RUNTIME_DIR/$credential_relative"
+    [[ -s "$credential_host" ]] || {
+      echo "FCM_CRED_FILE does not exist in the production runtime directory." >&2
+      exit 1
+    }
+    set_env FCM_CRED_FILE "$fcm_cred_file"
+  fi
+
+  if [[ "$tnpg_enabled" == "true" ]]; then
+    tnpg_token="$(env_value TNPG_AUTH_TOKEN)"
+    tnpg_org="$(env_value TNPG_ORG)"
+    ! is_placeholder "$tnpg_token" || {
+      echo "TNPG_AUTH_TOKEN must be configured when TNPG_PUSH_ENABLED=true." >&2
+      exit 1
+    }
+    ! is_placeholder "$tnpg_org" || {
+      echo "TNPG_ORG must be configured when TNPG_PUSH_ENABLED=true." >&2
+      exit 1
+    }
+  fi
+}
+
 chat_media_storage="$(env_value CHAT_MEDIA_STORAGE)"
 chat_media_storage="${chat_media_storage:-tinode}"
 chat_media_storage="${chat_media_storage,,}"
@@ -399,9 +476,10 @@ fi
 
 mkdir -p "$RUNTIME_DIR" "$BACKUP_DIR"
 chmod 700 "$RUNTIME_DIR" "$BACKUP_DIR"
+validate_push_config
 render_ice_servers
 
-compose build chatmgt tinode-account-bridge chat
+compose build chatapi chatmgt tinode-account-bridge chat
 if [[ "$chat_media_storage" == "s3" ]]; then
   compose run --rm --no-deps chatmgt python scripts/verify_chat_media_storage.py
 fi

@@ -1,5 +1,5 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Copy, Download, Info, Pencil, Reply, RotateCcw, Share2, X } from 'lucide-react-native';
+import { Copy, Download, Info, Pencil, Pin, Reply, RotateCcw, Share2, X } from 'lucide-react-native';
 import { ChatMessage } from '../types';
 import { RecallMode } from '../types';
 import { canEditMessage, canInteractWithMessage, canRecallMessage } from '../utils/messagePolicy';
@@ -18,10 +18,12 @@ interface Props {
   onDetails: (message: ChatMessage) => void;
   onReaction: (message: ChatMessage, emoji: string) => void;
   onEdit: (message: ChatMessage) => void;
+  canPin?: boolean;
+  onPin?: (message: ChatMessage) => void;
   onRecall: (message: ChatMessage, mode: RecallMode) => void;
 }
 
-export function MessageActionSheet({ message, onClose, onReply, onCopy, onShare, onDownload, onDetails, onReaction, onEdit, onRecall }: Props) {
+export function MessageActionSheet({ message, onClose, onReply, onCopy, onShare, onDownload, onDetails, onReaction, onEdit, canPin = false, onPin, onRecall }: Props) {
   if (!message || !canInteractWithMessage(message)) return null;
   const actionable = true;
   const hasAttachment = Boolean(message.image || message.file);
@@ -40,6 +42,7 @@ export function MessageActionSheet({ message, onClose, onReply, onCopy, onShare,
             {message.sender === 'outgoing' && canEditMessage(message) ? <Action icon={Pencil} label="Sửa tin nhắn" onPress={() => run(() => onEdit(message))} /> : null}
             {hasAttachment ? <Action icon={Download} label={message.image ? 'Mở / lưu hình ảnh' : 'Mở / tải tệp'} onPress={() => run(() => onDownload(message))} /> : null}
             {actionable ? <Action icon={Share2} label="Chia sẻ" onPress={() => run(() => onShare(message))} /> : null}
+            {canPin && onPin && message.type !== 'system' ? <Action icon={Pin} label={message.pinned ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn'} onPress={() => run(() => onPin(message))} /> : null}
             <Action icon={Info} label="Xem chi tiết" onPress={() => run(() => onDetails(message))} />
             {message.sender === 'outgoing' && canRecallMessage(message) ? <Action icon={RotateCcw} label="Thu hồi tin nhắn" danger onPress={() => run(() => onRecall(message, 'all'))} /> : null}
           </View>

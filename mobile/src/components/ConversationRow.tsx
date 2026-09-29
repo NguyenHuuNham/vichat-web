@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { ChevronRight, UsersRound, Bot } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Conversation } from '../types';
@@ -6,7 +7,7 @@ import { typography } from '../theme/typography';
 import { formatConversationTime } from '../utils/timeFormatting';
 import { Avatar } from './Avatar';
 
-export function ConversationRow({ conversation, onPress, onLongPress }: { conversation: Conversation; onPress: () => void; onLongPress?: () => void }) {
+export const ConversationRow = memo(function ConversationRow({ conversation, onPress, onLongPress }: { conversation: Conversation; onPress: () => void; onLongPress?: () => void }) {
   return (
     <Pressable onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
       <Avatar name={conversation.name} uri={conversation.avatarUrl} size={52} rounded={!conversation.isGroup} />
@@ -25,7 +26,7 @@ export function ConversationRow({ conversation, onPress, onLongPress }: { conver
       </View>
     </Pressable>
   );
-}
+}, (previous, next) => previous.conversation === next.conversation);
 
 const styles = StyleSheet.create({
   row: { minHeight: 88, marginBottom: 12, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 13, borderRadius: 20, backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.line, ...shadow },

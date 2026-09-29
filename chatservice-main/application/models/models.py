@@ -142,6 +142,9 @@ class Conversation(CommonModel):
     # Dedicated key used by the partial unique index for direct conversations.
     # The JSON property remains readable for older rows during migration.
     direct_key = db.Column(String(255), index=True)
+    # Mobile group creation retries reuse this tenant-scoped key. The partial
+    # unique index makes the create step safe when two requests race.
+    creation_request_id = db.Column(String(128), index=True)
 
 class ConversationParticipant(CommonModel):
     __tablename__ = "conversation_participant"

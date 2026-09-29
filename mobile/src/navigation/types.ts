@@ -3,6 +3,7 @@ import { Conversation, User, WorkspaceItem } from '../types';
 export type RootStackParamList = {
   Main: undefined;
   ChatDetail: { conversationId: string };
+  GroupInfo: { conversationId: string };
   NewGroup: undefined;
   UserProfile: { user: User };
   WorkspaceDetail: { item: WorkspaceItem };

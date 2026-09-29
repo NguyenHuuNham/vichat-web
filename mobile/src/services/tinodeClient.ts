@@ -20,13 +20,23 @@ import { formatMessageTime } from '../utils/timeFormatting';
 import { mapTinodeDeliveryStatus, ReceiptCursor } from '../utils/tinodeState';
 import { normalizeMediaUrl } from '../utils/mediaUrl';
 import { shouldRetryProtectedMedia } from '../utils/mediaRetryPolicy';
-import { publishCallInvite } from '../utils/callSignaling';
+import { normalizeIceServers, publishCallInvite } from '../utils/callSignaling';
+import {
+  POLL_EVENT_PREFIX,
+  applyPollEvent,
+  normalizePoll,
+  normalizePollEvent,
+} from '../utils/poll';
 import {
   isChatMediaReference,
   resolveChatMediaDownloadUrl,
   shouldFallbackToTinodeMedia,
   uploadChatMedia,
 } from './chatMediaService';
+import { identitiesOverlap } from '../utils/identity';
+import { isOwnTinodeMessage, isOwnMessageOrigin, resolveTinodeMessageOrigin, CurrentIdentity } from '../utils/messageOrigin';
+import { normalizeGroupSettings } from '../utils/groupSettings';
+import { publishSequence } from '../utils/tinodePublish';
 
 export { normalizeMediaUrl } from '../utils/mediaUrl';
 
@@ -42,7 +52,26 @@ export const CALL_SIGNAL_EVENTS = Object.freeze({
 
 const CENTRAL_MESSAGE_TEXT_LIMIT = 120 * 1024;
 const STICKER_HEAD = 'x-vichat-sticker';
+const POLL_HEAD = 'x-vichat-poll';
 const STICKER_MAX_BYTES = 2 * 1024 * 1024;
+const TINODE_REQUEST_TIMEOUT_MS = 15_000;
+const INITIAL_HISTORY_LIMIT = 0;
+const OPEN_HISTORY_LIMIT = 30;
+const HISTORY_PAGE_LIMIT = 40;
+const BACKGROUND_HISTORY_LIMIT = 20;
+
+function withTimeout<T>(operation: Promise<T>, timeoutMs: number, message: string) {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    Promise.resolve(operation).then(value => {
+      clearTimeout(timer);
+      resolve(value);
+    }, error => {
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+}
 
 function callEntity(content: any) {
   return content?.ent?.find?.((entity: any) => entity?.tp === 'VC')?.data || null;
@@ -103,11 +132,18 @@ async function loadTinodeSdk() {
   TinodeConstructor = sdk.Tinode;
   Drafty = sdk.Drafty;
   if (typeof TinodeConstructor !== 'function') {
-    throw new Error('Tinode SDK khong san sang tren thiet bi nay.');
+    throw new Error('Tinode SDK không sẵn sàng trên thiết bị này.');
   }
 }
 
 type Listener = (event: TinodeEvent) => void;
+type TopicOptions = {
+  emitSnapshot?: boolean;
+  newerOnly?: boolean;
+  notifyMissed?: boolean;
+  generation?: number;
+  signal?: AbortSignal;
+};
 export type TinodeEvent =
   | { type: 'connection'; state: 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error'; error?: unknown }
   | { type: 'conversation'; conversation: Conversation }
@@ -210,32 +246,105 @@ function parseStickerMetadata(head: any = {}) {
   }
 }
 
+function parsePollMetadata(head: any = {}) {
+  const raw = head?.[POLL_HEAD];
+  if (!raw) return null;
+  try {
+    return normalizePoll(typeof raw === 'string' ? JSON.parse(raw) : raw);
+  } catch {
+    return null;
+  }
+}
+
+function parseMentionMetadata(head: any = {}) {
+  const raw = head?.['x-mentions'];
+  if (!raw) return [];
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return Array.isArray(parsed)
+      ? parsed.filter(item => item && typeof item === 'object' && !Array.isArray(item)).slice(0, 50)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 function parseEvent(content: string, prefix: string) {
   if (!content.startsWith(prefix)) return null;
   try { return JSON.parse(content.slice(prefix.length)); } catch { return null; }
 }
 
+function groupSettingsFromTopic(topic: any) {
+  if (!topic?.isGroupType?.() && !String(topic?.name || '').startsWith('grp')) return null;
+  return topic.public?.vichat?.groupSettings
+    || topic.public?.vichat?.group_settings
+    || topic.public?.groupSettings
+    || topic.public?.group_settings
+    || null;
+}
+
 function formatSystemEvent(event: any, client: any) {
+  const actorId = String(event?.actorId || '').trim();
+  const viewerId = String(client?.getCurrentUserID?.() || '').trim();
+  const actorName = String(event?.actorName || actorId || 'Một thành viên');
+  const targets = Array.isArray(event?.targets) ? event.targets : [];
+  const targetNames = targets.map((target: any) => String(target?.name || target?.id || 'thành viên')).filter(Boolean);
+  const targetIsViewer = targets.some((target: any) => client?.isMe?.(String(target?.id || target?.uid || '')));
+  const actorText = actorId && client?.isMe?.(actorId) ? 'Bạn' : actorName;
+  const targetText = targetNames.join(', ') || 'thành viên';
+
+  if (event?.action === 'member_added') {
+    if (actorId === viewerId) return `Bạn đã thêm ${targetText} vào nhóm`;
+    if (targetIsViewer) return `${actorName} đã thêm bạn vào nhóm`;
+    return `${actorName} đã thêm ${targetText} vào nhóm`;
+  }
+  if (event?.action === 'member_approved') {
+    if (actorId === viewerId) return `Bạn đã duyệt ${targetText} vào nhóm`;
+    if (targetIsViewer) return `${actorName} đã duyệt bạn vào nhóm`;
+    return `${actorName} đã duyệt ${targetText} vào nhóm`;
+  }
+  if (event?.action === 'member_pending') return `${actorName} đã gửi yêu cầu thêm ${targetText} vào nhóm`;
+  if (event?.action === 'member_rejected') return `${actorName} đã từ chối ${targetText}`;
+  if (event?.action === 'group_role_changed') {
+    const role = String(event.role || event.groupRole || '').toUpperCase();
+    return role === 'ADMIN'
+      ? `${actorText} đã bổ nhiệm ${targetText} làm phó nhóm`
+      : `${actorText} đã thu hồi quyền phó nhóm của ${targetText}`;
+  }
   if (event?.action === 'member_left') {
-    const actor = event.actorId && client.isMe?.(event.actorId)
-      ? 'Bạn'
-      : String(event.actorName || event.actorId || 'Một thành viên');
-    const leaveText = actor === 'Bạn' ? 'Bạn đã rời khỏi nhóm' : `${actor} đã rời khỏi nhóm`;
+    const leaveText = actorText === 'Bạn' ? 'Bạn đã rời khỏi nhóm' : `${actorName} đã rời khỏi nhóm`;
     const replacement = String(event.replacementName || '').trim();
     return replacement ? `${leaveText}. ${replacement} đã trở thành trưởng nhóm mới` : leaveText;
   }
-  return String(event?.text || event?.action || 'Hoạt động hệ thống');
+  if (event?.action === 'member_removed') {
+    return targetIsViewer ? `${actorName} đã xóa bạn khỏi nhóm` : `${actorName} đã xóa ${targetText} khỏi nhóm`;
+  }
+  if (event?.action === 'group_created') return actorId === viewerId ? 'Bạn đã tạo nhóm' : `${actorName} đã tạo nhóm`;
+  if (event?.action === 'message_pinned' || event?.action === 'message_unpinned') {
+    const actionText = event.action === 'message_pinned' ? 'đã ghim tin nhắn' : 'đã bỏ ghim tin nhắn';
+    const preview = String(event.messagePreview || '').trim();
+    return preview ? `${actorText} ${actionText}: “${preview}”` : `${actorText} ${actionText}`;
+  }
+  if (event?.action === 'group_name_changed') {
+    const name = String(event.newName || event.name || '').trim();
+    return name ? `${actorText} đổi tên nhóm thành “${name}”` : `${actorText} đổi tên nhóm`;
+  }
+  if (event?.action === 'group_avatar_changed') return `${actorText} đổi ảnh đại diện nhóm`;
+  if (event?.action === 'group_settings_changed') return `${actorText} cập nhật quyền của nhóm`;
+  if (event?.action === 'group_dissolved') return actorText === 'Bạn' ? 'Bạn đã giải tán nhóm' : `${actorName} đã giải tán nhóm`;
+  if (event?.action === 'poll_locked') return `${actorText} đã khóa bình chọn`;
+  return String(event?.text || event?.action || 'Hoạt động nhóm');
 }
 
-async function publishControlEvent(topic: any, content: string, clientId: string, senderId: string) {
+async function publishControlEvent(topic: any, content: string, clientId: string, senderId: string): Promise<any> {
   const draft = topic.createMessage(content, false);
   draft.head = {
     ...(draft.head || {}),
     'x-client-id': clientId,
     'x-sender-id': senderId,
   };
-  const result = await topic.publishMessage(draft);
-  if (!result) throw new Error('Tinode khong xac nhan su kien realtime.');
+  const result = await withTimeout(topic.publishMessage(draft), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi gửi sự kiện.');
+  if (!result) throw new Error('Tinode không xác nhận sự kiện realtime.');
   return result;
 }
 
@@ -274,16 +383,20 @@ function chatbotMetadata(raw: any) {
 
 function normalizeMessage(raw: any, client: any, topic: any, receiptCursor?: ReceiptCursor): ChatMessage | null {
   if (!raw || raw._deleted) return null;
-  const senderId = String(raw.from || raw.head?.['x-sender-id'] || '');
-  const outgoing = Boolean(senderId && client.isMe?.(senderId));
+  const origin = resolveTinodeMessageOrigin(raw, client);
+  const senderId = origin.senderId;
+  const outgoing = origin.outgoing;
   const content = messageContent(raw);
   const call = parseCallMessage(raw.content, raw.head, !outgoing);
   const reaction = parseEvent(content, REACTION_EVENT_PREFIX);
   const recall = parseEvent(content, RECALL_EVENT_PREFIX);
   const edit = parseEvent(content, EDIT_EVENT_PREFIX);
   const system = parseEvent(content, SYSTEM_EVENT_PREFIX);
+  const pollEvent = normalizePollEvent(parseEvent(content, POLL_EVENT_PREFIX));
   const attachment = rawAttachment(raw);
   const sticker = parseStickerMetadata(raw.head);
+  const poll = parsePollMetadata(raw.head);
+  const mentions = parseMentionMetadata(raw.head);
   const id = String(raw.head?.['x-client-id'] || `${senderId || 'system'}-${raw.seq || raw.ts || Date.now()}`);
   const chatbot = chatbotMetadata(raw);
   if (reaction) return {
@@ -300,7 +413,12 @@ function normalizeMessage(raw: any, client: any, topic: any, receiptCursor?: Rec
     senderName: '', text: '', createdAt: raw.ts ? new Date(raw.ts).toISOString() : undefined,
     raw: { ...raw, editEvent: edit },
   };
-  const type = call ? 'call' : system ? 'system' : attachment ? (sticker ? 'sticker' : attachment.isImage ? 'image' : 'file') : 'text';
+  if (pollEvent) return {
+    id, seq: raw.seq, type: 'poll_event', sender: outgoing ? 'outgoing' : 'incoming', senderId,
+    senderName: outgoing ? 'Bạn' : 'Thành viên', text: '', createdAt: raw.ts,
+    pollEvent, raw,
+  };
+  const type = call ? 'call' : system ? 'system' : poll ? 'text' : attachment ? (sticker ? 'sticker' : attachment.isImage ? 'image' : 'file') : 'text';
   return {
     id,
     seq: Number(raw.seq) || undefined,
@@ -308,7 +426,7 @@ function normalizeMessage(raw: any, client: any, topic: any, receiptCursor?: Rec
     sender: outgoing ? 'outgoing' : 'incoming',
     senderId: senderId || (outgoing ? client.getCurrentUserID?.() : ''),
     senderName: outgoing ? 'Bạn' : 'Thành viên',
-    text: call ? callHistoryLabel(call, outgoing) : system ? formatSystemEvent(system, client) : content,
+    text: call ? callHistoryLabel(call, outgoing) : system ? formatSystemEvent(system, client) : poll ? poll.question : content,
     image: attachment?.isImage ? attachment.file.url : undefined,
     file: attachment?.file,
     sticker: sticker || undefined,
@@ -316,7 +434,10 @@ function normalizeMessage(raw: any, client: any, topic: any, receiptCursor?: Rec
     time: formatMessageTime(raw.ts),
     deliveryStatus: mapTinodeDeliveryStatus(topic?.msgStatus?.(raw, false) ?? raw._status, outgoing, raw.seq, receiptCursor),
     replyTo: messageReply(raw),
+    mentions,
     ...chatbot,
+    systemEvent: system || undefined,
+    poll: poll || undefined,
     call: call || undefined,
     raw,
   };
@@ -329,6 +450,24 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
     const message = normalizeMessage(raw, client, topic, receiptCursor);
     if (message) loaded.push(message);
   });
+  const members: any[] = [];
+  topic.subscribers?.((sub: any) => {
+    if (sub?.user) members.push({
+      id: sub.user,
+      uid: sub.user,
+      username: sub.user,
+      name: sub.public?.fn || sub.public?.name || 'Thành viên',
+      avatar: normalizeMediaValue(sub.public?.photo || sub.public?.avatar || ''),
+      active: true,
+      tenantId: config.tenantId,
+      online: presenceResolver(sub.user, sub.online === true),
+      mode: sub.acs?.getMode?.() || sub.mode || '',
+    });
+  });
+  if (!isGroup && topic.name) {
+    const peer = members.find(item => item.id !== client.getCurrentUserID?.());
+    if (!peer) members.push({ id: topic.name, uid: topic.name, username: topic.name, name: topic.public?.fn || topic.name, active: true, tenantId: config.tenantId, online: presenceResolver(topic.name, topic.online === true) });
+  }
   const reactionState = new Map<string, Record<string, boolean>>();
   const recalls = new Map<string, any>();
   loaded.filter(message => message.type === 'reaction').forEach(message => {
@@ -350,6 +489,26 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
   const editMessages = loaded
     .filter(message => message.type === 'edit')
     .sort((first, second) => (Number(first.seq) || 0) - (Number(second.seq) || 0));
+  const pollEventsById = new Map<string, ChatMessage[]>();
+  loaded.filter(message => message.type === 'poll_event').forEach(message => {
+    const pollId = message.pollEvent?.pollId;
+    if (!pollId) return;
+    pollEventsById.set(pollId, [...(pollEventsById.get(pollId) || []), message]);
+  });
+  const pinnedById = new Map<string, boolean>();
+  const pinnedBySeq = new Map<number, boolean>();
+  loaded
+    .filter(message => message.type === 'system' && message.systemEvent?.action)
+    .sort((first, second) => (Number(first.seq) || 0) - (Number(second.seq) || 0))
+    .forEach(message => {
+      const event = message.systemEvent || {};
+      if (!['message_pinned', 'message_unpinned'].includes(String(event.action))) return;
+      const pinned = event.action === 'message_pinned';
+      const targetId = String(event.messageId || event.message_id || '').trim();
+      const targetSeq = Number(event.messageSeq || event.message_seq) || 0;
+      if (targetId) pinnedById.set(targetId, pinned);
+      if (targetSeq > 0) pinnedBySeq.set(targetSeq, pinned);
+    });
   const editsById = new Map<string, ChatMessage[]>();
   const editsBySeq = new Map<number, ChatMessage[]>();
   editMessages.forEach(message => {
@@ -362,7 +521,7 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
   const appliedRecallIds = new Set<string>();
   const appliedEditIds = new Set<string>();
   const messages = loaded
-    .filter(message => !['reaction', 'recall', 'edit'].includes(message.type))
+    .filter(message => !['reaction', 'recall', 'edit', 'poll_event'].includes(message.type))
     .map(message => {
       const editCandidates = [
         ...(editsById.get(String(message.id || '')) || []),
@@ -376,7 +535,17 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
         if (next !== current) appliedEditIds.add(editMessage.id);
         return next;
       }, message);
-      const recall = recalls.get(String(projected.id)) || recalls.get(`seq:${projected.seq}`);
+      const poll = projected.poll
+        ? (pollEventsById.get(projected.poll.id) || []).reduce(
+          (current, eventMessage) => applyPollEvent(current, eventMessage.pollEvent, eventMessage.senderId, eventMessage.seq, members),
+          normalizePoll(projected.poll),
+        )
+        : null;
+      const latestPollEvent = projected.poll ? (pollEventsById.get(projected.poll.id) || []).at(-1)?.pollEvent : undefined;
+      const withPoll = poll ? { ...projected, poll, text: poll.question, ...(latestPollEvent ? { pollActivity: latestPollEvent } : {}) } : projected;
+      const pinState = pinnedById.get(String(withPoll.id)) ?? (Number(withPoll.seq) > 0 ? pinnedBySeq.get(Number(withPoll.seq)) : undefined);
+      const withPin = pinState === undefined ? withPoll : { ...withPoll, pinned: pinState };
+      const recall = recalls.get(String(withPin.id)) || recalls.get(`seq:${withPin.seq}`);
       const reactions: Record<string, number> = {};
       Object.entries(reactionState.get(String(projected.id)) || {}).forEach(([key, active]) => {
         if (active) {
@@ -389,7 +558,7 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
         if (recallMessage) appliedRecallIds.add(recallMessage.id);
         if (recall.mode === 'self' && client.isMe?.(recall.actorId)) return null;
         return {
-          ...projected,
+          ...withPin,
           type: 'text' as const,
           text: 'Tin nhắn đã được thu hồi',
           recalled: true,
@@ -400,9 +569,9 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
           raw: undefined,
         };
       }
-      return projected.replyTo && (recalls.has(String(projected.replyTo.id)) || recalls.has(`seq:${projected.replyTo.id}`))
-        ? { ...projected, replyTo: undefined, reactions }
-        : { ...projected, reactions };
+      return withPin.replyTo && (recalls.has(String(withPin.replyTo.id)) || recalls.has(`seq:${withPin.replyTo.id}`))
+        ? { ...withPin, replyTo: undefined, reactions }
+        : { ...withPin, reactions };
     })
     .filter(Boolean) as ChatMessage[];
   visibleRecallMessages.forEach(message => {
@@ -431,26 +600,18 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
       raw: undefined,
     });
   });
-  const members: any[] = [];
-  topic.subscribers?.((sub: any) => {
-    if (sub?.user) members.push({
-      id: sub.user,
-      uid: sub.user,
-      username: sub.user,
-      name: sub.public?.fn || sub.public?.name || 'Thành viên',
-      avatar: normalizeMediaValue(sub.public?.photo || sub.public?.avatar || ''),
-      active: true,
-      tenantId: config.tenantId,
-      online: presenceResolver(sub.user, sub.online === true),
-      mode: sub.acs?.getMode?.() || sub.mode || '',
-    });
+  const enrichedMessages = messages.map(message => {
+    if (message.sender === 'outgoing') return message;
+    const sender = members.find(member => identitiesOverlap(member, { id: message.senderId, uid: message.senderId }));
+    if (!sender) return message;
+    return {
+      ...message,
+      senderName: message.senderName === 'ThÃ nh viÃªn' || message.senderName === 'Thành viên' ? sender.name : (message.senderName || sender.name),
+      avatar: message.avatar || sender.avatar,
+    };
   });
-  if (!isGroup && topic.name) {
-    const peer = members.find(item => item.id !== client.getCurrentUserID?.());
-    if (!peer) members.push({ id: topic.name, uid: topic.name, username: topic.name, name: topic.public?.fn || topic.name, active: true, tenantId: config.tenantId, online: presenceResolver(topic.name, topic.online === true) });
-  }
-  messages.sort((a, b) => (Number(a.seq || 0) - Number(b.seq || 0)) || ((Date.parse(a.createdAt || '') || 0) - (Date.parse(b.createdAt || '') || 0)));
-  const latest = messages[messages.length - 1];
+  enrichedMessages.sort((a, b) => (Number(a.seq || 0) - Number(b.seq || 0)) || ((Date.parse(a.createdAt || '') || 0) - (Date.parse(b.createdAt || '') || 0)));
+  const latest = enrichedMessages[enrichedMessages.length - 1];
   const latestEdit = editMessages.filter(message => appliedEditIds.has(message.id)).at(-1);
   const latestActivityAt = (Date.parse(latestEdit?.raw?.editEvent?.createdAt || latestEdit?.createdAt || '') || 0)
     > (Date.parse(latest?.createdAt || '') || 0)
@@ -462,29 +623,43 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
     const sequence = Number(message.seq) || 0;
     return sequence > topicRead && (!topicSequence || sequence <= topicSequence);
   }).length;
+  const unreadPollEventCount = loaded.filter(message => {
+    if (message.type !== 'poll_event') return false;
+    const sequence = Number(message.seq) || 0;
+    return sequence > topicRead && (!topicSequence || sequence <= topicSequence);
+  }).length;
   const directPeer = members.find(item => item.id !== client.getCurrentUserID?.()) || members[0];
   const owner = members.find(member => String(member.mode || '').includes('O'));
+  const latestGroupSettingsEvent = loaded
+    .filter(message => message.type === 'system' && message.systemEvent?.action === 'group_settings_changed' && message.systemEvent?.groupSettings)
+    .sort((first, second) => (Number(first.seq) || 0) - (Number(second.seq) || 0))
+    .at(-1)?.systemEvent?.groupSettings;
+  const rawGroupSettings = groupSettingsFromTopic(topic) || latestGroupSettingsEvent;
   return {
     id: topic.name,
     managementId: topic.name,
     tinodeTopic: topic.name,
+    snapshotSource: 'tinode',
     name: String(topic.public?.fn || topic.public?.name || directPeer?.name || topic.name || 'Cuộc trò chuyện'),
     isGroup,
     adminId: owner?.id || '',
     avatarUrl: normalizeMediaValue(topic.public?.photo || topic.public?.avatar || directPeer?.avatar || ''),
     description: String(topic.public?.note || ''),
     membersCount: isGroup ? `${members.length} thành viên` : (directPeer?.online ? 'Đang hoạt động' : 'Offline'),
+    ...(isGroup && rawGroupSettings ? { groupSettings: normalizeGroupSettings(rawGroupSettings) } : {}),
     members,
     participantIds: members.map(member => member.id),
-    messages,
-    lastMsg: latest?.sticker
+    messages: enrichedMessages,
+    lastMsg: latest?.poll
+      ? `Bình chọn: ${latest.poll.question}`
+      : latest?.sticker
       ? `${latest.sender === 'outgoing' ? 'Bạn' : 'Thành viên'} đã gửi sticker`
       : latest?.file ? `${latest.sender === 'outgoing' ? 'Bạn' : 'Thành viên'} đã gửi tệp` : latest?.text || '',
     time: latest?.time || '',
     updatedAt: latestActivityAt,
     // Edit packets are stored in Tinode history but are control data, not
     // user-facing messages, so they must not add unread state.
-    badge: Math.max(0, Number(topic.unread || 0) - unreadEditCount),
+    badge: Math.max(0, Number(topic.unread || 0) - unreadEditCount - unreadPollEventCount),
   };
 }
 
@@ -493,6 +668,7 @@ export class TinodeMobileClient {
   private meTopic: any = null;
   private listeners = new Set<Listener>();
   private intentionalDisconnect = false;
+  private backgroundSuspended = false;
   private auth: TinodeAuth | null = null;
   private tokenProvider: (() => Promise<TinodeAuth>) | null = null;
   private topics = new Map<string, any>();
@@ -503,6 +679,13 @@ export class TinodeMobileClient {
   private blockedTopics = new Set<string>();
   private allowedConversationTopics: Set<string> | null = null;
   private callInviteKeys = new Set<string>();
+  private topicSubscriptionRequests = new Map<string, Promise<Conversation | null>>();
+  private snapshotTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private historyRequests = new Map<string, Promise<{ conversation: Conversation; hasEarlier: boolean; loaded: number }>>();
+  private sessionGeneration = 0;
+  private syncAbortController: AbortController | null = null;
+  private lifecycleVersion = 0;
+  private currentIdentitySnapshot: CurrentIdentity | null = null;
 
   onEvent(listener: Listener) {
     this.listeners.add(listener);
@@ -511,6 +694,28 @@ export class TinodeMobileClient {
 
   setTokenProvider(provider: (() => Promise<TinodeAuth>) | null) {
     this.tokenProvider = provider;
+  }
+
+  setCurrentIdentity(identity: CurrentIdentity | null) {
+    this.currentIdentitySnapshot = identity;
+  }
+
+  setSessionGeneration(generation: number) {
+    const next = Math.max(0, Math.trunc(Number(generation) || 0));
+    if (next === this.sessionGeneration) return;
+    this.syncAbortController?.abort();
+    this.syncAbortController = null;
+    this.sessionGeneration = next;
+  }
+
+  cancelSync(generation?: number) {
+    if (generation !== undefined && generation !== this.sessionGeneration) return;
+    this.syncAbortController?.abort();
+    this.syncAbortController = null;
+  }
+
+  private isGenerationCurrent(generation?: number, signal?: AbortSignal) {
+    return !signal?.aborted && (generation === undefined || generation === this.sessionGeneration);
   }
 
   private emit(event: TinodeEvent) {
@@ -573,10 +778,25 @@ export class TinodeMobileClient {
     return materializeConversation(topic, this.client, (uid, fallback) => this.getPresenceStatus(uid, fallback), this.receiptCursors.get(topic?.name));
   }
 
+  private scheduleConversationSnapshot(topic: any) {
+    const name = String(topic?.name || '');
+    if (!name || !this.isConversationTopicAllowed(name) || topic?.__vichatMobileSyncing || this.snapshotTimers.has(name)) return;
+    const timer = setTimeout(() => {
+      this.snapshotTimers.delete(name);
+      if (!this.isConversationTopicAllowed(name) || !this.client) return;
+      this.emit({ type: 'conversation', conversation: this.materialize(topic) });
+    }, 0);
+    this.snapshotTimers.set(name, timer);
+  }
+
   private emitIncomingMessage(topic: any, raw: any, conversation?: Conversation) {
     if (!this.isConversationTopicAllowed(topic?.name)) return;
+    // A server echo may expose a different `from` alias than the sender header.
+    // Never turn an own echo into a local incoming notification.
+    // Check both Tinode UID and Account ID to cover all sender header formats.
+    if (isOwnMessageOrigin(raw, this.client, this.currentIdentitySnapshot)) return;
     const message = normalizeMessage(raw, this.client, topic);
-    if (!message || message.sender !== 'incoming' || ['reaction', 'recall', 'edit', 'system'].includes(message.type)) return;
+    if (!message || message.sender !== 'incoming' || ['reaction', 'recall', 'edit', 'poll_event', 'system'].includes(message.type)) return;
     const seq = Number(message.seq || 0);
     const notifiedSeq = this.notifiedSeqByTopic.get(topic.name) || 0;
     if (seq > 0 && seq <= notifiedSeq) return;
@@ -674,7 +894,7 @@ export class TinodeMobileClient {
   }
 
   setDeviceToken(token: string | null) {
-    this.deviceToken = token || null;
+    this.deviceToken = String(token || '').trim() || null;
     return Boolean(this.client?.setDeviceToken?.(this.deviceToken));
   }
 
@@ -727,7 +947,7 @@ export class TinodeMobileClient {
   }
 
   async downloadFile(file: FileAttachment) {
-    if (!file?.url) throw new Error('Tep chua co duong dan tai xuong.');
+    if (!file?.url) throw new Error('Tệp chưa có đường dẫn tải xuống.');
     const safeName = String(file.name || 'tep-dinh-kem').replace(/[^a-zA-Z0-9._-]/g, '_');
     const fileSystem: any = require('expo-file-system');
     const sharing: any = require('expo-sharing');
@@ -760,25 +980,27 @@ export class TinodeMobileClient {
     topic.__vichatMobileWired = true;
     topic.onData = (raw: any) => {
       if (!this.isConversationTopicAllowed(topic.name)) return;
-      this.emitCallInvite(topic, raw);
+      // Tinode delivers every packet in a history query through onData. Do not
+      // rebuild the complete conversation once per packet while catching up.
+      if (topic.__vichatMobileSyncing) return;
       if (!raw?.from || !this.client?.isMe?.(raw.from)) this.acknowledgeTopicReceived(topic, raw?.seq);
+      this.emitCallInvite(topic, raw);
       const conversation = this.materialize(topic);
       this.emit({ type: 'conversation', conversation });
-      if (!topic.__vichatMobileSyncing) this.emitIncomingMessage(topic, raw, conversation);
+      this.emitIncomingMessage(topic, raw, conversation);
     };
     topic.onMetaDesc = () => {
-      if (this.isConversationTopicAllowed(topic.name)) this.emit({ type: 'conversation', conversation: this.materialize(topic) });
+      this.scheduleConversationSnapshot(topic);
     };
     topic.onMetaSub = () => {
-      if (this.isConversationTopicAllowed(topic.name)) this.emit({ type: 'conversation', conversation: this.materialize(topic) });
+      this.scheduleConversationSnapshot(topic);
     };
     topic.onSubsUpdated = () => {
-      if (this.isConversationTopicAllowed(topic.name)) this.emit({ type: 'conversation', conversation: this.materialize(topic) });
+      this.scheduleConversationSnapshot(topic);
     };
     topic.onPres = (presence: any) => {
       if (!this.isConversationTopicAllowed(topic.name)) return;
       this.updatePresence(presence);
-      this.emit({ type: 'conversation', conversation: this.materialize(topic) });
     };
     topic.onInfo = (info: any) => {
       if (!this.isConversationTopicAllowed(topic.name)) return;
@@ -796,7 +1018,7 @@ export class TinodeMobileClient {
       if (['kp', 'kpa', 'kpv'].includes(info?.what)) this.emit({ type: 'typing', topic: topic.name, uid: info.from, active: true });
       if (['read', 'recv'].includes(info?.what) && !this.client?.isMe?.(info?.from)) {
         this.updateReceiptCursor(topic, info.what, info.seq);
-        this.emit({ type: 'conversation', conversation: this.materialize(topic) });
+        this.scheduleConversationSnapshot(topic);
       }
     };
     return topic;
@@ -808,7 +1030,7 @@ export class TinodeMobileClient {
     const content = raw.content;
     const entity = content?.ent?.find?.((item: any) => item?.tp === 'VC')?.data;
     const key = `${topic.name}:${raw.seq}`;
-    if (!entity || topic.name?.startsWith('grp') || this.callInviteKeys.has(key)) return;
+    if (!entity || !/^usr[a-z0-9_-]+$/i.test(String(topic.name || '')) || this.callInviteKeys.has(key)) return;
     this.callInviteKeys.add(key);
     this.emit({ type: 'call-invite', topic: topic.name, seq: Number(raw.seq), from: String(raw.from), audioOnly: Boolean(entity.aonly || raw.head?.aonly) });
   }
@@ -821,7 +1043,12 @@ export class TinodeMobileClient {
 
   async connect(auth: TinodeAuth, tokenProvider: () => Promise<TinodeAuth>) {
     if (this.connected && this.auth?.uid === auth.uid) return;
+    const lifecycleVersion = this.lifecycleVersion;
+    const assertCurrent = () => {
+      if (lifecycleVersion !== this.lifecycleVersion) throw new Error('Tinode connection was cancelled.');
+    };
     await loadTinodeSdk();
+    assertCurrent();
     this.intentionalDisconnect = false;
     this.auth = auth;
     this.tokenProvider = tokenProvider;
@@ -845,25 +1072,51 @@ export class TinodeMobileClient {
         if (!this.intentionalDisconnect) this.emit({ type: 'connection', state: 'connected' });
       };
     }
+    // Put the device token into Tinode before the first hello packet. If the
+    // app is backgrounded immediately after login, the server has already
+    // received the token instead of relying on a last-second hi update.
+    const tokenAtConnectStart = this.deviceToken;
+    if (tokenAtConnectStart) this.client.setDeviceToken?.(tokenAtConnectStart);
     this.emit({ type: 'connection', state: 'connecting' });
-    if (!this.client.isConnected()) await this.client.connect();
+    if (!this.client.isConnected()) {
+      await withTimeout(this.client.connect(), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi kết nối.');
+    }
+    assertCurrent();
     const fresh = auth.token || (await this.tokenProvider()).token;
-    await this.client.loginToken(fresh);
+    assertCurrent();
+    await withTimeout(this.client.loginToken(fresh), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi đăng nhập.');
+    assertCurrent();
     this.auth = { ...auth, token: fresh };
-    if (this.deviceToken) this.client.setDeviceToken?.(this.deviceToken);
+    const tokenAfterLogin = this.deviceToken;
+    if (tokenAfterLogin) {
+      // A native token may arrive while connect/login is in flight. Force one
+      // authenticated update when it was not present in the initial hello.
+      if (tokenAfterLogin !== tokenAtConnectStart) this.client.setDeviceToken?.(null);
+      this.client.setDeviceToken?.(tokenAfterLogin);
+    }
     this.meTopic = this.client.getMeTopic();
     this.meTopic.onMetaSub = (contact: any) => {
       this.emitContactProfile(contact);
       this.updateContactPresence(contact);
       const topic = this.topics.get(String(contact?.name || ''));
-      if (topic && this.isConversationTopicAllowed(topic.name)) this.emit({ type: 'conversation', conversation: this.materialize(topic) });
+      if (topic) this.scheduleConversationSnapshot(topic);
     };
     this.meTopic.onSubsUpdated = () => this.syncPresenceSnapshot();
     this.meTopic.onContactUpdate = (what: string, contact: any) => {
       this.emitContactProfile(contact);
       this.updateContactPresence(contact, what);
       const topic = this.topics.get(String(contact?.name || ''));
-      if (topic && this.isConversationTopicAllowed(topic.name)) this.emit({ type: 'conversation', conversation: this.materialize(topic) });
+      if (topic) this.scheduleConversationSnapshot(topic);
+      const topicName = String(contact?.name || '');
+      if (what === 'msg'
+        && contact?.isCommType?.()
+        && this.allowedConversationTopics?.has(topicName)
+        && Number(contact?.seq || 0) > Number(topic?.maxMsgSeq?.() || 0)) {
+        void this.subscribeTopic(topicName, BACKGROUND_HISTORY_LIMIT, {
+          emitSnapshot: true,
+          newerOnly: true,
+        }).catch(() => {});
+      }
     };
     this.meTopic.onPres = (presence: any) => {
       this.updatePresence(presence);
@@ -883,28 +1136,56 @@ export class TinodeMobileClient {
       });
     };
     if (!this.meTopic.isSubscribed?.()) {
-      await this.meTopic.subscribe(this.meTopic.startMetaQuery().withDesc().withSub().build());
+      await withTimeout(
+        this.meTopic.subscribe(this.meTopic.startMetaQuery().withDesc().withSub().build()),
+        TINODE_REQUEST_TIMEOUT_MS,
+        'Tinode không phản hồi khi đồng bộ danh bạ.',
+      );
     }
+    assertCurrent();
     this.syncPresenceSnapshot(true);
     this.emit({ type: 'connection', state: 'connected' });
   }
 
   async reconnect() {
-    if (!this.auth || this.intentionalDisconnect) return new Set<string>();
-    const trackedTopics = [...this.topics.keys()].filter(topic => this.isConversationTopicAllowed(topic));
+    if (!this.auth) return new Set<string>();
+    const resumedFromBackground = this.backgroundSuspended;
+    if (resumedFromBackground) {
+      this.intentionalDisconnect = false;
+    }
+    if (this.intentionalDisconnect) return new Set<string>();
     try {
       const auth = this.tokenProvider ? await this.tokenProvider() : this.auth;
       await this.connect(auth, this.tokenProvider || (async () => auth));
-      return await this.syncTopics(trackedTopics);
+      this.backgroundSuspended = false;
+      // Generation-aware sync is owned by the store so reconnect callers do
+      // not create a second history worker.
+      return new Set<string>();
     } catch (error) {
+      if (resumedFromBackground) this.intentionalDisconnect = true;
       this.emit({ type: 'connection', state: 'error', error });
       return new Set<string>();
     }
   }
 
+  async suspendForBackground() {
+    if (!this.auth || !this.client || this.backgroundSuspended) return;
+    // Keep the realtime fallback alive until native push registration succeeds.
+    // Disconnecting without a device token would guarantee missed background alerts.
+    if (!this.deviceToken) return;
+    this.backgroundSuspended = true;
+    this.intentionalDisconnect = true;
+    this.client.disconnect?.();
+    this.emit({ type: 'connection', state: 'disconnected' });
+  }
+
   async disconnect() {
+    this.lifecycleVersion += 1;
+    this.cancelSync();
+    this.backgroundSuspended = false;
     this.intentionalDisconnect = true;
     this.client?.setDeviceToken?.(null);
+    this.deviceToken = null;
     this.auth = null;
     this.meTopic = null;
     this.topics.clear();
@@ -914,6 +1195,10 @@ export class TinodeMobileClient {
     this.blockedTopics.clear();
     this.allowedConversationTopics = null;
     this.callInviteKeys.clear();
+    this.topicSubscriptionRequests.clear();
+    this.historyRequests.clear();
+    this.snapshotTimers.forEach(timer => clearTimeout(timer));
+    this.snapshotTimers.clear();
     imageCacheRequests.clear();
     imageCacheVersions.clear();
     this.client?.disconnect?.();
@@ -921,11 +1206,32 @@ export class TinodeMobileClient {
     this.emit({ type: 'connection', state: 'disconnected' });
   }
 
-  async subscribeTopic(name: string, historyLimit = 100, options: { emitSnapshot?: boolean } = {}) {
-    const emitSnapshot = options.emitSnapshot !== false;
+  async subscribeTopic(name: string, historyLimit = INITIAL_HISTORY_LIMIT, options: TopicOptions = {}): Promise<Conversation | null> {
+    if (!this.isGenerationCurrent(options.generation, options.signal)) return null;
     this.allowConversationTopic(name);
-    if (!this.client || !name) throw new Error('Tinode chưa kết nối.');
+    if (!this.connected || !name) throw new Error('Tinode chưa kết nối.');
+    const inFlight = this.topicSubscriptionRequests.get(name);
+    if (inFlight) {
+      await inFlight;
+      if (this.topicSubscriptionRequests.get(name) === inFlight) this.topicSubscriptionRequests.delete(name);
+      return this.subscribeTopic(name, historyLimit, options);
+    }
+    const request = this.subscribeTopicInternal(name, historyLimit, options);
+    this.topicSubscriptionRequests.set(name, request);
+    try {
+      return await request;
+    } finally {
+      if (this.topicSubscriptionRequests.get(name) === request) this.topicSubscriptionRequests.delete(name);
+    }
+  }
+
+  private async subscribeTopicInternal(name: string, historyLimit = INITIAL_HISTORY_LIMIT, options: TopicOptions = {}) {
+    const emitSnapshot = options.emitSnapshot !== false;
+    if (!this.isGenerationCurrent(options.generation, options.signal)) return null;
+    this.allowConversationTopic(name);
+    if (!this.connected || !name) throw new Error('Tinode chưa kết nối.');
     const topic = this.getTopic(name);
+    const initialized = Boolean(topic.__vichatMobileInitialized);
     const historyLoaded = Boolean(topic.__vichatMobileHistoryLoaded);
     const loadedHistoryLimit = Number(topic.__vichatMobileHistoryLimit || 0);
     const previousMaxSeq = Number(topic.maxMsgSeq?.() || 0);
@@ -934,59 +1240,101 @@ export class TinodeMobileClient {
       if (!topic.isSubscribed?.()) {
         const query = topic.startMetaQuery().withDesc().withSub();
         if (historyLimit > 0) {
-          if (historyLoaded && previousMaxSeq > 0) query.withLaterData(historyLimit).withLaterDel(historyLimit);
+          if ((options.newerOnly === true || historyLoaded) && previousMaxSeq > 0) query.withLaterData(historyLimit).withLaterDel(historyLimit);
           else query.withEarlierData(historyLimit).withDel(undefined, historyLimit);
         }
-        await topic.subscribe(query.build());
+        await withTimeout(topic.subscribe(query.build()), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi mở cuộc trò chuyện.');
       } else if (historyLimit > 0 && !historyLoaded) {
-        await topic.getMeta(topic.startMetaQuery().withEarlierData(historyLimit).withDel(undefined, historyLimit).build());
+        await withTimeout(
+          topic.getMeta(topic.startMetaQuery().withEarlierData(historyLimit).withDel(undefined, historyLimit).build()),
+          TINODE_REQUEST_TIMEOUT_MS,
+          'Tinode không phản hồi khi tải lịch sử trò chuyện.',
+        );
       } else if (historyLimit > loadedHistoryLimit) {
-        await topic.getMeta(topic.startMetaQuery().withEarlierData(historyLimit).withDel(undefined, historyLimit).build());
+        await withTimeout(
+          topic.getMeta(topic.startMetaQuery().withEarlierData(historyLimit).withDel(undefined, historyLimit).build()),
+          TINODE_REQUEST_TIMEOUT_MS,
+          'Tinode không phản hồi khi tải lịch sử trò chuyện.',
+        );
       }
     } finally {
       topic.__vichatMobileSyncing = false;
     }
+    if (!this.isGenerationCurrent(options.generation, options.signal)) return null;
     if (historyLimit > 0) {
       topic.__vichatMobileHistoryLoaded = true;
       topic.__vichatMobileHistoryLimit = Math.max(loadedHistoryLimit, historyLimit);
     }
     const latestSeq = Number(topic.maxMsgSeq?.() || 0);
     this.acknowledgeTopicReceived(topic);
+    topic.__vichatMobileInitialized = true;
     let conversation: Conversation | null = null;
     if (emitSnapshot) {
       conversation = this.materialize(topic);
       this.emit({ type: 'conversation', conversation });
-      if (!historyLoaded) {
+      if (!initialized) {
         this.notifiedSeqByTopic.set(name, latestSeq);
-      } else if (latestSeq > previousMaxSeq) {
+      } else if (latestSeq > previousMaxSeq && options.notifyMissed !== false) {
         const missed = conversation.messages.filter(message =>
           message.sender === 'incoming'
-          && !['reaction', 'recall', 'edit', 'system'].includes(message.type)
+          && !['reaction', 'recall', 'edit', 'poll_event', 'system'].includes(message.type)
           && Number(message.seq || 0) > previousMaxSeq,
-        ).at(-1);
-        if (missed) this.emitIncomingMessage(topic, missed.raw, conversation);
+        ).slice(-20);
+        if (missed.length > 0) missed.forEach(message => this.emitIncomingMessage(topic, message.raw, conversation || undefined));
         else this.notifiedSeqByTopic.set(name, latestSeq);
+      } else if (latestSeq > previousMaxSeq) {
+        this.notifiedSeqByTopic.set(name, latestSeq);
       }
-    } else if (!historyLoaded) {
+    } else if (!initialized) {
       this.notifiedSeqByTopic.set(name, latestSeq);
     }
     return conversation;
   }
 
-  async syncTopics(names: string[]) {
+  async syncTopics(names: string[], options: { historyLimit?: number; emitSnapshot?: boolean; concurrency?: number; newerOnly?: boolean; notifyMissed?: boolean; generation?: number; signal?: AbortSignal } = {}) {
+    if (!this.isGenerationCurrent(options.generation, options.signal)) return new Set<string>();
     const uniqueNames = [...new Set(names.filter(name => name && this.isConversationTopicAllowed(name)))];
-    const results = await Promise.allSettled(uniqueNames.map(async name => {
-      await this.subscribeTopic(name, 100);
-      return name;
-    }));
-    return new Set(results.flatMap(result => result.status === 'fulfilled' ? [result.value] : []));
+    const historyLimit = Math.max(0, Math.min(100, Math.trunc(Number(options.historyLimit ?? 0))));
+    const concurrency = Math.max(1, Math.min(3, Math.trunc(Number(options.concurrency ?? 2))));
+    const controller = new AbortController();
+    this.syncAbortController?.abort();
+    this.syncAbortController = controller;
+    if (options.signal) {
+      if (options.signal.aborted) controller.abort();
+      else options.signal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+    const completed = new Set<string>();
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < uniqueNames.length) {
+        if (!this.isGenerationCurrent(options.generation, controller.signal)) return;
+        const index = cursor;
+        cursor += 1;
+        const name = uniqueNames[index];
+        try {
+          await this.subscribeTopic(name, historyLimit, {
+            emitSnapshot: options.emitSnapshot === true,
+            newerOnly: options.newerOnly === true,
+            notifyMissed: options.notifyMissed !== false,
+            generation: options.generation,
+            signal: controller.signal,
+          });
+          completed.add(name);
+        } catch {
+          // A single stale topic must not block the rest of the mobile app.
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, uniqueNames.length) }, () => worker()));
+    if (this.syncAbortController === controller) this.syncAbortController = null;
+    return completed;
   }
 
-  openConversation(name: string) { return this.subscribeTopic(name, 100); }
+  openConversation(name: string) { return this.subscribeTopic(name, OPEN_HISTORY_LIMIT); }
 
   getCallIceServers() {
     const servers = this.client?.getServerParam?.('iceServers', []);
-    return Array.isArray(servers) ? servers : [];
+    return normalizeIceServers(servers);
   }
 
   getCallCapability(topicName: string, options: { isGroup?: boolean; isChatbot?: boolean } = {}) {
@@ -1027,26 +1375,41 @@ export class TinodeMobileClient {
     await this.getTopic(topicName).videoCall(event, Number(seq), payload);
   }
 
-  async sendText(topicName: string, text: string, clientId: string, replyTo?: ChatMessage['replyTo']) {
+  async sendText(topicName: string, text: string, clientId: string, replyTo?: ChatMessage['replyTo'], mentions: any[] = []) {
     await this.subscribeTopic(topicName, 0, { emitSnapshot: false });
     const topic = this.getTopic(topicName);
     const draft = topic.createMessage(text, false);
     draft.head = { ...(draft.head || {}), 'x-client-id': clientId, 'x-sender-id': this.currentUserId };
     if (replyTo?.id) draft.head['x-reply-to'] = JSON.stringify(replyTo);
-    const result = await topic.publishMessage(draft);
+    if (Array.isArray(mentions) && mentions.length > 0) draft.head['x-mentions'] = JSON.stringify(mentions.slice(0, 50));
+    const result = await withTimeout(topic.publishMessage(draft), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi gửi tin nhắn.');
     if (!result) throw new Error('Tinode không xác nhận tin nhắn.');
     return result;
   }
 
-  async loadEarlierConversation(topicName: string, limit = 100) {
-    await this.subscribeTopic(topicName, 0, { emitSnapshot: false });
+  async loadEarlierConversation(topicName: string, limit = HISTORY_PAGE_LIMIT, generation = this.sessionGeneration) {
+    const previous = this.historyRequests.get(topicName);
+    if (previous) return previous;
+    const request = this.loadEarlierConversationInternal(topicName, limit, generation);
+    this.historyRequests.set(topicName, request);
+    try {
+      return await request;
+    } finally {
+      if (this.historyRequests.get(topicName) === request) this.historyRequests.delete(topicName);
+    }
+  }
+
+  private async loadEarlierConversationInternal(topicName: string, limit = HISTORY_PAGE_LIMIT, generation = this.sessionGeneration) {
+    await this.subscribeTopic(topicName, 0, { emitSnapshot: false, generation });
+    if (!this.isGenerationCurrent(generation)) throw new Error('Tinode history request is stale.');
     const topic = this.getTopic(topicName);
     const before = Number(topic.minMsgSeq?.() || topic._minSeq || 0);
     if (before <= 1) return { conversation: this.materialize(topic), hasEarlier: false, loaded: 0 };
-    const boundedLimit = Math.max(1, Math.min(200, Math.trunc(Number(limit) || 100)));
+    const boundedLimit = Math.max(1, Math.min(50, Math.trunc(Number(limit) || HISTORY_PAGE_LIMIT)));
     const query = topic.startMetaQuery().withEarlierData(boundedLimit);
     if (typeof query.withDel === 'function') query.withDel(undefined, boundedLimit);
-    await topic.getMeta(query.build());
+    await withTimeout(topic.getMeta(query.build()), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi tải lịch sử trò chuyện.');
+    if (!this.isGenerationCurrent(generation)) throw new Error('Tinode history request is stale.');
     const after = Number(topic.minMsgSeq?.() || topic._minSeq || 0);
     const conversation = this.materialize(topic);
     this.emit({ type: 'conversation', conversation });
@@ -1069,12 +1432,61 @@ export class TinodeMobileClient {
     if (message.recalled) throw new Error('Tin nhắn đã được thu hồi và không thể biểu cảm.');
     await this.subscribeTopic(topicName, 0, { emitSnapshot: false });
     const topic = this.getTopic(topicName);
-    await topic.publish(`${REACTION_EVENT_PREFIX}${JSON.stringify({
+      await withTimeout(topic.publish(`${REACTION_EVENT_PREFIX}${JSON.stringify({
       targetId: message.id,
       emoji: emoji.slice(0, 8),
       actorId: this.currentUserId,
       active: true,
-    })}`);
+      })}`), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi gửi biểu cảm.');
+  }
+
+  async sendSystemEvent(topicName: string, event: Record<string, unknown>, clientId = `mobile-system-${Date.now()}`) {
+    await this.subscribeTopic(topicName, 0, { emitSnapshot: false });
+    const topic = this.getTopic(topicName);
+    const payload = {
+      ...event,
+      actorId: event.actorId || this.currentUserId,
+    };
+    return publishControlEvent(
+      topic,
+      `${SYSTEM_EVENT_PREFIX}${JSON.stringify(payload)}`,
+      clientId,
+      this.currentUserId,
+    );
+  }
+
+  async sendPoll(topicName: string, poll: { id?: string; question: string; options: Array<{ id?: string; text: string }>; settings?: unknown }, clientId: string) {
+    await this.subscribeTopic(topicName, 0, { emitSnapshot: false });
+    const topic = this.getTopic(topicName);
+    if (!topic.isGroupType?.() && !String(topic.name || '').startsWith('grp')) throw new Error('Bình chọn chỉ khả dụng trong nhóm.');
+    const actorId = this.currentUserId;
+    const normalized = normalizePoll({
+      ...poll,
+      id: poll.id || `poll-${actorId}-${Date.now()}`,
+      creatorId: actorId,
+      options: poll.options.map((option, index) => ({ id: option.id || `option-${index + 1}`, text: option.text })),
+    });
+    if (!normalized) throw new Error('Bình chọn không hợp lệ.');
+    const draft = topic.createMessage(normalized.question, false);
+    draft.head = {
+      ...(draft.head || {}),
+      [POLL_HEAD]: JSON.stringify(normalized),
+      'x-client-id': clientId,
+      'x-sender-id': actorId,
+    };
+    const result: any = await withTimeout(topic.publishMessage(draft), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi gửi bình chọn.');
+    if (!result) throw new Error('Tinode không xác nhận bình chọn.');
+    return { poll: normalized, seq: publishSequence(result) };
+  }
+
+  async sendPollEvent(topicName: string, event: { action: 'poll_vote' | 'poll_option_added' | 'poll_locked'; pollId: string; optionIds?: string[]; optionId?: string; optionText?: string }, clientId: string) {
+    await this.subscribeTopic(topicName, 0, { emitSnapshot: false });
+    const topic = this.getTopic(topicName);
+    if (!topic.isGroupType?.() && !String(topic.name || '').startsWith('grp')) throw new Error('Bình chọn chỉ khả dụng trong nhóm.');
+    const normalized = normalizePollEvent({ ...event, actorId: this.currentUserId, createdAt: new Date().toISOString() });
+    if (!normalized) throw new Error('Sự kiện bình chọn không hợp lệ.');
+    await publishControlEvent(topic, `${POLL_EVENT_PREFIX}${JSON.stringify(normalized)}`, clientId, this.currentUserId);
+    return normalized;
   }
 
   async editMessage(topicName: string, message: ChatMessage, text: string, mentions: any[] = []) {
@@ -1105,7 +1517,7 @@ export class TinodeMobileClient {
       clientId,
       this.currentUserId,
     );
-    const sequence = Number(result?.params?.seq || result?.ctrl?.params?.seq || result?.seq) || 0;
+    const sequence = publishSequence(result);
     return { ...event, eventId: clientId, ...(sequence > 0 ? { seq: sequence } : {}) };
   }
 
@@ -1194,15 +1606,36 @@ export class TinodeMobileClient {
     }
   }
 
+  async uploadGroupAvatar(topicName: string, file: PickerFile) {
+    if (!topicName || !file) throw new Error('Vui lòng chọn ảnh nhóm.');
+    await this.subscribeTopic(topicName, 0, { emitSnapshot: false });
+    return this.uploadFile(file, topicName);
+  }
+
+  async updateGroupMetadata(topicName: string, input: { name?: string; avatar?: string; settings?: unknown } = {}) {
+    if (!topicName) throw new Error('Nhóm chưa có topic Tinode.');
+    await this.subscribeTopic(topicName, 0, { emitSnapshot: false });
+    const topic = this.getTopic(topicName);
+    const publicData = { ...(topic.public || {}) };
+    if (input.name !== undefined) {
+      const name = String(input.name || '').trim();
+      if (!name) throw new Error('Tên nhóm không được để trống.');
+      publicData.fn = name;
+    }
+    if (input.avatar !== undefined && String(input.avatar || '').trim()) publicData.photo = { ref: String(input.avatar).trim() };
+    await topic.setMeta({ desc: { public: publicData } });
+    return this.materialize(topic);
+  }
+
   private async stickerFile(sticker: Sticker): Promise<PickerFile> {
     const rawSource = String(sticker.src || '').trim();
     const source = /^https?:\/\//i.test(rawSource)
       ? rawSource
       : `${config.stickerBase}/${rawSource.replace(/^\/+/, '')}`;
     const mime = String(sticker.mime || 'image/png').toLowerCase();
-    if (!/^image\/(?:avif|gif|jpeg|png|webp)$/i.test(mime)) throw new Error('Sticker khong hop le.');
+    if (!/^image\/(?:avif|gif|jpeg|png|webp)$/i.test(mime)) throw new Error('Sticker không hợp lệ.');
     const fileSystem: any = require('expo-file-system');
-    if (!fileSystem.File?.downloadFileAsync || !fileSystem.Paths?.cache) throw new Error('Bo nho sticker chua san sang.');
+    if (!fileSystem.File?.downloadFileAsync || !fileSystem.Paths?.cache) throw new Error('Bộ nhớ sticker chưa sẵn sàng.');
     const safeId = String(sticker.id || 'sticker').replace(/[^a-z0-9_-]/gi, '-').slice(0, 80);
     const extension = mime.split('/')[1] === 'jpeg' ? 'jpg' : mime.split('/')[1];
     const target = new fileSystem.File(fileSystem.Paths.cache, `vichat-sticker-${safeId}.${extension}`);
@@ -1303,13 +1736,13 @@ export class TinodeMobileClient {
         version: String(metadata.sticker.version || '1').slice(0, 24),
       });
     }
-    const result = await topic.publishMessage(draft);
+    const result = await withTimeout(topic.publishMessage(draft), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi gửi tệp.');
     if (!result) throw new Error('Tinode không xác nhận tệp đính kèm.');
     return { url: normalizeMediaUrl(url), file: { name: attachment.filename, mime: attachment.mime, size: attachment.size, url: normalizeMediaUrl(url) } };
   }
 
   async sendSticker(topicName: string, sticker: Sticker, clientId: string) {
-    if (!sticker?.id || !sticker?.packId || !sticker?.src) throw new Error('Sticker khong hop le.');
+    if (!sticker?.id || !sticker?.packId || !sticker?.src) throw new Error('Sticker không hợp lệ.');
     const file = await this.stickerFile(sticker);
     return this.sendFile(topicName, file, clientId, {
       sticker: {

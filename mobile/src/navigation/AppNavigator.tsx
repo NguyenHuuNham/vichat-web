@@ -8,6 +8,7 @@ import { LoginScreen } from '../screens/auth/LoginScreen';
 import { ForgotPasswordScreen } from '../screens/auth/ForgotPasswordScreen';
 import { ChatDetailScreen } from '../screens/chat/ChatDetailScreen';
 import { NewGroupScreen } from '../screens/chat/NewGroupScreen';
+import { GroupInfoScreen } from '../screens/chat/GroupInfoScreen';
 import { UserProfileScreen } from '../screens/contacts/UserProfileScreen';
 import { WorkspaceDetailScreen } from '../screens/workspace/WorkspaceDetailScreen';
 import { EditProfileScreen } from '../screens/settings/EditProfileScreen';
@@ -31,6 +32,7 @@ function LaunchScreen() {
 
 export function AppNavigator() {
   const status = useAppStore(state => state.status);
+  const session = useAppStore(state => state.session);
   const [fontsLoaded] = useFonts({
     BeVietnamPro_400Regular,
     BeVietnamPro_500Medium,
@@ -39,7 +41,7 @@ export function AppNavigator() {
     BeVietnamPro_800ExtraBold,
   });
 
-  if (!fontsLoaded || status === 'booting') return <LaunchScreen />;
+  if (!fontsLoaded || status === 'booting' || (status === 'loading' && !session)) return <LaunchScreen />;
 
   if (status === 'signed_out') {
     return (
@@ -60,6 +62,7 @@ export function AppNavigator() {
     }}>
       <RootStack.Screen name="Main" component={MainTabNavigator} options={{ headerShown: false }} />
       <RootStack.Screen name="ChatDetail" component={ChatDetailScreen} options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <RootStack.Screen name="GroupInfo" component={GroupInfoScreen} options={{ headerShown: false, animation: 'slide_from_right' }} />
       <RootStack.Screen name="NewGroup" component={NewGroupScreen} options={{ title: 'Tạo nhóm mới', presentation: 'modal' }} />
       <RootStack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Hồ sơ nhân viên' }} />
       <RootStack.Screen name="WorkspaceDetail" component={WorkspaceDetailScreen} options={{ title: 'Chi tiết công việc' }} />

@@ -5685,12 +5685,50 @@ async def conversation_create(request):
             "error_code": "PARAM_ERROR",
             "error_message": "A group must include at least one participant besides its owner.",
         }, status=400)
+    client_request_id = str(
+        body.get("client_request_id")
+        or getattr(request, "headers", {}).get("X-Vichat-Request-Id", "")
+        or ""
+    ).strip()
+    if len(client_request_id) > 128:
+        return json({"error_code": "PARAM_ERROR", "error_message": "The client request ID is too long."}, status=400)
+    request_fingerprint = jsonlib.dumps({
+        "subject": str(body.get("subject") or body.get("name") or "Conversation").strip(),
+        "is_group": is_group,
+        "participant_ids": sorted(participant_ids),
+    }, sort_keys=True, separators=(",", ":"))
+    if client_request_id and is_group:
+        existing_request = Conversation.query.filter(
+            Conversation.tenant_id == tenant_id,
+            Conversation.deleted.is_(False),
+            or_(
+                Conversation.creation_request_id == client_request_id,
+                Conversation.properties.contains({"mobile_request_id": client_request_id}),
+            ),
+        ).order_by(Conversation.created_at.asc(), Conversation.id.asc()).first()
+        if existing_request is not None:
+            existing_properties = existing_request.properties or {}
+            if (
+                str(existing_properties.get("mobile_request_owner_id") or "") == owner_id
+                and str(existing_properties.get("mobile_request_fingerprint") or "") == request_fingerprint
+            ):
+                return json(_serialize_conversation(existing_request, owner_id))
+            return json({
+                "error_code": "CONVERSATION_REQUEST_CONFLICT",
+                "error_message": "The client request ID is already used for another group.",
+            }, status=409)
     direct_key = ":".join(sorted(participant_ids)) if not is_group and len(participant_ids) == 2 else ""
     properties = {
         "is_group": is_group,
         "description": str(requested_properties.get("description") or "")[:2000],
         "avatar": str(requested_properties.get("avatar") or "")[:8192],
     }
+    if client_request_id and is_group:
+        properties.update({
+            "mobile_request_id": client_request_id,
+            "mobile_request_owner_id": owner_id,
+            "mobile_request_fingerprint": request_fingerprint,
+        })
     if is_group:
         properties["group_avatar"] = properties["avatar"]
         properties["groupSettings"] = _normalized_group_settings(
@@ -5748,6 +5786,7 @@ async def conversation_create(request):
         last_message_at=int(time.time()),
         properties=properties,
         direct_key=direct_key or None,
+        creation_request_id=client_request_id if client_request_id and is_group else None,
     )
     try:
         db.session.add(item)
@@ -5767,6 +5806,26 @@ async def conversation_create(request):
         return json(_serialize_conversation(item, owner_id), status=201)
     except IntegrityError:
         db.session.rollback()
+        if client_request_id and is_group:
+            canonical = Conversation.query.filter(
+                Conversation.tenant_id == tenant_id,
+                Conversation.deleted.is_(False),
+                or_(
+                    Conversation.creation_request_id == client_request_id,
+                    Conversation.properties.contains({"mobile_request_id": client_request_id}),
+                ),
+            ).order_by(Conversation.created_at.asc(), Conversation.id.asc()).first()
+            if canonical is not None:
+                canonical_properties = canonical.properties or {}
+                if (
+                    str(canonical_properties.get("mobile_request_owner_id") or "") == owner_id
+                    and str(canonical_properties.get("mobile_request_fingerprint") or "") == request_fingerprint
+                ):
+                    return json(_serialize_conversation(canonical, owner_id))
+                return json({
+                    "error_code": "CONVERSATION_REQUEST_CONFLICT",
+                    "error_message": "The client request ID is already used for another group.",
+                }, status=409)
         if direct_key:
             canonical = Conversation.query.filter(
                 Conversation.tenant_id == tenant_id,

@@ -20,7 +20,15 @@ export const storageService = {
 
   async savePublicSession(session: Session | null) {
     if (!session) return AsyncStorage.removeItem(SESSION_KEY);
-    return AsyncStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    // Tinode credentials are short-lived and must never be copied to the
+    // non-secure public-session cache.
+    const safeSession = {
+      ...session,
+      tinodeAuth: session.tinodeAuth
+        ? { ...session.tinodeAuth, token: '' }
+        : null,
+    };
+    return AsyncStorage.setItem(SESSION_KEY, JSON.stringify(safeSession));
   },
 
   saveSessionStartedAt(value: string) {

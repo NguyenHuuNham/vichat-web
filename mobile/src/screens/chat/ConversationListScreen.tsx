@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MessageSquarePlus, Search, SlidersHorizontal, X } from 'lucide-react-native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -11,11 +11,15 @@ import { Avatar } from '../../components/Avatar';
 import { SearchField } from '../../components/SearchField';
 import { ConversationRow } from '../../components/ConversationRow';
 import { EmptyState } from '../../components/EmptyState';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { MessageCircleMore } from 'lucide-react-native';
 import { isConversationMuted } from '../../utils/conversationNotifications';
+import { Conversation } from '../../types';
+import { accountIdForMember, identitiesOverlap } from '../../utils/identity';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Chats'> & { navigation: any };
 type FilterKey = 'all' | 'unread' | 'groups';
+type DeleteRequest = { item: Conversation; title: string; message: string; confirmLabel: string; fallback: string; replacementId?: string };
 
 const filters: Array<{ key: FilterKey; label: string }> = [
   { key: 'all', label: 'Tất cả' },
@@ -25,11 +29,11 @@ const filters: Array<{ key: FilterKey; label: string }> = [
 
 export function ConversationListScreen({ navigation }: Props) {
   const session = useAppStore(state => state.session);
+  const directory = useAppStore(state => state.directory);
   const conversations = useAppStore(state => state.conversations);
   const connection = useAppStore(state => state.connection);
   const error = useAppStore(state => state.error);
   const refreshData = useAppStore(state => state.refreshData);
-  const openConversation = useAppStore(state => state.openConversation);
   const muteConversation = useAppStore(state => state.muteConversation);
   const deleteConversation = useAppStore(state => state.deleteConversation);
   const clearError = useAppStore(state => state.clearError);
@@ -37,6 +41,8 @@ export function ConversationListScreen({ navigation }: Props) {
   const [filter, setFilter] = useState<FilterKey>('all');
   const [showSearch, setShowSearch] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [deleteRequest, setDeleteRequest] = useState<DeleteRequest | null>(null);
 
   const filtered = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -53,56 +59,49 @@ export function ConversationListScreen({ navigation }: Props) {
   }, [refreshData]);
 
   const runConversationAction = useCallback(async (action: () => Promise<void>, fallback: string) => {
+    setActionBusy(true);
     try {
       await action();
     } catch (value) {
       Alert.alert('Không thể thực hiện', value instanceof Error ? value.message : fallback);
+    } finally {
+      setActionBusy(false);
     }
   }, []);
 
   const requestConversationDelete = useCallback((item: typeof conversations[number]) => {
-    const currentIds = new Set([session?.user.id, session?.user.uid].filter(Boolean).map(String));
     const ownerId = String(item.adminId || '');
     const isOwner = item.isGroup && (
-      (ownerId && currentIds.has(ownerId))
-      || item.members?.some(member => String(member.mode || '').includes('O') && currentIds.has(String(member.id || member.uid)))
+      identitiesOverlap({ id: ownerId }, session?.user)
+      || item.members?.some(member => String(member.mode || '').includes('O') && identitiesOverlap(member, session?.user))
     );
     if (!isOwner) {
-      Alert.alert(
-        'Xóa cuộc trò chuyện?',
-        'Tin nhắn của người khác không bị xóa.',
-        [
-          { text: 'Hủy', style: 'cancel' },
-          {
-            text: 'Xóa',
-            style: 'destructive',
-            onPress: () => void runConversationAction(
-              () => deleteConversation(item.id),
-              'Không xóa được cuộc trò chuyện phía bạn.',
-            ),
-          },
-        ],
-      );
+      setDeleteRequest({
+        item,
+        title: 'Xóa cuộc trò chuyện?',
+        message: 'Tin nhắn của người khác không bị xóa.',
+        confirmLabel: 'Xóa phía tôi',
+        fallback: 'Không xóa được cuộc trò chuyện phía bạn.',
+      });
       return;
     }
 
-    const candidates = (item.members || []).filter(member => !currentIds.has(String(member.id || member.uid)));
+    const otherMembers = (item.members || []).filter(member => !identitiesOverlap(member, session?.user));
+    const candidates = otherMembers
+      .map(member => ({ member, accountId: accountIdForMember(member, directory) }))
+      .filter(value => Boolean(value.accountId));
+    if (otherMembers.length > 0 && candidates.length === 0) {
+      Alert.alert('Chưa đồng bộ thành viên', 'Không xác định được Account ID của thành viên thay thế. Hãy tải lại nhóm rồi thử lại.');
+      return;
+    }
     if (candidates.length === 0) {
-      Alert.alert(
-        'Rời nhóm cuối cùng?',
-        'Bạn là thành viên cuối cùng. Rời nhóm sẽ đóng nhóm này.',
-        [
-          { text: 'Hủy', style: 'cancel' },
-          {
-            text: 'Rời nhóm',
-            style: 'destructive',
-            onPress: () => void runConversationAction(
-              () => deleteConversation(item.id),
-              'Không thể rời và đóng nhóm.',
-            ),
-          },
-        ],
-      );
+      setDeleteRequest({
+        item,
+        title: 'Rời nhóm cuối cùng?',
+        message: 'Bạn là thành viên cuối cùng. Rời nhóm sẽ đóng nhóm này.',
+        confirmLabel: 'Rời nhóm',
+        fallback: 'Không thể rời và đóng nhóm.',
+      });
       return;
     }
     Alert.alert(
@@ -110,16 +109,16 @@ export function ConversationListScreen({ navigation }: Props) {
       'Bạn phải chuyển quyền cho một thành viên trước khi rời nhóm.',
       [
         { text: 'Hủy', style: 'cancel' },
-        ...candidates.map(member => ({
-          text: member.name || member.username || String(member.id || member.uid),
+        ...candidates.map(({ member, accountId }) => ({
+          text: member.name || member.username || accountId,
           onPress: () => void runConversationAction(
-            () => deleteConversation(item.id, String(member.id || member.uid)),
+            () => deleteConversation(item.id, accountId),
             'Không thể chuyển quyền và rời nhóm.',
           ),
         })),
       ],
     );
-  }, [deleteConversation, runConversationAction, session]);
+  }, [deleteConversation, directory, runConversationAction, session]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -127,7 +126,7 @@ export function ConversationListScreen({ navigation }: Props) {
         <View style={styles.identity}>
           <Avatar name={session?.user.name} uri={session?.user.avatar} size={48} online={connection === 'connected'} />
           <View style={styles.identityText}>
-            <Text style={styles.eyebrow}>{session?.tenant?.name || 'Không gian công ty'}</Text>
+            <Text numberOfLines={1} ellipsizeMode="tail" style={styles.eyebrow}>{session?.tenant?.name || 'Không gian công ty'}</Text>
             <Text style={styles.title}>Tin nhắn</Text>
           </View>
         </View>
@@ -158,10 +157,15 @@ export function ConversationListScreen({ navigation }: Props) {
       <FlatList
         data={filtered}
         keyExtractor={item => item.id}
+        initialNumToRender={12}
+        maxToRenderPerBatch={8}
+        updateCellsBatchingPeriod={50}
+        windowSize={7}
+        removeClippedSubviews={Platform.OS === 'android'}
         renderItem={({ item }) => (
           <ConversationRow
             conversation={item}
-            onPress={async () => { await openConversation(item.id); navigation.navigate('ChatDetail', { conversationId: item.id }); }}
+            onPress={() => navigation.navigate('ChatDetail', { conversationId: item.id })}
             onLongPress={() => Alert.alert(
               item.name,
               'Chọn thao tác cho cuộc trò chuyện này.',
@@ -192,6 +196,24 @@ export function ConversationListScreen({ navigation }: Props) {
         showsVerticalScrollIndicator={false}
       />
 
+      <ConfirmDialog
+        visible={Boolean(deleteRequest)}
+        title={deleteRequest?.title || ''}
+        message={deleteRequest?.message || ''}
+        eyebrow="THAO TÁC CUỘC TRÒ CHUYỆN"
+        confirmLabel={deleteRequest?.confirmLabel || 'Xác nhận'}
+        onCancel={() => setDeleteRequest(null)}
+        onConfirm={() => {
+          const request = deleteRequest;
+          if (!request) return;
+          void runConversationAction(
+            () => deleteConversation(request.item.id, request.replacementId),
+            request.fallback,
+          ).finally(() => setDeleteRequest(null));
+        }}
+        busy={actionBusy}
+      />
+
       <Pressable accessibilityLabel="Mở danh bạ để bắt đầu cuộc trò chuyện" onPress={() => navigation.navigate('Contacts')} style={styles.composeButton}>
         <MessageSquarePlus color="#fff" size={24} strokeWidth={2.3} />
       </Pressable>
@@ -204,7 +226,7 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   identity: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 },
   identityText: { flex: 1, minWidth: 0 },
-  eyebrow: { ...typography.caption, color: colors.inkSoft, maxWidth: 220 },
+  eyebrow: { ...typography.caption, color: colors.inkSoft, flexShrink: 1 },
   title: { ...typography.display, color: colors.ink, marginTop: 1 },
   iconButton: { width: 44, height: 44, borderRadius: 15, backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center', ...shadow },
   search: { paddingHorizontal: 20, paddingBottom: 12 },

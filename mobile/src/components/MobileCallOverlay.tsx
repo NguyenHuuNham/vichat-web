@@ -26,7 +26,6 @@ export function MobileCallOverlay() {
   const toggleCamera = useCallStore(state => state.toggleCamera);
   const switchCamera = useCallStore(state => state.switchCamera);
   const clearError = useCallStore(state => state.clearError);
-  const [startedAt] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -43,8 +42,8 @@ export function MobileCallOverlay() {
     if (call.phase === 'ringing') return 'Đang đổ chuông...';
     if (call.phase === 'connecting') return 'Đang kết nối...';
     if (call.phase === 'reconnecting') return 'Đang khôi phục kết nối...';
-    return formatDuration(startedAt, now);
-  }, [call, now, startedAt]);
+    return call.connectedAt ? formatDuration(call.connectedAt, now) : '00:00';
+  }, [call, now]);
 
   if (!call) return null;
   const remoteUrl = remoteStream?.toURL?.();
@@ -54,7 +53,7 @@ export function MobileCallOverlay() {
   return (
     <View style={styles.overlay}>
       <View style={[styles.sheet, !call.audioOnly && styles.videoSheet]}>
-        {!call.audioOnly && remoteUrl ? <RTCView streamURL={remoteUrl} objectFit="cover" style={styles.remoteVideo} /> : null}
+        {remoteUrl ? <RTCView streamURL={remoteUrl} objectFit="cover" style={call.audioOnly ? styles.audioRemote : styles.remoteVideo} /> : null}
         {!call.audioOnly && localUrl && cameraEnabled ? <RTCView streamURL={localUrl} mirror objectFit="cover" style={styles.localVideo} /> : null}
         <View style={styles.scrim} />
         <View style={styles.content}>
@@ -87,6 +86,7 @@ const styles = StyleSheet.create({
   sheet: { minHeight: 430, borderTopLeftRadius: 30, borderTopRightRadius: 30, overflow: 'hidden', backgroundColor: '#142027', ...shadow },
   videoSheet: { minHeight: '100%' },
   remoteVideo: { ...StyleSheet.absoluteFill },
+  audioRemote: { position: 'absolute', width: 1, height: 1, opacity: 0 },
   localVideo: { position: 'absolute', top: 58, right: 18, width: 112, height: 158, borderRadius: 18, zIndex: 2, backgroundColor: '#283840' },
   scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,10,14,0.38)' },
   content: { flex: 1, minHeight: 430, paddingHorizontal: 22, paddingTop: 21, paddingBottom: 28, justifyContent: 'space-between', zIndex: 3 },

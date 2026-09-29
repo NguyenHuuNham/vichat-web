@@ -153,18 +153,28 @@
 				"time_to_live": 3600,
 				"android": {
 					"enabled": $FCM_INCLUDE_ANDROID_NOTIFICATION,
-					"icon": "ic_logo_push",
-					"icon_color": "#3949AB",
-					"click_action": ".MessageActivity",
+					"color": "#F4511E",
+					"sound": "default",
 					"msg": {
-						"title_loc_key": "new_message",
-						"title": "",
+						"title": "ViChat",
 						"body_loc_key": "",
-						"body": ""
+						"body": "$content"
 					},
 					"sub": {
-						"title_loc_key": "new_chat",
-						"body_loc_key": ""
+						"title": "ViChat",
+						"body": "$content"
+					}
+				},
+				"apns": {
+					"enabled": $FCM_INCLUDE_IOS_NOTIFICATION,
+					"sound": "default",
+					"msg": {
+						"title": "ViChat",
+						"body": "$content"
+					},
+					"sub": {
+						"title": "ViChat",
+						"body": "$content"
 					}
 				}
 			}

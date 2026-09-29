@@ -10,6 +10,7 @@ export interface Tenant {
 export interface User {
   id: string;
   uid: string;
+  tinodeUid?: string;
   username: string;
   name: string;
   email?: string;
@@ -46,6 +47,9 @@ export interface Session {
   connection: string;
   tinodeAuth?: TinodeAuth | null;
   linkedDevices?: LinkedDevice[];
+  /** Monotonic in-memory namespace used to reject stale async updates. */
+  generation: number;
+  hydratedAt: number;
 }
 
 export interface FileAttachment {
@@ -67,7 +71,64 @@ export interface Sticker {
   fileName?: string;
 }
 
-export type MessageType = 'text' | 'image' | 'file' | 'sticker' | 'system' | 'reaction' | 'recall' | 'edit' | 'call';
+export interface GroupSettings {
+  allowMembersEditInfo: boolean;
+  allowPinMessages: boolean;
+  allowMessages: boolean;
+  allowPolls: boolean;
+  approveMembers: boolean;
+  newMemberHistory: boolean;
+}
+
+export interface PollSettings {
+  expiresAt: string;
+  allowMultiple: boolean;
+  allowAddOptions: boolean;
+  hideResultsUntilVote: boolean;
+  hideVoters: boolean;
+  pinPoll: boolean;
+}
+
+export interface PollOption {
+  id: string;
+  text: string;
+}
+
+export interface PollVote {
+  optionIds: string[];
+  name?: string;
+  avatar?: string;
+  createdAt?: string;
+}
+
+export interface Poll {
+  id: string;
+  question: string;
+  options: PollOption[];
+  settings: PollSettings;
+  creatorId: string;
+  creatorName?: string;
+  creatorAvatar?: string;
+  locked: boolean;
+  votes: Record<string, PollVote>;
+  lastActivitySeq?: number;
+  lastActivityAt?: string;
+}
+
+export interface PollEvent {
+  action: 'poll_vote' | 'poll_option_added' | 'poll_locked';
+  pollId: string;
+  actorId?: string;
+  pollQuestion?: string;
+  optionIds?: string[];
+  optionId?: string;
+  optionText?: string;
+  actorName?: string;
+  actorAvatar?: string;
+  createdAt?: string;
+}
+
+export type MessageType = 'text' | 'image' | 'file' | 'sticker' | 'system' | 'reaction' | 'recall' | 'edit' | 'call' | 'poll_event';
 export type DeliveryStatus = 'none' | 'sending' | 'sent' | 'received' | 'read' | 'failed';
 export type RecallMode = 'self' | 'all';
 
@@ -114,6 +175,11 @@ export interface ChatMessage {
     score?: number;
   }>;
   grounded?: boolean;
+  pinned?: boolean;
+  systemEvent?: Record<string, any>;
+  poll?: Poll;
+  pollEvent?: PollEvent;
+  pollActivity?: PollEvent;
   call?: {
     audioOnly: boolean;
     state: string;
@@ -125,12 +191,16 @@ export interface ChatMessage {
 
 export interface ConversationMember extends User {
   mode?: string;
+  role?: string;
+  groupRole?: 'OWNER' | 'ADMIN' | 'MEMBER' | string;
 }
 
 export interface Conversation {
   id: string;
   managementId: string;
   tinodeTopic: string;
+  /** Identifies whether the snapshot came from Chatmgt or the realtime topic. */
+  snapshotSource?: 'management' | 'tinode';
   name: string;
   isGroup: boolean;
   adminId?: string;
@@ -146,6 +216,11 @@ export interface Conversation {
   updatedAt?: string;
   badge: number;
   notificationMutedUntil?: number | null;
+  pinned?: boolean;
+  groupSettings?: GroupSettings;
+  pendingMembers?: ConversationMember[];
+  conversationNicknames?: Record<string, string>;
+  conversationBackground?: unknown;
 }
 
 export interface WorkspaceItem {

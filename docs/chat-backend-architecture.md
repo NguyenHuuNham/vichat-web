@@ -243,6 +243,34 @@ The bearer session is the only source of `tenant_id` and `owner_id`; no mobile
 request accepts a client-selected owner or tenant. Cloud records stay outside
 Tinode topics, realtime notifications, conversation search and Workspace.
 
+### Mobile group and realtime contract
+
+Chatmgt remains authoritative for mobile conversation metadata, membership,
+Account IDs, group roles, settings and the bound Tinode topic. Mobile sends
+only tenant-local Account IDs to `POST /api/v1/conversation` and the group
+participant endpoints. The `tinode-prepare` response is the only source for
+the Account ID to Tinode UID mapping used by realtime operations; the client
+does not derive a Tinode UID from an Account ID.
+
+Mobile group creation is intentionally ordered: Chatmgt creates the
+conversation, Chatmgt prepares every participant mapping, Tinode creates a
+topic only after all mappings are present, and Chatmgt binds the topic. The
+mobile request ID is stored in `conversation.creation_request_id` and is
+unique for active conversations within a tenant. A retry after a timeout
+returns the original conversation when the owner and normalized payload match;
+another owner or payload receives `CONVERSATION_REQUEST_CONFLICT`. A failed
+Tinode bind leaves the Chatmgt conversation available for retry instead of
+creating a second management row.
+
+The mobile startup path loads Chatmgt metadata before history. Tinode topic
+subscription during bootstrap requests no message history; opening a topic
+loads the latest 30 messages and pull-to-load-earlier requests load at most 40
+messages per page. Reconnect and resume share one session-generation-aware
+sync worker with a concurrency cap of two, and logout or tenant changes abort
+the prior worker and reject stale state updates. Tinode remains authoritative
+for message, presence, typing and receipt events, while Chatmgt metadata is
+preserved when a realtime snapshot is partial.
+
 Chatmgt registers each issued chat JWT as a short-lived Redis linked-session
 record keyed by tenant, account and JWT `jti`. The record keeps only device kind,
 device name, platform, login time and last activity time. Authenticated requests

@@ -4,9 +4,14 @@
     "slug": "vichat-mobile",
     "scheme": "vichat",
     "description": "ViChat doanh nghiệp - kết nối nội bộ an toàn",
-    "version": "1.0.12",
+    "version": "1.0.26",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F7F5F0"
+    },
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#F7F5F0",
     "primaryColor": "#F4511E",
@@ -23,7 +28,7 @@
     },
     "android": {
       "package": "vn.upgo.vichat",
-      "versionCode": 13,
+      "versionCode": 27,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
@@ -41,6 +46,15 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 180,
+          "resizeMode": "contain",
+          "backgroundColor": "#F7F5F0"
+        }
+      ],
       "expo-secure-store",
       "expo-font",
       "expo-sharing",

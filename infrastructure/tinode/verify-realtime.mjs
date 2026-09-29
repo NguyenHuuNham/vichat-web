@@ -1,7 +1,8 @@
 import tinodeSdk from 'tinode-sdk';
 
 const { Tinode } = tinodeSdk;
-const apiKey = process.env.TINODE_API_KEY || 'AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K';
+const apiKey = process.env.TINODE_PUBLIC_APP_ID || process.env.TINODE_API_KEY || '';
+if (!apiKey) throw new Error('TINODE_PUBLIC_APP_ID is required.');
 const host = process.env.TINODE_HOST || '127.0.0.1:6060';
 const secure = process.env.TINODE_SECURE === 'true';
 const password = process.env.TINODE_TEST_PASSWORD || '123456';

@@ -102,9 +102,11 @@ if (-not $ready) {
 }
 
 if (-not $SkipWebConfig) {
+  $publicAppId = $env:TINODE_PUBLIC_APP_ID
+  if (-not $publicAppId) { throw 'Set TINODE_PUBLIC_APP_ID before configuring the web app.' }
   Set-EnvValues (Join-Path $projectDir '.env.local') ([ordered]@{
     VITE_TINODE_HOST = '127.0.0.1:6060'
-    VITE_TINODE_API_KEY = 'AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K'
+    VITE_TINODE_PUBLIC_APP_ID = $publicAppId
     VITE_TINODE_SECURE = 'false'
     VITE_TINODE_TRANSPORT = 'ws'
     VITE_TINODE_PERSIST = 'false'

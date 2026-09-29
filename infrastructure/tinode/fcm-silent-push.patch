@@ -1,0 +1,13 @@
+diff --git a/server/push/fcm/payload.go b/server/push/fcm/payload.go
+index 5d16af5..3b1356c 100644
+--- a/server/push/fcm/payload.go
++++ b/server/push/fcm/payload.go
+@@ -260,0 +261,7 @@ func androidNotificationConfig(what, topic string, data map[string]string, config *configType)
++
++	// Tinode marks sender/device-sync and edit pushes as silent. Keep those
++	// pushes data-only so Android does not show a notification to the sender.
++	// Calls remain visible because they need the high-priority call alert.
++	if data["silent"] == "true" && !videoCall {
++		return &fcmv1.AndroidConfig{Priority: string(common.AndroidPriorityHigh), Ttl: timeToLive}
++	}
++

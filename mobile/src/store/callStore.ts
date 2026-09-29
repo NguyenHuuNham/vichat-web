@@ -21,6 +21,7 @@ export interface MobileCall {
   peerName: string;
   peerAvatar: string;
   phase: MobileCallPhase;
+  connectedAt?: number;
 }
 
 interface CallState {
@@ -46,6 +47,8 @@ let peerConnection: RTCPeerConnectionType | null = null;
 let localStream: MediaStream | null = null;
 let remoteStream: MediaStream | null = null;
 let remoteCandidates: RTCIceCandidateType[] = [];
+const remoteCandidateKeys = new Set<string>();
+const localCandidateKeys = new Set<string>();
 let tracksAttached = false;
 let offerStarted = false;
 let answerStarted = false;
@@ -74,6 +77,12 @@ function stopStream(stream: MediaStream | null) {
   stream?.release?.();
 }
 
+function candidateKey(candidate: any) {
+  return [candidate?.candidate, candidate?.sdpMid, candidate?.sdpMLineIndex]
+    .map(value => String(value ?? ''))
+    .join('|');
+}
+
 function displayPeer(peer?: MobileCallPeer) {
   return {
     peerName: String(peer?.name || 'Người dùng'),
@@ -93,6 +102,8 @@ export const useCallStore = create<CallState>((set, get) => {
     stopStream(remoteStream);
     remoteStream = null;
     remoteCandidates = [];
+    remoteCandidateKeys.clear();
+    localCandidateKeys.clear();
     tracksAttached = false;
     offerStarted = false;
     answerStarted = false;
@@ -141,7 +152,7 @@ export const useCallStore = create<CallState>((set, get) => {
     clearTimeout(disconnectTimer || undefined);
     setupTimer = null;
     disconnectTimer = null;
-    set(state => state.call ? { call: { ...state.call, phase: 'connected' } } : state);
+    set(state => state.call ? { call: { ...state.call, phase: 'connected', connectedAt: state.call.connectedAt || Date.now() } } : state);
   };
 
   const createPeer = () => {
@@ -151,15 +162,22 @@ export const useCallStore = create<CallState>((set, get) => {
     (connection as any).onicecandidate = (event: any) => {
       const call = get().call;
       if (!event?.candidate || !call?.seq) return;
-      void tinodeClient.sendCallSignal(call.topic, call.seq, CALL_SIGNAL_EVENTS.ICE_CANDIDATE, event.candidate.toJSON?.() || event.candidate).catch(error => failCall(error));
+      const candidate = event.candidate.toJSON?.() || event.candidate;
+      const key = candidateKey(candidate);
+      if (!key || localCandidateKeys.has(key)) return;
+      localCandidateKeys.add(key);
+      void tinodeClient.sendCallSignal(call.topic, call.seq, CALL_SIGNAL_EVENTS.ICE_CANDIDATE, candidate).catch(error => failCall(error));
+    };
+    const attachRemoteStream = (stream: MediaStream | null) => {
+      if (!stream) return;
+      remoteStream = stream;
+      set({ remoteStream: stream });
     };
     (connection as any).ontrack = (event: any) => {
       const stream = event?.streams?.[0];
-      if (stream) {
-        remoteStream = stream;
-        set({ remoteStream: stream });
-      }
+      attachRemoteStream(stream || null);
     };
+    (connection as any).onaddstream = (event: any) => attachRemoteStream(event?.stream || null);
     const connectionStateChanged = () => {
       const state = connection.connectionState || connection.iceConnectionState;
       if (state === 'connected' || connection.iceConnectionState === 'connected' || connection.iceConnectionState === 'completed') markConnected();
@@ -220,13 +238,13 @@ export const useCallStore = create<CallState>((set, get) => {
 
   const handleAnswer = async (payload: any) => {
     if (remoteAnswerSet || !peerConnection) return;
-    remoteAnswerSet = true;
     try {
       const connection = peerConnection;
       if (!connection) return;
       const answer = normalizeCallDescription(payload, 'answer');
       if (!answer) throw new Error('SDP trả lời cuộc gọi không hợp lệ.');
       await connection.setRemoteDescription(new (getWebRtc().RTCSessionDescription)(answer as any));
+      remoteAnswerSet = true;
       await drainCandidates();
     } catch (error) {
       failCall(error);
@@ -238,6 +256,9 @@ export const useCallStore = create<CallState>((set, get) => {
     try {
       const candidatePayload = normalizeCallCandidate(payload);
       if (!candidatePayload) throw new Error('ICE candidate không hợp lệ.');
+      const key = candidateKey(candidatePayload);
+      if (!key || remoteCandidateKeys.has(key)) return;
+      remoteCandidateKeys.add(key);
       const candidate = new (getWebRtc().RTCIceCandidate)(candidatePayload as any);
       const connection = peerConnection;
       if (!connection?.remoteDescription) {
@@ -290,6 +311,11 @@ export const useCallStore = create<CallState>((set, get) => {
 
     handleInvite(event, peer) {
       if (!event.seq) return;
+      const capability = tinodeClient.getCallCapability(event.topic, { isGroup: false, isChatbot: false });
+      if (!capability.available) {
+        void tinodeClient.sendCallSignal(event.topic, event.seq, CALL_SIGNAL_EVENTS.HANG_UP).catch(() => {});
+        return;
+      }
       if (get().call) {
         const current = get().call;
         if (current?.topic === event.topic && current.seq === event.seq) return;
@@ -336,6 +362,8 @@ export const useCallStore = create<CallState>((set, get) => {
       const call = get().call;
       if (!call || call.direction !== 'incoming') return;
       try {
+        const capability = tinodeClient.getCallCapability(call.topic, { isGroup: false, isChatbot: false });
+        if (!capability.available) throw new Error(capability.reason);
         set({ call: { ...call, phase: 'preparing' }, error: '' });
         await getLocalMedia(call);
         await tinodeClient.sendCallSignal(call.topic, call.seq, CALL_SIGNAL_EVENTS.ACCEPT);

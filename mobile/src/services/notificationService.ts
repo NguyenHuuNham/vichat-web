@@ -21,6 +21,9 @@ let registrationRequestUser = '';
 let notificationModulesRequest: Promise<any> | null = null;
 let notificationPermissionGranted: boolean | null = null;
 let notificationPermissionCheckedAt = 0;
+type PushRegistrationState = 'idle' | 'requesting' | 'registered' | 'permission-denied' | 'unavailable' | 'error';
+let pushRegistrationState: PushRegistrationState = 'idle';
+let pushRegistrationError = '';
 const incomingCallNotificationIds = new Map<string, string>();
 const dismissedIncomingCallKeys = new Set<string>();
 const dismissedIncomingCallTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -29,6 +32,23 @@ const scheduledIncomingCallExpiryTimers = new Map<string, ReturnType<typeof setT
 export interface PushRegistration {
   token: string;
   platform: 'apns' | 'fcm';
+}
+
+export function getPushRegistrationDiagnostics() {
+  return {
+    state: pushRegistrationState,
+    error: pushRegistrationError,
+    hasToken: Boolean(lastRegistration?.token),
+  };
+}
+
+function registrationFailureKind(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || '');
+  if (/permission|denied|not authorized/i.test(message)) return 'permission-denied';
+  if (/firebase|fcm|apns|device|token|native|not configured|not initialized/i.test(message)) {
+    return 'native-token-unavailable';
+  }
+  return 'native-registration-failed';
 }
 
 async function loadNotificationModules() {
@@ -112,29 +132,47 @@ export async function prepareNotificationPresentation() {
 export async function registerPushNotifications(user?: User | null, options: { retry?: boolean } = {}) {
   if (!user?.id) return null;
   const retry = options.retry === true;
-  if (initializedForUser && initializedForUser !== user.id) lastRegistration = null;
+  if (initializedForUser && initializedForUser !== user.id) {
+    lastRegistration = null;
+    pushRegistrationState = 'idle';
+    pushRegistrationError = '';
+  }
   if (!retry && initializedForUser === user.id) return lastRegistration;
   if (registrationRequest && registrationRequestUser === user.id) return registrationRequest;
 
   registrationRequestUser = user.id;
+  pushRegistrationState = 'requesting';
+  pushRegistrationError = '';
   registrationRequest = (async () => {
     try {
       const { Notifications, Device } = await loadNotificationModules();
-      if (!(await hasNotificationPermission(Notifications, retry))) {
+      if (!config.pushEnabled || !Device.isDevice) {
+        pushRegistrationState = 'unavailable';
         initializedForUser = user.id;
         return null;
       }
-      if (!config.pushEnabled || !Device.isDevice) {
+      if (!(await hasNotificationPermission(Notifications, retry))) {
+        pushRegistrationState = 'permission-denied';
+        pushRegistrationError = 'notification-permission-denied';
         initializedForUser = user.id;
         return null;
       }
       const token = await Notifications.getDevicePushTokenAsync();
-      lastRegistration = { token: String(token.data), platform: Platform.OS === 'ios' ? 'apns' : 'fcm' };
+      const nativeToken = String(token?.data || '').trim();
+      if (!nativeToken) throw new Error('Native push token is empty.');
+      const tokenChanged = lastRegistration?.token !== nativeToken;
+      lastRegistration = { token: nativeToken, platform: Platform.OS === 'ios' ? 'apns' : 'fcm' };
       initializedForUser = user.id;
+      pushRegistrationState = 'registered';
+      pushRegistrationError = '';
+      if (tokenChanged) console.info('[ViChat] Native push registration ready:', lastRegistration.platform);
       return lastRegistration;
-    } catch {
-      // Keep the next foreground transition eligible to retry native registration.
-      initializedForUser = user.id;
+    } catch (error) {
+      // Keep transient native failures eligible for the next foreground/background retry.
+      initializedForUser = '';
+      pushRegistrationState = 'error';
+      pushRegistrationError = registrationFailureKind(error);
+      console.warn('[ViChat] Native push registration failed:', pushRegistrationError);
       return null;
     }
   })();
@@ -152,6 +190,8 @@ export async function registerPushNotifications(user?: User | null, options: { r
 export function resetPushNotificationRegistration() {
   initializedForUser = '';
   lastRegistration = null;
+  pushRegistrationState = 'idle';
+  pushRegistrationError = '';
   registrationRequest = null;
   registrationRequestUser = '';
   notificationPermissionGranted = null;
@@ -169,7 +209,13 @@ export async function subscribeToPushTokenChanges(onToken: (registration: PushRe
   try {
     const { Notifications } = await loadNotificationModules();
     const subscription = Notifications.addPushTokenListener((token: { data: string }) => {
-      if (token?.data) onToken({ token: String(token.data), platform: Platform.OS === 'ios' ? 'apns' : 'fcm' });
+      const nativeToken = String(token?.data || '').trim();
+      if (nativeToken) {
+        lastRegistration = { token: nativeToken, platform: Platform.OS === 'ios' ? 'apns' : 'fcm' };
+        pushRegistrationState = 'registered';
+        pushRegistrationError = '';
+        onToken(lastRegistration);
+      }
     });
     return () => subscription?.remove?.();
   } catch {
@@ -178,6 +224,7 @@ export async function subscribeToPushTokenChanges(onToken: (registration: PushRe
 }
 
 function notificationBody(message: ChatMessage) {
+  if (message.poll) return `Bình chọn: ${message.poll.question}`;
   if (message.type === 'sticker' || message.sticker) return `Đã gửi sticker${message.sticker?.label ? `: ${message.sticker.label}` : ''}`;
   if (message.type === 'image') return 'Đã gửi một hình ảnh';
   if (message.type === 'file') return `Đã gửi tệp ${message.file?.name || ''}`.trim();

@@ -1,20 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { BookOpen, Camera, ChevronLeft, FilePlus2, ImagePlus, Info, Search, Send, ShieldCheck, Phone, SmilePlus, Video, WifiOff, X } from 'lucide-react-native';
+import { FlashList, FlashListRef } from '@shopify/flash-list';
+import { BarChart3, BookOpen, Camera, ChevronLeft, FilePlus2, ImagePlus, Info, Search, Send, ShieldCheck, Phone, SmilePlus, Video, WifiOff, X } from 'lucide-react-native';
 import { RootStackParamList } from '../../navigation/types';
 import { useAppStore, getConversation } from '../../store/appStore';
 import { colors, shadow } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import { Avatar } from '../../components/Avatar';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { MessageBubble } from '../../components/MessageBubble';
 import { MessageActionSheet } from '../../components/MessageActionSheet';
 import { TypingIndicator } from '../../components/TypingIndicator';
-import { Sticker, ChatMessage, PickerFile, RecallMode } from '../../types';
+import { Sticker, ChatMessage, PickerFile, Poll, RecallMode } from '../../types';
 import { StickerPicker } from '../../components/StickerPicker';
 import { attachmentValidationError, canEditMessage, canInteractWithMessage } from '../../utils/messagePolicy';
 import { directPeerOnline } from '../../utils/tinodeState';
@@ -22,6 +24,11 @@ import { formatMessageDateLabel } from '../../utils/timeFormatting';
 import { beginTrustedExternalActivity } from '../../services/appLifecycleService';
 import { tinodeClient } from '../../services/tinodeClient';
 import { useCallStore } from '../../store/callStore';
+import { PollComposer } from '../../components/PollComposer';
+import { groupSettingEnabled, memberIsAdmin } from '../../utils/groupSettings';
+import { pollCanViewerLock } from '../../utils/poll';
+import { getMentionContext, insertMentionAt, matchesMentionCandidate, mentionTokenFor, mentionTokenExists, serializeMentionForTransport } from '../../utils/mentionPolicy';
+import { identitiesOverlap } from '../../utils/identity';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ChatDetail'>;
 
@@ -33,7 +40,9 @@ const AI_STARTERS = [
 
 export function ChatDetailScreen({ route, navigation }: Props) {
   const conversation = useAppStore(state => getConversation(state.conversations, route.params.conversationId));
+  const session = useAppStore(state => state.session);
   const connection = useAppStore(state => state.connection);
+  const reconnect = useAppStore(state => state.reconnect);
   const typing = useAppStore(state => state.typingByTopic[conversation?.tinodeTopic || '']);
   const openConversation = useAppStore(state => state.openConversation);
   const loadEarlier = useAppStore(state => state.loadEarlier);
@@ -42,6 +51,11 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const sendFile = useAppStore(state => state.sendFile);
   const sendSticker = useAppStore(state => state.sendSticker);
   const sendReaction = useAppStore(state => state.sendReaction);
+  const createPoll = useAppStore(state => state.createPoll);
+  const votePoll = useAppStore(state => state.votePoll);
+  const addPollOption = useAppStore(state => state.addPollOption);
+  const lockPoll = useAppStore(state => state.lockPoll);
+  const toggleMessagePin = useAppStore(state => state.toggleMessagePin);
   const recallMessage = useAppStore(state => state.recallMessage);
   const startCall = useCallStore(state => state.startCall);
   const activeCall = useCallStore(state => state.call);
@@ -49,13 +63,18 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [selectedMessage, setSelectedMessage] = useState<ChatMessage | null>(null);
+  const [recallTarget, setRecallTarget] = useState<ChatMessage | null>(null);
   const [editingMessage, setEditingMessage] = useState<{ message: ChatMessage; previousText: string; previousReply?: ChatMessage['replyTo'] } | null>(null);
   const [editHistoryMessage, setEditHistoryMessage] = useState<ChatMessage | null>(null);
   const [replyingTo, setReplyingTo] = useState<ChatMessage['replyTo']>();
   const [stickerPickerOpen, setStickerPickerOpen] = useState(false);
+  const [pollComposerOpen, setPollComposerOpen] = useState(false);
+  const [mentionContext, setMentionContext] = useState<{ start: number; end: number; query: string } | null>(null);
+  const [selectedMentions, setSelectedMentions] = useState<any[]>([]);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [hasEarlier, setHasEarlier] = useState(true);
-  const listRef = useRef<FlatList<ChatMessage>>(null);
+  const composerTextRef = useRef('');
+  const listRef = useRef<FlashListRef<ChatMessage>>(null);
   const listHasLaidOut = useRef(false);
   const listNearBottom = useRef(true);
   const loadingEarlierRef = useRef(false);
@@ -90,25 +109,66 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   useEffect(() => {
     void openConversation(route.params.conversationId).then(() => markRead(route.params.conversationId)).catch(() => {});
     return () => { if (typingTimer.current) clearTimeout(typingTimer.current); };
-  }, [markRead, openConversation, route.params.conversationId]);
+  }, [connection, markRead, openConversation, route.params.conversationId]);
 
   const messages = useMemo(() => conversation?.messages || [], [conversation?.messages]);
+  const mentionCandidates = useMemo(() => {
+    if (!conversation?.isGroup || editingMessage || !mentionContext) return [];
+    const candidates: any[] = [
+      { id: '__all__', name: 'Mọi người', mentionAliases: ['all'], isAll: true },
+      ...(conversation.members || []),
+    ];
+    return candidates
+      .filter((candidate, index, all) => all.findIndex(item => String(item.id || item.uid) === String(candidate.id || candidate.uid)) === index)
+      .filter(candidate => matchesMentionCandidate(candidate, mentionContext.query))
+      .slice(0, 8);
+  }, [conversation?.isGroup, conversation?.members, editingMessage, mentionContext]);
+
+  const updateComposerText = (value: string, caretPosition = value.length) => {
+    composerTextRef.current = value;
+    setText(value);
+    setMentionContext(!editingMessage && conversation?.isGroup
+      ? getMentionContext(value, caretPosition)
+      : null);
+    if (value && conversation?.tinodeTopic && !editingMessage) signalTyping(conversation.id);
+  };
+
+  const selectMention = (candidate: any) => {
+    const inserted = insertMentionAt(text, mentionContext, candidate);
+    if (!inserted.token) return;
+    const serialized = serializeMentionForTransport({ ...candidate, token: inserted.token });
+    composerTextRef.current = inserted.text;
+    setText(inserted.text);
+    setMentionContext(null);
+    if (serialized) {
+      setSelectedMentions(current => [
+        ...current.filter(item => item.token !== serialized.token && item.id !== serialized.id),
+        serialized,
+      ]);
+    }
+    setTimeout(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setNativeProps?.({ selection: { start: inserted.caret, end: inserted.caret } });
+    }, 0);
+  };
   const restoreEditDraft = (snapshot: typeof editingMessage) => {
     if (!snapshot) return;
     setEditingMessage(null);
+    composerTextRef.current = snapshot.previousText;
     setText(snapshot.previousText);
     setReplyingTo(snapshot.previousReply);
   };
   const beginEdit = (message: ChatMessage) => {
     if (!canEditMessage(message) || message.sender !== 'outgoing') return;
     setEditingMessage({ message, previousText: text, previousReply: replyingTo });
+    composerTextRef.current = message.text;
     setText(message.text);
     setReplyingTo(undefined);
     setTimeout(() => inputRef.current?.focus(), 50);
   };
   const submitText = async (suggestedText = '') => {
     const value = (suggestedText || text).trim();
-    if (!value || busy || !conversation) return;
+    if (!value || busy || !conversation || !canSendMessages) return;
     if (editingMessage) {
       const snapshot = editingMessage;
       const target = conversation.messages.find(message => (
@@ -129,36 +189,62 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         restoreEditDraft(snapshot);
       } catch (valueError) {
         setError(valueError instanceof Error ? valueError.message : 'Không sửa được tin nhắn.');
+        composerTextRef.current = value;
         setText(value);
       } finally {
         setBusy(false);
       }
       return;
     }
-    setText(''); setBusy(true); setError('');
+    const mentions = selectedMentions
+      .filter(mention => mentionTokenExists(value, mention.token || mentionTokenFor(mention)))
+      .map(serializeMentionForTransport)
+      .filter(Boolean);
+    composerTextRef.current = '';
+    setText(''); setMentionContext(null); setSelectedMentions([]); setBusy(true); setError('');
     const reply = replyingTo && conversation.messages.some(message => message.id === replyingTo.id && !message.recalled)
       ? replyingTo
       : undefined;
     setReplyingTo(undefined);
-    try { await sendText(conversation.id, value, reply); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không gửi được tin nhắn.'); setText(value); setReplyingTo(reply); } finally { setBusy(false); }
+    try { await sendText(conversation.id, value, reply, mentions); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không gửi được tin nhắn.'); composerTextRef.current = value; setText(value); setSelectedMentions(mentions); setReplyingTo(reply); } finally { setBusy(false); }
   };
   const submitFile = async (file: PickerFile | null) => {
-    if (!file || !conversation) return;
+    if (!file || !conversation || !canSendMessages) return;
     const validation = attachmentValidationError(file);
     if (validation) { setError(validation); return; }
     setBusy(true); setError('');
     try { await sendFile(conversation.id, file); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không gửi được tệp.'); } finally { setBusy(false); }
   };
   const submitSticker = async (sticker: Sticker) => {
-    if (!conversation || busy || editingMessage) return;
+    if (!conversation || busy || editingMessage || !canSendMessages) return;
     setBusy(true); setError('');
     try { await sendSticker(conversation.id, sticker); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không gửi được sticker.'); } finally { setBusy(false); }
+  };
+  const submitPoll = async (poll: Pick<Poll, 'question' | 'options' | 'settings'>) => {
+    if (!conversation || !canSendMessages) return;
+    setBusy(true); setError('');
+    try { await createPoll(conversation.id, poll); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không tạo được bình chọn.'); } finally { setBusy(false); }
+  };
+  const submitPollVote = async (message: ChatMessage, optionIds: string[]) => {
+    if (!conversation?.isGroup || !message.poll || !canSendMessages) return;
+    setBusy(true); setError('');
+    try { await votePoll(conversation.id, message.poll.id, optionIds); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không gửi được lựa chọn.'); } finally { setBusy(false); }
+  };
+  const submitPollOption = async (message: ChatMessage, optionText: string) => {
+    if (!conversation?.isGroup || !message.poll || !optionText.trim() || !canSendMessages) return;
+    setBusy(true); setError('');
+    try { await addPollOption(conversation.id, message.poll.id, `option-${Date.now()}`, optionText.trim()); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không thêm được phương án.'); } finally { setBusy(false); }
+  };
+  const submitPollLock = async (message: ChatMessage) => {
+    if (!conversation?.isGroup || !message.poll || !canSendMessages) return;
+    setBusy(true); setError('');
+    try { await lockPoll(conversation.id, message.poll.id); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không khóa được bình chọn.'); } finally { setBusy(false); }
   };
   const loadEarlierMessages = async (event: any) => {
     if (!conversation || !hasEarlier || loadingEarlier || loadingEarlierRef.current || Number(event?.nativeEvent?.contentOffset?.y || 0) > 48) return;
     loadingEarlierRef.current = true;
     setLoadingEarlier(true);
-    try { setHasEarlier(await loadEarlier(conversation.id, 100)); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không tải thêm được lịch sử chat.'); } finally { loadingEarlierRef.current = false; setLoadingEarlier(false); }
+    try { setHasEarlier(await loadEarlier(conversation.id, 40)); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không tải thêm được lịch sử chat.'); } finally { loadingEarlierRef.current = false; setLoadingEarlier(false); }
   };
   const handleListScroll = (event: any) => {
     const nativeEvent = event?.nativeEvent || {};
@@ -208,7 +294,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const copyMessage = (message: ChatMessage) => { if (canInteractWithMessage(message) && message.text) void Clipboard.setStringAsync(message.text); };
   const downloadMessage = (message: ChatMessage) => {
     if (!canInteractWithMessage(message)) return;
-    const file = message.file || (message.image ? { name: 'hinh-anh.jpg', mime: 'image/jpeg', size: 0, url: message.image } : null);
+    const file = message.file || (message.image ? { name: 'hình-ảnh.jpg', mime: 'image/jpeg', size: 0, url: message.image } : null);
     if (!file) return;
     beginTrustedExternalActivity();
     void tinodeClient.downloadFile(file).catch(value => setError(value instanceof Error ? value.message : 'Không mở được tệp.'));
@@ -222,17 +308,29 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     'Chi tiết tin nhắn',
     [`Người gửi: ${message.sender === 'outgoing' ? 'Bạn' : message.senderName || 'Thành viên'}`, `Thời gian: ${new Date(message.createdAt || Date.now()).toLocaleString('vi-VN')}`, `Trạng thái: ${message.recalled ? 'Đã thu hồi' : message.deliveryStatus || 'Đã gửi'}`].join('\n'),
   );
-  const recallWithMode = (message: ChatMessage, mode: RecallMode) => void recallMessage(conversation?.id || '', message, mode).catch(value => setError(value instanceof Error ? value.message : 'Không thu hồi được tin nhắn.'));
-  const requestRecall = (message: ChatMessage) => Alert.alert(
-    'Thu hồi tin nhắn',
-    'Chọn phạm vi thu hồi cho tin nhắn này.',
-    [
-      { text: 'Hủy', style: 'cancel' },
-      { text: 'Chỉ phía tôi', onPress: () => recallWithMode(message, 'self') },
-      { text: 'Thu hồi tất cả', style: 'destructive', onPress: () => recallWithMode(message, 'all') },
-    ],
-  );
+  const recallWithMode = async (message: ChatMessage, mode: RecallMode) => {
+    setBusy(true);
+    try {
+      await recallMessage(conversation?.id || '', message, mode);
+    } catch (value) {
+      setError(value instanceof Error ? value.message : 'Không thu hồi được tin nhắn.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const requestRecall = (message: ChatMessage) => setRecallTarget(message);
+  const confirmRecall = (mode: RecallMode) => {
+    const target = recallTarget;
+    setRecallTarget(null);
+    if (target) void recallWithMode(target, mode);
+  };
   if (!conversation) return <SafeAreaView style={styles.screen}><Text style={styles.missing}>Cuộc trò chuyện không còn khả dụng.</Text></SafeAreaView>;
+  const currentMember = conversation.members?.find(member => identitiesOverlap(member, session?.user));
+  const realtimeReady = connection === 'connected' && Boolean(conversation.tinodeTopic);
+  const canCreatePoll = realtimeReady && conversation.isGroup && (memberIsAdmin(currentMember) || groupSettingEnabled(conversation.groupSettings, 'allowPolls'));
+  const canSendMessages = realtimeReady && (!conversation.isGroup || memberIsAdmin(currentMember) || groupSettingEnabled(conversation.groupSettings, 'allowMessages'));
+  const canPinMessages = realtimeReady && conversation.isGroup && (memberIsAdmin(currentMember) || groupSettingEnabled(conversation.groupSettings, 'allowPinMessages'));
+  const viewerIdentities = [session?.user.id, session?.user.uid, tinodeClient.currentUserId].filter(Boolean).map(String);
   const peer = conversation.members?.find(member => member.uid !== tinodeClient.currentUserId && member.id !== tinodeClient.currentUserId) || conversation.members?.[0];
   const callCapability = !conversation.isGroup && !conversation.isChatbot
     ? tinodeClient.getCallCapability(conversation.tinodeTopic, { isGroup: false, isChatbot: false })
@@ -248,12 +346,12 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         <Avatar name={conversation.name} uri={conversation.avatarUrl} size={42} rounded={!conversation.isGroup} online={!conversation.isGroup && directPeerOnline(conversation, tinodeClient.currentUserId)} />
         <View style={styles.headerTitle}><Text numberOfLines={1} style={styles.name}>{conversation.name}</Text><Text style={styles.status}>{conversation.isChatbot ? 'Tra cứu tri thức · Có nguồn kiểm chứng' : conversation.isGroup ? conversation.membersCount : (directPeerOnline(conversation, tinodeClient.currentUserId) ? 'Đang hoạt động' : 'Offline')}</Text></View>
         {callCapability.available ? <><Pressable accessibilityLabel="Gọi thoại" disabled={Boolean(activeCall)} onPress={() => beginCall(true)} style={styles.more}><Phone color={colors.accent} size={19} /></Pressable><Pressable accessibilityLabel="Gọi video" disabled={Boolean(activeCall)} onPress={() => beginCall(false)} style={styles.more}><Video color={colors.accent} size={19} /></Pressable></> : null}
-        <Pressable accessibilityLabel="Thông tin cuộc trò chuyện" onPress={() => Alert.alert('Thông tin', conversation.description || (conversation.isGroup ? `${conversation.members?.length || 0} thành viên` : 'Cuộc trò chuyện nội bộ'))} style={styles.more}><Info color={colors.inkSoft} size={21} /></Pressable>
+        <Pressable accessibilityLabel="Thông tin cuộc trò chuyện" onPress={() => conversation.isGroup ? navigation.navigate('GroupInfo', { conversationId: conversation.id }) : Alert.alert('Thông tin', conversation.description || 'Cuộc trò chuyện nội bộ')} style={styles.more}><Info color={colors.inkSoft} size={21} /></Pressable>
       </View>
       {conversation.isChatbot ? <View style={styles.aiStrip}><View style={styles.aiStripItem}><ShieldCheck color={colors.online} size={14} /><Text style={styles.aiStripText}>Riêng tư</Text></View><View style={styles.aiStripItem}><BookOpen color={colors.accent} size={14} /><Text style={styles.aiStripText}>Nguồn rõ ràng</Text></View></View> : null}
-      {connection !== 'connected' ? <View style={styles.offline}><WifiOff color={colors.warning} size={15} /><Text style={styles.offlineText}>Realtime đang gián đoạn. Tin nhắn sẽ gửi lại khi kết nối ổn định.</Text></View> : null}
+      {connection !== 'connected' ? <View style={styles.offline}><WifiOff color={colors.warning} size={15} /><Text style={styles.offlineText}>Realtime đang gián đoạn. Gửi tin nhắn tạm dừng đến khi kết nối lại.</Text><Pressable onPress={() => void reconnect()} style={styles.retry}><Text style={styles.retryText}>Thử lại</Text></Pressable></View> : null}
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}>
-        <FlatList
+        <FlashList
           ref={listRef}
           data={messages}
           keyExtractor={item => `${item.id}-${item.seq || ''}`}
@@ -262,7 +360,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
           renderItem={({ item, index }) => {
             const currentDay = formatMessageDateLabel(item.createdAt);
             const previousDay = index > 0 ? formatMessageDateLabel(messages[index - 1].createdAt) : '';
-            return <View>{currentDay && currentDay !== previousDay ? <Text style={styles.date}>{currentDay}</Text> : null}<MessageBubble message={item} onLongPress={() => { if (!item.recalled) setSelectedMessage(item); }} onShowEditHistory={message => setEditHistoryMessage(message)} /></View>;
+            return <View>{currentDay && currentDay !== previousDay ? <Text style={styles.date}>{currentDay}</Text> : null}<MessageBubble message={item} viewerIdentities={viewerIdentities} groupMembers={conversation.members || []} isGroup={conversation.isGroup} onLongPress={() => { if (!item.recalled) setSelectedMessage(item); }} onShowEditHistory={message => setEditHistoryMessage(message)} onPollVote={submitPollVote} onPollAddOption={submitPollOption} onPollLock={submitPollLock} /></View>;
           }}
           contentContainerStyle={styles.messageList}
           ListHeaderComponent={loadingEarlier ? <View style={styles.historyLoading}><ActivityIndicator color={colors.accent} /></View> : null}
@@ -275,30 +373,41 @@ export function ChatDetailScreen({ route, navigation }: Props) {
               listRef.current?.scrollToEnd({ animated: false });
             }
           }}
-          maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
+          maintainVisibleContentPosition={{ startRenderingFromBottom: true, autoscrollToBottomThreshold: 0.15, animateAutoScrollToBottom: false }}
           removeClippedSubviews={Platform.OS === 'android'}
-          initialNumToRender={20}
-          maxToRenderPerBatch={12}
-          updateCellsBatchingPeriod={40}
-          windowSize={7}
+          getItemType={item => item.type}
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={conversation.isChatbot ? <View style={styles.aiEmpty}><View style={styles.aiEmptyIcon}><Search color="#fff" size={27} /></View><Text style={styles.aiEyebrow}>VICHAT AI</Text><Text style={styles.emptyTitle}>Hỏi kho tri thức doanh nghiệp</Text><Text style={styles.emptyText}>ViChat AI tìm nội dung liên quan và đưa nguồn để bạn kiểm chứng.</Text><View style={styles.aiStarters}>{AI_STARTERS.map((prompt, index) => <Pressable key={prompt} disabled={busy || connection !== 'connected'} onPress={() => void submitText(prompt)} style={styles.aiStarter}><Text style={styles.aiStarterIndex}>{index + 1}</Text><Text style={styles.aiStarterText}>{prompt}</Text></Pressable>)}</View></View> : <View style={styles.empty}><Text style={styles.emptyTitle}>Bắt đầu cuộc trò chuyện</Text><Text style={styles.emptyText}>Tin nhắn và tệp được đồng bộ realtime giữa mobile và web.</Text></View>}
         />
         <TypingIndicator visible={Boolean(typing)} />
+        {conversation.isGroup && !canSendMessages ? <View style={styles.groupLocked}><Text style={styles.groupLockedText}>Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.</Text></View> : null}
         {error ? <Pressable onPress={() => setError('')} style={styles.error}><Text style={styles.errorText}>{error}</Text></Pressable> : null}
         {editingMessage ? <View style={styles.editComposer}><View style={styles.replyBar} /><View style={styles.replyBody}><Text numberOfLines={1} style={styles.replyName}>Sửa tin nhắn</Text><Text numberOfLines={1} style={styles.replyText}>{editingMessage.message.text}</Text></View><Pressable disabled={busy} onPress={() => restoreEditDraft(editingMessage)} style={styles.replyClose}><X color={colors.inkSoft} size={18} /></Pressable></View> : null}
         {!editingMessage && replyingTo ? <View style={styles.replyComposer}><View style={styles.replyBar} /><View style={styles.replyBody}><Text numberOfLines={1} style={styles.replyName}>Đang trả lời {replyingTo.senderName}</Text><Text numberOfLines={1} style={styles.replyText}>{replyingTo.text}</Text></View><Pressable onPress={() => setReplyingTo(undefined)} style={styles.replyClose}><X color={colors.inkSoft} size={18} /></Pressable></View> : null}
+        {mentionCandidates.length > 0 ? <View style={styles.mentionPanel}>
+          <Text style={styles.mentionHeading}>Nhắc đến</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mentionOptions} keyboardShouldPersistTaps="always">
+            {mentionCandidates.map(candidate => <Pressable key={String(candidate.id || candidate.uid)} onPress={() => selectMention(candidate)} style={styles.mentionOption}>
+              <Avatar name={candidate.isAll ? 'Mọi người' : candidate.name} uri={candidate.avatar} size={30} rounded={!candidate.isAll} />
+              <Text numberOfLines={1} style={styles.mentionName}>{candidate.isAll ? 'Mọi người' : candidate.name}</Text>
+            </Pressable>)}
+          </ScrollView>
+        </View> : null}
         <View style={styles.composer}>
           {!conversation.isChatbot ? <View style={styles.attachGroup}>
-            <Pressable accessibilityLabel="Chụp ảnh" onPress={() => void takePhoto()} disabled={busy || Boolean(editingMessage)} style={styles.attach}><Camera color={colors.accent} size={18} /></Pressable>
-            <Pressable accessibilityLabel="Chọn ảnh" onPress={() => void chooseFile(true)} disabled={busy || Boolean(editingMessage)} style={styles.attach}><ImagePlus color={colors.accent} size={19} /></Pressable>
-            <Pressable accessibilityLabel="Chọn tệp" onPress={() => void chooseFile(false)} disabled={busy || Boolean(editingMessage)} style={styles.attach}><FilePlus2 color={colors.accent} size={18} /></Pressable>
-            <Pressable accessibilityLabel="Chọn sticker" onPress={() => setStickerPickerOpen(true)} disabled={busy || Boolean(editingMessage)} style={styles.attach}><SmilePlus color={colors.accent} size={18} /></Pressable>
+            <Pressable accessibilityLabel="Chụp ảnh" onPress={() => void takePhoto()} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><Camera color={colors.accent} size={18} /></Pressable>
+            <Pressable accessibilityLabel="Chọn ảnh" onPress={() => void chooseFile(true)} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><ImagePlus color={colors.accent} size={19} /></Pressable>
+            <Pressable accessibilityLabel="Chọn tệp" onPress={() => void chooseFile(false)} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><FilePlus2 color={colors.accent} size={18} /></Pressable>
+            <Pressable accessibilityLabel="Chọn sticker" onPress={() => setStickerPickerOpen(true)} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><SmilePlus color={colors.accent} size={18} /></Pressable>
+            {conversation.isGroup && canCreatePoll ? <Pressable accessibilityLabel="Tạo bình chọn" onPress={() => setPollComposerOpen(true)} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><BarChart3 color={colors.accent} size={18} /></Pressable> : null}
           </View> : null}
-          <TextInput ref={inputRef} value={text} onChangeText={value => { setText(value); if (value && conversation.tinodeTopic && !editingMessage) signalTyping(conversation.id); }} placeholder={editingMessage ? 'Nhập nội dung mới...' : conversation.isChatbot ? 'Hỏi về quy trình, chính sách, tài liệu...' : 'Viết tin nhắn...'} placeholderTextColor={colors.muted} multiline maxLength={120000} style={styles.input} editable={!busy} />
-          <Pressable onPress={() => void submitText()} disabled={busy || !text.trim()} style={[styles.send, (!text.trim() || busy) && styles.sendDisabled]}><Send color="#fff" size={18} /></Pressable>
+          <TextInput ref={inputRef} value={text} onChangeText={updateComposerText} onSelectionChange={event => {
+            const caret = Number(event.nativeEvent.selection?.start || 0);
+            setMentionContext(!editingMessage && conversation.isGroup ? getMentionContext(composerTextRef.current, caret) : null);
+          }} placeholder={editingMessage ? 'Nhập nội dung mới...' : conversation.isChatbot ? 'Hỏi về quy trình, chính sách, tài liệu...' : 'Viết tin nhắn...'} placeholderTextColor={colors.muted} multiline maxLength={120000} style={styles.input} editable={!busy && canSendMessages} />
+          <Pressable onPress={() => void submitText()} disabled={busy || !text.trim() || !canSendMessages} style={[styles.send, (!text.trim() || busy || !canSendMessages) && styles.sendDisabled]}><Send color="#fff" size={18} /></Pressable>
         </View>
         {conversation.isChatbot ? <Text style={styles.aiNote}>Kiểm tra nguồn trước khi dùng thông tin để ra quyết định.</Text> : null}
       </KeyboardAvoidingView>
@@ -312,9 +421,24 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         onDetails={showMessageDetails}
         onEdit={beginEdit}
         onReaction={(message, emoji) => void sendReaction(conversation.id, message, emoji).catch(value => setError(value instanceof Error ? value.message : 'Không thêm được biểu cảm.'))}
+        canPin={canPinMessages}
+        onPin={message => void toggleMessagePin(conversation.id, message).catch(value => setError(value instanceof Error ? value.message : 'Không ghim được tin nhắn.'))}
         onRecall={message => requestRecall(message)}
       />
       <StickerPicker visible={stickerPickerOpen} onClose={() => setStickerPickerOpen(false)} onSelect={sticker => { void submitSticker(sticker); }} />
+      <PollComposer visible={pollComposerOpen} allowPin={canPinMessages} onClose={() => setPollComposerOpen(false)} onSubmit={poll => { void submitPoll(poll); }} />
+      <ConfirmDialog
+        visible={Boolean(recallTarget)}
+        title="Thu hồi tin nhắn"
+        message="Chọn phạm vi thu hồi cho tin nhắn này."
+        eyebrow="THAO TÁC TIN NHẮN"
+        confirmLabel="Thu hồi tất cả"
+        secondaryLabel="Chỉ phía tôi"
+        onCancel={() => setRecallTarget(null)}
+        onConfirm={() => confirmRecall('all')}
+        onSecondary={() => confirmRecall('self')}
+        busy={busy}
+      />
       <Modal visible={Boolean(editHistoryMessage)} transparent animationType="fade" onRequestClose={() => setEditHistoryMessage(null)} statusBarTranslucent>
         <View style={styles.historyOverlay}>
           <Pressable style={styles.historyBackdrop} onPress={() => setEditHistoryMessage(null)} />
@@ -340,6 +464,10 @@ const styles = StyleSheet.create({
   more: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
   offline: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#FFF4DB', paddingHorizontal: 16, paddingVertical: 8 },
   offlineText: { ...typography.caption, color: colors.warning, flex: 1 },
+  retry: { paddingHorizontal: 8, paddingVertical: 4 },
+  retryText: { ...typography.caption, color: colors.accentDeep, fontFamily: 'BeVietnamPro_700Bold' },
+  groupLocked: { paddingHorizontal: 16, paddingVertical: 7, backgroundColor: '#FFF4DB' },
+  groupLockedText: { ...typography.caption, color: colors.warning },
   aiStrip: { flexDirection: 'row', justifyContent: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#DDEBE4', backgroundColor: '#F3F8F5' },
   aiStripItem: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: colors.paper, borderWidth: 1, borderColor: '#DDEBE4' },
   aiStripText: { ...typography.caption, color: colors.inkSoft, fontSize: 10.5 },
@@ -364,6 +492,11 @@ const styles = StyleSheet.create({
   replyName: { ...typography.caption, color: colors.accentDeep },
   replyText: { ...typography.caption, color: colors.inkSoft, marginTop: 2 },
   replyClose: { width: 34, height: 34, borderRadius: 12, backgroundColor: colors.canvas, alignItems: 'center', justifyContent: 'center' },
+  mentionPanel: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 7, backgroundColor: colors.paper, borderTopWidth: 1, borderTopColor: colors.line },
+  mentionHeading: { ...typography.caption, color: colors.accentDeep, fontFamily: 'BeVietnamPro_700Bold', marginBottom: 6 },
+  mentionOptions: { gap: 8, paddingRight: 6 },
+  mentionOption: { minWidth: 92, maxWidth: 142, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 13, backgroundColor: colors.canvas, borderWidth: 1, borderColor: colors.line },
+  mentionName: { ...typography.caption, color: colors.ink, flexShrink: 1 },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 11, paddingTop: 9, paddingBottom: 9, borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.paper },
   attachGroup: { minHeight: 42, paddingHorizontal: 3, borderRadius: 16, backgroundColor: colors.canvas, flexDirection: 'row', alignItems: 'center' },
   attach: { width: 32, height: 42, alignItems: 'center', justifyContent: 'center' },

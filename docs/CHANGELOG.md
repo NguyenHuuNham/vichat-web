@@ -6,6 +6,26 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-29-01 - Chot audit mobile va artifact 1.0.26
+
+- Thoi gian: 2026-09-29 09:35 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Chat 1-1 | Hieu nang | Phat hanh | Kiem thu | Tai lieu
+- Trang thai: Hoan tat code, contract, static gate va APK test; chua UAT tren thiet bi that.
+- Muc tieu: Chot ban mobile moi nhat sau dot audit on dinh, khong de version hien thi lech, tim kiem lich su sai dau cau hoac tao lap hoi thoai 1-1 khi ID Account/Tinode khac namespace.
+- Pham vi: Mobile auth/session, group/realtime/history, notification, chat 1-1, Settings version, Expo/Android release artifact; khong UAT tai khoan that trong lan nay.
+- File da thay doi: `mobile/src/utils/historySearch.ts`, `mobile/src/utils/conversationSync.ts`, `mobile/src/utils/conversationSync.test.ts`, `mobile/src/store/appStore.ts`, `mobile/src/screens/settings/SettingsScreen.tsx`, `mobile/package.json`, `mobile/package-lock.json`, `mobile/app.json`, cac file mobile stability/runtime da ghi o cac muc lien quan truoc, va muc nay trong `docs/CHANGELOG.md`.
+- Noi dung:
+  - Chuan hoa dau cau trong history search de truy van tieng Viet khop ca ten file/dau gach (`bao cao` khop `Bao-cao-thang.pdf`).
+  - Tim lai chat 1-1 qua `members`, `participantIds`, Tinode topic va tap identity Account/Tinode; chuan hoa Account ID truoc khi goi API; them single-flight theo session generation de double tap khong tao request song song. Backend van la noi canonical hoa cap participant.
+  - Settings doc version tu Expo config, lockfile dong bo `1.0.26`; app Android giu `versionCode=27`.
+- Quyet dinh ky thuat: Khong suy doan Account ID tu Tinode UID cho API membership; chi dung identity overlap o lop tim kiem cache local. Chatmgt van la source of truth cho conversation/group metadata, Tinode chi phuc vu realtime/history.
+- Database/API/cau hinh: Khong them migration hoac endpoint moi trong dot chot nay. Migration/idempotency group va contract runtime da duoc ghi o muc mobile stability truoc; can apply migration truoc khi deploy backend.
+- Kiem thu: `cd mobile; npm test -- --reporter=dot` dat `26 file, 97/97`; `npm run typecheck` dat; `npm run lint` dat; `npm run export` dat; `npx expo config --json --type public` xac nhan package `vn.upgo.vichat`, version `1.0.26`, `versionCode=27`; `npx expo prebuild --platform android --no-install` dat; `python -m unittest chatservice-main/tests/test_mobile_stability_contract.py -q` dat `2/2`; `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` dat `61/61`; Python compile backend dat; Gradle `:app:assembleRelease` dat `520 tasks` voi `arm64-v8a,x86_64`; `aapt`, `zipalign`, `apksigner` dat.
+- Artifact: `D:\vichat-build\ViChat-1.0.26-mobile-full-audit-20260929-universal.apk`, package `vn.upgo.vichat`, version `1.0.26`, `versionCode=27`, ABI `arm64-v8a,x86_64`, SHA-256 `C84F58B96C54AA58D3D8DE85192873809F03FC08CF5EA6FEA885D51F2B3931A8`, signer Android Debug, APK Signature Scheme v2.
+- Rui ro con lai: Chua cai/UAT Android/iOS voi hai tai khoan A/B, tenant khac, offline/reconnect, group lifecycle, notification foreground/background/killed, call va performance history lon; artifact la ban test, chua ky store.
+- Viec tiep theo: Cai APK tren thiet bi that, chay ma tran E2E trong `docs/MOBILE_STABILITY_REMEDIATION_PLAN.md`, apply migration group idempotency tren staging truoc khi deploy backend va ky lai bang release keystore khi phat hanh store.
+- Commit/PR: Se ghi commit source ngay sau khi ra soat diff cuoi cung.
+
 ## 2026-09-28-09 - Deploy production hardening web sau khi qua gate
 
 - Thoi gian: 2026-09-28 23:25 (Asia/Saigon)
@@ -22,6 +42,43 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Rui ro con lai: Chua UAT browser voi hai tai khoan cho login, chat, upload, reaction/sticker burst va cac action mien tru spam; can hard refresh va chay ma tran UAT web.
 - Commit/PR: Source commit `cbbef3a` da push; docs/deploy follow-up commit se tao sau muc nay.
 
+## 2026-09-28-08 - Build APK mobile sau khi sua runtime
+
+- Thoi gian: 2026-09-28 16:35 (Asia/Saigon)
+- Loai: Van hanh | Phat hanh | Kiem thu | Mobile
+- Trang thai: Hoan tat artifact test; chua UAT tren thiet bi that.
+- Muc tieu: Tao APK Android tu source mobile da sua, sau khi lan build truoc chua tao duoc artifact do het dung luong o C:.
+- Pham vi: Android Expo/React Native release build; khong thay doi API, database, backend hoac source mobile.
+- File da thay doi: `docs/CHANGELOG.md`; artifact tao tai `D:\vichat-build\ViChat-1.0.26-mobile-fix-20260928-universal.apk`.
+- Noi dung: Chuyen `GRADLE_USER_HOME` sang `D:\vichat-build\gradle-user-home` tren o D:; sua `local.properties` cua staging ASCII de Android doc dung SDK path; build release voi `arm64-v8a,x86_64` thanh cong.
+- Quyet dinh ky thuat: Dung staging ASCII va cache Gradle tren o D: de tranh gioi han duong dan Unicode va o C: gan day; artifact van dung debug keystore theo cau hinh test hien tai.
+- Database/API/cau hinh: Khong co migration, API hoac thay doi runtime production.
+- Kiem thu: `npm test -- --reporter=dot` dat 25 file/93 test; `npm run typecheck` exit 0; `npm run lint` exit 0; Gradle `:app:assembleRelease` thanh cong 520 tasks; `aapt dump badging` xac nhan package `vn.upgo.vichat`, version `1.0.26`, versionCode `27`, ABI `arm64-v8a,x86_64`; `zipalign -c -P 16 -v 4` dat; `apksigner verify` xac nhan APK Signature Scheme v2.
+- Artifact: `D:\vichat-build\ViChat-1.0.26-mobile-fix-20260928-universal.apk`, SHA-256 `B627FBC8EA85B4CD6B72013616A2D9CBE23C349F5C03BBE68544FC47CD87C04E`, signer la Android Debug.
+- Rui ro con lai: Chua cai/UAT emulator hoac thiet bi that; chua xac nhan hai tai khoan A/B, background/killed push va flow group sau build; APK nay khong phai artifact ky store.
+- Viec tiep theo: Cai APK tren thiet bi that va chay UAT theo ma tran mobile; tao release artifact voi keystore production khi phat hanh store.
+- Commit/PR: Chua tao.
+
+## 2026-09-28-07 - Sua 3 loi runtime mobile: group settings, ten cong ty, notification nguoi gui
+
+- Thoi gian: 2026-09-28 14:00 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Nhom | Thong bao | UI | Kiem thu
+- Trang thai: Hoan tat source va test static; chua UAT tren thiet bi that.
+- Muc tieu: Sua 3 loi runtime mobile: (1) Group Settings khong hoat dong, (2) ten cong ty chi hien "Gon", (3) nguoi gui nhan notification khi chinh minh gui tin.
+- Pham vi: Mobile Expo UI, notification routing, message origin detection; khong doi backend, database, API hay deploy.
+- File da thay doi: `mobile/src/screens/chat/GroupInfoScreen.tsx`, `mobile/src/screens/chat/ConversationListScreen.tsx`, `mobile/src/utils/messageOrigin.ts`, `mobile/src/utils/messageOrigin.test.ts`, `mobile/src/services/tinodeClient.ts`, `mobile/src/store/appStore.ts`, `docs/CHANGELOG.md`.
+- Noi dung:
+  - Loi 1 (Group Settings): Root cause la thieu debounce khi toggle nhanh, optimistic update khong rollback khi API fail, va khong fetch lai khi response thieu groupSettings. Da them `settingsBusy` state rieng cho settings, rollback `settingsDraft` ve gia tri truoc khi fail, va refetch conversation tu Chatmgt neu response thieu groupSettings. Toggle bi khoa khi dang luu.
+  - Loi 2 (Ten "Gon"): Root cause la `maxWidth: 220` tren style `eyebrow` cua ConversationListScreen lam cat ten cong ty. Da bo maxWidth, thay bang `flexShrink: 1`, them `numberOfLines={1}` va `ellipsizeMode="tail"` de ten dai hien "..." thay vi bi cat dut.
+  - Loi 3 (Notification nguoi gui): Root cause la `messageOrigin.ts` chi check `packet.from` va `head['x-sender-id']` voi Tinode UID ma khong check Account ID. Khi header chua Account ID thay vi Tinode UID, own echo bi coi la incoming. Da mo rong `candidateSenderIds` de gom them `x-vichat-sender-id`, `content.sender`, `content.sender_id`, `content.account_id`, `data.from`, `data.sender`, `data.sender_id`, `data.account_id`. Them `isOwnMessageOrigin()` nhan `CurrentIdentity` chua ca Account ID lan Tinode UID. `tinodeClient.emitIncomingMessage` gio dung `isOwnMessageOrigin` thay vi `isOwnTinodeMessage`. `appStore` truyen identity cho `tinodeClient.setCurrentIdentity()` khi bootstrap va cap nhat khi co Tinode UID tu server, clear khi logout.
+- Quyet dinh ky thuat: Khong sua backend/API; day la fix thuan tuy mobile client. Group settings van la source of truth tu Chatmgt; Tinode snapshot khong ghi de groupSettings (da co guard o mergeConversation). Notification guard khong tat toan bo notification; chi chan cho own message. Call invite khong bi anh huong.
+- Database/API/cau hinh: Khong co migration, endpoint moi, bien moi truong hoac thay doi hop dong. Mobile tang len `1.0.26`, Android `versionCode=27`.
+- Kiem thu: `npm test -- --reporter=dot` dat `25 file, 93/93`; `npm run typecheck` dat; `npm run lint` dat; `npx expo config --json --type public` xac nhan package `vn.upgo.vichat`, version `1.0.26`, versionCode `27`.
+- Rui ro con lai: Chua UAT tren thiet bi that voi hai tai khoan A/B; chua build APK moi; chua kiem tra FCM push background/killed.
+- Viec tiep theo: Build APK tu staging ASCII path, UAT tren thiet bi that theo ma tran trong MOBILE_RUNTIME_FIX_PROMPT.md.
+- Commit/PR: Chua tao.
+
+
 ## 2026-09-28-06 - Trien khai hardening bao mat web theo ke hoach
 
 - Thoi gian: 2026-09-28 11:57 (Asia/Saigon)
@@ -37,6 +94,54 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Rui ro con lai: Chua xac nhan Redis/PostgreSQL/Tinode/S3 management port ngoai Internet, Cloudflare proxy/origin restriction, database role Tinode rieng, AV/zip-bomb pipeline, monitoring/alerting va restore drill. File `.env.local` bi ignore co the con ten bien Tinode legacy; build da filter/delete bien nay nhung can doi ten/rotate thu cong va khong in gia tri.
 - Viec tiep theo: Tren staging tao backup/restore drill, migrate role Tinode runtime, cau hinh Redis/firewall/Cloudflare/WAF, chay DAST + hai-tenant matrix, render Compose va `nginx -t`, sau do canary/UAT truoc khi thong bao deploy.
 - Commit/PR: `14ed8c3` da tao; push va deploy production dang cho.
+
+## 2026-09-28-05 - Khac phuc on dinh mobile theo ke hoach
+
+- Thoi gian: 2026-09-28 11:30 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Backend contract | Hieu nang | Phat hanh | Kiem thu | Tai lieu
+- Trang thai: Hoan tat phan code, contract, kiem tra static va APK test; chua UAT tren thiet bi that.
+- Muc tieu: Xu ly cac loi MOB-001 den MOB-004 va phan performance MOB-006: mat ten cong ty, group action sai mapping, app bi do khi login/resume, reconnect tao request trung va history lam cham startup.
+- Pham vi: Mobile Expo auth/session, tenant cache, Account ID/Tinode UID, Chatmgt group lifecycle, Tinode sync/history, group idempotency backend va Android release artifact.
+- File da thay doi: `mobile/src/services/authService.ts`, `mobile/src/services/apiClient.ts`, `mobile/src/services/chatManagementService.ts`, `mobile/src/services/tinodeClient.ts`, `mobile/src/store/appStore.ts`, `mobile/src/utils/identity.ts`, `mobile/src/utils/conversationSync.ts`, cac man hinh group/chat va test mobile lien quan; `chatservice-main/application/controllers/api_chat_management.py`, `chatservice-main/application/models/models.py`, `chatservice-main/migrations/017_mobile_group_idempotency.sql`, `chatservice-main/alembic/versions/20260928_17_mobile_group_idempotency.py`, `chatservice-main/tests/test_mobile_stability_contract.py`, `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`, `docs/MOBILE_STABILITY_REMEDIATION_PLAN.md`, `docs/chat-backend-architecture.md`.
+- Noi dung: Chuan hoa alias tenant/account/tinodeUid qua mot session normalizer; them session generation, abort va stale-result guard khi logout/doi tenant; chi dung Account ID cho Chatmgt va mapping Tinode UID tu backend cho realtime. Startup chi tai metadata, sync Tinode co single-flight/concurrency cap, history lazy va phan trang co gioi han. Tao group theo thu tu Chatmgt -> prepare mapping -> Tinode -> bind, dung cung idempotency key khi retry va xu ly race/conflict.
+- Quyet dinh ky thuat: Chatmgt la source of truth cho membership/role/group metadata; Tinode UID khong duoc suy doan tu Account ID. Migration them `conversation.creation_request_id` va partial unique index theo tenant cho conversation group dang active; retry cung payload tra lai conversation cu, payload/owner khac bi tu choi. Khong prefetch history cua tat ca topic trong bootstrap.
+- Database/API/cau hinh: Them migration `20260928_17_mobile_group_idempotency` va contract `client_request_id`/`X-Vichat-Request-Id` cho tao group; can apply migration truoc khi deploy backend. Mobile tang len `1.0.24`, Android `versionCode=25`; khong deploy production trong lan nay.
+- Kiem thu: `cd mobile; npm test -- --reporter=dot` dat `25 file, 85/85`; `cd mobile; npm run typecheck` dat; `cd mobile; npm run lint` dat; `python -m unittest chatservice-main/tests/test_mobile_stability_contract.py -q` dat `2/2`; `python -m unittest chatservice-main/tests/test_direct_message_blocking.py -q` dat `12/12`; `python -m py_compile chatservice-main/application/controllers/api_chat_management.py chatservice-main/application/models/models.py chatservice-main/tests/test_mobile_stability_contract.py` dat; `npx expo config --json --type public` va `npx expo prebuild --platform android --no-install` dat; Android release build dat `520 tasks` voi `arm64-v8a,x86_64`; package `vn.upgo.vichat`, version `1.0.24`, `versionCode=25`; `zipalign` va `apksigner` v2 dat. APK `D:\vichat-build\ViChat-1.0.24-mobile-stability-20260928-universal.apk`, SHA-256 `C2CF97ECB3AB81DE465271593FA09C490076F43F4CC3E77F2C2D3523A654EA40`. `test_chat_auth_contract.py` con 1 failure trong 60 test do assertion web profile-view cu, khong thuoc pham vi mobile va khong bi sua trong lan nay.
+- Rui ro con lai: Chua UAT Android/iOS voi hai tai khoan cung tenant, tai khoan khac tenant, offline/reconnect, group action, history lon, notification va kill/resume. Chua profile request/render tren thiet bi that. APK moi chi la test artifact; chua ky release store. Khong chay emulator/`adb` theo yeu cau.
+- Viec tiep theo: Apply migration tren staging truoc, sau do UAT tren thiet bi that theo ma tran trong ke hoach; neu UAT dat thi ky lai release artifact, neu khong thi dung release va rollback theo runbook.
+- Commit/PR: Chua tao.
+
+## 2026-09-28-04 - Lap ke hoach hardening bao mat web
+
+- Thoi gian: 2026-09-28 (Asia/Saigon)
+- Loai: Bao mat | Van hanh | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Tao ke hoach cu the de xu ly toan bo 20 tieu chi bao mat web trong video va dua production den trang thai co the ky duyet.
+- Pham vi: ChatUI, Chatmgt, auth/session, tenant authorization, upload/S3, Tinode relay, PostgreSQL, Redis, reverse proxy/Cloudflare, logging, monitoring, backup va DAST.
+- File da thay doi: `docs/WEB_SECURITY_HARDENING_PLAN.md`, `docs/CHANGELOG.md`.
+- Noi dung: Ghi lai bang chung audit hien tai, blocker Redis public, rate-limit fail-open, upload MIME/size, cookie/header, public API key, Cloudflare, database least privilege va quy trinh fix theo P0/P1/P2; them test matrix, deploy gate, rollback va definition of done.
+- Quyet dinh ky thuat: Dong ha tang P0 truoc khi sua UI; fail closed khi Redis loi; tenant tu verified session; upload phai allowlist + content validation; production chi duoc ky duyet khi co evidence 20/20 muc.
+- Database/API/cau hinh: Chua thay doi database, API, runtime config hay deployment; day la plan de thuc hien co kiem soat.
+- Kiem thu: `git diff --check -- docs/WEB_SECURITY_HARDENING_PLAN.md docs/CHANGELOG.md` dat, khong co loi whitespace; chua sua code va chua deploy.
+- Rui ro con lai: Tat ca blocker van con ton tai cho den khi cac phase trong plan duoc implement va verify tren staging/production.
+- Viec tiep theo: Bat dau Giai doan 0 va Giai doan 1, uu tien khoa cong Redis public va rotate credential/rotate session neu can.
+- Commit/PR: Chua tao.
+
+## 2026-09-28-03 - Lap ke hoach khac phuc on dinh mobile
+
+- Thoi gian: 2026-09-28 (Asia/Saigon)
+- Loai: Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Tao mot runbook day du de sua loi mat ten cong ty sau login, group khong hoat dong, app bi do va cac regression mobile ma khong lap lai loi.
+- Pham vi: Mobile Expo, session/tenant, Chatmgt group contract, Tinode realtime/history, pagination, performance, UAT va release.
+- File da thay doi: docs/MOBILE_STABILITY_REMEDIATION_PLAN.md, docs/CHANGELOG.md.
+- Noi dung: Ghi nhan bang chung hien tai, nguyen tac source of truth va tenant boundary, thu tu P0/P1/P2, contract Account ID/Tinode UID, state machine group, single-flight sync, lazy history, ma tran test, performance budget, UAT va rollback checklist. Chua sua code trong lan lap ke hoach nay.
+- Quyet dinh ky thuat: Uu tien session/tenant, group identity va scheduler realtime truoc khi audit UI; khong preload history cua tat ca topic; khong coi Tinode UID la Account ID; khong phat hanh APK truoc UAT thiet bi that.
+- Database/API/cau hinh: Chua thay doi database, API, cau hinh hoac deployment. Neu implement can aggregate group endpoint, idempotency hoac migration, phai cap nhat contract/architecture truoc rollout.
+- Kiem thu: git diff --check -- docs/MOBILE_STABILITY_REMEDIATION_PLAN.md docs/CHANGELOG.md khong bao loi whitespace; chua chay mobile unit/typecheck/lint vi lan nay chi them tai lieu ke hoach.
+- Rui ro con lai: Chua co so lieu baseline va chua xac nhan root cause bang thiet bi that; cac muc trong plan dang o trang thai Chua bat dau.
+- Viec tiep theo: Thuc hien Giai doan 0, sau do sua P0 session/tenant, group identity va single-flight sync theo docs/MOBILE_STABILITY_REMEDIATION_PLAN.md.
+- Commit/PR: Chua tao.
 
 ## 2026-09-28-02 - Build APK mobile gom cac ban sua chat moi nhat
 
@@ -58,17 +163,19 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-28 (Asia/Saigon)
 - Loai: Sua loi | Web | Tinode | Chong spam | Kiem thu | Tai lieu
-- Trang thai: Hoan tat source va bundle web; chua deploy production.
+- Trang thai: Hoan tat source va bundle web; da deploy production; cho UAT browser.
 - Muc tieu: Khong de thao tac reaction va cac hanh dong chat hop le bi danh nham la spam; chi chan burst tin nhan text hoac sticker.
 - Pham vi: ChatUI web va tinode-account-bridge; mobile khong doi, khong doi nguong cooldown hien co.
 - File da thay doi: `src/app/App.jsx`, `src/features/chat/services/groupSpamPolicy.test.js`, `src/features/chat/services/chatManagementService.test.js`, `chatservice-main/scripts/tinode_account_bridge.py`, `chatservice-main/tests/test_tinode_account_bridge.py`, `docs/chat-backend-architecture.md`, `dist/index.html`, va file nay.
 - Noi dung: Bo dang ky spam khoi reaction, file/anh/voice, poll, edit, recall, pin va forward; giu dang ky cho text/sticker. Bridge chi dem publish text thuong va packet co `x-vichat-sticker`, mien tru event/attachment/forward bang head va content classification. Cooldown text/sticker khong khoa picker reaction hay cac thao tac mien tru.
 - Quyet dinh ky thuat: Relay la diem enforcement cuoi cung va tu phan loai packet, khong tin vao action header tu client de quyet dinh mot action co phai message spam hay khong. Khong thay doi limit, cooldown, API, database, Tinode history hoac mobile policy.
 - Database/API/cau hinh: Khong migration, endpoint, bien moi truong hoac thay doi contract.
-- Kiem thu: `node --test src/features/chat/services/groupSpamPolicy.test.js` dat `6/6`; bridge smoke test va `python -m py_compile chatservice-main/scripts/tinode_account_bridge.py` dat; bridge unittest chay `16` test nhung deu skip do moi truong host thieu `aiohttp`; `npm run test:frontend -- --test-concurrency=1` cho `450 pass, 1 fail`, failure cu tai `src/features/chat/services/chatManagementService.test.js:783` ve regex luong mobile group departure khong lien quan; `npm run lint` exit `0` voi warning legacy/mobile da co; `npm run build:production` exit `0` voi canh bao chunk App vuot 500 KB; `cd mobile; npm test -- --reporter=dot` dat `23 file, 73/73`; `cd mobile; npm run typecheck` dat; `git diff --check` dat.
-- Rui ro con lai: Chua UAT production voi hai web session cho text/sticker burst, reaction lap nhanh va cac action mien tru; bridge unittest day du can chay trong runtime co `aiohttp`; chua deploy production.
-- Viec tiep theo: Deploy dong thoi bundle ChatUI va image `tinode-account-bridge`, health check, sau do UAT web text/sticker burst, reaction lap nhanh, file/poll/edit/recall/pin/forward va xac nhan mobile khong doi.
-- Commit/PR: Chua tao.
+- Kiem thu: `node --test src/features/chat/services/groupSpamPolicy.test.js` dat `6/6`; bridge smoke test va `python -m py_compile chatservice-main/scripts/tinode_account_bridge.py` dat; `npm run test:frontend -- --test-concurrency=1` dat `451 pass, 0 fail`; `npm run lint` exit `0` voi warning legacy/mobile da co; `npm run build:production` exit `0` voi canh bao chunk App vuot 500 KB; `cd mobile; npm test -- --reporter=dot` dat `23 file, 73/73`; `cd mobile; npm run typecheck` dat; `git diff --check` dat. Bridge unittest trong image production dat `16/16`.
+- Trien khai: Source commit `fe99308` da push len `github/fix/full-audit-regressions`; archive `/opt/deploy/chat/incoming/vichat-group-spam-fe99308.tar.gz` co SHA-256 `B9BEA30DCA1832051806F9334139316AB6D550F4C8CF8DFD4A1CAFC3E81A2F84`; release `/opt/deploy/chat/releases/group-spam-fe99308-20260928-r1` dang la `current`, `previous` tro `/opt/deploy/chat/releases/mute-category-69a7f70-20260927-r3`; chi recreate `tinode-account-bridge` va `chat`, khong migration, khong reset database/Redis/Tinode volume/topic/message. Hai candidate dung truoc switch do quyen doc archive va duoc giu trong `.failed-candidate`, production khong bi thay doi.
+- Kiem tra production: ChatUI container `27a3791baf3f49fd7c64acb2b7ea185da9ae7bfd83d009c16730ad21b1af65ab`, image `sha256:1279ac01da06953dce2418aa26197d2499d67f85fc69a77234e813ca266976c0`; bridge container `064576953ff6080857e6e101566f7e97c61e40a3fc509cbce4d364a7893c705e`, image `sha256:4e27ce4454d3bf0d891e5326e960c46095f1fe433ba0f7b1b215951b9ce45f68`; ca hai healthy/restart `0`, local/public `/healthz` `ok`, bridge health `healthy`, public entry `/assets/index-CXweswLR.js`, CSS `/assets/index-B1sUJyGf.css`, WSS `101`, bundle co marker group-spam/sticker. Chatmgt, webhook, Tinode, PostgreSQL va Redis giu nguyen container ID; log ChatUI/bridge sach.
+- Rui ro con lai: Chua UAT production voi hai web session cho text/sticker burst, reaction lap nhanh va cac action mien tru; cooldown bridge van la state trong memory va se reset khi bridge restart; mobile khong doi trong commit nay.
+- Viec tiep theo: Hard refresh `https://chat.gonplatform.com`, sau do UAT web text/sticker burst, reaction lap nhanh, file/poll/edit/recall/pin/forward va xac nhan mobile khong doi.
+- Commit/PR: Source commit `fe99308` da push len `github/fix/full-audit-regressions`; docs/deploy follow-up commit chua tao.
 
 ## 2026-09-27-04 - Sua icon tat thong bao va phan loai hoi thoai
 

@@ -4,6 +4,7 @@ import {
   normalizeCallCandidate,
   normalizeCallDescription,
   normalizeCallPayload,
+  normalizeIceServers,
   publishCallInvite,
 } from './callSignaling';
 
@@ -34,6 +35,17 @@ describe('mobile call signaling', () => {
     expect(result.seq).toBe(31);
     expect(extractCallSequence({ params: {} }, draft)).toBe(31);
     expect(draft.ts).toBe('2026-08-17T10:00:00.000Z');
+  });
+
+  it('filters malformed ICE entries before passing them to WebRTC', () => {
+    expect(normalizeIceServers([
+      { urls: ['stun:stun.example.com', 'invalid'] },
+      { urls: 'turn:turn.example.com', username: 'user' },
+      { urls: 'https://example.com' },
+    ])).toEqual([
+      { urls: ['stun:stun.example.com'] },
+      { urls: 'turn:turn.example.com', username: 'user' },
+    ]);
   });
 
   it('reports rejected and incomplete invite publishes', async () => {

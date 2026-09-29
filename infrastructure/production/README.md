@@ -196,6 +196,51 @@ services remain available only as the rollback path during acceptance. Continue
 with the deployment verifier and browser UAT after the reset; do not run
 `docker compose down -v`.
 
+## Mobile push delivery
+
+Foreground mobile notifications are scheduled locally from live Tinode data.
+Delivery while Android/iOS suspends or kills the app requires both halves of
+the native push path:
+
+1. Build the mobile package with an Android Firebase app matching
+   `vn.upgo.vichat` (or the matching iOS APNs credentials). The repository does
+   not contain `google-services.json`; provide it only through the ignored file
+   or the documented build secret environment variables in `mobile/app.config.js`.
+2. Configure the push provider on the authoritative Tinode at
+   `chatapi.gonplatform.com`, then restart that Tinode service. Setting
+   `FCM_*` or `TNPG_*` only on this stack's rollback `chatapi` container does
+   not change the authoritative server behind the Nginx relay.
+
+The `chatapi` service is built from `infrastructure/tinode/Dockerfile`. It
+replaces the pinned Tinode 0.25.3 server binary with the small FCM silent-push
+patch in `infrastructure/tinode/fcm-silent-push.patch`. This is required when
+Android notification payloads are enabled: Tinode's sender/device-sync push
+must remain data-only, while recipient message pushes and incoming-call pushes
+remain visible. Run `start.sh` (or explicitly `docker compose build chatapi`
+then recreate only `chatapi`) after changing this patch; do not only rebuild
+the mobile APK.
+
+For the direct FCM provider, keep the service-account JSON in the ignored
+production runtime directory and set the following private `.env` values:
+
+```dotenv
+FCM_PUSH_ENABLED=true
+FCM_PROJECT_ID=<firebase-project-id>
+FCM_CRED_FILE=/data/runtime/firebase-service-account.json
+FCM_INCLUDE_ANDROID_NOTIFICATION=true
+FCM_INCLUDE_IOS_NOTIFICATION=true
+TNPG_PUSH_ENABLED=false
+```
+
+`start.sh` fails closed when an enabled provider has missing credentials or a
+credential path outside `/data/runtime`; it never prints the credential value.
+The mobile client closes its live Tinode session when it enters the background
+so a suspended JavaScript runtime cannot be mistaken for an online device; it
+reconnects and catches up without replaying push alerts when the app returns.
+After a mobile token is registered, Tinode receives it through the authenticated
+`hi.dev` field. Verify one message in foreground, background and killed states
+on a real device before calling the release push-ready.
+
 ## Voice and video calls
 
 Tinode 0.25.3 provides signaling for direct WebRTC calls only. Group calls are

@@ -72,6 +72,24 @@ describe('mobile Chatmgt pagination', () => {
     expect((fetchMock.mock.calls[1][0] as string)).toContain('cursor=conversation-page-2');
   });
 
+  it('stops when the server explicitly reports no more pages', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({
+        objects: [{ id: 'conversation-1', subject: 'Current chat', tinode_topic: 'usr-current' }],
+        has_more: false,
+        next_cursor: 'must-not-be-requested',
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        objects: [{ id: 'conversation-2', subject: 'Unexpected page', tinode_topic: 'usr-unexpected' }],
+      }));
+
+    const conversations = await chatManagementService.listConversations();
+
+    expect(conversations.map(conversation => conversation.id)).toEqual(['conversation-1']);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('deduplicates records that point to the same Tinode topic', async () => {
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
     fetchMock.mockResolvedValueOnce(jsonResponse({
