@@ -331,6 +331,13 @@ function formatSystemEvent(event: any, client: any) {
     const name = String(event.newName || event.name || '').trim();
     return name ? `${actorText} đổi tên nhóm thành “${name}”` : `${actorText} đổi tên nhóm`;
   }
+  if (event?.action === 'conversation_nickname_changed') {
+    const targetName = String(event.targetName || targets[0]?.name || 'thành viên').trim();
+    const nickname = String(event.newNickname || '').trim();
+    return nickname
+      ? `${actorText} đã đặt biệt danh "${nickname}" cho ${targetName}`
+      : `${actorText} đã xóa biệt danh của ${targetName}`;
+  }
   if (event?.action === 'group_avatar_changed') return `${actorText} đổi ảnh đại diện nhóm`;
   if (event?.action === 'group_settings_changed') return `${actorText} cập nhật quyền của nhóm`;
   if (event?.action === 'group_dissolved') return actorText === 'Bạn' ? 'Bạn đã giải tán nhóm' : `${actorName} đã giải tán nhóm`;

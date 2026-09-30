@@ -20,6 +20,15 @@ export interface User {
   tinodeUid?: string;
   username: string;
   name: string;
+  defaultName?: string;
+  default_name?: string;
+  fullName?: string;
+  full_name?: string;
+  displayName?: string;
+  display_name?: string;
+  nickname?: string;
+  conversationNickname?: string;
+  conversation_nickname?: string;
   email?: string;
   avatar?: string;
   role?: string;
@@ -29,6 +38,7 @@ export interface User {
   tenantId: string;
   online?: boolean;
   type?: string;
+  isChatbot?: boolean;
 }
 
 export interface TinodeAuth {

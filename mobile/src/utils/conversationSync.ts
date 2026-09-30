@@ -144,6 +144,49 @@ function memberAccountIdentity(member: Partial<ConversationMember>) {
   return id && id !== tinodeId && !isTinodeUid(id) ? id : '';
 }
 
+function nicknameMapValue(nicknames: Record<string, string> | undefined, member: Partial<ConversationMember>) {
+  if (!nicknames || typeof nicknames !== 'object') return '';
+  const entries = Object.entries(nicknames).map(([key, value]) => [String(key).trim().toLowerCase(), String(value || '').trim()] as const);
+  const values = new Map(entries);
+  return memberIdentityValues(member).map(identity => values.get(identity) || '').find(Boolean) || '';
+}
+
+export function conversationNicknameForMember(member: Partial<ConversationMember>, nicknames?: Record<string, string>) {
+  return nicknameMapValue(nicknames, member)
+    || String(member.conversationNickname || member.conversation_nickname || member.nickname || '').trim();
+}
+
+function defaultMemberName(member: Partial<ConversationMember>) {
+  const source = member as any;
+  return String(
+    source.defaultName
+      || source.default_name
+      || source.fullName
+      || source.full_name
+      || source.officialName
+      || source.official_name
+      || source.name
+      || source.username
+      || source.id
+      || 'Thành viên',
+  ).trim();
+}
+
+/** Apply the shared conversation alias without changing Account's official name fields. */
+export function applyConversationNicknames(members: ConversationMember[] = [], nicknames?: Record<string, string>) {
+  return members.map(member => {
+    const nickname = conversationNicknameForMember(member, nicknames);
+    const officialName = defaultMemberName(member);
+    return {
+      ...member,
+      name: nickname || officialName,
+      nickname,
+      conversationNickname: nickname,
+      conversation_nickname: nickname,
+    };
+  });
+}
+
 function isGenericMemberName(value: unknown) {
   const normalized = String(value || '').trim().toLowerCase();
   return !normalized || normalized === 'member' || normalized === 'thành viên' || normalized === 'thanh vien'
@@ -203,10 +246,57 @@ function enrichMessages(messages: ChatMessage[], members: ConversationMember[]) 
     if (!sender) return message;
     return {
       ...message,
-      senderName: isGenericMemberName(message.senderName) ? sender.name : (message.senderName || sender.name),
+      senderName: sender.name || message.senderName,
       avatar: message.avatar || sender.avatar,
     };
   });
+}
+
+export function applyConversationNicknameEvent(conversation: Conversation, event: any, viewer?: unknown) {
+  if (!event || String(event.action || '').trim() !== 'conversation_nickname_changed') return conversation;
+  const targetValues = [
+    event.targetAccountId,
+    event.target_account_id,
+    event.targetId,
+    event.target_id,
+    ...(Array.isArray(event.targets) ? event.targets.flatMap((target: any) => [
+      target?.accountId,
+      target?.account_id,
+      target?.id,
+      target?.uid,
+      target?.tinodeUid,
+      target?.tinode_uid,
+    ]) : []),
+  ].map(value => String(value || '').trim()).filter(Boolean);
+  const targetIdentitySet = new Set(targetValues.map(value => value.toLowerCase()));
+  const matchedMember = (conversation.members || []).find(member => memberIdentityValues(member).some(identity => targetIdentitySet.has(identity)));
+  const targetAccountId = String(
+    event.targetAccountId
+      || event.target_account_id
+      || (matchedMember ? memberAccountIdentity(matchedMember) : '')
+      || '',
+  ).trim();
+  if (!targetAccountId) return conversation;
+
+  const nextNicknames = { ...(conversation.conversationNicknames || {}) };
+  const nextNickname = String(event.newNickname || event.new_nickname || '').trim().slice(0, 80);
+  if (nextNickname) nextNicknames[targetAccountId] = nextNickname;
+  else delete nextNicknames[targetAccountId];
+  const members = applyConversationNicknames(conversation.members || [], nextNicknames);
+  const messages = enrichMessages(conversation.messages || [], members);
+  const targetIsViewer = Boolean(viewer && targetValues.some(value => identityValues(viewer).includes(value.toLowerCase())));
+  const matchedAfterUpdate = members.find(member => memberIdentityValues(member).some(identity => targetIdentitySet.has(identity)));
+  const directName = !conversation.isGroup && !targetIsViewer && matchedAfterUpdate
+    ? matchedAfterUpdate.name
+    : conversation.name;
+  return {
+    ...conversation,
+    conversationNicknames: nextNicknames,
+    members,
+    messages,
+    name: directName || conversation.name,
+    lastMsg: conversation.lastMsg,
+  };
 }
 
 export function conversationActivityTimestamp(conversation: Conversation) {
@@ -226,19 +316,23 @@ export function mergeConversation(first: Conversation, second: Conversation): Co
   const incomingTinodeSnapshot = isTinodeConversationSnapshot(second);
   const messages = mergeMessages(first.messages || [], second.messages || []);
   const incomingMembers = Array.isArray(second.members) ? second.members : [];
-  const members = second.members === undefined && !incomingTinodeSnapshot
+  const mergedMembers = second.members === undefined && !incomingTinodeSnapshot
     ? (first.members || [])
     : mergeMembers(first.members || [], incomingMembers, incomingTinodeSnapshot);
   const pendingMembers = second.pendingMembers !== undefined
     ? mergeMembers([], second.pendingMembers)
     : first.pendingMembers || [];
-  const enrichedMessages = enrichMessages(messages, members);
-  const latestMessage = enrichedMessages[enrichedMessages.length - 1];
   const firstActivity = conversationActivityTimestamp(first);
   const secondActivity = conversationActivityTimestamp(second);
   const activity = Math.max(firstActivity, secondActivity);
   const preferred = secondActivity >= firstActivity ? second : first;
   const fallback = preferred === first ? second : first;
+  const conversationNicknames = preferred.conversationNicknames !== undefined
+    ? preferred.conversationNicknames
+    : fallback.conversationNicknames;
+  const members = applyConversationNicknames(mergedMembers, conversationNicknames);
+  const enrichedMessages = enrichMessages(messages, members);
+  const latestMessage = enrichedMessages[enrichedMessages.length - 1];
   const incomingTinodeOnly = Boolean(
     second.tinodeTopic
       && second.managementId === second.tinodeTopic
@@ -267,7 +361,9 @@ export function mergeConversation(first: Conversation, second: Conversation): Co
       : (preferred.managementId || fallback.managementId || preferred.id),
     tinodeTopic: preferred.tinodeTopic || fallback.tinodeTopic,
     snapshotSource: preferred.snapshotSource || fallback.snapshotSource,
-    name: preferred.name || fallback.name,
+    name: second.snapshotSource === 'tinode' && first.snapshotSource !== 'tinode'
+      ? (fallback.name || preferred.name)
+      : (preferred.name || fallback.name),
     adminId: preferred.adminId || fallback.adminId,
     avatarUrl: preferred.avatarUrl || fallback.avatarUrl,
     description: preferred.description || fallback.description,
@@ -294,9 +390,7 @@ export function mergeConversation(first: Conversation, second: Conversation): Co
     groupSettings: incomingTinodeSnapshot
       ? fallback.groupSettings
       : preferred.groupSettings !== undefined ? preferred.groupSettings : fallback.groupSettings,
-    conversationNicknames: preferred.conversationNicknames !== undefined
-      ? preferred.conversationNicknames
-      : fallback.conversationNicknames,
+    conversationNicknames,
     conversationBackground: incomingTinodeSnapshot
       ? fallback.conversationBackground
       : preferred.conversationBackground !== undefined

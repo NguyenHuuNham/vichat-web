@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dedupeConversations, isDirectConversationForUser, mergeConversation, retainAvailableConversations, sortConversations } from './conversationSync';
+import { applyConversationNicknameEvent, dedupeConversations, isDirectConversationForUser, mergeConversation, retainAvailableConversations, sortConversations } from './conversationSync';
 
 const conversation = (id: string, tinodeTopic: string) => ({
   id,
@@ -225,6 +225,75 @@ describe('conversation sync', () => {
       expect.objectContaining({ id: 'account-b', uid: 'usr-b', groupRole: 'MEMBER' }),
     ]);
     expect(merged.groupSettings).toEqual({ allowMessages: true });
+  });
+
+  it('keeps a conversation nickname when Tinode publishes an official member name', () => {
+    const managed = {
+      ...conversation('direct', 'usr-peer'),
+      snapshotSource: 'management',
+      name: 'Alias',
+      conversationNicknames: { 'account-peer': 'Alias' },
+      members: [{ id: 'account-peer', uid: 'usr-peer', name: 'Alias', defaultName: 'Peer' }],
+      messages: [{ id: 'old', type: 'text', sender: 'incoming', senderId: 'usr-peer', senderName: 'Alias', text: 'Cũ', seq: 1 }],
+    } as any;
+    const tinode = {
+      ...conversation('usr-peer', 'usr-peer'),
+      managementId: 'usr-peer',
+      snapshotSource: 'tinode',
+      name: 'Peer',
+      members: [{ id: 'usr-peer', uid: 'usr-peer', name: 'Peer' }],
+      messages: [{ id: 'new', type: 'text', sender: 'incoming', senderId: 'usr-peer', senderName: 'Peer', text: 'Mới', seq: 2 }],
+    } as any;
+
+    const merged = mergeConversation(managed, tinode);
+    expect(merged.name).toBe('Alias');
+    expect(merged.members?.[0]).toEqual(expect.objectContaining({ id: 'account-peer', name: 'Alias', conversationNickname: 'Alias' }));
+    expect(merged.messages.map(message => message.senderName)).toEqual(['Alias', 'Alias']);
+  });
+
+  it('restores the official name when a conversation nickname is cleared', () => {
+    const managed = {
+      ...conversation('direct', 'usr-peer'),
+      snapshotSource: 'management',
+      name: 'Alias',
+      conversationNicknames: { 'account-peer': 'Alias' },
+      members: [{ id: 'account-peer', uid: 'usr-peer', name: 'Alias', defaultName: 'Peer', conversationNickname: 'Alias' }],
+      messages: [{ id: 'old', type: 'text', sender: 'incoming', senderId: 'usr-peer', senderName: 'Alias', text: 'Cũ', seq: 1 }],
+    } as any;
+    const cleared = {
+      ...managed,
+      name: 'Peer',
+      conversationNicknames: {},
+      members: [{ id: 'account-peer', uid: 'usr-peer', name: 'Peer', defaultName: 'Peer', conversationNickname: '' }],
+    } as any;
+
+    const merged = mergeConversation(managed, cleared);
+    expect(merged.conversationNicknames).toEqual({});
+    expect(merged.name).toBe('Peer');
+    expect(merged.members?.[0]).toEqual(expect.objectContaining({ name: 'Peer', conversationNickname: '' }));
+    expect(merged.messages[0].senderName).toBe('Peer');
+  });
+
+  it('applies a realtime nickname event without dropping other aliases', () => {
+    const room = {
+      ...conversation('room', 'grp-room'),
+      conversationNicknames: { 'account-other': 'Other' },
+      members: [
+        { id: 'account-peer', uid: 'usr-peer', name: 'Peer', defaultName: 'Peer' },
+        { id: 'account-other', uid: 'usr-other', name: 'Other', defaultName: 'Other' },
+      ],
+      messages: [{ id: 'message-1', type: 'text', sender: 'incoming', senderId: 'usr-peer', senderName: 'Peer', text: 'Hi', seq: 1 }],
+    } as any;
+
+    const updated = applyConversationNicknameEvent(room, {
+      action: 'conversation_nickname_changed',
+      targetId: 'usr-peer',
+      targetAccountId: 'account-peer',
+      newNickname: 'Teammate',
+    });
+    expect(updated.conversationNicknames).toEqual({ 'account-other': 'Other', 'account-peer': 'Teammate' });
+    expect(updated.members?.[0]).toEqual(expect.objectContaining({ name: 'Teammate' }));
+    expect(updated.messages[0].senderName).toBe('Teammate');
   });
 
   it('lets an authoritative management snapshot remove a member', () => {

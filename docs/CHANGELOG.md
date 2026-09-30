@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-30-01 - Kich hoat luong sua biet danh tren mobile
+
+- Thoi gian: 2026-09-30 09:05 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Mobile | Chat | Realtime | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source, APK test va UAT cold-start emulator; chua UAT nickname voi tai khoan that
+- Muc tieu: Cho phep mobile sua, xoa va giu on dinh biet danh trong chat 1-1/group giong web, khong bi Tinode snapshot hoac profile realtime ghi de.
+- Pham vi: ChatDetail, GroupInfo, modal biet danh, mapping Account/Tinode, merge conversation, realtime nickname event va version mobile `1.0.31`.
+- File da thay doi: `mobile/src/components/ConversationNicknameModal.tsx`, `mobile/src/screens/chat/ChatDetailScreen.tsx`, `mobile/src/screens/chat/GroupInfoScreen.tsx`, `mobile/src/store/appStore.ts`, `mobile/src/utils/conversationSync.ts`, `mobile/src/utils/conversationSync.test.ts`, `mobile/src/services/chatManagementService.test.ts`, `mobile/src/services/tinodeClient.ts`, `mobile/src/types/index.ts`, `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`.
+- Noi dung: Them modal theo theme sang/toi co gioi han 80 ky tu va thao tac xoa; them nut doi biet danh o header chat 1-1 va tung thanh vien group; goi endpoint Chatmgt hien co bang Account ID chuan thay vi Tinode UID. Store hop nhat response management, snapshot Tinode, event `conversation_nickname_changed` va profile realtime de alias khong mat; khi xoa alias ten chinh thuc duoc phuc hoi.
+- Quyet dinh ky thuat: Account ID la khoa ghi du lieu, Tinode UID chi dung de tim peer va realtime. Nickname van la metadata conversation cua Chatmgt; Tinode chi phat system event, khong ghi alias vao noi dung tin nhan hay profile Account. Bot khong hien thao tac doi biet danh.
+- Database/API/cau hinh: Khong migration hoac endpoint moi. Mobile dung `PUT /api/v1/chat/threads/{conversationId}/nicknames/{targetId}` voi Chat user session; tang version `1.0.31`, Android `versionCode=32`.
+- Kiem thu: `cd mobile; npm test -- --reporter=dot --maxWorkers=1` dat 29 file, 114/114; `npm run typecheck` dat; `npm run lint` dat; `npm run export` dat; `npx expo config --json --type public` xac nhan version `1.0.31`, code `32`; APK `D:\vichat-build\ViChat-1.0.31-nickname-universal.apk` package `vn.upgo.vichat`, `zipalign` dat, APK Signature Scheme v2 dat, SHA-256 `01C0C4426AF21E408888A68BA6227E69BCF40AFE1C76ECF9AB137BD2FEEF6C92`.
+- Emulator: `emulator-5554` cai APK va resume `vn.upgo.vichat/.MainActivity`; UI dump sau cold-start co `GON PLATFORM`, `Email cong ty`, `Mat khau`, `Dang nhap`; logcat khong co `FATAL EXCEPTION`, `TypeError` hoac `Invariant Violation`.
+- Rui ro con lai: Chua UAT voi tai khoan that de bam nut, luu/xoa nickname trong direct va group, refresh va doi realtime giua web/mobile; chua test thiet bi that/iOS. APK la ban test Android Debug, chua ky store.
+- Viec tiep theo: UAT voi hai tai khoan tren web/mobile cho save, clear, refresh, profile update va realtime; khi phat hanh store thi build lai bang release keystore.
+- Commit/PR: Chua tao.
+
 ## 2026-09-29-09 - Dong bo chuyen cong ty va media S3 tren mobile/web
 
 - Thoi gian: 2026-09-29 23:03 (Asia/Saigon)

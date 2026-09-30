@@ -21,6 +21,7 @@ import {
   Link2,
   LogOut,
   Pin,
+  Pencil,
   Plus,
   Search,
   Settings2,
@@ -37,6 +38,7 @@ import { getConversation, useAppStore } from '../../store/appStore';
 import { Avatar } from '../../components/Avatar';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ChoiceDialog, ChoiceDialogOption } from '../../components/ChoiceDialog';
+import { ConversationNicknameModal } from '../../components/ConversationNicknameModal';
 import { beginTrustedExternalActivity } from '../../services/appLifecycleService';
 import { colorsForTheme, shadow, ThemeColors } from '../../theme/colors';
 import { typography } from '../../theme/typography';
@@ -45,6 +47,7 @@ import { useThemeStore } from '../../store/themeStore';
 import { DEFAULT_GROUP_SETTINGS, groupSettingEnabled, memberIsAdmin, memberIsOwner, normalizeGroupSettings } from '../../utils/groupSettings';
 import { isConversationMuted } from '../../utils/conversationNotifications';
 import { accountIdForMember, canonicalAccountIds, identitiesOverlap, identityValues } from '../../utils/identity';
+import { conversationNicknameForMember } from '../../utils/conversationSync';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'GroupInfo'>;
 type ContentView = 'shared' | 'pinned' | 'polls';
@@ -74,6 +77,7 @@ export function GroupInfoScreen({ route, navigation }: Props) {
   const updateGroupAvatar = useAppStore(state => state.updateGroupAvatar);
   const updateGroupSettings = useAppStore(state => state.updateGroupSettings);
   const updateConversationPin = useAppStore(state => state.updateConversationPin);
+  const updateConversationNickname = useAppStore(state => state.updateConversationNickname);
   const muteConversation = useAppStore(state => state.muteConversation);
   const dissolveGroup = useAppStore(state => state.dissolveGroup);
   const deleteConversation = useAppStore(state => state.deleteConversation);
@@ -95,6 +99,7 @@ export function GroupInfoScreen({ route, navigation }: Props) {
   const [contentView, setContentView] = useState<ContentView | null>(null);
   const [sharedFilter, setSharedFilter] = useState<SharedFilter>('media');
   const [membersExpanded, setMembersExpanded] = useState(false);
+  const [nicknameMember, setNicknameMember] = useState<ConversationMember | null>(null);
 
   useEffect(() => {
     settingsRequestRef.current += 1;
@@ -109,6 +114,7 @@ export function GroupInfoScreen({ route, navigation }: Props) {
     setContentView(null);
     setSharedFilter('media');
     setMembersExpanded(false);
+    setNicknameMember(null);
   }, [conversation?.id, conversation?.name]);
 
   const currentMember = conversation?.members?.find(member => identitiesOverlap(member, session?.user));
@@ -345,7 +351,8 @@ export function GroupInfoScreen({ route, navigation }: Props) {
               const admin = memberIsAdmin(member);
               const self = identitiesOverlap(member, session?.user);
               const accountId = accountIdForMember(member, directory);
-              return <MemberRow key={accountId || identityValues(member).join('-')} member={member} owner={owner} admin={admin} self={self} canManage={isAdmin && !self && !owner && Boolean(accountId)} palette={palette} onRole={accountId ? () => void run(`role-${accountId}`, () => setGroupMemberRole(conversation.id, accountId, admin ? 'MEMBER' : 'ADMIN')) : undefined} onRemove={accountId ? () => handleRemoveMember(member, accountId) : undefined} />;
+              const canEditNickname = Boolean(accountId) && member.type !== 'bot' && !member.isChatbot;
+              return <MemberRow key={accountId || identityValues(member).join('-')} member={member} owner={owner} admin={admin} self={self} canManage={isAdmin && !self && !owner && Boolean(accountId)} palette={palette} onNickname={canEditNickname ? () => setNicknameMember(member) : undefined} onRole={accountId ? () => void run(`role-${accountId}`, () => setGroupMemberRole(conversation.id, accountId, admin ? 'MEMBER' : 'ADMIN')) : undefined} onRemove={accountId ? () => handleRemoveMember(member, accountId) : undefined} />;
             })}</View>
           </View>
         ) : null}
@@ -388,6 +395,19 @@ export function GroupInfoScreen({ route, navigation }: Props) {
       <Modal visible={Boolean(contentView)} transparent animationType="slide" onRequestClose={() => setContentView(null)} statusBarTranslucent>
         <View style={styles.modalOverlay}><Pressable style={styles.modalBackdrop} onPress={() => setContentView(null)} /><View style={styles.contentSheet}><View style={styles.modalHeader}><View><Text style={styles.sectionLabel}>NỘI DUNG NHÓM</Text><Text style={styles.modalTitle}>{contentTitle}</Text></View><Pressable onPress={() => setContentView(null)} style={styles.smallIcon}><X color={palette.inkSoft} size={19} /></Pressable></View>{contentView === 'shared' ? <View style={styles.filterRow}>{([['media', 'Ảnh'], ['files', 'File'], ['links', 'Link']] as Array<[SharedFilter, string]>).map(([id, label]) => <Pressable key={id} onPress={() => setSharedFilter(id)} style={[styles.filterTab, sharedFilter === id && styles.filterTabActive]}><Text style={[styles.filterText, sharedFilter === id && styles.filterTextActive]}>{label}</Text></Pressable>)}</View> : null}<ScrollView contentContainerStyle={styles.contentItems}>{contentItems.length ? contentItems.map((message, index) => <View key={`${message.id || message.seq || index}`} style={styles.contentItem}><Text numberOfLines={3} style={styles.contentItemText}>{message.poll?.question || message.text || message.file?.name || (message.image ? 'Hình ảnh' : 'Nội dung đính kèm')}</Text><Text style={styles.contentItemMeta}>{message.senderName || 'Thành viên'}{message.createdAt ? ` · ${new Date(message.createdAt).toLocaleDateString('vi-VN')}` : ''}</Text></View>) : <Text style={styles.emptyList}>Chưa có nội dung trong phạm vi đã tải.</Text>}</ScrollView></View></View>
       </Modal>
+
+      <ConversationNicknameModal
+        visible={Boolean(nicknameMember)}
+        member={nicknameMember}
+        initialNickname={nicknameMember ? conversationNicknameForMember(nicknameMember, conversation.conversationNicknames) : ''}
+        onCancel={() => setNicknameMember(null)}
+        onSave={async nickname => {
+          if (!nicknameMember) return;
+          const accountId = accountIdForMember(nicknameMember, directory);
+          if (!accountId) throw new Error('KhÃ´ng xÃ¡c Ä‘á»‹nh Ä‘Æ°á»£c Account ID cá»§a thÃ nh viÃªn.');
+          await updateConversationNickname(conversation.id, accountId, nickname);
+        }}
+      />
 
       <ChoiceDialog
         visible={leaveCandidates.length > 0}
@@ -439,9 +459,9 @@ function SharedPreview({ images, files, links, palette }: { images: ChatMessage[
   return <View style={styles.previewStrip}>{previewImages.map((message, index) => <View key={`image-${message.id || index}`} style={styles.previewThumb}><ImageIcon color={palette.muted} size={18} /><Image source={{ uri: message.image }} style={styles.previewImage} resizeMode="cover" /></View>)}{previewFile ? <View style={styles.previewChip}><FileText color={palette.accent} size={16} /><Text numberOfLines={1} style={styles.previewChipText}>{previewFile}</Text></View> : null}{previewLink ? <View style={styles.previewChip}><Link2 color={palette.accent} size={16} /><Text numberOfLines={1} style={styles.previewChipText}>{previewLink}</Text></View> : null}</View>;
 }
 
-function MemberRow({ member, owner = false, admin = false, self = false, pending = false, canManage = false, onRole, onRemove, onApprove, onReject, palette }: { member: ConversationMember; owner?: boolean; admin?: boolean; self?: boolean; pending?: boolean; canManage?: boolean; onRole?: () => void; onRemove?: () => void; onApprove?: () => void; onReject?: () => void; palette: ThemeColors }) {
+function MemberRow({ member, owner = false, admin = false, self = false, pending = false, canManage = false, onNickname, onRole, onRemove, onApprove, onReject, palette }: { member: ConversationMember; owner?: boolean; admin?: boolean; self?: boolean; pending?: boolean; canManage?: boolean; onNickname?: () => void; onRole?: () => void; onRemove?: () => void; onApprove?: () => void; onReject?: () => void; palette: ThemeColors }) {
   const styles = createStyles(palette);
-  return <View style={styles.memberRow}><Avatar name={member.name} uri={member.avatar} size={43} /><View style={styles.memberCopy}><Text numberOfLines={1} style={styles.memberName}>{member.name}{self ? ' (Bạn)' : ''}</Text><Text style={styles.memberMeta}>{owner ? 'Trưởng nhóm' : admin ? 'Phó nhóm' : pending ? 'Đang chờ duyệt' : (member.department || member.title || 'Thành viên')}</Text></View>{pending ? <><Pressable disabled={!onApprove} onPress={onApprove} style={styles.roundAction} accessibilityLabel="Duyệt thành viên"><Check color={palette.online} size={17} /></Pressable><Pressable disabled={!onReject} onPress={onReject} style={styles.roundDanger} accessibilityLabel="Từ chối thành viên"><X color={palette.danger} size={17} /></Pressable></> : canManage ? <><Pressable disabled={!onRole} onPress={onRole} style={styles.roundAction} accessibilityLabel="Đổi vai trò"><Shield color={admin ? palette.warning : palette.accent} size={17} /></Pressable><Pressable disabled={!onRemove} onPress={onRemove} style={styles.roundDanger} accessibilityLabel="Xóa thành viên"><UserMinus color={palette.danger} size={17} /></Pressable></> : null}</View>;
+  return <View style={styles.memberRow}><Avatar name={member.name} uri={member.avatar} size={43} /><View style={styles.memberCopy}><Text numberOfLines={1} style={styles.memberName}>{member.name}{self ? ' (Bạn)' : ''}</Text><Text style={styles.memberMeta}>{owner ? 'Trưởng nhóm' : admin ? 'Phó nhóm' : pending ? 'Đang chờ duyệt' : (member.department || member.title || 'Thành viên')}</Text></View>{pending ? <><Pressable disabled={!onApprove} onPress={onApprove} style={styles.roundAction} accessibilityLabel="Duyệt thành viên"><Check color={palette.online} size={17} /></Pressable><Pressable disabled={!onReject} onPress={onReject} style={styles.roundDanger} accessibilityLabel="Từ chối thành viên"><X color={palette.danger} size={17} /></Pressable></> : <View style={styles.memberActions}>{onNickname ? <Pressable disabled={!onNickname} onPress={onNickname} style={styles.roundAction} accessibilityLabel="Đổi biệt danh"><Pencil color={palette.accent} size={17} /></Pressable> : null}{canManage ? <><Pressable disabled={!onRole} onPress={onRole} style={styles.roundAction} accessibilityLabel="Đổi vai trò"><Shield color={admin ? palette.warning : palette.accent} size={17} /></Pressable><Pressable disabled={!onRemove} onPress={onRemove} style={styles.roundDanger} accessibilityLabel="Xóa thành viên"><UserMinus color={palette.danger} size={17} /></Pressable></> : null}</View>}</View>;
 }
 
 function firstUrl(value: string) {
@@ -499,6 +519,7 @@ function createStyles(palette: ThemeColors) {
     memberList: { borderRadius: 17, paddingHorizontal: 12, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line },
     memberRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: 1, borderBottomColor: palette.line },
     memberCopy: { flex: 1, minWidth: 0 },
+    memberActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     memberName: { ...typography.bodyMedium, color: palette.ink },
     memberMeta: { ...typography.caption, color: palette.inkSoft, marginTop: 2 },
     roundAction: { width: 34, height: 34, borderRadius: 11, backgroundColor: palette.accentWash, alignItems: 'center', justifyContent: 'center' },

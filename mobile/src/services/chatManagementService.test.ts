@@ -129,4 +129,24 @@ describe('mobile Chatmgt pagination', () => {
     expect(JSON.parse(String(request.body))).toEqual({ settings });
     expect(conversation.groupSettings).toEqual(settings);
   });
+
+  it('updates a conversation nickname through the mobile chat thread endpoint', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      id: 'conversation-1',
+      isGroup: false,
+      name: 'Alias',
+      conversationNicknames: { 'account-peer': 'Alias' },
+      members: [{ id: 'account-peer', defaultName: 'Peer', name: 'Alias', conversationNickname: 'Alias' }],
+    }));
+
+    const conversation = await chatManagementService.updateConversationNickname('conversation-1', 'account-peer', '  Alias  ');
+    const [url, request] = fetchMock.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toContain('/api/v1/chat/threads/conversation-1/nicknames/account-peer');
+    expect(request.method).toBe('PUT');
+    expect(JSON.parse(String(request.body))).toEqual({ nickname: 'Alias' });
+    expect(conversation.conversationNicknames).toEqual({ 'account-peer': 'Alias' });
+    expect(conversation.members?.[0]).toEqual(expect.objectContaining({ name: 'Alias', conversationNickname: 'Alias' }));
+  });
 });

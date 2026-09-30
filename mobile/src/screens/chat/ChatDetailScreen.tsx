@@ -6,17 +6,18 @@ import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { FlashList, FlashListRef } from '@shopify/flash-list';
-import { ArrowDown, BarChart3, BookOpen, Camera, ChevronLeft, FilePlus2, ImagePlus, Info, Search, Send, ShieldCheck, Phone, SmilePlus, Video, WifiOff, X } from 'lucide-react-native';
+import { ArrowDown, BarChart3, BookOpen, Camera, ChevronLeft, FilePlus2, ImagePlus, Info, Pencil, Search, Send, ShieldCheck, Phone, SmilePlus, Video, WifiOff, X } from 'lucide-react-native';
 import { RootStackParamList } from '../../navigation/types';
 import { useAppStore, getConversation } from '../../store/appStore';
 import { colors, shadow } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import { Avatar } from '../../components/Avatar';
+import { ConversationNicknameModal } from '../../components/ConversationNicknameModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { MessageBubble } from '../../components/MessageBubble';
 import { MessageActionSheet } from '../../components/MessageActionSheet';
 import { TypingIndicator } from '../../components/TypingIndicator';
-import { Sticker, ChatMessage, PickerFile, Poll, RecallMode } from '../../types';
+import { Sticker, ChatMessage, ConversationMember, PickerFile, Poll, RecallMode } from '../../types';
 import { StickerPicker } from '../../components/StickerPicker';
 import { attachmentValidationError, canEditMessage, canInteractWithMessage } from '../../utils/messagePolicy';
 import { directPeerOnline } from '../../utils/tinodeState';
@@ -28,7 +29,8 @@ import { PollComposer } from '../../components/PollComposer';
 import { groupSettingEnabled, memberIsAdmin } from '../../utils/groupSettings';
 import { pollCanViewerLock } from '../../utils/poll';
 import { getMentionContext, insertMentionAt, matchesMentionCandidate, mentionTokenFor, mentionTokenExists, serializeMentionForTransport } from '../../utils/mentionPolicy';
-import { identitiesOverlap } from '../../utils/identity';
+import { accountIdForMember, identitiesOverlap } from '../../utils/identity';
+import { conversationNicknameForMember } from '../../utils/conversationSync';
 import { CHAT_BOTTOM_THRESHOLD, firstUnreadMessageIndex, isNearChatBottom, isUserVisibleMessage, messageKey } from '../../utils/chatScroll';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ChatDetail'>;
@@ -42,6 +44,7 @@ const AI_STARTERS = [
 export function ChatDetailScreen({ route, navigation }: Props) {
   const conversation = useAppStore(state => getConversation(state.conversations, route.params.conversationId));
   const session = useAppStore(state => state.session);
+  const directory = useAppStore(state => state.directory);
   const connection = useAppStore(state => state.connection);
   const reconnect = useAppStore(state => state.reconnect);
   const typing = useAppStore(state => state.typingByTopic[conversation?.tinodeTopic || '']);
@@ -57,6 +60,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const addPollOption = useAppStore(state => state.addPollOption);
   const lockPoll = useAppStore(state => state.lockPoll);
   const toggleMessagePin = useAppStore(state => state.toggleMessagePin);
+  const updateConversationNickname = useAppStore(state => state.updateConversationNickname);
   const recallMessage = useAppStore(state => state.recallMessage);
   const startCall = useCallStore(state => state.startCall);
   const activeCall = useCallStore(state => state.call);
@@ -77,6 +81,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [newMessageCount, setNewMessageCount] = useState(0);
   const [unreadJumpDismissed, setUnreadJumpDismissed] = useState(false);
+  const [nicknameMember, setNicknameMember] = useState<ConversationMember | null>(null);
   const composerTextRef = useRef('');
   const listRef = useRef<FlashListRef<ChatMessage>>(null);
   const listHasLaidOut = useRef(false);
@@ -417,7 +422,9 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const canSendMessages = realtimeReady && (!conversation.isGroup || memberIsAdmin(currentMember) || groupSettingEnabled(conversation.groupSettings, 'allowMessages'));
   const canPinMessages = realtimeReady && conversation.isGroup && (memberIsAdmin(currentMember) || groupSettingEnabled(conversation.groupSettings, 'allowPinMessages'));
   const viewerIdentities = [session?.user.id, session?.user.uid, tinodeClient.currentUserId].filter(Boolean).map(String);
-  const peer = conversation.members?.find(member => member.uid !== tinodeClient.currentUserId && member.id !== tinodeClient.currentUserId) || conversation.members?.[0];
+  const peer = conversation.members?.find(member => !identitiesOverlap(member, session?.user) && !identitiesOverlap(member, { id: tinodeClient.currentUserId, uid: tinodeClient.currentUserId })) || conversation.members?.[0];
+  const peerAccountId = peer ? accountIdForMember(peer, directory) : '';
+  const canEditNickname = Boolean(!conversation.isGroup && !conversation.isChatbot && peer && peerAccountId && peer.type !== 'bot' && !peer.isChatbot);
   const callCapability = !conversation.isGroup && !conversation.isChatbot
     ? tinodeClient.getCallCapability(conversation.tinodeTopic, { isGroup: false, isChatbot: false })
     : { available: false, reason: 'Cuộc gọi mobile chỉ hỗ trợ hội thoại 1-1.' };
@@ -432,6 +439,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         <Avatar name={conversation.name} uri={conversation.avatarUrl} size={42} rounded={!conversation.isGroup} online={!conversation.isGroup && directPeerOnline(conversation, tinodeClient.currentUserId)} />
         <View style={styles.headerTitle}><Text numberOfLines={1} style={styles.name}>{conversation.name}</Text><Text style={styles.status}>{conversation.isChatbot ? 'Tra cứu tri thức · Có nguồn kiểm chứng' : conversation.isGroup ? conversation.membersCount : (directPeerOnline(conversation, tinodeClient.currentUserId) ? 'Đang hoạt động' : 'Offline')}</Text></View>
         {callCapability.available ? <><Pressable accessibilityLabel="Gọi thoại" disabled={Boolean(activeCall)} onPress={() => beginCall(true)} style={styles.more}><Phone color={colors.accent} size={19} /></Pressable><Pressable accessibilityLabel="Gọi video" disabled={Boolean(activeCall)} onPress={() => beginCall(false)} style={styles.more}><Video color={colors.accent} size={19} /></Pressable></> : null}
+        {canEditNickname ? <Pressable accessibilityLabel="Đổi biệt danh" onPress={() => { if (peer) setNicknameMember(peer); }} style={styles.more}><Pencil color={colors.accent} size={19} /></Pressable> : null}
         <Pressable accessibilityLabel="Thông tin cuộc trò chuyện" onPress={() => conversation.isGroup ? navigation.navigate('GroupInfo', { conversationId: conversation.id }) : Alert.alert('Thông tin', conversation.description || 'Cuộc trò chuyện nội bộ')} style={styles.more}><Info color={colors.inkSoft} size={21} /></Pressable>
       </View>
       {conversation.isChatbot ? <View style={styles.aiStrip}><View style={styles.aiStripItem}><ShieldCheck color={colors.online} size={14} /><Text style={styles.aiStripText}>Riêng tư</Text></View><View style={styles.aiStripItem}><BookOpen color={colors.accent} size={14} /><Text style={styles.aiStripText}>Nguồn rõ ràng</Text></View></View> : null}
@@ -528,6 +536,16 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         onConfirm={() => confirmRecall('all')}
         onSecondary={() => confirmRecall('self')}
         busy={busy}
+      />
+      <ConversationNicknameModal
+        visible={Boolean(nicknameMember)}
+        member={nicknameMember}
+        initialNickname={nicknameMember ? conversationNicknameForMember(nicknameMember, conversation.conversationNicknames) : ''}
+        onCancel={() => setNicknameMember(null)}
+        onSave={async nickname => {
+          if (!nicknameMember || !peerAccountId) throw new Error('Không xác định được Account ID của thành viên.');
+          await updateConversationNickname(conversation.id, peerAccountId, nickname);
+        }}
       />
       <Modal visible={Boolean(editHistoryMessage)} transparent animationType="fade" onRequestClose={() => setEditHistoryMessage(null)} statusBarTranslucent>
         <View style={styles.historyOverlay}>

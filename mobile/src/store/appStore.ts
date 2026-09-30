@@ -9,7 +9,7 @@ import { Conversation, ChatMessage, ConnectionState, GroupSettings, LinkedDevice
 import { storageService } from '../services/storageService';
 import { notifyIncomingCall, notifyIncomingMessage, resetPushNotificationRegistration } from '../services/notificationService';
 import { applyPresenceToConversation } from '../utils/tinodeState';
-import { dedupeConversations, isDirectConversationForUser, isTinodeConversationSnapshot, mergeConversation as mergeConversationSnapshot, mergeConversationIntoList } from '../utils/conversationSync';
+import { applyConversationNicknameEvent, applyConversationNicknames, dedupeConversations, isDirectConversationForUser, isTinodeConversationSnapshot, mergeConversation as mergeConversationSnapshot, mergeConversationIntoList } from '../utils/conversationSync';
 import { canKeepTinodeAvatarAfterProfileRejection } from '../utils/avatarPolicy';
 import { useCallStore } from './callStore';
 import { canonicalAccountIds, identitiesOverlap, normalizeParticipant, tinodeUidForMember } from '../utils/identity';
@@ -44,6 +44,7 @@ interface AppStore {
   updateGroupAvatar: (conversationId: string, file: PickerFile) => Promise<Conversation>;
   updateGroupSettings: (conversationId: string, settings: GroupSettings) => Promise<Conversation>;
   updateConversationPin: (conversationId: string, pinned: boolean) => Promise<Conversation>;
+  updateConversationNickname: (conversationId: string, targetId: string, nickname: string) => Promise<Conversation>;
   dissolveGroup: (conversationId: string) => Promise<void>;
   searchConversationHistory: (conversationId: string, query: string) => Promise<any[]>;
   createPoll: (conversationId: string, poll: Pick<Poll, 'question' | 'options' | 'settings'>) => Promise<void>;
@@ -114,11 +115,18 @@ function mergeConversation(previous: Conversation[], incoming: Conversation) {
       };
     })
     : current.members;
-  const membersForMessages = mergedMembers || [];
+  const conversationNicknames = incoming.conversationNicknames !== undefined
+    ? incoming.conversationNicknames
+    : current.conversationNicknames;
+  const membersForMessages = applyConversationNicknames(mergedMembers || [], conversationNicknames);
   // Tinode may emit a partial snapshot while an earlier page is arriving.
   // Keep the loaded range so FlashList cannot retain an offset past a shorter
   // replacement array and render a blank viewport.
-  const mergedMessageSnapshot = mergeConversationSnapshot(current, incoming).messages;
+  const mergedMessageSnapshot = mergeConversationSnapshot(current, {
+    ...incoming,
+    members: membersForMessages,
+    conversationNicknames,
+  }).messages;
   const enrichMessages = (messages: ChatMessage[]) => messages.map(message => {
     if (message.sender === 'outgoing') return message;
     const sender = membersForMessages.find(member => identitiesOverlap(member, { id: message.senderId, uid: message.senderId }));
@@ -134,11 +142,13 @@ function mergeConversation(previous: Conversation[], incoming: Conversation) {
     ...incoming,
     id: incoming.managementId === incoming.tinodeTopic ? next[index].id : incoming.id,
     adminId: incoming.adminId || current.adminId,
-    members: mergedMembers,
+    members: membersForMessages,
     pendingMembers: incoming.pendingMembers !== undefined ? incoming.pendingMembers : current.pendingMembers,
     participantIds: incoming.participantIds?.length ? incoming.participantIds : current.participantIds,
-    messages: enrichMessages(mergedMessageSnapshot),
-    name: incoming.name || current.name,
+    messages: mergedMessageSnapshot,
+    name: incoming.snapshotSource === 'tinode' && current.snapshotSource !== 'tinode'
+      ? (current.name || incoming.name)
+      : (incoming.name || current.name),
     avatarUrl: incoming.avatarUrl || current.avatarUrl,
     membersCount: incoming.membersCount || current.membersCount,
     // Tinode has no viewer-scoped mute field; retain Chatmgt's value until a
@@ -154,7 +164,7 @@ function mergeConversation(previous: Conversation[], incoming: Conversation) {
     groupSettings: incomingTinodeSnapshot
       ? current.groupSettings
       : incoming.groupSettings !== undefined ? incoming.groupSettings : current.groupSettings,
-    conversationNicknames: incoming.conversationNicknames !== undefined ? incoming.conversationNicknames : current.conversationNicknames,
+    conversationNicknames,
     conversationBackground: incomingTinodeSnapshot
       ? current.conversationBackground
       : incoming.conversationBackground !== undefined ? incoming.conversationBackground : current.conversationBackground,
@@ -369,10 +379,24 @@ async function bootstrapAuthenticated(set: any, get: () => AppStore, providedSes
       set({ connection: state });
       if (event.state === 'connected') void syncRealtimeTopics(get, 'connection').catch(() => {});
     } else if (event.type === 'conversation') {
-      const eventConversation = event.conversation;
+      const currentConversation = conversationForId(current.conversations, event.conversation.id)
+        || conversationForId(current.conversations, event.conversation.tinodeTopic);
+      const nicknameActivity = event.conversation.messages?.slice().reverse().find(message => (
+        message.type === 'system' && message.systemEvent?.action === 'conversation_nickname_changed'
+      ))?.systemEvent;
+      const eventConversation = nicknameActivity
+        ? applyConversationNicknameEvent({
+          ...event.conversation,
+          conversationNicknames: {
+            ...(currentConversation?.conversationNicknames || {}),
+            ...(event.conversation.conversationNicknames || {}),
+          },
+          members: currentConversation?.members?.length ? currentConversation.members : event.conversation.members,
+        }, nicknameActivity, current.session?.user)
+        : event.conversation;
       if (!tinodeClient.isConversationTopicAllowed(eventConversation.tinodeTopic)) return;
       if (deletedConversationIds.has(String(eventConversation.id)) || deletedConversationIds.has(String(eventConversation.tinodeTopic))) return;
-      set({ conversations: mergeConversation(current.conversations, event.conversation) });
+      set({ conversations: mergeConversation(current.conversations, eventConversation) });
     } else if (event.type === 'profile') {
        const matches = (value: User) => identitiesOverlap(value, { id: event.uid, uid: event.uid });
       const patch = { ...(event.name ? { name: event.name } : {}), ...(event.avatar ? { avatar: event.avatar } : {}) };
@@ -382,14 +406,24 @@ async function bootstrapAuthenticated(set: any, get: () => AppStore, providedSes
       const directory = current.directory.map(user => matches(user) ? { ...user, ...patch } : user);
       const conversations = current.conversations.map(conversation => {
         if (!conversation.members?.some(matches)) return conversation;
+        const members = applyConversationNicknames(
+          conversation.members.map(member => matches(member) ? { ...member, ...patch } : member),
+          conversation.conversationNicknames,
+        );
+        const peer = !conversation.isGroup
+          ? members.find(member => !identitiesOverlap(member, current.session?.user))
+          : null;
         return {
           ...conversation,
           avatarUrl: !conversation.isGroup ? (event.avatar || conversation.avatarUrl) : conversation.avatarUrl,
-          name: !conversation.isGroup && event.name ? event.name : conversation.name,
-          members: conversation.members.map(member => matches(member) ? { ...member, ...patch } : member),
-          messages: conversation.messages.map(message => matches({ id: message.senderId, uid: message.senderId } as User)
-            ? { ...message, ...patch, senderName: event.name || message.senderName }
-            : message),
+          name: !conversation.isGroup && event.name ? (peer?.name || event.name) : conversation.name,
+          members,
+          messages: conversation.messages.map(message => {
+            const sender = members.find(member => identitiesOverlap(member, { id: message.senderId, uid: message.senderId }));
+            return matches({ id: message.senderId, uid: message.senderId } as User)
+              ? { ...message, ...patch, senderName: sender?.name || peer?.name || event.name || message.senderName }
+              : message;
+          }),
         };
       });
       set({ session: nextSession, directory, conversations });
@@ -794,6 +828,19 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const conversation = conversationForId(get().conversations, conversationId);
     if (!conversation) throw new Error('Cuộc trò chuyện không tồn tại.');
     const managed = await chatManagementService.updateConversationPin(conversation.managementId || conversation.id, pinned);
+    return mergeManagedConversation(set, get, conversation.id, managed);
+  },
+
+  async updateConversationNickname(conversationId, targetId, nickname) {
+    const conversation = conversationForId(get().conversations, conversationId);
+    const normalizedTargetId = String(targetId || '').trim();
+    if (!conversation) throw new Error('Cuộc trò chuyện không tồn tại.');
+    if (!normalizedTargetId) throw new Error('Không xác định được thành viên để đổi biệt danh.');
+    const managed = await chatManagementService.updateConversationNickname(
+      conversation.managementId || conversation.id,
+      normalizedTargetId,
+      String(nickname || '').trim().slice(0, 80),
+    );
     return mergeManagedConversation(set, get, conversation.id, managed);
   },
 
