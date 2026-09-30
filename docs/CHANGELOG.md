@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Viec tiep theo: UAT web voi hai tai khoan; neu can phuc hoi history/avatar, lap ke hoach migration rieng tu Tinode rollback sang central; khong reset lai va khong restart mobile.
 - Trien khai: Commit `d2410ad066095e27815b7e1f247e51f548cc752a` da push len `github/fix/full-audit-regressions`; release `/opt/deploy/chat/releases/vichat-web-d2410ad` da duoc giai nen tren `192.168.80.20` qua jump host `103.74.122.206`, symlink `current` da tro vao release moi. Chi recreate `chat` va `chatmgt`; cac container stateful va volume duoc giu nguyen.
 - Xac minh production: `chat` va `chatmgt` healthy; public ChatUI `/healthz` tra `ok`; public Chatmgt `/api/v1/auth/health` tra `status: ok`; bundle public da phuc vu asset moi; release cu van giu de rollback.
-- Commit/PR: `d2410ad` / `fix/web: guard fresh Tinode reset mappings`.
+- Commit/PR: `d2410ad` / `fix(web): guard fresh Tinode reset mappings`.
 
 ## 2026-09-30-05 - Sua luong chuyen cong ty tren mobile
 
