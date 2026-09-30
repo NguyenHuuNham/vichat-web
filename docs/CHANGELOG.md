@@ -6,6 +6,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-30-07 - Chot mobile 1.0.36 va redeploy web ban moi
+
+- Thoi gian: 2026-09-30 (Asia/Saigon)
+- Loai: Phat hanh | Mobile | Web | Van hanh | Trien khai | Kiem thu | Tai lieu
+- Trang thai: Da push ca `github` va `origin`; web da deploy production; mobile da chot APK test noi bo.
+- Muc tieu: Dua dung HEAD cuoi cung vao production va ban giao mobile version `1.0.36` ma khong reset Tinode, database, Redis, volume hay history.
+- Pham vi: HEAD `3a6c574` (runtime web fix `d2410ad`, mobile company-switch fix `f643647`); khong them migration va khong thay doi data flow production.
+- Kiem thu web/deploy: Archive `git archive` SHA-256 `DA22E5AE83CE9CD21E92FAC9003C8CE4C8C30BDA254691A34D784D6AA9F18B01`; Docker Compose build `chatmgt`/`chat` dat; Nginx `-t` dat; hai service moi healthy, restart `0`; local/public `/healthz` dat; Chatmgt `/api/v1/auth/health` dat; public bundle khop local (`/assets/index-BeHpJT5t.js`, `/assets/index-B1sUJyGf.css`).
+- Artifact mobile: `D:\vichat-build\ViChat-1.0.36-mobile-release-20260930-universal.apk`, package `vn.upgo.vichat`, version `1.0.36`, Android `versionCode=37`, ABI `arm64-v8a,x86_64`, SHA-256 `0BE434CDCC2D48734ED8676AE54A32E7F0ADEA19FE520EEED4B63F9FD4C813D5`; signer `Android Debug`, chi la ban test noi bo, chua ky store.
+- Trien khai: Archive `vichat-web-3a6c574-20260930.tar.gz` duoc truyen qua `ubuntu@103.74.122.206` vao `192.168.80.20`; release `/opt/deploy/chat/releases/vichat-web-3a6c574-20260930-r3` dang la `current`, `previous` tro ve `/opt/deploy/chat/releases/vichat-web-d2410ad`; chi recreate `chatmgt` va `chat`. Hai candidate truoc da dung truoc activation gate, production khong bi doi cho den candidate `r3` dat.
+- Xac minh stateful: Container ID cua `chat-postgres`, `tinode-postgres`, `redis`, `chatapi`, `tinode-account-bridge` va `tinode-chatbot-webhook` khong doi; khong chay migration, `docker compose down -v`, Tinode reset hoac xoa volume.
+- Rui ro con lai: History/avatar/media cu van khong tu dong tro lai neu khong co migration tu Tinode rollback; mobile chua UAT tai khoan co nhieu membership tren thiet bi that va APK chua phai ban Play Store.
+- Viec tiep theo: UAT web hai tai khoan va UAT mobile hai membership; neu can phuc hoi history/avatar, lap ke hoach migration rieng, khong reset lai Tinode.
+- Commit/PR: `3a6c574` / `docs: record mobile 1.0.36 artifact`; runtime web `d2410ad`; mobile `f643647`; PR chua tao.
+
 ## 2026-09-30-06 - Chan reset Tinode lam mat dau vet mapping web
 
 - Thoi gian: 2026-09-30 (Asia/Saigon)
