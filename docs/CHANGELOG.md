@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Emulator: APK cai thanh cong tren `emulator-5554`; `MainActivity` foreground; man Cai dat hien muc `Chuyen cong ty`, bam vao mo dialog thong bao tai khoan chi co mot cong ty dang hoat dong; UI dump co `Gon Platform`; logcat khong co `FATAL EXCEPTION`, `TypeError` hoac `Invariant Violation`.
 - Rui ro con lai: Emulator dang dung tai khoan chi co mot membership nen chua UAT picker, xac nhan chuyen tenant, token/session, Tinode va du lieu Chatmgt voi tai khoan Account co tu hai membership dang hoat dong; chua test thiet bi that/iOS. APK la ban test Android, chua ky store.
 - Viec tiep theo: UAT voi tai khoan Account co hai cong ty de xac nhan picker va tai lai du lieu dung tenant; phat hanh store thi build lai bang release keystore.
-- Commit/PR: Chua tao.
+- Commit/PR: `f643647`; PR chua tao.
 
 ## 2026-09-30-04 - On dinh dong bo danh sach hoi thoai mobile
 
