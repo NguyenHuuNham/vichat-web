@@ -281,7 +281,7 @@ import {
   readMessageActions,
   writeMessageActions,
 } from '../features/chat/services/messageActionStorage';
-import { suggestStickersForText } from '../features/chat/services/stickerCatalog';
+import { stickerById, suggestStickersForText } from '../features/chat/services/stickerCatalog';
 import {
   canMigrateLegacyViewerPreference,
   markLegacyViewerPreferenceMigrated,
@@ -2728,8 +2728,8 @@ function MessageQuickActions({
       <button
         type="button"
         className="message-action-button"
-        title={copy.t('Tráº£ lá»i tin nháº¯n')}
-        aria-label={copy.t('Tráº£ lá»i tin nháº¯n')}
+        title={copy.t('Trả lời tin nhắn')}
+        aria-label={copy.t('Trả lời tin nhắn')}
         onClick={() => handleMessageAction('reply', message)}
       >
         <i className="fa-solid fa-quote-left" aria-hidden="true"></i>
@@ -2737,8 +2737,8 @@ function MessageQuickActions({
       <button
         type="button"
         className="message-action-button"
-        title={copy.t('Chia sáº» tin nháº¯n')}
-        aria-label={copy.t('Chia sáº» tin nháº¯n')}
+        title={copy.t('Chia sẻ tin nhắn')}
+        aria-label={copy.t('Chia sẻ tin nhắn')}
         onClick={() => handleMessageAction('share', message)}
       >
         <i className="fa-solid fa-share" aria-hidden="true"></i>
@@ -8399,7 +8399,7 @@ function App() {
       setDirectoryHasMore(Boolean(page?.hasMore ?? directoryNextCursorRef.current));
     } catch (error) {
       if (error?.name !== 'AbortError' && accountSessionRef.current === requestSession) {
-        setChatError(error?.message || 'KhÃ´ng thá»ƒ táº£i thÃªm danh báº¡.');
+        setChatError(error?.message || 'Không thể tải thêm danh bạ.');
       }
     } finally {
       if (directoryPageRequestRef.current === controller) directoryPageRequestRef.current = null;
@@ -11845,7 +11845,10 @@ function App() {
 
   const handleSendSticker = sticker => {
     if (!allowDirectMessagingAttempt(activeChat)) return false;
-    if ((!sticker?.src && !sticker?.blob) || !sticker?.id || !sticker?.packId) {
+    const stickerId = String(sticker?.id || sticker?.stickerId || '').trim();
+    const catalogSticker = sticker?.custom === true ? null : stickerById(stickerId);
+    const stickerPackId = String(sticker?.packId || catalogSticker?.packId || '').trim();
+    if ((!sticker?.src && !sticker?.blob && !catalogSticker?.src) || !stickerId || !stickerPackId) {
       setChatError('Sticker không hợp lệ.');
       return false;
     }
@@ -11864,22 +11867,29 @@ function App() {
     const groupSpamAttempt = registerGroupSendAttempt(activeChat, createGroupSpamActionId('sticker'));
     if (!groupSpamAttempt.allowed) return false;
     setChatError('');
+    const selectedSticker = {
+      ...(sticker || {}),
+      id: stickerId,
+      stickerId,
+      packId: stickerPackId,
+      src: sticker?.src || catalogSticker?.src || '',
+    };
     const stickerBlob = sticker.blob && typeof sticker.blob.slice === 'function' ? sticker.blob : null;
     const optimisticStickerUrl = stickerBlob && typeof URL !== 'undefined' && URL.createObjectURL
       ? URL.createObjectURL(stickerBlob)
       : '';
-    const stickerSource = optimisticStickerUrl || sticker.src;
-    const stickerMime = String(sticker.mime || stickerBlob?.type || 'image/png');
+    const stickerSource = optimisticStickerUrl || selectedSticker.src;
+    const stickerMime = String(selectedSticker.mime || stickerBlob?.type || 'image/png');
     const stickerExtension = stickerMime.split('/')[1]?.split('+')[0]?.replace('jpeg', 'jpg') || 'png';
     const stickerMetadata = {
-      id: String(sticker.id).slice(0, 80),
-      stickerId: String(sticker.stickerId || sticker.id).slice(0, 80),
-      packId: String(sticker.packId).slice(0, 80),
-      label: String(sticker.label || 'Sticker').slice(0, 120),
-      version: String(sticker.version || '1').slice(0, 24),
+      id: stickerId.slice(0, 80),
+      stickerId: String(selectedSticker.stickerId || stickerId).slice(0, 80),
+      packId: stickerPackId.slice(0, 80),
+      label: String(selectedSticker.label || 'Sticker').slice(0, 120),
+      version: String(selectedSticker.version || '1').slice(0, 24),
       mime: stickerMime,
       src: stickerSource,
-      custom: sticker.custom === true,
+      custom: selectedSticker.custom === true,
     };
     const replyMeta = replyingTo ? { ...replyingTo } : null;
     const sharedReplyMeta = replyMetadataForTransport(replyMeta, directoryAccounts);
@@ -11896,7 +11906,7 @@ function App() {
       sticker: stickerMetadata,
       image: stickerSource,
       file: {
-        name: String(sticker.fileName || `${sticker.id}.${stickerExtension}`).slice(0, 140),
+        name: String(selectedSticker.fileName || `${stickerId}.${stickerExtension}`).slice(0, 140),
         mime: stickerMime,
         ext: 'sticker',
         size: 'Sticker',
@@ -11939,25 +11949,27 @@ function App() {
     const room = conversations[roomId];
     ensureTinodeConversationTopic(room)
       .then(async topicName => {
-        const result = await tinodeClient.sendSticker(topicName, sticker, newMsg.id, {
+        const result = await tinodeClient.sendSticker(topicName, selectedSticker, newMsg.id, {
           replyTo: sharedReplyMeta,
           groupActionId: groupSpamAttempt.groupActionId,
         });
+        const confirmedFile = result?.file || {};
+        const confirmedSource = String(confirmedFile.url || result?.sticker?.src || stickerSource || catalogSticker?.src || '');
         const confirmedMessage = {
           ...newMsg,
           pending: false,
           failed: false,
-          seq: newMsg.seq || result.ctrl?.params?.seq,
-          image: result.file.url,
+          seq: newMsg.seq || result?.ctrl?.params?.seq,
+          image: confirmedSource,
           sticker: {
             ...newMsg.sticker,
-            src: result.file.url,
+            src: confirmedSource,
           },
           file: {
             ...newMsg.file,
-            name: result.file.name || newMsg.file.name,
-            url: result.file.url,
-            mime: result.file.mime || newMsg.file.mime,
+            name: confirmedFile.name || newMsg.file.name,
+            url: confirmedSource,
+            mime: confirmedFile.mime || newMsg.file.mime,
           },
         };
         setConversations(previous => {
@@ -15246,6 +15258,9 @@ function App() {
               />
             );
             const isStickerMessage = msg.type === 'sticker' || Boolean(msg.sticker?.id || msg.sticker?.stickerId || msg.file?.ext === 'sticker');
+            const catalogSticker = isStickerMessage
+              ? stickerById(msg.sticker?.stickerId || msg.sticker?.id)
+              : null;
             const attachmentFile = msg.file || ((msg.type === 'image' || isStickerMessage) && msg.image ? {
               name: appCopy.t('Hình ảnh'),
               mime: 'image/*',
@@ -15255,7 +15270,7 @@ function App() {
             const attachmentIcon = attachmentIconClass(attachmentFile, msg.type);
             const attachmentTone = attachmentIcon.replace('fa-file-', '');
             const stickerPreviewSource = isStickerMessage
-              ? attachmentFile?.url || msg.image || msg.sticker?.src || ''
+              ? catalogSticker?.src || attachmentFile?.url || msg.image || msg.sticker?.src || ''
               : '';
             const imagePreviewSource = !isStickerMessage && isImageAttachment(attachmentFile, msg.type)
               ? attachmentFile?.url || msg.image || ''

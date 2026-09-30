@@ -6,6 +6,29 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-30-09 - Sua loi avatar, sticker local va font tren Web
+
+- Thoi gian: 2026-09-30 (Asia/Saigon)
+- Loai: Sua loi | Web | Chat | UI | CSP | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source, test va build; chua commit/deploy trong muc nay.
+- Nguyen nhan: CSP production chua cho phep `static.upgo.vn` va `upstart.vn`, nen avatar Account bi trinh duyet chan; sticker built-in da duoc gui bang marker text nhung UI van cho URL file Tinode/S3; CSS van uu tien Inter khi khong co font da dong goi.
+- Pham vi: `src/app/App.jsx`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/stickerProtocol.js`, cac test frontend, `src/index.css`, `src/styles/index.css`, `infrastructure/production/nginx.conf`, `dist/index.html` va `package.json`. Chi sua Web.
+- Noi dung: Cho phep hai CDN avatar trong `img-src`; them fallback catalog cho sticker built-in va protocol marker `vichat-sticker:<pack>:<sticker>:<version>` khong tao File/upload S3; doi font sang stack he thong de doc hon, dong bo font cho form control va sua ba nhan hien thi bi loi encoding.
+- Quyet dinh ky thuat: Sticker built-in khong can media remote; custom sticker van giu nguyen luong upload hien co. Avatar/media Tinode cu khong duoc rewrite hoac reset; tham chieu khong con se fallback ve chu cai dau.
+- Database/API/cau hinh: Khong migration, khong doi API/backend; chi cap nhat CSP Nginx production.
+- Kiem thu: `node --test src/features/chat/services/stickerProtocol.test.js` (4/4); `node --test src/features/chat/services/chatManagementService.test.js` (71/71); `npm run test:frontend -- --test-concurrency=1` (456/456); `npx oxlint src` pass voi 2 warning hien huu trong `src/App.jsx`; `npm run build:production` pass; `git diff --check` pass. `npm run lint` van bi chan boi loi hook hien huu tai `mobile/src/components/TypingIndicator.tsx`, khong thuoc pham vi Web.
+- Phan tach Mobile: Cac thay doi trong `mobile/` duoc giu nguyen, khong sua/revert/stage trong release Web nay va khong duoc xem la mot phan cua luong Web.
+- Rui ro con lai: Avatar/media cu chi tro lai neu co migration rieng tu kho Tinode rollback; can UAT Web sau deploy va refresh tab de nhan bundle moi.
+- Commit/PR: Chua tao.
+
+## 2026-09-30-09M - Tach rieng thay doi Mobile khoi Web
+
+- Thoi gian: 2026-09-30 (Asia/Saigon)
+- Loai: Pham vi phat hanh | Mobile | Tai lieu
+- Trang thai: Khong thay doi Mobile trong lan sua Web nay.
+- Pham vi: Cac thay doi dang co trong `mobile/` duoc bao luu nguyen trang theo yeu cau; khong dua vao commit, build hoac deploy Web.
+- Quyet dinh: Mobile va Web la hai luong phat hanh doc lap; sua Mobile neu can se ghi nhat ky va kiem thu o muc Mobile rieng, khong lam thay doi hop dong Web.
+
 ## 2026-09-30-08 - Sua loi schema Chatmgt lam an 500 directory/conversation
 
 - Thoi gian: 2026-09-30 (Asia/Saigon)

@@ -26,6 +26,7 @@ const legacyStylesSource = readFileSync(new URL('../../../index.css', import.met
 const stylesSource = readFileSync(new URL('../../../styles/index.css', import.meta.url), 'utf8');
 const managementStylesSource = readFileSync(new URL('../../management/management.css', import.meta.url), 'utf8');
 const indexSource = readFileSync(new URL('../../../../index.html', import.meta.url), 'utf8');
+const productionNginxSource = readFileSync(new URL('../../../../infrastructure/production/nginx.conf', import.meta.url), 'utf8');
 const tinodeSource = readFileSync(new URL('./tinodeClient.js', import.meta.url), 'utf8');
 const avatarCropSource = readFileSync(new URL('../../contacts/components/AvatarCropModal.jsx', import.meta.url), 'utf8');
 const categoryManagerSource = readFileSync(new URL('../components/ConversationCategoryManager.jsx', import.meta.url), 'utf8');
@@ -581,8 +582,8 @@ test('Tinode offline observations never fabricate a last-seen timestamp on the v
 });
 
 test('keeps local font fallbacks and renders a green indicator only for online presence', () => {
-  assert.match(stylesSource, /font-family:\s*'Inter', -apple-system, BlinkMacSystemFont/);
-  assert.match(legacyStylesSource, /font-family:\s*'Inter', -apple-system, BlinkMacSystemFont/);
+  assert.match(stylesSource, /font-family:\s*"Segoe UI", "Noto Sans", "Helvetica Neue", Arial, sans-serif/);
+  assert.match(legacyStylesSource, /font-family:\s*"Segoe UI", "Noto Sans", "Helvetica Neue", Arial, sans-serif/);
   assert.match(managementStylesSource, /--mgmt-font-body:\s*Inter, "Segoe UI", sans-serif/);
   assert.match(rootAppSource, /fontFamily:\s*'system-ui, sans-serif'/);
   assert.doesNotMatch(indexSource, /fonts\.googleapis\.com/);
@@ -593,6 +594,11 @@ test('keeps local font fallbacks and renders a green indicator only for online p
   assert.match(appSource, /isCurrentUserOnline \? 'Trực tuyến' : 'Ngoại tuyến'/);
   assert.match(appSource, /isAccountOnline\(member\) && <span className="status-dot online">/);
   assert.match(appSource, /isAccountOnline\(activeProfileContact\) && <i className="fa-solid fa-circle">/);
+});
+
+test('allows Account avatar CDN hosts through production image CSP', () => {
+  assert.match(productionNginxSource, /img-src[^;]*https:\/\/static\.upgo\.vn/);
+  assert.match(productionNginxSource, /img-src[^;]*https:\/\/upstart\.vn/);
 });
 
 test('routes Account-managed profiles through the Account avatar contract', () => {

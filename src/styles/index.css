@@ -57,14 +57,23 @@ html[data-theme="dark"] {
 }
 
 body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: "Segoe UI", "Noto Sans", "Helvetica Neue", Arial, sans-serif;
     background-color: var(--bg-app);
     color: var(--text-body);
     font-size: 14px;
     line-height: 1.5;
     height: 100vh;
     overflow: hidden;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea,
+select {
+    font: inherit;
 }
 
 /* --- App Layout Grid (4 Columns) --- */

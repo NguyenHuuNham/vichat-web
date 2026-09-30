@@ -29,6 +29,12 @@ import { normalizeGroupSettings } from './groupSettings';
 import { applyPollEvent, normalizePoll, normalizePollEvent } from './poll';
 import { normalizeReceiptUsers, receiptUsersFromMembers } from './messageReceipts';
 import {
+  STICKER_HEAD,
+  buildStickerTextMarker,
+  normalizeStickerMetadata,
+  parseStickerMetadata,
+} from './stickerProtocol';
+import {
   CONVERSATION_BACKGROUND_SCOPES,
   latestSharedConversationBackground,
   normalizeConversationBackground,
@@ -126,7 +132,6 @@ const FRIEND_EVENT_PREFIX = '__SONGHONG_FRIEND_EVENT__:';
 const REACTION_EVENT_PREFIX = '__VICHAT_REACTION_EVENT__:';
 const RECALL_EVENT_PREFIX = '__VICHAT_RECALL_EVENT__:';
 const EDIT_EVENT_PREFIX = '__VICHAT_EDIT_EVENT__:';
-const STICKER_HEAD = 'x-vichat-sticker';
 const POLL_HEAD = 'x-vichat-poll';
 const POLL_EVENT_PREFIX = '__VICHAT_POLL_EVENT__:';
 const IMAGE_BATCH_HEAD = 'x-vichat-image-batch';
@@ -719,26 +724,6 @@ function draftyAttachment(content) {
   return attachment;
 }
 
-function parseStickerMetadata(head = {}) {
-  const raw = head?.[STICKER_HEAD];
-  if (!raw) return null;
-  try {
-    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    const stickerId = String(parsed?.stickerId || parsed?.id || '').trim();
-    const packId = String(parsed?.packId || '').trim();
-    if (!stickerId || !packId || stickerId.length > 80 || packId.length > 80) return null;
-    return {
-      id: stickerId,
-      stickerId,
-      packId,
-      label: String(parsed?.label || '').trim().slice(0, 120),
-      version: String(parsed?.version || '1').slice(0, 24),
-    };
-  } catch {
-    return null;
-  }
-}
-
 function parsePollMetadata(head = {}) {
   const raw = head?.[POLL_HEAD];
   if (!raw) return null;
@@ -818,11 +803,11 @@ function toMessage(msg, tinode, topic = null) {
   const isOutgoing = messageSenderId ? tinode.isMe(messageSenderId) : false;
   const call = parseCallMessage(msg.content, msg.head, !isOutgoing);
   const attachment = draftyAttachment(msg.content);
-  const sticker = parseStickerMetadata(msg.head);
+  const content = typeof msg.content === 'string' ? msg.content : (msg.content?.txt || '');
+  const sticker = parseStickerMetadata(msg.head, content);
   const poll = parsePollMetadata(msg.head);
   const imageBatch = parseImageBatchMetadata(msg.head);
-  const content = typeof msg.content === 'string' ? msg.content : (msg.content?.txt || '');
-  const visibleContent = attachment ? content.trim() : content;
+  const visibleContent = attachment ? content.trim() : sticker ? '' : content;
   const pollEvent = parsePollEventMetadata(content);
   const isEditEvent = content.startsWith(EDIT_EVENT_PREFIX);
   let systemEvent = null;
@@ -945,7 +930,7 @@ function toMessage(msg, tinode, topic = null) {
       ? `friend-${friendEvent.action}-${friendEvent.requestId}`
       : clientId || `${msg.from || 'system'}-${msg.seq || msg.ts || Date.now()}`,
     seq: msg.seq,
-    type: call ? 'call' : poll ? 'poll' : pollEvent ? 'poll_event' : friendEvent ? 'friend_event' : reactionEvent ? 'reaction_event' : recallEvent ? 'recall_event' : isEditEvent ? 'edit_event' : systemEvent ? 'system' : attachment ? (sticker ? 'sticker' : isImageAttachment ? 'image' : 'file') : 'text',
+    type: call ? 'call' : poll ? 'poll' : pollEvent ? 'poll_event' : friendEvent ? 'friend_event' : reactionEvent ? 'reaction_event' : recallEvent ? 'recall_event' : isEditEvent ? 'edit_event' : systemEvent ? 'system' : sticker ? 'sticker' : attachment ? (isImageAttachment ? 'image' : 'file') : 'text',
     action: friendEvent?.action || systemEvent?.action || pollEvent?.action,
     sender: isOutgoing ? 'outgoing' : 'incoming',
     senderId: friendActorId
@@ -1942,6 +1927,21 @@ function applyGroupActionHead(topic, draft, metadata = {}) {
   return draft;
 }
 
+function applyStickerHead(draft, sticker) {
+  const normalized = normalizeStickerMetadata(sticker);
+  if (!normalized) return draft;
+  draft.head = {
+    ...(draft.head || {}),
+    [STICKER_HEAD]: JSON.stringify({
+      stickerId: normalized.stickerId,
+      packId: normalized.packId,
+      label: normalized.label,
+      version: normalized.version,
+    }),
+  };
+  return draft;
+}
+
 function publishTopicMessage(topic, draft) {
   // Tinode SDK 0.25.3 swallows Topic.publishMessage rejections. Use the
   // client-level promise so bridge policy responses reach the web UI.
@@ -2749,6 +2749,7 @@ export const tinodeClient = {
       head['x-mentions'] = JSON.stringify(metadata.mentions.slice(0, 50));
     }
     draft.head = head;
+    applyStickerHead(draft, metadata.sticker);
     applyGroupActionHead(topic, draft, metadata);
     return publishTopicMessage(topic, draft);
   },
@@ -3071,14 +3072,7 @@ export const tinodeClient = {
     }
     const imageBatch = normalizeImageBatch(metadata.imageBatch);
     if (imageBatch) draft.head[IMAGE_BATCH_HEAD] = JSON.stringify(imageBatch);
-    if (metadata.sticker?.stickerId && metadata.sticker?.packId) {
-      draft.head[STICKER_HEAD] = JSON.stringify({
-        stickerId: String(metadata.sticker.stickerId).slice(0, 80),
-        packId: String(metadata.sticker.packId).slice(0, 80),
-        label: String(metadata.sticker.label || '').slice(0, 120),
-        version: String(metadata.sticker.version || '1').slice(0, 24),
-      });
-    }
+    applyStickerHead(draft, metadata.sticker);
     if (Number(metadata.voiceDuration) > 0) draft.head['x-voice-duration'] = String(Math.round(metadata.voiceDuration));
     applyGroupActionHead(topic, draft, metadata);
     let result;
@@ -3120,9 +3114,30 @@ export const tinodeClient = {
   },
 
   async sendSticker(topicName, sticker, clientId, metadata = {}) {
-    if ((!sticker?.src && !sticker?.blob) || !sticker?.id || !sticker?.packId) {
+    if (!sticker?.id || !sticker?.packId) {
       throw new Error('Sticker không hợp lệ.');
     }
+    const stickerMetadata = normalizeStickerMetadata(sticker);
+    if (!stickerMetadata) throw new Error('Sticker không hợp lệ.');
+    if (sticker.custom !== true) {
+      const result = await this.sendText(
+        topicName,
+        buildStickerTextMarker(stickerMetadata),
+        clientId,
+        { ...metadata, sticker: stickerMetadata },
+      );
+      return {
+        ctrl: result,
+        file: {
+          name: String(sticker.fileName || `${sticker.id}.png`).slice(0, 140),
+          mime: String(sticker.mime || 'image/png'),
+          size: 0,
+          url: String(sticker.src || ''),
+        },
+        sticker: { ...stickerMetadata, src: String(sticker.src || '') },
+      };
+    }
+    if (!sticker?.src && !sticker?.blob) throw new Error('Sticker không hợp lệ.');
     let blob = sticker.blob && typeof sticker.blob.slice === 'function' ? sticker.blob : null;
     if (!blob) {
       const response = await fetch(sticker.src);
@@ -3141,13 +3156,7 @@ export const tinodeClient = {
     const file = new File([blob], fileName, { type: mime });
     return this.sendFile(topicName, file, clientId, {
       ...metadata,
-      sticker: {
-        id: sticker.id,
-        stickerId: sticker.id,
-        packId: sticker.packId,
-        label: sticker.label,
-        version: sticker.version || '1',
-      },
+      sticker: stickerMetadata,
     });
   },
 
