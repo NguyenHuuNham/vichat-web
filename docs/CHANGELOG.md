@@ -10,15 +10,15 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-30 (Asia/Saigon)
 - Loai: Sua loi | Backend | Database | Van hanh | Trien khai | Kiem thu | Tai lieu
-- Trang thai: Dang trien khai lai release co guard moi; schema production da duoc nang cap an toan.
+- Trang thai: Hoan tat; da push ca `origin` va `github` tren `master` va `fix/full-audit-regressions`, da deploy production.
 - Nguyen nhan: Production dang o Alembic `20260921_16` trong khi image web/Chatmgt da dung model cua `20260928_17`; bang `conversation` thieu `creation_request_id`, lam `/api/v1/conversation/direct-block-state` tra HTTP 500 va UI chi con hien ViChat AI.
 - Pham vi: `chatservice-main/scripts/verify_deployment.py`, `chatservice-main/tests/test_mobile_stability_contract.py`, migration `017_mobile_group_idempotency` da co san trong source.
 - Noi dung: Them smoke check authenticated cho direct conversation policy vao deployment verifier de release khong duoc coi la dat neu endpoint nay hong; khong thay doi logic du lieu chat va khong reset Tinode.
 - Quyet dinh ky thuat: Backup PostgreSQL truoc migration; ap dung Alembic `20260928_17` (cot nullable va partial unique index), giu nguyen account, conversation, Tinode, Redis va volume.
 - Database/API/cau hinh: Da tao backup production truoc migration; da ap dung `alembic upgrade head`, production hien o `20260928_17`; khong xoa volume, khong chay Tinode reset.
-- Kiem thu: `python -m unittest chatservice-main/tests/test_mobile_stability_contract.py -q` (3/3); `python -m unittest chatservice-main/tests/test_verify_deployment.py -q` (9 skipped do may local thieu dependency); `python -m unittest chatservice-main/tests/test_enterprise_workspace.py -q` (11/11); `python -m py_compile chatservice-main/scripts/verify_deployment.py`; production verifier sau migration pass directory, conversation, Tinode WebSocket, login/logout.
-- Rui ro con lai: Can chay lai verifier tren image release moi sau khi deploy; history/avatar cu chi tro lai neu co migration rieng tu kho Tinode rollback.
-- Viec tiep theo: Push `8557d3c` len ca branch va `master`, build/deploy web va xac minh public bundle cung endpoint authenticated.
+- Kiem thu: `python -m unittest chatservice-main/tests/test_mobile_stability_contract.py -q` (3/3); `python -m unittest chatservice-main/tests/test_verify_deployment.py -q` (9 skipped do may local thieu dependency); `python -m unittest chatservice-main/tests/test_enterprise_workspace.py -q` (11/11); `python -m py_compile chatservice-main/scripts/verify_deployment.py`; production verifier tren candidate pass directory, conversation, direct policy, Tinode WebSocket, login/logout; public `/healthz` va Chatmgt `/api/v1/auth/health` pass; public bundle la `index-BeHpJT5t.js`/`index-B1sUJyGf.css`; log sau migration khong con loi schema/HTTP 500.
+- Rui ro con lai: History/avatar cu chi tro lai neu co migration rieng tu kho Tinode rollback; can refresh cung trinh duyet neu tab dang giu bundle cu.
+- Viec tiep theo: UAT lai web bang tai khoan that de xac nhan danh sach nhom/avatar; khong reset Tinode hoac xoa volume.
 - Commit/PR: `8557d3c` / `fix(deploy): verify direct conversation policy`.
 
 ## 2026-09-30-07 - Chot mobile 1.0.36 va redeploy web ban moi
