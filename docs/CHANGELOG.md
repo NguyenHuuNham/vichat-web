@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Emulator: APK cai va mo thanh cong tren `emulator-5554`; man Cai dat hien muc Chuyen cong ty, bam vao mo dialog thong bao tai khoan chi co mot cong ty dang hoat dong; logcat khong co crash native/JS fatal.
 - Rui ro con lai: Chua UAT picker va switch voi tai khoan Account that co tu hai membership dang hoat dong; chua test thiet bi that/iOS; APK la ban test Android, chua ky store.
 - Viec tiep theo: UAT voi tai khoan co hai cong ty de xac nhan picker, xac nhan, token/session, Tinode va du lieu Chatmgt tai lai dung tenant; khi phat hanh store thi build lai bang release keystore.
-- Commit/PR: Chua tao.
+- Commit/PR: Source commit `a2a8c1b`; docs follow-up commit duoc tao ngay sau.
 
 ## 2026-09-30-01 - Kich hoat luong sua biet danh tren mobile
 
