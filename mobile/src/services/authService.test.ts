@@ -53,6 +53,19 @@ describe('mobile auth normalization', () => {
     expect(session.tenant?.name).toBe('GON Platform');
   });
 
+  it('keeps populated snake-case tenant choices when the camel-case field is empty', () => {
+    const session = normalizeAuthPayload({
+      user,
+      tenant: { id: 'tenant-1', name: 'Company A' },
+      tenantOptions: [],
+      tenant_options: [
+        { id: 'tenant-1', name: 'Company A', active: true },
+        { id: 'tenant-2', name: 'Company B', active: true },
+      ],
+    });
+    expect(session.tenantOptions?.map(option => option.id)).toEqual(['tenant-1', 'tenant-2']);
+  });
+
   it('does not infer a Tinode UID from an Account ID', () => {
     expect(normalizeUser({ id: 'account-1', uid: 'account-1' }).uid).toBe('');
     expect(normalizeUser({ id: 'account-1', tinodeUid: 'usr-real' }).uid).toBe('usr-real');

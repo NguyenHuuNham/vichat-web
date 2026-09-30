@@ -72,7 +72,18 @@ export function normalizeAuthPayload(payload: any, fallback?: Session | null): S
   const tinodeAuth = normalizeTinodeAuth(payload?.tinode_auth || payload?.tinode);
   const linkedDevices = linkedDevicesFromPayload(payload) || (sameTenant ? fallback?.linkedDevices : null) || [];
   const tenantOptions = normalizeTenantOptions(
-    payload?.tenantOptions || payload?.tenant_options || rawUser?.tenantOptions || rawUser?.tenant_options,
+    firstTenantOptionSource(
+      payload?.tenantOptions,
+      payload?.tenant_options,
+      rawUser?.tenantOptions,
+      rawUser?.tenant_options,
+      payload?.tenants,
+      payload?.companies,
+      payload?.memberships,
+      rawUser?.tenants,
+      rawUser?.companies,
+      rawUser?.memberships,
+    ),
   );
   return {
     user,
@@ -145,6 +156,11 @@ function normalizeTenantOptions(value: unknown): TenantOption[] {
       logoVersion: firstString(item?.logoVersion, item?.logo_version, item?.logoUpdatedAt, item?.logo_updated_at),
     }];
   });
+}
+
+function firstTenantOptionSource(...values: unknown[]) {
+  const arrays = values.filter(Array.isArray) as unknown[][];
+  return arrays.find(items => items.length > 0) || arrays[0] || [];
 }
 
 let tinodeRefreshRequest: { accessToken: string; promise: Promise<TinodeAuth> } | null = null;

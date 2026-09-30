@@ -35,8 +35,19 @@ export function SettingsScreen({ navigation }: Props) {
   const [pendingTenant, setPendingTenant] = useState<TenantOption | null>(null);
   const [switchBusy, setSwitchBusy] = useState(false);
   const [switchError, setSwitchError] = useState('');
+  const [tenantInfoOpen, setTenantInfoOpen] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
-  const tenantOptions = (session?.tenantOptions || []).filter(option => option.active !== false && option.id !== session?.tenant?.id);
+  const allTenantOptions = (session?.tenantOptions || []).filter(option => option.active !== false);
+  const tenantOptions = allTenantOptions.filter(option => option.id !== session?.tenant?.id);
+  const tenantSwitchDetail = tenantOptions.length > 0
+    ? `Đang ở ${displayTenantName(session?.tenant?.name, 'công ty hiện tại')} · ${tenantOptions.length} lựa chọn khác`
+    : allTenantOptions.length > 0
+      ? 'Tài khoản hiện chỉ có một công ty đang hoạt động'
+      : 'Chưa tải được danh sách công ty khác';
+  const openTenantSwitcher = () => {
+    if (tenantOptions.length > 0) setTenantPickerOpen(true);
+    else setTenantInfoOpen(true);
+  };
   const confirmLogout = () => setLogoutConfirmOpen(true);
   const confirmTenantSwitch = async () => {
     if (!pendingTenant || switchBusy) return;
@@ -69,7 +80,7 @@ export function SettingsScreen({ navigation }: Props) {
         <View style={[styles.menu, { backgroundColor: palette.paper, borderColor: palette.line }]}>
           <SettingRow icon={Wifi} label="Kết nối realtime" detail={connection === 'connected' ? 'Đang hoạt động' : 'Đang chờ kết nối'} color={connection === 'connected' ? palette.online : palette.warning} palette={palette} />
           <SettingRow icon={Bell} label="Thông báo" detail="Tin nhắn mới trên thiết bị · chạm để kiểm tra quyền" palette={palette} onPress={() => void Linking.openSettings().catch(() => {})} />
-          {tenantOptions.length > 0 ? <SettingRow icon={Building2} label="Chuyển công ty" detail={`Đang ở ${displayTenantName(session?.tenant?.name, 'công ty hiện tại')} · ${tenantOptions.length} lựa chọn khác`} palette={palette} onPress={() => setTenantPickerOpen(true)} last /> : null}
+          <SettingRow icon={Building2} label="Chuyển công ty" detail={tenantSwitchDetail} palette={palette} onPress={openTenantSwitcher} last />
         </View>
 
         <Text style={[styles.section, { color: palette.inkSoft }]}>Giao diện & thiết bị</Text>
@@ -84,7 +95,7 @@ export function SettingsScreen({ navigation }: Props) {
           <Text style={[styles.dangerHint, { color: palette.inkSoft }]}>Đăng xuất khỏi tài khoản trên thiết bị này.</Text>
           <Pressable disabled={busy} onPress={confirmLogout} style={[styles.logout, { backgroundColor: palette.paper, borderColor: `${palette.danger}88` }, busy && { opacity: 0.5 }]}><Text style={[styles.logoutText, { color: palette.danger }]}>{busy ? 'Đang đăng xuất...' : 'Đăng xuất'}</Text></Pressable>
         </View>
-        <Text style={[styles.version, { color: palette.muted }]}>ViChat Mobile {Constants.expoConfig?.version || '1.0.30'} · {config.brandName}</Text>
+        <Text style={[styles.version, { color: palette.muted }]}>ViChat Mobile {Constants.expoConfig?.version || '1.0.32'} · {config.brandName}</Text>
       </ScrollView>
       <PinSettingsModal visible={pinSettingsOpen} onClose={() => setPinSettingsOpen(false)} />
       <TenantPickerModal visible={tenantPickerOpen} options={tenantOptions} palette={palette} onClose={() => setTenantPickerOpen(false)} onSelect={option => { setTenantPickerOpen(false); setPendingTenant(option); }} />
@@ -97,6 +108,17 @@ export function SettingsScreen({ navigation }: Props) {
         onCancel={() => setPendingTenant(null)}
         onConfirm={() => void confirmTenantSwitch()}
         busy={switchBusy}
+      />
+      <ConfirmDialog
+        visible={tenantInfoOpen}
+        title="Chuyển công ty"
+        message={allTenantOptions.length > 0
+          ? 'Tài khoản hiện chỉ có một công ty đang hoạt động nên chưa có lựa chọn để chuyển.'
+          : 'Chưa nhận được danh sách công ty khác từ tài khoản. Hãy đăng nhập lại để tải lại quyền thành viên.'}
+        eyebrow="TÀI KHOẢN"
+        confirmLabel="Đã hiểu"
+        onCancel={() => setTenantInfoOpen(false)}
+        onConfirm={() => setTenantInfoOpen(false)}
       />
       <ConfirmDialog
         visible={logoutConfirmOpen}

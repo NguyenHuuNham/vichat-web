@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-30-02 - Hien thi chuyen cong ty theo membership Account
+
+- Thoi gian: 2026-09-30 10:20 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Mobile | Backend contract | Phat hanh | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source, APK test va UAT man Cai dat tren emulator; chua UAT tai khoan that co nhieu cong ty
+- Muc tieu: Bao dam mobile luon hien muc Chuyen cong ty va lay dung danh sach cong ty tu nguon Account, trong do moi tenant membership khac nhau la mot cong ty khac nhau.
+- Pham vi: Mobile Settings, Edit Profile, auth normalization, Chatmgt auth contract va version mobile `1.0.32`.
+- File da thay doi: `mobile/src/screens/settings/SettingsScreen.tsx`, `mobile/src/screens/settings/EditProfileScreen.tsx`, `mobile/src/services/authService.ts`, `mobile/src/services/authService.test.ts`, `mobile/app.json`, `mobile/package.json`, `mobile/package-lock.json`.
+- Noi dung: Muc Chuyen cong ty luon hien trong Cai dat va Ho so ca nhan; neu co membership Account dang hoat dong khac thi mo picker, neu chi co mot hoac chua nhan duoc danh sach thi hien dialog theo theme thay vi an mat chuc nang. Auth normalizer chap nhan cac dang `tenantOptions`, `tenant_options`, `tenants`, `companies` va `memberships`, uu tien danh sach co du lieu.
+- Quyet dinh ky thuat: `https://account.gonplatform.com` la nguon chuan cho user, current tenant va membership cong ty. Mobile khong goi Account truc tiep bang credential; mobile goi Chatmgt `/api/v1/auth/me` va `/api/v1/auth/switch-tenant`, Chatmgt xac minh membership tu Account `/current_user`, goi `/api/v1/tenant/set_current_tenant`, doc lai tenant hien tai roi cap token/session theo tenant moi.
+- Database/API/cau hinh: Khong migration hay endpoint Account moi; su dung contract Chatmgt hien co va cac truong `tenantOptions`/`tenant_options`; tang version mobile len `1.0.32`, Android `versionCode=33`.
+- Kiem thu: `cd mobile; npm run typecheck` dat; `npm test -- --reporter=dot --maxWorkers=1` dat 29 file, 115/115; `npm run lint` dat; `npm run export` dat; `npx expo config --json --type public` xac nhan version `1.0.32`, code `33`; Gradle staging `:app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=x86_64` dat; `zipalign` va APK Signature Scheme v2 dat. APK `D:\vichat-build\ViChat-1.0.32-company-switch-universal.apk`, SHA-256 `69588D56F50AF18521BE8BC328CF9C4E72705834D0D19E59E9DFF6BCED4E02E3`.
+- Emulator: APK cai va mo thanh cong tren `emulator-5554`; man Cai dat hien muc Chuyen cong ty, bam vao mo dialog thong bao tai khoan chi co mot cong ty dang hoat dong; logcat khong co crash native/JS fatal.
+- Rui ro con lai: Chua UAT picker va switch voi tai khoan Account that co tu hai membership dang hoat dong; chua test thiet bi that/iOS; APK la ban test Android, chua ky store.
+- Viec tiep theo: UAT voi tai khoan co hai cong ty de xac nhan picker, xac nhan, token/session, Tinode va du lieu Chatmgt tai lai dung tenant; khi phat hanh store thi build lai bang release keystore.
+- Commit/PR: Chua tao.
+
 ## 2026-09-30-01 - Kich hoat luong sua biet danh tren mobile
 
 - Thoi gian: 2026-09-30 09:05 (Asia/Saigon)
