@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-01-03 - Chan sender FCM banner tren Mobile
+
+- Thoi gian: 2026-10-01 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Notification | FCM | Android | Kiem thu | ADB | Tai lieu
+- Trang thai: Hoan tat source, test, prebuild, build release ARM64 va cai truc tiep tren Android; chua UAT hai tai khoan cho cap gui/nhan trong background/killed.
+- Nguyen nhan: Guard own-echo va local notification da fail-closed, nhung push Tinode/FCM danh dau `data.silent=true` van di vao Expo Firebase messaging service va bi tao thanh banner tren `expo_notifications_fallback_notification_channel` cua sender.
+- Pham vi: Chi `mobile/` va tai lieu kien truc/changelog; khong sua Web, backend, Tinode server hay S3. Thay doi root `package-lock.json` co san duoc giu nguyen va khong stage.
+- Noi dung: Them `mobile/plugins/withSilentPushFilter.js` de thay Expo messaging service bang `ViChatFirebaseMessagingService`; bo qua silent sender/device-sync push truoc khi Expo hien thong bao, giu recipient push va exempt incoming-call/webrtc payload. Foreground handler dung cung policy; them Firebase Messaging dependency vao generated Android app qua config plugin.
+- Quyet dinh ky thuat: Dung dau `silent` ma Tinode da co de Mobile tu bao ve khi provider authoritative chua duoc recreate; khong tat toan bo FCM va khong can luu Account/Tinode identity vao native storage. Tin nhan recipient khong co dau silent van duoc hien binh thuong.
+- Kiem thu source: `cd mobile; npm test -- --reporter=dot --maxWorkers=1` dat `33/33 file, 142/142 test`; `npm run typecheck` dat; `npm run lint` dat; `node --check plugins/withSilentPushFilter.js` dat; `npx expo prebuild --platform android --no-install` dat; `git diff --check` dat.
+- Kiem thu native: `D:\m37\android\gradlew.bat :app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a -x lintVitalRelease` dat `BUILD SUCCESSFUL`; APK `D:\vichat-build\vichat-mobile-notification-filter-20261001\vichat-mobile-1.0.38-arm64.apk`, package `vn.upgo.vichat`, version `1.0.38`, Android `versionCode=39`, ABI ARM64, SHA-256 `7F855BE7308F2DB38ADE69F8941FC04A771C2133486EAD3DCF7A5B6F4FC7889D`; manifest release co `ViChatFirebaseMessagingService`, khong con Expo messaging service.
+- Kiem thu thiet bi: `adb -s cb785b0f push` va `adb -s cb785b0f shell pm install -r --user 0 /data/local/tmp/vichat-mobile-1.0.38-arm64.apk` tra `Success`; `dumpsys package` tra `versionCode=39`, service native va khong co Expo service; logcat sau khi mo khong co `FATAL EXCEPTION`, `UnsatisfiedLinkError` hay loi `ReactNativeJS`, co `[ViChat] Native push registration ready: fcm`.
+- Rui ro con lai: Neu provider gui notification payload ma khong co `silent=true`, Android co the hien truoc khi Mobile loc duoc; truong hop do van can patch/cau hinh Tinode authoritative. Chua co hai tai khoan de UAT recipient va sender o foreground/background/swiped/killed, nen khong ghi nhan da xac minh push end-to-end.
+- Viec tiep theo: UAT A/B voi tin text, file, sticker va incoming call o foreground/background/killed; neu can xu ly provider khong gan dau `silent`, cap nhat Tinode server theo patch da co ma khong thay doi luong Mobile.
+- Commit/PR: Se commit rieng phan Mobile va tai lieu trong lan lam viec nay; khong stage thay doi Web/root ngoai pham vi.
+
 ## 2026-10-01-02 - Hoan thien notification, sticker, voice va smoke test Mobile
 
 - Thoi gian: 2026-10-01 (Asia/Saigon)

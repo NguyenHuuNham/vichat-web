@@ -8,6 +8,7 @@ import {
   incomingCallNotificationKey,
   parseIncomingCallNotification,
 } from '../utils/callNotificationPolicy';
+import { shouldSuppressRemoteMessageNotification } from '../utils/remoteNotificationPolicy';
 
 const MESSAGE_CHANNEL_ID = 'messages-v2';
 const CALL_CHANNEL_ID = 'calls-v2';
@@ -60,12 +61,22 @@ async function loadNotificationModules() {
     ]);
     if (!notificationHandlerReady) {
       Notifications.setNotificationHandler({
-        handleNotification: async () => ({
+        handleNotification: async (notification: any) => {
+          if (shouldSuppressRemoteMessageNotification(notification?.request?.content?.data)) {
+            return {
+              shouldPlaySound: false,
+              shouldSetBadge: false,
+              shouldShowBanner: false,
+              shouldShowList: false,
+            };
+          }
+          return {
           shouldPlaySound: true,
           shouldSetBadge: true,
           shouldShowBanner: true,
           shouldShowList: true,
-        }),
+          };
+        },
       });
       notificationHandlerReady = true;
     }

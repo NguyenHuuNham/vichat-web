@@ -561,6 +561,15 @@ FCM Android adapter does not suppress its notification payload for
 `infrastructure/tinode/fcm-silent-push.patch`; the patched image keeps silent
 sender/edit pushes data-only while leaving recipient and incoming-call alerts
 visible.
+Mobile also applies a client-side defense for older or not-yet-recreated
+providers: the Android build replaces Expo's Firebase messaging service with a
+Mobile-owned service that drops non-call pushes marked `silent=true` before
+Expo can turn them into a fallback banner. The foreground notification handler
+uses the same policy. Call/webrtc payloads are explicitly exempt, and normal
+recipient pushes still use Expo's presentation path. A provider that omits the
+silent marker and sends a notification payload cannot be classified after the
+Android system renders it; that case still requires the authoritative Tinode
+push configuration/server patch.
 Mobile starts native registration as soon as the authenticated session exists,
 not only after the rest of the remote data reaches `ready`. The mobile Tinode
 client seeds the token into the SDK before its first authenticated handshake
