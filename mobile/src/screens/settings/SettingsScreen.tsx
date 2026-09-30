@@ -23,6 +23,7 @@ export function SettingsScreen({ navigation }: Props) {
   const session = useAppStore(state => state.session);
   const connection = useAppStore(state => state.connection);
   const logout = useAppStore(state => state.logout);
+  const refreshSession = useAppStore(state => state.refreshSession);
   const switchTenant = useAppStore(state => state.switchTenant);
   const pinConfigured = useAppLockStore(state => state.configured);
   const themeMode = useThemeStore(state => state.mode);
@@ -36,17 +37,44 @@ export function SettingsScreen({ navigation }: Props) {
   const [switchBusy, setSwitchBusy] = useState(false);
   const [switchError, setSwitchError] = useState('');
   const [tenantInfoOpen, setTenantInfoOpen] = useState(false);
+  const [tenantRefreshBusy, setTenantRefreshBusy] = useState(false);
+  const [tenantInfoMessage, setTenantInfoMessage] = useState('');
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const allTenantOptions = (session?.tenantOptions || []).filter(option => option.active !== false);
   const tenantOptions = allTenantOptions.filter(option => option.id !== session?.tenant?.id);
-  const tenantSwitchDetail = tenantOptions.length > 0
+  const tenantSwitchDetail = tenantInfoMessage && !tenantRefreshBusy
+    ? tenantInfoMessage
+    : tenantOptions.length > 0
     ? `Đang ở ${displayCurrentTenantName(session, 'công ty hiện tại')} · ${tenantOptions.length} lựa chọn khác`
     : allTenantOptions.length > 0
       ? 'Tài khoản hiện chỉ có một công ty đang hoạt động'
       : 'Chưa tải được danh sách công ty khác';
-  const openTenantSwitcher = () => {
-    if (tenantOptions.length > 0) setTenantPickerOpen(true);
-    else setTenantInfoOpen(true);
+  const openTenantSwitcher = async () => {
+    if (tenantRefreshBusy || switchBusy) return;
+    const cachedOptions = tenantOptions;
+    setTenantRefreshBusy(true);
+    setTenantInfoMessage('');
+    try {
+      const refreshedSession = await refreshSession();
+      const activeOptions = (refreshedSession?.tenantOptions || []).filter(option => option.active !== false);
+      const currentTenantId = refreshedSession?.tenant?.id;
+      const nextOptions = activeOptions.filter(option => option.id !== currentTenantId);
+      if (nextOptions.length > 0) setTenantPickerOpen(true);
+      else {
+        setTenantInfoMessage(activeOptions.length > 0
+          ? 'Tai khoan hien chi co mot cong ty dang hoat dong.'
+          : 'Chua tai duoc danh sach cong ty tu UpGO Account.');
+        setTenantInfoOpen(true);
+      }
+    } catch (error) {
+      if (cachedOptions.length > 0) setTenantPickerOpen(true);
+      else {
+        setTenantInfoMessage(error instanceof Error ? error.message : 'Khong tai duoc danh sach cong ty. Hay thu lai.');
+        setTenantInfoOpen(true);
+      }
+    } finally {
+      setTenantRefreshBusy(false);
+    }
   };
   const confirmLogout = () => setLogoutConfirmOpen(true);
   const confirmTenantSwitch = async () => {
@@ -80,7 +108,7 @@ export function SettingsScreen({ navigation }: Props) {
         <View style={[styles.menu, { backgroundColor: palette.paper, borderColor: palette.line }]}>
           <SettingRow icon={Wifi} label="Kết nối realtime" detail={connection === 'connected' ? 'Đang hoạt động' : 'Đang chờ kết nối'} color={connection === 'connected' ? palette.online : palette.warning} palette={palette} />
           <SettingRow icon={Bell} label="Thông báo" detail="Tin nhắn mới trên thiết bị · chạm để kiểm tra quyền" palette={palette} onPress={() => void Linking.openSettings().catch(() => {})} />
-          <SettingRow icon={Building2} label="Chuyển công ty" detail={tenantSwitchDetail} palette={palette} onPress={openTenantSwitcher} last />
+          <SettingRow icon={Building2} label="Chuyển công ty" detail={tenantRefreshBusy ? 'Đang tải danh sách công ty...' : tenantSwitchDetail} palette={palette} onPress={() => { void openTenantSwitcher(); }} last />
         </View>
 
         <Text style={[styles.section, { color: palette.inkSoft }]}>Giao diện & thiết bị</Text>
@@ -105,16 +133,16 @@ export function SettingsScreen({ navigation }: Props) {
         message={`${switchError ? `${switchError}\n\n` : ''}Bạn có muốn chuyển sang ${pendingTenant?.name || 'công ty đã chọn'} không? Dữ liệu hội thoại sẽ được tải lại theo công ty này.`}
         eyebrow="CHUYỂN CÔNG TY"
         confirmLabel="Chuyển sang công ty này"
-        onCancel={() => setPendingTenant(null)}
+        onCancel={() => { setPendingTenant(null); setSwitchError(''); }}
         onConfirm={() => void confirmTenantSwitch()}
         busy={switchBusy}
       />
       <ConfirmDialog
         visible={tenantInfoOpen}
         title="Chuyển công ty"
-        message={allTenantOptions.length > 0
+        message={tenantInfoMessage || (allTenantOptions.length > 0
           ? 'Tài khoản hiện chỉ có một công ty đang hoạt động nên chưa có lựa chọn để chuyển.'
-          : 'Chưa nhận được danh sách công ty khác từ tài khoản. Hãy đăng nhập lại để tải lại quyền thành viên.'}
+          : 'Chưa nhận được danh sách công ty khác từ tài khoản. Hãy đăng nhập lại để tải lại quyền thành viên.')}
         eyebrow="TÀI KHOẢN"
         confirmLabel="Đã hiểu"
         onCancel={() => setTenantInfoOpen(false)}

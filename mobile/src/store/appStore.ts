@@ -28,6 +28,7 @@ interface AppStore {
   activeConversationId: string;
   boot: () => Promise<void>;
   login: (identity: string, password: string) => Promise<void>;
+  refreshSession: () => Promise<Session | null>;
   switchTenant: (tenantId: string) => Promise<void>;
   logout: () => Promise<void>;
   reconnect: () => Promise<void>;
@@ -534,6 +535,24 @@ export const useAppStore = create<AppStore>((set, get) => ({
       set({ status: 'signed_out', error: error instanceof Error ? error.message : 'Đăng nhập thất bại.' });
       throw error;
     }
+  },
+
+  async refreshSession() {
+    const previousSession = get().session;
+    if (!previousSession) return null;
+    const generation = previousSession.generation;
+    const session = await authService.currentSession(previousSession);
+    if (get().session?.generation !== generation) return get().session;
+    const refreshedSession: Session = {
+      ...session,
+      generation,
+      tinodeAuth: session.tinodeAuth || previousSession.tinodeAuth,
+      linkedDevices: session.linkedDevices?.length ? session.linkedDevices : previousSession.linkedDevices,
+      hydratedAt: Date.now(),
+    };
+    set({ session: refreshedSession, error: '' });
+    await storageService.savePublicSession(refreshedSession);
+    return refreshedSession;
   },
 
   async switchTenant(tenantId) {

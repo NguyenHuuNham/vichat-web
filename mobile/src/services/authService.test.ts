@@ -1,7 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./apiClient', () => ({
   apiRequest: vi.fn(),
+  getAccessToken: vi.fn(() => 'old-token'),
   setAccessToken: vi.fn(),
 }));
 vi.mock('./storageService', () => ({
@@ -18,8 +19,13 @@ vi.mock('./storageService', () => ({
 
 import { authService, normalizeAuthPayload, normalizeUser, validateSession } from './authService';
 import { apiRequest, setAccessToken } from './apiClient';
+import { storageService } from './storageService';
 
 const user = { id: 'account-1', name: 'An', tenant_id: 'tenant-1', tinode_uid: 'usr-an' };
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 describe('mobile auth normalization', () => {
   it.each([
@@ -109,5 +115,70 @@ describe('mobile auth normalization', () => {
     const session = await authService.switchTenant('tenant-2', previousSession);
 
     expect(session.tenant?.name).toBe('Company B');
+  });
+
+  it('accepts the nested Account membership response used by older Chatmgt gateways', async () => {
+    vi.mocked(apiRequest).mockResolvedValueOnce({
+      data: {
+        accessToken: 'nested-token',
+        user: { ...user, tenant_id: 'tenant-2', tinode_uid: 'usr-an-2' },
+        current_tenant: { companyId: 'tenant-2', company_name: 'Company B' },
+        memberships: {
+          'tenant-1': { company: { id: 'tenant-1', name: 'Company A' }, status: 'active' },
+          'tenant-2': { company: { id: 'tenant-2', name: 'Company B' }, status: 'active' },
+        },
+      },
+    });
+
+    const session = await authService.switchTenant('tenant-2');
+
+    expect(session.tenant).toMatchObject({ id: 'tenant-2', name: 'Company B' });
+    expect(session.tenantOptions?.map(option => option.id)).toEqual(['tenant-1', 'tenant-2']);
+    expect(setAccessToken).toHaveBeenCalledWith('nested-token');
+  });
+
+  it('keeps the previous membership list when a switch response omits it', async () => {
+    vi.mocked(apiRequest).mockResolvedValueOnce({
+      access_token: 'rotated-token-3',
+      user: { ...user, tenant_id: 'tenant-2' },
+      tenant: { id: 'tenant-2', name: 'Company B' },
+    });
+    const previousSession = normalizeAuthPayload({
+      user,
+      tenant: { id: 'tenant-1', name: 'Company A' },
+      tenantOptions: [
+        { id: 'tenant-1', name: 'Company A', active: true },
+        { id: 'tenant-2', name: 'Company B', active: true },
+      ],
+    });
+
+    const session = await authService.switchTenant('tenant-2', previousSession);
+
+    expect(session.tenantOptions?.map(option => option.id)).toEqual(['tenant-1', 'tenant-2']);
+  });
+
+  it('rejects a response for the wrong tenant without replacing the old token', async () => {
+    vi.mocked(apiRequest).mockResolvedValueOnce({
+      access_token: 'wrong-tenant-token',
+      user: { ...user, tenant_id: 'tenant-1' },
+      tenant: { id: 'tenant-1', name: 'Company A' },
+    });
+
+    await expect(authService.switchTenant('tenant-2')).rejects.toThrow('selected company');
+    expect(setAccessToken).not.toHaveBeenCalled();
+    expect(storageService.saveAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('rolls back the bearer token when secure session storage fails', async () => {
+    vi.mocked(apiRequest).mockResolvedValueOnce({
+      access_token: 'rotated-token-4',
+      user: { ...user, tenant_id: 'tenant-2' },
+      tenant: { id: 'tenant-2', name: 'Company B' },
+    });
+    vi.mocked(storageService.savePublicSession).mockRejectedValueOnce(new Error('storage unavailable'));
+
+    await expect(authService.switchTenant('tenant-2')).rejects.toThrow('storage unavailable');
+    expect(setAccessToken).toHaveBeenLastCalledWith('old-token');
+    expect(storageService.saveAccessToken).toHaveBeenLastCalledWith('old-token');
   });
 });

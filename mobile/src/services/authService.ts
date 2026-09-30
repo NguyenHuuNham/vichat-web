@@ -8,6 +8,52 @@ function firstString(...values: unknown[]) {
   return values.map(value => String(value ?? '').trim()).find(Boolean) || '';
 }
 
+function isRecord(value: unknown): value is Record<string, any> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function responseCandidates(payload: any) {
+  const candidates: Record<string, any>[] = [];
+  const queue = [payload];
+  const seen = new Set<any>();
+  while (queue.length && candidates.length < 8) {
+    const value = queue.shift();
+    if (!isRecord(value) || seen.has(value)) continue;
+    seen.add(value);
+    candidates.push(value);
+    for (const key of ['data', 'session', 'auth', 'result', 'payload']) {
+      if (isRecord(value[key])) queue.push(value[key]);
+    }
+  }
+  return candidates;
+}
+
+function flattenAuthPayload(payload: any) {
+  return responseCandidates(payload).reduce((merged, candidate) => ({
+    ...merged,
+    ...candidate,
+    ...(candidate.user !== undefined ? { user: candidate.user } : {}),
+    ...(candidate.current_user !== undefined ? { current_user: candidate.current_user } : {}),
+    ...(candidate.tenant !== undefined ? { tenant: candidate.tenant } : {}),
+    ...(candidate.tenantOptions !== undefined ? { tenantOptions: candidate.tenantOptions } : {}),
+    ...(candidate.tenant_options !== undefined ? { tenant_options: candidate.tenant_options } : {}),
+  }), {});
+}
+
+function accessTokenFromPayload(payload: any) {
+  for (const candidate of responseCandidates(payload)) {
+    const token = firstString(
+      candidate.access_token,
+      candidate.accessToken,
+      candidate.chatmgt_access_token,
+      candidate.chatmgtAccessToken,
+      candidate.bearer_token,
+    );
+    if (token) return token;
+  }
+  return '';
+}
+
 function isTinodeUid(value: unknown) {
   return /^usr[a-z0-9_-]+$/i.test(String(value || '').trim());
 }
@@ -39,12 +85,33 @@ export function normalizeUser(account: any, tenantId = ''): User {
 }
 
 function tenantFromPayload(payload: any, userPayload: any, fallback?: Session | null) {
+  const currentTenant = [
+    payload?.current_tenant,
+    payload?.currentTenant,
+    payload?.current_company,
+    payload?.currentCompany,
+  ].find(isRecord);
   const id = firstString(
     payload?.tenant?.id,
+    payload?.tenant?.tenantId,
+    payload?.tenant?.tenant_id,
+    payload?.tenant?.companyId,
+    payload?.tenant?.company_id,
+    currentTenant?.id,
+    currentTenant?.tenantId,
+    currentTenant?.tenant_id,
+    currentTenant?.companyId,
+    currentTenant?.company_id,
     payload?.tenantId,
     payload?.tenant_id,
     payload?.current_tenant_id,
+    payload?.currentTenantId,
+    payload?.current_company_id,
     userPayload?.tenant?.id,
+    userPayload?.tenant?.tenantId,
+    userPayload?.tenant?.tenant_id,
+    userPayload?.companyId,
+    userPayload?.company_id,
     userPayload?.tenantId,
     userPayload?.tenant_id,
   );
@@ -53,33 +120,42 @@ function tenantFromPayload(payload: any, userPayload: any, fallback?: Session | 
     payload?.tenant,
     payload?.tenantName,
     payload?.tenant_name,
+    currentTenant,
     userPayload?.tenant,
     userPayload?.tenantName,
     userPayload?.tenant_name,
     fallbackMatches ? fallback?.tenant?.name : '',
   );
-  return id ? { id, name, active: payload?.tenant?.active ?? userPayload?.tenant?.active } : null;
+  return id ? {
+    id,
+    name,
+    active: payload?.tenant?.active
+      ?? currentTenant?.active
+      ?? userPayload?.tenant?.active
+      ?? userPayload?.active_tenant,
+  } : null;
 }
 
 export function normalizeAuthPayload(payload: any, fallback?: Session | null): Session {
-  const rawUser = payload?.user || payload?.current_user || payload || {};
-  const tenant = tenantFromPayload(payload, rawUser, fallback);
+  const authPayload = flattenAuthPayload(payload);
+  const rawUser = authPayload?.user || authPayload?.current_user || authPayload || {};
+  const tenant = tenantFromPayload(authPayload, rawUser, fallback);
   const sameTenant = Boolean(tenant?.id && fallback?.tenant?.id === tenant.id);
   const user = normalizeUser(
     sameTenant ? { ...fallback?.user, ...rawUser } : rawUser,
     tenant?.id || '',
   );
-  const tinodeAuth = normalizeTinodeAuth(payload?.tinode_auth || payload?.tinode);
-  const linkedDevices = linkedDevicesFromPayload(payload) || (sameTenant ? fallback?.linkedDevices : null) || [];
+  const tinodeAuth = normalizeTinodeAuth(authPayload?.tinode_auth || authPayload?.tinode);
+  const linkedDevices = linkedDevicesFromPayload(authPayload) || (sameTenant ? fallback?.linkedDevices : null) || [];
   const tenantOptions = normalizeTenantOptions(
     firstTenantOptionSource(
-      payload?.tenantOptions,
-      payload?.tenant_options,
+      authPayload?.tenantOptions,
+      authPayload?.tenant_options,
       rawUser?.tenantOptions,
       rawUser?.tenant_options,
-      payload?.tenants,
-      payload?.companies,
-      payload?.memberships,
+      authPayload?.tenants,
+      authPayload?.companies,
+      authPayload?.memberships,
       rawUser?.tenants,
       rawUser?.companies,
       rawUser?.memberships,
@@ -89,7 +165,7 @@ export function normalizeAuthPayload(payload: any, fallback?: Session | null): S
     user,
     tenant,
     tenantOptions: tenantOptions.length ? tenantOptions : (sameTenant ? fallback?.tenantOptions || [] : []),
-    connection: String(payload?.connection || 'management'),
+    connection: String(authPayload?.connection || 'management'),
     tinodeAuth,
     linkedDevices,
     generation: Number(fallback?.generation || 0),
@@ -140,18 +216,52 @@ function normalizeTinodeAuth(value: any): TinodeAuth | null {
 }
 
 function normalizeTenantOptions(value: unknown): TenantOption[] {
-  if (!Array.isArray(value)) return [];
+  const items = Array.isArray(value)
+    ? value
+    : isRecord(value)
+      ? Object.entries(value).map(([id, item]) => isRecord(item) ? { id, ...item } : { id, name: item })
+      : [];
   const seen = new Set<string>();
-  return value.flatMap((item: any) => {
-    const id = firstString(item?.id, item?.tenantId, item?.tenant_id);
+  return items.flatMap((item: any) => {
+    const id = firstString(
+      typeof item === 'string' ? item : '',
+      item?.id,
+      item?.tenantId,
+      item?.tenant_id,
+      item?.companyId,
+      item?.company_id,
+      item?.brandId,
+      item?.brand_id,
+      item?.organizationId,
+      item?.organization_id,
+      item?.tenant?.id,
+      item?.tenant?.tenantId,
+      item?.tenant?.tenant_id,
+      item?.company?.id,
+      item?.company?.companyId,
+      item?.company?.company_id,
+    );
     if (!id || seen.has(id)) return [];
     seen.add(id);
+    const status = firstString(item?.status, item?.membershipStatus, item?.membership_status).toLowerCase();
+    const inactiveStatus = ['inactive', 'disabled', 'revoked', 'removed', 'pending', 'invited'].includes(status);
     return [{
       id,
-      name: firstString(item?.name, item?.tenantName, item?.tenant_name, id),
+      name: resolveTenantDisplayName(
+        item?.name,
+        item?.tenantName,
+        item?.tenant_name,
+        item?.companyName,
+        item?.company_name,
+        item?.brandName,
+        item?.brand_name,
+        item?.tenant,
+        item?.company,
+        id,
+      ),
       role: firstString(item?.role, 'member').toLowerCase(),
       accountRole: firstString(item?.accountRole, item?.account_role, 'member').toLowerCase(),
-      active: item?.active ?? item?.is_active ?? true,
+      active: inactiveStatus ? false : item?.active ?? item?.is_active ?? item?.enabled ?? true,
       logo: firstString(item?.logo, item?.logoUrl, item?.logo_url, item?.companyLogo, item?.company_logo, item?.brandLogo, item?.brand_logo),
       logoVersion: firstString(item?.logoVersion, item?.logo_version, item?.logoUpdatedAt, item?.logo_updated_at),
     }];
@@ -159,8 +269,10 @@ function normalizeTenantOptions(value: unknown): TenantOption[] {
 }
 
 function firstTenantOptionSource(...values: unknown[]) {
-  const arrays = values.filter(Array.isArray) as unknown[][];
-  return arrays.find(items => items.length > 0) || arrays[0] || [];
+  const collections = values.filter(value => Array.isArray(value) || isRecord(value));
+  return collections.find(items => Array.isArray(items) ? items.length > 0 : Object.keys(items).length > 0)
+    || collections[0]
+    || [];
 }
 
 let tinodeRefreshRequest: { accessToken: string; promise: Promise<TinodeAuth> } | null = null;
@@ -179,19 +291,20 @@ export const authService = {
       mobileLogin: true,
       body: JSON.stringify({ identity: identity.trim(), password }),
     });
-    if (!payload?.access_token) {
+    const accessToken = accessTokenFromPayload(payload);
+    if (!accessToken) {
       throw new Error('Chatmgt chua bat phien Bearer danh cho ung dung mobile.');
     }
-    setAccessToken(payload.access_token);
-    await storageService.saveAccessToken(payload.access_token);
+    setAccessToken(accessToken);
+    await storageService.saveAccessToken(accessToken);
     await storageService.saveSessionStartedAt(new Date().toISOString());
     const session = validateSession(normalizeAuthPayload(payload));
     await storageService.savePublicSession(session);
     return session;
   },
 
-  async currentSession() {
-    const cached = await storageService.loadPublicSession();
+  async currentSession(previousSession?: Session | null) {
+    const cached = previousSession || await storageService.loadPublicSession();
     return validateSession(normalizeAuthPayload(
       await apiRequest('/api/v1/auth/me', { timeoutMs: 12000 }),
       cached,
@@ -200,25 +313,60 @@ export const authService = {
 
   async switchTenant(tenantId: string, previousSession?: Session | null): Promise<Session> {
     const requestedTenantId = String(tenantId || '').trim();
+    const previousAccessToken = getAccessToken();
+    const previousRefreshRequest = tinodeRefreshRequest;
     if (!requestedTenantId) throw new Error('Vui lòng chọn công ty.');
     const payload = await apiRequest<any>('/api/v1/auth/switch-tenant', {
       method: 'POST',
       body: JSON.stringify({ tenant_id: requestedTenantId }),
     });
-    if (!payload?.access_token) {
+    const accessToken = accessTokenFromPayload(payload);
+    if (!accessToken) {
       throw new Error('Chatmgt chưa trả về phiên mobile mới sau khi chuyển công ty.');
     }
-    setAccessToken(payload.access_token);
-    await storageService.saveAccessToken(payload.access_token);
-    const session = normalizeAuthPayload(payload);
-    const selectedTenant = previousSession?.tenantOptions?.find(option => String(option.id) === requestedTenantId);
+    const session = normalizeAuthPayload(payload, previousSession);
+    const responsePayload = flattenAuthPayload(payload);
+    const responseOptions = normalizeTenantOptions(
+      firstTenantOptionSource(
+        responsePayload?.tenantOptions,
+        responsePayload?.tenant_options,
+        responsePayload?.tenants,
+        responsePayload?.companies,
+        responsePayload?.memberships,
+      ),
+    );
+    if (responseOptions.length) session.tenantOptions = responseOptions;
+    else if (previousSession?.tenantOptions?.length) session.tenantOptions = previousSession.tenantOptions;
+    const selectedTenant = [...(session.tenantOptions || []), ...(previousSession?.tenantOptions || [])]
+      .find(option => String(option.id).trim() === requestedTenantId);
     const selectedTenantName = resolveTenantDisplayName(selectedTenant);
-    if (selectedTenantName && session.tenant?.id === requestedTenantId) {
-      session.tenant = { ...session.tenant, name: selectedTenantName };
+    const actualTenantId = String(session.tenant?.id || session.user.tenantId || '').trim();
+    if (actualTenantId !== requestedTenantId) {
+      throw new Error('Chatmgt did not confirm the selected company.');
+    }
+    if (!session.tenant) {
+      session.tenant = { id: requestedTenantId, name: selectedTenantName || requestedTenantId };
+    } else {
+      session.tenant = {
+        ...session.tenant,
+        name: selectedTenantName || session.tenant.name || requestedTenantId,
+      };
     }
     validateSession(session);
-    await storageService.savePublicSession(session);
-    return session;
+    try {
+      await storageService.saveAccessToken(accessToken);
+      setAccessToken(accessToken);
+      tinodeRefreshRequest = null;
+      await storageService.savePublicSession(session);
+      return session;
+    } catch (error) {
+      setAccessToken(previousAccessToken);
+      tinodeRefreshRequest = previousRefreshRequest;
+      try {
+        await storageService.saveAccessToken(previousAccessToken);
+      } catch { /* Keep the in-memory token safe when secure storage is unavailable. */ }
+      throw error;
+    }
   },
 
   async listLinkedDevices() {

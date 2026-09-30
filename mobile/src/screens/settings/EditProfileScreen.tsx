@@ -25,6 +25,7 @@ export function EditProfileScreen({ navigation }: Props) {
   const user = session?.user;
   const updateProfile = useAppStore(state => state.updateProfile);
   const updateAvatar = useAppStore(state => state.updateAvatar);
+  const refreshSession = useAppStore(state => state.refreshSession);
   const switchTenant = useAppStore(state => state.switchTenant);
   const [name, setName] = useState(user?.name || '');
   const [title, setTitle] = useState(user?.title || '');
@@ -35,16 +36,45 @@ export function EditProfileScreen({ navigation }: Props) {
   const [switchBusy, setSwitchBusy] = useState(false);
   const [switchError, setSwitchError] = useState('');
   const [tenantInfoOpen, setTenantInfoOpen] = useState(false);
+  const [tenantRefreshBusy, setTenantRefreshBusy] = useState(false);
+  const [tenantInfoMessage, setTenantInfoMessage] = useState('');
   const allTenantOptions = (session?.tenantOptions || []).filter(option => option.active !== false);
   const tenantOptions = allTenantOptions.filter(option => option.id !== session?.tenant?.id);
-  const tenantSwitchDetail = tenantOptions.length > 0
+  const tenantSwitchDetail = tenantInfoMessage && !tenantRefreshBusy
+    ? tenantInfoMessage
+    : tenantRefreshBusy
+    ? 'Đang tải danh sách công ty...'
+    : tenantOptions.length > 0
     ? `${tenantOptions.length} lựa chọn khác`
     : allTenantOptions.length > 0
       ? 'Tài khoản hiện chỉ có một công ty đang hoạt động'
       : 'Chưa tải được danh sách công ty khác';
-  const openTenantSwitcher = () => {
-    if (tenantOptions.length > 0) setTenantPickerOpen(true);
-    else setTenantInfoOpen(true);
+  const openTenantSwitcher = async () => {
+    if (tenantRefreshBusy || switchBusy) return;
+    const cachedOptions = tenantOptions;
+    setTenantRefreshBusy(true);
+    setTenantInfoMessage('');
+    try {
+      const refreshedSession = await refreshSession();
+      const activeOptions = (refreshedSession?.tenantOptions || []).filter(option => option.active !== false);
+      const currentTenantId = refreshedSession?.tenant?.id;
+      const nextOptions = activeOptions.filter(option => option.id !== currentTenantId);
+      if (nextOptions.length > 0) setTenantPickerOpen(true);
+      else {
+        setTenantInfoMessage(activeOptions.length > 0
+          ? 'Tai khoan hien chi co mot cong ty dang hoat dong.'
+          : 'Chua tai duoc danh sach cong ty tu UpGO Account.');
+        setTenantInfoOpen(true);
+      }
+    } catch (error) {
+      if (cachedOptions.length > 0) setTenantPickerOpen(true);
+      else {
+        setTenantInfoMessage(error instanceof Error ? error.message : 'Khong tai duoc danh sach cong ty. Hay thu lai.');
+        setTenantInfoOpen(true);
+      }
+    } finally {
+      setTenantRefreshBusy(false);
+    }
   };
   useEffect(() => {
     setAvatar(user?.avatar || '');
