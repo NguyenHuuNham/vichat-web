@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalTenantDisplayName, displayRoleName, displayTenantName, resolveTenantDisplayName } from './tenantDisplay';
+import { canonicalTenantDisplayName, displayCurrentTenantName, displayRoleName, displayTenantName, resolveTenantDisplayName } from './tenantDisplay';
 
 describe('tenant display name normalization', () => {
   it('expands legacy GON aliases to the complete brand', () => {
@@ -19,6 +19,13 @@ describe('tenant display name normalization', () => {
   it('normalizes aliases at render time when a stale session reaches the UI', () => {
     expect(displayTenantName('GON', 'Công ty của bạn')).toBe('Gon Platform');
     expect(displayTenantName('', 'Công ty của bạn')).toBe('Công ty của bạn');
+  });
+
+  it('uses the selected membership label for the current tenant', () => {
+    expect(displayCurrentTenantName({
+      tenant: { id: 'tenant-2', name: 'Gon Platform' },
+      tenantOptions: [{ id: 'tenant-2', name: 'Company B' }],
+    })).toBe('Company B');
   });
 
   it('uses title case for user-facing role labels', () => {

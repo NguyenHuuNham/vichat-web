@@ -3,9 +3,10 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Camera, CameraOff, Mic, MicOff, Phone, PhoneOff, SwitchCamera, Video } from 'lucide-react-native';
 import { RTCView } from 'react-native-webrtc';
 import { useCallStore } from '../store/callStore';
-import { colors, shadow } from '../theme/colors';
+import { ThemeColors, shadow } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { Avatar } from './Avatar';
+import { useThemePalette } from '../theme/useThemePalette';
 
 function formatDuration(startedAt: number, now: number) {
   const seconds = Math.max(0, Math.floor((now - startedAt) / 1000));
@@ -13,6 +14,8 @@ function formatDuration(startedAt: number, now: number) {
 }
 
 export function MobileCallOverlay() {
+  const palette = useThemePalette();
+  const styles = createStyles(palette);
   const call = useCallStore(state => state.call);
   const localStream = useCallStore(state => state.localStream);
   const remoteStream = useCallStore(state => state.remoteStream);
@@ -61,13 +64,13 @@ export function MobileCallOverlay() {
           {!remoteUrl || call.audioOnly ? <View style={styles.peer}><Avatar name={call.peerName} uri={call.peerAvatar} size={92} online /><Text style={styles.peerName}>{call.peerName}</Text><Text style={styles.peerStatus}>{status}</Text></View> : <View style={styles.videoPeer}><Text style={styles.peerName}>{call.peerName}</Text></View>}
           {error ? <Pressable onPress={clearError} style={styles.error}><Text style={styles.errorText}>{error}</Text></Pressable> : null}
           {incoming ? (
-            <View style={styles.controls}><CallButton icon={PhoneOff} danger label="Từ chối" onPress={reject} /><CallButton icon={call.audioOnly ? Phone : Video} accept label="Nhận" onPress={() => void accept()} /></View>
+            <View style={styles.controls}><CallButton palette={palette} icon={PhoneOff} danger label="Từ chối" onPress={reject} /><CallButton palette={palette} icon={call.audioOnly ? Phone : Video} accept label="Nhận" onPress={() => void accept()} /></View>
           ) : (
             <View style={styles.controls}>
-              <CallButton icon={microphoneEnabled ? Mic : MicOff} disabled={!localStream} label={microphoneEnabled ? 'Tắt mic' : 'Bật mic'} onPress={toggleMicrophone} />
-              {!call.audioOnly ? <CallButton icon={cameraEnabled ? Camera : CameraOff} disabled={!localStream} label={cameraEnabled ? 'Tắt cam' : 'Bật cam'} onPress={toggleCamera} /> : null}
-              {!call.audioOnly ? <CallButton icon={SwitchCamera} disabled={!cameraEnabled} label="Đổi cam" onPress={switchCamera} /> : null}
-              <CallButton icon={PhoneOff} danger label="Kết thúc" onPress={hangUp} />
+              <CallButton palette={palette} icon={microphoneEnabled ? Mic : MicOff} disabled={!localStream} label={microphoneEnabled ? 'Tắt mic' : 'Bật mic'} onPress={toggleMicrophone} />
+              {!call.audioOnly ? <CallButton palette={palette} icon={cameraEnabled ? Camera : CameraOff} disabled={!localStream} label={cameraEnabled ? 'Tắt cam' : 'Bật cam'} onPress={toggleCamera} /> : null}
+              {!call.audioOnly ? <CallButton palette={palette} icon={SwitchCamera} disabled={!cameraEnabled} label="Đổi cam" onPress={switchCamera} /> : null}
+              <CallButton palette={palette} icon={PhoneOff} danger label="Kết thúc" onPress={hangUp} />
             </View>
           )}
         </View>
@@ -76,11 +79,13 @@ export function MobileCallOverlay() {
   );
 }
 
-function CallButton({ icon: Icon, label, onPress, danger = false, accept = false, disabled = false }: { icon: any; label: string; onPress: () => void; danger?: boolean; accept?: boolean; disabled?: boolean }) {
+function CallButton({ palette, icon: Icon, label, onPress, danger = false, accept = false, disabled = false }: { palette: ThemeColors; icon: any; label: string; onPress: () => void; danger?: boolean; accept?: boolean; disabled?: boolean }) {
+  const styles = createStyles(palette);
   return <Pressable accessibilityLabel={label} disabled={disabled} onPress={onPress} style={[styles.button, danger && styles.dangerButton, accept && styles.acceptButton, disabled && styles.disabled]}><Icon color="#fff" size={21} /><Text style={styles.buttonLabel}>{label}</Text></Pressable>;
 }
 
-const styles = StyleSheet.create({
+function createStyles(palette: ThemeColors) {
+  return StyleSheet.create({
   // Incoming calls must remain actionable even when the optional PIN gate is visible.
   overlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(7,12,16,0.72)', justifyContent: 'flex-end', zIndex: 1100 },
   sheet: { minHeight: 430, borderTopLeftRadius: 30, borderTopRightRadius: 30, overflow: 'hidden', backgroundColor: '#142027', ...shadow },
@@ -101,8 +106,9 @@ const styles = StyleSheet.create({
   errorText: { ...typography.caption, color: '#fff', textAlign: 'center' },
   controls: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 10 },
   button: { minWidth: 76, minHeight: 62, borderRadius: 18, alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 10, backgroundColor: 'rgba(255,255,255,0.18)' },
-  dangerButton: { backgroundColor: colors.danger },
-  acceptButton: { backgroundColor: colors.online },
+  dangerButton: { backgroundColor: palette.danger },
+  acceptButton: { backgroundColor: palette.online },
   disabled: { opacity: 0.4 },
   buttonLabel: { ...typography.caption, color: '#fff', textAlign: 'center' },
-});
+  });
+}

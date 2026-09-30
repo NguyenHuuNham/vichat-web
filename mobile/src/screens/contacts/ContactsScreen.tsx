@@ -5,17 +5,20 @@ import { Check, MessageSquarePlus, Search, UserRoundSearch, UsersRound, X } from
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { MainTabParamList } from '../../navigation/types';
 import { useAppStore } from '../../store/appStore';
-import { colors, shadow } from '../../theme/colors';
+import { ThemeColors, shadow } from '../../theme/colors';
 import { typography } from '../../theme/typography';
+import { useThemePalette } from '../../theme/useThemePalette';
 import { Avatar } from '../../components/Avatar';
 import { SearchField } from '../../components/SearchField';
 import { EmptyState } from '../../components/EmptyState';
 import { User } from '../../types';
-import { displayTenantName } from '../../utils/tenantDisplay';
+import { displayCurrentTenantName } from '../../utils/tenantDisplay';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Contacts'> & { navigation: any };
 
 export function ContactsScreen({ navigation }: Props) {
+  const palette = useThemePalette();
+  const styles = createStyles(palette);
   const session = useAppStore(state => state.session);
   const directory = useAppStore(state => state.directory);
   const refreshData = useAppStore(state => state.refreshData);
@@ -52,7 +55,7 @@ export function ContactsScreen({ navigation }: Props) {
         </View>
         <View style={styles.headerActions}>
           <Pressable accessibilityLabel={showSearch ? 'Đóng tìm kiếm' : 'Tìm kiếm liên hệ'} onPress={() => setShowSearch(value => !value)} style={styles.iconButton}>
-            {showSearch ? <X color={colors.ink} size={21} /> : <Search color={colors.ink} size={21} />}
+            {showSearch ? <X color={palette.ink} size={21} /> : <Search color={palette.ink} size={21} />}
           </Pressable>
           <Pressable accessibilityLabel="Tạo nhóm mới" onPress={() => navigation.navigate('NewGroup')} style={[styles.iconButton, styles.groupButton]}>
             <UsersRound color="#fff" size={20} />
@@ -63,8 +66,8 @@ export function ContactsScreen({ navigation }: Props) {
       {showSearch ? <View style={styles.search}><SearchField value={query} onChangeText={setQuery} placeholder="Tên, phòng ban, chức vụ" /></View> : null}
 
       <View style={styles.summary}>
-        <View style={styles.summaryCopy}><Text style={styles.summaryTitle}>{contacts.length} đồng nghiệp</Text><Text numberOfLines={2} ellipsizeMode="tail" style={styles.summaryHint}>{displayTenantName(session?.tenant?.name, 'Công ty của bạn')} · nhân viên đang hoạt động</Text></View>
-        <View style={styles.summaryStatus}><Check color={colors.online} size={16} /><Text style={styles.summaryStatusText}>Đồng bộ</Text></View>
+        <View style={styles.summaryCopy}><Text style={styles.summaryTitle}>{contacts.length} đồng nghiệp</Text><Text numberOfLines={2} ellipsizeMode="tail" style={styles.summaryHint}>{displayCurrentTenantName(session, 'Công ty của bạn')} · nhân viên đang hoạt động</Text></View>
+        <View style={styles.summaryStatus}><Check color={palette.online} size={16} /><Text style={styles.summaryStatusText}>Đồng bộ</Text></View>
       </View>
 
       <SectionList
@@ -80,10 +83,10 @@ export function ContactsScreen({ navigation }: Props) {
           <Pressable onPress={() => navigation.navigate('UserProfile', { user: item })} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
             <Avatar name={item.name} uri={item.avatar} size={52} online={item.online} />
             <View style={styles.rowBody}><Text numberOfLines={1} style={styles.name}>{item.name}</Text><Text numberOfLines={1} style={styles.meta}>{item.title || 'Nhân viên công ty'}</Text></View>
-            <Pressable disabled={openingId === item.id} accessibilityLabel={`Nhắn tin với ${item.name}`} onPress={async event => { event.stopPropagation(); setOpeningId(item.id); try { const conversation = await createDirect(item); navigation.navigate('ChatDetail', { conversationId: conversation.id }); } finally { setOpeningId(''); } }} style={styles.chatButton}><MessageSquarePlus color={colors.accent} size={21} /></Pressable>
+            <Pressable disabled={openingId === item.id} accessibilityLabel={`Nhắn tin với ${item.name}`} onPress={async event => { event.stopPropagation(); setOpeningId(item.id); try { const conversation = await createDirect(item); navigation.navigate('ChatDetail', { conversationId: conversation.id }); } finally { setOpeningId(''); } }} style={styles.chatButton}><MessageSquarePlus color={palette.accent} size={21} /></Pressable>
           </Pressable>
         )}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); try { await refreshData(); } finally { setRefreshing(false); } }} tintColor={colors.accent} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); try { await refreshData(); } finally { setRefreshing(false); } }} tintColor={palette.accent} />}
         contentContainerStyle={contacts.length ? styles.list : styles.emptyList}
         ListEmptyComponent={<EmptyState icon={UserRoundSearch} title="Không tìm thấy nhân viên" description="Danh bạ chỉ lấy nhân viên active từ UpGO Account của công ty hiện tại." />}
         showsVerticalScrollIndicator={false}
@@ -93,32 +96,34 @@ export function ContactsScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.canvas },
+function createStyles(palette: ThemeColors) {
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.canvas },
   header: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   identity: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 },
   identityText: { flex: 1, minWidth: 0 },
-  eyebrow: { ...typography.caption, color: colors.inkSoft, letterSpacing: 0.8 },
-  title: { ...typography.display, color: colors.ink, fontSize: 27, lineHeight: 33, marginTop: 1 },
+  eyebrow: { ...typography.caption, color: palette.inkSoft, letterSpacing: 0.8 },
+  title: { ...typography.display, color: palette.ink, fontSize: 27, lineHeight: 33, marginTop: 1 },
   headerActions: { flexDirection: 'row', gap: 8 },
-  iconButton: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center', ...shadow },
-  groupButton: { backgroundColor: colors.accent, borderColor: colors.accent },
+  iconButton: { width: 42, height: 42, borderRadius: 14, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line, alignItems: 'center', justifyContent: 'center', ...shadow },
+  groupButton: { backgroundColor: palette.accent, borderColor: palette.accent },
   search: { paddingHorizontal: 20, paddingBottom: 12 },
-  summary: { marginHorizontal: 20, marginBottom: 10, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 17, backgroundColor: colors.accentWash, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  summary: { marginHorizontal: 20, marginBottom: 10, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 17, backgroundColor: palette.accentWash, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   summaryCopy: { flex: 1, minWidth: 0, paddingRight: 10 },
-  summaryTitle: { ...typography.bodyMedium, color: colors.ink },
-  summaryHint: { ...typography.caption, color: colors.inkSoft, marginTop: 2 },
+  summaryTitle: { ...typography.bodyMedium, color: palette.ink },
+  summaryHint: { ...typography.caption, color: palette.inkSoft, marginTop: 2 },
   summaryStatus: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  summaryStatusText: { ...typography.caption, color: colors.online },
+  summaryStatusText: { ...typography.caption, color: palette.online },
   list: { paddingHorizontal: 20, paddingBottom: 130 },
   emptyList: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 20, paddingBottom: 110 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 14, paddingBottom: 9 },
-  sectionTitle: { ...typography.caption, color: colors.accentDeep, letterSpacing: 1, textTransform: 'uppercase' },
-  sectionLine: { height: 1, flex: 1, backgroundColor: colors.line },
-  row: { minHeight: 76, marginBottom: 10, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 18, backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.line, ...shadow },
+  sectionTitle: { ...typography.caption, color: palette.accentDeep, letterSpacing: 1, textTransform: 'uppercase' },
+  sectionLine: { height: 1, flex: 1, backgroundColor: palette.line },
+  row: { minHeight: 76, marginBottom: 10, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 18, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line, ...shadow },
   rowPressed: { opacity: 0.7, transform: [{ scale: 0.99 }] },
   rowBody: { flex: 1, minWidth: 0 },
-  name: { ...typography.title, color: colors.ink },
-  meta: { ...typography.caption, color: colors.inkSoft, marginTop: 3 },
-  chatButton: { width: 40, height: 40, borderRadius: 13, backgroundColor: colors.accentWash, alignItems: 'center', justifyContent: 'center' },
-});
+  name: { ...typography.title, color: palette.ink },
+  meta: { ...typography.caption, color: palette.inkSoft, marginTop: 3 },
+  chatButton: { width: 40, height: 40, borderRadius: 13, backgroundColor: palette.accentWash, alignItems: 'center', justifyContent: 'center' },
+  });
+}

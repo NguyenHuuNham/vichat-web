@@ -69,6 +69,7 @@ function normalizeConversation(record: any): Conversation {
     lastMsg: String(record?.lastMsg || properties.lastMessage || ''),
     time: String(record?.time || properties.time || ''),
     updatedAt: record?.updatedAt || record?.updated_at || record?.last_message_at || properties.updatedAt || properties.updated_at,
+    deletedAt: String(record?.deletedAt || record?.deleted_at || properties.deletedAt || properties.deleted_at || ''),
     badge: Number(record?.badge || properties.unreadCount || 0),
     notificationMutedUntil: normalizeMuteUntil(record?.notificationMutedUntil ?? record?.notification_muted_until),
     pinned: Boolean(record?.pinned ?? record?.isPinned ?? record?.is_pinned ?? properties.pinned),

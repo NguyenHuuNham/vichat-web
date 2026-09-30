@@ -223,9 +223,10 @@ async function syncRealtimeTopics(get: () => AppStore, reason = 'metadata'): Pro
   const promise = tinodeClient.syncTopics(topics, {
     generation,
     concurrency: 2,
-    emitSnapshot: false,
-    historyLimit: 0,
-    newerOnly: true,
+    emitSnapshot: true,
+    historyLimit: 1,
+    refreshLatest: true,
+    newerOnly: false,
     notifyMissed: reason !== 'background-resume',
   }).then(() => {}).finally(() => {
     if (realtimeSyncRequest?.generation === generation && realtimeSyncRequest.promise === promise) realtimeSyncRequest = null;
@@ -395,7 +396,9 @@ async function bootstrapAuthenticated(set: any, get: () => AppStore, providedSes
         }, nicknameActivity, current.session?.user)
         : event.conversation;
       if (!tinodeClient.isConversationTopicAllowed(eventConversation.tinodeTopic)) return;
-      if (deletedConversationIds.has(String(eventConversation.id)) || deletedConversationIds.has(String(eventConversation.tinodeTopic))) return;
+      if (deletedConversationIds.has(String(eventConversation.id))
+        || deletedConversationIds.has(String(eventConversation.managementId))
+        || deletedConversationIds.has(String(eventConversation.tinodeTopic))) return;
       set({ conversations: mergeConversation(current.conversations, eventConversation) });
     } else if (event.type === 'profile') {
        const matches = (value: User) => identitiesOverlap(value, { id: event.uid, uid: event.uid });
@@ -537,7 +540,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const previousSession = get().session;
     set({ status: 'loading', error: '' });
     try {
-      const session = await authService.switchTenant(tenantId);
+      const session = await authService.switchTenant(tenantId, previousSession);
       await bootstrapAuthenticated(set, get, session);
     } catch (error) {
       set({
@@ -1005,7 +1008,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       await chatManagementService.deleteConversationForCurrentUser(conversation.managementId || conversation.id, tinodeAuth.token, replacementId);
       if (conversation.tinodeTopic) tinodeClient.disallowConversationTopic(conversation.tinodeTopic);
       set({
-        conversations: get().conversations.filter(item => item.id !== conversation.id),
+        conversations: get().conversations.filter(item => !deletedKeys.includes(String(item.id))
+          && !deletedKeys.includes(String(item.managementId || ''))
+          && !deletedKeys.includes(String(item.tinodeTopic || ''))),
         activeConversationId: get().activeConversationId === conversation.id ? '' : get().activeConversationId,
       });
       setTimeout(() => deletedKeys.forEach(key => deletedConversationIds.delete(key)), 5000);

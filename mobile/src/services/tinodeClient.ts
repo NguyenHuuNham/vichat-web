@@ -142,6 +142,7 @@ type Listener = (event: TinodeEvent) => void;
 type TopicOptions = {
   emitSnapshot?: boolean;
   newerOnly?: boolean;
+  refreshLatest?: boolean;
   notifyMissed?: boolean;
   generation?: number;
   signal?: AbortSignal;
@@ -659,6 +660,7 @@ function materializeConversation(topic: any, client: any, presenceResolver: (uid
     members,
     participantIds: members.map(member => member.id),
     messages: enrichedMessages,
+    historyVerified: Boolean(topic.__vichatMobileHistoryLoaded),
     readSeq: topicRead,
     lastMsg: latest?.poll
       ? `Bình chọn: ${latest.poll.question}`
@@ -1256,7 +1258,7 @@ export class TinodeMobileClient {
           else query.withEarlierData(historyLimit).withDel(undefined, historyLimit);
         }
         await withTimeout(topic.subscribe(query.build()), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi mở cuộc trò chuyện.');
-      } else if (historyLimit > 0 && !historyLoaded) {
+      } else if (historyLimit > 0 && (options.refreshLatest || !historyLoaded)) {
         await withTimeout(
           topic.getMeta(topic.startMetaQuery().withEarlierData(historyLimit).withDel(undefined, historyLimit).build()),
           TINODE_REQUEST_TIMEOUT_MS,
@@ -1303,7 +1305,7 @@ export class TinodeMobileClient {
     return conversation;
   }
 
-  async syncTopics(names: string[], options: { historyLimit?: number; emitSnapshot?: boolean; concurrency?: number; newerOnly?: boolean; notifyMissed?: boolean; generation?: number; signal?: AbortSignal } = {}) {
+  async syncTopics(names: string[], options: { historyLimit?: number; emitSnapshot?: boolean; concurrency?: number; newerOnly?: boolean; refreshLatest?: boolean; notifyMissed?: boolean; generation?: number; signal?: AbortSignal } = {}) {
     if (!this.isGenerationCurrent(options.generation, options.signal)) return new Set<string>();
     const uniqueNames = [...new Set(names.filter(name => name && this.isConversationTopicAllowed(name)))];
     const historyLimit = Math.max(0, Math.min(100, Math.trunc(Number(options.historyLimit ?? 0))));
@@ -1327,6 +1329,7 @@ export class TinodeMobileClient {
           await this.subscribeTopic(name, historyLimit, {
             emitSnapshot: options.emitSnapshot === true,
             newerOnly: options.newerOnly === true,
+            refreshLatest: options.refreshLatest === true,
             notifyMissed: options.notifyMissed !== false,
             generation: options.generation,
             signal: controller.signal,

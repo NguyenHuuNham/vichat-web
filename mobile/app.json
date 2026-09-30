@@ -4,7 +4,7 @@
     "slug": "vichat-mobile",
     "scheme": "vichat",
     "description": "ViChat doanh nghiệp - kết nối nội bộ an toàn",
-    "version": "1.0.33",
+    "version": "1.0.35",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {
@@ -28,7 +28,7 @@
     },
     "android": {
       "package": "vn.upgo.vichat",
-      "versionCode": 34,
+      "versionCode": 36,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
@@ -58,6 +58,12 @@
       "expo-secure-store",
       "expo-font",
       "expo-sharing",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "ViChat cần camera để quét mã QR và thực hiện cuộc gọi video."
+        }
+      ],
       [
         "expo-image-picker",
         {

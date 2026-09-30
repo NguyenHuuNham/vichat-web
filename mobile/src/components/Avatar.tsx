@@ -1,6 +1,7 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { useEffect, useState } from 'react';
-import { colors } from '../theme/colors';
+import { ThemeColors } from '../theme/colors';
+import { useThemePalette } from '../theme/useThemePalette';
 import { normalizeMediaUrl, tinodeClient } from '../services/tinodeClient';
 
 interface Props { name?: string; uri?: string; size?: number; online?: boolean; rounded?: boolean }
@@ -11,6 +12,8 @@ function initials(name = '') {
 }
 
 export function Avatar({ name = '', uri = '', size = 48, online = false, rounded = true }: Props) {
+  const palette = useThemePalette();
+  const styles = createStyles(palette);
   const [sourceUri, setSourceUri] = useState('');
   const [mediaVersion, setMediaVersion] = useState(() => tinodeClient.getMediaVersion(uri));
   const radius = rounded ? size / 2 : Math.round(size * 0.3);
@@ -39,7 +42,7 @@ export function Avatar({ name = '', uri = '', size = 48, online = false, rounded
   return (
     <View style={{ width: size, height: size }}>
       {sourceUri ? (
-        <Image source={{ uri: sourceUri, headers: tinodeClient.getMediaHeaders() }} style={{ width: size, height: size, borderRadius: radius, backgroundColor: colors.accentWash }} />
+        <Image source={{ uri: sourceUri, headers: tinodeClient.getMediaHeaders() }} style={{ width: size, height: size, borderRadius: radius, backgroundColor: palette.accentWash }} />
       ) : (
         <View style={[styles.fallback, { width: size, height: size, borderRadius: radius }]}>
           <Text style={[styles.initials, { fontSize: Math.max(13, size * 0.32) }]}>{initials(name)}</Text>
@@ -50,8 +53,10 @@ export function Avatar({ name = '', uri = '', size = 48, online = false, rounded
   );
 }
 
-const styles = StyleSheet.create({
-  fallback: { backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
-  initials: { color: '#fff', fontFamily: 'BeVietnamPro_700Bold' },
-  online: { position: 'absolute', backgroundColor: colors.online, borderWidth: 2.5, borderColor: colors.paper },
-});
+function createStyles(palette: ThemeColors) {
+  return StyleSheet.create({
+    fallback: { backgroundColor: palette.ink, alignItems: 'center', justifyContent: 'center' },
+    initials: { color: '#fff', fontFamily: 'BeVietnamPro_700Bold' },
+    online: { position: 'absolute', backgroundColor: palette.online, borderWidth: 2.5, borderColor: palette.paper },
+  });
+}

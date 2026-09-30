@@ -8,6 +8,12 @@ function conversationTimestamp(conversation: Conversation) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function parseTimestamp(value: unknown) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const parsed = Date.parse(String(value || ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export function isTinodeConversationSnapshot(conversation: Partial<Conversation> = {}) {
   return Boolean(
     conversation.snapshotSource === 'tinode'
@@ -34,9 +40,28 @@ export function isDirectConversationForUser(conversation: Partial<Conversation>,
 }
 
 function messageTimestamp(message: ChatMessage) {
-  const value = message.createdAt || message.time;
-  const parsed = Date.parse(String(value || ''));
-  return Number.isFinite(parsed) ? parsed : 0;
+  return parseTimestamp(message.createdAt || message.time);
+}
+
+function isConversationActivityMessage(message: ChatMessage) {
+  return !['reaction', 'recall', 'edit', 'poll_event', 'system'].includes(message.type);
+}
+
+export function latestConversationMessageTimestamp(conversation: Partial<Conversation>) {
+  return (conversation.messages || [])
+    .filter(isConversationActivityMessage)
+    .reduce((latest, message) => Math.max(latest, messageTimestamp(message)), 0);
+}
+
+/** Hide empty direct-chat records while keeping groups available for their first message. */
+export function isConversationVisibleInList(conversation: Conversation) {
+  if (conversation.isGroup || conversation.isChatbot) return true;
+  const latestMessageAt = latestConversationMessageTimestamp(conversation);
+  const deletedAt = parseTimestamp(conversation.deletedAt);
+  if (deletedAt) return latestMessageAt > deletedAt;
+  const hasActivity = latestMessageAt > 0 || Boolean(String(conversation.lastMsg || '').trim()) || Number(conversation.badge) > 0;
+  if (!hasActivity) return conversation.historyVerified !== true;
+  return true;
 }
 
 function compareMessages(first: ChatMessage, second: ChatMessage) {
@@ -341,6 +366,9 @@ export function mergeConversation(first: Conversation, second: Conversation): Co
   );
   const latestMessageText = latestMessage ? messagePreview(latestMessage) : '';
   const latestMessageAt = latestMessage ? messageTimestamp(latestMessage) : 0;
+  const latestUserMessageAt = latestConversationMessageTimestamp({ messages: enrichedMessages });
+  const preferredDeletedAt = preferred.deletedAt !== undefined ? preferred.deletedAt : fallback.deletedAt;
+  const deletedTimestamp = parseTimestamp(preferredDeletedAt);
   const participantIds = incomingTinodeSnapshot
     ? (first.participantIds?.length
       ? [...new Set(first.participantIds.map(value => String(value || '').trim()).filter(Boolean))]
@@ -375,6 +403,7 @@ export function mergeConversation(first: Conversation, second: Conversation): Co
     lastMsg: latestMessageText || preferred.lastMsg || fallback.lastMsg,
     time: latestMessage?.time || preferred.time || fallback.time,
     updatedAt: preferredUpdatedAt || (activity > 0 ? new Date(activity).toISOString() : undefined),
+    deletedAt: deletedTimestamp > 0 && latestUserMessageAt > deletedTimestamp ? '' : preferredDeletedAt,
     badge: preferred.badge !== undefined ? preferred.badge : fallback.badge,
     readSeq: preferred.readSeq !== undefined ? preferred.readSeq : fallback.readSeq,
     // Tinode snapshots do not contain viewer-scoped notification settings.

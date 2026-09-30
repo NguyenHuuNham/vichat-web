@@ -198,7 +198,7 @@ export const authService = {
     ));
   },
 
-  async switchTenant(tenantId: string): Promise<Session> {
+  async switchTenant(tenantId: string, previousSession?: Session | null): Promise<Session> {
     const requestedTenantId = String(tenantId || '').trim();
     if (!requestedTenantId) throw new Error('Vui lòng chọn công ty.');
     const payload = await apiRequest<any>('/api/v1/auth/switch-tenant', {
@@ -210,7 +210,13 @@ export const authService = {
     }
     setAccessToken(payload.access_token);
     await storageService.saveAccessToken(payload.access_token);
-    const session = validateSession(normalizeAuthPayload(payload));
+    const session = normalizeAuthPayload(payload);
+    const selectedTenant = previousSession?.tenantOptions?.find(option => String(option.id) === requestedTenantId);
+    const selectedTenantName = resolveTenantDisplayName(selectedTenant);
+    if (selectedTenantName && session.tenant?.id === requestedTenantId) {
+      session.tenant = { ...session.tenant, name: selectedTenantName };
+    }
+    validateSession(session);
     await storageService.savePublicSession(session);
     return session;
   },

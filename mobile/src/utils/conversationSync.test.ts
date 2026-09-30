@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyConversationNicknameEvent, dedupeConversations, isDirectConversationForUser, mergeConversation, retainAvailableConversations, sortConversations } from './conversationSync';
+import { applyConversationNicknameEvent, dedupeConversations, isConversationVisibleInList, isDirectConversationForUser, mergeConversation, retainAvailableConversations, sortConversations } from './conversationSync';
 
 const conversation = (id: string, tinodeTopic: string) => ({
   id,
@@ -42,6 +42,88 @@ describe('conversation sync', () => {
   it('preserves Chatmgt metadata when Tinode cannot verify any topic', () => {
     const conversations = [conversation('metadata', 'usr-metadata')];
     expect(retainAvailableConversations(conversations, new Set())).toBe(conversations);
+  });
+
+  it('hides empty direct records but keeps empty groups available', () => {
+    expect(isConversationVisibleInList(conversation('unverified-direct', 'usr-peer') as any)).toBe(true);
+    expect(isConversationVisibleInList({ ...conversation('empty-direct', 'usr-peer'), historyVerified: true } as any)).toBe(false);
+    expect(isConversationVisibleInList({ ...conversation('empty-group', 'grp-room'), isGroup: true } as any)).toBe(true);
+  });
+
+  it('hides a deleted direct record until a newer message arrives', () => {
+    const deletedAt = '2026-09-21T10:00:00.000Z';
+    expect(isConversationVisibleInList({
+      ...conversation('deleted-empty', 'usr-peer'),
+      deletedAt,
+      badge: 7,
+    } as any)).toBe(false);
+    expect(isConversationVisibleInList({
+      ...conversation('deleted', 'usr-peer'),
+      deletedAt,
+      messages: [{ id: 'old', type: 'text', sender: 'incoming', senderId: 'usr-peer', senderName: 'Peer', text: 'Old', createdAt: deletedAt }],
+    } as any)).toBe(false);
+    expect(isConversationVisibleInList({
+      ...conversation('restored', 'usr-peer'),
+      deletedAt,
+      messages: [{ id: 'new', type: 'text', sender: 'incoming', senderId: 'usr-peer', senderName: 'Peer', text: 'New', createdAt: '2026-09-21T10:01:00.000Z' }],
+    } as any)).toBe(true);
+  });
+
+  it('does not treat control packets as a direct-chat message', () => {
+    expect(isConversationVisibleInList({
+      ...conversation('control-only', 'usr-peer'),
+      historyVerified: true,
+      messages: [{
+        id: 'system-1',
+        type: 'system',
+        sender: 'incoming',
+        senderId: 'usr-peer',
+        senderName: 'Peer',
+        text: 'Hoat dong he thong',
+        createdAt: '2026-09-21T10:00:00.000Z',
+      }],
+    } as any)).toBe(false);
+  });
+
+  it('clears the direct deletion marker when a newer Tinode message is merged', () => {
+    const deletedAt = '2026-09-21T10:00:00.000Z';
+    const merged = mergeConversation({
+      ...conversation('direct', 'usr-peer'),
+      deletedAt,
+      updatedAt: deletedAt,
+      messages: [],
+    } as any, {
+      ...conversation('direct', 'usr-peer'),
+      snapshotSource: 'tinode',
+      messages: [{ id: 'new', type: 'text', sender: 'incoming', senderId: 'usr-peer', senderName: 'Peer', text: 'New', seq: 2, createdAt: '2026-09-21T10:01:00.000Z' }],
+    } as any);
+    expect(merged.deletedAt).toBe('');
+    expect(isConversationVisibleInList(merged)).toBe(true);
+  });
+
+  it('keeps the deletion marker when only a control packet is merged', () => {
+    const deletedAt = '2026-09-21T10:00:00.000Z';
+    const merged = mergeConversation({
+      ...conversation('direct', 'usr-peer'),
+      deletedAt,
+      updatedAt: deletedAt,
+      messages: [],
+    } as any, {
+      ...conversation('direct', 'usr-peer'),
+      snapshotSource: 'tinode',
+      messages: [{
+        id: 'system-1',
+        type: 'system',
+        sender: 'incoming',
+        senderId: 'usr-peer',
+        senderName: 'Peer',
+        text: 'Hoat dong he thong',
+        seq: 2,
+        createdAt: '2026-09-21T10:01:00.000Z',
+      }],
+    } as any);
+    expect(merged.deletedAt).toBe(deletedAt);
+    expect(isConversationVisibleInList(merged)).toBe(false);
   });
 
   it('keeps one canonical row when duplicate records share a Tinode topic', () => {

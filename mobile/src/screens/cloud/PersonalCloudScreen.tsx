@@ -9,11 +9,12 @@ import { useAppStore } from '../../store/appStore';
 import { personalCloudService } from '../../services/personalCloudService';
 import { beginTrustedExternalActivity } from '../../services/appLifecycleService';
 import { PersonalCloudFile, PersonalCloudMessage, PickerFile } from '../../types';
-import { colors, shadow } from '../../theme/colors';
+import { ThemeColors, shadow } from '../../theme/colors';
 import { typography } from '../../theme/typography';
+import { useThemePalette } from '../../theme/useThemePalette';
 import { EmptyState } from '../../components/EmptyState';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
-import { displayTenantName } from '../../utils/tenantDisplay';
+import { displayCurrentTenantName } from '../../utils/tenantDisplay';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Cloud'>;
 type DeleteTarget = { kind: 'message'; item: PersonalCloudMessage } | { kind: 'file'; item: PersonalCloudFile };
@@ -64,6 +65,8 @@ function safeFileName(value: string) {
 }
 
 export function PersonalCloudScreen(_props: Props) {
+  const palette = useThemePalette();
+  const styles = createStyles(palette);
   const session = useAppStore(state => state.session);
   const mountedRef = useRef(true);
   const [messages, setMessages] = useState<PersonalCloudMessage[]>([]);
@@ -272,35 +275,35 @@ export function PersonalCloudScreen(_props: Props) {
         <View style={styles.headerCopy}>
           <Text style={styles.eyebrow}>PRIVATE STORAGE</Text>
           <Text style={styles.title}>Cloud của tôi</Text>
-          <Text numberOfLines={2} ellipsizeMode="tail" style={styles.subtitle}>{displayTenantName(session?.tenant?.name, 'Không gian riêng tư của bạn')}</Text>
+          <Text numberOfLines={2} ellipsizeMode="tail" style={styles.subtitle}>{displayCurrentTenantName(session, 'Không gian riêng tư của bạn')}</Text>
         </View>
-        <View style={styles.headerIcon}><Cloud color={colors.accent} size={24} /></View>
+        <View style={styles.headerIcon}><Cloud color={palette.accent} size={24} /></View>
       </View>
 
       <View style={styles.hero}>
-        <View style={styles.heroIcon}><LockKeyhole color={colors.accentDeep} size={24} /></View>
+        <View style={styles.heroIcon}><LockKeyhole color={palette.accentDeep} size={24} /></View>
         <View style={styles.heroCopy}>
           <Text style={styles.heroTitle}>Chỉ mình bạn biết</Text>
           <Text style={styles.heroText}>Tin nhắn và file được khóa theo tài khoản, tenant và phiên đăng nhập hiện tại.</Text>
         </View>
-        <ShieldCheck color={colors.online} size={21} />
+        <ShieldCheck color={palette.online} size={21} />
       </View>
 
       {error ? <Pressable onPress={() => setError('')} style={styles.error}><Text style={styles.errorText}>{error}</Text><Text style={styles.errorClose}>Đóng</Text></Pressable> : null}
 
       <View style={styles.sectionHeading}>
-        <View style={styles.sectionHeadingCopy}><MessageSquareText color={colors.accent} size={17} /><Text style={styles.sectionTitle}>Tin nhắn riêng tư</Text><Text style={styles.sectionCount}>{messagesTotal ?? messages.length}</Text></View>
+        <View style={styles.sectionHeadingCopy}><MessageSquareText color={palette.accent} size={17} /><Text style={styles.sectionTitle}>Tin nhắn riêng tư</Text><Text style={styles.sectionCount}>{messagesTotal ?? messages.length}</Text></View>
         <Text style={styles.privateLabel}>CHỈ MÌNH TÔI</Text>
       </View>
-      {loading ? <View style={styles.loadingBox}><ActivityIndicator color={colors.accent} /><Text style={styles.loadingText}>Đang tải Cloud...</Text></View> : messages.length === 0 ? <View style={styles.emptyMessage}><MessageSquareText color={colors.muted} size={21} /><Text style={styles.emptyMessageText}>Chưa có tin nhắn riêng tư.</Text></View> : <ScrollView style={styles.messageScroll} nestedScrollEnabled showsVerticalScrollIndicator={false}>{messages.map(message => <View key={message.id} style={styles.messageRow}><View style={styles.messageBubble}><Text style={styles.messageText}>{message.text}</Text><Text style={styles.messageTime}>{formatCloudTime(message.createdAt)}</Text></View><Pressable accessibilityLabel={`Xóa tin nhắn ${message.text.slice(0, 30)}`} onPress={() => deleteMessage(message)} style={styles.deleteMessage}><Trash2 color={colors.muted} size={16} /></Pressable></View>)}</ScrollView>}
-      {messagesHasMore ? <Pressable onPress={() => void loadMoreMessages()} disabled={loadingMoreMessages} style={styles.loadMore}>{loadingMoreMessages ? <ActivityIndicator color={colors.accent} size="small" /> : <Text style={styles.loadMoreText}>Tải tin nhắn cũ hơn</Text>}</Pressable> : null}
+      {loading ? <View style={styles.loadingBox}><ActivityIndicator color={palette.accent} /><Text style={styles.loadingText}>Đang tải Cloud...</Text></View> : messages.length === 0 ? <View style={styles.emptyMessage}><MessageSquareText color={palette.muted} size={21} /><Text style={styles.emptyMessageText}>Chưa có tin nhắn riêng tư.</Text></View> : <ScrollView style={styles.messageScroll} nestedScrollEnabled showsVerticalScrollIndicator={false}>{messages.map(message => <View key={message.id} style={styles.messageRow}><View style={styles.messageBubble}><Text style={styles.messageText}>{message.text}</Text><Text style={styles.messageTime}>{formatCloudTime(message.createdAt)}</Text></View><Pressable accessibilityLabel={`Xóa tin nhắn ${message.text.slice(0, 30)}`} onPress={() => deleteMessage(message)} style={styles.deleteMessage}><Trash2 color={palette.muted} size={16} /></Pressable></View>)}</ScrollView>}
+      {messagesHasMore ? <Pressable onPress={() => void loadMoreMessages()} disabled={loadingMoreMessages} style={styles.loadMore}>{loadingMoreMessages ? <ActivityIndicator color={palette.accent} size="small" /> : <Text style={styles.loadMoreText}>Tải tin nhắn cũ hơn</Text>}</Pressable> : null}
       <View style={styles.composer}>
-        <TextInput value={draft} onChangeText={setDraft} placeholder="Viết ghi chú riêng tư..." placeholderTextColor={colors.muted} multiline maxLength={120000} editable={!sending} style={styles.input} />
+        <TextInput value={draft} onChangeText={setDraft} placeholder="Viết ghi chú riêng tư..." placeholderTextColor={palette.muted} multiline maxLength={120000} editable={!sending} style={styles.input} />
         <Pressable accessibilityLabel="Gửi tin nhắn Cloud" onPress={() => void sendMessage()} disabled={sending || !draft.trim()} style={[styles.send, (sending || !draft.trim()) && styles.disabled]}>{sending ? <ActivityIndicator color="#fff" size="small" /> : <Send color="#fff" size={18} />}</Pressable>
       </View>
 
       <View style={[styles.sectionHeading, styles.filesHeading]}>
-        <View style={styles.sectionHeadingCopy}><HardDrive color={colors.accent} size={17} /><Text style={styles.sectionTitle}>File của tôi</Text><Text style={styles.sectionCount}>{filesTotal ?? files.length}</Text></View>
+        <View style={styles.sectionHeadingCopy}><HardDrive color={palette.accent} size={17} /><Text style={styles.sectionTitle}>File của tôi</Text><Text style={styles.sectionCount}>{filesTotal ?? files.length}</Text></View>
         <Pressable accessibilityLabel="Tải file lên Cloud" onPress={() => void pickFiles()} disabled={uploading} style={[styles.uploadButton, uploading && styles.disabled]}>{uploading ? <ActivityIndicator color="#fff" size="small" /> : <UploadCloud color="#fff" size={17} />}<Text style={styles.uploadText}>{uploading ? 'Đang tải...' : 'Tải lên'}</Text></Pressable>
       </View>
     </>
@@ -312,12 +315,12 @@ export function PersonalCloudScreen(_props: Props) {
         <FlatList
           data={files}
           keyExtractor={item => item.id}
-          renderItem={({ item }) => <CloudFileRow file={item} busy={busyFileId === item.id} onOpen={() => void openFile(item)} onDownload={() => void openFile(item, true)} onDelete={() => deleteFile(item)} />}
+          renderItem={({ item }) => <CloudFileRow palette={palette} file={item} busy={busyFileId === item.id} onOpen={() => void openFile(item)} onDownload={() => void openFile(item, true)} onDelete={() => deleteFile(item)} />}
           ListHeaderComponent={header}
           ListEmptyComponent={loading ? null : <EmptyState icon={HardDrive} title="Chưa có file riêng tư" description="Những file bạn tải lên sẽ chỉ xuất hiện trong Cloud của tài khoản này." />}
-          ListFooterComponent={filesHasMore ? <Pressable onPress={() => void loadMoreFiles()} disabled={loadingMoreFiles} style={styles.loadMore}>{loadingMoreFiles ? <ActivityIndicator color={colors.accent} size="small" /> : <Text style={styles.loadMoreText}>Tải thêm file</Text>}</Pressable> : null}
+          ListFooterComponent={filesHasMore ? <Pressable onPress={() => void loadMoreFiles()} disabled={loadingMoreFiles} style={styles.loadMore}>{loadingMoreFiles ? <ActivityIndicator color={palette.accent} size="small" /> : <Text style={styles.loadMoreText}>Tải thêm file</Text>}</Pressable> : null}
           contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void loadCloud(true)} tintColor={colors.accent} colors={[colors.accent]} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void loadCloud(true)} tintColor={palette.accent} colors={[palette.accent]} />}
           showsVerticalScrollIndicator={false}
           onEndReachedThreshold={0.65}
           onEndReached={() => { if (fileCursor && !loadingMoreFiles) void loadMoreFiles(); }}
@@ -338,60 +341,63 @@ export function PersonalCloudScreen(_props: Props) {
   );
 }
 
-function CloudFileRow({ file, busy, onOpen, onDownload, onDelete }: { file: PersonalCloudFile; busy: boolean; onOpen: () => void; onDownload: () => void; onDelete: () => void }) {
+function CloudFileRow({ palette, file, busy, onOpen, onDownload, onDelete }: { palette: ThemeColors; file: PersonalCloudFile; busy: boolean; onOpen: () => void; onDownload: () => void; onDelete: () => void }) {
+  const styles = createStyles(palette);
   const Icon = fileIcon(file.mimeType);
-  return <View style={styles.fileRow}><Pressable onPress={onOpen} style={({ pressed }) => [styles.fileMain, pressed && { opacity: 0.65 }]}><View style={styles.fileIcon}><Icon color={colors.accent} size={20} /></View><View style={styles.fileCopy}><Text numberOfLines={1} style={styles.fileName}>{file.fileName}</Text><Text numberOfLines={1} style={styles.fileMeta}>{formatSize(file.size)} · {file.mimeType}</Text><Text style={styles.fileTime}>{formatCloudTime(file.updatedAt || file.createdAt)}</Text></View></Pressable><View style={styles.fileActions}><Pressable accessibilityLabel={`Mở ${file.fileName}`} onPress={onOpen} disabled={busy} style={styles.fileAction}>{busy ? <ActivityIndicator color={colors.accent} size="small" /> : <FileText color={colors.accent} size={17} />}</Pressable><Pressable accessibilityLabel={`Tải xuống ${file.fileName}`} onPress={onDownload} disabled={busy} style={styles.fileAction}><Download color={colors.accent} size={17} /></Pressable><Pressable accessibilityLabel={`Xóa ${file.fileName}`} onPress={onDelete} disabled={busy} style={styles.fileAction}><Trash2 color={colors.danger} size={17} /></Pressable></View></View>;
+  return <View style={styles.fileRow}><Pressable onPress={onOpen} style={({ pressed }) => [styles.fileMain, pressed && { opacity: 0.65 }]}><View style={styles.fileIcon}><Icon color={palette.accent} size={20} /></View><View style={styles.fileCopy}><Text numberOfLines={1} style={styles.fileName}>{file.fileName}</Text><Text numberOfLines={1} style={styles.fileMeta}>{formatSize(file.size)} · {file.mimeType}</Text><Text style={styles.fileTime}>{formatCloudTime(file.updatedAt || file.createdAt)}</Text></View></Pressable><View style={styles.fileActions}><Pressable accessibilityLabel={`Mở ${file.fileName}`} onPress={onOpen} disabled={busy} style={styles.fileAction}>{busy ? <ActivityIndicator color={palette.accent} size="small" /> : <FileText color={palette.accent} size={17} />}</Pressable><Pressable accessibilityLabel={`Tải xuống ${file.fileName}`} onPress={onDownload} disabled={busy} style={styles.fileAction}><Download color={palette.accent} size={17} /></Pressable><Pressable accessibilityLabel={`Xóa ${file.fileName}`} onPress={onDelete} disabled={busy} style={styles.fileAction}><Trash2 color={palette.danger} size={17} /></Pressable></View></View>;
 }
 
-const styles = StyleSheet.create({
+function createStyles(palette: ThemeColors) {
+  return StyleSheet.create({
   flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: colors.canvas },
+  screen: { flex: 1, backgroundColor: palette.canvas },
   list: { paddingHorizontal: 20, paddingBottom: 140 },
   header: { paddingTop: 12, paddingBottom: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerCopy: { flex: 1, minWidth: 0 },
-  eyebrow: { ...typography.caption, color: colors.accentDeep, letterSpacing: 1.1 },
-  title: { ...typography.display, color: colors.ink, marginTop: 2 },
-  subtitle: { ...typography.caption, color: colors.inkSoft, marginTop: 3 },
-  headerIcon: { width: 48, height: 48, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.line, ...shadow },
-  hero: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 15, borderRadius: 20, borderWidth: 1, borderColor: '#F4D4C5', backgroundColor: '#FFF6F0' },
-  heroIcon: { width: 47, height: 47, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper },
+  eyebrow: { ...typography.caption, color: palette.accentDeep, letterSpacing: 1.1 },
+  title: { ...typography.display, color: palette.ink, marginTop: 2 },
+  subtitle: { ...typography.caption, color: palette.inkSoft, marginTop: 3 },
+  headerIcon: { width: 48, height: 48, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line, ...shadow },
+  hero: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 15, borderRadius: 20, borderWidth: 1, borderColor: `${palette.accent}55`, backgroundColor: `${palette.accent}12` },
+  heroIcon: { width: 47, height: 47, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.paper },
   heroCopy: { flex: 1 },
-  heroTitle: { ...typography.bodyMedium, color: colors.ink },
-  heroText: { ...typography.caption, color: colors.inkSoft, marginTop: 3 },
-  error: { marginTop: 12, padding: 11, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FDECEC', borderWidth: 1, borderColor: '#F5C5C5' },
-  errorText: { ...typography.caption, color: colors.danger, flex: 1 },
-  errorClose: { ...typography.caption, color: colors.danger, fontFamily: 'BeVietnamPro_700Bold' },
+  heroTitle: { ...typography.bodyMedium, color: palette.ink },
+  heroText: { ...typography.caption, color: palette.inkSoft, marginTop: 3 },
+  error: { marginTop: 12, padding: 11, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: `${palette.danger}12`, borderWidth: 1, borderColor: `${palette.danger}55` },
+  errorText: { ...typography.caption, color: palette.danger, flex: 1 },
+  errorClose: { ...typography.caption, color: palette.danger, fontFamily: 'BeVietnamPro_700Bold' },
   sectionHeading: { marginTop: 21, marginBottom: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   sectionHeadingCopy: { flexDirection: 'row', alignItems: 'center', gap: 7, minWidth: 0 },
-  sectionTitle: { ...typography.title, color: colors.ink },
-  sectionCount: { ...typography.caption, color: colors.muted },
-  privateLabel: { ...typography.caption, color: colors.online, fontSize: 9, letterSpacing: 0.6 },
-  loadingBox: { minHeight: 104, alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 17, backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.line },
-  loadingText: { ...typography.caption, color: colors.muted },
-  emptyMessage: { minHeight: 92, alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 17, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.line, backgroundColor: colors.paper },
-  emptyMessageText: { ...typography.caption, color: colors.muted },
-  messageScroll: { maxHeight: 330, padding: 4, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.48)' },
+  sectionTitle: { ...typography.title, color: palette.ink },
+  sectionCount: { ...typography.caption, color: palette.muted },
+  privateLabel: { ...typography.caption, color: palette.online, fontSize: 9, letterSpacing: 0.6 },
+  loadingBox: { minHeight: 104, alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 17, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line },
+  loadingText: { ...typography.caption, color: palette.muted },
+  emptyMessage: { minHeight: 92, alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 17, borderStyle: 'dashed', borderWidth: 1, borderColor: palette.line, backgroundColor: palette.paper },
+  emptyMessageText: { ...typography.caption, color: palette.muted },
+  messageScroll: { maxHeight: 330, padding: 4, borderRadius: 17, backgroundColor: `${palette.paper}7A` },
   messageRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'flex-end', gap: 6, marginBottom: 7 },
-  messageBubble: { maxWidth: '88%', paddingHorizontal: 12, paddingTop: 9, paddingBottom: 6, borderRadius: 15, borderBottomRightRadius: 5, borderWidth: 1, borderColor: '#F2D3C4', backgroundColor: '#FFF4EC' },
-  messageText: { ...typography.body, color: colors.ink },
-  messageTime: { ...typography.caption, color: colors.muted, fontSize: 9, textAlign: 'right', marginTop: 4 },
-  deleteMessage: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper },
-  composer: { minHeight: 56, flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 9, padding: 7, borderRadius: 17, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.paper },
-  input: { minHeight: 40, maxHeight: 100, flex: 1, paddingHorizontal: 9, paddingTop: 8, paddingBottom: 8, color: colors.ink, fontFamily: 'BeVietnamPro_400Regular', fontSize: 14 },
-  send: { width: 39, height: 39, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent },
+  messageBubble: { maxWidth: '88%', paddingHorizontal: 12, paddingTop: 9, paddingBottom: 6, borderRadius: 15, borderBottomRightRadius: 5, borderWidth: 1, borderColor: `${palette.accent}55`, backgroundColor: palette.accentWash },
+  messageText: { ...typography.body, color: palette.ink },
+  messageTime: { ...typography.caption, color: palette.muted, fontSize: 9, textAlign: 'right', marginTop: 4 },
+  deleteMessage: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.paper },
+  composer: { minHeight: 56, flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 9, padding: 7, borderRadius: 17, borderWidth: 1, borderColor: palette.line, backgroundColor: palette.paper },
+  input: { minHeight: 40, maxHeight: 100, flex: 1, paddingHorizontal: 9, paddingTop: 8, paddingBottom: 8, color: palette.ink, fontFamily: 'BeVietnamPro_400Regular', fontSize: 14 },
+  send: { width: 39, height: 39, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.accent },
   disabled: { opacity: 0.45 },
   filesHeading: { alignItems: 'center' },
-  uploadButton: { minHeight: 36, paddingHorizontal: 11, borderRadius: 11, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.accent },
+  uploadButton: { minHeight: 36, paddingHorizontal: 11, borderRadius: 11, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: palette.accent },
   uploadText: { ...typography.caption, color: '#fff', fontFamily: 'BeVietnamPro_700Bold' },
-  fileRow: { minHeight: 83, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 9, padding: 11, borderRadius: 17, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.paper, ...shadow },
+  fileRow: { minHeight: 83, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 9, padding: 11, borderRadius: 17, borderWidth: 1, borderColor: palette.line, backgroundColor: palette.paper, ...shadow },
   fileMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  fileIcon: { width: 39, height: 39, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accentWash },
+  fileIcon: { width: 39, height: 39, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.accentWash },
   fileCopy: { flex: 1, minWidth: 0 },
-  fileName: { ...typography.bodyMedium, color: colors.ink },
-  fileMeta: { ...typography.caption, color: colors.inkSoft, fontSize: 10.5, marginTop: 2 },
-  fileTime: { ...typography.caption, color: colors.muted, fontSize: 9, marginTop: 2 },
+  fileName: { ...typography.bodyMedium, color: palette.ink },
+  fileMeta: { ...typography.caption, color: palette.inkSoft, fontSize: 10.5, marginTop: 2 },
+  fileTime: { ...typography.caption, color: palette.muted, fontSize: 9, marginTop: 2 },
   fileActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   fileAction: { width: 32, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  loadMore: { minHeight: 38, marginTop: 8, marginBottom: 2, borderRadius: 12, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper },
-  loadMoreText: { ...typography.caption, color: colors.accentDeep, fontFamily: 'BeVietnamPro_700Bold' },
-});
+  loadMore: { minHeight: 38, marginTop: 8, marginBottom: 2, borderRadius: 12, borderWidth: 1, borderColor: palette.line, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.paper },
+  loadMoreText: { ...typography.caption, color: palette.accentDeep, fontFamily: 'BeVietnamPro_700Bold' },
+  });
+}

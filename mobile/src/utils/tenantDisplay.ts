@@ -1,4 +1,5 @@
 import { config } from '../constants/config';
+import type { Session } from '../types';
 
 function scalarText(value: unknown) {
   return (typeof value === 'string' || typeof value === 'number')
@@ -68,6 +69,13 @@ export function resolveTenantDisplayName(...sources: unknown[]) {
 
 export function displayTenantName(value: unknown, fallback = '') {
   return resolveTenantDisplayName(value) || scalarText(fallback);
+}
+
+/** Prefer the selected membership label so a tenant switch cannot leave a stale brand name in the UI. */
+export function displayCurrentTenantName(session: Pick<Session, 'tenant' | 'tenantOptions'> | null | undefined, fallback = '') {
+  const currentTenantId = scalarText(session?.tenant?.id);
+  const selectedOption = session?.tenantOptions?.find(option => scalarText(option.id) === currentTenantId);
+  return displayTenantName(selectedOption?.name, displayTenantName(session?.tenant, fallback));
 }
 
 export function displayRoleName(value: unknown, fallback = '') {

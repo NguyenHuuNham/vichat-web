@@ -2,12 +2,13 @@ import { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { MessageSquarePlus, Search, SlidersHorizontal, X } from 'lucide-react-native';
+import { MessageSquarePlus, QrCode, Search, SlidersHorizontal, X } from 'lucide-react-native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { MainTabParamList } from '../../navigation/types';
 import { useAppStore } from '../../store/appStore';
-import { colors, shadow } from '../../theme/colors';
+import { ThemeColors, shadow } from '../../theme/colors';
 import { typography } from '../../theme/typography';
+import { useThemePalette } from '../../theme/useThemePalette';
 import { Avatar } from '../../components/Avatar';
 import { SearchField } from '../../components/SearchField';
 import { ConversationRow } from '../../components/ConversationRow';
@@ -18,8 +19,10 @@ import { MessageCircleMore } from 'lucide-react-native';
 import { isConversationMuted } from '../../utils/conversationNotifications';
 import { Conversation } from '../../types';
 import { accountIdForMember, identitiesOverlap } from '../../utils/identity';
-import { displayTenantName } from '../../utils/tenantDisplay';
+import { isConversationVisibleInList } from '../../utils/conversationSync';
+import { displayCurrentTenantName } from '../../utils/tenantDisplay';
 import { ConversationViewerPreference, loadConversationPreferences } from '../../services/conversationPreferenceService';
+import { QrScannerModal } from '../../components/QrScannerModal';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Chats'> & { navigation: any };
 type FilterKey = 'all' | 'unread' | 'groups';
@@ -33,6 +36,8 @@ const filters: Array<{ key: FilterKey; label: string }> = [
 ];
 
 export function ConversationListScreen({ navigation }: Props) {
+  const palette = useThemePalette();
+  const styles = createStyles(palette);
   const session = useAppStore(state => state.session);
   const directory = useAppStore(state => state.directory);
   const conversations = useAppStore(state => state.conversations);
@@ -50,6 +55,7 @@ export function ConversationListScreen({ navigation }: Props) {
   const [deleteRequest, setDeleteRequest] = useState<DeleteRequest | null>(null);
   const [actionRequest, setActionRequest] = useState<ActionRequest | null>(null);
   const [preferences, setPreferences] = useState<Record<string, ConversationViewerPreference>>({});
+  const [qrScannerVisible, setQrScannerVisible] = useState(false);
 
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -68,6 +74,7 @@ export function ConversationListScreen({ navigation }: Props) {
   const filtered = useMemo(() => {
     const keyword = query.trim().toLowerCase();
     return conversations.filter(item => {
+      if (!isConversationVisibleInList(item)) return false;
       const preference = preferences[item.id];
       if (preference?.hidden) return false;
       const matchesQuery = !keyword || item.name.toLowerCase().includes(keyword) || (item.lastMsg || '').toLowerCase().includes(keyword);
@@ -144,17 +151,22 @@ export function ConversationListScreen({ navigation }: Props) {
         <View style={styles.identity}>
           <Avatar name={session?.user.name} uri={session?.user.avatar} size={48} online={connection === 'connected'} />
           <View style={styles.identityText}>
-            <Text numberOfLines={2} ellipsizeMode="tail" style={styles.eyebrow}>{displayTenantName(session?.tenant?.name, 'Không gian công ty')}</Text>
+            <Text numberOfLines={2} ellipsizeMode="tail" style={styles.eyebrow}>{displayCurrentTenantName(session, 'Không gian công ty')}</Text>
             <Text style={styles.title}>Tin nhắn</Text>
           </View>
         </View>
-        <Pressable
-          accessibilityLabel={showSearch ? 'Đóng tìm kiếm' : 'Tìm kiếm cuộc trò chuyện'}
-          onPress={() => setShowSearch(value => !value)}
-          style={styles.iconButton}
-        >
-          {showSearch ? <X color={colors.ink} size={22} /> : <Search color={colors.ink} size={22} />}
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable accessibilityLabel="Quét mã QR" onPress={() => setQrScannerVisible(true)} style={styles.iconButton}>
+            <QrCode color={palette.ink} size={21} />
+          </Pressable>
+          <Pressable
+            accessibilityLabel={showSearch ? 'Đóng tìm kiếm' : 'Tìm kiếm cuộc trò chuyện'}
+            onPress={() => setShowSearch(value => !value)}
+            style={styles.iconButton}
+          >
+            {showSearch ? <X color={palette.ink} size={22} /> : <Search color={palette.ink} size={22} />}
+          </Pressable>
+        </View>
       </View>
 
       {showSearch ? <View style={styles.search}><SearchField value={query} onChangeText={setQuery} placeholder="Tìm cuộc trò chuyện" /></View> : null}
@@ -167,7 +179,7 @@ export function ConversationListScreen({ navigation }: Props) {
             </Pressable>
           ))}
         </View>
-        <SlidersHorizontal color={colors.inkSoft} size={18} />
+        <SlidersHorizontal color={palette.inkSoft} size={18} />
       </View>
 
       {error ? <Pressable onPress={clearError} style={styles.notice}><Text style={styles.noticeText}>{error}</Text><Text style={styles.noticeClose}>Đóng</Text></Pressable> : null}
@@ -205,7 +217,7 @@ export function ConversationListScreen({ navigation }: Props) {
           />
         )}
         contentContainerStyle={filtered.length ? styles.list : styles.emptyList}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.accent} colors={[colors.accent]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={palette.accent} colors={[palette.accent]} />}
         ListEmptyComponent={<EmptyState icon={MessageCircleMore} title={query || filter !== 'all' ? 'Không tìm thấy cuộc trò chuyện' : 'Chưa có cuộc trò chuyện'} description={query || filter !== 'all' ? 'Thử đổi bộ lọc hoặc tìm bằng tên đồng nghiệp, nhóm.' : 'Mở Danh bạ để bắt đầu nhắn tin với đồng đội.'} />}
         showsVerticalScrollIndicator={false}
       />
@@ -241,29 +253,33 @@ export function ConversationListScreen({ navigation }: Props) {
       <Pressable accessibilityLabel="Mở danh bạ để bắt đầu cuộc trò chuyện" onPress={() => navigation.navigate('Contacts')} style={styles.composeButton}>
         <MessageSquarePlus color="#fff" size={24} strokeWidth={2.3} />
       </Pressable>
+      <QrScannerModal visible={qrScannerVisible} onClose={() => setQrScannerVisible(false)} />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.canvas },
-  header: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  identity: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 },
-  identityText: { flex: 1, minWidth: 0 },
-  eyebrow: { ...typography.caption, color: colors.inkSoft, flexShrink: 1 },
-  title: { ...typography.display, color: colors.ink, marginTop: 1 },
-  iconButton: { width: 44, height: 44, borderRadius: 15, backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center', ...shadow },
-  search: { paddingHorizontal: 20, paddingBottom: 12 },
-  filterRow: { paddingHorizontal: 20, paddingBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  filters: { flex: 1, flexDirection: 'row', gap: 8 },
-  filterChip: { minHeight: 36, paddingHorizontal: 15, borderRadius: 18, backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
-  filterChipActive: { backgroundColor: colors.accentWash, borderColor: colors.accent },
-  filterText: { ...typography.bodyMedium, color: colors.inkSoft, fontSize: 13 },
-  filterTextActive: { color: colors.accentDeep },
-  notice: { marginHorizontal: 20, marginBottom: 8, padding: 11, borderRadius: 14, backgroundColor: '#FFF4DB', flexDirection: 'row', alignItems: 'center', gap: 8 },
-  noticeText: { ...typography.caption, color: colors.warning, flex: 1 },
-  noticeClose: { ...typography.caption, color: colors.accentDeep },
-  list: { paddingHorizontal: 20, paddingBottom: 150 },
-  emptyList: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 20, paddingBottom: 120 },
-  composeButton: { position: 'absolute', right: 22, bottom: 96, width: 58, height: 58, borderRadius: 19, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#FF9670', ...shadow },
-});
+function createStyles(palette: ThemeColors) {
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: palette.canvas },
+    header: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    identity: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 },
+    identityText: { flex: 1, minWidth: 0 },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    eyebrow: { ...typography.caption, color: palette.inkSoft, flexShrink: 1 },
+    title: { ...typography.display, color: palette.ink, marginTop: 1 },
+    iconButton: { width: 44, height: 44, borderRadius: 15, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line, alignItems: 'center', justifyContent: 'center', ...shadow },
+    search: { paddingHorizontal: 20, paddingBottom: 12 },
+    filterRow: { paddingHorizontal: 20, paddingBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 10 },
+    filters: { flex: 1, flexDirection: 'row', gap: 8 },
+    filterChip: { minHeight: 36, paddingHorizontal: 15, borderRadius: 18, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line, alignItems: 'center', justifyContent: 'center' },
+    filterChipActive: { backgroundColor: palette.accentWash, borderColor: palette.accent },
+    filterText: { ...typography.bodyMedium, color: palette.inkSoft, fontSize: 13 },
+    filterTextActive: { color: palette.accentDeep },
+    notice: { marginHorizontal: 20, marginBottom: 8, padding: 11, borderRadius: 14, backgroundColor: `${palette.warning}20`, flexDirection: 'row', alignItems: 'center', gap: 8 },
+    noticeText: { ...typography.caption, color: palette.warning, flex: 1 },
+    noticeClose: { ...typography.caption, color: palette.accentDeep },
+    list: { paddingHorizontal: 20, paddingBottom: 150 },
+    emptyList: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 20, paddingBottom: 120 },
+    composeButton: { position: 'absolute', right: 22, bottom: 96, width: 58, height: 58, borderRadius: 19, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: `${palette.accent}99`, ...shadow },
+  });
+}

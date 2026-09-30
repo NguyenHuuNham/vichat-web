@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-30-04 - On dinh dong bo danh sach hoi thoai mobile
+
+- Thoi gian: 2026-09-30 18:41 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Mobile | Chat | Realtime | Hieu nang | Phat hanh | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source, test, build APK va kiem tra emulator; chua UAT danh sach chat bang tai khoan that
+- Muc tieu: Khong de chat 1-1 rong hoac chat da xoa hien lai sau khi xoa, vuot tai lai hoac dong bo realtime; van giu duoc nhom rong va chat quay lai khi co tin moi.
+- Pham vi: `mobile/src/utils/conversationSync.ts`, `mobile/src/utils/conversationSync.test.ts`, `mobile/src/services/chatManagementService.ts`, `mobile/src/services/tinodeClient.ts`, `mobile/src/store/appStore.ts`, `mobile/src/screens/chat/ConversationListScreen.tsx`, `mobile/src/types/index.ts`, cac component/theme/QR mobile dang cho trong working tree va version `1.0.35`.
+- Noi dung: Mobile doc va hop nhat `deletedAt` theo viewer, dong bo Tinode voi mot tin moi nhat de xac minh history, phat snapshot moi cho danh sach, loc direct chat khong co tin va khong cho marker xoa bi ghi de. Packet `system`, `reaction`, `edit`, `poll_event` khong duoc coi la tin nhan nguoi dung; tin moi hon moc xoa se mo lai cuoc tro chuyen. Dedupe va chan topic theo ca management ID, Tinode topic va conversation ID de tranh dong lai ban ghi trung.
+- Quyet dinh ky thuat: Chatmgt van la nguon metadata va marker xoa; Tinode la nguon xac minh tin nhan that. Khong sua web/backend, khong them migration; giu merge message hien co de khong lam mat history/pending trong luong chat va giu nhom rong co the gui tin dau tien.
+- Database/API/cau hinh: Khong migration. Su dung hop dong `deletedAt` hien co va tang mobile len `1.0.35`, Android `versionCode=36`.
+- Kiem thu: `cd mobile; npm test -- --reporter=dot --maxWorkers=1` dat 32 file, 130/130; `npm run typecheck` dat; `npm run lint` dat; `npm run export` dat; `git diff --check` dat; staging ASCII tren `D:` chay `npx expo prebuild --platform android --no-install` va Gradle `:app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a,x86_64` dat 520 tasks; `aapt`, `zipalign` va APK Signature Scheme v2 dat. APK cai thanh cong vao `emulator-5554`, `MainActivity` foreground, UI dump co `Gon Platform`, `Email cong ty`, `Mat khau`, `Dang nhap`; logcat khong co `FATAL EXCEPTION`, `TypeError` hoac `Invariant Violation`.
+- Artifact: `D:\vichat-build\ViChat-1.0.35-conversation-list-universal.apk`, package `vn.upgo.vichat`, ABI `arm64-v8a,x86_64`, SHA-256 `965CCB41207886E5C7E06CB308F1E7A92E7EE2E1BFE435CE1F8546223C30B7EE`.
+- Rui ro con lai: Emulator chua dang nhap tai khoan that nen chua UAT xoa/refresh chat voi du lieu Chatmgt/Tinode thuc te; chua test offline/reconnect, push background/killed, thiet bi that va iOS. APK la ban test ky Android Debug, chua ky store.
+- Viec tiep theo: Dang nhap tai khoan test de xac nhan chat rong bi an sau sync, chat da xoa khong hien lai sau pull-to-refresh, tin moi sau moc xoa mo lai dung va group chat khong bi anh huong.
+- Commit/PR: Se cap nhat sau khi tao commit source.
+
 ## 2026-09-30-03 - Hoan thien noi dung va tuy chon hien thi chi tiet nhom mobile
 
 - Thoi gian: 2026-09-30 12:45 (Asia/Saigon)

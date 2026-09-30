@@ -232,6 +232,10 @@ export interface Conversation {
   lastMsg?: string;
   time?: string;
   updatedAt?: string;
+  /** Viewer-scoped direct-chat deletion marker returned by Chatmgt. */
+  deletedAt?: string;
+  /** True after Tinode has checked the latest history page for this topic. */
+  historyVerified?: boolean;
   badge: number;
   /** Tinode read cursor for positioning the first unread message. */
   readSeq?: number;

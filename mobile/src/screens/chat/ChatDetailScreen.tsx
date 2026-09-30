@@ -9,8 +9,9 @@ import { FlashList, FlashListRef } from '@shopify/flash-list';
 import { ArrowDown, BarChart3, BookOpen, Camera, ChevronLeft, FilePlus2, ImagePlus, Info, Pencil, Search, Send, ShieldCheck, Phone, SmilePlus, Video, WifiOff, X } from 'lucide-react-native';
 import { RootStackParamList } from '../../navigation/types';
 import { useAppStore, getConversation } from '../../store/appStore';
-import { colors, shadow } from '../../theme/colors';
+import { ThemeColors, shadow } from '../../theme/colors';
 import { typography } from '../../theme/typography';
+import { useThemePalette } from '../../theme/useThemePalette';
 import { Avatar } from '../../components/Avatar';
 import { ConversationNicknameModal } from '../../components/ConversationNicknameModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -42,6 +43,8 @@ const AI_STARTERS = [
 ];
 
 export function ChatDetailScreen({ route, navigation }: Props) {
+  const palette = useThemePalette();
+  const styles = createStyles(palette);
   const conversation = useAppStore(state => getConversation(state.conversations, route.params.conversationId));
   const session = useAppStore(state => state.session);
   const directory = useAppStore(state => state.directory);
@@ -435,15 +438,15 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']}>
       <View style={styles.header}>
-        <Pressable onPress={() => navigation.goBack()} style={styles.back}><ChevronLeft color={colors.ink} size={27} /></Pressable>
+        <Pressable onPress={() => navigation.goBack()} style={styles.back}><ChevronLeft color={palette.ink} size={27} /></Pressable>
         <Avatar name={conversation.name} uri={conversation.avatarUrl} size={42} rounded={!conversation.isGroup} online={!conversation.isGroup && directPeerOnline(conversation, tinodeClient.currentUserId)} />
         <View style={styles.headerTitle}><Text numberOfLines={1} style={styles.name}>{conversation.name}</Text><Text style={styles.status}>{conversation.isChatbot ? 'Tra cứu tri thức · Có nguồn kiểm chứng' : conversation.isGroup ? conversation.membersCount : (directPeerOnline(conversation, tinodeClient.currentUserId) ? 'Đang hoạt động' : 'Offline')}</Text></View>
-        {callCapability.available ? <><Pressable accessibilityLabel="Gọi thoại" disabled={Boolean(activeCall)} onPress={() => beginCall(true)} style={styles.more}><Phone color={colors.accent} size={19} /></Pressable><Pressable accessibilityLabel="Gọi video" disabled={Boolean(activeCall)} onPress={() => beginCall(false)} style={styles.more}><Video color={colors.accent} size={19} /></Pressable></> : null}
-        {canEditNickname ? <Pressable accessibilityLabel="Đổi biệt danh" onPress={() => { if (peer) setNicknameMember(peer); }} style={styles.more}><Pencil color={colors.accent} size={19} /></Pressable> : null}
-        <Pressable accessibilityLabel="Thông tin cuộc trò chuyện" onPress={() => conversation.isGroup ? navigation.navigate('GroupInfo', { conversationId: conversation.id }) : Alert.alert('Thông tin', conversation.description || 'Cuộc trò chuyện nội bộ')} style={styles.more}><Info color={colors.inkSoft} size={21} /></Pressable>
+        {callCapability.available ? <><Pressable accessibilityLabel="Gọi thoại" disabled={Boolean(activeCall)} onPress={() => beginCall(true)} style={styles.more}><Phone color={palette.accent} size={19} /></Pressable><Pressable accessibilityLabel="Gọi video" disabled={Boolean(activeCall)} onPress={() => beginCall(false)} style={styles.more}><Video color={palette.accent} size={19} /></Pressable></> : null}
+        {canEditNickname ? <Pressable accessibilityLabel="Đổi biệt danh" onPress={() => { if (peer) setNicknameMember(peer); }} style={styles.more}><Pencil color={palette.accent} size={19} /></Pressable> : null}
+        <Pressable accessibilityLabel="Thông tin cuộc trò chuyện" onPress={() => conversation.isGroup ? navigation.navigate('GroupInfo', { conversationId: conversation.id }) : Alert.alert('Thông tin', conversation.description || 'Cuộc trò chuyện nội bộ')} style={styles.more}><Info color={palette.inkSoft} size={21} /></Pressable>
       </View>
-      {conversation.isChatbot ? <View style={styles.aiStrip}><View style={styles.aiStripItem}><ShieldCheck color={colors.online} size={14} /><Text style={styles.aiStripText}>Riêng tư</Text></View><View style={styles.aiStripItem}><BookOpen color={colors.accent} size={14} /><Text style={styles.aiStripText}>Nguồn rõ ràng</Text></View></View> : null}
-      {connection !== 'connected' ? <View style={styles.offline}><WifiOff color={colors.warning} size={15} /><Text style={styles.offlineText}>Realtime đang gián đoạn. Gửi tin nhắn tạm dừng đến khi kết nối lại.</Text><Pressable onPress={() => void reconnect()} style={styles.retry}><Text style={styles.retryText}>Thử lại</Text></Pressable></View> : null}
+      {conversation.isChatbot ? <View style={styles.aiStrip}><View style={styles.aiStripItem}><ShieldCheck color={palette.online} size={14} /><Text style={styles.aiStripText}>Riêng tư</Text></View><View style={styles.aiStripItem}><BookOpen color={palette.accent} size={14} /><Text style={styles.aiStripText}>Nguồn rõ ràng</Text></View></View> : null}
+      {connection !== 'connected' ? <View style={styles.offline}><WifiOff color={palette.warning} size={15} /><Text style={styles.offlineText}>Realtime đang gián đoạn. Gửi tin nhắn tạm dừng đến khi kết nối lại.</Text><Pressable onPress={() => void reconnect()} style={styles.retry}><Text style={styles.retryText}>Thử lại</Text></Pressable></View> : null}
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}>
         <View style={styles.listStage}>
         <FlashList
@@ -475,15 +478,15 @@ export function ChatDetailScreen({ route, navigation }: Props) {
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={conversation.isChatbot ? <View style={styles.aiEmpty}><View style={styles.aiEmptyIcon}><Search color="#fff" size={27} /></View><Text style={styles.aiEyebrow}>VICHAT AI</Text><Text style={styles.emptyTitle}>Hỏi kho tri thức doanh nghiệp</Text><Text style={styles.emptyText}>ViChat AI tìm nội dung liên quan và đưa nguồn để bạn kiểm chứng.</Text><View style={styles.aiStarters}>{AI_STARTERS.map((prompt, index) => <Pressable key={prompt} disabled={busy || connection !== 'connected'} onPress={() => void submitText(prompt)} style={styles.aiStarter}><Text style={styles.aiStarterIndex}>{index + 1}</Text><Text style={styles.aiStarterText}>{prompt}</Text></Pressable>)}</View></View> : <View style={styles.empty}><Text style={styles.emptyTitle}>Bắt đầu cuộc trò chuyện</Text><Text style={styles.emptyText}>Tin nhắn và tệp được đồng bộ realtime giữa mobile và web.</Text></View>}
         />
-        {loadingEarlier ? <View pointerEvents="none" style={styles.historyLoadingOverlay}><ActivityIndicator color={colors.accent} /></View> : null}
-        {firstUnreadIndex !== null && !unreadJumpDismissed ? <Pressable accessibilityLabel="Đi tới tin nhắn chưa đọc" onPress={jumpToUnread} style={styles.unreadJump}><Text style={styles.unreadJumpText}>{unreadCount > 0 ? `${unreadCount} tin chưa đọc` : 'Tin chưa đọc'}</Text><ArrowDown color={colors.accentDeep} size={15} /></Pressable> : null}
+        {loadingEarlier ? <View pointerEvents="none" style={styles.historyLoadingOverlay}><ActivityIndicator color={palette.accent} /></View> : null}
+        {firstUnreadIndex !== null && !unreadJumpDismissed ? <Pressable accessibilityLabel="Đi tới tin nhắn chưa đọc" onPress={jumpToUnread} style={styles.unreadJump}><Text style={styles.unreadJumpText}>{unreadCount > 0 ? `${unreadCount} tin chưa đọc` : 'Tin chưa đọc'}</Text><ArrowDown color={palette.accentDeep} size={15} /></Pressable> : null}
         {!isNearBottom ? <Pressable accessibilityLabel="Đi tới tin nhắn mới nhất" onPress={jumpToLatest} style={styles.latestJump}><ArrowDown color="#fff" size={21} strokeWidth={2.5} />{newMessageCount > 0 ? <View style={styles.latestCount}><Text style={styles.latestCountText}>{newMessageCount > 99 ? '99+' : newMessageCount}</Text></View> : null}</Pressable> : null}
         </View>
         <TypingIndicator visible={Boolean(typing)} />
         {conversation.isGroup && !canSendMessages ? <View style={styles.groupLocked}><Text style={styles.groupLockedText}>Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.</Text></View> : null}
         {error ? <Pressable onPress={() => setError('')} style={styles.error}><Text style={styles.errorText}>{error}</Text></Pressable> : null}
-        {editingMessage ? <View style={styles.editComposer}><View style={styles.replyBar} /><View style={styles.replyBody}><Text numberOfLines={1} style={styles.replyName}>Sửa tin nhắn</Text><Text numberOfLines={1} style={styles.replyText}>{editingMessage.message.text}</Text></View><Pressable disabled={busy} onPress={() => restoreEditDraft(editingMessage)} style={styles.replyClose}><X color={colors.inkSoft} size={18} /></Pressable></View> : null}
-        {!editingMessage && replyingTo ? <View style={styles.replyComposer}><View style={styles.replyBar} /><View style={styles.replyBody}><Text numberOfLines={1} style={styles.replyName}>Đang trả lời {replyingTo.senderName}</Text><Text numberOfLines={1} style={styles.replyText}>{replyingTo.text}</Text></View><Pressable onPress={() => setReplyingTo(undefined)} style={styles.replyClose}><X color={colors.inkSoft} size={18} /></Pressable></View> : null}
+        {editingMessage ? <View style={styles.editComposer}><View style={styles.replyBar} /><View style={styles.replyBody}><Text numberOfLines={1} style={styles.replyName}>Sửa tin nhắn</Text><Text numberOfLines={1} style={styles.replyText}>{editingMessage.message.text}</Text></View><Pressable disabled={busy} onPress={() => restoreEditDraft(editingMessage)} style={styles.replyClose}><X color={palette.inkSoft} size={18} /></Pressable></View> : null}
+        {!editingMessage && replyingTo ? <View style={styles.replyComposer}><View style={styles.replyBar} /><View style={styles.replyBody}><Text numberOfLines={1} style={styles.replyName}>Đang trả lời {replyingTo.senderName}</Text><Text numberOfLines={1} style={styles.replyText}>{replyingTo.text}</Text></View><Pressable onPress={() => setReplyingTo(undefined)} style={styles.replyClose}><X color={palette.inkSoft} size={18} /></Pressable></View> : null}
         {mentionCandidates.length > 0 ? <View style={styles.mentionPanel}>
           <Text style={styles.mentionHeading}>Nhắc đến</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mentionOptions} keyboardShouldPersistTaps="always">
@@ -495,16 +498,16 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         </View> : null}
         <View style={styles.composer}>
           {!conversation.isChatbot ? <View style={styles.attachGroup}>
-            <Pressable accessibilityLabel="Chụp ảnh" onPress={() => void takePhoto()} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><Camera color={colors.accent} size={18} /></Pressable>
-            <Pressable accessibilityLabel="Chọn ảnh" onPress={() => void chooseFile(true)} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><ImagePlus color={colors.accent} size={19} /></Pressable>
-            <Pressable accessibilityLabel="Chọn tệp" onPress={() => void chooseFile(false)} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><FilePlus2 color={colors.accent} size={18} /></Pressable>
-            <Pressable accessibilityLabel="Chọn sticker" onPress={() => setStickerPickerOpen(true)} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><SmilePlus color={colors.accent} size={18} /></Pressable>
-            {conversation.isGroup && canCreatePoll ? <Pressable accessibilityLabel="Tạo bình chọn" onPress={() => setPollComposerOpen(true)} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><BarChart3 color={colors.accent} size={18} /></Pressable> : null}
+            <Pressable accessibilityLabel="Chụp ảnh" onPress={() => void takePhoto()} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><Camera color={palette.accent} size={18} /></Pressable>
+            <Pressable accessibilityLabel="Chọn ảnh" onPress={() => void chooseFile(true)} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><ImagePlus color={palette.accent} size={19} /></Pressable>
+            <Pressable accessibilityLabel="Chọn tệp" onPress={() => void chooseFile(false)} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><FilePlus2 color={palette.accent} size={18} /></Pressable>
+            <Pressable accessibilityLabel="Chọn sticker" onPress={() => setStickerPickerOpen(true)} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><SmilePlus color={palette.accent} size={18} /></Pressable>
+            {conversation.isGroup && canCreatePoll ? <Pressable accessibilityLabel="Tạo bình chọn" onPress={() => setPollComposerOpen(true)} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><BarChart3 color={palette.accent} size={18} /></Pressable> : null}
           </View> : null}
           <TextInput ref={inputRef} value={text} onChangeText={updateComposerText} onSelectionChange={event => {
             const caret = Number(event.nativeEvent.selection?.start || 0);
             setMentionContext(!editingMessage && conversation.isGroup ? getMentionContext(composerTextRef.current, caret) : null);
-          }} placeholder={editingMessage ? 'Nhập nội dung mới...' : conversation.isChatbot ? 'Hỏi về quy trình, chính sách, tài liệu...' : 'Viết tin nhắn...'} placeholderTextColor={colors.muted} multiline maxLength={120000} style={styles.input} editable={!busy && canSendMessages} />
+          }} placeholder={editingMessage ? 'Nhập nội dung mới...' : conversation.isChatbot ? 'Hỏi về quy trình, chính sách, tài liệu...' : 'Viết tin nhắn...'} placeholderTextColor={palette.muted} multiline maxLength={120000} style={styles.input} editable={!busy && canSendMessages} />
           <Pressable onPress={() => void submitText()} disabled={busy || !text.trim() || !canSendMessages} style={[styles.send, (!text.trim() || busy || !canSendMessages) && styles.sendDisabled]}><Send color="#fff" size={18} /></Pressable>
         </View>
         {conversation.isChatbot ? <Text style={styles.aiNote}>Kiểm tra nguồn trước khi dùng thông tin để ra quyết định.</Text> : null}
@@ -551,7 +554,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         <View style={styles.historyOverlay}>
           <Pressable style={styles.historyBackdrop} onPress={() => setEditHistoryMessage(null)} />
           {editHistoryMessage ? <View style={styles.historyCard}>
-            <View style={styles.historyHeader}><Text style={styles.historyTitle}>Lịch sử chỉnh sửa</Text><Pressable onPress={() => setEditHistoryMessage(null)} style={styles.historyClose}><X color={colors.inkSoft} size={19} /></Pressable></View>
+            <View style={styles.historyHeader}><Text style={styles.historyTitle}>Lịch sử chỉnh sửa</Text><Pressable onPress={() => setEditHistoryMessage(null)} style={styles.historyClose}><X color={palette.inkSoft} size={19} /></Pressable></View>
             <View style={styles.historyCurrent}><Text style={styles.historyLabel}>Nội dung hiện tại</Text><Text style={styles.historyText}>{editHistoryMessage.text}</Text></View>
             <ScrollView style={styles.historyList} contentContainerStyle={styles.historyListContent}>{(editHistoryMessage.editHistory || []).map((entry, index) => <View key={`${entry.eventId || entry.seq || entry.editedAt || index}`} style={styles.historyEntry}><View style={styles.historyEntryHeading}><Text style={styles.historyEntryTitle}>Nội dung cũ {index + 1}</Text>{entry.editedAt ? <Text style={styles.historyEntryTime}>{new Date(entry.editedAt).toLocaleString('vi-VN')}</Text> : null}</View><Text style={styles.historyText}>{entry.text}</Text></View>)}</ScrollView>
           </View> : null}
@@ -561,78 +564,80 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: colors.canvas },
-  header: { minHeight: 82, paddingHorizontal: 10, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 9, borderBottomWidth: 1, borderBottomColor: colors.line, backgroundColor: colors.canvas },
-  listStage: { flex: 1, position: 'relative' },
-  back: { width: 40, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { flex: 1, minWidth: 0 },
-  name: { ...typography.title, color: colors.ink },
-  status: { ...typography.caption, color: colors.inkSoft, marginTop: 2 },
-  more: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
-  offline: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#FFF4DB', paddingHorizontal: 16, paddingVertical: 8 },
-  offlineText: { ...typography.caption, color: colors.warning, flex: 1 },
-  retry: { paddingHorizontal: 8, paddingVertical: 4 },
-  retryText: { ...typography.caption, color: colors.accentDeep, fontFamily: 'BeVietnamPro_700Bold' },
-  groupLocked: { paddingHorizontal: 16, paddingVertical: 7, backgroundColor: '#FFF4DB' },
-  groupLockedText: { ...typography.caption, color: colors.warning },
-  aiStrip: { flexDirection: 'row', justifyContent: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#DDEBE4', backgroundColor: '#F3F8F5' },
-  aiStripItem: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: colors.paper, borderWidth: 1, borderColor: '#DDEBE4' },
-  aiStripText: { ...typography.caption, color: colors.inkSoft, fontSize: 10.5 },
-  messageList: { paddingTop: 18, paddingBottom: 14, flexGrow: 1, justifyContent: 'flex-end' },
-  date: { alignSelf: 'center', ...typography.caption, color: colors.muted, backgroundColor: colors.line, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, marginVertical: 10 },
-  empty: { alignItems: 'center', justifyContent: 'center', padding: 38, marginTop: 'auto' },
-  emptyTitle: { ...typography.title, color: colors.ink },
-  emptyText: { ...typography.body, color: colors.inkSoft, textAlign: 'center', marginTop: 7 },
-  aiEmpty: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 26, paddingVertical: 28, marginTop: 'auto' },
-  aiEmptyIcon: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent, shadowColor: colors.accent, shadowOpacity: 0.22, shadowRadius: 14, elevation: 5 },
-  aiEyebrow: { ...typography.caption, color: colors.accent, fontFamily: 'BeVietnamPro_700Bold', letterSpacing: 2, marginTop: 16 },
-  aiStarters: { width: '100%', gap: 9, marginTop: 20 },
-  aiStarter: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 16, backgroundColor: colors.paper, borderWidth: 1, borderColor: '#DDEBE4' },
-  aiStarterIndex: { width: 25, height: 25, borderRadius: 9, overflow: 'hidden', textAlign: 'center', textAlignVertical: 'center', color: '#fff', backgroundColor: '#123B39', fontFamily: 'BeVietnamPro_700Bold', fontSize: 11 },
-  aiStarterText: { ...typography.caption, flex: 1, color: colors.ink, lineHeight: 18 },
-  error: { marginHorizontal: 14, marginBottom: 7, borderRadius: 12, backgroundColor: '#FDECEC', padding: 9 },
-  errorText: { ...typography.caption, color: colors.danger },
-  replyComposer: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 15, paddingVertical: 8, backgroundColor: colors.paper, borderTopWidth: 1, borderTopColor: colors.line },
-  editComposer: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 15, paddingVertical: 8, backgroundColor: '#FFF5EF', borderTopWidth: 1, borderTopColor: '#F2D3C4' },
-  replyBar: { width: 3, alignSelf: 'stretch', borderRadius: 2, backgroundColor: colors.accent },
-  replyBody: { flex: 1 },
-  replyName: { ...typography.caption, color: colors.accentDeep },
-  replyText: { ...typography.caption, color: colors.inkSoft, marginTop: 2 },
-  replyClose: { width: 34, height: 34, borderRadius: 12, backgroundColor: colors.canvas, alignItems: 'center', justifyContent: 'center' },
-  mentionPanel: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 7, backgroundColor: colors.paper, borderTopWidth: 1, borderTopColor: colors.line },
-  mentionHeading: { ...typography.caption, color: colors.accentDeep, fontFamily: 'BeVietnamPro_700Bold', marginBottom: 6 },
-  mentionOptions: { gap: 8, paddingRight: 6 },
-  mentionOption: { minWidth: 92, maxWidth: 142, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 13, backgroundColor: colors.canvas, borderWidth: 1, borderColor: colors.line },
-  mentionName: { ...typography.caption, color: colors.ink, flexShrink: 1 },
-  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 11, paddingTop: 9, paddingBottom: 9, borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.paper },
-  attachGroup: { minHeight: 42, paddingHorizontal: 3, borderRadius: 16, backgroundColor: colors.canvas, flexDirection: 'row', alignItems: 'center' },
-  attach: { width: 32, height: 42, alignItems: 'center', justifyContent: 'center' },
-  input: { maxHeight: 110, minHeight: 44, flex: 1, borderRadius: 19, backgroundColor: colors.canvas, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 14, paddingTop: 11, paddingBottom: 10, color: colors.ink, fontFamily: 'BeVietnamPro_400Regular', fontSize: 14 },
-  send: { width: 46, height: 46, borderRadius: 16, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
-  sendDisabled: { opacity: 0.38 },
-  aiNote: { ...typography.caption, paddingHorizontal: 16, paddingBottom: 8, color: colors.muted, textAlign: 'center', backgroundColor: colors.paper, fontSize: 10 },
-  historyOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
-  historyBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(12,20,27,0.45)' },
-  historyCard: { width: '100%', maxHeight: '82%', borderRadius: 22, padding: 17, backgroundColor: colors.canvas, ...shadow },
-  historyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 11, borderBottomWidth: 1, borderBottomColor: colors.line },
-  historyTitle: { ...typography.title, color: colors.ink },
-  historyClose: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper },
-  historyCurrent: { marginTop: 14, padding: 11, borderRadius: 13, borderWidth: 1, borderColor: '#F2D3C4', backgroundColor: '#FFF5EF' },
-  historyLabel: { ...typography.caption, color: colors.accentDeep, fontFamily: 'BeVietnamPro_700Bold' },
-  historyText: { ...typography.body, color: colors.ink, marginTop: 6 },
-  historyList: { maxHeight: 320, marginTop: 12 },
-  historyListContent: { gap: 9, paddingBottom: 2 },
-  historyEntry: { padding: 11, borderRadius: 13, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.paper },
-  historyEntryHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  historyEntryTitle: { ...typography.caption, color: colors.ink, fontFamily: 'BeVietnamPro_700Bold' },
-  historyEntryTime: { ...typography.caption, color: colors.muted, fontSize: 9 },
-  historyLoadingOverlay: { position: 'absolute', top: 8, left: 0, right: 0, height: 34, alignItems: 'center', justifyContent: 'center', zIndex: 3 },
-  unreadJump: { position: 'absolute', top: 12, left: '23%', right: '23%', minHeight: 36, paddingHorizontal: 13, borderRadius: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: colors.paper, borderWidth: 1, borderColor: '#C7DED4', shadowColor: '#123B39', shadowOpacity: 0.14, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
-  unreadJumpText: { ...typography.caption, color: colors.accentDeep, fontFamily: 'BeVietnamPro_700Bold' },
-  latestJump: { position: 'absolute', right: 16, bottom: 16, width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent, shadowColor: '#123B39', shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
-  latestCount: { position: 'absolute', top: -3, right: -3, minWidth: 20, height: 20, paddingHorizontal: 4, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.danger, borderWidth: 2, borderColor: colors.canvas },
-  latestCountText: { color: '#fff', fontSize: 9, lineHeight: 12, fontFamily: 'BeVietnamPro_700Bold' },
-  missing: { ...typography.body, color: colors.inkSoft, padding: 30 },
-});
+function createStyles(palette: ThemeColors) {
+  return StyleSheet.create({
+    flex: { flex: 1 },
+    screen: { flex: 1, backgroundColor: palette.canvas },
+    header: { minHeight: 82, paddingHorizontal: 10, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 9, borderBottomWidth: 1, borderBottomColor: palette.line, backgroundColor: palette.canvas },
+    listStage: { flex: 1, position: 'relative' },
+    back: { width: 40, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+    headerTitle: { flex: 1, minWidth: 0 },
+    name: { ...typography.title, color: palette.ink },
+    status: { ...typography.caption, color: palette.inkSoft, marginTop: 2 },
+    more: { width: 42, height: 42, borderRadius: 14, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line, alignItems: 'center', justifyContent: 'center' },
+    offline: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: `${palette.warning}18`, paddingHorizontal: 16, paddingVertical: 8 },
+    offlineText: { ...typography.caption, color: palette.warning, flex: 1 },
+    retry: { paddingHorizontal: 8, paddingVertical: 4 },
+    retryText: { ...typography.caption, color: palette.accentDeep, fontFamily: 'BeVietnamPro_700Bold' },
+    groupLocked: { paddingHorizontal: 16, paddingVertical: 7, backgroundColor: `${palette.warning}18` },
+    groupLockedText: { ...typography.caption, color: palette.warning },
+    aiStrip: { flexDirection: 'row', justifyContent: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: `${palette.online}44`, backgroundColor: `${palette.online}12` },
+    aiStripItem: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: palette.paper, borderWidth: 1, borderColor: `${palette.online}44` },
+    aiStripText: { ...typography.caption, color: palette.inkSoft, fontSize: 10.5 },
+    messageList: { paddingTop: 18, paddingBottom: 14, flexGrow: 1, justifyContent: 'flex-end' },
+    date: { alignSelf: 'center', ...typography.caption, color: palette.muted, backgroundColor: palette.line, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, marginVertical: 10 },
+    empty: { alignItems: 'center', justifyContent: 'center', padding: 38, marginTop: 'auto' },
+    emptyTitle: { ...typography.title, color: palette.ink },
+    emptyText: { ...typography.body, color: palette.inkSoft, textAlign: 'center', marginTop: 7 },
+    aiEmpty: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 26, paddingVertical: 28, marginTop: 'auto' },
+    aiEmptyIcon: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.accent, shadowColor: palette.accent, shadowOpacity: 0.22, shadowRadius: 14, elevation: 5 },
+    aiEyebrow: { ...typography.caption, color: palette.accent, fontFamily: 'BeVietnamPro_700Bold', letterSpacing: 2, marginTop: 16 },
+    aiStarters: { width: '100%', gap: 9, marginTop: 20 },
+    aiStarter: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 16, backgroundColor: palette.paper, borderWidth: 1, borderColor: `${palette.online}44` },
+    aiStarterIndex: { width: 25, height: 25, borderRadius: 9, overflow: 'hidden', textAlign: 'center', textAlignVertical: 'center', color: '#fff', backgroundColor: palette.ink, fontFamily: 'BeVietnamPro_700Bold', fontSize: 11 },
+    aiStarterText: { ...typography.caption, flex: 1, color: palette.ink, lineHeight: 18 },
+    error: { marginHorizontal: 14, marginBottom: 7, borderRadius: 12, backgroundColor: `${palette.danger}12`, padding: 9 },
+    errorText: { ...typography.caption, color: palette.danger },
+    replyComposer: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 15, paddingVertical: 8, backgroundColor: palette.paper, borderTopWidth: 1, borderTopColor: palette.line },
+    editComposer: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 15, paddingVertical: 8, backgroundColor: palette.accentWash, borderTopWidth: 1, borderTopColor: `${palette.accent}55` },
+    replyBar: { width: 3, alignSelf: 'stretch', borderRadius: 2, backgroundColor: palette.accent },
+    replyBody: { flex: 1 },
+    replyName: { ...typography.caption, color: palette.accentDeep },
+    replyText: { ...typography.caption, color: palette.inkSoft, marginTop: 2 },
+    replyClose: { width: 34, height: 34, borderRadius: 12, backgroundColor: palette.canvas, alignItems: 'center', justifyContent: 'center' },
+    mentionPanel: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 7, backgroundColor: palette.paper, borderTopWidth: 1, borderTopColor: palette.line },
+    mentionHeading: { ...typography.caption, color: palette.accentDeep, fontFamily: 'BeVietnamPro_700Bold', marginBottom: 6 },
+    mentionOptions: { gap: 8, paddingRight: 6 },
+    mentionOption: { minWidth: 92, maxWidth: 142, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 13, backgroundColor: palette.canvas, borderWidth: 1, borderColor: palette.line },
+    mentionName: { ...typography.caption, color: palette.ink, flexShrink: 1 },
+    composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 11, paddingTop: 9, paddingBottom: 9, borderTopWidth: 1, borderTopColor: palette.line, backgroundColor: palette.paper },
+    attachGroup: { minHeight: 42, paddingHorizontal: 3, borderRadius: 16, backgroundColor: palette.canvas, flexDirection: 'row', alignItems: 'center' },
+    attach: { width: 32, height: 42, alignItems: 'center', justifyContent: 'center' },
+    input: { maxHeight: 110, minHeight: 44, flex: 1, borderRadius: 19, backgroundColor: palette.canvas, borderWidth: 1, borderColor: palette.line, paddingHorizontal: 14, paddingTop: 11, paddingBottom: 10, color: palette.ink, fontFamily: 'BeVietnamPro_400Regular', fontSize: 14 },
+    send: { width: 46, height: 46, borderRadius: 16, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' },
+    sendDisabled: { opacity: 0.38 },
+    aiNote: { ...typography.caption, paddingHorizontal: 16, paddingBottom: 8, color: palette.muted, textAlign: 'center', backgroundColor: palette.paper, fontSize: 10 },
+    historyOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
+    historyBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(12,20,27,0.45)' },
+    historyCard: { width: '100%', maxHeight: '82%', borderRadius: 22, padding: 17, backgroundColor: palette.canvas, ...shadow },
+    historyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 11, borderBottomWidth: 1, borderBottomColor: palette.line },
+    historyTitle: { ...typography.title, color: palette.ink },
+    historyClose: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.paper },
+    historyCurrent: { marginTop: 14, padding: 11, borderRadius: 13, borderWidth: 1, borderColor: `${palette.accent}55`, backgroundColor: palette.accentWash },
+    historyLabel: { ...typography.caption, color: palette.accentDeep, fontFamily: 'BeVietnamPro_700Bold' },
+    historyText: { ...typography.body, color: palette.ink, marginTop: 6 },
+    historyList: { maxHeight: 320, marginTop: 12 },
+    historyListContent: { gap: 9, paddingBottom: 2 },
+    historyEntry: { padding: 11, borderRadius: 13, borderWidth: 1, borderColor: palette.line, backgroundColor: palette.paper },
+    historyEntryHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+    historyEntryTitle: { ...typography.caption, color: palette.ink, fontFamily: 'BeVietnamPro_700Bold' },
+    historyEntryTime: { ...typography.caption, color: palette.muted, fontSize: 9 },
+    historyLoadingOverlay: { position: 'absolute', top: 8, left: 0, right: 0, height: 34, alignItems: 'center', justifyContent: 'center', zIndex: 3 },
+    unreadJump: { position: 'absolute', top: 12, left: '23%', right: '23%', minHeight: 36, paddingHorizontal: 13, borderRadius: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: palette.paper, borderWidth: 1, borderColor: `${palette.online}66`, shadowColor: palette.ink, shadowOpacity: 0.14, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+    unreadJumpText: { ...typography.caption, color: palette.accentDeep, fontFamily: 'BeVietnamPro_700Bold' },
+    latestJump: { position: 'absolute', right: 16, bottom: 16, width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.accent, shadowColor: palette.ink, shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
+    latestCount: { position: 'absolute', top: -3, right: -3, minWidth: 20, height: 20, paddingHorizontal: 4, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.danger, borderWidth: 2, borderColor: palette.canvas },
+    latestCountText: { color: '#fff', fontSize: 9, lineHeight: 12, fontFamily: 'BeVietnamPro_700Bold' },
+    missing: { ...typography.body, color: palette.inkSoft, padding: 30 },
+  });
+}

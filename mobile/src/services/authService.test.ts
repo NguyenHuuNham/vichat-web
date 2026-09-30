@@ -89,4 +89,25 @@ describe('mobile auth normalization', () => {
     expect(session.user.tinodeUid).toBe('usr-an-2');
     expect(setAccessToken).toHaveBeenCalledWith('rotated-token');
   });
+
+  it('uses the selected membership name when the switch payload has a stale label', async () => {
+    vi.mocked(apiRequest).mockResolvedValueOnce({
+      access_token: 'rotated-token-2',
+      user: { ...user, tenant_id: 'tenant-2', tinode_uid: 'usr-an-2' },
+      tenant: { id: 'tenant-2', name: 'Gon Platform' },
+      tenantOptions: [
+        { id: 'tenant-1', name: 'Company A', active: true },
+        { id: 'tenant-2', name: 'Company B', active: true },
+      ],
+    });
+    const previousSession = normalizeAuthPayload({
+      user,
+      tenant: { id: 'tenant-1', name: 'Company A' },
+      tenantOptions: [{ id: 'tenant-2', name: 'Company B', active: true }],
+    });
+
+    const session = await authService.switchTenant('tenant-2', previousSession);
+
+    expect(session.tenant?.name).toBe('Company B');
+  });
 });

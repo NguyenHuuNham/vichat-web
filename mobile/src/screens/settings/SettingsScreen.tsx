@@ -12,7 +12,7 @@ import { PinSettingsModal } from '../../components/PinSettingsModal';
 import { useAppLockStore } from '../../store/appLockStore';
 import Constants from 'expo-constants';
 import { config } from '../../constants/config';
-import { displayRoleName, displayTenantName } from '../../utils/tenantDisplay';
+import { displayCurrentTenantName, displayRoleName } from '../../utils/tenantDisplay';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { TenantOption } from '../../types';
 import { useThemeStore } from '../../store/themeStore';
@@ -40,7 +40,7 @@ export function SettingsScreen({ navigation }: Props) {
   const allTenantOptions = (session?.tenantOptions || []).filter(option => option.active !== false);
   const tenantOptions = allTenantOptions.filter(option => option.id !== session?.tenant?.id);
   const tenantSwitchDetail = tenantOptions.length > 0
-    ? `Đang ở ${displayTenantName(session?.tenant?.name, 'công ty hiện tại')} · ${tenantOptions.length} lựa chọn khác`
+    ? `Đang ở ${displayCurrentTenantName(session, 'công ty hiện tại')} · ${tenantOptions.length} lựa chọn khác`
     : allTenantOptions.length > 0
       ? 'Tài khoản hiện chỉ có một công ty đang hoạt động'
       : 'Chưa tải được danh sách công ty khác';
@@ -72,7 +72,7 @@ export function SettingsScreen({ navigation }: Props) {
           <Avatar name={session?.user.name} uri={session?.user.avatar} size={86} online />
           <Text numberOfLines={1} style={[styles.profileName, { color: palette.ink }]}>{session?.user.name || 'Nhân viên ViChat'}</Text>
           <Text numberOfLines={1} style={[styles.profileEmail, { color: palette.inkSoft }]}>{session?.user.email || session?.user.username || 'Tài khoản nội bộ'}</Text>
-          <View style={styles.badges}><Text style={[styles.badge, { color: palette.accentDeep, backgroundColor: palette.accentWash }]}>{displayRoleName(session?.user.role, 'Nhân viên')}</Text><Text numberOfLines={1} ellipsizeMode="tail" style={[styles.badge, { color: palette.accentDeep, backgroundColor: palette.accentWash }]}>{displayTenantName(session?.tenant?.name, 'Công ty')}</Text></View>
+          <View style={styles.badges}><Text style={[styles.badge, { color: palette.accentDeep, backgroundColor: palette.accentWash }]}>{displayRoleName(session?.user.role, 'Nhân viên')}</Text><Text numberOfLines={1} ellipsizeMode="tail" style={[styles.badge, { color: palette.accentDeep, backgroundColor: palette.accentWash }]}>{displayCurrentTenantName(session, 'Công ty')}</Text></View>
           <View style={[styles.editButton, { backgroundColor: palette.accentWash }]}><Pencil color={palette.accentDeep} size={15} /><Text style={[styles.editText, { color: palette.accentDeep }]}>Chỉnh sửa hồ sơ</Text></View>
         </Pressable>
 
