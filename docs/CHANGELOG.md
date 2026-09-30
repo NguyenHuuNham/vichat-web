@@ -10,7 +10,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-09-30 (Asia/Saigon)
 - Loai: Sua loi | Web | Backend | Van hanh | Kiem thu | Tai lieu
-- Trang thai: Dang thuc hien
+- Trang thai: Da commit va deploy web/chatmgt
 - Nguyen nhan: Lan chuyen sang kho Tinode trung tam moi da clear mapping `tinode_uid`/`tinode_topic`; production hien con 9/46 group co topic, trong khi central khong con cac topic cu da bi clear. Chatmgt van con metadata va mot so avatar properties, nhung web khong the tai history cu khi khong co topic va media cu co the khong con tren central.
 - Pham vi: `chatservice-main/scripts/switch_tinode_central.py`, `chatservice-main/tests/test_tinode_central_switch.py`, `infrastructure/production/README.md`, va muc nay. Khong sua `mobile/`.
 - Noi dung: Them `--allow-fresh-data-loss` bat buoc cho fresh-data reset; luu danh sach UID/topic Tinode cu vao `legacy_tinode_uids`/`legacy_tinode_topics` truoc khi clear de audit/recovery; giu nguyen Chatmgt IDs va membership.
@@ -18,8 +18,10 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Database/API/cau hinh: Khong migration/schema moi; thay doi command van hanh va JSON properties audit.
 - Kiem thu: `python -m unittest chatservice-main/tests/test_tinode_central_switch.py -q` (9/9), `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` (61/61), `npm run test:frontend -- --test-concurrency=1` (451/451), `npx oxlint src` (pass, 2 warning hien huu), `npm run build:production` (pass), `python -m py_compile chatservice-main/scripts/switch_tinode_central.py`, va `git diff --check` (pass). `npm run lint` van bi chan boi loi hook hien huu trong `mobile/src/components/TypingIndicator.tsx`, khong thuoc pham vi lan nay.
 - Rui ro con lai: History va cac avatar/media chi nam trong Tinode rollback chua duoc restore vao central; can quyet dinh migration rieng va UAT web hai tai khoan.
-- Viec tiep theo: Hoan tat test, commit/push va deploy chi web/chatmgt qua `ubuntu@103.74.122.206` roi SSH `192.168.80.20`; khong restart mobile.
-- Commit/PR: Se ghi lai sau khi commit va deploy xong.
+- Viec tiep theo: UAT web voi hai tai khoan; neu can phuc hoi history/avatar, lap ke hoach migration rieng tu Tinode rollback sang central; khong reset lai va khong restart mobile.
+- Trien khai: Commit `d2410ad066095e27815b7e1f247e51f548cc752a` da push len `github/fix/full-audit-regressions`; release `/opt/deploy/chat/releases/vichat-web-d2410ad` da duoc giai nen tren `192.168.80.20` qua jump host `103.74.122.206`, symlink `current` da tro vao release moi. Chi recreate `chat` va `chatmgt`; cac container stateful va volume duoc giu nguyen.
+- Xac minh production: `chat` va `chatmgt` healthy; public ChatUI `/healthz` tra `ok`; public Chatmgt `/api/v1/auth/health` tra `status: ok`; bundle public da phuc vu asset moi; release cu van giu de rollback.
+- Commit/PR: `d2410ad` / `fix/web: guard fresh Tinode reset mappings`.
 
 ## 2026-09-30-05 - Sua luong chuyen cong ty tren mobile
 
