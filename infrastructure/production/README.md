@@ -185,12 +185,19 @@ After the backup, target probe and preview are verified, apply the reset once:
 ```bash
 docker compose --env-file infrastructure/production/.env \
   -f infrastructure/production/compose.yaml run --rm --no-deps chatmgt \
-  python scripts/switch_tinode_central.py --apply --confirm chatapi.gonplatform.com
+  python scripts/switch_tinode_central.py --apply --allow-fresh-data-loss \
+  --confirm chatapi.gonplatform.com
 ```
 
 The guarded command preserves Chatmgt Account, tenant, conversation and
-membership IDs. It clears Tinode UID/topic mappings and automatic chat-derived
-copies so the next UpGO login/open provisions fresh Tinode accounts and topics.
+membership IDs. Before clearing Tinode UID/topic mappings, it stores the old
+values in the account/conversation JSON properties under
+`legacy_tinode_uids`/`legacy_tinode_topics` for recovery audit; it never stores
+Tinode passwords or message content. It then clears the active mappings and
+automatic chat-derived copies so the next UpGO login/open provisions fresh
+Tinode accounts and topics. The extra `--allow-fresh-data-loss` flag is
+required because old Tinode history and media are not copied to the fresh
+central store.
 No old message history is copied, and the local `chatapi`/Tinode PostgreSQL
 services remain available only as the rollback path during acceptance. Continue
 with the deployment verifier and browser UAT after the reset; do not run

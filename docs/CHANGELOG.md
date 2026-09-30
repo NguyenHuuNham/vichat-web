@@ -6,6 +6,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-30-06 - Chan reset Tinode lam mat dau vet mapping web
+
+- Thoi gian: 2026-09-30 (Asia/Saigon)
+- Loai: Sua loi | Web | Backend | Van hanh | Kiem thu | Tai lieu
+- Trang thai: Dang thuc hien
+- Nguyen nhan: Lan chuyen sang kho Tinode trung tam moi da clear mapping `tinode_uid`/`tinode_topic`; production hien con 9/46 group co topic, trong khi central khong con cac topic cu da bi clear. Chatmgt van con metadata va mot so avatar properties, nhung web khong the tai history cu khi khong co topic va media cu co the khong con tren central.
+- Pham vi: `chatservice-main/scripts/switch_tinode_central.py`, `chatservice-main/tests/test_tinode_central_switch.py`, `infrastructure/production/README.md`, va muc nay. Khong sua `mobile/`.
+- Noi dung: Them `--allow-fresh-data-loss` bat buoc cho fresh-data reset; luu danh sach UID/topic Tinode cu vao `legacy_tinode_uids`/`legacy_tinode_topics` truoc khi clear de audit/recovery; giu nguyen Chatmgt IDs va membership.
+- Quyet dinh ky thuat: Khong tu dong gan lai topic cu da khong ton tai tren central va khong fallback mu quang sang Tinode rollback; history/media cu chi duoc xem la khoi phuc sau khi co ke hoach migration xac minh.
+- Database/API/cau hinh: Khong migration/schema moi; thay doi command van hanh va JSON properties audit.
+- Kiem thu: `python -m unittest chatservice-main/tests/test_tinode_central_switch.py -q` (9/9), `python -m unittest chatservice-main/tests/test_chat_auth_contract.py -q` (61/61), `npm run test:frontend -- --test-concurrency=1` (451/451), `npx oxlint src` (pass, 2 warning hien huu), `npm run build:production` (pass), `python -m py_compile chatservice-main/scripts/switch_tinode_central.py`, va `git diff --check` (pass). `npm run lint` van bi chan boi loi hook hien huu trong `mobile/src/components/TypingIndicator.tsx`, khong thuoc pham vi lan nay.
+- Rui ro con lai: History va cac avatar/media chi nam trong Tinode rollback chua duoc restore vao central; can quyet dinh migration rieng va UAT web hai tai khoan.
+- Viec tiep theo: Hoan tat test, commit/push va deploy chi web/chatmgt qua `ubuntu@103.74.122.206` roi SSH `192.168.80.20`; khong restart mobile.
+- Commit/PR: Se ghi lai sau khi commit va deploy xong.
+
 ## 2026-09-30-05 - Sua luong chuyen cong ty tren mobile
 
 - Thoi gian: 2026-09-30 (Asia/Saigon)

@@ -65,10 +65,34 @@ class TinodeCentralSwitchTests(unittest.TestCase):
         self.assertIn("Conversation.tinode_topic: None", source)
         self.assertIn('KnowledgeDocument.source_type.like("CHAT_%")', source)
         self.assertIn('args.confirm != "chatapi.gonplatform.com"', source)
+        self.assertIn("--allow-fresh-data-loss", source)
+        self.assertIn("args.allow_fresh_data_loss", source)
+        self.assertIn("legacy_tinode_uids", source)
+        self.assertIn("legacy_tinode_topics", source)
+        self.assertIn("legacy_account_mappings_preserved", source)
+        self.assertIn("legacy_conversation_mappings_preserved", source)
         self.assertIn('TARGET_CENTRAL_WS_URL = "wss://chatapi.gonplatform.com/v0/channels"', source)
         self.assertIn("fresh-data reset", source)
         self.assertNotIn("ManagementAccount.id: None", source)
         self.assertNotIn("Conversation.id: None", source)
+
+    def test_legacy_mapping_audit_is_bounded_and_deduplicated(self):
+        tree = ast.parse(SWITCH_SCRIPT_PATH.read_text(encoding="utf-8"))
+        helper = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "_remember_legacy_mapping"
+        )
+        namespace = {}
+        exec(compile(ast.Module(body=[helper], type_ignores=[]), str(SWITCH_SCRIPT_PATH), "exec"), namespace)
+
+        properties = {}
+        remember = namespace["_remember_legacy_mapping"]
+        remember(properties, "legacy_tinode_topics", "grp-old")
+        remember(properties, "legacy_tinode_topics", "grp-old")
+        remember(properties, "legacy_tinode_topics", "grp-new")
+
+        self.assertEqual(properties["legacy_tinode_topics"], ["grp-old", "grp-new"])
 
     @unittest.skipUnless(APP_PATH.is_file(), "frontend source is not included in the runtime image")
     def test_chatui_only_indexes_supported_files_after_tinode_delivery(self):

@@ -7,8 +7,9 @@ Use it only after the new chatapi.gonplatform.com Tinode endpoint is ready.
 
 Dry run:
     python scripts/switch_tinode_central.py
-Apply only after a verified database backup:
-    python scripts/switch_tinode_central.py --apply --confirm chatapi.gonplatform.com
+Apply only after a verified database backup and an explicit fresh-data decision:
+    python scripts/switch_tinode_central.py --apply --allow-fresh-data-loss \
+        --confirm chatapi.gonplatform.com
 """
 import argparse
 import os
@@ -32,12 +33,28 @@ from application.services.enterprise_workspace_service import build_search_text
 
 CENTRAL_WS_URL = "ws://chat:80/v0/channels"
 TARGET_CENTRAL_WS_URL = "wss://chatapi.gonplatform.com/v0/channels"
+LEGACY_TINODE_UIDS_PROPERTY = "legacy_tinode_uids"
+LEGACY_TINODE_TOPICS_PROPERTY = "legacy_tinode_topics"
 
 
 def _tenant_filter(query, model, tenant_id):
     if tenant_id:
         return query.filter(model.tenant_id == tenant_id)
     return query
+
+
+def _remember_legacy_mapping(properties, key, value):
+    """Keep old Tinode mappings without storing credentials or message data."""
+    value = str(value or "").strip()
+    if not value:
+        return properties
+    existing = properties.get(key)
+    values = existing if isinstance(existing, list) else ([existing] if existing else [])
+    values = [str(item).strip() for item in values if str(item).strip()]
+    if value not in values:
+        values.append(value)
+    properties[key] = values[-20:]
+    return properties
 
 
 def collect_counts(tenant_id=None):
@@ -94,6 +111,30 @@ def apply_reset(tenant_id=None):
         Conversation,
         tenant_id,
     )
+    accounts = account_query.all()
+    legacy_account_count = 0
+    for account in accounts:
+        properties = _remember_legacy_mapping(
+            dict(account.properties or {}),
+            LEGACY_TINODE_UIDS_PROPERTY,
+            account.tinode_uid,
+        )
+        if properties != (account.properties or {}):
+            legacy_account_count += 1
+            account.properties = properties
+
+    conversations = conversation_query.all()
+    legacy_conversation_count = 0
+    for conversation in conversations:
+        properties = _remember_legacy_mapping(
+            dict(conversation.properties or {}),
+            LEGACY_TINODE_TOPICS_PROPERTY,
+            conversation.tinode_topic,
+        )
+        if properties != (conversation.properties or {}):
+            legacy_conversation_count += 1
+            conversation.properties = properties
+
     account_count = account_query.update(
         {ManagementAccount.tinode_uid: None}, synchronize_session=False
     )
@@ -139,6 +180,8 @@ def apply_reset(tenant_id=None):
     return {
         "accounts_reset": int(account_count),
         "conversations_reset": int(conversation_count),
+        "legacy_account_mappings_preserved": int(legacy_account_count),
+        "legacy_conversation_mappings_preserved": int(legacy_conversation_count),
         "chat_documents_deleted": int(document_count),
         "chat_chunks_deleted": int(chunk_count),
         "task_previews_removed": int(task_count),
@@ -149,6 +192,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--tenant", default="", help="Reset only one tenant; default is all tenants.")
     parser.add_argument("--apply", action="store_true", help="Apply the destructive reset.")
+    parser.add_argument(
+        "--allow-fresh-data-loss",
+        action="store_true",
+        help="Acknowledge that old Tinode history/media will not be copied to the fresh store.",
+    )
     parser.add_argument(
         "--confirm",
         default="",
@@ -177,6 +225,10 @@ def main():
     if args.confirm != "chatapi.gonplatform.com":
         raise RuntimeError(
             "Pass --confirm chatapi.gonplatform.com to apply this destructive reset."
+        )
+    if not args.allow_fresh_data_loss:
+        raise RuntimeError(
+            "Pass --allow-fresh-data-loss to acknowledge that old Tinode history/media will not be copied."
         )
     result = apply_reset(args.tenant or None)
     print("CENTRAL_TINODE_RESET_APPLIED", result)
