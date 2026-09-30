@@ -12,7 +12,7 @@ import { Avatar } from '../../components/Avatar';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { beginTrustedExternalActivity } from '../../services/appLifecycleService';
 import { avatarUploadErrorMessage } from '../../utils/avatarPolicy';
-import { displayTenantName } from '../../utils/tenantDisplay';
+import { displayRoleName, displayTenantName } from '../../utils/tenantDisplay';
 import { TenantOption } from '../../types';
 import { useThemeStore } from '../../store/themeStore';
 
@@ -101,7 +101,7 @@ export function EditProfileScreen({ navigation }: Props) {
 
 function TenantPickerModal({ visible, options, palette, onClose, onSelect }: { visible: boolean; options: TenantOption[]; palette: ThemeColors; onClose: () => void; onSelect: (option: TenantOption) => void }) {
   const styles = createStyles(palette);
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent><View style={styles.modalOverlay}><Pressable style={styles.modalBackdrop} onPress={onClose} /><View style={styles.tenantCard}><View style={styles.modalHeader}><View><Text style={styles.modalEyebrow}>TÀI KHOẢN</Text><Text style={styles.modalTitle}>Chuyển công ty</Text></View><Pressable onPress={onClose} style={styles.closeButton}><X color={palette.inkSoft} size={19} /></Pressable></View><Text style={styles.modalHint}>Chọn công ty bạn muốn mở trên thiết bị này.</Text><View style={styles.tenantList}>{options.map(option => <Pressable key={option.id} onPress={() => onSelect(option)} style={({ pressed }) => [styles.tenantOption, pressed && styles.companyPressed]}><View style={styles.companyIcon}><Building2 color={palette.accent} size={19} /></View><View style={styles.companyBody}><Text numberOfLines={1} style={styles.companyName}>{option.name}</Text><Text style={styles.companyHint}>{option.role || 'Thành viên'}</Text></View><ChevronRight color={palette.muted} size={18} /></Pressable>)}</View></View></View></Modal>;
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent><View style={styles.modalOverlay}><Pressable style={styles.modalBackdrop} onPress={onClose} /><View style={styles.tenantCard}><View style={styles.modalHeader}><View><Text style={styles.modalEyebrow}>TÀI KHOẢN</Text><Text style={styles.modalTitle}>Chuyển công ty</Text></View><Pressable onPress={onClose} style={styles.closeButton}><X color={palette.inkSoft} size={19} /></Pressable></View><Text style={styles.modalHint}>Chọn công ty bạn muốn mở trên thiết bị này.</Text><View style={styles.tenantList}>{options.map(option => <Pressable key={option.id} onPress={() => onSelect(option)} style={({ pressed }) => [styles.tenantOption, pressed && styles.companyPressed]}><View style={styles.companyIcon}><Building2 color={palette.accent} size={19} /></View><View style={styles.companyBody}><Text numberOfLines={1} style={styles.companyName}>{option.name}</Text><Text style={styles.companyHint}>{displayRoleName(option.role, 'Thành viên')}</Text></View><ChevronRight color={palette.muted} size={18} /></Pressable>)}</View></View></View></Modal>;
 }
 
 function createStyles(palette: ThemeColors) {

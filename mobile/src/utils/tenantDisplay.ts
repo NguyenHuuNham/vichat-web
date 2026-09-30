@@ -11,7 +11,7 @@ function compactKey(value: string) {
 }
 
 function configuredBrandName() {
-  return scalarText(config.brandName) || 'GON Platform';
+  return scalarText(config.brandName) || 'Gon Platform';
 }
 
 function objectCandidates(value: Record<string, unknown>) {
@@ -68,4 +68,17 @@ export function resolveTenantDisplayName(...sources: unknown[]) {
 
 export function displayTenantName(value: unknown, fallback = '') {
   return resolveTenantDisplayName(value) || scalarText(fallback);
+}
+
+export function displayRoleName(value: unknown, fallback = '') {
+  const text = scalarText(value);
+  if (!text) return fallback;
+  const key = compactKey(text);
+  const knownNames: Record<string, string> = {
+    admin: 'Admin',
+    owner: 'Owner',
+    superadmin: 'Superadmin',
+    member: 'Member',
+  };
+  return knownNames[key] || `${text.slice(0, 1).toLocaleUpperCase('vi-VN')}${text.slice(1)}`;
 }

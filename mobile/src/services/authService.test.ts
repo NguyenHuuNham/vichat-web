@@ -50,7 +50,7 @@ describe('mobile auth normalization', () => {
 
   it('expands the legacy GON tenant label before it reaches the UI', () => {
     const session = normalizeAuthPayload({ user, tenant: { id: 'tenant-1', name: 'GonPlatform' } });
-    expect(session.tenant?.name).toBe('GON Platform');
+    expect(session.tenant?.name).toBe('Gon Platform');
   });
 
   it('keeps populated snake-case tenant choices when the camel-case field is empty', () => {

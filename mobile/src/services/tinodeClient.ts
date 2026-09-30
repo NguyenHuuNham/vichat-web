@@ -692,6 +692,7 @@ export class TinodeMobileClient {
   private topicSubscriptionRequests = new Map<string, Promise<Conversation | null>>();
   private snapshotTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private historyRequests = new Map<string, Promise<{ conversation: Conversation; hasEarlier: boolean; loaded: number }>>();
+  private fullHistoryRequests = new Map<string, Promise<Conversation>>();
   private sessionGeneration = 0;
   private syncAbortController: AbortController | null = null;
   private lifecycleVersion = 0;
@@ -1207,6 +1208,7 @@ export class TinodeMobileClient {
     this.callInviteKeys.clear();
     this.topicSubscriptionRequests.clear();
     this.historyRequests.clear();
+    this.fullHistoryRequests.clear();
     this.snapshotTimers.forEach(timer => clearTimeout(timer));
     this.snapshotTimers.clear();
     imageCacheRequests.clear();
@@ -1409,7 +1411,39 @@ export class TinodeMobileClient {
     }
   }
 
-  private async loadEarlierConversationInternal(topicName: string, limit = HISTORY_PAGE_LIMIT, generation = this.sessionGeneration) {
+  /** Load every Tinode history page for shared-content views, then emit one snapshot. */
+  async loadConversationMediaHistory(topicName: string, limit = HISTORY_PAGE_LIMIT, generation = this.sessionGeneration) {
+    const previous = this.fullHistoryRequests.get(topicName);
+    if (previous) return previous;
+    const request = this.loadConversationMediaHistoryInternal(topicName, limit, generation);
+    this.fullHistoryRequests.set(topicName, request);
+    try {
+      return await request;
+    } finally {
+      if (this.fullHistoryRequests.get(topicName) === request) this.fullHistoryRequests.delete(topicName);
+    }
+  }
+
+  private async loadConversationMediaHistoryInternal(topicName: string, limit = HISTORY_PAGE_LIMIT, generation = this.sessionGeneration) {
+    const boundedLimit = Math.max(1, Math.min(50, Math.trunc(Number(limit) || HISTORY_PAGE_LIMIT)));
+    let hasEarlier = true;
+    while (hasEarlier) {
+      const page = await this.loadEarlierConversationInternal(topicName, boundedLimit, generation, false);
+      hasEarlier = page.hasEarlier && page.loaded > 0;
+    }
+    if (!this.isGenerationCurrent(generation)) throw new Error('Tinode history request is stale.');
+    const topic = this.getTopic(topicName);
+    const conversation = this.materialize(topic);
+    this.emit({ type: 'conversation', conversation });
+    return conversation;
+  }
+
+  private async loadEarlierConversationInternal(
+    topicName: string,
+    limit = HISTORY_PAGE_LIMIT,
+    generation = this.sessionGeneration,
+    emitSnapshot = true,
+  ) {
     await this.subscribeTopic(topicName, 0, { emitSnapshot: false, generation });
     if (!this.isGenerationCurrent(generation)) throw new Error('Tinode history request is stale.');
     const topic = this.getTopic(topicName);
@@ -1430,7 +1464,7 @@ export class TinodeMobileClient {
     if (!this.isGenerationCurrent(generation)) throw new Error('Tinode history request is stale.');
     const after = Number(topic.minMsgSeq?.() || topic._minSeq || 0);
     const conversation = this.materialize(topic);
-    this.emit({ type: 'conversation', conversation });
+    if (emitSnapshot) this.emit({ type: 'conversation', conversation });
     return { conversation, hasEarlier: after > 1 && after < before, loaded: Math.max(0, before - after) };
   }
 

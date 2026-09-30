@@ -6,6 +6,23 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-09-30-03 - Hoan thien noi dung va tuy chon hien thi chi tiet nhom mobile
+
+- Thoi gian: 2026-09-30 12:45 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Mobile | Chat | Media | UI | UX | Phat hanh | Kiem thu | Tai lieu
+- Trang thai: Hoan tat source, test, build APK va kiem tra artifact; chua UAT tren dien thoai that vi ADB khong thay thiet bi USB
+- Muc tieu: Loai bo noi dung nhom bi thieu do chi doc trang Tinode hien tai, mo lai cac tuy chon hien thi/pham loai/an hoi thoai va giu dong bo cach dat ten/vai tro theo yeu cau moi nhat.
+- Pham vi: `mobile/src/screens/chat/GroupInfoScreen.tsx`, `mobile/src/services/tinodeClient.ts`, `mobile/src/utils/groupInfoMedia.ts`, `mobile/src/services/conversationPreferenceService.ts`, `mobile/src/screens/chat/ConversationListScreen.tsx`, `mobile/src/components/ConversationRow.tsx`, bo test lien quan va version mobile `1.0.33`.
+- Noi dung: Khi mo viewer anh/file/link, Tinode duoc tai tuan tu den het history page va chi phat mot snapshot sau cung de tranh nhay/loi luong danh sach. Anh duoc resolve qua cache co xac thuc, file dung luong download/share hien co, link chi cho phep `http/https`. Group Info hien thi noi dung da ghim/binh chon tu full history. Muc `Muc hien thi`, `The phan loai` va `An tro chuyen` luu theo cap `tenant + viewer`; danh sach ap dung an/gon va hien thi nhan phan loai sau khi quay lai.
+- Quyet dinh ky thuat: Chatmgt van la nguon chuan cho metadata/quyen/settings nhom; Tinode chi la nguon history/media realtime. Tuy chon hien thi la local viewer preference, khong dua vao tenant/backend va khong xoa du lieu Tinode. Cac muc lich/dich/link nhom van disabled vi chua co contract dong bo that.
+- Database/API/cau hinh: Khong migration, endpoint moi hay thay doi tenant ID. Tang version mobile len `1.0.33`, Android `versionCode=34`; cac nhan `admin`/`GON Platform` duoc chuan hoa thanh `Admin`/`Gon Platform` o boundary hien thi.
+- Kiem thu: `cd mobile; npm test -- --reporter=dot --maxWorkers=1` dat 31 file, 121/121; `npm run typecheck` dat; `npm run lint` dat; `npm run export` dat; `npx expo prebuild --platform android --no-install` dat; Gradle staging ASCII `:app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a,x86_64` dat 520 tasks; `aapt`, `zipalign` va APK Signature Scheme v2 dat.
+- Artifact: `D:\vichat-build\vichat-mobile-fix-20260930\android\app\build\outputs\apk\release\app-release.apk`, package `vn.upgo.vichat`, version `1.0.33`, `versionCode=34`, ABI `arm64-v8a,x86_64`, SHA-256 `3886C3A16EBF3C3B83BFCF7BDD68329705CD00BD2A28E69C2BA361BD7B0AE879`.
+- Thiet bi that: `adb devices -l` sau khi khoi dong lai ADB khong tra ve device; Windows PnP cung khong co thiet bi Android/ADB. Chua cai APK, chua mo app, chua thu group settings/media/preference tren USB phone.
+- Rui ro con lai: Chua UAT tai khoan that, full history rat lon, offline/reconnect, push background/killed, thiet bi iOS; APK la ban test ky Android Debug, chua ky store. Gradle chi co warning deprecated tu dependency.
+- Viec tiep theo: Bat USB debugging/chon File transfer va xac nhan prompt RSA tren dien thoai, sau do chay `adb devices`, cai APK nay va UAT group settings, full media history, file S3, link, an/gon/phan loai va tenant switch.
+- Commit/PR: Se cap nhat hash commit trong docs follow-up cua cung lan lam viec.
+
 ## 2026-09-30-02 - Hien thi chuyen cong ty theo membership Account
 
 - Thoi gian: 2026-09-30 10:20 (Asia/Saigon)

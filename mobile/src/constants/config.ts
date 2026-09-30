@@ -6,8 +6,8 @@ function normalizeBrandValue(value: string, fallback: string) {
   return !candidate || key === 'gon' || key === 'gonplatform' ? fallback : candidate;
 }
 
-const brandName = normalizeBrandValue(env('EXPO_PUBLIC_BRAND_NAME', 'GON Platform'), 'GON Platform');
-const brandLabel = normalizeBrandValue(env('EXPO_PUBLIC_BRAND_LABEL', 'GON PLATFORM'), 'GON PLATFORM');
+const brandName = normalizeBrandValue(env('EXPO_PUBLIC_BRAND_NAME', 'Gon Platform'), 'Gon Platform');
+const brandLabel = normalizeBrandValue(env('EXPO_PUBLIC_BRAND_LABEL', 'Gon Platform'), 'Gon Platform');
 
 export const config = {
   apiBase: env('EXPO_PUBLIC_CHATMGT_API_URL', 'https://chatmgt.gonplatform.com').replace(/\/+$/, ''),

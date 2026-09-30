@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { MessageSquarePlus, Search, SlidersHorizontal, X } from 'lucide-react-native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { MainTabParamList } from '../../navigation/types';
@@ -18,6 +19,7 @@ import { isConversationMuted } from '../../utils/conversationNotifications';
 import { Conversation } from '../../types';
 import { accountIdForMember, identitiesOverlap } from '../../utils/identity';
 import { displayTenantName } from '../../utils/tenantDisplay';
+import { ConversationViewerPreference, loadConversationPreferences } from '../../services/conversationPreferenceService';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Chats'> & { navigation: any };
 type FilterKey = 'all' | 'unread' | 'groups';
@@ -47,15 +49,32 @@ export function ConversationListScreen({ navigation }: Props) {
   const [actionBusy, setActionBusy] = useState(false);
   const [deleteRequest, setDeleteRequest] = useState<DeleteRequest | null>(null);
   const [actionRequest, setActionRequest] = useState<ActionRequest | null>(null);
+  const [preferences, setPreferences] = useState<Record<string, ConversationViewerPreference>>({});
+
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    const viewerId = String(session?.user.id || '');
+    const tenantId = String(session?.tenant?.id || '');
+    if (!viewerId || !tenantId) {
+      setPreferences({});
+      return () => { active = false; };
+    }
+    void loadConversationPreferences(viewerId, tenantId).then(value => {
+      if (active) setPreferences(value);
+    });
+    return () => { active = false; };
+  }, [session?.tenant?.id, session?.user.id]));
 
   const filtered = useMemo(() => {
     const keyword = query.trim().toLowerCase();
     return conversations.filter(item => {
+      const preference = preferences[item.id];
+      if (preference?.hidden) return false;
       const matchesQuery = !keyword || item.name.toLowerCase().includes(keyword) || (item.lastMsg || '').toLowerCase().includes(keyword);
       const matchesFilter = filter === 'all' || (filter === 'unread' && item.badge > 0) || (filter === 'groups' && item.isGroup);
       return matchesQuery && matchesFilter;
     });
-  }, [conversations, filter, query]);
+  }, [conversations, filter, preferences, query]);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -164,6 +183,7 @@ export function ConversationListScreen({ navigation }: Props) {
         renderItem={({ item }) => (
           <ConversationRow
             conversation={item}
+            preference={preferences[item.id]}
             onPress={() => navigation.navigate('ChatDetail', { conversationId: item.id })}
             onLongPress={() => setActionRequest({
               title: item.name,

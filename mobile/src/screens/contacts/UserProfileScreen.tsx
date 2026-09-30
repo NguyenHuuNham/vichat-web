@@ -7,6 +7,7 @@ import { useAppStore } from '../../store/appStore';
 import { colors, shadow } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import { Avatar } from '../../components/Avatar';
+import { displayRoleName } from '../../utils/tenantDisplay';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'UserProfile'>;
 
@@ -17,7 +18,7 @@ export function UserProfileScreen({ route, navigation }: Props) {
     <SafeAreaView style={styles.screen} edges={['bottom', 'left', 'right']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.hero}><Avatar name={user.name} uri={user.avatar} size={92} online={user.online} /><Text style={styles.name}>{user.name}</Text><Text style={styles.title}>{user.title || 'Nhân viên công ty'}</Text><View style={styles.status}><ShieldCheck color={colors.online} size={15} /><Text style={styles.statusText}>Nhân viên active cùng tenant</Text></View></View>
-        <View style={styles.card}><View style={styles.info}><Building2 color={colors.accent} size={20} /><View><Text style={styles.label}>Phòng ban</Text><Text style={styles.value}>{user.department || 'Chưa cập nhật'}</Text></View></View><View style={styles.divider} /><View style={styles.info}><BriefcaseBusiness color={colors.accent} size={20} /><View><Text style={styles.label}>Vai trò</Text><Text style={styles.value}>{user.title || user.role || 'Nhân viên'}</Text></View></View></View>
+        <View style={styles.card}><View style={styles.info}><Building2 color={colors.accent} size={20} /><View><Text style={styles.label}>Phòng ban</Text><Text style={styles.value}>{user.department || 'Chưa cập nhật'}</Text></View></View><View style={styles.divider} /><View style={styles.info}><BriefcaseBusiness color={colors.accent} size={20} /><View><Text style={styles.label}>Vai trò</Text><Text style={styles.value}>{user.title || displayRoleName(user.role, 'Nhân viên')}</Text></View></View></View>
         <Pressable onPress={async () => { const conversation = await createDirect(user); navigation.replace('ChatDetail', { conversationId: conversation.id }); }} style={styles.button}><MessageCircle color="#fff" size={20} /><Text style={styles.buttonText}>Nhắn tin ngay</Text></Pressable>
       </ScrollView>
     </SafeAreaView>
