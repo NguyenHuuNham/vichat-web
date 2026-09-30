@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Emulator: `emulator-5554` cai APK va resume `vn.upgo.vichat/.MainActivity`; UI dump sau cold-start co `GON PLATFORM`, `Email cong ty`, `Mat khau`, `Dang nhap`; logcat khong co `FATAL EXCEPTION`, `TypeError` hoac `Invariant Violation`.
 - Rui ro con lai: Chua UAT voi tai khoan that de bam nut, luu/xoa nickname trong direct va group, refresh va doi realtime giua web/mobile; chua test thiet bi that/iOS. APK la ban test Android Debug, chua ky store.
 - Viec tiep theo: UAT voi hai tai khoan tren web/mobile cho save, clear, refresh, profile update va realtime; khi phat hanh store thi build lai bang release keystore.
-- Commit/PR: Chua tao.
+- Commit/PR: Source commit `407a67d`; chua push/chua deploy.
 
 ## 2026-09-29-09 - Dong bo chuyen cong ty va media S3 tren mobile/web
 
