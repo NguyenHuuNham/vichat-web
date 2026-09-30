@@ -25,6 +25,20 @@ function stringValue(value: unknown) {
   return String(value || '').trim();
 }
 
+function identityValues(client: TinodeIdentityClient, currentIdentity?: CurrentIdentity | null) {
+  return new Set(
+    [
+      client?.getCurrentUserID?.(),
+      currentIdentity?.accountId,
+      currentIdentity?.tinodeUid,
+      currentIdentity?.userId,
+      currentIdentity?.uid,
+    ]
+      .map(stringValue)
+      .filter(Boolean),
+  );
+}
+
 function candidateSenderIds(raw: unknown) {
   const packet = asRecord(raw);
   const head = asRecord(packet.head);
@@ -44,13 +58,20 @@ function candidateSenderIds(raw: unknown) {
   ].filter(Boolean))];
 }
 
-export function resolveTinodeMessageOrigin(raw: unknown, client: TinodeIdentityClient) {
+export function resolveTinodeMessageOrigin(
+  raw: unknown,
+  client: TinodeIdentityClient,
+  currentIdentity?: CurrentIdentity | null,
+) {
   const candidates = candidateSenderIds(raw);
   const currentUserId = stringValue(client?.getCurrentUserID?.());
+  const currentIdentityValues = identityValues(client, currentIdentity);
   const matchesCurrentUser = (value: string) => Boolean(value && (
     value === currentUserId || client?.isMe?.(value) === true
   ));
-  const ownSenderId = candidates.find(matchesCurrentUser) || '';
+  const ownSenderId = candidates.find(matchesCurrentUser)
+    || candidates.find(value => currentIdentityValues.has(value))
+    || '';
 
   return {
     senderId: ownSenderId || candidates[0] || '',
@@ -75,22 +96,27 @@ export function isOwnMessageOrigin(
   client: TinodeIdentityClient,
   currentIdentity?: CurrentIdentity | null,
 ) {
-  // Fast path: the standard Tinode-level check.
-  if (isOwnTinodeMessage(raw, client)) return true;
+  return resolveTinodeMessageOrigin(raw, client, currentIdentity).outgoing;
+}
 
-  // Extended check against Account ID / session user ID.
-  if (!currentIdentity) return false;
-  const identities = new Set(
-    [
-      currentIdentity.accountId,
-      currentIdentity.tinodeUid,
-      currentIdentity.userId,
-      currentIdentity.uid,
-    ]
-      .map(value => stringValue(value))
-      .filter(Boolean),
-  );
-  if (identities.size === 0) return false;
+/**
+ * Notifications must fail closed when Tinode omits the sender or the viewer
+ * identity is not ready. Rendering can still use the packet, but it must not
+ * turn an unverified packet into a local incoming alert.
+ */
+export function hasKnownMessageOrigin(
+  raw: unknown,
+  client: TinodeIdentityClient,
+  currentIdentity?: CurrentIdentity | null,
+) {
+  return candidateSenderIds(raw).length > 0 && identityValues(client, currentIdentity).size > 0;
+}
 
-  return candidateSenderIds(raw).some(senderId => identities.has(senderId));
+export function isSafeIncomingMessageOrigin(
+  raw: unknown,
+  client: TinodeIdentityClient,
+  currentIdentity?: CurrentIdentity | null,
+) {
+  return hasKnownMessageOrigin(raw, client, currentIdentity)
+    && !isOwnMessageOrigin(raw, client, currentIdentity);
 }

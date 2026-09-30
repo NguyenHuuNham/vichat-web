@@ -6,6 +6,7 @@ const notificationMocks = vi.hoisted(() => ({
   getPermissionsAsync: vi.fn(async () => ({ status: 'granted', canAskAgain: true })),
   requestPermissionsAsync: vi.fn(async () => ({ status: 'granted', canAskAgain: true })),
   getDevicePushTokenAsync: vi.fn(),
+  scheduleNotificationAsync: vi.fn(async () => 'notification-id'),
   addPushTokenListener: vi.fn(() => ({ remove: vi.fn() })),
 }));
 
@@ -14,6 +15,7 @@ vi.mock('expo-device', () => ({ isDevice: true }));
 
 import {
   getPushRegistrationDiagnostics,
+  notifyIncomingMessage,
   registerPushNotifications,
   resetPushNotificationRegistration,
 } from './notificationService';
@@ -59,5 +61,29 @@ describe('native push registration', () => {
     expect(await registerPushNotifications({ id: 'user-2' } as any)).toBeNull();
     expect(getPushRegistrationDiagnostics().state).toBe('error');
     expect(getPushRegistrationDiagnostics().hasToken).toBe(false);
+  });
+
+  it('does not schedule a notification for the sender echo', async () => {
+    const conversation = { id: 'conversation-1', name: 'B', tinodeTopic: 'usr-topic' } as any;
+    const message = { id: 'message-1', sender: 'outgoing', senderId: 'usr-current', type: 'text', text: 'hello' } as any;
+
+    expect(await notifyIncomingMessage(conversation, message)).toBeNull();
+    expect(notificationMocks.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('schedules one notification for a verified recipient message', async () => {
+    const conversation = { id: 'conversation-2', name: 'A', tinodeTopic: 'usr-topic' } as any;
+    const message = { id: 'message-2', sender: 'incoming', senderId: 'usr-other', type: 'text', text: 'hello' } as any;
+
+    await expect(notifyIncomingMessage(conversation, message)).resolves.toBe('notification-id');
+    expect(notificationMocks.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed for an incoming message without a sender identity', async () => {
+    const conversation = { id: 'conversation-3', name: 'A', tinodeTopic: 'usr-topic' } as any;
+    const message = { id: 'message-3', sender: 'incoming', type: 'text', text: 'hello' } as any;
+
+    expect(await notifyIncomingMessage(conversation, message)).toBeNull();
+    expect(notificationMocks.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 });

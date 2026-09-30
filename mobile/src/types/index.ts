@@ -76,6 +76,7 @@ export interface FileAttachment {
   size: number;
   url: string;
   ext?: string;
+  audioDurationMs?: number;
 }
 
 export interface Sticker {
@@ -146,7 +147,7 @@ export interface PollEvent {
   createdAt?: string;
 }
 
-export type MessageType = 'text' | 'image' | 'file' | 'sticker' | 'system' | 'reaction' | 'recall' | 'edit' | 'call' | 'poll_event';
+export type MessageType = 'text' | 'image' | 'audio' | 'file' | 'sticker' | 'system' | 'reaction' | 'recall' | 'edit' | 'call' | 'poll_event';
 export type DeliveryStatus = 'none' | 'sending' | 'sent' | 'received' | 'read' | 'failed';
 export type RecallMode = 'self' | 'all';
 

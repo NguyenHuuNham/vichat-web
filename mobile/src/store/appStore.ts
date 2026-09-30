@@ -55,6 +55,7 @@ interface AppStore {
   toggleMessagePin: (conversationId: string, message: ChatMessage) => Promise<void>;
   sendText: (conversationId: string, text: string, replyTo?: ChatMessage['replyTo'], mentions?: any[]) => Promise<void>;
   sendFile: (conversationId: string, file: any) => Promise<void>;
+  sendVoice: (conversationId: string, file: PickerFile, durationMs: number) => Promise<void>;
   sendSticker: (conversationId: string, sticker: Sticker) => Promise<void>;
   sendReaction: (conversationId: string, message: ChatMessage, emoji: string) => Promise<void>;
   editMessage: (conversationId: string, message: ChatMessage, text: string) => Promise<void>;
@@ -433,6 +434,9 @@ async function bootstrapAuthenticated(set: any, get: () => AppStore, providedSes
       set({ session: nextSession, directory, conversations });
     } else if (event.type === 'incoming-message') {
       if (!tinodeClient.isConversationTopicAllowed(event.conversation.tinodeTopic)) return;
+      const senderId = String(event.message.senderId || '').trim();
+      if (!senderId || event.message.sender !== 'incoming') return;
+      if (current.session?.user && identitiesOverlap(current.session.user, { id: senderId, uid: senderId } as User)) return;
       const notificationConversation = conversationForId(current.conversations, event.conversation.tinodeTopic) || event.conversation;
       void notifyIncomingMessage(notificationConversation, event.message);
     } else if (event.type === 'typing') {
@@ -958,6 +962,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const clientId = `mobile-file-${Date.now()}`;
     await tinodeClient.sendFile(conversation.tinodeTopic, file, clientId, {
       conversationId: conversation.managementId || conversation.id,
+    });
+  },
+
+  async sendVoice(conversationId, file, durationMs) {
+    const conversation = conversationForId(get().conversations, conversationId);
+    if (!conversation?.tinodeTopic || !tinodeClient.connected) throw new Error('Realtime chưa sẵn sàng. Hãy thử lại sau khi kết nối lại.');
+    const clientId = `mobile-voice-${Date.now()}`;
+    await tinodeClient.sendFile(conversation.tinodeTopic, file, clientId, {
+      conversationId: conversation.managementId || conversation.id,
+      audioDurationMs: durationMs,
     });
   },
 

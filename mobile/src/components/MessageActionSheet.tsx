@@ -29,7 +29,7 @@ export function MessageActionSheet({ message, onClose, onReply, onCopy, onShare,
   const styles = createStyles(palette);
   if (!message || !canInteractWithMessage(message)) return null;
   const actionable = true;
-  const hasAttachment = Boolean(message.image || message.file);
+  const hasAttachment = Boolean(!message.sticker && (message.image || message.file));
   const run = (action: () => void) => { onClose(); action(); };
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
@@ -43,7 +43,7 @@ export function MessageActionSheet({ message, onClose, onReply, onCopy, onShare,
             {actionable ? <Action palette={palette} icon={Reply} label="Trả lời tin nhắn" onPress={() => run(() => onReply(message))} /> : null}
             {actionable && message.text ? <Action palette={palette} icon={Copy} label="Sao chép nội dung" onPress={() => run(() => onCopy(message))} /> : null}
             {message.sender === 'outgoing' && canEditMessage(message) ? <Action palette={palette} icon={Pencil} label="Sửa tin nhắn" onPress={() => run(() => onEdit(message))} /> : null}
-            {hasAttachment ? <Action palette={palette} icon={Download} label={message.image ? 'Mở / lưu hình ảnh' : 'Mở / tải tệp'} onPress={() => run(() => onDownload(message))} /> : null}
+            {hasAttachment ? <Action palette={palette} icon={Download} label={message.type === 'audio' || /^audio\//i.test(message.file?.mime || '') ? 'Mở / tải voice' : message.image ? 'Mở / lưu hình ảnh' : 'Mở / tải tệp'} onPress={() => run(() => onDownload(message))} /> : null}
             {actionable ? <Action palette={palette} icon={Share2} label="Chia sẻ" onPress={() => run(() => onShare(message))} /> : null}
             {canPin && onPin && message.type !== 'system' ? <Action palette={palette} icon={Pin} label={message.pinned ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn'} onPress={() => run(() => onPin(message))} /> : null}
             <Action palette={palette} icon={Info} label="Xem chi tiết" onPress={() => run(() => onDetails(message))} />

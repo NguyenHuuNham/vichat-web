@@ -58,6 +58,7 @@ module.exports = {
   ...base,
   expo: {
     ...base.expo,
+    plugins: [...(base.expo.plugins || []), 'expo-audio'],
     android: {
       ...base.expo.android,
       ...(googleServicesFile ? { googleServicesFile } : {}),

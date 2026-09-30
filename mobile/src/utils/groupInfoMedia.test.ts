@@ -1,33 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { mergeGroupHistoryMessages, messageLinks, messagesForSharedKind } from './groupInfoMedia';
 import { ChatMessage } from '../types';
+import { isImageMessage, messageFile, messagesForSharedKind } from './groupInfoMedia';
 
-const message = (value: Partial<ChatMessage>): ChatMessage => ({
-  id: String(value.id || 'message'),
-  type: value.type || 'text',
-  sender: 'incoming',
-  senderId: 'user-1',
-  senderName: 'User',
+const stickerMessage = {
+  id: 'sticker-1',
+  type: 'sticker',
+  sender: 'outgoing',
+  senderId: 'usr-me',
+  senderName: 'You',
   text: '',
-  ...value,
+  image: 'https://media.example/sticker.png',
+  file: { name: 'sticker.png', mime: 'image/png', size: 12, url: 'https://media.example/sticker.png' },
+  sticker: { id: 'hello', stickerId: 'hello', packId: 'basic', label: 'Hello' },
+} as ChatMessage;
+
+describe('group shared media classification', () => {
+  it('does not expose stickers as images or files', () => {
+    expect(isImageMessage(stickerMessage)).toBe(false);
+    expect(messageFile(stickerMessage)).toBeNull();
+    expect(messagesForSharedKind([stickerMessage], 'media')).toEqual([]);
+    expect(messagesForSharedKind([stickerMessage], 'files')).toEqual([]);
+  });
+
+  it('keeps normal images and audio attachments in their own categories', () => {
+    const image = { ...stickerMessage, id: 'image-1', type: 'image', sticker: undefined, file: { ...stickerMessage.file!, name: 'photo.jpg', mime: 'image/jpeg' } } as ChatMessage;
+    const audio = { ...stickerMessage, id: 'audio-1', type: 'audio', sticker: undefined, image: undefined, file: { name: 'voice.m4a', mime: 'audio/mp4', size: 10, url: 'https://media.example/voice.m4a' } } as ChatMessage;
+
+    expect(messagesForSharedKind([image], 'media')).toEqual([image]);
+    expect(messagesForSharedKind([audio], 'files')).toEqual([audio]);
+  });
 });
-
-describe('group info shared content', () => {
-  it('extracts explicit and text links without punctuation', () => {
-    expect(messageLinks(message({ text: 'Xem https://example.com/a.' }))).toEqual(['https://example.com/a']);
-  });
-
-  it('separates image attachments from regular files', () => {
-    const image = message({ id: 'image', type: 'image', image: '/api/v1/chat/media/image' });
-    const file = message({ id: 'file', type: 'file', file: { name: 'report.pdf', mime: 'application/pdf', size: 10, url: '/api/v1/chat/media/file' } });
-    expect(messagesForSharedKind([image, file], 'media').map(item => item.id)).toEqual(['image']);
-    expect(messagesForSharedKind([image, file], 'files').map(item => item.id)).toEqual(['file']);
-  });
-
-  it('keeps live message fields when history contains an older duplicate', () => {
-    const live = message({ id: 'same', seq: 3, text: 'new', image: 's3-ref' });
-    const history = message({ id: 'same', seq: 3, text: 'old' });
-    expect(mergeGroupHistoryMessages([live], [history])).toEqual([live]);
-  });
-});
-

@@ -36,7 +36,7 @@ import {
   uploadChatMedia,
 } from './chatMediaService';
 import { identitiesOverlap } from '../utils/identity';
-import { isOwnTinodeMessage, isOwnMessageOrigin, resolveTinodeMessageOrigin, CurrentIdentity } from '../utils/messageOrigin';
+import { isSafeIncomingMessageOrigin, resolveTinodeMessageOrigin, CurrentIdentity } from '../utils/messageOrigin';
 import { normalizeGroupSettings } from '../utils/groupSettings';
 import { publishSequence } from '../utils/tinodePublish';
 
@@ -54,6 +54,7 @@ export const CALL_SIGNAL_EVENTS = Object.freeze({
 
 const CENTRAL_MESSAGE_TEXT_LIMIT = 120 * 1024;
 const STICKER_HEAD = 'x-vichat-sticker';
+const AUDIO_HEAD = 'x-vichat-audio';
 const POLL_HEAD = 'x-vichat-poll';
 const STICKER_MAX_BYTES = 2 * 1024 * 1024;
 const TINODE_REQUEST_TIMEOUT_MS = 15_000;
@@ -160,6 +161,7 @@ export type TinodeEvent =
 
 const imageCacheRequests = new Map<string, Promise<string>>();
 const imageCacheVersions = new Map<string, number>();
+const fileCacheRequests = new Map<string, Promise<string>>();
 
 function tinodeHeaders(token = '') {
   return {
@@ -201,7 +203,7 @@ function normalizeMediaValue(value: any, mime = 'image/jpeg') {
   return '';
 }
 
-function rawAttachment(raw: any) {
+function rawAttachment(raw: any, audioDurationMs = 0) {
   const content = raw?.content;
   let entity = content?.ent?.find?.((item: any) => item?.tp === 'EX' || item?.tp === 'IM');
   if (!entity && Drafty?.entities && content) {
@@ -225,7 +227,9 @@ function rawAttachment(raw: any) {
       size: Number(data.size || 0),
       url,
       ext: mime.includes('pdf') || /\.pdf$/i.test(name) ? 'pdf' : 'file',
+      ...(audioDurationMs > 0 ? { audioDurationMs } : {}),
     } as FileAttachment,
+    isAudio: /^audio\//i.test(mime),
   };
 }
 
@@ -244,6 +248,18 @@ function parseStickerMetadata(head: any = {}) {
       label: String(parsed?.label || '').trim().slice(0, 120),
       version: String(parsed?.version || '1').slice(0, 24),
     };
+  } catch {
+    return null;
+  }
+}
+
+function parseAudioMetadata(head: any = {}) {
+  const raw = head?.[AUDIO_HEAD];
+  if (!raw) return null;
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const durationMs = Math.max(0, Math.min(60 * 60 * 1000, Math.round(Number(parsed?.durationMs || 0))));
+    return durationMs > 0 ? { durationMs } : null;
   } catch {
     return null;
   }
@@ -391,9 +407,15 @@ function chatbotMetadata(raw: any) {
   };
 }
 
-function normalizeMessage(raw: any, client: any, topic: any, receiptCursor?: ReceiptCursor): ChatMessage | null {
+function normalizeMessage(
+  raw: any,
+  client: any,
+  topic: any,
+  receiptCursor?: ReceiptCursor,
+  currentIdentity?: CurrentIdentity | null,
+): ChatMessage | null {
   if (!raw || raw._deleted) return null;
-  const origin = resolveTinodeMessageOrigin(raw, client);
+  const origin = resolveTinodeMessageOrigin(raw, client, currentIdentity);
   const senderId = origin.senderId;
   const outgoing = origin.outgoing;
   const content = messageContent(raw);
@@ -403,7 +425,8 @@ function normalizeMessage(raw: any, client: any, topic: any, receiptCursor?: Rec
   const edit = parseEvent(content, EDIT_EVENT_PREFIX);
   const system = parseEvent(content, SYSTEM_EVENT_PREFIX);
   const pollEvent = normalizePollEvent(parseEvent(content, POLL_EVENT_PREFIX));
-  const attachment = rawAttachment(raw);
+  const audio = parseAudioMetadata(raw.head);
+  const attachment = rawAttachment(raw, audio?.durationMs || 0);
   const sticker = parseStickerMetadata(raw.head);
   const poll = parsePollMetadata(raw.head);
   const mentions = parseMentionMetadata(raw.head);
@@ -428,7 +451,7 @@ function normalizeMessage(raw: any, client: any, topic: any, receiptCursor?: Rec
     senderName: outgoing ? 'Bạn' : 'Thành viên', text: '', createdAt: raw.ts,
     pollEvent, raw,
   };
-  const type = call ? 'call' : system ? 'system' : poll ? 'text' : attachment ? (sticker ? 'sticker' : attachment.isImage ? 'image' : 'file') : 'text';
+  const type = call ? 'call' : system ? 'system' : poll ? 'text' : attachment ? (sticker ? 'sticker' : attachment.isImage ? 'image' : attachment.isAudio ? 'audio' : 'file') : 'text';
   return {
     id,
     seq: Number(raw.seq) || undefined,
@@ -453,11 +476,17 @@ function normalizeMessage(raw: any, client: any, topic: any, receiptCursor?: Rec
   };
 }
 
-function materializeConversation(topic: any, client: any, presenceResolver: (uid: string, fallback: boolean) => boolean, receiptCursor?: ReceiptCursor): Conversation {
+function materializeConversation(
+  topic: any,
+  client: any,
+  presenceResolver: (uid: string, fallback: boolean) => boolean,
+  receiptCursor?: ReceiptCursor,
+  currentIdentity?: CurrentIdentity | null,
+): Conversation {
   const isGroup = Boolean(topic.isGroupType?.() || String(topic.name || '').startsWith('grp'));
   const loaded: ChatMessage[] = [];
   topic.messages?.((raw: any) => {
-    const message = normalizeMessage(raw, client, topic, receiptCursor);
+    const message = normalizeMessage(raw, client, topic, receiptCursor, currentIdentity);
     if (message) loaded.push(message);
   });
   const members: any[] = [];
@@ -788,7 +817,13 @@ export class TinodeMobileClient {
   }
 
   private materialize(topic: any) {
-    return materializeConversation(topic, this.client, (uid, fallback) => this.getPresenceStatus(uid, fallback), this.receiptCursors.get(topic?.name));
+    return materializeConversation(
+      topic,
+      this.client,
+      (uid, fallback) => this.getPresenceStatus(uid, fallback),
+      this.receiptCursors.get(topic?.name),
+      this.currentIdentitySnapshot,
+    );
   }
 
   private scheduleConversationSnapshot(topic: any) {
@@ -805,11 +840,10 @@ export class TinodeMobileClient {
   private emitIncomingMessage(topic: any, raw: any, conversation?: Conversation) {
     if (!this.isConversationTopicAllowed(topic?.name)) return;
     // A server echo may expose a different `from` alias than the sender header.
-    // Never turn an own echo into a local incoming notification.
-    // Check both Tinode UID and Account ID to cover all sender header formats.
-    if (isOwnMessageOrigin(raw, this.client, this.currentIdentitySnapshot)) return;
-    const message = normalizeMessage(raw, this.client, topic);
-    if (!message || message.sender !== 'incoming' || ['reaction', 'recall', 'edit', 'poll_event', 'system'].includes(message.type)) return;
+    // Require a verified non-own origin before scheduling any local alert.
+    if (!isSafeIncomingMessageOrigin(raw, this.client, this.currentIdentitySnapshot)) return;
+    const message = normalizeMessage(raw, this.client, topic, undefined, this.currentIdentitySnapshot);
+    if (!message || message.sender !== 'incoming' || !message.senderId || ['reaction', 'recall', 'edit', 'poll_event', 'system'].includes(message.type)) return;
     const seq = Number(message.seq || 0);
     const notifiedSeq = this.notifiedSeqByTopic.get(topic.name) || 0;
     if (seq > 0 && seq <= notifiedSeq) return;
@@ -957,6 +991,50 @@ export class TinodeMobileClient {
       imageCacheRequests.set(cacheKey, request);
     }
     return imageCacheRequests.get(cacheKey)!;
+  }
+
+  async cacheFile(file: FileAttachment) {
+    if (!file?.url) throw new Error('Tệp chưa có đường dẫn tải xuống.');
+    const url = normalizeMediaUrl(file.url);
+    if (!url || /^(?:data:|file:|content:)/i.test(url)) return url;
+    const chatMediaReference = isChatMediaReference(url);
+    const token = chatMediaReference ? '' : this.client?.getAuthToken?.()?.token || '';
+    const cacheKey = `${url}|${file.name || ''}|${token}`;
+    if (!fileCacheRequests.has(cacheKey)) {
+      const request = (async () => {
+        const fileSystem: any = require('expo-file-system');
+        if (!fileSystem.File?.downloadFileAsync || !fileSystem.Paths?.cache) {
+          throw new Error('Bộ nhớ tải tệp chưa sẵn sàng.');
+        }
+        let hash = 5381;
+        for (let index = 0; index < cacheKey.length; index += 1) hash = ((hash << 5) + hash) ^ cacheKey.charCodeAt(index);
+        const safeName = String(file.name || 'tep-dinh-kem').replace(/[^a-zA-Z0-9._-]/g, '_').slice(-100);
+        const target = new fileSystem.File(fileSystem.Paths.cache, `vichat-file-${Math.abs(hash)}-${safeName}`);
+        const downloadUrl = chatMediaReference
+          ? await resolveChatMediaDownloadUrl(url, { download: true, fileName: file.name })
+          : url;
+        const download = () => fileSystem.File.downloadFileAsync(downloadUrl, target, {
+          headers: chatMediaReference ? {} : this.getMediaHeaders(),
+          idempotent: true,
+        });
+        let downloaded;
+        try {
+          downloaded = await download();
+        } catch (error) {
+          if (chatMediaReference || !shouldRetryProtectedMedia(error)) throw error;
+          let refreshed = false;
+          try { refreshed = await this.refreshMediaAuth(); } catch { /* Keep the original media error. */ }
+          if (!refreshed) throw error;
+          downloaded = await download();
+        }
+        return downloaded.uri;
+      })().catch(error => {
+        fileCacheRequests.delete(cacheKey);
+        throw error;
+      });
+      fileCacheRequests.set(cacheKey, request);
+    }
+    return fileCacheRequests.get(cacheKey)!;
   }
 
   async downloadFile(file: FileAttachment) {
@@ -1790,7 +1868,7 @@ export class TinodeMobileClient {
     this.topics.delete(topicName);
   }
 
-  async sendFile(topicName: string, file: PickerFile, clientId: string, metadata: { conversationId?: string; sticker?: ChatMessage['sticker'] } = {}) {
+  async sendFile(topicName: string, file: PickerFile, clientId: string, metadata: { conversationId?: string; sticker?: ChatMessage['sticker']; audioDurationMs?: number } = {}) {
     if (Number(file.size) > config.maxAttachmentBytes) throw new Error('File hoặc ảnh không được lớn hơn 500 MB.');
     await this.subscribeTopic(topicName, 0, { emitSnapshot: false });
     const topic = this.getTopic(topicName);
@@ -1811,6 +1889,9 @@ export class TinodeMobileClient {
         label: String(metadata.sticker.label || '').slice(0, 120),
         version: String(metadata.sticker.version || '1').slice(0, 24),
       });
+    }
+    if (metadata.audioDurationMs && metadata.audioDurationMs > 0) {
+      draft.head[AUDIO_HEAD] = JSON.stringify({ durationMs: Math.round(metadata.audioDurationMs) });
     }
     let result: any;
     try {

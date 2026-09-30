@@ -15,6 +15,7 @@ export function messageLinks(message: ChatMessage) {
 }
 
 export function messageFile(message: ChatMessage): FileAttachment | null {
+  if (message?.sticker || message?.type === 'sticker') return null;
   if (message?.file?.url) return message.file;
   if (message?.image) {
     return {
@@ -28,6 +29,7 @@ export function messageFile(message: ChatMessage): FileAttachment | null {
 }
 
 export function isImageMessage(message: ChatMessage) {
+  if (message?.sticker || message?.type === 'sticker') return false;
   const file = message?.file;
   return Boolean(message?.image)
     || Boolean(file && (/^image\//i.test(file.mime) || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(file.name || '')));
@@ -35,7 +37,7 @@ export function isImageMessage(message: ChatMessage) {
 
 export function messagesForSharedKind(messages: ChatMessage[], kind: SharedContentKind) {
   return (Array.isArray(messages) ? messages : []).filter(message => {
-    if (!message || ['system', 'reaction', 'recall', 'edit', 'call', 'poll_event'].includes(message.type)) return false;
+    if (!message || message.sticker || message.type === 'sticker' || ['system', 'reaction', 'recall', 'edit', 'call', 'poll_event'].includes(message.type)) return false;
     if (kind === 'media') return isImageMessage(message);
     if (kind === 'files') return Boolean(message?.file?.url) && !isImageMessage(message);
     return messageLinks(message).length > 0;
@@ -58,4 +60,3 @@ export function mergeGroupHistoryMessages(current: ChatMessage[] = [], history: 
     || (Date.parse(first.createdAt || '') || 0) - (Date.parse(second.createdAt || '') || 0)
   ));
 }
-

@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-01-02 - Hoan thien notification, sticker, voice va smoke test Mobile
+
+- Thoi gian: 2026-10-01 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Chat | Notification | Sticker | Voice | Kiem thu | ADB | Tai lieu
+- Trang thai: Hoan tat source, test, build va cai truc tiep tren Android; chua UAT hai tai khoan cho cap gui/nhan notification.
+- Nguyen nhan: Packet Tinode co the la own echo hoac thieu sender identity nhung van di vao nhanh notification; module `expo-av` da gay `UnsatisfiedLinkError` voi React Native/Expo SDK 57 khi khoi dong ban release.
+- Pham vi: Chi `mobile/` va nhat ky nay; khong sua Web, backend, Tinode server hay S3.
+- Noi dung: Notification fail-closed neu khong xac minh duoc sender, chan own message o ca Tinode client va app store, chi schedule khi message la incoming co `senderId`; sticker duoc tach khoi attachment anh/file va hien kich thuoc nho; thay camera trong composer bang ghi am voice, them phat voice; thay `expo-av` bang `expo-audio@57.0.5` va them config plugin tuong ung.
+- Quyet dinh ky thuat: Dung `expo-audio` theo SDK 57 de tranh ABI native mismatch; recorder/player moi dung API `AudioRecorder`/`AudioPlayer`, cache media hien co va giu metadata voice/sticker trong Tinode nhu luong Mobile da chuan hoa.
+- Kiem thu source: `npm test -- --reporter=dot --maxWorkers=1` (32/32 file, 139/139 test); `npm run typecheck` pass; `npm run lint` pass; `npx expo config --json --type public` ghi nhan version `1.0.37`, Android `versionCode=38`, plugin `expo-audio`.
+- Kiem thu native: `D:\m37\android\gradlew.bat :app:assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a` pass; APK `D:\m37\android\app\build\outputs\apk\release\app-release.apk`, package `vn.upgo.vichat`, ABI `arm64-v8a`, SHA-256 `953F18D4BC1FB2A59461AA24E23FA90D4A2C684A622B3B3F0B0D240C0CB7E9D2`.
+- Kiem thu thiet bi: `adb -s cb785b0f install -r` tra `Success`; `adb shell am start -W -n vn.upgo.vichat/.MainActivity` tra `Status: ok`, process va activity van foreground; logcat sau khi mo khong co `FATAL EXCEPTION`, `UnsatisfiedLinkError` hoac loi `ReactNativeJS`; channel `messages-v2`/`calls-v2` ton tai.
+- Rui ro con lai: Chua co hai thiet bi/tai khoan dong thoi de UAT mot tin nhan that voi ca nhan gui va nguoi nhan; can lap lai test nay khi co tai khoan nhan thuc te, khong dung notification record cu tren may.
+- Viec tiep theo: Co the dung APK da luu tai `D:\vichat-build\vichat-mobile-notification-sticker-20260930\vichat-mobile-1.0.37-arm64.apk`; neu can release da thiet bi thi build them ABI theo pipeline Android.
+- Commit/PR: Commit rieng phan Mobile trong lan lam viec nay; khong stage thay doi Web/root ngoai pham vi.
+
 ## 2026-10-01-01 - Deploy Web avatar, sticker local va font
 
 - Thoi gian: 2026-10-01 (Asia/Saigon)

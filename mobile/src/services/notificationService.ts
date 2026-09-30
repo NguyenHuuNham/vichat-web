@@ -227,12 +227,15 @@ function notificationBody(message: ChatMessage) {
   if (message.poll) return `Bình chọn: ${message.poll.question}`;
   if (message.type === 'sticker' || message.sticker) return `Đã gửi sticker${message.sticker?.label ? `: ${message.sticker.label}` : ''}`;
   if (message.type === 'image') return 'Đã gửi một hình ảnh';
+  if (message.type === 'audio' || /^audio\//i.test(message.file?.mime || '')) return 'Đã gửi voice';
   if (message.type === 'file') return `Đã gửi tệp ${message.file?.name || ''}`.trim();
   return String(message.text || 'Bạn có tin nhắn mới').replace(/\s+/g, ' ').trim().slice(0, 180);
 }
 
 export async function notifyIncomingMessage(conversation: Conversation, message: ChatMessage) {
-  if (message.sender !== 'incoming') return null;
+  // A notification is only valid when the realtime layer verified a sender.
+  // This also prevents malformed/replayed packets from becoming alerts.
+  if (message.sender !== 'incoming' || !String(message.senderId || '').trim()) return null;
   if (isConversationMuted(conversation.notificationMutedUntil)) return null;
   try {
     const { Notifications } = await loadNotificationModules();

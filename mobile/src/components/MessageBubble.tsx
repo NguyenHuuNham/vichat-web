@@ -1,6 +1,7 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { BookOpen, Check, CheckCircle2, Download, FileText, ImageOff, LockKeyhole, Pencil, Phone, Pin, Plus, RotateCcw, Video, X } from 'lucide-react-native';
+import { createAudioPlayer, setAudioModeAsync, type AudioPlayer, type AudioStatus } from 'expo-audio';
+import { BookOpen, Check, CheckCircle2, Download, FileText, ImageOff, LockKeyhole, Pause, Pencil, Phone, Pin, Play, Plus, RotateCcw, Video, X } from 'lucide-react-native';
 import { beginTrustedExternalActivity } from '../services/appLifecycleService';
 import { normalizeMediaUrl, tinodeClient } from '../services/tinodeClient';
 import { ChatMessage, ConversationMember, FileAttachment } from '../types';
@@ -46,7 +47,8 @@ export const MessageBubble = memo(function MessageBubble({ message, onLongPress,
   }
   const outgoing = message.sender === 'outgoing';
   const incomingGroupProfile = getGroupSenderProfile(message, groupMembers, isGroup);
-  const mediaOnly = Boolean(message.image && !message.text?.trim() && !message.recalled);
+  const audio = Boolean(message.file && (message.type === 'audio' || /^audio\//i.test(message.file.mime)));
+  const mediaOnly = Boolean((message.image || message.sticker) && !message.text?.trim() && !message.recalled);
   const receipt = message.pending || message.deliveryStatus === 'sending'
     ? '…'
     : ['received', 'read'].includes(message.deliveryStatus || '') ? '✓✓' : '✓';
@@ -55,8 +57,10 @@ export const MessageBubble = memo(function MessageBubble({ message, onLongPress,
       {incomingGroupProfile ? <SenderMeta palette={palette} profile={incomingGroupProfile} /> : null}
       <Pressable onLongPress={onLongPress} delayLongPress={350} style={[styles.bubble, outgoing ? styles.outgoing : styles.incoming, mediaOnly && styles.mediaBubble, message.pending && styles.pending, message.failed && styles.failed]}>
         {message.replyTo && !message.recalled ? <View style={[styles.reply, outgoing && styles.replyOutgoing]}><Text numberOfLines={1} style={[styles.replyName, outgoing && styles.outgoingText]}>{message.replyTo.senderName}</Text><Text numberOfLines={1} style={[styles.replyText, outgoing && styles.outgoingSub]}>{message.replyTo.text}</Text></View> : null}
-        {message.image ? <ProtectedMessageImage palette={palette} uri={message.image} file={message.file} outgoing={outgoing} /> : null}
-        {message.file && !message.image ? (
+        {message.sticker && (message.image || message.file?.url) ? <ProtectedMessageImage palette={palette} uri={message.image || message.file?.url || ''} file={message.file} outgoing={outgoing} sticker /> : null}
+        {message.image && !message.sticker ? <ProtectedMessageImage palette={palette} uri={message.image} file={message.file} outgoing={outgoing} /> : null}
+        {audio ? <AudioMessage palette={palette} file={message.file!} outgoing={outgoing} /> : null}
+        {message.file && !message.image && !message.sticker && !audio ? (
           <Pressable style={styles.file} onPress={() => openAttachment(message.file!)}>
             <View style={styles.fileIcon}><FileText color={outgoing ? '#fff' : palette.accent} size={20} /></View>
             <View style={{ flex: 1 }}><Text numberOfLines={1} style={[styles.fileName, outgoing && styles.outgoingText]}>{message.file.name}</Text><Text style={[styles.fileMeta, outgoing && styles.outgoingSub]}>{message.file.mime} · {message.file.size ? `${Math.round(message.file.size / 1024)} KB` : 'Tệp'}</Text></View>
@@ -115,7 +119,87 @@ function PollCard({ palette, message, outgoing, onVote, onAddOption, onLock, vie
   return <View style={[styles.poll, outgoing && styles.pollOutgoing]}><View style={styles.pollHeading}><Text style={[styles.pollLabel, outgoing && styles.outgoingSub]}>Bình chọn</Text>{closed ? <Text style={[styles.pollClosed, outgoing && styles.outgoingSub]}>Đã đóng</Text> : null}</View><Text style={[styles.pollQuestion, outgoing && styles.outgoingText]}>{poll.question}</Text>{poll.options.map(option => { const selectedOption = selected.includes(option.id); const count = showResults ? counts[option.id] || 0 : 0; const percent = showResults && total ? Math.round((count / total) * 100) : 0; return <Pressable key={option.id} onPress={() => toggle(option.id)} style={[styles.pollOption, selectedOption && styles.pollOptionSelected, outgoing && styles.pollOptionOutgoing]}><View style={styles.pollOptionTop}><View style={[styles.pollRadio, selectedOption && styles.pollRadioSelected]}>{selectedOption ? <Check color="#fff" size={12} /> : null}</View><Text style={[styles.pollOptionText, outgoing && styles.outgoingText]}>{option.text}</Text>{showResults ? <Text style={[styles.pollCount, outgoing && styles.outgoingSub]}>{count}</Text> : null}</View><View style={styles.pollTrack}><View style={[styles.pollProgress, { width: `${percent}%` as any }, outgoing && styles.pollProgressOutgoing]} /></View></Pressable>; })}{!showResults ? <Text style={[styles.pollHint, outgoing && styles.outgoingSub]}>Kết quả sẽ hiện sau khi bạn bình chọn</Text> : null}{poll.settings.allowAddOptions && !closed && onAddOption ? <View style={styles.pollAddOption}><TextInput value={optionText} onChangeText={setOptionText} maxLength={120} placeholder="Thêm phương án" placeholderTextColor={palette.muted} style={styles.pollOptionInput} /><Pressable onPress={submitOption} disabled={!optionText.trim()} style={[styles.pollIconButton, !optionText.trim() && styles.pollSubmitDisabled]}><Plus color="#fff" size={16} /></Pressable></View> : null}<View style={styles.pollActions}>{onVote ? <Pressable disabled={closed || selected.length === 0} onPress={() => onVote(message, selected)} style={[styles.pollSubmit, (closed || selected.length === 0) && styles.pollSubmitDisabled]}><Text style={styles.pollSubmitText}>{closed ? 'Bình chọn đã đóng' : 'Gửi lựa chọn'}</Text></Pressable> : null}{canLock ? <Pressable onPress={() => onLock?.(message)} style={styles.pollLock}><LockKeyhole color={palette.warning} size={15} /><Text style={styles.pollLockText}>Khóa</Text></Pressable> : null}</View></View>;
 }
 
-function ProtectedMessageImage({ palette, uri, file, outgoing }: { palette: ThemeColors; uri: string; file?: FileAttachment; outgoing: boolean }) {
+function formatAudioDuration(durationMs = 0) {
+  const totalSeconds = Math.max(0, Math.floor(Number(durationMs || 0) / 1000));
+  return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
+}
+
+function AudioMessage({ palette, file, outgoing }: { palette: ThemeColors; file: FileAttachment; outgoing: boolean }) {
+  const styles = createStyles(palette);
+  const playerRef = useRef<AudioPlayer | null>(null);
+  const subscriptionRef = useRef<{ remove: () => void } | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(Number(file.audioDurationMs) || 0);
+  const [error, setError] = useState('');
+
+  useEffect(() => () => {
+    subscriptionRef.current?.remove();
+    subscriptionRef.current = null;
+    const player = playerRef.current;
+    playerRef.current = null;
+    player?.remove();
+  }, []);
+
+  const handleStatus = (status: AudioStatus) => {
+    if (status.error) setError('Không phát được voice.');
+    setLoading(!status.isLoaded && !status.error);
+    setPlaying(Boolean(status.playing));
+    setPosition(Math.round(Number(status.currentTime) * 1000) || 0);
+    setDuration(Math.round(Number(status.duration) * 1000) || Number(file.audioDurationMs) || 0);
+    if (status.didJustFinish) {
+      setPlaying(false);
+      setPosition(0);
+      const player = playerRef.current;
+      if (player) void player.seekTo(0).catch(() => {});
+    }
+  };
+
+  const togglePlayback = async () => {
+    if (loading) return;
+    setError('');
+    try {
+      const current = playerRef.current;
+      if (current) {
+        if (current.isLoaded) {
+          if (current.playing) {
+            current.pause();
+            setPlaying(false);
+          } else {
+            current.play();
+            setPlaying(true);
+          }
+          return;
+        }
+      }
+      setLoading(true);
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true, interruptionMode: 'duckOthers' });
+      const uri = await tinodeClient.cacheFile(file);
+      const player = createAudioPlayer({ uri }, { updateInterval: 250 });
+      playerRef.current = player;
+      subscriptionRef.current = player.addListener('playbackStatusUpdate', handleStatus);
+      player.play();
+    } catch {
+      setError('Không phát được voice.');
+    } finally {
+      if (playerRef.current?.isLoaded) setLoading(false);
+    }
+  };
+
+  const progress = duration > 0 ? Math.min(1, Math.max(0, position / duration)) : 0;
+  return <View style={[styles.audioMessage, outgoing && styles.audioMessageOutgoing]}>
+    <Pressable accessibilityLabel={playing ? 'Tạm dừng voice' : 'Phát voice'} onPress={() => void togglePlayback()} style={styles.audioButton}>
+      {loading ? <ActivityIndicator color={outgoing ? '#fff' : palette.accent} size="small" /> : playing ? <Pause color={outgoing ? '#fff' : palette.accent} size={17} /> : <Play color={outgoing ? '#fff' : palette.accent} size={17} />}
+    </Pressable>
+    <View style={styles.audioBody}>
+      <View style={styles.audioTrack}><View style={[styles.audioProgress, { width: `${progress * 100}%` as any }, outgoing && styles.audioProgressOutgoing]} /></View>
+      <Text style={[styles.audioMeta, outgoing && styles.outgoingSub]}>{error || formatAudioDuration(duration) || 'Voice'}</Text>
+    </View>
+  </View>;
+}
+
+function ProtectedMessageImage({ palette, uri, file, outgoing, sticker = false }: { palette: ThemeColors; uri: string; file?: FileAttachment; outgoing: boolean; sticker?: boolean }) {
   const styles = createStyles(palette);
   const [attempt, setAttempt] = useState(0);
   const [mediaVersion, setMediaVersion] = useState(() => tinodeClient.getMediaVersion(uri));
@@ -141,6 +225,11 @@ function ProtectedMessageImage({ palette, uri, file, outgoing }: { palette: Them
   }, [attempt, uri, mediaVersion]);
 
   const height = Math.max(150, Math.min(330, 250 / Math.max(0.55, Math.min(2.2, ratio))));
+  if (sticker) {
+    if (failed) return <Pressable onPress={() => setAttempt(value => value + 1)} style={styles.stickerState}><ImageOff color={outgoing ? '#fff' : palette.accent} size={18} /><Text style={[styles.stickerStateText, outgoing && styles.outgoingText]}>Không tải được sticker</Text></Pressable>;
+    if (!source) return <View style={styles.stickerState}><ActivityIndicator color={outgoing ? '#fff' : palette.accent} /><Text style={[styles.stickerStateText, outgoing && styles.outgoingText]}>Đang tải sticker...</Text></View>;
+    return <Image source={{ uri: source }} style={styles.stickerImage} resizeMode="contain" />;
+  }
   const attachment = file || { name: 'hình-ảnh.jpg', mime: 'image/jpeg', size: 0, url: uri };
   if (failed) return <Pressable onPress={() => setAttempt(value => value + 1)} style={styles.imageState}><ImageOff color={outgoing ? '#fff' : palette.accent} size={25} /><Text style={[styles.imageStateText, outgoing && styles.outgoingText]}>Không tải được ảnh · chạm để thử lại</Text></Pressable>;
   if (!source) return <View style={styles.imageState}><ActivityIndicator color={outgoing ? '#fff' : palette.accent} /><Text style={[styles.imageStateText, outgoing && styles.outgoingText]}>Đang tải ảnh...</Text></View>;
@@ -174,6 +263,9 @@ function createStyles(palette: ThemeColors) {
     outgoing: { backgroundColor: palette.bubbleOutgoing, borderBottomRightRadius: 6 },
     incoming: { backgroundColor: palette.bubbleIncoming, borderBottomLeftRadius: 6 },
     mediaBubble: { padding: 2, backgroundColor: 'transparent', minWidth: 0, overflow: 'hidden' },
+    stickerImage: { width: 156, height: 156 },
+    stickerState: { width: 156, height: 70, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: `${palette.accent}12` },
+    stickerStateText: { ...typography.caption, color: palette.accentDeep, fontSize: 10 },
     pending: { opacity: 0.65 },
     failed: { borderWidth: 1, borderColor: palette.danger },
     text: { ...typography.body, color: palette.ink, paddingBottom: 3 },
@@ -192,6 +284,14 @@ function createStyles(palette: ThemeColors) {
     fileIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
     fileName: { ...typography.bodyMedium, color: palette.ink },
     fileMeta: { ...typography.caption, color: palette.muted, marginTop: 2 },
+    audioMessage: { width: 220, minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 8, borderRadius: 15, backgroundColor: palette.accentWash },
+    audioMessageOutgoing: { backgroundColor: 'rgba(255,255,255,0.14)' },
+    audioButton: { width: 36, height: 36, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.paper },
+    audioBody: { flex: 1, gap: 5 },
+    audioTrack: { height: 5, borderRadius: 3, overflow: 'hidden', backgroundColor: `${palette.accent}35` },
+    audioProgress: { height: 5, borderRadius: 3, backgroundColor: palette.accent },
+    audioProgressOutgoing: { backgroundColor: '#BCEBFF' },
+    audioMeta: { ...typography.caption, color: palette.accentDeep, fontSize: 10 },
     outgoingSub: { color: 'rgba(255,255,255,0.72)' },
     meta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 5, marginTop: 2 },
     mediaMeta: { position: 'absolute', right: 9, bottom: 8, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3, backgroundColor: 'rgba(0,0,0,0.48)' },

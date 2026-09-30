@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { isOwnTinodeMessage, isOwnMessageOrigin, resolveTinodeMessageOrigin } from './messageOrigin';
+import {
+  hasKnownMessageOrigin,
+  isOwnTinodeMessage,
+  isOwnMessageOrigin,
+  isSafeIncomingMessageOrigin,
+  resolveTinodeMessageOrigin,
+} from './messageOrigin';
 
 function client(currentUserId = 'usr-current') {
   return {
@@ -55,6 +61,22 @@ describe('isOwnMessageOrigin with Account ID', () => {
       from: 'usr-other',
       head: { 'x-sender-id': 'account-456' },
     }, client(), { accountId: 'account-123', tinodeUid: 'usr-current' })).toBe(false);
+  });
+
+  it('allows a verified recipient packet to notify', () => {
+    const packet = { from: 'usr-other', head: { 'x-sender-id': 'account-456' } };
+    expect(hasKnownMessageOrigin(packet, client(), { accountId: 'account-123' })).toBe(true);
+    expect(isSafeIncomingMessageOrigin(packet, client(), { accountId: 'account-123' })).toBe(true);
+  });
+
+  it('blocks own packets even when the Tinode from field is an alias', () => {
+    const packet = { from: 'usr-current-alias', head: { 'x-vichat-sender-id': 'account-123' } };
+    expect(isSafeIncomingMessageOrigin(packet, client(), { accountId: 'account-123' })).toBe(false);
+  });
+
+  it('fails closed when sender or viewer identity is missing', () => {
+    expect(isSafeIncomingMessageOrigin({}, client(), { accountId: 'account-123' })).toBe(false);
+    expect(isSafeIncomingMessageOrigin({ from: 'usr-other' }, {})).toBe(false);
   });
 
   it('falls back to Tinode check when no currentIdentity', () => {

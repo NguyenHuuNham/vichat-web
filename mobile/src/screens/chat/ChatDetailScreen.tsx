@@ -5,8 +5,9 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
+import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder, useAudioRecorderState, type AudioRecorder } from 'expo-audio';
 import { FlashList, FlashListRef } from '@shopify/flash-list';
-import { ArrowDown, BarChart3, BookOpen, Camera, ChevronLeft, FilePlus2, ImagePlus, Info, Pencil, Search, Send, ShieldCheck, Phone, SmilePlus, Video, WifiOff, X } from 'lucide-react-native';
+import { ArrowDown, BarChart3, BookOpen, ChevronLeft, CircleStop, FilePlus2, ImagePlus, Info, Mic, Pencil, Search, Send, ShieldCheck, Phone, SmilePlus, Video, WifiOff, X } from 'lucide-react-native';
 import { RootStackParamList } from '../../navigation/types';
 import { useAppStore, getConversation } from '../../store/appStore';
 import { ThemeColors, shadow } from '../../theme/colors';
@@ -42,6 +43,11 @@ const AI_STARTERS = [
   'Tìm tài liệu liên quan đến quy trình phê duyệt công việc.',
 ];
 
+function formatVoiceDuration(durationMs: number) {
+  const totalSeconds = Math.max(0, Math.floor(Number(durationMs || 0) / 1000));
+  return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
+}
+
 export function ChatDetailScreen({ route, navigation }: Props) {
   const palette = useThemePalette();
   const styles = createStyles(palette);
@@ -56,6 +62,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const markRead = useAppStore(state => state.markRead);
   const sendText = useAppStore(state => state.sendText);
   const sendFile = useAppStore(state => state.sendFile);
+  const sendVoice = useAppStore(state => state.sendVoice);
   const sendSticker = useAppStore(state => state.sendSticker);
   const sendReaction = useAppStore(state => state.sendReaction);
   const createPoll = useAppStore(state => state.createPoll);
@@ -69,6 +76,8 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const activeCall = useCallStore(state => state.call);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
   const [error, setError] = useState('');
   const [selectedMessage, setSelectedMessage] = useState<ChatMessage | null>(null);
   const [recallTarget, setRecallTarget] = useState<ChatMessage | null>(null);
@@ -96,6 +105,9 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const loadingEarlierRef = useRef(false);
   const historyLoadArmedRef = useRef(true);
   const inputRef = useRef<TextInput>(null);
+  const recordingRef = useRef<AudioRecorder | null>(null);
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const audioRecorderState = useAudioRecorderState(audioRecorder, 250);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingAt = useRef(0);
 
@@ -133,8 +145,18 @@ export function ChatDetailScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     void openConversation(route.params.conversationId).catch(() => {});
-    return () => { if (typingTimer.current) clearTimeout(typingTimer.current); };
+    return () => {
+      if (typingTimer.current) clearTimeout(typingTimer.current);
+      const activeRecording = recordingRef.current;
+      recordingRef.current = null;
+      if (activeRecording?.isRecording) void activeRecording.stop().catch(() => {});
+      void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true, interruptionMode: 'duckOthers' }).catch(() => {});
+    };
   }, [connection, openConversation, route.params.conversationId]);
+
+  useEffect(() => {
+    if (recording) setRecordingDuration(audioRecorderState.durationMillis);
+  }, [audioRecorderState.durationMillis, recording]);
 
   const messages = useMemo(() => conversation?.messages || [], [conversation?.messages]);
   const firstUnreadIndex = useMemo(
@@ -286,6 +308,46 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     setBusy(true); setError('');
     try { await sendFile(conversation.id, file); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không gửi được tệp.'); } finally { setBusy(false); }
   };
+  const startVoiceRecording = async () => {
+    if (!conversation || busy || recordingRef.current || !canSendMessages) return;
+    try {
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) throw new Error('ViChat cần quyền micro để ghi âm voice.');
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true, shouldPlayInBackground: false, interruptionMode: 'duckOthers' });
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
+      recordingRef.current = audioRecorder;
+      setRecordingDuration(0);
+      setRecording(true);
+      setError('');
+    } catch (valueError) {
+      recordingRef.current = null;
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true, interruptionMode: 'duckOthers' }).catch(() => {});
+      setError(valueError instanceof Error ? valueError.message : 'Không thể bắt đầu ghi âm voice.');
+    }
+  };
+  const stopVoiceRecording = async () => {
+    const activeRecording = recordingRef.current || audioRecorder;
+    if (!activeRecording || !conversation || !canSendMessages) return;
+    recordingRef.current = null;
+    setRecording(false);
+    setBusy(true);
+    setError('');
+    try {
+      await activeRecording.stop();
+      const status = activeRecording.getStatus();
+      const uri = activeRecording.uri || status.url;
+      const durationMs = Number(status.durationMillis) || recordingDuration;
+      if (!uri || durationMs < 500) throw new Error('Voice quá ngắn. Hãy ghi ít nhất nửa giây.');
+      await sendVoice(conversation.id, { uri, name: `voice-${Date.now()}.m4a`, type: 'audio/mp4' }, durationMs);
+    } catch (valueError) {
+      setError(valueError instanceof Error ? valueError.message : 'Không gửi được voice.');
+    } finally {
+      setBusy(false);
+      setRecordingDuration(0);
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true, interruptionMode: 'duckOthers' }).catch(() => {});
+    }
+  };
   const submitSticker = async (sticker: Sticker) => {
     if (!conversation || busy || editingMessage || !canSendMessages) return;
     setBusy(true); setError('');
@@ -369,25 +431,14 @@ export function ChatDetailScreen({ route, navigation }: Props) {
       setError(valueError instanceof Error ? valueError.message : 'Không gửi được tệp.');
     }
   };
-  const takePhoto = async () => {
-    try {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
-      if (!permission.granted) throw new Error('ViChat cần quyền camera để chụp và gửi ảnh.');
-      beginTrustedExternalActivity();
-      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'] as any, quality: 0.9, allowsEditing: false });
-      const asset: any = !result.canceled ? result.assets?.[0] : null;
-      await submitFile(asset ? { uri: asset.uri, name: asset.fileName || `anh-${Date.now()}.jpg`, type: asset.mimeType || 'image/jpeg', size: asset.fileSize } : null);
-    } catch (valueError) {
-      setError(valueError instanceof Error ? valueError.message : 'Không chụp được ảnh.');
-    }
-  };
   const replyMessage = (message: ChatMessage) => {
     if (!canInteractWithMessage(message)) return;
-    setReplyingTo({ id: message.id, text: message.text || message.file?.name || 'Hình ảnh', senderName: message.senderName || (message.sender === 'outgoing' ? 'Bạn' : 'Thành viên') });
+    setReplyingTo({ id: message.id, text: message.text || (message.sticker ? 'Sticker' : message.file?.name || 'Hình ảnh'), senderName: message.senderName || (message.sender === 'outgoing' ? 'Bạn' : 'Thành viên') });
   };
   const copyMessage = (message: ChatMessage) => { if (canInteractWithMessage(message) && message.text) void Clipboard.setStringAsync(message.text); };
   const downloadMessage = (message: ChatMessage) => {
     if (!canInteractWithMessage(message)) return;
+    if (message.sticker) return;
     const file = message.file || (message.image ? { name: 'hình-ảnh.jpg', mime: 'image/jpeg', size: 0, url: message.image } : null);
     if (!file) return;
     beginTrustedExternalActivity();
@@ -395,6 +446,10 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   };
   const shareMessage = (message: ChatMessage) => {
     if (!canInteractWithMessage(message)) return;
+    if (message.sticker) {
+      void Share.share({ message: 'Sticker ViChat' }).catch(() => {});
+      return;
+    }
     if (message.image || message.file) { downloadMessage(message); return; }
     void Share.share({ message: message.text || 'Tin nhắn ViChat' }).catch(() => {});
   };
@@ -496,19 +551,20 @@ export function ChatDetailScreen({ route, navigation }: Props) {
             </Pressable>)}
           </ScrollView>
         </View> : null}
+        {recording ? <View style={styles.recordingBanner}><View style={styles.recordingDot} /><Text style={styles.recordingText}>Đang ghi voice {formatVoiceDuration(recordingDuration)} · chạm mic để dừng</Text></View> : null}
         <View style={styles.composer}>
           {!conversation.isChatbot ? <View style={styles.attachGroup}>
-            <Pressable accessibilityLabel="Chụp ảnh" onPress={() => void takePhoto()} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><Camera color={palette.accent} size={18} /></Pressable>
-            <Pressable accessibilityLabel="Chọn ảnh" onPress={() => void chooseFile(true)} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><ImagePlus color={palette.accent} size={19} /></Pressable>
-            <Pressable accessibilityLabel="Chọn tệp" onPress={() => void chooseFile(false)} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><FilePlus2 color={palette.accent} size={18} /></Pressable>
-            <Pressable accessibilityLabel="Chọn sticker" onPress={() => setStickerPickerOpen(true)} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><SmilePlus color={palette.accent} size={18} /></Pressable>
-            {conversation.isGroup && canCreatePoll ? <Pressable accessibilityLabel="Tạo bình chọn" onPress={() => setPollComposerOpen(true)} disabled={busy || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><BarChart3 color={palette.accent} size={18} /></Pressable> : null}
+            <Pressable accessibilityLabel={recording ? 'Dừng ghi âm' : 'Ghi âm voice'} onPress={() => void (recording ? stopVoiceRecording() : startVoiceRecording())} disabled={(busy && !recording) || Boolean(editingMessage) || !canSendMessages} style={[styles.attach, recording && styles.attachRecording]}>{recording ? <CircleStop color={palette.danger} size={18} /> : <Mic color={palette.accent} size={18} />}</Pressable>
+            <Pressable accessibilityLabel="Chọn ảnh" onPress={() => void chooseFile(true)} disabled={busy || recording || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><ImagePlus color={palette.accent} size={19} /></Pressable>
+            <Pressable accessibilityLabel="Chọn tệp" onPress={() => void chooseFile(false)} disabled={busy || recording || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><FilePlus2 color={palette.accent} size={18} /></Pressable>
+            <Pressable accessibilityLabel="Chọn sticker" onPress={() => setStickerPickerOpen(true)} disabled={busy || recording || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><SmilePlus color={palette.accent} size={18} /></Pressable>
+            {conversation.isGroup && canCreatePoll ? <Pressable accessibilityLabel="Tạo bình chọn" onPress={() => setPollComposerOpen(true)} disabled={busy || recording || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><BarChart3 color={palette.accent} size={18} /></Pressable> : null}
           </View> : null}
           <TextInput ref={inputRef} value={text} onChangeText={updateComposerText} onSelectionChange={event => {
             const caret = Number(event.nativeEvent.selection?.start || 0);
             setMentionContext(!editingMessage && conversation.isGroup ? getMentionContext(composerTextRef.current, caret) : null);
-          }} placeholder={editingMessage ? 'Nhập nội dung mới...' : conversation.isChatbot ? 'Hỏi về quy trình, chính sách, tài liệu...' : 'Viết tin nhắn...'} placeholderTextColor={palette.muted} multiline maxLength={120000} style={styles.input} editable={!busy && canSendMessages} />
-          <Pressable onPress={() => void submitText()} disabled={busy || !text.trim() || !canSendMessages} style={[styles.send, (!text.trim() || busy || !canSendMessages) && styles.sendDisabled]}><Send color="#fff" size={18} /></Pressable>
+          }} placeholder={editingMessage ? 'Nhập nội dung mới...' : conversation.isChatbot ? 'Hỏi về quy trình, chính sách, tài liệu...' : 'Viết tin nhắn...'} placeholderTextColor={palette.muted} multiline maxLength={120000} style={styles.input} editable={!busy && !recording && canSendMessages} />
+          <Pressable onPress={() => void submitText()} disabled={busy || recording || !text.trim() || !canSendMessages} style={[styles.send, (!text.trim() || busy || recording || !canSendMessages) && styles.sendDisabled]}><Send color="#fff" size={18} /></Pressable>
         </View>
         {conversation.isChatbot ? <Text style={styles.aiNote}>Kiểm tra nguồn trước khi dùng thông tin để ra quyết định.</Text> : null}
       </KeyboardAvoidingView>
@@ -613,6 +669,10 @@ function createStyles(palette: ThemeColors) {
     composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 11, paddingTop: 9, paddingBottom: 9, borderTopWidth: 1, borderTopColor: palette.line, backgroundColor: palette.paper },
     attachGroup: { minHeight: 42, paddingHorizontal: 3, borderRadius: 16, backgroundColor: palette.canvas, flexDirection: 'row', alignItems: 'center' },
     attach: { width: 32, height: 42, alignItems: 'center', justifyContent: 'center' },
+    attachRecording: { borderRadius: 11, backgroundColor: `${palette.danger}18` },
+    recordingBanner: { minHeight: 34, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: `${palette.danger}12` },
+    recordingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: palette.danger },
+    recordingText: { ...typography.caption, color: palette.danger, fontFamily: 'BeVietnamPro_700Bold' },
     input: { maxHeight: 110, minHeight: 44, flex: 1, borderRadius: 19, backgroundColor: palette.canvas, borderWidth: 1, borderColor: palette.line, paddingHorizontal: 14, paddingTop: 11, paddingBottom: 10, color: palette.ink, fontFamily: 'BeVietnamPro_400Regular', fontSize: 14 },
     send: { width: 46, height: 46, borderRadius: 16, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' },
     sendDisabled: { opacity: 0.38 },
