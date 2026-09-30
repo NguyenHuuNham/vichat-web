@@ -21,7 +21,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Thiet bi that: `adb devices -l` sau khi khoi dong lai ADB khong tra ve device; Windows PnP cung khong co thiet bi Android/ADB. Chua cai APK, chua mo app, chua thu group settings/media/preference tren USB phone.
 - Rui ro con lai: Chua UAT tai khoan that, full history rat lon, offline/reconnect, push background/killed, thiet bi iOS; APK la ban test ky Android Debug, chua ky store. Gradle chi co warning deprecated tu dependency.
 - Viec tiep theo: Bat USB debugging/chon File transfer va xac nhan prompt RSA tren dien thoai, sau do chay `adb devices`, cai APK nay va UAT group settings, full media history, file S3, link, an/gon/phan loai va tenant switch.
-- Commit/PR: Source commit `22f6290`; docs follow-up commit duoc tao sau.
+- Commit/PR: Source commit `22f6290`; docs follow-up commit `befafeb`; da push `github/fix/full-audit-regressions`; production deploy chua thuc hien do SSH production tu choi publickey/password.
 
 ## 2026-09-30-02 - Hien thi chuyen cong ty theo membership Account
 
