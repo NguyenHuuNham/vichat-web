@@ -20,7 +20,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Artifact: `D:\vichat-build\ViChat-1.0.35-conversation-list-universal.apk`, package `vn.upgo.vichat`, ABI `arm64-v8a,x86_64`, SHA-256 `965CCB41207886E5C7E06CB308F1E7A92E7EE2E1BFE435CE1F8546223C30B7EE`.
 - Rui ro con lai: Emulator chua dang nhap tai khoan that nen chua UAT xoa/refresh chat voi du lieu Chatmgt/Tinode thuc te; chua test offline/reconnect, push background/killed, thiet bi that va iOS. APK la ban test ky Android Debug, chua ky store.
 - Viec tiep theo: Dang nhap tai khoan test de xac nhan chat rong bi an sau sync, chat da xoa khong hien lai sau pull-to-refresh, tin moi sau moc xoa mo lai dung va group chat khong bi anh huong.
-- Commit/PR: Se cap nhat sau khi tao commit source.
+- Commit/PR: `631deff`; PR chua tao.
 
 ## 2026-09-30-03 - Hoan thien noi dung va tuy chon hien thi chi tiet nhom mobile
 
