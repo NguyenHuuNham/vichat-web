@@ -919,6 +919,21 @@ def _verify_http(base_url, origin, management_account):
         str(participant_id) for participant_id in (item.get("participantIds") or [])
     } for item in conversation_items):
         raise RuntimeError("Chatmgt returned a conversation outside the current membership.")
+
+    direct_block_state = requests.get(
+        base_url + "/api/v1/conversation/direct-block-state",
+        headers=authenticated_headers,
+        timeout=10,
+    )
+    if direct_block_state.status_code != 200:
+        raise RuntimeError(
+            "Chatmgt direct conversation policy returned HTTP {}.".format(
+                direct_block_state.status_code,
+            )
+        )
+    if not isinstance(direct_block_state.json().get("objects"), list):
+        raise RuntimeError("Chatmgt direct conversation policy returned an invalid payload.")
+
     verify_tinode_websocket(login_payload, origin)
 
     logout = requests.post(

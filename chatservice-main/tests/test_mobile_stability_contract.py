@@ -7,6 +7,7 @@ CONTROLLER_PATH = PROJECT_ROOT / "application" / "controllers" / "api_chat_manag
 MODEL_PATH = PROJECT_ROOT / "application" / "models" / "models.py"
 MIGRATION_SQL = PROJECT_ROOT / "migrations" / "017_mobile_group_idempotency.sql"
 ALEMBIC_REVISION = PROJECT_ROOT / "alembic" / "versions" / "20260928_17_mobile_group_idempotency.py"
+VERIFIER_PATH = PROJECT_ROOT / "scripts" / "verify_deployment.py"
 
 
 class MobileStabilityContractTests(unittest.TestCase):
@@ -29,6 +30,11 @@ class MobileStabilityContractTests(unittest.TestCase):
         self.assertIn("WHERE deleted = false", migration)
         self.assertIn('revision = "20260928_17"', revision)
         self.assertIn('down_revision = "20260921_16"', revision)
+
+    def test_deployment_verifier_exercises_direct_conversation_policy(self):
+        verifier = VERIFIER_PATH.read_text(encoding="utf-8")
+        self.assertIn("/api/v1/conversation/direct-block-state", verifier)
+        self.assertIn("Chatmgt direct conversation policy returned HTTP", verifier)
 
 
 if __name__ == "__main__":
