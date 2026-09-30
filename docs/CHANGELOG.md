@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-01-01 - Deploy Web avatar, sticker local va font
+
+- Thoi gian: 2026-10-01 (Asia/Saigon)
+- Loai: Van hanh | Web | Kiem thu | Tai lieu
+- Trang thai: Hoan tat; da deploy production Web.
+- Muc tieu: Dua ban sua Web avatar/CSP, sticker built-in va font readability vao production ma khong anh huong Mobile, Chatmgt, Tinode, database, Redis hoac volume.
+- Pham vi: Release `/opt/deploy/chat/releases/vichat-web-d7a9f15` tren private host; `current` tro vao release nay, `previous` giu `vichat-web-a6f219c-20260930`.
+- Noi dung: Trien khai commit Web `be143f7` va changelog follow-up `d7a9f15`; chi recreate service `chat`, khong recreate Chatmgt hay cac container stateful.
+- Quyet dinh ky thuat: Archive SHA-256 `C02DEAB3BDCFF2FAE2073A59E5E99BCC296CE14BDE92B0DB8E3AE0B046BC0BBB` duoc chuyen qua `ubuntu@103.74.122.206` roi vao `ubuntu@192.168.80.20`; giu nguyen `.env`, runtime, database va Tinode uploads cua release truoc.
+- Database/API/cau hinh: Khong migration, khong reset Tinode, khong xoa volume; chi cap nhat image ChatUI va Nginx CSP.
+- Kiem thu: `docker compose build chat` pass; ChatUI container healthy; Chatmgt, bridge, webhook, PostgreSQL va Redis healthy; local `/healthz` tra `ok`; public bundle la `/assets/index-BqnRJhpV.js` va `/assets/index-BheqvY3X.css`; public CSP cho phep `https://static.upgo.vn` va `https://upstart.vn`; Chatmgt `/api/v1/auth/health` tra `status: ok`; stateful container IDs khong doi. Lenh `nginx -t` trong container tach rieng khong dung duoc vi upstream `chatmgt` chi resolve tren Compose network, nhung Nginx runtime/public health va header da duoc xac minh.
+- Phan tach Mobile: Khong stage, commit, build hoac deploy cac thay doi dang co trong `mobile/`; Mobile van la luong doc lap.
+- Rui ro con lai: Can UAT Web bang hai tai khoan de xac nhan avatar nhom va sticker local sau refresh; history/media Tinode cu van khong tu dong phuc hoi neu chua migration.
+- Viec tiep theo: UAT Web va rollback ve `previous` neu phat sinh loi; khong thao tac Mobile trong release nay.
+- Commit/PR: `be143f7` + `d7a9f15`; da push `origin` va `github`; PR chua tao.
+
 ## 2026-09-30-09 - Sua loi avatar, sticker local va font tren Web
 
 - Thoi gian: 2026-09-30 (Asia/Saigon)
