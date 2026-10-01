@@ -6,6 +6,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-01-09 - Chuan hoa Deployment Target iOS phu hop Expo SDK 57 (Yeu cau iOS 16.4+)
+
+- Thoi gian: 2026-10-01 (Asia/Saigon)
+- Loai: Sua loi | Mobile | iOS | CI/CD | Tai lieu
+- Trang thai: Hoan tat
+- Muc tieu: Khac phuc loi `Install CocoaPods dependencies` that bai tren Codemagic do cac package Expo SDK 57 (`expo-audio`, `expo-camera`, `expo-constants`, `EXConstants.podspec`) quy dinh toi thieu `:ios => '16.4'`, khong the link xuong 15.1.
+- Pham vi: `mobile/app.json`, `docs/CHANGELOG.md`.
+- File da thay doi: `mobile/app.json`, `docs/CHANGELOG.md`.
+- Noi dung: Go bo `deploymentTarget: 15.1` khoi `mobile/app.json` de de Cocoapods autolinking su dung target chuan cua Expo SDK 57 (iOS 16.4+). Giu nguyen lenh dong goi `cp -a` va `zip -qry` trong `codemagic.yaml` de bao toan symlink dynamic framework.
+- Quyet dinh ky thuat: Toan bo he sinh thai Expo SDK 57 / React Native 0.86 da nang muc ho tro toi thieu len iOS 16.4 (Swift 5.9). iPhone 6s chi dung lai o iOS 15.8.4 nen khong the tuong thich ve mat runtime voi Expo 57; viec ep target xuong 15.1 khien autolinking bo qua toan bo cac pod Expo gay fail build. De ung dung hoat dong on dinh, he thong tuan theo chuan iOS 16.4+ va kiem thu tren cac thiet bi ho tro iOS 16 tro len (iPhone 8 / X / 11 tro len).
+- Database/API/cau hinh: Khong co thay doi database hay API backend.
+- Kiem thu: Da chay `npm run typecheck` dat; `npm test` dat 34 file/144 test; `npm run lint` dat 0 loi; `git diff --check` dat.
+- Rui ro con lai: Thiet bi iOS duoi 16.4 (nhu iPhone 6s, 7) khong the chay ban build cua Expo SDK 57; can dung thiet bi chay iOS 16.4+ de test.
+- Viec tiep theo: Commit va day len GitHub ca `fix/full-audit-regressions` va `master`.
+
 ## 2026-10-01-08 - Khac phuc vang app khoi dong tren iPhone 6s / iOS 15 (Symlink IPA va Deployment Target)
 
 - Thoi gian: 2026-10-01 (Asia/Saigon)
