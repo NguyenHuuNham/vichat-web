@@ -596,8 +596,11 @@ test('keeps local font fallbacks and renders a green indicator only for online p
   assert.match(appSource, /isAccountOnline\(activeProfileContact\) && <i className="fa-solid fa-circle">/);
 });
 
-test('allows Account avatar CDN hosts through production image CSP', () => {
+test('allows Account and S3 media CDN hosts through production CSP', () => {
   assert.match(productionNginxSource, /img-src[^;]*https:\/\/chatmgt\.gonplatform\.com/);
+  assert.match(productionNginxSource, /img-src[^;]*https:\/\/s3\.gonapp\.net/);
+  assert.match(productionNginxSource, /media-src[^;]*https:\/\/s3\.gonapp\.net/);
+  assert.match(productionNginxSource, /connect-src[^;]*https:\/\/s3\.gonapp\.net/);
   assert.match(productionNginxSource, /img-src[^;]*https:\/\/static\.upgo\.vn/);
   assert.match(productionNginxSource, /img-src[^;]*https:\/\/upstart\.vn/);
 });

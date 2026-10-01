@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-01-13 - Cho phep CSP tai media S3 qua redirect
+
+- Thoi gian: 2026-10-01 14:45 (Asia/Saigon)
+- Loai: Sua loi | Web | Van hanh | Bao mat | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Hien thi lai anh S3 trong ChatUI production sau khi endpoint Chatmgt redirect sang host S3 thuc te.
+- Pham vi: Chi ChatUI Web va CSP Nginx production; khong sua, build hoac deploy Mobile.
+- File da thay doi: `infrastructure/production/nginx.conf`, `src/features/chat/services/chatManagementService.test.js`, `docs/CHANGELOG.md`.
+- Noi dung: Them `https://s3.gonapp.net` vao `img-src`, `media-src` va `connect-src`. Probe production cho thay object anh van tra HTTP 200 va bytes PNG hop le; loi con lai la trinh duyet bi CSP chan host sau redirect.
+- Quyet dinh ky thuat: Giu `s3.upgo.vn` de tuong thich voi cau hinh cu, dong thoi cho phep host dang duoc `MINIO_PUBLIC_DOMAIN` production su dung; khong dua presigned URL hoac credential vao source.
+- Database/API/cau hinh: Khong doi database/API; chi cap nhat allowlist CSP va regression test.
+- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js src/features/chat/services/chatMediaService.test.js` dat 75/75; `npm run test:frontend -- --test-concurrency=1` dat 457/457; `npm run build:production` dat; `npx oxlint src` dat, chi con 2 warning legacy tai `src/App.jsx`; probe S3 production tra HTTP 200, `Content-Type: image/png`, magic bytes PNG.
+- Rui ro con lai: Can hard refresh/UAT tren browser production sau deploy; full lint repository van co loi Mobile san co tai `mobile/src/components/TypingIndicator.tsx:9`, khong sua theo pham vi Web.
+- Viec tiep theo: Commit, push ca `github` va `origin`, deploy lai chi service `chat`, sau do verify public CSP va container health.
+- Commit/PR: Chua tao
+
 ## 2026-10-01-12 - Sua preview anh S3 trong muc Anh, file va lien ket
 
 - Thoi gian: 2026-10-01 14:13 (Asia/Saigon)
