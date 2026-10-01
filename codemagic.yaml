@@ -48,9 +48,9 @@ workflows:
           mkdir -p build/ios/ipa/Payload
           APP_PATH="$(find build/Build/Products/Release-iphoneos -name '*.app' -maxdepth 1 -print -quit)"
           test -n "$APP_PATH"
-          cp -R "$APP_PATH" build/ios/ipa/Payload/
+          cp -a "$APP_PATH" build/ios/ipa/Payload/
           cd build/ios/ipa
-          zip -qr ViChat.ipa Payload
+          zip -qry ViChat.ipa Payload
           rm -rf Payload
           echo "Build completed successfully! ViChat.ipa generated in build/ios/ipa/"
     artifacts:

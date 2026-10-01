@@ -6,6 +6,24 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-01-08 - Khac phuc vang app khoi dong tren iPhone 6s / iOS 15 (Symlink IPA va Deployment Target)
+
+- Thoi gian: 2026-10-01 (Asia/Saigon)
+- Loai: Sua loi | Mobile | iOS | CI/CD | On dinh | Tai lieu
+- Trang thai: Hoan tat
+- Muc tieu: Khac phuc hien tuong app tu out/vang ngay sau khi cai dat va mo len tren iPhone 6s (chay iOS 15).
+- Pham vi: `codemagic.yaml`, `mobile/app.json`, `docs/CHANGELOG.md`.
+- File da thay doi: `codemagic.yaml`, `mobile/app.json`, `docs/CHANGELOG.md`.
+- Noi dung:
+  1. Chinh sua lenh dong goi IPA tren Codemagic tu `cp -R` va `zip -qr` sang `cp -a` va `zip -qry`. Flag `-y` la bat buoc de giu nguyen cac symbolic link ben trong cac dynamic framework nhu `hermesvm.framework`; neu thieu `-y`, dynamic linker (`dyld`) cua iOS khong the load binary framework dan den vang app ngay lap tuc.
+  2. Thiet lap ro rang `ios.deploymentTarget: "15.1"` trong `mobile/app.json` de dam bao tuong thich toi thieu voi iOS 15 tren chip Apple A9 cua iPhone 6s.
+  3. Huong dan chi tiet cach lay log crash `.ips` truc tiep tren iPhone va tren 3uTools/Sideloadly de xac dinh nguyen nhan ky thieu framework tu tool ky.
+- Quyet dinh ky thuat: Tren he dieu hanh macOS/iOS, cac bundle framework ben trong `Payload/*.app/Frameworks/` su dung symlink de tro toi version binary hien tai (`hermesvm -> Versions/Current/hermesvm`). Lenh `zip` mac dinh se pha huy symlink neu thieu tham so `-y`. Dong thoi, 3uTools co diem yeu la chi ky file binary chinh cua app ma khong ky de quy cac framework ben trong, dan den kernel iOS kill tien trinh do `CODESIGNING`.
+- Database/API/cau hinh: Khong co thay doi database hay API backend.
+- Kiem thu: Da chay `npm run typecheck` dat; `npm test` dat 34 file/144 test; `npm run lint` dat 0 loi; `git diff --check` dat.
+- Rui ro con lai: Can nguoi dung trigger build lai tren Codemagic voi code moi de nhan IPA chua symlink hop le, va dung Sideloadly hoac kiem tra log crash neu 3uTools ky thieu framework.
+- Viec tiep theo: Commit, day len GitHub tren ca `fix/full-audit-regressions` va `master`.
+
 ## 2026-10-01-07 - Phong ve crash startup Mobile iOS (WebRTC va Polyfill)
 
 - Thoi gian: 2026-10-01 (Asia/Saigon)
