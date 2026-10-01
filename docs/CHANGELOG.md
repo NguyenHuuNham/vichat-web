@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-10-01 14:13 (Asia/Saigon)
 - Loai: Sua loi | Web | Van hanh | Tai lieu
-- Trang thai: Dang thuc hien
+- Trang thai: Hoan tat; da push va deploy Web production, cho UAT S3
 - Muc tieu: Hien thi lai anh chat S3 trong cac muc noi dung dung chung ma khong phu thuoc vao viec doc response blob cross-origin bang JavaScript.
 - Pham vi: ChatUI Web, luong preview media va CSP production; khong sua, build hoac deploy Mobile.
 - File da thay doi: `src/features/chat/services/chatMediaService.js`, `src/features/chat/services/chatMediaService.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/chatManagementService.test.js`, `infrastructure/production/nginx.conf`.
 - Noi dung: Stable Chatmgt media reference duoc doi sang URL endpoint co xac thuc de trinh duyet tai truc tiep qua redirect sang S3; luong fetch blob van duoc giu cho media Tinode va thao tac tai file. Bo sung host Chatmgt vao `img-src` va `media-src`, them regression test cho URL va CSP.
 - Quyet dinh ky thuat: Tranh phu thuoc vao CORS response body cua S3 khi render thumbnail; quyen truy cap van do cookie/session tai Chatmgt kiem tra, con object URL presigned ngan han van giu cho luong API download.
 - Database/API/cau hinh: Khong thay doi database hoac hop dong API; chi cap nhat CSP cua Nginx production.
-- Kiem thu: `node --test src/features/chat/services/chatMediaService.test.js src/features/chat/services/chatManagementService.test.js` dat 75/75; `npm run test:frontend -- --test-concurrency=1` dat 457/457; `npm run build:production` dat; lint pham vi Web dat. `npm run lint` toan repository chua dat do loi san co ngoai pham vi tai `mobile/src/components/TypingIndicator.tsx:9`; khong sua Mobile.
-- Rui ro con lai: Can hard refresh va UAT bang tai khoan co media S3 de xac nhan cookie Chatmgt va redirect 302 trong trinh duyet production.
-- Viec tiep theo: Commit, push, deploy chi service `chat` qua hai SSH hop va kiem tra public CSP/media sau deploy.
-- Commit/PR: Chua tao
+- Kiem thu: `node --test src/features/chat/services/chatMediaService.test.js src/features/chat/services/chatManagementService.test.js` dat 75/75; `npm run test:frontend -- --test-concurrency=1` dat 457/457; `npm run build:production` dat; lint pham vi Web dat. `npm run lint` toan repository chua dat do loi san co ngoai pham vi tai `mobile/src/components/TypingIndicator.tsx:9`; khong sua Mobile. Production da build rieng service `chat`, `nginx -t` dat, container `chat` healthy/restart 0, public `/healthz` va Chatmgt health tra OK, CSP public da cho phep Chatmgt media; container `chatmgt` giu nguyen ID.
+- Artifact/phat hanh: Archive `vichat-web-f71515d-20261001.tar.gz`, SHA-256 `D714A4374643612320487345F49597FAA81B7241538B913665BEA00ED6395135`; release `/opt/deploy/chat/releases/vichat-web-f71515d-20261001` dang la `current`, `previous` tro `/opt/deploy/chat/releases/vichat-web-621c603-20261001`; chi recreate service `chat` qua hai SSH hop.
+- Rui ro con lai: Can hard refresh va UAT bang tai khoan co media S3 de xac nhan cookie Chatmgt va redirect 302 trong trinh duyet production; chua co browser session cua nguoi dung de click/xac nhan thumbnail truc tiep.
+- Viec tiep theo: UAT Web bang tai khoan co anh S3; rollback ve `previous` neu phat sinh loi.
+- Commit/PR: `f71515d` (source Web); da push `github` va `origin`
 
 ## 2026-10-01-11 - Phong ve KeyChainException tren iOS Simulator / Appetize.io (Fallback AsyncStorage)
 
