@@ -582,8 +582,8 @@ test('Tinode offline observations never fabricate a last-seen timestamp on the v
 });
 
 test('keeps local font fallbacks and renders a green indicator only for online presence', () => {
-  assert.match(stylesSource, /font-family:\s*"Inter",\s*-apple-system,\s*BlinkMacSystemFont,\s*"Segoe UI",\s*Roboto,\s*"Helvetica Neue",\s*Arial,\s*sans-serif/);
-  assert.match(legacyStylesSource, /font-family:\s*"Inter",\s*-apple-system,\s*BlinkMacSystemFont,\s*"Segoe UI",\s*Roboto,\s*"Helvetica Neue",\s*Arial,\s*sans-serif/);
+  assert.match(stylesSource, /font-family:\s*"Segoe UI", "Noto Sans", "Helvetica Neue", Arial, sans-serif/);
+  assert.match(legacyStylesSource, /font-family:\s*"Segoe UI", "Noto Sans", "Helvetica Neue", Arial, sans-serif/);
   assert.match(managementStylesSource, /--mgmt-font-body:\s*Inter, "Segoe UI", sans-serif/);
   assert.match(rootAppSource, /fontFamily:\s*'system-ui, sans-serif'/);
   assert.doesNotMatch(indexSource, /fonts\.googleapis\.com/);
