@@ -33,10 +33,11 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Noi dung: Bo sung ban dich cho modal, trang thai realtime/dang nhap, nhom, thu hoi/sua tin, file/voice/sticker/poll, Workspace va Cloud; chuan hoa chuoi loi de khong quay ve tieng Viet khi chon English; giu `Dich tro chuyen` o trang thai chua kha dung de lam o buoc ke tiep.
 - Quyet dinh ky thuat: Dung translator Mobile ket hop catalog dung chung voi catalog Mobile, luu lua chon `vi`/`en` trong AsyncStorage va dung locale `vi-VN`/`en-US` cho ngay gio; du lieu nguoi dung va noi dung tin nhan khong bi dich tu dong.
 - Database/API/cau hinh: Khong co migration, endpoint hoac thay doi cau hinh backend.
-- Kiem thu: Da chay `npm test -- --reporter=dot --maxWorkers=1` (34 file, 144 test) dat 144/144; `npm run typecheck` dat; `npm run lint` dat; `git diff --check` dat.
-- Rui ro con lai: Can xac minh UI English tren APK/emulator sau export; chuc nang dich noi dung tro chuyen chua trien khai theo yeu cau.
-- Viec tiep theo: Chay export va build APK tren o `D:`, smoke test Android, sau do moi bat dau luong dich tro chuyen.
-- Commit/PR: `d9f5a50`
+- Kiem thu: `npm test -- --reporter=dot --maxWorkers=1` dat 34 file/144 test; `npm run typecheck` dat; `npm run lint` dat; `npm run export` dat; `git diff --check` dat; Gradle `:app:assembleRelease --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a,x86_64 -x lintVitalRelease` dat `BUILD SUCCESSFUL`; APK da kiem tra bang `aapt`, `zipalign` va `apksigner` (APK Signature Scheme v2 hop le).
+- Artifact: `D:\vichat-build\vichat-mobile-bilingual-20261001\vichat-mobile-bilingual-1.0.38-arm64-x86_64.apk`, package `vn.upgo.vichat`, version `1.0.38`, `versionCode=39`, ABI `arm64-v8a,x86_64`, SHA-256 `640E42D17C26A353CBB7AC38B638B88A019005AD316158B7C24AADFCD61CFB5A`, signer `Android Debug` cho ban test noi bo.
+- Rui ro con lai: `adb devices` hien khong co thiet bi online nen chua cai/smoke test tren dien thoai hoac emulator trong lan nay; chuc nang dich noi dung tro chuyen chua trien khai theo yeu cau.
+- Viec tiep theo: Khi ADB co thiet bi, cai APK va UAT UI English; sau do moi bat dau luong dich noi dung tro chuyen.
+- Commit/PR: Source `d40d148`; artifact/build follow-up duoc ghi nhan trong lan lam viec nay.
 
 ## 2026-10-01-04 - Chot font readability tren Web
 
