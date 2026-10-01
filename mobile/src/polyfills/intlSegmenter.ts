@@ -34,15 +34,23 @@ class BasicSegmenter {
 }
 
 export function installIntlSegmenterPolyfill() {
-  const intl = globalThis.Intl as typeof Intl & { Segmenter?: unknown };
-  if (typeof intl?.Segmenter === 'function') return false;
+  try {
+    const intl = globalThis.Intl as typeof Intl & { Segmenter?: unknown };
+    if (typeof intl?.Segmenter === 'function') return false;
 
-  Object.defineProperty(intl, 'Segmenter', {
-    configurable: true,
-    writable: true,
-    value: BasicSegmenter,
-  });
-  return true;
+    Object.defineProperty(intl, 'Segmenter', {
+      configurable: true,
+      writable: true,
+      value: BasicSegmenter,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-installIntlSegmenterPolyfill();
+try {
+  installIntlSegmenterPolyfill();
+} catch {
+  // Ignored if Intl is frozen or polyfill is rejected
+}

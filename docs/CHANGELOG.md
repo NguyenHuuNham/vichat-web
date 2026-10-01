@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-01-07 - Phong ve crash startup Mobile iOS (WebRTC va Polyfill)
+
+- Thoi gian: 2026-10-01 (Asia/Saigon)
+- Loai: Sua loi | Mobile | iOS | On dinh | Tai lieu
+- Trang thai: Hoan tat
+- Muc tieu: Khac phuc nguy co crash vang app ngay khi khoi dong tren iOS do WebRTC module va polyfill khoi tao truoc khi render.
+- Pham vi: `mobile/src/components/MobileCallOverlay.tsx`, `mobile/src/polyfills/intlSegmenter.ts`, `docs/CHANGELOG.md`.
+- File da thay doi: `mobile/src/components/MobileCallOverlay.tsx`, `mobile/src/polyfills/intlSegmenter.ts`, `docs/CHANGELOG.md`.
+- Noi dung: Chuyen `RTCView` trong `MobileCallOverlay` sang dang lazy require trong `try...catch`, chi nap khi co cuoc goi video va co san module native; boc `try...catch` cho `installIntlSegmenterPolyfill` de tranh loi non-extensible object tren Hermes/iOS.
+- Quyet dinh ky thuat: `react-native-webrtc` co co che nem ngoai le ngay tai thoi diem import neu `WebRTCModule === null`. Viec import tinh tai `MobileCallOverlay` khien loi nay lan ra toan bo ung dung ngay khi `App.tsx` duoc parse, du chua co cuoc goi nao. Lazy-load component video giup app van khoi dong va hoat dong binh thuong.
+- Database/API/cau hinh: Khong co thay doi database hay API backend.
+- Kiem thu: Da chay `npm run typecheck` dat; `npm test -- --reporter=dot --maxWorkers=1` dat 144/144; `npm run lint` dat 0 loi; `git diff --check` dat.
+- Rui ro con lai: Can nguoi dung build lai tren Codemagic va xac nhan app mo thanh cong tren thiet bi that.
+- Viec tiep theo: Commit va day len GitHub tren ca `fix/full-audit-regressions` va `master`.
+- Commit/PR: `eb3461b`
+
 ## 2026-10-01-06 - Chuan hoa Codemagic workflow build iOS IPA cho tai khoan free
 
 - Thoi gian: 2026-10-01 (Asia/Saigon)

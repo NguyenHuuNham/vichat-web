@@ -1,13 +1,26 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Camera, CameraOff, Mic, MicOff, Phone, PhoneOff, SwitchCamera, Video } from 'lucide-react-native';
-import { RTCView } from 'react-native-webrtc';
+import type { RTCVideoViewProps } from 'react-native-webrtc';
 import { useCallStore } from '../store/callStore';
 import { ThemeColors, shadow } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { Avatar } from './Avatar';
 import { useThemePalette } from '../theme/useThemePalette';
 import { useI18n } from '../store/languageStore';
+
+let CachedRTCView: ComponentType<RTCVideoViewProps> | null = null;
+function getRTCView(): ComponentType<RTCVideoViewProps> | null {
+  if (!CachedRTCView) {
+    try {
+      const webrtc = require('react-native-webrtc');
+      CachedRTCView = webrtc.RTCView || null;
+    } catch {
+      CachedRTCView = null;
+    }
+  }
+  return CachedRTCView;
+}
 
 function formatDuration(startedAt: number, now: number) {
   const seconds = Math.max(0, Math.floor((now - startedAt) / 1000));
@@ -51,6 +64,7 @@ export function MobileCallOverlay() {
   }, [call, now]);
 
   if (!call) return null;
+  const RTCView = getRTCView();
   const remoteUrl = remoteStream?.toURL?.();
   const localUrl = localStream?.toURL?.();
   const incoming = call.phase === 'incoming';
@@ -58,8 +72,8 @@ export function MobileCallOverlay() {
   return (
     <View style={styles.overlay}>
       <View style={[styles.sheet, !call.audioOnly && styles.videoSheet]}>
-        {remoteUrl ? <RTCView streamURL={remoteUrl} objectFit="cover" style={call.audioOnly ? styles.audioRemote : styles.remoteVideo} /> : null}
-        {!call.audioOnly && localUrl && cameraEnabled ? <RTCView streamURL={localUrl} mirror objectFit="cover" style={styles.localVideo} /> : null}
+        {remoteUrl && RTCView ? <RTCView streamURL={remoteUrl} objectFit="cover" style={call.audioOnly ? styles.audioRemote : styles.remoteVideo} /> : null}
+        {!call.audioOnly && localUrl && cameraEnabled && RTCView ? <RTCView streamURL={localUrl} mirror objectFit="cover" style={styles.localVideo} /> : null}
         <View style={styles.scrim} />
         <View style={styles.content}>
           <View style={styles.topline}><Text style={styles.callType}><Video color="#fff" size={16} /> {call.audioOnly ? t('Gọi thoại') : t('Gọi video')}</Text><Text style={styles.status}>{status}</Text></View>
