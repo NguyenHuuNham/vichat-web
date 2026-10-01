@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-01-04 - Chot font readability tren Web
+
+- Thoi gian: 2026-10-01 10:30 (Asia/Saigon)
+- Loai: Sua loi | Web | UI | Kiem thu | Tai lieu
+- Trang thai: Dang phat hanh
+- Muc tieu: Hien thi tieng Viet va dau cau on dinh hon tren ChatUI Web production.
+- Pham vi: Chi ChatUI Web; khong sua, build hoac deploy Mobile.
+- File da thay doi: `src/index.css`, `src/styles/index.css`, `src/features/chat/services/chatManagementService.test.js`, `dist/index.html`.
+- Noi dung: Doi font fallback chung sang `Segoe UI`, `Noto Sans`, `Helvetica Neue`, Arial; tat font synthesis de tranh glyph tu tao lam sai dau; cap nhat test va manifest bundle production.
+- Quyet dinh ky thuat: Uu tien font he thong co san cho luong ChatUI de giam loi render tieng Viet; giu cac asset Inter self-hosted cho cac surface van khai bao Inter, khong tao request font tu xa.
+- Database/API/cau hinh: Khong co migration, API hoac bien moi truong moi.
+- Kiem thu: `npm run test:frontend -- --test-concurrency=1` dat 456/456; `npm run build:production` dat; `git diff --check` dat. `npm run lint` bi chan tai `mobile/src/components/TypingIndicator.tsx:9` do loi Hook ngoai pham vi Web; khong sua Mobile.
+- Rui ro con lai: Chua xac minh bundle va health tren production cho den khi hoan tat SSH deploy.
+- Viec tiep theo: Push commit `b95b50a`, truyen release qua jump host `ubuntu@103.74.122.206` vao `ubuntu@192.168.80.20`, chi recreate service Web `chat`, sau do kiem tra public bundle/health.
+- Commit/PR: `b95b50a` / docs follow-up dang cho tao.
+
 ## 2026-10-01-03 - Chan sender FCM banner tren Mobile
 
 - Thoi gian: 2026-10-01 (Asia/Saigon)
