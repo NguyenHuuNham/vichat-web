@@ -12,6 +12,7 @@ import { useThemePalette } from '../theme/useThemePalette';
 import { formatMessageTime } from '../utils/timeFormatting';
 import { identitiesOverlap } from '../utils/identity';
 import { pollCanViewerLock, pollIsClosed, pollOptionVoteCounts, pollViewerVote } from '../utils/poll';
+import { useI18n } from '../store/languageStore';
 
 function renderMentionText(text: string, mentions: any[] = [], outgoing = false, palette: ThemeColors) {
   const styles = createStyles(palette);
@@ -40,10 +41,11 @@ interface Props {
 export const MessageBubble = memo(function MessageBubble({ message, onLongPress, onShowEditHistory, onPollVote, onPollAddOption, onPollLock, viewerIdentities = [], groupMembers = [], isGroup = false }: Props) {
   const palette = useThemePalette();
   const styles = createStyles(palette);
+  const { t } = useI18n();
   if (message.type === 'system') return <Text style={styles.system}>{message.text}</Text>;
   if (message.type === 'call' && message.call) {
     const incomingGroupProfile = getGroupSenderProfile(message, groupMembers, isGroup);
-    return <View style={[styles.line, message.sender === 'outgoing' ? styles.outgoingLine : styles.incomingLine]}>{incomingGroupProfile ? <SenderMeta palette={palette} profile={incomingGroupProfile} /> : null}<View style={[styles.bubble, message.sender === 'outgoing' ? styles.outgoing : styles.incoming]}><View style={styles.callHistory}><View style={styles.callIcon}>{message.call.audioOnly ? <Phone color={message.sender === 'outgoing' ? '#fff' : palette.accent} size={19} /> : <Video color={message.sender === 'outgoing' ? '#fff' : palette.accent} size={19} />}</View><View style={{ flex: 1 }}><Text style={[styles.text, message.sender === 'outgoing' && styles.outgoingText]}>{message.text}</Text><Text style={[styles.fileMeta, message.sender === 'outgoing' && styles.outgoingSub]}>{message.call.audioOnly ? 'Cuộc gọi thoại' : 'Cuộc gọi video'}</Text></View></View><View style={styles.meta}><Text style={[styles.time, message.sender === 'outgoing' && styles.outgoingSub]}>{formatMessageTime(message.createdAt || message.time)}</Text></View></View></View>;
+    return <View style={[styles.line, message.sender === 'outgoing' ? styles.outgoingLine : styles.incomingLine]}>{incomingGroupProfile ? <SenderMeta palette={palette} profile={incomingGroupProfile} /> : null}<View style={[styles.bubble, message.sender === 'outgoing' ? styles.outgoing : styles.incoming]}><View style={styles.callHistory}><View style={styles.callIcon}>{message.call.audioOnly ? <Phone color={message.sender === 'outgoing' ? '#fff' : palette.accent} size={19} /> : <Video color={message.sender === 'outgoing' ? '#fff' : palette.accent} size={19} />}</View><View style={{ flex: 1 }}><Text style={[styles.text, message.sender === 'outgoing' && styles.outgoingText]}>{message.text}</Text><Text style={[styles.fileMeta, message.sender === 'outgoing' && styles.outgoingSub]}>{message.call.audioOnly ? t('Cuộc gọi thoại') : t('Cuộc gọi video')}</Text></View></View><View style={styles.meta}><Text style={[styles.time, message.sender === 'outgoing' && styles.outgoingSub]}>{formatMessageTime(message.createdAt || message.time)}</Text></View></View></View>;
   }
   const outgoing = message.sender === 'outgoing';
   const incomingGroupProfile = getGroupSenderProfile(message, groupMembers, isGroup);
@@ -57,26 +59,26 @@ export const MessageBubble = memo(function MessageBubble({ message, onLongPress,
       {incomingGroupProfile ? <SenderMeta palette={palette} profile={incomingGroupProfile} /> : null}
       <Pressable onLongPress={onLongPress} delayLongPress={350} style={[styles.bubble, outgoing ? styles.outgoing : styles.incoming, mediaOnly && styles.mediaBubble, message.pending && styles.pending, message.failed && styles.failed]}>
         {message.replyTo && !message.recalled ? <View style={[styles.reply, outgoing && styles.replyOutgoing]}><Text numberOfLines={1} style={[styles.replyName, outgoing && styles.outgoingText]}>{message.replyTo.senderName}</Text><Text numberOfLines={1} style={[styles.replyText, outgoing && styles.outgoingSub]}>{message.replyTo.text}</Text></View> : null}
-        {message.sticker && (message.image || message.file?.url) ? <ProtectedMessageImage palette={palette} uri={message.image || message.file?.url || ''} file={message.file} outgoing={outgoing} sticker /> : null}
-        {message.image && !message.sticker ? <ProtectedMessageImage palette={palette} uri={message.image} file={message.file} outgoing={outgoing} /> : null}
-        {audio ? <AudioMessage palette={palette} file={message.file!} outgoing={outgoing} /> : null}
+        {message.sticker && (message.image || message.file?.url) ? <ProtectedMessageImage palette={palette} t={t} uri={message.image || message.file?.url || ''} file={message.file} outgoing={outgoing} sticker /> : null}
+        {message.image && !message.sticker ? <ProtectedMessageImage palette={palette} t={t} uri={message.image} file={message.file} outgoing={outgoing} /> : null}
+        {audio ? <AudioMessage palette={palette} t={t} file={message.file!} outgoing={outgoing} /> : null}
         {message.file && !message.image && !message.sticker && !audio ? (
-          <Pressable style={styles.file} onPress={() => openAttachment(message.file!)}>
+          <Pressable style={styles.file} onPress={() => openAttachment(message.file!, t)}>
             <View style={styles.fileIcon}><FileText color={outgoing ? '#fff' : palette.accent} size={20} /></View>
-            <View style={{ flex: 1 }}><Text numberOfLines={1} style={[styles.fileName, outgoing && styles.outgoingText]}>{message.file.name}</Text><Text style={[styles.fileMeta, outgoing && styles.outgoingSub]}>{message.file.mime} · {message.file.size ? `${Math.round(message.file.size / 1024)} KB` : 'Tệp'}</Text></View>
+            <View style={{ flex: 1 }}><Text numberOfLines={1} style={[styles.fileName, outgoing && styles.outgoingText]}>{message.file.name}</Text><Text style={[styles.fileMeta, outgoing && styles.outgoingSub]}>{message.file.mime} · {message.file.size ? `${Math.round(message.file.size / 1024)} KB` : t('Tệp')}</Text></View>
           </Pressable>
         ) : null}
-        {message.poll ? <PollCard palette={palette} message={message} outgoing={outgoing} onVote={onPollVote} onAddOption={onPollAddOption} onLock={onPollLock} viewerIdentities={viewerIdentities} groupMembers={groupMembers} /> : null}
-        {message.pinned ? <View style={styles.pinnedLabel}><Pin color={outgoing ? '#BCEBFF' : palette.accent} size={12} /><Text style={[styles.pinnedText, outgoing && styles.outgoingSub]}>Đã ghim</Text></View> : null}
-        {message.edited ? <Pressable onPress={() => onShowEditHistory(message)} style={styles.editedLabel}><Pencil color={outgoing ? '#D9F2FF' : palette.accent} size={11} /><Text style={[styles.editedLabelText, outgoing && styles.outgoingSub]}>Đã chỉnh sửa</Text></Pressable> : null}
+        {message.poll ? <PollCard palette={palette} t={t} message={message} outgoing={outgoing} onVote={onPollVote} onAddOption={onPollAddOption} onLock={onPollLock} viewerIdentities={viewerIdentities} groupMembers={groupMembers} /> : null}
+        {message.pinned ? <View style={styles.pinnedLabel}><Pin color={outgoing ? '#BCEBFF' : palette.accent} size={12} /><Text style={[styles.pinnedText, outgoing && styles.outgoingSub]}>{t('Đã ghim')}</Text></View> : null}
+        {message.edited ? <Pressable onPress={() => onShowEditHistory(message)} style={styles.editedLabel}><Pencil color={outgoing ? '#D9F2FF' : palette.accent} size={11} /><Text style={[styles.editedLabelText, outgoing && styles.outgoingSub]}>{t('Đã chỉnh sửa')}</Text></Pressable> : null}
         {message.text && !message.recalled && !message.poll ? <Text style={[styles.text, outgoing && styles.outgoingText]}>{renderMentionText(message.text, message.mentions, outgoing, palette)}</Text> : null}
-        {!outgoing && message.grounded ? <View style={styles.grounded}><CheckCircle2 color={palette.online} size={13} /><Text style={styles.groundedText}>Đã đối chiếu nguồn</Text></View> : null}
-        {!outgoing && message.sources?.length ? <View style={styles.sources}><View style={styles.sourcesTitle}><BookOpen color={palette.accent} size={14} /><Text style={styles.sourcesTitleText}>Nguồn tham khảo</Text></View>{message.sources.map((source, index) => <View key={`${source.title || source.file_name || index}`} style={styles.sourceCard}><Text style={styles.sourceIndex}>{index + 1}</Text><View style={{ flex: 1 }}><Text numberOfLines={1} style={styles.sourceName}>{source.title || source.file_name || `Nguồn ${index + 1}`}</Text>{source.snippet ? <Text numberOfLines={2} style={styles.sourceSnippet}>{source.snippet}</Text> : null}</View></View>)}</View> : null}
-        {message.recalled ? <View style={styles.recalled}><RotateCcw color={outgoing ? '#fff' : palette.muted} size={14} /><Text style={[styles.recalledText, outgoing && styles.outgoingText]}>Tin nhắn đã được thu hồi</Text></View> : null}
+        {!outgoing && message.grounded ? <View style={styles.grounded}><CheckCircle2 color={palette.online} size={13} /><Text style={styles.groundedText}>{t('Đã đối chiếu nguồn')}</Text></View> : null}
+        {!outgoing && message.sources?.length ? <View style={styles.sources}><View style={styles.sourcesTitle}><BookOpen color={palette.accent} size={14} /><Text style={styles.sourcesTitleText}>{t('Nguồn tham khảo')}</Text></View>{message.sources.map((source, index) => <View key={`${source.title || source.file_name || index}`} style={styles.sourceCard}><Text style={styles.sourceIndex}>{index + 1}</Text><View style={{ flex: 1 }}><Text numberOfLines={1} style={styles.sourceName}>{source.title || source.file_name || `${t('Nguồn')} ${index + 1}`}</Text>{source.snippet ? <Text numberOfLines={2} style={styles.sourceSnippet}>{source.snippet}</Text> : null}</View></View>)}</View> : null}
+        {message.recalled ? <View style={styles.recalled}><RotateCcw color={outgoing ? '#fff' : palette.muted} size={14} /><Text style={[styles.recalledText, outgoing && styles.outgoingText]}>{t('Tin nhắn đã được thu hồi')}</Text></View> : null}
         <View style={[styles.meta, mediaOnly && styles.mediaMeta]}><Text style={[styles.time, outgoing && !mediaOnly && styles.outgoingSub, mediaOnly && styles.mediaMetaText]}>{formatMessageTime(message.createdAt || message.time)}</Text>{outgoing ? <Text style={[styles.receipt, message.deliveryStatus === 'read' && styles.receiptRead]}>{receipt}</Text> : null}</View>
       </Pressable>
       {message.reactions && Object.keys(message.reactions).length > 0 ? <View style={[styles.reactions, outgoing && styles.reactionsOut]}><Text style={styles.reactionText}>{Object.entries(message.reactions).map(([emoji, count]) => `${emoji} ${count}`).join('  ')}</Text></View> : null}
-      {message.failed ? <Text style={styles.failedText}>Chưa gửi · chạm để thử lại</Text> : null}
+      {message.failed ? <Text style={styles.failedText}>{t('Chưa gửi · chạm để thử lại')}</Text> : null}
     </View>
   );
 }, (previous, next) => previous.message === next.message && previous.isGroup === next.isGroup && previous.groupMembers === next.groupMembers);
@@ -97,7 +99,7 @@ function SenderMeta({ palette, profile }: { palette: ThemeColors; profile: { nam
   return <View style={styles.senderMeta}><Avatar name={profile.name} uri={profile.avatar} size={25} /><Text numberOfLines={1} style={styles.senderName}>{profile.name}</Text></View>;
 }
 
-function PollCard({ palette, message, outgoing, onVote, onAddOption, onLock, viewerIdentities, groupMembers }: { palette: ThemeColors; message: ChatMessage; outgoing: boolean; onVote?: (message: ChatMessage, optionIds: string[]) => void; onAddOption?: (message: ChatMessage, optionText: string) => void; onLock?: (message: ChatMessage) => void; viewerIdentities: string[]; groupMembers: ConversationMember[] }) {
+function PollCard({ palette, t, message, outgoing, onVote, onAddOption, onLock, viewerIdentities, groupMembers }: { palette: ThemeColors; t: (value: string) => string; message: ChatMessage; outgoing: boolean; onVote?: (message: ChatMessage, optionIds: string[]) => void; onAddOption?: (message: ChatMessage, optionText: string) => void; onLock?: (message: ChatMessage) => void; viewerIdentities: string[]; groupMembers: ConversationMember[] }) {
   const styles = createStyles(palette);
   const poll = message.poll;
   const [selected, setSelected] = useState<string[]>([]);
@@ -116,7 +118,7 @@ function PollCard({ palette, message, outgoing, onVote, onAddOption, onLock, vie
       : [optionId]);
   };
   const submitOption = () => { const value = optionText.trim(); if (!value || !onAddOption) return; onAddOption(message, value); setOptionText(''); };
-  return <View style={[styles.poll, outgoing && styles.pollOutgoing]}><View style={styles.pollHeading}><Text style={[styles.pollLabel, outgoing && styles.outgoingSub]}>Bình chọn</Text>{closed ? <Text style={[styles.pollClosed, outgoing && styles.outgoingSub]}>Đã đóng</Text> : null}</View><Text style={[styles.pollQuestion, outgoing && styles.outgoingText]}>{poll.question}</Text>{poll.options.map(option => { const selectedOption = selected.includes(option.id); const count = showResults ? counts[option.id] || 0 : 0; const percent = showResults && total ? Math.round((count / total) * 100) : 0; return <Pressable key={option.id} onPress={() => toggle(option.id)} style={[styles.pollOption, selectedOption && styles.pollOptionSelected, outgoing && styles.pollOptionOutgoing]}><View style={styles.pollOptionTop}><View style={[styles.pollRadio, selectedOption && styles.pollRadioSelected]}>{selectedOption ? <Check color="#fff" size={12} /> : null}</View><Text style={[styles.pollOptionText, outgoing && styles.outgoingText]}>{option.text}</Text>{showResults ? <Text style={[styles.pollCount, outgoing && styles.outgoingSub]}>{count}</Text> : null}</View><View style={styles.pollTrack}><View style={[styles.pollProgress, { width: `${percent}%` as any }, outgoing && styles.pollProgressOutgoing]} /></View></Pressable>; })}{!showResults ? <Text style={[styles.pollHint, outgoing && styles.outgoingSub]}>Kết quả sẽ hiện sau khi bạn bình chọn</Text> : null}{poll.settings.allowAddOptions && !closed && onAddOption ? <View style={styles.pollAddOption}><TextInput value={optionText} onChangeText={setOptionText} maxLength={120} placeholder="Thêm phương án" placeholderTextColor={palette.muted} style={styles.pollOptionInput} /><Pressable onPress={submitOption} disabled={!optionText.trim()} style={[styles.pollIconButton, !optionText.trim() && styles.pollSubmitDisabled]}><Plus color="#fff" size={16} /></Pressable></View> : null}<View style={styles.pollActions}>{onVote ? <Pressable disabled={closed || selected.length === 0} onPress={() => onVote(message, selected)} style={[styles.pollSubmit, (closed || selected.length === 0) && styles.pollSubmitDisabled]}><Text style={styles.pollSubmitText}>{closed ? 'Bình chọn đã đóng' : 'Gửi lựa chọn'}</Text></Pressable> : null}{canLock ? <Pressable onPress={() => onLock?.(message)} style={styles.pollLock}><LockKeyhole color={palette.warning} size={15} /><Text style={styles.pollLockText}>Khóa</Text></Pressable> : null}</View></View>;
+  return <View style={[styles.poll, outgoing && styles.pollOutgoing]}><View style={styles.pollHeading}><Text style={[styles.pollLabel, outgoing && styles.outgoingSub]}>{t('Bình chọn')}</Text>{closed ? <Text style={[styles.pollClosed, outgoing && styles.outgoingSub]}>{t('Đã đóng')}</Text> : null}</View><Text style={[styles.pollQuestion, outgoing && styles.outgoingText]}>{poll.question}</Text>{poll.options.map(option => { const selectedOption = selected.includes(option.id); const count = showResults ? counts[option.id] || 0 : 0; const percent = showResults && total ? Math.round((count / total) * 100) : 0; return <Pressable key={option.id} onPress={() => toggle(option.id)} style={[styles.pollOption, selectedOption && styles.pollOptionSelected, outgoing && styles.pollOptionOutgoing]}><View style={styles.pollOptionTop}><View style={[styles.pollRadio, selectedOption && styles.pollRadioSelected]}>{selectedOption ? <Check color="#fff" size={12} /> : null}</View><Text style={[styles.pollOptionText, outgoing && styles.outgoingText]}>{option.text}</Text>{showResults ? <Text style={[styles.pollCount, outgoing && styles.outgoingSub]}>{count}</Text> : null}</View><View style={styles.pollTrack}><View style={[styles.pollProgress, { width: `${percent}%` as any }, outgoing && styles.pollProgressOutgoing]} /></View></Pressable>; })}{!showResults ? <Text style={[styles.pollHint, outgoing && styles.outgoingSub]}>{t('Kết quả sẽ hiện sau khi bạn bình chọn')}</Text> : null}{poll.settings.allowAddOptions && !closed && onAddOption ? <View style={styles.pollAddOption}><TextInput value={optionText} onChangeText={setOptionText} maxLength={120} placeholder={t('Thêm phương án')} placeholderTextColor={palette.muted} style={styles.pollOptionInput} /><Pressable onPress={submitOption} disabled={!optionText.trim()} style={[styles.pollIconButton, !optionText.trim() && styles.pollSubmitDisabled]}><Plus color="#fff" size={16} /></Pressable></View> : null}<View style={styles.pollActions}>{onVote ? <Pressable disabled={closed || selected.length === 0} onPress={() => onVote(message, selected)} style={[styles.pollSubmit, (closed || selected.length === 0) && styles.pollSubmitDisabled]}><Text style={styles.pollSubmitText}>{closed ? t('Bình chọn đã đóng') : t('Gửi lựa chọn')}</Text></Pressable> : null}{canLock ? <Pressable onPress={() => onLock?.(message)} style={styles.pollLock}><LockKeyhole color={palette.warning} size={15} /><Text style={styles.pollLockText}>{t('Khóa')}</Text></Pressable> : null}</View></View>;
 }
 
 function formatAudioDuration(durationMs = 0) {
@@ -124,7 +126,7 @@ function formatAudioDuration(durationMs = 0) {
   return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
 }
 
-function AudioMessage({ palette, file, outgoing }: { palette: ThemeColors; file: FileAttachment; outgoing: boolean }) {
+function AudioMessage({ palette, t, file, outgoing }: { palette: ThemeColors; t: (value: string) => string; file: FileAttachment; outgoing: boolean }) {
   const styles = createStyles(palette);
   const playerRef = useRef<AudioPlayer | null>(null);
   const subscriptionRef = useRef<{ remove: () => void } | null>(null);
@@ -143,7 +145,7 @@ function AudioMessage({ palette, file, outgoing }: { palette: ThemeColors; file:
   }, []);
 
   const handleStatus = (status: AudioStatus) => {
-    if (status.error) setError('Không phát được voice.');
+    if (status.error) setError(t('Không phát được voice.'));
     setLoading(!status.isLoaded && !status.error);
     setPlaying(Boolean(status.playing));
     setPosition(Math.round(Number(status.currentTime) * 1000) || 0);
@@ -181,7 +183,7 @@ function AudioMessage({ palette, file, outgoing }: { palette: ThemeColors; file:
       subscriptionRef.current = player.addListener('playbackStatusUpdate', handleStatus);
       player.play();
     } catch {
-      setError('Không phát được voice.');
+      setError(t('Không phát được voice.'));
     } finally {
       if (playerRef.current?.isLoaded) setLoading(false);
     }
@@ -189,17 +191,17 @@ function AudioMessage({ palette, file, outgoing }: { palette: ThemeColors; file:
 
   const progress = duration > 0 ? Math.min(1, Math.max(0, position / duration)) : 0;
   return <View style={[styles.audioMessage, outgoing && styles.audioMessageOutgoing]}>
-    <Pressable accessibilityLabel={playing ? 'Tạm dừng voice' : 'Phát voice'} onPress={() => void togglePlayback()} style={styles.audioButton}>
+    <Pressable accessibilityLabel={playing ? t('Tạm dừng voice') : t('Phát voice')} onPress={() => void togglePlayback()} style={styles.audioButton}>
       {loading ? <ActivityIndicator color={outgoing ? '#fff' : palette.accent} size="small" /> : playing ? <Pause color={outgoing ? '#fff' : palette.accent} size={17} /> : <Play color={outgoing ? '#fff' : palette.accent} size={17} />}
     </Pressable>
     <View style={styles.audioBody}>
       <View style={styles.audioTrack}><View style={[styles.audioProgress, { width: `${progress * 100}%` as any }, outgoing && styles.audioProgressOutgoing]} /></View>
-      <Text style={[styles.audioMeta, outgoing && styles.outgoingSub]}>{error || formatAudioDuration(duration) || 'Voice'}</Text>
+      <Text style={[styles.audioMeta, outgoing && styles.outgoingSub]}>{error || formatAudioDuration(duration) || t('Voice')}</Text>
     </View>
   </View>;
 }
 
-function ProtectedMessageImage({ palette, uri, file, outgoing, sticker = false }: { palette: ThemeColors; uri: string; file?: FileAttachment; outgoing: boolean; sticker?: boolean }) {
+function ProtectedMessageImage({ palette, t, uri, file, outgoing, sticker = false }: { palette: ThemeColors; t: (value: string) => string; uri: string; file?: FileAttachment; outgoing: boolean; sticker?: boolean }) {
   const styles = createStyles(palette);
   const [attempt, setAttempt] = useState(0);
   const [mediaVersion, setMediaVersion] = useState(() => tinodeClient.getMediaVersion(uri));
@@ -226,13 +228,13 @@ function ProtectedMessageImage({ palette, uri, file, outgoing, sticker = false }
 
   const height = Math.max(150, Math.min(330, 250 / Math.max(0.55, Math.min(2.2, ratio))));
   if (sticker) {
-    if (failed) return <Pressable onPress={() => setAttempt(value => value + 1)} style={styles.stickerState}><ImageOff color={outgoing ? '#fff' : palette.accent} size={18} /><Text style={[styles.stickerStateText, outgoing && styles.outgoingText]}>Không tải được sticker</Text></Pressable>;
-    if (!source) return <View style={styles.stickerState}><ActivityIndicator color={outgoing ? '#fff' : palette.accent} /><Text style={[styles.stickerStateText, outgoing && styles.outgoingText]}>Đang tải sticker...</Text></View>;
+    if (failed) return <Pressable onPress={() => setAttempt(value => value + 1)} style={styles.stickerState}><ImageOff color={outgoing ? '#fff' : palette.accent} size={18} /><Text style={[styles.stickerStateText, outgoing && styles.outgoingText]}>{t('Không tải được sticker')}</Text></Pressable>;
+    if (!source) return <View style={styles.stickerState}><ActivityIndicator color={outgoing ? '#fff' : palette.accent} /><Text style={[styles.stickerStateText, outgoing && styles.outgoingText]}>{t('Đang tải sticker...')}</Text></View>;
     return <Image source={{ uri: source }} style={styles.stickerImage} resizeMode="contain" />;
   }
   const attachment = file || { name: 'hình-ảnh.jpg', mime: 'image/jpeg', size: 0, url: uri };
-  if (failed) return <Pressable onPress={() => setAttempt(value => value + 1)} style={styles.imageState}><ImageOff color={outgoing ? '#fff' : palette.accent} size={25} /><Text style={[styles.imageStateText, outgoing && styles.outgoingText]}>Không tải được ảnh · chạm để thử lại</Text></Pressable>;
-  if (!source) return <View style={styles.imageState}><ActivityIndicator color={outgoing ? '#fff' : palette.accent} /><Text style={[styles.imageStateText, outgoing && styles.outgoingText]}>Đang tải ảnh...</Text></View>;
+  if (failed) return <Pressable onPress={() => setAttempt(value => value + 1)} style={styles.imageState}><ImageOff color={outgoing ? '#fff' : palette.accent} size={25} /><Text style={[styles.imageStateText, outgoing && styles.outgoingText]}>{t('Không tải được ảnh · chạm để thử lại')}</Text></Pressable>;
+  if (!source) return <View style={styles.imageState}><ActivityIndicator color={outgoing ? '#fff' : palette.accent} /><Text style={[styles.imageStateText, outgoing && styles.outgoingText]}>{t('Đang tải ảnh...')}</Text></View>;
   return (
     <>
       <Pressable onPress={() => setViewerOpen(true)}><Image source={{ uri: source }} style={[styles.image, { height }]} resizeMode="cover" onLoad={event => { const { width, height: loadedHeight } = event.nativeEvent.source; if (width && loadedHeight) setRatio(width / loadedHeight); }} /></Pressable>
@@ -240,16 +242,16 @@ function ProtectedMessageImage({ palette, uri, file, outgoing, sticker = false }
         <View style={styles.viewer}>
           <Image source={{ uri: source }} style={styles.viewerImage} resizeMode="contain" />
           <Pressable onPress={() => setViewerOpen(false)} style={[styles.viewerButton, styles.viewerClose]}><X color="#fff" size={23} /></Pressable>
-          <Pressable onPress={() => openAttachment(attachment)} style={[styles.viewerButton, styles.viewerDownload]}><Download color="#fff" size={22} /></Pressable>
+          <Pressable onPress={() => openAttachment(attachment, t)} style={[styles.viewerButton, styles.viewerDownload]}><Download color="#fff" size={22} /></Pressable>
         </View>
       </Modal>
     </>
   );
 }
 
-function openAttachment(file: FileAttachment) {
+function openAttachment(file: FileAttachment, t: (value: string) => string = value => value) {
   beginTrustedExternalActivity();
-  void tinodeClient.downloadFile(file).catch(error => Alert.alert('Không mở được tệp', error instanceof Error ? error.message : 'Thử lại sau.'));
+  void tinodeClient.downloadFile(file).catch(error => Alert.alert(t('Không mở được tệp'), error instanceof Error ? t(error.message) : t('Thử lại sau.')));
 }
 
 function createStyles(palette: ThemeColors) {

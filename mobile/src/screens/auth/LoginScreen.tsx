@@ -11,12 +11,14 @@ import { useThemePalette } from '../../theme/useThemePalette';
 import { useAppStore } from '../../store/appStore';
 import { GonLogo } from '../../components/GonLogo';
 import { config } from '../../constants/config';
+import { useI18n } from '../../store/languageStore';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
 export function LoginScreen({ navigation }: Props) {
   const palette = useThemePalette();
   const styles = createStyles(palette);
+  const { t } = useI18n();
   const login = useAppStore(state => state.login);
   const storeError = useAppStore(state => state.error);
   const [identity, setIdentity] = useState('');
@@ -26,10 +28,10 @@ export function LoginScreen({ navigation }: Props) {
   const [error, setError] = useState('');
 
   const submit = async () => {
-    if (!identity.trim() || !password) { setError('Nhập email và mật khẩu UpGO Account để tiếp tục.'); return; }
+    if (!identity.trim() || !password) { setError(t('Nhập email và mật khẩu UpGO Account để tiếp tục.')); return; }
     setError('');
     setBusy(true);
-    try { await login(identity, password); } catch (value) { setError(value instanceof Error ? value.message : 'Đăng nhập thất bại.'); } finally { setBusy(false); }
+    try { await login(identity, password); } catch (value) { setError(value instanceof Error ? t(value.message) : t('Đăng nhập thất bại.')); } finally { setBusy(false); }
   };
 
   return (
@@ -44,18 +46,18 @@ export function LoginScreen({ navigation }: Props) {
             <View style={styles.card}>
               <View style={styles.field}>
                 <Mail color={palette.muted} size={19} />
-                <TextInput value={identity} onChangeText={setIdentity} placeholder="Email công ty" placeholderTextColor={palette.muted} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" style={styles.input} editable={!busy} />
+                <TextInput value={identity} onChangeText={setIdentity} placeholder={t('Email công ty')} placeholderTextColor={palette.muted} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" style={styles.input} editable={!busy} />
               </View>
               <View style={styles.field}>
                 <LockKeyhole color={palette.muted} size={19} />
-                <TextInput value={password} onChangeText={setPassword} placeholder="Mật khẩu" placeholderTextColor={palette.muted} secureTextEntry={!showPassword} style={styles.input} editable={!busy} onSubmitEditing={submit} />
+                <TextInput value={password} onChangeText={setPassword} placeholder={t('Mật khẩu')} placeholderTextColor={palette.muted} secureTextEntry={!showPassword} style={styles.input} editable={!busy} onSubmitEditing={submit} />
                 <Pressable onPress={() => setShowPassword(value => !value)} hitSlop={12}>{showPassword ? <EyeOff color={palette.muted} size={19} /> : <Eye color={palette.muted} size={19} />}</Pressable>
               </View>
               {error || storeError ? <View style={styles.error}><Text style={styles.errorText}>{error || storeError}</Text></View> : null}
               <Pressable onPress={submit} disabled={busy} style={({ pressed }) => [styles.submit, pressed && styles.submitPressed, busy && styles.submitBusy]}>
-                <Text style={styles.submitText}>{busy ? 'Đang xác thực...' : 'Đăng nhập'}</Text><ArrowRight color="#fff" size={20} />
+                <Text style={styles.submitText}>{busy ? t('Đang xác thực...') : t('Đăng nhập')}</Text><ArrowRight color="#fff" size={20} />
               </Pressable>
-              <Pressable onPress={() => navigation.navigate('ForgotPassword')} style={styles.forgot}><Text style={styles.forgotText}>Quên mật khẩu?</Text></Pressable>
+              <Pressable onPress={() => navigation.navigate('ForgotPassword')} style={styles.forgot}><Text style={styles.forgotText}>{t('Quên mật khẩu?')}</Text></Pressable>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>

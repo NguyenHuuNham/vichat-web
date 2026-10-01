@@ -5,6 +5,7 @@ import { Poll, PollSettings } from '../types';
 import { ThemeColors, shadow } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { useThemePalette } from '../theme/useThemePalette';
+import { useI18n } from '../store/languageStore';
 
 interface Props {
   visible: boolean;
@@ -26,6 +27,7 @@ function expiryFor(duration: Duration) {
 export function PollComposer({ visible, allowPin = false, onClose, onSubmit }: Props) {
   const palette = useThemePalette();
   const styles = createStyles(palette);
+  const { t } = useI18n();
   const [question, setQuestion] = useState('');
   const [options, setOptions] = useState(['', '']);
   const [allowMultiple, setAllowMultiple] = useState(false);
@@ -66,28 +68,28 @@ export function PollComposer({ visible, allowPin = false, onClose, onSubmit }: P
         <View style={styles.sheet}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sheetContent}>
             <View style={styles.header}>
-              <Text style={styles.title}>Tạo bình chọn</Text>
+              <Text style={styles.title}>{t('Tạo bình chọn')}</Text>
               <Pressable onPress={close} style={styles.close}><X color={palette.inkSoft} size={19} /></Pressable>
             </View>
-            <TextInput value={question} onChangeText={setQuestion} maxLength={200} placeholder="Câu hỏi" placeholderTextColor={palette.muted} style={styles.question} />
+            <TextInput value={question} onChangeText={setQuestion} maxLength={200} placeholder={t('Câu hỏi')} placeholderTextColor={palette.muted} style={styles.question} />
             {options.map((value, index) => (
               <View key={index} style={styles.optionRow}>
-                <TextInput value={value} onChangeText={next => setOptions(current => current.map((item, itemIndex) => itemIndex === index ? next : item))} maxLength={120} placeholder={`Lựa chọn ${index + 1}`} placeholderTextColor={palette.muted} style={styles.optionInput} />
+                <TextInput value={value} onChangeText={next => setOptions(current => current.map((item, itemIndex) => itemIndex === index ? next : item))} maxLength={120} placeholder={`${t('Lựa chọn')} ${index + 1}`} placeholderTextColor={palette.muted} style={styles.optionInput} />
                 {options.length > 2 ? <Pressable onPress={() => setOptions(current => current.filter((_, itemIndex) => itemIndex !== index))} style={styles.optionRemove}><X color={palette.danger} size={17} /></Pressable> : null}
               </View>
             ))}
-            {options.length < 20 ? <Pressable onPress={() => setOptions(current => [...current, ''])} style={styles.addOption}><Plus color={palette.accent} size={17} /><Text style={styles.addOptionText}>Thêm lựa chọn</Text></Pressable> : null}
-            <Text style={styles.settingsTitle}>Thiết lập</Text>
-            <ToggleRow palette={palette} value={allowMultiple} onChange={setAllowMultiple} label="Cho chọn nhiều đáp án" />
-            <ToggleRow palette={palette} value={allowAddOptions} onChange={setAllowAddOptions} label="Cho thành viên thêm phương án" />
-            <ToggleRow palette={palette} value={hideResultsUntilVote} onChange={setHideResultsUntilVote} label="Ẩn kết quả trước khi bình chọn" />
-            <ToggleRow palette={palette} value={hideVoters} onChange={setHideVoters} label="Ẩn danh sách người bình chọn" />
-            {allowPin ? <ToggleRow palette={palette} value={pinPoll} onChange={setPinPoll} label="Ghim bình chọn sau khi tạo" /> : null}
-            <Text style={styles.expiryLabel}>Thời hạn</Text>
+            {options.length < 20 ? <Pressable onPress={() => setOptions(current => [...current, ''])} style={styles.addOption}><Plus color={palette.accent} size={17} /><Text style={styles.addOptionText}>{t('Thêm lựa chọn')}</Text></Pressable> : null}
+            <Text style={styles.settingsTitle}>{t('Thiết lập')}</Text>
+            <ToggleRow palette={palette} t={t} value={allowMultiple} onChange={setAllowMultiple} label="Cho chọn nhiều đáp án" />
+            <ToggleRow palette={palette} t={t} value={allowAddOptions} onChange={setAllowAddOptions} label="Cho thành viên thêm phương án" />
+            <ToggleRow palette={palette} t={t} value={hideResultsUntilVote} onChange={setHideResultsUntilVote} label="Ẩn kết quả trước khi bình chọn" />
+            <ToggleRow palette={palette} t={t} value={hideVoters} onChange={setHideVoters} label="Ẩn danh sách người bình chọn" />
+            {allowPin ? <ToggleRow palette={palette} t={t} value={pinPoll} onChange={setPinPoll} label="Ghim bình chọn sau khi tạo" /> : null}
+            <Text style={styles.expiryLabel}>{t('Thời hạn')}</Text>
             <View style={styles.durationRow}>
-              {([['none', 'Không hết hạn'], ['1d', '1 ngày'], ['7d', '7 ngày'], ['30d', '30 ngày']] as Array<[Duration, string]>).map(([value, label]) => <Pressable key={value} onPress={() => setDuration(value)} style={[styles.duration, duration === value && styles.durationActive]}><Text style={[styles.durationText, duration === value && styles.durationTextActive]}>{label}</Text></Pressable>)}
+              {([['none', 'Không hết hạn'], ['1d', '1 ngày'], ['7d', '7 ngày'], ['30d', '30 ngày']] as Array<[Duration, string]>).map(([value, label]) => <Pressable key={value} onPress={() => setDuration(value)} style={[styles.duration, duration === value && styles.durationActive]}><Text style={[styles.durationText, duration === value && styles.durationTextActive]}>{t(label)}</Text></Pressable>)}
             </View>
-            <Pressable onPress={submit} disabled={!valid} style={[styles.submit, !valid && styles.disabled]}><Check color="#fff" size={18} /><Text style={styles.submitText}>Đăng bình chọn</Text></Pressable>
+            <Pressable onPress={submit} disabled={!valid} style={[styles.submit, !valid && styles.disabled]}><Check color="#fff" size={18} /><Text style={styles.submitText}>{t('Đăng bình chọn')}</Text></Pressable>
           </ScrollView>
         </View>
       </View>
@@ -95,9 +97,9 @@ export function PollComposer({ visible, allowPin = false, onClose, onSubmit }: P
   );
 }
 
-function ToggleRow({ palette, value, onChange, label }: { palette: ThemeColors; value: boolean; onChange: (value: boolean) => void; label: string }) {
+function ToggleRow({ palette, t, value, onChange, label }: { palette: ThemeColors; t: (value: string) => string; value: boolean; onChange: (value: boolean) => void; label: string }) {
   const styles = createStyles(palette);
-  return <Pressable onPress={() => onChange(!value)} style={styles.multipleRow}><View style={[styles.check, value && styles.checkActive]}>{value ? <Check color="#fff" size={14} /> : null}</View><Text style={styles.multipleText}>{label}</Text></Pressable>;
+  return <Pressable onPress={() => onChange(!value)} style={styles.multipleRow}><View style={[styles.check, value && styles.checkActive]}>{value ? <Check color="#fff" size={14} /> : null}</View><Text style={styles.multipleText}>{t(label)}</Text></Pressable>;
 }
 
 function createStyles(palette: ThemeColors) {

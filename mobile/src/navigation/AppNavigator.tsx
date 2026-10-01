@@ -18,6 +18,7 @@ import { useThemeStore } from '../store/themeStore';
 import { typography } from '../theme/typography';
 import { GonLogo } from '../components/GonLogo';
 import { config } from '../constants/config';
+import { useI18n } from '../store/languageStore';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -44,6 +45,7 @@ export function AppNavigator() {
   const status = useAppStore(state => state.status);
   const session = useAppStore(state => state.session);
   const resolvedTheme = useThemeStore(state => state.resolved);
+  const { t } = useI18n();
   const palette = colorsForTheme(resolvedTheme);
   const [fontsLoaded] = useFonts({
     BeVietnamPro_400Regular,
@@ -67,7 +69,7 @@ export function AppNavigator() {
   return (
     <RootStack.Navigator screenOptions={{
       headerShadowVisible: false,
-      headerBackTitle: 'Quay lại',
+      headerBackTitle: t('Quay lại'),
       headerStyle: { backgroundColor: palette.canvas },
       headerTitleStyle: { fontFamily: 'BeVietnamPro_700Bold', color: palette.ink },
       headerTintColor: palette.ink,
@@ -76,10 +78,10 @@ export function AppNavigator() {
       <RootStack.Screen name="Main" component={MainTabNavigator} options={{ headerShown: false }} />
       <RootStack.Screen name="ChatDetail" component={ChatDetailScreen} options={{ headerShown: false, animation: 'slide_from_right' }} />
       <RootStack.Screen name="GroupInfo" component={GroupInfoScreen} options={{ headerShown: false, animation: 'slide_from_right' }} />
-      <RootStack.Screen name="NewGroup" component={NewGroupScreen} options={{ title: 'Tạo nhóm mới', presentation: 'modal' }} />
-      <RootStack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'Hồ sơ nhân viên' }} />
-      <RootStack.Screen name="WorkspaceDetail" component={WorkspaceDetailScreen} options={{ title: 'Chi tiết công việc' }} />
-      <RootStack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: 'Cập nhật hồ sơ' }} />
+      <RootStack.Screen name="NewGroup" component={NewGroupScreen} options={{ title: t('Tạo nhóm mới'), presentation: 'modal' }} />
+      <RootStack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: t('Hồ sơ nhân viên') }} />
+      <RootStack.Screen name="WorkspaceDetail" component={WorkspaceDetailScreen} options={{ title: t('Chi tiết công việc') }} />
+      <RootStack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: t('Cập nhật hồ sơ') }} />
       <RootStack.Screen name="LinkedDevices" component={LinkedDevicesScreen} options={{ headerShown: false, animation: 'slide_from_right' }} />
     </RootStack.Navigator>
   );

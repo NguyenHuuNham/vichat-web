@@ -5,12 +5,14 @@ import { useAppLockStore } from '../store/appLockStore';
 import { colorsForTheme, shadow, ThemeColors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { useThemeStore } from '../store/themeStore';
+import { useI18n } from '../store/languageStore';
 
 type Mode = 'overview' | 'create' | 'change' | 'disable';
 
 export function PinSettingsModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const palette = colorsForTheme(useThemeStore(state => state.resolved));
   const styles = createStyles(palette);
+  const { t } = useI18n();
   const configured = useAppLockStore(state => state.configured);
   const setPin = useAppLockStore(state => state.setPin);
   const changePin = useAppLockStore(state => state.changePin);
@@ -29,24 +31,24 @@ export function PinSettingsModal({ visible, onClose }: { visible: boolean; onClo
   }, [configured, visible]);
 
   const title = useMemo(() => ({
-    overview: 'Khóa ứng dụng',
-    create: 'Tạo mã PIN',
-    change: 'Đổi mã PIN',
-    disable: 'Tắt mã PIN',
+    overview: t('Khóa ứng dụng'),
+    create: t('Tạo mã PIN'),
+    change: t('Đổi mã PIN'),
+    disable: t('Tắt mã PIN'),
   }[mode]), [mode]);
 
   const submit = async () => {
     setError('');
-    if (mode !== 'disable' && !/^\d{4}$/.test(nextPin)) { setError('Mã PIN mới phải gồm đúng 4 chữ số.'); return; }
-    if (mode !== 'disable' && nextPin !== confirmPin) { setError('Hai lần nhập mã PIN chưa khớp.'); return; }
+    if (mode !== 'disable' && !/^\d{4}$/.test(nextPin)) { setError(t('Mã PIN mới phải gồm đúng 4 chữ số.')); return; }
+    if (mode !== 'disable' && nextPin !== confirmPin) { setError(t('Hai lần nhập mã PIN chưa khớp.')); return; }
     setBusy(true);
     try {
       if (mode === 'create') await setPin(nextPin);
-      if (mode === 'change' && !(await changePin(currentPin, nextPin))) { setError('Mã PIN hiện tại không đúng.'); return; }
-      if (mode === 'disable' && !(await disablePin(currentPin))) { setError('Mã PIN hiện tại không đúng.'); return; }
+      if (mode === 'change' && !(await changePin(currentPin, nextPin))) { setError(t('Mã PIN hiện tại không đúng.')); return; }
+      if (mode === 'disable' && !(await disablePin(currentPin))) { setError(t('Mã PIN hiện tại không đúng.')); return; }
       onClose();
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Không cập nhật được mã PIN.');
+      setError(value instanceof Error ? t(value.message) : t('Không cập nhật được mã PIN.'));
     } finally {
       setBusy(false);
     }
@@ -58,20 +60,20 @@ export function PinSettingsModal({ visible, onClose }: { visible: boolean; onClo
         <Pressable style={styles.backdrop} onPress={onClose} />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <View style={styles.header}><View><Text style={styles.eyebrow}>BẢO MẬT THIẾT BỊ</Text><Text style={styles.title}>{title}</Text></View><Pressable onPress={onClose} style={styles.close}><X color={palette.inkSoft} size={21} /></Pressable></View>
+          <View style={styles.header}><View><Text style={styles.eyebrow}>{t('BẢO MẬT THIẾT BỊ')}</Text><Text style={styles.title}>{title}</Text></View><Pressable onPress={onClose} style={styles.close}><X color={palette.inkSoft} size={21} /></Pressable></View>
           {mode === 'overview' ? (
             <View style={styles.options}>
-              <Pressable onPress={() => setMode('change')} style={styles.option}><View style={styles.optionIcon}><KeyRound color={palette.accent} size={21} /></View><View style={styles.optionBody}><Text style={styles.optionTitle}>Đổi mã PIN</Text><Text style={styles.optionText}>Xác nhận mã hiện tại rồi đặt mã mới.</Text></View></Pressable>
-              <Pressable onPress={() => setMode('disable')} style={styles.option}><View style={[styles.optionIcon, styles.dangerIcon]}><Power color={palette.danger} size={21} /></View><View style={styles.optionBody}><Text style={[styles.optionTitle, { color: palette.danger }]}>Tắt khóa ứng dụng</Text><Text style={styles.optionText}>App sẽ mở thẳng vào tin nhắn trên thiết bị này.</Text></View></Pressable>
+              <Pressable onPress={() => setMode('change')} style={styles.option}><View style={styles.optionIcon}><KeyRound color={palette.accent} size={21} /></View><View style={styles.optionBody}><Text style={styles.optionTitle}>{t('Đổi mã PIN')}</Text><Text style={styles.optionText}>{t('Xác nhận mã hiện tại rồi đặt mã mới.')}</Text></View></Pressable>
+              <Pressable onPress={() => setMode('disable')} style={styles.option}><View style={[styles.optionIcon, styles.dangerIcon]}><Power color={palette.danger} size={21} /></View><View style={styles.optionBody}><Text style={[styles.optionTitle, { color: palette.danger }]}>{t('Tắt khóa ứng dụng')}</Text><Text style={styles.optionText}>{t('App sẽ mở thẳng vào tin nhắn trên thiết bị này.')}</Text></View></Pressable>
             </View>
           ) : (
             <View>
-              <View style={styles.hero}><LockKeyhole color={palette.accent} size={24} /><Text style={styles.heroText}>{mode === 'disable' ? 'Nhập mã PIN hiện tại để xác nhận tắt khóa.' : 'Mã PIN chỉ được lưu mã hóa trên thiết bị này.'}</Text></View>
-              {mode !== 'create' ? <PinInput palette={palette} label="Mã PIN hiện tại" value={currentPin} onChangeText={setCurrentPin} /> : null}
-              {mode !== 'disable' ? <><PinInput palette={palette} label="Mã PIN mới" value={nextPin} onChangeText={setNextPin} /><PinInput palette={palette} label="Nhập lại mã PIN mới" value={confirmPin} onChangeText={setConfirmPin} /></> : null}
+              <View style={styles.hero}><LockKeyhole color={palette.accent} size={24} /><Text style={styles.heroText}>{mode === 'disable' ? t('Nhập mã PIN hiện tại để xác nhận tắt khóa.') : t('Mã PIN chỉ được lưu mã hóa trên thiết bị này.')}</Text></View>
+              {mode !== 'create' ? <PinInput palette={palette} t={t} label="Mã PIN hiện tại" value={currentPin} onChangeText={setCurrentPin} /> : null}
+              {mode !== 'disable' ? <><PinInput palette={palette} t={t} label="Mã PIN mới" value={nextPin} onChangeText={setNextPin} /><PinInput palette={palette} t={t} label="Nhập lại mã PIN mới" value={confirmPin} onChangeText={setConfirmPin} /></> : null}
               {error ? <Text style={styles.error}>{error}</Text> : null}
-              <Pressable disabled={busy} onPress={() => void submit()} style={[styles.submit, mode === 'disable' && styles.submitDanger, busy && { opacity: 0.55 }]}><Text style={styles.submitText}>{busy ? 'Đang lưu...' : mode === 'disable' ? 'Tắt mã PIN' : mode === 'change' ? 'Đổi mã PIN' : 'Bật khóa ứng dụng'}</Text></Pressable>
-              {configured ? <Pressable onPress={() => setMode('overview')} style={styles.back}><Text style={styles.backText}>Quay lại</Text></Pressable> : null}
+              <Pressable disabled={busy} onPress={() => void submit()} style={[styles.submit, mode === 'disable' && styles.submitDanger, busy && { opacity: 0.55 }]}><Text style={styles.submitText}>{busy ? t('Đang lưu...') : mode === 'disable' ? t('Tắt mã PIN') : mode === 'change' ? t('Đổi mã PIN') : t('Bật khóa ứng dụng')}</Text></Pressable>
+              {configured ? <Pressable onPress={() => setMode('overview')} style={styles.back}><Text style={styles.backText}>{t('Quay lại')}</Text></Pressable> : null}
             </View>
           )}
         </View>
@@ -80,9 +82,9 @@ export function PinSettingsModal({ visible, onClose }: { visible: boolean; onClo
   );
 }
 
-function PinInput({ palette, label, value, onChangeText }: { palette: ThemeColors; label: string; value: string; onChangeText: (value: string) => void }) {
+function PinInput({ palette, t, label, value, onChangeText }: { palette: ThemeColors; t: (value: string) => string; label: string; value: string; onChangeText: (value: string) => void }) {
   const styles = createStyles(palette);
-  return <View style={styles.field}><Text style={styles.label}>{label}</Text><TextInput value={value} onChangeText={value => onChangeText(value.replace(/\D/g, '').slice(0, 4))} keyboardType="number-pad" secureTextEntry maxLength={4} placeholder="••••" placeholderTextColor={palette.muted} style={styles.input} /></View>;
+  return <View style={styles.field}><Text style={styles.label}>{t(label)}</Text><TextInput value={value} onChangeText={value => onChangeText(value.replace(/\D/g, '').slice(0, 4))} keyboardType="number-pad" secureTextEntry maxLength={4} placeholder="••••" placeholderTextColor={palette.muted} style={styles.input} /></View>;
 }
 
 function createStyles(palette: ThemeColors) {

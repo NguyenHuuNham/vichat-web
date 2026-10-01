@@ -7,6 +7,7 @@ import { ThemeColors, shadow } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { Avatar } from './Avatar';
 import { useThemePalette } from '../theme/useThemePalette';
+import { useI18n } from '../store/languageStore';
 
 function formatDuration(startedAt: number, now: number) {
   const seconds = Math.max(0, Math.floor((now - startedAt) / 1000));
@@ -16,6 +17,7 @@ function formatDuration(startedAt: number, now: number) {
 export function MobileCallOverlay() {
   const palette = useThemePalette();
   const styles = createStyles(palette);
+  const { t } = useI18n();
   const call = useCallStore(state => state.call);
   const localStream = useCallStore(state => state.localStream);
   const remoteStream = useCallStore(state => state.remoteStream);
@@ -39,12 +41,12 @@ export function MobileCallOverlay() {
 
   const status = useMemo(() => {
     if (!call) return '';
-    if (call.phase === 'incoming') return `${call.audioOnly ? 'Cuộc gọi thoại' : 'Cuộc gọi video'} đến`;
-    if (call.phase === 'preparing') return 'Đang mở thiết bị...';
-    if (call.phase === 'calling') return 'Đang gọi...';
-    if (call.phase === 'ringing') return 'Đang đổ chuông...';
-    if (call.phase === 'connecting') return 'Đang kết nối...';
-    if (call.phase === 'reconnecting') return 'Đang khôi phục kết nối...';
+    if (call.phase === 'incoming') return `${call.audioOnly ? t('Cuộc gọi thoại') : t('Cuộc gọi video')} ${t('đến')}`;
+    if (call.phase === 'preparing') return t('Đang mở thiết bị...');
+    if (call.phase === 'calling') return t('Đang gọi...');
+    if (call.phase === 'ringing') return t('Đang đổ chuông...');
+    if (call.phase === 'connecting') return t('Đang kết nối...');
+    if (call.phase === 'reconnecting') return t('Đang khôi phục kết nối...');
     return call.connectedAt ? formatDuration(call.connectedAt, now) : '00:00';
   }, [call, now]);
 
@@ -60,17 +62,17 @@ export function MobileCallOverlay() {
         {!call.audioOnly && localUrl && cameraEnabled ? <RTCView streamURL={localUrl} mirror objectFit="cover" style={styles.localVideo} /> : null}
         <View style={styles.scrim} />
         <View style={styles.content}>
-          <View style={styles.topline}><Text style={styles.callType}><Video color="#fff" size={16} /> {call.audioOnly ? 'Gọi thoại' : 'Gọi video'}</Text><Text style={styles.status}>{status}</Text></View>
+          <View style={styles.topline}><Text style={styles.callType}><Video color="#fff" size={16} /> {call.audioOnly ? t('Gọi thoại') : t('Gọi video')}</Text><Text style={styles.status}>{status}</Text></View>
           {!remoteUrl || call.audioOnly ? <View style={styles.peer}><Avatar name={call.peerName} uri={call.peerAvatar} size={92} online /><Text style={styles.peerName}>{call.peerName}</Text><Text style={styles.peerStatus}>{status}</Text></View> : <View style={styles.videoPeer}><Text style={styles.peerName}>{call.peerName}</Text></View>}
           {error ? <Pressable onPress={clearError} style={styles.error}><Text style={styles.errorText}>{error}</Text></Pressable> : null}
           {incoming ? (
-            <View style={styles.controls}><CallButton palette={palette} icon={PhoneOff} danger label="Từ chối" onPress={reject} /><CallButton palette={palette} icon={call.audioOnly ? Phone : Video} accept label="Nhận" onPress={() => void accept()} /></View>
+            <View style={styles.controls}><CallButton palette={palette} t={t} icon={PhoneOff} danger label="Từ chối" onPress={reject} /><CallButton palette={palette} t={t} icon={call.audioOnly ? Phone : Video} accept label="Nhận" onPress={() => void accept()} /></View>
           ) : (
             <View style={styles.controls}>
-              <CallButton palette={palette} icon={microphoneEnabled ? Mic : MicOff} disabled={!localStream} label={microphoneEnabled ? 'Tắt mic' : 'Bật mic'} onPress={toggleMicrophone} />
-              {!call.audioOnly ? <CallButton palette={palette} icon={cameraEnabled ? Camera : CameraOff} disabled={!localStream} label={cameraEnabled ? 'Tắt cam' : 'Bật cam'} onPress={toggleCamera} /> : null}
-              {!call.audioOnly ? <CallButton palette={palette} icon={SwitchCamera} disabled={!cameraEnabled} label="Đổi cam" onPress={switchCamera} /> : null}
-              <CallButton palette={palette} icon={PhoneOff} danger label="Kết thúc" onPress={hangUp} />
+              <CallButton palette={palette} t={t} icon={microphoneEnabled ? Mic : MicOff} disabled={!localStream} label={microphoneEnabled ? 'Tắt mic' : 'Bật mic'} onPress={toggleMicrophone} />
+              {!call.audioOnly ? <CallButton palette={palette} t={t} icon={cameraEnabled ? Camera : CameraOff} disabled={!localStream} label={cameraEnabled ? 'Tắt cam' : 'Bật cam'} onPress={toggleCamera} /> : null}
+              {!call.audioOnly ? <CallButton palette={palette} t={t} icon={SwitchCamera} disabled={!cameraEnabled} label="Đổi cam" onPress={switchCamera} /> : null}
+              <CallButton palette={palette} t={t} icon={PhoneOff} danger label="Kết thúc" onPress={hangUp} />
             </View>
           )}
         </View>
@@ -79,9 +81,9 @@ export function MobileCallOverlay() {
   );
 }
 
-function CallButton({ palette, icon: Icon, label, onPress, danger = false, accept = false, disabled = false }: { palette: ThemeColors; icon: any; label: string; onPress: () => void; danger?: boolean; accept?: boolean; disabled?: boolean }) {
+function CallButton({ palette, t, icon: Icon, label, onPress, danger = false, accept = false, disabled = false }: { palette: ThemeColors; t: (value: string) => string; icon: any; label: string; onPress: () => void; danger?: boolean; accept?: boolean; disabled?: boolean }) {
   const styles = createStyles(palette);
-  return <Pressable accessibilityLabel={label} disabled={disabled} onPress={onPress} style={[styles.button, danger && styles.dangerButton, accept && styles.acceptButton, disabled && styles.disabled]}><Icon color="#fff" size={21} /><Text style={styles.buttonLabel}>{label}</Text></Pressable>;
+  return <Pressable accessibilityLabel={t(label)} disabled={disabled} onPress={onPress} style={[styles.button, danger && styles.dangerButton, accept && styles.acceptButton, disabled && styles.disabled]}><Icon color="#fff" size={21} /><Text style={styles.buttonLabel}>{t(label)}</Text></Pressable>;
 }
 
 function createStyles(palette: ThemeColors) {

@@ -34,6 +34,7 @@ import { getMentionContext, insertMentionAt, matchesMentionCandidate, mentionTok
 import { accountIdForMember, identitiesOverlap } from '../../utils/identity';
 import { conversationNicknameForMember } from '../../utils/conversationSync';
 import { CHAT_BOTTOM_THRESHOLD, firstUnreadMessageIndex, isNearChatBottom, isUserVisibleMessage, messageKey } from '../../utils/chatScroll';
+import { useI18n } from '../../store/languageStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ChatDetail'>;
 
@@ -51,6 +52,7 @@ function formatVoiceDuration(durationMs: number) {
 export function ChatDetailScreen({ route, navigation }: Props) {
   const palette = useThemePalette();
   const styles = createStyles(palette);
+  const { t, locale } = useI18n();
   const conversation = useAppStore(state => getConversation(state.conversations, route.params.conversationId));
   const session = useAppStore(state => state.session);
   const directory = useAppStore(state => state.directory);
@@ -269,7 +271,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         || (Number(snapshot.message.seq) > 0 && Number(message.seq) === Number(snapshot.message.seq))
       )) || snapshot.message;
       if (!canEditMessage(target) || target.sender !== 'outgoing') {
-        setError('Tin nhắn này không còn đủ điều kiện để sửa.');
+        setError(t('Tin nhắn này không còn đủ điều kiện để sửa.'));
         return;
       }
       if (value === String(target.text || '').trim()) {
@@ -281,7 +283,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         await useAppStore.getState().editMessage(conversation.id, target, value);
         restoreEditDraft(snapshot);
       } catch (valueError) {
-        setError(valueError instanceof Error ? valueError.message : 'Không sửa được tin nhắn.');
+        setError(valueError instanceof Error ? t(valueError.message) : t('Không sửa được tin nhắn.'));
         composerTextRef.current = value;
         setText(value);
       } finally {
@@ -299,14 +301,14 @@ export function ChatDetailScreen({ route, navigation }: Props) {
       ? replyingTo
       : undefined;
     setReplyingTo(undefined);
-    try { await sendText(conversation.id, value, reply, mentions); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không gửi được tin nhắn.'); composerTextRef.current = value; setText(value); setSelectedMentions(mentions); setReplyingTo(reply); } finally { setBusy(false); }
+    try { await sendText(conversation.id, value, reply, mentions); } catch (valueError) { setError(valueError instanceof Error ? t(valueError.message) : t('Không gửi được tin nhắn.')); composerTextRef.current = value; setText(value); setSelectedMentions(mentions); setReplyingTo(reply); } finally { setBusy(false); }
   };
   const submitFile = async (file: PickerFile | null) => {
     if (!file || !conversation || !canSendMessages) return;
     const validation = attachmentValidationError(file);
-    if (validation) { setError(validation); return; }
+    if (validation) { setError(t(validation)); return; }
     setBusy(true); setError('');
-    try { await sendFile(conversation.id, file); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không gửi được tệp.'); } finally { setBusy(false); }
+    try { await sendFile(conversation.id, file); } catch (valueError) { setError(valueError instanceof Error ? t(valueError.message) : t('Không gửi được tệp.')); } finally { setBusy(false); }
   };
   const startVoiceRecording = async () => {
     if (!conversation || busy || recordingRef.current || !canSendMessages) return;
@@ -323,7 +325,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     } catch (valueError) {
       recordingRef.current = null;
       await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true, interruptionMode: 'duckOthers' }).catch(() => {});
-      setError(valueError instanceof Error ? valueError.message : 'Không thể bắt đầu ghi âm voice.');
+      setError(valueError instanceof Error ? t(valueError.message) : t('Không thể bắt đầu ghi âm voice.'));
     }
   };
   const stopVoiceRecording = async () => {
@@ -341,7 +343,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
       if (!uri || durationMs < 500) throw new Error('Voice quá ngắn. Hãy ghi ít nhất nửa giây.');
       await sendVoice(conversation.id, { uri, name: `voice-${Date.now()}.m4a`, type: 'audio/mp4' }, durationMs);
     } catch (valueError) {
-      setError(valueError instanceof Error ? valueError.message : 'Không gửi được voice.');
+      setError(valueError instanceof Error ? t(valueError.message) : t('Không gửi được voice.'));
     } finally {
       setBusy(false);
       setRecordingDuration(0);
@@ -351,34 +353,34 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const submitSticker = async (sticker: Sticker) => {
     if (!conversation || busy || editingMessage || !canSendMessages) return;
     setBusy(true); setError('');
-    try { await sendSticker(conversation.id, sticker); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không gửi được sticker.'); } finally { setBusy(false); }
+    try { await sendSticker(conversation.id, sticker); } catch (valueError) { setError(valueError instanceof Error ? t(valueError.message) : t('Không gửi được sticker.')); } finally { setBusy(false); }
   };
   const submitPoll = async (poll: Pick<Poll, 'question' | 'options' | 'settings'>) => {
     if (!conversation || !canSendMessages) return;
     setBusy(true); setError('');
-    try { await createPoll(conversation.id, poll); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không tạo được bình chọn.'); } finally { setBusy(false); }
+    try { await createPoll(conversation.id, poll); } catch (valueError) { setError(valueError instanceof Error ? t(valueError.message) : t('Không tạo được bình chọn.')); } finally { setBusy(false); }
   };
   const submitPollVote = async (message: ChatMessage, optionIds: string[]) => {
     if (!conversation?.isGroup || !message.poll || !canSendMessages) return;
     setBusy(true); setError('');
-    try { await votePoll(conversation.id, message.poll.id, optionIds); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không gửi được lựa chọn.'); } finally { setBusy(false); }
+    try { await votePoll(conversation.id, message.poll.id, optionIds); } catch (valueError) { setError(valueError instanceof Error ? t(valueError.message) : t('Không gửi được lựa chọn.')); } finally { setBusy(false); }
   };
   const submitPollOption = async (message: ChatMessage, optionText: string) => {
     if (!conversation?.isGroup || !message.poll || !optionText.trim() || !canSendMessages) return;
     setBusy(true); setError('');
-    try { await addPollOption(conversation.id, message.poll.id, `option-${Date.now()}`, optionText.trim()); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không thêm được phương án.'); } finally { setBusy(false); }
+    try { await addPollOption(conversation.id, message.poll.id, `option-${Date.now()}`, optionText.trim()); } catch (valueError) { setError(valueError instanceof Error ? t(valueError.message) : t('Không thêm được phương án.')); } finally { setBusy(false); }
   };
   const submitPollLock = async (message: ChatMessage) => {
     if (!conversation?.isGroup || !message.poll || !canSendMessages) return;
     setBusy(true); setError('');
-    try { await lockPoll(conversation.id, message.poll.id); } catch (valueError) { setError(valueError instanceof Error ? valueError.message : 'Không khóa được bình chọn.'); } finally { setBusy(false); }
+    try { await lockPoll(conversation.id, message.poll.id); } catch (valueError) { setError(valueError instanceof Error ? t(valueError.message) : t('Không khóa được bình chọn.')); } finally { setBusy(false); }
   };
   const loadEarlierMessages = async () => {
     if (!conversation || messages.length === 0 || !initialScrollDoneRef.current || !hasEarlier || !historyLoadArmedRef.current || loadingEarlier || loadingEarlierRef.current) return;
     historyLoadArmedRef.current = false;
     loadingEarlierRef.current = true;
     setLoadingEarlier(true);
-    try { setHasEarlier(await loadEarlier(conversation.id, 40)); } catch (valueError) { historyLoadArmedRef.current = true; setError(valueError instanceof Error ? valueError.message : 'Không tải thêm được lịch sử chat.'); } finally { loadingEarlierRef.current = false; setLoadingEarlier(false); }
+    try { setHasEarlier(await loadEarlier(conversation.id, 40)); } catch (valueError) { historyLoadArmedRef.current = true; setError(valueError instanceof Error ? t(valueError.message) : t('Không tải thêm được lịch sử chat.')); } finally { loadingEarlierRef.current = false; setLoadingEarlier(false); }
   };
   const handleListScroll = (event: any) => {
     const nativeEvent = event?.nativeEvent || {};
@@ -428,12 +430,12 @@ export function ChatDetailScreen({ route, navigation }: Props) {
       }
       await submitFile(file);
     } catch (valueError) {
-      setError(valueError instanceof Error ? valueError.message : 'Không gửi được tệp.');
+      setError(valueError instanceof Error ? t(valueError.message) : t('Không gửi được tệp.'));
     }
   };
   const replyMessage = (message: ChatMessage) => {
     if (!canInteractWithMessage(message)) return;
-    setReplyingTo({ id: message.id, text: message.text || (message.sticker ? 'Sticker' : message.file?.name || 'Hình ảnh'), senderName: message.senderName || (message.sender === 'outgoing' ? 'Bạn' : 'Thành viên') });
+    setReplyingTo({ id: message.id, text: message.text || (message.sticker ? t('Sticker') : message.file?.name || t('Hình ảnh')), senderName: message.senderName || (message.sender === 'outgoing' ? t('Bạn') : t('Thành viên')) });
   };
   const copyMessage = (message: ChatMessage) => { if (canInteractWithMessage(message) && message.text) void Clipboard.setStringAsync(message.text); };
   const downloadMessage = (message: ChatMessage) => {
@@ -442,27 +444,27 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     const file = message.file || (message.image ? { name: 'hình-ảnh.jpg', mime: 'image/jpeg', size: 0, url: message.image } : null);
     if (!file) return;
     beginTrustedExternalActivity();
-    void tinodeClient.downloadFile(file).catch(value => setError(value instanceof Error ? value.message : 'Không mở được tệp.'));
+    void tinodeClient.downloadFile(file).catch(value => setError(value instanceof Error ? t(value.message) : t('Không mở được tệp.')));
   };
   const shareMessage = (message: ChatMessage) => {
     if (!canInteractWithMessage(message)) return;
     if (message.sticker) {
-      void Share.share({ message: 'Sticker ViChat' }).catch(() => {});
+      void Share.share({ message: t('Sticker ViChat') }).catch(() => {});
       return;
     }
     if (message.image || message.file) { downloadMessage(message); return; }
-    void Share.share({ message: message.text || 'Tin nhắn ViChat' }).catch(() => {});
+    void Share.share({ message: message.text || t('Tin nhắn ViChat') }).catch(() => {});
   };
   const showMessageDetails = (message: ChatMessage) => Alert.alert(
-    'Chi tiết tin nhắn',
-    [`Người gửi: ${message.sender === 'outgoing' ? 'Bạn' : message.senderName || 'Thành viên'}`, `Thời gian: ${new Date(message.createdAt || Date.now()).toLocaleString('vi-VN')}`, `Trạng thái: ${message.recalled ? 'Đã thu hồi' : message.deliveryStatus || 'Đã gửi'}`].join('\n'),
+    t('Chi tiết tin nhắn'),
+    [`${t('Người gửi')}: ${message.sender === 'outgoing' ? t('Bạn') : message.senderName || t('Thành viên')}`, `${t('Thời gian')}: ${new Date(message.createdAt || Date.now()).toLocaleString(locale)}`, `${t('Trạng thái')}: ${message.recalled ? t('Đã thu hồi') : message.deliveryStatus || t('Đã gửi')}`].join('\n'),
   );
   const recallWithMode = async (message: ChatMessage, mode: RecallMode) => {
     setBusy(true);
     try {
       await recallMessage(conversation?.id || '', message, mode);
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Không thu hồi được tin nhắn.');
+      setError(value instanceof Error ? t(value.message) : t('Không thu hồi được tin nhắn.'));
     } finally {
       setBusy(false);
     }
@@ -473,7 +475,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     setRecallTarget(null);
     if (target) void recallWithMode(target, mode);
   };
-  if (!conversation) return <SafeAreaView style={styles.screen}><Text style={styles.missing}>Cuộc trò chuyện không còn khả dụng.</Text></SafeAreaView>;
+  if (!conversation) return <SafeAreaView style={styles.screen}><Text style={styles.missing}>{t('Cuộc trò chuyện không còn khả dụng.')}</Text></SafeAreaView>;
   const currentMember = conversation.members?.find(member => identitiesOverlap(member, session?.user));
   const realtimeReady = connection === 'connected' && Boolean(conversation.tinodeTopic);
   const canCreatePoll = realtimeReady && conversation.isGroup && (memberIsAdmin(currentMember) || groupSettingEnabled(conversation.groupSettings, 'allowPolls'));
@@ -487,21 +489,21 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     ? tinodeClient.getCallCapability(conversation.tinodeTopic, { isGroup: false, isChatbot: false })
     : { available: false, reason: 'Cuộc gọi mobile chỉ hỗ trợ hội thoại 1-1.' };
   const beginCall = (audioOnly: boolean) => {
-    void startCall(conversation.tinodeTopic, audioOnly, { name: peer?.name || conversation.name, avatar: peer?.avatar || conversation.avatarUrl }).catch(value => setError(value instanceof Error ? value.message : 'Không thể bắt đầu cuộc gọi.'));
+    void startCall(conversation.tinodeTopic, audioOnly, { name: peer?.name || conversation.name, avatar: peer?.avatar || conversation.avatarUrl }).catch(value => setError(value instanceof Error ? t(value.message) : t('Không thể bắt đầu cuộc gọi.')));
   };
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']}>
       <View style={styles.header}>
-        <Pressable onPress={() => navigation.goBack()} style={styles.back}><ChevronLeft color={palette.ink} size={27} /></Pressable>
+        <Pressable accessibilityLabel={t('Quay lại')} onPress={() => navigation.goBack()} style={styles.back}><ChevronLeft color={palette.ink} size={27} /></Pressable>
         <Avatar name={conversation.name} uri={conversation.avatarUrl} size={42} rounded={!conversation.isGroup} online={!conversation.isGroup && directPeerOnline(conversation, tinodeClient.currentUserId)} />
-        <View style={styles.headerTitle}><Text numberOfLines={1} style={styles.name}>{conversation.name}</Text><Text style={styles.status}>{conversation.isChatbot ? 'Tra cứu tri thức · Có nguồn kiểm chứng' : conversation.isGroup ? conversation.membersCount : (directPeerOnline(conversation, tinodeClient.currentUserId) ? 'Đang hoạt động' : 'Offline')}</Text></View>
-        {callCapability.available ? <><Pressable accessibilityLabel="Gọi thoại" disabled={Boolean(activeCall)} onPress={() => beginCall(true)} style={styles.more}><Phone color={palette.accent} size={19} /></Pressable><Pressable accessibilityLabel="Gọi video" disabled={Boolean(activeCall)} onPress={() => beginCall(false)} style={styles.more}><Video color={palette.accent} size={19} /></Pressable></> : null}
-        {canEditNickname ? <Pressable accessibilityLabel="Đổi biệt danh" onPress={() => { if (peer) setNicknameMember(peer); }} style={styles.more}><Pencil color={palette.accent} size={19} /></Pressable> : null}
-        <Pressable accessibilityLabel="Thông tin cuộc trò chuyện" onPress={() => conversation.isGroup ? navigation.navigate('GroupInfo', { conversationId: conversation.id }) : Alert.alert('Thông tin', conversation.description || 'Cuộc trò chuyện nội bộ')} style={styles.more}><Info color={palette.inkSoft} size={21} /></Pressable>
+        <View style={styles.headerTitle}><Text numberOfLines={1} style={styles.name}>{conversation.name}</Text><Text style={styles.status}>{conversation.isChatbot ? t('Tra cứu tri thức · Có nguồn kiểm chứng') : conversation.isGroup ? t(`${conversation.membersCount} thành viên`) : (directPeerOnline(conversation, tinodeClient.currentUserId) ? t('Đang hoạt động') : t('Offline'))}</Text></View>
+        {callCapability.available ? <><Pressable accessibilityLabel={t('Gọi thoại')} disabled={Boolean(activeCall)} onPress={() => beginCall(true)} style={styles.more}><Phone color={palette.accent} size={19} /></Pressable><Pressable accessibilityLabel={t('Gọi video')} disabled={Boolean(activeCall)} onPress={() => beginCall(false)} style={styles.more}><Video color={palette.accent} size={19} /></Pressable></> : null}
+        {canEditNickname ? <Pressable accessibilityLabel={t('Đổi biệt danh')} onPress={() => { if (peer) setNicknameMember(peer); }} style={styles.more}><Pencil color={palette.accent} size={19} /></Pressable> : null}
+        <Pressable accessibilityLabel={t('Thông tin cuộc trò chuyện')} onPress={() => conversation.isGroup ? navigation.navigate('GroupInfo', { conversationId: conversation.id }) : Alert.alert(t('Thông tin'), conversation.description || t('Cuộc trò chuyện nội bộ'))} style={styles.more}><Info color={palette.inkSoft} size={21} /></Pressable>
       </View>
-      {conversation.isChatbot ? <View style={styles.aiStrip}><View style={styles.aiStripItem}><ShieldCheck color={palette.online} size={14} /><Text style={styles.aiStripText}>Riêng tư</Text></View><View style={styles.aiStripItem}><BookOpen color={palette.accent} size={14} /><Text style={styles.aiStripText}>Nguồn rõ ràng</Text></View></View> : null}
-      {connection !== 'connected' ? <View style={styles.offline}><WifiOff color={palette.warning} size={15} /><Text style={styles.offlineText}>Realtime đang gián đoạn. Gửi tin nhắn tạm dừng đến khi kết nối lại.</Text><Pressable onPress={() => void reconnect()} style={styles.retry}><Text style={styles.retryText}>Thử lại</Text></Pressable></View> : null}
+      {conversation.isChatbot ? <View style={styles.aiStrip}><View style={styles.aiStripItem}><ShieldCheck color={palette.online} size={14} /><Text style={styles.aiStripText}>{t('Riêng tư')}</Text></View><View style={styles.aiStripItem}><BookOpen color={palette.accent} size={14} /><Text style={styles.aiStripText}>{t('Nguồn rõ ràng')}</Text></View></View> : null}
+      {connection !== 'connected' ? <View style={styles.offline}><WifiOff color={palette.warning} size={15} /><Text style={styles.offlineText}>{t('Realtime đang gián đoạn. Gửi tin nhắn tạm dừng đến khi kết nối lại.')}</Text><Pressable onPress={() => void reconnect()} style={styles.retry}><Text style={styles.retryText}>{t('Thử lại')}</Text></Pressable></View> : null}
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}>
         <View style={styles.listStage}>
         <FlashList
@@ -531,42 +533,42 @@ export function ChatDetailScreen({ route, navigation }: Props) {
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={conversation.isChatbot ? <View style={styles.aiEmpty}><View style={styles.aiEmptyIcon}><Search color="#fff" size={27} /></View><Text style={styles.aiEyebrow}>VICHAT AI</Text><Text style={styles.emptyTitle}>Hỏi kho tri thức doanh nghiệp</Text><Text style={styles.emptyText}>ViChat AI tìm nội dung liên quan và đưa nguồn để bạn kiểm chứng.</Text><View style={styles.aiStarters}>{AI_STARTERS.map((prompt, index) => <Pressable key={prompt} disabled={busy || connection !== 'connected'} onPress={() => void submitText(prompt)} style={styles.aiStarter}><Text style={styles.aiStarterIndex}>{index + 1}</Text><Text style={styles.aiStarterText}>{prompt}</Text></Pressable>)}</View></View> : <View style={styles.empty}><Text style={styles.emptyTitle}>Bắt đầu cuộc trò chuyện</Text><Text style={styles.emptyText}>Tin nhắn và tệp được đồng bộ realtime giữa mobile và web.</Text></View>}
+          ListEmptyComponent={conversation.isChatbot ? <View style={styles.aiEmpty}><View style={styles.aiEmptyIcon}><Search color="#fff" size={27} /></View><Text style={styles.aiEyebrow}>VICHAT AI</Text><Text style={styles.emptyTitle}>{t('Hỏi kho tri thức doanh nghiệp')}</Text><Text style={styles.emptyText}>{t('ViChat AI tìm nội dung liên quan và đưa nguồn để bạn kiểm chứng.')}</Text><View style={styles.aiStarters}>{AI_STARTERS.map((prompt, index) => <Pressable key={prompt} disabled={busy || connection !== 'connected'} onPress={() => void submitText(prompt)} style={styles.aiStarter}><Text style={styles.aiStarterIndex}>{index + 1}</Text><Text style={styles.aiStarterText}>{t(prompt)}</Text></Pressable>)}</View></View> : <View style={styles.empty}><Text style={styles.emptyTitle}>{t('Bắt đầu cuộc trò chuyện')}</Text><Text style={styles.emptyText}>{t('Tin nhắn và tệp được đồng bộ realtime giữa mobile và web.')}</Text></View>}
         />
         {loadingEarlier ? <View pointerEvents="none" style={styles.historyLoadingOverlay}><ActivityIndicator color={palette.accent} /></View> : null}
-        {firstUnreadIndex !== null && !unreadJumpDismissed ? <Pressable accessibilityLabel="Đi tới tin nhắn chưa đọc" onPress={jumpToUnread} style={styles.unreadJump}><Text style={styles.unreadJumpText}>{unreadCount > 0 ? `${unreadCount} tin chưa đọc` : 'Tin chưa đọc'}</Text><ArrowDown color={palette.accentDeep} size={15} /></Pressable> : null}
-        {!isNearBottom ? <Pressable accessibilityLabel="Đi tới tin nhắn mới nhất" onPress={jumpToLatest} style={styles.latestJump}><ArrowDown color="#fff" size={21} strokeWidth={2.5} />{newMessageCount > 0 ? <View style={styles.latestCount}><Text style={styles.latestCountText}>{newMessageCount > 99 ? '99+' : newMessageCount}</Text></View> : null}</Pressable> : null}
+        {firstUnreadIndex !== null && !unreadJumpDismissed ? <Pressable accessibilityLabel={t('Đi tới tin nhắn chưa đọc')} onPress={jumpToUnread} style={styles.unreadJump}><Text style={styles.unreadJumpText}>{unreadCount > 0 ? `${unreadCount} ${t('tin chưa đọc')}` : t('Tin chưa đọc')}</Text><ArrowDown color={palette.accentDeep} size={15} /></Pressable> : null}
+        {!isNearBottom ? <Pressable accessibilityLabel={t('Đi tới tin nhắn mới nhất')} onPress={jumpToLatest} style={styles.latestJump}><ArrowDown color="#fff" size={21} strokeWidth={2.5} />{newMessageCount > 0 ? <View style={styles.latestCount}><Text style={styles.latestCountText}>{newMessageCount > 99 ? '99+' : newMessageCount}</Text></View> : null}</Pressable> : null}
         </View>
         <TypingIndicator visible={Boolean(typing)} />
-        {conversation.isGroup && !canSendMessages ? <View style={styles.groupLocked}><Text style={styles.groupLockedText}>Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.</Text></View> : null}
-        {error ? <Pressable onPress={() => setError('')} style={styles.error}><Text style={styles.errorText}>{error}</Text></Pressable> : null}
-        {editingMessage ? <View style={styles.editComposer}><View style={styles.replyBar} /><View style={styles.replyBody}><Text numberOfLines={1} style={styles.replyName}>Sửa tin nhắn</Text><Text numberOfLines={1} style={styles.replyText}>{editingMessage.message.text}</Text></View><Pressable disabled={busy} onPress={() => restoreEditDraft(editingMessage)} style={styles.replyClose}><X color={palette.inkSoft} size={18} /></Pressable></View> : null}
-        {!editingMessage && replyingTo ? <View style={styles.replyComposer}><View style={styles.replyBar} /><View style={styles.replyBody}><Text numberOfLines={1} style={styles.replyName}>Đang trả lời {replyingTo.senderName}</Text><Text numberOfLines={1} style={styles.replyText}>{replyingTo.text}</Text></View><Pressable onPress={() => setReplyingTo(undefined)} style={styles.replyClose}><X color={palette.inkSoft} size={18} /></Pressable></View> : null}
+        {conversation.isGroup && !canSendMessages ? <View style={styles.groupLocked}><Text style={styles.groupLockedText}>{t('Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.')}</Text></View> : null}
+        {error ? <Pressable onPress={() => setError('')} style={styles.error}><Text style={styles.errorText}>{t(error)}</Text></Pressable> : null}
+        {editingMessage ? <View style={styles.editComposer}><View style={styles.replyBar} /><View style={styles.replyBody}><Text numberOfLines={1} style={styles.replyName}>{t('Sửa tin nhắn')}</Text><Text numberOfLines={1} style={styles.replyText}>{editingMessage.message.text}</Text></View><Pressable disabled={busy} onPress={() => restoreEditDraft(editingMessage)} style={styles.replyClose}><X color={palette.inkSoft} size={18} /></Pressable></View> : null}
+        {!editingMessage && replyingTo ? <View style={styles.replyComposer}><View style={styles.replyBar} /><View style={styles.replyBody}><Text numberOfLines={1} style={styles.replyName}>{t('Đang trả lời')} {replyingTo.senderName}</Text><Text numberOfLines={1} style={styles.replyText}>{replyingTo.text}</Text></View><Pressable onPress={() => setReplyingTo(undefined)} style={styles.replyClose}><X color={palette.inkSoft} size={18} /></Pressable></View> : null}
         {mentionCandidates.length > 0 ? <View style={styles.mentionPanel}>
-          <Text style={styles.mentionHeading}>Nhắc đến</Text>
+          <Text style={styles.mentionHeading}>{t('Nhắc đến')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mentionOptions} keyboardShouldPersistTaps="always">
             {mentionCandidates.map(candidate => <Pressable key={String(candidate.id || candidate.uid)} onPress={() => selectMention(candidate)} style={styles.mentionOption}>
-              <Avatar name={candidate.isAll ? 'Mọi người' : candidate.name} uri={candidate.avatar} size={30} rounded={!candidate.isAll} />
-              <Text numberOfLines={1} style={styles.mentionName}>{candidate.isAll ? 'Mọi người' : candidate.name}</Text>
+              <Avatar name={candidate.isAll ? t('Mọi người') : candidate.name} uri={candidate.avatar} size={30} rounded={!candidate.isAll} />
+              <Text numberOfLines={1} style={styles.mentionName}>{candidate.isAll ? t('Mọi người') : candidate.name}</Text>
             </Pressable>)}
           </ScrollView>
         </View> : null}
-        {recording ? <View style={styles.recordingBanner}><View style={styles.recordingDot} /><Text style={styles.recordingText}>Đang ghi voice {formatVoiceDuration(recordingDuration)} · chạm mic để dừng</Text></View> : null}
+        {recording ? <View style={styles.recordingBanner}><View style={styles.recordingDot} /><Text style={styles.recordingText}>{t('Đang ghi voice')} {formatVoiceDuration(recordingDuration)} · {t('chạm mic để dừng')}</Text></View> : null}
         <View style={styles.composer}>
           {!conversation.isChatbot ? <View style={styles.attachGroup}>
-            <Pressable accessibilityLabel={recording ? 'Dừng ghi âm' : 'Ghi âm voice'} onPress={() => void (recording ? stopVoiceRecording() : startVoiceRecording())} disabled={(busy && !recording) || Boolean(editingMessage) || !canSendMessages} style={[styles.attach, recording && styles.attachRecording]}>{recording ? <CircleStop color={palette.danger} size={18} /> : <Mic color={palette.accent} size={18} />}</Pressable>
-            <Pressable accessibilityLabel="Chọn ảnh" onPress={() => void chooseFile(true)} disabled={busy || recording || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><ImagePlus color={palette.accent} size={19} /></Pressable>
-            <Pressable accessibilityLabel="Chọn tệp" onPress={() => void chooseFile(false)} disabled={busy || recording || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><FilePlus2 color={palette.accent} size={18} /></Pressable>
-            <Pressable accessibilityLabel="Chọn sticker" onPress={() => setStickerPickerOpen(true)} disabled={busy || recording || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><SmilePlus color={palette.accent} size={18} /></Pressable>
-            {conversation.isGroup && canCreatePoll ? <Pressable accessibilityLabel="Tạo bình chọn" onPress={() => setPollComposerOpen(true)} disabled={busy || recording || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><BarChart3 color={palette.accent} size={18} /></Pressable> : null}
+            <Pressable accessibilityLabel={recording ? t('Dừng ghi âm') : t('Ghi âm voice')} onPress={() => void (recording ? stopVoiceRecording() : startVoiceRecording())} disabled={(busy && !recording) || Boolean(editingMessage) || !canSendMessages} style={[styles.attach, recording && styles.attachRecording]}>{recording ? <CircleStop color={palette.danger} size={18} /> : <Mic color={palette.accent} size={18} />}</Pressable>
+            <Pressable accessibilityLabel={t('Chọn ảnh')} onPress={() => void chooseFile(true)} disabled={busy || recording || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><ImagePlus color={palette.accent} size={19} /></Pressable>
+            <Pressable accessibilityLabel={t('Chọn tệp')} onPress={() => void chooseFile(false)} disabled={busy || recording || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><FilePlus2 color={palette.accent} size={18} /></Pressable>
+            <Pressable accessibilityLabel={t('Chọn sticker')} onPress={() => setStickerPickerOpen(true)} disabled={busy || recording || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><SmilePlus color={palette.accent} size={18} /></Pressable>
+            {conversation.isGroup && canCreatePoll ? <Pressable accessibilityLabel={t('Tạo bình chọn')} onPress={() => setPollComposerOpen(true)} disabled={busy || recording || Boolean(editingMessage) || !canSendMessages} style={styles.attach}><BarChart3 color={palette.accent} size={18} /></Pressable> : null}
           </View> : null}
           <TextInput ref={inputRef} value={text} onChangeText={updateComposerText} onSelectionChange={event => {
             const caret = Number(event.nativeEvent.selection?.start || 0);
             setMentionContext(!editingMessage && conversation.isGroup ? getMentionContext(composerTextRef.current, caret) : null);
-          }} placeholder={editingMessage ? 'Nhập nội dung mới...' : conversation.isChatbot ? 'Hỏi về quy trình, chính sách, tài liệu...' : 'Viết tin nhắn...'} placeholderTextColor={palette.muted} multiline maxLength={120000} style={styles.input} editable={!busy && !recording && canSendMessages} />
+          }} placeholder={editingMessage ? t('Nhập nội dung mới...') : conversation.isChatbot ? t('Hỏi về quy trình, chính sách, tài liệu...') : t('Viết tin nhắn...')} placeholderTextColor={palette.muted} multiline maxLength={120000} style={styles.input} editable={!busy && !recording && canSendMessages} />
           <Pressable onPress={() => void submitText()} disabled={busy || recording || !text.trim() || !canSendMessages} style={[styles.send, (!text.trim() || busy || recording || !canSendMessages) && styles.sendDisabled]}><Send color="#fff" size={18} /></Pressable>
         </View>
-        {conversation.isChatbot ? <Text style={styles.aiNote}>Kiểm tra nguồn trước khi dùng thông tin để ra quyết định.</Text> : null}
+        {conversation.isChatbot ? <Text style={styles.aiNote}>{t('Kiểm tra nguồn trước khi dùng thông tin để ra quyết định.')}</Text> : null}
       </KeyboardAvoidingView>
       <MessageActionSheet
         message={selectedMessage}
@@ -577,20 +579,20 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         onDownload={downloadMessage}
         onDetails={showMessageDetails}
         onEdit={beginEdit}
-        onReaction={(message, emoji) => void sendReaction(conversation.id, message, emoji).catch(value => setError(value instanceof Error ? value.message : 'Không thêm được biểu cảm.'))}
+        onReaction={(message, emoji) => void sendReaction(conversation.id, message, emoji).catch(value => setError(value instanceof Error ? t(value.message) : t('Không thêm được biểu cảm.')))}
         canPin={canPinMessages}
-        onPin={message => void toggleMessagePin(conversation.id, message).catch(value => setError(value instanceof Error ? value.message : 'Không ghim được tin nhắn.'))}
+        onPin={message => void toggleMessagePin(conversation.id, message).catch(value => setError(value instanceof Error ? t(value.message) : t('Không ghim được tin nhắn.')))}
         onRecall={message => requestRecall(message)}
       />
       <StickerPicker visible={stickerPickerOpen} onClose={() => setStickerPickerOpen(false)} onSelect={sticker => { void submitSticker(sticker); }} />
       <PollComposer visible={pollComposerOpen} allowPin={canPinMessages} onClose={() => setPollComposerOpen(false)} onSubmit={poll => { void submitPoll(poll); }} />
       <ConfirmDialog
         visible={Boolean(recallTarget)}
-        title="Thu hồi tin nhắn"
-        message="Chọn phạm vi thu hồi cho tin nhắn này."
-        eyebrow="THAO TÁC TIN NHẮN"
-        confirmLabel="Thu hồi tất cả"
-        secondaryLabel="Chỉ phía tôi"
+        title={t('Thu hồi tin nhắn')}
+        message={t('Chọn phạm vi thu hồi cho tin nhắn này.')}
+        eyebrow={t('THAO TÁC TIN NHẮN')}
+        confirmLabel={t('Thu hồi tất cả')}
+        secondaryLabel={t('Chỉ phía tôi')}
         onCancel={() => setRecallTarget(null)}
         onConfirm={() => confirmRecall('all')}
         onSecondary={() => confirmRecall('self')}
@@ -610,9 +612,9 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         <View style={styles.historyOverlay}>
           <Pressable style={styles.historyBackdrop} onPress={() => setEditHistoryMessage(null)} />
           {editHistoryMessage ? <View style={styles.historyCard}>
-            <View style={styles.historyHeader}><Text style={styles.historyTitle}>Lịch sử chỉnh sửa</Text><Pressable onPress={() => setEditHistoryMessage(null)} style={styles.historyClose}><X color={palette.inkSoft} size={19} /></Pressable></View>
-            <View style={styles.historyCurrent}><Text style={styles.historyLabel}>Nội dung hiện tại</Text><Text style={styles.historyText}>{editHistoryMessage.text}</Text></View>
-            <ScrollView style={styles.historyList} contentContainerStyle={styles.historyListContent}>{(editHistoryMessage.editHistory || []).map((entry, index) => <View key={`${entry.eventId || entry.seq || entry.editedAt || index}`} style={styles.historyEntry}><View style={styles.historyEntryHeading}><Text style={styles.historyEntryTitle}>Nội dung cũ {index + 1}</Text>{entry.editedAt ? <Text style={styles.historyEntryTime}>{new Date(entry.editedAt).toLocaleString('vi-VN')}</Text> : null}</View><Text style={styles.historyText}>{entry.text}</Text></View>)}</ScrollView>
+            <View style={styles.historyHeader}><Text style={styles.historyTitle}>{t('Lịch sử chỉnh sửa')}</Text><Pressable onPress={() => setEditHistoryMessage(null)} style={styles.historyClose} accessibilityLabel={t('Đóng')}><X color={palette.inkSoft} size={19} /></Pressable></View>
+            <View style={styles.historyCurrent}><Text style={styles.historyLabel}>{t('Nội dung hiện tại')}</Text><Text style={styles.historyText}>{editHistoryMessage.text}</Text></View>
+            <ScrollView style={styles.historyList} contentContainerStyle={styles.historyListContent}>{(editHistoryMessage.editHistory || []).map((entry, index) => <View key={`${entry.eventId || entry.seq || entry.editedAt || index}`} style={styles.historyEntry}><View style={styles.historyEntryHeading}><Text style={styles.historyEntryTitle}>{t('Nội dung cũ')} {index + 1}</Text>{entry.editedAt ? <Text style={styles.historyEntryTime}>{new Date(entry.editedAt).toLocaleString(locale)}</Text> : null}</View><Text style={styles.historyText}>{entry.text}</Text></View>)}</ScrollView>
           </View> : null}
         </View>
       </Modal>

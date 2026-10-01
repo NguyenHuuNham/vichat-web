@@ -10,6 +10,7 @@ import { SettingsScreen } from '../screens/settings/SettingsScreen';
 import { colorsForTheme, shadow, ThemeColors } from '../theme/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeStore } from '../store/themeStore';
+import { useI18n } from '../store/languageStore';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 const icons = { Chats: MessageCircleMore, Contacts: ContactRound, Cloud, Workspace: Blocks, Settings };
@@ -17,6 +18,7 @@ const icons = { Chats: MessageCircleMore, Contacts: ContactRound, Cloud, Workspa
 export function MainTabNavigator() {
   const insets = useSafeAreaInsets();
   const palette = colorsForTheme(useThemeStore(state => state.resolved));
+  const { t } = useI18n();
 
   return (
     <Tab.Navigator screenOptions={({ route }) => {
@@ -33,11 +35,11 @@ export function MainTabNavigator() {
         tabBarIcon: ({ color, size, focused }) => <View style={[styles.iconWrap, focused && styles.iconWrapActive, focused && { backgroundColor: palette.accentWash }]}><Icon color={color} size={size} strokeWidth={2.2} /></View>,
       };
     }}>
-      <Tab.Screen name="Chats" component={ConversationListScreen} options={{ title: 'Tin nhắn' }} />
-      <Tab.Screen name="Contacts" component={ContactsScreen} options={{ title: 'Danh bạ' }} />
+      <Tab.Screen name="Chats" component={ConversationListScreen} options={{ title: t('Tin nhắn') }} />
+      <Tab.Screen name="Contacts" component={ContactsScreen} options={{ title: t('Danh bạ') }} />
       <Tab.Screen name="Cloud" component={PersonalCloudScreen} options={{ title: 'Cloud' }} />
       <Tab.Screen name="Workspace" component={WorkspaceScreen} options={{ title: 'Workspace' }} />
-      <Tab.Screen name="Settings" component={SettingsScreen} options={{ title: 'Cài đặt' }} />
+      <Tab.Screen name="Settings" component={SettingsScreen} options={{ title: t('Cài đặt') }} />
     </Tab.Navigator>
   );
 }

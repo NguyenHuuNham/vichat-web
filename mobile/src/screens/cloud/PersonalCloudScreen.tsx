@@ -15,6 +15,7 @@ import { useThemePalette } from '../../theme/useThemePalette';
 import { EmptyState } from '../../components/EmptyState';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { displayCurrentTenantName } from '../../utils/tenantDisplay';
+import { useI18n } from '../../store/languageStore';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Cloud'>;
 type DeleteTarget = { kind: 'message'; item: PersonalCloudMessage } | { kind: 'file'; item: PersonalCloudFile };
@@ -67,6 +68,7 @@ function safeFileName(value: string) {
 export function PersonalCloudScreen(_props: Props) {
   const palette = useThemePalette();
   const styles = createStyles(palette);
+  const { language, t } = useI18n();
   const session = useAppStore(state => state.session);
   const mountedRef = useRef(true);
   const [messages, setMessages] = useState<PersonalCloudMessage[]>([]);
@@ -110,7 +112,7 @@ export function PersonalCloudScreen(_props: Props) {
       setFilesHasMore(filePage.hasMore);
       setFilesTotal(filePage.total);
     } catch (value) {
-      if (mountedRef.current) setError(value instanceof Error ? value.message : 'Không tải được Cloud cá nhân.');
+      if (mountedRef.current) setError(value instanceof Error ? t(value.message) : t('Không tải được Cloud cá nhân.'));
     } finally {
       if (mountedRef.current) {
         setLoading(false);
@@ -132,7 +134,7 @@ export function PersonalCloudScreen(_props: Props) {
       setMessagesHasMore(page.hasMore);
       if (page.total !== null) setMessagesTotal(page.total);
     } catch (value) {
-      if (mountedRef.current) setError(value instanceof Error ? value.message : 'Không tải thêm tin nhắn Cloud.');
+      if (mountedRef.current) setError(value instanceof Error ? t(value.message) : t('Không tải thêm tin nhắn Cloud.'));
     } finally {
       if (mountedRef.current) setLoadingMoreMessages(false);
     }
@@ -149,7 +151,7 @@ export function PersonalCloudScreen(_props: Props) {
       setFilesHasMore(page.hasMore);
       if (page.total !== null) setFilesTotal(page.total);
     } catch (value) {
-      if (mountedRef.current) setError(value instanceof Error ? value.message : 'Không tải thêm file Cloud.');
+      if (mountedRef.current) setError(value instanceof Error ? t(value.message) : t('Không tải thêm file Cloud.'));
     } finally {
       if (mountedRef.current) setLoadingMoreFiles(false);
     }
@@ -167,7 +169,7 @@ export function PersonalCloudScreen(_props: Props) {
       setMessagesTotal(current => current === null ? current : current + 1);
       setDraft('');
     } catch (valueError) {
-      if (mountedRef.current) setError(valueError instanceof Error ? valueError.message : 'Không thể gửi tin nhắn Cloud.');
+      if (mountedRef.current) setError(valueError instanceof Error ? t(valueError.message) : t('Không thể gửi tin nhắn Cloud.'));
     } finally {
       if (mountedRef.current) setSending(false);
     }
@@ -197,16 +199,16 @@ export function PersonalCloudScreen(_props: Props) {
         try {
           uploaded.push(await personalCloudService.uploadFile(file));
         } catch (value) {
-          failed.push(`${file.name}: ${value instanceof Error ? value.message : 'tải lên thất bại'}`);
+          failed.push(`${file.name}: ${value instanceof Error ? t(value.message) : t('tải lên thất bại')}`);
         }
       }
       if (mountedRef.current && uploaded.length) {
         setFiles(current => sortFiles([...uploaded, ...current]));
         setFilesTotal(current => current === null ? current : current + uploaded.length);
       }
-      if (mountedRef.current && failed.length) setError(failed.length === 1 ? failed[0] : `Có ${failed.length} file tải lên thất bại.`);
+      if (mountedRef.current && failed.length) setError(failed.length === 1 ? failed[0] : `${t('Có')} ${failed.length} ${t('file tải lên thất bại')}.`);
     } catch (value) {
-      if (mountedRef.current) setError(value instanceof Error ? value.message : 'Không thể chọn file.');
+      if (mountedRef.current) setError(value instanceof Error ? t(value.message) : t('Không thể chọn file.'));
     } finally {
       if (mountedRef.current) setUploading(false);
     }
@@ -234,7 +236,7 @@ export function PersonalCloudScreen(_props: Props) {
         }
       }
     } catch (value) {
-      if (mountedRef.current) setError(value instanceof Error ? value.message : 'Không thể mở file Cloud.');
+      if (mountedRef.current) setError(value instanceof Error ? t(value.message) : t('Không thể mở file Cloud.'));
     } finally {
       if (mountedRef.current) setBusyFileId('');
     }
@@ -263,7 +265,7 @@ export function PersonalCloudScreen(_props: Props) {
       }
       setDeleteTarget(null);
     } catch (value) {
-      if (mountedRef.current) setError(value instanceof Error ? value.message : 'Không thể xóa khỏi Cloud.');
+      if (mountedRef.current) setError(value instanceof Error ? t(value.message) : t('Không thể xóa khỏi Cloud.'));
     } finally {
       setDeleteBusy(false);
     }
@@ -273,9 +275,9 @@ export function PersonalCloudScreen(_props: Props) {
     <>
       <View style={styles.header}>
         <View style={styles.headerCopy}>
-          <Text style={styles.eyebrow}>PRIVATE STORAGE</Text>
-          <Text style={styles.title}>Cloud của tôi</Text>
-          <Text numberOfLines={2} ellipsizeMode="tail" style={styles.subtitle}>{displayCurrentTenantName(session, 'Không gian riêng tư của bạn')}</Text>
+          <Text style={styles.eyebrow}>{t('PRIVATE STORAGE')}</Text>
+          <Text style={styles.title}>{t('Cloud của tôi')}</Text>
+          <Text numberOfLines={2} ellipsizeMode="tail" style={styles.subtitle}>{displayCurrentTenantName(session, t('Không gian riêng tư của bạn'))}</Text>
         </View>
         <View style={styles.headerIcon}><Cloud color={palette.accent} size={24} /></View>
       </View>
@@ -283,28 +285,28 @@ export function PersonalCloudScreen(_props: Props) {
       <View style={styles.hero}>
         <View style={styles.heroIcon}><LockKeyhole color={palette.accentDeep} size={24} /></View>
         <View style={styles.heroCopy}>
-          <Text style={styles.heroTitle}>Chỉ mình bạn biết</Text>
-          <Text style={styles.heroText}>Tin nhắn và file được khóa theo tài khoản, tenant và phiên đăng nhập hiện tại.</Text>
+          <Text style={styles.heroTitle}>{t('Chỉ mình bạn biết')}</Text>
+          <Text style={styles.heroText}>{t('Tin nhắn và file được khóa theo tài khoản, tenant và phiên đăng nhập hiện tại.')}</Text>
         </View>
         <ShieldCheck color={palette.online} size={21} />
       </View>
 
-      {error ? <Pressable onPress={() => setError('')} style={styles.error}><Text style={styles.errorText}>{error}</Text><Text style={styles.errorClose}>Đóng</Text></Pressable> : null}
+      {error ? <Pressable onPress={() => setError('')} style={styles.error}><Text style={styles.errorText}>{t(error)}</Text><Text style={styles.errorClose}>{t('Đóng')}</Text></Pressable> : null}
 
       <View style={styles.sectionHeading}>
-        <View style={styles.sectionHeadingCopy}><MessageSquareText color={palette.accent} size={17} /><Text style={styles.sectionTitle}>Tin nhắn riêng tư</Text><Text style={styles.sectionCount}>{messagesTotal ?? messages.length}</Text></View>
-        <Text style={styles.privateLabel}>CHỈ MÌNH TÔI</Text>
+        <View style={styles.sectionHeadingCopy}><MessageSquareText color={palette.accent} size={17} /><Text style={styles.sectionTitle}>{t('Tin nhắn riêng tư')}</Text><Text style={styles.sectionCount}>{messagesTotal ?? messages.length}</Text></View>
+        <Text style={styles.privateLabel}>{t('CHỈ MÌNH TÔI')}</Text>
       </View>
-      {loading ? <View style={styles.loadingBox}><ActivityIndicator color={palette.accent} /><Text style={styles.loadingText}>Đang tải Cloud...</Text></View> : messages.length === 0 ? <View style={styles.emptyMessage}><MessageSquareText color={palette.muted} size={21} /><Text style={styles.emptyMessageText}>Chưa có tin nhắn riêng tư.</Text></View> : <ScrollView style={styles.messageScroll} nestedScrollEnabled showsVerticalScrollIndicator={false}>{messages.map(message => <View key={message.id} style={styles.messageRow}><View style={styles.messageBubble}><Text style={styles.messageText}>{message.text}</Text><Text style={styles.messageTime}>{formatCloudTime(message.createdAt)}</Text></View><Pressable accessibilityLabel={`Xóa tin nhắn ${message.text.slice(0, 30)}`} onPress={() => deleteMessage(message)} style={styles.deleteMessage}><Trash2 color={palette.muted} size={16} /></Pressable></View>)}</ScrollView>}
-      {messagesHasMore ? <Pressable onPress={() => void loadMoreMessages()} disabled={loadingMoreMessages} style={styles.loadMore}>{loadingMoreMessages ? <ActivityIndicator color={palette.accent} size="small" /> : <Text style={styles.loadMoreText}>Tải tin nhắn cũ hơn</Text>}</Pressable> : null}
+      {loading ? <View style={styles.loadingBox}><ActivityIndicator color={palette.accent} /><Text style={styles.loadingText}>{t('Đang tải Cloud...')}</Text></View> : messages.length === 0 ? <View style={styles.emptyMessage}><MessageSquareText color={palette.muted} size={21} /><Text style={styles.emptyMessageText}>{t('Chưa có tin nhắn riêng tư.')}</Text></View> : <ScrollView style={styles.messageScroll} nestedScrollEnabled showsVerticalScrollIndicator={false}>{messages.map(message => <View key={message.id} style={styles.messageRow}><View style={styles.messageBubble}><Text style={styles.messageText}>{message.text}</Text><Text style={styles.messageTime}>{formatCloudTime(message.createdAt)}</Text></View><Pressable accessibilityLabel={`${t('Xóa tin nhắn')} ${message.text.slice(0, 30)}`} onPress={() => deleteMessage(message)} style={styles.deleteMessage}><Trash2 color={palette.muted} size={16} /></Pressable></View>)}</ScrollView>}
+      {messagesHasMore ? <Pressable onPress={() => void loadMoreMessages()} disabled={loadingMoreMessages} style={styles.loadMore}>{loadingMoreMessages ? <ActivityIndicator color={palette.accent} size="small" /> : <Text style={styles.loadMoreText}>{t('Tải tin nhắn cũ hơn')}</Text>}</Pressable> : null}
       <View style={styles.composer}>
-        <TextInput value={draft} onChangeText={setDraft} placeholder="Viết ghi chú riêng tư..." placeholderTextColor={palette.muted} multiline maxLength={120000} editable={!sending} style={styles.input} />
-        <Pressable accessibilityLabel="Gửi tin nhắn Cloud" onPress={() => void sendMessage()} disabled={sending || !draft.trim()} style={[styles.send, (sending || !draft.trim()) && styles.disabled]}>{sending ? <ActivityIndicator color="#fff" size="small" /> : <Send color="#fff" size={18} />}</Pressable>
+        <TextInput value={draft} onChangeText={setDraft} placeholder={t('Viết ghi chú riêng tư...')} placeholderTextColor={palette.muted} multiline maxLength={120000} editable={!sending} style={styles.input} />
+        <Pressable accessibilityLabel={t('Gửi tin nhắn Cloud')} onPress={() => void sendMessage()} disabled={sending || !draft.trim()} style={[styles.send, (sending || !draft.trim()) && styles.disabled]}>{sending ? <ActivityIndicator color="#fff" size="small" /> : <Send color="#fff" size={18} />}</Pressable>
       </View>
 
       <View style={[styles.sectionHeading, styles.filesHeading]}>
-        <View style={styles.sectionHeadingCopy}><HardDrive color={palette.accent} size={17} /><Text style={styles.sectionTitle}>File của tôi</Text><Text style={styles.sectionCount}>{filesTotal ?? files.length}</Text></View>
-        <Pressable accessibilityLabel="Tải file lên Cloud" onPress={() => void pickFiles()} disabled={uploading} style={[styles.uploadButton, uploading && styles.disabled]}>{uploading ? <ActivityIndicator color="#fff" size="small" /> : <UploadCloud color="#fff" size={17} />}<Text style={styles.uploadText}>{uploading ? 'Đang tải...' : 'Tải lên'}</Text></Pressable>
+        <View style={styles.sectionHeadingCopy}><HardDrive color={palette.accent} size={17} /><Text style={styles.sectionTitle}>{t('File của tôi')}</Text><Text style={styles.sectionCount}>{filesTotal ?? files.length}</Text></View>
+        <Pressable accessibilityLabel={t('Tải file lên Cloud')} onPress={() => void pickFiles()} disabled={uploading} style={[styles.uploadButton, uploading && styles.disabled]}>{uploading ? <ActivityIndicator color="#fff" size="small" /> : <UploadCloud color="#fff" size={17} />}<Text style={styles.uploadText}>{uploading ? t('Đang tải...') : t('Tải lên')}</Text></Pressable>
       </View>
     </>
   );
@@ -317,8 +319,8 @@ export function PersonalCloudScreen(_props: Props) {
           keyExtractor={item => item.id}
           renderItem={({ item }) => <CloudFileRow palette={palette} file={item} busy={busyFileId === item.id} onOpen={() => void openFile(item)} onDownload={() => void openFile(item, true)} onDelete={() => deleteFile(item)} />}
           ListHeaderComponent={header}
-          ListEmptyComponent={loading ? null : <EmptyState icon={HardDrive} title="Chưa có file riêng tư" description="Những file bạn tải lên sẽ chỉ xuất hiện trong Cloud của tài khoản này." />}
-          ListFooterComponent={filesHasMore ? <Pressable onPress={() => void loadMoreFiles()} disabled={loadingMoreFiles} style={styles.loadMore}>{loadingMoreFiles ? <ActivityIndicator color={palette.accent} size="small" /> : <Text style={styles.loadMoreText}>Tải thêm file</Text>}</Pressable> : null}
+          ListEmptyComponent={loading ? null : <EmptyState icon={HardDrive} title={t('Chưa có file riêng tư')} description={t('Những file bạn tải lên sẽ chỉ xuất hiện trong Cloud của tài khoản này.')} />}
+          ListFooterComponent={filesHasMore ? <Pressable onPress={() => void loadMoreFiles()} disabled={loadingMoreFiles} style={styles.loadMore}>{loadingMoreFiles ? <ActivityIndicator color={palette.accent} size="small" /> : <Text style={styles.loadMoreText}>{t('Tải thêm file')}</Text>}</Pressable> : null}
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void loadCloud(true)} tintColor={palette.accent} colors={[palette.accent]} />}
           showsVerticalScrollIndicator={false}
@@ -328,10 +330,10 @@ export function PersonalCloudScreen(_props: Props) {
       </KeyboardAvoidingView>
       <ConfirmDialog
         visible={Boolean(deleteTarget)}
-        title={deleteTarget?.kind === 'file' ? 'Xóa file riêng tư?' : 'Xóa tin nhắn riêng tư?'}
-        message={deleteTarget?.kind === 'file' ? `${deleteTarget.item.fileName} sẽ bị xóa khỏi Cloud của bạn.` : 'Tin nhắn này sẽ bị xóa khỏi Cloud của bạn.'}
-        eyebrow="CLOUD CỦA TÔI"
-        confirmLabel="Xóa"
+        title={deleteTarget?.kind === 'file' ? t('Xóa file riêng tư?') : t('Xóa tin nhắn riêng tư?')}
+        message={deleteTarget?.kind === 'file' ? (language === 'en' ? `${deleteTarget.item.fileName} will be removed from your cloud.` : `${deleteTarget.item.fileName} sẽ bị xóa khỏi Cloud của bạn.`) : t('Tin nhắn này sẽ bị xóa khỏi Cloud của bạn.')}
+        eyebrow={t('CLOUD CỦA TÔI')}
+        confirmLabel={t('Xóa')}
         tone="danger"
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => void confirmDelete()}

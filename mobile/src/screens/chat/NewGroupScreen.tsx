@@ -13,6 +13,7 @@ import { Avatar } from '../../components/Avatar';
 import { SearchField } from '../../components/SearchField';
 import { PickerFile } from '../../types';
 import { beginTrustedExternalActivity } from '../../services/appLifecycleService';
+import { useI18n } from '../../store/languageStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'NewGroup'>;
 type SelectedParticipant = { accountId: string; name: string; tinodeUid?: string };
@@ -20,6 +21,7 @@ type SelectedParticipant = { accountId: string; name: string; tinodeUid?: string
 export function NewGroupScreen({ navigation }: Props) {
   const palette = useThemePalette();
   const styles = createStyles(palette);
+  const { t } = useI18n();
   const directory = useAppStore(state => state.directory);
   const currentUserId = useAppStore(state => state.session?.user.id);
   const createGroup = useAppStore(state => state.createGroupConversation);
@@ -32,17 +34,17 @@ export function NewGroupScreen({ navigation }: Props) {
   const [error, setError] = useState('');
   const contacts = useMemo(() => directory.filter(user => user.id !== currentUserId && user.name.toLowerCase().includes(query.toLowerCase())), [currentUserId, directory, query]);
   const submit = async () => {
-    if (!subject.trim()) { setError('Nhập tên nhóm.'); return; }
-    if (selected.length < 1) { setError('Chọn ít nhất 1 đồng nghiệp.'); return; }
+    if (!subject.trim()) { setError(t('Nhập tên nhóm.')); return; }
+    if (selected.length < 1) { setError(t('Chọn ít nhất 1 đồng nghiệp.')); return; }
     setBusy(true); setError('');
     try {
       const conversation = await createGroup(subject.trim(), selected.map(item => item.accountId), avatarFile, requestKey.current);
       navigation.replace('ChatDetail', { conversationId: conversation.id });
-    } catch (value) { setError(value instanceof Error ? value.message : 'Không tạo được nhóm.'); } finally { setBusy(false); }
+    } catch (value) { setError(value instanceof Error ? t(value.message) : t('Không tạo được nhóm.')); } finally { setBusy(false); }
   };
   const chooseAvatar = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) { setError('ViChat cần quyền truy cập ảnh để đặt avatar nhóm.'); return; }
+    if (!permission.granted) { setError(t('ViChat cần quyền truy cập ảnh để đặt avatar nhóm.')); return; }
     beginTrustedExternalActivity();
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'] as any, quality: 0.85, allowsEditing: true, aspect: [1, 1] });
     const asset: any = !result.canceled ? result.assets?.[0] : null;
@@ -51,10 +53,10 @@ export function NewGroupScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.screen} edges={['bottom', 'left', 'right']}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={styles.form}><Text style={styles.label}>Tên nhóm</Text><TextInput value={subject} onChangeText={setSubject} placeholder="Ví dụ: Phòng vận hành" placeholderTextColor={palette.muted} style={styles.input} /><Pressable onPress={() => void chooseAvatar()} style={styles.avatarPicker}><Avatar name={subject || 'Nhóm'} uri={avatarFile?.uri} size={58} rounded={false} /><View style={styles.avatarCopy}><Text style={styles.label}>Avatar nhóm</Text><Text style={styles.meta}>{avatarFile ? 'Đã chọn ảnh · chạm để đổi' : 'Chạm để tải ảnh lên'}</Text></View><ImagePlus color={palette.accent} size={21} /></Pressable><View style={styles.rowTitle}><Text style={styles.label}>Thành viên ban đầu</Text><Text style={styles.count}>{selected.length} đã chọn</Text></View><SearchField value={query} onChangeText={setQuery} placeholder="Tìm nhân viên" /></View>
-        <FlatList data={contacts} keyExtractor={item => item.id} contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled" renderItem={({ item }) => { const active = selected.some(value => value.accountId === item.id); return <Pressable onPress={() => setSelected(value => active ? value.filter(member => member.accountId !== item.id) : [...value, { accountId: item.id, name: item.name, tinodeUid: item.tinodeUid || item.uid }])} style={styles.contact}><Avatar name={item.name} uri={item.avatar} size={43} /><View style={{ flex: 1 }}><Text style={styles.name}>{item.name}</Text><Text style={styles.meta}>{item.department || item.title || 'Nhân viên'}</Text></View><View style={[styles.checkbox, active && styles.checkboxActive]}>{active ? <Check color="#fff" size={15} /> : null}</View></Pressable>; }} />
+        <View style={styles.form}><Text style={styles.label}>{t('Tên nhóm')}</Text><TextInput value={subject} onChangeText={setSubject} placeholder={t('Ví dụ: Phòng vận hành')} placeholderTextColor={palette.muted} style={styles.input} /><Pressable onPress={() => void chooseAvatar()} style={styles.avatarPicker}><Avatar name={subject || t('Nhóm')} uri={avatarFile?.uri} size={58} rounded={false} /><View style={styles.avatarCopy}><Text style={styles.label}>{t('Avatar nhóm')}</Text><Text style={styles.meta}>{avatarFile ? t('Đã chọn ảnh · chạm để đổi') : t('Chạm để tải ảnh lên')}</Text></View><ImagePlus color={palette.accent} size={21} /></Pressable><View style={styles.rowTitle}><Text style={styles.label}>{t('Thành viên ban đầu')}</Text><Text style={styles.count}>{selected.length} {t('đã chọn')}</Text></View><SearchField value={query} onChangeText={setQuery} placeholder={t('Tìm nhân viên')} /></View>
+        <FlatList data={contacts} keyExtractor={item => item.id} contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled" renderItem={({ item }) => { const active = selected.some(value => value.accountId === item.id); return <Pressable onPress={() => setSelected(value => active ? value.filter(member => member.accountId !== item.id) : [...value, { accountId: item.id, name: item.name, tinodeUid: item.tinodeUid || item.uid }])} style={styles.contact}><Avatar name={item.name} uri={item.avatar} size={43} /><View style={{ flex: 1 }}><Text style={styles.name}>{item.name}</Text><Text style={styles.meta}>{item.department || item.title || t('Nhân viên')}</Text></View><View style={[styles.checkbox, active && styles.checkboxActive]}>{active ? <Check color="#fff" size={15} /> : null}</View></Pressable>; }} />
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <View style={styles.footer}><Pressable onPress={submit} disabled={busy} style={[styles.button, busy && { opacity: 0.55 }]}><UsersRound color="#fff" size={19} /><Text style={styles.buttonText}>{busy ? 'Đang tạo...' : 'Tạo nhóm'}</Text></Pressable><Text style={styles.note}>Chọn ít nhất 1 thành viên. Bạn có thể thêm người sau khi tạo nhóm.</Text></View>
+        <View style={styles.footer}><Pressable onPress={submit} disabled={busy} style={[styles.button, busy && { opacity: 0.55 }]}><UsersRound color="#fff" size={19} /><Text style={styles.buttonText}>{busy ? t('Đang tạo...') : t('Tạo nhóm')}</Text></Pressable><Text style={styles.note}>{t('Chọn ít nhất 1 thành viên. Bạn có thể thêm người sau khi tạo nhóm.')}</Text></View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

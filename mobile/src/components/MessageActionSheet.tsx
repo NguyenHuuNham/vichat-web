@@ -6,6 +6,7 @@ import { canEditMessage, canInteractWithMessage, canRecallMessage } from '../uti
 import { ThemeColors, shadow } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { useThemePalette } from '../theme/useThemePalette';
+import { useI18n } from '../store/languageStore';
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢'];
 
@@ -27,6 +28,7 @@ interface Props {
 export function MessageActionSheet({ message, onClose, onReply, onCopy, onShare, onDownload, onDetails, onReaction, onEdit, canPin = false, onPin, onRecall }: Props) {
   const palette = useThemePalette();
   const styles = createStyles(palette);
+  const { t } = useI18n();
   if (!message || !canInteractWithMessage(message)) return null;
   const actionable = true;
   const hasAttachment = Boolean(!message.sticker && (message.image || message.file));
@@ -37,17 +39,17 @@ export function MessageActionSheet({ message, onClose, onReply, onCopy, onShare,
         <Pressable style={styles.backdrop} onPress={onClose} />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <View style={styles.header}><Text style={styles.title}>Thao tác tin nhắn</Text><Pressable onPress={onClose} style={styles.close}><X color={palette.inkSoft} size={20} /></Pressable></View>
+          <View style={styles.header}><Text style={styles.title}>{t('Thao tác tin nhắn')}</Text><Pressable onPress={onClose} style={styles.close}><X color={palette.inkSoft} size={20} /></Pressable></View>
           {actionable ? <View style={styles.reactions}>{REACTIONS.map(emoji => <Pressable key={emoji} onPress={() => run(() => onReaction(message, emoji))} style={styles.reaction}><Text style={styles.emoji}>{emoji}</Text></Pressable>)}</View> : null}
           <View style={styles.actions}>
-            {actionable ? <Action palette={palette} icon={Reply} label="Trả lời tin nhắn" onPress={() => run(() => onReply(message))} /> : null}
-            {actionable && message.text ? <Action palette={palette} icon={Copy} label="Sao chép nội dung" onPress={() => run(() => onCopy(message))} /> : null}
-            {message.sender === 'outgoing' && canEditMessage(message) ? <Action palette={palette} icon={Pencil} label="Sửa tin nhắn" onPress={() => run(() => onEdit(message))} /> : null}
-            {hasAttachment ? <Action palette={palette} icon={Download} label={message.type === 'audio' || /^audio\//i.test(message.file?.mime || '') ? 'Mở / tải voice' : message.image ? 'Mở / lưu hình ảnh' : 'Mở / tải tệp'} onPress={() => run(() => onDownload(message))} /> : null}
-            {actionable ? <Action palette={palette} icon={Share2} label="Chia sẻ" onPress={() => run(() => onShare(message))} /> : null}
-            {canPin && onPin && message.type !== 'system' ? <Action palette={palette} icon={Pin} label={message.pinned ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn'} onPress={() => run(() => onPin(message))} /> : null}
-            <Action palette={palette} icon={Info} label="Xem chi tiết" onPress={() => run(() => onDetails(message))} />
-            {message.sender === 'outgoing' && canRecallMessage(message) ? <Action palette={palette} icon={RotateCcw} label="Thu hồi tin nhắn" danger onPress={() => run(() => onRecall(message, 'all'))} /> : null}
+            {actionable ? <Action palette={palette} icon={Reply} label={t('Trả lời tin nhắn')} onPress={() => run(() => onReply(message))} /> : null}
+            {actionable && message.text ? <Action palette={palette} icon={Copy} label={t('Sao chép nội dung')} onPress={() => run(() => onCopy(message))} /> : null}
+            {message.sender === 'outgoing' && canEditMessage(message) ? <Action palette={palette} icon={Pencil} label={t('Sửa tin nhắn')} onPress={() => run(() => onEdit(message))} /> : null}
+            {hasAttachment ? <Action palette={palette} icon={Download} label={message.type === 'audio' || /^audio\//i.test(message.file?.mime || '') ? t('Mở / tải voice') : message.image ? t('Mở / lưu hình ảnh') : t('Mở / tải tệp')} onPress={() => run(() => onDownload(message))} /> : null}
+            {actionable ? <Action palette={palette} icon={Share2} label={t('Chia sẻ')} onPress={() => run(() => onShare(message))} /> : null}
+            {canPin && onPin && message.type !== 'system' ? <Action palette={palette} icon={Pin} label={message.pinned ? t('Bỏ ghim tin nhắn') : t('Ghim tin nhắn')} onPress={() => run(() => onPin(message))} /> : null}
+            <Action palette={palette} icon={Info} label={t('Xem chi tiết')} onPress={() => run(() => onDetails(message))} />
+            {message.sender === 'outgoing' && canRecallMessage(message) ? <Action palette={palette} icon={RotateCcw} label={t('Thu hồi tin nhắn')} danger onPress={() => run(() => onRecall(message, 'all'))} /> : null}
           </View>
         </View>
       </View>

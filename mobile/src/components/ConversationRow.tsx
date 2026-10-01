@@ -8,12 +8,14 @@ import { useThemePalette } from '../theme/useThemePalette';
 import { formatConversationTime } from '../utils/timeFormatting';
 import { Avatar } from './Avatar';
 import { ConversationViewerPreference } from '../services/conversationPreferenceService';
+import { useI18n } from '../store/languageStore';
 
 export const ConversationRow = memo(function ConversationRow({ conversation, preference, onPress, onLongPress }: { conversation: Conversation; preference?: ConversationViewerPreference; onPress: () => void; onLongPress?: () => void }) {
   const palette = useThemePalette();
   const styles = createStyles(palette);
+  const { t } = useI18n();
   const compact = preference?.displayMode === 'compact';
-  const category = preference?.category ? ({ customer: 'Khách hàng', work: 'Công việc', urgent: 'Ưu tiên', 'follow-up': 'Cần theo dõi', other: 'Khác' } as Record<string, string>)[preference.category] : '';
+  const category = preference?.category ? t(({ customer: 'Khách hàng', work: 'Công việc', urgent: 'Ưu tiên', 'follow-up': 'Cần theo dõi', other: 'Khác' } as Record<string, string>)[preference.category] || '') : '';
   return (
     <Pressable onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => [styles.row, compact && styles.rowCompact, pressed && styles.pressed]}>
       <Avatar name={conversation.name} uri={conversation.avatarUrl} size={compact ? 44 : 52} rounded={!conversation.isGroup} />
@@ -27,7 +29,7 @@ export const ConversationRow = memo(function ConversationRow({ conversation, pre
           <Text style={styles.time}>{formatConversationTime(conversation.updatedAt || conversation.time)}</Text>
         </View>
         <View style={styles.bottomline}>
-          <Text numberOfLines={1} style={[styles.preview, conversation.badge > 0 && styles.previewUnread]}>{conversation.lastMsg || (conversation.isGroup ? `${conversation.membersCount || 'Nhóm nội bộ'}` : 'Bắt đầu cuộc trò chuyện')}</Text>
+          <Text numberOfLines={1} style={[styles.preview, conversation.badge > 0 && styles.previewUnread]}>{conversation.lastMsg || (conversation.isGroup ? `${conversation.membersCount || t('Nhóm nội bộ')}` : t('Bắt đầu cuộc trò chuyện'))}</Text>
           {conversation.badge > 0 ? <View style={styles.badge}><Text style={styles.badgeText}>{conversation.badge > 99 ? '99+' : conversation.badge}</Text></View> : <ChevronRight color={palette.line} size={17} />}
         </View>
       </View>

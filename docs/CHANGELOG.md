@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-01-05 - Hoan thien song ngu Mobile Viet/English
+
+- Thoi gian: 2026-10-01 (Asia/Saigon)
+- Loai: Tinh nang | Mobile | i18n | UX | Kiem thu | Tai lieu
+- Trang thai: Hoan tat
+- Muc tieu: Hoan thien lua chon tieng Viet/English trong ho so ca nhan de giao dien Mobile cap nhat nhat quan truoc khi trien khai chuc nang dich noi dung tro chuyen.
+- Pham vi: Chi `mobile/` va nhat ky thay doi; khong sua Web, Chatmgt, Tinode, S3 hoac API.
+- File da thay doi: `mobile/App.tsx`, `mobile/src/i18n/`, `mobile/src/store/languageStore.ts`, `mobile/src/store/languageStore.test.ts`, cac component/man hinh Mobile dung i18n.
+- Noi dung: Bo sung ban dich cho modal, trang thai realtime/dang nhap, nhom, thu hoi/sua tin, file/voice/sticker/poll, Workspace va Cloud; chuan hoa chuoi loi de khong quay ve tieng Viet khi chon English; giu `Dich tro chuyen` o trang thai chua kha dung de lam o buoc ke tiep.
+- Quyet dinh ky thuat: Dung translator Mobile ket hop catalog dung chung voi catalog Mobile, luu lua chon `vi`/`en` trong AsyncStorage va dung locale `vi-VN`/`en-US` cho ngay gio; du lieu nguoi dung va noi dung tin nhan khong bi dich tu dong.
+- Database/API/cau hinh: Khong co migration, endpoint hoac thay doi cau hinh backend.
+- Kiem thu: Da chay `npm test -- --reporter=dot --maxWorkers=1` (34 file, 144 test) dat 144/144; `npm run typecheck` dat; `npm run lint` dat; `git diff --check` dat.
+- Rui ro con lai: Can xac minh UI English tren APK/emulator sau export; chuc nang dich noi dung tro chuyen chua trien khai theo yeu cau.
+- Viec tiep theo: Chay export va build APK tren o `D:`, smoke test Android, sau do moi bat dau luong dich tro chuyen.
+- Commit/PR: `d9f5a50`
+
 ## 2026-10-01-04 - Chot font readability tren Web
 
 - Thoi gian: 2026-10-01 10:30 (Asia/Saigon)

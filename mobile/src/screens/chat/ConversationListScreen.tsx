@@ -23,6 +23,7 @@ import { isConversationVisibleInList } from '../../utils/conversationSync';
 import { displayCurrentTenantName } from '../../utils/tenantDisplay';
 import { ConversationViewerPreference, loadConversationPreferences } from '../../services/conversationPreferenceService';
 import { QrScannerModal } from '../../components/QrScannerModal';
+import { useI18n } from '../../store/languageStore';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Chats'> & { navigation: any };
 type FilterKey = 'all' | 'unread' | 'groups';
@@ -38,6 +39,7 @@ const filters: Array<{ key: FilterKey; label: string }> = [
 export function ConversationListScreen({ navigation }: Props) {
   const palette = useThemePalette();
   const styles = createStyles(palette);
+  const { t } = useI18n();
   const session = useAppStore(state => state.session);
   const directory = useAppStore(state => state.directory);
   const conversations = useAppStore(state => state.conversations);
@@ -93,7 +95,7 @@ export function ConversationListScreen({ navigation }: Props) {
     try {
       await action();
     } catch (value) {
-      Alert.alert('Không thể thực hiện', value instanceof Error ? value.message : fallback);
+      Alert.alert(t('Không thể thực hiện'), value instanceof Error ? t(value.message) : t(fallback));
     } finally {
       setActionBusy(false);
     }
@@ -108,10 +110,10 @@ export function ConversationListScreen({ navigation }: Props) {
     if (!isOwner) {
       setDeleteRequest({
         item,
-        title: 'Xóa cuộc trò chuyện?',
-        message: 'Tin nhắn của người khác không bị xóa.',
-        confirmLabel: 'Xóa phía tôi',
-        fallback: 'Không xóa được cuộc trò chuyện phía bạn.',
+        title: t('Xóa cuộc trò chuyện?'),
+        message: t('Tin nhắn của người khác không bị xóa.'),
+        confirmLabel: t('Xóa phía tôi'),
+        fallback: t('Không xóa được cuộc trò chuyện phía bạn.'),
       });
       return;
     }
@@ -121,29 +123,29 @@ export function ConversationListScreen({ navigation }: Props) {
       .map(member => ({ member, accountId: accountIdForMember(member, directory) }))
       .filter(value => Boolean(value.accountId));
     if (otherMembers.length > 0 && candidates.length === 0) {
-      Alert.alert('Chưa đồng bộ thành viên', 'Không xác định được Account ID của thành viên thay thế. Hãy tải lại nhóm rồi thử lại.');
+      Alert.alert(t('Chưa đồng bộ thành viên'), t('Không xác định được Account ID của thành viên thay thế. Hãy tải lại nhóm rồi thử lại.'));
       return;
     }
     if (candidates.length === 0) {
       setDeleteRequest({
         item,
-        title: 'Rời nhóm cuối cùng?',
-        message: 'Bạn là thành viên cuối cùng. Rời nhóm sẽ đóng nhóm này.',
-        confirmLabel: 'Rời nhóm',
-        fallback: 'Không thể rời và đóng nhóm.',
+        title: t('Rời nhóm cuối cùng?'),
+        message: t('Bạn là thành viên cuối cùng. Rời nhóm sẽ đóng nhóm này.'),
+        confirmLabel: t('Rời nhóm'),
+        fallback: t('Không thể rời và đóng nhóm.'),
       });
       return;
     }
     setActionRequest({
-      title: 'Chọn trưởng nhóm mới',
-      message: 'Bạn phải chuyển quyền cho một thành viên trước khi rời nhóm.',
-      options: candidates.map(({ member, accountId }): ChoiceDialogOption => ({ id: accountId, label: member.name || member.username || accountId, detail: member.department || member.title || 'Thành viên trong nhóm' })),
+      title: t('Chọn trưởng nhóm mới'),
+      message: t('Bạn phải chuyển quyền cho một thành viên trước khi rời nhóm.'),
+      options: candidates.map(({ member, accountId }): ChoiceDialogOption => ({ id: accountId, label: member.name || member.username || accountId, detail: member.department || member.title || t('Thành viên trong nhóm') })),
       onSelect: option => {
         setActionRequest(null);
-        void runConversationAction(() => deleteConversation(item.id, option.id), 'Không thể chuyển quyền và rời nhóm.');
+        void runConversationAction(() => deleteConversation(item.id, option.id), t('Không thể chuyển quyền và rời nhóm.'));
       },
     });
-  }, [deleteConversation, directory, runConversationAction, session]);
+  }, [deleteConversation, directory, runConversationAction, session, t]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -151,16 +153,16 @@ export function ConversationListScreen({ navigation }: Props) {
         <View style={styles.identity}>
           <Avatar name={session?.user.name} uri={session?.user.avatar} size={48} online={connection === 'connected'} />
           <View style={styles.identityText}>
-            <Text numberOfLines={2} ellipsizeMode="tail" style={styles.eyebrow}>{displayCurrentTenantName(session, 'Không gian công ty')}</Text>
-            <Text style={styles.title}>Tin nhắn</Text>
+            <Text numberOfLines={2} ellipsizeMode="tail" style={styles.eyebrow}>{displayCurrentTenantName(session, t('Không gian công ty'))}</Text>
+            <Text style={styles.title}>{t('Tin nhắn')}</Text>
           </View>
         </View>
         <View style={styles.headerActions}>
-          <Pressable accessibilityLabel="Quét mã QR" onPress={() => setQrScannerVisible(true)} style={styles.iconButton}>
+          <Pressable accessibilityLabel={t('Quét mã QR')} onPress={() => setQrScannerVisible(true)} style={styles.iconButton}>
             <QrCode color={palette.ink} size={21} />
           </Pressable>
           <Pressable
-            accessibilityLabel={showSearch ? 'Đóng tìm kiếm' : 'Tìm kiếm cuộc trò chuyện'}
+            accessibilityLabel={showSearch ? t('Đóng tìm kiếm') : t('Tìm kiếm cuộc trò chuyện')}
             onPress={() => setShowSearch(value => !value)}
             style={styles.iconButton}
           >
@@ -169,20 +171,20 @@ export function ConversationListScreen({ navigation }: Props) {
         </View>
       </View>
 
-      {showSearch ? <View style={styles.search}><SearchField value={query} onChangeText={setQuery} placeholder="Tìm cuộc trò chuyện" /></View> : null}
+      {showSearch ? <View style={styles.search}><SearchField value={query} onChangeText={setQuery} placeholder={t('Tìm cuộc trò chuyện')} /></View> : null}
 
       <View style={styles.filterRow}>
         <View style={styles.filters}>
           {filters.map(item => (
             <Pressable key={item.key} onPress={() => setFilter(item.key)} style={[styles.filterChip, filter === item.key && styles.filterChipActive]}>
-              <Text style={[styles.filterText, filter === item.key && styles.filterTextActive]}>{item.label}</Text>
+              <Text style={[styles.filterText, filter === item.key && styles.filterTextActive]}>{t(item.label)}</Text>
             </Pressable>
           ))}
         </View>
         <SlidersHorizontal color={palette.inkSoft} size={18} />
       </View>
 
-      {error ? <Pressable onPress={clearError} style={styles.notice}><Text style={styles.noticeText}>{error}</Text><Text style={styles.noticeClose}>Đóng</Text></Pressable> : null}
+      {error ? <Pressable onPress={clearError} style={styles.notice}><Text style={styles.noticeText}>{t(error)}</Text><Text style={styles.noticeClose}>{t('Đóng')}</Text></Pressable> : null}
 
       <FlatList
         data={filtered}
@@ -199,10 +201,10 @@ export function ConversationListScreen({ navigation }: Props) {
             onPress={() => navigation.navigate('ChatDetail', { conversationId: item.id })}
             onLongPress={() => setActionRequest({
               title: item.name,
-              message: 'Chọn thao tác cho cuộc trò chuyện này.',
+              message: t('Chọn thao tác cho cuộc trò chuyện này.'),
               options: [
-                { id: 'mute', label: isConversationMuted(item.notificationMutedUntil) ? 'Bật thông báo' : 'Tắt thông báo', detail: 'Cập nhật thông báo trên thiết bị' },
-                { id: 'delete', label: 'Xóa phía tôi', detail: 'Xóa cuộc trò chuyện khỏi danh sách của bạn' },
+                { id: 'mute', label: isConversationMuted(item.notificationMutedUntil) ? t('Bật thông báo') : t('Tắt thông báo'), detail: t('Cập nhật thông báo trên thiết bị') },
+                { id: 'delete', label: t('Xóa phía tôi'), detail: t('Xóa cuộc trò chuyện khỏi danh sách của bạn') },
               ],
               onSelect: option => {
                 setActionRequest(null);
@@ -211,14 +213,14 @@ export function ConversationListScreen({ navigation }: Props) {
                   return;
                 }
                 const muted = isConversationMuted(item.notificationMutedUntil);
-                void runConversationAction(() => muteConversation(item.id, muted ? null : 0), 'Không cập nhật được trạng thái thông báo.');
+                void runConversationAction(() => muteConversation(item.id, muted ? null : 0), t('Không cập nhật được trạng thái thông báo.'));
               },
             })}
           />
         )}
         contentContainerStyle={filtered.length ? styles.list : styles.emptyList}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={palette.accent} colors={[palette.accent]} />}
-        ListEmptyComponent={<EmptyState icon={MessageCircleMore} title={query || filter !== 'all' ? 'Không tìm thấy cuộc trò chuyện' : 'Chưa có cuộc trò chuyện'} description={query || filter !== 'all' ? 'Thử đổi bộ lọc hoặc tìm bằng tên đồng nghiệp, nhóm.' : 'Mở Danh bạ để bắt đầu nhắn tin với đồng đội.'} />}
+        ListEmptyComponent={<EmptyState icon={MessageCircleMore} title={query || filter !== 'all' ? t('Không tìm thấy cuộc trò chuyện') : t('Chưa có cuộc trò chuyện')} description={query || filter !== 'all' ? t('Thử đổi bộ lọc hoặc tìm bằng tên đồng nghiệp, nhóm.') : t('Mở Danh bạ để bắt đầu nhắn tin với đồng đội.')} />}
         showsVerticalScrollIndicator={false}
       />
 
@@ -226,8 +228,8 @@ export function ConversationListScreen({ navigation }: Props) {
         visible={Boolean(deleteRequest)}
         title={deleteRequest?.title || ''}
         message={deleteRequest?.message || ''}
-        eyebrow="THAO TÁC CUỘC TRÒ CHUYỆN"
-        confirmLabel={deleteRequest?.confirmLabel || 'Xác nhận'}
+        eyebrow={t('THAO TÁC CUỘC TRÒ CHUYỆN')}
+        confirmLabel={deleteRequest?.confirmLabel || t('Xác nhận')}
         onCancel={() => setDeleteRequest(null)}
         onConfirm={() => {
           const request = deleteRequest;
@@ -250,7 +252,7 @@ export function ConversationListScreen({ navigation }: Props) {
         busy={actionBusy}
       />
 
-      <Pressable accessibilityLabel="Mở danh bạ để bắt đầu cuộc trò chuyện" onPress={() => navigation.navigate('Contacts')} style={styles.composeButton}>
+      <Pressable accessibilityLabel={t('Mở danh bạ để bắt đầu cuộc trò chuyện')} onPress={() => navigation.navigate('Contacts')} style={styles.composeButton}>
         <MessageSquarePlus color="#fff" size={24} strokeWidth={2.3} />
       </Pressable>
       <QrScannerModal visible={qrScannerVisible} onClose={() => setQrScannerVisible(false)} />

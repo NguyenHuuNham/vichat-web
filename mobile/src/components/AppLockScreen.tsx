@@ -11,12 +11,14 @@ import { typography } from '../theme/typography';
 import { config } from '../constants/config';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useThemeStore } from '../store/themeStore';
+import { useI18n } from '../store/languageStore';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'delete'];
 
 export function AppLockScreen() {
   const palette = colorsForTheme(useThemeStore(state => state.resolved));
   const styles = createStyles(palette);
+  const { t } = useI18n();
   const unlock = useAppLockStore(state => state.unlock);
   const resetPin = useAppLockStore(state => state.resetPin);
   const logout = useAppStore(state => state.logout);
@@ -34,7 +36,7 @@ export function AppLockScreen() {
         return;
       }
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setError('Mã PIN không đúng. Vui lòng thử lại.');
+      setError(t('Mã PIN không đúng. Vui lòng thử lại.'));
       setPin('');
     }).finally(() => setBusy(false));
   }, [busy, pin, unlock]);
@@ -53,8 +55,8 @@ export function AppLockScreen() {
       <View style={styles.brandMark}><GonLogo size={52} /></View>
       <Text style={styles.brand}>{config.brandLabel}</Text>
       <View style={styles.lockIcon}><LockKeyhole color={palette.accent} size={25} /></View>
-      <Text style={styles.title}>Mở khóa ViChat</Text>
-      <Text style={styles.subtitle}>Nhập mã PIN 4 số để xem tin nhắn</Text>
+      <Text style={styles.title}>{t('Mở khóa ViChat')}</Text>
+      <Text style={styles.subtitle}>{t('Nhập mã PIN 4 số để xem tin nhắn')}</Text>
       <View style={styles.dots}>
         {[0, 1, 2, 3].map(index => <View key={index} style={[styles.dot, pin.length > index && styles.dotFilled]} />)}
       </View>
@@ -66,13 +68,13 @@ export function AppLockScreen() {
           </Pressable>
         ) : <View key={`empty-${index}`} style={styles.keyEmpty} />)}
       </View>
-      <Pressable onPress={forgotPin} style={styles.forgot}><Text style={styles.forgotText}>Quên mã PIN?</Text></Pressable>
+      <Pressable onPress={forgotPin} style={styles.forgot}><Text style={styles.forgotText}>{t('Quên mã PIN?')}</Text></Pressable>
       <ConfirmDialog
         visible={forgotOpen}
-        title="Quên mã PIN?"
-        message="Bạn cần đăng nhập lại UpGO Account để đặt mã PIN mới trên thiết bị này."
-        eyebrow="BẢO MẬT THIẾT BỊ"
-        confirmLabel="Đăng xuất & đặt lại"
+        title={t('Quên mã PIN?')}
+        message={t('Bạn cần đăng nhập lại UpGO Account để đặt mã PIN mới trên thiết bị này.')}
+        eyebrow={t('BẢO MẬT THIẾT BỊ')}
+        confirmLabel={t('Đăng xuất & đặt lại')}
         tone="danger"
         onCancel={() => setForgotOpen(false)}
         onConfirm={() => void resetPin().then(() => logout()).catch(() => {}).finally(() => setForgotOpen(false))}

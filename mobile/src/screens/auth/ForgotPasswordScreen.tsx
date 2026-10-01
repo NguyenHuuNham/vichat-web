@@ -8,34 +8,36 @@ import { authService } from '../../services/authService';
 import { ThemeColors } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import { useThemePalette } from '../../theme/useThemePalette';
+import { useI18n } from '../../store/languageStore';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'ForgotPassword'>;
 
 export function ForgotPasswordScreen({ navigation }: Props) {
   const palette = useThemePalette();
   const styles = createStyles(palette);
+  const { t } = useI18n();
   const [identity, setIdentity] = useState('');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
   const submit = async () => {
-    if (!identity.trim()) { setError('Nhập email công ty để nhận hướng dẫn.'); return; }
+    if (!identity.trim()) { setError(t('Nhập email công ty để nhận hướng dẫn.')); return; }
     setBusy(true); setError('');
-    try { await authService.requestPasswordReset(identity); setDone(true); } catch (value) { setError(value instanceof Error ? value.message : 'Không gửi được yêu cầu.'); } finally { setBusy(false); }
+    try { await authService.requestPasswordReset(identity); setDone(true); } catch (value) { setError(value instanceof Error ? t(value.message) : t('Không gửi được yêu cầu.')); } finally { setBusy(false); }
   };
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <Pressable onPress={() => navigation.goBack()} style={styles.back}><ArrowLeft color={palette.ink} size={20} /><Text style={styles.backText}>Đăng nhập</Text></Pressable>
+          <Pressable onPress={() => navigation.goBack()} style={styles.back}><ArrowLeft color={palette.ink} size={20} /><Text style={styles.backText}>{t('Đăng nhập')}</Text></Pressable>
           <View style={styles.content}>
             <View style={styles.icon}><MailCheck color={palette.accent} size={28} /></View>
-            <Text style={styles.title}>Lấy lại quyền truy cập</Text>
-            <Text style={styles.description}>Nhập email UpGO Account. Nếu tài khoản hợp lệ, hệ thống sẽ gửi link đặt lại mật khẩu.</Text>
-            {done ? <View style={styles.success}><Text style={styles.successText}>Yêu cầu đã được tiếp nhận. Kiểm tra email công ty của bạn.</Text></View> : <>
-              <TextInput value={identity} onChangeText={setIdentity} placeholder="Email công ty" placeholderTextColor={palette.muted} autoCapitalize="none" keyboardType="email-address" style={styles.input} />
+            <Text style={styles.title}>{t('Lấy lại quyền truy cập')}</Text>
+            <Text style={styles.description}>{t('Nhập email UpGO Account. Nếu tài khoản hợp lệ, hệ thống sẽ gửi link đặt lại mật khẩu.')}</Text>
+            {done ? <View style={styles.success}><Text style={styles.successText}>{t('Yêu cầu đã được tiếp nhận. Kiểm tra email công ty của bạn.')}</Text></View> : <>
+              <TextInput value={identity} onChangeText={setIdentity} placeholder={t('Email công ty')} placeholderTextColor={palette.muted} autoCapitalize="none" keyboardType="email-address" style={styles.input} />
               {error ? <Text style={styles.error}>{error}</Text> : null}
-              <Pressable onPress={submit} disabled={busy} style={[styles.button, busy && { opacity: 0.6 }]}><Text style={styles.buttonText}>{busy ? 'Đang gửi...' : 'Gửi hướng dẫn'}</Text><ArrowRight color="#fff" size={19} /></Pressable>
+              <Pressable onPress={submit} disabled={busy} style={[styles.button, busy && { opacity: 0.6 }]}><Text style={styles.buttonText}>{busy ? t('Đang gửi...') : t('Gửi hướng dẫn')}</Text><ArrowRight color="#fff" size={19} /></Pressable>
             </>}
           </View>
         </ScrollView>

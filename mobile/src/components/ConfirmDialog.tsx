@@ -3,6 +3,7 @@ import { AlertTriangle } from 'lucide-react-native';
 import { colorsForTheme, shadow } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { useThemeStore } from '../store/themeStore';
+import { useI18n } from '../store/languageStore';
 
 interface Props {
   visible: boolean;
@@ -32,6 +33,7 @@ export function ConfirmDialog({
   tone = 'default',
 }: Props) {
   const palette = colorsForTheme(useThemeStore(state => state.resolved));
+  const { t } = useI18n();
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
       <View style={styles.overlay}>
@@ -47,13 +49,13 @@ export function ConfirmDialog({
           <Text style={[styles.message, { color: palette.inkSoft }]}>{message}</Text>
           <View style={styles.actions}>
             <Pressable disabled={busy} onPress={onCancel} style={({ pressed }) => [styles.button, { backgroundColor: palette.accentWash }, pressed && styles.pressed]}>
-              <Text style={[styles.cancelText, { color: palette.inkSoft }]}>Hủy</Text>
+              <Text style={[styles.cancelText, { color: palette.inkSoft }]}>{t('Hủy')}</Text>
             </Pressable>
             {secondaryLabel && onSecondary ? <Pressable disabled={busy} onPress={onSecondary} style={({ pressed }) => [styles.button, { backgroundColor: palette.accentWash }, pressed && styles.pressed]}>
               <Text style={[styles.secondaryText, { color: palette.inkSoft }]}>{secondaryLabel}</Text>
             </Pressable> : null}
             <Pressable disabled={busy} onPress={onConfirm} style={({ pressed }) => [styles.button, { backgroundColor: tone === 'danger' ? palette.danger : palette.accent }, pressed && styles.pressed, busy && styles.disabled]}>
-              <Text style={styles.confirmText}>{busy ? 'Đang xử lý...' : confirmLabel}</Text>
+              <Text style={styles.confirmText}>{busy ? t('Đang xử lý...') : confirmLabel}</Text>
             </Pressable>
           </View>
         </View>

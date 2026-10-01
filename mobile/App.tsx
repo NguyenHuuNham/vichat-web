@@ -13,6 +13,7 @@ import { useAppLockStore } from './src/store/appLockStore';
 import { consumeTrustedExternalActivity } from './src/services/appLifecycleService';
 import { colorsForTheme } from './src/theme/colors';
 import { useThemeStore } from './src/store/themeStore';
+import { useLanguageStore } from './src/store/languageStore';
 import { MobileCallOverlay } from './src/components/MobileCallOverlay';
 import { routeMobileCallEvent } from './src/store/callStore';
 import {
@@ -32,6 +33,7 @@ async function syncCurrentPushRegistration(retry = false) {
 export default function App() {
   const resolvedTheme = useThemeStore(state => state.resolved);
   const initializeTheme = useThemeStore(state => state.initialize);
+  const initializeLanguage = useLanguageStore(state => state.initialize);
   const boot = useAppStore(state => state.boot);
   const reconnect = useAppStore(state => state.reconnect);
   const appStatus = useAppStore(state => state.status);
@@ -49,6 +51,7 @@ export default function App() {
     void prepareNotificationPresentation();
     void boot();
     void initializeTheme();
+    void initializeLanguage();
     void initializeAppLock();
     const appState = AppState.addEventListener('change', state => {
       appStateRef.current = state;
@@ -86,7 +89,7 @@ export default function App() {
       appState.remove();
       network();
     };
-  }, [boot, initializeAppLock, initializeTheme, lockApp, reconnect]);
+  }, [boot, initializeAppLock, initializeLanguage, initializeTheme, lockApp, reconnect]);
 
   useEffect(() => {
     let stopTokenListener = () => {};

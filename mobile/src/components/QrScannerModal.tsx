@@ -7,6 +7,7 @@ import { typography } from '../theme/typography';
 import { useThemePalette } from '../theme/useThemePalette';
 import { beginTrustedExternalActivity } from '../services/appLifecycleService';
 import { normalizeQrUrl } from '../utils/qrCode';
+import { useI18n } from '../store/languageStore';
 
 interface Props {
   visible: boolean;
@@ -16,6 +17,7 @@ interface Props {
 export function QrScannerModal({ visible, onClose }: Props) {
   const palette = useThemePalette();
   const styles = createStyles(palette);
+  const { t } = useI18n();
   const [permission, requestPermission] = useCameraPermissions();
   const [scannedValue, setScannedValue] = useState('');
   const [scanError, setScanError] = useState('');
@@ -50,7 +52,7 @@ export function QrScannerModal({ visible, onClose }: Props) {
     const url = normalizeQrUrl(value);
     if (!url) {
       setScannedValue(value);
-      setScanError('Mã QR này không phải liên kết web http/https nên ViChat không tự mở trình duyệt.');
+      setScanError(t('Mã QR này không phải liên kết web http/https nên ViChat không tự mở trình duyệt.'));
       return;
     }
 
@@ -61,15 +63,15 @@ export function QrScannerModal({ visible, onClose }: Props) {
       await NativeLinking.openURL(url);
     } catch (error) {
       setScannedValue(value);
-      setScanError(error instanceof Error ? error.message : 'Không thể mở liên kết QR trên thiết bị này.');
+      setScanError(error instanceof Error ? t(error.message) : t('Không thể mở liên kết QR trên thiết bị này.'));
       scanLockedRef.current = false;
     }
   }, [onClose]);
 
   const permissionBody = !permission
-    ? <View style={styles.messageBox}><Camera color={palette.accent} size={28} /><Text style={styles.messageTitle}>Đang kiểm tra camera</Text><Text style={styles.messageText}>Vui lòng chờ một chút rồi thử quét lại.</Text></View>
+    ? <View style={styles.messageBox}><Camera color={palette.accent} size={28} /><Text style={styles.messageTitle}>{t('Đang kiểm tra camera')}</Text><Text style={styles.messageText}>{t('Vui lòng chờ một chút rồi thử quét lại.')}</Text></View>
     : !permission.granted
-      ? <View style={styles.messageBox}><Camera color={palette.accent} size={28} /><Text style={styles.messageTitle}>Cần quyền camera</Text><Text style={styles.messageText}>Cho phép ViChat dùng camera để quét mã QR nhanh.</Text><View style={styles.actions}><Pressable onPress={() => void requestPermission()} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Cho phép camera</Text></Pressable>{!permission.canAskAgain ? <Pressable onPress={openSettings} style={styles.secondaryButton}><Settings color={palette.inkSoft} size={16} /><Text style={styles.secondaryButtonText}>Mở cài đặt</Text></Pressable> : null}</View></View>
+      ? <View style={styles.messageBox}><Camera color={palette.accent} size={28} /><Text style={styles.messageTitle}>{t('Cần quyền camera')}</Text><Text style={styles.messageText}>{t('Cho phép ViChat dùng camera để quét mã QR nhanh.')}</Text><View style={styles.actions}><Pressable onPress={() => void requestPermission()} style={styles.primaryButton}><Text style={styles.primaryButtonText}>{t('Cho phép camera')}</Text></Pressable>{!permission.canAskAgain ? <Pressable onPress={openSettings} style={styles.secondaryButton}><Settings color={palette.inkSoft} size={16} /><Text style={styles.secondaryButtonText}>{t('Mở cài đặt')}</Text></Pressable> : null}</View></View>
       : null;
 
   return (
@@ -77,13 +79,13 @@ export function QrScannerModal({ visible, onClose }: Props) {
       <View style={styles.overlay}>
         <View style={styles.card}>
           <View style={styles.header}>
-            <View style={styles.headingCopy}><View style={styles.headingIcon}><QrCode color={palette.accent} size={21} /></View><View><Text style={styles.eyebrow}>TIỆN ÍCH QR</Text><Text style={styles.title}>Quét mã QR</Text></View></View>
-            <Pressable accessibilityLabel="Đóng quét mã QR" onPress={onClose} style={styles.closeButton}><X color={palette.inkSoft} size={20} /></Pressable>
+            <View style={styles.headingCopy}><View style={styles.headingIcon}><QrCode color={palette.accent} size={21} /></View><View><Text style={styles.eyebrow}>{t('TIỆN ÍCH QR')}</Text><Text style={styles.title}>{t('Quét mã QR')}</Text></View></View>
+            <Pressable accessibilityLabel={t('Đóng quét mã QR')} onPress={onClose} style={styles.closeButton}><X color={palette.inkSoft} size={20} /></Pressable>
           </View>
-          <Text style={styles.hint}>Đưa mã QR vào khung. Nếu mã chứa liên kết http/https, trình duyệt sẽ mở tự động.</Text>
+          <Text style={styles.hint}>{t('Đưa mã QR vào khung. Nếu mã chứa liên kết http/https, trình duyệt sẽ mở tự động.')}</Text>
           {permissionBody}
-          {permission?.granted && !scannedValue ? <View style={styles.cameraFrame}><CameraView style={StyleSheet.absoluteFill} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={handleBarcodeScanned} /><View pointerEvents="none" style={styles.scanGuide}><View style={styles.scanBox} /><Text style={styles.scanCaption}>Căn mã QR vào giữa khung</Text></View></View> : null}
-          {scannedValue ? <View style={styles.resultBox}><View style={styles.resultHeading}><CheckCircle2 color={scanError ? palette.warning : palette.online} size={20} /><Text style={styles.messageTitle}>{scanError ? 'Đã nhận mã QR' : 'Đã quét mã QR'}</Text></View><Text selectable numberOfLines={5} style={styles.resultValue}>{scannedValue}</Text><Text style={styles.messageText}>{scanError || 'Đây là dữ liệu QR, không phải liên kết web.'}</Text><View style={styles.actions}><Pressable onPress={resetScan} style={styles.primaryButton}><RotateCcw color="#fff" size={16} /><Text style={styles.primaryButtonText}>Quét mã khác</Text></Pressable><Pressable onPress={onClose} style={styles.secondaryButton}><ExternalLink color={palette.inkSoft} size={16} /><Text style={styles.secondaryButtonText}>Đóng</Text></Pressable></View></View> : null}
+          {permission?.granted && !scannedValue ? <View style={styles.cameraFrame}><CameraView style={StyleSheet.absoluteFill} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={handleBarcodeScanned} /><View pointerEvents="none" style={styles.scanGuide}><View style={styles.scanBox} /><Text style={styles.scanCaption}>{t('Căn mã QR vào giữa khung')}</Text></View></View> : null}
+          {scannedValue ? <View style={styles.resultBox}><View style={styles.resultHeading}><CheckCircle2 color={scanError ? palette.warning : palette.online} size={20} /><Text style={styles.messageTitle}>{scanError ? t('Đã nhận mã QR') : t('Đã quét mã QR')}</Text></View><Text selectable numberOfLines={5} style={styles.resultValue}>{scannedValue}</Text><Text style={styles.messageText}>{scanError || t('Đây là dữ liệu QR, không phải liên kết web.')}</Text><View style={styles.actions}><Pressable onPress={resetScan} style={styles.primaryButton}><RotateCcw color="#fff" size={16} /><Text style={styles.primaryButtonText}>{t('Quét mã khác')}</Text></Pressable><Pressable onPress={onClose} style={styles.secondaryButton}><ExternalLink color={palette.inkSoft} size={16} /><Text style={styles.secondaryButtonText}>{t('Đóng')}</Text></Pressable></View></View> : null}
         </View>
       </View>
     </Modal>

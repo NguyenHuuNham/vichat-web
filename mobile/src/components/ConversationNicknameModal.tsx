@@ -5,6 +5,7 @@ import { Avatar } from './Avatar';
 import { colorsForTheme, shadow } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { useThemeStore } from '../store/themeStore';
+import { useI18n } from '../store/languageStore';
 import { ConversationMember } from '../types';
 
 interface Props {
@@ -32,11 +33,12 @@ function officialName(member: ConversationMember | null) {
 
 export function ConversationNicknameModal({ visible, member, initialNickname = '', onCancel, onSave }: Props) {
   const palette = colorsForTheme(useThemeStore(state => state.resolved));
+  const { t } = useI18n();
   const styles = useMemo(() => createStyles(palette), [palette]);
   const [value, setValue] = useState(initialNickname);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const defaultName = officialName(member);
+  const defaultName = officialName(member) || t('Thành viên');
 
   useEffect(() => {
     if (!visible) return;
@@ -53,7 +55,7 @@ export function ConversationNicknameModal({ visible, member, initialNickname = '
       await onSave(value.trim().slice(0, 80));
       onCancel();
     } catch (valueError) {
-      setError(valueError instanceof Error ? valueError.message : 'Không lưu được biệt danh.');
+      setError(valueError instanceof Error ? t(valueError.message) : t('Không lưu được biệt danh.'));
     } finally {
       setBusy(false);
     }
@@ -66,20 +68,20 @@ export function ConversationNicknameModal({ visible, member, initialNickname = '
         <View style={styles.card}>
           <View style={styles.header}>
             <View style={styles.headingCopy}>
-              <View style={styles.eyebrowRow}><Pencil color={palette.accent} size={13} /><Text style={styles.eyebrow}>THÔNG TIN HỘI THOẠI</Text></View>
-              <Text style={styles.title}>Đổi biệt danh</Text>
+              <View style={styles.eyebrowRow}><Pencil color={palette.accent} size={13} /><Text style={styles.eyebrow}>{t('THÔNG TIN HỘI THOẠI')}</Text></View>
+              <Text style={styles.title}>{t('Đổi biệt danh')}</Text>
             </View>
-            <Pressable disabled={busy} onPress={onCancel} style={styles.close} accessibilityLabel="Đóng"><X color={palette.inkSoft} size={19} /></Pressable>
+            <Pressable disabled={busy} onPress={onCancel} style={styles.close} accessibilityLabel={t('Đóng')}><X color={palette.inkSoft} size={19} /></Pressable>
           </View>
           <View style={styles.memberHero}>
             <Avatar name={defaultName} uri={member?.avatar} size={58} rounded={!member?.type || member.type !== 'group'} />
             <View style={styles.memberCopy}>
-              <Text style={styles.heroLabel}>Đặt biệt danh cho</Text>
+              <Text style={styles.heroLabel}>{t('Đặt biệt danh cho')}</Text>
               <Text numberOfLines={1} style={styles.heroName}>{defaultName}</Text>
-              <Text style={styles.heroHint}>Biệt danh được dùng trong cuộc trò chuyện này.</Text>
+              <Text style={styles.heroHint}>{t('Biệt danh được dùng trong cuộc trò chuyện này.')}</Text>
             </View>
           </View>
-          <Text style={styles.fieldLabel}>Biệt danh trong cuộc trò chuyện</Text>
+          <Text style={styles.fieldLabel}>{t('Biệt danh trong cuộc trò chuyện')}</Text>
           <TextInput
             value={value}
             onChangeText={next => setValue(next.slice(0, 80))}
@@ -92,12 +94,12 @@ export function ConversationNicknameModal({ visible, member, initialNickname = '
             returnKeyType="done"
             onSubmitEditing={() => void submit()}
           />
-          <Text style={styles.helper}>Để trống rồi lưu để xóa biệt danh.</Text>
+          <Text style={styles.helper}>{t('Để trống rồi lưu để xóa biệt danh.')}</Text>
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <View style={styles.actions}>
-            <Pressable disabled={busy} onPress={onCancel} style={styles.secondaryButton}><Text style={styles.secondaryText}>Hủy</Text></Pressable>
-            <Pressable disabled={busy} onPress={() => setValue('')} style={styles.clearButton}><Trash2 color={palette.danger} size={16} /><Text style={styles.clearText}>Xóa</Text></Pressable>
-            <Pressable disabled={busy || !member} onPress={() => void submit()} style={[styles.primaryButton, busy && styles.disabled]}>{busy ? <ActivityIndicator color="#fff" size="small" /> : <Check color="#fff" size={17} />}<Text style={styles.primaryText}>{busy ? 'Đang lưu...' : 'Lưu biệt danh'}</Text></Pressable>
+            <Pressable disabled={busy} onPress={onCancel} style={styles.secondaryButton}><Text style={styles.secondaryText}>{t('Hủy')}</Text></Pressable>
+            <Pressable disabled={busy} onPress={() => setValue('')} style={styles.clearButton}><Trash2 color={palette.danger} size={16} /><Text style={styles.clearText}>{t('Xóa')}</Text></Pressable>
+            <Pressable disabled={busy || !member} onPress={() => void submit()} style={[styles.primaryButton, busy && styles.disabled]}>{busy ? <ActivityIndicator color="#fff" size="small" /> : <Check color="#fff" size={17} />}<Text style={styles.primaryText}>{busy ? t('Đang lưu...') : t('Lưu biệt danh')}</Text></Pressable>
           </View>
         </View>
       </KeyboardAvoidingView>

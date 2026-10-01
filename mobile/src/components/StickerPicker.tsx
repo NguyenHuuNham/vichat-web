@@ -6,6 +6,7 @@ import { STICKER_PACKS, STICKER_ITEMS, filterStickers } from '../services/sticke
 import { ThemeColors, shadow } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { useThemePalette } from '../theme/useThemePalette';
+import { useI18n } from '../store/languageStore';
 
 interface Props {
   visible: boolean;
@@ -16,6 +17,7 @@ interface Props {
 export function StickerPicker({ visible, onClose, onSelect }: Props) {
   const palette = useThemePalette();
   const styles = createStyles(palette);
+  const { t } = useI18n();
   const [query, setQuery] = useState('');
   const [packId, setPackId] = useState('');
   const filtered = useMemo(() => {
@@ -35,13 +37,13 @@ export function StickerPicker({ visible, onClose, onSelect }: Props) {
         <Pressable style={styles.backdrop} onPress={close} />
         <View style={styles.sheet}>
           <View style={styles.header}>
-            <View><Text style={styles.title}>Sticker</Text><Text style={styles.subtitle}>Chọn sticker từ kho của ViChat</Text></View>
-            <Pressable accessibilityLabel="Đóng sticker" onPress={close} style={styles.close}><X color={palette.inkSoft} size={20} /></Pressable>
+            <View><Text style={styles.title}>{t('Sticker')}</Text><Text style={styles.subtitle}>{t('Chọn sticker từ kho của ViChat')}</Text></View>
+            <Pressable accessibilityLabel={t('Đóng sticker')} onPress={close} style={styles.close}><X color={palette.inkSoft} size={20} /></Pressable>
           </View>
-          <View style={styles.search}><Search color={palette.muted} size={17} /><TextInput value={query} onChangeText={setQuery} placeholder="Tìm sticker..." placeholderTextColor={palette.muted} style={styles.searchInput} /></View>
+          <View style={styles.search}><Search color={palette.muted} size={17} /><TextInput value={query} onChangeText={setQuery} placeholder={t('Tìm sticker...')} placeholderTextColor={palette.muted} style={styles.searchInput} /></View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.packs}>
-            <Pressable onPress={() => setPackId('')} style={[styles.pack, !packId && styles.packActive]}><Text style={[styles.packText, !packId && styles.packTextActive]}>Tất cả</Text></Pressable>
-            {STICKER_PACKS.map(pack => <Pressable key={pack.id} onPress={() => setPackId(pack.id)} style={[styles.pack, packId === pack.id && styles.packActive]}><Text style={[styles.packText, packId === pack.id && styles.packTextActive]}>{pack.label}</Text></Pressable>)}
+            <Pressable onPress={() => setPackId('')} style={[styles.pack, !packId && styles.packActive]}><Text style={[styles.packText, !packId && styles.packTextActive]}>{t('Tất cả')}</Text></Pressable>
+            {STICKER_PACKS.map(pack => <Pressable key={pack.id} onPress={() => setPackId(pack.id)} style={[styles.pack, packId === pack.id && styles.packActive]}><Text style={[styles.packText, packId === pack.id && styles.packTextActive]}>{t(pack.label)}</Text></Pressable>)}
           </ScrollView>
           <FlatList
             data={filtered}
@@ -51,12 +53,12 @@ export function StickerPicker({ visible, onClose, onSelect }: Props) {
             contentContainerStyle={styles.grid}
             showsVerticalScrollIndicator={false}
             renderItem={({ item }) => (
-              <Pressable accessibilityLabel={`Gửi sticker ${item.label || item.id}`} onPress={() => { close(); onSelect(item); }} style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}>
+              <Pressable accessibilityLabel={`${t('Gửi sticker')} ${item.label || item.id}`} onPress={() => { close(); onSelect(item); }} style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}>
                 <Image source={{ uri: item.src }} style={styles.image} resizeMode="contain" />
                 <Text numberOfLines={1} style={styles.label}>{item.label}</Text>
               </Pressable>
             )}
-            ListEmptyComponent={<Text style={styles.empty}>Không tìm thấy sticker phù hợp.</Text>}
+            ListEmptyComponent={<Text style={styles.empty}>{t('Không tìm thấy sticker phù hợp.')}</Text>}
           />
         </View>
       </View>

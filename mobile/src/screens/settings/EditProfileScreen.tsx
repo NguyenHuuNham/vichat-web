@@ -3,7 +3,7 @@ import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, St
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
-import { Building2, Camera, ChevronRight, Save, X } from 'lucide-react-native';
+import { Building2, Camera, ChevronRight, Globe2, Save, X } from 'lucide-react-native';
 import { RootStackParamList } from '../../navigation/types';
 import { useAppStore } from '../../store/appStore';
 import { colorsForTheme, ThemeColors } from '../../theme/colors';
@@ -15,12 +15,15 @@ import { avatarUploadErrorMessage } from '../../utils/avatarPolicy';
 import { displayCurrentTenantName, displayRoleName } from '../../utils/tenantDisplay';
 import { TenantOption } from '../../types';
 import { useThemeStore } from '../../store/themeStore';
+import { useI18n, useLanguageStore } from '../../store/languageStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EditProfile'>;
 
 export function EditProfileScreen({ navigation }: Props) {
   const palette = colorsForTheme(useThemeStore(state => state.resolved));
   const styles = createStyles(palette);
+  const { language, t } = useI18n();
+  const setLanguage = useLanguageStore(state => state.setLanguage);
   const session = useAppStore(state => state.session);
   const user = session?.user;
   const updateProfile = useAppStore(state => state.updateProfile);
@@ -38,17 +41,18 @@ export function EditProfileScreen({ navigation }: Props) {
   const [tenantInfoOpen, setTenantInfoOpen] = useState(false);
   const [tenantRefreshBusy, setTenantRefreshBusy] = useState(false);
   const [tenantInfoMessage, setTenantInfoMessage] = useState('');
+  const [languagePickerOpen, setLanguagePickerOpen] = useState(false);
   const allTenantOptions = (session?.tenantOptions || []).filter(option => option.active !== false);
   const tenantOptions = allTenantOptions.filter(option => option.id !== session?.tenant?.id);
   const tenantSwitchDetail = tenantInfoMessage && !tenantRefreshBusy
     ? tenantInfoMessage
     : tenantRefreshBusy
-    ? 'Đang tải danh sách công ty...'
+    ? t('Đang tải danh sách công ty...')
     : tenantOptions.length > 0
-    ? `${tenantOptions.length} lựa chọn khác`
+    ? language === 'en' ? `${tenantOptions.length} other option${tenantOptions.length === 1 ? '' : 's'}` : `${tenantOptions.length} lựa chọn khác`
     : allTenantOptions.length > 0
-      ? 'Tài khoản hiện chỉ có một công ty đang hoạt động'
-      : 'Chưa tải được danh sách công ty khác';
+      ? t('Tài khoản hiện chỉ có một công ty đang hoạt động')
+      : t('Chưa tải được danh sách công ty khác');
   const openTenantSwitcher = async () => {
     if (tenantRefreshBusy || switchBusy) return;
     const cachedOptions = tenantOptions;
@@ -62,14 +66,14 @@ export function EditProfileScreen({ navigation }: Props) {
       if (nextOptions.length > 0) setTenantPickerOpen(true);
       else {
         setTenantInfoMessage(activeOptions.length > 0
-          ? 'Tai khoan hien chi co mot cong ty dang hoat dong.'
-          : 'Chua tai duoc danh sach cong ty tu UpGO Account.');
+          ? t('Tài khoản hiện chỉ có một công ty đang hoạt động.')
+          : t('Chưa tải được danh sách công ty từ UpGO Account.'));
         setTenantInfoOpen(true);
       }
     } catch (error) {
       if (cachedOptions.length > 0) setTenantPickerOpen(true);
       else {
-        setTenantInfoMessage(error instanceof Error ? error.message : 'Khong tai duoc danh sach cong ty. Hay thu lai.');
+        setTenantInfoMessage(error instanceof Error ? t(error.message) : t('Không tải được danh sách công ty. Hãy thử lại.'));
         setTenantInfoOpen(true);
       }
     } finally {
@@ -85,12 +89,12 @@ export function EditProfileScreen({ navigation }: Props) {
       await updateProfile({ name, title });
       navigation.goBack();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Thử lại sau.';
+      const message = error instanceof Error ? t(error.message) : t('Thử lại sau.');
       const isAccountManaged = /synchronized|read[ -]?only|account.*profile/i.test(message);
       Alert.alert(
-        'Không thể cập nhật',
+        t('Không thể cập nhật'),
         isAccountManaged
-          ? 'Hồ sơ của bạn được quản lý bởi UpGO Account. Vui lòng cập nhật tại account.gonplatform.com.'
+          ? t('Hồ sơ của bạn được quản lý bởi UpGO Account. Vui lòng cập nhật tại account.gonplatform.com.')
           : message,
       );
     } finally {
@@ -107,7 +111,7 @@ export function EditProfileScreen({ navigation }: Props) {
       const updatedUser = await updateAvatar({ uri: asset.uri, name: asset.fileName || 'avatar.jpg', type: asset.mimeType || 'image/jpeg' });
       setAvatar(updatedUser.avatar || '');
     } catch (error) {
-      Alert.alert('Không thể cập nhật ảnh', avatarUploadErrorMessage(error));
+      Alert.alert(t('Không thể cập nhật ảnh'), t(avatarUploadErrorMessage(error)));
     } finally {
       setBusy(false);
     }
@@ -121,17 +125,57 @@ export function EditProfileScreen({ navigation }: Props) {
       setPendingTenant(null);
       navigation.goBack();
     } catch (error) {
-      setSwitchError(error instanceof Error ? error.message : 'Không thể chuyển công ty.');
+      setSwitchError(error instanceof Error ? t(error.message) : t('Không thể chuyển công ty.'));
     } finally {
       setSwitchBusy(false);
     }
   };
-  return <><SafeAreaView style={styles.screen} edges={['bottom', 'left', 'right']}><KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"><View style={styles.avatarWrap}><Avatar name={name} uri={avatar} size={100} /><Pressable onPress={() => void chooseAvatar()} style={styles.camera}><Camera color="#fff" size={17} /></Pressable></View><Text style={styles.hint}>Tên hiển thị được đồng bộ với UpGO Account.</Text><Text style={styles.label}>Tên hiển thị</Text><TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Tên của bạn" placeholderTextColor={palette.muted} /><Text style={styles.label}>Chức vụ</Text><TextInput value={title} onChangeText={setTitle} style={styles.input} placeholder="Chức vụ" placeholderTextColor={palette.muted} /><Text style={styles.label}>Email</Text><View style={[styles.input, styles.readonly]}><Text style={styles.readonlyText}>{user?.email || 'Được quản lý bởi UpGO Account'}</Text></View><View style={styles.companySection}><Text style={styles.companyLabel}>CÔNG TY LÀM VIỆC</Text><Pressable onPress={openTenantSwitcher} style={({ pressed }) => [styles.companyCard, pressed && styles.companyPressed]}><View style={styles.companyIcon}><Building2 color={palette.accent} size={21} /></View><View style={styles.companyBody}><Text style={styles.companyTitle}>Công ty hiện tại</Text><Text numberOfLines={1} style={styles.companyName}>{displayCurrentTenantName(session, 'Công ty hiện tại')}</Text><Text style={styles.companyHint}>{tenantSwitchDetail}</Text></View><ChevronRight color={palette.muted} size={19} /></Pressable></View><Pressable disabled={busy} onPress={() => void save()} style={[styles.button, busy && { opacity: 0.55 }]}><Save color="#fff" size={19} /><Text style={styles.buttonText}>{busy ? 'Đang lưu...' : 'Lưu thay đổi'}</Text></Pressable></ScrollView></KeyboardAvoidingView></SafeAreaView><TenantPickerModal visible={tenantPickerOpen} options={tenantOptions} palette={palette} onClose={() => setTenantPickerOpen(false)} onSelect={option => { setTenantPickerOpen(false); setPendingTenant(option); }} /><ConfirmDialog visible={Boolean(pendingTenant)} title="Xác nhận chuyển công ty" message={`${switchError ? `${switchError}\n\n` : ''}Bạn có muốn chuyển sang ${pendingTenant?.name || 'công ty đã chọn'} không? Dữ liệu hội thoại sẽ được tải lại theo công ty này.`} eyebrow="CHUYỂN CÔNG TY" confirmLabel="Chuyển sang công ty này" onCancel={() => { setPendingTenant(null); setSwitchError(''); }} onConfirm={() => void confirmTenantSwitch()} busy={switchBusy} /><ConfirmDialog visible={tenantInfoOpen} title="Chuyển công ty" message={allTenantOptions.length > 0 ? 'Tài khoản hiện chỉ có một công ty đang hoạt động nên chưa có lựa chọn để chuyển.' : 'Chưa nhận được danh sách công ty khác từ tài khoản. Hãy đăng nhập lại để tải lại quyền thành viên.'} eyebrow="TÀI KHOẢN" confirmLabel="Đã hiểu" onCancel={() => setTenantInfoOpen(false)} onConfirm={() => setTenantInfoOpen(false)} /></>;
+  return <>
+    <SafeAreaView style={styles.screen} edges={['bottom', 'left', 'right']}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <View style={styles.avatarWrap}><Avatar name={name} uri={avatar} size={100} /><Pressable onPress={() => void chooseAvatar()} style={styles.camera}><Camera color="#fff" size={17} /></Pressable></View>
+          <Text style={styles.hint}>{t('Tên hiển thị được đồng bộ với UpGO Account.')}</Text>
+          <Text style={styles.label}>{t('Tên hiển thị')}</Text>
+          <TextInput value={name} onChangeText={setName} style={styles.input} placeholder={t('Tên của bạn')} placeholderTextColor={palette.muted} />
+          <Text style={styles.label}>{t('Chức vụ')}</Text>
+          <TextInput value={title} onChangeText={setTitle} style={styles.input} placeholder={t('Chức vụ')} placeholderTextColor={palette.muted} />
+          <Text style={styles.label}>{t('Email')}</Text>
+          <View style={[styles.input, styles.readonly]}><Text style={styles.readonlyText}>{user?.email || t('Được quản lý bởi UpGO Account')}</Text></View>
+
+          <View style={styles.languageSection}>
+            <Text style={styles.companyLabel}>{t('Ngôn ngữ ứng dụng')}</Text>
+            <Pressable onPress={() => setLanguagePickerOpen(true)} style={({ pressed }) => [styles.companyCard, pressed && styles.companyPressed]}>
+              <View style={styles.companyIcon}><Globe2 color={palette.accent} size={21} /></View>
+              <View style={styles.companyBody}><Text style={styles.companyTitle}>{t('Ngôn ngữ')}</Text><Text style={styles.companyName}>{language === 'en' ? 'English' : 'Tiếng Việt'}</Text><Text style={styles.companyHint}>{t('Chọn ngôn ngữ hiển thị của ứng dụng')}</Text></View>
+              <ChevronRight color={palette.muted} size={19} />
+            </Pressable>
+          </View>
+
+          <View style={styles.companySection}>
+            <Text style={styles.companyLabel}>{t('CÔNG TY LÀM VIỆC')}</Text>
+            <Pressable onPress={openTenantSwitcher} style={({ pressed }) => [styles.companyCard, pressed && styles.companyPressed]}><View style={styles.companyIcon}><Building2 color={palette.accent} size={21} /></View><View style={styles.companyBody}><Text style={styles.companyTitle}>{t('Công ty hiện tại')}</Text><Text numberOfLines={1} style={styles.companyName}>{displayCurrentTenantName(session, t('Công ty hiện tại'))}</Text><Text style={styles.companyHint}>{tenantSwitchDetail}</Text></View><ChevronRight color={palette.muted} size={19} /></Pressable>
+          </View>
+          <Pressable disabled={busy} onPress={() => void save()} style={[styles.button, busy && { opacity: 0.55 }]}><Save color="#fff" size={19} /><Text style={styles.buttonText}>{busy ? t('Đang lưu...') : t('Lưu thay đổi')}</Text></Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+    <LanguagePickerModal visible={languagePickerOpen} language={language} palette={palette} t={t} onClose={() => setLanguagePickerOpen(false)} onSelect={next => { void setLanguage(next); setLanguagePickerOpen(false); }} />
+    <TenantPickerModal visible={tenantPickerOpen} options={tenantOptions} palette={palette} t={t} onClose={() => setTenantPickerOpen(false)} onSelect={option => { setTenantPickerOpen(false); setPendingTenant(option); }} />
+    <ConfirmDialog visible={Boolean(pendingTenant)} title={t('Xác nhận chuyển công ty')} message={`${switchError ? `${switchError}\n\n` : ''}${t('Bạn có muốn chuyển sang')} ${pendingTenant?.name || t('công ty đã chọn')} ${t('không? Dữ liệu hội thoại sẽ được tải lại theo công ty này.')}`} eyebrow={t('CHUYỂN CÔNG TY')} confirmLabel={t('Chuyển sang công ty này')} onCancel={() => { setPendingTenant(null); setSwitchError(''); }} onConfirm={() => void confirmTenantSwitch()} busy={switchBusy} />
+    <ConfirmDialog visible={tenantInfoOpen} title={t('Chuyển công ty')} message={allTenantOptions.length > 0 ? t('Tài khoản hiện chỉ có một công ty đang hoạt động nên chưa có lựa chọn để chuyển.') : t('Chưa nhận được danh sách công ty khác từ tài khoản. Hãy đăng nhập lại để tải lại quyền thành viên.')} eyebrow={t('TÀI KHOẢN')} confirmLabel={t('Đã hiểu')} onCancel={() => setTenantInfoOpen(false)} onConfirm={() => setTenantInfoOpen(false)} />
+  </>;
 }
 
-function TenantPickerModal({ visible, options, palette, onClose, onSelect }: { visible: boolean; options: TenantOption[]; palette: ThemeColors; onClose: () => void; onSelect: (option: TenantOption) => void }) {
+function LanguagePickerModal({ visible, language, palette, t, onClose, onSelect }: { visible: boolean; language: 'vi' | 'en'; palette: ThemeColors; t: (value: string) => string; onClose: () => void; onSelect: (language: 'vi' | 'en') => void }) {
   const styles = createStyles(palette);
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent><View style={styles.modalOverlay}><Pressable style={styles.modalBackdrop} onPress={onClose} /><View style={styles.tenantCard}><View style={styles.modalHeader}><View><Text style={styles.modalEyebrow}>TÀI KHOẢN</Text><Text style={styles.modalTitle}>Chuyển công ty</Text></View><Pressable onPress={onClose} style={styles.closeButton}><X color={palette.inkSoft} size={19} /></Pressable></View><Text style={styles.modalHint}>Chọn công ty bạn muốn mở trên thiết bị này.</Text><View style={styles.tenantList}>{options.map(option => <Pressable key={option.id} onPress={() => onSelect(option)} style={({ pressed }) => [styles.tenantOption, pressed && styles.companyPressed]}><View style={styles.companyIcon}><Building2 color={palette.accent} size={19} /></View><View style={styles.companyBody}><Text numberOfLines={1} style={styles.companyName}>{option.name}</Text><Text style={styles.companyHint}>{displayRoleName(option.role, 'Thành viên')}</Text></View><ChevronRight color={palette.muted} size={18} /></Pressable>)}</View></View></View></Modal>;
+  const options = [{ id: 'vi' as const, label: t('Tiếng Việt'), detail: 'Tiếng Việt' }, { id: 'en' as const, label: 'English', detail: 'English' }];
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent><View style={styles.modalOverlay}><Pressable style={styles.modalBackdrop} onPress={onClose} /><View style={styles.tenantCard}><View style={styles.modalHeader}><View><Text style={styles.modalEyebrow}>{t('TÀI KHOẢN')}</Text><Text style={styles.modalTitle}>{t('Chọn ngôn ngữ')}</Text></View><Pressable onPress={onClose} style={styles.closeButton}><X color={palette.inkSoft} size={19} /></Pressable></View><Text style={styles.modalHint}>{t('Chọn ngôn ngữ hiển thị của ứng dụng')}</Text><View style={styles.tenantList}>{options.map(option => <Pressable key={option.id} onPress={() => onSelect(option.id)} style={({ pressed }) => [styles.tenantOption, pressed && styles.companyPressed, option.id === language && { backgroundColor: palette.accentWash }]}><View style={styles.companyIcon}><Globe2 color={palette.accent} size={19} /></View><View style={styles.companyBody}><Text style={styles.companyName}>{option.label}</Text><Text style={styles.companyHint}>{option.detail}</Text></View>{option.id === language ? <Text style={[styles.selectedMark, { color: palette.accentDeep }]}>✓</Text> : <ChevronRight color={palette.muted} size={18} />}</Pressable>)}</View></View></View></Modal>;
+}
+
+function TenantPickerModal({ visible, options, palette, t, onClose, onSelect }: { visible: boolean; options: TenantOption[]; palette: ThemeColors; t: (value: string) => string; onClose: () => void; onSelect: (option: TenantOption) => void }) {
+  const styles = createStyles(palette);
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent><View style={styles.modalOverlay}><Pressable style={styles.modalBackdrop} onPress={onClose} /><View style={styles.tenantCard}><View style={styles.modalHeader}><View><Text style={styles.modalEyebrow}>{t('TÀI KHOẢN')}</Text><Text style={styles.modalTitle}>{t('Chuyển công ty')}</Text></View><Pressable onPress={onClose} style={styles.closeButton}><X color={palette.inkSoft} size={19} /></Pressable></View><Text style={styles.modalHint}>{t('Chọn công ty bạn muốn mở trên thiết bị này.')}</Text><View style={styles.tenantList}>{options.map(option => <Pressable key={option.id} onPress={() => onSelect(option)} style={({ pressed }) => [styles.tenantOption, pressed && styles.companyPressed]}><View style={styles.companyIcon}><Building2 color={palette.accent} size={19} /></View><View style={styles.companyBody}><Text numberOfLines={1} style={styles.companyName}>{option.name}</Text><Text style={styles.companyHint}>{displayRoleName(option.role, t('Thành viên'))}</Text></View><ChevronRight color={palette.muted} size={18} /></Pressable>)}</View></View></View></Modal>;
 }
 
 function createStyles(palette: ThemeColors) {
@@ -147,6 +191,7 @@ function createStyles(palette: ThemeColors) {
     readonly: { justifyContent: 'center', backgroundColor: palette.line },
     readonlyText: { ...typography.body, color: palette.muted },
     companySection: { marginTop: 24 },
+    languageSection: { marginTop: 24 },
     companyLabel: { ...typography.caption, color: palette.inkSoft, letterSpacing: 0.8, marginBottom: 8 },
     companyCard: { minHeight: 76, borderRadius: 18, borderWidth: 1, borderColor: palette.line, backgroundColor: palette.paper, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 11 },
     companyPressed: { opacity: 0.65 },
@@ -167,5 +212,6 @@ function createStyles(palette: ThemeColors) {
     modalHint: { ...typography.body, color: palette.inkSoft, marginTop: 12, marginBottom: 15 },
     tenantList: { borderRadius: 18, borderWidth: 1, borderColor: palette.line, backgroundColor: palette.paper, paddingHorizontal: 13 },
     tenantOption: { minHeight: 69, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: 1, borderBottomColor: palette.line },
+    selectedMark: { ...typography.bodyMedium, marginRight: 5 },
   });
 }

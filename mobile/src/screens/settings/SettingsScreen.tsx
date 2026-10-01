@@ -16,6 +16,7 @@ import { displayCurrentTenantName, displayRoleName } from '../../utils/tenantDis
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { TenantOption } from '../../types';
 import { useThemeStore } from '../../store/themeStore';
+import { useI18n } from '../../store/languageStore';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Settings'> & { navigation: any };
 
@@ -30,6 +31,7 @@ export function SettingsScreen({ navigation }: Props) {
   const resolvedTheme = useThemeStore(state => state.resolved);
   const setThemeMode = useThemeStore(state => state.setMode);
   const palette = colorsForTheme(resolvedTheme);
+  const { language, t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [pinSettingsOpen, setPinSettingsOpen] = useState(false);
   const [tenantPickerOpen, setTenantPickerOpen] = useState(false);
@@ -45,10 +47,10 @@ export function SettingsScreen({ navigation }: Props) {
   const tenantSwitchDetail = tenantInfoMessage && !tenantRefreshBusy
     ? tenantInfoMessage
     : tenantOptions.length > 0
-    ? `Đang ở ${displayCurrentTenantName(session, 'công ty hiện tại')} · ${tenantOptions.length} lựa chọn khác`
+    ? language === 'en' ? `In ${displayCurrentTenantName(session, 'current company')} · ${tenantOptions.length} other option${tenantOptions.length === 1 ? '' : 's'}` : `Đang ở ${displayCurrentTenantName(session, 'công ty hiện tại')} · ${tenantOptions.length} lựa chọn khác`
     : allTenantOptions.length > 0
-      ? 'Tài khoản hiện chỉ có một công ty đang hoạt động'
-      : 'Chưa tải được danh sách công ty khác';
+      ? t('Tài khoản hiện chỉ có một công ty đang hoạt động')
+      : t('Chưa tải được danh sách công ty khác');
   const openTenantSwitcher = async () => {
     if (tenantRefreshBusy || switchBusy) return;
     const cachedOptions = tenantOptions;
@@ -85,7 +87,7 @@ export function SettingsScreen({ navigation }: Props) {
       await switchTenant(pendingTenant.id);
       setPendingTenant(null);
     } catch (error) {
-      setSwitchError(error instanceof Error ? error.message : 'Không thể chuyển công ty.');
+      setSwitchError(error instanceof Error ? t(error.message) : t('Không thể chuyển công ty.'));
     } finally {
       setSwitchBusy(false);
     }
@@ -94,66 +96,66 @@ export function SettingsScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: palette.canvas }]} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}><View><Text style={[styles.eyebrow, { color: palette.accentDeep }]}>TÀI KHOẢN</Text><Text style={[styles.title, { color: palette.ink }]}>Hồ sơ & Cài đặt</Text></View><ShieldCheck color={palette.online} size={23} /></View>
+        <View style={styles.header}><View><Text style={[styles.eyebrow, { color: palette.accentDeep }]}>{t('TÀI KHOẢN')}</Text><Text style={[styles.title, { color: palette.ink }]}>{t('Hồ sơ & Cài đặt')}</Text></View><ShieldCheck color={palette.online} size={23} /></View>
 
         <Pressable onPress={() => navigation.navigate('EditProfile')} style={({ pressed }) => [styles.profileCard, { backgroundColor: palette.paper, borderColor: palette.line }, pressed && styles.profilePressed]}>
           <Avatar name={session?.user.name} uri={session?.user.avatar} size={86} online />
-          <Text numberOfLines={1} style={[styles.profileName, { color: palette.ink }]}>{session?.user.name || 'Nhân viên ViChat'}</Text>
-          <Text numberOfLines={1} style={[styles.profileEmail, { color: palette.inkSoft }]}>{session?.user.email || session?.user.username || 'Tài khoản nội bộ'}</Text>
-          <View style={styles.badges}><Text style={[styles.badge, { color: palette.accentDeep, backgroundColor: palette.accentWash }]}>{displayRoleName(session?.user.role, 'Nhân viên')}</Text><Text numberOfLines={1} ellipsizeMode="tail" style={[styles.badge, { color: palette.accentDeep, backgroundColor: palette.accentWash }]}>{displayCurrentTenantName(session, 'Công ty')}</Text></View>
-          <View style={[styles.editButton, { backgroundColor: palette.accentWash }]}><Pencil color={palette.accentDeep} size={15} /><Text style={[styles.editText, { color: palette.accentDeep }]}>Chỉnh sửa hồ sơ</Text></View>
+          <Text numberOfLines={1} style={[styles.profileName, { color: palette.ink }]}>{session?.user.name || t('Nhân viên ViChat')}</Text>
+          <Text numberOfLines={1} style={[styles.profileEmail, { color: palette.inkSoft }]}>{session?.user.email || session?.user.username || t('Tài khoản nội bộ')}</Text>
+          <View style={styles.badges}><Text style={[styles.badge, { color: palette.accentDeep, backgroundColor: palette.accentWash }]}>{displayRoleName(session?.user.role, t('Nhân viên'))}</Text><Text numberOfLines={1} ellipsizeMode="tail" style={[styles.badge, { color: palette.accentDeep, backgroundColor: palette.accentWash }]}>{displayCurrentTenantName(session, t('Công ty'))}</Text></View>
+          <View style={[styles.editButton, { backgroundColor: palette.accentWash }]}><Pencil color={palette.accentDeep} size={15} /><Text style={[styles.editText, { color: palette.accentDeep }]}>{t('Chỉnh sửa hồ sơ')}</Text></View>
         </Pressable>
 
-        <Text style={[styles.section, { color: palette.inkSoft }]}>Ứng dụng</Text>
+        <Text style={[styles.section, { color: palette.inkSoft }]}>{t('Ứng dụng')}</Text>
         <View style={[styles.menu, { backgroundColor: palette.paper, borderColor: palette.line }]}>
-          <SettingRow icon={Wifi} label="Kết nối realtime" detail={connection === 'connected' ? 'Đang hoạt động' : 'Đang chờ kết nối'} color={connection === 'connected' ? palette.online : palette.warning} palette={palette} />
-          <SettingRow icon={Bell} label="Thông báo" detail="Tin nhắn mới trên thiết bị · chạm để kiểm tra quyền" palette={palette} onPress={() => void Linking.openSettings().catch(() => {})} />
-          <SettingRow icon={Building2} label="Chuyển công ty" detail={tenantRefreshBusy ? 'Đang tải danh sách công ty...' : tenantSwitchDetail} palette={palette} onPress={() => { void openTenantSwitcher(); }} last />
+          <SettingRow icon={Wifi} label={t('Kết nối realtime')} detail={connection === 'connected' ? t('Đang hoạt động') : t('Đang chờ kết nối')} color={connection === 'connected' ? palette.online : palette.warning} palette={palette} />
+          <SettingRow icon={Bell} label={t('Thông báo')} detail={t('Tin nhắn mới trên thiết bị · chạm để kiểm tra quyền')} palette={palette} onPress={() => void Linking.openSettings().catch(() => {})} />
+          <SettingRow icon={Building2} label={t('Chuyển công ty')} detail={tenantRefreshBusy ? t('Đang tải danh sách công ty...') : tenantSwitchDetail} palette={palette} onPress={() => { void openTenantSwitcher(); }} last />
         </View>
 
-        <Text style={[styles.section, { color: palette.inkSoft }]}>Giao diện & thiết bị</Text>
+        <Text style={[styles.section, { color: palette.inkSoft }]}>{t('Giao diện & thiết bị')}</Text>
         <View style={[styles.menu, { backgroundColor: palette.paper, borderColor: palette.line }]}>
-          <SettingRow icon={Moon} label="Giao diện tối" detail={themeMode === 'system' ? `Theo thiết bị · hiện ${resolvedTheme === 'dark' ? 'tối' : 'sáng'}` : themeMode === 'dark' ? 'Đang bật' : 'Đang tắt'} color={palette.accent} palette={palette} control={<Switch value={themeMode === 'dark' || (themeMode === 'system' && resolvedTheme === 'dark')} onValueChange={value => void setThemeMode(value ? 'dark' : 'light')} trackColor={{ false: palette.line, true: `${palette.accent}88` }} thumbColor={themeMode === 'dark' || (themeMode === 'system' && resolvedTheme === 'dark') ? palette.accent : palette.paper} />} />
-          <SettingRow icon={LockKeyhole} label="Mã PIN khi mở ViChat" detail={pinConfigured ? 'Đang bật · nhấn để đổi hoặc tắt' : 'Chưa bật · nhấn để thiết lập'} color={pinConfigured ? palette.online : palette.accent} palette={palette} onPress={() => setPinSettingsOpen(true)} />
-          <SettingRow icon={Smartphone} label="Thiết bị liên kết" detail="Web và các thiết bị đang đăng nhập" palette={palette} onPress={() => navigation.navigate('LinkedDevices')} last />
+          <SettingRow icon={Moon} label={t('Giao diện tối')} detail={themeMode === 'system' ? `${t('Theo thiết bị')} · ${t('hiện')} ${resolvedTheme === 'dark' ? t('tối') : t('sáng')}` : themeMode === 'dark' ? t('Đang bật') : t('Đang tắt')} color={palette.accent} palette={palette} control={<Switch value={themeMode === 'dark' || (themeMode === 'system' && resolvedTheme === 'dark')} onValueChange={value => void setThemeMode(value ? 'dark' : 'light')} trackColor={{ false: palette.line, true: `${palette.accent}88` }} thumbColor={themeMode === 'dark' || (themeMode === 'system' && resolvedTheme === 'dark') ? palette.accent : palette.paper} />} />
+          <SettingRow icon={LockKeyhole} label={t('Mã PIN khi mở ViChat')} detail={pinConfigured ? t('Đang bật · nhấn để đổi hoặc tắt') : t('Chưa bật · nhấn để thiết lập')} color={pinConfigured ? palette.online : palette.accent} palette={palette} onPress={() => setPinSettingsOpen(true)} />
+          <SettingRow icon={Smartphone} label={t('Thiết bị liên kết')} detail={t('Web và các thiết bị đang đăng nhập')} palette={palette} onPress={() => navigation.navigate('LinkedDevices')} last />
         </View>
 
         <View style={[styles.dangerCard, { backgroundColor: `${palette.danger}12`, borderColor: `${palette.danger}55` }]}>
-          <View style={styles.dangerHeading}><LogOut color={palette.danger} size={19} /><Text style={[styles.dangerTitle, { color: palette.danger }]}>Phiên làm việc</Text></View>
-          <Text style={[styles.dangerHint, { color: palette.inkSoft }]}>Đăng xuất khỏi tài khoản trên thiết bị này.</Text>
-          <Pressable disabled={busy} onPress={confirmLogout} style={[styles.logout, { backgroundColor: palette.paper, borderColor: `${palette.danger}88` }, busy && { opacity: 0.5 }]}><Text style={[styles.logoutText, { color: palette.danger }]}>{busy ? 'Đang đăng xuất...' : 'Đăng xuất'}</Text></Pressable>
+          <View style={styles.dangerHeading}><LogOut color={palette.danger} size={19} /><Text style={[styles.dangerTitle, { color: palette.danger }]}>{t('Phiên làm việc')}</Text></View>
+          <Text style={[styles.dangerHint, { color: palette.inkSoft }]}>{t('Đăng xuất khỏi tài khoản trên thiết bị này.')}</Text>
+          <Pressable disabled={busy} onPress={confirmLogout} style={[styles.logout, { backgroundColor: palette.paper, borderColor: `${palette.danger}88` }, busy && { opacity: 0.5 }]}><Text style={[styles.logoutText, { color: palette.danger }]}>{busy ? t('Đang đăng xuất...') : t('Đăng xuất')}</Text></Pressable>
         </View>
         <Text style={[styles.version, { color: palette.muted }]}>ViChat Mobile {Constants.expoConfig?.version || '1.0.32'} · {config.brandName}</Text>
       </ScrollView>
       <PinSettingsModal visible={pinSettingsOpen} onClose={() => setPinSettingsOpen(false)} />
-      <TenantPickerModal visible={tenantPickerOpen} options={tenantOptions} palette={palette} onClose={() => setTenantPickerOpen(false)} onSelect={option => { setTenantPickerOpen(false); setPendingTenant(option); }} />
+      <TenantPickerModal visible={tenantPickerOpen} options={tenantOptions} palette={palette} t={t} onClose={() => setTenantPickerOpen(false)} onSelect={option => { setTenantPickerOpen(false); setPendingTenant(option); }} />
       <ConfirmDialog
         visible={Boolean(pendingTenant)}
-        title="Xác nhận chuyển công ty"
-        message={`${switchError ? `${switchError}\n\n` : ''}Bạn có muốn chuyển sang ${pendingTenant?.name || 'công ty đã chọn'} không? Dữ liệu hội thoại sẽ được tải lại theo công ty này.`}
-        eyebrow="CHUYỂN CÔNG TY"
-        confirmLabel="Chuyển sang công ty này"
+        title={t('Xác nhận chuyển công ty')}
+        message={`${switchError ? `${switchError}\n\n` : ''}${language === 'en' ? `Do you want to switch to ${pendingTenant?.name || 'the selected company'}? Conversation data will reload for this company.` : `Bạn có muốn chuyển sang ${pendingTenant?.name || 'công ty đã chọn'} không? Dữ liệu hội thoại sẽ được tải lại theo công ty này.`}`}
+        eyebrow={t('CHUYỂN CÔNG TY')}
+        confirmLabel={t('Chuyển sang công ty này')}
         onCancel={() => { setPendingTenant(null); setSwitchError(''); }}
         onConfirm={() => void confirmTenantSwitch()}
         busy={switchBusy}
       />
       <ConfirmDialog
         visible={tenantInfoOpen}
-        title="Chuyển công ty"
+        title={t('Chuyển công ty')}
         message={tenantInfoMessage || (allTenantOptions.length > 0
-          ? 'Tài khoản hiện chỉ có một công ty đang hoạt động nên chưa có lựa chọn để chuyển.'
-          : 'Chưa nhận được danh sách công ty khác từ tài khoản. Hãy đăng nhập lại để tải lại quyền thành viên.')}
-        eyebrow="TÀI KHOẢN"
-        confirmLabel="Đã hiểu"
+          ? t('Tài khoản hiện chỉ có một công ty đang hoạt động nên chưa có lựa chọn để chuyển.')
+          : t('Chưa nhận được danh sách công ty khác từ tài khoản. Hãy đăng nhập lại để tải lại quyền thành viên.'))}
+        eyebrow={t('TÀI KHOẢN')}
+        confirmLabel={t('Đã hiểu')}
         onCancel={() => setTenantInfoOpen(false)}
         onConfirm={() => setTenantInfoOpen(false)}
       />
       <ConfirmDialog
         visible={logoutConfirmOpen}
-        title="Đăng xuất ViChat?"
-        message="Phiên trên thiết bị này sẽ bị xóa an toàn."
-        eyebrow="PHIÊN LÀM VIỆC"
-        confirmLabel="Đăng xuất"
+        title={t('Đăng xuất ViChat?')}
+        message={t('Phiên trên thiết bị này sẽ bị xóa an toàn.')}
+        eyebrow={t('PHIÊN LÀM VIỆC')}
+        confirmLabel={t('Đăng xuất')}
         tone="danger"
         onCancel={() => setLogoutConfirmOpen(false)}
         onConfirm={async () => { setBusy(true); try { await logout(); } finally { setBusy(false); setLogoutConfirmOpen(false); } }}
@@ -167,8 +169,8 @@ function SettingRow({ icon: Icon, label, detail, color, onPress, last = false, c
   return <Pressable disabled={!onPress && !control} onPress={onPress} style={({ pressed }) => [styles.settingRow, { borderBottomColor: palette.line }, last && styles.settingRowLast, pressed && styles.settingPressed]}><View style={[styles.settingIcon, { backgroundColor: palette.accentWash }]}><Icon color={color || palette.accent} size={19} /></View><View style={styles.settingBody}><Text style={[styles.settingLabel, { color: palette.ink }]}>{label}</Text><Text style={[styles.settingDetail, { color: palette.inkSoft }]}>{detail}</Text></View>{control || (onPress ? <ChevronRight color={palette.muted} size={18} /> : null)}</Pressable>;
 }
 
-function TenantPickerModal({ visible, options, palette, onClose, onSelect }: { visible: boolean; options: TenantOption[]; palette: ReturnType<typeof colorsForTheme>; onClose: () => void; onSelect: (option: TenantOption) => void }) {
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent><View style={styles.modalOverlay}><Pressable style={styles.modalBackdrop} onPress={onClose} /><View style={[styles.tenantCard, { backgroundColor: palette.canvas }]}><View style={styles.tenantHeader}><View><Text style={[styles.modalEyebrow, { color: palette.accentDeep }]}>TÀI KHOẢN</Text><Text style={[styles.modalTitle, { color: palette.ink }]}>Chuyển công ty</Text></View><Pressable onPress={onClose} style={[styles.closeButton, { backgroundColor: palette.paper }]}><X color={palette.inkSoft} size={19} /></Pressable></View><Text style={[styles.modalHint, { color: palette.inkSoft }]}>Chọn công ty bạn muốn mở trên thiết bị này.</Text><View style={[styles.tenantList, { backgroundColor: palette.paper, borderColor: palette.line }]}>{options.map(option => <Pressable key={option.id} onPress={() => onSelect(option)} style={({ pressed }) => [styles.tenantOption, { borderBottomColor: palette.line }, pressed && styles.settingPressed]}><View style={[styles.tenantLogo, { backgroundColor: palette.accentWash }]}><Building2 color={palette.accent} size={19} /></View><View style={styles.tenantCopy}><Text numberOfLines={1} style={[styles.tenantName, { color: palette.ink }]}>{option.name}</Text><Text style={[styles.tenantRole, { color: palette.inkSoft }]}>{displayRoleName(option.role, 'Thành viên')}</Text></View><ChevronRight color={palette.muted} size={18} /></Pressable>)}</View></View></View></Modal>;
+function TenantPickerModal({ visible, options, palette, t, onClose, onSelect }: { visible: boolean; options: TenantOption[]; palette: ReturnType<typeof colorsForTheme>; t: (value: string) => string; onClose: () => void; onSelect: (option: TenantOption) => void }) {
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent><View style={styles.modalOverlay}><Pressable style={styles.modalBackdrop} onPress={onClose} /><View style={[styles.tenantCard, { backgroundColor: palette.canvas }]}><View style={styles.tenantHeader}><View><Text style={[styles.modalEyebrow, { color: palette.accentDeep }]}>{t('TÀI KHOẢN')}</Text><Text style={[styles.modalTitle, { color: palette.ink }]}>{t('Chuyển công ty')}</Text></View><Pressable onPress={onClose} style={[styles.closeButton, { backgroundColor: palette.paper }]}><X color={palette.inkSoft} size={19} /></Pressable></View><Text style={[styles.modalHint, { color: palette.inkSoft }]}>{t('Chọn công ty bạn muốn mở trên thiết bị này.')}</Text><View style={[styles.tenantList, { backgroundColor: palette.paper, borderColor: palette.line }]}>{options.map(option => <Pressable key={option.id} onPress={() => onSelect(option)} style={({ pressed }) => [styles.tenantOption, { borderBottomColor: palette.line }, pressed && styles.settingPressed]}><View style={[styles.tenantLogo, { backgroundColor: palette.accentWash }]}><Building2 color={palette.accent} size={19} /></View><View style={styles.tenantCopy}><Text numberOfLines={1} style={[styles.tenantName, { color: palette.ink }]}>{option.name}</Text><Text style={[styles.tenantRole, { color: palette.inkSoft }]}>{displayRoleName(option.role, t('Thành viên'))}</Text></View><ChevronRight color={palette.muted} size={18} /></Pressable>)}</View></View></View></Modal>;
 }
 
 const styles = StyleSheet.create({

@@ -51,6 +51,7 @@ import { conversationNicknameForMember } from '../../utils/conversationSync';
 import { tinodeClient } from '../../services/tinodeClient';
 import { ConversationCategory, ConversationDisplayMode, loadConversationPreference, saveConversationPreference } from '../../services/conversationPreferenceService';
 import { isImageMessage, mergeGroupHistoryMessages, messageFile, messageLinks, messagesForSharedKind, SharedContentKind } from '../../utils/groupInfoMedia';
+import { useI18n } from '../../store/languageStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'GroupInfo'>;
 type ContentView = 'shared' | 'pinned' | 'polls';
@@ -71,6 +72,7 @@ const settingLabels: Array<{ key: keyof GroupSettings; label: string; hint: stri
 export function GroupInfoScreen({ route, navigation }: Props) {
   const palette = colorsForTheme(useThemeStore(state => state.resolved));
   const styles = useMemo(() => createStyles(palette), [palette]);
+  const { t, locale } = useI18n();
   const conversation = useAppStore(state => getConversation(state.conversations, route.params.conversationId));
   const session = useAppStore(state => state.session);
   const connection = useAppStore(state => state.connection);
@@ -112,6 +114,7 @@ export function GroupInfoScreen({ route, navigation }: Props) {
   const [preferencePicker, setPreferencePicker] = useState<PreferencePicker>(null);
   const historyRequestRef = useRef('');
   const [membersExpanded, setMembersExpanded] = useState(false);
+  const [groupSettingsExpanded, setGroupSettingsExpanded] = useState(false);
   const [nicknameMember, setNicknameMember] = useState<ConversationMember | null>(null);
 
   useEffect(() => {
@@ -130,6 +133,7 @@ export function GroupInfoScreen({ route, navigation }: Props) {
     setHistoryError('');
     historyRequestRef.current = '';
     setMembersExpanded(false);
+    setGroupSettingsExpanded(false);
     setNicknameMember(null);
   }, [conversation?.id, conversation?.name]);
 
@@ -185,17 +189,17 @@ export function GroupInfoScreen({ route, navigation }: Props) {
     ? sharedFilter === 'media' ? sharedImages : sharedFilter === 'files' ? sharedFiles : sharedLinks
     : contentView === 'pinned' ? pinnedMessages : pollMessages;
   const contentTitle = contentView === 'shared'
-    ? 'Ảnh, file, link'
+    ? t('Ảnh, file, link')
     : contentView === 'pinned'
-      ? 'Tin nhắn đã ghim'
-      : 'Bình chọn trong nhóm';
+      ? t('Tin nhắn đã ghim')
+      : t('Bình chọn trong nhóm');
   const categoryLabels: Record<ConversationCategory, string> = {
-    '': 'Chua phan loai',
-    customer: 'Khach hang',
-    work: 'Cong viec',
-    urgent: 'Uu tien',
-    'follow-up': 'Can theo doi',
-    other: 'Khac',
+    '': t('Chưa phân loại'),
+    customer: t('Khách hàng'),
+    work: t('Công việc'),
+    urgent: t('Ưu tiên'),
+    'follow-up': t('Cần theo dõi'),
+    other: t('Khác'),
   };
   const existingIds = useMemo(() => new Set([...members, ...pendingMembers].flatMap(member => identityValues(member))), [members, pendingMembers]);
   const candidates = useMemo(() => directory.filter(user => {
@@ -212,7 +216,7 @@ export function GroupInfoScreen({ route, navigation }: Props) {
     try {
       await action();
     } catch (value) {
-      Alert.alert('Không thể thực hiện', value instanceof Error ? value.message : 'Vui lòng thử lại sau.');
+      Alert.alert(t('Không thể thực hiện'), value instanceof Error ? t(value.message) : t('Vui lòng thử lại sau.'));
     } finally {
       setBusy('');
     }
@@ -230,7 +234,7 @@ export function GroupInfoScreen({ route, navigation }: Props) {
       );
       setPreference(next);
     } catch (error) {
-      Alert.alert('Khong the luu tuy chon', error instanceof Error ? error.message : 'Vui long thu lai sau.');
+      Alert.alert(t('Không thể lưu tùy chọn'), error instanceof Error ? t(error.message) : t('Vui lòng thử lại sau.'));
       throw error;
     } finally {
       setPreferenceBusy(false);
@@ -243,10 +247,10 @@ export function GroupInfoScreen({ route, navigation }: Props) {
       return;
     }
     setConfirmRequest({
-      title: 'An tro chuyen?',
-      message: 'Cuoc tro chuyen se duoc an khoi danh sach tren thiet bi nay. Tin nhan va du lieu goc khong bi xoa.',
-      confirmLabel: 'An tro chuyen',
-      eyebrow: 'TUY CHON RIENG TU',
+      title: t('Ẩn trò chuyện?'),
+      message: t('Cuộc trò chuyện sẽ được ẩn khỏi danh sách trên thiết bị này. Tin nhắn và dữ liệu gốc không bị xóa.'),
+      confirmLabel: t('Ẩn trò chuyện'),
+      eyebrow: t('TÙY CHỌN RIÊNG TƯ'),
       onConfirm: () => void savePreferencePatch({ hidden: true }).then(() => navigation.goBack()).catch(() => {}).finally(() => setConfirmRequest(null)),
     });
   };
@@ -254,11 +258,11 @@ export function GroupInfoScreen({ route, navigation }: Props) {
   const openLink = async (url: string) => {
     if (!/^https?:\/\//i.test(url)) return;
     try {
-      if (!(await Linking.canOpenURL(url))) throw new Error('Lien ket khong duoc ho tro tren thiet bi nay.');
+      if (!(await Linking.canOpenURL(url))) throw new Error(t('Liên kết không được hỗ trợ trên thiết bị này.'));
       beginTrustedExternalActivity();
       await Linking.openURL(url);
     } catch (error) {
-      Alert.alert('Khong mo duoc lien ket', error instanceof Error ? error.message : 'Vui long thu lai sau.');
+      Alert.alert(t('Không mở được liên kết'), error instanceof Error ? t(error.message) : t('Vui lòng thử lại sau.'));
     }
   };
 
@@ -267,7 +271,7 @@ export function GroupInfoScreen({ route, navigation }: Props) {
       beginTrustedExternalActivity();
       await Share.share({ message: url, url });
     } catch (error) {
-      if ((error as any)?.message !== 'User did not share') Alert.alert('Khong chia se duoc', error instanceof Error ? error.message : 'Vui long thu lai sau.');
+      if ((error as any)?.message !== 'User did not share') Alert.alert(t('Không chia sẻ được'), error instanceof Error ? t(error.message) : t('Vui lòng thử lại sau.'));
     }
   };
 
@@ -276,14 +280,14 @@ export function GroupInfoScreen({ route, navigation }: Props) {
       beginTrustedExternalActivity();
       await tinodeClient.downloadFile(file);
     } catch (error) {
-      Alert.alert('Khong tai duoc tep', error instanceof Error ? error.message : 'Vui long thu lai sau.');
+      Alert.alert(t('Không tải được tệp'), error instanceof Error ? t(error.message) : t('Vui lòng thử lại sau.'));
     }
   };
 
   const chooseAvatar = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Cần cấp quyền', 'ViChat cần quyền truy cập ảnh để đổi avatar nhóm.');
+      Alert.alert(t('Cần cấp quyền'), t('ViChat cần quyền truy cập ảnh để đổi avatar nhóm.'));
       return;
     }
     beginTrustedExternalActivity();
@@ -319,7 +323,7 @@ export function GroupInfoScreen({ route, navigation }: Props) {
     } catch (error) {
       if (settingsRequestRef.current !== requestId) return;
       setSettingsDraft(previousSettings);
-      Alert.alert('Không thể lưu cài đặt', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+      Alert.alert(t('Không thể lưu cài đặt'), error instanceof Error ? t(error.message) : t('Vui lòng thử lại sau.'));
     } finally {
       if (settingsRequestRef.current === requestId) setSettingsBusy(false);
     }
@@ -329,7 +333,7 @@ export function GroupInfoScreen({ route, navigation }: Props) {
     if (!conversation || selectedIds.length === 0) return;
     const accountIds = canonicalAccountIds(selectedIds, directory);
     if (accountIds.length !== selectedIds.length) {
-      Alert.alert('Không xác định được thành viên', 'Chỉ có thể thêm thành viên bằng Account ID của nhân viên cùng công ty.');
+      Alert.alert(t('Không xác định được thành viên'), t('Chỉ có thể thêm thành viên bằng Account ID của nhân viên cùng công ty.'));
       return;
     }
     await run('add', async () => {
@@ -348,17 +352,17 @@ export function GroupInfoScreen({ route, navigation }: Props) {
       .filter(value => Boolean(value.accountId));
     if (isOwner && others.length > 0) {
       if (replacementOptions.length === 0) {
-        Alert.alert('Chưa đồng bộ thành viên', 'Không xác định được Account ID của thành viên thay thế. Hãy tải lại nhóm rồi thử lại.');
+        Alert.alert(t('Chưa đồng bộ thành viên'), t('Không xác định được Account ID của thành viên thay thế. Hãy tải lại nhóm rồi thử lại.'));
         return;
       }
       setLeaveCandidates(replacementOptions.slice(0, 8));
       return;
     }
     setConfirmRequest({
-      title: 'Rời nhóm?',
-      message: 'Bạn sẽ không còn thấy nhóm này trong danh sách.',
-      confirmLabel: 'Rời nhóm',
-      eyebrow: 'THÀNH VIÊN NHÓM',
+      title: t('Rời nhóm?'),
+      message: t('Bạn sẽ không còn thấy nhóm này trong danh sách.'),
+      confirmLabel: t('Rời nhóm'),
+      eyebrow: t('THÀNH VIÊN NHÓM'),
       tone: 'danger',
       onConfirm: () => void run('leave', async () => { await deleteConversation(conversation.id); navigation.popToTop(); }).finally(() => setConfirmRequest(null)),
     });
@@ -367,10 +371,10 @@ export function GroupInfoScreen({ route, navigation }: Props) {
   const handleDissolve = () => {
     if (!conversation) return;
     setConfirmRequest({
-      title: 'Giải tán nhóm?',
-      message: 'Tất cả thành viên sẽ bị đưa ra khỏi nhóm và lịch sử nhóm sẽ không còn mở được.',
-      confirmLabel: 'Giải tán',
-      eyebrow: 'QUYỀN TRƯỞNG NHÓM',
+      title: t('Giải tán nhóm?'),
+      message: t('Tất cả thành viên sẽ bị đưa ra khỏi nhóm và lịch sử nhóm sẽ không còn mở được.'),
+      confirmLabel: t('Giải tán'),
+      eyebrow: t('QUYỀN TRƯỞNG NHÓM'),
       tone: 'danger',
       onConfirm: () => void run('dissolve', async () => { await dissolveGroup(conversation.id); navigation.popToTop(); }).finally(() => setConfirmRequest(null)),
     });
@@ -379,10 +383,10 @@ export function GroupInfoScreen({ route, navigation }: Props) {
   const handleRemoveMember = (member: ConversationMember, accountId: string) => {
     if (!conversation) return;
     setConfirmRequest({
-      title: 'Xóa thành viên?',
-      message: `Xóa ${member.name} khỏi nhóm? Người này sẽ không còn gửi và xem tin nhắn nhóm.`,
-      confirmLabel: 'Xóa thành viên',
-      eyebrow: 'QUẢN TRỊ NHÓM',
+      title: t('Xóa thành viên?'),
+      message: t(`Bạn có chắc muốn xóa ${member.name} khỏi nhóm "${conversation.name}"?`),
+      confirmLabel: t('Xóa thành viên'),
+      eyebrow: t('QUẢN TRỊ NHÓM'),
       tone: 'danger',
       onConfirm: () => void run(`remove-${accountId}`, () => removeGroupMember(conversation.id, accountId)).finally(() => setConfirmRequest(null)),
     });
@@ -394,79 +398,78 @@ export function GroupInfoScreen({ route, navigation }: Props) {
     try {
       setSearchResults(await searchConversationHistory(conversation.id, searchQuery));
     } catch (value) {
-      Alert.alert('Tìm kiếm thất bại', value instanceof Error ? value.message : 'Vui lòng thử lại sau.');
+      Alert.alert(t('Tìm kiếm thất bại'), value instanceof Error ? t(value.message) : t('Vui lòng thử lại sau.'));
     } finally {
       setSearching(false);
     }
   };
 
-  if (!conversation?.isGroup) return <View style={styles.screen}><Text style={styles.empty}>Nhóm không còn khả dụng.</Text></View>;
+  if (!conversation?.isGroup) return <View style={styles.screen}><Text style={styles.empty}>{t('Nhóm không còn khả dụng.')}</Text></View>;
 
-  const sharedSummary = `${sharedImages.length} ảnh · ${sharedFiles.length} file · ${sharedLinks.length} link`;
-  const membersSummary = `${members.length} thành viên${pendingMembers.length ? ` · ${pendingMembers.length} chờ duyệt` : ''}`;
+  const sharedSummary = `${sharedImages.length} ${t('ảnh')} · ${sharedFiles.length} ${t('file')} · ${sharedLinks.length} ${t('link')}`;
+  const membersSummary = `${members.length} ${t('thành viên')}${pendingMembers.length ? ` · ${pendingMembers.length} ${t('chờ duyệt')}` : ''}`;
 
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={() => navigation.goBack()} style={styles.iconButton} accessibilityLabel="Quay lại"><ChevronLeft color={palette.ink} size={25} /></Pressable>
-        <Text style={styles.headerTitle}>Thông tin nhóm</Text>
+        <Pressable onPress={() => navigation.goBack()} style={styles.iconButton} accessibilityLabel={t('Quay lại')}><ChevronLeft color={palette.ink} size={25} /></Pressable>
+        <Text style={styles.headerTitle}>{t('Thông tin nhóm')}</Text>
         <View style={styles.headerSpacer} />
       </View>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.identityBlock}>
           <View style={styles.avatarWrap}>
             <Avatar name={conversation.name} uri={conversation.avatarUrl} size={92} rounded={false} />
-            {canEditInfo ? <Pressable onPress={() => void chooseAvatar()} style={styles.avatarEdit} disabled={Boolean(busy)} accessibilityLabel="Đổi ảnh nhóm"><Camera color="#fff" size={17} /></Pressable> : null}
+            {canEditInfo ? <Pressable onPress={() => void chooseAvatar()} style={styles.avatarEdit} disabled={Boolean(busy)} accessibilityLabel={t('Đổi ảnh nhóm')}><Camera color="#fff" size={17} /></Pressable> : null}
           </View>
-          <View style={styles.nameRow}><Text numberOfLines={2} style={styles.groupName}>{conversation.name}</Text>{canEditInfo ? <Pressable onPress={() => { setNameDraft(conversation.name); setRenameOpen(true); }} style={styles.smallIcon} accessibilityLabel="Đổi tên nhóm"><Settings2 color={palette.accent} size={17} /></Pressable> : null}</View>
-          <Text style={styles.memberCount}>{members.length} thành viên</Text>
+          <View style={styles.nameRow}><Text numberOfLines={2} style={styles.groupName}>{conversation.name}</Text>{canEditInfo ? <Pressable onPress={() => { setNameDraft(conversation.name); setRenameOpen(true); }} style={styles.smallIcon} accessibilityLabel={t('Đổi tên nhóm')}><Settings2 color={palette.accent} size={17} /></Pressable> : null}</View>
+          <Text style={styles.memberCount}>{members.length} {t('thành viên')}</Text>
         </View>
 
         <View style={styles.quickRow}>
           <Pressable onPress={() => void run('mute', () => muteConversation(conversation.id, isConversationMuted(conversation.notificationMutedUntil) ? null : 0))} style={[styles.quickAction, isConversationMuted(conversation.notificationMutedUntil) && styles.quickActive]} disabled={Boolean(busy)}>
             <View style={styles.quickIcon}>{isConversationMuted(conversation.notificationMutedUntil) ? <BellOff color={palette.accent} size={18} /> : <Bell color={palette.accent} size={18} />}</View>
-            <Text style={styles.quickText}>{isConversationMuted(conversation.notificationMutedUntil) ? 'Bật thông báo' : 'Tắt thông báo'}</Text>
+            <Text style={styles.quickText}>{isConversationMuted(conversation.notificationMutedUntil) ? t('Bật thông báo') : t('Tắt thông báo')}</Text>
           </Pressable>
           <Pressable onPress={handleLeave} style={styles.quickAction} disabled={Boolean(busy)}>
             <View style={[styles.quickIcon, { backgroundColor: `${palette.danger}18` }]}><LogOut color={palette.danger} size={18} /></View>
-            <Text style={[styles.quickText, styles.dangerText]}>Rời nhóm</Text>
+            <Text style={[styles.quickText, styles.dangerText]}>{t('Rời nhóm')}</Text>
           </Pressable>
         </View>
 
-        <SectionHeading title="Nội dung" icon={BarChart3} palette={palette} />
+        <SectionHeading title={t('Nội dung')} icon={BarChart3} palette={palette} />
         <View style={styles.menu}>
           <DetailRow
             testID="group-shared-content-row"
             icon={ImageIcon}
-            label="Ảnh, file, link"
+            label={t('Ảnh, file, link')}
             detail={sharedSummary}
             preview={<SharedPreview images={sharedImages} files={sharedFiles} links={sharedLinks} palette={palette} />}
             onPress={() => setContentView('shared')}
             palette={palette}
           />
-          <DetailRow icon={CalendarDays} label="Lịch nhóm" detail="Chưa khả dụng trên mobile" disabled palette={palette} />
-          <DetailRow icon={Pin} label="Tin nhắn đã ghim" detail={pinnedMessages.length ? `${pinnedMessages.length} tin nhắn` : 'Chưa có tin nhắn đã ghim'} onPress={pinnedMessages.length ? () => setContentView('pinned') : undefined} disabled={!pinnedMessages.length} palette={palette} />
-          <DetailRow icon={BarChart3} label="Bình chọn" detail={pollMessages.length ? `${pollMessages.length} bình chọn` : 'Chưa có bình chọn'} onPress={pollMessages.length ? () => setContentView('polls') : undefined} disabled={!pollMessages.length} last palette={palette} />
+          <DetailRow icon={CalendarDays} label={t('Lịch nhóm')} detail={t('Chưa khả dụng trên mobile')} disabled palette={palette} />
+          <DetailRow icon={Pin} label={t('Tin nhắn đã ghim')} detail={pinnedMessages.length ? `${pinnedMessages.length} ${t('tin nhắn')}` : t('Chưa có tin nhắn đã ghim')} onPress={pinnedMessages.length ? () => setContentView('pinned') : undefined} disabled={!pinnedMessages.length} palette={palette} />
+          <DetailRow icon={BarChart3} label={t('Bình chọn')} detail={pollMessages.length ? `${pollMessages.length} ${t('bình chọn')}` : t('Chưa có bình chọn')} onPress={pollMessages.length ? () => setContentView('polls') : undefined} disabled={!pollMessages.length} last palette={palette} />
         </View>
 
-        <SectionHeading title="Thành viên & nhóm" icon={Users} palette={palette} />
+        <SectionHeading title={t('Thành viên & nhóm')} icon={Users} palette={palette} />
         <View style={styles.menu}>
           <DetailRow
             testID="group-members-row"
             icon={Users}
-            label="Xem thành viên"
+            label={t('Xem thành viên')}
             detail={membersSummary}
             onPress={() => setMembersExpanded(value => !value)}
             trailing={membersExpanded ? <ChevronUp color={palette.muted} size={19} /> : <ChevronDown color={palette.muted} size={19} />}
             palette={palette}
           />
-          <DetailRow icon={Link2} label="Link nhóm" detail="Chưa khả dụng trên mobile" disabled last palette={palette} />
         </View>
 
         {membersExpanded ? (
           <View style={styles.membersPanel}>
-            <Pressable onPress={() => setAddOpen(true)} style={styles.primaryAction} disabled={Boolean(busy)}><UserPlus color="#fff" size={18} /><Text style={styles.primaryText}>Thêm thành viên</Text></Pressable>
-            {pendingMembers.length > 0 && isAdmin ? <View style={styles.pendingBox}><Text style={styles.sectionLabel}>Chờ duyệt ({pendingMembers.length})</Text>{pendingMembers.map(member => { const accountId = accountIdForMember(member, directory); return <MemberRow key={`pending-${accountId || identityValues(member).join('-')}`} member={member} pending palette={palette} onApprove={accountId ? () => void run(`approve-${accountId}`, () => approveGroupMember(conversation.id, accountId, true)) : undefined} onReject={accountId ? () => void run(`reject-${accountId}`, () => approveGroupMember(conversation.id, accountId, false)) : undefined} />; })}</View> : null}
+            <Pressable onPress={() => setAddOpen(true)} style={styles.primaryAction} disabled={Boolean(busy)}><UserPlus color="#fff" size={18} /><Text style={styles.primaryText}>{t('Thêm thành viên')}</Text></Pressable>
+            {pendingMembers.length > 0 && isAdmin ? <View style={styles.pendingBox}><Text style={styles.sectionLabel}>{t('Chờ duyệt')} ({pendingMembers.length})</Text>{pendingMembers.map(member => { const accountId = accountIdForMember(member, directory); return <MemberRow key={`pending-${accountId || identityValues(member).join('-')}`} member={member} pending palette={palette} onApprove={accountId ? () => void run(`approve-${accountId}`, () => approveGroupMember(conversation.id, accountId, true)) : undefined} onReject={accountId ? () => void run(`reject-${accountId}`, () => approveGroupMember(conversation.id, accountId, false)) : undefined} />; })}</View> : null}
             <View style={styles.memberList}>{members.map(member => {
               const owner = memberIsOwner(member);
               const admin = memberIsAdmin(member);
@@ -478,56 +481,61 @@ export function GroupInfoScreen({ route, navigation }: Props) {
           </View>
         ) : null}
 
-        <SectionHeading title="Cuộc trò chuyện" icon={Settings2} palette={palette} />
+        <SectionHeading title={t('Cuộc trò chuyện')} icon={Settings2} palette={palette} />
         <View style={styles.menu}>
-          <DetailRow icon={Languages} label="Dịch trò chuyện" detail="Chưa khả dụng trên mobile" disabled palette={palette} />
+          <DetailRow icon={Languages} label={t('Dịch trò chuyện')} detail={t('Chưa khả dụng trên mobile')} disabled palette={palette} />
           <DetailRow
             testID="conversation-pin-row"
             icon={Pin}
-            label="Ghim trò chuyện"
-            detail={conversation.pinned ? 'Đang ghim trong danh sách' : 'Đưa lên đầu danh sách trò chuyện'}
-            control={<Switch testID="conversation-pin-switch" accessibilityLabel="Ghim trò chuyện" value={Boolean(conversation.pinned)} onValueChange={value => void run('pin', () => updateConversationPin(conversation.id, value))} disabled={Boolean(busy)} trackColor={{ false: palette.line, true: `${palette.accent}88` }} thumbColor={conversation.pinned ? palette.accent : palette.paper} />}
+            label={t('Ghim trò chuyện')}
+            detail={conversation.pinned ? t('Đang ghim trong danh sách') : t('Đưa lên đầu danh sách trò chuyện')}
+            control={<Switch testID="conversation-pin-switch" accessibilityLabel={t('Ghim trò chuyện')} value={Boolean(conversation.pinned)} onValueChange={value => void run('pin', () => updateConversationPin(conversation.id, value))} disabled={Boolean(busy)} trackColor={{ false: palette.line, true: `${palette.accent}88` }} thumbColor={conversation.pinned ? palette.accent : palette.paper} />}
             palette={palette}
           />
-          <DetailRow icon={Settings2} label="Mục hiển thị" detail={preference.displayMode === 'compact' ? 'Gọn' : 'Thoải mái'} onPress={() => setPreferencePicker('display')} palette={palette} />
-          <DetailRow icon={Tags} label="Thẻ phân loại" detail={categoryLabels[preference.category]} onPress={() => setPreferencePicker('category')} palette={palette} />
+          <DetailRow icon={Settings2} label={t('Mục hiển thị')} detail={preference.displayMode === 'compact' ? t('Gọn') : t('Thoải mái')} onPress={() => setPreferencePicker('display')} palette={palette} />
+          <DetailRow icon={Tags} label={t('Thẻ phân loại')} detail={categoryLabels[preference.category]} onPress={() => setPreferencePicker('category')} palette={palette} />
           <DetailRow
             icon={EyeOff}
-            label="Ẩn trò chuyện"
-            detail={preference.hidden ? 'Đang ẩn trên thiết bị này' : 'Chỉ ẩn khỏi danh sách của bạn'}
+            label={t('Ẩn trò chuyện')}
+            detail={preference.hidden ? t('Đang ẩn trên thiết bị này') : t('Chỉ ẩn khỏi danh sách của bạn')}
             onPress={() => requestHideConversation(!preference.hidden)}
-            control={<Switch accessibilityLabel="Ẩn trò chuyện" value={preference.hidden} onValueChange={requestHideConversation} disabled={preferenceBusy} trackColor={{ false: palette.line, true: `${palette.accent}88` }} thumbColor={preference.hidden ? palette.accent : palette.paper} />}
+            control={<Switch accessibilityLabel={t('Ẩn trò chuyện')} value={preference.hidden} onValueChange={requestHideConversation} disabled={preferenceBusy} trackColor={{ false: palette.line, true: `${palette.accent}88` }} thumbColor={preference.hidden ? palette.accent : palette.paper} />}
             last
             palette={palette}
           />
         </View>
 
-        <SectionHeading title="Cài đặt nhóm" icon={Settings2} palette={palette} />
-        <View style={styles.settingsBox}>
-          <Text style={isAdmin ? styles.settingsNotice : styles.settingsLockedNotice}>{isAdmin ? (settingsBusy ? 'Đang lưu thay đổi...' : 'Bật hoặc tắt để lưu ngay.') : 'Chỉ trưởng nhóm hoặc phó nhóm mới có thể thay đổi cài đặt.'}</Text>
-          {settingLabels.map(item => <View key={item.key} style={styles.settingRow}><View style={styles.settingCopy}><Text style={styles.settingLabel}>{item.label}</Text><Text style={styles.settingHint}>{item.hint}</Text></View><Switch testID={`group-setting-${item.key}`} accessibilityLabel={item.label} value={settingsDraft[item.key]} onValueChange={value => void changeSetting(item.key, value)} disabled={!isAdmin || settingsBusy || Boolean(busy)} trackColor={{ false: palette.line, true: `${palette.accent}88` }} thumbColor={settingsDraft[item.key] ? palette.accent : palette.paper} /></View>)}
-        </View>
+        {isAdmin ? <>
+          <SectionHeading title={t('Cài đặt nhóm')} icon={Settings2} palette={palette} />
+          <View style={styles.menu}>
+            <DetailRow icon={Settings2} label={t('Cài đặt nhóm')} detail={groupSettingsExpanded ? t('Thu gọn bảng điều khiển') : t('Mở bảng điều khiển quản trị nhóm')} onPress={() => setGroupSettingsExpanded(value => !value)} trailing={groupSettingsExpanded ? <ChevronUp color={palette.muted} size={19} /> : <ChevronDown color={palette.muted} size={19} />} palette={palette} />
+          </View>
+          {groupSettingsExpanded ? <View style={styles.settingsBox}>
+            <Text style={styles.settingsNotice}>{settingsBusy ? t('Đang lưu thay đổi...') : t('Bật hoặc tắt để lưu ngay.')}</Text>
+            {settingLabels.map(item => <View key={item.key} style={styles.settingRow}><View style={styles.settingCopy}><Text style={styles.settingLabel}>{t(item.label)}</Text><Text style={styles.settingHint}>{t(item.hint)}</Text></View><Switch testID={`group-setting-${item.key}`} accessibilityLabel={t(item.label)} value={settingsDraft[item.key]} onValueChange={value => void changeSetting(item.key, value)} disabled={settingsBusy || Boolean(busy)} trackColor={{ false: palette.line, true: `${palette.accent}88` }} thumbColor={settingsDraft[item.key] ? palette.accent : palette.paper} /></View>)}
+          </View> : null}
+        </> : null}
 
-        <SectionHeading title="Tìm trong lịch sử" icon={Search} palette={palette} />
-        <View style={styles.searchRow}><View style={styles.historySearch}><Search color={palette.muted} size={17} /><TextInput value={searchQuery} onChangeText={setSearchQuery} placeholder="Tìm tin nhắn..." placeholderTextColor={palette.muted} style={styles.historyInput} onSubmitEditing={() => void runSearch()} /></View><Pressable onPress={() => void runSearch()} style={styles.searchButton} disabled={searching}><Search color="#fff" size={18} /></Pressable></View>
-        {searchResults.length > 0 ? <View style={styles.results}>{searchResults.map((item, index) => <View style={styles.resultRow} key={`${item.id || item.seq || index}`}><Text style={styles.resultText}>{String(item.text || item.content || item.message || 'Tin nhắn')}</Text><Text style={styles.resultMeta}>{String(item.senderName || item.sender_name || '')}</Text></View>)}</View> : null}
+        <SectionHeading title={t('Tìm trong lịch sử')} icon={Search} palette={palette} />
+        <View style={styles.searchRow}><View style={styles.historySearch}><Search color={palette.muted} size={17} /><TextInput value={searchQuery} onChangeText={setSearchQuery} placeholder={t('Tìm tin nhắn...')} placeholderTextColor={palette.muted} style={styles.historyInput} onSubmitEditing={() => void runSearch()} /></View><Pressable onPress={() => void runSearch()} style={styles.searchButton} disabled={searching}><Search color="#fff" size={18} /></Pressable></View>
+        {searchResults.length > 0 ? <View style={styles.results}>{searchResults.map((item, index) => <View style={styles.resultRow} key={`${item.id || item.seq || index}`}><Text style={styles.resultText}>{String(item.text || item.content || item.message || t('Tin nhắn'))}</Text><Text style={styles.resultMeta}>{String(item.senderName || item.sender_name || '')}</Text></View>)}</View> : null}
 
-        {isOwner ? <View style={styles.dangerZone}><View style={styles.dangerHeading}><Crown color={palette.warning} size={18} /><Text style={styles.dangerTitle}>Quyền trưởng nhóm</Text></View><Text style={styles.settingHint}>Giải tán nhóm sẽ đóng hội thoại với tất cả thành viên.</Text><Pressable onPress={handleDissolve} style={styles.dangerButton} disabled={Boolean(busy)}><Trash2 color={palette.danger} size={18} /><Text style={styles.dangerButtonText}>{busy === 'dissolve' ? 'Đang giải tán...' : 'Giải tán nhóm'}</Text></Pressable></View> : null}
+        {isOwner ? <View style={styles.dangerZone}><View style={styles.dangerHeading}><Crown color={palette.warning} size={18} /><Text style={styles.dangerTitle}>{t('Quyền trưởng nhóm')}</Text></View><Text style={styles.settingHint}>{t('Giải tán nhóm sẽ đóng hội thoại với tất cả thành viên.')}</Text><Pressable onPress={handleDissolve} style={styles.dangerButton} disabled={Boolean(busy)}><Trash2 color={palette.danger} size={18} /><Text style={styles.dangerButtonText}>{busy === 'dissolve' ? t('Đang giải tán...') : t('Giải tán nhóm')}</Text></Pressable></View> : null}
       </ScrollView>
 
       <Modal visible={addOpen} transparent animationType="slide" onRequestClose={() => setAddOpen(false)}>
-        <View style={styles.modalOverlay}><Pressable style={styles.modalBackdrop} onPress={() => setAddOpen(false)} /><View style={styles.modalSheet}><View style={styles.modalHeader}><Text style={styles.modalTitle}>Thêm thành viên</Text><Pressable onPress={() => setAddOpen(false)} style={styles.smallIcon}><X color={palette.inkSoft} size={19} /></Pressable></View><View style={styles.modalSearch}><Search color={palette.muted} size={18} /><TextInput value={addQuery} onChangeText={setAddQuery} placeholder="Tìm nhân viên" placeholderTextColor={palette.muted} style={styles.modalSearchInput} autoCorrect={false} /><Pressable onPress={() => setAddQuery('')} disabled={!addQuery} hitSlop={10}><X color={palette.muted} size={17} /></Pressable></View><FlatList data={candidates} keyExtractor={item => item.id} contentContainerStyle={styles.candidateList} renderItem={({ item }) => { const selected = selectedIds.includes(item.id); return <Pressable onPress={() => setSelectedIds(current => selected ? current.filter(id => id !== item.id) : [...current, item.id])} style={styles.candidate}><Avatar name={item.name} uri={item.avatar} size={42} /><View style={styles.candidateCopy}><Text style={styles.memberName}>{item.name}</Text><Text style={styles.memberMeta}>{item.department || item.title || item.username}</Text></View><View style={[styles.check, selected && styles.checkActive]}>{selected ? <Check color="#fff" size={15} /> : <Plus color={palette.accent} size={17} />}</View></Pressable>; }} ListEmptyComponent={<Text style={styles.emptyList}>Không còn nhân viên phù hợp.</Text>} /><Pressable onPress={() => void addMembers()} style={styles.primaryAction} disabled={selectedIds.length === 0 || Boolean(busy)}><UserPlus color="#fff" size={18} /><Text style={styles.primaryText}>{busy === 'add' ? 'Đang thêm...' : `Thêm ${selectedIds.length || ''} thành viên`}</Text></Pressable></View></View>
+        <View style={styles.modalOverlay}><Pressable style={styles.modalBackdrop} onPress={() => setAddOpen(false)} /><View style={styles.modalSheet}><View style={styles.modalHeader}><Text style={styles.modalTitle}>{t('Thêm thành viên')}</Text><Pressable onPress={() => setAddOpen(false)} style={styles.smallIcon} accessibilityLabel={t('Đóng')}><X color={palette.inkSoft} size={19} /></Pressable></View><View style={styles.modalSearch}><Search color={palette.muted} size={18} /><TextInput value={addQuery} onChangeText={setAddQuery} placeholder={t('Tìm nhân viên')} placeholderTextColor={palette.muted} style={styles.modalSearchInput} autoCorrect={false} /><Pressable onPress={() => setAddQuery('')} disabled={!addQuery} hitSlop={10} accessibilityLabel={t('Xóa')}><X color={palette.muted} size={17} /></Pressable></View><FlatList data={candidates} keyExtractor={item => item.id} contentContainerStyle={styles.candidateList} renderItem={({ item }) => { const selected = selectedIds.includes(item.id); return <Pressable onPress={() => setSelectedIds(current => selected ? current.filter(id => id !== item.id) : [...current, item.id])} style={styles.candidate}><Avatar name={item.name} uri={item.avatar} size={42} /><View style={styles.candidateCopy}><Text style={styles.memberName}>{item.name}</Text><Text style={styles.memberMeta}>{item.department || item.title || item.username}</Text></View><View style={[styles.check, selected && styles.checkActive]}>{selected ? <Check color="#fff" size={15} /> : <Plus color={palette.accent} size={17} />}</View></Pressable>; }} ListEmptyComponent={<Text style={styles.emptyList}>{t('Không còn nhân viên phù hợp.')}</Text>} /><Pressable onPress={() => void addMembers()} style={styles.primaryAction} disabled={selectedIds.length === 0 || Boolean(busy)}><UserPlus color="#fff" size={18} /><Text style={styles.primaryText}>{busy === 'add' ? t('Đang thêm...') : `${t('Thêm')} ${selectedIds.length || ''} ${t('thành viên')}`}</Text></Pressable></View></View>
       </Modal>
 
-      <Modal visible={renameOpen} transparent animationType="fade" onRequestClose={() => setRenameOpen(false)}><View style={styles.modalOverlay}><Pressable style={styles.modalBackdrop} onPress={() => setRenameOpen(false)} /><View style={styles.renameCard}><Text style={styles.modalTitle}>Đổi tên nhóm</Text><TextInput value={nameDraft} onChangeText={setNameDraft} autoFocus maxLength={120} placeholder="Tên nhóm" placeholderTextColor={palette.muted} style={styles.nameInput} /><View style={styles.modalActions}><Pressable onPress={() => setRenameOpen(false)} style={styles.secondaryButton}><Text style={styles.secondaryText}>Hủy</Text></Pressable><Pressable onPress={() => void submitRename()} style={styles.primarySmall} disabled={!nameDraft.trim() || Boolean(busy)}><Check color="#fff" size={17} /><Text style={styles.primaryText}>{busy === 'rename' ? 'Đang lưu...' : 'Lưu'}</Text></Pressable></View></View></View></Modal>
+      <Modal visible={renameOpen} transparent animationType="fade" onRequestClose={() => setRenameOpen(false)}><View style={styles.modalOverlay}><Pressable style={styles.modalBackdrop} onPress={() => setRenameOpen(false)} /><View style={styles.renameCard}><Text style={styles.modalTitle}>{t('Đổi tên nhóm')}</Text><TextInput value={nameDraft} onChangeText={setNameDraft} autoFocus maxLength={120} placeholder={t('Tên nhóm')} placeholderTextColor={palette.muted} style={styles.nameInput} /><View style={styles.modalActions}><Pressable onPress={() => setRenameOpen(false)} style={styles.secondaryButton}><Text style={styles.secondaryText}>{t('Hủy')}</Text></Pressable><Pressable onPress={() => void submitRename()} style={styles.primarySmall} disabled={!nameDraft.trim() || Boolean(busy)}><Check color="#fff" size={17} /><Text style={styles.primaryText}>{busy === 'rename' ? t('Đang lưu...') : t('Lưu')}</Text></Pressable></View></View></View></Modal>
 
       <Modal visible={Boolean(contentView)} transparent animationType="slide" onRequestClose={() => setContentView(null)} statusBarTranslucent>
         <View style={styles.modalOverlay}>
           <Pressable style={styles.modalBackdrop} onPress={() => setContentView(null)} />
           <View style={styles.contentSheet}>
-            <View style={styles.modalHeader}><View><Text style={styles.sectionLabel}>NỘI DUNG NHÓM</Text><Text style={styles.modalTitle}>{contentTitle}</Text></View><Pressable onPress={() => setContentView(null)} style={styles.smallIcon}><X color={palette.inkSoft} size={19} /></Pressable></View>
-            {contentView === 'shared' ? <View style={styles.filterRow}>{([['media', 'Ảnh'], ['files', 'File'], ['links', 'Link']] as Array<[SharedFilter, string]>).map(([id, label]) => <Pressable key={id} onPress={() => setSharedFilter(id)} style={[styles.filterTab, sharedFilter === id && styles.filterTabActive]}><Text style={[styles.filterText, sharedFilter === id && styles.filterTextActive]}>{label}</Text></Pressable>)}</View> : null}
-            {historyLoading ? <View style={styles.loadingRow}><ActivityIndicator color={palette.accent} /><Text style={styles.detailHint}>Đang tải toàn bộ lịch sử nội dung...</Text></View> : null}
+            <View style={styles.modalHeader}><View><Text style={styles.sectionLabel}>{t('NỘI DUNG NHÓM')}</Text><Text style={styles.modalTitle}>{contentTitle}</Text></View><Pressable onPress={() => setContentView(null)} style={styles.smallIcon} accessibilityLabel={t('Đóng')}><X color={palette.inkSoft} size={19} /></Pressable></View>
+            {contentView === 'shared' ? <View style={styles.filterRow}>{([['media', 'Ảnh'], ['files', 'File'], ['links', 'Link']] as Array<[SharedFilter, string]>).map(([id, label]) => <Pressable key={id} onPress={() => setSharedFilter(id)} style={[styles.filterTab, sharedFilter === id && styles.filterTabActive]}><Text style={[styles.filterText, sharedFilter === id && styles.filterTextActive]}>{t(label)}</Text></Pressable>)}</View> : null}
+            {historyLoading ? <View style={styles.loadingRow}><ActivityIndicator color={palette.accent} /><Text style={styles.detailHint}>{t('Đang tải toàn bộ lịch sử nội dung...')}</Text></View> : null}
             {historyError ? <Text style={styles.historyError}>{historyError}</Text> : null}
             <ScrollView contentContainerStyle={styles.contentItems}>
               {contentItems.length ? contentItems.map((message, index) => <SharedContentItem
@@ -538,7 +546,7 @@ export function GroupInfoScreen({ route, navigation }: Props) {
                 onOpenLink={openLink}
                 onShareLink={shareLink}
                 onDownloadFile={downloadSharedFile}
-              />) : <Text style={styles.emptyList}>Chưa có nội dung trong phạm vi đã tải.</Text>}
+              />) : <Text style={styles.emptyList}>{t('Chưa có nội dung trong phạm vi đã tải.')}</Text>}
             </ScrollView>
           </View>
         </View>
@@ -552,27 +560,27 @@ export function GroupInfoScreen({ route, navigation }: Props) {
         onSave={async nickname => {
           if (!nicknameMember) return;
           const accountId = accountIdForMember(nicknameMember, directory);
-          if (!accountId) throw new Error('KhÃ´ng xÃ¡c Ä‘á»‹nh Ä‘Æ°á»£c Account ID cá»§a thÃ nh viÃªn.');
+          if (!accountId) throw new Error(t('Không xác định được Account ID của thành viên.'));
           await updateConversationNickname(conversation.id, accountId, nickname);
         }}
       />
 
       <ChoiceDialog
         visible={Boolean(preferencePicker)}
-        title={preferencePicker === 'display' ? 'Mục hiển thị' : 'Thẻ phân loại'}
-        message={preferencePicker === 'display' ? 'Tùy chọn này chỉ thay đổi cách hiển thị cuộc trò chuyện trên thiết bị của bạn.' : 'Thẻ được lưu riêng cho tài khoản và công ty hiện tại.'}
+        title={preferencePicker === 'display' ? t('Mục hiển thị') : t('Thẻ phân loại')}
+        message={preferencePicker === 'display' ? t('Tùy chọn này chỉ thay đổi cách hiển thị cuộc trò chuyện trên thiết bị của bạn.') : t('Thẻ được lưu riêng cho tài khoản và công ty hiện tại.')}
         options={preferencePicker === 'display'
           ? [
-            { id: 'comfortable', label: 'Thoải mái', detail: 'Khoảng cách rộng, dễ đọc nội dung dài' },
-            { id: 'compact', label: 'Gọn', detail: 'Hiển thị nhiều cuộc trò chuyện hơn trên màn hình' },
+            { id: 'comfortable', label: t('Thoải mái'), detail: t('Khoảng cách rộng, dễ đọc nội dung dài') },
+            { id: 'compact', label: t('Gọn'), detail: t('Hiển thị nhiều cuộc trò chuyện hơn trên màn hình') },
           ]
           : [
-            { id: '', label: 'Chưa phân loại' },
-            { id: 'customer', label: 'Khách hàng' },
-            { id: 'work', label: 'Công việc' },
-            { id: 'urgent', label: 'Ưu tiên' },
-            { id: 'follow-up', label: 'Cần theo dõi' },
-            { id: 'other', label: 'Khác' },
+            { id: '', label: t('Chưa phân loại') },
+            { id: 'customer', label: t('Khách hàng') },
+            { id: 'work', label: t('Công việc') },
+            { id: 'urgent', label: t('Ưu tiên') },
+            { id: 'follow-up', label: t('Cần theo dõi') },
+            { id: 'other', label: t('Khác') },
           ]}
         onCancel={() => setPreferencePicker(null)}
         onSelect={option => {
@@ -586,9 +594,9 @@ export function GroupInfoScreen({ route, navigation }: Props) {
 
       <ChoiceDialog
         visible={leaveCandidates.length > 0}
-        title="Chọn trưởng nhóm mới"
-        message="Bạn phải chuyển quyền cho một thành viên trước khi rời nhóm."
-        options={leaveCandidates.map(({ member, accountId }): ChoiceDialogOption => ({ id: accountId, label: member.name || member.username || accountId, detail: member.department || member.title || 'Thành viên trong nhóm' }))}
+        title={t('Chọn trưởng nhóm mới')}
+        message={t('Bạn phải chuyển quyền cho một thành viên trước khi rời nhóm.')}
+        options={leaveCandidates.map(({ member, accountId }): ChoiceDialogOption => ({ id: accountId, label: member.name || member.username || accountId, detail: member.department || member.title || t('Thành viên trong nhóm') }))}
         onCancel={() => setLeaveCandidates([])}
         onSelect={option => {
           const candidate = leaveCandidates.find(item => item.accountId === option.id);
@@ -604,7 +612,7 @@ export function GroupInfoScreen({ route, navigation }: Props) {
         title={confirmRequest?.title || ''}
         message={confirmRequest?.message || ''}
         eyebrow={confirmRequest?.eyebrow}
-        confirmLabel={confirmRequest?.confirmLabel || 'Xác nhận'}
+        confirmLabel={confirmRequest?.confirmLabel || t('Xác nhận')}
         tone={confirmRequest?.tone}
         onCancel={() => setConfirmRequest(null)}
         onConfirm={() => confirmRequest?.onConfirm()}
@@ -621,16 +629,18 @@ function SectionHeading({ title, icon: Icon, palette }: { title: string; icon: a
 
 function DetailRow({ icon: Icon, label, detail, preview, onPress, disabled = false, control, trailing, last = false, testID, palette }: { icon: any; label: string; detail: string; preview?: ReactNode; onPress?: () => void; disabled?: boolean; control?: ReactNode; trailing?: ReactNode; last?: boolean; testID?: string; palette: ThemeColors }) {
   const styles = createStyles(palette);
+  const { t } = useI18n();
   const canPress = Boolean(onPress) && !disabled;
-  return <Pressable testID={testID} disabled={!canPress && !control} onPress={onPress} style={({ pressed }) => [styles.detailRow, last && styles.detailRowLast, disabled && styles.detailRowDisabled, pressed && styles.rowPressed]}><View style={[styles.detailIcon, disabled && styles.detailIconDisabled]}><Icon color={disabled ? palette.muted : palette.accent} size={19} /></View><View style={styles.detailCopy}><Text style={[styles.detailLabel, disabled && styles.detailLabelDisabled]}>{label}</Text><Text style={styles.detailHint}>{detail}</Text>{preview}</View><View style={styles.detailEnd}>{control || trailing || (canPress ? <ChevronRight color={palette.muted} size={19} /> : disabled ? <Text style={styles.unavailable}>Chưa có</Text> : null)}</View></Pressable>;
+  return <Pressable testID={testID} disabled={!canPress && !control} onPress={onPress} style={({ pressed }) => [styles.detailRow, last && styles.detailRowLast, disabled && styles.detailRowDisabled, pressed && styles.rowPressed]}><View style={[styles.detailIcon, disabled && styles.detailIconDisabled]}><Icon color={disabled ? palette.muted : palette.accent} size={19} /></View><View style={styles.detailCopy}><Text style={[styles.detailLabel, disabled && styles.detailLabelDisabled]}>{label}</Text><Text style={styles.detailHint}>{detail}</Text>{preview}</View><View style={styles.detailEnd}>{control || trailing || (canPress ? <ChevronRight color={palette.muted} size={19} /> : disabled ? <Text style={styles.unavailable}>{t('Chưa có')}</Text> : null)}</View></Pressable>;
 }
 
 function SharedPreview({ images, files, links, palette }: { images: ChatMessage[]; files: ChatMessage[]; links: ChatMessage[]; palette: ThemeColors }) {
   const styles = createStyles(palette);
+  const { t } = useI18n();
   const previewImages = images.slice(0, 3);
   const previewFile = files[0]?.file?.name;
   const previewLink = messageLinks(links[0] || ({} as ChatMessage))[0] || '';
-  if (!previewImages.length && !previewFile && !previewLink) return <Text style={styles.previewEmpty}>Chưa có nội dung đã tải</Text>;
+  if (!previewImages.length && !previewFile && !previewLink) return <Text style={styles.previewEmpty}>{t('Chưa có nội dung đã tải')}</Text>;
   return <View style={styles.previewStrip}>{previewImages.map((message, index) => <View key={`image-${message.id || index}`} style={styles.previewThumb}><CachedMessageImage source={message.image || message.file?.url || ''} palette={palette} style={styles.previewImage} /><ImageIcon color={palette.muted} size={18} /></View>)}{previewFile ? <View style={styles.previewChip}><FileText color={palette.accent} size={16} /><Text numberOfLines={1} style={styles.previewChipText}>{previewFile}</Text></View> : null}{previewLink ? <View style={styles.previewChip}><Link2 color={palette.accent} size={16} /><Text numberOfLines={1} style={styles.previewChipText}>{previewLink}</Text></View> : null}</View>;
 }
 
@@ -665,23 +675,25 @@ function SharedContentItem({
   onDownloadFile: (file: NonNullable<ChatMessage['file']>) => void;
 }) {
   const styles = createStyles(palette);
+  const { t, locale } = useI18n();
   const file = messageFile(message);
   const links = messageLinks(message);
   const imageSource = isImageMessage(message) ? message.image || file?.url || '' : '';
-  const title = message.poll?.question || message.text || file?.name || (imageSource ? 'Hình ảnh' : 'Nội dung đính kèm');
+  const title = message.poll?.question || message.text || file?.name || (imageSource ? t('Hình ảnh') : t('Nội dung đính kèm'));
   return <View style={styles.contentItem}>
     {imageSource ? <CachedMessageImage source={imageSource} palette={palette} style={styles.contentImage} /> : null}
     {!imageSource && file && kind !== 'polls' ? <View style={styles.attachmentIcon}><FileText color={palette.accent} size={22} /></View> : null}
     <Text numberOfLines={4} style={styles.contentItemText}>{title}</Text>
-    <Text style={styles.contentItemMeta}>{message.senderName || 'Thành viên'}{message.createdAt ? ` · ${new Date(message.createdAt).toLocaleDateString('vi-VN')}` : ''}</Text>
-    {file && !imageSource ? <Pressable onPress={() => onDownloadFile(file)} style={styles.contentAction}><Text style={styles.contentActionText}>Tải tệp</Text></Pressable> : null}
-    {links.map(url => <View key={url} style={styles.linkActions}><Pressable onPress={() => onOpenLink(url)} style={styles.linkTextButton}><Link2 color={palette.accent} size={15} /><Text numberOfLines={2} style={styles.linkText}>{url}</Text></Pressable><Pressable onPress={() => onShareLink(url)} style={styles.contentAction}><Text style={styles.contentActionText}>Chia sẻ</Text></Pressable></View>)}
+    <Text style={styles.contentItemMeta}>{message.senderName || t('Thành viên')}{message.createdAt ? ` · ${new Date(message.createdAt).toLocaleDateString(locale)}` : ''}</Text>
+    {file && !imageSource ? <Pressable onPress={() => onDownloadFile(file)} style={styles.contentAction}><Text style={styles.contentActionText}>{t('Tải tệp')}</Text></Pressable> : null}
+    {links.map(url => <View key={url} style={styles.linkActions}><Pressable onPress={() => onOpenLink(url)} style={styles.linkTextButton}><Link2 color={palette.accent} size={15} /><Text numberOfLines={2} style={styles.linkText}>{url}</Text></Pressable><Pressable onPress={() => onShareLink(url)} style={styles.contentAction}><Text style={styles.contentActionText}>{t('Chia sẻ')}</Text></Pressable></View>)}
   </View>;
 }
 
 function MemberRow({ member, owner = false, admin = false, self = false, pending = false, canManage = false, onNickname, onRole, onRemove, onApprove, onReject, palette }: { member: ConversationMember; owner?: boolean; admin?: boolean; self?: boolean; pending?: boolean; canManage?: boolean; onNickname?: () => void; onRole?: () => void; onRemove?: () => void; onApprove?: () => void; onReject?: () => void; palette: ThemeColors }) {
   const styles = createStyles(palette);
-  return <View style={styles.memberRow}><Avatar name={member.name} uri={member.avatar} size={43} /><View style={styles.memberCopy}><Text numberOfLines={1} style={styles.memberName}>{member.name}{self ? ' (Bạn)' : ''}</Text><Text style={styles.memberMeta}>{owner ? 'Trưởng nhóm' : admin ? 'Phó nhóm' : pending ? 'Đang chờ duyệt' : (member.department || member.title || 'Thành viên')}</Text></View>{pending ? <><Pressable disabled={!onApprove} onPress={onApprove} style={styles.roundAction} accessibilityLabel="Duyệt thành viên"><Check color={palette.online} size={17} /></Pressable><Pressable disabled={!onReject} onPress={onReject} style={styles.roundDanger} accessibilityLabel="Từ chối thành viên"><X color={palette.danger} size={17} /></Pressable></> : <View style={styles.memberActions}>{onNickname ? <Pressable disabled={!onNickname} onPress={onNickname} style={styles.roundAction} accessibilityLabel="Đổi biệt danh"><Pencil color={palette.accent} size={17} /></Pressable> : null}{canManage ? <><Pressable disabled={!onRole} onPress={onRole} style={styles.roundAction} accessibilityLabel="Đổi vai trò"><Shield color={admin ? palette.warning : palette.accent} size={17} /></Pressable><Pressable disabled={!onRemove} onPress={onRemove} style={styles.roundDanger} accessibilityLabel="Xóa thành viên"><UserMinus color={palette.danger} size={17} /></Pressable></> : null}</View>}</View>;
+  const { t } = useI18n();
+  return <View style={styles.memberRow}><Avatar name={member.name} uri={member.avatar} size={43} /><View style={styles.memberCopy}><Text numberOfLines={1} style={styles.memberName}>{member.name}{self ? ` (${t('Bạn')})` : ''}</Text><Text style={styles.memberMeta}>{owner ? t('Trưởng nhóm') : admin ? t('Phó nhóm') : pending ? t('Đang chờ duyệt') : (member.department || member.title || t('Thành viên'))}</Text></View>{pending ? <><Pressable disabled={!onApprove} onPress={onApprove} style={styles.roundAction} accessibilityLabel={t('Duyệt thành viên')}><Check color={palette.online} size={17} /></Pressable><Pressable disabled={!onReject} onPress={onReject} style={styles.roundDanger} accessibilityLabel={t('Từ chối thành viên')}><X color={palette.danger} size={17} /></Pressable></> : <View style={styles.memberActions}>{onNickname ? <Pressable disabled={!onNickname} onPress={onNickname} style={styles.roundAction} accessibilityLabel={t('Đổi biệt danh')}><Pencil color={palette.accent} size={17} /></Pressable> : null}{canManage ? <><Pressable disabled={!onRole} onPress={onRole} style={styles.roundAction} accessibilityLabel={t('Đổi vai trò')}><Shield color={admin ? palette.warning : palette.accent} size={17} /></Pressable><Pressable disabled={!onRemove} onPress={onRemove} style={styles.roundDanger} accessibilityLabel={t('Xóa thành viên')}><UserMinus color={palette.danger} size={17} /></Pressable></> : null}</View>}</View>;
 }
 
 function createStyles(palette: ThemeColors) {

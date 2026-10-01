@@ -3,6 +3,7 @@ import { ChevronRight, ListChecks, X } from 'lucide-react-native';
 import { colorsForTheme, shadow } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { useThemeStore } from '../store/themeStore';
+import { useI18n } from '../store/languageStore';
 
 export interface ChoiceDialogOption {
   id: string;
@@ -22,6 +23,7 @@ interface Props {
 
 export function ChoiceDialog({ visible, title, message, options, onCancel, onSelect, busy = false }: Props) {
   const palette = colorsForTheme(useThemeStore(state => state.resolved));
+  const { t } = useI18n();
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
       <View style={styles.overlay}>
@@ -29,14 +31,14 @@ export function ChoiceDialog({ visible, title, message, options, onCancel, onSel
         <View style={[styles.card, { backgroundColor: palette.paper, borderColor: palette.line }]}>
           <View style={styles.header}>
             <View style={[styles.icon, { backgroundColor: palette.accentWash }]}><ListChecks color={palette.accent} size={20} /></View>
-            <View style={styles.copy}><Text style={[styles.eyebrow, { color: palette.accent }]}>CHỌN THAO TÁC</Text><Text style={[styles.title, { color: palette.ink }]}>{title}</Text></View>
+            <View style={styles.copy}><Text style={[styles.eyebrow, { color: palette.accent }]}>{t('CHỌN THAO TÁC')}</Text><Text style={[styles.title, { color: palette.ink }]}>{title}</Text></View>
             <Pressable disabled={busy} onPress={onCancel} style={[styles.close, { backgroundColor: palette.accentWash }]}><X color={palette.inkSoft} size={18} /></Pressable>
           </View>
           <Text style={[styles.message, { color: palette.inkSoft }]}>{message}</Text>
           <View style={[styles.options, { borderColor: palette.line }]}>
             {options.map(option => <Pressable key={option.id} disabled={busy} onPress={() => onSelect(option)} style={({ pressed }) => [styles.option, { borderBottomColor: palette.line }, pressed && styles.pressed]}><View style={[styles.optionIcon, { backgroundColor: palette.accentWash }]}><Text style={[styles.optionInitial, { color: palette.accentDeep }]}>{option.label.trim().slice(0, 1).toUpperCase()}</Text></View><View style={styles.optionCopy}><Text numberOfLines={1} style={[styles.optionLabel, { color: palette.ink }]}>{option.label}</Text>{option.detail ? <Text numberOfLines={1} style={[styles.optionDetail, { color: palette.inkSoft }]}>{option.detail}</Text> : null}</View><ChevronRight color={palette.muted} size={18} /></Pressable>)}
           </View>
-          <Pressable disabled={busy} onPress={onCancel} style={({ pressed }) => [styles.cancel, { backgroundColor: palette.accentWash }, pressed && styles.pressed]}><Text style={[styles.cancelText, { color: palette.inkSoft }]}>Hủy</Text></Pressable>
+          <Pressable disabled={busy} onPress={onCancel} style={({ pressed }) => [styles.cancel, { backgroundColor: palette.accentWash }, pressed && styles.pressed]}><Text style={[styles.cancelText, { color: palette.inkSoft }]}>{t('Hủy')}</Text></Pressable>
         </View>
       </View>
     </Modal>

@@ -11,12 +11,14 @@ import { colorsForTheme, shadow, ThemeColors } from '../../theme/colors';
 import { typography } from '../../theme/typography';
 import { LinkedDevice } from '../../types';
 import { useThemeStore } from '../../store/themeStore';
+import { useI18n } from '../../store/languageStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'LinkedDevices'>;
 
 export function LinkedDevicesScreen({ navigation }: Props) {
   const palette = colorsForTheme(useThemeStore(state => state.resolved));
   const styles = createStyles(palette);
+  const { t, locale } = useI18n();
   const session = useAppStore(state => state.session);
   const updateLinkedDevices = useAppStore(state => state.updateLinkedDevices);
   const [loading, setLoading] = useState(true);
@@ -27,7 +29,7 @@ export function LinkedDevicesScreen({ navigation }: Props) {
       updateLinkedDevices(await authService.listLinkedDevices());
       setLoadError('');
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'Không thể tải phiên đăng nhập.');
+      setLoadError(error instanceof Error ? t(error.message) : t('Không thể tải phiên đăng nhập.'));
     } finally {
       setLoading(false);
     }
@@ -42,29 +44,29 @@ export function LinkedDevicesScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom', 'left', 'right']}>
       <View style={styles.header}>
-        <Pressable accessibilityLabel="Quay lại" onPress={() => navigation.goBack()} style={styles.back}><ChevronLeft color={palette.ink} size={27} /></Pressable>
-        <View style={styles.headerTitle}><Text style={styles.eyebrow}>BẢO MẬT</Text><Text style={styles.title}>Thiết bị liên kết</Text></View>
+        <Pressable accessibilityLabel={t('Quay lại')} onPress={() => navigation.goBack()} style={styles.back}><ChevronLeft color={palette.ink} size={27} /></Pressable>
+        <View style={styles.headerTitle}><Text style={styles.eyebrow}>{t('BẢO MẬT')}</Text><Text style={styles.title}>{t('Thiết bị liên kết')}</Text></View>
         <ShieldCheck color={palette.online} size={23} />
       </View>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.intro}><Text style={styles.introTitle}>Phiên đăng nhập</Text><Text style={styles.introText}>Theo dõi nơi tài khoản đang được sử dụng trên ViChat.</Text></View>
+        <View style={styles.intro}><Text style={styles.introTitle}>{t('Phiên đăng nhập')}</Text><Text style={styles.introText}>{t('Theo dõi nơi tài khoản đang được sử dụng trên ViChat.')}</Text></View>
         {loadError ? <Text style={styles.error}>{loadError}</Text> : null}
-        {devices.length ? devices.map(device => <DeviceCard key={device.id} device={device} palette={palette} />) : loading ? <Text style={styles.empty}>Đang tải phiên đăng nhập từ máy chủ...</Text> : !loadError ? <Text style={styles.empty}>Chưa có phiên đăng nhập nào được máy chủ ghi nhận.</Text> : null}
+        {devices.length ? devices.map(device => <DeviceCard key={device.id} device={device} palette={palette} t={t} locale={locale} />) : loading ? <Text style={styles.empty}>{t('Đang tải phiên đăng nhập từ máy chủ...')}</Text> : !loadError ? <Text style={styles.empty}>{t('Chưa có phiên đăng nhập nào được máy chủ ghi nhận.')}</Text> : null}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function DeviceCard({ device, palette }: { device: LinkedDevice; palette: ThemeColors }) {
+function DeviceCard({ device, palette, t, locale }: { device: LinkedDevice; palette: ThemeColors; t: (value: string) => string; locale: string }) {
   const styles = createStyles(palette);
   const Icon = device.kind === 'web' ? Globe2 : device.kind === 'desktop' ? Monitor : Smartphone;
-  return <View style={styles.deviceCard}><View style={styles.deviceIcon}><Icon color={palette.accent} size={22} /></View><View style={styles.deviceBody}><Text numberOfLines={1} style={styles.deviceName}>{device.name}</Text><Text numberOfLines={1} style={styles.platform}>{device.platform || (device.kind === 'web' ? 'ViChat Web' : 'ViChat')}</Text><Text style={styles.lastActive}>Đăng nhập: {formatTime(device.createdAt)}</Text><Text style={styles.lastActive}>Hoạt động: {formatTime(device.lastActiveAt)}</Text></View></View>;
+  return <View style={styles.deviceCard}><View style={styles.deviceIcon}><Icon color={palette.accent} size={22} /></View><View style={styles.deviceBody}><Text numberOfLines={1} style={styles.deviceName}>{device.name}</Text><Text numberOfLines={1} style={styles.platform}>{device.platform || (device.kind === 'web' ? 'ViChat Web' : 'ViChat')}</Text><Text style={styles.lastActive}>{t('Đăng nhập')}: {formatTime(device.createdAt, locale)}</Text><Text style={styles.lastActive}>{t('Hoạt động')}: {formatTime(device.lastActiveAt, locale)}</Text></View></View>;
 }
 
-function formatTime(value?: string) {
+function formatTime(value?: string, locale = 'vi-VN') {
   if (!value) return 'Chưa rõ thời gian';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Chưa rõ thời gian' : date.toLocaleString('vi-VN');
+  return Number.isNaN(date.getTime()) ? 'Chưa rõ thời gian' : date.toLocaleString(locale);
 }
 
 function createStyles(palette: ThemeColors) {
