@@ -11,16 +11,16 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Thoi gian: 2026-10-01 (Asia/Saigon)
 - Loai: CI/CD | Mobile | iOS | Cau hinh | Tai lieu
 - Trang thai: Hoan tat
-- Muc tieu: Khac phuc loi Invalid yaml configuration tren Codemagic khi build iOS tren tai khoan Personal free tier.
+- Muc tieu: Khac phuc loi Invalid yaml configuration va loi thieu provisioning profile Push Notifications khi build iOS tren Codemagic.
 - Pham vi: Chi `codemagic.yaml` va nhat ky thay doi; khong sua code ung dung Mobile hoac Backend.
 - File da thay doi: `codemagic.yaml`, `docs/CHANGELOG.md`.
-- Noi dung: Chuyen `instance_type` ve `mac_mini_m1` (phu hop goi free 500 phut/thang), doi `node` sang `latest`, bo bat buoc tich hop App Store Connect integration va tu dong xuat file `ViChat.ipa` vao artifacts de tai ve may cai dat test qua 3uTools/Sideloadly.
-- Quyet dinh ky thuat: Su dung co che kiem tra `xcode-project use-profiles`, neu chua co chung chi ky thi tu dong build Release app va dong goi thanh unsigned `ViChat.ipa` trong thu muc `build/ios/ipa/` de sideload ma khong gay dung loi schema/pipeline tren Codemagic.
+- Noi dung: Chuyen `instance_type` ve `mac_mini_m1` (phu hop goi free), doi `node` sang `latest`, bo bat buoc App Store Connect integration; bo sung buoc tu dong loai bo entitlement `aps-environment` cho ban build test va dong goi truc tiep ban Release thanh `ViChat.ipa` qua `xcodebuild` khong can chung chi ky.
+- Quyet dinh ky thuat: Khi chua co tai khoan Apple Developer tra phi ($99), may ao Codemagic khong the ky Push Notifications. Do do, loai bo `aps-environment` trong file entitlements truoc khi build va build voi `CODE_SIGNING_ALLOWED=NO`, sau do zip `Payload/ViChat.app` thanh `ViChat.ipa` dua vao `artifacts` de nguoi dung sideload test bang 3uTools/Sideloadly tren Windows.
 - Database/API/cau hinh: Khong co thay doi database hay API backend.
 - Kiem thu: Da validate file `codemagic.yaml` voi JSON Schema chuan Draft 7 cua Codemagic (`https://codemagic.io/codemagic-schema.json`), 0 loi cu phap; `git diff --check` dat.
-- Rui ro con lai: Can nguoi dung trigger build tren giao dien Codemagic de kiem tra thoi gian build thuc te cua may ao macOS.
-- Viec tiep theo: Nguoi dung bam `Check for configuration files` tren Codemagic va khoi chay workflow `ViChat iOS Build IPA`.
-- Commit/PR: `63ef3e1`
+- Rui ro con lai: Can nguoi dung trigger lai build tren Codemagic de xac nhan file `ViChat.ipa` xuat hien tai muc Artifacts.
+- Viec tiep theo: Nguoi dung khoi chay lai build tren Codemagic va tai `ViChat.ipa` ve test tren iPhone.
+- Commit/PR: `1af5dcf`
 
 ## 2026-10-01-05 - Hoan thien song ngu Mobile Viet/English
 

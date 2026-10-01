@@ -20,30 +20,39 @@ workflows:
         script: |
           cd ios
           pod install
+      - name: Strip Push Notifications entitlement for test build
+        script: |
+          ENTITLEMENTS="$(find ios -name '*.entitlements' -print -quit)"
+          if [ -n "$ENTITLEMENTS" ]; then
+            echo "Adjusting $ENTITLEMENTS for standalone IPA..."
+            plutil -remove aps-environment "$ENTITLEMENTS" 2>/dev/null || true
+          fi
       - name: Build IPA
         script: |
           IOS_WORKSPACE="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
           test -n "$IOS_WORKSPACE"
           IOS_SCHEME="$(basename "$IOS_WORKSPACE" .xcworkspace)"
-          if xcode-project use-profiles 2>/dev/null; then
-            echo "Signing profiles found, building signed IPA..."
-            xcode-project build-ipa --workspace "$IOS_WORKSPACE" --scheme "$IOS_SCHEME"
-          else
-            echo "No signing profiles found, building release app and packaging unsigned IPA for sideloading/testing..."
-            xcodebuild build \
-              -workspace "$IOS_WORKSPACE" \
-              -scheme "$IOS_SCHEME" \
-              -sdk iphoneos \
-              -configuration Release \
-              CODE_SIGNING_ALLOWED=NO \
-              CODE_SIGNING_REQUIRED=NO \
-              CODE_SIGN_IDENTITY=""
-            mkdir -p build/ios/ipa/Payload
-            cp -r "$HOME/Library/Developer/Xcode/DerivedData"/**/Build/Products/Release-iphoneos/*.app build/ios/ipa/Payload/
-            cd build/ios/ipa
-            zip -qr ViChat.ipa Payload
-            rm -rf Payload
-          fi
+          echo "Building unsigned Release app with scheme: $IOS_SCHEME..."
+          xcodebuild build \
+            -workspace "$IOS_WORKSPACE" \
+            -scheme "$IOS_SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_STYLE=Manual
+
+          echo "Packaging into ViChat.ipa..."
+          mkdir -p build/ios/ipa/Payload
+          APP_PATH="$(find build/Build/Products/Release-iphoneos -name '*.app' -maxdepth 1 -print -quit)"
+          test -n "$APP_PATH"
+          cp -R "$APP_PATH" build/ios/ipa/Payload/
+          cd build/ios/ipa
+          zip -qr ViChat.ipa Payload
+          rm -rf Payload
+          echo "Build completed successfully! ViChat.ipa generated in build/ios/ipa/"
     artifacts:
       - build/ios/ipa/*.ipa
 
