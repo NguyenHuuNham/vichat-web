@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-01-12 - Sua preview anh S3 trong muc Anh, file va lien ket
+
+- Thoi gian: 2026-10-01 14:13 (Asia/Saigon)
+- Loai: Sua loi | Web | Van hanh | Tai lieu
+- Trang thai: Dang thuc hien
+- Muc tieu: Hien thi lai anh chat S3 trong cac muc noi dung dung chung ma khong phu thuoc vao viec doc response blob cross-origin bang JavaScript.
+- Pham vi: ChatUI Web, luong preview media va CSP production; khong sua, build hoac deploy Mobile.
+- File da thay doi: `src/features/chat/services/chatMediaService.js`, `src/features/chat/services/chatMediaService.test.js`, `src/features/chat/services/tinodeClient.js`, `src/features/chat/services/chatManagementService.test.js`, `infrastructure/production/nginx.conf`.
+- Noi dung: Stable Chatmgt media reference duoc doi sang URL endpoint co xac thuc de trinh duyet tai truc tiep qua redirect sang S3; luong fetch blob van duoc giu cho media Tinode va thao tac tai file. Bo sung host Chatmgt vao `img-src` va `media-src`, them regression test cho URL va CSP.
+- Quyet dinh ky thuat: Tranh phu thuoc vao CORS response body cua S3 khi render thumbnail; quyen truy cap van do cookie/session tai Chatmgt kiem tra, con object URL presigned ngan han van giu cho luong API download.
+- Database/API/cau hinh: Khong thay doi database hoac hop dong API; chi cap nhat CSP cua Nginx production.
+- Kiem thu: `node --test src/features/chat/services/chatMediaService.test.js src/features/chat/services/chatManagementService.test.js` dat 75/75; `npm run test:frontend -- --test-concurrency=1` dat 457/457; `npm run build:production` dat; lint pham vi Web dat. `npm run lint` toan repository chua dat do loi san co ngoai pham vi tai `mobile/src/components/TypingIndicator.tsx:9`; khong sua Mobile.
+- Rui ro con lai: Can hard refresh va UAT bang tai khoan co media S3 de xac nhan cookie Chatmgt va redirect 302 trong trinh duyet production.
+- Viec tiep theo: Commit, push, deploy chi service `chat` qua hai SSH hop va kiem tra public CSP/media sau deploy.
+- Commit/PR: Chua tao
+
 ## 2026-10-01-11 - Phong ve KeyChainException tren iOS Simulator / Appetize.io (Fallback AsyncStorage)
 
 - Thoi gian: 2026-10-01 (Asia/Saigon)

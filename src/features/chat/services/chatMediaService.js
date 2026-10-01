@@ -75,6 +75,16 @@ export function isChatMediaReference(value) {
   return Boolean(chatMediaReferenceId(value));
 }
 
+export function chatMediaBrowserUrl(value, { download = false, fileName = '' } = {}) {
+  const uploadId = chatMediaReferenceId(value);
+  if (!uploadId) return '';
+  const query = new URLSearchParams();
+  if (download) query.set('download', '1');
+  if (fileName) query.set('name', String(fileName).slice(0, 180));
+  const queryString = query.toString();
+  return `${mediaApiUrl(`${CHAT_MEDIA_PATH}${encodeURIComponent(uploadId)}`)}${queryString ? `?${queryString}` : ''}`;
+}
+
 export function isChatMediaStorageEnabled() {
   return storageMode === 's3';
 }

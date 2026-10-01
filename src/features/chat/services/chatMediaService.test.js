@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  chatMediaBrowserUrl,
   chatMediaReferenceId,
   fetchChatMedia,
   isChatMediaReference,
@@ -19,6 +20,20 @@ test('recognizes stable Chatmgt media references without treating legacy Tinode 
   );
   assert.equal(isChatMediaReference(`/tinode-media/v0/file/s/${uploadId}`), false);
   assert.equal(chatMediaReferenceId('/api/v1/chat/media/%E0%A4%A'), '');
+});
+
+test('builds a browser media URL that keeps authorization at Chatmgt', () => {
+  assert.equal(
+    chatMediaBrowserUrl(`/api/v1/chat/media/${uploadId}`),
+    `/api/v1/chat/media/${uploadId}`,
+  );
+  assert.equal(
+    chatMediaBrowserUrl(`/api/v1/chat/media/${uploadId}`, {
+      download: true,
+      fileName: 'bao cao.pdf',
+    }),
+    `/api/v1/chat/media/${uploadId}?download=1&name=bao+cao.pdf`,
+  );
 });
 
 test('keeps S3 opt-in and Tinode fallback disabled by default', () => {

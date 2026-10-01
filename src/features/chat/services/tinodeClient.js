@@ -42,6 +42,7 @@ import {
 import { fetchProtectedMediaWithRetry } from './mediaRetryPolicy';
 import {
   bindChatMedia,
+  chatMediaBrowserUrl,
   discardChatMedia,
   fetchChatMedia,
   isChatMediaReference,
@@ -457,6 +458,11 @@ function invalidateProtectedMedia(value) {
 async function resolveProtectedMedia(value) {
   const normalized = normalizeAvatar(value);
   if (!normalized || (!normalized.startsWith(MEDIA_PROXY_PREFIX) && !isChatMediaReference(normalized))) return normalized;
+  if (isChatMediaReference(normalized)) {
+    // Let the authenticated Chatmgt endpoint redirect the browser to S3. This
+    // avoids requiring JavaScript to read a cross-origin S3 response body.
+    return chatMediaBrowserUrl(normalized) || normalized;
+  }
   const cacheKey = mediaCacheKey(normalized);
   if (!mediaObjectUrlCache.has(cacheKey)) {
     const request = (async () => {

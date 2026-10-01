@@ -597,6 +597,7 @@ test('keeps local font fallbacks and renders a green indicator only for online p
 });
 
 test('allows Account avatar CDN hosts through production image CSP', () => {
+  assert.match(productionNginxSource, /img-src[^;]*https:\/\/chatmgt\.gonplatform\.com/);
   assert.match(productionNginxSource, /img-src[^;]*https:\/\/static\.upgo\.vn/);
   assert.match(productionNginxSource, /img-src[^;]*https:\/\/upstart\.vn/);
 });
