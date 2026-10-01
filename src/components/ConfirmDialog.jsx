@@ -1,4 +1,5 @@
-import React, { useEffect, useId, useRef } from 'react';
+import React, { useId, useRef } from 'react';
+import useDialogFocusTrap from './useDialogFocusTrap';
 
 export default function ConfirmDialog({
   open = false,
@@ -14,45 +15,9 @@ export default function ConfirmDialog({
 }) {
   const titleId = useId();
   const descriptionId = useId();
+  const dialogRef = useRef(null);
   const confirmButtonRef = useRef(null);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const previousActiveElement = document.activeElement;
-    const previousOverflow = document.body.style.overflow;
-    const focusFrame = window.requestAnimationFrame(() => confirmButtonRef.current?.focus());
-    const handleKeyDown = event => {
-      if (event.key === 'Escape' && !busy) {
-        event.preventDefault();
-        onCancel?.();
-        return;
-      }
-      if (event.key === 'Tab') {
-        const dialog = confirmButtonRef.current?.closest('[role="alertdialog"]');
-        const focusable = dialog
-          ? [...dialog.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled])')]
-          : [];
-        if (focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    document.body.style.overflow = 'hidden';
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.cancelAnimationFrame(focusFrame);
-      document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = previousOverflow;
-      previousActiveElement?.focus?.();
-    };
-  }, [busy, onCancel, open]);
+  useDialogFocusTrap(dialogRef, open, onCancel, { closeOnEscape: !busy });
 
   if (!open) return null;
 
@@ -65,6 +30,7 @@ export default function ConfirmDialog({
       }}
     >
       <section
+        ref={dialogRef}
         className={`in-app-confirm-dialog ${tone === 'danger' ? 'danger' : 'neutral'}`}
         role="alertdialog"
         aria-modal="true"

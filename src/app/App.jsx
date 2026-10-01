@@ -5,6 +5,7 @@ import Login from '../features/auth/components/Login';
 import ChatLogo from '../components/ChatLogo';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ConversationErrorBoundary from '../components/ConversationErrorBoundary';
+import useDialogFocusTrap from '../components/useDialogFocusTrap';
 import ConversationListToolbar from '../features/chat/components/ConversationListToolbar';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation, normalizeTinodeMediaUrl } from '../features/chat/services/tinodeClient';
 import { shouldRetryProtectedMediaAfterSession } from '../features/chat/services/mediaRetryPolicy';
@@ -919,65 +920,6 @@ function TinodeImagePreview({ source, alt, className = '', copy = { t: value => 
   );
 }
 
-const DIALOG_FOCUSABLE_SELECTOR = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])',
-].join(',');
-
-function useDialogFocusTrap(dialogRef, active, onClose) {
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
-
-  useEffect(() => {
-    if (!active || typeof document === 'undefined') return undefined;
-    const previousFocus = document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
-    const dialog = dialogRef.current;
-    const focusable = () => Array.from(dialog?.querySelectorAll(DIALOG_FOCUSABLE_SELECTOR) || [])
-      .filter(element => element instanceof HTMLElement && element.offsetParent !== null);
-    const focusInitial = () => {
-      const first = focusable()[0];
-      if (first) first.focus();
-      else dialog?.focus();
-    };
-    const handleKeyDown = event => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        closeRef.current?.();
-        return;
-      }
-      if (event.key !== 'Tab') return;
-      const elements = focusable();
-      if (!elements.length) {
-        event.preventDefault();
-        dialog?.focus();
-        return;
-      }
-      const first = elements[0];
-      const last = elements[elements.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    const focusFrame = window.requestAnimationFrame(focusInitial);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      window.cancelAnimationFrame(focusFrame);
-      if (previousFocus?.isConnected) window.requestAnimationFrame(() => previousFocus.focus());
-    };
-  }, [active, dialogRef]);
-}
-
 function ImageViewer({ source, file = null, message = null, copy = { t: value => value }, onClose, onDownload, onShare }) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -985,14 +927,6 @@ function ImageViewer({ source, file = null, message = null, copy = { t: value =>
   const stageRef = useRef(null);
   const dragRef = useRef(null);
   const dialogRef = useRef(null);
-
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, []);
 
   useDialogFocusTrap(dialogRef, true, onClose);
 
@@ -3641,15 +3575,6 @@ function App() {
   const [mediaHistoryByTopic, setMediaHistoryByTopic] = useState({});
   const [mediaHistoryStatusByTopic, setMediaHistoryStatusByTopic] = useState({});
 
-  useEffect(() => {
-    if (!mediaBrowserOpen) return undefined;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [mediaBrowserOpen]);
-
   // Mobile navigation state
   const [isMobileChatActive, setIsMobileChatActive] = useState(false);
   const [isMobileSidebarOpen, _setIsMobileSidebarOpen] = useState(false);
@@ -3740,6 +3665,21 @@ function App() {
   const profileViewersLoadingMoreRef = useRef(false);
   const profileContactDialogRef = useRef(null);
   const profileViewersDialogRef = useRef(null);
+  const forcedLogoutDialogRef = useRef(null);
+  const workspaceDialogRef = useRef(null);
+  const mediaBrowserDialogRef = useRef(null);
+  const createGroupDialogRef = useRef(null);
+  const groupLeaveDialogRef = useRef(null);
+  const notificationMuteDialogRef = useRef(null);
+  const contactNicknameDialogRef = useRef(null);
+  const groupManagementDialogRef = useRef(null);
+  const groupRenameDialogRef = useRef(null);
+  const tenantSwitchConfirmDialogRef = useRef(null);
+  const pollComposerDialogRef = useRef(null);
+  const messageDetailsDialogRef = useRef(null);
+  const editHistoryDialogRef = useRef(null);
+  const reactionDetailsDialogRef = useRef(null);
+  const shareMessageDialogRef = useRef(null);
   const friendRequestUpdatedSinceRef = useRef(0);
   const friendRequestControllerRef = useRef(null);
   const logoutHandlerRef = useRef(null);
@@ -3755,6 +3695,12 @@ function App() {
   const activeCallRef = useRef(null);
   const sessionRestoreAttemptedRef = useRef(false);
   const loginSuccessHandlerRef = useRef(null);
+
+  const cancelChatbotRequest = useCallback(() => {
+    chatbotRequestRef.current?.controller?.abort();
+    chatbotRequestRef.current = null;
+    setIsTyping(false);
+  }, []);
 
   // Event callbacks can run between React renders; keep the latest room map
   // available without forcing Tinode subscriptions to be recreated.
@@ -6166,12 +6112,11 @@ function App() {
   }, []);
 
   useEffect(() => {
-    setIsTyping(false);
+    cancelChatbotRequest();
     return () => {
-      chatbotRequestRef.current?.controller.abort();
-      chatbotRequestRef.current = null;
+      cancelChatbotRequest();
     };
-  }, [isLoggedIn, managementViewerId, currentUser?.tenantId]);
+  }, [cancelChatbotRequest, isLoggedIn, managementViewerId, currentUser?.tenantId]);
 
   useEffect(() => {
     chatIsNearBottomRef.current = true;
@@ -7367,6 +7312,7 @@ function App() {
   }, [isLoggedIn, chatMode, managementConversationSession, ensureTinodeSession, applyPresenceSnapshot, rememberUnreadBoundary, viewerId]);
 
   const handleLoginSuccess = async (user, { source = 'credentials' } = {}) => {
+    cancelChatbotRequest();
     clearActiveCall();
     if (!EXTERNAL_CHAT_ONLY) await tinodeClient.logout();
     setLoginNotice('');
@@ -7390,7 +7336,12 @@ function App() {
         loginPreferenceTenantId,
       );
     }
-    const initialChatbot = createChatbotConversation(loadChatbotMessages(managementUserId));
+    const initialChatbot = createChatbotConversation(loadChatbotMessages({
+      ...user,
+      accountId: managementUserId,
+      tenantId: accountTenantId(user),
+      chatbotId: CHATBOT_ACCOUNT.id,
+    }));
     const initialRooms = { [CHATBOT_ACCOUNT.id]: initialChatbot };
     forcedLogoutRef.current = false;
     isLoggingOutRef.current = false;
@@ -7524,7 +7475,12 @@ function App() {
         ]);
         const tinodeChatbotEnabled = applyTinodeChatbotConfig(tinodeChatbotConfig);
         const chatbotRoom = createChatbotConversation(
-          loadChatbotMessages(managementUserId),
+          loadChatbotMessages({
+            ...user,
+            accountId: managementUserId,
+            tenantId: accountTenantId(user),
+            chatbotId: CHATBOT_ACCOUNT.id,
+          }),
           { accountSession, useTinode: tinodeChatbotEnabled },
         );
         const accounts = filterAccountsByTenant(
@@ -7601,8 +7557,8 @@ function App() {
             ));
           }
         }
-        // Keep the old HTTP history visible while Tinode hydrates the current
-        // bot topic. The backend aliases both legacy and Tinode AI history.
+        // Hydrate the current bot topic from the server-scoped HTTP history
+        // while Tinode establishes the realtime subscription.
         loadChatbotMessagesFromServer(user).then(serverMessages => {
           if (accountSessionRef.current !== accountSession) return;
           setConversations(previous => {
@@ -7872,6 +7828,7 @@ function App() {
   const handleLogout = async () => {
     if (isLoggingOutRef.current) return;
     isLoggingOutRef.current = true;
+    cancelChatbotRequest();
     resolveAppConfirmation(false);
     const loggedOutPreferenceIdentity = viewerPreferenceIdentity(currentUser, viewerId);
     const loggedOutPreferenceTenantId = String(accountTenantId(currentUser) || '').trim();
@@ -8020,6 +7977,7 @@ function App() {
     setPendingTenantSwitch(null);
     setTenantSwitchNotice('');
     setIsSwitchingTenant(true);
+    cancelChatbotRequest();
     let reloadStarted = false;
     try {
       const nextSession = await chatManagementService.switchTenant(requestedTenantId);
@@ -11594,6 +11552,22 @@ function App() {
 
   const closePollComposer = () => setPollComposer(null);
 
+  useDialogFocusTrap(workspaceDialogRef, Boolean(workspacePanel), closeWorkspacePanel);
+  useDialogFocusTrap(forcedLogoutDialogRef, forcedLogoutSeconds !== null, handleForcedLogout, { closeOnEscape: false });
+  useDialogFocusTrap(mediaBrowserDialogRef, mediaBrowserOpen, () => setMediaBrowserOpen(false));
+  useDialogFocusTrap(createGroupDialogRef, isCreateGroupOpen, closeCreateGroupModal);
+  useDialogFocusTrap(groupLeaveDialogRef, Boolean(pendingGroupLeave?.isGroup), closeGroupLeaveDialog);
+  useDialogFocusTrap(notificationMuteDialogRef, Boolean(notificationMuteDialog), () => setNotificationMuteDialog(null));
+  useDialogFocusTrap(contactNicknameDialogRef, Boolean(contactNicknameDialog), () => setContactNicknameDialog(null));
+  useDialogFocusTrap(groupManagementDialogRef, isGroupManagementOpen, () => setIsGroupManagementOpen(false));
+  useDialogFocusTrap(groupRenameDialogRef, isGroupRenameOpen, () => setIsGroupRenameOpen(false));
+  useDialogFocusTrap(tenantSwitchConfirmDialogRef, Boolean(pendingTenantSwitch), () => setPendingTenantSwitch(null));
+  useDialogFocusTrap(pollComposerDialogRef, Boolean(pollComposer), closePollComposer);
+  useDialogFocusTrap(messageDetailsDialogRef, Boolean(messageDetails), () => setMessageDetails(null));
+  useDialogFocusTrap(editHistoryDialogRef, Boolean(editHistoryMessage), () => setEditHistoryMessage(null));
+  useDialogFocusTrap(reactionDetailsDialogRef, Boolean(reactionDetails && reactionDetailsMessage), () => setReactionDetails(null));
+  useDialogFocusTrap(shareMessageDialogRef, Boolean(shareMessage), () => setShareMessage(null));
+
   const openPollComposer = () => {
     if (!activeChat?.isGroup) return;
     if (!canCreatePollInActiveGroup) {
@@ -13193,7 +13167,7 @@ function App() {
       const room = conversations[currentChatId];
       if (room?.isChatbot) {
         if (!(chatMode === 'tinode' && room.tinodeTopic)) {
-          saveChatbotMessage(currentUser?.id || currentUser?.uid, newMsg);
+          saveChatbotMessage(currentUser, newMsg);
         }
       }
       else if (room?.isGroup) persistDemoGroupMessage(room, newMsg);
@@ -13280,11 +13254,12 @@ function App() {
           time: getTimeString(),
           createdAt: replyCreatedAt,
           source: response.source,
+          state: response.state || (response.fallback ? 'unavailable' : response.grounded ? 'grounded' : 'no-source'),
           sources: response.sources,
           grounded: response.grounded,
           fallback: Boolean(response.fallback),
         };
-        saveChatbotMessage(currentUser?.id || currentUser?.uid, botMessage);
+        saveChatbotMessage(currentUser, botMessage);
         setConversations(prev => {
           if (accountSessionRef.current !== chatbotRequest.session) return prev;
           const chatbotRoom = prev[room.id];
@@ -13607,7 +13582,7 @@ function App() {
     : [];
 
   const renderCreateGroupForm = variant => (
-    <form className={variant === 'page' ? 'workspace-group-page' : 'group-modal create-group-modal'} onSubmit={handleCreateGroup}>
+    <form ref={variant === 'page' ? undefined : createGroupDialogRef} className={variant === 'page' ? 'workspace-group-page' : 'group-modal create-group-modal'} onSubmit={handleCreateGroup}>
       {variant !== 'page' && (
         <div className="group-modal-header">
           <h2>{appCopy.t('Tạo nhóm trò chuyện')}</h2>
@@ -13640,16 +13615,19 @@ function App() {
 
       <label className="group-form-field">
         <span>{appCopy.t('Tên nhóm')}</span>
-        <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder={appCopy.t('Nhập tên nhóm')} required autoFocus />
+        <input name="group-name" value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder={appCopy.t('Nhập tên nhóm')} required autoComplete="off" />
       </label>
 
       <div className="group-form-field">
         <span>{appCopy.t('Thêm thành viên')}</span>
         <input
+          name="group-member-search"
+          type="search"
           value={groupMemberSearch}
           onChange={handleFilterGroupMembers}
-          placeholder={appCopy.t('Lọc danh bạ theo tên, email hoặc username')}
+          placeholder={appCopy.t('Lọc danh bạ theo tên, email hoặc username…')}
           aria-label={appCopy.t('Lọc danh bạ công ty')}
+          autoComplete="off"
         />
         {companyContacts.length > 0 && (
           <p className="group-form-hint">
@@ -14456,10 +14434,11 @@ function App() {
       data-chat-release="conversation-sync-20260816"
       data-workspace-route={workspacePathForPanel(workspacePanel)}
     >
+      <a className="skip-link" href="#chat-main-content">{appCopy.t('Bỏ qua tới khu vực chat chính')}</a>
       {isSwitchingTenant && <TenantSwitchLoadingOverlay copy={appCopy} />}
       {forcedLogoutSeconds !== null && (
         <div className="forced-logout-backdrop" role="presentation">
-          <section className="forced-logout-modal" role="alertdialog" aria-modal="true" aria-labelledby="forced-logout-title">
+          <section ref={forcedLogoutDialogRef} className="forced-logout-modal" role="alertdialog" aria-modal="true" aria-labelledby="forced-logout-title">
             <div className="forced-logout-icon"><i className="fa-solid fa-user-lock"></i></div>
             <h2 id="forced-logout-title">{appCopy.t('Bạn bị buộc phải đăng xuất')}</h2>
             <p>{appCopy.t('Quản trị viên đã kết thúc phiên đăng nhập của bạn.')}</p>
@@ -14613,8 +14592,11 @@ function App() {
         </nav>
 
         <div className="primary-footer">
-          <div className="user-profile" data-tooltip={appCopy.t('Hồ sơ cá nhân')} role="button" tabIndex="0" onClick={() => openWorkspacePanel('profile')} onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') openWorkspacePanel('profile');
+          <div className="user-profile" data-tooltip={appCopy.t('Hồ sơ cá nhân')} role="button" tabIndex="0" aria-label={appCopy.t('Mở hồ sơ cá nhân')} onClick={() => openWorkspacePanel('profile')} onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              openWorkspacePanel('profile');
+            }
           }}>
             <SafeAvatar src={currentUser?.avatar} name={currentUser?.name} className="user-avatar-img" />
             <div className="user-info">
@@ -14642,8 +14624,10 @@ function App() {
             <i className="fa-solid fa-magnifying-glass search-icon"></i>
             <input
               type="text"
+              name="conversation-search"
               ref={conversationSearchInputRef}
               placeholder={appCopy.t('Tìm kiếm')}
+              aria-label={appCopy.t('Tìm cuộc trò chuyện')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -14700,8 +14684,20 @@ function App() {
               >
                 <div
                   className={`conversation-item ${!room.isChatbot ? 'has-conversation-menu' : ''} ${isActive ? 'active' : ''} ${hasUnread ? 'unread' : ''} ${conversationMenu?.roomId === id ? 'menu-open' : ''}`}
-                  onClick={() => {
+                  role="button"
+                  tabIndex="0"
+                  aria-current={isActive ? 'page' : undefined}
+                  aria-label={`${roomName}${hasUnread ? `, ${roomUnread.label} ${appCopy.t('tin chưa đọc')}` : ''}`}
+                  onClick={event => {
+                    if (event.target.closest('button')) return;
                     handleConversationSelect(id);
+                  }}
+                  onKeyDown={event => {
+                    if (event.target.closest('button')) return;
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleConversationSelect(id);
+                    }
                   }}
                 >
                   <div className={`conv-avatar ${room.avatarClass || ''}`}>
@@ -14840,7 +14836,7 @@ function App() {
       {/* ==========================================================================
          CỘT 3: CHAT MAIN AREA (Khung chat chính)
          ========================================================================== */}
-      <section className="chat-main">
+      <main id="chat-main-content" className="chat-main" tabIndex="-1">
         {/* Header khung chat */}
         <ConversationErrorBoundary
           key={`${activeChat.id}:header`}
@@ -15359,7 +15355,15 @@ function App() {
                         <MessageReplyPreview reply={msg.replyTo} copy={appCopy} onClick={reply => scrollToMessageById(reply.id)} />
                         {activeChat.isChatbot && !isOutgoing && (
                           <div className="chatbot-answer-label">
-                            <span><i className="fa-solid fa-sparkles"></i>{msg.grounded ? appCopy.t('Trích lọc từ tài liệu') : msg.isWelcome ? 'ViChat AI' : appCopy.t('Phản hồi AI')}</span>
+                            <span><i className="fa-solid fa-sparkles"></i>{msg.grounded
+                              ? appCopy.t('Trích lọc từ tài liệu')
+                              : msg.state === 'question-unclear'
+                                ? appCopy.t('Cần thêm thông tin')
+                                : msg.state === 'no-source'
+                                  ? appCopy.t('Không tìm thấy tài liệu phù hợp')
+                                  : msg.state === 'unavailable'
+                                    ? appCopy.t('Dịch vụ AI tạm thời không khả dụng')
+                                    : msg.isWelcome ? 'ViChat AI' : appCopy.t('Phản hồi AI')}</span>
                             {msg.grounded && <small>{appCopy.t('Đã đối chiếu nguồn')}</small>}
                           </div>
                         )}
@@ -15921,6 +15925,7 @@ function App() {
                 <input
                   className={(messageMentions[currentChatId] || []).length > 0 ? 'has-styled-mentions' : ''}
               type="text"
+              name="message"
               ref={messageInputRef}
               role="combobox"
               aria-autocomplete="list"
@@ -15928,7 +15933,8 @@ function App() {
               aria-expanded={Boolean(mentionContext && activeChat.isGroup)}
               aria-activedescendant={mentionOptions.length > 0 ? `message-mention-option-${mentionActiveIndex}` : undefined}
               maxLength={MAX_MESSAGE_TEXT_CHARACTERS}
-              placeholder={appCopy.t(editingMessage ? 'Nhập nội dung mới...' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : activeChat.isChatbot ? 'Hỏi ViChat AI về quy trình, chính sách, tài liệu...' : activePastedAttachments.length > 0 ? 'Nhập mô tả cho ảnh hoặc tệp...' : 'Nhập tin nhắn...')}
+              placeholder={appCopy.t(editingMessage ? 'Nhập nội dung mới…' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : activeChat.isChatbot ? 'Hỏi ViChat AI về quy trình, chính sách, tài liệu…' : activePastedAttachments.length > 0 ? 'Nhập mô tả cho ảnh hoặc tệp…' : 'Nhập tin nhắn…')}
+              aria-label={appCopy.t(activeChat.isChatbot ? 'Nhập câu hỏi cho ViChat AI' : 'Nhập tin nhắn')}
               value={inputText}
               disabled={realtimeMessagingPending || !canSendInActiveGroup || (activeChat.isChatbot && isTyping)}
               onChange={handleMessageInputChange}
@@ -15945,7 +15951,7 @@ function App() {
               </>
             )}
           </div>
-          <button className="btn-send-message-sh" disabled={realtimeMessagingPending || !canSendInActiveGroup || activeGroupTextSendBlocked || isRecordingVoice || isSavingMessageEdit || (activeChat.isChatbot && isTyping)} onClick={handleComposerSubmit}>
+          <button type="button" className="btn-send-message-sh" aria-label={appCopy.t(editingMessage ? 'Lưu thay đổi' : 'Gửi tin nhắn')} disabled={realtimeMessagingPending || !canSendInActiveGroup || activeGroupTextSendBlocked || isRecordingVoice || isSavingMessageEdit || (activeChat.isChatbot && isTyping)} onClick={handleComposerSubmit}>
             {activeChat.isChatbot && <i className={`fa-solid ${isTyping ? 'fa-spinner fa-spin' : 'fa-arrow-up'}`} aria-hidden="true"></i>}
             {appCopy.t(editingMessage ? (isSavingMessageEdit ? 'Đang lưu...' : 'Lưu thay đổi') : activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi')}
           </button>
@@ -15959,7 +15965,7 @@ function App() {
               if (event.target === event.currentTarget) closePollComposer();
             }}
           >
-            <form className="poll-composer-card" onSubmit={handlePollCreate} role="dialog" aria-modal="true" aria-labelledby="poll-composer-title">
+            <form ref={pollComposerDialogRef} className="poll-composer-card" onSubmit={handlePollCreate} role="dialog" aria-modal="true" aria-labelledby="poll-composer-title">
               <div className="poll-composer-header">
                 <div>
                   <span className="group-modal-kicker">{appCopy.t('NHÓM')}</span>
@@ -15970,11 +15976,12 @@ function App() {
               <label className="poll-form-field">
                 <span>{appCopy.t('Câu hỏi')}</span>
                 <textarea
+                  name="poll-question"
                   value={pollComposer.question}
                   maxLength={POLL_LIMITS.maxQuestionLength}
                   onChange={event => setPollComposer(previous => ({ ...previous, question: event.target.value }))}
                   placeholder={appCopy.t('Bạn muốn hỏi cả nhóm điều gì?')}
-                  autoFocus
+                  autoComplete="off"
                   rows={3}
                 />
                 <small>{pollComposer.question.length}/{POLL_LIMITS.maxQuestionLength}</small>
@@ -15985,6 +15992,7 @@ function App() {
                   {pollComposer.options.map((option, index) => (
                     <div className="poll-composer-option" key={`poll-option-${index}`}>
                       <input
+                        name={`poll-option-${index + 1}`}
                         value={option}
                         maxLength={POLL_LIMITS.maxOptionLength}
                         onChange={event => setPollComposer(previous => ({
@@ -15992,6 +16000,8 @@ function App() {
                           options: previous.options.map((current, optionIndex) => optionIndex === index ? event.target.value : current),
                         }))}
                         placeholder={`${appCopy.t('Phương án')} ${index + 1}`}
+                        aria-label={`${appCopy.t('Phương án')} ${index + 1}`}
+                        autoComplete="off"
                       />
                       {pollComposer.options.length > 2 && (
                         <button
@@ -16088,7 +16098,7 @@ function App() {
                 if (event.target === event.currentTarget) setMessageDetails(null);
               }}
             >
-              <section className="message-details-card message-receipt-details-card" role="dialog" aria-modal="true" aria-labelledby="message-details-title">
+              <section ref={messageDetailsDialogRef} className="message-details-card message-receipt-details-card" role="dialog" aria-modal="true" aria-labelledby="message-details-title">
                 <div className="message-details-header">
                   <strong id="message-details-title">{appCopy.t('Chi tiết tin nhắn')}</strong>
                   <button type="button" onClick={() => setMessageDetails(null)} aria-label={appCopy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button>
@@ -16135,7 +16145,7 @@ function App() {
               if (event.target === event.currentTarget) setEditHistoryMessage(null);
             }}
           >
-            <section className="message-details-card edit-history-card" role="dialog" aria-modal="true" aria-labelledby="edit-history-title">
+            <section ref={editHistoryDialogRef} className="message-details-card edit-history-card" role="dialog" aria-modal="true" aria-labelledby="edit-history-title">
               <div className="message-details-header">
                 <strong id="edit-history-title">{appCopy.t('Lịch sử chỉnh sửa')}</strong>
                 <button type="button" onClick={() => setEditHistoryMessage(null)} aria-label={appCopy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button>
@@ -16166,7 +16176,7 @@ function App() {
               if (event.target === event.currentTarget) setReactionDetails(null);
             }}
           >
-            <section className="message-details-card reaction-details-card" role="dialog" aria-modal="true" aria-labelledby="reaction-details-title">
+            <section ref={reactionDetailsDialogRef} className="message-details-card reaction-details-card" role="dialog" aria-modal="true" aria-labelledby="reaction-details-title">
               <div className="message-details-header">
                 <strong id="reaction-details-title">{appCopy.t('Cảm xúc trên tin nhắn')}</strong>
                 <button type="button" onClick={() => setReactionDetails(null)} aria-label={appCopy.t('Đóng')}>
@@ -16331,8 +16341,8 @@ function App() {
           </div>
         )}
         {shareMessage && (
-          <div className="message-details-modal" role="dialog" aria-modal="true" aria-labelledby="share-message-title" onClick={() => setShareMessage(null)}>
-            <div className="message-share-card" onClick={event => event.stopPropagation()}>
+          <div className="message-details-modal" role="presentation" onClick={() => setShareMessage(null)}>
+            <div ref={shareMessageDialogRef} className="message-share-card" role="dialog" aria-modal="true" aria-labelledby="share-message-title" onClick={event => event.stopPropagation()}>
               <div className="message-details-header"><strong id="share-message-title">{appCopy.t('Chia sẻ tin nhắn tới')}</strong><button type="button" onClick={() => setShareMessage(null)} aria-label={appCopy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button></div>
               {messageShareRecipients.length > 0 ? (
                 <div className="share-conversation-list">
@@ -16350,7 +16360,7 @@ function App() {
             </div>
           </div>
         )}
-      </section>
+      </main>
 
       {/* ==========================================================================
          CỘT 4: SIDEBAR DETAIL (Thông tin nhóm)
@@ -16633,11 +16643,13 @@ function App() {
                       <div className="group-member-add-panel">
                         <div className="group-member-add-toolbar">
                           <input
+                            name="group-member-add-search"
+                            type="search"
                             value={groupMemberAddSearch}
                             onChange={handleFilterGroupMembersToAdd}
-                            placeholder={appCopy.t('Tìm thành viên trong danh bạ')}
+                            placeholder={appCopy.t('Tìm thành viên trong danh bạ…')}
                             aria-label={appCopy.t('Tìm thành viên trong danh bạ')}
-                            autoFocus
+                            autoComplete="off"
                           />
                           <span>{groupMemberAddIds.length} {appCopy.t('đã chọn')}</span>
                         </div>
@@ -16948,7 +16960,7 @@ function App() {
         <div className="media-browser-overlay" role="presentation" onMouseDown={event => {
           if (event.target === event.currentTarget) setMediaBrowserOpen(false);
         }}>
-          <section className="media-browser-panel" role="dialog" aria-modal="true" aria-labelledby="media-browser-title">
+          <section ref={mediaBrowserDialogRef} className="media-browser-panel" role="dialog" aria-modal="true" aria-labelledby="media-browser-title">
             <div className="media-browser-header">
               <div>
                 <span className="media-browser-eyebrow">{appCopy.t('Nội dung dùng chung')}</span>
@@ -16968,7 +16980,7 @@ function App() {
             <div className="media-filter-grid">
               <label className="media-filter-search">
                 <i className="fa-solid fa-magnifying-glass"></i>
-                <input value={mediaSearchQuery} onChange={event => setMediaSearchQuery(event.target.value)} placeholder={appCopy.t('Tìm theo tên, nội dung hoặc liên kết...')} />
+                <input name="media-search" type="search" value={mediaSearchQuery} onChange={event => setMediaSearchQuery(event.target.value)} placeholder={appCopy.t('Tìm theo tên, nội dung hoặc liên kết…')} aria-label={appCopy.t('Tìm nội dung dùng chung')} autoComplete="off" />
               </label>
               <label className="media-filter-field">
                 <span>{appCopy.t('Người gửi')}</span>
@@ -17039,7 +17051,7 @@ function App() {
             if (event.target === event.currentTarget && !(workspacePanel === 'groups' && isCreatingGroup)) closeWorkspacePanel();
           }}
         >
-          <section className={`workspace-panel ${workspacePanel === 'enterprise' ? 'enterprise-shell-panel' : ''} ${workspacePanel === 'settings' ? 'settings-shell-panel' : ''}`} role="dialog" aria-modal="true" aria-labelledby="workspace-panel-title" data-workspace-panel={workspacePanel}>
+          <section ref={workspaceDialogRef} className={`workspace-panel ${workspacePanel === 'enterprise' ? 'enterprise-shell-panel' : ''} ${workspacePanel === 'settings' ? 'settings-shell-panel' : ''}`} role="dialog" aria-modal="true" aria-labelledby="workspace-panel-title" data-workspace-panel={workspacePanel}>
             <div className="workspace-panel-header">
               <div>
                 <h2 id="workspace-panel-title">{appCopy.t(workspacePanel === 'groups' ? appCopy.groups : workspacePanel === 'profile' ? 'Hồ sơ cá nhân' : workspacePanel === 'cloud' ? 'Cloud của tôi' : workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'enterprise' ? appCopy.work : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : appCopy.settings)}</h2>
@@ -17220,7 +17232,7 @@ function App() {
               <>
                 <div className="workspace-search-row">
                   <i className="fa-solid fa-magnifying-glass"></i>
-                  <input value={workspaceQuery} onChange={handleWorkspaceSearch} placeholder={appCopy.t('Tìm theo tên, email hoặc username...')} autoFocus />
+                  <input name="directory-search" type="search" value={workspaceQuery} onChange={handleWorkspaceSearch} placeholder={appCopy.t('Tìm theo tên, email hoặc username…')} aria-label={appCopy.t('Tìm danh bạ')} autoComplete="off" />
                 </div>
 
                 {isWorkspaceLoading && <div className="workspace-empty"><i className="fa-solid fa-spinner fa-spin"></i> {appCopy.t('Đang tìm...')}</div>}
@@ -17379,7 +17391,7 @@ function App() {
               <>
                 <div className="workspace-search-row">
                   <i className="fa-solid fa-magnifying-glass"></i>
-                  <input value={messageSearchQuery} onChange={event => setMessageSearchQuery(event.target.value)} placeholder={appCopy.t('Tìm nội dung hoặc người gửi...')} autoFocus />
+                  <input name="history-search" type="search" value={messageSearchQuery} onChange={event => setMessageSearchQuery(event.target.value)} placeholder={appCopy.t('Tìm nội dung hoặc người gửi…')} aria-label={appCopy.t('Tìm trong lịch sử hội thoại')} autoComplete="off" />
                 </div>
                 <div className="history-search-filters" role="group" aria-label={appCopy.t('Bộ lọc tìm kiếm')}>
                   <label className="history-search-filter">
@@ -17869,6 +17881,7 @@ function App() {
           if (event.target === event.currentTarget) closeGroupLeaveDialog();
         }}>
           <form
+            ref={groupLeaveDialogRef}
             className="group-modal group-leave-modal"
             role="dialog"
             aria-modal="true"
@@ -17902,11 +17915,13 @@ function App() {
                 <div className="group-leave-search-wrap">
                   <i className="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                   <input
+                    name="group-leave-search"
+                    type="search"
                     value={groupLeaveSearch}
                     onChange={event => setGroupLeaveSearch(event.target.value)}
-                    placeholder={appCopy.t('Tìm theo tên hoặc tài khoản')}
+                    placeholder={appCopy.t('Tìm theo tên hoặc tài khoản…')}
                     aria-label={appCopy.t('Tìm thành viên')}
-                    autoFocus
+                    autoComplete="off"
                     disabled={isLeavingGroup}
                   />
                 </div>
@@ -17991,6 +18006,7 @@ function App() {
           if (event.target === event.currentTarget && !isUpdatingNotificationMute) setNotificationMuteDialog(null);
         }}>
           <form
+            ref={notificationMuteDialogRef}
             className="group-modal notification-mute-modal"
             role="dialog"
             aria-modal="true"
@@ -18046,6 +18062,7 @@ function App() {
           if (event.target === event.currentTarget && !isSavingContactNickname) setContactNicknameDialog(null);
         }}>
           <form
+            ref={contactNicknameDialogRef}
             className="group-modal contact-nickname-modal"
             role="dialog"
             aria-modal="true"
@@ -18072,11 +18089,12 @@ function App() {
             <label className="group-form-field contact-nickname-field">
               <span>{appCopy.t('Biệt danh trong cuộc trò chuyện')}</span>
               <input
+                name="conversation-nickname"
                 value={contactNicknameValue}
                 onChange={event => setContactNicknameValue(event.target.value.slice(0, 80))}
                 placeholder={contactNicknameDialog.defaultName}
                 maxLength={80}
-                autoFocus
+                autoComplete="off"
                 disabled={isSavingContactNickname}
               />
             </label>
@@ -18098,6 +18116,7 @@ function App() {
           if (event.target === event.currentTarget && !isUpdatingGroupManagement && !isDissolvingGroup) setIsGroupManagementOpen(false);
         }}>
           <form
+            ref={groupManagementDialogRef}
             className="group-modal group-management-modal"
             role="dialog"
             aria-modal="true"
@@ -18164,7 +18183,7 @@ function App() {
         <div className="modal-backdrop group-rename-backdrop" role="presentation" onMouseDown={event => {
           if (event.target === event.currentTarget && !isRenamingGroup) setIsGroupRenameOpen(false);
         }}>
-          <form className="group-modal group-rename-modal" role="dialog" aria-modal="true" aria-labelledby="group-rename-title" onSubmit={handleGroupRenameSubmit}>
+          <form ref={groupRenameDialogRef} className="group-modal group-rename-modal" role="dialog" aria-modal="true" aria-labelledby="group-rename-title" onSubmit={handleGroupRenameSubmit}>
             <div className="group-modal-header">
               <div>
                 <span className="group-modal-kicker">{appCopy.t('THÔNG TIN NHÓM')}</span>
@@ -18176,7 +18195,7 @@ function App() {
             </div>
             <label className="group-form-field">
               <span>{appCopy.t('Tên nhóm')}</span>
-              <input value={groupRenameValue} onChange={event => setGroupRenameValue(event.target.value.slice(0, 120))} autoFocus required disabled={isRenamingGroup} />
+              <input name="group-rename" value={groupRenameValue} onChange={event => setGroupRenameValue(event.target.value.slice(0, 120))} required disabled={isRenamingGroup} autoComplete="off" />
             </label>
             <div className="group-modal-footer actions-only">
               <div className="group-modal-actions">
@@ -18196,6 +18215,7 @@ function App() {
           if (event.target === event.currentTarget) setPendingTenantSwitch(null);
         }}>
           <section
+            ref={tenantSwitchConfirmDialogRef}
             className="group-modal tenant-switch-confirm-modal"
             role="dialog"
             aria-modal="true"

@@ -285,13 +285,14 @@ class ChatbotWebhookProviderTests(unittest.TestCase):
             self.assertNotIn("chat_manager_service.reply(", route)
             self.assertNotIn("knowledge_service.retrieve(", route)
 
-    def test_vichat_history_keeps_legacy_fallback_conversation_visible(self):
+    def test_vichat_history_is_bound_to_the_requested_conversation_reference(self):
         controller = CONTROLLER_PATH.read_text(encoding="utf-8")
 
         self.assertIn('DEFAULT_CHATBOT_CONVERSATION_REF = "vichat-ai"', controller)
-        self.assertIn('LEGACY_CHATBOT_CONVERSATION_REFS = ("bot-songhong",)', controller)
+        self.assertNotIn("LEGACY_CHATBOT_CONVERSATION_REFS", controller)
         self.assertIn("ChatbotMessage.conversation_ref.in_(history_refs)", controller)
-        self.assertIn('ChatbotMessage.conversation_ref.like("tinode-chatbot:%")', controller)
+        self.assertNotIn('ChatbotMessage.conversation_ref.like("tinode-chatbot:%")', controller)
+        self.assertIn('return (value,)', controller)
         self.assertIn('DEFAULT_CHATBOT_CONVERSATION_REF\n        if not is_group_topic', controller)
 
 

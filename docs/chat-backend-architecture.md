@@ -1410,10 +1410,17 @@ metadata (`grounded` and at most five compact source records) in private Tinode
 headers, so both clients can render the same verification cards without
 changing message ownership or copying employee chat content into Chatmgt.
 HTTP fallback history stores the same source metadata with the assistant row.
-When the stable client key changed from `bot-songhong` to `vichat-ai`, the
-history read/delete routes kept the legacy key as an alias and browser fallback
-storage reads it when the new key is empty, so the branding change does not
-hide an employee's existing assistant conversation.
+Chatbot history is read and deleted only for the requested conversation
+reference; legacy `bot-songhong` and `tinode-chatbot:*` references are not
+merged automatically. The browser cache key contains the chatbot ID, verified
+tenant ID and account ID, and records without the same scope are ignored. Any
+legacy migration must therefore be an authenticated, tenant-scoped server
+operation rather than a client-side fallback.
+Every assistant result carries an explicit state (`grounded`, `no-source`,
+`question-unclear`, `timeout`, `session-expired` or `unavailable`). `grounded`
+is true only when the source list contains valid records owned by the verified
+tenant; the web client applies the same fail-closed source check before it
+renders verification cards.
 The legacy employee-facing knowledge manager and its upload/delete calls are
 not part of this retrieval-only assistant surface.
 

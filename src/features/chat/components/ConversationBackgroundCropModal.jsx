@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import useDialogFocusTrap from '../../../components/useDialogFocusTrap';
 import {
   CONVERSATION_BACKGROUND_CROP_DEFAULT_ASPECT_RATIO,
   CONVERSATION_BACKGROUND_CROP_MAX_ZOOM,
@@ -50,7 +51,10 @@ export default function ConversationBackgroundCropModal({
   const [error, setError] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const dragRef = useRef(null);
+  const dialogRef = useRef(null);
   const busy = isSaving || isProcessing;
+
+  useDialogFocusTrap(dialogRef, Boolean(file), onCancel, { closeOnEscape: !busy });
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -235,6 +239,7 @@ export default function ConversationBackgroundCropModal({
       }}
     >
       <section
+        ref={dialogRef}
         className="group-modal conversation-background-crop-modal"
         role="dialog"
         aria-modal="true"

@@ -642,7 +642,8 @@ test('profile and management controls expose keyboard-accessible labels and moda
   const managementAppSource = readFileSync(new URL('../../management/ManagementApp.jsx', import.meta.url), 'utf8');
   assert.match(authLoginSource, /login-error-message" role="alert"/);
   assert.match(authLoginSource, /btn-toggle-password[^>]*aria-label=/);
-  assert.match(appSource, /function useDialogFocusTrap/);
+  assert.match(appSource, /import useDialogFocusTrap from '\.\.\/components\/useDialogFocusTrap';/);
+  assert.match(appSource, /useDialogFocusTrap\(profileContactDialogRef/);
   assert.match(appSource, /profileViewersTotal \?\? profileViewers\.length/);
   assert.match(managementAppSource, /management-icon-button[^>]*aria-label=/);
   assert.match(managementAppSource, /management-logout[^>]*aria-label=/);
@@ -932,7 +933,7 @@ test('bounds the share list and long recipient names without scrolling away the 
 });
 
 test('preserves share recipient filtering, selection and dismissal', () => {
-  const shareSource = appSource.split('{shareMessage && (', 2)[1].split('</section>', 2)[0];
+  const shareSource = appSource.slice(appSource.indexOf('{shareMessage && ('));
   assert.match(shareSource, /role="dialog" aria-modal="true" aria-labelledby="share-message-title"/);
   assert.match(shareSource, /id="share-message-title"/);
   assert.match(appSource, /buildMessageShareRecipients\(\{/);
@@ -941,7 +942,7 @@ test('preserves share recipient filtering, selection and dismissal', () => {
   assert.match(appSource, /companyDirectoryContacts\(directoryAccounts, currentUser\)/);
   assert.match(appSource, /chatManagementService\.createConversation\(\{[\s\S]*participantIds: \[contactId\]/);
   assert.match(appSource, /shareRecipientMeta/);
-  assert.match(shareSource, /className="message-share-card" onClick=\{event => event\.stopPropagation\(\)\}/);
+  assert.match(shareSource, /className="message-share-card" role="dialog" aria-modal="true" aria-labelledby="share-message-title" onClick=\{event => event\.stopPropagation\(\)\}/);
   assert.equal(shareSource.match(/onClick=\{\(\) => setShareMessage\(null\)\}/g)?.length, 2);
   assert.match(appSource, /if \(shareMessage\) \{\s*setShareMessage\(null\);\s*return true;/);
 });

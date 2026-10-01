@@ -10,16 +10,21 @@ import {
   applyTinodeChatbotConfig,
   canIngestChatDocument,
   chatbotMessageCorrelationKey,
+  chatbotStorageKey,
   ingestChatDocument,
+  loadChatbotMessages,
   mergeChatbotMessages,
+  normalizeChatbotSources,
   normalizeChatbotMessage,
   requestChatbotReply,
+  saveChatbotMessage,
 } from './chatbotService.js';
 
 const appSource = readFileSync(new URL('../../../app/App.jsx', import.meta.url), 'utf8');
 const serviceSource = readFileSync(new URL('./chatbotService.js', import.meta.url), 'utf8');
 const tinodeClientSource = readFileSync(new URL('../../chat/services/tinodeClient.js', import.meta.url), 'utf8');
 const productionBuildSource = readFileSync(new URL('../../../../scripts/build-production.mjs', import.meta.url), 'utf8');
+const CHATBOT_TEST_USER = { id: 'account-a', name: 'Account A', tenantId: 'tenant-a' };
 
 
 test('Tinode chatbot config keeps the synthetic UI id and assigns the runtime topic', () => {
@@ -86,8 +91,8 @@ test('AI starter suggestions fill editable drafts without sending messages', () 
 
 test('AI HTTP replies are session guarded and sources are keyboard-expandable', () => {
   const fallbackSource = appSource.split('const chatbotRequest = { controller: new AbortController()')[1].split("if (chatMode === 'tinode')")[0];
-  assert.match(appSource, /chatbotRequestRef\.current\?\.controller\.abort\(\)/);
-  assert.match(appSource, /\[isLoggedIn, managementViewerId, currentUser\?\.tenantId\]/);
+  assert.match(appSource, /chatbotRequestRef\.current\?\.controller\?\.abort\(\)/);
+  assert.match(appSource, /\[cancelChatbotRequest, isLoggedIn, managementViewerId, currentUser\?\.tenantId\]/);
   assert.match(fallbackSource, /signal: chatbotRequest\.controller\.signal/);
   assert.match(fallbackSource, /if \(chatbotRequestRef\.current !== chatbotRequest \|\| accountSessionRef\.current !== chatbotRequest\.session\) return;/);
   assert.match(fallbackSource, /!item\.failed && !item\.fallback/);
@@ -109,13 +114,14 @@ test('AI HTTP request preserves credentials and message ids but bounds history a
         reply: '  Verified excerpt  ',
         grounded: true,
         sources: [null, { title: ' ' }, { title: 3 }, ...Array.from({ length: 22 }, () => ({
-          title: 'Document '.repeat(80), file_name: 'policy.pdf', snippet: 'content '.repeat(350),
+          tenant_id: 'tenant-a', title: 'Document '.repeat(80), file_name: 'policy.pdf', snippet: 'content '.repeat(350),
         }))],
       }),
     };
   });
   const result = await requestChatbotReply({
     message: '  Leave policy?  ', messageId: 'message-1', conversationId: 'vichat-ai',
+    user: CHATBOT_TEST_USER,
     history: [null, { role: 'system', content: 'Never forward' }, ...Array.from({ length: 12 }, (_, index) => ({
       role: index % 2 ? 'assistant' : 'user', content: `turn-${index} ${'content '.repeat(700)}`,
     })), { role: 'assistant', content: {} }],
@@ -173,6 +179,27 @@ test('AI ignores malformed responses and does not claim grounding without valid 
   assert.equal((await requestChatbotReply({ message: 'Policy?' })).grounded, false);
   payload = { reply: 'Answer.', grounded: 'false', sources: [{ title: 'Source' }] };
   assert.equal((await requestChatbotReply({ message: 'Policy?' })).grounded, false);
+});
+
+test('AI drops sources from another tenant before exposing grounding metadata', async context => {
+  context.mock.method(globalThis, 'fetch', async () => ({
+    ok: true,
+    json: async () => ({
+      reply: 'Verified answer',
+      grounded: true,
+      sources: [
+        { tenant_id: 'tenant-b', title: 'Foreign document', snippet: 'Should not render.' },
+        { tenant_id: 'tenant-a', title: 'Approved document', snippet: 'Allowed excerpt.' },
+      ],
+    }),
+  }));
+
+  const result = await requestChatbotReply({ message: 'Policy?', user: CHATBOT_TEST_USER });
+  assert.equal(result.state, 'grounded');
+  assert.equal(result.grounded, true);
+  assert.deepEqual(result.sources.map(source => source.title), ['Approved document']);
+  assert.ok(result.sources.every(source => source.tenant_id === 'tenant-a'));
+  assert.deepEqual(normalizeChatbotSources([{ tenant_id: 'tenant-b', title: 'Foreign', snippet: 'Nope' }], 'tenant-a'), []);
 });
 
 test('AI handles network and malformed JSON failures and clears its timeout', async context => {
@@ -301,10 +328,34 @@ test('production build keeps the ViChat AI identity instead of legacy external d
   assert.equal(productionBuildSource.includes("VITE_CHATBOT_DISPLAY_NAME: 'External AI'"), false);
 });
 
-test('fallback storage can read the legacy bot conversation after the rename', () => {
-  assert.match(serviceSource, /vichat\.chatbot\.bot-songhong\.messages\./);
-  assert.match(serviceSource, /LEGACY_STORAGE_PREFIXES/);
-  assert.match(serviceSource, /mergeChatbotMessages\(current, \.\.\.legacySources\)/);
+test('chatbot storage is isolated by tenant, account and chatbot scope', () => {
+  const previousWindow = globalThis.window;
+  const values = new Map();
+  globalThis.window = {
+    localStorage: {
+      getItem: key => values.get(key) || null,
+      setItem: (key, value) => values.set(key, value),
+    },
+  };
+  try {
+    const tenantA = CHATBOT_TEST_USER;
+    const tenantB = { ...CHATBOT_TEST_USER, tenantId: 'tenant-b' };
+    saveChatbotMessage(tenantA, { id: 'tenant-a-message', sender: 'outgoing', text: 'A', createdAt: '2026-09-01T00:00:00.000Z' });
+    saveChatbotMessage(tenantB, { id: 'tenant-b-message', sender: 'outgoing', text: 'B', createdAt: '2026-09-01T00:00:01.000Z' });
+
+    assert.notEqual(chatbotStorageKey(tenantA), chatbotStorageKey(tenantB));
+    assert.deepEqual(loadChatbotMessages(tenantA).map(message => message.id), ['tenant-a-message']);
+    assert.deepEqual(loadChatbotMessages(tenantB).map(message => message.id), ['tenant-b-message']);
+
+    values.set(chatbotStorageKey(tenantA), JSON.stringify([
+      { id: 'unscoped', sender: 'outgoing', text: 'unverified', createdAt: '2026-09-01T00:00:02.000Z' },
+      { id: 'foreign', sender: 'outgoing', text: 'foreign', createdAt: '2026-09-01T00:00:03.000Z', chatbotScope: { tenantId: 'tenant-b', accountId: 'account-a', chatbotId: 'vichat-ai' } },
+    ]));
+    assert.deepEqual(loadChatbotMessages(tenantA), []);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
 });
 
 test('merges legacy and Tinode history without duplicating the same message', () => {

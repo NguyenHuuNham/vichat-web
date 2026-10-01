@@ -80,7 +80,7 @@ export default function PersonalCloudPanel({
         <label className={`personal-cloud-upload-button ${!available || uploading ? 'disabled' : ''}`}>
           <i className={`fa-solid ${uploading ? 'fa-spinner fa-spin' : 'fa-cloud-arrow-up'}`} aria-hidden="true"></i>
           <span>{uploading ? copy.t('Đang tải lên...') : copy.t('Tải file lên')}</span>
-          <input type="file" multiple onChange={event => { const files = [...(event.target.files || [])]; if (files.length) onUpload(files); event.target.value = ''; }} disabled={!available || uploading} />
+          <input name="personal-cloud-files" type="file" multiple aria-label={copy.t('Chọn file để tải lên')} onChange={event => { const files = [...(event.target.files || [])]; if (files.length) onUpload(files); event.target.value = ''; }} disabled={!available || uploading} />
         </label>
       </div>
 
@@ -122,11 +122,13 @@ export default function PersonalCloudPanel({
         </button>}
         <div className="personal-cloud-composer">
           <textarea
+            name="personal-cloud-message"
             value={draft}
             onChange={event => setDraft(event.target.value)}
             onKeyDown={handleComposerKeyDown}
-            placeholder={copy.t('Nhập tin nhắn riêng tư...')}
-            aria-label={copy.t('Nhập tin nhắn riêng tư...')}
+            placeholder={copy.t('Nhập tin nhắn riêng tư…')}
+            aria-label={copy.t('Nhập tin nhắn riêng tư')}
+            autoComplete="off"
             rows={2}
             disabled={!available || messagesSending}
           />

@@ -28,7 +28,6 @@ logger = logging.getLogger(__name__)
 
 
 DEFAULT_CHATBOT_CONVERSATION_REF = "vichat-ai"
-LEGACY_CHATBOT_CONVERSATION_REFS = ("bot-songhong",)
 
 
 chatbot_service = ChatbotService(app)
@@ -361,6 +360,7 @@ def _chat_file_conversation(tenant_id, conversation_ref, topic_name, current_use
 def _serialize_history_message(item):
     return {
         "id": str(item.id),
+        "tenant_id": str(item.tenant_id),
         "role": item.role,
         "content": item.content,
         "message_ref": item.message_ref,
@@ -371,22 +371,11 @@ def _serialize_history_message(item):
 
 def _chatbot_history_refs(conversation_ref, current_user=None):
     value = str(conversation_ref or DEFAULT_CHATBOT_CONVERSATION_REF)[:255]
-    if value != DEFAULT_CHATBOT_CONVERSATION_REF:
-        return (value,)
-    refs = (DEFAULT_CHATBOT_CONVERSATION_REF,) + LEGACY_CHATBOT_CONVERSATION_REFS
-    tinode_uid = str((current_user or {}).get("tinodeUid") or "").strip()
-    if tinode_uid:
-        refs += ("tinode-chatbot:{}".format(tinode_uid)[:255],)
-    return refs
+    return (value,)
 
 
 def _filter_chatbot_history_conversations(query, conversation_ref, history_refs):
-    """Include Tinode topic history while keeping the tenant/user filters."""
-    if conversation_ref == DEFAULT_CHATBOT_CONVERSATION_REF:
-        return query.filter(
-            (ChatbotMessage.conversation_ref.in_(history_refs))
-            | ChatbotMessage.conversation_ref.like("tinode-chatbot:%")
-        )
+    """Keep history bound to the requested chatbot conversation reference."""
     return query.filter(ChatbotMessage.conversation_ref.in_(history_refs))
 
 
@@ -603,6 +592,7 @@ async def chatbot_tinode_webhook(request):
             "duplicate": True,
             "tenant_id": account.tenant_id,
             "grounded": bool((existing_reply.properties or {}).get("grounded")),
+            "state": (existing_reply.properties or {}).get("state"),
             "sources": (existing_reply.properties or {}).get("sources") or [],
         })
 
@@ -664,6 +654,7 @@ async def chatbot_tinode_webhook(request):
                 "provider": result.get("provider"),
                 "model": result.get("model"),
                 "grounded": bool(result.get("grounded")),
+                "state": result.get("state"),
                 "sources": result.get("sources") or [],
             },
         )
@@ -674,6 +665,7 @@ async def chatbot_tinode_webhook(request):
             "is_group": is_group_topic,
             "provider": result.get("provider"),
             "grounded": bool(result.get("grounded")),
+            "state": result.get("state"),
             "sources": result.get("sources") or [],
         })
     except ChatbotServiceError as error:
@@ -807,6 +799,7 @@ async def chatbot_message(request):
                 "provider": result.get("provider"),
                 "model": result.get("model"),
                 "grounded": bool(result.get("grounded")),
+                "state": result.get("state"),
                 "sources": result.get("sources") or [],
             },
         )

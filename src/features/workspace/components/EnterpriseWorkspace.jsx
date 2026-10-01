@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import useDialogFocusTrap from '../../../components/useDialogFocusTrap';
 import {
   ENTERPRISE_STATUSES,
   ENTERPRISE_TYPES,
@@ -189,6 +190,11 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
   const selectedItemIdRef = useRef('');
   const loadingMoreRef = useRef(false);
   const detailGenerationRef = useRef(0);
+  const formDialogRef = useRef(null);
+
+  useDialogFocusTrap(formDialogRef, Boolean(form), () => {
+    if (!saving) setForm(null);
+  });
 
   useEffect(() => {
     selectedItemIdRef.current = selectedItem?.id || '';
@@ -405,7 +411,7 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
       <header className="enterprise-commandbar">
         <div className="enterprise-search">
           <i className="fa-solid fa-magnifying-glass"></i>
-          <input value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.t('Tìm công việc, quy trình, ticket, sự kiện...')} />
+          <input name="workspace-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.t('Tìm công việc, quy trình, ticket, sự kiện…')} aria-label={copy.t('Tìm trong Workspace')} />
           {loading && <i className="fa-solid fa-spinner fa-spin"></i>}
         </div>
         <button type="button" className="enterprise-create-main" onClick={() => openCreate(createType)} disabled={!typeCanCreate(createType, isAdmin)}>
@@ -518,8 +524,8 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
                   {selectedItem.canEdit && <button type="button" onClick={() => setForm(formForItem(selectedItem, userId))}><i className="fa-solid fa-pen"></i>{copy.t('Chỉnh sửa')}</button>}
                   {selectedItem.canEdit && <button type="button" className="danger ghost" onClick={archiveItem} disabled={Boolean(actionBusy)}><i className="fa-solid fa-box-archive"></i>{copy.t('Ẩn khỏi Workspace')}</button>}
                 </div>
-                <form className="enterprise-comment" onSubmit={event => { event.preventDefault(); if (comment.trim()) applyAction('COMMENT'); }}>
-                  <input value={comment} onChange={event => setComment(event.target.value)} maxLength="5000" placeholder={copy.t('Thêm trao đổi hoặc ghi chú...')} />
+                <form className="enterprise-comment" autoComplete="off" onSubmit={event => { event.preventDefault(); if (comment.trim()) applyAction('COMMENT'); }}>
+                  <input name="workspace-comment" value={comment} onChange={event => setComment(event.target.value)} maxLength="5000" placeholder={copy.t('Thêm trao đổi hoặc ghi chú…')} aria-label={copy.t('Thêm trao đổi hoặc ghi chú')} />
                   <button type="submit" disabled={!comment.trim() || Boolean(actionBusy)}><i className="fa-solid fa-paper-plane"></i></button>
                 </form>
                 <div className="enterprise-activity"><h4>{copy.t('Nhật ký hoạt động')}</h4>{selectedItem.activity.length === 0 ? <small>{copy.t('Chưa có hoạt động.')}</small> : selectedItem.activity.map(activity => (
@@ -533,12 +539,12 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
 
       {form && (
         <div className="enterprise-form-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !saving) setForm(null); }}>
-          <form className="enterprise-form-modal" onSubmit={saveItem}>
-            <header><div><span>{copy.t(form.id ? 'CẬP NHẬT' : 'TẠO MỚI')}</span><h3>{copy.t(workspaceTypeMeta(form.type).label)}</h3></div><button type="button" onClick={() => setForm(null)} disabled={saving} aria-label={copy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button></header>
+          <form ref={formDialogRef} className="enterprise-form-modal" autoComplete="off" role="dialog" aria-modal="true" aria-labelledby="enterprise-form-title" onSubmit={saveItem}>
+            <header><div><span>{copy.t(form.id ? 'CẬP NHẬT' : 'TẠO MỚI')}</span><h3 id="enterprise-form-title">{copy.t(workspaceTypeMeta(form.type).label)}</h3></div><button type="button" onClick={() => setForm(null)} disabled={saving} aria-label={copy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button></header>
             <div className="enterprise-form-scroll">
               {!form.id && <FormField label={copy.t('Loại nghiệp vụ')}><select value={form.type} onChange={event => setForm(emptyForm(event.target.value, userId))}>{typeOptions.filter(type => typeCanCreate(type.value, isAdmin)).map(type => <option value={type.value} key={type.value}>{copy.t(type.label)}</option>)}</select></FormField>}
-              <FormField label={copy.t('Tiêu đề')} wide><input value={form.title} onChange={event => setForm(previous => ({ ...previous, title: event.target.value }))} maxLength="500" required autoFocus /></FormField>
-              <FormField label={copy.t('Nội dung')} wide><textarea value={form.description} onChange={event => setForm(previous => ({ ...previous, description: event.target.value }))} rows="5" maxLength="100000" /></FormField>
+              <FormField label={copy.t('Tiêu đề')} wide><input name="workspace-title" value={form.title} onChange={event => setForm(previous => ({ ...previous, title: event.target.value }))} maxLength="500" required /></FormField>
+              <FormField label={copy.t('Nội dung')} wide><textarea name="workspace-description" value={form.description} onChange={event => setForm(previous => ({ ...previous, description: event.target.value }))} rows="5" maxLength="100000" /></FormField>
               <FormField label={copy.t('Mức ưu tiên')}><select value={form.priority} onChange={event => setForm(previous => ({ ...previous, priority: event.target.value }))}><option value="LOW">{copy.t('Thấp')}</option><option value="NORMAL">{copy.t('Bình thường')}</option><option value="HIGH">{copy.t('Cao')}</option><option value="URGENT">{copy.t('Khẩn cấp')}</option></select></FormField>
               <FormField label={copy.t('Phạm vi')}><select value={form.visibility} onChange={event => setForm(previous => ({ ...previous, visibility: event.target.value }))}><option value="COMPANY">{copy.t('Toàn công ty')}</option><option value="PARTICIPANTS">{copy.t('Người liên quan')}</option></select></FormField>
               {!form.id && <FormField label={copy.t('Trạng thái ban đầu')}><select value={form.status} onChange={event => setForm(previous => ({ ...previous, status: event.target.value }))}>{ENTERPRISE_STATUSES[form.type].map(status => <option key={status} value={status}>{copy.t(workspaceStatusLabel(status))}</option>)}</select></FormField>}

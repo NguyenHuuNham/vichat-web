@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import useDialogFocusTrap from '../../../components/useDialogFocusTrap';
 
 import { tinodeClient, normalizeTinodeMediaUrl } from '../services/tinodeClient';
 import {
@@ -78,6 +79,9 @@ export default function CallOverlay({ call, copy = { t: value => value }, onClos
   const [audioOutputDevices, setAudioOutputDevices] = useState([]);
   const [audioOutputId, setAudioOutputId] = useState('default');
   const [remoteAudioBlocked, setRemoteAudioBlocked] = useState(false);
+  const dialogRef = useRef(null);
+
+  useDialogFocusTrap(dialogRef, true, onClose);
 
   const localMediaRef = useRef(null);
   const remoteMediaRef = useRef(null);
@@ -520,7 +524,7 @@ export default function CallOverlay({ call, copy = { t: value => value }, onClos
   const showActiveControls = !['incoming', 'preparing'].includes(phase) || call.direction === 'outgoing';
 
   return (
-    <div className="call-overlay" role="dialog" aria-modal="true" aria-label={copy.t(call.audioOnly ? 'Cuộc gọi thoại' : 'Cuộc gọi video')}>
+    <div ref={dialogRef} className="call-overlay" role="dialog" aria-modal="true" aria-label={copy.t(call.audioOnly ? 'Cuộc gọi thoại' : 'Cuộc gọi video')}>
       <section className={`call-shell ${call.audioOnly ? 'audio-only' : 'video-call'}`}>
         <div className="call-remote-stage">
           <video

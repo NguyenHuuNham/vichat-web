@@ -407,6 +407,7 @@ class ChatbotService(object):
                 continue
             seen.add(fingerprint)
             sources.append({
+                "tenant_id": tenant_manifest.get("tenant_id") if tenant_manifest else str(item.get("tenant_id") or "").strip() or None,
                 "title": title[:500],
                 "file_name": file_name[:500] if file_name else None,
                 "snippet": snippet[:2000],
@@ -423,6 +424,7 @@ class ChatbotService(object):
                 "reply": str(provider_answer).strip()[:8000],
                 "sources": sources,
                 "grounded": bool(sources),
+                "state": "grounded" if sources else "no-source",
             }
         if not sources:
             return {
@@ -432,6 +434,7 @@ class ChatbotService(object):
                 ),
                 "sources": [],
                 "grounded": False,
+                "state": "no-source",
             }
         summary = "\n\n".join(
             "[{}] {}".format(index, cls._source_excerpt(item["snippet"], message, concise=concise))
@@ -445,6 +448,7 @@ class ChatbotService(object):
             ).format(summary)[:8000].rstrip(),
             "sources": sources,
             "grounded": True,
+            "state": "grounded",
         }
 
     def _ingest_urls(self):
@@ -554,7 +558,7 @@ class ChatbotService(object):
             if not guidance and self._is_retrieval_followup(message) and payload["message"] == str(message).strip():
                 guidance = "Bạn muốn hỏi tiếp về tài liệu hoặc chủ đề nào? Hãy nêu tên hoặc nội dung cần làm rõ để mình tra cứu đúng nguồn."
             if guidance:
-                return {"reply": guidance, "sources": [], "grounded": False, "model": None, "provider": "assistant-guide", "usage": {}}
+                return {"reply": guidance, "sources": [], "grounded": False, "state": "question-unclear", "model": None, "provider": "assistant-guide", "usage": {}}
         if retrieval_mode and payload.get("history"):
             # Older retrieval endpoints reject unknown fields. Retry without
             # context only for schema errors so the existing AI flow survives.

@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import useDialogFocusTrap from '../../../components/useDialogFocusTrap';
 
 import { CONVERSATION_CATEGORY_COLORS } from '../services/conversationCategoryPolicy';
 
@@ -42,6 +43,7 @@ export default function ConversationCategoryManager({
   const [conversationPickerOpen, setConversationPickerOpen] = useState(false);
   const [conversationSearch, setConversationSearch] = useState('');
   const [draggedCategoryId, setDraggedCategoryId] = useState('');
+  const dialogRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
@@ -53,22 +55,16 @@ export default function ConversationCategoryManager({
     setConversationSearch('');
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return undefined;
-    const handleKeyDown = event => {
-      if (event.key !== 'Escape') return;
-      if (screen === 'edit') {
-        setScreen('list');
-        setNotice('');
-        setColorPickerOpen(false);
-        setConversationPickerOpen(false);
-      } else {
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, open, screen]);
+  useDialogFocusTrap(dialogRef, open, () => {
+    if (screen === 'edit') {
+      setScreen('list');
+      setNotice('');
+      setColorPickerOpen(false);
+      setConversationPickerOpen(false);
+    } else {
+      onClose();
+    }
+  });
 
   const filteredConversations = useMemo(() => {
     const query = conversationSearch.trim().toLocaleLowerCase('vi');
@@ -174,6 +170,7 @@ export default function ConversationCategoryManager({
       if (event.target === event.currentTarget) onClose();
     }}>
       <section
+        ref={dialogRef}
         className={`conversation-category-manager ${screen === 'edit' ? 'editor-open' : ''}`}
         role="dialog"
         aria-modal="true"
@@ -246,11 +243,12 @@ export default function ConversationCategoryManager({
                 <span>{copy.t('Tên thẻ phân loại')}</span>
                 <div>
                   <input
+                    name="conversation-category-name"
                     value={draft.label}
                     onChange={event => setDraft(previous => ({ ...previous, label: event.target.value.slice(0, 40) }))}
                     placeholder={copy.t('Nhập tên thẻ phân loại')}
                     maxLength={40}
-                    autoFocus
+                    autoComplete="off"
                   />
                   <button
                     type="button"
@@ -303,7 +301,15 @@ export default function ConversationCategoryManager({
                   <div className="conversation-category-conversation-picker">
                     <label>
                       <i className="fa-solid fa-magnifying-glass"></i>
-                      <input value={conversationSearch} onChange={event => setConversationSearch(event.target.value)} placeholder={copy.t('Tìm hội thoại')} />
+                      <input
+                        name="conversation-category-search"
+                        type="search"
+                        value={conversationSearch}
+                        onChange={event => setConversationSearch(event.target.value)}
+                        placeholder={copy.t('Tìm hội thoại…')}
+                        aria-label={copy.t('Tìm hội thoại')}
+                        autoComplete="off"
+                      />
                     </label>
                     <div>
                       {filteredConversations.map(conversation => {

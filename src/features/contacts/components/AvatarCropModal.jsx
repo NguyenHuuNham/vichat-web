@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import useDialogFocusTrap from '../../../components/useDialogFocusTrap';
 import {
   AVATAR_CROP_MAX_ZOOM,
   AVATAR_CROP_MIN_ZOOM,
@@ -39,6 +40,9 @@ export default function AvatarCropModal({
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [error, setError] = useState('');
   const dragRef = useRef(null);
+  const dialogRef = useRef(null);
+
+  useDialogFocusTrap(dialogRef, Boolean(file), onCancel, { closeOnEscape: !isSaving });
 
   useEffect(() => {
     if (!file) {
@@ -190,6 +194,7 @@ export default function AvatarCropModal({
       }}
     >
       <section
+        ref={dialogRef}
         className="group-modal avatar-crop-modal"
         role="dialog"
         aria-modal="true"

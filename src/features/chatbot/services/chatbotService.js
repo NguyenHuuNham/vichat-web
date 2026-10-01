@@ -75,10 +75,32 @@ const CHAT_FILE_INGEST_MAX_SIZE = 20 * 1024 * 1024;
 const CHAT_FILE_INGEST_EXTENSIONS = new Set([
   'pdf', 'txt', 'md', 'markdown', 'csv', 'json', 'docx', 'xlsx', 'xls',
 ]);
-const STORAGE_PREFIX = `vichat.chatbot.${CHATBOT_ACCOUNT.id}.messages.`;
-const LEGACY_STORAGE_PREFIXES = CHATBOT_ACCOUNT.id === 'vichat-ai'
-  ? ['vichat.chatbot.bot-songhong.messages.']
-  : [];
+const STORAGE_PREFIX = 'vichat.chatbot.';
+
+function scopeValue(value) {
+  return String(value || '').trim();
+}
+
+export function chatbotStorageScope(value, chatbotId = CHATBOT_ACCOUNT.id) {
+  const input = value && typeof value === 'object' ? value : { accountId: value };
+  const tenantId = scopeValue(
+    input.tenantId || input.tenant_id || input.currentTenantId || input.current_tenant_id,
+  );
+  const accountId = scopeValue(input.accountId || input.account_id || input.userId || input.id || input.uid);
+  const resolvedChatbotId = scopeValue(input.chatbotId || input.chatbot_id || chatbotId);
+  if (!tenantId || !accountId || !resolvedChatbotId) return null;
+  return { tenantId, accountId, chatbotId: resolvedChatbotId };
+}
+
+function storagePart(value) {
+  return encodeURIComponent(scopeValue(value));
+}
+
+export function chatbotStorageKey(scope) {
+  const normalized = chatbotStorageScope(scope);
+  if (!normalized) return '';
+  return `${STORAGE_PREFIX}${storagePart(normalized.chatbotId)}.messages.${storagePart(normalized.tenantId)}.${storagePart(normalized.accountId)}`;
+}
 
 function unavailableReply(reason = 'unavailable') {
   return {
@@ -91,12 +113,9 @@ function unavailableReply(reason = 'unavailable') {
     errorCode: reason,
     sources: [],
     grounded: false,
+    state: reason === 'session' ? 'session-expired' : reason,
     fallback: true,
   };
-}
-
-function storageKey(userId, prefix = STORAGE_PREFIX) {
-  return `${prefix}${userId || 'anonymous'}`;
 }
 
 function storedMessages(key) {
@@ -110,12 +129,17 @@ function storedMessages(key) {
 }
 
 export function loadChatbotMessages(userId) {
+  const scope = chatbotStorageScope(userId);
+  const key = chatbotStorageKey(scope);
+  if (!key) return [];
   try {
-    const current = storedMessages(storageKey(userId));
-    const legacySources = LEGACY_STORAGE_PREFIXES.map(prefix => (
-      storedMessages(storageKey(userId, prefix))
-    ));
-    return mergeChatbotMessages(current, ...legacySources);
+    return storedMessages(key).filter(message => {
+      const messageScope = message?.chatbotScope;
+      if (!messageScope || typeof messageScope !== 'object') return false;
+      return scopeValue(messageScope.tenantId) === scope.tenantId
+        && scopeValue(messageScope.accountId) === scope.accountId
+        && scopeValue(messageScope.chatbotId) === scope.chatbotId;
+    });
   } catch {
     return [];
   }
@@ -348,9 +372,16 @@ export function mergeChatbotMessages(...sources) {
 }
 
 export function saveChatbotMessage(userId, message) {
+  const scope = chatbotStorageScope(userId);
+  const key = chatbotStorageKey(scope);
+  if (!key) return;
   try {
-    const next = [...loadChatbotMessages(userId), normalizeChatbotMessage(message)].slice(-200);
-    window.localStorage.setItem(storageKey(userId), JSON.stringify(next));
+    const scopedMessage = {
+      ...normalizeChatbotMessage(message),
+      chatbotScope: scope,
+    };
+    const next = [...loadChatbotMessages(scope), scopedMessage].slice(-200);
+    window.localStorage.setItem(key, JSON.stringify(next));
   } catch {
     // Browser storage can be disabled; the active conversation still works in memory.
   }
@@ -425,17 +456,57 @@ export async function loadTinodeChatbotConfig() {
   }
 }
 
+export function normalizeChatbotSources(value, tenantId) {
+  const expectedTenant = scopeValue(tenantId);
+  if (!expectedTenant || !Array.isArray(value)) return [];
+  return value
+    .filter(item => item && typeof item === 'object')
+    .map(item => {
+      const sourceTenant = scopeValue(item.tenant_id || item.tenantId);
+      const title = typeof item.title === 'string' ? item.title.trim() : '';
+      const fileName = typeof item.file_name === 'string'
+        ? item.file_name.trim()
+        : typeof item.fileName === 'string' ? item.fileName.trim() : '';
+      const snippet = typeof item.snippet === 'string' ? item.snippet.trim() : '';
+      return {
+        tenant_id: sourceTenant,
+        title: title.slice(0, 500),
+        file_name: fileName.slice(0, 500),
+        snippet: snippet.slice(0, 2000),
+        ...(item.file_id ? { file_id: String(item.file_id).trim().slice(0, 255) } : {}),
+        ...(Number.isFinite(Number(item.score)) ? { score: Number(item.score) } : {}),
+      };
+    })
+    .filter(item => item.tenant_id === expectedTenant
+      && Boolean(item.title || item.file_name)
+      && Boolean(item.snippet))
+    .slice(0, 20);
+}
+
 export async function loadChatbotMessagesFromServer(user, conversationId = CHATBOT_ACCOUNT.id) {
-  if (!API_ROOT) return loadChatbotMessages(user?.id || user?.uid);
+  const scope = chatbotStorageScope(user, conversationId);
+  if (!scope) return [];
+  if (!API_ROOT) return loadChatbotMessages(scope);
   try {
     const response = await fetch(`${API_ROOT}/history?${query({ conversation_id: conversationId, limit: '200' })}`, {
       credentials: WITH_CREDENTIALS ? 'include' : 'omit',
     });
-    if (!response.ok) throw new Error(`History returned ${response.status}.`);
+    if (!response.ok) {
+      const error = new Error(`History returned ${response.status}.`);
+      error.status = response.status;
+      const errorPayload = await response.json().catch(() => ({}));
+      error.errorCode = errorPayload?.error_code;
+      throw error;
+    }
     const payload = await response.json();
-    return (payload.objects || []).map((item, index) => {
+    return (payload.objects || []).filter(item => {
+      const itemTenant = scopeValue(item?.tenant_id || item?.tenantId || item?.properties?.tenant_id);
+      return itemTenant === scope.tenantId;
+    }).map((item, index) => {
       const historySequence = Number(item.properties?.seq);
       const hasSequence = Number.isFinite(historySequence) && historySequence > 0;
+      const sources = normalizeChatbotSources(item.properties?.sources, scope.tenantId);
+      const grounded = Boolean(item.properties?.grounded) && sources.length > 0;
       const historyTopic = String(item.properties?.topic || '').trim();
       const viewerTinodeUid = String(user?.tinodeUid || user?.tinode_uid || '').trim();
       const botTinodeUid = String(CHATBOT_ACCOUNT.tinodeUid || '').trim();
@@ -461,8 +532,10 @@ export async function loadChatbotMessagesFromServer(user, conversationId = CHATB
         time: item.created_at ? new Date(item.created_at * 1000).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
         createdAt: item.created_at ? new Date(item.created_at * 1000).toISOString() : undefined,
         source: item.properties?.provider,
-        sources: Array.isArray(item.properties?.sources) ? item.properties.sources : [],
-        grounded: Boolean(item.properties?.grounded),
+        sources,
+        grounded,
+        state: item.properties?.state
+          || (grounded ? 'grounded' : 'no-source'),
         ...(hasSequence ? {
           seq: item.role === 'user' ? historySequence : undefined,
           chatbotTopic: historyTopic || undefined,
@@ -472,12 +545,13 @@ export async function loadChatbotMessagesFromServer(user, conversationId = CHATB
         } : {}),
       };
     });
-  } catch {
-    return loadChatbotMessages(user?.id || user?.uid);
+  } catch (error) {
+    if (error?.status === 401 || error?.status === 403 || error?.errorCode === 'SESSION_EXPIRED') throw error;
+    return loadChatbotMessages(scope);
   }
 }
 
-export async function requestChatbotReply({ message, messageId, conversationId, history = [], signal, timeoutMs = CHATBOT_REQUEST_TIMEOUT_MS }) {
+export async function requestChatbotReply({ message, messageId, conversationId, user, history = [], signal, timeoutMs = CHATBOT_REQUEST_TIMEOUT_MS }) {
   if (typeof message !== 'string' || !message.trim()) throw new Error('Vui lòng nhập câu hỏi cho ViChat AI.');
   if (message.trim().length > 4000) throw new Error('Câu hỏi cho ViChat AI không được vượt quá 4000 ký tự.');
   if (!API_URL) return unavailableReply();
@@ -511,17 +585,18 @@ export async function requestChatbotReply({ message, messageId, conversationId, 
     if (!response.ok) return unavailableReply([401, 403].includes(response.status) ? 'session' : [408, 504].includes(response.status) ? 'timeout' : 'unavailable');
     const reply = payload?.reply || payload?.message || payload?.text;
     if (typeof reply !== 'string' || !reply.trim()) return unavailableReply();
-    const sources = (Array.isArray(payload.sources) ? payload.sources : [])
-      .filter(item => item && typeof item === 'object' && (
-        (typeof item.title === 'string' && item.title.trim()) || (typeof item.file_name === 'string' && item.file_name.trim())
-      ))
-      .slice(0, 20)
-      .map(item => ({
-        title: typeof item.title === 'string' ? item.title.trim().slice(0, 500) : '',
-        file_name: typeof item.file_name === 'string' ? item.file_name.trim().slice(0, 500) : '',
-        snippet: typeof item.snippet === 'string' ? item.snippet.slice(0, 2000) : '',
-      }));
-    return { text: reply.trim(), source: 'api', sources, grounded: payload.grounded === true && sources.length > 0 };
+    const tenantId = chatbotStorageScope(user)?.tenantId;
+    const sources = normalizeChatbotSources(payload.sources, tenantId);
+    const state = payload.provider === 'assistant-guide'
+      ? 'question-unclear'
+      : sources.length > 0 ? 'grounded' : 'no-source';
+    return {
+      text: reply.trim(),
+      source: state === 'no-source' ? 'no-source' : 'api',
+      state,
+      sources,
+      grounded: payload.grounded === true && sources.length > 0,
+    };
   } catch {
     return unavailableReply(timedOut ? 'timeout' : signal?.aborted ? 'cancelled' : 'unavailable');
   } finally {

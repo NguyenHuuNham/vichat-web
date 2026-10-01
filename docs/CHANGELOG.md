@@ -6,6 +6,41 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-01-15 - Hoan tat ra soat web desktop
+
+- Thoi gian: 2026-10-01 21:17 (Asia/Saigon)
+- Loai: Sua loi | Web | Bao mat | Accessibility | Hieu nang | Kiem thu | Tai lieu
+- Trang thai: Hoan tat pham vi code; can UAT browser production truoc khi phat hanh
+- Muc tieu: Dua ChatUI desktop ve trang thai tenant-safe, accessible, on dinh va co bundle production phu hop cho UAT.
+- Pham vi: Web ChatUI va hop dong Chatmgt chatbot/RAG; khong sua, build hoac thay doi cac file `mobile/` trong lan nay.
+- File da thay doi: `index.html`, `dist/index.html`, `vite.config.js`, `src/app/App.jsx`, `src/components/ConfirmDialog.jsx`, `src/components/useDialogFocusTrap.js`, `src/features/chat/components/`, `src/features/chat/services/chatManagementService.test.js`, `src/features/chatbot/services/`, `src/features/contacts/components/AvatarCropModal.jsx`, `src/features/workspace/components/EnterpriseWorkspace.jsx`, `src/styles/index.css`, `chatservice-main/application/controllers/api_chatbot.py`, `chatservice-main/application/services/chatbot_service.py`, `chatservice-main/tests/test_chatbot_webhook_provider.py`, `docs/chat-backend-architecture.md`.
+- Noi dung: Tach chatbot history theo tenant/account/chatbot, khong tu dong merge history legacy, loc fail-closed source AI va serialize state `grounded`/`no-source`/`question-unclear`/`timeout`/`session-expired`/`unavailable`; huy request khi logout/revoke/doi tenant; them focus trap, Escape, tra focus, dialog semantics, keyboard navigation, form names/labels/autocomplete va focus-visible cho luong desktop.
+- Quyet dinh ky thuat: Server history la nguon chinh; localStorage chi la cache co scope day du. Rollup manual chunks tach service theo feature, giu lazy chunk hien co cho Workspace/Cloud/Call/Sticker/modal va giam App chunk tu khoang 579 kB xuong 410.51 kB.
+- Database/API/cau hinh: Khong thay doi schema database; cap nhat contract chatbot state/tenant trong Chatmgt va cau hinh Vite production chunking.
+- Kiem thu: `npm run test:frontend -- --test-concurrency=1` dat 458/458; `npm run lint` exit 0, con warning legacy ngoai pham vi Web tai `mobile/`, `public/ChatBotWidget/tinode.js` va `src/App.jsx`; `npm run build:production` dat, security scan dat, khong con canh bao chunk > 500 kB; `npm audit --omit=dev` bao 0 vulnerabilities; `python -m unittest discover -s tests -v` dat 326 tests, 106 skipped; `git diff --check` dat.
+- Rui ro con lai: Chua co browser session de UAT truc tiep tai 1440x900/1280x800, dark mode va Vietnamese/English; can hard refresh production va kiem tra login, doi tenant, modal keyboard, AI source, logout giua request, group confirmation va deep link.
+- Viec tiep theo: Thuc hien UAT browser production, sau do review artifact `dist/` va deploy Web neu ket qua UAT dat.
+- Commit/PR: Chua tao.
+
+## 2026-10-01-14 - Ra soat on dinh native mobile va lifecycle hook
+
+- Thoi gian: 2026-10-01 20:43 (Asia/Saigon)
+- Loai: Sua loi | Mobile | Bao mat | Kiem thu | Tai lieu
+- Trang thai: Hoan tat; da build, cai dat va smoke test tren thiet bi Android USB
+- Muc tieu: Sua loi Rules of Hooks trong native mobile, kiem tra day du dependency cua hook va xac minh luong mobile truc tiep tren thiet bi Android USB.
+- Pham vi: `mobile/` voi typing indicator, ESLint React Hooks, session/tenant lifecycle, native navigation va audit dependency; khong thay doi Web ChatUI hoac Chatmgt.
+- File da thay doi: `mobile/app.config.js`, `mobile/app.json`, `mobile/plugins/withNewArchitectureDisabled.js`, `mobile/src/components/TypingIndicator.tsx`, `mobile/src/components/TypingIndicator.test.tsx`, `mobile/src/test/reactNativeMock.ts`, `mobile/eslint.config.mjs`, `mobile/src/store/languageStore.ts`, `mobile/src/screens/cloud/PersonalCloudScreen.tsx`, `mobile/src/services/notificationService.ts`, `mobile/src/services/tinodeClient.ts`, `mobile/src/utils/sessionScope.ts`, `mobile/src/utils/sessionScope.test.ts`, `mobile/package.json`, `mobile/package-lock.json`, `docs/CHANGELOG.md`.
+- Cap nhat bo sung: Chuyen cau hinh New Architecture sang config plugin de `expo-doctor` pass; bo sound mac dinh khoi notification channel de khong hien canh bao custom sound; them database provider no-op cho Tinode native khi khong persist; chan stale Cloud request theo account/tenant/session va guard truoc khi mo URL tai file.
+- Noi dung: Dua `useThemePalette` len truoc moi return trong `TypingIndicator`; bat `rules-of-hooks` va `exhaustive-deps` de lint phat hien loi lifecycle thay vi bo qua; memo hoa ham dich theo ngon ngu de dependency cua callback khong tao render loop; reset va chan stale update cua Cloud theo account/tenant/session generation.
+- Quyet dinh ky thuat: Giữ Expo SDK 57 va dependency lock hien tai; chi cap nhat goi khi co ban tuong thich va co du lieu audit cho thay khong gay breaking change.
+- Database/API/cau hinh: Khong thay doi database/API; cap nhat Expo config plugin Android va runtime native mobile.
+- Quyet dinh bo sung: Expo SDK 57/RN 0.86 van bat buoc New Architecture; build ghi canh bao legacy property nhung app van build va chay duoc voi `react-native-webrtc` tren thiet bi thuc.
+- Kiem thu: `npx expo-doctor` dat 21/21; `npm run typecheck` dat; `npm test -- --maxWorkers=1` dat 36 file/147 test; `npm run lint` dat; `npm run export` dat; `npm audit --omit=dev` con 12 moderate build-time vulnerabilities trong `uuid` qua Expo config plugins, `--force` se ha Expo breaking.
+- Kiem thu thiet bi: `npx expo prebuild --platform android --no-install` dat; `npx expo run:android --device M2012K10C` build thanh cong 318 Gradle tasks, cai APK `vn.upgo.vichat` va mo tren ADB serial `dykbemlzcijvgqiz`; process foreground, man hinh mobile hien thi, logcat khong co `FATAL EXCEPTION`, `AndroidRuntime`, `Custom sound` hoac Tinode `deleteDatabase` error sau khi reload bundle.
+- Rui ro con lai: Gradle tren workspace co ky tu Unicode bi loi encoding khi autolinking; lan build nay dung ban sao tam ASCII `D:\vichat-mobile-build-20261001`. New Architecture van bat buoc theo RN 0.86; can UAT dang nhap/chat/cuoc goi tren tai khoan that.
+- Viec tiep theo: Neu can phat hanh APK/EAS, chay build tu duong dan ASCII hoac di chuyen workspace sang duong dan khong dau; UAT cac luong dang nhap, Cloud, Tinode va call tren `M2012K10C`.
+- Commit/PR: Chua tao.
+
 ## 2026-10-01-13 - Cho phep CSP tai media S3 qua redirect
 
 - Thoi gian: 2026-10-01 14:45 (Asia/Saigon)

@@ -33,6 +33,36 @@
     --transition-normal: 0.25s ease;
 }
 
+.skip-link {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 1000;
+    padding: 9px 13px;
+    border-radius: 8px;
+    color: var(--text-white);
+    background: var(--vichat-blue-dark);
+    transform: translateY(-160%);
+    transition: transform .15s ease;
+}
+
+.skip-link:focus-visible {
+    transform: translateY(0);
+    outline: 3px solid var(--vichat-blue);
+    outline-offset: 3px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+[role="menuitem"]:focus-visible {
+    outline: 2px solid var(--vichat-blue);
+    outline-offset: 2px;
+}
+
 html[data-theme="dark"] {
     --bg-app: #172126;
     --bg-white: #202b31;
@@ -4148,6 +4178,7 @@ input:checked + .slider:before {
 
 /* Workspace panels stay modal so the active chat remains visible underneath. */
 .workspace-overlay {
+  overscroll-behavior: contain;
     position: fixed;
     inset: 0;
     z-index: 80;
@@ -4163,6 +4194,7 @@ input:checked + .slider:before {
     animation: workspaceOverlayReveal .18s ease-out;
 }
 .workspace-panel {
+  overscroll-behavior: contain;
     width: min(780px, calc(100vw - 48px));
     min-width: 0;
     max-width: 100%;
@@ -4845,6 +4877,7 @@ input:checked + .slider:before {
 .detail-media-preview-label { position: absolute; right: 4px; bottom: 4px; left: 4px; overflow: hidden; padding: 3px 5px; border-radius: 5px; color: #fff; background: rgba(15, 23, 42, .72); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 
 .media-browser-overlay {
+  overscroll-behavior: contain;
     position: fixed;
     z-index: 160;
     inset: 0;
@@ -4855,6 +4888,7 @@ input:checked + .slider:before {
     background: rgba(15, 23, 42, .48);
 }
 .media-browser-panel {
+  overscroll-behavior: contain;
     display: flex;
     width: min(780px, 100%);
     max-height: min(860px, calc(100vh - 40px));
@@ -6470,6 +6504,7 @@ input:checked + .slider:before {
 }
 
 .modal-backdrop {
+  overscroll-behavior: contain;
     position: fixed;
     inset: 0;
     z-index: 50;
