@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-01-06 - Chuan hoa Codemagic workflow build iOS IPA cho tai khoan free
+
+- Thoi gian: 2026-10-01 (Asia/Saigon)
+- Loai: CI/CD | Mobile | iOS | Cau hinh | Tai lieu
+- Trang thai: Hoan tat
+- Muc tieu: Khac phuc loi Invalid yaml configuration tren Codemagic khi build iOS tren tai khoan Personal free tier.
+- Pham vi: Chi `codemagic.yaml` va nhat ky thay doi; khong sua code ung dung Mobile hoac Backend.
+- File da thay doi: `codemagic.yaml`, `docs/CHANGELOG.md`.
+- Noi dung: Chuyen `instance_type` ve `mac_mini_m1` (phu hop goi free 500 phut/thang), doi `node` sang `latest`, bo bat buoc tich hop App Store Connect integration va tu dong xuat file `ViChat.ipa` vao artifacts de tai ve may cai dat test qua 3uTools/Sideloadly.
+- Quyet dinh ky thuat: Su dung co che kiem tra `xcode-project use-profiles`, neu chua co chung chi ky thi tu dong build Release app va dong goi thanh unsigned `ViChat.ipa` trong thu muc `build/ios/ipa/` de sideload ma khong gay dung loi schema/pipeline tren Codemagic.
+- Database/API/cau hinh: Khong co thay doi database hay API backend.
+- Kiem thu: Da validate file `codemagic.yaml` voi JSON Schema chuan Draft 7 cua Codemagic (`https://codemagic.io/codemagic-schema.json`), 0 loi cu phap; `git diff --check` dat.
+- Rui ro con lai: Can nguoi dung trigger build tren giao dien Codemagic de kiem tra thoi gian build thuc te cua may ao macOS.
+- Viec tiep theo: Nguoi dung bam `Check for configuration files` tren Codemagic va khoi chay workflow `ViChat iOS Build IPA`.
+- Commit/PR: `63ef3e1`
+
 ## 2026-10-01-05 - Hoan thien song ngu Mobile Viet/English
 
 - Thoi gian: 2026-10-01 (Asia/Saigon)

@@ -1,15 +1,12 @@
 workflows:
-  ios-testflight:
-    name: ViChat iOS TestFlight
+  ios-build-ipa:
+    name: ViChat iOS Build IPA
     max_build_duration: 120
-    instance_type: mac_mini_m2
+    instance_type: mac_mini_m1
     working_directory: mobile
     environment:
-      node: 24.18.0
+      node: latest
       xcode: latest
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: vn.upgo.vichat
       vars:
         CI: "1"
     scripts:
@@ -23,28 +20,40 @@ workflows:
         script: |
           cd ios
           pod install
-      - name: Configure iOS signing
-        script: xcode-project use-profiles
       - name: Build IPA
         script: |
           IOS_WORKSPACE="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
           test -n "$IOS_WORKSPACE"
           IOS_SCHEME="$(basename "$IOS_WORKSPACE" .xcworkspace)"
-          xcode-project build-ipa --workspace "$IOS_WORKSPACE" --scheme "$IOS_SCHEME"
+          if xcode-project use-profiles 2>/dev/null; then
+            echo "Signing profiles found, building signed IPA..."
+            xcode-project build-ipa --workspace "$IOS_WORKSPACE" --scheme "$IOS_SCHEME"
+          else
+            echo "No signing profiles found, building release app and packaging unsigned IPA for sideloading/testing..."
+            xcodebuild build \
+              -workspace "$IOS_WORKSPACE" \
+              -scheme "$IOS_SCHEME" \
+              -sdk iphoneos \
+              -configuration Release \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGN_IDENTITY=""
+            mkdir -p build/ios/ipa/Payload
+            cp -r "$HOME/Library/Developer/Xcode/DerivedData"/**/Build/Products/Release-iphoneos/*.app build/ios/ipa/Payload/
+            cd build/ios/ipa
+            zip -qr ViChat.ipa Payload
+            rm -rf Payload
+          fi
     artifacts:
       - build/ios/ipa/*.ipa
-    publishing:
-      app_store_connect:
-        auth: integration
-        submit_to_testflight: true
 
   android-test:
     name: ViChat Android test APK
     max_build_duration: 90
-    instance_type: linux_x2
+    instance_type: linux
     working_directory: mobile
     environment:
-      node: 24.18.0
+      node: latest
       java: 17
       vars:
         CI: "1"
