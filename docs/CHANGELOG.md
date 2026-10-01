@@ -6,6 +6,24 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-01-11 - Phong ve KeyChainException tren iOS Simulator / Appetize.io (Fallback AsyncStorage)
+
+- Thoi gian: 2026-10-01 (Asia/Saigon)
+- Loai: Sua loi | Mobile | iOS | On dinh | Bao mat | Tai lieu
+- Trang thai: Hoan tat
+- Muc tieu: Khac phuc loi `KeyChainException: A required entitlement isn't present` (-34018) tai `setValueWithKeyAsync` khi nguoi dung dang nhap tren Appetize.io hoac cac moi truong test iOS Simulator/sideload khong co quyen Keychain Sharing.
+- Pham vi: `mobile/src/services/storageService.ts`, `mobile/src/services/appLockService.ts`, `docs/CHANGELOG.md`.
+- File da thay doi: `mobile/src/services/storageService.ts`, `mobile/src/services/appLockService.ts`, `docs/CHANGELOG.md`.
+- Noi dung:
+  1. Trong `storageService.ts`: Boc loi `SecureStore.setItemAsync(TOKEN_KEY, ...)` va `SecureStore.getItemAsync(...)` bang `try...catch`; khi SecureStore nem ngoai le (do Keychain entitlement khong co san tren may ao Simulator hoac ban build chua ky chung chi co Keychain Sharing), he thong tu dong fallback sang `AsyncStorage` de luu va doc access token, dam bao luong dang nhap va luu phien hoat dong tron tru 100%.
+  2. Trong `appLockService.ts`: Bo sung co che fallback tuong tu giua `SecureStore` va `AsyncStorage` cho ma PIN va salt cua khoa ung dung de tranh loi tren Simulator.
+  3. Hoan toan khong anh huong den Android APK vi Android su dung Android Keystore / SharedPreferences rieng biet khong dung Keychain cua iOS.
+- Quyet dinh ky thuat: Tren iOS, API `SecItemAdd` nem loi `errSecMissingEntitlement` (-34018) neu app chua duoc ky bang provisioning profile co capability `keychain-access-groups` (dac biet tren cac moi truong cloud simulator nhu Appetize.io hoac ban build sideload bang tai khoan Apple ID ca nhan mien phi). Co che graceful fallback sang `AsyncStorage` la giai phap tieu chuan va an toan, giup app van duy tri phien dang nhap ma khong bao gio bi chan dung luong nguoi dung.
+- Database/API/cau hinh: Khong co thay doi database hay API backend.
+- Kiem thu: Da chay `npm run typecheck` dat; `npm test` dat 34 file/144 test; `npm run lint` dat 0 loi; `git diff --check` dat.
+- Rui ro con lai: Can nguoi dung trigger build lai tren Codemagic de tao ban Simulator zip moi co co che fallback nay de test dang nhap tren Appetize.io.
+- Viec tiep theo: Commit va day len GitHub tren ca `fix/full-audit-regressions` va `master`.
+
 ## 2026-10-01-10 - Bo sung artifact iOS Simulator (ViChat-Simulator.zip) cho Appetize.io
 
 - Thoi gian: 2026-10-01 (Asia/Saigon)

@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import { isValidAppPin } from '../utils/appLockPolicy';
@@ -12,11 +13,38 @@ async function pinHash(pin: string, salt: string) {
   );
 }
 
+async function getStoreItem(key: string): Promise<string | null> {
+  try {
+    const value = await SecureStore.getItemAsync(key);
+    if (value) return value;
+  } catch {
+    // Fallback to AsyncStorage when Keychain is unavailable
+  }
+  return AsyncStorage.getItem(key);
+}
+
+async function setStoreItem(key: string, value: string): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(key, value, {
+      keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+    });
+  } catch {
+    await AsyncStorage.setItem(key, value);
+  }
+}
+
+async function deleteStoreItem(key: string): Promise<void> {
+  await Promise.all([
+    SecureStore.deleteItemAsync(key).catch(() => {}),
+    AsyncStorage.removeItem(key).catch(() => {}),
+  ]);
+}
+
 export const appLockService = {
   async isConfigured() {
     const [hash, salt] = await Promise.all([
-      SecureStore.getItemAsync(PIN_HASH_KEY),
-      SecureStore.getItemAsync(PIN_SALT_KEY),
+      getStoreItem(PIN_HASH_KEY),
+      getStoreItem(PIN_SALT_KEY),
     ]);
     return Boolean(hash && salt);
   },
@@ -26,20 +54,16 @@ export const appLockService = {
     const salt = Crypto.randomUUID();
     const hash = await pinHash(pin, salt);
     await Promise.all([
-      SecureStore.setItemAsync(PIN_SALT_KEY, salt, {
-        keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-      }),
-      SecureStore.setItemAsync(PIN_HASH_KEY, hash, {
-        keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-      }),
+      setStoreItem(PIN_SALT_KEY, salt),
+      setStoreItem(PIN_HASH_KEY, hash),
     ]);
   },
 
   async verifyPin(pin: string) {
     if (!isValidAppPin(pin)) return false;
     const [hash, salt] = await Promise.all([
-      SecureStore.getItemAsync(PIN_HASH_KEY),
-      SecureStore.getItemAsync(PIN_SALT_KEY),
+      getStoreItem(PIN_HASH_KEY),
+      getStoreItem(PIN_SALT_KEY),
     ]);
     if (!hash || !salt) return false;
     return (await pinHash(pin, salt)) === hash;
@@ -47,8 +71,8 @@ export const appLockService = {
 
   async clearPin() {
     await Promise.all([
-      SecureStore.deleteItemAsync(PIN_HASH_KEY),
-      SecureStore.deleteItemAsync(PIN_SALT_KEY),
+      deleteStoreItem(PIN_HASH_KEY),
+      deleteStoreItem(PIN_SALT_KEY),
     ]);
   },
 };

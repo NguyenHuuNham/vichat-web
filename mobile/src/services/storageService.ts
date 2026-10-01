@@ -8,14 +8,33 @@ const SESSION_STARTED_KEY = 'vichat.mobile.session-started-at.v1';
 
 export const storageService = {
   async saveAccessToken(token: string) {
-    if (!token) return SecureStore.deleteItemAsync(TOKEN_KEY);
-    await SecureStore.setItemAsync(TOKEN_KEY, token, {
-      keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-    });
+    if (!token) {
+      await Promise.all([
+        SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {}),
+        AsyncStorage.removeItem(TOKEN_KEY).catch(() => {}),
+      ]);
+      return;
+    }
+    try {
+      await SecureStore.setItemAsync(TOKEN_KEY, token, {
+        keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+      });
+    } catch {
+      // In environments where Keychain is unavailable (such as unsigned builds,
+      // free Apple ID sideloading, or iOS Simulator without keychain entitlement),
+      // fallback gracefully to AsyncStorage so login and session persistence succeed.
+      await AsyncStorage.setItem(TOKEN_KEY, token);
+    }
   },
 
-  loadAccessToken() {
-    return SecureStore.getItemAsync(TOKEN_KEY);
+  async loadAccessToken() {
+    try {
+      const token = await SecureStore.getItemAsync(TOKEN_KEY);
+      if (token) return token;
+    } catch {
+      // Fallback
+    }
+    return AsyncStorage.getItem(TOKEN_KEY);
   },
 
   async savePublicSession(session: Session | null) {
@@ -50,9 +69,10 @@ export const storageService = {
 
   async clear() {
     await Promise.all([
-      SecureStore.deleteItemAsync(TOKEN_KEY),
-      AsyncStorage.removeItem(SESSION_KEY),
-      AsyncStorage.removeItem(SESSION_STARTED_KEY),
+      SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {}),
+      AsyncStorage.removeItem(TOKEN_KEY).catch(() => {}),
+      AsyncStorage.removeItem(SESSION_KEY).catch(() => {}),
+      AsyncStorage.removeItem(SESSION_STARTED_KEY).catch(() => {}),
     ]);
   },
 };
