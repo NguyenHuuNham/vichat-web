@@ -10,17 +10,18 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 - Thoi gian: 2026-10-01 14:45 (Asia/Saigon)
 - Loai: Sua loi | Web | Van hanh | Bao mat | Tai lieu
-- Trang thai: Dang thuc hien
+- Trang thai: Hoan tat; da push va deploy Web production, cho UAT S3 tren browser
 - Muc tieu: Hien thi lai anh S3 trong ChatUI production sau khi endpoint Chatmgt redirect sang host S3 thuc te.
 - Pham vi: Chi ChatUI Web va CSP Nginx production; khong sua, build hoac deploy Mobile.
 - File da thay doi: `infrastructure/production/nginx.conf`, `src/features/chat/services/chatManagementService.test.js`, `docs/CHANGELOG.md`.
 - Noi dung: Them `https://s3.gonapp.net` vao `img-src`, `media-src` va `connect-src`. Probe production cho thay object anh van tra HTTP 200 va bytes PNG hop le; loi con lai la trinh duyet bi CSP chan host sau redirect.
 - Quyet dinh ky thuat: Giu `s3.upgo.vn` de tuong thich voi cau hinh cu, dong thoi cho phep host dang duoc `MINIO_PUBLIC_DOMAIN` production su dung; khong dua presigned URL hoac credential vao source.
 - Database/API/cau hinh: Khong doi database/API; chi cap nhat allowlist CSP va regression test.
-- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js src/features/chat/services/chatMediaService.test.js` dat 75/75; `npm run test:frontend -- --test-concurrency=1` dat 457/457; `npm run build:production` dat; `npx oxlint src` dat, chi con 2 warning legacy tai `src/App.jsx`; probe S3 production tra HTTP 200, `Content-Type: image/png`, magic bytes PNG.
-- Rui ro con lai: Can hard refresh/UAT tren browser production sau deploy; full lint repository van co loi Mobile san co tai `mobile/src/components/TypingIndicator.tsx:9`, khong sua theo pham vi Web.
-- Viec tiep theo: Commit, push ca `github` va `origin`, deploy lai chi service `chat`, sau do verify public CSP va container health.
-- Commit/PR: Chua tao
+- Kiem thu: `node --test src/features/chat/services/chatManagementService.test.js src/features/chat/services/chatMediaService.test.js` dat 75/75; `npm run test:frontend -- --test-concurrency=1` dat 457/457; `npm run build:production` dat; `npx oxlint src` dat, chi con 2 warning legacy tai `src/App.jsx`; probe S3 production tra HTTP 200, `Content-Type: image/png`, magic bytes PNG; production `nginx -t` dat, ChatUI `chat` healthy/restart 0, local/public `/healthz` tra `ok`, Chatmgt health tra `status: ok`, public JS/CSS tra HTTP 200 va CSP public co `https://s3.gonapp.net`, container ngoai `chat` khong doi.
+- Artifact/phat hanh: Archive `vichat-web-d8090a2-20261001.tar.gz`, SHA-256 `99D1BF18ADB9971402501DAB4B0E3E93B6B8CDB4ADE299E41F9F8C9A315CD3BE`; release `/opt/deploy/chat/releases/vichat-web-d8090a2-20261001` dang la `current`, `previous` tro `/opt/deploy/chat/releases/vichat-web-f71515d-20261001`; chi recreate service `chat`; `chatmgt` giu nguyen container `b2e7387013d6`.
+- Rui ro con lai: Chua co browser session cua nguoi dung de click/xac nhan thumbnail truc tiep; can hard refresh production de nhan bundle/CSP moi. Full lint repository van co loi Mobile san co tai `mobile/src/components/TypingIndicator.tsx:9`, khong sua theo pham vi Web.
+- Viec tiep theo: UAT Web bang tai khoan co anh S3 sau hard refresh; rollback ve `previous` neu phat sinh loi.
+- Commit/PR: `d8090a2`; da push `github` va `origin`
 
 ## 2026-10-01-12 - Sua preview anh S3 trong muc Anh, file va lien ket
 
