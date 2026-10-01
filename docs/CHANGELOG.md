@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-01-16 - Deploy Web desktop production sau audit
+
+- Thoi gian: 2026-10-01 21:33 (Asia/Saigon)
+- Loai: Van hanh | Web | Bao mat | Kiem thu | Tai lieu
+- Trang thai: Hoan tat deploy; can UAT browser production voi tai khoan that
+- Muc tieu: Phat hanh ban Web desktop da audit tu commit `26b3d58` len production theo release bat bien va xac minh dich vu sau khi khoi dong.
+- Pham vi: Chi ChatUI Web va dich vu Chatmgt duoc dong goi trong artifact; khong deploy, stage, revert hoac thay doi cac file `mobile/`.
+- File da thay doi: `docs/CHANGELOG.md`; artifact deploy duoc build tu commit `26b3d58`.
+- Noi dung: Archive `C:\\Users\\Admin\\AppData\\Local\\Temp\\vichat-web-26b3d58.tar.gz` (45,862,080 bytes, SHA-256 `860BA91435750994CAB7BF6DF85E58547B848FE7A4FF8D71C3625D68CABBD668`) da duoc trien khai vao `/opt/deploy/chat/releases/vichat-web-26b3d58-20261001-r1`; `current` tro release nay va `previous` tro `/opt/deploy/chat/releases/vichat-web-d8090a2-20261001`.
+- Quyet dinh ky thuat: Dung hai SSH hop theo quy trinh production; chi recreate ChatUI va Chatmgt, giu nguyen cac container ngoai `chat` va `chatmgt`. Khong migration, khong reset volume/database/Tinode.
+- Database/API/cau hinh: Khong thay doi schema, migration, volume, database hoac Tinode; public assets moi la `/assets/index-5lDLBAca.js` va `/assets/index-BX7Wxs0D.css`. Container ChatUI moi: `4113babff343db76cb3ade370c959ecfab3fde74b671a11a29c18752e1d1adad`; Chatmgt moi: `8aecf1bd0af82ee0784c7a68065306dfe6fe9984ad0e0d06a15ab2dc5bd756de`.
+- Kiem thu: Frontend `458/458`; backend `326` pass va `106` skipped do dependency moi truong; lint exit `0` voi warning legacy ngoai pham vi Web; production build dat, App chunk con `410.51 kB` va khong con canh bao chunk tren `500 kB`; `npm audit --omit=dev` bao `0 vulnerabilities`; `git diff --check` dat; local/public health tra `ok`, Chatmgt health tra `status: ok`, public JS/CSS tra HTTP 200.
+- Rui ro con lai: Chua UAT bang tai khoan production that. Docker build con 2 audit notice build-time cua dependency dev trong management UI, trong khi production dependency audit goc van `0 vulnerabilities`. Public edge dang tra HSTS `max-age=16000000`, khac gia tri `31536000; includeSubDomains` trong config repository; can danh gia rieng, khong tu y sua edge trong lan deploy nay.
+- Viec tiep theo: Hard refresh va UAT dang nhap, doi tenant, chatbot, media, modal keyboard va logout/reconnect tren production; rollback ve `previous` neu UAT phat hien regression.
+- Commit/PR: Source Web `26b3d58`; da push `github` va `origin`.
+
 ## 2026-10-01-15 - Hoan tat ra soat web desktop
 
 - Thoi gian: 2026-10-01 21:17 (Asia/Saigon)
