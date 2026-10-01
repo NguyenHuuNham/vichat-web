@@ -37,7 +37,7 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 - Artifact/phat hanh: Archive `vichat-web-621c603-20261001.tar.gz`, SHA-256 `CF54D6BA13F73DE21DA8D1B07FB5C197BEB665324679861EDAE1B0BC987B42B1`; release `/opt/deploy/chat/releases/vichat-web-621c603-20261001` dang la `current`, `previous` tro `/opt/deploy/chat/releases/vichat-web-d7a9f15`; archive duoc truyen qua `ubuntu@103.74.122.206` vao `ubuntu@192.168.80.20`; chi recreate service `chat`.
 - Rui ro con lai: Can UAT Web bang hai tai khoan sau hard refresh de xac nhan readability tieng Viet tren cac man hinh chat; rollback ve `previous` neu phat sinh loi.
 - Viec tiep theo: UAT Web; khong thao tac Mobile, khong migration, khong reset Tinode va khong xoa volume.
-- Commit/PR: Source `b95b50a`, docs/deploy follow-up `621c603` / da push `github` va `origin`.
+- Commit/PR: Source `b95b50a`, docs/deploy follow-up `621c603`, `e66571f` / da push `github` va `origin`.
 
 ## 2026-10-01-03 - Chan sender FCM banner tren Mobile
 
