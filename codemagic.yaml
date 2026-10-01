@@ -49,12 +49,30 @@ workflows:
           APP_PATH="$(find build/Build/Products/Release-iphoneos -name '*.app' -maxdepth 1 -print -quit)"
           test -n "$APP_PATH"
           cp -a "$APP_PATH" build/ios/ipa/Payload/
-          cd build/ios/ipa
-          zip -qry ViChat.ipa Payload
-          rm -rf Payload
-          echo "Build completed successfully! ViChat.ipa generated in build/ios/ipa/"
+          (cd build/ios/ipa && zip -qry ViChat.ipa Payload && rm -rf Payload)
+
+          echo "Building Simulator app for Appetize.io..."
+          xcodebuild build \
+            -workspace "$IOS_WORKSPACE" \
+            -scheme "$IOS_SCHEME" \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -derivedDataPath build_sim \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+          mkdir -p build/ios/simulator
+          SIM_APP_PATH="$(find build_sim/Build/Products/Release-iphonesimulator -name '*.app' -maxdepth 1 -print -quit)"
+          test -n "$SIM_APP_PATH"
+          SIM_APP_DIR="$(dirname "$SIM_APP_PATH")"
+          SIM_APP_NAME="$(basename "$SIM_APP_PATH")"
+          DEST_ZIP="$(pwd)/build/ios/simulator/ViChat-Simulator.zip"
+          (cd "$SIM_APP_DIR" && zip -qry "$DEST_ZIP" "$SIM_APP_NAME")
+          echo "Build completed successfully! ViChat.ipa and ViChat-Simulator.zip generated."
     artifacts:
       - build/ios/ipa/*.ipa
+      - build/ios/simulator/*.zip
 
   android-test:
     name: ViChat Android test APK

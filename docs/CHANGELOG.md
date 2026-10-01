@@ -6,6 +6,21 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-01-10 - Bo sung artifact iOS Simulator (ViChat-Simulator.zip) cho Appetize.io
+
+- Thoi gian: 2026-10-01 (Asia/Saigon)
+- Loai: CI/CD | Mobile | iOS | Kiem thu | Tai lieu
+- Trang thai: Hoan tat
+- Muc tieu: Cung cap artifact ban build iOS Simulator (`ViChat-Simulator.zip`) de nguoi dung co the upload truc tiep len Appetize.io chay gia lap iPhone ao tren trinh duyet web may tinh khi khong co thiet bi iPhone that iOS 16+.
+- Pham vi: `codemagic.yaml`, `docs/CHANGELOG.md`.
+- File da thay doi: `codemagic.yaml`, `docs/CHANGELOG.md`.
+- Noi dung: Them buoc bien dich `-sdk iphonesimulator` trong workflow `ios-build-ipa` cua `codemagic.yaml`, sau do nen truc tiep `ViChat.app` thanh `ViChat-Simulator.zip` va day vao `artifacts`. Giu nguyen workflow build `ViChat.ipa` cho may that.
+- Quyet dinh ky thuat: Appetize.io chay tren ha tang iOS Simulator nen bat buoc nhan file `.zip` chua `.app` duoc compile voi SDK Simulator; khong the nhan file `.ipa` danh cho thiet bi that (`iphoneos`). Viec xuat ca hai artifact giup nguoi dung vua co file `.ipa` cho may that, vua co file `.zip` de test tren web.
+- Database/API/cau hinh: Khong co thay doi database hay API backend.
+- Kiem thu: Da kiem tra cu phap `codemagic.yaml` bang bash shell logic subshell `(cd ... && zip ...)`; `git diff --check` dat.
+- Rui ro con lai: Can nguoi dung trigger build lai tren Codemagic de nhan file `ViChat-Simulator.zip` trong muc Artifacts.
+- Viec tiep theo: Commit va day len GitHub tren ca `fix/full-audit-regressions` va `master`.
+
 ## 2026-10-01-09 - Chuan hoa Deployment Target iOS phu hop Expo SDK 57 (Yeu cau iOS 16.4+)
 
 - Thoi gian: 2026-10-01 (Asia/Saigon)
