@@ -13,6 +13,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.3.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "tinode-sdk": "^0.25.3"
