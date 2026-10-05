@@ -435,10 +435,6 @@ function App() {
             <i className="fa-solid fa-address-book"></i>
             <span>Danh bạ</span>
           </a>
-          <a href="#" className="nav-item" onClick={(e) => { e.preventDefault(); setLegacyNotice("Chức năng [Nhóm] yêu cầu môi trường Enterprise."); }}>
-            <i className="fa-solid fa-users"></i>
-            <span>Nhóm</span>
-          </a>
           <a href="#" className="nav-item" onClick={(e) => { e.preventDefault(); setLegacyNotice("Chức năng [File dùng chung] yêu cầu môi trường Enterprise."); }}>
             <i className="fa-solid fa-folder-open"></i>
             <span>File dùng chung</span>

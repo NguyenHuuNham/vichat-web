@@ -10661,7 +10661,6 @@ function App() {
       setCurrentChatId(safeRoom.id);
       setInputText('');
       setIsCreateGroupOpen(false);
-      if (workspacePanel === 'groups') closeWorkspacePanel();
       setGroupName('');
       setGroupDescription('');
       setGroupAvatarFile(null);
@@ -14210,7 +14209,6 @@ function App() {
       return true;
     }
     if (workspacePanel && allowNavigation) {
-      if (workspacePanel === 'groups' && isCreatingGroup) return true;
       keyboardShortcutActionHandlersRef.current.closeWorkspacePanel?.();
       return true;
     }
@@ -14572,10 +14570,6 @@ function App() {
           <a href={workspacePathForPanel(null)} className={`nav-item ${!workspacePanel ? 'active' : ''}`} data-tooltip={appCopy.chat} onClick={(e) => { e.preventDefault(); closeWorkspacePanel(); }}>
             <i className="fa-solid fa-comment-dots"></i>
             <span>{appCopy.chat}</span>
-          </a>
-          <a href={workspacePathForPanel('groups')} className={`nav-item ${workspacePanel === 'groups' ? 'active' : ''}`} data-tooltip={appCopy.groups} onClick={(e) => { e.preventDefault(); openWorkspacePanel('groups'); }}>
-            <i className="fa-solid fa-users"></i>
-            <span>{appCopy.groups}</span>
           </a>
           <a href={workspacePathForPanel('enterprise')} className={`nav-item ${workspacePanel === 'enterprise' ? 'active' : ''}`} data-tooltip={appCopy.work} onClick={(e) => { e.preventDefault(); openWorkspacePanel('enterprise'); }}>
             <i className="fa-solid fa-briefcase"></i>
@@ -17048,13 +17042,13 @@ function App() {
           className="workspace-overlay"
           role="presentation"
           onMouseDown={event => {
-            if (event.target === event.currentTarget && !(workspacePanel === 'groups' && isCreatingGroup)) closeWorkspacePanel();
+            if (event.target === event.currentTarget) closeWorkspacePanel();
           }}
         >
           <section ref={workspaceDialogRef} className={`workspace-panel ${workspacePanel === 'enterprise' ? 'enterprise-shell-panel' : ''} ${workspacePanel === 'settings' ? 'settings-shell-panel' : ''}`} role="dialog" aria-modal="true" aria-labelledby="workspace-panel-title" data-workspace-panel={workspacePanel}>
             <div className="workspace-panel-header">
               <div>
-                <h2 id="workspace-panel-title">{appCopy.t(workspacePanel === 'groups' ? appCopy.groups : workspacePanel === 'profile' ? 'Hồ sơ cá nhân' : workspacePanel === 'cloud' ? 'Cloud của tôi' : workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'enterprise' ? appCopy.work : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : appCopy.settings)}</h2>
+                <h2 id="workspace-panel-title">{appCopy.t(workspacePanel === 'profile' ? 'Hồ sơ cá nhân' : workspacePanel === 'cloud' ? 'Cloud của tôi' : workspacePanel === 'contacts' ? 'Danh bạ' : workspacePanel === 'files' ? 'File dùng chung' : workspacePanel === 'enterprise' ? appCopy.work : workspacePanel === 'notifications' ? 'Thông báo' : workspacePanel === 'search' ? 'Tìm trong hội thoại' : appCopy.settings)}</h2>
               </div>
               <div className="workspace-panel-header-actions">
                 {workspacePanel === 'profile' && (
@@ -17148,11 +17142,9 @@ function App() {
                     )}
                   </>
                 )}
-                <button type="button" className="btn-close-detail" onClick={() => { if (workspacePanel === 'groups') closeCreateGroupModal(); closeWorkspacePanel(); }} aria-label={appCopy.t('Đóng')} title={appCopy.t('Đóng')} disabled={workspacePanel === 'groups' && isCreatingGroup}><i className="fa-solid fa-xmark"></i></button>
+                <button type="button" className="btn-close-detail" onClick={closeWorkspacePanel} aria-label={appCopy.t('Đóng')} title={appCopy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button>
               </div>
             </div>
-
-            {workspacePanel === 'groups' && renderCreateGroupForm('page')}
 
             {workspacePanel === 'enterprise' && (
               <Suspense fallback={<div className="workspace-empty" role="status"><i className="fa-solid fa-spinner fa-spin"></i> {appCopy.t('Đang tải Workspace...')}</div>}>

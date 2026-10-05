@@ -1,6 +1,5 @@
 const WORKSPACE_ROUTE_BY_PANEL = Object.freeze({
   enterprise: '/work',
-  groups: '/groups',
   contacts: '/friends',
   settings: '/settings',
   profile: '/profile',
