@@ -6,6 +6,42 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-07-14 - Trien khai thanh cong commit moi len ca 2 server Production (Chatbot va ViChat):
+
+- Thoi gian: 2026-10-08 00:36 (Asia/Saigon)
+- Loai: Production Deployment | Multi-Server SSH | Bridge Live Sync | Zero Downtime
+- Trang thai: Hoan tat 100% tren ca 2 may chu Production, he thong hoat dong on dinh
+- Thong tin trien khai chi tiet:
+  1. Server Chatbot (`ssh ubuntu@103.74.122.218` -> `ssh 192.168.80.154`):
+     - Thu muc ung dung: `/opt/deploy/UpgoBOT/repo`.
+     - Git branch: `main` (fetch commit `b0b53ad`).
+     - Cap nhat 2 file Zalo:
+       - `application/controllers/zalo/vichat_bridge.py`: Module cau noi dong bo webhook Zalo OA ve ViChat `https://chatmgt.gonplatform.com/api/v1/zalo/webhook`.
+       - `application/controllers/zalo/__init__.py`: Tich hop takeover guard (bot dung tra loi khi nhan vien ViChat tiep quan) va dong bo bot reply ve ViChat.
+     - Kiem tra cu phap Python: `/opt/deploy/UpgoBOT/bin/python -m py_compile` dat 0 loi.
+     - Khoi dong lai dich vu: `sudo systemctl restart upgo-bot`.
+     - Kiem tra trang thai: `upgo-bot.service` active (running), workers Sanic hoat dong on dinh, nhan va chuyen tiep event truc tiep.
+  2. Server ViChat (`ssh ubuntu@103.74.122.206` -> `ssh 192.168.80.20`):
+     - Thu muc release: `/opt/deploy/chat/current/`.
+     - Container backend: `songhong-production-chatmgt-1`.
+     - Container frontend: `songhong-production-chat-1`.
+     - Sao luu (backup) file hien tai truoc khi cap nhat.
+     - Cap nhat cac file backend chatservice-main:
+       - `application/controllers/api_zalo.py`: Webhook nhan tin nhan tu Zalo OA/Chatbot, quan ly danh sach cuoc hoi thoai, API gui tin CSKH, takeover agent.
+       - `application/services/zalo_service.py`: Service ket noi Zalo OA Open API v3.0, lay profile khach hang, gui tin nhan CS.
+       - `application/controllers/api_chat_management.py`: Routing va danh sach hoi thoai Zalo OA.
+       - `application/services/__init__.py`: Export `ZaloService` va `ZaloTokenManager`.
+       - `application/controllers/__init__.py`: Dang ky Blueprint `api_zalo`.
+     - Cap nhat ban build frontend web `dist` vao container Nginx va reload Nginx.
+     - Kiem tra bien dich Python trong container: `python -m py_compile` PASS 0 loi.
+     - Khoi dong lai `songhong-production-chatmgt-1`: Container dat trang thai `healthy`, 4 worker Sanic san sang.
+     - Dong goi snapshot Docker image: `docker commit` cap nhat `songhong-production-chatmgt:latest` va `songhong-production-chat:latest`.
+  3. Kiem thu thuc te (End-to-End Verification):
+     - Endpoint `POST https://chatmgt.gonplatform.com/api/v1/zalo/webhook`: Tra ve HTTP 200 `{"status": "processed", ...}` (khong con 404).
+     - Endpoint `GET https://chatmgt.gonplatform.com/api/v1/zalo/conversations`: Tra ve HTTP 200 `{"status": "success", "total": 1, "conversations": [...]}` (khong con 404).
+     - Test dong bo tin nhan khach Zalo tu Chatbot sang ViChat: Tin nhan duoc ghi nhan vao Redis va xuat hien ngay tren danh sach hoi thoai ViChat (Web & Mobile).
+     - Da don dep sach se cac file tam va goi deploy tren ca 2 may chu.
+
 ## 2026-10-07-13 - Commit va Push dong bo Zalo OA bridge len GitLab main (Chatbot) va master (ViChat):
 
 - Thoi gian: 2026-10-08 00:05 (Asia/Saigon)
