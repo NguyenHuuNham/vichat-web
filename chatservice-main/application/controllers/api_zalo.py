@@ -151,28 +151,39 @@ def _get_zalo_messages(conversation_id: str, limit: int = 100) -> list:
     return messages
 
 
-def _get_active_zalo_conversations_for_listing() -> list:
-    """Returns active Zalo OA conversations in Conversation shape for Web & Mobile listing."""
+def _get_active_zalo_conversations_for_listing(tenant_id: str = None) -> list:
+    """Returns active Zalo OA conversations scoped by tenant for Web & Mobile listing."""
     conversations = []
-    if redisdb is None:
+    if redisdb is None or not tenant_id:
         return conversations
     try:
-        members = redisdb.smembers("zalo:conversations:index") or []
+        index_key = "zalo:conversations:index:{}".format(tenant_id)
+        members = redisdb.smembers(index_key) or []
         for raw_id in members:
             conv_id = raw_id.decode("utf-8") if isinstance(raw_id, bytes) else raw_id
             raw_data = redisdb.get("zalo:conversation:{}".format(conv_id))
             if raw_data:
                 conv_obj = json.loads(raw_data.decode("utf-8") if isinstance(raw_data, bytes) else raw_data)
+                # Verify tenant matches
+                if conv_obj.get("tenant_id") and conv_obj.get("tenant_id") != tenant_id:
+                    continue
+
                 parts = conv_id.split(":")
                 oa_id = parts[1] if len(parts) >= 3 else ""
                 user_id = parts[2] if len(parts) >= 3 else ""
                 messages = _get_zalo_messages(conv_id, limit=50)
 
+                oa_name = conv_obj.get("oa_name") or KNOWN_OA_NAME_MAP.get(oa_id) or "Zalo OA"
+                customer_name = conv_obj.get("name") or "Khách Zalo"
+
                 conversations.append({
                     "id": conv_id,
                     "managementId": conv_id,
                     "tinodeTopic": conv_id,
-                    "name": conv_obj.get("name") or "Khách Zalo",
+                    "name": customer_name,
+                    "oa_id": conv_obj.get("oa_id") or oa_id,
+                    "oa_name": oa_name,
+                    "tenant_id": tenant_id,
                     "avatarUrl": conv_obj.get("avatar") or "",
                     "avatar": conv_obj.get("avatar") or "",
                     "isGroup": False,
@@ -192,7 +203,7 @@ def _get_active_zalo_conversations_for_listing() -> list:
                     "members": [
                         {
                             "id": user_id,
-                            "name": conv_obj.get("name") or "Khách Zalo",
+                            "name": customer_name,
                             "avatar": conv_obj.get("avatar") or "",
                             "role": "MEMBER",
                         }
@@ -244,7 +255,20 @@ async def zalo_webhook(request):
         data = {}
 
     event_name = data.get("event_name")
-    oa_id = str(data.get("oa_id") or app.config.get("ZALO_OA_ID") or "").strip()
+    recipient = data.get("recipient") or {}
+    oa_id = str(data.get("oa_id") or recipient.get("id") or app.config.get("ZALO_OA_ID") or "").strip()
+    tenant_id = str(
+        data.get("tenant_id")
+        or request.headers.get("X-Tenant-Id")
+        or KNOWN_OA_TENANT_MAP.get(oa_id)
+        or app.config.get("DEFAULT_TENANT")
+        or "gonstack"
+    ).strip()
+    oa_name = str(
+        data.get("oa_name")
+        or KNOWN_OA_NAME_MAP.get(oa_id)
+        or "Zalo OA"
+    ).strip()
     sender = data.get("sender") or {}
     sender_id = str(sender.get("id") or data.get("fromuid") or "").strip()
     msg_obj = data.get("message") or {}
@@ -262,9 +286,14 @@ async def zalo_webhook(request):
         return json_response({"status": "duplicate_skipped"}, status=200)
 
     # Fetch customer profile (display name, avatar) if possible
-    customer_profile = await zalo_service.get_user_profile(user_id=sender_id, oa_id=oa_id)
-    customer_name = (customer_profile or {}).get("display_name") or "Khách Zalo"
-    customer_avatar = (customer_profile or {}).get("avatar") or ""
+    passed_profile = data.get("user_profile") or {}
+    customer_name = passed_profile.get("display_name") or passed_profile.get("name")
+    customer_avatar = passed_profile.get("avatar") or ""
+    if not customer_name:
+        customer_profile = await zalo_service.get_user_profile(user_id=sender_id, oa_id=oa_id)
+        customer_name = (customer_profile or {}).get("display_name") or "Khách Zalo"
+        if not customer_avatar:
+            customer_avatar = (customer_profile or {}).get("avatar") or ""
 
     conversation_id = "zalo:{}:{}".format(oa_id or "default", sender_id)
     is_takeover = _is_takeover_active(oa_id, sender_id)
@@ -412,9 +441,12 @@ async def zalo_webhook(request):
             redisdb.publish("vichat:omnichannel:events", json.dumps(sync_payload))
             redisdb.setex(
                 "zalo:conversation:{}".format(conversation_id),
-                86400 * 7,
+                86400 * 30,
                 json.dumps({
                     "id": conversation_id,
+                    "oa_id": oa_id,
+                    "oa_name": oa_name,
+                    "tenant_id": tenant_id,
                     "channel": "zalo_oa",
                     "channelType": "zalo_oa",
                     "name": customer_name,
@@ -425,6 +457,7 @@ async def zalo_webhook(request):
                     "updated_at": time.time(),
                 }),
             )
+            redisdb.sadd("zalo:conversations:index:{}".format(tenant_id), conversation_id)
             redisdb.sadd("zalo:conversations:index", conversation_id)
         except Exception as sync_exc:
             logger.warning("Failed to sync omnichannel conversation to Redis: %s", sync_exc)
@@ -433,6 +466,9 @@ async def zalo_webhook(request):
         "status": "processed",
         "event": event_name,
         "customer": customer_name,
+        "oa_id": oa_id,
+        "oa_name": oa_name,
+        "tenant_id": tenant_id,
         "reply": bot_reply_text,
         "needs_human": needs_human,
         "conversation_status": status,
@@ -545,7 +581,11 @@ async def zalo_callback(request):
 
 @app.route("/api/v1/zalo/send_message", methods=["POST"])
 async def zalo_send_message_manual(request):
-    """Endpoint for ViChat human agents to reply to a Zalo OA customer."""
+    """Endpoint for ViChat human agents to reply to a Zalo OA customer with tenant check."""
+    tenant_id = _extract_request_tenant(request)
+    if not tenant_id:
+        return json_response({"error": "Unauthorized: Tenant identification required"}, status=401)
+
     data = request.json or {}
     user_id = str(data.get("user_id") or "").strip()
     message = str(data.get("message") or "").strip()
@@ -554,6 +594,17 @@ async def zalo_send_message_manual(request):
 
     if not user_id or not message:
         return json_response({"error": "Missing user_id or message"}, status=400)
+
+    conversation_id = "zalo:{}:{}".format(oa_id or "default", user_id)
+    # Check conversation tenant authorization
+    if redisdb is not None:
+        raw_conv = redisdb.get("zalo:conversation:{}".format(conversation_id))
+        if raw_conv:
+            conv_obj = json.loads(raw_conv.decode("utf-8") if isinstance(raw_conv, bytes) else raw_conv)
+            conv_tenant = conv_obj.get("tenant_id")
+            if conv_tenant and conv_tenant != tenant_id:
+                logger.warning("Tenant mismatch on send_message: user_tenant=%s conv_tenant=%s", tenant_id, conv_tenant)
+                return json_response({"error": "Forbidden: You do not have permission to reply on this conversation"}, status=403)
 
     result = await zalo_service.send_cs_message(
         user_id=user_id,
@@ -593,7 +644,8 @@ async def zalo_send_message_manual(request):
                     "needs_human": False,
                     "updated_at": time.time(),
                 })
-                redisdb.setex("zalo:conversation:{}".format(conversation_id), 86400 * 7, json.dumps(conv_data))
+                redisdb.setex("zalo:conversation:{}".format(conversation_id), 86400 * 30, json.dumps(conv_data))
+                redisdb.sadd("zalo:conversations:index:{}".format(tenant_id), conversation_id)
                 redisdb.sadd("zalo:conversations:index", conversation_id)
 
                 sync_payload = {
@@ -617,7 +669,11 @@ async def zalo_send_message_manual(request):
 
 @app.route("/api/v1/zalo/takeover", methods=["POST"])
 async def zalo_toggle_takeover(request):
-    """Allows ViChat human agents to explicitly take over or release the bot."""
+    """Allows ViChat human agents to explicitly take over or release the bot with tenant check."""
+    tenant_id = _extract_request_tenant(request)
+    if not tenant_id:
+        return json_response({"error": "Unauthorized: Tenant identification required"}, status=401)
+
     data = request.json or {}
     user_id = str(data.get("user_id") or "").strip()
     oa_id = str(data.get("oa_id") or app.config.get("ZALO_OA_ID") or "").strip()
@@ -625,6 +681,16 @@ async def zalo_toggle_takeover(request):
 
     if not user_id:
         return json_response({"error": "Missing user_id"}, status=400)
+
+    conversation_id = "zalo:{}:{}".format(oa_id or "default", user_id)
+    if redisdb is not None:
+        raw_conv = redisdb.get("zalo:conversation:{}".format(conversation_id))
+        if raw_conv:
+            conv_obj = json.loads(raw_conv.decode("utf-8") if isinstance(raw_conv, bytes) else raw_conv)
+            conv_tenant = conv_obj.get("tenant_id")
+            if conv_tenant and conv_tenant != tenant_id:
+                logger.warning("Tenant mismatch on takeover: user_tenant=%s conv_tenant=%s", tenant_id, conv_tenant)
+                return json_response({"error": "Forbidden: Tenant mismatch"}, status=403)
 
     is_active = (action == "takeover")
     _set_takeover_active(oa_id, user_id, active=is_active)
@@ -638,7 +704,8 @@ async def zalo_toggle_takeover(request):
             conv_data["status"] = "agent_handling" if is_active else "bot_resolved"
             conv_data["needs_human"] = is_active
             conv_data["updated_at"] = time.time()
-            redisdb.setex("zalo:conversation:{}".format(conversation_id), 86400 * 7, json.dumps(conv_data))
+            redisdb.setex("zalo:conversation:{}".format(conversation_id), 86400 * 30, json.dumps(conv_data))
+            redisdb.sadd("zalo:conversations:index:{}".format(tenant_id), conversation_id)
         except Exception as exc:
             logger.warning("Redis update on takeover failed: %s", exc)
 
@@ -652,29 +719,20 @@ async def zalo_toggle_takeover(request):
 
 @app.route("/api/v1/zalo/conversations", methods=["GET"])
 async def zalo_list_conversations(request):
-    """List active Zalo OA conversations with handover statuses for ViChat UI."""
-    conversations = []
-    if redisdb is not None:
-        try:
-            members = redisdb.smembers("zalo:conversations:index") or []
-            for raw_id in members:
-                conv_id = raw_id.decode("utf-8") if isinstance(raw_id, bytes) else raw_id
-                raw_data = redisdb.get("zalo:conversation:{}".format(conv_id))
-                if raw_data:
-                    conv_obj = json.loads(raw_data.decode("utf-8") if isinstance(raw_data, bytes) else raw_data)
-                    # Check live takeover state
-                    parts = conv_id.split(":")
-                    if len(parts) >= 3:
-                        conv_oa, conv_user = parts[1], parts[2]
-                        conv_obj["takeover_active"] = _is_takeover_active(conv_oa, conv_user)
-                    conv_obj["messages"] = _get_zalo_messages(conv_id, limit=30)
-                    conversations.append(conv_obj)
-        except Exception as exc:
-            logger.warning("Failed to list Zalo conversations from Redis: %s", exc)
+    """List active Zalo OA conversations with handover statuses scoped to current tenant."""
+    tenant_id = _extract_request_tenant(request)
+    if not tenant_id:
+        return json_response({
+            "status": "error",
+            "message": "Tenant identification required",
+            "total": 0,
+            "conversations": [],
+        }, status=401)
 
-    conversations.sort(key=lambda x: x.get("updated_at", 0), reverse=True)
+    conversations = _get_active_zalo_conversations_for_listing(tenant_id)
     return json_response({
         "status": "success",
+        "tenant_id": tenant_id,
         "total": len(conversations),
         "conversations": conversations,
     }, status=200)
@@ -682,7 +740,20 @@ async def zalo_list_conversations(request):
 
 @app.route("/api/v1/zalo/conversations/<conversation_id>/messages", methods=["GET"])
 async def zalo_conversation_messages(request, conversation_id):
-    """Get message history for a specific Zalo conversation."""
+    """Get message history for a specific Zalo conversation with tenant access check."""
+    tenant_id = _extract_request_tenant(request)
+    if not tenant_id:
+        return json_response({"error": "Unauthorized: Tenant identification required"}, status=401)
+
+    if redisdb is not None:
+        raw_conv = redisdb.get("zalo:conversation:{}".format(conversation_id))
+        if raw_conv:
+            conv_obj = json.loads(raw_conv.decode("utf-8") if isinstance(raw_conv, bytes) else raw_conv)
+            conv_tenant = conv_obj.get("tenant_id")
+            if conv_tenant and conv_tenant != tenant_id:
+                logger.warning("Tenant mismatch on get messages: user_tenant=%s conv_tenant=%s", tenant_id, conv_tenant)
+                return json_response({"error": "Forbidden: You do not have access to this conversation"}, status=403)
+
     limit = 100
     try:
         limit = int(request.args.get("limit", 100))
@@ -692,6 +763,7 @@ async def zalo_conversation_messages(request, conversation_id):
     return json_response({
         "status": "success",
         "conversation_id": conversation_id,
+        "tenant_id": tenant_id,
         "total": len(messages),
         "messages": messages,
     }, status=200)
