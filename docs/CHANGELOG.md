@@ -6,6 +6,38 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-07-15 - Trien khai co che cach ly Tenant (Strict Multi-Tenant Isolation) cho Zalo OA giua Chatbot va ViChat:
+
+- Thoi gian: 2026-10-08 01:10 (Asia/Saigon)
+- Loai: Multi-Tenant Security & Isolation | Access Control | Production Deployment | Zero-Leakage
+- Trang thai: Hoan tat 100% va kiem thu dat tren ca 2 may chu Production
+- Boi canh & Yeu cau:
+  - Khi chatbot thuoc tenant `gonstack` (OA Gonstack `2274336170816480019`), tren ViChat chi tai khoan thuoc dung tenant `gonstack` moi co the xem va tra loi tin nhan.
+  - Tuyet doi cach ly, khong cho phep bat ky tenant nao khac (nhu `demo`, `heovang`...) nhin thay hoac tra loi hoi thoai cua Gonstack, tranh ro ri du lieu khach hang.
+- Cac thay doi da thuc hien:
+  1. Chatbot (`192.168.80.154` - commit `0c7e54d` tren nhanh `main`):
+     - `application/controllers/zalo/vichat_bridge.py`: Trich xuat `tenant_id` va `name` tu `bot_info`, truyen `tenant_id` va `oa_name` trong webhook payload va request header `X-Tenant-Id`.
+     - `application/controllers/zalo/__init__.py`: Truyen `bot_info` vao bridge handler.
+     - Da pull va checkout tren server `192.168.80.154`, bien dich `py_compile` dat 0 loi, restart `upgo-bot.service` thanh cong.
+  2. ViChat Backend (`192.168.80.20` - `songhong-production-chatmgt-1`):
+     - `chatservice-main/application/controllers/api_zalo.py`:
+       - Bo sung `KNOWN_OA_TENANT_MAP` va `KNOWN_OA_NAME_MAP` nhan dien chuan xac OA Gonstack (`2274336170816480019`).
+       - Bo sung ham `_extract_request_tenant(request)`: Trich xuat an toan tenant tu session nguoi dung, JWT payload `tid`, hoac header duoc xac thuc.
+       - Luu chi muc hoi thoai theo tenant: `zalo:conversations:index:{tenant_id}`.
+       - Bao ve chat che cac endpoint:
+         * `GET /api/v1/zalo/conversations`: Bat buoc co tenant, loc chi muc theo tenant (khong co tenant tra ve 401 Unauthorized).
+         * `GET /api/v1/zalo/conversations/<id>/messages`: Kiem tra `conv_tenant == user_tenant`, sai tenant tra ve 403 Forbidden.
+         * `POST /api/v1/zalo/send_message`: Kiem tra quyen tenant truoc khi gui tin nhan CSKH, sai tenant tra ve 403 Forbidden.
+         * `POST /api/v1/zalo/takeover`: Kiem tra quyen tenant truoc khi tiep quan, sai tenant tra ve 403 Forbidden.
+     - Dong bo vao container va commit image `songhong-production-chatmgt:latest`, container o trang thai `healthy`.
+  3. Ket qua kiem thu thuc te (End-to-End Test Suite tren Production `192.168.80.20`):
+     - TEST 1 (Webhook Sync Gonstack OA): HTTP 200 OK -> Dong bo thanh cong hoi thoai gan tenant `gonstack` va ten OA `Gonstack`.
+     - TEST 2 (List as Tenant 'gonstack'): HTTP 200 OK -> Total: 1, lay dung hoi thoai Gonstack.
+     - TEST 3 (List as Tenant 'demo'): HTTP 200 OK -> Total: 0 (Khong lo thong tin, cach ly hoan toan).
+     - TEST 4 (List without Tenant): HTTP 401 Unauthorized -> Chan truy cap khong hop le.
+     - TEST 5 (Get Messages from another Tenant): HTTP 403 Forbidden -> Chan truy cap trai phep vao tin nhan.
+     - TEST 6 (Send Reply from another Tenant): HTTP 403 Forbidden -> Chan gui tin nhan CSKH trai phep.
+
 ## 2026-10-07-14 - Trien khai thanh cong commit moi len ca 2 server Production (Chatbot va ViChat):
 
 - Thoi gian: 2026-10-08 00:36 (Asia/Saigon)

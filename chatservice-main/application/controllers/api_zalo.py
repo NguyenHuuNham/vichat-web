@@ -52,6 +52,72 @@ HANDOVER_COURTESY_MESSAGE = (
     "Nhân viên hỗ trợ sẽ phản hồi trực tiếp cho bạn tại khung chat này ngay nhé ạ! 👩‍💼"
 )
 
+KNOWN_OA_TENANT_MAP = {
+    "2274336170816480019": "gonstack",   # Gonstack Official OA
+    "262829019064124420": "gonstack",    # Hoang Ha Mobile (under gonstack tenant)
+    "3733466236951056718": "gonstack",   # CBS global education (under gonstack tenant)
+    "2530086568306248692": "tn4227527230912752", # Skyline VMAC
+    "857176587915285460": "tn5808415788858328",   # Redriverco
+    "179200675293938056": "tn5342970775104050",   # Gong Cha Official
+}
+
+KNOWN_OA_NAME_MAP = {
+    "2274336170816480019": "Gonstack",
+    "262829019064124420": "Hoàng Hà Mobile",
+    "3733466236951056718": "CBS global education",
+    "2530086568306248692": "Skyline VMAC",
+    "857176587915285460": "Redriverco",
+    "179200675293938056": "Gong Cha Official",
+}
+
+
+def _extract_request_tenant(request) -> str:
+    """Safely extracts tenant_id from user session, JWT token, or trusted headers."""
+    # 1. From auth_service.current_user(request)
+    try:
+        from application.services.auth_service import current_user
+        u = current_user(request)
+        if u and (u.get("tenant_id") or u.get("current_tenant_id")):
+            return str(u.get("tenant_id") or u.get("current_tenant_id")).strip()
+    except Exception:
+        pass
+
+    # 2. From api_chat_management._identity(request)
+    try:
+        from application.controllers.api_chat_management import _identity
+        resolved_u, t_id = _identity(request)
+        if t_id:
+            return str(t_id).strip()
+    except Exception:
+        pass
+
+    # 3. Direct decode of token from request
+    try:
+        from application.services.auth_service import token_from_request, decode_access_token
+        tok = token_from_request(request)
+        if tok:
+            payload = decode_access_token(tok)
+            if payload and payload.get("tid"):
+                return str(payload.get("tid")).strip()
+    except Exception:
+        pass
+
+    # 4. From request headers (mobile bearer or trusted reverse proxy)
+    t = (
+        request.headers.get("X-Tenant-Id")
+        or request.headers.get("X-Vichat-Tenant")
+        or request.headers.get("X-Tenant")
+    )
+    if t:
+        return str(t).strip()
+
+    # 5. From query params if provided
+    q_tenant = request.args.get("tenant_id")
+    if q_tenant:
+        return str(q_tenant).strip()
+
+    return ""
+
 
 def _is_duplicate_message(msg_id: str) -> bool:
     """Prevent double replies if Zalo retries the webhook delivery."""
