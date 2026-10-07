@@ -6,6 +6,32 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-07-13 - Commit va Push dong bo Zalo OA bridge len GitLab main (Chatbot) va master (ViChat):
+
+- Thoi gian: 2026-10-08 00:05 (Asia/Saigon)
+- Loai: Cross-Repository Release | Git Sync | Main Branch Push | Production Readiness
+- Trang thai: Hoan tat push ca 2 repositories len GitLab
+- Muc tieu:
+  1. Day toan bo ma nguon moi nhat cua ViChat len GitLab:
+     - Repo: https://git.gonstack.com/vichat/vichat-web.git (nhanh master).
+     - Commit 3a6ee17: eat(zalo-oa): integrate Zalo OA live chat with Chatbot bridge, human takeover and mobile client.
+     - Bao gom backend chatservice-main, mobile client, web toolbar, tai lieu changelog va huong dan deploy.
+     - Dong thoi dong bo sang GitHub https://github.com/NguyenHuuNham/vichat-web.git.
+  2. Day ma nguon cau noi Zalo OA ViChat len dung nhanh main cua Chatbot:
+     - Repo: https://git.gonstack.com/upgo/chatbot.git (nhanh main).
+     - Su dung quy trinh git worktree cach ly tren o D: de bao ve 100% du lieu dang lam do cua nhanh 
+ocketchat.
+     - Kiem tra bien dich py_compile PASS 0 loi.
+     - Ra soat git diff xac nhan chi cham duy nhat 2 file:
+       - pplication/controllers/zalo/vichat_bridge.py (Tao moi).
+       - pplication/controllers/zalo/__init__.py (Tich hop bridge + takeover guard + sync bot reply).
+     - Commit 0b53ad: eat(zalo): integrate ViChat bridge and human takeover synchronization.
+     - Push thanh cong len origin/main cua https://git.gonstack.com/upgo/chatbot.git.
+- Pham vi thay doi:
+  - D:\CÔNG_VIỆC\vichat-web: Da push master -> origin/master (3a6ee17).
+  - D:\CÔNG_VIỆC\chatbot: Da push main -> origin/main (b0b53ad).
+
+
 ## 2026-10-07-12 - Phan tich nguyen nhan lech moi truong Production va dong goi ban Deploy Zalo OA:
 
 - Thoi gian: 2026-10-07 19:15 (Asia/Saigon)
