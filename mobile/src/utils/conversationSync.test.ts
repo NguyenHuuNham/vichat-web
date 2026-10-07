@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyConversationNicknameEvent, dedupeConversations, isConversationVisibleInList, isDirectConversationForUser, mergeConversation, retainAvailableConversations, sortConversations } from './conversationSync';
+import { applyConversationNicknameEvent, dedupeConversations, isConversationVisibleInList, isDirectConversationForUser, mergeConversation, mergeConversationIntoList, retainAvailableConversations, sortConversations } from './conversationSync';
 
 const conversation = (id: string, tinodeTopic: string) => ({
   id,
@@ -12,6 +12,26 @@ const conversation = (id: string, tinodeTopic: string) => ({
 });
 
 describe('conversation sync', () => {
+  it('uses the realtime group member count instead of stale management metadata', () => {
+    const managementMembers = Array.from({ length: 15 }, (_, index) => ({ id: `usr-${index}`, uid: `usr-${index}` }));
+    const realtimeMembers = Array.from({ length: 23 }, (_, index) => ({ id: `usr-${index}`, uid: `usr-${index}` }));
+    const merged = mergeConversation({
+      ...conversation('room', 'grp-room'),
+      isGroup: true,
+      snapshotSource: 'management',
+      membersCount: '15 members',
+      members: managementMembers,
+    } as any, {
+      ...conversation('room', 'grp-room'),
+      isGroup: true,
+      snapshotSource: 'tinode',
+      members: realtimeMembers,
+    } as any);
+
+    expect(merged.members).toHaveLength(23);
+    expect(merged.membersCount).toBe('23 members');
+  });
+
   it('finds an existing direct chat across Account and Tinode identities', () => {
     const user = { id: 'account-peer', uid: 'usr-peer', tinodeUid: 'usr-peer' } as any;
     expect(isDirectConversationForUser({
@@ -164,6 +184,58 @@ describe('conversation sync', () => {
     const merged = mergeConversation(current, snapshot);
     expect(merged.messages.map(message => message.id)).toEqual(['history-1', 'pending-1', 'new-1']);
     expect(merged.messages[1]).toEqual(expect.objectContaining({ pending: false, deliveryStatus: 'sent', seq: 2 }));
+  });
+
+  it('reuses unchanged message references across repeated realtime snapshots', () => {
+    const existingMessage = {
+      id: 'message-1',
+      type: 'text',
+      sender: 'incoming',
+      senderId: 'usr-peer',
+      senderName: 'Peer',
+      text: 'Same message',
+      seq: 7,
+      createdAt: '2026-09-21T10:00:00Z',
+      pending: false,
+      failed: false,
+    };
+    const current = {
+      ...conversation('room', 'usr-peer'),
+      snapshotSource: 'tinode',
+      messages: [existingMessage],
+    } as any;
+    const snapshot = {
+      ...conversation('room', 'usr-peer'),
+      snapshotSource: 'tinode',
+      messages: [{ ...existingMessage, raw: { seq: 7 } }],
+    } as any;
+
+    const merged = mergeConversation(current, snapshot);
+    expect(merged.messages).toBe(current.messages);
+    expect(merged.messages[0]).toBe(existingMessage);
+  });
+
+  it('reuses the conversation and list references for an unchanged realtime snapshot', () => {
+    const current = {
+      ...conversation('room', 'grp-room'),
+      snapshotSource: 'tinode',
+      lastMsg: 'Same',
+      time: '10:00',
+      updatedAt: '2026-09-21T10:00:00Z',
+      participantIds: ['usr-me', 'usr-peer'],
+      pendingMembers: [],
+      members: [{ id: 'usr-me', uid: 'usr-me', tinodeUid: 'usr-me', name: 'Me', nickname: '', conversationNickname: '', conversation_nickname: '' }, { id: 'usr-peer', uid: 'usr-peer', tinodeUid: 'usr-peer', name: 'Peer', nickname: '', conversationNickname: '', conversation_nickname: '' }],
+      messages: [{ id: 'message-1', type: 'text', sender: 'incoming', senderId: 'usr-peer', senderName: 'Peer', text: 'Same', seq: 7, createdAt: '2026-09-21T10:00:00Z', pending: false, failed: false }],
+    } as any;
+    const snapshot = {
+      ...current,
+      participantIds: [...current.participantIds],
+      members: current.members.map((member: any) => ({ ...member })),
+      messages: current.messages.map((message: any) => ({ ...message, raw: { seq: 7 } })),
+    } as any;
+
+    expect(mergeConversation(current, snapshot)).toBe(current);
+    expect(mergeConversationIntoList([current], snapshot)[0]).toBe(current);
   });
 
   it('keeps viewer-scoped notification mute across Tinode snapshots', () => {

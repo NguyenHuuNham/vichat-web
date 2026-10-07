@@ -573,6 +573,8 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Không tải được ảnh xem trước': 'Unable to load image preview',
   'Đang tải ảnh': 'Loading image',
   'Đang tải ảnh...': 'Loading image...',
+  'Đang tải nội dung...': 'Loading content...',
+  'Không tải được đầy đủ nội dung nhóm.': 'Could not load all group content.',
   'Đang tải Chat...': 'Loading Chat...',
   'Không thể tải Chat': 'Unable to load Chat',
   'Đang khôi phục phiên làm việc của bạn.': 'Restoring your session.',

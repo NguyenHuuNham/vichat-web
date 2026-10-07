@@ -8,6 +8,7 @@ const NON_USER_MESSAGE_TYPES = new Set<ChatMessage['type']>([
   'edit',
   'poll_event',
   'system',
+  'live_location_event',
 ]);
 
 export function isUserVisibleMessage(message: ChatMessage) {
@@ -26,7 +27,10 @@ export function firstUnreadMessageIndex(
   readSeq: number | undefined,
   unreadCount = 0,
 ) {
-  if (readSeq === undefined && Number(unreadCount) <= 0) return null;
+  // A zero read cursor is the normal Tinode value for a fully-read topic
+  // before the first receipt is persisted. Never use it to jump to the first
+  // incoming message when the authoritative unread badge is already zero.
+  if (Number(unreadCount) <= 0) return null;
   const lastReadSequence = Number(readSeq) || 0;
   const unreadIndex = messages.findIndex(message => (
     message.sender === 'incoming'
@@ -34,10 +38,6 @@ export function firstUnreadMessageIndex(
     && Number(message.seq) > lastReadSequence
   ));
   if (unreadIndex >= 0) return unreadIndex;
-  if (Number(unreadCount) > 0) {
-    const fallbackIndex = messages.findIndex(message => message.sender === 'incoming' && isUserVisibleMessage(message));
-    return fallbackIndex >= 0 ? fallbackIndex : null;
-  }
   return null;
 }
 

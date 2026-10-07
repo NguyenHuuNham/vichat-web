@@ -40,6 +40,15 @@ export default function ConversationListToolbar({
         <button type="button" role="tab" aria-selected={tab === 'groups'} className={tab === 'groups' ? 'active' : ''} onClick={() => onTabChange('groups')}>
           {copy.t('Nhóm')}
         </button>
+        <button type="button" role="tab" aria-selected={tab === 'zalo'} className={tab === 'zalo' ? 'active' : ''} onClick={() => onTabChange('zalo')}>
+          {copy.t('Zalo OA')}
+        </button>
+        <button type="button" role="tab" aria-selected={tab === 'livechat'} className={tab === 'livechat' ? 'active' : ''} onClick={() => onTabChange('livechat')}>
+          {copy.t('Live Chat')}
+        </button>
+        <button type="button" role="tab" aria-selected={tab === 'facebook'} className={tab === 'facebook' ? 'active' : ''} onClick={() => onTabChange('facebook')}>
+          {copy.t('Facebook')}
+        </button>
         <button type="button" role="tab" aria-selected={tab === 'categories' || categoryFilterActive} className={tab === 'categories' || categoryFilterActive ? 'active' : ''} onClick={onToggleCategoryMenu} aria-expanded={categoryMenuOpen} aria-haspopup="menu">
           <span>{copy.t('Phân loại')}</span>
           {activeFilterCount > 0 && <strong>{activeFilterCount}</strong>}

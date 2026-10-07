@@ -17,7 +17,7 @@ export function searchHistoryMessages(messages: ChatMessage[], query: string, li
   if (!needle) return [];
   return messages
     .filter(message => {
-      if (['reaction', 'recall', 'edit', 'poll_event', 'system'].includes(message.type)) return false;
+      if (['reaction', 'recall', 'edit', 'poll_event', 'system', 'live_location_event'].includes(message.type)) return false;
       const haystack = [
         message.text,
         message.senderName,

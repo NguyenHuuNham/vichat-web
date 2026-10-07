@@ -54,6 +54,9 @@ function normalizeConversation(record: any): Conversation {
     snapshotSource: 'management',
     name: String(record?.name || record?.subject || properties.name || 'Cuộc trò chuyện'),
     isGroup,
+    channel: (record?.channel || record?.channelType || properties.channel || properties.channelType || (id.startsWith('zalo:') ? 'zalo_oa' : undefined)) as any,
+    channelType: (record?.channelType || record?.channel || properties.channelType || properties.channel || (id.startsWith('zalo:') ? 'zalo_oa' : undefined)) as any,
+    sourceType: String(record?.sourceType || record?.source_type || properties.sourceType || properties.source_type || (id.startsWith('zalo:') ? 'zalo_oa' : '')) || undefined,
     adminId: String(record?.adminId || record?.admin_id || properties.adminId || properties.admin_id || ''),
     avatarUrl: normalizeMediaUrl(record?.avatarUrl || record?.avatar || properties.avatar || ''),
     description: String(record?.description || properties.description || ''),
@@ -65,7 +68,7 @@ function normalizeConversation(record: any): Conversation {
     participantIds: Array.isArray(record?.participantIds)
       ? record.participantIds.map(String)
       : (Array.isArray(properties.participantIds) ? properties.participantIds.map(String) : []),
-    messages: [],
+    messages: Array.isArray(record?.messages) ? record.messages : [],
     lastMsg: String(record?.lastMsg || properties.lastMessage || ''),
     time: String(record?.time || properties.time || ''),
     updatedAt: record?.updatedAt || record?.updated_at || record?.last_message_at || properties.updatedAt || properties.updated_at,
@@ -271,12 +274,36 @@ export const chatManagementService = {
     return normalizeConversation(payload);
   },
 
-  async listBotConfig(): Promise<TinodeChatbotConfig> {
+  async listBotConfig(): Promise<TinodeChatbotConfig | null> {
     try {
       const payload = await apiRequest<TinodeChatbotConfig>('/api/v1/chatbot/tinode-config');
       return { ...payload, enabled: Boolean(payload?.enabled && (payload?.tinodeUid || payload?.uid)) };
     } catch {
-      return { enabled: false };
+      // A temporary chatbot endpoint failure must not remove the cached bot row.
+      return null;
+    }
+  },
+
+  async sendZaloMessage(userId: string, message: string, oaId?: string, agentName?: string) {
+    return apiRequest('/api/v1/zalo/send_message', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: userId,
+        message,
+        oa_id: oaId,
+        agent_name: agentName,
+      }),
+    });
+  },
+
+  async getZaloMessages(conversationId: string): Promise<any[]> {
+    try {
+      const payload = await apiRequest<{ status: string; messages: any[] }>(
+        `/api/v1/zalo/conversations/${encodeURIComponent(conversationId)}/messages`
+      );
+      return Array.isArray(payload?.messages) ? payload.messages : [];
+    } catch {
+      return [];
     }
   },
 };

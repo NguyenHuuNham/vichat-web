@@ -4977,6 +4977,14 @@ async def conversation_list(request):
     has_more = len(rows) > limit
     rows = rows[:limit]
     objects = [_serialize_conversation(item, user_id) for item in rows]
+    if not cursor:
+        try:
+            from application.controllers.api_zalo import _get_active_zalo_conversations_for_listing
+            zalo_convs = _get_active_zalo_conversations_for_listing()
+            if zalo_convs:
+                objects = zalo_convs + objects
+        except Exception:
+            pass
     next_cursor = None
     if has_more and rows:
         last = rows[-1]

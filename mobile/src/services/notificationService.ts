@@ -8,9 +8,11 @@ import {
   incomingCallNotificationKey,
   parseIncomingCallNotification,
 } from '../utils/callNotificationPolicy';
-import { shouldSuppressRemoteMessageNotification } from '../utils/remoteNotificationPolicy';
+import { isIncomingCallNotificationPayload, shouldSuppressRemoteMessageNotification } from '../utils/remoteNotificationPolicy';
+import { loadNotificationSoundSettings, playCustomNotificationSound } from './notificationSoundService';
 
 const MESSAGE_CHANNEL_ID = 'messages-v2';
+const MESSAGE_SILENT_CHANNEL_ID = 'messages-silent-v1';
 const CALL_CHANNEL_ID = 'calls-v2';
 const PERMISSION_CACHE_MS = 30_000;
 let initializedForUser = '';
@@ -29,6 +31,40 @@ const incomingCallNotificationIds = new Map<string, string>();
 const dismissedIncomingCallKeys = new Set<string>();
 const dismissedIncomingCallTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const scheduledIncomingCallExpiryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const readSeqByConversationKey = new Map<string, number>();
+const notifiedMessageKeys = new Set<string>();
+const MAX_NOTIFIED_KEYS = 500;
+
+function isRecentlyNotified(key: string): boolean {
+  if (!key) return false;
+  if (notifiedMessageKeys.has(key)) return true;
+  if (notifiedMessageKeys.size >= MAX_NOTIFIED_KEYS) {
+    const oldest = notifiedMessageKeys.values().next().value;
+    if (oldest) notifiedMessageKeys.delete(oldest);
+  }
+  notifiedMessageKeys.add(key);
+  return false;
+}
+
+function conversationNotificationKeys(conversationId = '', tinodeTopic = '') {
+  return [String(conversationId || '').trim(), String(tinodeTopic || '').trim()].filter(Boolean);
+}
+
+function messageWasMarkedRead(conversation: Conversation, message: ChatMessage) {
+  const seq = Number(message.seq) || 0;
+  if (!seq) return false;
+  return conversationNotificationKeys(conversation.id, conversation.tinodeTopic)
+    .some(key => (readSeqByConversationKey.get(key) || 0) >= seq);
+}
+
+async function dismissNotificationId(Notifications: any, notificationId: string) {
+  if (typeof Notifications.dismissNotificationAsync === 'function') {
+    await Notifications.dismissNotificationAsync(notificationId).catch(() => {});
+  }
+  if (typeof Notifications.cancelScheduledNotificationAsync === 'function') {
+    await Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => {});
+  }
+}
 
 export interface PushRegistration {
   token: string;
@@ -62,7 +98,8 @@ async function loadNotificationModules() {
     if (!notificationHandlerReady) {
       Notifications.setNotificationHandler({
         handleNotification: async (notification: any) => {
-          if (shouldSuppressRemoteMessageNotification(notification?.request?.content?.data)) {
+          const data = notification?.request?.content?.data;
+          if (shouldSuppressRemoteMessageNotification(data)) {
             return {
               shouldPlaySound: false,
               shouldSetBadge: false,
@@ -70,11 +107,30 @@ async function loadNotificationModules() {
               shouldShowList: false,
             };
           }
+          if (!isIncomingCallNotificationPayload(data)) {
+            const topic = String(data?.topic || data?.tinodeTopic || data?.conversationId || '').trim();
+            if (topic) {
+              try {
+                const { useAppStore } = require('../store/appStore');
+                const conv = useAppStore.getState().conversations?.find((c: any) => c.id === topic || c.tinodeTopic === topic);
+                if (conv && isConversationMuted(conv.notificationMutedUntil)) {
+                  return {
+                    shouldPlaySound: false,
+                    shouldSetBadge: false,
+                    shouldShowBanner: false,
+                    shouldShowList: false,
+                  };
+                }
+              } catch {
+                // Ignore store lookup errors during background notification handling
+              }
+            }
+          }
           return {
-          shouldPlaySound: true,
-          shouldSetBadge: true,
-          shouldShowBanner: true,
-          shouldShowList: true,
+            shouldPlaySound: true,
+            shouldSetBadge: true,
+            shouldShowBanner: true,
+            shouldShowList: true,
           };
         },
       });
@@ -85,7 +141,17 @@ async function loadNotificationModules() {
         name: 'Tin nhắn ViChat',
         description: 'Thông báo tin nhắn mới trong ViChat',
         importance: Notifications.AndroidImportance.HIGH,
-        sound: 'default',
+        vibrationPattern: [0, 180, 120, 180],
+        lightColor: '#F4511E',
+        enableLights: true,
+        enableVibrate: true,
+        showBadge: true,
+      });
+      await Notifications.setNotificationChannelAsync(MESSAGE_SILENT_CHANNEL_ID, {
+        name: 'Tin nhắn ViChat (không âm)',
+        description: 'Thông báo tin nhắn mới không phát âm thanh',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: null,
         vibrationPattern: [0, 180, 120, 180],
         lightColor: '#F4511E',
         enableLights: true,
@@ -96,7 +162,6 @@ async function loadNotificationModules() {
         name: 'Cuộc gọi ViChat',
         description: 'Thông báo cuộc gọi thoại và video đến',
         importance: Notifications.AndroidImportance.MAX,
-        sound: 'default',
         vibrationPattern: [0, 500, 250, 500, 250, 500],
         lightColor: '#F4511E',
         enableLights: true,
@@ -213,6 +278,47 @@ export function resetPushNotificationRegistration() {
   dismissedIncomingCallTimers.forEach(timer => clearTimeout(timer));
   dismissedIncomingCallTimers.clear();
   dismissedIncomingCallKeys.clear();
+  readSeqByConversationKey.clear();
+  notifiedMessageKeys.clear();
+}
+
+
+/** Mark a conversation read and remove only its visible/scheduled notifications. */
+export async function dismissNotificationsForConversation(
+  conversationId: string,
+  tinodeTopic = '',
+  readSeq = 0,
+) {
+  const keys = conversationNotificationKeys(conversationId, tinodeTopic);
+  const sequence = Number(readSeq) || 0;
+  if (sequence > 0) {
+    keys.forEach(key => readSeqByConversationKey.set(key, Math.max(readSeqByConversationKey.get(key) || 0, sequence)));
+  }
+  if (!keys.length) return;
+  try {
+    const { Notifications } = await loadNotificationModules();
+    const [presented, scheduled] = await Promise.all([
+      typeof Notifications.getPresentedNotificationsAsync === 'function'
+        ? Notifications.getPresentedNotificationsAsync().catch(() => [])
+        : Promise.resolve([]),
+      typeof Notifications.getAllScheduledNotificationsAsync === 'function'
+        ? Notifications.getAllScheduledNotificationsAsync().catch(() => [])
+        : Promise.resolve([]),
+    ]);
+    const ids = new Set<string>();
+    [...(presented || []), ...(scheduled || [])].forEach((notification: any) => {
+      const data = notification?.request?.content?.data || {};
+      const matches = keys.some(key => (
+        String(data.conversationId || '').trim() === key
+        || String(data.tinodeTopic || '').trim() === key
+        || String(data.topic || '').trim() === key
+      ));
+      if (matches && notification?.request?.identifier) ids.add(String(notification.request.identifier));
+    });
+    await Promise.all([...ids].map(id => dismissNotificationId(Notifications, id)));
+  } catch {
+    // Read state remains authoritative even when the OS notification API is unavailable.
+  }
 }
 
 export async function subscribeToPushTokenChanges(onToken: (registration: PushRegistration) => void) {
@@ -234,33 +340,92 @@ export async function subscribeToPushTokenChanges(onToken: (registration: PushRe
   }
 }
 
-function notificationBody(message: ChatMessage) {
+export function notificationBody(message: ChatMessage) {
   if (message.poll) return `Bình chọn: ${message.poll.question}`;
   if (message.type === 'sticker' || message.sticker) return `Đã gửi sticker${message.sticker?.label ? `: ${message.sticker.label}` : ''}`;
   if (message.type === 'image') return 'Đã gửi một hình ảnh';
-  if (message.type === 'audio' || /^audio\//i.test(message.file?.mime || '')) return 'Đã gửi voice';
+  if (message.type === 'audio' || /^audio\//i.test(message.file?.mime || '')) return 'Đã gửi tin nhắn thoại';
   if (message.type === 'file') return `Đã gửi tệp ${message.file?.name || ''}`.trim();
   return String(message.text || 'Bạn có tin nhắn mới').replace(/\s+/g, ' ').trim().slice(0, 180);
+}
+
+export function formatNotificationContent(conversation: Conversation, message: ChatMessage): { title: string; body: string } {
+  const isGroup = Boolean(
+    conversation.isGroup ||
+    conversation.id?.startsWith('grp') ||
+    conversation.tinodeTopic?.startsWith('grp')
+  );
+
+  let senderName = '';
+  if (message.senderName && message.senderName !== 'Thành viên' && message.senderName !== 'Bạn') {
+    senderName = message.senderName.trim();
+  }
+  if (!senderName && conversation.members?.length) {
+    const sId = String(message.senderId || '').trim();
+    const member = conversation.members.find(m =>
+      Boolean(sId && (m.id === sId || m.uid === sId || m.username === sId))
+    );
+    if (member?.name && member.name !== 'Thành viên' && member.name !== 'Bạn') {
+      senderName = member.name.trim();
+    }
+  }
+  if (!senderName && !isGroup && conversation.name && conversation.name !== 'ViChat') {
+    senderName = conversation.name.trim();
+  }
+  if (!senderName) {
+    senderName = isGroup ? 'Thành viên' : (conversation.name || 'Người dùng');
+  }
+
+  const rawBody = notificationBody(message);
+
+  if (isGroup) {
+    const groupTitle = conversation.name && conversation.name !== 'ViChat' ? conversation.name : 'Nhóm ViChat';
+    return {
+      title: groupTitle,
+      body: `${senderName}: ${rawBody}`,
+    };
+  } else {
+    return {
+      title: senderName,
+      body: rawBody,
+    };
+  }
 }
 
 export async function notifyIncomingMessage(conversation: Conversation, message: ChatMessage) {
   // A notification is only valid when the realtime layer verified a sender.
   // This also prevents malformed/replayed packets from becoming alerts.
   if (message.sender !== 'incoming' || !String(message.senderId || '').trim()) return null;
+  if (messageWasMarkedRead(conversation, message)) return null;
   if (isConversationMuted(conversation.notificationMutedUntil)) return null;
+  const dedupKey = `${conversation.id || conversation.tinodeTopic}:${message.seq || message.id || message.createdAt || ''}`;
+  if (isRecentlyNotified(dedupKey)) return null;
   try {
     const { Notifications } = await loadNotificationModules();
     if (!(await hasNotificationPermission(Notifications))) return null;
-    return Notifications.scheduleNotificationAsync({
+    if (messageWasMarkedRead(conversation, message)) return null;
+    const soundSettings = await loadNotificationSoundSettings();
+    const useCustomSound = soundSettings.enabled && soundSettings.mode === 'custom' && Boolean(soundSettings.customUri);
+    const appIsActive = AppState.currentState === 'active';
+    const playCustomSound = useCustomSound && appIsActive;
+    const customSoundPlayed = playCustomSound ? await playCustomNotificationSound(soundSettings) : false;
+    const silent = !soundSettings.enabled || customSoundPlayed;
+    const { title, body } = formatNotificationContent(conversation, message);
+    const notificationId = String(await Notifications.scheduleNotificationAsync({
       content: {
-        title: conversation.name || 'ViChat',
-        body: notificationBody(message),
+        title,
+        body,
         data: { conversationId: conversation.id, tinodeTopic: conversation.tinodeTopic },
-        sound: 'default',
+        sound: silent ? false : 'default',
         color: '#F4511E',
       },
-      trigger: Platform.OS === 'android' ? { channelId: MESSAGE_CHANNEL_ID } : null,
-    });
+      trigger: Platform.OS === 'android' ? { channelId: silent ? MESSAGE_SILENT_CHANNEL_ID : MESSAGE_CHANNEL_ID } : null,
+    }));
+    if (messageWasMarkedRead(conversation, message)) {
+      await dismissNotificationId(Notifications, notificationId);
+      return null;
+    }
+    return notificationId;
   } catch {
     return null;
   }

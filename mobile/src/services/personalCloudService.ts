@@ -1,6 +1,12 @@
 import { PickerFile, PersonalCloudFile, PersonalCloudMessage } from '../types';
 import { apiRequest, responseItems } from './apiClient';
-import { putFileToS3, selectedFileSize, SignedUploadTicket } from './chatMediaService';
+import {
+  CHAT_MEDIA_COMPLETE_TIMEOUT_MS,
+  CHAT_MEDIA_PREPARE_TIMEOUT_MS,
+  putFileToS3,
+  selectedFileSize,
+  SignedUploadTicket,
+} from './chatMediaService';
 
 export interface PersonalCloudPage<T> {
   items: T[];
@@ -95,6 +101,7 @@ export const personalCloudService = {
     if (size <= 0) throw new Error('Vui lòng chọn một file không rỗng.');
     const prepared = await apiRequest<SignedUploadTicket>('/api/v1/chat/cloud/uploads', {
       method: 'POST',
+      timeoutMs: CHAT_MEDIA_PREPARE_TIMEOUT_MS,
       body: JSON.stringify({
         file_name: file.name || 'tep-dinh-kem',
         content_type: file.type || 'application/octet-stream',
@@ -105,6 +112,7 @@ export const personalCloudService = {
     await putFileToS3(file, prepared);
     const completed = await apiRequest(`/api/v1/chat/cloud/uploads/${encodeURIComponent(prepared.upload_id)}/complete`, {
       method: 'POST',
+      timeoutMs: CHAT_MEDIA_COMPLETE_TIMEOUT_MS,
       body: JSON.stringify({ size, upload_token: prepared.upload_token || '' }),
     });
     const normalized = normalizePersonalCloudFile(completed);

@@ -254,3 +254,13 @@ class Config(object):
         "Không suy đoán dữ liệu nội bộ; nếu thiếu dữ liệu hãy nói chưa đủ thông tin. "
         "Không tiết lộ mật khẩu, token, khóa API hoặc thông tin nhạy cảm.",
     )
+
+    # Zalo OA integration
+    ZALO_APP_ID = os.getenv("ZALO_APP_ID", "")
+    ZALO_SECRET_KEY = os.getenv("ZALO_SECRET_KEY", "")
+    ZALO_OA_ID = os.getenv("ZALO_OA_ID", "")
+    ZALO_ACCESS_TOKEN = os.getenv("ZALO_ACCESS_TOKEN", "")
+    ZALO_REFRESH_TOKEN = os.getenv("ZALO_REFRESH_TOKEN", "")
+    ZALO_CODE_VERIFIER = os.getenv("ZALO_CODE_VERIFIER", "")
+    ZALO_REDIRECT_URI = os.getenv("ZALO_REDIRECT_URI", "")
+

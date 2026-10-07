@@ -4,9 +4,9 @@ import { useThemePalette } from '../theme/useThemePalette';
 import { useI18n } from '../store/languageStore';
 
 export function TypingIndicator({ visible }: { visible: boolean }) {
+  const palette = useThemePalette();
   const { t } = useI18n();
   if (!visible) return null;
-  const palette = useThemePalette();
   const styles = createStyles(palette);
   return <View style={styles.wrap}><View style={styles.dots}><View style={styles.dot} /><View style={styles.dot} /><View style={styles.dot} /></View><Text style={styles.text}>{t('Đang nhập...')}</Text></View>;
 }

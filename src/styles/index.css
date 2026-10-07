@@ -529,7 +529,9 @@ select {
 .personal-cloud-shortcut > .fa-chevron-right { color: var(--text-muted); font-size: 10px; }
 
 .conversation-list-toolbar { position: relative; z-index: 4; min-width: 0; }
-.conversation-list-tabs { display: flex; min-width: 0; align-items: center; gap: 3px; padding: 0 1px; }
+.conversation-list-tabs { display: flex; min-width: 0; align-items: center; gap: 3px; padding: 0 1px; overflow-x: auto; scrollbar-width: none; }
+.conversation-list-tabs::-webkit-scrollbar { display: none; }
+.conversation-channel-badge { display: inline-flex; align-items: center; justify-content: center; padding: 1px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 700; line-height: 1.2; color: #fff; margin-left: 5px; flex-shrink: 0; }
 .conversation-list-tabs > button { display: inline-flex; min-width: 0; height: 31px; align-items: center; justify-content: center; gap: 4px; padding: 0 8px; border: 0; border-radius: 8px; color: var(--text-muted); background: transparent; font: inherit; font-size: 11px; font-weight: 750; white-space: nowrap; cursor: pointer; transition: var(--transition-fast); }
 .conversation-list-tabs > button:hover,
 .conversation-list-tabs > button.active { color: var(--vichat-blue); background: var(--vichat-blue-light); }

@@ -2,6 +2,24 @@ export const INCOMING_CALL_NOTIFICATION_TYPE = 'incoming-call';
 // Keep notification routing inside the same lifetime as the call setup timer.
 export const INCOMING_CALL_NOTIFICATION_TTL_MS = 40_000;
 
+function timestampToMilliseconds(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  const parsed = Date.parse(String(value || ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/** History packets must never be promoted back into a live incoming call. */
+export function isFreshTinodeCallInvite(
+  value: { ts?: unknown } | null | undefined,
+  now = Date.now(),
+  ttlMs = INCOMING_CALL_NOTIFICATION_TTL_MS,
+) {
+  const issuedAt = timestampToMilliseconds(value?.ts);
+  return issuedAt > 0 && Number(now) >= issuedAt && Number(now) - issuedAt <= ttlMs;
+}
+
 export interface IncomingCallNotificationData {
   type: typeof INCOMING_CALL_NOTIFICATION_TYPE;
   topic: string;

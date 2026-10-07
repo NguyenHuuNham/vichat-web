@@ -76,7 +76,7 @@ import {
   setConversationCategory,
 } from '../features/chat/services/conversationCategoryPolicy';
 import { buildConversationCategoryConversations } from '../features/chat/services/conversationCategoryConversations';
-import { filterConversationIds } from '../features/chat/services/conversationListFilter';
+import { filterConversationIds, getChannelBadge } from '../features/chat/services/conversationListFilter';
 import { resolveCallsEnabled } from '../features/chat/services/callSignaling';
 import {
   DIRECT_MESSAGE_BLOCKED_TEXT,
@@ -4936,7 +4936,7 @@ function App() {
     setConversationListTab(nextTab);
     setConversationListCategoryMenuOpen(false);
     setConversationListMoreMenuOpen(false);
-    if (nextTab === 'all' || nextTab === 'groups') resetConversationListFilters();
+    if (nextTab === 'all' || nextTab === 'groups' || nextTab === 'zalo' || nextTab === 'livechat' || nextTab === 'facebook') resetConversationListFilters();
   };
 
   const toggleConversationListCategoryMenu = () => {
@@ -14668,6 +14668,7 @@ function App() {
             const hasDraft = Boolean(draft.trim());
             const roomMuted = isConversationMuted(room.notificationMutedUntil, notificationClock);
             const roomCategory = conversationCategoryFor(room);
+            const roomChannelBadge = getChannelBadge(room);
             const roomUnread = conversationUnreadIndicators(room);
             const hasUnread = roomUnread.hasUnread;
             return (
@@ -14702,6 +14703,15 @@ function App() {
                       <span className={`conv-name ${hasUnread ? 'unread' : ''}`}>
                         {room.pinned && <i className="fa-solid fa-thumbtack conv-pinned-icon" title={appCopy.t('Đã ghim')} aria-label={appCopy.t('Đã ghim')}></i>}
                         {roomName}
+                        {roomChannelBadge && (
+                          <span
+                            className="conversation-channel-badge"
+                            style={{ backgroundColor: roomChannelBadge.badgeColor, color: roomChannelBadge.textColor }}
+                            title={`${appCopy.t('Kênh')}: ${roomChannelBadge.label}`}
+                          >
+                            {roomChannelBadge.label}
+                          </span>
+                        )}
                         {roomCategory && (
                           <span
                             className={`conversation-category-tag category-${roomCategory.id}`}

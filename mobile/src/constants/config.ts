@@ -21,6 +21,8 @@ export const config = {
   brandLabel,
   mediaBase: env('EXPO_PUBLIC_TINODE_MEDIA_BASE', 'https://chat.gonplatform.com/tinode-media').replace(/\/+$/, ''),
   stickerBase: env('EXPO_PUBLIC_CHAT_WEB_URL', 'https://chat.gonplatform.com').replace(/\/+$/, ''),
+  translationApiUrl: env('EXPO_PUBLIC_TRANSLATION_API_URL', 'https://api.mymemory.translated.net/get').replace(/\/+$/, ''),
+  voiceSttApiUrl: env('EXPO_PUBLIC_VOICE_STT_API_URL', '').replace(/\/+$/, ''),
   chatMediaStorage: env('EXPO_PUBLIC_CHAT_MEDIA_STORAGE', 's3').toLowerCase(),
   chatMediaFallbackToTinode: env('EXPO_PUBLIC_CHAT_MEDIA_FALLBACK_TO_TINODE', 'false').toLowerCase() === 'true',
   callsEnabled: env('EXPO_PUBLIC_CALLS_ENABLED', 'true').toLowerCase() === 'true',

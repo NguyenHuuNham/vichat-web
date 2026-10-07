@@ -73,6 +73,9 @@ export function matchesMentionCandidate(candidate: any, query: string) {
     candidate?.full_name,
     candidate?.username,
     candidate?.email,
+    candidate?.department,
+    candidate?.title,
+    candidate?.roleLabel,
     ...(Array.isArray(candidate?.mentionAliases) ? candidate.mentionAliases : []),
   ].filter(Boolean).some(value => normalizeMentionSearch(value).includes(normalizedQuery));
 }

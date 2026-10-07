@@ -4,14 +4,10 @@
     "slug": "vichat-mobile",
     "scheme": "vichat",
     "description": "ViChat doanh nghiệp - kết nối nội bộ an toàn",
-    "version": "1.0.38",
+    "version": "1.0.55",
     "orientation": "portrait",
+    "newArchEnabled": false,
     "icon": "./assets/icon.png",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#F7F5F0"
-    },
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#F7F5F0",
     "primaryColor": "#F4511E",
@@ -23,16 +19,20 @@
           "NSAllowsArbitraryLoads": false
         },
         "NSCameraUsageDescription": "ViChat cần camera để thực hiện cuộc gọi video.",
-        "NSMicrophoneUsageDescription": "ViChat cần micro để thực hiện cuộc gọi thoại và video."
+        "NSMicrophoneUsageDescription": "ViChat cần micro để thực hiện cuộc gọi thoại và video.",
+        "NSLocationWhenInUseUsageDescription": "ViChat cần quyền vị trí để chia sẻ vị trí của bạn.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "ViChat cần vị trí để chia sẻ hành trình trực tiếp của bạn."
       }
     },
     "android": {
       "package": "vn.upgo.vichat",
-      "versionCode": 39,
+      "versionCode": 56,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
       ],
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
@@ -40,7 +40,7 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": true
+      "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -53,6 +53,12 @@
           "imageWidth": 180,
           "resizeMode": "contain",
           "backgroundColor": "#F7F5F0"
+        }
+      ],
+      [
+        "expo-navigation-bar",
+        {
+          "enforceContrast": false
         }
       ],
       "expo-secure-store",
@@ -75,6 +81,7 @@
       [
         "expo-notifications",
         {
+          "icon": "./assets/android-icon-monochrome.png",
           "color": "#F4511E",
           "defaultChannel": "messages-v2"
         }

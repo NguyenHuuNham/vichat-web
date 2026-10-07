@@ -147,9 +147,84 @@ export interface PollEvent {
   createdAt?: string;
 }
 
-export type MessageType = 'text' | 'image' | 'audio' | 'file' | 'sticker' | 'system' | 'reaction' | 'recall' | 'edit' | 'call' | 'poll_event';
+export interface GroupEvent {
+  id: string;
+  title: string;
+  startsAt: string;
+  endsAt?: string;
+  note?: string;
+  reminderMinutes: number;
+  creatorId: string;
+  creatorName?: string;
+}
+
+export type LocationShareKind = 'static' | 'live';
+
+export interface BaseLocationPayload {
+  kind?: LocationShareKind;
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  title?: string;
+  address?: string;
+  previewUrl?: string;
+}
+
+export interface StaticLocationPayload extends BaseLocationPayload {
+  kind?: 'static';
+  placeId?: string;
+  staticMapUrl?: string;
+}
+
+export interface LiveLocationPayload extends BaseLocationPayload {
+  kind: 'live';
+  liveId: string;
+  senderId: string;
+  senderName: string;
+  senderAvatar?: string;
+  durationMinutes: 15 | 30 | 60 | 480;
+  startedAt: number;
+  expiresAt: number;
+  isActive: boolean;
+  heading?: number;
+  speed?: number;
+  lastUpdatedAt: number;
+}
+
+export type LocationAttachment = StaticLocationPayload | LiveLocationPayload;
+
+export interface ContactCardAttachment {
+  userId: string;
+  name: string;
+  avatar?: string;
+  title?: string;
+  department?: string;
+  phone?: string;
+  email?: string;
+}
+
+export interface LiveLocationEvent {
+  liveId: string;
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  heading?: number;
+  speed?: number;
+  isActive: boolean;
+  lastUpdatedAt: number;
+}
+
+export type MessageType = 'text' | 'image' | 'audio' | 'file' | 'sticker' | 'system' | 'reaction' | 'recall' | 'edit' | 'call' | 'poll_event' | 'location' | 'contact' | 'live_location_event';
 export type DeliveryStatus = 'none' | 'sending' | 'sent' | 'received' | 'read' | 'failed';
 export type RecallMode = 'self' | 'all';
+export type TranslationLanguage = 'vi' | 'en';
+
+export interface MessageTranslation {
+  text: string;
+  language: TranslationLanguage;
+  sourceLanguage: TranslationLanguage;
+  translatedAt: number;
+}
 
 export interface ChatMessage {
   id: string;
@@ -169,6 +244,10 @@ export interface ChatMessage {
     label?: string;
     version?: string;
   };
+  location?: LocationAttachment;
+  contactCard?: ContactCardAttachment;
+  isGif?: boolean;
+  doodle?: boolean;
   createdAt?: string;
   time?: string;
   pending?: boolean;
@@ -196,9 +275,12 @@ export interface ChatMessage {
   grounded?: boolean;
   pinned?: boolean;
   systemEvent?: Record<string, any>;
+  groupEvent?: GroupEvent;
   poll?: Poll;
   pollEvent?: PollEvent;
   pollActivity?: PollEvent;
+  liveLocationEvent?: LiveLocationEvent;
+  translation?: MessageTranslation;
   call?: {
     audioOnly: boolean;
     state: string;
@@ -214,6 +296,8 @@ export interface ConversationMember extends User {
   groupRole?: 'OWNER' | 'ADMIN' | 'MEMBER' | string;
 }
 
+export type ChannelType = 'internal' | 'zalo' | 'zalo_oa' | 'zalo_group' | 'livechat' | 'facebook';
+
 export interface Conversation {
   id: string;
   managementId: string;
@@ -222,6 +306,9 @@ export interface Conversation {
   snapshotSource?: 'management' | 'tinode';
   name: string;
   isGroup: boolean;
+  channel?: ChannelType;
+  channelType?: ChannelType;
+  sourceType?: string;
   adminId?: string;
   isChatbot?: boolean;
   avatarUrl?: string;
@@ -242,6 +329,7 @@ export interface Conversation {
   readSeq?: number;
   notificationMutedUntil?: number | null;
   pinned?: boolean;
+  hasEarlierMedia?: boolean;
   groupSettings?: GroupSettings;
   pendingMembers?: ConversationMember[];
   conversationNicknames?: Record<string, string>;

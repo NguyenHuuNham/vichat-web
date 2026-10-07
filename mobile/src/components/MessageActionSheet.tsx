@@ -1,5 +1,5 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Copy, Download, Info, Pencil, Pin, Reply, RotateCcw, Share2, X } from 'lucide-react-native';
+import { Copy, Download, Info, Languages, Pencil, Pin, Reply, RotateCcw, Share2, X } from 'lucide-react-native';
 import { ChatMessage } from '../types';
 import { RecallMode } from '../types';
 import { canEditMessage, canInteractWithMessage, canRecallMessage } from '../utils/messagePolicy';
@@ -18,6 +18,8 @@ interface Props {
   onShare: (message: ChatMessage) => void;
   onDownload: (message: ChatMessage) => void;
   onDetails: (message: ChatMessage) => void;
+  onTranslate: (message: ChatMessage) => void;
+  hasTranslation?: boolean;
   onReaction: (message: ChatMessage, emoji: string) => void;
   onEdit: (message: ChatMessage) => void;
   canPin?: boolean;
@@ -25,7 +27,7 @@ interface Props {
   onRecall: (message: ChatMessage, mode: RecallMode) => void;
 }
 
-export function MessageActionSheet({ message, onClose, onReply, onCopy, onShare, onDownload, onDetails, onReaction, onEdit, canPin = false, onPin, onRecall }: Props) {
+export function MessageActionSheet({ message, onClose, onReply, onCopy, onShare, onDownload, onDetails, onTranslate, hasTranslation = false, onReaction, onEdit, canPin = false, onPin, onRecall }: Props) {
   const palette = useThemePalette();
   const styles = createStyles(palette);
   const { t } = useI18n();
@@ -44,6 +46,7 @@ export function MessageActionSheet({ message, onClose, onReply, onCopy, onShare,
           <View style={styles.actions}>
             {actionable ? <Action palette={palette} icon={Reply} label={t('Trả lời tin nhắn')} onPress={() => run(() => onReply(message))} /> : null}
             {actionable && message.text ? <Action palette={palette} icon={Copy} label={t('Sao chép nội dung')} onPress={() => run(() => onCopy(message))} /> : null}
+            {actionable && message.text ? <Action palette={palette} icon={Languages} label={hasTranslation ? t('Ẩn bản dịch') : t('Dịch tin nhắn')} onPress={() => run(() => onTranslate(message))} /> : null}
             {message.sender === 'outgoing' && canEditMessage(message) ? <Action palette={palette} icon={Pencil} label={t('Sửa tin nhắn')} onPress={() => run(() => onEdit(message))} /> : null}
             {hasAttachment ? <Action palette={palette} icon={Download} label={message.type === 'audio' || /^audio\//i.test(message.file?.mime || '') ? t('Mở / tải voice') : message.image ? t('Mở / lưu hình ảnh') : t('Mở / tải tệp')} onPress={() => run(() => onDownload(message))} /> : null}
             {actionable ? <Action palette={palette} icon={Share2} label={t('Chia sẻ')} onPress={() => run(() => onShare(message))} /> : null}

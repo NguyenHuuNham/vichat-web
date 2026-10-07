@@ -44,7 +44,7 @@ function messageTimestamp(message: ChatMessage) {
 }
 
 function isConversationActivityMessage(message: ChatMessage) {
-  return !['reaction', 'recall', 'edit', 'poll_event', 'system'].includes(message.type);
+  return !['reaction', 'recall', 'edit', 'poll_event', 'system', 'live_location_event'].includes(message.type);
 }
 
 export function latestConversationMessageTimestamp(conversation: Partial<Conversation>) {
@@ -95,6 +95,48 @@ function mergeMessages(current: ChatMessage[] = [], incoming: ChatMessage[] = []
   const byId = new Map<string, number>();
   const bySeq = new Map<number, number>();
 
+  const viewSignature = (message: ChatMessage) => {
+    try {
+      return JSON.stringify([
+        message.id,
+        message.seq,
+        message.type,
+        message.sender,
+        message.senderId,
+        message.senderName,
+        message.avatar,
+        message.text,
+        message.file,
+        message.image,
+        message.sticker,
+        message.createdAt,
+        message.time,
+        message.pending,
+        message.failed,
+        message.recalled,
+        message.edited,
+        message.editedAt,
+        message.mentions,
+        message.editHistory,
+        message.deliveryStatus,
+        message.reactions,
+        message.replyTo,
+        message.sources,
+        message.grounded,
+        message.pinned,
+        message.systemEvent,
+        message.groupEvent,
+        message.poll,
+        message.pollEvent,
+        message.pollActivity,
+        message.translation,
+        message.call,
+      ]);
+    } catch {
+      return '';
+    }
+  };
+
   const add = (message: ChatMessage) => {
     const { id, seq } = messageKey(message);
     const existingIndex = (id ? byId.get(id) : undefined)
@@ -122,14 +164,20 @@ function mergeMessages(current: ChatMessage[] = [], incoming: ChatMessage[] = []
       reactions: message.reactions || existing.reactions,
       raw: message.raw || existing.raw,
     };
-    merged[existingIndex] = next;
+    // Tinode rematerializes the whole topic for every packet. Keep the old
+    // object when the user-visible projection did not change so list cells
+    // and their measured heights stay stable across realtime snapshots.
+    merged[existingIndex] = viewSignature(existing) === viewSignature(next) ? existing : next;
     if (next.id) byId.set(String(next.id), existingIndex);
     if (Number(next.seq) > 0) bySeq.set(Number(next.seq), existingIndex);
   };
 
   current.forEach(add);
   incoming.forEach(add);
-  return merged.sort(compareMessages);
+  const sorted = merged.sort(compareMessages);
+  return current.length === sorted.length && current.every((message, index) => message === sorted[index])
+    ? current
+    : sorted;
 }
 
 function memberIdentityValues(member: Partial<ConversationMember>) {
@@ -265,16 +313,22 @@ export function mergeMembers(current: ConversationMember[] = [], incoming: Conve
 }
 
 function enrichMessages(messages: ChatMessage[], members: ConversationMember[]) {
-  return messages.map(message => {
+  let changed = false;
+  const enriched = messages.map(message => {
     if (message.sender === 'outgoing') return message;
     const sender = members.find(member => memberIdentityValues(member).includes(String(message.senderId || '').trim().toLowerCase()));
     if (!sender) return message;
+    const senderName = sender.name || message.senderName;
+    const avatar = message.avatar || sender.avatar;
+    if (message.senderName === senderName && message.avatar === avatar) return message;
+    changed = true;
     return {
       ...message,
-      senderName: sender.name || message.senderName,
-      avatar: message.avatar || sender.avatar,
+      senderName,
+      avatar,
     };
   });
+  return changed ? enriched : messages;
 }
 
 export function applyConversationNicknameEvent(conversation: Conversation, event: any, viewer?: unknown) {
@@ -330,10 +384,60 @@ export function conversationActivityTimestamp(conversation: Conversation) {
 }
 
 export function sortConversations(conversations: Conversation[]) {
-  return [...conversations].sort((first, second) => (
+  const sorted = [...conversations].sort((first, second) => (
     Number(Boolean(second.pinned)) - Number(Boolean(first.pinned))
     || conversationActivityTimestamp(second) - conversationActivityTimestamp(first)
   ));
+  return sorted.every((conversation, index) => conversation === conversations[index]) ? conversations : sorted;
+}
+
+function samePrimitiveArray(first: unknown[] | undefined, second: unknown[] | undefined) {
+  if (first === second) return true;
+  if ((first?.length || 0) !== (second?.length || 0)) return false;
+  if (!first || !second) return true;
+  return first.every((value, index) => value === second[index]);
+}
+
+function sameMemberArray(first: ConversationMember[] | undefined, second: ConversationMember[] | undefined) {
+  if (first === second) return true;
+  if ((first?.length || 0) !== (second?.length || 0)) return false;
+  if (!first || !second) return true;
+  const keys = ['id', 'uid', 'tinodeUid', 'username', 'name', 'avatar', 'groupRole', 'role', 'mode', 'nickname', 'conversationNickname', 'conversation_nickname'];
+  return first.every((member, index) => keys.every(key => {
+    const firstValue = key === 'tinodeUid'
+      ? (member as any).tinodeUid || (member as any).uid || (member as any).id
+      : (member as any)[key];
+    const secondValue = key === 'tinodeUid'
+      ? (second[index] as any).tinodeUid || (second[index] as any).uid || (second[index] as any).id
+      : (second[index] as any)[key];
+    return firstValue === secondValue || (!firstValue && !secondValue);
+  }));
+}
+
+function sameRecord(first: unknown, second: unknown) {
+  if (first === second) return true;
+  if (!first || !second || typeof first !== 'object' || typeof second !== 'object') return false;
+  try {
+    return JSON.stringify(first) === JSON.stringify(second);
+  } catch {
+    return false;
+  }
+}
+
+function sameConversationProjection(first: Conversation, second: Conversation) {
+  const scalarKeys = [
+    'id', 'managementId', 'tinodeTopic', 'snapshotSource', 'name', 'adminId', 'avatarUrl',
+    'description', 'membersCount', 'lastMsg', 'time', 'updatedAt', 'deletedAt', 'badge',
+    'readSeq', 'notificationMutedUntil', 'pinned',
+  ];
+  if (!scalarKeys.every(key => (first as any)[key] === (second as any)[key])) return false;
+  if (!sameMemberArray(first.members, second.members)) return false;
+  if (!sameMemberArray(first.pendingMembers, second.pendingMembers)) return false;
+  if (!samePrimitiveArray(first.participantIds, second.participantIds)) return false;
+  if (!samePrimitiveArray(first.messages, second.messages)) return false;
+  return sameRecord(first.groupSettings, second.groupSettings)
+    && sameRecord(first.conversationNicknames, second.conversationNicknames)
+    && sameRecord(first.conversationBackground, second.conversationBackground);
 }
 
 /** Merge realtime snapshots without dropping pending, historical, or enriched messages. */
@@ -380,7 +484,7 @@ export function mergeConversation(first: Conversation, second: Conversation): Co
     ? preferred.updatedAt
     : latestMessage?.createdAt;
 
-  return {
+  const merged = {
     ...fallback,
     ...preferred,
     id: incomingTinodeOnly ? first.id : (preferred.id || fallback.id),
@@ -395,7 +499,9 @@ export function mergeConversation(first: Conversation, second: Conversation): Co
     adminId: preferred.adminId || fallback.adminId,
     avatarUrl: preferred.avatarUrl || fallback.avatarUrl,
     description: preferred.description || fallback.description,
-    membersCount: preferred.membersCount || fallback.membersCount,
+    membersCount: (preferred.isGroup || fallback.isGroup) && members.length > 0
+      ? (preferred.membersCount || fallback.membersCount || '').replace(/^\s*\d+/, String(members.length))
+      : preferred.membersCount || fallback.membersCount,
     members,
     participantIds,
     pendingMembers,
@@ -405,7 +511,9 @@ export function mergeConversation(first: Conversation, second: Conversation): Co
     updatedAt: preferredUpdatedAt || (activity > 0 ? new Date(activity).toISOString() : undefined),
     deletedAt: deletedTimestamp > 0 && latestUserMessageAt > deletedTimestamp ? '' : preferredDeletedAt,
     badge: preferred.badge !== undefined ? preferred.badge : fallback.badge,
-    readSeq: preferred.readSeq !== undefined ? preferred.readSeq : fallback.readSeq,
+    readSeq: (preferred.readSeq !== undefined || fallback.readSeq !== undefined)
+      ? Math.max(Number(preferred.readSeq) || 0, Number(fallback.readSeq) || 0)
+      : undefined,
     // Tinode snapshots do not contain viewer-scoped notification settings.
     notificationMutedUntil: incomingTinodeSnapshot
       ? first.notificationMutedUntil
@@ -426,6 +534,7 @@ export function mergeConversation(first: Conversation, second: Conversation): Co
       ? preferred.conversationBackground
       : fallback.conversationBackground,
   };
+  return sameConversationProjection(first, merged) ? first : merged;
 }
 
 export function mergeConversationIntoList(conversations: Conversation[], incoming: Conversation) {
@@ -435,8 +544,10 @@ export function mergeConversationIntoList(conversations: Conversation[], incomin
     || (incoming.managementId && item.managementId === incoming.managementId)
   ));
   if (index < 0) return sortConversations([incoming, ...conversations]);
+  const merged = mergeConversation(conversations[index], incoming);
+  if (merged === conversations[index]) return conversations;
   const next = [...conversations];
-  next[index] = mergeConversation(next[index], incoming);
+  next[index] = merged;
   return sortConversations(next);
 }
 

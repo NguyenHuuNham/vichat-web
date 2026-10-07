@@ -40,4 +40,17 @@ describe('mobile mention policy', () => {
       isBot: false,
     });
   });
+
+  it('matches candidates by department or title', () => {
+    const candidate = {
+      id: 'account-3',
+      uid: 'usr-3',
+      name: 'Trần Thị Bình',
+      department: 'Phòng Kế toán',
+      title: 'Kế toán trưởng',
+    };
+    expect(matchesMentionCandidate(candidate, 'ke toan')).toBe(true);
+    expect(matchesMentionCandidate(candidate, 'truong')).toBe(true);
+    expect(matchesMentionCandidate(candidate, 'binh')).toBe(true);
+  });
 });

@@ -1,6 +1,10 @@
-import os
-from dotenv import load_dotenv
-load_dotenv(override=False)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(override=False)
+except ImportError:
+    def load_dotenv(*_args, **_kwargs):
+        pass
+
 
 # Gatco/Sanic in this legacy service imports a few collection ABCs from the
 # pre-3.10 location. Keep the service runnable on the supported modern Python

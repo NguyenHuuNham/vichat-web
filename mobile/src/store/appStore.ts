@@ -1,19 +1,31 @@
 import { create } from 'zustand';
+import { AppState } from 'react-native';
 import { authService } from '../services/authService';
 import { chatManagementService } from '../services/chatManagementService';
 import { cancelPendingRequests } from '../services/apiClient';
 import { tinodeClient, TinodeEvent } from '../services/tinodeClient';
 import { routeMobileCallEvent } from './callStore';
 import { workspaceService } from '../services/workspaceService';
-import { Conversation, ChatMessage, ConnectionState, GroupSettings, LinkedDevice, PickerFile, Poll, RecallMode, Session, Sticker, User, WorkspaceItem } from '../types';
+import { Conversation, ChatMessage, ConnectionState, ContactCardAttachment, GroupEvent, GroupSettings, LinkedDevice, LiveLocationEvent, LocationAttachment, PickerFile, Poll, RecallMode, Session, Sticker, User, WorkspaceItem } from '../types';
 import { storageService } from '../services/storageService';
-import { notifyIncomingCall, notifyIncomingMessage, resetPushNotificationRegistration } from '../services/notificationService';
+import { dismissNotificationsForConversation, notifyIncomingCall, notifyIncomingMessage, resetPushNotificationRegistration } from '../services/notificationService';
 import { applyPresenceToConversation } from '../utils/tinodeState';
 import { applyConversationNicknameEvent, applyConversationNicknames, dedupeConversations, isDirectConversationForUser, isTinodeConversationSnapshot, mergeConversation as mergeConversationSnapshot, mergeConversationIntoList } from '../utils/conversationSync';
 import { canKeepTinodeAvatarAfterProfileRejection } from '../utils/avatarPolicy';
 import { useCallStore } from './callStore';
 import { canonicalAccountIds, identitiesOverlap, normalizeParticipant, tinodeUidForMember } from '../utils/identity';
 import { groupSettingEnabled, memberIsAdmin } from '../utils/groupSettings';
+import { useTranslationStore } from './translationStore';
+import { isChatMediaUuid } from '../utils/chatMedia';
+import { flushNativeNameCache, getNativeNotifiedSeq, updateNativeMuteCache, updateNativeNameCache } from '../services/nativeNameCache';
+import { GROUP_EVENT_ACTION, normalizeGroupEvent } from '../utils/groupEvent';
+
+let appBecameActiveAt = Date.now();
+AppState.addEventListener('change', state => {
+  if (state === 'active') {
+    appBecameActiveAt = Date.now();
+  }
+});
 
 interface AppStore {
   status: 'booting' | 'signed_out' | 'loading' | 'ready' | 'error';
@@ -49,11 +61,16 @@ interface AppStore {
   dissolveGroup: (conversationId: string) => Promise<void>;
   searchConversationHistory: (conversationId: string, query: string) => Promise<any[]>;
   createPoll: (conversationId: string, poll: Pick<Poll, 'question' | 'options' | 'settings'>) => Promise<void>;
+  createGroupEvent: (conversationId: string, event: Pick<GroupEvent, 'title' | 'startsAt' | 'note' | 'reminderMinutes'>) => Promise<void>;
   votePoll: (conversationId: string, pollId: string, optionIds: string[]) => Promise<void>;
   addPollOption: (conversationId: string, pollId: string, optionId: string, optionText: string) => Promise<void>;
   lockPoll: (conversationId: string, pollId: string) => Promise<void>;
   toggleMessagePin: (conversationId: string, message: ChatMessage) => Promise<void>;
   sendText: (conversationId: string, text: string, replyTo?: ChatMessage['replyTo'], mentions?: any[]) => Promise<void>;
+  sendLocation: (conversationId: string, location: LocationAttachment) => Promise<void>;
+  sendLiveLocationUpdate: (conversationId: string, event: LiveLocationEvent) => Promise<void>;
+  stopLiveSharing: (conversationId: string, liveId: string) => Promise<void>;
+  sendContactCard: (conversationId: string, contact: ContactCardAttachment) => Promise<void>;
   sendFile: (conversationId: string, file: any) => Promise<void>;
   sendVoice: (conversationId: string, file: PickerFile, durationMs: number) => Promise<void>;
   sendSticker: (conversationId: string, sticker: Sticker) => Promise<void>;
@@ -61,7 +78,7 @@ interface AppStore {
   editMessage: (conversationId: string, message: ChatMessage, text: string) => Promise<void>;
   recallMessage: (conversationId: string, message: ChatMessage, mode?: RecallMode) => Promise<void>;
   sendTyping: (conversationId: string) => Promise<void>;
-  markRead: (conversationId: string) => Promise<void>;
+  markRead: (conversationId: string, explicitSeq?: number) => Promise<void>;
   muteConversation: (conversationId: string, until: number | null) => Promise<void>;
   deleteConversation: (conversationId: string, replacementId?: string) => Promise<void>;
   applyWorkspaceAction: (itemId: string, action: string) => Promise<void>;
@@ -172,8 +189,10 @@ function mergeConversation(previous: Conversation[], incoming: Conversation) {
       : incoming.conversationBackground !== undefined ? incoming.conversationBackground : current.conversationBackground,
     lastMsg: incoming.lastMsg || current.lastMsg,
     time: incoming.time || current.time,
-    badge: incoming.messages.length || incoming.lastMsg || incoming.updatedAt ? incoming.badge : current.badge,
-    readSeq: incoming.readSeq !== undefined ? incoming.readSeq : current.readSeq,
+    badge: (Boolean(useAppStore?.getState?.()?.activeConversationId) && (incoming.id === useAppStore.getState().activeConversationId || current.id === useAppStore.getState().activeConversationId || incoming.managementId === useAppStore.getState().activeConversationId || current.managementId === useAppStore.getState().activeConversationId || incoming.tinodeTopic === useAppStore.getState().activeConversationId || current.tinodeTopic === useAppStore.getState().activeConversationId))
+      ? 0
+      : (incoming.messages.length || incoming.lastMsg || incoming.updatedAt ? incoming.badge : current.badge),
+    readSeq: Math.max(Number(incoming.readSeq) || 0, Number(current.readSeq) || 0),
     updatedAt: incoming.updatedAt || current.updatedAt,
     managementId: incoming.managementId !== incoming.tinodeTopic ? incoming.managementId : current.managementId,
   };
@@ -182,6 +201,20 @@ function mergeConversation(previous: Conversation[], incoming: Conversation) {
 
 function conversationForId(conversations: Conversation[], id: string) {
   return conversations.find(item => item.id === id || item.managementId === id || item.tinodeTopic === id) || null;
+}
+
+export function resolveChatMediaConversationId(conversation: Conversation | null | undefined, allConversations: Conversation[] = []): string {
+  if (!conversation) return '';
+  if (isChatMediaUuid(conversation.managementId)) return conversation.managementId;
+  if (isChatMediaUuid(conversation.id)) return conversation.id;
+  if (conversation.tinodeTopic) {
+    const matched = allConversations.find(item => item.tinodeTopic === conversation.tinodeTopic && (isChatMediaUuid(item.managementId) || isChatMediaUuid(item.id)));
+    if (matched) {
+      if (isChatMediaUuid(matched.managementId)) return matched.managementId;
+      if (isChatMediaUuid(matched.id)) return matched.id;
+    }
+  }
+  return '';
 }
 
 async function mergeManagedConversation(set: any, get: () => AppStore, conversationId: string, managed: Conversation) {
@@ -237,6 +270,33 @@ async function syncRealtimeTopics(get: () => AppStore, reason = 'metadata'): Pro
   return promise;
 }
 
+function syncNamesToNative(conversations: Conversation[], directory: User[]) {
+  const updates: Record<string, string> = {};
+  for (const user of directory) {
+    if (user.id && user.name) updates[user.id] = user.name;
+    if (user.uid && user.name) updates[user.uid] = user.name;
+    if (user.tinodeUid && user.name) updates[user.tinodeUid] = user.name;
+    if (user.username && user.name) updates[user.username] = user.name;
+  }
+  for (const conv of conversations) {
+    if (conv.id && conv.name) updates[conv.id] = conv.name;
+    if (conv.tinodeTopic && conv.name) updates[conv.tinodeTopic] = conv.name;
+    if (conv.notificationMutedUntil !== undefined) {
+      const keys = [conv.id, conv.tinodeTopic, conv.managementId].filter(Boolean) as string[];
+      keys.forEach(k => updateNativeMuteCache(k, conv.notificationMutedUntil ?? null));
+    }
+    if (conv.members) {
+      for (const m of conv.members) {
+        if (m.id && m.name) updates[m.id] = m.name;
+        if (m.uid && m.name) updates[m.uid] = m.name;
+        if (m.username && m.name) updates[m.username] = m.name;
+      }
+    }
+  }
+  updateNativeNameCache(updates);
+  void flushNativeNameCache();
+}
+
 function botConversation(config: any): Conversation | null {
   if (!config?.enabled || !(config.tinodeUid || config.uid)) return null;
   return {
@@ -265,10 +325,13 @@ async function loadAuxiliaryData(set: any, get: () => AppStore, sessionUserId: s
   if (workspaceResult.status === 'fulfilled') {
     set({ workspaceItems: workspaceResult.value.items, workspaceSummary: workspaceResult.value.summary });
   }
-  if (botResult.status === 'fulfilled') {
+  if (botResult.status === 'fulfilled' && botResult.value) {
+    const previousBot = get().conversations.find(item => item.id === 'vichat-ai');
     const withoutBot = get().conversations.filter(item => item.id !== 'vichat-ai');
     const bot = botConversation(botResult.value);
-    const conversations = dedupeConversations(bot ? [...withoutBot, bot] : withoutBot);
+    const conversations = dedupeConversations(bot
+      ? [...withoutBot, { ...previousBot, ...bot, messages: previousBot?.messages || bot.messages }]
+      : withoutBot);
     tinodeClient.setAllowedConversationTopics(conversations.map(item => item.tinodeTopic).filter(Boolean));
     set({ conversations });
     void syncRealtimeTopics(get, 'bot-config').catch(() => {});
@@ -284,8 +347,9 @@ async function loadRemoteData(set: any, get: () => AppStore, signal: AbortSignal
   ]);
   if (get().session?.user.id !== sessionUserId || get().session?.generation !== generation || signal.aborted) return;
 
+  const existingBot = get().conversations.find(item => item.id === 'vichat-ai');
   const currentConversations = get().conversations.filter(item => item.id !== 'vichat-ai');
-  const conversations = conversationResult.status === 'fulfilled'
+  let conversations = conversationResult.status === 'fulfilled'
     ? dedupeConversations(conversationResult.value.reduce((list, incoming) => {
       return mergeConversationIntoList(list, incoming);
     }, currentConversations).filter(item => conversationResult.value.some(incoming => (
@@ -294,6 +358,8 @@ async function loadRemoteData(set: any, get: () => AppStore, signal: AbortSignal
       || (incoming.managementId && incoming.managementId === item.managementId)
     ))))
     : currentConversations;
+  // Keep the last known bot while the separate chatbot endpoint is unavailable.
+  if (existingBot) conversations = dedupeConversations([...conversations, existingBot]);
   const directory = directoryResult.status === 'fulfilled'
     ? directoryResult.value.map(user => ({
       ...user,
@@ -302,6 +368,7 @@ async function loadRemoteData(set: any, get: () => AppStore, signal: AbortSignal
     : get().directory;
   tinodeClient.setAllowedConversationTopics(conversations.map(item => item.tinodeTopic).filter(Boolean));
   set({ conversations, directory });
+  syncNamesToNative(conversations, directory);
 
   const failures = [conversationResult, directoryResult].filter(result => result.status === 'rejected');
   if (failures.length) {
@@ -432,12 +499,53 @@ async function bootstrapAuthenticated(set: any, get: () => AppStore, providedSes
         };
       });
       set({ session: nextSession, directory, conversations });
+      syncNamesToNative(conversations, directory);
     } else if (event.type === 'incoming-message') {
       if (!tinodeClient.isConversationTopicAllowed(event.conversation.tinodeTopic)) return;
       const senderId = String(event.message.senderId || '').trim();
       if (!senderId || event.message.sender !== 'incoming') return;
       if (current.session?.user && identitiesOverlap(current.session.user, { id: senderId, uid: senderId } as User)) return;
       const notificationConversation = conversationForId(current.conversations, event.conversation.tinodeTopic) || event.conversation;
+      if (AppState.currentState === 'active') {
+        const activeId = current.activeConversationId;
+        if (
+          activeId &&
+          (activeId === notificationConversation.id ||
+            activeId === notificationConversation.tinodeTopic ||
+            activeId === notificationConversation.managementId)
+        ) {
+          return;
+        }
+        // Do not replay notifications for messages that were sent before the app became active
+        const messageTime = event.message.createdAt ? new Date(event.message.createdAt).getTime() : 0;
+        if (messageTime && messageTime < appBecameActiveAt - 2000) {
+          return;
+        }
+        // Do not notify if this sequence was already alerted by native FCM while in background/killed
+        const seq = Number(event.message.seq || 0);
+        const nativeSeq = getNativeNotifiedSeq(notificationConversation.tinodeTopic || notificationConversation.id);
+        if (seq > 0 && seq <= nativeSeq) {
+          return;
+        }
+      }
+      let senderName = event.message.senderName;
+      if (!senderName || senderName === 'Thành viên' || senderName === 'Bạn') {
+        const member = notificationConversation.members?.find(m => identitiesOverlap(m, { id: senderId, uid: senderId }));
+        if (member?.name && member.name !== 'Thành viên') {
+          senderName = member.name;
+        } else {
+          const directoryUser = current.directory.find(u => identitiesOverlap(u, { id: senderId, uid: senderId }));
+          if (directoryUser?.name) {
+            senderName = directoryUser.name;
+          } else if (!notificationConversation.isGroup && notificationConversation.name && notificationConversation.name !== 'ViChat') {
+            senderName = notificationConversation.name;
+          }
+        }
+      }
+      if (senderName && senderName !== 'Thành viên') {
+        event.message.senderName = senderName;
+        updateNativeNameCache({ [senderId]: senderName });
+      }
       void notifyIncomingMessage(notificationConversation, event.message);
     } else if (event.type === 'typing') {
       set({ typingByTopic: { ...current.typingByTopic, [event.topic]: event.active ? event.uid : '' } });
@@ -448,10 +556,19 @@ async function bootstrapAuthenticated(set: any, get: () => AppStore, providedSes
         conversations: current.conversations.map(conversation => applyPresenceToConversation(conversation, event.uid, event.online)),
       });
     } else if (event.type === 'call-invite' || event.type === 'call-signal') {
-      if (!tinodeClient.isConversationTopicAllowed(event.topic)) return;
+      if (!tinodeClient.isCallTopicAllowed(event.topic)) return;
       const conversation = conversationForId(current.conversations, event.topic);
       const peer = conversation?.members?.find(member => identitiesOverlap(member, { id: event.from, uid: event.from }));
-      const callPeer = { name: peer?.name || conversation?.name, avatar: peer?.avatar || conversation?.avatarUrl };
+      let peerName = peer?.name || conversation?.name;
+      let peerAvatar = peer?.avatar || conversation?.avatarUrl;
+      if (!peerName) {
+        const directoryUser = current.directory.find(u => identitiesOverlap(u, { id: event.from, uid: event.from }));
+        if (directoryUser) {
+          peerName = directoryUser.name;
+          peerAvatar = directoryUser.avatar;
+        }
+      }
+      const callPeer = { name: peerName, avatar: peerAvatar };
       routeMobileCallEvent(event, callPeer);
       if (event.type === 'call-invite') void notifyIncomingCall(event, callPeer);
     }
@@ -561,6 +678,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   async switchTenant(tenantId) {
     const previousSession = get().session;
+    useTranslationStore.getState().clearAll();
     set({ status: 'loading', error: '' });
     try {
       const session = await authService.switchTenant(tenantId, previousSession);
@@ -575,6 +693,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   async logout() {
+    useTranslationStore.getState().clearAll();
     useCallStore.getState().hangUp();
     await tinodeClient.disconnect();
     tinodeClient.setCurrentIdentity(null);
@@ -616,6 +735,28 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const generation = get().session?.generation || 0;
     let conversation = conversationForId(get().conversations, conversationId);
     if (!conversation) return null;
+
+    const isZalo = conversation.channel === 'zalo_oa'
+      || conversation.channelType === 'zalo_oa'
+      || conversation.id.startsWith('zalo:');
+
+    if (isZalo) {
+      try {
+        const remoteMessages = await chatManagementService.getZaloMessages(conversation.id);
+        if (remoteMessages.length) {
+          const merged = mergeConversation(get().conversations, {
+            ...conversation,
+            messages: remoteMessages,
+          });
+          set({ conversations: merged });
+        }
+      } catch {
+        // preserve existing messages
+      }
+      set({ activeConversationId: conversation.id });
+      return conversationForId(get().conversations, conversation.id) || conversation;
+    }
+
     if (!conversation.tinodeTopic && conversation.managementId) {
       try {
         const prepared = await chatManagementService.prepareTinodeConversation(conversation.managementId);
@@ -697,6 +838,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
         idempotencyKey: requestKey,
       });
       let topicName = '';
+      let avatarReference = '';
+      let avatarBound = false;
       try {
         const prepared = await chatManagementService.prepareTinodeConversation(created.managementId);
         const preparedParticipants = (prepared.members || []).map(member => normalizeParticipant(member, get().directory));
@@ -727,18 +870,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
           conversationId: created.managementId,
         });
         topicName = realtimeGroup.tinodeTopic || realtimeGroup.id;
+        avatarReference = realtimeGroup.avatarUrl || '';
         const bound = await chatManagementService.bindTinodeTopic(
           created.managementId,
           topicName,
           tinodeClient.getAuthTokenValue(),
           realtimeGroup.avatarUrl || '',
         );
-        if (realtimeGroup.avatarUrl) {
+        if (avatarReference) {
           await tinodeClient.bindChatMediaReference(
-            realtimeGroup.avatarUrl,
+            avatarReference,
             created.managementId,
             `group-avatar:${created.managementId}`,
-          ).catch(() => {});
+          );
+          avatarBound = true;
         }
         const canonicalTopic = bound.tinodeTopic || topicName;
         if (canonicalTopic !== topicName) await tinodeClient.discardGroupTopic(topicName).catch(() => {});
@@ -761,11 +906,26 @@ export const useAppStore = create<AppStore>((set, get) => ({
           try {
             const reconciled = await chatManagementService.prepareTinodeConversation(created.managementId);
             if (reconciled.tinodeTopic) {
+              if (avatarReference && !avatarBound) {
+                try {
+                  await tinodeClient.bindChatMediaReference(
+                    avatarReference,
+                    created.managementId,
+                    `group-avatar:${created.managementId}`,
+                  );
+                  avatarBound = true;
+                } catch {
+                  // Keep the accepted Tinode conversation; the media bind can be retried by the next edit.
+                }
+              }
               const ready = { ...created, ...reconciled, id: created.id, managementId: created.managementId };
               set({ conversations: mergeConversation(get().conversations, ready) });
               return ready;
             }
             await tinodeClient.discardGroupTopic(topicName);
+            if (avatarReference && !avatarBound) {
+              await tinodeClient.discardChatMediaReference(avatarReference, created.managementId).catch(() => {});
+            }
           } catch {
             // Keep the topic for an explicit retry when bind status is unknown.
           }
@@ -884,6 +1044,32 @@ export const useAppStore = create<AppStore>((set, get) => ({
     return chatManagementService.searchConversationHistory(conversation.managementId || conversation.id, query);
   },
 
+  async createGroupEvent(conversationId, event) {
+    const conversation = conversationForId(get().conversations, conversationId);
+    if (!conversation?.tinodeTopic || !conversation.isGroup || !tinodeClient.connected) throw new Error('Lịch nhóm chỉ khả dụng khi nhóm đã kết nối realtime.');
+    const actor = get().session?.user;
+    const normalized = normalizeGroupEvent({
+      action: GROUP_EVENT_ACTION,
+      eventId: `group-event-${tinodeClient.currentUserId || actor?.id || 'member'}-${Date.now()}`,
+      ...event,
+      creatorId: tinodeClient.currentUserId || actor?.uid || actor?.id || '',
+      creatorName: actor?.name || 'Thành viên',
+    });
+    if (!normalized) throw new Error('Thông tin lịch nhóm chưa hợp lệ.');
+    await tinodeClient.sendSystemEvent(conversation.tinodeTopic, {
+      action: GROUP_EVENT_ACTION,
+      eventId: normalized.id,
+      title: normalized.title,
+      startsAt: normalized.startsAt,
+      endsAt: normalized.endsAt,
+      note: normalized.note,
+      reminderMinutes: normalized.reminderMinutes,
+      creatorId: normalized.creatorId,
+      creatorName: normalized.creatorName,
+      groupEvent: normalized,
+    }, `mobile-group-event-${normalized.id}`);
+  },
+
   async createPoll(conversationId, poll) {
     const conversation = conversationForId(get().conversations, conversationId);
     if (!conversation?.tinodeTopic || !conversation.isGroup) throw new Error('Bình chọn chỉ khả dụng trong nhóm.');
@@ -922,19 +1108,37 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   async toggleMessagePin(conversationId, message) {
     const conversation = conversationForId(get().conversations, conversationId);
-    if (!conversation?.isGroup || !conversation.tinodeTopic) throw new Error('Chỉ có thể ghim tin nhắn trong nhóm.');
-    const currentMember = conversation.members?.find(member => identitiesOverlap(member, get().session?.user));
-    if (!memberIsAdmin(currentMember) && !groupSettingEnabled(conversation.groupSettings, 'allowPinMessages')) {
-      throw new Error('Quản trị viên đã tắt quyền ghim tin nhắn trong nhóm.');
+    if (!conversation?.tinodeTopic) throw new Error('Cuộc trò chuyện chưa sẵn sàng realtime.');
+    if (conversation.isGroup) {
+      const currentMember = conversation.members?.find(member => identitiesOverlap(member, get().session?.user));
+      if (!memberIsAdmin(currentMember) && !groupSettingEnabled(conversation.groupSettings, 'allowPinMessages')) {
+        throw new Error('Quản trị viên đã tắt quyền ghim tin nhắn trong nhóm.');
+      }
     }
     const pinned = !message.pinned;
     const actor = get().session?.user;
+
+    // Optimistically update pinned state in messages
+    const targetSeq = Number(message.seq) || 0;
+    const targetId = String(message.id || '');
+    const updatedMessages = (conversation.messages || []).map(m => {
+      if ((targetId && m.id === targetId) || (targetSeq > 0 && Number(m.seq) === targetSeq)) {
+        return { ...m, pinned };
+      }
+      return m;
+    });
+    set({
+      conversations: get().conversations.map(item =>
+        item.id === conversationId ? { ...item, messages: updatedMessages } : item
+      ),
+    });
+
     await tinodeClient.sendSystemEvent(conversation.tinodeTopic, {
       action: pinned ? 'message_pinned' : 'message_unpinned',
       actorId: tinodeClient.currentUserId || actor?.uid || actor?.id || '',
       actorName: actor?.name || 'Thành viên',
-      messageId: String(message.id || '').slice(0, 200),
-      messageSeq: Number(message.seq) || 0,
+      messageId: targetId.slice(0, 200),
+      messageSeq: targetSeq,
       messagePreview: String(message.text || message.file?.name || (message.sticker ? 'Sticker' : 'Nội dung đính kèm'))
         .replace(/\s+/g, ' ')
         .trim()
@@ -944,6 +1148,56 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   async sendText(conversationId, text, replyTo, mentions = []) {
     const conversation = conversationForId(get().conversations, conversationId);
+    if (!conversation) throw new Error('Không tìm thấy cuộc trò chuyện.');
+
+    const isZalo = conversation.channel === 'zalo_oa'
+      || conversation.channelType === 'zalo_oa'
+      || conversation.id.startsWith('zalo:');
+
+    if (isZalo) {
+      const parts = conversation.id.split(':');
+      const oaId = parts.length >= 3 ? parts[1] : undefined;
+      const userId = parts.length >= 3 ? parts[2] : (conversation.members?.[0]?.id || conversation.id);
+      const clientId = `zalo-agent-${Date.now()}`;
+      const pending: ChatMessage = {
+        id: clientId,
+        type: 'text',
+        sender: 'outgoing',
+        senderId: get().session?.user?.id || 'agent',
+        senderName: get().session?.user?.name || 'Bạn',
+        text,
+        createdAt: new Date().toISOString(),
+        pending: false,
+        deliveryStatus: 'sent',
+      };
+      set({
+        conversations: mergeConversation(get().conversations, {
+          ...conversation,
+          messages: [...conversation.messages, pending],
+          lastMsg: text,
+          updatedAt: pending.createdAt,
+        }),
+      });
+      try {
+        await chatManagementService.sendZaloMessage(userId, text, oaId, get().session?.user?.name);
+      } catch (error) {
+        set({
+          conversations: get().conversations.map(item =>
+            item.id === conversationId
+              ? {
+                  ...item,
+                  messages: item.messages.map(m =>
+                    m.id === clientId ? { ...m, failed: true, deliveryStatus: 'failed' } : m
+                  ),
+                }
+              : item
+          ),
+        });
+        throw error;
+      }
+      return;
+    }
+
     if (!conversation?.tinodeTopic || !tinodeClient.connected) throw new Error('Realtime chưa sẵn sàng. Hãy thử lại sau khi kết nối lại.');
     const clientId = `mobile-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const pending: ChatMessage = { id: clientId, type: 'text', sender: 'outgoing', senderId: tinodeClient.currentUserId, senderName: 'Bạn', text, replyTo, mentions, createdAt: new Date().toISOString(), pending: true, deliveryStatus: 'sending' };
@@ -956,12 +1210,94 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
   },
 
+  async sendLocation(conversationId, location) {
+    const conversation = conversationForId(get().conversations, conversationId);
+    if (!conversation?.tinodeTopic || !tinodeClient.connected) throw new Error('Realtime chưa sẵn sàng. Hãy thử lại sau khi kết nối lại.');
+    const clientId = `mobile-loc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const text = (location as any).kind === 'live' ? '🔴 Đang chia sẻ vị trí trực tiếp' : (location.address ? `📍 Vị trí: ${location.address}` : `📍 ${location.title || 'Vị trí đã chia sẻ'}`);
+    const pending: ChatMessage = { id: clientId, type: 'location', sender: 'outgoing', senderId: tinodeClient.currentUserId, senderName: 'Bạn', text, location, createdAt: new Date().toISOString(), pending: true, deliveryStatus: 'sending' };
+    set({ conversations: mergeConversation(get().conversations, { ...conversation, messages: [...conversation.messages, pending], lastMsg: text, updatedAt: pending.createdAt }) });
+    try {
+      await tinodeClient.sendLocation(conversation.tinodeTopic, location, clientId);
+    } catch (error) {
+      set({ conversations: get().conversations.map(item => item.id === conversationId ? { ...item, messages: item.messages.map(message => message.id === clientId ? { ...message, pending: false, failed: true, deliveryStatus: 'failed' } : message) } : item) });
+      throw error;
+    }
+  },
+
+  async sendLiveLocationUpdate(conversationId, event) {
+    const conversation = conversationForId(get().conversations, conversationId);
+    if (!conversation?.tinodeTopic || !tinodeClient.connected) return;
+    set({
+      conversations: get().conversations.map(conv => {
+        if (conv.id !== conversationId) return conv;
+        return {
+          ...conv,
+          messages: conv.messages.map(msg => {
+            if (msg.location && (msg.location as any).kind === 'live' && (msg.location as any).liveId === event.liveId) {
+              return {
+                ...msg,
+                location: {
+                  ...msg.location,
+                  latitude: event.latitude,
+                  longitude: event.longitude,
+                  accuracy: event.accuracy ?? (msg.location as any).accuracy,
+                  heading: event.heading ?? (msg.location as any).heading,
+                  speed: event.speed ?? (msg.location as any).speed,
+                  isActive: event.isActive,
+                  lastUpdatedAt: event.lastUpdatedAt,
+                },
+              };
+            }
+            return msg;
+          }),
+        };
+      }),
+    });
+    try {
+      await tinodeClient.sendLiveLocationUpdate(conversation.tinodeTopic, event);
+    } catch {
+      // background update errors are non-blocking
+    }
+  },
+
+  async stopLiveSharing(conversationId, liveId) {
+    const conversation = conversationForId(get().conversations, conversationId);
+    if (!conversation) return;
+    const targetMsg = conversation.messages.find(m => m.location && (m.location as any).kind === 'live' && (m.location as any).liveId === liveId);
+    const loc = targetMsg?.location as any;
+    const event: LiveLocationEvent = {
+      liveId,
+      latitude: loc?.latitude || 0,
+      longitude: loc?.longitude || 0,
+      isActive: false,
+      lastUpdatedAt: Date.now(),
+    };
+    await get().sendLiveLocationUpdate(conversationId, event);
+  },
+
+  async sendContactCard(conversationId, contact) {
+    const conversation = conversationForId(get().conversations, conversationId);
+    if (!conversation?.tinodeTopic || !tinodeClient.connected) throw new Error('Realtime chưa sẵn sàng. Hãy thử lại sau khi kết nối lại.');
+    const clientId = `mobile-contact-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const text = `🪪 Danh thiếp: ${contact.name}`;
+    const pending: ChatMessage = { id: clientId, type: 'contact', sender: 'outgoing', senderId: tinodeClient.currentUserId, senderName: 'Bạn', text, contactCard: contact, createdAt: new Date().toISOString(), pending: true, deliveryStatus: 'sending' };
+    set({ conversations: mergeConversation(get().conversations, { ...conversation, messages: [...conversation.messages, pending], lastMsg: text, updatedAt: pending.createdAt }) });
+    try {
+      await tinodeClient.sendContactCard(conversation.tinodeTopic, contact, clientId);
+    } catch (error) {
+      set({ conversations: get().conversations.map(item => item.id === conversationId ? { ...item, messages: item.messages.map(message => message.id === clientId ? { ...message, pending: false, failed: true, deliveryStatus: 'failed' } : message) } : item) });
+      throw error;
+    }
+  },
+
   async sendFile(conversationId, file) {
     const conversation = conversationForId(get().conversations, conversationId);
     if (!conversation?.tinodeTopic || !tinodeClient.connected) throw new Error('Realtime chưa sẵn sàng. Hãy thử lại sau khi kết nối lại.');
     const clientId = `mobile-file-${Date.now()}`;
+    const mediaConversationId = resolveChatMediaConversationId(conversation, get().conversations);
     await tinodeClient.sendFile(conversation.tinodeTopic, file, clientId, {
-      conversationId: conversation.managementId || conversation.id,
+      conversationId: mediaConversationId,
     });
   },
 
@@ -969,8 +1305,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const conversation = conversationForId(get().conversations, conversationId);
     if (!conversation?.tinodeTopic || !tinodeClient.connected) throw new Error('Realtime chưa sẵn sàng. Hãy thử lại sau khi kết nối lại.');
     const clientId = `mobile-voice-${Date.now()}`;
+    const mediaConversationId = resolveChatMediaConversationId(conversation, get().conversations);
     await tinodeClient.sendFile(conversation.tinodeTopic, file, clientId, {
-      conversationId: conversation.managementId || conversation.id,
+      conversationId: mediaConversationId,
       audioDurationMs: durationMs,
     });
   },
@@ -979,8 +1316,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const conversation = conversationForId(get().conversations, conversationId);
     if (!conversation?.tinodeTopic || !tinodeClient.connected) throw new Error('Realtime chưa sẵn sàng. Hãy thử lại sau khi kết nối lại.');
     const clientId = `mobile-sticker-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const mediaConversationId = resolveChatMediaConversationId(conversation, get().conversations);
     await tinodeClient.sendSticker(conversation.tinodeTopic, sticker, clientId, {
-      conversationId: conversation.managementId || conversation.id,
+      conversationId: mediaConversationId,
     });
   },
 
@@ -1007,23 +1345,58 @@ export const useAppStore = create<AppStore>((set, get) => ({
     if (conversation?.tinodeTopic && tinodeClient.connected) await tinodeClient.sendTyping(conversation.tinodeTopic);
   },
 
-  async markRead(conversationId) {
+  async markRead(conversationId, explicitSeq) {
     const conversation = conversationForId(get().conversations, conversationId);
-    if (conversation?.tinodeTopic && tinodeClient.connected) {
-      await tinodeClient.markRead(conversation.tinodeTopic);
-      const readSeq = conversation.messages.reduce((latest, message) => Math.max(latest, Number(message.seq) || 0), Number(conversation.readSeq) || 0);
-      set({ conversations: get().conversations.map(item => item.id === conversationId ? { ...item, badge: 0, readSeq } : item) });
+    if (!conversation) return;
+    const maxMessageSeq = conversation.messages.reduce(
+      (latest, message) => Math.max(latest, Number(message.seq) || 0),
+      0,
+    );
+    const readSeq = Math.max(
+      Number(conversation.readSeq) || 0,
+      Number(explicitSeq) || 0,
+      maxMessageSeq,
+    );
+    void dismissNotificationsForConversation(conversation.id, conversation.tinodeTopic, readSeq);
+    set({
+      conversations: get().conversations.map(item =>
+        item.id === conversationId ? { ...item, badge: 0, readSeq: Math.max(Number(item.readSeq) || 0, readSeq) } : item
+      ),
+    });
+    if (conversation.tinodeTopic && tinodeClient.connected) {
+      await tinodeClient.markRead(conversation.tinodeTopic, readSeq);
     }
   },
 
   async muteConversation(conversationId, until) {
     const conversation = conversationForId(get().conversations, conversationId);
     if (!conversation) return;
-    const updated = await chatManagementService.updateConversationNotifications(
-      conversation.managementId || conversation.id,
-      until,
-    );
-    set({ conversations: mergeConversation(get().conversations, updated) });
+
+    // 1. Optimistic update in Zustand so local UI reflects mute status immediately
+    const optimistic: Conversation = {
+      ...conversation,
+      notificationMutedUntil: until,
+    };
+    set({ conversations: mergeConversation(get().conversations, optimistic) });
+
+    // 2. Persist mute state to native cache so ViChatFirebaseMessagingService suppresses notifications when killed
+    const keysToMute = [conversation.id, conversation.tinodeTopic, conversation.managementId].filter(Boolean) as string[];
+    keysToMute.forEach(key => updateNativeMuteCache(key, until));
+
+    // 3. Best-effort sync to Chatmgt backend if a valid management UUID is found
+    const managementId = resolveChatMediaConversationId(conversation, get().conversations);
+    if (managementId) {
+      try {
+        const updated = await chatManagementService.updateConversationNotifications(
+          managementId,
+          until,
+        );
+        set({ conversations: mergeConversation(get().conversations, updated) });
+      } catch (error: any) {
+        // If 401 or offline or temporary issue, local mute remains safely applied
+        console.warn('[ViChat] Backend notification-settings sync deferred:', error?.message);
+      }
+    }
   },
 
   async deleteConversation(conversationId, replacementId = '') {

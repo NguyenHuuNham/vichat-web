@@ -1676,3 +1676,56 @@ deployment, rollback and verification commands.
   roles and reject invalid transitions.
 - Workspace polling and failures do not reconnect Tinode, change topic
   subscriptions or disable the message composer.
+
+## Omnichannel Architecture: Zalo OA, Livechat and Bot-First Pipeline
+
+ViChat supports multi-tenant omnichannel communication across Zalo OA, Livechat widget, and Facebook channels with a Bot-First, Human-Escalation hybrid workflow.
+
+```
+[Khach hang Zalo OA]
+        │
+        ▼ (Webhook event: user_send_text)
+[Chatmgt: POST /api/v1/zalo/webhook]
+        │
+        ├── 1. Deduplication (Event ID / Message ID cache)
+        ├── 2. Goi Bot AI (ChatbotService / chatbot.gonplatform.com)
+        │       │
+        │       ▼
+        ├── 3. Tu dong reply lai khach (POST /v3.0/oa/message/cs qua ZaloService)
+        │
+        └── 4. Dong bo hoi thoai ve ViChat (Tinode topic: `zalo:<user_id>`)
+                │
+                ▼
+       [Nhan vien CSKH ViChat]
+       (Web Toolbar & Mobile App co tab 'Zalo', badge 'Zalo' tiep quan ho tro)
+```
+
+### 1. Zalo OA Integration & Token Manager (`application/services/zalo_service.py`)
+- **OAuth PKCE & Token Refresh**: Quản lý vòng đời Access Token (25 giờ) và Refresh Token (3 tháng) theo từng OA ID thông qua Redis / in-memory cache fallback. Tự động refresh khi còn dưới 5 phút hiệu lực.
+- **Customer Service Message API (`send_cs_message`)**: Gửi tin nhắn CSKH 2 chiều qua `POST https://openapi.zalo.me/v3.0/oa/message/cs` trong khung cửa sổ 48 giờ kể từ tương tác gần nhất của khách hàng.
+- **User Profile API (`get_user_profile`)**: Tra cứu định danh, họ tên, avatar của người dùng qua `GET https://openapi.zalo.me/v3.0/oa/user/detail`.
+
+### 2. Webhook, Hybrid Handover & Takeover Handler (`application/controllers/api_zalo.py`)
+- `GET /api/v1/zalo/webhook`: Xác thực webhook probe / challenge từ Zalo Open Platform.
+- `POST /api/v1/zalo/webhook`: Tiếp nhận sự kiện tin nhắn từ người dùng (`user_send_text`) trực tiếp từ Zalo hoặc qua cầu nối `from_bot_service` từ `chatbot.gonplatform.com`:
+  1. **Takeover Active**: Nếu nhân viên ViChat đang tiếp quản (cửa sổ 30 phút), phản hồi `takeover: True` để Chatbot tạm ngừng, đẩy thẳng tin nhắn về ViChat.
+  2. **Pending Handover Buffer**: Nếu khách đang chờ nhân viên tiếp quản, bot không lặp lại thông báo chuyển tiếp, đẩy tin nhắn mới về ViChat.
+  3. **In-Scope (Bot AI)**: Bot AI tự động trả lời tức thì (1-2s) bằng tri thức doanh nghiệp, lưu bản sao câu trả lời vào lịch sử Redis.
+  4. **Out-of-Scope / Yêu cầu gặp người**: Bot gửi thông báo chuyển tiếp lịch sự, đánh dấu `needs_human: True` và đẩy về ViChat để nhân viên tiếp quản.
+- `POST /api/v1/zalo/send_message`: Nhân viên ViChat gửi tin trực tiếp tới khách Zalo OA, tự động kích hoạt chế độ Takeover (khóa bot 30 phút) và lưu tin nhắn outgoing vào lịch sử.
+- `GET /api/v1/zalo/conversations/<conversation_id>/messages`: Truy vấn toàn bộ lịch sử tin nhắn của cuộc trò chuyện Zalo OA (khách, bot, nhân viên) lưu trữ trong Redis với TTL 30 ngày.
+- `GET /api/v1/conversation` (Integration): Tại trang đầu tiên (`cursor is None`), tự động gộp các cuộc trò chuyện Zalo OA đang hoạt động vào danh sách hội thoại để Mobile và Web hiển thị trên tab Zalo OA mà không cần gọi API riêng biệt.
+- `POST /api/v1/zalo/takeover`: Cho phép nhân viên chủ động bật/tắt tiếp quản.
+- `GET /api/v1/zalo/conversations`: Liệt kê danh sách hội thoại Zalo kèm trạng thái tiếp quản.
+- `/api/v1/zalo/authorize` và `/api/v1/zalo/callback`: Luồng cấp quyền OAuth PKCE đa đối tác SaaS.
+
+### 3. Frontend Omnichannel Classification (Web & Mobile)
+- **Web App**:
+  - `CONVERSATION_LIST_TABS`: Thêm `zalo`, `livechat`, `facebook`.
+  - Phân loại kênh và badge hiển thị: `resolveConversationChannel`, `getChannelBadge`.
+  - Toolbar lọc kênh: `ConversationListToolbar.jsx` tích hợp các nút chuyển đổi kênh.
+- **Mobile App**:
+  - `mobile/src/types/index.ts`: Mở rộng `ChannelType` (`internal`, `zalo`, `zalo_oa`, `zalo_group`, `livechat`, `facebook`).
+  - `mobile/src/utils/channelPolicy.ts`: Nhận diện và lọc hội thoại theo kênh.
+  - `ConversationListScreen.tsx` & `ConversationRow.tsx`: Horizontal scroll tabs và badge trực quan (`Zalo` #0068FF, `Livechat` #10B981, `Facebook` #1877F2).
+

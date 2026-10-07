@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useMemo } from 'react';
 import { create } from 'zustand';
 import { AppLanguage, createTranslator } from '../i18n';
 
@@ -39,5 +40,6 @@ export const useLanguageStore = create<LanguageState>((set, get) => ({
 
 export function useI18n() {
   const language = useLanguageStore(state => state.language);
-  return { language, locale: language === 'en' ? 'en-US' : 'vi-VN', t: createTranslator(language) };
+  const t = useMemo(() => createTranslator(language), [language]);
+  return { language, locale: language === 'en' ? 'en-US' : 'vi-VN', t };
 }

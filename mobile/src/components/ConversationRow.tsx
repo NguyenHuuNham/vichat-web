@@ -1,21 +1,26 @@
 import { memo } from 'react';
-import { ChevronRight, UsersRound, Bot } from 'lucide-react-native';
+import { BellOff, Bot, ChevronRight, UsersRound } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Conversation } from '../types';
 import { ThemeColors, shadow } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { useThemePalette } from '../theme/useThemePalette';
 import { formatConversationTime } from '../utils/timeFormatting';
+import { isConversationMuted } from '../utils/conversationNotifications';
 import { Avatar } from './Avatar';
 import { ConversationViewerPreference } from '../services/conversationPreferenceService';
 import { useI18n } from '../store/languageStore';
+import { getChannelBadgeInfo, resolveConversationChannel } from '../utils/channelPolicy';
 
 export const ConversationRow = memo(function ConversationRow({ conversation, preference, onPress, onLongPress }: { conversation: Conversation; preference?: ConversationViewerPreference; onPress: () => void; onLongPress?: () => void }) {
   const palette = useThemePalette();
   const styles = createStyles(palette);
   const { t } = useI18n();
   const compact = preference?.displayMode === 'compact';
+  const isMuted = isConversationMuted(conversation.notificationMutedUntil);
   const category = preference?.category ? t(({ customer: 'Khách hàng', work: 'Công việc', urgent: 'Ưu tiên', 'follow-up': 'Cần theo dõi', other: 'Khác' } as Record<string, string>)[preference.category] || '') : '';
+  const channel = resolveConversationChannel(conversation);
+  const channelBadge = getChannelBadgeInfo(channel);
   return (
     <Pressable onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => [styles.row, compact && styles.rowCompact, pressed && styles.pressed]}>
       <Avatar name={conversation.name} uri={conversation.avatarUrl} size={compact ? 44 : 52} rounded={!conversation.isGroup} />
@@ -24,6 +29,12 @@ export const ConversationRow = memo(function ConversationRow({ conversation, pre
           <View style={styles.nameWrap}>
             {conversation.isChatbot ? <Bot color={palette.accent} size={15} strokeWidth={2.5} /> : conversation.isGroup ? <UsersRound color={palette.inkSoft} size={15} /> : null}
             <Text numberOfLines={1} style={styles.name}>{conversation.name}</Text>
+            {channelBadge ? (
+              <View style={[styles.channelBadge, { backgroundColor: channelBadge.badgeColor }]}>
+                <Text style={styles.channelBadgeText}>{channelBadge.label}</Text>
+              </View>
+            ) : null}
+            {isMuted ? <BellOff color={palette.muted} size={14} style={{ flexShrink: 0 }} /> : null}
           </View>
           {category ? <Text numberOfLines={1} style={styles.category}>{category}</Text> : null}
           <Text style={styles.time}>{formatConversationTime(conversation.updatedAt || conversation.time)}</Text>
@@ -54,5 +65,7 @@ function createStyles(palette: ThemeColors) {
     previewUnread: { color: palette.ink, fontFamily: 'BeVietnamPro_600SemiBold' },
     badge: { minWidth: 22, height: 22, paddingHorizontal: 6, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.accent },
     badgeText: { color: '#fff', fontFamily: 'BeVietnamPro_700Bold', fontSize: 10 },
+    channelBadge: { paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 6, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
+    channelBadgeText: { color: '#fff', fontFamily: 'BeVietnamPro_700Bold', fontSize: 9 },
   });
 }

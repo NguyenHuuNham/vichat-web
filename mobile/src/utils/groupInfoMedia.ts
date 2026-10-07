@@ -16,7 +16,7 @@ export function messageLinks(message: ChatMessage) {
 
 export function messageFile(message: ChatMessage): FileAttachment | null {
   if (message?.sticker || message?.type === 'sticker') return null;
-  if (message?.file?.url) return message.file;
+  if (message?.file) return message.file;
   if (message?.image) {
     return {
       name: 'hinh-anh.jpg',
@@ -37,25 +37,38 @@ export function isImageMessage(message: ChatMessage) {
 
 export function messagesForSharedKind(messages: ChatMessage[], kind: SharedContentKind) {
   return (Array.isArray(messages) ? messages : []).filter(message => {
-    if (!message || message.sticker || message.type === 'sticker' || ['system', 'reaction', 'recall', 'edit', 'call', 'poll_event'].includes(message.type)) return false;
+    if (!message || message.sticker || message.type === 'sticker' || ['system', 'reaction', 'recall', 'edit', 'call', 'poll_event', 'live_location_event'].includes(message.type)) return false;
     if (kind === 'media') return isImageMessage(message);
-    if (kind === 'files') return Boolean(message?.file?.url) && !isImageMessage(message);
+    if (kind === 'files') return Boolean(message?.file) && !isImageMessage(message);
     return messageLinks(message).length > 0;
   });
 }
 
 export function mergeGroupHistoryMessages(current: ChatMessage[] = [], history: ChatMessage[] = []) {
   const byIdentity = new Map<string, ChatMessage>();
-  [...current, ...history].filter(Boolean).forEach(message => {
+  const keysFor = (message: ChatMessage) => {
+    const keys: string[] = [];
     const id = String(message.id || '').trim();
     const seq = Number(message.seq) || 0;
-    const key = id ? `id:${id}` : seq > 0 ? `seq:${seq}` : `fallback:${message.createdAt || message.time || message.text}`;
-    const previous = byIdentity.get(key);
+    if (id) keys.push(`id:${id}`);
+    if (seq > 0) keys.push(`seq:${seq}`);
+    return keys.length ? keys : [`fallback:${message.createdAt || message.time || message.text}`];
+  };
+  const preserveMedia = (preferred: ChatMessage, fallback: ChatMessage) => ({
+    ...preferred,
+    ...(!preferred.file && fallback.file ? { file: fallback.file } : {}),
+    ...(!preferred.image && fallback.image ? { image: fallback.image } : {}),
+    ...(preferred.type === 'text' && fallback.type !== 'text' && (fallback.file || fallback.image) ? { type: fallback.type } : {}),
+  });
+  [...current, ...history].filter(Boolean).forEach(message => {
+    const keys = keysFor(message);
+    const previous = keys.map(key => byIdentity.get(key)).find(Boolean);
     // Prefer the live snapshot because it contains the latest edit, recall and
     // media reference while the background history walk fills older messages.
-    byIdentity.set(key, previous ? { ...message, ...previous } : message);
+    const merged = previous ? preserveMedia(previous, message) : message;
+    [...keysFor(merged), ...keys].forEach(key => byIdentity.set(key, merged));
   });
-  return [...byIdentity.values()].sort((first, second) => (
+  return [...new Set(byIdentity.values())].sort((first, second) => (
     (Number(first.seq) || 0) - (Number(second.seq) || 0)
     || (Date.parse(first.createdAt || '') || 0) - (Date.parse(second.createdAt || '') || 0)
   ));

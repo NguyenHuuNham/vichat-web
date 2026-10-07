@@ -33,7 +33,7 @@ export function LinkedDevicesScreen({ navigation }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [updateLinkedDevices]);
+  }, [t, updateLinkedDevices]);
   useFocusEffect(useCallback(() => {
     void refresh();
     const timer = setInterval(() => { void refresh(); }, 5000);
@@ -49,7 +49,7 @@ export function LinkedDevicesScreen({ navigation }: Props) {
         <ShieldCheck color={palette.online} size={23} />
       </View>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.intro}><Text style={styles.introTitle}>{t('Phiên đăng nhập')}</Text><Text style={styles.introText}>{t('Theo dõi nơi tài khoản đang được sử dụng trên ViChat.')}</Text></View>
+        <View style={styles.intro}><Text style={styles.introTitle}>{t('Phiên đăng nhập')}</Text></View>
         {loadError ? <Text style={styles.error}>{loadError}</Text> : null}
         {devices.length ? devices.map(device => <DeviceCard key={device.id} device={device} palette={palette} t={t} locale={locale} />) : loading ? <Text style={styles.empty}>{t('Đang tải phiên đăng nhập từ máy chủ...')}</Text> : !loadError ? <Text style={styles.empty}>{t('Chưa có phiên đăng nhập nào được máy chủ ghi nhận.')}</Text> : null}
       </ScrollView>
@@ -80,7 +80,6 @@ function createStyles(palette: ThemeColors) {
   content: { padding: 20, paddingBottom: 40 },
   intro: { marginBottom: 17 },
   introTitle: { ...typography.heading, color: palette.ink },
-  introText: { ...typography.body, color: palette.inkSoft, marginTop: 4 },
   empty: { ...typography.body, color: palette.muted, paddingVertical: 24, textAlign: 'center' },
   error: { ...typography.body, color: palette.danger, paddingVertical: 24, textAlign: 'center' },
   deviceCard: { minHeight: 86, marginBottom: 12, padding: 14, borderRadius: 19, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line, flexDirection: 'row', alignItems: 'center', gap: 12, ...shadow },

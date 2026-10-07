@@ -39,7 +39,7 @@ export function AppLockScreen() {
       setError(t('Mã PIN không đúng. Vui lòng thử lại.'));
       setPin('');
     }).finally(() => setBusy(false));
-  }, [busy, pin, unlock]);
+  }, [busy, pin, t, unlock]);
 
   const pressKey = (key: string) => {
     if (busy || !key) return;

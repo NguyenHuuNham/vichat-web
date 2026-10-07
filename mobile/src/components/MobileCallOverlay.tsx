@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Camera, CameraOff, Mic, MicOff, Phone, PhoneOff, SwitchCamera, Video } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  AlertCircle,
+  Camera,
+  CameraOff,
+  Mic,
+  MicOff,
+  Phone,
+  PhoneOff,
+  SwitchCamera,
+  Video,
+} from 'lucide-react-native';
 import type { RTCVideoViewProps } from 'react-native-webrtc';
 import { useCallStore } from '../store/callStore';
 import { ThemeColors, shadow } from '../theme/colors';
@@ -29,8 +40,10 @@ function formatDuration(startedAt: number, now: number) {
 
 export function MobileCallOverlay() {
   const palette = useThemePalette();
-  const styles = createStyles(palette);
+  const insets = useSafeAreaInsets();
+  const styles = createStyles(palette, insets);
   const { t } = useI18n();
+
   const call = useCallStore(state => state.call);
   const localStream = useCallStore(state => state.localStream);
   const remoteStream = useCallStore(state => state.remoteStream);
@@ -61,32 +74,154 @@ export function MobileCallOverlay() {
     if (call.phase === 'connecting') return t('Đang kết nối...');
     if (call.phase === 'reconnecting') return t('Đang khôi phục kết nối...');
     return call.connectedAt ? formatDuration(call.connectedAt, now) : '00:00';
-  }, [call, now]);
+  }, [call, now, t]);
 
   if (!call) return null;
-  const RTCView = getRTCView();
+
+  const RTCViewComponent = getRTCView() as ComponentType<RTCVideoViewProps> | null;
   const remoteUrl = remoteStream?.toURL?.();
   const localUrl = localStream?.toURL?.();
   const incoming = call.phase === 'incoming';
+  const isVideo = !call.audioOnly;
+  const hasRemoteVideo = Boolean(isVideo && remoteUrl && RTCViewComponent);
+  const hasLocalVideo = Boolean(isVideo && localUrl && cameraEnabled && RTCViewComponent);
 
   return (
     <View style={styles.overlay}>
-      <View style={[styles.sheet, !call.audioOnly && styles.videoSheet]}>
-        {remoteUrl && RTCView ? <RTCView streamURL={remoteUrl} objectFit="cover" style={call.audioOnly ? styles.audioRemote : styles.remoteVideo} /> : null}
-        {!call.audioOnly && localUrl && cameraEnabled && RTCView ? <RTCView streamURL={localUrl} mirror objectFit="cover" style={styles.localVideo} /> : null}
-        <View style={styles.scrim} />
+      <View style={[styles.sheet, isVideo && styles.videoSheet]}>
+        {/* Remote Video in Full Screen if available */}
+        {hasRemoteVideo && RTCViewComponent ? (
+          <RTCViewComponent
+            streamURL={remoteUrl!}
+            objectFit="cover"
+            zOrder={0}
+            style={styles.remoteVideo}
+          />
+        ) : null}
+
+        {/* When video call is active but remote is not yet available, show local preview full screen */}
+        {!hasRemoteVideo && hasLocalVideo && RTCViewComponent ? (
+          <RTCViewComponent
+            streamURL={localUrl!}
+            mirror
+            objectFit="cover"
+            zOrder={0}
+            style={styles.remoteVideo}
+          />
+        ) : null}
+
+        {/* Picture-in-picture local preview when remote video is connected */}
+        {hasRemoteVideo && hasLocalVideo && RTCViewComponent ? (
+          <View style={styles.localVideoContainer}>
+            <RTCViewComponent
+              streamURL={localUrl!}
+              mirror
+              objectFit="cover"
+              zOrder={1}
+              style={styles.localVideo}
+            />
+          </View>
+        ) : null}
+
+        {/* Video Scrim Gradient */}
+        {isVideo ? <View style={styles.videoScrim} /> : <View style={styles.scrim} />}
+
+        {/* Overlay Content */}
         <View style={styles.content}>
-          <View style={styles.topline}><Text style={styles.callType}><Video color="#fff" size={16} /> {call.audioOnly ? t('Gọi thoại') : t('Gọi video')}</Text><Text style={styles.status}>{status}</Text></View>
-          {!remoteUrl || call.audioOnly ? <View style={styles.peer}><Avatar name={call.peerName} uri={call.peerAvatar} size={92} online /><Text style={styles.peerName}>{call.peerName}</Text><Text style={styles.peerStatus}>{status}</Text></View> : <View style={styles.videoPeer}><Text style={styles.peerName}>{call.peerName}</Text></View>}
-          {error ? <Pressable onPress={clearError} style={styles.error}><Text style={styles.errorText}>{error}</Text></Pressable> : null}
+          {/* Top Bar with Safe Area */}
+          <View style={styles.topline}>
+            <View style={styles.callTypeBadge}>
+              {call.audioOnly ? <Phone color="#fff" size={15} /> : <Video color="#fff" size={15} />}
+              <Text style={styles.callTypeText} numberOfLines={1}>
+                {hasRemoteVideo ? (call.peerName || t('Gọi video')) : (call.audioOnly ? t('Gọi thoại') : t('Gọi video'))}
+              </Text>
+            </View>
+            <View style={styles.statusBadge}>
+              <Text style={styles.statusText}>{status}</Text>
+            </View>
+          </View>
+
+          {/* Main User Card */}
+          {(!hasRemoteVideo || call.audioOnly) ? (
+            <View style={[styles.peer, isVideo && styles.videoPeerCard]}>
+              <Avatar
+                name={call.peerName}
+                uri={call.peerAvatar}
+                size={isVideo ? 84 : 96}
+                rounded
+                online
+              />
+              <Text style={styles.peerName} numberOfLines={1}>{call.peerName}</Text>
+              <Text style={styles.peerStatus}>{status}</Text>
+            </View>
+          ) : null}
+
+          {/* Error Banner */}
+          {error ? (
+            <Pressable onPress={clearError} style={styles.error}>
+              <AlertCircle color="#fff" size={16} />
+              <Text style={styles.errorText}>{error}</Text>
+            </Pressable>
+          ) : null}
+
+          {/* Control Buttons */}
           {incoming ? (
-            <View style={styles.controls}><CallButton palette={palette} t={t} icon={PhoneOff} danger label="Từ chối" onPress={reject} /><CallButton palette={palette} t={t} icon={call.audioOnly ? Phone : Video} accept label="Nhận" onPress={() => void accept()} /></View>
+            <View style={styles.incomingControls}>
+              <CallButton
+                palette={palette}
+                t={t}
+                icon={PhoneOff}
+                danger
+                label="Từ chối"
+                onPress={reject}
+              />
+              <CallButton
+                palette={palette}
+                t={t}
+                icon={call.audioOnly ? Phone : Video}
+                accept
+                label="Trả lời"
+                onPress={() => void accept()}
+              />
+            </View>
           ) : (
-            <View style={styles.controls}>
-              <CallButton palette={palette} t={t} icon={microphoneEnabled ? Mic : MicOff} disabled={!localStream} label={microphoneEnabled ? 'Tắt mic' : 'Bật mic'} onPress={toggleMicrophone} />
-              {!call.audioOnly ? <CallButton palette={palette} t={t} icon={cameraEnabled ? Camera : CameraOff} disabled={!localStream} label={cameraEnabled ? 'Tắt cam' : 'Bật cam'} onPress={toggleCamera} /> : null}
-              {!call.audioOnly ? <CallButton palette={palette} t={t} icon={SwitchCamera} disabled={!cameraEnabled} label="Đổi cam" onPress={switchCamera} /> : null}
-              <CallButton palette={palette} t={t} icon={PhoneOff} danger label="Kết thúc" onPress={hangUp} />
+            <View style={styles.controlsRow}>
+              <CallButton
+                palette={palette}
+                t={t}
+                icon={microphoneEnabled ? Mic : MicOff}
+                active={!microphoneEnabled}
+                label={microphoneEnabled ? 'Tắt mic' : 'Bật mic'}
+                onPress={toggleMicrophone}
+              />
+              {isVideo ? (
+                <CallButton
+                  palette={palette}
+                  t={t}
+                  icon={cameraEnabled ? Camera : CameraOff}
+                  active={!cameraEnabled}
+                  label={cameraEnabled ? 'Tắt cam' : 'Bật cam'}
+                  onPress={toggleCamera}
+                />
+              ) : null}
+              {isVideo ? (
+                <CallButton
+                  palette={palette}
+                  t={t}
+                  icon={SwitchCamera}
+                  disabled={!cameraEnabled}
+                  label="Đổi cam"
+                  onPress={switchCamera}
+                />
+              ) : null}
+              <CallButton
+                palette={palette}
+                t={t}
+                icon={PhoneOff}
+                danger
+                label="Kết thúc"
+                onPress={hangUp}
+              />
             </View>
           )}
         </View>
@@ -95,36 +230,242 @@ export function MobileCallOverlay() {
   );
 }
 
-function CallButton({ palette, t, icon: Icon, label, onPress, danger = false, accept = false, disabled = false }: { palette: ThemeColors; t: (value: string) => string; icon: any; label: string; onPress: () => void; danger?: boolean; accept?: boolean; disabled?: boolean }) {
-  const styles = createStyles(palette);
-  return <Pressable accessibilityLabel={t(label)} disabled={disabled} onPress={onPress} style={[styles.button, danger && styles.dangerButton, accept && styles.acceptButton, disabled && styles.disabled]}><Icon color="#fff" size={21} /><Text style={styles.buttonLabel}>{t(label)}</Text></Pressable>;
+function CallButton({
+  palette,
+  t,
+  icon: Icon,
+  label,
+  onPress,
+  danger = false,
+  accept = false,
+  active = false,
+  disabled = false,
+}: {
+  palette: ThemeColors;
+  t: (value: string) => string;
+  icon: any;
+  label: string;
+  onPress: () => void;
+  danger?: boolean;
+  accept?: boolean;
+  active?: boolean;
+  disabled?: boolean;
+}) {
+  const styles = createButtonStyles(palette);
+  return (
+    <View style={styles.wrapper}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t(label)}
+        disabled={disabled}
+        onPress={onPress}
+        style={[
+          styles.button,
+          danger && styles.dangerButton,
+          accept && styles.acceptButton,
+          active && styles.activeButton,
+          disabled && styles.disabled,
+        ]}
+      >
+        <Icon color="#fff" size={22} />
+      </Pressable>
+      <Text style={styles.buttonLabel} numberOfLines={1}>{t(label)}</Text>
+    </View>
+  );
 }
 
-function createStyles(palette: ThemeColors) {
+function createButtonStyles(palette: ThemeColors) {
   return StyleSheet.create({
-  // Incoming calls must remain actionable even when the optional PIN gate is visible.
-  overlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(7,12,16,0.72)', justifyContent: 'flex-end', zIndex: 1100 },
-  sheet: { minHeight: 430, borderTopLeftRadius: 30, borderTopRightRadius: 30, overflow: 'hidden', backgroundColor: '#142027', ...shadow },
-  videoSheet: { minHeight: '100%' },
-  remoteVideo: { ...StyleSheet.absoluteFill },
-  audioRemote: { position: 'absolute', width: 1, height: 1, opacity: 0 },
-  localVideo: { position: 'absolute', top: 58, right: 18, width: 112, height: 158, borderRadius: 18, zIndex: 2, backgroundColor: '#283840' },
-  scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,10,14,0.38)' },
-  content: { flex: 1, minHeight: 430, paddingHorizontal: 22, paddingTop: 21, paddingBottom: 28, justifyContent: 'space-between', zIndex: 3 },
-  topline: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  callType: { ...typography.bodyMedium, color: '#fff', flexDirection: 'row', alignItems: 'center' },
-  status: { ...typography.caption, color: 'rgba(255,255,255,0.75)' },
-  peer: { alignItems: 'center', gap: 9 },
-  peerName: { ...typography.heading, color: '#fff', textAlign: 'center' },
-  peerStatus: { ...typography.body, color: 'rgba(255,255,255,0.75)' },
-  videoPeer: { marginTop: 'auto', marginBottom: 20 },
-  error: { backgroundColor: 'rgba(214,69,69,0.9)', borderRadius: 13, padding: 10 },
-  errorText: { ...typography.caption, color: '#fff', textAlign: 'center' },
-  controls: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 10 },
-  button: { minWidth: 76, minHeight: 62, borderRadius: 18, alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 10, backgroundColor: 'rgba(255,255,255,0.18)' },
-  dangerButton: { backgroundColor: palette.danger },
-  acceptButton: { backgroundColor: palette.online },
-  disabled: { opacity: 0.4 },
-  buttonLabel: { ...typography.caption, color: '#fff', textAlign: 'center' },
+    wrapper: {
+      alignItems: 'center',
+      gap: 6,
+      minWidth: 64,
+    },
+    button: {
+      width: 58,
+      height: 58,
+      borderRadius: 29,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(255,255,255,0.18)',
+    },
+    dangerButton: {
+      backgroundColor: '#E53935',
+    },
+    acceptButton: {
+      backgroundColor: '#2E7D32',
+    },
+    activeButton: {
+      backgroundColor: 'rgba(239,83,80,0.45)',
+    },
+    disabled: {
+      opacity: 0.35,
+    },
+    buttonLabel: {
+      ...typography.caption,
+      color: 'rgba(255,255,255,0.85)',
+      fontSize: 11,
+      textAlign: 'center',
+    },
+  });
+}
+
+function createStyles(palette: ThemeColors, insets: { top: number; bottom: number }) {
+  const topPadding = Math.max(insets.top + 8, 20);
+  const bottomPadding = Math.max(insets.bottom + 16, 24);
+
+  return StyleSheet.create({
+    overlay: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      backgroundColor: 'rgba(5,9,14,0.78)',
+      justifyContent: 'flex-end',
+      zIndex: 1100,
+    },
+    sheet: {
+      minHeight: 460,
+      borderTopLeftRadius: 32,
+      borderTopRightRadius: 32,
+      overflow: 'hidden',
+      backgroundColor: '#111B21',
+      ...shadow,
+    },
+    videoSheet: {
+      flex: 1,
+      minHeight: '100%',
+      height: '100%',
+      borderTopLeftRadius: 0,
+      borderTopRightRadius: 0,
+      backgroundColor: '#070D12',
+    },
+    remoteVideo: {
+      ...StyleSheet.absoluteFill,
+    },
+    localVideoContainer: {
+      position: 'absolute',
+      top: topPadding + 44,
+      right: 18,
+      width: 110,
+      height: 156,
+      borderRadius: 16,
+      overflow: 'hidden',
+      zIndex: 10,
+      borderWidth: 2,
+      borderColor: 'rgba(255,255,255,0.3)',
+      backgroundColor: '#1A2730',
+      ...shadow,
+    },
+    localVideo: {
+      width: '100%',
+      height: '100%',
+    },
+    scrim: {
+      ...StyleSheet.absoluteFill,
+      backgroundColor: 'rgba(5,10,16,0.32)',
+    },
+    videoScrim: {
+      ...StyleSheet.absoluteFill,
+      backgroundColor: 'rgba(0,0,0,0.38)',
+    },
+    content: {
+      flex: 1,
+      paddingHorizontal: 20,
+      paddingTop: topPadding,
+      paddingBottom: bottomPadding,
+      justifyContent: 'space-between',
+      zIndex: 15,
+    },
+    topline: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    callTypeBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 20,
+      backgroundColor: 'rgba(0,0,0,0.45)',
+      maxWidth: '65%',
+    },
+    callTypeText: {
+      ...typography.bodyMedium,
+      color: '#fff',
+      fontSize: 13,
+      fontWeight: '600',
+      flexShrink: 1,
+    },
+    statusBadge: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 20,
+      backgroundColor: 'rgba(0,0,0,0.32)',
+    },
+    statusText: {
+      ...typography.caption,
+      color: 'rgba(255,255,255,0.85)',
+      fontSize: 12,
+    },
+    peer: {
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: 20,
+    },
+    videoPeerCard: {
+      backgroundColor: 'rgba(10,16,24,0.55)',
+      borderRadius: 24,
+      paddingHorizontal: 28,
+      paddingVertical: 20,
+      alignSelf: 'center',
+      maxWidth: '85%',
+    },
+    peerName: {
+      ...typography.heading,
+      color: '#fff',
+      fontSize: 22,
+      fontWeight: '700',
+      textAlign: 'center',
+    },
+    peerStatus: {
+      ...typography.body,
+      color: 'rgba(255,255,255,0.78)',
+      fontSize: 14,
+      textAlign: 'center',
+    },
+    error: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      backgroundColor: 'rgba(229,57,53,0.92)',
+      borderRadius: 14,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      marginHorizontal: 12,
+    },
+    errorText: {
+      ...typography.caption,
+      color: '#fff',
+      fontSize: 12,
+      textAlign: 'center',
+      flexShrink: 1,
+    },
+    incomingControls: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      alignItems: 'center',
+      paddingHorizontal: 30,
+    },
+    controlsRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-evenly',
+      alignItems: 'center',
+      paddingHorizontal: 10,
+    },
   });
 }

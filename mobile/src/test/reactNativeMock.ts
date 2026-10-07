@@ -1,3 +1,5 @@
+import { createElement, type ReactNode } from 'react';
+
 export const Platform = {
   OS: 'web',
   select<T>(options: Record<string, T>) {
@@ -20,4 +22,19 @@ export const StyleSheet = {
   hairlineWidth: 1,
 };
 
-export default { Platform, Appearance, StyleSheet };
+export const AppState = {
+  currentState: 'active' as const,
+  addEventListener: () => ({ remove() {} }),
+};
+
+type NativeMockProps = { children?: ReactNode; [key: string]: unknown };
+
+export function View({ children, ...props }: NativeMockProps) {
+  return createElement('View', props, children);
+}
+
+export function Text({ children, ...props }: NativeMockProps) {
+  return createElement('Text', props, children);
+}
+
+export default { AppState, Platform, Appearance, StyleSheet, View, Text };

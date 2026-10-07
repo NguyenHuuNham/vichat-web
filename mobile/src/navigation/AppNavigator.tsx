@@ -1,6 +1,5 @@
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { useFonts, BeVietnamPro_400Regular, BeVietnamPro_500Medium, BeVietnamPro_600SemiBold, BeVietnamPro_700Bold, BeVietnamPro_800ExtraBold } from '@expo-google-fonts/be-vietnam-pro';
 import { useAppStore } from '../store/appStore';
 import { RootStackParamList, AuthStackParamList } from './types';
 import { MainTabNavigator } from './MainTabNavigator';
@@ -23,7 +22,7 @@ import { useI18n } from '../store/languageStore';
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 
-function LaunchScreen({ fontsLoaded, palette }: { fontsLoaded: boolean; palette: ReturnType<typeof colorsForTheme> }) {
+export function LaunchScreen({ fontsLoaded, palette }: { fontsLoaded: boolean; palette: ReturnType<typeof colorsForTheme> }) {
   return (
     <View style={[styles.launch, { backgroundColor: palette.canvas }]}>
       <View style={[styles.mark, { backgroundColor: palette.paper }]}><GonLogo size={68} /></View>
@@ -47,15 +46,8 @@ export function AppNavigator() {
   const resolvedTheme = useThemeStore(state => state.resolved);
   const { t } = useI18n();
   const palette = colorsForTheme(resolvedTheme);
-  const [fontsLoaded] = useFonts({
-    BeVietnamPro_400Regular,
-    BeVietnamPro_500Medium,
-    BeVietnamPro_600SemiBold,
-    BeVietnamPro_700Bold,
-    BeVietnamPro_800ExtraBold,
-  });
 
-  if (!fontsLoaded || status === 'booting' || (status === 'loading' && !session)) return <LaunchScreen fontsLoaded={fontsLoaded} palette={palette} />;
+  if (status === 'booting' || (status === 'loading' && !session)) return <LaunchScreen fontsLoaded palette={palette} />;
 
   if (status === 'signed_out') {
     return (
@@ -74,8 +66,11 @@ export function AppNavigator() {
       headerTitleStyle: { fontFamily: 'BeVietnamPro_700Bold', color: palette.ink },
       headerTintColor: palette.ink,
       contentStyle: { backgroundColor: palette.canvas },
+      gestureEnabled: true,
+      fullScreenGestureEnabled: true,
+      animation: 'slide_from_right',
     }}>
-      <RootStack.Screen name="Main" component={MainTabNavigator} options={{ headerShown: false }} />
+      <RootStack.Screen name="Main" component={MainTabNavigator} options={{ headerShown: false, gestureEnabled: false }} />
       <RootStack.Screen name="ChatDetail" component={ChatDetailScreen} options={{ headerShown: false, animation: 'slide_from_right' }} />
       <RootStack.Screen name="GroupInfo" component={GroupInfoScreen} options={{ headerShown: false, animation: 'slide_from_right' }} />
       <RootStack.Screen name="NewGroup" component={NewGroupScreen} options={{ title: t('Tạo nhóm mới'), presentation: 'modal' }} />

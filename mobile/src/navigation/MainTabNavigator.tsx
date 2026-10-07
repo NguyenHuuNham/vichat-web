@@ -5,7 +5,7 @@ import { MainTabParamList } from './types';
 import { ConversationListScreen } from '../screens/chat/ConversationListScreen';
 import { ContactsScreen } from '../screens/contacts/ContactsScreen';
 import { PersonalCloudScreen } from '../screens/cloud/PersonalCloudScreen';
-import { WorkspaceScreen } from '../screens/workspace/WorkspaceScreen';
+import { WorkspaceScreen } from '../modules/workspace';
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
 import { colorsForTheme, shadow, ThemeColors } from '../theme/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,19 +17,22 @@ const icons = { Chats: MessageCircleMore, Contacts: ContactRound, Cloud, Workspa
 
 export function MainTabNavigator() {
   const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(0, insets.bottom);
   const palette = colorsForTheme(useThemeStore(state => state.resolved));
   const { t } = useI18n();
 
   return (
-    <Tab.Navigator screenOptions={({ route }) => {
+    <Tab.Navigator backBehavior="history" screenOptions={({ route }) => {
       const Icon = icons[route.name];
       return {
         headerShown: false,
         tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: palette.accentDeep,
         tabBarInactiveTintColor: palette.muted,
-        tabBarStyle: { position: 'absolute', left: 14, right: 14, bottom: Math.max(10, insets.bottom), height: 72, paddingHorizontal: 5, paddingTop: 5, paddingBottom: 5, borderWidth: 1, borderColor: palette.line, borderRadius: 36, backgroundColor: palette.paper, ...shadow },
-        tabBarItemStyle: { borderRadius: 28, marginHorizontal: 2 },
+        // Extend the tab surface through the transparent system inset so no page
+        // content shows through below the floating bar.
+        tabBarStyle: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 72 + bottomInset, paddingHorizontal: 5, paddingTop: 5, paddingBottom: 5 + bottomInset, borderWidth: 1, borderColor: palette.line, borderRadius: 0, backgroundColor: palette.paper, ...shadow },
+        tabBarItemStyle: { borderRadius: 0, marginHorizontal: 0 },
         tabBarLabelStyle: { fontFamily: 'BeVietnamPro_600SemiBold', fontSize: 11, marginBottom: 3 },
         tabBarButton: props => <FloatingTabButton {...props} palette={palette} />,
         tabBarIcon: ({ color, size, focused }) => <View style={[styles.iconWrap, focused && styles.iconWrapActive, focused && { backgroundColor: palette.accentWash }]}><Icon color={color} size={size} strokeWidth={2.2} /></View>,

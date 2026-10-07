@@ -14,7 +14,7 @@ function initials(name = '') {
 export function Avatar({ name = '', uri = '', size = 48, online = false, rounded = true }: Props) {
   const palette = useThemePalette();
   const styles = createStyles(palette);
-  const [sourceUri, setSourceUri] = useState('');
+  const [sourceUri, setSourceUri] = useState(() => tinodeClient.getCachedImageUri(uri));
   const [mediaVersion, setMediaVersion] = useState(() => tinodeClient.getMediaVersion(uri));
   const radius = rounded ? size / 2 : Math.round(size * 0.3);
   useEffect(() => {
@@ -27,7 +27,12 @@ export function Avatar({ name = '', uri = '', size = 48, online = false, rounded
   }, [uri]);
   useEffect(() => {
     let active = true;
-    setSourceUri('');
+    const cached = tinodeClient.getCachedImageUri(uri);
+    if (cached) {
+      setSourceUri(cached);
+    } else {
+      setSourceUri('');
+    }
     if (!uri) {
       setSourceUri('');
       return () => { active = false; };
@@ -35,14 +40,18 @@ export function Avatar({ name = '', uri = '', size = 48, online = false, rounded
     void tinodeClient.cacheImage(uri).then(value => {
       if (active) setSourceUri(value);
     }).catch(() => {
-      if (active) setSourceUri(uri);
+      if (active && !cached) setSourceUri('');
     });
     return () => { active = false; };
   }, [uri, mediaVersion]);
   return (
     <View style={{ width: size, height: size }}>
       {sourceUri ? (
-        <Image source={{ uri: sourceUri, headers: tinodeClient.getMediaHeaders() }} style={{ width: size, height: size, borderRadius: radius, backgroundColor: palette.accentWash }} />
+        <Image
+          source={{ uri: sourceUri, headers: tinodeClient.getMediaHeaders() }}
+          onError={() => setSourceUri('')}
+          style={{ width: size, height: size, borderRadius: radius, backgroundColor: palette.accentWash }}
+        />
       ) : (
         <View style={[styles.fallback, { width: size, height: size, borderRadius: radius }]}>
           <Text style={[styles.initials, { fontSize: Math.max(13, size * 0.32) }]}>{initials(name)}</Text>
@@ -55,8 +64,8 @@ export function Avatar({ name = '', uri = '', size = 48, online = false, rounded
 
 function createStyles(palette: ThemeColors) {
   return StyleSheet.create({
-    fallback: { backgroundColor: palette.ink, alignItems: 'center', justifyContent: 'center' },
-    initials: { color: '#fff', fontFamily: 'BeVietnamPro_700Bold' },
+    fallback: { backgroundColor: palette.avatarFallback, alignItems: 'center', justifyContent: 'center' },
+    initials: { color: palette.avatarInitials, fontFamily: 'BeVietnamPro_700Bold' },
     online: { position: 'absolute', backgroundColor: palette.online, borderWidth: 2.5, borderColor: palette.paper },
   });
 }

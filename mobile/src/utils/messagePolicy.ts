@@ -5,6 +5,7 @@ export const REACTION_EVENT_PREFIX = '__VICHAT_REACTION_EVENT__:';
 export const RECALL_EVENT_PREFIX = '__VICHAT_RECALL_EVENT__:';
 export const SYSTEM_EVENT_PREFIX = '__VICHAT_SYSTEM_EVENT__:';
 export const EDIT_EVENT_PREFIX = '__VICHAT_EDIT_EVENT__:';
+export const LIVE_LOCATION_EVENT_PREFIX = '__VICHAT_LIVE_LOCATION_EVENT__:';
 
 export function attachmentValidationError(file?: PickerFile | null) {
   const size = Number(file?.size) || 0;

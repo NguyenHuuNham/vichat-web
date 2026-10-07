@@ -66,7 +66,7 @@ export function QrScannerModal({ visible, onClose }: Props) {
       setScanError(error instanceof Error ? t(error.message) : t('Không thể mở liên kết QR trên thiết bị này.'));
       scanLockedRef.current = false;
     }
-  }, [onClose]);
+  }, [onClose, t]);
 
   const permissionBody = !permission
     ? <View style={styles.messageBox}><Camera color={palette.accent} size={28} /><Text style={styles.messageTitle}>{t('Đang kiểm tra camera')}</Text><Text style={styles.messageText}>{t('Vui lòng chờ một chút rồi thử quét lại.')}</Text></View>

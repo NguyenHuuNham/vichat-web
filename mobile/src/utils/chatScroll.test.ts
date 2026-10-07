@@ -20,9 +20,35 @@ describe('chat scroll state', () => {
     ], 2, 1)).toBe(2);
   });
 
-  it('falls back to the first loaded incoming message when unread history is older than the page', () => {
-    expect(firstUnreadMessageIndex([message('incoming-30', 30)], 5, 8)).toBe(0);
-    expect(firstUnreadMessageIndex([message('incoming-30', 30)], 30, 0)).toBeNull();
+  it('does not jump to old history when the unread badge is stale', () => {
+    expect(firstUnreadMessageIndex([
+      message('incoming-30', 30),
+      message('incoming-31', 31),
+    ], 31, 8)).toBeNull();
+  });
+
+  it('returns null when read cursor covers all messages even if unreadCount > 0', () => {
+    expect(firstUnreadMessageIndex([
+      message('incoming-1', 1),
+      message('incoming-2', 2),
+      message('incoming-3', 3),
+    ], 3, 5)).toBeNull();
+  });
+
+  it('returns null when no incoming message has seq greater than readSeq', () => {
+    expect(firstUnreadMessageIndex([
+      message('incoming-1', 1),
+      message('outgoing-2', 2, 'outgoing'),
+      message('system-3', 3, 'incoming', 'system'),
+    ], 1, 2)).toBeNull();
+  });
+
+  it('returns null when messages list is empty', () => {
+    expect(firstUnreadMessageIndex([], 0, 5)).toBeNull();
+  });
+
+  it('does not treat a zero read cursor as unread when the badge is clear', () => {
+    expect(firstUnreadMessageIndex([message('incoming-1', 1)], 0, 0)).toBeNull();
   });
 
   it('keeps message keys stable when a message has no server sequence yet', () => {

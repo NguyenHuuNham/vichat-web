@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { MessageSquarePlus, QrCode, Search, SlidersHorizontal, X } from 'lucide-react-native';
+import { MessageSquarePlus, QrCode, Search, X } from 'lucide-react-native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { MainTabParamList } from '../../navigation/types';
 import { useAppStore } from '../../store/appStore';
@@ -16,7 +16,8 @@ import { EmptyState } from '../../components/EmptyState';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ChoiceDialog, ChoiceDialogOption } from '../../components/ChoiceDialog';
 import { MessageCircleMore } from 'lucide-react-native';
-import { isConversationMuted } from '../../utils/conversationNotifications';
+import { isConversationMuted, resolveNotificationMuteUntil } from '../../utils/conversationNotifications';
+import { NotificationMuteModal } from '../../components/NotificationMuteModal';
 import { Conversation } from '../../types';
 import { accountIdForMember, identitiesOverlap } from '../../utils/identity';
 import { isConversationVisibleInList } from '../../utils/conversationSync';
@@ -24,16 +25,20 @@ import { displayCurrentTenantName } from '../../utils/tenantDisplay';
 import { ConversationViewerPreference, loadConversationPreferences } from '../../services/conversationPreferenceService';
 import { QrScannerModal } from '../../components/QrScannerModal';
 import { useI18n } from '../../store/languageStore';
+import { ChannelFilterKey, isConversationMatchingFilter } from '../../utils/channelPolicy';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Chats'> & { navigation: any };
-type FilterKey = 'all' | 'unread' | 'groups';
+type FilterKey = ChannelFilterKey;
 type DeleteRequest = { item: Conversation; title: string; message: string; confirmLabel: string; fallback: string; replacementId?: string };
 type ActionRequest = { title: string; message: string; options: ChoiceDialogOption[]; onSelect: (option: ChoiceDialogOption) => void };
 
 const filters: Array<{ key: FilterKey; label: string }> = [
   { key: 'all', label: 'Tất cả' },
-  { key: 'unread', label: 'Chưa đọc' },
   { key: 'groups', label: 'Nhóm' },
+  { key: 'zalo', label: 'Zalo OA' },
+  { key: 'livechat', label: 'Live Chat' },
+  { key: 'facebook', label: 'Facebook' },
+  { key: 'unread', label: 'Chưa đọc' },
 ];
 
 export function ConversationListScreen({ navigation }: Props) {
@@ -45,19 +50,18 @@ export function ConversationListScreen({ navigation }: Props) {
   const conversations = useAppStore(state => state.conversations);
   const connection = useAppStore(state => state.connection);
   const error = useAppStore(state => state.error);
-  const refreshData = useAppStore(state => state.refreshData);
   const muteConversation = useAppStore(state => state.muteConversation);
   const deleteConversation = useAppStore(state => state.deleteConversation);
   const clearError = useAppStore(state => state.clearError);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterKey>('all');
   const [showSearch, setShowSearch] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [deleteRequest, setDeleteRequest] = useState<DeleteRequest | null>(null);
   const [actionRequest, setActionRequest] = useState<ActionRequest | null>(null);
   const [preferences, setPreferences] = useState<Record<string, ConversationViewerPreference>>({});
   const [qrScannerVisible, setQrScannerVisible] = useState(false);
+  const [muteTarget, setMuteTarget] = useState<Conversation | null>(null);
 
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -80,15 +84,10 @@ export function ConversationListScreen({ navigation }: Props) {
       const preference = preferences[item.id];
       if (preference?.hidden) return false;
       const matchesQuery = !keyword || item.name.toLowerCase().includes(keyword) || (item.lastMsg || '').toLowerCase().includes(keyword);
-      const matchesFilter = filter === 'all' || (filter === 'unread' && item.badge > 0) || (filter === 'groups' && item.isGroup);
+      const matchesFilter = isConversationMatchingFilter(item, filter);
       return matchesQuery && matchesFilter;
     });
   }, [conversations, filter, preferences, query]);
-
-  const refresh = useCallback(async () => {
-    setRefreshing(true);
-    try { await refreshData(); } finally { setRefreshing(false); }
-  }, [refreshData]);
 
   const runConversationAction = useCallback(async (action: () => Promise<void>, fallback: string) => {
     setActionBusy(true);
@@ -99,7 +98,7 @@ export function ConversationListScreen({ navigation }: Props) {
     } finally {
       setActionBusy(false);
     }
-  }, []);
+  }, [t]);
 
   const requestConversationDelete = useCallback((item: typeof conversations[number]) => {
     const ownerId = String(item.adminId || '');
@@ -174,14 +173,17 @@ export function ConversationListScreen({ navigation }: Props) {
       {showSearch ? <View style={styles.search}><SearchField value={query} onChangeText={setQuery} placeholder={t('Tìm cuộc trò chuyện')} /></View> : null}
 
       <View style={styles.filterRow}>
-        <View style={styles.filters}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filtersScrollContent}
+        >
           {filters.map(item => (
             <Pressable key={item.key} onPress={() => setFilter(item.key)} style={[styles.filterChip, filter === item.key && styles.filterChipActive]}>
               <Text style={[styles.filterText, filter === item.key && styles.filterTextActive]}>{t(item.label)}</Text>
             </Pressable>
           ))}
-        </View>
-        <SlidersHorizontal color={palette.inkSoft} size={18} />
+        </ScrollView>
       </View>
 
       {error ? <Pressable onPress={clearError} style={styles.notice}><Text style={styles.noticeText}>{t(error)}</Text><Text style={styles.noticeClose}>{t('Đóng')}</Text></Pressable> : null}
@@ -213,13 +215,16 @@ export function ConversationListScreen({ navigation }: Props) {
                   return;
                 }
                 const muted = isConversationMuted(item.notificationMutedUntil);
-                void runConversationAction(() => muteConversation(item.id, muted ? null : 0), t('Không cập nhật được trạng thái thông báo.'));
+                if (muted) {
+                  void runConversationAction(() => muteConversation(item.id, null), t('Không cập nhật được trạng thái thông báo.'));
+                } else {
+                  setMuteTarget(item);
+                }
               },
             })}
           />
         )}
         contentContainerStyle={filtered.length ? styles.list : styles.emptyList}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={palette.accent} colors={[palette.accent]} />}
         ListEmptyComponent={<EmptyState icon={MessageCircleMore} title={query || filter !== 'all' ? t('Không tìm thấy cuộc trò chuyện') : t('Chưa có cuộc trò chuyện')} description={query || filter !== 'all' ? t('Thử đổi bộ lọc hoặc tìm bằng tên đồng nghiệp, nhóm.') : t('Mở Danh bạ để bắt đầu nhắn tin với đồng đội.')} />}
         showsVerticalScrollIndicator={false}
       />
@@ -255,6 +260,18 @@ export function ConversationListScreen({ navigation }: Props) {
       <Pressable accessibilityLabel={t('Mở danh bạ để bắt đầu cuộc trò chuyện')} onPress={() => navigation.navigate('Contacts')} style={styles.composeButton}>
         <MessageSquarePlus color="#fff" size={24} strokeWidth={2.3} />
       </Pressable>
+      <NotificationMuteModal
+        visible={Boolean(muteTarget)}
+        conversationName={muteTarget?.name}
+        onClose={() => setMuteTarget(null)}
+        onConfirm={option => {
+          const target = muteTarget;
+          setMuteTarget(null);
+          if (!target) return;
+          const until = resolveNotificationMuteUntil(option);
+          void runConversationAction(() => muteConversation(target.id, until), t('Không cập nhật được trạng thái thông báo.'));
+        }}
+      />
       <QrScannerModal visible={qrScannerVisible} onClose={() => setQrScannerVisible(false)} />
     </SafeAreaView>
   );
@@ -271,8 +288,8 @@ function createStyles(palette: ThemeColors) {
     title: { ...typography.display, color: palette.ink, marginTop: 1 },
     iconButton: { width: 44, height: 44, borderRadius: 15, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line, alignItems: 'center', justifyContent: 'center', ...shadow },
     search: { paddingHorizontal: 20, paddingBottom: 12 },
-    filterRow: { paddingHorizontal: 20, paddingBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 10 },
-    filters: { flex: 1, flexDirection: 'row', gap: 8 },
+    filterRow: { paddingBottom: 16 },
+    filtersScrollContent: { paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 8 },
     filterChip: { minHeight: 36, paddingHorizontal: 15, borderRadius: 18, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line, alignItems: 'center', justifyContent: 'center' },
     filterChipActive: { backgroundColor: palette.accentWash, borderColor: palette.accent },
     filterText: { ...typography.bodyMedium, color: palette.inkSoft, fontSize: 13 },

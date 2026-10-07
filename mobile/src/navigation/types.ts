@@ -1,7 +1,8 @@
 import { Conversation, User, WorkspaceItem } from '../types';
+import { NavigatorScreenParams } from '@react-navigation/native';
 
 export type RootStackParamList = {
-  Main: undefined;
+  Main: NavigatorScreenParams<MainTabParamList>;
   ChatDetail: { conversationId: string };
   GroupInfo: { conversationId: string };
   NewGroup: undefined;

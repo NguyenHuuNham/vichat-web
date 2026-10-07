@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { KeyRound, LockKeyhole, Power, X } from 'lucide-react-native';
+import { KeyRound, Power, X } from 'lucide-react-native';
 import { useAppLockStore } from '../store/appLockStore';
 import { colorsForTheme, shadow, ThemeColors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -35,7 +35,7 @@ export function PinSettingsModal({ visible, onClose }: { visible: boolean; onClo
     create: t('Tạo mã PIN'),
     change: t('Đổi mã PIN'),
     disable: t('Tắt mã PIN'),
-  }[mode]), [mode]);
+  }[mode]), [mode, t]);
 
   const submit = async () => {
     setError('');
@@ -63,12 +63,11 @@ export function PinSettingsModal({ visible, onClose }: { visible: boolean; onClo
           <View style={styles.header}><View><Text style={styles.eyebrow}>{t('BẢO MẬT THIẾT BỊ')}</Text><Text style={styles.title}>{title}</Text></View><Pressable onPress={onClose} style={styles.close}><X color={palette.inkSoft} size={21} /></Pressable></View>
           {mode === 'overview' ? (
             <View style={styles.options}>
-              <Pressable onPress={() => setMode('change')} style={styles.option}><View style={styles.optionIcon}><KeyRound color={palette.accent} size={21} /></View><View style={styles.optionBody}><Text style={styles.optionTitle}>{t('Đổi mã PIN')}</Text><Text style={styles.optionText}>{t('Xác nhận mã hiện tại rồi đặt mã mới.')}</Text></View></Pressable>
-              <Pressable onPress={() => setMode('disable')} style={styles.option}><View style={[styles.optionIcon, styles.dangerIcon]}><Power color={palette.danger} size={21} /></View><View style={styles.optionBody}><Text style={[styles.optionTitle, { color: palette.danger }]}>{t('Tắt khóa ứng dụng')}</Text><Text style={styles.optionText}>{t('App sẽ mở thẳng vào tin nhắn trên thiết bị này.')}</Text></View></Pressable>
+              <Pressable onPress={() => setMode('change')} style={styles.option}><View style={styles.optionIcon}><KeyRound color={palette.accent} size={21} /></View><View style={styles.optionBody}><Text style={styles.optionTitle}>{t('Đổi mã PIN')}</Text></View></Pressable>
+              <Pressable onPress={() => setMode('disable')} style={styles.option}><View style={[styles.optionIcon, styles.dangerIcon]}><Power color={palette.danger} size={21} /></View><View style={styles.optionBody}><Text style={[styles.optionTitle, { color: palette.danger }]}>{t('Tắt khóa ứng dụng')}</Text></View></Pressable>
             </View>
           ) : (
             <View>
-              <View style={styles.hero}><LockKeyhole color={palette.accent} size={24} /><Text style={styles.heroText}>{mode === 'disable' ? t('Nhập mã PIN hiện tại để xác nhận tắt khóa.') : t('Mã PIN chỉ được lưu mã hóa trên thiết bị này.')}</Text></View>
               {mode !== 'create' ? <PinInput palette={palette} t={t} label="Mã PIN hiện tại" value={currentPin} onChangeText={setCurrentPin} /> : null}
               {mode !== 'disable' ? <><PinInput palette={palette} t={t} label="Mã PIN mới" value={nextPin} onChangeText={setNextPin} /><PinInput palette={palette} t={t} label="Nhập lại mã PIN mới" value={confirmPin} onChangeText={setConfirmPin} /></> : null}
               {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -103,9 +102,6 @@ function createStyles(palette: ThemeColors) {
     dangerIcon: { backgroundColor: `${palette.danger}18` },
     optionBody: { flex: 1 },
     optionTitle: { ...typography.bodyMedium, color: palette.ink },
-    optionText: { ...typography.caption, color: palette.inkSoft, marginTop: 3 },
-    hero: { borderRadius: 18, padding: 13, backgroundColor: palette.accentWash, flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
-    heroText: { ...typography.caption, color: palette.accentDeep, flex: 1 },
     field: { marginTop: 12 },
     label: { ...typography.caption, color: palette.inkSoft, marginBottom: 6 },
     input: { height: 54, borderRadius: 17, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line, paddingHorizontal: 17, color: palette.ink, fontFamily: 'BeVietnamPro_700Bold', fontSize: 20, letterSpacing: 8 },

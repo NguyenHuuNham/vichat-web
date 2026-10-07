@@ -36,5 +36,6 @@
     "**/*.log": true
   },
   "workbench.tree.indent": 16,
-  "workbench.tree.renderIndentGuides": "always"
+  "workbench.tree.renderIndentGuides": "always",
+  "java.configuration.updateBuildConfiguration": "interactive"
 }

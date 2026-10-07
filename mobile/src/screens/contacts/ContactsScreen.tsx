@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Platform, Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Check, MessageSquarePlus, Search, UserRoundSearch, UsersRound, X } from 'lucide-react-native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -23,11 +23,9 @@ export function ContactsScreen({ navigation }: Props) {
   const { t } = useI18n();
   const session = useAppStore(state => state.session);
   const directory = useAppStore(state => state.directory);
-  const refreshData = useAppStore(state => state.refreshData);
   const createDirect = useAppStore(state => state.createDirectConversation);
   const [query, setQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [openingId, setOpeningId] = useState('');
 
   const contacts = useMemo(() => directory.filter(user => {
@@ -88,7 +86,6 @@ export function ContactsScreen({ navigation }: Props) {
             <Pressable disabled={openingId === item.id} accessibilityLabel={`${t('Nhắn tin với')} ${item.name}`} onPress={async event => { event.stopPropagation(); setOpeningId(item.id); try { const conversation = await createDirect(item); navigation.navigate('ChatDetail', { conversationId: conversation.id }); } finally { setOpeningId(''); } }} style={styles.chatButton}><MessageSquarePlus color={palette.accent} size={21} /></Pressable>
           </Pressable>
         )}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); try { await refreshData(); } finally { setRefreshing(false); } }} tintColor={palette.accent} />}
         contentContainerStyle={contacts.length ? styles.list : styles.emptyList}
         ListEmptyComponent={<EmptyState icon={UserRoundSearch} title={t('Không tìm thấy nhân viên')} description={t('Danh bạ chỉ lấy nhân viên active từ UpGO Account của công ty hiện tại.')} />}
         showsVerticalScrollIndicator={false}

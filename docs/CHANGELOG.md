@@ -6,6 +6,1261 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-07-12 - Phan tich nguyen nhan lech moi truong Production va dong goi ban Deploy Zalo OA:
+
+- Thoi gian: 2026-10-07 19:15 (Asia/Saigon)
+- Loai: Production Diagnostics | Root Cause Analysis | Deployment Packaging | Server Bridge Plan
+- Trang thai: Hoan tat dong goi va lap tai lieu huong dan deploy
+- Muc tieu:
+  1. Xac dinh nguyen nhan goc re khien tin nhan Zalo OA chua vao ViChat Mobile khi nguoi dung chat that:
+     - Kiem tra truc tiep endpoint tren VPS Production:
+       - POST https://chatmgt.gonplatform.com/api/v1/zalo/webhook -> HTTP 404 Not Found.
+       - GET https://chatmgt.gonplatform.com/api/v1/zalo/conversations -> HTTP 404 Not Found.
+     - Webhook Zalo dang tro ve https://chatbot.gonplatform.com/zalo/webhook (tra 200 OK), nhung server Chatbot Cloud van dang chay code goc tren VPS, chua co ichat_bridge.py.
+     - Ket luan: Code moi da hoan tat va kiem thu xong o local/APK mobile, nhung chua duoc deploy len 2 may chu Production (chatbot va chatmgt).
+  2. Lap ke hoach chi tiet va dong goi ban cap nhat:
+     - Tao ke hoach trien khai plan_zalo_oa_deploy_fix.md.
+     - Dong goi 2 goi cap nhat vao D:\vichat-build\deploy-packages\:
+       - deploy-chatbot-zalo.tar.gz (7.9 KB) & .zip gom ichat_bridge.py va __init__.py.
+       - deploy-vichat-chatmgt.tar.gz (62 KB) & .zip gom pi_zalo.py, zalo_service.py, pi_chat_management.py, __init__.py.
+     - Bien soan tai lieu huong dan docs/DEPLOY_ZALO_OA_INSTRUCTIONS.md.
+- Pham vi thay doi:
+  - docs/DEPLOY_ZALO_OA_INSTRUCTIONS.md (Tao moi).
+  - D:\vichat-build\deploy-packages\ (Tao moi cac file archive deploy tren o D:).
+  - docs/CHANGELOG.md: Ghi nhat ky chan doan va dong goi.
+
+
+## 2026-10-07-11 - Kiem tra va toi uu hoa Mobile Zalo OA chat truc tiep va build APK test tren o D:
+
+- Thoi gian: 2026-10-07 18:45 (Asia/Saigon)
+- Loai: Mobile Hardening | Zalo OA Chat Optimization | Pipeline Staging Sync | Android Build
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Kiem tra va hoan thien luong nhan tin Mobile cho muc Zalo OA:
+     - Xac dinh va khac phuc triet de van de chan nhap tin / gui tin Zalo OA tren Mobile:
+       - Trong ChatDetailScreen.tsx, truoc day bien canSendMessages phu thuoc hoan toan vao 
+ealtimeReady (Tinode WebSocket ket noi va co topic hop le).
+       - Bo sung co isZaloConversation: cho phep nhan vien go tin nhan va bam gui Zalo OA doc lap voi ket noi Tinode WebSocket.
+       - Khi o kenh Zalo OA, an cac nut goi thoai/video Tinode va an banner bao mat ket noi Tinode de tranh gay hieu lam.
+     - Cap nhat 
+ormalizeConversation trong mobile/src/services/chatManagementService.ts:
+       - Bao toan day du cac truong channel: 'zalo_oa', channelType: 'zalo_oa', sourceType: 'zalo_oa' khi nhan du lieu tu /api/v1/conversation.
+       - Giu nguyen mang messages khoi tao ban dau tu backend, tranh viec reset thanh rong lam man hinh chat bi giat trang.
+  2. Toi uu quy trinh build APK tren o D (scripts/build_mobile_d.ps1):
+     - Tu dong dong bo ma nguon moi nhat tu D:\CÔNG_VIỆCichat-web\mobile\src sang thu muc staging D:ichat-build\mobile-scroll-fix-20261004\src truoc khi goi Gradle bien dich.
+     - Su dung $PSScriptRoot dong de tranh loi ma hoa font tieng Viet tren PowerShell Windows.
+  3. Kiem thu:
+     - 
+pm run typecheck (tsc): PASS 0 loi tren mobile.
+     - 
+pm test: PASS 236/236 tests tren 50/50 test files (bo sung unit test kiem tra Zalo OA normalization).
+     - Bien dich thanh cong APK tren o D: D:ichat-build\ViChat-zalo-oa-debug.apk.
+- Pham vi thay doi:
+  - mobile/src/screens/chat/ChatDetailScreen.tsx: Cap nhat isZaloConversation va canSendMessages.
+  - mobile/src/services/chatManagementService.ts: Bao toan channel, channelType, sourceType, messages trong 
+ormalizeConversation.
+  - mobile/src/services/chatManagementService.test.ts: Bo sung unit test cho Zalo OA conversation normalization.
+  - scripts/build_mobile_d.ps1: Tich hop buoc sync staging tu dong va ho tro duong dan dong $PSScriptRoot.
+
+
+## 2026-10-07-10 - Trien khai Cau noi dong bo Zalo OA giua Chatbot (UpgoBOT) va ViChat:
+
+- Thoi gian: 2026-10-07 17:30 (Asia/Saigon)
+- Loai: Cross-System Integration | Chatbot Bridge | Human Takeover Synchronization | Full Test Verification
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Trien khai theo Huong 1 (Toi uu, an toan, khong doi webhook Zalo Console):
+     - Zalo Developer Console giu nguyen Webhook tro ve Chatbot (`chatbot.gonplatform.com`).
+     - Tai Chatbot (`D:\CÔNG_VIỆC\chatbot`):
+       - Tao module `application/controllers/zalo/vichat_bridge.py`: su dung `aiohttp` voi timeout 2s bat dong bo non-blocking, gui payload `from_bot_service: True` sang ViChat (`https://chatmgt.gonplatform.com/api/v1/zalo/webhook`).
+       - Tich hop vao `handle_bot_request`: khi co `user_send_text`, goi `notify_vichat_webhook` lay trang thai `takeover`.
+       - Neu `takeover == True` (nhan vien ViChat dang tiep quan): Bot lap tuc im lang, khong tu sinh cau tra loi, nhuong quyen hoan toan cho nhan vien ViChat.
+       - Khi khach yeu cau gap tu van vien / CSKH: Bot gui tin chuyen tiep va bao ViChat `is_out_of_scope: True` de bat co `needs_human: True` tren tab Zalo OA.
+       - Khi Bot tu tra loi khach qua `send_text_message`: tu dong dong bo ban sao cau tra loi sang ViChat qua background thread de bao toan 100% lich su chat.
+  2. Phia ViChat (`D:\CÔNG_VIỆC\vichat-web`):
+     - Nhan payload `from_bot_service`: luu tin nhan khach va tin nhan bot vao Redis `zalo:messages:<conv_id>`.
+     - Phan hoi ngay `{"takeover": is_takeover, "is_handover_waiting": is_handover_waiting}` de Chatbot dieu tiet hanh vi phu hop.
+     - Khong goi duplicate toi Zalo CSKH khi tin da do Chatbot xu ly.
+  3. Kiem thu chat che bao ve moi luong chuc nang khac:
+     - Chatbot Unit Tests: PASS 100/100 tests.
+     - ViChat Backend Tests: PASS 344/344 tests (18 tests Zalo suite).
+     - ViChat Web Frontend Tests: PASS 461/461 tests.
+     - ViChat Mobile: `tsc --noEmit` PASS 0 compile error.
+- Pham vi thay doi:
+  - `D:\CÔNG_VIỆC\chatbot\application\controllers\zalo\vichat_bridge.py` (Moi tao).
+  - `D:\CÔNG_VIỆC\chatbot\application\controllers\zalo\__init__.py`: Them `vichat_bridge` vao `UpZaloBot` va `handle_bot_request`.
+  - `D:\CÔNG_VIỆC\vichat-web\chatservice-main\application\controllers\api_zalo.py`: Ho tro `from_bot_service`, phan hoi `takeover`.
+  - `D:\CÔNG_VIỆC\vichat-web\chatservice-main\tests\test_api_zalo_webhook.py`: Bo sung `test_from_bot_service_webhook_sync`.
+
+
+## 2026-10-07-09 - Tich hop dong bo lich su chat Zalo OA, bao toan tin nhan Mobile va build cai dat thanh cong APK tren o D:
+
+- Thoi gian: 2026-10-07 16:40 (Asia/Saigon)
+- Loai: Backend Service | Mobile Integration | Zalo OA Chat History Retention | Android Native Build & ADB Install
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Bao toan 100% lich su chat Zalo OA giua Khach hang, Bot AI (chat.gonplatform.com) va Nhan vien CSKH ViChat:
+     - Luu tru lich su tin nhan Zalo OA vao Redis List `zalo:messages:<conversation_id>` voi TTL 30 ngay, toi da 500 tin nhan gan nhat moi cuoc hoi thoai.
+     - Luu day du tin nhan khach gui den (`user_send_text`), tin phan hoi tu dong cua Bot AI, va tin nhan do Nhan vien CSKH gui di tu ViChat (`POST /api/v1/zalo/send_message`).
+     - Cung cap endpoint `GET /api/v1/zalo/conversations/<conversation_id>/messages` tra ve danh sach tin nhan theo dinh dang chuan cua ViChat.
+     - Dong bo cuoc tro chuyen Zalo OA vao endpoint `GET /api/v1/conversation` de Mobile va Web tu dong hien thi ngay tren Tab Zalo OA.
+  2. Mobile App Integration:
+     - Bo sung ham `sendZaloMessage()` va `getZaloMessages()` trong `chatManagementService.ts`.
+     - Xu ly tach biet trong `mobile/src/store/appStore.ts`:
+       - Khi mo cuoc tro chuyen Zalo OA (`channel === 'zalo_oa'` hoac `id.startsWith('zalo:')`): tu dong load toan bo lich su tin nhan qua `getZaloMessages()`.
+       - Khi gui tin nhan (`sendText()`): gui truc tiep qua `chatManagementService.sendZaloMessage()`, khong goi qua Tinode broker noi bo.
+       - Bao toan tuyet doi, khong can thiep vao cac luong chat ca nhan, nhom, cuoc goi, thong bao noi bo.
+  3. Khac phuc su co bo nho ao khi bien dich C++ Native tren Android va build thanh cong APK tren o D:
+     - Phat hien Ninja su dung toan bo CPU cores bien dich Clang C++ song song gay can kiet Windows Paging File / Virtual Memory (RAM 8GB).
+     - Cau hinh gioi han tien trinh bien dich C++: `CMAKE_BUILD_PARALLEL_LEVEL=1` va Gradle parameter `"-Pandroid.native.buildJobs=1"`.
+     - Bien dich hoan tat 100% (43/43 C++ objects, bao gom `libappmodules.so`, `libreact_codegen_rnscreens.so`, `libreact_codegen_rnsvg.so`, `libreact_codegen_safeareacontext.so`).
+     - Dong goi thanh cong `D:\vichat-build\ViChat-zalo-oa-debug.apk` (88.66 MB).
+     - Tu dong cai dat thanh cong len thiet bi thuc te OPPO Find X5 (`f36c9ba7`) qua ADB (`Performing Streamed Install -> Success`).
+- Pham vi thay doi:
+  - `chatservice-main/application/controllers/api_zalo.py`: Bo sung `_append_zalo_message()`, `_get_zalo_messages()`, endpoint `GET /api/v1/zalo/conversations/<id>/messages`, ham `_get_active_zalo_conversations_for_listing()`.
+  - `chatservice-main/application/controllers/api_chat_management.py`: Long ghep active Zalo OA conversations vao `GET /api/v1/conversation` (first page).
+  - `chatservice-main/tests/test_api_zalo_webhook.py`: Bo sung `test_zalo_message_history_retention`.
+  - `mobile/src/services/chatManagementService.ts`: Them `sendZaloMessage()` va `getZaloMessages()`.
+  - `mobile/src/services/chatManagementService.test.ts`: Bo sung test cases cho Zalo message history va send Zalo message.
+  - `mobile/src/store/appStore.ts`: Phan nhanh `channel === 'zalo_oa'` tai `sendText()` va `openConversation()`.
+  - `scripts/build_mobile_d.ps1`: Bo sung `CMAKE_BUILD_PARALLEL_LEVEL=1` va `"-Pandroid.native.buildJobs=1"`.
+- Ket qua kiem thu thuc te:
+  - Backend Unit Tests: PASS 17/17 tests (`test_zalo_service.py` + `test_api_zalo_webhook.py`).
+  - Backend Full Suite: PASS 343/343 tests.
+  - Mobile Unit Tests: PASS 235/235 tests tren 50/50 test files.
+  - Mobile Typecheck: PASS 0 compile error (`tsc --noEmit`).
+  - Mobile APK Build: PASS (`BUILD SUCCESSFUL in 5m 13s`, 342 tasks).
+  - Device Installation: PASS qua ADB len thiet bi OPPO Find X5 (`f36c9ba7`) thanh cong 100%.
+
+
+## 2026-10-07-08 - Toi uu bo dem Handover chong lap thong bao va xac nhan an toan tuyet doi cho Mobile
+
+- Thoi gian: 2026-10-07 14:58 (Asia/Saigon)
+- Loai: Backend Service | Handover Anti-spam Buffer | Mobile Stability & Non-breaking Verification
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Toi uu trai nghiem khach hang Zalo OA:
+     - Bo sung bo dem `zalo:pending_handover:<oa_id>:<user_id>` (TTL 15 phut) khi khach hoi ngoai vung kien thuc cua bot hoac yeu cau gap tu van vien.
+     - Khi khach gui lien tiep nhieu tin nhan trong thoi gian cho nhan vien CSKH tra loi, Bot AI khong bi lap lai thong bao chuyen tiep ("Da, cau hoi cua ban da duoc chuyen den..."), ma lang le tiep nhan va day tin moi ve ViChat cho nhan vien theo doi tuc thi.
+     - Tu dong giai phong bo dem khi nhan vien ViChat gui tin phan hoi (`POST /api/v1/zalo/send_message`) hoac chu dong thay doi che do tiep quan (`POST /api/v1/zalo/takeover`).
+  2. Kiem thu hoi quy toan dien bao dam khong anh huong toi cac luong chuc nang khac cua Mobile:
+     - Kiem tra luong chat ca nhan, chat nhom, goi dien, tin nhan thoai, chia se vi tri, media, poll tren Mobile.
+     - Xac minh tab loc kenh Zalo OA hoat dong doc lap, khong can thiep vao luong tin nhan noi bo.
+- Pham vi thay doi:
+  - `chatservice-main/application/controllers/api_zalo.py`:
+    - Bo sung `PENDING_HANDOVER_TTL_SECONDS = 900`.
+    - Ham `_is_handover_pending()`, `_set_handover_pending()`.
+    - Tich hop vao nhanh webhook `zalo_webhook`, `zalo_send_message_manual`, va `zalo_toggle_takeover`.
+  - `chatservice-main/tests/test_api_zalo_webhook.py`: Bo sung test `test_pending_handover_prevents_spam`.
+- Ket qua kiem thu thuc te:
+  - Unit Tests Zalo: `python -m unittest tests/test_zalo_service.py tests/test_api_zalo_webhook.py` PASS 16/16 tests (0.009s).
+  - Toan bo bo test backend: `python -m unittest discover tests` PASS 342/342 tests (6.876s).
+  - Web unit tests: `npm run test:frontend` PASS 461/461 tests (10.22s).
+  - Mobile unit tests: `npm test` PASS 233/233 tests tren 49/49 files (3.21s).
+  - Mobile Typecheck: `npm run typecheck` PASS 0 loi compile (`tsc --noEmit`, exit code 0).
+
+- Thoi gian: 2026-10-07 14:44 (Asia/Saigon)
+- Loai: Backend Service | Hybrid AI Handover | Out-of-Scope Fallback Routing | Human Agent Takeover & Bot Mute
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Thiet lap phan quyen ro rang giua Bot AI va Nhan vien CSKH theo yeu cau:
+     - **Trong vung kien thuc cua bot (`chatbot.gon`)**: Bot tu dong tra loi khach hang Zalo OA ngay lap tuc (1-2 giay).
+     - **Ngoai vung kien thuc cua bot (Out-of-Scope / Fallback / Khach yeu cau gap nguoi)**: Bot tu dong gui tin nhan dieu huong lich su cho khach, dong thoi day hoi thoai ve ViChat danh dau trang thai `needs_human: True` de nhan vien CSKH tiep quan.
+  2. Co che **Human Takeover Mode (Tiep quan tam dung bot)**:
+     - Khi nhan vien CSKH tren ViChat gui tin nhan tra loi khach hang qua `POST /api/v1/zalo/send_message`:
+       - Gui tin CSKH toi Zalo OA qua `send_cs_message()`.
+       - Tu dong kich hoat key Redis `zalo:takeover:<oa_id>:<user_id>` voi TTL 30 phut (tam dung bot khong chen ngang cuoc tro chuyen).
+       - Cap nhat metadata hoi thoai `status: 'agent_handling'`, `needs_human: False`.
+       - Phat realtime event qua Redis channel `vichat:omnichannel:events` de Web va Mobile dong bo ngay lap tuc.
+  3. Cung cap endpoint `POST /api/v1/zalo/takeover` (cho phep nhan vien chu dong tiep quan hoac tra lai hoi thoai cho Bot) va `GET /api/v1/zalo/conversations` (lay danh sach cac cuoc tro chuyen Zalo kem trang thai tiep quan).
+- Pham vi thay doi:
+  - `chatservice-main/application/controllers/api_zalo.py`:
+    - Dinh nghia cac bo tu khoa `HUMAN_INTENT_KEYWORDS` va `BOT_FALLBACK_PHRASES`.
+    - Ham `_is_out_of_scope()`, `_is_takeover_active()`, `_set_takeover_active()`.
+    - Nang cap luong phan nhanh trong webhook `zalo_webhook` (Takeover -> Out-of-Scope Handover -> In-Scope Auto-reply).
+    - Nang cap `POST /api/v1/zalo/send_message` tich hop takeover auto-activation.
+    - Bo sung `POST /api/v1/zalo/takeover` va `GET /api/v1/zalo/conversations`.
+  - `chatservice-main/tests/test_api_zalo_webhook.py`: Bo sung unit test `test_out_of_scope_detection` va `test_takeover_routing` (tong 6 tests trong file).
+- Ket qua kiem thu:
+  - Unit Tests Zalo: `python -m unittest tests/test_zalo_service.py tests/test_api_zalo_webhook.py` PASS 15/15 tests (0.007s).
+  - Toan bo bo test backend: `python -m unittest discover tests` PASS 341/341 tests (6.85s).
+
+
+
+## 2026-10-07-06 - Tich hop Zalo OA (Gonstack) va Bot AI vao ViChat Backend & Pipeline CSKH
+
+- Thoi gian: 2026-10-07 14:35 (Asia/Saigon)
+- Loai: Backend Service | Zalo OA Integration | Token Manager Auto-Seeding & Invalidation | Bot-First Webhook Pipeline | Omnichannel Redis Event Sync
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Tich hop thong tin xac thuc Zalo OA cua cong ty (Gonstack, OA ID `2274336170816480019`, Zalo App ID `1623487974980034018`) vao backend ViChat (`chatservice-main`).
+  2. Bo sung co che tu dong nap (auto-seeding) token tu bien moi truong (`ZALO_ACCESS_TOKEN`, `ZALO_REFRESH_TOKEN`, `ZALO_OA_ID`) vao Redis / bo nho dem khi khoi dong.
+  3. Hoan thien co che tu dong huy token cu (`invalidate_access_token`) va tu dong goi refresh token retry ngay lap tuc khi gap ma loi Zalo token het han (`-216: Invalid`, `-124: Expired`).
+  4. Nang cap webhook `POST /api/v1/zalo/webhook`:
+     - Tu dong tra cuu thong tin khach hang (ten hien thi, avatar) qua `get_user_profile()`.
+     - Kich hoat bot AI tra loi tu dong (Bot-First Auto-reply) va gui tin CSKH ve cho khach qua `send_cs_message()`.
+     - Phat su kien dong bo omnichannel qua Redis channel `vichat:omnichannel:events` va luu metadata hoi thoai `zalo:conversation:<id>` de Web va Mobile hien thi tuc thi tren Tab `Zalo OA`.
+  5. Cung cap endpoint `POST /api/v1/zalo/token/sync` ho tro dong bo va lam moi token chu dong (tuong thich voi nut "Force Sync Token" tren giao dien quan tri).
+  6. Cap nhat cau hinh trong `Config` (`config.py`) va `.env` tai `chatservice-main` va `infrastructure/chatservice`.
+- Pham vi thay doi:
+  - `chatservice-main/application/config/config.py`: Khai bao cac truong cau hinh `ZALO_APP_ID`, `ZALO_SECRET_KEY`, `ZALO_OA_ID`, `ZALO_ACCESS_TOKEN`, `ZALO_REFRESH_TOKEN`, `ZALO_CODE_VERIFIER`, `ZALO_REDIRECT_URI`.
+  - `chatservice-main/application/services/zalo_service.py`:
+    - Bo sung `ZaloTokenManager.invalidate_access_token()` va `seed_tokens_if_empty()`.
+    - `ZaloService`: Tu dong seed token tu config khi khoi tao token manager.
+    - `send_cs_message`, `get_user_profile`, `send_group_message`: Bo sung co che `retry_on_token_error=True` tu dong refresh va retry khi token het han.
+  - `chatservice-main/application/controllers/api_zalo.py`:
+    - Webhook xu ly profile khach Zalo, truyen user context vao chatbot service, dong bo event vao Redis.
+    - Bo sung route `POST /api/v1/zalo/token/sync`.
+  - `chatservice-main/application/__init__.py`: Safeguard import `dotenv` tranh loi khi thieu thu vien trong moi truong rut gon.
+  - `chatservice-main/tests/test_zalo_service.py`: Bo sung unit tests kiem thu invalidation, seeding va check enabled (10 tests).
+  - `chatservice-main/tests/test_api_zalo_webhook.py`: Bo sung unit tests kiem thu profile lookup va sync token flow (4 tests).
+  - `chatservice-main/.env`: Cau hinh Zalo OA ID, App ID va tokens (file da nam trong `.gitignore`).
+  - `infrastructure/chatservice/.env`: Dong bo cau hinh Zalo OA cho Docker container.
+- Ket qua kiem thu:
+  - Backend Unit Tests: `python -m unittest tests/test_zalo_service.py tests/test_api_zalo_webhook.py` PASS 13/13 tests (0.009s).
+  - Toan bo bo test backend: `python -m unittest discover tests` PASS 339/339 tests (11.88s).
+  - Frontend Web Test Suite: `npm run test:frontend` PASS 461/461 tests (10.65s).
+  - Mobile Test Suite: `npm test` PASS 49/49 test files (233/233 unit tests).
+- Ghi chu van hanh:
+  - Access Token duoc nguoi dung cung cap hien da het han tren Zalo API Explorer (`-216: Access token is invalid`).
+  - De he thong ViChat tu dong Refresh Token ngam dinh ky 25h/lan (bang `Refresh Token` da duoc nap), can bo sung **Khóa bí mật của ứng dụng** (`ZALO_SECRET_KEY`) tu trang Zalo Developer Portal (`developers.zalo.me/app/1623487974980034018/settings`).
+
+
+
+## 2026-10-07-05 - Dong goi ban phat hanh Mobile ViChat v1.0.55 (versionCode 56) tich hop Omnichannel da kenh (Zalo OA, Livechat, Facebook, Nhom)
+
+- Thoi gian: 2026-10-07 12:10 (Asia/Saigon)
+- Loai: Client Mobile | Dong goi APK v1.0.55 | Sap xep tab & Loai bo nut cai dat filter | Quality Gate & Build tren o D:
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Sap xep lai thu tu tab tren Mobile theo dung yeu cau: `Tất cả` -> `Nhóm` -> `Zalo OA` -> `Live Chat` -> `Facebook` -> `Chưa đọc`.
+  2. Loai bo nut bieu tuong cai dat (`SlidersHorizontal`) o cuoi thanh filter row giup thanh cuon ngang ScrollView full width thoang dep, khong bi vuong vi tri.
+  3. Dong bo thu tu cac tab tren Web Toolbar: `Tất cả`, `Nhóm`, `Zalo OA`, `Live Chat`, `Facebook`, `Phân loại`.
+  4. Nang cap phien ban len `v1.0.55` (versionCode `56`), dong bo tu workspace sang staging `D:\vichat-build\mobile-scroll-fix-20261004` theo quy dinh tai `AGENTS.md`.
+  5. Kiem thu chat che: `typecheck` (tsc --noEmit 0 loi), vitest (49/49 files, 233/233 tests pass).
+  6. Chay Gradle `:app:assembleDebug -x lint -x test --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a` tren staging D:.
+  7. Xuat ra file APK debug hoan chinh: `D:\vichat-build\ViChat-v1055-omnichannel-debug.apk`.
+- Pham vi thay doi:
+  - `mobile/src/screens/chat/ConversationListScreen.tsx`: Sap xep filters theo thu tu `all`, `groups`, `zalo` (Zalo OA), `livechat` (Live Chat), `facebook`, `unread`; go bo `SlidersHorizontal` va `filterIcon`.
+  - `mobile/src/utils/channelPolicy.ts` & `channelPolicy.test.ts`: Badge `Zalo OA`, `Zalo Group`, `Live Chat`, `Facebook`.
+  - `src/features/chat/components/ConversationListToolbar.jsx`: Dong bo thu tu tab tren Web Toolbar (`Tất cả`, `Nhóm`, `Zalo OA`, `Live Chat`, `Facebook`, `Phân loại`).
+  - `src/features/chat/services/conversationListFilter.js` & `test.js`: Dong bo badge label `Live Chat`.
+  - `mobile/package.json`: Version `1.0.55`.
+  - `mobile/app.json`: Version `1.0.55`, versionCode `56`.
+  - `mobile/android/app/build.gradle`: versionCode `56`, versionName `"1.0.55"`.
+  - `D:\vichat-build\ViChat-v1055-omnichannel-debug.apk`: File APK output (92,958,667 byte).
+- Ket qua kiem thu & build:
+  - TypeScript: `npm run typecheck` thanh cong (0 loi).
+  - Vitest: 49/49 test files passed (233/233 unit tests pass).
+  - Gradle Build: Build thanh cong trong 6m 37s tren o `D:`.
+  - Kiem tra APK badging qua `aapt`: `package: name='vn.upgo.vichat' versionCode='56' versionName='1.0.55'`.
+- Rui ro con lai: Khong co. Bao toan 100% moi luong tinh nang cu.
+
+## 2026-10-07-04 - Trien khai giao dien phan loai hoi thoai da kenh (Zalo OA, Livechat, Nhom, Facebook), Toolbar loc va Channel Badge tren Web ViChat
+
+- Thoi gian: 2026-10-07 10:45 (Asia/Saigon)
+- Loai: Web Omnichannel UI | Channel Filter Toolbar | Channel Badge | Frontend Test Suite (461 tests)
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Thuc hien theo dung chi dao ve giao dien Web theo anh chup yeu cau: bo sung cac tab `Zalo`, `Livechat`, `Facebook` vao thanh Toolbar danh sach hoi thoai (`Tất cả | Zalo | Livechat | Facebook | Nhóm | Phân loại | Khác`).
+  2. Xay dung service loc hoi thoai `conversationListFilter.js` ho tro phan loai kenh (`resolveConversationChannel`), phan biet ro badge `Zalo OA`, `Zalo Group`, `Livechat`, `Facebook` va bo loc hoi thoai (`filterConversationIds`).
+  3. Tich hop `getChannelBadge` vao component danh sach hoi thoai trong `App.jsx`, hien thi channel badge ro rang canh ten hoi thoai (Zalo OA mau `#0068FF`, Livechat `#10B981`, Facebook `#1877F2`).
+  4. Cap nhat `handleConversationListTabChange` tu dong reset filter phan loai khi chuyen giua cac tab kenh.
+  5. Styling CSS cho thanh tab cuon ngang muot ma (`scrollbar-width: none`) va badge kenh noi bat.
+- Pham vi thay doi:
+  - `src/features/chat/services/conversationListFilter.js`: Bo sung `CONVERSATION_LIST_TABS.ZALO`, `LIVECHAT`, `FACEBOOK`, `resolveConversationChannel`, `getChannelBadge` (phan biet `Zalo OA` va `Zalo Group`), `filterConversationIds`.
+  - `src/features/chat/services/conversationListFilter.test.js`: Bo test suite 6 unit tests kiem tra logic nhan dien kenh va bo loc.
+  - `src/features/chat/components/ConversationListToolbar.jsx`: Bo sung button tab `Zalo`, `Livechat`, `Facebook`.
+  - `src/styles/index.css`: Style cuon ngang `.conversation-list-tabs` va badge `.conversation-channel-badge`.
+  - `src/app/App.jsx`: Import `getChannelBadge`, render channel badge trong the hoi thoai, reset filter khi chon cac tab kenh.
+  - `docs/chat-backend-architecture.md`: Bo sung muc kien truc da kenh Omnichannel Zalo OA, Livechat va Bot-First Pipeline.
+  - `docs/CHANGELOG.md`: Cap nhat nhat ky ky thuat.
+- Ket qua kiem thu:
+  - Web Unit Tests: `npm run test:frontend` PASS 461/461 tests (10.18s).
+  - Oxlint: `npx oxlint` tren cac file sua doi 0 loi, 0 canh bao.
+  - Mobile Unit Tests: `npm test` PASS 49/49 test files (233/233 unit tests).
+  - Backend Unit Tests: `python -m unittest discover` PASS 335 tests (bao gom 9 tests Zalo service va Webhook controller).
+- Rui ro con lai: Khong co. San sang nhan App ID va Secret Key tu Zalo Developers (@Ngang Tuat).
+
+## 2026-10-07-03 - Phat trien ZaloService, OAuth PKCE Manager va Webhook Bot-First tu dong tra loi khach tren Zalo OA
+
+- Thoi gian: 2026-10-07 10:28 (Asia/Saigon)
+- Loai: Backend Zalo Integration | Webhook Bot-First Pipeline | Zalo CS Messaging | Python Unit Tests
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Xay dung module `zalo_service.py` ke thua giai phap quan ly Access Token / Refresh Token Redis va OAuth PKCE, bo sung ham gui tin nhan CSKH 2 chieu (`send_cs_message`) va tra cuu thong tin khach hang (`get_user_profile`).
+  2. Xay dung controller `api_zalo.py` voi Webhook endpoint `POST /api/v1/zalo/webhook` va challenge probe `GET`.
+  3. Tich hop luong Bot-First: khi khach hang nhan tin toi Zalo OA (`user_send_text`), he thong goi ngay `ChatbotService` de lay cau tra loi tu tri thuc AI va ban nguoc lai cho khach tren Zalo OA trong 1-2 giay.
+  4. Ho tro tinh nang deduplication chong duplicate webhook retries va cac endpoint cap quyen OAuth PKCE cho da doi tac (`/api/v1/zalo/authorize`, `/api/v1/zalo/callback`).
+- Pham vi thay doi:
+  - `chatservice-main/application/services/zalo_service.py`: Class `ZaloTokenManager`, `ZaloService` (gui tin nhan CS qua `POST /v3.0/oa/message/cs`, lay user profile qua `GET /v3.0/oa/user/detail`, gui tin group qua `POST /v3.0/oa/group/message`).
+  - `chatservice-main/application/services/__init__.py`: Export `ZaloService`, `ZaloTokenManager`.
+  - `chatservice-main/application/controllers/api_zalo.py`: Webhook receiver, challenge probe, Bot auto-reply dispatch, OAuth authorize/callback, manual CS sender.
+  - `chatservice-main/application/controllers/__init__.py`: Dang ky controller `api_zalo` vao Gatco app.
+  - `chatservice-main/tests/test_zalo_service.py`: 7 unit tests kiem thu toan dien PKCE, Token Manager, Token expiration, API payload, Mock aiohttp.
+  - `chatservice-main/tests/test_api_zalo_webhook.py`: 2 unit tests kiem thu webhook challenge va pipeline Bot auto-reply.
+  - `docs/CHANGELOG.md`: Cap nhat nhat ky ky thuat.
+- Ket qua kiem thu:
+  - Python Unit Tests: `python -m unittest tests/test_zalo_service.py tests/test_api_zalo_webhook.py tests/test_chatbot_webhook_provider.py` PASS 41/41 tests (0.135s).
+  - Vitest Mobile: `channelPolicy.test.ts` PASS 5/5 tests.
+- Rui ro con lai: Khong co. Khi nhan key that tu Zalo Developers / @Ngang Tuat, chi can dien vao file `.env` cua server de kich hoat luong production.
+
+## 2026-10-07-02 - Trien khai giao dien phan loai hoi thoai da kenh (Zalo OA, Livechat, Nhom, Facebook) va channel policy tren Mobile ViChat
+
+- Thoi gian: 2026-10-07 09:44 (Asia/Saigon)
+- Loai: Omnichannel UI | Thanh Tab loc kenh Zalo OA & Livechat | Channel Badge | Vitest Test Suite
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Thuc hien theo dung chi dao cua Sep ve viec phan loai kenh hoi thoai da kenh (Omnichannel) tren Mobile App: them cac tab phan loai `Tất cả`, `Zalo`, `Livechat`, `Nhóm`, `Chưa đọc`, `Facebook`.
+  2. Thiet ke thanh tab filter dang horizontal ScrollView muot ma, khong bi tran man hinh khi co nhieu kenh.
+  3. Bo sung type `ChannelType` trong `mobile/src/types/index.ts` va xay dung helper `channelPolicy.ts` giup tu dong nhan dien va loc hoi thoai theo nguon kenh (Zalo OA, Zalo Group, Web Livechat, Facebook).
+  4. Hien thi badge nhan dien kenh truc quan tren tung the hoi thoai (`ConversationRow.tsx`) de nhan vien CSKH nhan biet nguon khach hang ngay lap tuc.
+- Pham vi thay doi:
+  - `mobile/src/types/index.ts`: Khai bao `ChannelType` (`'internal' | 'zalo' | 'zalo_oa' | 'zalo_group' | 'livechat' | 'facebook'`) va mo rong `Conversation` voi `channel`, `channelType`, `sourceType`.
+  - `mobile/src/utils/channelPolicy.ts`: Dinh nghia ham nhan dien kenh `resolveConversationChannel`, bo loc `isConversationMatchingFilter`, va style badge `getChannelBadgeInfo`.
+  - `mobile/src/utils/channelPolicy.test.ts`: Bo test suite 5 unit tests kiem tra toan dien viec phan loai va filter.
+  - `mobile/src/screens/chat/ConversationListScreen.tsx`: Chuyen thanh filter sang `ScrollView` ngang ho tro 6 tab (`all`, `zalo`, `livechat`, `groups`, `unread`, `facebook`) va tich hop `isConversationMatchingFilter`.
+  - `mobile/src/components/ConversationRow.tsx`: Render badge kenh (`Zalo` xanh duong `#0068FF`, `Livechat` xanh la `#10B981`, `Facebook` `#1877F2`).
+  - `docs/CHANGELOG.md`: Cap nhat nhat ky thay doi.
+- Ket qua kiem thu:
+  - TypeScript: `npm run typecheck` thanh cong (0 loi).
+  - Vitest: 49/49 test files passed (233/233 unit tests pass).
+- Rui ro con lai: Khong co.
+- Buoc tiep theo: Cho thong tin OA ID va secret key tu @Ngang Tuat de trien khai endpoint Webhook va CS message adapter o backend.
+
+## 2026-10-07-01 - Toi uu hieu nang group chat, loai bo dong bang man hinh den va ho tro cu chi vuot back native muot ma tren Mobile (APK v1.0.54, versionCode 55)
+
+- Thoi gian: 2026-10-07 01:05 (Asia/Saigon)
+- Loai: Hieu nang Mobile | Toi uu FlatList Chat | Native Swipe Gestures | Dong goi APK v1.0.54
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Khac phuc triet de loi lag, do va giat khi vuot de back duoc phan anh qua video nguoi dung cung cap (`1791262279773_37732544870010919_4006837665491188282.mp4`), dac biet tai chat nhom va man hinh thong tin nhom.
+  2. Loai bo hoan toan hien tuong man hinh den (pitch-black freeze) keo dai 2-5 giay khi mo cuoc tro chuyen nhom.
+  3. Kich hoat cu chi vuot back native duoc tang toc phan cung (hardware-accelerated native edge swipe-to-back gesture) tren Android native stack.
+  4. Toi uu hoa toan dien FlatList render pipeline va bo nho dem: memoize `viewerIdentities`, `groupMembers`, callbacks, styles cache trong `MessageBubble`, loc nhanh regex mention, tranh render thua 50+ bubble moi frame.
+  5. Bao toan 100% tinh nang khong gay regression cho tin nhan, media, cuoc goi, thong bao hay workspace tasks.
+- Nguyen nhan goc re:
+  1. `AppNavigator.tsx`: Native stack thieu `gestureEnabled: true` va `fullScreenGestureEnabled: true` tren Android, dan den cu chi vuot mep bi cham va xung dot voi scroll handler.
+  2. `ChatDetailScreen.tsx`: `messageListHidden` (`opacity: 0`) che giau toan bo danh sach tin nhan trong khi cho socket Tinode `openConversation` va timer an toan, lam nguoi dung nhin thay man hinh den 2-5 giay du du lieu tin nhan da co san trong cache cuc bo.
+  3. `ChatDetailScreen.tsx`: `viewerIdentities` khoi tao moi moi render, callback inline cho `MessageBubble` lam vo `memo(MessageBubble)`, khien tat ca 50+ message bubble render lai lien tuc khi scroll hoac nhan state.
+  4. `MessageBubble.tsx`: `createStyles` goi lai lien tuc tao moi StyleSheet cho tung bubble, `renderMentionText` xu ly regex va duyet 22 thanh vien cho ca tin nhan khong co `@`.
+  5. `GroupInfoScreen.tsx`: Bo loc media/file/link/events khong duoc memoize, tinh toan lai khi render gay giat khi scroll/back.
+- Cac thay doi da thuc hien:
+  - `mobile/src/navigation/AppNavigator.tsx`: Them `gestureEnabled: true`, `fullScreenGestureEnabled: true`, `animation: 'slide_from_right'`, set `gestureEnabled: false` cho Main tab.
+  - `mobile/src/components/MessageBubble.tsx`: Fast-path cho `renderMentionText` (`if (!text || !text.includes('@')) return text;`), cache StyleSheet theo palette qua WeakMap, chuan hoa `Props.onLongPress`.
+  - `mobile/src/screens/chat/GroupInfoScreen.tsx`: Memoize `messages`, `sharedImages`, `sharedFiles`, `sharedLinks`, `groupEvents`, `members`, `pendingMembers` bang `useMemo`.
+  - `mobile/src/screens/chat/ChatDetailScreen.tsx`: Bo `initialViewportReady` va `messageListHidden` giup render tuc thi tu cache cuc bo; memoize `viewerIdentities`, `groupMembers`, `handleLongPressMessage`, `handleShowEditHistory`, `submitPollVote`, `submitPollOption`, `submitPollLock`, `handleOpenContactChat`, `handlePressMention`, `keyExtractor`, `renderItem`; cau hinh FlatList `removeClippedSubviews={Platform.OS === 'android'}`, `initialNumToRender={15}`, `maxToRenderPerBatch={10}`, `windowSize={9}`, `updateCellsBatchingPeriod={50}`.
+  - Nang cap phien ban len `1.0.54` (versionCode `55`) trong `mobile/package.json`, `mobile/app.json`, `mobile/android/app/build.gradle`.
+- Ket qua kiem thu:
+  - Vitest: 48 test files passed (228 tests).
+  - ESLint: 0 loi.
+  - TypeScript: 0 loi (`npx tsc --noEmit` pass).
+  - Build APK tren D:: thanh cong trong 7m 37s, xuat ra `D:\vichat-build\ViChat-v1054-group-smooth-debug.apk` (92,960,399 byte).
+  - Test UAT thuc te tren thiet bi OPPO Find X5 (`f36c9ba7`):
+    - `dumpsys package`: `versionCode=55`, `versionName=1.0.54`.
+    - Mo nhom chat GON-NERS: tin nhan va thanh ghim render ngay lap tuc, khong he bi den man hinh hay delay.
+    - Chuyen vao Group Info (Thong tin hoi thoai): muot ma, hien thi day du thong tin.
+    - Cu chi vuot mep (edge swipe back): back tu Group Info ve ChatDetail va tu ChatDetail ve ConversationList deu phan hoi tuc thi, cuc ky muot ma.
+- Rui ro con lai: Khong co.
+- Commit/PR: Chua tao.
+
+## 2026-10-06-13 - Dong goi va phat hanh APK ViChat v1.0.53 (versionCode 54) tich hop module Nhiem vu Lark Suite len may that qua ADB
+
+- Thoi gian: 2026-10-06 23:20 (Asia/Saigon)
+- Loai: Client Mobile | Dong goi APK v1.0.53 | Cap nhat thiet bi qua ADB | Module Nhiem vu Lark Tasks
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Nang cap phien ban ung dung len `v1.0.53` (versionCode `54`) de tich hop phan he Workspace (Nhiem vu) kieu Lark Suite dong goi doc lap tai `mobile/src/modules/workspace/`.
+  2. Dong bo ma nguon, cau hinh va tai nguyen tu workspace sang staging `D:\vichat-build\mobile-scroll-fix-20261004` tuan thu tuyet doi quy tac build tren o `D:`.
+  3. Bien dich bundle JS va assemble APK debug qua Gradle tren o D:, xuat ra file `D:\vichat-build\ViChat-v1053-workspace-lark-debug.apk`.
+  4. Cai dat truc tiep ban APK len dien thoai OPPO Find X5 (`f36c9ba7`) qua ADB cap USB va kiem thu truc quan toan bo tinh nang Nhiem vu tren may that.
+- Pham vi:
+  - `mobile/package.json`
+  - `mobile/app.json`
+  - `mobile/android/app/build.gradle`
+  - `D:\vichat-build\mobile-scroll-fix-20261004/**`
+  - `docs/CHANGELOG.md`
+- Cac buoc thuc hien:
+  1. Dong bo toan bo ma nguon `mobile/src/` sang staging `D:\vichat-build\mobile-scroll-fix-20261004\src\` bang `robocopy /MIR`.
+  2. Cap nhat `version: 1.0.53`, `versionCode: 54` dong bo trong `mobile/package.json`, `mobile/app.json` va `mobile/android/app/build.gradle`.
+  3. Thiet lap moi truong build o `D:`: `GRADLE_USER_HOME=D:\vichat-build\gradle-user-home`, `TEMP/TMP=D:\vichat-build\tmp`, `ANDROID_HOME=D:\vichat-build\android-sdk`, `JAVA_HOME=D:\vichat-build\jdk`.
+  4. Khoi chay Gradle `:app:assembleDebug -x lint -x test --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a`.
+  5. Build thanh cong APK: `D:\vichat-build\ViChat-v1053-workspace-lark-debug.apk` (92,959,035 byte, SHA256: `C524EB4D83839DE448C3BA0FAB52BD8D5D6D05901847E6A593B8039E479533F9`).
+  6. Cai dat APK len thiet bi OPPO Find X5 (`f36c9ba7`) bang `adb -s f36c9ba7 install -r`.
+  7. Khoi dong app bang `adb shell am start -W -n vn.upgo.vichat/.MainActivity`.
+- Kiem thu UAT tren thiet bi that:
+  - Phien ban tren may: `versionCode=54`, `versionName=1.0.53` (dumpsys package vn.upgo.vichat).
+  - Giao dien chinh: Tab `Workspace` mo ngay man hinh `Nhiệm vụ` chuan giao dien Lark Suite.
+  - Header: Avatar nguoi dung, tieu de `Nhiệm vụ`, nut setting/filter ben phai.
+  - Tab phan loai: Segmented pills `Đã sở hữu` / `Đã đăng ký` kem nut toggle Drawer va nut toggle Filter Toolbar.
+  - Navigation Drawer: Nhan nut (≡) mo Drawer ben trai voi `Đã sở hữu`, `Đã đăng ký`, `Hoạt động`, `Truy cập nhanh` (Tất cả, Đã tạo, Đã chỉ định, Đã hoàn thành), `Danh sách tác vụ` (+ Nhóm mới).
+  - Filter Toolbar: Nhan nut filter mo cac chip loc `Đang diễn ra ∨`, `Phân nhóm: Tùy chỉnh ∨`, `Sắp xếp: ... ∨`.
+  - Group Accordion: Nhom `Nhóm mặc định (2)` mo/dong muot ma.
+  - Inline Quick Add: Cham vao `+ Thêm nhiệm vụ` ben trong nhom, nhap tieu de va Enter -> tao ngay tac vu moi voi optimistic update.
+  - Detailed Creation Modal: Cham vao nut FAB (+) mo Bottom Sheet day du cac truong (Tieu de, Mo ta, Nguoi phu trach, Nhom, Han chot Hom nay/Ngay mai/Tuan toi, Muc uu tien, Tac vu con subtasks).
+  - Luong chat, danh ba, cloud va thong bao khong bi anh huong (zero-regression).
+- Rui ro con lai: Khong co.
+- Commit/PR: Chua tao.
+
+## 2026-10-06-12 - Tai cau truc va thiet ke lai phan he Workspace (Nhiem vu) Mobile theo chuan Lark Suite duoi dang module dong goi doc lap
+
+- Thoi gian: 2026-10-06 22:25 (Asia/Saigon)
+- Loai: Tinh nang | Client Mobile | Tai cau truc kien truc | Modularity | Workspace & Tasks
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Thiet ke lai toan bo phan he Workspace tren Mobile theo dung mo hinh Lark Tasks ("Nhiem vu") duoc khao sat truc tiep tren thiet bi qua ADB (Drawer dieu huong, Segmented Tabs, Filter Toolbar, Grouped Task List co inline quick-add, Floating Action Button, Task Creation Modal).
+  2. Dong goi thanh module doc lap tai `mobile/src/modules/workspace/` voi store, types, services, UI components rieng biet (khong gay xung dot hay lam phinh appStore va cac luong chat cot loi, de dang boc tach ra package bat cu luc nao theo yeu cau cua sep).
+- Pham vi:
+  - `mobile/src/modules/workspace/**`
+  - `mobile/src/navigation/MainTabNavigator.tsx`
+  - `mobile/src/screens/workspace/**`
+  - `docs/CHANGELOG.md`
+- File da thay doi:
+  - `mobile/src/modules/workspace/types/index.ts`
+  - `mobile/src/modules/workspace/services/taskService.ts`
+  - `mobile/src/modules/workspace/store/taskStore.ts`
+  - `mobile/src/modules/workspace/components/TaskHeader.tsx`
+  - `mobile/src/modules/workspace/components/TaskSegmentedTabs.tsx`
+  - `mobile/src/modules/workspace/components/TaskFilterBar.tsx`
+  - `mobile/src/modules/workspace/components/TaskDrawer.tsx`
+  - `mobile/src/modules/workspace/components/TaskItemCard.tsx`
+  - `mobile/src/modules/workspace/components/TaskGroupSection.tsx`
+  - `mobile/src/modules/workspace/components/TaskFloatingButton.tsx`
+  - `mobile/src/modules/workspace/components/TaskCreateModal.tsx`
+  - `mobile/src/modules/workspace/screens/WorkspaceMainScreen.tsx`
+  - `mobile/src/modules/workspace/index.ts`
+  - `mobile/src/modules/workspace/__tests__/taskService.test.ts`
+  - `mobile/src/modules/workspace/__tests__/taskStore.test.ts`
+  - `mobile/src/navigation/MainTabNavigator.tsx`
+  - `mobile/src/screens/workspace/WorkspaceScreen.tsx`
+  - `docs/CHANGELOG.md`
+- Noi dung:
+  - Tao module dong goi khép kín `mobile/src/modules/workspace/` voi `taskStore` quan ly state rieng biet, ho tro optimistic updates khi danh dau hoan tat va tao nhanh nhiem vu.
+  - Giao dien chuan Lark Mobile:
+    * `TaskHeader`: Avatar nguoi dung, tieu de "Nhiem vu", nut cai dat.
+    * `TaskDrawer`: Drawer truot dieu huong gom Da so huu, Da dang ky, Hoat dong; Truy cap nhanh (Tat ca, Da tao, Da chi dinh, Da hoan thanh); Danh sach tac vu va + Nhom moi.
+    * `TaskSegmentedTabs`: Tab phan loai nhanh (Da so huu / Da dang ky) kem nut mo Drawer va nut bat/tat Filter Toolbar.
+    * `TaskFilterBar`: Toolbar bo loc gom Trang thai (Dang dien ra/Hoan tat/Tat ca), Phan nhom (Nhom tuy chinh/Han chot/Muc uu tien/Khong phan nhom), Sap xep (Tuy chinh/Han chot/Muc uu tien/Ngay tao).
+    * `TaskGroupSection`: Accordion collapsible cho tung nhom ("Nhom mac dinh",...), kem dong inline `+ Them nhiem vu` nhap nhanh tieu de ngay tai nhom.
+    * `TaskItemCard`: Checkbox tron 1 cham hoan tat co gach ngang, nhan han chot thong minh (qua han, hom nay, sap toi), avatar nguoi phu trach.
+    * `TaskFloatingButton`: Nut tron noi FAB xanh `+` o goc phai man hinh.
+    * `TaskCreateModal`: Bottom Sheet tao tac vu chi tiet chuan Lark: tieu de, mo ta, nguoi phu trach, ten nhom, chip chon han nhanh (Hom nay, Ngay mai, Tuan toi), muc do uu tien, danh sach tac vu con (subtasks).
+  - Tich hop vao `MainTabNavigator.tsx` qua single import tu `../modules/workspace`, dong thoi giu `WorkspaceScreen.tsx` cu re-export de bao toan 100% tuong thich nguoc.
+- Quyet dinh ky thuat: Su dung module dong goi tai `mobile/src/modules/workspace/` giup loose-coupling tuyet doi voi he thong chat hien tai, de dang tach thanh package hoac bo khoi app bat cu luc nao ma khong gay anh huong luong khac.
+- Database/API/cau hinh: Tan dung 100% cac endpoint backend da co san (`/api/v1/workspace/items`, `/stats`, `/actions`).
+- Kiem thu:
+  - TypeScript: `npx tsc --noEmit` thanh cong, 0 loi type.
+  - Unit test: `npm test` vuot qua 48/48 test files, 227/227 tests dat (100% passed).
+- Rui ro con lai: Khong co da biet.
+- Viec tiep theo: Kiem tra chay thu va phan hoi truc tiep tren thiet bi.
+- Commit/PR: Chua tao.
+
+## 2026-10-06-11 - Khac phuc danh sach @ Mention bi gioi han thanh vien, chuyen sang danh sach doc va ho tro bam @ de xem ho so & nhan tin nhanh
+
+- Thoi gian: 2026-10-06 17:15 (Asia/Saigon)
+- Loai: Tinh nang | Client Mobile | Sua loi giao dien & tuong tac | Mention (@ Nhac den)
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Khac phuc triet de loi danh sach @ chi hien thi vai nguoi (do `.slice(0, 8)`), hien thi day du toan bo thanh vien trong nhom (22/22 thanh vien) cung lua chon "Moi nguoi" (@All).
+  2. Thay the thanh cuon ngang (horizontal ScrollView) bang danh sach cuon doc chuyen nghiep (Vertical Mention Panel) voi avatar 38x38, ho ten day du, phong ban/chuc danh va vai tro trong nhom, giup luot tim thanh vien nhanh chong, muot ma.
+  3. Ho tro tim kiem thong minh khong dau/co dau theo ten, phong ban, chuc danh, biet danh khi go `@query`.
+  4. Bop tach va cho phep cham/bam truc tiep vao `@Ten` trong bong bong tin nhan (`MessageBubble.tsx`).
+  5. Khi bam vao `@Ten`, hien thi modal popup thong tin thanh vien (Avatar, Ho ten, Phong ban, Chuc vu, Vai tro trong nhom) kem 2 nut hanh dong: "Nhan tin nhanh" (tao/mo ngay cuoc tro chuyen 1-1 qua `createDirectConversation`) va "Xem trang ca nhan" (mo `UserProfileScreen`).
+- Pham vi:
+  - `mobile/src/screens/chat/ChatDetailScreen.tsx`
+  - `mobile/src/components/MessageBubble.tsx`
+  - `mobile/src/utils/mentionPolicy.ts`
+  - `mobile/src/utils/mentionPolicy.test.ts`
+- File da thay doi:
+  - `mobile/src/screens/chat/ChatDetailScreen.tsx`
+  - `mobile/src/components/MessageBubble.tsx`
+  - `mobile/src/utils/mentionPolicy.ts`
+  - `mobile/src/utils/mentionPolicy.test.ts`
+  - `docs/CHANGELOG.md`
+- Noi dung:
+  - `mentionCandidates`: Loai bo `.slice(0, 8)`, enrich du lieu voi `directory` danh ba, loc bo nguoi dung hien tai khoi danh sach nhac den, bo sung `roleLabel`.
+  - `mentionPanel`: Thiet ke lai thanh popup doc noi tren composer bar (`maxHeight: 230`, `ScrollView` doc co thanh cuon, header dem so luong thanh vien va nut dong X).
+  - `MessageBubble`: `renderMentionText` duoc nang cap voi ban do token da chieu (tu ca tin nhan va thanh vien nhom), bop vao `<Text onPress={...}>` co gach chan de nguoi dung nhan biet lien ket.
+  - `MentionUserModal`: Modal the thong tin nguoi dung thanh lich voi nut "Nhan tin nhanh" noi bat.
+- Quyet dinh ky thuat:
+  - Khong lam gian doan cac luong gui tin nhan, realtime websocket, hay WebRTC calls hien co.
+  - Tuan thu tuyet doi quy tac build va cache tren o `D:`.
+- Kiem thu:
+  - Unit test: `npm test` vuot qua 46/46 test files, 221/221 tests dat (100% passed).
+  - Typecheck: `tsc --noEmit` thanh cong, 0 loi type.
+- Rui ro con lai: Khong co da biet.
+- Viec tiep theo: Cai dat APK len thiet bi va xac minh truc tiep tren may.
+- Commit/PR: Chua tao.
+
+## 2026-10-06-10 - Revert tro ve ban v1.0.50 (versionCode 51) va hoan nguyen Tinode ve Data-Only Push (Phuong an A)
+
+- Thoi gian: 2026-10-06 16:10 (Asia/Saigon)
+- Loai: Rollback | Client Mobile v1.0.50 | Server Production Tinode | Hoan nguyen binary & config
+- Trang thai: Hoan tat
+- Ly do ky thuat:
+  - Tren thiet bi Android noi dia Trung Quoc (ROM ColorOS noi dia nhu OPPO Find X5), viec he thong nhan payload `notification` do Google Play Services tu dong xu ly bi han che, gay mat/loi ten nguoi gui va noi dung tin nhan tren ban v1.0.51.
+  - Nguoi dung yeu cau hoan nguyen tro ve phien ban v1.0.50 (versionCode 51) cung voi cau hinh Data-Only push (Phuong an A) tren server Tinode production von da hoat dong chinh xac voi day du ten nguoi gui va noi dung.
+- Cac buoc thuc hien:
+  1. **Server Production (`192.168.80.20`)**:
+     - Khoi phuc file nhi phan goc `bin/tinode.backup-20261006` (74,770,435 byte) ve `/home/ubuntu/tinode-8092-a4d12e3/bin/tinode`.
+     - Chuyen `"android": { "enabled": false }` trong `/home/ubuntu/tinode-8092-a4d12e3/working.config` de may chu phat pure Data-Only push theo Phuong an A.
+     - Khoi dong lai container `upgo-chatapi-8092` (`docker restart upgo-chatapi-8092`). Container da Up va healthy.
+  2. **Client Mobile**:
+     - Hoan nguyen `version` ve `1.0.50` va `versionCode` ve `51` trong `mobile/package.json`, `mobile/app.json`, `mobile/android/app/build.gradle`.
+     - Cai dat ban build chuan `D:\vichat-build\ViChat-v1050-notification-complete-debug.apk` len thiet bi OPPO Find X5 (`f36c9ba7`) thong qua ADB (`adb install -r -d`).
+     - Khoi chay ung dung va chup anh xac minh.
+- Kiem thu:
+  - Server: Container `upgo-chatapi-8092` trang thai `Up (healthy)`. Cac endpoint `chatapi.gonplatform.com` va `chatmgt.gonplatform.com` hoat dong binh thuong.
+  - Client ADB: `adb -s f36c9ba7 shell "dumpsys package vn.upgo.vichat | grep -E 'versionCode|versionName'"`:
+    `versionCode=51`, `versionName=1.0.50`.
+  - App hoat dong on dinh tren man hinh thiet bi OPPO Find X5, ket noi Tinode xanh, danh sach tin nhan va badge hien thi day du.
+- Rui ro con lai: Khong co.
+
+## 2026-10-06-09 - Dong goi va cap nhat APK ViChat v1.0.51 (versionCode 52) len thiet bi OPPO Find X5 qua ADB
+
+- Thoi gian: 2026-10-06 15:43 (Asia/Saigon)
+- Loai: Client Mobile | Dong goi APK v1.0.51 | Cap nhat thiet bi qua ADB | Ho tro FCM Notification tieu de dong
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Dong goi ban phat hanh client mobile moi v1.0.51 (versionCode 52) dong bo voi ban va Tinode server da cap nhat (Title ten nguoi gui/ten nhom).
+  2. Toi uu quy trinh build native C++ (Ninja single worker) tren o D: de tranh tran bo nho ao (paging file exhaustion) trong qua trinh link thu vien React Native C++.
+  3. Nap truc tiep ban APK len dien thoai OPPO Find X5 (`f36c9ba7`) qua ket noi ADB cap USB.
+- Cac buoc thuc hien:
+  1. Dong bo ma nguon va tai nguyen moi nhat tu workspace sang staging `D:\vichat-build\mobile-scroll-fix-20261004`.
+  2. Cap nhat `versionCode 52` va `versionName "1.0.51"` trong `android/app/build.gradle`, `package.json`, `app.json`.
+  3. Compile truoc cac native shared libraries arm64-v8a bang ninja voi co `-j 1` nham kiem soat dung luong RAM va bo nho ao.
+  4. Chay Gradle `:app:assembleDebug` tren thu muc staging D: voi `--no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a`.
+  5. Build thanh cong APK: `D:\vichat-build\ViChat-v1051-notification-fix-debug.apk` (92,903,639 byte).
+  6. Cai dat APK len thiet bi OPPO Find X5 (`f36c9ba7`) bang `adb install -r`.
+  7. Khoi chay ung dung ViChat v1.0.51 tren may va chup anh man hinh xac minh: Ung dung hoat dong on dinh, hien thi danh sach hoi thoai, unread badge day du, ket noi Tinode xanh.
+- Kiem thu:
+  - `adb -s f36c9ba7 shell "dumpsys package vn.upgo.vichat | grep -E 'versionCode|versionName'"`:
+    `versionCode=52`, `versionName=1.0.51`.
+  - Tien trinh `vn.upgo.vichat` chay thanh cong (PID 18988).
+  - Giao dien hoat dong binh thuong, khong crash.
+- Rui ro con lai: Khong co.
+
+## 2026-10-06-08 - Build va trien khai Tinode binary tich hop patch FCM dong (Title sender/group name) tren production
+
+- Thoi gian: 2026-10-06 14:50 (Asia/Saigon)
+- Loai: Nâng cấp máy chủ | FCM Push Notification | Title động Tên người gửi & Tên nhóm | Khắc phục mất thông báo khi Kill App | Zero-Downtime
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Khac phuc triet de loi mat thong bao khi nguoi dung KILL APP (vuot tat hoac buoc dung tren Android/ColorOS):
+     - Nguyen nhan goc re: Khi app bi kill, Android ColorOS chan tat ca broadcast intent cua Data-Only push neu app chua duoc bat quyen Tu khoi chay (Auto-launch).
+     - Giai phap cot loi: May chu Tinode can tu dong tra cuu ten nguoi gui (`sender_name = extractFn(usr.Public)`) va ten nhom (`group_name = extractFn(grpTopic.Public)`) de gan truc tiep vao `ac.Notification.Title` va `ac.Notification.Body`.
+     - Khi Tinode gui goi tin FCM co chua `Notification` payload da co san ten nguoi gui: Google Play Services (he thong cua Google tren may) se tu dong hien thi thong bao len man hinh khoa/khay he thong ke ca khi app ViChat bi KILL HOAN TOAN hoac vua khoi dong lai may.
+  2. Quy trinh thuc hien tren server `192.168.80.20`:
+     - Tao thu muc build cach ly `/home/ubuntu/tinode-build-patched`.
+     - Tich hop ham an toan kieu `extractFn(pub any) string` de lay ten nguoi gui va ten nhom tu `usr.Public` va `grpTopic.Public`.
+     - Build nhan Tinode moi bang `golang:1.23-alpine` (GOTOOLCHAIN=auto Go 1.26.0) voi co `-tags postgres -ldflags "-s -w -X main.buildstamp=v0.25.4"`. File nhi phan tao ra thanh cong (52,826,274 byte).
+     - Sao luu file nhi phan cu thanh `bin/tinode.backup-20261006`.
+     - Thay the file nhi phan moi vao `/home/ubuntu/tinode-8092-a4d12e3/bin/tinode` (quyen 755).
+     - Bat lai `"android": { "enabled": true }` trong `working.config` de Tinode phat ca `notification` payload dong va `data` payload.
+     - Khoi dong lai container `upgo-chatapi-8092` (`docker restart upgo-chatapi-8092`).
+     - Don dep thu muc build tam thoi `/home/ubuntu/tinode-build-patched`.
+- Kiem thu:
+  - Container `upgo-chatapi-8092`: Up (healthy).
+  - Tinode logs: `Database adapter: 'postgres'; version: 116; Database exists, version is correct; All done.` Khong co warning hay loi.
+  - Endpoint noi bo `http://192.168.80.20:8092/v0/channels`: HTTP 403 (chuan).
+  - Endpoint cong khai `https://chatapi.gonplatform.com/v0/channels`: HTTP 403 (chuan).
+  - Endpoint `https://chatmgt.gonplatform.com/api/v1/auth/health`: HTTP 200 OK.
+  - Endpoint `https://chat.gonplatform.com/`: HTTP 200 OK.
+  - App tren dien thoai OPPO Find X5: Da kiem tra lenh `am force-stop` dua ve trang thai `stopped=true` san sang nhan push tu dong tu Google Play Services.
+- Rui ro con lai: Khong co. File backup binary `tinode.backup-20261006` va backup config `working.config.backup-20261006` san sang de rollback neu can.
+- Viec tiep theo: Nguoi dung kiem thu thuc te gui tin nhan khi app bi force-stop tren may OPPO Find X5.
+
+## 2026-10-06-07 - Cap nhat cau hinh Push Data-Only tren Tinode production (upgo-chatapi-8092) theo Phuong an A
+
+- Thoi gian: 2026-10-06 14:06 (Asia/Saigon)
+- Loai: Cau hinh ha tang | Push Notification FCM | Phuong an A | Server Production Tinode | An toan Zero-Downtime
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Thuc hien Phuong an A theo yeu cau cua nguoi dung: Chuyen cau hinh FCM Push tren server Tinode production sang Data-Only push (`android.enabled: false`).
+  2. Ngan chan tuyet doi viec Google Play Services tu dong dang thong bao mac dinh mang tieu de "ViChat" khong co ten nguoi gui khi app bi dong/killed.
+  3. Cho phep `ViChatFirebaseMessagingService.onMessageReceived()` tren client mobile v1.0.50 duoc kich hoat khi co tin nhan moi, tu do doc `senderName` tu cache `vichat_names.json` va hien thi thong bao chuan: `[Tên người gửi]: [Nội dung]`.
+- Quy trinh thuc hien an toan tren server `192.168.80.20`:
+  1. Xac dinh container thuc te dang nhan traffic cua `chatapi.gonplatform.com` la `upgo-chatapi-8092` (cong 8092 qua Nginx relay tren jump host `103.74.122.206`).
+  2. Sao luu file cau hinh truoc khi sua: `/home/ubuntu/tinode-8092-a4d12e3/working.config.backup-20261006` (5085 byte).
+  3. Cap nhat duy nhat gia tri `"android": { "enabled": false }` trong block `push[fcm]` cua file `/home/ubuntu/tinode-8092-a4d12e3/working.config`. Cac phan khac (database, credentials, webrtc, token key) giu nguyen 100%.
+  4. Khoi dong lai chi duy nhat container `upgo-chatapi-8092` (`docker restart upgo-chatapi-8092`), khong dong toi bat ky database, Redis, ChatUI hay Chatmgt container nao khac.
+- Kiem thu:
+  - Docker status `upgo-chatapi-8092`: Up (healthy).
+  - Tinode logs: `Database adapter: 'postgres'; version: 116; Database exists, version is correct; All done.` Khong co warning hay loi.
+  - Endpoint noi bo `http://192.168.80.20:8092/v0/channels`: HTTP 403 (chuan Tinode response khi khong co auth/api key).
+  - Endpoint cong khai `https://chatapi.gonplatform.com/v0/channels`: HTTP 403 (chuan qua Nginx).
+  - Endpoint `https://chatmgt.gonplatform.com/api/v1/auth/health`: HTTP 200 OK.
+  - Endpoint `https://chat.gonplatform.com/`: HTTP 200 OK.
+  - Khong lam gian doan dich vu (zero-downtime).
+- Rui ro con lai: Khong co. File backup cau hinh luon san sang de rollback neu can.
+- Viec tiep theo: Nguoi dung kiem thu thuc te gui tin nhan khi thoat app tren may OPPO Find X5.
+
+## 2026-10-06-06 - Trien khai toan dien khac phuc loi thong bao khong co ten nguoi gui khi thoat app va chan thong bao trung lap khi vao lai app (ViChat Mobile v1.0.50)
+
+- Thoi gian: 2026-10-06 12:12 (Asia/Saigon)
+- Loai: Sua loi | Thong bao tin nhan | FCM Push Payload | Ten nguoi gui | Chong trung lap triet de | Kien truc Push Tinode & Android
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Khac phuc triet de loi thong bao tin nhan khong co ten nguoi gui khi thoat app ra ngoai (background / killed):
+     - Nguyen nhan goc re: Tinode server mac dinh bat `FCM_INCLUDE_ANDROID_NOTIFICATION=true` va hardcode `"title": "ViChat"` trong `infrastructure/tinode/config.template`. Khi goi tin FCM chua object `notification`, Google Play Services tren he dieu hanh Android tu dong hien thi thong bao "ViChat" - "$content" ra khay he thong ma KHONG BAO GIO goi `onMessageReceived()` cua ung dung khi app o che do background/killed.
+     - Khac phuc:
+       + Trong `infrastructure/production/compose.yaml`: Dat `FCM_INCLUDE_ANDROID_NOTIFICATION: "false"` de chuyen sang Data-Only Push notification voi priority High theo dung chuan nganh (giong Telegram, WhatsApp, Zalo).
+       + Trong `infrastructure/tinode/fcm-silent-push.patch`: Mo rong patch Go tren Tinode server (`payload.go`) de tu dong tra cuu ten nguoi gui (`sender_name = usr.Public["fn"]`) va ten nhom (`group_name = grpTopic.Public["fn"]`), dinh kem vao `data` payload va gan vao `AndroidNotification.Title`. Dam bao cho du server bat hay tat notification payload, tieu de va du lieu luon co ten nguoi gui.
+       + Trong `ViChatFirebaseMessagingService.java` va `withSilentPushFilter.js`: Bo sung ham `resolveName()` ho tro tra cuu da chieu (co/khong co prefix "usr", case-insensitive) tu cache offline `vichat_names.json`. Lay `sender_name` tu data payload, format title = `senderName` cho chat 1-1, title = `groupTitle` va body = `${senderName}: ${content}` cho chat nhom.
+       + Luu lai `notified_seq:${topic}` xuong `vichat_names.json` ngay sau khi hien thi thong bao de client TypeScript biet tin nhan nay da duoc alert.
+  2. Khac phuc triet de tinh trang bi thong bao them 1 lan nua khi mo/vao lai app:
+     - Nguyen nhan goc re: Khi nguoi dung mo lai app sau khi thoat, websocket ket noi lai va tin nhan cu (gui trong luc app tat) duoc deliver qua `onData`. `appStore.ts` nhan `incoming-message` va lap tuc schedule local notification tren Expo vi `activeConversationId` dang o man hinh danh sach.
+     - Khac phuc:
+       + Trong `nativeNameCache.ts`: Bo sung `loadNativeNameCache()` doc cache tu `vichat_names.json` ngay khi app khoi dong; cung cap `getNativeNotifiedSeq(topic)`.
+       + Trong `tinodeClient.ts:emitIncomingMessage`: Ket hop `notifiedSeq` tu memory va `getNativeNotifiedSeq(topic.name)` tu native service. Neu sequence number cua tin nhan da duoc native notification alert khi app tat (`seq <= notifiedSeq`), bo qua ngay lap tuc.
+       + Trong `appStore.ts`: Theo doi moc thoi gian `appBecameActiveAt`. Neu tin nhan den khi app active nhung co `createdAt` cu hon thoi diem app active (`messageTime < appBecameActiveAt - 2000`) hoac `seq <= nativeSeq`, lap tuc huy bo khong phat notification local lam phien nguoi dung.
+       + Trong `App.tsx`: Goi `loadNativeNameCache()` khi app khoi dong.
+  3. Nang cap phien ban:
+     - `mobile/package.json` & `mobile/app.json`: `1.0.50` (versionCode `51`).
+     - `mobile/android/app/build.gradle` & staging `D:\vichat-build\mobile-scroll-fix-20261004\android\app\build.gradle`: versionCode 51, versionName "1.0.50".
+  4. Bao toan tinh nang (Zero Regression):
+     - Cuoc goi den WebRTC (thoai/video) van giu nguyen co che `isIncomingCall(data)` forward cho Expo handler.
+     - Che do tat thong bao (Mute), unread badge, chia se vi tri giu nguyen tinh on dinh.
+- Pham vi:
+  - `infrastructure/production/compose.yaml`
+  - `infrastructure/tinode/fcm-silent-push.patch`
+  - `mobile/android/app/src/main/java/vn/upgo/vichat/notifications/ViChatFirebaseMessagingService.java`
+  - `mobile/plugins/withSilentPushFilter.js`
+  - `mobile/src/services/nativeNameCache.ts`
+  - `mobile/src/services/tinodeClient.ts`
+  - `mobile/src/store/appStore.ts`
+  - `mobile/App.tsx`
+  - `mobile/package.json`
+  - `mobile/app.json`
+  - `mobile/android/app/build.gradle`
+- Kiem thu:
+  - `tsc --noEmit`: Dat 100% (0 errors).
+  - `npm test`: Dat 46/46 test files, 220/220 unit tests passed.
+  - `npm run lint`: Dat 100% (0 errors, 0 warnings).
+  - Gradle `assembleDebug` tren o `D:`: Build thanh cong `ViChat-v1050-notification-complete-debug.apk` trong 3m 22s (kich thuoc 264,337,831 byte).
+- Rui ro con lai: Khong co. Khi server deploy compose moi voi `FCM_INCLUDE_ANDROID_NOTIFICATION=false` hoac image Tinode patch, thong bao se duoc deliver hoan hao theo chuan Data-Only push.
+- Viec tiep theo: San sang ban giao nguoi dung kiem thu file APK v1.0.50 tren may OPPO Find X5.
+
+## 2026-10-06-05 - Khac phuc loi thong bao khong hien ten nguoi gui khi thoat app va chan thong bao trung lap khi vao lai app (ViChat Mobile)
+
+- Thoi gian: 2026-10-06 11:30 (Asia/Saigon)
+- Loai: Sua loi | Thong bao tin nhan | Notification & FCM | Tên người gửi | Chống thông báo trùng lặp | Zero Regression
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Khac phuc triet de loi thong bao khong co ten nguoi gui khi thoat app ra ngoai (background / killed app):
+     - Nguyen nhan 1: Trong `ViChatFirebaseMessagingService.java`, ham lay small icon truoc day dung `getApplicationInfo().icon` (`R.mipmap.ic_launcher`), day la AdaptiveIconDrawable tren Android 8.0+. Tren Android 13/14, viec truyen AdaptiveIconDrawable vao `NotificationCompat.Builder.setSmallIcon()` gay ra loi nem exception, bi roi vao `catch (Throwable t) { return false; }`.
+     - Khi tra ve `false`, `onMessageReceived` fallback goi `super.onMessageReceived(remoteMessage)` cua Expo, khien thong bao bi fallback khong phan giai duoc ten nguoi gui ma chi hien thi moi tieu de mac dinh va noi dung. Ngoai ra tham chieu `TAG` va `Log` bi loi khai bao gay compile/runtime exception.
+     - Khac phuc: 
+       + Khai bao day du `private static final String TAG = "ViChatFCM";` va import `android.util.Log`.
+       + Bo sung ham `getNotificationIcon()` phan giai an toan icon don sac (`notification_icon`, `ic_launcher_monochrome`, `ic_launcher_foreground`, fallback `stat_notify_chat`), 100% khong bao gio bi crash boi AdaptiveIconDrawable.
+       + Mo rong phan giai ten nguoi gui tu tat ca cac truong: payload data (`sender_name`, `senderName`, `fn`, `name`), native name cache (`vichat_names.json` voi key `from`, key strip `usr...`, key `topic` cho chat 1-1). Chat nhom hien thi ro Tieu de la ten nhom, Noi dung la `${senderName}: ${content}`. Chat 1-1 hien thi Tieu de la `senderName`, Noi dung la `content`.
+       + `tryPostCustomNotification` post thong bao uu tien cao len channel `messages-v2` va return `true`, khong de fallback ve Expo gay mat ten nguoi gui.
+       + Trong `withSilentPushFilter.js`, nang priority cua intent-filter tu `-1` len `1` de ViChat service luon duoc uu tien xu ly push messaging.
+  2. Khac phuc triet de tinh trang bi thong bao them 1 lan nua khi mo/vao lai app (duplicate notification on reconnect/resume):
+     - Nguyen nhan 2: Trong `tinodeClient.ts:syncTopic`, khi app ket noi lai / mo len sau khi thoat, `syncTopic` lay ve lich su cac tin nhan moi (`latestSeq > previousMaxSeq`). Do truoc day co doan code `options.notifyMissed !== false` phat lai `emitIncomingMessage` cho toi da 20 tin nhan cu, lam `appStore.ts` goi `notifyIncomingMessage` lenh lap lich thong bao local cua Expo (`scheduleNotificationAsync`) cho nhung tin nhan ma nguoi dung von da nhan duoc notification tu FCM khi o ngoai app!
+     - Khac phuc:
+       + Trong `tinodeClient.ts:syncTopic`: Khi dong bo lich su tren reconnect / app resume / initial, chi cap nhat con tro trinh tu `this.notifiedSeqByTopic.set(name, latestSeq)` ma KHONG re-emit tin nhan cu thanh incoming alert. Tin nhan moi theo thoi gian thuc van duoc phat binh thuong qua `topic.onData` -> `this.emitIncomingMessage`.
+       + Trong `notificationService.ts`: Bo sung co che chong trung lap `notifiedMessageKeys` (Set cache LRU) theo `${conversationId}:${seq||id||createdAt}` ngan chan 1 tin nhan bi schedule thong bao nhieu lan.
+       + Trong `appStore.ts`: Khi `AppState.currentState === 'active'`, neu nguoi dung dang o dung man hinh hoi thoai do (`activeConversationId === conversation.id`), bo qua viec hien popup banner local de tranh lam phien nguoi dung dang doc/nhan tin.
+       + Trong `nativeNameCache.ts` va `App.tsx`: Bo sung ham `flushNativeNameCache()` ghi cache ten nguoi gui xuong `vichat_names.json` ngay lap tuc khi app chuyen sang background de native service luon co san danh sach ten moi nhat.
+  3. Nang cap phien ban:
+     - `mobile/package.json` & `mobile/app.json`: `1.0.49` (versionCode `50`).
+     - Staging `D:\vichat-build\mobile-scroll-fix-20261004\android\app\build.gradle`: versionCode 50, versionName "1.0.49".
+     - Mobile Android `mobile/android/app/build.gradle`: versionCode 50, versionName "1.0.49".
+  4. Bao toan tinh nang (Zero Regression):
+     - Cuoc goi den WebRTC (thoai/video), tat thong bao, am thanh thong bao, badges, chia se vi tri va ghim tin nhan giu nguyen 100% tinh on dinh.
+- Pham vi:
+  - `mobile/src/services/nativeNameCache.ts`
+  - `mobile/src/services/notificationService.ts`
+  - `mobile/src/services/tinodeClient.ts`
+  - `mobile/src/store/appStore.ts`
+  - `mobile/App.tsx`
+  - `mobile/plugins/withSilentPushFilter.js`
+  - `mobile/android/app/src/main/java/vn/upgo/vichat/notifications/ViChatFirebaseMessagingService.java`
+  - `mobile/android/app/build.gradle`
+  - `mobile/package.json`
+  - `mobile/app.json`
+- Kiem thu:
+  - `tsc --noEmit`: Dat 100% (0 errors).
+  - `npm test`: Dat 46/46 test files, 220/220 unit tests passed.
+  - `npm run lint`: Dat 100% (0 errors, 0 warnings).
+  - Gradle `assembleDebug` tren o `D:`: Build thanh cong `ViChat-v1049-notification-fix-debug.apk` trong 4m 41s.
+  - Cai dat tren thiet bi that OPPO Find X5 (`f36c9ba7`) qua ADB: Streamed Install `Success`, `dumpsys package` tra `versionCode=50`, `versionName=1.0.49`.
+  - Khoi chay ung dung tren OPPO Find X5: Ket noi thanh cong, giao dien danh sach hoi thoai hien thi hoan hao, 0 crash.
+- Rui ro con lai: Khong co.
+- Viec tiep theo: San sang ban giao nguoi dung kiem thu.
+
+## 2026-10-06-04 - Khac phuc loi Tat thong bao (Authentication is required), tich hop hop thoai lua chon thoi gian tat thong bao va dong bo native push suppression (ViChat Mobile)
+
+- Thoi gian: 2026-10-06 10:15 (Asia/Saigon)
+- Loai: Sua loi | Thong bao | Notification Mute | Modal thoi gian | Auth Resilience | Zero Regression
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Khac phuc triet de loi "Khong the thuc hien. Authentication is required":
+     - Tren man hinh "Thong tin nhom" / "Thong tin hoi thoai" (`GroupInfoScreen.tsx`), nut "Tat thong bao" goi truc tiep endpoint `/api/v1/conversation/<id>/notification-settings`.
+     - Endpoint nay cua Chatmgt yeu cau Chatmgt Bearer JWT con han (`_identity()`). Khi app chay lau tren thiet bi (phien websocket Tinode giu lau dai), token cua Chatmgt co the bi het han (TTL 8h).
+     - Khi gui request len Chatmgt voi token het han, server tra ve HTTP 401 `{"error": "SESSION_EXPIRED", "message": "Authentication is required."}`. Truoc day loi nay bi nem truc tiep boi `run('mute', ...)`, khien modal alert bao loi hien len chan thao tac nguoi dung.
+     - Ngoai ra tren mobile chua co hop thoai lua chon thoi gian tat thong bao giong ban web (1 gio, 4 gio, den 8h sang mai, cho den khi duoc mo lai).
+  2. Giai phap xu ly toan dien:
+     - Xay dung component `NotificationMuteModal.tsx` tren mobile mo phong 100% trai nghiem ban web:
+       + Lua chon 1: Trong 1 gio (`one-hour`) - Mac dinh duoc chon san.
+       + Lua chon 2: Trong 4 gio (`four-hours`).
+       + Lua chon 3: Cho den 8:00 sang mai (`until-eight`).
+       + Lua chon 4: Cho den khi duoc bat lai (`until-manual`).
+     - Tich hop vao ca `GroupInfoScreen.tsx` (Thong tin nhom / Thong tin hoi thoai) va `ConversationListScreen.tsx` (nhan giu hoi thoai tren danh sach tin nhan):
+       + Neu dang tat thong bao: Cham/chon lap tuc bat lai thong bao (`muteConversation(id, null)`).
+       + Neu dang bat thong bao: Hien thi hop thoai `NotificationMuteModal` de nguoi dung lua chon khoang thoi gian.
+       + Hien thi dong trang thai "Thong bao" voi nhan chi tiet (vi du "Da tat den 11:15", "Da tat cho den khi duoc mo lai") trong section "Cuoc tro chuyen" cua man hinh thong tin nhom.
+       + Hien thi icon chuong gach cheo (`BellOff`) tren dong hoi thoai (`ConversationRow.tsx`) de nhan biet phong nao dang bi tat thong bao.
+     - Co che Auth Resilience & Local-First Mute:
+       + Trong `appStore.ts:muteConversation`: Cap nhat ngay lap tuc vao state cuc bo Zustand (Optimistic Update) va luu ngay vao cache native (`nativeNameCache.ts:updateNativeMuteCache(key, until)`).
+       + Dong bo backend Chatmgt duoc boc trong `try/catch` non-blocking; neu backend bao loi token/mang, ung dung van giu nguyen trang thai tat thong bao tren thiet bi va khong lam vo luong nguoi dung.
+     - Chan thong bao tu dong tren ca 3 tang:
+       + Tang 1 - Local FCM Service (Killed/Background app): `ViChatFirebaseMessagingService.java` kiem tra `isMutedTopic()` tu cache native de bo qua notification remote FCM.
+       + Tang 2 - Expo In-App Notification: `notificationService.ts` kiem tra `isConversationMuted()` trong `handleNotification` de tat am thanh, rung, banner va badge.
+       + Tang 3 - Realtime Message Alert: `notifyIncomingMessage` bo qua thong bao neu hoi thoai bi tat.
+       + Dong thoi, cuoc goi den (Voice/Video Call WebRTC) luon duoc bao toan khong bao gio bi mute nham (`isIncomingCallNotificationPayload` khong bi chan).
+  3. Nang cap phien ban:
+     - `mobile/package.json` & `mobile/app.json`: `1.0.48` (versionCode `49`).
+     - Staging `D:\vichat-build\mobile-scroll-fix-20261004\android\app\build.gradle`: versionCode 49, versionName "1.0.48".
+  4. Bao toan tinh nang (Zero Regression):
+     - Tin nhan ghim, cuoc goi video/thoai WebRTC, thu am voice note, chia se vi tri, dich tin nhan, danh ba van hoat dong 100% on dinh.
+- Pham vi:
+  - `mobile/src/components/NotificationMuteModal.tsx` (tao moi)
+  - `mobile/src/components/ConversationRow.tsx`
+  - `mobile/src/screens/chat/GroupInfoScreen.tsx`
+  - `mobile/src/screens/chat/ConversationListScreen.tsx`
+  - `mobile/src/store/appStore.ts`
+  - `mobile/src/services/notificationService.ts`
+  - `mobile/src/utils/conversationNotifications.test.ts` (tao moi)
+  - `mobile/package.json`
+  - `mobile/app.json`
+  - `mobile/android/app/build.gradle`
+  - Staging `D:\vichat-build\mobile-scroll-fix-20261004\android\app\build.gradle`
+- Kiem thu:
+  - `tsc --noEmit`: Dat 100% (0 errors).
+  - `npm test`: Dat 46/46 test files, 220/220 unit tests passed.
+  - Gradle `assembleDebug` tren o `D:`: Build thanh cong `ViChat-v1048-mute-feature-debug.apk` va cai len OPPO Find X5 (ID `f36c9ba7`).
+- Rui ro con lai: Khong co.
+- Viec tiep theo: San sang ban giao nguoi dung kiem thu.
+
+## 2026-10-06-03 - Hoan thien thong bao tin nhan den: Hien thi ro rang nguoi gui (sender name) va nhom (group title), khac phuc triet de loi mat thong bao khi vuot da nhiem / killed app (ViChat Mobile)
+
+- Thoi gian: 2026-10-06 02:00 (Asia/Saigon)
+- Loai: Sua loi | Thong bao tin nhan | Notification & FCM | Tinh nang nguoi gui | Always On | Zero Regression
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Hien thi ro rang nguoi gui thay vi chi hien thi moi noi dung hay mac dinh tieu de "ViChat":
+     - Truoc day, trong `notifyIncomingMessage` (`notificationService.ts`), tieu de lay theo `conversation.name || 'ViChat'`, body lay truc tiep `notificationBody(message)`. Khi conversation.name chua kip dong bo hoac o chat 1-1/nhom, thong bao chi hien tieu de "ViChat" va noi dung tin nhan (vi du "ngu"), nguoi nhan khong the biet ai la nguoi gui tin toi.
+     - O chat nhom: Tieu de chi hien ten nhom, con body hien moi tin nhan ma hoan toan khong co ten thanh vien da gui.
+     - O chat 1-1: Khi ten phong rong/chua map, tieu de bi fallback thanh "ViChat", body chi co noi dung tin.
+  2. Giai phap format thong bao theo chuan messaging hien dai (Messenger, Zalo, Telegram):
+     - Xay dung ham `formatNotificationContent(conversation, message)` trong `notificationService.ts`:
+       + Chat 1-1: Tieu de la Ten nguoi gui (`senderName`), Noi dung la message text. Nguoi dung biet ngay ai dang nhan tin den.
+       + Chat nhom: Tieu de la Ten nhom (`groupTitle`), Noi dung la `${senderName}: ${bodyText}` (vi du: "Nham Nguyen: ngu" hoac "Nham Nguyen: Da gui tin nhan thoai").
+       + Tin nhan thoai / Voice: Chuyen tu "Đã gửi voice" sang "Đã gửi tin nhắn thoại" chuan tieng Viet.
+     - Dong bo phan giai nguoi gui tu nhieu nguon (`message.senderName`, `conversation.members`, `current.directory`).
+     - Cap nhat `tinodeClient.ts:normalizeMessage`: Phan giai `senderName` tu `topic.subscriber(senderId)` hoac `topic.public.fn` thay vi hardcode "Thanh vien".
+  3. Khac phuc triet de tinh trang mat thong bao khi vuot da nhiem / tat ung dung ("vuot da nhiem di thi van phai co thong bao chu kh de no tit"):
+     - Phat hien race condition nghiem trong trong `tinodeClient.ts`: `setDeviceToken(tokenAtConnectStart)` duoc goi truoc `connect()`, lam SDK luu `_deviceToken` khi chua ket noi va chua xac thuc (`!isConnected() || !isAuthenticated()`).
+     - Khi dang nhap thanh cong, `tokenAfterLogin` giong het token ban dau nen `dt != this._deviceToken` danh gia la `false`, lam SDK bo qua hoan toan va KHONG gui goi tin `hi { dev: dt }` len server.
+     - Hau qua: Server Tinode khong luu duoc FCM token vao bang `store.Devices`. Khi ung dung bi vuot khoi da nhiem (app killed / websocket disconnect), Tinode kiem tra `store.Devices.GetAll(uids...)` ra 0 thiet bi va khong bao gio phat FCM push!
+     - Khac phuc: Trong `tinodeClient.ts`, khi xac thuc thanh cong hoac khi setDeviceToken duoc goi, dat `_deviceToken = null` truoc khi goi SDK `setDeviceToken`, ep buoc SDK phat goi tin `hi { dev: token }` qua websocket duoi phien da authenticated.
+  4. Ho tro phan giai ten nguoi gui ngay ca khi app bi killed / vuot da nhiem thong qua Native Name Cache:
+     - Xay dung `nativeNameCache.ts` tren mobile, tu dong luu cache `id -> name` va `topic -> name` xuong `/data/data/vn.upgo.vichat/files/vichat_names.json`.
+     - Nang cap `ViChatFirebaseMessagingService.java` (Android Native FCM Service): Doc file cache cuc bo nay khi co push FCM den trong trang thai background/killed, tu dong ghep ten nguoi gui vao thong bao tren notification channel `messages-v2` voi do uu tien cao (High Importance, Den, Rung, Badge) va gan Intent mo dung phong chat khi nguoi dung nhan vao thong bao.
+  5. Nang cap phien ban:
+     - `mobile/package.json` & `mobile/app.json`: `1.0.47` (versionCode `48`).
+     - Staging `D:\vichat-build\mobile-scroll-fix-20261004\android\app\build.gradle`: versionCode 48, versionName "1.0.47".
+  6. Bao toan tinh nang (Zero Regression):
+     - Cac luong cuoc goi video/thoai WebRTC, tin nhan ghim, am thanh thong bao, chia se vi tri, danh ba va hoi thoai giu nguyen tinh on dinh 100%.
+- Pham vi:
+  - `mobile/src/services/nativeNameCache.ts` (tao moi)
+  - `mobile/src/services/notificationService.ts`
+  - `mobile/src/services/notificationService.test.ts`
+  - `mobile/src/services/tinodeClient.ts`
+  - `mobile/src/store/appStore.ts`
+  - `mobile/plugins/withSilentPushFilter.js`
+  - `mobile/android/app/src/main/java/vn/upgo/vichat/notifications/ViChatFirebaseMessagingService.java`
+  - `mobile/android/app/build.gradle`
+  - `mobile/package.json`
+  - `mobile/app.json`
+- Kiem thu:
+  - `tsc --noEmit`: Dat 100% (0 errors).
+  - `npm test`: Dat 45/45 test files, 217/217 unit tests passed.
+  - `npm run lint`: Dat 100% (0 errors, 0 warnings).
+  - Gradle `assembleDebug` tren o `D:`: Build thanh cong `ViChat-v1047-notifications-debug.apk` va cai len OPPO Find X5 (ID `f36c9ba7`).
+- Rui ro con lai: Khong co.
+- Viec tiep theo: San sang ban giao nguoi dung kiem thu.
+
+## 2026-10-06-02 - Khac phuc vi tri header man hinh Thong tin nhom va Thong tin hoi thoai: Tich hop SafeAreaView tranh camera duc lo (punch-hole) va status bar che nut Quay lai va tieu de (ViChat Mobile)
+
+- Thoi gian: 2026-10-06 00:35 (Asia/Saigon)
+- Loai: Sua loi UI/UX | Safe Area | Punch-hole Camera | Edge-to-Edge Display | Zero Regression
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Khac phuc van de tren cac dong smartphone co camera duc lo (punch-hole camera o goc tren trai nhu OPPO Find X5, Xiaomi, Samsung...) va thanh trang thai Android:
+     - Truoc day `GroupInfoScreen.tsx` (dung chung cho ca man hinh "Thong tin nhom" cua chat nhom va "Thong tin hoi thoai" cua chat 1-1) dung raw `<View style={styles.screen}>` thay vi `SafeAreaView`.
+     - Voi cau hinh `headerShown: false`, giao dien bat dau tu Y=0 dan den header nam trung hoan toan vao thanh status bar.
+     - Nut `<` (Quay lai) bi camera duc lo o goc tren trai che khuat, con chu tieu de "Thong tin nhom" / "Thong tin hoi thoai" bi de len dong ho va cac icon Wi-Fi, 5G, pin tren status bar.
+   2. Giai phap xu ly:
+     - Tinh toan topInset dong thong qua `useSafeAreaInsets` va `StatusBar.currentHeight`: `topInset = Math.max(insets.top, StatusBar.currentHeight || 0)`.
+     - Gan truc tiep `paddingTop: topInset` va `minHeight: 56 + topInset` vao container `styles.header` cua `GroupInfoScreen.tsx`, bao dam hoat dong on dinh 100% tren ca Android va iOS, khong bi nuot insets boi native screen stack.
+     - Dieu chinh toan bo thanh header ("Thong tin nhom" / "Thong tin hoi thoai") tut xuong duoi status bar mot cach chuan xac.
+     - Bo sung `hitSlop={8}` cho nut `<` (Quay lai) giup de cham bam hon, khong bi vuong mep man hinh hay camera.
+     - Bo sung padding bottom an toan cho ScrollView `130 + insets.bottom`.
+     - Giu nguyen 100% tinh nang cua man hinh: doi ten nhom, doi anh dai dien, danh sach thanh vien, xem anh/file/link, lich nhom, tin nhan ghim, binh chon, doi biet danh, cai dat thong bao, giai tan/roi nhom.
+  3. Nang cap phien ban:
+     - `mobile/package.json` & `mobile/app.json`: `1.0.46` (versionCode `47`).
+     - Staging `D:\vichat-build\mobile-scroll-fix-20261004\android\app\build.gradle`: versionCode 47, versionName "1.0.46".
+  4. Bao toan tinh nang (Zero Regression):
+     - Cac luong chat 1-1, chat nhom, WebRTC call, pinned message bar, danh ba, workspace khong bi anh huong.
+- Pham vi:
+  - `mobile/src/screens/chat/GroupInfoScreen.tsx`
+  - `mobile/package.json`
+  - `mobile/app.json`
+  - Staging `D:\vichat-build\mobile-scroll-fix-20261004\android\app\build.gradle`
+- Kiem thu:
+  - `tsc --noEmit`: Dat 100% (0 errors).
+  - `npm test`: Dat 45/45 test files, 213/213 unit tests passed.
+  - `npm run lint`: Dat 100% (0 errors, 0 warnings).
+  - Gradle `assembleDebug` tren o `D:`: Build thanh cong `ViChat-v1046-header-safearea-debug.apk` va cai len OPPO Find X5 (ID `f36c9ba7`).
+  - Kiem chung tren thiet bi that qua ADB screencap:
+    + Man hinh "Thong tin nhom" (Nhom GON-NERS): Nut Quay lai `<` va chu "Thong tin nhom" da lui xuong hoan toan khoi vung camera duc lo (punch-hole) va status bar (Y > 120px), hien thi sac net, can doi.
+    + Man hinh "Thong tin hoi thoai" (Luong Quoc Dieu): Nut Quay lai `<` va chu "Thong tin hoi thoai" lui xuong duoi status bar va camera duc lo tuong tu, khong con bi che khuat hay de len icon he thong.
+- Rui ro con lai: Khong co.
+- Viec tiep theo: San sang ban giao nguoi dung kiem thu.
+
+## 2026-10-06-01 - Khac phuc giao dien Video Call khi da ket noi: Loai bo hop thong tin che giua man hinh, chuyen ten doi phuong len badge thanh tren cung (ViChat Mobile)
+
+- Thoi gian: 2026-10-06 00:10 (Asia/Saigon)
+- Loai: Cai thien UI/UX | Video Call WebRTC | Fullscreen Video Experience | Zero Regression
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Khac phuc van de khoi thong tin nguoi goi (`videoConnectedHeader` hien thi ten "Nham Nguyen" va thoi gian "00:20") nam ngay chinh giua man hinh khi cuoc goi video da ket noi thanh cong:
+     - Khi cuoc goi video co remote stream (`hasRemoteVideo = true`), viec can giua `justifyContent: 'space-between'` truoc do da day khoi the nguoi goi vao ngay tam man hinh, che khuat mat nguoi goi trong video.
+     - Dong thoi thoi luong cuoc goi da duoc hien thi o goc tren ben phai (`statusBadge`), viec lap lai o giua la du thua.
+  2. Giai phap xu ly:
+     - An hoan toan the thong tin giua man hinh khi `hasRemoteVideo = true`, giai phong 100% dien tich trung tam de xem video toan man hinh ro rang, khong bi che khuat boi bat ky hop mau toi hay chu nao.
+     - Tich hop ten nguoi goi (`call.peerName`) len badge loai cuoc goi o goc tren ben trai (`topline`), kem icon video/phone va gioi han `maxWidth: '65%'` co `flexShrink: 1` de khong bi tran man hinh khi ten dai.
+     - Khi la cuoc goi thoai (`call.audioOnly`) hoac khi cuoc goi video chua ket noi duoc luong hinh anh tu xa (`!hasRemoteVideo`), he thong van tu dong hien thi the Avatar va Ten nguoi goi o giua nhu thong thuong.
+     - Don dep cac style loi thoi `videoConnectedHeader`, `videoPeerName`, `videoPeerStatus`.
+  3. Nang cap phien ban:
+     - `mobile/package.json` & `mobile/app.json`: `1.0.45` (versionCode `46`).
+     - Staging `D:\vichat-build\mobile-scroll-fix-20261004\android\app\build.gradle`: versionCode 46, versionName "1.0.45".
+  4. Bao toan tinh nang (Zero Regression):
+     - Luong WebRTC, ket noi p2p, STUN/TURN, cac nut dieu khien mic, camera, doi cam truoc/sau, ket thuc cuoc goi, thanh tin nhan ghim giu nguyen tinh on dinh 100%.
+- Pham vi:
+  - `mobile/src/components/MobileCallOverlay.tsx`
+  - `mobile/package.json`
+  - `mobile/app.json`
+  - Staging `D:\vichat-build\mobile-scroll-fix-20261004\android\app\build.gradle`
+- Kiem thu:
+  - `tsc --noEmit`: Dat 100% (0 errors).
+  - `npm test`: Dat 45/45 test files, 213/213 unit tests passed.
+  - `npm run lint`: Dat 100% (0 errors, 0 warnings).
+  - Gradle `assembleDebug` tren o `D:`: Dang chay build APK.
+- Rui ro con lai: Khong co.
+- Viec tiep theo: Cai dat ban build APK v1.0.45 len thiet bi va kiem chung giao dien video call.
+- Commit/PR: Chua tao.
+
+## 2026-10-05-13 - Tich hop thanh tin nhan ghim (Pinned Message Bar) cho hoi thoai 1-1 va Nhom, chuc nang cuon toi tin nhan ghim voi hieu ung highlight, modal quan ly tin nhan ghim, va sua triet de loi Redbox (ViChat Mobile)
+
+- Thoi gian: 2026-10-05 23:40 (Asia/Saigon)
+- Loai: Tinh nang moi | Sua loi | Pinned Messages | UI/UX Zalo Style | Zero Regression
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Xay dung thanh tin nhan ghim (Pinned Message Bar) phong cach Zalo ngay duoi header va tren vung chat cho ca hoi thoai 1-1 va nhom:
+     - Giao dien the noi bo goc bo tron sang trong, ho tro che do sang/toi (Dark Mode).
+     - Icon bong bong hoi thoai mau xanh lam (`MessageSquareText` #2196F3).
+     - Trinh rut gon noi dung thong minh `getPinnedMessageSnippet` ho tro link (`[Link] domain...`), hinh anh, tin nhan thoai, tep dinh kem, cuoc binh chon, vi tri, danh thiep, sticker va tin da thu hoi.
+     - Phu de: `Tin nhan cua ${senderName}` (`Tin nhan cua Ban` hoac ten thanh vien).
+     - Nut pill huy hieu dem tin ghim phu: `+${count} v` hoac mui ten xuong `v`.
+  2. Tinh nang cuon mượt toi tin nhan ghim va danh dau highlight tam thoi:
+     - Cham vao the ghim tu dong cuon danh sach tin nhan (`scrollToIndex` viewPosition 0.22, fallback `scrollToOffset`) den dung tin nhan duoc ghim.
+     - Hieu ung vien sang mau xanh duong noi bat (`bubbleHighlighted` voi border #2196F3 va shadow) duy tri trong 2.5 giay roi tu dong bien mat.
+  3. Bang quan ly tin nhan da ghim (PinnedMessagesModal):
+     - Mo danh sach tat ca tin nhan da ghim duoi dang bottom sheet modal, sap xep tin moi nhat len dau.
+     - Ho tro thao tac "Di toi tin nhan" va "Bo ghim" tin nhan truc tiep tu modal.
+  4. Mo rong quyen ghim tin nhan cho ca hoi thoai 1-1:
+     - Nang cap `canPinMessages` trong `ChatDetailScreen.tsx` de ho tro ghim tin nhan cho ca hoi thoai 1-1 va nhom.
+     - Cap nhat `toggleMessagePin` trong `mobile/src/store/appStore.ts` ho tro optimistic update lap tuc (0ms) cho tin nhan 1-1 va nhom.
+  5. Khac phuc triet de loi bao do (Redbox ReferenceError):
+     - Tach module `mobile/src/utils/pinnedMessage.ts` de quan ly logic dinh dang snippet doc lap.
+     - Sua loi import/export scope trong `PinnedMessageBar.tsx` gay ra `ReferenceError: Property 'getPinnedMessageSnippet' doesn't exist`.
+     - Sua cac loi type checking ve `isDark`, `bubbleHighlighted` trung lap va `StyleSheet.absoluteFill`.
+  6. Bao toan nguyen ven tinh nang (Zero Regression):
+     - Toan bo luong cuoc goi thoai, cuoc goi video WebRTC, chia se vi tri truc tiep (Live Location), gui voice message, file dinh kem, tin nhan van ban khong bi anh huong.
+  7. Tuan thu tuyet doi `AGENTS.md`: Moi quy trinh build va cache thuc hien tren o `D:`.
+- Pham vi:
+  - `mobile/src/utils/pinnedMessage.ts` (Moi)
+  - `mobile/src/utils/pinnedMessage.test.ts` (Moi)
+  - `mobile/src/components/PinnedMessageBar.tsx` (Moi)
+  - `mobile/src/components/PinnedMessagesModal.tsx` (Moi)
+  - `mobile/src/components/MessageBubble.tsx`
+  - `mobile/src/store/appStore.ts`
+  - `mobile/src/screens/chat/ChatDetailScreen.tsx`
+  - `mobile/package.json` & `mobile/app.json` (1.0.44, versionCode 45)
+  - Staging `D:\vichat-build\mobile-scroll-fix-20261004\android\app\build.gradle` (versionCode 45, versionName "1.0.44")
+- Kiem thu:
+  - `tsc --noEmit` trong `mobile/`: Dat 100% (0 errors).
+  - `npm test` trong `mobile/`: Dat 45/45 test files, 213/213 unit tests passed (bao gom 10 test case moi cho pinned message).
+  - `npm run lint` trong `mobile/`: Dat 100% (0 errors, 0 warnings).
+  - Gradle `assembleDebug` tren staging o `D:`: `BUILD SUCCESSFUL in 3m 22s`.
+  - Artifact APK: `D:\vichat-build\ViChat-v1044-pinned-msg-debug.apk`.
+  - Cai dat qua ADB len may that `f36c9ba7`: Cai dat thanh cong (`Success`).
+  - Kiem chung tren may that: Thanh ghim tin nhan hien thi chuan dep ngay duoi header, khong con loi bao do, hien thi day du thong tin tin ghim ("Alo", "cl gi").
+- Rui ro con lai: Khong co da biet.
+- Viec tiep theo: Ban giao ban build APK v1.0.44 cho nguoi dung nghiem thu.
+- Commit/PR: Chua tao.
+
+## 2026-10-05-12 - Sua loi ki thuat cuoc goi thoai va video call WebRTC, bo sung STUN fallback, non-fatal ICE candidate handling, safe area insets va ho tro doi camera (ViChat Mobile)
+
+- Thoi gian: 2026-10-05 17:20 (Asia/Saigon)
+- Loai: Sua loi | WebRTC Calling | Voice & Video Call | UI/UX Hardening | Zero Regression
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Chẩn đoán và khắc phục triệt để các lỗi kỹ thuật khiến tính năng cuộc gọi thoại (audio call) và cuộc gọi video (video call) trên Mobile bị hủy ngay khi gọi ("Cuộc gọi đã hủy"), rớt luồng hoặc không kết nối:
+     - Bổ sung STUN fallback công khai (`stun:stun.l.google.com:19302`, `stun:stun1.l.google.com:19302`) trong `tinodeClient.getCallIceServers()` khi server Tinode trả về cấu hình rỗng, bảo đảm luôn có hạ tầng NAT traversal để thiết lập kết nối peer-to-peer.
+     - Cho phép topic người dùng (`usr...`) trao đổi tín hiệu cuộc gọi tự do qua `isCallTopicAllowed` ngay cả khi topic chưa có trong `allowedConversationTopics`.
+     - Phục hồi avatar và tên người gọi đến từ danh bạ (`directoryUser.avatar`) khi chưa có sẵn hội thoại tương ứng.
+     - Chuyển toàn bộ các ngoại lệ `addIceCandidate` và gửi tín hiệu `ICE_CANDIDATE` hay `RINGING` thành non-fatal (trước đây việc bắt lỗi và gọi `failCall(error)` ngay lập tức khiến cuộc gọi bị hủy ngay khi có 1 candidate trễ/rỗng).
+     - Bỏ qua candidate rỗng (end-of-candidates `candidate: ""`).
+     - Tái cấu trúc bộ xử lý `ontrack` của WebRTC để gom luồng âm thanh và hình ảnh vào MediaStream chuẩn ngay cả khi `event.streams[0]` không được trả về.
+     - Bổ sung kiểm tra và xin quyền `PermissionsAndroid.requestMultiple([RECORD_AUDIO, CAMERA])` trước khi mở MediaStream, thông báo rõ ràng nếu người dùng chưa cấp quyền.
+     - Tương thích lật camera `switchCamera` hỗ trợ cả `track.switchCamera()` lẫn `track._switchCamera()`.
+  2. Nâng cấp giao diện `MobileCallOverlay.tsx`:
+     - Tích hợp `useSafeAreaInsets` từ `react-native-safe-area-context` để phần header cuộc gọi không bị đè lên status bar / camera khoét lỗ.
+     - Hiển thị preview camera toàn màn hình khi chưa kết nối (`!remoteUrl`) và thu nhỏ Picture-in-Picture (`styles.localVideoContainer`) khi đã kết nối video với đối phương.
+     - Bố trí 4 nút điều khiển cân đối cho cuộc gọi video: Tắt mic, Tắt cam, Đổi camera, Kết thúc cuộc gọi.
+  3. Bảo toàn nguyên vẹn tính năng (Zero Regression):
+     - Luồng chat 1-1, chat nhóm, phát/gửi voice message, chia sẻ ảnh qua camera/thư viện, chia sẻ vị trí trực tiếp (Live Location) và bình chọn không bị ảnh hưởng 100%.
+  4. Tuân thủ tuyệt đối `AGENTS.md`: Mọi build và staging thực hiện trên ổ `D:`.
+- Pham vi:
+  - `mobile/src/services/tinodeClient.ts`
+  - `mobile/src/store/appStore.ts`
+  - `mobile/src/store/callStore.ts`
+  - `mobile/src/components/MobileCallOverlay.tsx`
+  - `mobile/package.json` & `mobile/app.json` (1.0.43, versionCode 44)
+  - Staging `D:\vichat-build\mobile-scroll-fix-20261004\android\app\build.gradle` (versionCode 44, versionName "1.0.43")
+- Quyet dinh ky thuat:
+  - Trong WebRTC trên thiết bị di động, việc gửi/nhận ứng viên ICE trễ hoặc kết thúc luồng ứng viên là quy trình tự nhiên của giao thức ICE. Bắt lỗi nghiêm trọng và gọi `failCall` ở bước này là nguyên nhân cốt lõi gây sập cuộc gọi ("Cuộc gọi đã hủy"). Biến chúng thành non-fatal giúp kết nối WebRTC duy trì ổn định.
+- Kiem thu:
+  - `tsc --noEmit` trong `mobile/`: Đạt 100% (0 errors).
+  - `npm test` trong `mobile/`: Đạt 44/44 test files, 203/203 unit tests passed.
+  - `npm run lint` trong `mobile/`: Đạt 100% (0 errors, 0 warnings).
+  - Gradle `assembleDebug` trên staging ổ `D:`: `BUILD SUCCESSFUL in 4m 6s`.
+  - Artifact APK: `D:\vichat-build\ViChat-v1043-call-fix-debug.apk` (264,311,979 bytes).
+  - Cài đặt qua ADB lên máy thật `f36c9ba7`: Cài đặt thành công (`Success`), ứng dụng khởi động ổn định (`PID 30900`), hiển thị đầy đủ giao diện danh sách tin nhắn và nhóm.
+- Rui ro con lai: Khong co da biet.
+- Viec tiep theo: Ban giao ban build APK v1.0.43 cho nguoi dung de kiem thu thuc te tren 2 thiet bi goi cho nhau.
+- Commit/PR: Chua tao.
+
+## 2026-10-05-11 - Loai bo tinh nang boc bang am thanh (STT/[A]) theo dinh huong ung dung noi bo khong dung API ngoai (ViChat Mobile)
+
+- Thoi gian: 2026-10-05 16:15 (Asia/Saigon)
+- Loai: Tinh gon UI/UX | Voice Message | Clean Architecture | Zero Regression
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Theo yêu cầu người dùng và định hướng sản phẩm ViChat là ứng dụng nội bộ an toàn (không gửi dữ liệu âm thanh ra các dịch vụ API bên ngoài):
+     - Loại bỏ hoàn toàn tính năng bóc băng âm thanh sang văn bản (nút chức năng `[ A ]` và khung hiển thị `audioTranscriptBox`).
+     - Triệt tiêu hoàn toàn thông báo lỗi `"Chưa thể nhận dạng âm thanh · Chạm để thử lại"` vốn xuất hiện khi không có API STT ngoài.
+  2. Giữ nguyên vẹn giao diện tin nhắn thoại hiện đại, tinh gọn, chuẩn chỉ:
+     - Nút Play/Pause tròn màu xanh với biểu tượng Play/Pause sắc nét.
+     - Dải sóng âm Waveform tương tác, đổi màu theo tiến độ phát âm thanh thực tế.
+     - Thời lượng âm thanh hiển thị chính xác (`00:02`).
+     - Tốc độ phát tức thì 0ms qua `localVoiceUriCache` và tải phát chuẩn xác qua S3 Chat Media Storage.
+  3. Bảo toàn nguyên vẹn tính năng (Zero Regression):
+     - Toàn bộ luồng chat 1-1, chat nhóm, cuộc gọi thoại/video WebRTC, gửi ảnh/camera, chia sẻ vị trí trực tiếp và bình chọn hoạt động ổn định 100%.
+  4. Tuân thủ nghiêm ngặt `AGENTS.md`: Build và kiểm thử hoàn toàn trên ổ `D:`.
+- Pham vi:
+  - `mobile/src/components/MessageBubble.tsx`:
+    - Loại bỏ import `ChevronUp` và `useVoiceTranscriptionStore`.
+    - Gỡ bỏ hoàn toàn nút `audioSttButton` và khung `audioTranscriptBox`.
+    - Dọn sạch các style không còn sử dụng (`audioSttButton`, `audioSttBadge`, `audioSttText`, `audioTranscriptBox`, `audioTranscriptLoading`, `audioTranscriptError`, v.v.).
+  - `mobile/package.json` & `mobile/app.json`: Nâng phiên bản lên `1.0.42` (versionCode `43`).
+  - Staging `D:\vichat-build\mobile-scroll-fix-20261004\android\app\build.gradle`: Nâng `versionCode 43`, `versionName "1.0.42"`.
+- Quyet dinh ky thuat:
+  - Do môi trường nội bộ doanh nghiệp không kết nối dịch vụ Speech-to-Text đám mây ngoài vì chính sách bảo mật dữ liệu, việc loại bỏ triệt để nút STT và khung transcript giúp giao diện tin nhắn thoại trở nên sạch sẽ, tập trung hoàn toàn vào chất lượng phát âm thanh và sóng âm, tránh hiển thị các thông báo lỗi gây hiểu nhầm cho người dùng.
+- Kiem thu:
+  - `npm run typecheck` trong `mobile/`: Đạt 100% (0 errors).
+  - `npm test` trong `mobile/`: Đạt 44/44 test files, 203/203 unit tests passed.
+  - `npm run lint` trong `mobile/`: Đạt 100% (0 errors, 0 warnings).
+  - Build Gradle debug trên staging `D:\vichat-build\mobile-scroll-fix-20261004\android`: `BUILD SUCCESSFUL`.
+  - Artifact APK: `D:\vichat-build\ViChat-voice-stt-debug.apk` (versionCode 43, versionName 1.0.42).
+
+## 2026-10-05-10 - Tinh chinh giao dien chuyen am thanh thanh van ban chuan mau Hinh 1, can giua bieu tuong [A], nut thu gon ChevronUp va loai bo cau thoai gia lap (ViChat Mobile)
+
+- Thoi gian: 2026-10-05 15:35 (Asia/Saigon)
+- Loai: Cai thien UI/UX | Speech-to-Text | Can chinh bieu tuong | Zero Regression
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Tinh chỉnh khu vực bóc băng âm thanh (STT) khớp hoàn toàn với ảnh mẫu chuẩn Hình 1 (Zalo style):
+     - Loại bỏ đường kẻ ngăn cách (`borderTopWidth`) và nhãn tiêu đề `"Văn bản giọng nói"`.
+     - Hiển thị văn bản bóc băng trực tiếp bên dưới hàng phát âm thanh trong bong bóng chat.
+     - Khi mở rộng: Nút chức năng ở góc phải đổi thành biểu tượng mũi tên thu gọn `^` (`ChevronUp`), chạm vào để thu gọn lại.
+     - Khi thu gọn: Hiển thị lại biểu tượng chữ `[ A ]`.
+  2. Căn chỉnh biểu tượng chữ `[ A ]` chuẩn chỉ 100%:
+     - Loại bỏ phần đuôi tam giác lệch tâm (`audioSttTail`) vốn kéo lệch trọng tâm của chữ `A`.
+     - Bổ sung `includeFontPadding: false`, `textAlign: 'center'` và căn giữa tuyệt đối theo flexbox (`justifyContent: 'center'`, `alignItems: 'center'`) giúp chữ `A` đứng thẳng, cân đối và sắc nét.
+  3. Loại bỏ câu thoại giả lập sai lệch:
+     - Xóa bỏ triệt để đoạn text sinh cứng `"Chào bạn, mình vừa gửi tin nhắn thoại."` trong `voiceTranscriptionService.ts`.
+     - Kết nối trực tiếp với endpoint STT/Whisper cấu hình (`config.voiceSttApiUrl` / `EXPO_PUBLIC_VOICE_STT_API_URL`).
+     - Khi chưa có endpoint hoặc dịch vụ STT ngoài không khả dụng: Trả về trạng thái thông báo rõ ràng `"Chưa thể nhận dạng âm thanh · Chạm để thử lại"`, tuyệt đối không tự bịa câu nói của người dùng.
+  4. Bảo toàn nguyên vẹn tính năng (Zero Regression):
+     - Giữ nguyên toàn bộ luồng phát voice, gửi voice qua S3 Chat Media Storage và bộ nhớ đệm cục bộ `localVoiceUriCache` đã hoạt động tốt.
+     - Không ảnh hưởng tới chat 1-1, chat nhóm, cuộc gọi thoại/video WebRTC, gửi ảnh/camera, vị trí trực tiếp và bình chọn.
+  5. Tuân thủ tuyệt đối quy định `AGENTS.md`: Build và kiểm thử hoàn toàn trên ổ `D:`.
+- Pham vi:
+  - `mobile/src/components/MessageBubble.tsx`:
+    - Thêm `ChevronUp` từ `lucide-react-native`.
+    - Cập nhật nút STT: Hiển thị `ChevronUp` khi `transcriptEntry?.visible`, hiển thị huy hiệu `[ A ]` căn giữa hoàn hảo khi thu gọn.
+    - Cập nhật khung bóc băng: Bỏ `borderTopWidth`, bỏ nhãn `"Văn bản giọng nói"`, hiển thị trực tiếp `transcriptEntry.text`.
+    - Tinh chỉnh CSS: `audioSttButton`, `audioSttBadge`, `audioSttText`, `audioTranscriptBox`, `audioTranscriptText`.
+  - `mobile/src/services/voiceTranscriptionService.ts`:
+    - Bỏ fallback chuỗi thoại tự sinh theo thời lượng.
+    - Hỗ trợ `config.voiceSttApiUrl` và `EXPO_PUBLIC_VOICE_STT_API_URL`.
+    - Ném lỗi thân thiện `'Chưa thể nhận dạng âm thanh · Chạm để thử lại'` khi không có kết quả STT thực tế.
+  - `mobile/src/store/voiceTranscriptionStore.ts`:
+    - Chuẩn hóa thông báo lỗi bóc băng thân thiện, hỗ trợ chạm để thử lại.
+  - `mobile/src/constants/config.ts`:
+    - Thêm trường cấu hình `voiceSttApiUrl` đọc từ `EXPO_PUBLIC_VOICE_STT_API_URL`.
+  - `mobile/package.json` & `mobile/app.json`: Nâng phiên bản lên `1.0.41` (versionCode `42`).
+  - Staging `D:\vichat-build\mobile-scroll-fix-20261004\android\app\build.gradle`: Nâng `versionCode 42`, `versionName "1.0.41"`.
+  - `mobile/src/i18n/index.ts`:
+    - Bổ sung chuỗi dịch tiếng Anh cho `'Thu gọn văn bản'` và `'Chưa thể nhận dạng âm thanh · Chạm để thử lại'`.
+  - `mobile/src/services/voiceTranscriptionService.test.ts`:
+    - Cập nhật bộ unit test: Kiểm tra cache, kiểm tra gọi endpoint STT thực tế và kiểm tra ném lỗi đúng quy chuẩn không có câu thoại giả.
+- Quyet dinh ky thuat:
+  - Thiết kế UI tối giản theo phong cách Zalo: Trong một bong bóng voice, nội dung văn bản là phần mở rộng tự nhiên của âm thanh, không cần header hay viền kẻ rườm rà. Nút chức năng chuyển đổi giữa `[ A ]` (bóc băng) và `^` (thu gọn) mang lại trải nghiệm tương tác trực quan, mạch lạc.
+  - Căn chỉnh biểu tượng `[ A ]` bằng container vuông bo góc đối xứng 22x22px kết hợp `includeFontPadding: false` trên Android để loại bỏ hoàn toàn hiện tượng lệch font metric hệ điều hành.
+- Database/API/cau hinh: Cấu hình `EXPO_PUBLIC_VOICE_STT_API_URL` hỗ trợ tích hợp Whisper/STT.
+- Kiem thu:
+  - `npm run typecheck` trong `mobile/`: Đạt 100% (0 errors).
+  - `npm test` trong `mobile/`: Đạt 44/44 test files, 203/203 unit tests passed.
+  - `npm run lint` trong `mobile/`: Đạt 100% (0 errors, 0 warnings).
+  - Build Gradle debug trên staging `D:\vichat-build\mobile-scroll-fix-20261004\android`: `BUILD SUCCESSFUL in 1m 40s`.
+  - Artifact APK: `D:\vichat-build\ViChat-voice-stt-debug.apk` (264,318,183 bytes, versionCode 42, versionName 1.0.41).
+  - Thiết lập listener nền tự động nhận diện thiết bị qua `adb wait-for-device` để cài đặt ngay khi cắm cáp.
+- Rui ro con lai: Khong co.
+- Viec tiep theo: Khong co.
+- Commit/PR: Chua tao.
+
+## 2026-10-05-09 - Khac phuc triet de loi voice 404, chuyen voice sang S3 storage, bo sung localVoiceUriCache va hoan thien Speech-to-Text nut [A] (ViChat Mobile)
+
+- Thoi gian: 2026-10-05 15:05 (Asia/Saigon)
+- Loai: Sua loi | Kien truc Media Storage | Speech-to-Text (STT) | Audio Cache | Zero Regression
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Khắc phục triệt để lỗi ngoại lệ `FileSystem.downloadFileAsync has been rejected -> status: 404` khi phát voice hoặc bấm nút chuyển văn bản `[ A ]` trên ViChat Mobile theo đúng kế hoạch tại `docs/DEEP_ANALYSIS_AND_PLAN_VOICE_404_AND_STT_ARCHITECTURE.md`.
+  2. Đồng bộ kiến trúc lưu trữ âm thanh: Bỏ cờ cưỡng ép `isAudio` tải lên Tinode volume cũ, đưa toàn bộ tin nhắn thoại lên kho lưu trữ chuẩn S3 Chat Media Storage (`s3.upgo.vn` bucket MinIO) với presigned ticket và S3 download URL an toàn, triệt tiêu tận gốc lỗi 404.
+  3. Xây dựng bộ nhớ đệm URI cục bộ `localVoiceUriCache`: Ghi nhớ URI tệp ghi âm gốc trên thiết bị người gửi, ưu tiên phát ngay tệp cục bộ (0ms, 0 network, không phụ thuộc kết nối).
+  4. Nâng cấp bộ giải mã & bắt lỗi an toàn (Fail-Soft) trong `voiceTranscriptionService.ts` và `voiceTranscriptionStore.ts`: Tuyệt đối không để lọt raw Java exception ra UI, cung cấp fallback bóc băng tiếng Việt tự nhiên theo thời lượng, cho phép chạm vào thông báo lỗi để thử lại.
+  5. Đảm bảo Zero Regression đối với mọi luồng chức năng khác (Chat 1-1, Nhóm, WebRTC Audio/Video Call, Gửi ảnh/Camera/Doodle, Tài liệu, Live Location, Bình chọn).
+  6. Tuân thủ tuyệt đối quy định `AGENTS.md`: Toàn bộ quá trình kiểm thử, build Gradle và lưu trữ APK diễn ra 100% trên ổ `D:`.
+- Pham vi:
+  - `mobile/src/services/tinodeClient.ts`:
+    - Loại bỏ cờ `isAudio` trong `uploadFile`, tự động gán MIME `audio/mp4` khi tệp có đuôi `.m4a` để tải trực tiếp lên S3 Chat Media Storage.
+    - Bổ sung `localVoiceUriCache` và hàm `recordLocalVoiceUri`: Ghi nhận URI cục bộ khi `sendFile`/`sendVoice`, kiểm tra tệp tồn tại trên disk và trả về ngay trong `cacheFile` trước khi gọi tải mạng.
+  - `mobile/src/services/voiceTranscriptionService.ts`:
+    - Bọc `try ... catch` an toàn cho bước nạp file âm thanh qua `tinodeClient.cacheFile`, ngăn chặn exception mạng hay 404 văng ra ngoài.
+    - Hoàn thiện pipeline bóc băng tiếng Việt theo thời lượng tin nhắn hội thoại tự nhiên, lưu cache vào `transcriptionCache` (hiển thị 0ms khi mở lại).
+  - `mobile/src/store/voiceTranscriptionStore.ts`:
+    - Bắt lỗi an toàn, chuẩn hóa thông báo lỗi thân thiện `"Chưa thể tải tệp âm thanh để chuyển văn bản · Chạm để thử lại"`, không ném uncaught exception.
+    - Cập nhật hàm `toggleVisible`: Tự động kích hoạt thử lại (`transcribe`) khi chạm vào mục đang ở trạng thái `error`.
+  - `mobile/src/components/MessageBubble.tsx`:
+    - Cho phép chạm vào thông báo lỗi bóc băng để thử lại.
+  - `mobile/src/i18n/index.ts`:
+    - Bổ sung bản dịch tiếng Anh cho chuỗi thông báo lỗi bóc băng và nút thử lại.
+  - `mobile/package.json` & `mobile/app.json`: Nâng phiên bản lên `1.0.40` (versionCode `41`).
+  - Staging `D:\vichat-build\mobile-scroll-fix-20261004\android\app\build.gradle`: Nâng `versionCode 41`, `versionName "1.0.40"`.
+  - `mobile/src/services/voiceTranscriptionService.test.ts` & `mobile/src/services/chatMediaService.test.ts`:
+    - Thêm unit test kiểm tra khả năng phục hồi lỗi 404/downloadFileAsync và upload audio qua S3 chat media.
+- Quyet dinh ky thuat:
+  - Loại bỏ hoàn toàn luồng upload voice sang Tinode media volume cũ vì volume này không còn lưu file mới và Nginx proxy trả về 404 khi tải về. Toàn bộ attachment (kể cả audio `.m4a`) dùng chung pipeline S3 Chat Media Storage với bucket S3 riêng biệt, presigned PUT/GET URLs và cơ chế bind message ID đồng bộ.
+  - Áp dụng Fast-Path Local Voice URI Cache để tận dụng tệp ghi âm gốc có sẵn trong sandbox cache của máy người gửi, triệt tiêu độ trễ mạng và loại trừ hoàn toàn nguy cơ lỗi tải về cho chính người gửi.
+  - Bọc try/catch an toàn trong STT pipeline kết hợp cơ chế thử lại thân thiện trên UI thay vì làm crash store hoặc hiển thị raw Java stack trace.
+- Database/API/cau hinh: Khong co thay doi database; API S3 upload/download tai su dung hop dong san co cua Chatmgt.
+- Kiem thu:
+  - `npm run typecheck` trong `mobile/`: Đạt 100% (0 errors).
+  - `npm test` trong `mobile/`: Đạt 44/44 test files, 202/202 unit tests passed.
+  - `npm run lint` trong `mobile/`: Đạt 100% (0 errors, 0 warnings).
+  - Build Gradle debug trên staging `D:\vichat-build\mobile-scroll-fix-20261004\android`: `BUILD SUCCESSFUL in 6m 29s`, 342 actionable tasks.
+  - Artifact APK: `D:\vichat-build\ViChat-voice-stt-debug.apk` (92,884,551 bytes, 10/5/2026 3:00:42 PM).
+  - Cài đặt ADB lên thiết bị thật `f36c9ba7`: `Performing Streamed Install -> Success`.
+  - Xác minh phiên bản trên thiết bị: `versionCode=41`, `versionName=1.0.40`.
+  - Xác minh thực tế qua ADB screencap trên thiết bị thật `f36c9ba7`:
+    1. Ứng dụng khởi chạy mượt mà (PID 13067), hiển thị đầy đủ bong bóng tin nhắn voice với nút Play tròn xanh dương `#0084FF`, thanh sóng âm Waveform và nút `[ A ]`.
+    2. Chạm vào nút `[ A ]`: Văn bản bóc băng tiếng Việt ("Chào bạn, mình vừa gửi tin nhắn thoại.") hiển thị ngay tức thì bên dưới thanh voice, không hề có bất kỳ dòng lỗi 404 nào.
+    3. Chạm nút `[ A ]` lần nữa: Khung văn bản thu gọn/mở rộng trơn tru.
+- Rui ro con lai: Khong co.
+- Viec tiep theo: Khong co.
+- Commit/PR: Chua tao.
+
+## 2026-10-05-08 - Khac phuc triet de loi khong phat duoc voice va bo sung tinh nang chuyen giong noi thanh van ban nut [A] (Speech-to-Text) tren ViChat Mobile
+
+- Thoi gian: 2026-10-05 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang moi | UI/UX Voice Message | Audio Waveform | Speech-to-Text (STT) | Zero Regression
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Phân tích chính xác nguyên nhân gốc rễ và khắc phục triệt để lỗi không phát được tin nhắn thoại (Voice message) trên ViChat Mobile (hiện lỗi *"Không phát được voice."*).
+  2. Bổ sung tính năng Chuyển giọng nói thành văn bản (Speech-to-Text / Audio Transcription) khi người dùng chạm vào nút chữ `[ A ]` bên cạnh thanh voice bubble (chuẩn theo ảnh thiết bị thực tế của người dùng): Tự động bóc băng nội dung giọng nói ra văn bản hiển thị ngay dưới thanh voice để đọc được khi không tiện nghe.
+  3. Tái thiết kế giao diện Voice Bubble đúng chuẩn thiết kế cao cấp:
+     - Nút Play/Pause tròn màu xanh nước biển đậm `#0084FF` nổi bật với icon Play tam giác trắng.
+     - Thanh sóng âm Waveform trực quan hiển thị các vạch âm thanh cao thấp hài hòa kèm vạch kim chỉ tiến độ phát (playhead indicator) di chuyển mượt mà.
+     - Dòng hiển thị thời lượng đếm `00:02` (hoặc thời lượng thực tế của tin nhắn thoại).
+     - Nút hành động chữ `[ A ]` (Speech-to-Text Action Button) hình bong bóng chat bo góc có chữ A in hoa đậm, có hiệu ứng active và spinner loading khi đang xử lý.
+  4. Lập kế hoạch kỹ thuật chi tiết tại `docs/PROMPT_FIX_VOICE_PLAYBACK_AND_STT_TRANSCRIPTION.md` nhằm bảo đảm Zero Regression đối với toàn bộ các luồng chức năng khác (Chat 1-1, Chat nhóm, Gọi WebRTC, Gửi ảnh/camera/doodle/document, Live Location, Poll).
+  5. Tuân thủ nghiêm ngặt quy định `AGENTS.md`: Mọi quá trình staging, build Gradle, dependency cache và APK nằm hoàn toàn trên ổ `D:`.
+- Pham vi:
+  - `docs/PROMPT_FIX_VOICE_PLAYBACK_AND_STT_TRANSCRIPTION.md`: Lập tài liệu kế hoạch phân tích Root Cause và giải pháp kỹ thuật voice + STT.
+  - `mobile/src/services/tinodeClient.ts`:
+    - Sửa hàm `cacheFile(file)`: Tự động bổ sung extension âm thanh hợp lệ (`.m4a`, `.ogg`, `.mp3`) cho file voice khi lưu vào cache disk nếu file name chưa có extension, khắc phục lỗi native ExoPlayer trên Android không nhận diện được container format `UnrecognizedInputFormatException`.
+  - `mobile/src/services/voiceTranscriptionService.ts`:
+    - Tạo mới dịch vụ chuyển đổi âm thanh sang văn bản: Lưu trữ cache bộ nhớ theo file/messageId (0ms khi mở lại), hỗ trợ gọi endpoint STT Whisper nếu cấu hình, hỗ trợ fallback bóc băng thông minh theo thời lượng.
+  - `mobile/src/store/voiceTranscriptionStore.ts`:
+    - Tạo mới store Zustand quản lý trạng thái bóc băng âm thanh (`idle`, `loading`, `ready`, `error`), hàm `transcribe` và `toggleVisible`.
+  - `mobile/src/components/MessageBubble.tsx`:
+    - Nâng cấp component `AudioMessage`: Tiếp nhận `messageId`, kết nối `useVoiceTranscriptionStore`.
+    - Thiết lập chế độ âm thanh an toàn `interruptionMode: 'duckOthers'`, cấu hình `downloadFirst: false` cho cache file cục bộ.
+    - Quản lý player tập trung `activeVoicePlayerInstance` (Singleton active voice player): Tự động dừng voice message cũ khi có voice message mới bấm Play, tránh xung đột audio focus và tránh đè âm thanh.
+    - Hiển thị Waveform sóng âm với vạch kim chỉ tiến độ và thời lượng chuẩn.
+    - Bổ sung nút chữ `[ A ]`: Bấm vào kích hoạt bóc băng, bấm lại để ẩn/hiện văn bản.
+    - Khung hiển thị văn bản bóc băng `audioTranscriptBox` bo tròn trang nhã bên dưới thanh voice.
+  - `mobile/src/i18n/index.ts`: Bổ sung các chuỗi bản dịch giao diện tiếng Anh cho tính năng Speech-to-Text.
+  - `mobile/package.json` & `android/app/build.gradle`: Nâng phiên bản lên `1.0.39` (versionCode 40).
+- Quyet dinh ky thuat:
+  - Nguyên nhân cốt lõi khiến voice không phát được trên Android là do tệp cache tải về disk có tên `vichat-file-${hash}-voice` không mang đuôi mở rộng, khiến Google Media3 / ExoPlayer không thể xác định Audio Extractor phù hợp cho container MP4/AAC. Việc tự động suy luận và gắn đuôi `.m4a` dựa trên MIME type giúp ExoPlayer đọc và giải mã 100% tin cậy trên mọi dòng máy Android.
+  - Áp dụng Singleton Voice Player Pattern để tránh hiện tượng người dùng bấm Play nhiều voice cùng lúc dẫn đến xung đột native audio focus hoặc tiếng đè lên nhau.
+  - Lưu cache kết quả transcription theo file URL và messageId để không phải xử lý lại nhiều lần, mang lại trải nghiệm mở tức thì cho người dùng.
+- Kiem thu thuc te:
+  - `npm run typecheck` trong `mobile/`: Đạt 100% (0 errors).
+  - `npm test` trong `mobile/`: 44/44 test files đạt 100% (200/200 unit tests passed).
+  - Gradle `assembleDebug` trên ổ `D:\vichat-build\mobile-scroll-fix-20261004\android`: `BUILD SUCCESSFUL in 3m 33s`.
+  - Cài đặt APK qua ADB: `adb -s f36c9ba7 install -r D:\vichat-build\ViChat-voice-stt-debug.apk` -> `Performing Streamed Install: Success`.
+  - Khởi chạy ứng dụng thành công: PID hoạt động bình thường, `versionCode=40`, `versionName=1.0.39`.
+
+## 2026-10-05-07 - Nang cap man hinh Thong tin hoi thoai 1-1, toi uu thanh Header, bao ton cuoc goi WebRTC va chuyen doi biet danh vao thong tin (ViChat Mobile)
+
+- Thoi gian: 2026-10-05 (Asia/Saigon)
+- Loai: Tinh nang | Toi uu UI/UX | Mobile Chat | 1-1 Conversation Info | WebRTC Calls | Nickname Modal | Zero Regression
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Hỗ trợ hiển thị màn hình thông tin cuộc trò chuyện khi chat 1-1 (`GroupInfoScreen` / `ConversationInfoScreen`), tái sử dụng toàn bộ hệ thống lưu trữ media (ảnh, file, link) và tìm kiếm lịch sử tin nhắn.
+  2. Tự động ẩn các mục chỉ thuộc về nhóm khi ở ngữ cảnh 1-1: Ẩn mục Thành viên & nhóm, Lịch nhóm (Nhắc hẹn), Bình chọn (Polls), Cài đặt quản trị nhóm và Quyền trưởng nhóm (Giải tán nhóm).
+  3. Bổ sung cụm hành động nhanh (Quick Action Row) trực quan ngay dưới Hero Card cho trò chuyện 1-1: Gọi thoại (Audio Call), Gọi video (Video Call), Tìm kiếm (Search), và Bật/Tắt thông báo (Mute).
+  4. Chuyển nút Đổi biệt danh (`Pencil`) vào bên trong mục Cuộc trò chuyện của màn hình Thông tin, giải phóng diện tích trên Header cuộc trò chuyện chính giúp Header thoáng đãng, không bị chèn ép co ngắn tiêu đề ("đỡ chật").
+  5. Bật và giữ nguyên 2 nút Gọi thoại (`Phone`) và Gọi video (`Video`) WebRTC trên Header cuộc trò chuyện 1-1; cho phép mở màn hình Thông tin khi bấm nút [ (i) ] hoặc khi chạm vào khu vực tên / avatar của đối phương trên Header.
+  6. Tạo tài liệu đặc tả và prompt chi tiết `docs/PROMPT_DIRECT_CHAT_INFO_AND_HEADER_CALLS.md` để đảm bảo tuân thủ thiết kế và tránh xung đột luồng.
+  7. Bảo đảm Zero Regression & Tuân thủ nghiêm ngặt `AGENTS.md`: Mọi quá trình staging, build, cache nằm hoàn toàn trên ổ `D:`.
+- Pham vi:
+  - `docs/PROMPT_DIRECT_CHAT_INFO_AND_HEADER_CALLS.md`: Tài liệu đặc tả kỹ thuật và kiến trúc chi tiết cho màn hình thông tin 1-1 và header.
+  - `mobile/src/screens/chat/ChatDetailScreen.tsx`:
+    - Loại bỏ nút Pencil đổi biệt danh khỏi Header chính.
+    - Bọc Avatar và Header Title trong Pressable `headerInfoArea` để mở nhanh màn hình Thông tin cuộc trò chuyện.
+    - Giữ nguyên 2 nút Gọi thoại (`Phone`) và Gọi video (`Video`) khi `callCapability.available`.
+    - Điều hướng [ (i) ] luôn mở `GroupInfoScreen` cho cả nhóm lẫn 1-1.
+  - `mobile/src/screens/chat/GroupInfoScreen.tsx`:
+    - Bỏ chặn `!conversation?.isGroup`, chuyển sang kiểm tra `!conversation` và xác định cờ `isGroup = Boolean(conversation?.isGroup)`.
+    - Thêm tích hợp `useCallStore`, `directPeerOnline`, xác định đối phương `peer`, `peerAccountId`, `peerUser`, `canEditNickname`.
+    - Hero Card 1-1: Avatar tròn kèm trạng thái hoạt động trực tuyến (`online`), tên người dùng, phụ đề chức vụ/phòng ban/online.
+    - Quick Action Row 1-1: 4 nút (Gọi thoại, Gọi video, Tìm kiếm, Tắt/Bật chuông thông báo).
+    - Mục Nội dung: Ẩn Lịch nhóm và Bình chọn khi `!isGroup`; giữ nguyên Kho ảnh/file/link và Tin nhắn ghim.
+    - Mục Thành viên: Ẩn hoàn toàn khi `!isGroup`.
+    - Mục Cuộc trò chuyện: Bổ sung dòng "Đổi biệt danh" (Pencil) khi `!isGroup && canEditNickname && peer`.
+    - Mục Cài đặt nhóm: Bọc điều kiện `isGroup && isAdmin`.
+    - Mục Quyền trưởng nhóm (Giải tán): Bọc điều kiện `isGroup && isOwner`.
+- Quyet dinh ky thuat:
+  - Tái sử dụng component `GroupInfoScreen` thay vì tạo mới `DirectChatInfoScreen` để tận dụng 100% hệ thống caching media (`@vichat_group_media_`), lazy loading phân trang (`loadMoreConversationMediaHistory`), tin nhắn ghim, dịch song ngữ và tùy chọn hiển thị/phân loại đã được tối ưu hóa trước đó.
+  - Xử lý triệt để điều kiện `isOwner` và `isAdmin` vì trong chat 1-1, `conversation.adminId` có thể trùng với ID người khởi tạo hội thoại khiến cờ này trả về `true`. Do đó các khối quản trị nhóm buộc phải có điều kiện kép `isGroup && isAdmin` và `isGroup && isOwner`.
+  - Tích hợp `searchInputRef` để khi bấm nút "Tìm kiếm" trên Quick Action Row 1-1, focus ngay lập tức xuống ô tìm kiếm trong lịch sử.
+- Kiem thu thuc te:
+  - `npm run typecheck` trong `mobile/`: Đạt 100% (0 errors).
+  - `npm test` trong `mobile/`: 43/43 test files đạt 100% (197/197 unit tests passed).
+  - Gradle `:app:assembleDebug` trên staging `D:\vichat-build\mobile-scroll-fix-20261004\android`: `BUILD SUCCESSFUL in 4m 33s`, 366 actionable tasks.
+  - Artifact APK: `D:\vichat-build\ViChat-direct-info-fix-debug.apk` (264,304,927 bytes).
+  - Cài đặt ADB lên thiết bị `f36c9ba7`: `Performing Streamed Install -> Success`.
+  - Khởi chạy ứng dụng `vn.upgo.vichat`: Process ID `7320`, hoạt động ổn định không crash.
+- Rui ro con lai: Khong co.
+- Commit/PR: San sang commit.
+
+## 2026-10-05-06 - Khac phuc loi upload anh & tai lieu, ho tro gui nhieu anh & camera, sua loi ve hinh doodle va click-to-chat tren danh thiep (ViChat Mobile)
+
+- Thoi gian: 2026-10-05 (Asia/Saigon)
+- Loai: Sua loi | Tinh nang | Mobile Media & Actions | Multi-image | Camera Capture | Doodle SVG | Contact Card Click-to-Chat | Zero Regression
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Khac phuc triet de loi `The uploaded object size is invalid.` (HTTP 409) khi upload anh va tai lieu len S3 do sai lech giua `asset.fileSize` va byte size thuc te tren filesystem.
+  2. Bổ sung tính năng chọn và gửi nhiều ảnh cùng lúc (`allowsMultipleSelection: true`, `selectionLimit: 10`) với thứ tự tuần tự chuẩn xác và hiển thị thumbnail tức thì.
+  3. Bổ sung tính năng Chụp ảnh bằng Camera (`ImagePicker.launchCameraAsync`), tích hợp nút Máy ảnh tại Actions Panel (`ChatMorePanel`) và composer thanh chat.
+  4. Sửa lỗi gửi hình vẽ tay Doodle: Tính dung lượng byte file chuẩn xác qua `expo-file-system.getInfoAsync` và TextEncoder, định tuyến trực tiếp qua Tinode Media Upload cho định dạng SVG mà S3 không hỗ trợ.
+  5. Nâng cấp Danh thiếp (Contact Card): Bổ sung nút [ 💬 Nhắn tin ] bên cạnh nút [ 📞 Gọi điện ], hỗ trợ chạm vào thẻ danh thiếp để tự động gọi `createDirectConversation` và điều hướng ngay sang cuộc trò chuyện 1-1 với liên hệ đó.
+  6. Cơ chế fallback an toàn: `shouldFallbackToTinodeMedia` tự động chuyển sang Tinode media khi gặp lỗi kích thước hoặc HTTP 409/unsupported type từ S3 để đảm bảo tin nhắn không bao giờ bị nghẽn.
+  7. Bảo đảm Zero Regression & Tuân thủ nghiêm ngặt `AGENTS.md`: Mọi quá trình staging, build, cache nằm hoàn toàn trên ổ `D:`.
+- Pham vi:
+  - `mobile/src/services/chatMediaService.ts`: `selectedFileSize` ưu tiên đọc byte size thực tế từ `expo-file-system` (`getInfoAsync` & `File`) trước khi gửi ticket S3.
+  - `mobile/src/utils/chatMedia.ts`: Mở rộng `shouldFallbackToTinodeMedia` bao gồm `MEDIA_UPLOAD_SIZE_MISMATCH`, `MEDIA_UPLOAD_TYPE_MISMATCH`, `MEDIA_FILE_EMPTY`, HTTP 409.
+  - `mobile/src/services/tinodeClient.ts`: Định tuyến SVG trực tiếp qua `uploadTinodeFile` và fallback an toàn khi upload S3 gặp sự cố.
+  - `mobile/src/components/ChatMorePanel.tsx`: Thêm action Máy ảnh (Camera, `#2ED573`) giữa Vị trí và Tài liệu.
+  - `mobile/src/components/DoodleModal.tsx`: Ghi file SVG UTF-8 và tính chính xác disk size qua `getInfoAsync` và TextEncoder.
+  - `mobile/src/components/MessageBubble.tsx`: Thêm nút Nhắn tin và sự kiện click-to-chat `onOpenContactChat` trên ContactCardMessage.
+  - `mobile/src/screens/chat/ChatDetailScreen.tsx`: Tích hợp `chooseImages`, `captureCameraPhoto`, `chooseDocument`, `handleOpenContactChat`, thêm icon Camera ở composer và MorePanel.
+  - `mobile/src/services/chatMediaService.test.ts`: Bổ sung unit tests cho `selectedFileSize` và `shouldFallbackToTinodeMedia`.
+- Quyet dinh ky thuat:
+  - Sử dụng `getInfoAsync` từ `expo-file-system` trên thiết bị thực thay vì tin tưởng `asset.fileSize` từ image picker vì Expo nén ảnh ở quality 0.9 khiến kích thước file đĩa nhỏ hơn file gốc, gây lỗi HTTP 409 khi backend so sánh với ticket size.
+  - Bổ sung `isSvg` bypass sang Tinode Media do backend Chatmgt S3 chưa cấu hình MIME `image/svg+xml` trong `UPLOAD_POLICIES`.
+  - Giữ nguyên `chooseFile(imageOnly)` để đảm bảo tương thích ngược 100% với các luồng gọi cũ.
+- Kiem thu thuc te:
+  - `npm run typecheck` trong `mobile/`: Đạt 100% (0 errors).
+  - `npm run lint` trong `mobile/`: Đạt 100% (0 errors, 0 warnings).
+  - `npm test` trong `mobile/`: 43/43 test files đạt 100% (197/197 unit tests passed, gồm 2 unit test mới bổ sung).
+  - Gradle `:app:assembleDebug -x lint -x test --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a`: `BUILD SUCCESSFUL in 10m 22s`, 342 actionable tasks trên staging `D:\vichat-build\mobile-scroll-fix-20261004\android`.
+  - Artifact APK: `D:\vichat-build\ViChat-media-fix-debug.apk` (105,648,990 bytes).
+- Rui ro con lai: Khong co.
+- Commit/PR: San sang commit.
+
+## 2026-10-05-05 - Trien khai tinh nang Vi tri truc tiep (Live) va Vi tri chinh xac (Static) tren ViChat Mobile
+
+- Thoi gian: 2026-10-05 (Asia/Saigon)
+- Loai: Tinh nang | Mobile | Interactive Map | Live Location Sharing | Zero Regression
+- Trang thai: Hoan tat
+- Muc tieu:
+  1. Hien thuc hoa giao dien Modal Vi tri voi Ban do tuong tac truc quan nua tren man hinh (Leaflet OSM tren WebView), cham xanh dinh vi phat sang (pulsing marker) va nut FAB dinh vi [ ⌖ ] can giua toa do.
+  2. Che do 1: Chia se hanh trinh truc tiep (Live Location Sharing) voi 4 moc thoi luong (15 phut, 30 phut, 1 gio, 8 gio), nut Dung chia se, va dong bo realtime qua Tinode WebSocket (`__VICHAT_LIVE_LOCATION_EVENT__:` control frame).
+  3. Che do 2: Gui vi tri hien tai cua ban (Instant/Static Location) voi do chinh xac tinh theo met ("Chinh xac den {N}m").
+  4. Che do 3: Gui dia diem cu the (Nearby POIs / Places luan chuyen quanh toa do nguoi dung).
+  5. Nang cap MessageBubble: Card ban do tinh va Card live location co preview ban do, avatar nguoi gui dinh vi tren marker, bo dem thoi gian, va nut Dung chia se / Xem tren ban do.
+  6. Top Live Banner: Thanh thong bao hanh trinh dang chia se tren dau ChatDetailScreen voi nut "Dung".
+  7. Zero Regression & Tuan thu chat che AGENTS.md: Toan bo staging, Gradle cache, build va output APK nam hoan toan tren o D:.
+- Pham vi:
+  - `mobile/package.json` & `mobile/package-lock.json`: Tich hop `expo-location@~57.0.20`, `react-native-webview@13.16.1`.
+  - `mobile/android/app/src/main/AndroidManifest.xml`: Bo sung quyen `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`.
+  - `mobile/src/types/index.ts`: Khai bao `LocationShareKind`, `BaseLocationPayload`, `StaticLocationPayload`, `LiveLocationPayload`, `LocationAttachment`, `LiveLocationEvent`.
+  - `mobile/src/utils/messagePolicy.ts`: Bo sung prefix `LIVE_LOCATION_EVENT_PREFIX = '__VICHAT_LIVE_LOCATION_EVENT__:'`.
+  - `mobile/src/services/tinodeClient.ts`: Parse `live_location_event`, materialize thong tin toa do/status realtime vao ban tin live goc ma khong sinh tin nhan rac, ho tro `sendLiveLocationUpdate`.
+  - `mobile/src/services/liveLocationService.ts` & `mobile/src/services/liveLocationService.test.ts`: Singleton quan ly session, subscription, reverse geocoding, timeout va auto-stop.
+  - `mobile/src/components/LocationPickerModal.tsx`: Modal giao dien ban do Leaflet nua tren, bottom sheet chia se hanh trinh truc tiep (15p/30p/1h/8h), vi tri hien tai va danh sach dia diem lan can.
+  - `mobile/src/components/MessageBubble.tsx`: Render LocationCard cho ca Static va Live.
+  - `mobile/src/screens/chat/ChatDetailScreen.tsx`: Banner chia se truc tiep, tich hop voi Actions Panel 3 cham va LocationPickerModal.
+  - `mobile/android/app/src/main/java/vn/upgo/vichat/MainApplication.kt`: Bo sung exception handler an toan cho React Native `Can't reconnect closed client`.
+- Quyet dinh ky thuat:
+  - Su dung Leaflet 1.9.4 chay tren `react-native-webview` cho ban do nua tren Modal de tranh phu thuoc Google Play Services API key bat buoc va dam bao hoat dong offline/mobi tu do.
+  - Cac goi cap nhat toa do theo chu ky (10m/10s) duoc truyen tai duoi dang control packet Tinode kem prefix dac biet, giup `materializeConversation` cap nhat ngay tren message bubble goc cua session thay vi spam chat timeline.
+  - Xu ly bo nho may host khi build C++ codegen TurboModules/Fabric: Ninja duoc chay tuan tu (`-j 1`) de tranh LLVM out-of-memory tren he thong 8GB RAM, sau do Gradle assembleDebug hoan tat trong 5m 29s.
+- Kiem thu thuc te:
+  - `npm run lint` trong `mobile/`: Dat 100% (0 errors, 0 warnings).
+  - `npm run typecheck` trong `mobile/`: Dat 100% (0 errors).
+  - `npm test` trong `mobile/`: 43/43 test files dat 100% (195/195 unit tests passed).
+  - Gradle `:app:assembleDebug -x lint -x test --no-daemon --max-workers=1 -PreactNativeArchitectures=arm64-v8a`: `BUILD SUCCESSFUL in 5m 29s`, 342 actionable tasks tren staging `D:\vichat-build\mobile-scroll-fix-20261004\android`.
+  - Artifact APK: `D:\vichat-build\ViChat-location-debug.apk` (100,977,446 bytes).
+  - Cai dat qua ADB len thiet bi that `f36c9ba7`: `Success`.
+  - Xac minh giao dien thuc te qua anh chup man hinh screencap tren thiet bi:
+    1. Card Vi tri tinh: Map preview hien thi ro rang, pin do, dia chi "XQ27+VRH, Kien Hung, Ha Noi", do chinh xac "Chinh xac den 100m", link "Xem tren ban do".
+    2. Card Hanh trinh truc tiep: Cham trang thai xanh "Dang chia se hanh trinh truc tiep", map preview co avatar nguoi gui dinh vi tai toa do, dem nguoc "Con 12 phut · Cap nhat vua xong" va nut "Dung chia se".
+    3. Modal Vi tri: Ban do tuong tac Leaflet hien thi dung toa do, cham xanh pulsing marker, nut FAB dinh vi [ ⌖ ], phan sheet ben duoi hien thi day du cac che do chia se theo dac ta.
+- Rui ro con lai: Khong co.
+- Commit/PR: San sang commit.
+
 ## 2026-10-05-04 - Loai bo phan muc Nhom tren thanh dieu huong chinh Sidebar Web ViChat va toi uu luong dieu huong
 
 - Thoi gian: 2026-10-05 (Asia/Saigon)

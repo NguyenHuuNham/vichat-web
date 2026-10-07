@@ -90,6 +90,13 @@ describe('mobile Chatmgt pagination', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('returns no bot update when the chatbot endpoint temporarily fails', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockRejectedValueOnce(new Error('network unavailable'));
+
+    await expect(chatManagementService.listBotConfig()).resolves.toBeNull();
+  });
+
   it('deduplicates records that point to the same Tinode topic', async () => {
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
     fetchMock.mockResolvedValueOnce(jsonResponse({
@@ -148,5 +155,27 @@ describe('mobile Chatmgt pagination', () => {
     expect(JSON.parse(String(request.body))).toEqual({ nickname: 'Alias' });
     expect(conversation.conversationNicknames).toEqual({ 'account-peer': 'Alias' });
     expect(conversation.members?.[0]).toEqual(expect.objectContaining({ name: 'Alias', conversationNickname: 'Alias' }));
+  });
+
+  it('normalizes Zalo OA conversation preserving channel, channelType and pre-existing messages', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      objects: [{
+        id: 'zalo:oa_123:user_456',
+        subject: 'Nguyễn Văn A',
+        channel: 'zalo_oa',
+        channelType: 'zalo_oa',
+        sourceType: 'zalo_oa',
+        messages: [{ id: 'm1', text: 'Chào shop', sender: 'incoming' }],
+      }],
+    }));
+
+    const conversations = await chatManagementService.listConversations();
+    expect(conversations).toHaveLength(1);
+    expect(conversations[0].channel).toBe('zalo_oa');
+    expect(conversations[0].channelType).toBe('zalo_oa');
+    expect(conversations[0].sourceType).toBe('zalo_oa');
+    expect(conversations[0].messages).toHaveLength(1);
+    expect(conversations[0].messages[0].text).toBe('Chào shop');
   });
 });

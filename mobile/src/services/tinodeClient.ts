@@ -1,9 +1,10 @@
 import { Platform } from 'react-native';
 import { config } from '../constants/config';
-import { ChatMessage, Conversation, FileAttachment, PickerFile, RecallMode, Sticker, TinodeAuth } from '../types';
+import { ChatMessage, ContactCardAttachment, Conversation, FileAttachment, LocationAttachment, LiveLocationEvent, LiveLocationPayload, PickerFile, RecallMode, Sticker, TinodeAuth } from '../types';
 import { installIntlSegmenterPolyfill } from '../polyfills/intlSegmenter';
 import {
   EDIT_EVENT_PREFIX,
+  LIVE_LOCATION_EVENT_PREFIX,
   REACTION_EVENT_PREFIX,
   RECALL_EVENT_PREFIX,
   SYSTEM_EVENT_PREFIX,
@@ -28,7 +29,7 @@ import {
   normalizePollEvent,
 } from '../utils/poll';
 import {
-  bindChatMedia,
+  bindChatMediaWithRetry,
   discardChatMedia,
   isChatMediaReference,
   resolveChatMediaDownloadUrl,
@@ -39,6 +40,11 @@ import { identitiesOverlap } from '../utils/identity';
 import { isSafeIncomingMessageOrigin, resolveTinodeMessageOrigin, CurrentIdentity } from '../utils/messageOrigin';
 import { normalizeGroupSettings } from '../utils/groupSettings';
 import { publishSequence } from '../utils/tinodePublish';
+import { isFreshTinodeCallInvite } from '../utils/callNotificationPolicy';
+import { formatGroupEventDate, normalizeGroupEvent } from '../utils/groupEvent';
+import { normalizeDraftyAttachment, normalizeTinodeMediaValue, parseAudioDurationMetadata } from '../utils/tinodeMedia';
+import { isChatMediaUuid } from '../utils/chatMedia';
+import { getNativeNotifiedSeq } from './nativeNameCache';
 
 export { normalizeMediaUrl } from '../utils/mediaUrl';
 
@@ -74,6 +80,32 @@ function withTimeout<T>(operation: Promise<T>, timeoutMs: number, message: strin
       reject(error);
     });
   });
+}
+
+// Tinode servers are more reliable when data and deletion metadata are fetched
+// as separate meta requests, especially for backward history pages.
+async function fetchTopicData(topic: any, query: any, errorMessage: string) {
+  const builtQuery = query || {};
+  const requestedParts = String(builtQuery.what || '').split(' ').filter(Boolean);
+  if (requestedParts.includes('data')) {
+    await withTimeout(
+      topic.getMeta({ what: 'data', ...(builtQuery.data ? { data: builtQuery.data } : {}) }),
+      TINODE_REQUEST_TIMEOUT_MS,
+      errorMessage,
+    );
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+  }
+
+  const metadataParts = requestedParts.filter(part => part !== 'data');
+  if (metadataParts.length > 0) {
+    const { data: _data, what: _what, ...metadata } = builtQuery;
+    await withTimeout(
+      topic.getMeta({ ...metadata, what: metadataParts.join(' ') }),
+      TINODE_REQUEST_TIMEOUT_MS,
+      errorMessage,
+    );
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+  }
 }
 
 function callEntity(content: any) {
@@ -137,6 +169,16 @@ async function loadTinodeSdk() {
   if (typeof TinodeConstructor !== 'function') {
     throw new Error('Tinode SDK không sẵn sàng trên thiết bị này.');
   }
+  if (Platform.OS !== 'web' && typeof TinodeConstructor.setDatabaseProvider === 'function') {
+    // Tinode clears its browser IndexedDB when persistence is disabled; native has no IndexedDB.
+    TinodeConstructor.setDatabaseProvider({
+      deleteDatabase: () => {
+        const request: { onsuccess?: (event: unknown) => void } = {};
+        setTimeout(() => request.onsuccess?.({}), 0);
+        return request;
+      },
+    });
+  }
 }
 
 type Listener = (event: TinodeEvent) => void;
@@ -161,7 +203,24 @@ export type TinodeEvent =
 
 const imageCacheRequests = new Map<string, Promise<string>>();
 const imageCacheVersions = new Map<string, number>();
+const memoryImageCache = new Map<string, string>();
 const fileCacheRequests = new Map<string, Promise<string>>();
+const localVoiceUriCache = new Map<string, string>();
+
+export function recordLocalVoiceUri(key: string, localUri: string): void {
+  const normalizedKey = String(key || '').trim();
+  const normalizedUri = String(localUri || '').trim();
+  if (normalizedKey && normalizedUri) {
+    localVoiceUriCache.set(normalizedKey, normalizedUri);
+  }
+}
+
+export function getCachedImageUri(value: string): string {
+  const url = normalizeMediaUrl(value);
+  if (!url) return '';
+  if (/^(?:data:|file:|content:)/i.test(url)) return url;
+  return memoryImageCache.get(url) || '';
+}
 
 function tinodeHeaders(token = '') {
   return {
@@ -191,46 +250,8 @@ function utf8ByteLength(value: string) {
   return String(value).length;
 }
 
-function normalizeMediaValue(value: any, mime = 'image/jpeg') {
-  if (!value) return '';
-  if (typeof value === 'string') {
-    if (/^(?:data:|blob:|file:|content:|https?:)/i.test(value)) return normalizeMediaUrl(value);
-    return /^[-A-Za-z0-9+/=]+$/.test(value) ? `data:${mime};base64,${value}` : normalizeMediaUrl(value);
-  }
-  if (typeof value.ref === 'string') return normalizeMediaValue(value.ref, value.mime || mime);
-  if (typeof value.url === 'string') return normalizeMediaValue(value.url, value.mime || mime);
-  if (typeof value.val === 'string') return `data:${value.mime || mime};base64,${value.val}`;
-  return '';
-}
-
 function rawAttachment(raw: any, audioDurationMs = 0) {
-  const content = raw?.content;
-  let entity = content?.ent?.find?.((item: any) => item?.tp === 'EX' || item?.tp === 'IM');
-  if (!entity && Drafty?.entities && content) {
-    Drafty.entities(content, (data: any, _index: number, type: string) => {
-      if (type !== 'EX' && type !== 'IM') return false;
-      entity = { tp: type, data };
-      return true;
-    });
-  }
-  if (!entity) return null;
-  const data = entity.data || {};
-  const name = String(data.name || 'Tệp đính kèm');
-  const mime = String(data.mime || 'application/octet-stream');
-  const url = normalizeMediaValue(data.ref || data.url || (Drafty?.getDownloadUrl?.(data) || ''), mime)
-    || (data.val ? `data:${mime};base64,${data.val}` : '');
-  return {
-    isImage: entity.tp === 'IM' || /^image\//i.test(mime) || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(name),
-    file: {
-      name,
-      mime,
-      size: Number(data.size || 0),
-      url,
-      ext: mime.includes('pdf') || /\.pdf$/i.test(name) ? 'pdf' : 'file',
-      ...(audioDurationMs > 0 ? { audioDurationMs } : {}),
-    } as FileAttachment,
-    isAudio: /^audio\//i.test(mime),
-  };
+  return normalizeDraftyAttachment(raw?.content, Drafty, audioDurationMs);
 }
 
 function parseStickerMetadata(head: any = {}) {
@@ -248,18 +269,6 @@ function parseStickerMetadata(head: any = {}) {
       label: String(parsed?.label || '').trim().slice(0, 120),
       version: String(parsed?.version || '1').slice(0, 24),
     };
-  } catch {
-    return null;
-  }
-}
-
-function parseAudioMetadata(head: any = {}) {
-  const raw = head?.[AUDIO_HEAD];
-  if (!raw) return null;
-  try {
-    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    const durationMs = Math.max(0, Math.min(60 * 60 * 1000, Math.round(Number(parsed?.durationMs || 0))));
-    return durationMs > 0 ? { durationMs } : null;
   } catch {
     return null;
   }
@@ -357,6 +366,10 @@ function formatSystemEvent(event: any, client: any) {
   }
   if (event?.action === 'group_avatar_changed') return `${actorText} đổi ảnh đại diện nhóm`;
   if (event?.action === 'group_settings_changed') return `${actorText} cập nhật quyền của nhóm`;
+  if (event?.action === 'group_event_created') {
+    const groupEvent = normalizeGroupEvent(event);
+    if (groupEvent) return `${actorText} đã tạo lịch nhóm: "${groupEvent.title}" · ${formatGroupEventDate(groupEvent.startsAt)}`;
+  }
   if (event?.action === 'group_dissolved') return actorText === 'Bạn' ? 'Bạn đã giải tán nhóm' : `${actorName} đã giải tán nhóm`;
   if (event?.action === 'poll_locked') return `${actorText} đã khóa bình chọn`;
   return String(event?.text || event?.action || 'Hoạt động nhóm');
@@ -407,6 +420,34 @@ function chatbotMetadata(raw: any) {
   };
 }
 
+function parseLocationMetadata(head: any): LocationAttachment | undefined {
+  const value = head?.['x-vichat-location'];
+  if (!value) return undefined;
+  try {
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+    if (parsed && typeof parsed.latitude === 'number' && typeof parsed.longitude === 'number') {
+      return parsed;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function parseContactCardMetadata(head: any): ContactCardAttachment | undefined {
+  const value = head?.['x-vichat-contact-card'];
+  if (!value) return undefined;
+  try {
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+    if (parsed && parsed.name) {
+      return parsed;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 function normalizeMessage(
   raw: any,
   client: any,
@@ -424,14 +465,18 @@ function normalizeMessage(
   const recall = parseEvent(content, RECALL_EVENT_PREFIX);
   const edit = parseEvent(content, EDIT_EVENT_PREFIX);
   const system = parseEvent(content, SYSTEM_EVENT_PREFIX);
+  const groupEvent = system ? normalizeGroupEvent(system) : null;
+  const liveLocationEvent = parseEvent(content, LIVE_LOCATION_EVENT_PREFIX);
   const pollEvent = normalizePollEvent(parseEvent(content, POLL_EVENT_PREFIX));
-  const audio = parseAudioMetadata(raw.head);
-  const attachment = rawAttachment(raw, audio?.durationMs || 0);
+  const durationMs = parseAudioDurationMetadata(raw.head);
+  const attachment = rawAttachment(raw, durationMs);
   const sticker = parseStickerMetadata(raw.head);
   const poll = parsePollMetadata(raw.head);
   const mentions = parseMentionMetadata(raw.head);
   const id = String(raw.head?.['x-client-id'] || `${senderId || 'system'}-${raw.seq || raw.ts || Date.now()}`);
   const chatbot = chatbotMetadata(raw);
+  const location = parseLocationMetadata(raw.head);
+  const contactCard = parseContactCardMetadata(raw.head);
   if (reaction) return {
     id, seq: raw.seq, type: 'reaction', sender: outgoing ? 'outgoing' : 'incoming', senderId,
     senderName: '', text: '', createdAt: raw.ts, reaction: undefined,
@@ -446,19 +491,37 @@ function normalizeMessage(
     senderName: '', text: '', createdAt: raw.ts ? new Date(raw.ts).toISOString() : undefined,
     raw: { ...raw, editEvent: edit },
   };
+  let resolvedSenderName = outgoing ? 'Bạn' : '';
+  if (!outgoing && senderId && topic) {
+    const sub = topic.subscriber?.(senderId);
+    if (sub?.public?.fn || sub?.public?.name) {
+      resolvedSenderName = String(sub.public.fn || sub.public.name).trim();
+    } else if (!topic.isGroupType?.() && (topic.public?.fn || topic.public?.name)) {
+      resolvedSenderName = String(topic.public.fn || topic.public.name).trim();
+    }
+  }
+  if (!resolvedSenderName) {
+    resolvedSenderName = outgoing ? 'Bạn' : 'Thành viên';
+  }
+
   if (pollEvent) return {
     id, seq: raw.seq, type: 'poll_event', sender: outgoing ? 'outgoing' : 'incoming', senderId,
-    senderName: outgoing ? 'Bạn' : 'Thành viên', text: '', createdAt: raw.ts,
+    senderName: resolvedSenderName, text: '', createdAt: raw.ts,
     pollEvent, raw,
   };
-  const type = call ? 'call' : system ? 'system' : poll ? 'text' : attachment ? (sticker ? 'sticker' : attachment.isImage ? 'image' : attachment.isAudio ? 'audio' : 'file') : 'text';
+  if (liveLocationEvent && liveLocationEvent.liveId) return {
+    id, seq: Number(raw.seq) || undefined, type: 'live_location_event', sender: outgoing ? 'outgoing' : 'incoming', senderId,
+    senderName: resolvedSenderName, text: '', createdAt: raw.ts ? new Date(raw.ts).toISOString() : undefined,
+    liveLocationEvent, raw,
+  };
+  const type = call ? 'call' : system ? 'system' : poll ? 'text' : location ? 'location' : contactCard ? 'contact' : attachment ? (sticker ? 'sticker' : attachment.isImage ? 'image' : attachment.isAudio ? 'audio' : 'file') : 'text';
   return {
     id,
     seq: Number(raw.seq) || undefined,
     type,
     sender: outgoing ? 'outgoing' : 'incoming',
     senderId: senderId || (outgoing ? client.getCurrentUserID?.() : ''),
-    senderName: outgoing ? 'Bạn' : 'Thành viên',
+    senderName: resolvedSenderName,
     text: call ? callHistoryLabel(call, outgoing) : system ? formatSystemEvent(system, client) : poll ? poll.question : content,
     image: attachment?.isImage ? attachment.file.url : undefined,
     file: attachment?.file,
@@ -470,8 +533,11 @@ function normalizeMessage(
     mentions,
     ...chatbot,
     systemEvent: system || undefined,
+    groupEvent: groupEvent || undefined,
     poll: poll || undefined,
     call: call || undefined,
+    location: location || undefined,
+    contactCard: contactCard || undefined,
     raw,
   };
 }
@@ -496,7 +562,7 @@ function materializeConversation(
       uid: sub.user,
       username: sub.user,
       name: sub.public?.fn || sub.public?.name || 'Thành viên',
-      avatar: normalizeMediaValue(sub.public?.photo || sub.public?.avatar || ''),
+      avatar: normalizeTinodeMediaValue(sub.public?.photo || sub.public?.avatar || ''),
       active: true,
       tenantId: config.tenantId,
       online: presenceResolver(sub.user, sub.online === true),
@@ -528,6 +594,15 @@ function materializeConversation(
   const editMessages = loaded
     .filter(message => message.type === 'edit')
     .sort((first, second) => (Number(first.seq) || 0) - (Number(second.seq) || 0));
+  const liveEventsById = new Map<string, LiveLocationEvent>();
+  loaded.filter(message => message.type === 'live_location_event').forEach(message => {
+    const event = message.liveLocationEvent;
+    if (!event?.liveId) return;
+    const existing = liveEventsById.get(event.liveId);
+    if (!existing || (Number(event.lastUpdatedAt) || 0) >= (Number(existing.lastUpdatedAt) || 0)) {
+      liveEventsById.set(event.liveId, event);
+    }
+  });
   const pollEventsById = new Map<string, ChatMessage[]>();
   loaded.filter(message => message.type === 'poll_event').forEach(message => {
     const pollId = message.pollEvent?.pollId;
@@ -560,7 +635,7 @@ function materializeConversation(
   const appliedRecallIds = new Set<string>();
   const appliedEditIds = new Set<string>();
   const messages = loaded
-    .filter(message => !['reaction', 'recall', 'edit', 'poll_event'].includes(message.type))
+    .filter(message => !['reaction', 'recall', 'edit', 'poll_event', 'live_location_event'].includes(message.type))
     .map(message => {
       const editCandidates = [
         ...(editsById.get(String(message.id || '')) || []),
@@ -592,6 +667,26 @@ function materializeConversation(
           reactions[emoji] = (reactions[emoji] || 0) + 1;
         }
       });
+      let messageWithLive = withPin;
+      if (messageWithLive.location && (messageWithLive.location as any).kind === 'live') {
+        const livePayload = messageWithLive.location as LiveLocationPayload;
+        const liveEvent = liveEventsById.get(livePayload.liveId);
+        if (liveEvent) {
+          messageWithLive = {
+            ...messageWithLive,
+            location: {
+              ...livePayload,
+              latitude: liveEvent.latitude,
+              longitude: liveEvent.longitude,
+              accuracy: liveEvent.accuracy ?? livePayload.accuracy,
+              heading: liveEvent.heading ?? livePayload.heading,
+              speed: liveEvent.speed ?? livePayload.speed,
+              isActive: liveEvent.isActive,
+              lastUpdatedAt: liveEvent.lastUpdatedAt,
+            },
+          };
+        }
+      }
       if (recall) {
         const recallMessage = loaded.find(item => item.type === 'recall' && item.raw?.recallEvent === recall);
         if (recallMessage) appliedRecallIds.add(recallMessage.id);
@@ -608,9 +703,9 @@ function materializeConversation(
           raw: undefined,
         };
       }
-      return withPin.replyTo && (recalls.has(String(withPin.replyTo.id)) || recalls.has(`seq:${withPin.replyTo.id}`))
-        ? { ...withPin, replyTo: undefined, reactions }
-        : { ...withPin, reactions };
+      return messageWithLive.replyTo && (recalls.has(String(messageWithLive.replyTo.id)) || recalls.has(`seq:${messageWithLive.replyTo.id}`))
+        ? { ...messageWithLive, replyTo: undefined, reactions }
+        : { ...messageWithLive, reactions };
     })
     .filter(Boolean) as ChatMessage[];
   visibleRecallMessages.forEach(message => {
@@ -682,7 +777,7 @@ function materializeConversation(
     name: String(topic.public?.fn || topic.public?.name || directPeer?.name || topic.name || 'Cuộc trò chuyện'),
     isGroup,
     adminId: owner?.id || '',
-    avatarUrl: normalizeMediaValue(topic.public?.photo || topic.public?.avatar || directPeer?.avatar || ''),
+    avatarUrl: normalizeTinodeMediaValue(topic.public?.photo || topic.public?.avatar || directPeer?.avatar || ''),
     description: String(topic.public?.note || ''),
     membersCount: isGroup ? `${members.length} thành viên` : (directPeer?.online ? 'Đang hoạt động' : 'Offline'),
     ...(isGroup && rawGroupSettings ? { groupSettings: normalizeGroupSettings(rawGroupSettings) } : {}),
@@ -767,6 +862,7 @@ export class TinodeMobileClient {
   private invalidateImageCache(value: string) {
     const url = normalizeMediaUrl(value);
     if (!url) return;
+    memoryImageCache.delete(url);
     imageCacheVersions.set(url, (imageCacheVersions.get(url) || 0) + 1);
     [...imageCacheRequests.keys()]
       .filter(key => key.startsWith(`${url}|`))
@@ -816,6 +912,13 @@ export class TinodeMobileClient {
       && (this.allowedConversationTopics === null || this.allowedConversationTopics.has(name)));
   }
 
+  isCallTopicAllowed(topicName: string) {
+    const name = String(topicName || '');
+    if (!name || this.blockedTopics.has(name)) return false;
+    if (/^usr[a-z0-9_-]+$/i.test(name)) return true;
+    return this.isConversationTopicAllowed(name);
+  }
+
   private materialize(topic: any) {
     return materializeConversation(
       topic,
@@ -824,6 +927,25 @@ export class TinodeMobileClient {
       this.receiptCursors.get(topic?.name),
       this.currentIdentitySnapshot,
     );
+  }
+
+  private trimTopicHistory(topic: any, keepMessages = OPEN_HISTORY_LIMIT) {
+    if (!topic?.messages || typeof topic.flushMessage !== 'function') return;
+    const messages: any[] = [];
+    topic.messages((raw: any) => {
+      const sequence = Number(raw?.seq) || 0;
+      if (raw && !raw._deleted && sequence > 0) messages.push(raw);
+    });
+    messages.sort((first, second) => (Number(first.seq) || 0) - (Number(second.seq) || 0));
+    const removeCount = Math.max(0, messages.length - Math.max(1, keepMessages));
+    if (!removeCount) return;
+    messages.slice(0, removeCount).forEach(raw => {
+      try { topic.flushMessage(Number(raw.seq)); } catch { /* Keep the live topic usable if SDK internals change. */ }
+    });
+    const retained = messages.slice(removeCount);
+    const retainedMinSeq = Number(retained[0]?.seq) || 0;
+    if (retainedMinSeq > 0) topic._minSeq = retainedMinSeq;
+    topic.__vichatMobileHistoryWindow = Math.max(1, keepMessages);
   }
 
   private scheduleConversationSnapshot(topic: any) {
@@ -843,11 +965,15 @@ export class TinodeMobileClient {
     // Require a verified non-own origin before scheduling any local alert.
     if (!isSafeIncomingMessageOrigin(raw, this.client, this.currentIdentitySnapshot)) return;
     const message = normalizeMessage(raw, this.client, topic, undefined, this.currentIdentitySnapshot);
-    if (!message || message.sender !== 'incoming' || !message.senderId || ['reaction', 'recall', 'edit', 'poll_event', 'system'].includes(message.type)) return;
+    if (!message || message.sender !== 'incoming' || !message.senderId || ['reaction', 'recall', 'edit', 'poll_event', 'system', 'live_location_event'].includes(message.type)) return;
     const seq = Number(message.seq || 0);
-    const notifiedSeq = this.notifiedSeqByTopic.get(topic.name) || 0;
+    // Tinode can replay a packet after a topic is opened. A message already
+    // covered by the server read cursor must not create another alert.
+    if (seq > 0 && Number(topic?.read || 0) >= seq) return;
+    const nativeSeq = getNativeNotifiedSeq(topic.name);
+    const notifiedSeq = Math.max(this.notifiedSeqByTopic.get(topic.name) || 0, nativeSeq);
     if (seq > 0 && seq <= notifiedSeq) return;
-    if (seq > 0) this.notifiedSeqByTopic.set(topic.name, seq);
+    if (seq > 0) this.notifiedSeqByTopic.set(topic.name, Math.max(seq, notifiedSeq));
     this.emit({ type: 'incoming-message', conversation: conversation || this.materialize(topic), message });
   }
 
@@ -926,7 +1052,7 @@ export class TinodeMobileClient {
   }
 
   getMediaHeaders() {
-    return tinodeHeaders(this.client?.getAuthToken?.()?.token || '');
+    return tinodeHeaders(this.getAuthTokenValue());
   }
 
   private async refreshMediaAuth() {
@@ -942,17 +1068,28 @@ export class TinodeMobileClient {
 
   setDeviceToken(token: string | null) {
     this.deviceToken = String(token || '').trim() || null;
-    return Boolean(this.client?.setDeviceToken?.(this.deviceToken));
+    if (!this.client) return false;
+    if (this.client.isAuthenticated?.() && this.client.isConnected?.()) {
+      (this.client as any)._deviceToken = null;
+      return Boolean(this.client.setDeviceToken?.(this.deviceToken));
+    }
+    return Boolean(this.client.setDeviceToken?.(this.deviceToken));
+  }
+
+  getCachedImageUri(value: string): string {
+    return getCachedImageUri(value);
   }
 
   async cacheImage(value: string) {
     const url = normalizeMediaUrl(value);
     if (!url || /^(?:data:|file:|content:)/i.test(url)) return url;
+    const cachedMemory = memoryImageCache.get(url);
+    if (cachedMemory) return cachedMemory;
     // Tinode can reuse the same protected path after an avatar replacement.
     // Include the current auth token in the cache key so native images do not
     // remain stuck on the previous avatar.
     const chatMediaReference = isChatMediaReference(url);
-    const token = chatMediaReference ? '' : this.client?.getAuthToken?.()?.token || '';
+    const token = chatMediaReference ? '' : this.getAuthTokenValue();
     const cacheKey = `${url}|${token}|${imageCacheVersions.get(url) || 0}`;
     if (!imageCacheRequests.has(cacheKey)) {
       const request = (async () => {
@@ -964,6 +1101,14 @@ export class TinodeMobileClient {
         for (let index = 0; index < cacheKey.length; index += 1) hash = ((hash << 5) + hash) ^ cacheKey.charCodeAt(index);
         const extension = url.match(/\.(?:avif|bmp|gif|jpe?g|png|webp)(?:\?|$)/i)?.[0]?.replace(/\?.*$/, '') || '.jpg';
         const target = new fileSystem.File(fileSystem.Paths.cache, `vichat-image-${Math.abs(hash)}${extension}`);
+        try {
+          if (target?.exists && (!target.size || target.size > 0)) {
+            memoryImageCache.set(url, target.uri);
+            return target.uri;
+          }
+        } catch {
+          // Fall through to network download if local check fails.
+        }
         const downloadUrl = chatMediaReference
           ? await resolveChatMediaDownloadUrl(url)
           : url;
@@ -983,6 +1128,7 @@ export class TinodeMobileClient {
           if (!refreshed) throw error;
           downloaded = await download();
         }
+        memoryImageCache.set(url, downloaded.uri);
         return downloaded.uri;
       })().catch(error => {
         imageCacheRequests.delete(cacheKey);
@@ -997,8 +1143,29 @@ export class TinodeMobileClient {
     if (!file?.url) throw new Error('Tệp chưa có đường dẫn tải xuống.');
     const url = normalizeMediaUrl(file.url);
     if (!url || /^(?:data:|file:|content:)/i.test(url)) return url;
+
+    // Fast-path: Check local voice URI cache (recorded on device during sendVoice)
+    const cachedLocal = localVoiceUriCache.get(url)
+      || (file.url ? localVoiceUriCache.get(file.url) : undefined)
+      || (file.name ? localVoiceUriCache.get(file.name) : undefined);
+    if (cachedLocal) {
+      try {
+        const fileSystem: any = require('expo-file-system');
+        if (fileSystem.File) {
+          const localCheck = new fileSystem.File(cachedLocal);
+          if (localCheck?.exists && (!localCheck.size || localCheck.size > 0)) {
+            return cachedLocal;
+          }
+        } else {
+          return cachedLocal;
+        }
+      } catch {
+        // Fall back to network download if local check fails
+      }
+    }
+
     const chatMediaReference = isChatMediaReference(url);
-    const token = chatMediaReference ? '' : this.client?.getAuthToken?.()?.token || '';
+    const token = chatMediaReference ? '' : this.getAuthTokenValue();
     const cacheKey = `${url}|${file.name || ''}|${token}`;
     if (!fileCacheRequests.has(cacheKey)) {
       const request = (async () => {
@@ -1008,8 +1175,23 @@ export class TinodeMobileClient {
         }
         let hash = 5381;
         for (let index = 0; index < cacheKey.length; index += 1) hash = ((hash << 5) + hash) ^ cacheKey.charCodeAt(index);
-        const safeName = String(file.name || 'tep-dinh-kem').replace(/[^a-zA-Z0-9._-]/g, '_').slice(-100);
+        let safeName = String(file.name || 'tep-dinh-kem').replace(/[^a-zA-Z0-9._-]/g, '_').slice(-100);
+        const isAudio = /^audio\//i.test(String(file.mime || '')) || Boolean(file.audioDurationMs);
+        if (isAudio && !/\.(?:m4a|aac|mp3|ogg|wav|opus|amr|flac)$/i.test(safeName)) {
+          const mime = String(file.mime || '').toLowerCase();
+          if (mime.includes('ogg')) safeName = `${safeName}.ogg`;
+          else if (mime.includes('mpeg') || mime.includes('mp3')) safeName = `${safeName}.mp3`;
+          else if (mime.includes('wav')) safeName = `${safeName}.wav`;
+          else safeName = `${safeName}.m4a`;
+        }
         const target = new fileSystem.File(fileSystem.Paths.cache, `vichat-file-${Math.abs(hash)}-${safeName}`);
+        try {
+          if (target?.exists && (!target.size || target.size > 0)) {
+            return target.uri;
+          }
+        } catch {
+          // Fall through to download.
+        }
         const downloadUrl = chatMediaReference
           ? await resolveChatMediaDownloadUrl(url, { download: true, fileName: file.name })
           : url;
@@ -1070,12 +1252,13 @@ export class TinodeMobileClient {
     if (!topic || topic.__vichatMobileWired) return topic;
     topic.__vichatMobileWired = true;
     topic.onData = (raw: any) => {
-      if (!this.isConversationTopicAllowed(topic.name)) return;
+      if (!this.isCallTopicAllowed(topic.name)) return;
       // Tinode delivers every packet in a history query through onData. Do not
       // rebuild the complete conversation once per packet while catching up.
       if (topic.__vichatMobileSyncing) return;
       if (!raw?.from || !this.client?.isMe?.(raw.from)) this.acknowledgeTopicReceived(topic, raw?.seq);
       this.emitCallInvite(topic, raw);
+      if (!this.isConversationTopicAllowed(topic.name)) return;
       const conversation = this.materialize(topic);
       this.emit({ type: 'conversation', conversation });
       this.emitIncomingMessage(topic, raw, conversation);
@@ -1094,8 +1277,8 @@ export class TinodeMobileClient {
       this.updatePresence(presence);
     };
     topic.onInfo = (info: any) => {
-      if (!this.isConversationTopicAllowed(topic.name)) return;
       if (info?.what === 'call') {
+        if (!this.isCallTopicAllowed(topic.name)) return;
         this.emit({
           type: 'call-signal',
           topic: topic.name,
@@ -1106,6 +1289,7 @@ export class TinodeMobileClient {
         });
         return;
       }
+      if (!this.isConversationTopicAllowed(topic.name)) return;
       if (['kp', 'kpa', 'kpv'].includes(info?.what)) this.emit({ type: 'typing', topic: topic.name, uid: info.from, active: true });
       if (['read', 'recv'].includes(info?.what) && !this.client?.isMe?.(info?.from)) {
         this.updateReceiptCursor(topic, info.what, info.seq);
@@ -1118,6 +1302,8 @@ export class TinodeMobileClient {
   private emitCallInvite(topic: any, raw: any) {
     if (!raw?.seq || !raw?.from || this.client?.isMe?.(raw.from)) return;
     if (raw.head?.webrtc !== CALL_HEAD_STARTED) return;
+    if (!isFreshTinodeCallInvite(raw)) return;
+    if (!this.isCallTopicAllowed(topic.name)) return;
     const content = raw.content;
     const entity = content?.ent?.find?.((item: any) => item?.tp === 'VC')?.data;
     const key = `${topic.name}:${raw.seq}`;
@@ -1163,11 +1349,6 @@ export class TinodeMobileClient {
         if (!this.intentionalDisconnect) this.emit({ type: 'connection', state: 'connected' });
       };
     }
-    // Put the device token into Tinode before the first hello packet. If the
-    // app is backgrounded immediately after login, the server has already
-    // received the token instead of relying on a last-second hi update.
-    const tokenAtConnectStart = this.deviceToken;
-    if (tokenAtConnectStart) this.client.setDeviceToken?.(tokenAtConnectStart);
     this.emit({ type: 'connection', state: 'connecting' });
     if (!this.client.isConnected()) {
       await withTimeout(this.client.connect(), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi kết nối.');
@@ -1178,11 +1359,11 @@ export class TinodeMobileClient {
     await withTimeout(this.client.loginToken(fresh), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi đăng nhập.');
     assertCurrent();
     this.auth = { ...auth, token: fresh };
+    this.client?.setAuthToken?.({ token: fresh, expires: tokenExpiry(auth.expires) });
     const tokenAfterLogin = this.deviceToken;
-    if (tokenAfterLogin) {
-      // A native token may arrive while connect/login is in flight. Force one
-      // authenticated update when it was not present in the initial hello.
-      if (tokenAfterLogin !== tokenAtConnectStart) this.client.setDeviceToken?.(null);
+    if (tokenAfterLogin && this.client?.isAuthenticated?.() && this.client?.isConnected?.()) {
+      // Force Tinode SDK to send `hi { dev: token }` under the authenticated session.
+      (this.client as any)._deviceToken = null;
       this.client.setDeviceToken?.(tokenAfterLogin);
     }
     this.meTopic = this.client.getMeTopic();
@@ -1331,20 +1512,20 @@ export class TinodeMobileClient {
     try {
       if (!topic.isSubscribed?.()) {
         const query = topic.startMetaQuery().withDesc().withSub();
-        if (historyLimit > 0) {
-          if ((options.newerOnly === true || historyLoaded) && previousMaxSeq > 0) query.withLaterData(historyLimit).withLaterDel(historyLimit);
-          else query.withEarlierData(historyLimit).withDel(undefined, historyLimit);
-        }
         await withTimeout(topic.subscribe(query.build()), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi mở cuộc trò chuyện.');
+        if (historyLimit > 0) {
+          const historyQuery = topic.startMetaQuery().withData(undefined, undefined, historyLimit).withLaterDel(historyLimit);
+          await fetchTopicData(topic, historyQuery.build(), 'Tinode khÃ´ng pháº£n há»“i khi táº£i lá»‹ch sá»­ trÃ² chuyá»‡n.');
+        }
       } else if (historyLimit > 0 && (options.refreshLatest || !historyLoaded)) {
         await withTimeout(
-          topic.getMeta(topic.startMetaQuery().withEarlierData(historyLimit).withDel(undefined, historyLimit).build()),
+          fetchTopicData(topic, topic.startMetaQuery().withData(undefined, undefined, historyLimit).withLaterDel(historyLimit).build(), 'Tinode media history request failed.'),
           TINODE_REQUEST_TIMEOUT_MS,
           'Tinode không phản hồi khi tải lịch sử trò chuyện.',
         );
       } else if (historyLimit > loadedHistoryLimit) {
         await withTimeout(
-          topic.getMeta(topic.startMetaQuery().withEarlierData(historyLimit).withDel(undefined, historyLimit).build()),
+          fetchTopicData(topic, topic.startMetaQuery().withEarlierData(historyLimit).withDel(undefined, historyLimit).build(), 'Tinode media history request failed.'),
           TINODE_REQUEST_TIMEOUT_MS,
           'Tinode không phản hồi khi tải lịch sử trò chuyện.',
         );
@@ -1364,20 +1545,10 @@ export class TinodeMobileClient {
     if (emitSnapshot) {
       conversation = this.materialize(topic);
       this.emit({ type: 'conversation', conversation });
-      if (!initialized) {
-        this.notifiedSeqByTopic.set(name, latestSeq);
-      } else if (latestSeq > previousMaxSeq && options.notifyMissed !== false) {
-        const missed = conversation.messages.filter(message =>
-          message.sender === 'incoming'
-          && !['reaction', 'recall', 'edit', 'poll_event', 'system'].includes(message.type)
-          && Number(message.seq || 0) > previousMaxSeq,
-        ).slice(-20);
-        if (missed.length > 0) missed.forEach(message => this.emitIncomingMessage(topic, message.raw, conversation || undefined));
-        else this.notifiedSeqByTopic.set(name, latestSeq);
-      } else if (latestSeq > previousMaxSeq) {
+      if (latestSeq > (this.notifiedSeqByTopic.get(name) || 0)) {
         this.notifiedSeqByTopic.set(name, latestSeq);
       }
-    } else if (!initialized) {
+    } else if (latestSeq > (this.notifiedSeqByTopic.get(name) || 0)) {
       this.notifiedSeqByTopic.set(name, latestSeq);
     }
     return conversation;
@@ -1427,7 +1598,12 @@ export class TinodeMobileClient {
 
   getCallIceServers() {
     const servers = this.client?.getServerParam?.('iceServers', []);
-    return normalizeIceServers(servers);
+    const normalized = normalizeIceServers(servers);
+    if (normalized.length > 0) return normalized;
+    return [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ];
   }
 
   getCallCapability(topicName: string, options: { isGroup?: boolean; isChatbot?: boolean } = {}) {
@@ -1468,16 +1644,42 @@ export class TinodeMobileClient {
     await this.getTopic(topicName).videoCall(event, Number(seq), payload);
   }
 
-  async sendText(topicName: string, text: string, clientId: string, replyTo?: ChatMessage['replyTo'], mentions: any[] = []) {
+  async sendText(
+    topicName: string,
+    text: string,
+    clientId: string,
+    replyTo?: ChatMessage['replyTo'],
+    mentions: any[] = [],
+    metadata: { location?: LocationAttachment; contactCard?: ContactCardAttachment } = {}
+  ) {
     await this.subscribeTopic(topicName, 0, { emitSnapshot: false });
     const topic = this.getTopic(topicName);
     const draft = topic.createMessage(text, false);
     draft.head = { ...(draft.head || {}), 'x-client-id': clientId, 'x-sender-id': this.currentUserId };
     if (replyTo?.id) draft.head['x-reply-to'] = JSON.stringify(replyTo);
     if (Array.isArray(mentions) && mentions.length > 0) draft.head['x-mentions'] = JSON.stringify(mentions.slice(0, 50));
+    if (metadata.location) draft.head['x-vichat-location'] = JSON.stringify(metadata.location);
+    if (metadata.contactCard) draft.head['x-vichat-contact-card'] = JSON.stringify(metadata.contactCard);
     const result = await withTimeout(topic.publishMessage(draft), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi gửi tin nhắn.');
     if (!result) throw new Error('Tinode không xác nhận tin nhắn.');
     return result;
+  }
+
+  async sendLocation(topicName: string, location: LocationAttachment, clientId: string) {
+    const text = location.address ? `📍 Vị trí: ${location.address}` : `📍 ${location.title || 'Vị trí đã chia sẻ'}`;
+    return this.sendText(topicName, text, clientId, undefined, [], { location });
+  }
+
+  async sendLiveLocationUpdate(topicName: string, event: LiveLocationEvent) {
+    const clientId = `mobile-live-loc-${event.liveId}-${Date.now()}`;
+    await this.subscribeTopic(topicName, 0, { emitSnapshot: false });
+    const topic = this.getTopic(topicName);
+    await publishControlEvent(topic, `${LIVE_LOCATION_EVENT_PREFIX}${JSON.stringify(event)}`, clientId, this.currentUserId);
+  }
+
+  async sendContactCard(topicName: string, contact: ContactCardAttachment, clientId: string) {
+    const text = `🪪 Danh thiếp: ${contact.name}`;
+    return this.sendText(topicName, text, clientId, undefined, [], { contactCard: contact });
   }
 
   async loadEarlierConversation(topicName: string, limit = HISTORY_PAGE_LIMIT, generation = this.sessionGeneration) {
@@ -1492,11 +1694,16 @@ export class TinodeMobileClient {
     }
   }
 
-  /** Load every Tinode history page for shared-content views, then emit one snapshot. */
-  async loadConversationMediaHistory(topicName: string, limit = HISTORY_PAGE_LIMIT, generation = this.sessionGeneration) {
+  /** Load every Tinode history page for shared-content views without bloating chat state. */
+  async loadConversationMediaHistory(
+    topicName: string,
+    limit = HISTORY_PAGE_LIMIT,
+    generation = this.sessionGeneration,
+    onPageLoaded?: (conversation: Conversation) => void,
+  ) {
     const previous = this.fullHistoryRequests.get(topicName);
     if (previous) return previous;
-    const request = this.loadConversationMediaHistoryInternal(topicName, limit, generation);
+    const request = this.loadConversationMediaHistoryInternal(topicName, limit, generation, onPageLoaded);
     this.fullHistoryRequests.set(topicName, request);
     try {
       return await request;
@@ -1505,18 +1712,80 @@ export class TinodeMobileClient {
     }
   }
 
-  private async loadConversationMediaHistoryInternal(topicName: string, limit = HISTORY_PAGE_LIMIT, generation = this.sessionGeneration) {
+  private async loadConversationMediaHistoryInternal(
+    topicName: string,
+    limit = HISTORY_PAGE_LIMIT,
+    generation = this.sessionGeneration,
+    onPageLoaded?: (conversation: Conversation) => void,
+  ) {
     const boundedLimit = Math.max(1, Math.min(50, Math.trunc(Number(limit) || HISTORY_PAGE_LIMIT)));
+    // Group info can be opened before ChatDetail has hydrated this topic. Load
+    // a recent window first so the backward walk has a valid sequence cursor.
+    await this.subscribeTopic(topicName, boundedLimit, {
+      emitSnapshot: false,
+      refreshLatest: true,
+      generation,
+    });
+    if (!this.isGenerationCurrent(generation)) throw new Error('Tinode history request is stale.');
+    const initialTopic = this.getTopic(topicName);
+    if (onPageLoaded && initialTopic) {
+      try { onPageLoaded(this.materialize(initialTopic)); } catch { /* Ignore callback errors */ }
+    }
     let hasEarlier = true;
-    while (hasEarlier) {
+    let pageCount = 0;
+    const MAX_AUTO_PAGES = 15;
+    while (hasEarlier && pageCount < MAX_AUTO_PAGES) {
       const page = await this.loadEarlierConversationInternal(topicName, boundedLimit, generation, false);
       hasEarlier = page.hasEarlier && page.loaded > 0;
+      pageCount += 1;
+      if (onPageLoaded && page.conversation) {
+        try { onPageLoaded(page.conversation); } catch { /* Ignore callback errors */ }
+      }
     }
     if (!this.isGenerationCurrent(generation)) throw new Error('Tinode history request is stale.');
     const topic = this.getTopic(topicName);
     const conversation = this.materialize(topic);
-    this.emit({ type: 'conversation', conversation });
+    conversation.hasEarlierMedia = hasEarlier;
+    // Shared-content screens keep the full materialized result locally. Evict
+    // older packets from the live topic before ChatDetail renders it again.
+    this.trimTopicHistory(topic, OPEN_HISTORY_LIMIT);
     return conversation;
+  }
+
+  async loadMoreConversationMediaHistory(
+    topicName: string,
+    beforeSeq?: number,
+    limit = HISTORY_PAGE_LIMIT,
+    generation = this.sessionGeneration,
+    onPageLoaded?: (conversation: Conversation) => void,
+    maxPages = 15,
+  ): Promise<{ conversation: Conversation; hasEarlier: boolean }> {
+    const boundedLimit = Math.max(1, Math.min(50, Math.trunc(Number(limit) || HISTORY_PAGE_LIMIT)));
+    await this.subscribeTopic(topicName, 0, { emitSnapshot: false, generation });
+    if (!this.isGenerationCurrent(generation)) throw new Error('Tinode history request is stale.');
+
+    let hasEarlier = true;
+    let pageCount = 0;
+    let currentBefore = beforeSeq;
+    let latestConversation: Conversation | null = null;
+
+    while (hasEarlier && pageCount < maxPages) {
+      const page = await this.loadEarlierConversationInternal(topicName, boundedLimit, generation, false, currentBefore);
+      hasEarlier = page.hasEarlier && page.loaded > 0;
+      pageCount += 1;
+      currentBefore = undefined;
+      latestConversation = page.conversation;
+      if (onPageLoaded && page.conversation) {
+        try { onPageLoaded(page.conversation); } catch { /* Ignore callback errors */ }
+      }
+    }
+
+    if (!this.isGenerationCurrent(generation)) throw new Error('Tinode history request is stale.');
+    const topic = this.getTopic(topicName);
+    const conversation = latestConversation || this.materialize(topic);
+    conversation.hasEarlierMedia = hasEarlier;
+    this.trimTopicHistory(topic, OPEN_HISTORY_LIMIT);
+    return { conversation, hasEarlier };
   }
 
   private async loadEarlierConversationInternal(
@@ -1524,21 +1793,24 @@ export class TinodeMobileClient {
     limit = HISTORY_PAGE_LIMIT,
     generation = this.sessionGeneration,
     emitSnapshot = true,
+    explicitBefore?: number,
   ) {
     await this.subscribeTopic(topicName, 0, { emitSnapshot: false, generation });
     if (!this.isGenerationCurrent(generation)) throw new Error('Tinode history request is stale.');
     const topic = this.getTopic(topicName);
-    const before = Number(topic.minMsgSeq?.() || topic._minSeq || 0);
+    const before = Math.max(0, Number(explicitBefore !== undefined && explicitBefore !== null ? explicitBefore : (topic.minMsgSeq?.() || topic._minSeq || 0)));
     if (before <= 1) return { conversation: this.materialize(topic), hasEarlier: false, loaded: 0 };
     const boundedLimit = Math.max(1, Math.min(50, Math.trunc(Number(limit) || HISTORY_PAGE_LIMIT)));
-    const query = topic.startMetaQuery().withEarlierData(boundedLimit);
+    const query = explicitBefore !== undefined && explicitBefore !== null
+      ? topic.startMetaQuery().withData(undefined, before, boundedLimit)
+      : topic.startMetaQuery().withEarlierData(boundedLimit);
     if (typeof query.withDel === 'function') query.withDel(undefined, boundedLimit);
     // Tinode delivers each history packet through onData. Suppress those
     // intermediate snapshots and publish one stable page after the query.
     const wasSyncing = Boolean(topic.__vichatMobileSyncing);
     topic.__vichatMobileSyncing = true;
     try {
-      await withTimeout(topic.getMeta(query.build()), TINODE_REQUEST_TIMEOUT_MS, 'Tinode không phản hồi khi tải lịch sử trò chuyện.');
+      await fetchTopicData(topic, query.build(), 'Tinode history request failed.');
     } finally {
       topic.__vichatMobileSyncing = wasSyncing;
     }
@@ -1555,10 +1827,32 @@ export class TinodeMobileClient {
     topic.noteKeyPress?.();
   }
 
-  async markRead(topicName: string) {
+  async markRead(topicName: string, sequence?: number) {
+    const requestedSequence = Math.max(0, Number(sequence) || 0);
+    const existingTopic = this.topics.get(topicName) || this.client?.getTopic?.(topicName);
+    if (existingTopic) {
+      if (requestedSequence > 0) {
+        existingTopic.read = Math.max(Number(existingTopic.read || 0), requestedSequence);
+        this.updateReceiptCursor(existingTopic, 'read', existingTopic.read);
+      }
+      existingTopic.unread = 0;
+    }
     await this.subscribeTopic(topicName, 0, { emitSnapshot: false });
     const topic = this.getTopic(topicName);
-    topic.noteRead?.();
+    const topicSequence = Math.max(0, Number(topic.maxMsgSeq?.() || 0));
+    const currentRead = Math.max(0, Number(topic.read) || 0);
+    const readSequence = requestedSequence > 0
+      ? Math.max(currentRead, requestedSequence)
+      : Math.max(currentRead, topicSequence);
+    if (readSequence > 0) {
+      topic.noteRead?.(readSequence);
+      topic.read = Math.max(Number(topic.read || 0), readSequence);
+      this.updateReceiptCursor(topic, 'read', readSequence);
+    } else {
+      topic.noteRead?.();
+    }
+    topic.unread = 0;
+    this.scheduleConversationSnapshot(topic);
   }
 
   async sendReaction(topicName: string, message: ChatMessage, emoji: string) {
@@ -1674,49 +1968,65 @@ export class TinodeMobileClient {
   }
 
   getAuthTokenValue() {
-    return String(this.client?.getAuthToken?.()?.token || '');
+    return String(this.client?.getAuthToken?.()?.token || this.auth?.token || '');
   }
 
   private async uploadTinodeFile(file: PickerFile, topicName = '') {
     if (Number(file.size) > config.maxAttachmentBytes) throw new Error('File hoặc ảnh không được lớn hơn 500 MB.');
     const uploadUrl = `${config.mediaBase}/v0/file/u/`;
-    const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const headers = tinodeHeaders(this.getAuthTokenValue());
-    let uploadResponse: { status: number; body: string };
-    try {
-      const fileSystem: any = require('expo-file-system');
-      const parameters = { id: uploadId, ...(topicName ? { topic: topicName } : {}) };
-      if (fileSystem.File && fileSystem.UploadType?.MULTIPART !== undefined) {
-        const localFile = new fileSystem.File(file.uri);
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10 * 60 * 1000);
-        try {
-          const result = await localFile.upload(uploadUrl, {
-            httpMethod: 'POST',
-            uploadType: fileSystem.UploadType.MULTIPART,
-            fieldName: 'file',
-            mimeType: file.type || 'application/octet-stream',
-            parameters,
-            headers,
-            signal: controller.signal,
-          });
-          uploadResponse = { status: Number(result.status || 0), body: String(result.body || '') };
-        } finally {
-          clearTimeout(timeout);
+    const performUpload = async (authToken: string) => {
+      const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const headers = tinodeHeaders(authToken);
+      let uploadResponse: { status: number; body: string };
+      try {
+        const fileSystem: any = require('expo-file-system');
+        const parameters = { id: uploadId, ...(topicName ? { topic: topicName } : {}) };
+        if (fileSystem.File && fileSystem.UploadType?.MULTIPART !== undefined) {
+          const localFile = new fileSystem.File(file.uri);
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+          try {
+            const result = await localFile.upload(uploadUrl, {
+              httpMethod: 'POST',
+              uploadType: fileSystem.UploadType.MULTIPART,
+              fieldName: 'file',
+              mimeType: file.type || 'application/octet-stream',
+              parameters,
+              headers,
+              signal: controller.signal,
+            });
+            uploadResponse = { status: Number(result.status || 0), body: String(result.body || '') };
+          } finally {
+            clearTimeout(timeout);
+          }
+        } else {
+          const form = new FormData();
+          form.append('file', { uri: file.uri, name: file.name || 'tep-dinh-kem', type: file.type || 'application/octet-stream' } as any);
+          form.append('id', uploadId);
+          if (topicName) form.append('topic', topicName);
+          const response = await fetch(uploadUrl, { method: 'POST', headers, body: form });
+          uploadResponse = { status: response.status, body: await response.text() };
         }
-      } else {
-        const form = new FormData();
-        form.append('file', { uri: file.uri, name: file.name || 'tep-dinh-kem', type: file.type || 'application/octet-stream' } as any);
-        form.append('id', uploadId);
-        if (topicName) form.append('topic', topicName);
-        const response = await fetch(uploadUrl, { method: 'POST', headers, body: form });
-        uploadResponse = { status: response.status, body: await response.text() };
+      } catch (error) {
+        const detail = error instanceof Error && error.name === 'AbortError'
+          ? 'Upload quá thời gian cho phép.'
+          : error instanceof Error ? error.message : 'lỗi mạng';
+        throw new Error(`Không kết nối được máy chủ upload: ${detail}`, { cause: error });
       }
-    } catch (error) {
-      const detail = error instanceof Error && error.name === 'AbortError'
-        ? 'Upload quá thời gian cho phép.'
-        : error instanceof Error ? error.message : 'lỗi mạng';
-      throw new Error(`Không kết nối được máy chủ upload: ${detail}`, { cause: error });
+      return uploadResponse;
+    };
+
+    let token = this.getAuthTokenValue();
+    if (!token && this.tokenProvider) {
+      await this.refreshMediaAuth().catch(() => false);
+      token = this.getAuthTokenValue();
+    }
+    let uploadResponse = await performUpload(token);
+    if (uploadResponse.status === 401 && this.tokenProvider) {
+      const refreshed = await this.refreshMediaAuth().catch(() => false);
+      if (refreshed) {
+        uploadResponse = await performUpload(this.getAuthTokenValue());
+      }
     }
     const payload = (() => {
       try { return JSON.parse(uploadResponse.body); } catch { return {}; }
@@ -1730,12 +2040,16 @@ export class TinodeMobileClient {
 
   private async uploadFile(file: PickerFile, topicName = '', conversationId = '', requireConversation = false) {
     if (Number(file.size) > config.maxAttachmentBytes) throw new Error('File hoặc ảnh không được lớn hơn 500 MB.');
-    if (config.chatMediaStorage !== 's3') return this.uploadTinodeFile(file, topicName);
+    if (!file.type && /\.m4a$/i.test(file.name || '')) {
+      file.type = 'audio/mp4';
+    }
+    const isSvg = file.type === 'image/svg+xml' || /\.svg$/i.test(file.name || '');
+    if (config.chatMediaStorage !== 's3' || isSvg) return this.uploadTinodeFile(file, topicName);
     const scopedConversationId = String(conversationId || '').trim();
-    if (!scopedConversationId) {
-      if (requireConversation) throw new Error('Thiếu cuộc trò chuyện để tải file lên S3.');
-      // Account/Tinode profile fallback remains available when the Account
-      // avatar contract rejects an upload; chat media must stay conversation-scoped.
+    if (!scopedConversationId || !isChatMediaUuid(scopedConversationId)) {
+      if (requireConversation && !topicName) throw new Error('Thiếu cuộc trò chuyện để tải file.');
+      // When a topic has no Chatmgt UUID scope (such as native Tinode groups or topics
+      // not yet registered in Chatmgt), upload directly via Tinode media server.
       return this.uploadTinodeFile(file, topicName);
     }
     try {
@@ -1754,12 +2068,12 @@ export class TinodeMobileClient {
   }
 
   async bindChatMediaReference(value: string, conversationId: string, messageRef: string) {
-    if (!isChatMediaReference(value)) return null;
-    return bindChatMedia(value, { conversationId, messageRef });
+    if (!isChatMediaReference(value) || !isChatMediaUuid(conversationId)) return null;
+    return bindChatMediaWithRetry(value, { conversationId, messageRef });
   }
 
   async discardChatMediaReference(value: string, conversationId: string) {
-    if (!isChatMediaReference(value)) return null;
+    if (!isChatMediaReference(value) || !isChatMediaUuid(conversationId)) return null;
     return discardChatMedia(value, { conversationId });
   }
 
@@ -1842,22 +2156,29 @@ export class TinodeMobileClient {
   }) {
     if (!this.client) throw new Error('Tinode chưa kết nối.');
     const topic = this.wireTopic(this.client.getTopic(this.client.newGroupTopicName(false)));
-    await topic.subscribe(
-      topic.startMetaQuery().withDesc().withSub().build(),
-      { desc: { public: { fn: name, note: description }, defacs: { auth: 'N', anon: 'N' } } },
-    );
     let avatarUrl = '';
-    if (avatarFile) {
-      avatarUrl = await this.uploadFile(avatarFile, topic.name, conversationId, true);
-      await topic.setMeta({ desc: { public: {
-        fn: name,
-        note: description,
-        photo: { ref: avatarUrl, mime: avatarFile.type || 'image/jpeg', size: avatarFile.size || 0 },
-      } } });
+    try {
+      await topic.subscribe(
+        topic.startMetaQuery().withDesc().withSub().build(),
+        { desc: { public: { fn: name, note: description }, defacs: { auth: 'N', anon: 'N' } } },
+      );
+      if (avatarFile) {
+        avatarUrl = await this.uploadFile(avatarFile, topic.name, conversationId, true);
+        await topic.setMeta({ desc: { public: {
+          fn: name,
+          note: description,
+          photo: { ref: avatarUrl, mime: avatarFile.type || 'image/jpeg', size: avatarFile.size || 0 },
+        } } });
+      }
+      await Promise.all([...new Set(memberIds.filter(Boolean))].map(uid => topic.invite(uid, 'JRWPAS')));
+      const conversation = this.materialize(topic);
+      return { ...conversation, avatarUrl: avatarUrl || conversation.avatarUrl };
+    } catch (error) {
+      // Do not leave a pending S3 object behind when group provisioning fails.
+      if (avatarUrl && conversationId) await this.discardChatMediaReference(avatarUrl, conversationId).catch(() => {});
+      await this.discardGroupTopic(topic.name).catch(() => {});
+      throw error;
     }
-    await Promise.all([...new Set(memberIds.filter(Boolean))].map(uid => topic.invite(uid, 'JRWPAS')));
-    const conversation = this.materialize(topic);
-    return { ...conversation, avatarUrl: avatarUrl || conversation.avatarUrl };
   }
 
   async discardGroupTopic(topicName: string) {
@@ -1877,7 +2198,16 @@ export class TinodeMobileClient {
     const isImage = /^image\//i.test(mime) || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(filename);
     if (!Drafty || (isImage ? !Drafty.appendImage : !Drafty.attachFile)) throw new Error('Tinode SDK không hỗ trợ file trên thiết bị này.');
     const conversationId = String(metadata.conversationId || '').trim();
+    if (file.uri) {
+      if (file.name) localVoiceUriCache.set(file.name, file.uri);
+    }
     const url = await this.uploadFile(file, topicName, conversationId, true);
+    if (url && file.uri) {
+      localVoiceUriCache.set(url, file.uri);
+      const normalized = normalizeMediaUrl(url);
+      if (normalized) localVoiceUriCache.set(normalized, file.uri);
+      if (file.name) localVoiceUriCache.set(file.name, file.uri);
+    }
     const attachment = { mime, filename, refurl: url, size: file.size || 0 };
     const content = isImage ? Drafty.appendImage(null, attachment) : Drafty.attachFile(null, attachment);
     const draft = topic.createMessage(content, false);
@@ -1891,7 +2221,11 @@ export class TinodeMobileClient {
       });
     }
     if (metadata.audioDurationMs && metadata.audioDurationMs > 0) {
-      draft.head[AUDIO_HEAD] = JSON.stringify({ durationMs: Math.round(metadata.audioDurationMs) });
+      const durationMs = Math.round(metadata.audioDurationMs);
+      draft.head[AUDIO_HEAD] = JSON.stringify({ durationMs });
+      // Keep the web client's canonical seconds header alongside the native
+      // millisecond metadata so voice messages remain cross-client compatible.
+      draft.head['x-voice-duration'] = String(Number((durationMs / 1000).toFixed(3)));
     }
     let result: any;
     try {

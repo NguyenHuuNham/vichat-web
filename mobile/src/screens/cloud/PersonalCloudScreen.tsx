@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as DocumentPicker from 'expo-document-picker';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Cloud, Download, FileArchive, FileAudio, FileImage, FileText, FileVideo, HardDrive, LockKeyhole, MessageSquareText, Send, ShieldCheck, Trash2, UploadCloud } from 'lucide-react-native';
@@ -15,6 +15,7 @@ import { useThemePalette } from '../../theme/useThemePalette';
 import { EmptyState } from '../../components/EmptyState';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { displayCurrentTenantName } from '../../utils/tenantDisplay';
+import { sessionScopeKey } from '../../utils/sessionScope';
 import { useI18n } from '../../store/languageStore';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Cloud'>;
@@ -70,7 +71,10 @@ export function PersonalCloudScreen(_props: Props) {
   const styles = createStyles(palette);
   const { language, t } = useI18n();
   const session = useAppStore(state => state.session);
+  const sessionKey = sessionScopeKey(session);
   const mountedRef = useRef(true);
+  const cloudSessionKeyRef = useRef(sessionKey);
+  const requestVersionRef = useRef(0);
   const [messages, setMessages] = useState<PersonalCloudMessage[]>([]);
   const [files, setFiles] = useState<PersonalCloudFile[]>([]);
   const [messageCursor, setMessageCursor] = useState<string | null>(null);
@@ -80,7 +84,6 @@ export function PersonalCloudScreen(_props: Props) {
   const [messagesTotal, setMessagesTotal] = useState<number | null>(null);
   const [filesTotal, setFilesTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
   const [loadingMoreFiles, setLoadingMoreFiles] = useState(false);
   const [sending, setSending] = useState(false);
@@ -93,16 +96,24 @@ export function PersonalCloudScreen(_props: Props) {
 
   useEffect(() => () => { mountedRef.current = false; }, []);
 
-  const loadCloud = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
+  const isCurrentScope = (expectedKey: string) => mountedRef.current && cloudSessionKeyRef.current === expectedKey;
+
+  const loadCloud = useCallback(async () => {
+    const requestKey = sessionKey;
+    const requestVersion = ++requestVersionRef.current;
+    const isCurrentRequest = () => isCurrentScope(requestKey) && requestVersionRef.current === requestVersion;
+    if (!requestKey) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     setError('');
     try {
       const [messagePage, filePage] = await Promise.all([
         personalCloudService.listMessages(),
         personalCloudService.listFiles(),
       ]);
-      if (!mountedRef.current) return;
+      if (!isCurrentRequest()) return;
       setMessages(sortMessages(messagePage.items));
       setMessageCursor(messagePage.nextCursor);
       setMessagesHasMore(messagePage.hasMore);
@@ -112,66 +123,90 @@ export function PersonalCloudScreen(_props: Props) {
       setFilesHasMore(filePage.hasMore);
       setFilesTotal(filePage.total);
     } catch (value) {
-      if (mountedRef.current) setError(value instanceof Error ? t(value.message) : t('Không tải được Cloud cá nhân.'));
+      if (isCurrentRequest()) setError(value instanceof Error ? t(value.message) : t('Không tải được Cloud cá nhân.'));
     } finally {
-      if (mountedRef.current) {
+      if (isCurrentRequest()) {
         setLoading(false);
-        setRefreshing(false);
       }
     }
-  }, []);
+  }, [sessionKey, t]);
 
-  useEffect(() => { void loadCloud(); }, [loadCloud]);
+  useEffect(() => {
+    cloudSessionKeyRef.current = sessionKey;
+    requestVersionRef.current += 1;
+    setMessages([]);
+    setFiles([]);
+    setMessageCursor(null);
+    setFileCursor(null);
+    setMessagesHasMore(false);
+    setFilesHasMore(false);
+    setMessagesTotal(null);
+    setFilesTotal(null);
+    setDraft('');
+    setError('');
+    setDeleteTarget(null);
+    setDeleteBusy(false);
+    setBusyFileId('');
+    setSending(false);
+    setUploading(false);
+    setLoading(Boolean(sessionKey));
+    setLoadingMoreMessages(false);
+    setLoadingMoreFiles(false);
+    if (sessionKey) void loadCloud();
+  }, [loadCloud, sessionKey]);
 
   const loadMoreMessages = async () => {
     if (!messageCursor || loadingMoreMessages) return;
+    const requestKey = sessionKey;
     setLoadingMoreMessages(true);
     try {
       const page = await personalCloudService.listMessages({ cursor: messageCursor });
-      if (!mountedRef.current) return;
+      if (!isCurrentScope(requestKey)) return;
       setMessages(current => sortMessages([...current, ...page.items]));
       setMessageCursor(page.nextCursor);
       setMessagesHasMore(page.hasMore);
       if (page.total !== null) setMessagesTotal(page.total);
     } catch (value) {
-      if (mountedRef.current) setError(value instanceof Error ? t(value.message) : t('Không tải thêm tin nhắn Cloud.'));
+      if (isCurrentScope(requestKey)) setError(value instanceof Error ? t(value.message) : t('Không tải thêm tin nhắn Cloud.'));
     } finally {
-      if (mountedRef.current) setLoadingMoreMessages(false);
+      if (isCurrentScope(requestKey)) setLoadingMoreMessages(false);
     }
   };
 
   const loadMoreFiles = async () => {
     if (!fileCursor || loadingMoreFiles) return;
+    const requestKey = sessionKey;
     setLoadingMoreFiles(true);
     try {
       const page = await personalCloudService.listFiles({ cursor: fileCursor });
-      if (!mountedRef.current) return;
+      if (!isCurrentScope(requestKey)) return;
       setFiles(current => sortFiles([...current, ...page.items]));
       setFileCursor(page.nextCursor);
       setFilesHasMore(page.hasMore);
       if (page.total !== null) setFilesTotal(page.total);
     } catch (value) {
-      if (mountedRef.current) setError(value instanceof Error ? t(value.message) : t('Không tải thêm file Cloud.'));
+      if (isCurrentScope(requestKey)) setError(value instanceof Error ? t(value.message) : t('Không tải thêm file Cloud.'));
     } finally {
-      if (mountedRef.current) setLoadingMoreFiles(false);
+      if (isCurrentScope(requestKey)) setLoadingMoreFiles(false);
     }
   };
 
   const sendMessage = async () => {
     const value = draft.trim();
     if (!value || sending) return;
+    const requestKey = sessionKey;
     setSending(true);
     setError('');
     try {
       const message = await personalCloudService.sendMessage(value);
-      if (!message || !mountedRef.current) return;
+      if (!message || !isCurrentScope(requestKey)) return;
       setMessages(current => sortMessages([...current, message]));
       setMessagesTotal(current => current === null ? current : current + 1);
       setDraft('');
     } catch (valueError) {
-      if (mountedRef.current) setError(valueError instanceof Error ? t(valueError.message) : t('Không thể gửi tin nhắn Cloud.'));
+      if (isCurrentScope(requestKey)) setError(valueError instanceof Error ? t(valueError.message) : t('Không thể gửi tin nhắn Cloud.'));
     } finally {
-      if (mountedRef.current) setSending(false);
+      if (isCurrentScope(requestKey)) setSending(false);
     }
   };
 
@@ -181,15 +216,17 @@ export function PersonalCloudScreen(_props: Props) {
 
   const pickFiles = async () => {
     if (uploading) return;
+    const requestKey = sessionKey;
     try {
       beginTrustedExternalActivity();
       const result: any = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, multiple: true });
-      if (result.canceled || !result.assets?.length) return;
+      if (result.canceled || !result.assets?.length || !isCurrentScope(requestKey)) return;
       setUploading(true);
       setError('');
       const uploaded: PersonalCloudFile[] = [];
       const failed: string[] = [];
       for (const asset of result.assets) {
+        if (!isCurrentScope(requestKey)) return;
         const file: PickerFile = {
           uri: asset.uri,
           name: asset.name || 'tep-dinh-kem',
@@ -202,25 +239,27 @@ export function PersonalCloudScreen(_props: Props) {
           failed.push(`${file.name}: ${value instanceof Error ? t(value.message) : t('tải lên thất bại')}`);
         }
       }
-      if (mountedRef.current && uploaded.length) {
+      if (isCurrentScope(requestKey) && uploaded.length) {
         setFiles(current => sortFiles([...uploaded, ...current]));
         setFilesTotal(current => current === null ? current : current + uploaded.length);
       }
-      if (mountedRef.current && failed.length) setError(failed.length === 1 ? failed[0] : `${t('Có')} ${failed.length} ${t('file tải lên thất bại')}.`);
+      if (isCurrentScope(requestKey) && failed.length) setError(failed.length === 1 ? failed[0] : `${t('Có')} ${failed.length} ${t('file tải lên thất bại')}.`);
     } catch (value) {
-      if (mountedRef.current) setError(value instanceof Error ? t(value.message) : t('Không thể chọn file.'));
+      if (isCurrentScope(requestKey)) setError(value instanceof Error ? t(value.message) : t('Không thể chọn file.'));
     } finally {
-      if (mountedRef.current) setUploading(false);
+      if (isCurrentScope(requestKey)) setUploading(false);
     }
   };
 
   const openFile = async (file: PersonalCloudFile, download = false) => {
     if (busyFileId) return;
+    const requestKey = sessionKey;
     setBusyFileId(file.id);
     setError('');
     try {
       beginTrustedExternalActivity();
       const url = await personalCloudService.getDownloadUrl(file.id, download);
+      if (!isCurrentScope(requestKey)) return;
       if (!download || Platform.OS === 'web') {
         await Linking.openURL(url);
       } else {
@@ -231,14 +270,15 @@ export function PersonalCloudScreen(_props: Props) {
         } else {
           const target = new fileSystem.File(fileSystem.Paths.cache, `vichat-cloud-${Date.now()}-${safeFileName(file.fileName)}`);
           const downloaded = await fileSystem.File.downloadFileAsync(url, target, { idempotent: true });
+          if (!isCurrentScope(requestKey)) return;
           if (await sharing.isAvailableAsync()) await sharing.shareAsync(downloaded.uri, { mimeType: file.mimeType, dialogTitle: file.fileName });
           else await Linking.openURL(downloaded.uri);
         }
       }
     } catch (value) {
-      if (mountedRef.current) setError(value instanceof Error ? t(value.message) : t('Không thể mở file Cloud.'));
+      if (isCurrentScope(requestKey)) setError(value instanceof Error ? t(value.message) : t('Không thể mở file Cloud.'));
     } finally {
-      if (mountedRef.current) setBusyFileId('');
+      if (isCurrentScope(requestKey)) setBusyFileId('');
     }
   };
 
@@ -248,26 +288,28 @@ export function PersonalCloudScreen(_props: Props) {
 
   const confirmDelete = async () => {
     if (!deleteTarget || deleteBusy) return;
+    const requestKey = sessionKey;
+    const target = deleteTarget;
     setDeleteBusy(true);
     try {
-      if (deleteTarget.kind === 'message') {
-        await personalCloudService.deleteMessage(deleteTarget.item.id);
-        if (mountedRef.current) {
-          setMessages(current => current.filter(item => item.id !== deleteTarget.item.id));
+      if (target.kind === 'message') {
+        await personalCloudService.deleteMessage(target.item.id);
+        if (isCurrentScope(requestKey)) {
+          setMessages(current => current.filter(item => item.id !== target.item.id));
           setMessagesTotal(current => current === null ? current : Math.max(0, current - 1));
         }
       } else {
-        await personalCloudService.deleteFile(deleteTarget.item.id);
-        if (mountedRef.current) {
-          setFiles(current => current.filter(item => item.id !== deleteTarget.item.id));
+        await personalCloudService.deleteFile(target.item.id);
+        if (isCurrentScope(requestKey)) {
+          setFiles(current => current.filter(item => item.id !== target.item.id));
           setFilesTotal(current => current === null ? current : Math.max(0, current - 1));
         }
       }
-      setDeleteTarget(null);
+      if (isCurrentScope(requestKey)) setDeleteTarget(null);
     } catch (value) {
-      if (mountedRef.current) setError(value instanceof Error ? t(value.message) : t('Không thể xóa khỏi Cloud.'));
+      if (isCurrentScope(requestKey)) setError(value instanceof Error ? t(value.message) : t('Không thể xóa khỏi Cloud.'));
     } finally {
-      setDeleteBusy(false);
+      if (isCurrentScope(requestKey)) setDeleteBusy(false);
     }
   };
 
@@ -322,7 +364,6 @@ export function PersonalCloudScreen(_props: Props) {
           ListEmptyComponent={loading ? null : <EmptyState icon={HardDrive} title={t('Chưa có file riêng tư')} description={t('Những file bạn tải lên sẽ chỉ xuất hiện trong Cloud của tài khoản này.')} />}
           ListFooterComponent={filesHasMore ? <Pressable onPress={() => void loadMoreFiles()} disabled={loadingMoreFiles} style={styles.loadMore}>{loadingMoreFiles ? <ActivityIndicator color={palette.accent} size="small" /> : <Text style={styles.loadMoreText}>{t('Tải thêm file')}</Text>}</Pressable> : null}
           contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void loadCloud(true)} tintColor={palette.accent} colors={[palette.accent]} />}
           showsVerticalScrollIndicator={false}
           onEndReachedThreshold={0.65}
           onEndReached={() => { if (fileCursor && !loadingMoreFiles) void loadMoreFiles(); }}

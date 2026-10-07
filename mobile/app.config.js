@@ -2,7 +2,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const fs = require('node:fs');
 const path = require('node:path');
-const base = require('./app.json');
 
 function writeGeneratedCredential(fileName, rawValue, validate) {
   const raw = String(rawValue || '').trim();
@@ -54,14 +53,17 @@ if (process.env.EXPO_PUBLIC_PUSH_ENABLED !== 'false' && !googleServicesFile) {
   console.warn('[ViChat] Android remote push is disabled in this build: GOOGLE_SERVICES_JSON(_BASE64) is missing.');
 }
 
-module.exports = {
-  ...base,
-  expo: {
-    ...base.expo,
-    plugins: [...(base.expo.plugins || []), 'expo-audio', './plugins/withSilentPushFilter'],
-    android: {
-      ...base.expo.android,
-      ...(googleServicesFile ? { googleServicesFile } : {}),
-    },
+module.exports = ({ config }) => ({
+  ...config,
+  plugins: [
+    ...(config.plugins || []),
+    'expo-asset',
+    'expo-audio',
+    './plugins/withNewArchitectureDisabled',
+    './plugins/withSilentPushFilter',
+  ],
+  android: {
+    ...config.android,
+    ...(googleServicesFile ? { googleServicesFile } : {}),
   },
-};
+});

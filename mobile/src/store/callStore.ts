@@ -1,3 +1,4 @@
+import { Platform, PermissionsAndroid } from 'react-native';
 import { create } from 'zustand';
 import type { MediaStream, RTCIceCandidate as RTCIceCandidateType, RTCPeerConnection as RTCPeerConnectionType } from 'react-native-webrtc';
 import { tinodeClient, CALL_SIGNAL_EVENTS } from '../services/tinodeClient';
@@ -126,6 +127,17 @@ export const useCallStore = create<CallState>((set, get) => {
 
   const getLocalMedia = async (call: MobileCall) => {
     if (localStream) return localStream;
+    if (Platform.OS === 'android') {
+      const perms = [PermissionsAndroid.PERMISSIONS.RECORD_AUDIO];
+      if (!call.audioOnly) perms.push(PermissionsAndroid.PERMISSIONS.CAMERA);
+      const res = await PermissionsAndroid.requestMultiple(perms);
+      if (res[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] !== PermissionsAndroid.RESULTS.GRANTED) {
+        throw new Error('Cần cấp quyền truy cập Micro để thực hiện cuộc gọi.');
+      }
+      if (!call.audioOnly && res[PermissionsAndroid.PERMISSIONS.CAMERA] !== PermissionsAndroid.RESULTS.GRANTED) {
+        throw new Error('Cần cấp quyền truy cập Camera để thực hiện cuộc gọi video.');
+      }
+    }
     const media = getWebRtc().mediaDevices;
     const stream = await media.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true },
@@ -144,7 +156,13 @@ export const useCallStore = create<CallState>((set, get) => {
     const connection = peerConnection;
     if (!connection?.remoteDescription) return;
     const pending = remoteCandidates.splice(0);
-    for (const candidate of pending) await connection.addIceCandidate(candidate).catch(() => {});
+    for (const candidate of pending) {
+      try {
+        await connection.addIceCandidate(candidate);
+      } catch {
+        // Non-fatal: redundant or late candidate
+      }
+    }
   };
 
   const markConnected = () => {
@@ -158,7 +176,10 @@ export const useCallStore = create<CallState>((set, get) => {
   const createPeer = () => {
     if (peerConnection) return peerConnection;
     const PeerConnection = getWebRtc().RTCPeerConnection;
-    const connection = new PeerConnection({ iceServers: tinodeClient.getCallIceServers() as any });
+    const connection = new PeerConnection({
+      iceServers: tinodeClient.getCallIceServers() as any,
+      iceCandidatePoolSize: 2,
+    });
     (connection as any).onicecandidate = (event: any) => {
       const call = get().call;
       if (!event?.candidate || !call?.seq) return;
@@ -166,7 +187,7 @@ export const useCallStore = create<CallState>((set, get) => {
       const key = candidateKey(candidate);
       if (!key || localCandidateKeys.has(key)) return;
       localCandidateKeys.add(key);
-      void tinodeClient.sendCallSignal(call.topic, call.seq, CALL_SIGNAL_EVENTS.ICE_CANDIDATE, candidate).catch(error => failCall(error));
+      void tinodeClient.sendCallSignal(call.topic, call.seq, CALL_SIGNAL_EVENTS.ICE_CANDIDATE, candidate).catch(() => {});
     };
     const attachRemoteStream = (stream: MediaStream | null) => {
       if (!stream) return;
@@ -174,8 +195,35 @@ export const useCallStore = create<CallState>((set, get) => {
       set({ remoteStream: stream });
     };
     (connection as any).ontrack = (event: any) => {
-      const stream = event?.streams?.[0];
-      attachRemoteStream(stream || null);
+      const eventStream = event?.streams?.[0];
+      let stream = remoteStream || eventStream;
+      if (!stream) {
+        const MediaStreamConstructor = getWebRtc().MediaStream;
+        stream = new MediaStreamConstructor();
+      }
+      if (event?.track) {
+        const existingTracks = stream.getTracks?.() || [];
+        if (!existingTracks.some((t: any) => t.id === event.track.id)) {
+          try {
+            stream.addTrack(event.track);
+          } catch {
+            // Track might already be registered in native stream
+          }
+        }
+      }
+      if (eventStream && stream !== eventStream) {
+        (eventStream.getTracks?.() || []).forEach((t: any) => {
+          const existingTracks = stream!.getTracks?.() || [];
+          if (!existingTracks.some((et: any) => et.id === t.id)) {
+            try {
+              stream!.addTrack(t);
+            } catch {
+              // Track might already be registered in native stream
+            }
+          }
+        });
+      }
+      attachRemoteStream(stream);
     };
     (connection as any).onaddstream = (event: any) => attachRemoteStream(event?.stream || null);
     const connectionStateChanged = () => {
@@ -255,7 +303,7 @@ export const useCallStore = create<CallState>((set, get) => {
     if (!payload) return;
     try {
       const candidatePayload = normalizeCallCandidate(payload);
-      if (!candidatePayload) throw new Error('ICE candidate không hợp lệ.');
+      if (!candidatePayload || !candidatePayload.candidate) return;
       const key = candidateKey(candidatePayload);
       if (!key || remoteCandidateKeys.has(key)) return;
       remoteCandidateKeys.add(key);
@@ -265,9 +313,9 @@ export const useCallStore = create<CallState>((set, get) => {
         remoteCandidates.push(candidate);
         return;
       }
-      await connection.addIceCandidate(candidate).catch(error => failCall(error));
-    } catch (error) {
-      failCall(error);
+      await connection.addIceCandidate(candidate).catch(() => {});
+    } catch {
+      // Non-fatal candidate parse or addition error
     }
   };
 
@@ -333,7 +381,7 @@ export const useCallStore = create<CallState>((set, get) => {
       };
       set({ call, error: '' });
       startTimeout();
-      void tinodeClient.sendCallSignal(event.topic, event.seq, CALL_SIGNAL_EVENTS.RINGING).catch(error => failCall(error));
+      void tinodeClient.sendCallSignal(event.topic, event.seq, CALL_SIGNAL_EVENTS.RINGING).catch(() => {});
     },
 
     handleSignal(event) {
@@ -391,7 +439,13 @@ export const useCallStore = create<CallState>((set, get) => {
     },
 
     switchCamera() {
-      localStream?.getVideoTracks?.()[0]?._switchCamera?.();
+      const track = localStream?.getVideoTracks?.()[0] as any;
+      if (!track) return;
+      if (typeof track.switchCamera === 'function') {
+        track.switchCamera();
+      } else if (typeof track._switchCamera === 'function') {
+        track._switchCamera();
+      }
     },
 
     clearError() { set({ error: '' }); },

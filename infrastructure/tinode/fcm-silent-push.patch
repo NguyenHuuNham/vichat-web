@@ -1,9 +1,57 @@
 diff --git a/server/push/fcm/payload.go b/server/push/fcm/payload.go
-index 5d16af5..3b1356c 100644
+index 5d16af5..e843ba1 100644
 --- a/server/push/fcm/payload.go
 +++ b/server/push/fcm/payload.go
-@@ -260,0 +261,7 @@ func androidNotificationConfig(what, topic string, data map[string]string, config *configType)
+@@ -34,6 +34,17 @@ const (
+ 	defaultTimeToLive = 3600
+ )
+ 
++func extractFn(pub any) string {
++	if pub == nil {
++		return ""
++	}
++	if m, ok := pub.(map[string]any); ok {
++		if fn, ok := m["fn"].(string); ok {
++			return fn
++		}
++	}
++	return ""
++}
 +
+ func payloadToData(pl *push.Payload) (map[string]string, error) {
+ 	if pl == nil {
+ 		return nil, errors.New("empty push payload")
+@@ -73,6 +84,22 @@ func payloadToData(pl *push.Payload) (map[string]string, error) {
+ 			// Notification of a message edit should be silent too.
+ 			data["silent"] = "true"
+ 			data["replace"] = pl.Replace
+ 		}
++		if pl.From != "" {
++			if senderUid := t.ParseUid(pl.From); !senderUid.IsZero() {
++				if usr, errUser := store.Users.Get(senderUid); errUser == nil && usr != nil {
++					if fn := extractFn(usr.Public); fn != "" {
++						data["sender_name"] = fn
++					}
++				}
++			}
++		}
++		if t.GetTopicCat(pl.Topic) == t.TopicCatGrp {
++			if grpTopic, errTopic := store.Topics.Get(pl.Topic); errTopic == nil && grpTopic != nil {
++				if fn := extractFn(grpTopic.Public); fn != "" {
++					data["group_name"] = fn
++				}
++			}
++		}
+ 		if err != nil {
+ 			return nil, err
+ 		}
+@@ -260,6 +287,13 @@ func androidNotificationConfig(what, topic string, data map[string]string, config *configType) *fcmv1.AndroidConfig {
+ 	priority := string(common.AndroidPriorityHigh)
+ 	ac := &fcmv1.AndroidConfig{
+ 		Priority: priority,
+ 		Ttl:      timeToLive,
+ 	}
+ 
 +	// Tinode marks sender/device-sync and edit pushes as silent. Keep those
 +	// pushes data-only so Android does not show a notification to the sender.
 +	// Calls remain visible because they need the high-priority call alert.
@@ -11,3 +59,37 @@ index 5d16af5..3b1356c 100644
 +		return &fcmv1.AndroidConfig{Priority: string(common.AndroidPriorityHigh), Ttl: timeToLive}
 +	}
 +
+ 	// When this notification type is included and the app is not in the foreground
+ 	// Android won't wake up the app and won't call FirebaseMessagingService:onMessageReceived.
+ 	// See dicussion: https://github.com/firebase/quickstart-js/issues/71
+@@ -274,6 +308,19 @@ func androidNotificationConfig(what, topic string, data map[string]string, config *configType) *fcmv1.AndroidConfig {
+ 	body := config.Android.GetStringField(what, "Body")
+ 	if body == "$content" {
+ 		body = data["content"]
+ 	}
++	title := config.Android.GetStringField(what, "Title")
++	if senderName := data["sender_name"]; senderName != "" {
++		if groupName := data["group_name"]; groupName != "" {
++			title = groupName
++			if body != "" {
++				body = senderName + ": " + body
++			}
++		} else {
++			title = senderName
++		}
++	} else if groupName := data["group_name"]; groupName != "" {
++		title = groupName
++	}
+ 
+ 	// Client-side display priority.
+ 	priority = string(common.AndroidNotificationPriorityHigh)
+@@ -278,7 +325,7 @@ func androidNotificationConfig(what, topic string, data map[string]string, config *configType) *fcmv1.AndroidConfig {
+ 		Tag:                  topic,
+ 		NotificationPriority: priority,
+ 		Visibility:           string(common.AndroidVisibilityPrivate),
+ 		TitleLocKey:          config.Android.GetStringField(what, "TitleLocKey"),
+-		Title:                config.Android.GetStringField(what, "Title"),
++		Title:                title,
+ 		BodyLocKey:           config.Android.GetStringField(what, "BodyLocKey"),
+ 		Body:                 body,
+ 		Icon:                 config.Android.GetStringField(what, "Icon"),
