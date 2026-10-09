@@ -101,10 +101,10 @@ export function ConversationListScreen({ navigation }: Props) {
     });
 
     const activeBots = [
-      { id: '2274336170816480019', name: 'Gonstack', count: counts['2274336170816480019'] || 0 },
       { id: '262829019064124420', name: 'Hoàng Hà Mobile', count: counts['262829019064124420'] || 0 },
+      { id: '2274336170816480019', name: 'Gonstack', count: counts['2274336170816480019'] || 0 },
       { id: '3733466236951056718', name: 'CBS global education', count: counts['3733466236951056718'] || 0 },
-    ].filter(b => b.count > 0);
+    ];
 
     Object.keys(counts).forEach(oid => {
       if (!activeBots.some(b => b.id === oid) && oid !== 'other' && counts[oid] > 0) {

@@ -6,6 +6,39 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-09-02 - Hien thi day du 3 Bot Zalo OA va khac phuc triet de loi danh sach hoi thoai va tin nhan rong tren Web:
+
+- Thoi gian: 2026-10-09 10:48 (Asia/Saigon)
+- Loai: Bug Fix & Feature Sync | Zalo OA / Livechat Message Hydration & Full Bot Visibility
+- Trang thai: Hoan tat 100%, test pass toan bo Frontend Web (462/462), Mobile (239/239), build production pass (1.34s).
+- Yeu cau tu nguoi dung:
+  1. Co 3 Bot Zalo OA da lien ket voi tenant (Hoang Ha Mobile, Gonstack, CBS global education) nhung trong Chat Web chi hien thi 2 bot (thieu CBS global education).
+  2. Trong Chat Web, danh sach hoi thoai va tin nhan bi trang/rong khong hien thi mac du da vao dung tenant.
+- Nguyen nhan ky thuat:
+  1. Thieu Bot trong danh sach:
+     - Truoc day `zaloBots` duoc tinh toan bang cach duyet qua cac cuoc hoi thoai hien co trong `filterableConversations`. Vi bot `CBS global education` (`3733466236951056718`) chua co hoi thoai phat sinh nao trong Redis cua tenant `gonstack` (`count = 0`), nen no bi bo qua hoan toan khoi `botMap` va dropdown bo loc.
+     - Tren Mobile, `ConversationListScreen.tsx` cung co dong `.filter(b => b.count > 0)` loai bo bot co count = 0.
+  2. Danh sach cuoc hoi thoai va tin nhan bi rong tren Web:
+     - Ham `shouldShowConversation(room, draft)` trong `src/features/chat/services/chatRealtime.js` chi hien thi hoi thoai neu `room.isGroup`, `room.isChatbot`, co draft, hoac `room.messages.some(Boolean)`.
+     - Trong khi do, ham `normalizeConversation(record)` trong `chatManagementService.js` truoc day bi hardcode `messages: []` (cho rang tin nhan chi load tu Tinode), dan den cac hoi thoai Zalo OA va Livechat (von la phong chat 1-1 khong phai nhom va khong phai chatbot) co mang `messages` rong, khien `shouldShowConversation` tra ve `false` va loc bo sach toan bo 754 hoi thoai khoi sidebar.
+     - Khi nguoi dung click vao hoi thoai Zalo OA tren Web, `handleConversationSelect` chi clear badge ma khong goi fetch lich su tin nhan tu backend `/api/v1/zalo/conversations/<id>/messages`.
+- Cac thay doi da thuc hien:
+  1. `src/features/chat/services/chatRealtime.js`:
+     - Bo sung dieu kien trong `shouldShowConversation`: Giu lai toan bo hoi thoai thuoc cac kenh `zalo_oa`, `zalo`, `livechat`, `facebook` hoac co `lastMsg` / `lastMessage`.
+  2. `src/features/chat/services/chatManagementService.js`:
+     - Trong `normalizeConversation`: Bao toan mang `messages` tu server payload (`messages: Array.isArray(record?.messages) && record.messages.length > 0 ? record.messages : []`) va `lastMsg`.
+     - Bo sung ham `getZaloMessages(conversationId)` goi `/api/v1/zalo/conversations/${encodeURIComponent(conversationId)}/messages`.
+  3. `src/app/App.jsx`:
+     - Trong `zaloBots`: Khoi tao truoc danh sach cac bot da lien ket cua tenant (`Hoàng Hà Mobile`, `Gonstack`, `CBS global education`), nho do CBS luon hien thi day du trong dropdown va sub-bar ngay ca khi co 0 hoi thoai.
+     - Trong `handleConversationSelect`: Goi `chatManagementService.getZaloMessages(id)` va `chatManagementService.getLivechatMessages(id)` de nap day du lich su tin nhan khi chon phong chat.
+     - Dong bo them `livechatRooms` vao `rooms` hydration map de khong bo sot hoi thoai Livechat.
+  4. `mobile/src/screens/chat/ConversationListScreen.tsx`:
+     - Giu nguyen ca 3 bot `Hoàng Hà Mobile`, `Gonstack`, `CBS global education` trong `activeBots` khong bi loc bo boi `count > 0`.
+- Ket qua kiem thu:
+  - Frontend Web unit tests: `npm run test:frontend` dat 462/462 tests PASS (11.8s).
+  - Mobile unit tests: `npm test` trong `mobile/` dat 50/50 files, 239/239 tests PASS (4.46s).
+  - Build production: `npm run build:production` thanh cong trong 1.34s.
+
 ## 2026-10-09-01 - Dong bo giao dien de muc kenh hoi thoai theo Mobile va khac phuc triet de loi ket noi Tinode Web:
 
 - Thoi gian: 2026-10-09 10:05 (Asia/Saigon)

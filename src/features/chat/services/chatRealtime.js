@@ -699,6 +699,9 @@ export function shouldShowConversation(room, draft = '') {
   if (!room) return false;
   if (room.isGroup || room.isChatbot) return true;
   if (String(draft || '').trim()) return true;
+  if (room.channel === 'zalo_oa' || room.channel === 'zalo' || room.channel === 'livechat' || room.channel === 'facebook') return true;
+  if (String(room.id || '').startsWith('zalo:') || String(room.id || '').startsWith('livechat:') || String(room.id || '').startsWith('fb:')) return true;
+  if (String(room.lastMsg || room.lastMessage || '').trim()) return true;
   return Array.isArray(room.messages) && room.messages.some(Boolean);
 }
 

@@ -3238,13 +3238,35 @@ function managementRoomsForSession(managed, accounts, user, accountSession) {
       isChatbot: false,
       accountSession,
       messages: Array.isArray(room.messages) ? room.messages : [],
-      lastMsg: room.lastMsg || 'Chưa có tin nhắn',
+      lastMsg: room.lastMsg || room.lastMessage || 'Chưa có tin nhắn',
+      time: room.time || '',
+      badge: Number(room.badge) || 0,
+    }));
+  const livechatRooms = safeConversationList(managed?.conversations)
+    .filter(room => room?.channel === 'livechat' || room?.sourceType === 'livechat' || String(room?.id || '').startsWith('livechat:'))
+    .map(room => ({
+      ...room,
+      id: room.id,
+      managementId: room.id,
+      tinodeTopic: room.id,
+      channel: 'livechat',
+      channelType: 'livechat',
+      sourceType: 'livechat',
+      name: room.name || 'Khách Website',
+      avatarUrl: room.avatarUrl || room.avatar || '',
+      avatar: room.avatarUrl || room.avatar || '',
+      isGroup: false,
+      isChatbot: false,
+      accountSession,
+      messages: Array.isArray(room.messages) ? room.messages : [],
+      lastMsg: room.lastMsg || room.lastMessage || 'Chưa có tin nhắn',
       time: room.time || '',
       badge: Number(room.badge) || 0,
     }));
   const rooms = {
     ...Object.fromEntries(remoteRooms.map(room => [room.id, room])),
     ...Object.fromEntries(zaloRooms.map(room => [room.id, room])),
+    ...Object.fromEntries(livechatRooms.map(room => [room.id, room])),
     ...Object.fromEntries(savedGroups.map(group => [group.id, group])),
     ...Object.fromEntries(savedDirects.map(direct => [direct.id, direct])),
   };
@@ -7731,9 +7753,63 @@ function App() {
       }
     }
     if (room?.channel === 'zalo_oa' || String(room?.id || '').startsWith('zalo:')) {
-      setConversations(previous => previous[id]
-        ? { ...previous, [id]: { ...previous[id], badge: 0, unreadFromSeq: 0 } }
-        : previous);
+      try {
+        const remoteMessages = await chatManagementService.getZaloMessages(id);
+        if (remoteMessages && remoteMessages.length > 0) {
+          setConversations(previous => {
+            const current = previous[id] || room;
+            return {
+              ...previous,
+              [id]: {
+                ...current,
+                messages: remoteMessages,
+                badge: 0,
+                unreadFromSeq: 0,
+              },
+            };
+          });
+        } else {
+          setConversations(previous => previous[id]
+            ? { ...previous, [id]: { ...previous[id], badge: 0, unreadFromSeq: 0 } }
+            : previous);
+        }
+      } catch {
+        setConversations(previous => previous[id]
+          ? { ...previous, [id]: { ...previous[id], badge: 0, unreadFromSeq: 0 } }
+          : previous);
+      }
+      if (openingConversationRef.current === String(id)) {
+        openingConversationRef.current = '';
+        if (shouldScrollToLatestOnOpen && isCurrent()) queueConversationLatestScroll(id, navigation);
+      }
+      return;
+    }
+    if (room?.channel === 'livechat' || String(room?.id || '').startsWith('livechat:')) {
+      try {
+        const remoteMessages = await chatManagementService.getLivechatMessages(id);
+        if (remoteMessages && remoteMessages.length > 0) {
+          setConversations(previous => {
+            const current = previous[id] || room;
+            return {
+              ...previous,
+              [id]: {
+                ...current,
+                messages: remoteMessages,
+                badge: 0,
+                unreadFromSeq: 0,
+              },
+            };
+          });
+        } else {
+          setConversations(previous => previous[id]
+            ? { ...previous, [id]: { ...previous[id], badge: 0, unreadFromSeq: 0 } }
+            : previous);
+        }
+      } catch {
+        setConversations(previous => previous[id]
+          ? { ...previous, [id]: { ...previous[id], badge: 0, unreadFromSeq: 0 } }
+          : previous);
+      }
       if (openingConversationRef.current === String(id)) {
         openingConversationRef.current = '';
         if (shouldScrollToLatestOnOpen && isCurrent()) queueConversationLatestScroll(id, navigation);
@@ -13778,6 +13854,14 @@ function App() {
       room => room && (room.channel === 'zalo_oa' || String(room.id || '').startsWith('zalo:') || room.oa_id)
     );
     const botMap = new Map();
+    const defaultBots = [
+      { id: '262829019064124420', name: 'Hoàng Hà Mobile', count: 0 },
+      { id: '2274336170816480019', name: 'Gonstack', count: 0 },
+      { id: '3733466236951056718', name: 'CBS global education', count: 0 },
+    ];
+    defaultBots.forEach(bot => {
+      botMap.set(bot.id, { ...bot });
+    });
     list.forEach(room => {
       const botId = room.oa_id || (String(room.id || '').startsWith('zalo:') ? room.id.split(':')[1] : '') || room.oa_name || 'unknown';
       const botName = room.oa_name || (

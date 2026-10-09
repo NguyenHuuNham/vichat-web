@@ -567,9 +567,9 @@ function normalizeConversation(record) {
     participantIds: record?.participantIds || properties.participantIds || [],
     pendingMembers: record?.pendingMembers || record?.pending_members || properties.pendingMembers || properties.pending_members || [],
     pendingParticipantIds: record?.pendingParticipantIds || record?.pending_participant_ids || properties.pendingParticipantIds || properties.pending_participant_ids || [],
-    // Message history is loaded exclusively from Tinode/chatapi.
-    messages: [],
-    lastMsg: record?.lastMsg || properties.lastMessage || '',
+    // Preserve loaded messages (e.g. Zalo OA or Livechat) or fallback to empty array for Tinode.
+    messages: Array.isArray(record?.messages) && record.messages.length > 0 ? record.messages : [],
+    lastMsg: record?.lastMsg || record?.lastMessage || properties.lastMessage || properties.lastMsg || '',
     time: record?.time || properties.time || '',
     updatedAt: record?.updatedAt
       || record?.last_message_at
@@ -1229,6 +1229,16 @@ export const chatManagementService = {
       // Zalo service unavailable or empty
     }
     return [];
+  },
+
+  async getZaloMessages(conversationId) {
+    if (!apiBase) return [];
+    try {
+      const payload = await apiRequest(`/api/v1/zalo/conversations/${encodeURIComponent(conversationId)}/messages`);
+      return Array.isArray(payload?.messages) ? payload.messages : [];
+    } catch {
+      return [];
+    }
   },
 
   async sendZaloMessage({ userId, message, oaId, agentName }) {
