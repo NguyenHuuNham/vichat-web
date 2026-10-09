@@ -757,6 +757,28 @@ export const useAppStore = create<AppStore>((set, get) => ({
       return conversationForId(get().conversations, conversation.id) || conversation;
     }
 
+    const isLivechat = conversation.channel === 'livechat'
+      || conversation.channelType === 'livechat'
+      || conversation.sourceType === 'livechat'
+      || conversation.id.startsWith('livechat:');
+
+    if (isLivechat) {
+      try {
+        const remoteMessages = await chatManagementService.getLivechatMessages(conversation.id);
+        if (remoteMessages.length) {
+          const merged = mergeConversation(get().conversations, {
+            ...conversation,
+            messages: remoteMessages,
+          });
+          set({ conversations: merged });
+        }
+      } catch {
+        // preserve existing messages
+      }
+      set({ activeConversationId: conversation.id });
+      return conversationForId(get().conversations, conversation.id) || conversation;
+    }
+
     if (!conversation.tinodeTopic && conversation.managementId) {
       try {
         const prepared = await chatManagementService.prepareTinodeConversation(conversation.managementId);
@@ -1156,8 +1178,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     if (isZalo) {
       const parts = conversation.id.split(':');
-      const oaId = parts.length >= 3 ? parts[1] : undefined;
-      const userId = parts.length >= 3 ? parts[2] : (conversation.members?.[0]?.id || conversation.id);
+      const oaId = (parts.length >= 3 ? parts[1] : undefined) || (conversation as any).oa_id || (conversation as any).oaId;
+      const userId = (parts.length >= 3 ? parts[2] : undefined) || (conversation as any).zalo_user_id || (conversation as any).userId || (conversation.members?.[0]?.id || conversation.id);
+      const tenantId = (conversation as any).tenant_id || (conversation as any).tenantId || get().session?.user?.tenantId || (get().session?.user as any)?.tenant_id || (get().session as any)?.tenant_id || '';
       const clientId = `zalo-agent-${Date.now()}`;
       const pending: ChatMessage = {
         id: clientId,
@@ -1179,7 +1202,54 @@ export const useAppStore = create<AppStore>((set, get) => ({
         }),
       });
       try {
-        await chatManagementService.sendZaloMessage(userId, text, oaId, get().session?.user?.name);
+        await chatManagementService.sendZaloMessage(userId, text, oaId, get().session?.user?.name, tenantId);
+      } catch (error) {
+        set({
+          conversations: get().conversations.map(item =>
+            item.id === conversationId
+              ? {
+                  ...item,
+                  messages: item.messages.map(m =>
+                    m.id === clientId ? { ...m, failed: true, deliveryStatus: 'failed' } : m
+                  ),
+                }
+              : item
+          ),
+        });
+        throw error;
+      }
+      return;
+    }
+
+    const isLivechat = conversation.channel === 'livechat'
+      || conversation.channelType === 'livechat'
+      || conversation.sourceType === 'livechat'
+      || conversation.id.startsWith('livechat:');
+
+    if (isLivechat) {
+      const tenantId = (conversation as any).tenant_id || (conversation as any).tenantId || get().session?.user?.tenantId || (get().session?.user as any)?.tenant_id || (get().session as any)?.tenant_id || '';
+      const clientId = `livechat-agent-${Date.now()}`;
+      const pending: ChatMessage = {
+        id: clientId,
+        type: 'text',
+        sender: 'outgoing',
+        senderId: get().session?.user?.id || 'agent',
+        senderName: get().session?.user?.name || 'Bạn',
+        text,
+        createdAt: new Date().toISOString(),
+        pending: false,
+        deliveryStatus: 'sent',
+      };
+      set({
+        conversations: mergeConversation(get().conversations, {
+          ...conversation,
+          messages: [...conversation.messages, pending],
+          lastMsg: text,
+          updatedAt: pending.createdAt,
+        }),
+      });
+      try {
+        await chatManagementService.sendLivechatMessage(conversation.id, text, get().session?.user?.name, tenantId);
       } catch (error) {
         set({
           conversations: get().conversations.map(item =>

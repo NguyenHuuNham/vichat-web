@@ -4980,9 +4980,16 @@ async def conversation_list(request):
     if not cursor:
         try:
             from application.controllers.api_zalo import _get_active_zalo_conversations_for_listing
-            zalo_convs = _get_active_zalo_conversations_for_listing()
+            zalo_convs = _get_active_zalo_conversations_for_listing(tenant_id)
             if zalo_convs:
                 objects = zalo_convs + objects
+        except Exception:
+            pass
+        try:
+            from application.controllers.api_livechat import _get_active_livechat_conversations_for_listing
+            livechat_convs = _get_active_livechat_conversations_for_listing(tenant_id)
+            if livechat_convs:
+                objects = livechat_convs + objects
         except Exception:
             pass
     next_cursor = None

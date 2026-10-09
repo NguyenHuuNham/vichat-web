@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { MessageSquarePlus, QrCode, Search, X } from 'lucide-react-native';
+import { Bot, ChevronDown, MessageSquarePlus, QrCode, Search, X } from 'lucide-react-native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { MainTabParamList } from '../../navigation/types';
 import { useAppStore } from '../../store/appStore';
@@ -25,7 +25,7 @@ import { displayCurrentTenantName } from '../../utils/tenantDisplay';
 import { ConversationViewerPreference, loadConversationPreferences } from '../../services/conversationPreferenceService';
 import { QrScannerModal } from '../../components/QrScannerModal';
 import { useI18n } from '../../store/languageStore';
-import { ChannelFilterKey, isConversationMatchingFilter } from '../../utils/channelPolicy';
+import { ChannelFilterKey, isConversationMatchingFilter, resolveConversationChannel } from '../../utils/channelPolicy';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Chats'> & { navigation: any };
 type FilterKey = ChannelFilterKey;
@@ -62,6 +62,8 @@ export function ConversationListScreen({ navigation }: Props) {
   const [preferences, setPreferences] = useState<Record<string, ConversationViewerPreference>>({});
   const [qrScannerVisible, setQrScannerVisible] = useState(false);
   const [muteTarget, setMuteTarget] = useState<Conversation | null>(null);
+  const [selectedZaloBotId, setSelectedZaloBotId] = useState<string>('all');
+  const [botPickerVisible, setBotPickerVisible] = useState(false);
 
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -77,6 +79,42 @@ export function ConversationListScreen({ navigation }: Props) {
     return () => { active = false; };
   }, [session?.tenant?.id, session?.user.id]));
 
+  const zaloBots = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const names: Record<string, string> = {
+      '2274336170816480019': 'Gonstack',
+      '3733466236951056718': 'CBS global education',
+      '262829019064124420': 'Hoàng Hà Mobile',
+    };
+    let totalZalo = 0;
+
+    conversations.forEach(item => {
+      const ch = resolveConversationChannel(item);
+      if (ch === 'zalo' || ch === 'zalo_oa') {
+        totalZalo += 1;
+        const oid = item.oa_id || (item.id.startsWith('zalo:') ? item.id.split(':')[1] : '') || 'other';
+        counts[oid] = (counts[oid] || 0) + 1;
+        if (item.oa_name && !names[oid]) {
+          names[oid] = item.oa_name;
+        }
+      }
+    });
+
+    const activeBots = [
+      { id: '2274336170816480019', name: 'Gonstack', count: counts['2274336170816480019'] || 0 },
+      { id: '262829019064124420', name: 'Hoàng Hà Mobile', count: counts['262829019064124420'] || 0 },
+      { id: '3733466236951056718', name: 'CBS global education', count: counts['3733466236951056718'] || 0 },
+    ].filter(b => b.count > 0);
+
+    Object.keys(counts).forEach(oid => {
+      if (!activeBots.some(b => b.id === oid) && oid !== 'other' && counts[oid] > 0) {
+        activeBots.push({ id: oid, name: names[oid] || ('Bot ' + oid), count: counts[oid] });
+      }
+    });
+
+    return { bots: activeBots, total: totalZalo };
+  }, [conversations]);
+
   const filtered = useMemo(() => {
     const keyword = query.trim().toLowerCase();
     return conversations.filter(item => {
@@ -85,9 +123,14 @@ export function ConversationListScreen({ navigation }: Props) {
       if (preference?.hidden) return false;
       const matchesQuery = !keyword || item.name.toLowerCase().includes(keyword) || (item.lastMsg || '').toLowerCase().includes(keyword);
       const matchesFilter = isConversationMatchingFilter(item, filter);
+      if (!matchesFilter) return false;
+      if (filter === 'zalo' && selectedZaloBotId && selectedZaloBotId !== 'all') {
+        const itemOaId = item.oa_id || (item.id.startsWith('zalo:') ? item.id.split(':')[1] : '') || (item.tinodeTopic?.startsWith('zalo:') ? item.tinodeTopic.split(':')[1] : '');
+        if (itemOaId !== selectedZaloBotId) return false;
+      }
       return matchesQuery && matchesFilter;
     });
-  }, [conversations, filter, preferences, query]);
+  }, [conversations, filter, preferences, query, selectedZaloBotId]);
 
   const runConversationAction = useCallback(async (action: () => Promise<void>, fallback: string) => {
     setActionBusy(true);
@@ -186,10 +229,56 @@ export function ConversationListScreen({ navigation }: Props) {
         </ScrollView>
       </View>
 
+      {filter === 'zalo' ? (
+        <View style={styles.zaloBotBar}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('Chọn Bot Zalo')}
+            onPress={() => setBotPickerVisible(true)}
+            style={styles.zaloBotDropdownButton}
+          >
+            <Bot color={palette.accent} size={16} />
+            <Text style={styles.zaloBotDropdownText} numberOfLines={1}>
+              {selectedZaloBotId === 'all'
+                ? (t('Tất cả Bot') + ' (' + zaloBots.total + ')')
+                : ((zaloBots.bots.find(b => b.id === selectedZaloBotId)?.name || 'Bot') + ' (' + (zaloBots.bots.find(b => b.id === selectedZaloBotId)?.count || 0) + ')')}
+            </Text>
+            <ChevronDown color={palette.inkSoft} size={15} />
+          </Pressable>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.zaloBotPillsScroll}
+          >
+            <Pressable
+              onPress={() => setSelectedZaloBotId('all')}
+              style={[styles.zaloBotPill, selectedZaloBotId === 'all' && styles.zaloBotPillActive]}
+            >
+              <Text style={[styles.zaloBotPillText, selectedZaloBotId === 'all' && styles.zaloBotPillTextActive]}>
+                {t('Tất cả')} ({zaloBots.total})
+              </Text>
+            </Pressable>
+            {zaloBots.bots.map(b => (
+              <Pressable
+                key={b.id}
+                onPress={() => setSelectedZaloBotId(b.id)}
+                style={[styles.zaloBotPill, selectedZaloBotId === b.id && styles.zaloBotPillActive]}
+              >
+                <Text style={[styles.zaloBotPillText, selectedZaloBotId === b.id && styles.zaloBotPillTextActive]}>
+                  {b.name.replace(' global education', '').replace(' Mobile', '')} ({b.count})
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
+
       {error ? <Pressable onPress={clearError} style={styles.notice}><Text style={styles.noticeText}>{t(error)}</Text><Text style={styles.noticeClose}>{t('Đóng')}</Text></Pressable> : null}
 
       <FlatList
         data={filtered}
+        extraData={selectedZaloBotId}
         keyExtractor={item => item.id}
         initialNumToRender={12}
         maxToRenderPerBatch={8}
@@ -272,6 +361,28 @@ export function ConversationListScreen({ navigation }: Props) {
           void runConversationAction(() => muteConversation(target.id, until), t('Không cập nhật được trạng thái thông báo.'));
         }}
       />
+      <ChoiceDialog
+        visible={botPickerVisible}
+        title={t('Chọn Bot Zalo OA')}
+        message={t('Lọc danh sách hội thoại theo tài khoản Zalo OA doanh nghiệp.')}
+        options={[
+          {
+            id: 'all',
+            label: t('Tất cả Bot') + ' (' + zaloBots.total + ')',
+            detail: t('Hiển thị tất cả cuộc trò chuyện từ mọi Bot'),
+          },
+          ...zaloBots.bots.map(b => ({
+            id: b.id,
+            label: b.name + ' (' + b.count + ')',
+            detail: 'OA ID: ' + b.id,
+          })),
+        ]}
+        onCancel={() => setBotPickerVisible(false)}
+        onSelect={opt => {
+          setBotPickerVisible(false);
+          setSelectedZaloBotId(opt.id);
+        }}
+      />
       <QrScannerModal visible={qrScannerVisible} onClose={() => setQrScannerVisible(false)} />
     </SafeAreaView>
   );
@@ -299,6 +410,14 @@ function createStyles(palette: ThemeColors) {
     noticeClose: { ...typography.caption, color: palette.accentDeep },
     list: { paddingHorizontal: 20, paddingBottom: 150 },
     emptyList: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 20, paddingBottom: 120 },
+    zaloBotBar: { paddingHorizontal: 20, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+    zaloBotDropdownButton: { height: 34, paddingHorizontal: 12, borderRadius: 17, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.accent, flexDirection: 'row', alignItems: 'center', gap: 6, ...shadow },
+    zaloBotDropdownText: { ...typography.bodyMedium, color: palette.accentDeep, fontSize: 12, maxWidth: 130 },
+    zaloBotPillsScroll: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    zaloBotPill: { height: 30, paddingHorizontal: 11, borderRadius: 15, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line, alignItems: 'center', justifyContent: 'center' },
+    zaloBotPillActive: { backgroundColor: palette.accentWash, borderColor: palette.accent },
+    zaloBotPillText: { ...typography.caption, color: palette.inkSoft, fontSize: 11 },
+    zaloBotPillTextActive: { color: palette.accentDeep, fontFamily: 'BeVietnamPro_600SemiBold' },
     composeButton: { position: 'absolute', right: 22, bottom: 96, width: 58, height: 58, borderRadius: 19, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: `${palette.accent}99`, ...shadow },
   });
 }

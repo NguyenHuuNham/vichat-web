@@ -5,6 +5,7 @@ export const CONVERSATION_LIST_TABS = Object.freeze({
   GROUPS: 'groups',
   CATEGORIES: 'categories',
   FACEBOOK: 'facebook',
+  UNREAD: 'unread',
 });
 
 export function resolveConversationChannel(room) {
@@ -73,6 +74,7 @@ export function filterConversationIds({
   status = 'all',
   categoryIds = [],
   strangersOnly = false,
+  selectedBotId = '',
   isUnread = () => false,
   isStranger = () => false,
 } = {}) {
@@ -88,6 +90,11 @@ export function filterConversationIds({
     if (tab === CONVERSATION_LIST_TABS.ZALO) {
       const channel = resolveConversationChannel(room);
       if (channel !== 'zalo' && channel !== 'zalo_oa' && channel !== 'zalo_group') return false;
+      if (selectedBotId && selectedBotId !== 'all') {
+        const roomBotId = String(room.oa_id || room.oaId || (String(room.id || '').startsWith('zalo:') ? room.id.split(':')[1] : '') || '').trim();
+        const roomBotName = String(room.oa_name || room.oaName || '').trim();
+        if (roomBotId !== selectedBotId && roomBotName !== selectedBotId) return false;
+      }
     }
     if (tab === CONVERSATION_LIST_TABS.LIVECHAT) {
       const channel = resolveConversationChannel(room);
@@ -97,7 +104,7 @@ export function filterConversationIds({
       const channel = resolveConversationChannel(room);
       if (channel !== 'facebook') return false;
     }
-    if (status === 'unread' && !isUnread(room, id)) return false;
+    if ((tab === CONVERSATION_LIST_TABS.UNREAD || status === 'unread') && !isUnread(room, id)) return false;
     if (selectedCategories.size > 0) {
       const categoryId = String(room.categoryId || room.category || '').trim();
       if (!selectedCategories.has(categoryId)) return false;

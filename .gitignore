@@ -44,4 +44,5 @@ chatservice-main/.env
 .codex-vite.out.log
 outputs/
 analysis_*.md
+scratch/
 #

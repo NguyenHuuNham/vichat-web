@@ -6,7 +6,7 @@ const productionDefaults = {
   VITE_TINODE_HOST: 'chat.gonplatform.com',
   // This is a vendor public app identifier, never a server credential.
   // Production supplies the scoped value through the Docker build argument.
-  VITE_TINODE_PUBLIC_APP_ID: '__CONFIGURE_TINODE_PUBLIC_APP_ID__',
+  VITE_TINODE_PUBLIC_APP_ID: process.env.VITE_TINODE_PUBLIC_APP_ID || 'AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K',
   VITE_TINODE_SECURE: 'true',
   VITE_TINODE_TRANSPORT: 'ws',
   VITE_TINODE_PERSIST: 'false',

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 
 function FilterChoice({ active, children, onClick, icon }) {
   return (
@@ -8,6 +8,7 @@ function FilterChoice({ active, children, onClick, icon }) {
     </button>
   );
 }
+
 export default function ConversationListToolbar({
   copy,
   tab,
@@ -25,38 +26,218 @@ export default function ConversationListToolbar({
   moreMenuOpen,
   onToggleMoreMenu,
   onResetFilters,
+  zaloBots = [],
+  selectedBotId = '',
+  onSelectBot = () => {},
+  zaloTotal = 0,
+  unreadCount = 0,
 }) {
+  const tabsRef = useRef(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
   const activeFilterCount = (status !== 'all' ? 1 : 0)
     + selectedCategoryIds.length
     + (strangersOnly ? 1 : 0);
   const categoryFilterActive = activeFilterCount > 0;
 
+  const updateScrollIndicators = useCallback(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    updateScrollIndicators();
+    const el = tabsRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', updateScrollIndicators, { passive: true });
+    window.addEventListener('resize', updateScrollIndicators);
+    return () => {
+      el.removeEventListener('scroll', updateScrollIndicators);
+      window.removeEventListener('resize', updateScrollIndicators);
+    };
+  }, [updateScrollIndicators, zaloBots]);
+
+  const handleWheel = event => {
+    if (tabsRef.current && event.deltaY) {
+      tabsRef.current.scrollLeft += event.deltaY;
+    }
+  };
+
+  const scrollTabs = direction => {
+    if (tabsRef.current) {
+      tabsRef.current.scrollBy({ left: direction * 140, behavior: 'smooth' });
+    }
+  };
+
   return (
     <div className="conversation-list-toolbar" onClick={event => event.stopPropagation()}>
-      <div className="conversation-list-tabs" role="tablist" aria-label={copy.t('Lọc hội thoại')}>
-        <button type="button" role="tab" aria-selected={tab === 'all'} className={tab === 'all' ? 'active' : ''} onClick={() => onTabChange('all')}>
-          {copy.t('Tất cả')}
-        </button>
-        <button type="button" role="tab" aria-selected={tab === 'groups'} className={tab === 'groups' ? 'active' : ''} onClick={() => onTabChange('groups')}>
-          {copy.t('Nhóm')}
-        </button>
-        <button type="button" role="tab" aria-selected={tab === 'zalo'} className={tab === 'zalo' ? 'active' : ''} onClick={() => onTabChange('zalo')}>
-          {copy.t('Zalo OA')}
-        </button>
-        <button type="button" role="tab" aria-selected={tab === 'livechat'} className={tab === 'livechat' ? 'active' : ''} onClick={() => onTabChange('livechat')}>
-          {copy.t('Live Chat')}
-        </button>
-        <button type="button" role="tab" aria-selected={tab === 'facebook'} className={tab === 'facebook' ? 'active' : ''} onClick={() => onTabChange('facebook')}>
-          {copy.t('Facebook')}
-        </button>
-        <button type="button" role="tab" aria-selected={tab === 'categories' || categoryFilterActive} className={tab === 'categories' || categoryFilterActive ? 'active' : ''} onClick={onToggleCategoryMenu} aria-expanded={categoryMenuOpen} aria-haspopup="menu">
-          <span>{copy.t('Phân loại')}</span>
-          {activeFilterCount > 0 && <strong>{activeFilterCount}</strong>}
-        </button>
-        <button type="button" className={`conversation-list-more ${moreMenuOpen ? 'active' : ''}`} onClick={onToggleMoreMenu} aria-expanded={moreMenuOpen} aria-haspopup="menu" aria-label={copy.t('Thêm bộ lọc')} title={copy.t('Thêm bộ lọc')}>
-          <i className="fa-solid fa-ellipsis" aria-hidden="true"></i>
-        </button>
+      <div className="conversation-list-tabs-wrapper">
+        {canScrollLeft && (
+          <button
+            type="button"
+            className="conversation-tabs-scroll-btn left"
+            onClick={() => scrollTabs(-1)}
+            aria-label={copy.t('Cuộn sang trái')}
+            tabIndex="-1"
+          >
+            <i className="fa-solid fa-chevron-left" aria-hidden="true"></i>
+          </button>
+        )}
+
+        <div
+          ref={tabsRef}
+          className="conversation-list-tabs"
+          role="tablist"
+          aria-label={copy.t('Lọc hội thoại')}
+          onWheel={handleWheel}
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'all'}
+            className={tab === 'all' ? 'active' : ''}
+            onClick={() => onTabChange('all')}
+          >
+            {copy.t('Tất cả')}
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'groups'}
+            className={tab === 'groups' ? 'active' : ''}
+            onClick={() => onTabChange('groups')}
+          >
+            {copy.t('Nhóm')}
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'zalo'}
+            className={tab === 'zalo' ? 'active' : ''}
+            onClick={() => onTabChange('zalo')}
+          >
+            {copy.t('Zalo OA')}
+            {zaloTotal > 0 && <span className="tab-pill-badge">{zaloTotal}</span>}
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'livechat'}
+            className={tab === 'livechat' ? 'active' : ''}
+            onClick={() => onTabChange('livechat')}
+          >
+            {copy.t('Live Chat')}
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'facebook'}
+            className={tab === 'facebook' ? 'active' : ''}
+            onClick={() => onTabChange('facebook')}
+          >
+            {copy.t('Facebook')}
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'unread'}
+            className={tab === 'unread' ? 'active' : ''}
+            onClick={() => onTabChange('unread')}
+          >
+            <span>{copy.t('Chưa đọc')}</span>
+            {unreadCount > 0 && (
+              <span className={`tab-pill-badge ${tab === 'unread' ? '' : 'unread-badge'}`}>
+                {unreadCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'categories' || categoryFilterActive}
+            className={tab === 'categories' || categoryFilterActive ? 'active' : ''}
+            onClick={onToggleCategoryMenu}
+            aria-expanded={categoryMenuOpen}
+            aria-haspopup="menu"
+          >
+            <span>{copy.t('Phân loại')}</span>
+            {activeFilterCount > 0 && <span className="tab-pill-badge">{activeFilterCount}</span>}
+          </button>
+
+          <button
+            type="button"
+            className={`conversation-list-more ${moreMenuOpen ? 'active' : ''}`}
+            onClick={onToggleMoreMenu}
+            aria-expanded={moreMenuOpen}
+            aria-haspopup="menu"
+            aria-label={copy.t('Thêm bộ lọc')}
+            title={copy.t('Thêm bộ lọc')}
+          >
+            <i className="fa-solid fa-ellipsis" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        {canScrollRight && (
+          <button
+            type="button"
+            className="conversation-tabs-scroll-btn right"
+            onClick={() => scrollTabs(1)}
+            aria-label={copy.t('Cuộn sang phải')}
+            tabIndex="-1"
+          >
+            <i className="fa-solid fa-chevron-right" aria-hidden="true"></i>
+          </button>
+        )}
       </div>
+
+      {tab === 'zalo' && zaloBots.length > 0 && (
+        <div className="zalo-bot-filter-bar" role="toolbar" aria-label={copy.t('Phân loại theo Bot')}>
+          <div className="zalo-bot-select-wrap">
+            <i className="fa-solid fa-robot" aria-hidden="true"></i>
+            <select
+              className="zalo-bot-select"
+              value={selectedBotId || ''}
+              onChange={e => onSelectBot(e.target.value)}
+              aria-label={copy.t('Chọn Bot Zalo OA')}
+            >
+              <option value="">{copy.t('Tất cả Bot')} ({zaloTotal})</option>
+              {zaloBots.map(bot => (
+                <option key={bot.id} value={bot.id}>
+                  {bot.name} ({bot.count})
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            className={`zalo-bot-chip ${!selectedBotId ? 'active' : ''}`}
+            onClick={() => onSelectBot('')}
+          >
+            <span>{copy.t('Tất cả')}</span>
+            {zaloTotal > 0 && <span className="zalo-bot-chip-count">{zaloTotal}</span>}
+          </button>
+          {zaloBots.map(bot => (
+            <button
+              key={bot.id}
+              type="button"
+              className={`zalo-bot-chip ${selectedBotId === bot.id ? 'active' : ''}`}
+              onClick={() => onSelectBot(bot.id)}
+            >
+              <span>{bot.name.replace(' global education', '').replace(' Mobile', '')}</span>
+              {bot.count > 0 && <span className="zalo-bot-chip-count">{bot.count}</span>}
+            </button>
+          ))}
+        </div>
+      )}
 
       {categoryMenuOpen && (
         <div className="conversation-list-filter-menu" role="menu" aria-label={copy.t('Phân loại')}>

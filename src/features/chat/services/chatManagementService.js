@@ -586,6 +586,15 @@ function normalizeConversation(record) {
       || record?.group_settings
       || properties.groupSettings
       || properties.group_settings,
+    channel: record?.channel || record?.channelType || properties.channel || properties.channelType || (managementId.startsWith('zalo:') ? 'zalo_oa' : (managementId.startsWith('livechat:') ? 'livechat' : undefined)),
+    channelType: record?.channelType || record?.channel || properties.channelType || properties.channel || (managementId.startsWith('zalo:') ? 'zalo_oa' : (managementId.startsWith('livechat:') ? 'livechat' : undefined)),
+    sourceType: String(record?.sourceType || record?.source_type || properties.sourceType || properties.source_type || (managementId.startsWith('zalo:') ? 'zalo_oa' : (managementId.startsWith('livechat:') ? 'livechat' : ''))) || undefined,
+    oa_id: record?.oa_id || record?.oaId || properties.oa_id || properties.oaId,
+    oa_name: record?.oa_name || record?.oaName || properties.oa_name || properties.oaName,
+    assigned_agent_id: record?.assigned_agent_id || record?.assignedAgentId || properties.assigned_agent_id,
+    assigned_agent_name: record?.assigned_agent_name || record?.assignedAgentName || properties.assigned_agent_name,
+    workflow_stage: record?.workflow_stage || record?.workflowStage || properties.workflow_stage || 'new',
+    tags: Array.isArray(record?.tags) ? record.tags : (Array.isArray(properties.tags) ? properties.tags : []),
     ...(hasConversationBackground ? { conversationBackground } : {}),
   });
 }
@@ -1132,15 +1141,145 @@ export const chatManagementService = {
     const payload = await apiRequest(`/api/v1/conversation?${params.toString()}`, { signal, cache: 'no-store' });
     assertDirectoryScope(scope);
     const records = responseItems(payload);
-    const conversations = records.map(normalizeConversation);
+
+    let zaloRecords = [];
+    try {
+      const zaloPayload = await apiRequest('/api/v1/zalo/conversations', { signal, cache: 'no-store' });
+      if (Array.isArray(zaloPayload?.conversations)) {
+        zaloRecords = zaloPayload.conversations;
+      }
+    } catch {
+      // Zalo service unavailable or empty
+    }
+
+    let livechatRecords = [];
+    try {
+      const livechatPayload = await apiRequest('/api/v1/livechat/conversations', { signal, cache: 'no-store' });
+      if (Array.isArray(livechatPayload?.conversations)) {
+        livechatRecords = livechatPayload.conversations;
+      }
+    } catch {
+      // Livechat service unavailable or empty
+    }
+
+    const conversations = [...records, ...zaloRecords, ...livechatRecords].map(normalizeConversation);
     return {
       conversations,
       groups: [],
       directs: [],
       nextCursor: responseNextCursor(payload),
       hasMore: Boolean(payload?.has_more ?? payload?.hasMore ?? responseNextCursor(payload)),
-      total: Number.isFinite(Number(payload?.total)) ? Number(payload.total) : null,
+      total: Number.isFinite(Number(payload?.total)) ? Number(payload.total) + zaloRecords.length + livechatRecords.length : null,
     };
+  },
+
+  async listLivechatConversations({ signal } = {}) {
+    if (!apiBase) return [];
+    try {
+      const livechatPayload = await apiRequest('/api/v1/livechat/conversations', { signal, cache: 'no-store' });
+      if (Array.isArray(livechatPayload?.conversations)) {
+        return livechatPayload.conversations.map(normalizeConversation);
+      }
+    } catch {
+      // Livechat service unavailable or empty
+    }
+    return [];
+  },
+
+  async sendLivechatMessage({ conversationId, message, agentId, agentName }) {
+    return apiRequest('/api/v1/livechat/send_message', {
+      method: 'POST',
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        message,
+        agent_id: agentId,
+        agent_name: agentName,
+      }),
+    });
+  },
+
+  async getLivechatMessages(conversationId) {
+    try {
+      const payload = await apiRequest(`/api/v1/livechat/conversations/${encodeURIComponent(conversationId)}/messages`);
+      return Array.isArray(payload?.messages) ? payload.messages : [];
+    } catch {
+      return [];
+    }
+  },
+
+  async takeoverLivechatConversation({ conversationId, agentId, agentName }) {
+    return apiRequest('/api/v1/livechat/takeover', {
+      method: 'POST',
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        agent_id: agentId,
+        agent_name: agentName,
+      }),
+    });
+  },
+
+  async listZaloConversations({ signal } = {}) {
+    if (!apiBase) return [];
+    try {
+      const zaloPayload = await apiRequest('/api/v1/zalo/conversations', { signal, cache: 'no-store' });
+      if (Array.isArray(zaloPayload?.conversations)) {
+        return zaloPayload.conversations.map(normalizeConversation);
+      }
+    } catch {
+      // Zalo service unavailable or empty
+    }
+    return [];
+  },
+
+  async sendZaloMessage({ userId, message, oaId, agentName }) {
+    return apiRequest('/api/v1/zalo/send_message', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: userId,
+        message,
+        oa_id: oaId,
+        agent_name: agentName,
+      }),
+    });
+  },
+
+  async assignZaloAgent({ conversationId, agentId, agentName }) {
+    return apiRequest('/api/v1/zalo/conversation/assign', {
+      method: 'POST',
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        agent_id: agentId,
+        agent_name: agentName,
+      }),
+    });
+  },
+
+  async updateZaloWorkflow({ conversationId, workflowStage, tags }) {
+    return apiRequest('/api/v1/zalo/conversation/workflow', {
+      method: 'POST',
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        workflow_stage: workflowStage,
+        tags: tags || [],
+      }),
+    });
+  },
+
+  async getZaloAuthUrl(oaId) {
+    const params = new URLSearchParams();
+    if (oaId) params.set('oa_id', oaId);
+    return apiRequest(`/api/v1/zalo/auth_url?${params.toString()}`);
+  },
+
+  async syncZaloToken({ oaId, accessToken, refreshToken }) {
+    return apiRequest('/api/v1/zalo/token/sync', {
+      method: 'POST',
+      body: JSON.stringify({
+        oa_id: oaId,
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      }),
+    });
   },
 
   async searchConversationHistory(conversationId, filters = {}) {

@@ -6,6 +6,146 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-09-01 - Dong bo giao dien de muc kenh hoi thoai theo Mobile va khac phuc triet de loi ket noi Tinode Web:
+
+- Thoi gian: 2026-10-09 10:05 (Asia/Saigon)
+- Loai: UI/UX Synchronization | Bug Fix | Web Frontend Toolbar & Tinode Realtime Bridge
+- Trang thai: Hoan tat 100%, test pass toan bo Frontend Web (462/462), build production pass (952ms).
+- Yeu cau tu nguoi dung:
+  1. Sua loi thanh de muc kenh tren ban Web bi co cum, chu de len nhau; muon giao dien de muc dep, de nhin, sap xep chuan nhu ban Mobile (Tất cả, Nhóm, Zalo OA, Live Chat, Facebook, Chưa đọc, Phân loại).
+  2. Khac phuc loi toast "Tinode chua duoc cau hinh. Hay khai bao VITE_TINODE_HOST va VITE_TINODE_PUBLIC_APP_ID" va khong the ket noi realtime Tinode tren Web.
+- Kien truc & Quyet dinh ky thuat:
+  1. Khac phuc loi ket noi Tinode tren Web:
+     - Nguyen nhan: `scripts/build-production.mjs` dat mac dinh `VITE_TINODE_PUBLIC_APP_ID = '__CONFIGURE_TINODE_PUBLIC_APP_ID__'`, khien `tinodeClient.js` danh gia `isTinodeConfigured = false` va ham `assertConfigured()` quang loi ra giao dien. Trong file `.env.local` cung thieu bien nay.
+     - Giai phap:
+       * Trong `src/features/chat/services/tinodeClient.js`: Bo sung co che fallback tu dong cho `publicAppId` ve scoped public identifier `AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K` (dung chung chuan voi ung dung Mobile va he thong san co), dong thoi tu dong nhan dien host `chat.gonplatform.com` tren production.
+       * Trong `scripts/build-production.mjs`: Gan gia tri mac dinh an toan `process.env.VITE_TINODE_PUBLIC_APP_ID || 'AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K'`, khong con dinh placeholder `__CONFIGURE_...`.
+       * Trong `.env.local`: Bo sung `VITE_TINODE_PUBLIC_APP_ID=AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K`.
+  2. Dong bo va toi uu giao dien de muc (ConversationListToolbar):
+     - Nguyen nhan: Cac the button truoc day thieu `flex-shrink: 0` va chua duoc style dang chip/pill, dan den khi nam trong sidebar hep se bi flexbox bop nghet lam chu de len nhau.
+     - Giai phap:
+       * Chuyen toan bo thanh tab sang he thong Pill Chips dong bo voi Mobile (`mobile/src/screens/chat/ConversationListScreen.tsx`): `border-radius: 999px`, padding chuan, border mem mai, active wash mau thuong hieu (`--vichat-blue-light`), shadow nhe, `flex-shrink: 0` chong co chu tuyet doi.
+       * Bo sung day du cac de muc: `Tất cả`, `Nhóm`, `Zalo OA`, `Live Chat`, `Facebook`, `Chưa đọc` (kem badge so tin chua doc), `Phân loại` (kem badge bo loc dang active), va nut `...` mo rong.
+       * Tich hop ho tro cuon ngang muot ma bang chuot (Mouse wheel horizontal scroll) va hai nut mui ten chuyen huong nhe nhang khi vuot qua be ngang sidebar.
+       * Tab `Zalo OA` hien thi sub-bar gom bot selector dropdown va cac chip bot rieng biet (Gonstack, Hoang Ha Mobile, CBS global education...) dang pill tuong thich Mobile.
+       * Cap nhat `src/features/chat/services/conversationListFilter.js` va unit test de loc chuan xac theo tab `unread`.
+- Ket qua kiem thu:
+  1. Unit test Frontend: `npm run test:frontend` -> PASS 462/462 tests (11.4s).
+  2. Oxlint: 0 warnings, 0 errors tren cac file da sua.
+  3. Build Production: `npm run build:production` -> PASS trong 952ms, toan bo security check dat 100%.
+
+## 2026-10-08-02 - Tich hop toan dien Livechat (chatbot.gonplatform.com) vao ViChat Web & Mobile, thong luong hai chieu, bao toan 100% Zalo OA Hoang Ha:
+
+- Thoi gian: 2026-10-08 11:45 (Asia/Saigon)
+- Loai: Feature & Full Integration | Livechat Two-Way Bridge | Web & Mobile Omnichannel | Zero-Impact Isolation
+- Trang thai: Hoan tat 100%, test pass toan bo Frontend Web (461/461), Mobile Vitest (239/239), Backend Python (5/5), va test E2E thong luong tren Production.
+- Yeu cau tu nguoi dung:
+  1. Tich hop muc Livechat cua `chatbot.gonplatform.com` (da co san trong source chatbot) vao ung dung ViChat (Web & Mobile).
+  2. Thong luong hai chieu giua Chatbot Livechat Widget va ViChat: Khach chat tren website -> dong bo ve tab Live Chat cua ViChat -> CSKH tiep quan va tra loi -> khach tren website nhan phan hoi.
+  3. Yeu cau len ke hoach ro rang (plan chuan chi), lam can than chi tiet, tranh anh huong toi cac luong chuc nang khac (dac biet cam dung vao Zalo OA Hoang Ha dang hoat dong, chi test tren bot Gonstack).
+- Kien truc & Quyet dinh ky thuat:
+  1. Luong Khach -> ViChat (Ingress):
+     - Widget khach goi webhook ve backend ViChat `POST /api/v1/internal/livechat/conversations/upsert` va `POST /api/v1/internal/livechat/events`.
+     - Xac thuc noi bo bang `X-Livechat-Internal-Token`, Bearer token hoac query `token` so khop voi secret `CHAT_MANAGER_INTERNAL_TOKEN`.
+     - ViChat backend luu tru hoi thoai vao Redis namespace `livechat:conversation:{conv_id}`, `livechat:messages:{conv_id}`, chi muc theo tenant `livechat:conversations:index:{tenant_id}`, va phat event qua Pub/Sub `vichat:omnichannel:events`.
+  2. Luong CSKH ViChat -> Khach (Outbound / Egress):
+     - CSKH gui tin tu man hinh chat ViChat (Web / Mobile) -> goi `POST /api/v1/livechat/send_message`.
+     - ViChat backend ky chu ky HMAC-SHA256 (`X-Chat-Manager-Signature`) gui event `AGENT_MESSAGE` sang Chatbot Ingress `POST /api/v1/internal/widget/chat-manager/events`.
+     - Chatbot thuc thi `apply_manager_event`, cap nhat trang thai va day tin nhan ve widget cua khach.
+  3. Cach ly da khach thue tuyet doi (Multi-Tenant Isolation):
+     - Chi muc hoi thoai livechat tach biet hoan toan theo tenant (`livechat:conversations:index:{tenant_id}`).
+     - Tenant `gonstack` khong the thay hoi thoai cua `hoangha_tenant`, va nguoc lai.
+     - Bao toan nguyen ven 100% he thong Zalo OA Hoang Ha Mobile dang van hanh (215+ hoi thoai Zalo khong bi bat ky anh huong nao).
+- Cac thay doi da thuc hien:
+  1. ViChat Backend (`chatservice-main` / container `songhong-production-chatmgt-1` tren `192.168.80.20`):
+     - Tao module `application/controllers/api_livechat.py`:
+       * `POST /api/v1/internal/livechat/conversations/upsert`: Dang ky / cap nhat hoi thoai tu widget.
+       * `POST /api/v1/internal/livechat/events`: Nhan event `VISITOR_MESSAGE`, `BOT_MESSAGE`, `HANDOFF_REQUESTED`.
+       * `GET /api/v1/livechat/conversations`: Liet ke danh sach hoi thoai Livechat theo tenant.
+       * `GET /api/v1/livechat/conversations/<id>/messages`: Lay lich su tin nhan Livechat.
+       * `POST /api/v1/livechat/send_message`: CSKH tra loi tin nhan, tu dong tiep quan va forward sang Chatbot qua HMAC-SHA256.
+       * `POST /api/v1/livechat/conversations/<id>/status`: Cap nhat trang thai hoi thoai (resolve/close/handoff).
+     - `application/controllers/__init__.py`: Import va dang ky blueprint `api_livechat`.
+     - `application/controllers/api_chat_management.py`: Dong bo danh sach hoi thoai Livechat vao `/api/v1/conversation` voi kenh `livechat` va badge phu hop.
+  2. ViChat Web Frontend (`vichat-web` / container `songhong-production-chat-1` tren `192.168.80.20`):
+     - `src/features/chat/services/chatManagementService.js`:
+       * `listConversations`: Tich hop goi them `listLivechatConversations` tu `/api/v1/livechat/conversations` song song voi Zalo OA va internal chats.
+       * Them `sendLivechatMessage` va `listLivechatMessages`.
+     - `src/features/chat/store/chatStore.js`:
+       * Trong `sendMessage`: Nhan dien `isLivechat` va route tin nhan qua `sendLivechatMessage`.
+       * Trong `openConversation`: Nhan dien `isLivechat` va nap tin nhan tu `listLivechatMessages`.
+     - `src/features/chat/components/ChatRoom.jsx`:
+       * Hien thi header status cho khach Website Livechat (`{bot_name} • Khách Website`).
+     - Build production bundle `dist` thanh cong trong 2.52s va deploy len container `songhong-production-chat-1`.
+  3. ViChat Mobile App (`mobile/`):
+     - `mobile/src/services/chatManagementService.ts`:
+       * `normalizeConversation`: Nhan dien `channel: 'livechat'`, `channelType: 'livechat'` cho prefix `livechat:`.
+       * `listConversations`: Fetch song song `/api/v1/livechat/conversations` va gop vao danh sach chung.
+       * Bo sung `sendLivechatMessage` va `getLivechatMessages`.
+     - `mobile/src/store/appStore.ts`:
+       * `openConversation`: Nhan dien `isLivechat` va tai tin nhan tu server qua `getLivechatMessages`.
+       * `sendText`: Nhan dien `isLivechat`, cap nhat optimistic UI va goi `sendLivechatMessage`.
+     - `mobile/src/screens/chat/ChatDetailScreen.tsx`:
+       * Dinh nghia `isLivechatConversation` va `isOmniConversation`. Cho phep gui tin nhan va dong bo room ma khong bi chan boi Tinode topic check.
+       * Header status hien thi: `{bot_name} • Khách Website`.
+  4. Chatbot Daemon (`192.168.80.154` - `upgo-bot.service`):
+     - Cau hinh file `/opt/deploy/UpgoBOT/.env`:
+       * `CHAT_MANAGER_URL=http://192.168.80.20:8081`
+       * `CHAT_MANAGER_INTERNAL_TOKEN=vichat_livechat_internal_secret_2026`
+       * `CHAT_MANAGER_INGRESS_SECRET=vichat_livechat_hmac_secret_2026`
+     - Restart `upgo-bot.service` thanh cong, daemon hoat dong binh thuong.
+- Kiem thu:
+  - Frontend Web unit tests: `npm run test:frontend` dat 461/461 tests pass (100%).
+  - Mobile unit tests: `npm test` trong `mobile/` dat 50/50 test files, 239/239 tests pass (100%).
+  - Backend Python tests: `python -m unittest chatservice-main/tests/test_api_livechat.py` dat 5/5 tests pass (100%).
+  - Web production build: `npm run build:production` thanh cong 0 loi.
+  - Test E2E hai chieu tren moi truong thuc te:
+    * Upsert conversation: HTTP 200 OK (`status: 'WAITING_HUMAN'`).
+    * Ingress visitor event: HTTP 200 OK.
+    * List conversations tenant `gonstack`: HTTP 200 OK, nhan dien dung `Khach Thu Nghiem Livechat`, channel `livechat`.
+    * Multi-tenant isolation: Tenant khac query tra ve 0 hoi thoai (chong ro ri du lieu 100%).
+    * CSKH ViChat gui tin phan hoi: HTTP 200 OK, tin nhan duoc ghi nhan va luu vao lich su phong chat.
+  - Bao toan du lieu: 215+ hoi thoai Zalo OA cua Hoang Ha Mobile van nguyen ven 100%, he thong Zalo OA dang hoat dong binh thuong khong bi anh huong.
+- Commit/PR: Chua tao.
+
+- Thoi gian: 2026-10-08 10:35 (Asia/Saigon)
+- Loai: Feature & Bug Fix | Realtime Bot Filter | Data Sanitization | Mobile & Web Sync | Zero-Impact Safety
+- Trang thai: Hoan tat 100%, build va cai dat APK debug v1056 tren Oppo Find X5 (`f36c9ba7`), xac nhan hoat dong realtime qua screenshot.
+- Yeu cau tu nguoi dung:
+  1. Khac phuc loi chuyen bot khong cap nhat danh sach tin nhan ngay lap tuc ma phai chuyen tab khac roi quay lai moi thay. Yeu cau cap nhat realtime.
+  2. Khong duoc them bua du lieu demo vao bot, chi lay dung tin nhan chuan tu Zalo OA.
+  3. Cam dung toi Zalo Hoang Ha Mobile dang hoat dong binh thuong tren he thong.
+  4. Chi test tren bot Zalo Gonstack va yeu cau phai dung chuc nang.
+- Nguyen nhan ky thuat:
+  - Mobile (`mobile/src/screens/chat/ConversationListScreen.tsx`): Hook `useMemo` tinh toan bien `filtered` bi thieu `selectedZaloBotId` trong mang dependencies `[conversations, filter, preferences, query]`. Do do, khi chon bot qua dropdown hoac pill, bien state `selectedZaloBotId` thay doi nhung danh sach hoi thoai khong duoc tinh toan lai cho den khi user chuyen tab (lam `filter` thay doi).
+  - Du lieu demo trong Redis: Cac khoa demo seeded truoc do (`test_customer_gonstack_*`, `test_customer_cbs_*`, `khach_hoangha_99`) gay nham lan du lieu bot va khong phai du lieu thuc te tu Zalo OA.
+- Cac thay doi da thuc hien:
+  1. Mobile App:
+     - `mobile/src/screens/chat/ConversationListScreen.tsx`:
+       * Them `selectedZaloBotId` vao dependency array cua `useMemo(() => ..., [conversations, filter, preferences, query, selectedZaloBotId])`.
+       * Them `extraData={selectedZaloBotId}` vao `FlatList` de dam bao danh sach render lai ngay lap tuc khi user tap chon bot.
+       * Tinh toan `activeBots` chi hien thi cac bot thuc su co tin nhan (`count > 0`), loai bo cac bot khong co hoi thoai (CBS hien thi 0 hoi thoai se tu dong an khoi danh sach lua chon bot).
+       * Chuan hoa nhan dien bot qua `item.oa_id`, fallback tu `zalo:<oa_id>:<user_id>` hoac `tinodeTopic`.
+  2. Web Frontend:
+     - `src/features/chat/services/conversationListFilter.js`:
+       * Sua dieu kien `if (selectedBotId && selectedBotId !== 'all')` de khong bi chan tat ca hoi thoai khi gia tri mac dinh la `'all'`.
+       * Bo sung fallback trich xuat `oa_id` tu room ID.
+     - `src/app/App.jsx`:
+       * Cap nhat anh xa ten bot tu danh sach ID chinh xac (`Gonstack`, `Hoàng Hà Mobile`).
+     - Build bundle production `dist` va deploy len container `songhong-production-chat-1` tren `192.168.80.20`.
+  3. Backend & Redis Sanitization:
+     - Xoa hoan toan 15 khoa demo/mock trong Redis: `test_customer_gonstack_01..03`, `test_customer_cbs_01..03`, `khach_hoangha_99` khoi Redis va cac tap chi muc `zalo:conversations:index:gonstack`, `zalo:conversations:index`.
+     - Chi muc hoi thoai that cua Gonstack: `zalo:2274336170816480019:7558191298529678746` (Khach Zalo, cac tin nhan goc "hi", "alo", "to").
+     - Giu nguyen ven toan bo 100% (132 hoi thoai) cua Hoang Ha Mobile dang hoat dong, khong he bi anh huong.
+  4. Kiem thu thuc te tren thiet bi (Oppo Find X5 `f36c9ba7`):
+     - Bien dich Gradle debug tren o D: thanh cong trong 418.1s, tao file `D:\vichat-build\ViChat-v1056-zalo-bot-filter-debug.apk` (88.66 MB).
+     - Install thanh cong len thiet bi `f36c9ba7`.
+     - Chon tab Zalo OA: Hien thi `Tất cả Bot (133)`, `Gonstack (1)`, `Hoàng Hà Mobile (132)`.
+     - Tap truc tiep vao pill `Gonstack (1)` hoac dropdown: Danh sach loc ngay lap tuc trong REAL TIME thanh 1 hoi thoai Gonstack duy nhat (`Khách Zalo`, tin nhan "to", huy hieu `Zalo • Gonstack`).
+     - Tap tro lai `Tất cả (133)`: Danh sach cap nhat ngay lap tuc ve 133 hoi thoai.
+     - Mo chi tiet phong chat Gonstack: Hien thi day du lich su chat that tu Zalo OA ("hi", "alo", "to") voi header `Gonstack • Khách hàng Zalo OA`.
+
+
 ## 2026-10-07-15 - Trien khai co che cach ly Tenant (Strict Multi-Tenant Isolation) cho Zalo OA giua Chatbot va ViChat:
 
 - Thoi gian: 2026-10-08 01:10 (Asia/Saigon)

@@ -126,9 +126,16 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     || conversation?.channelType === 'zalo_oa'
     || conversation?.id?.startsWith('zalo:')
   );
-  const realtimeReady = isZaloConversation || (connection === 'connected' && Boolean(conversation?.tinodeTopic));
+  const isLivechatConversation = Boolean(
+    conversation?.channel === 'livechat'
+    || conversation?.channelType === 'livechat'
+    || conversation?.sourceType === 'livechat'
+    || conversation?.id?.startsWith('livechat:')
+  );
+  const isOmniConversation = isZaloConversation || isLivechatConversation;
+  const realtimeReady = isOmniConversation || (connection === 'connected' && Boolean(conversation?.tinodeTopic));
   const canCreatePoll = Boolean(realtimeReady && conversation?.isGroup && (isAdmin || groupSettingEnabled(conversation?.groupSettings, 'allowPolls')));
-  const canSendMessages = isZaloConversation || Boolean(realtimeReady && groupPolicyMessagesAllowed);
+  const canSendMessages = isOmniConversation || Boolean(realtimeReady && groupPolicyMessagesAllowed);
   const canPinMessages = Boolean(realtimeReady && (!conversation?.isGroup || isAdmin || groupSettingEnabled(conversation?.groupSettings, 'allowPinMessages')));
 
   useEffect(() => {
@@ -293,14 +300,14 @@ export function ChatDetailScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    if (!isZaloConversation && (connection !== 'connected' || !conversation?.tinodeTopic)) {
+    if (!isOmniConversation && (connection !== 'connected' || !conversation?.tinodeTopic)) {
       openedConversationRef.current = '';
       // Cached/offline conversations can still be positioned immediately.
       setTopicOpenReady(true);
       return () => { cancelled = true; };
     }
-    const openKey = isZaloConversation
-      ? `${route.params.conversationId}:zalo:${conversation?.messages?.length || 0}`
+    const openKey = isOmniConversation
+      ? `${route.params.conversationId}:omni:${conversation?.messages?.length || 0}`
       : `${route.params.conversationId}:${conversation?.tinodeTopic}:${session?.generation || 0}`;
     if (openedConversationRef.current === openKey) return;
     openedConversationRef.current = openKey;
@@ -327,7 +334,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
       }
       if (openedConversationRef.current === openKey) openedConversationRef.current = '';
     };
-  }, [connection, conversation?.tinodeTopic, isZaloConversation, openConversation, route.params.conversationId, session?.generation]);
+  }, [connection, conversation?.tinodeTopic, isOmniConversation, openConversation, route.params.conversationId, session?.generation]);
 
   useEffect(() => {
     if (connection === 'connected') {
@@ -1233,10 +1240,10 @@ export function ChatDetailScreen({ route, navigation }: Props) {
           <Avatar name={conversation.name} uri={conversation.avatarUrl} size={42} rounded={!conversation.isGroup} online={!conversation.isGroup && directPeerOnline(conversation, tinodeClient.currentUserId)} />
           <View style={styles.headerTitle}>
             <Text numberOfLines={1} style={styles.name}>{conversation.name}</Text>
-            <Text style={styles.status}>{isZaloConversation ? t('Khách hàng Zalo OA') : conversation.isChatbot ? t('Tra cứu tri thức · Có nguồn kiểm chứng') : conversation.isGroup ? (conversation.membersCount ? (String(conversation.membersCount).includes(t('thành viên')) ? String(conversation.membersCount) : `${conversation.membersCount} ${t('thành viên')}`) : `${conversation.members?.length || 0} ${t('thành viên')}`) : (directPeerOnline(conversation, tinodeClient.currentUserId) ? t('Đang hoạt động') : t('Offline'))}</Text>
+            <Text style={styles.status}>{isZaloConversation ? (((conversation as any)?.oa_name || 'Zalo OA') + ' • ' + t('Khách hàng Zalo OA')) : isLivechatConversation ? (((conversation as any)?.bot_name || 'Livechat') + ' • ' + t('Khách Website')) : conversation.isChatbot ? t('Tra cứu tri thức · Có nguồn kiểm chứng') : conversation.isGroup ? (conversation.membersCount ? (String(conversation.membersCount).includes(t('thành viên')) ? String(conversation.membersCount) : `${conversation.membersCount} ${t('thành viên')}`) : `${conversation.members?.length || 0} ${t('thành viên')}`) : (directPeerOnline(conversation, tinodeClient.currentUserId) ? t('Đang hoạt động') : t('Offline'))}</Text>
           </View>
         </Pressable>
-        {callCapability.available && !isZaloConversation ? (
+        {callCapability.available && !isOmniConversation ? (
           <>
             <Pressable accessibilityLabel={t('Gọi thoại')} disabled={Boolean(activeCall)} onPress={() => beginCall(true)} style={styles.more}><Phone color={palette.accent} size={19} /></Pressable>
             <Pressable accessibilityLabel={t('Gọi video')} disabled={Boolean(activeCall)} onPress={() => beginCall(false)} style={styles.more}><Video color={palette.accent} size={19} /></Pressable>
@@ -1245,7 +1252,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         <Pressable accessibilityLabel={t('Thông tin cuộc trò chuyện')} onPress={() => navigation.navigate('GroupInfo', { conversationId: conversation.id })} style={styles.more}><Info color={palette.inkSoft} size={21} /></Pressable>
       </View>
       {conversation.isChatbot ? <View style={styles.aiStrip}><View style={styles.aiStripItem}><ShieldCheck color={palette.online} size={14} /><Text style={styles.aiStripText}>{t('Riêng tư')}</Text></View><View style={styles.aiStripItem}><BookOpen color={palette.accent} size={14} /><Text style={styles.aiStripText}>{t('Nguồn rõ ràng')}</Text></View></View> : null}
-      {offlineBannerVisible && !recording && !isZaloConversation ? <View style={styles.offline}><WifiOff color={palette.warning} size={15} /><Text style={styles.offlineText}>{t('Realtime đang gián đoạn. Gửi tin nhắn tạm dừng đến khi kết nối lại.')}</Text><Pressable onPress={() => void reconnect()} style={styles.retry}><Text style={styles.retryText}>{t('Thử lại')}</Text></Pressable></View> : null}
+      {offlineBannerVisible && !recording && !isOmniConversation ? <View style={styles.offline}><WifiOff color={palette.warning} size={15} /><Text style={styles.offlineText}>{t('Realtime đang gián đoạn. Gửi tin nhắn tạm dừng đến khi kết nối lại.')}</Text><Pressable onPress={() => void reconnect()} style={styles.retry}><Text style={styles.retryText}>{t('Thử lại')}</Text></Pressable></View> : null}
       {activeLiveSession && activeLiveSession.conversationId === conversation.id && activeLiveSession.isActive ? (
         <View style={styles.liveBanner}>
           <View style={styles.liveBannerLeft}>

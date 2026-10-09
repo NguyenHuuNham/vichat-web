@@ -166,6 +166,28 @@ class ZaloTokenManager(object):
             )
             logger.info("Seeded initial Zalo tokens for OA/App: %s", oa_id or self.app_id)
 
+    def fetch_token_from_chatbot_service(self, oa_id: Optional[str] = None) -> Optional[str]:
+        """Fetch active access token from Chatbot daemon if available."""
+        target_oa = str(oa_id or self.app_id or "").strip()
+        if not target_oa:
+            return None
+        try:
+            url = "http://192.168.80.154:10000/api/v1/zalo/token?oa_id={}".format(target_oa)
+            resp = requests.get(url, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("success") and data.get("access_token"):
+                    at = str(data["access_token"]).strip()
+                    rt = str(data.get("refresh_token") or "").strip()
+                    sec_rem = int(data.get("seconds_remaining") or 0)
+                    if sec_rem > 60:
+                        self.persist_tokens(at, rt, oa_id=target_oa, at_expires_in=sec_rem)
+                        logger.info("Retrieved and cached valid Zalo token from chatbot daemon for OA %s", target_oa)
+                        return at
+        except Exception as exc:
+            logger.warning("Could not fetch token from chatbot service: %s", exc)
+        return None
+
     def get_access_token(self, oa_id: Optional[str] = None) -> Optional[str]:
         now = time.time()
         at_key = self._get_key("at", oa_id)
@@ -186,6 +208,11 @@ class ZaloTokenManager(object):
                 refreshed = self.refresh_token(rt_data["token"], oa_id=oa_id)
                 if refreshed:
                     return refreshed[0]
+
+        # Fallback: check chatbot internal service
+        cb_token = self.fetch_token_from_chatbot_service(oa_id)
+        if cb_token:
+            return cb_token
 
         logger.warning("No valid access token or refresh token for Zalo: %s", oa_id or self.app_id)
         return None
@@ -286,7 +313,13 @@ class ZaloService(object):
         token = self.token_manager.get_access_token(oa_id=oa_id)
         if not token:
             logger.error("Cannot send Zalo CS message: No valid access token for OA %s", oa_id)
-            return {"success": False, "error_code": -1, "error_message": "Chưa có Access Token Zalo"}
+            return {
+                "success": False,
+                "error_code": -14014,
+                "error_message": "Token Zalo OA đã hết hạn hoặc chưa được liên kết. Vui lòng liên kết lại hoặc cập nhật Token.",
+                "needs_auth": True,
+                "oa_id": oa_id or self.app_id,
+            }
 
         url = "{}/oa/message/cs".format(ZALO_OA_BASE_URL)
         headers = {
@@ -323,8 +356,8 @@ class ZaloService(object):
                             "raw": data,
                         }
 
-                    # Auto-refresh and retry on token error (-216: Invalid, -124: Expired)
-                    if error_code in (-216, -124) and retry_on_token_error:
+                    # Auto-refresh and retry on token error (-216: Invalid, -124: Expired, -14014)
+                    if error_code in (-216, -124, -14014) and retry_on_token_error:
                         logger.warning("Zalo CS token invalid/expired [%s], invalidating and retrying...", error_code)
                         self.token_manager.invalidate_access_token(oa_id=oa_id)
                         return await self.send_cs_message(
@@ -336,10 +369,13 @@ class ZaloService(object):
                         )
 
                     logger.warning("Zalo CS message error [%s]: %s", error_code, data.get("message"))
+                    is_token_issue = error_code in (-216, -124, -14014, -204)
                     return {
                         "success": False,
                         "error_code": error_code,
-                        "error_message": data.get("message", "Lỗi gửi tin nhắn Zalo"),
+                        "error_message": "Token Zalo OA đã hết hạn hoặc không hợp lệ. Vui lòng liên kết lại hoặc cập nhật Token." if is_token_issue else data.get("message", "Lỗi gửi tin nhắn Zalo"),
+                        "needs_auth": is_token_issue,
+                        "oa_id": oa_id or self.app_id,
                         "raw": data,
                     }
         except Exception as exc:

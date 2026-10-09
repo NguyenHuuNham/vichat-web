@@ -54,9 +54,19 @@ function normalizeConversation(record: any): Conversation {
     snapshotSource: 'management',
     name: String(record?.name || record?.subject || properties.name || 'Cuộc trò chuyện'),
     isGroup,
-    channel: (record?.channel || record?.channelType || properties.channel || properties.channelType || (id.startsWith('zalo:') ? 'zalo_oa' : undefined)) as any,
-    channelType: (record?.channelType || record?.channel || properties.channelType || properties.channel || (id.startsWith('zalo:') ? 'zalo_oa' : undefined)) as any,
-    sourceType: String(record?.sourceType || record?.source_type || properties.sourceType || properties.source_type || (id.startsWith('zalo:') ? 'zalo_oa' : '')) || undefined,
+    channel: (record?.channel || record?.channelType || properties.channel || properties.channelType || (id.startsWith('zalo:') ? 'zalo_oa' : (id.startsWith('livechat:') ? 'livechat' : undefined))) as any,
+    channelType: (record?.channelType || record?.channel || properties.channelType || properties.channel || (id.startsWith('zalo:') ? 'zalo_oa' : (id.startsWith('livechat:') ? 'livechat' : undefined))) as any,
+    sourceType: String(record?.sourceType || record?.source_type || properties.sourceType || properties.source_type || (id.startsWith('zalo:') ? 'zalo_oa' : (id.startsWith('livechat:') ? 'livechat' : ''))) || undefined,
+    oa_id: String(record?.oa_id || record?.oaId || properties.oa_id || properties.oaId || (id.startsWith('zalo:') ? id.split(':')[1] : '')),
+    oa_name: (() => {
+      const name = String(record?.oa_name || record?.oaName || properties.oa_name || properties.oaName || '').trim();
+      if (name) return name;
+      const oid = String(record?.oa_id || record?.oaId || properties.oa_id || properties.oaId || (id.startsWith('zalo:') ? id.split(':')[1] : '')).trim();
+      if (oid === '2274336170816480019') return 'Gonstack';
+      if (oid === '3733466236951056718') return 'CBS global education';
+      if (oid === '262829019064124420') return 'Hoàng Hà Mobile';
+      return oid ? 'Zalo OA' : '';
+    })(),
     adminId: String(record?.adminId || record?.admin_id || properties.adminId || properties.admin_id || ''),
     avatarUrl: normalizeMediaUrl(record?.avatarUrl || record?.avatar || properties.avatar || ''),
     description: String(record?.description || properties.description || ''),
@@ -94,7 +104,25 @@ export const chatManagementService = {
 
   async listConversations(signal?: AbortSignal): Promise<Conversation[]> {
     const records = await listAllPages('/api/v1/conversation', {}, CHAT_LIST_TIMEOUT_MS, signal);
-    return dedupeConversations(records.map(normalizeConversation));
+    let zaloRecords: any[] = [];
+    try {
+      const zaloPayload = await apiRequest<{ conversations: any[] }>('/api/v1/zalo/conversations', { signal, timeoutMs: 5000 });
+      if (Array.isArray(zaloPayload?.conversations)) {
+        zaloRecords = zaloPayload.conversations;
+      }
+    } catch {
+      // Fallback if zalo endpoint has issue
+    }
+    let livechatRecords: any[] = [];
+    try {
+      const livechatPayload = await apiRequest<{ conversations: any[] }>('/api/v1/livechat/conversations', { signal, timeoutMs: 5000 });
+      if (Array.isArray(livechatPayload?.conversations)) {
+        livechatRecords = livechatPayload.conversations;
+      }
+    } catch {
+      // Fallback if livechat endpoint has issue
+    }
+    return dedupeConversations([...records, ...zaloRecords, ...livechatRecords].map(normalizeConversation));
   },
 
   async createConversation(input: {
@@ -284,9 +312,14 @@ export const chatManagementService = {
     }
   },
 
-  async sendZaloMessage(userId: string, message: string, oaId?: string, agentName?: string) {
+  async sendZaloMessage(userId: string, message: string, oaId?: string, agentName?: string, tenantId?: string) {
+    const headers: Record<string, string> = {};
+    if (tenantId) {
+      headers['X-Tenant-Id'] = tenantId;
+    }
     return apiRequest('/api/v1/zalo/send_message', {
       method: 'POST',
+      headers,
       body: JSON.stringify({
         user_id: userId,
         message,
@@ -300,6 +333,33 @@ export const chatManagementService = {
     try {
       const payload = await apiRequest<{ status: string; messages: any[] }>(
         `/api/v1/zalo/conversations/${encodeURIComponent(conversationId)}/messages`
+      );
+      return Array.isArray(payload?.messages) ? payload.messages : [];
+    } catch {
+      return [];
+    }
+  },
+
+  async sendLivechatMessage(conversationId: string, message: string, agentName?: string, tenantId?: string) {
+    const headers: Record<string, string> = {};
+    if (tenantId) {
+      headers['X-Tenant-Id'] = tenantId;
+    }
+    return apiRequest('/api/v1/livechat/send_message', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        message,
+        agent_name: agentName,
+      }),
+    });
+  },
+
+  async getLivechatMessages(conversationId: string): Promise<any[]> {
+    try {
+      const payload = await apiRequest<{ status: string; messages: any[] }>(
+        `/api/v1/livechat/conversations/${encodeURIComponent(conversationId)}/messages`
       );
       return Array.isArray(payload?.messages) ? payload.messages : [];
     } catch {

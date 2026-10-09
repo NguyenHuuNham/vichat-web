@@ -39,6 +39,15 @@ test('filters livechat conversations', () => {
   }), ['livechat']);
 });
 
+test('filters unread conversations by unread tab', () => {
+  assert.deepEqual(filterConversationIds({
+    baseIds: ['direct', 'group', 'unread'],
+    conversations,
+    tab: 'unread',
+    isUnread: room => room.id === 'unread',
+  }), ['unread']);
+});
+
 test('combines unread, category, and stranger filters', () => {
   assert.deepEqual(filterConversationIds({
     baseIds: ['direct', 'group', 'unread'],

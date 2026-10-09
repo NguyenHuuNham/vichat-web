@@ -309,6 +309,8 @@ export interface Conversation {
   channel?: ChannelType;
   channelType?: ChannelType;
   sourceType?: string;
+  oa_id?: string;
+  oa_name?: string;
   adminId?: string;
   isChatbot?: boolean;
   avatarUrl?: string;

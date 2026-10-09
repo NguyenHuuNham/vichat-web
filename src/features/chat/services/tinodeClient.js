@@ -80,12 +80,23 @@ const { Drafty, Tinode } = tinodeSdk;
 
 const env = import.meta.env || {};
 
+const DEFAULT_TINODE_PUBLIC_APP_ID = 'AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K';
+const rawPublicAppId = String(env.VITE_TINODE_PUBLIC_APP_ID || '').trim();
+const resolvedPublicAppId = (!rawPublicAppId || rawPublicAppId.startsWith('__CONFIGURE_'))
+  ? DEFAULT_TINODE_PUBLIC_APP_ID
+  : rawPublicAppId;
+
+const rawHost = String(env.VITE_TINODE_HOST || '').trim();
+const defaultHost = (typeof window !== 'undefined' && window.location?.hostname && !['localhost', '127.0.0.1'].includes(window.location.hostname))
+  ? 'chat.gonplatform.com'
+  : (rawHost || '127.0.0.1:6060');
+
 const config = {
-  host: env.VITE_TINODE_HOST || '',
-  publicAppId: env.VITE_TINODE_PUBLIC_APP_ID || '',
+  host: rawHost || defaultHost,
+  publicAppId: resolvedPublicAppId,
   secure: env.VITE_TINODE_SECURE !== 'false',
   transport: env.VITE_TINODE_TRANSPORT || 'ws',
-  appName: env.VITE_TINODE_APP_NAME || 'VICHAT/1.0',
+  appName: env.VITE_TINODE_APP_NAME || 'SONGHONG/1.0',
   persist: env.VITE_TINODE_PERSIST === 'true',
 };
 

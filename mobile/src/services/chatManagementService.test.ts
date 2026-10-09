@@ -87,7 +87,8 @@ describe('mobile Chatmgt pagination', () => {
     const conversations = await chatManagementService.listConversations();
 
     expect(conversations.map(conversation => conversation.id)).toEqual(['conversation-1']);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const conversationCalls = fetchMock.mock.calls.filter(call => String(call[0]).includes('/api/v1/conversation?'));
+    expect(conversationCalls).toHaveLength(1);
   });
 
   it('returns no bot update when the chatbot endpoint temporarily fails', async () => {
@@ -177,5 +178,55 @@ describe('mobile Chatmgt pagination', () => {
     expect(conversations[0].sourceType).toBe('zalo_oa');
     expect(conversations[0].messages).toHaveLength(1);
     expect(conversations[0].messages[0].text).toBe('Chào shop');
+  });
+
+  it('normalizes Livechat conversation preserving channel, channelType and pre-existing messages', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      objects: [{
+        id: 'livechat:lc_user_789',
+        subject: 'Khách Website',
+        channel: 'livechat',
+        channelType: 'livechat',
+        sourceType: 'livechat',
+        messages: [{ id: 'm_lc_1', text: 'Tôi cần hỗ trợ', sender: 'incoming' }],
+      }],
+    }));
+
+    const conversations = await chatManagementService.listConversations();
+    expect(conversations).toHaveLength(1);
+    expect(conversations[0].channel).toBe('livechat');
+    expect(conversations[0].channelType).toBe('livechat');
+    expect(conversations[0].sourceType).toBe('livechat');
+    expect(conversations[0].messages).toHaveLength(1);
+    expect(conversations[0].messages[0].text).toBe('Tôi cần hỗ trợ');
+  });
+
+  it('sendLivechatMessage sends POST to /api/v1/livechat/send_message', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(jsonResponse({ status: 'success', message_id: 'msg_123' }));
+
+    await chatManagementService.sendLivechatMessage('livechat:conv_1', 'Xin chào bạn', 'CSKH Minh', 'gonstack');
+    const [url, request] = fetchMock.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toContain('/api/v1/livechat/send_message');
+    expect(request.method).toBe('POST');
+    expect(JSON.parse(String(request.body))).toEqual({
+      conversation_id: 'livechat:conv_1',
+      message: 'Xin chào bạn',
+      agent_name: 'CSKH Minh',
+    });
+  });
+
+  it('getLivechatMessages calls /api/v1/livechat/conversations/:id/messages', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const messages = [{ id: 'm1', text: 'Hello', sender_type: 'VISITOR' }];
+    fetchMock.mockResolvedValueOnce(jsonResponse({ status: 'success', messages }));
+
+    const fetched = await chatManagementService.getLivechatMessages('livechat:conv_1');
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toContain('/api/v1/livechat/conversations/livechat%3Aconv_1/messages');
+    expect(fetched).toEqual(messages);
   });
 });

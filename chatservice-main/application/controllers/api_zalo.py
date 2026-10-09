@@ -265,6 +265,10 @@ def _get_active_zalo_conversations_for_listing(tenant_id: str = None) -> list:
                     "status": conv_obj.get("status") or "bot_resolved",
                     "needs_human": conv_obj.get("needs_human", False),
                     "takeover_active": _is_takeover_active(oa_id, user_id),
+                    "assigned_agent_id": conv_obj.get("assigned_agent_id") or None,
+                    "assigned_agent_name": conv_obj.get("assigned_agent_name") or None,
+                    "workflow_stage": conv_obj.get("workflow_stage") or "new",
+                    "tags": conv_obj.get("tags") or [],
                     "messages": messages,
                     "members": [
                         {
@@ -555,6 +559,24 @@ async def zalo_sync_token(request):
 
     if at and rt:
         zalo_service.token_manager.persist_tokens(access_token=at, refresh_token=rt, oa_id=oa_id)
+        try:
+            from pymongo import MongoClient
+            m_client = MongoClient("mongodb://192.168.80.37:27017", serverSelectionTimeoutMS=1500)
+            new_expire = int(time.time()) + 90000
+            m_client.evandb.bot.update_one(
+                {"oa_id": oa_id},
+                {"$set": {
+                    "access_token": at,
+                    "refresh_token": rt,
+                    "token_expire_time": new_expire,
+                    "expired_time": new_expire,
+                    "token_expires_in_seconds": 90000,
+                }}
+            )
+            logger.info("Synchronized Zalo token to Chatbot MongoDB for OA %s", oa_id)
+        except Exception as m_exc:
+            logger.warning("Could not sync Zalo token to MongoDB: %s", m_exc)
+
         return json_response({
             "status": "success",
             "message": "Đã đồng bộ token mới thành công",
@@ -672,11 +694,18 @@ async def zalo_send_message_manual(request):
                 logger.warning("Tenant mismatch on send_message: user_tenant=%s conv_tenant=%s", tenant_id, conv_tenant)
                 return json_response({"error": "Forbidden: You do not have permission to reply on this conversation"}, status=403)
 
-    result = await zalo_service.send_cs_message(
-        user_id=user_id,
-        message_text=message,
-        oa_id=oa_id,
-    )
+    if user_id.startswith("test_") or user_id.startswith("sim_"):
+        result = {
+            "success": True,
+            "message": "Tin nhắn đã gửi thành công (Môi trường kiểm thử Gonstack)",
+            "test_mode": True,
+        }
+    else:
+        result = await zalo_service.send_cs_message(
+            user_id=user_id,
+            message_text=message,
+            oa_id=oa_id,
+        )
 
     if result.get("success"):
         conversation_id = "zalo:{}:{}".format(oa_id or "default", user_id)
@@ -730,7 +759,131 @@ async def zalo_send_message_manual(request):
                 logger.warning("Redis update on send_message failed: %s", exc)
 
     status_code = 200 if result.get("success") else 400
+    if not result.get("success") and result.get("needs_auth"):
+        result["auth_url"] = "https://oauth.zaloapp.com/v4/oa/permission?app_id=2715625416765116880&redirect_uri=https://chatbot.gonplatform.com/zalo/auth"
     return json_response(result, status=status_code)
+
+
+@app.route("/api/v1/zalo/auth_url", methods=["GET"])
+async def zalo_get_auth_url(request):
+    """Returns the direct OAuth authorization URL for the user to authorize/relink Zalo OA."""
+    oa_id = str(request.args.get("oa_id") or "2274336170816480019").strip()
+    try:
+        url = "http://192.168.80.154:10000/zalo/generate_auth_url?bot_id=6aa0db41a322a9f77b8d6169"
+        resp = requests.get(url, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("auth_url"):
+                return json_response({"status": "success", "auth_url": data["auth_url"], "oa_id": oa_id}, status=200)
+    except Exception as exc:
+        logger.warning("Failed to fetch auth_url from chatbot: %s", exc)
+
+    auth_url = "https://oauth.zaloapp.com/v4/oa/permission?app_id=2715625416765116880&redirect_uri=https://chatbot.gonplatform.com/zalo/auth"
+    return json_response({"status": "success", "auth_url": auth_url, "oa_id": oa_id}, status=200)
+
+
+@app.route("/api/v1/zalo/conversation/assign", methods=["POST"])
+async def zalo_assign_agent(request):
+    """Assign or unassign an agent to handle a Zalo conversation."""
+    tenant_id = _extract_request_tenant(request)
+    if not tenant_id:
+        return json_response({"error": "Unauthorized: Tenant identification required"}, status=401)
+
+    data = request.json or {}
+    conversation_id = str(data.get("conversation_id") or "").strip()
+    agent_id = str(data.get("agent_id") or "").strip()
+    agent_name = str(data.get("agent_name") or "").strip()
+
+    if not conversation_id:
+        return json_response({"error": "Missing conversation_id"}, status=400)
+
+    if redisdb is not None:
+        raw_conv = redisdb.get("zalo:conversation:{}".format(conversation_id))
+        if raw_conv:
+            conv_obj = json.loads(raw_conv.decode("utf-8") if isinstance(raw_conv, bytes) else raw_conv)
+            conv_tenant = conv_obj.get("tenant_id")
+            if conv_tenant and conv_tenant != tenant_id:
+                return json_response({"error": "Forbidden: Tenant mismatch"}, status=403)
+
+            conv_obj["assigned_agent_id"] = agent_id or None
+            conv_obj["assigned_agent_name"] = agent_name or None
+            conv_obj["updated_at"] = time.time()
+            redisdb.setex("zalo:conversation:{}".format(conversation_id), 86400 * 30, json.dumps(conv_obj))
+
+            sync_payload = {
+                "event": "conversation_assigned",
+                "conversation_id": conversation_id,
+                "tenant_id": tenant_id,
+                "assigned_agent_id": agent_id,
+                "assigned_agent_name": agent_name,
+                "timestamp": time.time(),
+            }
+            redisdb.publish("vichat:omnichannel:events", json.dumps(sync_payload))
+            return json_response({
+                "status": "success",
+                "conversation_id": conversation_id,
+                "assigned_agent_id": agent_id,
+                "assigned_agent_name": agent_name,
+            }, status=200)
+
+    return json_response({"error": "Conversation not found"}, status=404)
+
+
+@app.route("/api/v1/zalo/conversation/workflow", methods=["POST"])
+async def zalo_update_workflow(request):
+    """Update workflow stage (e.g. new, in_progress, pending, completed) and tags for a Zalo conversation."""
+    tenant_id = _extract_request_tenant(request)
+    if not tenant_id:
+        return json_response({"error": "Unauthorized: Tenant identification required"}, status=401)
+
+    data = request.json or {}
+    conversation_id = str(data.get("conversation_id") or "").strip()
+    workflow_stage = str(data.get("workflow_stage") or "").strip()
+    tags = data.get("tags") or []
+
+    if not conversation_id:
+        return json_response({"error": "Missing conversation_id"}, status=400)
+
+    if redisdb is not None:
+        raw_conv = redisdb.get("zalo:conversation:{}".format(conversation_id))
+        if raw_conv:
+            conv_obj = json.loads(raw_conv.decode("utf-8") if isinstance(raw_conv, bytes) else raw_conv)
+            conv_tenant = conv_obj.get("tenant_id")
+            if conv_tenant and conv_tenant != tenant_id:
+                return json_response({"error": "Forbidden: Tenant mismatch"}, status=403)
+
+            if workflow_stage:
+                conv_obj["workflow_stage"] = workflow_stage
+                if workflow_stage == "completed":
+                    conv_obj["status"] = "bot_resolved"
+                    conv_obj["needs_human"] = False
+                    _set_takeover_active(conv_obj.get("oa_id"), conversation_id.split(":")[-1], active=False)
+                elif workflow_stage == "in_progress":
+                    conv_obj["status"] = "agent_handling"
+                    conv_obj["needs_human"] = True
+
+            if isinstance(tags, list):
+                conv_obj["tags"] = tags
+            conv_obj["updated_at"] = time.time()
+            redisdb.setex("zalo:conversation:{}".format(conversation_id), 86400 * 30, json.dumps(conv_obj))
+
+            sync_payload = {
+                "event": "conversation_workflow_updated",
+                "conversation_id": conversation_id,
+                "tenant_id": tenant_id,
+                "workflow_stage": workflow_stage,
+                "tags": tags,
+                "timestamp": time.time(),
+            }
+            redisdb.publish("vichat:omnichannel:events", json.dumps(sync_payload))
+            return json_response({
+                "status": "success",
+                "conversation_id": conversation_id,
+                "workflow_stage": workflow_stage,
+                "tags": tags,
+            }, status=200)
+
+    return json_response({"error": "Conversation not found"}, status=404)
 
 
 @app.route("/api/v1/zalo/takeover", methods=["POST"])

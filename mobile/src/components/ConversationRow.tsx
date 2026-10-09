@@ -21,6 +21,18 @@ export const ConversationRow = memo(function ConversationRow({ conversation, pre
   const category = preference?.category ? t(({ customer: 'Khách hàng', work: 'Công việc', urgent: 'Ưu tiên', 'follow-up': 'Cần theo dõi', other: 'Khác' } as Record<string, string>)[preference.category] || '') : '';
   const channel = resolveConversationChannel(conversation);
   const channelBadge = getChannelBadgeInfo(channel);
+  const zaloBotLabel = (() => {
+    if (channel !== 'zalo' && channel !== 'zalo_oa') return null;
+    const name = conversation.oa_name || '';
+    if (name.includes('Gonstack')) return 'Gonstack';
+    if (name.includes('Hoàng Hà')) return 'Hoàng Hà';
+    if (name.includes('CBS')) return 'CBS';
+    if (name) return name;
+    if (conversation.oa_id === '2274336170816480019') return 'Gonstack';
+    if (conversation.oa_id === '262829019064124420') return 'Hoàng Hà';
+    if (conversation.oa_id === '3733466236951056718') return 'CBS';
+    return null;
+  })();
   return (
     <Pressable onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => [styles.row, compact && styles.rowCompact, pressed && styles.pressed]}>
       <Avatar name={conversation.name} uri={conversation.avatarUrl} size={compact ? 44 : 52} rounded={!conversation.isGroup} />
@@ -31,7 +43,7 @@ export const ConversationRow = memo(function ConversationRow({ conversation, pre
             <Text numberOfLines={1} style={styles.name}>{conversation.name}</Text>
             {channelBadge ? (
               <View style={[styles.channelBadge, { backgroundColor: channelBadge.badgeColor }]}>
-                <Text style={styles.channelBadgeText}>{channelBadge.label}</Text>
+                <Text style={styles.channelBadgeText}>{zaloBotLabel ? ('Zalo • ' + zaloBotLabel) : channelBadge.label}</Text>
               </View>
             ) : null}
             {isMuted ? <BellOff color={palette.muted} size={14} style={{ flexShrink: 0 }} /> : null}

@@ -7,6 +7,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import ConversationErrorBoundary from '../components/ConversationErrorBoundary';
 import useDialogFocusTrap from '../components/useDialogFocusTrap';
 import ConversationListToolbar from '../features/chat/components/ConversationListToolbar';
+import ZaloCrmHeaderControls from '../features/chat/components/ZaloCrmHeaderControls';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation, normalizeTinodeMediaUrl } from '../features/chat/services/tinodeClient';
 import { shouldRetryProtectedMediaAfterSession } from '../features/chat/services/mediaRetryPolicy';
 import { startBrowserPresence } from '../features/chat/services/browserPresence';
@@ -3220,15 +3221,39 @@ function managementRoomsForSession(managed, accounts, user, accountSession) {
         badge: 0,
       };
     });
+  const zaloRooms = safeConversationList(managed?.conversations)
+    .filter(room => room?.channel === 'zalo_oa' || String(room?.id || '').startsWith('zalo:') || room?.oa_id)
+    .map(room => ({
+      ...room,
+      id: room.id,
+      managementId: room.id,
+      tinodeTopic: room.id,
+      channel: 'zalo_oa',
+      channelType: 'zalo_oa',
+      sourceType: 'zalo_oa',
+      name: room.name || 'Khách Zalo',
+      avatarUrl: room.avatarUrl || room.avatar || '',
+      avatar: room.avatarUrl || room.avatar || '',
+      isGroup: false,
+      isChatbot: false,
+      accountSession,
+      messages: Array.isArray(room.messages) ? room.messages : [],
+      lastMsg: room.lastMsg || 'Chưa có tin nhắn',
+      time: room.time || '',
+      badge: Number(room.badge) || 0,
+    }));
   const rooms = {
     ...Object.fromEntries(remoteRooms.map(room => [room.id, room])),
+    ...Object.fromEntries(zaloRooms.map(room => [room.id, room])),
     ...Object.fromEntries(savedGroups.map(group => [group.id, group])),
     ...Object.fromEntries(savedDirects.map(direct => [direct.id, direct])),
   };
   return Object.fromEntries(Object.entries(rooms).map(([id, room]) => [id, {
     ...room,
     managementId: room.managementId || id,
-    tinodeTopic: room.tinodeTopic || chatManagementService.getTinodeTopic(managementUserId, room.managementId || id),
+    tinodeTopic: (room.channel === 'zalo_oa' || String(room.id || '').startsWith('zalo:'))
+      ? room.id
+      : (room.tinodeTopic || chatManagementService.getTinodeTopic(managementUserId, room.managementId || id)),
     accountSession,
   }]));
 }
@@ -3483,6 +3508,7 @@ function App() {
   ));
   const [conversationCategories, setConversationCategories] = useState({});
   const [conversationListTab, setConversationListTab] = useState('all');
+  const [selectedZaloBotId, setSelectedZaloBotId] = useState('all');
   const [conversationListCategoryMenuOpen, setConversationListCategoryMenuOpen] = useState(false);
   const [conversationListMoreMenuOpen, setConversationListMoreMenuOpen] = useState(false);
   const [conversationListStatus, setConversationListStatus] = useState('all');
@@ -4357,7 +4383,8 @@ function App() {
     }
   };
 
-  const realtimeMessagingPending = usesManagementData
+  const isZaloActiveChat = Boolean(activeChat?.channel === 'zalo_oa' || String(activeChat?.id || '').startsWith('zalo:'));
+  const realtimeMessagingPending = !isZaloActiveChat && usesManagementData
     && !activeChat.isChatbot
     && (
       chatMode !== 'tinode'
@@ -4544,11 +4571,13 @@ function App() {
   const activeDirectPeer = !activeChat.isGroup && !activeChat.isChatbot
     ? activeChatMembers.find(member => !identitiesOverlap(member, currentUser)) || activeChatMembers[0] || null
     : null;
-  const activeChatPresenceLabel = activeGroupPresence
+  const activeChatPresenceLabel = isZaloActiveChat
+    ? (activeChat.oa_name ? `${appCopy.t('Khách hàng Zalo')} · ${activeChat.oa_name}` : appCopy.t('Khách hàng Zalo'))
+    : activeGroupPresence
     ? appCopy.t(`${activeGroupPresence.memberCount} thành viên • ${activeGroupPresence.onlineCount} đang online`)
     : activeDirectPeer
       ? accountPresenceLabel(activeDirectPeer)
-    : appCopy.t(activeChat.membersCount);
+    : appCopy.t(activeChat.membersCount || '');
   const callActionCapability = (() => {
     if (!CALLS_ENABLED) return { available: false, reason: 'Tính năng cuộc gọi đang tạm ẩn theo cấu hình doanh nghiệp.' };
     if (chatMode !== 'tinode') return { available: false, reason: 'Cuộc gọi chỉ khả dụng khi đã kết nối Tinode realtime.' };
@@ -4936,7 +4965,7 @@ function App() {
     setConversationListTab(nextTab);
     setConversationListCategoryMenuOpen(false);
     setConversationListMoreMenuOpen(false);
-    if (nextTab === 'all' || nextTab === 'groups' || nextTab === 'zalo' || nextTab === 'livechat' || nextTab === 'facebook') resetConversationListFilters();
+    if (nextTab === 'all' || nextTab === 'groups' || nextTab === 'zalo' || nextTab === 'livechat' || nextTab === 'facebook' || nextTab === 'unread') resetConversationListFilters();
   };
 
   const toggleConversationListCategoryMenu = () => {
@@ -7701,6 +7730,16 @@ function App() {
         }
       }
     }
+    if (room?.channel === 'zalo_oa' || String(room?.id || '').startsWith('zalo:')) {
+      setConversations(previous => previous[id]
+        ? { ...previous, [id]: { ...previous[id], badge: 0, unreadFromSeq: 0 } }
+        : previous);
+      if (openingConversationRef.current === String(id)) {
+        openingConversationRef.current = '';
+        if (shouldScrollToLatestOnOpen && isCurrent()) queueConversationLatestScroll(id, navigation);
+      }
+      return;
+    }
     if (chatMode === 'tinode' && (!room?.isChatbot || room?.tinodeTopic)) {
       try {
         const topicName = room.isChatbot
@@ -8663,6 +8702,84 @@ function App() {
       friendRequestControllerRef.current = null;
     };
   }, [isLoggedIn, managementViewerId, currentUser, appendLocalFriendEvent]);
+
+  // Callback when Zalo CRM controls update conversation properties
+  const handleZaloConversationUpdated = useCallback(updatedConv => {
+    if (!updatedConv?.id) return;
+    setConversations(previous => {
+      const room = previous[updatedConv.id];
+      if (!room) return previous;
+      const nextRoom = { ...room, ...updatedConv };
+      const next = { ...previous, [updatedConv.id]: nextRoom };
+      conversationsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  // Periodic polling for Zalo OA conversations & incoming message alerts
+  useEffect(() => {
+    if (!isLoggedIn) return undefined;
+    const accountSession = accountSessionRef.current;
+    let cancelled = false;
+
+    const syncZaloConversations = async () => {
+      if (cancelled || accountSessionRef.current !== accountSession) return;
+      try {
+        const zaloRooms = await chatManagementService.listZaloConversations();
+        if (cancelled || accountSessionRef.current !== accountSession || !Array.isArray(zaloRooms) || zaloRooms.length === 0) return;
+
+        setConversations(previous => {
+          const next = { ...previous };
+          let changed = false;
+
+          zaloRooms.forEach(zaloRoom => {
+            const roomId = zaloRoom.id;
+            const existingRoom = next[roomId];
+
+            if (existingRoom && Array.isArray(zaloRoom.messages) && zaloRoom.messages.length > 0) {
+              const existingMessages = Array.isArray(existingRoom.messages) ? existingRoom.messages : [];
+              const existingMsgIds = new Set(existingMessages.map(m => m.id));
+              const newIncomingMsgs = zaloRoom.messages.filter(m => 
+                !existingMsgIds.has(m.id) && m.sender === 'incoming' && !m.isBot
+              );
+
+              if (newIncomingMsgs.length > 0 && currentChatIdRef.current !== roomId) {
+                const latestNewMsg = newIncomingMsgs[newIncomingMsgs.length - 1];
+                showIncomingNotification(zaloRoom, latestNewMsg, roomId);
+              }
+            }
+
+            const mergedRoom = existingRoom ? {
+              ...existingRoom,
+              ...zaloRoom,
+              badge: currentChatIdRef.current === roomId ? 0 : (zaloRoom.badge || existingRoom.badge || 0),
+              messages: mergeTinodeMessages(existingRoom.messages, zaloRoom.messages),
+            } : {
+              ...zaloRoom,
+              badge: currentChatIdRef.current === roomId ? 0 : (zaloRoom.badge || 0),
+            };
+
+            next[roomId] = mergedRoom;
+            changed = true;
+          });
+
+          if (changed) {
+            conversationsRef.current = next;
+            return next;
+          }
+          return previous;
+        });
+      } catch {
+        // Background sync silence
+      }
+    };
+
+    const timer = window.setInterval(syncZaloConversations, 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isLoggedIn, showIncomingNotification]);
 
   // Chatmgt owns the directory-wide presence lease. The short polling window
   // keeps the list responsive while Redis TTL handles crashed tabs/network loss.
@@ -13189,6 +13306,117 @@ function App() {
     });
     setMentionContext(null);
     const room = conversations[currentChatId];
+    if (room?.channel === 'zalo_oa' || String(room?.id || '').startsWith('zalo:')) {
+      const zaloUserId = room.zalo_user_id || room.userId || room.id.replace(/^zalo:[^:]*:/, '').replace(/^zalo:/, '');
+      const oaId = room.oa_id || '262829019064124420';
+      const agentName = currentUser?.name || 'Nhân viên CSKH';
+
+      try {
+        const sendResult = await chatManagementService.sendZaloMessage({
+          userId: zaloUserId,
+          message: text,
+          oaId: oaId,
+          agentName: agentName,
+        });
+
+        if (sendResult?.needs_auth) {
+          setChatError(
+            sendResult.message || 
+            `Zalo OA (${oaId}) chưa có quyền gửi tin nhắn hoặc token đã hết hạn. Vui lòng cấp lại quyền Zalo OAuth.`
+          );
+          setConversations(previous => ({
+            ...previous,
+            [room.id]: {
+              ...previous[room.id],
+              messages: roomMessages(previous[room.id]).map(message => message.id === newMsg.id
+                ? { ...message, pending: false, failed: true, error: sendResult.message }
+                : message),
+            },
+          }));
+        } else if (sendResult?.error) {
+          setChatError(`Lỗi gửi tin Zalo: ${sendResult.message || sendResult.error}`);
+          setConversations(previous => ({
+            ...previous,
+            [room.id]: {
+              ...previous[room.id],
+              messages: roomMessages(previous[room.id]).map(message => message.id === newMsg.id
+                ? { ...message, pending: false, failed: true, error: sendResult.message }
+                : message),
+            },
+          }));
+        } else {
+          setConversations(previous => ({
+            ...previous,
+            [room.id]: {
+              ...previous[room.id],
+              messages: roomMessages(previous[room.id]).map(message => message.id === newMsg.id
+                ? { ...message, pending: false, failed: false, message_id: sendResult.message_id }
+                : message),
+            },
+          }));
+        }
+      } catch (err) {
+        setChatError(err?.message || 'Không thể gửi tin nhắn Zalo.');
+        setConversations(previous => ({
+          ...previous,
+          [room.id]: {
+            ...previous[room.id],
+            messages: roomMessages(previous[room.id]).map(message => message.id === newMsg.id
+              ? { ...message, pending: false, failed: true }
+              : message),
+          },
+        }));
+      }
+      return;
+    }
+    if (room?.channel === 'livechat' || room?.sourceType === 'livechat' || String(room?.id || '').startsWith('livechat:')) {
+      const agentName = currentUser?.name || 'Nhân viên CSKH';
+      const agentId = currentUser?.id || 'agent';
+
+      try {
+        const sendResult = await chatManagementService.sendLivechatMessage({
+          conversationId: room.id,
+          message: text,
+          agentId: agentId,
+          agentName: agentName,
+        });
+
+        if (sendResult?.error) {
+          setChatError(`Lỗi gửi tin Livechat: ${sendResult.message || sendResult.error}`);
+          setConversations(previous => ({
+            ...previous,
+            [room.id]: {
+              ...previous[room.id],
+              messages: roomMessages(previous[room.id]).map(message => message.id === newMsg.id
+                ? { ...message, pending: false, failed: true, error: sendResult.message }
+                : message),
+            },
+          }));
+        } else {
+          setConversations(previous => ({
+            ...previous,
+            [room.id]: {
+              ...previous[room.id],
+              messages: roomMessages(previous[room.id]).map(message => message.id === newMsg.id
+                ? { ...message, pending: false, failed: false, message_id: sendResult.message_id }
+                : message),
+            },
+          }));
+        }
+      } catch (err) {
+        setChatError(err?.message || 'Không thể gửi tin nhắn Livechat.');
+        setConversations(previous => ({
+          ...previous,
+          [room.id]: {
+            ...previous[room.id],
+            messages: roomMessages(previous[room.id]).map(message => message.id === newMsg.id
+              ? { ...message, pending: false, failed: true }
+              : message),
+          },
+        }));
+      }
+      return;
+    }
     if (room?.isChatbot && chatMode === 'tinode' && room.tinodeTopic) {
       setIsTyping(false);
       try {
@@ -13545,6 +13773,36 @@ function App() {
     if (!peer) return false;
     return !findAccount(directoryAccounts, peer?.id || peer?.uid || peer?.tinodeUid || peer?.tinode_uid || peer?.name);
   };
+  const { zaloBots, zaloConversationsTotal } = useMemo(() => {
+    const list = Object.values(filterableConversations || {}).filter(
+      room => room && (room.channel === 'zalo_oa' || String(room.id || '').startsWith('zalo:') || room.oa_id)
+    );
+    const botMap = new Map();
+    list.forEach(room => {
+      const botId = room.oa_id || (String(room.id || '').startsWith('zalo:') ? room.id.split(':')[1] : '') || room.oa_name || 'unknown';
+      const botName = room.oa_name || (
+        botId === '2274336170816480019' ? 'Gonstack' :
+        botId === '262829019064124420' ? 'Hoàng Hà Mobile' :
+        botId === '3733466236951056718' ? 'CBS global education' :
+        `OA ${botId}`
+      );
+      if (!botMap.has(botId)) {
+        botMap.set(botId, { id: botId, name: botName, count: 0 });
+      }
+      botMap.get(botId).count += 1;
+    });
+    return {
+      zaloBots: Array.from(botMap.values()),
+      zaloConversationsTotal: list.length,
+    };
+  }, [filterableConversations]);
+
+  const unreadConversationsTotal = useMemo(() => {
+    return Object.values(filterableConversations).reduce((sum, room) => {
+      return sum + (conversationUnreadIndicators(room).hasUnread ? 1 : 0);
+    }, 0);
+  }, [filterableConversations, conversationUnreadIndicators]);
+
   const filteredChatIds = filterConversationIds({
     baseIds: baseFilteredChatIds,
     conversations: filterableConversations,
@@ -13552,6 +13810,7 @@ function App() {
     status: conversationListStatus,
     categoryIds: conversationListCategoryIds,
     strangersOnly: conversationListStrangersOnly,
+    selectedBotId: selectedZaloBotId,
     isUnread: room => conversationUnreadIndicators(room).hasUnread,
     isStranger: isConversationFromStranger,
   });
@@ -14653,6 +14912,11 @@ function App() {
             moreMenuOpen={conversationListMoreMenuOpen}
             onToggleMoreMenu={toggleConversationListMoreMenu}
             onResetFilters={resetConversationListFilters}
+            zaloBots={zaloBots}
+            selectedBotId={selectedZaloBotId}
+            onSelectBot={setSelectedZaloBotId}
+            zaloTotal={zaloConversationsTotal}
+            unreadCount={unreadConversationsTotal}
           />
         </div>
 
@@ -14860,6 +15124,14 @@ function App() {
                 <span className={`chat-header-status ${activeChat.isGroup ? 'group-presence' : activeDirectPeer ? `direct-presence ${accountPresenceTone(activeDirectPeer)}` : ''}`}>
                   {activeChatPresenceLabel}
                 </span>
+                {isZaloActiveChat && (
+                  <ZaloCrmHeaderControls
+                    conversation={activeChat}
+                    accounts={directoryAccounts}
+                    copy={appCopy}
+                    onConversationUpdated={handleZaloConversationUpdated}
+                  />
+                )}
               </div>
             </div>
             <div className="chat-header-actions">
@@ -15937,7 +16209,7 @@ function App() {
               aria-expanded={Boolean(mentionContext && activeChat.isGroup)}
               aria-activedescendant={mentionOptions.length > 0 ? `message-mention-option-${mentionActiveIndex}` : undefined}
               maxLength={MAX_MESSAGE_TEXT_CHARACTERS}
-              placeholder={appCopy.t(editingMessage ? 'Nhập nội dung mới…' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : activeChat.isChatbot ? 'Hỏi ViChat AI về quy trình, chính sách, tài liệu…' : activePastedAttachments.length > 0 ? 'Nhập mô tả cho ảnh hoặc tệp…' : 'Nhập tin nhắn…')}
+              placeholder={appCopy.t(editingMessage ? 'Nhập nội dung mới…' : realtimeMessagingPending ? 'Kết nối realtime Tinode chưa sẵn sàng' : isZaloActiveChat ? 'Nhập tin nhắn phản hồi khách Zalo…' : activeChat.isChatbot ? 'Hỏi ViChat AI về quy trình, chính sách, tài liệu…' : activePastedAttachments.length > 0 ? 'Nhập mô tả cho ảnh hoặc tệp…' : 'Nhập tin nhắn…')}
               aria-label={appCopy.t(activeChat.isChatbot ? 'Nhập câu hỏi cho ViChat AI' : 'Nhập tin nhắn')}
               value={inputText}
               disabled={realtimeMessagingPending || !canSendInActiveGroup || (activeChat.isChatbot && isTyping)}
